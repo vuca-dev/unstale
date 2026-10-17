@@ -135,6 +135,8 @@ struct Progress {
     detail: String,
     hint: String,
     result: Option<Vec<Line>>,
+    /// Under a result: how the presentation ends (none while work continues below it).
+    footer: Option<String>,
 }
 pub struct Display {
     state: Arc<Mutex<Progress>>,
@@ -181,6 +183,8 @@ impl Display {
                 let mut size = size;
                 let mut measured = Instant::now();
                 let mut previous_rows = 0usize;
+                let mut last_frame: Vec<String> = vec![];
+                let mut drawn_size = size;
                 loop {
                     if measured.elapsed() >= Duration::from_secs(1) {
                         size = dimensions().unwrap_or(size);
@@ -201,12 +205,9 @@ impl Display {
                             color,
                         )
                     };
-                    if snapshot.result.is_some() && !done {
+                    if let Some(footer) = snapshot.footer.filter(|_| snapshot.result.is_some() && !done) {
                         body.extend(render(
-                            &[Line::new(
-                                "Setup finished · Enter to return now · closes automatically",
-                                Tone::Muted,
-                            )],
+                            &[Line::new(footer, Tone::Muted)],
                             size.1.saturating_sub(1),
                             color,
                         ));
@@ -230,6 +231,7 @@ impl Display {
                     };
                     let mut frame = layout
                         .map(|l| {
+                            // The resting frame stays on screen after exit, so it drops the drifting bands.
                             cloud_with(
                                 if done {
                                     31.
@@ -237,6 +239,7 @@ impl Display {
                                     started.elapsed().as_secs_f64() + 5.5
                                 },
                                 l,
+                                !done,
                             )
                         })
                         .unwrap_or_default();
@@ -248,9 +251,20 @@ impl Display {
                     if previous_rows > 0 {
                         let _ = write!(err, "\x1b[{}A", previous_rows + echoed);
                     }
-                    for line in frame {
-                        let _ = writeln!(err, "\r\x1b[2K{line}");
+                    // A row the previous frame drew the same is left untouched, so a selection in it (the prompt) survives
+                    // the artwork moving above it.
+                    if size != drawn_size || echoed > 0 {
+                        last_frame.clear();
+                        drawn_size = size;
                     }
+                    for (i, line) in frame.iter().enumerate() {
+                        if last_frame.get(i) == Some(line) {
+                            let _ = writeln!(err);
+                        } else {
+                            let _ = writeln!(err, "\r\x1b[2K{line}");
+                        }
+                    }
+                    last_frame = frame;
                     // Only erase rows owned by the previous frame, never earlier shell output.
                     for _ in rows..previous_rows {
                         let _ = writeln!(err, "\r\x1b[2K");
@@ -290,6 +304,7 @@ impl Display {
             detail: detail.into(),
             hint: hint.into(),
             result: None,
+            footer: None,
         };
         if self.thread.is_none() {
             let mut last = self.last_plain.lock().unwrap();
@@ -314,6 +329,17 @@ impl Display {
                     .any(|t| t == "echo")
             });
         echoes.then(|| self.echoed_lines.clone())
+    }
+    /// Whether `lines` fit under the moving artwork in this terminal.
+    pub fn can_show(&self, lines: &[Line]) -> bool {
+        let size = dimensions().unwrap_or(self.size);
+        self.animated && self.thread.is_some() && Layout::fit(size.0, size.1, render(lines, size.1.saturating_sub(1), false).len()).is_some()
+    }
+    /// Shows `lines` under the artwork, which keeps moving: work goes on, and `present` ends it.
+    pub fn show(&self, lines: Vec<Line>) {
+        let mut state = self.state.lock().unwrap();
+        state.result = Some(lines);
+        state.footer = None;
     }
     pub fn present(mut self, lines: Vec<Line>, linger: bool, leave: &AtomicBool) {
         let size = if self.thread.is_some() {
@@ -348,7 +374,11 @@ impl Display {
         let hold =
             linger && self.animated && Layout::fit(size.0, size.1, readable + footer).is_some();
         if hold {
-            self.state.lock().unwrap().result = Some(view);
+            {
+                let mut state = self.state.lock().unwrap();
+                state.result = Some(view);
+                state.footer = Some("Setup finished · Enter to return now · closes automatically".into());
+            }
             let presented = Instant::now();
             while (self.started.elapsed() < Duration::from_secs(8) || presented.elapsed() < Duration::from_secs(3)) && !leave.load(Ordering::Acquire)
             {
@@ -378,6 +408,45 @@ impl Display {
         for line in render(&lines, size.1.saturating_sub(1), color) {
             println!("{line}");
         }
+    }
+}
+/// A few lines redrawn in place below output that stays (the printed report and its prompt), on stderr.
+pub struct Live {
+    rows: usize,
+    color: bool,
+    /// Lines the terminal echoed from input (Enter) since the last draw, which sit below the drawn rows.
+    echoed: Option<Arc<AtomicUsize>>,
+}
+impl Live {
+    /// None when stderr is not an interactive terminal.
+    pub fn start(echoed: Option<Arc<AtomicUsize>>) -> Option<Self> {
+        let terminal = std::io::stderr().is_terminal() && std::env::var("TERM").unwrap_or_default() != "dumb";
+        terminal.then(|| Self { rows: 0, color: std::env::var_os("NO_COLOR").is_none(), echoed })
+    }
+    pub fn draw(&mut self, lines: &[Line]) {
+        let width = dimensions().map_or(80, |d| d.1);
+        let body = render(lines, width.saturating_sub(1), self.color);
+        let echoed = self.echoed.as_ref().map_or(0, |e| e.swap(0, Ordering::AcqRel));
+        let mut err = std::io::stderr().lock();
+        if self.rows + echoed > 0 {
+            let _ = write!(err, "\x1b[{}A", self.rows + echoed);
+        }
+        for line in &body {
+            let _ = writeln!(err, "\r\x1b[2K{line}");
+        }
+        // Only rows this region drew before are erased, never the report above it.
+        for _ in body.len()..self.rows + echoed {
+            let _ = writeln!(err, "\r\x1b[2K");
+        }
+        if self.rows + echoed > body.len() {
+            let _ = write!(err, "\x1b[{}A", self.rows + echoed - body.len());
+        }
+        let _ = err.flush();
+        self.rows = body.len();
+    }
+    /// The final lines replace the region and stay.
+    pub fn settle(mut self, lines: &[Line]) {
+        self.draw(lines);
     }
 }
 impl Drop for Display {
@@ -421,9 +490,9 @@ const GLYPHS: [[&str; 7]; 7] = [
 ];
 #[cfg(test)]
 fn cloud(t: f64) -> Vec<String> {
-    cloud_with(t, Layout::NORMAL)
+    cloud_with(t, Layout::NORMAL, true)
 }
-fn cloud_with(t: f64, layout: Layout) -> Vec<String> {
+fn cloud_with(t: f64, layout: Layout, ambient: bool) -> Vec<String> {
     let Layout {
         scale,
         width,
@@ -442,7 +511,7 @@ fn cloud_with(t: f64, layout: Layout) -> Vec<String> {
     let green = [103, 220, 145];
     let mut flurries = std::collections::BTreeMap::new();
     let amber = [232, 172, 94];
-    for side in 0..2 {
+    for side in (0..2).filter(|_| ambient) {
         for i in 0..180 {
             let seed = i + side * 701;
             let x =
@@ -611,7 +680,7 @@ mod tests {
             .into_iter()
             .flat_map(|layout| [31., 32.].into_iter().map(move |time| (layout, time)))
         {
-            let frame = cloud_with(time, layout);
+            let frame = cloud_with(time, layout, true);
             let mut points = vec![];
             for (row, line) in frame.iter().enumerate() {
                 let mut chars = line.chars().peekable();
@@ -685,5 +754,8 @@ mod tests {
         let rest = cloud(31.).join("\n");
         assert!(rest.contains("103;220;145m"));
         assert!(!rest.contains("232;172;94m"));
+        let exit = cloud_with(31., Layout::NORMAL, false).join("\n");
+        assert!(exit.contains("103;220;145m"), "The wordmark stays");
+        assert!(!exit.contains("37;80;80m") && !exit.contains("23;150;145m"), "No ambient bands on the exit frame");
     }
 }

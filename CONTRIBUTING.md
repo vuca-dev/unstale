@@ -22,6 +22,12 @@ npm --prefix central run check:schema             # generated schema and Zod mat
 npm --prefix gateway run typecheck && npm --prefix gateway test
 ```
 
+A client following a fast-track run can be previewed locally: `node gateway/scripts/preview.ts --new pkg:npm/picocolors`
+runs the gateway with a played coverage run in place of GitHub (catalog and known statuses from the live gateway) and
+keeps running; in a second terminal, run `unstale init --service http://127.0.0.1:8787` in a repository that depends on
+that package. `--declined` and `--stall`
+play the other outcomes.
+
 ## Scripts
 
 | Script | Purpose |
@@ -57,7 +63,7 @@ Secrets and variables (Settings > Secrets and variables > Actions):
 | `JEV_API_KEY` | secret | ingest | Jev classifier |
 | `AI_GATEWAY_API_KEY` | secret | ingest | Extraction (`UNSTALE_EXTRACT_MODEL=vercel:openai/gpt-6-luna`, set in the workflow) |
 | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | secrets | ingest | `wrangler deploy` of the gateway with the exported catalog |
-| `GATEWAY_DRAIN_TOKEN` | secret | ingest | Reads and acknowledges the gateway's queue; the same value is the Worker's `DRAIN_TOKEN` secret |
+| `GATEWAY_DRAIN_TOKEN` | secret | ingest | Reads and acknowledges the gateway's queue and reports a run's progress on the packages it pulled; the same value is the Worker's `DRAIN_TOKEN` secret |
 | `UNSTALE_GATEWAY_URL` | variable | ingest | The deployed Worker's address (`https://unstale.<subdomain>.workers.dev`, or a custom domain) |
 | `UNSTALE_BUDGET_TOKENS` | variable | ingest | Release-note tokens a day the coverage budget allows (default 250,000 in the workflow) |
 | `ASSET_FILE_LIMIT` | variable | ingest | Static files a Worker version may hold: 20,000 on the free plan (default), 100,000 on the paid plan |

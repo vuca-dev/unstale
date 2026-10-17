@@ -7,10 +7,12 @@
 //   GET /coverage?purl=         a known package's published status, or a held one's place in the queue
 //   GET /internal/queue         the held requests, for a coverage run (bearer DRAIN_TOKEN)
 //   POST /internal/ack          what a deployed run took (bearer DRAIN_TOKEN)
+//   POST /internal/progress     where a run is with the held packages it pulled (bearer DRAIN_TOKEN), so a client
+//                               that started one early can follow it until the package is published
 // Only the public identity of a package is accepted; no repository context, and no client address is stored.
 import { DurableObject } from "cloudflare:workers";
 import { packageIdentity, technologyId } from "../../central/src/onboarding/identity.ts";
-import { PendingQueue, settingsFrom, type Outcome, type Request as Taken } from "./queue.ts";
+import { PendingQueue, RUN_STATES, settingsFrom, type Outcome, type Progress, type Request as Taken, type Run, type RunState } from "./queue.ts";
 
 export interface Env {
   ASSETS: Fetcher;
@@ -21,6 +23,8 @@ export interface Env {
   GITHUB_REPOSITORY?: string;
   GITHUB_WORKFLOW?: string;
   GITHUB_REF?: string;
+  /** The GitHub API base (a local stand-in for a preview); api.github.com otherwise. */
+  GITHUB_API_URL?: string;
   RATE_PER_HOUR?: string;
   MAX_PENDING?: string;
   NEW_PER_HOUR?: string;
@@ -33,18 +37,31 @@ export class Coverage extends DurableObject<Env> {
   private readonly queue: PendingQueue;
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
-    this.queue = new PendingQueue(ctx.storage.sql, settingsFrom(env as unknown as Record<string, string | undefined>));
+    const settings = settingsFrom(env as unknown as Record<string, string | undefined>);
+    // Without a way to start a run, no package is told one is starting.
+    if (!env.GITHUB_DISPATCH_TOKEN || !env.GITHUB_REPOSITORY) settings.fastTrackPerDay = 0;
+    this.queue = new PendingQueue(ctx.storage.sql, settings);
   }
   request(purl: string, address: string, known: boolean): Outcome {
     const outcome = this.queue.request(purl, address, known);
-    if (outcome.type === "queued" && outcome.fastTrack) this.ctx.waitUntil(dispatch(this.env));
+    if (outcome.type === "queued" && outcome.fastTrack)
+      this.ctx.waitUntil(
+        dispatch(this.env)
+          .catch(() => false)
+          .then((started) => started || this.queue.undispatched(purl)),
+      );
     return outcome;
   }
   held(purl: string): boolean {
     return this.queue.held(purl);
   }
-  position(purl: string) {
-    return this.queue.position(purl);
+  /** A held new package's place in the queue and the run working it, if any. */
+  view(purl: string): View | undefined {
+    const at = this.queue.position(purl);
+    return at && { ...at, run: this.queue.run(purl), typical: this.queue.typicalSeconds() };
+  }
+  report(updates: { purl: string; state: RunState; job?: Progress }[]): number {
+    return this.queue.report(updates);
   }
   list(): Taken[] {
     return this.queue.list();
@@ -54,11 +71,18 @@ export class Coverage extends DurableObject<Env> {
   }
 }
 
+interface View {
+  position: number;
+  length: number;
+  run?: Run;
+  typical?: number;
+}
+
 /** Starts the coverage workflow early; a failure only means the package waits for the schedule. */
-async function dispatch(env: Env): Promise<void> {
-  if (!env.GITHUB_DISPATCH_TOKEN || !env.GITHUB_REPOSITORY) return;
+async function dispatch(env: Env): Promise<boolean> {
+  if (!env.GITHUB_DISPATCH_TOKEN || !env.GITHUB_REPOSITORY) return false;
   const res = await fetch(
-    `https://api.github.com/repos/${env.GITHUB_REPOSITORY}/actions/workflows/${env.GITHUB_WORKFLOW ?? "ingest.yml"}/dispatches`,
+    `${env.GITHUB_API_URL ?? "https://api.github.com"}/repos/${env.GITHUB_REPOSITORY}/actions/workflows/${env.GITHUB_WORKFLOW ?? "ingest.yml"}/dispatches`,
     {
       method: "POST",
       headers: {
@@ -71,7 +95,18 @@ async function dispatch(env: Env): Promise<void> {
     },
   );
   if (!res.ok) console.log(`fast-track dispatch: HTTP ${res.status}`);
+  return res.ok;
 }
+
+/** The next scheduled coverage run: ingest.yml's schedule, minute 23 of every third UTC hour. */
+export function nextScheduled(now: number): Date {
+  const at = new Date(now);
+  at.setUTCMinutes(23, 0, 0);
+  while (at.getTime() <= now || at.getUTCHours() % 3) at.setUTCHours(at.getUTCHours() + 1);
+  return at;
+}
+
+const clock = (d: Date) => `${d.toISOString().slice(11, 16)} UTC`;
 
 const json = (status: number, value: unknown, headers: Record<string, string> = {}) =>
   new Response(JSON.stringify(value), { status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store", ...headers } });
@@ -103,25 +138,88 @@ async function registered(purl: string): Promise<boolean> {
   }
 }
 
-/** A held package as a queued job, in the coverage service's format. */
-function queued(purl: string, at: { position: number; length: number }, early: boolean) {
+/**
+ * A held package as a job, in the coverage service's format. While a run has it, `run` says where (and the job's
+ * counters are the run's), so a client can follow it until its published status replaces this answer.
+ */
+function queued(purl: string, at: View, now = Date.now()) {
+  const { run } = at;
+  const place = `position ${at.position} of ${at.length}`;
+  const next = nextScheduled(now);
+  const stage = (() => {
+    switch (run?.state) {
+      case "dispatched":
+        return `Queued (${place}); a coverage run is starting and takes it if it is next`;
+      case "running":
+        return run.job?.stage ?? "A coverage run is working it";
+      case "publishing":
+        return "Analysed; the coverage run is publishing the catalog";
+      case "declined":
+        return `Another package is ahead (${place}); waiting for the scheduled run at ${clock(next)}`;
+      default:
+        return `Waiting for the next coverage run (${place})`;
+    }
+  })();
+  // A job the run finished is not published until the deploy: still in progress to a client.
+  const working = run?.state === "running" || run?.state === "publishing";
+  const state = working ? (run.job?.state === "discovering" ? "discovering" : "analyzing") : "queued";
+  const job = working ? run.job : undefined;
   return {
     schema: 1,
     purl,
     technology: technologyId(purl),
     name: packageIdentity(purl),
-    state: "queued",
-    stage: early ? `Queued (position ${at.position} of ${at.length}); a coverage run is starting and takes it if it is next` : `Waiting for the next coverage run (position ${at.position} of ${at.length})`,
-    updated: new Date().toISOString(),
-    records: 0,
-    releases_done: 0,
-    releases_total: 0,
-    docs_done: 0,
-    docs_total: 0,
+    state,
+    stage,
+    updated: new Date(run?.updated ?? now).toISOString(),
+    records: job?.records ?? 0,
+    releases_done: job?.releases_done ?? 0,
+    releases_total: job?.releases_total ?? 0,
+    docs_done: job?.docs_done ?? 0,
+    docs_total: job?.docs_total ?? 0,
     docs_failed: 0,
     queue_position: at.position,
     queue_length: at.length,
+    next_run: next.toISOString(),
+    ...(run && {
+      run: {
+        state: run.state,
+        elapsed_s: Math.max(0, Math.round((now - run.since) / 1000)),
+        ...(at.typical !== undefined && { typical_s: at.typical }),
+      },
+    }),
   };
+}
+
+const count = (v: unknown) => (Number.isInteger(v) && (v as number) >= 0 ? (v as number) : 0);
+
+/** A run's progress report: held packages and public counters only, bounded. */
+function progressOf(body: unknown): { purl: string; state: RunState; job?: Progress }[] {
+  const updates = (body as { updates?: unknown })?.updates;
+  if (!Array.isArray(updates) || updates.length > 500) throw new Error("Expected {\"updates\": [...]} of at most 500");
+  return updates.flatMap((u) => {
+    const { purl, state, job } = (u ?? {}) as { purl?: unknown; state?: unknown; job?: Record<string, unknown> };
+    if (typeof purl !== "string" || purl.length > 230 || !RUN_STATES.includes(state as RunState)) return [];
+    return [
+      {
+        purl,
+        state: state as RunState,
+        ...(job && typeof job === "object"
+          ? {
+              job: {
+                state: typeof job.state === "string" ? job.state.slice(0, 20) : "analyzing",
+                stage: typeof job.stage === "string" ? job.stage.replace(/[\p{Cc}\s]+/gu, " ").trim().slice(0, 300) : "",
+                records: count(job.records),
+                releases_done: count(job.releases_done),
+                releases_total: count(job.releases_total),
+                docs_done: count(job.docs_done),
+                docs_total: count(job.docs_total),
+              },
+            }
+          : {}),
+      },
+    ];
+  });
 }
 
 /** Constant time, so the token cannot be guessed byte by byte. */
@@ -166,23 +264,25 @@ export async function handle(request: Request, env: Env): Promise<Response> {
           { "Retry-After": String(outcome.retryAfter) },
         );
       if (outcome.type === "voted") return json(202, known);
-      return json(202, queued(purl, outcome, outcome.fastTrack));
+      return json(202, queued(purl, (await queue().view(purl)) ?? outcome));
     }
     if (request.method === "GET" && url.pathname === "/coverage") {
       const purl = url.searchParams.get("purl") ?? "";
       packageIdentity(purl);
       const known = await published(env, url, purl);
       if (known) return json(200, known);
-      const at = await queue().position(purl);
-      return at ? json(200, queued(purl, at, false)) : json(404, { error: "No shared job for this identity" });
+      const at = await queue().view(purl);
+      return at ? json(200, queued(purl, at)) : json(404, { error: "No shared job for this identity" });
     }
-    if (url.pathname === "/internal/queue" || url.pathname === "/internal/ack") {
+    if (url.pathname === "/internal/queue" || url.pathname === "/internal/ack" || url.pathname === "/internal/progress") {
       if (!authorized(request, env.DRAIN_TOKEN)) return json(401, { error: "Unauthorized" });
       if (request.method === "GET" && url.pathname === "/internal/queue") return json(200, { requests: await queue().list() });
       if (request.method === "POST" && url.pathname === "/internal/ack") {
         const { requests } = (await request.json()) as { requests?: Taken[] };
         return json(200, { removed: await queue().ack(Array.isArray(requests) ? requests : []) });
       }
+      if (request.method === "POST" && url.pathname === "/internal/progress")
+        return json(200, { reported: await queue().report(progressOf(await request.json())) });
     }
     return env.ASSETS.fetch(request);
   } catch (error) {

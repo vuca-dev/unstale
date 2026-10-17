@@ -240,6 +240,10 @@ export class CoverageService {
     if (job.overflow === quarterKey()) return 2;
     return job.admitted || job.state === "monitoring" || job.completed?.length ? 0 : 1;
   }
+  /** Whether a job is being worked now (its state alone does not say: `partial` continues through the docs pass). */
+  working(purl: string): boolean {
+    return this.running.has(purl);
+  }
   /** The line of new technologies waiting for their first analysis, in drain order (tier 1). */
   newLine(): Job[] {
     return this.queue().filter((j) => this.tier(j) === 1 && !this.running.has(j.purl));
