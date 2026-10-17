@@ -110,7 +110,8 @@ function advisoryFixVersions(r: StoredRecord, inIndex: ReadonlySet<string>): str
 
 /**
  * A record's releases recomputed from what shipped it: its current releases, the releases its sources were extracted
- * from and the fix releases of its advisories, one per component and derived line (the earliest). `drop` names
+ * from and the fix releases of its advisories, one per component and derived line (the earliest), each dated by the
+ * index where it holds the version. `drop` names
  * versions to leave out unless a source or an advisory still supports them (an advisory that was detached).
  */
 export function recomputeReleases(r: StoredRecord, s: Pick<TechStore, "releaseIndex">, components: readonly string[], drop: ReadonlySet<string> = new Set()): Release[] {
@@ -120,7 +121,9 @@ export function recomputeReleases(r: StoredRecord, s: Pick<TechStore, "releaseIn
   const comps = [...new Set(r.releases.map((x) => x.component))];
   const useComps = comps.length ? comps : [...components];
   const supported = new Set<string>([...r.sources.map(sourceVersion).filter((v): v is string => !!v && inIndex.has(v)), ...advisoryFixVersions(r, inIndex)]);
-  const cand: Release[] = r.releases.filter((x) => !drop.has(x.version) || supported.has(x.version));
+  // A release the index holds takes the index's day (the version's publish day), so a corrected date reaches the
+  // records; one outside the index keeps its own.
+  const cand: Release[] = r.releases.filter((x) => !drop.has(x.version) || supported.has(x.version)).map((x) => (dates.has(x.version) && dates.get(x.version) !== x.date ? { ...x, date: dates.get(x.version)! } : x));
   for (const v of supported) {
     for (const component of useComps) cand.push({ component, version: v, date: dates.get(v)!, line: releaseLine(v) });
   }
