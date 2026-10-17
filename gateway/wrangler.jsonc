@@ -32,7 +32,12 @@
     "VOTES_PER_HOUR": "1000",
     "MAX_PENDING": "50000",
     // New packages held per UTC hour, all clients together (no addresses kept): bounds how fast the queue can fill.
-    "NEW_PER_HOUR": "1000",
+    // With COUNTED_VOTES_PER_HOUR (votes counted per UTC hour, all clients; beyond it a vote is answered the same,
+    // uncounted) it bounds the rows the object writes a day, the free tier's scarce allowance (100,000):
+    // 2 × NEW_PER_HOUR × 24 + COUNTED_VOTES_PER_HOUR × 24 + ~6,000 (src/queue.ts header). GET /internal/usage shows
+    // the day's rows.
+    "NEW_PER_HOUR": "500",
+    "COUNTED_VOTES_PER_HOUR": "1500",
     // Coverage runs a new package may start at once per UTC day (0: wait for the schedule). The run works it only if
     // it is next in the line of new technologies (central drain --fast-track); admission and the coverage budget
     // still apply, and while the last run reported the budget spent no early run starts (the package still queues).
