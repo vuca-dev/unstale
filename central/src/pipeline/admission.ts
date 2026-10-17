@@ -129,7 +129,8 @@ async function json(url: string, headers: Record<string, string> = {}): Promise<
   }
 }
 
-/** npm weekly downloads for many packages: bulk requests for unscoped names (128 at a time), one each for scoped. */
+/** npm weekly downloads for many packages: bulk requests for unscoped names (128 at a time), one each for scoped, eight
+ * at a time (the API rate-limits bursts). */
 export async function npmDownloads(names: readonly string[]): Promise<Map<string, number>> {
   const out = new Map<string, number>();
   const plain = names.filter((n) => !n.startsWith("@"));
@@ -139,10 +140,12 @@ export async function npmDownloads(names: readonly string[]): Promise<Map<string
     if (batch.length === 1 && typeof j?.downloads === "number") out.set(batch[0]!, j.downloads);
     else for (const n of batch) if (typeof j?.[n]?.downloads === "number") out.set(n, j[n].downloads);
   }
-  for (const n of names.filter((x) => x.startsWith("@"))) {
-    const j = await json(`https://api.npmjs.org/downloads/point/last-week/${n}`);
-    if (typeof j?.downloads === "number") out.set(n, j.downloads);
-  }
+  const scoped = names.filter((x) => x.startsWith("@"));
+  for (let i = 0; i < scoped.length; i += 8)
+    await Promise.all(scoped.slice(i, i + 8).map(async (n) => {
+      const j = await json(`https://api.npmjs.org/downloads/point/last-week/${n}`);
+      if (typeof j?.downloads === "number") out.set(n, j.downloads);
+    }));
   return out;
 }
 

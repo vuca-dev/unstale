@@ -125,6 +125,10 @@ test("among new technologies of equal demand the most adopted drain first; an un
   const failing = new CoverageService(0, { limits: limits(), adoption: async () => Promise.reject(new Error("down")) });
   await failing.readAdoption();
   expect(failing.jobs.get("pkg:npm/unread")?.downloads).toBeUndefined();
+  // A reader slower than the timeout is not waited for.
+  const slow = new CoverageService(0, { limits: limits(), adoption: () => new Promise(() => {}) });
+  await slow.readAdoption(10);
+  expect(slow.jobs.get("pkg:npm/unread")?.downloads).toBeUndefined();
 });
 
 test("token budget per period: spent per note, persisted, reset each period, first spend always passes, fails closed", () => {

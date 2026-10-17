@@ -277,13 +277,16 @@ export class CoverageService {
       .filter((j) => this.due(j))
       .sort((a, b) => this.tier(a) - this.tier(b) || (b.demand ?? 0) - (a.demand ?? 0) || adoption(b) - adoption(a));
   }
-  /** Reads adoption for waiting new technologies that lack it, once per process each; an unreadable count stays unset
-   * (fails open: 0 in the order). */
-  async readAdoption(): Promise<void> {
+  /** Reads adoption for waiting new technologies that lack it, once per process each, for at most `timeout` ms so a
+   * slow registry never holds up a drain; an unreadable count stays unset (fails open: 0 in the order). */
+  async readAdoption(timeout = 120_000): Promise<void> {
     const want = [...this.jobs.values()].filter((j) => this.due(j) && this.tier(j) === 1 && j.downloads === undefined && !this.adoptionTried.has(j.purl));
     if (!want.length) return;
     for (const j of want) this.adoptionTried.add(j.purl);
-    const counts = await this.adoption(want.map((j) => j.purl)).catch(() => new Map<string, number>());
+    let timer: NodeJS.Timeout | undefined;
+    const late = new Promise<Map<string, number>>((resolve) => (timer = setTimeout(() => resolve(new Map()), timeout)));
+    const counts = await Promise.race([this.adoption(want.map((j) => j.purl)).catch(() => new Map<string, number>()), late]);
+    clearTimeout(timer);
     for (const j of want) {
       const n = counts.get(j.purl);
       if (n === undefined || !Number.isFinite(n)) continue;
