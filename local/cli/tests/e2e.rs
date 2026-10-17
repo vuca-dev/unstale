@@ -329,6 +329,19 @@ fn a_catalog_without_a_coverage_service_syncs_and_requests_nothing() {
 }
 
 #[test]
+fn a_version_that_cannot_be_read_is_reported_as_unknown_not_as_0_0_0() {
+    let cat = FixtureCatalog::new(); publish(&cat);
+    let env = Env { repo: fixture_repo(), cache: tempfile::tempdir().unwrap() };
+    // A dist-tag with no lockfile entry: nothing says which next is installed.
+    std::fs::remove_file(env.repo.path().join("pnpm-lock.yaml")).unwrap();
+    write(env.repo.path(), "package.json", r#"{"name":"shop","private":true,"dependencies":{"next":"canary","react":"^19.0.0"}}"#);
+    env.ok(&["init", "--service", cat.loc(), "--mode", "local", "--yes", "--wait", "0", "--no-animation"]);
+    let report = env.read(".unstale/onboarding-report.md");
+    assert!(report.contains("next version unknown ·"), "{report}");
+    assert!(!report.contains("0.0.0"), "{report}");
+}
+
+#[test]
 fn first_install_offline_finishes_with_an_honest_empty_report() {
     let env = Env { repo: fixture_repo(), cache: tempfile::tempdir().unwrap() };
     let started = std::time::Instant::now();

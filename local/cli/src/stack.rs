@@ -282,6 +282,7 @@ pub fn detect(root: &Path) -> Result<Stack> {
     let mut deps: BTreeMap<String, Dep> = BTreeMap::new();
     let mut node: Option<(Version, String)> = None;
     let mut locks: BTreeMap<PathBuf, Option<Lock>> = BTreeMap::new();
+    let mut catalogs: BTreeMap<PathBuf, Catalogs> = BTreeMap::new();
     let mut notes = vec![];
     // Per lockfile path: locked versions outside the declared range, with a few examples.
     let mut stale: BTreeMap<String, (usize, Vec<String>)> = BTreeMap::new();
@@ -295,12 +296,14 @@ pub fn detect(root: &Path) -> Result<Stack> {
         let rel = rel_dir(root, &dir);
         let kind = if is_library(&pj) { Kind::Library } else { Kind::Application };
         let mut declared = BTreeSet::new();
+        let cat = Catalogs::nearest(root, &dir, &mut catalogs);
         // The nearest lockfile at or above the package, up to the repository root.
         let mut lock: Option<(PathBuf, Lock)> = None;
         let mut d = Some(dir.as_path());
         while let Some(cur) = d {
             if !locks.contains_key(cur) {
-                locks.insert(cur.to_path_buf(), choose_lock(root, cur, Lock::read_all(cur), &local_names, &mut notes));
+                let cur_cat = Catalogs::nearest(root, cur, &mut catalogs);
+                locks.insert(cur.to_path_buf(), choose_lock(root, cur, Lock::read_all(cur), &local_names, &cur_cat, &mut notes));
             }
             if let Some(Some(l)) = locks.get(cur) {
                 lock = Some((cur.to_path_buf(), l.clone()));
@@ -315,7 +318,14 @@ pub fn detect(root: &Path) -> Result<Stack> {
         for field in DEP_FIELDS {
             let Some(map) = pj.get(*field).and_then(Value::as_object) else { continue };
             for (name, range) in map {
-                let range = range.as_str().unwrap_or("");
+                let declared_range = range.as_str().unwrap_or("");
+                // A pnpm catalog reference (`catalog:`, `catalog:<name>`) stands for the range the catalog gives.
+                let resolved = cat.resolve(name, declared_range);
+                let range = resolved.unwrap_or(declared_range);
+                let shown = match resolved {
+                    Some(r) => format!("{r} from {declared_range}"),
+                    None => range.to_string(),
+                };
                 // A package of this repository (a workspace, a path): never public, and its locked version is a
                 // placeholder (Yarn 2+ `0.0.0-use.local`), not a pin the range could say is out of date.
                 let local = is_local(&local_names, name, range);
@@ -327,7 +337,8 @@ pub fn detect(root: &Path) -> Result<Stack> {
                     } else {
                         range
                     };
-                    (range_floor(r), format!("library floor of {r}"))
+                    let r_shown = if r == range { shown.clone() } else { r.to_string() };
+                    (range_floor(r), format!("library floor of {r_shown}"))
                 } else if let Some((ld, l)) = &lock
                     && let Some(v) = l.version(&importer, name, range)
                 {
@@ -339,12 +350,12 @@ pub fn detect(root: &Path) -> Result<Stack> {
                         if s.1.len() < 3 {
                             s.1.push(format!("{name} {v} vs {range}"));
                         }
-                        (range_floor(range), format!("floor of {range} ({} has {v}, outside the range)", join(&rel_dir(root, ld), &l.file)))
+                        (range_floor(range), format!("floor of {shown} ({} has {v}, outside the range)", join(&rel_dir(root, ld), &l.file)))
                     } else {
                         (Some(v), join(&rel_dir(root, ld), &l.file))
                     }
                 } else {
-                    (range_floor(range), format!("floor of {range} (not in a lockfile)"))
+                    (range_floor(range), format!("floor of {shown} (not in a lockfile)"))
                 };
                 let public_name = range.strip_prefix("npm:").and_then(|r|r.rsplit_once('@').map(|(n,_)|n)).filter(|n|!n.is_empty()).unwrap_or(name);
                 let public_candidate = !local;
@@ -418,6 +429,111 @@ fn join(dir: &str, f: &str) -> String {
     if dir == "." { f.to_string() } else { format!("{dir}/{f}") }
 }
 
+/// pnpm catalogs from `pnpm-workspace.yaml`: catalog name → package → range. `catalog:` at the top level is the
+/// `default` catalog, `catalogs: <name>:` the named ones. A manifest uses the nearest workspace file at or above it.
+#[derive(Debug, Clone, Default)]
+pub struct Catalogs(BTreeMap<String, BTreeMap<String, String>>);
+
+impl Catalogs {
+    /// The catalogs of the nearest `pnpm-workspace.yaml` at or above `dir`, up to `root` (read once per directory).
+    fn nearest(root: &Path, dir: &Path, cache: &mut BTreeMap<PathBuf, Catalogs>) -> Catalogs {
+        let mut d = Some(dir);
+        while let Some(cur) = d {
+            if let Some(c) = cache.get(cur) {
+                return c.clone();
+            }
+            if let Ok(text) = std::fs::read_to_string(cur.join("pnpm-workspace.yaml")) {
+                let c = parse_pnpm_workspace(&text);
+                cache.insert(cur.to_path_buf(), c.clone());
+                return c;
+            }
+            if cur == root {
+                break;
+            }
+            d = cur.parent();
+        }
+        Catalogs::default()
+    }
+
+    /// The range a `catalog:` / `catalog:<name>` specifier stands for; `None` for any other range, or a catalog
+    /// that does not list the package.
+    pub fn resolve(&self, name: &str, range: &str) -> Option<&str> {
+        let which = range.trim().strip_prefix("catalog:")?.trim();
+        let which = if which.is_empty() { "default" } else { which };
+        self.0.get(which)?.get(name).map(String::as_str)
+    }
+}
+
+/// The entries of a one-line flow mapping (`{ next: 16.4.1, react: ^19 }`).
+fn flow(v: &str) -> Option<Vec<(String, Option<&str>)>> {
+    let inner = v.strip_prefix('{')?.strip_suffix('}')?;
+    // Commas inside a quoted scalar (`">=1.0.0, <2.0.0"`) belong to it.
+    let (mut entries, mut start, mut quote) = (vec![], 0, None);
+    for (i, ch) in inner.char_indices() {
+        match (quote, ch) {
+            (None, '\'' | '"') => quote = Some(ch),
+            (Some(q), _) if ch == q => quote = None,
+            (None, ',') => {
+                entries.push(&inner[start..i]);
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    entries.push(&inner[start..]);
+    Some(entries.into_iter().filter_map(|e| split_key(e.trim())).collect())
+}
+
+/// The `catalog` and `catalogs` sections of `pnpm-workspace.yaml` (line-based, as `parse_pnpm`).
+pub fn parse_pnpm_workspace(text: &str) -> Catalogs {
+    let mut c = Catalogs::default();
+    let mut stack: Vec<(usize, String)> = vec![];
+    for raw in text.lines() {
+        // A comment, whole-line or after a value (`next: 16.4.1 # pinned`).
+        let line = match raw.find(" #") {
+            Some(i) => &raw[..i],
+            None => raw,
+        };
+        let trimmed = line.trim_end();
+        if trimmed.trim().is_empty() || trimmed.trim_start().starts_with('#') {
+            continue;
+        }
+        if trimmed.starts_with("---") || trimmed == "..." {
+            stack.clear();
+            continue;
+        }
+        let indent = trimmed.len() - trimmed.trim_start().len();
+        let Some((k, val)) = split_key(trimmed.trim_start()) else { continue };
+        while stack.last().is_some_and(|(i, _)| *i >= indent) {
+            stack.pop();
+        }
+        let path: Vec<&str> = stack.iter().map(|(_, k)| k.as_str()).collect();
+        let catalog = match path.as_slice() {
+            ["catalog"] => Some("default"),
+            ["catalogs", name] => Some(*name),
+            _ => None,
+        };
+        // A flow mapping (`catalog: { next: 16.4.1, react: ^19 }`) holds the entries of the catalog it names.
+        let (catalog, entries) = match (catalog, val.and_then(flow)) {
+            (None, Some(e)) if path.as_slice() == ["catalogs"] => (Some(k.as_str()), e),
+            (None, Some(e)) if path.is_empty() && k == "catalog" => (Some("default"), e),
+            (Some(cat), _) => (Some(cat), val.map(|v| vec![(k.clone(), Some(v))]).unwrap_or_default()),
+            _ => (None, vec![]),
+        };
+        if let Some(catalog) = catalog {
+            for (name, v) in entries {
+                if let Some(v) = v {
+                    c.0.entry(catalog.to_string()).or_default().insert(name, v.trim_matches(['\'', '"']).to_string());
+                }
+            }
+        }
+        if val.is_none() {
+            stack.push((indent, k));
+        }
+    }
+    c
+}
+
 /// Resolved versions from one lockfile: per importer directory (`.` for the lockfile's own directory) and name.
 #[derive(Debug, Clone, Default)]
 pub struct Lock {
@@ -438,7 +554,7 @@ const LOCKFILES: &[(&str, &str)] =
 /// One lockfile for a directory that holds several (a switch of package manager that left the old file behind):
 /// the one whose versions the manifest beside it admits, then the one `packageManager` names, then the fixed
 /// order. The choice is recorded in `notes` whenever there was one to make.
-fn choose_lock(root: &Path, dir: &Path, mut cands: Vec<Lock>, local_names: &BTreeSet<String>, notes: &mut Vec<String>) -> Option<Lock> {
+fn choose_lock(root: &Path, dir: &Path, mut cands: Vec<Lock>, local_names: &BTreeSet<String>, cat: &Catalogs, notes: &mut Vec<String>) -> Option<Lock> {
     if cands.len() < 2 {
         return cands.pop();
     }
@@ -447,7 +563,7 @@ fn choose_lock(root: &Path, dir: &Path, mut cands: Vec<Lock>, local_names: &BTre
         .iter()
         .filter_map(|f| pj.get(*f).and_then(Value::as_object))
         .flatten()
-        .filter_map(|(n, r)| r.as_str().map(|r| (n.as_str(), r)))
+        .filter_map(|(n, r)| r.as_str().map(|r| (n.as_str(), cat.resolve(n, r).unwrap_or(r))))
         .filter(|(n, r)| !is_local(local_names, n, r))
         .collect();
     let manager = pj.get("packageManager").and_then(Value::as_str).and_then(|m| m.split('@').next()).unwrap_or("");
@@ -571,8 +687,10 @@ fn clean_pnpm_version(v: &str) -> Option<Version> {
     if v.starts_with("link:") || v.starts_with("file:") || v.starts_with("workspace:") {
         return None;
     }
-    let v = v.rsplit('/').next().unwrap_or(v); // `/next/13.0.0` (old format)
+    // The peer suffix first: it can name scoped packages (`16.4.1(@babel/core@7.29.7)`), whose `/` is not the
+    // old format's.
     let v = v.split('(').next().unwrap_or(v); // `16.0.3(react@19.0.0)`
+    let v = v.rsplit('/').next().unwrap_or(v); // `/next/13.0.0` (old format)
     let v = v.split('_').next().unwrap_or(v); // `13.0.0_react@18.2.0` (lockfile v5)
     parse_version(v)
 }
@@ -586,6 +704,12 @@ pub fn parse_pnpm(text: &str) -> Lock {
     for raw in text.lines() {
         let trimmed = raw.trim_end();
         if trimmed.trim().is_empty() || trimmed.trim_start().starts_with('#') {
+            continue;
+        }
+        // A new YAML document (pnpm 11+ writes the package manager's own lock as a first document): nothing
+        // nests across it.
+        if trimmed.starts_with("---") || trimmed == "..." {
+            stack.clear();
             continue;
         }
         let indent = trimmed.len() - trimmed.trim_start().len();
@@ -807,6 +931,52 @@ mod tests {
         let s = detect(d.path()).unwrap();
         assert_eq!(s.deps["pkg:npm/acme-utils"].pins, vec![Pin { version: "1.2.0".into(), hashes: vec!["sha512-internal".into()] }]);
         assert!(s.deps["pkg:npm/next"].pins.is_empty(), "no integrity in the lockfile");
+    }
+
+    #[test]
+    fn pnpm_multi_document_lockfile_with_catalogs_and_scoped_peers() {
+        // pnpm 11+ with `packageManager`: a first document for pnpm itself, then the project's. Versions with a peer
+        // suffix that names a scoped package, and `catalog:` specifiers (default and named) in a workspace package.
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "package.json", r#"{"name":"root","private":true,"packageManager":"pnpm@12.10.1","devDependencies":{"typescript":"catalog:"}}"#);
+        write(d.path(), "web/package.json", r#"{"name":"web","private":true,"dependencies":{"next":"catalog:","react":"catalog:react19","zod":"catalog:default"}}"#);
+        write(d.path(), "pnpm-workspace.yaml", "packages:\n  - web\ncatalog:\n  next: 16.4.1\n  typescript: ^6.0.2 # pinned for the build\n  zod: '^4.1.0'\ncatalogs:\n  react19:\n    react: ^19.3.0\n");
+        write(d.path(), "pnpm-lock.yaml", "---\nlockfileVersion: '9.0'\n\nimporters:\n\n  .:\n    configDependencies: {}\n    packageManagerDependencies:\n      pnpm:\n        specifier: 12.10.1\n        version: 12.10.1\n\npackages:\n\n  pnpm@12.10.1:\n    resolution: {integrity: sha512-PPP}\n\n---\nlockfileVersion: '9.0'\n\ncatalogs:\n  default:\n    next:\n      specifier: 16.4.1\n      version: 16.4.1\n\nimporters:\n\n  .:\n    devDependencies:\n      typescript:\n        specifier: 'catalog:'\n        version: 6.0.2\n\n  web:\n    dependencies:\n      next:\n        specifier: 'catalog:'\n        version: 16.4.1(@babel/core@7.29.7(supports-color@11.0.0))(@playwright/test@1.64.0)(react@19.3.0)\n      react:\n        specifier: catalog:react19\n        version: 19.3.0\n      zod:\n        specifier: 'catalog:'\n        version: 4.1.5\n\npackages:\n\n  next@16.4.1:\n    resolution: {integrity: sha512-NNN}\n");
+        let s = detect(d.path()).unwrap();
+        assert_eq!(s.deps["pkg:npm/next"].version, Some(Version::new(16, 4, 1)), "{:?}", s.deps["pkg:npm/next"]);
+        assert_eq!(s.deps["pkg:npm/next"].source, "pnpm-lock.yaml");
+        assert_eq!(s.deps["pkg:npm/next"].pins, vec![Pin { version: "16.4.1".into(), hashes: vec!["sha512-NNN".into()] }]);
+        assert_eq!(s.deps["pkg:npm/react"].version, Some(Version::new(19, 3, 0)));
+        assert_eq!(s.deps["pkg:npm/zod"].version, Some(Version::new(4, 1, 5)));
+        assert_eq!(s.deps["pkg:npm/typescript"].version, Some(Version::new(6, 0, 2)));
+        assert!(!s.deps.contains_key("pkg:npm/pnpm"), "the package manager's own lock is not a dependency");
+        assert!(s.notes.is_empty(), "{:?}", s.notes);
+    }
+
+    #[test]
+    fn pnpm_catalog_ranges_without_a_lockfile_and_against_a_stale_one() {
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "pnpm-workspace.yaml", "packages:\n  - 'apps/*'\n  - 'libs/*'\ncatalog:\n  next: ^16.1.0\ncatalogs:\n  legacy:\n    react: ~18.2.0\n");
+        write(d.path(), "apps/web/package.json", r#"{"name":"web","private":true,"dependencies":{"next":"catalog:","react":"catalog:legacy","left-pad":"catalog:missing"}}"#);
+        write(d.path(), "libs/ui/package.json", r#"{"name":"ui","version":"1.0.0","main":"index.js","peerDependencies":{"react":"catalog:legacy"}}"#);
+        let s = detect(d.path()).unwrap();
+        let next = &s.deps["pkg:npm/next"];
+        assert_eq!(next.version, Some(Version::new(16, 1, 0)));
+        assert_eq!(next.source, "floor of ^16.1.0 from catalog: (not in a lockfile)");
+        let react = &s.deps["pkg:npm/react"];
+        assert!(react.readings.iter().all(|r| r.version == Version::new(18, 2, 0)), "{react:?}");
+        assert!(react.readings.iter().any(|r| r.source == "library floor of ~18.2.0 from catalog:legacy"), "{react:?}");
+        assert_eq!(s.deps["pkg:npm/left-pad"].version, None, "a catalog that does not list the package has no version");
+        let flow = parse_pnpm_workspace("catalog: { next: ^16.1.0, '@types/react': \"^19.0.0\" }\ncatalogs:\n  legacy: {react: ~18.2.0}\n");
+        assert_eq!(flow.resolve("next", "catalog:"), Some("^16.1.0"));
+        assert_eq!(flow.resolve("@types/react", "catalog:default"), Some("^19.0.0"));
+        assert_eq!(flow.resolve("react", "catalog:legacy"), Some("~18.2.0"));
+        assert_eq!(parse_pnpm_workspace("catalog: { a: \">=1.0.0, <2.0.0\", b: ^3 }\n").resolve("a", "catalog:"), Some(">=1.0.0, <2.0.0"));
+        // A lockfile that resolved a catalog entry outside the catalog's range is out of date like any other.
+        write(d.path(), "apps/web/pnpm-lock.yaml", "lockfileVersion: '9.0'\n\nimporters:\n\n  .:\n    dependencies:\n      next:\n        specifier: 'catalog:'\n        version: 15.5.0\n");
+        let s = detect(d.path()).unwrap();
+        assert_eq!(s.deps["pkg:npm/next"].version, Some(Version::new(16, 1, 0)));
+        assert!(s.notes.iter().any(|n| n.contains("next 15.5.0 vs ^16.1.0")), "{:?}", s.notes);
     }
 
     #[test]
