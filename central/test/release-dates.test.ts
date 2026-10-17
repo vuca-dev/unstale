@@ -115,7 +115,7 @@ describe("release dates", () => {
     stub({
       "https://pypi.org/pypi/Django/json": {
         releases: {
-          "5.0": [{ upload_time_iso_8601: "2023-12-04T13:12:45.000000Z" }, { upload_time_iso_8601: "2023-12-04T13:12:41.502020Z" }],
+          "5.0": [{ upload_time_iso_8601: "2023-12-05T00:12:45.000000Z" }, { upload_time_iso_8601: "2023-12-04T23:59:41.502020Z" }],
           "5.0.1": [],
         },
       },
