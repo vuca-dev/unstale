@@ -2,7 +2,9 @@
 //! their order. Computed on every run, never stored.
 
 use semver::Version;
-use std::collections::{BTreeMap, BTreeSet};
+use std::cell::RefCell;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::rc::Rc;
 use unstale_schema::catalog::{Benefit, ChangeType, Release, Surface};
 use unstale_schema::ledger::Ledger;
 
@@ -168,6 +170,19 @@ fn record_lits(r: &Rec, exclude: &BTreeSet<String>) -> Vec<String> {
     out
 }
 
+/// A literal's evidence for one technology: its hit files in the technology's language, the first three in `find`'s
+/// order and the first three by role inside the technology's packages, and whether any is application code.
+struct Evidence {
+    head: Vec<String>,
+    first: Vec<String>,
+    app: bool,
+}
+
+/// The files that evidence a technology of `ecosystem`: its own language and shared config and data files.
+fn in_language<'h>(files: Option<&'h Vec<String>>, ecosystem: &str) -> Vec<&'h String> {
+    files.into_iter().flatten().filter(|p| !usage::foreign_code(p, ecosystem)).collect()
+}
+
 /// The literals a technology's records are matched with: per record (`record_lits`, the technology's own package
 /// names excluded: they say nothing about which part is used, `fw_spike._hit` refs), plus every `requires` value
 /// (usage) and every `introduces` value of at least 6 characters (the applied check).
@@ -212,11 +227,52 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
         let present: Vec<&String> = comps.iter().filter(|c| purls.contains(*c)).collect();
         // Packages that declare this technology: a file's role is judged inside the deepest one containing it.
         let owners: Vec<&str> = inp.stack.packages.iter().filter(|p| p.declared.iter().any(|d| comps.contains(&normalize_purl(d)))).map(|p| p.dir.as_str()).collect();
-        let role = |p: &str| inp.repo.role_for(p, &owners);
+        let nested = owners.iter().any(|o| *o != ".");
+        // A file's role once per technology: a large repository has tens of thousands of hit files, and the same
+        // files come up for every record sharing a literal.
+        let roles: RefCell<HashMap<String, usage::Role>> = RefCell::default();
+        let role = |p: &str| -> usage::Role {
+            if let Some(r) = roles.borrow().get(p) {
+                return *r;
+            }
+            let r = inp.repo.role_for(p, &owners);
+            roles.borrow_mut().insert(p.to_string(), r);
+            r
+        };
         // Only this technology's language and shared config/data files evidence it.
         let ecosystem = comps.iter().find_map(|c| c.strip_prefix("pkg:").and_then(|r| r.split('/').next())).unwrap_or("npm").to_string();
-        let in_language = |files: Option<&Vec<String>>| -> Vec<String> {
-            files.into_iter().flatten().filter(|p| !usage::foreign_code(p, &ecosystem)).cloned().collect()
+        let in_language = |files| in_language(files, &ecosystem);
+        // Each literal's evidence once per technology, however many records share it.
+        let evidence: RefCell<HashMap<String, Rc<Evidence>>> = RefCell::default();
+        let evidence_of = |l: &str| -> Rc<Evidence> {
+            if let Some(e) = evidence.borrow().get(l) {
+                return e.clone();
+            }
+            let files = in_language(hits.usage.get(l));
+            let head: Vec<String> = files.iter().take(3).map(|p| (*p).clone()).collect();
+            let e = if nested {
+                let mut ranked: Vec<(usage::Role, &String)> = files.iter().map(|p| (role(p), *p)).collect();
+                ranked.sort();
+                Rc::new(Evidence {
+                    head,
+                    first: ranked.iter().take(3).map(|(_, p)| (*p).clone()).collect(),
+                    app: ranked.first().is_some_and(|(r, _)| *r == usage::Role::App),
+                })
+            } else {
+                // No package of the technology below the root: roles are the root's, in the order `find` sorted by.
+                Rc::new(Evidence { first: head.clone(), head, app: files.first().is_some_and(|p| role(p) == usage::Role::App) })
+            };
+            evidence.borrow_mut().insert(l.to_string(), e.clone());
+            e
+        };
+        let applied: RefCell<HashMap<String, bool>> = RefCell::default();
+        let applied_of = |x: &str| -> bool {
+            if let Some(a) = applied.borrow().get(x) {
+                return *a;
+            }
+            let a = in_language(hits.whole.get(x)).into_iter().any(|p| usage::counts_as_applied(role(p), p));
+            applied.borrow_mut().insert(x.to_string(), a);
+            a
         };
         out.technologies.push(tech.clone());
         out.packages.insert(tech.clone(), present.iter().filter_map(|c| purl_name(c)).collect());
@@ -283,21 +339,14 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                 },
                 None => (picked, rv <= installed, rv > target),
             };
-            let matched: Vec<(String, Vec<String>)> = ls
-                .iter()
-                .filter_map(|l| Some(in_language(hits.usage.get(l))).filter(|f| !f.is_empty()).map(|f| (l.clone(), f.into_iter().take(3).collect())))
-                .collect();
-            let score = matched
-                .iter()
-                .map(|(l, _)| {
-                    let app = in_language(hits.usage.get(l)).iter().any(|p| role(p) == usage::Role::App);
-                    weight(l) * if app { 1.0 } else { NON_APP_WEIGHT }
-                })
-                .sum::<f64>();
-            let mut files: Vec<String> = ls.iter().flat_map(|l| in_language(hits.usage.get(l))).collect();
-            files.sort_by_cached_key(|p| (role(p), p.clone()));
+            let matched: Vec<(String, Vec<String>)> =
+                ls.iter().filter_map(|l| Some(evidence_of(l)).filter(|e| !e.head.is_empty()).map(|e| (l.clone(), e.head.clone()))).collect();
+            let score = matched.iter().map(|(l, _)| weight(l) * if evidence_of(l).app { 1.0 } else { NON_APP_WEIGHT }).sum::<f64>();
+            // The first three of the union are among the first three of each literal.
+            let mut files: Vec<(usage::Role, String)> = ls.iter().flat_map(|l| evidence_of(l).first.clone()).map(|p| (role(&p), p)).collect();
+            files.sort();
             files.dedup();
-            files.truncate(3);
+            let files: Vec<String> = files.into_iter().take(3).map(|(_, p)| p).collect();
             // A `requires` value the change itself introduces is something the upgrade has the project add, not a
             // precondition (absent until adopted), so it never demotes the record (eval/rank/RESULTS.md, follow-up).
             let intro: BTreeSet<String> = rec.r.introduces.iter().filter_map(|x| clean_lit(x)).collect();
@@ -357,13 +406,13 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                     .introduces
                     .iter()
                     .filter_map(|x| clean_lit(x))
-                    .any(|x| in_language(hits.whole.get(&x)).iter().any(|p| usage::counts_as_applied(role(p), p)));
+                    .any(|x| applied_of(&x));
                 if applied {
                     opp.route = Route::Applied;
                 }
             }
             if opp.route == Route::ImprovementsPass {
-                let replaces_here = rec.r.replaces.iter().filter_map(|x| clean_lit(x)).any(|x| !in_language(hits.usage.get(&x)).is_empty());
+                let replaces_here = rec.r.replaces.iter().filter_map(|x| clean_lit(x)).any(|x| !evidence_of(&x).head.is_empty());
                 let mut b: Vec<Benefit> = rec
                     .r
                     .benefit

@@ -13,14 +13,31 @@ use crate::util::{npm_purl, npm_satisfies, parse_version, range_floor};
 pub const SKIP_DIRS: &[&str] =
     &["node_modules", ".git", ".unstale", "dist", "build", "vendor", ".next", ".nuxt", ".output", ".venv", "venv", "coverage", ".turbo"];
 
-pub fn walker(root: &Path) -> ignore::Walk {
+/// Every entry under `root` (`.gitignore` respected, `SKIP_DIRS` skipped), in path order. The directories are read on
+/// every core and the result sorted: on a large repository the walk is seconds when sequential.
+pub fn walker(root: &Path) -> std::vec::IntoIter<Result<ignore::DirEntry, ignore::Error>> {
+    let found = std::sync::Mutex::new(vec![]);
     ignore::WalkBuilder::new(root)
         .hidden(false)
         .require_git(false)
         .git_global(false)
         .filter_entry(|e| !(e.file_type().is_some_and(|t| t.is_dir()) && e.depth() > 0 && SKIP_DIRS.contains(&e.file_name().to_string_lossy().as_ref())))
-        .sort_by_file_path(|a, b| a.cmp(b))
-        .build()
+        .build_parallel()
+        .run(|| {
+            Box::new(|e| {
+                found.lock().unwrap_or_else(|e| e.into_inner()).push(e);
+                ignore::WalkState::Continue
+            })
+        });
+    let mut found = found.into_inner().unwrap_or_else(|e| e.into_inner());
+    // Component-wise path order is the sequential walk's order (each directory's entries sorted, depth first).
+    found.sort_unstable_by(|a, b| match (a, b) {
+        (Ok(a), Ok(b)) => a.path().cmp(b.path()),
+        (Ok(_), Err(_)) => std::cmp::Ordering::Less,
+        (Err(_), Ok(_)) => std::cmp::Ordering::Greater,
+        (Err(_), Err(_)) => std::cmp::Ordering::Equal,
+    });
+    found.into_iter()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
