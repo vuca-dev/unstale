@@ -158,7 +158,7 @@ Constants: SAME_P 0.87, CROSS_SAME_P 0.87, QUOTE_GUARD_BELOW 0.95.
 ## SubQ Snap on the judge (17 October 2026)
 
 Pre-registration: `PREREG.md` § "SubQ Snap on the judge", written before any judge run of Snap. Runner
-`judge2.mts --arm M8 --cand subq`; scorer `score5.mts --rules --subq M8 --base M8` → `out/slice5/summary-rules-subq-M8.json`.
+`judge2.mts --arm M8 --cand subq`; scorer `score5.mts --rules --subq M8 --base M8` → `out/slice5/summary-rules-subq-M8-vs-M8.json` (against J1, without `--base`: `summary-rules-subq-M8.json`).
 All 365 requests answered.
 
 **Verdict: Snap fails step E, and the switch rule keeps Jev.** To hold the false-merge floor on dev, the fit pushes
