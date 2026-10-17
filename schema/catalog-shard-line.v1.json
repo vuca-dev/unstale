@@ -1,0 +1,588 @@
+{
+  "$defs": {
+    "Advisory": {
+      "description": "A security advisory as its database states it (OSV: GHSA, PyPA, RustSec, Go vulndb, ...), with its ranges resolved\ncentrally against the technology's release index, so the edge needs no ecosystem-specific version parsing.",
+      "properties": {
+        "affected": {
+          "description": "Affected versions per package; a project is affected when its version of `component` is in `range`.",
+          "items": {
+            "$ref": "#/$defs/AffectedRange"
+          },
+          "type": "array"
+        },
+        "aliases": {
+          "default": [],
+          "description": "Other ids of the same advisory (CVE, other databases).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "id": {
+          "description": "The advisory's id: the GHSA id where there is one, else the database's own (`PYSEC-...`, `RUSTSEC-...`).",
+          "type": "string"
+        },
+        "index": {
+          "description": "The technology's releases the ranges were resolved against (central's release index when the advisory was\nattached). For a version in this list, `AffectedRange::versions` says whether it is affected; a version\noutside it is unknown, and the edge says nothing about the advisory for it. Absent in catalogs before\n15 October 2026 (the edge then says nothing about advisories).",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "severity": {
+          "description": "`low`, `medium`, `high` or `critical`, as the database states it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "summary": {
+          "default": "",
+          "description": "The database's one-line summary.",
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "url",
+        "affected"
+      ],
+      "type": "object"
+    },
+    "AffectedRange": {
+      "description": "One affected range of an advisory for one package.",
+      "properties": {
+        "component": {
+          "description": "Package URL, e.g. `pkg:npm/%40nestjs/platform-fastify`.",
+          "type": "string"
+        },
+        "patched": {
+          "description": "The first version with the fix on this range's line, when there is one.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "range": {
+          "description": "The range for people (and edges before 15 October 2026): comparators joined by commas, e.g.\n`>= 16.0.0, < 16.2.5`; empty when the database states the range only as a version list or commits.",
+          "type": "string"
+        },
+        "versions": {
+          "description": "The releases of `Advisory::index` this range affects, resolved centrally. Absent when central could not\nresolve the range (no version order for the ecosystem and no explicit list): the edge then says nothing.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "component",
+        "range"
+      ],
+      "type": "object"
+    },
+    "Benefit": {
+      "description": "Why the change matters, only where the source states or directly implies it.",
+      "oneOf": [
+        {
+          "enum": [
+            "security",
+            "correctness",
+            "performance",
+            "cost",
+            "other"
+          ],
+          "type": "string"
+        },
+        {
+          "const": "maintainability",
+          "description": "Replaces code a project would otherwise write and maintain; counted at the edge only where the\nrecord's `replaces` terms are present in the project.",
+          "type": "string"
+        },
+        {
+          "const": "none",
+          "description": "Convenience, style, new capabilities, optional modernisation.",
+          "type": "string"
+        }
+      ]
+    },
+    "BenefitScore": {
+      "description": "A benefit value asked of the classifier and its probability.",
+      "properties": {
+        "benefit": {
+          "$ref": "#/$defs/Benefit"
+        },
+        "p": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "benefit",
+        "p"
+      ],
+      "type": "object"
+    },
+    "CapabilityRecord": {
+      "description": "A live record. Fields bump `revision` (decision fields) or `label_version` (ordering labels);\nsee the vault's Data Model Contract.",
+      "properties": {
+        "advisories": {
+          "description": "Reviewed security advisories whose fix this record describes, with the versions each affects. The edge\ndecides from these, not from `releases`, which advisories a bump fixes (backports included).",
+          "items": {
+            "$ref": "#/$defs/Advisory"
+          },
+          "type": "array"
+        },
+        "benefit": {
+          "items": {
+            "$ref": "#/$defs/Benefit"
+          },
+          "type": "array"
+        },
+        "breaking": {
+          "type": "boolean"
+        },
+        "change_type": {
+          "$ref": "#/$defs/ChangeType"
+        },
+        "classifier": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Classification"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Classifier output for the label fields, read with its confidence (vault: Relevance Engine,\n\"Classifier for labels and ratings\")."
+        },
+        "conditions": {
+          "default": [],
+          "description": "Requirements that cannot be checked from a manifest (a database server version). Shown to the\nagent; never block the record.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/Evidence"
+          },
+          "type": "array"
+        },
+        "facet": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "description": "`{technology}:{slug}`, assigned once.",
+          "type": "string"
+        },
+        "introduces": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "label_version": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "prerequisites": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Prerequisite"
+          },
+          "type": "array"
+        },
+        "related": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "releases": {
+          "items": {
+            "$ref": "#/$defs/Release"
+          },
+          "type": "array"
+        },
+        "replaces": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "requires": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "revision": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "subject": {
+          "type": "string"
+        },
+        "subject_kind": {
+          "$ref": "#/$defs/SubjectKind"
+        },
+        "summary": {
+          "description": "At most 40 words.",
+          "type": "string"
+        },
+        "supersedes": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "surface": {
+          "$ref": "#/$defs/Surface"
+        },
+        "technology": {
+          "type": "string"
+        },
+        "terms": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Term"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "technology",
+        "revision",
+        "label_version",
+        "change_type",
+        "breaking",
+        "surface",
+        "subject",
+        "subject_kind",
+        "summary",
+        "benefit",
+        "releases",
+        "evidence"
+      ],
+      "type": "object"
+    },
+    "ChangeType": {
+      "description": "What changed. Closed set; an unknown value reads as `Other`.",
+      "enum": [
+        "new_api",
+        "new_option",
+        "behavior_change",
+        "default_change",
+        "fix",
+        "deprecation",
+        "removal",
+        "stability_change",
+        "performance",
+        "security",
+        "tooling",
+        "other"
+      ],
+      "type": "string"
+    },
+    "Classification": {
+      "description": "The classifier's probabilities and confidence for a record's label fields.",
+      "properties": {
+        "benefit": {
+          "description": "Probability per benefit value asked (security, correctness, performance, cost, maintainability).",
+          "items": {
+            "$ref": "#/$defs/BenefitScore"
+          },
+          "type": "array"
+        },
+        "borderline": {
+          "default": [],
+          "description": "Labels whose call is near the threshold (`breaking`, `benefit:security`, `change_type`, ...): flagged, never dropped.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "breaking": {
+          "description": "Probability that the change is breaking.",
+          "format": "double",
+          "type": "number"
+        },
+        "change_type": {
+          "description": "Confidence of the chosen value, as returned by the classifier.",
+          "format": "double",
+          "type": "number"
+        },
+        "classifier": {
+          "$ref": "#/$defs/Classifier",
+          "description": "Which classifier answered: `jev`, `codex` or (older records) `openai-decisions`."
+        },
+        "model": {
+          "description": "The model the API reported, e.g. `jev-1.13.0` or `gpt-6-luna`.",
+          "type": "string"
+        },
+        "surface": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "classifier",
+        "model",
+        "change_type",
+        "surface",
+        "breaking",
+        "benefit"
+      ],
+      "type": "object"
+    },
+    "Classifier": {
+      "description": "Which classifier answered. Closed set; an unknown value reads as `Other`.",
+      "oneOf": [
+        {
+          "enum": [
+            "jev",
+            "other"
+          ],
+          "type": "string"
+        },
+        {
+          "const": "openai-decisions",
+          "description": "Kept readable for records labelled before 15 October 2026; no longer called.",
+          "type": "string"
+        },
+        {
+          "const": "codex",
+          "description": "The fallback since 15 October 2026 (Luna through `codex exec`).",
+          "type": "string"
+        }
+      ]
+    },
+    "Evidence": {
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/EvidenceKind"
+        },
+        "quote": {
+          "type": "string"
+        },
+        "section": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "snapshot": {
+          "description": "`sha256:` plus the hex digest of the snapshot the quote was taken from.",
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "url",
+        "quote",
+        "snapshot"
+      ],
+      "type": "object"
+    },
+    "EvidenceKind": {
+      "oneOf": [
+        {
+          "enum": [
+            "release_notes",
+            "docs",
+            "upgrade_guide",
+            "changelog",
+            "other"
+          ],
+          "type": "string"
+        },
+        {
+          "const": "advisory",
+          "description": "A security advisory (GitHub Advisory Database); the quote is its id and summary.",
+          "type": "string"
+        }
+      ]
+    },
+    "Prerequisite": {
+      "description": "A machine-comparable requirement, named as a project's manifest declares it in that ecosystem,\ne.g. `{\"ecosystem\": \"npm\", \"name\": \"node\", \"min\": \"24.0\"}` (`engines.node`) or\n`{\"ecosystem\": \"composer\", \"name\": \"php\", \"min\": \"8.2\"}`. No alias table: the stack map reads the same keys.",
+      "properties": {
+        "ecosystem": {
+          "description": "Package URL type: `npm`, `composer`, `pypi`, `cargo`, `hex`, ...",
+          "type": "string"
+        },
+        "max": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "min": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ecosystem",
+        "name"
+      ],
+      "type": "object"
+    },
+    "Release": {
+      "description": "One release of the change on one release line.",
+      "properties": {
+        "component": {
+          "description": "Package URL of the component that shipped it, e.g. `pkg:npm/next`.",
+          "type": "string"
+        },
+        "date": {
+          "description": "ISO date, `YYYY-MM-DD`.",
+          "type": "string"
+        },
+        "line": {
+          "description": "The old release line, major (or 0.minor below 1.0): what edges before 16 October 2026 compare and what shards\nare named by. A record may hold several releases on one such line (one per line of the tech index's\n`releases`, which is the line to use).",
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "component",
+        "version",
+        "date",
+        "line"
+      ],
+      "type": "object"
+    },
+    "SubjectKind": {
+      "enum": [
+        "literal",
+        "concept",
+        "other"
+      ],
+      "type": "string"
+    },
+    "Surface": {
+      "description": "Where the change shows in a project. Closed set; an unknown value reads as `Other`.",
+      "oneOf": [
+        {
+          "enum": [
+            "code_api",
+            "configuration",
+            "file_convention",
+            "command_line",
+            "schema_or_migration",
+            "types_only",
+            "build_tooling",
+            "other"
+          ],
+          "type": "string"
+        },
+        {
+          "const": "runtime_internal",
+          "description": "Behaves differently; nothing to write.",
+          "type": "string"
+        }
+      ]
+    },
+    "Term": {
+      "description": "A search term and the number of the technology's sample repositories that contain it.",
+      "maxItems": 2,
+      "minItems": 2,
+      "prefixItems": [
+        {
+          "type": "string"
+        },
+        {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      ],
+      "type": "array"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "One line of a shard. A merged or retracted record stays in its shard as a stub.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/CapabilityRecord",
+      "properties": {
+        "status": {
+          "const": "active",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "merged_into": {
+          "type": "string"
+        },
+        "status": {
+          "const": "merged",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "id",
+        "merged_into"
+      ],
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "status": {
+          "const": "retracted",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "id"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "ShardLine"
+}

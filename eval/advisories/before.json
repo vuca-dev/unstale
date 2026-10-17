@@ -1,0 +1,1149 @@
+{
+ "advisories": {
+  "next": {
+   "reviewed": 73,
+   "inWindow": 42
+  },
+  "prisma": {
+   "reviewed": 0,
+   "inWindow": 0
+  },
+  "nestjs": {
+   "reviewed": 11,
+   "inWindow": 9
+  }
+ },
+ "a": {
+  "units": 87,
+  "exact": 69,
+  "late": 0,
+  "missing": 17,
+  "unmapped": 1,
+  "recall": 0.7931034482758621
+ },
+ "b": {
+  "unitsWithWrongDate": 1,
+  "wrong": [
+   "GHSA-WF42-42FG-FG84 line 11 (patched 11.1.16): nestjs:fastify-middleware@11.1.14"
+  ]
+ },
+ "securityRecords": {
+  "next": {
+   "total": 75,
+   "mapped": 57,
+   "unmapped": [
+    "next:middleware-proxy~5",
+    "next:next-og",
+    "next:security-patch~13",
+    "next:security-patch~6",
+    "next:security-patch~7",
+    "next:alloweddevorigins~2",
+    "next:csp-nonce",
+    "next:headers~2",
+    "next:image-optimization-api~6",
+    "next:images.dangerouslyallowlocalip",
+    "next:images.domains-domains",
+    "next:images.localpatterns-localpatterns",
+    "next:javascript-urls-in-router-methods-and-redirects",
+    "next:next-upgrade-ai",
+    "next:serveractions.bodysizelimit",
+    "next:turborepo-remote-caching",
+    "next:use-cache~10",
+    "next:use-cache~8"
+   ]
+  },
+  "prisma": {
+   "total": 10,
+   "mapped": 0,
+   "unmapped": [
+    "prisma:ai-safety-checkpoint",
+    "prisma:bytes~2",
+    "prisma:config-prisma-platform-auth.json",
+    "prisma:db-push-accept-data-loss",
+    "prisma:migrate-reset",
+    "prisma:prisma-cli",
+    "prisma:prisma-db-push",
+    "prisma:prisma-studio-s-local-http-server",
+    "prisma:security-advisory",
+    "prisma:ssl-certificate-validation"
+   ]
+  },
+  "nestjs": {
+   "total": 11,
+   "mapped": 5,
+   "unmapped": [
+    "nestjs:body-parser",
+    "nestjs:express",
+    "nestjs:multer",
+    "nestjs:csrf-protection",
+    "nestjs:security-headers",
+    "nestjs:usesecurityheaders"
+   ]
+  }
+ },
+ "reference": {
+  "next": {
+   "GHSA-267C-6GRR-H53F": [
+    "next:middleware-proxy",
+    "next:middleware-proxy~4"
+   ],
+   "GHSA-26HH-7CQF-HHC6": [
+    "next:middleware-proxy~4"
+   ],
+   "GHSA-2XP9-VWFH-VXW4": [
+    "next:image-optimization-api~4",
+    "next:image-optimization-api~5"
+   ],
+   "GHSA-36QX-FR4F-26G5": [
+    "next:middleware-proxy~3"
+   ],
+   "GHSA-39W2-RJM5-CHCV": [
+    "next:model-context-protocol-endpoint"
+   ],
+   "GHSA-3G8H-86W9-WVMQ": [
+    "next:middleware-proxy-redirects"
+   ],
+   "GHSA-3W37-WQ28-93X7": [
+    "next:use-cache~7"
+   ],
+   "GHSA-3X4C-7XQ6-9PQ8": [
+    "next:images.maximumdiskcachesize",
+    "next:lru-disk-cache"
+   ],
+   "GHSA-4633-3J49-MH5Q": [
+    "next:request-bodies~2",
+    "next:response-bodies~2"
+   ],
+   "GHSA-492V-C6PP-MQQV": [
+    "next:middleware-proxy~2"
+   ],
+   "GHSA-4C39-4CCG-62R3": [
+    "next:edge-runtime",
+    "next:server-action-payload"
+   ],
+   "GHSA-4JQV-MC3X-M676": [
+    "next:isr",
+    "next:ssg",
+    "next:ssg-and-isr-pages",
+    "next:ssg-isr-rendering"
+   ],
+   "GHSA-5F7Q-JPQC-WP7H": [
+    "next:partial-pre-rendering"
+   ],
+   "GHSA-5J59-XGG2-R9C4": [
+    "next:security-patch",
+    "next:security-patch~2",
+    "next:security-patch~3",
+    "next:security-patch~4",
+    "next:security-patch~5",
+    "next:security-patch~8"
+   ],
+   "GHSA-68G3-V927-F742": [
+    "next:request-bodies",
+    "next:response-bodies"
+   ],
+   "GHSA-6GPP-XCG3-4W24": [
+    "next:turbopack~9"
+   ],
+   "GHSA-89XV-2M56-2M9X": [
+    "next:server-actions~3",
+    "next:server-actions~5"
+   ],
+   "GHSA-8H8Q-6873-Q5FJ": [
+    "next:server-components"
+   ],
+   "GHSA-955P-X3MX-JCVP": [
+    "next:server-function-endpoints",
+    "next:server-function-endpoints~2"
+   ],
+   "GHSA-9G9P-9GW9-JX7F": [
+    "next:remotepatterns"
+   ],
+   "GHSA-9QR9-H5GF-34MP": [
+    "next:react-server-components"
+   ],
+   "GHSA-C4J6-FC7J-M34R": [
+    "next:websocket-upgrades"
+   ],
+   "GHSA-CJQ9-62Q9-8JV4": [
+    "next:image-optimization"
+   ],
+   "GHSA-F87G-XV8R-7P7X": [
+    "next:dynamicparams"
+   ],
+   "GHSA-FFHC-5MCF-PF4Q": [
+    "next:csp-nonces"
+   ],
+   "GHSA-GGV3-7P47-PFV8": [
+    "next:http-proxy"
+   ],
+   "GHSA-GX5P-JG67-6X7H": [
+    "next:beforeinteractive-scripts"
+   ],
+   "GHSA-H25M-26QC-WCJF": [
+    "next:react-server-components~2",
+    "next:security-patch~10",
+    "next:security-patch~11",
+    "next:security-patch~12",
+    "next:security-patch~14",
+    "next:security-patch~9"
+   ],
+   "GHSA-H27X-G6W4-24GQ": [
+    "next:maxpostponedstatesize"
+   ],
+   "GHSA-H64F-5H5J-JQJH": [
+    "next:image-optimization-api"
+   ],
+   "GHSA-JCC7-9WPM-MJ36": [
+    "next:cross-site-dev-only-websocket-connections"
+   ],
+   "GHSA-M99W-X7HQ-7VFJ": [
+    "next:server-actions~2",
+    "next:server-actions~4"
+   ],
+   "GHSA-MCJ8-R9MP-W47P": [
+    "next:isr",
+    "next:ssg",
+    "next:ssg-and-isr-pages",
+    "next:ssg-isr-rendering"
+   ],
+   "GHSA-MG66-MRH9-M8JX": [
+    "next:cache-components"
+   ],
+   "GHSA-MQ59-M269-XVCX": [
+    "next:server-action-submissions"
+   ],
+   "GHSA-P293-QW3H-JR36": [
+    "next:windows-hosted-servers",
+    "next:windows-hosted-servers~2"
+   ],
+   "GHSA-P9J2-GV94-2WF4": [
+    "next:rewrites~2",
+    "next:rewrites~3"
+   ],
+   "GHSA-Q4GF-8MX6-V5V3": [
+    "next:app-router"
+   ],
+   "GHSA-Q8WF-6R8G-63CH": [
+    "next:image-optimization-api~2",
+    "next:image-optimization-api~3"
+   ],
+   "GHSA-VCVR-R3JV-PC5J": [
+    "next:next-og-imageresponse"
+   ],
+   "GHSA-VFV6-92FF-J949": [
+    "next:react-server-component-cache-busting"
+   ],
+   "GHSA-WFC6-R584-VFW7": [
+    "next:react-server-component-responses"
+   ]
+  },
+  "prisma": {},
+  "nestjs": {
+   "GHSA-36XV-JGW5-4Q75": [
+    "nestjs:sse-messages"
+   ],
+   "GHSA-6V32-FJC9-9QF6": [],
+   "GHSA-8WPR-639P-CCRJ": [
+    "nestjs:middie"
+   ],
+   "GHSA-96H4-VGXJ-GVM2": [
+    "nestjs:tcp-peer-memory",
+    "nestjs:tcp-transport"
+   ],
+   "GHSA-9C5C-9QCX-Q35Q": [
+    "nestjs:absolute-form-request-target"
+   ],
+   "GHSA-HPWF-8G29-85QM": [
+    "nestjs:jsonsocket.handledata"
+   ],
+   "GHSA-M8VH-JMQ9-5RJG": [
+    "nestjs:unserializable-patterns"
+   ],
+   "GHSA-R4WM-X892-VJMX": [
+    "nestjs:fastify-middleware"
+   ],
+   "GHSA-WF42-42FG-FG84": [
+    "nestjs:fastify-middleware"
+   ]
+  }
+ },
+ "units": [
+  {
+   "tech": "next",
+   "id": "GHSA-267C-6GRR-H53F",
+   "line": "15",
+   "patched": "15.5.16",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-267C-6GRR-H53F",
+   "line": "16",
+   "patched": "16.2.5",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-26HH-7CQF-HHC6",
+   "line": "15",
+   "patched": "15.5.18",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-26HH-7CQF-HHC6",
+   "line": "16",
+   "patched": "16.2.6",
+   "status": "missing",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-2XP9-VWFH-VXW4",
+   "line": "15",
+   "patched": "15.5.24",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-2XP9-VWFH-VXW4",
+   "line": "16",
+   "patched": "16.3.3",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-36QX-FR4F-26G5",
+   "line": "15",
+   "patched": "15.5.16",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-36QX-FR4F-26G5",
+   "line": "16",
+   "patched": "16.2.5",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-39W2-RJM5-CHCV",
+   "line": "16",
+   "patched": "16.3.8",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-3G8H-86W9-WVMQ",
+   "line": "15",
+   "patched": "15.5.16",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-3G8H-86W9-WVMQ",
+   "line": "16",
+   "patched": "16.2.5",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-3W37-WQ28-93X7",
+   "line": "16",
+   "patched": "16.3.8",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-3X4C-7XQ6-9PQ8",
+   "line": "15",
+   "patched": "15.5.14",
+   "status": "missing",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-3X4C-7XQ6-9PQ8",
+   "line": "16",
+   "patched": "16.1.7",
+   "status": "missing",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-4633-3J49-MH5Q",
+   "line": "15",
+   "patched": "15.5.21",
+   "status": "missing",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-4633-3J49-MH5Q",
+   "line": "16",
+   "patched": "16.2.11",
+   "status": "missing",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-492V-C6PP-MQQV",
+   "line": "15",
+   "patched": "15.5.16",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-492V-C6PP-MQQV",
+   "line": "16",
+   "patched": "16.2.5",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-4C39-4CCG-62R3",
+   "line": "15",
+   "patched": "15.5.21",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-4C39-4CCG-62R3",
+   "line": "16",
+   "patched": "16.2.11",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-4JQV-MC3X-M676",
+   "line": "15",
+   "patched": "15.5.27",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-4JQV-MC3X-M676",
+   "line": "16",
+   "patched": "16.3.8",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-5F7Q-JPQC-WP7H",
+   "line": "16",
+   "patched": "16.1.5",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-5J59-XGG2-R9C4",
+   "line": "14",
+   "patched": "14.2.35",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-5J59-XGG2-R9C4",
+   "line": "15",
+   "patched": "15.0.7",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-5J59-XGG2-R9C4",
+   "line": "16",
+   "patched": "16.0.10",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-68G3-V927-F742",
+   "line": "15",
+   "patched": "15.5.21",
+   "status": "missing",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-68G3-V927-F742",
+   "line": "16",
+   "patched": "16.2.11",
+   "status": "missing",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-6GPP-XCG3-4W24",
+   "line": "16",
+   "patched": "16.2.11",
+   "status": "missing",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-89XV-2M56-2M9X",
+   "line": "15",
+   "patched": "15.5.21",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-89XV-2M56-2M9X",
+   "line": "16",
+   "patched": "16.2.11",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-8H8Q-6873-Q5FJ",
+   "line": "15",
+   "patched": "15.5.16",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-8H8Q-6873-Q5FJ",
+   "line": "16",
+   "patched": "16.2.5",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-955P-X3MX-JCVP",
+   "line": "15",
+   "patched": "15.5.21",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-955P-X3MX-JCVP",
+   "line": "16",
+   "patched": "16.2.11",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-9G9P-9GW9-JX7F",
+   "line": "15",
+   "patched": "15.5.10",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-9G9P-9GW9-JX7F",
+   "line": "16",
+   "patched": "16.1.5",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-9QR9-H5GF-34MP",
+   "line": "15",
+   "patched": "15.0.5",
+   "status": "missing",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-9QR9-H5GF-34MP",
+   "line": "16",
+   "patched": "16.0.7",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-C4J6-FC7J-M34R",
+   "line": "15",
+   "patched": "15.5.16",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-C4J6-FC7J-M34R",
+   "line": "16",
+   "patched": "16.2.5",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-CJQ9-62Q9-8JV4",
+   "line": "16",
+   "patched": "16.3.8",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-F87G-XV8R-7P7X",
+   "line": "16",
+   "patched": "16.3.8",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-FFHC-5MCF-PF4Q",
+   "line": "15",
+   "patched": "15.5.16",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-FFHC-5MCF-PF4Q",
+   "line": "16",
+   "patched": "16.2.5",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-GGV3-7P47-PFV8",
+   "line": "15",
+   "patched": "15.5.13",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-GGV3-7P47-PFV8",
+   "line": "16",
+   "patched": "16.1.7",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-GX5P-JG67-6X7H",
+   "line": "15",
+   "patched": "15.5.16",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-GX5P-JG67-6X7H",
+   "line": "16",
+   "patched": "16.2.5",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-H25M-26QC-WCJF",
+   "line": "15",
+   "patched": "15.0.8",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-H25M-26QC-WCJF",
+   "line": "16",
+   "patched": "16.0.11",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-H27X-G6W4-24GQ",
+   "line": "16",
+   "patched": "16.1.7",
+   "status": "missing",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-H64F-5H5J-JQJH",
+   "line": "15",
+   "patched": "15.5.16",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-H64F-5H5J-JQJH",
+   "line": "16",
+   "patched": "16.2.5",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-JCC7-9WPM-MJ36",
+   "line": "16",
+   "patched": "16.1.7",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-M99W-X7HQ-7VFJ",
+   "line": "15",
+   "patched": "15.5.21",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-M99W-X7HQ-7VFJ",
+   "line": "16",
+   "patched": "16.2.11",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-MCJ8-R9MP-W47P",
+   "line": "15",
+   "patched": "15.5.27",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-MCJ8-R9MP-W47P",
+   "line": "16",
+   "patched": "16.3.8",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-MG66-MRH9-M8JX",
+   "line": "15",
+   "patched": "15.5.16",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-MG66-MRH9-M8JX",
+   "line": "16",
+   "patched": "16.2.5",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-MQ59-M269-XVCX",
+   "line": "16",
+   "patched": "16.1.7",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-P293-QW3H-JR36",
+   "line": "15",
+   "patched": "15.5.24",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-P293-QW3H-JR36",
+   "line": "16",
+   "patched": "16.3.3",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-P9J2-GV94-2WF4",
+   "line": "15",
+   "patched": "15.5.21",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-P9J2-GV94-2WF4",
+   "line": "16",
+   "patched": "16.2.11",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-Q4GF-8MX6-V5V3",
+   "line": "15",
+   "patched": "15.5.15",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-Q4GF-8MX6-V5V3",
+   "line": "16",
+   "patched": "16.2.3",
+   "status": "missing",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-Q8WF-6R8G-63CH",
+   "line": "15",
+   "patched": "15.5.21",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-Q8WF-6R8G-63CH",
+   "line": "16",
+   "patched": "16.2.11",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-VCVR-R3JV-PC5J",
+   "line": "16",
+   "patched": "16.3.6",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-VFV6-92FF-J949",
+   "line": "15",
+   "patched": "15.5.16",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-VFV6-92FF-J949",
+   "line": "16",
+   "patched": "16.2.5",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-WFC6-R584-VFW7",
+   "line": "15",
+   "patched": "15.5.16",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "next",
+   "id": "GHSA-WFC6-R584-VFW7",
+   "line": "16",
+   "patched": "16.2.5",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "nestjs",
+   "id": "GHSA-36XV-JGW5-4Q75",
+   "line": "11",
+   "patched": "11.1.18",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "nestjs",
+   "id": "GHSA-6V32-FJC9-9QF6",
+   "line": "11",
+   "patched": "11.1.24",
+   "status": "unmapped",
+   "wrong": []
+  },
+  {
+   "tech": "nestjs",
+   "id": "GHSA-8WPR-639P-CCRJ",
+   "line": "11",
+   "patched": "11.1.11",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "nestjs",
+   "id": "GHSA-96H4-VGXJ-GVM2",
+   "line": "11",
+   "patched": "11.2.5",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "nestjs",
+   "id": "GHSA-96H4-VGXJ-GVM2",
+   "line": "12",
+   "patched": "12.0.3",
+   "status": "missing",
+   "wrong": []
+  },
+  {
+   "tech": "nestjs",
+   "id": "GHSA-9C5C-9QCX-Q35Q",
+   "line": "11",
+   "patched": "11.2.4",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "nestjs",
+   "id": "GHSA-9C5C-9QCX-Q35Q",
+   "line": "12",
+   "patched": "12.0.2",
+   "status": "missing",
+   "wrong": []
+  },
+  {
+   "tech": "nestjs",
+   "id": "GHSA-HPWF-8G29-85QM",
+   "line": "11",
+   "patched": "11.1.19",
+   "status": "missing",
+   "wrong": []
+  },
+  {
+   "tech": "nestjs",
+   "id": "GHSA-M8VH-JMQ9-5RJG",
+   "line": "11",
+   "patched": "11.2.4",
+   "status": "missing",
+   "wrong": []
+  },
+  {
+   "tech": "nestjs",
+   "id": "GHSA-M8VH-JMQ9-5RJG",
+   "line": "12",
+   "patched": "12.0.2",
+   "status": "missing",
+   "wrong": []
+  },
+  {
+   "tech": "nestjs",
+   "id": "GHSA-R4WM-X892-VJMX",
+   "line": "11",
+   "patched": "11.1.14",
+   "status": "exact",
+   "wrong": []
+  },
+  {
+   "tech": "nestjs",
+   "id": "GHSA-WF42-42FG-FG84",
+   "line": "11",
+   "patched": "11.1.16",
+   "status": "missing",
+   "wrong": [
+    "nestjs:fastify-middleware@11.1.14"
+   ]
+  }
+ ],
+ "digest": {
+  "next-prisma-app": {
+   "installed": {
+    "@prisma/client": "6.19.3",
+    "next": "16.2.1",
+    "next-international": "1.3.1",
+    "next-mdx-remote": "6.0.0",
+    "next-safe-action": "7.10.4",
+    "next-themes": "0.4.6",
+    "prisma": "6.19.3"
+   },
+   "truth": [
+    "GHSA-267C-6GRR-H53F",
+    "GHSA-26HH-7CQF-HHC6",
+    "GHSA-2XP9-VWFH-VXW4",
+    "GHSA-36QX-FR4F-26G5",
+    "GHSA-39W2-RJM5-CHCV",
+    "GHSA-3G8H-86W9-WVMQ",
+    "GHSA-4633-3J49-MH5Q",
+    "GHSA-492V-C6PP-MQQV",
+    "GHSA-4C39-4CCG-62R3",
+    "GHSA-4JQV-MC3X-M676",
+    "GHSA-68G3-V927-F742",
+    "GHSA-6GPP-XCG3-4W24",
+    "GHSA-89XV-2M56-2M9X",
+    "GHSA-8H8Q-6873-Q5FJ",
+    "GHSA-955P-X3MX-JCVP",
+    "GHSA-C4J6-FC7J-M34R",
+    "GHSA-CJQ9-62Q9-8JV4",
+    "GHSA-F87G-XV8R-7P7X",
+    "GHSA-FFHC-5MCF-PF4Q",
+    "GHSA-GX5P-JG67-6X7H",
+    "GHSA-H64F-5H5J-JQJH",
+    "GHSA-M99W-X7HQ-7VFJ",
+    "GHSA-MCJ8-R9MP-W47P",
+    "GHSA-MG66-MRH9-M8JX",
+    "GHSA-P293-QW3H-JR36",
+    "GHSA-P9J2-GV94-2WF4",
+    "GHSA-Q4GF-8MX6-V5V3",
+    "GHSA-Q8WF-6R8G-63CH",
+    "GHSA-VCVR-R3JV-PC5J",
+    "GHSA-VFV6-92FF-J949",
+    "GHSA-WFC6-R584-VFW7"
+   ],
+   "truthDetail": [
+    "GHSA-267C-6GRR-H53F next 16.2.1 → 16.4.1",
+    "GHSA-26HH-7CQF-HHC6 next 16.2.1 → 16.4.1",
+    "GHSA-2XP9-VWFH-VXW4 next 16.2.1 → 16.4.1",
+    "GHSA-36QX-FR4F-26G5 next 16.2.1 → 16.4.1",
+    "GHSA-39W2-RJM5-CHCV next 16.2.1 → 16.4.1",
+    "GHSA-3G8H-86W9-WVMQ next 16.2.1 → 16.4.1",
+    "GHSA-4633-3J49-MH5Q next 16.2.1 → 16.4.1",
+    "GHSA-492V-C6PP-MQQV next 16.2.1 → 16.4.1",
+    "GHSA-4C39-4CCG-62R3 next 16.2.1 → 16.4.1",
+    "GHSA-4JQV-MC3X-M676 next 16.2.1 → 16.4.1",
+    "GHSA-68G3-V927-F742 next 16.2.1 → 16.4.1",
+    "GHSA-6GPP-XCG3-4W24 next 16.2.1 → 16.4.1",
+    "GHSA-89XV-2M56-2M9X next 16.2.1 → 16.4.1",
+    "GHSA-8H8Q-6873-Q5FJ next 16.2.1 → 16.4.1",
+    "GHSA-955P-X3MX-JCVP next 16.2.1 → 16.4.1",
+    "GHSA-C4J6-FC7J-M34R next 16.2.1 → 16.4.1",
+    "GHSA-CJQ9-62Q9-8JV4 next 16.2.1 → 16.4.1",
+    "GHSA-F87G-XV8R-7P7X next 16.2.1 → 16.4.1",
+    "GHSA-FFHC-5MCF-PF4Q next 16.2.1 → 16.4.1",
+    "GHSA-GX5P-JG67-6X7H next 16.2.1 → 16.4.1",
+    "GHSA-H64F-5H5J-JQJH next 16.2.1 → 16.4.1",
+    "GHSA-M99W-X7HQ-7VFJ next 16.2.1 → 16.4.1",
+    "GHSA-MCJ8-R9MP-W47P next 16.2.1 → 16.4.1",
+    "GHSA-MG66-MRH9-M8JX next 16.2.1 → 16.4.1",
+    "GHSA-P293-QW3H-JR36 next 16.2.1 → 16.4.1",
+    "GHSA-P9J2-GV94-2WF4 next 16.2.1 → 16.4.1",
+    "GHSA-Q4GF-8MX6-V5V3 next 16.2.1 → 16.4.1",
+    "GHSA-Q8WF-6R8G-63CH next 16.2.1 → 16.4.1",
+    "GHSA-VCVR-R3JV-PC5J next 16.2.1 → 16.4.1",
+    "GHSA-VFV6-92FF-J949 next 16.2.1 → 16.4.1",
+    "GHSA-WFC6-R584-VFW7 next 16.2.1 → 16.4.1"
+   ],
+   "lines": 39,
+   "linesWithTruthAdvisory": 26,
+   "linesWithoutAdvisory": [
+    "security: Internal development request-id headers are no longer exposed through userland headers(). [next:headers~2, 16.3.0]",
+    "security: Adds CSP nonces to script tags in loading and template files. [next:csp-nonce, 16.3.5]",
+    "security: Security fixes prevent cache leaks across root parameter values in nested use cache functions. [next:use-cache~8, 16.3.8]",
+    "security: Security fixes address unauthenticated remote code execution when SVG files are used with the Image Optimization API. [next:image-optimization-api~6, ",
+    "security: Security fix for unauthenticated remote code execution in functions returning typed arrays. [next:use-cache~10, 16.4.1]",
+    "security: Potential vulnerabilities in installed Prisma CLI dependencies are fixed. [prisma:prisma-cli, 7.0.1]",
+    "security: The Prisma Platform credentials file and directory now use restrictive permissions so OAuth tokens are not world-readable. [prisma:config-prisma-platf",
+    "security: The AI safety checkpoint now also guards db push --accept-data-loss. [prisma:db-push-accept-data-loss, 7.9.0]",
+    "security: Resolves a security advisory in a transitive Prisma CLI dependency to prevent false positives from security scanners; no urgent action is required. [p",
+    "security: Deserialized Bytes values now own standalone ArrayBuffers instead of exposing unrelated contents from Node.js's shared Buffer pool. [prisma:bytes~2, 7",
+    "security: The AI-agent safety checkpoint now also covers interactive confirmations involving data-loss warnings. [prisma:prisma-db-push, 7.10.0]",
+    "security: Studio now binds to 127.0.0.1 and restricts browser origins, preventing network clients or malicious websites from accessing database endpoints. [pris"
+   ],
+   "linesWithOtherAdvisoryOnly": [
+    "security: Security fixes prevent pending use cache fills from leaking Draft Mode content into regular responses and persisted pages. [next:use-cache~7, 16.3.8] → GHSA-3W37-WQ28-93X7"
+   ],
+   "listed": [
+    "GHSA-267C-6GRR-H53F",
+    "GHSA-2XP9-VWFH-VXW4",
+    "GHSA-36QX-FR4F-26G5",
+    "GHSA-39W2-RJM5-CHCV",
+    "GHSA-3G8H-86W9-WVMQ",
+    "GHSA-3W37-WQ28-93X7",
+    "GHSA-492V-C6PP-MQQV",
+    "GHSA-4C39-4CCG-62R3",
+    "GHSA-4JQV-MC3X-M676",
+    "GHSA-89XV-2M56-2M9X",
+    "GHSA-8H8Q-6873-Q5FJ",
+    "GHSA-955P-X3MX-JCVP",
+    "GHSA-C4J6-FC7J-M34R",
+    "GHSA-CJQ9-62Q9-8JV4",
+    "GHSA-F87G-XV8R-7P7X",
+    "GHSA-FFHC-5MCF-PF4Q",
+    "GHSA-GX5P-JG67-6X7H",
+    "GHSA-H64F-5H5J-JQJH",
+    "GHSA-M99W-X7HQ-7VFJ",
+    "GHSA-MCJ8-R9MP-W47P",
+    "GHSA-MG66-MRH9-M8JX",
+    "GHSA-P293-QW3H-JR36",
+    "GHSA-P9J2-GV94-2WF4",
+    "GHSA-Q8WF-6R8G-63CH",
+    "GHSA-VCVR-R3JV-PC5J",
+    "GHSA-VFV6-92FF-J949",
+    "GHSA-WFC6-R584-VFW7"
+   ],
+   "recall": 0.8387096774193549,
+   "advisoryPrecision": 0.9629629629629629,
+   "linePrecision": 0.6666666666666666,
+   "missed": [
+    "GHSA-26HH-7CQF-HHC6",
+    "GHSA-4633-3J49-MH5Q",
+    "GHSA-68G3-V927-F742",
+    "GHSA-6GPP-XCG3-4W24",
+    "GHSA-Q4GF-8MX6-V5V3"
+   ],
+   "extra": [
+    "GHSA-3W37-WQ28-93X7"
+   ]
+  },
+  "nest-prisma-api": {
+   "installed": {
+    "@nestjs/bullmq": "12.0.0",
+    "@nestjs/common": "12.1.3",
+    "@nestjs/config": "12.0.1",
+    "@nestjs/core": "12.1.3",
+    "@nestjs/jwt": "12.0.3",
+    "@nestjs/platform-express": "12.1.3",
+    "@nestjs/schedule": "12.0.2",
+    "@nestjs/swagger": "12.0.2",
+    "@nestjs/throttler": "6.7.1",
+    "@prisma/client": "7.10.0",
+    "prisma": "7.10.0",
+    "@nestjs/cli": "12.0.8",
+    "@nestjs/schematics": "12.0.7",
+    "@nestjs/testing": "12.1.3"
+   },
+   "truth": [],
+   "truthDetail": [],
+   "lines": 0,
+   "linesWithTruthAdvisory": 0,
+   "linesWithoutAdvisory": [],
+   "linesWithOtherAdvisoryOnly": [],
+   "listed": [],
+   "recall": 1,
+   "advisoryPrecision": 1,
+   "linePrecision": 1,
+   "missed": [],
+   "extra": []
+  }
+ },
+ "codex": {
+  "calls": 51,
+  "cached": 0,
+  "failed": 0,
+  "input_tokens": 680790,
+  "output_tokens": 5987,
+  "cached_input_tokens": 510208
+ }
+}

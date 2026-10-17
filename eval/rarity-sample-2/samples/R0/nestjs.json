@@ -1,0 +1,1921 @@
+{
+ "technology": "nestjs",
+ "rule": "GitHub code search for the technology's first package name quoted in package.json files (pages 1-10); keep files named exactly package.json that declare one of the technology's packages in dependencies or devDependencies at the catalog's current major; drop forks, archived and template repositories, repositories whose name, description or topics mark a tutorial, course, example, demo, starter, boilerplate or clone, the technology's own organisation, evaluation repositories and their forks or upstreams, and repositories over 200 MB; one repository per owner; rank by stars (then name); take the first 5.",
+ "selection": {
+  "pool": "code-search",
+  "major": "current",
+  "n": 5
+ },
+ "query": "\"@nestjs/core\" filename:package.json extension:json",
+ "major": "12",
+ "majors": [
+  "12"
+ ],
+ "drawn": "2026-10-15T17:00:00Z",
+ "candidates": 734,
+ "passed_over": [
+  {
+   "repo": "nestjs/nest",
+   "stars": 76851,
+   "why": "the technology's own organisation"
+  },
+  {
+   "repo": "gcui-art/album-ai",
+   "stars": 794,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "QuarkGluonPlasma/nestjs-course-code",
+   "stars": 606,
+   "why": "not a project (\"course\")"
+  },
+  {
+   "repo": "xpert-ai/xpert",
+   "stars": 466,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "m24927605/Nestjs30Days",
+   "stars": 401,
+   "why": "not a project (\"Learn\")"
+  },
+  {
+   "repo": "ecaminero/nestjs-ddd",
+   "stars": 275,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "HaiderMalik12/nestjs-fundamentals",
+   "stars": 190,
+   "why": "not a project (\"examples\")"
+  },
+  {
+   "repo": "houdunwang/v2022",
+   "stars": 54,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "dapzer/movie-tracker",
+   "stars": 53,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "servrox/nx-ng-nest-universal",
+   "stars": 33,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "notadd/nt-casbin",
+   "stars": 31,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "vladotesanovic/cqrs",
+   "stars": 31,
+   "why": "not a project (\"Example\")"
+  },
+  {
+   "repo": "bagusok/baguspay",
+   "stars": 25,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "GabrielMainiere/events-backend",
+   "stars": 23,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "LegendisM/microservice.example",
+   "stars": 21,
+   "why": "not a project (\"example\")"
+  },
+  {
+   "repo": "VictorMagalhaesSales/microsservices-banks-parent",
+   "stars": 18,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "alexy4744/packages",
+   "stars": 17,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "fernandohenriques/nestjs-rest-boilerplate",
+   "stars": 17,
+   "why": "template repository"
+  },
+  {
+   "repo": "sbrannstrom/nestjs-passport-ldap-example",
+   "stars": 17,
+   "why": "template repository"
+  },
+  {
+   "repo": "jiayisheji/AngularNest-Fullstack-CNode",
+   "stars": 16,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "gentritabazi/nestjs-api-starter",
+   "stars": 15,
+   "why": "not a project (\"starter\")"
+  },
+  {
+   "repo": "hcodebr/nestjs-typeorm-mysql",
+   "stars": 14,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Seb-L/nestjs-microservice-boilerplate",
+   "stars": 14,
+   "why": "not a project (\"boilerplate\")"
+  },
+  {
+   "repo": "socialdevclub/sdc-play",
+   "stars": 14,
+   "why": "over 200 MB"
+  },
+  {
+   "repo": "Angellikefairy/AngelChating-server",
+   "stars": 13,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Badminton-Apps/badman",
+   "stars": 13,
+   "why": "over 200 MB"
+  },
+  {
+   "repo": "thinkasany/shop-server-nest",
+   "stars": 12,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Caesarsage/inapp-notification-with-nestJS",
+   "stars": 10,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "kishore007k/nestjs-sequelize-multi-tenant",
+   "stars": 10,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "apontiacademy/fbr-pe-t1e1-fap24pi",
+   "stars": 9,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "rajinwonderland/nest-graphql-newsapi",
+   "stars": 9,
+   "why": "not a project (\"example\")"
+  },
+  {
+   "repo": "Risk-taker0501/stripe_nestjs",
+   "stars": 9,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "vietstrixvn/nestjs_exp",
+   "stars": 9,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "aruuunn/anonchat-server",
+   "stars": 8,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "avilabiel/clean-architecture-nest-ts",
+   "stars": 8,
+   "why": "template repository"
+  },
+  {
+   "repo": "cerbos/nestjs-cerbos",
+   "stars": 8,
+   "why": "not a project (\"demo\")"
+  },
+  {
+   "repo": "hexenq/nest-gitlab",
+   "stars": 8,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Yoowatney/cabi_admin-v2",
+   "stars": 8,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "gCorePlus/nestjs-aws-serverless",
+   "stars": 7,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Mut1aq/nestjs-skeleton-2024",
+   "stars": 7,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "dev-luckymhz/AIVisionText-invoice-OCR-typescript",
+   "stars": 6,
+   "why": "not a project (\"learning\")"
+  },
+  {
+   "repo": "jiwangyihao/OSSD25-Lab1-2023112332",
+   "stars": 6,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "nainglinnphyo/nestjs-starter",
+   "stars": 6,
+   "why": "not a project (\"starter\")"
+  },
+  {
+   "repo": "R4Y4N3/Nexus-Web-Workshop",
+   "stars": 6,
+   "why": "not a project (\"Workshop\")"
+  },
+  {
+   "repo": "sappChak/nestjs-ecommerce",
+   "stars": 6,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Survikrowa/Game-Critique",
+   "stars": 6,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "thaithuytb/cv_nest_graphql_microservice",
+   "stars": 6,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "tkssharma/udemy-fullstack-clone",
+   "stars": 6,
+   "why": "not a project (\"clone\")"
+  },
+  {
+   "repo": "2110336-2565-2/Sec33-group1-MeowMeow",
+   "stars": 5,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "amirkangarloo/amqpman",
+   "stars": 5,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "johanbook/meet",
+   "stars": 5,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "k-code-yt/youtube-examples",
+   "stars": 5,
+   "why": "not a project (\"examples\")"
+  },
+  {
+   "repo": "khoapmd/nestjs-multer-gridfs",
+   "stars": 5,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "lorenseanstewart/llm-tools-series",
+   "stars": 5,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "LukasAndreano/vkma-backend-boilerplate",
+   "stars": 5,
+   "why": "template repository"
+  },
+  {
+   "repo": "amrikmalhans/bitclout-graphql",
+   "stars": 4,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "argussecurity/nestjs-service-boilerplate",
+   "stars": 4,
+   "why": "not a project (\"boilerplate\")"
+  },
+  {
+   "repo": "Chengixx/MCP-Nest",
+   "stars": 4,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "sineckers/nestjs-rest",
+   "stars": 4,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "695954085/order-system",
+   "stars": 3,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "abdulbasit0-UI/Repair-Mangement",
+   "stars": 3,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "BytesNBitsCL/backend-senalando-un-futuro",
+   "stars": 3,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "FFFengGao/anyDataBaseGUI",
+   "stars": 3,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "fraybabak/kavenegar_nest",
+   "stars": 3,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "LeandroGazoli/HttpExceptionFilter-Prisma-Nestjs",
+   "stars": 3,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Team-DDG/thikira-back-end",
+   "stars": 3,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "techySPHINX/Finarva",
+   "stars": 3,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "TheDelta/SpoolmentBridge",
+   "stars": 3,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "alQlagin/nest-ng-gql-starter",
+   "stars": 2,
+   "why": "not a project (\"starter\")"
+  },
+  {
+   "repo": "andre-0303/strawberry-store",
+   "stars": 2,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "andreiox/nest-test-drive",
+   "stars": 2,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "behrad-kzm/kafka-nestjs",
+   "stars": 2,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "dekiakbar/decentdisk-be",
+   "stars": 2,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "diegopolverelli/comision-70465-backend",
+   "stars": 2,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "FallenFromTheKliff/FitTrack",
+   "stars": 2,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "frnikho/PldMaker",
+   "stars": 2,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "frozty03/ES-PI2-2025-T3-G01",
+   "stars": 2,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "fulinpeng/chainquant",
+   "stars": 2,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Geokerzman/dota-bootcamper",
+   "stars": 2,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "headline-1/nestjs-dynamic-config",
+   "stars": 2,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "iamveekthorr/task-api",
+   "stars": 2,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "IndustryFusion/icidservice",
+   "stars": 2,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Inna-B10/FlavorFit-_backend_",
+   "stars": 2,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "joelgarciajr84/nestjs-task-management",
+   "stars": 2,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "lamtrinh259/ETHGlobal_India_2023_Web3_Email",
+   "stars": 2,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "LondonDev-01/uss-apps",
+   "stars": 2,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "mahabubx7/nestjs-boilerplate",
+   "stars": 2,
+   "why": "not a project (\"boilerplate\")"
+  },
+  {
+   "repo": "MauroKinderknecht/nestjs-example",
+   "stars": 2,
+   "why": "not a project (\"example\")"
+  },
+  {
+   "repo": "ODS-IS-CAVC/vehicle-information-integration-system",
+   "stars": 2,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "pawelpiotrowski/blokecms",
+   "stars": 2,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "pdevito3/nest-patient-management-api",
+   "stars": 2,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Slocaly/talk-tanstack-db",
+   "stars": 2,
+   "why": "over 200 MB"
+  },
+  {
+   "repo": "TheLearningHubOrg/learn-nestjs",
+   "stars": 2,
+   "why": "not a project (\"learn\")"
+  },
+  {
+   "repo": "ThierrirAlencar/Chibatex-Webstore-Backend",
+   "stars": 2,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "toffyui/slack-reminder",
+   "stars": 2,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "ValiyevShohruhbek/IMTIHON2",
+   "stars": 2,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "williamkoller/rest-api-node-mongodb",
+   "stars": 2,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Wynemods/book_catalogue_2",
+   "stars": 2,
+   "why": "not a project (\"starter\")"
+  },
+  {
+   "repo": "Ximaz/youtube-playlist-downloader",
+   "stars": 2,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Yalm/apm-nestjs",
+   "stars": 2,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "1-xingcys/synqer",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "AlexeiKozlovskiy/online-store-nest",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "alexha11/Cognify",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "alipejman/torino-nestJs",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "andregarcia0412/online_judge",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Arsh-Pathan/QuickPrint",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "artemkurtiak/nest-typeorm-starter",
+   "stars": 1,
+   "why": "not a project (\"starter\")"
+  },
+  {
+   "repo": "ArtemProkopev/station-eden",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "AsilbekRakhimov/nestjs_crud_operations",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "atisorg/qujata",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "baklai/holodos",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "bcgov/nr-ipm-platform",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "berdnaski/PROJECT-NEST-CLEAN-ARCH",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "BlesslinJerishR/PartyOS",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "BOCOVO/mentra-app",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "brainbattle-platform/brainbattle-dou",
+   "stars": 1,
+   "why": "not a project (\"Learning\")"
+  },
+  {
+   "repo": "BryanS1996/UCE_Lab_Management_System",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "bugsfixbunny/react-nestjs-mysql-boilerplate",
+   "stars": 1,
+   "why": "not a project (\"boilerplate\")"
+  },
+  {
+   "repo": "cbnsndwch/ghl-template-nest-rr7-kitchen-sink",
+   "stars": 1,
+   "why": "not a project (\"template\")"
+  },
+  {
+   "repo": "cHANGTEEZY/nest-js",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Chshine1/lms-backend-nest",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "city-walk-app/server",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "DamienReichhart/template-fullstack-typescript-production",
+   "stars": 1,
+   "why": "not a project (\"template\")"
+  },
+  {
+   "repo": "DhayanandBaskar/smart-scraper",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "DKeken/axion",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "DmytroKondrashov/simplaner",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "dongkale/nestjs_src",
+   "stars": 1,
+   "why": "over 200 MB"
+  },
+  {
+   "repo": "Dtravel/room-night-be",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Eddcp/nestjs-api-example",
+   "stars": 1,
+   "why": "not a project (\"example\")"
+  },
+  {
+   "repo": "eduoncode/devtraining-nestjs",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "feden2906/financial_manager_api",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "feliperromao/personal-backend",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "FlipperDripper/casinobackendservice",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "foreverflyyy/guided-tours-website",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "guimiranda-dev/nest-api",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "hogecode/thread",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "hyperlapse122/booklog-be",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Jaider-Nieto/E-commerce-backend",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "JosephJoshua/syncode",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "kantegory/ITMO-ACS-Backend-2025",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "krizad/party-games-hub",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "kwadw0/podcast-api",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Leon9916/nest-study",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "LucasSAguilar/loja-nest",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "mathias-mrsn/ft_transcendence",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "michaelomopekun/roadrescue_Backend",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "mohamadrezafaal/exam-backend",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "oumimoun/inStorify",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "PrismStackHQ/agent-workflow-builder",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "ProRocketeers/pdf-generator",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Public-Health-Coalition/mscvn-service",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "QualKey1/qualkey1.github.io",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "RezaRahemtola/Survivor",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "sagerman4/champions-club",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "samchon/graph-benchmark-nestjs",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Santinoco/AppMedicos",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Semai-Mohamed/WorkSphere-Backend",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Sicariusa/Transactions_microservice",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "soraimar/SupermarketBackend",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "tekgrrl/aigenki-japanese",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "tintungtang/micro-nest",
+   "stars": 1,
+   "why": "template repository"
+  },
+  {
+   "repo": "tommacaluso1/Nest-Test",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "trelea/real-estate-api",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "TriPtt/ToDoList",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "whatsapp-web-app/backend",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "XiscoB/backend-api-template",
+   "stars": 1,
+   "why": "template repository"
+  },
+  {
+   "repo": "xuan3chan/daitongquan",
+   "stars": 1,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "10xcompany/neo4j",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "1155project/createdByMe_Evm_Api",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "4PTEM/ShoppingCart",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "A1exWolf/tutorPwa",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "aavainshtein/storage-service",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "AbhijithBR04/Nestjs-training",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "aboudard/nx-ng-nestjs",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "abroa01/nestjs",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "ad-bak/nest-microservice",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "AdeilsonESilva/node-boilerplate",
+   "stars": 0,
+   "why": "not a project (\"boilerplate\")"
+  },
+  {
+   "repo": "AdekeyeAdeniyi/IILASG-ECOMMERCE-TESTING",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Affi-Amine/NestJsTechWall",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Aftab3008/airbnb-clone",
+   "stars": 0,
+   "why": "not a project (\"clone\")"
+  },
+  {
+   "repo": "aftabx96/CampusLoop",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "ahsanfarooq210/nest.js-bookmark-API",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "akash8534/arena_assinment",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "AkshayKumar2211/uberbackend",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "alanbustosm9/pokedex-nest",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "AlanFierr0/Gastos-API",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Ald1s1/AnimalExpoBackend",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "alexandre-dev29/music_sheet_library",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Alfonso-Corona/nest-js-fundamentals",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "alienfacepalm/horsewise",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "alifsayalee/vendure-opus-4.8-",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "AlloETH/askton",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "amainooti/challenge-04",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "AmanShahAhamed/microservice",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Americo7/prueba-argo",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "amgdHussein/drop-fix",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Amin-Gharibi/Bookmark-Service",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "amir1a/online-market",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "anacarolinast/ON36-IJS-MiAuDote",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "andreasvh-conceto/nest-bun-multiple-instance-bug",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "AndresCalle9/task-app-be-nestjs",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Andreviga/hrpro",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "andrucar25/nestjs-digital-wallet-clone",
+   "stars": 0,
+   "why": "not a project (\"clone\")"
+  },
+  {
+   "repo": "andycmaj/nest",
+   "stars": 0,
+   "why": "over 200 MB"
+  },
+  {
+   "repo": "AngieGuti/parcial-angie",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Aniket-222000/nestjs-manytomay-mysql",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "AntoninFa/auto",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "anyone-protocol/operator-registry-controller",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "AppleePie/board-api",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Arawns1/Projeto-Science",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Araychaudhur/LaunchPad",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Arjouan/Meridian",
+   "stars": 0,
+   "why": "not a project (\"learn\")"
+  },
+  {
+   "repo": "arkhamHack/LLM-Logs-Monitor-And-Analytics",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "arthur-cgomes/App-Barbearia",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "arthurmousinho/icev-connect",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "aryandon2004/QuickDryCleaningAssignment",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "asevenm/wang-server",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Ashish-Panwar/edtech",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "ashotsiroyan/file-manager",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "astj/nestjs-prisma-sandbox",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "atilagulers/average-salary-finder",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "authuser-org/template-business-fullstack-example",
+   "stars": 0,
+   "why": "not a project (\"template\")"
+  },
+  {
+   "repo": "Avi-Rana-1718/catalog-commerce",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "aw-birdgang/nestjs-lecture",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "AweleChizim/projects",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "AxanIqbal/smartbike-backend",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "AxelPreitiT/TaskManager2000-microservices",
+   "stars": 0,
+   "why": "not a project (\"examples\")"
+  },
+  {
+   "repo": "Bahermohamed00/Airline-booking",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Balu-DevCraft/saloon-Booking",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Bangui1/tricker-backend",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "BarbosaNath/sabor-sertanejo",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "BarthaA/Music-Project",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "bastiantoledosalas/App-web-for-processing-streams-platforms",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "BBOGIT/rb-api",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "bear-ai-dev/enterprise-coding-rl-sample",
+   "stars": 0,
+   "why": "not a project (\"sample\")"
+  },
+  {
+   "repo": "bek-shoyatbek/camoe-clone",
+   "stars": 0,
+   "why": "not a project (\"clone\")"
+  },
+  {
+   "repo": "belhajManel/nestjs-typeorm",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "BenjaminEspinozaFK/proyecto_nest",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "BerkleyLim/basic_nodejs",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "bhathko/chatroom-be",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "bhuvan-crypto/ecommerce-backend-nestjs",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "BiaHaLong/it-asset",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "BiiaBraga/Blog-Pessoal",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "BlueSky-17/Mugicook",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "bmccann36/nest-demo",
+   "stars": 0,
+   "why": "not a project (\"demo\")"
+  },
+  {
+   "repo": "box2home/nestjs-eventstore-new",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Boye-dev/uri-creative-assessment",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "brandonthis-that/enaz-v2",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "bryanbravo03/practicasAppWeb2",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "bymaxone/nest-logger-example",
+   "stars": 0,
+   "why": "not a project (\"example\")"
+  },
+  {
+   "repo": "bymaxone/nest-storage-example",
+   "stars": 0,
+   "why": "not a project (\"example\")"
+  },
+  {
+   "repo": "CaioSeniuk/finance-ledger",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "CaptainSP/mallminds-backend",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "CarlosAmorim94/CRUD_Nestjs",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "CasianLW/vehicle-buy-assistant",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "CastrillonSebas/Task-Manager",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "cexareds/scalable-ecommerce-platform",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "CharaD7/n-fun",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Chhuanga/FormEZ",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Chingu-Dolphins-3/Break-n-Score",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "christopherstj/ultrack",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "chukwumaijem/pipeline",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "CJR-Grupo8/web-backend",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "cleitonpg/ixccore1",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "codeforgebyaravinth-dev/notify",
+   "stars": 0,
+   "why": "over 200 MB"
+  },
+  {
+   "repo": "codevcn/thunderchat-server-ms",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "COMPASS-DPG/course-manager",
+   "stars": 0,
+   "why": "not a project (\"course\")"
+  },
+  {
+   "repo": "COMPASS-DPG/marketplace-portal",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "conaryy/Prisma-Dev",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "ContactEstablished/WeatherApp.NestJS",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "cuneyter/nestjs-task-manager",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Cyb0nix/SSA-Project",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "d-antonio-romeroa/orion-test-nestjs",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "dalamilla/programming-typescript",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "danibiro/uni-students-sandbox",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "DanielaLTM2206/tienda-microservicios",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "daniilkolomiietss/hlpf-env-setup",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "dapabe/rbac-cms-ecommerce-demo",
+   "stars": 0,
+   "why": "not a project (\"demo\")"
+  },
+  {
+   "repo": "Dark-knight420/GROUPGRADE",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Darker98/vendure-paypal-http-integration",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Darker98/vendure-paypal-integration-context-plugin",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Dat-Nicolas/IotProject",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "dauleduc2/schedule_app_be",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "davidandw190/nestjs-typeorm-1",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "davidroa9708/tech-challenge-sii",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "DayneeBoiiz/ft_transcendence",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "DeemaAlothman/Grand_backend",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "degoprisss/prueba-magneto-producer",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "delee03/capstone_images",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "deneruaraujo/daily-diet-api",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "DenisLindner/LocalHub-API",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Dev-HLeah/kolmar",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "DevBassel/social-app",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "devmaiko/nest-template-ts",
+   "stars": 0,
+   "why": "not a project (\"template\")"
+  },
+  {
+   "repo": "devmk1090/MustGo",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Dhafer-chihi/asset-manager-back",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "dikmenonur/eteryumpoint",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "diogorochaa/backend",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "directive-ai/core",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "divyanshsaxena002/food-order-rbac",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Dmitriy292/random-bot",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "domenmerhar/today-i-learned-nestjs",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "DominikKoniarz/nestjs-rest-api-and-cron",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "doperogue/nest-copy",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "DucilioManjate/-_api_nest",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "DucNguyen-tc/fitness-with-AI",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "dullbenz/nx-22-5-env-referencing-example",
+   "stars": 0,
+   "why": "not a project (\"example\")"
+  },
+  {
+   "repo": "DumakIt/backend-practice",
+   "stars": 0,
+   "why": "not a project (\"practice\")"
+  },
+  {
+   "repo": "dumidulkdev/jwt-auth",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "duongcao04/nestjs-yangis-shop-api",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "edikbekir/coinlister-api",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "edsonmoretti/govbr-oauth-nestjs",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "EIP-TEK89/trio-signo-server",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "eliasDniel/gym-c-gateway",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "EmmelyIntriagoMolina/nest_devtalles",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "enigma-dy/campuxmart-temp",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "enigmaBil/keycloak",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "enspyrco/gather-game-client-code",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Enzo91080/olympos",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "enzobriones/nest-starter",
+   "stars": 0,
+   "why": "not a project (\"starter\")"
+  },
+  {
+   "repo": "Eppy-Team/eppy-be",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "erica10ui/b-r-cornitez-3a",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "erikscolaro/studexam",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "ertorosyann/telegram-product-page",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "ES-Nix/es",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "esvelaren/turbo-monorepo",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "etxeba/verp",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "faaiz99/todo-app-backend",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "fastfood-tc/fastfood",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "fatimazbouj/nestjs",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Fedi-Hmida/StudyBuddy",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "FernandoAlmeidaPinto/city",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "FernandoRuiz87/NestForge",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Financas-em-Ordem/backend",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Flavius-Pantucu/mugenkai",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "flavour-yang/Resource",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "floruitShow2/MeleonProfileBackend",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "FranMaster08/login",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "fugle-dev/fugle-trade-nest",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "G33RY/myfinance-api",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Gaganshuyadav/Social-media-site-backend-nestjs",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "gamecorelabs/gamecore-monorepo",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "GamikaJayawardana/Booking-platform-RESTAPI",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "gckarol10/api-reports",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "gdgrosario/bouncer-backend",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "gelong25/event-reward-system",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "gemini023/Rent-Car",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "geraldcells18/Cells-Backend-Application",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "gioimtg2003/heroku-deploy",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "gl4ukg/invest-gold-gjokaj-be",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "gokulsenthilkumar3/NexFlow",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "GolderBrother/nestjs-project",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "GP4cK/nestjs-archi-poc",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "grapevinex/grape-broker-api",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "GregoriSimei/fullcycle0824-partners-api",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "greyboolean/nest-rbac",
+   "stars": 0,
+   "why": "not a project (\"sample\")"
+  },
+  {
+   "repo": "Grisales9529/nest-test",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "guiyu1230/nestjs-course-code",
+   "stars": 0,
+   "why": "not a project (\"course\")"
+  },
+  {
+   "repo": "gzcls/myTeable",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Haans001/praca-inzynierska-2024",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "hakimalem/tripx",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "hanriel/EDUMGT-API",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "hanza93/nest-query-test",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Hari-guptha/QMS",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "hasanraiyan/swasthsaathi-web-app-demo",
+   "stars": 0,
+   "why": "not a project (\"demo\")"
+  },
+  {
+   "repo": "hdvgonz/FullStack-Auth-App",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "heetvadiya/Rag-chat-application",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "HeitorNOC/auth-service",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "HenriqueRamos13/Final-Paper-UBI-RESTfull-for_LIBVIRT",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "Heros919/Autentica-o-e-Autoriza-o",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "hgabor/nestjs-konyvtar-13d",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  },
+  {
+   "repo": "hha-nguyen/backend-boilerplate",
+   "stars": 0,
+   "why": "not a project (\"boilerplate\")"
+  },
+  {
+   "repo": "hieuvubk/covid-be",
+   "stars": 0,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 12"
+  }
+ ],
+ "repos": [
+  {
+   "repo": "codebend3r/maester",
+   "commit": "bacbbb6eb037c03ba476074848ae5d6cae67f10b",
+   "stars": 1,
+   "manifest": "apps/rookery/server/package.json",
+   "declares": "@nestjs/core@12.1.0"
+  },
+  {
+   "repo": "bratislava/log-nest",
+   "commit": "73c054eeabb55bc737a7e2b81f0fcdff6a6d34d7",
+   "stars": 0,
+   "manifest": "package.json",
+   "declares": "@nestjs/core@12.1.2"
+  },
+  {
+   "repo": "bryopsida/nest-couchdb",
+   "commit": "fc444918a4fe2dcdbc7c9026c9f88397b5c7ed1a",
+   "stars": 0,
+   "manifest": "package.json",
+   "declares": "@nestjs/core@12.0.1"
+  },
+  {
+   "repo": "Heber1709/Impacta-seminario26",
+   "commit": "9dbae499cd6a522181c2855bf24630b5b89929f7",
+   "stars": 0,
+   "manifest": "backend-impacta/package.json",
+   "declares": "@nestjs/core@^12.0.1"
+  },
+  {
+   "repo": "himehaku/MagNet",
+   "commit": "bbee9e98e8f44115d4dd5c557a15e7b43932c775",
+   "stars": 0,
+   "manifest": "backend/package.json",
+   "declares": "@nestjs/core@^12.0.1"
+  }
+ ],
+ "counts": {}
+}

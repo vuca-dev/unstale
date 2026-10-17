@@ -1,0 +1,74 @@
+{
+ "DEV": {
+  "events": 9,
+  "all": {
+   "key": 115,
+   "covered": 78,
+   "queued": 62,
+   "first16": 44,
+   "first16_invoked": 44
+  },
+  "required": {
+   "key": 72,
+   "covered": 53,
+   "queued": 45,
+   "first16": 32,
+   "first16_invoked": 32
+  },
+  "optional": {
+   "key": 43,
+   "covered": 25,
+   "queued": 17,
+   "first16": 12,
+   "first16_invoked": 12
+  }
+ },
+ "HELD-OUT": {
+  "events": 6,
+  "all": {
+   "key": 43,
+   "covered": 24,
+   "queued": 15,
+   "first16": 8,
+   "first16_invoked": 8
+  },
+  "required": {
+   "key": 22,
+   "covered": 11,
+   "queued": 11,
+   "first16": 7,
+   "first16_invoked": 7
+  },
+  "optional": {
+   "key": 21,
+   "covered": 13,
+   "queued": 4,
+   "first16": 1,
+   "first16_invoked": 1
+  }
+ },
+ "ALL": {
+  "events": 15,
+  "all": {
+   "key": 158,
+   "covered": 102,
+   "queued": 77,
+   "first16": 52,
+   "first16_invoked": 52
+  },
+  "required": {
+   "key": 94,
+   "covered": 64,
+   "queued": 56,
+   "first16": 39,
+   "first16_invoked": 39
+  },
+  "optional": {
+   "key": 64,
+   "covered": 38,
+   "queued": 21,
+   "first16": 13,
+   "first16_invoked": 13
+  }
+ }
+}

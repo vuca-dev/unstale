@@ -1,0 +1,456 @@
+{
+ "source": "deep20.json",
+ "fit": {
+  "a": -3.310635974177689,
+  "b": 0.84811003425643,
+  "sd": 0.8520810911514313,
+  "n": 78,
+  "pooled_per_1k": 8.705234741908049
+ },
+ "groups": [
+  {
+   "group": "npm: all admitted (registry-wide)",
+   "n": 120,
+   "technologies_est": 110489,
+   "packages_est": 240311,
+   "records/quarter": {
+    "p50": 0.0,
+    "p75": 1.3,
+    "p90": 6.7,
+    "p99": 320.1,
+    "mean": 12.9
+   },
+   "$/tech-quarter": {
+    "p50": 0.0,
+    "p90": 0.0026,
+    "mean": 0.00614
+   },
+   "$/tech-year mean": 0.02457,
+   "share with no notes": 0.66
+  },
+  {
+   "group": "npm b-1 <100/wk",
+   "n": 20,
+   "technologies_est": 29733,
+   "packages_est": 105700,
+   "records/quarter": {
+    "p50": 0.0,
+    "p75": 0.0,
+    "p90": 0.0,
+    "p99": 0.7,
+    "mean": 0.0
+   },
+   "$/tech-quarter": {
+    "p50": 0.0,
+    "p90": 0.0,
+    "mean": 1e-05
+   },
+   "$/tech-year mean": 3e-05,
+   "share with no notes": 0.971
+  },
+  {
+   "group": "npm b0 100-1k/wk",
+   "n": 20,
+   "technologies_est": 8437,
+   "packages_est": 24294,
+   "records/quarter": {
+    "p50": 0.0,
+    "p75": 0.5,
+    "p90": 17.2,
+    "p99": 23.3,
+    "mean": 3.0
+   },
+   "$/tech-quarter": {
+    "p50": 0.0,
+    "p90": 0.00701,
+    "mean": 0.00124
+   },
+   "$/tech-year mean": 0.00494,
+   "share with no notes": 0.675
+  },
+  {
+   "group": "npm b1 1k-10k/wk",
+   "n": 20,
+   "technologies_est": 51012,
+   "packages_est": 65587,
+   "records/quarter": {
+    "p50": 0.0,
+    "p75": 2.9,
+    "p90": 6.7,
+    "p99": 320.1,
+    "mean": 23.9
+   },
+   "$/tech-quarter": {
+    "p50": 0.0,
+    "p90": 0.0026,
+    "mean": 0.01155
+   },
+   "$/tech-year mean": 0.0462,
+   "share with no notes": 0.585
+  },
+  {
+   "group": "npm b2 10k-100k/wk",
+   "n": 20,
+   "technologies_est": 10465,
+   "packages_est": 24052,
+   "records/quarter": {
+    "p50": 0.2,
+    "p75": 3.2,
+    "p90": 90.2,
+    "p99": 90.2,
+    "mean": 11.6
+   },
+   "$/tech-quarter": {
+    "p50": 6e-05,
+    "p90": 0.0404,
+    "mean": 0.00513
+   },
+   "$/tech-year mean": 0.02052,
+   "share with no notes": 0.352
+  },
+  {
+   "group": "npm b3 100k-1M/wk",
+   "n": 20,
+   "technologies_est": 7333,
+   "packages_est": 12470,
+   "records/quarter": {
+    "p50": 0.0,
+    "p75": 0.9,
+    "p90": 6.0,
+    "p99": 42.1,
+    "mean": 2.5
+   },
+   "$/tech-quarter": {
+    "p50": 0.0,
+    "p90": 0.0023,
+    "mean": 0.001
+   },
+   "$/tech-year mean": 0.00402,
+   "share with no notes": 0.513
+  },
+  {
+   "group": "npm b4 >=1M/wk",
+   "n": 20,
+   "technologies_est": 3509,
+   "packages_est": 8207,
+   "records/quarter": {
+    "p50": 3.1,
+    "p75": 22.8,
+    "p90": 38.1,
+    "p99": 38.1,
+    "mean": 12.2
+   },
+   "$/tech-quarter": {
+    "p50": 0.00117,
+    "p90": 0.01618,
+    "mean": 0.00509
+   },
+   "$/tech-year mean": 0.02036,
+   "share with no notes": 0.297
+  },
+  {
+   "group": "pypi: all admitted (registry-wide)",
+   "n": 119,
+   "technologies_est": 37022,
+   "packages_est": 56335,
+   "records/quarter": {
+    "p50": 0.3,
+    "p75": 2.1,
+    "p90": 9.4,
+    "p99": 55.5,
+    "mean": 3.8
+   },
+   "$/tech-quarter": {
+    "p50": 9e-05,
+    "p90": 0.00372,
+    "mean": 0.00157
+   },
+   "$/tech-year mean": 0.00627,
+   "share with no notes": 0.462
+  },
+  {
+   "group": "pypi b-1 <100/wk",
+   "n": 19,
+   "technologies_est": 9806,
+   "packages_est": 20864,
+   "records/quarter": {
+    "p50": 0.8,
+    "p75": 1.8,
+    "p90": 7.3,
+    "p99": 9.4,
+    "mean": 1.8
+   },
+   "$/tech-quarter": {
+    "p50": 0.00027,
+    "p90": 0.00285,
+    "mean": 0.0007
+   },
+   "$/tech-year mean": 0.00279,
+   "share with no notes": 0.496
+  },
+  {
+   "group": "pypi b0 100-1k/wk",
+   "n": 20,
+   "technologies_est": 4136,
+   "packages_est": 7649,
+   "records/quarter": {
+    "p50": 3.1,
+    "p75": 20.7,
+    "p90": 55.5,
+    "p99": 159.0,
+    "mean": 16.1
+   },
+   "$/tech-quarter": {
+    "p50": 0.00114,
+    "p90": 0.02409,
+    "mean": 0.00702
+   },
+   "$/tech-year mean": 0.02808,
+   "share with no notes": 0.481
+  },
+  {
+   "group": "pypi b1 1k-10k/wk",
+   "n": 20,
+   "technologies_est": 14528,
+   "packages_est": 15659,
+   "records/quarter": {
+    "p50": 0.2,
+    "p75": 1.5,
+    "p90": 6.3,
+    "p99": 17.7,
+    "mean": 1.8
+   },
+   "$/tech-quarter": {
+    "p50": 6e-05,
+    "p90": 0.00244,
+    "mean": 0.0007
+   },
+   "$/tech-year mean": 0.00278,
+   "share with no notes": 0.458
+  },
+  {
+   "group": "pypi b2 10k-100k/wk",
+   "n": 20,
+   "technologies_est": 5104,
+   "packages_est": 7420,
+   "records/quarter": {
+    "p50": 0.8,
+    "p75": 3.0,
+    "p90": 12.9,
+    "p99": 14.5,
+    "mean": 3.1
+   },
+   "$/tech-quarter": {
+    "p50": 0.0003,
+    "p90": 0.00515,
+    "mean": 0.00124
+   },
+   "$/tech-year mean": 0.00495,
+   "share with no notes": 0.367
+  },
+  {
+   "group": "pypi b3 100k-1M/wk",
+   "n": 20,
+   "technologies_est": 2401,
+   "packages_est": 3133,
+   "records/quarter": {
+    "p50": 0.0,
+    "p75": 0.7,
+    "p90": 9.0,
+    "p99": 17.6,
+    "mean": 1.9
+   },
+   "$/tech-quarter": {
+    "p50": 0.0,
+    "p90": 0.00353,
+    "mean": 0.00075
+   },
+   "$/tech-year mean": 0.00302,
+   "share with no notes": 0.609
+  },
+  {
+   "group": "pypi b4 >=1M/wk",
+   "n": 20,
+   "technologies_est": 1046,
+   "packages_est": 1609,
+   "records/quarter": {
+    "p50": 0.7,
+    "p75": 6.9,
+    "p90": 19.1,
+    "p99": 75.3,
+    "mean": 8.8
+   },
+   "$/tech-quarter": {
+    "p50": 0.00027,
+    "p90": 0.0078,
+    "mean": 0.00376
+   },
+   "$/tech-year mean": 0.01503,
+   "share with no notes": 0.264
+  },
+  {
+   "group": "npm + pypi: all admitted (registry-wide)",
+   "n": 239,
+   "technologies_est": 147511,
+   "packages_est": 296646,
+   "records/quarter": {
+    "p50": 0.0,
+    "p75": 1.6,
+    "p90": 6.7,
+    "p99": 320.1,
+    "mean": 10.6
+   },
+   "$/tech-quarter": {
+    "p50": 0.0,
+    "p90": 0.0026,
+    "mean": 0.00499
+   },
+   "$/tech-year mean": 0.01998,
+   "share with no notes": 0.61
+  }
+ ],
+ "flags": {
+  "not the repository's main package (<1% of its downloads)": {
+   "packages_share": 0.362,
+   "technologies_share": 0.135,
+   "records_share": 0.01,
+   "cost_share": 0.008,
+   "n_sample": 48
+  },
+  "stars-only AND not the main package (borrowed stars)": {
+   "packages_share": 0.318,
+   "technologies_share": 0.096,
+   "records_share": 0.004,
+   "cost_share": 0.003,
+   "n_sample": 36
+  },
+  "archived repo": {
+   "packages_share": 0.024,
+   "technologies_share": 0.03,
+   "records_share": 0.012,
+   "cost_share": 0.01,
+   "n_sample": 4
+  },
+  "deprecated / inactive / all yanked": {
+   "packages_share": 0.034,
+   "technologies_share": 0.001,
+   "records_share": 0.0,
+   "cost_share": 0.0,
+   "n_sample": 4
+  },
+  "fork repo": {
+   "packages_share": 0.003,
+   "technologies_share": 0.007,
+   "records_share": 0.0,
+   "cost_share": 0.0,
+   "n_sample": 2
+  },
+  "@types/* or types-*": {
+   "packages_share": 0.01,
+   "technologies_share": 0.0,
+   "records_share": 0.0,
+   "cost_share": 0.0,
+   "n_sample": 7
+  },
+  "no stable release in 365d (fresh by push only)": {
+   "packages_share": 0.421,
+   "technologies_share": 0.278,
+   "records_share": 0.014,
+   "cost_share": 0.012,
+   "n_sample": 69
+  },
+  "no human commit in 365d": {
+   "packages_share": 0.049,
+   "technologies_share": 0.081,
+   "records_share": 0.0,
+   "cost_share": 0.0,
+   "n_sample": 9
+  },
+  "admitted on stars only": {
+   "packages_share": 0.534,
+   "technologies_share": 0.353,
+   "records_share": 0.071,
+   "cost_share": 0.063,
+   "n_sample": 79
+  },
+  "0 dependents (repos and packages)": {
+   "packages_share": 0.44,
+   "technologies_share": 0.501,
+   "records_share": 0.883,
+   "cost_share": 0.899,
+   "n_sample": 89
+  },
+  "no release notes found": {
+   "packages_share": 0.665,
+   "technologies_share": 0.61,
+   "records_share": 0.0,
+   "cost_share": 0.0,
+   "n_sample": 127
+  }
+ },
+ "tiers": [
+  {
+   "group": "~10k fleet (>=1M/wk)",
+   "n": 40,
+   "technologies_est": 4555,
+   "packages_est": 9816,
+   "records/quarter": {
+    "p50": 3.1,
+    "p75": 22.8,
+    "p90": 38.1,
+    "p99": 75.3,
+    "mean": 11.4
+   },
+   "$/tech-quarter": {
+    "p50": 0.00117,
+    "p90": 0.01618,
+    "mean": 0.00478
+   },
+   "$/tech-year mean": 0.01914,
+   "share with no notes": 0.29
+  },
+  {
+   "group": "~50k fleet (>=100k/wk, + top of 10k-100k)",
+   "n": 120,
+   "technologies_est": 29858,
+   "packages_est": 56893,
+   "records/quarter": {
+    "p50": 0.2,
+    "p75": 3.2,
+    "p90": 17.6,
+    "p99": 90.2,
+    "mean": 7.1
+   },
+   "$/tech-quarter": {
+    "p50": 8e-05,
+    "p90": 0.00717,
+    "mean": 0.00305
+   },
+   "$/tech-year mean": 0.01219,
+   "share with no notes": 0.405
+  },
+  {
+   "group": "~200k fleet (>=1k/wk)",
+   "n": 160,
+   "technologies_est": 95398,
+   "packages_est": 138138,
+   "records/quarter": {
+    "p50": 0.0,
+    "p75": 2.8,
+    "p90": 6.7,
+    "p99": 320.1,
+    "mean": 15.3
+   },
+   "$/tech-quarter": {
+    "p50": 0.0,
+    "p90": 0.0026,
+    "mean": 0.00724
+   },
+   "$/tech-year mean": 0.02894,
+   "share with no notes": 0.509
+  }
+ ],
+ "packages_est": 296646,
+ "technologies_est (shared tag streams deduped)": 147511,
+ "registry-wide $/year (all admitted technologies)": 2947.0
+}

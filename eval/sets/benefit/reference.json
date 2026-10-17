@@ -1,0 +1,3729 @@
+{
+ "description": "Benefit-label reference: 150 records (50 per technology), two judges + adjudication; see eval/sets/README.md",
+ "rule": "Slice 0 benefit_label.py PROMPT_V2 (eval/sets/benefit/judge_codex.py RULE)",
+ "items": [
+  {
+   "n": 1,
+   "id": "next:experimental.appnewscrollhandler",
+   "technology": "next",
+   "change_type": "new_api",
+   "breaking": false,
+   "summary": "Adds an experimental App Router scroll handler.",
+   "quote": "[fragment-scroll] Add `experimental.appNewScrollHandler`",
+   "url": "https://github.com/vercel/next.js/releases/tag/v16.2.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Adds an experimental scroll handler without stating security, correctness, performance, cost, or replacement benefits.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 2,
+   "id": "next:origin",
+   "technology": "next",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "Requests with Origin: null headers are handled correctly.",
+   "quote": "Handle `Origin: null` headers",
+   "url": "https://github.com/vercel/next.js/releases/tag/v16.0.1",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Requests with `Origin: null` headers are handled correctly.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 3,
+   "id": "next:middleware~2",
+   "technology": "next",
+   "change_type": "deprecation",
+   "breaking": false,
+   "summary": "The named middleware export is deprecated and should be renamed to proxy.",
+   "quote": "The named export `middleware` is also deprecated. Rename your function to `proxy`.",
+   "url": "https://github.com/vercel/next.js/blob/f7545a47811e04ea1aa9be2c37e722f7ba2906a3/docs/01-app/02-guides/upgrading/version-16.mdx",
+   "replaces": [
+    "middleware"
+   ],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "A deprecated export is renamed; no qualifying benefit is stated.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 4,
+   "id": "next:baseurl",
+   "technology": "next",
+   "change_type": "deprecation",
+   "breaking": false,
+   "summary": "TypeScript v6 deprecates baseUrl, affecting projects that use this compiler option.",
+   "quote": "Backport: TypeScript v6 deprecations for baseUrl and moduleResolution (#92130)",
+   "url": "https://github.com/vercel/next.js/releases/tag/v16.2.2",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Deprecates a TypeScript compiler option without a qualifying project benefit.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 5,
+   "id": "next:middleware-runtime",
+   "technology": "next",
+   "change_type": "removal",
+   "breaking": true,
+   "summary": "Proxy only supports the Node.js runtime.",
+   "quote": "Only allow node runtime in proxy",
+   "url": "https://github.com/vercel/next.js/releases/tag/v16.0.0",
+   "replaces": [
+    "edge"
+   ],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Restricts proxy runtime support to Node.js; no qualifying benefit is stated.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 6,
+   "id": "next:span-map",
+   "technology": "next",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "Fixes a memory leak in the span map.",
+   "quote": "Tracing: Fix memory leak in span map",
+   "url": "https://github.com/vercel/next.js/releases/tag/v15.5.11",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness",
+    "performance",
+    "cost"
+   ],
+   "judge_claude": [
+    "correctness",
+    "performance"
+   ],
+   "judge_codex": [
+    "performance"
+   ],
+   "codex_basis": "Fixes a memory leak in the span map.",
+   "reference": [
+    "correctness",
+    "performance"
+   ],
+   "adjudication": {
+    "sided_with": "claude",
+    "why": "a leak is a bug whose effect is memory"
+   }
+  },
+  {
+   "n": 7,
+   "id": "next:next-swc-wasm-web~2",
+   "technology": "next",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "The package was published after being accidentally omitted since 16.2.4, making it available for developers to use.",
+   "quote": "Contains no changes except publishing `@next/swc-wasm-web` which was accidentally not published since 16.2.4.",
+   "url": "https://github.com/vercel/next.js/releases/tag/v16.2.10",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Publishes an accidentally omitted package, adding availability without a qualifying benefit.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 8,
+   "id": "next:cache-tags",
+   "technology": "next",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "Ensures non-ASCII characters in cache tags are encoded when tags are constructed.",
+   "quote": "Encode non-ASCII characters in cache tags at construction",
+   "url": "https://github.com/vercel/next.js/releases/tag/v16.2.7",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Encodes non-ASCII characters in cache tags during construction.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 9,
+   "id": "next:refresh",
+   "technology": "next",
+   "change_type": "new_api",
+   "breaking": false,
+   "summary": "Allows refreshing the client router from within a Server Action after performing an action.",
+   "quote": "`refresh` allows you to refresh the client router from within a Server Action.",
+   "url": "https://github.com/vercel/next.js/blob/f7545a47811e04ea1aa9be2c37e722f7ba2906a3/docs/01-app/02-guides/upgrading/version-16.mdx",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Adds a client-router refresh capability without a qualifying benefit.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 10,
+   "id": "next:tailwind.config.ts",
+   "technology": "next",
+   "change_type": "tooling",
+   "breaking": false,
+   "summary": "Turbopack can resolve TypeScript files used in Tailwind configuration.",
+   "quote": "Turbopack: allow resolving TS files in tailwind config",
+   "url": "https://github.com/vercel/next.js/releases/tag/v16.2.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Adds Turbopack resolution support for TypeScript Tailwind configuration files.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 11,
+   "id": "next:experimental.turbopackworkerassetprefix",
+   "technology": "next",
+   "change_type": "new_option",
+   "breaking": false,
+   "summary": "Workers can remain same-origin when assetPrefix points to a CDN.",
+   "quote": "Turbopack: add `experimental.turbopackWorkerAssetPrefix` to keep Workers same-origin when `assetPrefix` is a CDN",
+   "url": "https://github.com/vercel/next.js/releases/tag/v16.3.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Keeps Workers same-origin with a CDN assetPrefix without stating a security benefit.",
+   "reference": [
+    "correctness"
+   ],
+   "adjudication": {
+    "sided_with": "claude",
+    "why": "the option fixes Workers failing cross-origin when assetPrefix is a CDN"
+   }
+  },
+  {
+   "n": 12,
+   "id": "next:ssg",
+   "technology": "next",
+   "change_type": "security",
+   "breaking": false,
+   "summary": "Security fix prevents cache poisoning of SSG pages in self-hosted Next.js applications.",
+   "quote": "Cache poisoning of SSG and ISR pages in self-hosted Next.js applications",
+   "url": "https://github.com/vercel/next.js/releases/tag/v15.5.27",
+   "replaces": [],
+   "catalog_benefit": [
+    "security",
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness",
+    "security"
+   ],
+   "judge_codex": [
+    "security"
+   ],
+   "codex_basis": "Prevents cache poisoning of SSG and ISR pages.",
+   "reference": [
+    "security"
+   ],
+   "adjudication": {
+    "sided_with": "codex",
+    "why": "advisory; security alone, as for the other advisories"
+   }
+  },
+  {
+   "n": 13,
+   "id": "next:data-url-css",
+   "technology": "next",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "Data URL CSS is no longer rejected by the Pages Router global CSS restriction.",
+   "quote": "exempt data URL CSS from Pages Router global CSS restriction",
+   "url": "https://github.com/vercel/next.js/releases/tag/v16.2.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Stops incorrectly rejecting data URL CSS under the Pages Router global CSS restriction.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 14,
+   "id": "next:next-upgrade-ai",
+   "technology": "next",
+   "change_type": "new_api",
+   "breaking": false,
+   "summary": "Adds AI-assisted upgrade support, including security vulnerability coverage.",
+   "quote": "Add `next upgrade --ai` and security vulnerability coverage",
+   "url": "https://github.com/vercel/next.js/releases/tag/v16.4.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "security"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "security"
+   ],
+   "codex_basis": "Adds security vulnerability coverage to the AI-assisted upgrade command.",
+   "reference": [
+    "none"
+   ],
+   "adjudication": {
+    "sided_with": "claude",
+    "why": "a feature of the upgrade tool, not a fix to the project"
+   }
+  },
+  {
+   "n": 15,
+   "id": "next:turbopack-gc",
+   "technology": "next",
+   "change_type": "new_option",
+   "breaking": false,
+   "summary": "Introduces configuration options for Turbopack garbage collection.",
+   "quote": "Introduce config options for Turbopack GC",
+   "url": "https://github.com/vercel/next.js/releases/tag/v16.4.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Introduces garbage-collection configuration options without stating resource savings.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 16,
+   "id": "next:experimental.cachednavigations",
+   "technology": "next",
+   "change_type": "new_option",
+   "breaking": false,
+   "summary": "Adds an experimental flag for cached navigations and caching visited static pages.",
+   "quote": "Add `experimental.cachedNavigations` feature flag",
+   "url": "https://github.com/vercel/next.js/releases/tag/v16.2.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "performance"
+   ],
+   "judge_codex": [
+    "performance"
+   ],
+   "codex_basis": "Adds caching of visited static pages for cached navigations.",
+   "reference": [
+    "performance"
+   ]
+  },
+  {
+   "n": 17,
+   "id": "next:websocket-upgrades",
+   "technology": "next",
+   "change_type": "security",
+   "breaking": false,
+   "summary": "Fixes a high-severity server-side request forgery vulnerability in applications using WebSocket upgrades.",
+   "quote": "GHSA-c4j6-fc7j-m34r: Server-side request forgery in applications using WebSocket upgrades",
+   "url": "https://github.com/vercel/next.js/releases/tag/v15.5.16",
+   "replaces": [],
+   "catalog_benefit": [
+    "security",
+    "correctness"
+   ],
+   "judge_claude": [
+    "security"
+   ],
+   "judge_codex": [
+    "security"
+   ],
+   "codex_basis": "Fixes a high-severity server-side request forgery vulnerability.",
+   "reference": [
+    "security"
+   ]
+  },
+  {
+   "n": 18,
+   "id": "next:unstable-navigation",
+   "technology": "next",
+   "change_type": "new_api",
+   "breaking": false,
+   "summary": "An unstable navigation API was introduced for Partial Prefetching workflows.",
+   "quote": "[PPF] unstable_navigation():",
+   "url": "https://github.com/vercel/next.js/releases/tag/v16.4.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Introduces an unstable navigation API without stating a qualifying benefit.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 19,
+   "id": "next:turbopack~7",
+   "technology": "next",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "The webpack loader runner layer was fixed for Turbopack builds.",
+   "quote": "Turbopack: fix webpack loader runner layer",
+   "url": "https://github.com/vercel/next.js/releases/tag/v16.2.1",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Fixes the webpack loader runner layer for Turbopack builds.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 20,
+   "id": "next:configured-output-directories",
+   "technology": "next",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "Static export now preserves configured output directories.",
+   "quote": "Preserve configured output directories during static export",
+   "url": "https://github.com/vercel/next.js/releases/tag/v16.4.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Static export preserves configured output directories.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 21,
+   "id": "next:image-optimization-api~2",
+   "technology": "next",
+   "change_type": "security",
+   "breaking": false,
+   "summary": "Fixes a denial-of-service vulnerability in the Image Optimization API when processing SVGs.",
+   "quote": "Denial of Service in the Image Optimization API using SVGs",
+   "url": "https://github.com/vercel/next.js/releases/tag/v15.5.21",
+   "replaces": [],
+   "catalog_benefit": [
+    "security",
+    "correctness"
+   ],
+   "judge_claude": [
+    "security"
+   ],
+   "judge_codex": [
+    "security"
+   ],
+   "codex_basis": "Fixes a denial-of-service vulnerability in the Image Optimization API.",
+   "reference": [
+    "security"
+   ]
+  },
+  {
+   "n": 22,
+   "id": "next:next-cache-handlers",
+   "technology": "next",
+   "change_type": "new_api",
+   "breaking": false,
+   "summary": "A next/cache-handlers types entrypoint was added for cache handler type usage.",
+   "quote": "Add next/cache-handlers types entrypoint",
+   "url": "https://github.com/vercel/next.js/releases/tag/v16.4.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Adds a types entrypoint without a qualifying benefit.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 23,
+   "id": "next:worker-threads-eval",
+   "technology": "next",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "Turbopack now respects eval: true in worker_threads constructors.",
+   "quote": "[turbopack] Respect `{eval:true}` in worker_threads constructors",
+   "url": "https://github.com/vercel/next.js/releases/tag/v16.2.1",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Turbopack respects `eval: true` in worker_threads constructors.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 24,
+   "id": "next:proxy.ts~2",
+   "technology": "next",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "The proxy file is picked up correctly on Windows.",
+   "quote": "fix: Proxy not picked up on Windows",
+   "url": "https://github.com/vercel/next.js/releases/tag/v16.0.1",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Fixes proxy file discovery on Windows.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 25,
+   "id": "next:resheaders",
+   "technology": "next",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "Static types now correctly reflect the runtime type of resHeaders.",
+   "quote": "Reflect runtime type of `resHeaders` in static types",
+   "url": "https://github.com/vercel/next.js/releases/tag/v16.1.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Only static types are changed to reflect the runtime type.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 26,
+   "id": "next:pnpm-workspace.yaml",
+   "technology": "next",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "The monorepo root search now handles pnpm workspace files.",
+   "quote": "Handle pnpm-workspace.yaml while searching for monorepo root",
+   "url": "https://github.com/vercel/next.js/releases/tag/v16.2.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Handles pnpm workspace files while searching for the monorepo root.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 27,
+   "id": "next:create-next-app",
+   "technology": "next",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "summary": "Skips interactive prompts when CLI flags are provided, making flagged project creation non-interactive.",
+   "quote": "[create-next-app] Skip interactive prompts when CLI flags are provided (#91840)",
+   "url": "https://github.com/vercel/next.js/releases/tag/v16.2.2",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Makes flagged project creation non-interactive, a convenience.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 28,
+   "id": "next:response-bodies",
+   "technology": "next",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "Fixes cache confusion for requests with bodies.",
+   "quote": "Cache confusion of response bodies for requests with bodies",
+   "url": "https://github.com/vercel/next.js/releases/tag/v16.2.11",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness",
+    "security"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Fixes cache confusion for requests with bodies.",
+   "reference": [
+    "security"
+   ],
+   "adjudication": {
+    "sided_with": "neither",
+    "why": "GHSA-68g3-v927-f742 (moderate advisory in the 15.5.21/16.2.11 notes): security"
+   }
+  },
+  {
+   "n": 29,
+   "id": "next:webpack",
+   "technology": "next",
+   "change_type": "new_option",
+   "breaking": false,
+   "summary": "The CLI adds a flag to opt into webpack when Turbopack is the default.",
+   "quote": "Add a --webpack flag and default --turbopack to true",
+   "url": "https://github.com/vercel/next.js/releases/tag/v16.0.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Adds an opt-in CLI flag for webpack.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 30,
+   "id": "next:dynamic-metadata-routes",
+   "technology": "next",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "Adapter outputs for dynamic metadata routes were fixed.",
+   "quote": "Fix adapter outputs for dynamic metadata routes",
+   "url": "https://github.com/vercel/next.js/releases/tag/v16.2.1",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Fixes adapter outputs for dynamic metadata routes.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 31,
+   "id": "next:middleware.js",
+   "technology": "next",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "NFT output now uses middleware.js instead of proxy.js.",
+   "quote": "fix: Rename proxy.js to middleware.js in NFT file (#86214)",
+   "url": "https://github.com/vercel/next.js/releases/tag/v16.0.4",
+   "replaces": [
+    "proxy.js"
+   ],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Renames proxy.js to middleware.js without a listed functional benefit.",
+   "reference": [
+    "correctness"
+   ],
+   "adjudication": {
+    "sided_with": "claude",
+    "why": "restores the NFT file name the deployment needs"
+   }
+  },
+  {
+   "n": 32,
+   "id": "next:staletimes-static",
+   "technology": "next",
+   "change_type": "fix",
+   "breaking": true,
+   "summary": "staleTimes.static now consistently enforces a 30-second minimum.",
+   "quote": "fix: staleTimes.static should consistently enforce a 30s minimum",
+   "url": "https://github.com/vercel/next.js/releases/tag/v16.0.3",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Consistently enforces the staleTimes.static 30-second minimum.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 33,
+   "id": "next:next-dev",
+   "technology": "next",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "The development server restarts if the .next directory is deleted.",
+   "quote": "Restart the `next dev` server if `.next` is deleted",
+   "url": "https://github.com/vercel/next.js/releases/tag/v16.3.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Restarts next dev when the .next directory is deleted.",
+   "reference": [
+    "none"
+   ],
+   "adjudication": {
+    "sided_with": "claude",
+    "why": "dev-server convenience"
+   }
+  },
+  {
+   "n": 34,
+   "id": "next:next-internal-query-trace-port",
+   "technology": "next",
+   "change_type": "tooling",
+   "breaking": false,
+   "summary": "Startup hints and help examples now include the port option.",
+   "quote": "Include `--port` in `next internal query-trace` startup hint and help example",
+   "url": "https://github.com/vercel/next.js/releases/tag/v16.3.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Adds a port option to startup hints and help examples.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 35,
+   "id": "next:server-actions~5",
+   "technology": "next",
+   "change_type": "security",
+   "breaking": false,
+   "summary": "Fixes server-side request forgery in Server Actions running on custom servers.",
+   "quote": "Server-Side Request Forgery in Server Actions on custom servers",
+   "url": "https://github.com/vercel/next.js/releases/tag/v16.2.11",
+   "replaces": [],
+   "catalog_benefit": [
+    "security",
+    "correctness"
+   ],
+   "judge_claude": [
+    "security"
+   ],
+   "judge_codex": [
+    "security"
+   ],
+   "codex_basis": "Fixes server-side request forgery in Server Actions on custom servers.",
+   "reference": [
+    "security"
+   ]
+  },
+  {
+   "n": 36,
+   "id": "next:next-latest",
+   "technology": "next",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "A no-change release attempted to fix next@latest pointing at a prerelease version.",
+   "quote": "Release with no changes in an attempt to fix `next@latest` pointing at a prerelease version.",
+   "url": "https://github.com/vercel/next.js/releases/tag/v16.2.8",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Corrects release-channel pointing, without a listed project benefit.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 37,
+   "id": "next:styled-jsx~2",
+   "technology": "next",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "Missing styled-jsx styles in Pages Router SSR on adapter builds are fixed.",
+   "quote": "Fix missing styled-jsx styles in Pages Router SSR on adapter builds",
+   "url": "https://github.com/vercel/next.js/releases/tag/v16.3.1",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Fixes missing styled-jsx styles during Pages Router SSR on adapter builds.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 38,
+   "id": "next:instant-insights~3",
+   "technology": "next",
+   "change_type": "new_api",
+   "breaking": false,
+   "summary": "Adds Instant Insights for prefetch() and navigation().",
+   "quote": "Add Instant Insights for prefetch() and navigation()",
+   "url": "https://github.com/vercel/next.js/releases/tag/v16.4.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Adds a new Instant Insights API.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 39,
+   "id": "next:images.dangerouslyallowlocalip",
+   "technology": "next",
+   "change_type": "security",
+   "breaking": true,
+   "summary": "Local IP image optimization is blocked by default and can be enabled only for private networks.",
+   "quote": "A new security restriction blocks local IP optimization by default.",
+   "url": "https://github.com/vercel/next.js/blob/f7545a47811e04ea1aa9be2c37e722f7ba2906a3/docs/01-app/02-guides/upgrading/version-16.mdx",
+   "replaces": [],
+   "catalog_benefit": [
+    "security"
+   ],
+   "judge_claude": [
+    "security"
+   ],
+   "judge_codex": [
+    "security"
+   ],
+   "codex_basis": "Blocks local IP image optimization by default.",
+   "reference": [
+    "security"
+   ]
+  },
+  {
+   "n": 40,
+   "id": "next:fetch",
+   "technology": "next",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "fetch respects HTTP Cache-Control headers when using TTL-based invalidation.",
+   "quote": "fetch: respect HTTP Cache-Control headers with TTL-based invalidation",
+   "url": "https://github.com/vercel/next.js/releases/tag/v16.3.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Makes fetch respect HTTP Cache-Control headers during TTL-based invalidation.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 41,
+   "id": "next:segment-cache",
+   "technology": "next",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "summary": "Prefetch completion always performs an upsert.",
+   "quote": "[Segment Cache] Always upsert on prefetch completion: #91488",
+   "url": "https://github.com/vercel/next.js/releases/tag/v16.2.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Changes prefetch completion to always perform an upsert.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 42,
+   "id": "next:css",
+   "technology": "next",
+   "change_type": "performance",
+   "breaking": false,
+   "summary": "Turbopack validates CSS without computing all paths.",
+   "quote": "Turbopack: validate CSS without computing all paths",
+   "url": "https://github.com/vercel/next.js/releases/tag/v15.5.11",
+   "replaces": [],
+   "catalog_benefit": [
+    "performance"
+   ],
+   "judge_claude": [
+    "performance"
+   ],
+   "judge_codex": [
+    "performance"
+   ],
+   "codex_basis": "Validates CSS without computing all paths.",
+   "reference": [
+    "performance"
+   ]
+  },
+  {
+   "n": 43,
+   "id": "next:images.minimumcachettl-minimumcachettl",
+   "technology": "next",
+   "change_type": "default_change",
+   "breaking": true,
+   "summary": "The default image cache minimum lifetime increases from one minute to four hours.",
+   "quote": "BREAKING CHANGE!: bump default `images.minimumCacheTTL` from 1 min to 4 hours",
+   "url": "https://github.com/vercel/next.js/releases/tag/v16.0.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "cost",
+    "performance"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Changes the default image cache lifetime without stating a project benefit.",
+   "reference": [
+    "cost",
+    "performance"
+   ],
+   "adjudication": {
+    "sided_with": "claude",
+    "why": "the Next 16 guide: 'reduces revalidation cost \u2026 increased CPU usage and cost'"
+   }
+  },
+  {
+   "n": 44,
+   "id": "next:default.js",
+   "technology": "next",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "summary": "All parallel route slots require explicit default.js files or builds fail.",
+   "quote": "All parallel route slots now require explicit `default.js` files. Builds will fail without them.",
+   "url": "https://github.com/vercel/next.js/blob/f7545a47811e04ea1aa9be2c37e722f7ba2906a3/docs/01-app/02-guides/upgrading/version-16.mdx",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Requires explicit default.js files for parallel route slots.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 45,
+   "id": "next:loaders-api",
+   "technology": "next",
+   "change_type": "new_api",
+   "breaking": false,
+   "summary": "The loaders API gained a version and a .resolve capability.",
+   "quote": "Adds .resolve to loaders api",
+   "url": "https://github.com/vercel/next.js/releases/tag/v16.4.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Adds versioning and resolve capability to a new API.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 46,
+   "id": "next:router.query",
+   "technology": "next",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "Prevents catch-all router.query corruption when basePath and rewrites are used together.",
+   "quote": "Fix catch-all `router.query` corruption with `basePath` + `rewrites`",
+   "url": "https://github.com/vercel/next.js/releases/tag/v16.2.7",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Prevents catch-all router.query corruption with basePath and rewrites.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 47,
+   "id": "next:custom-cache-handlers",
+   "technology": "next",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "Custom cache handlers are available on initial requests.",
+   "quote": "Fix custom cache handlers missing on initial requests",
+   "url": "https://github.com/vercel/next.js/releases/tag/v16.4.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Makes custom cache handlers available on initial requests.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 48,
+   "id": "next:model-context-protocol-endpoint",
+   "technology": "next",
+   "change_type": "security",
+   "breaking": false,
+   "summary": "Security fixes address information disclosure in the Next.js development server's Model Context Protocol endpoint.",
+   "quote": "Information disclosure in the Next.js development server's Model Context Protocol endpoint",
+   "url": "https://github.com/vercel/next.js/releases/tag/v16.3.8",
+   "replaces": [],
+   "catalog_benefit": [
+    "security",
+    "correctness"
+   ],
+   "judge_claude": [
+    "security"
+   ],
+   "judge_codex": [
+    "security"
+   ],
+   "codex_basis": "Addresses information disclosure in the development server's Model Context Protocol endpoint.",
+   "reference": [
+    "security"
+   ]
+  },
+  {
+   "n": 49,
+   "id": "next:turbopack-debug-css-chunking~2",
+   "technology": "next",
+   "change_type": "new_option",
+   "breaking": false,
+   "summary": "Adds an environment variable for debugging CSS chunking.",
+   "quote": "Turbopack: add TURBOPACK_DEBUG_CSS_CHUNKING env var",
+   "url": "https://github.com/vercel/next.js/releases/tag/v16.3.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Adds an environment variable for debugging CSS chunking.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 50,
+   "id": "next:server-hmr~2",
+   "technology": "next",
+   "change_type": "tooling",
+   "breaking": false,
+   "summary": "Turbopack enables server HMR for app route handlers, improving development feedback for route changes.",
+   "quote": "Turbopack: enable server HMR for app route handlers (#91466)",
+   "url": "https://github.com/vercel/next.js/releases/tag/v16.2.2",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Improves development feedback for route changes, without a listed project benefit.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 51,
+   "id": "prisma:env~2",
+   "technology": "prisma",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "Allows the env helper's type definition to work with interface-based generics without an index signature.",
+   "quote": "Updates the `env()` helper\u2019s type definition so it works with interfaces as well as type aliases.",
+   "url": "https://github.com/prisma/orm/releases/tag/7.1.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Type-definition compatibility only.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 52,
+   "id": "prisma:prisma-accelerate",
+   "technology": "prisma",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "summary": "Prisma Accelerate now serves as a dedicated caching layer while Prisma Postgres provides connection pooling natively.",
+   "quote": "Prisma Accelerate now serves as a dedicated caching layer.",
+   "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "performance"
+   ],
+   "codex_basis": "Prisma Accelerate now serves as a dedicated caching layer.",
+   "reference": [
+    "none"
+   ],
+   "adjudication": {
+    "sided_with": "claude",
+    "why": "product repositioning, nothing to adopt"
+   }
+  },
+  {
+   "n": 53,
+   "id": "prisma:typescript-type-checking",
+   "technology": "prisma",
+   "change_type": "performance",
+   "breaking": false,
+   "summary": "Restoring the OmitOpts generic default lets tsc reuse cached type instantiations, reducing type-checking time on large schemas.",
+   "quote": "bringing type-checking on large schemas back from minutes to seconds",
+   "url": "https://github.com/prisma/orm/releases/tag/7.9.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "performance"
+   ],
+   "judge_claude": [
+    "performance"
+   ],
+   "judge_codex": [
+    "performance"
+   ],
+   "codex_basis": "Reduces type-checking time on large schemas from minutes to seconds.",
+   "reference": [
+    "performance"
+   ]
+  },
+  {
+   "n": 54,
+   "id": "prisma:prisma-generate-in-postinstall",
+   "technology": "prisma",
+   "change_type": "removal",
+   "breaking": true,
+   "summary": "This Prisma-specific environment variable has been removed.",
+   "quote": "`PRISMA_GENERATE_IN_POSTINSTALL`",
+   "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+   "replaces": [
+    "PRISMA_GENERATE_IN_POSTINSTALL"
+   ],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Removes an environment variable without a stated project benefit.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 55,
+   "id": "prisma:executeraw",
+   "technology": "prisma",
+   "change_type": "fix",
+   "breaking": true,
+   "summary": "Invalid Date values now fail fast with a validation error instead of being serialized as null.",
+   "quote": "$queryRaw and $executeRaw now fail fast with a clear validation error when passed an invalid Date",
+   "url": "https://github.com/prisma/orm/releases/tag/7.9.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Invalid Date values fail fast instead of being serialized as null.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 56,
+   "id": "prisma:datasource-directurl",
+   "technology": "prisma",
+   "change_type": "deprecation",
+   "breaking": false,
+   "summary": "The datasource directUrl field is deprecated and should be configured in Prisma Config.",
+   "quote": "Additionally other fields such as `url`, `directUrl`, and `shadowDatabaseUrl` in the `datasource` block are deprecated.",
+   "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Deprecation and configuration relocation only.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 57,
+   "id": "prisma:prisma-adapter-neon",
+   "technology": "prisma",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "Reading Bytes columns no longer emits Node.js DEP0005 deprecation warnings.",
+   "quote": "@prisma/adapter-pg, @prisma/adapter-neon, @prisma/adapter-ppg: Reading a Bytes column no longer emits Node.js' DEP0005 deprecation warning",
+   "url": "https://github.com/prisma/orm/releases/tag/7.9.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Removes Node.js deprecation warnings only.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 58,
+   "id": "prisma:output",
+   "technology": "prisma",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "summary": "Generated Client runtime and project types now require an output path in schema.prisma.",
+   "quote": "the generated Client runtime and project types will now **require** a `output` path to be set",
+   "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Requires an output path without stating a qualifying project benefit.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 59,
+   "id": "prisma:generated-client-files",
+   "technology": "prisma",
+   "change_type": "tooling",
+   "breaking": false,
+   "summary": "Generated client files now include Biome ignore comments.",
+   "quote": "Add biome ignore comments to generated client files.",
+   "url": "https://github.com/prisma/orm/releases/tag/6.19.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Adds Biome ignore comments to generated files.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 60,
+   "id": "prisma:diffing",
+   "technology": "prisma",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "Fixes incorrectly reported empty diffs caused by a diffing bug introduced in Prisma 6.13.1.",
+   "quote": "which led to incorrectly reported empty diffs",
+   "url": "https://github.com/prisma/orm/releases/tag/6.19.1",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Fixes incorrectly reported empty diffs.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 61,
+   "id": "prisma:cursor-based-pagination",
+   "technology": "prisma",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "Fixes a regression affecting cursor-based pagination when using parameterised values.",
+   "quote": "Fix cursor-based pagination regression with parameterised values",
+   "url": "https://github.com/prisma/orm/releases/tag/7.4.1",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Fixes a cursor-based pagination regression with parameterised values.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 62,
+   "id": "prisma:prisma-db-execute-schema",
+   "technology": "prisma",
+   "change_type": "removal",
+   "breaking": true,
+   "summary": "The --schema flag was removed; the schema path must be configured in prisma.config.ts.",
+   "quote": "The `--schema` and `--url` flags have been removed from the `prisma db execute` command.",
+   "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+   "replaces": [
+    "--schema"
+   ],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Removes a command flag and relocates schema configuration.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 63,
+   "id": "prisma:prisma-version",
+   "technology": "prisma",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "summary": "Version output now includes the resolved Prisma CLI package path, helping diagnose global-versus-local installation issues.",
+   "quote": "`prisma version` and `prisma version --json` now include the resolved Prisma CLI package path, making global-versus-local installation issues easier to diagnose.",
+   "url": "https://github.com/prisma/orm/releases/tag/7.10.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Improves diagnosis of global-versus-local installation issues.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 64,
+   "id": "prisma:in",
+   "technology": "prisma",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "Fixed a case-insensitive IN filter regression.",
+   "quote": "Fix a case-insensitive `IN` and `NOT IN` filter regression",
+   "url": "https://github.com/prisma/orm/releases/tag/7.4.2",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Fixes a case-insensitive IN and NOT IN filter regression.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 65,
+   "id": "prisma:binaryengine",
+   "technology": "prisma",
+   "change_type": "removal",
+   "breaking": true,
+   "summary": "The BinaryEngine and its long-running executable binary mode have been removed.",
+   "quote": "`BinaryEngine` (`engineType = \"binary\"`, the long-running executable binary)",
+   "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+   "replaces": [
+    "BinaryEngine",
+    "engineType = \"binary\""
+   ],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Removes BinaryEngine and its executable mode without a stated qualifying benefit.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 66,
+   "id": "prisma:prismaclient-datasourceurl",
+   "technology": "prisma",
+   "change_type": "removal",
+   "breaking": true,
+   "summary": "PrismaClient no longer accepts the datasourceUrl option.",
+   "quote": "`new PrismaClient({datasourceUrl: ..})` support has been removed",
+   "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Removes datasourceUrl support without a stated qualifying benefit.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 67,
+   "id": "prisma:mysql",
+   "technology": "prisma",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "summary": "MySQL connection strings now support bracketed IPv6 addresses.",
+   "quote": "Added support for bracketed IPv6 addresses in both `mysql://` and `mariadb://` connection strings.",
+   "url": "https://github.com/prisma/orm/releases/tag/7.10.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Adds support for bracketed IPv6 connection addresses.",
+   "reference": [
+    "none"
+   ],
+   "adjudication": {
+    "sided_with": "claude",
+    "why": "new support for an address form: a capability"
+   }
+  },
+  {
+   "n": 68,
+   "id": "prisma:prisma-bootstrap-api-key",
+   "technology": "prisma",
+   "change_type": "new_option",
+   "breaking": false,
+   "summary": "Supports supplying an API key for non-interactive bootstrapping in CI.",
+   "quote": "**Non-interactive (CI)**",
+   "url": "https://github.com/prisma/orm/releases/tag/7.7.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Adds non-interactive CI bootstrapping convenience.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 69,
+   "id": "prisma:prisma.config.ts",
+   "technology": "prisma",
+   "change_type": "new_api",
+   "breaking": false,
+   "summary": "prisma init now creates a prisma.config.ts file automatically for new projects.",
+   "quote": "`prisma init` now creates a `prisma.config.ts` automatically",
+   "url": "https://github.com/prisma/orm/releases/tag/6.18.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Automatically creates a configuration file for new projects.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 70,
+   "id": "prisma:prismaclient-datasources",
+   "technology": "prisma",
+   "change_type": "removal",
+   "breaking": true,
+   "summary": "PrismaClient no longer accepts the datasources option.",
+   "quote": "`new PrismaClient({ datasources: .. })` support has been removed",
+   "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Removes datasources support without a stated qualifying benefit.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 71,
+   "id": "prisma:migrations-view",
+   "technology": "prisma",
+   "change_type": "new_api",
+   "breaking": false,
+   "summary": "Prisma Studio can visualize Prisma Next migration history with timelines, schema diffs, SQL statements, and model changes.",
+   "quote": "Studio can now visualise your migration history.",
+   "url": "https://github.com/prisma/orm/releases/tag/7.9.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Adds migration-history visualization and inspection.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 72,
+   "id": "prisma:finduniqueorthrow",
+   "technology": "prisma",
+   "change_type": "fix",
+   "breaking": true,
+   "summary": "Automatically batched calls now reject every missing record with P2025 instead of resolving later misses to undefined.",
+   "quote": "Fixed automatically batched `findUniqueOrThrow()` calls so every missing record rejects with `P2025`; later misses no longer resolve to `undefined`.",
+   "url": "https://github.com/prisma/orm/releases/tag/7.10.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Every missing record now rejects with P2025 instead of resolving to undefined.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 73,
+   "id": "prisma:query-details",
+   "technology": "prisma",
+   "change_type": "tooling",
+   "breaking": false,
+   "summary": "Studio's Query Details view now provides copy actions.",
+   "quote": "Added copy actions to the Query Details view.",
+   "url": "https://github.com/prisma/orm/releases/tag/7.9.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Adds copy actions to a tooling view.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 74,
+   "id": "prisma:interactive-transactions-maxwait",
+   "technology": "prisma",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "Timed-out interactive transactions now issue ROLLBACK before returning connections to the pool, preventing leaked transaction state.",
+   "quote": "the discarded transaction now sends an explicit ROLLBACK before the connection is returned to the pool",
+   "url": "https://github.com/prisma/orm/releases/tag/7.9.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "ROLLBACK prevents leaked transaction state before returning connections to the pool.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 75,
+   "id": "prisma:adapter-mariadb",
+   "technology": "prisma",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "adapter-mariadb now uses the binary MySQL protocol, fixing lossy number conversions.",
+   "quote": "Made the  `adapter-mariadb` use the binary MySQL protocol to fix an issue with lossy number conversions",
+   "url": "https://github.com/prisma/orm/releases/tag/7.5.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Binary MySQL protocol fixes lossy number conversions.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 76,
+   "id": "prisma:ssl-certificate-validation",
+   "technology": "prisma",
+   "change_type": "default_change",
+   "breaking": true,
+   "summary": "Invalid SSL certificates are no longer ignored by default when Prisma ORM v7 uses node-pg.",
+   "quote": "Previously, invalid SSL certificates were ignored.",
+   "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+   "replaces": [],
+   "catalog_benefit": [
+    "security"
+   ],
+   "judge_claude": [
+    "security"
+   ],
+   "judge_codex": [
+    "security"
+   ],
+   "codex_basis": "Invalid SSL certificates are no longer ignored by default.",
+   "reference": [
+    "security"
+   ]
+  },
+  {
+   "n": 77,
+   "id": "prisma:columnnotfound",
+   "technology": "prisma",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "ColumnNotFound errors now correctly extract column names from quoted and unquoted PostgreSQL error messages.",
+   "quote": "Corrected error handling for ColumnNotFound errors to correctly extract column names from both quoted and unquoted PostgreSQL error messages",
+   "url": "https://github.com/prisma/orm/releases/tag/7.6.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Correctly extracts column names from quoted and unquoted PostgreSQL error messages.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 78,
+   "id": "prisma:prismaclient~4",
+   "technology": "prisma",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "summary": "Reports an additional error when constructing PrismaClient without configuration arguments.",
+   "quote": "This commit adds an additional error message when trying to create a new PrismaClient instance without any arguments.",
+   "url": "https://github.com/prisma/orm/releases/tag/7.1.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Adds an additional configuration error message without preventing a project bug.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 79,
+   "id": "prisma:streaming-parsing",
+   "technology": "prisma",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "summary": "Prisma schema parsing now streams with automatic fallback for extremely large intermediate strings exceeding V8 limits.",
+   "quote": "Added streaming parsing with automatic fallback to handle Prisma schemas that produce extremely large intermediate strings (>500MB) that hit V8's string limits",
+   "url": "https://github.com/prisma/orm/releases/tag/7.6.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Handles extremely large intermediate strings that exceed V8 limits.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 80,
+   "id": "prisma:adapter",
+   "technology": "prisma",
+   "change_type": "removal",
+   "breaking": true,
+   "summary": "The adapter setting has been removed from Prisma config.",
+   "quote": "`adapter` has been removed",
+   "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+   "replaces": [
+    "adapter"
+   ],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Removes the adapter setting without replacing project-maintained code or a workaround.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 81,
+   "id": "prisma:create-index-concurrently",
+   "technology": "prisma",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "PostgreSQL migration scripts now permit usage of CREATE INDEX CONCURRENTLY in migrations.",
+   "quote": "Fixed an issue with PostgreSQL migration scripts that prevented usage of `CREATE INDEX CONCURRENTLY` in migrations",
+   "url": "https://github.com/prisma/orm/releases/tag/7.4.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Permits CREATE INDEX CONCURRENTLY usage but states no direct project benefit.",
+   "reference": [
+    "correctness"
+   ],
+   "adjudication": {
+    "sided_with": "claude",
+    "why": "fixed migrations that failed with CREATE INDEX CONCURRENTLY"
+   }
+  },
+  {
+   "n": 82,
+   "id": "prisma:pool",
+   "technology": "prisma",
+   "change_type": "new_option",
+   "breaking": false,
+   "summary": "Prisma Postgres connection strings can enable connection pooling with pool=true.",
+   "quote": "you can confirm that connection to support connection pooling by appending the query parameter `pool=true` to the connection string.",
+   "url": "https://github.com/prisma/orm/releases/tag/6.19.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "performance"
+   ],
+   "judge_codex": [
+    "performance"
+   ],
+   "codex_basis": "Enables connection pooling through the connection string.",
+   "reference": [
+    "performance"
+   ]
+  },
+  {
+   "n": 83,
+   "id": "prisma:mssql-connection-string",
+   "technology": "prisma",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "MSSQL connection string parsing now handles curly brace escaping for passwords containing special characters.",
+   "quote": "Fixed MSSQL connection string parsing to properly handle curly brace escaping for passwords containing special characters",
+   "url": "https://github.com/prisma/orm/releases/tag/7.4.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Correctly parses escaped curly braces in passwords containing special characters.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 84,
+   "id": "prisma:prisma.config.ts~4",
+   "technology": "prisma",
+   "change_type": "other",
+   "breaking": false,
+   "summary": "The Prisma Config file must be placed at the project root.",
+   "quote": "The `prisma.config.ts` file should be placed at the **root of your project**",
+   "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Specifies the required location of the Prisma Config file.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 85,
+   "id": "prisma:prisma-studio",
+   "technology": "prisma",
+   "change_type": "tooling",
+   "breaking": false,
+   "summary": "The Prisma CLI now includes the new Prisma Studio with relationship visualization and remote database inspection.",
+   "quote": "with v7.0, we\u2019ve updated the Prisma CLI to include the new Prisma Studio.",
+   "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Adds Prisma Studio tooling and inspection capabilities.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 86,
+   "id": "prisma:prisma-generate-data-proxy",
+   "technology": "prisma",
+   "change_type": "removal",
+   "breaking": true,
+   "summary": "The --data-proxy flag has been removed from prisma generate.",
+   "quote": "`prisma generate --data-proxy`",
+   "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Removes the --data-proxy flag without a listed project benefit.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 87,
+   "id": "prisma:date",
+   "technology": "prisma",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "Date values created in other JavaScript realms, including iframes, jsdom, and vm contexts, are now handled correctly.",
+   "quote": "Fixed handling of `Date` and `Uint8Array` values created in other JavaScript realms, such as iframes, jsdom, and Node.js `vm` contexts.",
+   "url": "https://github.com/prisma/orm/releases/tag/7.10.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Correctly handles Date and Uint8Array values from other JavaScript realms.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 88,
+   "id": "prisma:engine~3",
+   "technology": "prisma",
+   "change_type": "removal",
+   "breaking": true,
+   "summary": "The engine setting with js or classic values has been removed from Prisma config.",
+   "quote": "`engine: 'js'| 'classic'` has been removed",
+   "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+   "replaces": [
+    "engine: 'js'",
+    "engine: 'classic'"
+   ],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Removes engine configuration values without a listed project benefit.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 89,
+   "id": "prisma:studio-connections",
+   "technology": "prisma",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "Resolves issues related to Studio connections, improving reliability for VS Code or language-server integrations.",
+   "quote": "Resolves issues related to Studio connections, improving reliability for VS Code or language-server integrations.",
+   "url": "https://github.com/prisma/orm/releases/tag/7.2.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Improves reliability for Studio connections and language-server integrations.",
+   "reference": [
+    "none"
+   ],
+   "adjudication": {
+    "sided_with": "claude",
+    "why": "Studio/editor tooling reliability, not the project"
+   }
+  },
+  {
+   "n": 90,
+   "id": "prisma:prisma-init-no-skills",
+   "technology": "prisma",
+   "change_type": "new_option",
+   "breaking": false,
+   "summary": "prisma init installs the Prisma agent skills catalog in freshly scaffolded projects, with an option to opt out.",
+   "quote": "prisma init now installs the prisma/skills catalog into freshly scaffolded projects.",
+   "url": "https://github.com/prisma/orm/releases/tag/7.9.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Installs an agent skills catalog in newly scaffolded projects.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 91,
+   "id": "prisma:prisma-client-no-retry",
+   "technology": "prisma",
+   "change_type": "removal",
+   "breaking": true,
+   "summary": "This Prisma-specific environment variable has been removed.",
+   "quote": "`PRISMA_CLIENT_NO_RETRY`",
+   "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+   "replaces": [
+    "PRISMA_CLIENT_NO_RETRY"
+   ],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Removes a Prisma-specific environment variable without a listed project benefit.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 92,
+   "id": "prisma:mariadb-statement-caching",
+   "technology": "prisma",
+   "change_type": "default_change",
+   "breaking": false,
+   "summary": "MariaDB statement caching is disabled by default to address a reported leak.",
+   "quote": "Modified the adapter to disable mariadb statement caching by default to address a reported leak",
+   "url": "https://github.com/prisma/orm/releases/tag/7.6.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Disables statement caching by default to address a reported leak.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 93,
+   "id": "prisma:partial-index-predicates",
+   "technology": "prisma",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "Partial index predicate comparison now handles quoted and unquoted identifiers correctly, preventing needless index recreation.",
+   "quote": "Enhanced partial index predicate comparison to handle quoted vs unquoted identifiers correctly, eliminating needless recreate cycles",
+   "url": "https://github.com/prisma/orm/releases/tag/7.5.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "performance"
+   ],
+   "codex_basis": "Eliminates needless partial-index recreation cycles.",
+   "reference": [
+    "correctness"
+   ],
+   "adjudication": {
+    "sided_with": "claude",
+    "why": "needless index recreation = spurious migrations"
+   }
+  },
+  {
+   "n": 94,
+   "id": "prisma:prisma-migrate-diff-to-schema-datasource",
+   "technology": "prisma",
+   "change_type": "removal",
+   "breaking": true,
+   "summary": "The --to-schema-datasource option was removed and replaced by --to-config-datasource.",
+   "quote": "`--to-schema-datasource` | `--to-config-datasource`",
+   "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+   "replaces": [
+    "--to-schema-datasource"
+   ],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Replaces a CLI option without replacing project-maintained code or a workaround.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 95,
+   "id": "prisma:datasource",
+   "technology": "prisma",
+   "change_type": "new_api",
+   "breaking": true,
+   "summary": "Projects can define their datasource directly in prisma.config.ts; any datasource in schema.prisma is ignored.",
+   "quote": "Support for defining your `datasource` in `prisma.config.ts`",
+   "url": "https://github.com/prisma/orm/releases/tag/6.18.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Adds datasource configuration in prisma.config.ts; no qualifying benefit is stated.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 96,
+   "id": "prisma:queries-view",
+   "technology": "prisma",
+   "change_type": "new_api",
+   "breaking": false,
+   "summary": "Studio adds an optional Queries view backed by query-insights snapshots.",
+   "quote": "there's an optional Queries view backed by query-insights snapshots.",
+   "url": "https://github.com/prisma/orm/releases/tag/7.9.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Adds an optional Queries view backed by query-insights snapshots.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 97,
+   "id": "prisma:prisma-version-json",
+   "technology": "prisma",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "Emits machine-readable JSON cleanly to stdout without extra noise.",
+   "quote": "Ensures machine-readable JSON output is emitted cleanly to stdout without extra noise.",
+   "url": "https://github.com/prisma/orm/releases/tag/7.2.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Emits machine-readable JSON cleanly without extra stdout noise.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 98,
+   "id": "prisma:reactnativeengine",
+   "technology": "prisma",
+   "change_type": "removal",
+   "breaking": true,
+   "summary": "ReactNativeEngine has been removed.",
+   "quote": "`ReactNativeEngine`",
+   "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+   "replaces": [
+    "ReactNativeEngine"
+   ],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Removes ReactNativeEngine without a listed project benefit.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 99,
+   "id": "prisma:migrate-reset",
+   "technology": "prisma",
+   "change_type": "removal",
+   "breaking": true,
+   "summary": "The migrate-reset tool is removed from the prisma mcp server because resetting a database is destructive.",
+   "quote": "Removed the migrate-reset tool from the prisma mcp server entirely",
+   "url": "https://github.com/prisma/orm/releases/tag/7.9.0",
+   "replaces": [
+    "migrate-reset"
+   ],
+   "catalog_benefit": [
+    "security",
+    "correctness"
+   ],
+   "judge_claude": [
+    "security"
+   ],
+   "judge_codex": [
+    "security"
+   ],
+   "codex_basis": "Removes a destructive database-reset tool from the Prisma MCP server.",
+   "reference": [
+    "security"
+   ]
+  },
+  {
+   "n": 100,
+   "id": "prisma:compilerbuild",
+   "technology": "prisma",
+   "change_type": "new_option",
+   "breaking": false,
+   "summary": "The client generator supports fast and small query compiler builds; fast is the default, while small reduces size with a speed tradeoff.",
+   "quote": "With 7.3.0, we're introducing a new `compilerBuild` option for the client generator block in `schema.prisma` with two options: `fast` and `small`.",
+   "url": "https://github.com/prisma/orm/releases/tag/7.3.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "performance"
+   ],
+   "judge_claude": [
+    "performance"
+   ],
+   "judge_codex": [
+    "performance"
+   ],
+   "codex_basis": "Provides fast builds and a small build option that reduces size.",
+   "reference": [
+    "performance"
+   ]
+  },
+  {
+   "n": 101,
+   "id": "nestjs:uuid-v3",
+   "technology": "nestjs",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "UUID v3 variant validation is corrected.",
+   "quote": "fix(common): validate UUID v3 variant",
+   "url": "https://github.com/nestjs/nest/releases/tag/v12.0.2",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "UUID v3 variant validation is corrected.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 102,
+   "id": "nestjs:listen",
+   "technology": "nestjs",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "Fastify listen() rejects invalid ports.",
+   "quote": "reject listen() on an invalid port",
+   "url": "https://github.com/nestjs/nest/releases/tag/v12.1.3",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Rejects listen() on an invalid port.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 103,
+   "id": "nestjs:maxstringlength",
+   "technology": "nestjs",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "The maxStringLength option is no longer skipped.",
+   "quote": "fix(common): Fix skipping maxArrayLength and maxStringLength option",
+   "url": "https://github.com/nestjs/nest/releases/tag/v11.1.13",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Fixes skipping the maxStringLength option.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 104,
+   "id": "nestjs:nest-upgrade-dry-run",
+   "technology": "nestjs",
+   "change_type": "new_option",
+   "breaking": false,
+   "summary": "The upgrade command can report planned changes without modifying project files.",
+   "quote": "Run it with `--dry-run` first to see that report without touching your files.",
+   "url": "https://github.com/nestjs/nest/releases/tag/v12.0.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Reports planned changes without modifying project files.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 105,
+   "id": "nestjs:nats-connection",
+   "technology": "nestjs",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "Keeps a newer NATS connection when a stale connection fails.",
+   "quote": "fix(microservices): keep a newer nats connection when a stale one fails",
+   "url": "https://github.com/nestjs/nest/releases/tag/v12.1.1",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Keeps a newer NATS connection when a stale one fails.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 106,
+   "id": "nestjs:barrier",
+   "technology": "nestjs",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "A barrier resolves immediately when its target count is zero.",
+   "quote": "fix(core): resolve barrier immediately when target count is zero",
+   "url": "https://github.com/nestjs/nest/releases/tag/v11.1.29",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Resolves the barrier immediately when target count is zero.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 107,
+   "id": "nestjs:isheaderssent",
+   "technology": "nestjs",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "isHeadersSent counts headers flushed through reply.raw.",
+   "quote": "count headers flushed on `reply.raw` in `isHeadersSent`",
+   "url": "https://github.com/nestjs/nest/releases/tag/v12.1.3",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Counts headers flushed on reply.raw in isHeadersSent.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 108,
+   "id": "nestjs:microservices-pre-request-hook",
+   "technology": "nestjs",
+   "change_type": "new_api",
+   "breaking": false,
+   "summary": "A new hook runs before a microservice message handler is invoked.",
+   "quote": "**Microservices pre-request hook** \u2014 a new hook runs before a message handler is invoked.",
+   "url": "https://github.com/nestjs/nest/releases/tag/v12.0.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Adds a new hook before a message handler is invoked.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 109,
+   "id": "nestjs:async-lifecycle-hooks",
+   "technology": "nestjs",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "Fastify async lifecycle hooks settle only once.",
+   "quote": "settle async lifecycle hooks once",
+   "url": "https://github.com/nestjs/nest/releases/tag/v12.1.3",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Settles async lifecycle hooks only once.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 110,
+   "id": "nestjs:get-middleware-exclusion",
+   "technology": "nestjs",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "A GET middleware exclusion also covers HEAD requests.",
+   "quote": "let a `GET` middleware exclusion cover `HEAD` requests",
+   "url": "https://github.com/nestjs/nest/releases/tag/v12.1.3",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Lets a GET middleware exclusion cover HEAD requests.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 111,
+   "id": "nestjs:parsearraypipe~2",
+   "technology": "nestjs",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "summary": "ParseArrayPipe rejects arrays nested in item values.",
+   "quote": "reject arrays nested in ParseArrayPipe items",
+   "url": "https://github.com/nestjs/nest/releases/tag/v12.1.3",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "security"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Rejects arrays nested in ParseArrayPipe items.",
+   "reference": [
+    "correctness"
+   ],
+   "adjudication": {
+    "sided_with": "codex",
+    "why": "stricter validation; no attack stated, so not security"
+   }
+  },
+  {
+   "n": 112,
+   "id": "nestjs:route-parameter-decorators-schema",
+   "technology": "nestjs",
+   "change_type": "new_option",
+   "breaking": false,
+   "summary": "Route parameter decorators accept Standard Schema-compatible schemas for validation and OpenAPI generation.",
+   "quote": "Route parameter decorators \u2014 `@Body()`, `@Query()`, `@Param()`, `@RawBody()` \u2014 accept a new `schema` option",
+   "url": "https://github.com/nestjs/nest/releases/tag/v12.0.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Adds a new schema option for validation and OpenAPI generation.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 113,
+   "id": "nestjs:provider-initialization",
+   "technology": "nestjs",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "Skipped provider initialization is now settled correctly.",
+   "quote": "fix(core): settle skipped provider initialization",
+   "url": "https://github.com/nestjs/nest/releases/tag/v11.1.21",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Settles skipped provider initialization correctly.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 114,
+   "id": "nestjs:subscriptions-transport-ws",
+   "technology": "nestjs",
+   "change_type": "removal",
+   "breaking": true,
+   "summary": "GraphQL subscriptions transport support was removed; clients must switch to graphql-ws.",
+   "quote": "**GraphQL subscriptions** \u2014 `subscriptions-transport-ws` support removed",
+   "url": "https://github.com/nestjs/nest/releases/tag/v12.0.0",
+   "replaces": [
+    "subscriptions-transport-ws"
+   ],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Removes subscriptions-transport-ws support; clients must switch to graphql-ws.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 115,
+   "id": "nestjs:microservices-pattern-matching",
+   "technology": "nestjs",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "Fixes pattern matching when indexOf returns 0, preventing a valid result from being treated as falsy.",
+   "quote": "fix(microservices): if indexOf return 0 will if will be falsy",
+   "url": "https://github.com/nestjs/nest/releases/tag/v11.1.15",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Prevents indexOf returning 0 from being treated as falsy.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 116,
+   "id": "nestjs:statuscode",
+   "technology": "nestjs",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "Error instances with statusCode are no longer incorrectly treated as HTTP errors.",
+   "quote": "fix(core): avoid treating error instances with `statusCode` as http errors",
+   "url": "https://github.com/nestjs/nest/releases/tag/v12.0.2",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Avoids treating error instances with statusCode as HTTP errors.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 117,
+   "id": "nestjs:max-pattern-depth",
+   "technology": "nestjs",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "Introduces limits for pattern depth and object complexity in microservices handling.",
+   "quote": "fix(microservices): introuduce max pattern depth and object complexity",
+   "url": "https://github.com/nestjs/nest/releases/tag/v11.1.15",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "security"
+   ],
+   "judge_codex": [
+    "security"
+   ],
+   "codex_basis": "Introduces limits for pattern depth and object complexity.",
+   "reference": [
+    "security"
+   ]
+  },
+  {
+   "n": 118,
+   "id": "nestjs:string-file-types",
+   "technology": "nestjs",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "String file types containing regex metacharacters are now matched correctly.",
+   "quote": "fix(common): match string file types containing regex metacharacters",
+   "url": "https://github.com/nestjs/nest/releases/tag/v11.2.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Matches string file types containing regex metacharacters correctly.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 119,
+   "id": "nestjs:shutdown-signal",
+   "technology": "nestjs",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "A shutdown signal received while close() is running is honored.",
+   "quote": "honor a shutdown signal received while close() is in flight",
+   "url": "https://github.com/nestjs/nest/releases/tag/v12.1.3",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Honors a shutdown signal received while close() is in flight.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 120,
+   "id": "nestjs:tcp-peer-memory",
+   "technology": "nestjs",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "Memory held for a TCP peer is now bounded.",
+   "quote": "fix(microservices): bound memory held for a TCP peer",
+   "url": "https://github.com/nestjs/nest/releases/tag/v12.0.3",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness",
+    "performance"
+   ],
+   "judge_claude": [
+    "correctness",
+    "performance"
+   ],
+   "judge_codex": [
+    "performance"
+   ],
+   "codex_basis": "Bounds memory held for a TCP peer.",
+   "reference": [
+    "performance"
+   ],
+   "adjudication": {
+    "sided_with": "codex",
+    "why": "bounding memory = less memory; no bug stated"
+   }
+  },
+  {
+   "n": 121,
+   "id": "nestjs:redis-clients",
+   "technology": "nestjs",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "Redis operations wait for both clients to be ready.",
+   "quote": "wait for both Redis clients to be ready",
+   "url": "https://github.com/nestjs/nest/releases/tag/v12.1.3",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Waits for both Redis clients to be ready.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 122,
+   "id": "nestjs:wildcard-middleware",
+   "technology": "nestjs",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "Wildcard middleware runs on the bare global prefix path.",
+   "quote": "run wildcard middleware on the bare global prefix path",
+   "url": "https://github.com/nestjs/nest/releases/tag/v12.1.3",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Runs wildcard middleware on the bare global prefix path.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 123,
+   "id": "nestjs:inject",
+   "technology": "nestjs",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "summary": "A redeclared @Inject() property replaces the inherited property.",
+   "quote": "let a redeclared `@Inject()` property replace the parent's",
+   "url": "https://github.com/nestjs/nest/releases/tag/v12.1.3",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "A redeclared @Inject() property replaces the inherited property.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 124,
+   "id": "nestjs:sse-retry-field",
+   "technology": "nestjs",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "The SSE retry field is serialized when its value is zero.",
+   "quote": "fix(core): serialize SSE retry field when value is zero",
+   "url": "https://github.com/nestjs/nest/releases/tag/v11.1.29",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Serializes the SSE retry field when its value is zero.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 125,
+   "id": "nestjs:dependency-resolution-error-messages",
+   "technology": "nestjs",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "Dependency resolution errors now provide improved error messages.",
+   "quote": "fix(core): improve dependency resolution error messages",
+   "url": "https://github.com/nestjs/nest/releases/tag/v11.1.7",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Improves dependency resolution error messages.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 126,
+   "id": "nestjs:rmq-wildcards",
+   "technology": "nestjs",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "RabbitMQ # wildcards match in any position.",
+   "quote": "match rmq '#' wildcards in any position",
+   "url": "https://github.com/nestjs/nest/releases/tag/v12.1.3",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Matches RabbitMQ # wildcards in any position.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 127,
+   "id": "nestjs:query",
+   "technology": "nestjs",
+   "change_type": "new_api",
+   "breaking": false,
+   "summary": "NestJS now supports the HTTP QUERY method across core, common, and Fastify.",
+   "quote": "feat(core,common,platform-fastify): add query http method support",
+   "url": "https://github.com/nestjs/nest/releases/tag/v11.2.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Adds support for a new HTTP method without a listed benefit.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 128,
+   "id": "nestjs:express",
+   "technology": "nestjs",
+   "change_type": "security",
+   "breaking": false,
+   "summary": "Updated Express to address CVE-2025-15284.",
+   "quote": "fix(express): Update express to 4.22.1 to address CVE-2025-15284",
+   "url": "https://github.com/nestjs/nest/releases/tag/v10.4.21",
+   "replaces": [],
+   "catalog_benefit": [
+    "security",
+    "correctness"
+   ],
+   "judge_claude": [
+    "security"
+   ],
+   "judge_codex": [
+    "security"
+   ],
+   "codex_basis": "Updates Express to address CVE-2025-15284.",
+   "reference": [
+    "security"
+   ]
+  },
+  {
+   "n": 129,
+   "id": "nestjs:nest-build-no-type-check",
+   "technology": "nestjs",
+   "change_type": "new_option",
+   "breaking": false,
+   "summary": "Builds can disable type checking.",
+   "quote": "`--no-type-check`",
+   "url": "https://github.com/nestjs/nest/releases/tag/v12.0.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "performance"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Provides an optional build setting without a stated project benefit.",
+   "reference": [
+    "none"
+   ],
+   "adjudication": {
+    "sided_with": "codex",
+    "why": "an optional flag; no stated benefit"
+   }
+  },
+  {
+   "n": 130,
+   "id": "nestjs:node.js",
+   "technology": "nestjs",
+   "change_type": "removal",
+   "breaking": true,
+   "summary": "NestJS 12 requires Node.js 20.19+ or 22.12+; the 21.x line is unsupported.",
+   "quote": "v12 requires **Node.js v20.19+ or v22.12+**.",
+   "url": "https://github.com/nestjs/nest/releases/tag/v12.0.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Changes supported Node.js versions.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 131,
+   "id": "nestjs:filetype-validator-buffer-message",
+   "technology": "nestjs",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "The filetype validator buffer message is corrected.",
+   "quote": "fix(common): filetype validator buffer message",
+   "url": "https://github.com/nestjs/nest/releases/tag/v11.1.20",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Corrects the filetype validator buffer message.",
+   "reference": [
+    "none"
+   ],
+   "adjudication": {
+    "sided_with": "claude",
+    "why": "message wording only"
+   }
+  },
+  {
+   "n": 132,
+   "id": "nestjs:request-response-span~2",
+   "technology": "nestjs",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "Request-response spans are closed exactly once.",
+   "quote": "fix(microservices): close the request-response span exactly once",
+   "url": "https://github.com/nestjs/nest/releases/tag/v12.0.4",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Closes request-response spans exactly once.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 133,
+   "id": "nestjs:rmq-client~2",
+   "technology": "nestjs",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "The RabbitMQ client no longer opens two channels on connect.",
+   "quote": "stop rmq client opening two channels on connect",
+   "url": "https://github.com/nestjs/nest/releases/tag/v12.1.3",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Prevents opening two channels, but no permitted benefit is stated.",
+   "reference": [
+    "correctness"
+   ],
+   "adjudication": {
+    "sided_with": "claude",
+    "why": "duplicate channels on connect is a bug"
+   }
+  },
+  {
+   "n": 134,
+   "id": "nestjs:multer-error-mapping",
+   "technology": "nestjs",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "Multer errors are mapped by code instead of message, restoring 400 responses for unexpected file field names.",
+   "quote": "a file sent under an unexpected field name now returns 400 again instead of 500 with multer 2.4.0",
+   "url": "https://github.com/nestjs/nest/releases/tag/v11.2.6",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Unexpected file fields return 400 instead of 500.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 135,
+   "id": "nestjs:nest-build-parallel",
+   "technology": "nestjs",
+   "change_type": "new_option",
+   "breaking": false,
+   "summary": "Monorepo projects can be built in parallel with configurable concurrency.",
+   "quote": "`nest build`: `--parallel [concurrency]`, for building monorepo projects in parallel with `--all`",
+   "url": "https://github.com/nestjs/nest/releases/tag/v12.0.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "performance"
+   ],
+   "judge_claude": [
+    "performance"
+   ],
+   "judge_codex": [
+    "performance"
+   ],
+   "codex_basis": "Builds monorepo projects in parallel with configurable concurrency.",
+   "reference": [
+    "performance"
+   ]
+  },
+  {
+   "n": 136,
+   "id": "nestjs:logger~2",
+   "technology": "nestjs",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "Fixes JSON output, log level changes, fatal logs, and buffered logs.",
+   "quote": "fix(common): logger bugs in json output, level changes, fatal and buffered logs",
+   "url": "https://github.com/nestjs/nest/releases/tag/v12.1.1",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Fixes JSON output, log levels, fatal logs, and buffered logs.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 137,
+   "id": "nestjs:reflectable-decorators",
+   "technology": "nestjs",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "Explicit null values are preserved in reflectable decorators.",
+   "quote": "preserve explicit null values in reflectable decorators",
+   "url": "https://github.com/nestjs/nest/releases/tag/v12.1.3",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Preserves explicit null values in reflectable decorators.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 138,
+   "id": "nestjs:custom-deserializers",
+   "technology": "nestjs",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "Client operations survive custom deserializer errors.",
+   "quote": "survive custom deserializer errors in clients",
+   "url": "https://github.com/nestjs/nest/releases/tag/v12.1.3",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Client operations survive custom deserializer errors.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 139,
+   "id": "nestjs:bun",
+   "technology": "nestjs",
+   "change_type": "tooling",
+   "breaking": false,
+   "summary": "bun is now supported as a package manager alongside npm, yarn, and pnpm.",
+   "quote": "**bun** is now a supported package manager",
+   "url": "https://github.com/nestjs/nest/releases/tag/v12.0.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Adds package-manager support.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 140,
+   "id": "nestjs:mqtt-client",
+   "technology": "nestjs",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "Allows the MQTT client to retry after a failed connection.",
+   "quote": "fix(microservices): let the mqtt client retry after a failed connect",
+   "url": "https://github.com/nestjs/nest/releases/tag/v12.1.1",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Allows the MQTT client to retry after a failed connection.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 141,
+   "id": "nestjs:nested-transient-providers",
+   "technology": "nestjs",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "Nested transient providers are now instantiated correctly in static context.",
+   "quote": "fix(core): instantiate nested transient providers in static context",
+   "url": "https://github.com/nestjs/nest/releases/tag/v11.1.10",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Instantiates nested transient providers correctly in static context.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 142,
+   "id": "nestjs:sse-async-handlers",
+   "technology": "nestjs",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "Fixed teardown issues affecting SSE async handlers.",
+   "quote": "fix(core): sse async handlers teardown issue",
+   "url": "https://github.com/nestjs/nest/releases/tag/v11.1.27",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Fixes teardown issues affecting SSE async handlers.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 143,
+   "id": "nestjs:nats-status-events",
+   "technology": "nestjs",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "Stale NATS status events are ignored.",
+   "quote": "ignore stale NATS status events",
+   "url": "https://github.com/nestjs/nest/releases/tag/v12.1.3",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Ignores stale NATS status events.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 144,
+   "id": "nestjs:tcp-client-socket",
+   "technology": "nestjs",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "Ignores events emitted by a replaced TCP client socket.",
+   "quote": "fix(microservices): ignore events from a replaced tcp client socket",
+   "url": "https://github.com/nestjs/nest/releases/tag/v12.1.1",
+   "replaces": [],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Ignores events from a replaced TCP client socket.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 145,
+   "id": "nestjs:sse-signal",
+   "technology": "nestjs",
+   "change_type": "new_api",
+   "breaking": false,
+   "summary": "Server-sent events now support an SSE signal.",
+   "quote": "feat(core): sse signal",
+   "url": "https://github.com/nestjs/nest/releases/tag/v11.2.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Adds an SSE signal without a listed permitted benefit.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 146,
+   "id": "nestjs:healthcheckerror",
+   "technology": "nestjs",
+   "change_type": "removal",
+   "breaking": true,
+   "summary": "Throwing HealthCheckError no longer reports unhealthy health checks.",
+   "quote": "Throwing is no longer a way to report an unhealthy state.",
+   "url": "https://github.com/nestjs/docs.nestjs.com/blob/72f77737e2c6f2c305229e87c4f7846bb629c6cc/content/migration.md",
+   "replaces": [
+    "HealthCheckError"
+   ],
+   "catalog_benefit": [
+    "correctness"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Removes HealthCheckError behavior without naming a supported replacement.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 147,
+   "id": "nestjs:array-index-upload-limits",
+   "technology": "nestjs",
+   "change_type": "new_option",
+   "breaking": false,
+   "summary": "Express and Fastify file uploads support array index limits.",
+   "quote": "add field nesting and array index upload limits",
+   "url": "https://github.com/nestjs/nest/releases/tag/v12.1.3",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "security"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Adds upload-limit options without stating a permitted benefit.",
+   "reference": [
+    "security"
+   ],
+   "adjudication": {
+    "sided_with": "claude",
+    "why": "nesting and array-index upload limits are DoS hardening (the vault rated the multipart nesting limit security)"
+   }
+  },
+  {
+   "n": 148,
+   "id": "nestjs:argumentmetadata",
+   "technology": "nestjs",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "summary": "ArgumentMetadata is now generic, requiring adjustments to some hand-written custom pipe signatures.",
+   "quote": "**Pipe transform signatures** refined; `ArgumentMetadata` is now generic",
+   "url": "https://github.com/nestjs/nest/releases/tag/v12.0.0",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Refines generic typing and requires custom signature adjustments.",
+   "reference": [
+    "none"
+   ]
+  },
+  {
+   "n": 149,
+   "id": "nestjs:exception-class-names",
+   "technology": "nestjs",
+   "change_type": "fix",
+   "breaking": false,
+   "summary": "Minified exception class names fall back to Error.",
+   "quote": "fallback to 'Error' for minified exception class names",
+   "url": "https://github.com/nestjs/nest/releases/tag/v12.1.3",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "correctness"
+   ],
+   "judge_codex": [
+    "correctness"
+   ],
+   "codex_basis": "Falls back to Error for minified exception class names.",
+   "reference": [
+    "correctness"
+   ]
+  },
+  {
+   "n": 150,
+   "id": "nestjs:return-buffers",
+   "technology": "nestjs",
+   "change_type": "new_option",
+   "breaking": false,
+   "summary": "Microservices add an option to return buffers for binary data.",
+   "quote": "feat(microservices): add return buffers option for binary data",
+   "url": "https://github.com/nestjs/nest/releases/tag/v11.1.20",
+   "replaces": [],
+   "catalog_benefit": [
+    "none"
+   ],
+   "judge_claude": [
+    "none"
+   ],
+   "judge_codex": [
+    "none"
+   ],
+   "codex_basis": "Adds an optional binary-data behavior without a stated permitted benefit.",
+   "reference": [
+    "none"
+   ]
+  }
+ ]
+}

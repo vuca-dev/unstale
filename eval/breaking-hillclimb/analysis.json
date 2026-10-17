@@ -1,0 +1,1024 @@
+{
+ "reference": {
+  "n": 241,
+  "breaking": 143,
+  "split": 10
+ },
+ "heldout": {
+  "P0/jev": {
+   "n": 241,
+   "missing": 0,
+   "agree": 216,
+   "false_breaking": 5,
+   "missed_breaking": 20,
+   "yes": 130,
+   "split_yes": 2,
+   "pct": 89.6,
+   "pct_guide": 87.0,
+   "pct_notes": 94.3
+  },
+  "P0/luna": {
+   "n": 241,
+   "missing": 0,
+   "agree": 223,
+   "false_breaking": 8,
+   "missed_breaking": 10,
+   "yes": 146,
+   "split_yes": 5,
+   "pct": 92.5,
+   "pct_guide": 92.9,
+   "pct_notes": 92.0
+  },
+  "P0/codex": {
+   "n": 241,
+   "missing": 0,
+   "agree": 230,
+   "false_breaking": 8,
+   "missed_breaking": 3,
+   "yes": 156,
+   "split_yes": 8,
+   "pct": 95.4,
+   "pct_guide": 94.2,
+   "pct_notes": 97.7
+  },
+  "P1/jev": {
+   "n": 241,
+   "missing": 0,
+   "agree": 204,
+   "false_breaking": 4,
+   "missed_breaking": 33,
+   "yes": 114,
+   "split_yes": 0,
+   "pct": 84.6,
+   "pct_guide": 79.9,
+   "pct_notes": 93.1
+  },
+  "P1/luna": {
+   "n": 241,
+   "missing": 0,
+   "agree": 218,
+   "false_breaking": 6,
+   "missed_breaking": 17,
+   "yes": 134,
+   "split_yes": 2,
+   "pct": 90.5,
+   "pct_guide": 88.3,
+   "pct_notes": 94.3
+  },
+  "P1/codex": {
+   "n": 241,
+   "missing": 0,
+   "agree": 224,
+   "false_breaking": 11,
+   "missed_breaking": 6,
+   "yes": 157,
+   "split_yes": 9,
+   "pct": 92.9,
+   "pct_guide": 92.9,
+   "pct_notes": 93.1
+  },
+  "P2/jev": {
+   "n": 241,
+   "missing": 0,
+   "agree": 200,
+   "false_breaking": 17,
+   "missed_breaking": 24,
+   "yes": 138,
+   "split_yes": 2,
+   "pct": 83.0,
+   "pct_guide": 79.9,
+   "pct_notes": 88.5
+  },
+  "P2/luna": {
+   "n": 241,
+   "missing": 0,
+   "agree": 181,
+   "false_breaking": 12,
+   "missed_breaking": 48,
+   "yes": 110,
+   "split_yes": 3,
+   "pct": 75.1,
+   "pct_guide": 69.5,
+   "pct_notes": 85.1
+  },
+  "P2/codex": {
+   "n": 241,
+   "missing": 0,
+   "agree": 217,
+   "false_breaking": 22,
+   "missed_breaking": 2,
+   "yes": 171,
+   "split_yes": 8,
+   "pct": 90.0,
+   "pct_guide": 89.0,
+   "pct_notes": 92.0
+  },
+  "P3/jev": {
+   "n": 241,
+   "missing": 0,
+   "agree": 221,
+   "false_breaking": 7,
+   "missed_breaking": 13,
+   "yes": 139,
+   "split_yes": 2,
+   "pct": 91.7,
+   "pct_guide": 92.2,
+   "pct_notes": 90.8
+  },
+  "P3/luna": {
+   "n": 241,
+   "missing": 0,
+   "agree": 228,
+   "false_breaking": 6,
+   "missed_breaking": 7,
+   "yes": 146,
+   "split_yes": 4,
+   "pct": 94.6,
+   "pct_guide": 94.8,
+   "pct_notes": 94.3
+  },
+  "P4/jev": {
+   "n": 241,
+   "missing": 0,
+   "agree": 230,
+   "false_breaking": 5,
+   "missed_breaking": 6,
+   "yes": 145,
+   "split_yes": 3,
+   "pct": 95.4,
+   "pct_guide": 96.8,
+   "pct_notes": 93.1
+  },
+  "P4/luna": {
+   "n": 241,
+   "missing": 0,
+   "agree": 226,
+   "false_breaking": 10,
+   "missed_breaking": 5,
+   "yes": 153,
+   "split_yes": 5,
+   "pct": 93.8,
+   "pct_guide": 95.5,
+   "pct_notes": 90.8
+  }
+ },
+ "flips": {
+  "heldout/jev": {
+   "n": 251,
+   "flips": 16,
+   "pct": 6.4,
+   "to_yes": 0,
+   "to_no": 16
+  },
+  "dev/jev": {
+   "n": 493,
+   "flips": 6,
+   "pct": 1.2,
+   "to_yes": 0,
+   "to_no": 6
+  },
+  "heldout/luna": {
+   "n": 251,
+   "flips": 20,
+   "pct": 8.0,
+   "to_yes": 4,
+   "to_no": 16
+  },
+  "dev/luna": {
+   "n": 493,
+   "flips": 48,
+   "pct": 9.7,
+   "to_yes": 2,
+   "to_no": 46
+  },
+  "heldout/codex": {
+   "n": 251,
+   "flips": 11,
+   "pct": 4.4,
+   "to_yes": 6,
+   "to_no": 5
+  }
+ },
+ "dev": {
+  "P0-jev": {
+   "total": {
+    "covered": 19,
+    "queued": 19,
+    "first16": 13,
+    "tier0": {
+     "workout-next16": 44,
+     "invoicerr-prisma7": 54,
+     "invoicerr-nest12": 12
+    }
+   },
+   "events": {
+    "workout-next16": {
+     "first16": 0,
+     "queue": 128,
+     "tiers": {
+      "0": 44,
+      "1": 5,
+      "2": 19,
+      "3": 60
+     },
+     "first16_ids": []
+    },
+    "invoicerr-prisma7": {
+     "first16": 10,
+     "queue": 81,
+     "tiers": {
+      "0": 54,
+      "1": 0,
+      "2": 7,
+      "3": 20
+     },
+     "first16_ids": [
+      "K1",
+      "K13",
+      "K15",
+      "K16",
+      "K2",
+      "K3",
+      "K5",
+      "K6",
+      "K7",
+      "K9"
+     ]
+    },
+    "invoicerr-nest12": {
+     "first16": 3,
+     "queue": 47,
+     "tiers": {
+      "0": 12,
+      "1": 2,
+      "2": 6,
+      "3": 27
+     },
+     "first16_ids": [
+      "K1",
+      "K2",
+      "K8"
+     ]
+    }
+   },
+   "record_flips": {
+    "workout-next16": 2,
+    "invoicerr-prisma7": 0,
+    "invoicerr-nest12": 0
+   }
+  },
+  "P0-luna": {
+   "total": {
+    "covered": 19,
+    "queued": 19,
+    "first16": 11,
+    "tier0": {
+     "workout-next16": 56,
+     "invoicerr-prisma7": 56,
+     "invoicerr-nest12": 32
+    }
+   },
+   "events": {
+    "workout-next16": {
+     "first16": 1,
+     "queue": 142,
+     "tiers": {
+      "0": 56,
+      "1": 5,
+      "2": 16,
+      "3": 65
+     },
+     "first16_ids": [
+      "K1"
+     ]
+    },
+    "invoicerr-prisma7": {
+     "first16": 10,
+     "queue": 83,
+     "tiers": {
+      "0": 56,
+      "1": 0,
+      "2": 6,
+      "3": 21
+     },
+     "first16_ids": [
+      "K1",
+      "K13",
+      "K15",
+      "K16",
+      "K2",
+      "K3",
+      "K5",
+      "K6",
+      "K7",
+      "K9"
+     ]
+    },
+    "invoicerr-nest12": {
+     "first16": 0,
+     "queue": 64,
+     "tiers": {
+      "0": 32,
+      "1": 2,
+      "2": 3,
+      "3": 27
+     },
+     "first16_ids": []
+    }
+   },
+   "record_flips": {
+    "workout-next16": 27,
+    "invoicerr-prisma7": 4,
+    "invoicerr-nest12": 20
+   }
+  },
+  "P0-codex": {
+   "total": {
+    "covered": 19,
+    "queued": 19,
+    "first16": 11,
+    "tier0": {
+     "workout-next16": 60,
+     "invoicerr-prisma7": 59,
+     "invoicerr-nest12": 14
+    }
+   },
+   "events": {
+    "workout-next16": {
+     "first16": 1,
+     "queue": 130,
+     "tiers": {
+      "0": 60,
+      "1": 5,
+      "2": 12,
+      "3": 53
+     },
+     "first16_ids": [
+      "K1"
+     ]
+    },
+    "invoicerr-prisma7": {
+     "first16": 10,
+     "queue": 83,
+     "tiers": {
+      "0": 59,
+      "1": 0,
+      "2": 5,
+      "3": 19
+     },
+     "first16_ids": [
+      "K1",
+      "K13",
+      "K15",
+      "K16",
+      "K2",
+      "K3",
+      "K5",
+      "K6",
+      "K7",
+      "K9"
+     ]
+    },
+    "invoicerr-nest12": {
+     "first16": 0,
+     "queue": 47,
+     "tiers": {
+      "0": 14,
+      "1": 2,
+      "2": 4,
+      "3": 27
+     },
+     "first16_ids": []
+    }
+   },
+   "record_flips": {
+    "workout-next16": 20,
+    "invoicerr-prisma7": 5,
+    "invoicerr-nest12": 6
+   }
+  },
+  "P0-cached": {
+   "total": {
+    "covered": 19,
+    "queued": 19,
+    "first16": 13,
+    "tier0": {
+     "workout-next16": 42,
+     "invoicerr-prisma7": 54,
+     "invoicerr-nest12": 12
+    }
+   },
+   "events": {
+    "workout-next16": {
+     "first16": 0,
+     "queue": 128,
+     "tiers": {
+      "0": 42,
+      "1": 5,
+      "2": 20,
+      "3": 61
+     },
+     "first16_ids": []
+    },
+    "invoicerr-prisma7": {
+     "first16": 10,
+     "queue": 81,
+     "tiers": {
+      "0": 54,
+      "1": 0,
+      "2": 7,
+      "3": 20
+     },
+     "first16_ids": [
+      "K1",
+      "K13",
+      "K15",
+      "K16",
+      "K2",
+      "K3",
+      "K5",
+      "K6",
+      "K7",
+      "K9"
+     ]
+    },
+    "invoicerr-nest12": {
+     "first16": 3,
+     "queue": 47,
+     "tiers": {
+      "0": 12,
+      "1": 2,
+      "2": 6,
+      "3": 27
+     },
+     "first16_ids": [
+      "K1",
+      "K2",
+      "K8"
+     ]
+    }
+   },
+   "record_flips": {
+    "workout-next16": 0,
+    "invoicerr-prisma7": 0,
+    "invoicerr-nest12": 0
+   }
+  },
+  "P1-jev": {
+   "total": {
+    "covered": 19,
+    "queued": 19,
+    "first16": 13,
+    "tier0": {
+     "workout-next16": 40,
+     "invoicerr-prisma7": 54,
+     "invoicerr-nest12": 11
+    }
+   },
+   "events": {
+    "workout-next16": {
+     "first16": 0,
+     "queue": 127,
+     "tiers": {
+      "0": 40,
+      "1": 5,
+      "2": 21,
+      "3": 61
+     },
+     "first16_ids": []
+    },
+    "invoicerr-prisma7": {
+     "first16": 10,
+     "queue": 81,
+     "tiers": {
+      "0": 54,
+      "1": 0,
+      "2": 7,
+      "3": 20
+     },
+     "first16_ids": [
+      "K1",
+      "K13",
+      "K15",
+      "K16",
+      "K2",
+      "K3",
+      "K5",
+      "K6",
+      "K7",
+      "K9"
+     ]
+    },
+    "invoicerr-nest12": {
+     "first16": 3,
+     "queue": 47,
+     "tiers": {
+      "0": 11,
+      "1": 2,
+      "2": 7,
+      "3": 27
+     },
+     "first16_ids": [
+      "K1",
+      "K2",
+      "K8"
+     ]
+    }
+   },
+   "record_flips": {
+    "workout-next16": 2,
+    "invoicerr-prisma7": 1,
+    "invoicerr-nest12": 1
+   }
+  },
+  "P1-luna": {
+   "total": {
+    "covered": 19,
+    "queued": 19,
+    "first16": 10,
+    "tier0": {
+     "workout-next16": 36,
+     "invoicerr-prisma7": 53,
+     "invoicerr-nest12": 17
+    }
+   },
+   "events": {
+    "workout-next16": {
+     "first16": 0,
+     "queue": 131,
+     "tiers": {
+      "0": 36,
+      "1": 5,
+      "2": 21,
+      "3": 69
+     },
+     "first16_ids": []
+    },
+    "invoicerr-prisma7": {
+     "first16": 10,
+     "queue": 81,
+     "tiers": {
+      "0": 53,
+      "1": 0,
+      "2": 7,
+      "3": 21
+     },
+     "first16_ids": [
+      "K1",
+      "K13",
+      "K15",
+      "K16",
+      "K2",
+      "K3",
+      "K5",
+      "K6",
+      "K7",
+      "K9"
+     ]
+    },
+    "invoicerr-nest12": {
+     "first16": 0,
+     "queue": 52,
+     "tiers": {
+      "0": 17,
+      "1": 2,
+      "2": 6,
+      "3": 27
+     },
+     "first16_ids": []
+    }
+   },
+   "record_flips": {
+    "workout-next16": 17,
+    "invoicerr-prisma7": 3,
+    "invoicerr-nest12": 7
+   }
+  },
+  "P2-jev": {
+   "total": {
+    "covered": 19,
+    "queued": 19,
+    "first16": 15,
+    "tier0": {
+     "workout-next16": 49,
+     "invoicerr-prisma7": 54,
+     "invoicerr-nest12": 11
+    }
+   },
+   "events": {
+    "workout-next16": {
+     "first16": 2,
+     "queue": 127,
+     "tiers": {
+      "0": 49,
+      "1": 0,
+      "2": 20,
+      "3": 58
+     },
+     "first16_ids": [
+      "K1",
+      "K4"
+     ]
+    },
+    "invoicerr-prisma7": {
+     "first16": 10,
+     "queue": 81,
+     "tiers": {
+      "0": 54,
+      "1": 0,
+      "2": 7,
+      "3": 20
+     },
+     "first16_ids": [
+      "K1",
+      "K13",
+      "K15",
+      "K16",
+      "K2",
+      "K3",
+      "K5",
+      "K6",
+      "K7",
+      "K9"
+     ]
+    },
+    "invoicerr-nest12": {
+     "first16": 3,
+     "queue": 43,
+     "tiers": {
+      "0": 11,
+      "1": 0,
+      "2": 6,
+      "3": 26
+     },
+     "first16_ids": [
+      "K1",
+      "K2",
+      "K8"
+     ]
+    }
+   },
+   "record_flips": {
+    "workout-next16": 9,
+    "invoicerr-prisma7": 0,
+    "invoicerr-nest12": 9
+   }
+  },
+  "P2-luna": {
+   "total": {
+    "covered": 19,
+    "queued": 19,
+    "first16": 15,
+    "tier0": {
+     "workout-next16": 39,
+     "invoicerr-prisma7": 52,
+     "invoicerr-nest12": 10
+    }
+   },
+   "events": {
+    "workout-next16": {
+     "first16": 2,
+     "queue": 128,
+     "tiers": {
+      "0": 39,
+      "1": 0,
+      "2": 25,
+      "3": 64
+     },
+     "first16_ids": [
+      "K1",
+      "K4"
+     ]
+    },
+    "invoicerr-prisma7": {
+     "first16": 10,
+     "queue": 81,
+     "tiers": {
+      "0": 52,
+      "1": 0,
+      "2": 8,
+      "3": 21
+     },
+     "first16_ids": [
+      "K1",
+      "K13",
+      "K15",
+      "K16",
+      "K2",
+      "K3",
+      "K5",
+      "K6",
+      "K7",
+      "K9"
+     ]
+    },
+    "invoicerr-nest12": {
+     "first16": 3,
+     "queue": 43,
+     "tiers": {
+      "0": 10,
+      "1": 0,
+      "2": 6,
+      "3": 27
+     },
+     "first16_ids": [
+      "K1",
+      "K2",
+      "K8"
+     ]
+    }
+   },
+   "record_flips": {
+    "workout-next16": 28,
+    "invoicerr-prisma7": 3,
+    "invoicerr-nest12": 10
+   }
+  },
+  "P3-jev": {
+   "total": {
+    "covered": 19,
+    "queued": 19,
+    "first16": 13,
+    "tier0": {
+     "workout-next16": 43,
+     "invoicerr-prisma7": 54,
+     "invoicerr-nest12": 9
+    }
+   },
+   "events": {
+    "workout-next16": {
+     "first16": 0,
+     "queue": 128,
+     "tiers": {
+      "0": 43,
+      "1": 5,
+      "2": 19,
+      "3": 61
+     },
+     "first16_ids": []
+    },
+    "invoicerr-prisma7": {
+     "first16": 10,
+     "queue": 81,
+     "tiers": {
+      "0": 54,
+      "1": 0,
+      "2": 7,
+      "3": 20
+     },
+     "first16_ids": [
+      "K1",
+      "K13",
+      "K15",
+      "K16",
+      "K2",
+      "K3",
+      "K5",
+      "K6",
+      "K7",
+      "K9"
+     ]
+    },
+    "invoicerr-nest12": {
+     "first16": 3,
+     "queue": 44,
+     "tiers": {
+      "0": 9,
+      "1": 2,
+      "2": 6,
+      "3": 27
+     },
+     "first16_ids": [
+      "K1",
+      "K2",
+      "K8"
+     ]
+    }
+   },
+   "record_flips": {
+    "workout-next16": 3,
+    "invoicerr-prisma7": 1,
+    "invoicerr-nest12": 3
+   }
+  },
+  "P3-luna": {
+   "total": {
+    "covered": 19,
+    "queued": 19,
+    "first16": 10,
+    "tier0": {
+     "workout-next16": 52,
+     "invoicerr-prisma7": 54,
+     "invoicerr-nest12": 21
+    }
+   },
+   "events": {
+    "workout-next16": {
+     "first16": 0,
+     "queue": 135,
+     "tiers": {
+      "0": 52,
+      "1": 5,
+      "2": 12,
+      "3": 66
+     },
+     "first16_ids": []
+    },
+    "invoicerr-prisma7": {
+     "first16": 10,
+     "queue": 81,
+     "tiers": {
+      "0": 54,
+      "1": 0,
+      "2": 6,
+      "3": 21
+     },
+     "first16_ids": [
+      "K1",
+      "K13",
+      "K15",
+      "K16",
+      "K2",
+      "K3",
+      "K5",
+      "K6",
+      "K7",
+      "K9"
+     ]
+    },
+    "invoicerr-nest12": {
+     "first16": 0,
+     "queue": 54,
+     "tiers": {
+      "0": 21,
+      "1": 2,
+      "2": 4,
+      "3": 27
+     },
+     "first16_ids": []
+    }
+   },
+   "record_flips": {
+    "workout-next16": 20,
+    "invoicerr-prisma7": 3,
+    "invoicerr-nest12": 15
+   }
+  },
+  "P4-jev": {
+   "total": {
+    "covered": 19,
+    "queued": 19,
+    "first16": 10,
+    "tier0": {
+     "workout-next16": 47,
+     "invoicerr-prisma7": 54,
+     "invoicerr-nest12": 16
+    }
+   },
+   "events": {
+    "workout-next16": {
+     "first16": 0,
+     "queue": 129,
+     "tiers": {
+      "0": 47,
+      "1": 5,
+      "2": 17,
+      "3": 60
+     },
+     "first16_ids": []
+    },
+    "invoicerr-prisma7": {
+     "first16": 10,
+     "queue": 81,
+     "tiers": {
+      "0": 54,
+      "1": 0,
+      "2": 7,
+      "3": 20
+     },
+     "first16_ids": [
+      "K1",
+      "K13",
+      "K15",
+      "K16",
+      "K2",
+      "K3",
+      "K5",
+      "K6",
+      "K7",
+      "K9"
+     ]
+    },
+    "invoicerr-nest12": {
+     "first16": 0,
+     "queue": 48,
+     "tiers": {
+      "0": 16,
+      "1": 2,
+      "2": 3,
+      "3": 27
+     },
+     "first16_ids": []
+    }
+   },
+   "record_flips": {
+    "workout-next16": 5,
+    "invoicerr-prisma7": 1,
+    "invoicerr-nest12": 6
+   }
+  },
+  "P4-luna": {
+   "total": {
+    "covered": 19,
+    "queued": 19,
+    "first16": 13,
+    "tier0": {
+     "workout-next16": 54,
+     "invoicerr-prisma7": 55,
+     "invoicerr-nest12": 22
+    }
+   },
+   "events": {
+    "workout-next16": {
+     "first16": 0,
+     "queue": 131,
+     "tiers": {
+      "0": 54,
+      "1": 5,
+      "2": 9,
+      "3": 63
+     },
+     "first16_ids": []
+    },
+    "invoicerr-prisma7": {
+     "first16": 10,
+     "queue": 82,
+     "tiers": {
+      "0": 55,
+      "1": 0,
+      "2": 6,
+      "3": 21
+     },
+     "first16_ids": [
+      "K1",
+      "K13",
+      "K15",
+      "K16",
+      "K2",
+      "K3",
+      "K5",
+      "K6",
+      "K7",
+      "K9"
+     ]
+    },
+    "invoicerr-nest12": {
+     "first16": 3,
+     "queue": 52,
+     "tiers": {
+      "0": 22,
+      "1": 2,
+      "2": 3,
+      "3": 25
+     },
+     "first16_ids": [
+      "K10",
+      "K12",
+      "K9"
+     ]
+    }
+   },
+   "record_flips": {
+    "workout-next16": 20,
+    "invoicerr-prisma7": 4,
+    "invoicerr-nest12": 14
+   }
+  }
+ },
+ "repro": {
+  "jev": {
+   "extractions": 493,
+   "same": 491,
+   "to_yes": 2,
+   "to_no": 0,
+   "records": 435,
+   "records_same": 433
+  },
+  "luna": {
+   "extractions": 493,
+   "same": 438,
+   "to_yes": 47,
+   "to_no": 8,
+   "records": 435,
+   "records_same": 384
+  },
+  "codex": {
+   "extractions": 493,
+   "same": 460,
+   "to_yes": 29,
+   "to_no": 4,
+   "records": 435,
+   "records_same": 404
+  }
+ }
+}

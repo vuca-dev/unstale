@@ -1,0 +1,382 @@
+{
+ "event": "cedar-prisma7",
+ "catalog": [
+  "prisma-22p02",
+  "prisma-accelerateengine",
+  "prisma-adapter",
+  "prisma-bigint",
+  "prisma-binaryengine",
+  "prisma-byte-upserts",
+  "prisma-cockroachdb",
+  "prisma-comments",
+  "prisma-compilerbuild",
+  "prisma-connection-pool-settings",
+  "prisma-create-index-concurrently",
+  "prisma-cursor-based-pagination",
+  "prisma-cursor-queries",
+  "prisma-database-names",
+  "prisma-datamappererror",
+  "prisma-dataproxyengine",
+  "prisma-datasource-directurl",
+  "prisma-datasource-directurl-2",
+  "prisma-datasource-shadowdatabaseurl",
+  "prisma-datasource-url",
+  "prisma-datasource-url-2",
+  "prisma-driver-adapters",
+  "prisma-edge",
+  "prisma-engine-3",
+  "prisma-env-2",
+  "prisma-environment-variables",
+  "prisma-es-module-support",
+  "prisma-generator-runtime",
+  "prisma-in",
+  "prisma-interactive-transactions",
+  "prisma-jsonb-parameter-fields",
+  "prisma-libraryengine",
+  "prisma-listlocaldatabases",
+  "prisma-map",
+  "prisma-map-2",
+  "prisma-mapped-enum-values",
+  "prisma-metrics",
+  "prisma-mongodb",
+  "prisma-mssql-connection-string",
+  "prisma-multibyte-utf-8-characters",
+  "prisma-mysql-joins",
+  "prisma-node-js",
+  "prisma-not-in",
+  "prisma-opentelemetry-api",
+  "prisma-output",
+  "prisma-package-json-engines",
+  "prisma-package-json-prisma",
+  "prisma-partial-index-predicate-comparison",
+  "prisma-partialindexes",
+  "prisma-planetscale-adapter",
+  "prisma-prisma-accelerate",
+  "prisma-prisma-adapter-mariadb",
+  "prisma-prisma-adapter-mariadb-relationjoins",
+  "prisma-prisma-adapter-pg-4",
+  "prisma-prisma-adapter-ppg",
+  "prisma-prisma-better-sqlite3",
+  "prisma-prisma-cli",
+  "prisma-prisma-cli-query-engine-type",
+  "prisma-prisma-client-2",
+  "prisma-prisma-client-engine-type",
+  "prisma-prisma-client-js",
+  "prisma-prisma-client-no-retry",
+  "prisma-prisma-client-provider",
+  "prisma-prisma-client-runtime-utils",
+  "prisma-prisma-client-runtime-utils-2",
+  "prisma-prisma-config-ts-2",
+  "prisma-prisma-config-ts-3",
+  "prisma-prisma-config-ts-4",
+  "prisma-prisma-db-execute-schema",
+  "prisma-prisma-db-execute-url",
+  "prisma-prisma-db-pull-local-d1",
+  "prisma-prisma-db-pull-url",
+  "prisma-prisma-db-pull-url-2",
+  "prisma-prisma-db-push-skip-generate",
+  "prisma-prisma-db-push-url",
+  "prisma-prisma-db-seed",
+  "prisma-prisma-db-seed-2",
+  "prisma-prisma-extension-read-replicas",
+  "prisma-prisma-generate",
+  "prisma-prisma-generate-2",
+  "prisma-prisma-generate-accelerate",
+  "prisma-prisma-generate-allow-no-models",
+  "prisma-prisma-generate-data-proxy",
+  "prisma-prisma-generate-dataproxy",
+  "prisma-prisma-generate-in-postinstall",
+  "prisma-prisma-generate-no-engine",
+  "prisma-prisma-generate-no-engine-2",
+  "prisma-prisma-generate-skip-autoinstall",
+  "prisma-prisma-init",
+  "prisma-prisma-introspect",
+  "prisma-prisma-migrate-dev-skip-generate",
+  "prisma-prisma-migrate-dev-skip-seed",
+  "prisma-prisma-migrate-dev-url",
+  "prisma-prisma-migrate-diff",
+  "prisma-prisma-migrate-diff-from-schema-datasource",
+  "prisma-prisma-migrate-diff-from-to-local-d1",
+  "prisma-prisma-migrate-diff-from-to-schema-datamodel",
+  "prisma-prisma-migrate-diff-from-to-schema-datasource",
+  "prisma-prisma-migrate-diff-from-to-url",
+  "prisma-prisma-migrate-diff-from-url",
+  "prisma-prisma-migrate-diff-shadow-database-url-2",
+  "prisma-prisma-migrate-diff-to-schema-datasource",
+  "prisma-prisma-migrate-diff-to-url",
+  "prisma-prisma-migrate-skip-generate",
+  "prisma-prisma-migrate-skip-seed",
+  "prisma-prisma-query-engine-binary",
+  "prisma-prisma-query-engine-library",
+  "prisma-prisma-seed",
+  "prisma-prisma-skip",
+  "prisma-prisma-skip-postinstall-generate",
+  "prisma-prisma-sqlcommenter-query-tags",
+  "prisma-prisma-sqlcommenter-trace-context",
+  "prisma-prisma-studio",
+  "prisma-prisma-studio-2",
+  "prisma-prisma-studio-3",
+  "prisma-prisma-studio-4",
+  "prisma-prisma-studio-5",
+  "prisma-prisma-studio-url",
+  "prisma-prisma-use",
+  "prisma-prisma-version-json",
+  "prisma-prismabettersqlite3",
+  "prisma-prismaclient",
+  "prisma-prismaclient-2",
+  "prisma-prismaclient-3",
+  "prisma-prismaclient-4",
+  "prisma-prismaclient-5",
+  "prisma-prismaclient-datasources",
+  "prisma-prismaclient-datasourceurl",
+  "prisma-prismad1http",
+  "prisma-prismalibsql",
+  "prisma-prismaneonhttp",
+  "prisma-push",
+  "prisma-raw-queries",
+  "prisma-reactnativeengine",
+  "prisma-relationjoins",
+  "prisma-result-extensions",
+  "prisma-schema-reformatter",
+  "prisma-serverless-driver",
+  "prisma-sql-server-adapter",
+  "prisma-sqlcommenter-query-insights",
+  "prisma-sqlcommenterplugin",
+  "prisma-sqlite",
+  "prisma-ssl-certificate-validation",
+  "prisma-studio-connections",
+  "prisma-typescript",
+  "prisma-uint8array",
+  "prisma-unique-where",
+  "prisma-url-validation",
+  "prisma-weakref"
+ ],
+ "runs": [
+  {
+   "map": {
+    "K1": [
+     "prisma-prisma-config-ts-3",
+     "prisma-output",
+     "prisma-prisma-client-2"
+    ],
+    "K2": [
+     "prisma-prisma-config-ts-3",
+     "prisma-es-module-support",
+     "prisma-prisma-client-2"
+    ],
+    "K3": [
+     "prisma-prisma-config-ts-3",
+     "prisma-output",
+     "prisma-prisma-client-2",
+     "prisma-prisma-generate"
+    ],
+    "K4": [
+     "prisma-driver-adapters",
+     "prisma-prismaclient",
+     "prisma-prismaclient-2",
+     "prisma-prismaclient-3"
+    ],
+    "K5": [
+     "prisma-prisma-config-ts-3"
+    ],
+    "K6": [
+     "prisma-driver-adapters",
+     "prisma-prisma-client-2"
+    ],
+    "K7": [
+     "prisma-datasource-url",
+     "prisma-driver-adapters",
+     "prisma-output",
+     "prisma-prisma-client-2",
+     "prisma-prisma-client-provider",
+     "prisma-prisma-generate",
+     "prisma-prismabettersqlite3"
+    ],
+    "K8": [
+     "prisma-datasource-url",
+     "prisma-prisma-config-ts-3",
+     "prisma-es-module-support",
+     "prisma-prisma-client-2",
+     "prisma-prisma-migrate-dev-skip-seed"
+    ],
+    "K9": [
+     "prisma-datasource-url",
+     "prisma-prisma-config-ts-3",
+     "prisma-prisma-client-2"
+    ],
+    "K10": [
+     "prisma-driver-adapters"
+    ],
+    "K11": [
+     "prisma-datasource-url",
+     "prisma-prisma-config-ts-3",
+     "prisma-driver-adapters",
+     "prisma-output",
+     "prisma-prisma-client-2",
+     "prisma-prismabettersqlite3"
+    ],
+    "K12": [
+     "prisma-datasource-url"
+    ],
+    "K13": [
+     "prisma-prisma-client-2"
+    ],
+    "K14": [
+     "prisma-datasource-url",
+     "prisma-prisma-config-ts-3",
+     "prisma-driver-adapters",
+     "prisma-output",
+     "prisma-prisma-client-2",
+     "prisma-prismabettersqlite3"
+    ],
+    "K15": [],
+    "K16": [
+     "prisma-datasource-url",
+     "prisma-prisma-config-ts-3",
+     "prisma-driver-adapters",
+     "prisma-output",
+     "prisma-prisma-client-2",
+     "prisma-prismabettersqlite3"
+    ],
+    "K17": [
+     "prisma-driver-adapters",
+     "prisma-prisma-adapter-pg-4"
+    ],
+    "K18": [],
+    "K19": [],
+    "K20": [],
+    "K21": [
+     "prisma-environment-variables"
+    ],
+    "K22": [
+     "prisma-datasource-url",
+     "prisma-prisma-config-ts-3"
+    ],
+    "K23": [
+     "prisma-environment-variables"
+    ]
+   },
+   "usage": {
+    "input_tokens": 25734,
+    "cached_input_tokens": 9984,
+    "cache_write_input_tokens": 0,
+    "output_tokens": 1668,
+    "reasoning_output_tokens": 1128
+   }
+  },
+  {
+   "map": {
+    "K1": [
+     "prisma-prisma-config-ts-3",
+     "prisma-output",
+     "prisma-prisma-client-2"
+    ],
+    "K2": [
+     "prisma-prisma-config-ts-3",
+     "prisma-es-module-support",
+     "prisma-prisma-client-2"
+    ],
+    "K3": [
+     "prisma-prisma-config-ts-3",
+     "prisma-output",
+     "prisma-prisma-generate",
+     "prisma-prisma-client-2"
+    ],
+    "K4": [
+     "prisma-driver-adapters",
+     "prisma-prismaclient-2"
+    ],
+    "K5": [
+     "prisma-prisma-config-ts-3"
+    ],
+    "K6": [
+     "prisma-prisma-client-2",
+     "prisma-driver-adapters"
+    ],
+    "K7": [
+     "prisma-prisma-config-ts-3",
+     "prisma-datasource-url",
+     "prisma-driver-adapters",
+     "prisma-output",
+     "prisma-prisma-client-2",
+     "prisma-prisma-client-provider",
+     "prisma-prisma-generate",
+     "prisma-prismabettersqlite3"
+    ],
+    "K8": [
+     "prisma-prisma-config-ts-3",
+     "prisma-datasource-directurl-2",
+     "prisma-prisma-migrate-dev-skip-seed",
+     "prisma-es-module-support"
+    ],
+    "K9": [
+     "prisma-prisma-config-ts-3",
+     "prisma-datasource-url"
+    ],
+    "K10": [
+     "prisma-driver-adapters"
+    ],
+    "K11": [
+     "prisma-prisma-config-ts-3",
+     "prisma-datasource-url",
+     "prisma-driver-adapters",
+     "prisma-output",
+     "prisma-prisma-client-2",
+     "prisma-prisma-client-provider",
+     "prisma-prismabettersqlite3"
+    ],
+    "K12": [],
+    "K13": [
+     "prisma-prisma-client-2"
+    ],
+    "K14": [
+     "prisma-prisma-config-ts-3",
+     "prisma-datasource-url",
+     "prisma-driver-adapters",
+     "prisma-output",
+     "prisma-prisma-client-2",
+     "prisma-prisma-client-provider",
+     "prisma-prismabettersqlite3"
+    ],
+    "K15": [
+     "prisma-output",
+     "prisma-prisma-client-2"
+    ],
+    "K16": [
+     "prisma-prisma-config-ts-3",
+     "prisma-datasource-url",
+     "prisma-driver-adapters",
+     "prisma-output",
+     "prisma-prisma-client-2",
+     "prisma-prisma-client-provider",
+     "prisma-prismabettersqlite3"
+    ],
+    "K17": [
+     "prisma-driver-adapters",
+     "prisma-prisma-adapter-pg-4"
+    ],
+    "K18": [],
+    "K19": [],
+    "K20": [],
+    "K21": [
+     "prisma-environment-variables"
+    ],
+    "K22": [
+     "prisma-prisma-config-ts-3",
+     "prisma-datasource-url"
+    ],
+    "K23": [
+     "prisma-environment-variables"
+    ]
+   },
+   "usage": {
+    "input_tokens": 25734,
+    "cached_input_tokens": 9984,
+    "cache_write_input_tokens": 0,
+    "output_tokens": 1891,
+    "reasoning_output_tokens": 1345
+   }
+  }
+ ],
+ "source": "eval/replay/events match runs on catalog v2 (record set identical to the published catalog)"
+}

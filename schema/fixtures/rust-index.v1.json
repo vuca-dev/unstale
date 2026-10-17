@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "technology": "next",
+  "sample_n": 1,
+  "checked": "x",
+  "shards": [],
+  "sample": [
+    {
+      "repo": "a/b",
+      "commit": "0000000000000000000000000000000000000000"
+    }
+  ]
+}

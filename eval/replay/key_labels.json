@@ -1,0 +1,317 @@
+{
+ "note": "classifier label, not ground truth",
+ "questions": {
+  "required": {
+   "instructions": "A project's maintainers made the change below while upgrading a library. Was the change REQUIRED by the upgrade, or OPTIONAL?\nREQUIRED means: had they upgraded without this change, the project would fail (an error, a failed build, type check or test run, a command that no longer exists) or behave differently in a way its users or developers would notice. Judge with the same strict rubric used for breaking changes:\nBREAKING (yes) means: a project that worked on the previous version, upgraded to this release with no change to its code, configuration, scripts or tooling, then fails (an error, a failed build or type check, a command that no longer exists) or behaves differently in a way its users or developers would notice. Raising a minimum supported version of a runtime or dependency is breaking. A removal is breaking.\nNOT BREAKING (no) includes: a new optional feature or option; a deprecation that still works (a warning only); a recommendation or optional modernisation (\"we recommend\", \"you may\", \"not required\", new project defaults that existing projects need not adopt); a fix that restores documented behaviour; documentation changes.\nJudge what the change does to existing code, not where it is listed. If the source does not show that existing code stops working or changes behaviour, answer no.\nOPTIONAL means: adopting a new feature or option, a recommended or optional modernisation, replacing a deprecated API that still works, documentation, or tidying. If the description does not show that the project would fail or change behaviour without it, answer optional.",
+   "options": {
+    "required": "The upgrade breaks the project, or changes its behaviour noticeably, without this change.",
+    "optional": "The project would keep working as before without this change."
+   }
+  }
+ },
+ "labels": {
+  "workout-next16": {
+   "K1": {
+    "label": "required",
+    "p_required": 0.77,
+    "confidence": 0.54,
+    "classifier": "jev",
+    "model": "jev-1.13.0"
+   },
+   "K2": {
+    "label": "required",
+    "p_required": 0.86,
+    "confidence": 0.72,
+    "classifier": "jev",
+    "model": "jev-1.13.0"
+   },
+   "K3": {
+    "label": "optional",
+    "p_required": 0.13,
+    "confidence": 0.74,
+    "classifier": "jev",
+    "model": "jev-1.13.0"
+   },
+   "K4": {
+    "label": "required",
+    "p_required": 0.72,
+    "confidence": 0.44,
+    "classifier": "jev",
+    "model": "jev-1.13.0"
+   },
+   "K5": {
+    "label": "optional",
+    "p_required": 0.21,
+    "confidence": 0.58,
+    "classifier": "jev",
+    "model": "jev-1.13.0"
+   },
+   "K6": {
+    "label": "required",
+    "p_required": 0.99,
+    "confidence": 0.98,
+    "classifier": "jev",
+    "model": "jev-1.13.0"
+   },
+   "K7": {
+    "label": "required",
+    "p_required": 0.83,
+    "confidence": 0.66,
+    "classifier": "jev",
+    "model": "jev-1.13.0"
+   },
+   "K8": {
+    "label": "required",
+    "p_required": 0.57,
+    "confidence": 0.14,
+    "classifier": "jev",
+    "model": "jev-1.13.0"
+   },
+   "K9": {
+    "label": "required",
+    "p_required": 0.8,
+    "confidence": 0.6,
+    "classifier": "jev",
+    "model": "jev-1.13.0"
+   },
+   "K10": {
+    "label": "optional",
+    "p_required": 0,
+    "confidence": 1,
+    "classifier": "jev",
+    "model": "jev-1.13.0"
+   }
+  },
+  "invoicerr-prisma7": {
+   "K1": {
+    "label": "required",
+    "p_required": 0.91,
+    "confidence": 0.82,
+    "classifier": "jev",
+    "model": "jev-1.13.0"
+   },
+   "K2": {
+    "label": "required",
+    "p_required": 0.67,
+    "confidence": 0.34,
+    "classifier": "jev",
+    "model": "jev-1.13.0"
+   },
+   "K3": {
+    "label": "optional",
+    "p_required": 0.44,
+    "confidence": 0.12,
+    "classifier": "jev",
+    "model": "jev-1.13.0"
+   },
+   "K4": {
+    "label": "required",
+    "p_required": 0.73,
+    "confidence": 0.46,
+    "classifier": "jev",
+    "model": "jev-1.13.0"
+   },
+   "K5": {
+    "label": "required",
+    "p_required": 0.99,
+    "confidence": 0.98,
+    "classifier": "jev",
+    "model": "jev-1.13.0"
+   },
+   "K6": {
+    "label": "required",
+    "p_required": 0.65,
+    "confidence": 0.3,
+    "classifier": "jev",
+    "model": "jev-1.13.0"
+   },
+   "K7": {
+    "label": "required",
+    "p_required": 0.98,
+    "confidence": 0.96,
+    "classifier": "jev",
+    "model": "jev-1.13.0"
+   },
+   "K8": {
+    "label": "required",
+    "p_required": 0.76,
+    "confidence": 0.52,
+    "classifier": "jev",
+    "model": "jev-1.13.0"
+   },
+   "K9": {
+    "label": "required",
+    "p_required": 0.84,
+    "confidence": 0.68,
+    "classifier": "jev",
+    "model": "jev-1.13.0"
+   },
+   "K10": {
+    "label": "required",
+    "p_required": 0.81,
+    "confidence": 0.62,
+    "classifier": "jev",
+    "model": "jev-1.13.0"
+   },
+   "K11": {
+    "label": "required",
+    "p_required": 0.95,
+    "confidence": 0.9,
+    "classifier": "jev",
+    "model": "jev-1.13.0"
+   },
+   "K12": {
+    "label": "required",
+    "p_required": 0.75,
+    "confidence": 0.5,
+    "classifier": "jev",
+    "model": "jev-1.13.0"
+   },
+   "K13": {
+    "label": "required",
+    "p_required": 0.81,
+    "confidence": 0.62,
+    "classifier": "jev",
+    "model": "jev-1.13.0"
+   },
+   "K14": {
+    "label": "required",
+    "p_required": 0.94,
+    "confidence": 0.88,
+    "classifier": "jev",
+    "model": "jev-1.13.0"
+   },
+   "K15": {
+    "label": "required",
+    "p_required": 0.95,
+    "confidence": 0.9,
+    "classifier": "jev",
+    "model": "jev-1.13.0"
+   },
+   "K16": {
+    "label": "required",
+    "p_required": 0.9,
+    "confidence": 0.8,
+    "classifier": "jev",
+    "model": "jev-1.13.0"
+   }
+  },
+  "invoicerr-nest12": {
+   "K1": {
+    "label": "required",
+    "p_required": 0.97,
+    "confidence": 0.94,
+    "classifier": "jev",
+    "model": "jev-1.13.0"
+   },
+   "K2": {
+    "label": "required",
+    "p_required": 0.86,
+    "confidence": 0.72,
+    "classifier": "jev",
+    "model": "jev-1.13.0"
+   },
+   "K3": {
+    "label": "required",
+    "p_required": 0.83,
+    "confidence": 0.66,
+    "classifier": "jev",
+    "model": "jev-1.13.0"
+   },
+   "K4": {
+    "label": "required",
+    "p_required": 0.9,
+    "confidence": 0.8,
+    "classifier": "jev",
+    "model": "jev-1.13.0"
+   },
+   "K5": {
+    "label": "required",
+    "p_required": 0.9,
+    "confidence": 0.8,
+    "classifier": "jev",
+    "model": "jev-1.13.0"
+   },
+   "K6": {
+    "label": "required",
+    "p_required": 0.82,
+    "confidence": 0.64,
+    "classifier": "jev",
+    "model": "jev-1.13.0"
+   },
+   "K7": {
+    "label": "required",
+    "p_required": 0.96,
+    "confidence": 0.92,
+    "classifier": "jev",
+    "model": "jev-1.13.0"
+   },
+   "K8": {
+    "label": "required",
+    "p_required": 0.51,
+    "confidence": 0.02,
+    "classifier": "jev",
+    "model": "jev-1.13.0"
+   },
+   "K9": {
+    "label": "required",
+    "p_required": 0.74,
+    "confidence": 0.48,
+    "classifier": "jev",
+    "model": "jev-1.13.0"
+   },
+   "K10": {
+    "label": "required",
+    "p_required": 0.93,
+    "confidence": 0.86,
+    "classifier": "jev",
+    "model": "jev-1.13.0"
+   },
+   "K11": {
+    "label": "required",
+    "p_required": 0.59,
+    "confidence": 0.18,
+    "classifier": "jev",
+    "model": "jev-1.13.0"
+   },
+   "K12": {
+    "label": "required",
+    "p_required": 0.95,
+    "confidence": 0.9,
+    "classifier": "jev",
+    "model": "jev-1.13.0"
+   },
+   "K13": {
+    "label": "required",
+    "p_required": 0.77,
+    "confidence": 0.54,
+    "classifier": "jev",
+    "model": "jev-1.13.0"
+   },
+   "K14": {
+    "label": "optional",
+    "p_required": 0.45,
+    "confidence": 0.1,
+    "classifier": "jev",
+    "model": "jev-1.13.0"
+   }
+  }
+ },
+ "uncached_calls": {
+  "jev": {
+   "calls": 40,
+   "input_tokens": 30969,
+   "output_tokens": 1240
+  },
+  "openai-decisions": {
+   "calls": 0,
+   "input_tokens": 0,
+   "output_tokens": 0
+  }
+ },
+ "cache_hits": 0,
+ "by_classifier": {
+  "jev": 40,
+  "openai-decisions": 0
+ }
+}

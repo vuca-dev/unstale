@@ -1,0 +1,558 @@
+//! Stack detection for Python projects (PyPI), the second ecosystem adapter after npm (`stack.rs`). Declared in
+//! `pyproject.toml` (PEP 621 `[project]`, PEP 735 `[dependency-groups]`, Poetry `[tool.poetry]`), `requirements*.txt`
+//! and `Pipfile`; pinned by the nearest `uv.lock`, `poetry.lock`, `pdm.lock` or `Pipfile.lock`. A project with a
+//! lockfile, or one declaring only requirements, is an application read at its locked or pinned versions; a
+//! `pyproject.toml` that names a distribution and has no lockfile is a library read at its declared floor.
+
+use semver::Version;
+use serde_json::Value as Json;
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::{Path, PathBuf};
+use toml::Value;
+
+use crate::stack::{Dep, Kind, Package, walker};
+use crate::usage::{Role, path_role};
+
+/// PEP 503 name normalisation: lowercase, runs of `-`, `_` and `.` become one `-`.
+pub fn normalize(name: &str) -> String {
+    let mut out = String::with_capacity(name.len());
+    for c in name.trim().chars() {
+        if matches!(c, '-' | '_' | '.') {
+            if !out.ends_with('-') {
+                out.push('-');
+            }
+        } else {
+            out.push(c.to_ascii_lowercase());
+        }
+    }
+    out
+}
+
+/// Canonical PyPI package URL: `pkg:pypi/<normalized name>`.
+pub fn purl(name: &str) -> String {
+    format!("pkg:pypi/{}", normalize(name))
+}
+
+/// A PEP 440 version in the client's (SemVer) order: epoch and local labels dropped, the first three release
+/// numbers kept, `aN`/`bN`/`rcN` as prereleases `a.N`/`b.N`/`rc.N` and `.devN` as `dev.N` (sorted before them, as
+/// PEP 440 sorts it), `.postN` as build metadata (equal precedence: a post-release fixes packaging, not code).
+pub fn parse_version(s: &str) -> Option<Version> {
+    let s = s.trim().trim_start_matches(['v', 'V']).to_ascii_lowercase();
+    let s = s.split('+').next()?;
+    let s = s.rsplit('!').next()?;
+    let end = s.find(|c: char| !(c.is_ascii_digit() || c == '.')).unwrap_or(s.len());
+    let (release, rest) = s.split_at(end);
+    let nums: Vec<u64> = release.trim_end_matches('.').split('.').map(|p| p.parse().ok()).collect::<Option<_>>()?;
+    let n = |i: usize| nums.get(i).copied().unwrap_or(0);
+    let mut v = Version::new(n(0), n(1), n(2));
+    let rest = rest.trim_start_matches(['.', '-', '_']);
+    if rest.is_empty() {
+        return Some(v);
+    }
+    let (label, num) = rest.split_at(rest.find(|c: char| c.is_ascii_digit()).unwrap_or(rest.len()));
+    let num: u64 = num.split(|c: char| !c.is_ascii_digit()).next().unwrap_or("").parse().unwrap_or(0);
+    let pre = match label.trim_end_matches(['.', '-', '_']) {
+        "a" | "alpha" => format!("a.{num}"),
+        "b" | "beta" => format!("b.{num}"),
+        "rc" | "c" | "pre" | "preview" => format!("rc.{num}"),
+        // PEP 440 sorts a dev release before its pre-releases; SemVer compares `0dev` < `a` as identifiers.
+        "dev" => format!("0dev.{num}"),
+        "post" | "rev" | "r" => {
+            v.build = semver::BuildMetadata::new(&format!("post.{num}")).ok()?;
+            return Some(v);
+        }
+        _ => return None,
+    };
+    v.pre = semver::Prerelease::new(&pre).ok()?;
+    Some(v)
+}
+
+/// The lowest version a PEP 440 specifier set (or a Poetry constraint) admits: `>=1.2,<2` → 1.2.0, `~=1.4.2` →
+/// 1.4.2, `==2.31.*` → 2.31.0, `^1.2` → 1.2.0, `1.2.3` → 1.2.3. `None` with no lower bound (`*`, `<2`, `!=1.0`).
+pub fn spec_floor(spec: &str) -> Option<Version> {
+    let mut best: Option<Version> = None;
+    for alt in spec.split("||") {
+        let mut floor: Option<Version> = None;
+        for part in alt.split(',').map(str::trim).filter(|p| !p.is_empty()) {
+            let op_end = part.find(|c: char| c.is_ascii_alphanumeric()).unwrap_or(part.len());
+            let (op, ver) = part.split_at(op_end);
+            let ver = ver.trim().trim_end_matches(".*");
+            let v = match op.trim() {
+                ">=" | "==" | "===" | "~=" | ">" | "^" | "~" | "" => parse_version(ver),
+                _ => None,
+            };
+            if let Some(v) = v
+                && floor.as_ref().is_none_or(|f| v > *f)
+            {
+                floor = Some(v);
+            }
+        }
+        if let Some(f) = floor
+            && best.as_ref().is_none_or(|b| f < *b)
+        {
+            best = Some(f);
+        }
+    }
+    best
+}
+
+/// A declared requirement: name, specifier, and whether it is a public PyPI identity (no URL or path reference).
+type Req = (String, String, bool);
+
+/// A PEP 508 requirement as a [`Req`].
+fn requirement(line: &str) -> Option<Req> {
+    let line = line.split(';').next()?.split(" #").next()?.trim();
+    let end = line.find(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))).unwrap_or(line.len());
+    let name = &line[..end];
+    if name.is_empty() || !name.as_bytes()[0].is_ascii_alphanumeric() {
+        return None;
+    }
+    let mut rest = line[end..].trim_start();
+    if rest.starts_with('[') {
+        rest = rest.split_once(']').map(|(_, r)| r).unwrap_or("").trim_start();
+    }
+    let public = !rest.starts_with('@');
+    let spec = rest.trim_start_matches('(').trim_end_matches(')').trim();
+    Some((name.to_string(), if public { spec.to_string() } else { String::new() }, public))
+}
+
+/// `requirements*.txt` lines: requirements only (no `-r`/`-e`/`-c` options, URLs or local paths).
+fn requirements_txt(text: &str) -> Vec<Req> {
+    let mut out = vec![];
+    let mut joined = String::new();
+    for raw in text.lines() {
+        let l = raw.trim_end();
+        if let Some(head) = l.strip_suffix('\\') {
+            joined.push_str(head);
+            continue;
+        }
+        joined.push_str(l);
+        let line = std::mem::take(&mut joined);
+        let line = line.split(" --hash").next().unwrap_or("").trim();
+        if line.is_empty() || line.starts_with('#') || line.starts_with('-') || line.split_whitespace().next().is_some_and(|w| w.contains("://")) || line.starts_with('.') || line.starts_with('/') {
+            continue;
+        }
+        out.extend(requirement(line));
+    }
+    out
+}
+
+/// Poetry and Pipfile tables: `name = "spec"` or `name = { version = "spec", ... }`; a `path`, `git`, `url` or
+/// `file` source is not a public identity.
+fn table_deps(t: Option<&Value>, out: &mut Vec<Req>) {
+    let Some(t) = t.and_then(Value::as_table) else { return };
+    for (name, v) in t {
+        if name.eq_ignore_ascii_case("python") {
+            continue;
+        }
+        match v {
+            Value::String(s) => out.push((name.clone(), s.clone(), true)),
+            Value::Table(x) => {
+                let public = !["path", "git", "url", "file"].iter().any(|k| x.contains_key(*k));
+                out.push((name.clone(), x.get("version").and_then(Value::as_str).unwrap_or("").to_string(), public));
+            }
+            // Poetry's multiple-constraints form: the lowest of the alternatives.
+            Value::Array(a) => {
+                let specs: Vec<&str> = a.iter().filter_map(|x| x.get("version").and_then(Value::as_str)).collect();
+                out.push((name.clone(), specs.join(" || "), true));
+            }
+            _ => {}
+        }
+    }
+}
+
+fn pep508_list(v: Option<&Value>, out: &mut Vec<Req>) {
+    for x in v.and_then(Value::as_array).into_iter().flatten() {
+        // PEP 735 `{ include-group = "..." }` entries reference another group, which is read on its own.
+        if let Some(s) = x.as_str() {
+            out.extend(requirement(s));
+        }
+    }
+}
+
+/// Declared requirements of a `pyproject.toml`, and whether it names a distribution (a library candidate).
+fn pyproject(text: &str) -> Option<(Vec<Req>, bool)> {
+    let doc: Value = toml::from_str(text).ok()?;
+    let mut out = vec![];
+    let project = doc.get("project");
+    pep508_list(project.and_then(|p| p.get("dependencies")), &mut out);
+    for v in project.and_then(|p| p.get("optional-dependencies")).and_then(Value::as_table).into_iter().flat_map(|t| t.values()) {
+        pep508_list(Some(v), &mut out);
+    }
+    for v in doc.get("dependency-groups").and_then(Value::as_table).into_iter().flat_map(|t| t.values()) {
+        pep508_list(Some(v), &mut out);
+    }
+    let poetry = doc.get("tool").and_then(|t| t.get("poetry"));
+    table_deps(poetry.and_then(|p| p.get("dependencies")), &mut out);
+    table_deps(poetry.and_then(|p| p.get("dev-dependencies")), &mut out);
+    for g in poetry.and_then(|p| p.get("group")).and_then(Value::as_table).into_iter().flat_map(|t| t.values()) {
+        table_deps(g.get("dependencies"), &mut out);
+    }
+    let named = project.and_then(|p| p.get("name")).is_some() || poetry.and_then(|p| p.get("name")).is_some();
+    Some((out, named))
+}
+
+/// A lockfile's pinned versions by normalised name.
+#[derive(Debug, Clone)]
+struct Lock {
+    file: String,
+    versions: BTreeMap<String, Version>,
+}
+
+const LOCKFILES: &[&str] = &["uv.lock", "poetry.lock", "pdm.lock", "Pipfile.lock"];
+
+/// Every lockfile in `dir` that parses.
+fn read_locks(dir: &Path) -> Vec<Lock> {
+    let mut out = vec![];
+    for f in LOCKFILES {
+        let Ok(text) = std::fs::read_to_string(dir.join(f)) else { continue };
+        let mut versions = BTreeMap::new();
+        if *f == "Pipfile.lock" {
+            let Ok(j) = serde_json::from_str::<Json>(&text) else { continue };
+            for section in ["default", "develop"] {
+                for (name, v) in j.get(section).and_then(Json::as_object).into_iter().flatten() {
+                    if let Some(ver) = v.get("version").and_then(Json::as_str).and_then(|s| parse_version(s.trim_start_matches("=="))) {
+                        versions.entry(normalize(name)).or_insert(ver);
+                    }
+                }
+            }
+        } else {
+            let Ok(doc) = toml::from_str::<Value>(&text) else { continue };
+            for p in doc.get("package").and_then(Value::as_array).into_iter().flatten() {
+                let (Some(name), Some(ver)) = (p.get("name").and_then(Value::as_str), p.get("version").and_then(Value::as_str)) else { continue };
+                if let Some(v) = parse_version(ver) {
+                    versions.entry(normalize(name)).or_insert(v);
+                }
+            }
+        }
+        out.push(Lock { file: f.to_string(), versions });
+    }
+    out
+}
+
+/// Whether `v` meets a requirement specifier: PEP 440 (`>=1.2,<2`, `~=1.4`, `==1.*`, `!=1.3`) or Poetry's npm-like
+/// `^` / `~`. `None` when a part can't be read, so a caller keeps what it had.
+pub fn spec_satisfies(v: &Version, spec: &str) -> Option<bool> {
+    let mut all = true;
+    for part in spec.split(',').map(str::trim).filter(|p| !p.is_empty()) {
+        let op_end = part.find(|c: char| c.is_ascii_alphanumeric() || c == '*').unwrap_or(part.len());
+        let (op, ver) = part.split_at(op_end);
+        let ver = ver.trim();
+        all &= match op.trim() {
+            "===" | "==" if ver.ends_with(".*") => crate::util::npm_satisfies(v, ver.trim_end_matches(".*"))?,
+            "!=" if ver.ends_with(".*") => !crate::util::npm_satisfies(v, ver.trim_end_matches(".*"))?,
+            "===" | "==" => crate::util::npm_satisfies(v, &format!("={}", parse_version(ver)?))?,
+            "!=" => !crate::util::npm_satisfies(v, &format!("={}", parse_version(ver)?))?,
+            "~=" => {
+                // `~=1.4` admits 1.x from 1.4; `~=1.4.2` admits 1.4.x from 1.4.2.
+                let n = ver.split('.').count();
+                let base = parse_version(ver)?;
+                let tilde = if n <= 2 { format!("^{}.{}", base.major, base.minor) } else { format!("~{base}") };
+                crate::util::npm_satisfies(v, &format!(">={base} {tilde}"))?
+            }
+            ">=" | "<=" | ">" | "<" | "^" | "~" | "" => crate::util::npm_satisfies(v, part)?,
+            _ => return None,
+        };
+    }
+    Some(all)
+}
+
+/// Of several lockfiles beside a project (a switch of tool that left the old file behind), the one whose pins
+/// the declared requirements admit, then the fixed order. A choice is recorded in `notes` once per directory.
+fn choose_lock(rel: &str, mut cands: Vec<Lock>, reqs: &[Req], noted: &mut BTreeSet<String>, notes: &mut Vec<String>) -> Option<Lock> {
+    if cands.len() < 2 {
+        return cands.pop();
+    }
+    let score = |l: &Lock| {
+        reqs.iter().fold((0usize, 0usize), |(out, ins), (n, spec, _)| match l.versions.get(&normalize(n)).and_then(|v| spec_satisfies(v, spec)) {
+            Some(false) => (out + 1, ins),
+            Some(true) => (out, ins + 1),
+            None => (out, ins),
+        })
+    };
+    let scores: Vec<(usize, usize)> = cands.iter().map(score).collect();
+    let best = (0..cands.len()).min_by_key(|&i| (scores[i].0, std::cmp::Reverse(scores[i].1), i)).unwrap_or(0);
+    if noted.insert(rel.to_string()) {
+        let others: Vec<String> = (0..cands.len())
+            .filter(|&i| i != best)
+            .map(|i| format!("{} has {} of {} declared requirements outside their specifiers", cands[i].file, scores[i].0, reqs.len()))
+            .collect();
+        let file = if rel == "." { cands[best].file.clone() } else { format!("{rel}/{}", cands[best].file) };
+        notes.push(format!("{rel}: {} lockfiles present; versions from {file} ({} of {} outside their specifiers); {}.", cands.len(), scores[best].0, reqs.len(), others.join("; ")));
+    }
+    Some(cands.swap_remove(best))
+}
+
+fn is_requirements(base: &str) -> bool {
+    base.starts_with("requirements") && base.ends_with(".txt")
+}
+
+/// Python packages and their direct dependencies, merged into `deps` (keyed by package URL; the lowest version
+/// wins, as for npm). Manifests in tests, examples, documentation, generated or vendored code are not the project's.
+pub fn detect(root: &Path, packages: &mut Vec<Package>, deps: &mut BTreeMap<String, Dep>, notes: &mut Vec<String>) {
+    let mut by_dir: BTreeMap<PathBuf, Vec<(String, String)>> = BTreeMap::new();
+    for e in walker(root).flatten() {
+        if !e.file_type().is_some_and(|t| t.is_file()) {
+            continue;
+        }
+        let base = e.file_name().to_string_lossy().to_string();
+        if !(base == "pyproject.toml" || base == "Pipfile" || is_requirements(&base)) {
+            continue;
+        }
+        let rel = e.path().strip_prefix(root).unwrap_or(e.path()).to_string_lossy().replace('\\', "/");
+        if !matches!(path_role(&rel), Role::App | Role::Tooling) {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(e.path()) else { continue };
+        by_dir.entry(e.path().parent().unwrap_or(root).to_path_buf()).or_default().push((base, text));
+    }
+    let mut locks: BTreeMap<PathBuf, Vec<Lock>> = BTreeMap::new();
+    let mut seen_dirs = BTreeSet::new();
+    let mut noted = BTreeSet::new();
+    let mut stale: BTreeMap<String, (usize, Vec<String>)> = BTreeMap::new();
+    for (dir, files) in by_dir {
+        let mut reqs = vec![];
+        let mut named = false;
+        for (base, text) in &files {
+            if base == "pyproject.toml" {
+                if let Some((r, n)) = pyproject(text) {
+                    reqs.extend(r);
+                    named |= n;
+                }
+            } else if base == "Pipfile" {
+                if let Ok(doc) = toml::from_str::<Value>(text) {
+                    table_deps(doc.get("packages"), &mut reqs);
+                    table_deps(doc.get("dev-packages"), &mut reqs);
+                }
+            } else {
+                reqs.extend(requirements_txt(text));
+            }
+        }
+        // A lockfile belongs to the project beside it; only a `pyproject.toml` member looks further up (a uv or
+        // Poetry workspace keeps one lock at its root). Requirements alone use their own pins.
+        let member = files.iter().any(|(b, _)| b == "pyproject.toml" || b == "Pipfile");
+        let mut lock: Option<Lock> = None;
+        let mut lock_dir = String::new();
+        let mut d = Some(dir.as_path());
+        while let Some(cur) = d {
+            if !member && cur != dir {
+                break;
+            }
+            let cands = locks.entry(cur.to_path_buf()).or_insert_with(|| read_locks(cur));
+            if !cands.is_empty() {
+                let lrel = cur.strip_prefix(root).ok().map(|p| p.to_string_lossy().replace('\\', "/")).filter(|p| !p.is_empty()).unwrap_or_else(|| ".".into());
+                lock_dir = lrel.clone();
+                lock = choose_lock(&lrel, cands.clone(), &reqs, &mut noted, notes);
+                break;
+            }
+            if cur == root {
+                break;
+            }
+            d = cur.parent();
+        }
+        // A distribution without a lockfile is published for others: read at its floor, like an npm library.
+        let kind = if named && lock.is_none() && !files.iter().any(|(b, _)| is_requirements(b)) { Kind::Library } else { Kind::Application };
+        let rel = dir.strip_prefix(root).ok().map(|p| p.to_string_lossy().replace('\\', "/")).filter(|p| !p.is_empty()).unwrap_or_else(|| ".".into());
+        let declared: BTreeSet<String> = reqs.iter().map(|(n, _, _)| purl(n)).collect();
+        if seen_dirs.insert(rel.clone()) {
+            packages.push(Package { dir: rel.clone(), kind, lockfile: lock.as_ref().map(|l| l.file.clone()), declared });
+        }
+        for (name, spec, public) in reqs {
+            let n = normalize(&name);
+            let (version, source) = match (&lock, kind) {
+                (Some(l), Kind::Application) if l.versions.contains_key(&n) => {
+                    let v = &l.versions[&n];
+                    // A pin the declared specifier no longer admits: the lockfile is out of date for this one.
+                    if spec_satisfies(v, &spec) == Some(false) {
+                        let s = stale.entry(if lock_dir == "." { l.file.clone() } else { format!("{lock_dir}/{}", l.file) }).or_default();
+                        s.0 += 1;
+                        if s.1.len() < 3 {
+                            s.1.push(format!("{n} {v} vs {spec}"));
+                        }
+                        (spec_floor(&spec), format!("floor of {spec} ({} has {v}, outside the specifier)", l.file))
+                    } else {
+                        (Some(v.clone()), l.file.clone())
+                    }
+                }
+                (_, Kind::Library) => (spec_floor(&spec), format!("library floor of {spec}")),
+                _ => (spec_floor(&spec), format!("floor of {spec} (not in a lockfile)")),
+            };
+            let entry = deps.entry(purl(&n)).or_insert_with(|| Dep { name: n.clone(), public_candidate: public, version: None, source: String::new() });
+            entry.public_candidate &= public;
+            let lower = match (&entry.version, &version) {
+                (None, Some(_)) => true,
+                (Some(a), Some(b)) => b < a,
+                _ => false,
+            };
+            if lower || entry.source.is_empty() {
+                entry.version = version.or(entry.version.take());
+                entry.source = source;
+            }
+        }
+    }
+    for (file, (n, examples)) in stale {
+        notes.push(format!(
+            "{file}: {n} pinned version{} outside the declared requirements ({}); read at the declared floor instead. The lockfile looks out of date.",
+            if n == 1 { " falls" } else { "s fall" },
+            examples.join(", ")
+        ));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn v(s: &str) -> Version {
+        Version::parse(s).unwrap()
+    }
+
+    #[test]
+    fn names_and_purls_are_pep503() {
+        assert_eq!(normalize("Typing_Extensions"), "typing-extensions");
+        assert_eq!(normalize("zope.interface"), "zope-interface");
+        assert_eq!(purl("SQLAlchemy"), "pkg:pypi/sqlalchemy");
+    }
+
+    #[test]
+    fn pep440_versions_keep_their_order() {
+        assert_eq!(parse_version("0.27.10"), Some(v("0.27.10")));
+        assert_eq!(parse_version("2.0"), Some(v("2.0.0")));
+        assert_eq!(parse_version("1!2.3.4+local"), Some(v("2.3.4")));
+        let order = ["1.0.0.dev1", "1.0.0a1", "1.0.0b2", "1.0.0rc1", "1.0.0", "1.0.1"];
+        let parsed: Vec<Version> = order.iter().map(|s| parse_version(s).unwrap()).collect();
+        assert!(parsed.windows(2).all(|w| w[0] < w[1]), "{parsed:?}");
+        assert_eq!(parse_version("1.0.post2").unwrap().cmp_precedence(&v("1.0.0")), std::cmp::Ordering::Equal);
+        assert_eq!(parse_version("2024.10.1.3"), Some(v("2024.10.1")));
+        assert_eq!(parse_version("latest"), None);
+    }
+
+    #[test]
+    fn specifier_floors() {
+        assert_eq!(spec_floor(">=1.2,<2"), Some(v("1.2.0")));
+        assert_eq!(spec_floor("~=1.4.2"), Some(v("1.4.2")));
+        assert_eq!(spec_floor("==2.31.*"), Some(v("2.31.0")));
+        assert_eq!(spec_floor("^0.27.6"), Some(v("0.27.6")));
+        assert_eq!(spec_floor("1.2.3"), Some(v("1.2.3")));
+        assert_eq!(spec_floor(">=3.8 || ^2.7"), Some(v("2.7.0")));
+        assert_eq!(spec_floor("*"), None);
+        assert_eq!(spec_floor("<2"), None);
+    }
+
+    #[test]
+    fn requirements_lines() {
+        let r = requirements_txt(
+            "# pinned\nopenai==0.27.10\nrequests[socks] >= 2.31 ; python_version >= '3.8'\n-r base.txt\n-e .\nmypkg @ git+https://x/y.git\n./local\nflask \\\n  >=3.0\nnumpy==1.26.4 --hash=sha256:abc\n",
+        );
+        let names: Vec<(&str, &str, bool)> = r.iter().map(|(n, s, p)| (n.as_str(), s.as_str(), *p)).collect();
+        assert_eq!(
+            names,
+            vec![("openai", "==0.27.10", true), ("requests", ">= 2.31", true), ("mypkg", "", false), ("flask", ">=3.0", true), ("numpy", "==1.26.4", true)]
+        );
+    }
+
+    fn write(d: &Path, p: &str, t: &str) {
+        let p = d.join(p);
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(p, t).unwrap();
+    }
+
+    #[test]
+    fn poetry_application_reads_the_lockfile() {
+        let d = tempfile::tempdir().unwrap();
+        write(
+            d.path(),
+            "pyproject.toml",
+            "[tool.poetry]\nname = \"app\"\n[tool.poetry.dependencies]\npython = \"^3.11\"\nopenai = \"^0.27.6\"\nlocal = { path = \"../local\" }\n[tool.poetry.group.dev.dependencies]\npytest = \">=7\"\n",
+        );
+        write(d.path(), "poetry.lock", "[[package]]\nname = \"openai\"\nversion = \"0.27.10\"\n[[package]]\nname = \"pytest\"\nversion = \"8.3.2\"\n");
+        write(d.path(), "examples/demo/requirements.txt", "django==5.0\n");
+        let (mut pk, mut deps) = (vec![], BTreeMap::new());
+        detect(d.path(), &mut pk, &mut deps, &mut vec![]);
+        assert_eq!(pk.len(), 1);
+        assert_eq!(pk[0].kind, Kind::Application);
+        assert_eq!(deps["pkg:pypi/openai"].version, Some(v("0.27.10")));
+        assert_eq!(deps["pkg:pypi/openai"].source, "poetry.lock");
+        assert_eq!(deps["pkg:pypi/pytest"].version, Some(v("8.3.2")));
+        assert!(!deps["pkg:pypi/local"].public_candidate);
+        assert!(!deps.contains_key("pkg:pypi/python"));
+        assert!(!deps.contains_key("pkg:pypi/django"), "an example's requirements are not the project's");
+    }
+
+    #[test]
+    fn stale_lockfile_beside_the_real_one_is_not_read() {
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "pyproject.toml", "[project]\nname = \"app\"\ndependencies = [\"fastapi>=0.115,<1\", \"openai~=1.40\"]\n");
+        // uv.lock sorts first but predates the bump; poetry.lock matches.
+        write(d.path(), "uv.lock", "[[package]]\nname = \"fastapi\"\nversion = \"0.110.0\"\n[[package]]\nname = \"openai\"\nversion = \"0.27.6\"\n");
+        write(d.path(), "poetry.lock", "[[package]]\nname = \"fastapi\"\nversion = \"0.115.4\"\n[[package]]\nname = \"openai\"\nversion = \"1.52.0\"\n");
+        let (mut pk, mut deps, mut notes) = (vec![], BTreeMap::new(), vec![]);
+        detect(d.path(), &mut pk, &mut deps, &mut notes);
+        assert_eq!(deps["pkg:pypi/openai"].version, Some(v("1.52.0")));
+        assert_eq!(pk[0].lockfile.as_deref(), Some("poetry.lock"));
+        assert_eq!(notes.len(), 1, "{notes:?}");
+        assert!(notes[0].contains("versions from poetry.lock") && notes[0].contains("uv.lock has 2 of 2"), "{}", notes[0]);
+    }
+
+    #[test]
+    fn pin_outside_the_specifier_falls_back_to_the_floor() {
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "pyproject.toml", "[tool.poetry]\nname = \"app\"\n[tool.poetry.dependencies]\nopenai = \"^1.40\"\nboto3 = \"^1.34\"\n");
+        write(d.path(), "poetry.lock", "[[package]]\nname = \"openai\"\nversion = \"0.27.10\"\n[[package]]\nname = \"boto3\"\nversion = \"1.34.117\"\n");
+        let (mut pk, mut deps, mut notes) = (vec![], BTreeMap::new(), vec![]);
+        detect(d.path(), &mut pk, &mut deps, &mut notes);
+        assert_eq!(deps["pkg:pypi/openai"].version, Some(v("1.40.0")));
+        assert_eq!(deps["pkg:pypi/boto3"].version, Some(v("1.34.117")));
+        assert!(notes[0].starts_with("poetry.lock: 1 pinned version falls outside"), "{}", notes[0]);
+    }
+
+    #[test]
+    fn spec_satisfies_pep440_and_poetry() {
+        let ok = |a: &str, s: &str| spec_satisfies(&v(a), s);
+        assert_eq!(ok("1.5.0", ">=1.2,<2"), Some(true));
+        assert_eq!(ok("2.0.0", ">=1.2,<2"), Some(false));
+        assert_eq!(ok("1.9.0", "~=1.4"), Some(true));
+        assert_eq!(ok("2.0.0", "~=1.4"), Some(false));
+        assert_eq!(ok("1.4.9", "~=1.4.2"), Some(true));
+        assert_eq!(ok("1.5.0", "~=1.4.2"), Some(false));
+        assert_eq!(ok("1.3.7", "==1.3.*"), Some(true));
+        assert_eq!(ok("1.3.0", "!=1.3.0"), Some(false));
+        assert_eq!(ok("3.9.5", "==3.9.5"), Some(true));
+        assert_eq!(ok("0.27.10", "^1.40"), Some(false));
+        assert_eq!(ok("1.0.0", ""), Some(true));
+        assert_eq!(ok("1.0.0", "@ https://x"), None);
+    }
+
+    #[test]
+    fn requirements_alone_use_their_own_pins_not_a_parent_lock() {
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "pyproject.toml", "[tool.poetry]\nname = \"app\"\n[tool.poetry.dependencies]\nopenai = \"^0.27\"\n");
+        write(d.path(), "poetry.lock", "[[package]]\nname = \"openai\"\nversion = \"0.27.10\"\n[[package]]\nname = \"httpx\"\nversion = \"0.24.0\"\n");
+        write(d.path(), "sandbox/runtime/requirements.txt", "httpx==0.28.1\n");
+        let (mut pk, mut deps) = (vec![], BTreeMap::new());
+        detect(d.path(), &mut pk, &mut deps, &mut vec![]);
+        assert_eq!(deps["pkg:pypi/httpx"].version, Some(v("0.28.1")));
+        assert_eq!(pk.iter().find(|p| p.dir == "sandbox/runtime").unwrap().lockfile, None);
+    }
+
+    #[test]
+    fn pep621_library_without_lock_reads_floors_and_uv_lock_pins() {
+        let d = tempfile::tempdir().unwrap();
+        write(
+            d.path(),
+            "lib/pyproject.toml",
+            "[project]\nname = \"lib\"\nversion = \"1.0\"\ndependencies = [\"httpx>=0.27,<1\", \"pydantic[email]~=2.7\"]\n[project.optional-dependencies]\ncli = [\"rich>=13\"]\n[dependency-groups]\ndev = [\"ruff==0.6.0\", { include-group = \"x\" }]\n",
+        );
+        write(d.path(), "svc/pyproject.toml", "[project]\nname = \"svc\"\ndependencies = [\"httpx>=0.25\"]\n");
+        write(d.path(), "svc/uv.lock", "version = 1\n[[package]]\nname = \"httpx\"\nversion = \"0.28.1\"\n");
+        let (mut pk, mut deps) = (vec![], BTreeMap::new());
+        detect(d.path(), &mut pk, &mut deps, &mut vec![]);
+        let kinds: Vec<(&str, Kind)> = pk.iter().map(|p| (p.dir.as_str(), p.kind)).collect();
+        assert_eq!(kinds, vec![("lib", Kind::Library), ("svc", Kind::Application)]);
+        assert_eq!(deps["pkg:pypi/httpx"].version, Some(v("0.27.0")), "the lowest across packages: the library's floor");
+        assert_eq!(deps["pkg:pypi/pydantic"].version, Some(v("2.7.0")));
+        assert_eq!(deps["pkg:pypi/rich"].version, Some(v("13.0.0")));
+        assert_eq!(deps["pkg:pypi/ruff"].version, Some(v("0.6.0")));
+    }
+}
+

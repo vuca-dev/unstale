@@ -1,0 +1,3355 @@
+[
+ {
+  "n": 1,
+  "technology": "nestjs",
+  "incoming": {
+   "key": "nestjs@12.0.0+guide.b0c7d729#0.1",
+   "subject": "Node.js runtime requirements",
+   "summary": "Running applications requires Node.js 20.19+ or 22.12+; CLI generation and upgrades require newer Node.js releases.",
+   "quote": "Running a Nest 12 application | v20.19+, or v22.12+ on the 22.x line",
+   "breaking": true,
+   "section": "Node.js requirements"
+  },
+  "candidate": {
+   "id": "nestjs:node.js",
+   "subject": "Node.js",
+   "summary": "NestJS 12 requires Node.js 20.19+ or 22.12+; the 21.x line is unsupported.",
+   "quotes": [
+    "v12 requires **Node.js v20.19+ or v22.12+**."
+   ],
+   "breaking": true,
+   "releases": [
+    "12.0.0"
+   ]
+  },
+  "p": 0.99,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 2,
+  "technology": "nestjs",
+  "incoming": {
+   "key": "nestjs@12.0.0+guide.b0c7d729#0.2",
+   "subject": "nest new",
+   "summary": "New projects prompt developers to choose between CommonJS and ESM layouts.",
+   "quote": "`nest new` now prompts you to choose whether to generate a CommonJS or an ESM project.",
+   "breaking": false,
+   "section": "New project defaults"
+  },
+  "candidate": {
+   "id": "nestjs:nest-new",
+   "subject": "nest new",
+   "summary": "The project generator now asks whether to scaffold a CommonJS or ESM project.",
+   "quotes": [
+    "`nest new` now asks whether to scaffold a **CommonJS** or an **ESM** project."
+   ],
+   "breaking": false,
+   "releases": [
+    "12.0.0"
+   ]
+  },
+  "p": 1,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 3,
+  "technology": "nestjs",
+  "incoming": {
+   "key": "nestjs@12.0.0+guide.b0c7d729#0.3",
+   "subject": "Vitest",
+   "summary": "Vitest becomes the default test runner for generated ESM projects.",
+   "quote": "ESM projects use Vitest by default (CommonJS projects use Jest)",
+   "breaking": false,
+   "section": "New project defaults"
+  },
+  "candidate": {
+   "id": "nestjs:vitest",
+   "subject": "Vitest",
+   "summary": "Vitest is the default test runner for generated ESM projects, while CommonJS projects retain Jest.",
+   "quotes": [
+    "**Vitest** is the default test runner for ESM projects; CommonJS projects continue with Jest."
+   ],
+   "breaking": false,
+   "releases": [
+    "12.0.0"
+   ]
+  },
+  "p": 0.99,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 4,
+  "technology": "nestjs",
+  "incoming": {
+   "key": "nestjs@12.0.0+guide.b0c7d729#0.4",
+   "subject": "oxlint",
+   "summary": "Newly generated projects use oxlint by default.",
+   "quote": "All generated projects use oxlint by default",
+   "breaking": false,
+   "section": "New project defaults"
+  },
+  "candidate": {
+   "id": "nestjs:oxlint",
+   "subject": "oxlint",
+   "summary": "Generated projects now use oxlint instead of ESLint.",
+   "quotes": [
+    "**oxlint** replaces ESLint in generated projects."
+   ],
+   "breaking": false,
+   "releases": [
+    "12.0.0"
+   ]
+  },
+  "p": 1,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 5,
+  "technology": "nestjs",
+  "incoming": {
+   "key": "nestjs@12.0.0+guide.b0c7d729#0.5",
+   "subject": "schema",
+   "facet": "schema",
+   "summary": "Route parameter decorators accept Standard Schema-compatible schemas for validation and OpenAPI generation.",
+   "quote": "Nest adds a new `schema` option to route parameter decorators such as `@Body()`, `@Query()`, `@Param()`, and `@RawBody()`.",
+   "breaking": false,
+   "section": "Route decorator schemas"
+  },
+  "candidate": {
+   "id": "nestjs:route-parameter-decorators-schema",
+   "subject": "route parameter decorators",
+   "facet": "schema",
+   "summary": "Route parameter decorators accept Standard Schema-compatible schemas for validation and OpenAPI generation.",
+   "quotes": [
+    "Route parameter decorators — `@Body()`, `@Query()`, `@Param()`, `@RawBody()` — accept a new `schema` option"
+   ],
+   "breaking": false,
+   "releases": [
+    "12.0.0"
+   ]
+  },
+  "p": 1,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 6,
+  "technology": "nestjs",
+  "incoming": {
+   "key": "nestjs@12.0.0+guide.b0c7d729#0.6",
+   "subject": "StandardSchemaValidationPipe",
+   "summary": "A built-in pipe validates route data against Standard Schema-compatible schemas.",
+   "quote": "To validate against it, register the built-in `StandardSchemaValidationPipe`",
+   "breaking": false,
+   "section": "Route decorator schemas"
+  },
+  "candidate": {
+   "id": "nestjs:standardschemavalidationpipe",
+   "subject": "StandardSchemaValidationPipe",
+   "summary": "A new pipe validates route data against Standard Schema metadata.",
+   "quotes": [
+    "register the new `StandardSchemaValidationPipe` to validate against it"
+   ],
+   "breaking": false,
+   "releases": [
+    "12.0.0"
+   ]
+  },
+  "p": 0.99,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 7,
+  "technology": "nestjs",
+  "incoming": {
+   "key": "nestjs@12.0.0+guide.b0c7d729#0.7",
+   "subject": "StandardSchemaSerializerInterceptor",
+   "summary": "A new interceptor validates and transforms outgoing responses using Standard Schema-compatible schemas.",
+   "quote": "Nest also introduces `StandardSchemaSerializerInterceptor`, which validates and transforms outgoing responses with the same Standard Schema ecosystem.",
+   "breaking": false,
+   "section": "Standard Schema serialization"
+  },
+  "candidate": {
+   "id": "nestjs:standardschemaserializerinterceptor",
+   "subject": "StandardSchemaSerializerInterceptor",
+   "summary": "A new interceptor validates and transforms outgoing responses using Standard Schema.",
+   "quotes": [
+    "`StandardSchemaSerializerInterceptor` validates and transforms outgoing responses with the same ecosystem"
+   ],
+   "breaking": false,
+   "releases": [
+    "12.0.0"
+   ]
+  },
+  "p": 1,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 8,
+  "technology": "nestjs",
+  "incoming": {
+   "key": "nestjs@12.0.0+guide.b0c7d729#0.8",
+   "subject": "graphiql",
+   "facet": "graphiql",
+   "summary": "GraphiQL is now the default GraphQL IDE, and customization uses an options object.",
+   "quote": "GraphiQL is now the default GraphQL IDE.",
+   "breaking": true,
+   "section": "GraphQL IDE configuration"
+  },
+  "candidate": {
+   "id": "nestjs:graphiql",
+   "subject": "graphiql",
+   "summary": "GraphiQL is now the default GraphQL IDE, replacing playground configuration.",
+   "quotes": [
+    "**GraphiQL** is the default GraphQL IDE"
+   ],
+   "breaking": false,
+   "releases": [
+    "12.0.0"
+   ]
+  },
+  "p": 0.72,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": true,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 9,
+  "technology": "nestjs",
+  "incoming": {
+   "key": "nestjs@12.0.0+guide.b0c7d729#0.9",
+   "subject": "subscriptions-transport-ws",
+   "summary": "GraphQL subscriptions no longer support subscriptions-transport-ws; applications should use graphql-ws.",
+   "quote": "The latest `@nestjs/graphql` release removes support for `subscriptions-transport-ws`.",
+   "breaking": true,
+   "section": "GraphQL subscriptions transport"
+  },
+  "candidate": {
+   "id": "nestjs:subscriptions-transport-ws",
+   "subject": "subscriptions-transport-ws",
+   "summary": "GraphQL subscriptions transport support was removed; clients must switch to graphql-ws.",
+   "quotes": [
+    "**GraphQL subscriptions** — `subscriptions-transport-ws` support removed"
+   ],
+   "breaking": true,
+   "releases": [
+    "12.0.0"
+   ]
+  },
+  "p": 1,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 10,
+  "technology": "nestjs",
+  "incoming": {
+   "key": "nestjs@12.0.0+guide.b0c7d729#0.11",
+   "subject": "nats",
+   "summary": "NATS transport users must replace the nats package with @nats-io/transport-node for NATS v3.",
+   "quote": "If you use the NATS transport, replace the old `nats` package with `@nats-io/transport-node`",
+   "breaking": true,
+   "section": "NATS v3"
+  },
+  "candidate": {
+   "id": "nestjs:nats-io-transport-node",
+   "subject": "@nats-io/transport-node",
+   "summary": "The NATS transport package replaces nats; direct imports and message handling must be updated.",
+   "quotes": [
+    "the `nats` package is replaced by `@nats-io/transport-node`"
+   ],
+   "breaking": true,
+   "releases": [
+    "12.0.0"
+   ]
+  },
+  "p": 1,
+  "rank": 4,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 11,
+  "technology": "nestjs",
+  "incoming": {
+   "key": "nestjs@12.0.0+guide.b0c7d729#0.13",
+   "subject": "lifecycle hooks",
+   "summary": "Lifecycle hooks are called by component hierarchy level, potentially changing ordering across dependent providers and modules.",
+   "quote": "Lifecycle hooks are now called by component hierarchy level.",
+   "breaking": true,
+   "section": "Lifecycle hook ordering"
+  },
+  "candidate": {
+   "id": "nestjs:lifecycle-hooks~2",
+   "subject": "Lifecycle hooks",
+   "summary": "Lifecycle hooks are now invoked by component hierarchy level, which may change ordering assumptions.",
+   "quotes": [
+    "**Lifecycle hooks** are now invoked by component hierarchy level"
+   ],
+   "breaking": true,
+   "releases": [
+    "12.0.0"
+   ]
+  },
+  "p": 1,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 12,
+  "technology": "nestjs",
+  "incoming": {
+   "key": "nestjs@12.0.0+guide.b0c7d729#0.15",
+   "subject": "validationSchema",
+   "facet": "validationSchema",
+   "summary": "@nestjs/config now accepts any Standard Schema-compatible validation schema instead of being Joi-specific.",
+   "quote": "The `validationSchema` option now accepts any Standard Schema-compatible schema",
+   "breaking": false,
+   "section": "Config module"
+  },
+  "candidate": {
+   "id": "nestjs:configmodule.forroot-validationschema",
+   "subject": "ConfigModule.forRoot",
+   "facet": "validationSchema",
+   "summary": "validationSchema now accepts any compatible Standard Schema instead of being Joi-specific.",
+   "quotes": [
+    "`@nestjs/config` moves from Joi-specific validation to Standard Schema."
+   ],
+   "breaking": false,
+   "releases": [
+    "12.0.0"
+   ]
+  },
+  "p": 0.99,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 13,
+  "technology": "nestjs",
+  "incoming": {
+   "key": "nestjs@12.0.0+guide.b0c7d729#0.16",
+   "subject": "validationOptions.libraryOptions",
+   "facet": "libraryOptions",
+   "summary": "Library-specific validation settings must now be nested under validationOptions.libraryOptions.",
+   "quote": "Library-specific settings previously passed directly under `validationOptions` now go under `validationOptions.libraryOptions`.",
+   "breaking": true
+  },
+  "candidate": {
+   "id": "nestjs:validationoptions-libraryoptions",
+   "subject": "validationOptions",
+   "facet": "libraryOptions",
+   "summary": "Joi-specific validation settings must be moved under validationOptions.libraryOptions.",
+   "quotes": [
+    "move library-specific settings under `validationOptions.libraryOptions`"
+   ],
+   "breaking": true,
+   "releases": [
+    "12.0.0"
+   ]
+  },
+  "p": 0.84,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 14,
+  "technology": "nestjs",
+  "incoming": {
+   "key": "nestjs@12.0.0+guide.b0c7d729#0.20",
+   "subject": "Rspack",
+   "summary": "Rspack becomes the default bundler for monorepos.",
+   "quote": "Rspack is now the default bundler for monorepos",
+   "breaking": false,
+   "section": "Webpack deprecation in CLI workflows"
+  },
+  "candidate": {
+   "id": "nestjs:rspack",
+   "subject": "Rspack",
+   "summary": "Rspack is now the default bundler for monorepos.",
+   "quotes": [
+    "**Rspack** is the new default bundler for monorepos."
+   ],
+   "breaking": false,
+   "releases": [
+    "12.0.0"
+   ]
+  },
+  "p": 1,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 15,
+  "technology": "nestjs",
+  "incoming": {
+   "key": "nestjs@12.0.0+guide.b0c7d729#0.21",
+   "subject": "--webpack",
+   "summary": "The webpack CLI flags are deprecated in favor of --builder rspack.",
+   "quote": "the `--webpack` / `--webpackPath` CLI flags ... are deprecated in favor of `--builder rspack`.",
+   "breaking": false
+  },
+  "candidate": {
+   "id": "nestjs:webpack",
+   "subject": "--webpack",
+   "summary": "The webpack flag is deprecated in favor of selecting the Rspack builder.",
+   "quotes": [
+    "The `--webpack` / `--webpackPath` flags ... are **deprecated** in favor of `--builder rspack`."
+   ],
+   "breaking": false,
+   "releases": [
+    "12.0.0"
+   ]
+  },
+  "p": 1,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 16,
+  "technology": "nestjs",
+  "incoming": {
+   "key": "nestjs@12.0.0+guide.b0c7d729#0.21",
+   "subject": "--webpack",
+   "summary": "The webpack CLI flags are deprecated in favor of --builder rspack.",
+   "quote": "the `--webpack` / `--webpackPath` CLI flags ... are deprecated in favor of `--builder rspack`.",
+   "breaking": false
+  },
+  "candidate": {
+   "id": "nestjs:builder",
+   "subject": "--builder",
+   "summary": "CLI builds should select Rspack with the builder option as webpack workflows are deprecated.",
+   "quotes": [
+    "deprecated in favor of `--builder rspack`"
+   ],
+   "breaking": false,
+   "releases": [
+    "12.0.0"
+   ]
+  },
+  "p": 0.51,
+  "rank": 3,
+  "best": false,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "different"
+ },
+ {
+  "n": 17,
+  "technology": "nestjs",
+  "incoming": {
+   "key": "nestjs@12.0.0+guide.b0c7d729#0.22",
+   "subject": "bun",
+   "summary": "The CLI adds bun as a supported package manager.",
+   "quote": "The CLI also adds `bun` as a supported package manager",
+   "breaking": false,
+   "section": "Webpack deprecation in CLI workflows"
+  },
+  "candidate": {
+   "id": "nestjs:bun",
+   "subject": "bun",
+   "summary": "bun is now supported as a package manager alongside npm, yarn, and pnpm.",
+   "quotes": [
+    "**bun** is now a supported package manager"
+   ],
+   "breaking": false,
+   "releases": [
+    "12.0.0"
+   ]
+  },
+  "p": 1,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 18,
+  "technology": "nestjs",
+  "incoming": {
+   "key": "nestjs@12.0.0+guide.b0c7d729#0.24",
+   "subject": "angular",
+   "summary": "The angular schematic has been removed.",
+   "quote": "The `angular` schematic has been removed.",
+   "breaking": true,
+   "section": "Webpack deprecation in CLI workflows"
+  },
+  "candidate": {
+   "id": "nestjs:angular",
+   "subject": "angular",
+   "summary": "The angular schematic has been removed.",
+   "quotes": [
+    "The `angular` schematic has been **removed**."
+   ],
+   "breaking": true,
+   "releases": [
+    "12.0.0"
+   ]
+  },
+  "p": 1,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 19,
+  "technology": "nestjs",
+  "incoming": {
+   "key": "nestjs@12.0.0+guide.b0c7d729#0.25",
+   "subject": "nest deploy",
+   "summary": "The CLI adds a deploy command that forwards to Mau and installs @nestjs/mau on first use.",
+   "quote": "The CLI gains a `deploy` command that forwards to [Mau](https://mau.nestjs.com/)",
+   "breaking": false,
+   "section": "New CLI commands and flags"
+  },
+  "candidate": {
+   "id": "nestjs:nest-deploy",
+   "subject": "nest deploy",
+   "summary": "A new command deploys applications to the cloud through Mau and installs @nestjs/mau on first use.",
+   "quotes": [
+    "`nest deploy` — deploys your application to the cloud via [Mau]"
+   ],
+   "breaking": false,
+   "releases": [
+    "12.0.0"
+   ]
+  },
+  "p": 1,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 20,
+  "technology": "nestjs",
+  "incoming": {
+   "key": "nestjs@12.0.0+guide.b0c7d729#0.26",
+   "subject": "--rspackPath",
+   "summary": "nest build and nest start accept a Rspack configuration path.",
+   "quote": "`--rspackPath [path]`: path to a Rspack configuration file",
+   "breaking": false,
+   "section": "New CLI commands and flags"
+  },
+  "candidate": {
+   "id": "nestjs:nest-build-rspackpath",
+   "subject": "nest build",
+   "facet": "--rspackPath",
+   "summary": "nest build supports specifying the Rspack path.",
+   "quotes": [
+    "`nest build` / `nest start`: `--rspackPath [path]`"
+   ],
+   "breaking": false,
+   "releases": [
+    "12.0.0"
+   ]
+  },
+  "p": 0.55,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 21,
+  "technology": "nestjs",
+  "incoming": {
+   "key": "nestjs@12.0.0+guide.b0c7d729#0.27",
+   "subject": "--emit-declarations",
+   "summary": "The SWC builder can emit declaration files through a new CLI option.",
+   "quote": "`--emit-declarations`: emit `.d.ts` files when using the SWC builder",
+   "breaking": false,
+   "section": "New CLI commands and flags"
+  },
+  "candidate": {
+   "id": "nestjs:nest-build-emit-declarations",
+   "subject": "nest build",
+   "facet": "--emit-declarations",
+   "summary": "SWC builds can emit declaration files.",
+   "quotes": [
+    "`--emit-declarations` (SWC)"
+   ],
+   "breaking": false,
+   "releases": [
+    "12.0.0"
+   ]
+  },
+  "p": 1,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 22,
+  "technology": "nestjs",
+  "incoming": {
+   "key": "nestjs@12.0.0+guide.b0c7d729#0.28",
+   "subject": "--no-type-check",
+   "summary": "The SWC builder gains an explicit option to disable type checking.",
+   "quote": "`--no-type-check`: explicitly disable SWC type checking",
+   "breaking": false,
+   "section": "New CLI commands and flags"
+  },
+  "candidate": {
+   "id": "nestjs:nest-build-no-type-check",
+   "subject": "nest build",
+   "facet": "--no-type-check",
+   "summary": "Builds can disable type checking.",
+   "quotes": [
+    "`--no-type-check`"
+   ],
+   "breaking": false,
+   "releases": [
+    "12.0.0"
+   ]
+  },
+  "p": 0.99,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 23,
+  "technology": "nestjs",
+  "incoming": {
+   "key": "nestjs@12.0.0+guide.b0c7d729#0.30",
+   "subject": "--parallel",
+   "summary": "nest build can build monorepo projects in parallel when combined with --all.",
+   "quote": "`nest build` also supports `--parallel [concurrency]`, which builds monorepo projects in parallel when combined with `--all`.",
+   "breaking": false,
+   "section": "New CLI commands and flags"
+  },
+  "candidate": {
+   "id": "nestjs:nest-build-parallel",
+   "subject": "nest build",
+   "facet": "--parallel",
+   "summary": "Monorepo projects can be built in parallel with configurable concurrency.",
+   "quotes": [
+    "`nest build`: `--parallel [concurrency]`, for building monorepo projects in parallel with `--all`"
+   ],
+   "breaking": false,
+   "releases": [
+    "12.0.0"
+   ]
+  },
+  "p": 0.95,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 24,
+  "technology": "nestjs",
+  "incoming": {
+   "key": "nestjs@12.0.0+guide.b0c7d729#0.31",
+   "subject": "includeLibraryAssets",
+   "summary": "nest-cli.json can copy library assets into an application build.",
+   "quote": "`nest-cli.json` gains an `includeLibraryAssets` property for copying library assets into an application build.",
+   "breaking": false,
+   "section": "New CLI commands and flags"
+  },
+  "candidate": {
+   "id": "nestjs:nest-cli.json-includelibraryassets",
+   "subject": "nest-cli.json",
+   "facet": "includeLibraryAssets",
+   "summary": "Applications can copy library assets into the application build.",
+   "quotes": [
+    "`nest-cli.json`: `includeLibraryAssets`, for copying library assets into an application build"
+   ],
+   "breaking": false,
+   "releases": [
+    "12.0.0"
+   ]
+  },
+  "p": 1,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 25,
+  "technology": "nestjs",
+  "incoming": {
+   "key": "nestjs@12.0.0+guide.b0c7d729#0.33",
+   "subject": "routeResolutionStrategy",
+   "facet": "routeResolutionStrategy",
+   "summary": "NestApplicationOptions can resolve routes using specificity ordering.",
+   "quote": "`routeResolutionStrategy: 'specificity'`",
+   "breaking": false,
+   "section": "Route conflict diagnostics"
+  },
+  "candidate": {
+   "id": "nestjs:routeresolutionstrategy",
+   "subject": "routeResolutionStrategy",
+   "summary": "Applications can opt into specificity-based route resolution.",
+   "quotes": [
+    "`routeResolutionStrategy: 'specificity'`"
+   ],
+   "breaking": false,
+   "releases": [
+    "12.0.0"
+   ]
+  },
+  "p": 0.99,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 26,
+  "technology": "nestjs",
+  "incoming": {
+   "key": "nestjs@12.0.0+guide.b0c7d729#0.34",
+   "subject": "errorCode",
+   "facet": "errorCode",
+   "summary": "HttpExceptionOptions can include a stable machine-readable error identifier in responses.",
+   "quote": "`HttpExceptionOptions` accepts a new `errorCode` property.",
+   "breaking": false,
+   "section": "Machine-readable error codes"
+  },
+  "candidate": {
+   "id": "nestjs:httpexceptionoptions-errorcode",
+   "subject": "HttpExceptionOptions",
+   "facet": "errorCode",
+   "summary": "Exceptions can serialize a stable error code so clients avoid parsing message strings.",
+   "quotes": [
+    "`HttpExceptionOptions` accepts an `errorCode` that is serialized into the response body"
+   ],
+   "breaking": false,
+   "releases": [
+    "12.0.0"
+   ]
+  },
+  "p": 1,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 27,
+  "technology": "nestjs",
+  "incoming": {
+   "key": "nestjs@12.0.0+guide.b0c7d729#0.35",
+   "subject": "structuredParams",
+   "facet": "structuredParams",
+   "summary": "ConsoleLogger treats trailing plain objects as structured parameters by default; structuredParams false restores prior behavior.",
+   "quote": "This behavior is on by default in v12; set `structuredParams: false` to restore the previous behavior.",
+   "breaking": true,
+   "section": "Structured logging params"
+  },
+  "candidate": {
+   "id": "nestjs:consolelogger-structuredparams",
+   "subject": "ConsoleLogger",
+   "facet": "structuredParams",
+   "summary": "Plain objects after a log message are now structured parameters by default; false restores the old behavior.",
+   "quotes": [
+    "`ConsoleLogger` structured params on by default"
+   ],
+   "breaking": true,
+   "releases": [
+    "12.0.0"
+   ]
+  },
+  "p": 1,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 28,
+  "technology": "nestjs",
+  "incoming": {
+   "key": "nestjs@12.0.0+guide.b0c7d729#0.36",
+   "subject": "flattenParams",
+   "facet": "flattenParams",
+   "summary": "JSON logging can spread structured parameters into the root object.",
+   "quote": "or spread into the root object if you enable `flattenParams`.",
+   "breaking": false,
+   "section": "Structured logging params"
+  },
+  "candidate": {
+   "id": "nestjs:flattenparams",
+   "subject": "flattenParams",
+   "summary": "JSON logging can spread structured parameters into the root instead of nesting them under params.",
+   "quotes": [
+    "or spread into the root with `flattenParams`"
+   ],
+   "breaking": false,
+   "releases": [
+    "12.0.0"
+   ]
+  },
+  "p": 0.99,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 29,
+  "technology": "nestjs",
+  "incoming": {
+   "key": "nestjs@12.0.0+guide.b0c7d729#0.37",
+   "subject": "@nestjs/observe",
+   "summary": "The official SDK adds opt-in observability integrated with Nest request, job, error, and trace lifecycles.",
+   "quote": "Version 12 adds first-class observability support through the official `@nestjs/observe` SDK.",
+   "breaking": false
+  },
+  "candidate": {
+   "id": "nestjs:nestjs-observe",
+   "subject": "@nestjs/observe",
+   "summary": "The new SDK provides native observability for requests, jobs, errors, traces, and supported transports.",
+   "quotes": [
+    "Native observability — `@nestjs/observe`"
+   ],
+   "breaking": false,
+   "releases": [
+    "12.0.0"
+   ]
+  },
+  "p": 1,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 30,
+  "technology": "nestjs",
+  "incoming": {
+   "key": "nestjs@12.0.0+guide.b0c7d729#0.38",
+   "subject": "instrument",
+   "facet": "instrument",
+   "summary": "NestFactory application options accept an instrumentation object for native observability.",
+   "quote": "the SDK plugs into Nest's own request lifecycle through the `instrument` application option.",
+   "breaking": false,
+   "section": "Native observability support"
+  },
+  "candidate": {
+   "id": "nestjs:nestfactory.create-instrument",
+   "subject": "NestFactory.create",
+   "facet": "instrument",
+   "summary": "The application accepts an instrument option for integrating the official observability SDK with Nest's lifecycle.",
+   "quotes": [
+    "The official NestJS Observe SDK plugs into Nest's own request lifecycle through the `instrument` application option"
+   ],
+   "breaking": false,
+   "releases": [
+    "12.0.0"
+   ]
+  },
+  "p": 0.99,
+  "rank": 2,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 31,
+  "technology": "nestjs",
+  "incoming": {
+   "key": "nestjs@12.0.0+guide.b0c7d729#0.40",
+   "subject": "ArgumentMetadata",
+   "summary": "ArgumentMetadata now takes a generic parameter, so custom pipe signatures may need type adjustments.",
+   "quote": "`ArgumentMetadata` now takes a generic parameter.",
+   "breaking": true,
+   "section": "Other notable release changes"
+  },
+  "candidate": {
+   "id": "nestjs:argumentmetadata",
+   "subject": "ArgumentMetadata",
+   "summary": "ArgumentMetadata is now generic, requiring adjustments to some hand-written custom pipe signatures.",
+   "quotes": [
+    "**Pipe transform signatures** refined; `ArgumentMetadata` is now generic"
+   ],
+   "breaking": true,
+   "releases": [
+    "12.0.0"
+   ]
+  },
+  "p": 1,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 32,
+  "technology": "nestjs",
+  "incoming": {
+   "key": "nestjs@12.0.0+guide.b0c7d729#0.41",
+   "subject": "GrpcExceptionFilter",
+   "summary": "gRPC exception handling maps errors to proper status codes instead of UNKNOWN.",
+   "quote": "`GrpcExceptionFilter`, plus a family of status-specific exceptions, maps errors to the proper gRPC status codes instead of `UNKNOWN`.",
+   "breaking": false,
+   "section": "Other notable release changes"
+  },
+  "candidate": {
+   "id": "nestjs:grpcexceptionfilter",
+   "subject": "GrpcExceptionFilter",
+   "summary": "gRPC exception handling now maps errors to proper gRPC status codes instead of UNKNOWN.",
+   "quotes": [
+    "`GrpcExceptionFilter` and status-specific exceptions map errors to proper gRPC status codes instead of `UNKNOWN`."
+   ],
+   "breaking": false,
+   "releases": [
+    "12.0.0"
+   ]
+  },
+  "p": 1,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 33,
+  "technology": "nestjs",
+  "incoming": {
+   "key": "nestjs@12.0.0+guide.b0c7d729#0.42",
+   "subject": "RegExp",
+   "summary": "Kafka message and event patterns can now use regular expressions.",
+   "quote": "`@MessagePattern()` and `@EventPattern()` now accept a `RegExp` on the Kafka transport.",
+   "breaking": false,
+   "section": "Other notable release changes"
+  },
+  "candidate": {
+   "id": "nestjs:messagepattern",
+   "subject": "@MessagePattern",
+   "summary": "Kafka message patterns now accept RegExp values.",
+   "quotes": [
+    "`@MessagePattern()` and `@EventPattern()` accept a `RegExp` on the Kafka transport."
+   ],
+   "breaking": false,
+   "releases": [
+    "12.0.0"
+   ]
+  },
+  "p": 0.55,
+  "rank": 2,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 34,
+  "technology": "nestjs",
+  "incoming": {
+   "key": "nestjs@12.0.0+guide.b0c7d729#0.43",
+   "subject": "request-scoped WebSocket gateways",
+   "summary": "WebSocket gateways now support request-scoped providers, with the socket injectable through REQUEST.",
+   "quote": "gateways now support request-scoped providers, with the socket injectable through the `REQUEST` token.",
+   "breaking": false,
+   "section": "Other notable release changes"
+  },
+  "candidate": {
+   "id": "nestjs:request",
+   "subject": "REQUEST",
+   "summary": "Request-scoped WebSocket gateways can inject the socket through the REQUEST token.",
+   "quotes": [
+    "the socket injectable via the `REQUEST` token"
+   ],
+   "breaking": false,
+   "releases": [
+    "12.0.0"
+   ]
+  },
+  "p": 1,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 35,
+  "technology": "nestjs",
+  "incoming": {
+   "key": "nestjs@12.0.0+guide.b0c7d729#0.44",
+   "subject": "handleDisconnect",
+   "summary": "WebSocket disconnect handlers can receive the disconnection reason.",
+   "quote": "`handleDisconnect` can now receive the reason for the disconnection.",
+   "breaking": false,
+   "section": "Other notable release changes"
+  },
+  "candidate": {
+   "id": "nestjs:handledisconnect",
+   "subject": "handleDisconnect",
+   "summary": "WebSocket disconnect handlers can receive the disconnection reason.",
+   "quotes": [
+    "`handleDisconnect` can receive the reason for the disconnection."
+   ],
+   "breaking": false,
+   "releases": [
+    "12.0.0"
+   ]
+  },
+  "p": 1,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 36,
+  "technology": "nestjs",
+  "incoming": {
+   "key": "nestjs@12.0.0+guide.b0c7d729#0.45",
+   "subject": "microservices pre-request hook",
+   "summary": "Microservices gain a hook that runs before a message handler is invoked.",
+   "quote": "a new hook runs before a message handler is invoked.",
+   "breaking": false,
+   "section": "Other notable release changes"
+  },
+  "candidate": {
+   "id": "nestjs:microservices-pre-request-hook",
+   "subject": "microservices pre-request hook",
+   "summary": "A new hook runs before a microservice message handler is invoked.",
+   "quotes": [
+    "**Microservices pre-request hook** — a new hook runs before a message handler is invoked."
+   ],
+   "breaking": false,
+   "releases": [
+    "12.0.0"
+   ]
+  },
+  "p": 1,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 37,
+  "technology": "nestjs",
+  "incoming": {
+   "key": "nestjs@12.0.0+guide.b0c7d729#0.46",
+   "subject": "Express graceful shutdown",
+   "summary": "The Express adapter drains in-flight requests during shutdown.",
+   "quote": "the Express adapter now drains in-flight requests on shutdown.",
+   "breaking": false,
+   "section": "Other notable release changes"
+  },
+  "candidate": {
+   "id": "nestjs:express-graceful-shutdown",
+   "subject": "Express graceful shutdown",
+   "summary": "The Express adapter now drains in-flight requests during shutdown.",
+   "quotes": [
+    "**Express graceful shutdown** — the Express adapter drains in-flight requests on shutdown."
+   ],
+   "breaking": false,
+   "releases": [
+    "12.0.0"
+   ]
+  },
+  "p": 1,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 38,
+  "technology": "next",
+  "incoming": {
+   "key": "next@16.0.0+guide.604704de#0.1",
+   "subject": "AGENTS.md",
+   "summary": "Coding-agent instructions can point to version-matched Next.js documentation.",
+   "quote": "Before upgrading, point AGENTS.md at version-matched Next.js docs",
+   "breaking": false,
+   "section": "Set up AI agent docs"
+  },
+  "candidate": {
+   "id": "next:agents.md",
+   "subject": "AGENTS.md",
+   "summary": "create-next-app now generates AGENTS.md with bundled Next.js documentation.",
+   "quotes": [
+    "[AI] Ship bundled docs in next and generate AGENTS.md in create-next-app"
+   ],
+   "breaking": false,
+   "releases": [
+    "16.2.0"
+   ]
+  },
+  "p": 0.6,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "different"
+ },
+ {
+  "n": 39,
+  "technology": "next",
+  "incoming": {
+   "key": "next@16.0.0+guide.604704de#0.3",
+   "subject": "TypeScript",
+   "summary": "Next.js 16 requires TypeScript 5.1.0 or newer.",
+   "quote": "Minimum version now `5.1.0`",
+   "breaking": true,
+   "section": "Node.js runtime and browser support"
+  },
+  "candidate": {
+   "id": "next:typescript",
+   "subject": "TypeScript",
+   "summary": "The minimum supported TypeScript version is increased to 5.1.0.",
+   "quotes": [
+    "[Breaking] Bump minimum TypeScript version to 5.1.0"
+   ],
+   "breaking": true,
+   "releases": [
+    "16.0.0"
+   ]
+  },
+  "p": 1,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 40,
+  "technology": "next",
+  "incoming": {
+   "key": "next@16.0.0+guide.604704de#0.4",
+   "subject": "Turbopack",
+   "summary": "Turbopack is stable and becomes the default for next dev and next build.",
+   "quote": "Turbopack is stable and used by default with `next dev` and `next build`",
+   "breaking": false,
+   "section": "Turbopack by default"
+  },
+  "candidate": {
+   "id": "next:turbopack",
+   "subject": "--turbopack",
+   "summary": "Turbopack becomes the default bundler, with a webpack opt-out flag.",
+   "quotes": [
+    "Add a --webpack flag and default --turbopack to true"
+   ],
+   "breaking": false,
+   "releases": [
+    "16.0.0"
+   ]
+  },
+  "p": 0.95,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 41,
+  "technology": "next",
+  "incoming": {
+   "key": "next@16.0.0+guide.604704de#0.4",
+   "subject": "Turbopack",
+   "summary": "Turbopack is stable and becomes the default for next dev and next build.",
+   "quote": "Turbopack is stable and used by default with `next dev` and `next build`",
+   "breaking": false,
+   "section": "Turbopack by default"
+  },
+  "candidate": {
+   "id": "next:turbopack~2",
+   "subject": "Turbopack",
+   "summary": "Create Next App no longer needs to explicitly pass --turbopack because Turbopack is the default bundler.",
+   "quotes": [
+    "Don't expliclitly set the `--turbopack` flag in Create Next App, it is no longer necessary"
+   ],
+   "breaking": false,
+   "releases": [
+    "16.0.0"
+   ]
+  },
+  "p": 0.63,
+  "rank": 2,
+  "best": false,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "different"
+ },
+ {
+  "n": 42,
+  "technology": "next",
+  "incoming": {
+   "key": "next@16.0.0+guide.604704de#0.5",
+   "subject": "--webpack",
+   "summary": "The flag opts out of Turbopack and builds with Webpack.",
+   "quote": "Use the `--webpack` flag to opt out of Turbopack and build with Webpack.",
+   "breaking": false,
+   "section": "Turbopack by default"
+  },
+  "candidate": {
+   "id": "next:webpack",
+   "subject": "--webpack",
+   "summary": "The CLI adds a flag to opt into webpack when Turbopack is the default.",
+   "quotes": [
+    "Add a --webpack flag and default --turbopack to true"
+   ],
+   "breaking": false,
+   "releases": [
+    "16.0.0"
+   ]
+  },
+  "p": 0.98,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 43,
+  "technology": "next",
+  "incoming": {
+   "key": "next@16.0.0+guide.604704de#0.11",
+   "subject": "experimental.turbopackFileSystemCacheForDev",
+   "summary": "Turbopack filesystem caching is enabled by default for next dev.",
+   "quote": "Filesystem caching is enabled by default for both `next dev` and `next build`, through `experimental.turbopackFileSystemCacheForDev`",
+   "breaking": false,
+   "section": "Turbopack File System Caching"
+  },
+  "candidate": {
+   "id": "next:filesystem-cache",
+   "subject": "filesystem cache",
+   "summary": "Turbopack filesystem caching is enabled by default for development.",
+   "quotes": [
+    "[turbopack] Enable filesystem cache by default for development"
+   ],
+   "breaking": false,
+   "releases": [
+    "16.1.0"
+   ]
+  },
+  "p": 0.69,
+  "rank": 5,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 44,
+  "technology": "next",
+  "incoming": {
+   "key": "next@16.0.0+guide.604704de#0.12",
+   "subject": "experimental.turbopackFileSystemCacheForBuild",
+   "summary": "Turbopack filesystem caching is enabled by default for next build.",
+   "quote": "Filesystem caching is enabled by default for both `next dev` and `next build`, through ... `experimental.turbopackFileSystemCacheForBuild`.",
+   "breaking": false
+  },
+  "candidate": {
+   "id": "next:turbopackfilesystemcacheforbuild~2",
+   "subject": "turbopackFileSystemCacheForBuild",
+   "summary": "The Turbopack build filesystem cache is enabled by default.",
+   "quotes": [
+    "Enable turbopackFileSystemCacheForBuild by default"
+   ],
+   "breaking": false,
+   "releases": [
+    "16.3.0"
+   ]
+  },
+  "p": 0.53,
+  "rank": 2,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 45,
+  "technology": "next",
+  "incoming": {
+   "key": "next@16.0.0+guide.604704de#0.13",
+   "subject": "Async Request APIs",
+   "summary": "Synchronous access to cookies, headers, draftMode, params, and searchParams is fully removed.",
+   "quote": "Starting with **Next.js 16**, synchronous access is fully removed. These APIs can only be accessed asynchronously.",
+   "breaking": true,
+   "section": "Async Request APIs (Breaking change)"
+  },
+  "candidate": {
+   "id": "next:sync-access-to-dynamic-apis",
+   "subject": "sync access to Dynamic APIs",
+   "summary": "Deprecated synchronous access to Dynamic APIs is removed.",
+   "quotes": [
+    "[Breaking] Remove deprecated sync access to Dynamic APIs"
+   ],
+   "breaking": true,
+   "releases": [
+    "16.0.0"
+   ]
+  },
+  "p": 0.86,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 46,
+  "technology": "next",
+  "incoming": {
+   "key": "next@16.0.0+guide.604704de#0.14",
+   "subject": "params",
+   "summary": "Image-generating functions receive params as a Promise and must await it.",
+   "quote": "The image generating function now receives `params` and `id` as promises.",
+   "breaking": true,
+   "section": "Async parameters for icon, and open-graph Image (Breaking change)"
+  },
+  "candidate": {
+   "id": "next:params",
+   "subject": "params",
+   "summary": "Route params become Promises.",
+   "quotes": [
+    "Make params and searchParams new Promises"
+   ],
+   "breaking": true,
+   "releases": [
+    "16.0.0"
+   ]
+  },
+  "p": 0.84,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "different"
+ },
+ {
+  "n": 47,
+  "technology": "next",
+  "incoming": {
+   "key": "next@16.0.0+guide.604704de#0.18",
+   "subject": "reactCompiler",
+   "summary": "The React Compiler configuration option is stable but remains disabled by default.",
+   "quote": "The `reactCompiler` configuration option has been promoted from `experimental` to stable.",
+   "breaking": false,
+   "section": "React Compiler Support"
+  },
+  "candidate": {
+   "id": "next:reactcompiler",
+   "subject": "reactCompiler",
+   "summary": "Next.js adds a configuration option for enabling React Compiler integration, which is stable.",
+   "quotes": [
+    "[cna] Add `reactCompiler` option"
+   ],
+   "breaking": false,
+   "releases": [
+    "16.0.0"
+   ]
+  },
+  "p": 0.96,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 48,
+  "technology": "next",
+  "incoming": {
+   "key": "next@16.0.0+guide.604704de#0.19",
+   "subject": "babel-plugin-react-compiler",
+   "summary": "Enabling the React Compiler requires installing the React Compiler Babel plugin.",
+   "quote": "Install the latest version of the React Compiler plugin:",
+   "breaking": false,
+   "section": "React Compiler Support"
+  },
+  "candidate": {
+   "id": "next:reactcompiler",
+   "subject": "reactCompiler",
+   "summary": "Next.js adds a configuration option for enabling React Compiler integration, which is stable.",
+   "quotes": [
+    "[cna] Add `reactCompiler` option"
+   ],
+   "breaking": false,
+   "releases": [
+    "16.0.0"
+   ]
+  },
+  "p": 0.68,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "different"
+ },
+ {
+  "n": 49,
+  "technology": "next",
+  "incoming": {
+   "key": "next@16.0.0+guide.604704de#0.21",
+   "subject": "updateTag",
+   "summary": "updateTag provides Server Actions with read-your-writes cache expiration and immediate refresh semantics.",
+   "quote": "`updateTag` is a new Server Actions-only API that provides **read-your-writes** semantics",
+   "breaking": false
+  },
+  "candidate": {
+   "id": "next:updatetag",
+   "subject": "updateTag",
+   "summary": "Next.js adds updateTag and changes the revalidateTag signature.",
+   "quotes": [
+    "Add new updateTag API and new signature for revalidateTag"
+   ],
+   "breaking": true,
+   "releases": [
+    "16.0.0"
+   ]
+  },
+  "p": 0.54,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "different"
+ },
+ {
+  "n": 50,
+  "technology": "next",
+  "incoming": {
+   "key": "next@16.0.0+guide.604704de#0.22",
+   "subject": "middleware",
+   "summary": "The middleware convention is deprecated and should be migrated to proxy.",
+   "quote": "Migrate from deprecated `middleware` convention to `proxy`",
+   "breaking": false,
+   "section": "Using the codemod"
+  },
+  "candidate": {
+   "id": "next:middleware",
+   "subject": "middleware",
+   "summary": "Middleware is deprecated and developers are directed to use Proxy.",
+   "quotes": [
+    "Deprecate `middleware` and recommend `proxy`"
+   ],
+   "breaking": false,
+   "releases": [
+    "16.0.0"
+   ]
+  },
+  "p": 0.99,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 51,
+  "technology": "next",
+  "incoming": {
+   "key": "next@16.0.0+guide.604704de#0.23",
+   "subject": "experimental_ppr",
+   "summary": "The upgrade codemod removes experimental_ppr Route Segment Config from pages and layouts.",
+   "quote": "Remove `experimental_ppr` Route Segment Config from pages and layouts",
+   "breaking": true,
+   "section": "Using the codemod"
+  },
+  "candidate": {
+   "id": "next:experimental-ppr",
+   "subject": "experimental_ppr",
+   "summary": "The deprecated route-level experimental_ppr configuration is removed.",
+   "quotes": [
+    "Remove deprecated experimental_ppr route-level configuration"
+   ],
+   "breaking": true,
+   "releases": [
+    "16.0.0"
+   ]
+  },
+  "p": 1,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 52,
+  "technology": "next",
+  "incoming": {
+   "key": "next@16.0.0+guide.604704de#1.1",
+   "subject": "cacheLife",
+   "summary": "The cacheLife API is stable and no longer requires the unstable_ prefix.",
+   "quote": "`cacheLife` and `cacheTag` are now stable. The `unstable_` prefix is no longer needed.",
+   "breaking": false
+  },
+  "candidate": {
+   "id": "next:unstable-cachelife",
+   "subject": "unstable_cacheLife",
+   "summary": "The unstable_ prefix is removed from the cacheLife API, while the unstable prefix remains accepted for compatibility.",
+   "quotes": [
+    "[Cache Components] Remove `unstable` prefix from `unstable_cacheLife`"
+   ],
+   "breaking": false,
+   "releases": [
+    "16.0.0"
+   ]
+  },
+  "p": 0.97,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 53,
+  "technology": "next",
+  "incoming": {
+   "key": "next@16.0.0+guide.604704de#1.2",
+   "subject": "cacheTag",
+   "summary": "The cacheTag API is stable and no longer requires the unstable_ prefix.",
+   "quote": "`cacheLife` and `cacheTag` are now stable. The `unstable_` prefix is no longer needed.",
+   "breaking": false
+  },
+  "candidate": {
+   "id": "next:unstable-cachetag",
+   "subject": "unstable_cacheTag",
+   "summary": "The unstable_ prefix is removed from the cacheTag API, while the unstable prefix remains accepted for compatibility.",
+   "quotes": [
+    "[Cache Components] Remove `unstable` prefix from `unstable_cacheTag`"
+   ],
+   "breaking": false,
+   "releases": [
+    "16.0.0"
+   ]
+  },
+  "p": 0.98,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 54,
+  "technology": "next",
+  "incoming": {
+   "key": "next@16.0.0+guide.604704de#1.4",
+   "subject": "incremental prefetching",
+   "summary": "Next.js prefetches only parts not already in cache instead of entire pages.",
+   "quote": "Next.js only prefetches parts not already in cache, rather than entire pages.",
+   "breaking": false,
+   "section": "Enhanced Routing and Navigation"
+  },
+  "candidate": {
+   "id": "next:partialprefetching",
+   "subject": "partialPrefetching",
+   "summary": "Adds a global opt-in for Partial Prefetching.",
+   "quotes": [
+    "Add global config to enable Partial Prefetching"
+   ],
+   "breaking": false,
+   "releases": [
+    "16.3.0"
+   ]
+  },
+  "p": 0.69,
+  "rank": 3,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "different"
+ },
+ {
+  "n": 55,
+  "technology": "next",
+  "incoming": {
+   "key": "next@16.0.0+guide.604704de#1.5",
+   "subject": "experimental_ppr",
+   "summary": "The experimental Partial Prerendering flag and route-level segment option are removed.",
+   "quote": "Next.js 16 removes the experimental Partial Prerendering (PPR) flag and configuration options, including the route level segment `experimental_ppr`.",
+   "breaking": true,
+   "section": "Partial Prerendering (PPR)"
+  },
+  "candidate": {
+   "id": "next:experimental-ppr",
+   "subject": "experimental_ppr",
+   "summary": "The deprecated route-level experimental_ppr configuration is removed.",
+   "quotes": [
+    "Remove deprecated experimental_ppr route-level configuration"
+   ],
+   "breaking": true,
+   "releases": [
+    "16.0.0"
+   ]
+  },
+  "p": 0.71,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "different"
+ },
+ {
+  "n": 56,
+  "technology": "next",
+  "incoming": {
+   "key": "next@16.0.0+guide.604704de#1.6",
+   "subject": "cacheComponents",
+   "summary": "PPR can be enabled through the cacheComponents configuration.",
+   "quote": "Starting with Next.js 16, you can opt into PPR using the `cacheComponents` configuration.",
+   "breaking": false
+  },
+  "candidate": {
+   "id": "next:cachecomponents",
+   "subject": "cacheComponents",
+   "summary": "Cache Components becomes a stable top-level configuration option.",
+   "quotes": [
+    "[cache components]: move flag out of experimental"
+   ],
+   "breaking": false,
+   "releases": [
+    "16.0.0"
+   ]
+  },
+  "p": 0.9,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "different"
+ },
+ {
+  "n": 57,
+  "technology": "next",
+  "incoming": {
+   "key": "next@16.0.0+guide.604704de#1.7",
+   "subject": "middleware.ts",
+   "summary": "The middleware filename is deprecated and should be renamed to proxy.ts.",
+   "quote": "The `middleware` filename is deprecated, and has been renamed to `proxy`",
+   "breaking": false,
+   "section": "middleware to proxy"
+  },
+  "candidate": {
+   "id": "next:proxy.ts",
+   "subject": "proxy.ts",
+   "summary": "Proxy replaces the deprecated Middleware file convention, with a codemod available for migration.",
+   "quotes": [
+    "Add codemod for `middleware` to `proxy`"
+   ],
+   "breaking": false,
+   "releases": [
+    "16.0.0"
+   ]
+  },
+  "p": 0.86,
+  "rank": 2,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "different"
+ },
+ {
+  "n": 58,
+  "technology": "next",
+  "incoming": {
+   "key": "next@16.0.0+guide.604704de#1.7",
+   "subject": "middleware.ts",
+   "summary": "The middleware filename is deprecated and should be renamed to proxy.ts.",
+   "quote": "The `middleware` filename is deprecated, and has been renamed to `proxy`",
+   "breaking": false,
+   "section": "middleware to proxy"
+  },
+  "candidate": {
+   "id": "next:middleware",
+   "subject": "middleware",
+   "summary": "Middleware is deprecated and developers are directed to use Proxy.",
+   "quotes": [
+    "Deprecate `middleware` and recommend `proxy`"
+   ],
+   "breaking": false,
+   "releases": [
+    "16.0.0"
+   ]
+  },
+  "p": 0.68,
+  "rank": 1,
+  "best": false,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 59,
+  "technology": "next",
+  "incoming": {
+   "key": "next@16.0.0+guide.604704de#1.8",
+   "subject": "proxy.ts",
+   "summary": "The renamed proxy.ts file is the recommended replacement for middleware.ts.",
+   "quote": "Rename your middleware file",
+   "breaking": false,
+   "section": "Rename your middleware file"
+  },
+  "candidate": {
+   "id": "next:proxy.ts",
+   "subject": "proxy.ts",
+   "summary": "Proxy replaces the deprecated Middleware file convention, with a codemod available for migration.",
+   "quotes": [
+    "Add codemod for `middleware` to `proxy`"
+   ],
+   "breaking": false,
+   "releases": [
+    "16.0.0"
+   ]
+  },
+  "p": 0.99,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "different"
+ },
+ {
+  "n": 60,
+  "technology": "next",
+  "incoming": {
+   "key": "next@16.0.0+guide.604704de#1.8",
+   "subject": "proxy.ts",
+   "summary": "The renamed proxy.ts file is the recommended replacement for middleware.ts.",
+   "quote": "Rename your middleware file",
+   "breaking": false,
+   "section": "Rename your middleware file"
+  },
+  "candidate": {
+   "id": "next:middleware",
+   "subject": "middleware",
+   "summary": "Middleware is deprecated and developers are directed to use Proxy.",
+   "quotes": [
+    "Deprecate `middleware` and recommend `proxy`"
+   ],
+   "breaking": false,
+   "releases": [
+    "16.0.0"
+   ]
+  },
+  "p": 0.82,
+  "rank": 8,
+  "best": false,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 61,
+  "technology": "next",
+  "incoming": {
+   "key": "next@16.0.0+guide.604704de#1.9",
+   "subject": "middleware",
+   "summary": "The named middleware export is deprecated and should be renamed to proxy.",
+   "quote": "The named export `middleware` is also deprecated. Rename your function to `proxy`.",
+   "breaking": false,
+   "section": "or"
+  },
+  "candidate": {
+   "id": "next:middleware",
+   "subject": "middleware",
+   "summary": "Middleware is deprecated and developers are directed to use Proxy.",
+   "quotes": [
+    "Deprecate `middleware` and recommend `proxy`"
+   ],
+   "breaking": false,
+   "releases": [
+    "16.0.0"
+   ]
+  },
+  "p": 0.96,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "different"
+ },
+ {
+  "n": 62,
+  "technology": "next",
+  "incoming": {
+   "key": "next@16.0.0+guide.604704de#1.10",
+   "subject": "proxy",
+   "summary": "The recommended named export for the renamed routing file is proxy.",
+   "quote": "We recommend changing the function name to `proxy`",
+   "breaking": false,
+   "section": "or"
+  },
+  "candidate": {
+   "id": "next:proxy.ts",
+   "subject": "proxy.ts",
+   "summary": "Proxy replaces the deprecated Middleware file convention, with a codemod available for migration.",
+   "quotes": [
+    "Add codemod for `middleware` to `proxy`"
+   ],
+   "breaking": false,
+   "releases": [
+    "16.0.0"
+   ]
+  },
+  "p": 0.94,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 63,
+  "technology": "next",
+  "incoming": {
+   "key": "next@16.0.0+guide.604704de#1.11",
+   "subject": "edge",
+   "summary": "The edge runtime is not supported in proxy; proxy uses the nodejs runtime and cannot configure it.",
+   "quote": "The `edge` runtime is **NOT** supported in `proxy`. The `proxy` runtime is `nodejs`, and it cannot be configured.",
+   "breaking": false,
+   "section": "middleware to proxy"
+  },
+  "candidate": {
+   "id": "next:middleware-runtime",
+   "subject": "middleware runtime",
+   "summary": "Proxy only supports the Node.js runtime.",
+   "quotes": [
+    "Only allow node runtime in proxy"
+   ],
+   "breaking": true,
+   "releases": [
+    "16.0.0"
+   ]
+  },
+  "p": 0.9,
+  "rank": 3,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 64,
+  "technology": "next",
+  "incoming": {
+   "key": "next@16.0.0+guide.604704de#1.13",
+   "subject": "images.localPatterns",
+   "facet": "search",
+   "summary": "Local image sources with query strings require a matching search pattern to prevent enumeration attacks.",
+   "quote": "Local image sources with query strings now require `images.localPatterns.search` configuration to prevent enumeration attacks.",
+   "breaking": true,
+   "section": "Local Images with Query Strings (Breaking change)"
+  },
+  "candidate": {
+   "id": "next:images.localpatterns-localpatterns",
+   "subject": "images.localPatterns",
+   "facet": "localPatterns",
+   "summary": "Local image sources with query strings require images.localPatterns configuration.",
+   "quotes": [
+    "[Breaking] Require `images.localPatterns` for query in Image src"
+   ],
+   "breaking": true,
+   "releases": [
+    "16.0.0"
+   ]
+  },
+  "p": 0.99,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "different"
+ },
+ {
+  "n": 65,
+  "technology": "next",
+  "incoming": {
+   "key": "next@16.0.0+guide.604704de#1.14",
+   "subject": "images.minimumCacheTTL",
+   "summary": "The default minimum image cache TTL increases from 60 seconds to 4 hours.",
+   "quote": "The default value for `images.minimumCacheTTL` has changed from `60 seconds` to `4 hours` (14400 seconds).",
+   "breaking": true,
+   "section": "minimumCacheTTL Default (Breaking change)"
+  },
+  "candidate": {
+   "id": "next:images.minimumcachettl-minimumcachettl",
+   "subject": "images.minimumCacheTTL",
+   "facet": "minimumCacheTTL",
+   "summary": "The default image cache minimum lifetime increases from one minute to four hours.",
+   "quotes": [
+    "BREAKING CHANGE!: bump default `images.minimumCacheTTL` from 1 min to 4 hours"
+   ],
+   "breaking": true,
+   "releases": [
+    "16.0.0"
+   ]
+  },
+  "p": 1,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 66,
+  "technology": "next",
+  "incoming": {
+   "key": "next@16.0.0+guide.604704de#1.15",
+   "subject": "images.imageSizes",
+   "summary": "The value 16 is removed from the default imageSizes array, reducing the shipped srcset size.",
+   "quote": "The value `16` has been removed from the default `images.imageSizes` array.",
+   "breaking": true,
+   "section": "imageSizes Default (Breaking change)"
+  },
+  "candidate": {
+   "id": "next:images.imagesizes-imagesizes",
+   "subject": "images.imageSizes",
+   "facet": "imageSizes",
+   "summary": "The default 16px image size is removed from the imageSizes configuration.",
+   "quotes": [
+    "breaking(next/image)!: remove 16px from default `images.imageSizes` config"
+   ],
+   "breaking": true,
+   "releases": [
+    "16.0.0"
+   ]
+  },
+  "p": 1,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 67,
+  "technology": "next",
+  "incoming": {
+   "key": "next@16.0.0+guide.604704de#1.17",
+   "subject": "images.dangerouslyAllowLocalIP",
+   "summary": "Local IP image optimization is blocked by default and can be enabled only for private networks.",
+   "quote": "A new security restriction blocks local IP optimization by default.",
+   "breaking": true,
+   "section": "Local IP Restriction (Breaking change)"
+  },
+  "candidate": {
+   "id": "next:images.dangerouslyallowlocalip-dangerouslyallowlocalip",
+   "subject": "images.dangerouslyAllowLocalIP",
+   "facet": "dangerouslyAllowLocalIP",
+   "summary": "Next Image adds an option controlling whether local IP addresses may be loaded.",
+   "quotes": [
+    "[Breaking] feat(next/image)!: add support for `images.dangerouslyAllowLocalIP` and `images.maximumRedirects`"
+   ],
+   "breaking": false,
+   "releases": [
+    "16.0.0"
+   ]
+  },
+  "p": 0.7,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": true,
+   "advisory": false
+  },
+  "reference": "different"
+ },
+ {
+  "n": 68,
+  "technology": "next",
+  "incoming": {
+   "key": "next@16.0.0+guide.604704de#1.18",
+   "subject": "images.maximumRedirects",
+   "summary": "The default maximum image redirects changes from unlimited to 3.",
+   "quote": "The default for `images.maximumRedirects` has changed from unlimited to 3 redirects maximum.",
+   "breaking": true,
+   "section": "Maximum Redirects (Breaking change)"
+  },
+  "candidate": {
+   "id": "next:images.maximumredirects-maximumredirects",
+   "subject": "images.maximumRedirects",
+   "facet": "maximumRedirects",
+   "summary": "Next Image adds a maximum redirect limit for image loading.",
+   "quotes": [
+    "[Breaking] feat(next/image)!: add support for `images.dangerouslyAllowLocalIP` and `images.maximumRedirects`"
+   ],
+   "breaking": false,
+   "releases": [
+    "16.0.0"
+   ]
+  },
+  "p": 0.75,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": true,
+   "advisory": false
+  },
+  "reference": "different"
+ },
+ {
+  "n": 69,
+  "technology": "next",
+  "incoming": {
+   "key": "next@16.0.0+guide.604704de#1.19",
+   "subject": "next/legacy/image",
+   "summary": "The legacy image component is deprecated; use next/image instead.",
+   "quote": "The `next/legacy/image` component is deprecated. Use `next/image` instead:",
+   "breaking": false,
+   "section": "next/legacy/image Component (deprecated)"
+  },
+  "candidate": {
+   "id": "next:next-legacy-image",
+   "subject": "next/legacy/image",
+   "summary": "Use of the legacy image component emits a deprecation warning.",
+   "quotes": [
+    "feat(next/legacy/image)!: deprecate and warn on `next/legacy/image` usage"
+   ],
+   "breaking": false,
+   "releases": [
+    "16.0.0"
+   ]
+  },
+  "p": 0.93,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 70,
+  "technology": "next",
+  "incoming": {
+   "key": "next@16.0.0+guide.604704de#1.20",
+   "subject": "images.domains",
+   "summary": "The images.domains configuration is deprecated; use images.remotePatterns for improved security.",
+   "quote": "The `images.domains` config is deprecated.",
+   "breaking": false,
+   "section": "images.domains Configuration (deprecated)"
+  },
+  "candidate": {
+   "id": "next:images.domains-domains",
+   "subject": "images.domains",
+   "facet": "domains",
+   "summary": "The images.domains configuration is deprecated and warns; image remote patterns are preferred.",
+   "quotes": [
+    "feat(next/image)!: deprecate and warn on `images.domains` config"
+   ],
+   "breaking": false,
+   "releases": [
+    "16.0.0"
+   ]
+  },
+  "p": 0.99,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 71,
+  "technology": "next",
+  "incoming": {
+   "key": "next@16.0.0+guide.604704de#1.23",
+   "subject": "next internal trace",
+   "summary": "The Turbopack tracing command uses next internal trace with the trace output path.",
+   "quote": "The Turbopack tracing command should be:",
+   "breaking": false
+  },
+  "candidate": {
+   "id": "next:next-turbopack-tracing-path",
+   "subject": "NEXT_TURBOPACK_TRACING_PATH",
+   "summary": "The environment variable controls the Turbopack trace output location.",
+   "quotes": [
+    "feat(turbopack): add NEXT_TURBOPACK_TRACING_PATH to control trace output location"
+   ],
+   "breaking": false,
+   "releases": [
+    "16.3.0"
+   ]
+  },
+  "p": 0.66,
+  "rank": 6,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 72,
+  "technology": "next",
+  "incoming": {
+   "key": "next@16.0.0+guide.604704de#1.25",
+   "subject": "@next/eslint-plugin-next",
+   "summary": "The Next ESLint plugin now defaults to ESLint Flat Config format.",
+   "quote": "`@next/eslint-plugin-next` now defaults to ESLint Flat Config format",
+   "breaking": false,
+   "section": "ESLint Flat Config"
+  },
+  "candidate": {
+   "id": "next:next-eslint-plugin-next",
+   "subject": "@next/eslint-plugin-next",
+   "summary": "Flat config becomes the default ESLint configuration format.",
+   "quotes": [
+    "[Breaking] Flat config as default in `@next/eslint-plugin-next`"
+   ],
+   "breaking": true,
+   "releases": [
+    "16.0.0"
+   ]
+  },
+  "p": 0.98,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 73,
+  "technology": "next",
+  "incoming": {
+   "key": "next@16.0.0+guide.604704de#1.32",
+   "subject": "amp",
+   "summary": "The amp configuration is removed from Next config and page exports.",
+   "quote": "All AMP APIs and configurations have been removed:",
+   "breaking": true,
+   "section": "AMP Support"
+  },
+  "candidate": {
+   "id": "next:amp",
+   "subject": "AMP",
+   "summary": "Built-in AMP support and its codemod are removed.",
+   "quotes": [
+    "[Breaking] Remove deprecated built-in AMP"
+   ],
+   "breaking": true,
+   "releases": [
+    "16.0.0"
+   ]
+  },
+  "p": 0.87,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 74,
+  "technology": "next",
+  "incoming": {
+   "key": "next@16.0.0+guide.604704de#1.36",
+   "subject": "next build",
+   "summary": "next build no longer runs linting.",
+   "quote": "`next build` no longer runs linting.",
+   "breaking": true,
+   "section": "next lint Command"
+  },
+  "candidate": {
+   "id": "next:automatic-linting",
+   "subject": "automatic linting",
+   "summary": "next build no longer runs linting automatically.",
+   "quotes": [
+    "Remove automatic linting from build"
+   ],
+   "breaking": true,
+   "releases": [
+    "16.0.0"
+   ]
+  },
+  "p": 1,
+  "rank": 4,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 75,
+  "technology": "next",
+  "incoming": {
+   "key": "next@16.0.0+guide.604704de#2.6",
+   "subject": "experimental.dynamicIO",
+   "summary": "Removed; migrate active usage to the top-level cacheComponents option or remove the flag.",
+   "quote": "The `experimental.dynamicIO` and `experimental.useCache` flags have been removed.",
+   "breaking": true,
+   "section": "experimental.dynamicIO and experimental.useCache"
+  },
+  "candidate": {
+   "id": "next:dynamicio",
+   "subject": "dynamicIO",
+   "summary": "The dynamicIO flag is removed.",
+   "quotes": [
+    "remove dynamicIO flag"
+   ],
+   "breaking": true,
+   "releases": [
+    "16.0.0"
+   ]
+  },
+  "p": 0.99,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 76,
+  "technology": "prisma",
+  "incoming": {
+   "key": "prisma@7.0.0+guide.bf9d32a0#0.0",
+   "subject": "MongoDB support",
+   "summary": "Prisma ORM v7 does not support MongoDB, so MongoDB projects must remain on Prisma ORM v6.",
+   "quote": "Prisma ORM v7 does not yet support MongoDB.",
+   "breaking": true
+  },
+  "candidate": {
+   "id": "prisma:mongodb",
+   "subject": "MongoDB",
+   "summary": "MongoDB is not supported in Prisma 7; MongoDB users should remain on Prisma 6.",
+   "quotes": [
+    "Currently, MongoDB is not supported in Prisma 7."
+   ],
+   "breaking": true,
+   "releases": [
+    "7.0.0"
+   ]
+  },
+  "p": 1,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 77,
+  "technology": "prisma",
+  "incoming": {
+   "key": "prisma@7.0.0+guide.bf9d32a0#0.4",
+   "subject": "prisma-client",
+   "summary": "The new Rust-free prisma-client provider replaces the older prisma-client-js provider and provides faster queries and smaller bundles.",
+   "quote": "Upgrade to the new `prisma-client` provider which uses the new Rust-free client.",
+   "breaking": false
+  },
+  "candidate": {
+   "id": "prisma:prisma-client-provider",
+   "subject": "prisma-client",
+   "facet": "provider",
+   "summary": "The Rust-free ESM Prisma Client is now the default provider for new projects.",
+   "quotes": [
+    "Now with version 7.0, we’re making this the default for all new projects."
+   ],
+   "breaking": false,
+   "releases": [
+    "7.0.0"
+   ]
+  },
+  "p": 0.9,
+  "rank": 2,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 78,
+  "technology": "prisma",
+  "incoming": {
+   "key": "prisma@7.0.0+guide.bf9d32a0#0.4",
+   "subject": "prisma-client",
+   "summary": "The new Rust-free prisma-client provider replaces the older prisma-client-js provider and provides faster queries and smaller bundles.",
+   "quote": "Upgrade to the new `prisma-client` provider which uses the new Rust-free client.",
+   "breaking": false
+  },
+  "candidate": {
+   "id": "prisma:prisma-client",
+   "subject": "prisma-client",
+   "summary": "Prisma v7 preparation moves the generator provider from prisma-client-js to prisma-client.",
+   "quotes": [
+    "Move from `prisma-client-js` `prisma-client`"
+   ],
+   "breaking": true,
+   "releases": [
+    "6.19.0"
+   ]
+  },
+  "p": 0.78,
+  "rank": 1,
+  "best": false,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 79,
+  "technology": "prisma",
+  "incoming": {
+   "key": "prisma@7.0.0+guide.bf9d32a0#0.5",
+   "subject": "prisma-client-js",
+   "summary": "The older prisma-client-js provider is deprecated and will be removed in a future Prisma ORM release.",
+   "quote": "The older `prisma-client-js` provider will be removed in future releases of Prisma ORM.",
+   "breaking": false,
+   "section": "Schema changes"
+  },
+  "candidate": {
+   "id": "prisma:prisma-client",
+   "subject": "prisma-client",
+   "summary": "Prisma v7 preparation moves the generator provider from prisma-client-js to prisma-client.",
+   "quotes": [
+    "Move from `prisma-client-js` `prisma-client`"
+   ],
+   "breaking": true,
+   "releases": [
+    "6.19.0"
+   ]
+  },
+  "p": 0.55,
+  "rank": 2,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "different"
+ },
+ {
+  "n": 80,
+  "technology": "prisma",
+  "incoming": {
+   "key": "prisma@7.0.0+guide.bf9d32a0#0.6",
+   "subject": "generator client",
+   "facet": "output",
+   "summary": "The generator output field is now required because Prisma Client is no longer generated in node_modules by default.",
+   "quote": "The `output` field is now **required** in the generator block.",
+   "breaking": true,
+   "section": "Schema changes"
+  },
+  "candidate": {
+   "id": "prisma:output",
+   "subject": "output",
+   "summary": "Generated Client runtime and project types now require an output path in schema.prisma.",
+   "quotes": [
+    "the generated Client runtime and project types will now **require** a `output` path to be set"
+   ],
+   "breaking": true,
+   "releases": [
+    "7.0.0"
+   ]
+  },
+  "p": 0.99,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 81,
+  "technology": "prisma",
+  "incoming": {
+   "key": "prisma@7.0.0+guide.bf9d32a0#0.8",
+   "subject": "datasource",
+   "facet": "url",
+   "summary": "The datasource url field is deprecated and should be configured in Prisma Config.",
+   "quote": "Additionally other fields such as `url`, `directUrl`, and `shadowDatabaseUrl` in the `datasource` block are deprecated.",
+   "breaking": false,
+   "section": "Schema changes"
+  },
+  "candidate": {
+   "id": "prisma:datasource.url",
+   "subject": "datasource.url",
+   "summary": "datasource.url is now configured in the Prisma config file instead of schema.prisma.",
+   "quotes": [
+    "`datasource.url` is now configured in the config file"
+   ],
+   "breaking": true,
+   "releases": [
+    "7.0.0"
+   ]
+  },
+  "p": 0.93,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 82,
+  "technology": "prisma",
+  "incoming": {
+   "key": "prisma@7.0.0+guide.bf9d32a0#0.10",
+   "subject": "datasource",
+   "facet": "shadowDatabaseUrl",
+   "summary": "The datasource shadowDatabaseUrl field is deprecated and should be configured in Prisma Config.",
+   "quote": "Additionally other fields such as `url`, `directUrl`, and `shadowDatabaseUrl` in the `datasource` block are deprecated.",
+   "breaking": false,
+   "section": "Schema changes"
+  },
+  "candidate": {
+   "id": "prisma:datasource.shadowdatabaseurl",
+   "subject": "datasource.shadowDatabaseUrl",
+   "summary": "datasource.shadowDatabaseUrl is now configured in the Prisma config file.",
+   "quotes": [
+    "`datasource.shadowDatabaseUrl` is now configured in the config file"
+   ],
+   "breaking": false,
+   "releases": [
+    "7.0.0"
+   ]
+  },
+  "p": 0.99,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 83,
+  "technology": "prisma",
+  "incoming": {
+   "key": "prisma@7.0.0+guide.bf9d32a0#0.15",
+   "subject": "environment variables",
+   "summary": "Prisma ORM 7.0.0 no longer loads environment variables by default when calling the Prisma CLI.",
+   "quote": "In Prisma ORM 7.0.0, environment variables are not loaded by default.",
+   "breaking": true,
+   "section": "Environment variables"
+  },
+  "candidate": {
+   "id": "prisma:environment-variables",
+   "subject": "environment variables",
+   "summary": "The Prisma CLI no longer automatically loads environment variables; developers must load them explicitly.",
+   "quotes": [
+    "we’re no longer automatically loading environment variables when invoking the Prisma CLI."
+   ],
+   "breaking": true,
+   "releases": [
+    "7.0.0"
+   ]
+  },
+  "p": 1,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 84,
+  "technology": "prisma",
+  "incoming": {
+   "key": "prisma@7.0.0+guide.bf9d32a0#0.18",
+   "subject": "Metrics",
+   "summary": "The deprecated Metrics preview feature has been removed from Prisma ORM v7.",
+   "quote": "The Metrics preview feature was deprecated in Prisma ORM 6.14.0 and has been removed for Prisma ORM 7.0.0.",
+   "breaking": true
+  },
+  "candidate": {
+   "id": "prisma:metrics",
+   "subject": "metrics",
+   "summary": "The deprecated metrics preview feature has been fully removed.",
+   "quotes": [
+    "we have removed it fully for version 7"
+   ],
+   "breaking": true,
+   "releases": [
+    "7.0.0"
+   ]
+  },
+  "p": 1,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 85,
+  "technology": "prisma",
+  "incoming": {
+   "key": "prisma@7.0.0+guide.bf9d32a0#0.19",
+   "subject": "mapped enum values",
+   "summary": "Generated TypeScript enum values use schema names instead of mapped database values, matching Prisma ORM v6 behavior.",
+   "quote": "In Prisma ORM v7, the generated TypeScript enum values use the **schema names**, not the mapped values.",
+   "breaking": true,
+   "section": "Mapped enum values in generated TypeScript"
+  },
+  "candidate": {
+   "id": "prisma:map~2",
+   "subject": "@map",
+   "summary": "Mapped enums revert to Prisma 6.19.0 behavior, so generated enum values no longer come from the value passed to @map.",
+   "quotes": [
+    "We have reverted this change for the time being"
+   ],
+   "breaking": false,
+   "releases": [
+    "7.3.0"
+   ]
+  },
+  "p": 0.82,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": true,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 86,
+  "technology": "prisma",
+  "incoming": {
+   "key": "prisma@7.0.0+guide.bf9d32a0#0.21",
+   "subject": "prisma migrate dev",
+   "summary": "prisma migrate dev no longer automatically runs seed scripts after applying migrations.",
+   "quote": "This automatic seeding behavior has been removed in Prisma ORM v7.",
+   "breaking": true,
+   "section": "Seeding changes"
+  },
+  "candidate": {
+   "id": "prisma:prisma-seed",
+   "subject": "prisma seed",
+   "summary": "Prisma migrate no longer runs seed implicitly.",
+   "quotes": [
+    "`prisma migrate` would run `prisma generate` and `prisma seed`"
+   ],
+   "breaking": true,
+   "releases": [
+    "7.0.0"
+   ]
+  },
+  "p": 0.95,
+  "rank": 4,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 87,
+  "technology": "prisma",
+  "incoming": {
+   "key": "prisma@7.0.0+guide.bf9d32a0#0.22",
+   "subject": "prisma db seed",
+   "summary": "Database seeding must now be invoked explicitly with prisma db seed.",
+   "quote": "To seed your database in v7, you must explicitly run:",
+   "breaking": true,
+   "section": "Seeding changes"
+  },
+  "candidate": {
+   "id": "prisma:prisma-seed",
+   "subject": "prisma seed",
+   "summary": "Prisma migrate no longer runs seed implicitly.",
+   "quotes": [
+    "`prisma migrate` would run `prisma generate` and `prisma seed`"
+   ],
+   "breaking": true,
+   "releases": [
+    "7.0.0"
+   ]
+  },
+  "p": 0.92,
+  "rank": 2,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "different"
+ },
+ {
+  "n": 88,
+  "technology": "prisma",
+  "incoming": {
+   "key": "prisma@7.0.0+guide.bf9d32a0#0.26",
+   "subject": "prisma generate",
+   "summary": "prisma migrate dev and prisma db push no longer run prisma generate automatically.",
+   "quote": "`migrate dev` and `db push` no longer run `prisma generate` automatically.",
+   "breaking": true,
+   "section": "Removed CLI flags"
+  },
+  "candidate": {
+   "id": "prisma:prisma-generate",
+   "subject": "prisma generate",
+   "summary": "Prisma no longer runs generate implicitly after installation or migration.",
+   "quotes": [
+    "This behaviour has been removed in favor of explicitly requiring commands to be run by users."
+   ],
+   "breaking": true,
+   "releases": [
+    "7.0.0"
+   ]
+  },
+  "p": 0.96,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 89,
+  "technology": "prisma",
+  "incoming": {
+   "key": "prisma@7.0.0+guide.bf9d32a0#0.29",
+   "subject": "prisma migrate diff",
+   "facet": "--from-url",
+   "summary": "The --from-url option was removed and replaced by --from-config-datasource.",
+   "quote": "`--from-url` | `--from-config-datasource`",
+   "breaking": true,
+   "section": "Migrate diff changes"
+  },
+  "candidate": {
+   "id": "prisma:prisma-migrate-diff-from-to-url",
+   "subject": "prisma migrate diff",
+   "facet": "--[from/to]-url",
+   "summary": "The URL diff flags were removed and replaced by config datasource flags.",
+   "quotes": [
+    "`prisma --[from/to]-url`, `prisma --[from/to]-schema-datasource` are now replaced with `--[from/to]-config-datasource`."
+   ],
+   "breaking": true,
+   "releases": [
+    "7.0.0"
+   ]
+  },
+  "p": 0.84,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "different"
+ },
+ {
+  "n": 90,
+  "technology": "prisma",
+  "incoming": {
+   "key": "prisma@7.0.0+guide.bf9d32a0#0.30",
+   "subject": "prisma migrate diff",
+   "facet": "--to-url",
+   "summary": "The --to-url option was removed and replaced by --to-config-datasource.",
+   "quote": "`--to-url` | `--to-config-datasource`",
+   "breaking": true,
+   "section": "Migrate diff changes"
+  },
+  "candidate": {
+   "id": "prisma:prisma-migrate-diff-from-to-url",
+   "subject": "prisma migrate diff",
+   "facet": "--[from/to]-url",
+   "summary": "The URL diff flags were removed and replaced by config datasource flags.",
+   "quotes": [
+    "`prisma --[from/to]-url`, `prisma --[from/to]-schema-datasource` are now replaced with `--[from/to]-config-datasource`."
+   ],
+   "breaking": true,
+   "releases": [
+    "7.0.0"
+   ]
+  },
+  "p": 0.81,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "different"
+ },
+ {
+  "n": 91,
+  "technology": "prisma",
+  "incoming": {
+   "key": "prisma@7.0.0+guide.bf9d32a0#0.31",
+   "subject": "prisma migrate diff",
+   "facet": "--from-schema-datasource",
+   "summary": "The --from-schema-datasource option was removed and replaced by --from-config-datasource.",
+   "quote": "`--from-schema-datasource` | `--from-config-datasource`",
+   "breaking": true,
+   "section": "Migrate diff changes"
+  },
+  "candidate": {
+   "id": "prisma:prisma-migrate-diff-from-to-schema-datasource",
+   "subject": "prisma migrate diff",
+   "facet": "--[from/to]-schema-datasource",
+   "summary": "The schema-datasource diff flags were removed and replaced by config datasource flags.",
+   "quotes": [
+    "`prisma --[from/to]-url`, `prisma --[from/to]-schema-datasource` are now replaced with `--[from/to]-config-datasource`."
+   ],
+   "breaking": true,
+   "releases": [
+    "7.0.0"
+   ]
+  },
+  "p": 0.7,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "different"
+ },
+ {
+  "n": 92,
+  "technology": "prisma",
+  "incoming": {
+   "key": "prisma@7.0.0+guide.bf9d32a0#0.32",
+   "subject": "prisma migrate diff",
+   "facet": "--to-schema-datasource",
+   "summary": "The --to-schema-datasource option was removed and replaced by --to-config-datasource.",
+   "quote": "`--to-schema-datasource` | `--to-config-datasource`",
+   "breaking": true,
+   "section": "Migrate diff changes"
+  },
+  "candidate": {
+   "id": "prisma:prisma-migrate-diff-from-to-schema-datasource",
+   "subject": "prisma migrate diff",
+   "facet": "--[from/to]-schema-datasource",
+   "summary": "The schema-datasource diff flags were removed and replaced by config datasource flags.",
+   "quotes": [
+    "`prisma --[from/to]-url`, `prisma --[from/to]-schema-datasource` are now replaced with `--[from/to]-config-datasource`."
+   ],
+   "breaking": true,
+   "releases": [
+    "7.0.0"
+   ]
+  },
+  "p": 0.75,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "different"
+ },
+ {
+  "n": 93,
+  "technology": "prisma",
+  "incoming": {
+   "key": "prisma@7.0.0+guide.bf9d32a0#0.34",
+   "subject": "PRISMA_CLI_QUERY_ENGINE_TYPE",
+   "summary": "The Prisma-specific environment variable was removed.",
+   "quote": "`PRISMA_CLI_QUERY_ENGINE_TYPE`",
+   "breaking": true,
+   "section": "Various environment variables have been removed"
+  },
+  "candidate": {
+   "id": "prisma:prisma-cli-query-engine-type",
+   "subject": "PRISMA_CLI_QUERY_ENGINE_TYPE",
+   "summary": "This Prisma-specific environment variable has been removed.",
+   "quotes": [
+    "`PRISMA_CLI_QUERY_ENGINE_TYPE`"
+   ],
+   "breaking": true,
+   "releases": [
+    "7.0.0"
+   ]
+  },
+  "p": 1,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 94,
+  "technology": "prisma",
+  "incoming": {
+   "key": "prisma@7.0.0+guide.bf9d32a0#0.35",
+   "subject": "PRISMA_CLIENT_ENGINE_TYPE",
+   "summary": "The Prisma-specific environment variable was removed.",
+   "quote": "`PRISMA_CLIENT_ENGINE_TYPE`",
+   "breaking": true,
+   "section": "Various environment variables have been removed"
+  },
+  "candidate": {
+   "id": "prisma:prisma-client-engine-type",
+   "subject": "PRISMA_CLIENT_ENGINE_TYPE",
+   "summary": "This Prisma-specific environment variable has been removed.",
+   "quotes": [
+    "`PRISMA_CLIENT_ENGINE_TYPE`"
+   ],
+   "breaking": true,
+   "releases": [
+    "7.0.0"
+   ]
+  },
+  "p": 1,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 95,
+  "technology": "prisma",
+  "incoming": {
+   "key": "prisma@7.0.0+guide.bf9d32a0#0.36",
+   "subject": "PRISMA_QUERY_ENGINE_BINARY",
+   "summary": "The Prisma-specific environment variable was removed.",
+   "quote": "`PRISMA_QUERY_ENGINE_BINARY`",
+   "breaking": true,
+   "section": "Various environment variables have been removed"
+  },
+  "candidate": {
+   "id": "prisma:prisma-query-engine-binary",
+   "subject": "PRISMA_QUERY_ENGINE_BINARY",
+   "summary": "This Prisma-specific environment variable has been removed.",
+   "quotes": [
+    "`PRISMA_QUERY_ENGINE_BINARY`"
+   ],
+   "breaking": true,
+   "releases": [
+    "7.0.0"
+   ]
+  },
+  "p": 1,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 96,
+  "technology": "prisma",
+  "incoming": {
+   "key": "prisma@7.0.0+guide.bf9d32a0#0.37",
+   "subject": "PRISMA_QUERY_ENGINE_LIBRARY",
+   "summary": "The Prisma-specific environment variable was removed.",
+   "quote": "`PRISMA_QUERY_ENGINE_LIBRARY`",
+   "breaking": true,
+   "section": "Various environment variables have been removed"
+  },
+  "candidate": {
+   "id": "prisma:prisma-query-engine-library",
+   "subject": "PRISMA_QUERY_ENGINE_LIBRARY",
+   "summary": "This Prisma-specific environment variable has been removed.",
+   "quotes": [
+    "`PRISMA_QUERY_ENGINE_LIBRARY`"
+   ],
+   "breaking": true,
+   "releases": [
+    "7.0.0"
+   ]
+  },
+  "p": 1,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 97,
+  "technology": "prisma",
+  "incoming": {
+   "key": "prisma@7.0.0+guide.bf9d32a0#0.38",
+   "subject": "PRISMA_GENERATE_SKIP_AUTOINSTALL",
+   "summary": "The Prisma-specific environment variable was removed.",
+   "quote": "`PRISMA_GENERATE_SKIP_AUTOINSTALL`",
+   "breaking": true,
+   "section": "Various environment variables have been removed"
+  },
+  "candidate": {
+   "id": "prisma:prisma-generate-skip-autoinstall",
+   "subject": "PRISMA_GENERATE_SKIP_AUTOINSTALL",
+   "summary": "This Prisma-specific environment variable has been removed.",
+   "quotes": [
+    "`PRISMA_GENERATE_SKIP_AUTOINSTALL`"
+   ],
+   "breaking": true,
+   "releases": [
+    "7.0.0"
+   ]
+  },
+  "p": 1,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 98,
+  "technology": "prisma",
+  "incoming": {
+   "key": "prisma@7.0.0+guide.bf9d32a0#0.39",
+   "subject": "PRISMA_SKIP_POSTINSTALL_GENERATE",
+   "summary": "The Prisma-specific environment variable was removed.",
+   "quote": "`PRISMA_SKIP_POSTINSTALL_GENERATE`",
+   "breaking": true,
+   "section": "Various environment variables have been removed"
+  },
+  "candidate": {
+   "id": "prisma:prisma-skip-postinstall-generate",
+   "subject": "PRISMA_SKIP_POSTINSTALL_GENERATE",
+   "summary": "This Prisma-specific environment variable has been removed.",
+   "quotes": [
+    "`PRISMA_SKIP_POSTINSTALL_GENERATE`"
+   ],
+   "breaking": true,
+   "releases": [
+    "7.0.0"
+   ]
+  },
+  "p": 1,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 99,
+  "technology": "prisma",
+  "incoming": {
+   "key": "prisma@7.0.0+guide.bf9d32a0#0.40",
+   "subject": "PRISMA_GENERATE_IN_POSTINSTALL",
+   "summary": "The Prisma-specific environment variable was removed.",
+   "quote": "`PRISMA_GENERATE_IN_POSTINSTALL`",
+   "breaking": true,
+   "section": "Various environment variables have been removed"
+  },
+  "candidate": {
+   "id": "prisma:prisma-generate-in-postinstall",
+   "subject": "PRISMA_GENERATE_IN_POSTINSTALL",
+   "summary": "This Prisma-specific environment variable has been removed.",
+   "quotes": [
+    "`PRISMA_GENERATE_IN_POSTINSTALL`"
+   ],
+   "breaking": true,
+   "releases": [
+    "7.0.0"
+   ]
+  },
+  "p": 1,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 100,
+  "technology": "prisma",
+  "incoming": {
+   "key": "prisma@7.0.0+guide.bf9d32a0#0.41",
+   "subject": "PRISMA_GENERATE_DATAPROXY",
+   "summary": "The Prisma-specific environment variable was removed.",
+   "quote": "`PRISMA_GENERATE_DATAPROXY`",
+   "breaking": true,
+   "section": "Various environment variables have been removed"
+  },
+  "candidate": {
+   "id": "prisma:prisma-generate-dataproxy",
+   "subject": "PRISMA_GENERATE_DATAPROXY",
+   "summary": "This Prisma-specific environment variable has been removed.",
+   "quotes": [
+    "`PRISMA_GENERATE_DATAPROXY`"
+   ],
+   "breaking": true,
+   "releases": [
+    "7.0.0"
+   ]
+  },
+  "p": 1,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 101,
+  "technology": "prisma",
+  "incoming": {
+   "key": "prisma@7.0.0+guide.bf9d32a0#0.42",
+   "subject": "PRISMA_GENERATE_NO_ENGINE",
+   "summary": "The Prisma-specific environment variable was removed.",
+   "quote": "`PRISMA_GENERATE_NO_ENGINE`",
+   "breaking": true,
+   "section": "Various environment variables have been removed"
+  },
+  "candidate": {
+   "id": "prisma:prisma-generate-no-engine~2",
+   "subject": "PRISMA_GENERATE_NO_ENGINE",
+   "summary": "This Prisma-specific environment variable has been removed.",
+   "quotes": [
+    "`PRISMA_GENERATE_NO_ENGINE`"
+   ],
+   "breaking": true,
+   "releases": [
+    "7.0.0"
+   ]
+  },
+  "p": 1,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 102,
+  "technology": "prisma",
+  "incoming": {
+   "key": "prisma@7.0.0+guide.bf9d32a0#0.43",
+   "subject": "PRISMA_CLIENT_NO_RETRY",
+   "summary": "The Prisma-specific environment variable was removed.",
+   "quote": "`PRISMA_CLIENT_NO_RETRY`",
+   "breaking": true,
+   "section": "Various environment variables have been removed"
+  },
+  "candidate": {
+   "id": "prisma:prisma-client-no-retry",
+   "subject": "PRISMA_CLIENT_NO_RETRY",
+   "summary": "This Prisma-specific environment variable has been removed.",
+   "quotes": [
+    "`PRISMA_CLIENT_NO_RETRY`"
+   ],
+   "breaking": true,
+   "releases": [
+    "7.0.0"
+   ]
+  },
+  "p": 1,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 103,
+  "technology": "prisma",
+  "incoming": {
+   "key": "prisma@7.0.0+guide.bf9d32a0#0.44",
+   "subject": "PRISMA_MIGRATE_SKIP_GENERATE",
+   "summary": "The Prisma-specific environment variable was removed.",
+   "quote": "`PRISMA_MIGRATE_SKIP_GENERATE`",
+   "breaking": true,
+   "section": "Various environment variables have been removed"
+  },
+  "candidate": {
+   "id": "prisma:prisma-migrate-skip-generate",
+   "subject": "PRISMA_MIGRATE_SKIP_GENERATE",
+   "summary": "This Prisma-specific environment variable has been removed.",
+   "quotes": [
+    "`PRISMA_MIGRATE_SKIP_GENERATE`"
+   ],
+   "breaking": true,
+   "releases": [
+    "7.0.0"
+   ]
+  },
+  "p": 1,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ },
+ {
+  "n": 104,
+  "technology": "prisma",
+  "incoming": {
+   "key": "prisma@7.0.0+guide.bf9d32a0#0.45",
+   "subject": "PRISMA_MIGRATE_SKIP_SEED",
+   "summary": "The Prisma-specific environment variable was removed.",
+   "quote": "`PRISMA_MIGRATE_SKIP_SEED`",
+   "breaking": true,
+   "section": "Various environment variables have been removed"
+  },
+  "candidate": {
+   "id": "prisma:prisma-migrate-skip-seed",
+   "subject": "PRISMA_MIGRATE_SKIP_SEED",
+   "summary": "This Prisma-specific environment variable has been removed.",
+   "quotes": [
+    "`PRISMA_MIGRATE_SKIP_SEED`"
+   ],
+   "breaking": true,
+   "releases": [
+    "7.0.0"
+   ]
+  },
+  "p": 1,
+  "rank": 1,
+  "best": true,
+  "guards": {
+   "breaking": false,
+   "advisory": false
+  },
+  "reference": "same"
+ }
+]

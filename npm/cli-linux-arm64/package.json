@@ -1,0 +1,12 @@
+{
+  "name": "@unstale/cli-linux-arm64",
+  "version": "0.1.0",
+  "description": "The unstale CLI binary for Linux on arm64 (static musl build; runs on glibc and musl distributions). Install the `unstale` package instead.",
+  "license": "UNLICENSED",
+  "os": ["linux"],
+  "cpu": ["arm64"],
+  "files": [
+    "bin/unstale"
+  ],
+  "preferUnplugged": true
+}

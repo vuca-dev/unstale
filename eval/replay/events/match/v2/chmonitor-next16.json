@@ -1,0 +1,200 @@
+{
+ "event": "chmonitor-next16",
+ "maps": [
+  {
+   "K1": [
+    "next-default-js"
+   ],
+   "K2": [],
+   "K3": [],
+   "K4": [
+    "next-revalidatetag-2"
+   ],
+   "K5": [],
+   "K6": [
+    "next-webpack-2"
+   ],
+   "K7": [
+    "next-next-lint",
+    "next-next-lint-2"
+   ],
+   "K8": [],
+   "K9": [
+    "next-middleware"
+   ],
+   "K10": [],
+   "K11": [
+    "next-turbopack"
+   ],
+   "K12": [],
+   "K13": [
+    "next-eslint-2"
+   ]
+  },
+  {
+   "K1": [
+    "next-default-js"
+   ],
+   "K2": [],
+   "K3": [],
+   "K4": [
+    "next-revalidatetag-2"
+   ],
+   "K5": [],
+   "K6": [
+    "next-webpack-2"
+   ],
+   "K7": [
+    "next-next-lint",
+    "next-next-lint-2"
+   ],
+   "K8": [],
+   "K9": [
+    "next-middleware"
+   ],
+   "K10": [],
+   "K11": [
+    "next-turbopack"
+   ],
+   "K12": [],
+   "K13": [
+    "next-eslint-2"
+   ]
+  }
+ ],
+ "usage": [
+  {
+   "input_tokens": 28175,
+   "cached_input_tokens": 9984,
+   "cache_write_input_tokens": 0,
+   "output_tokens": 619,
+   "reasoning_output_tokens": 516
+  },
+  {
+   "input_tokens": 28175,
+   "cached_input_tokens": 27392,
+   "cache_write_input_tokens": 0,
+   "output_tokens": 619,
+   "reasoning_output_tokens": 516
+  }
+ ],
+ "in_queue": [
+  "next-agents-md-2-2",
+  "next-amp",
+  "next-automatic-linting",
+  "next-babel-plugin-react-compiler",
+  "next-cachecomponents",
+  "next-cachecomponents-2",
+  "next-cachemaxmemorysize",
+  "next-clientparamparsing",
+  "next-clientsegmentcache",
+  "next-clientsegmentcache-2",
+  "next-connection",
+  "next-create-next-app-webpack",
+  "next-debugids",
+  "next-default-js",
+  "next-devindicators-appisrstatus",
+  "next-devindicators-buildactivity",
+  "next-devindicators-buildactivityposition",
+  "next-dynamicio",
+  "next-eslint-2",
+  "next-eslint-config-next",
+  "next-experimental-adapterpath",
+  "next-experimental-cachehandlers-cachehandlers",
+  "next-experimental-next-config-strip-types",
+  "next-experimental-ppr",
+  "next-experimental-ppr-2",
+  "next-experimental-turbopackfilesystemcacheforbuild-2",
+  "next-experimental-turbopackfilesystemcachefordev",
+  "next-experimental-turbopackmoduleids-turbopackmodulei",
+  "next-experimental-usecache-2",
+  "next-exports",
+  "next-first-load-js",
+  "next-get-errors",
+  "next-get-page-metadata",
+  "next-get-routes",
+  "next-headers",
+  "next-id",
+  "next-images-dangerouslyallowlocalip",
+  "next-images-dangerouslyallowlocalip-dangerouslyallowl",
+  "next-images-domains-domains",
+  "next-images-imagesizes-imagesizes",
+  "next-images-maximumdiskcachesize",
+  "next-images-maximumredirects",
+  "next-images-maximumredirects-maximumredirects",
+  "next-images-minimumcachettl-minimumcachettl",
+  "next-images-qualities",
+  "next-incremental-prefetching",
+  "next-instrumentation-onrequesterror-context-routetype",
+  "next-lru-disk-cache",
+  "next-mcp-server",
+  "next-middleware",
+  "next-middleware-2",
+  "next-middleware-runtime",
+  "next-minimal-mode-response-cache",
+  "next-next-amp",
+  "next-next-build-analyze",
+  "next-next-config-mts",
+  "next-next-dev-2",
+  "next-next-dev-3",
+  "next-next-dev-inspect",
+  "next-next-eslint-plugin-next",
+  "next-next-internal-trace",
+  "next-next-legacy-image",
+  "next-next-lint",
+  "next-next-lint-2",
+  "next-next-rspack-binding",
+  "next-node-js-runtime",
+  "next-npx-next-canary-upgrade-agent-latest",
+  "next-params",
+  "next-params-2",
+  "next-process-argv",
+  "next-process-cwd",
+  "next-proxy",
+  "next-proxy-ts",
+  "next-proxy-ts-4",
+  "next-proxymatcher",
+  "next-publicruntimeconfig",
+  "next-publicruntimeconfig-2",
+  "next-rdcfornavigations",
+  "next-reactcompiler",
+  "next-redirects",
+  "next-revalidatetag-2",
+  "next-rewrites",
+  "next-router-scroll-optimization",
+  "next-sass-loader",
+  "next-sass-node-modules-imports",
+  "next-scroll-behavior",
+  "next-searchparams",
+  "next-segment-cache-fallback",
+  "next-server-actions-mcp-tool",
+  "next-server-source-maps",
+  "next-serverruntimeconfig",
+  "next-serverruntimeconfig-2",
+  "next-sitemap",
+  "next-size",
+  "next-skipproxyurlnormalize",
+  "next-source-maps",
+  "next-staletimes-static",
+  "next-sync-access-to-dynamic-apis",
+  "next-this-fs-readfile",
+  "next-turbopack",
+  "next-turbopack-12",
+  "next-turbopack-2",
+  "next-turbopack-resolvealias",
+  "next-turbopackfilesystemcacheforbuild",
+  "next-turbopackfilesystemcachefordev",
+  "next-turbopackpersistentcachingforbuild",
+  "next-typescript",
+  "next-typescript-2",
+  "next-unstable-cachelife",
+  "next-unstable-cachetag",
+  "next-unstable-forcestale",
+  "next-unstable-rootparams",
+  "next-updatetag",
+  "next-updatetag-2",
+  "next-useamp",
+  "next-webpack",
+  "next-webpack-2"
+ ]
+}

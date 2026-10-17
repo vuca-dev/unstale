@@ -1,0 +1,1597 @@
+{
+ "catalog": "/var/folders/hg/dh94wcl92s52ybrvm2q3rpwc0000gn/T/unstale-gate/slice3-qwen3.8-flash/catalog",
+ "bin": "/var/folders/hg/dh94wcl92s52ybrvm2q3rpwc0000gn/T//unstale-gate/slice3-qwen3.8-flash/target/release/unstale",
+ "k": 0,
+ "arms": [
+  "tier",
+  "all"
+ ],
+ "events": {
+  "workout-next16": {
+   "split": "DEV",
+   "tech": "next",
+   "queue": 81,
+   "other_tech_in_first16": 0,
+   "deterministic": {
+    "all": {
+     "key": 10,
+     "covered": 7,
+     "queued": 5,
+     "first16": 3,
+     "first16_invoked": 3
+    },
+    "required": {
+     "key": 3,
+     "covered": 3,
+     "queued": 3,
+     "first16": 2,
+     "first16_invoked": 2
+    },
+    "optional": {
+     "key": 7,
+     "covered": 4,
+     "queued": 2,
+     "first16": 1,
+     "first16_invoked": 1
+    }
+   },
+   "reviews": {},
+   "per_key": {
+    "K1": {
+     "cls": "optional",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 10
+    },
+    "K2": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": false,
+     "rank": 72
+    },
+    "K3": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K4": {
+     "cls": "optional",
+     "covered": true,
+     "queued": true,
+     "first16": false,
+     "rank": 79
+    },
+    "K5": {
+     "cls": "optional",
+     "covered": true,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K6": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 16
+    },
+    "K7": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 14
+    },
+    "K8": {
+     "cls": "optional",
+     "covered": true,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K9": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K10": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    }
+   }
+  },
+  "invoicerr-prisma7": {
+   "split": "DEV",
+   "tech": "prisma",
+   "queue": 72,
+   "other_tech_in_first16": 5,
+   "deterministic": {
+    "all": {
+     "key": 16,
+     "covered": 11,
+     "queued": 11,
+     "first16": 7,
+     "first16_invoked": 7
+    },
+    "required": {
+     "key": 16,
+     "covered": 11,
+     "queued": 11,
+     "first16": 7,
+     "first16_invoked": 7
+    },
+    "optional": {
+     "key": 0,
+     "covered": 0,
+     "queued": 0,
+     "first16": 0,
+     "first16_invoked": 0
+    }
+   },
+   "reviews": {},
+   "per_key": {
+    "K1": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 2
+    },
+    "K2": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 3
+    },
+    "K3": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 2
+    },
+    "K4": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K5": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 3
+    },
+    "K6": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 3
+    },
+    "K7": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 2
+    },
+    "K8": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": false,
+     "rank": 27
+    },
+    "K9": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 2
+    },
+    "K10": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K11": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K12": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K13": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": false,
+     "rank": 22
+    },
+    "K14": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K15": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": false,
+     "rank": 27
+    },
+    "K16": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": false,
+     "rank": 27
+    }
+   }
+  },
+  "invoicerr-nest12": {
+   "split": "DEV",
+   "tech": "nestjs",
+   "queue": 21,
+   "other_tech_in_first16": 0,
+   "deterministic": {
+    "all": {
+     "key": 14,
+     "covered": 4,
+     "queued": 4,
+     "first16": 4,
+     "first16_invoked": 4
+    },
+    "required": {
+     "key": 13,
+     "covered": 3,
+     "queued": 3,
+     "first16": 3,
+     "first16_invoked": 3
+    },
+    "optional": {
+     "key": 1,
+     "covered": 1,
+     "queued": 1,
+     "first16": 1,
+     "first16_invoked": 1
+    }
+   },
+   "reviews": {},
+   "per_key": {
+    "K1": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 10
+    },
+    "K2": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 10
+    },
+    "K3": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K4": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K5": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K6": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K7": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K8": {
+     "cls": "optional",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 10
+    },
+    "K9": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K10": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 10
+    },
+    "K11": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K12": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K13": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K14": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    }
+   }
+  },
+  "chmonitor-next16": {
+   "split": "HELD-OUT",
+   "tech": "next",
+   "queue": 68,
+   "other_tech_in_first16": 0,
+   "deterministic": {
+    "all": {
+     "key": 13,
+     "covered": 7,
+     "queued": 5,
+     "first16": 2,
+     "first16_invoked": 2
+    },
+    "required": {
+     "key": 8,
+     "covered": 5,
+     "queued": 4,
+     "first16": 2,
+     "first16_invoked": 2
+    },
+    "optional": {
+     "key": 5,
+     "covered": 2,
+     "queued": 1,
+     "first16": 0,
+     "first16_invoked": 0
+    }
+   },
+   "reviews": {},
+   "per_key": {
+    "K1": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": false,
+     "rank": 42
+    },
+    "K2": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K3": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K4": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": false,
+     "rank": 37
+    },
+    "K5": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K6": {
+     "cls": "required",
+     "covered": true,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K7": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 12
+    },
+    "K8": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K9": {
+     "cls": "optional",
+     "covered": true,
+     "queued": true,
+     "first16": false,
+     "rank": 67
+    },
+    "K10": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K11": {
+     "cls": "optional",
+     "covered": true,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K12": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K13": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 16
+    }
+   }
+  },
+  "aksel-next16": {
+   "split": "DEV",
+   "tech": "next",
+   "queue": 68,
+   "other_tech_in_first16": 0,
+   "deterministic": {
+    "all": {
+     "key": 9,
+     "covered": 6,
+     "queued": 3,
+     "first16": 1,
+     "first16_invoked": 1
+    },
+    "required": {
+     "key": 3,
+     "covered": 2,
+     "queued": 2,
+     "first16": 1,
+     "first16_invoked": 1
+    },
+    "optional": {
+     "key": 6,
+     "covered": 4,
+     "queued": 1,
+     "first16": 0,
+     "first16_invoked": 0
+    }
+   },
+   "reviews": {},
+   "per_key": {
+    "K1": {
+     "cls": "optional",
+     "covered": true,
+     "queued": true,
+     "first16": false,
+     "rank": 28
+    },
+    "K2": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 12
+    },
+    "K3": {
+     "cls": "optional",
+     "covered": true,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K4": {
+     "cls": "optional",
+     "covered": true,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K5": {
+     "cls": "optional",
+     "covered": true,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K6": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K7": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": false,
+     "rank": 36
+    },
+    "K8": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K9": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    }
+   }
+  },
+  "payloadplugins-next16": {
+   "split": "DEV",
+   "tech": "next",
+   "queue": 81,
+   "other_tech_in_first16": 0,
+   "deterministic": {
+    "all": {
+     "key": 8,
+     "covered": 3,
+     "queued": 2,
+     "first16": 1,
+     "first16_invoked": 1
+    },
+    "required": {
+     "key": 4,
+     "covered": 3,
+     "queued": 2,
+     "first16": 1,
+     "first16_invoked": 1
+    },
+    "optional": {
+     "key": 4,
+     "covered": 0,
+     "queued": 0,
+     "first16": 0,
+     "first16_invoked": 0
+    }
+   },
+   "reviews": {},
+   "per_key": {
+    "K1": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K2": {
+     "cls": "required",
+     "covered": true,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K3": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": false,
+     "rank": 17
+    },
+    "K4": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K5": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K6": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K7": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K8": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 11
+    }
+   }
+  },
+  "coh2stats-next16": {
+   "split": "HELD-OUT",
+   "tech": "next",
+   "queue": 81,
+   "other_tech_in_first16": 0,
+   "deterministic": {
+    "all": {
+     "key": 5,
+     "covered": 2,
+     "queued": 1,
+     "first16": 0,
+     "first16_invoked": 0
+    },
+    "required": {
+     "key": 0,
+     "covered": 0,
+     "queued": 0,
+     "first16": 0,
+     "first16_invoked": 0
+    },
+    "optional": {
+     "key": 5,
+     "covered": 2,
+     "queued": 1,
+     "first16": 0,
+     "first16_invoked": 0
+    }
+   },
+   "reviews": {},
+   "per_key": {
+    "K1": {
+     "cls": "optional",
+     "covered": true,
+     "queued": true,
+     "first16": false,
+     "rank": 33
+    },
+    "K2": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K4": {
+     "cls": "optional",
+     "covered": true,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K6": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K7": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    }
+   }
+  },
+  "sigle-prisma7": {
+   "split": "HELD-OUT",
+   "tech": "prisma",
+   "queue": 72,
+   "other_tech_in_first16": 7,
+   "deterministic": {
+    "all": {
+     "key": 4,
+     "covered": 4,
+     "queued": 4,
+     "first16": 3,
+     "first16_invoked": 1
+    },
+    "required": {
+     "key": 4,
+     "covered": 4,
+     "queued": 4,
+     "first16": 3,
+     "first16_invoked": 1
+    },
+    "optional": {
+     "key": 0,
+     "covered": 0,
+     "queued": 0,
+     "first16": 0,
+     "first16_invoked": 0
+    }
+   },
+   "reviews": {},
+   "per_key": {
+    "K1": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 6
+    },
+    "K2": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": false,
+     "rank": 22
+    },
+    "K3": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 10
+    },
+    "K4": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 13
+    }
+   }
+  },
+  "cedar-prisma7": {
+   "split": "DEV",
+   "tech": "prisma",
+   "queue": 70,
+   "other_tech_in_first16": 0,
+   "deterministic": {
+    "all": {
+     "key": 23,
+     "covered": 18,
+     "queued": 17,
+     "first16": 16,
+     "first16_invoked": 16
+    },
+    "required": {
+     "key": 16,
+     "covered": 15,
+     "queued": 14,
+     "first16": 13,
+     "first16_invoked": 13
+    },
+    "optional": {
+     "key": 7,
+     "covered": 3,
+     "queued": 3,
+     "first16": 3,
+     "first16_invoked": 3
+    }
+   },
+   "reviews": {},
+   "per_key": {
+    "K1": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 6
+    },
+    "K2": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 6
+    },
+    "K3": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 6
+    },
+    "K4": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 15
+    },
+    "K5": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": false,
+     "rank": 24
+    },
+    "K6": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 6
+    },
+    "K7": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 6
+    },
+    "K8": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 2
+    },
+    "K9": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 11
+    },
+    "K10": {
+     "cls": "required",
+     "covered": true,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K11": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 6
+    },
+    "K12": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K13": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 6
+    },
+    "K14": {
+     "cls": "optional",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 6
+    },
+    "K15": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K16": {
+     "cls": "optional",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 6
+    },
+    "K17": {
+     "cls": "optional",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 15
+    },
+    "K18": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K19": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K20": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K21": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 5
+    },
+    "K22": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 11
+    },
+    "K23": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 5
+    }
+   }
+  },
+  "jsontypes-prisma7": {
+   "split": "HELD-OUT",
+   "tech": "prisma",
+   "queue": 70,
+   "other_tech_in_first16": 0,
+   "deterministic": {
+    "all": {
+     "key": 12,
+     "covered": 5,
+     "queued": 2,
+     "first16": 2,
+     "first16_invoked": 2
+    },
+    "required": {
+     "key": 6,
+     "covered": 1,
+     "queued": 1,
+     "first16": 1,
+     "first16_invoked": 1
+    },
+    "optional": {
+     "key": 6,
+     "covered": 4,
+     "queued": 1,
+     "first16": 1,
+     "first16_invoked": 1
+    }
+   },
+   "reviews": {},
+   "per_key": {
+    "K1": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K2": {
+     "cls": "optional",
+     "covered": true,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K3": {
+     "cls": "optional",
+     "covered": true,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K4": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K5": {
+     "cls": "optional",
+     "covered": true,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K6": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 8
+    },
+    "K7": {
+     "cls": "optional",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 3
+    },
+    "K8": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K9": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K10": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K11": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K13": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    }
+   }
+  },
+  "zodgen-prisma7": {
+   "split": "DEV",
+   "tech": "prisma",
+   "queue": 68,
+   "other_tech_in_first16": 0,
+   "deterministic": {
+    "all": {
+     "key": 15,
+     "covered": 5,
+     "queued": 5,
+     "first16": 5,
+     "first16_invoked": 5
+    },
+    "required": {
+     "key": 11,
+     "covered": 4,
+     "queued": 4,
+     "first16": 4,
+     "first16_invoked": 4
+    },
+    "optional": {
+     "key": 4,
+     "covered": 1,
+     "queued": 1,
+     "first16": 1,
+     "first16_invoked": 1
+    }
+   },
+   "reviews": {},
+   "per_key": {
+    "K1": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 7
+    },
+    "K2": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K3": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K4": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 13
+    },
+    "K5": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 7
+    },
+    "K6": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K7": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K8": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K9": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K10": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K11": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 8
+    },
+    "K12": {
+     "cls": "optional",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 8
+    },
+    "K13": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K14": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K15": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    }
+   }
+  },
+  "temporal-nest12": {
+   "split": "DEV",
+   "tech": "nestjs",
+   "queue": 25,
+   "other_tech_in_first16": 0,
+   "deterministic": {
+    "all": {
+     "key": 16,
+     "covered": 14,
+     "queued": 14,
+     "first16": 14,
+     "first16_invoked": 14
+    },
+    "required": {
+     "key": 5,
+     "covered": 5,
+     "queued": 5,
+     "first16": 5,
+     "first16_invoked": 5
+    },
+    "optional": {
+     "key": 11,
+     "covered": 9,
+     "queued": 9,
+     "first16": 9,
+     "first16_invoked": 9
+    }
+   },
+   "reviews": {},
+   "per_key": {
+    "K1": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 2
+    },
+    "K2": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 2
+    },
+    "K3": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 2
+    },
+    "K4": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 10
+    },
+    "K5": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 3
+    },
+    "K6": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K7": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K8": {
+     "cls": "optional",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 2
+    },
+    "K9": {
+     "cls": "optional",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 3
+    },
+    "K10": {
+     "cls": "optional",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 2
+    },
+    "K11": {
+     "cls": "optional",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 2
+    },
+    "K12": {
+     "cls": "optional",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 2
+    },
+    "K13": {
+     "cls": "optional",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 2
+    },
+    "K14": {
+     "cls": "optional",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 3
+    },
+    "K15": {
+     "cls": "optional",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 3
+    },
+    "K16": {
+     "cls": "optional",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 2
+    }
+   }
+  },
+  "coros-nest12": {
+   "split": "DEV",
+   "tech": "nestjs",
+   "queue": 21,
+   "other_tech_in_first16": 0,
+   "deterministic": {
+    "all": {
+     "key": 4,
+     "covered": 3,
+     "queued": 3,
+     "first16": 3,
+     "first16_invoked": 3
+    },
+    "required": {
+     "key": 1,
+     "covered": 0,
+     "queued": 0,
+     "first16": 0,
+     "first16_invoked": 0
+    },
+    "optional": {
+     "key": 3,
+     "covered": 3,
+     "queued": 3,
+     "first16": 3,
+     "first16_invoked": 3
+    }
+   },
+   "reviews": {},
+   "per_key": {
+    "K1": {
+     "cls": "optional",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 4
+    },
+    "K2": {
+     "cls": "optional",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 12
+    },
+    "K3": {
+     "cls": "optional",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 12
+    },
+    "K4": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    }
+   }
+  },
+  "satisfactory-nest12": {
+   "split": "HELD-OUT",
+   "tech": "nestjs",
+   "queue": 21,
+   "other_tech_in_first16": 0,
+   "deterministic": {
+    "all": {
+     "key": 4,
+     "covered": 2,
+     "queued": 0,
+     "first16": 0,
+     "first16_invoked": 0
+    },
+    "required": {
+     "key": 1,
+     "covered": 0,
+     "queued": 0,
+     "first16": 0,
+     "first16_invoked": 0
+    },
+    "optional": {
+     "key": 3,
+     "covered": 2,
+     "queued": 0,
+     "first16": 0,
+     "first16_invoked": 0
+    }
+   },
+   "reviews": {},
+   "per_key": {
+    "K1": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K3": {
+     "cls": "optional",
+     "covered": true,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K4": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K6": {
+     "cls": "optional",
+     "covered": true,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    }
+   }
+  },
+  "eudiplo-nest12": {
+   "split": "HELD-OUT",
+   "tech": "nestjs",
+   "queue": 21,
+   "other_tech_in_first16": 0,
+   "deterministic": {
+    "all": {
+     "key": 5,
+     "covered": 2,
+     "queued": 2,
+     "first16": 2,
+     "first16_invoked": 2
+    },
+    "required": {
+     "key": 3,
+     "covered": 1,
+     "queued": 1,
+     "first16": 1,
+     "first16_invoked": 1
+    },
+    "optional": {
+     "key": 2,
+     "covered": 1,
+     "queued": 1,
+     "first16": 1,
+     "first16_invoked": 1
+    }
+   },
+   "reviews": {},
+   "per_key": {
+    "K1": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 2
+    },
+    "K2": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K3": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K4": {
+     "cls": "optional",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 3
+    },
+    "K5": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    }
+   }
+  }
+ }
+}

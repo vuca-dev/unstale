@@ -1,0 +1,1 @@
+Bump digest: nothing arrives with a bump. 19 already applied in the code; 447 already in the installed version with nothing to adopt; 9 improvements pass; 98 opt-in with no benefit that counts here (benefit `none`; available on request).

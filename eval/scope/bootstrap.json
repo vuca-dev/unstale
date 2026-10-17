@@ -1,0 +1,58 @@
+{
+ "registry-wide": {
+  "mean records/quarter 95% CI": [
+   1.9882,
+   27.2275
+  ],
+  "median records/quarter 95% CI": [
+   0.0,
+   0.0
+  ],
+  "mean $/tech-year 95% CI": [
+   0.0032,
+   0.0524
+  ]
+ },
+ "~10k fleet": {
+  "mean records/quarter 95% CI": [
+   3.8478,
+   19.2954
+  ],
+  "median records/quarter 95% CI": [
+   0.0,
+   22.8454
+  ],
+  "mean $/tech-year 95% CI": [
+   0.0063,
+   0.0326
+  ]
+ },
+ "~50k fleet": {
+  "mean records/quarter 95% CI": [
+   2.5714,
+   15.6198
+  ],
+  "median records/quarter 95% CI": [
+   0.0,
+   1.2893
+  ],
+  "mean $/tech-year 95% CI": [
+   0.0042,
+   0.0273
+  ]
+ },
+ "~200k fleet": {
+  "mean records/quarter 95% CI": [
+   2.0324,
+   40.9773
+  ],
+  "median records/quarter 95% CI": [
+   0.0,
+   1.2606
+  ],
+  "mean $/tech-year 95% CI": [
+   0.0032,
+   0.0789
+  ]
+ }
+}

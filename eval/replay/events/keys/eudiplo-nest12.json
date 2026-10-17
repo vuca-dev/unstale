@@ -1,0 +1,103 @@
+{
+ "event": "eudiplo-nest12",
+ "info": {
+  "slot": "EUDIPLO__eudiplo",
+  "tech": "nestjs",
+  "package": "nestjs",
+  "old": "11.2.1",
+  "new": "12.0.1",
+  "upgrade": "57c64a05240ae825ee9472c864bdeecb2445412d",
+  "subdir": "apps/backend",
+  "event": "eudiplo-nest12",
+  "repo": "/private/tmp/claude-501/-Users-jason-Documents/3f08dd87-99a0-42d0-a4e5-59b22f98708b/scratchpad/w1/replay/full/EUDIPLO__eudiplo",
+  "parent": "68a7f6cb606d85ca48481403568973237c3e2da6",
+  "date": "2026-09-03T00:19:55+02:00",
+  "until": "2026-10-02T13:14:03Z",
+  "end": "a6a67b3beb5c0ab787e2afdc28ebe12f27598a02",
+  "name": "NestJS",
+  "dir": "/private/tmp/claude-501/-Users-jason-Documents/3f08dd87-99a0-42d0-a4e5-59b22f98708b/scratchpad/w1/replay/eudiplo-nest12",
+  "cdir": "/private/tmp/claude-501/-Users-jason-Documents/3f08dd87-99a0-42d0-a4e5-59b22f98708b/scratchpad/w1/replay/eudiplo-nest12"
+ },
+ "items": [
+  {
+   "id": "K1",
+   "commit": "57c64a05",
+   "files": [
+    "apps/backend/tsconfig.json",
+    "apps/backend/package.json"
+   ],
+   "change": "Changed backend TypeScript resolution to NodeNext and raised the Node.js minimum version to support loading NestJS 12's ESM packages from CommonJS.",
+   "responds_to": "NestJS 12 packages becoming ESM-only.",
+   "required": true,
+   "required_rule": "S: CommonJS apps load v12's ESM packages through require(esm), which needs Node 20.19+/22.12+; NodeNext resolution for the exports maps",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K2",
+   "commit": "57c64a05",
+   "files": [
+    "pnpm-workspace.yaml"
+   ],
+   "change": "Added a pnpm package extension declaring TypeScript 6 as a peer dependency of @nestjs/swagger.",
+   "responds_to": "The NestJS Swagger CLI plugin importing the TypeScript compiler API without declaring TypeScript, causing it to resolve an incompatible hoisted compiler.",
+   "required": true,
+   "required_rule": "D: the Swagger CLI plugin resolved an incompatible hoisted TypeScript after the v12/TS6 bump; build failed",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K3",
+   "commit": "57c64a05",
+   "files": [
+    "apps/backend/test/openapi.e2e-spec.ts"
+   ],
+   "change": "Changed the OpenAPI contract test to assert nullability through the schema's type array instead of nullable: true.",
+   "responds_to": "NestJS Swagger 12 generating OpenAPI 3.1 nullability as a type array.",
+   "required": true,
+   "required_rule": "D: the contract test failed on @nestjs/swagger 12's OpenAPI 3.1 nullability output",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K4",
+   "commit": "59d53ab1",
+   "files": [
+    "apps/backend/package.json",
+    "apps/backend/nest-cli.json",
+    "apps/backend/tsconfig.json",
+    "apps/backend/tsconfig.build.json",
+    "apps/backend/src/**/*.ts",
+    "apps/backend/test/**/*.ts"
+   ],
+   "change": "Migrated the backend from CommonJS to native ESM: marked the package as module, emitted .js production entrypoints, added .js extensions to relative imports, adjusted ESM-compatible imports and runtime path handling, and updated the Nest build configuration.",
+   "responds_to": "NestJS 12's ESM-only packages no longer being workable with the previous CommonJS backend setup.",
+   "required": false,
+   "required_rule": "S: moving your own code to ESM is optional in v12; done after the CommonJS upgrade worked (#988 title: 'NestJS 12 (CommonJS)')",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K5",
+   "commit": "030af68f",
+   "files": [
+    "apps/backend/src/main.ts",
+    "apps/backend/src/bootstrap.ts"
+   ],
+   "change": "Moved application bootstrap code into bootstrap.ts and made main.ts start OpenTelemetry before dynamically importing the NestJS application.",
+   "responds_to": "NestJS and Express loading HTTP modules during static import evaluation before OpenTelemetry can patch them.",
+   "required": false,
+   "required_rule": "knock-on of the optional ESM move (static ESM imports load Nest before OpenTelemetry)",
+   "reviewed": "kept"
+  }
+ ],
+ "dropped": [],
+ "draft": {
+  "model": "gpt-5.6-luna (codex exec, harness KEY prompt)",
+  "n_items": 5,
+  "usage": {
+   "input_tokens": 639679,
+   "cached_input_tokens": 559360,
+   "cache_write_input_tokens": 0,
+   "output_tokens": 5898,
+   "reasoning_output_tokens": 2603
+  },
+  "wall_s": 57.3
+ }
+}

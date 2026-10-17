@@ -1,0 +1,7 @@
+# Build context is central/ (`docker build -f central/Dockerfile central`). The image needs only the
+# manifest, the lockfile and src/; everything else stays out of the context.
+*
+!package.json
+!package-lock.json
+!src/
+src/**/*.test.ts

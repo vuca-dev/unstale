@@ -1,0 +1,68 @@
+{
+ "event": "satisfactory-nest12",
+ "items": [
+  {
+   "id": "K1",
+   "commit": "70bbf910",
+   "files": [
+    "backend/src/app.module.ts"
+   ],
+   "change": "Added imports: [] to ThrottlerModule.forRootAsync.",
+   "responds_to": "Nest 12's @nestjs/common exports map hides the interfaces directory under nodenext, causing throttler's ModuleMetadata type to degrade and making imports appear required."
+  },
+  {
+   "id": "K2",
+   "commit": "70bbf910",
+   "files": [
+    "backend/test/throttler-storage.spec.ts"
+   ],
+   "change": "Changed the library-storage canary to expect that one client's unblock no longer strands another client's pending decrements.",
+   "responds_to": "@nestjs/throttler 6.6.0 fixed cross-client decrement cancellation."
+  },
+  {
+   "id": "K3",
+   "commit": "70bbf910",
+   "files": [
+    "pnpm-workspace.yaml"
+   ],
+   "change": "Removed the global multer 2.3.0 override.",
+   "responds_to": "@nestjs/platform-express 12 pins multer 2.4.0, which already includes the advisory fix the override was providing."
+  },
+  {
+   "id": "K4",
+   "commit": "70bbf910",
+   "files": [
+    ".claude/memory/MEMORY.md"
+   ],
+   "change": "Updated the Nest throttler memory index entry from the upgrade being blocked to Nest 12 having landed, recording the exports-map and @nestjs/config transition traps.",
+   "responds_to": "Nest 12 support became available in @nestjs/throttler and exposed the common exports-map typing issue."
+  },
+  {
+   "id": "K5",
+   "commit": "70bbf910",
+   "files": [
+    ".claude/memory/clock-step-freezes-rate-limits.md"
+   ],
+   "change": "Updated the rate-limit documentation to record that the throttler storage canary now pins the upstream cross-client cancellation fix while the custom storage remains necessary for Date.now() clock-step behavior.",
+   "responds_to": "@nestjs/throttler 6.6.0 fixed cross-client cancellation but did not change the Date.now()-based expiration behavior."
+  },
+  {
+   "id": "K6",
+   "commit": "70bbf910",
+   "files": [
+    ".claude/memory/nest-12-blocked-on-throttler.md"
+   ],
+   "change": "Replaced the note that Nest 12 was blocked with documentation of the released throttler peer support, the exports-map typing issue requiring imports: [], the upstream storage fix, and removal of the multer override.",
+   "responds_to": "Nest 12 and throttler 6.6+ changed peer support, package exports resolution, throttler storage behavior, and the platform-express multer dependency."
+  }
+ ],
+ "final": "[\n  {\n    \"id\": \"K1\",\n    \"commit\": \"70bbf910\",\n    \"files\": [\"backend/src/app.module.ts\"],\n    \"change\": \"Added imports: [] to ThrottlerModule.forRootAsync.\",\n    \"responds_to\": \"Nest 12's @nestjs/common exports map hides the interfaces directory under nodenext, causing throttler's ModuleMetadata type to degrade and making imports appear required.\"\n  },\n  {\n    \"id\": \"K2\",\n    \"commit\": \"70bbf910\",\n    \"files\": [\"backend/test/throttler-storage.spec.ts\"],\n    \"change\": \"Changed the library-storage canary to expect that one client's unblock no longer strands another client's pending decrements.\",\n    \"responds_to\": \"@nestjs/throttler 6.6.0 fixed cross-client decrement cancellation.\"\n  },\n  {\n    \"id\": \"K3\",\n    \"commit\": \"70bbf910\",\n    \"files\": [\"pnpm-workspace.yaml\"],\n    \"change\": \"Removed the global multer 2.3.0 override.\",\n    \"responds_to\": \"@nestjs/platform-express 12 pins multer 2.4.0, which already includes the advisory fix the override was providing.\"\n  },\n  {\n    \"id\": \"K4\",\n    \"commit\": \"70bbf910\",\n    \"files\": [\".claude/memory/MEMORY.md\"],\n    \"change\": \"Updated the Nest throttler memory index entry from the upgrade being blocked to Nest 12 having landed, recording the exports-map and @nestjs/config transition traps.\",\n    \"responds_to\": \"Nest 12 support became available in @nestjs/throttler and exposed the common exports-map typing issue.\"\n  },\n  {\n    \"id\": \"K5\",\n    \"commit\": \"70bbf910\",\n    \"files\": [\".claude/memory/clock-step-freezes-rate-limits.md\"],\n    \"change\": \"Updated the rate-limit documentation to record that the throttler storage canary now pins the upstream cross-client cancellation fix while the custom storage remains necessary for Date.now() clock-step behavior.\",\n    \"responds_to\": \"@nestjs/throttler 6.6.0 fixed cross-client cancellation but did not change the Date.now()-based expiration behavior.\"\n  },\n  {\n    \"id\": \"K6\",\n    \"commit\": \"70bbf910\",\n    \"files\": [\".claude/memory/nest-12-blocked-on-throttler.md\"],\n    \"change\": \"Replaced the note that Nest 12 was blocked with documentation of the released throttler peer support, the exports-map typing issue requiring imports: [], the upstream storage fix, and removal of the multer override.\",\n    \"responds_to\": \"Nest 12 and throttler 6.6+ changed peer support, package exports resolution, throttler storage behavior, and the platform-express multer dependency.\"\n  }\n]",
+ "usage": {
+  "input_tokens": 161392,
+  "cached_input_tokens": 131584,
+  "cache_write_input_tokens": 0,
+  "output_tokens": 3049,
+  "reasoning_output_tokens": 1428
+ },
+ "wall_s": 24.5
+}

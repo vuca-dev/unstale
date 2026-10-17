@@ -1,0 +1,286 @@
+{
+ "technology": "nestjs",
+ "rule": "GitHub code search for the technology's first package name quoted in package.json files (pages 1-10); keep files named exactly package.json that declare one of the technology's packages in dependencies or devDependencies at the major before the catalog's current one; drop forks, archived and template repositories, repositories whose name, description or topics mark a tutorial, course, example, demo, starter, boilerplate or clone, the technology's own organisation, evaluation repositories and their forks or upstreams, and repositories over 200 MB; one repository per owner; rank by stars (then name); take the first 5.",
+ "selection": {
+  "pool": "code-search",
+  "major": "previous",
+  "n": 5
+ },
+ "query": "\"@nestjs/core\" filename:package.json extension:json",
+ "major": "12",
+ "majors": [
+  "11"
+ ],
+ "drawn": "2026-10-15T17:00:00Z",
+ "candidates": 734,
+ "passed_over": [
+  {
+   "repo": "nestjs/nest",
+   "stars": 76851,
+   "why": "the technology's own organisation"
+  },
+  {
+   "repo": "gcui-art/album-ai",
+   "stars": 794,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 11"
+  },
+  {
+   "repo": "QuarkGluonPlasma/nestjs-course-code",
+   "stars": 606,
+   "why": "not a project (\"course\")"
+  },
+  {
+   "repo": "xpert-ai/xpert",
+   "stars": 466,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 11"
+  },
+  {
+   "repo": "m24927605/Nestjs30Days",
+   "stars": 401,
+   "why": "not a project (\"Learn\")"
+  },
+  {
+   "repo": "ecaminero/nestjs-ddd",
+   "stars": 275,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 11"
+  },
+  {
+   "repo": "HaiderMalik12/nestjs-fundamentals",
+   "stars": 190,
+   "why": "not a project (\"examples\")"
+  },
+  {
+   "repo": "houdunwang/v2022",
+   "stars": 54,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 11"
+  },
+  {
+   "repo": "servrox/nx-ng-nest-universal",
+   "stars": 33,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 11"
+  },
+  {
+   "repo": "notadd/nt-casbin",
+   "stars": 31,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 11"
+  },
+  {
+   "repo": "vladotesanovic/cqrs",
+   "stars": 31,
+   "why": "not a project (\"Example\")"
+  },
+  {
+   "repo": "bagusok/baguspay",
+   "stars": 25,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 11"
+  },
+  {
+   "repo": "LegendisM/microservice.example",
+   "stars": 21,
+   "why": "not a project (\"example\")"
+  },
+  {
+   "repo": "VictorMagalhaesSales/microsservices-banks-parent",
+   "stars": 18,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 11"
+  },
+  {
+   "repo": "alexy4744/packages",
+   "stars": 17,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 11"
+  },
+  {
+   "repo": "fernandohenriques/nestjs-rest-boilerplate",
+   "stars": 17,
+   "why": "template repository"
+  },
+  {
+   "repo": "sbrannstrom/nestjs-passport-ldap-example",
+   "stars": 17,
+   "why": "template repository"
+  },
+  {
+   "repo": "jiayisheji/AngularNest-Fullstack-CNode",
+   "stars": 16,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 11"
+  },
+  {
+   "repo": "gentritabazi/nestjs-api-starter",
+   "stars": 15,
+   "why": "not a project (\"starter\")"
+  },
+  {
+   "repo": "hcodebr/nestjs-typeorm-mysql",
+   "stars": 14,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 11"
+  },
+  {
+   "repo": "Seb-L/nestjs-microservice-boilerplate",
+   "stars": 14,
+   "why": "not a project (\"boilerplate\")"
+  },
+  {
+   "repo": "socialdevclub/sdc-play",
+   "stars": 14,
+   "why": "over 200 MB"
+  },
+  {
+   "repo": "Angellikefairy/AngelChating-server",
+   "stars": 13,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 11"
+  },
+  {
+   "repo": "Badminton-Apps/badman",
+   "stars": 13,
+   "why": "over 200 MB"
+  },
+  {
+   "repo": "thinkasany/shop-server-nest",
+   "stars": 12,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 11"
+  },
+  {
+   "repo": "Caesarsage/inapp-notification-with-nestJS",
+   "stars": 10,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 11"
+  },
+  {
+   "repo": "kishore007k/nestjs-sequelize-multi-tenant",
+   "stars": 10,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 11"
+  },
+  {
+   "repo": "apontiacademy/fbr-pe-t1e1-fap24pi",
+   "stars": 9,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 11"
+  },
+  {
+   "repo": "rajinwonderland/nest-graphql-newsapi",
+   "stars": 9,
+   "why": "not a project (\"example\")"
+  },
+  {
+   "repo": "Risk-taker0501/stripe_nestjs",
+   "stars": 9,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 11"
+  },
+  {
+   "repo": "aruuunn/anonchat-server",
+   "stars": 8,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 11"
+  },
+  {
+   "repo": "avilabiel/clean-architecture-nest-ts",
+   "stars": 8,
+   "why": "template repository"
+  },
+  {
+   "repo": "cerbos/nestjs-cerbos",
+   "stars": 8,
+   "why": "not a project (\"demo\")"
+  },
+  {
+   "repo": "hexenq/nest-gitlab",
+   "stars": 8,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 11"
+  },
+  {
+   "repo": "Yoowatney/cabi_admin-v2",
+   "stars": 8,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 11"
+  },
+  {
+   "repo": "gCorePlus/nestjs-aws-serverless",
+   "stars": 7,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 11"
+  },
+  {
+   "repo": "Mut1aq/nestjs-skeleton-2024",
+   "stars": 7,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 11"
+  },
+  {
+   "repo": "dev-luckymhz/AIVisionText-invoice-OCR-typescript",
+   "stars": 6,
+   "why": "not a project (\"learning\")"
+  },
+  {
+   "repo": "nainglinnphyo/nestjs-starter",
+   "stars": 6,
+   "why": "not a project (\"starter\")"
+  },
+  {
+   "repo": "R4Y4N3/Nexus-Web-Workshop",
+   "stars": 6,
+   "why": "not a project (\"Workshop\")"
+  },
+  {
+   "repo": "sappChak/nestjs-ecommerce",
+   "stars": 6,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 11"
+  },
+  {
+   "repo": "Survikrowa/Game-Critique",
+   "stars": 6,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 11"
+  },
+  {
+   "repo": "thaithuytb/cv_nest_graphql_microservice",
+   "stars": 6,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 11"
+  },
+  {
+   "repo": "tkssharma/udemy-fullstack-clone",
+   "stars": 6,
+   "why": "not a project (\"clone\")"
+  },
+  {
+   "repo": "2110336-2565-2/Sec33-group1-MeowMeow",
+   "stars": 5,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 11"
+  },
+  {
+   "repo": "amirkangarloo/amqpman",
+   "stars": 5,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 11"
+  }
+ ],
+ "repos": [
+  {
+   "repo": "dapzer/movie-tracker",
+   "commit": "c734f50c0b316057c906eff20eb7019ffd387caf",
+   "stars": 53,
+   "manifest": "apps/backend/package.json",
+   "declares": "@nestjs/core@11.1.6"
+  },
+  {
+   "repo": "GabrielMainiere/events-backend",
+   "commit": "39016e91e5e6c3be9123a97a3417848956216f9d",
+   "stars": 23,
+   "manifest": "msusers/package.json",
+   "declares": "@nestjs/core@^11.0.1"
+  },
+  {
+   "repo": "vietstrixvn/nestjs_exp",
+   "commit": "3188e2529fffafb4db18e2e037ba2eba90cfaa9d",
+   "stars": 9,
+   "manifest": "package.json",
+   "declares": "@nestjs/core@^11.0.1"
+  },
+  {
+   "repo": "jiwangyihao/OSSD25-Lab1-2023112332",
+   "commit": "35571e0089403f7d5eb02f55cb62c34d29c5d734",
+   "stars": 6,
+   "manifest": "package.json",
+   "declares": "@nestjs/core@^11.0.1"
+  },
+  {
+   "repo": "johanbook/meet",
+   "commit": "fcdda1735c04e0e8db55221c7ed332cbcc268e47",
+   "stars": 5,
+   "manifest": "services/api/package.json",
+   "declares": "@nestjs/core@11.1.19"
+  }
+ ],
+ "counts": {}
+}

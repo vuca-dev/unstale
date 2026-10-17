@@ -1,0 +1,94 @@
+{
+ "rows": [
+  {
+   "name": "opentelemetry-instrumentation-exceptions",
+   "tokens": 3980,
+   "releases": 4,
+   "records": 1,
+   "failed": 0,
+   "spent": 0.001407075
+  },
+  {
+   "name": "@jsonjoy.com/json-pointer",
+   "tokens": 1556,
+   "releases": 27,
+   "records": 11,
+   "failed": 0,
+   "spent": 0.008823425
+  },
+  {
+   "name": "marko",
+   "tokens": 488,
+   "releases": 2,
+   "records": 5,
+   "failed": 0,
+   "spent": 0.010208775
+  },
+  {
+   "name": "proper-pixel-art",
+   "tokens": 1584,
+   "releases": 13,
+   "records": 19,
+   "failed": 0,
+   "spent": 0.0168575
+  },
+  {
+   "name": "aws-sam-translator",
+   "tokens": 4284,
+   "releases": 14,
+   "records": 29,
+   "failed": 0,
+   "spent": 0.026186849999999994
+  },
+  {
+   "name": "reportportal-client",
+   "tokens": 343,
+   "releases": 13,
+   "records": 12,
+   "failed": 0,
+   "spent": 0.030113474999999994
+  },
+  {
+   "name": "arviz-plots",
+   "tokens": 5170,
+   "releases": 8,
+   "records": 77,
+   "failed": 0,
+   "spent": 0.041321699999999996
+  },
+  {
+   "name": "@aurelia/compat-v1",
+   "tokens": 3364,
+   "releases": 4,
+   "records": 59,
+   "failed": 0,
+   "spent": 0.04904817499999999
+  },
+  {
+   "name": "duckdb-extension-mysql",
+   "tokens": 1586,
+   "releases": 12,
+   "records": 13,
+   "failed": 0,
+   "spent": 0.055331375
+  },
+  {
+   "name": "@commitlint/lint",
+   "tokens": 4749,
+   "releases": 17,
+   "records": 35,
+   "failed": 0,
+   "spent": 0.065702775
+  }
+ ],
+ "stats": {
+  "calls": 193,
+  "cached": 0,
+  "failed": 0,
+  "input_tokens": 200865,
+  "cached_input_tokens": 0,
+  "output_tokens": 85494,
+  "reasoning_tokens": 48328,
+  "dollars": 0.065702775
+ }
+}

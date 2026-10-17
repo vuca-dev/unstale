@@ -1,0 +1,130 @@
+{
+  "$defs": {
+    "IndexRelease": {
+      "description": "One release of a technology's release index (`TechIndex::releases`).",
+      "properties": {
+        "date": {
+          "description": "ISO date, `YYYY-MM-DD`.",
+          "type": "string"
+        },
+        "line": {
+          "description": "The release line, e.g. `15.5` (central derives the depth per technology).",
+          "type": "string"
+        },
+        "line_start": {
+          "description": "This is the first release of its line (the line began inside the window: its first version is the line's\nzero version, `15.5.0` or `15.5`), so the line's start date is known and the line has every change released\non an older line before that date. Absent when the line began before the window (start unknown).",
+          "type": "boolean"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "version",
+        "date",
+        "line"
+      ],
+      "type": "object"
+    },
+    "SampleRepo": {
+      "description": "One repository of the term-rarity sample, at the commit whose files were counted.",
+      "properties": {
+        "commit": {
+          "description": "Full commit SHA.",
+          "type": "string"
+        },
+        "repo": {
+          "description": "`owner/name` on GitHub.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "repo",
+        "commit"
+      ],
+      "type": "object"
+    },
+    "ShardRef": {
+      "properties": {
+        "bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "line": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "records": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "sha256": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "line",
+        "path",
+        "sha256",
+        "bytes",
+        "records"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "`v1/tech/{technology}.json`: stable URL, polled with ETags.",
+  "properties": {
+    "checked": {
+      "description": "When the technology's sources were last checked (ISO timestamp).",
+      "type": "string"
+    },
+    "releases": {
+      "description": "The technology's release index: its stable releases in the catalog window, ascending by version, each with its\npublish date and its release line. A line is a set of versions inside which version order is publish order;\ncentral derives it from this index (the smallest version-prefix depth for which that holds; DECISIONS.md,\n\"Release lines from the release index\"). The edge decides availability by position in this list and by line\n(a record's release on the installed line at or before the installed version, or a line whose first release,\nmarked `line_start`, postdates the record's release on an older line), and resolves advisory ranges (`AffectedRange::versions`)\nagainst it. Absent in catalogs before 16 October 2026: the edge then uses the old rule (major, or 0.minor).",
+      "items": {
+        "$ref": "#/$defs/IndexRelease"
+      },
+      "type": "array"
+    },
+    "sample": {
+      "description": "The rarity sample's repositories and the commits counted (`sample_n` of them); absent when there is none.",
+      "items": {
+        "$ref": "#/$defs/SampleRepo"
+      },
+      "type": "array"
+    },
+    "sample_n": {
+      "description": "Size of the rarity sample; 0 means no sample (rarity computed at the edge from the catalog's terms).",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "schema": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "shards": {
+      "items": {
+        "$ref": "#/$defs/ShardRef"
+      },
+      "type": "array"
+    },
+    "technology": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "technology",
+    "sample_n",
+    "checked",
+    "shards"
+  ],
+  "title": "TechIndex",
+  "type": "object"
+}

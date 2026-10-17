@@ -1,0 +1,196 @@
+# Release rehearsal on a version tag (v0.1.0, ...): cross-build the client for the five npm platforms with
+# npm/build.sh, run each binary on a native runner, and dry-run `npm publish` for every package. Publishes nothing.
+#
+# Runners: npm/build.sh is the one build recipe (it also checks versions and pins), so CI calls it per platform
+# instead of re-implementing it. darwin-* need Apple's SDK and linker, so they build on macOS (the arm64 runner
+# builds x86_64-apple-darwin as well, as on a developer Mac). linux-* (static musl) and win32-x64 (mingw) are built
+# with cargo-zigbuild on one Ubuntu runner, the toolchain the build was rehearsed with; a native Windows build
+# would be the MSVC ABI, a different binary from the one rehearsed. Every binary is then run on a native runner
+# (smoke job).
+#
+# Real publishing (not enabled): change the publish job's step to `npm publish "$f" --provenance --access public`
+# (platform packages first, the wrapper last, as below), and either
+#   - npm trusted publishing (preferred): on npmjs.com, add this repository and `release.yml` as the trusted
+#     publisher of `unstale` and each `@unstale/cli-*` package; no secret, the job's `id-token: write` is the
+#     credential (npm >= 11.5.1, which Node 24 ships); or
+#   - an automation token: a repository secret NPM_TOKEN, passed as `NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}`
+#     to the publish step (setup-node's `registry-url` writes the matching .npmrc).
+# Provenance also needs a `repository` field in every npm/*/package.json naming this GitHub repository; the
+# registry rejects a provenance bundle whose source repository does not match it.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    env:
+      # Compiled into the client (option_env! in local/cli/src/main.rs): the service `unstale init` uses when
+      # neither --service nor UNSTALE_SERVICE is given. Without it a release has no catalog location.
+      UNSTALE_DEFAULT_SERVICE: ${{ vars.UNSTALE_DEFAULT_SERVICE }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Default service is set
+        run: |
+          if [ -z "$UNSTALE_DEFAULT_SERVICE" ]; then
+            echo "::error title=UNSTALE_DEFAULT_SERVICE is empty::Set the repository variable UNSTALE_DEFAULT_SERVICE (Settings > Secrets and variables > Actions > Variables) to the service URL; a release built without it has no catalog location."
+            exit 1
+          fi
+          case "$UNSTALE_DEFAULT_SERVICE" in
+            https://*) echo "default service: $UNSTALE_DEFAULT_SERVICE" ;;
+            *) echo "::error title=UNSTALE_DEFAULT_SERVICE is not https::Got '$UNSTALE_DEFAULT_SERVICE'"; exit 1 ;;
+          esac
+      - name: Tag matches the crate version
+        id: version
+        run: |
+          crate="$(sed -n 's/^version = "\(.*\)"/\1/p' local/cli/Cargo.toml | head -1)"
+          tag="${GITHUB_REF_NAME#v}"
+          if [ "$tag" != "$crate" ]; then
+            echo "::error title=Version mismatch::tag $GITHUB_REF_NAME, local/cli/Cargo.toml $crate"
+            exit 1
+          fi
+          echo "version=$crate" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: check
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - { key: darwin-arm64, os: macos-latest, target: aarch64-apple-darwin, zig: false }
+          - { key: darwin-x64, os: macos-latest, target: x86_64-apple-darwin, zig: false }
+          - { key: linux-x64, os: ubuntu-latest, target: x86_64-unknown-linux-musl, zig: true }
+          - { key: linux-arm64, os: ubuntu-latest, target: aarch64-unknown-linux-musl, zig: true }
+          - { key: win32-x64, os: ubuntu-latest, target: x86_64-pc-windows-gnu, zig: true }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      UNSTALE_DEFAULT_SERVICE: ${{ vars.UNSTALE_DEFAULT_SERVICE }}
+      VERSION: ${{ needs.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      # No build cache here: a release is built from a clean toolchain and registry download only.
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable branch
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+      - name: Install zig and cargo-zigbuild
+        if: matrix.zig
+        env:
+          ZIG_VERSION: 0.17.0
+          ZIG_SHA256: 1cbe9df9f27e6b78d14ccbca43b6703a404ef79ef1c463de901d7f088d4e2026
+          ZIGBUILD_VERSION: 0.23.4
+          ZIGBUILD_SHA256: 9e3cf73485edbd45905c8aadbc0fdf869c7ddc3848f0c898229f2680db52e44b
+        run: |
+          set -euo pipefail
+          zig_dir="$RUNNER_TEMP/zig"; zb_dir="$RUNNER_TEMP/cargo-zigbuild"
+          mkdir -p "$zig_dir" "$zb_dir"
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/zig.tar.xz" \
+            "https://ziglang.org/download/$ZIG_VERSION/zig-x86_64-linux-$ZIG_VERSION.tar.xz"
+          echo "$ZIG_SHA256  $RUNNER_TEMP/zig.tar.xz" | sha256sum -c -
+          tar -xJf "$RUNNER_TEMP/zig.tar.xz" -C "$zig_dir" --strip-components=1
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/zigbuild.tar.xz" \
+            "https://github.com/rust-cross/cargo-zigbuild/releases/download/v$ZIGBUILD_VERSION/cargo-zigbuild-x86_64-unknown-linux-musl.tar.xz"
+          echo "$ZIGBUILD_SHA256  $RUNNER_TEMP/zigbuild.tar.xz" | sha256sum -c -
+          tar -xJf "$RUNNER_TEMP/zigbuild.tar.xz" -C "$zb_dir" --strip-components=1
+          echo "$zig_dir" >> "$GITHUB_PATH"
+          echo "$zb_dir" >> "$GITHUB_PATH"
+      - name: Build and pack (npm/build.sh ${{ matrix.key }})
+        run: npm/build.sh "${{ matrix.key }}"
+      - name: The default service is compiled in
+        run: |
+          exe=unstale; [ "${{ matrix.key }}" = win32-x64 ] && exe=unstale.exe
+          bin="npm/cli-${{ matrix.key }}/bin/$exe"
+          grep -qaF "$UNSTALE_DEFAULT_SERVICE" "$bin" || { echo "::error::$bin does not contain $UNSTALE_DEFAULT_SERVICE"; exit 1; }
+          shasum -a 256 "$bin" "npm/dist/unstale-cli-${{ matrix.key }}-$VERSION.tgz"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: npm-${{ matrix.key }}
+          path: npm/dist/unstale-cli-${{ matrix.key }}-${{ needs.check.outputs.version }}.tgz
+          if-no-files-found: error
+          retention-days: 14
+
+  smoke:
+    needs: [check, build]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { key: darwin-arm64, os: macos-latest, exe: unstale }
+          - { key: darwin-x64, os: macos-15-intel, exe: unstale }
+          - { key: linux-x64, os: ubuntu-latest, exe: unstale }
+          - { key: linux-arm64, os: ubuntu-24.04-arm, exe: unstale }
+          - { key: win32-x64, os: windows-latest, exe: unstale.exe }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: bash
+    env:
+      VERSION: ${{ needs.check.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: npm-${{ matrix.key }}
+          path: dist
+      - name: Run the packed binary
+        run: |
+          tar -xzf "dist/unstale-cli-${{ matrix.key }}-$VERSION.tgz"
+          out="$(package/bin/${{ matrix.exe }} --version)"
+          echo "$out"
+          [ "$out" = "unstale $VERSION" ] || { echo "::error::expected 'unstale $VERSION', got '$out'"; exit 1; }
+
+  publish-dry-run:
+    needs: [check, smoke]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write # npm provenance (and trusted publishing, once enabled)
+    env:
+      VERSION: ${{ needs.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: npm-*
+          path: npm/dist
+          merge-multiple: true
+      - name: Pack the wrapper
+        run: (cd npm/unstale && npm pack --pack-destination ../dist)
+      - name: npm publish --dry-run
+        run: |
+          set -euo pipefail
+          ls -l npm/dist
+          # Platform packages first: the wrapper's optionalDependencies must resolve once it is live.
+          for key in darwin-arm64 darwin-x64 linux-x64 linux-arm64 win32-x64; do
+            npm publish "npm/dist/unstale-cli-$key-$VERSION.tgz" --dry-run --provenance --access public
+          done
+          npm publish "npm/dist/unstale-$VERSION.tgz" --dry-run --provenance --access public

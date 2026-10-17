@@ -1,0 +1,277 @@
+{
+ "event": "cedar-prisma7",
+ "maps": [
+  {
+   "K1": [
+    "prisma-prisma-config-ts-2",
+    "prisma-output"
+   ],
+   "K2": [
+    "prisma-prisma-config-ts-2",
+    "prisma-output"
+   ],
+   "K3": [
+    "prisma-prisma-config-ts-2",
+    "prisma-output",
+    "prisma-prisma-generate"
+   ],
+   "K4": [
+    "prisma-prismaclient",
+    "prisma-prismaclient-2"
+   ],
+   "K5": [
+    "prisma-prisma-config-ts-2"
+   ],
+   "K6": [
+    "prisma-output",
+    "prisma-prismaclient"
+   ],
+   "K7": [
+    "prisma-prisma-config-ts-2",
+    "prisma-datasource-url",
+    "prisma-output",
+    "prisma-prismabettersqlite3",
+    "prisma-prismaclient",
+    "prisma-prisma-generate"
+   ],
+   "K8": [
+    "prisma-prisma-config-ts-2",
+    "prisma-datasource-url",
+    "prisma-output",
+    "prisma-prisma-migrate-skip-seed"
+   ],
+   "K9": [
+    "prisma-prisma-config-ts-2",
+    "prisma-datasource-url"
+   ],
+   "K10": [
+    "prisma-prismaclient"
+   ],
+   "K11": [
+    "prisma-prisma-config-ts-2",
+    "prisma-datasource-url",
+    "prisma-output",
+    "prisma-prismabettersqlite3",
+    "prisma-prismaclient"
+   ],
+   "K12": [],
+   "K13": [
+    "prisma-output"
+   ],
+   "K14": [
+    "prisma-prisma-config-ts-2",
+    "prisma-datasource-url",
+    "prisma-output",
+    "prisma-prismabettersqlite3",
+    "prisma-prismaclient"
+   ],
+   "K15": [],
+   "K16": [
+    "prisma-prisma-config-ts-2",
+    "prisma-datasource-url",
+    "prisma-output",
+    "prisma-prismabettersqlite3",
+    "prisma-prismaclient"
+   ],
+   "K17": [
+    "prisma-prismaclient"
+   ],
+   "K18": [],
+   "K19": [],
+   "K20": [],
+   "K21": [
+    "prisma-environment-variables"
+   ],
+   "K22": [
+    "prisma-prisma-config-ts-2",
+    "prisma-datasource-url"
+   ],
+   "K23": [
+    "prisma-environment-variables"
+   ]
+  },
+  {
+   "K1": [
+    "prisma-prisma-config-ts-2",
+    "prisma-output"
+   ],
+   "K2": [
+    "prisma-prisma-config-ts-2",
+    "prisma-output"
+   ],
+   "K3": [
+    "prisma-prisma-config-ts-2",
+    "prisma-output",
+    "prisma-prisma-generate"
+   ],
+   "K4": [
+    "prisma-prismaclient",
+    "prisma-prismaclient-2",
+    "prisma-prismaclient-3"
+   ],
+   "K5": [
+    "prisma-prisma-config-ts-2"
+   ],
+   "K6": [
+    "prisma-output",
+    "prisma-prismaclient"
+   ],
+   "K7": [
+    "prisma-datasource-url",
+    "prisma-output",
+    "prisma-prismabettersqlite3",
+    "prisma-prismaclient"
+   ],
+   "K8": [
+    "prisma-datasource-url"
+   ],
+   "K9": [
+    "prisma-prisma-config-ts-2",
+    "prisma-datasource-url"
+   ],
+   "K10": [
+    "prisma-prismaclient"
+   ],
+   "K11": [
+    "prisma-datasource-url",
+    "prisma-output",
+    "prisma-prismabettersqlite3",
+    "prisma-prismaclient"
+   ],
+   "K12": [],
+   "K13": [
+    "prisma-output"
+   ],
+   "K14": [
+    "prisma-prisma-config-ts-2",
+    "prisma-datasource-url",
+    "prisma-output",
+    "prisma-prismabettersqlite3",
+    "prisma-prismaclient"
+   ],
+   "K15": [
+    "prisma-output"
+   ],
+   "K16": [
+    "prisma-prisma-config-ts-2",
+    "prisma-datasource-url",
+    "prisma-output",
+    "prisma-prismabettersqlite3",
+    "prisma-prismaclient"
+   ],
+   "K17": [
+    "prisma-prismaclient"
+   ],
+   "K18": [],
+   "K19": [],
+   "K20": [],
+   "K21": [
+    "prisma-environment-variables"
+   ],
+   "K22": [
+    "prisma-datasource-url"
+   ],
+   "K23": [
+    "prisma-environment-variables"
+   ]
+  }
+ ],
+ "usage": [
+  {
+   "input_tokens": 23000,
+   "cached_input_tokens": 9984,
+   "cache_write_input_tokens": 0,
+   "output_tokens": 1535,
+   "reasoning_output_tokens": 1104
+  },
+  {
+   "input_tokens": 23000,
+   "cached_input_tokens": 9984,
+   "cache_write_input_tokens": 0,
+   "output_tokens": 1350,
+   "reasoning_output_tokens": 964
+  }
+ ],
+ "in_queue": [
+  "prisma-accelerateengine",
+  "prisma-adapter",
+  "prisma-binaryengine",
+  "prisma-compilerbuild",
+  "prisma-datamappererror",
+  "prisma-dataproxyengine",
+  "prisma-datasource-directurl",
+  "prisma-datasource-shadowdatabaseurl",
+  "prisma-datasource-url",
+  "prisma-datasource-url-2",
+  "prisma-edge",
+  "prisma-engine-3",
+  "prisma-environment-variables",
+  "prisma-generator-runtime",
+  "prisma-interactive-transactions",
+  "prisma-libraryengine",
+  "prisma-listlocaldatabases",
+  "prisma-map",
+  "prisma-metrics",
+  "prisma-mongodb",
+  "prisma-output",
+  "prisma-package-json-engines",
+  "prisma-package-json-prisma",
+  "prisma-partialindexes",
+  "prisma-prisma-accelerate",
+  "prisma-prisma-cli-query-engine-type",
+  "prisma-prisma-client-engine-type",
+  "prisma-prisma-client-no-retry",
+  "prisma-prisma-client-runtime-utils",
+  "prisma-prisma-db-pull-local-d1",
+  "prisma-prisma-db-pull-url",
+  "prisma-prisma-db-pull-url-2",
+  "prisma-prisma-db-push-url",
+  "prisma-prisma-db-seed",
+  "prisma-prisma-generate",
+  "prisma-prisma-generate-accelerate",
+  "prisma-prisma-generate-allow-no-models",
+  "prisma-prisma-generate-data-proxy",
+  "prisma-prisma-generate-dataproxy",
+  "prisma-prisma-generate-in-postinstall",
+  "prisma-prisma-generate-no-engine",
+  "prisma-prisma-generate-no-engine-2",
+  "prisma-prisma-generate-skip-autoinstall",
+  "prisma-prisma-init",
+  "prisma-prisma-introspect",
+  "prisma-prisma-migrate-dev-url",
+  "prisma-prisma-migrate-diff-from-to-local-d1",
+  "prisma-prisma-migrate-diff-from-to-schema-datamodel",
+  "prisma-prisma-migrate-diff-from-to-schema-datasource",
+  "prisma-prisma-migrate-diff-from-to-url",
+  "prisma-prisma-migrate-skip-generate",
+  "prisma-prisma-migrate-skip-seed",
+  "prisma-prisma-query-engine-binary",
+  "prisma-prisma-query-engine-library",
+  "prisma-prisma-seed",
+  "prisma-prisma-skip-postinstall-generate",
+  "prisma-prisma-sqlcommenter-query-tags",
+  "prisma-prisma-sqlcommenter-trace-context",
+  "prisma-prisma-studio",
+  "prisma-prisma-studio-2",
+  "prisma-prisma-studio-5",
+  "prisma-prisma-studio-url",
+  "prisma-prismabettersqlite3",
+  "prisma-prismaclient",
+  "prisma-prismaclient-2",
+  "prisma-prismaclient-3",
+  "prisma-prismaclient-4",
+  "prisma-prismaclient-datasources",
+  "prisma-prismaclient-datasourceurl",
+  "prisma-prismad1http",
+  "prisma-prismalibsql",
+  "prisma-prismaneonhttp",
+  "prisma-reactnativeengine",
+  "prisma-schema-reformatter",
+  "prisma-serverless-driver",
+  "prisma-sqlcommenter-query-insights",
+  "prisma-sqlcommenterplugin",
+  "prisma-sqlite",
+  "prisma-unique-where",
+  "prisma-url-validation"
+ ]
+}

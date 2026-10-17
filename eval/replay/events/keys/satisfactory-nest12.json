@@ -1,0 +1,105 @@
+{
+ "event": "satisfactory-nest12",
+ "info": {
+  "slot": "satisfactory-factories__application",
+  "tech": "nestjs",
+  "package": "nestjs",
+  "old": "11.2.3",
+  "new": "12.0.3",
+  "upgrade": "70bbf9102c1edc07cd331ef274b2fe94cd28f426",
+  "subdir": "backend",
+  "event": "satisfactory-nest12",
+  "repo": "/private/tmp/claude-501/-Users-jason-Documents/3f08dd87-99a0-42d0-a4e5-59b22f98708b/scratchpad/w1/replay/full/satisfactory-factories__application",
+  "parent": "93f06203e8ff2944029ff80d673221f53b62f451",
+  "date": "2026-09-21T15:13:10+01:00",
+  "until": "2026-10-15T16:04:12+01:00",
+  "end": "f4970dd37285084e9c005bf2f7c26fb3c532192f",
+  "name": "NestJS",
+  "dir": "/private/tmp/claude-501/-Users-jason-Documents/3f08dd87-99a0-42d0-a4e5-59b22f98708b/scratchpad/w1/replay/satisfactory-nest12",
+  "cdir": "/private/tmp/claude-501/-Users-jason-Documents/3f08dd87-99a0-42d0-a4e5-59b22f98708b/scratchpad/w1/replay/satisfactory-nest12"
+ },
+ "items": [
+  {
+   "id": "K1",
+   "commit": "70bbf910",
+   "files": [
+    "backend/src/app.module.ts"
+   ],
+   "change": "Added imports: [] to ThrottlerModule.forRootAsync.",
+   "responds_to": "Nest 12's @nestjs/common exports map hides the interfaces directory under nodenext, causing throttler's ModuleMetadata type to degrade and making imports appear required.",
+   "required": true,
+   "required_rule": "D: under nodenext, v12's @nestjs/common exports map degraded ThrottlerModule's types; type check failed without imports: []",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K3",
+   "commit": "70bbf910",
+   "files": [
+    "pnpm-workspace.yaml"
+   ],
+   "change": "Removed the global multer 2.3.0 override.",
+   "responds_to": "@nestjs/platform-express 12 pins multer 2.4.0, which already includes the advisory fix the override was providing.",
+   "required": false,
+   "required_rule": "removes an override made redundant by platform-express 12's multer pin; cleanup",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K4",
+   "commit": "70bbf910",
+   "files": [
+    ".claude/memory/MEMORY.md"
+   ],
+   "change": "Updated the Nest throttler memory index entry from the upgrade being blocked to Nest 12 having landed, recording the exports-map and @nestjs/config transition traps.",
+   "responds_to": "Nest 12 support became available in @nestjs/throttler and exposed the common exports-map typing issue.",
+   "required": false,
+   "required_rule": "internal notes (docs)",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K6",
+   "commit": "70bbf910",
+   "files": [
+    ".claude/memory/nest-12-blocked-on-throttler.md"
+   ],
+   "change": "Replaced the note that Nest 12 was blocked with documentation of the released throttler peer support, the exports-map typing issue requiring imports: [], the upstream storage fix, and removal of the multer override.",
+   "responds_to": "Nest 12 and throttler 6.6+ changed peer support, package exports resolution, throttler storage behavior, and the platform-express multer dependency.",
+   "required": false,
+   "required_rule": "internal notes (docs)",
+   "reviewed": "kept"
+  }
+ ],
+ "dropped": [
+  {
+   "id": "K2",
+   "commit": "70bbf910",
+   "files": [
+    "backend/test/throttler-storage.spec.ts"
+   ],
+   "change": "Changed the library-storage canary to expect that one client's unblock no longer strands another client's pending decrements.",
+   "responds_to": "@nestjs/throttler 6.6.0 fixed cross-client decrement cancellation.",
+   "drop_reason": "adapts to @nestjs/throttler 6.6's own fix (another library's upgrade)"
+  },
+  {
+   "id": "K5",
+   "commit": "70bbf910",
+   "files": [
+    ".claude/memory/clock-step-freezes-rate-limits.md"
+   ],
+   "change": "Updated the rate-limit documentation to record that the throttler storage canary now pins the upstream cross-client cancellation fix while the custom storage remains necessary for Date.now() clock-step behavior.",
+   "responds_to": "@nestjs/throttler 6.6.0 fixed cross-client cancellation but did not change the Date.now()-based expiration behavior.",
+   "drop_reason": "docs about the throttler 6.6 change (another library)"
+  }
+ ],
+ "draft": {
+  "model": "gpt-5.6-luna (codex exec, harness KEY prompt)",
+  "n_items": 6,
+  "usage": {
+   "input_tokens": 161392,
+   "cached_input_tokens": 131584,
+   "cache_write_input_tokens": 0,
+   "output_tokens": 3049,
+   "reasoning_output_tokens": 1428
+  },
+  "wall_s": 24.5
+ }
+}

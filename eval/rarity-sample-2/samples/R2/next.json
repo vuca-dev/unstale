@@ -1,0 +1,121 @@
+{
+ "technology": "next",
+ "rule": "GitHub repository search for the technology's own topic (its repository's GitHub topic equal to its repository or package name; the most used if several) with at least 50 stars, pushed within 365 days of the draw (pages 1-10); keep repositories with a package.json (shallowest 6, none under node_modules, fixtures, tests, vendor or build output) declaring one of the technology's packages in dependencies or devDependencies at the catalog's current major; drop forks, archived and template repositories, repositories whose name, description or topics mark a tutorial, course, example, demo, starter, boilerplate or clone, the technology's own organisation, evaluation repositories and their forks or upstreams, and repositories over 200 MB; one repository per owner; rank by stars (then name); take the first 5.",
+ "selection": {
+  "pool": "adoption",
+  "major": "current",
+  "n": 5
+ },
+ "query": "topic:nextjs stars:>=50 pushed:>=2025-10-15 archived:false",
+ "major": "16",
+ "majors": [
+  "16"
+ ],
+ "drawn": "2026-10-15T17:00:00Z",
+ "candidates": 1000,
+ "passed_over": [
+  {
+   "repo": "f/prompts.chat",
+   "stars": 173078,
+   "why": "not a project (\"learning\")"
+  },
+  {
+   "repo": "langgenius/dify",
+   "stars": 158570,
+   "why": "over 200 MB"
+  },
+  {
+   "repo": "vercel/next.js",
+   "stars": 143025,
+   "why": "the technology's own organisation"
+  },
+  {
+   "repo": "supabase/supabase",
+   "stars": 111602,
+   "why": "not a project (\"example\")"
+  },
+  {
+   "repo": "ChatGPTNextWeb/NextChat",
+   "stars": 88852,
+   "why": "no package.json declaring next at major 16"
+  },
+  {
+   "repo": "coollabsio/coolify",
+   "stars": 63014,
+   "why": "no package.json declaring next at major 16"
+  },
+  {
+   "repo": "appwrite/appwrite",
+   "stars": 57693,
+   "why": "over 200 MB"
+  },
+  {
+   "repo": "calcom/cal.diy",
+   "stars": 49014,
+   "why": "over 200 MB"
+  },
+  {
+   "repo": "payloadcms/payload",
+   "stars": 45275,
+   "why": "over 200 MB"
+  },
+  {
+   "repo": "trpc/trpc",
+   "stars": 40705,
+   "why": "no package.json declaring next at major 16"
+  },
+  {
+   "repo": "CopilotKit/CopilotKit",
+   "stars": 38039,
+   "why": "over 200 MB"
+  },
+  {
+   "repo": "JCodesMore/ai-website-cloner-template",
+   "stars": 36826,
+   "why": "template repository"
+  },
+  {
+   "repo": "refinedev/refine",
+   "stars": 35870,
+   "why": "over 200 MB"
+  }
+ ],
+ "repos": [
+  {
+   "repo": "shadcn-ui/ui",
+   "commit": "c2477f311c19982ef6e246085438e6cfec3e35ea",
+   "stars": 125685,
+   "manifest": "apps/v4/package.json",
+   "declares": "next@16.3.8"
+  },
+  {
+   "repo": "AykutSarac/jsoncrack.com",
+   "commit": "a46d0d0adb098e12e577a083e87ead7f61f90098",
+   "stars": 44477,
+   "manifest": "apps/www/package.json",
+   "declares": "next@16.3.5"
+  },
+  {
+   "repo": "Dokploy/dokploy",
+   "commit": "471e91caeb3e410cef95f0770a892786ff839914",
+   "stars": 37803,
+   "manifest": "apps/dokploy/package.json",
+   "declares": "next@16.3.8"
+  },
+  {
+   "repo": "gitroomhq/postiz-app",
+   "commit": "021c2ee0763ed03aa211d863298a2ae0e9010544",
+   "stars": 37229,
+   "manifest": "package.json",
+   "declares": "next@16.3.1"
+  },
+  {
+   "repo": "gethomepage/homepage",
+   "commit": "11ca29104a6d2909847f4bd0754556fd564e7e27",
+   "stars": 33153,
+   "manifest": "package.json",
+   "declares": "next@^16.3.8"
+  }
+ ],
+ "counts": {}
+}

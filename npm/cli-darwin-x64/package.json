@@ -1,0 +1,12 @@
+{
+  "name": "@unstale/cli-darwin-x64",
+  "version": "0.1.0",
+  "description": "The unstale CLI binary for macOS on Intel. Install the `unstale` package instead.",
+  "license": "UNLICENSED",
+  "os": ["darwin"],
+  "cpu": ["x64"],
+  "files": [
+    "bin/unstale"
+  ],
+  "preferUnplugged": true
+}

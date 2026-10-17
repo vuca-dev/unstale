@@ -1,0 +1,1411 @@
+{
+ "posthog-js-bf3ade81@1.306.2.md": [
+  {
+   "anchor": "[#2730](https://github.com/PostHog/posthog-js/pull/2730) [`79184bd`](https://github.com/PostHog/posthog-js/commit/79184bdd385d7413718ba9b10f9a9d7a68fdc350) Thanks [@ablaszkiewicz](https://github.com/ablaszkiewicz)! - include synthetic exception in console.error capture",
+   "change_type": "behavior_change",
+   "breaking": false
+  }
+ ],
+ "posthog-js-bf3ade81@1.337.0.md": [
+  {
+   "anchor": "Filter out flags marked as failed before merging with cached values, preventing transient backend errors from overwriting previously evaluated flag states",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "[#3000](https://github.com/PostHog/posthog-js/pull/3000) [`4a1af3b`](https://github.com/PostHog/posthog-js/commit/4a1af3bcdc659127fbdab43dbfe887096bfd9c8d) Thanks [@veryayskiy](https://github.com/veryayskiy)! - Render markdown in support product",
+   "change_type": "behavior_change",
+   "breaking": false
+  },
+  {
+   "anchor": "[#3001](https://github.com/PostHog/posthog-js/pull/3001) [`9bd4dbc`](https://github.com/PostHog/posthog-js/commit/9bd4dbc89017b009cdbdc6ac21456b1f2bc590f4) Thanks [@adboio](https://github.com/adboio)! - do not intercept element clicks if a product tour fails to show",
+   "change_type": "fix",
+   "breaking": false
+  }
+ ],
+ "posthog-js-bf3ade81@1.356.1.md": [
+  {
+   "anchor": "wait for fresh config before recording start decision, add new recorder status, output recording started event",
+   "change_type": "behavior_change",
+   "breaking": false
+  },
+  {
+   "anchor": "wait for fresh config before recording start decision, add new recorder status, output recording started event",
+   "change_type": "new_api",
+   "breaking": false
+  },
+  {
+   "anchor": "wait for fresh config before recording start decision, add new recorder status, output recording started event",
+   "change_type": "new_api",
+   "breaking": false
+  }
+ ],
+ "posthog-js-bf3ade81@1.379.1.md": [
+  {
+   "anchor": "fix(record): release iframe documents and observers on iframe removal",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "Move the OpenTelemetry logs dependencies to `devDependencies`.",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "unsure": true
+  }
+ ],
+ "posthog-js-bf3ade81@1.405.3.md": [
+  {
+   "anchor": "[#4200](https://github.com/PostHog/posthog-js/pull/4200) [`91505ba`](https://github.com/PostHog/posthog-js/commit/91505baaeb22c8fb90568c7c53087a490e92ef49) Thanks [@pauldambra](https://github.com/pauldambra)! - fix: apply the active full snapshot interval as soon as a recording trigger matches",
+   "change_type": "fix",
+   "breaking": false
+  }
+ ],
+ "posthog-js-bf3ade81@1.407.0.md": [
+  {
+   "anchor": "[#4222](https://github.com/PostHog/posthog-js/pull/4222) [`0f2407b`](https://github.com/PostHog/posthog-js/commit/0f2407bbd98cab7d38a23f0466bbdccf3e0bdbf3) Thanks [@turnipdabeets](https://github.com/turnipdabeets)! - feat: add a default-value option to `isFeatureEnabled`",
+   "change_type": "new_option",
+   "breaking": false
+  },
+  {
+   "anchor": "[#4203](https://github.com/PostHog/posthog-js/pull/4203) [`90e7483`](https://github.com/PostHog/posthog-js/commit/90e7483435757b6e650210e7d9d2f2ed2acb92e7) Thanks [@posthog](https://github.com/apps/posthog)! - fix(conversations): let users start a new conversation while a ticket is still open",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "[#4221](https://github.com/PostHog/posthog-js/pull/4221) [`da6e082`](https://github.com/PostHog/posthog-js/commit/da6e082daeb6f03d3982a101d74ac4efae990f8a) Thanks [@posthog](https://github.com/apps/posthog)! - fix(exception-autocapture): don't throw when the page's onerror handler is non-callable",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "Session recording no longer emits an uncaught `TypeError: Illegal invocation` from the input observer's _synchronous_ native-setter call.",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "Fix event-triggered surveys re-displaying in a fresh session without their trigger firing.",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "Warn when session recording masking options in `posthog.init` shadow the project-level \"Privacy and masking\" setting.",
+   "change_type": "behavior_change",
+   "breaking": false
+  }
+ ],
+ "posthog-js-bf3ade81@1.411.0.md": [
+  {
+   "anchor": "feat: add opt-in `capture_performance.__preview_web_vitals_soft_navs` to fix inflated web vitals on single-page apps",
+   "change_type": "new_option",
+   "breaking": false
+  },
+  {
+   "anchor": "Keep `$referring_domain` and canonical `utm_*`/campaign parameters on minimal `$feature_flag_called` events.",
+   "change_type": "fix",
+   "breaking": false
+  }
+ ],
+ "posthog-js-bf3ade81@1.426.0.md": [
+  {
+   "anchor": "[#4740](https://github.com/PostHog/posthog-js/pull/4740) [`6325953`](https://github.com/PostHog/posthog-js/commit/6325953c32555407ad043cd41d8976cf90839bd5) Thanks [@mayteio](https://github.com/mayteio)! - Capture Meta's `$fbc` person property when a new `fbclid` is observed.",
+   "change_type": "behavior_change",
+   "breaking": false
+  },
+  {
+   "anchor": "Require a distinct ID when calling `identify` and correct its API documentation to match the existing runtime validation.",
+   "change_type": "fix",
+   "breaking": false,
+   "unsure": true
+  },
+  {
+   "anchor": "Gate `$groupidentify` on person processing.",
+   "change_type": "behavior_change",
+   "breaking": false
+  }
+ ],
+ "posthog-js-bf3ade81@1.427.0.md": [
+  {
+   "anchor": "[#4774](https://github.com/PostHog/posthog-js/pull/4774) [`426e1fd`](https://github.com/PostHog/posthog-js/commit/426e1fd6c001c030e5753d0d25a0bdb9adc99448) Thanks [@Fhatu12](https://github.com/Fhatu12)! - Add `reuseAnonymousId` support to browser identify calls.",
+   "change_type": "new_option",
+   "breaking": false
+  },
+  {
+   "anchor": "Stop counting stack frames that have no filename",
+   "change_type": "behavior_change",
+   "breaking": false
+  },
+  {
+   "anchor": "Keep relaying session recording events when a cross-origin iframe redirects through the parent page's origin.",
+   "change_type": "fix",
+   "breaking": false
+  }
+ ],
+ "posthog-js-bf3ade81@1.429.0.md": [
+  {
+   "anchor": "Segment integration: allow `segment` to accept an integration config with `filterProperties`, so customers can filter PostHog-generated enrichment properties before Segment sends an event to its destinations.",
+   "change_type": "new_option",
+   "breaking": false
+  },
+  {
+   "anchor": "Fix dead-click detection for text selection and editable caret gestures when mouse release is delayed, while continuing to report inert text clicks.",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "[#4733](https://github.com/PostHog/posthog-js/pull/4733) [`24fa541`](https://github.com/PostHog/posthog-js/commit/24fa541d9e9c2313a2e38383a83076e1473c9fe6) Thanks [@dustinbyrne](https://github.com/dustinbyrne)! - fix(web): avoid reporting clicks that select or unselect text as dead clicks",
+   "change_type": "fix",
+   "breaking": false,
+   "unsure": true
+  },
+  {
+   "anchor": "[#4882](https://github.com/PostHog/posthog-js/pull/4882) [`4bd37b7`](https://github.com/PostHog/posthog-js/commit/4bd37b77f265898f288f88d11374d99c3149e630) Thanks [@lucasheriques](https://github.com/lucasheriques)! - Fix TypeScript compatibility between public replay events and the replay player.",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "Keep surveys hidden while capture is disabled and preserve answers if capture stops before submission.",
+   "change_type": "fix",
+   "breaking": false
+  }
+ ],
+ "typer-4f6b46bd@0.20.1.md": [
+  {
+   "anchor": "✨ Add support for standard tracebacks via the env `TYPER_STANDARD_TRACEBACK`. PR [#1299](https://github.com/fastapi/typer/pull/1299) by [@colin-nolan](https://github.com/colin-nolan).",
+   "change_type": "new_option",
+   "breaking": false
+  },
+  {
+   "anchor": "🐛 Ensure that `options_metavar` is passed through correctly. PR [#816](https://github.com/fastapi/typer/pull/816) by [@gar1t](https://github.com/gar1t).",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "🐛 Ensure an optional argument is shown in brackets, even when `metavar` is set. PR [#1409](https://github.com/fastapi/typer/pull/1409) by [@svlandeg](https://github.com/svlandeg).",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "🐛 Ensure that the default `rich_markup_mode` is interpreted correctly. PR [#1304](https://github.com/fastapi/typer/pull/1304) by [@svlandeg](https://github.com/svlandeg).",
+   "change_type": "fix",
+   "breaking": false
+  }
+ ],
+ "typer-4f6b46bd@0.21.2.md": [
+  {
+   "anchor": "🐛 Fix highlighting of optional variadic argument metavars. PR [#1508](https://github.com/fastapi/typer/pull/1508) by [@BenjyWiener](https://github.com/BenjyWiener).",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "🐛 Fix `--help` text alignment when using `typer.style()` in option descriptions. PR [#1356](https://github.com/fastapi/typer/pull/1356) by [@mahimairaja](https://github.com/mahimairaja).",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "➖ Drop `typing-extensions` as external dependency. PR [#1467](https://github.com/fastapi/typer/pull/1467) by [@svlandeg](https://github.com/svlandeg).",
+   "change_type": "other",
+   "breaking": false,
+   "unsure": true
+  }
+ ],
+ "typer-4f6b46bd@0.22.0.md": [
+  {
+   "anchor": "💥 Make `typer-slim` a shallow wrapper around `typer`, always requiring `rich` and `shellingham`. PR [#1522](https://github.com/fastapi/typer/pull/1522) by [@svlandeg](https://github.com/svlandeg).",
+   "change_type": "behavior_change",
+   "breaking": true
+  }
+ ],
+ "typer-4f6b46bd@0.24.0.md": [
+  {
+   "anchor": "➖ Drop support for Python 3.9. PR [#1546](https://github.com/fastapi/typer/pull/1546) by [@tiangolo](https://github.com/tiangolo).",
+   "change_type": "removal",
+   "breaking": true
+  }
+ ],
+ "typer-4f6b46bd@0.25.0.md": [
+  {
+   "anchor": "🚸 Don't truncate code lines in traceback when formatted with Rich. PR [#1695](https://github.com/fastapi/typer/pull/1695) by [@YuriiMotov](https://github.com/YuriiMotov).",
+   "change_type": "behavior_change",
+   "breaking": false
+  }
+ ],
+ "typer-4f6b46bd@0.26.5.md": [
+  {
+   "anchor": "🐛 Ensure that hidden commands are not shown when Rich markup is disabled. PR [#1812](https://github.com/fastapi/typer/pull/1812) by [@svlandeg](https://github.com/svlandeg).",
+   "change_type": "fix",
+   "breaking": false
+  }
+ ],
+ "typer-4f6b46bd@0.26.7.md": [
+  {
+   "anchor": "🐛 Respect wait=False when launching URLs with xdg-open. PR [#1820](https://github.com/fastapi/typer/pull/1820) by [@patrick91](https://github.com/patrick91).",
+   "change_type": "fix",
+   "breaking": false
+  }
+ ],
+ "typer-4f6b46bd@0.26.8.md": [
+  {
+   "anchor": "🐛 Make second column of Rich help output reflect the type consistently, even when using `metavar`. PR [#1410](https://github.com/fastapi/typer/pull/1410) by [@svlandeg](https://github.com/svlandeg).",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "🐛 Fix formatting in `NoSuchOption.format_message()`. PR [#1843](https://github.com/fastapi/typer/pull/1843) by [@foomunleong](https://github.com/foomunleong).",
+   "change_type": "fix",
+   "breaking": false
+  }
+ ],
+ "typer-4f6b46bd@0.27.0.md": [
+  {
+   "anchor": "💥 Update metavar printing. PR [#1863](https://github.com/fastapi/typer/pull/1863) by [@svlandeg](https://github.com/svlandeg).",
+   "change_type": "behavior_change",
+   "breaking": true
+  }
+ ],
+ "typer-4f6b46bd@0.27.3.md": [
+  {
+   "anchor": "🐛 Escape terminal control characters in error messages. PR [#1972](https://github.com/fastapi/typer/pull/1972) by [@tiangolo](https://github.com/tiangolo).",
+   "change_type": "security",
+   "breaking": false
+  }
+ ],
+ "uvicorn-9342337b@0.39.0.md": [
+  {
+   "anchor": "explicitly start ASGI run with empty context by @pmeier in https://github.com/Kludex/uvicorn/pull/2742",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "unsure": true
+  },
+  {
+   "anchor": "fix(websockets): Send close frame on ASGI return by @Kludex in https://github.com/Kludex/uvicorn/pull/2769",
+   "change_type": "fix",
+   "breaking": false
+  }
+ ],
+ "uvicorn-9342337b@0.41.0.md": [
+  {
+   "anchor": "Add `--limit-max-requests-jitter` to stagger worker restarts (#2707)",
+   "change_type": "new_option",
+   "breaking": false
+  },
+  {
+   "anchor": "Add socket path to `scope[\"server\"]` (#2561)",
+   "change_type": "behavior_change",
+   "breaking": false
+  },
+  {
+   "anchor": "Rename `LifespanOn.error_occured` to `error_occurred` (#2776)",
+   "change_type": "removal",
+   "breaking": true
+  },
+  {
+   "anchor": "Ignore permission denied errors in watchfiles reloader (#2817)",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "Ensure lifespan shutdown runs when `should_exit` is set during startup (#2812)",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "Reduce the log level of 'request limit exceeded' messages (#2788)",
+   "change_type": "behavior_change",
+   "breaking": false
+  }
+ ],
+ "uvicorn-9342337b@0.50.1.md": [
+  {
+   "anchor": "Split comma-separated `Sec-WebSocket-Protocol` values in the websockets-sansio implementation by @Aayush7352 in https://github.com/Kludex/uvicorn/pull/3019",
+   "change_type": "fix",
+   "breaking": false
+  }
+ ],
+ "uvicorn-9342337b@0.50.2.md": [
+  {
+   "anchor": "Require websockets>=13.0 for the default sansio implementation by @Kludex in https://github.com/Kludex/uvicorn/pull/3021",
+   "change_type": "removal",
+   "breaking": true
+  }
+ ],
+ "uvicorn-9342337b@0.51.0.md": [
+  {
+   "anchor": "Restart workers with overlap on SIGHUP for near-zero-downtime reloads by @Kludex in https://github.com/Kludex/uvicorn/pull/3025",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "unsure": true
+  },
+  {
+   "anchor": "Remove colorama from the standard extra by @Kludex in https://github.com/Kludex/uvicorn/pull/3027",
+   "change_type": "removal",
+   "breaking": true
+  }
+ ],
+ "uvicorn-9342337b@0.52.0.md": [
+  {
+   "anchor": "Add an experimental `zttp` HTTP/1.1 implementation, selectable with `--http zttp` (#2979)",
+   "change_type": "new_option",
+   "breaking": false
+  },
+  {
+   "anchor": "Keep non-ASCII WebSocket request headers intact with websockets 17.0, which encodes them with ISO-8859-1 (#3036)",
+   "change_type": "fix",
+   "breaking": false
+  }
+ ],
+ "uvicorn-9342337b@0.52.1.md": [
+  {
+   "anchor": "Complete the closing handshake on server-initiated WebSocket closes in the `websockets-sansio` and `wsproto` implementations, waiting for the client's close reply with a 10 second timeout instead of resetting the connection (#3053)",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "Add missing write flow control to the `websockets-sansio` implementation, preventing data truncation on server-initiated closes with large in-flight payloads (#3048)",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "Handle connection loss while a WebSocket write is waiting on backpressure (#3050)",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "Remove duplicate `Content-Type` and `Content-Length` headers from WebSocket denial responses on the `websockets-sansio` implementation, and deliver non-UTF-8 denial bodies intact (#3041)",
+   "change_type": "fix",
+   "breaking": false
+  }
+ ],
+ "uvicorn-9342337b@0.52.2.md": [
+  {
+   "anchor": "Update `zttp` to 0.0.22, fixing bodyless request receives and improving HTTP/1 request parsing performance (#3063)",
+   "change_type": "fix",
+   "breaking": false,
+   "unsure": true
+  }
+ ],
+ "uvicorn-9342337b@0.52.4.md": [
+  {
+   "anchor": "Remove duplicate `Date` headers from accepted WebSocket handshakes with `websockets-sansio` ([#3078](https://github.com/Kludex/uvicorn/pull/3078))",
+   "change_type": "fix",
+   "breaking": false
+  }
+ ],
+ "uvicorn-9342337b@0.53.0.md": [
+  {
+   "anchor": "**Serve HTTP/1.1 and HTTP/2 with `zttp`** ([#2982](https://github.com/Kludex/uvicorn/pull/2982), [#3101](https://github.com/Kludex/uvicorn/pull/3101)). Install `zttp`, then enable HTTP/2 with `--http zttp --http2`. Uvicorn negotiates HTTP/2 over TLS with ALPN and supports cleartext prior knowledge.",
+   "change_type": "new_option",
+   "breaking": false
+  },
+  {
+   "anchor": "**Run Uvicorn with `zuvloop`** ([#3104](https://github.com/Kludex/uvicorn/pull/3104)). Install `zuvloop` separately and select it explicitly with `--loop zuvloop` on CPython 3.14 or newer.",
+   "change_type": "new_option",
+   "breaking": false
+  },
+  {
+   "anchor": "**Honor `Connection: close` token lists** ([#3103](https://github.com/Kludex/uvicorn/pull/3103)). Uvicorn now parses comma-separated tokens case-insensitively across HTTP implementations.",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "**Trust IPv6 loopback proxies by default** ([#3119](https://github.com/Kludex/uvicorn/pull/3119)). The default `FORWARDED_ALLOW_IPS` value now includes `::1`.",
+   "change_type": "default_change",
+   "breaking": true,
+   "unsure": true
+  },
+  {
+   "anchor": "**Keep upgraded WebSockets alive** ([#3107](https://github.com/Kludex/uvicorn/pull/3107)). Uvicorn cancels the HTTP keep-alive timer when the connection becomes a WebSocket.",
+   "change_type": "fix",
+   "breaking": false
+  }
+ ],
+ "zod-6ac59393@4.1.13.md": [
+  {
+   "anchor": "d3da530deb713c853e79405adddf770e156d50ac reflect the specified regex correctly in error (#5338)",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "39f8c45b8a29de2330b485862b83cb35849f4238 faster initialization (#5352)",
+   "change_type": "performance",
+   "breaking": false
+  },
+  {
+   "anchor": "8e4739fadbd7de710eb67d34ba7e06a1029a68ab Update inferred z.promise() type",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "unsure": true
+  },
+  {
+   "anchor": "2849df8907b011ab056d67ae8e3d27577ac4ed3e fix(locales): improve Dutch (nl) localization (#5367)",
+   "change_type": "fix",
+   "breaking": false,
+   "unsure": true
+  },
+  {
+   "anchor": "86d4dad5bc27b4b35df533c9170a552ad8c6c3bc Fix partial record",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "88cf9441448608d9de24b47b8a4a4ba879fc2433 Fix: Iterate over keys in catchall object using \"in\" operator. (#5376)",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "e120a4877f4d8d076abf2db5c5cceab91a046be9 Fix opt tuple",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "3a4bd00aaa16276ffeb2708cc083a633bd4dd756 Improve Hebrew localization for Zod error messages (#5409)",
+   "change_type": "fix",
+   "breaking": false,
+   "unsure": true
+  },
+  {
+   "anchor": "3d93a7d593c19dc1822bc96a7c9d47312c29995e feat: MAC address validation in v4 and mini (#5440)",
+   "change_type": "new_api",
+   "breaking": false
+  },
+  {
+   "anchor": "f2f0d178e1c526bc00ad0385706efad318bd44b0 Fix dual package hazard for `globalRegistry` (#5452)",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "9fc493f86f17a5fc550df78e7e261137885f51ea fix: use oneOf for discriminated unions in JSON Schema (#5453)",
+   "change_type": "behavior_change",
+   "breaking": false
+  },
+  {
+   "anchor": "f97e80da9197064937a58167619967bee4ebb638 fix(core): prevent infinite recursion for recursive tuples (#5089) (#5094)",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "002e01ad0fcc17b17683adafc80f2a86e8d355a9 fix(record): handle non-function constructor field in isPlainObject (#5098)",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "d44253d6498564ecd24a6248ddca4e9bf4e43058 Add support for number literal and TypeScript's enum keys in `z.record` (#5334)",
+   "change_type": "new_option",
+   "breaking": false
+  },
+  {
+   "anchor": "162fe298f0ec76d7f7883afbebdd732eb3c60773 Add z.meta and z.describe",
+   "change_type": "new_api",
+   "breaking": false
+  },
+  {
+   "anchor": "3de39eea6f7ed286ae182093d0c91f3a6fdcca06 Implement slugify",
+   "change_type": "new_api",
+   "breaking": false
+  }
+ ],
+ "zod-6ac59393@4.2.0.md": [
+  {
+   "anchor": "### Implement Standard JSON Schema",
+   "change_type": "new_api",
+   "breaking": false
+  },
+  {
+   "anchor": "### Implement `z.fromJSONSchema()`",
+   "change_type": "new_api",
+   "breaking": false
+  },
+  {
+   "anchor": "### Implement `z.xor()`",
+   "change_type": "new_api",
+   "breaking": false
+  },
+  {
+   "anchor": "### Implement `z.looseRecord()`",
+   "change_type": "new_api",
+   "breaking": false
+  },
+  {
+   "anchor": "767f320318986e422f524b939f1a7174544fda2e Add `.toJSONSchema()` method (#5477)",
+   "change_type": "new_api",
+   "breaking": false
+  }
+ ],
+ "zod-6ac59393@4.3.0.md": [
+  {
+   "anchor": "You can now convert JSON Schema definitions directly into Zod schemas. This function supports JSON Schema `\"draft-2020-12\"`, `\"draft-7\"`, `\"draft-4\"`, and OpenAPI 3.0.",
+   "change_type": "new_api",
+   "breaking": false
+  },
+  {
+   "anchor": "A new exclusive union type that requires **exactly one** option to match. Unlike `z.union()` which passes if *any* option matches, `z.xor()` fails if zero or more than one option matches.",
+   "change_type": "new_api",
+   "breaking": false
+  },
+  {
+   "anchor": "A new record variant that only validates keys matching the key schema, passing through non-matching keys unchanged. This is used to represent `patternProperties` in JSON Schema.",
+   "change_type": "new_api",
+   "breaking": false
+  },
+  {
+   "anchor": "A new wrapper that makes a property *key-optional* (can be omitted) but does **not** accept `undefined` as an explicit value.",
+   "change_type": "new_api",
+   "breaking": false
+  },
+  {
+   "anchor": "A utility method for applying arbitrary transformations to a schema, enabling cleaner schema composition.  ([#5463](https://github.com/colinhacks/zod/pull/5463))",
+   "change_type": "new_api",
+   "breaking": false
+  },
+  {
+   "anchor": "The `.brand()` method now accepts a second argument to control whether the brand applies to input, output, or both. Closes [#4764](https://github.com/colinhacks/zod/issues/4764), [#4836](https://github.com/colinhacks/zod/issues/4836).",
+   "change_type": "new_option",
+   "breaking": false
+  },
+  {
+   "anchor": "The `.refine()` method now supports type predicates to narrow the output type:",
+   "change_type": "new_option",
+   "breaking": false
+  },
+  {
+   "anchor": "`ZodMap` now has parity with `ZodSet` and `ZodArray`:",
+   "change_type": "new_api",
+   "breaking": false
+  },
+  {
+   "anchor": "A new `.with()` method has been added as a more readable alias for `.check()`. Over time, more APIs have been added that don't qualify as \"checks\". The new method provides a readable alternative that doesn't muddy semantics.",
+   "change_type": "new_api",
+   "breaking": false
+  },
+  {
+   "anchor": "Transform strings into URL-friendly slugs. Works great with `.with()`:",
+   "change_type": "new_api",
+   "breaking": false
+  },
+  {
+   "anchor": "Zod Mini now exports `z.meta()` and `z.describe()` as top-level functions for adding metadata to schemas:",
+   "change_type": "new_api",
+   "breaking": false
+  },
+  {
+   "anchor": "When intersecting schemas that include `z.strictObject()`, Zod 4 now only rejects keys that are unrecognized by *both* sides of the intersection. Previously, any unrecognized key from either side would cause an error.",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "unsure": true
+  },
+  {
+   "anchor": "Armenian (`am`) ([#5531](https://github.com/colinhacks/zod/pull/5531))",
+   "change_type": "new_api",
+   "breaking": false
+  },
+  {
+   "anchor": "Uzbek (`uz`) ([#5519](https://github.com/colinhacks/zod/pull/5519))",
+   "change_type": "new_api",
+   "breaking": false
+  },
+  {
+   "anchor": "Using `.pick()` or `.omit()` on object schemas with refinements now throws an error. Previously, this would silently drop the refinements, leading to unexpected behavior.",
+   "change_type": "behavior_change",
+   "breaking": true
+  },
+  {
+   "anchor": "Similarly, `.extend()` will throws on schemas with refinements *if* you are overwriting existing properties.",
+   "change_type": "behavior_change",
+   "breaking": true
+  },
+  {
+   "anchor": "Object masking methods (`.pick()`, `.omit()`) now validate that the keys provided actually exist in the schema:",
+   "change_type": "behavior_change",
+   "breaking": true
+  },
+  {
+   "anchor": "Fixed JSON Schema generation for `z.iso.time` with minute precision ([#5557](https://github.com/colinhacks/zod/pull/5557))",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "Fixed error details for tuples with extraneous elements ([#5555](https://github.com/colinhacks/zod/pull/5555))",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "Fixed `includes` method params typing to accept `string | $ZodCheckIncludesParams` ([#5556](https://github.com/colinhacks/zod/pull/5556))",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "Fixed numeric formats error messages to be inclusive ([#5485](https://github.com/colinhacks/zod/pull/5485))",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "Fixed `implementAsync` inferred type to always be a promise ([#5476](https://github.com/colinhacks/zod/pull/5476))",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "Tightened E.164 regex to require a non-zero leading digit and 7–15 digits total ([#5524](https://github.com/colinhacks/zod/pull/5524))",
+   "change_type": "behavior_change",
+   "breaking": true
+  },
+  {
+   "anchor": "Fixed Dutch (nl) error strings ([#5529](https://github.com/colinhacks/zod/pull/5529))",
+   "change_type": "fix",
+   "breaking": false,
+   "unsure": true
+  },
+  {
+   "anchor": "Convert `Date` instances to numbers in `minimum`/`maximum` checks ([#5351](https://github.com/colinhacks/zod/pull/5351))",
+   "change_type": "behavior_change",
+   "breaking": false
+  },
+  {
+   "anchor": "Improved numeric keys handling in `z.record()` ([#5585](https://github.com/colinhacks/zod/pull/5585))",
+   "change_type": "behavior_change",
+   "breaking": false
+  },
+  {
+   "anchor": "Lazy initialization of `~standard` schema property ([#5363](https://github.com/colinhacks/zod/pull/5363))",
+   "change_type": "performance",
+   "breaking": false
+  },
+  {
+   "anchor": "Functions marked as `@__NO_SIDE_EFFECTS__` for better tree-shaking ([#5475](https://github.com/colinhacks/zod/pull/5475))",
+   "change_type": "performance",
+   "breaking": false
+  },
+  {
+   "anchor": "Improved metadata tracking across child-parent relationships ([#5578](https://github.com/colinhacks/zod/pull/5578))",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "unsure": true
+  },
+  {
+   "anchor": "Dropped id uniqueness enforcement at registry level ([#5574](https://github.com/colinhacks/zod/pull/5574))",
+   "change_type": "behavior_change",
+   "breaking": false
+  }
+ ],
+ "zod-6ac59393@4.3.3.md": [],
+ "zod-6ac59393@4.3.4.md": [
+  {
+   "anchor": "e01cd02b2f23d7e9078d3813830b146f8a2258b4 Support patternProperties for looserecord (#5592)",
+   "change_type": "new_option",
+   "breaking": false
+  },
+  {
+   "anchor": "9443aab00d44d5d5f4a7eada65fc0fc851781042 Drop iso time in fromJSONSchema",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "unsure": true
+  },
+  {
+   "anchor": "66bda7491a1b9eab83bdeec0c12f4efc7290bd48 Remove .refine() from ZodMiniType",
+   "change_type": "removal",
+   "breaking": true,
+   "unsure": true
+  }
+ ],
+ "zod-6ac59393@4.4.2.md": [
+  {
+   "anchor": "4bbed1b1c73eca4ce9e59b1189ed236aa6c8b5bd Tighten discriminated union option typing",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "unsure": true
+  },
+  {
+   "anchor": "02c2baf7d0d615872fa4528a8020603b71211702 Make z.preprocess defer optionality to inner schema (#5929)",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "unsure": true
+  }
+ ],
+ "zod-6ac59393@4.5.0.md": [
+  {
+   "anchor": "You can now pre-compile any Zod schema using `z.compile(schema)`. This dramatically speeds up parsing performance.",
+   "change_type": "new_api",
+   "breaking": false
+  },
+  {
+   "anchor": "To compile every schema in an application, import `zod/compile` once at the top of your entry point. Every schema constructed after that import is *automatically compiled* the first time it's used to parse data.",
+   "change_type": "new_api",
+   "breaking": false
+  },
+  {
+   "anchor": "A new string format: 12–19 digits, optionally separated by single spaces or hyphens, with a valid Luhn checksum. ([#5931](https://github.com/colinhacks/zod/pull/5931))",
+   "change_type": "new_api",
+   "breaking": false
+  },
+  {
+   "anchor": "The multi-property counterpart to `z.property()`. ([#5912](https://github.com/colinhacks/zod/pull/5912))",
+   "change_type": "new_api",
+   "breaking": false
+  },
+  {
+   "anchor": "Back in functional form after being removed as a method in Zod 4. ([#5928](https://github.com/colinhacks/zod/pull/5928))",
+   "change_type": "new_api",
+   "breaking": false
+  },
+  {
+   "anchor": "Like `.partial()`, but wraps each field in `z.exactOptional()` instead of `z.optional()`: keys may be omitted, but an explicit `undefined` is rejected. This matches TypeScript's `Partial<>` under `exactOptionalPropertyTypes`. ([#6065](https://github.com/colinhacks/zod/pull/6065))",
+   "change_type": "new_api",
+   "breaking": false
+  },
+  {
+   "anchor": "Standalone boolean validation, in Zod, Zod Mini, and Zod Core.",
+   "change_type": "new_api",
+   "breaking": false
+  },
+  {
+   "anchor": "Project a schema onto its input or output side. Useful for validating the two halves of a codec independently. ([#5928](https://github.com/colinhacks/zod/pull/5928))",
+   "change_type": "new_api",
+   "breaking": false
+  },
+  {
+   "anchor": "A utility to define a Zod schema that agrees exactly with a static type, often one that is handwritten or externally defined. ([#5913](https://github.com/colinhacks/zod/pull/5913))",
+   "change_type": "new_api",
+   "breaking": false
+  },
+  {
+   "anchor": "Extract a discriminated union member by discriminator value. ([#5947](https://github.com/colinhacks/zod/pull/5947))",
+   "change_type": "new_api",
+   "breaking": false
+  },
+  {
+   "anchor": "Zod recursive schemas now support cyclical data. For bundle size reasons, Zod Mini requires you to register a memoizer explicitly. ([#6387](https://github.com/colinhacks/zod/pull/6387), [#6482](https://github.com/colinhacks/zod/pull/6482))",
+   "change_type": "behavior_change",
+   "breaking": false
+  },
+  {
+   "anchor": "A consequence of this is that each bound method allocates space on the heap; method implementations are not shared across all instances via `prototype`, as you'd expect. Zod 4.5 implements a method memoization pattern that avoids allocating bound methods until they are actually accessed.",
+   "change_type": "performance",
+   "breaking": false
+  },
+  {
+   "anchor": "When using `.safeParse()`, Zod no longer captures this stack trace, speeding up failure-path parses by a factor of ~7.5x.",
+   "change_type": "performance",
+   "breaking": false
+  },
+  {
+   "anchor": "A shape can now declare a symbol key. TypeScript tracks it: a `const` symbol infers as `unique symbol`, so `z.infer` makes the key required and checks its value type. Undeclared symbol keys are still ignored. ([#6448](https://github.com/colinhacks/zod/pull/6448))",
+   "change_type": "new_option",
+   "breaking": false
+  },
+  {
+   "anchor": "`z.iso.datetime()` and `z.iso.datetime({ offset: true })` no longer accept minute-precision input like `2020-01-01T06:15Z`.",
+   "change_type": "behavior_change",
+   "breaking": true
+  },
+  {
+   "anchor": "They now count Unicode code points, which is what every non-JS consumer of a length bound does",
+   "change_type": "behavior_change",
+   "breaking": true
+  },
+  {
+   "anchor": "A record's key schema now governs only the keys that match it, the way TypeScript treats an index signature. Intersecting an object with a pattern-keyed record no longer rejects the object's own keys. ([#6412](https://github.com/colinhacks/zod/pull/6412))",
+   "change_type": "behavior_change",
+   "breaking": true
+  },
+  {
+   "anchor": "Separately, an `unrecognized_keys` issue no longer aborts the schema it came from",
+   "change_type": "behavior_change",
+   "breaking": true
+  },
+  {
+   "anchor": "Object and record parsers now drop a `__proto__` key whether it comes from the input, is declared by the schema, or is produced by a record key transform.",
+   "change_type": "security",
+   "breaking": true
+  },
+  {
+   "anchor": "`.strict()` reports an own `__proto__` input key as `unrecognized_keys` instead of silently swallowing it.",
+   "change_type": "behavior_change",
+   "breaking": true
+  },
+  {
+   "anchor": "Error formatters and both JSON Schema converters use own-property writes so a `toString` or `constructor` path segment can't walk onto `Object.prototype`",
+   "change_type": "security",
+   "breaking": false
+  },
+  {
+   "anchor": "`z.ipv6()` validated by handing the string to `new URL()`, which let `::@1\\` and `::1\\n` through. It now checks the address alphabet directly ([#6442](https://github.com/colinhacks/zod/pull/6442)).",
+   "change_type": "behavior_change",
+   "breaking": true
+  },
+  {
+   "anchor": "`z.ulid()` restricts the first character to `0`–`7`; anything higher overflows the 48-bit timestamp. A fixture that doesn't start with a real timestamp, such as one with a leading letter, is now rejected ([#6095](https://github.com/colinhacks/zod/pull/6095)).",
+   "change_type": "behavior_change",
+   "breaking": true
+  },
+  {
+   "anchor": "`z.httpUrl()` enforces the RFC 1035 length limits on the host, matching `z.hostname()` ([#6035](https://github.com/colinhacks/zod/pull/6035)).",
+   "change_type": "behavior_change",
+   "breaking": true
+  },
+  {
+   "anchor": "`z.emoji()` no longer backtracks exponentially on a failed match ([#6347](https://github.com/colinhacks/zod/pull/6347)).",
+   "change_type": "security",
+   "breaking": false
+  },
+  {
+   "anchor": "`z.string().includes(sub, { position: N })` emits a JSON Schema pattern that allows *at least* N leading characters, matching `String.prototype.includes` ([#6024](https://github.com/colinhacks/zod/pull/6024)).",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "[`9782f87c`](https://github.com/colinhacks/zod/commit/9782f87c) perf(v4): validate without building the output, and keep schemas out of dictionary mode ([#6480](https://github.com/colinhacks/zod/pull/6480))",
+   "change_type": "performance",
+   "breaking": false,
+   "unsure": true
+  },
+  {
+   "anchor": "[`8d896186`](https://github.com/colinhacks/zod/commit/8d896186) fix(v4): stop emitting a multipleOf that JSON Schema rejects ([#6468](https://github.com/colinhacks/zod/pull/6468))",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "[`43f729db`](https://github.com/colinhacks/zod/commit/43f729db) feat(v4): make a tuple's items optional with .partial() ([#6465](https://github.com/colinhacks/zod/pull/6465))",
+   "change_type": "new_option",
+   "breaking": false
+  },
+  {
+   "anchor": "[`97edaf7d`](https://github.com/colinhacks/zod/commit/97edaf7d) fix(v4): don't throw from safeParse on bigint multipleOf(0n) ([#6466](https://github.com/colinhacks/zod/pull/6466))",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "[`21a6f0cb`](https://github.com/colinhacks/zod/commit/21a6f0cb) feat(v4): let z.nanoid() take a custom length ([#4004](https://github.com/colinhacks/zod/pull/4004))",
+   "change_type": "new_option",
+   "breaking": false
+  },
+  {
+   "anchor": "[`7ce3e77d`](https://github.com/colinhacks/zod/commit/7ce3e77d) fix(v4): run a wrapper's inner schema on its own payload ([#6462](https://github.com/colinhacks/zod/pull/6462))",
+   "change_type": "fix",
+   "breaking": false,
+   "unsure": true
+  },
+  {
+   "anchor": "[`7b612b53`](https://github.com/colinhacks/zod/commit/7b612b53) fix(v4): fold an intersection of object schemas into one object ([#6461](https://github.com/colinhacks/zod/pull/6461))",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "unsure": true
+  },
+  {
+   "anchor": "[`badf0b78`](https://github.com/colinhacks/zod/commit/badf0b78) fix(v4): build the catch context from the input that failed ([#6192](https://github.com/colinhacks/zod/pull/6192))",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "[`a87ac366`](https://github.com/colinhacks/zod/commit/a87ac366) fix(v4)!: distinguish number and bigint formats at the type level ([#6052](https://github.com/colinhacks/zod/pull/6052))",
+   "change_type": "behavior_change",
+   "breaking": true
+  },
+  {
+   "anchor": "[`7cfc0122`](https://github.com/colinhacks/zod/commit/7cfc0122) fix(v4): keep a wrapper's stored value only on the side it belongs to",
+   "change_type": "fix",
+   "breaking": false,
+   "unsure": true
+  },
+  {
+   "anchor": "[`a825c1b0`](https://github.com/colinhacks/zod/commit/a825c1b0) fix(v4): empty enums and literals match nothing ([#6459](https://github.com/colinhacks/zod/pull/6459))",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "[`7c070db9`](https://github.com/colinhacks/zod/commit/7c070db9) feat(v4): expose the function schema on .implement() results ([#6267](https://github.com/colinhacks/zod/pull/6267))",
+   "change_type": "new_api",
+   "breaking": false
+  },
+  {
+   "anchor": "[`3a496968`](https://github.com/colinhacks/zod/commit/3a496968) fix(v4): make record input keys optional when the value can fill them ([#6460](https://github.com/colinhacks/zod/pull/6460))",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "[`53cec2a0`](https://github.com/colinhacks/zod/commit/53cec2a0) fix(v4): resolve z.input past a preprocess transform",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "[`2125d30c`](https://github.com/colinhacks/zod/commit/2125d30c) fix(v4): accept exact decimal multiples in multipleOf ([#6223](https://github.com/colinhacks/zod/pull/6223))",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "[`168122fc`](https://github.com/colinhacks/zod/commit/168122fc) fix(v4): carry a pipe's own checks through z.output",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "[`72a05c4f`](https://github.com/colinhacks/zod/commit/72a05c4f) feat(v4): expose stringbool truthy/falsy/case via _zod.bag ([#6357](https://github.com/colinhacks/zod/pull/6357))",
+   "change_type": "new_api",
+   "breaking": false
+  },
+  {
+   "anchor": "[`d4108872`](https://github.com/colinhacks/zod/commit/d4108872) fix(v4): correct the date/time format keywords in both JSON Schema directions ([#6452](https://github.com/colinhacks/zod/pull/6452))",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "[`6574e784`](https://github.com/colinhacks/zod/commit/6574e784) fix(v4): stop catch resurrecting issues an optional already resolved ([#6440](https://github.com/colinhacks/zod/pull/6440))",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "[`f101d8ca`](https://github.com/colinhacks/zod/commit/f101d8ca) Preserve callsites in parse stack traces ([#5910](https://github.com/colinhacks/zod/pull/5910))",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "unsure": true
+  },
+  {
+   "anchor": "[`6c77d028`](https://github.com/colinhacks/zod/commit/6c77d028) feat: compact simple anyOf unions to type array in toJSONSchema ([#6339](https://github.com/colinhacks/zod/pull/6339))",
+   "change_type": "behavior_change",
+   "breaking": false
+  },
+  {
+   "anchor": "[`87ffeb0f`](https://github.com/colinhacks/zod/commit/87ffeb0f) fix(v4): an absent key on the middle rung supplies nothing ([#6434](https://github.com/colinhacks/zod/pull/6434))",
+   "change_type": "fix",
+   "breaking": false,
+   "unsure": true
+  },
+  {
+   "anchor": "[`0135c85a`](https://github.com/colinhacks/zod/commit/0135c85a) feat(v4): allow passing extra args to apply() ([#6337](https://github.com/colinhacks/zod/pull/6337))",
+   "change_type": "new_option",
+   "breaking": false
+  },
+  {
+   "anchor": "[`ca246d26`](https://github.com/colinhacks/zod/commit/ca246d26) fix(v4): drop empty alternation branch from datetime pattern ([#6439](https://github.com/colinhacks/zod/pull/6439))",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "[`d6ca12ae`](https://github.com/colinhacks/zod/commit/d6ca12ae) fix(v4): infer recursive getter options in discriminatedUnion ([#6422](https://github.com/colinhacks/zod/pull/6422))",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "[`a38ab4a8`](https://github.com/colinhacks/zod/commit/a38ab4a8) fix(core): an omittable discriminator claims undefined ([#6432](https://github.com/colinhacks/zod/pull/6432))",
+   "change_type": "fix",
+   "breaking": false,
+   "unsure": true
+  },
+  {
+   "anchor": "[`3c9ca1d9`](https://github.com/colinhacks/zod/commit/3c9ca1d9) feat(json-schema): emit a root $ref when the root schema has an id ([#6029](https://github.com/colinhacks/zod/pull/6029))",
+   "change_type": "behavior_change",
+   "breaking": false
+  },
+  {
+   "anchor": "[`f300476d`](https://github.com/colinhacks/zod/commit/f300476d) fix(v4): let a schema's error map cover its own checks' issues ([#6426](https://github.com/colinhacks/zod/pull/6426))",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "[`604464c3`](https://github.com/colinhacks/zod/commit/604464c3) fix(locales): da/nn/no/sv called an IP address a range ([#6430](https://github.com/colinhacks/zod/pull/6430))",
+   "change_type": "fix",
+   "breaking": false,
+   "unsure": true
+  },
+  {
+   "anchor": "[`7378e7cd`](https://github.com/colinhacks/zod/commit/7378e7cd) fix(locales): backfill the mac and Sizable.map gaps, and pin dictionary parity ([#6427](https://github.com/colinhacks/zod/pull/6427))",
+   "change_type": "fix",
+   "breaking": false,
+   "unsure": true
+  },
+  {
+   "anchor": "[`ccc15144`](https://github.com/colinhacks/zod/commit/ccc15144) fix(locales): add the credit_card key to the seven locales missing it ([#6424](https://github.com/colinhacks/zod/pull/6424))",
+   "change_type": "fix",
+   "breaking": false,
+   "unsure": true
+  },
+  {
+   "anchor": "[`73bacbbb`](https://github.com/colinhacks/zod/commit/73bacbbb) fix(from-json-schema): drop redundant inclusive bound for draft-04 exclusive ranges ([#6022](https://github.com/colinhacks/zod/pull/6022))",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "[`5b34c0ce`](https://github.com/colinhacks/zod/commit/5b34c0ce) Improve Portuguese localization and add Brazilian Portuguese (pt-BR) ([#6076](https://github.com/colinhacks/zod/pull/6076))",
+   "change_type": "new_api",
+   "breaking": false
+  },
+  {
+   "anchor": "[`dc1a40a5`](https://github.com/colinhacks/zod/commit/dc1a40a5) fix(locales): improve french translation ([#6120](https://github.com/colinhacks/zod/pull/6120))",
+   "change_type": "fix",
+   "breaking": false,
+   "unsure": true
+  },
+  {
+   "anchor": "[`0175a043`](https://github.com/colinhacks/zod/commit/0175a043) feat(locales): add Hindi and Kannada locale support ([#6315](https://github.com/colinhacks/zod/pull/6315))",
+   "change_type": "new_api",
+   "breaking": false
+  },
+  {
+   "anchor": "[`0175a043`](https://github.com/colinhacks/zod/commit/0175a043) feat(locales): add Hindi and Kannada locale support ([#6315](https://github.com/colinhacks/zod/pull/6315))",
+   "change_type": "new_api",
+   "breaking": false
+  },
+  {
+   "anchor": "[`536ee3b0`](https://github.com/colinhacks/zod/commit/536ee3b0) Locales: added Slovak (sk) language ([#6041](https://github.com/colinhacks/zod/pull/6041))",
+   "change_type": "new_api",
+   "breaking": false
+  },
+  {
+   "anchor": "[`07b0c3d8`](https://github.com/colinhacks/zod/commit/07b0c3d8) fix: preserve explicit superRefine issue input ([#6053](https://github.com/colinhacks/zod/pull/6053))",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "[`234c407d`](https://github.com/colinhacks/zod/commit/234c407d) feat(lang): Added Bengali locale ([#5974](https://github.com/colinhacks/zod/pull/5974))",
+   "change_type": "new_api",
+   "breaking": false
+  },
+  {
+   "anchor": "[`377cd9d7`](https://github.com/colinhacks/zod/commit/377cd9d7) feat(locales): add turkmen (tk) locale ([#6168](https://github.com/colinhacks/zod/pull/6168))",
+   "change_type": "new_api",
+   "breaking": false
+  },
+  {
+   "anchor": "[`69b6bb08`](https://github.com/colinhacks/zod/commit/69b6bb08) feat(locales): add Norwegian Nynorsk (nn) locale ([#6092](https://github.com/colinhacks/zod/pull/6092))",
+   "change_type": "new_api",
+   "breaking": false
+  },
+  {
+   "anchor": "[`33d82e6b`](https://github.com/colinhacks/zod/commit/33d82e6b) Add Central Kurdish (ckb) locale ([#6078](https://github.com/colinhacks/zod/pull/6078))",
+   "change_type": "new_api",
+   "breaking": false
+  },
+  {
+   "anchor": "[`06666fe2`](https://github.com/colinhacks/zod/commit/06666fe2) fix(fr): remove hyphen in \"non-optionnel\" ([#5999](https://github.com/colinhacks/zod/pull/5999))",
+   "change_type": "fix",
+   "breaking": false,
+   "unsure": true
+  },
+  {
+   "anchor": "[`79cfedea`](https://github.com/colinhacks/zod/commit/79cfedea) feat(v4): expose the owning schema on check-originated issues ([#6420](https://github.com/colinhacks/zod/pull/6420))",
+   "change_type": "new_api",
+   "breaking": false
+  },
+  {
+   "anchor": "[`eb4682c9`](https://github.com/colinhacks/zod/commit/eb4682c9) fix(json-schema): resolve tuple minItems past transform and catch in input mode ([#6418](https://github.com/colinhacks/zod/pull/6418))",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "[`4d6b5cd3`](https://github.com/colinhacks/zod/commit/4d6b5cd3) fix(json-schema): route unrepresentable default values through `unrepresentable`",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "[`578e1cd0`](https://github.com/colinhacks/zod/commit/578e1cd0) feat(v4): support format: \"hostname\" in fromJSONSchema ([#6305](https://github.com/colinhacks/zod/pull/6305))",
+   "change_type": "new_option",
+   "breaking": false
+  },
+  {
+   "anchor": "[`78b523f0`](https://github.com/colinhacks/zod/commit/78b523f0) fix(json-schema): keep preprocess object properties required in input mode ([#6133](https://github.com/colinhacks/zod/pull/6133))",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "[`973b1b44`](https://github.com/colinhacks/zod/commit/973b1b44) fix(v4): strip output-typed catch values from the input JSON Schema ([#6409](https://github.com/colinhacks/zod/pull/6409))",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "[`4cc4053d`](https://github.com/colinhacks/zod/commit/4cc4053d) fix: honor loose mode for closed record key schemas ([#6157](https://github.com/colinhacks/zod/pull/6157))",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "[`b899cd17`](https://github.com/colinhacks/zod/commit/b899cd17) perf(json-schema): make toJSONSchema(registry) linear in registry size ([#6408](https://github.com/colinhacks/zod/pull/6408))",
+   "change_type": "performance",
+   "breaking": false
+  },
+  {
+   "anchor": "[`6074828e`](https://github.com/colinhacks/zod/commit/6074828e) fix(v4): make fromJSONSchema propertyNames compose with the other object keywords ([#6411](https://github.com/colinhacks/zod/pull/6411))",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "[`611bd762`](https://github.com/colinhacks/zod/commit/611bd762) fix(mini): make merge() take an object schema, matching classic ([#6404](https://github.com/colinhacks/zod/pull/6404))",
+   "change_type": "fix",
+   "breaking": false,
+   "unsure": true
+  },
+  {
+   "anchor": "[`b53e53cc`](https://github.com/colinhacks/zod/commit/b53e53cc) fix(v4): use exact flag in English locale too_small/too_big messages ([#6177](https://github.com/colinhacks/zod/pull/6177))",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "[`421cc9a5`](https://github.com/colinhacks/zod/commit/421cc9a5) fix(json-schema): unescape JSON Pointer tokens when resolving $ref ([#6402](https://github.com/colinhacks/zod/pull/6402))",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "[`4c27fe87`](https://github.com/colinhacks/zod/commit/4c27fe87) fix(v4): give z.xor() a distinct error when multiple options match ([#6376](https://github.com/colinhacks/zod/pull/6376))",
+   "change_type": "behavior_change",
+   "breaking": false
+  },
+  {
+   "anchor": "[`a106fbe7`](https://github.com/colinhacks/zod/commit/a106fbe7) fix(v4): make fromJSONSchema tuples open-ended by default ([#6020](https://github.com/colinhacks/zod/pull/6020))",
+   "change_type": "default_change",
+   "breaking": true,
+   "unsure": true
+  },
+  {
+   "anchor": "[`e8034eba`](https://github.com/colinhacks/zod/commit/e8034eba) fix(v4): make prefixItems/draft-7 items respect minItems in fromJSONSchema ([#6201](https://github.com/colinhacks/zod/pull/6201))",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "[`784e5c26`](https://github.com/colinhacks/zod/commit/784e5c26) fix(v4): let bundlers tree-shake locales out of the default import ([#6384](https://github.com/colinhacks/zod/pull/6384))",
+   "change_type": "performance",
+   "breaking": false
+  },
+  {
+   "anchor": "[`97edd70a`](https://github.com/colinhacks/zod/commit/97edd70a) fix(toJSONSchema): constrain closed tuple length ([#6194](https://github.com/colinhacks/zod/pull/6194))",
+   "change_type": "behavior_change",
+   "breaking": false
+  },
+  {
+   "anchor": "[`f150020d`](https://github.com/colinhacks/zod/commit/f150020d) fix(v4): escape non-string enum values in template literal patterns ([#5934](https://github.com/colinhacks/zod/pull/5934))",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "[`faf33a28`](https://github.com/colinhacks/zod/commit/faf33a28) fix: surface @deprecated on re-exported compat aliases ([#6072](https://github.com/colinhacks/zod/pull/6072))",
+   "change_type": "fix",
+   "breaking": false,
+   "unsure": true
+  },
+  {
+   "anchor": "[`a1904fc2`](https://github.com/colinhacks/zod/commit/a1904fc2) fix(v4): report date origin for numeric min/max bounds ([#6129](https://github.com/colinhacks/zod/pull/6129))",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "[`bd18314c`](https://github.com/colinhacks/zod/commit/bd18314c) fix: escape JSON Pointer reserved characters in toJSONSchema $ref (closes #6027) ([#6144](https://github.com/colinhacks/zod/pull/6144))",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "[`0e5bc4b1`](https://github.com/colinhacks/zod/commit/0e5bc4b1) fix(v4): respect additionalProperties:false with patternProperties in fromJSONSchema ([#6199](https://github.com/colinhacks/zod/pull/6199))",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "[`c8f06d36`](https://github.com/colinhacks/zod/commit/c8f06d36) fix(v4): clarify infinite number errors ([#5906](https://github.com/colinhacks/zod/pull/5906))",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "[`9a7ecc35`](https://github.com/colinhacks/zod/commit/9a7ecc35) fix(json-schema): accept RFC 3339 numeric offsets in date-time format ([#6298](https://github.com/colinhacks/zod/pull/6298))",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "[`bd6619c0`](https://github.com/colinhacks/zod/commit/bd6619c0) feat(json-schema): accept a function for `unrepresentable` ([#6380](https://github.com/colinhacks/zod/pull/6380))",
+   "change_type": "new_option",
+   "breaking": false
+  },
+  {
+   "anchor": "[`9d20fdc3`](https://github.com/colinhacks/zod/commit/9d20fdc3) fix(v4): preserve z.preprocess input narrowing ([#5967](https://github.com/colinhacks/zod/pull/5967))",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "[`fd074106`](https://github.com/colinhacks/zod/commit/fd074106) feat(json-schema): run `override` before the unrepresentable error ([#6391](https://github.com/colinhacks/zod/pull/6391))",
+   "change_type": "behavior_change",
+   "breaking": false
+  },
+  {
+   "anchor": "[`2715c12e`](https://github.com/colinhacks/zod/commit/2715c12e) fix(v4): preserve default English locale across tree-shaken bundles ([#5959](https://github.com/colinhacks/zod/pull/5959))",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "[`f29f2a6d`](https://github.com/colinhacks/zod/commit/f29f2a6d) fix(v4): cidrv6 JSON schema pattern matches runtime ([#5945](https://github.com/colinhacks/zod/pull/5945))",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "[`dfd8766b`](https://github.com/colinhacks/zod/commit/dfd8766b) fix(v4): break circular import between classic schemas and iso ([#5275](https://github.com/colinhacks/zod/pull/5275)) ([#5926](https://github.com/colinhacks/zod/pull/5926))",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "[`fbe8ad1b`](https://github.com/colinhacks/zod/commit/fbe8ad1b) fix(v4): allow dynamic `.catch()` under `unrepresentable: \"any\"` ([#5273](https://github.com/colinhacks/zod/pull/5273)) ([#5925](https://github.com/colinhacks/zod/pull/5925))",
+   "change_type": "fix",
+   "breaking": false
+  }
+ ],
+ "zod-6ac59393@4.5.4.md": [
+  {
+   "anchor": "84e416fbf4740527bbc8f319634f4e1b065bb42c fix(v4): stop the cycle walk from firing a default factory (#6500)",
+   "change_type": "fix",
+   "breaking": false
+  }
+ ],
+ "zod-6ac59393@4.6.0.md": [
+  {
+   "anchor": "[`62e6624b`](https://github.com/colinhacks/zod/commit/62e6624b) feat(v4): add .validate() and .validateAsync() to Zod Classic ([#6547](https://github.com/colinhacks/zod/pull/6547))",
+   "change_type": "new_api",
+   "breaking": false
+  },
+  {
+   "anchor": "A new API for validating specific properties of an object. Unlike `z.object()` it validates *in-place*, so it plays nice with class instances. ([#6536](https://github.com/colinhacks/zod/pull/6536))",
+   "change_type": "new_api",
+   "breaking": false
+  },
+  {
+   "anchor": "Six additional JSON Schema keywords are now supported in `z.fromJSONSchema()`. ([#6535](https://github.com/colinhacks/zod/pull/6535))",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "unsure": true
+  },
+  {
+   "anchor": "A new string format: an IBAN in electronic format, with a valid ISO 7064 MOD 97-10 checksum. ([#6571](https://github.com/colinhacks/zod/pull/6571))",
+   "change_type": "new_api",
+   "breaking": false
+  },
+  {
+   "anchor": "`z.withParser()` is that installer on its own",
+   "change_type": "new_api",
+   "breaking": false
+  },
+  {
+   "anchor": "The 4.6 build emits plain properties and freezes the exports object.",
+   "change_type": "performance",
+   "breaking": false
+  },
+  {
+   "anchor": "The parse state is weak throughout now",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "Because `safeParse()` now builds its error lazily, error maps",
+   "change_type": "behavior_change",
+   "breaking": true
+  },
+  {
+   "anchor": "The pattern now requires at least one pictograph, regional indicator, or keycap.",
+   "change_type": "behavior_change",
+   "breaking": true
+  },
+  {
+   "anchor": "The parser already ignored those keys, but `.options` was read straight off the enum object",
+   "change_type": "behavior_change",
+   "breaking": true
+  },
+  {
+   "anchor": "The runtime patterns for `z.base64()` and `z.base64url()` are the character sets",
+   "change_type": "security",
+   "breaking": false
+  },
+  {
+   "anchor": "Composing `z.base64()` into a template literal now checks the alphabet but not the length, which is how `z.creditCard()` already behaves there. The exported `z.regexes.base64url` is now the length-aware form, so it overflows on a multi-megabyte input the same way `z.regexes.base64` does.",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "unsure": true
+  },
+  {
+   "anchor": "Composing `z.base64()` into a template literal now checks the alphabet but not the length, which is how `z.creditCard()` already behaves there. The exported `z.regexes.base64url` is now the length-aware form, so it overflows on a multi-megabyte input the same way `z.regexes.base64` does.",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "unsure": true
+  },
+  {
+   "anchor": "`z.email()` opened with two lookaheads",
+   "change_type": "performance",
+   "breaking": false
+  },
+  {
+   "anchor": "The pattern string is user-visible, and every copy of it changes",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "unsure": true
+  },
+  {
+   "anchor": "Composing an email into a template literal also stops applying its no-consecutive-dots rule to the rest of the string.",
+   "change_type": "behavior_change",
+   "breaking": false
+  },
+  {
+   "anchor": "Each check used to write its own bounds into the schema as it attached",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "a repeated `multipleOf` kept the first divisor and dropped the rest",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "a repeated `multipleOf` kept the first divisor and dropped the rest",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "Eight members on a Zod Classic schema",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "unsure": true
+  },
+  {
+   "anchor": "The values can move too, because the getters read the same fold the JSON Schema converter does. An order-dependent chain reports the tighter bound now instead of whichever check wrote last.",
+   "change_type": "behavior_change",
+   "breaking": false
+  },
+  {
+   "anchor": "[`cafbee47`](https://github.com/colinhacks/zod/commit/cafbee47) fix(v4): parse recursive schemas built by a factory ([#6530](https://github.com/colinhacks/zod/pull/6530))",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "[`18e71c71`](https://github.com/colinhacks/zod/commit/18e71c71) Rename the JSON Schema `process` helper so bundler polyfills cannot collide ([#6541](https://github.com/colinhacks/zod/pull/6541))",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "[`68a609ac`](https://github.com/colinhacks/zod/commit/68a609ac) Widen literal inputs in property check types ([#6520](https://github.com/colinhacks/zod/pull/6520))",
+   "change_type": "fix",
+   "breaking": false,
+   "unsure": true
+  },
+  {
+   "anchor": "[`84dd3b0f`](https://github.com/colinhacks/zod/commit/84dd3b0f) perf: build literal and enum pattern regexes lazily ([#6531](https://github.com/colinhacks/zod/pull/6531))",
+   "change_type": "performance",
+   "breaking": false
+  },
+  {
+   "anchor": "[`a2a019a5`](https://github.com/colinhacks/zod/commit/a2a019a5) Accept enum-typed targets in z.toZod ([#6528](https://github.com/colinhacks/zod/pull/6528))",
+   "change_type": "new_option",
+   "breaking": false
+  },
+  {
+   "anchor": "[`5ff95665`](https://github.com/colinhacks/zod/commit/5ff95665) Stop re-exporting the compile internals from zod/v4/core ([#6511](https://github.com/colinhacks/zod/pull/6511))",
+   "change_type": "removal",
+   "breaking": true,
+   "unsure": true
+  },
+  {
+   "anchor": "[`cd4f9a67`](https://github.com/colinhacks/zod/commit/cd4f9a67) perf(v4): report Standard Schema issues without constructing a ZodError ([#6509](https://github.com/colinhacks/zod/pull/6509))",
+   "change_type": "performance",
+   "breaking": false
+  },
+  {
+   "anchor": "[`8ce9e8d5`](https://github.com/colinhacks/zod/commit/8ce9e8d5) feat(mini): publish Zod Mini as the standalone @zod/mini package ([#6491](https://github.com/colinhacks/zod/pull/6491))",
+   "change_type": "new_api",
+   "breaking": false
+  }
+ ],
+ "zod-6ac59393@4.6.6.md": [
+  {
+   "anchor": "a2ba4a67986a3e6b2b131be30084a2f460d9ea67 fix(types): declare record output and input as members, not base type arguments (#6645)",
+   "change_type": "fix",
+   "breaking": false
+  },
+  {
+   "anchor": "a0ebf970f2d752e5f58527cd2942ff48be4f46bd fix(v4): check array, set and map size bounds before parsing elements (#6652)",
+   "change_type": "fix",
+   "breaking": false
+  }
+ ]
+}

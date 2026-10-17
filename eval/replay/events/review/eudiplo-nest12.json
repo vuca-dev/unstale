@@ -1,0 +1,27 @@
+{
+ "K1": [
+  "keep",
+  true,
+  "S: CommonJS apps load v12's ESM packages through require(esm), which needs Node 20.19+/22.12+; NodeNext resolution for the exports maps"
+ ],
+ "K2": [
+  "keep",
+  true,
+  "D: the Swagger CLI plugin resolved an incompatible hoisted TypeScript after the v12/TS6 bump; build failed"
+ ],
+ "K3": [
+  "keep",
+  true,
+  "D: the contract test failed on @nestjs/swagger 12's OpenAPI 3.1 nullability output"
+ ],
+ "K4": [
+  "keep",
+  false,
+  "S: moving your own code to ESM is optional in v12; done after the CommonJS upgrade worked (#988 title: 'NestJS 12 (CommonJS)')"
+ ],
+ "K5": [
+  "keep",
+  false,
+  "knock-on of the optional ESM move (static ESM imports load Nest before OpenTelemetry)"
+ ]
+}

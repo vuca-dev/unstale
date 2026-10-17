@@ -1,0 +1,12 @@
+{
+  "name": "@unstale/cli-win32-x64",
+  "version": "0.1.0",
+  "description": "The unstale CLI binary for Windows on x86-64. Install the `unstale` package instead.",
+  "license": "UNLICENSED",
+  "os": ["win32"],
+  "cpu": ["x64"],
+  "files": [
+    "bin/unstale.exe"
+  ],
+  "preferUnplugged": true
+}

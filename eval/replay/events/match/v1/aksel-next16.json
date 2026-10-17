@@ -1,0 +1,154 @@
+{
+ "event": "aksel-next16",
+ "maps": [
+  {
+   "K1": [
+    "next-proxy-ts"
+   ],
+   "K2": [
+    "next-publicruntimeconfig"
+   ],
+   "K3": [
+    "next-turbopackfilesystemcachefordev",
+    "next-reactcompiler"
+   ],
+   "K4": [
+    "next-reactcompiler"
+   ],
+   "K5": [
+    "next-turbopack"
+   ],
+   "K6": [],
+   "K7": [
+    "next-eslint-config-next",
+    "next-next-eslint-plugin-next"
+   ],
+   "K8": [],
+   "K9": []
+  },
+  {
+   "K1": [
+    "next-proxy-ts"
+   ],
+   "K2": [
+    "next-publicruntimeconfig"
+   ],
+   "K3": [
+    "next-turbopackfilesystemcachefordev",
+    "next-reactcompiler"
+   ],
+   "K4": [
+    "next-reactcompiler"
+   ],
+   "K5": [
+    "next-turbopack"
+   ],
+   "K6": [],
+   "K7": [
+    "next-eslint-config-next",
+    "next-next-eslint-plugin-next"
+   ],
+   "K8": [],
+   "K9": []
+  }
+ ],
+ "usage": [
+  {
+   "input_tokens": 23615,
+   "cached_input_tokens": 9984,
+   "cache_write_input_tokens": 0,
+   "output_tokens": 469,
+   "reasoning_output_tokens": 381
+  },
+  {
+   "input_tokens": 23615,
+   "cached_input_tokens": 9984,
+   "cache_write_input_tokens": 0,
+   "output_tokens": 789,
+   "reasoning_output_tokens": 701
+  }
+ ],
+ "in_queue": [
+  "next-ambiguous-app-routes",
+  "next-amp",
+  "next-automatic-linting",
+  "next-bundle-analyzer",
+  "next-cachecomponents",
+  "next-cachemaxmemorysize",
+  "next-clientparamparsing",
+  "next-clientsegmentcache",
+  "next-clientsegmentcache-2",
+  "next-create-next-app-webpack",
+  "next-dynamicio",
+  "next-eslint-config-next",
+  "next-experimental-cachehandlers-cachehandlers",
+  "next-experimental-next-config-strip-types",
+  "next-experimental-ppr",
+  "next-experimental-runtimeserverdeploymentid",
+  "next-experimental-turbopackinfermodulesideeffects",
+  "next-experimental-turbopackinputsourcemaps",
+  "next-experimental-turbopackmoduleids-turbopackmodulei",
+  "next-exports",
+  "next-filesystem-cache",
+  "next-get-errors",
+  "next-get-page-metadata",
+  "next-get-routes",
+  "next-headers",
+  "next-images-dangerouslyallowlocalip-dangerouslyallowl",
+  "next-images-domains-domains",
+  "next-images-imagesizes-imagesizes",
+  "next-images-localpatterns-localpatterns",
+  "next-images-maximumdiskcachesize",
+  "next-images-maximumredirects-maximumredirects",
+  "next-images-minimumcachettl-minimumcachettl",
+  "next-instrumentation-onrequesterror-context-routetype",
+  "next-lru-disk-cache",
+  "next-mcp-server",
+  "next-middleware",
+  "next-middleware-runtime",
+  "next-minimal-mode-response-cache",
+  "next-next-analyze",
+  "next-next-build-analyze",
+  "next-next-build-experimental-analyze",
+  "next-next-config-mts",
+  "next-next-dev-inspect",
+  "next-next-eslint-plugin-next",
+  "next-next-font-local-declarations",
+  "next-next-legacy-image",
+  "next-next-rspack-binding",
+  "next-next-turbopack-write-routes-hashes-manifest",
+  "next-next-upgrade",
+  "next-params",
+  "next-proxy-ts",
+  "next-proxymatcher",
+  "next-publicruntimeconfig",
+  "next-rdcfornavigations",
+  "next-react",
+  "next-reactcompiler",
+  "next-redirects",
+  "next-rewrites",
+  "next-router-scroll-optimization",
+  "next-rspack-persistent-cache",
+  "next-searchparams",
+  "next-segment-cache-fallback",
+  "next-server-actions-mcp-tool",
+  "next-server-source-maps",
+  "next-serverruntimeconfig",
+  "next-source-maps",
+  "next-staletimes-static",
+  "next-sync-access-to-dynamic-apis",
+  "next-this-fs-readfile",
+  "next-turbopack",
+  "next-turbopack-2",
+  "next-turbopackfilesystemcacheforbuild",
+  "next-turbopackfilesystemcachefordev",
+  "next-turbopackpersistentcachingforbuild",
+  "next-typescript",
+  "next-typescript-2",
+  "next-unstable-cachelife",
+  "next-unstable-cachetag",
+  "next-unstable-forcestale",
+  "next-updatetag",
+  "next-webpack"
+ ]
+}

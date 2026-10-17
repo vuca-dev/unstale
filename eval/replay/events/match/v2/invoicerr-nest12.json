@@ -1,0 +1,158 @@
+{
+ "event": "invoicerr-nest12",
+ "maps": [
+  {
+   "K1": [
+    "nestjs-esm-packages",
+    "nestjs-esm-packages-2",
+    "nestjs-vitest"
+   ],
+   "K2": [
+    "nestjs-esm-packages",
+    "nestjs-esm-packages-2",
+    "nestjs-vitest"
+   ],
+   "K3": [],
+   "K4": [
+    "nestjs-vitest"
+   ],
+   "K5": [
+    "nestjs-vitest"
+   ],
+   "K6": [
+    "nestjs-vitest"
+   ],
+   "K7": [
+    "nestjs-vitest"
+   ],
+   "K8": [
+    "nestjs-esm-packages",
+    "nestjs-esm-packages-2",
+    "nestjs-vitest"
+   ],
+   "K9": [
+    "nestjs-vitest"
+   ],
+   "K10": [
+    "nestjs-vitest"
+   ],
+   "K11": [
+    "nestjs-vitest"
+   ],
+   "K12": [
+    "nestjs-vitest"
+   ],
+   "K13": [],
+   "K14": []
+  },
+  {
+   "K1": [
+    "nestjs-esm-packages-2"
+   ],
+   "K2": [
+    "nestjs-esm-packages-2"
+   ],
+   "K3": [],
+   "K4": [],
+   "K5": [],
+   "K6": [],
+   "K7": [],
+   "K8": [
+    "nestjs-esm-packages-2"
+   ],
+   "K9": [
+    "nestjs-vitest"
+   ],
+   "K10": [
+    "nestjs-vitest"
+   ],
+   "K11": [],
+   "K12": [
+    "nestjs-vitest"
+   ],
+   "K13": [
+    "nestjs-node-js"
+   ],
+   "K14": []
+  }
+ ],
+ "usage": [
+  {
+   "input_tokens": 21186,
+   "cached_input_tokens": 9984,
+   "cache_write_input_tokens": 0,
+   "output_tokens": 665,
+   "reasoning_output_tokens": 516
+  },
+  {
+   "input_tokens": 21186,
+   "cached_input_tokens": 9984,
+   "cache_write_input_tokens": 0,
+   "output_tokens": 1137,
+   "reasoning_output_tokens": 1034
+  }
+ ],
+ "in_queue": [
+  "nestjs-angular",
+  "nestjs-argumentmetadata",
+  "nestjs-builder",
+  "nestjs-bun",
+  "nestjs-configmodule-forroot-validationschema",
+  "nestjs-consolelogger-structuredparams",
+  "nestjs-esm-packages",
+  "nestjs-esm-packages-2",
+  "nestjs-express-graceful-shutdown",
+  "nestjs-flattenparams",
+  "nestjs-graphiql",
+  "nestjs-graphiql-graphiql",
+  "nestjs-graphql-ws",
+  "nestjs-handledisconnect",
+  "nestjs-handler-results",
+  "nestjs-healthcheckerror",
+  "nestjs-healthindicator",
+  "nestjs-httpexceptionoptions-errorcode",
+  "nestjs-legacy-route-path-warning",
+  "nestjs-lifecycle-hooks-2",
+  "nestjs-microservices-pre-request-hook",
+  "nestjs-nats-io-transport-node",
+  "nestjs-nats-packet-serialization",
+  "nestjs-nest-build-emit-declarations",
+  "nestjs-nest-build-no-type-check",
+  "nestjs-nest-build-parallel",
+  "nestjs-nest-build-rspackpath",
+  "nestjs-nest-cli-json-includelibraryassets",
+  "nestjs-nest-deploy",
+  "nestjs-nest-new",
+  "nestjs-nest-upgrade",
+  "nestjs-nest-upgrade-dry-run",
+  "nestjs-nestjs-observe",
+  "nestjs-node-js",
+  "nestjs-optional-2",
+  "nestjs-oxlint",
+  "nestjs-package-json-type",
+  "nestjs-parseenumpipe",
+  "nestjs-pending-requests",
+  "nestjs-query",
+  "nestjs-reflector-createdecorator",
+  "nestjs-regexp",
+  "nestjs-reply-subscription",
+  "nestjs-routeconflictpolicy-duplicate",
+  "nestjs-routeconflictpolicy-routeconflictpolicy",
+  "nestjs-routeresolutionstrategy",
+  "nestjs-rspack",
+  "nestjs-rspackpath",
+  "nestjs-servermqtt-maxconnectionattempts",
+  "nestjs-silent",
+  "nestjs-sse-comments",
+  "nestjs-sse-signal",
+  "nestjs-standardschemaserializerinterceptor",
+  "nestjs-standardschemavalidationpipe",
+  "nestjs-subscriptions-transport-ws",
+  "nestjs-timeout-timeout",
+  "nestjs-validationoptions-libraryoptions",
+  "nestjs-validationpipe-2",
+  "nestjs-vitest",
+  "nestjs-webpack",
+  "nestjs-webpackpath"
+ ]
+}

@@ -1,0 +1,85 @@
+{
+ "event": "eudiplo-nest12",
+ "maps": [
+  {
+   "K1": [
+    "nestjs-esm-packages",
+    "nestjs-node-js"
+   ],
+   "K2": [],
+   "K3": [],
+   "K4": [
+    "nestjs-esm-packages"
+   ],
+   "K5": []
+  },
+  {
+   "K1": [
+    "nestjs-esm-packages",
+    "nestjs-node-js"
+   ],
+   "K2": [],
+   "K3": [],
+   "K4": [
+    "nestjs-esm-packages"
+   ],
+   "K5": []
+  }
+ ],
+ "usage": [
+  {
+   "input_tokens": 16153,
+   "cached_input_tokens": 9984,
+   "cache_write_input_tokens": 0,
+   "output_tokens": 199,
+   "reasoning_output_tokens": 156
+  },
+  {
+   "input_tokens": 16153,
+   "cached_input_tokens": 9984,
+   "cache_write_input_tokens": 0,
+   "output_tokens": 348,
+   "reasoning_output_tokens": 305
+  }
+ ],
+ "in_queue": [
+  "nestjs-angular",
+  "nestjs-argumentmetadata",
+  "nestjs-builder",
+  "nestjs-bun",
+  "nestjs-configmodule-forroot-validationschema",
+  "nestjs-consolelogger-structuredparams",
+  "nestjs-esm-packages",
+  "nestjs-express-graceful-shutdown",
+  "nestjs-flattenparams",
+  "nestjs-graphiql",
+  "nestjs-handledisconnect",
+  "nestjs-lifecycle-hooks-2",
+  "nestjs-microservices-pre-request-hook",
+  "nestjs-nats-io-transport-node",
+  "nestjs-nest-build-emit-declarations",
+  "nestjs-nest-build-no-type-check",
+  "nestjs-nest-build-parallel",
+  "nestjs-nest-build-rspackpath",
+  "nestjs-nest-cli-json-includelibraryassets",
+  "nestjs-nest-deploy",
+  "nestjs-nest-new",
+  "nestjs-nest-upgrade",
+  "nestjs-nest-upgrade-dry-run",
+  "nestjs-nestfactory-create-instrument",
+  "nestjs-nestjs-observe",
+  "nestjs-node-js",
+  "nestjs-oxlint",
+  "nestjs-routeconflictpolicy-duplicate",
+  "nestjs-routeconflictpolicy-shadow",
+  "nestjs-routeresolutionstrategy",
+  "nestjs-rspack",
+  "nestjs-standardschemaserializerinterceptor",
+  "nestjs-standardschemavalidationpipe",
+  "nestjs-subscriptions-transport-ws",
+  "nestjs-validationoptions-libraryoptions",
+  "nestjs-validationpipe-2",
+  "nestjs-webpack",
+  "nestjs-webpackpath"
+ ]
+}

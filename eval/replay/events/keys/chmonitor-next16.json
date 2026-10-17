@@ -1,0 +1,220 @@
+{
+ "event": "chmonitor-next16",
+ "info": {
+  "slot": "chmonitor__chmonitor",
+  "tech": "next",
+  "package": "next",
+  "old": "15.4.7",
+  "new": "16.0.7",
+  "upgrade": "29f368ebe189fc3cb967ca4861fe06bf8a0abd95",
+  "event": "chmonitor-next16",
+  "repo": "/private/tmp/claude-501/-Users-jason-Documents/3f08dd87-99a0-42d0-a4e5-59b22f98708b/scratchpad/w1/replay/full/chmonitor__chmonitor",
+  "parent": "c5bbcb3395fee01d027b7b4cc3992cec61e3dbdd",
+  "date": "2025-12-08T11:19:12+07:00",
+  "until": "2026-01-07T00:19:44+07:00",
+  "end": "8cc8a28ce83017e776a3a090c3b9a0de554125f9",
+  "name": "Next.js",
+  "dir": "/private/tmp/claude-501/-Users-jason-Documents/3f08dd87-99a0-42d0-a4e5-59b22f98708b/scratchpad/w1/replay/chmonitor-next16",
+  "cdir": "/private/tmp/claude-501/-Users-jason-Documents/3f08dd87-99a0-42d0-a4e5-59b22f98708b/scratchpad/w1/replay/chmonitor-next16"
+ },
+ "items": [
+  {
+   "id": "K1",
+   "commit": "29f368e",
+   "files": [
+    "app/[host]/database/[database]/@nav/default.tsx",
+    "app/[host]/database/[database]/[table]/@dictionary/default.tsx",
+    "app/[host]/database/[database]/[table]/@materializedview/default.tsx",
+    "app/[host]/database/[database]/[table]/@mergetree/default.tsx",
+    "app/[host]/database/[database]/[table]/@view/default.tsx"
+   ],
+   "change": "Added null-rendering default.tsx files for all parallel route slots.",
+   "responds_to": "Next.js 16 requires default components for unmatched parallel route slots.",
+   "required": true,
+   "required_rule": "S: parallel route slots need default.js; builds fail without",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K2",
+   "commit": "29f368e",
+   "files": [
+    "app/[host]/clusters/[cluster]/replicas-status/page.tsx",
+    "app/[host]/clusters/page.tsx",
+    "app/[host]/database/[database]/@nav/[table]/page.tsx",
+    "app/[host]/database/[database]/@nav/nav.tsx",
+    "app/[host]/database/[database]/@nav/page.tsx",
+    "app/[host]/database/[database]/[table]/@dictionary/page.tsx",
+    "app/[host]/database/[database]/[table]/@materializedview/page.tsx",
+    "app/[host]/database/[database]/[table]/@mergetree/page.tsx",
+    "app/[host]/database/[database]/[table]/@view/page.tsx",
+    "app/[host]/database/[database]/[table]/extras/extras.tsx",
+    "app/[host]/database/[database]/[table]/extras/table-selector.tsx",
+    "app/[host]/database/[database]/default.tsx",
+    "app/[host]/database/[database]/layout.tsx",
+    "app/[host]/database/[database]/page.tsx",
+    "app/[host]/database/page.tsx",
+    "app/[host]/layout.tsx",
+    "app/[host]/replica/[replica]/tables/page.tsx"
+   ],
+   "change": "Changed dynamic route host parameter types from number to string and widened related cached-fetch parameters to accept route strings.",
+   "responds_to": "Next.js 16 supplies dynamic route parameters as strings.",
+   "required": true,
+   "required_rule": "D: commit lists it under 'Breaking changes addressed' (Next 16 route-type validation rejects number params)",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K3",
+   "commit": "29f368e",
+   "files": [
+    "app/layout.tsx",
+    "app/global-error.tsx"
+   ],
+   "change": "Removed next/font/google Inter usage and changed the body class to font-sans.",
+   "responds_to": "The new build needed to avoid Google Font fetching and use a network-independent system font.",
+   "required": false,
+   "required_rule": "D: choice for network-independent builds; next/font/google still works in 16",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K4",
+   "commit": "29f368e",
+   "files": [
+    "lib/clickhouse-action.ts"
+   ],
+   "change": "Changed revalidateTag to await revalidateTag(CLICKHOUSE_CACHE_TAG, { expire: 0 }).",
+   "responds_to": "Next.js 16 requires a cache-life profile as the second revalidateTag argument.",
+   "required": true,
+   "required_rule": "S: single-argument revalidateTag is a TypeScript error in 16",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K5",
+   "commit": "29f368e",
+   "files": [
+    "next.config.ts"
+   ],
+   "change": "Made OpenNext Cloudflare development initialization conditional on ENABLE_CLOUDFLARE=true and loaded it dynamically.",
+   "responds_to": "Next.js 16/Turbopack builds should not initialize the Cloudflare development integration unless explicitly enabled.",
+   "required": false,
+   "required_rule": "D: dev-only Cloudflare init made opt-in; no Next 16 failure shown",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K6",
+   "commit": "29f368e",
+   "files": [
+    "next.config.ts"
+   ],
+   "change": "Added an empty top-level turbopack configuration to next.config.ts.",
+   "responds_to": "Next.js 16 builds with Turbopack by default and errors when a webpack config exists without a turbopack config.",
+   "required": true,
+   "required_rule": "S: Turbopack is the default for next build and fails with a webpack config and no turbopack config; this project has a webpack() config",
+   "reviewed": "edited"
+  },
+  {
+   "id": "K7",
+   "commit": "29f368e",
+   "files": [
+    "biome.json",
+    "package.json",
+    "eslint.config.mjs",
+    ".prettierignore",
+    "prettier.config.cjs",
+    "cypress/.eslintrc.json",
+    "docs/.eslintrc.json"
+   ],
+   "change": "Replaced the ESLint/Prettier setup with Biome, added Biome lint/format/check scripts, removed the ESLint and Prettier configuration files and dependencies, and applied the resulting lint fixes.",
+   "responds_to": "Next.js 16 removed the next lint workflow, so project linting and formatting were moved to Biome.",
+   "required": true,
+   "required_rule": "S: next lint removed and the lint script used it; the maintainers' replacement (Biome) is the chosen fix",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K8",
+   "commit": "29f368e",
+   "files": [
+    ".github/workflows/test.yml"
+   ],
+   "change": "Disabled the Cypress component-test job.",
+   "responds_to": "Cypress failed with webpackModule.init is not a function because its component runner depended on webpack internals changed by Next.js 16 Turbopack.",
+   "required": true,
+   "required_rule": "D: commit says Cypress component tests are incompatible with Next 16 Turbopack",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K9",
+   "commit": "753a320",
+   "files": [
+    "middleware.ts"
+   ],
+   "change": "Removed the middleware that added x-url and x-pathname headers for prefetch requests.",
+   "responds_to": "Next.js 16 emitted a deprecation warning for this middleware usage, and the headers were no longer used.",
+   "required": false,
+   "required_rule": "deprecation warning only (middleware still works); headers unused",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K10",
+   "commit": "753a320",
+   "files": [
+    "package.json",
+    "next.config.ts",
+    "README.md"
+   ],
+   "change": "Changed the production build and Cloudflare build instructions to use Webpack instead of Turbopack, while retaining Turbopack for development; documented the requirement.",
+   "responds_to": "Turbopack was not supported by the Cloudflare Workers OpenNext deployment path.",
+   "required": true,
+   "required_rule": "D: Turbopack (now default) not supported by the OpenNext Cloudflare build; build pinned to webpack",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K11",
+   "commit": "28d2d33",
+   "files": [
+    "package.json"
+   ],
+   "change": "Removed the --webpack flag from the production build command.",
+   "responds_to": "Next.js 16 made Turbopack stable for production and the maintainers adopted it for faster builds.",
+   "required": false,
+   "required_rule": "adopts Turbopack for production builds by choice",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K12",
+   "commit": "29f368e",
+   "files": [
+    "next.config.ts"
+   ],
+   "change": "Enabled experimental.turbopackUseSystemTlsCerts.",
+   "responds_to": "Next.js 16 Turbopack option for using system TLS certificates.",
+   "required": false,
+   "required_rule": "new opt-in option",
+   "reviewed": "added"
+  },
+  {
+   "id": "K13",
+   "commit": "29f368e",
+   "files": [
+    "next.config.ts"
+   ],
+   "change": "Removed the eslint.ignoreDuringBuilds option from next.config.ts.",
+   "responds_to": "Next.js 16 removed the eslint option from next.config along with next lint.",
+   "required": true,
+   "required_rule": "S: the eslint config key is removed in 16 (NextConfig type error in a .ts config)",
+   "reviewed": "added"
+  }
+ ],
+ "dropped": [],
+ "draft": {
+  "model": "gpt-5.6-luna (codex exec, harness KEY prompt)",
+  "n_items": 11,
+  "usage": {
+   "input_tokens": 1009902,
+   "cached_input_tokens": 920064,
+   "cache_write_input_tokens": 0,
+   "output_tokens": 8755,
+   "reasoning_output_tokens": 3385
+  },
+  "wall_s": 81.8
+ }
+}

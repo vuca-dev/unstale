@@ -1,0 +1,5011 @@
+{
+ "catalog": "/private/tmp/claude-501/-Users-jason-Documents/3f08dd87-99a0-42d0-a4e5-59b22f98708b/scratchpad/advisories-general/gate-advisories-osv/catalog",
+ "bin": "/Users/jason/unstale/local/target/release/unstale",
+ "k": 3,
+ "arms": [
+  "tier",
+  "all"
+ ],
+ "events": {
+  "workout-next16": {
+   "split": "DEV",
+   "tech": "next",
+   "queue": 79,
+   "other_tech_in_first16": 3,
+   "deterministic": {
+    "all": {
+     "key": 10,
+     "covered": 6,
+     "queued": 5,
+     "first16": 3,
+     "first16_invoked": 3
+    },
+    "required": {
+     "key": 3,
+     "covered": 3,
+     "queued": 3,
+     "first16": 3,
+     "first16_invoked": 3
+    },
+    "optional": {
+     "key": 7,
+     "covered": 3,
+     "queued": 2,
+     "first16": 0,
+     "first16_invoked": 0
+    }
+   },
+   "reviews": {
+    "tier__01": {
+     "batch": 16,
+     "tokens": 328691,
+     "cached_tokens": 287232,
+     "output_tokens": 4949,
+     "wall": 48.0,
+     "do_now": 3,
+     "later": 1,
+     "missing": 0,
+     "do_now_off_key": [],
+     "classes": {
+      "all": {
+       "in_batch": 3,
+       "found": 2,
+       "found_now": 2
+      },
+      "required": {
+       "in_batch": 3,
+       "found": 2,
+       "found_now": 2
+      },
+      "optional": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      }
+     },
+     "found_ids": [
+      "K2",
+      "K6"
+     ]
+    },
+    "tier__02": {
+     "batch": 16,
+     "tokens": 343485,
+     "cached_tokens": 286848,
+     "output_tokens": 5665,
+     "wall": 50.7,
+     "do_now": 5,
+     "later": 1,
+     "missing": 0,
+     "do_now_off_key": [],
+     "classes": {
+      "all": {
+       "in_batch": 3,
+       "found": 3,
+       "found_now": 3
+      },
+      "required": {
+       "in_batch": 3,
+       "found": 3,
+       "found_now": 3
+      },
+      "optional": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      }
+     },
+     "found_ids": [
+      "K2",
+      "K6",
+      "K7"
+     ]
+    },
+    "tier__03": {
+     "batch": 16,
+     "tokens": 251465,
+     "cached_tokens": 215552,
+     "output_tokens": 5106,
+     "wall": 39.6,
+     "do_now": 4,
+     "later": 1,
+     "missing": 0,
+     "do_now_off_key": [
+      "next-automatic-linting"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 3,
+       "found": 2,
+       "found_now": 2
+      },
+      "required": {
+       "in_batch": 3,
+       "found": 2,
+       "found_now": 2
+      },
+      "optional": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      }
+     },
+     "found_ids": [
+      "K2",
+      "K6"
+     ]
+    },
+    "all__01": {
+     "batch": 79,
+     "tokens": 519561,
+     "cached_tokens": 439040,
+     "output_tokens": 8481,
+     "wall": 71.6,
+     "do_now": 9,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "next-javascript-urls-in-router-methods-and-redirects",
+      "next-params",
+      "next-searchparams"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 5,
+       "found": 4,
+       "found_now": 4
+      },
+      "required": {
+       "in_batch": 3,
+       "found": 2,
+       "found_now": 2
+      },
+      "optional": {
+       "in_batch": 2,
+       "found": 2,
+       "found_now": 2
+      }
+     },
+     "found_ids": [
+      "K1",
+      "K2",
+      "K4",
+      "K6"
+     ]
+    },
+    "all__02": {
+     "batch": 79,
+     "tokens": 400169,
+     "cached_tokens": 337408,
+     "output_tokens": 8175,
+     "wall": 72.3,
+     "do_now": 10,
+     "later": 0,
+     "missing": 1,
+     "do_now_off_key": [
+      "next-automatic-linting",
+      "next-server-action-submissions"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 5,
+       "found": 5,
+       "found_now": 5
+      },
+      "required": {
+       "in_batch": 3,
+       "found": 3,
+       "found_now": 3
+      },
+      "optional": {
+       "in_batch": 2,
+       "found": 2,
+       "found_now": 2
+      }
+     },
+     "found_ids": [
+      "K1",
+      "K2",
+      "K4",
+      "K6",
+      "K7"
+     ]
+    },
+    "all__03": {
+     "batch": 79,
+     "tokens": 341070,
+     "cached_tokens": 293376,
+     "output_tokens": 6812,
+     "wall": 59.4,
+     "do_now": 12,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "next-automatic-linting",
+      "next-middleware-runtime",
+      "next-node-js-runtime",
+      "next-params",
+      "next-params-2",
+      "next-searchparams"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 5,
+       "found": 4,
+       "found_now": 4
+      },
+      "required": {
+       "in_batch": 3,
+       "found": 2,
+       "found_now": 2
+      },
+      "optional": {
+       "in_batch": 2,
+       "found": 2,
+       "found_now": 2
+      }
+     },
+     "found_ids": [
+      "K1",
+      "K2",
+      "K4",
+      "K6"
+     ]
+    }
+   },
+   "per_key": {
+    "K1": {
+     "cls": "optional",
+     "covered": true,
+     "queued": true,
+     "first16": false,
+     "rank": 76
+    },
+    "K2": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 6
+    },
+    "K3": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K4": {
+     "cls": "optional",
+     "covered": true,
+     "queued": true,
+     "first16": false,
+     "rank": 74
+    },
+    "K5": {
+     "cls": "optional",
+     "covered": true,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K6": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 12
+    },
+    "K7": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 2
+    },
+    "K8": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K9": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K10": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    }
+   }
+  },
+  "invoicerr-prisma7": {
+   "split": "DEV",
+   "tech": "prisma",
+   "queue": 78,
+   "other_tech_in_first16": 6,
+   "deterministic": {
+    "all": {
+     "key": 16,
+     "covered": 10,
+     "queued": 10,
+     "first16": 9,
+     "first16_invoked": 8
+    },
+    "required": {
+     "key": 16,
+     "covered": 10,
+     "queued": 10,
+     "first16": 9,
+     "first16_invoked": 8
+    },
+    "optional": {
+     "key": 0,
+     "covered": 0,
+     "queued": 0,
+     "first16": 0,
+     "first16_invoked": 0
+    }
+   },
+   "reviews": {
+    "tier__01": {
+     "batch": 16,
+     "tokens": 119429,
+     "cached_tokens": 84736,
+     "output_tokens": 3175,
+     "wall": 38.5,
+     "do_now": 10,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "prisma-connection-pool-settings",
+      "prisma-prismaclient",
+      "prisma-prismaclient-2"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 9,
+       "found": 9,
+       "found_now": 9
+      },
+      "required": {
+       "in_batch": 9,
+       "found": 9,
+       "found_now": 9
+      },
+      "optional": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      }
+     },
+     "found_ids": [
+      "K1",
+      "K15",
+      "K2",
+      "K3",
+      "K4",
+      "K5",
+      "K6",
+      "K7",
+      "K9"
+     ]
+    },
+    "tier__02": {
+     "batch": 16,
+     "tokens": 116776,
+     "cached_tokens": 82688,
+     "output_tokens": 3325,
+     "wall": 26.5,
+     "do_now": 12,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "prisma-connection-pool-settings",
+      "prisma-prismaclient",
+      "prisma-prismaclient-2",
+      "prisma-prismaclient-3"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 9,
+       "found": 9,
+       "found_now": 9
+      },
+      "required": {
+       "in_batch": 9,
+       "found": 9,
+       "found_now": 9
+      },
+      "optional": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      }
+     },
+     "found_ids": [
+      "K1",
+      "K15",
+      "K2",
+      "K3",
+      "K4",
+      "K5",
+      "K6",
+      "K7",
+      "K9"
+     ]
+    },
+    "tier__03": {
+     "batch": 16,
+     "tokens": 133697,
+     "cached_tokens": 107008,
+     "output_tokens": 4300,
+     "wall": 41.4,
+     "do_now": 10,
+     "later": 1,
+     "missing": 0,
+     "do_now_off_key": [
+      "prisma-prismaclient",
+      "prisma-prismaclient-2"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 9,
+       "found": 9,
+       "found_now": 9
+      },
+      "required": {
+       "in_batch": 9,
+       "found": 9,
+       "found_now": 9
+      },
+      "optional": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      }
+     },
+     "found_ids": [
+      "K1",
+      "K15",
+      "K2",
+      "K3",
+      "K4",
+      "K5",
+      "K6",
+      "K7",
+      "K9"
+     ]
+    },
+    "all__01": {
+     "batch": 78,
+     "tokens": 315072,
+     "cached_tokens": 267008,
+     "output_tokens": 6967,
+     "wall": 50.2,
+     "do_now": 10,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "prisma-connection-pool-settings",
+      "prisma-prisma-client-js",
+      "prisma-prismaclient",
+      "prisma-prismaclient-2",
+      "prisma-ssl-certificate-validation"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 10,
+       "found": 9,
+       "found_now": 9
+      },
+      "required": {
+       "in_batch": 10,
+       "found": 9,
+       "found_now": 9
+      },
+      "optional": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      }
+     },
+     "found_ids": [
+      "K1",
+      "K13",
+      "K15",
+      "K2",
+      "K3",
+      "K4",
+      "K5",
+      "K7",
+      "K9"
+     ]
+    },
+    "all__02": {
+     "batch": 78,
+     "tokens": 189497,
+     "cached_tokens": 138496,
+     "output_tokens": 6998,
+     "wall": 54.3,
+     "do_now": 19,
+     "later": 0,
+     "missing": 4,
+     "do_now_off_key": [
+      "prisma-binaryengine",
+      "prisma-connection-pool-settings",
+      "prisma-datasource",
+      "prisma-libraryengine",
+      "prisma-node-js",
+      "prisma-prisma-client-js",
+      "prisma-prismaclient-2",
+      "prisma-prismaclient-3",
+      "prisma-ssl-certificate-validation"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 10,
+       "found": 10,
+       "found_now": 10
+      },
+      "required": {
+       "in_batch": 10,
+       "found": 10,
+       "found_now": 10
+      },
+      "optional": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      }
+     },
+     "found_ids": [
+      "K1",
+      "K13",
+      "K15",
+      "K2",
+      "K3",
+      "K4",
+      "K5",
+      "K6",
+      "K7",
+      "K9"
+     ]
+    },
+    "all__03": {
+     "batch": 78,
+     "tokens": 287974,
+     "cached_tokens": 214016,
+     "output_tokens": 7620,
+     "wall": 58.5,
+     "do_now": 16,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "prisma-connection-pool-settings",
+      "prisma-datasource",
+      "prisma-node-js",
+      "prisma-prisma-client-js",
+      "prisma-prisma-db-execute-schema",
+      "prisma-prismaclient",
+      "prisma-prismaclient-2"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 10,
+       "found": 10,
+       "found_now": 10
+      },
+      "required": {
+       "in_batch": 10,
+       "found": 10,
+       "found_now": 10
+      },
+      "optional": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      }
+     },
+     "found_ids": [
+      "K1",
+      "K13",
+      "K15",
+      "K2",
+      "K3",
+      "K4",
+      "K5",
+      "K6",
+      "K7",
+      "K9"
+     ]
+    }
+   },
+   "per_key": {
+    "K1": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 5
+    },
+    "K2": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 4
+    },
+    "K3": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 5
+    },
+    "K4": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 1
+    },
+    "K5": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 5
+    },
+    "K6": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 15
+    },
+    "K7": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 5
+    },
+    "K8": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K9": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 5
+    },
+    "K10": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K11": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K12": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K13": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": false,
+     "rank": 25
+    },
+    "K14": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K15": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 8
+    },
+    "K16": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    }
+   }
+  },
+  "invoicerr-nest12": {
+   "split": "DEV",
+   "tech": "nestjs",
+   "queue": 21,
+   "other_tech_in_first16": 0,
+   "deterministic": {
+    "all": {
+     "key": 14,
+     "covered": 5,
+     "queued": 3,
+     "first16": 3,
+     "first16_invoked": 3
+    },
+    "required": {
+     "key": 13,
+     "covered": 4,
+     "queued": 2,
+     "first16": 2,
+     "first16_invoked": 2
+    },
+    "optional": {
+     "key": 1,
+     "covered": 1,
+     "queued": 1,
+     "first16": 1,
+     "first16_invoked": 1
+    }
+   },
+   "reviews": {
+    "tier__01": {
+     "batch": 16,
+     "tokens": 466134,
+     "cached_tokens": 394752,
+     "output_tokens": 7002,
+     "wall": 51.8,
+     "do_now": 2,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "nestjs-consolelogger-structuredparams",
+      "nestjs-node-js"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 3,
+       "found": 0,
+       "found_now": 0
+      },
+      "required": {
+       "in_batch": 2,
+       "found": 0,
+       "found_now": 0
+      },
+      "optional": {
+       "in_batch": 1,
+       "found": 0,
+       "found_now": 0
+      }
+     },
+     "found_ids": []
+    },
+    "tier__02": {
+     "batch": 16,
+     "tokens": 308413,
+     "cached_tokens": 245760,
+     "output_tokens": 5000,
+     "wall": 41.1,
+     "do_now": 3,
+     "later": 1,
+     "missing": 0,
+     "do_now_off_key": [
+      "nestjs-consolelogger-structuredparams",
+      "nestjs-lifecycle-hooks-2"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 3,
+       "found": 3,
+       "found_now": 3
+      },
+      "required": {
+       "in_batch": 2,
+       "found": 2,
+       "found_now": 2
+      },
+      "optional": {
+       "in_batch": 1,
+       "found": 1,
+       "found_now": 1
+      }
+     },
+     "found_ids": [
+      "K1",
+      "K2",
+      "K8"
+     ]
+    },
+    "tier__03": {
+     "batch": 16,
+     "tokens": 240645,
+     "cached_tokens": 189696,
+     "output_tokens": 4625,
+     "wall": 43.1,
+     "do_now": 5,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "nestjs-angular",
+      "nestjs-consolelogger-structuredparams",
+      "nestjs-lifecycle-hooks-2",
+      "nestjs-node-js"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 3,
+       "found": 3,
+       "found_now": 3
+      },
+      "required": {
+       "in_batch": 2,
+       "found": 2,
+       "found_now": 2
+      },
+      "optional": {
+       "in_batch": 1,
+       "found": 1,
+       "found_now": 1
+      }
+     },
+     "found_ids": [
+      "K1",
+      "K2",
+      "K8"
+     ]
+    },
+    "all__01": {
+     "batch": 21,
+     "tokens": 645190,
+     "cached_tokens": 571264,
+     "output_tokens": 5729,
+     "wall": 55.2,
+     "do_now": 4,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "nestjs-consolelogger-structuredparams",
+      "nestjs-lifecycle-hooks-2",
+      "nestjs-node-js"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 3,
+       "found": 3,
+       "found_now": 3
+      },
+      "required": {
+       "in_batch": 2,
+       "found": 2,
+       "found_now": 2
+      },
+      "optional": {
+       "in_batch": 1,
+       "found": 1,
+       "found_now": 1
+      }
+     },
+     "found_ids": [
+      "K1",
+      "K2",
+      "K8"
+     ]
+    },
+    "all__02": {
+     "batch": 21,
+     "tokens": 497881,
+     "cached_tokens": 423168,
+     "output_tokens": 4977,
+     "wall": 43.6,
+     "do_now": 3,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "nestjs-consolelogger-structuredparams",
+      "nestjs-lifecycle-hooks-2",
+      "nestjs-node-js"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 3,
+       "found": 0,
+       "found_now": 0
+      },
+      "required": {
+       "in_batch": 2,
+       "found": 0,
+       "found_now": 0
+      },
+      "optional": {
+       "in_batch": 1,
+       "found": 0,
+       "found_now": 0
+      }
+     },
+     "found_ids": []
+    },
+    "all__03": {
+     "batch": 21,
+     "tokens": 428327,
+     "cached_tokens": 345600,
+     "output_tokens": 5092,
+     "wall": 43.0,
+     "do_now": 1,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "nestjs-consolelogger-structuredparams"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 3,
+       "found": 0,
+       "found_now": 0
+      },
+      "required": {
+       "in_batch": 2,
+       "found": 0,
+       "found_now": 0
+      },
+      "optional": {
+       "in_batch": 1,
+       "found": 0,
+       "found_now": 0
+      }
+     },
+     "found_ids": []
+    }
+   },
+   "per_key": {
+    "K1": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 6
+    },
+    "K2": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 6
+    },
+    "K3": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K4": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K5": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K6": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K7": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K8": {
+     "cls": "optional",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 6
+    },
+    "K9": {
+     "cls": "required",
+     "covered": true,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K10": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K11": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K12": {
+     "cls": "required",
+     "covered": true,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K13": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K14": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    }
+   }
+  },
+  "chmonitor-next16": {
+   "split": "HELD-OUT",
+   "tech": "next",
+   "queue": 68,
+   "other_tech_in_first16": 0,
+   "deterministic": {
+    "all": {
+     "key": 13,
+     "covered": 7,
+     "queued": 6,
+     "first16": 3,
+     "first16_invoked": 3
+    },
+    "required": {
+     "key": 8,
+     "covered": 5,
+     "queued": 5,
+     "first16": 3,
+     "first16_invoked": 3
+    },
+    "optional": {
+     "key": 5,
+     "covered": 2,
+     "queued": 1,
+     "first16": 0,
+     "first16_invoked": 0
+    }
+   },
+   "reviews": {
+    "tier__01": {
+     "batch": 16,
+     "tokens": 222235,
+     "cached_tokens": 181504,
+     "output_tokens": 3835,
+     "wall": 31.8,
+     "do_now": 5,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "next-middleware-runtime"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 3,
+       "found": 3,
+       "found_now": 3
+      },
+      "required": {
+       "in_batch": 3,
+       "found": 3,
+       "found_now": 3
+      },
+      "optional": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      }
+     },
+     "found_ids": [
+      "K13",
+      "K6",
+      "K7"
+     ]
+    },
+    "tier__02": {
+     "batch": 16,
+     "tokens": 186645,
+     "cached_tokens": 151808,
+     "output_tokens": 5496,
+     "wall": 40.8,
+     "do_now": 4,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "next-eslint-config-next"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 3,
+       "found": 3,
+       "found_now": 3
+      },
+      "required": {
+       "in_batch": 3,
+       "found": 3,
+       "found_now": 3
+      },
+      "optional": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      }
+     },
+     "found_ids": [
+      "K13",
+      "K6",
+      "K7"
+     ]
+    },
+    "tier__03": {
+     "batch": 16,
+     "tokens": 200280,
+     "cached_tokens": 149760,
+     "output_tokens": 3901,
+     "wall": 40.9,
+     "do_now": 8,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "next-automatic-linting",
+      "next-eslint-config-next",
+      "next-middleware-runtime",
+      "next-next-eslint-plugin-next"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 3,
+       "found": 3,
+       "found_now": 3
+      },
+      "required": {
+       "in_batch": 3,
+       "found": 3,
+       "found_now": 3
+      },
+      "optional": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      }
+     },
+     "found_ids": [
+      "K13",
+      "K6",
+      "K7"
+     ]
+    },
+    "all__01": {
+     "batch": 68,
+     "tokens": 398606,
+     "cached_tokens": 336128,
+     "output_tokens": 7783,
+     "wall": 61.5,
+     "do_now": 6,
+     "later": 3,
+     "missing": 0,
+     "do_now_off_key": [],
+     "classes": {
+      "all": {
+       "in_batch": 6,
+       "found": 6,
+       "found_now": 5
+      },
+      "required": {
+       "in_batch": 5,
+       "found": 5,
+       "found_now": 5
+      },
+      "optional": {
+       "in_batch": 1,
+       "found": 1,
+       "found_now": 0
+      }
+     },
+     "found_ids": [
+      "K1",
+      "K13",
+      "K4",
+      "K6",
+      "K7",
+      "K9"
+     ]
+    },
+    "all__02": {
+     "batch": 68,
+     "tokens": 283448,
+     "cached_tokens": 237568,
+     "output_tokens": 6397,
+     "wall": 43.9,
+     "do_now": 10,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "next-automatic-linting",
+      "next-middleware-2",
+      "next-middleware-runtime"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 6,
+       "found": 6,
+       "found_now": 6
+      },
+      "required": {
+       "in_batch": 5,
+       "found": 5,
+       "found_now": 5
+      },
+      "optional": {
+       "in_batch": 1,
+       "found": 1,
+       "found_now": 1
+      }
+     },
+     "found_ids": [
+      "K1",
+      "K13",
+      "K4",
+      "K6",
+      "K7",
+      "K9"
+     ]
+    },
+    "all__03": {
+     "batch": 68,
+     "tokens": 417245,
+     "cached_tokens": 365824,
+     "output_tokens": 7908,
+     "wall": 63.2,
+     "do_now": 6,
+     "later": 3,
+     "missing": 0,
+     "do_now_off_key": [
+      "next-eslint-config-next",
+      "next-next-eslint-plugin-next"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 6,
+       "found": 5,
+       "found_now": 4
+      },
+      "required": {
+       "in_batch": 5,
+       "found": 4,
+       "found_now": 4
+      },
+      "optional": {
+       "in_batch": 1,
+       "found": 1,
+       "found_now": 0
+      }
+     },
+     "found_ids": [
+      "K1",
+      "K4",
+      "K6",
+      "K7",
+      "K9"
+     ]
+    }
+   },
+   "per_key": {
+    "K1": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": false,
+     "rank": 21
+    },
+    "K2": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K3": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K4": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": false,
+     "rank": 36
+    },
+    "K5": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K6": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 12
+    },
+    "K7": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 11
+    },
+    "K8": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K9": {
+     "cls": "optional",
+     "covered": true,
+     "queued": true,
+     "first16": false,
+     "rank": 63
+    },
+    "K10": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K11": {
+     "cls": "optional",
+     "covered": true,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K12": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K13": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 15
+    }
+   }
+  },
+  "aksel-next16": {
+   "split": "DEV",
+   "tech": "next",
+   "queue": 68,
+   "other_tech_in_first16": 0,
+   "deterministic": {
+    "all": {
+     "key": 9,
+     "covered": 7,
+     "queued": 3,
+     "first16": 0,
+     "first16_invoked": 0
+    },
+    "required": {
+     "key": 3,
+     "covered": 2,
+     "queued": 2,
+     "first16": 0,
+     "first16_invoked": 0
+    },
+    "optional": {
+     "key": 6,
+     "covered": 5,
+     "queued": 1,
+     "first16": 0,
+     "first16_invoked": 0
+    }
+   },
+   "reviews": {
+    "tier__01": {
+     "batch": 16,
+     "tokens": 306946,
+     "cached_tokens": 247808,
+     "output_tokens": 5962,
+     "wall": 41.0,
+     "do_now": 2,
+     "later": 1,
+     "missing": 1,
+     "do_now_off_key": [
+      "next-automatic-linting",
+      "next-next-lint-2"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      },
+      "required": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      },
+      "optional": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      }
+     },
+     "found_ids": []
+    },
+    "tier__02": {
+     "batch": 16,
+     "tokens": 465170,
+     "cached_tokens": 404224,
+     "output_tokens": 4659,
+     "wall": 41.9,
+     "do_now": 1,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "next-next-lint-2"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      },
+      "required": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      },
+      "optional": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      }
+     },
+     "found_ids": []
+    },
+    "tier__03": {
+     "batch": 16,
+     "tokens": 263320,
+     "cached_tokens": 215040,
+     "output_tokens": 6185,
+     "wall": 42.5,
+     "do_now": 3,
+     "later": 1,
+     "missing": 0,
+     "do_now_off_key": [
+      "next-automatic-linting",
+      "next-middleware-runtime",
+      "next-next-lint-2"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      },
+      "required": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      },
+      "optional": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      }
+     },
+     "found_ids": []
+    },
+    "all__01": {
+     "batch": 68,
+     "tokens": 290425,
+     "cached_tokens": 231424,
+     "output_tokens": 5538,
+     "wall": 48.2,
+     "do_now": 4,
+     "later": 2,
+     "missing": 0,
+     "do_now_off_key": [
+      "next-next-lint",
+      "next-next-lint-2"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 3,
+       "found": 2,
+       "found_now": 1
+      },
+      "required": {
+       "in_batch": 2,
+       "found": 1,
+       "found_now": 1
+      },
+      "optional": {
+       "in_batch": 1,
+       "found": 1,
+       "found_now": 0
+      }
+     },
+     "found_ids": [
+      "K1",
+      "K2"
+     ]
+    },
+    "all__02": {
+     "batch": 68,
+     "tokens": 276595,
+     "cached_tokens": 226304,
+     "output_tokens": 7509,
+     "wall": 56.2,
+     "do_now": 6,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "next-next-lint",
+      "next-next-lint-2"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 3,
+       "found": 2,
+       "found_now": 2
+      },
+      "required": {
+       "in_batch": 2,
+       "found": 1,
+       "found_now": 1
+      },
+      "optional": {
+       "in_batch": 1,
+       "found": 1,
+       "found_now": 1
+      }
+     },
+     "found_ids": [
+      "K1",
+      "K2"
+     ]
+    },
+    "all__03": {
+     "batch": 68,
+     "tokens": 297223,
+     "cached_tokens": 252672,
+     "output_tokens": 7616,
+     "wall": 59.1,
+     "do_now": 8,
+     "later": 0,
+     "missing": 1,
+     "do_now_off_key": [
+      "next-middleware-runtime",
+      "next-next-lint",
+      "next-next-lint-2",
+      "next-node-js-runtime"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 3,
+       "found": 2,
+       "found_now": 2
+      },
+      "required": {
+       "in_batch": 2,
+       "found": 1,
+       "found_now": 1
+      },
+      "optional": {
+       "in_batch": 1,
+       "found": 1,
+       "found_now": 1
+      }
+     },
+     "found_ids": [
+      "K1",
+      "K2"
+     ]
+    }
+   },
+   "per_key": {
+    "K1": {
+     "cls": "optional",
+     "covered": true,
+     "queued": true,
+     "first16": false,
+     "rank": 63
+    },
+    "K2": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": false,
+     "rank": 45
+    },
+    "K3": {
+     "cls": "optional",
+     "covered": true,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K4": {
+     "cls": "optional",
+     "covered": true,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K5": {
+     "cls": "optional",
+     "covered": true,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K6": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K7": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": false,
+     "rank": 17
+    },
+    "K8": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K9": {
+     "cls": "optional",
+     "covered": true,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    }
+   }
+  },
+  "payloadplugins-next16": {
+   "split": "DEV",
+   "tech": "next",
+   "queue": 81,
+   "other_tech_in_first16": 0,
+   "deterministic": {
+    "all": {
+     "key": 8,
+     "covered": 3,
+     "queued": 3,
+     "first16": 0,
+     "first16_invoked": 0
+    },
+    "required": {
+     "key": 4,
+     "covered": 3,
+     "queued": 3,
+     "first16": 0,
+     "first16_invoked": 0
+    },
+    "optional": {
+     "key": 4,
+     "covered": 0,
+     "queued": 0,
+     "first16": 0,
+     "first16_invoked": 0
+    }
+   },
+   "reviews": {
+    "tier__01": {
+     "batch": 16,
+     "tokens": 212068,
+     "cached_tokens": 156928,
+     "output_tokens": 4299,
+     "wall": 42.3,
+     "do_now": 2,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "next-automatic-linting",
+      "next-node-js-runtime"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      },
+      "required": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      },
+      "optional": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      }
+     },
+     "found_ids": []
+    },
+    "tier__02": {
+     "batch": 16,
+     "tokens": 256980,
+     "cached_tokens": 207104,
+     "output_tokens": 5221,
+     "wall": 37.3,
+     "do_now": 1,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "next-node-js-runtime"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      },
+      "required": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      },
+      "optional": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      }
+     },
+     "found_ids": []
+    },
+    "tier__03": {
+     "batch": 16,
+     "tokens": 292780,
+     "cached_tokens": 240384,
+     "output_tokens": 4521,
+     "wall": 42.5,
+     "do_now": 1,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "next-node-js-runtime"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      },
+      "required": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      },
+      "optional": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      }
+     },
+     "found_ids": []
+    },
+    "all__01": {
+     "batch": 81,
+     "tokens": 172501,
+     "cached_tokens": 128512,
+     "output_tokens": 6296,
+     "wall": 52.6,
+     "do_now": 4,
+     "later": 3,
+     "missing": 0,
+     "do_now_off_key": [
+      "next-node-js-runtime"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 3,
+       "found": 3,
+       "found_now": 3
+      },
+      "required": {
+       "in_batch": 3,
+       "found": 3,
+       "found_now": 3
+      },
+      "optional": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      }
+     },
+     "found_ids": [
+      "K2",
+      "K3",
+      "K8"
+     ]
+    },
+    "all__02": {
+     "batch": 81,
+     "tokens": 372295,
+     "cached_tokens": 318976,
+     "output_tokens": 6685,
+     "wall": 55.5,
+     "do_now": 4,
+     "later": 2,
+     "missing": 0,
+     "do_now_off_key": [
+      "next-node-js-runtime"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 3,
+       "found": 3,
+       "found_now": 3
+      },
+      "required": {
+       "in_batch": 3,
+       "found": 3,
+       "found_now": 3
+      },
+      "optional": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      }
+     },
+     "found_ids": [
+      "K2",
+      "K3",
+      "K8"
+     ]
+    },
+    "all__03": {
+     "batch": 81,
+     "tokens": 326060,
+     "cached_tokens": 249856,
+     "output_tokens": 6937,
+     "wall": 53.3,
+     "do_now": 4,
+     "later": 2,
+     "missing": 0,
+     "do_now_off_key": [
+      "next-node-js-runtime"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 3,
+       "found": 3,
+       "found_now": 3
+      },
+      "required": {
+       "in_batch": 3,
+       "found": 3,
+       "found_now": 3
+      },
+      "optional": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      }
+     },
+     "found_ids": [
+      "K2",
+      "K3",
+      "K8"
+     ]
+    }
+   },
+   "per_key": {
+    "K1": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K2": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": false,
+     "rank": 18
+    },
+    "K3": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": false,
+     "rank": 19
+    },
+    "K4": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K5": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K6": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K7": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K8": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": false,
+     "rank": 44
+    }
+   }
+  },
+  "coh2stats-next16": {
+   "split": "HELD-OUT",
+   "tech": "next",
+   "queue": 80,
+   "other_tech_in_first16": 0,
+   "deterministic": {
+    "all": {
+     "key": 5,
+     "covered": 3,
+     "queued": 2,
+     "first16": 1,
+     "first16_invoked": 1
+    },
+    "required": {
+     "key": 0,
+     "covered": 0,
+     "queued": 0,
+     "first16": 0,
+     "first16_invoked": 0
+    },
+    "optional": {
+     "key": 5,
+     "covered": 3,
+     "queued": 2,
+     "first16": 1,
+     "first16_invoked": 1
+    }
+   },
+   "reviews": {
+    "tier__01": {
+     "batch": 16,
+     "tokens": 151518,
+     "cached_tokens": 112128,
+     "output_tokens": 3503,
+     "wall": 30.6,
+     "do_now": 4,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "next-automatic-linting",
+      "next-next-lint-2"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 1,
+       "found": 1,
+       "found_now": 1
+      },
+      "required": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      },
+      "optional": {
+       "in_batch": 1,
+       "found": 1,
+       "found_now": 1
+      }
+     },
+     "found_ids": [
+      "K1"
+     ]
+    },
+    "tier__02": {
+     "batch": 16,
+     "tokens": 166891,
+     "cached_tokens": 129536,
+     "output_tokens": 4225,
+     "wall": 51.0,
+     "do_now": 4,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "next-automatic-linting",
+      "next-next-lint-2"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 1,
+       "found": 1,
+       "found_now": 1
+      },
+      "required": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      },
+      "optional": {
+       "in_batch": 1,
+       "found": 1,
+       "found_now": 1
+      }
+     },
+     "found_ids": [
+      "K1"
+     ]
+    },
+    "tier__03": {
+     "batch": 16,
+     "tokens": 177664,
+     "cached_tokens": 133632,
+     "output_tokens": 5014,
+     "wall": 36.5,
+     "do_now": 2,
+     "later": 2,
+     "missing": 0,
+     "do_now_off_key": [
+      "next-automatic-linting",
+      "next-next-lint-2"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 1,
+       "found": 1,
+       "found_now": 0
+      },
+      "required": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      },
+      "optional": {
+       "in_batch": 1,
+       "found": 1,
+       "found_now": 0
+      }
+     },
+     "found_ids": [
+      "K1"
+     ]
+    },
+    "all__01": {
+     "batch": 80,
+     "tokens": 467921,
+     "cached_tokens": 385536,
+     "output_tokens": 7133,
+     "wall": 63.9,
+     "do_now": 4,
+     "later": 1,
+     "missing": 1,
+     "do_now_off_key": [
+      "next-next-lint",
+      "next-next-lint-2",
+      "next-server-action-submissions"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 2,
+       "found": 2,
+       "found_now": 1
+      },
+      "required": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      },
+      "optional": {
+       "in_batch": 2,
+       "found": 2,
+       "found_now": 1
+      }
+     },
+     "found_ids": [
+      "K1",
+      "K2"
+     ]
+    },
+    "all__02": {
+     "batch": 80,
+     "tokens": 410186,
+     "cached_tokens": 353792,
+     "output_tokens": 8303,
+     "wall": 61.7,
+     "do_now": 3,
+     "later": 3,
+     "missing": 0,
+     "do_now_off_key": [
+      "next-automatic-linting",
+      "next-next-lint",
+      "next-next-lint-2"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 2,
+       "found": 2,
+       "found_now": 0
+      },
+      "required": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      },
+      "optional": {
+       "in_batch": 2,
+       "found": 2,
+       "found_now": 0
+      }
+     },
+     "found_ids": [
+      "K1",
+      "K2"
+     ]
+    },
+    "all__03": {
+     "batch": 80,
+     "tokens": 429003,
+     "cached_tokens": 370944,
+     "output_tokens": 6496,
+     "wall": 52.8,
+     "do_now": 3,
+     "later": 1,
+     "missing": 0,
+     "do_now_off_key": [
+      "next-automatic-linting",
+      "next-next-lint",
+      "next-next-lint-2"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 2,
+       "found": 1,
+       "found_now": 0
+      },
+      "required": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      },
+      "optional": {
+       "in_batch": 2,
+       "found": 1,
+       "found_now": 0
+      }
+     },
+     "found_ids": [
+      "K2"
+     ]
+    }
+   },
+   "per_key": {
+    "K1": {
+     "cls": "optional",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 7
+    },
+    "K2": {
+     "cls": "optional",
+     "covered": true,
+     "queued": true,
+     "first16": false,
+     "rank": 73
+    },
+    "K4": {
+     "cls": "optional",
+     "covered": true,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K6": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K7": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    }
+   }
+  },
+  "sigle-prisma7": {
+   "split": "HELD-OUT",
+   "tech": "prisma",
+   "queue": 78,
+   "other_tech_in_first16": 8,
+   "deterministic": {
+    "all": {
+     "key": 4,
+     "covered": 4,
+     "queued": 4,
+     "first16": 2,
+     "first16_invoked": 1
+    },
+    "required": {
+     "key": 4,
+     "covered": 4,
+     "queued": 4,
+     "first16": 2,
+     "first16_invoked": 1
+    },
+    "optional": {
+     "key": 0,
+     "covered": 0,
+     "queued": 0,
+     "first16": 0,
+     "first16_invoked": 0
+    }
+   },
+   "reviews": {
+    "tier__01": {
+     "batch": 16,
+     "tokens": 169114,
+     "cached_tokens": 130304,
+     "output_tokens": 4843,
+     "wall": 38.1,
+     "do_now": 4,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "prisma-datasource",
+      "prisma-es-module-support"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 2,
+       "found": 1,
+       "found_now": 1
+      },
+      "required": {
+       "in_batch": 2,
+       "found": 1,
+       "found_now": 1
+      },
+      "optional": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      }
+     },
+     "found_ids": [
+      "K2"
+     ]
+    },
+    "tier__02": {
+     "batch": 16,
+     "tokens": 113991,
+     "cached_tokens": 86784,
+     "output_tokens": 3466,
+     "wall": 28.2,
+     "do_now": 4,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "prisma-datasource",
+      "prisma-es-module-support"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 2,
+       "found": 1,
+       "found_now": 1
+      },
+      "required": {
+       "in_batch": 2,
+       "found": 1,
+       "found_now": 1
+      },
+      "optional": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      }
+     },
+     "found_ids": [
+      "K2"
+     ]
+    },
+    "tier__03": {
+     "batch": 16,
+     "tokens": 123404,
+     "cached_tokens": 88832,
+     "output_tokens": 3463,
+     "wall": 29.0,
+     "do_now": 5,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "prisma-datasource",
+      "prisma-es-module-support",
+      "prisma-prisma-generate"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 2,
+       "found": 1,
+       "found_now": 1
+      },
+      "required": {
+       "in_batch": 2,
+       "found": 1,
+       "found_now": 1
+      },
+      "optional": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      }
+     },
+     "found_ids": [
+      "K2"
+     ]
+    },
+    "all__01": {
+     "batch": 78,
+     "tokens": 244043,
+     "cached_tokens": 201728,
+     "output_tokens": 6966,
+     "wall": 49.9,
+     "do_now": 8,
+     "later": 2,
+     "missing": 2,
+     "do_now_off_key": [
+      "prisma-datasource",
+      "prisma-es-module-support",
+      "prisma-prismaclient",
+      "prisma-prismaclient-2"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 4,
+       "found": 3,
+       "found_now": 3
+      },
+      "required": {
+       "in_batch": 4,
+       "found": 3,
+       "found_now": 3
+      },
+      "optional": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      }
+     },
+     "found_ids": [
+      "K1",
+      "K2",
+      "K3"
+     ]
+    },
+    "all__02": {
+     "batch": 78,
+     "tokens": 227537,
+     "cached_tokens": 188416,
+     "output_tokens": 6251,
+     "wall": 54.9,
+     "do_now": 10,
+     "later": 2,
+     "missing": 2,
+     "do_now_off_key": [
+      "prisma-datasource",
+      "prisma-es-module-support",
+      "prisma-prismaclient",
+      "prisma-prismaclient-2",
+      "prisma-prismaclient-3"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 4,
+       "found": 4,
+       "found_now": 4
+      },
+      "required": {
+       "in_batch": 4,
+       "found": 4,
+       "found_now": 4
+      },
+      "optional": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      }
+     },
+     "found_ids": [
+      "K1",
+      "K2",
+      "K3",
+      "K4"
+     ]
+    },
+    "all__03": {
+     "batch": 78,
+     "tokens": 329521,
+     "cached_tokens": 289280,
+     "output_tokens": 5917,
+     "wall": 42.1,
+     "do_now": 9,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "prisma-connection-pool-settings",
+      "prisma-datasource",
+      "prisma-es-module-support",
+      "prisma-prismaclient",
+      "prisma-prismaclient-2",
+      "prisma-ssl-certificate-validation"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 4,
+       "found": 3,
+       "found_now": 3
+      },
+      "required": {
+       "in_batch": 4,
+       "found": 3,
+       "found_now": 3
+      },
+      "optional": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      }
+     },
+     "found_ids": [
+      "K1",
+      "K2",
+      "K3"
+     ]
+    }
+   },
+   "per_key": {
+    "K1": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": false,
+     "rank": 34
+    },
+    "K2": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 15
+    },
+    "K3": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": false,
+     "rank": 70
+    },
+    "K4": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 5
+    }
+   }
+  },
+  "cedar-prisma7": {
+   "split": "DEV",
+   "tech": "prisma",
+   "queue": 76,
+   "other_tech_in_first16": 0,
+   "deterministic": {
+    "all": {
+     "key": 23,
+     "covered": 18,
+     "queued": 17,
+     "first16": 12,
+     "first16_invoked": 12
+    },
+    "required": {
+     "key": 16,
+     "covered": 15,
+     "queued": 14,
+     "first16": 9,
+     "first16_invoked": 9
+    },
+    "optional": {
+     "key": 7,
+     "covered": 3,
+     "queued": 3,
+     "first16": 3,
+     "first16_invoked": 3
+    }
+   },
+   "reviews": {
+    "tier__01": {
+     "batch": 16,
+     "tokens": 188756,
+     "cached_tokens": 137728,
+     "output_tokens": 4355,
+     "wall": 41.2,
+     "do_now": 8,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "prisma-package-json-prisma",
+      "prisma-prisma-client-runtime-utils",
+      "prisma-prisma-seed",
+      "prisma-prismaclient"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 12,
+       "found": 12,
+       "found_now": 12
+      },
+      "required": {
+       "in_batch": 9,
+       "found": 9,
+       "found_now": 9
+      },
+      "optional": {
+       "in_batch": 3,
+       "found": 3,
+       "found_now": 3
+      }
+     },
+     "found_ids": [
+      "K1",
+      "K10",
+      "K11",
+      "K14",
+      "K16",
+      "K17",
+      "K2",
+      "K3",
+      "K4",
+      "K6",
+      "K7",
+      "K8"
+     ]
+    },
+    "tier__02": {
+     "batch": 16,
+     "tokens": 312627,
+     "cached_tokens": 245760,
+     "output_tokens": 4838,
+     "wall": 38.7,
+     "do_now": 10,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "prisma-package-json-prisma",
+      "prisma-prisma-client-runtime-utils",
+      "prisma-prisma-config-ts-2",
+      "prisma-prisma-seed",
+      "prisma-prismaclient"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 12,
+       "found": 12,
+       "found_now": 12
+      },
+      "required": {
+       "in_batch": 9,
+       "found": 9,
+       "found_now": 9
+      },
+      "optional": {
+       "in_batch": 3,
+       "found": 3,
+       "found_now": 3
+      }
+     },
+     "found_ids": [
+      "K1",
+      "K10",
+      "K11",
+      "K14",
+      "K16",
+      "K17",
+      "K2",
+      "K3",
+      "K4",
+      "K6",
+      "K7",
+      "K8"
+     ]
+    },
+    "tier__03": {
+     "batch": 16,
+     "tokens": 371104,
+     "cached_tokens": 310016,
+     "output_tokens": 7607,
+     "wall": 55.1,
+     "do_now": 9,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "prisma-package-json-prisma",
+      "prisma-prisma-client-runtime-utils",
+      "prisma-prisma-seed",
+      "prisma-prismaclient"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 12,
+       "found": 12,
+       "found_now": 12
+      },
+      "required": {
+       "in_batch": 9,
+       "found": 9,
+       "found_now": 9
+      },
+      "optional": {
+       "in_batch": 3,
+       "found": 3,
+       "found_now": 3
+      }
+     },
+     "found_ids": [
+      "K1",
+      "K10",
+      "K11",
+      "K14",
+      "K16",
+      "K17",
+      "K2",
+      "K3",
+      "K4",
+      "K6",
+      "K7",
+      "K8"
+     ]
+    },
+    "all__01": {
+     "batch": 76,
+     "tokens": 343671,
+     "cached_tokens": 279808,
+     "output_tokens": 7336,
+     "wall": 57.7,
+     "do_now": 15,
+     "later": 3,
+     "missing": 2,
+     "do_now_off_key": [
+      "prisma-datasource-directurl",
+      "prisma-datasource-directurl-2",
+      "prisma-node-js",
+      "prisma-package-json-prisma",
+      "prisma-prisma-client-js",
+      "prisma-prisma-db-seed-2",
+      "prisma-prisma-seed",
+      "prisma-prismaclient"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 17,
+       "found": 15,
+       "found_now": 15
+      },
+      "required": {
+       "in_batch": 14,
+       "found": 12,
+       "found_now": 12
+      },
+      "optional": {
+       "in_batch": 3,
+       "found": 3,
+       "found_now": 3
+      }
+     },
+     "found_ids": [
+      "K1",
+      "K10",
+      "K11",
+      "K13",
+      "K14",
+      "K16",
+      "K17",
+      "K2",
+      "K22",
+      "K3",
+      "K4",
+      "K6",
+      "K7",
+      "K8",
+      "K9"
+     ]
+    },
+    "all__02": {
+     "batch": 76,
+     "tokens": 551791,
+     "cached_tokens": 471296,
+     "output_tokens": 8559,
+     "wall": 68.4,
+     "do_now": 19,
+     "later": 1,
+     "missing": 0,
+     "do_now_off_key": [
+      "prisma-binaryengine",
+      "prisma-datasource-directurl",
+      "prisma-datasource-directurl-2",
+      "prisma-libraryengine",
+      "prisma-node-js",
+      "prisma-package-json-prisma",
+      "prisma-prisma-client-js",
+      "prisma-prisma-config-ts-2",
+      "prisma-prisma-db-seed-2",
+      "prisma-prisma-seed",
+      "prisma-prismaclient"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 17,
+       "found": 17,
+       "found_now": 17
+      },
+      "required": {
+       "in_batch": 14,
+       "found": 14,
+       "found_now": 14
+      },
+      "optional": {
+       "in_batch": 3,
+       "found": 3,
+       "found_now": 3
+      }
+     },
+     "found_ids": [
+      "K1",
+      "K10",
+      "K11",
+      "K13",
+      "K14",
+      "K16",
+      "K17",
+      "K2",
+      "K21",
+      "K22",
+      "K23",
+      "K3",
+      "K4",
+      "K6",
+      "K7",
+      "K8",
+      "K9"
+     ]
+    },
+    "all__03": {
+     "batch": 76,
+     "tokens": 436338,
+     "cached_tokens": 371200,
+     "output_tokens": 6087,
+     "wall": 52.6,
+     "do_now": 17,
+     "later": 1,
+     "missing": 2,
+     "do_now_off_key": [
+      "prisma-datasource-directurl",
+      "prisma-datasource-directurl-2",
+      "prisma-package-json-prisma",
+      "prisma-prisma-client-runtime-utils",
+      "prisma-prisma-config-ts-2",
+      "prisma-prisma-seed",
+      "prisma-prismaclient",
+      "prisma-prismaclient-3"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 17,
+       "found": 17,
+       "found_now": 17
+      },
+      "required": {
+       "in_batch": 14,
+       "found": 14,
+       "found_now": 14
+      },
+      "optional": {
+       "in_batch": 3,
+       "found": 3,
+       "found_now": 3
+      }
+     },
+     "found_ids": [
+      "K1",
+      "K10",
+      "K11",
+      "K13",
+      "K14",
+      "K16",
+      "K17",
+      "K2",
+      "K21",
+      "K22",
+      "K23",
+      "K3",
+      "K4",
+      "K6",
+      "K7",
+      "K8",
+      "K9"
+     ]
+    }
+   },
+   "per_key": {
+    "K1": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 9
+    },
+    "K2": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 1
+    },
+    "K3": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 4
+    },
+    "K4": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 12
+    },
+    "K5": {
+     "cls": "required",
+     "covered": true,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K6": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 12
+    },
+    "K7": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 4
+    },
+    "K8": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 1
+    },
+    "K9": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": false,
+     "rank": 26
+    },
+    "K10": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 12
+    },
+    "K11": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 9
+    },
+    "K12": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K13": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": false,
+     "rank": 19
+    },
+    "K14": {
+     "cls": "optional",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 9
+    },
+    "K15": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K16": {
+     "cls": "optional",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 9
+    },
+    "K17": {
+     "cls": "optional",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 12
+    },
+    "K18": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K19": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K20": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K21": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": false,
+     "rank": 21
+    },
+    "K22": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": false,
+     "rank": 26
+    },
+    "K23": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": false,
+     "rank": 21
+    }
+   }
+  },
+  "jsontypes-prisma7": {
+   "split": "HELD-OUT",
+   "tech": "prisma",
+   "queue": 78,
+   "other_tech_in_first16": 0,
+   "deterministic": {
+    "all": {
+     "key": 12,
+     "covered": 5,
+     "queued": 5,
+     "first16": 3,
+     "first16_invoked": 3
+    },
+    "required": {
+     "key": 6,
+     "covered": 1,
+     "queued": 1,
+     "first16": 0,
+     "first16_invoked": 0
+    },
+    "optional": {
+     "key": 6,
+     "covered": 4,
+     "queued": 4,
+     "first16": 3,
+     "first16_invoked": 3
+    }
+   },
+   "reviews": {
+    "tier__01": {
+     "batch": 16,
+     "tokens": 121204,
+     "cached_tokens": 90880,
+     "output_tokens": 3966,
+     "wall": 31.4,
+     "do_now": 6,
+     "later": 0,
+     "missing": 1,
+     "do_now_off_key": [
+      "prisma-es-module-support",
+      "prisma-mongodb",
+      "prisma-node-js",
+      "prisma-output",
+      "prisma-prisma-client-runtime-utils"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 3,
+       "found": 3,
+       "found_now": 3
+      },
+      "required": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      },
+      "optional": {
+       "in_batch": 3,
+       "found": 3,
+       "found_now": 3
+      }
+     },
+     "found_ids": [
+      "K2",
+      "K3",
+      "K5"
+     ]
+    },
+    "tier__02": {
+     "batch": 16,
+     "tokens": 119655,
+     "cached_tokens": 74496,
+     "output_tokens": 4137,
+     "wall": 40.0,
+     "do_now": 8,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "prisma-es-module-support",
+      "prisma-mongodb",
+      "prisma-node-js",
+      "prisma-output",
+      "prisma-prisma-client-runtime-utils",
+      "prisma-prisma-config-ts-2",
+      "prisma-prisma-db-execute-schema"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 3,
+       "found": 3,
+       "found_now": 3
+      },
+      "required": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      },
+      "optional": {
+       "in_batch": 3,
+       "found": 3,
+       "found_now": 3
+      }
+     },
+     "found_ids": [
+      "K2",
+      "K3",
+      "K5"
+     ]
+    },
+    "tier__03": {
+     "batch": 16,
+     "tokens": 163695,
+     "cached_tokens": 128512,
+     "output_tokens": 5743,
+     "wall": 43.7,
+     "do_now": 7,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "prisma-es-module-support",
+      "prisma-mongodb",
+      "prisma-node-js",
+      "prisma-output",
+      "prisma-prisma-client-runtime-utils",
+      "prisma-prisma-db-execute-schema"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 3,
+       "found": 3,
+       "found_now": 3
+      },
+      "required": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      },
+      "optional": {
+       "in_batch": 3,
+       "found": 3,
+       "found_now": 3
+      }
+     },
+     "found_ids": [
+      "K2",
+      "K3",
+      "K5"
+     ]
+    },
+    "all__01": {
+     "batch": 78,
+     "tokens": 232631,
+     "cached_tokens": 197632,
+     "output_tokens": 6166,
+     "wall": 53.4,
+     "do_now": 12,
+     "later": 2,
+     "missing": 3,
+     "do_now_off_key": [
+      "prisma-datasource",
+      "prisma-driver-adapters",
+      "prisma-es-module-support",
+      "prisma-mongodb",
+      "prisma-node-js",
+      "prisma-output",
+      "prisma-prisma-client-js",
+      "prisma-prismaclient-2",
+      "prisma-prismaclient-3"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 5,
+       "found": 5,
+       "found_now": 5
+      },
+      "required": {
+       "in_batch": 1,
+       "found": 1,
+       "found_now": 1
+      },
+      "optional": {
+       "in_batch": 4,
+       "found": 4,
+       "found_now": 4
+      }
+     },
+     "found_ids": [
+      "K2",
+      "K3",
+      "K5",
+      "K6",
+      "K7"
+     ]
+    },
+    "all__02": {
+     "batch": 78,
+     "tokens": 310676,
+     "cached_tokens": 260864,
+     "output_tokens": 6709,
+     "wall": 62.9,
+     "do_now": 13,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "prisma-datasource",
+      "prisma-driver-adapters",
+      "prisma-es-module-support",
+      "prisma-mongodb",
+      "prisma-node-js",
+      "prisma-output",
+      "prisma-prisma-client-js",
+      "prisma-prisma-client-runtime-utils",
+      "prisma-prismaclient",
+      "prisma-prismaclient-2"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 5,
+       "found": 5,
+       "found_now": 5
+      },
+      "required": {
+       "in_batch": 1,
+       "found": 1,
+       "found_now": 1
+      },
+      "optional": {
+       "in_batch": 4,
+       "found": 4,
+       "found_now": 4
+      }
+     },
+     "found_ids": [
+      "K2",
+      "K3",
+      "K5",
+      "K6",
+      "K7"
+     ]
+    },
+    "all__03": {
+     "batch": 78,
+     "tokens": 253180,
+     "cached_tokens": 201984,
+     "output_tokens": 8354,
+     "wall": 60.9,
+     "do_now": 12,
+     "later": 2,
+     "missing": 0,
+     "do_now_off_key": [
+      "prisma-driver-adapters",
+      "prisma-es-module-support",
+      "prisma-mongodb",
+      "prisma-node-js",
+      "prisma-output",
+      "prisma-prisma-db-execute-schema",
+      "prisma-prismaclient",
+      "prisma-prismaclient-2",
+      "prisma-prismaclient-3"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 5,
+       "found": 5,
+       "found_now": 5
+      },
+      "required": {
+       "in_batch": 1,
+       "found": 1,
+       "found_now": 1
+      },
+      "optional": {
+       "in_batch": 4,
+       "found": 4,
+       "found_now": 4
+      }
+     },
+     "found_ids": [
+      "K2",
+      "K3",
+      "K5",
+      "K6",
+      "K7"
+     ]
+    }
+   },
+   "per_key": {
+    "K1": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K2": {
+     "cls": "optional",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 4
+    },
+    "K3": {
+     "cls": "optional",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 4
+    },
+    "K4": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K5": {
+     "cls": "optional",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 4
+    },
+    "K6": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": false,
+     "rank": 25
+    },
+    "K7": {
+     "cls": "optional",
+     "covered": true,
+     "queued": true,
+     "first16": false,
+     "rank": 34
+    },
+    "K8": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K9": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K10": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K11": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K13": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    }
+   }
+  },
+  "zodgen-prisma7": {
+   "split": "DEV",
+   "tech": "prisma",
+   "queue": 76,
+   "other_tech_in_first16": 0,
+   "deterministic": {
+    "all": {
+     "key": 15,
+     "covered": 7,
+     "queued": 6,
+     "first16": 4,
+     "first16_invoked": 4
+    },
+    "required": {
+     "key": 11,
+     "covered": 6,
+     "queued": 5,
+     "first16": 3,
+     "first16_invoked": 3
+    },
+    "optional": {
+     "key": 4,
+     "covered": 1,
+     "queued": 1,
+     "first16": 1,
+     "first16_invoked": 1
+    }
+   },
+   "reviews": {
+    "tier__01": {
+     "batch": 16,
+     "tokens": 200411,
+     "cached_tokens": 151040,
+     "output_tokens": 4764,
+     "wall": 35.0,
+     "do_now": 5,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "prisma-es-module-support",
+      "prisma-mongodb",
+      "prisma-output",
+      "prisma-prisma-client-runtime-utils"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 4,
+       "found": 2,
+       "found_now": 2
+      },
+      "required": {
+       "in_batch": 3,
+       "found": 1,
+       "found_now": 1
+      },
+      "optional": {
+       "in_batch": 1,
+       "found": 1,
+       "found_now": 1
+      }
+     },
+     "found_ids": [
+      "K11",
+      "K12"
+     ]
+    },
+    "tier__02": {
+     "batch": 16,
+     "tokens": 198358,
+     "cached_tokens": 148992,
+     "output_tokens": 4610,
+     "wall": 35.6,
+     "do_now": 4,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "prisma-es-module-support",
+      "prisma-mongodb",
+      "prisma-output"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 4,
+       "found": 2,
+       "found_now": 2
+      },
+      "required": {
+       "in_batch": 3,
+       "found": 1,
+       "found_now": 1
+      },
+      "optional": {
+       "in_batch": 1,
+       "found": 1,
+       "found_now": 1
+      }
+     },
+     "found_ids": [
+      "K11",
+      "K12"
+     ]
+    },
+    "tier__03": {
+     "batch": 16,
+     "tokens": 139000,
+     "cached_tokens": 99072,
+     "output_tokens": 4230,
+     "wall": 31.3,
+     "do_now": 4,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "prisma-es-module-support",
+      "prisma-mongodb",
+      "prisma-output"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 4,
+       "found": 2,
+       "found_now": 2
+      },
+      "required": {
+       "in_batch": 3,
+       "found": 1,
+       "found_now": 1
+      },
+      "optional": {
+       "in_batch": 1,
+       "found": 1,
+       "found_now": 1
+      }
+     },
+     "found_ids": [
+      "K11",
+      "K12"
+     ]
+    },
+    "all__01": {
+     "batch": 76,
+     "tokens": 182369,
+     "cached_tokens": 131584,
+     "output_tokens": 7657,
+     "wall": 53.9,
+     "do_now": 8,
+     "later": 3,
+     "missing": 0,
+     "do_now_off_key": [
+      "prisma-es-module-support",
+      "prisma-mongodb",
+      "prisma-output",
+      "prisma-prisma-client-2",
+      "prisma-prisma-config-ts-2"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 6,
+       "found": 4,
+       "found_now": 4
+      },
+      "required": {
+       "in_batch": 5,
+       "found": 3,
+       "found_now": 3
+      },
+      "optional": {
+       "in_batch": 1,
+       "found": 1,
+       "found_now": 1
+      }
+     },
+     "found_ids": [
+      "K1",
+      "K11",
+      "K12",
+      "K4"
+     ]
+    },
+    "all__02": {
+     "batch": 76,
+     "tokens": 291614,
+     "cached_tokens": 244736,
+     "output_tokens": 7988,
+     "wall": 61.7,
+     "do_now": 6,
+     "later": 1,
+     "missing": 2,
+     "do_now_off_key": [
+      "prisma-es-module-support",
+      "prisma-mongodb",
+      "prisma-output"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 6,
+       "found": 4,
+       "found_now": 4
+      },
+      "required": {
+       "in_batch": 5,
+       "found": 3,
+       "found_now": 3
+      },
+      "optional": {
+       "in_batch": 1,
+       "found": 1,
+       "found_now": 1
+      }
+     },
+     "found_ids": [
+      "K1",
+      "K11",
+      "K12",
+      "K4"
+     ]
+    },
+    "all__03": {
+     "batch": 76,
+     "tokens": 321494,
+     "cached_tokens": 256000,
+     "output_tokens": 6785,
+     "wall": 56.4,
+     "do_now": 12,
+     "later": 0,
+     "missing": 1,
+     "do_now_off_key": [
+      "prisma-driver-adapters",
+      "prisma-es-module-support",
+      "prisma-mongodb",
+      "prisma-output",
+      "prisma-prisma-client-2",
+      "prisma-prisma-client-js",
+      "prisma-prismaclient",
+      "prisma-prismaclient-2",
+      "prisma-prismaclient-3"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 6,
+       "found": 4,
+       "found_now": 4
+      },
+      "required": {
+       "in_batch": 5,
+       "found": 3,
+       "found_now": 3
+      },
+      "optional": {
+       "in_batch": 1,
+       "found": 1,
+       "found_now": 1
+      }
+     },
+     "found_ids": [
+      "K1",
+      "K11",
+      "K12",
+      "K4"
+     ]
+    }
+   },
+   "per_key": {
+    "K1": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": false,
+     "rank": 33
+    },
+    "K2": {
+     "cls": "required",
+     "covered": true,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K3": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 9
+    },
+    "K4": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 15
+    },
+    "K5": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": false,
+     "rank": 31
+    },
+    "K6": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K7": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K8": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K9": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K10": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K11": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 5
+    },
+    "K12": {
+     "cls": "optional",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 5
+    },
+    "K13": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K14": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K15": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    }
+   }
+  },
+  "temporal-nest12": {
+   "split": "DEV",
+   "tech": "nestjs",
+   "queue": 25,
+   "other_tech_in_first16": 0,
+   "deterministic": {
+    "all": {
+     "key": 16,
+     "covered": 14,
+     "queued": 14,
+     "first16": 14,
+     "first16_invoked": 14
+    },
+    "required": {
+     "key": 5,
+     "covered": 5,
+     "queued": 5,
+     "first16": 5,
+     "first16_invoked": 5
+    },
+    "optional": {
+     "key": 11,
+     "covered": 9,
+     "queued": 9,
+     "first16": 9,
+     "first16_invoked": 9
+    }
+   },
+   "reviews": {
+    "tier__01": {
+     "batch": 16,
+     "tokens": 161347,
+     "cached_tokens": 118272,
+     "output_tokens": 4056,
+     "wall": 41.1,
+     "do_now": 4,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "nestjs-lifecycle-hooks-2"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 14,
+       "found": 11,
+       "found_now": 11
+      },
+      "required": {
+       "in_batch": 5,
+       "found": 4,
+       "found_now": 4
+      },
+      "optional": {
+       "in_batch": 9,
+       "found": 7,
+       "found_now": 7
+      }
+     },
+     "found_ids": [
+      "K1",
+      "K10",
+      "K11",
+      "K12",
+      "K14",
+      "K15",
+      "K2",
+      "K4",
+      "K5",
+      "K8",
+      "K9"
+     ]
+    },
+    "tier__02": {
+     "batch": 16,
+     "tokens": 264373,
+     "cached_tokens": 209920,
+     "output_tokens": 4877,
+     "wall": 39.9,
+     "do_now": 5,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "nestjs-lifecycle-hooks-2"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 14,
+       "found": 14,
+       "found_now": 14
+      },
+      "required": {
+       "in_batch": 5,
+       "found": 5,
+       "found_now": 5
+      },
+      "optional": {
+       "in_batch": 9,
+       "found": 9,
+       "found_now": 9
+      }
+     },
+     "found_ids": [
+      "K1",
+      "K10",
+      "K11",
+      "K12",
+      "K13",
+      "K14",
+      "K15",
+      "K16",
+      "K2",
+      "K3",
+      "K4",
+      "K5",
+      "K8",
+      "K9"
+     ]
+    },
+    "tier__03": {
+     "batch": 16,
+     "tokens": 246685,
+     "cached_tokens": 199680,
+     "output_tokens": 4408,
+     "wall": 36.1,
+     "do_now": 5,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "nestjs-lifecycle-hooks-2"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 14,
+       "found": 14,
+       "found_now": 14
+      },
+      "required": {
+       "in_batch": 5,
+       "found": 5,
+       "found_now": 5
+      },
+      "optional": {
+       "in_batch": 9,
+       "found": 9,
+       "found_now": 9
+      }
+     },
+     "found_ids": [
+      "K1",
+      "K10",
+      "K11",
+      "K12",
+      "K13",
+      "K14",
+      "K15",
+      "K16",
+      "K2",
+      "K3",
+      "K4",
+      "K5",
+      "K8",
+      "K9"
+     ]
+    },
+    "all__01": {
+     "batch": 25,
+     "tokens": 193670,
+     "cached_tokens": 143104,
+     "output_tokens": 4439,
+     "wall": 35.7,
+     "do_now": 5,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "nestjs-lifecycle-hooks-2"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 14,
+       "found": 14,
+       "found_now": 14
+      },
+      "required": {
+       "in_batch": 5,
+       "found": 5,
+       "found_now": 5
+      },
+      "optional": {
+       "in_batch": 9,
+       "found": 9,
+       "found_now": 9
+      }
+     },
+     "found_ids": [
+      "K1",
+      "K10",
+      "K11",
+      "K12",
+      "K13",
+      "K14",
+      "K15",
+      "K16",
+      "K2",
+      "K3",
+      "K4",
+      "K5",
+      "K8",
+      "K9"
+     ]
+    },
+    "all__02": {
+     "batch": 25,
+     "tokens": 253058,
+     "cached_tokens": 199936,
+     "output_tokens": 5799,
+     "wall": 51.6,
+     "do_now": 5,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "nestjs-lifecycle-hooks-2"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 14,
+       "found": 14,
+       "found_now": 14
+      },
+      "required": {
+       "in_batch": 5,
+       "found": 5,
+       "found_now": 5
+      },
+      "optional": {
+       "in_batch": 9,
+       "found": 9,
+       "found_now": 9
+      }
+     },
+     "found_ids": [
+      "K1",
+      "K10",
+      "K11",
+      "K12",
+      "K13",
+      "K14",
+      "K15",
+      "K16",
+      "K2",
+      "K3",
+      "K4",
+      "K5",
+      "K8",
+      "K9"
+     ]
+    },
+    "all__03": {
+     "batch": 25,
+     "tokens": 232533,
+     "cached_tokens": 176384,
+     "output_tokens": 4955,
+     "wall": 47.0,
+     "do_now": 5,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "nestjs-lifecycle-hooks-2"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 14,
+       "found": 14,
+       "found_now": 14
+      },
+      "required": {
+       "in_batch": 5,
+       "found": 5,
+       "found_now": 5
+      },
+      "optional": {
+       "in_batch": 9,
+       "found": 9,
+       "found_now": 9
+      }
+     },
+     "found_ids": [
+      "K1",
+      "K10",
+      "K11",
+      "K12",
+      "K13",
+      "K14",
+      "K15",
+      "K16",
+      "K2",
+      "K3",
+      "K4",
+      "K5",
+      "K8",
+      "K9"
+     ]
+    }
+   },
+   "per_key": {
+    "K1": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 2
+    },
+    "K2": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 2
+    },
+    "K3": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 2
+    },
+    "K4": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 7
+    },
+    "K5": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 6
+    },
+    "K6": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K7": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K8": {
+     "cls": "optional",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 2
+    },
+    "K9": {
+     "cls": "optional",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 6
+    },
+    "K10": {
+     "cls": "optional",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 6
+    },
+    "K11": {
+     "cls": "optional",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 6
+    },
+    "K12": {
+     "cls": "optional",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 2
+    },
+    "K13": {
+     "cls": "optional",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 2
+    },
+    "K14": {
+     "cls": "optional",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 6
+    },
+    "K15": {
+     "cls": "optional",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 6
+    },
+    "K16": {
+     "cls": "optional",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 2
+    }
+   }
+  },
+  "coros-nest12": {
+   "split": "DEV",
+   "tech": "nestjs",
+   "queue": 17,
+   "other_tech_in_first16": 0,
+   "deterministic": {
+    "all": {
+     "key": 4,
+     "covered": 1,
+     "queued": 1,
+     "first16": 1,
+     "first16_invoked": 1
+    },
+    "required": {
+     "key": 1,
+     "covered": 0,
+     "queued": 0,
+     "first16": 0,
+     "first16_invoked": 0
+    },
+    "optional": {
+     "key": 3,
+     "covered": 1,
+     "queued": 1,
+     "first16": 1,
+     "first16_invoked": 1
+    }
+   },
+   "reviews": {
+    "tier__01": {
+     "batch": 16,
+     "tokens": 145162,
+     "cached_tokens": 121088,
+     "output_tokens": 4665,
+     "wall": 40.7,
+     "do_now": 2,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "nestjs-consolelogger-structuredparams"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 1,
+       "found": 1,
+       "found_now": 1
+      },
+      "required": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      },
+      "optional": {
+       "in_batch": 1,
+       "found": 1,
+       "found_now": 1
+      }
+     },
+     "found_ids": [
+      "K1"
+     ]
+    },
+    "tier__02": {
+     "batch": 16,
+     "tokens": 249233,
+     "cached_tokens": 161792,
+     "output_tokens": 4218,
+     "wall": 50.9,
+     "do_now": 0,
+     "later": 1,
+     "missing": 0,
+     "do_now_off_key": [],
+     "classes": {
+      "all": {
+       "in_batch": 1,
+       "found": 0,
+       "found_now": 0
+      },
+      "required": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      },
+      "optional": {
+       "in_batch": 1,
+       "found": 0,
+       "found_now": 0
+      }
+     },
+     "found_ids": []
+    },
+    "tier__03": {
+     "batch": 16,
+     "tokens": 143893,
+     "cached_tokens": 114176,
+     "output_tokens": 3699,
+     "wall": 32.5,
+     "do_now": 1,
+     "later": 1,
+     "missing": 0,
+     "do_now_off_key": [],
+     "classes": {
+      "all": {
+       "in_batch": 1,
+       "found": 1,
+       "found_now": 1
+      },
+      "required": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      },
+      "optional": {
+       "in_batch": 1,
+       "found": 1,
+       "found_now": 1
+      }
+     },
+     "found_ids": [
+      "K1"
+     ]
+    },
+    "all__01": {
+     "batch": 17,
+     "tokens": 178300,
+     "cached_tokens": 145664,
+     "output_tokens": 4125,
+     "wall": 32.1,
+     "do_now": 1,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "nestjs-consolelogger-structuredparams"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 1,
+       "found": 0,
+       "found_now": 0
+      },
+      "required": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      },
+      "optional": {
+       "in_batch": 1,
+       "found": 0,
+       "found_now": 0
+      }
+     },
+     "found_ids": []
+    },
+    "all__02": {
+     "batch": 17,
+     "tokens": 150426,
+     "cached_tokens": 124160,
+     "output_tokens": 4431,
+     "wall": 40.9,
+     "do_now": 1,
+     "later": 1,
+     "missing": 0,
+     "do_now_off_key": [
+      "nestjs-consolelogger-structuredparams"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 1,
+       "found": 1,
+       "found_now": 0
+      },
+      "required": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      },
+      "optional": {
+       "in_batch": 1,
+       "found": 1,
+       "found_now": 0
+      }
+     },
+     "found_ids": [
+      "K1"
+     ]
+    },
+    "all__03": {
+     "batch": 17,
+     "tokens": 150499,
+     "cached_tokens": 108288,
+     "output_tokens": 3427,
+     "wall": 29.4,
+     "do_now": 3,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "nestjs-consolelogger-structuredparams",
+      "nestjs-node-js"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 1,
+       "found": 1,
+       "found_now": 1
+      },
+      "required": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      },
+      "optional": {
+       "in_batch": 1,
+       "found": 1,
+       "found_now": 1
+      }
+     },
+     "found_ids": [
+      "K1"
+     ]
+    }
+   },
+   "per_key": {
+    "K1": {
+     "cls": "optional",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 3
+    },
+    "K2": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K3": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K4": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    }
+   }
+  },
+  "satisfactory-nest12": {
+   "split": "HELD-OUT",
+   "tech": "nestjs",
+   "queue": 20,
+   "other_tech_in_first16": 0,
+   "deterministic": {
+    "all": {
+     "key": 4,
+     "covered": 2,
+     "queued": 0,
+     "first16": 0,
+     "first16_invoked": 0
+    },
+    "required": {
+     "key": 1,
+     "covered": 0,
+     "queued": 0,
+     "first16": 0,
+     "first16_invoked": 0
+    },
+    "optional": {
+     "key": 3,
+     "covered": 2,
+     "queued": 0,
+     "first16": 0,
+     "first16_invoked": 0
+    }
+   },
+   "reviews": {
+    "tier__01": {
+     "batch": 16,
+     "tokens": 243886,
+     "cached_tokens": 205824,
+     "output_tokens": 4924,
+     "wall": 44.8,
+     "do_now": 2,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "nestjs-esm-packages-2",
+      "nestjs-lifecycle-hooks-2"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      },
+      "required": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      },
+      "optional": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      }
+     },
+     "found_ids": []
+    },
+    "tier__02": {
+     "batch": 16,
+     "tokens": 344850,
+     "cached_tokens": 275456,
+     "output_tokens": 4434,
+     "wall": 34.9,
+     "do_now": 0,
+     "later": 1,
+     "missing": 0,
+     "do_now_off_key": [],
+     "classes": {
+      "all": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      },
+      "required": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      },
+      "optional": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      }
+     },
+     "found_ids": []
+    },
+    "tier__03": {
+     "batch": 16,
+     "tokens": 148193,
+     "cached_tokens": 116224,
+     "output_tokens": 3787,
+     "wall": 30.8,
+     "do_now": 0,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [],
+     "classes": {
+      "all": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      },
+      "required": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      },
+      "optional": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      }
+     },
+     "found_ids": []
+    },
+    "all__01": {
+     "batch": 20,
+     "tokens": 347414,
+     "cached_tokens": 286720,
+     "output_tokens": 5062,
+     "wall": 45.1,
+     "do_now": 2,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "nestjs-esm-packages-2",
+      "nestjs-lifecycle-hooks-2"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      },
+      "required": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      },
+      "optional": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      }
+     },
+     "found_ids": []
+    },
+    "all__02": {
+     "batch": 20,
+     "tokens": 354842,
+     "cached_tokens": 286720,
+     "output_tokens": 6822,
+     "wall": 47.2,
+     "do_now": 1,
+     "later": 1,
+     "missing": 0,
+     "do_now_off_key": [
+      "nestjs-esm-packages-2"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      },
+      "required": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      },
+      "optional": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      }
+     },
+     "found_ids": []
+    },
+    "all__03": {
+     "batch": 20,
+     "tokens": 214058,
+     "cached_tokens": 174336,
+     "output_tokens": 3867,
+     "wall": 30.1,
+     "do_now": 2,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "nestjs-esm-packages-2",
+      "nestjs-lifecycle-hooks-2"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      },
+      "required": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      },
+      "optional": {
+       "in_batch": 0,
+       "found": 0,
+       "found_now": 0
+      }
+     },
+     "found_ids": []
+    }
+   },
+   "per_key": {
+    "K1": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K3": {
+     "cls": "optional",
+     "covered": true,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K4": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K6": {
+     "cls": "optional",
+     "covered": true,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    }
+   }
+  },
+  "eudiplo-nest12": {
+   "split": "HELD-OUT",
+   "tech": "nestjs",
+   "queue": 17,
+   "other_tech_in_first16": 0,
+   "deterministic": {
+    "all": {
+     "key": 5,
+     "covered": 2,
+     "queued": 2,
+     "first16": 2,
+     "first16_invoked": 2
+    },
+    "required": {
+     "key": 3,
+     "covered": 1,
+     "queued": 1,
+     "first16": 1,
+     "first16_invoked": 1
+    },
+    "optional": {
+     "key": 2,
+     "covered": 1,
+     "queued": 1,
+     "first16": 1,
+     "first16_invoked": 1
+    }
+   },
+   "reviews": {
+    "tier__01": {
+     "batch": 16,
+     "tokens": 589420,
+     "cached_tokens": 507904,
+     "output_tokens": 5571,
+     "wall": 47.8,
+     "do_now": 3,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "nestjs-lifecycle-hooks-2"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 2,
+       "found": 2,
+       "found_now": 2
+      },
+      "required": {
+       "in_batch": 1,
+       "found": 1,
+       "found_now": 1
+      },
+      "optional": {
+       "in_batch": 1,
+       "found": 1,
+       "found_now": 1
+      }
+     },
+     "found_ids": [
+      "K1",
+      "K4"
+     ]
+    },
+    "tier__02": {
+     "batch": 16,
+     "tokens": 539312,
+     "cached_tokens": 473088,
+     "output_tokens": 6301,
+     "wall": 45.3,
+     "do_now": 2,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "nestjs-lifecycle-hooks-2"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 2,
+       "found": 2,
+       "found_now": 2
+      },
+      "required": {
+       "in_batch": 1,
+       "found": 1,
+       "found_now": 1
+      },
+      "optional": {
+       "in_batch": 1,
+       "found": 1,
+       "found_now": 1
+      }
+     },
+     "found_ids": [
+      "K1",
+      "K4"
+     ]
+    },
+    "tier__03": {
+     "batch": 16,
+     "tokens": 300502,
+     "cached_tokens": 241664,
+     "output_tokens": 5828,
+     "wall": 41.0,
+     "do_now": 3,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "nestjs-lifecycle-hooks-2"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 2,
+       "found": 2,
+       "found_now": 2
+      },
+      "required": {
+       "in_batch": 1,
+       "found": 1,
+       "found_now": 1
+      },
+      "optional": {
+       "in_batch": 1,
+       "found": 1,
+       "found_now": 1
+      }
+     },
+     "found_ids": [
+      "K1",
+      "K4"
+     ]
+    },
+    "all__01": {
+     "batch": 17,
+     "tokens": 402465,
+     "cached_tokens": 340480,
+     "output_tokens": 4976,
+     "wall": 40.1,
+     "do_now": 3,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "nestjs-lifecycle-hooks-2"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 2,
+       "found": 2,
+       "found_now": 2
+      },
+      "required": {
+       "in_batch": 1,
+       "found": 1,
+       "found_now": 1
+      },
+      "optional": {
+       "in_batch": 1,
+       "found": 1,
+       "found_now": 1
+      }
+     },
+     "found_ids": [
+      "K1",
+      "K4"
+     ]
+    },
+    "all__02": {
+     "batch": 17,
+     "tokens": 384506,
+     "cached_tokens": 316160,
+     "output_tokens": 4083,
+     "wall": 37.6,
+     "do_now": 3,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "nestjs-lifecycle-hooks-2"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 2,
+       "found": 2,
+       "found_now": 2
+      },
+      "required": {
+       "in_batch": 1,
+       "found": 1,
+       "found_now": 1
+      },
+      "optional": {
+       "in_batch": 1,
+       "found": 1,
+       "found_now": 1
+      }
+     },
+     "found_ids": [
+      "K1",
+      "K4"
+     ]
+    },
+    "all__03": {
+     "batch": 17,
+     "tokens": 347539,
+     "cached_tokens": 284544,
+     "output_tokens": 4137,
+     "wall": 44.5,
+     "do_now": 2,
+     "later": 0,
+     "missing": 0,
+     "do_now_off_key": [
+      "nestjs-lifecycle-hooks-2"
+     ],
+     "classes": {
+      "all": {
+       "in_batch": 2,
+       "found": 1,
+       "found_now": 1
+      },
+      "required": {
+       "in_batch": 1,
+       "found": 1,
+       "found_now": 1
+      },
+      "optional": {
+       "in_batch": 1,
+       "found": 0,
+       "found_now": 0
+      }
+     },
+     "found_ids": [
+      "K1"
+     ]
+    }
+   },
+   "per_key": {
+    "K1": {
+     "cls": "required",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 4
+    },
+    "K2": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K3": {
+     "cls": "required",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    },
+    "K4": {
+     "cls": "optional",
+     "covered": true,
+     "queued": true,
+     "first16": true,
+     "rank": 5
+    },
+    "K5": {
+     "cls": "optional",
+     "covered": false,
+     "queued": false,
+     "first16": false,
+     "rank": null
+    }
+   }
+  }
+ }
+}

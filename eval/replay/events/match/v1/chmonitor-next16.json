@@ -1,0 +1,150 @@
+{
+ "event": "chmonitor-next16",
+ "maps": [
+  {
+   "K1": [],
+   "K2": [],
+   "K3": [],
+   "K4": [
+    "next-updatetag"
+   ],
+   "K5": [],
+   "K6": [
+    "next-turbopack"
+   ],
+   "K7": [
+    "next-automatic-linting"
+   ],
+   "K8": [
+    "next-turbopack"
+   ],
+   "K9": [
+    "next-middleware"
+   ],
+   "K10": [
+    "next-turbopack"
+   ],
+   "K11": [
+    "next-turbopack"
+   ],
+   "K12": [],
+   "K13": [
+    "next-automatic-linting"
+   ]
+  },
+  {
+   "K1": [],
+   "K2": [],
+   "K3": [],
+   "K4": [
+    "next-updatetag"
+   ],
+   "K5": [],
+   "K6": [
+    "next-turbopack"
+   ],
+   "K7": [
+    "next-automatic-linting"
+   ],
+   "K8": [],
+   "K9": [
+    "next-middleware"
+   ],
+   "K10": [],
+   "K11": [
+    "next-turbopack"
+   ],
+   "K12": [],
+   "K13": [
+    "next-automatic-linting"
+   ]
+  }
+ ],
+ "usage": [
+  {
+   "input_tokens": 22691,
+   "cached_input_tokens": 9984,
+   "cache_write_input_tokens": 0,
+   "output_tokens": 622,
+   "reasoning_output_tokens": 516
+  },
+  {
+   "input_tokens": 22691,
+   "cached_input_tokens": 9984,
+   "cache_write_input_tokens": 0,
+   "output_tokens": 610,
+   "reasoning_output_tokens": 516
+  }
+ ],
+ "in_queue": [
+  "next-amp",
+  "next-automatic-linting",
+  "next-cachecomponents",
+  "next-cachemaxmemorysize",
+  "next-clientparamparsing",
+  "next-clientsegmentcache",
+  "next-clientsegmentcache-2",
+  "next-create-next-app-webpack",
+  "next-dynamicio",
+  "next-eslint-config-next",
+  "next-experimental-cachehandlers-cachehandlers",
+  "next-experimental-next-config-strip-types",
+  "next-experimental-ppr",
+  "next-experimental-turbopackmoduleids-turbopackmodulei",
+  "next-exports",
+  "next-get-errors",
+  "next-get-page-metadata",
+  "next-get-routes",
+  "next-headers",
+  "next-images-dangerouslyallowlocalip-dangerouslyallowl",
+  "next-images-domains-domains",
+  "next-images-imagesizes-imagesizes",
+  "next-images-localpatterns-localpatterns",
+  "next-images-maximumdiskcachesize",
+  "next-images-maximumredirects-maximumredirects",
+  "next-images-minimumcachettl-minimumcachettl",
+  "next-instrumentation-onrequesterror-context-routetype",
+  "next-lru-disk-cache",
+  "next-mcp-server",
+  "next-middleware",
+  "next-middleware-runtime",
+  "next-minimal-mode-response-cache",
+  "next-next-build-analyze",
+  "next-next-config-mts",
+  "next-next-dev-inspect",
+  "next-next-eslint-plugin-next",
+  "next-next-legacy-image",
+  "next-next-rspack-binding",
+  "next-params",
+  "next-process-cwd",
+  "next-proxy-ts",
+  "next-proxymatcher",
+  "next-publicruntimeconfig",
+  "next-rdcfornavigations",
+  "next-reactcompiler",
+  "next-redirects",
+  "next-rewrites",
+  "next-router-scroll-optimization",
+  "next-searchparams",
+  "next-segment-cache-fallback",
+  "next-server-actions-mcp-tool",
+  "next-server-source-maps",
+  "next-serverruntimeconfig",
+  "next-source-maps",
+  "next-staletimes-static",
+  "next-sync-access-to-dynamic-apis",
+  "next-this-fs-readfile",
+  "next-turbopack",
+  "next-turbopack-2",
+  "next-turbopackfilesystemcacheforbuild",
+  "next-turbopackfilesystemcachefordev",
+  "next-turbopackpersistentcachingforbuild",
+  "next-typescript",
+  "next-typescript-2",
+  "next-unstable-cachelife",
+  "next-unstable-cachetag",
+  "next-unstable-forcestale",
+  "next-updatetag",
+  "next-webpack"
+ ]
+}

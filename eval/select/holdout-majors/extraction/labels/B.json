@@ -1,0 +1,3130 @@
+{
+ "msw@3.0.0.guide.md": [
+  {
+   "anchor": "**This release sets the minimal supported Node.js version to 22.0.0.**",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "The request and event handlers, as well as the utility functions, are now exported from designated entrypoints of the `msw` package instead of its root.",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "GraphQL mocking is now _link-first_. The `graphql.query()`, `graphql.mutation()`, and `graphql.operation()` methods have been removed from the `graphql` namespace.",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "The `onUnhandledRequest` option of `worker.start()` and `server.listen()` has been renamed to `onUnhandledFrame`. It now applies to any unhandled _network frame_, which includes both requests and WebSocket connections.",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "The `onUnhandledRequest` option of `worker.start()` and `server.listen()` has been renamed to `onUnhandledFrame`. It now applies to any unhandled _network frame_, which includes both requests and WebSocket connections.",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "qualifies"
+  },
+  {
+   "anchor": "The custom callback no longer receives the `request` and `print` arguments. Instead, it receives a single object argument with the unhandled `frame` and the `defaults` strategies.",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "The `connection` life-cycle event has been renamed to `websocket:connection`.",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "The `LifeCycleEventsMap` type is no longer exported from `msw`. Life-cycle events are now described by two separate event maps, one per network protocol, both exported from `msw/experimental`:",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "In 2.x, each key mapped to a tuple of listener arguments.",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "qualifies"
+  },
+  {
+   "anchor": "The `worker.stop()` method now returns a `Promise<void>` that resolves once the request interception has been disabled for the current client. Make sure to await it.",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "required": true,
+   "unsure": true,
+   "unsure_about": "breaking"
+  },
+  {
+   "anchor": "The `handleRequest` function is no longer exported from the root `msw` module. It was a low-level utility that required you to provide the request ID, resolution options, and a life-cycle event emitter alongside the request and the handlers.",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "Building on top of the WebSocket interception, MSW now supports mocking GraphQL subscriptions. Use the `.subscription()` method on a GraphQL link to intercept a subscription and publish data to the subscribers via the `subscription` object exposed on the response resolver.",
+   "change_type": "new_api",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "A new `websocket:error` life-cycle event is emitted whenever an intercepted WebSocket connection errors. This includes both the initial connection errors and the errors that happen after the connection has been established.",
+   "change_type": "new_api",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "MSW now ships a designated Vite plugin under `msw/vite`. The plugin serves the worker script for you, so you no longer have to copy the `mockServiceWorker.js` script into your public directory.",
+   "change_type": "new_api",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "The plugin also provides a preconfigured `network` instance via the `virtual:msw` module, which you can use to enable mocking in your application.",
+   "change_type": "new_api",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "qualifies"
+  },
+  {
+   "anchor": "[Codemods to migrate](https://app.codemod.com/registry/@mswjs/v3)",
+   "change_type": "tooling",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "qualifies"
+  }
+ ],
+ "msw@3.0.0.major_notes.md": [
+  {
+   "anchor": "**MSW is now ESM-only** (#2765).",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "Deprecate support for Node.js v18 and v20 (#2729). The minimal supported Node.js version is v22.",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`msw/native` is removed in favor of [`@msw/react-native`](https://github.com/mswjs/react-native).",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "Require TypeScript 5.9 as the minimal version.",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "Deprecate support for TypeScript 5.1 and 5.2 (#2730)",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true,
+   "unsure": true,
+   "unsure_about": "qualifies"
+  },
+  {
+   "anchor": "`worker.stop()` returns a Promise (#2724). Awaiting it is relevant only for in-flight critical scenarios.",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "qualifies"
+  },
+  {
+   "anchor": "`graphql` is now exported as `msw/graphql` (#2691). GraphQL is now handled as a proper optional peer dependency.",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`graphql` is now exported as `msw/graphql` (#2691). GraphQL is now handled as a proper optional peer dependency.",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "qualifies"
+  },
+  {
+   "anchor": "Removes the `handleRequest()` utility. Please use the `defineNetwork()` API instead.",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`GraphQLLinkHandlers` type has been renamed to `GraphQLLink`.",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "The `file://` requests now throw in Node.js as they normally do (not supported by `fetch`).",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": false
+  },
+  {
+   "anchor": "The `Content-Length` request header is now removed by `bypass()`.",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": false
+  },
+  {
+   "anchor": "HTTP-to-WebSocket upgrade requests performed via `fetch()` now throw in Node.js as they normally do (not supported by `fetch`).",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": false
+  },
+  {
+   "anchor": "Cookies are no longer managed in Node.js for better compatibility. Instead, whatever is the default behavior of your environment that's the cookie behavior you get. This has no effect on the browser.",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "required"
+  },
+  {
+   "anchor": "WebSocket `connection` life cycle event has been renamed to `websocket:connection` (#2783).",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`onUnhandledRequest` option has been renamed to `onUnhandledFrame`.",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "The library no longer patches `setTimeout` to circumvent fake timers in test runners. You should advance the fake timers normally for delayed mocked responses to resolve.",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "The library no longer returns a mocked cookie string on `request.headers.get('cookie')` in the handlers. It returns `null` in all environments. Please use the `cookies` resolver argument to have cookie-based logic.",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "Supports Node.js v24 and v26.",
+   "change_type": "other",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "qualifies"
+  },
+  {
+   "anchor": "Supports TypeScript v6.0 and v7.0.",
+   "change_type": "other",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "qualifies"
+  },
+  {
+   "anchor": "You can import individual utilities, like `delay` or `passthrough`, from the new `msw/utils` entrypoint for smaller footprint on your bundle.",
+   "change_type": "new_api",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Support GraphQL v17.0.",
+   "change_type": "other",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "qualifies"
+  },
+  {
+   "anchor": "Support intercepting page navigations and form submissions (#2721).",
+   "change_type": "new_api",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Support GraphQL subscriptions (#285, #2763).",
+   "change_type": "new_api",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Migrate from `path-to-regexp` to `@msw/url` (#2678).",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "qualifies"
+  },
+  {
+   "anchor": "Adds a Vite plugin for MSW (#2781).",
+   "change_type": "new_api",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Adds a `websocket:error` life cycle event to listen to WebSocket connection errors (#2784).",
+   "change_type": "new_api",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Support modifying the intercepted request headers in passthrough scenarios (#2786).",
+   "change_type": "new_option",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Support a new WebSocket Extension API that allows for better custom experiences (#2791).",
+   "change_type": "new_api",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Fix an issue where preventing a page closure via the `beforeunload` listener would unregister the MSW worker (#1105).",
+   "change_type": "fix",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Fix an issue that caused intermittent test failures in Vitest Browser Mode and Firefox if using `maxWorkers: 1` (#2726).",
+   "change_type": "fix",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Fix an issue where in-flight requests were incorrectly passthrough when performed before calling `worker.stop()` (#2724, #2597).",
+   "change_type": "fix",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Fix an issue where persisting cookies in `localStorage` would cause a maximum quota exceeded errors.",
+   "change_type": "fix",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Fix various issues related to the network interception in Node.js.",
+   "change_type": "fix",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "qualifies"
+  }
+ ],
+ "mypy@2.0.0.major_notes.md": [
+  {
+   "anchor": "Enable `--local-partial-types` by Default",
+   "change_type": "default_change",
+   "breaking": true,
+   "required": true,
+   "unsure": true,
+   "unsure_about": "required"
+  },
+  {
+   "anchor": "Per [PEP 688](https://peps.python.org/pep-0688), mypy no longer treats `bytearray` and `memoryview`",
+   "change_type": "default_change",
+   "breaking": true,
+   "required": true,
+   "unsure": true,
+   "unsure_about": "required"
+  },
+  {
+   "anchor": "The `--allow-redefinition` flag now behaves like `--allow-redefinition-new` in mypy 1.20",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": true,
+   "unsure": true,
+   "unsure_about": "required"
+  },
+  {
+   "anchor": "Mypy now supports experimental parallel and incremental type checking. Use `--num-workers N`",
+   "change_type": "new_option",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Expose `--num-workers` and `--native-parser` (Ivan Levkivskyi, PR [21387](https://github.com/python/mypy/pull/21387))",
+   "change_type": "new_option",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "qualifies"
+  },
+  {
+   "anchor": "Mypy no longer supports type checking code with `--python-version 3.9`.",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "was set. Mypy now consistently respects `--ignore-missing-imports` for all packages.",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Mypy used to allow assignment to None for class variables when using type comments. This was a",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": true,
+   "unsure": true,
+   "unsure_about": "required"
+  },
+  {
+   "anchor": "This release adds the new module `librt.strings`, which contains utilities for building",
+   "change_type": "new_api",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Mark `librt.time.time()` non-experimental (Ivan Levkivskyi, PR [21310](https://github.com/python/mypy/pull/21310))",
+   "change_type": "stability_change",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Fix `librt.time` primitive now that it is no longer experimental (Ivan Levkivskyi, PR [21318](https://github.com/python/mypy/pull/21318))",
+   "change_type": "fix",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Fix `librt` API/ABI version checks (Jukka Lehtosalo, PR [21311](https://github.com/python/mypy/pull/21311))",
+   "change_type": "fix",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Generate more type methods for classes with attribute dictionaries (Piotr Sawicki, PR [21290](https://github.com/python/mypy/pull/21290))",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "qualifies"
+  },
+  {
+   "anchor": "Fix reference counting for tuple items during deallocation (Shantanu, PR [21245](https://github.com/python/mypy/pull/21245))",
+   "change_type": "fix",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Release new instances when `__init__` raises (Shantanu, PR [21248](https://github.com/python/mypy/pull/21248))",
+   "change_type": "fix",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Fix `@property` getter memory leak (Vaggelis Danias, PR [21230](https://github.com/python/mypy/pull/21230))",
+   "change_type": "fix",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Fix semantics for walrus expression in tuple (Shantanu, PR [21249](https://github.com/python/mypy/pull/21249))",
+   "change_type": "fix",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Fix crash on import errors during cleanup (Shantanu, PR [21247](https://github.com/python/mypy/pull/21247))",
+   "change_type": "fix",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Fix reference leak in str index (Shantanu, PR [21251](https://github.com/python/mypy/pull/21251))",
+   "change_type": "fix",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Fix memory leak in integer true division (Shantanu, PR [21246](https://github.com/python/mypy/pull/21246))",
+   "change_type": "fix",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Fix reference leaks in `list.clear()`/`dict.clear()` (Shantanu, PR [21244](https://github.com/python/mypy/pull/21244))",
+   "change_type": "fix",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Resolve type aliases in function specialization (esarp, PR [21233](https://github.com/python/mypy/pull/21233))",
+   "change_type": "fix",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Report an error if an acyclic class inherits from non-acyclic (Piotr Sawicki, PR [21227](https://github.com/python/mypy/pull/21227))",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "breaking"
+  },
+  {
+   "anchor": "Fix `b64decode` to match new CPython behavior (Piotr Sawicki, PR [21200](https://github.com/python/mypy/pull/21200))",
+   "change_type": "fix",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Fix crash when a file does not exist during semantic analysis (Ivan Levkivskyi, PR [21379](https://github.com/python/mypy/pull/21379))",
+   "change_type": "fix",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Fix parallel worker crash on syntax error (Ivan Levkivskyi, PR [21202](https://github.com/python/mypy/pull/21202))",
+   "change_type": "fix",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "qualifies"
+  },
+  {
+   "anchor": "Improve error messages for unexpected keyword arguments in overloaded functions (Kevin Kannammalil, PR [20592](https://github.com/python/mypy/pull/20592))",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "qualifies"
+  },
+  {
+   "anchor": "Don't suggest `Foo[...]` when `Foo(arg=...)` is used in annotation (Yosof Badr, PR [21238](https://github.com/python/mypy/pull/21238))",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "qualifies"
+  },
+  {
+   "anchor": "Mention what codes are actually ignored in \"not covered by type: ignore comment\" note (wyattscarpenter, PR [19904](https://github.com/python/mypy/pull/19904))",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "qualifies"
+  },
+  {
+   "anchor": "Improve error messages when positional argument is missing (Kevin Kannammalil, PR [20591](https://github.com/python/mypy/pull/20591))",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "qualifies"
+  },
+  {
+   "anchor": "Improve \"name is not defined\" errors with fuzzy matching (Kevin Kannammalil, PR [20693](https://github.com/python/mypy/pull/20693))",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "qualifies"
+  },
+  {
+   "anchor": "Add suggestions for misspelled module imports (Kevin Kannammalil, PR [20695](https://github.com/python/mypy/pull/20695))",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "qualifies"
+  },
+  {
+   "anchor": "Replace `NamedTuple` with faster regular classes in hot paths (Shantanu, PR [21326](https://github.com/python/mypy/pull/21326))",
+   "change_type": "performance",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "qualifies"
+  },
+  {
+   "anchor": "Avoid calling best-match suggestions unless the message is shown (Ivan Levkivskyi, PR [21307](https://github.com/python/mypy/pull/21307))",
+   "change_type": "performance",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "qualifies"
+  },
+  {
+   "anchor": "Order cases in native parser based on AST node frequency (Jukka Lehtosalo, PR [21219](https://github.com/python/mypy/pull/21219))",
+   "change_type": "performance",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "qualifies"
+  },
+  {
+   "anchor": "Basic support for unpack kwargs (Shantanu, PR [21024](https://github.com/python/mypy/pull/21024))",
+   "change_type": "new_option",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Fix false positive for properties with a deleter (Pranav Manglik, PR [21259](https://github.com/python/mypy/pull/21259))",
+   "change_type": "fix",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Make new parser consistent with the old one (Ivan Levkivskyi, PR [21377](https://github.com/python/mypy/pull/21377))",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "qualifies"
+  },
+  {
+   "anchor": "Support `--package-root` with the native parser (Ivan Levkivskyi, PR [21321](https://github.com/python/mypy/pull/21321))",
+   "change_type": "new_option",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Improve call expressions in type annotations with the native parser (Jukka Lehtosalo, PR [21300](https://github.com/python/mypy/pull/21300))",
+   "change_type": "fix",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Depend on `ast-serialize` by default (Jukka Lehtosalo, PR [21297](https://github.com/python/mypy/pull/21297))",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "qualifies"
+  },
+  {
+   "anchor": "Fix narrowing for `AbstractSet` and `Mapping` (Shantanu, PR [21352](https://github.com/python/mypy/pull/21352))",
+   "change_type": "fix",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Preserve gradual guarantee when narrowing `Any` union via equality (Shantanu, PR [21368](https://github.com/python/mypy/pull/21368))",
+   "change_type": "fix",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Make type variable upper bound narrowing symmetric (Ivan Levkivskyi, PR [21350](https://github.com/python/mypy/pull/21350))",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "qualifies"
+  },
+  {
+   "anchor": "Behave consistently when type-checking a stub package directly (Ivan Levkivskyi, PR [21330](https://github.com/python/mypy/pull/21330))",
+   "change_type": "fix",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Add support for `Final[...]` in dataclasses (Ivan Levkivskyi, PR [21334](https://github.com/python/mypy/pull/21334))",
+   "change_type": "new_option",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Narrow more sequence parents (Shantanu, PR [21327](https://github.com/python/mypy/pull/21327))",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Better narrowing for enums and other types with known equality (Shantanu, PR [21281](https://github.com/python/mypy/pull/21281))",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Fix pathspec error (Ivan Levkivskyi, PR [21296](https://github.com/python/mypy/pull/21296))",
+   "change_type": "fix",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Use sharding for the SQLite cache (Jukka Lehtosalo, PR [21292](https://github.com/python/mypy/pull/21292))",
+   "change_type": "performance",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "qualifies"
+  },
+  {
+   "anchor": "Limit type inference context fallback to the walrus operator only (Ivan Levkivskyi, PR [21294](https://github.com/python/mypy/pull/21294))",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "qualifies"
+  },
+  {
+   "anchor": "Support `.git/info/exclude` for `--exclude-gitignore` (RogerJinIS, PR [21286](https://github.com/python/mypy/pull/21286))",
+   "change_type": "new_option",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Let `--allow-redefinition` widen a global in a function with `None` initialization (Jukka Lehtosalo, PR [21285](https://github.com/python/mypy/pull/21285))",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Delete Python 2 extra (Shantanu, PR [18374](https://github.com/python/mypy/pull/18374))",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true,
+   "unsure": true,
+   "unsure_about": "required"
+  },
+  {
+   "anchor": "No longer narrow final globals in functions (Ivan Levkivskyi, PR [21241](https://github.com/python/mypy/pull/21241))",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "breaking"
+  },
+  {
+   "anchor": "Narrow unions containing `Any` in conditional branches (Shantanu, PR [21231](https://github.com/python/mypy/pull/21231))",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Propagate narrowing within chained comparisons (Shantanu, PR [21160](https://github.com/python/mypy/pull/21160))",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Add proper lazy deserialization (Ivan Levkivskyi, PR [21198](https://github.com/python/mypy/pull/21198))",
+   "change_type": "performance",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "qualifies"
+  },
+  {
+   "anchor": "Add `install_types` to options affecting cache (Brian Schubert, PR [21070](https://github.com/python/mypy/pull/21070))",
+   "change_type": "fix",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "qualifies"
+  },
+  {
+   "anchor": "Narrow `Any` in conditional type checks (Shantanu, PR [21167](https://github.com/python/mypy/pull/21167))",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Fix exception handler target location in new parser (Ivan Levkivskyi, PR [21185](https://github.com/python/mypy/pull/21185))",
+   "change_type": "fix",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "qualifies"
+  },
+  {
+   "anchor": "Improve traceback display (Shantanu, PR [21155](https://github.com/python/mypy/pull/21155))",
+   "change_type": "tooling",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "qualifies"
+  }
+ ],
+ "transformers@5.0.0.guide.md": [
+  {
+   "anchor": "We're removing the TensorFlow and Jax parts of the library. This will help us focus fully on `torch`",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "We introduce a new weight loading API in `transformers`, which significantly improves on the previous API. This",
+   "change_type": "new_api",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Starting with v5, we now enable initializing blank, untrained `tokenizers`-backed tokenizers:",
+   "change_type": "new_api",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "In v5, we consolidate to a single tokenizer file per model: `tokenization_<model>.py`. This file will use the most appropriate backend available:",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "required"
+  },
+  {
+   "anchor": "To do so, you can import the `PythonBackend` (which was previously known as `PreTrainedTokenizer`). This class encapsulates all the logic related to added tokens, encoding, and decoding.",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true,
+   "unsure": true,
+   "unsure_about": "qualifies"
+  },
+  {
+   "anchor": "4. **MistralCommonBackend**: relies on `MistralCommon`'s tokenization library. (Previously known as the `MistralCommonTokenizer`)",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true,
+   "unsure": true,
+   "unsure_about": "qualifies"
+  },
+  {
+   "anchor": "**Simplified file loading:** Support is added for passing`vocab` and `merges` as file paths directly",
+   "change_type": "new_option",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "The `batch_decode` and `decode` methods have been unified to reflect behavior of the `encode` method. Both single and batch decoding now use the same `decode` method. See an example of the new behavior below:",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": true,
+   "unsure": true,
+   "unsure_about": "required"
+  },
+  {
+   "anchor": "The `encode_plus` method is deprecated in favor of the single `__call__` method.",
+   "change_type": "deprecation",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Previously, `apply_chat_template` returned `input_ids` for backward compatibility. Starting with v5, it now consistently returns a `BatchEncoding` dict like other tokenizer methods.",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": true,
+   "unsure": true,
+   "unsure_about": "required"
+  },
+  {
+   "anchor": "5. Removed legacy configuration file saving:",
+   "change_type": "removal",
+   "breaking": true,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "breaking"
+  },
+  {
+   "anchor": "**Backend synchronization removed:**",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "required"
+  },
+  {
+   "anchor": "`add_bos_token` and `add_eos_token` - these are no longer saved in `tokenizer_config.json`. When a `tokenizer.json` file exists, these settings are defined in the tokenizer class or `tokenizer.json` itself.",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "breaking"
+  },
+  {
+   "anchor": "Several models that had identical tokenizers now import from their base implementation:",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "qualifies"
+  },
+  {
+   "anchor": "The internal `_eventually_correct_t5_max_length` method has been removed. T5 tokenizers now handle max length consistently with other models.",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "breaking"
+  },
+  {
+   "anchor": "`SpecialTokensMixin`: Merged into `PreTrainedTokenizerBase` to simplify the tokenizer architecture.",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`special_tokens_map`: Now only stores named special token attributes (e.g., `bos_token`, `eos_token`). Use `extra_special_tokens` for additional special tokens (formerly `additional_special_tokens`). `all_special_tokens` includes both named and extra tokens.",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`special_tokens_map_extended` and `all_special_tokens_extended`: Removed. Access `AddedToken` objects directly from `_special_tokens_map` or `_extra_special_tokens` if needed.",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`additional_special_tokens`: Automatically converted to `extra_special_tokens` during initialization.",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "`additional_special_tokens_ids`: Removed. Use `extra_special_tokens_ids` instead.",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`extra_special_tokens`: Only accepts list/tuple format and is intended for use during tokenizer initialization. For model-specific named tokens (e.g., `image_token`), pass directly as keyword arguments instead.",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": true,
+   "unsure": true,
+   "unsure_about": "required"
+  },
+  {
+   "anchor": "`sanitize_special_tokens()`: Already deprecated in v4, removed in v5.",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`prepare_seq2seq_batch()`: Deprecated; use `__call__()` with `text_target` parameter instead.",
+   "change_type": "deprecation",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "`BatchEncoding.words()`: Deprecated; use `word_ids()` instead.",
+   "change_type": "deprecation",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "`create_token_type_ids_from_sequences()`: Removed from base class. Subclasses that need custom token type ID creation should implement this method directly.",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`prepare_for_model()`, `build_inputs_with_special_tokens()`, `truncate_sequences()`: Moved from",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`_switch_to_input_mode()`, `_switch_to_target_mode()`, `as_target_tokenizer()`: Removed from base class. Use `__call__()` with `text_target` parameter instead.",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`parse_response()`: Removed from base class.",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "Because we are switching from the naive MOE (`nn.ModuleList` for experts) we currently have an issue with MoEs that have adapters. For more details see https://github.com/huggingface/transformers/issues/42491#issuecomment-3591485649.",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "qualifies"
+  },
+  {
+   "anchor": "We are streamlining the MoE support with vLLM; while this is being implemented, tensor parallelism and expert parallelism aren't working as expected.",
+   "change_type": "fix",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "qualifies"
+  },
+  {
+   "anchor": "A lot of paths were removed and reworked; paths like `transformers.tokenization_utils` and `transformers.tokenization_utils_fast`, which no longer exist.",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "For anyone inheriting from a `transformers` `PreTrainedModel`, the weights are automatically initialized with the common scheme:",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "breaking"
+  },
+  {
+   "anchor": "The `safe_serialization` parameter has been removed from all `save_pretrained` and `push_to_hub` methods.",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "The default shard size went up from `5GB` to `50GB`.",
+   "change_type": "default_change",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "breaking"
+  },
+  {
+   "anchor": "The `use_auth_token` argument/parameter is deprecated in favor of `token` everywhere.",
+   "change_type": "deprecation",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "No more head masking, see [#41076](https://github.com/huggingface/transformers/pull/41076). This feature allowed to turn off certain heads during the attention calculation and only worked for eager.",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "No more relative positional biases in Bert-like models, see [#41170]",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "No more head pruning, see [#41417](https://github.com/huggingface/transformers/pull/41417) by @gante. As the name suggests, it allowed to prune heads within your attention layers.",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`torchscript` in https://github.com/huggingface/transformers/pull/41688",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`torch.fx` in https://github.com/huggingface/transformers/pull/41683",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "Starting with v5, these 4 helper methods now return a `BaseModelOutputWithPooling` (or a subclass) instead of only a pooled embedding tensor:",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "We drop support for two quantization arguments that have been deprecated for some time:",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`AutoModelWithLMHead` is removed in favor of `AutoModelForCausalLM` for causal language models, `AutoModelForMaskedLM` for masked language models and `AutoModelForSeq2SeqLM` for encoder-decoder models",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`AutoModelForVision2Seq` is removed in favor of `AutoModelForImageTextToText`",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "Methods to init a nested config such as `from_xxx_config` are deleted. Configs can be init from the `__init__` method in the same way. See [#41314](https://github.com/huggingface/transformers/pull/41314).",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "It is no longer possible to load a config class from a URL file. Configs must be loaded from either a local path or a repo on the Hub. See [#42383](https://github.com/huggingface/transformers/pull/42383).",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "All parameters for configuring model's rotary embedding are now stored under `mode.rope_parameters`",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "Qwen-VL family configuration is in a nested format and trying to access keys directly will throw an error (e.g. `config.vocab_size`). Users are expected to access keys from their respective sub-configs (`config.text_config.vocab_size`).",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "Configurations of non-generative models (any model that doesn't call `model.generate()`) will no longer have a `generation_config` and `model.config.generation_config` will throw an attribute error.",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": true
+  }
+ ],
+ "transformers@5.0.0.major_notes.md": [
+  {
+   "anchor": "We introduce a new weight loading API in `transformers`, which significantly improves on the previous API. This",
+   "change_type": "new_api",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Starting with v5, we now enable initializing blank, untrained `tokenizers`-backed tokenizers:",
+   "change_type": "new_api",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "⚠️ The `vocab_file` (as in, a path towards a file containing the vocabulary) cannot be used to initialize the `LlamaTokenizer` as loading from files is reserved to the `from_pretrained` method.",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "qualifies"
+  },
+  {
+   "anchor": "In v5, we consolidate to a single tokenizer file per model: `tokenization_<model>.py`. This file will use the most appropriate backend available:",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "required"
+  },
+  {
+   "anchor": "To do so, you can import the `PythonBackend` (which was previously known as `PreTrainedTokenizer`). This class encapsulates all the logic related to added tokens, encoding, and decoding.",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true,
+   "unsure": true,
+   "unsure_about": "qualifies"
+  },
+  {
+   "anchor": "4. **MistralCommonBackend**: relies on `MistralCommon`'s tokenization library. (Previously known as the `MistralCommonTokenizer`)",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true,
+   "unsure": true,
+   "unsure_about": "qualifies"
+  },
+  {
+   "anchor": "The `batch_decode` and `decode` methods have been unified to reflect behavior of the `encode` method. Both single and batch decoding now use the same `decode` method. See an example of the new behavior below:",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": true,
+   "unsure": true,
+   "unsure_about": "required"
+  },
+  {
+   "anchor": "The `encode_plus` method is deprecated in favor of the single `__call__` method.",
+   "change_type": "deprecation",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Previously, `apply_chat_template` returned `input_ids` for backward compatibility. Starting with v5, it now consistently returns a `BatchEncoding` dict like other tokenizer methods.",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": true,
+   "unsure": true,
+   "unsure_about": "required"
+  },
+  {
+   "anchor": "5. Removed legacy configuration file saving:",
+   "change_type": "removal",
+   "breaking": true,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "breaking"
+  },
+  {
+   "anchor": "Several models that had identical tokenizers now import from their base implementation:",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "qualifies"
+  },
+  {
+   "anchor": "The internal `_eventually_correct_t5_max_length` method has been removed. T5 tokenizers now handle max length consistently with other models.",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "breaking"
+  },
+  {
+   "anchor": "`SpecialTokensMixin`: Merged into `PreTrainedTokenizerBase` to simplify the tokenizer architecture.",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`special_tokens_map`: Now only stores named special token attributes (e.g., `bos_token`, `eos_token`). Use `extra_special_tokens` for additional special tokens (formerly `additional_special_tokens`). `all_special_tokens` includes both named and extra tokens.",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`special_tokens_map_extended` and `all_special_tokens_extended`: Removed. Access `AddedToken` objects directly from `_special_tokens_map` or `_extra_special_tokens` if needed.",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`additional_special_tokens`: Still accepted for backward compatibility but is automatically converted to `extra_special_tokens`.",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "`sanitize_special_tokens()`: Already deprecated in v4, removed in v5.",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`prepare_seq2seq_batch()`: Deprecated; use `__call__()` with `text_target` parameter instead.",
+   "change_type": "deprecation",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "`BatchEncoding.words()`: Deprecated; use `word_ids()` instead.",
+   "change_type": "deprecation",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "`create_token_type_ids_from_sequences()`: Removed from base class. Subclasses that need custom token type ID creation should implement this method directly.",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`prepare_for_model()`, `build_inputs_with_special_tokens()`, `truncate_sequences()`: Moved from",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`_switch_to_input_mode()`, `_switch_to_target_mode()`, `as_target_tokenizer()`: Removed from base class. Use `__call__()` with `text_target` parameter instead.",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`parse_response()`: Removed from base class.",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "The v5 release significantly improves the performance of the MoE models, as can be seen in the graphs below. We improve and optimize MoE performance through batched and grouped experts implementations, and we optimize them for decoding using `batched_mm`.",
+   "change_type": "performance",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "We focus on improving the performance of loading weights on device (which gives speedups up to 6x in tensor parallel situations); this is preliminary work that we'll continue to work on in the coming weeks. Some notable improvements:",
+   "change_type": "performance",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "We have updated the default `dtype` for all models loaded with `from_pretrained` to be `auto`. This will lead to model instantiations respecting the `dtype` in which the model was saved, rather than forcing it to load in float 32.",
+   "change_type": "default_change",
+   "breaking": true,
+   "required": false
+  },
+  {
+   "anchor": "To reflect this, we're increasing the default shard size of models serialized on the Hub to 50GB (up from 5GB).",
+   "change_type": "default_change",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "breaking"
+  },
+  {
+   "anchor": "The `use_auth_token` argument/parameter is deprecated in favor of `token` everywhere.",
+   "change_type": "deprecation",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "No more head masking, see [#41076](https://github.com/huggingface/transformers/pull/41076). This feature allowed to turn off certain heads during the attention calculation and only worked for eager.",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "No more relative positional biases in Bert-like models, see [#41170]",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "No more head pruning, see [#41417](https://github.com/huggingface/transformers/pull/41417) by @gante. As the name suggests, it allowed to prune heads within your attention layers.",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`torchscript` in https://github.com/huggingface/transformers/pull/41688",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`torch.fx` in https://github.com/huggingface/transformers/pull/41683",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "We drop support for two quantization arguments that have been deprecated for some time:",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "Methods to init a nested config such as `from_xxx_config` are deleted. Configs can be init from the `__init__` method in the same way. See [#41314](https://github.com/huggingface/transformers/pull/41314).",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "It is no longer possible to load a config class from a URL file. Configs must be loaded from either a local path or a repo on the Hub. See [#42383](https://github.com/huggingface/transformers/pull/42383).",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "All parameters for configuring model's rotary embedding are now stored under `mode.rope_parameters`",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "Qwen-VL family configuration is in a nested format and trying to access keys directly will throw an error (e.g. `config.vocab_size`). Users are expected to access keys from their respective sub-configs (`config.text_config.vocab_size`).",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "Configurations of non-generative models (any model that doesn't call `model.generate()`) will no longer have a `generation_config` and `model.config.generation_config` will throw an attribute error.",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "In processing classes each attribute will be serialized under `processor_config.json` as a nested dict, instead of serializing attributes in their own config files. Loading will be supported for all old format processors (https://github.com/huggingface/transformers/pull/41474)",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "qualifies"
+  },
+  {
+   "anchor": "`XXXFeatureExtractors` classes are completely removed in favor of `XXXImageProcessor` class for all vision models (https://github.com/huggingface/transformers/pull/41174)",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "Minor change: `XXXFastImageProcessorKwargs` is removed in favor of `XXXImageProcessorKwargs` which will be shared between fast and slow processors (https://github.com/huggingface/transformers/pull/40931)",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "Some `RotaryEmbeddings` layers will start returning a dict of tuples, in case the model uses several RoPE configurations (Gemma2, ModernBert). Each value will be a tuple of \"cos, sin\" per RoPE type.",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": false
+  },
+  {
+   "anchor": "Vision Language models will not have a shortcut access to its language and vision component",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "All models now accept `kwargs` in their forward methods",
+   "change_type": "new_option",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Old, deprecated output type aliases were removed (e.g. `GreedySearchEncoderDecoderOutput`). We now only have 4 output classes built from the following matrix: decoder-only vs encoder-decoder, uses beams vs doesn't use beams (https://github.com/huggingface/transformers/pull/40998)",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "Removed deprecated classes regarding decoding methods that were moved to the Hub due to low usage (constraints and beam scores) (https://github.com/huggingface/transformers/pull/41223)",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "If `generate` doesn't receive any KV Cache argument, the default cache class used is now defined by the model (as opposed to always being `DynamicCache`) (https://github.com/huggingface/transformers/pull/41505)",
+   "change_type": "default_change",
+   "breaking": true,
+   "required": false
+  },
+  {
+   "anchor": "Generation parameters are no longer accessible via model's config.",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "Added sequence parallelism support via HF Accelerate for training with longer sequences. Enables splitting sequences across devices using ALST (All-to-All Long Sequence Training) and Ulysses algorithms with DeepSpeed.",
+   "change_type": "new_api",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "`compute_loss_func` now always takes priority over the model's built-in loss computation, giving users consistent control over custom loss functions.",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "breaking"
+  },
+  {
+   "anchor": "The `num_items_in_batch` argument is now passed to `compute_loss` during `prediction_step`, enabling proper loss scaling during evaluation.",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Logging integrations are no longer auto-detected by default; users must explicitly specify which reporting backends to use.",
+   "change_type": "default_change",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`mp_parameters` -> legacy param that was later on added to the Sagemaker trainer",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`_n_gpu` -> not intended for users to set, we will initialize it correctly instead of putting it in the `TrainingArguments`",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`overwrite_output_dir` - > replaced by `resume_from_checkpoint`, and it was only used in the examples script, no impact on Trainer.",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`logging_dir` -> only used for tensorboard, set `TENSORBOARD_LOGGING_DIR` env var instead",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`jit_mode_eval` -> use `use_torch_compile` instead, as torchscript is not recommended anymore",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`tpu_num_cores`-> It is actually better to remove it, as it is not recommended to set the number of cores. By default, all TPU cores are used . Set `TPU_NUM_CORES` env var instead",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`past_index` -> it was only used for a very small number of models that have special architecture like transformersxl + it was not documented at all how to train those models",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`ray_scope` -> only for a minor arg for ray integration. Set `RAY_SCOPE` var env instead",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`warmup_ratio` -> use `warmup_step` instead. We combined both args together by allowing passing float values in `warmup_step`.",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`fsdp_min_num_params` and `fsdp_transformer_layer_cls_to_wrap` -> use `fsdp_config`",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`tpu_metrics_debug` -> `debug`",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`push_to_hub_token` -> `hub_token`",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`push_to_hub_model_id` and `push_to_hub_organization` -> `hub_model_id`",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`include_inputs_for_metrics` -> `include_for_metrics`",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`per_gpu_train_batch_size` -> `per_device_train_batch_size`",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`per_gpu_eval_batch_size` -> `per_device_eval_batch_size`",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`use_mps_device` -> mps will be used by default if detected",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`fp16_backend` and `half_precision_backend` -> we will only rely on `torch.amp` as everything has been upstreamed to torch",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`no_cuda` -> `use_cpu`",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "` include_tokens_per_second` -> `include_num_input_tokens_seen`",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`use_legacy_prediction_loop` -> we only use `evaluation_loop` function from now on",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`tokenizer` in initialization -> `processing_class`",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`model_path` in train() -> `resume_from_checkpoint`",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "sigpot integration for hp search was removed as the library was archived + the api stopped working",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "drop support for sagemaker API <1.10",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "bump accelerate minimum version to 1.1.0",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "bump peft minimum version to 0.18.0",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "bump bitsandbytes minimum version to 0.46.1",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`use_cache` in the model config will be set to `False`. You can still change the cache value through `TrainingArguments` `usel_cache` argument if needed.",
+   "change_type": "default_change",
+   "breaking": true,
+   "required": false
+  },
+  {
+   "anchor": "Image text to text pipelines will no longer accept images as a separate argument along with conversation chats. Image data has to be embedded in the chat's \"content\" field. See [#42359](https://github.com/huggingface/transformers/pull/42359)",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`fsdp_min_num_params` and `fsdp_transformer_layer_cls_to_wrap` -> use `fsdp_config`",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`push_to_hub_model_id` and `push_to_hub_organization` -> `hub_model_id`",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`fp16_backend` and `half_precision_backend` -> we will only rely on `torch.amp` as everything has been upstreamed to torch",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  }
+ ],
+ "sveltejs-kit@3.0.0.guide.md": [
+  {
+   "anchor": "SvelteKit 3 removes some legacy features, moves configuration out of `svelte.config.js` into the Vite plugin, and raises the minimum version of certain dependencies. For many of these breaking changes, you can automatically migrate:",
+   "change_type": "tooling",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Node v22.17",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "TypeScript v6",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "Svelte v5.57.1",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "Vite v8.0.12 (the first Vite 8 release bundling stable `rolldown` v1)",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`@sveltejs/vite-plugin-svelte` v7",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "Instead of declaring project configuration in `svelte.config.js`, it must now be passed to the `sveltekit` Vite plugin in `vite.config.js`. Options that previously lived under `config.kit.*` are now top-level plugin options, alongside things like `compilerOptions`:",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`files.lib` ([details](#$lib-is-now-lib))",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`experimental.handleRenderingErrors` is no longer required ([details](#Error-handling-Rendering-errors-are-now-handled))",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`experimental.instrumentation` is no longer required ([details](#Observability))",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`experimental.tracing` is now a top level `tracing` option ([details](#Observability))",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`vitePlugin` is removed — pass `vite-plugin-svelte` options like `inspector` directly to the plugin instead",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`preloadStrategy` is removed — `modulepreload` is now supported everywhere and so is always used",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`prerender.origin` is removed in favour of `paths.origin`",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`output.linkHeaderPreload` determines whether to use `Link` HTTP headers to preload resources like `.js` and `.css` files rather than injecting `<link>` elements in the rendered HTML. This can cause issues when the headers grow too large, so SvelteKit 3 uses `<link>` elements by default instead.",
+   "change_type": "new_option",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "`output.linkHeaderPreload` determines whether to use `Link` HTTP headers to preload resources like `.js` and `.css` files rather than injecting `<link>` elements in the rendered HTML. This can cause issues when the headers grow too large, so SvelteKit 3 uses `<link>` elements by default instead.",
+   "change_type": "default_change",
+   "breaking": true,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "qualifies"
+  },
+  {
+   "anchor": "`csrf.trustedOrigins` allows you to specify external origins that are allowed to make form submissions.",
+   "change_type": "new_option",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "`paths.origin` replaces `prerender.origin`",
+   "change_type": "new_option",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "`version.pollInterval` now defaults to one hour, meaning SvelteKit will periodically check for new deployments and set [`updated.current`]($app-state#updated) to `true` accordingly. Previously, no polling occurred by default.",
+   "change_type": "default_change",
+   "breaking": true,
+   "required": false
+  },
+  {
+   "anchor": "The `$lib` alias is no longer generated automatically by SvelteKit.",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "...and replace `$lib` with `#lib` across your codebase. Note that you will also have to add the module extensions (e.g. `.js` or `.ts`) to these imports.",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "The `$app/environment` module has been renamed to [`$app/env`]($app-env). It can now be imported inside your service worker, where previously if you needed to access `version` you would use the now-removed [`$service-worker`](<#$service-worker-(removed)>) module.",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true,
+   "unsure": true,
+   "unsure_about": "breaking"
+  },
+  {
+   "anchor": "Forms with [`use:enhance`]($app-forms#enhance) that specify an `action` on a different page will navigate to that page upon submission, rather than staying on the current page. This ensures that the enhanced behaviour more closely matches the native, non-enhanced behaviour.",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": false
+  },
+  {
+   "anchor": "A new [`$app/manifest`]($app-manifest) module gives you access to metadata about your app. You can import this anywhere in your app, including in service workers for offline caching purposes, for which you would previously use the now-removed [`$service-worker`](<#$service-worker-(removed)>) module.",
+   "change_type": "new_api",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "For [shallow routing](shallow-routing), `pushState/replaceState` are deprecated in favor of [`goto`]($app-navigation#goto):",
+   "change_type": "deprecation",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "For [shallow routing](shallow-routing), `pushState/replaceState` are deprecated in favor of [`goto`]($app-navigation#goto):",
+   "change_type": "new_option",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "A new `persistState: true` option will cause `page.state` to be reapplied following a page reload.",
+   "change_type": "new_option",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Shallow routing now triggers navigation hooks",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": false
+  },
+  {
+   "anchor": "`invalidateAll` is deprecated in favour of [`refreshAll`]($app-navigation#refreshAll). The difference is that `refreshAll` does _not_ reset `page.state` to an empty object, which is usually what you want when using [shallow routing](shallow-routing).",
+   "change_type": "deprecation",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "`invalidateAll` is deprecated in favour of [`refreshAll`]($app-navigation#refreshAll). The difference is that `refreshAll` does _not_ reset `page.state` to an empty object, which is usually what you want when using [shallow routing](shallow-routing).",
+   "change_type": "new_api",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Additionally, calling `invalidateAll()` or `invalidate(...)` during an in-flight navigation no longer aborts that navigation.",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": false
+  },
+  {
+   "anchor": "`invalidateAll` is now `refreshAll`, to mirror the [above change](#$app-navigation-invalidateAll-is-deprecated-in-favour-of-refreshAll)",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`keepFocus: true` and `noScroll: true` have been combined as `reset: false`",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`replaceState` is now `replace`",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`goto(...)` now rejects when called with a URL that does not resolve to a route within the app, matching the existing behaviour for external URLs. To navigate to an external URL, use `window.location.href = url`.",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "The `delta` property on navigation events ([`beforeNavigate`]($app-navigation#beforeNavigate), [`onNavigate`]($app-navigation#onNavigate) and [`afterNavigate`]($app-navigation#afterNavigate)) now only exists for `popstate` navigations (back/forward). It is `undefined` for all other navigation types.",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "required"
+  },
+  {
+   "anchor": "`preloadData(...)` now returns `{ type: 'error', status, error }` when the target page fails to load, instead of returning `{ type: 'loaded' }` with a 200 status. The `'redirect'` result now also includes the correct `status`. Add an `error` branch to any code that consumes the result:",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "The deprecated `base`, `assets`, and `resolveRoute` exports have been removed from [`$app/paths`]($app-paths). Use [`asset`]($app-paths#asset) and [`resolve`]($app-paths#resolve) instead:",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "The `Pathname` and `Asset` types have also been renamed to `Path` and `AssetPath`",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "the leading `/` has been removed from those types",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "Service workers can now import `$app/paths`",
+   "change_type": "new_api",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "A new [`$app/service-worker`]($app-service-worker) provides type-safe access to the service worker execution context in your `src/service-worker/index.ts`, provided you have a `src/service-worker/tsconfig.json` that extends [`$app/tsconfig/service-worker`](#$app-tsconfig-service-worker).",
+   "change_type": "new_api",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "`page.url` is now typed as a `ReadonlyURL` with `ReadonlyURLSearchParams`, so mutating it — e.g. `page.url.searchParams.set(...)` or assigning to `page.url.pathname` — is now a type error. If you need a mutable URL, copy it first:",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "The `updated.current` property becomes `true` when SvelteKit detects that a new version of the app has been deployed. Previously, this would only happen following a manual `updated.check()`, or after a failed navigation. In SvelteKit 3 it happens more frequently:",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": false
+  },
+  {
+   "anchor": "The `$app/stores` module (which exports the `$page`, `$navigating`, and `$updated` stores) has been removed. Use [`$app/state`]($app-state) instead, which provides fine-grained Svelte 5 [state](../svelte/$state), and remove the `$` prefix when reading values (i.e. `page` rather than `$page`):",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "Your project's `tsconfig.json` should now extend `$app/tsconfig` rather than `./.svelte-kit/tsconfig.json`. It should also specify `include` and `exclude` arrays, as `$app/tsconfig` does not specify these:",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "Your project's `tsconfig.json` should now extend `$app/tsconfig` rather than `./.svelte-kit/tsconfig.json`. It should also specify `include` and `exclude` arrays, as `$app/tsconfig` does not specify these:",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "To do this, exclude the service worker from your project's root `tsconfig.json`, and add a `src/service-worker/tsconfig.json`",
+   "change_type": "tooling",
+   "breaking": true,
+   "required": true,
+   "unsure": true,
+   "unsure_about": "breaking"
+  },
+  {
+   "anchor": "The various `$env/...` modules have been deprecated in favour of `$app/env/private` and `$app/env/public` — see [Environment variables](environment-variables) for more details.",
+   "change_type": "deprecation",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "The `$service-worker` module has been removed. Import `version` from [`$app/env`]($app-env), `assets`, `immutable` and `prerendered` from [`$app/manifest`]($app-manifest), and `resolved` from [`$app/paths`]($app-paths) instead.",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "If you were importing the internal `HttpError`/`Redirect` classes",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "The `json(...)` and `text(...)` helpers for generating responses are deprecated. Use `Response.json(...)` and `new Response(text)` instead.",
+   "change_type": "deprecation",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "The `defineParams` function for creating [param matchers](advanced-routing#Matching), along with the associated types, now live in [`@sveltejs/kit/params`](@sveltejs-kit-params).",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "Types like `EnvVarConfig`, used with [`defineEnvVars`](@sveltejs-kit-env#defineEnvVars) hook, now live in `@sveltejs/kit/env`.",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "Types like `Handle`, which defines the type of your [`handle`](hooks#handle) hook, now live in `@sveltejs/kit/hooks`.",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "Types describing remote functions, such as `RemoteQuery`, `RemoteForm` and `RemoteCommand`, now live in `$app/server` alongside the functions themselves.",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "The `defineEnvVars` function has moved from `@sveltejs/kit/hooks` to `@sveltejs/kit/env`.",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "The [`getRequest`](@sveltejs-kit-node#getRequest) and [`setResponse`](@sveltejs-kit-node#setResponse) helpers are now synchronous and no longer return Promises. Remove `await` from calls in custom Node servers or adapters.",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "required": true,
+   "unsure": true,
+   "unsure_about": "breaking"
+  },
+  {
+   "anchor": "The `@sveltejs/kit/node/polyfills` module (and the Node global shims in `adapter-node` and `adapter-netlify`) applied to Node versions that are no longer supported. Remove any `import '@sveltejs/kit/node/polyfills'` statements from your custom server code.",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "The deprecated `csrf.checkOrigin` option has been removed. CSRF protection is always on; instead of disabling it with `checkOrigin: false`, allow trusted cross-origin hosts with `csrf.trustedOrigins`.",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "Cross-origin mutative requests that omit a `Content-Type` header are now rejected as CSRF. Ensure cross-origin form submissions include a `Content-Type` header, or add the origin to `csrf.trustedOrigins`.",
+   "change_type": "security",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "SvelteKit no longer sets `access-control-allow-origin: *` on every static asset request in development. CORS is now delegated to Vite's built-in middleware. If you rely on cross-origin access to static assets in dev, configure it in your Vite config:",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "cookie names can only contain ASCII characters. Non-ASCII characters (including Latin-1 Supplement characters like `á`) are rejected",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "the `CookieSerializeOptions` type has been renamed to `SerializeOptions`",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "the `CookieParseOptions` type has been renamed to `ParseOptions`",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "When setting a cookie without an explicit `path` (which was previously forbidden), the path defaults to `'/'` rather than the current request path, meaning the cookie applies to the entire site. This matches what most developers expect. You can pass an explicit `path` if necessary:",
+   "change_type": "default_change",
+   "breaking": true,
+   "required": false
+  },
+  {
+   "anchor": "An `App.Error` object, such as the `error` prop of an `+error.svelte` component, has a `status` property",
+   "change_type": "new_option",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Now, the second argument must always be a `string`. If there are additional properties, they must be passed as a third argument.",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "Validation errors are now passed to [`handleError`](hooks#handleError) with `kind: 'validation'`. The generic `{ status, message }` `error` object is safe to return, while the validation `issues` are provided separately for logging or custom handling.",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "In SvelteKit 2, `handleError` was not called in the case of _expected_ errors, which is to say those created with the [`error(...)`](@sveltejs-kit#error) helper. In SvelteKit 3, _all_ errors are passed to `handleError`. See the [docs](hooks#handleError) for more information.",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": false
+  },
+  {
+   "anchor": "If you need to control the HTTP status code used to render a page in the case of an error, you can do so by returning a `status` property from `handleError` alongside any other required properties of `App.Error`.",
+   "change_type": "new_option",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Errors thrown during rendering are now always routed through `handleError` and then passed to the nearest [error boundary](../svelte/svelte-boundary). Error boundaries are automatically created for each of your `+error.svelte` components.",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": false
+  },
+  {
+   "anchor": "If you have an async `handleError` hook in `hooks.client.ts`, enable `compilerOptions.experimental.async` in the `sveltekit(...)` plugin options of your Vite config so it can be awaited during rendering.",
+   "change_type": "other",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "Enhanced form action responses now use the HTTP status code passed to `fail(...)` instead of always returning `200`. If you inspect status codes on enhanced form submissions (for example in a `use:enhance` callback or in tests), they now reflect the value passed to `fail`.",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "required"
+  },
+  {
+   "anchor": "Sourcemaps are generated by default, and applied to stack traces when errors occur.",
+   "change_type": "default_change",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "[Param matchers](advanced-routing#Matching) are no longer files inside the `src/params` directory.",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "A matcher can be a function that returns a parsed value",
+   "change_type": "new_option",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Server-side [instrumentation](observability) now happens automatically if a `src/instrumentation.server.js` file exists.",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "qualifies"
+  },
+  {
+   "anchor": "All first-party adapters now require SvelteKit 3, alongside these adapter-specific changes:",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`env`, `ctx.waitUntil`, and other `ctx` properties should be imported from `cloudflare:workers`:",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`cf` is now a property of the `Request` object:",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`caches` is now a global variable:",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "To make these types available to your app, install [`wrangler`](https://www.npmjs.com/package/wrangler) and run [`wrangler types`](https://developers.cloudflare.com/workers/languages/typescript/).",
+   "change_type": "tooling",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "minimum `wrangler` is now `^4.67.0`",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`@cloudflare/workers-types` upgraded",
+   "change_type": "other",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "qualifies"
+  },
+  {
+   "anchor": "bundling now happens with `rolldown`",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "qualifies"
+  },
+  {
+   "anchor": "the `ORIGIN` environment variable is removed (set `paths.origin` in your Vite config instead)",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "static assets are served from a list recorded at build time; files added to the output directory afterwards are not served, and replaced ones keep their old size and `ETag` (use environment variables for runtime configuration)",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": true,
+   "unsure": true,
+   "unsure_about": "required"
+  },
+  {
+   "anchor": "`ETag`s for static assets are content hashes, and `Last-Modified` is no longer sent",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "breaking"
+  },
+  {
+   "anchor": "only `GET` and `HEAD` requests are served static assets; other methods result in a 405 response",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": false
+  },
+  {
+   "anchor": "output now conforms to the stable [Netlify Frameworks API](https://docs.netlify.com/build/frameworks/frameworks-api/)",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "qualifies"
+  },
+  {
+   "anchor": "deploying/previewing with the Netlify CLI requires `v17.31.0` or later (`npm i -g netlify-cli@latest`)",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "edge function build target is `es2022`",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "qualifies"
+  },
+  {
+   "anchor": "the publish directory is now an adapter option rather than being read from the `netlify.toml` file",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "the `edge` runtime is no longer supported",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "adapters can augment the Vite config with additional plugins",
+   "change_type": "new_api",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "`builder.config.kit` no longer exists — the configuration now lives at the top level",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`builder.createEntries` has been removed — use `builder.writeClient`, `builder.writeServer` and `builder.writePrerendered` directly",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "`builder.compress` returns a list of compressed files",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "`builder.mkdirp` and `builder.rimraf` are deprecated in favour of `node:fs` methods",
+   "change_type": "deprecation",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "`builder.generateManifest` has been removed — use `builder.generateServerInstance` to replace it, and `builder.manifest` to access the manifest",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "the `Server` class exported from the server output is deprecated — use the `server` object written by `builder.generateServerInstance`",
+   "change_type": "deprecation",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Adapters that use `builder.instrument` must now generate an environment initializer before any",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "For runtimes that do not expose environment variables through `process.env`, pass the contents of",
+   "change_type": "new_option",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "Returning a `204` (or any empty `2xx`) response from a `+server.js` handler now results in a response with no body, per the HTTP spec, rather than a SvelteKit envelope. Code that consumed the body of such responses needs to handle the empty body.",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "The `resolve` function passed to [`handle`](hooks#handle) is now typed to always return a `Promise<Response>` rather than `MaybePromise<Response>`.",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "breaking"
+  },
+  {
+   "anchor": "Server-only modules are now designated by a filename with a `server` segment, rather than a `.server.` infix — in other words, `stuff.server.ts`, `stuff.server.test.ts` and `server.ts` are all treated as server-only modules, whereas `server.ts` previously was not.",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "required"
+  },
+  {
+   "anchor": "Previously, any module inside `src/lib/server` was treated as server-only. This treatment now applies to _any_ `server` directory in the project with the exception of `src/routes` and your `static` directory.",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": false
+  },
+  {
+   "anchor": "Remote functions are still considered experimental — opt in via the `experimental.remoteFunctions` flag alongside `compilerOptions.experimental.async`:",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": true,
+   "unsure": true,
+   "unsure_about": "breaking"
+  },
+  {
+   "anchor": "As with server-only modules, a `remote` segment in a filename designates a remote module — `stuff.remote.ts`, `stuff.remote.test.ts` and `remote.ts` are all remote modules.",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": false
+  },
+  {
+   "anchor": "If `experimental.remoteFunctions` is not enabled, the existence of these files will cause an error.",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": true,
+   "unsure": true,
+   "unsure_about": "required"
+  },
+  {
+   "anchor": "Accessing `event.url`, `event.params`, or `event.route` inside a remote `query` function now throws an error. These properties are not meaningful in the context of a remote function (which can be called from anywhere). Pass any values you need explicitly as arguments to the function.",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "The `error` property on remote function resources (queries, live queries, forms, prerender functions) is now typed as `App.Error | undefined` rather than `any`, as the error is always transformed by `handleError`.",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "breaking"
+  },
+  {
+   "anchor": "Manually specifying a name (`<input name=\"message\">`) will cause the submission to be rejected.",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "If the user clicks a link that points to the current location, SvelteKit will `refreshAll()` instead of doing nothing.",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": false
+  },
+  {
+   "anchor": "The `'off'` value for `data-sveltekit-*` link attributes has been removed in favour of `false`.",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "To [`redirect`](@sveltejs-kit#redirect) to an external URL you must now pass an `external` option — either `true` to allow any external URL (except `javascript:` URLs, which remain blocked), or an array of allowed origins (which _can_ include `javascript:` URLs).",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "Route `config` exported from a universal `+page.js` or `+layout.js` now takes precedence",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "Module service workers are now widely supported. As such, SvelteKit will bundle and register your service worker as a module, rather than as a script.",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "required": false
+  }
+ ],
+ "sveltejs-kit@3.0.0.major_notes.md": [
+  {
+   "anchor": "breaking: move remote function types to `$app/server` ([#16740](https://github.com/sveltejs/kit/pull/16740))",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "breaking: remove `experimental.handleRenderingErrors` flag ([#16265](https://github.com/sveltejs/kit/pull/16265))",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "breaking: make `getRequest` and `setResponse` synchronous ([#16280](https://github.com/sveltejs/kit/pull/16280))",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "required"
+  },
+  {
+   "anchor": "breaking: TypeScript 6 is now the minimum required version ([#15930](https://github.com/sveltejs/kit/pull/15930))",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "breaking: refresh all load functions/queries when clicking a link to the current URL ([#16572](https://github.com/sveltejs/kit/pull/16572))",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": false
+  },
+  {
+   "anchor": "breaking: upgrade to `cookie` v2. Cookie names must now contain only ASCII characters ([#13386](https://github.com/sveltejs/kit/pull/13386))",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "major: error when a client-requested single-flight mutation isn't respected by the server, allow the server to explicitly ignore refreshes ([#16892](https://github.com/sveltejs/kit/pull/16892))",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "breaking"
+  },
+  {
+   "anchor": "major: error when a client-requested single-flight mutation isn't respected by the server, allow the server to explicitly ignore refreshes ([#16892](https://github.com/sveltejs/kit/pull/16892))",
+   "change_type": "new_option",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "breaking: remove the `preloadStrategy` option. `modulepreload` will always be used ([#15256](https://github.com/sveltejs/kit/pull/15256))",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "breaking: default the cookie `path` option to `'/'` ([#15398](https://github.com/sveltejs/kit/pull/15398))",
+   "change_type": "default_change",
+   "breaking": true,
+   "required": false
+  },
+  {
+   "anchor": "breaking: remove `@sveltejs/kit/node/polyfills` ([#15430](https://github.com/sveltejs/kit/pull/15430))",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "breaking: add `config.kit.output.linkHeaderPreload` to preload using the `Link` header ([#15939](https://github.com/sveltejs/kit/pull/15939))",
+   "change_type": "new_option",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "breaking"
+  },
+  {
+   "anchor": "breaking: require `@sveltejs/vite-plugin-svelte` v7 ([#15371](https://github.com/sveltejs/kit/pull/15371))",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "breaking: make `page.url` immutable on a type level ([#16256](https://github.com/sveltejs/kit/pull/16256))",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": true,
+   "unsure": true,
+   "unsure_about": "required"
+  },
+  {
+   "anchor": "breaking: remove `base`, `assets`, and `resolveRoute` from `$app/paths` ([#15507](https://github.com/sveltejs/kit/pull/15507))",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "breaking: remove `createEntries` from the `Builder` object passed to adapter functions ([#15509](https://github.com/sveltejs/kit/pull/15509))",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "breaking: return no content for 204 responses ([#16200](https://github.com/sveltejs/kit/pull/16200))",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": false
+  },
+  {
+   "anchor": "breaking: rename `Pathname` type to `Path` and `Asset` to `AssetPath` ([#16430](https://github.com/sveltejs/kit/pull/16430))",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "  breaking: remove leading `/` from `Path` and `AssetPath`",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "breaking: `handle`'s `resolve` is now typed to always return a `Promise` ([#16352](https://github.com/sveltejs/kit/pull/16352))",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "breaking"
+  },
+  {
+   "anchor": "breaking: remove `Server` constructor and `SSRManifest` from public types ([#16876](https://github.com/sveltejs/kit/pull/16876))",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "breaking: require Svelte config options to be passed through the Vite plugin ([#16007](https://github.com/sveltejs/kit/pull/16007))",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "breaking: form action responses now use the HTTP status code returned from `fail` ([#16200](https://github.com/sveltejs/kit/pull/16200))",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": false
+  },
+  {
+   "anchor": "breaking: write tsconfig to `node_modules/$app/tsconfig` ([#16458](https://github.com/sveltejs/kit/pull/16458))",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": true,
+   "unsure": true,
+   "unsure_about": "required"
+  },
+  {
+   "anchor": "breaking: move `defineParams` and associated types to `@sveltejs/kit/params` ([#16716](https://github.com/sveltejs/kit/pull/16716))",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "breaking: remove the deprecated CSRF `checkOrigin` option in favor of `trustedOrigins` ([#15437](https://github.com/sveltejs/kit/pull/15437))",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "breaking: the `delta` property now only exists for `popstate` navigation events ([#15522](https://github.com/sveltejs/kit/pull/15522))",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "required"
+  },
+  {
+   "anchor": "breaking: change `form.error` type from `any` to `App.Error | undefined` ([#16245](https://github.com/sveltejs/kit/pull/16245))",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "breaking"
+  },
+  {
+   "anchor": "breaking: remove deprecated `pragma` header in version polling for improved CORS support ([#15428](https://github.com/sveltejs/kit/pull/15428))",
+   "change_type": "removal",
+   "breaking": true,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "breaking"
+  },
+  {
+   "anchor": "breaking: `goto` now rejects when called with a URL that does not resolve to a route within the app, matching the existing behaviour for external URLs ([#16164](https://github.com/sveltejs/kit/pull/16164))",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": true,
+   "unsure": true,
+   "unsure_about": "required"
+  },
+  {
+   "anchor": "breaking: run all errors through the `handleError` hook ([#16664](https://github.com/sveltejs/kit/pull/16664))",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": false
+  },
+  {
+   "anchor": "breaking: require Svelte 5.56.4 or newer ([#15371](https://github.com/sveltejs/kit/pull/15371))",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "breaking: error on `event.url`, `event.params` and `event.route` access inside queries ([#16452](https://github.com/sveltejs/kit/pull/16452))",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "breaking: enhanced cross-page form actions now navigate to the action page on success and failure, matching native form behavior ([#16684](https://github.com/sveltejs/kit/pull/16684))",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": false
+  },
+  {
+   "anchor": "breaking: delete `$service-worker` module ([#16450](https://github.com/sveltejs/kit/pull/16450))",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "breaking: move `defineEnvVars` to `@sveltejs/kit/env` ([#16375](https://github.com/sveltejs/kit/pull/16375))",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "feat: allow adapters to provide additional Vite plugins ([#16206](https://github.com/sveltejs/kit/pull/16206))",
+   "change_type": "new_api",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "breaking: replace the `$lib` alias with `#lib` and remove `files.lib` config. ([#16360](https://github.com/sveltejs/kit/pull/16360))",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "breaking: replace the `$lib` alias with `#lib` and remove `files.lib` config. ([#16360](https://github.com/sveltejs/kit/pull/16360))",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "breaking: remove `#lib` definition from `paths`; requires explicit module extensions as a result ([#16736](https://github.com/sveltejs/kit/pull/16736))",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "chore: change `error`, `isHttpError`, `redirect`, and `isRedirect` to refer to public type instead of internal class ([#13036](https://github.com/sveltejs/kit/pull/13036))",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "breaking"
+  },
+  {
+   "anchor": "breaking: move hooks-related types to `@sveltejs/kit/hooks` ([#16737](https://github.com/sveltejs/kit/pull/16737))",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "breaking: add 'error' result type to `preloadData` ([#12579](https://github.com/sveltejs/kit/pull/12579))",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": true,
+   "unsure": true,
+   "unsure_about": "required"
+  },
+  {
+   "anchor": "breaking: detect new deployments on data, remote, and form action responses, tab focus, and visibility change, and default `version.pollInterval` to 1 hour ([#16496](https://github.com/sveltejs/kit/pull/16496))",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": false
+  },
+  {
+   "anchor": "breaking: detect new deployments on data, remote, and form action responses, tab focus, and visibility change, and default `version.pollInterval` to 1 hour ([#16496](https://github.com/sveltejs/kit/pull/16496))",
+   "change_type": "default_change",
+   "breaking": true,
+   "required": false
+  },
+  {
+   "anchor": "breaking: disallow cross-origin form submissions without a `Content-Type` header ([#16347](https://github.com/sveltejs/kit/pull/16347))",
+   "change_type": "security",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "breaking: Server-only directories (`/server/` in the path) are now treated as server-only everywhere inside the project (except `src/routes` and the assets directory) ([#16360](https://github.com/sveltejs/kit/pull/16360))",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": false
+  },
+  {
+   "anchor": "breaking: `config` exported from a universal route file takes precedence over a server one ([#16400](https://github.com/sveltejs/kit/pull/16400))",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "required"
+  },
+  {
+   "anchor": "breaking: remove `data-sveltekit-*` option `'off'` in favour of `false` ([#15907](https://github.com/sveltejs/kit/pull/15907))",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "breaking: move tracing out of the experimental namespace and remove the instrumentation flag ([#16260](https://github.com/sveltejs/kit/pull/16260))",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "breaking: move tracing out of the experimental namespace and remove the instrumentation flag ([#16260](https://github.com/sveltejs/kit/pull/16260))",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "breaking: add `kit.paths.origin` config option, remove `kit.prerender.origin` and the `adapter-node` `ORIGIN` environment variable ([#16161](https://github.com/sveltejs/kit/pull/16161))",
+   "change_type": "new_option",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "breaking: add `kit.paths.origin` config option, remove `kit.prerender.origin` and the `adapter-node` `ORIGIN` environment variable ([#16161](https://github.com/sveltejs/kit/pull/16161))",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "breaking: add `kit.paths.origin` config option, remove `kit.prerender.origin` and the `adapter-node` `ORIGIN` environment variable ([#16161](https://github.com/sveltejs/kit/pull/16161))",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "breaking: move `Page`, `ReadonlyURL` and `ReadonlyURLSearchParams` from `@sveltejs/kit` to `$app/state` ([#16694](https://github.com/sveltejs/kit/pull/16694))",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "breaking: remove `$app/stores` ([#15499](https://github.com/sveltejs/kit/pull/15499))",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "breaking: add `refreshAll` and deprecate `invalidateAll` ([#16289](https://github.com/sveltejs/kit/pull/16289))",
+   "change_type": "new_api",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "breaking: add `refreshAll` and deprecate `invalidateAll` ([#16289](https://github.com/sveltejs/kit/pull/16289))",
+   "change_type": "deprecation",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "breaking: reject query parameters beginning with `x-sveltekit-` ([#17125](https://github.com/sveltejs/kit/pull/17125))",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": false
+  },
+  {
+   "anchor": "breaking: disallow `*.remote.ts/js` files unless `experimental.remoteFunctions` is enabled ([#16247](https://github.com/sveltejs/kit/pull/16247))",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": true,
+   "unsure": true,
+   "unsure_about": "required"
+  },
+  {
+   "anchor": "breaking: replace the `noScroll` and `keepFocus` options of `goto` with a single `reset` option, and the `data-sveltekit-noscroll` and `data-sveltekit-keepfocus` attributes with `data-sveltekit-reset` ([#16558](https://github.com/sveltejs/kit/pull/16558))",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "breaking: replace the `noScroll` and `keepFocus` options of `goto` with a single `reset` option, and the `data-sveltekit-noscroll` and `data-sveltekit-keepfocus` attributes with `data-sveltekit-reset` ([#16558](https://github.com/sveltejs/kit/pull/16558))",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "breaking: don't abort navigation when calling `invalidate(All)` during navigation ([#16188](https://github.com/sveltejs/kit/pull/16188))",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": false
+  },
+  {
+   "anchor": "breaking: consistent special filename patterns ([#16382](https://github.com/sveltejs/kit/pull/16382))",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": false
+  },
+  {
+   "anchor": "breaking: allow `handleError` to influence status code ([#16162](https://github.com/sveltejs/kit/pull/16162))",
+   "change_type": "new_option",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "breaking: delegate CORS handling to Vite for static directory requests during development ([#16357](https://github.com/sveltejs/kit/pull/16357))",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "required"
+  },
+  {
+   "anchor": "breaking: require `vite@^8.0.12`, the first Vite 8 release bundling stable `rolldown` 1.0.0 ([#16134](https://github.com/sveltejs/kit/pull/16134))",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "breaking: only include routes with a `+page` or `+server` in `RouteId` ([#16580](https://github.com/sveltejs/kit/pull/16580))",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "required"
+  },
+  {
+   "anchor": "breaking: require Node 22.17 ([#16597](https://github.com/sveltejs/kit/pull/16597))",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "breaking: deprecate `error(status, {...})` in favour of `error(status, message, {...})` ([#16540](https://github.com/sveltejs/kit/pull/16540))",
+   "change_type": "deprecation",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "breaking"
+  },
+  {
+   "anchor": "breaking: replace the `builder.generateManifest` with `builder.generateServerInstance` and `builder.manifest` ([#16875](https://github.com/sveltejs/kit/pull/16875))",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "breaking: forbid external redirects by default ([#16198](https://github.com/sveltejs/kit/pull/16198))",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "breaking: separate adapter Vite plugins into `pre` and `post` ([#16711](https://github.com/sveltejs/kit/pull/16711))",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "breaking"
+  },
+  {
+   "anchor": "breaking: remove param files in folder in favor of `params.js/ts` file ([#16189](https://github.com/sveltejs/kit/pull/16189))",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "breaking: move env-related types to `@sveltejs/kit/env` ([#16739](https://github.com/sveltejs/kit/pull/16739))",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "breaking: `preloadCode` now takes a route ID (e.g. `/blog/[slug]`) instead of a pathname. Route IDs are not prefixed with `paths.base` ([#16576](https://github.com/sveltejs/kit/pull/16576))",
+   "change_type": "behavior_change",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "breaking: move `BeforeNavigate`, `OnNavigate`, `AfterNavigate`, `Navigation`, `NavigationTarget`, `NavigationType`, `GotoOptions` and the `Navigation*` variant types from `@sveltejs/kit` to `$app/navigation` ([#16694](https://github.com/sveltejs/kit/pull/16694))",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "breaking: move `ActionResult` and `SubmitFunction` from `@sveltejs/kit` to `$app/forms` ([#16694](https://github.com/sveltejs/kit/pull/16694))",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "breaking: remove `handleValidationError` and pass remote function validation errors to `handleError` with `kind: 'validation'` ([#16672](https://github.com/sveltejs/kit/pull/16672))",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "breaking: remove deprecated `.run()` method from live queries ([#16573](https://github.com/sveltejs/kit/pull/16573))",
+   "change_type": "removal",
+   "breaking": true,
+   "required": true
+  },
+  {
+   "anchor": "feat: allow hyphens in param and matcher names ([#16284](https://github.com/sveltejs/kit/pull/16284))",
+   "change_type": "new_option",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "feat: add `$app/manifest` module with `immutable`, `assets`, `prerendered`, and `routes` exports ([#16372](https://github.com/sveltejs/kit/pull/16372))",
+   "change_type": "new_api",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "feat: ignore files with + prefix if they contain test/spec/stories ([#16715](https://github.com/sveltejs/kit/pull/16715))",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "feat: add `ErrorProps` to generated types ([#16272](https://github.com/sveltejs/kit/pull/16272))",
+   "change_type": "new_api",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "feat: support sourcemaps in production ([#16412](https://github.com/sveltejs/kit/pull/16412))",
+   "change_type": "new_api",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "feat: return the list of compressed files from `builder.compress` ([#16566](https://github.com/sveltejs/kit/pull/16566))",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "feat: better response logging ([#16744](https://github.com/sveltejs/kit/pull/16744))",
+   "change_type": "tooling",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "qualifies"
+  },
+  {
+   "anchor": "feat: warn when tsconfig doesn't exclude service worker ([#16645](https://github.com/sveltejs/kit/pull/16645))",
+   "change_type": "tooling",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "feat: validate that all remote form fields were created with form.fields.foo.as(...) ([#16331](https://github.com/sveltejs/kit/pull/16331))",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "breaking"
+  },
+  {
+   "anchor": "feat: support function validators for environment variables ([#16402](https://github.com/sveltejs/kit/pull/16402))",
+   "change_type": "new_option",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "feat: use `type: 'module'` for service worker registrations ([#16169](https://github.com/sveltejs/kit/pull/16169))",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "feat: allow adapters to receive the Svelte config as a function argument when adding Vite plugins ([#16986](https://github.com/sveltejs/kit/pull/16986))",
+   "change_type": "new_option",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "feat: add shallow routing to `goto` and deprecate `pushState` and `replaceState` ([#16449](https://github.com/sveltejs/kit/pull/16449))",
+   "change_type": "new_option",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "feat: add shallow routing to `goto` and deprecate `pushState` and `replaceState` ([#16449](https://github.com/sveltejs/kit/pull/16449))",
+   "change_type": "deprecation",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "feat: abort `request.signal` when the response closes prematurely, via a new `response` option for `getRequest` ([#16793](https://github.com/sveltejs/kit/pull/16793))",
+   "change_type": "new_option",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "feat: make `$app/paths` importable in service workers ([#16441](https://github.com/sveltejs/kit/pull/16441))",
+   "change_type": "new_api",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "feat: pass the project-relative source `filename` to the `preload` filter for fonts ([#16443](https://github.com/sveltejs/kit/pull/16443))",
+   "change_type": "new_option",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "feat: preserve page state set through `goto(..., { state, persistState: true })` across reloads ([#16449](https://github.com/sveltejs/kit/pull/16449))",
+   "change_type": "new_option",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "feat: reinstate `$env/static/private`, `$env/dynamic/private`, `$env/static/public`, `$env/dynamic/public` and `$app/environment` as deprecated aliases for `$app/env/private` `$app/env/public` and `$app/env` ([#16334](https://github.com/sveltejs/kit/pull/16334))",
+   "change_type": "deprecation",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "feat: add `page` and `endpoint` booleans to `$app/manifest`'s `routes`, and export a `ManifestRoute` type ([#16594](https://github.com/sveltejs/kit/pull/16594))",
+   "change_type": "new_option",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "feat: `$app/service-worker` module ([#16458](https://github.com/sveltejs/kit/pull/16458))",
+   "change_type": "new_api",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "feat: resolve paths using the Vite config `root` option instead of `process.cwd()` to better support monorepo configurations such as Vitest workspaces ([#15469](https://github.com/sveltejs/kit/pull/15469))",
+   "change_type": "behavior_change",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "feat: better error logging ([#16374](https://github.com/sveltejs/kit/pull/16374))",
+   "change_type": "tooling",
+   "breaking": false,
+   "required": false,
+   "unsure": true,
+   "unsure_about": "qualifies"
+  },
+  {
+   "anchor": "feat: add `PageRouteId` and `EndpointRouteId` to `$app/types` ([#16594](https://github.com/sveltejs/kit/pull/16594))",
+   "change_type": "new_api",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "feat: better tsconfig validation ([#16458](https://github.com/sveltejs/kit/pull/16458))",
+   "change_type": "tooling",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "feat: add `dirty()` property to form fields ([#16208](https://github.com/sveltejs/kit/pull/16208))",
+   "change_type": "new_api",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "feat: support the `QUERY` HTTP method in `+server.js` ([#16782](https://github.com/sveltejs/kit/pull/16782))",
+   "change_type": "new_api",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "feat: allow adapters to override `getRequest` and `setResponse` during `vite dev` and `vite preview` ([#16753](https://github.com/sveltejs/kit/pull/16753))",
+   "change_type": "new_option",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "chore: deprecate `Response` helpers in favor of platform-provided alternatives ([#15448](https://github.com/sveltejs/kit/pull/15448))",
+   "change_type": "deprecation",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "feat: add `cookies.parse` method ([#16203](https://github.com/sveltejs/kit/pull/16203))",
+   "change_type": "new_api",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "chore: deprecate `export const snapshot` in favour of the `snapshot` helper ([#16687](https://github.com/sveltejs/kit/pull/16687))",
+   "change_type": "deprecation",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "feat: add `snapshot` helper to `$app/navigation` ([#16685](https://github.com/sveltejs/kit/pull/16685))",
+   "change_type": "new_api",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "feat: support custom values in `page.state` via `transport` hook ([#16662](https://github.com/sveltejs/kit/pull/16662))",
+   "change_type": "new_option",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "fix: default cookies to `secure` to `false` during development ([#16462](https://github.com/sveltejs/kit/pull/16462))",
+   "change_type": "fix",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "feat: warn when naively proxying requests that result in responses with a `content-encoding` header ([#16633](https://github.com/sveltejs/kit/pull/16633))",
+   "change_type": "tooling",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "feat: accept the checked state as a third argument to `.as('radio', ...)` and `.as('checkbox', ...)` so that these inputs reset to it after a submission ([#16926](https://github.com/sveltejs/kit/pull/16926))",
+   "change_type": "new_option",
+   "breaking": false,
+   "required": false
+  },
+  {
+   "anchor": "feat: add an `applyReroute` helper for adapters that support split serverless function deployments ([#16665](https://github.com/sveltejs/kit/pull/16665))",
+   "change_type": "new_api",
+   "breaking": false,
+   "required": false
+  }
+ ]
+}

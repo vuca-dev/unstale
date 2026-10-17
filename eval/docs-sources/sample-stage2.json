@@ -1,0 +1,367 @@
+{
+ "note": "D1 stage 2 sample (vault: \"Docs Sources - Eval\"): distinct packages declared directly by recently active public",
+ "repositories": [
+  {
+   "repo": "latitude-dev/latitude-llm",
+   "language": "TypeScript",
+   "deps": 3
+  },
+  {
+   "repo": "caelestia-dots/caelestia",
+   "language": "TypeScript",
+   "deps": 0
+  },
+  {
+   "repo": "amantus-ai/vibetunnel",
+   "language": "TypeScript",
+   "deps": 0
+  },
+  {
+   "repo": "apple/embedding-atlas",
+   "language": "TypeScript",
+   "deps": 3
+  },
+  {
+   "repo": "vuejs/router",
+   "language": "TypeScript",
+   "deps": 21
+  },
+  {
+   "repo": "ferdium/ferdium-app",
+   "language": "TypeScript",
+   "deps": 145
+  },
+  {
+   "repo": "fastmail/Squire",
+   "language": "TypeScript",
+   "deps": 11
+  },
+  {
+   "repo": "darkmatter2048/WindowsCleaner",
+   "language": "TypeScript",
+   "deps": 15
+  },
+  {
+   "repo": "suren-atoyan/monaco-react",
+   "language": "TypeScript",
+   "deps": 22
+  },
+  {
+   "repo": "swimlane/ngx-datatable",
+   "language": "TypeScript",
+   "deps": 62
+  },
+  {
+   "repo": "sqlectron/sqlectron",
+   "language": "TypeScript",
+   "deps": 110
+  },
+  {
+   "repo": "loiane/javascript-datastructures-algorithms",
+   "language": "TypeScript",
+   "deps": 6
+  },
+  {
+   "repo": "zebbern/claude-code-guide",
+   "language": "Python",
+   "deps": 0
+  },
+  {
+   "repo": "VectifyAI/OpenKB",
+   "language": "Python",
+   "deps": 14
+  },
+  {
+   "repo": "ParisNeo/lollms-webui",
+   "language": "Python",
+   "deps": 0
+  },
+  {
+   "repo": "andrewekhalel/MLQuestions",
+   "language": "Python",
+   "deps": 0
+  },
+  {
+   "repo": "changyeyu/LLM-RL-Visualized",
+   "language": "Python",
+   "deps": 0
+  },
+  {
+   "repo": "carltongibson/django-filter",
+   "language": "Python",
+   "deps": 1
+  },
+  {
+   "repo": "astrid-runtime/sdk-rust",
+   "language": "Rust",
+   "deps": 0
+  },
+  {
+   "repo": "MicYou-Dev/MicYou",
+   "language": "Rust",
+   "deps": 0
+  },
+  {
+   "repo": "immunant/c2rust",
+   "language": "Rust",
+   "deps": 0
+  },
+  {
+   "repo": "trunk-rs/trunk",
+   "language": "Rust",
+   "deps": 69
+  }
+ ],
+ "pool_size": 382,
+ "packages": [
+  {
+   "purl": "pkg:pypi/prompt-toolkit",
+   "declared_by": [
+    "VectifyAI/OpenKB"
+   ]
+  },
+  {
+   "purl": "pkg:npm/electron-dl",
+   "declared_by": [
+    "ferdium/ferdium-app"
+   ]
+  },
+  {
+   "purl": "pkg:npm/react-resizable",
+   "declared_by": [
+    "sqlectron/sqlectron"
+   ]
+  },
+  {
+   "purl": "pkg:npm/playwright",
+   "declared_by": [
+    "vuejs/router",
+    "swimlane/ngx-datatable"
+   ]
+  },
+  {
+   "purl": "pkg:npm/@vitest/browser-playwright",
+   "declared_by": [
+    "vuejs/router",
+    "swimlane/ngx-datatable"
+   ]
+  },
+  {
+   "purl": "pkg:npm/prettier",
+   "declared_by": [
+    "apple/embedding-atlas",
+    "ferdium/ferdium-app",
+    "fastmail/Squire",
+    "suren-atoyan/monaco-react",
+    "swimlane/ngx-datatable",
+    "sqlectron/sqlectron"
+   ]
+  },
+  {
+   "purl": "pkg:npm/classnames",
+   "declared_by": [
+    "ferdium/ferdium-app",
+    "sqlectron/sqlectron"
+   ]
+  },
+  {
+   "purl": "pkg:npm/globals",
+   "declared_by": [
+    "suren-atoyan/monaco-react",
+    "sqlectron/sqlectron"
+   ]
+  },
+  {
+   "purl": "pkg:cargo/tower-http",
+   "declared_by": [
+    "trunk-rs/trunk"
+   ]
+  },
+  {
+   "purl": "pkg:npm/tar",
+   "declared_by": [
+    "ferdium/ferdium-app"
+   ]
+  },
+  {
+   "purl": "pkg:npm/@vitest/ui",
+   "declared_by": [
+    "vuejs/router"
+   ]
+  },
+  {
+   "purl": "pkg:npm/html-webpack-plugin",
+   "declared_by": [
+    "sqlectron/sqlectron"
+   ]
+  },
+  {
+   "purl": "pkg:npm/core-js",
+   "declared_by": [
+    "sqlectron/sqlectron"
+   ]
+  },
+  {
+   "purl": "pkg:npm/clsx",
+   "declared_by": [
+    "sqlectron/sqlectron"
+   ]
+  },
+  {
+   "purl": "pkg:npm/@adonisjs/ace",
+   "declared_by": [
+    "ferdium/ferdium-app"
+   ]
+  },
+  {
+   "purl": "pkg:npm/react-topbar-progress-indicator",
+   "declared_by": [
+    "ferdium/ferdium-app"
+   ]
+  },
+  {
+   "purl": "pkg:npm/sass-loader",
+   "declared_by": [
+    "sqlectron/sqlectron"
+   ]
+  },
+  {
+   "purl": "pkg:cargo/backon",
+   "declared_by": [
+    "trunk-rs/trunk"
+   ]
+  },
+  {
+   "purl": "pkg:npm/route-parser",
+   "declared_by": [
+    "ferdium/ferdium-app"
+   ]
+  },
+  {
+   "purl": "pkg:npm/@angular/animations",
+   "declared_by": [
+    "swimlane/ngx-datatable"
+   ]
+  },
+  {
+   "purl": "pkg:npm/electron-log",
+   "declared_by": [
+    "sqlectron/sqlectron"
+   ]
+  },
+  {
+   "purl": "pkg:npm/react-intl",
+   "declared_by": [
+    "ferdium/ferdium-app"
+   ]
+  },
+  {
+   "purl": "pkg:npm/eslint-plugin-security",
+   "declared_by": [
+    "swimlane/ngx-datatable"
+   ]
+  },
+  {
+   "purl": "pkg:cargo/swc_common",
+   "declared_by": [
+    "trunk-rs/trunk"
+   ]
+  },
+  {
+   "purl": "pkg:npm/@mdi/react",
+   "declared_by": [
+    "ferdium/ferdium-app"
+   ]
+  },
+  {
+   "purl": "pkg:cargo/dunce",
+   "declared_by": [
+    "trunk-rs/trunk"
+   ]
+  },
+  {
+   "purl": "pkg:pypi/json-repair",
+   "declared_by": [
+    "VectifyAI/OpenKB"
+   ]
+  },
+  {
+   "purl": "pkg:cargo/which",
+   "declared_by": [
+    "trunk-rs/trunk"
+   ]
+  },
+  {
+   "purl": "pkg:npm/@angular/compiler",
+   "declared_by": [
+    "swimlane/ngx-datatable"
+   ]
+  },
+  {
+   "purl": "pkg:npm/protractor",
+   "declared_by": [
+    "swimlane/ngx-datatable"
+   ]
+  },
+  {
+   "purl": "pkg:npm/tailwindcss-animate",
+   "declared_by": [
+    "sqlectron/sqlectron"
+   ]
+  },
+  {
+   "purl": "pkg:npm/react-select",
+   "declared_by": [
+    "sqlectron/sqlectron"
+   ]
+  },
+  {
+   "purl": "pkg:npm/markdown-to-jsx",
+   "declared_by": [
+    "ferdium/ferdium-app"
+   ]
+  },
+  {
+   "purl": "pkg:cargo/swc_ecma_transforms_base",
+   "declared_by": [
+    "trunk-rs/trunk"
+   ]
+  },
+  {
+   "purl": "pkg:npm/@octokit/core",
+   "declared_by": [
+    "ferdium/ferdium-app"
+   ]
+  },
+  {
+   "purl": "pkg:npm/@types/semver",
+   "declared_by": [
+    "ferdium/ferdium-app"
+   ]
+  },
+  {
+   "purl": "pkg:npm/lucide-react",
+   "declared_by": [
+    "sqlectron/sqlectron"
+   ]
+  },
+  {
+   "purl": "pkg:cargo/base64",
+   "declared_by": [
+    "trunk-rs/trunk"
+   ]
+  },
+  {
+   "purl": "pkg:npm/tsup",
+   "declared_by": [
+    "suren-atoyan/monaco-react"
+   ]
+  },
+  {
+   "purl": "pkg:npm/esbuild-runner",
+   "declared_by": [
+    "ferdium/ferdium-app"
+   ]
+  }
+ ]
+}

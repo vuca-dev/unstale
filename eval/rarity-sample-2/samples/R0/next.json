@@ -1,0 +1,251 @@
+{
+ "technology": "next",
+ "rule": "GitHub code search for the technology's first package name quoted in package.json files (pages 1-10); keep files named exactly package.json that declare one of the technology's packages in dependencies or devDependencies at the catalog's current major; drop forks, archived and template repositories, repositories whose name, description or topics mark a tutorial, course, example, demo, starter, boilerplate or clone, the technology's own organisation, evaluation repositories and their forks or upstreams, and repositories over 200 MB; one repository per owner; rank by stars (then name); take the first 5.",
+ "selection": {
+  "pool": "code-search",
+  "major": "current",
+  "n": 5
+ },
+ "query": "\"next\" filename:package.json extension:json",
+ "major": "16",
+ "majors": [
+  "16"
+ ],
+ "drawn": "2026-10-15T17:00:00Z",
+ "candidates": 967,
+ "passed_over": [
+  {
+   "repo": "ComposioHQ/composio",
+   "stars": 30563,
+   "why": "over 200 MB"
+  },
+  {
+   "repo": "PasteBar/PasteBarApp",
+   "stars": 2175,
+   "why": "over 200 MB"
+  },
+  {
+   "repo": "Tencent/CodeAnalysis",
+   "stars": 1850,
+   "why": "over 200 MB"
+  },
+  {
+   "repo": "VishwaGauravIn/github-profile-readme-maker",
+   "stars": 1013,
+   "why": "not a project (\"template\")"
+  },
+  {
+   "repo": "Secretmapper/combustion",
+   "stars": 468,
+   "why": "no package.json declaring next at major 16"
+  },
+  {
+   "repo": "causalens/dara",
+   "stars": 408,
+   "why": "no package.json declaring next at major 16"
+  },
+  {
+   "repo": "xiguaxigua/ffmpeg-online",
+   "stars": 326,
+   "why": "no package.json declaring next at major 16"
+  },
+  {
+   "repo": "webgptorg/promptbook",
+   "stars": 170,
+   "why": "over 200 MB"
+  },
+  {
+   "repo": "epam/cloud-pipeline",
+   "stars": 162,
+   "why": "over 200 MB"
+  },
+  {
+   "repo": "NextAgentX/trae-workbuddy-switch",
+   "stars": 102,
+   "why": "no package.json declaring next at major 16"
+  },
+  {
+   "repo": "microfox-ai/microfox",
+   "stars": 93,
+   "why": "no package.json declaring next at major 16"
+  },
+  {
+   "repo": "zevarc/FastAir",
+   "stars": 88,
+   "why": "no package.json declaring next at major 16"
+  },
+  {
+   "repo": "databricks-solutions/caspers",
+   "stars": 70,
+   "why": "not a project (\"demo\")"
+  },
+  {
+   "repo": "brookslybrand/next-nested-layouts",
+   "stars": 47,
+   "why": "no package.json declaring next at major 16"
+  },
+  {
+   "repo": "rvanbekkum/vsc-xliff-sync",
+   "stars": 37,
+   "why": "no package.json declaring next at major 16"
+  },
+  {
+   "repo": "Vital-Proxies/proxy-tester",
+   "stars": 37,
+   "why": "no package.json declaring next at major 16"
+  },
+  {
+   "repo": "namanbarkiya/niya-saas-template",
+   "stars": 33,
+   "why": "template repository"
+  },
+  {
+   "repo": "gamzesirin/Commit-Message-Helper",
+   "stars": 32,
+   "why": "no package.json declaring next at major 16"
+  },
+  {
+   "repo": "basedosdados/website",
+   "stars": 30,
+   "why": "over 200 MB"
+  },
+  {
+   "repo": "PacktPublishing/TypeScript-5-Design-Patterns-and-Best-Practices",
+   "stars": 25,
+   "why": "no package.json declaring next at major 16"
+  },
+  {
+   "repo": "videosdk-live/videosdk-rtc-react-prebuilt-ui",
+   "stars": 25,
+   "why": "no package.json declaring next at major 16"
+  },
+  {
+   "repo": "Strumenta/tylasu",
+   "stars": 23,
+   "why": "no package.json declaring next at major 16"
+  },
+  {
+   "repo": "sanyaade-iot/next-site",
+   "stars": 22,
+   "why": "no package.json declaring next at major 16"
+  },
+  {
+   "repo": "Vzlomhik2005/Yandex-Music-Mod",
+   "stars": 22,
+   "why": "no package.json declaring next at major 16"
+  },
+  {
+   "repo": "Soumojitshome2023/nextjs-videocall-webapp",
+   "stars": 21,
+   "why": "no package.json declaring next at major 16"
+  },
+  {
+   "repo": "Duzafizzl/substrate-ai",
+   "stars": 19,
+   "why": "no package.json declaring next at major 16"
+  },
+  {
+   "repo": "AmazonAppDev/ring-api-helloworld",
+   "stars": 18,
+   "why": "no package.json declaring next at major 16"
+  },
+  {
+   "repo": "industry-standard-good-practice/lurker-for-reddit",
+   "stars": 18,
+   "why": "no package.json declaring next at major 16"
+  },
+  {
+   "repo": "0x088/BAYCV2",
+   "stars": 17,
+   "why": "no package.json declaring next at major 16"
+  },
+  {
+   "repo": "Lemoncode/bootcamp-backend",
+   "stars": 17,
+   "why": "not a project (\"bootcamp\")"
+  },
+  {
+   "repo": "atapas/quotes",
+   "stars": 16,
+   "why": "no package.json declaring next at major 16"
+  },
+  {
+   "repo": "danilo-leal/roles-at",
+   "stars": 16,
+   "why": "no package.json declaring next at major 16"
+  },
+  {
+   "repo": "FourthwallHQ/vercel-commerce",
+   "stars": 16,
+   "why": "no package.json declaring next at major 16"
+  },
+  {
+   "repo": "jinbooks/cerescrm",
+   "stars": 15,
+   "why": "no package.json declaring next at major 16"
+  },
+  {
+   "repo": "francisudeji/authentication-for-nextjs-serverless",
+   "stars": 14,
+   "why": "no package.json declaring next at major 16"
+  },
+  {
+   "repo": "aspiringsecurity/EMTTR",
+   "stars": 13,
+   "why": "over 200 MB"
+  },
+  {
+   "repo": "yakimovim/vscode-check-npm-updates",
+   "stars": 13,
+   "why": "no package.json declaring next at major 16"
+  },
+  {
+   "repo": "brunos3d/nextjs-recoil-initial-state-ssr",
+   "stars": 10,
+   "why": "not a project (\"example\")"
+  },
+  {
+   "repo": "jsontype/syntax",
+   "stars": 10,
+   "why": "over 200 MB"
+  }
+ ],
+ "repos": [
+  {
+   "repo": "Ezer015/pickacg",
+   "commit": "f687db56aa5deff869abc148401e26bd0c8b6de4",
+   "stars": 163,
+   "manifest": "package.json",
+   "declares": "next@16.0.8"
+  },
+  {
+   "repo": "thiago-salvador/puxa-ficha",
+   "commit": "31b29ee6de4e29b992f172af6efc1309715054ba",
+   "stars": 22,
+   "manifest": "package.json",
+   "declares": "next@^16.4.0"
+  },
+  {
+   "repo": "kitokoh/leopardo-hr",
+   "commit": "34a9243cb2d163d356eb9069f65d0dd93b8b774f",
+   "stars": 14,
+   "manifest": "front/travel-web/package.json",
+   "declares": "next@16.3.4"
+  },
+  {
+   "repo": "defi-wonderland/interop-sdk",
+   "commit": "f3311dd4accdd0823760752356507d298a4f867e",
+   "stars": 10,
+   "manifest": "apps/benchmark/package.json",
+   "declares": "next@16.1.0"
+  },
+  {
+   "repo": "reallyMilo/AnnoStamps",
+   "commit": "82ab8972e5803285494e132705dc8dac794562a0",
+   "stars": 10,
+   "manifest": "package.json",
+   "declares": "next@16.2.6"
+  }
+ ],
+ "counts": {}
+}

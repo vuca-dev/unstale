@@ -1,0 +1,272 @@
+{
+ "event": "temporal-nest12",
+ "catalog": [
+  "nestjs-accept-header",
+  "nestjs-angular",
+  "nestjs-argumentmetadata",
+  "nestjs-builder",
+  "nestjs-bun",
+  "nestjs-circular-dependencies",
+  "nestjs-configmodule-forroot-validationschema",
+  "nestjs-consolelogger-structuredparams",
+  "nestjs-cookies",
+  "nestjs-csrf-protection",
+  "nestjs-deserializers",
+  "nestjs-esm-packages",
+  "nestjs-esm-packages-2",
+  "nestjs-eventpattern",
+  "nestjs-express-graceful-shutdown",
+  "nestjs-factory-inject-array",
+  "nestjs-factory-providers",
+  "nestjs-file-upload-interceptors",
+  "nestjs-flattenparams",
+  "nestjs-forcecloseconnections",
+  "nestjs-global-prefixes",
+  "nestjs-graphiql",
+  "nestjs-graphiql-graphiql",
+  "nestjs-graphql-ws",
+  "nestjs-grpc-package-namespace",
+  "nestjs-grpcexceptionfilter",
+  "nestjs-handledisconnect",
+  "nestjs-handler-results",
+  "nestjs-healthcheckerror",
+  "nestjs-healthindicator",
+  "nestjs-httpexceptionoptions-errorcode",
+  "nestjs-kafka-client",
+  "nestjs-kafka-connection",
+  "nestjs-kafka-processing-end-hook",
+  "nestjs-lifecycle-hooks-2",
+  "nestjs-logger-2",
+  "nestjs-message-handler-rejections",
+  "nestjs-message-stream",
+  "nestjs-messagepattern",
+  "nestjs-microservices-pre-request-hook",
+  "nestjs-middleware-exceptions",
+  "nestjs-module-name",
+  "nestjs-mqtt-client",
+  "nestjs-mqtt-listen-callback",
+  "nestjs-multer",
+  "nestjs-multer-error-mapping",
+  "nestjs-multer-limits",
+  "nestjs-nats-client",
+  "nestjs-nats-connection",
+  "nestjs-nats-io-transport-node",
+  "nestjs-nats-packet-serialization",
+  "nestjs-nest-build-emit-declarations",
+  "nestjs-nest-build-no-type-check",
+  "nestjs-nest-build-parallel",
+  "nestjs-nest-build-rspackpath",
+  "nestjs-nest-cli-json-includelibraryassets",
+  "nestjs-nest-deploy",
+  "nestjs-nest-new",
+  "nestjs-nest-upgrade",
+  "nestjs-nest-upgrade-dry-run",
+  "nestjs-nestfactory-create-instrument",
+  "nestjs-nestjs-observe",
+  "nestjs-node-js",
+  "nestjs-normalizepath",
+  "nestjs-open-tcp-sockets",
+  "nestjs-optional-2",
+  "nestjs-optional-constructor-parameters",
+  "nestjs-oxlint",
+  "nestjs-package-json-type",
+  "nestjs-parsearraypipe",
+  "nestjs-parsearraypipe-items",
+  "nestjs-parsedatepipe-default",
+  "nestjs-parsedatepipe-options",
+  "nestjs-pending-requests",
+  "nestjs-pending-requests-2",
+  "nestjs-processing-hook-envelope",
+  "nestjs-proto-key-stripping-hook",
+  "nestjs-redis-client-retry",
+  "nestjs-redis-wildcards",
+  "nestjs-reflector-createdecorator",
+  "nestjs-regexp",
+  "nestjs-reply",
+  "nestjs-reply-subscription",
+  "nestjs-request",
+  "nestjs-request-response-span",
+  "nestjs-request-response-span-2",
+  "nestjs-rmq-client",
+  "nestjs-rmq-requests",
+  "nestjs-route-handler-names",
+  "nestjs-route-parameter-decorators-schema",
+  "nestjs-routeconflictpolicy-duplicate",
+  "nestjs-routeconflictpolicy-routeconflictpolicy",
+  "nestjs-routeconflictpolicy-shadow",
+  "nestjs-routeresolutionstrategy",
+  "nestjs-rpc-envelope",
+  "nestjs-rspack",
+  "nestjs-rspackpath",
+  "nestjs-security-headers",
+  "nestjs-servermqtt-maxconnectionattempts",
+  "nestjs-shutdown-signal-listeners",
+  "nestjs-signal-listeners",
+  "nestjs-silent",
+  "nestjs-standardschemaserializerinterceptor",
+  "nestjs-standardschemavalidationpipe",
+  "nestjs-statuscode",
+  "nestjs-string-enum-values",
+  "nestjs-subscriptions-transport-ws",
+  "nestjs-subsequent-middleware",
+  "nestjs-tcp-client-socket",
+  "nestjs-tcp-event-listeners",
+  "nestjs-tcp-peer-memory",
+  "nestjs-timeout-timeout",
+  "nestjs-uuid-v3",
+  "nestjs-uuid-validation",
+  "nestjs-validationoptions-libraryoptions",
+  "nestjs-validationpipe-2",
+  "nestjs-value-providers",
+  "nestjs-vitest",
+  "nestjs-webpack",
+  "nestjs-webpackpath"
+ ],
+ "runs": [
+  {
+   "map": {
+    "K1": [
+     "nestjs-healthcheckerror",
+     "nestjs-healthindicator"
+    ],
+    "K2": [
+     "nestjs-healthcheckerror",
+     "nestjs-healthindicator"
+    ],
+    "K3": [
+     "nestjs-healthcheckerror",
+     "nestjs-healthindicator"
+    ],
+    "K4": [
+     "nestjs-esm-packages-2"
+    ],
+    "K5": [
+     "nestjs-esm-packages-2",
+     "nestjs-node-js"
+    ],
+    "K6": [],
+    "K7": [],
+    "K8": [
+     "nestjs-healthcheckerror",
+     "nestjs-healthindicator"
+    ],
+    "K9": [
+     "nestjs-esm-packages-2",
+     "nestjs-node-js"
+    ],
+    "K10": [
+     "nestjs-esm-packages-2",
+     "nestjs-node-js",
+     "nestjs-healthcheckerror",
+     "nestjs-healthindicator"
+    ],
+    "K11": [
+     "nestjs-esm-packages-2",
+     "nestjs-healthcheckerror",
+     "nestjs-healthindicator"
+    ],
+    "K12": [
+     "nestjs-esm-packages-2",
+     "nestjs-node-js",
+     "nestjs-healthcheckerror",
+     "nestjs-healthindicator"
+    ],
+    "K13": [
+     "nestjs-healthcheckerror"
+    ],
+    "K14": [
+     "nestjs-esm-packages-2",
+     "nestjs-node-js"
+    ],
+    "K15": [
+     "nestjs-esm-packages-2",
+     "nestjs-node-js"
+    ],
+    "K16": [
+     "nestjs-healthcheckerror",
+     "nestjs-healthindicator"
+    ]
+   },
+   "usage": {
+    "input_tokens": 21792,
+    "cached_input_tokens": 9984,
+    "cache_write_input_tokens": 0,
+    "output_tokens": 1788,
+    "reasoning_output_tokens": 1552
+   }
+  },
+  {
+   "map": {
+    "K1": [
+     "nestjs-healthcheckerror",
+     "nestjs-healthindicator"
+    ],
+    "K2": [
+     "nestjs-healthcheckerror",
+     "nestjs-healthindicator"
+    ],
+    "K3": [
+     "nestjs-healthcheckerror",
+     "nestjs-healthindicator"
+    ],
+    "K4": [
+     "nestjs-esm-packages-2"
+    ],
+    "K5": [
+     "nestjs-esm-packages-2",
+     "nestjs-node-js"
+    ],
+    "K6": [],
+    "K7": [],
+    "K8": [
+     "nestjs-healthcheckerror",
+     "nestjs-healthindicator"
+    ],
+    "K9": [
+     "nestjs-esm-packages-2",
+     "nestjs-node-js"
+    ],
+    "K10": [
+     "nestjs-esm-packages-2",
+     "nestjs-node-js",
+     "nestjs-healthcheckerror",
+     "nestjs-healthindicator"
+    ],
+    "K11": [
+     "nestjs-esm-packages-2",
+     "nestjs-healthcheckerror",
+     "nestjs-healthindicator"
+    ],
+    "K12": [
+     "nestjs-esm-packages-2",
+     "nestjs-node-js",
+     "nestjs-healthcheckerror",
+     "nestjs-healthindicator"
+    ],
+    "K13": [
+     "nestjs-healthcheckerror"
+    ],
+    "K14": [
+     "nestjs-esm-packages-2",
+     "nestjs-node-js"
+    ],
+    "K15": [
+     "nestjs-esm-packages-2",
+     "nestjs-node-js"
+    ],
+    "K16": [
+     "nestjs-healthcheckerror",
+     "nestjs-healthindicator"
+    ]
+   },
+   "usage": {
+    "input_tokens": 21792,
+    "cached_input_tokens": 9984,
+    "cache_write_input_tokens": 0,
+    "output_tokens": 1105,
+    "reasoning_output_tokens": 869
+   }
+  }
+ ],
+ "source": "eval/replay/events match runs on catalog v2 (record set identical to the published catalog)"
+}

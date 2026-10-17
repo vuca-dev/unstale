@@ -1,0 +1,277 @@
+# Central ingestion as a batch job on an ephemeral runner, then a static catalog deploy to GitHub Pages.
+#
+#   restore state -> pipeline -> export static catalog -> verify -> save state -> deploy (Pages)
+#
+# State: the central store (UNSTALE_STORE: central/ state and caches, catalog/ published tree) is the only thing
+# that must outlive a runner. It is kept as assets of a *draft* release tagged `catalog-state` in this repository:
+# one generation = `state-<stamp>.tar.zst.<aa,ab,...>` (zstd tarball split under the 2 GiB asset limit) plus
+# `state-<stamp>.sha256`, uploaded last, so a generation without its checksum file is incomplete and ignored. The
+# newest three generations are kept (rollback); older ones are deleted after a successful save. Why not the
+# alternatives: actions/cache is evicted after 7 days without access and shares a 10 GB repository limit, so it
+# cannot be the only copy; a git branch would put ~1 GB of churning caches and shallow clones into history (and
+# hit the 100 MB file limit); artifacts expire. A draft release is durable, has no storage quota, is invisible to
+# readers without push access, and is a plain download for a later move to another scheduler (vault: Central
+# Scheduling and Infrastructure, "Portability stance"). Seeding it from an operator's store: CONTRIBUTING.md.
+#
+# Schedule: every 3 hours. Each run re-lists releases (--refresh), so the catalog is at most ~3 hours behind
+# upstream; Pages allows about 10 deploys an hour, so this stays far inside the "hourly batched deploys" budget.
+# A run moves the whole state (1.1 GB on disk, ~0.5 GB compressed, October 2026) twice, which an hourly schedule
+# would multiply for little gain. Model calls are cached per record, so a run with no new releases makes none.
+#
+# 60-day rule: GitHub disables scheduled workflows in a public repository after 60 days without repository
+# activity. This job commits nothing (state lives in release assets), so it does not count as activity. When the
+# schedule is disabled, re-enable it under Actions > ingest > "Enable workflow" (or `gh workflow enable
+# ingest.yml`); workflow_dispatch keeps working meanwhile.
+name: ingest
+
+on:
+  schedule:
+    - cron: "23 */3 * * *"
+  workflow_dispatch:
+    inputs:
+      tech:
+        description: "Only this technology (e.g. next); empty for all"
+        required: false
+        type: string
+      bootstrap:
+        description: "No saved state yet: start from an empty store (full re-ingestion, every model call uncached)"
+        required: false
+        type: boolean
+        default: false
+      deploy:
+        description: "Deploy the exported catalog to GitHub Pages"
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ingest
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    # Under the 6-hour hosted-job limit, with the pipeline step capped lower so the state is still saved.
+    timeout-minutes: 300
+    permissions:
+      contents: write # the catalog-state draft release (read and write its assets)
+    outputs:
+      deploy: ${{ steps.verify.outputs.deploy }}
+    env:
+      STATE_TAG: catalog-state
+      STATE_KEEP: "3"
+      GH_REPO: ${{ github.repository }}
+      GH_TOKEN: ${{ github.token }} # state release only; ingestion uses INGEST_GITHUB_TOKEN
+      CODEX_VERSION: 0.162.1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Required secrets are set
+        env:
+          INGEST_GITHUB_TOKEN: ${{ secrets.INGEST_GITHUB_TOKEN }}
+          JEV_API_KEY: ${{ secrets.JEV_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          missing=0
+          for name in INGEST_GITHUB_TOKEN JEV_API_KEY OPENAI_API_KEY; do
+            if [ -z "${!name}" ]; then echo "::error title=Missing secret::$name is not set"; missing=1; fi
+          done
+          exit "$missing"
+
+      - name: Paths
+        run: |
+          {
+            echo "UNSTALE_STORE=$RUNNER_TEMP/store"
+            echo "UNSTALE_BIN=$GITHUB_WORKSPACE/local/target/release/unstale"
+            echo "SITE_DIR=$RUNNER_TEMP/site"
+          } >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: central/package-lock.json
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable branch
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: local
+      # The rarity sample counts terms with the client's own matcher (`unstale count-terms`, UNSTALE_BIN).
+      - name: Build the client
+        run: cargo build --release --locked --manifest-path local/Cargo.toml -p unstale
+      - name: npm ci
+        run: npm ci --prefix central --no-audit --no-fund
+
+      - name: Install and log in to the Codex CLI
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          npm install -g --no-audit --no-fund "@openai/codex@$CODEX_VERSION"
+          echo "UNSTALE_CODEX_BIN=$(command -v codex)" >> "$GITHUB_ENV"
+          printenv OPENAI_API_KEY | codex login --with-api-key
+          codex login status
+
+      - name: Restore state
+        id: restore
+        env:
+          BOOTSTRAP: ${{ inputs.bootstrap }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$UNSTALE_STORE"
+          rels="$(gh api "repos/$GH_REPO/releases?per_page=100" --paginate \
+            --jq '.[] | select(.draft and .tag_name == env.STATE_TAG) | .id')"
+          rel="${rels%%$'\n'*}"
+          if [ -z "$rel" ]; then
+            if [ "$BOOTSTRAP" != "true" ]; then
+              echo "::error title=No saved state::No draft release '$STATE_TAG'. Seed it from an operator store (CONTRIBUTING.md) or run this workflow with bootstrap=true."
+              exit 1
+            fi
+            rel="$(gh api -X POST "repos/$GH_REPO/releases" -f tag_name="$STATE_TAG" -F draft=true \
+              -f name="catalog state" -f body="Central store snapshots for the ingest workflow. Do not publish." --jq .id)"
+            echo "::warning::Created draft release $STATE_TAG; starting from an empty store."
+            echo "release=$rel" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "release=$rel" >> "$GITHUB_OUTPUT"
+          gh api "repos/$GH_REPO/releases/$rel/assets?per_page=100" --paginate --jq '.[] | "\(.id)\t\(.name)"' > "$RUNNER_TEMP/assets.tsv"
+          manifest="$(cut -f2 "$RUNNER_TEMP/assets.tsv" | grep -E '^state-.*\.sha256$' | sort | tail -1 || true)"
+          if [ -z "$manifest" ]; then
+            if [ "$BOOTSTRAP" != "true" ]; then
+              echo "::error title=No saved state::Release '$STATE_TAG' has no complete generation (no state-*.sha256)."
+              exit 1
+            fi
+            echo "::warning::No saved generation; starting from an empty store."
+            exit 0
+          fi
+          gen="${manifest%.sha256}"
+          echo "restoring $gen"
+          dl="$RUNNER_TEMP/state-in"; mkdir -p "$dl"
+          while IFS=$'\t' read -r id name; do
+            case "$name" in "$gen".*)
+              curl -fsSL --retry 3 -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/octet-stream" \
+                -o "$dl/$name" "$GITHUB_API_URL/repos/$GH_REPO/releases/assets/$id" ;;
+            esac
+          done < "$RUNNER_TEMP/assets.tsv"
+          (cd "$dl" && sha256sum -c "$manifest")
+          find "$dl" -name "$gen.tar.zst.*" | sort | xargs cat | zstd -d -q | tar -x -C "$UNSTALE_STORE"
+          rm -rf "$dl"
+          du -sh "$UNSTALE_STORE"/*
+
+      - name: Pipeline
+        id: pipeline
+        timeout-minutes: 240
+        env:
+          GITHUB_TOKEN: ${{ secrets.INGEST_GITHUB_TOKEN }}
+          JEV_API_KEY: ${{ secrets.JEV_API_KEY }}
+          CODEX_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          TECH: ${{ inputs.tech }}
+        run: npm --prefix central run pipeline -- --refresh ${TECH:+--tech "$TECH"}
+
+      # Writes a self-contained static tree and prunes shards past their 7-day grace period (the grace bookkeeping
+      # lives in the store, so this runs before the state is saved).
+      - name: Export the static catalog
+        id: export
+        if: steps.pipeline.outcome == 'success'
+        run: npm --prefix central run catalog -- export "$SITE_DIR"
+
+      # Guard: deploy only a tree whose root parses and whose every index entry has its shard, with the size and
+      # sha256 the index states (a client verifies the same), and which fits the Pages 1 GB site limit.
+      - name: Verify the exported catalog
+        id: verify
+        if: steps.export.outcome == 'success'
+        env:
+          DEPLOY: ${{ github.event_name == 'schedule' || inputs.deploy }}
+        run: |
+          set -euo pipefail
+          # shellcheck disable=SC2016 # JavaScript template literals, not shell expansions
+          node --input-type=module -e '
+            import { createHash } from "node:crypto";
+            import { readFileSync, readdirSync } from "node:fs";
+            import { join } from "node:path";
+            const site = process.env.SITE_DIR;
+            const root = JSON.parse(readFileSync(join(site, "v1", "root.json"), "utf8"));
+            if (typeof root.schema !== "number") throw new Error("v1/root.json has no schema");
+            const techs = readdirSync(join(site, "v1", "tech")).filter((f) => f.endsWith(".json"));
+            if (!techs.length) throw new Error("no technology indexes");
+            let shards = 0;
+            for (const f of techs) {
+              const index = JSON.parse(readFileSync(join(site, "v1", "tech", f), "utf8"));
+              for (const s of index.shards ?? []) {
+                const bytes = readFileSync(join(site, s.path));
+                if (bytes.length !== s.bytes) throw new Error(`${s.path}: ${bytes.length} bytes, index says ${s.bytes}`);
+                const sha = createHash("sha256").update(bytes).digest("hex");
+                if (sha !== s.sha256) throw new Error(`${s.path}: sha256 ${sha}, index says ${s.sha256}`);
+                shards++;
+              }
+            }
+            console.log(`${techs.length} technologies, ${shards} shards verified`);
+          '
+          kb="$(du -sk "$SITE_DIR" | cut -f1)"
+          echo "site: $kb KiB"
+          [ "$kb" -lt 900000 ] || { echo "::error::site is $kb KiB, near the 1 GB Pages limit"; exit 1; }
+          echo "deploy=$DEPLOY" >> "$GITHUB_OUTPUT"
+
+      # Saved after a failed pipeline too: writes are atomic per file, stale technology locks are detected by pid,
+      # and the model calls a partial run paid for are kept. Not saved when the pipeline was cancelled or skipped.
+      - name: Save state
+        if: always() && steps.restore.outcome == 'success' && (steps.pipeline.outcome == 'success' || steps.pipeline.outcome == 'failure')
+        env:
+          REL: ${{ steps.restore.outputs.release }}
+        run: |
+          set -euo pipefail
+          stamp="$(date -u +%Y%m%dT%H%M%SZ)-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          gen="state-$stamp"
+          out="$RUNNER_TEMP/state-out"; rm -rf "$out"; mkdir -p "$out"
+          tar -C "$UNSTALE_STORE" --exclude='./central/records/*.lock' -cf - . \
+            | zstd -T0 -10 -q | split -b 1900m -a 2 - "$out/$gen.tar.zst."
+          (cd "$out" && sha256sum "$gen".tar.zst.* > "$gen.sha256")
+          ls -l "$out"
+          upload() {
+            curl -fsS --retry 3 -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Content-Type: application/octet-stream" \
+              -T "$1" "https://uploads.github.com/repos/$GH_REPO/releases/$REL/assets?name=$(basename "$1")" > /dev/null
+          }
+          for f in "$out/$gen".tar.zst.*; do upload "$f"; done
+          upload "$out/$gen.sha256" # last: marks the generation complete
+          # Keep the newest STATE_KEEP complete generations; delete everything else (older ones, and parts left by an
+          # interrupted save).
+          gh api "repos/$GH_REPO/releases/$REL/assets?per_page=100" --paginate --jq '.[] | "\(.id)\t\(.name)"' > "$RUNNER_TEMP/assets.tsv"
+          keep="$(cut -f2 "$RUNNER_TEMP/assets.tsv" | grep -E '^state-.*\.sha256$' | sort | tail -n "$STATE_KEEP" | sed 's/\.sha256$//')"
+          while IFS=$'\t' read -r id name; do
+            g="${name%.sha256}"; g="${g%.tar.zst.*}"
+            if ! grep -qxF "$g" <<< "$keep"; then
+              echo "deleting $name"
+              gh api -X DELETE "repos/$GH_REPO/releases/assets/$id"
+            fi
+          done < "$RUNNER_TEMP/assets.tsv"
+
+      - name: Usage
+        if: always() && steps.restore.outcome == 'success'
+        run: npm --prefix central run catalog -- usage | tail -c 4000 || true
+
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        if: steps.verify.outputs.deploy == 'true'
+        with:
+          path: ${{ env.SITE_DIR }}
+          retention-days: 1
+
+  deploy:
+    needs: ingest
+    if: needs.ingest.outputs.deploy == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

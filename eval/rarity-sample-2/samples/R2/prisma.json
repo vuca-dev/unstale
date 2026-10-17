@@ -1,0 +1,176 @@
+{
+ "technology": "prisma",
+ "rule": "GitHub repository search for the technology's own topic (its repository's GitHub topic equal to its repository or package name; the most used if several) with at least 50 stars, pushed within 365 days of the draw (pages 1-10); keep repositories with a package.json (shallowest 6, none under node_modules, fixtures, tests, vendor or build output) declaring one of the technology's packages in dependencies or devDependencies at the catalog's current major; drop forks, archived and template repositories, repositories whose name, description or topics mark a tutorial, course, example, demo, starter, boilerplate or clone, the technology's own organisation, evaluation repositories and their forks or upstreams, and repositories over 200 MB; one repository per owner; rank by stars (then name); take the first 5.",
+ "selection": {
+  "pool": "adoption",
+  "major": "current",
+  "n": 5
+ },
+ "query": "topic:prisma stars:>=50 pushed:>=2025-10-15 archived:false",
+ "major": "7",
+ "majors": [
+  "7"
+ ],
+ "drawn": "2026-10-15T17:00:00Z",
+ "candidates": 229,
+ "passed_over": [
+  {
+   "repo": "calcom/cal.diy",
+   "stars": 49014,
+   "why": "over 200 MB"
+  },
+  {
+   "repo": "prisma/orm",
+   "stars": 47692,
+   "why": "the technology's own organisation"
+  },
+  {
+   "repo": "trpc/trpc",
+   "stars": 40705,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "t3-oss/create-t3-app",
+   "stars": 29159,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "dubinc/dub",
+   "stars": 24895,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "shadcn-ui/taxonomy",
+   "stars": 19282,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "wasp-lang/wasp",
+   "stars": 18771,
+   "why": "over 200 MB"
+  },
+  {
+   "repo": "redwoodjs/graphql",
+   "stars": 17588,
+   "why": "over 200 MB"
+  },
+  {
+   "repo": "wasp-lang/open-saas",
+   "stars": 16103,
+   "why": "not a project (\"boilerplate\")"
+  },
+  {
+   "repo": "amplication/amplication",
+   "stars": 16006,
+   "why": "over 200 MB"
+  },
+  {
+   "repo": "documenso/documenso",
+   "stars": 15425,
+   "why": "over 200 MB"
+  },
+  {
+   "repo": "blitz-js/blitz",
+   "stars": 14121,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "papermark/papermark",
+   "stars": 9253,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "Snouzy/workout-cool",
+   "stars": 8612,
+   "why": "evaluation repository"
+  },
+  {
+   "repo": "vercel/next-forge",
+   "stars": 7668,
+   "why": "template repository"
+  },
+  {
+   "repo": "prisma/prisma-examples",
+   "stars": 6651,
+   "why": "the technology's own organisation"
+  },
+  {
+   "repo": "typehero/typehero",
+   "stars": 6642,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "AmanVarshney01/create-better-t-stack",
+   "stars": 5822,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "liam-hq/liam",
+   "stars": 5142,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "animir/node-rate-limiter-flexible",
+   "stars": 3594,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "zenstackhq/zenstack",
+   "stars": 2954,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "ljlm0402/typescript-express-starter",
+   "stars": 2873,
+   "why": "not a project (\"starter\")"
+  },
+  {
+   "repo": "kentcdodds/kentcdodds.com",
+   "stars": 2500,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "brianlovin/briOS",
+   "stars": 2271,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  }
+ ],
+ "repos": [
+  {
+   "repo": "elie222/inbox-zero",
+   "commit": "59cf6d2bc85ab63408d2fc60064f18e1757615a4",
+   "stars": 12480,
+   "manifest": "apps/web/package.json",
+   "declares": "prisma@7.10.0"
+  },
+  {
+   "repo": "ghostfolio/ghostfolio",
+   "commit": "204f0d857ef258a2c090780bce8b69429a094f95",
+   "stars": 9449,
+   "manifest": "package.json",
+   "declares": "@prisma/client@7.10.0"
+  },
+  {
+   "repo": "lukevella/rallly",
+   "commit": "e782d9228ca1a8e8eb913c24ce89b779ca9ef0d9",
+   "stars": 5305,
+   "manifest": "package.json",
+   "declares": "prisma@^7.8.0"
+  },
+  {
+   "repo": "FullAgent/fulling",
+   "commit": "f48efced082a7de3517816267481c04e058672cb",
+   "stars": 2445,
+   "manifest": "package.json",
+   "declares": "prisma@7.8.0"
+  },
+  {
+   "repo": "trycompai/comp",
+   "commit": "0117612ce37331e03a45e4b38054d54ed694a57d",
+   "stars": 2033,
+   "manifest": "apps/api/package.json",
+   "declares": "prisma@7.6.0"
+  }
+ ],
+ "counts": {}
+}

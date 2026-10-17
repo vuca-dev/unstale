@@ -1,0 +1,506 @@
+{
+ "DEV": {
+  "events": 9,
+  "all": {
+   "key": 115,
+   "covered": 72,
+   "queued": 63,
+   "first16": 46,
+   "first16_invoked": 45,
+   "tier": {
+    "runs": 3,
+    "found": [
+     37,
+     43,
+     43
+    ],
+    "found_mean": 41,
+    "found_min": 37,
+    "found_max": 43,
+    "found_sd": 2.83,
+    "found_now_mean": 41,
+    "unstable": 8,
+    "found_any_run": 44,
+    "found_every_run": 36,
+    "do_now_off_key_per_review": 2.0,
+    "do_now_off_key_per_run": [
+     18,
+     17,
+     19
+    ],
+    "tokens_per_found": 57724,
+    "tokens_per_run_mean": 2366694
+   },
+   "all": {
+    "runs": 3,
+    "found": [
+     54,
+     54,
+     55
+    ],
+    "found_mean": 54.33,
+    "found_min": 54,
+    "found_max": 55,
+    "found_sd": 0.47,
+    "found_now_mean": 53.33,
+    "unstable": 8,
+    "found_any_run": 58,
+    "found_every_run": 50,
+    "do_now_off_key_per_review": 3.89,
+    "do_now_off_key_per_run": [
+     32,
+     39,
+     34
+    ],
+    "tokens_per_found": 54977,
+    "tokens_per_run_mean": 2987061
+   }
+  },
+  "required": {
+   "key": 72,
+   "covered": 48,
+   "queued": 44,
+   "first16": 31,
+   "first16_invoked": 30,
+   "tier": {
+    "runs": 3,
+    "found": [
+     25,
+     29,
+     28
+    ],
+    "found_mean": 27.33,
+    "found_min": 25,
+    "found_max": 29,
+    "found_sd": 1.7,
+    "found_now_mean": 27.33,
+    "unstable": 4,
+    "found_any_run": 29,
+    "found_every_run": 25,
+    "do_now_off_key_per_review": 2.0,
+    "do_now_off_key_per_run": [
+     18,
+     17,
+     19
+    ],
+    "tokens_per_found": 86586,
+    "tokens_per_run_mean": 2366694
+   },
+   "all": {
+    "runs": 3,
+    "found": [
+     37,
+     38,
+     38
+    ],
+    "found_mean": 37.67,
+    "found_min": 37,
+    "found_max": 38,
+    "found_sd": 0.47,
+    "found_now_mean": 37.67,
+    "unstable": 5,
+    "found_any_run": 40,
+    "found_every_run": 35,
+    "do_now_off_key_per_review": 3.89,
+    "do_now_off_key_per_run": [
+     32,
+     39,
+     34
+    ],
+    "tokens_per_found": 79303,
+    "tokens_per_run_mean": 2987061
+   }
+  },
+  "optional": {
+   "key": 43,
+   "covered": 24,
+   "queued": 19,
+   "first16": 15,
+   "first16_invoked": 15,
+   "tier": {
+    "runs": 3,
+    "found": [
+     12,
+     14,
+     15
+    ],
+    "found_mean": 13.67,
+    "found_min": 12,
+    "found_max": 15,
+    "found_sd": 1.25,
+    "found_now_mean": 13.67,
+    "unstable": 4,
+    "found_any_run": 15,
+    "found_every_run": 11,
+    "do_now_off_key_per_review": 2.0,
+    "do_now_off_key_per_run": [
+     18,
+     17,
+     19
+    ],
+    "tokens_per_found": 173173,
+    "tokens_per_run_mean": 2366694
+   },
+   "all": {
+    "runs": 3,
+    "found": [
+     17,
+     16,
+     17
+    ],
+    "found_mean": 16.67,
+    "found_min": 16,
+    "found_max": 17,
+    "found_sd": 0.47,
+    "found_now_mean": 15.67,
+    "unstable": 3,
+    "found_any_run": 18,
+    "found_every_run": 15,
+    "do_now_off_key_per_review": 3.89,
+    "do_now_off_key_per_run": [
+     32,
+     39,
+     34
+    ],
+    "tokens_per_found": 179224,
+    "tokens_per_run_mean": 2987061
+   }
+  }
+ },
+ "HELD-OUT": {
+  "events": 6,
+  "all": {
+   "key": 43,
+   "covered": 22,
+   "queued": 18,
+   "first16": 11,
+   "first16_invoked": 10,
+   "tier": {
+    "runs": 3,
+    "found": [
+     10,
+     10,
+     10
+    ],
+    "found_mean": 10,
+    "found_min": 10,
+    "found_max": 10,
+    "found_sd": 0.0,
+    "found_now_mean": 10,
+    "unstable": 0,
+    "found_any_run": 10,
+    "found_every_run": 10,
+    "do_now_off_key_per_review": 2.17,
+    "do_now_off_key_per_run": [
+     12,
+     12,
+     15
+    ],
+    "tokens_per_found": 147610,
+    "tokens_per_run_mean": 1476097
+   },
+   "all": {
+    "runs": 3,
+    "found": [
+     17,
+     18,
+     15
+    ],
+    "found_mean": 16.67,
+    "found_min": 15,
+    "found_max": 18,
+    "found_sd": 1.25,
+    "found_now_mean": 16.33,
+    "unstable": 3,
+    "found_any_run": 18,
+    "found_every_run": 15,
+    "do_now_off_key_per_review": 3.56,
+    "do_now_off_key_per_run": [
+     20,
+     22,
+     22
+    ],
+    "tokens_per_found": 114951,
+    "tokens_per_run_mean": 1915844
+   }
+  },
+  "required": {
+   "key": 22,
+   "covered": 11,
+   "queued": 11,
+   "first16": 6,
+   "first16_invoked": 5,
+   "tier": {
+    "runs": 3,
+    "found": [
+     5,
+     5,
+     5
+    ],
+    "found_mean": 5,
+    "found_min": 5,
+    "found_max": 5,
+    "found_sd": 0.0,
+    "found_now_mean": 5,
+    "unstable": 0,
+    "found_any_run": 5,
+    "found_every_run": 5,
+    "do_now_off_key_per_review": 2.17,
+    "do_now_off_key_per_run": [
+     12,
+     12,
+     15
+    ],
+    "tokens_per_found": 295219,
+    "tokens_per_run_mean": 1476097
+   },
+   "all": {
+    "runs": 3,
+    "found": [
+     10,
+     11,
+     10
+    ],
+    "found_mean": 10.33,
+    "found_min": 10,
+    "found_max": 11,
+    "found_sd": 0.47,
+    "found_now_mean": 10.33,
+    "unstable": 1,
+    "found_any_run": 11,
+    "found_every_run": 10,
+    "do_now_off_key_per_review": 3.56,
+    "do_now_off_key_per_run": [
+     20,
+     22,
+     22
+    ],
+    "tokens_per_found": 185404,
+    "tokens_per_run_mean": 1915844
+   }
+  },
+  "optional": {
+   "key": 21,
+   "covered": 11,
+   "queued": 7,
+   "first16": 5,
+   "first16_invoked": 5,
+   "tier": {
+    "runs": 3,
+    "found": [
+     5,
+     5,
+     5
+    ],
+    "found_mean": 5,
+    "found_min": 5,
+    "found_max": 5,
+    "found_sd": 0.0,
+    "found_now_mean": 5,
+    "unstable": 0,
+    "found_any_run": 5,
+    "found_every_run": 5,
+    "do_now_off_key_per_review": 2.17,
+    "do_now_off_key_per_run": [
+     12,
+     12,
+     15
+    ],
+    "tokens_per_found": 295219,
+    "tokens_per_run_mean": 1476097
+   },
+   "all": {
+    "runs": 3,
+    "found": [
+     7,
+     7,
+     5
+    ],
+    "found_mean": 6.33,
+    "found_min": 5,
+    "found_max": 7,
+    "found_sd": 0.94,
+    "found_now_mean": 6,
+    "unstable": 2,
+    "found_any_run": 7,
+    "found_every_run": 5,
+    "do_now_off_key_per_review": 3.56,
+    "do_now_off_key_per_run": [
+     20,
+     22,
+     22
+    ],
+    "tokens_per_found": 302502,
+    "tokens_per_run_mean": 1915844
+   }
+  }
+ },
+ "ALL": {
+  "events": 15,
+  "all": {
+   "key": 158,
+   "covered": 94,
+   "queued": 81,
+   "first16": 57,
+   "first16_invoked": 55,
+   "tier": {
+    "runs": 3,
+    "found": [
+     47,
+     53,
+     53
+    ],
+    "found_mean": 51,
+    "found_min": 47,
+    "found_max": 53,
+    "found_sd": 2.83,
+    "found_now_mean": 51,
+    "unstable": 8,
+    "found_any_run": 54,
+    "found_every_run": 46,
+    "do_now_off_key_per_review": 2.07,
+    "do_now_off_key_per_run": [
+     30,
+     29,
+     34
+    ],
+    "tokens_per_found": 75349,
+    "tokens_per_run_mean": 3842792
+   },
+   "all": {
+    "runs": 3,
+    "found": [
+     71,
+     72,
+     70
+    ],
+    "found_mean": 71,
+    "found_min": 70,
+    "found_max": 72,
+    "found_sd": 0.82,
+    "found_now_mean": 69.67,
+    "unstable": 11,
+    "found_any_run": 76,
+    "found_every_run": 65,
+    "do_now_off_key_per_review": 3.76,
+    "do_now_off_key_per_run": [
+     52,
+     61,
+     56
+    ],
+    "tokens_per_found": 69055,
+    "tokens_per_run_mean": 4902905
+   }
+  },
+  "required": {
+   "key": 94,
+   "covered": 59,
+   "queued": 55,
+   "first16": 37,
+   "first16_invoked": 35,
+   "tier": {
+    "runs": 3,
+    "found": [
+     30,
+     34,
+     33
+    ],
+    "found_mean": 32.33,
+    "found_min": 30,
+    "found_max": 34,
+    "found_sd": 1.7,
+    "found_now_mean": 32.33,
+    "unstable": 4,
+    "found_any_run": 34,
+    "found_every_run": 30,
+    "do_now_off_key_per_review": 2.07,
+    "do_now_off_key_per_run": [
+     30,
+     29,
+     34
+    ],
+    "tokens_per_found": 118849,
+    "tokens_per_run_mean": 3842792
+   },
+   "all": {
+    "runs": 3,
+    "found": [
+     47,
+     49,
+     48
+    ],
+    "found_mean": 48,
+    "found_min": 47,
+    "found_max": 49,
+    "found_sd": 0.82,
+    "found_now_mean": 48,
+    "unstable": 6,
+    "found_any_run": 51,
+    "found_every_run": 45,
+    "do_now_off_key_per_review": 3.76,
+    "do_now_off_key_per_run": [
+     52,
+     61,
+     56
+    ],
+    "tokens_per_found": 102144,
+    "tokens_per_run_mean": 4902905
+   }
+  },
+  "optional": {
+   "key": 64,
+   "covered": 35,
+   "queued": 26,
+   "first16": 20,
+   "first16_invoked": 20,
+   "tier": {
+    "runs": 3,
+    "found": [
+     17,
+     19,
+     20
+    ],
+    "found_mean": 18.67,
+    "found_min": 17,
+    "found_max": 20,
+    "found_sd": 1.25,
+    "found_now_mean": 18.67,
+    "unstable": 4,
+    "found_any_run": 20,
+    "found_every_run": 16,
+    "do_now_off_key_per_review": 2.07,
+    "do_now_off_key_per_run": [
+     30,
+     29,
+     34
+    ],
+    "tokens_per_found": 205864,
+    "tokens_per_run_mean": 3842792
+   },
+   "all": {
+    "runs": 3,
+    "found": [
+     24,
+     23,
+     22
+    ],
+    "found_mean": 23,
+    "found_min": 22,
+    "found_max": 24,
+    "found_sd": 0.82,
+    "found_now_mean": 21.67,
+    "unstable": 5,
+    "found_any_run": 25,
+    "found_every_run": 20,
+    "do_now_off_key_per_review": 3.76,
+    "do_now_off_key_per_run": [
+     52,
+     61,
+     56
+    ],
+    "tokens_per_found": 213170,
+    "tokens_per_run_mean": 4902905
+   }
+  }
+ }
+}

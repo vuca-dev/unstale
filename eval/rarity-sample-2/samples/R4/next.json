@@ -1,0 +1,257 @@
+{
+ "technology": "next",
+ "rule": "GitHub repository search for the technology's own topic (its repository's GitHub topic equal to its repository or package name; the most used if several) with at least 50 stars, pushed within 365 days of the draw (pages 1-10); keep repositories with a package.json (shallowest 6, none under node_modules, fixtures, tests, vendor or build output) declaring one of the technology's packages in dependencies or devDependencies at the previous major for the first 3 and the current major for the rest; drop forks, archived and template repositories, repositories whose name, description or topics mark a tutorial, course, example, demo, starter, boilerplate or clone, the technology's own organisation, evaluation repositories and their forks or upstreams, and repositories over 200 MB; one repository per owner; rank by stars (then name); take the first 5.",
+ "selection": {
+  "pool": "adoption",
+  "major": "mix",
+  "n": 5
+ },
+ "query": "topic:nextjs stars:>=50 pushed:>=2025-10-15 archived:false",
+ "major": "16",
+ "majors": [
+  "15",
+  "16"
+ ],
+ "drawn": "2026-10-15T17:00:00Z",
+ "candidates": 1000,
+ "passed_over": [
+  {
+   "repo": "f/prompts.chat",
+   "stars": 173078,
+   "why": "not a project (\"learning\") (drawing major 15)"
+  },
+  {
+   "repo": "langgenius/dify",
+   "stars": 158570,
+   "why": "over 200 MB (drawing major 15)"
+  },
+  {
+   "repo": "vercel/next.js",
+   "stars": 143025,
+   "why": "the technology's own organisation (drawing major 15)"
+  },
+  {
+   "repo": "shadcn-ui/ui",
+   "stars": 125685,
+   "why": "no package.json declaring next at major 15 (drawing major 15)"
+  },
+  {
+   "repo": "supabase/supabase",
+   "stars": 111602,
+   "why": "not a project (\"example\") (drawing major 15)"
+  },
+  {
+   "repo": "ChatGPTNextWeb/NextChat",
+   "stars": 88852,
+   "why": "no package.json declaring next at major 15 (drawing major 15)"
+  },
+  {
+   "repo": "coollabsio/coolify",
+   "stars": 63014,
+   "why": "no package.json declaring next at major 15 (drawing major 15)"
+  },
+  {
+   "repo": "appwrite/appwrite",
+   "stars": 57693,
+   "why": "over 200 MB (drawing major 15)"
+  },
+  {
+   "repo": "calcom/cal.diy",
+   "stars": 49014,
+   "why": "over 200 MB (drawing major 15)"
+  },
+  {
+   "repo": "payloadcms/payload",
+   "stars": 45275,
+   "why": "over 200 MB (drawing major 15)"
+  },
+  {
+   "repo": "AykutSarac/jsoncrack.com",
+   "stars": 44477,
+   "why": "no package.json declaring next at major 15 (drawing major 15)"
+  },
+  {
+   "repo": "trpc/trpc",
+   "stars": 40705,
+   "why": "no package.json declaring next at major 15 (drawing major 15)"
+  },
+  {
+   "repo": "CopilotKit/CopilotKit",
+   "stars": 38039,
+   "why": "over 200 MB (drawing major 15)"
+  },
+  {
+   "repo": "Dokploy/dokploy",
+   "stars": 37803,
+   "why": "no package.json declaring next at major 15 (drawing major 15)"
+  },
+  {
+   "repo": "gitroomhq/postiz-app",
+   "stars": 37229,
+   "why": "no package.json declaring next at major 15 (drawing major 15)"
+  },
+  {
+   "repo": "JCodesMore/ai-website-cloner-template",
+   "stars": 36826,
+   "why": "template repository (drawing major 15)"
+  },
+  {
+   "repo": "refinedev/refine",
+   "stars": 35870,
+   "why": "over 200 MB (drawing major 15)"
+  },
+  {
+   "repo": "gethomepage/homepage",
+   "stars": 33153,
+   "why": "no package.json declaring next at major 15 (drawing major 15)"
+  },
+  {
+   "repo": "onyx-dot-app/onyx",
+   "stars": 32490,
+   "why": "over 200 MB (drawing major 15)"
+  },
+  {
+   "repo": "vercel/swr",
+   "stars": 32490,
+   "why": "the technology's own organisation (drawing major 15)"
+  },
+  {
+   "repo": "SigNoz/signoz",
+   "stars": 32361,
+   "why": "no package.json declaring next at major 15 (drawing major 15)"
+  },
+  {
+   "repo": "labring/FastGPT",
+   "stars": 29834,
+   "why": "over 200 MB (drawing major 15)"
+  },
+  {
+   "repo": "simstudioai/sim",
+   "stars": 29826,
+   "why": "over 200 MB (drawing major 15)"
+  },
+  {
+   "repo": "karakeep-app/karakeep",
+   "stars": 29678,
+   "why": "no package.json declaring next at major 15 (drawing major 15)"
+  },
+  {
+   "repo": "nrwl/nx",
+   "stars": 29409,
+   "why": "over 200 MB (drawing major 15)"
+  },
+  {
+   "repo": "slymnoyann/hey.xyz",
+   "stars": 29352,
+   "why": "no package.json declaring next at major 15 (drawing major 15)"
+  },
+  {
+   "repo": "mastra-ai/mastra",
+   "stars": 28835,
+   "why": "over 200 MB (drawing major 15)"
+  },
+  {
+   "repo": "srbhr/Resume-Matcher",
+   "stars": 28679,
+   "why": "not a project (\"learning\") (drawing major 15)"
+  },
+  {
+   "repo": "vercel/ai",
+   "stars": 27333,
+   "why": "the technology's own organisation (drawing major 15)"
+  },
+  {
+   "repo": "onlook-dev/onlook",
+   "stars": 26918,
+   "why": "no package.json declaring next at major 15 (drawing major 15)"
+  },
+  {
+   "repo": "readest/readest",
+   "stars": 25283,
+   "why": "over 200 MB (drawing major 15)"
+  },
+  {
+   "repo": "f/prompts.chat",
+   "stars": 173078,
+   "why": "not a project (\"learning\") (drawing major 16)"
+  },
+  {
+   "repo": "langgenius/dify",
+   "stars": 158570,
+   "why": "over 200 MB (drawing major 16)"
+  },
+  {
+   "repo": "vercel/next.js",
+   "stars": 143025,
+   "why": "the technology's own organisation (drawing major 16)"
+  },
+  {
+   "repo": "supabase/supabase",
+   "stars": 111602,
+   "why": "not a project (\"example\") (drawing major 16)"
+  },
+  {
+   "repo": "ChatGPTNextWeb/NextChat",
+   "stars": 88852,
+   "why": "no package.json declaring next at major 16 (drawing major 16)"
+  },
+  {
+   "repo": "coollabsio/coolify",
+   "stars": 63014,
+   "why": "no package.json declaring next at major 16 (drawing major 16)"
+  },
+  {
+   "repo": "appwrite/appwrite",
+   "stars": 57693,
+   "why": "over 200 MB (drawing major 16)"
+  },
+  {
+   "repo": "calcom/cal.diy",
+   "stars": 49014,
+   "why": "over 200 MB (drawing major 16)"
+  },
+  {
+   "repo": "payloadcms/payload",
+   "stars": 45275,
+   "why": "over 200 MB (drawing major 16)"
+  }
+ ],
+ "repos": [
+  {
+   "repo": "t3-oss/create-t3-app",
+   "commit": "4709861f7e67a15564c0460c13e7b4b6cfcae40d",
+   "stars": 29159,
+   "manifest": "cli/package.json",
+   "declares": "next@^15.5.9"
+  },
+  {
+   "repo": "nextauthjs/next-auth",
+   "commit": "a1a16a5a7780488c7449feece410033f445d0b31",
+   "stars": 28365,
+   "manifest": "docs/package.json",
+   "declares": "next@15.5.18"
+  },
+  {
+   "repo": "dubinc/dub",
+   "commit": "d9370956f44994359e6f7b9c62a81c9a8c21fc3a",
+   "stars": 24895,
+   "manifest": "apps/web/package.json",
+   "declares": "next@15.5.8"
+  },
+  {
+   "repo": "shadcn-ui/ui",
+   "commit": "c2477f311c19982ef6e246085438e6cfec3e35ea",
+   "stars": 125685,
+   "manifest": "apps/v4/package.json",
+   "declares": "next@16.3.8"
+  },
+  {
+   "repo": "AykutSarac/jsoncrack.com",
+   "commit": "a46d0d0adb098e12e577a083e87ead7f61f90098",
+   "stars": 44477,
+   "manifest": "apps/www/package.json",
+   "declares": "next@16.3.5"
+  }
+ ],
+ "counts": {}
+}

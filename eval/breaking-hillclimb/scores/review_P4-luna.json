@@ -1,0 +1,345 @@
+{
+ "workout-next16": {
+  "key": 10,
+  "catalog": 3,
+  "catalog_either": 4,
+  "queue": 3,
+  "queue_size": 131,
+  "orders": {
+   "usage": {
+    "in_first": 2,
+    "ranks": [
+     6,
+     13,
+     127
+    ]
+   },
+   "tier": {
+    "in_first": 0,
+    "ranks": [
+     52,
+     56,
+     72
+    ]
+   },
+   "random": {
+    "in_first": 0,
+    "ranks": [
+     75,
+     100,
+     121
+    ]
+   }
+  },
+  "reviews": {
+   "all__01": {
+    "batch": 131,
+    "in_batch": 3,
+    "found": 2,
+    "found_now": 1,
+    "do_now": 6,
+    "later": 1,
+    "do_now_off_key": [
+     "next-javascript-urls-in-router-methods-and-redirects",
+     "next-middleware",
+     "next-params",
+     "next-searchparams",
+     "next-server-action-submissions"
+    ],
+    "missing": 4,
+    "tokens": 634931,
+    "wall": 75.0
+   },
+   "all__02": {
+    "batch": 131,
+    "in_batch": 3,
+    "found": 1,
+    "found_now": 1,
+    "do_now": 5,
+    "later": 0,
+    "do_now_off_key": [
+     "next-automatic-linting",
+     "next-javascript-urls-in-router-methods-and-redirects",
+     "next-params",
+     "next-proxymatcher"
+    ],
+    "missing": 0,
+    "tokens": 272714,
+    "wall": 65.4
+   },
+   "tier__01": {
+    "batch": 16,
+    "in_batch": 0,
+    "found": 0,
+    "found_now": 0,
+    "do_now": 4,
+    "later": 1,
+    "do_now_off_key": [
+     "next-params",
+     "next-proxymatcher",
+     "next-searchparams",
+     "next-sync-access-to-dynamic-apis"
+    ],
+    "missing": 0,
+    "tokens": 232479,
+    "wall": 61.5
+   },
+   "tier__02": {
+    "batch": 16,
+    "in_batch": 0,
+    "found": 0,
+    "found_now": 0,
+    "do_now": 3,
+    "later": 0,
+    "do_now_off_key": [
+     "next-javascript-urls-in-router-methods-and-redirects",
+     "next-params",
+     "next-searchparams"
+    ],
+    "missing": 0,
+    "tokens": 315184,
+    "wall": 52.6
+   }
+  }
+ },
+ "invoicerr-prisma7": {
+  "key": 16,
+  "catalog": 10,
+  "catalog_either": 11,
+  "queue": 10,
+  "queue_size": 82,
+  "orders": {
+   "usage": {
+    "in_first": 5,
+    "ranks": [
+     4,
+     4,
+     4,
+     9,
+     9,
+     20,
+     23,
+     28,
+     28,
+     30
+    ]
+   },
+   "tier": {
+    "in_first": 10,
+    "ranks": [
+     1,
+     1,
+     1,
+     2,
+     2,
+     7,
+     9,
+     11,
+     11,
+     13
+    ]
+   },
+   "random": {
+    "in_first": 6,
+    "ranks": [
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     29,
+     42,
+     42,
+     59
+    ]
+   }
+  },
+  "reviews": {
+   "all__01": {
+    "batch": 82,
+    "in_batch": 10,
+    "found": 10,
+    "found_now": 10,
+    "do_now": 14,
+    "later": 1,
+    "do_now_off_key": [
+     "prisma-binaryengine",
+     "prisma-datasource",
+     "prisma-libraryengine",
+     "prisma-prisma-client-runtime-utils",
+     "prisma-prismaclient-2",
+     "prisma-prismaclient-3",
+     "prisma-prismaclient-4",
+     "prisma-unified-prisma-config"
+    ],
+    "missing": 1,
+    "tokens": 201401,
+    "wall": 49.7
+   },
+   "all__02": {
+    "batch": 82,
+    "in_batch": 10,
+    "found": 10,
+    "found_now": 10,
+    "do_now": 13,
+    "later": 0,
+    "do_now_off_key": [
+     "prisma-binaryengine",
+     "prisma-datasource",
+     "prisma-libraryengine",
+     "prisma-prisma-client-runtime-utils",
+     "prisma-prismaclient-2",
+     "prisma-prismaclient-3",
+     "prisma-unified-prisma-config"
+    ],
+    "missing": 2,
+    "tokens": 193834,
+    "wall": 62.7
+   },
+   "tier__01": {
+    "batch": 16,
+    "in_batch": 10,
+    "found": 10,
+    "found_now": 10,
+    "do_now": 9,
+    "later": 0,
+    "do_now_off_key": [
+     "prisma-prisma-client-runtime-utils",
+     "prisma-prismaclient-2",
+     "prisma-prismaclient-3"
+    ],
+    "missing": 0,
+    "tokens": 162580,
+    "wall": 31.4
+   },
+   "tier__02": {
+    "batch": 16,
+    "in_batch": 10,
+    "found": 10,
+    "found_now": 10,
+    "do_now": 9,
+    "later": 0,
+    "do_now_off_key": [
+     "prisma-prisma-client-runtime-utils",
+     "prisma-prismaclient-2",
+     "prisma-prismaclient-3"
+    ],
+    "missing": 0,
+    "tokens": 146659,
+    "wall": 37.5
+   }
+  }
+ },
+ "invoicerr-nest12": {
+  "key": 14,
+  "catalog": 6,
+  "catalog_either": 6,
+  "queue": 6,
+  "queue_size": 52,
+  "orders": {
+   "usage": {
+    "in_first": 6,
+    "ranks": [
+     4,
+     4,
+     4,
+     7,
+     7,
+     7
+    ]
+   },
+   "tier": {
+    "in_first": 3,
+    "ranks": [
+     2,
+     2,
+     2,
+     25,
+     25,
+     25
+    ]
+   },
+   "random": {
+    "in_first": 3,
+    "ranks": [
+     7,
+     7,
+     7,
+     33,
+     33,
+     33
+    ]
+   }
+  },
+  "reviews": {
+   "all__01": {
+    "batch": 52,
+    "in_batch": 6,
+    "found": 3,
+    "found_now": 3,
+    "do_now": 7,
+    "later": 2,
+    "do_now_off_key": [
+     "nestjs-consolelogger-structuredparams",
+     "nestjs-express-graceful-shutdown",
+     "nestjs-lifecycle-hooks-2",
+     "nestjs-node-js",
+     "nestjs-routeconflictpolicy-duplicate",
+     "nestjs-routeresolutionstrategy"
+    ],
+    "missing": 0,
+    "tokens": 424630,
+    "wall": 76.4
+   },
+   "all__02": {
+    "batch": 52,
+    "in_batch": 6,
+    "found": 3,
+    "found_now": 3,
+    "do_now": 4,
+    "later": 0,
+    "do_now_off_key": [
+     "nestjs-express-graceful-shutdown",
+     "nestjs-lifecycle-hooks-2",
+     "nestjs-node-js"
+    ],
+    "missing": 0,
+    "tokens": 203124,
+    "wall": 55.3
+   },
+   "tier__01": {
+    "batch": 16,
+    "in_batch": 3,
+    "found": 0,
+    "found_now": 0,
+    "do_now": 4,
+    "later": 0,
+    "do_now_off_key": [
+     "nestjs-express-graceful-shutdown",
+     "nestjs-lifecycle-hooks-2",
+     "nestjs-node-js",
+     "nestjs-normalizepath"
+    ],
+    "missing": 0,
+    "tokens": 450751,
+    "wall": 60.4
+   },
+   "tier__02": {
+    "batch": 16,
+    "in_batch": 3,
+    "found": 0,
+    "found_now": 0,
+    "do_now": 2,
+    "later": 1,
+    "do_now_off_key": [
+     "nestjs-lifecycle-hooks-2",
+     "nestjs-node-js"
+    ],
+    "missing": 0,
+    "tokens": 286401,
+    "wall": 92.3
+   }
+  }
+ }
+}

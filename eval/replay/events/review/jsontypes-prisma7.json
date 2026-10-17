@@ -1,0 +1,67 @@
+{
+ "K1": [
+  "keep",
+  false,
+  "release process (beta publish tag)"
+ ],
+ "K2": [
+  "keep",
+  false,
+  "docs"
+ ],
+ "K3": [
+  "keep",
+  false,
+  "docs"
+ ],
+ "K4": [
+  "keep",
+  false,
+  "docs"
+ ],
+ "K5": [
+  "keep",
+  false,
+  "S: prisma-client-js is deprecated but still available in v7; switching test schemas is a choice"
+ ],
+ "K6": [
+  "keep",
+  true,
+  "S: datasource url is no longer accepted in schema.prisma in v7"
+ ],
+ "K7": [
+  "keep",
+  false,
+  "follows the optional generator switch in K5"
+ ],
+ "K8": [
+  "keep",
+  true,
+  "D: the generator's signature matching missed v7's Prisma.-qualified generated types (type tests fail)"
+ ],
+ "K9": [
+  "keep",
+  true,
+  "D: same cause as K8, numeric signatures under v7"
+ ],
+ "K10": [
+  "keep",
+  true,
+  "D: same cause as K8, list filters under v7"
+ ],
+ "K11": [
+  "keep",
+  true,
+  "D: same cause as K8, generalised normalisation of v7 qualifiers"
+ ],
+ "K12": [
+  "drop",
+  null,
+  "PR #604 describes a lowercase-model groupBy bug with no link to Prisma 7"
+ ],
+ "K13": [
+  "keep",
+  true,
+  "D: v7 Prisma.-qualified NullableJsonNullValueInput broke generated unions"
+ ]
+}

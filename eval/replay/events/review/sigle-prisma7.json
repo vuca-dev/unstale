@@ -1,0 +1,5 @@
+{"K1": ["keep", true, "S: the datasource url is no longer accepted in schema.prisma in v7; it moves to prisma.config.ts"],
+ "K2": ["keep", true, "S: v7 requires a driver adapter to construct PrismaClient"],
+ "K3": ["keep", true, "S: v7 no longer loads .env automatically and prisma.config's env() needs DATABASE_URL"],
+ "K4": ["keep", true, "D: 'fix: fix prod docker config'; migrate deploy in the image needs prisma.config.ts"],
+ "K5": ["drop", null, "new in-process PGlite test database ('chore: test public api routes', 15 days later); new test infrastructure, not upgrade work"]}

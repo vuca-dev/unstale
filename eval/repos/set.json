@@ -1,0 +1,594 @@
+{
+ "source": "census.json",
+ "size_terciles_kb": [
+  2849,
+  19058
+ ],
+ "per_cell": 3,
+ "repos": [
+  {
+   "repo": "kt3k/bulbo",
+   "ecosystems": [
+    "npm"
+   ],
+   "primary": "npm",
+   "size_kb": 1798,
+   "stars": 16,
+   "branch": "main",
+   "size": "small",
+   "sha": "b9df94314000044793d56c62900d613826483dd1"
+  },
+  {
+   "repo": "HorusGoul/eslint-plugin-react-render-types",
+   "ecosystems": [
+    "npm"
+   ],
+   "primary": "npm",
+   "size_kb": 444,
+   "stars": 111,
+   "branch": "main",
+   "size": "small",
+   "sha": "eae86d53252da49f26eb4fe16aa932f44ec81c61"
+  },
+  {
+   "repo": "Gerstep/HumanCompiler",
+   "ecosystems": [
+    "npm"
+   ],
+   "primary": "npm",
+   "size_kb": 58,
+   "stars": 155,
+   "branch": "master",
+   "size": "small",
+   "sha": "88b5ca0eaa0174cf95e8a232a88085e1ce54dd1c"
+  },
+  {
+   "repo": "FastEndpoints/Documentation",
+   "ecosystems": [
+    "npm"
+   ],
+   "primary": "npm",
+   "size_kb": 5145,
+   "stars": 20,
+   "branch": "main",
+   "size": "medium",
+   "sha": "4380b60e3f0e239cdde595836e406346701c62b2"
+  },
+  {
+   "repo": "ricardodantas/feedo",
+   "ecosystems": [
+    "crates.io",
+    "npm"
+   ],
+   "primary": "npm",
+   "size_kb": 3387,
+   "stars": 13,
+   "branch": "main",
+   "size": "medium",
+   "sha": "d6d94b33ee6c9946fe3d8e8b31298ba4bfe06544"
+  },
+  {
+   "repo": "quilrai/AgentGuard",
+   "ecosystems": [
+    "crates.io",
+    "npm"
+   ],
+   "primary": "npm",
+   "size_kb": 10327,
+   "stars": 31,
+   "branch": "main",
+   "size": "medium",
+   "sha": "a7756663c3ecf211bfd82965b1be5dd9f78913da"
+  },
+  {
+   "repo": "Huxpro/vue-lynx",
+   "ecosystems": [
+    "Maven/Gradle",
+    "RubyGems",
+    "npm"
+   ],
+   "primary": "npm",
+   "size_kb": 65226,
+   "stars": 569,
+   "branch": "main",
+   "size": "large",
+   "sha": "4e75e3ef1efc17a239adaa48a665ef699a6423f5"
+  },
+  {
+   "repo": "davraamides/todotxt-mode",
+   "ecosystems": [
+    "npm"
+   ],
+   "primary": "npm",
+   "size_kb": 39381,
+   "stars": 66,
+   "branch": "master",
+   "size": "large",
+   "sha": "f05e2f4b0420d98a0200443fd5251855319a56e2"
+  },
+  {
+   "repo": "buttondown/docs",
+   "ecosystems": [
+    "npm"
+   ],
+   "primary": "npm",
+   "size_kb": 314661,
+   "stars": 33,
+   "branch": "main",
+   "size": "large",
+   "sha": "1b175ff89eccbb84f9a3fe1c7711f36f00f1cd00"
+  },
+  {
+   "repo": "thomasnormal/codex-auto-continue",
+   "ecosystems": [
+    "PyPI"
+   ],
+   "primary": "PyPI",
+   "size_kb": 694,
+   "stars": 25,
+   "branch": "main",
+   "size": "small",
+   "sha": "b6bf0e7ee105892243bb96f9f0964c19c604f77e"
+  },
+  {
+   "repo": "thumbor/libthumbor",
+   "ecosystems": [
+    "PyPI"
+   ],
+   "primary": "PyPI",
+   "size_kb": 320,
+   "stars": 64,
+   "branch": "master",
+   "size": "small",
+   "sha": "69479f9cbbb7e89e28274510e4805959922eb814"
+  },
+  {
+   "repo": "Arize-ai/arize-skills",
+   "ecosystems": [
+    "PyPI"
+   ],
+   "primary": "PyPI",
+   "size_kb": 1462,
+   "stars": 65,
+   "branch": "main",
+   "size": "small",
+   "sha": "684600b78edd211789fb11109024e510811dcc31"
+  },
+  {
+   "repo": "quadbio/cell-annotator",
+   "ecosystems": [
+    "PyPI"
+   ],
+   "primary": "PyPI",
+   "size_kb": 15503,
+   "stars": 30,
+   "branch": "main",
+   "size": "medium",
+   "sha": "0b17fc34a3d56461b9bb2f5febfe146876589d28"
+  },
+  {
+   "repo": "URML-MARS/URML",
+   "ecosystems": [
+    "PyPI"
+   ],
+   "primary": "PyPI",
+   "size_kb": 9630,
+   "stars": 30,
+   "branch": "main",
+   "size": "medium",
+   "sha": "0f45aec0cbceb6dc17265307d5dbae4e3aa2bbc0"
+  },
+  {
+   "repo": "varnish/gateway",
+   "ecosystems": [
+    "Go modules",
+    "PyPI",
+    "crates.io"
+   ],
+   "primary": "PyPI",
+   "size_kb": 16275,
+   "stars": 16,
+   "branch": "main",
+   "size": "medium",
+   "sha": "ff7844ce3cabdc6e2bd84b98bea804e895f8d470"
+  },
+  {
+   "repo": "kantord/headson",
+   "ecosystems": [
+    "PyPI",
+    "crates.io"
+   ],
+   "primary": "PyPI",
+   "size_kb": 64238,
+   "stars": 255,
+   "branch": "main",
+   "size": "large",
+   "sha": "3534a62b454acf9ca95844d3d8da93e1e925c68a"
+  },
+  {
+   "repo": "haddocking/haddock3",
+   "ecosystems": [
+    "PyPI"
+   ],
+   "primary": "PyPI",
+   "size_kb": 801994,
+   "stars": 277,
+   "branch": "main",
+   "size": "large",
+   "sha": "c8414e6e4dff70daf40ea548c775025add12f6fa"
+  },
+  {
+   "repo": "LindaHaviv/second-brain",
+   "ecosystems": [
+    "PyPI"
+   ],
+   "primary": "PyPI",
+   "size_kb": 19058,
+   "stars": 13,
+   "branch": "main",
+   "size": "large",
+   "sha": "4890df9fe9e4ebbea8fc1ad34ec39c22594188f7"
+  },
+  {
+   "repo": "Kevandrew/sophia",
+   "ecosystems": [
+    "Go modules"
+   ],
+   "primary": "Go modules",
+   "size_kb": 1735,
+   "stars": 20,
+   "branch": "main",
+   "size": "small",
+   "sha": "34a957b63a085c83bf1e5898213702ec21822e3a"
+  },
+  {
+   "repo": "extsoft/elegant-git",
+   "ecosystems": [
+    "Go modules"
+   ],
+   "primary": "Go modules",
+   "size_kb": 1794,
+   "stars": 48,
+   "branch": "main",
+   "size": "small",
+   "sha": "2b69ae74db49326423e5cb1a7ed6313c74503155"
+  },
+  {
+   "repo": "ckotzbauer/vulnerability-operator",
+   "ecosystems": [
+    "Go modules"
+   ],
+   "primary": "Go modules",
+   "size_kb": 2319,
+   "stars": 88,
+   "branch": "main",
+   "size": "small",
+   "sha": "2f14e9ba37d464058967047d347ebf737b37b6ac"
+  },
+  {
+   "repo": "gogpu/gg",
+   "ecosystems": [
+    "Go modules"
+   ],
+   "primary": "Go modules",
+   "size_kb": 10453,
+   "stars": 167,
+   "branch": "main",
+   "size": "medium",
+   "sha": "bd563f4c293fd1f70afe56276c444a38302bac15"
+  },
+  {
+   "repo": "securego/gosec",
+   "ecosystems": [
+    "Go modules"
+   ],
+   "primary": "Go modules",
+   "size_kb": 6749,
+   "stars": 8972,
+   "branch": "master",
+   "size": "medium",
+   "sha": "707f2271f66579a18e1da25794b1e8012247274b"
+  },
+  {
+   "repo": "liatrio/liatrio-otel-collector",
+   "ecosystems": [
+    "Go modules"
+   ],
+   "primary": "Go modules",
+   "size_kb": 7903,
+   "stars": 47,
+   "branch": "main",
+   "size": "medium",
+   "sha": "0603f49ecca1307dac77c268aafe28f2d97e0d64"
+  },
+  {
+   "repo": "openshift/cluster-kube-descheduler-operator",
+   "ecosystems": [
+    "Go modules"
+   ],
+   "primary": "Go modules",
+   "size_kb": 102093,
+   "stars": 85,
+   "branch": "main",
+   "size": "large",
+   "sha": "7fba3002eb268bdd270ef9736aff7ee565302e06"
+  },
+  {
+   "repo": "exoscale/cli",
+   "ecosystems": [
+    "Go modules"
+   ],
+   "primary": "Go modules",
+   "size_kb": 41135,
+   "stars": 93,
+   "branch": "master",
+   "size": "large",
+   "sha": "865513b44b1110c3321e40ea83a42872bd7da311"
+  },
+  {
+   "repo": "fedir/ghstat",
+   "ecosystems": [
+    "Go modules"
+   ],
+   "primary": "Go modules",
+   "size_kb": 64908,
+   "stars": 13,
+   "branch": "master",
+   "size": "large",
+   "sha": "1fe58ccdec3782c90a511bf3cf26e48fc3e07299"
+  },
+  {
+   "repo": "arcboxlabs/buildkit-client",
+   "ecosystems": [
+    "crates.io"
+   ],
+   "primary": "crates.io",
+   "size_kb": 988,
+   "stars": 12,
+   "branch": "master",
+   "size": "small",
+   "sha": "af8426005287c7df71e8464f7289690eba9f0813"
+  },
+  {
+   "repo": "KaiserGranatapfel/GameCubeRecompiled",
+   "ecosystems": [
+    "crates.io"
+   ],
+   "primary": "crates.io",
+   "size_kb": 586,
+   "stars": 50,
+   "branch": "main",
+   "size": "small",
+   "sha": "d380537add5aa4116c94c3513b8e3a7dd89f2331"
+  },
+  {
+   "repo": "rvigo/cl",
+   "ecosystems": [
+    "crates.io"
+   ],
+   "primary": "crates.io",
+   "size_kb": 1753,
+   "stars": 21,
+   "branch": "main",
+   "size": "small",
+   "sha": "4235480d2f52a94e4d574b0a57a00ede3b512986"
+  },
+  {
+   "repo": "rust-tieng-viet/rust-tieng-viet.github.io",
+   "ecosystems": [
+    "crates.io"
+   ],
+   "primary": "crates.io",
+   "size_kb": 13475,
+   "stars": 87,
+   "branch": "main",
+   "size": "medium",
+   "sha": "9ed5cb7b4f65082a21f6884426bac546787bc302"
+  },
+  {
+   "repo": "bekker/qvopenapi-rs",
+   "ecosystems": [
+    "crates.io"
+   ],
+   "primary": "crates.io",
+   "size_kb": 3075,
+   "stars": 20,
+   "branch": "main",
+   "size": "medium",
+   "sha": "b1dd3b1af0a57325ec3eb300f75821634735586c"
+  },
+  {
+   "repo": "Endle/fireSeqSearch",
+   "ecosystems": [
+    "crates.io"
+   ],
+   "primary": "crates.io",
+   "size_kb": 4514,
+   "stars": 108,
+   "branch": "master",
+   "size": "medium",
+   "sha": "ef8888bb9d0d8371621f75ae033e3e09692fd0c9"
+  },
+  {
+   "repo": "purton-tech/rust-on-nails",
+   "ecosystems": [
+    "crates.io"
+   ],
+   "primary": "crates.io",
+   "size_kb": 52667,
+   "stars": 443,
+   "branch": "main",
+   "size": "large",
+   "sha": "58002503ac14fac04ae9d9ee48eacad5a273d108"
+  },
+  {
+   "repo": "kousen/java_8_recipes",
+   "ecosystems": [
+    "Maven/Gradle"
+   ],
+   "primary": "Maven/Gradle",
+   "size_kb": 2231,
+   "stars": 393,
+   "branch": "master",
+   "size": "small",
+   "sha": "549206a874e36dd88af11c7776d0fdf636a5d3b3"
+  },
+  {
+   "repo": "kestra-io/plugin-nats",
+   "ecosystems": [
+    "Maven/Gradle"
+   ],
+   "primary": "Maven/Gradle",
+   "size_kb": 797,
+   "stars": 3,
+   "branch": "main",
+   "size": "small",
+   "sha": "938ede55dd3ca6fe48f27d3cc2ff8d394e4da025"
+  },
+  {
+   "repo": "rkpontes/flutter_official_architecture",
+   "ecosystems": [
+    "Maven/Gradle",
+    "pub"
+   ],
+   "primary": "Maven/Gradle",
+   "size_kb": 246,
+   "stars": 23,
+   "branch": "main",
+   "size": "small",
+   "sha": "f7bda9700f34a56972eae939f265f65d9a84beaf"
+  },
+  {
+   "repo": "themoment-team/datagsm-server",
+   "ecosystems": [
+    "Maven/Gradle"
+   ],
+   "primary": "Maven/Gradle",
+   "size_kb": 5719,
+   "stars": 29,
+   "branch": "master",
+   "size": "medium",
+   "sha": "2395449aded27d1d14e423c9dbaae0285ae8d775"
+  },
+  {
+   "repo": "Xceptance/neodymium",
+   "ecosystems": [
+    "Maven/Gradle"
+   ],
+   "primary": "Maven/Gradle",
+   "size_kb": 59906,
+   "stars": 87,
+   "branch": "master",
+   "size": "large",
+   "sha": "cdcb1e5c1e9bca3569f9ca59fa629f5d47f73c9f"
+  },
+  {
+   "repo": "glossarist/iev",
+   "ecosystems": [
+    "RubyGems"
+   ],
+   "primary": "other",
+   "size_kb": 793,
+   "stars": 3,
+   "branch": "main",
+   "size": "small",
+   "sha": "5da25d839bbc6804bb8bc4c0a0d1651bcf5be0ff"
+  },
+  {
+   "repo": "hschne/puny-monitor",
+   "ecosystems": [
+    "RubyGems"
+   ],
+   "primary": "other",
+   "size_kb": 812,
+   "stars": 102,
+   "branch": "main",
+   "size": "small",
+   "sha": "626049d81396da315397fb786bf2dcf83a7a0eac"
+  },
+  {
+   "repo": "rpmessner/waveform",
+   "ecosystems": [
+    "Hex"
+   ],
+   "primary": "other",
+   "size_kb": 714,
+   "stars": 5,
+   "branch": "main",
+   "size": "small",
+   "sha": "1ce51e13fe9b35658e91a534b2fcc71de0f46f73"
+  },
+  {
+   "repo": "saubakirov/KZ-IT-telegram-list",
+   "ecosystems": [
+    "RubyGems"
+   ],
+   "primary": "other",
+   "size_kb": 3140,
+   "stars": 145,
+   "branch": "master",
+   "size": "medium",
+   "sha": "13a88a07544e3d13617461f2aa1687df6f76125b"
+  },
+  {
+   "repo": "honishi/Hakumai",
+   "ecosystems": [
+    "RubyGems"
+   ],
+   "primary": "other",
+   "size_kb": 10773,
+   "stars": 35,
+   "branch": "main",
+   "size": "medium",
+   "sha": "20cfa667d188c1611140992602025d90169f47cd"
+  },
+  {
+   "repo": "altasoft/DomainPrimitives",
+   "ecosystems": [
+    "NuGet"
+   ],
+   "primary": "other",
+   "size_kb": 3526,
+   "stars": 64,
+   "branch": "main",
+   "size": "medium",
+   "sha": "13784375c5302cccfc872ce3be2ec6e8b6da9355"
+  },
+  {
+   "repo": "RobertoMachorro/Moped",
+   "ecosystems": [
+    "SwiftPM"
+   ],
+   "primary": "other",
+   "size_kb": 28590,
+   "stars": 116,
+   "branch": "master",
+   "size": "large",
+   "sha": "059fb087b58810d5754b7d87c7c8e6e6f5a03dd6"
+  },
+  {
+   "repo": "guoxiucai/ohos-scrcpy-app",
+   "ecosystems": [
+    "pub"
+   ],
+   "primary": "other",
+   "size_kb": 164974,
+   "stars": 19,
+   "branch": "main",
+   "size": "large",
+   "sha": "c10d1597c17e3589e7d1081a30e10a53a3a413df"
+  },
+  {
+   "repo": "CruGlobal/mobile-content-api",
+   "ecosystems": [
+    "RubyGems"
+   ],
+   "primary": "other",
+   "size_kb": 32028,
+   "stars": 7,
+   "branch": "master",
+   "size": "large",
+   "sha": "fbc915ff8234d707c2d9099c2bc136069e195913"
+  }
+ ]
+}

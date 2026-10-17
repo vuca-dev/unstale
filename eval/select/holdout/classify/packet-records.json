@@ -1,0 +1,3517 @@
+[
+ {
+  "id": "uvicorn-9342337b@0.45.0#0.6",
+  "technology": "uvicorn",
+  "state": {
+   "technology": "uvicorn",
+   "source": "release notes",
+   "release": "0.45.0",
+   "subject": "http.disconnect",
+   "summary": "Uvicorn no longer emits http.disconnect on server shutdown for streaming responses.",
+   "evidence": "Revert \"Emit `http.disconnect` on server shutdown for streaming responses\"",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:z.iban",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.6.0",
+   "subject": "z.iban",
+   "summary": "Adds IBAN string validation in electronic format with an ISO 7064 MOD 97-10 checksum.",
+   "evidence": "A new string format: an IBAN in electronic format, with a valid ISO 7064 MOD 97-10 checksum.",
+   "section": "z.iban()",
+   "introduces": [
+    "z.iban"
+   ],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:session-recording~5",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.428.4",
+   "subject": "session recording",
+   "summary": "Idle tabs no longer extend the previous session recording across the entire idle gap when they wake.",
+   "evidence": "Prevent waking an idle tab from extending the previous session recording across the entire idle gap.",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "uvicorn-9342337b@0.52.1#0.0",
+  "technology": "uvicorn",
+  "state": {
+   "technology": "uvicorn",
+   "source": "release notes",
+   "release": "0.52.1",
+   "subject": "WebSocket close handshake",
+   "summary": "Server-initiated WebSocket closes now complete the closing handshake, waiting up to 10 seconds for the client's close reply instead of resetting the connection.",
+   "evidence": "Complete the closing handshake on server-initiated WebSocket closes in the `websockets-sansio` and `wsproto` implementations, waiting for the client's close reply with a 10 second timeout instead of resetting the connection",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "uvicorn-9342337b@0.42.0#0.2",
+  "technology": "uvicorn",
+  "state": {
+   "technology": "uvicorn",
+   "source": "release notes",
+   "release": "0.42.0",
+   "subject": "websockets sans-io implementation",
+   "summary": "Multiple issues in the websockets sans-io implementation were fixed.",
+   "evidence": "Fix multiple issues in websockets sans-io implementation",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "typer-4f6b46bd@0.20.1#0.1",
+  "technology": "typer",
+  "state": {
+   "technology": "typer",
+   "source": "release notes",
+   "release": "0.20.1",
+   "subject": "options_metavar",
+   "summary": "Ensures the options_metavar value is passed through correctly.",
+   "evidence": "Ensure that `options_metavar` is passed through correctly.",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:z.record~3",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.4.0",
+   "subject": "z.record",
+   "summary": "Non-enumerable properties are now skipped more consistently during record validation.",
+   "evidence": "Non-enumerable properties are skipped more consistently.",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:superrefine-when",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.4.0",
+   "subject": "superRefine",
+   "facet": "when",
+   "summary": "The when option was added to conditionally run .superRefine() checks.",
+   "evidence": "The `when` option was added for `.superRefine()`.",
+   "introduces": [
+    "when"
+   ],
+   "replaces": []
+  }
+ },
+ {
+  "id": "uvicorn-9342337b@0.50.0#0.2",
+  "technology": "uvicorn",
+  "state": {
+   "technology": "uvicorn",
+   "source": "release notes",
+   "release": "0.50.0",
+   "subject": "WebSocket payloads",
+   "summary": "Single-frame WebSocket payloads avoid copying when using websockets-sansio.",
+   "evidence": "Avoid copying single-frame WebSocket payloads in websockets-sansio",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:feature-flag-types",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.438.4",
+   "subject": "feature flag types",
+   "summary": "Publishes the feature flag types imported from @posthog/browser-common, fixing type checking in posthog-js.",
+   "evidence": "Fix type checking in posthog-js 1.438.2 by publishing the feature flag types it imports from @posthog/browser-common.",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "typer-4f6b46bd@0.26.0#0.1",
+  "technology": "typer",
+  "state": {
+   "technology": "typer",
+   "source": "release notes",
+   "release": "0.26.0",
+   "subject": "Click-specific functionality",
+   "summary": "Click-specific functionality is no longer supported, including extracting the Click app, adding Click-specific plug-ins, and customizing field types with Click-specific types.",
+   "evidence": "This also means that Click-specific functionality is no longer supported, like extracting the Click app and adding Click-specific plug-ins, or customizing the field types with Click-specific types.",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:discriminatedunion-encode",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.4.0",
+   "subject": "discriminatedUnion",
+   "facet": "encode",
+   "summary": "Encoding now works when the discriminator uses a codec.",
+   "evidence": "Encoding through `z.discriminatedUnion().encode()` now works when the discriminator uses a codec.",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:autocapture",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.428.3",
+   "subject": "autocapture",
+   "summary": "Waits for the initial remote config outcome before using cached autocapture enablement, preventing capture after a project is newly disabled.",
+   "evidence": "Wait for the initial remote config outcome before using cached autocapture enablement, so a newly disabled project does not capture events while its settings load.",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:adoptedstylesheets",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.415.3",
+   "subject": "adoptedStyleSheets",
+   "summary": "Preserves adopted stylesheets that arrive before a shadow root is attached, keeping Stencil and Lit components styled.",
+   "evidence": "The replayer now constructs the stylesheet even when the shadow root does not exist yet and keeps retrying adoption until it is attached.",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:inlinestylesheetbudgetrules",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.416.1",
+   "subject": "inlineStylesheetBudgetRules",
+   "summary": "The default 10,000-rule budget moves into posthog-js session recording options, preserving configured overrides including 0.",
+   "evidence": "The default budget (10,000 rules) moves from the recorder chunk into posthog-js session recording options, so npm-pinned or cached bundles keep their configured override (including 0 to disable)",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "uvicorn-9342337b@0.52.3#0.0",
+  "technology": "uvicorn",
+  "state": {
+   "technology": "uvicorn",
+   "source": "release notes",
+   "release": "0.52.3",
+   "subject": "HTTP/1.1 request parsing",
+   "summary": "Uses zttp's combined receive path to improve HTTP/1.1 request parsing performance.",
+   "evidence": "use its combined receive path, improving HTTP/1.1 request parsing performance",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:looserecord~2",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.2.0",
+   "subject": "looseRecord",
+   "summary": "Adds z.looseRecord() to allow additional properties beyond those defined.",
+   "evidence": "### Implement `z.looseRecord()`",
+   "introduces": [
+    "looseRecord"
+   ],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:looserecord",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.3.4",
+   "subject": "looseRecord",
+   "summary": "looseRecord now supports patternProperties.",
+   "evidence": "Support patternProperties for looserecord (#5592)",
+   "section": "Commits:",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:session-replay~2",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.433.10",
+   "subject": "session replay",
+   "summary": "Logs a console warning when session replay stops capturing canvas frames because of unsupported browsers, CSP restrictions, or a failing maskRegionsFn.",
+   "evidence": "Log a console warning when session replay stops capturing canvas frames (browser without `OffscreenCanvas`, a CSP that blocks `blob:` workers, or a failing `canvasCapture.maskRegionsFn`)",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:react",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.419.1",
+   "subject": "react",
+   "summary": "react is now an optional peer dependency, allowing posthog-js/react to resolve React on strict node_modules layouts without affecting projects that do not import it.",
+   "evidence": "Declare `react` and `@types/react` as **optional** peer dependencies",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:nub.jsonc-preload",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.5.0",
+   "subject": "nub.jsonc",
+   "facet": "preload",
+   "summary": "Nub can preload zod/compile through the preload configuration.",
+   "evidence": "Or set `preload` in [`bunfig.toml`](https://bun.com/docs/runtime/bunfig#preload) or [`nub.jsonc`](https://nubjs.com/docs/config#preload).",
+   "section": "import \"zod/compile\"",
+   "introduces": [
+    "preload"
+   ],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:session-recording-playback",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.418.10",
+   "subject": "session recording playback",
+   "summary": "Hover handling now ignores non-element and detached targets instead of throwing and stopping playback.",
+   "evidence": "Guard the replayer's hover handling against non-element and detached hover targets",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:aggregateerror",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.433.4",
+   "subject": "AggregateError",
+   "summary": "Captures causes and AggregateError members with relationship metadata and individual stacks, limiting output to 50 entries and 1,000 member inspections.",
+   "evidence": "Capture causes and AggregateError members with relationship metadata and individual stacks, limiting output to 50 entries and 1,000 member inspections.",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:replayer",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.434.12",
+   "subject": "replayer",
+   "summary": "The replayer batches large mutation adds against a detached subtree, preventing tab freezes and reducing blocked main-thread time.",
+   "evidence": "The replayer no longer freezes the tab on a mutation that adds tens of thousands of nodes at once.",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:fromjsonschema",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.6.0",
+   "subject": "fromJSONSchema",
+   "summary": "Now enforces minProperties, maxProperties, uniqueItems, contains, minContains, and maxContains instead of ignoring them.",
+   "evidence": "Six additional JSON Schema keywords are now supported in `z.fromJSONSchema()`.",
+   "section": "fromJSONSchema()",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "uvicorn-9342337b@0.44.0#0.0",
+  "technology": "uvicorn",
+  "state": {
+   "technology": "uvicorn",
+   "source": "release notes",
+   "release": "0.44.0",
+   "subject": "websocket keepalive pings",
+   "summary": "Websocket keepalive pings are implemented for websockets-sansio.",
+   "evidence": "Implement websocket keepalive pings for websockets-sansio",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:session-recording-observers",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.433.4",
+   "subject": "session recording observers",
+   "summary": "Keeps observers that initialized successfully when another observer fails, and reports failed observers in recorder debug properties.",
+   "evidence": "Keep the session recording observers that started when one of them fails to initialize, and report the failed observers in the recorder debug properties.",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:webmcp",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.438.8",
+   "subject": "WebMCP",
+   "summary": "Captures WebMCP error types and sanitized messages.",
+   "evidence": "Capture WebMCP error types and sanitized messages.",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:discriminated-union-errors",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.4.0",
+   "subject": "discriminated union errors",
+   "summary": "Invalid discriminated union errors now include discriminator options and improved messages.",
+   "evidence": "Invalid discriminated union errors now include discriminator options and improved messages.",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "uvicorn-9342337b@0.43.0#0.0",
+  "technology": "uvicorn",
+  "state": {
+   "technology": "uvicorn",
+   "source": "release notes",
+   "release": "0.43.0",
+   "subject": "http.disconnect",
+   "summary": "Uvicorn emits an ASGI receive event when the server shuts down during streaming responses, allowing applications to detect disconnects.",
+   "evidence": "Emit `http.disconnect` ASGI `receive()` event on server shutting down for streaming responses (#2829)",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "typer-4f6b46bd@0.26.1#0.0",
+  "technology": "typer",
+  "state": {
+   "technology": "typer",
+   "source": "release notes",
+   "release": "0.26.1",
+   "subject": "typer.Option",
+   "facet": "envvar",
+   "summary": "Environment variables set for typer.Option now work as expected.",
+   "evidence": "Ensure that an envvar set for `typer.Option` works as expected.",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "uvicorn-9342337b@0.45.0#0.0",
+  "technology": "uvicorn",
+  "state": {
+   "technology": "uvicorn",
+   "source": "release notes",
+   "release": "0.45.0",
+   "subject": "proxy headers middleware",
+   "summary": "Forwarded client ports are now preserved in proxy headers.",
+   "evidence": "Preserve forwarded client ports in proxy headers middleware",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:json-pointer",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.5.0",
+   "subject": "JSON Pointer",
+   "summary": "Correctly escapes and unescapes reserved JSON Pointer characters in JSON Schema references.",
+   "evidence": "fix(json-schema): unescape JSON Pointer tokens when resolving $ref",
+   "section": "Commits",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:popover-surveys",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.422.4",
+   "subject": "popover surveys",
+   "summary": "Popover surveys now re-translate when the display language changes, while preserving in-progress answers.",
+   "evidence": "Re-translate popover surveys when the display language changes while the survey is on screen",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "uvicorn-9342337b@0.42.0#0.0",
+  "technology": "uvicorn",
+  "state": {
+   "technology": "uvicorn",
+   "source": "release notes",
+   "release": "0.42.0",
+   "subject": "request body accumulation",
+   "summary": "Request body accumulation now uses bytearray to avoid O(n^2) allocation on fragmented bodies.",
+   "evidence": "Use `bytearray` for request body accumulation to avoid O(n^2) allocation on fragmented bodies",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:session-rotation",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.415.3",
+   "subject": "session rotation",
+   "summary": "Prevents a buffer swapped in by re-entrant session rotation from being shipped during a replay flush.",
+   "evidence": "fix(replay): never ship a buffer swapped in by a re-entrant session rotation mid-flush",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "typer-4f6b46bd@0.20.1#0.0",
+  "technology": "typer",
+  "state": {
+   "technology": "typer",
+   "source": "release notes",
+   "release": "0.20.1",
+   "subject": "TYPER_STANDARD_TRACEBACK",
+   "summary": "Adds support for standard tracebacks controlled by the TYPER_STANDARD_TRACEBACK environment variable.",
+   "evidence": "Add support for standard tracebacks via the env `TYPER_STANDARD_TRACEBACK`.",
+   "introduces": [
+    "TYPER_STANDARD_TRACEBACK"
+   ],
+   "replaces": []
+  }
+ },
+ {
+  "id": "uvicorn-9342337b@0.41.0#0.4",
+  "technology": "uvicorn",
+  "state": {
+   "technology": "uvicorn",
+   "source": "release notes",
+   "release": "0.41.0",
+   "subject": "lifespan shutdown",
+   "summary": "Lifespan shutdown runs when should_exit is set during startup.",
+   "evidence": "Ensure lifespan shutdown runs when `should_exit` is set during startup (#2812)",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:record-keys",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.5.0",
+   "subject": "record keys",
+   "summary": "Record key schemas now govern only matching keys, and pattern-keyed record intersections no longer reject unrelated object keys.",
+   "evidence": "A record's key schema now governs only the keys that match it, the way TypeScript treats an index signature.",
+   "section": "\u26a0\ufe0f Record keys and intersections match TypeScript",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:console-capture",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.430.4",
+   "subject": "console capture",
+   "summary": "Console capture now stops correctly and avoids duplicating after restart when another library wraps the console.",
+   "evidence": "Fix console capture continuing after stop or duplicating after restart when another library wraps the console.",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:advanced-disable-feature-flags",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.429.3",
+   "subject": "advanced_disable_feature_flags",
+   "summary": "A console message is logged when this option prevents surveys from displaying.",
+   "evidence": "Log a console message when advanced_disable_feature_flags stops surveys from displaying",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "uvicorn-9342337b@0.53.0#0.5",
+  "technology": "uvicorn",
+  "state": {
+   "technology": "uvicorn",
+   "source": "release notes",
+   "release": "0.53.0",
+   "subject": "FORWARDED_ALLOW_IPS",
+   "summary": "The default forwarded-proxy allowlist now trusts the IPv6 loopback address ::1.",
+   "evidence": "The default `FORWARDED_ALLOW_IPS` value now includes `::1`.",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:recording-discard",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.427.3",
+   "subject": "recording discard",
+   "summary": "Discarding a recording no longer uploads stylesheet mutations emitted while the recorder stops.",
+   "evidence": "Discarding a recording (for example when the server turns replay off) also no longer uploads the stylesheet mutations the recorder emits as it stops.",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "uvicorn-9342337b@0.40.0#0.0",
+  "technology": "uvicorn",
+  "state": {
+   "technology": "uvicorn",
+   "source": "release notes",
+   "release": "0.40.0",
+   "subject": "Python 3.9",
+   "summary": "Python 3.9 support was dropped, so applications must use a newer Python version.",
+   "evidence": "Drop Python 3.9",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:z.nanoid-length",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.5.0",
+   "subject": "z.nanoid",
+   "facet": "length",
+   "summary": "Accepts a custom length for generated or validated NanoIDs.",
+   "evidence": "feat(v4): let z.nanoid() take a custom length",
+   "section": "Commits",
+   "introduces": [
+    "length"
+   ],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:tojsonschema~3",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.5.0",
+   "subject": "toJSONSchema",
+   "summary": "Compacts simple anyOf unions into a JSON Schema type array.",
+   "evidence": "feat: compact simple anyOf unions to type array in toJSONSchema",
+   "section": "Commits",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:session-diagnostic",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.433.9",
+   "subject": "session diagnostic",
+   "summary": "Adds a session diagnostic when stale replay configuration cannot be refreshed, without changing recording behavior.",
+   "evidence": "Add a session diagnostic when stale replay configuration cannot be refreshed, without changing recording behavior.",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "uvicorn-9342337b@0.50.0#0.3",
+  "technology": "uvicorn",
+  "state": {
+   "technology": "uvicorn",
+   "source": "release notes",
+   "release": "0.50.0",
+   "subject": "websockets",
+   "summary": "The legacy websockets implementation is deprecated, and auto now selects websockets-sansio by default.",
+   "evidence": "Deprecate the legacy websockets implementation and default `auto` to websockets-sansio",
+   "introduces": [
+    "websockets-sansio"
+   ],
+   "replaces": [
+    "websockets"
+   ]
+  }
+ },
+ {
+  "id": "zod-6ac59393:french-locale",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.4.0",
+   "subject": "French locale",
+   "summary": "French issue origin translations were added or updated.",
+   "evidence": "French issue origin translations",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:croatian-locale",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.4.0",
+   "subject": "Croatian locale",
+   "summary": "Croatian locale support was added.",
+   "evidence": "Croatian",
+   "introduces": [
+    "Croatian"
+   ],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:z.properties",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.6.3",
+   "subject": "z.properties",
+   "summary": "The standalone z.properties() schema is removed; the .properties() method form remains available.",
+   "evidence": "removes the standalone `z.properties()` schema from 4.6.0; `z.instanceof().properties()` and `.check(...z.properties())` are unchanged",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "uvicorn-9342337b@0.47.0#0.2",
+  "technology": "uvicorn",
+  "state": {
+   "technology": "uvicorn",
+   "source": "release notes",
+   "release": "0.47.0",
+   "subject": "fd",
+   "summary": "File descriptor 0 is now treated as valid when using reload or workers.",
+   "evidence": "Treat `fd=0` as a valid file descriptor with reload/workers",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:recording-package-exports",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.429.2",
+   "subject": "recording package exports",
+   "summary": "Recording package exports were fixed so consumers can import the package correctly.",
+   "evidence": "Fix recording package exports, native ESM loading, and strict TypeScript 4.7 consumer compatibility.",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:extend",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.3.0",
+   "subject": "extend",
+   "summary": "Throws when overwriting existing properties on object schemas with refinements.",
+   "evidence": "`.extend()` will throws on schemas with refinements if you are overwriting existing properties.",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "uvicorn-9342337b@0.52.2#0.1",
+  "technology": "uvicorn",
+  "state": {
+   "technology": "uvicorn",
+   "source": "release notes",
+   "release": "0.52.2",
+   "subject": "HTTP/1 request parsing performance",
+   "summary": "HTTP/1 request parsing performance is improved, which can reduce request-processing overhead.",
+   "evidence": "improving HTTP/1 request parsing performance",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:base64",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.4.0",
+   "subject": "base64",
+   "summary": "Base64 validation rejects whitespace to prevent an atob bypass.",
+   "evidence": "reject whitespace in z.base64() to close atob bypass",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "uvicorn-9342337b@0.50.0#0.1",
+  "technology": "uvicorn",
+  "state": {
+   "technology": "uvicorn",
+   "source": "release notes",
+   "release": "0.50.0",
+   "subject": "asgi",
+   "facet": "scope",
+   "summary": "The ASGI scope sub-dictionary is cached per connection while a fresh scope dictionary is built for each request.",
+   "evidence": "Cache the `asgi` scope sub-dict per connection",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:transform",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.4.3",
+   "subject": "transform",
+   "summary": "Opt-in and fallback behavior was generalized to transform.",
+   "evidence": "fix(v4): generalize optin/fallback to transform",
+   "section": "Commits:",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:posthog.displaysurvey-initialresponses",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.419.3",
+   "subject": "posthog.displaySurvey",
+   "facet": "initialResponses",
+   "summary": "Prefilled surveys no longer send survey sent before completion, and partial events include only auto-advanced answers.",
+   "evidence": "An `initialResponses` prefill passed to `posthog.displaySurvey()` that neither completes the survey nor auto-advances a question no longer sends `survey sent`, and a partial event carries only the auto-advanced answers.",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:replay-network-captures",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.431.5",
+   "subject": "replay network captures",
+   "summary": "Pending replay network captures are discarded after recording stops or restarts.",
+   "evidence": "Discard pending replay network captures after recording stops or restarts.",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:document-navigation-timing",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.434.1",
+   "subject": "document navigation timing",
+   "summary": "Replay network waterfall now captures document navigation timing when recording starts after page load and avoids partial duplicates during loading.",
+   "evidence": "Capture the document navigation timing in the replay network waterfall when recording starts after the page has loaded, and stop recording a partial duplicate of that entry when recording starts while the page is still loading",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "uvicorn-9342337b@0.52.1#0.3",
+  "technology": "uvicorn",
+  "state": {
+   "technology": "uvicorn",
+   "source": "release notes",
+   "release": "0.52.1",
+   "subject": "WebSocket denial responses",
+   "summary": "The websockets-sansio implementation no longer duplicates Content-Type or Content-Length headers and preserves non-UTF-8 denial bodies.",
+   "evidence": "Remove duplicate `Content-Type` and `Content-Length` headers from WebSocket denial responses on the `websockets-sansio` implementation, and deliver non-UTF-8 denial bodies intact",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:prototype-method-getter",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.5.2",
+   "subject": "prototype method getter",
+   "summary": "Prototype method getters now answer a bare call, allowing vi.spyOn to work.",
+   "evidence": "let a prototype method getter answer a bare call so vi.spyOn works",
+   "section": "Commits:",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:z.stringbool-truthy",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.5.0",
+   "subject": "z.stringbool",
+   "facet": "truthy",
+   "summary": "Exposes stringbool truthy, falsy, and case settings through _zod.bag.",
+   "evidence": "feat(v4): expose stringbool truthy/falsy/case via _zod.bag",
+   "section": "Commits",
+   "introduces": [
+    "truthy",
+    "falsy",
+    "case"
+   ],
+   "replaces": []
+  }
+ },
+ {
+  "id": "uvicorn-9342337b@0.49.0#0.0",
+  "technology": "uvicorn",
+  "state": {
+   "technology": "uvicorn",
+   "source": "release notes",
+   "release": "0.49.0",
+   "subject": "ProxyHeadersMiddleware",
+   "summary": "Duplicate forwarding headers are consumed again, reversing the 0.48.0 behavior that ignored them.",
+   "evidence": "Consume duplicate forwarding headers in ProxyHeadersMiddleware (reverses the 0.48.0 behavior of ignoring them)",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:autocapture~2",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.422.3",
+   "subject": "autocapture",
+   "summary": "Autocapture no longer throws a RangeError when sorting element attributes in browsers with faulty ICU data.",
+   "evidence": "Autocapture no longer throws a `RangeError` into the host page when it sorts element attributes.",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "uvicorn-9342337b@0.52.0#0.0",
+  "technology": "uvicorn",
+  "state": {
+   "technology": "uvicorn",
+   "source": "release notes",
+   "release": "0.52.0",
+   "subject": "--http",
+   "summary": "Adds an experimental HTTP/1.1 implementation selectable with --http zttp; it is not recommended for production traffic.",
+   "evidence": "Add an experimental `zttp` HTTP/1.1 implementation, selectable with `--http zttp` (#2979)",
+   "introduces": [
+    "zttp"
+   ],
+   "replaces": []
+  }
+ },
+ {
+  "id": "typer-4f6b46bd@0.27.1#0.0",
+  "technology": "typer",
+  "state": {
+   "technology": "typer",
+   "source": "release notes",
+   "release": "0.27.1",
+   "subject": "epilog",
+   "summary": "Formatting for epilog is now consistent with other parts of the help string.",
+   "evidence": "Make `epilog` formatting consistent with other parts of the help string.",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "typer-4f6b46bd@0.25.1#0.0",
+  "technology": "typer",
+  "state": {
+   "technology": "typer",
+   "source": "release notes",
+   "release": "0.25.1",
+   "subject": "Typer Library Skill for Agents",
+   "summary": "Adds a Typer Library Skill for Agents to support agent interactions with Typer.",
+   "evidence": "Add Typer Library Skill for Agents.",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:url-prefill",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.433.7",
+   "subject": "URL prefill",
+   "summary": "URL prefill continues working when localStorage is unavailable, including on opaque-origin pages or in private browsing.",
+   "evidence": "fix(surveys): keep URL prefill working when localStorage is unavailable, such as on a page with an opaque origin or in private browsing",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "typer-4f6b46bd@0.21.2#0.1",
+  "technology": "typer",
+  "state": {
+   "technology": "typer",
+   "source": "release notes",
+   "release": "0.21.2",
+   "subject": "typer.style",
+   "summary": "CLI help text alignment is fixed when typer.style() is used in option descriptions.",
+   "evidence": "Fix `--help` text alignment when using `typer.style()` in option descriptions.",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "typer-4f6b46bd@0.27.3#0.0",
+  "technology": "typer",
+  "state": {
+   "technology": "typer",
+   "source": "release notes",
+   "release": "0.27.3",
+   "subject": "error messages",
+   "summary": "Terminal control characters are escaped in error messages, preventing control sequences from affecting terminal output.",
+   "evidence": "Escape terminal control characters in error messages.",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:message",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.3.5",
+   "subject": "message",
+   "summary": "The message API is deprecated; developers should consult the migration guide for the replacement.",
+   "evidence": "Update migration guide docs for deprecation of message",
+   "section": "Commits:",
+   "introduces": [],
+   "replaces": [
+    "message"
+   ]
+  }
+ },
+ {
+  "id": "zod-6ac59393:z.union",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.4.0",
+   "subject": "z.union",
+   "summary": "Empty unions now construct successfully and fail at parse time instead of crashing during construction.",
+   "evidence": "Empty `z.union([])`, `z.xor([])`, and discriminated unions no longer crash at construction time.",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:min",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.5.0",
+   "subject": "min",
+   "summary": "String minimum-length validation now counts Unicode code points instead of UTF-16 code units.",
+   "evidence": "They now count Unicode code points, which is what every non-JS consumer of a length bound does",
+   "section": "\u26a0\ufe0f String length counts code points",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:proto~3",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.4.0",
+   "subject": "__proto__",
+   "summary": "Object catchall paths now skip __proto__ keys to harden against prototype pollution.",
+   "evidence": "Object catchall paths now skip `__proto__` keys.",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:in-app-survey",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.415.5",
+   "subject": "in-app survey",
+   "summary": "Fixes Chrome renderer crashes when closing in-app surveys and ensures popup state settles correctly during skipped, interrupted, or overlapping transitions.",
+   "evidence": "Fix a Chrome renderer crash (grey \"Aw, Snap\" tab) that could occur when closing an in-app survey.",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "typer-4f6b46bd@0.23.0#0.0",
+  "technology": "typer",
+  "state": {
+   "technology": "typer",
+   "source": "release notes",
+   "release": "0.23.0",
+   "subject": "error tracebacks",
+   "facet": "locals",
+   "summary": "Rich error tracebacks now omit local variables by default because they can be verbose.",
+   "evidence": "When printing error tracebacks with Rich, default to not showing locals, which are sometimes verbose.",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:bunfig.toml-preload",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.5.0",
+   "subject": "bunfig.toml",
+   "facet": "preload",
+   "summary": "Bun can preload zod/compile through the preload configuration.",
+   "evidence": "Or set `preload` in [`bunfig.toml`](https://bun.com/docs/runtime/bunfig#preload) or [`nub.jsonc`](https://nubjs.com/docs/config#preload).",
+   "section": "import \"zod/compile\"",
+   "introduces": [
+    "preload"
+   ],
+   "replaces": []
+  }
+ },
+ {
+  "id": "typer-4f6b46bd@0.26.8#0.0",
+  "technology": "typer",
+  "state": {
+   "technology": "typer",
+   "source": "release notes",
+   "release": "0.26.8",
+   "subject": "Rich help output",
+   "facet": "metavar",
+   "summary": "The second column of Rich help output now reflects the type consistently when using metavar.",
+   "evidence": "Make second column of Rich help output reflect the type consistently, even when using `metavar`.",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:default-english-locale",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.5.0",
+   "subject": "default English locale",
+   "summary": "The default English locale is preserved in tree-shaken bundles.",
+   "evidence": "preserve default English locale across tree-shaken bundles",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:e.164",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.3.0",
+   "subject": "E.164",
+   "summary": "Tightens the E.164 regex to require a non-zero leading digit and 7\u201315 total digits.",
+   "evidence": "Tightened E.164 regex to require a non-zero leading digit and 7\u201315 digits total",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:minimum",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.3.0",
+   "subject": "minimum",
+   "summary": "Converts Date instances to numbers for minimum checks.",
+   "evidence": "Convert `Date` instances to numbers in `minimum`/`maximum` checks",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:reserved-key-hardening",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.5.0",
+   "subject": "reserved-key hardening",
+   "summary": "Reserved-key handling is hardened across Zod 4 schemas.",
+   "evidence": "complete reserved-key hardening",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "typer-4f6b46bd@0.21.2#0.2",
+  "technology": "typer",
+  "state": {
+   "technology": "typer",
+   "source": "release notes",
+   "release": "0.21.2",
+   "subject": "typing-extensions",
+   "summary": "typing-extensions is no longer an external dependency, so projects may no longer need to install it for Typer.",
+   "evidence": "Drop `typing-extensions` as external dependency.",
+   "introduces": [],
+   "replaces": [
+    "typing-extensions",
+    "typing_extensions"
+   ]
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:console-autocapture~2",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.421.2",
+   "subject": "console autocapture",
+   "summary": "Captured console records are now dropped when the user opts out.",
+   "evidence": "drop captured console records when the user opts out",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:z.compile",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.5.0",
+   "subject": "z.compile",
+   "summary": "Pre-compiles any Zod schema for substantially faster parsing while preserving normal schema behavior and error reporting.",
+   "evidence": "You can now pre-compile any Zod schema using `z.compile(schema)`. This dramatically speeds up parsing performance.",
+   "section": "z.compile()",
+   "introduces": [
+    "z.compile"
+   ],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:fbc",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.433.0",
+   "subject": "_fbc",
+   "summary": "The Meta click identifier is read from cookies, preserving the true ad click time and retaining clicks that occurred before the SDK loaded.",
+   "evidence": "Read Meta's `_fbc` and `_fbp` cookies for the Conversions API.",
+   "section": "Minor Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:respect-dnt",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.423.0",
+   "subject": "respect_dnt",
+   "summary": "When enabled, privacy handling now also respects navigator.globalPrivacyControl.",
+   "evidence": "Respect `navigator.globalPrivacyControl` when `respect_dnt` is enabled",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:merge~2",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.4.0",
+   "subject": "merge",
+   "summary": "Merging a schema with receiver refinements now throws, while refinements from the second schema are preserved.",
+   "evidence": "throw on `.merge()` receiver with refinements; preserve refinements from second schema",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "typer-4f6b46bd@0.23.1#0.0",
+  "technology": "typer",
+  "state": {
+   "technology": "typer",
+   "source": "release notes",
+   "release": "0.23.1",
+   "subject": "TYPER_USE_RICH",
+   "summary": "Parsing now allows developers to disable Rich completely using TYPER_USE_RICH.",
+   "evidence": "Fix `TYPER_USE_RICH` parsing to allow disabling Rich completely.",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "uvicorn-9342337b@0.52.2#0.0",
+  "technology": "uvicorn",
+  "state": {
+   "technology": "uvicorn",
+   "source": "release notes",
+   "release": "0.52.2",
+   "subject": "bodyless request receives",
+   "summary": "Bodyless request receives are fixed, improving request handling for applications using Uvicorn.",
+   "evidence": "fixing bodyless request receives",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "typer-4f6b46bd@0.26.7#0.0",
+  "technology": "typer",
+  "state": {
+   "technology": "typer",
+   "source": "release notes",
+   "release": "0.26.7",
+   "subject": "xdg-open",
+   "facet": "wait",
+   "summary": "Launching URLs with xdg-open now respects wait=False.",
+   "evidence": "Respect wait=False when launching URLs with xdg-open.",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:fromjsonschema~5",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.3.4",
+   "subject": "fromJSONSchema",
+   "summary": "ISO time handling was dropped from fromJSONSchema.",
+   "evidence": "Drop iso time in fromJSONSchema",
+   "section": "Commits:",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:keyof",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.5.0",
+   "subject": "keyof",
+   "summary": "The documented keyof() ZodEnum type uses the Zod 4 form.",
+   "evidence": "update keyof() ZodEnum type to the v4 form",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:onactivematchingsurveyschanged",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.435.0",
+   "subject": "onActiveMatchingSurveysChanged",
+   "summary": "Adds a subscription API for survey eligibility updates with safe unsubscribe and recoverable load-error reporting.",
+   "evidence": "Add `onActiveMatchingSurveysChanged` to subscribe to survey eligibility updates with safe unsubscribe and recoverable load-error reporting.",
+   "section": "Minor Changes",
+   "introduces": [
+    "onActiveMatchingSurveysChanged"
+   ],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:jitless~2",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.4.0",
+   "subject": "jitless",
+   "summary": "The allowsEval probe now honors the jitless configuration.",
+   "evidence": "honour `jitless` config in `allowsEval` probe",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "typer-4f6b46bd@0.27.0#0.0",
+  "technology": "typer",
+  "state": {
+   "technology": "typer",
+   "source": "release notes",
+   "release": "0.27.0",
+   "subject": "metavar",
+   "summary": "Metavar printing was updated, which may change how command-line argument placeholders appear.",
+   "evidence": "Update metavar printing.",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:mutationbytesrefillrate",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.422.2",
+   "subject": "__mutationBytesRefillRate",
+   "summary": "The DOM mutation budget refills at 25KB/s by default, controlling the sustained mutation rate before mutations are dropped.",
+   "evidence": "mutations beyond the sustained budget (`__mutationBytesRefillRate`, default 25KB/s) are dropped",
+   "section": "Patch Changes",
+   "introduces": [
+    "__mutationBytesRefillRate"
+   ],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:dead-click-detection",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.429.0",
+   "subject": "dead-click detection",
+   "summary": "Text selection and editable caret gestures are no longer incorrectly reported as dead clicks when mouse release is delayed.",
+   "evidence": "Fix dead-click detection for text selection and editable caret gestures when mouse release is delayed",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:exception-capture",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.427.1",
+   "subject": "exception capture",
+   "summary": "Automatic and manual exception capture no longer recursively recapture stack overflows raised while sending an exception.",
+   "evidence": "Prevent automatic and manual exception capture from recursively recapturing stack overflows raised while sending an exception.",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:brand-cardinality",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.3.0",
+   "subject": "brand",
+   "facet": "cardinality",
+   "summary": "Accepts a second argument controlling whether branding applies to input, output, or both.",
+   "evidence": "The .brand() method now accepts a second argument to control whether the brand applies to input, output, or both.",
+   "introduces": [
+    "in",
+    "out",
+    "inout"
+   ],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:dead-clicks~2",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.434.5",
+   "subject": "dead clicks",
+   "summary": "Dead clicks are no longer reported for controls inside open shadow roots when clicks update content within the shadow root.",
+   "evidence": "Stop reporting dead clicks on controls inside open shadow roots (such as web components or micro-frontends) when the click updates content inside the shadow root.",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:capture-performance.web-vitals-attribution",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.419.0",
+   "subject": "capture_performance.web_vitals_attribution",
+   "summary": "Configure web vitals attribution with false, true, or an array naming the metrics.",
+   "evidence": "Set `capture_performance.web_vitals_attribution` to `false` to opt out, `true` for every metric, or an array to name the metrics.",
+   "section": "Minor Changes",
+   "introduces": [
+    "capture_performance.web_vitals_attribution"
+   ],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:logs.resourceattributes-os.name",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.424.0",
+   "subject": "logs.resourceAttributes",
+   "facet": "os.name",
+   "summary": "Browser SDK logs now include the os.name resource attribute, overridable via logs.resourceAttributes.",
+   "evidence": "Add `os.name` and `os.version` resource attributes to logs from the browser SDK, overridable via `logs.resourceAttributes`",
+   "section": "Minor Changes",
+   "introduces": [
+    "os.name"
+   ],
+   "replaces": []
+  }
+ },
+ {
+  "id": "typer-4f6b46bd@0.20.1#0.3",
+  "technology": "typer",
+  "state": {
+   "technology": "typer",
+   "source": "release notes",
+   "release": "0.20.1",
+   "subject": "rich_markup_mode",
+   "summary": "Ensures the default rich_markup_mode value is interpreted correctly.",
+   "evidence": "Ensure that the default `rich_markup_mode` is interpreted correctly.",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:session-id-rotation",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.427.3",
+   "subject": "session-id rotation",
+   "summary": "Session-id rotation resets the idle clock so the new session's first snapshot is not dropped or started prematurely.",
+   "evidence": "reset the idle clock on a session-id rotation so the new session's first snapshot is not dropped as idle and its recording does not start hours early",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:session-id",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.434.4",
+   "subject": "$session_id",
+   "summary": "Prevents $session_id from being sent as null when a sibling tab resets the session before this tab captures its first event.",
+   "evidence": "Fix `$session_id` being sent as `null` when a sibling tab resets the session before this tab captures its first event",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:replay-network-masking-callback",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.434.16",
+   "subject": "replay network masking callback",
+   "summary": "The modern replay network masking callback is honored when both modern and deprecated hooks are configured.",
+   "evidence": "Honor the modern replay network masking callback when both modern and deprecated hooks are configured.",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:catch~2",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.4.3",
+   "subject": "catch",
+   "summary": "Catch handling for absent object keys was restored.",
+   "evidence": "fix(v4): restore catch handling for absent object keys",
+   "section": "Commits:",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "typer-4f6b46bd@0.26.8#0.1",
+  "technology": "typer",
+  "state": {
+   "technology": "typer",
+   "source": "release notes",
+   "release": "0.26.8",
+   "subject": "NoSuchOption.format_message",
+   "summary": "Formatting in NoSuchOption.format_message() was fixed.",
+   "evidence": "Fix formatting in `NoSuchOption.format_message()`.",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:link-rel-preload-as-style",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.433.6",
+   "subject": "<link rel=preload as=style>",
+   "summary": "The recorder no longer treats this resource hint as a stylesheet, preventing duplicated CSS in full snapshots and failed stylesheet deferrals.",
+   "evidence": "Stop treating a `<link rel=preload as=style>` resource hint as a stylesheet when recording.",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "uvicorn-9342337b@0.53.0#0.3",
+  "technology": "uvicorn",
+  "state": {
+   "technology": "uvicorn",
+   "source": "release notes",
+   "release": "0.53.0",
+   "subject": "zuvloop",
+   "summary": "Uvicorn can use zuvloop as its event loop on CPython 3.14 or newer.",
+   "evidence": "Run Uvicorn with `zuvloop`",
+   "introduces": [
+    "zuvloop"
+   ],
+   "replaces": []
+  }
+ },
+ {
+  "id": "typer-4f6b46bd@0.24.1#0.1",
+  "technology": "typer",
+  "state": {
+   "technology": "typer",
+   "source": "release notes",
+   "release": "0.24.1",
+   "subject": "typer-cli",
+   "summary": "Support is dropped and no more versions will be released; developers should use typer instead.",
+   "evidence": "Drop support for `typer-slim` and `typer-cli`, no more versions will be released, use only `typer`.",
+   "introduces": [],
+   "replaces": [
+    "typer-cli"
+   ]
+  }
+ },
+ {
+  "id": "zod-6ac59393:fromjsonschema-propertynames",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.5.0",
+   "subject": "fromJSONSchema",
+   "facet": "propertyNames",
+   "summary": "propertyNames now composes with the other object keywords.",
+   "evidence": "fix(v4): make fromJSONSchema propertyNames compose with the other object keywords",
+   "section": "Commits",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "typer-4f6b46bd@0.26.5#0.0",
+  "technology": "typer",
+  "state": {
+   "technology": "typer",
+   "source": "release notes",
+   "release": "0.26.5",
+   "subject": "hidden commands",
+   "summary": "Hidden commands are no longer shown when Rich markup is disabled.",
+   "evidence": "Ensure that hidden commands are not shown when Rich markup is disabled.",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:cookieless-mode~2",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.433.0",
+   "subject": "cookieless mode",
+   "summary": "Cookieless mode skips reading the Meta `_fbc` and `_fbp` cookies.",
+   "evidence": "cookieless mode skips them.",
+   "section": "Minor Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:event-retries",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.432.0",
+   "subject": "event retries",
+   "summary": "Fixes lost event retries after restoring a page from the back-forward cache.",
+   "evidence": "Fix lost event retries after restoring a page from the back-forward cache.",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "uvicorn-9342337b@0.52.1#0.2",
+  "technology": "uvicorn",
+  "state": {
+   "technology": "uvicorn",
+   "source": "release notes",
+   "release": "0.52.1",
+   "subject": "WebSocket backpressure",
+   "summary": "WebSocket writes now handle connection loss while waiting on backpressure.",
+   "evidence": "Handle connection loss while a WebSocket write is waiting on backpressure",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:z.record~4",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.4.0",
+   "subject": "z.record",
+   "summary": "The v3-style single-argument z.record(valueType) form works again.",
+   "evidence": "The v3-style single-argument `z.record(valueType)` form works again.",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:event-properties",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.428.2",
+   "subject": "event properties",
+   "summary": "Error details, causes, aggregate errors, custom enumerable properties, and cross-realm Errors are preserved; ordinary capture properties are string-truncated while exception additional properties retain custom toJSON serialization.",
+   "evidence": "Preserve Error details, causes, aggregate errors, and custom enumerable properties in event properties, including cross-realm Errors. Apply string truncation to ordinary capture properties and retain custom toJSON serialization for exception additional properties.",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:record-input-keys",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.5.0",
+   "subject": "record input keys",
+   "summary": "Record input keys become optional when the value schema can supply them.",
+   "evidence": "fix(v4): make record input keys optional when the value can fill them",
+   "section": "Commits",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:session-recording~4",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.430.3",
+   "subject": "session recording",
+   "summary": "Fixes session recording failing to restart after capturing events while stopped with expired config.",
+   "evidence": "Fix session recording failing to restart after capturing events while stopped with expired config.",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:z.base64",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.6.0",
+   "subject": "z.base64",
+   "summary": "Uses linear runtime character-set validation with code-enforced length and padding, preventing regex stack overflow on huge inputs.",
+   "evidence": "A multi-megabyte string can no longer overflow the regex stack through a composed schema.",
+   "section": "\u26a0\ufe0f base64 patterns",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "uvicorn-9342337b@0.52.1#0.1",
+  "technology": "uvicorn",
+  "state": {
+   "technology": "uvicorn",
+   "source": "release notes",
+   "release": "0.52.1",
+   "subject": "WebSocket write flow control",
+   "summary": "The websockets-sansio implementation now applies write flow control, preventing data truncation during server-initiated closes with large in-flight payloads.",
+   "evidence": "Add missing write flow control to the `websockets-sansio` implementation, preventing data truncation on server-initiated closes with large in-flight payloads",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "typer-4f6b46bd@0.24.2#0.0",
+  "technology": "typer",
+  "state": {
+   "technology": "typer",
+   "source": "release notes",
+   "release": "0.24.2",
+   "subject": "typer.launch",
+   "summary": "Launching a file through typer.launch now forwards correctly.",
+   "evidence": "Ensure that `typer.launch` forwards correctly when launching a file.",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:fbp",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.433.0",
+   "subject": "$fbp",
+   "summary": "The Meta browser ID is captured as a person property so backend conversions can use it later.",
+   "evidence": "The `_fbp` browser ID is captured as the `$fbp` person property, which makes it available to a conversion sent later from a backend.",
+   "section": "Minor Changes",
+   "introduces": [
+    "$fbp"
+   ],
+   "replaces": []
+  }
+ },
+ {
+  "id": "typer-4f6b46bd@0.20.0#0.1",
+  "technology": "typer",
+  "state": {
+   "technology": "typer",
+   "source": "release notes",
+   "release": "0.20.0",
+   "subject": "Python support",
+   "summary": "Typer now supports Python 3.14, allowing applications to run on that Python release.",
+   "evidence": "Add support for Python 3.14.",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:held-recording-epoch-buffered-data",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.434.17",
+   "subject": "held recording epoch buffered data",
+   "summary": "Buffered data is preserved when a held recording epoch reaches the size cap.",
+   "evidence": "fix(replay): keep a held recording epoch's buffered data when it hits the size cap",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:log-exports",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.429.5",
+   "subject": "log exports",
+   "summary": "Retry delays for log exports are capped at 30 seconds, so exports resume sooner after endpoint recovery.",
+   "evidence": "Cap the retry delay for log exports at 30 seconds, the ceiling the logs contract states.",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:z.base64~2",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.4.0",
+   "subject": "z.base64",
+   "summary": "Base64 validation now rejects whitespace instead of accepting inputs after atob-style whitespace stripping.",
+   "evidence": "Base64 validation now rejects whitespace instead of allowing `atob()`-style whitespace stripping.",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:bootstrap",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.429.3",
+   "subject": "bootstrap",
+   "summary": "Bootstrap values may now be null.",
+   "evidence": "Allow null bootstrap values",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:sdk-debug-replay-deferred-stylesheets-failed",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.416.1",
+   "subject": "$sdk_debug_replay_deferred_stylesheets_failed",
+   "summary": "Residual deferred stylesheet failures are now counted through a dedicated debug telemetry event.",
+   "evidence": "residual failure modes are counted via $sdk_debug_replay_deferred_stylesheets_failed / _abandoned",
+   "section": "Patch Changes",
+   "introduces": [
+    "$sdk_debug_replay_deferred_stylesheets_failed"
+   ],
+   "replaces": []
+  }
+ },
+ {
+  "id": "uvicorn-9342337b@0.45.0#0.5",
+  "technology": "uvicorn",
+  "state": {
+   "technology": "uvicorn",
+   "source": "release notes",
+   "release": "0.45.0",
+   "subject": "--reset-contextvars",
+   "summary": "Adds a flag to isolate ASGI request context.",
+   "evidence": "Add `--reset-contextvars` flag to isolate ASGI request context",
+   "introduces": [
+    "--reset-contextvars"
+   ],
+   "replaces": []
+  }
+ },
+ {
+  "id": "typer-4f6b46bd@0.22.0#0.0",
+  "technology": "typer",
+  "state": {
+   "technology": "typer",
+   "source": "release notes",
+   "release": "0.22.0",
+   "subject": "typer-slim",
+   "summary": "typer-slim is now a shallow wrapper around typer and always requires rich and shellingham.",
+   "evidence": "Make `typer-slim` a shallow wrapper around `typer`, always requiring `rich` and `shellingham`.",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:z.formaterror",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.4.0",
+   "subject": "z.formatError",
+   "summary": "Nested union paths are now preserved correctly in formatted errors.",
+   "evidence": "Nested union paths are now preserved correctly in the output of `z.treeifyError()` and `z.formatError()`.",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:z.ulid",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.5.0",
+   "subject": "z.ulid",
+   "summary": "Rejects ULIDs whose first character exceeds 7 because the encoded timestamp would overflow 48 bits.",
+   "evidence": "`z.ulid()` restricts the first character to `0`\u2013`7`; anything higher overflows the 48-bit timestamp.",
+   "section": "\u26a0\ufe0f Stricter string formats",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "typer-4f6b46bd@0.21.0#0.0",
+  "technology": "typer",
+  "state": {
+   "technology": "typer",
+   "source": "release notes",
+   "release": "0.21.0",
+   "subject": "Python support",
+   "summary": "Python 3.8 is no longer supported, so developers must use a newer Python version.",
+   "evidence": "Drop support for Python 3.8.",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:z.validateasync",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.5.0",
+   "subject": "z.validateAsync",
+   "summary": "Adds asynchronous boolean validation for schemas with async refinements.",
+   "evidence": "`z.validateAsync()` covers schemas with async refinements.",
+   "section": "z.validate()",
+   "introduces": [
+    "z.validateAsync"
+   ],
+   "replaces": []
+  }
+ },
+ {
+  "id": "typer-4f6b46bd@0.21.1#0.0",
+  "technology": "typer",
+  "state": {
+   "technology": "typer",
+   "source": "release notes",
+   "release": "0.21.1",
+   "subject": "help text",
+   "summary": "Escaping in help text is fixed when rich is installed but not used.",
+   "evidence": "Fix escaping in help text when `rich` is installed but not used.",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:z.deeppartial",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.5.0",
+   "subject": "z.deepPartial",
+   "summary": "Restores deep partial schema construction as a top-level functional API.",
+   "evidence": "Back in functional form after being removed as a method in Zod 4.",
+   "section": "z.deepPartial()",
+   "introduces": [
+    "z.deepPartial"
+   ],
+   "replaces": [
+    ".deepPartial()"
+   ]
+  }
+ },
+ {
+  "id": "zod-6ac59393:proto",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.5.0",
+   "subject": "__proto__",
+   "summary": "Object and record parsers strip __proto__ keys and protect formatters and JSON Schema converters from prototype pollution paths.",
+   "evidence": "Object and record parsers now drop a `__proto__` key whether it comes from the input, is declared by the schema, or is produced by a record key transform.",
+   "section": "\u26a0\ufe0f proto is always stripped",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "typer-4f6b46bd@0.26.2#0.0",
+  "technology": "typer",
+  "state": {
+   "technology": "typer",
+   "source": "release notes",
+   "release": "0.26.2",
+   "subject": "typer.Option",
+   "facet": "envvar",
+   "summary": "An envvar set for a typer.Option list is now split on whitespace.",
+   "evidence": "Ensure that an envvar set for a `typer.Option` list is split on whitespace.",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "uvicorn-9342337b@0.51.0#0.0",
+  "technology": "uvicorn",
+  "state": {
+   "technology": "uvicorn",
+   "source": "release notes",
+   "release": "0.51.0",
+   "subject": "worker restart overlap",
+   "summary": "Workers now restart with overlap on SIGHUP, enabling near-zero-downtime reloads.",
+   "evidence": "Restart workers with overlap on SIGHUP for near-zero-downtime reloads",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:z.properties~2",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.6.0",
+   "subject": "z.properties",
+   "summary": "Adds in-place validation of selected object properties while preserving the input instance and prototype.",
+   "evidence": "A new API for validating specific properties of an object.",
+   "section": "z.properties()",
+   "introduces": [
+    "z.properties"
+   ],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:z.xor~2",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.3.0",
+   "subject": "z.xor",
+   "summary": "Adds an exclusive union that requires exactly one option to match and emits oneOf in JSON Schema.",
+   "evidence": "A new exclusive union type that requires exactly one option to match.",
+   "introduces": [
+    "z.xor"
+   ],
+   "replaces": []
+  }
+ },
+ {
+  "id": "typer-4f6b46bd@0.26.0#0.0",
+  "technology": "typer",
+  "state": {
+   "technology": "typer",
+   "source": "release notes",
+   "release": "0.26.0",
+   "subject": "Click",
+   "summary": "Typer no longer depends on Click as a third-party dependency and vendors Click, reducing dependency conflicts for projects using both packages.",
+   "evidence": "Typer no longer depends on Click as a third party dependency, it vendors (includes the source code of) Click.",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "typer-4f6b46bd@0.20.1#0.2",
+  "technology": "typer",
+  "state": {
+   "technology": "typer",
+   "source": "release notes",
+   "release": "0.20.1",
+   "subject": "optional argument",
+   "summary": "Optional arguments are shown in brackets even when metavar is set.",
+   "evidence": "Ensure an optional argument is shown in brackets, even when `metavar` is set.",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:send-instantly-compression",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.433.8",
+   "subject": "send_instantly",
+   "facet": "compression",
+   "summary": "Events captured with send_instantly now prefer synchronous compression, including the initial $pageview, avoiding delays in request dispatch.",
+   "evidence": "Prefer synchronous compression for events captured with `send_instantly`, including the initial `$pageview`, to avoid delaying request dispatch on asynchronous compression.",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:preview-cookie-wins-on-conflict",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.418.0",
+   "subject": "__preview_cookie_wins_on_conflict",
+   "summary": "The preview cookie conflict option is deprecated in favor of cookieWinsOnConflict.",
+   "evidence": "deprecate `__preview_cookie_wins_on_conflict`",
+   "section": "Minor Changes",
+   "introduces": [],
+   "replaces": [
+    "__preview_cookie_wins_on_conflict"
+   ]
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:console-log-autocapture",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.419.4",
+   "subject": "console log autocapture",
+   "summary": "Fixes console log autocapture silently failing when an older posthog-js core loads a newer logs bundle.",
+   "evidence": "Fix console log autocapture silently failing when an older `posthog-js` core loads a newer logs bundle.",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:posthog.debug",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.418.11",
+   "subject": "posthog.debug",
+   "summary": "Debug mode now names unmatched session replay trigger conditions instead of only reporting buffering.",
+   "evidence": "When session replay is waiting on a trigger, debug mode now names the conditions that haven't matched yet",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:server-signed-identity-claims",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.425.0",
+   "subject": "server-signed identity claims",
+   "summary": "Conversations widget requests now forward generic server-signed identity claims.",
+   "evidence": "Forward generic server-signed identity claims with conversations widget requests.",
+   "section": "Minor Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "uvicorn-9342337b@0.46.0#0.2",
+  "technology": "uvicorn",
+  "state": {
+   "technology": "uvicorn",
+   "source": "release notes",
+   "release": "0.46.0",
+   "subject": "ws_ping_timeout",
+   "summary": "wsproto now supports ws_ping_timeout, allowing developers to configure WebSocket ping timing with that implementation.",
+   "evidence": "Support `ws_ping_interval` and `ws_ping_timeout` in `wsproto` implementation",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:z.tojsonschema-defs",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.4.0",
+   "subject": "z.toJSONSchema",
+   "facet": "$defs",
+   "summary": "Redundant id fields are removed from $defs entries to preserve correct reference resolution in older JSON Schema dialects.",
+   "evidence": "JSON Schema conversion through `z.toJSONSchema()` now strips redundant `id` fields from `$defs` entries.",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:z.creditcard",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.5.0",
+   "subject": "z.creditCard",
+   "summary": "Adds string validation for 12\u201319 digit credit-card values with optional separators and a valid Luhn checksum.",
+   "evidence": "A new string format: 12\u201319 digits, optionally separated by single spaces or hyphens, with a valid Luhn checksum.",
+   "section": "z.creditCard()",
+   "introduces": [
+    "z.creditCard"
+   ],
+   "replaces": []
+  }
+ },
+ {
+  "id": "typer-4f6b46bd@0.25.0#0.0",
+  "technology": "typer",
+  "state": {
+   "technology": "typer",
+   "source": "release notes",
+   "release": "0.25.0",
+   "subject": "traceback formatting",
+   "summary": "Code lines in tracebacks formatted with Rich are no longer truncated.",
+   "evidence": "Don't truncate code lines in traceback when formatted with Rich.",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:autocapture-targets",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.428.1",
+   "subject": "autocapture targets",
+   "summary": "Autocapture now recovers dropdown click targets retargeted to the page root and attributes nested SVG icon clicks to enclosing buttons or links while preserving privacy checks.",
+   "evidence": "Recover autocapture targets for dropdown clicks retargeted to the page root, and attribute nested SVG icon clicks to their enclosing button or link while preserving privacy checks.",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "uvicorn-9342337b@0.38.0#0.0",
+  "technology": "uvicorn",
+  "state": {
+   "technology": "uvicorn",
+   "source": "release notes",
+   "release": "0.38.0",
+   "subject": "Python 3.14 support",
+   "summary": "Uvicorn now supports Python 3.14, allowing developers to use it with that Python release.",
+   "evidence": "Support Python 3.14",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:parsed-objects-proto",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.5.0",
+   "subject": "parsed objects",
+   "facet": "__proto__",
+   "summary": "Parsed objects consistently strip __proto__ keys, improving protection against prototype pollution.",
+   "evidence": "consistently strip __proto__ from parsed objects",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "typer-4f6b46bd@0.24.1#0.0",
+  "technology": "typer",
+  "state": {
+   "technology": "typer",
+   "source": "release notes",
+   "release": "0.24.1",
+   "subject": "typer-slim",
+   "summary": "Support is dropped and no more versions will be released; developers should use typer instead.",
+   "evidence": "Drop support for `typer-slim` and `typer-cli`, no more versions will be released, use only `typer`.",
+   "introduces": [],
+   "replaces": [
+    "typer-slim"
+   ]
+  }
+ },
+ {
+  "id": "zod-6ac59393:z.properties~3",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.5.0",
+   "subject": "z.properties",
+   "summary": "Adds a multi-property counterpart to z.property() for checking several properties together.",
+   "evidence": "The multi-property counterpart to `z.property()`.",
+   "section": "z.properties()",
+   "introduces": [
+    "z.properties"
+   ],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:configured-choices",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.433.10",
+   "subject": "configured choices",
+   "summary": "Survey shuffling no longer mutates configured choices.",
+   "evidence": "avoid mutating configured choices",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:pageview",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.434.15",
+   "subject": "$pageview",
+   "summary": "SPA $pageview events from pushState/replaceState navigations no longer carry the previous page's title.",
+   "evidence": "Fix SPA `$pageview` events from `pushState`/`replaceState` navigations carrying the previous page's `title`",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "uvicorn-9342337b@0.41.0#0.5",
+  "technology": "uvicorn",
+  "state": {
+   "technology": "uvicorn",
+   "source": "release notes",
+   "release": "0.41.0",
+   "subject": "request limit exceeded messages",
+   "summary": "Request limit exceeded messages are logged at a lower level.",
+   "evidence": "Reduce the log level of 'request limit exceeded' messages (#2788)",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:usethumbsurvey",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.434.14",
+   "subject": "useThumbSurvey",
+   "summary": "Fixes useThumbSurvey to use the client passed to PostHogProvider, enabling survey event capture.",
+   "evidence": "Fix `useThumbSurvey` from `@posthog/react/surveys` and `posthog-js/react/surveys` ignoring the client passed to `PostHogProvider`, which left it capturing no survey events.",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:locales",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.5.0",
+   "subject": "locales",
+   "summary": "Adds Hindi, Kannada, Slovak, Bengali, Turkmen, Norwegian Nynorsk, Central Kurdish, Brazilian Portuguese, Greek, and Croatian locale support.",
+   "evidence": "feat(locales): add Hindi and Kannada locale support",
+   "section": "Commits",
+   "introduces": [
+    "hi",
+    "kn",
+    "sk",
+    "bn",
+    "tk",
+    "nn",
+    "ckb",
+    "pt-BR",
+    "el",
+    "hr"
+   ],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:omit",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.3.0",
+   "subject": "omit",
+   "summary": "Throws when called on object schemas containing refinements instead of silently dropping those refinements.",
+   "evidence": "Using `.pick()` or `.omit()` on object schemas with refinements now throws an error.",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "uvicorn-9342337b@0.45.0#0.1",
+  "technology": "uvicorn",
+  "state": {
+   "technology": "uvicorn",
+   "source": "release notes",
+   "release": "0.45.0",
+   "subject": "log_config",
+   "summary": "log_config now accepts os.PathLike values.",
+   "evidence": "Accept `os.PathLike` for `log_config`",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:web-vitals-attribution~2",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.419.0",
+   "subject": "web vitals attribution",
+   "summary": "INP and LCP now capture attribution by default; CLS remains without attribution to avoid memory leaks from detached DOM nodes.",
+   "evidence": "Web vitals now capture attribution by default for INP and LCP",
+   "section": "Minor Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:request-timeouts",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.421.2",
+   "subject": "request timeouts",
+   "summary": "Request timeouts now fire on pages where a browser extension makes Error.prototype.name non-writable.",
+   "evidence": "Fix request timeouts never firing on pages where a browser extension makes `Error.prototype.name` non-writable",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:shadow-dom-connectivity-checks",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.428.5",
+   "subject": "shadow DOM connectivity checks",
+   "summary": "Session recording performs fewer shadow DOM connectivity checks.",
+   "evidence": "Reduce shadow DOM connectivity checks during session recording.",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:cross-domain-cookie-probes",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.434.11",
+   "subject": "cross-domain cookie probes",
+   "summary": "Cross-domain cookie probes are avoided when cross-subdomain cookies are disabled.",
+   "evidence": "Avoid cross-domain cookie probes when cross-subdomain cookies are disabled.",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "uvicorn-9342337b@0.41.0#0.1",
+  "technology": "uvicorn",
+  "state": {
+   "technology": "uvicorn",
+   "source": "release notes",
+   "release": "0.41.0",
+   "subject": "scope[\"server\"]",
+   "summary": "The server scope now includes the socket path.",
+   "evidence": "Add socket path to `scope[\"server\"]` (#2561)",
+   "introduces": [
+    "scope[\"server\"]"
+   ],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:console",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.429.4",
+   "subject": "console",
+   "summary": "Console methods now receive console as their receiver when recording logs and reporting wrapper failures.",
+   "evidence": "Call the original console method with the console as its receiver when recording console logs.",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "uvicorn-9342337b@0.45.0#0.4",
+  "technology": "uvicorn",
+  "state": {
+   "technology": "uvicorn",
+   "source": "release notes",
+   "release": "0.45.0",
+   "subject": "ASGI runs",
+   "summary": "ASGI runs no longer use an empty context.",
+   "evidence": "Revert empty context for ASGI runs",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:tuple-parsing",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.4.0",
+   "subject": "tuple parsing",
+   "summary": "Tuple defaults now materialize in parsed output, while absent optional tails remain absent and explicit undefined values are preserved.",
+   "evidence": "Tuple parsing now more accurately reflects defaults, optional tails, explicit `undefined`, and under-filled inputs.",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:sessionstorage",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.428.5",
+   "subject": "sessionStorage",
+   "summary": "Buffered session replay snapshots survive page unloads and are picked up by the next page in the same tab.",
+   "evidence": "They are now parked in `sessionStorage` and picked up by the next page in the same tab",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:reseterror",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.432.0",
+   "subject": "resetError",
+   "summary": "Adds a resetError callback to React error-boundary fallbacks, allowing applications to retry rendering without remounting the boundary.",
+   "evidence": "Add a resetError callback to React error-boundary fallbacks so applications can retry rendering without remounting the boundary.",
+   "section": "Minor Changes",
+   "introduces": [
+    "resetError"
+   ],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:z.isvalid",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.5.0",
+   "subject": "z.isValid",
+   "summary": "Adds synchronous and asynchronous boolean validation helpers.",
+   "evidence": "feat(v4): add z.isValid and z.isValidAsync",
+   "section": "Commits",
+   "introduces": [
+    "z.isValid",
+    "z.isValidAsync"
+   ],
+   "replaces": []
+  }
+ },
+ {
+  "id": "uvicorn-9342337b@0.48.0#0.1",
+  "technology": "uvicorn",
+  "state": {
+   "technology": "uvicorn",
+   "source": "release notes",
+   "release": "0.48.0",
+   "subject": "ProxyHeadersMiddleware",
+   "summary": "Ignores duplicate forwarding headers.",
+   "evidence": "Ignore duplicate forwarding headers in `ProxyHeadersMiddleware`",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:otlpanyvalue-intvalue",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.418.8",
+   "subject": "OtlpAnyValue",
+   "facet": "intValue",
+   "summary": "OtlpAnyValue.intValue is typed as string | number, so code reading it must handle both types.",
+   "evidence": "Type `OtlpAnyValue.intValue` as `string | number` \u2014 code reading that field must handle both.",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "uvicorn-9342337b@0.53.0#0.6",
+  "technology": "uvicorn",
+  "state": {
+   "technology": "uvicorn",
+   "source": "release notes",
+   "release": "0.53.0",
+   "subject": "HTTP keep-alive timer",
+   "summary": "The HTTP keep-alive timer is canceled when a connection becomes a WebSocket, keeping upgraded WebSockets alive.",
+   "evidence": "Uvicorn cancels the HTTP keep-alive timer when the connection becomes a WebSocket.",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "typer-4f6b46bd@0.23.2#0.0",
+  "technology": "typer",
+  "state": {
+   "technology": "typer",
+   "source": "release notes",
+   "release": "0.23.2",
+   "subject": "console width",
+   "summary": "Monkeypatches console width to allow running pytest directly.",
+   "evidence": "Monkeypatch console width to allow running `pytest` directly.",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:getelementschainstring",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.423.0",
+   "subject": "getElementsChainString",
+   "summary": "Returns an empty string for non-array input instead of throwing when runtime JavaScript callers provide malformed input.",
+   "evidence": "It now returns an empty string instead of calling `.map` on malformed input.",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "uvicorn-9342337b@0.46.0#0.1",
+  "technology": "uvicorn",
+  "state": {
+   "technology": "uvicorn",
+   "source": "release notes",
+   "release": "0.46.0",
+   "subject": "ws_ping_interval",
+   "summary": "wsproto now supports ws_ping_interval, allowing developers to configure WebSocket ping timing with that implementation.",
+   "evidence": "Support `ws_ping_interval` and `ws_ping_timeout` in `wsproto` implementation",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:z.discriminatedunion",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.4.2",
+   "subject": "z.discriminatedUnion",
+   "summary": "Discriminated union option typing is tightened.",
+   "evidence": "Tighten discriminated union option typing",
+   "section": "Commits:",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:regex",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.1.13",
+   "subject": "regex",
+   "summary": "Regexes are reflected correctly in validation errors, making reported patterns accurate to developers.",
+   "evidence": "reflect the specified regex correctly in error",
+   "section": "Commits:",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "uvicorn-9342337b@0.50.1#0.0",
+  "technology": "uvicorn",
+  "state": {
+   "technology": "uvicorn",
+   "source": "release notes",
+   "release": "0.50.1",
+   "subject": "Sec-WebSocket-Protocol",
+   "summary": "Comma-separated Sec-WebSocket-Protocol values are now split in the websockets-sansio implementation.",
+   "evidence": "Split comma-separated `Sec-WebSocket-Protocol` values in the websockets-sansio implementation",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:fromjsonschema~2",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.5.0",
+   "subject": "fromJSONSchema",
+   "summary": "Imported tuples are open-ended by default.",
+   "evidence": "fix(v4): make fromJSONSchema tuples open-ended by default",
+   "section": "Commits",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:cssom-only-styles",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.416.1",
+   "subject": "CSSOM-only styles",
+   "summary": "Styles produced by insertRule and adoptedStyleSheets no longer count against the stylesheet inlining budget.",
+   "evidence": "CSSOM-only styles (insertRule output, adoptedStyleSheets) no longer charge the budget",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:error-tree-walkers",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.5.0",
+   "subject": "error-tree walkers",
+   "summary": "Error-tree walkers use own-property semantics consistently.",
+   "evidence": "use own-property semantics in every error-tree walker",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:z.iso.datetime",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.5.0",
+   "subject": "z.iso.datetime",
+   "summary": "RFC 3339 datetime validation now requires seconds unless local mode is enabled.",
+   "evidence": "`z.iso.datetime()` and `z.iso.datetime({ offset: true })` no longer accept minute-precision input like `2020-01-01T06:15Z`.",
+   "section": "\u26a0\ufe0f z.iso.datetime() requires seconds",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:z.mac",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.1.13",
+   "subject": "z.mac",
+   "summary": "MAC address validation was added to Zod 4 and Zod Mini.",
+   "evidence": "feat: MAC address validation in v4 and mini",
+   "section": "Commits:",
+   "introduces": [
+    "z.mac"
+   ],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:error-tracking-coercion",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.417.2",
+   "subject": "error tracking coercion",
+   "summary": "Corrects exception types for non-Error objects thrown across browser extensions, iframes, and other realms instead of reporting them as Error.",
+   "evidence": "Fix error tracking coercion reporting the wrong exception type for non-`Error` objects (e.g. `TypeError`, `ReferenceError`) that are thrown by browser extensions or other cross-realm code.",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:sendbeacon",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.428.6",
+   "subject": "sendBeacon",
+   "summary": "Unbatched events prefer sendBeacon after PostHog detects page unloading, while active-page transports preserve response capability for retries.",
+   "evidence": "Prefer `sendBeacon` for unbatched events, such as `{ send_instantly: true }` captures, once PostHog's own `pagehide` handler (or `unload` fallback) marks the page as unloading.",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:length",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.5.0",
+   "subject": "length",
+   "summary": "String exact-length validation now counts Unicode code points instead of UTF-16 code units.",
+   "evidence": "They now count Unicode code points, which is what every non-JS consumer of a length bound does",
+   "section": "\u26a0\ufe0f String length counts code points",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "uvicorn-9342337b@0.47.0#0.1",
+  "technology": "uvicorn",
+  "state": {
+   "technology": "uvicorn",
+   "source": "release notes",
+   "release": "0.47.0",
+   "subject": "ssl_context_factory",
+   "summary": "Adds ssl_context_factory to support custom SSLContext configuration.",
+   "evidence": "Add `ssl_context_factory` for custom `SSLContext` configuration",
+   "introduces": [
+    "ssl_context_factory"
+   ],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:sessionidle",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.418.9",
+   "subject": "sessionIdle",
+   "summary": "Backdated sessionIdle markers are attributed to the session that went idle, preventing rotation-born recordings from starting hours before their first snapshot.",
+   "evidence": "fix(replay): attribute the backdated sessionIdle marker to the session that went idle, so a rotation-born session's recording no longer starts hours before its first snapshot",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:web-vitals-attribution-bundles",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.426.2",
+   "subject": "web vitals attribution bundles",
+   "summary": "The bundles polyfill Array.prototype.findLast so they keep capturing on browsers older than Chrome 97 and Safari 15.4.",
+   "evidence": "Polyfill `Array.prototype.findLast` in the web vitals attribution bundles so they keep capturing on browsers older than Chrome 97 and Safari 15.4",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:session-recording.capturejsonld",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.420.0",
+   "subject": "session_recording.captureJsonLd",
+   "summary": "Adds opt-in Schema.org JSON-LD capture to session replay, emitting sanitized JSON-LD as custom replay events and excluding script elements from snapshots.",
+   "evidence": "Add opt-in Schema.org JSON-LD capture to session replay through `session_recording.captureJsonLd`.",
+   "section": "Minor Changes",
+   "introduces": [
+    "session_recording.captureJsonLd"
+   ],
+   "replaces": []
+  }
+ },
+ {
+  "id": "typer-4f6b46bd@0.21.2#0.0",
+  "technology": "typer",
+  "state": {
+   "technology": "typer",
+   "source": "release notes",
+   "release": "0.21.2",
+   "subject": "optional variadic argument metavars",
+   "summary": "Optional variadic argument metavars are highlighted correctly in CLI help output.",
+   "evidence": "Fix highlighting of optional variadic argument metavars.",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:buffered-session-replay-data",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.431.6",
+   "subject": "buffered session replay data",
+   "summary": "Prevents buffered session replay data from crossing projects that share a persistence name during page navigation.",
+   "evidence": "Prevent buffered session replay data from crossing projects that share a persistence name during page navigation.",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:zod-tuple",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.4.1",
+   "subject": "zod tuple",
+   "summary": "Tuple holes are rejected before required defaults are applied, correcting validation behavior.",
+   "evidence": "fix(v4): reject tuple holes before required defaults (#5900)",
+   "section": "Commits:",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:z.implement",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.5.0",
+   "subject": "z.implement",
+   "summary": "Results from .implement() expose the underlying function schema.",
+   "evidence": "feat(v4): expose the function schema on .implement() results",
+   "section": "Commits",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:feature-flag-return-values",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.427.3",
+   "subject": "feature flag return values",
+   "summary": "Feature flag APIs distinguish conclusive off evaluations from unavailable evaluations, with different remote and backend local behavior.",
+   "evidence": "A `false` value is a conclusive off evaluation, while `undefined` means no evaluation is available.",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:z.xor",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.4.0",
+   "subject": "z.xor",
+   "summary": "Empty xor schemas now construct successfully and fail at parse time instead of crashing during construction.",
+   "evidence": "Empty `z.union([])`, `z.xor([])`, and discriminated unions no longer crash at construction time.",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:fbc~2",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.426.0",
+   "subject": "$fbc",
+   "summary": "The Meta $fbc person property is captured when a new fbclid is observed.",
+   "evidence": "Capture Meta's `$fbc` person property when a new `fbclid` is observed.",
+   "section": "Minor Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:json-ld-replay-redaction",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.427.3",
+   "subject": "JSON-LD replay redaction",
+   "summary": "Replay redaction preserves safe JSON-LD properties and allowlisted structure while restricting IDs, types, and payloads.",
+   "evidence": "Preserve universally safe JSON-LD properties and allowlisted tree structure when replay redacts other fields.",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:z.tojsonschema",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.6.0",
+   "subject": "z.toJSONSchema",
+   "summary": "Folds chained checks as a conjunction so tighter bounds are preserved and check order no longer changes emitted JSON Schema.",
+   "evidence": "The converter folds the checks as a conjunction now.",
+   "section": "\u26a0\ufe0f Chained checks no longer overwrite each other in JSON Schema",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:registry-id-uniqueness",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.3.0",
+   "subject": "registry",
+   "facet": "id uniqueness",
+   "summary": "Removes registry-level enforcement that metadata IDs must be unique.",
+   "evidence": "Dropped id uniqueness enforcement at registry level",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "uvicorn-9342337b@0.50.0#0.5",
+  "technology": "uvicorn",
+  "state": {
+   "technology": "uvicorn",
+   "source": "release notes",
+   "release": "0.50.0",
+   "subject": "worker spawning",
+   "summary": "The parent process no longer eagerly imports the application when spawning workers.",
+   "evidence": "Skip the eager app import in the parent when spawning workers",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "uvicorn-9342337b@0.42.0#0.1",
+  "technology": "uvicorn",
+  "state": {
+   "technology": "uvicorn",
+   "source": "release notes",
+   "release": "0.42.0",
+   "subject": "HEADER_RE",
+   "summary": "The httptools header regex now correctly escapes brackets and backslashes.",
+   "evidence": "Escape brackets and backslash in httptools `HEADER_RE` regex",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:multipleof~2",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.4.0",
+   "subject": "multipleOf",
+   "summary": "Floating-point multipleOf validation is now more accurate for decimal and exponent edge cases.",
+   "evidence": "Number `multipleOf()` / `step()` validation is more accurate for decimal and exponent edge cases.",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:uzbek-locale",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.4.0",
+   "subject": "Uzbek locale",
+   "summary": "Uzbek map support was added to locale support.",
+   "evidence": "Uzbek map support",
+   "introduces": [
+    "Uzbek"
+   ],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:extend-refinements",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.3.1",
+   "subject": "extend",
+   "facet": "refinements",
+   "summary": "extend now allows non-overwriting extensions on schemas with refinements.",
+   "evidence": "allow non-overwriting extends with refinements",
+   "section": "Commits:",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:cuid-v1",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.4.0",
+   "subject": "CUID v1",
+   "summary": "CUID v1 is now deprecated.",
+   "evidence": "CUID v1 is now deprecated.",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:z.getdiscriminatedoption~2",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.5.0",
+   "subject": "z.getDiscriminatedOption",
+   "summary": "Adds a helper for retrieving a discriminated-union option.",
+   "evidence": "feat(v4): add z.getDiscriminatedOption",
+   "section": "Commits",
+   "introduces": [
+    "z.getDiscriminatedOption"
+   ],
+   "replaces": []
+  }
+ },
+ {
+  "id": "uvicorn-9342337b@0.53.0#0.1",
+  "technology": "uvicorn",
+  "state": {
+   "technology": "uvicorn",
+   "source": "release notes",
+   "release": "0.53.0",
+   "subject": "--http2",
+   "summary": "Enables experimental HTTP/2 support with zttp, including TLS ALPN and cleartext prior knowledge.",
+   "evidence": "Install `zttp`, then enable HTTP/2 with `--http zttp --http2`.",
+   "introduces": [
+    "--http2"
+   ],
+   "replaces": []
+  }
+ },
+ {
+  "id": "uvicorn-9342337b@0.45.0#0.2",
+  "technology": "uvicorn",
+  "state": {
+   "technology": "uvicorn",
+   "source": "release notes",
+   "release": "0.45.0",
+   "subject": "log_level",
+   "summary": "log_level strings are now accepted case-insensitively.",
+   "evidence": "Accept `log_level` strings case-insensitively",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:session-recording~7",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.416.1",
+   "subject": "session recording",
+   "summary": "Deferred stylesheets are flushed synchronously when recording stops and during pagehide.",
+   "evidence": "Deferred sheets are flushed synchronously when recording stops and on pagehide",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:includes-params",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.3.0",
+   "subject": "includes",
+   "facet": "params",
+   "summary": "Updates parameter typing to accept string or $ZodCheckIncludesParams.",
+   "evidence": "Fixed `includes` method params typing to accept `string | $ZodCheckIncludesParams`",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "typer-4f6b46bd@0.20.0#0.0",
+  "technology": "typer",
+  "state": {
+   "technology": "typer",
+   "source": "release notes",
+   "release": "0.20.0",
+   "subject": "command suggestions",
+   "summary": "Command suggestions for typos are now enabled by default, helping users discover valid commands after mistyping them.",
+   "evidence": "Enable command suggestions on typo by default.",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:implementasync",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.3.0",
+   "subject": "implementAsync",
+   "summary": "Fixes inferred types so implementAsync always returns a promise.",
+   "evidence": "Fixed `implementAsync` inferred type to always be a promise",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:sdk-debug-recording-script-not-loaded",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.418.4",
+   "subject": "$sdk_debug_recording_script_not_loaded",
+   "summary": "Sessions are flagged when the recorder script fails to load, making blocked recording visible in analytics.",
+   "evidence": "Also flags the session with `$sdk_debug_recording_script_not_loaded` when the recorder script fails to load",
+   "section": "Patch Changes",
+   "introduces": [
+    "$sdk_debug_recording_script_not_loaded"
+   ],
+   "replaces": []
+  }
+ },
+ {
+  "id": "typer-4f6b46bd@0.26.6#0.0",
+  "technology": "typer",
+  "state": {
+   "technology": "typer",
+   "source": "release notes",
+   "release": "0.26.6",
+   "subject": "list argument",
+   "facet": "default",
+   "summary": "The default of a list argument is now used correctly.",
+   "evidence": "Ensure that the default of a list argument is used correctly.",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:apply",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.5.0",
+   "subject": "apply",
+   "summary": "Allows extra arguments to be passed to apply().",
+   "evidence": "feat(v4): allow passing extra args to apply()",
+   "section": "Commits",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:survey-language",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.422.4",
+   "subject": "$survey_language",
+   "summary": "Survey events now report the language the user saw when answering, rather than the language active when the event fired.",
+   "evidence": "$survey_questions[].question and $survey_language on survey sent / survey dismissed now report the text and language the user saw when they answered, not the language active when the event fired.",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:z.parse",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.5.0",
+   "subject": "z.parse",
+   "summary": "Parses input containing reference cycles.",
+   "evidence": "feat(v4): parse input containing reference cycles",
+   "section": "Commits",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:proto~4",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.4.0",
+   "subject": "__proto__",
+   "summary": "Object catchall parsing skips the __proto__ key.",
+   "evidence": "skip `__proto__` key in object catchall",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "typer-4f6b46bd@0.24.0#0.0",
+  "technology": "typer",
+  "state": {
+   "technology": "typer",
+   "source": "release notes",
+   "release": "0.24.0",
+   "subject": "Python 3.9 support",
+   "summary": "Python 3.9 is no longer supported, so applications must use a newer Python version.",
+   "evidence": "Drop support for Python 3.9.",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "zod-6ac59393:z.datetime",
+  "technology": "zod",
+  "state": {
+   "technology": "zod",
+   "source": "release notes",
+   "release": "4.5.0",
+   "subject": "z.datetime",
+   "summary": "Requires seconds when a datetime includes Z or an offset.",
+   "evidence": "fix(v4)!: require seconds once a datetime carries a Z or an offset",
+   "section": "Commits",
+   "introduces": [],
+   "replaces": []
+  }
+ },
+ {
+  "id": "posthog-js-bf3ade81:posthogfeature-match",
+  "technology": "posthog-js",
+  "state": {
+   "technology": "posthog-js",
+   "source": "release notes",
+   "release": "1.435.1",
+   "subject": "PostHogFeature",
+   "facet": "match",
+   "summary": "PostHogFeature without match now shows the fallback when the flag evaluates to false.",
+   "evidence": "PostHogFeature without `match` shows the fallback when the flag evaluates to false.",
+   "section": "Patch Changes",
+   "introduces": [],
+   "replaces": []
+  }
+ }
+]

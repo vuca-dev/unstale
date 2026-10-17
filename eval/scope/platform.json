@@ -1,0 +1,181 @@
+[
+ {
+  "name": "Node.js",
+  "repo": "nodejs/node",
+  "stable_releases": 61,
+  "per_q": [
+   13,
+   17,
+   13,
+   18
+  ],
+  "notes_tokens": 360434,
+  "notes_source": "github_releases",
+  "records_year_pred": 1883.7,
+  "records_quarter_pred": 470.9,
+  "cost_year": 0.9478
+ },
+ {
+  "name": "Deno",
+  "repo": "denoland/deno",
+  "stable_releases": 41,
+  "per_q": [
+   7,
+   20,
+   10,
+   4
+  ],
+  "notes_tokens": 43552,
+  "notes_source": "github_releases",
+  "records_year_pred": 313.8,
+  "records_quarter_pred": 78.4,
+  "cost_year": 0.1393
+ },
+ {
+  "name": "Bun",
+  "repo": "oven-sh/bun",
+  "stable_releases": 18,
+  "per_q": [
+   6,
+   6,
+   2,
+   4
+  ],
+  "notes_tokens": 5090,
+  "notes_source": "github_releases",
+  "records_year_pred": 50.8,
+  "records_quarter_pred": 12.7,
+  "cost_year": 0.0203
+ },
+ {
+  "name": "pnpm",
+  "repo": "pnpm/pnpm",
+  "stable_releases": 122,
+  "per_q": [
+   12,
+   13,
+   42,
+   55
+  ],
+  "notes_tokens": 337168,
+  "notes_source": "github_releases",
+  "records_year_pred": 1780.0,
+  "records_quarter_pred": 445.0,
+  "cost_year": 0.8918
+ },
+ {
+  "name": "npm CLI",
+  "repo": "npm/cli",
+  "stable_releases": 208,
+  "per_q": [
+   23,
+   74,
+   63,
+   48
+  ],
+  "notes_tokens": 45032,
+  "notes_source": "github_releases",
+  "records_year_pred": 322.8,
+  "records_quarter_pred": 80.7,
+  "cost_year": 0.1435
+ },
+ {
+  "name": "Yarn",
+  "repo": "yarnpkg/berry",
+  "stable_releases": 11,
+  "per_q": [
+   2,
+   1,
+   6,
+   2
+  ],
+  "notes_tokens": 3371,
+  "notes_source": "github_releases",
+  "records_year_pred": 35.8,
+  "records_quarter_pred": 9.0,
+  "cost_year": 0.0141
+ },
+ {
+  "name": "uv",
+  "repo": "astral-sh/uv",
+  "stable_releases": 100,
+  "per_q": [
+   21,
+   26,
+   22,
+   31
+  ],
+  "notes_tokens": 199458,
+  "notes_source": "github_releases",
+  "records_year_pred": 1140.4,
+  "records_quarter_pred": 285.1,
+  "cost_year": 0.5526
+ },
+ {
+  "name": "Poetry",
+  "repo": "python-poetry/poetry",
+  "stable_releases": 11,
+  "per_q": [
+   0,
+   5,
+   2,
+   4
+  ],
+  "notes_tokens": 6564,
+  "notes_source": "github_releases",
+  "records_year_pred": 63.0,
+  "records_quarter_pred": 15.8,
+  "cost_year": 0.0255
+ },
+ {
+  "name": "CPython",
+  "repo": "python/cpython",
+  "stable_releases": 16,
+  "notes_tokens": 63732,
+  "all_tokens_incl_prereleases": 125838,
+  "notes_source": "docs.python.org changelog (3.13, 3.14, 3.15 pages)",
+  "records_year_pred": 433.3,
+  "records_quarter_pred": 108.3,
+  "cost_year": 0.1964
+ },
+ {
+  "name": "pip",
+  "repo": "pypa/pip",
+  "stable_releases": 8,
+  "notes_tokens": 5540,
+  "notes_source": "NEWS.rst",
+  "records_year_pred": 54.6,
+  "records_quarter_pred": 13.6,
+  "cost_year": 0.0219
+ },
+ {
+  "name": "setuptools",
+  "repo": "pypa/setuptools",
+  "stable_releases": 9,
+  "notes_tokens": 2444,
+  "notes_source": "NEWS.rst",
+  "records_year_pred": 27.3,
+  "records_quarter_pred": 6.8,
+  "cost_year": 0.0106
+ },
+ {
+  "name": "TypeScript",
+  "repo": "microsoft/TypeScript",
+  "stable_releases": 4,
+  "notes_tokens": 10373,
+  "handbook_pages_tokens": [
+   [
+    "6-0",
+    9929
+   ],
+   [
+    "5-9",
+    3905
+   ]
+  ],
+  "notes_source": "handbook 6.0 release-notes page + GitHub release bodies",
+  "records_year_pred": 92.9,
+  "records_quarter_pred": 23.2,
+  "cost_year": 0.0384
+ }
+]

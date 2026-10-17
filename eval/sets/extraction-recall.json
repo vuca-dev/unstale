@@ -1,0 +1,2716 @@
+{
+ "description": "Extraction recall: key changes of the 15 replay events whose text a source carries (see eval/sets/README.md)",
+ "items": [
+  {
+   "event": "workout-next16",
+   "split": "DEV",
+   "key": "K1",
+   "required": false,
+   "change": "Renamed middleware.ts to proxy.ts and renamed the exported middleware function to proxy.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "next:middleware",
+    "next:middleware~2",
+    "next:proxy",
+    "next:proxy.ts",
+    "next:proxy.ts~4"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/vercel/next.js/releases/tag/v16.0.0",
+     "quote": "Deprecate `middleware` and recommend `proxy`",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/vercel/next.js/blob/f7545a47811e04ea1aa9be2c37e722f7ba2906a3/docs/01-app/02-guides/upgrading/version-16.mdx",
+     "quote": "Migrate from deprecated `middleware` convention to `proxy`",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/vercel/next.js/blob/f7545a47811e04ea1aa9be2c37e722f7ba2906a3/docs/01-app/02-guides/upgrading/version-16.mdx",
+     "quote": "The named export `middleware` is also deprecated. Rename your function to `proxy`.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/vercel/next.js/blob/f7545a47811e04ea1aa9be2c37e722f7ba2906a3/docs/01-app/02-guides/upgrading/version-16.mdx",
+     "quote": "We recommend changing the function name to `proxy`",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/vercel/next.js/releases/tag/v16.0.0",
+     "quote": "Add codemod for `middleware` to `proxy`",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/vercel/next.js/blob/f7545a47811e04ea1aa9be2c37e722f7ba2906a3/docs/01-app/02-guides/upgrading/version-16.mdx",
+     "quote": "The `middleware` filename is deprecated, and has been renamed to `proxy`",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/vercel/next.js/blob/f7545a47811e04ea1aa9be2c37e722f7ba2906a3/docs/01-app/02-guides/upgrading/version-16.mdx",
+     "quote": "Rename your middleware file",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "workout-next16",
+   "split": "DEV",
+   "key": "K2",
+   "required": true,
+   "change": "Added a default parallel-route component that renders null.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "next:default.js"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/vercel/next.js/blob/f7545a47811e04ea1aa9be2c37e722f7ba2906a3/docs/01-app/02-guides/upgrading/version-16.mdx",
+     "quote": "All parallel route slots now require explicit `default.js` files. Builds will fail without them.",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "workout-next16",
+   "split": "DEV",
+   "key": "K4",
+   "required": false,
+   "change": "Removed images.domains and represented all permitted image hosts as remotePatterns with explicit protocols.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "next:images.domains-domains"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/vercel/next.js/releases/tag/v16.0.0",
+     "quote": "feat(next/image)!: deprecate and warn on `images.domains` config",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/vercel/next.js/blob/f7545a47811e04ea1aa9be2c37e722f7ba2906a3/docs/01-app/02-guides/upgrading/version-16.mdx",
+     "quote": "The `images.domains` config is deprecated.",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "workout-next16",
+   "split": "DEV",
+   "key": "K5",
+   "required": false,
+   "change": "Changed the dev script from next dev --turbopack to next dev.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "next:turbopack"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/vercel/next.js/releases/tag/v16.0.0",
+     "quote": "Add a --webpack flag and default --turbopack to true",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/vercel/next.js/blob/f7545a47811e04ea1aa9be2c37e722f7ba2906a3/docs/01-app/02-guides/upgrading/version-16.mdx",
+     "quote": "Turbopack is stable and used by default with `next dev` and `next build`",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "workout-next16",
+   "split": "DEV",
+   "key": "K6",
+   "required": true,
+   "change": "Changed the lint script from next lint to eslint .",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "next:next-lint",
+    "next:next-lint~2"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/vercel/next.js/blob/f7545a47811e04ea1aa9be2c37e722f7ba2906a3/docs/01-app/02-guides/upgrading/version-16.mdx",
+     "quote": "The `next lint` command has been removed. Use Biome or ESLint directly.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/vercel/next.js/blob/f7545a47811e04ea1aa9be2c37e722f7ba2906a3/docs/01-app/02-guides/upgrading/version-16.mdx",
+     "quote": "Next.js 16 removes `next lint`",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "workout-next16",
+   "split": "DEV",
+   "key": "K7",
+   "required": true,
+   "change": "Removed the next/core-web-vitals ESLint preset and the associated suppressions for sync scripts, custom fonts, and raw img elements.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "next:eslint-config-next",
+    "next:next-eslint-plugin-next"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/vercel/next.js/releases/tag/v16.0.0",
+     "quote": "[eslint-config] [Breaking] Use Flat config by default",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/vercel/next.js/releases/tag/v16.0.0",
+     "quote": "[Breaking] Flat config as default in `@next/eslint-plugin-next`",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/vercel/next.js/blob/f7545a47811e04ea1aa9be2c37e722f7ba2906a3/docs/01-app/02-guides/upgrading/version-16.mdx",
+     "quote": "`@next/eslint-plugin-next` now defaults to ESLint Flat Config format",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "invoicerr-prisma7",
+   "split": "DEV",
+   "key": "K1",
+   "required": true,
+   "change": "Added Prisma generate and migrate scripts, added the PostgreSQL adapter, pg, dotenv, tsx, and moved Prisma client/runtime tooling to the Prisma 7 setup.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "prisma:driver-adapters",
+    "prisma:environment-variables",
+    "prisma:prisma-adapter-pg~4",
+    "prisma:prisma-generate"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "The way to create a new Prisma Client has changed to require a driver adapter for all databases.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+     "quote": "we\u2019re no longer automatically loading environment variables when invoking the Prisma CLI.",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "In Prisma ORM 7.0.0, environment variables are not loaded by default.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "if you are using Prisma Postgres, you now need the `@prisma/adapter-pg` adapter.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+     "quote": "This behaviour has been removed in favor of explicitly requiring commands to be run by users.",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "`migrate dev` and `db push` no longer run `prisma generate` automatically.",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "invoicerr-prisma7",
+   "split": "DEV",
+   "key": "K2",
+   "required": true,
+   "change": "Changed the generator from prisma-client-js to prisma-client with an explicit generated-client output directory and removed the datasource URL from the schema.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "prisma:datasource.url",
+    "prisma:output",
+    "prisma:prisma-client"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+     "quote": "`datasource.url` is now configured in the config file",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "Additionally other fields such as `url`, `directUrl`, and `shadowDatabaseUrl` in the `datasource` block are deprecated.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+     "quote": "the generated Client runtime and project types will now **require** a `output` path to be set",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "The `output` field is now **required** in the generator block.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/prisma/orm/releases/tag/6.19.0",
+     "quote": "Move from `prisma-client-js` `prisma-client`",
+     "kind": "release_notes"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "invoicerr-prisma7",
+   "split": "DEV",
+   "key": "K3",
+   "required": true,
+   "change": "Added Prisma configuration loading dotenv, locating the schema and migrations, and reading DATABASE_URL through prisma/config.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "prisma:env",
+    "prisma:environment-variables",
+    "prisma:prisma.config.ts~2",
+    "prisma:prisma.config.ts~3"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/prisma/orm/releases/tag/6.18.0",
+     "quote": "Add `env` helper function",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+     "quote": "we\u2019re no longer automatically loading environment variables when invoking the Prisma CLI.",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "In Prisma ORM 7.0.0, environment variables are not loaded by default.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+     "quote": "`prisma.config.ts` is now required for projects looking to perform introspection and migration.",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "Prisma Config is now the default place for configuring how the Prisma CLI interacts with your database.",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "invoicerr-prisma7",
+   "split": "DEV",
+   "key": "K4",
+   "required": true,
+   "change": "Configured the generated Prisma client to use CommonJS modules.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "prisma:es-module-support"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "Prisma ORM now ships as an ES module",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "invoicerr-prisma7",
+   "split": "DEV",
+   "key": "K5",
+   "required": true,
+   "change": "Changed PrismaClient construction to use the generated client and PrismaPg with DATABASE_URL, including dotenv loading in standalone Prisma-using utilities.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "prisma:driver-adapters",
+    "prisma:environment-variables",
+    "prisma:prisma-adapter-pg~4",
+    "prisma:prisma-client~2"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "The way to create a new Prisma Client has changed to require a driver adapter for all databases.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+     "quote": "we\u2019re no longer automatically loading environment variables when invoking the Prisma CLI.",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "In Prisma ORM 7.0.0, environment variables are not loaded by default.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "if you are using Prisma Postgres, you now need the `@prisma/adapter-pg` adapter.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "After running `npx prisma generate`, you'll need to update your imports to use the new generated path",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "invoicerr-prisma7",
+   "split": "DEV",
+   "key": "K6",
+   "required": true,
+   "change": "Replaced imports from @prisma/client with imports from the generated Prisma client directory.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "prisma:prisma-client~2"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "After running `npx prisma generate`, you'll need to update your imports to use the new generated path",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "invoicerr-prisma7",
+   "split": "DEV",
+   "key": "K7",
+   "required": true,
+   "change": "Set DATABASE_URL while running prisma generate during the Docker build.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "prisma:environment-variables"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+     "quote": "we\u2019re no longer automatically loading environment variables when invoking the Prisma CLI.",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "In Prisma ORM 7.0.0, environment variables are not loaded by default.",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "invoicerr-prisma7",
+   "split": "DEV",
+   "key": "K9",
+   "required": true,
+   "change": "Added Prisma client generation and migration deployment with an explicit DATABASE_URL before Cypress dependencies are installed.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "prisma:environment-variables",
+    "prisma:prisma-generate",
+    "prisma:prisma.config.ts~2"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+     "quote": "we\u2019re no longer automatically loading environment variables when invoking the Prisma CLI.",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "In Prisma ORM 7.0.0, environment variables are not loaded by default.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+     "quote": "This behaviour has been removed in favor of explicitly requiring commands to be run by users.",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "`migrate dev` and `db push` no longer run `prisma generate` automatically.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+     "quote": "`prisma.config.ts` is now required for projects looking to perform introspection and migration.",
+     "kind": "release_notes"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "invoicerr-prisma7",
+   "split": "DEV",
+   "key": "K13",
+   "required": true,
+   "change": "Changed the production schema-push command to npx prisma db push and removed --skip-generate.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "prisma:prisma-db-push-skip-generate"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "The `--skip-generate` flag was removed from `prisma migrate dev` and `prisma db push`.",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "invoicerr-prisma7",
+   "split": "DEV",
+   "key": "K15",
+   "required": true,
+   "change": "Copied prisma.config.ts into the runtime backend directory.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "prisma:prisma.config.ts~2"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+     "quote": "`prisma.config.ts` is now required for projects looking to perform introspection and migration.",
+     "kind": "release_notes"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "invoicerr-nest12",
+   "split": "DEV",
+   "key": "K1",
+   "required": true,
+   "change": "Replaced the backend Jest test setup with Vitest, SWC, Vite path resolution, Vitest globals, forked workers, and Vitest-based CI commands.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "nestjs:esm-packages~2"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/nestjs/docs.nestjs.com/blob/72f77737e2c6f2c305229e87c4f7846bb629c6cc/content/migration.md",
+     "quote": "All core Nest packages now ship as ESM.",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "invoicerr-nest12",
+   "split": "DEV",
+   "key": "K2",
+   "required": true,
+   "change": "Converted the backend test suite from Jest APIs and types to Vitest APIs and types, including mocks, spies, resets, module imports, and mock factories.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "nestjs:esm-packages~2"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/nestjs/docs.nestjs.com/blob/72f77737e2c6f2c305229e87c4f7846bb629c6cc/content/migration.md",
+     "quote": "All core Nest packages now ship as ESM.",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "invoicerr-nest12",
+   "split": "DEV",
+   "key": "K8",
+   "required": false,
+   "change": "Removed the backend Jest E2E configuration and script, and documented that E2E tests are run by the repository-level Cypress project.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "nestjs:esm-packages~2"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/nestjs/docs.nestjs.com/blob/72f77737e2c6f2c305229e87c4f7846bb629c6cc/content/migration.md",
+     "quote": "All core Nest packages now ship as ESM.",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "invoicerr-nest12",
+   "split": "DEV",
+   "key": "K9",
+   "required": true,
+   "change": "Updated the rendered HTML snapshot to Vitest's snapshot format.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "nestjs:vitest"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/nestjs/nest/releases/tag/v12.0.0",
+     "quote": "**Vitest** is the default test runner for ESM projects; CommonJS projects continue with Jest.",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/nestjs/docs.nestjs.com/blob/72f77737e2c6f2c305229e87c4f7846bb629c6cc/content/migration.md",
+     "quote": "ESM projects use Vitest by default (CommonJS projects use Jest)",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "invoicerr-nest12",
+   "split": "DEV",
+   "key": "K10",
+   "required": true,
+   "change": "Changed queue integration CI to run all document and webhook queue specs together with Vitest and Vitest's no-file-parallelism option.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "nestjs:vitest"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/nestjs/nest/releases/tag/v12.0.0",
+     "quote": "**Vitest** is the default test runner for ESM projects; CommonJS projects continue with Jest.",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/nestjs/docs.nestjs.com/blob/72f77737e2c6f2c305229e87c4f7846bb629c6cc/content/migration.md",
+     "quote": "ESM projects use Vitest by default (CommonJS projects use Jest)",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "invoicerr-nest12",
+   "split": "DEV",
+   "key": "K12",
+   "required": true,
+   "change": "Replaced nightly live-test Jest commands with Vitest commands, added Vitest-specific serial execution and no-coverage handling, and made the workflow fail when every live suite self-skips.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "nestjs:vitest"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/nestjs/nest/releases/tag/v12.0.0",
+     "quote": "**Vitest** is the default test runner for ESM projects; CommonJS projects continue with Jest.",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/nestjs/docs.nestjs.com/blob/72f77737e2c6f2c305229e87c4f7846bb629c6cc/content/migration.md",
+     "quote": "ESM projects use Vitest by default (CommonJS projects use Jest)",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "chmonitor-next16",
+   "split": "HELD-OUT",
+   "key": "K1",
+   "required": true,
+   "change": "Added null-rendering default.tsx files for all parallel route slots.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "next:default.js"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/vercel/next.js/blob/f7545a47811e04ea1aa9be2c37e722f7ba2906a3/docs/01-app/02-guides/upgrading/version-16.mdx",
+     "quote": "All parallel route slots now require explicit `default.js` files. Builds will fail without them.",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "chmonitor-next16",
+   "split": "HELD-OUT",
+   "key": "K4",
+   "required": true,
+   "change": "Changed revalidateTag to await revalidateTag(CLICKHOUSE_CACHE_TAG, { expire: 0 }).",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "next:revalidatetag~2"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/vercel/next.js/blob/f7545a47811e04ea1aa9be2c37e722f7ba2906a3/docs/01-app/02-guides/upgrading/version-16.mdx",
+     "quote": "`revalidateTag` now requires a second argument specifying a `cacheLife` profile.",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "chmonitor-next16",
+   "split": "HELD-OUT",
+   "key": "K6",
+   "required": true,
+   "change": "Added an empty top-level turbopack configuration to next.config.ts.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "next:webpack~2"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/vercel/next.js/blob/f7545a47811e04ea1aa9be2c37e722f7ba2906a3/docs/01-app/02-guides/upgrading/version-16.mdx",
+     "quote": "If your project has a custom `webpack` configuration and you run `next build` ... the build will **fail**",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "chmonitor-next16",
+   "split": "HELD-OUT",
+   "key": "K7",
+   "required": true,
+   "change": "Replaced the ESLint/Prettier setup with Biome, added Biome lint/format/check scripts, removed the ESLint and Prettier configuration files and dependencies, and applied the resulting lint fixes.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "next:next-lint",
+    "next:next-lint~2"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/vercel/next.js/blob/f7545a47811e04ea1aa9be2c37e722f7ba2906a3/docs/01-app/02-guides/upgrading/version-16.mdx",
+     "quote": "The `next lint` command has been removed. Use Biome or ESLint directly.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/vercel/next.js/blob/f7545a47811e04ea1aa9be2c37e722f7ba2906a3/docs/01-app/02-guides/upgrading/version-16.mdx",
+     "quote": "Next.js 16 removes `next lint`",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "chmonitor-next16",
+   "split": "HELD-OUT",
+   "key": "K9",
+   "required": false,
+   "change": "Removed the middleware that added x-url and x-pathname headers for prefetch requests.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "next:middleware"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/vercel/next.js/releases/tag/v16.0.0",
+     "quote": "Deprecate `middleware` and recommend `proxy`",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/vercel/next.js/blob/f7545a47811e04ea1aa9be2c37e722f7ba2906a3/docs/01-app/02-guides/upgrading/version-16.mdx",
+     "quote": "Migrate from deprecated `middleware` convention to `proxy`",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "chmonitor-next16",
+   "split": "HELD-OUT",
+   "key": "K11",
+   "required": false,
+   "change": "Removed the --webpack flag from the production build command.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "next:turbopack"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/vercel/next.js/releases/tag/v16.0.0",
+     "quote": "Add a --webpack flag and default --turbopack to true",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/vercel/next.js/blob/f7545a47811e04ea1aa9be2c37e722f7ba2906a3/docs/01-app/02-guides/upgrading/version-16.mdx",
+     "quote": "Turbopack is stable and used by default with `next dev` and `next build`",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "chmonitor-next16",
+   "split": "HELD-OUT",
+   "key": "K13",
+   "required": true,
+   "change": "Removed the eslint.ignoreDuringBuilds option from next.config.ts.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "next:eslint~2"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/vercel/next.js/blob/f7545a47811e04ea1aa9be2c37e722f7ba2906a3/docs/01-app/02-guides/upgrading/version-16.mdx",
+     "quote": "The `eslint` option in the Next.js config file is also removed.",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "aksel-next16",
+   "split": "DEV",
+   "key": "K1",
+   "required": false,
+   "change": "Renamed the Next.js middleware file to proxy.ts and renamed the exported function from middleware to proxy.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "next:middleware",
+    "next:middleware~2",
+    "next:proxy",
+    "next:proxy.ts",
+    "next:proxy.ts~4"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/vercel/next.js/releases/tag/v16.0.0",
+     "quote": "Deprecate `middleware` and recommend `proxy`",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/vercel/next.js/blob/f7545a47811e04ea1aa9be2c37e722f7ba2906a3/docs/01-app/02-guides/upgrading/version-16.mdx",
+     "quote": "Migrate from deprecated `middleware` convention to `proxy`",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/vercel/next.js/blob/f7545a47811e04ea1aa9be2c37e722f7ba2906a3/docs/01-app/02-guides/upgrading/version-16.mdx",
+     "quote": "The named export `middleware` is also deprecated. Rename your function to `proxy`.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/vercel/next.js/blob/f7545a47811e04ea1aa9be2c37e722f7ba2906a3/docs/01-app/02-guides/upgrading/version-16.mdx",
+     "quote": "We recommend changing the function name to `proxy`",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/vercel/next.js/releases/tag/v16.0.0",
+     "quote": "Add codemod for `middleware` to `proxy`",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/vercel/next.js/blob/f7545a47811e04ea1aa9be2c37e722f7ba2906a3/docs/01-app/02-guides/upgrading/version-16.mdx",
+     "quote": "The `middleware` filename is deprecated, and has been renamed to `proxy`",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/vercel/next.js/blob/f7545a47811e04ea1aa9be2c37e722f7ba2906a3/docs/01-app/02-guides/upgrading/version-16.mdx",
+     "quote": "Rename your middleware file",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "aksel-next16",
+   "split": "DEV",
+   "key": "K2",
+   "required": true,
+   "change": "Removed the deprecated publicRuntimeConfig configuration.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "next:publicruntimeconfig~2"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/vercel/next.js/blob/f7545a47811e04ea1aa9be2c37e722f7ba2906a3/docs/01-app/02-guides/upgrading/version-16.mdx",
+     "quote": "`serverRuntimeConfig` and `publicRuntimeConfig` have been removed. Use environment variables instead.",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "aksel-next16",
+   "split": "DEV",
+   "key": "K3",
+   "required": false,
+   "change": "Enabled Turbopack's development filesystem cache and the React compiler.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "next:reactcompiler",
+    "next:turbopackfilesystemcachefordev"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/vercel/next.js/releases/tag/v16.0.0",
+     "quote": "[cna] Add `reactCompiler` option",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/vercel/next.js/blob/f7545a47811e04ea1aa9be2c37e722f7ba2906a3/docs/01-app/02-guides/upgrading/version-16.mdx",
+     "quote": "The `reactCompiler` configuration option has been promoted from `experimental` to stable.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/vercel/next.js/releases/tag/v16.0.0",
+     "quote": "Turbopack: rename turbopackPersistentCachingForXXX to turbopackFileSystemCacheForXXX",
+     "kind": "release_notes"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "aksel-next16",
+   "split": "DEV",
+   "key": "K4",
+   "required": false,
+   "change": "Added babel-plugin-react-compiler.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "next:babel-plugin-react-compiler"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/vercel/next.js/blob/f7545a47811e04ea1aa9be2c37e722f7ba2906a3/docs/01-app/02-guides/upgrading/version-16.mdx",
+     "quote": "Install the latest version of the React Compiler plugin:",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "aksel-next16",
+   "split": "DEV",
+   "key": "K5",
+   "required": false,
+   "change": "Removed the separate dev-turbo script.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "next:turbopack"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/vercel/next.js/releases/tag/v16.0.0",
+     "quote": "Add a --webpack flag and default --turbopack to true",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/vercel/next.js/blob/f7545a47811e04ea1aa9be2c37e722f7ba2906a3/docs/01-app/02-guides/upgrading/version-16.mdx",
+     "quote": "Turbopack is stable and used by default with `next dev` and `next build`",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "aksel-next16",
+   "split": "DEV",
+   "key": "K7",
+   "required": true,
+   "change": "Reworked the Next ESLint configuration to register the plugin explicitly and spread its recommended rules instead of extending next.flatConfig.recommended.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "next:next-eslint-plugin-next"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/vercel/next.js/releases/tag/v16.0.0",
+     "quote": "[Breaking] Flat config as default in `@next/eslint-plugin-next`",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/vercel/next.js/blob/f7545a47811e04ea1aa9be2c37e722f7ba2906a3/docs/01-app/02-guides/upgrading/version-16.mdx",
+     "quote": "`@next/eslint-plugin-next` now defaults to ESLint Flat Config format",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "aksel-next16",
+   "split": "DEV",
+   "key": "K9",
+   "required": false,
+   "change": "Wrapped the global-search contents in React Activity, switching between visible and hidden modes based on whether the search is open.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "next:react-19.2"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/vercel/next.js/blob/f7545a47811e04ea1aa9be2c37e722f7ba2906a3/docs/01-app/02-guides/upgrading/version-16.mdx",
+     "quote": "The App Router in **Next.js 16** uses the latest React ... which includes the newly released React 19.2 features",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "payloadplugins-next16",
+   "split": "DEV",
+   "key": "K2",
+   "required": true,
+   "change": "Added --webpack to every dev and build script that invokes Next.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "next:turbopack",
+    "next:webpack",
+    "next:webpack~2"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/vercel/next.js/releases/tag/v16.0.0",
+     "quote": "Add a --webpack flag and default --turbopack to true",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/vercel/next.js/blob/f7545a47811e04ea1aa9be2c37e722f7ba2906a3/docs/01-app/02-guides/upgrading/version-16.mdx",
+     "quote": "Turbopack is stable and used by default with `next dev` and `next build`",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/vercel/next.js/releases/tag/v16.0.0",
+     "quote": "Add a --webpack flag and default --turbopack to true",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/vercel/next.js/blob/f7545a47811e04ea1aa9be2c37e722f7ba2906a3/docs/01-app/02-guides/upgrading/version-16.mdx",
+     "quote": "Use the `--webpack` flag to opt out of Turbopack and build with Webpack.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/vercel/next.js/blob/f7545a47811e04ea1aa9be2c37e722f7ba2906a3/docs/01-app/02-guides/upgrading/version-16.mdx",
+     "quote": "If your project has a custom `webpack` configuration and you run `next build` ... the build will **fail**",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "payloadplugins-next16",
+   "split": "DEV",
+   "key": "K3",
+   "required": true,
+   "change": "Removed the eslint.ignoreDuringBuilds option from Next configuration.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "next:eslint~2"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/vercel/next.js/blob/f7545a47811e04ea1aa9be2c37e722f7ba2906a3/docs/01-app/02-guides/upgrading/version-16.mdx",
+     "quote": "The `eslint` option in the Next.js config file is also removed.",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "payloadplugins-next16",
+   "split": "DEV",
+   "key": "K8",
+   "required": true,
+   "change": "Changed revalidateTag(tag) to revalidateTag(tag, 'max'), retaining a compatibility cast for Next 15 and Next 16 consumers.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "next:revalidatetag~2"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/vercel/next.js/blob/f7545a47811e04ea1aa9be2c37e722f7ba2906a3/docs/01-app/02-guides/upgrading/version-16.mdx",
+     "quote": "`revalidateTag` now requires a second argument specifying a `cacheLife` profile.",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "coh2stats-next16",
+   "split": "HELD-OUT",
+   "key": "K1",
+   "required": false,
+   "change": "Added an ESLint 9 flat configuration with the existing plugin rules and build-artifact ignores, and updated the root ESLint tooling to support it.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "next:eslint-config-next",
+    "next:next-eslint-plugin-next"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/vercel/next.js/releases/tag/v16.0.0",
+     "quote": "[eslint-config] [Breaking] Use Flat config by default",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/vercel/next.js/releases/tag/v16.0.0",
+     "quote": "[Breaking] Flat config as default in `@next/eslint-plugin-next`",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/vercel/next.js/blob/f7545a47811e04ea1aa9be2c37e722f7ba2906a3/docs/01-app/02-guides/upgrading/version-16.mdx",
+     "quote": "`@next/eslint-plugin-next` now defaults to ESLint Flat Config format",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "coh2stats-next16",
+   "split": "HELD-OUT",
+   "key": "K2",
+   "required": false,
+   "change": "Changed TypeScript module resolution from node to bundler, changed JSX compilation from preserve to react-jsx, and included Next's generated development route types.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "next:moduleresolution"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/vercel/next.js/releases/tag/v16.2.2",
+     "quote": "Backport: TypeScript v6 deprecations for baseUrl and moduleResolution (#92130)",
+     "kind": "release_notes"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "coh2stats-next16",
+   "split": "HELD-OUT",
+   "key": "K4",
+   "required": false,
+   "change": "Enabled the React Compiler with reactCompiler: true.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "next:reactcompiler"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/vercel/next.js/releases/tag/v16.0.0",
+     "quote": "[cna] Add `reactCompiler` option",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/vercel/next.js/blob/f7545a47811e04ea1aa9be2c37e722f7ba2906a3/docs/01-app/02-guides/upgrading/version-16.mdx",
+     "quote": "The `reactCompiler` configuration option has been promoted from `experimental` to stable.",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "sigle-prisma7",
+   "split": "HELD-OUT",
+   "key": "K1",
+   "required": true,
+   "change": "Moved the datasource URL from the Prisma schema into prisma.config.ts using env(\"DATABASE_URL\").",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "prisma:datasource.url"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+     "quote": "`datasource.url` is now configured in the config file",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "Additionally other fields such as `url`, `directUrl`, and `shadowDatabaseUrl` in the `datasource` block are deprecated.",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "sigle-prisma7",
+   "split": "HELD-OUT",
+   "key": "K2",
+   "required": true,
+   "change": "Added PrismaPg and changed PrismaClient creation to pass a PostgreSQL driver adapter configured from DATABASE_URL.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "prisma:driver-adapters",
+    "prisma:prisma-adapter-pg~4"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "The way to create a new Prisma Client has changed to require a driver adapter for all databases.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "if you are using Prisma Postgres, you now need the `@prisma/adapter-pg` adapter.",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "sigle-prisma7",
+   "split": "HELD-OUT",
+   "key": "K3",
+   "required": true,
+   "change": "Changed development Prisma generation to run through the db:generate script, which loads .env.development before invoking prisma generate.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "prisma:environment-variables"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+     "quote": "we\u2019re no longer automatically loading environment variables when invoking the Prisma CLI.",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "In Prisma ORM 7.0.0, environment variables are not loaded by default.",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "sigle-prisma7",
+   "split": "HELD-OUT",
+   "key": "K4",
+   "required": true,
+   "change": "Copied prisma.config.ts into the production image alongside the Prisma schema and migrations.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "prisma:prisma.config.ts~2"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+     "quote": "`prisma.config.ts` is now required for projects looking to perform introspection and migration.",
+     "kind": "release_notes"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "cedar-prisma7",
+   "split": "DEV",
+   "key": "K1",
+   "required": true,
+   "change": "Added Prisma schema loading through createSchemaPathInput/getSchemaWithPath and changed generated-client resolution to use the generator's configured output and extension, with fallback paths.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "prisma:output",
+    "prisma:prisma-client~2",
+    "prisma:prisma.config.ts~3"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+     "quote": "the generated Client runtime and project types will now **require** a `output` path to be set",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "The `output` field is now **required** in the generator block.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "After running `npx prisma generate`, you'll need to update your imports to use the new generated path",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "Prisma Config is now the default place for configuring how the Prisma CLI interacts with your database.",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "cedar-prisma7",
+   "split": "DEV",
+   "key": "K2",
+   "required": true,
+   "change": "GraphQL generation imports the generated client directly, handles Prisma's ESM/CJS export shapes, uses cache-busted file URLs, and reads schemas through the new project-config helper; db re-export detection now recognizes generated-client imports.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "prisma:es-module-support",
+    "prisma:prisma-client~2",
+    "prisma:prisma.config.ts~3"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "Prisma ORM now ships as an ES module",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "After running `npx prisma generate`, you'll need to update your imports to use the new generated path",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "Prisma Config is now the default place for configuring how the Prisma CLI interacts with your database.",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "cedar-prisma7",
+   "split": "DEV",
+   "key": "K3",
+   "required": true,
+   "change": "Added a Prisma client generation helper that invokes Prisma's CLI entry point with --config and detects whether a generated client already exists.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "prisma:output",
+    "prisma:prisma-client~2",
+    "prisma:prisma-generate",
+    "prisma:prisma.config.ts~3"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+     "quote": "the generated Client runtime and project types will now **require** a `output` path to be set",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "The `output` field is now **required** in the generator block.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "After running `npx prisma generate`, you'll need to update your imports to use the new generated path",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+     "quote": "This behaviour has been removed in favor of explicitly requiring commands to be run by users.",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "`migrate dev` and `db push` no longer run `prisma generate` automatically.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "Prisma Config is now the default place for configuring how the Prisma CLI interacts with your database.",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "cedar-prisma7",
+   "split": "DEV",
+   "key": "K4",
+   "required": true,
+   "change": "validateUniqueness no longer constructs a fallback PrismaClient and now throws when no db instance is supplied.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "prisma:driver-adapters",
+    "prisma:prismaclient~2"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "The way to create a new Prisma Client has changed to require a driver adapter for all databases.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+     "quote": "`new PrismaClient()` support has been removed",
+     "kind": "release_notes"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "cedar-prisma7",
+   "split": "DEV",
+   "key": "K5",
+   "required": true,
+   "change": "Replaced direct use of Prisma internals' getSchemaPath/getSchemaWithPath with Cedar's getPrismaSchemas helper.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "prisma:prisma.config.ts~3"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "Prisma Config is now the default place for configuring how the Prisma CLI interacts with your database.",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "cedar-prisma7",
+   "split": "DEV",
+   "key": "K6",
+   "required": true,
+   "change": "Made storage extension and upload configuration types generic over the generated Prisma client and used Prisma's extension Result type instead of importing PrismaClient and Prisma from @prisma/client.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "prisma:driver-adapters",
+    "prisma:prisma-client~2"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "The way to create a new Prisma Client has changed to require a driver adapter for all databases.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "After running `npx prisma generate`, you'll need to update your imports to use the new generated path",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "cedar-prisma7",
+   "split": "DEV",
+   "key": "K7",
+   "required": true,
+   "change": "Updated storage tests to use the generated client with PrismaBetterSqlite3, moved the SQLite URL into prisma.config, changed the generator to prisma-client, generated the client during test setup, and removed the old Vitest client alias.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "prisma:datasource.url",
+    "prisma:driver-adapters",
+    "prisma:output",
+    "prisma:prisma-client-provider",
+    "prisma:prisma-client~2",
+    "prisma:prisma-generate",
+    "prisma:prismabettersqlite3"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+     "quote": "`datasource.url` is now configured in the config file",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "Additionally other fields such as `url`, `directUrl`, and `shadowDatabaseUrl` in the `datasource` block are deprecated.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "The way to create a new Prisma Client has changed to require a driver adapter for all databases.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+     "quote": "the generated Client runtime and project types will now **require** a `output` path to be set",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "The `output` field is now **required** in the generator block.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+     "quote": "Now with version 7.0, we\u2019re making this the default for all new projects.",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "Upgrade to the new `prisma-client` provider which uses the new Rust-free client.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "After running `npx prisma generate`, you'll need to update your imports to use the new generated path",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+     "quote": "This behaviour has been removed in favor of explicitly requiring commands to be run by users.",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "`migrate dev` and `db push` no longer run `prisma generate` automatically.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+     "quote": "`PrismaBetterSQLite3` \u21d2 `PrismaBetterSqlite3`",
+     "kind": "release_notes"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "cedar-prisma7",
+   "split": "DEV",
+   "key": "K8",
+   "required": true,
+   "change": "Changed test database setup and teardown to use Prisma config/schema loading directly, removed schema-based directUrl rewriting and --skip-seed, and added support for .mts/.cts files and API path mappings.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "prisma:es-module-support",
+    "prisma:prisma-migrate-dev-skip-seed",
+    "prisma:prisma.config.ts~3"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "Prisma ORM now ships as an ES module",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "The `--skip-seed` flag was removed from `prisma migrate dev`.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "Prisma Config is now the default place for configuring how the Prisma CLI interacts with your database.",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "cedar-prisma7",
+   "split": "DEV",
+   "key": "K9",
+   "required": true,
+   "change": "dbAuth setup now loads schemas through getPrismaSchemas and its test schemas use prisma-client without a datasource URL in schema.prisma.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "prisma:datasource.url",
+    "prisma:prisma.config.ts~3"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+     "quote": "`datasource.url` is now configured in the config file",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "Additionally other fields such as `url`, `directUrl`, and `shadowDatabaseUrl` in the `datasource` block are deprecated.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "Prisma Config is now the default place for configuring how the Prisma CLI interacts with your database.",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "cedar-prisma7",
+   "split": "DEV",
+   "key": "K10",
+   "required": true,
+   "change": "Externalized the SQLite adapter/native driver in Vite server builds and provided __non_webpack_require__ for external CommonJS native-driver loading.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "prisma:driver-adapters"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "The way to create a new Prisma Client has changed to require a driver adapter for all databases.",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "cedar-prisma7",
+   "split": "DEV",
+   "key": "K11",
+   "required": true,
+   "change": "Updated generated app templates to use prisma.config, prisma-client with explicit output, PrismaBetterSqlite3, generated-client imports, and SQLite URLs rooted at api/db.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "prisma:datasource.url",
+    "prisma:driver-adapters",
+    "prisma:output",
+    "prisma:prisma-client~2",
+    "prisma:prisma.config.ts~3",
+    "prisma:prismabettersqlite3"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+     "quote": "`datasource.url` is now configured in the config file",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "Additionally other fields such as `url`, `directUrl`, and `shadowDatabaseUrl` in the `datasource` block are deprecated.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "The way to create a new Prisma Client has changed to require a driver adapter for all databases.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+     "quote": "the generated Client runtime and project types will now **require** a `output` path to be set",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "The `output` field is now **required** in the generator block.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "After running `npx prisma generate`, you'll need to update your imports to use the new generated path",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "Prisma Config is now the default place for configuring how the Prisma CLI interacts with your database.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+     "quote": "`PrismaBetterSQLite3` \u21d2 `PrismaBetterSqlite3`",
+     "kind": "release_notes"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "cedar-prisma7",
+   "split": "DEV",
+   "key": "K13",
+   "required": true,
+   "change": "Generated services, data migrations, and GraphQL types now import Prisma types through src/lib/db rather than conditionally from @prisma/client.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "prisma:prisma-client~2"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "After running `npx prisma generate`, you'll need to update your imports to use the new generated path",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "cedar-prisma7",
+   "split": "DEV",
+   "key": "K14",
+   "required": false,
+   "change": "Updated documentation examples and commands for prisma.config, generated-client imports, Prisma 7 client initialization, adapters, and the new SQLite URL.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "prisma:datasource.url",
+    "prisma:driver-adapters",
+    "prisma:output",
+    "prisma:prisma-client~2",
+    "prisma:prisma.config.ts~3",
+    "prisma:prismabettersqlite3"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+     "quote": "`datasource.url` is now configured in the config file",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "Additionally other fields such as `url`, `directUrl`, and `shadowDatabaseUrl` in the `datasource` block are deprecated.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "The way to create a new Prisma Client has changed to require a driver adapter for all databases.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+     "quote": "the generated Client runtime and project types will now **require** a `output` path to be set",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "The `output` field is now **required** in the generator block.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "After running `npx prisma generate`, you'll need to update your imports to use the new generated path",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "Prisma Config is now the default place for configuring how the Prisma CLI interacts with your database.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+     "quote": "`PrismaBetterSQLite3` \u21d2 `PrismaBetterSqlite3`",
+     "kind": "release_notes"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "cedar-prisma7",
+   "split": "DEV",
+   "key": "K16",
+   "required": false,
+   "change": "Added a Prisma 7 migration codemod that moves datasource configuration to prisma.config, rewrites the generator and client imports, adds the SQLite adapter and initialization, updates package/config/ignore/env files, and rewrites remaining @prisma/client imports.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "prisma:datasource.url",
+    "prisma:driver-adapters",
+    "prisma:output",
+    "prisma:prisma-client~2",
+    "prisma:prisma.config.ts~3",
+    "prisma:prismabettersqlite3"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+     "quote": "`datasource.url` is now configured in the config file",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "Additionally other fields such as `url`, `directUrl`, and `shadowDatabaseUrl` in the `datasource` block are deprecated.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "The way to create a new Prisma Client has changed to require a driver adapter for all databases.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+     "quote": "the generated Client runtime and project types will now **require** a `output` path to be set",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "The `output` field is now **required** in the generator block.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "After running `npx prisma generate`, you'll need to update your imports to use the new generated path",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "Prisma Config is now the default place for configuring how the Prisma CLI interacts with your database.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+     "quote": "`PrismaBetterSQLite3` \u21d2 `PrismaBetterSqlite3`",
+     "kind": "release_notes"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "cedar-prisma7",
+   "split": "DEV",
+   "key": "K17",
+   "required": false,
+   "change": "Extended the Prisma 7 codemod to detect PostgreSQL projects, add PrismaPg and @prisma/adapter-pg, construct the adapter from DATABASE_URL, pass it to PrismaClient, and add the PostgreSQL dependencies.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "prisma:driver-adapters",
+    "prisma:prisma-adapter-pg~4"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "The way to create a new Prisma Client has changed to require a driver adapter for all databases.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "if you are using Prisma Postgres, you now need the `@prisma/adapter-pg` adapter.",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "cedar-prisma7",
+   "split": "DEV",
+   "key": "K21",
+   "required": true,
+   "change": "Added Cedar env-file loading to Prisma 7 codemod/test and fixture commands, and passed --load-env-files user where prisma.config evaluates environment variables.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "prisma:environment-variables"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+     "quote": "we\u2019re no longer automatically loading environment variables when invoking the Prisma CLI.",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "In Prisma ORM 7.0.0, environment variables are not loaded by default.",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "cedar-prisma7",
+   "split": "DEV",
+   "key": "K22",
+   "required": true,
+   "change": "Live-query PostgreSQL connections now read datasource.url from the loaded Prisma config and use it as the pg connection string, with an error when it is absent.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "prisma:datasource.url",
+    "prisma:prisma.config.ts~3"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+     "quote": "`datasource.url` is now configured in the config file",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "Additionally other fields such as `url`, `directUrl`, and `shadowDatabaseUrl` in the `datasource` block are deprecated.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "Prisma Config is now the default place for configuring how the Prisma CLI interacts with your database.",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "cedar-prisma7",
+   "split": "DEV",
+   "key": "K23",
+   "required": true,
+   "change": "Loaded project environment variables before gqlorm generation.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "prisma:environment-variables"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+     "quote": "we\u2019re no longer automatically loading environment variables when invoking the Prisma CLI.",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "In Prisma ORM 7.0.0, environment variables are not loaded by default.",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "jsontypes-prisma7",
+   "split": "HELD-OUT",
+   "key": "K2",
+   "required": false,
+   "change": "Changed the documented client generator provider from prisma-client-js to prisma-client.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "prisma:prisma-client"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/prisma/orm/releases/tag/6.19.0",
+     "quote": "Move from `prisma-client-js` `prisma-client`",
+     "kind": "release_notes"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "jsontypes-prisma7",
+   "split": "HELD-OUT",
+   "key": "K3",
+   "required": false,
+   "change": "Added a version-compatibility section stating that package 4.x targets Prisma 7 and package 3.x and earlier target Prisma 6.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "prisma:prisma-client"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/prisma/orm/releases/tag/6.19.0",
+     "quote": "Move from `prisma-client-js` `prisma-client`",
+     "kind": "release_notes"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "jsontypes-prisma7",
+   "split": "HELD-OUT",
+   "key": "K5",
+   "required": false,
+   "change": "Changed the test client generator provider from prisma-client-js to prisma-client.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "prisma:prisma-client"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/prisma/orm/releases/tag/6.19.0",
+     "quote": "Move from `prisma-client-js` `prisma-client`",
+     "kind": "release_notes"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "jsontypes-prisma7",
+   "split": "HELD-OUT",
+   "key": "K6",
+   "required": true,
+   "change": "Removed empty datasource url settings from the test schemas.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "prisma:datasource.url"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+     "quote": "`datasource.url` is now configured in the config file",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "Additionally other fields such as `url`, `directUrl`, and `shadowDatabaseUrl` in the `datasource` block are deprecated.",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "jsontypes-prisma7",
+   "split": "HELD-OUT",
+   "key": "K7",
+   "required": false,
+   "change": "Updated generated-client test imports from target/index to target/client, and moved several generated input-type imports to target/pjtg or model files.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "prisma:prisma-client~2"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "After running `npx prisma generate`, you'll need to update your imports to use the new generated path",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "zodgen-prisma7",
+   "split": "DEV",
+   "key": "K1",
+   "required": true,
+   "change": "Added a Prisma config file containing the schema, migrations path, and datasource URL; removed the datasource URL from schema.prisma.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "prisma:datasource.url",
+    "prisma:prisma.config.ts~3"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+     "quote": "`datasource.url` is now configured in the config file",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "Additionally other fields such as `url`, `directUrl`, and `shadowDatabaseUrl` in the `datasource` block are deprecated.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "Prisma Config is now the default place for configuring how the Prisma CLI interacts with your database.",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "zodgen-prisma7",
+   "split": "DEV",
+   "key": "K2",
+   "required": true,
+   "change": "Removed engineType = \"client\" from the Prisma client generator block.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "prisma:prisma-client-provider"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+     "quote": "Now with version 7.0, we\u2019re making this the default for all new projects.",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "Upgrade to the new `prisma-client` provider which uses the new Rust-free client.",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "zodgen-prisma7",
+   "split": "DEV",
+   "key": "K3",
+   "required": true,
+   "change": "Switched DMMF typing to @prisma/generator-helper, introduced SchemaEnumWithValues, and normalized enum values from Prisma's changed enum representations before generation.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "prisma:mapped-enum-values"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "In Prisma ORM v7, the generated TypeScript enum values use the **schema names**, not the mapped values.",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "zodgen-prisma7",
+   "split": "DEV",
+   "key": "K4",
+   "required": true,
+   "change": "Added dotenv, @prisma/adapter-pg, and pg dependencies.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "prisma:environment-variables",
+    "prisma:prisma-adapter-pg~4"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+     "quote": "we\u2019re no longer automatically loading environment variables when invoking the Prisma CLI.",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "In Prisma ORM 7.0.0, environment variables are not loaded by default.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "if you are using Prisma Postgres, you now need the `@prisma/adapter-pg` adapter.",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "zodgen-prisma7",
+   "split": "DEV",
+   "key": "K5",
+   "required": true,
+   "change": "Added shared Prisma-generation helpers that remove datasource url and driverAdapters entries, create provider-specific prisma.config.mjs files, and invoke prisma generate with --config; updated affected tests to use them.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "prisma:adapter",
+    "prisma:prisma.config.ts~3"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/prisma/orm/releases/tag/7.0.0",
+     "quote": "`adapter` has been removed",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "Prisma Config is now the default place for configuring how the Prisma CLI interacts with your database.",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "zodgen-prisma7",
+   "split": "DEV",
+   "key": "K11",
+   "required": true,
+   "change": "Raised the Node.js minimum to 20.19.0, removed Node 18 from CI, and ran the basic tests on all remaining Node versions.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "prisma:node.js"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "Node | 20.19.0 | 22.x",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "zodgen-prisma7",
+   "split": "DEV",
+   "key": "K12",
+   "required": false,
+   "change": "Updated documented Prisma and runtime requirements to Prisma 7, Node.js 20.19+, TypeScript 5.4+, and the revised recommended versions.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "prisma:node.js",
+    "prisma:typescript"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "Node | 20.19.0 | 22.x",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/prisma/docs/blob/866b345a0371e14ff86228a59f0925f81a6a3ddb/apps/docs/content/docs/guides/upgrade-prisma-orm/v7.mdx",
+     "quote": "TypeScript | 5.4.0 | 5.9.x",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "temporal-nest12",
+   "split": "DEV",
+   "key": "K1",
+   "required": true,
+   "change": "Widened @nestjs/common, @nestjs/core, and @nestjs/testing peer ranges to include ^12.0.0, and changed @nestjs/terminus to ^11.0.0 || ^12.0.0.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "nestjs:healthcheckerror",
+    "nestjs:healthindicator"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/nestjs/docs.nestjs.com/blob/72f77737e2c6f2c305229e87c4f7846bb629c6cc/content/migration.md",
+     "quote": "Throwing is no longer a way to report an unhealthy state.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/nestjs/docs.nestjs.com/blob/72f77737e2c6f2c305229e87c4f7846bb629c6cc/content/migration.md",
+     "quote": "The legacy health indicator API, deprecated in version 11, has been removed.",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "temporal-nest12",
+   "split": "DEV",
+   "key": "K2",
+   "required": true,
+   "change": "Replaced the HealthIndicator/HealthCheckError implementation with HealthIndicatorService.check(), returning session.up() for healthy checks and session.down() for unhealthy checks.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "nestjs:healthcheckerror",
+    "nestjs:healthindicator"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/nestjs/docs.nestjs.com/blob/72f77737e2c6f2c305229e87c4f7846bb629c6cc/content/migration.md",
+     "quote": "Throwing is no longer a way to report an unhealthy state.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/nestjs/docs.nestjs.com/blob/72f77737e2c6f2c305229e87c4f7846bb629c6cc/content/migration.md",
+     "quote": "The legacy health indicator API, deprecated in version 11, has been removed.",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "temporal-nest12",
+   "split": "DEV",
+   "key": "K3",
+   "required": true,
+   "change": "Registered HealthIndicatorService in the test module and changed unhealthy-case assertions from HealthCheckError exceptions to returned down results.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "nestjs:healthcheckerror",
+    "nestjs:healthindicator"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/nestjs/docs.nestjs.com/blob/72f77737e2c6f2c305229e87c4f7846bb629c6cc/content/migration.md",
+     "quote": "Throwing is no longer a way to report an unhealthy state.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/nestjs/docs.nestjs.com/blob/72f77737e2c6f2c305229e87c4f7846bb629c6cc/content/migration.md",
+     "quote": "The legacy health indicator API, deprecated in version 11, has been removed.",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "temporal-nest12",
+   "split": "DEV",
+   "key": "K4",
+   "required": true,
+   "change": "Changed all Jest test scripts to invoke Jest through Node with --experimental-vm-modules.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "nestjs:esm-packages~2"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/nestjs/docs.nestjs.com/blob/72f77737e2c6f2c305229e87c4f7846bb629c6cc/content/migration.md",
+     "quote": "All core Nest packages now ship as ESM.",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "temporal-nest12",
+   "split": "DEV",
+   "key": "K5",
+   "required": true,
+   "change": "Changed the test matrix to run NestJS 12 on Node 24 and NestJS 11 on Node 20, 22, and 24; added installation of NestJS 11 packages for the compatibility jobs; moved coverage and test-result uploads to the NestJS 12 Node 24 job; and changed the build job to Node 24.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "nestjs:esm-packages~2",
+    "nestjs:node.js"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/nestjs/docs.nestjs.com/blob/72f77737e2c6f2c305229e87c4f7846bb629c6cc/content/migration.md",
+     "quote": "All core Nest packages now ship as ESM.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/nestjs/nest/releases/tag/v12.0.0",
+     "quote": "v12 requires **Node.js v20.19+ or v22.12+**.",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/nestjs/docs.nestjs.com/blob/72f77737e2c6f2c305229e87c4f7846bb629c6cc/content/migration.md",
+     "quote": "Running a Nest 12 application | v20.19+, or v22.12+ on the 22.x line",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "temporal-nest12",
+   "split": "DEV",
+   "key": "K8",
+   "required": false,
+   "change": "Documented that unhealthy Terminus checks return a down result and that the indicator requires @nestjs/terminus 11 or 12.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "nestjs:healthcheckerror",
+    "nestjs:healthindicator"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/nestjs/docs.nestjs.com/blob/72f77737e2c6f2c305229e87c4f7846bb629c6cc/content/migration.md",
+     "quote": "Throwing is no longer a way to report an unhealthy state.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/nestjs/docs.nestjs.com/blob/72f77737e2c6f2c305229e87c4f7846bb629c6cc/content/migration.md",
+     "quote": "The legacy health indicator API, deprecated in version 11, has been removed.",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "temporal-nest12",
+   "split": "DEV",
+   "key": "K9",
+   "required": false,
+   "change": "Updated the documented NestJS peer range to include ^12 and documented that NestJS 12 is ESM-only, requires Node 24.9+ for Jest tests, and uses --experimental-vm-modules.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "nestjs:esm-packages~2",
+    "nestjs:node.js"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/nestjs/docs.nestjs.com/blob/72f77737e2c6f2c305229e87c4f7846bb629c6cc/content/migration.md",
+     "quote": "All core Nest packages now ship as ESM.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/nestjs/nest/releases/tag/v12.0.0",
+     "quote": "v12 requires **Node.js v20.19+ or v22.12+**.",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/nestjs/docs.nestjs.com/blob/72f77737e2c6f2c305229e87c4f7846bb629c6cc/content/migration.md",
+     "quote": "Running a Nest 12 application | v20.19+, or v22.12+ on the 22.x line",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "temporal-nest12",
+   "split": "DEV",
+   "key": "K10",
+   "required": false,
+   "change": "Documented that NestJS 12 is ESM-only, specified the Node 20.19+ or 22.12+ runtime requirement for require(esm), linked the NestJS 12 testing guidance, and documented the Terminus 11-or-12 requirement.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "nestjs:esm-packages~2",
+    "nestjs:healthcheckerror",
+    "nestjs:healthindicator",
+    "nestjs:node.js"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/nestjs/docs.nestjs.com/blob/72f77737e2c6f2c305229e87c4f7846bb629c6cc/content/migration.md",
+     "quote": "All core Nest packages now ship as ESM.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/nestjs/docs.nestjs.com/blob/72f77737e2c6f2c305229e87c4f7846bb629c6cc/content/migration.md",
+     "quote": "Throwing is no longer a way to report an unhealthy state.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/nestjs/docs.nestjs.com/blob/72f77737e2c6f2c305229e87c4f7846bb629c6cc/content/migration.md",
+     "quote": "The legacy health indicator API, deprecated in version 11, has been removed.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/nestjs/nest/releases/tag/v12.0.0",
+     "quote": "v12 requires **Node.js v20.19+ or v22.12+**.",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/nestjs/docs.nestjs.com/blob/72f77737e2c6f2c305229e87c4f7846bb629c6cc/content/migration.md",
+     "quote": "Running a Nest 12 application | v20.19+, or v22.12+ on the 22.x line",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "temporal-nest12",
+   "split": "DEV",
+   "key": "K11",
+   "required": false,
+   "change": "Added NestJS 12 ESM/runtime guidance and documented that the optional Terminus entry requires @nestjs/terminus 11 or 12.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "nestjs:esm-packages~2",
+    "nestjs:healthcheckerror",
+    "nestjs:healthindicator"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/nestjs/docs.nestjs.com/blob/72f77737e2c6f2c305229e87c4f7846bb629c6cc/content/migration.md",
+     "quote": "All core Nest packages now ship as ESM.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/nestjs/docs.nestjs.com/blob/72f77737e2c6f2c305229e87c4f7846bb629c6cc/content/migration.md",
+     "quote": "Throwing is no longer a way to report an unhealthy state.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/nestjs/docs.nestjs.com/blob/72f77737e2c6f2c305229e87c4f7846bb629c6cc/content/migration.md",
+     "quote": "The legacy health indicator API, deprecated in version 11, has been removed.",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "temporal-nest12",
+   "split": "DEV",
+   "key": "K12",
+   "required": false,
+   "change": "Added a NestJS 12 migration section covering the expanded peer ranges, Node require(esm) requirements, Jest's Node 24.9+ VM-modules requirement, the Terminus indicator API change, and the dropped Terminus 10 support.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "nestjs:esm-packages~2",
+    "nestjs:healthcheckerror",
+    "nestjs:healthindicator",
+    "nestjs:node.js"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/nestjs/docs.nestjs.com/blob/72f77737e2c6f2c305229e87c4f7846bb629c6cc/content/migration.md",
+     "quote": "All core Nest packages now ship as ESM.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/nestjs/docs.nestjs.com/blob/72f77737e2c6f2c305229e87c4f7846bb629c6cc/content/migration.md",
+     "quote": "Throwing is no longer a way to report an unhealthy state.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/nestjs/docs.nestjs.com/blob/72f77737e2c6f2c305229e87c4f7846bb629c6cc/content/migration.md",
+     "quote": "The legacy health indicator API, deprecated in version 11, has been removed.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/nestjs/nest/releases/tag/v12.0.0",
+     "quote": "v12 requires **Node.js v20.19+ or v22.12+**.",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/nestjs/docs.nestjs.com/blob/72f77737e2c6f2c305229e87c4f7846bb629c6cc/content/migration.md",
+     "quote": "Running a Nest 12 application | v20.19+, or v22.12+ on the 22.x line",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "temporal-nest12",
+   "split": "DEV",
+   "key": "K13",
+   "required": false,
+   "change": "Clarified that earlier versions threw HealthCheckError and that @nestjs/terminus 12 no longer provides it.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "nestjs:healthcheckerror"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/nestjs/docs.nestjs.com/blob/72f77737e2c6f2c305229e87c4f7846bb629c6cc/content/migration.md",
+     "quote": "Throwing is no longer a way to report an unhealthy state.",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "temporal-nest12",
+   "split": "DEV",
+   "key": "K14",
+   "required": false,
+   "change": "Added instructions for testing with NestJS 12: run Jest through Node with --experimental-vm-modules on Node 24.9+, or test against NestJS 11 on Node 20/22.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "nestjs:esm-packages~2",
+    "nestjs:node.js"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/nestjs/docs.nestjs.com/blob/72f77737e2c6f2c305229e87c4f7846bb629c6cc/content/migration.md",
+     "quote": "All core Nest packages now ship as ESM.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/nestjs/nest/releases/tag/v12.0.0",
+     "quote": "v12 requires **Node.js v20.19+ or v22.12+**.",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/nestjs/docs.nestjs.com/blob/72f77737e2c6f2c305229e87c4f7846bb629c6cc/content/migration.md",
+     "quote": "Running a Nest 12 application | v20.19+, or v22.12+ on the 22.x line",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "temporal-nest12",
+   "split": "DEV",
+   "key": "K15",
+   "required": false,
+   "change": "Added troubleshooting guidance for Jest's \u201cMust use import to load ES Module\u201d error, including the Node 24.9+ VM-modules invocation and the NestJS 11 fallback.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "nestjs:esm-packages~2",
+    "nestjs:node.js"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/nestjs/docs.nestjs.com/blob/72f77737e2c6f2c305229e87c4f7846bb629c6cc/content/migration.md",
+     "quote": "All core Nest packages now ship as ESM.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/nestjs/nest/releases/tag/v12.0.0",
+     "quote": "v12 requires **Node.js v20.19+ or v22.12+**.",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/nestjs/docs.nestjs.com/blob/72f77737e2c6f2c305229e87c4f7846bb629c6cc/content/migration.md",
+     "quote": "Running a Nest 12 application | v20.19+, or v22.12+ on the 22.x line",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "temporal-nest12",
+   "split": "DEV",
+   "key": "K16",
+   "required": false,
+   "change": "Recorded that TemporalHealthIndicator now returns a down result instead of throwing HealthCheckError, and that peer support was widened to NestJS 12 and Terminus 11 or 12.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "nestjs:healthcheckerror",
+    "nestjs:healthindicator"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/nestjs/docs.nestjs.com/blob/72f77737e2c6f2c305229e87c4f7846bb629c6cc/content/migration.md",
+     "quote": "Throwing is no longer a way to report an unhealthy state.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/nestjs/docs.nestjs.com/blob/72f77737e2c6f2c305229e87c4f7846bb629c6cc/content/migration.md",
+     "quote": "The legacy health indicator API, deprecated in version 11, has been removed.",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "coros-nest12",
+   "split": "DEV",
+   "key": "K1",
+   "required": false,
+   "change": "Configured the project for native ES modules: added an SWC decorator/metadata configuration, set package.json type to module, and enabled NodeNext module resolution, package export resolution, and isolated modules.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "nestjs:esm-packages",
+    "nestjs:esm-packages~2",
+    "nestjs:package.json-type"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/nestjs/nest/releases/tag/v12.0.0",
+     "quote": "All core Nest packages now ship as ESM.",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/nestjs/docs.nestjs.com/blob/72f77737e2c6f2c305229e87c4f7846bb629c6cc/content/migration.md",
+     "quote": "All core Nest packages now ship as ESM.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/nestjs/docs.nestjs.com/blob/72f77737e2c6f2c305229e87c4f7846bb629c6cc/content/migration.md",
+     "quote": "Add a `type` field set to `module`",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "coros-nest12",
+   "split": "DEV",
+   "key": "K2",
+   "required": false,
+   "change": "Added a Biome correctness rule requiring relative imports to use explicit .js extensions.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "nestjs:esm-packages~2"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/nestjs/docs.nestjs.com/blob/72f77737e2c6f2c305229e87c4f7846bb629c6cc/content/migration.md",
+     "quote": "All core Nest packages now ship as ESM.",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "coros-nest12",
+   "split": "DEV",
+   "key": "K3",
+   "required": false,
+   "change": "Changed relative source and test imports to use explicit .js extensions.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "nestjs:esm-packages~2"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/nestjs/docs.nestjs.com/blob/72f77737e2c6f2c305229e87c4f7846bb629c6cc/content/migration.md",
+     "quote": "All core Nest packages now ship as ESM.",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "eudiplo-nest12",
+   "split": "HELD-OUT",
+   "key": "K1",
+   "required": true,
+   "change": "Changed backend TypeScript resolution to NodeNext and raised the Node.js minimum version to support loading NestJS 12's ESM packages from CommonJS.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "nestjs:esm-packages~2",
+    "nestjs:node.js"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/nestjs/docs.nestjs.com/blob/72f77737e2c6f2c305229e87c4f7846bb629c6cc/content/migration.md",
+     "quote": "All core Nest packages now ship as ESM.",
+     "kind": "upgrade_guide"
+    },
+    {
+     "url": "https://github.com/nestjs/nest/releases/tag/v12.0.0",
+     "quote": "v12 requires **Node.js v20.19+ or v22.12+**.",
+     "kind": "release_notes"
+    },
+    {
+     "url": "https://github.com/nestjs/docs.nestjs.com/blob/72f77737e2c6f2c305229e87c4f7846bb629c6cc/content/migration.md",
+     "quote": "Running a Nest 12 application | v20.19+, or v22.12+ on the 22.x line",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "eudiplo-nest12",
+   "split": "HELD-OUT",
+   "key": "K4",
+   "required": false,
+   "change": "Migrated the backend from CommonJS to native ESM: marked the package as module, emitted .js production entrypoints, added .js extensions to relative imports, adjusted ESM-compatible imports and runtime path handling, and updated the Nest build configuration.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "nestjs:esm-packages~2"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/nestjs/docs.nestjs.com/blob/72f77737e2c6f2c305229e87c4f7846bb629c6cc/content/migration.md",
+     "quote": "All core Nest packages now ship as ESM.",
+     "kind": "upgrade_guide"
+    }
+   ],
+   "how": "covered: both match runs map it to these records"
+  },
+  {
+   "event": "chmonitor-next16",
+   "split": "HELD-OUT",
+   "key": "K2",
+   "required": true,
+   "change": "Changed dynamic route host parameter types from number to string and widened related cached-fetch parameters to accept route strings.",
+   "in_fetched_sources": false,
+   "expected_records": [],
+   "sources": [
+    {
+     "url": "https://github.com/vercel/next.js/releases/tag/v15.5.0",
+     "quote": "feat: automatically generate route types: #81396",
+     "kind": "release_notes"
+    }
+   ],
+   "how": "Next.js 15.5.0 (2025-08-20) predates the catalog's fetch window (2025-10-15); the line is thin (does not say number params are rejected)"
+  },
+  {
+   "event": "chmonitor-next16",
+   "split": "HELD-OUT",
+   "key": "K10",
+   "required": true,
+   "change": "Changed the production build and Cloudflare build instructions to use Webpack instead of Turbopack, while retaining Turbopack for development; documented the requirement.",
+   "in_fetched_sources": true,
+   "expected_records": [
+    "next:turbopack",
+    "next:webpack"
+   ],
+   "sources": [
+    {
+     "url": "https://github.com/vercel/next.js/releases/tag/v16.0.0",
+     "quote": "Add a --webpack flag and default --turbopack to true",
+     "kind": "release_notes"
+    }
+   ],
+   "how": "record exists; the match runs did not map it"
+  },
+  {
+   "event": "eudiplo-nest12",
+   "split": "HELD-OUT",
+   "key": "K3",
+   "required": true,
+   "change": "Changed the OpenAPI contract test to assert nullability through the schema's type array instead of nullable: true.",
+   "in_fetched_sources": false,
+   "expected_records": [],
+   "sources": [
+    {
+     "url": "https://github.com/nestjs/swagger/releases",
+     "quote": "3.1.0 and later \u2014 the nullable keyword (removed in JSON Schema 2020-12) is gone. Typed schemas become a type union (type: ['string', 'null'])",
+     "kind": "release_notes"
+    }
+   ],
+   "how": "@nestjs/swagger 12 notes: a companion package the catalog does not fetch"
+  },
+  {
+   "event": "eudiplo-nest12",
+   "split": "HELD-OUT",
+   "key": "K2",
+   "required": true,
+   "change": "Added a pnpm package extension declaring TypeScript 6 as a peer dependency of @nestjs/swagger.",
+   "in_fetched_sources": false,
+   "expected_records": [],
+   "sources": [
+    {
+     "url": "https://github.com/nestjs/swagger/releases",
+     "quote": "fix: declare typescript as an optional peer dependency",
+     "kind": "release_notes"
+    }
+   ],
+   "how": "@nestjs/swagger 12.x notes: companion package, not fetched"
+  },
+  {
+   "event": "satisfactory-nest12",
+   "split": "HELD-OUT",
+   "key": "K1",
+   "required": true,
+   "change": "Added imports: [] to ThrottlerModule.forRootAsync.",
+   "in_fetched_sources": false,
+   "expected_records": [],
+   "sources": [
+    {
+     "url": "https://github.com/nestjs/throttler/releases",
+     "quote": "Import shared interfaces from the public Nest package entry point for Nest 12 compatibility.",
+     "kind": "release_notes"
+    }
+   ],
+   "how": "@nestjs/throttler notes: companion package, not fetched"
+  }
+ ]
+}

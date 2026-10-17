@@ -1,0 +1,256 @@
+{
+ "technology": "prisma",
+ "rule": "GitHub repository search for the technology's own topic (its repository's GitHub topic equal to its repository or package name; the most used if several) with at least 50 stars, pushed within 365 days of the draw (pages 1-10); keep repositories with a package.json (shallowest 6, none under node_modules, fixtures, tests, vendor or build output) declaring one of the technology's packages in dependencies or devDependencies at the major before the catalog's current one; drop forks, archived and template repositories, repositories whose name, description or topics mark a tutorial, course, example, demo, starter, boilerplate or clone, the technology's own organisation, evaluation repositories and their forks or upstreams, and repositories over 200 MB; one repository per owner; rank by stars (then name); take the first 5.",
+ "selection": {
+  "pool": "adoption",
+  "major": "previous",
+  "n": 5
+ },
+ "query": "topic:prisma stars:>=50 pushed:>=2025-10-15 archived:false",
+ "major": "7",
+ "majors": [
+  "6"
+ ],
+ "drawn": "2026-10-15T17:00:00Z",
+ "candidates": 229,
+ "passed_over": [
+  {
+   "repo": "calcom/cal.diy",
+   "stars": 49014,
+   "why": "over 200 MB"
+  },
+  {
+   "repo": "prisma/orm",
+   "stars": 47692,
+   "why": "the technology's own organisation"
+  },
+  {
+   "repo": "trpc/trpc",
+   "stars": 40705,
+   "why": "no package.json declaring prisma or @prisma/client at major 6"
+  },
+  {
+   "repo": "shadcn-ui/taxonomy",
+   "stars": 19282,
+   "why": "no package.json declaring prisma or @prisma/client at major 6"
+  },
+  {
+   "repo": "wasp-lang/wasp",
+   "stars": 18771,
+   "why": "over 200 MB"
+  },
+  {
+   "repo": "redwoodjs/graphql",
+   "stars": 17588,
+   "why": "over 200 MB"
+  },
+  {
+   "repo": "wasp-lang/open-saas",
+   "stars": 16103,
+   "why": "not a project (\"boilerplate\")"
+  },
+  {
+   "repo": "amplication/amplication",
+   "stars": 16006,
+   "why": "over 200 MB"
+  },
+  {
+   "repo": "documenso/documenso",
+   "stars": 15425,
+   "why": "over 200 MB"
+  },
+  {
+   "repo": "elie222/inbox-zero",
+   "stars": 12480,
+   "why": "no package.json declaring prisma or @prisma/client at major 6"
+  },
+  {
+   "repo": "ghostfolio/ghostfolio",
+   "stars": 9449,
+   "why": "no package.json declaring prisma or @prisma/client at major 6"
+  },
+  {
+   "repo": "Snouzy/workout-cool",
+   "stars": 8612,
+   "why": "evaluation repository"
+  },
+  {
+   "repo": "vercel/next-forge",
+   "stars": 7668,
+   "why": "template repository"
+  },
+  {
+   "repo": "prisma/prisma-examples",
+   "stars": 6651,
+   "why": "the technology's own organisation"
+  },
+  {
+   "repo": "typehero/typehero",
+   "stars": 6642,
+   "why": "no package.json declaring prisma or @prisma/client at major 6"
+  },
+  {
+   "repo": "AmanVarshney01/create-better-t-stack",
+   "stars": 5822,
+   "why": "no package.json declaring prisma or @prisma/client at major 6"
+  },
+  {
+   "repo": "lukevella/rallly",
+   "stars": 5305,
+   "why": "no package.json declaring prisma or @prisma/client at major 6"
+  },
+  {
+   "repo": "liam-hq/liam",
+   "stars": 5142,
+   "why": "no package.json declaring prisma or @prisma/client at major 6"
+  },
+  {
+   "repo": "animir/node-rate-limiter-flexible",
+   "stars": 3594,
+   "why": "no package.json declaring prisma or @prisma/client at major 6"
+  },
+  {
+   "repo": "zenstackhq/zenstack",
+   "stars": 2954,
+   "why": "no package.json declaring prisma or @prisma/client at major 6"
+  },
+  {
+   "repo": "ljlm0402/typescript-express-starter",
+   "stars": 2873,
+   "why": "not a project (\"starter\")"
+  },
+  {
+   "repo": "kentcdodds/kentcdodds.com",
+   "stars": 2500,
+   "why": "no package.json declaring prisma or @prisma/client at major 6"
+  },
+  {
+   "repo": "FullAgent/fulling",
+   "stars": 2445,
+   "why": "no package.json declaring prisma or @prisma/client at major 6"
+  },
+  {
+   "repo": "brianlovin/briOS",
+   "stars": 2271,
+   "why": "no package.json declaring prisma or @prisma/client at major 6"
+  },
+  {
+   "repo": "trycompai/comp",
+   "stars": 2033,
+   "why": "no package.json declaring prisma or @prisma/client at major 6"
+  },
+  {
+   "repo": "BearStudio/start-ui-web",
+   "stars": 1750,
+   "why": "template repository"
+  },
+  {
+   "repo": "dev-xo/remix-saas",
+   "stars": 1452,
+   "why": "no package.json declaring prisma or @prisma/client at major 6"
+  },
+  {
+   "repo": "nextacular/nextacular",
+   "stars": 1390,
+   "why": "template repository"
+  },
+  {
+   "repo": "prisma/prisma-engines",
+   "stars": 1340,
+   "why": "the technology's own organisation"
+  },
+  {
+   "repo": "moinulmoin/chadnext",
+   "stars": 1324,
+   "why": "template repository"
+  },
+  {
+   "repo": "valtyr/prisma-kysely",
+   "stars": 1186,
+   "why": "no package.json declaring prisma or @prisma/client at major 6"
+  },
+  {
+   "repo": "belastrittmatter/Framely",
+   "stars": 1182,
+   "why": "not a project (\"boilerplate\")"
+  },
+  {
+   "repo": "ndom91/briefkasten",
+   "stars": 1182,
+   "why": "no package.json declaring prisma or @prisma/client at major 6"
+  },
+  {
+   "repo": "prisma/web",
+   "stars": 1105,
+   "why": "the technology's own organisation"
+  },
+  {
+   "repo": "keonik/prisma-erd-generator",
+   "stars": 1036,
+   "why": "no package.json declaring prisma or @prisma/client at major 6"
+  },
+  {
+   "repo": "mohammed-bahumaish/prisma-editor",
+   "stars": 1034,
+   "why": "no package.json declaring prisma or @prisma/client at major 6"
+  },
+  {
+   "repo": "Ovyerus/prismaliser",
+   "stars": 991,
+   "why": "no package.json declaring prisma or @prisma/client at major 6"
+  },
+  {
+   "repo": "chrishoermann/zod-prisma-types",
+   "stars": 868,
+   "why": "no package.json declaring prisma or @prisma/client at major 6"
+  },
+  {
+   "repo": "graphql-nexus/nexus-plugin-prisma",
+   "stars": 817,
+   "why": "no package.json declaring prisma or @prisma/client at major 6"
+  },
+  {
+   "repo": "KunMoe/kun-touchgal-next",
+   "stars": 816,
+   "why": "no package.json declaring prisma or @prisma/client at major 6"
+  }
+ ],
+ "repos": [
+  {
+   "repo": "t3-oss/create-t3-app",
+   "commit": "4709861f7e67a15564c0460c13e7b4b6cfcae40d",
+   "stars": 29159,
+   "manifest": "cli/package.json",
+   "declares": "prisma@^6.6.0"
+  },
+  {
+   "repo": "dubinc/dub",
+   "commit": "9ed6be123e04420d82a6da6b3ea7dc800569d254",
+   "stars": 24895,
+   "manifest": "apps/web/package.json",
+   "declares": "@prisma/client@6.19.1"
+  },
+  {
+   "repo": "blitz-js/blitz",
+   "commit": "b18f81873e641934043f791fec06e22f5fe5a86e",
+   "stars": 14121,
+   "manifest": "apps/toolkit-app-passportjs/package.json",
+   "declares": "prisma@6.1.0"
+  },
+  {
+   "repo": "papermark/papermark",
+   "commit": "ed19717ec02a1ac79aecf5569159aa9d2d869312",
+   "stars": 9253,
+   "manifest": "package.json",
+   "declares": "@prisma/client@6.5.0"
+  },
+  {
+   "repo": "Codehagen/Prismui",
+   "commit": "40854d9e9bfed7822a730fc5e0932f257725cbd6",
+   "stars": 792,
+   "manifest": "package.json",
+   "declares": "@prisma/client@^6.12.0"
+  }
+ ],
+ "counts": {}
+}

@@ -1,0 +1,244 @@
+{
+ "event": "invoicerr-prisma7",
+ "maps": [
+  {
+   "K1": [
+    "prisma-driver-adapters",
+    "prisma-prisma-adapter-pg-4",
+    "prisma-prisma-generate",
+    "prisma-environment-variables"
+   ],
+   "K2": [
+    "prisma-prisma-client",
+    "prisma-output",
+    "prisma-datasource-url"
+   ],
+   "K3": [
+    "prisma-prisma-config-ts-2",
+    "prisma-prisma-config-ts-3",
+    "prisma-env",
+    "prisma-environment-variables"
+   ],
+   "K4": [
+    "prisma-es-module-support"
+   ],
+   "K5": [
+    "prisma-driver-adapters",
+    "prisma-prisma-adapter-pg-4",
+    "prisma-prisma-client-2",
+    "prisma-environment-variables"
+   ],
+   "K6": [
+    "prisma-prisma-client-2"
+   ],
+   "K7": [
+    "prisma-prisma-config-ts-2",
+    "prisma-environment-variables"
+   ],
+   "K8": [],
+   "K9": [
+    "prisma-prisma-generate",
+    "prisma-prisma-config-ts-2",
+    "prisma-prisma-config-ts-3",
+    "prisma-environment-variables"
+   ],
+   "K10": [],
+   "K11": [],
+   "K12": [],
+   "K13": [
+    "prisma-prisma-db-push-skip-generate"
+   ],
+   "K14": [],
+   "K15": [
+    "prisma-prisma-config-ts-2",
+    "prisma-prisma-config-ts-3",
+    "prisma-prisma-config-ts-4"
+   ],
+   "K16": [
+    "prisma-prisma-config-ts-4"
+   ]
+  },
+  {
+   "K1": [
+    "prisma-driver-adapters",
+    "prisma-prisma-adapter-pg-4",
+    "prisma-environment-variables",
+    "prisma-prisma-generate",
+    "prisma-prisma-config-ts-2"
+   ],
+   "K2": [
+    "prisma-prisma-client",
+    "prisma-output",
+    "prisma-datasource-url"
+   ],
+   "K3": [
+    "prisma-prisma-config-ts-2",
+    "prisma-prisma-config-ts-3",
+    "prisma-datasource-url",
+    "prisma-env",
+    "prisma-environment-variables"
+   ],
+   "K4": [
+    "prisma-es-module-support"
+   ],
+   "K5": [
+    "prisma-driver-adapters",
+    "prisma-prisma-adapter-pg-4",
+    "prisma-prisma-client-2",
+    "prisma-prismaclient",
+    "prisma-environment-variables"
+   ],
+   "K6": [
+    "prisma-prisma-client-2"
+   ],
+   "K7": [
+    "prisma-environment-variables"
+   ],
+   "K8": [],
+   "K9": [
+    "prisma-prisma-generate",
+    "prisma-prisma-config-ts-2",
+    "prisma-environment-variables"
+   ],
+   "K10": [],
+   "K11": [],
+   "K12": [],
+   "K13": [
+    "prisma-prisma-db-push-skip-generate"
+   ],
+   "K14": [
+    "prisma-output"
+   ],
+   "K15": [
+    "prisma-prisma-config-ts-2"
+   ],
+   "K16": [
+    "prisma-prisma-config-ts-2"
+   ]
+  }
+ ],
+ "usage": [
+  {
+   "input_tokens": 22538,
+   "cached_input_tokens": 9984,
+   "cache_write_input_tokens": 0,
+   "output_tokens": 806,
+   "reasoning_output_tokens": 516
+  },
+  {
+   "input_tokens": 22538,
+   "cached_input_tokens": 9984,
+   "cache_write_input_tokens": 0,
+   "output_tokens": 1315,
+   "reasoning_output_tokens": 1034
+  }
+ ],
+ "in_queue": [
+  "prisma-accelerateengine",
+  "prisma-adapter",
+  "prisma-binaryengine",
+  "prisma-comments",
+  "prisma-connection-pool-settings",
+  "prisma-dataproxyengine",
+  "prisma-datasource",
+  "prisma-datasource-directurl",
+  "prisma-datasource-directurl-2",
+  "prisma-datasource-shadowdatabaseurl",
+  "prisma-datasource-url",
+  "prisma-driver-adapters",
+  "prisma-edge",
+  "prisma-engine",
+  "prisma-engine-2",
+  "prisma-engine-3",
+  "prisma-env",
+  "prisma-environment-variables",
+  "prisma-es-module-support",
+  "prisma-field-naming-conventions",
+  "prisma-generated-client-files",
+  "prisma-generator-runtime",
+  "prisma-libraryengine",
+  "prisma-listlocaldatabases",
+  "prisma-local-prisma-postgres-database",
+  "prisma-map",
+  "prisma-mapped-enum-values",
+  "prisma-metrics",
+  "prisma-mongodb",
+  "prisma-multiple-prisma-instances-with-different-provide",
+  "prisma-node-js",
+  "prisma-output",
+  "prisma-package-json-engines",
+  "prisma-package-json-prisma",
+  "prisma-pool",
+  "prisma-prisma-accelerate",
+  "prisma-prisma-adapter-pg-4",
+  "prisma-prisma-cli-query-engine-type",
+  "prisma-prisma-client-2",
+  "prisma-prisma-client-engine-type",
+  "prisma-prisma-client-js",
+  "prisma-prisma-client-no-retry",
+  "prisma-prisma-client-runtime-utils",
+  "prisma-prisma-config-ts",
+  "prisma-prisma-config-ts-2",
+  "prisma-prisma-config-ts-3",
+  "prisma-prisma-config-ts-4",
+  "prisma-prisma-db-execute-schema",
+  "prisma-prisma-db-execute-url",
+  "prisma-prisma-db-pull-local-d1",
+  "prisma-prisma-db-pull-url",
+  "prisma-prisma-db-push-skip-generate",
+  "prisma-prisma-db-seed",
+  "prisma-prisma-db-seed-2",
+  "prisma-prisma-generate",
+  "prisma-prisma-generate-accelerate",
+  "prisma-prisma-generate-allow-no-models",
+  "prisma-prisma-generate-data-proxy",
+  "prisma-prisma-generate-dataproxy",
+  "prisma-prisma-generate-in-postinstall",
+  "prisma-prisma-generate-no-engine",
+  "prisma-prisma-generate-no-engine-2",
+  "prisma-prisma-generate-skip-autoinstall",
+  "prisma-prisma-introspect",
+  "prisma-prisma-migrate-dev-skip-generate",
+  "prisma-prisma-migrate-dev-skip-seed",
+  "prisma-prisma-migrate-diff-from-schema-datasource",
+  "prisma-prisma-migrate-diff-from-to-local-d1",
+  "prisma-prisma-migrate-diff-from-to-schema-datamodel",
+  "prisma-prisma-migrate-diff-from-to-schema-datasource",
+  "prisma-prisma-migrate-diff-from-to-url",
+  "prisma-prisma-migrate-diff-from-url",
+  "prisma-prisma-migrate-diff-shadow-database-url-2",
+  "prisma-prisma-migrate-diff-to-schema-datasource",
+  "prisma-prisma-migrate-diff-to-url",
+  "prisma-prisma-migrate-skip-generate",
+  "prisma-prisma-migrate-skip-seed",
+  "prisma-prisma-query-engine-binary",
+  "prisma-prisma-query-engine-library",
+  "prisma-prisma-seed",
+  "prisma-prisma-skip-postinstall-generate",
+  "prisma-prisma-sqlcommenter-query-tags",
+  "prisma-prisma-sqlcommenter-trace-context",
+  "prisma-prisma-studio",
+  "prisma-prisma-studio-2",
+  "prisma-prisma-studio-5",
+  "prisma-prisma-studio-url",
+  "prisma-prisma-use",
+  "prisma-prismabettersqlite3",
+  "prisma-prismaclient",
+  "prisma-prismaclient-2",
+  "prisma-prismaclient-3",
+  "prisma-prismaclient-4",
+  "prisma-prismaclient-datasources",
+  "prisma-prismaclient-datasourceurl",
+  "prisma-prismad1http",
+  "prisma-prismalibsql",
+  "prisma-prismaneonhttp",
+  "prisma-reactnativeengine",
+  "prisma-serverless-driver",
+  "prisma-sqlcommenterplugin",
+  "prisma-sqlite",
+  "prisma-ssl-certificate-validation",
+  "prisma-typescript",
+  "prisma-unified-prisma-config",
+  "prisma-url-validation"
+ ]
+}

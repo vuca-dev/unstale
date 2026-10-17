@@ -1,0 +1,1869 @@
+{
+ "uvicorn-9342337b@0.45.0#0.6": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "zod-6ac59393:z.iban": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "posthog-js-bf3ade81:session-recording~5": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "uvicorn-9342337b@0.52.1#0.0": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "uvicorn-9342337b@0.42.0#0.2": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "typer-4f6b46bd@0.20.1#0.1": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "zod-6ac59393:z.record~3": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "zod-6ac59393:superrefine-when": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_option",
+  "actionable": true
+ },
+ "uvicorn-9342337b@0.50.0#0.2": {
+  "breaking": false,
+  "benefit": [
+   "performance"
+  ],
+  "change_type": "performance",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:feature-flag-types": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "typer-4f6b46bd@0.26.0#0.1": {
+  "breaking": true,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "removal",
+  "actionable": true
+ },
+ "zod-6ac59393:discriminatedunion-encode": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:autocapture": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:adoptedstylesheets": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:inlinestylesheetbudgetrules": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "uvicorn-9342337b@0.52.3#0.0": {
+  "breaking": false,
+  "benefit": [
+   "performance"
+  ],
+  "change_type": "performance",
+  "actionable": false
+ },
+ "zod-6ac59393:looserecord~2": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "zod-6ac59393:looserecord": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_option",
+  "actionable": true
+ },
+ "posthog-js-bf3ade81:session-replay~2": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "other",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:react": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "zod-6ac59393:nub.jsonc-preload": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "tooling",
+  "actionable": true
+ },
+ "posthog-js-bf3ade81:session-recording-playback": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:aggregateerror": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:replayer": {
+  "breaking": false,
+  "benefit": [
+   "correctness",
+   "performance"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "zod-6ac59393:fromjsonschema": {
+  "breaking": true,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "uvicorn-9342337b@0.44.0#0.0": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:session-recording-observers": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:webmcp": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "other",
+  "actionable": false
+ },
+ "zod-6ac59393:discriminated-union-errors": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "uvicorn-9342337b@0.43.0#0.0": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "typer-4f6b46bd@0.26.1#0.0": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "uvicorn-9342337b@0.45.0#0.0": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "zod-6ac59393:json-pointer": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:popover-surveys": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "uvicorn-9342337b@0.42.0#0.0": {
+  "breaking": false,
+  "benefit": [
+   "performance"
+  ],
+  "change_type": "performance",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:session-rotation": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "typer-4f6b46bd@0.20.1#0.0": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_option",
+  "actionable": true
+ },
+ "uvicorn-9342337b@0.41.0#0.4": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "zod-6ac59393:record-keys": {
+  "breaking": true,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:console-capture": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:advanced-disable-feature-flags": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "other",
+  "actionable": false
+ },
+ "uvicorn-9342337b@0.53.0#0.5": {
+  "breaking": true,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "default_change",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:recording-discard": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "uvicorn-9342337b@0.40.0#0.0": {
+  "breaking": true,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "removal",
+  "actionable": true
+ },
+ "zod-6ac59393:z.nanoid-length": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_option",
+  "actionable": true
+ },
+ "zod-6ac59393:tojsonschema~3": {
+  "breaking": true,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:session-diagnostic": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "other",
+  "actionable": false
+ },
+ "uvicorn-9342337b@0.50.0#0.3": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "deprecation",
+  "actionable": true
+ },
+ "zod-6ac59393:french-locale": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "other",
+  "actionable": false
+ },
+ "zod-6ac59393:croatian-locale": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "zod-6ac59393:z.properties": {
+  "breaking": true,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "removal",
+  "actionable": true
+ },
+ "uvicorn-9342337b@0.47.0#0.2": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:recording-package-exports": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "zod-6ac59393:extend": {
+  "breaking": true,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": true
+ },
+ "uvicorn-9342337b@0.52.2#0.1": {
+  "breaking": false,
+  "benefit": [
+   "performance"
+  ],
+  "change_type": "performance",
+  "actionable": false
+ },
+ "zod-6ac59393:base64": {
+  "breaking": true,
+  "benefit": [
+   "security"
+  ],
+  "change_type": "security",
+  "actionable": false
+ },
+ "uvicorn-9342337b@0.50.0#0.1": {
+  "breaking": false,
+  "benefit": [
+   "performance"
+  ],
+  "change_type": "performance",
+  "actionable": false
+ },
+ "zod-6ac59393:transform": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:posthog.displaysurvey-initialresponses": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:replay-network-captures": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:document-navigation-timing": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "uvicorn-9342337b@0.52.1#0.3": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "zod-6ac59393:prototype-method-getter": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "zod-6ac59393:z.stringbool-truthy": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "uvicorn-9342337b@0.49.0#0.0": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:autocapture~2": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "uvicorn-9342337b@0.52.0#0.0": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_option",
+  "actionable": true
+ },
+ "typer-4f6b46bd@0.27.1#0.0": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "typer-4f6b46bd@0.25.1#0.0": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "tooling",
+  "actionable": true
+ },
+ "posthog-js-bf3ade81:url-prefill": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "typer-4f6b46bd@0.21.2#0.1": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "typer-4f6b46bd@0.27.3#0.0": {
+  "breaking": false,
+  "benefit": [
+   "security"
+  ],
+  "change_type": "security",
+  "actionable": false
+ },
+ "zod-6ac59393:message": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "deprecation",
+  "actionable": true
+ },
+ "zod-6ac59393:z.union": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "zod-6ac59393:min": {
+  "breaking": true,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "zod-6ac59393:proto~3": {
+  "breaking": false,
+  "benefit": [
+   "security"
+  ],
+  "change_type": "security",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:in-app-survey": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "typer-4f6b46bd@0.23.0#0.0": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "default_change",
+  "actionable": false
+ },
+ "zod-6ac59393:bunfig.toml-preload": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "tooling",
+  "actionable": true
+ },
+ "typer-4f6b46bd@0.26.8#0.0": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "zod-6ac59393:default-english-locale": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "zod-6ac59393:e.164": {
+  "breaking": true,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "zod-6ac59393:minimum": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "zod-6ac59393:reserved-key-hardening": {
+  "breaking": false,
+  "benefit": [
+   "security"
+  ],
+  "change_type": "security",
+  "actionable": false
+ },
+ "typer-4f6b46bd@0.21.2#0.2": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "other",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:console-autocapture~2": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "zod-6ac59393:z.compile": {
+  "breaking": false,
+  "benefit": [
+   "performance"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "posthog-js-bf3ade81:fbc": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:respect-dnt": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "zod-6ac59393:merge~2": {
+  "breaking": true,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": true
+ },
+ "typer-4f6b46bd@0.23.1#0.0": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "uvicorn-9342337b@0.52.2#0.0": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "typer-4f6b46bd@0.26.7#0.0": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "zod-6ac59393:fromjsonschema~5": {
+  "breaking": true,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "zod-6ac59393:keyof": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "other",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:onactivematchingsurveyschanged": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "zod-6ac59393:jitless~2": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "typer-4f6b46bd@0.27.0#0.0": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:mutationbytesrefillrate": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_option",
+  "actionable": true
+ },
+ "posthog-js-bf3ade81:dead-click-detection": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:exception-capture": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "zod-6ac59393:brand-cardinality": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_option",
+  "actionable": true
+ },
+ "posthog-js-bf3ade81:dead-clicks~2": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:capture-performance.web-vitals-attribution": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_option",
+  "actionable": true
+ },
+ "posthog-js-bf3ade81:logs.resourceattributes-os.name": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "typer-4f6b46bd@0.20.1#0.3": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:session-id-rotation": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:session-id": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:replay-network-masking-callback": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "zod-6ac59393:catch~2": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "typer-4f6b46bd@0.26.8#0.1": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:link-rel-preload-as-style": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "uvicorn-9342337b@0.53.0#0.3": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_option",
+  "actionable": true
+ },
+ "typer-4f6b46bd@0.24.1#0.1": {
+  "breaking": true,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "removal",
+  "actionable": true
+ },
+ "zod-6ac59393:fromjsonschema-propertynames": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "typer-4f6b46bd@0.26.5#0.0": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:cookieless-mode~2": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:event-retries": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "uvicorn-9342337b@0.52.1#0.2": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "zod-6ac59393:z.record~4": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:event-properties": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "zod-6ac59393:record-input-keys": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:session-recording~4": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "zod-6ac59393:z.base64": {
+  "breaking": false,
+  "benefit": [
+   "security",
+   "correctness"
+  ],
+  "change_type": "security",
+  "actionable": false
+ },
+ "uvicorn-9342337b@0.52.1#0.1": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "typer-4f6b46bd@0.24.2#0.0": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:fbp": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "typer-4f6b46bd@0.20.0#0.1": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "other",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:held-recording-epoch-buffered-data": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:log-exports": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "zod-6ac59393:z.base64~2": {
+  "breaking": true,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:bootstrap": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_option",
+  "actionable": true
+ },
+ "posthog-js-bf3ade81:sdk-debug-replay-deferred-stylesheets-failed": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "other",
+  "actionable": false
+ },
+ "uvicorn-9342337b@0.45.0#0.5": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_option",
+  "actionable": true
+ },
+ "typer-4f6b46bd@0.22.0#0.0": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "zod-6ac59393:z.formaterror": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "zod-6ac59393:z.ulid": {
+  "breaking": true,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "typer-4f6b46bd@0.21.0#0.0": {
+  "breaking": true,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "removal",
+  "actionable": true
+ },
+ "zod-6ac59393:z.validateasync": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "typer-4f6b46bd@0.21.1#0.0": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "zod-6ac59393:z.deeppartial": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "zod-6ac59393:proto": {
+  "breaking": false,
+  "benefit": [
+   "security"
+  ],
+  "change_type": "security",
+  "actionable": false
+ },
+ "typer-4f6b46bd@0.26.2#0.0": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "uvicorn-9342337b@0.51.0#0.0": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "zod-6ac59393:z.properties~2": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "zod-6ac59393:z.xor~2": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "typer-4f6b46bd@0.26.0#0.0": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "typer-4f6b46bd@0.20.1#0.2": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:send-instantly-compression": {
+  "breaking": false,
+  "benefit": [
+   "performance"
+  ],
+  "change_type": "performance",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:preview-cookie-wins-on-conflict": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "deprecation",
+  "actionable": true
+ },
+ "posthog-js-bf3ade81:console-log-autocapture": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:posthog.debug": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "other",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:server-signed-identity-claims": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "uvicorn-9342337b@0.46.0#0.2": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_option",
+  "actionable": true
+ },
+ "zod-6ac59393:z.tojsonschema-defs": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "zod-6ac59393:z.creditcard": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "typer-4f6b46bd@0.25.0#0.0": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:autocapture-targets": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "uvicorn-9342337b@0.38.0#0.0": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "other",
+  "actionable": false
+ },
+ "zod-6ac59393:parsed-objects-proto": {
+  "breaking": false,
+  "benefit": [
+   "security"
+  ],
+  "change_type": "security",
+  "actionable": false
+ },
+ "typer-4f6b46bd@0.24.1#0.0": {
+  "breaking": true,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "removal",
+  "actionable": true
+ },
+ "zod-6ac59393:z.properties~3": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "posthog-js-bf3ade81:configured-choices": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:pageview": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "uvicorn-9342337b@0.41.0#0.5": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:usethumbsurvey": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "zod-6ac59393:locales": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "zod-6ac59393:omit": {
+  "breaking": true,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "behavior_change",
+  "actionable": true
+ },
+ "uvicorn-9342337b@0.45.0#0.1": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_option",
+  "actionable": true
+ },
+ "posthog-js-bf3ade81:web-vitals-attribution~2": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "default_change",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:request-timeouts": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:shadow-dom-connectivity-checks": {
+  "breaking": false,
+  "benefit": [
+   "performance"
+  ],
+  "change_type": "performance",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:cross-domain-cookie-probes": {
+  "breaking": false,
+  "benefit": [
+   "performance"
+  ],
+  "change_type": "performance",
+  "actionable": false
+ },
+ "uvicorn-9342337b@0.41.0#0.1": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:console": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "uvicorn-9342337b@0.45.0#0.4": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "zod-6ac59393:tuple-parsing": {
+  "breaking": true,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:sessionstorage": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:reseterror": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "zod-6ac59393:z.isvalid": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "uvicorn-9342337b@0.48.0#0.1": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:otlpanyvalue-intvalue": {
+  "breaking": true,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "other",
+  "actionable": true
+ },
+ "uvicorn-9342337b@0.53.0#0.6": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "typer-4f6b46bd@0.23.2#0.0": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "tooling",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:getelementschainstring": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "uvicorn-9342337b@0.46.0#0.1": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_option",
+  "actionable": true
+ },
+ "zod-6ac59393:z.discriminatedunion": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "other",
+  "actionable": false
+ },
+ "zod-6ac59393:regex": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "uvicorn-9342337b@0.50.1#0.0": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "zod-6ac59393:fromjsonschema~2": {
+  "breaking": true,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:cssom-only-styles": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "zod-6ac59393:error-tree-walkers": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "zod-6ac59393:z.iso.datetime": {
+  "breaking": true,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "zod-6ac59393:z.mac": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "posthog-js-bf3ade81:error-tracking-coercion": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:sendbeacon": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "zod-6ac59393:length": {
+  "breaking": true,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "uvicorn-9342337b@0.47.0#0.1": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_option",
+  "actionable": true
+ },
+ "posthog-js-bf3ade81:sessionidle": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:web-vitals-attribution-bundles": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:session-recording.capturejsonld": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_option",
+  "actionable": true
+ },
+ "typer-4f6b46bd@0.21.2#0.0": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:buffered-session-replay-data": {
+  "breaking": false,
+  "benefit": [
+   "security",
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "zod-6ac59393:zod-tuple": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "zod-6ac59393:z.implement": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "posthog-js-bf3ade81:feature-flag-return-values": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "zod-6ac59393:z.xor": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:fbc~2": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:json-ld-replay-redaction": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "zod-6ac59393:z.tojsonschema": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "zod-6ac59393:registry-id-uniqueness": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "uvicorn-9342337b@0.50.0#0.5": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "uvicorn-9342337b@0.42.0#0.1": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "zod-6ac59393:multipleof~2": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "zod-6ac59393:uzbek-locale": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "zod-6ac59393:extend-refinements": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "zod-6ac59393:cuid-v1": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "deprecation",
+  "actionable": true
+ },
+ "zod-6ac59393:z.getdiscriminatedoption~2": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "uvicorn-9342337b@0.53.0#0.1": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_option",
+  "actionable": true
+ },
+ "uvicorn-9342337b@0.45.0#0.2": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_option",
+  "actionable": true
+ },
+ "posthog-js-bf3ade81:session-recording~7": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "zod-6ac59393:includes-params": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "typer-4f6b46bd@0.20.0#0.0": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "default_change",
+  "actionable": false
+ },
+ "zod-6ac59393:implementasync": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:sdk-debug-recording-script-not-loaded": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "typer-4f6b46bd@0.26.6#0.0": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "zod-6ac59393:apply": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_option",
+  "actionable": true
+ },
+ "posthog-js-bf3ade81:survey-language": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "zod-6ac59393:z.parse": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "zod-6ac59393:proto~4": {
+  "breaking": false,
+  "benefit": [
+   "security"
+  ],
+  "change_type": "security",
+  "actionable": false
+ },
+ "typer-4f6b46bd@0.24.0#0.0": {
+  "breaking": true,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "removal",
+  "actionable": true
+ },
+ "zod-6ac59393:z.datetime": {
+  "breaking": true,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "posthog-js-bf3ade81:posthogfeature-match": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ }
+}

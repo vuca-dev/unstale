@@ -1,0 +1,32 @@
+{
+ "K1": [
+  "keep",
+  true,
+  "D: under nodenext, v12's @nestjs/common exports map degraded ThrottlerModule's types; type check failed without imports: []"
+ ],
+ "K2": [
+  "drop",
+  null,
+  "adapts to @nestjs/throttler 6.6's own fix (another library's upgrade)"
+ ],
+ "K3": [
+  "keep",
+  false,
+  "removes an override made redundant by platform-express 12's multer pin; cleanup"
+ ],
+ "K4": [
+  "keep",
+  false,
+  "internal notes (docs)"
+ ],
+ "K5": [
+  "drop",
+  null,
+  "docs about the throttler 6.6 change (another library)"
+ ],
+ "K6": [
+  "keep",
+  false,
+  "internal notes (docs)"
+ ]
+}

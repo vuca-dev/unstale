@@ -1,0 +1,6 @@
+{
+ "_rule": "PREREG.md section 1; computed by select_tech.py (out/holdout/selection-*.json)",
+ "npm": {"changesets": "posthog-js-bf3ade81", "prose": "zod-6ac59393"},
+ "pypi": ["encode/uvicorn", "fastapi/typer"],
+ "same_repo_siblings_held_out": []
+}

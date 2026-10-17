@@ -1,0 +1,22 @@
+{
+  "name": "unstale",
+  "version": "0.1.0",
+  "description": "Keep a repository's dependencies from going stale: the unstale CLI (native binary, installed per platform).",
+  "license": "UNLICENSED",
+  "bin": {
+    "unstale": "bin/unstale.js"
+  },
+  "files": [
+    "bin/unstale.js"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "optionalDependencies": {
+    "@unstale/cli-darwin-arm64": "0.1.0",
+    "@unstale/cli-darwin-x64": "0.1.0",
+    "@unstale/cli-linux-arm64": "0.1.0",
+    "@unstale/cli-linux-x64": "0.1.0",
+    "@unstale/cli-win32-x64": "0.1.0"
+  }
+}

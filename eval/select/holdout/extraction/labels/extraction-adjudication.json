@@ -1,0 +1,2347 @@
+{
+ "counts": {
+  "conflict": 56,
+  "A-only": 29,
+  "B-only": 3
+ },
+ "principles": [
+  "Criterion: PACKET's EXTRACT_PROMPT sentence, applied to the note text only. No item was dropped: every A-only and B-only item was judged to qualify (some unsure); items neither labeler listed were not added.",
+  "Same change, different quote (prose sentence vs commit line vs changeset title vs 'At a glance' bullet vs section heading): one item whose anchors list every verbatim span that states it. Commit lines, headings and glance bullets were added as anchors where the note repeats a labelled change.",
+  "Granularity: when one bullet, sentence, heading or commit line announces several changes (ZodMap min/max/nonempty/size; z.meta + z.describe; Hindi + Kannada; .validate + .validateAsync), the finer split is kept as separate items that share one group. Items quoted from different sentences are separate groups even under one heading. A shared anchor (e.g. a commit line naming three features) does not merge groups.",
+  "unsure is kept only when the note text cannot settle the criterion: opaque commit subjects ('Fix #5353', 'Improve tuple'), internal-sounding work with no stated user effect (opt-in 'ladder', util.cached, charCodeAt, compile indent), a dependency drop that may fall under the skip list, a frozen-exports side note, and the two extra cases of the 4.6 check-fold fix. A labeler's unsure flag is dropped when the change visibly alters error text, types, accepted input, emitted output, imports or performance of a public API.",
+  "Locale additions are new_api; locale message corrections are fix and qualify (they change the error text users see).",
+  "Performance commits qualify when they name a user-facing path or effect (validate, safeParse, compile, CommonJS require, bundle size, memory); implementation-only micro-optimisations are kept but unsure.",
+  "change_type: a new method or function (including on an existing class) is new_api; a new argument form or accepted input kind on an existing function is new_option; a corrected wrong result or wrong emitted schema is fix; a changed observable behaviour that was not wrong before (new distinct error, new emitted event, changed conversion) is behavior_change; a rename or no-longer-installed dependency is removal.",
+  "breaking (BREAKING_RUBRIC verbatim): removals, renames, no-longer-installed dependencies and raised minimums are breaking. A change is breaking when the note shows existing code now fails or behaves differently in a noticeable way, including validation that now accepts or rejects input it did not before (E.164, fromJSONSchema keywords, open-ended tuples, template-literal composition) and a changed runtime default (FORWARDED_ALLOW_IPS). Not breaking: corrections of wrong emitted output or wrongly reported values (JSON Schema fold, metadata getters), new optional features, and commit-line-only changes whose effect on existing code the note does not show (z.preprocess optionality)."
+ ],
+ "decisions": [
+  {
+   "note": "posthog-js-bf3ade81@1.306.2.md",
+   "id": "posthog@1.306.2#0",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "include synthetic exception in console.error capture",
+     "change_type": "behavior_change",
+     "breaking": false,
+     "unsure": true
+    }
+   ],
+   "B": [
+    {
+     "anchor": "[#2730](https://github.com/PostHog/posthog-js/pull/2730) [`79184bd`](https://github.com/PostHog/posthog-js/commit/79184bdd385d7413718ba9b10f9a9d7a68fdc350) Thanks [@ablaszkiewicz](https://github.com/ablaszkiewicz)! - include synthetic exception in console.error capture",
+     "change_type": "behavior_change",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "behavior_change",
+    "breaking": false,
+    "unsure": false,
+    "group": "posthog@1.306.2#0"
+   },
+   "reason": "Qualifies: console.error capture now carries a synthetic exception, which changes captured data; A's unsure flag dropped."
+  },
+  {
+   "note": "posthog-js-bf3ade81@1.356.1.md",
+   "id": "posthog@1.356.1#1",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "wait for fresh config before recording start decision, add new recorder status, output recording started event",
+     "change_type": "new_option",
+     "breaking": false,
+     "unsure": true
+    }
+   ],
+   "B": [
+    {
+     "anchor": "wait for fresh config before recording start decision, add new recorder status, output recording started event",
+     "change_type": "new_api",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "new_api",
+    "breaking": false,
+    "unsure": false,
+    "group": "posthog@1.356.1#0"
+   },
+   "reason": "A new recorder status value is new surface a developer can read (new_api); qualifies, so A's unsure flag dropped."
+  },
+  {
+   "note": "posthog-js-bf3ade81@1.356.1.md",
+   "id": "posthog@1.356.1#2",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "wait for fresh config before recording start decision, add new recorder status, output recording started event",
+     "change_type": "behavior_change",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [
+    {
+     "anchor": "wait for fresh config before recording start decision, add new recorder status, output recording started event",
+     "change_type": "new_api",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "behavior_change",
+    "breaking": false,
+    "unsure": false,
+    "group": "posthog@1.356.1#0"
+   },
+   "reason": "Existing recording setups now emit an extra 'recording started' event: run-time behaviour, no new code construct."
+  },
+  {
+   "note": "posthog-js-bf3ade81@1.379.1.md",
+   "id": "posthog@1.379.1#1",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "Move the OpenTelemetry logs dependencies to `devDependencies`. They are only used to build the CDN-served `logs` extension chunk, which inlines them, so consumers no longer install the transitive `protobufjs` (whose `eval(\"require\")` tripped `unsafe-eval` Content Security Policies).",
+     "change_type": "removal",
+     "breaking": true,
+     "unsure": false
+    }
+   ],
+   "B": [
+    {
+     "anchor": "Move the OpenTelemetry logs dependencies to `devDependencies`.",
+     "change_type": "behavior_change",
+     "breaking": true,
+     "unsure": true
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "removal",
+    "breaking": true,
+    "unsure": false,
+    "group": "posthog@1.379.1#1"
+   },
+   "reason": "The OpenTelemetry packages are no longer installed for consumers (removal); the note tells hoisting users to add them, so breaking; criterion settles it."
+  },
+  {
+   "note": "posthog-js-bf3ade81@1.426.0.md",
+   "id": "posthog@1.426.0#1",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "Require a distinct ID when calling `identify` and correct its API documentation to match the existing runtime validation.",
+     "change_type": "behavior_change",
+     "breaking": false,
+     "unsure": true
+    }
+   ],
+   "B": [
+    {
+     "anchor": "Require a distinct ID when calling `identify` and correct its API documentation to match the existing runtime validation.",
+     "change_type": "fix",
+     "breaking": false,
+     "unsure": true
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "behavior_change",
+    "breaking": false,
+    "unsure": false,
+    "group": "posthog@1.426.0#1"
+   },
+   "reason": "Both unsure: the TypeScript signature of identify() now requires a distinct ID, which alters what a developer writes (qualifies); not breaking because runtime validation already required it."
+  },
+  {
+   "note": "posthog-js-bf3ade81@1.427.0.md",
+   "id": "posthog@1.427.0#1",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "Stop counting stack frames that have no filename (in-app browser bridge scripts and other code the runtime reports without a script URL) as in-app code.",
+     "change_type": "fix",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [
+    {
+     "anchor": "Stop counting stack frames that have no filename",
+     "change_type": "behavior_change",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "fix",
+    "breaking": false,
+    "unsure": false,
+    "group": "posthog@1.427.0#1"
+   },
+   "reason": "Counting bridge-script frames as in-app was a wrong result being corrected (fix), not a new behaviour."
+  },
+  {
+   "note": "posthog-js-bf3ade81@1.429.0.md",
+   "id": "posthog@1.429.0#2",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "fix(web): avoid reporting clicks that select or unselect text as dead clicks",
+     "change_type": "fix",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [
+    {
+     "anchor": "[#4733](https://github.com/PostHog/posthog-js/pull/4733) [`24fa541`](https://github.com/PostHog/posthog-js/commit/24fa541d9e9c2313a2e38383a83076e1473c9fe6) Thanks [@dustinbyrne](https://github.com/dustinbyrne)! - fix(web): avoid reporting clicks that select or unselect text as dead clicks",
+     "change_type": "fix",
+     "breaking": false,
+     "unsure": true
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "fix",
+    "breaking": false,
+    "unsure": false,
+    "group": "posthog@1.429.0#2"
+   },
+   "reason": "Qualifies as a user-visible dead-click fix; B's unsure flag dropped."
+  },
+  {
+   "note": "posthog-js-bf3ade81@1.429.0.md",
+   "id": "posthog@1.429.0#5",
+   "kind": "A-only",
+   "A": [
+    {
+     "anchor": "Keep surveys hidden while capture is disabled and preserve answers if capture stops before submission.",
+     "change_type": "fix",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [],
+   "decision": {
+    "included": true,
+    "change_type": "fix",
+    "breaking": false,
+    "unsure": false,
+    "group": "posthog@1.429.0#4"
+   },
+   "reason": "One sentence announces two changes (surveys hidden while capture is disabled; answers preserved if capture stops); A's split kept, one group."
+  },
+  {
+   "note": "typer-4f6b46bd@0.21.2.md",
+   "id": "typer@0.21.2#2",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "➖ Drop `typing-extensions` as external dependency.",
+     "change_type": "removal",
+     "breaking": false,
+     "unsure": true
+    }
+   ],
+   "B": [
+    {
+     "anchor": "➖ Drop `typing-extensions` as external dependency. PR [#1467](https://github.com/fastapi/typer/pull/1467) by [@svlandeg](https://github.com/svlandeg).",
+     "change_type": "other",
+     "breaking": false,
+     "unsure": true
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "removal",
+    "breaking": false,
+    "unsure": true,
+    "group": "typer@0.21.2#2"
+   },
+   "reason": "Both unsure: a runtime dependency dropped from the installed package; the skip list names dependency bumps of the project's own repository, so whether this qualifies is not settled; removal, not breaking (note shows no breakage)."
+  },
+  {
+   "note": "uvicorn-9342337b@0.39.0.md",
+   "id": "uvicorn@0.39.0#0",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "explicitly start ASGI run with empty context by @pmeier in https://github.com/Kludex/uvicorn/pull/2742",
+     "change_type": "behavior_change",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [
+    {
+     "anchor": "explicitly start ASGI run with empty context by @pmeier in https://github.com/Kludex/uvicorn/pull/2742",
+     "change_type": "behavior_change",
+     "breaking": false,
+     "unsure": true
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "behavior_change",
+    "breaking": false,
+    "unsure": false,
+    "group": "uvicorn@0.39.0#0"
+   },
+   "reason": "Qualifies: contextvars visible to the ASGI app change at run time; B's unsure flag dropped."
+  },
+  {
+   "note": "uvicorn-9342337b@0.41.0.md",
+   "id": "uvicorn@0.41.0#2",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "Rename `LifespanOn.error_occured` to `error_occurred` (#2776)",
+     "change_type": "behavior_change",
+     "breaking": true,
+     "unsure": true
+    }
+   ],
+   "B": [
+    {
+     "anchor": "Rename `LifespanOn.error_occured` to `error_occurred` (#2776)",
+     "change_type": "removal",
+     "breaking": true,
+     "unsure": false
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "removal",
+    "breaking": true,
+    "unsure": false,
+    "group": "uvicorn@0.41.0#2"
+   },
+   "reason": "A rename removes the old attribute name (removal, which the rubric makes breaking); A's unsure flag dropped."
+  },
+  {
+   "note": "uvicorn-9342337b@0.51.0.md",
+   "id": "uvicorn@0.51.0#0",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "Restart workers with overlap on SIGHUP for near-zero-downtime reloads by @Kludex in https://github.com/Kludex/uvicorn/pull/3025",
+     "change_type": "behavior_change",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [
+    {
+     "anchor": "Restart workers with overlap on SIGHUP for near-zero-downtime reloads by @Kludex in https://github.com/Kludex/uvicorn/pull/3025",
+     "change_type": "behavior_change",
+     "breaking": false,
+     "unsure": true
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "behavior_change",
+    "breaking": false,
+    "unsure": false,
+    "group": "uvicorn@0.51.0#0"
+   },
+   "reason": "Qualifies: SIGHUP reload behaviour changes; B's unsure flag dropped."
+  },
+  {
+   "note": "uvicorn-9342337b@0.52.1.md",
+   "id": "uvicorn@0.52.1#4",
+   "kind": "A-only",
+   "A": [
+    {
+     "anchor": "Remove duplicate `Content-Type` and `Content-Length` headers from WebSocket denial responses on the `websockets-sansio` implementation, and deliver non-UTF-8 denial bodies intact (#3041)",
+     "change_type": "fix",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [],
+   "decision": {
+    "included": true,
+    "change_type": "fix",
+    "breaking": false,
+    "unsure": false,
+    "group": "uvicorn@0.52.1#3"
+   },
+   "reason": "One bullet announces two fixes (duplicate headers removed; non-UTF-8 denial bodies delivered intact); A's split kept, one group."
+  },
+  {
+   "note": "uvicorn-9342337b@0.52.2.md",
+   "id": "uvicorn@0.52.2#0",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "Update `zttp` to 0.0.22, fixing bodyless request receives and improving HTTP/1 request parsing performance (#3063)",
+     "change_type": "fix",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [
+    {
+     "anchor": "Update `zttp` to 0.0.22, fixing bodyless request receives and improving HTTP/1 request parsing performance (#3063)",
+     "change_type": "fix",
+     "breaking": false,
+     "unsure": true
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "fix",
+    "breaking": false,
+    "unsure": false,
+    "group": "uvicorn@0.52.2#0"
+   },
+   "reason": "Qualifies: the bullet states user-visible fixes in the zttp path, so it is not only a dependency bump; B's unsure flag dropped."
+  },
+  {
+   "note": "uvicorn-9342337b@0.52.2.md",
+   "id": "uvicorn@0.52.2#1",
+   "kind": "A-only",
+   "A": [
+    {
+     "anchor": "Update `zttp` to 0.0.22, fixing bodyless request receives and improving HTTP/1 request parsing performance (#3063)",
+     "change_type": "performance",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [],
+   "decision": {
+    "included": true,
+    "change_type": "performance",
+    "breaking": false,
+    "unsure": false,
+    "group": "uvicorn@0.52.2#0"
+   },
+   "reason": "Same bullet also announces a parsing performance improvement; A's split kept, one group."
+  },
+  {
+   "note": "uvicorn-9342337b@0.53.0.md",
+   "id": "uvicorn@0.53.0#3",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "The default `FORWARDED_ALLOW_IPS` value now includes `::1`.",
+     "change_type": "default_change",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [
+    {
+     "anchor": "**Trust IPv6 loopback proxies by default** ([#3119](https://github.com/Kludex/uvicorn/pull/3119)). The default `FORWARDED_ALLOW_IPS` value now includes `::1`.",
+     "change_type": "default_change",
+     "breaking": true,
+     "unsure": true
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "default_change",
+    "breaking": true,
+    "unsure": false,
+    "group": "uvicorn@0.53.0#3"
+   },
+   "reason": "Changed runtime default: deployments relying on the default now trust ::1 proxy headers, so existing setups behave differently (breaking per rubric); qualifies."
+  },
+  {
+   "note": "zod-6ac59393@4.1.13.md",
+   "id": "zod@4.1.13#2",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "Update inferred z.promise() type",
+     "change_type": "behavior_change",
+     "breaking": false,
+     "unsure": true
+    }
+   ],
+   "B": [
+    {
+     "anchor": "8e4739fadbd7de710eb67d34ba7e06a1029a68ab Update inferred z.promise() type",
+     "change_type": "behavior_change",
+     "breaking": false,
+     "unsure": true
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "behavior_change",
+    "breaking": false,
+    "unsure": false,
+    "group": "zod@4.1.13#2"
+   },
+   "reason": "Both unsure: a changed inferred type alters what type-checks, so it qualifies."
+  },
+  {
+   "note": "zod-6ac59393@4.1.13.md",
+   "id": "zod@4.1.13#3",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "fix(locales): improve Dutch (nl) localization (#5367)",
+     "change_type": "fix",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [
+    {
+     "anchor": "2849df8907b011ab056d67ae8e3d27577ac4ed3e fix(locales): improve Dutch (nl) localization (#5367)",
+     "change_type": "fix",
+     "breaking": false,
+     "unsure": true
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "fix",
+    "breaking": false,
+    "unsure": false,
+    "group": "zod@4.1.13#3"
+   },
+   "reason": "Locale message changes alter the error text users see; qualifies; B's unsure dropped."
+  },
+  {
+   "note": "zod-6ac59393@4.1.13.md",
+   "id": "zod@4.1.13#4",
+   "kind": "A-only",
+   "A": [
+    {
+     "anchor": "Fix #5353",
+     "change_type": "fix",
+     "breaking": false,
+     "unsure": true
+    }
+   ],
+   "B": [],
+   "decision": {
+    "included": true,
+    "change_type": "fix",
+    "breaking": false,
+    "unsure": true,
+    "group": "zod@4.1.13#4"
+   },
+   "reason": "'Fix #5353' does not say what it fixes; the criterion cannot be applied from the note text; kept, unsure."
+  },
+  {
+   "note": "zod-6ac59393@4.1.13.md",
+   "id": "zod@4.1.13#7",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "Improve Hebrew localization for Zod error messages (#5409)",
+     "change_type": "fix",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [
+    {
+     "anchor": "3a4bd00aaa16276ffeb2708cc083a633bd4dd756 Improve Hebrew localization for Zod error messages (#5409)",
+     "change_type": "fix",
+     "breaking": false,
+     "unsure": true
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "fix",
+    "breaking": false,
+    "unsure": false,
+    "group": "zod@4.1.13#7"
+   },
+   "reason": "Locale message changes alter the error text users see; qualifies; B's unsure dropped."
+  },
+  {
+   "note": "zod-6ac59393@4.1.13.md",
+   "id": "zod@4.1.13#9",
+   "kind": "A-only",
+   "A": [
+    {
+     "anchor": "Improve tuple",
+     "change_type": "behavior_change",
+     "breaking": false,
+     "unsure": true
+    }
+   ],
+   "B": [],
+   "decision": {
+    "included": true,
+    "change_type": "behavior_change",
+    "breaking": false,
+    "unsure": true,
+    "group": "zod@4.1.13#9"
+   },
+   "reason": "'Improve tuple' names no observable change; kept, unsure."
+  },
+  {
+   "note": "zod-6ac59393@4.1.13.md",
+   "id": "zod@4.1.13#12",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "fix: use oneOf for discriminated unions in JSON Schema (#5453)",
+     "change_type": "fix",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [
+    {
+     "anchor": "9fc493f86f17a5fc550df78e7e261137885f51ea fix: use oneOf for discriminated unions in JSON Schema (#5453)",
+     "change_type": "behavior_change",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "fix",
+    "breaking": false,
+    "unsure": false,
+    "group": "zod@4.1.13#12"
+   },
+   "reason": "The emitted JSON Schema was wrong for discriminated unions (oneOf is the exact semantics); commit is a fix."
+  },
+  {
+   "note": "zod-6ac59393@4.1.13.md",
+   "id": "zod@4.1.13#17",
+   "kind": "A-only",
+   "A": [
+    {
+     "anchor": "Add z.meta and z.describe",
+     "change_type": "new_api",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [],
+   "decision": {
+    "included": true,
+    "change_type": "new_api",
+    "breaking": false,
+    "unsure": false,
+    "group": "zod@4.1.13#16"
+   },
+   "reason": "One commit line announces two functions (z.meta and z.describe); A's split kept, one group."
+  },
+  {
+   "note": "zod-6ac59393@4.3.0.md",
+   "id": "zod@4.3.0#6",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "The `.refine()` method now supports type predicates to narrow the output type:",
+     "change_type": "behavior_change",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [
+    {
+     "anchor": "The `.refine()` method now supports type predicates to narrow the output type:",
+     "change_type": "new_option",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "new_option",
+    "breaking": false,
+    "unsure": false,
+    "group": "zod@4.3.0#6"
+   },
+   "reason": "A new accepted argument form (a type predicate) on an existing method: new_option."
+  },
+  {
+   "note": "zod-6ac59393@4.3.0.md",
+   "id": "zod@4.3.0#8",
+   "kind": "A-only",
+   "A": [
+    {
+     "anchor": "`ZodMap` methods: `min`, `max`, `nonempty`, `size` ([#5316](https://github.com/colinhacks/zod/pull/5316))",
+     "change_type": "new_api",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [],
+   "decision": {
+    "included": true,
+    "change_type": "new_api",
+    "breaking": false,
+    "unsure": false,
+    "group": "zod@4.3.0#7"
+   },
+   "reason": "Split of the ZodMap heading (four methods); one group."
+  },
+  {
+   "note": "zod-6ac59393@4.3.0.md",
+   "id": "zod@4.3.0#9",
+   "kind": "A-only",
+   "A": [
+    {
+     "anchor": "`ZodMap` methods: `min`, `max`, `nonempty`, `size` ([#5316](https://github.com/colinhacks/zod/pull/5316))",
+     "change_type": "new_api",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [],
+   "decision": {
+    "included": true,
+    "change_type": "new_api",
+    "breaking": false,
+    "unsure": false,
+    "group": "zod@4.3.0#7"
+   },
+   "reason": "Split of the ZodMap heading (four methods); one group."
+  },
+  {
+   "note": "zod-6ac59393@4.3.0.md",
+   "id": "zod@4.3.0#10",
+   "kind": "A-only",
+   "A": [
+    {
+     "anchor": "`ZodMap` methods: `min`, `max`, `nonempty`, `size` ([#5316](https://github.com/colinhacks/zod/pull/5316))",
+     "change_type": "new_api",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [],
+   "decision": {
+    "included": true,
+    "change_type": "new_api",
+    "breaking": false,
+    "unsure": false,
+    "group": "zod@4.3.0#7"
+   },
+   "reason": "Split of the ZodMap heading (four methods); one group."
+  },
+  {
+   "note": "zod-6ac59393@4.3.0.md",
+   "id": "zod@4.3.0#14",
+   "kind": "A-only",
+   "A": [
+    {
+     "anchor": "Zod Mini now exports `z.meta()` and `z.describe()` as top-level functions for adding metadata to schemas:",
+     "change_type": "new_api",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [],
+   "decision": {
+    "included": true,
+    "change_type": "new_api",
+    "breaking": false,
+    "unsure": false,
+    "group": "zod@4.3.0#13"
+   },
+   "reason": "One sentence announces two functions (z.meta, z.describe); A's split kept, one group."
+  },
+  {
+   "note": "zod-6ac59393@4.3.0.md",
+   "id": "zod@4.3.0#15",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "When intersecting schemas that include `z.strictObject()`, Zod 4 now only rejects keys that are unrecognized by *both* sides of the intersection.",
+     "change_type": "behavior_change",
+     "breaking": true,
+     "unsure": false
+    }
+   ],
+   "B": [
+    {
+     "anchor": "When intersecting schemas that include `z.strictObject()`, Zod 4 now only rejects keys that are unrecognized by *both* sides of the intersection. Previously, any unrecognized key from either side would cause an error.",
+     "change_type": "behavior_change",
+     "breaking": true,
+     "unsure": true
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "behavior_change",
+    "breaking": true,
+    "unsure": false,
+    "group": "zod@4.3.0#15"
+   },
+   "reason": "Intersections now accept keys they rejected: qualifies and breaking; B's unsure dropped."
+  },
+  {
+   "note": "zod-6ac59393@4.3.0.md",
+   "id": "zod@4.3.0#26",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "Tightened E.164 regex to require a non-zero leading digit and 7–15 digits total ([#5524](https://github.com/colinhacks/zod/pull/5524))",
+     "change_type": "behavior_change",
+     "breaking": false,
+     "unsure": true
+    }
+   ],
+   "B": [
+    {
+     "anchor": "Tightened E.164 regex to require a non-zero leading digit and 7–15 digits total ([#5524](https://github.com/colinhacks/zod/pull/5524))",
+     "change_type": "behavior_change",
+     "breaking": true,
+     "unsure": false
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "behavior_change",
+    "breaking": true,
+    "unsure": false,
+    "group": "zod@4.3.0#26"
+   },
+   "reason": "'Tightened' validation: phone numbers the old regex accepted are now rejected, so existing schemas behave differently (breaking); qualifies."
+  },
+  {
+   "note": "zod-6ac59393@4.3.0.md",
+   "id": "zod@4.3.0#27",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "Fixed Dutch (nl) error strings ([#5529](https://github.com/colinhacks/zod/pull/5529))",
+     "change_type": "fix",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [
+    {
+     "anchor": "Fixed Dutch (nl) error strings ([#5529](https://github.com/colinhacks/zod/pull/5529))",
+     "change_type": "fix",
+     "breaking": false,
+     "unsure": true
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "fix",
+    "breaking": false,
+    "unsure": false,
+    "group": "zod@4.3.0#27"
+   },
+   "reason": "Locale message changes alter the error text users see; qualifies."
+  },
+  {
+   "note": "zod-6ac59393@4.3.0.md",
+   "id": "zod@4.3.0#32",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "Improved metadata tracking across child-parent relationships ([#5578](https://github.com/colinhacks/zod/pull/5578))",
+     "change_type": "behavior_change",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [
+    {
+     "anchor": "Improved metadata tracking across child-parent relationships ([#5578](https://github.com/colinhacks/zod/pull/5578))",
+     "change_type": "behavior_change",
+     "breaking": false,
+     "unsure": true
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "behavior_change",
+    "breaking": false,
+    "unsure": false,
+    "group": "zod@4.3.0#32"
+   },
+   "reason": "Metadata lookups through child-parent relationships change; qualifies."
+  },
+  {
+   "note": "zod-6ac59393@4.3.0.md",
+   "id": "zod@4.3.0#33",
+   "kind": "A-only",
+   "A": [
+    {
+     "anchor": "Improved locale translation approach ([#5584](https://github.com/colinhacks/zod/pull/5584))",
+     "change_type": "behavior_change",
+     "breaking": false,
+     "unsure": true
+    }
+   ],
+   "B": [],
+   "decision": {
+    "included": true,
+    "change_type": "behavior_change",
+    "breaking": false,
+    "unsure": true,
+    "group": "zod@4.3.0#33"
+   },
+   "reason": "'Improved locale translation approach' may be internal or may change messages; the note does not say; kept, unsure."
+  },
+  {
+   "note": "zod-6ac59393@4.3.4.md",
+   "id": "zod@4.3.4#0",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "Support patternProperties for looserecord (#5592)",
+     "change_type": "behavior_change",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [
+    {
+     "anchor": "e01cd02b2f23d7e9078d3813830b146f8a2258b4 Support patternProperties for looserecord (#5592)",
+     "change_type": "new_option",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "behavior_change",
+    "breaking": false,
+    "unsure": false,
+    "group": "zod@4.3.4#0"
+   },
+   "reason": "Existing looseRecord conversion now handles patternProperties: the output of existing code changes (behavior_change), no new option is added."
+  },
+  {
+   "note": "zod-6ac59393@4.3.4.md",
+   "id": "zod@4.3.4#1",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "Drop iso time in fromJSONSchema",
+     "change_type": "behavior_change",
+     "breaking": false,
+     "unsure": true
+    }
+   ],
+   "B": [
+    {
+     "anchor": "9443aab00d44d5d5f4a7eada65fc0fc851781042 Drop iso time in fromJSONSchema",
+     "change_type": "behavior_change",
+     "breaking": false,
+     "unsure": true
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "behavior_change",
+    "breaking": false,
+    "unsure": false,
+    "group": "zod@4.3.4#1"
+   },
+   "reason": "Both unsure: fromJSONSchema's handling of the time format changes at run time; qualifies."
+  },
+  {
+   "note": "zod-6ac59393@4.3.4.md",
+   "id": "zod@4.3.4#2",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "Remove .refine() from ZodMiniType",
+     "change_type": "removal",
+     "breaking": true,
+     "unsure": false
+    }
+   ],
+   "B": [
+    {
+     "anchor": "66bda7491a1b9eab83bdeec0c12f4efc7290bd48 Remove .refine() from ZodMiniType",
+     "change_type": "removal",
+     "breaking": true,
+     "unsure": true
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "removal",
+    "breaking": true,
+    "unsure": false,
+    "group": "zod@4.3.4#2"
+   },
+   "reason": "A removed method qualifies and is breaking (rubric: a removal is breaking); B's unsure dropped."
+  },
+  {
+   "note": "zod-6ac59393@4.4.2.md",
+   "id": "zod@4.4.2#0",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "Tighten discriminated union option typing",
+     "change_type": "behavior_change",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [
+    {
+     "anchor": "4bbed1b1c73eca4ce9e59b1189ed236aa6c8b5bd Tighten discriminated union option typing",
+     "change_type": "behavior_change",
+     "breaking": false,
+     "unsure": true
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "behavior_change",
+    "breaking": false,
+    "unsure": false,
+    "group": "zod@4.4.2#0"
+   },
+   "reason": "Tighter typing alters what type-checks; qualifies; B's unsure dropped."
+  },
+  {
+   "note": "zod-6ac59393@4.4.2.md",
+   "id": "zod@4.4.2#1",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "Make z.preprocess defer optionality to inner schema (#5929)",
+     "change_type": "behavior_change",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [
+    {
+     "anchor": "02c2baf7d0d615872fa4528a8020603b71211702 Make z.preprocess defer optionality to inner schema (#5929)",
+     "change_type": "behavior_change",
+     "breaking": true,
+     "unsure": true
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "behavior_change",
+    "breaking": false,
+    "unsure": false,
+    "group": "zod@4.4.2#1"
+   },
+   "reason": "Qualifies; the commit line alone does not show existing code failing, so not breaking (rubric's last rule)."
+  },
+  {
+   "note": "zod-6ac59393@4.5.0.md",
+   "id": "zod@4.5.0#7",
+   "kind": "A-only",
+   "A": [
+    {
+     "anchor": "The return type is a guard on the schema's input type, and `z.validateAsync()` covers schemas with async refinements.",
+     "change_type": "new_api",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [],
+   "decision": {
+    "included": true,
+    "change_type": "new_api",
+    "breaking": false,
+    "unsure": false,
+    "group": "zod@4.5.0#7"
+   },
+   "reason": "z.validateAsync() is a second function announced in its own sentence; A's item kept as its own group."
+  },
+  {
+   "note": "zod-6ac59393@4.5.0.md",
+   "id": "zod@4.5.0#9",
+   "kind": "A-only",
+   "A": [
+    {
+     "anchor": "Project a schema onto its input or output side. Useful for validating the two halves of a codec independently. ([#5928](https://github.com/colinhacks/zod/pull/5928))",
+     "change_type": "new_api",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [],
+   "decision": {
+    "included": true,
+    "change_type": "new_api",
+    "breaking": false,
+    "unsure": false,
+    "group": "zod@4.5.0#8"
+   },
+   "reason": "One sentence covers two functions (z.input, z.output); A's split kept, one group."
+  },
+  {
+   "note": "zod-6ac59393@4.5.0.md",
+   "id": "zod@4.5.0#13",
+   "kind": "A-only",
+   "A": [
+    {
+     "anchor": "Zod recursive schemas now support cyclical data. For bundle size reasons, Zod Mini requires you to register a memoizer explicitly.",
+     "change_type": "new_api",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [],
+   "decision": {
+    "included": true,
+    "change_type": "new_api",
+    "breaking": false,
+    "unsure": false,
+    "group": "zod@4.5.0#12"
+   },
+   "reason": "Same sentence pair announces the Zod Mini memoizer registration (z.config({ memoizer: z.memoizer() })), a separate API; A's split kept, one group."
+  },
+  {
+   "note": "zod-6ac59393@4.5.0.md",
+   "id": "zod@4.5.0#29",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "perf(v4): validate without building the output, and keep schemas out of dictionary mode",
+     "change_type": "performance",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [
+    {
+     "anchor": "[`9782f87c`](https://github.com/colinhacks/zod/commit/9782f87c) perf(v4): validate without building the output, and keep schemas out of dictionary mode ([#6480](https://github.com/colinhacks/zod/pull/6480))",
+     "change_type": "performance",
+     "breaking": false,
+     "unsure": true
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "performance",
+    "breaking": false,
+    "unsure": false,
+    "group": "zod@4.5.0#29"
+   },
+   "reason": "A named performance change to validation; qualifies (performance type); B's unsure dropped."
+  },
+  {
+   "note": "zod-6ac59393@4.5.0.md",
+   "id": "zod@4.5.0#31",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "feat(v4): make a tuple's items optional with .partial()",
+     "change_type": "new_api",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [
+    {
+     "anchor": "[`43f729db`](https://github.com/colinhacks/zod/commit/43f729db) feat(v4): make a tuple's items optional with .partial() ([#6465](https://github.com/colinhacks/zod/pull/6465))",
+     "change_type": "new_option",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "new_api",
+    "breaking": false,
+    "unsure": false,
+    "group": "zod@4.5.0#31"
+   },
+   "reason": "A new method (.partial()) on tuples is a new function: new_api."
+  },
+  {
+   "note": "zod-6ac59393@4.5.0.md",
+   "id": "zod@4.5.0#34",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "fix(v4): run a wrapper's inner schema on its own payload",
+     "change_type": "fix",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [
+    {
+     "anchor": "[`7ce3e77d`](https://github.com/colinhacks/zod/commit/7ce3e77d) fix(v4): run a wrapper's inner schema on its own payload ([#6462](https://github.com/colinhacks/zod/pull/6462))",
+     "change_type": "fix",
+     "breaking": false,
+     "unsure": true
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "fix",
+    "breaking": false,
+    "unsure": false,
+    "group": "zod@4.5.0#34"
+   },
+   "reason": "A runtime parsing fix; qualifies; B's unsure dropped."
+  },
+  {
+   "note": "zod-6ac59393@4.5.0.md",
+   "id": "zod@4.5.0#35",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "fix(v4): fold an intersection of object schemas into one object",
+     "change_type": "fix",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [
+    {
+     "anchor": "[`7b612b53`](https://github.com/colinhacks/zod/commit/7b612b53) fix(v4): fold an intersection of object schemas into one object ([#6461](https://github.com/colinhacks/zod/pull/6461))",
+     "change_type": "behavior_change",
+     "breaking": false,
+     "unsure": true
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "fix",
+    "breaking": false,
+    "unsure": false,
+    "group": "zod@4.5.0#35"
+   },
+   "reason": "Commit is a fix of intersection results; qualifies; fix."
+  },
+  {
+   "note": "zod-6ac59393@4.5.0.md",
+   "id": "zod@4.5.0#37",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "fix(v4)!: distinguish number and bigint formats at the type level",
+     "change_type": "fix",
+     "breaking": true,
+     "unsure": false
+    }
+   ],
+   "B": [
+    {
+     "anchor": "[`a87ac366`](https://github.com/colinhacks/zod/commit/a87ac366) fix(v4)!: distinguish number and bigint formats at the type level ([#6052](https://github.com/colinhacks/zod/pull/6052))",
+     "change_type": "behavior_change",
+     "breaking": true,
+     "unsure": false
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "behavior_change",
+    "breaking": true,
+    "unsure": false,
+    "group": "zod@4.5.0#37"
+   },
+   "reason": "Type-level formats now differ for number vs bigint (build-time behaviour change, marked '!'); both breaking."
+  },
+  {
+   "note": "zod-6ac59393@4.5.0.md",
+   "id": "zod@4.5.0#38",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "fix(v4): keep a wrapper's stored value only on the side it belongs to",
+     "change_type": "fix",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [
+    {
+     "anchor": "[`7cfc0122`](https://github.com/colinhacks/zod/commit/7cfc0122) fix(v4): keep a wrapper's stored value only on the side it belongs to",
+     "change_type": "fix",
+     "breaking": false,
+     "unsure": true
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "fix",
+    "breaking": false,
+    "unsure": false,
+    "group": "zod@4.5.0#38"
+   },
+   "reason": "A runtime fix to wrapper values; qualifies; B's unsure dropped."
+  },
+  {
+   "note": "zod-6ac59393@4.5.0.md",
+   "id": "zod@4.5.0#48",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "Preserve callsites in parse stack traces",
+     "change_type": "behavior_change",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [
+    {
+     "anchor": "[`f101d8ca`](https://github.com/colinhacks/zod/commit/f101d8ca) Preserve callsites in parse stack traces ([#5910](https://github.com/colinhacks/zod/pull/5910))",
+     "change_type": "behavior_change",
+     "breaking": false,
+     "unsure": true
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "behavior_change",
+    "breaking": false,
+    "unsure": false,
+    "group": "zod@4.5.0#48"
+   },
+   "reason": "Stack traces developers read change; qualifies; B's unsure dropped."
+  },
+  {
+   "note": "zod-6ac59393@4.5.0.md",
+   "id": "zod@4.5.0#50",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "fix(v4): an absent key on the middle rung supplies nothing",
+     "change_type": "fix",
+     "breaking": false,
+     "unsure": true
+    }
+   ],
+   "B": [
+    {
+     "anchor": "[`87ffeb0f`](https://github.com/colinhacks/zod/commit/87ffeb0f) fix(v4): an absent key on the middle rung supplies nothing ([#6434](https://github.com/colinhacks/zod/pull/6434))",
+     "change_type": "fix",
+     "breaking": false,
+     "unsure": true
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "fix",
+    "breaking": false,
+    "unsure": true,
+    "group": "zod@4.5.0#50"
+   },
+   "reason": "Both unsure: refers to the internal opt-in 'ladder' with no stated user effect; kept, unsure."
+  },
+  {
+   "note": "zod-6ac59393@4.5.0.md",
+   "id": "zod@4.5.0#54",
+   "kind": "A-only",
+   "A": [
+    {
+     "anchor": "fix(v4): stop islanding a catch callback, which diverged silently",
+     "change_type": "fix",
+     "breaking": false,
+     "unsure": true
+    }
+   ],
+   "B": [],
+   "decision": {
+    "included": true,
+    "change_type": "fix",
+    "breaking": false,
+    "unsure": true,
+    "group": "zod@4.5.0#54"
+   },
+   "reason": "A-only: a fix to catch-callback 'islanding' inside z.compile, which is new in this release; whether users of the previous release see any change is not settled; unsure."
+  },
+  {
+   "note": "zod-6ac59393@4.5.0.md",
+   "id": "zod@4.5.0#55",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "fix(core): an omittable discriminator claims undefined",
+     "change_type": "fix",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [
+    {
+     "anchor": "[`a38ab4a8`](https://github.com/colinhacks/zod/commit/a38ab4a8) fix(core): an omittable discriminator claims undefined ([#6432](https://github.com/colinhacks/zod/pull/6432))",
+     "change_type": "fix",
+     "breaking": false,
+     "unsure": true
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "fix",
+    "breaking": false,
+    "unsure": false,
+    "group": "zod@4.5.0#55"
+   },
+   "reason": "Discriminated-union parsing fix; qualifies; B's unsure dropped."
+  },
+  {
+   "note": "zod-6ac59393@4.5.0.md",
+   "id": "zod@4.5.0#56",
+   "kind": "A-only",
+   "A": [
+    {
+     "anchor": "perf(core): drop the seal and the per-key WeakSet from the lazy internals",
+     "change_type": "performance",
+     "breaking": false,
+     "unsure": true
+    }
+   ],
+   "B": [],
+   "decision": {
+    "included": true,
+    "change_type": "performance",
+    "breaking": false,
+    "unsure": true,
+    "group": "zod@4.5.0#56"
+   },
+   "reason": "A-only: an internal micro-optimisation with no stated user-facing effect; unsure."
+  },
+  {
+   "note": "zod-6ac59393@4.5.0.md",
+   "id": "zod@4.5.0#59",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "fix(locales): da/nn/no/sv called an IP address a range",
+     "change_type": "fix",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [
+    {
+     "anchor": "[`604464c3`](https://github.com/colinhacks/zod/commit/604464c3) fix(locales): da/nn/no/sv called an IP address a range ([#6430](https://github.com/colinhacks/zod/pull/6430))",
+     "change_type": "fix",
+     "breaking": false,
+     "unsure": true
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "fix",
+    "breaking": false,
+    "unsure": false,
+    "group": "zod@4.5.0#59"
+   },
+   "reason": "Locale message text changes; qualifies; B's unsure dropped."
+  },
+  {
+   "note": "zod-6ac59393@4.5.0.md",
+   "id": "zod@4.5.0#60",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "fix(locales): backfill the mac and Sizable.map gaps, and pin dictionary parity",
+     "change_type": "fix",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [
+    {
+     "anchor": "[`7378e7cd`](https://github.com/colinhacks/zod/commit/7378e7cd) fix(locales): backfill the mac and Sizable.map gaps, and pin dictionary parity ([#6427](https://github.com/colinhacks/zod/pull/6427))",
+     "change_type": "fix",
+     "breaking": false,
+     "unsure": true
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "fix",
+    "breaking": false,
+    "unsure": false,
+    "group": "zod@4.5.0#60"
+   },
+   "reason": "Locale messages added for missing keys; qualifies; B's unsure dropped."
+  },
+  {
+   "note": "zod-6ac59393@4.5.0.md",
+   "id": "zod@4.5.0#61",
+   "kind": "B-only",
+   "A": [],
+   "B": [
+    {
+     "anchor": "[`ccc15144`](https://github.com/colinhacks/zod/commit/ccc15144) fix(locales): add the credit_card key to the seven locales missing it ([#6424](https://github.com/colinhacks/zod/pull/6424))",
+     "change_type": "fix",
+     "breaking": false,
+     "unsure": true
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "fix",
+    "breaking": false,
+    "unsure": false,
+    "group": "zod@4.5.0#61"
+   },
+   "reason": "B-only: seven locales gain the credit_card message, which changes error text users see; qualifies, same as the parallel #6427 item both labelers kept."
+  },
+  {
+   "note": "zod-6ac59393@4.5.0.md",
+   "id": "zod@4.5.0#63",
+   "kind": "A-only",
+   "A": [
+    {
+     "anchor": "fix(v4): refine optin into a three-rung ladder, retire the fallback payload flag",
+     "change_type": "fix",
+     "breaking": false,
+     "unsure": true
+    }
+   ],
+   "B": [],
+   "decision": {
+    "included": true,
+    "change_type": "fix",
+    "breaking": false,
+    "unsure": true,
+    "group": "zod@4.5.0#63"
+   },
+   "reason": "A-only: internal opt-in 'ladder' refactor ('retire the fallback payload flag') with no stated user effect; unsure."
+  },
+  {
+   "note": "zod-6ac59393@4.5.0.md",
+   "id": "zod@4.5.0#65",
+   "kind": "A-only",
+   "A": [
+    {
+     "anchor": "Improve Portuguese localization and add Brazilian Portuguese (pt-BR)",
+     "change_type": "fix",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [],
+   "decision": {
+    "included": true,
+    "change_type": "fix",
+    "breaking": false,
+    "unsure": false,
+    "group": "zod@4.5.0#64"
+   },
+   "reason": "A-only half of a two-change commit line: improved Portuguese messages (fix). A's split kept, one group with pt-BR."
+  },
+  {
+   "note": "zod-6ac59393@4.5.0.md",
+   "id": "zod@4.5.0#66",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "fix(locales): improve french translation",
+     "change_type": "fix",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [
+    {
+     "anchor": "[`dc1a40a5`](https://github.com/colinhacks/zod/commit/dc1a40a5) fix(locales): improve french translation ([#6120](https://github.com/colinhacks/zod/pull/6120))",
+     "change_type": "fix",
+     "breaking": false,
+     "unsure": true
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "fix",
+    "breaking": false,
+    "unsure": false,
+    "group": "zod@4.5.0#66"
+   },
+   "reason": "Locale message text changes; qualifies; B's unsure dropped."
+  },
+  {
+   "note": "zod-6ac59393@4.5.0.md",
+   "id": "zod@4.5.0#75",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "fix(fr): remove hyphen in \"non-optionnel\"",
+     "change_type": "fix",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [
+    {
+     "anchor": "[`06666fe2`](https://github.com/colinhacks/zod/commit/06666fe2) fix(fr): remove hyphen in \"non-optionnel\" ([#5999](https://github.com/colinhacks/zod/pull/5999))",
+     "change_type": "fix",
+     "breaking": false,
+     "unsure": true
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "fix",
+    "breaking": false,
+    "unsure": false,
+    "group": "zod@4.5.0#75"
+   },
+   "reason": "Locale message text changes; qualifies; B's unsure dropped."
+  },
+  {
+   "note": "zod-6ac59393@4.5.0.md",
+   "id": "zod@4.5.0#85",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "fix(mini): make merge() take an object schema, matching classic",
+     "change_type": "fix",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [
+    {
+     "anchor": "[`611bd762`](https://github.com/colinhacks/zod/commit/611bd762) fix(mini): make merge() take an object schema, matching classic ([#6404](https://github.com/colinhacks/zod/pull/6404))",
+     "change_type": "fix",
+     "breaking": false,
+     "unsure": true
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "fix",
+    "breaking": false,
+    "unsure": false,
+    "group": "zod@4.5.0#85"
+   },
+   "reason": "merge() signature in Zod Mini changes (what type-checks); qualifies; B's unsure dropped."
+  },
+  {
+   "note": "zod-6ac59393@4.5.0.md",
+   "id": "zod@4.5.0#88",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "fix(v4): give z.xor() a distinct error when multiple options match",
+     "change_type": "fix",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [
+    {
+     "anchor": "[`4c27fe87`](https://github.com/colinhacks/zod/commit/4c27fe87) fix(v4): give z.xor() a distinct error when multiple options match ([#6376](https://github.com/colinhacks/zod/pull/6376))",
+     "change_type": "behavior_change",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "behavior_change",
+    "breaking": false,
+    "unsure": false,
+    "group": "zod@4.5.0#88"
+   },
+   "reason": "A new, distinct error for an existing schema: behaviour change rather than restoring documented behaviour."
+  },
+  {
+   "note": "zod-6ac59393@4.5.0.md",
+   "id": "zod@4.5.0#89",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "fix(v4): make fromJSONSchema tuples open-ended by default",
+     "change_type": "fix",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [
+    {
+     "anchor": "[`a106fbe7`](https://github.com/colinhacks/zod/commit/a106fbe7) fix(v4): make fromJSONSchema tuples open-ended by default ([#6020](https://github.com/colinhacks/zod/pull/6020))",
+     "change_type": "default_change",
+     "breaking": true,
+     "unsure": true
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "fix",
+    "breaking": true,
+    "unsure": false,
+    "group": "zod@4.5.0#89"
+   },
+   "reason": "Converted tuples now accept extra items they rejected (validation accept-set changes, so breaking per the rubric's 'behaves differently'); the commit corrects JSON Schema semantics, so fix rather than default_change."
+  },
+  {
+   "note": "zod-6ac59393@4.5.0.md",
+   "id": "zod@4.5.0#92",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "fix(toJSONSchema): constrain closed tuple length",
+     "change_type": "fix",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [
+    {
+     "anchor": "[`97edd70a`](https://github.com/colinhacks/zod/commit/97edd70a) fix(toJSONSchema): constrain closed tuple length ([#6194](https://github.com/colinhacks/zod/pull/6194))",
+     "change_type": "behavior_change",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "fix",
+    "breaking": false,
+    "unsure": false,
+    "group": "zod@4.5.0#92"
+   },
+   "reason": "The emitted JSON Schema was wrong for closed tuples; corrected output is a fix."
+  },
+  {
+   "note": "zod-6ac59393@4.5.0.md",
+   "id": "zod@4.5.0#94",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "fix: surface @deprecated on re-exported compat aliases",
+     "change_type": "deprecation",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [
+    {
+     "anchor": "[`faf33a28`](https://github.com/colinhacks/zod/commit/faf33a28) fix: surface @deprecated on re-exported compat aliases ([#6072](https://github.com/colinhacks/zod/pull/6072))",
+     "change_type": "fix",
+     "breaking": false,
+     "unsure": true
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "deprecation",
+    "breaking": false,
+    "unsure": false,
+    "group": "zod@4.5.0#94"
+   },
+   "reason": "Compat aliases now carry @deprecated in editors: a deprecation notice that still works; qualifies."
+  },
+  {
+   "note": "zod-6ac59393@4.5.0.md",
+   "id": "zod@4.5.0#104",
+   "kind": "A-only",
+   "A": [
+    {
+     "anchor": "perf(v4): let three dead declarations tree-shake under esbuild",
+     "change_type": "performance",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [],
+   "decision": {
+    "included": true,
+    "change_type": "performance",
+    "breaking": false,
+    "unsure": false,
+    "group": "zod@4.5.0#104"
+   },
+   "reason": "A-only: smaller bundles from tree-shaking is a stated performance effect (bundle size), parallel to the locale tree-shaking item both labelers kept."
+  },
+  {
+   "note": "zod-6ac59393@4.6.0.md",
+   "id": "zod@4.6.0#0",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "A new API for validating specific properties of an object. Unlike `z.object()` it validates *in-place*, so it plays nice with class instances.",
+     "change_type": "behavior_change",
+     "breaking": false,
+     "unsure": true
+    }
+   ],
+   "B": [
+    {
+     "anchor": "A new API for validating specific properties of an object. Unlike `z.object()` it validates *in-place*, so it plays nice with class instances. ([#6536](https://github.com/colinhacks/zod/pull/6536))",
+     "change_type": "new_api",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "new_api",
+    "breaking": false,
+    "unsure": false,
+    "group": "zod@4.6.0#0"
+   },
+   "reason": "A new schema API (new_api); qualifies; A's unsure dropped."
+  },
+  {
+   "note": "zod-6ac59393@4.6.0.md",
+   "id": "zod@4.6.0#1",
+   "kind": "A-only",
+   "A": [
+    {
+     "anchor": "A corresponding `.properties()` method has been added to `ZodInstanceOf`.",
+     "change_type": "new_api",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [],
+   "decision": {
+    "included": true,
+    "change_type": "new_api",
+    "breaking": false,
+    "unsure": false,
+    "group": "zod@4.6.0#1"
+   },
+   "reason": "A-only: a new method on ZodInstanceOf stated in its own sentence; a distinct new API; qualifies."
+  },
+  {
+   "note": "zod-6ac59393@4.6.0.md",
+   "id": "zod@4.6.0#2",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "Six additional JSON Schema keywords are now supported in `z.fromJSONSchema()`.",
+     "change_type": "behavior_change",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [
+    {
+     "anchor": "Six additional JSON Schema keywords are now supported in `z.fromJSONSchema()`. ([#6535](https://github.com/colinhacks/zod/pull/6535))",
+     "change_type": "behavior_change",
+     "breaking": true,
+     "unsure": true
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "behavior_change",
+    "breaking": true,
+    "unsure": false,
+    "group": "zod@4.6.0#2"
+   },
+   "reason": "Schemas built by fromJSONSchema now reject input they accepted (the note shows ❌ cases), so existing code behaves differently: breaking."
+  },
+  {
+   "note": "zod-6ac59393@4.6.0.md",
+   "id": "zod@4.6.0#6",
+   "kind": "A-only",
+   "A": [
+    {
+     "anchor": "The 4.6 build emits plain properties and freezes the exports object.",
+     "change_type": "behavior_change",
+     "breaking": false,
+     "unsure": true
+    }
+   ],
+   "B": [],
+   "decision": {
+    "included": true,
+    "change_type": "behavior_change",
+    "breaking": false,
+    "unsure": true,
+    "group": "zod@4.6.0#5"
+   },
+   "reason": "A-only: the same sentence says the exports object is now frozen, which could break code that mutates it, but the note shows no affected use; unsure."
+  },
+  {
+   "note": "zod-6ac59393@4.6.0.md",
+   "id": "zod@4.6.0#12",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "Composing `z.base64()` into a template literal now checks the alphabet but not the length, which is how `z.creditCard()` already behaves there.",
+     "change_type": "behavior_change",
+     "breaking": true,
+     "unsure": false
+    }
+   ],
+   "B": [
+    {
+     "anchor": "Composing `z.base64()` into a template literal now checks the alphabet but not the length, which is how `z.creditCard()` already behaves there. The exported `z.regexes.base64url` is now the length-aware form, so it overflows on a multi-megabyte input the same way `z.regexes.base64` does.",
+     "change_type": "behavior_change",
+     "breaking": true,
+     "unsure": true
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "behavior_change",
+    "breaking": true,
+    "unsure": false,
+    "group": "zod@4.6.0#12"
+   },
+   "reason": "Template-literal schemas composing z.base64() stop checking length, so they accept input they rejected: breaking."
+  },
+  {
+   "note": "zod-6ac59393@4.6.0.md",
+   "id": "zod@4.6.0#13",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "The exported `z.regexes.base64url` is now the length-aware form, so it overflows on a multi-megabyte input the same way `z.regexes.base64` does.",
+     "change_type": "behavior_change",
+     "breaking": true,
+     "unsure": false
+    }
+   ],
+   "B": [
+    {
+     "anchor": "Composing `z.base64()` into a template literal now checks the alphabet but not the length, which is how `z.creditCard()` already behaves there. The exported `z.regexes.base64url` is now the length-aware form, so it overflows on a multi-megabyte input the same way `z.regexes.base64` does.",
+     "change_type": "behavior_change",
+     "breaking": false,
+     "unsure": true
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "behavior_change",
+    "breaking": true,
+    "unsure": false,
+    "group": "zod@4.6.0#13"
+   },
+   "reason": "The exported z.regexes.base64url value changes and now overflows on huge input: existing users of the regex observe different behaviour, breaking."
+  },
+  {
+   "note": "zod-6ac59393@4.6.0.md",
+   "id": "zod@4.6.0#15",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "The pattern string is user-visible, and every copy of it changes: `z.regexes.email`, which has no capture groups now — neither of the two it used to expose held a usable value; `issue.pattern` on a failed `z.email()`; and the `pattern` that `z.toJSONSchema()` emits, which no longer carries a lookahead, so validators outside ECMAScript can compile it.",
+     "change_type": "behavior_change",
+     "breaking": true,
+     "unsure": false
+    }
+   ],
+   "B": [
+    {
+     "anchor": "The pattern string is user-visible, and every copy of it changes",
+     "change_type": "behavior_change",
+     "breaking": true,
+     "unsure": true
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "behavior_change",
+    "breaking": true,
+    "unsure": false,
+    "group": "zod@4.6.0#15"
+   },
+   "reason": "The user-visible pattern string changes everywhere it is exposed; qualifies and breaking; B's unsure dropped."
+  },
+  {
+   "note": "zod-6ac59393@4.6.0.md",
+   "id": "zod@4.6.0#16",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "Composing an email into a template literal also stops applying its no-consecutive-dots rule to the rest of the string.",
+     "change_type": "behavior_change",
+     "breaking": true,
+     "unsure": false
+    }
+   ],
+   "B": [
+    {
+     "anchor": "Composing an email into a template literal also stops applying its no-consecutive-dots rule to the rest of the string.",
+     "change_type": "behavior_change",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "behavior_change",
+    "breaking": true,
+    "unsure": false,
+    "group": "zod@4.6.0#16"
+   },
+   "reason": "Template-literal email composition now accepts strings it rejected (the note shows ❌ → ✅): breaking."
+  },
+  {
+   "note": "zod-6ac59393@4.6.0.md",
+   "id": "zod@4.6.0#18",
+   "kind": "B-only",
+   "A": [],
+   "B": [
+    {
+     "anchor": "a repeated `multipleOf` kept the first divisor and dropped the rest",
+     "change_type": "fix",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "fix",
+    "breaking": false,
+    "unsure": true,
+    "group": "zod@4.6.0#18"
+   },
+   "reason": "B-only: the 'same fold fixes two more cases' sentence names a repeated multipleOf case; whether it is a distinct change or a facet of the fold fix is not settled; unsure."
+  },
+  {
+   "note": "zod-6ac59393@4.6.0.md",
+   "id": "zod@4.6.0#19",
+   "kind": "B-only",
+   "A": [],
+   "B": [
+    {
+     "anchor": "a repeated `multipleOf` kept the first divisor and dropped the rest",
+     "change_type": "fix",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "fix",
+    "breaking": false,
+    "unsure": true,
+    "group": "zod@4.6.0#18"
+   },
+   "reason": "B-only: second case in the same sentence (min/length); unsure as above, one group."
+  },
+  {
+   "note": "zod-6ac59393@4.6.0.md",
+   "id": "zod@4.6.0#20",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "Eight members on a Zod Classic schema — `.format`, `.minLength`, `.maxLength`, `.minValue`, `.maxValue`, `.isInt`, `.minDate` and `.maxDate` — are computed from the checks now instead of being written onto every instance at construction.",
+     "change_type": "behavior_change",
+     "breaking": true,
+     "unsure": false
+    }
+   ],
+   "B": [
+    {
+     "anchor": "Eight members on a Zod Classic schema",
+     "change_type": "behavior_change",
+     "breaking": true,
+     "unsure": true
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "behavior_change",
+    "breaking": true,
+    "unsure": false,
+    "group": "zod@4.6.0#20"
+   },
+   "reason": "Object.keys on schemas changes (shown in the note): qualifies and breaking; B's unsure dropped."
+  },
+  {
+   "note": "zod-6ac59393@4.6.0.md",
+   "id": "zod@4.6.0#21",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "The values can move too, because the getters read the same fold the JSON Schema converter does.",
+     "change_type": "behavior_change",
+     "breaking": true,
+     "unsure": false
+    }
+   ],
+   "B": [
+    {
+     "anchor": "The values can move too, because the getters read the same fold the JSON Schema converter does. An order-dependent chain reports the tighter bound now instead of whichever check wrote last.",
+     "change_type": "behavior_change",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "behavior_change",
+    "breaking": false,
+    "unsure": false,
+    "group": "zod@4.6.0#21"
+   },
+   "reason": "The getters now report the bound the runtime enforces; it corrects wrong reported values (same fold as the JSON Schema fix), so not breaking."
+  },
+  {
+   "note": "zod-6ac59393@4.6.0.md",
+   "id": "zod@4.6.0#22",
+   "kind": "A-only",
+   "A": [
+    {
+     "anchor": "fix(compile): unwind the doc indent when a child generator throws",
+     "change_type": "fix",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [],
+   "decision": {
+    "included": true,
+    "change_type": "fix",
+    "breaking": false,
+    "unsure": true,
+    "group": "zod@4.6.0#22"
+   },
+   "reason": "A-only: affects indentation of generated parser source after an error; user effect not stated; unsure."
+  },
+  {
+   "note": "zod-6ac59393@4.6.0.md",
+   "id": "zod@4.6.0#23",
+   "kind": "A-only",
+   "A": [
+    {
+     "anchor": "perf(compile): for-in record walk, cheaper issue finalization, and a generative compile differential",
+     "change_type": "performance",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [],
+   "decision": {
+    "included": true,
+    "change_type": "performance",
+    "breaking": false,
+    "unsure": false,
+    "group": "zod@4.6.0#23"
+   },
+   "reason": "A-only: a named performance change to compiled parsing (z.compile exists since 4.5); qualifies as performance."
+  },
+  {
+   "note": "zod-6ac59393@4.6.0.md",
+   "id": "zod@4.6.0#24",
+   "kind": "A-only",
+   "A": [
+    {
+     "anchor": "perf(v4): settle z.validate on the first failure in parse order",
+     "change_type": "performance",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [],
+   "decision": {
+    "included": true,
+    "change_type": "performance",
+    "breaking": false,
+    "unsure": false,
+    "group": "zod@4.6.0#24"
+   },
+   "reason": "A-only: z.validate now stops at the first failure: a named performance change to a public API; qualifies."
+  },
+  {
+   "note": "zod-6ac59393@4.6.0.md",
+   "id": "zod@4.6.0#26",
+   "kind": "A-only",
+   "A": [
+    {
+     "anchor": "feat(v4): add .validate() and .validateAsync() to Zod Classic",
+     "change_type": "new_api",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [],
+   "decision": {
+    "included": true,
+    "change_type": "new_api",
+    "breaking": false,
+    "unsure": false,
+    "group": "zod@4.6.0#25"
+   },
+   "reason": "One commit line adds two methods (.validate, .validateAsync); A's split kept, one group."
+  },
+  {
+   "note": "zod-6ac59393@4.6.0.md",
+   "id": "zod@4.6.0#28",
+   "kind": "A-only",
+   "A": [
+    {
+     "anchor": "Release the parsed input once a failing safeParse builds its error",
+     "change_type": "performance",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [],
+   "decision": {
+    "included": true,
+    "change_type": "performance",
+    "breaking": false,
+    "unsure": false,
+    "group": "zod@4.6.0#28"
+   },
+   "reason": "A-only: a failing safeParse now releases its input (memory); qualifies as performance."
+  },
+  {
+   "note": "zod-6ac59393@4.6.0.md",
+   "id": "zod@4.6.0#30",
+   "kind": "A-only",
+   "A": [
+    {
+     "anchor": "perf: answer z.validate from the compiled fast path on invalid input",
+     "change_type": "performance",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [],
+   "decision": {
+    "included": true,
+    "change_type": "performance",
+    "breaking": false,
+    "unsure": false,
+    "group": "zod@4.6.0#30"
+   },
+   "reason": "A-only: z.validate answers from the compiled fast path on invalid input (the 35x claim); qualifies as performance."
+  },
+  {
+   "note": "zod-6ac59393@4.6.0.md",
+   "id": "zod@4.6.0#31",
+   "kind": "A-only",
+   "A": [
+    {
+     "anchor": "perf: move util.cached's accessor to a prototype",
+     "change_type": "performance",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [],
+   "decision": {
+    "included": true,
+    "change_type": "performance",
+    "breaking": false,
+    "unsure": true,
+    "group": "zod@4.6.0#31"
+   },
+   "reason": "A-only: internal micro-optimisation with no stated user-facing effect; unsure."
+  },
+  {
+   "note": "zod-6ac59393@4.6.0.md",
+   "id": "zod@4.6.0#32",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "Widen literal inputs in property check types",
+     "change_type": "behavior_change",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [
+    {
+     "anchor": "[`68a609ac`](https://github.com/colinhacks/zod/commit/68a609ac) Widen literal inputs in property check types ([#6520](https://github.com/colinhacks/zod/pull/6520))",
+     "change_type": "fix",
+     "breaking": false,
+     "unsure": true
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "fix",
+    "breaking": false,
+    "unsure": false,
+    "group": "zod@4.6.0#32"
+   },
+   "reason": "Over-narrow check types widened: a type correction (fix); alters what type-checks, so qualifies."
+  },
+  {
+   "note": "zod-6ac59393@4.6.0.md",
+   "id": "zod@4.6.0#34",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "Accept enum-typed targets in z.toZod",
+     "change_type": "fix",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [
+    {
+     "anchor": "[`a2a019a5`](https://github.com/colinhacks/zod/commit/a2a019a5) Accept enum-typed targets in z.toZod ([#6528](https://github.com/colinhacks/zod/pull/6528))",
+     "change_type": "new_option",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "new_option",
+    "breaking": false,
+    "unsure": false,
+    "group": "zod@4.6.0#34"
+   },
+   "reason": "toZod now accepts a new kind of target; parallel to 4.1.13's 'enum keys in z.record', which both labeled new_option."
+  },
+  {
+   "note": "zod-6ac59393@4.6.0.md",
+   "id": "zod@4.6.0#35",
+   "kind": "A-only",
+   "A": [
+    {
+     "anchor": "perf(v4): read Luhn digits with charCodeAt instead of string indexing",
+     "change_type": "performance",
+     "breaking": false,
+     "unsure": false
+    }
+   ],
+   "B": [],
+   "decision": {
+    "included": true,
+    "change_type": "performance",
+    "breaking": false,
+    "unsure": true,
+    "group": "zod@4.6.0#35"
+   },
+   "reason": "A-only: implementation detail (charCodeAt) with no stated user-facing effect; unsure."
+  },
+  {
+   "note": "zod-6ac59393@4.6.0.md",
+   "id": "zod@4.6.0#36",
+   "kind": "conflict",
+   "A": [
+    {
+     "anchor": "Stop re-exporting the compile internals from zod/v4/core",
+     "change_type": "removal",
+     "breaking": true,
+     "unsure": true
+    }
+   ],
+   "B": [
+    {
+     "anchor": "[`5ff95665`](https://github.com/colinhacks/zod/commit/5ff95665) Stop re-exporting the compile internals from zod/v4/core ([#6511](https://github.com/colinhacks/zod/pull/6511))",
+     "change_type": "removal",
+     "breaking": true,
+     "unsure": true
+    }
+   ],
+   "decision": {
+    "included": true,
+    "change_type": "removal",
+    "breaking": true,
+    "unsure": false,
+    "group": "zod@4.6.0#36"
+   },
+   "reason": "Both unsure: imports of the removed re-exports fail, so it qualifies; removal is breaking."
+  }
+ ]
+}

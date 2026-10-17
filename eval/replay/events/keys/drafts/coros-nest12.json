@@ -1,0 +1,85 @@
+{
+ "event": "coros-nest12",
+ "items": [
+  {
+   "id": "K1",
+   "commit": "2f0e89db",
+   "files": [
+    ".swcrc",
+    "package.json",
+    "tsconfig.json"
+   ],
+   "change": "Configured the project for native ES modules: added an SWC decorator/metadata configuration, set package.json type to module, and enabled NodeNext module resolution, package export resolution, and isolated modules.",
+   "responds_to": "NestJS 12's ESM-compatible build/tooling requirements."
+  },
+  {
+   "id": "K2",
+   "commit": "2f0e89db",
+   "files": [
+    "biome.json"
+   ],
+   "change": "Added a Biome correctness rule requiring relative imports to use explicit .js extensions.",
+   "responds_to": "Native ESM import resolution introduced as part of the NestJS 12 migration."
+  },
+  {
+   "id": "K3",
+   "commit": "2f0e89db",
+   "files": [
+    "src/app.module.ts",
+    "src/command-runner/export-activities.command-runner.integration.spec.ts",
+    "src/command-runner/export-activities.command-runner.ts",
+    "src/command-runner/export-training-schedule.command-runner.integration.spec.ts",
+    "src/command-runner/export-training-schedule.command-runner.ts",
+    "src/core/format-distance.spec.ts",
+    "src/core/format-duration.spec.ts",
+    "src/core/ics/build-calendar.spec.ts",
+    "src/core/ics/build-calendar.ts",
+    "src/core/ics/escape-text.spec.ts",
+    "src/core/ics/fold-line.spec.ts",
+    "src/core/parse-date.spec.ts",
+    "src/core/parse-date.ts",
+    "src/core/parse-out-dir.spec.ts",
+    "src/core/parse-out-dir.ts",
+    "src/coros/account/login.request.ts",
+    "src/coros/activity/download-activity-detail.request.ts",
+    "src/coros/activity/query-activities.request.ts",
+    "src/coros/base-request.spec.ts",
+    "src/coros/base-request.ts",
+    "src/coros/coros-api.ts",
+    "src/coros/coros.module.ts",
+    "src/coros/file-type.spec.ts",
+    "src/coros/sport-type.spec.ts",
+    "src/coros/training-schedule/fetch-locale-map.spec.ts",
+    "src/coros/training-schedule/parse-training-start.spec.ts",
+    "src/coros/training-schedule/parse-training-start.ts",
+    "src/coros/training-schedule/query-training-schedule.request.ts",
+    "src/coros/training-schedule/resolve-training-data.spec.ts",
+    "src/coros/training-schedule/resolve-training-data.ts",
+    "src/main.ts",
+    "src/testing/fixtures/query-activities.ts",
+    "src/testing/fixtures/training-schedule.ts",
+    "src/testing/setup.ts"
+   ],
+   "change": "Changed relative source and test imports to use explicit .js extensions.",
+   "responds_to": "NodeNext/native ESM resolution required by the NestJS 12 toolchain configuration."
+  },
+  {
+   "id": "K4",
+   "commit": "2f0e89db",
+   "files": [
+    "pnpm-workspace.yaml"
+   ],
+   "change": "Excluded nest-commander from pnpm's minimum release-age policy.",
+   "responds_to": "Adopting the NestJS 12-compatible nest-commander 3.21.0 dependency during the framework upgrade."
+  }
+ ],
+ "final": "[\n  {\n    \"id\": \"K1\",\n    \"commit\": \"2f0e89db\",\n    \"files\": [\".swcrc\", \"package.json\", \"tsconfig.json\"],\n    \"change\": \"Configured the project for native ES modules: added an SWC decorator/metadata configuration, set package.json type to module, and enabled NodeNext module resolution, package export resolution, and isolated modules.\",\n    \"responds_to\": \"NestJS 12's ESM-compatible build/tooling requirements.\"\n  },\n  {\n    \"id\": \"K2\",\n    \"commit\": \"2f0e89db\",\n    \"files\": [\"biome.json\"],\n    \"change\": \"Added a Biome correctness rule requiring relative imports to use explicit .js extensions.\",\n    \"responds_to\": \"Native ESM import resolution introduced as part of the NestJS 12 migration.\"\n  },\n  {\n    \"id\": \"K3\",\n    \"commit\": \"2f0e89db\",\n    \"files\": [\n      \"src/app.module.ts\",\n      \"src/command-runner/export-activities.command-runner.integration.spec.ts\",\n      \"src/command-runner/export-activities.command-runner.ts\",\n      \"src/command-runner/export-training-schedule.command-runner.integration.spec.ts\",\n      \"src/command-runner/export-training-schedule.command-runner.ts\",\n      \"src/core/format-distance.spec.ts\",\n      \"src/core/format-duration.spec.ts\",\n      \"src/core/ics/build-calendar.spec.ts\",\n      \"src/core/ics/build-calendar.ts\",\n      \"src/core/ics/escape-text.spec.ts\",\n      \"src/core/ics/fold-line.spec.ts\",\n      \"src/core/parse-date.spec.ts\",\n      \"src/core/parse-date.ts\",\n      \"src/core/parse-out-dir.spec.ts\",\n      \"src/core/parse-out-dir.ts\",\n      \"src/coros/account/login.request.ts\",\n      \"src/coros/activity/download-activity-detail.request.ts\",\n      \"src/coros/activity/query-activities.request.ts\",\n      \"src/coros/base-request.spec.ts\",\n      \"src/coros/base-request.ts\",\n      \"src/coros/coros-api.ts\",\n      \"src/coros/coros.module.ts\",\n      \"src/coros/file-type.spec.ts\",\n      \"src/coros/sport-type.spec.ts\",\n      \"src/coros/training-schedule/fetch-locale-map.spec.ts\",\n      \"src/coros/training-schedule/parse-training-start.spec.ts\",\n      \"src/coros/training-schedule/parse-training-start.ts\",\n      \"src/coros/training-schedule/query-training-schedule.request.ts\",\n      \"src/coros/training-schedule/resolve-training-data.spec.ts\",\n      \"src/coros/training-schedule/resolve-training-data.ts\",\n      \"src/main.ts\",\n      \"src/testing/fixtures/query-activities.ts\",\n      \"src/testing/fixtures/training-schedule.ts\",\n      \"src/testing/setup.ts\"\n    ],\n    \"change\": \"Changed relative source and test imports to use explicit .js extensions.\",\n    \"responds_to\": \"NodeNext/native ESM resolution required by the NestJS 12 toolchain configuration.\"\n  },\n  {\n    \"id\": \"K4\",\n    \"commit\": \"2f0e89db\",\n    \"files\": [\"pnpm-workspace.yaml\"],\n    \"change\": \"Excluded nest-commander from pnpm's minimum release-age policy.\",\n    \"responds_to\": \"Adopting the NestJS 12-compatible nest-commander 3.21.0 dependency during the framework upgrade.\"\n  }\n]",
+ "usage": {
+  "input_tokens": 299844,
+  "cached_input_tokens": 258048,
+  "cache_write_input_tokens": 0,
+  "output_tokens": 4505,
+  "reasoning_output_tokens": 1620
+ },
+ "wall_s": 44.7
+}

@@ -1,0 +1,160 @@
+{
+ "workout-next16": {
+  "optional": {
+   "key": 3,
+   "covered": 1,
+   "queued": 1,
+   "covered_ids": [
+    "K5"
+   ],
+   "first16": {
+    "usage": 0,
+    "tier": 0,
+    "random": 0
+   },
+   "reviews": {
+    "all__01": 0,
+    "all__02": 1,
+    "random__01": 0,
+    "random__02": 0,
+    "tier__01": 0,
+    "tier__02": 0,
+    "usage__01": 0,
+    "usage__02": 0
+   }
+  },
+  "required": {
+   "key": 7,
+   "covered": 4,
+   "queued": 4,
+   "covered_ids": [
+    "K1",
+    "K4",
+    "K6",
+    "K7"
+   ],
+   "first16": {
+    "usage": 3,
+    "tier": 3,
+    "random": 0
+   },
+   "reviews": {
+    "all__01": 4,
+    "all__02": 4,
+    "random__01": 0,
+    "random__02": 0,
+    "tier__01": 2,
+    "tier__02": 3,
+    "usage__01": 2,
+    "usage__02": 3
+   }
+  }
+ },
+ "invoicerr-prisma7": {
+  "optional": {
+   "key": 1,
+   "covered": 1,
+   "queued": 1,
+   "covered_ids": [
+    "K3"
+   ],
+   "first16": {
+    "usage": 1,
+    "tier": 1,
+    "random": 1
+   },
+   "reviews": {
+    "all__01": 1,
+    "all__02": 1,
+    "random__01": 1,
+    "random__02": 1,
+    "tier__01": 1,
+    "tier__02": 1,
+    "usage__01": 1,
+    "usage__02": 1
+   }
+  },
+  "required": {
+   "key": 15,
+   "covered": 9,
+   "queued": 8,
+   "covered_ids": [
+    "K1",
+    "K2",
+    "K5",
+    "K6",
+    "K7",
+    "K9",
+    "K14",
+    "K15",
+    "K16"
+   ],
+   "first16": {
+    "usage": 4,
+    "tier": 8,
+    "random": 3
+   },
+   "reviews": {
+    "all__01": 8,
+    "all__02": 8,
+    "random__01": 3,
+    "random__02": 3,
+    "tier__01": 8,
+    "tier__02": 8,
+    "usage__01": 4,
+    "usage__02": 4
+   }
+  }
+ },
+ "invoicerr-nest12": {
+  "optional": {
+   "key": 1,
+   "covered": 0,
+   "queued": 0,
+   "covered_ids": [],
+   "first16": {
+    "usage": 0,
+    "tier": 0,
+    "random": 0
+   },
+   "reviews": {
+    "all__01": 0,
+    "all__02": 0,
+    "random__01": 0,
+    "random__02": 0,
+    "tier__01": 0,
+    "tier__02": 0,
+    "usage__01": 0,
+    "usage__02": 0
+   }
+  },
+  "required": {
+   "key": 13,
+   "covered": 6,
+   "queued": 6,
+   "covered_ids": [
+    "K1",
+    "K2",
+    "K8",
+    "K10",
+    "K12",
+    "K13"
+   ],
+   "first16": {
+    "usage": 0,
+    "tier": 6,
+    "random": 0
+   },
+   "reviews": {
+    "all__01": 6,
+    "all__02": 6,
+    "random__01": 0,
+    "random__02": 0,
+    "tier__01": 6,
+    "tier__02": 6,
+    "usage__01": 0,
+    "usage__02": 0
+   }
+  }
+ }
+}

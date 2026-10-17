@@ -1,0 +1,100 @@
+{
+ "event": "sigle-prisma7",
+ "info": {
+  "slot": "sigle__sigle",
+  "tech": "prisma",
+  "package": "prisma",
+  "old": "6.14.0",
+  "new": "7.4.1",
+  "upgrade": "d8b2f6716d42e84da18edc7c5503b4a552a6c3b5",
+  "subdir": "apps/server",
+  "event": "sigle-prisma7",
+  "repo": "/private/tmp/claude-501/-Users-jason-Documents/3f08dd87-99a0-42d0-a4e5-59b22f98708b/scratchpad/w1/replay/full/sigle__sigle",
+  "parent": "07723e20a2e096551f20b4b651b554b7a241bfd3",
+  "date": "2026-02-24T15:09:02+01:00",
+  "until": "2026-03-20T14:11:42+01:00",
+  "end": "6f08fbee11226dc32b6e227dfcc92b55efd56176",
+  "name": "Prisma",
+  "dir": "/private/tmp/claude-501/-Users-jason-Documents/3f08dd87-99a0-42d0-a4e5-59b22f98708b/scratchpad/w1/replay/sigle-prisma7",
+  "cdir": "/private/tmp/claude-501/-Users-jason-Documents/3f08dd87-99a0-42d0-a4e5-59b22f98708b/scratchpad/w1/replay/sigle-prisma7"
+ },
+ "items": [
+  {
+   "id": "K1",
+   "commit": "d8b2f671",
+   "files": [
+    "apps/server/prisma.config.ts",
+    "apps/server/prisma/schema.prisma"
+   ],
+   "change": "Moved the datasource URL from the Prisma schema into prisma.config.ts using env(\"DATABASE_URL\").",
+   "responds_to": "Prisma 7 requires datasource configuration such as the database URL to be supplied through the Prisma config file.",
+   "required": true,
+   "required_rule": "S: the datasource url is no longer accepted in schema.prisma in v7; it moves to prisma.config.ts",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K2",
+   "commit": "d8b2f671",
+   "files": [
+    "apps/server/src/lib/prisma.ts",
+    "apps/server/package.json"
+   ],
+   "change": "Added PrismaPg and changed PrismaClient creation to pass a PostgreSQL driver adapter configured from DATABASE_URL.",
+   "responds_to": "Prisma 7's driver-adapter-based client initialization.",
+   "required": true,
+   "required_rule": "S: v7 requires a driver adapter to construct PrismaClient",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K3",
+   "commit": "d8b2f671",
+   "files": [
+    "apps/server/Dockerfile.dev",
+    "apps/server/package.json"
+   ],
+   "change": "Changed development Prisma generation to run through the db:generate script, which loads .env.development before invoking prisma generate.",
+   "responds_to": "The Prisma 7 config file now evaluates DATABASE_URL during Prisma CLI commands.",
+   "required": true,
+   "required_rule": "S: v7 no longer loads .env automatically and prisma.config's env() needs DATABASE_URL",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K4",
+   "commit": "54bd2438",
+   "files": [
+    "apps/server/Dockerfile"
+   ],
+   "change": "Copied prisma.config.ts into the production image alongside the Prisma schema and migrations.",
+   "responds_to": "Prisma 7 migration commands require the prisma.config.ts datasource configuration at runtime.",
+   "required": true,
+   "required_rule": "D: 'fix: fix prod docker config'; migrate deploy in the image needs prisma.config.ts",
+   "reviewed": "kept"
+  }
+ ],
+ "dropped": [
+  {
+   "id": "K5",
+   "commit": "5ed32478",
+   "files": [
+    "apps/server/package.json",
+    "apps/server/src/lib/prisma.ts",
+    "apps/server/src/test/database.ts"
+   ],
+   "change": "Added a PGlite Prisma adapter test database, constructed PrismaClient with that adapter, and made the application Prisma client replaceable through setPrismaClient.",
+   "responds_to": "Prisma 7's adapter-based client construction, including the need to provide a Prisma adapter for the in-process test database.",
+   "drop_reason": "new in-process PGlite test database ('chore: test public api routes', 15 days later); new test infrastructure, not upgrade work"
+  }
+ ],
+ "draft": {
+  "model": "gpt-5.6-luna (codex exec, harness KEY prompt)",
+  "n_items": 5,
+  "usage": {
+   "input_tokens": 277778,
+   "cached_input_tokens": 221440,
+   "cache_write_input_tokens": 0,
+   "output_tokens": 4606,
+   "reasoning_output_tokens": 1905
+  },
+  "wall_s": 38.1
+ }
+}

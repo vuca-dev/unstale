@@ -1,0 +1,14 @@
+{"K1": ["keep", true, "S: parallel route slots need default.js; builds fail without"],
+ "K2": ["keep", true, "D: commit lists it under 'Breaking changes addressed' (Next 16 route-type validation rejects number params)"],
+ "K3": ["keep", false, "D: choice for network-independent builds; next/font/google still works in 16"],
+ "K4": ["keep", true, "S: single-argument revalidateTag is a TypeScript error in 16"],
+ "K5": ["keep", false, "D: dev-only Cloudflare init made opt-in; no Next 16 failure shown"],
+ "K6": ["edit", true, "S: Turbopack is the default for next build and fails with a webpack config and no turbopack config; this project has a webpack() config", {"change": "Added an empty top-level turbopack configuration to next.config.ts.", "responds_to": "Next.js 16 builds with Turbopack by default and errors when a webpack config exists without a turbopack config."}],
+ "K7": ["keep", true, "S: next lint removed and the lint script used it; the maintainers' replacement (Biome) is the chosen fix"],
+ "K8": ["keep", true, "D: commit says Cypress component tests are incompatible with Next 16 Turbopack"],
+ "K9": ["keep", false, "deprecation warning only (middleware still works); headers unused"],
+ "K10": ["keep", true, "D: Turbopack (now default) not supported by the OpenNext Cloudflare build; build pinned to webpack"],
+ "K11": ["keep", false, "adopts Turbopack for production builds by choice"],
+ "ADD": [
+  {"id": "K12", "commit": "29f368e", "files": ["next.config.ts"], "change": "Enabled experimental.turbopackUseSystemTlsCerts.", "responds_to": "Next.js 16 Turbopack option for using system TLS certificates.", "required": false, "required_rule": "new opt-in option"},
+  {"id": "K13", "commit": "29f368e", "files": ["next.config.ts"], "change": "Removed the eslint.ignoreDuringBuilds option from next.config.ts.", "responds_to": "Next.js 16 removed the eslint option from next.config along with next lint.", "required": true, "required_rule": "S: the eslint config key is removed in 16 (NextConfig type error in a .ts config)"}]}

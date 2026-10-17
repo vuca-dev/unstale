@@ -1,0 +1,87 @@
+{
+ "event": "coh2stats-next16",
+ "items": [
+  {
+   "id": "K1",
+   "commit": "68a892d",
+   "files": [
+    "eslint.config.mjs",
+    "package.json"
+   ],
+   "change": "Added an ESLint 9 flat configuration with the existing plugin rules and build-artifact ignores, and updated the root ESLint tooling to support it.",
+   "responds_to": "Next.js 16's ESLint 9/flat-config setup."
+  },
+  {
+   "id": "K2",
+   "commit": "68a892d",
+   "files": [
+    "packages/web/tsconfig.json"
+   ],
+   "change": "Changed TypeScript module resolution from node to bundler, changed JSX compilation from preserve to react-jsx, and included Next's generated development route types.",
+   "responds_to": "Next.js 16's updated TypeScript and generated route-type setup."
+  },
+  {
+   "id": "K3",
+   "commit": "68a892d",
+   "files": [
+    "packages/web/next-env.d.ts"
+   ],
+   "change": "Changed the generated route-types import from .next/types/routes.d.ts to .next/dev/types/routes.d.ts.",
+   "responds_to": "Next.js 16's changed location for development-generated route types."
+  },
+  {
+   "id": "K4",
+   "commit": "6aeeaca",
+   "files": [
+    "packages/web/next.config.js"
+   ],
+   "change": "Enabled the React Compiler with reactCompiler: true.",
+   "responds_to": "Next.js 16's support for enabling the React Compiler."
+  },
+  {
+   "id": "K5",
+   "commit": "6aeeaca",
+   "files": [
+    "packages/web/next-env.d.ts"
+   ],
+   "change": "Changed the generated route-types import back from .next/dev/types/routes.d.ts to .next/types/routes.d.ts.",
+   "responds_to": "The Next.js 16 build-time location of the generated route types."
+  },
+  {
+   "id": "K6",
+   "commit": "acf8abb",
+   "files": [
+    "packages/web/next-env.d.ts"
+   ],
+   "change": "Removed the checked-in next-env.d.ts file.",
+   "responds_to": "Next.js 16 generating the environment and route-type declarations instead of requiring this file to remain tracked."
+  },
+  {
+   "id": "K7",
+   "commit": "1d31666",
+   "files": [
+    ".gitignore"
+   ],
+   "change": "Added packages/web/next-env.d.ts to the ignored files.",
+   "responds_to": "The Next.js-generated next-env.d.ts file no longer being maintained as a tracked source file."
+  },
+  {
+   "id": "K8",
+   "commit": "68a892d",
+   "files": [
+    "NEXT16-UPGRADE-SUMMARY.md"
+   ],
+   "change": "Added documentation describing the Next.js 16 upgrade, ESLint flat-config migration, compatibility checks, test/build results, and Next.js 16 features now available.",
+   "responds_to": "The completed Next.js 15-to-16 migration and its associated configuration changes."
+  }
+ ],
+ "final": "[\n  {\n    \"id\": \"K1\",\n    \"commit\": \"68a892d\",\n    \"files\": [\"eslint.config.mjs\", \"package.json\"],\n    \"change\": \"Added an ESLint 9 flat configuration with the existing plugin rules and build-artifact ignores, and updated the root ESLint tooling to support it.\",\n    \"responds_to\": \"Next.js 16's ESLint 9/flat-config setup.\"\n  },\n  {\n    \"id\": \"K2\",\n    \"commit\": \"68a892d\",\n    \"files\": [\"packages/web/tsconfig.json\"],\n    \"change\": \"Changed TypeScript module resolution from node to bundler, changed JSX compilation from preserve to react-jsx, and included Next's generated development route types.\",\n    \"responds_to\": \"Next.js 16's updated TypeScript and generated route-type setup.\"\n  },\n  {\n    \"id\": \"K3\",\n    \"commit\": \"68a892d\",\n    \"files\": [\"packages/web/next-env.d.ts\"],\n    \"change\": \"Changed the generated route-types import from .next/types/routes.d.ts to .next/dev/types/routes.d.ts.\",\n    \"responds_to\": \"Next.js 16's changed location for development-generated route types.\"\n  },\n  {\n    \"id\": \"K4\",\n    \"commit\": \"6aeeaca\",\n    \"files\": [\"packages/web/next.config.js\"],\n    \"change\": \"Enabled the React Compiler with reactCompiler: true.\",\n    \"responds_to\": \"Next.js 16's support for enabling the React Compiler.\"\n  },\n  {\n    \"id\": \"K5\",\n    \"commit\": \"6aeeaca\",\n    \"files\": [\"packages/web/next-env.d.ts\"],\n    \"change\": \"Changed the generated route-types import back from .next/dev/types/routes.d.ts to .next/types/routes.d.ts.\",\n    \"responds_to\": \"The Next.js 16 build-time location of the generated route types.\"\n  },\n  {\n    \"id\": \"K6\",\n    \"commit\": \"acf8abb\",\n    \"files\": [\"packages/web/next-env.d.ts\"],\n    \"change\": \"Removed the checked-in next-env.d.ts file.\",\n    \"responds_to\": \"Next.js 16 generating the environment and route-type declarations instead of requiring this file to remain tracked.\"\n  },\n  {\n    \"id\": \"K7\",\n    \"commit\": \"1d31666\",\n    \"files\": [\".gitignore\"],\n    \"change\": \"Added packages/web/next-env.d.ts to the ignored files.\",\n    \"responds_to\": \"The Next.js-generated next-env.d.ts file no longer being maintained as a tracked source file.\"\n  },\n  {\n    \"id\": \"K8\",\n    \"commit\": \"68a892d\",\n    \"files\": [\"NEXT16-UPGRADE-SUMMARY.md\"],\n    \"change\": \"Added documentation describing the Next.js 16 upgrade, ESLint flat-config migration, compatibility checks, test/build results, and Next.js 16 features now available.\",\n    \"responds_to\": \"The completed Next.js 15-to-16 migration and its associated configuration changes.\"\n  }\n]",
+ "usage": {
+  "input_tokens": 456107,
+  "cached_input_tokens": 403200,
+  "cache_write_input_tokens": 0,
+  "output_tokens": 6613,
+  "reasoning_output_tokens": 3406
+ },
+ "wall_s": 69.0
+}

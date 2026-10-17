@@ -1,0 +1,8 @@
+{
+ "_rule": "PREREG.md sections 1-2; computed by select_majors.py (out/holdout-majors/selection.json)",
+ "seed": "unstale-majors-v1",
+ "npm": ["@sveltejs/kit", "msw"],
+ "pypi": ["transformers", "mypy"],
+ "repositories": ["sveltejs/kit", "mswjs/msw", "mswjs/mswjs.io", "huggingface/transformers", "python/mypy"],
+ "same_repo_siblings_held_out": []
+}

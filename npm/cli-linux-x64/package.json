@@ -1,0 +1,12 @@
+{
+  "name": "@unstale/cli-linux-x64",
+  "version": "0.1.0",
+  "description": "The unstale CLI binary for Linux on x86-64 (static musl build; runs on glibc and musl distributions). Install the `unstale` package instead.",
+  "license": "UNLICENSED",
+  "os": ["linux"],
+  "cpu": ["x64"],
+  "files": [
+    "bin/unstale"
+  ],
+  "preferUnplugged": true
+}

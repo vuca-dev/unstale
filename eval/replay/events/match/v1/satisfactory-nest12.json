@@ -1,0 +1,94 @@
+{
+ "event": "satisfactory-nest12",
+ "maps": [
+  {
+   "K1": [
+    "nestjs-esm-packages"
+   ],
+   "K3": [
+    "nestjs-multer"
+   ],
+   "K4": [
+    "nestjs-esm-packages"
+   ],
+   "K6": [
+    "nestjs-esm-packages",
+    "nestjs-multer"
+   ]
+  },
+  {
+   "K1": [],
+   "K3": [
+    "nestjs-multer"
+   ],
+   "K4": [],
+   "K6": [
+    "nestjs-esm-packages",
+    "nestjs-multer"
+   ]
+  }
+ ],
+ "usage": [
+  {
+   "input_tokens": 17261,
+   "cached_input_tokens": 11008,
+   "cache_write_input_tokens": 0,
+   "output_tokens": 565,
+   "reasoning_output_tokens": 516
+  },
+  {
+   "input_tokens": 17261,
+   "cached_input_tokens": 9984,
+   "cache_write_input_tokens": 0,
+   "output_tokens": 553,
+   "reasoning_output_tokens": 516
+  }
+ ],
+ "in_queue": [
+  "nestjs-angular",
+  "nestjs-argumentmetadata",
+  "nestjs-builder",
+  "nestjs-bun",
+  "nestjs-configmodule-forroot-validationschema",
+  "nestjs-consolelogger-structuredparams",
+  "nestjs-esm-packages",
+  "nestjs-express-graceful-shutdown",
+  "nestjs-flattenparams",
+  "nestjs-graphiql",
+  "nestjs-handledisconnect",
+  "nestjs-handler-results",
+  "nestjs-httpexceptionoptions-errorcode",
+  "nestjs-lifecycle-hooks-2",
+  "nestjs-microservices-pre-request-hook",
+  "nestjs-nats-io-transport-node",
+  "nestjs-nest-build-emit-declarations",
+  "nestjs-nest-build-no-type-check",
+  "nestjs-nest-build-parallel",
+  "nestjs-nest-build-rspackpath",
+  "nestjs-nest-cli-json-includelibraryassets",
+  "nestjs-nest-deploy",
+  "nestjs-nest-new",
+  "nestjs-nest-upgrade",
+  "nestjs-nest-upgrade-dry-run",
+  "nestjs-nestfactory-create-instrument",
+  "nestjs-nestjs-observe",
+  "nestjs-node-js",
+  "nestjs-oxlint",
+  "nestjs-pending-requests",
+  "nestjs-reply-subscription",
+  "nestjs-request",
+  "nestjs-routeconflictpolicy-duplicate",
+  "nestjs-routeconflictpolicy-shadow",
+  "nestjs-routeresolutionstrategy",
+  "nestjs-rspack",
+  "nestjs-servermqtt-maxconnectionattempts",
+  "nestjs-standardschemaserializerinterceptor",
+  "nestjs-standardschemavalidationpipe",
+  "nestjs-subscriptions-transport-ws",
+  "nestjs-validationoptions-libraryoptions",
+  "nestjs-validationpipe-2",
+  "nestjs-vitest",
+  "nestjs-webpack",
+  "nestjs-webpackpath"
+ ]
+}

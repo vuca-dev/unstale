@@ -1,0 +1,254 @@
+{
+ "event": "aksel-next16",
+ "info": {
+  "slot": "navikt__aksel",
+  "tech": "next",
+  "package": "next",
+  "old": "15.5.9",
+  "new": "16.1.2",
+  "upgrade": "745863f53d7504e8191f0840d43aa94aae18a838",
+  "subdir": "aksel.nav.no/website",
+  "event": "aksel-next16",
+  "repo": "/private/tmp/claude-501/-Users-jason-Documents/3f08dd87-99a0-42d0-a4e5-59b22f98708b/scratchpad/w1/replay/full/navikt__aksel",
+  "parent": "cb7ac11a6a90491a5cd24b62ee980fdca13bb356",
+  "date": "2026-01-22T13:13:56+01:00",
+  "until": "2026-02-19T13:31:25+01:00",
+  "end": "547a565afaa479be1bc8b999066a4eb8d34cf77a",
+  "name": "Next.js",
+  "dir": "/private/tmp/claude-501/-Users-jason-Documents/3f08dd87-99a0-42d0-a4e5-59b22f98708b/scratchpad/w1/replay/aksel-next16",
+  "cdir": "/private/tmp/claude-501/-Users-jason-Documents/3f08dd87-99a0-42d0-a4e5-59b22f98708b/scratchpad/w1/replay/aksel-next16"
+ },
+ "items": [
+  {
+   "id": "K1",
+   "commit": "745863f",
+   "files": [
+    "aksel.nav.no/website/middleware.ts",
+    "aksel.nav.no/website/proxy.ts"
+   ],
+   "change": "Renamed the Next.js middleware file to proxy.ts and renamed the exported function from middleware to proxy.",
+   "responds_to": "Next.js 16's middleware-to-proxy convention change.",
+   "required": false,
+   "required_rule": "S: guide says the middleware file and export are deprecated and still work",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K2",
+   "commit": "745863f",
+   "files": [
+    "aksel.nav.no/website/next.config.ts"
+   ],
+   "change": "Removed the deprecated publicRuntimeConfig configuration.",
+   "responds_to": "Next.js deprecation of publicRuntimeConfig.",
+   "required": true,
+   "required_rule": "S: publicRuntimeConfig is removed in Next 16 (guide, Removals: Runtime Configuration)",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K3",
+   "commit": "745863f",
+   "files": [
+    "aksel.nav.no/website/next.config.ts"
+   ],
+   "change": "Enabled Turbopack's development filesystem cache and the React compiler.",
+   "responds_to": "Next.js 16 support for turbopackFileSystemCacheForDev and reactCompiler.",
+   "required": false,
+   "required_rule": "new opt-in options (filesystem cache for dev, React Compiler)",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K4",
+   "commit": "745863f",
+   "files": [
+    "aksel.nav.no/website/package.json"
+   ],
+   "change": "Added babel-plugin-react-compiler.",
+   "responds_to": "Enabling Next.js's React compiler integration.",
+   "required": false,
+   "required_rule": "dependency for the opt-in React Compiler",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K5",
+   "commit": "745863f",
+   "files": [
+    "aksel.nav.no/website/package.json"
+   ],
+   "change": "Removed the separate dev-turbo script.",
+   "responds_to": "Turbopack becoming the default development bundler in Next.js 16.",
+   "required": false,
+   "required_rule": "S: Turbopack is the dev default; the extra script is redundant, nothing fails",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K6",
+   "commit": "745863f",
+   "files": [
+    "aksel.nav.no/website/tsconfig.json"
+   ],
+   "change": "Included .next/dev/types in the TypeScript project.",
+   "responds_to": "Next.js 16 generating development route types under .next/dev/types.",
+   "required": false,
+   "required_rule": "Next writes the .next/dev/types include itself on dev/build",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K7",
+   "commit": "745863f",
+   "files": [
+    "eslint.config.js"
+   ],
+   "change": "Reworked the Next ESLint configuration to register the plugin explicitly and spread its recommended rules instead of extending next.flatConfig.recommended.",
+   "responds_to": "The changed Next ESLint plugin configuration API in Next.js 16.",
+   "required": true,
+   "required_rule": "D: PR step ':bug: Fix eslint config'; the plugin's flat-config export changed in 16 and the old spread no longer loaded",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K8",
+   "commit": "745863f",
+   "files": [
+    "aksel.nav.no/website/app/_ui/next-link/NextLink.tsx",
+    "aksel.nav.no/website/app/(routes)/(designsystemet)/_ui/icon-page/IconPage.tsx",
+    "aksel.nav.no/website/app/(routes)/(designsystemet)/_ui/overview/DesignsystemetOverview.tsx",
+    "aksel.nav.no/website/app/(routes)/(designsystemet)/_ui/sidebar/Sidebar.item.tsx",
+    "aksel.nav.no/website/app/(routes)/(designsystemet)/designsystemet/_ui/ds-layers-overview/DSLayersOverview.tsx",
+    "aksel.nav.no/website/app/(routes)/(designsystemet)/grunnleggende/endringslogg/_ui/LogEntry.tsx",
+    "aksel.nav.no/website/app/(routes)/(god-praksis)/_ui/hero/Hero.tsx",
+    "aksel.nav.no/website/app/(routes)/(god-praksis)/god-praksis/[tema]/page.tsx",
+    "aksel.nav.no/website/app/(routes)/(god-praksis)/god-praksis/artikler/[slug]/page.tsx",
+    "aksel.nav.no/website/app/(routes)/(god-praksis)/god-praksis/page.tsx",
+    "aksel.nav.no/website/app/(routes)/(produktbloggen)/produktbloggen/_ui/BloggArticleBlogg.tsx",
+    "aksel.nav.no/website/app/(routes)/(produktbloggen)/produktbloggen/_ui/BloggList.tsx",
+    "aksel.nav.no/website/app/(routes)/(produktbloggen)/produktbloggen/_ui/HighlightedBlogg.tsx",
+    "aksel.nav.no/website/app/(routes)/(root)/_ui/AnimatedFaceCard.tsx",
+    "aksel.nav.no/website/app/(routes)/(root)/_ui/FrontpageMasonryCard.tsx",
+    "aksel.nav.no/website/app/(routes)/(root)/_ui/HighlightedArticle.tsx",
+    "aksel.nav.no/website/app/(routes)/(root)/page.tsx",
+    "aksel.nav.no/website/app/_ui/bilde/Bilde.tsx",
+    "aksel.nav.no/website/app/_ui/consent-banner/ConsentBanner.tsx",
+    "aksel.nav.no/website/app/_ui/footer/Footer.edit.tsx",
+    "aksel.nav.no/website/app/_ui/footer/Footer.tsx",
+    "aksel.nav.no/website/app/_ui/global-search/GlobalSearch.hit.tsx",
+    "aksel.nav.no/website/app/_ui/header/Header.link.tsx",
+    "aksel.nav.no/website/app/_ui/header/Header.tsx",
+    "aksel.nav.no/website/app/_ui/mobile-nav/MobileNav.menu.tsx",
+    "aksel.nav.no/website/app/_ui/promo-tag/PromoTag.tsx",
+    "aksel.nav.no/website/app/_ui/relatert-innhold/RelatertInnhold.link.tsx",
+    "aksel.nav.no/website/app/_ui/relatert-innhold/RelatertInnhold.tsx",
+    "aksel.nav.no/website/app/_ui/toc/TableOfContents.tsx",
+    "aksel.nav.no/website/app/_ui/typography/WebsiteLink.tsx",
+    "aksel.nav.no/website/app/_ui/umami/UmamiLink.tsx",
+    "aksel.nav.no/website/pages/eksempler/actionmenu/links.tsx"
+   ],
+   "change": "Introduced a client-side NextLink wrapper and changed website imports from next/link to that wrapper.",
+   "responds_to": "Next.js 16 link usage issues referenced by issues 85604 and 85470.",
+   "required": true,
+   "required_rule": "D: PR step ':bug: Fix next link import'; workaround for a Next 16 bug (vercel/next.js#85604)",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K9",
+   "commit": "745863f",
+   "files": [
+    "aksel.nav.no/website/app/_ui/global-search/GlobalSearch.tsx"
+   ],
+   "change": "Wrapped the global-search contents in React Activity, switching between visible and hidden modes based on whether the search is open.",
+   "responds_to": "The React 19 Activity API adopted with the Next.js 16 upgrade.",
+   "required": false,
+   "required_rule": "adopts React 19.2 Activity, a new feature",
+   "reviewed": "kept"
+  }
+ ],
+ "dropped": [
+  {
+   "id": "K10",
+   "commit": "1a5aab3",
+   "files": [
+    "aksel.nav.no/website/app/_ui/header/Header.tsx",
+    "aksel.nav.no/website/app/_ui/global-search/GlobalSearch.tsx",
+    "aksel.nav.no/website/app/_ui/global-search/GlobalSearch.button.tsx"
+   ],
+   "change": "Made Header asynchronous, awaited headers(), detected the user agent server-side, and passed the resulting platform flag into the search components instead of detecting it in an effect.",
+   "responds_to": "Next.js's asynchronous headers() request API.",
+   "drop_reason": "new feature 18 days later; async headers() already existed in Next 15"
+  },
+  {
+   "id": "K11",
+   "commit": "9900b21",
+   "files": [
+    ".github/actions/build-website/action.yml",
+    ".github/workflows/aksel-prod.yml"
+   ],
+   "change": "Added a production-build input and workflow secret for NEXT_SERVER_ACTIONS_ENCRYPTION_KEY.",
+   "responds_to": "Next.js server-action encryption requiring a stable encryption key for production builds.",
+   "drop_reason": "static server-action key for deployments; no link to the upgrade in the commit or diff"
+  },
+  {
+   "id": "K12",
+   "commit": "1d5401a",
+   "files": [
+    "aksel.nav.no/website/cache-handler.mjs",
+    "aksel.nav.no/website/next.config.ts",
+    "aksel.nav.no/website/package.json"
+   ],
+   "change": "Added a custom LRU cache handler and configured Next.js to use it with cacheMaxMemorySize set to zero.",
+   "responds_to": "Next.js custom cache-handler support.",
+   "drop_reason": "custom cache-handler experiment ('Test custom cache-handler'); not caused by the upgrade"
+  },
+  {
+   "id": "K13",
+   "commit": "2f6f97f",
+   "files": [
+    "aksel.nav.no/website/app/_ui/kode-eksempler/KodeEksempler.iframe.tsx"
+   ],
+   "change": "Delayed assigning the iframe src until after mount so the iframe load handler runs on the initial render, and tracked its height separately.",
+   "responds_to": "The Next.js iframe initial-render/onLoad behavior documented in issue 69736.",
+   "drop_reason": "fixes an iframe issue from 2024 (vercel/next.js#69736), not a Next 16 change"
+  },
+  {
+   "id": "K14",
+   "commit": "d49151a",
+   "files": [
+    "aksel.nav.no/website/app/_ui/next-link/NextLink.tsx",
+    "aksel.nav.no/website/app/(routes)/(god-praksis)/_ui/hero/Hero.tsx",
+    "aksel.nav.no/website/app/_ui/footer/Footer.edit.tsx",
+    "aksel.nav.no/website/app/_ui/footer/Footer.tsx",
+    "aksel.nav.no/website/app/_ui/global-search/GlobalSearch.hit.tsx",
+    "aksel.nav.no/website/app/_ui/header/Header.link.tsx",
+    "aksel.nav.no/website/app/_ui/toc/TableOfContents.tsx"
+   ],
+   "change": "Changed the NextLink wrapper to default prefetch to false and removed explicit prefetch={false} props from its consumers.",
+   "responds_to": "Changed Next.js Link prefetch behavior and the resulting desire to avoid prefetching all routes.",
+   "drop_reason": "reverted by the next commit (K15); net no change"
+  },
+  {
+   "id": "K15",
+   "commit": "2d52f6a",
+   "files": [
+    "aksel.nav.no/website/app/_ui/next-link/NextLink.tsx",
+    "aksel.nav.no/website/app/(routes)/(god-praksis)/_ui/hero/Hero.tsx",
+    "aksel.nav.no/website/app/_ui/footer/Footer.edit.tsx",
+    "aksel.nav.no/website/app/_ui/footer/Footer.tsx",
+    "aksel.nav.no/website/app/_ui/global-search/GlobalSearch.hit.tsx",
+    "aksel.nav.no/website/app/_ui/header/Header.link.tsx",
+    "aksel.nav.no/website/app/_ui/toc/TableOfContents.tsx"
+   ],
+   "change": "Reverted the default-prefetch=false wrapper and restored explicit prefetch={false} on selected links.",
+   "responds_to": "The prior Next.js Link prefetch change caused some links to stop working.",
+   "drop_reason": "revert of K14; net no change"
+  }
+ ],
+ "draft": {
+  "model": "gpt-5.6-luna (codex exec, harness KEY prompt)",
+  "n_items": 15,
+  "usage": {
+   "input_tokens": 615713,
+   "cached_input_tokens": 514304,
+   "cache_write_input_tokens": 0,
+   "output_tokens": 8119,
+   "reasoning_output_tokens": 3112
+  },
+  "wall_s": 76.9
+ }
+}

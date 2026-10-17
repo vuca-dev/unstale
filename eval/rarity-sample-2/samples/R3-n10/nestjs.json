@@ -1,0 +1,411 @@
+{
+ "technology": "nestjs",
+ "rule": "GitHub repository search for the technology's own topic (its repository's GitHub topic equal to its repository or package name; the most used if several) with at least 50 stars, pushed within 365 days of the draw (pages 1-10); keep repositories with a package.json (shallowest 6, none under node_modules, fixtures, tests, vendor or build output) declaring one of the technology's packages in dependencies or devDependencies at the major before the catalog's current one; drop forks, archived and template repositories, repositories whose name, description or topics mark a tutorial, course, example, demo, starter, boilerplate or clone, the technology's own organisation, evaluation repositories and their forks or upstreams, and repositories over 200 MB; one repository per owner; rank by stars (then name); take the first 10.",
+ "selection": {
+  "pool": "adoption",
+  "major": "previous",
+  "n": 10
+ },
+ "query": "topic:nest stars:>=50 pushed:>=2025-10-15 archived:false",
+ "major": "12",
+ "majors": [
+  "11"
+ ],
+ "drawn": "2026-10-15T17:00:00Z",
+ "candidates": 106,
+ "passed_over": [
+  {
+   "repo": "nestjs/nest",
+   "stars": 76852,
+   "why": "the technology's own organisation"
+  },
+  {
+   "repo": "nestjsx/crud",
+   "stars": 4321,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 11"
+  },
+  {
+   "repo": "openthread/openthread",
+   "stars": 4045,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 11"
+  },
+  {
+   "repo": "elastic/elasticsearch-net",
+   "stars": 3649,
+   "why": "over 200 MB"
+  },
+  {
+   "repo": "nestjs/nest-cli",
+   "stars": 2205,
+   "why": "the technology's own organisation"
+  },
+  {
+   "repo": "nestjs/typeorm",
+   "stars": 2165,
+   "why": "the technology's own organisation"
+  },
+  {
+   "repo": "nestjs/typescript-starter",
+   "stars": 2152,
+   "why": "template repository"
+  },
+  {
+   "repo": "nestjs/swagger",
+   "stars": 1899,
+   "why": "the technology's own organisation"
+  },
+  {
+   "repo": "secluso/core",
+   "stars": 1685,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 11"
+  },
+  {
+   "repo": "nestjs/graphql",
+   "stars": 1555,
+   "why": "the technology's own organisation"
+  },
+  {
+   "repo": "iamolegga/nestjs-pino",
+   "stars": 1546,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 11"
+  },
+  {
+   "repo": "nestjs/docs.nestjs.com",
+   "stars": 1375,
+   "why": "the technology's own organisation"
+  },
+  {
+   "repo": "CatsMiaow/nestjs-project-structure",
+   "stars": 1359,
+   "why": "template repository"
+  },
+  {
+   "repo": "xun082/DocFlow",
+   "stars": 1325,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 11"
+  },
+  {
+   "repo": "zuohuadong/docs.nestjs.cn",
+   "stars": 1040,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 11"
+  },
+  {
+   "repo": "nestjs/cqrs",
+   "stars": 944,
+   "why": "the technology's own organisation"
+  },
+  {
+   "repo": "kyhsa93/nestjs-rest-cqrs-example",
+   "stars": 874,
+   "why": "not a project (\"example\")"
+  },
+  {
+   "repo": "nestjs/terminus",
+   "stars": 745,
+   "why": "the technology's own organisation"
+  },
+  {
+   "repo": "nestjs/throttler",
+   "stars": 711,
+   "why": "the technology's own organisation"
+  },
+  {
+   "repo": "nestjs/bull",
+   "stars": 703,
+   "why": "the technology's own organisation"
+  },
+  {
+   "repo": "nestjs/jwt",
+   "stars": 686,
+   "why": "the technology's own organisation"
+  },
+  {
+   "repo": "nest/nest-simulator",
+   "stars": 672,
+   "why": "over 200 MB"
+  },
+  {
+   "repo": "nestjs/config",
+   "stars": 592,
+   "why": "the technology's own organisation"
+  },
+  {
+   "repo": "openthread/ot-br-posix",
+   "stars": 577,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 11"
+  },
+  {
+   "repo": "nestjs/mongoose",
+   "stars": 572,
+   "why": "the technology's own organisation"
+  },
+  {
+   "repo": "nestjs/passport",
+   "stars": 561,
+   "why": "the technology's own organisation"
+  },
+  {
+   "repo": "necordjs/necord",
+   "stars": 497,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 11"
+  },
+  {
+   "repo": "josephgoksu/prime-nestjs",
+   "stars": 493,
+   "why": "template repository"
+  },
+  {
+   "repo": "iMicknl/ha-nest-protect",
+   "stars": 487,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 11"
+  },
+  {
+   "repo": "nestjs/mapped-types",
+   "stars": 445,
+   "why": "the technology's own organisation"
+  },
+  {
+   "repo": "nestjs/ng-universal",
+   "stars": 444,
+   "why": "the technology's own organisation"
+  },
+  {
+   "repo": "liaoliaots/nestjs-redis",
+   "stars": 438,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 11"
+  },
+  {
+   "repo": "nestjs/schematics",
+   "stars": 433,
+   "why": "the technology's own organisation"
+  },
+  {
+   "repo": "nestjs/schedule",
+   "stars": 427,
+   "why": "the technology's own organisation"
+  },
+  {
+   "repo": "nestjs/elasticsearch",
+   "stars": 413,
+   "why": "the technology's own organisation"
+  },
+  {
+   "repo": "hardyscc/aws-nestjs-starter",
+   "stars": 348,
+   "why": "not a project (\"starter\")"
+  },
+  {
+   "repo": "SocketSomeone/nestjs-resilience",
+   "stars": 331,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 11"
+  },
+  {
+   "repo": "bojidaryovchev/nest-angular",
+   "stars": 330,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 11"
+  },
+  {
+   "repo": "msanvarov/nest-rest-mongo-boilerplate",
+   "stars": 301,
+   "why": "template repository"
+  },
+  {
+   "repo": "mikro-orm/nestjs",
+   "stars": 296,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 11"
+  },
+  {
+   "repo": "anilahir/nestjs-authentication-and-authorization",
+   "stars": 290,
+   "why": "not a project (\"boilerplate\")"
+  },
+  {
+   "repo": "kpfromer/nestjs-typegoose",
+   "stars": 287,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 11"
+  },
+  {
+   "repo": "nestjs/sequelize",
+   "stars": 267,
+   "why": "the technology's own organisation"
+  },
+  {
+   "repo": "insightsengineering/teal",
+   "stars": 263,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 11"
+  },
+  {
+   "repo": "toss/nestjs-aop",
+   "stars": 256,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 11"
+  },
+  {
+   "repo": "iamolegga/nestjs-session",
+   "stars": 251,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 11"
+  },
+  {
+   "repo": "nestjs/event-emitter",
+   "stars": 251,
+   "why": "the technology's own organisation"
+  },
+  {
+   "repo": "nestjs/axios",
+   "stars": 246,
+   "why": "the technology's own organisation"
+  },
+  {
+   "repo": "xizon/fullstack-nextjs-app-template",
+   "stars": 238,
+   "why": "not a project (\"template\")"
+  },
+  {
+   "repo": "Nikaple/nest-typed-config",
+   "stars": 227,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 11"
+  },
+  {
+   "repo": "iamolegga/nestjs-roles",
+   "stars": 221,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 11"
+  },
+  {
+   "repo": "ZenSoftware/zen",
+   "stars": 219,
+   "why": "not a project (\"Starter\")"
+  },
+  {
+   "repo": "afteracademy/wimm-apis",
+   "stars": 218,
+   "why": "not a project (\"Learn\")"
+  },
+  {
+   "repo": "vrn-deco/cli",
+   "stars": 211,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 11"
+  },
+  {
+   "repo": "lifefloating/nestjs-project-template",
+   "stars": 201,
+   "why": "template repository"
+  },
+  {
+   "repo": "kellyiscute/nestjs-llm-tools",
+   "stars": 195,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 11"
+  },
+  {
+   "repo": "potmat/homebridge-google-nest-sdm",
+   "stars": 191,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 11"
+  },
+  {
+   "repo": "Rocketseat/backend-template",
+   "stars": 181,
+   "why": "template repository"
+  },
+  {
+   "repo": "kepelrs/nestjs-prisma-crud",
+   "stars": 166,
+   "why": "not a project (\"scaffold\")"
+  },
+  {
+   "repo": "ZYSzys/vue-canvas-nest",
+   "stars": 165,
+   "why": "no package.json declaring @nestjs/core or @nestjs/common at major 11"
+  },
+  {
+   "repo": "proyecto26/MyAPI",
+   "stars": 163,
+   "why": "template repository"
+  },
+  {
+   "repo": "msanvarov/nest-rest-typeorm-boilerplate",
+   "stars": 153,
+   "why": "template repository"
+  },
+  {
+   "repo": "piotr-jura-udemy/master-nest-js",
+   "stars": 153,
+   "why": "not a project (\"course\")"
+  },
+  {
+   "repo": "nestjs/azure-func-http",
+   "stars": 152,
+   "why": "the technology's own organisation"
+  }
+ ],
+ "repos": [
+  {
+   "repo": "BenLorantfy/nestjs-zod",
+   "commit": "a7157f06f285c0a2b9008f716c3e72b52d35c189",
+   "stars": 1121,
+   "manifest": "packages/nestjs-zod/package.json",
+   "declares": "@nestjs/core@^11.1.5"
+  },
+  {
+   "repo": "eicrud/eicrud",
+   "commit": "68dafce500a85227b996d8fcab466d7a0c88809e",
+   "stars": 808,
+   "manifest": "core/package.json",
+   "declares": "@nestjs/core@^11.1.6"
+  },
+  {
+   "repo": "pragmaticivan/nestjs-otel",
+   "commit": "286dc2e975cf27b3682a6ac2686096165b53374c",
+   "stars": 799,
+   "manifest": "package.json",
+   "declares": "@nestjs/core@^11.1.9"
+  },
+  {
+   "repo": "nksmnf/nestjs-telegraf",
+   "commit": "6eb2b25345ae9c681df531cef0ff997b8dc44402",
+   "stars": 628,
+   "manifest": "package.json",
+   "declares": "@nestjs/core@^11.1.0"
+  },
+  {
+   "repo": "lupu60/nestjs-toolbox",
+   "commit": "c4e76836b3d8ff3ee6f165edc8796866b86d8145",
+   "stars": 406,
+   "manifest": "show_case/package.json",
+   "declares": "@nestjs/core@^11.1.18"
+  },
+  {
+   "repo": "jmcdo29/ogma",
+   "commit": "8f1fd669f8047b6aecdc62285a05f02d4ebf79c8",
+   "stars": 306,
+   "manifest": "package.json",
+   "declares": "@nestjs/core@^11.0.11"
+  },
+  {
+   "repo": "flamewow/nestjs-asyncapi",
+   "commit": "5c140a8e2a3c6219c1d745571b97fa2d1f9a1f0b",
+   "stars": 235,
+   "manifest": "package.json",
+   "declares": "@nestjs/core@^11.1.19"
+  },
+  {
+   "repo": "woowabros/nestjs-library-crud",
+   "commit": "b0f6621d216350dd0fcbd5dbe53217dec015d9b5",
+   "stars": 227,
+   "manifest": "package.json",
+   "declares": "@nestjs/core@^11.0.11"
+  },
+  {
+   "repo": "AlexanderC/nestjs-mtenant",
+   "commit": "0b1d05d5aca8e89e5d286473df4ca2b486b3ec5b",
+   "stars": 152,
+   "manifest": "package.json",
+   "declares": "@nestjs/core@^11.0.0"
+  },
+  {
+   "repo": "hardyscc/nestjs-dynamoose",
+   "commit": "f75cebb0cd6f8730189bb005ad11f4bd1bf131c8",
+   "stars": 149,
+   "manifest": "package.json",
+   "declares": "@nestjs/core@11.2.7"
+  }
+ ],
+ "counts": {}
+}

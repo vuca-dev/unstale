@@ -1,0 +1,12 @@
+{
+  "name": "@unstale/cli-darwin-arm64",
+  "version": "0.1.0",
+  "description": "The unstale CLI binary for macOS on Apple silicon. Install the `unstale` package instead.",
+  "license": "UNLICENSED",
+  "os": ["darwin"],
+  "cpu": ["arm64"],
+  "files": [
+    "bin/unstale"
+  ],
+  "preferUnplugged": true
+}

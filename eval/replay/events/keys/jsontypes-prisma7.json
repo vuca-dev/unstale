@@ -1,0 +1,236 @@
+{
+ "event": "jsontypes-prisma7",
+ "info": {
+  "slot": "arthurfiorette__prisma-json-types-generator",
+  "tech": "prisma",
+  "package": "prisma",
+  "old": "6.17.1",
+  "new": "7.0.0",
+  "upgrade": "be8491b096a6358d5285b729cb6a9a2f174d5e7a",
+  "event": "jsontypes-prisma7",
+  "repo": "/private/tmp/claude-501/-Users-jason-Documents/3f08dd87-99a0-42d0-a4e5-59b22f98708b/scratchpad/w1/replay/full/arthurfiorette__prisma-json-types-generator",
+  "parent": "9dc2fa93d196f2bada70e89b4c715fe96f5a89cd",
+  "date": "2025-11-23T03:19:47Z",
+  "until": "2025-12-18T15:09:42Z",
+  "end": "cad46d2e11477665fe7812db2e94bb0918c781de",
+  "name": "Prisma",
+  "dir": "/private/tmp/claude-501/-Users-jason-Documents/3f08dd87-99a0-42d0-a4e5-59b22f98708b/scratchpad/w1/replay/jsontypes-prisma7",
+  "cdir": "/private/tmp/claude-501/-Users-jason-Documents/3f08dd87-99a0-42d0-a4e5-59b22f98708b/scratchpad/w1/replay/jsontypes-prisma7"
+ },
+ "items": [
+  {
+   "id": "K1",
+   "commit": "be8491b",
+   "files": [
+    ".github/workflows/publish.yml"
+   ],
+   "change": "Added manual beta/latest publish-tag selection and passed the selected tag to npm publish.",
+   "responds_to": "Publishing the Prisma 7-compatible package as a beta release.",
+   "required": false,
+   "required_rule": "release process (beta publish tag)",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K2",
+   "commit": "be8491b",
+   "files": [
+    "README.md"
+   ],
+   "change": "Changed the documented client generator provider from prisma-client-js to prisma-client.",
+   "responds_to": "Prisma 7's replacement of the prisma-client-js generator.",
+   "required": false,
+   "required_rule": "docs",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K3",
+   "commit": "be8491b",
+   "files": [
+    "README.md"
+   ],
+   "change": "Added a version-compatibility section stating that package 4.x targets Prisma 7 and package 3.x and earlier target Prisma 6.",
+   "responds_to": "The Prisma 7 peer-dependency and generator transition.",
+   "required": false,
+   "required_rule": "docs",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K4",
+   "commit": "4318fbf",
+   "files": [
+    "README.md"
+   ],
+   "change": "Documented installing the beta package together with Prisma 7 and added a Prisma 7 support notice.",
+   "responds_to": "Prisma 7 support being released through the beta package.",
+   "required": false,
+   "required_rule": "docs",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K5",
+   "commit": "be8491b",
+   "files": [
+    "test/schemas/any.prisma",
+    "test/schemas/array.prisma",
+    "test/schemas/cockroach.prisma",
+    "test/schemas/literal.prisma",
+    "test/schemas/mongo.prisma",
+    "test/schemas/mssql.prisma",
+    "test/schemas/mysql.prisma",
+    "test/schemas/normal.prisma",
+    "test/schemas/skip.prisma",
+    "test/schemas/sqlite.prisma",
+    "test/schemas/string.prisma",
+    "test/schemas/unknown.prisma",
+    "test/schemas/use-type.prisma"
+   ],
+   "change": "Changed the test client generator provider from prisma-client-js to prisma-client.",
+   "responds_to": "Prisma 7's replacement of the prisma-client-js generator.",
+   "required": false,
+   "required_rule": "S: prisma-client-js is deprecated but still available in v7; switching test schemas is a choice",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K6",
+   "commit": "be8491b",
+   "files": [
+    "test/schemas/any.prisma",
+    "test/schemas/array.prisma",
+    "test/schemas/cockroach.prisma",
+    "test/schemas/literal.prisma",
+    "test/schemas/mongo.prisma",
+    "test/schemas/mssql.prisma",
+    "test/schemas/mysql.prisma",
+    "test/schemas/normal-prisma-client.prisma",
+    "test/schemas/normal.prisma",
+    "test/schemas/skip.prisma",
+    "test/schemas/sqlite.prisma",
+    "test/schemas/string.prisma",
+    "test/schemas/unknown.prisma",
+    "test/schemas/use-type.prisma"
+   ],
+   "change": "Removed empty datasource url settings from the test schemas.",
+   "responds_to": "Prisma 7's datasource configuration change that no longer accepts the schema url setting in these test configurations.",
+   "required": true,
+   "required_rule": "S: datasource url is no longer accepted in schema.prisma in v7",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K7",
+   "commit": "be8491b",
+   "files": [
+    "test/types/any.test-d.ts",
+    "test/types/array.test-d.ts",
+    "test/types/cockroach.test-d.ts",
+    "test/types/literal.test-d.ts",
+    "test/types/mongo.test-d.ts",
+    "test/types/mssql.test-d.ts",
+    "test/types/mysql.test-d.ts",
+    "test/types/normal.test-d.ts",
+    "test/types/skip.test-d.ts",
+    "test/types/sqlite.test-d.ts",
+    "test/types/string.test-d.ts",
+    "test/types/unknown.test-d.ts",
+    "test/types/use-type.test-d.ts"
+   ],
+   "change": "Updated generated-client test imports from target/index to target/client, and moved several generated input-type imports to target/pjtg or model files.",
+   "responds_to": "Prisma 7's new prisma-client output layout and split generated declaration files.",
+   "required": false,
+   "required_rule": "follows the optional generator switch in K5",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K8",
+   "commit": "f4e732d",
+   "files": [
+    "src/helpers/find-signature.ts",
+    "test/types/string.test-d.ts"
+   ],
+   "change": "Added Prisma-prefixed StringFieldUpdateOperationsInput and NullableStringFieldUpdateOperationsInput signatures to the transformation logic and added UpdateInput coverage.",
+   "responds_to": "Prisma 7 qualifying update-operation types with the Prisma. namespace.",
+   "required": true,
+   "required_rule": "D: the generator's signature matching missed v7's Prisma.-qualified generated types (type tests fail)",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K9",
+   "commit": "352908e",
+   "files": [
+    "src/helpers/find-signature.ts",
+    "test/schemas/number.prisma",
+    "test/types/number.test-d.ts"
+   ],
+   "change": "Added transformation support and tests for Int and Float field annotations, including nullable fields, scalar filters, update operations, and numeric arrays.",
+   "responds_to": "Prisma 7 generated numeric field, filter, and update-input signatures.",
+   "required": true,
+   "required_rule": "D: same cause as K8, numeric signatures under v7",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K10",
+   "commit": "f7c37d7",
+   "files": [
+    "src/helpers/find-signature.ts",
+    "test/schemas/string.prisma",
+    "test/types/string.test-d.ts"
+   ],
+   "change": "Added handling and tests for Prisma-prefixed StringNullableListFilter signatures and String[] model, create-input, and update-input types.",
+   "responds_to": "Prisma 7 qualifying generated list types with the Prisma. namespace.",
+   "required": true,
+   "required_rule": "D: same cause as K8, list filters under v7",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K11",
+   "commit": "a3bd1d1",
+   "files": [
+    "src/helpers/find-signature.ts"
+   ],
+   "change": "Normalized signatures by stripping a leading Prisma. namespace and runtime. qualifiers before matching, replacing the duplicated qualified and unqualified cases.",
+   "responds_to": "Prisma 7 generated declarations introducing Prisma. and runtime. qualified type names.",
+   "required": true,
+   "required_rule": "D: same cause as K8, generalised normalisation of v7 qualifiers",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K13",
+   "commit": "9e20699",
+   "files": [
+    "src/helpers/find-signature.ts",
+    "test/schemas/extensions.prisma",
+    "test/types/extensions.test-d.ts"
+   ],
+   "change": "Preserved the Prisma. namespace when generating NullableJsonNullValueInput unions and added extension-client coverage.",
+   "responds_to": "Prisma 7's Prisma-prefixed NullableJsonNullValueInput type.",
+   "required": true,
+   "required_rule": "D: v7 Prisma.-qualified NullableJsonNullValueInput broke generated unions",
+   "reviewed": "kept"
+  }
+ ],
+ "dropped": [
+  {
+   "id": "K12",
+   "commit": "61fe502",
+   "files": [
+    "src/helpers/regex.ts",
+    "test/schemas/normal.prisma",
+    "test/types/normal.test-d.ts"
+   ],
+   "change": "Generated capitalized aggregate and groupBy output-type candidates while preserving original model casing for input types, and added lowercase-model groupBy tests.",
+   "responds_to": "Prisma 7 capitalizing output type names for lowercase Prisma model names.",
+   "drop_reason": "PR #604 describes a lowercase-model groupBy bug with no link to Prisma 7"
+  }
+ ],
+ "draft": {
+  "model": "gpt-5.6-luna (codex exec, harness KEY prompt)",
+  "n_items": 13,
+  "usage": {
+   "input_tokens": 187308,
+   "cached_input_tokens": 151552,
+   "cache_write_input_tokens": 0,
+   "output_tokens": 4941,
+   "reasoning_output_tokens": 1819
+  },
+  "wall_s": 44.2
+ }
+}

@@ -1,0 +1,268 @@
+[
+ {
+  "event": "workout-next16",
+  "cli": 79,
+  "harness": 176,
+  "harness_obligations": 78,
+  "both": 78,
+  "only_cli": [
+   "next-images-localpatterns-localpatterns"
+  ],
+  "only_harness_obligation": [],
+  "first16_overlap": 11,
+  "first16_overlap_obligations": 11,
+  "identical_order_on_common": false,
+  "why_only_cli": {
+   "next-images-localpatterns-localpatterns": "harness release 16.0.0 (in window), CLI release 16.0.0 installed 15.2.6"
+  },
+  "why_only_harness": {}
+ },
+ {
+  "event": "invoicerr-prisma7",
+  "cli": 78,
+  "harness": 106,
+  "harness_obligations": 77,
+  "both": 77,
+  "only_cli": [
+   "prisma-prisma-client"
+  ],
+  "only_harness_obligation": [],
+  "first16_overlap": 9,
+  "first16_overlap_obligations": 9,
+  "identical_order_on_common": false,
+  "why_only_cli": {
+   "prisma-prisma-client": "harness release 6.19.0 (in window), CLI release 6.19.0 installed 6.15.0"
+  },
+  "why_only_harness": {}
+ },
+ {
+  "event": "invoicerr-nest12",
+  "cli": 21,
+  "harness": 61,
+  "harness_obligations": 21,
+  "both": 21,
+  "only_cli": [],
+  "only_harness_obligation": [],
+  "first16_overlap": 14,
+  "first16_overlap_obligations": 14,
+  "identical_order_on_common": false,
+  "why_only_cli": {},
+  "why_only_harness": {}
+ },
+ {
+  "event": "chmonitor-next16",
+  "cli": 68,
+  "harness": 117,
+  "harness_obligations": 67,
+  "both": 67,
+  "only_cli": [
+   "next-images-localpatterns-localpatterns"
+  ],
+  "only_harness_obligation": [],
+  "first16_overlap": 8,
+  "first16_overlap_obligations": 8,
+  "identical_order_on_common": false,
+  "why_only_cli": {
+   "next-images-localpatterns-localpatterns": "harness release 16.0.0 (in window), CLI release 16.0.0 installed 15.3.1"
+  },
+  "why_only_harness": {}
+ },
+ {
+  "event": "aksel-next16",
+  "cli": 68,
+  "harness": 130,
+  "harness_obligations": 67,
+  "both": 67,
+  "only_cli": [
+   "next-images-localpatterns-localpatterns"
+  ],
+  "only_harness_obligation": [],
+  "first16_overlap": 8,
+  "first16_overlap_obligations": 8,
+  "identical_order_on_common": false,
+  "why_only_cli": {
+   "next-images-localpatterns-localpatterns": "harness release 16.0.0 (in window), CLI release 16.0.0 installed 15.5.9"
+  },
+  "why_only_harness": {}
+ },
+ {
+  "event": "payloadplugins-next16",
+  "cli": 81,
+  "harness": 186,
+  "harness_obligations": 80,
+  "both": 80,
+  "only_cli": [
+   "next-images-localpatterns-localpatterns"
+  ],
+  "only_harness_obligation": [],
+  "first16_overlap": 8,
+  "first16_overlap_obligations": 8,
+  "identical_order_on_common": false,
+  "why_only_cli": {
+   "next-images-localpatterns-localpatterns": "harness release 16.0.0 (in window), CLI release 16.0.0 installed 15.0.0"
+  },
+  "why_only_harness": {}
+ },
+ {
+  "event": "coh2stats-next16",
+  "cli": 80,
+  "harness": 185,
+  "harness_obligations": 79,
+  "both": 79,
+  "only_cli": [
+   "next-images-localpatterns-localpatterns"
+  ],
+  "only_harness_obligation": [],
+  "first16_overlap": 10,
+  "first16_overlap_obligations": 10,
+  "identical_order_on_common": false,
+  "why_only_cli": {
+   "next-images-localpatterns-localpatterns": "harness release 16.0.0 (in window), CLI release 16.0.0 installed 15.5.15"
+  },
+  "why_only_harness": {}
+ },
+ {
+  "event": "sigle-prisma7",
+  "cli": 78,
+  "harness": 113,
+  "harness_obligations": 75,
+  "both": 75,
+  "only_cli": [
+   "prisma-output",
+   "prisma-prisma-client",
+   "prisma-prisma-config-ts-2"
+  ],
+  "only_harness_obligation": [],
+  "first16_overlap": 6,
+  "first16_overlap_obligations": 6,
+  "identical_order_on_common": false,
+  "why_only_cli": {
+   "prisma-output": "harness release 7.0.0 (in window), CLI release 7.0.0 installed 6.14.0",
+   "prisma-prisma-client": "harness release 6.19.0 (in window), CLI release 6.19.0 installed 6.14.0",
+   "prisma-prisma-config-ts-2": "harness release 7.0.0 (in window), CLI release 7.0.0 installed 6.14.0"
+  },
+  "why_only_harness": {}
+ },
+ {
+  "event": "cedar-prisma7",
+  "cli": 76,
+  "harness": 103,
+  "harness_obligations": 74,
+  "both": 74,
+  "only_cli": [
+   "prisma-output",
+   "prisma-prisma-config-ts-2"
+  ],
+  "only_harness_obligation": [],
+  "first16_overlap": 9,
+  "first16_overlap_obligations": 9,
+  "identical_order_on_common": false,
+  "why_only_cli": {
+   "prisma-output": "harness release 7.0.0 (in window), CLI release 7.0.0 installed 6.19.2",
+   "prisma-prisma-config-ts-2": "harness release 7.0.0 (in window), CLI release 7.0.0 installed 6.19.2"
+  },
+  "why_only_harness": {}
+ },
+ {
+  "event": "jsontypes-prisma7",
+  "cli": 78,
+  "harness": 96,
+  "harness_obligations": 76,
+  "both": 76,
+  "only_cli": [
+   "prisma-output",
+   "prisma-prisma-client"
+  ],
+  "only_harness_obligation": [],
+  "first16_overlap": 10,
+  "first16_overlap_obligations": 10,
+  "identical_order_on_common": false,
+  "why_only_cli": {
+   "prisma-output": "harness release 7.0.0 (in window), CLI release 7.0.0 installed 6.14.0",
+   "prisma-prisma-client": "harness release 6.19.0 (in window), CLI release 6.19.0 installed 6.14.0"
+  },
+  "why_only_harness": {}
+ },
+ {
+  "event": "zodgen-prisma7",
+  "cli": 76,
+  "harness": 84,
+  "harness_obligations": 75,
+  "both": 75,
+  "only_cli": [
+   "prisma-output"
+  ],
+  "only_harness_obligation": [],
+  "first16_overlap": 10,
+  "first16_overlap_obligations": 10,
+  "identical_order_on_common": false,
+  "why_only_cli": {
+   "prisma-output": "harness release 7.0.0 (in window), CLI release 7.0.0 installed 6.19.0"
+  },
+  "why_only_harness": {}
+ },
+ {
+  "event": "temporal-nest12",
+  "cli": 25,
+  "harness": 68,
+  "harness_obligations": 22,
+  "both": 22,
+  "only_cli": [
+   "nestjs-get",
+   "nestjs-parseenumpipe",
+   "nestjs-routeroptions"
+  ],
+  "only_harness_obligation": [],
+  "first16_overlap": 12,
+  "first16_overlap_obligations": 12,
+  "identical_order_on_common": false,
+  "why_only_cli": {
+   "nestjs-get": "harness release 11.1.9 (outside window), CLI release 11.1.9 installed 9.0.0",
+   "nestjs-parseenumpipe": "harness release 11.2.0 (outside window), CLI release 11.2.0 installed 9.0.0",
+   "nestjs-routeroptions": "harness release 11.1.8 (outside window), CLI release 11.1.8 installed 9.0.0"
+  },
+  "why_only_harness": {}
+ },
+ {
+  "event": "coros-nest12",
+  "cli": 17,
+  "harness": 55,
+  "harness_obligations": 17,
+  "both": 17,
+  "only_cli": [],
+  "only_harness_obligation": [],
+  "first16_overlap": 15,
+  "first16_overlap_obligations": 15,
+  "identical_order_on_common": false,
+  "why_only_cli": {},
+  "why_only_harness": {}
+ },
+ {
+  "event": "satisfactory-nest12",
+  "cli": 20,
+  "harness": 59,
+  "harness_obligations": 20,
+  "both": 20,
+  "only_cli": [],
+  "only_harness_obligation": [],
+  "first16_overlap": 15,
+  "first16_overlap_obligations": 15,
+  "identical_order_on_common": false,
+  "why_only_cli": {},
+  "why_only_harness": {}
+ },
+ {
+  "event": "eudiplo-nest12",
+  "cli": 17,
+  "harness": 52,
+  "harness_obligations": 17,
+  "both": 17,
+  "only_cli": [],
+  "only_harness_obligation": [],
+  "first16_overlap": 15,
+  "first16_overlap_obligations": 15,
+  "identical_order_on_common": false,
+  "why_only_cli": {},
+  "why_only_harness": {}
+ }
+]

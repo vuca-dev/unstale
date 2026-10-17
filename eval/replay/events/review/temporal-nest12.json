@@ -1,0 +1,82 @@
+{
+ "K1": [
+  "keep",
+  true,
+  "D: a library's peer range without ^12 makes installs next to Nest 12 fail with a peer conflict; Terminus 12 range likewise"
+ ],
+ "K2": [
+  "keep",
+  true,
+  "S: Terminus 12 removes HealthIndicator and HealthCheckError (guide: Terminus module)"
+ ],
+ "K3": [
+  "keep",
+  true,
+  "S: tests of the removed Terminus API; knock-on of K2"
+ ],
+ "K4": [
+  "keep",
+  true,
+  "S: guide warns Jest cannot load the ESM-only v12 packages without Node 24.9+ (here via --experimental-vm-modules)"
+ ],
+ "K5": [
+  "keep",
+  true,
+  "S: knock-on of the Jest/Node requirement in CI"
+ ],
+ "K6": [
+  "keep",
+  false,
+  "docs/changelog"
+ ],
+ "K7": [
+  "keep",
+  false,
+  "docs/changelog"
+ ],
+ "K8": [
+  "keep",
+  false,
+  "docs/changelog"
+ ],
+ "K9": [
+  "keep",
+  false,
+  "docs/changelog"
+ ],
+ "K10": [
+  "keep",
+  false,
+  "docs/changelog"
+ ],
+ "K11": [
+  "keep",
+  false,
+  "docs/changelog"
+ ],
+ "K12": [
+  "keep",
+  false,
+  "docs/changelog"
+ ],
+ "K13": [
+  "keep",
+  false,
+  "docs/changelog"
+ ],
+ "K14": [
+  "keep",
+  false,
+  "docs/changelog"
+ ],
+ "K15": [
+  "keep",
+  false,
+  "docs/changelog"
+ ],
+ "K16": [
+  "keep",
+  false,
+  "docs/changelog"
+ ]
+}

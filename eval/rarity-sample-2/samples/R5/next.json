@@ -1,0 +1,327 @@
+{
+ "technology": "next",
+ "rule": "GitHub code search for the technology's first package name quoted in package.json files (pages 1-10); keep files named exactly package.json that declare one of the technology's packages in dependencies or devDependencies at the previous major for the first 3 and the current major for the rest; drop forks, archived and template repositories, repositories whose name, description or topics mark a tutorial, course, example, demo, starter, boilerplate or clone, the technology's own organisation, evaluation repositories and their forks or upstreams, and repositories over 200 MB; one repository per owner; rank by stars (then name); take the first 5.",
+ "selection": {
+  "pool": "code-search",
+  "major": "mix",
+  "n": 5
+ },
+ "query": "\"next\" filename:package.json extension:json",
+ "major": "16",
+ "majors": [
+  "15",
+  "16"
+ ],
+ "drawn": "2026-10-15T17:00:00Z",
+ "candidates": 967,
+ "passed_over": [
+  {
+   "repo": "ComposioHQ/composio",
+   "stars": 30563,
+   "why": "over 200 MB (drawing major 15)"
+  },
+  {
+   "repo": "PasteBar/PasteBarApp",
+   "stars": 2175,
+   "why": "over 200 MB (drawing major 15)"
+  },
+  {
+   "repo": "Tencent/CodeAnalysis",
+   "stars": 1850,
+   "why": "over 200 MB (drawing major 15)"
+  },
+  {
+   "repo": "VishwaGauravIn/github-profile-readme-maker",
+   "stars": 1013,
+   "why": "not a project (\"template\") (drawing major 15)"
+  },
+  {
+   "repo": "Secretmapper/combustion",
+   "stars": 468,
+   "why": "no package.json declaring next at major 15 (drawing major 15)"
+  },
+  {
+   "repo": "causalens/dara",
+   "stars": 408,
+   "why": "no package.json declaring next at major 15 (drawing major 15)"
+  },
+  {
+   "repo": "xiguaxigua/ffmpeg-online",
+   "stars": 326,
+   "why": "no package.json declaring next at major 15 (drawing major 15)"
+  },
+  {
+   "repo": "webgptorg/promptbook",
+   "stars": 170,
+   "why": "over 200 MB (drawing major 15)"
+  },
+  {
+   "repo": "Ezer015/pickacg",
+   "stars": 163,
+   "why": "no package.json declaring next at major 15 (drawing major 15)"
+  },
+  {
+   "repo": "epam/cloud-pipeline",
+   "stars": 162,
+   "why": "over 200 MB (drawing major 15)"
+  },
+  {
+   "repo": "NextAgentX/trae-workbuddy-switch",
+   "stars": 102,
+   "why": "no package.json declaring next at major 15 (drawing major 15)"
+  },
+  {
+   "repo": "microfox-ai/microfox",
+   "stars": 93,
+   "why": "no package.json declaring next at major 15 (drawing major 15)"
+  },
+  {
+   "repo": "zevarc/FastAir",
+   "stars": 88,
+   "why": "no package.json declaring next at major 15 (drawing major 15)"
+  },
+  {
+   "repo": "databricks-solutions/caspers",
+   "stars": 70,
+   "why": "not a project (\"demo\") (drawing major 15)"
+  },
+  {
+   "repo": "brookslybrand/next-nested-layouts",
+   "stars": 47,
+   "why": "no package.json declaring next at major 15 (drawing major 15)"
+  },
+  {
+   "repo": "rvanbekkum/vsc-xliff-sync",
+   "stars": 37,
+   "why": "no package.json declaring next at major 15 (drawing major 15)"
+  },
+  {
+   "repo": "namanbarkiya/niya-saas-template",
+   "stars": 33,
+   "why": "template repository (drawing major 15)"
+  },
+  {
+   "repo": "gamzesirin/Commit-Message-Helper",
+   "stars": 32,
+   "why": "no package.json declaring next at major 15 (drawing major 15)"
+  },
+  {
+   "repo": "basedosdados/website",
+   "stars": 30,
+   "why": "over 200 MB (drawing major 15)"
+  },
+  {
+   "repo": "PacktPublishing/TypeScript-5-Design-Patterns-and-Best-Practices",
+   "stars": 25,
+   "why": "no package.json declaring next at major 15 (drawing major 15)"
+  },
+  {
+   "repo": "videosdk-live/videosdk-rtc-react-prebuilt-ui",
+   "stars": 25,
+   "why": "no package.json declaring next at major 15 (drawing major 15)"
+  },
+  {
+   "repo": "Strumenta/tylasu",
+   "stars": 23,
+   "why": "no package.json declaring next at major 15 (drawing major 15)"
+  },
+  {
+   "repo": "sanyaade-iot/next-site",
+   "stars": 22,
+   "why": "no package.json declaring next at major 15 (drawing major 15)"
+  },
+  {
+   "repo": "thiago-salvador/puxa-ficha",
+   "stars": 22,
+   "why": "no package.json declaring next at major 15 (drawing major 15)"
+  },
+  {
+   "repo": "Vzlomhik2005/Yandex-Music-Mod",
+   "stars": 22,
+   "why": "no package.json declaring next at major 15 (drawing major 15)"
+  },
+  {
+   "repo": "Soumojitshome2023/nextjs-videocall-webapp",
+   "stars": 21,
+   "why": "no package.json declaring next at major 15 (drawing major 15)"
+  },
+  {
+   "repo": "Duzafizzl/substrate-ai",
+   "stars": 19,
+   "why": "no package.json declaring next at major 15 (drawing major 15)"
+  },
+  {
+   "repo": "industry-standard-good-practice/lurker-for-reddit",
+   "stars": 18,
+   "why": "no package.json declaring next at major 15 (drawing major 15)"
+  },
+  {
+   "repo": "0x088/BAYCV2",
+   "stars": 17,
+   "why": "no package.json declaring next at major 15 (drawing major 15)"
+  },
+  {
+   "repo": "Lemoncode/bootcamp-backend",
+   "stars": 17,
+   "why": "not a project (\"bootcamp\") (drawing major 15)"
+  },
+  {
+   "repo": "atapas/quotes",
+   "stars": 16,
+   "why": "no package.json declaring next at major 15 (drawing major 15)"
+  },
+  {
+   "repo": "ComposioHQ/composio",
+   "stars": 30563,
+   "why": "over 200 MB (drawing major 16)"
+  },
+  {
+   "repo": "PasteBar/PasteBarApp",
+   "stars": 2175,
+   "why": "over 200 MB (drawing major 16)"
+  },
+  {
+   "repo": "Tencent/CodeAnalysis",
+   "stars": 1850,
+   "why": "over 200 MB (drawing major 16)"
+  },
+  {
+   "repo": "VishwaGauravIn/github-profile-readme-maker",
+   "stars": 1013,
+   "why": "not a project (\"template\") (drawing major 16)"
+  },
+  {
+   "repo": "Secretmapper/combustion",
+   "stars": 468,
+   "why": "no package.json declaring next at major 16 (drawing major 16)"
+  },
+  {
+   "repo": "causalens/dara",
+   "stars": 408,
+   "why": "no package.json declaring next at major 16 (drawing major 16)"
+  },
+  {
+   "repo": "xiguaxigua/ffmpeg-online",
+   "stars": 326,
+   "why": "no package.json declaring next at major 16 (drawing major 16)"
+  },
+  {
+   "repo": "webgptorg/promptbook",
+   "stars": 170,
+   "why": "over 200 MB (drawing major 16)"
+  },
+  {
+   "repo": "epam/cloud-pipeline",
+   "stars": 162,
+   "why": "over 200 MB (drawing major 16)"
+  },
+  {
+   "repo": "NextAgentX/trae-workbuddy-switch",
+   "stars": 102,
+   "why": "no package.json declaring next at major 16 (drawing major 16)"
+  },
+  {
+   "repo": "microfox-ai/microfox",
+   "stars": 93,
+   "why": "no package.json declaring next at major 16 (drawing major 16)"
+  },
+  {
+   "repo": "zevarc/FastAir",
+   "stars": 88,
+   "why": "no package.json declaring next at major 16 (drawing major 16)"
+  },
+  {
+   "repo": "databricks-solutions/caspers",
+   "stars": 70,
+   "why": "not a project (\"demo\") (drawing major 16)"
+  },
+  {
+   "repo": "brookslybrand/next-nested-layouts",
+   "stars": 47,
+   "why": "no package.json declaring next at major 16 (drawing major 16)"
+  },
+  {
+   "repo": "rvanbekkum/vsc-xliff-sync",
+   "stars": 37,
+   "why": "no package.json declaring next at major 16 (drawing major 16)"
+  },
+  {
+   "repo": "Vital-Proxies/proxy-tester",
+   "stars": 37,
+   "why": "a second repository of one owner (drawing major 16)"
+  },
+  {
+   "repo": "namanbarkiya/niya-saas-template",
+   "stars": 33,
+   "why": "template repository (drawing major 16)"
+  },
+  {
+   "repo": "gamzesirin/Commit-Message-Helper",
+   "stars": 32,
+   "why": "no package.json declaring next at major 16 (drawing major 16)"
+  },
+  {
+   "repo": "basedosdados/website",
+   "stars": 30,
+   "why": "over 200 MB (drawing major 16)"
+  },
+  {
+   "repo": "PacktPublishing/TypeScript-5-Design-Patterns-and-Best-Practices",
+   "stars": 25,
+   "why": "no package.json declaring next at major 16 (drawing major 16)"
+  },
+  {
+   "repo": "videosdk-live/videosdk-rtc-react-prebuilt-ui",
+   "stars": 25,
+   "why": "no package.json declaring next at major 16 (drawing major 16)"
+  },
+  {
+   "repo": "Strumenta/tylasu",
+   "stars": 23,
+   "why": "no package.json declaring next at major 16 (drawing major 16)"
+  },
+  {
+   "repo": "sanyaade-iot/next-site",
+   "stars": 22,
+   "why": "no package.json declaring next at major 16 (drawing major 16)"
+  }
+ ],
+ "repos": [
+  {
+   "repo": "Vital-Proxies/proxy-tester",
+   "commit": "d46eae3c02025eb8632d89296e2bded900783f59",
+   "stars": 37,
+   "manifest": "package.json",
+   "declares": "next@15.4.1"
+  },
+  {
+   "repo": "AmazonAppDev/ring-api-helloworld",
+   "commit": "76100aa2892b2f4ece7879701bd9934d3f1e7743",
+   "stars": 18,
+   "manifest": "package.json",
+   "declares": "next@15.5.18"
+  },
+  {
+   "repo": "danilo-leal/roles-at",
+   "commit": "3ba0216404d64171fbefe3661e30657aced41108",
+   "stars": 16,
+   "manifest": "package.json",
+   "declares": "next@15.1.5"
+  },
+  {
+   "repo": "Ezer015/pickacg",
+   "commit": "f687db56aa5deff869abc148401e26bd0c8b6de4",
+   "stars": 163,
+   "manifest": "package.json",
+   "declares": "next@16.0.8"
+  },
+  {
+   "repo": "thiago-salvador/puxa-ficha",
+   "commit": "31b29ee6de4e29b992f172af6efc1309715054ba",
+   "stars": 22,
+   "manifest": "package.json",
+   "declares": "next@^16.4.0"
+  }
+ ],
+ "counts": {}
+}

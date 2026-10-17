@@ -1,0 +1,224 @@
+{
+ "seed": "unstale-majors-v1",
+ "window": "2025-10-15",
+ "cap_per_technology": 60000,
+ "notes": [
+  {
+   "note_file": "sveltejs-kit@3.0.0.guide.md",
+   "technology": "@sveltejs/kit",
+   "name": "@sveltejs/kit",
+   "ecosystem": "npm",
+   "kind": "guide",
+   "version": "3.0.0",
+   "date": "2026-10-01",
+   "url": "https://github.com/sveltejs/kit/blob/dd2d9754840d013b882aa45c2019e68b84e6b1af/documentation/docs/60-appendix/35-migrating-to-sveltekit-3.md",
+   "style": "guide_file",
+   "source": {
+    "repo": "sveltejs/kit",
+    "sha": "dd2d9754840d013b882aa45c2019e68b84e6b1af",
+    "path": "documentation/docs/60-appendix/35-migrating-to-sveltekit-3.md"
+   },
+   "chars": 29984,
+   "full_chars": 29984,
+   "cap": 29984,
+   "kept_sections": null,
+   "dropped_sections": [],
+   "chunks": 1,
+   "chunk_chars": [
+    29984
+   ]
+  },
+  {
+   "note_file": "sveltejs-kit@3.0.0.major_notes.md",
+   "technology": "@sveltejs/kit",
+   "name": "@sveltejs/kit",
+   "ecosystem": "npm",
+   "kind": "major_notes",
+   "version": "3.0.0",
+   "date": "2026-10-01",
+   "url": "https://github.com/sveltejs/kit/releases/tag/%40sveltejs/kit%403.0.0",
+   "style": "github_release",
+   "source": {
+    "repo": "sveltejs/kit",
+    "release_id": 401190124,
+    "tag": "@sveltejs/kit@3.0.0"
+   },
+   "chars": 15407,
+   "full_chars": 45631,
+   "cap": 30016,
+   "kept_sections": [
+    "Major Changes",
+    "Minor Changes"
+   ],
+   "dropped_sections": [
+    "Patch Changes"
+   ],
+   "chunks": 1,
+   "chunk_chars": [
+    15407
+   ]
+  },
+  {
+   "note_file": "msw@3.0.0.guide.md",
+   "technology": "msw",
+   "name": "msw",
+   "ecosystem": "npm",
+   "kind": "guide",
+   "version": "3.0.0",
+   "date": "2026-09-28",
+   "url": "https://github.com/mswjs/mswjs.io/blob/c444574f76a1e164cc5675bfe9a73600bf623f55/src/content/docs/migrations/2.x-to-3.x.md",
+   "style": "guide_file",
+   "source": {
+    "repo": "mswjs/mswjs.io",
+    "sha": "c444574f76a1e164cc5675bfe9a73600bf623f55",
+    "path": "src/content/docs/migrations/2.x-to-3.x.md"
+   },
+   "chars": 10476,
+   "full_chars": 10476,
+   "cap": 10476,
+   "kept_sections": null,
+   "dropped_sections": [],
+   "chunks": 1,
+   "chunk_chars": [
+    10476
+   ]
+  },
+  {
+   "note_file": "msw@3.0.0.major_notes.md",
+   "technology": "msw",
+   "name": "msw",
+   "ecosystem": "npm",
+   "kind": "major_notes",
+   "version": "3.0.0",
+   "date": "2026-09-28",
+   "url": "https://github.com/mswjs/msw/releases/tag/v3.0.0",
+   "style": "github_release",
+   "source": {
+    "repo": "mswjs/msw",
+    "release_id": 398391774,
+    "tag": "v3.0.0"
+   },
+   "chars": 3319,
+   "full_chars": 3319,
+   "cap": 3319,
+   "kept_sections": null,
+   "dropped_sections": [],
+   "chunks": 1,
+   "chunk_chars": [
+    3319
+   ]
+  },
+  {
+   "note_file": "transformers@5.0.0.guide.md",
+   "technology": "transformers",
+   "name": "transformers",
+   "ecosystem": "pypi",
+   "kind": "guide",
+   "version": "5.0.0",
+   "date": "2026-01-26",
+   "url": "https://github.com/huggingface/transformers/blob/09281b8d56b08199ce9f397c694f38853cc45278/MIGRATION_GUIDE_V5.md",
+   "style": "guide_file",
+   "source": {
+    "repo": "huggingface/transformers",
+    "sha": "09281b8d56b08199ce9f397c694f38853cc45278",
+    "path": "MIGRATION_GUIDE_V5.md"
+   },
+   "chars": 28059,
+   "full_chars": 44657,
+   "cap": 30000,
+   "kept_sections": [
+    "Library-wide changes with widespread impact",
+    "Tokenization",
+    "Disclaimers for the RC0",
+    "Library-wide changes with lesser impact",
+    "Quantization changes",
+    "Configuration"
+   ],
+   "dropped_sections": [
+    "Processing",
+    "Modeling",
+    "Trainer",
+    "Pipelines",
+    "PushToHubMixin",
+    "CLI",
+    "Environment variables",
+    "Requirements update"
+   ],
+   "chunks": 1,
+   "chunk_chars": [
+    28061
+   ]
+  },
+  {
+   "note_file": "transformers@5.0.0.major_notes.md",
+   "technology": "transformers",
+   "name": "transformers",
+   "ecosystem": "pypi",
+   "kind": "major_notes",
+   "version": "5.0.0",
+   "date": "2026-01-26",
+   "url": "https://github.com/huggingface/transformers/releases/tag/v5.0.0",
+   "style": "github_release",
+   "source": {
+    "repo": "huggingface/transformers",
+    "release_id": 279872120,
+    "tag": "v5.0.0"
+   },
+   "chars": 29986,
+   "full_chars": 103891,
+   "cap": 30000,
+   "kept_sections": [
+    "Transformers v5 release notes",
+    "Highlights",
+    "Significant API changes",
+    "Library-wide changes with lesser impact",
+    "Quantization changes",
+    "Configuration",
+    "Processing",
+    "Modeling",
+    "Trainer",
+    "Pipeline"
+   ],
+   "dropped_sections": [
+    "PushToHubMixin",
+    "CLI",
+    "Environment variables",
+    "Requirements update",
+    "New model additions in v5",
+    "Bugfixes and improvements",
+    "Significant community contributions"
+   ],
+   "chunks": 1,
+   "chunk_chars": [
+    29988
+   ]
+  },
+  {
+   "note_file": "mypy@2.0.0.major_notes.md",
+   "technology": "mypy",
+   "name": "mypy",
+   "ecosystem": "pypi",
+   "kind": "major_notes",
+   "version": "2.0.0",
+   "date": "2026-05-06",
+   "url": "https://github.com/python/mypy/blob/69fb348a25ba77602a2f0bd2084f19ba22f855ee/CHANGELOG.md",
+   "style": "changelog_section",
+   "source": {
+    "repo": "python/mypy",
+    "sha": "69fb348a25ba77602a2f0bd2084f19ba22f855ee",
+    "path": "CHANGELOG.md",
+    "heading": "Mypy 2.0"
+   },
+   "chars": 14923,
+   "full_chars": 14923,
+   "cap": 14923,
+   "kept_sections": null,
+   "dropped_sections": [],
+   "chunks": 1,
+   "chunk_chars": [
+    14923
+   ]
+  }
+ ],
+ "max_chunk": 30000
+}

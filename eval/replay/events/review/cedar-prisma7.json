@@ -1,0 +1,117 @@
+{
+ "K1": [
+  "keep",
+  true,
+  "S: v7 schema loading via prisma.config and explicit generator output"
+ ],
+ "K2": [
+  "keep",
+  true,
+  "S: generated client is no longer at @prisma/client in v7"
+ ],
+ "K3": [
+  "keep",
+  true,
+  "S: v7 generates to a configured output and reads prisma.config"
+ ],
+ "K4": [
+  "keep",
+  true,
+  "S: v7 requires an adapter, so a bare PrismaClient fallback cannot be built"
+ ],
+ "K5": [
+  "keep",
+  true,
+  "S/D: Prisma internals' schema-path API changed in v7"
+ ],
+ "K6": [
+  "keep",
+  true,
+  "S: generated client replaces @prisma/client types"
+ ],
+ "K7": [
+  "keep",
+  true,
+  "S: adapter, prisma.config url and new generator required in v7 (tests)"
+ ],
+ "K8": [
+  "keep",
+  true,
+  "S: url and seeding flags moved/removed in v7 (--skip-seed removed)"
+ ],
+ "K9": [
+  "keep",
+  true,
+  "S: schema url not accepted in v7"
+ ],
+ "K10": [
+  "keep",
+  true,
+  "D: knock-on of the required SQLite driver adapter (native driver in Vite server builds)"
+ ],
+ "K11": [
+  "keep",
+  true,
+  "S: new apps from the templates would fail on v7 without config, adapter and output"
+ ],
+ "K12": [
+  "keep",
+  true,
+  "D: CLI and runtime SQLite paths diverged under prisma.config"
+ ],
+ "K13": [
+  "keep",
+  true,
+  "S: generated client is no longer at @prisma/client in v7"
+ ],
+ "K14": [
+  "keep",
+  false,
+  "docs"
+ ],
+ "K15": [
+  "keep",
+  false,
+  "cleanup of Prisma 6 fallbacks after the move"
+ ],
+ "K16": [
+  "keep",
+  false,
+  "new codemod for Cedar's users; the project itself runs without it"
+ ],
+ "K17": [
+  "keep",
+  false,
+  "codemod extension (new tooling)"
+ ],
+ "K18": [
+  "keep",
+  false,
+  "codemod improvement"
+ ],
+ "K19": [
+  "keep",
+  false,
+  "codemod fix"
+ ],
+ "K20": [
+  "keep",
+  false,
+  "upgrade-script check for the optional codemod"
+ ],
+ "K21": [
+  "keep",
+  true,
+  "S: v7 does not load env files; prisma.config evaluates env vars in test setup and commands"
+ ],
+ "K22": [
+  "keep",
+  true,
+  "S: datasource url moved to prisma.config; live queries read it from the schema/env before"
+ ],
+ "K23": [
+  "keep",
+  true,
+  "S: v7 prisma.config needs env vars loaded before generation"
+ ]
+}

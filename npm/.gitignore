@@ -1,0 +1,3 @@
+# Built artifacts: the release binary copied in by build.sh, and npm pack tarballs.
+cli-*/bin/
+dist/

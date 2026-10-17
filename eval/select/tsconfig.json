@@ -1,0 +1,8 @@
+{
+  "extends": "../../central/tsconfig.json",
+  "compilerOptions": {
+    "typeRoots": ["../../central/node_modules/@types"],
+    "paths": { "vitest": ["../../central/node_modules/vitest/dist/index.d.ts"] }
+  },
+  "include": ["*.ts", "*.mts"]
+}

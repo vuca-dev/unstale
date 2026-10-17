@@ -1,0 +1,118 @@
+{
+ "event": "coros-nest12",
+ "info": {
+  "slot": "xballoy__coros-api",
+  "tech": "nestjs",
+  "package": "nestjs",
+  "old": "11.2.3",
+  "new": "12.0.1",
+  "upgrade": "2f0e89dbff8f973f7e8bfc55a669c982ecb92e41",
+  "event": "coros-nest12",
+  "repo": "/private/tmp/claude-501/-Users-jason-Documents/3f08dd87-99a0-42d0-a4e5-59b22f98708b/scratchpad/w1/replay/full/xballoy__coros-api",
+  "parent": "d63f3fc4024e079b7936858b09ba4e684cb88915",
+  "date": "2026-08-31T15:00:02-04:00",
+  "until": "2026-09-28T11:19:02-04:00",
+  "end": "cc92fa747f91ae6dc189bf71449a8064c520ca71",
+  "name": "NestJS",
+  "dir": "/private/tmp/claude-501/-Users-jason-Documents/3f08dd87-99a0-42d0-a4e5-59b22f98708b/scratchpad/w1/replay/coros-nest12",
+  "cdir": "/private/tmp/claude-501/-Users-jason-Documents/3f08dd87-99a0-42d0-a4e5-59b22f98708b/scratchpad/w1/replay/coros-nest12"
+ },
+ "items": [
+  {
+   "id": "K1",
+   "commit": "2f0e89db",
+   "files": [
+    ".swcrc",
+    "package.json",
+    "tsconfig.json"
+   ],
+   "change": "Configured the project for native ES modules: added an SWC decorator/metadata configuration, set package.json type to module, and enabled NodeNext module resolution, package export resolution, and isolated modules.",
+   "responds_to": "NestJS 12's ESM-compatible build/tooling requirements.",
+   "required": false,
+   "required_rule": "S: moving your own project to ESM is optional in v12 (guide); the PR calls it modernisation",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K2",
+   "commit": "2f0e89db",
+   "files": [
+    "biome.json"
+   ],
+   "change": "Added a Biome correctness rule requiring relative imports to use explicit .js extensions.",
+   "responds_to": "Native ESM import resolution introduced as part of the NestJS 12 migration.",
+   "required": false,
+   "required_rule": "follows the optional ESM move",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K3",
+   "commit": "2f0e89db",
+   "files": [
+    "src/app.module.ts",
+    "src/command-runner/export-activities.command-runner.integration.spec.ts",
+    "src/command-runner/export-activities.command-runner.ts",
+    "src/command-runner/export-training-schedule.command-runner.integration.spec.ts",
+    "src/command-runner/export-training-schedule.command-runner.ts",
+    "src/core/format-distance.spec.ts",
+    "src/core/format-duration.spec.ts",
+    "src/core/ics/build-calendar.spec.ts",
+    "src/core/ics/build-calendar.ts",
+    "src/core/ics/escape-text.spec.ts",
+    "src/core/ics/fold-line.spec.ts",
+    "src/core/parse-date.spec.ts",
+    "src/core/parse-date.ts",
+    "src/core/parse-out-dir.spec.ts",
+    "src/core/parse-out-dir.ts",
+    "src/coros/account/login.request.ts",
+    "src/coros/activity/download-activity-detail.request.ts",
+    "src/coros/activity/query-activities.request.ts",
+    "src/coros/base-request.spec.ts",
+    "src/coros/base-request.ts",
+    "src/coros/coros-api.ts",
+    "src/coros/coros.module.ts",
+    "src/coros/file-type.spec.ts",
+    "src/coros/sport-type.spec.ts",
+    "src/coros/training-schedule/fetch-locale-map.spec.ts",
+    "src/coros/training-schedule/parse-training-start.spec.ts",
+    "src/coros/training-schedule/parse-training-start.ts",
+    "src/coros/training-schedule/query-training-schedule.request.ts",
+    "src/coros/training-schedule/resolve-training-data.spec.ts",
+    "src/coros/training-schedule/resolve-training-data.ts",
+    "src/main.ts",
+    "src/testing/fixtures/query-activities.ts",
+    "src/testing/fixtures/training-schedule.ts",
+    "src/testing/setup.ts"
+   ],
+   "change": "Changed relative source and test imports to use explicit .js extensions.",
+   "responds_to": "NodeNext/native ESM resolution required by the NestJS 12 toolchain configuration.",
+   "required": false,
+   "required_rule": "follows the optional ESM move",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K4",
+   "commit": "2f0e89db",
+   "files": [
+    "pnpm-workspace.yaml"
+   ],
+   "change": "Excluded nest-commander from pnpm's minimum release-age policy.",
+   "responds_to": "Adopting the NestJS 12-compatible nest-commander 3.21.0 dependency during the framework upgrade.",
+   "required": true,
+   "required_rule": "D: the Nest 12-compatible nest-commander release was blocked by the minimum release-age policy, so install failed without the exclusion",
+   "reviewed": "kept"
+  }
+ ],
+ "dropped": [],
+ "draft": {
+  "model": "gpt-5.6-luna (codex exec, harness KEY prompt)",
+  "n_items": 4,
+  "usage": {
+   "input_tokens": 299844,
+   "cached_input_tokens": 258048,
+   "cache_write_input_tokens": 0,
+   "output_tokens": 4505,
+   "reasoning_output_tokens": 1620
+  },
+  "wall_s": 44.7
+ }
+}

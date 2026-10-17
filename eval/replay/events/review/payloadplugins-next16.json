@@ -1,0 +1,10 @@
+{"K1": ["keep", true, "D: a peer range of 15.x only makes installs next to Next 16 fail with a peer conflict for plugin consumers"],
+ "K2": ["keep", true, "S: next dev/build default to Turbopack and fail with a webpack config and no turbopack config; withPayload and these dev configs define webpack()"],
+ "K3": ["keep", true, "S: the eslint option is removed from next.config in 16 (removal)"],
+ "K4": ["keep", false, "Next writes the .next/dev/types references itself on dev/build"],
+ "K5": ["keep", false, "Next writes jsx: react-jsx itself"],
+ "K6": ["keep", false, "maintenance script tweak; nothing fails without it"],
+ "K7": ["keep", false, "D: chore pin of next via pnpm overrides; no failure shown"],
+ "K8": ["keep", true, "S: single-argument revalidateTag is a TypeScript error in 16"],
+ "K9": ["drop", null, "widget skeleton fix; the commit does not link it to Next 16 and the cause is not shown"],
+ "K10": ["drop", null, "same commit as K9; cause not shown"]}

@@ -1,0 +1,22 @@
+{
+ "K1": [
+  "keep",
+  false,
+  "S: moving your own project to ESM is optional in v12 (guide); the PR calls it modernisation"
+ ],
+ "K2": [
+  "keep",
+  false,
+  "follows the optional ESM move"
+ ],
+ "K3": [
+  "keep",
+  false,
+  "follows the optional ESM move"
+ ],
+ "K4": [
+  "keep",
+  true,
+  "D: the Nest 12-compatible nest-commander release was blocked by the minimum release-age policy, so install failed without the exclusion"
+ ]
+}

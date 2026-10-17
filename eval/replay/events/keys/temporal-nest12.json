@@ -1,0 +1,227 @@
+{
+ "event": "temporal-nest12",
+ "info": {
+  "slot": "hmake98__nestjs-temporal-core",
+  "tech": "nestjs",
+  "package": "nestjs",
+  "old": "11.2.5",
+  "new": "12.1.2",
+  "upgrade": "6e9fa80e2815fe4ac4f442f29bd7edd5a8a1f9a8",
+  "event": "temporal-nest12",
+  "repo": "/private/tmp/claude-501/-Users-jason-Documents/3f08dd87-99a0-42d0-a4e5-59b22f98708b/scratchpad/w1/replay/full/hmake98__nestjs-temporal-core",
+  "parent": "e4d4f858802dc1a1f447b19d80654c83a09972d2",
+  "date": "2026-10-01T15:47:35+05:30",
+  "until": "2026-10-06T12:21:09Z",
+  "end": "0fd9e9a2e66d9894744280ee166c957467d79686",
+  "name": "NestJS",
+  "dir": "/private/tmp/claude-501/-Users-jason-Documents/3f08dd87-99a0-42d0-a4e5-59b22f98708b/scratchpad/w1/replay/temporal-nest12",
+  "cdir": "/private/tmp/claude-501/-Users-jason-Documents/3f08dd87-99a0-42d0-a4e5-59b22f98708b/scratchpad/w1/replay/temporal-nest12"
+ },
+ "items": [
+  {
+   "id": "K1",
+   "commit": "6e9fa80",
+   "files": [
+    "package.json"
+   ],
+   "change": "Widened @nestjs/common, @nestjs/core, and @nestjs/testing peer ranges to include ^12.0.0, and changed @nestjs/terminus to ^11.0.0 || ^12.0.0.",
+   "responds_to": "NestJS 12 support and the Terminus 12 API compatibility change.",
+   "required": true,
+   "required_rule": "D: a library's peer range without ^12 makes installs next to Nest 12 fail with a peer conflict; Terminus 12 range likewise",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K2",
+   "commit": "6e9fa80",
+   "files": [
+    "src/terminus/index.ts"
+   ],
+   "change": "Replaced the HealthIndicator/HealthCheckError implementation with HealthIndicatorService.check(), returning session.up() for healthy checks and session.down() for unhealthy checks.",
+   "responds_to": "@nestjs/terminus 12 removing HealthIndicator and HealthCheckError and providing HealthIndicatorService.",
+   "required": true,
+   "required_rule": "S: Terminus 12 removes HealthIndicator and HealthCheckError (guide: Terminus module)",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K3",
+   "commit": "6e9fa80",
+   "files": [
+    "test/unit/health-hardening.spec.ts"
+   ],
+   "change": "Registered HealthIndicatorService in the test module and changed unhealthy-case assertions from HealthCheckError exceptions to returned down results.",
+   "responds_to": "The Terminus 12 health-indicator API no longer throws HealthCheckError.",
+   "required": true,
+   "required_rule": "S: tests of the removed Terminus API; knock-on of K2",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K4",
+   "commit": "6e9fa80",
+   "files": [
+    "package.json"
+   ],
+   "change": "Changed all Jest test scripts to invoke Jest through Node with --experimental-vm-modules.",
+   "responds_to": "NestJS 12 being ESM-only and Jest requiring the VM-modules flag to load it.",
+   "required": true,
+   "required_rule": "S: guide warns Jest cannot load the ESM-only v12 packages without Node 24.9+ (here via --experimental-vm-modules)",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K5",
+   "commit": "6e9fa80",
+   "files": [
+    ".github/workflows/ci.yml"
+   ],
+   "change": "Changed the test matrix to run NestJS 12 on Node 24 and NestJS 11 on Node 20, 22, and 24; added installation of NestJS 11 packages for the compatibility jobs; moved coverage and test-result uploads to the NestJS 12 Node 24 job; and changed the build job to Node 24.",
+   "responds_to": "NestJS 12's ESM loading requirements and Jest's Node-version limitation.",
+   "required": true,
+   "required_rule": "S: knock-on of the Jest/Node requirement in CI",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K6",
+   "commit": "6e9fa80",
+   "files": [
+    "README.md"
+   ],
+   "change": "Changed the stated supported NestJS versions from >=9.0.0 to NestJS 9\u201312.",
+   "responds_to": "Adding NestJS 12 compatibility.",
+   "required": false,
+   "required_rule": "docs/changelog",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K7",
+   "commit": "6e9fa80",
+   "files": [
+    "website/docs/intro.md"
+   ],
+   "change": "Changed the documented NestJS requirement to versions 9, 10, 11, or 12.",
+   "responds_to": "Adding NestJS 12 compatibility.",
+   "required": false,
+   "required_rule": "docs/changelog",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K8",
+   "commit": "6e9fa80",
+   "files": [
+    "website/docs/security.md"
+   ],
+   "change": "Documented that unhealthy Terminus checks return a down result and that the indicator requires @nestjs/terminus 11 or 12.",
+   "responds_to": "Terminus 12 removing HealthCheckError and changing the health-indicator API.",
+   "required": false,
+   "required_rule": "docs/changelog",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K9",
+   "commit": "6e9fa80",
+   "files": [
+    "CLAUDE.md"
+   ],
+   "change": "Updated the documented NestJS peer range to include ^12 and documented that NestJS 12 is ESM-only, requires Node 24.9+ for Jest tests, and uses --experimental-vm-modules.",
+   "responds_to": "NestJS 12's ESM-only distribution and its Jest/Node runtime requirements.",
+   "required": false,
+   "required_rule": "docs/changelog",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K10",
+   "commit": "0507dd5",
+   "files": [
+    "README.md"
+   ],
+   "change": "Documented that NestJS 12 is ESM-only, specified the Node 20.19+ or 22.12+ runtime requirement for require(esm), linked the NestJS 12 testing guidance, and documented the Terminus 11-or-12 requirement.",
+   "responds_to": "NestJS 12 being ESM-only and the resulting Node and Terminus compatibility requirements.",
+   "required": false,
+   "required_rule": "docs/changelog",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K11",
+   "commit": "0507dd5",
+   "files": [
+    "website/docs/intro.md"
+   ],
+   "change": "Added NestJS 12 ESM/runtime guidance and documented that the optional Terminus entry requires @nestjs/terminus 11 or 12.",
+   "responds_to": "NestJS 12 being ESM-only and the updated Terminus compatibility range.",
+   "required": false,
+   "required_rule": "docs/changelog",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K12",
+   "commit": "0507dd5",
+   "files": [
+    "website/docs/migration-guide.md"
+   ],
+   "change": "Added a NestJS 12 migration section covering the expanded peer ranges, Node require(esm) requirements, Jest's Node 24.9+ VM-modules requirement, the Terminus indicator API change, and the dropped Terminus 10 support.",
+   "responds_to": "NestJS 12's ESM-only distribution and @nestjs/terminus 12 removing HealthIndicator and HealthCheckError.",
+   "required": false,
+   "required_rule": "docs/changelog",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K13",
+   "commit": "0507dd5",
+   "files": [
+    "website/docs/security.md"
+   ],
+   "change": "Clarified that earlier versions threw HealthCheckError and that @nestjs/terminus 12 no longer provides it.",
+   "responds_to": "The removal of HealthCheckError in Terminus 12.",
+   "required": false,
+   "required_rule": "docs/changelog",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K14",
+   "commit": "0507dd5",
+   "files": [
+    "website/docs/testing.md"
+   ],
+   "change": "Added instructions for testing with NestJS 12: run Jest through Node with --experimental-vm-modules on Node 24.9+, or test against NestJS 11 on Node 20/22.",
+   "responds_to": "NestJS 12 being ESM-only and Jest's inability to load it on the older Node versions.",
+   "required": false,
+   "required_rule": "docs/changelog",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K15",
+   "commit": "0507dd5",
+   "files": [
+    "website/docs/troubleshooting.md"
+   ],
+   "change": "Added troubleshooting guidance for Jest's \u201cMust use import to load ES Module\u201d error, including the Node 24.9+ VM-modules invocation and the NestJS 11 fallback.",
+   "responds_to": "NestJS 12's ESM-only modules failing to load through Jest's default require path.",
+   "required": false,
+   "required_rule": "docs/changelog",
+   "reviewed": "kept"
+  },
+  {
+   "id": "K16",
+   "commit": "26fe121",
+   "files": [
+    "CHANGELOG.md"
+   ],
+   "change": "Recorded that TemporalHealthIndicator now returns a down result instead of throwing HealthCheckError, and that peer support was widened to NestJS 12 and Terminus 11 or 12.",
+   "responds_to": "The Terminus 12 removal of HealthIndicator and HealthCheckError and the addition of NestJS 12 support.",
+   "required": false,
+   "required_rule": "docs/changelog",
+   "reviewed": "kept"
+  }
+ ],
+ "dropped": [],
+ "draft": {
+  "model": "gpt-5.6-luna (codex exec, harness KEY prompt)",
+  "n_items": 16,
+  "usage": {
+   "input_tokens": 166880,
+   "cached_input_tokens": 131584,
+   "cache_write_input_tokens": 0,
+   "output_tokens": 4199,
+   "reasoning_output_tokens": 1257
+  },
+  "wall_s": 35.9
+ }
+}

@@ -1,0 +1,707 @@
+{
+ "uvicorn-9342337b@0.45.0#0.6": {
+  "breaking": {
+   "A": true,
+   "B": false,
+   "final": true,
+   "reason": "[R2,R1] Removes an ASGI event 0.44 delivered to apps on shutdown; apps relying on it behave differently."
+  },
+  "actionable": {
+   "A": true,
+   "B": false,
+   "final": true,
+   "reason": "[R2,R1] Removes an ASGI event 0.44 delivered to apps on shutdown; apps relying on it behave differently."
+  }
+ },
+ "uvicorn-9342337b@0.52.1#0.0": {
+  "change_type": {
+   "A": "fix",
+   "B": "behavior_change",
+   "final": "fix",
+   "reason": "[R4] Completing the WebSocket closing handshake instead of resetting corrects protocol behaviour."
+  }
+ },
+ "zod-6ac59393:z.record~3": {
+  "change_type": {
+   "A": "fix",
+   "B": "behavior_change",
+   "final": "fix",
+   "reason": "[R4] \"more consistently\" is a correction of inconsistent behaviour."
+  }
+ },
+ "posthog-js-bf3ade81:session-replay~2": {
+  "change_type": {
+   "A": "behavior_change",
+   "B": "other",
+   "final": "other",
+   "reason": "[R8] Console warning only."
+  }
+ },
+ "zod-6ac59393:fromjsonschema": {
+  "actionable": {
+   "A": true,
+   "B": false,
+   "final": true,
+   "reason": "[R1] Breaking (agreed): schemas now enforce keywords and reject data."
+  }
+ },
+ "posthog-js-bf3ade81:webmcp": {
+  "change_type": {
+   "A": "behavior_change",
+   "B": "other",
+   "final": "behavior_change",
+   "reason": "[R8] Changes captured event data (error types/messages), not a debug message."
+  }
+ },
+ "uvicorn-9342337b@0.43.0#0.0": {
+  "benefit": {
+   "A": [
+    "none"
+   ],
+   "B": [
+    "correctness"
+   ],
+   "final": [
+    "none"
+   ],
+   "reason": "[R6] New capability (\"allowing applications to detect\"); no bug stated."
+  }
+ },
+ "posthog-js-bf3ade81:popover-surveys": {
+  "benefit": {
+   "A": [
+    "none"
+   ],
+   "B": [
+    "correctness"
+   ],
+   "final": [
+    "none"
+   ],
+   "reason": "[R6] Not stated as a fix; re-translation is new behaviour."
+  },
+  "change_type": {
+   "A": "behavior_change",
+   "B": "fix",
+   "final": "behavior_change",
+   "reason": "[R6] Not stated as a fix; re-translation is new behaviour."
+  }
+ },
+ "zod-6ac59393:record-keys": {
+  "benefit": {
+   "A": [
+    "none"
+   ],
+   "B": [
+    "correctness"
+   ],
+   "final": [
+    "correctness"
+   ],
+   "reason": "[R6,R1] States intersections \"no longer reject unrelated object keys\" (wrong rejection); breaking agreed."
+  },
+  "actionable": {
+   "A": true,
+   "B": false,
+   "final": true,
+   "reason": "[R6,R1] States intersections \"no longer reject unrelated object keys\" (wrong rejection); breaking agreed."
+  }
+ },
+ "posthog-js-bf3ade81:advanced-disable-feature-flags": {
+  "change_type": {
+   "A": "behavior_change",
+   "B": "other",
+   "final": "other",
+   "reason": "[R8] Console message only."
+  }
+ },
+ "uvicorn-9342337b@0.53.0#0.5": {
+  "breaking": {
+   "A": false,
+   "B": true,
+   "final": true,
+   "reason": "[R3,R1] Existing deployments with a ::1 proxy now see forwarded client addresses instead of ::1 without opting in."
+  }
+ },
+ "zod-6ac59393:tojsonschema~3": {
+  "breaking": {
+   "A": false,
+   "B": true,
+   "final": false,
+   "reason": "[R3] type array is semantically equivalent to the simple anyOf; no stated failure."
+  }
+ },
+ "zod-6ac59393:base64": {
+  "actionable": {
+   "A": true,
+   "B": false,
+   "final": true,
+   "reason": "[R1] Breaking agreed: inputs with whitespace now rejected."
+  }
+ },
+ "uvicorn-9342337b@0.49.0#0.0": {
+  "breaking": {
+   "A": true,
+   "B": false,
+   "final": true,
+   "reason": "[R2,R1] Revert judged against 0.48: duplicate headers now consumed again, changing client address; not called a fix."
+  },
+  "benefit": {
+   "A": [
+    "none"
+   ],
+   "B": [
+    "correctness"
+   ],
+   "final": [
+    "none"
+   ],
+   "reason": "[R2,R1] Revert judged against 0.48: duplicate headers now consumed again, changing client address; not called a fix."
+  },
+  "change_type": {
+   "A": "behavior_change",
+   "B": "fix",
+   "final": "behavior_change",
+   "reason": "[R2,R1] Revert judged against 0.48: duplicate headers now consumed again, changing client address; not called a fix."
+  },
+  "actionable": {
+   "A": true,
+   "B": false,
+   "final": true,
+   "reason": "[R2,R1] Revert judged against 0.48: duplicate headers now consumed again, changing client address; not called a fix."
+  }
+ },
+ "typer-4f6b46bd@0.27.1#0.0": {
+  "benefit": {
+   "A": [
+    "correctness"
+   ],
+   "B": [
+    "none"
+   ],
+   "final": [
+    "correctness"
+   ],
+   "reason": "[R4] Consistency fix of help output, like agreed \"reflect the type consistently\" (0.26.8#0.0)."
+  },
+  "change_type": {
+   "A": "fix",
+   "B": "behavior_change",
+   "final": "fix",
+   "reason": "[R4] Consistency fix of help output, like agreed \"reflect the type consistently\" (0.26.8#0.0)."
+  }
+ },
+ "zod-6ac59393:min": {
+  "actionable": {
+   "A": true,
+   "B": false,
+   "final": true,
+   "reason": "[R1] Breaking agreed."
+  }
+ },
+ "typer-4f6b46bd@0.23.0#0.0": {
+  "breaking": {
+   "A": true,
+   "B": false,
+   "final": false,
+   "reason": "[R11] Traceback display default only."
+  },
+  "actionable": {
+   "A": true,
+   "B": false,
+   "final": false,
+   "reason": "[R11] Traceback display default only."
+  }
+ },
+ "zod-6ac59393:e.164": {
+  "benefit": {
+   "A": [
+    "correctness"
+   ],
+   "B": [
+    "none"
+   ],
+   "final": [
+    "none"
+   ],
+   "reason": "[R6,R1] No stated reason old results were wrong (unlike z.ulid overflow); breaking agreed."
+  },
+  "actionable": {
+   "A": true,
+   "B": false,
+   "final": true,
+   "reason": "[R6,R1] No stated reason old results were wrong (unlike z.ulid overflow); breaking agreed."
+  }
+ },
+ "zod-6ac59393:fromjsonschema~5": {
+  "change_type": {
+   "A": "removal",
+   "B": "behavior_change",
+   "final": "removal",
+   "reason": "[R10,R1] ISO time handling dropped."
+  },
+  "actionable": {
+   "A": true,
+   "B": false,
+   "final": true,
+   "reason": "[R10,R1] ISO time handling dropped."
+  }
+ },
+ "posthog-js-bf3ade81:event-properties": {
+  "benefit": {
+   "A": [
+    "correctness"
+   ],
+   "B": [
+    "none"
+   ],
+   "final": [
+    "correctness"
+   ],
+   "reason": "[R4] \"Preserve\" error details implies they were lost (data loss)."
+  },
+  "change_type": {
+   "A": "fix",
+   "B": "behavior_change",
+   "final": "fix",
+   "reason": "[R4] \"Preserve\" error details implies they were lost (data loss)."
+  }
+ },
+ "zod-6ac59393:record-input-keys": {
+  "benefit": {
+   "A": [
+    "none"
+   ],
+   "B": [
+    "correctness"
+   ],
+   "final": [
+    "correctness"
+   ],
+   "reason": "[R4] Labelled fix(v4) and not stated as type-only."
+  }
+ },
+ "zod-6ac59393:z.base64": {
+  "benefit": {
+   "A": [
+    "correctness",
+    "performance"
+   ],
+   "B": [
+    "correctness",
+    "security"
+   ],
+   "final": [
+    "correctness"
+   ],
+   "reason": "[R4,R6] Prevents a stack-overflow crash; no attack or speedup stated."
+  },
+  "change_type": {
+   "A": "fix",
+   "B": "security",
+   "final": "fix",
+   "reason": "[R4,R6] Prevents a stack-overflow crash; no attack or speedup stated."
+  }
+ },
+ "zod-6ac59393:z.base64~2": {
+  "actionable": {
+   "A": true,
+   "B": false,
+   "final": true,
+   "reason": "[R1] Breaking agreed."
+  }
+ },
+ "posthog-js-bf3ade81:bootstrap": {
+  "benefit": {
+   "A": [
+    "correctness"
+   ],
+   "B": [
+    "none"
+   ],
+   "final": [
+    "none"
+   ],
+   "reason": "[R9] Existing option accepts a new value (null); not stated as a fix."
+  },
+  "change_type": {
+   "A": "fix",
+   "B": "new_option",
+   "final": "new_option",
+   "reason": "[R9] Existing option accepts a new value (null); not stated as a fix."
+  },
+  "actionable": {
+   "A": false,
+   "B": true,
+   "final": true,
+   "reason": "[R9] Existing option accepts a new value (null); not stated as a fix."
+  }
+ },
+ "typer-4f6b46bd@0.22.0#0.0": {
+  "breaking": {
+   "A": true,
+   "B": false,
+   "final": true,
+   "reason": "[R3,R1] typer-slim now always requires rich and shellingham, removing its purpose; dependency requirement change."
+  },
+  "actionable": {
+   "A": true,
+   "B": false,
+   "final": true,
+   "reason": "[R3,R1] typer-slim now always requires rich and shellingham, removing its purpose; dependency requirement change."
+  }
+ },
+ "zod-6ac59393:z.ulid": {
+  "change_type": {
+   "A": "behavior_change",
+   "B": "fix",
+   "final": "behavior_change",
+   "reason": "[R7,R1] Deliberate stricter format under breaking heading."
+  },
+  "actionable": {
+   "A": true,
+   "B": false,
+   "final": true,
+   "reason": "[R7,R1] Deliberate stricter format under breaking heading."
+  }
+ },
+ "zod-6ac59393:proto": {
+  "breaking": {
+   "A": true,
+   "B": false,
+   "final": true,
+   "reason": "[R3,R1] A __proto__ key declared by the schema is now dropped from output."
+  },
+  "actionable": {
+   "A": true,
+   "B": false,
+   "final": true,
+   "reason": "[R3,R1] A __proto__ key declared by the schema is now dropped from output."
+  }
+ },
+ "uvicorn-9342337b@0.51.0#0.0": {
+  "benefit": {
+   "A": [
+    "none"
+   ],
+   "B": [
+    "correctness"
+   ],
+   "final": [
+    "none"
+   ],
+   "reason": "[R6] Downtime reduction is not one of the defined benefits; no bug stated."
+  }
+ },
+ "typer-4f6b46bd@0.26.0#0.0": {
+  "benefit": {
+   "A": [
+    "none"
+   ],
+   "B": [
+    "correctness"
+   ],
+   "final": [
+    "none"
+   ],
+   "reason": "[R6] Packaging/dependency change like agreed typing-extensions drop (other); conflicts reduction is not a defined benefit."
+  },
+  "change_type": {
+   "A": "other",
+   "B": "behavior_change",
+   "final": "other",
+   "reason": "[R6] Packaging/dependency change like agreed typing-extensions drop (other); conflicts reduction is not a defined benefit."
+  }
+ },
+ "posthog-js-bf3ade81:posthog.debug": {
+  "change_type": {
+   "A": "behavior_change",
+   "B": "other",
+   "final": "other",
+   "reason": "[R8] Debug-mode message only."
+  }
+ },
+ "uvicorn-9342337b@0.46.0#0.2": {
+  "change_type": {
+   "A": "behavior_change",
+   "B": "new_option",
+   "final": "behavior_change",
+   "reason": "[R9] Existing options now take effect in wsproto, like agreed keepalive pings for websockets-sansio."
+  },
+  "actionable": {
+   "A": false,
+   "B": true,
+   "final": false,
+   "reason": "[R9] Existing options now take effect in wsproto, like agreed keepalive pings for websockets-sansio."
+  }
+ },
+ "posthog-js-bf3ade81:cross-domain-cookie-probes": {
+  "benefit": {
+   "A": [
+    "correctness"
+   ],
+   "B": [
+    "performance"
+   ],
+   "final": [
+    "correctness"
+   ],
+   "reason": "[R4] Stops probing when the setting disables it (honouring config, like agreed replay-network-masking-callback)."
+  },
+  "change_type": {
+   "A": "fix",
+   "B": "performance",
+   "final": "fix",
+   "reason": "[R4] Stops probing when the setting disables it (honouring config, like agreed replay-network-masking-callback)."
+  }
+ },
+ "uvicorn-9342337b@0.41.0#0.1": {
+  "change_type": {
+   "A": "new_option",
+   "B": "behavior_change",
+   "final": "behavior_change",
+   "reason": "[R9] Adds a value to runtime-provided scope, like agreed os.name log attribute."
+  },
+  "actionable": {
+   "A": true,
+   "B": false,
+   "final": false,
+   "reason": "[R9] Adds a value to runtime-provided scope, like agreed os.name log attribute."
+  }
+ },
+ "uvicorn-9342337b@0.45.0#0.4": {
+  "breaking": {
+   "A": true,
+   "B": false,
+   "final": true,
+   "reason": "[R2,R1] Revert: request context is no longer empty, visible to application code compared with 0.44."
+  },
+  "actionable": {
+   "A": true,
+   "B": false,
+   "final": true,
+   "reason": "[R2,R1] Revert: request context is no longer empty, visible to application code compared with 0.44."
+  }
+ },
+ "zod-6ac59393:tuple-parsing": {
+  "breaking": {
+   "A": false,
+   "B": true,
+   "final": false,
+   "reason": "[R4] \"more accurately reflects\" is a correction."
+  },
+  "change_type": {
+   "A": "fix",
+   "B": "behavior_change",
+   "final": "fix",
+   "reason": "[R4] \"more accurately reflects\" is a correction."
+  }
+ },
+ "uvicorn-9342337b@0.48.0#0.1": {
+  "breaking": {
+   "A": true,
+   "B": false,
+   "final": true,
+   "reason": "[R3,R1] Duplicate forwarding headers now ignored, changing the client address apps see."
+  },
+  "actionable": {
+   "A": true,
+   "B": false,
+   "final": true,
+   "reason": "[R3,R1] Duplicate forwarding headers now ignored, changing the client address apps see."
+  }
+ },
+ "posthog-js-bf3ade81:otlpanyvalue-intvalue": {
+  "change_type": {
+   "A": "fix",
+   "B": "other",
+   "final": "fix",
+   "reason": "[R5] Type correction, like agreed includes/implementAsync typing fixes."
+  }
+ },
+ "uvicorn-9342337b@0.46.0#0.1": {
+  "change_type": {
+   "A": "behavior_change",
+   "B": "new_option",
+   "final": "behavior_change",
+   "reason": "[R9] Same as ws_ping_timeout."
+  },
+  "actionable": {
+   "A": false,
+   "B": true,
+   "final": false,
+   "reason": "[R9] Same as ws_ping_timeout."
+  }
+ },
+ "zod-6ac59393:fromjsonschema~2": {
+  "breaking": {
+   "A": false,
+   "B": true,
+   "final": false,
+   "reason": "[R4] Commit labelled fix(v4) without \"!\"; restores intended open-ended tuples."
+  },
+  "benefit": {
+   "A": [
+    "correctness"
+   ],
+   "B": [
+    "none"
+   ],
+   "final": [
+    "correctness"
+   ],
+   "reason": "[R4] Commit labelled fix(v4) without \"!\"; restores intended open-ended tuples."
+  },
+  "change_type": {
+   "A": "fix",
+   "B": "behavior_change",
+   "final": "fix",
+   "reason": "[R4] Commit labelled fix(v4) without \"!\"; restores intended open-ended tuples."
+  }
+ },
+ "zod-6ac59393:z.iso.datetime": {
+  "actionable": {
+   "A": true,
+   "B": false,
+   "final": true,
+   "reason": "[R1] Breaking agreed."
+  }
+ },
+ "posthog-js-bf3ade81:sendbeacon": {
+  "benefit": {
+   "A": [
+    "none"
+   ],
+   "B": [
+    "correctness"
+   ],
+   "final": [
+    "none"
+   ],
+   "reason": "[R6] No benefit stated."
+  }
+ },
+ "zod-6ac59393:length": {
+  "actionable": {
+   "A": true,
+   "B": false,
+   "final": true,
+   "reason": "[R1] Breaking agreed."
+  }
+ },
+ "posthog-js-bf3ade81:buffered-session-replay-data": {
+  "benefit": {
+   "A": [
+    "correctness"
+   ],
+   "B": [
+    "correctness",
+    "security"
+   ],
+   "final": [
+    "correctness"
+   ],
+   "reason": "[R6] Data-integrity bug; no vulnerability named."
+  }
+ },
+ "posthog-js-bf3ade81:feature-flag-return-values": {
+  "actionable": {
+   "A": true,
+   "B": false,
+   "final": true,
+   "reason": "[R12] Calling code must interpret false vs undefined."
+  }
+ },
+ "uvicorn-9342337b@0.45.0#0.2": {
+  "change_type": {
+   "A": "behavior_change",
+   "B": "new_option",
+   "final": "new_option",
+   "reason": "[R9] Existing option accepts new values, like agreed os.PathLike for log_config."
+  },
+  "actionable": {
+   "A": false,
+   "B": true,
+   "final": true,
+   "reason": "[R9] Existing option accepts new values, like agreed os.PathLike for log_config."
+  }
+ },
+ "posthog-js-bf3ade81:session-recording~7": {
+  "benefit": {
+   "A": [
+    "none"
+   ],
+   "B": [
+    "correctness"
+   ],
+   "final": [
+    "none"
+   ],
+   "reason": "[R6] Not stated as a fix or benefit."
+  },
+  "change_type": {
+   "A": "behavior_change",
+   "B": "fix",
+   "final": "behavior_change",
+   "reason": "[R6] Not stated as a fix or benefit."
+  }
+ },
+ "zod-6ac59393:includes-params": {
+  "benefit": {
+   "A": [
+    "none"
+   ],
+   "B": [
+    "correctness"
+   ],
+   "final": [
+    "none"
+   ],
+   "reason": "[R5] Type-only."
+  }
+ },
+ "zod-6ac59393:implementasync": {
+  "benefit": {
+   "A": [
+    "none"
+   ],
+   "B": [
+    "correctness"
+   ],
+   "final": [
+    "none"
+   ],
+   "reason": "[R5] Type-only."
+  }
+ },
+ "posthog-js-bf3ade81:sdk-debug-recording-script-not-loaded": {
+  "change_type": {
+   "A": "other",
+   "B": "behavior_change",
+   "final": "other",
+   "reason": "[R8] SDK debug flag, like agreed $sdk_debug_* record."
+  }
+ },
+ "zod-6ac59393:z.datetime": {
+  "actionable": {
+   "A": true,
+   "B": false,
+   "final": true,
+   "reason": "[R1] Breaking agreed."
+  }
+ },
+ "rules": [
+  "R1: Breaking implies actionable: a project whose existing code fails or behaves differently has something to change (pin, adapt, or opt back), matching every agreed breaking record.",
+  "R2: Reverts are judged as behaviour changes against the immediately previous version; they are breaking when they change something application code observes (ASGI events received, client address, request context), not fixes, unless the record calls them a fix.",
+  "R3: Breaking = semantic change to what existing code receives on existing input/config without opt-in (accept/reject, parse output, client address, events, context, required dependencies). Not breaking: diagnostic/log/help/traceback display changes, and semantically equivalent output representation changes.",
+  "R4: A change the source itself labels a fix or a correction (\"fix(...)\", \"more accurately\", \"more consistently\", \"preserve\", completing a protocol handshake, honouring a disabled setting) is change_type fix, not breaking (fix restoring intended behaviour), benefit correctness - unless it is type-only.",
+  "R5: Type-only changes (inferred types, parameter typing) get benefit none per BENEFIT_RULE; a type correction is change_type fix.",
+  "R6: Benefits only when stated: capabilities (\"allows applications to detect\", \"near-zero-downtime\", \"reducing dependency conflicts\", sendBeacon preference, re-translation) get none; correctness only when the record states the old result was wrong (overflow, wrongly rejected keys, lost data); security only when a vulnerability/attack/bypass is named; performance only when speed/resource savings are claimed.",
+  "R7: Stricter validation listed as a deliberate breaking change (agreed breaking=true) is behavior_change, not fix, for consistency with the fix=not-breaking rule.",
+  "R8: Console warnings, debug-mode messages and SDK debug flags are change_type other (as agreed for the $sdk_debug_* and session-diagnostic records); changes to captured event/product data are behavior_change.",
+  "R9: Broadening the values an existing option accepts (null bootstrap, case-insensitive log_level, os.PathLike) is new_option and actionable; making existing options/defaults take effect at run time in another implementation (ws_ping_* in wsproto, like keepalive pings in websockets-sansio) or adding values to data the runtime already provides (scope[\"server\"], like os.name in logs) is behavior_change and not actionable.",
+  "R10: Something that existed being dropped (\"Drop iso time\") is removal.",
+  "R11: Default changes that only alter displayed output (traceback locals, typo suggestions) are not breaking and not actionable, matching agreed default_change records.",
+  "R12: A new contract on values the project reads (false vs undefined feature flag results) is actionable: calling code must interpret the distinction."
+ ]
+}

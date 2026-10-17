@@ -1,0 +1,173 @@
+{
+ "event": "payloadplugins-next16",
+ "items": [
+  {
+   "id": "K1",
+   "commit": "d1320cd",
+   "files": [
+    "admin-search/package.json",
+    "admin-search/CHANGELOG.md",
+    "alt-text/package.json",
+    "alt-text/CHANGELOG.md",
+    "chat-agent/package.json",
+    "chat-agent/CHANGELOG.md",
+    "cloudinary/package.json",
+    "cloudinary/CHANGELOG.md",
+    "content-translator/package.json",
+    "content-translator/CHANGELOG.md",
+    "geocoding/package.json",
+    "geocoding/CHANGELOG.md",
+    "pages/package.json",
+    "pages/CHANGELOG.md",
+    "vercel-deployments/package.json",
+    "vercel-deployments/CHANGELOG.md"
+   ],
+   "change": "Broadened each plugin's Next.js peer dependency from the Next 15-only range to ^15.0.0 || ^16.0.0 and documented the compatibility change.",
+   "responds_to": "Next.js 16 compatibility requiring plugins to accept Next 16 installations."
+  },
+  {
+   "id": "K2",
+   "commit": "d1320cd",
+   "files": [
+    "admin-search/dev/package.json",
+    "alt-text/dev/package.json",
+    "alt-text/dev_unlocalized/package.json",
+    "chat-agent/dev/package.json",
+    "cloudinary/dev/package.json",
+    "content-translator/dev/package.json",
+    "geocoding/dev/package.json",
+    "pages/dev/package.json",
+    "pages/dev_multi_tenant/package.json",
+    "pages/dev_unlocalized/package.json",
+    "vercel-deployments/dev/package.json"
+   ],
+   "change": "Added --webpack to every dev and build script that invokes Next.",
+   "responds_to": "Next.js 16 making Turbopack the default while these applications rely on webpack configuration."
+  },
+  {
+   "id": "K3",
+   "commit": "d1320cd",
+   "files": [
+    "admin-search/dev/next.config.mjs",
+    "chat-agent/dev/next.config.mjs",
+    "content-translator/dev/next.config.mjs"
+   ],
+   "change": "Removed the eslint.ignoreDuringBuilds option from Next configuration.",
+   "responds_to": "The Next.js 16 removal of the Next-config ESLint option."
+  },
+  {
+   "id": "K4",
+   "commit": "d1320cd",
+   "files": [
+    "admin-search/dev/next-env.d.ts",
+    "alt-text/dev/next-env.d.ts",
+    "alt-text/dev_unlocalized/next-env.d.ts",
+    "chat-agent/dev/next-env.d.ts",
+    "cloudinary/dev/next-env.d.ts",
+    "content-translator/dev/next-env.d.ts",
+    "geocoding/dev/next-env.d.ts",
+    "pages/dev/next-env.d.ts",
+    "pages/dev_multi_tenant/next-env.d.ts",
+    "pages/dev_unlocalized/next-env.d.ts",
+    "vercel-deployments/dev/next-env.d.ts",
+    "admin-search/dev/tsconfig.json",
+    "alt-text/dev/tsconfig.json",
+    "alt-text/dev_unlocalized/tsconfig.json",
+    "chat-agent/dev/tsconfig.json",
+    "cloudinary/dev/tsconfig.json",
+    "content-translator/dev/tsconfig.json",
+    "geocoding/dev/tsconfig.json",
+    "pages/dev/tsconfig.json",
+    "pages/dev_multi_tenant/tsconfig.json",
+    "pages/dev_unlocalized/tsconfig.json",
+    "vercel-deployments/dev/tsconfig.json"
+   ],
+   "change": "Imported .next/dev/types/routes.d.ts from next-env.d.ts and added .next/dev/types/**/*.ts to each development tsconfig include list.",
+   "responds_to": "Next.js 16 generating development route declaration files under .next/dev/types."
+  },
+  {
+   "id": "K5",
+   "commit": "d1320cd",
+   "files": [
+    "admin-search/dev/tsconfig.json",
+    "alt-text/dev/tsconfig.json",
+    "alt-text/dev_unlocalized/tsconfig.json",
+    "chat-agent/dev/tsconfig.json",
+    "cloudinary/dev/tsconfig.json",
+    "content-translator/dev/tsconfig.json",
+    "geocoding/dev/tsconfig.json",
+    "pages/dev/tsconfig.json",
+    "pages/dev_multi_tenant/tsconfig.json",
+    "pages/dev_unlocalized/tsconfig.json",
+    "vercel-deployments/dev/tsconfig.json"
+   ],
+   "change": "Changed the JSX compiler setting from preserve to react-jsx.",
+   "responds_to": "The updated Next.js 16 development TypeScript configuration."
+  },
+  {
+   "id": "K6",
+   "commit": "d1320cd",
+   "files": [
+    "scripts/update-plugins.sh"
+   ],
+   "change": "Stopped excluding next from the general dependency update command while explicitly excluding it from peer-dependency range updates so the intentional ^15.0.0 || ^16.0.0 range is preserved.",
+   "responds_to": "The need to maintain a dual Next.js 15/16 peer range after the upgrade."
+  },
+  {
+   "id": "K7",
+   "commit": "9ffe21d",
+   "files": [
+    "admin-search/package.json",
+    "alt-text/package.json",
+    "chat-agent/package.json",
+    "cloudinary/package.json",
+    "content-translator/package.json",
+    "geocoding/package.json",
+    "pages/package.json",
+    "vercel-deployments/package.json"
+   ],
+   "change": "Added a pnpm override pinning Next.js to 16.2.6 in each plugin package.",
+   "responds_to": "Next.js peer-range resolution creating divergent Next.js dependency resolutions in plugin development installations."
+  },
+  {
+   "id": "K8",
+   "commit": "7fcc46e",
+   "files": [
+    "alt-text/src/hooks/revalidateAltTextHealth.ts",
+    "alt-text/CHANGELOG.md"
+   ],
+   "change": "Changed revalidateTag(tag) to revalidateTag(tag, 'max'), retaining a compatibility cast for Next 15 and Next 16 consumers.",
+   "responds_to": "Next.js 16 requiring the revalidateTag profile argument and deprecating the one-argument call."
+  },
+  {
+   "id": "K9",
+   "commit": "bc2338d",
+   "files": [
+    "vercel-deployments/src/components/DeploymentStatusPoller.tsx",
+    "vercel-deployments/src/components/DeploymentStatusPoller.test.tsx",
+    "vercel-deployments/CHANGELOG.md"
+   ],
+   "change": "Changed the first deployment-status poll to seed the cached response without calling router.refresh(); later polls still refresh when the response changes.",
+   "responds_to": "The upgraded Next.js rendering behavior causing the first refresh to re-suspend the server-rendered Suspense boundary and flash the skeleton."
+  },
+  {
+   "id": "K10",
+   "commit": "bc2338d",
+   "files": [
+    "vercel-deployments/src/components/DeploymentInfoCard.tsx",
+    "vercel-deployments/CHANGELOG.md"
+   ],
+   "change": "Replaced the generic deployment skeleton fallback with a row-shaped fallback matching the loaded deployment row's icon, label, spacing, and value height.",
+   "responds_to": "The upgraded Next.js Suspense loading behavior exposing a skeleton reflash and layout shift in the deployment widget."
+  }
+ ],
+ "final": "[\n  {\n    \"id\": \"K1\",\n    \"commit\": \"d1320cd\",\n    \"files\": [\n      \"admin-search/package.json\",\n      \"admin-search/CHANGELOG.md\",\n      \"alt-text/package.json\",\n      \"alt-text/CHANGELOG.md\",\n      \"chat-agent/package.json\",\n      \"chat-agent/CHANGELOG.md\",\n      \"cloudinary/package.json\",\n      \"cloudinary/CHANGELOG.md\",\n      \"content-translator/package.json\",\n      \"content-translator/CHANGELOG.md\",\n      \"geocoding/package.json\",\n      \"geocoding/CHANGELOG.md\",\n      \"pages/package.json\",\n      \"pages/CHANGELOG.md\",\n      \"vercel-deployments/package.json\",\n      \"vercel-deployments/CHANGELOG.md\"\n    ],\n    \"change\": \"Broadened each plugin's Next.js peer dependency from the Next 15-only range to ^15.0.0 || ^16.0.0 and documented the compatibility change.\",\n    \"responds_to\": \"Next.js 16 compatibility requiring plugins to accept Next 16 installations.\"\n  },\n  {\n    \"id\": \"K2\",\n    \"commit\": \"d1320cd\",\n    \"files\": [\n      \"admin-search/dev/package.json\",\n      \"alt-text/dev/package.json\",\n      \"alt-text/dev_unlocalized/package.json\",\n      \"chat-agent/dev/package.json\",\n      \"cloudinary/dev/package.json\",\n      \"content-translator/dev/package.json\",\n      \"geocoding/dev/package.json\",\n      \"pages/dev/package.json\",\n      \"pages/dev_multi_tenant/package.json\",\n      \"pages/dev_unlocalized/package.json\",\n      \"vercel-deployments/dev/package.json\"\n    ],\n    \"change\": \"Added --webpack to every dev and build script that invokes Next.\",\n    \"responds_to\": \"Next.js 16 making Turbopack the default while these applications rely on webpack configuration.\"\n  },\n  {\n    \"id\": \"K3\",\n    \"commit\": \"d1320cd\",\n    \"files\": [\n      \"admin-search/dev/next.config.mjs\",\n      \"chat-agent/dev/next.config.mjs\",\n      \"content-translator/dev/next.config.mjs\"\n    ],\n    \"change\": \"Removed the eslint.ignoreDuringBuilds option from Next configuration.\",\n    \"responds_to\": \"The Next.js 16 removal of the Next-config ESLint option.\"\n  },\n  {\n    \"id\": \"K4\",\n    \"commit\": \"d1320cd\",\n    \"files\": [\n      \"admin-search/dev/next-env.d.ts\",\n      \"alt-text/dev/next-env.d.ts\",\n      \"alt-text/dev_unlocalized/next-env.d.ts\",\n      \"chat-agent/dev/next-env.d.ts\",\n      \"cloudinary/dev/next-env.d.ts\",\n      \"content-translator/dev/next-env.d.ts\",\n      \"geocoding/dev/next-env.d.ts\",\n      \"pages/dev/next-env.d.ts\",\n      \"pages/dev_multi_tenant/next-env.d.ts\",\n      \"pages/dev_unlocalized/next-env.d.ts\",\n      \"vercel-deployments/dev/next-env.d.ts\",\n      \"admin-search/dev/tsconfig.json\",\n      \"alt-text/dev/tsconfig.json\",\n      \"alt-text/dev_unlocalized/tsconfig.json\",\n      \"chat-agent/dev/tsconfig.json\",\n      \"cloudinary/dev/tsconfig.json\",\n      \"content-translator/dev/tsconfig.json\",\n      \"geocoding/dev/tsconfig.json\",\n      \"pages/dev/tsconfig.json\",\n      \"pages/dev_multi_tenant/tsconfig.json\",\n      \"pages/dev_unlocalized/tsconfig.json\",\n      \"vercel-deployments/dev/tsconfig.json\"\n    ],\n    \"change\": \"Imported .next/dev/types/routes.d.ts from next-env.d.ts and added .next/dev/types/**/*.ts to each development tsconfig include list.\",\n    \"responds_to\": \"Next.js 16 generating development route declaration files under .next/dev/types.\"\n  },\n  {\n    \"id\": \"K5\",\n    \"commit\": \"d1320cd\",\n    \"files\": [\n      \"admin-search/dev/tsconfig.json\",\n      \"alt-text/dev/tsconfig.json\",\n      \"alt-text/dev_unlocalized/tsconfig.json\",\n      \"chat-agent/dev/tsconfig.json\",\n      \"cloudinary/dev/tsconfig.json\",\n      \"content-translator/dev/tsconfig.json\",\n      \"geocoding/dev/tsconfig.json\",\n      \"pages/dev/tsconfig.json\",\n      \"pages/dev_multi_tenant/tsconfig.json\",\n      \"pages/dev_unlocalized/tsconfig.json\",\n      \"vercel-deployments/dev/tsconfig.json\"\n    ],\n    \"change\": \"Changed the JSX compiler setting from preserve to react-jsx.\",\n    \"responds_to\": \"The updated Next.js 16 development TypeScript configuration.\"\n  },\n  {\n    \"id\": \"K6\",\n    \"commit\": \"d1320cd\",\n    \"files\": [\n      \"scripts/update-plugins.sh\"\n    ],\n    \"change\": \"Stopped excluding next from the general dependency update command while explicitly excluding it from peer-dependency range updates so the intentional ^15.0.0 || ^16.0.0 range is preserved.\",\n    \"responds_to\": \"The need to maintain a dual Next.js 15/16 peer range after the upgrade.\"\n  },\n  {\n    \"id\": \"K7\",\n    \"commit\": \"9ffe21d\",\n    \"files\": [\n      \"admin-search/package.json\",\n      \"alt-text/package.json\",\n      \"chat-agent/package.json\",\n      \"cloudinary/package.json\",\n      \"content-translator/package.json\",\n      \"geocoding/package.json\",\n      \"pages/package.json\",\n      \"vercel-deployments/package.json\"\n    ],\n    \"change\": \"Added a pnpm override pinning Next.js to 16.2.6 in each plugin package.\",\n    \"responds_to\": \"Next.js peer-range resolution creating divergent Next.js dependency resolutions in plugin development installations.\"\n  },\n  {\n    \"id\": \"K8\",\n    \"commit\": \"7fcc46e\",\n    \"files\": [\n      \"alt-text/src/hooks/revalidateAltTextHealth.ts\",\n      \"alt-text/CHANGELOG.md\"\n    ],\n    \"change\": \"Changed revalidateTag(tag) to revalidateTag(tag, 'max'), retaining a compatibility cast for Next 15 and Next 16 consumers.\",\n    \"responds_to\": \"Next.js 16 requiring the revalidateTag profile argument and deprecating the one-argument call.\"\n  },\n  {\n    \"id\": \"K9\",\n    \"commit\": \"bc2338d\",\n    \"files\": [\n      \"vercel-deployments/src/components/DeploymentStatusPoller.tsx\",\n      \"vercel-deployments/src/components/DeploymentStatusPoller.test.tsx\",\n      \"vercel-deployments/CHANGELOG.md\"\n    ],\n    \"change\": \"Changed the first deployment-status poll to seed the cached response without calling router.refresh(); later polls still refresh when the response changes.\",\n    \"responds_to\": \"The upgraded Next.js rendering behavior causing the first refresh to re-suspend the server-rendered Suspense boundary and flash the skeleton.\"\n  },\n  {\n    \"id\": \"K10\",\n    \"commit\": \"bc2338d\",\n    \"files\": [\n      \"vercel-deployments/src/components/DeploymentInfoCard.tsx\",\n      \"vercel-deployments/CHANGELOG.md\"\n    ],\n    \"change\": \"Replaced the generic deployment skeleton fallback with a row-shaped fallback matching the loaded deployment row's icon, label, spacing, and value height.\",\n    \"responds_to\": \"The upgraded Next.js Suspense loading behavior exposing a skeleton reflash and layout shift in the deployment widget.\"\n  }\n]",
+ "usage": {
+  "input_tokens": 192576,
+  "cached_input_tokens": 145920,
+  "cache_write_input_tokens": 0,
+  "output_tokens": 5353,
+  "reasoning_output_tokens": 2411
+ },
+ "wall_s": 46.5
+}

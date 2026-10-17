@@ -1,0 +1,189 @@
+{
+ "event": "zodgen-prisma7",
+ "catalog": [
+  "prisma-accelerateengine",
+  "prisma-adapter",
+  "prisma-binaryengine",
+  "prisma-connection-pool-settings",
+  "prisma-dataproxyengine",
+  "prisma-datasource-directurl",
+  "prisma-datasource-directurl-2",
+  "prisma-datasource-shadowdatabaseurl",
+  "prisma-datasource-url",
+  "prisma-diffing",
+  "prisma-driver-adapters",
+  "prisma-edge",
+  "prisma-engine-3",
+  "prisma-environment-variables",
+  "prisma-es-module-support",
+  "prisma-generator-runtime",
+  "prisma-libraryengine",
+  "prisma-listlocaldatabases",
+  "prisma-map",
+  "prisma-mapped-enum-values",
+  "prisma-metrics",
+  "prisma-mongodb",
+  "prisma-node-js",
+  "prisma-output",
+  "prisma-package-json-prisma",
+  "prisma-prisma-accelerate",
+  "prisma-prisma-accelerate-2",
+  "prisma-prisma-adapter-pg-4",
+  "prisma-prisma-cli-query-engine-type",
+  "prisma-prisma-client-2",
+  "prisma-prisma-client-engine-type",
+  "prisma-prisma-client-js",
+  "prisma-prisma-client-no-retry",
+  "prisma-prisma-client-provider",
+  "prisma-prisma-client-runtime-utils",
+  "prisma-prisma-config-ts-2",
+  "prisma-prisma-config-ts-3",
+  "prisma-prisma-config-ts-4",
+  "prisma-prisma-db-execute-schema",
+  "prisma-prisma-db-execute-url",
+  "prisma-prisma-db-pull-local-d1",
+  "prisma-prisma-db-pull-url",
+  "prisma-prisma-db-push-skip-generate",
+  "prisma-prisma-db-seed-2",
+  "prisma-prisma-generate",
+  "prisma-prisma-generate-accelerate",
+  "prisma-prisma-generate-allow-no-models",
+  "prisma-prisma-generate-data-proxy",
+  "prisma-prisma-generate-dataproxy",
+  "prisma-prisma-generate-in-postinstall",
+  "prisma-prisma-generate-no-engine",
+  "prisma-prisma-generate-no-engine-2",
+  "prisma-prisma-generate-skip-autoinstall",
+  "prisma-prisma-introspect",
+  "prisma-prisma-migrate-dev-skip-generate",
+  "prisma-prisma-migrate-dev-skip-seed",
+  "prisma-prisma-migrate-diff-from-schema-datasource",
+  "prisma-prisma-migrate-diff-from-to-local-d1",
+  "prisma-prisma-migrate-diff-from-to-schema-datamodel",
+  "prisma-prisma-migrate-diff-from-to-schema-datasource",
+  "prisma-prisma-migrate-diff-from-to-url",
+  "prisma-prisma-migrate-diff-from-url",
+  "prisma-prisma-migrate-diff-shadow-database-url-2",
+  "prisma-prisma-migrate-diff-to-schema-datasource",
+  "prisma-prisma-migrate-diff-to-url",
+  "prisma-prisma-migrate-skip-generate",
+  "prisma-prisma-migrate-skip-seed",
+  "prisma-prisma-query-engine-binary",
+  "prisma-prisma-query-engine-library",
+  "prisma-prisma-seed",
+  "prisma-prisma-skip-postinstall-generate",
+  "prisma-prisma-studio",
+  "prisma-prisma-studio-url",
+  "prisma-prisma-use",
+  "prisma-prismabettersqlite3",
+  "prisma-prismaclient",
+  "prisma-prismaclient-2",
+  "prisma-prismaclient-3",
+  "prisma-prismaclient-datasources",
+  "prisma-prismaclient-datasourceurl",
+  "prisma-prismad1http",
+  "prisma-prismalibsql",
+  "prisma-prismaneonhttp",
+  "prisma-reactnativeengine",
+  "prisma-serverless-driver",
+  "prisma-ssl-certificate-validation",
+  "prisma-typescript",
+  "prisma-url-validation",
+  "prisma-weakref"
+ ],
+ "runs": [
+  {
+   "map": {
+    "K1": [
+     "prisma-datasource-url",
+     "prisma-prisma-config-ts-3"
+    ],
+    "K2": [
+     "prisma-engine-3",
+     "prisma-prisma-client-provider"
+    ],
+    "K3": [
+     "prisma-mapped-enum-values"
+    ],
+    "K4": [
+     "prisma-environment-variables",
+     "prisma-prisma-adapter-pg-4"
+    ],
+    "K5": [
+     "prisma-adapter",
+     "prisma-prisma-config-ts-3"
+    ],
+    "K6": [
+     "prisma-driver-adapters"
+    ],
+    "K7": [],
+    "K8": [],
+    "K9": [],
+    "K10": [],
+    "K11": [
+     "prisma-node-js"
+    ],
+    "K12": [
+     "prisma-node-js",
+     "prisma-typescript"
+    ],
+    "K13": [],
+    "K14": [],
+    "K15": []
+   },
+   "usage": {
+    "input_tokens": 20154,
+    "cached_input_tokens": 9984,
+    "cache_write_input_tokens": 0,
+    "output_tokens": 673,
+    "reasoning_output_tokens": 516
+   }
+  },
+  {
+   "map": {
+    "K1": [
+     "prisma-datasource-url",
+     "prisma-prisma-config-ts-3"
+    ],
+    "K2": [
+     "prisma-prisma-client-provider"
+    ],
+    "K3": [
+     "prisma-mapped-enum-values"
+    ],
+    "K4": [
+     "prisma-environment-variables",
+     "prisma-prisma-adapter-pg-4"
+    ],
+    "K5": [
+     "prisma-adapter",
+     "prisma-datasource-url",
+     "prisma-prisma-config-ts-3"
+    ],
+    "K6": [],
+    "K7": [],
+    "K8": [],
+    "K9": [],
+    "K10": [],
+    "K11": [
+     "prisma-node-js"
+    ],
+    "K12": [
+     "prisma-node-js",
+     "prisma-typescript"
+    ],
+    "K13": [],
+    "K14": [],
+    "K15": []
+   },
+   "usage": {
+    "input_tokens": 20154,
+    "cached_input_tokens": 9984,
+    "cache_write_input_tokens": 0,
+    "output_tokens": 1186,
+    "reasoning_output_tokens": 1034
+   }
+  }
+ ],
+ "source": "eval/replay/events match runs on catalog v2 (record set identical to the published catalog)"
+}

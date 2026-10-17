@@ -1,0 +1,66 @@
+{
+ "event": "eudiplo-nest12",
+ "items": [
+  {
+   "id": "K1",
+   "commit": "57c64a05",
+   "files": [
+    "apps/backend/tsconfig.json",
+    "apps/backend/package.json"
+   ],
+   "change": "Changed backend TypeScript resolution to NodeNext and raised the Node.js minimum version to support loading NestJS 12's ESM packages from CommonJS.",
+   "responds_to": "NestJS 12 packages becoming ESM-only."
+  },
+  {
+   "id": "K2",
+   "commit": "57c64a05",
+   "files": [
+    "pnpm-workspace.yaml"
+   ],
+   "change": "Added a pnpm package extension declaring TypeScript 6 as a peer dependency of @nestjs/swagger.",
+   "responds_to": "The NestJS Swagger CLI plugin importing the TypeScript compiler API without declaring TypeScript, causing it to resolve an incompatible hoisted compiler."
+  },
+  {
+   "id": "K3",
+   "commit": "57c64a05",
+   "files": [
+    "apps/backend/test/openapi.e2e-spec.ts"
+   ],
+   "change": "Changed the OpenAPI contract test to assert nullability through the schema's type array instead of nullable: true.",
+   "responds_to": "NestJS Swagger 12 generating OpenAPI 3.1 nullability as a type array."
+  },
+  {
+   "id": "K4",
+   "commit": "59d53ab1",
+   "files": [
+    "apps/backend/package.json",
+    "apps/backend/nest-cli.json",
+    "apps/backend/tsconfig.json",
+    "apps/backend/tsconfig.build.json",
+    "apps/backend/src/**/*.ts",
+    "apps/backend/test/**/*.ts"
+   ],
+   "change": "Migrated the backend from CommonJS to native ESM: marked the package as module, emitted .js production entrypoints, added .js extensions to relative imports, adjusted ESM-compatible imports and runtime path handling, and updated the Nest build configuration.",
+   "responds_to": "NestJS 12's ESM-only packages no longer being workable with the previous CommonJS backend setup."
+  },
+  {
+   "id": "K5",
+   "commit": "030af68f",
+   "files": [
+    "apps/backend/src/main.ts",
+    "apps/backend/src/bootstrap.ts"
+   ],
+   "change": "Moved application bootstrap code into bootstrap.ts and made main.ts start OpenTelemetry before dynamically importing the NestJS application.",
+   "responds_to": "NestJS and Express loading HTTP modules during static import evaluation before OpenTelemetry can patch them."
+  }
+ ],
+ "final": "[\n  {\n    \"id\": \"K1\",\n    \"commit\": \"57c64a05\",\n    \"files\": [\"apps/backend/tsconfig.json\", \"apps/backend/package.json\"],\n    \"change\": \"Changed backend TypeScript resolution to NodeNext and raised the Node.js minimum version to support loading NestJS 12's ESM packages from CommonJS.\",\n    \"responds_to\": \"NestJS 12 packages becoming ESM-only.\"\n  },\n  {\n    \"id\": \"K2\",\n    \"commit\": \"57c64a05\",\n    \"files\": [\"pnpm-workspace.yaml\"],\n    \"change\": \"Added a pnpm package extension declaring TypeScript 6 as a peer dependency of @nestjs/swagger.\",\n    \"responds_to\": \"The NestJS Swagger CLI plugin importing the TypeScript compiler API without declaring TypeScript, causing it to resolve an incompatible hoisted compiler.\"\n  },\n  {\n    \"id\": \"K3\",\n    \"commit\": \"57c64a05\",\n    \"files\": [\"apps/backend/test/openapi.e2e-spec.ts\"],\n    \"change\": \"Changed the OpenAPI contract test to assert nullability through the schema's type array instead of nullable: true.\",\n    \"responds_to\": \"NestJS Swagger 12 generating OpenAPI 3.1 nullability as a type array.\"\n  },\n  {\n    \"id\": \"K4\",\n    \"commit\": \"59d53ab1\",\n    \"files\": [\"apps/backend/package.json\", \"apps/backend/nest-cli.json\", \"apps/backend/tsconfig.json\", \"apps/backend/tsconfig.build.json\", \"apps/backend/src/**/*.ts\", \"apps/backend/test/**/*.ts\"],\n    \"change\": \"Migrated the backend from CommonJS to native ESM: marked the package as module, emitted .js production entrypoints, added .js extensions to relative imports, adjusted ESM-compatible imports and runtime path handling, and updated the Nest build configuration.\",\n    \"responds_to\": \"NestJS 12's ESM-only packages no longer being workable with the previous CommonJS backend setup.\"\n  },\n  {\n    \"id\": \"K5\",\n    \"commit\": \"030af68f\",\n    \"files\": [\"apps/backend/src/main.ts\", \"apps/backend/src/bootstrap.ts\"],\n    \"change\": \"Moved application bootstrap code into bootstrap.ts and made main.ts start OpenTelemetry before dynamically importing the NestJS application.\",\n    \"responds_to\": \"NestJS and Express loading HTTP modules during static import evaluation before OpenTelemetry can patch them.\"\n  }\n]",
+ "usage": {
+  "input_tokens": 639679,
+  "cached_input_tokens": 559360,
+  "cache_write_input_tokens": 0,
+  "output_tokens": 5898,
+  "reasoning_output_tokens": 2603
+ },
+ "wall_s": 57.3
+}

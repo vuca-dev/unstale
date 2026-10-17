@@ -1,0 +1,168 @@
+{
+ "workout-next16": {
+  "K1": {
+   "required": false,
+   "rule": "S: guide says the middleware filename and export are deprecated, still work"
+  },
+  "K2": {
+   "required": true,
+   "rule": "S: guide: parallel route slots require default.js, builds fail without"
+  },
+  "K3": {
+   "required": false,
+   "rule": "D: commit says 'for better type safety'; no failure shown"
+  },
+  "K4": {
+   "required": false,
+   "rule": "S: images.domains is deprecated, still works"
+  },
+  "K5": {
+   "required": false,
+   "rule": "S: Turbopack is the default; the --turbopack flag is redundant, not removed"
+  },
+  "K6": {
+   "required": true,
+   "rule": "S: next lint command removed"
+  },
+  "K7": {
+   "required": true,
+   "rule": "S: @next/eslint-plugin-next/eslint-config-next now flat-config by default; the legacy FlatCompat extends entry no longer loads"
+  },
+  "K8": {
+   "required": false,
+   "rule": "S/D: Next writes these tsconfig settings itself on dev/build; no failure"
+  },
+  "K9": {
+   "required": false,
+   "rule": "D: styled-jsx still ships with Next 16; no failure shown"
+  },
+  "K10": {
+   "required": false,
+   "rule": "docs/release notes"
+  }
+ },
+ "invoicerr-prisma7": {
+  "K1": {
+   "required": true,
+   "rule": "S: driver adapter, prisma.config datasource URL, explicit generate and env loading are required in v7; knock-on build/CI/test fixes count"
+  },
+  "K2": {
+   "required": true,
+   "rule": "S: driver adapter, prisma.config datasource URL, explicit generate and env loading are required in v7; knock-on build/CI/test fixes count"
+  },
+  "K3": {
+   "required": true,
+   "rule": "S: driver adapter, prisma.config datasource URL, explicit generate and env loading are required in v7; knock-on build/CI/test fixes count"
+  },
+  "K4": {
+   "required": true,
+   "rule": "S: driver adapter, prisma.config datasource URL, explicit generate and env loading are required in v7; knock-on build/CI/test fixes count"
+  },
+  "K5": {
+   "required": true,
+   "rule": "S: driver adapter, prisma.config datasource URL, explicit generate and env loading are required in v7; knock-on build/CI/test fixes count"
+  },
+  "K6": {
+   "required": true,
+   "rule": "S: driver adapter, prisma.config datasource URL, explicit generate and env loading are required in v7; knock-on build/CI/test fixes count"
+  },
+  "K7": {
+   "required": true,
+   "rule": "S: driver adapter, prisma.config datasource URL, explicit generate and env loading are required in v7; knock-on build/CI/test fixes count"
+  },
+  "K8": {
+   "required": true,
+   "rule": "S: driver adapter, prisma.config datasource URL, explicit generate and env loading are required in v7; knock-on build/CI/test fixes count"
+  },
+  "K9": {
+   "required": true,
+   "rule": "S: driver adapter, prisma.config datasource URL, explicit generate and env loading are required in v7; knock-on build/CI/test fixes count"
+  },
+  "K10": {
+   "required": true,
+   "rule": "S: driver adapter, prisma.config datasource URL, explicit generate and env loading are required in v7; knock-on build/CI/test fixes count"
+  },
+  "K11": {
+   "required": true,
+   "rule": "S: driver adapter, prisma.config datasource URL, explicit generate and env loading are required in v7; knock-on build/CI/test fixes count"
+  },
+  "K12": {
+   "required": true,
+   "rule": "S: driver adapter, prisma.config datasource URL, explicit generate and env loading are required in v7; knock-on build/CI/test fixes count"
+  },
+  "K14": {
+   "required": true,
+   "rule": "S: driver adapter, prisma.config datasource URL, explicit generate and env loading are required in v7; knock-on build/CI/test fixes count"
+  },
+  "K15": {
+   "required": true,
+   "rule": "S: driver adapter, prisma.config datasource URL, explicit generate and env loading are required in v7; knock-on build/CI/test fixes count"
+  },
+  "K16": {
+   "required": true,
+   "rule": "S: driver adapter, prisma.config datasource URL, explicit generate and env loading are required in v7; knock-on build/CI/test fixes count"
+  },
+  "K13": {
+   "required": true,
+   "rule": "S: --skip-generate removed from db push"
+  }
+ },
+ "invoicerr-nest12": {
+  "K1": {
+   "required": true,
+   "rule": "S+D: guide warns Jest cannot load the ESM-only v12 packages before Node 24.9; the move to Vitest and its knock-on test/CI fixes made the suite run"
+  },
+  "K2": {
+   "required": true,
+   "rule": "S+D: guide warns Jest cannot load the ESM-only v12 packages before Node 24.9; the move to Vitest and its knock-on test/CI fixes made the suite run"
+  },
+  "K3": {
+   "required": true,
+   "rule": "S+D: guide warns Jest cannot load the ESM-only v12 packages before Node 24.9; the move to Vitest and its knock-on test/CI fixes made the suite run"
+  },
+  "K4": {
+   "required": true,
+   "rule": "S+D: guide warns Jest cannot load the ESM-only v12 packages before Node 24.9; the move to Vitest and its knock-on test/CI fixes made the suite run"
+  },
+  "K5": {
+   "required": true,
+   "rule": "S+D: guide warns Jest cannot load the ESM-only v12 packages before Node 24.9; the move to Vitest and its knock-on test/CI fixes made the suite run"
+  },
+  "K6": {
+   "required": true,
+   "rule": "S+D: guide warns Jest cannot load the ESM-only v12 packages before Node 24.9; the move to Vitest and its knock-on test/CI fixes made the suite run"
+  },
+  "K7": {
+   "required": true,
+   "rule": "S+D: guide warns Jest cannot load the ESM-only v12 packages before Node 24.9; the move to Vitest and its knock-on test/CI fixes made the suite run"
+  },
+  "K9": {
+   "required": true,
+   "rule": "S+D: guide warns Jest cannot load the ESM-only v12 packages before Node 24.9; the move to Vitest and its knock-on test/CI fixes made the suite run"
+  },
+  "K10": {
+   "required": true,
+   "rule": "S+D: guide warns Jest cannot load the ESM-only v12 packages before Node 24.9; the move to Vitest and its knock-on test/CI fixes made the suite run"
+  },
+  "K11": {
+   "required": true,
+   "rule": "S+D: guide warns Jest cannot load the ESM-only v12 packages before Node 24.9; the move to Vitest and its knock-on test/CI fixes made the suite run"
+  },
+  "K12": {
+   "required": true,
+   "rule": "S+D: guide warns Jest cannot load the ESM-only v12 packages before Node 24.9; the move to Vitest and its knock-on test/CI fixes made the suite run"
+  },
+  "K13": {
+   "required": true,
+   "rule": "S+D: guide warns Jest cannot load the ESM-only v12 packages before Node 24.9; the move to Vitest and its knock-on test/CI fixes made the suite run"
+  },
+  "K14": {
+   "required": true,
+   "rule": "S+D: guide warns Jest cannot load the ESM-only v12 packages before Node 24.9; the move to Vitest and its knock-on test/CI fixes made the suite run"
+  },
+  "K8": {
+   "required": false,
+   "rule": "cleanup of an unused Jest E2E config and docs; nothing fails without it"
+  }
+ }
+}

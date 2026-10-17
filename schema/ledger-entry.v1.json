@@ -1,0 +1,161 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A stored disposition. The status tag decides which fields exist, so a deferral without `until`\ncannot be built and `until` cannot appear on any other status.",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "description": "Re-opens only when the record's revision changes.",
+      "properties": {
+        "date": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "note": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "rev": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "status": {
+          "const": "declined",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "id",
+        "rev",
+        "date"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "Applied where the code cannot show it. Re-opens only when the record's revision changes.",
+      "properties": {
+        "date": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "note": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "rev": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "status": {
+          "const": "done",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "id",
+        "rev",
+        "date"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "Re-opens on `until`; after three deferrals it becomes declined.",
+      "properties": {
+        "date": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "n": {
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "note": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "rev": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "status": {
+          "const": "deferred",
+          "type": "string"
+        },
+        "until": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "id",
+        "rev",
+        "date",
+        "until",
+        "n"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "The agent found nothing to apply it to. Re-opens after a fixed interval, with the same cap.",
+      "properties": {
+        "date": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "n": {
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "note": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "rev": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "status": {
+          "const": "no_site",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "id",
+        "rev",
+        "date",
+        "n"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "Entry"
+}

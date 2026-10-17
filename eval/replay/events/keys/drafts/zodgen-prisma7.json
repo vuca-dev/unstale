@@ -1,0 +1,166 @@
+{
+ "event": "zodgen-prisma7",
+ "items": [
+  {
+   "id": "K1",
+   "commit": "240aba0",
+   "files": [
+    "prisma.config.ts",
+    "prisma/schema.prisma"
+   ],
+   "change": "Added a Prisma config file containing the schema, migrations path, and datasource URL; removed the datasource URL from schema.prisma.",
+   "responds_to": "Prisma 7 moves datasource URLs out of schema.prisma and supports prisma.config.ts."
+  },
+  {
+   "id": "K2",
+   "commit": "240aba0",
+   "files": [
+    "prisma/schema.prisma"
+   ],
+   "change": "Removed engineType = \"client\" from the Prisma client generator block.",
+   "responds_to": "The Prisma 7 client generator changed engine configuration defaults and support."
+  },
+  {
+   "id": "K3",
+   "commit": "240aba0",
+   "files": [
+    "src/types.ts",
+    "src/prisma-generator.ts",
+    "src/transformer.ts"
+   ],
+   "change": "Switched DMMF typing to @prisma/generator-helper, introduced SchemaEnumWithValues, and normalized enum values from Prisma's changed enum representations before generation.",
+   "responds_to": "Prisma 7 changed the DMMF enum shape and the runtime package used for DMMF types."
+  },
+  {
+   "id": "K4",
+   "commit": "240aba0",
+   "files": [
+    "package.json"
+   ],
+   "change": "Added dotenv, @prisma/adapter-pg, and pg dependencies.",
+   "responds_to": "Prisma 7's config-file and driver-adapter setup."
+  },
+  {
+   "id": "K5",
+   "commit": "240aba0",
+   "files": [
+    "tests/helpers/prisma-generate.ts",
+    "tests/helpers/mock-generators.ts",
+    "tests/aggregate-groupby.test.ts",
+    "tests/issue-118-output-directory.test.ts",
+    "tests/json-config-output-precedence.test.ts",
+    "tests/multi-provider/provider-test-suite.ts",
+    "tests/multi-provider/run-all-tests.ts",
+    "tests/prisma-client-esm-config.test.ts",
+    "tests/prisma-client-full-matrix.test.ts",
+    "tests/prisma-client-preview-options.test.ts"
+   ],
+   "change": "Added shared Prisma-generation helpers that remove datasource url and driverAdapters entries, create provider-specific prisma.config.mjs files, and invoke prisma generate with --config; updated affected tests to use them.",
+   "responds_to": "Prisma 7's config-file datasource handling and changed driverAdapters/schema behavior."
+  },
+  {
+   "id": "240aba0",
+   "files": [
+    "tests/integration.test.ts"
+   ],
+   "change": "Increased generation and minimal-configuration test timeouts.",
+   "responds_to": "Slower generation under Prisma 7 driver-adapter execution."
+  },
+  {
+   "id": "79d3159",
+   "commit": "79d3159",
+   "files": [
+    "src/types/prisma-internals-augment.d.ts"
+   ],
+   "change": "Added a local Prisma internals type augmentation making ignoreEnvVarErrors optional on GetConfigOptions.",
+   "responds_to": "Prisma 7 removed the legacy ignoreEnvVarErrors type while Pro code still referenced it."
+  },
+  {
+   "id": "35ec084",
+   "commit": "35ec084",
+   "files": [
+    "tsconfig.json"
+   ],
+   "change": "Configured TypeScript to load local Prisma internals augmentations.",
+   "responds_to": "The Prisma 7 compatibility augmentation needed to be visible during compilation."
+  },
+  {
+   "id": "88b3cdd",
+   "commit": "88b3cdd",
+   "files": [
+    "tsconfig.json",
+    "tsconfig.validate.json"
+   ],
+   "change": "Included local .d.ts files in normal and validation TypeScript compilation.",
+   "responds_to": "The Prisma 7 compatibility declarations needed to be compiled."
+  },
+  {
+   "id": "e47d4d7",
+   "commit": "e47d4d7",
+   "files": [
+    "src/types/prisma-internals-augment.d.ts"
+   ],
+   "change": "Added a legacy-compatible getConfig declaration accepting ignoreEnvVarErrors and returning ConfigMetaFormat.",
+   "responds_to": "Prisma 7 changed the getConfig type signature while legacy Prisma 6-compatible Pro code still passed ignoreEnvVarErrors."
+  },
+  {
+   "id": "2823aab",
+   "commit": "2823aab",
+   "files": [
+    ".github/workflows/ci.yml",
+    ".github/workflows/README.md",
+    "package.json"
+   ],
+   "change": "Raised the Node.js minimum to 20.19.0, removed Node 18 from CI, and ran the basic tests on all remaining Node versions.",
+   "responds_to": "Prisma 7's raised Node.js runtime requirement."
+  },
+  {
+   "id": "c4789bd",
+   "commit": "c4789bd",
+   "files": [
+    "README.md",
+    "website/docs/intro/quick-start.md",
+    "website/docs/reference/troubleshooting.md",
+    "website/docs/upgrade/pro-migration.md"
+   ],
+   "change": "Updated documented Prisma and runtime requirements to Prisma 7, Node.js 20.19+, TypeScript 5.4+, and the revised recommended versions.",
+   "responds_to": "The project adopted Prisma 7 and its runtime requirements."
+  },
+  {
+   "id": "ef7a1d2",
+   "commit": "ef7a1d2",
+   "files": [
+    "src/prisma-generator.ts"
+   ],
+   "change": "Added installed-Prisma version detection and a message for Prisma versions below 7.",
+   "responds_to": "The release requires Prisma 7 and needs to guide Prisma 6 users to the older generator release."
+  },
+  {
+   "id": "6e88699",
+   "commit": "6e88699",
+   "files": [
+    "src/prisma-generator.ts"
+   ],
+   "change": "Changed the unsupported-Prisma-version message from a warning to informational logging.",
+   "responds_to": "Unsupported Prisma versions are reported as compatibility guidance rather than generator warnings."
+  },
+  {
+   "id": "02a8c98",
+   "commit": "02a8c98",
+   "files": [
+    "src/prisma-generator.ts"
+   ],
+   "change": "Removed use of options.version when determining the installed Prisma version and added a leading newline to the compatibility message.",
+   "responds_to": "Version detection needed to rely on the installed Prisma package under the Prisma 7 minimum-version check."
+  }
+ ],
+ "final": "[\n  {\n    \"id\": \"K1\",\n    \"commit\": \"240aba0\",\n    \"files\": [\"prisma.config.ts\", \"prisma/schema.prisma\"],\n    \"change\": \"Added a Prisma config file containing the schema, migrations path, and datasource URL; removed the datasource URL from schema.prisma.\",\n    \"responds_to\": \"Prisma 7 moves datasource URLs out of schema.prisma and supports prisma.config.ts.\"\n  },\n  {\n    \"id\": \"K2\",\n    \"commit\": \"240aba0\",\n    \"files\": [\"prisma/schema.prisma\"],\n    \"change\": \"Removed engineType = \\\"client\\\" from the Prisma client generator block.\",\n    \"responds_to\": \"The Prisma 7 client generator changed engine configuration defaults and support.\"\n  },\n  {\n    \"id\": \"K3\",\n    \"commit\": \"240aba0\",\n    \"files\": [\"src/types.ts\", \"src/prisma-generator.ts\", \"src/transformer.ts\"],\n    \"change\": \"Switched DMMF typing to @prisma/generator-helper, introduced SchemaEnumWithValues, and normalized enum values from Prisma's changed enum representations before generation.\",\n    \"responds_to\": \"Prisma 7 changed the DMMF enum shape and the runtime package used for DMMF types.\"\n  },\n  {\n    \"id\": \"K4\",\n    \"commit\": \"240aba0\",\n    \"files\": [\"package.json\"],\n    \"change\": \"Added dotenv, @prisma/adapter-pg, and pg dependencies.\",\n    \"responds_to\": \"Prisma 7's config-file and driver-adapter setup.\"\n  },\n  {\n    \"id\": \"K5\",\n    \"commit\": \"240aba0\",\n    \"files\": [\"tests/helpers/prisma-generate.ts\", \"tests/helpers/mock-generators.ts\", \"tests/aggregate-groupby.test.ts\", \"tests/issue-118-output-directory.test.ts\", \"tests/json-config-output-precedence.test.ts\", \"tests/multi-provider/provider-test-suite.ts\", \"tests/multi-provider/run-all-tests.ts\", \"tests/prisma-client-esm-config.test.ts\", \"tests/prisma-client-full-matrix.test.ts\", \"tests/prisma-client-preview-options.test.ts\"],\n    \"change\": \"Added shared Prisma-generation helpers that remove datasource url and driverAdapters entries, create provider-specific prisma.config.mjs files, and invoke prisma generate with --config; updated affected tests to use them.\",\n    \"responds_to\": \"Prisma 7's config-file datasource handling and changed driverAdapters/schema behavior.\"\n  },\n  {\n    \"id\": \"240aba0\",\n    \"files\": [\"tests/integration.test.ts\"],\n    \"change\": \"Increased generation and minimal-configuration test timeouts.\",\n    \"responds_to\": \"Slower generation under Prisma 7 driver-adapter execution.\"\n  },\n  {\n    \"id\": \"79d3159\",\n    \"commit\": \"79d3159\",\n    \"files\": [\"src/types/prisma-internals-augment.d.ts\"],\n    \"change\": \"Added a local Prisma internals type augmentation making ignoreEnvVarErrors optional on GetConfigOptions.\",\n    \"responds_to\": \"Prisma 7 removed the legacy ignoreEnvVarErrors type while Pro code still referenced it.\"\n  },\n  {\n    \"id\": \"35ec084\",\n    \"commit\": \"35ec084\",\n    \"files\": [\"tsconfig.json\"],\n    \"change\": \"Configured TypeScript to load local Prisma internals augmentations.\",\n    \"responds_to\": \"The Prisma 7 compatibility augmentation needed to be visible during compilation.\"\n  },\n  {\n    \"id\": \"88b3cdd\",\n    \"commit\": \"88b3cdd\",\n    \"files\": [\"tsconfig.json\", \"tsconfig.validate.json\"],\n    \"change\": \"Included local .d.ts files in normal and validation TypeScript compilation.\",\n    \"responds_to\": \"The Prisma 7 compatibility declarations needed to be compiled.\"\n  },\n  {\n    \"id\": \"e47d4d7\",\n    \"commit\": \"e47d4d7\",\n    \"files\": [\"src/types/prisma-internals-augment.d.ts\"],\n    \"change\": \"Added a legacy-compatible getConfig declaration accepting ignoreEnvVarErrors and returning ConfigMetaFormat.\",\n    \"responds_to\": \"Prisma 7 changed the getConfig type signature while legacy Prisma 6-compatible Pro code still passed ignoreEnvVarErrors.\"\n  },\n  {\n    \"id\": \"2823aab\",\n    \"commit\": \"2823aab\",\n    \"files\": [\".github/workflows/ci.yml\", \".github/workflows/README.md\", \"package.json\"],\n    \"change\": \"Raised the Node.js minimum to 20.19.0, removed Node 18 from CI, and ran the basic tests on all remaining Node versions.\",\n    \"responds_to\": \"Prisma 7's raised Node.js runtime requirement.\"\n  },\n  {\n    \"id\": \"c4789bd\",\n    \"commit\": \"c4789bd\",\n    \"files\": [\"README.md\", \"website/docs/intro/quick-start.md\", \"website/docs/reference/troubleshooting.md\", \"website/docs/upgrade/pro-migration.md\"],\n    \"change\": \"Updated documented Prisma and runtime requirements to Prisma 7, Node.js 20.19+, TypeScript 5.4+, and the revised recommended versions.\",\n    \"responds_to\": \"The project adopted Prisma 7 and its runtime requirements.\"\n  },\n  {\n    \"id\": \"ef7a1d2\",\n    \"commit\": \"ef7a1d2\",\n    \"files\": [\"src/prisma-generator.ts\"],\n    \"change\": \"Added installed-Prisma version detection and a message for Prisma versions below 7.\",\n    \"responds_to\": \"The release requires Prisma 7 and needs to guide Prisma 6 users to the older generator release.\"\n  },\n  {\n    \"id\": \"6e88699\",\n    \"commit\": \"6e88699\",\n    \"files\": [\"src/prisma-generator.ts\"],\n    \"change\": \"Changed the unsupported-Prisma-version message from a warning to informational logging.\",\n    \"responds_to\": \"Unsupported Prisma versions are reported as compatibility guidance rather than generator warnings.\"\n  },\n  {\n    \"id\": \"02a8c98\",\n    \"commit\": \"02a8c98\",\n    \"files\": [\"src/prisma-generator.ts\"],\n    \"change\": \"Removed use of options.version when determining the installed Prisma version and added a leading newline to the compatibility message.\",\n    \"responds_to\": \"Version detection needed to rely on the installed Prisma package under the Prisma 7 minimum-version check.\"\n  }\n]",
+ "usage": {
+  "input_tokens": 381634,
+  "cached_input_tokens": 316928,
+  "cache_write_input_tokens": 0,
+  "output_tokens": 5870,
+  "reasoning_output_tokens": 2485
+ },
+ "wall_s": 54.3
+}

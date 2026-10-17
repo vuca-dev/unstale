@@ -1,0 +1,306 @@
+{
+ "event": "cedar-prisma7",
+ "items": [
+  {
+   "id": "K1",
+   "commit": "446abbc",
+   "files": [
+    "packages/project-config/src/prisma.ts",
+    "packages/project-config/src/__tests__/prisma.test.ts"
+   ],
+   "change": "Added Prisma schema loading through createSchemaPathInput/getSchemaWithPath and changed generated-client resolution to use the generator's configured output and extension, with fallback paths.",
+   "responds_to": "Prisma 7's prisma.config schema handling and prisma-client generator output replacing the implicit @prisma/client location."
+  },
+  {
+   "id": "K2",
+   "commit": "446abbc",
+   "files": [
+    "packages/internal/src/generate/graphqlCodeGen.ts",
+    "packages/internal/src/generate/graphqlSchema.ts",
+    "packages/internal/src/project.ts"
+   ],
+   "change": "GraphQL generation imports the generated client directly, handles Prisma's ESM/CJS export shapes, uses cache-busted file URLs, and reads schemas through the new project-config helper; db re-export detection now recognizes generated-client imports.",
+   "responds_to": "Prisma 7's generated client no longer being reliably available through @prisma/client and its changed schema-loading APIs."
+  },
+  {
+   "id": "K3",
+   "commit": "446abbc",
+   "files": [
+    "packages/cli/src/lib/generatePrismaClient.ts",
+    "packages/cli/src/commands/dev/devHandler.ts",
+    "packages/cli/src/commands/execHandler.ts"
+   ],
+   "change": "Added a Prisma client generation helper that invokes Prisma's CLI entry point with --config and detects whether a generated client already exists.",
+   "responds_to": "Prisma 7 requiring prisma.config and generating a client at a configured output path."
+  },
+  {
+   "id": "K4",
+   "commit": "446abbc",
+   "files": [
+    "packages/api/src/validations/validations.ts",
+    "packages/api/src/validations/__tests__/validations.test.ts"
+   ],
+   "change": "validateUniqueness no longer constructs a fallback PrismaClient and now throws when no db instance is supplied.",
+   "responds_to": "Prisma 7's generated client and adapter-based initialization, which prevents direct construction through @prisma/client."
+  },
+  {
+   "id": "K5",
+   "commit": "446abbc",
+   "files": [
+    "packages/cli/src/commands/setup/jobs/jobsHandler.js",
+    "packages/cli/src/commands/setup/deploy/providers/coherenceHandler.js",
+    "packages/cli/src/commands/setup/deploy/providers/flightcontrolHandler.js",
+    "packages/cli/src/commands/setup/deploy/providers/renderHandler.js",
+    "packages/record/src/tasks/parse.js",
+    "packages/structure/src/model/RWProject.ts",
+    "packages/cli/src/lib/schemaHelpers.js"
+   ],
+   "change": "Replaced direct use of Prisma internals' getSchemaPath/getSchemaWithPath with Cedar's getPrismaSchemas helper.",
+   "responds_to": "Prisma 7's changed schema-path API and support for multi-file/configured schemas."
+  },
+  {
+   "id": "K6",
+   "commit": "446abbc",
+   "files": [
+    "packages/storage/src/prismaExtension.ts",
+    "packages/storage/src/index.ts",
+    "packages/storage/src/createSavers.ts",
+    "packages/storage/src/__typetests__/types.test.ts"
+   ],
+   "change": "Made storage extension and upload configuration types generic over the generated Prisma client and used Prisma's extension Result type instead of importing PrismaClient and Prisma from @prisma/client.",
+   "responds_to": "Prisma 7's generated-client output and adapter-based client model."
+  },
+  {
+   "id": "K7",
+   "commit": "446abbc",
+   "files": [
+    "packages/storage/src/__tests__/queryExtensions.test.ts",
+    "packages/storage/src/__tests__/resultExtensions.test.ts",
+    "packages/storage/src/__tests__/unit-test-schema.prisma",
+    "packages/storage/src/__tests__/prisma.config.ts",
+    "packages/storage/vitest.setup.mts",
+    "packages/storage/vitest.config.mts"
+   ],
+   "change": "Updated storage tests to use the generated client with PrismaBetterSqlite3, moved the SQLite URL into prisma.config, changed the generator to prisma-client, generated the client during test setup, and removed the old Vitest client alias.",
+   "responds_to": "Prisma 7's prisma-client generator, required driver adapter, configured datasource URL, and changed generated-client location."
+  },
+  {
+   "id": "K8",
+   "commit": "446abbc",
+   "files": [
+    "packages/testing/src/api/vitest/CedarApiVitestEnv.ts",
+    "packages/testing/src/api/vitest/vitest-api.setup.ts",
+    "packages/testing/src/config/jest/api/globalSetup.ts",
+    "packages/testing/src/config/jest/api/jest.setup.ts",
+    "packages/testing/src/config/jest/api/jest-preset.ts"
+   ],
+   "change": "Changed test database setup and teardown to use Prisma config/schema loading directly, removed schema-based directUrl rewriting and --skip-seed, and added support for .mts/.cts files and API path mappings.",
+   "responds_to": "Prisma 7 moving datasource configuration into prisma.config and using ESM/generated TypeScript clients."
+  },
+  {
+   "id": "K9",
+   "commit": "446abbc",
+   "files": [
+    "packages/auth-providers/dbAuth/setup/src/shared.ts",
+    "packages/auth-providers/dbAuth/setup/src/__tests__/setupDataMockDMMF.test.ts"
+   ],
+   "change": "dbAuth setup now loads schemas through getPrismaSchemas and its test schemas use prisma-client without a datasource URL in schema.prisma.",
+   "responds_to": "Prisma 7's schema-loading API and moving datasource configuration out of schema.prisma."
+  },
+  {
+   "id": "K10",
+   "commit": "446abbc",
+   "files": [
+    "packages/vite/src/devFeServer.ts",
+    "packages/vite/src/lib/registerFwGlobalsAndShims.ts"
+   ],
+   "change": "Externalized the SQLite adapter/native driver in Vite server builds and provided __non_webpack_require__ for external CommonJS native-driver loading.",
+   "responds_to": "Prisma 7 driver adapters bringing @prisma/adapter-better-sqlite3 and better-sqlite3 into the runtime."
+  },
+  {
+   "id": "K11",
+   "commit": "446abbc",
+   "files": [
+    "packages/create-cedar-app/templates/ts/api/db/schema.prisma",
+    "packages/create-cedar-app/templates/ts/api/prisma.config.cjs",
+    "packages/create-cedar-app/templates/ts/api/src/lib/db.ts",
+    "packages/create-cedar-app/templates/ts/api/package.json",
+    "packages/create-cedar-app/templates/js/api/db/schema.prisma",
+    "packages/create-cedar-app/templates/js/api/prisma.config.cjs",
+    "packages/create-cedar-app/templates/js/api/src/lib/db.js",
+    "packages/create-cedar-app/templates/esm-ts/api/db/schema.prisma",
+    "packages/create-cedar-app/templates/esm-ts/api/prisma.config.cjs",
+    "packages/create-cedar-app/templates/esm-ts/api/src/lib/db.ts",
+    "packages/create-cedar-app/templates/esm-js/api/db/schema.prisma",
+    "packages/create-cedar-app/templates/esm-js/api/prisma.config.cjs",
+    "packages/create-cedar-app/templates/esm-js/api/src/lib/db.js"
+   ],
+   "change": "Updated generated app templates to use prisma.config, prisma-client with explicit output, PrismaBetterSqlite3, generated-client imports, and SQLite URLs rooted at api/db.",
+   "responds_to": "Prisma 7's removed datasource url in schema.prisma, new generator, explicit output, and driver-adapter requirement."
+  },
+  {
+   "id": "K12",
+   "commit": "446abbc",
+   "files": [
+    ".changesets/release_notes_major.md",
+    "packages/create-cedar-app/templates/ts/.env.defaults",
+    "packages/create-cedar-app/templates/js/.env.defaults",
+    "packages/create-cedar-app/templates/esm-ts/.env.defaults",
+    "packages/create-cedar-app/templates/esm-js/.env.defaults"
+   ],
+   "change": "Changed the default SQLite URL from file:./dev.db to file:./db/dev.db and documented the required migration.",
+   "responds_to": "Prisma 7's configured/generated-client layout causing CLI and runtime SQLite paths to diverge."
+  },
+  {
+   "id": "K13",
+   "commit": "446abbc",
+   "files": [
+    "packages/cli/src/commands/generate/service/serviceHandler.js",
+    "packages/cli/src/commands/generate/dataMigration/dataMigration.js",
+    "packages/internal/src/generate/graphqlCodeGen.ts"
+   ],
+   "change": "Generated services, data migrations, and GraphQL types now import Prisma types through src/lib/db rather than conditionally from @prisma/client.",
+   "responds_to": "Prisma 7's generated client no longer being exposed through the default @prisma/client entry."
+  },
+  {
+   "id": "K14",
+   "commit": "065060a",
+   "files": [
+    "docs/docs/auth/dbauth.md",
+    "docs/docs/cli-commands.md",
+    "docs/docs/database-seeds.md",
+    "docs/docs/deploy/introduction.md",
+    "docs/docs/how-to/sending-emails.md",
+    "docs/docs/how-to/test-in-github-actions.md",
+    "docs/docs/tutorial/chapter0/what-is-cedarjs.md",
+    "docs/docs/tutorial/chapter1/file-structure.md",
+    "docs/docs/tutorial/chapter2/getting-dynamic.md",
+    "docs/docs/tutorial/chapter3/saving-data.md",
+    "docs/docs/tutorial/chapter4/authentication.md",
+    "docs/docs/tutorial/chapter5/testing.md",
+    "docs/docs/tutorial/chapter6/comments-schema.md",
+    "docs/docs/typescript/utility-types.md",
+    "docs/docs/uploads.md"
+   ],
+   "change": "Updated documentation examples and commands for prisma.config, generated-client imports, Prisma 7 client initialization, adapters, and the new SQLite URL.",
+   "responds_to": "Prisma 7's configuration, generated-client, adapter, and SQLite-path changes."
+  },
+  {
+   "id": "K15",
+   "commit": "22268f9",
+   "files": [
+    "packages/cli/src/commands/generate/service/serviceHandler.js",
+    "packages/cli/src/commands/generate/dataMigration/dataMigration.js",
+    "packages/internal/src/generate/graphqlCodeGen.ts",
+    "packages/project-config/src/prisma.ts",
+    "packages/cli/src/lib/generatePrismaClient.ts"
+   ],
+   "change": "Removed Prisma 6 compatibility branches: generated code always imports through src/lib/db, GraphQL codegen no longer falls back to @prisma/client, and generated-client resolution now returns the configured client path or an error.",
+   "responds_to": "Cedar projects using Prisma 7 exclusively in canary builds and no longer needing the Prisma 6/default-client fallback."
+  },
+  {
+   "id": "K16",
+   "commit": "4c692b5",
+   "files": [
+    "packages/codemods/src/codemods/v3.x/prismaV7/prismaV7.ts",
+    "packages/codemods/src/codemods/v3.x/prismaV7/updateSchemaFile.ts",
+    "packages/codemods/src/codemods/v3.x/prismaV7/updatePrismaConfig.ts",
+    "packages/codemods/src/codemods/v3.x/prismaV7/updateDbFile.ts",
+    "packages/codemods/src/codemods/v3.x/prismaV7/rewriteRemainingImports.ts",
+    "packages/codemods/src/codemods/v3.x/prismaV7/updateApiPackageJson.ts",
+    "packages/codemods/src/codemods/v3.x/prismaV7/updateTsConfigs.ts",
+    "packages/codemods/src/codemods/v3.x/prismaV7/updateGitignore.ts",
+    "packages/codemods/src/codemods/v3.x/prismaV7/updateEnvDefaults.ts"
+   ],
+   "change": "Added a Prisma 7 migration codemod that moves datasource configuration to prisma.config, rewrites the generator and client imports, adds the SQLite adapter and initialization, updates package/config/ignore/env files, and rewrites remaining @prisma/client imports.",
+   "responds_to": "Prisma 7's removed schema datasource URL, new prisma-client generator, explicit generated output, driver adapters, and generated-client imports."
+  },
+  {
+   "id": "K17",
+   "commit": "84caa90",
+   "files": [
+    "packages/codemods/src/codemods/v3.x/prismaV7/updateDbFile.ts",
+    "packages/codemods/src/codemods/v3.x/prismaV7/updateApiPackageJson.ts",
+    "packages/codemods/src/codemods/v3.x/prismaV7/prismaV7.ts"
+   ],
+   "change": "Extended the Prisma 7 codemod to detect PostgreSQL projects, add PrismaPg and @prisma/adapter-pg, construct the adapter from DATABASE_URL, pass it to PrismaClient, and add the PostgreSQL dependencies.",
+   "responds_to": "Prisma 7's driver-adapter architecture for PostgreSQL."
+  },
+  {
+   "id": "K18",
+   "commit": "6f3bd9c",
+   "files": [
+    "packages/codemods/src/codemods/v3.x/prismaV7/updateDbFile.ts",
+    "packages/codemods/src/codemods/v3.x/prismaV7/prismaV7.ts"
+   ],
+   "change": "Made codemod adapter insertion work when the generated-client import is absent or already rewritten, and centralized insertion of adapter properties across PrismaClient constructions.",
+   "responds_to": "Prisma 7 migration output variations and rerunning the adapter-based codemod."
+  },
+  {
+   "id": "K19",
+   "commit": "e8b267c",
+   "files": [
+    "packages/codemods/src/codemods/v3.x/prismaV7/updateDbFile.ts",
+    "packages/codemods/src/codemods/v3.x/prismaV7/__testfixtures__/updateDbFile.output.ts",
+    "packages/codemods/src/codemods/v3.x/prismaV7/__testfixtures__/updateDbFile.pg.output.ts",
+    "packages/codemods/src/codemods/v3.x/prismaV7/__testfixtures__/updateDbFile.pg-partial.output.ts"
+   ],
+   "change": "Fixed codemod import placement and preserved leading file comments when inserting Prisma adapter imports.",
+   "responds_to": "Prisma 7 adapter-import insertion in existing db files."
+  },
+  {
+   "id": "K20",
+   "commit": "b8a773f",
+   "files": [
+    "upgrade-scripts/3.x.ts"
+   ],
+   "change": "Added the Prisma 7 codemod to the 3.x upgrade-script checks so upgrades detect and run the migration.",
+   "responds_to": "Cedar 3.x projects requiring the Prisma 7 source transformation."
+  },
+  {
+   "id": "K21",
+   "commit": "f9e1b3e",
+   "files": [
+    "packages/codemods/src/codemods.ts",
+    "packages/testing/src/api/vitest/CedarApiVitestEnv.ts",
+    "packages/testing/src/config/jest/api/globalSetup.ts",
+    "tasks/kitchen-sink-project/rebuild-kitchen-sink-project-fixture.mts",
+    "tasks/kitchen-sink-project/test-project.mts",
+    "tasks/kitchen-sink-project/util.mts",
+    "tasks/smoke-tests/auth/playwright.config.ts",
+    "tasks/smoke-tests/dev/playwright.config.ts"
+   ],
+   "change": "Added Cedar env-file loading to Prisma 7 codemod/test and fixture commands, and passed --load-env-files user where prisma.config evaluates environment variables.",
+   "responds_to": "Prisma 7 prisma.config being executable configuration that requires environment variables to be loaded before Prisma operations."
+  },
+  {
+   "id": "K22",
+   "commit": "ed05172",
+   "files": [
+    "__fixtures__/test-project-live/api/src/lib/liveQueriesListener.ts",
+    "packages/cli/src/commands/setup/live-queries/templates/liveQueriesListener.ts.template"
+   ],
+   "change": "Live-query PostgreSQL connections now read datasource.url from the loaded Prisma config and use it as the pg connection string, with an error when it is absent.",
+   "responds_to": "Prisma 7 moving the datasource URL from schema.prisma/environment handling into prisma.config."
+  },
+  {
+   "id": "K23",
+   "commit": "3bf1294",
+   "files": [
+    "packages/internal/src/generate/generate.ts",
+    "packages/internal/package.json"
+   ],
+   "change": "Loaded project environment variables before gqlorm generation.",
+   "responds_to": "Prisma 7 prisma.config requiring environment variables to be available while schema/client metadata is generated."
+  }
+ ],
+ "final": "[\n  {\n    \"id\": \"K1\",\n    \"commit\": \"446abbc\",\n    \"files\": [\"packages/project-config/src/prisma.ts\", \"packages/project-config/src/__tests__/prisma.test.ts\"],\n    \"change\": \"Added Prisma schema loading through createSchemaPathInput/getSchemaWithPath and changed generated-client resolution to use the generator's configured output and extension, with fallback paths.\",\n    \"responds_to\": \"Prisma 7's prisma.config schema handling and prisma-client generator output replacing the implicit @prisma/client location.\"\n  },\n  {\n    \"id\": \"K2\",\n    \"commit\": \"446abbc\",\n    \"files\": [\"packages/internal/src/generate/graphqlCodeGen.ts\", \"packages/internal/src/generate/graphqlSchema.ts\", \"packages/internal/src/project.ts\"],\n    \"change\": \"GraphQL generation imports the generated client directly, handles Prisma's ESM/CJS export shapes, uses cache-busted file URLs, and reads schemas through the new project-config helper; db re-export detection now recognizes generated-client imports.\",\n    \"responds_to\": \"Prisma 7's generated client no longer being reliably available through @prisma/client and its changed schema-loading APIs.\"\n  },\n  {\n    \"id\": \"K3\",\n    \"commit\": \"446abbc\",\n    \"files\": [\"packages/cli/src/lib/generatePrismaClient.ts\", \"packages/cli/src/commands/dev/devHandler.ts\", \"packages/cli/src/commands/execHandler.ts\"],\n    \"change\": \"Added a Prisma client generation helper that invokes Prisma's CLI entry point with --config and detects whether a generated client already exists.\",\n    \"responds_to\": \"Prisma 7 requiring prisma.config and generating a client at a configured output path.\"\n  },\n  {\n    \"id\": \"K4\",\n    \"commit\": \"446abbc\",\n    \"files\": [\"packages/api/src/validations/validations.ts\", \"packages/api/src/validations/__tests__/validations.test.ts\"],\n    \"change\": \"validateUniqueness no longer constructs a fallback PrismaClient and now throws when no db instance is supplied.\",\n    \"responds_to\": \"Prisma 7's generated client and adapter-based initialization, which prevents direct construction through @prisma/client.\"\n  },\n  {\n    \"id\": \"K5\",\n    \"commit\": \"446abbc\",\n    \"files\": [\"packages/cli/src/commands/setup/jobs/jobsHandler.js\", \"packages/cli/src/commands/setup/deploy/providers/coherenceHandler.js\", \"packages/cli/src/commands/setup/deploy/providers/flightcontrolHandler.js\", \"packages/cli/src/commands/setup/deploy/providers/renderHandler.js\", \"packages/record/src/tasks/parse.js\", \"packages/structure/src/model/RWProject.ts\", \"packages/cli/src/lib/schemaHelpers.js\"],\n    \"change\": \"Replaced direct use of Prisma internals' getSchemaPath/getSchemaWithPath with Cedar's getPrismaSchemas helper.\",\n    \"responds_to\": \"Prisma 7's changed schema-path API and support for multi-file/configured schemas.\"\n  },\n  {\n    \"id\": \"K6\",\n    \"commit\": \"446abbc\",\n    \"files\": [\"packages/storage/src/prismaExtension.ts\", \"packages/storage/src/index.ts\", \"packages/storage/src/createSavers.ts\", \"packages/storage/src/__typetests__/types.test.ts\"],\n    \"change\": \"Made storage extension and upload configuration types generic over the generated Prisma client and used Prisma's extension Result type instead of importing PrismaClient and Prisma from @prisma/client.\",\n    \"responds_to\": \"Prisma 7's generated-client output and adapter-based client model.\"\n  },\n  {\n    \"id\": \"K7\",\n    \"commit\": \"446abbc\",\n    \"files\": [\"packages/storage/src/__tests__/queryExtensions.test.ts\", \"packages/storage/src/__tests__/resultExtensions.test.ts\", \"packages/storage/src/__tests__/unit-test-schema.prisma\", \"packages/storage/src/__tests__/prisma.config.ts\", \"packages/storage/vitest.setup.mts\", \"packages/storage/vitest.config.mts\"],\n    \"change\": \"Updated storage tests to use the generated client with PrismaBetterSqlite3, moved the SQLite URL into prisma.config, changed the generator to prisma-client, generated the client during test setup, and removed the old Vitest client alias.\",\n    \"responds_to\": \"Prisma 7's prisma-client generator, required driver adapter, configured datasource URL, and changed generated-client location.\"\n  },\n  {\n    \"id\": \"K8\",\n    \"commit\": \"446abbc\",\n    \"files\": [\"packages/testing/src/api/vitest/CedarApiVitestEnv.ts\", \"packages/testing/src/api/vitest/vitest-api.setup.ts\", \"packages/testing/src/config/jest/api/globalSetup.ts\", \"packages/testing/src/config/jest/api/jest.setup.ts\", \"packages/testing/src/config/jest/api/jest-preset.ts\"],\n    \"change\": \"Changed test database setup and teardown to use Prisma config/schema loading directly, removed schema-based directUrl rewriting and --skip-seed, and added support for .mts/.cts files and API path mappings.\",\n    \"responds_to\": \"Prisma 7 moving datasource configuration into prisma.config and using ESM/generated TypeScript clients.\"\n  },\n  {\n    \"id\": \"K9\",\n    \"commit\": \"446abbc\",\n    \"files\": [\"packages/auth-providers/dbAuth/setup/src/shared.ts\", \"packages/auth-providers/dbAuth/setup/src/__tests__/setupDataMockDMMF.test.ts\"],\n    \"change\": \"dbAuth setup now loads schemas through getPrismaSchemas and its test schemas use prisma-client without a datasource URL in schema.prisma.\",\n    \"responds_to\": \"Prisma 7's schema-loading API and moving datasource configuration out of schema.prisma.\"\n  },\n  {\n    \"id\": \"K10\",\n    \"commit\": \"446abbc\",\n    \"files\": [\"packages/vite/src/devFeServer.ts\", \"packages/vite/src/lib/registerFwGlobalsAndShims.ts\"],\n    \"change\": \"Externalized the SQLite adapter/native driver in Vite server builds and provided __non_webpack_require__ for external CommonJS native-driver loading.\",\n    \"responds_to\": \"Prisma 7 driver adapters bringing @prisma/adapter-better-sqlite3 and better-sqlite3 into the runtime.\"\n  },\n  {\n    \"id\": \"K11\",\n    \"commit\": \"446abbc\",\n    \"files\": [\"packages/create-cedar-app/templates/ts/api/db/schema.prisma\", \"packages/create-cedar-app/templates/ts/api/prisma.config.cjs\", \"packages/create-cedar-app/templates/ts/api/src/lib/db.ts\", \"packages/create-cedar-app/templates/ts/api/package.json\", \"packages/create-cedar-app/templates/js/api/db/schema.prisma\", \"packages/create-cedar-app/templates/js/api/prisma.config.cjs\", \"packages/create-cedar-app/templates/js/api/src/lib/db.js\", \"packages/create-cedar-app/templates/esm-ts/api/db/schema.prisma\", \"packages/create-cedar-app/templates/esm-ts/api/prisma.config.cjs\", \"packages/create-cedar-app/templates/esm-ts/api/src/lib/db.ts\", \"packages/create-cedar-app/templates/esm-js/api/db/schema.prisma\", \"packages/create-cedar-app/templates/esm-js/api/prisma.config.cjs\", \"packages/create-cedar-app/templates/esm-js/api/src/lib/db.js\"],\n    \"change\": \"Updated generated app templates to use prisma.config, prisma-client with explicit output, PrismaBetterSqlite3, generated-client imports, and SQLite URLs rooted at api/db.\",\n    \"responds_to\": \"Prisma 7's removed datasource url in schema.prisma, new generator, explicit output, and driver-adapter requirement.\"\n  },\n  {\n    \"id\": \"K12\",\n    \"commit\": \"446abbc\",\n    \"files\": [\".changesets/release_notes_major.md\", \"packages/create-cedar-app/templates/ts/.env.defaults\", \"packages/create-cedar-app/templates/js/.env.defaults\", \"packages/create-cedar-app/templates/esm-ts/.env.defaults\", \"packages/create-cedar-app/templates/esm-js/.env.defaults\"],\n    \"change\": \"Changed the default SQLite URL from file:./dev.db to file:./db/dev.db and documented the required migration.\",\n    \"responds_to\": \"Prisma 7's configured/generated-client layout causing CLI and runtime SQLite paths to diverge.\"\n  },\n  {\n    \"id\": \"K13\",\n    \"commit\": \"446abbc\",\n    \"files\": [\"packages/cli/src/commands/generate/service/serviceHandler.js\", \"packages/cli/src/commands/generate/dataMigration/dataMigration.js\", \"packages/internal/src/generate/graphqlCodeGen.ts\"],\n    \"change\": \"Generated services, data migrations, and GraphQL types now import Prisma types through src/lib/db rather than conditionally from @prisma/client.\",\n    \"responds_to\": \"Prisma 7's generated client no longer being exposed through the default @prisma/client entry.\"\n  },\n  {\n    \"id\": \"K14\",\n    \"commit\": \"065060a\",\n    \"files\": [\"docs/docs/auth/dbauth.md\", \"docs/docs/cli-commands.md\", \"docs/docs/database-seeds.md\", \"docs/docs/deploy/introduction.md\", \"docs/docs/how-to/sending-emails.md\", \"docs/docs/how-to/test-in-github-actions.md\", \"docs/docs/tutorial/chapter0/what-is-cedarjs.md\", \"docs/docs/tutorial/chapter1/file-structure.md\", \"docs/docs/tutorial/chapter2/getting-dynamic.md\", \"docs/docs/tutorial/chapter3/saving-data.md\", \"docs/docs/tutorial/chapter4/authentication.md\", \"docs/docs/tutorial/chapter5/testing.md\", \"docs/docs/tutorial/chapter6/comments-schema.md\", \"docs/docs/typescript/utility-types.md\", \"docs/docs/uploads.md\"],\n    \"change\": \"Updated documentation examples and commands for prisma.config, generated-client imports, Prisma 7 client initialization, adapters, and the new SQLite URL.\",\n    \"responds_to\": \"Prisma 7's configuration, generated-client, adapter, and SQLite-path changes.\"\n  },\n  {\n    \"id\": \"K15\",\n    \"commit\": \"22268f9\",\n    \"files\": [\"packages/cli/src/commands/generate/service/serviceHandler.js\", \"packages/cli/src/commands/generate/dataMigration/dataMigration.js\", \"packages/internal/src/generate/graphqlCodeGen.ts\", \"packages/project-config/src/prisma.ts\", \"packages/cli/src/lib/generatePrismaClient.ts\"],\n    \"change\": \"Removed Prisma 6 compatibility branches: generated code always imports through src/lib/db, GraphQL codegen no longer falls back to @prisma/client, and generated-client resolution now returns the configured client path or an error.\",\n    \"responds_to\": \"Cedar projects using Prisma 7 exclusively in canary builds and no longer needing the Prisma 6/default-client fallback.\"\n  },\n  {\n    \"id\": \"K16\",\n    \"commit\": \"4c692b5\",\n    \"files\": [\"packages/codemods/src/codemods/v3.x/prismaV7/prismaV7.ts\", \"packages/codemods/src/codemods/v3.x/prismaV7/updateSchemaFile.ts\", \"packages/codemods/src/codemods/v3.x/prismaV7/updatePrismaConfig.ts\", \"packages/codemods/src/codemods/v3.x/prismaV7/updateDbFile.ts\", \"packages/codemods/src/codemods/v3.x/prismaV7/rewriteRemainingImports.ts\", \"packages/codemods/src/codemods/v3.x/prismaV7/updateApiPackageJson.ts\", \"packages/codemods/src/codemods/v3.x/prismaV7/updateTsConfigs.ts\", \"packages/codemods/src/codemods/v3.x/prismaV7/updateGitignore.ts\", \"packages/codemods/src/codemods/v3.x/prismaV7/updateEnvDefaults.ts\"],\n    \"change\": \"Added a Prisma 7 migration codemod that moves datasource configuration to prisma.config, rewrites the generator and client imports, adds the SQLite adapter and initialization, updates package/config/ignore/env files, and rewrites remaining @prisma/client imports.\",\n    \"responds_to\": \"Prisma 7's removed schema datasource URL, new prisma-client generator, explicit generated output, driver adapters, and generated-client imports.\"\n  },\n  {\n    \"id\": \"K17\",\n    \"commit\": \"84caa90\",\n    \"files\": [\"packages/codemods/src/codemods/v3.x/prismaV7/updateDbFile.ts\", \"packages/codemods/src/codemods/v3.x/prismaV7/updateApiPackageJson.ts\", \"packages/codemods/src/codemods/v3.x/prismaV7/prismaV7.ts\"],\n    \"change\": \"Extended the Prisma 7 codemod to detect PostgreSQL projects, add PrismaPg and @prisma/adapter-pg, construct the adapter from DATABASE_URL, pass it to PrismaClient, and add the PostgreSQL dependencies.\",\n    \"responds_to\": \"Prisma 7's driver-adapter architecture for PostgreSQL.\"\n  },\n  {\n    \"id\": \"K18\",\n    \"commit\": \"6f3bd9c\",\n    \"files\": [\"packages/codemods/src/codemods/v3.x/prismaV7/updateDbFile.ts\", \"packages/codemods/src/codemods/v3.x/prismaV7/prismaV7.ts\"],\n    \"change\": \"Made codemod adapter insertion work when the generated-client import is absent or already rewritten, and centralized insertion of adapter properties across PrismaClient constructions.\",\n    \"responds_to\": \"Prisma 7 migration output variations and rerunning the adapter-based codemod.\"\n  },\n  {\n    \"id\": \"K19\",\n    \"commit\": \"e8b267c\",\n    \"files\": [\"packages/codemods/src/codemods/v3.x/prismaV7/updateDbFile.ts\", \"packages/codemods/src/codemods/v3.x/prismaV7/__testfixtures__/updateDbFile.output.ts\", \"packages/codemods/src/codemods/v3.x/prismaV7/__testfixtures__/updateDbFile.pg.output.ts\", \"packages/codemods/src/codemods/v3.x/prismaV7/__testfixtures__/updateDbFile.pg-partial.output.ts\"],\n    \"change\": \"Fixed codemod import placement and preserved leading file comments when inserting Prisma adapter imports.\",\n    \"responds_to\": \"Prisma 7 adapter-import insertion in existing db files.\"\n  },\n  {\n    \"id\": \"K20\",\n    \"commit\": \"b8a773f\",\n    \"files\": [\"upgrade-scripts/3.x.ts\"],\n    \"change\": \"Added the Prisma 7 codemod to the 3.x upgrade-script checks so upgrades detect and run the migration.\",\n    \"responds_to\": \"Cedar 3.x projects requiring the Prisma 7 source transformation.\"\n  },\n  {\n    \"id\": \"K21\",\n    \"commit\": \"f9e1b3e\",\n    \"files\": [\"packages/codemods/src/codemods.ts\", \"packages/testing/src/api/vitest/CedarApiVitestEnv.ts\", \"packages/testing/src/config/jest/api/globalSetup.ts\", \"tasks/kitchen-sink-project/rebuild-kitchen-sink-project-fixture.mts\", \"tasks/kitchen-sink-project/test-project.mts\", \"tasks/kitchen-sink-project/util.mts\", \"tasks/smoke-tests/auth/playwright.config.ts\", \"tasks/smoke-tests/dev/playwright.config.ts\"],\n    \"change\": \"Added Cedar env-file loading to Prisma 7 codemod/test and fixture commands, and passed --load-env-files user where prisma.config evaluates environment variables.\",\n    \"responds_to\": \"Prisma 7 prisma.config being executable configuration that requires environment variables to be loaded before Prisma operations.\"\n  },\n  {\n    \"id\": \"K22\",\n    \"commit\": \"ed05172\",\n    \"files\": [\"__fixtures__/test-project-live/api/src/lib/liveQueriesListener.ts\", \"packages/cli/src/commands/setup/live-queries/templates/liveQueriesListener.ts.template\"],\n    \"change\": \"Live-query PostgreSQL connections now read datasource.url from the loaded Prisma config and use it as the pg connection string, with an error when it is absent.\",\n    \"responds_to\": \"Prisma 7 moving the datasource URL from schema.prisma/environment handling into prisma.config.\"\n  },\n  {\n    \"id\": \"K23\",\n    \"commit\": \"3bf1294\",\n    \"files\": [\"packages/internal/src/generate/generate.ts\", \"packages/internal/package.json\"],\n    \"change\": \"Loaded project environment variables before gqlorm generation.\",\n    \"responds_to\": \"Prisma 7 prisma.config requiring environment variables to be available while schema/client metadata is generated.\"\n  }\n]",
+ "usage": {
+  "input_tokens": 556599,
+  "cached_input_tokens": 470528,
+  "cache_write_input_tokens": 0,
+  "output_tokens": 8787,
+  "reasoning_output_tokens": 2038
+ },
+ "wall_s": 71.7
+}

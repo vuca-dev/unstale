@@ -1,0 +1,4803 @@
+[
+ {
+  "purl": "pkg:npm/next",
+  "answer": {
+   "kind": "site+repo",
+   "site": "https://nextjs.org/docs",
+   "repo": "vercel/next.js",
+   "sites": [
+    {
+     "site": "https://nextjs.org/docs",
+     "pages": 905,
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ]
+    }
+   ]
+  },
+  "pairs": [
+   {
+    "site": "https://nextjs.org/docs",
+    "repo": "vercel/next.js",
+    "why": [
+     "package-repo-has-docs",
+     "site-edit-link"
+    ],
+    "siteToRepo": true,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "4/5/5",
+    "validated": true,
+    "validatedBy": "content",
+    "framework": [],
+    "docDirs": [
+     "docs"
+    ],
+    "docFiles": 474,
+    "content": [
+     "Ppath-match:0.62/0.19:docs/01-app/03-api-reference/04-functions/use-link-status.mdx",
+     "Ppath-match:0.63/0.22:docs/02-pages/01-getting-started/06-css.mdx",
+     "Pedit-link:0.93/0.16:docs/01-app/03-api-reference/05-config/01-next-config-js/skipProxyUrlNormalize.mdx",
+     "-path-match:0/0.32:docs/01-app/02-guides/index.mdx",
+     "Ppath-match:0.92/0.18:docs/01-app/03-api-reference/05-config/01-next-config-js/allowedDevOrigins.mdx"
+    ]
+   }
+  ],
+  "evidence": {
+   "registry": {
+    "homepage": "https://nextjs.org",
+    "repository": {
+     "url": "git+https://github.com/vercel/next.js.git",
+     "type": "git"
+    }
+   },
+   "pkgRepo": {
+    "full": "vercel/next.js",
+    "homepage": "https://nextjs.org",
+    "docFiles": 474,
+    "docDirs": [
+     "docs"
+    ],
+    "configs": [
+     {
+      "path": "apps/bundle-analyzer/next.config.mjs",
+      "framework": "other",
+      "hosts": []
+     },
+     {
+      "path": "bench/app-router-server/next.config.js",
+      "framework": "other",
+      "hosts": []
+     },
+     {
+      "path": "bench/basic-app/next.config.js",
+      "framework": "other",
+      "hosts": []
+     },
+     {
+      "path": "bench/dev-validation/next.config.js",
+      "framework": "other",
+      "hosts": []
+     },
+     {
+      "path": "bench/heavy-npm-deps/next.config.mjs",
+      "framework": "other",
+      "hosts": []
+     },
+     {
+      "path": "bench/module-cost/next.config.js",
+      "framework": "other",
+      "hosts": []
+     }
+    ],
+    "hasWiki": false
+   },
+   "candidates": [
+    {
+     "host": "nextjs.org",
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ]
+    }
+   ],
+   "sites": [
+    {
+     "url": "https://nextjs.org",
+     "final": "https://nextjs.org/docs",
+     "status": 200,
+     "editRepos": [
+      "vercel/next.js"
+     ],
+     "repoLinks": [
+      "vercel/next.js"
+     ],
+     "sitemapPages": 905,
+     "versioned": [],
+     "entry": "https://nextjs.org/docs",
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ],
+     "samples": 5
+    }
+   ]
+  },
+  "requests": 0,
+  "expect": "docs in the code repository (vercel/next.js docs/); hand-kept guide path fixture",
+  "seconds": 0.211
+ },
+ {
+  "purl": "pkg:npm/@prisma/client",
+  "answer": {
+   "kind": "site+repo",
+   "site": "https://www.prisma.io/docs",
+   "repo": "prisma/web",
+   "sites": [
+    {
+     "site": "https://www.prisma.io/docs",
+     "pages": 718,
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ]
+    }
+   ]
+  },
+  "pairs": [
+   {
+    "site": "https://www.prisma.io/docs",
+    "repo": "prisma/orm",
+    "why": [
+     "package-repo-has-docs"
+    ],
+    "siteToRepo": true,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "0/0/5",
+    "validated": false,
+    "validatedBy": "",
+    "framework": [],
+    "docDirs": [
+     "docs"
+    ],
+    "docFiles": 321,
+    "content": [
+     "-other-repo:-/-:",
+     "-other-repo:-/-:",
+     "-other-repo:-/-:",
+     "-other-repo:-/-:",
+     "-other-repo:-/-:"
+    ]
+   },
+   {
+    "site": "https://www.prisma.io/docs",
+    "repo": "prisma/web",
+    "why": [
+     "site-edit-link",
+     "org-repo-homepage"
+    ],
+    "siteToRepo": true,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "5/5/5",
+    "validated": true,
+    "validatedBy": "content",
+    "framework": [
+     "fumadocs"
+    ],
+    "docDirs": [
+     "apps/docs"
+    ],
+    "docFiles": 732,
+    "content": [
+     "Pedit-link:0.99/0.19:apps/docs/content/docs/compute/deploy-button.mdx",
+     "Pedit-link:0.98/0.3:apps/docs/content/docs/orm/v7/reference/prisma-cli-reference.mdx",
+     "Pedit-link:0.96/0.2:apps/docs/content/docs/orm/v6/prisma-client/queries/query-optimization-performance.mdx",
+     "Pedit-link:1/0.49:apps/docs/content/docs/orm/v7/more/dev-environment/index.mdx",
+     "Pedit-link:0.98/0.26:apps/docs/content/docs/postgres/error-reference.mdx"
+    ]
+   },
+   {
+    "site": "https://www.prisma.io/docs",
+    "repo": "prisma/prisma-examples",
+    "why": [
+     "org-repo-homepage"
+    ],
+    "siteToRepo": false,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "0/0/5",
+    "validated": false,
+    "validatedBy": "",
+    "framework": [
+     "astro"
+    ],
+    "docDirs": [],
+    "docFiles": 0,
+    "content": [
+     "-other-repo:-/-:",
+     "-other-repo:-/-:",
+     "-other-repo:-/-:",
+     "-other-repo:-/-:",
+     "-other-repo:-/-:"
+    ]
+   },
+   {
+    "site": "https://www.prisma.io/docs",
+    "repo": "prisma/prisma-client-extensions",
+    "why": [
+     "org-repo-homepage"
+    ],
+    "siteToRepo": false,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "0/0/5",
+    "validated": false,
+    "validatedBy": "",
+    "framework": [],
+    "docDirs": [],
+    "docFiles": 0,
+    "content": [
+     "-other-repo:-/-:",
+     "-other-repo:-/-:",
+     "-other-repo:-/-:",
+     "-other-repo:-/-:",
+     "-other-repo:-/-:"
+    ]
+   },
+   {
+    "site": "https://www.prisma.io/docs",
+    "repo": "prisma/prisma-engines",
+    "why": [
+     "org-repo-homepage"
+    ],
+    "siteToRepo": false,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "0/0/5",
+    "validated": false,
+    "validatedBy": "",
+    "framework": [],
+    "docDirs": [
+     "query-compiler"
+    ],
+    "docFiles": 1,
+    "content": [
+     "-other-repo:-/-:",
+     "-other-repo:-/-:",
+     "-other-repo:-/-:",
+     "-other-repo:-/-:",
+     "-other-repo:-/-:"
+    ]
+   },
+   {
+    "site": "https://www.prisma.io/docs",
+    "repo": "prisma/docs-legacy",
+    "why": [
+     "org-repo-homepage"
+    ],
+    "siteToRepo": false,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "0/0/5",
+    "validated": false,
+    "validatedBy": "",
+    "framework": [
+     "docusaurus"
+    ],
+    "docDirs": [
+     "content"
+    ],
+    "docFiles": 444,
+    "content": [
+     "-other-repo:-/-:",
+     "-other-repo:-/-:",
+     "-other-repo:-/-:",
+     "-other-repo:-/-:",
+     "-other-repo:-/-:"
+    ]
+   },
+   {
+    "site": "https://www.prisma.io/docs",
+    "repo": "prisma/nuxt-prisma",
+    "why": [
+     "org-repo-homepage"
+    ],
+    "siteToRepo": false,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "0/0/5",
+    "validated": false,
+    "validatedBy": "",
+    "framework": [],
+    "docDirs": [
+     "docs"
+    ],
+    "docFiles": 5,
+    "content": [
+     "-other-repo:-/-:",
+     "-other-repo:-/-:",
+     "-other-repo:-/-:",
+     "-other-repo:-/-:",
+     "-other-repo:-/-:"
+    ]
+   }
+  ],
+  "evidence": {
+   "registry": {
+    "homepage": "https://www.prisma.io",
+    "repository": {
+     "url": "https://github.com/prisma/prisma.git",
+     "type": "git",
+     "directory": "packages/client"
+    }
+   },
+   "pkgRepo": {
+    "full": "prisma/orm",
+    "homepage": "https://www.prisma.io",
+    "docFiles": 321,
+    "docDirs": [
+     "docs"
+    ],
+    "configs": [],
+    "hasWiki": false
+   },
+   "candidates": [
+    {
+     "host": "prisma.io",
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ]
+    }
+   ],
+   "sites": [
+    {
+     "url": "https://www.prisma.io",
+     "final": "https://www.prisma.io/docs",
+     "status": 200,
+     "editRepos": [
+      "prisma/web"
+     ],
+     "repoLinks": [
+      "prisma/docs",
+      "owner/repo",
+      "prisma/orm"
+     ],
+     "sitemapPages": 718,
+     "versioned": [
+      "v6",
+      "v7"
+     ],
+     "entry": "https://www.prisma.io/docs",
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ],
+     "samples": 5
+    }
+   ]
+  },
+  "requests": 0,
+  "expect": "separate docs repository renamed (prisma/docs -> prisma/web), moved framework, versioned namespaces; guide fixture",
+  "seconds": 0.212
+ },
+ {
+  "purl": "pkg:npm/@nestjs/core",
+  "answer": {
+   "kind": "site+repo",
+   "site": "https://docs.nestjs.com/",
+   "repo": "nestjs/docs.nestjs.com",
+   "sites": [
+    {
+     "site": "https://docs.nestjs.com/",
+     "pages": 147,
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ]
+    },
+    {
+     "site": "https://docs.nestjs.com/",
+     "pages": 147,
+     "from": [
+      "readme-link"
+     ]
+    },
+    {
+     "site": "https://docs.nestjs.cn/",
+     "pages": 1,
+     "from": [
+      "readme-link"
+     ]
+    }
+   ]
+  },
+  "pairs": [
+   {
+    "site": "https://docs.nestjs.com/",
+    "repo": "nestjs/docs.nestjs.com",
+    "why": [
+     "org-repo-named-for-host"
+    ],
+    "siteToRepo": false,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "0/0/5",
+    "validated": true,
+    "validatedBy": "links-only",
+    "framework": [],
+    "docDirs": [
+     "content"
+    ],
+    "docFiles": 140,
+    "content": [
+     "-no-text:-/-:",
+     "-no-text:-/-:",
+     "-no-text:-/-:",
+     "-no-text:-/-:",
+     "-no-text:-/-:"
+    ]
+   },
+   {
+    "site": "https://docs.nestjs.com/",
+    "repo": "nestjs/docs.nestjs.com",
+    "why": [
+     "org-repo-named-for-host"
+    ],
+    "siteToRepo": false,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "0/0/5",
+    "validated": true,
+    "validatedBy": "links-only",
+    "framework": [],
+    "docDirs": [
+     "content"
+    ],
+    "docFiles": 140,
+    "content": [
+     "-no-text:-/-:",
+     "-no-text:-/-:",
+     "-no-text:-/-:",
+     "-no-text:-/-:",
+     "-no-text:-/-:"
+    ]
+   },
+   {
+    "site": "https://docs.nestjs.cn/",
+    "repo": "nestjs/docs.nestjs.com",
+    "why": [
+     "org-repo-named-for-host"
+    ],
+    "siteToRepo": false,
+    "repoToSite": false,
+    "authority": true,
+    "contentPass": "0/0/0",
+    "validated": false,
+    "validatedBy": "",
+    "framework": [],
+    "docDirs": [
+     "content"
+    ],
+    "docFiles": 140,
+    "content": []
+   }
+  ],
+  "evidence": {
+   "registry": {
+    "homepage": "https://nestjs.com",
+    "repository": {
+     "url": "git+https://github.com/nestjs/nest.git",
+     "type": "git",
+     "directory": "packages/core"
+    }
+   },
+   "pkgRepo": {
+    "full": "nestjs/nest",
+    "homepage": "https://nestjs.com",
+    "docFiles": 0,
+    "docDirs": [],
+    "configs": [],
+    "hasWiki": true
+   },
+   "candidates": [
+    {
+     "host": "nestjs.com",
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ]
+    },
+    {
+     "host": "docs.nestjs.com",
+     "from": [
+      "readme-link"
+     ]
+    },
+    {
+     "host": "docs.nestjs.cn",
+     "from": [
+      "readme-link"
+     ]
+    },
+    {
+     "host": "valor-software.com",
+     "from": [
+      "readme-link"
+     ]
+    },
+    {
+     "host": "serpapi.com",
+     "from": [
+      "readme-link"
+     ]
+    }
+   ],
+   "sites": [
+    {
+     "url": "https://nestjs.com",
+     "final": "https://docs.nestjs.com/",
+     "status": 200,
+     "editRepos": [],
+     "repoLinks": [],
+     "sitemapPages": 147,
+     "versioned": [],
+     "entry": "https://docs.nestjs.com/",
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ],
+     "samples": 5
+    },
+    {
+     "url": "https://docs.nestjs.com",
+     "final": "https://docs.nestjs.com/",
+     "status": 200,
+     "editRepos": [],
+     "repoLinks": [],
+     "sitemapPages": 147,
+     "versioned": [],
+     "from": [
+      "readme-link"
+     ],
+     "samples": 5
+    },
+    {
+     "url": "https://docs.nestjs.cn",
+     "final": "https://docs.nestjs.cn/",
+     "status": 200,
+     "generator": "Rspress v2.0.15",
+     "editRepos": [],
+     "repoLinks": [
+      "nestcn/docs.nestjs.cn",
+      "nestjs/nest",
+      "fastify/fastify",
+      "facebook/react",
+      "vuejs/vue",
+      "nvm-sh/nvm",
+      "coreybutler/nvm-windows",
+      "Rich-Harris/degit"
+     ],
+     "sitemapPages": 1,
+     "versioned": [],
+     "from": [
+      "readme-link"
+     ],
+     "samples": 1
+    }
+   ]
+  },
+  "requests": 0,
+  "expect": "separate docs repository named for the host (nestjs/docs.nestjs.com); guide fixture",
+  "seconds": 0.023
+ },
+ {
+  "purl": "pkg:npm/tailwindcss",
+  "answer": {
+   "kind": "site+repo",
+   "site": "https://tailwindcss.com/docs/installation/using-vite",
+   "repo": "tailwindlabs/tailwindcss.com",
+   "sites": [
+    {
+     "site": "https://tailwindcss.com/docs/installation/using-vite",
+     "pages": 203,
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ]
+    }
+   ]
+  },
+  "pairs": [
+   {
+    "site": "https://tailwindcss.com/docs/installation/using-vite",
+    "repo": "tailwindlabs/tailwindcss.com",
+    "why": [
+     "org-repo-homepage"
+    ],
+    "siteToRepo": false,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "3/5/5",
+    "validated": true,
+    "validatedBy": "content",
+    "framework": [],
+    "docDirs": [
+     "src"
+    ],
+    "docFiles": 197,
+    "content": [
+     "Ppath-match:0.92/0.3:src/docs/border-collapse.mdx",
+     "Ppath-match:0.67/0.36:src/docs/flex-direction.mdx",
+     "-no-file:-/-:",
+     "-path-match:0.69/0.49:src/docs/object-fit.mdx",
+     "Ppath-match:0.78/0.42:src/docs/text-decoration-color.mdx"
+    ]
+   }
+  ],
+  "evidence": {
+   "registry": {
+    "homepage": "https://tailwindcss.com",
+    "repository": {
+     "url": "https://github.com/tailwindlabs/tailwindcss.git",
+     "type": "git",
+     "directory": "packages/tailwindcss"
+    }
+   },
+   "pkgRepo": {
+    "full": "tailwindlabs/tailwindcss",
+    "homepage": "https://tailwindcss.com/",
+    "docFiles": 0,
+    "docDirs": [],
+    "configs": [
+     {
+      "path": "playgrounds/nextjs/next.config.mjs",
+      "framework": "other",
+      "hosts": []
+     },
+     {
+      "path": "playgrounds/v3/next.config.mjs",
+      "framework": "other",
+      "hosts": []
+     }
+    ],
+    "hasWiki": false
+   },
+   "candidates": [
+    {
+     "host": "tailwindcss.com",
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ]
+    }
+   ],
+   "sites": [
+    {
+     "url": "https://tailwindcss.com",
+     "final": "https://tailwindcss.com/docs/installation/using-vite",
+     "status": 200,
+     "editRepos": [],
+     "repoLinks": [
+      "tailwindlabs/tailwindcss"
+     ],
+     "sitemapPages": 203,
+     "versioned": [],
+     "entry": "https://tailwindcss.com/docs",
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ],
+     "samples": 5
+    }
+   ]
+  },
+  "requests": 0,
+  "expect": "separate docs repository named for the host (tailwindlabs/tailwindcss.com)",
+  "seconds": 0.037
+ },
+ {
+  "purl": "pkg:npm/vue",
+  "answer": {
+   "kind": "site+repo",
+   "site": "https://vuejs.org/",
+   "repo": "vuejs/docs",
+   "sites": [
+    {
+     "site": "https://vuejs.org/",
+     "pages": 109,
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ]
+    }
+   ]
+  },
+  "pairs": [
+   {
+    "site": "https://vuejs.org/",
+    "repo": "vuejs/docs",
+    "why": [
+     "site-edit-link",
+     "org-repo-homepage"
+    ],
+    "siteToRepo": true,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "5/5/5",
+    "validated": true,
+    "validatedBy": "content",
+    "framework": [
+     "vitepress"
+    ],
+    "docDirs": [],
+    "docFiles": 0,
+    "content": [
+     "Pedit-link:0.97/0.2:src/api/composition-api-lifecycle.md",
+     "Pedit-link:0.84/0.27:src/error-reference/index.md",
+     "Pedit-link:0.99/0.33:src/guide/components/registration.md",
+     "Pedit-link:0.82/0.22:src/guide/extras/animation.md",
+     "Pedit-link:0.94/0.28:src/guide/typescript/overview.md"
+    ]
+   }
+  ],
+  "evidence": {
+   "registry": {
+    "homepage": "https://vuejs.org/",
+    "repository": {
+     "url": "git+https://github.com/vuejs/core.git",
+     "type": "git"
+    }
+   },
+   "pkgRepo": {
+    "full": "vuejs/core",
+    "homepage": "https://vuejs.org/",
+    "docFiles": 0,
+    "docDirs": [],
+    "configs": [],
+    "hasWiki": false
+   },
+   "candidates": [
+    {
+     "host": "vuejs.org",
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ]
+    }
+   ],
+   "sites": [
+    {
+     "url": "https://vuejs.org/",
+     "final": "https://vuejs.org/",
+     "status": 200,
+     "generator": "VitePress v2.0.0-alpha.17",
+     "editRepos": [
+      "vuejs/docs"
+     ],
+     "repoLinks": [
+      "vuejs/core",
+      "vuejs-translations/docs-zh-cn",
+      "vuejs-translations/docs-ja",
+      "vuejs-translations/docs-uk",
+      "vuejs-translations/docs-fr",
+      "vuejs-translations/docs-de",
+      "vuejs-translations/docs-ko",
+      "vuejs-translations/docs-pt",
+      "vuejs-translations/docs-bn",
+      "vuejs-translations/docs-it",
+      "vuejs-translations/docs-fa",
+      "vuejs-translations/docs-ru",
+      "vuejs-translations/docs-cs",
+      "vuejs-translations/docs-zh-hk",
+      "vuejs-translations/docs-pl",
+      "vuejs/docs",
+      "vuejs/create-vue",
+      "vuejs/language-tools",
+      "vuejs/tsconfig",
+      "microsoft/TypeScript"
+     ],
+     "sitemapPages": 109,
+     "versioned": [],
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ],
+     "samples": 5
+    }
+   ]
+  },
+  "requests": 0,
+  "expect": "separate docs repository (vuejs/docs), VitePress, i18n in other repositories",
+  "seconds": 0.021
+ },
+ {
+  "purl": "pkg:npm/react",
+  "answer": {
+   "kind": "site-only",
+   "site": "https://react.dev/",
+   "pages": 179,
+   "sites": [
+    {
+     "site": "https://react.dev/",
+     "pages": 179,
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ]
+    }
+   ]
+  },
+  "pairs": [
+   {
+    "site": "https://react.dev/",
+    "repo": "react/react",
+    "why": [
+     "package-repo-has-docs"
+    ],
+    "siteToRepo": true,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "0/5/5",
+    "validated": false,
+    "validatedBy": "",
+    "framework": [],
+    "docDirs": [
+     "compiler"
+    ],
+    "docFiles": 69,
+    "content": [
+     "-no-file:-/-:",
+     "-no-file:-/-:",
+     "-no-file:-/-:",
+     "-no-file:-/-:",
+     "-no-file:-/-:"
+    ]
+   }
+  ],
+  "evidence": {
+   "registry": {
+    "homepage": "https://react.dev/",
+    "repository": {
+     "url": "git+https://github.com/react/react.git",
+     "type": "git",
+     "directory": "packages/react"
+    }
+   },
+   "pkgRepo": {
+    "full": "react/react",
+    "homepage": "https://react.dev",
+    "docFiles": 69,
+    "docDirs": [
+     "compiler"
+    ],
+    "configs": [
+     {
+      "path": "compiler/apps/playground/next.config.js",
+      "framework": "other",
+      "hosts": []
+     }
+    ],
+    "hasWiki": false
+   },
+   "candidates": [
+    {
+     "host": "react.dev",
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ]
+    }
+   ],
+   "sites": [
+    {
+     "url": "https://react.dev/",
+     "final": "https://react.dev/",
+     "status": 200,
+     "editRepos": [],
+     "repoLinks": [
+      "SAWARATSUKI/KawaiiLogos",
+      "react/react",
+      "expo/expo",
+      "oxc-project/oxc",
+      "vercel/next.js",
+      "reactwg/react-compiler"
+     ],
+     "sitemapPages": 179,
+     "versioned": [],
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ],
+     "samples": 5
+    }
+   ]
+  },
+  "requests": 0,
+  "expect": "renamed organisation; docs repository in another organisation (reactjs/react.dev)",
+  "seconds": 0.052
+ },
+ {
+  "purl": "pkg:npm/typescript",
+  "answer": {
+   "kind": "site+repo",
+   "site": "https://www.typescriptlang.org/docs/",
+   "repo": "microsoft/TypeScript-Website",
+   "sites": [
+    {
+     "site": "https://www.typescriptlang.org/docs/",
+     "pages": 132,
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ]
+    }
+   ]
+  },
+  "pairs": [
+   {
+    "site": "https://www.typescriptlang.org/docs/",
+    "repo": "microsoft/TypeScript-Website",
+    "why": [
+     "site-edit-link"
+    ],
+    "siteToRepo": true,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "5/5/5",
+    "validated": true,
+    "validatedBy": "content",
+    "framework": [],
+    "docDirs": [
+     "docs",
+     "packages"
+    ],
+    "docFiles": 141,
+    "content": [
+     "Pedit-link:0.9/0.09:packages/documentation/copy/en/tutorials/Angular.md",
+     "Pedit-link:0.95/0.29:packages/documentation/copy/en/tutorials/DOM Manipulation.md",
+     "Pedit-link:0.98/0.45:packages/documentation/copy/en/reference/Namespaces and Modules.md",
+     "Pedit-link:0.97/0.27:packages/documentation/copy/en/release-notes/TypeScript 2.8.md",
+     "Pedit-link:0.96/0.7:packages/documentation/copy/en/release-notes/TypeScript 5.4.md"
+    ]
+   }
+  ],
+  "evidence": {
+   "registry": {
+    "homepage": "https://www.typescriptlang.org/",
+    "repository": {
+     "url": "git+https://github.com/microsoft/TypeScript.git",
+     "type": "git"
+    }
+   },
+   "pkgRepo": {
+    "full": "microsoft/TypeScript",
+    "homepage": "https://www.typescriptlang.org",
+    "docFiles": 0,
+    "docDirs": [],
+    "configs": [],
+    "hasWiki": true
+   },
+   "candidates": [
+    {
+     "host": "typescriptlang.org",
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ]
+    }
+   ],
+   "sites": [
+    {
+     "url": "https://www.typescriptlang.org/",
+     "final": "https://www.typescriptlang.org/docs/",
+     "status": 200,
+     "generator": "Gatsby 5.16.1",
+     "editRepos": [
+      "microsoft/typescript-website"
+     ],
+     "repoLinks": [
+      "microsoft/TypeScript",
+      "microsoft/TypeScript-Website",
+      "Microsoft/TypeScript"
+     ],
+     "sitemapPages": 132,
+     "versioned": [],
+     "entry": "https://www.typescriptlang.org/docs/",
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ],
+     "samples": 5
+    }
+   ]
+  },
+  "requests": 0,
+  "expect": "docs repository not named for the host (microsoft/TypeScript-Website)",
+  "seconds": 0.08
+ },
+ {
+  "purl": "pkg:npm/@tanstack/react-query",
+  "answer": {
+   "kind": "repo-only",
+   "repo": "TanStack/query",
+   "dirs": [
+    "docs"
+   ]
+  },
+  "pairs": [],
+  "evidence": {
+   "registry": {
+    "homepage": "https://tanstack.com/query",
+    "repository": {
+     "url": "git+https://github.com/TanStack/query.git",
+     "type": "git",
+     "directory": "packages/react-query"
+    }
+   },
+   "pkgRepo": {
+    "full": "TanStack/query",
+    "homepage": "https://tanstack.com/query",
+    "docFiles": 1658,
+    "docDirs": [
+     "docs"
+    ],
+    "configs": [
+     {
+      "path": "integrations/react-next-14/next.config.js",
+      "framework": "other",
+      "hosts": []
+     },
+     {
+      "path": "integrations/react-next-15/next.config.js",
+      "framework": "other",
+      "hosts": []
+     },
+     {
+      "path": "integrations/react-next-16/next.config.js",
+      "framework": "other",
+      "hosts": []
+     }
+    ],
+    "hasWiki": false
+   },
+   "candidates": [
+    {
+     "host": "tanstack.com",
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ]
+    }
+   ],
+   "sites": [
+    {
+     "url": "https://tanstack.com/query",
+     "final": "https://tanstack.com/query",
+     "status": 0,
+     "editRepos": [
+      "tanstack/query"
+     ],
+     "repoLinks": [
+      "tanstack/query",
+      "TanStack/query"
+     ],
+     "sitemapPages": 1659,
+     "versioned": [],
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ],
+     "samples": 5
+    }
+   ]
+  },
+  "requests": 0,
+  "expect": "shared docs site with per-package path prefix; docs in the code repository",
+  "seconds": 0.032
+ },
+ {
+  "purl": "pkg:npm/wrangler",
+  "answer": {
+   "kind": "site+repo",
+   "site": "https://developers.cloudflare.com/workers/",
+   "repo": "cloudflare/cloudflare-docs",
+   "sites": [
+    {
+     "site": "https://developers.cloudflare.com/workers/",
+     "pages": 443,
+     "from": [
+      "repo-homepage"
+     ]
+    },
+    {
+     "site": "https://developers.cloudflare.com/workers/testing/miniflare/",
+     "pages": 443,
+     "from": [
+      "readme-link"
+     ]
+    }
+   ]
+  },
+  "pairs": [
+   {
+    "site": "https://developers.cloudflare.com/workers/",
+    "repo": "cloudflare/cloudflare-docs",
+    "why": [
+     "site-edit-link",
+     "site-edit-link",
+     "org-repo-homepage"
+    ],
+    "siteToRepo": true,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "5/5/5",
+    "validated": true,
+    "validatedBy": "content",
+    "framework": [
+     "astro"
+    ],
+    "docDirs": [
+     "src"
+    ],
+    "docFiles": 6583,
+    "content": [
+     "Pedit-link:0.98/0.48:src/content/docs/workers/demos/chatgpt-app.mdx",
+     "Pedit-link:0.99/0.35:src/content/docs/workers/languages/python/basics.mdx",
+     "Pedit-link:0.98/0.53:src/content/docs/workers/reference/how-the-cache-works.mdx",
+     "Pedit-link:0.98/0.33:src/content/docs/workers/runtime-apis/streams/writablestream.mdx",
+     "Pedit-link:0.96/0.32:src/content/docs/workers/tutorials/send-emails-with-resend.mdx"
+    ]
+   },
+   {
+    "site": "https://developers.cloudflare.com/workers/testing/miniflare/",
+    "repo": "cloudflare/cloudflare-docs",
+    "why": [
+     "site-edit-link",
+     "site-edit-link",
+     "org-repo-homepage"
+    ],
+    "siteToRepo": true,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "5/5/5",
+    "validated": true,
+    "validatedBy": "content",
+    "framework": [
+     "astro"
+    ],
+    "docDirs": [
+     "src"
+    ],
+    "docFiles": 6583,
+    "content": [
+     "Pedit-link:1/0.22:src/content/docs/workers/demos.mdx",
+     "Pedit-link:0.95/0.28:src/content/docs/workers/languages/python/index.mdx",
+     "Pedit-link:1/0.16:src/content/docs/workers/reference/index.mdx",
+     "Pedit-link:0.96/0.29:src/content/docs/workers/runtime-apis/streams/transformstream.mdx",
+     "Pedit-link:0.96/0.32:src/content/docs/workers/tutorials/send-emails-with-resend.mdx"
+    ]
+   }
+  ],
+  "evidence": {
+   "registry": {
+    "homepage": "https://github.com/cloudflare/workers-sdk#readme",
+    "repository": {
+     "url": "git+https://github.com/cloudflare/workers-sdk.git",
+     "type": "git",
+     "directory": "packages/wrangler"
+    }
+   },
+   "pkgRepo": {
+    "full": "cloudflare/workers-sdk",
+    "homepage": "https://developers.cloudflare.com/workers/",
+    "docFiles": 0,
+    "docDirs": [],
+    "configs": [],
+    "hasWiki": false
+   },
+   "candidates": [
+    {
+     "host": "developers.cloudflare.com",
+     "from": [
+      "repo-homepage"
+     ]
+    },
+    {
+     "host": "miniflare.dev",
+     "from": [
+      "readme-link"
+     ]
+    }
+   ],
+   "sites": [
+    {
+     "url": "https://developers.cloudflare.com/workers/",
+     "final": "https://developers.cloudflare.com/workers/",
+     "status": 200,
+     "generator": "Astro v7.3.8",
+     "editRepos": [
+      "cloudflare/cloudflare-docs"
+     ],
+     "repoLinks": [
+      "cloudflare/cloudflare-docs",
+      "cloudflare/workers-sdk",
+      "cloudflare/skills",
+      "cloudflare/mcp",
+      "cloudflare/mcp-server-cloudflare",
+      "cloudflare/agents"
+     ],
+     "sitemapPages": 443,
+     "versioned": [],
+     "from": [
+      "repo-homepage"
+     ],
+     "samples": 5
+    },
+    {
+     "url": "https://miniflare.dev",
+     "final": "https://developers.cloudflare.com/workers/testing/miniflare/",
+     "status": 200,
+     "generator": "Astro v7.3.8",
+     "editRepos": [
+      "cloudflare/cloudflare-docs"
+     ],
+     "repoLinks": [
+      "cloudflare/cloudflare-docs",
+      "cloudflare/workers-sdk",
+      "cloudflare/skills",
+      "cloudflare/mcp",
+      "cloudflare/mcp-server-cloudflare",
+      "cloudflare/workers-py"
+     ],
+     "sitemapPages": 443,
+     "versioned": [],
+     "from": [
+      "readme-link"
+     ],
+     "samples": 5
+    }
+   ]
+  },
+  "requests": 0,
+  "expect": "one docs repository for many products (cloudflare/cloudflare-docs)",
+  "seconds": 0.206
+ },
+ {
+  "purl": "pkg:npm/@supabase/supabase-js",
+  "answer": {
+   "kind": "site-only",
+   "site": "https://supabase.com/docs",
+   "pages": 2564,
+   "sites": [
+    {
+     "site": "https://supabase.com/docs",
+     "pages": 2564,
+     "from": [
+      "repo-homepage"
+     ]
+    }
+   ]
+  },
+  "pairs": [
+   {
+    "site": "https://supabase.com/docs",
+    "repo": "supabase/supabase",
+    "why": [
+     "site-edit-link",
+     "org-repo-homepage"
+    ],
+    "siteToRepo": true,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "1/5/5",
+    "validated": false,
+    "validatedBy": "",
+    "framework": [
+     "astro"
+    ],
+    "docDirs": [
+     "apps/design-system",
+     "apps/docs",
+     "apps/ui-library",
+     "apps/www",
+     "e2e"
+    ],
+    "docFiles": 1681,
+    "content": [
+     "Pedit-link:0.95/0.29:apps/docs/content/guides/getting-started/tutorials/with-refine.mdx",
+     "-edit-link:0.57/0.62:apps/docs/DEVELOPERS.md",
+     "-no-file:-/-:",
+     "-no-file:-/-:",
+     "-path-match:0.09/0.08:apps/www/_customers/mobbin.mdx"
+    ]
+   },
+   {
+    "site": "https://supabase.com/docs",
+    "repo": "supabase/supabase-py",
+    "why": [
+     "org-repo-homepage"
+    ],
+    "siteToRepo": false,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "0/5/5",
+    "validated": false,
+    "validatedBy": "",
+    "framework": [
+     "sphinx"
+    ],
+    "docDirs": [
+     "docs",
+     "src"
+    ],
+    "docFiles": 21,
+    "content": [
+     "-no-file:-/-:",
+     "-no-file:-/-:",
+     "-no-file:-/-:",
+     "-no-file:-/-:",
+     "-no-file:-/-:"
+    ]
+   },
+   {
+    "site": "https://supabase.com/docs",
+    "repo": "supabase/postgres",
+    "why": [
+     "org-repo-homepage"
+    ],
+    "siteToRepo": false,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "0/5/5",
+    "validated": false,
+    "validatedBy": "",
+    "framework": [
+     "mkdocs"
+    ],
+    "docDirs": [
+     "docs",
+     "nix"
+    ],
+    "docFiles": 35,
+    "content": [
+     "-no-file:-/-:",
+     "-no-file:-/-:",
+     "-no-file:-/-:",
+     "-no-file:-/-:",
+     "-no-file:-/-:"
+    ]
+   },
+   {
+    "site": "https://supabase.com/docs",
+    "repo": "supabase/supabase-swift",
+    "why": [
+     "org-repo-homepage"
+    ],
+    "siteToRepo": false,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "0/5/5",
+    "validated": false,
+    "validatedBy": "",
+    "framework": [],
+    "docDirs": [
+     "docs"
+    ],
+    "docFiles": 6,
+    "content": [
+     "-no-file:-/-:",
+     "-no-file:-/-:",
+     "-no-file:-/-:",
+     "-no-file:-/-:",
+     "-no-file:-/-:"
+    ]
+   },
+   {
+    "site": "https://supabase.com/docs",
+    "repo": "supabase/storage",
+    "why": [
+     "org-repo-homepage"
+    ],
+    "siteToRepo": false,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "0/5/5",
+    "validated": false,
+    "validatedBy": "",
+    "framework": [],
+    "docDirs": [],
+    "docFiles": 0,
+    "content": [
+     "-no-file:-/-:",
+     "-no-file:-/-:",
+     "-no-file:-/-:",
+     "-no-file:-/-:",
+     "-no-file:-/-:"
+    ]
+   },
+   {
+    "site": "https://supabase.com/docs",
+    "repo": "supabase/cli",
+    "why": [
+     "org-repo-homepage"
+    ],
+    "siteToRepo": true,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "0/5/5",
+    "validated": false,
+    "validatedBy": "",
+    "framework": [
+     "fumadocs"
+    ],
+    "docDirs": [
+     "apps/cli",
+     "apps/docs",
+     "docs",
+     "packages"
+    ],
+    "docFiles": 116,
+    "content": [
+     "-no-file:-/-:",
+     "-no-file:-/-:",
+     "-no-file:-/-:",
+     "-no-file:-/-:",
+     "-path-match:0.16/0.16:apps/cli/docs/supabase/login.md"
+    ]
+   },
+   {
+    "site": "https://supabase.com/docs",
+    "repo": "supabase/supabase-flutter",
+    "why": [
+     "org-repo-homepage"
+    ],
+    "siteToRepo": false,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "0/5/5",
+    "validated": false,
+    "validatedBy": "",
+    "framework": [],
+    "docDirs": [],
+    "docFiles": 0,
+    "content": [
+     "-no-file:-/-:",
+     "-no-file:-/-:",
+     "-no-file:-/-:",
+     "-no-file:-/-:",
+     "-no-file:-/-:"
+    ]
+   },
+   {
+    "site": "https://supabase.com/docs",
+    "repo": "supabase/agent-skills",
+    "why": [
+     "org-repo-homepage"
+    ],
+    "siteToRepo": false,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "0/5/5",
+    "validated": false,
+    "validatedBy": "",
+    "framework": [],
+    "docDirs": [],
+    "docFiles": 0,
+    "content": [
+     "-no-file:-/-:",
+     "-no-file:-/-:",
+     "-no-file:-/-:",
+     "-no-file:-/-:",
+     "-no-file:-/-:"
+    ]
+   }
+  ],
+  "evidence": {
+   "registry": {
+    "homepage": "https://github.com/supabase/supabase-js/tree/master/packages/core/supabase-js",
+    "repository": {
+     "url": "https://github.com/supabase/supabase-js.git",
+     "type": "git",
+     "directory": "packages/core/supabase-js"
+    }
+   },
+   "pkgRepo": {
+    "full": "supabase/supabase-js",
+    "homepage": "https://supabase.com",
+    "docFiles": 4,
+    "docDirs": [
+     "docs"
+    ],
+    "configs": [],
+    "hasWiki": true
+   },
+   "candidates": [
+    {
+     "host": "supabase.com",
+     "from": [
+      "repo-homepage"
+     ]
+    }
+   ],
+   "sites": [
+    {
+     "url": "https://supabase.com",
+     "final": "https://supabase.com/docs",
+     "status": 200,
+     "editRepos": [
+      "supabase/supabase"
+     ],
+     "repoLinks": [
+      "supabase/supabase",
+      "refinedev/refine",
+      "supabase/supabase-js",
+      "lyqht/generate-supabase-db-types-github-action",
+      "supabase/cli",
+      "djrobstep/migra"
+     ],
+     "sitemapPages": 2564,
+     "versioned": [
+      "v0",
+      "v1",
+      "v2"
+     ],
+     "entry": "https://supabase.com/docs",
+     "from": [
+      "repo-homepage"
+     ],
+     "samples": 5
+    }
+   ]
+  },
+  "requests": 0,
+  "expect": "docs in another monorepo of the organisation (supabase/supabase apps/docs)",
+  "seconds": 0.228
+ },
+ {
+  "purl": "pkg:npm/openai",
+  "answer": {
+   "kind": "site-only",
+   "site": "https://developers.openai.com/api/docs/guides/conversation-state",
+   "pages": 746,
+   "sites": [
+    {
+     "site": "https://developers.openai.com/api/docs/guides/conversation-state",
+     "pages": 746,
+     "from": [
+      "readme-link"
+     ]
+    }
+   ]
+  },
+  "pairs": [
+   {
+    "site": "https://developers.openai.com/api/docs/guides/conversation-state",
+    "repo": "openai/openai-node",
+    "why": [
+     "package-repo-has-docs"
+    ],
+    "siteToRepo": false,
+    "repoToSite": false,
+    "authority": true,
+    "contentPass": "0/0/0",
+    "validated": false,
+    "validatedBy": "",
+    "framework": [],
+    "docDirs": [
+     "docs"
+    ],
+    "docFiles": 22,
+    "content": []
+   }
+  ],
+  "evidence": {
+   "registry": {
+    "homepage": "https://github.com/openai/openai-node#readme",
+    "repository": {
+     "url": "git+https://github.com/openai/openai-node.git",
+     "type": "git"
+    }
+   },
+   "pkgRepo": {
+    "full": "openai/openai-node",
+    "homepage": "https://www.npmjs.com/package/openai",
+    "docFiles": 22,
+    "docDirs": [
+     "docs"
+    ],
+    "configs": [],
+    "hasWiki": false
+   },
+   "candidates": [
+    {
+     "host": "platform.openai.com",
+     "from": [
+      "readme-link"
+     ]
+    },
+    {
+     "host": "developers.openai.com",
+     "from": [
+      "readme-link"
+     ]
+    }
+   ],
+   "sites": [
+    {
+     "url": "https://platform.openai.com/docs/api-reference",
+     "final": "https://platform.openai.com/settings/organization/api-keys",
+     "status": 403,
+     "editRepos": [],
+     "repoLinks": [],
+     "sitemapPages": 0,
+     "versioned": [],
+     "entry": "https://platform.openai.com/settings/organization/api-keys",
+     "from": [
+      "readme-link"
+     ],
+     "samples": 0
+    },
+    {
+     "url": "https://developers.openai.com/api/docs/guides/conversation-state",
+     "final": "https://developers.openai.com/api/docs/guides/conversation-state",
+     "status": 200,
+     "generator": "Astro v7.3.1",
+     "editRepos": [],
+     "repoLinks": [
+      "openai/openai-cookbook",
+      "openai/tiktoken"
+     ],
+     "sitemapPages": 746,
+     "versioned": [],
+     "from": [
+      "readme-link"
+     ],
+     "samples": 5
+    }
+   ]
+  },
+  "requests": 0,
+  "expect": "hosted-API SDK whose homepage is its own repository; closed platform docs",
+  "seconds": 0.035
+ },
+ {
+  "purl": "pkg:npm/@anthropic-ai/sdk",
+  "answer": {
+   "kind": "site-only",
+   "site": "https://platform.claude.com/docs/en/api/overview",
+   "pages": 3892,
+   "sites": [
+    {
+     "site": "https://platform.claude.com/docs/en/api/overview",
+     "pages": 3892,
+     "from": [
+      "readme-link"
+     ]
+    },
+    {
+     "site": "https://platform.claude.com/docs/en/cli-sdks-libraries/sdks/typescript",
+     "pages": 3892,
+     "from": [
+      "readme-link"
+     ]
+    },
+    {
+     "site": "https://platform.claude.com/docs/en/intro",
+     "pages": 3892,
+     "from": [
+      "readme-link"
+     ]
+    }
+   ]
+  },
+  "pairs": [],
+  "evidence": {
+   "registry": {
+    "homepage": "https://github.com/anthropics/anthropic-sdk-typescript#readme",
+    "repository": {
+     "url": "git+https://github.com/anthropics/anthropic-sdk-typescript.git",
+     "type": "git"
+    }
+   },
+   "pkgRepo": {
+    "full": "anthropics/anthropic-sdk-typescript",
+    "homepage": "https://www.npmjs.com/package/@anthropic-ai/sdk",
+    "docFiles": 0,
+    "docDirs": [],
+    "configs": [],
+    "hasWiki": false
+   },
+   "candidates": [
+    {
+     "host": "docs.anthropic.com",
+     "from": [
+      "readme-link"
+     ]
+    },
+    {
+     "host": "platform.claude.com",
+     "from": [
+      "readme-link"
+     ]
+    },
+    {
+     "host": "support.anthropic.com",
+     "from": [
+      "readme-link"
+     ]
+    }
+   ],
+   "sites": [
+    {
+     "url": "https://docs.anthropic.com/en/api/",
+     "final": "https://platform.claude.com/docs/en/api/overview",
+     "status": 200,
+     "editRepos": [],
+     "repoLinks": [
+      "anthropics/skills"
+     ],
+     "sitemapPages": 3892,
+     "versioned": [],
+     "entry": "https://platform.claude.com/docs/en/api/overview",
+     "from": [
+      "readme-link"
+     ],
+     "samples": 5
+    },
+    {
+     "url": "https://platform.claude.com/docs/en/api/sdks/typescript",
+     "final": "https://platform.claude.com/docs/en/cli-sdks-libraries/sdks/typescript",
+     "status": 200,
+     "editRepos": [],
+     "repoLinks": [
+      "anthropics/anthropic-sdk-typescript",
+      "anthropics/skills"
+     ],
+     "sitemapPages": 3892,
+     "versioned": [],
+     "from": [
+      "readme-link"
+     ],
+     "samples": 5
+    },
+    {
+     "url": "https://support.anthropic.com/en/articles/9767949-api-key-best-practices-keeping-your-keys-safe-and-secure",
+     "final": "https://platform.claude.com/docs/en/intro",
+     "status": 200,
+     "editRepos": [],
+     "repoLinks": [
+      "anthropics/skills"
+     ],
+     "sitemapPages": 3892,
+     "versioned": [],
+     "entry": "https://docs.claude.com/en/docs/intro",
+     "from": [
+      "readme-link"
+     ],
+     "samples": 5
+    }
+   ]
+  },
+  "requests": 0,
+  "expect": "hosted-API SDK; closed platform docs on another domain",
+  "seconds": 0.123
+ },
+ {
+  "purl": "pkg:npm/stripe",
+  "answer": {
+   "kind": "site-only",
+   "site": "https://docs.stripe.com/development",
+   "pages": 4944,
+   "sites": [
+    {
+     "site": "https://docs.stripe.com/development",
+     "pages": 4944,
+     "from": [
+      "repo-homepage"
+     ]
+    },
+    {
+     "site": "https://docs.stripe.com/",
+     "pages": 4944,
+     "from": [
+      "readme-link"
+     ]
+    }
+   ]
+  },
+  "pairs": [],
+  "evidence": {
+   "registry": {
+    "homepage": "https://github.com/stripe/stripe-node",
+    "repository": {
+     "url": "git+https://github.com/stripe/stripe-node.git",
+     "type": "git"
+    }
+   },
+   "pkgRepo": {
+    "full": "stripe/stripe-node",
+    "homepage": "https://stripe.com",
+    "docFiles": 0,
+    "docDirs": [],
+    "configs": [],
+    "hasWiki": true
+   },
+   "candidates": [
+    {
+     "host": "stripe.com",
+     "from": [
+      "repo-homepage"
+     ]
+    },
+    {
+     "host": "docs.stripe.com",
+     "from": [
+      "readme-link"
+     ]
+    }
+   ],
+   "sites": [
+    {
+     "url": "https://stripe.com",
+     "final": "https://docs.stripe.com/development",
+     "status": 200,
+     "editRepos": [],
+     "repoLinks": [],
+     "sitemapPages": 4944,
+     "versioned": [
+      "v1",
+      "v2"
+     ],
+     "entry": "https://docs.stripe.com/development",
+     "from": [
+      "repo-homepage"
+     ],
+     "samples": 5
+    },
+    {
+     "url": "https://docs.stripe.com",
+     "final": "https://docs.stripe.com/",
+     "status": 200,
+     "editRepos": [],
+     "repoLinks": [],
+     "sitemapPages": 4944,
+     "versioned": [
+      "v1",
+      "v2"
+     ],
+     "from": [
+      "readme-link"
+     ],
+     "samples": 5
+    }
+   ]
+  },
+  "requests": 0,
+  "expect": "hosted-API SDK; closed docs on the company domain",
+  "seconds": 0.063
+ },
+ {
+  "purl": "pkg:npm/ms",
+  "answer": {
+   "kind": "readme-only"
+  },
+  "pairs": [],
+  "evidence": {
+   "registry": {
+    "homepage": "https://github.com/vercel/ms#readme",
+    "repository": {
+     "url": "git+https://github.com/vercel/ms.git",
+     "type": "git"
+    }
+   },
+   "pkgRepo": {
+    "full": "vercel/ms",
+    "homepage": "https://npmjs.com/ms",
+    "docFiles": 0,
+    "docDirs": [],
+    "configs": [],
+    "hasWiki": false
+   },
+   "candidates": [],
+   "sites": []
+  },
+  "requests": 0,
+  "expect": "README is the only documentation",
+  "seconds": 0.003
+ },
+ {
+  "purl": "pkg:npm/dotenv",
+  "answer": {
+   "kind": "site-only",
+   "site": "https://www.dotenv.org/",
+   "pages": 148,
+   "sites": [
+    {
+     "site": "https://www.dotenv.org/",
+     "pages": 148,
+     "from": [
+      "repo-homepage"
+     ]
+    }
+   ]
+  },
+  "pairs": [],
+  "evidence": {
+   "registry": {
+    "homepage": "https://github.com/motdotla/dotenv#readme",
+    "repository": {
+     "url": "git://github.com/motdotla/dotenv.git",
+     "type": "git"
+    }
+   },
+   "pkgRepo": {
+    "full": "motdotla/dotenv",
+    "homepage": "https://www.dotenv.org",
+    "docFiles": 0,
+    "docDirs": [],
+    "configs": [],
+    "hasWiki": false
+   },
+   "candidates": [
+    {
+     "host": "dotenv.org",
+     "from": [
+      "repo-homepage"
+     ]
+    },
+    {
+     "host": "dotenvx.com",
+     "from": [
+      "readme-link"
+     ]
+    }
+   ],
+   "sites": [
+    {
+     "url": "https://www.dotenv.org",
+     "final": "https://www.dotenv.org/",
+     "status": 200,
+     "generator": "Jekyll v4.4.1",
+     "editRepos": [],
+     "repoLinks": [
+      "motdotla/dotenv",
+      "dotenvx/dotenvx",
+      "dotenv-org/examples",
+      "davidcochrum/dotenv-vault-laravel",
+      "vlucas/phpdotenv"
+     ],
+     "sitemapPages": 148,
+     "versioned": [],
+     "from": [
+      "repo-homepage"
+     ],
+     "samples": 5
+    }
+   ]
+  },
+  "requests": 0,
+  "expect": "README-centred documentation",
+  "seconds": 0.012
+ },
+ {
+  "purl": "pkg:npm/date-fns",
+  "answer": {
+   "kind": "site-only",
+   "site": "https://date-fns.org/",
+   "pages": 0,
+   "sites": [
+    {
+     "site": "https://date-fns.org/",
+     "pages": 0,
+     "from": [
+      "repo-homepage"
+     ]
+    }
+   ]
+  },
+  "pairs": [
+   {
+    "site": "https://date-fns.org/",
+    "repo": "date-fns/date-fns",
+    "why": [
+     "package-repo-has-docs"
+    ],
+    "siteToRepo": false,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "0/0/0",
+    "validated": false,
+    "validatedBy": "",
+    "framework": [],
+    "docDirs": [
+     "pkgs"
+    ],
+    "docFiles": 10,
+    "content": []
+   }
+  ],
+  "evidence": {
+   "registry": {
+    "repository": "https://github.com/date-fns/date-fns"
+   },
+   "pkgRepo": {
+    "full": "date-fns/date-fns",
+    "homepage": "https://date-fns.org",
+    "docFiles": 10,
+    "docDirs": [
+     "pkgs"
+    ],
+    "configs": [],
+    "hasWiki": false
+   },
+   "candidates": [
+    {
+     "host": "date-fns.org",
+     "from": [
+      "repo-homepage"
+     ]
+    }
+   ],
+   "sites": [
+    {
+     "url": "https://date-fns.org",
+     "final": "https://date-fns.org/",
+     "status": 200,
+     "editRepos": [],
+     "repoLinks": [],
+     "sitemapPages": 0,
+     "versioned": [],
+     "from": [
+      "repo-homepage"
+     ],
+     "samples": 0
+    }
+   ]
+  },
+  "requests": 0,
+  "expect": "generated API reference (JSDoc) on its own site",
+  "seconds": 0.013
+ },
+ {
+  "purl": "pkg:npm/express",
+  "answer": {
+   "kind": "site-only",
+   "site": "https://expressjs.com/",
+   "pages": 1290,
+   "sites": [
+    {
+     "site": "https://expressjs.com/",
+     "pages": 1290,
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ]
+    }
+   ]
+  },
+  "pairs": [
+   {
+    "site": "https://expressjs.com/",
+    "repo": "expressjs/expressjs.com",
+    "why": [
+     "site-edit-link",
+     "org-repo-homepage"
+    ],
+    "siteToRepo": true,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "1/5/5",
+    "validated": false,
+    "validatedBy": "",
+    "framework": [
+     "cname",
+     "astro"
+    ],
+    "docDirs": [
+     "docs",
+     "src"
+    ],
+    "docFiles": 325,
+    "content": [
+     "-no-file:-/-:",
+     "-no-file:-/-:",
+     "Ppath-match:0.82/0.02:src/content/pages/it/support.md",
+     "-no-file:-/-:",
+     "-no-file:-/-:"
+    ]
+   }
+  ],
+  "evidence": {
+   "registry": {
+    "homepage": "https://expressjs.com/",
+    "repository": {
+     "url": "git+https://github.com/expressjs/express.git",
+     "type": "git"
+    }
+   },
+   "pkgRepo": {
+    "full": "expressjs/express",
+    "homepage": "https://expressjs.com",
+    "docFiles": 0,
+    "docDirs": [],
+    "configs": [],
+    "hasWiki": true
+   },
+   "candidates": [
+    {
+     "host": "expressjs.com",
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ]
+    }
+   ],
+   "sites": [
+    {
+     "url": "https://expressjs.com/",
+     "final": "https://expressjs.com/",
+     "status": 200,
+     "editRepos": [
+      "expressjs/expressjs.com"
+     ],
+     "repoLinks": [
+      "expressjs/express",
+      "expressjs/expressjs.com",
+      "expressjs/security-wg",
+      "expressjs/body-parser",
+      "expressjs/basic-auth-connect",
+      "pillarjs/send",
+      "expressjs/serve-static",
+      "pillarjs/path-to-regexp"
+     ],
+     "sitemapPages": 1290,
+     "versioned": [],
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ],
+     "samples": 5
+    }
+   ]
+  },
+  "requests": 0,
+  "expect": "separate docs repository (expressjs/expressjs.com), Jekyll",
+  "seconds": 0.026
+ },
+ {
+  "purl": "pkg:npm/redux",
+  "answer": {
+   "kind": "site+repo",
+   "site": "https://redux.js.org/",
+   "repo": "reduxjs/redux reduxjs/redux-toolkit",
+   "sites": [
+    {
+     "site": "https://redux.js.org/",
+     "pages": 172,
+     "from": [
+      "registry-homepage",
+      "repo-homepage",
+      "repo-config:CNAME",
+      "repo-config:website/docusaurus.config.ts"
+     ]
+    }
+   ]
+  },
+  "pairs": [
+   {
+    "site": "https://redux.js.org/",
+    "repo": "reduxjs/redux",
+    "why": [
+     "package-repo-has-docs",
+     "site-edit-link"
+    ],
+    "siteToRepo": true,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "2/2/5",
+    "validated": true,
+    "validatedBy": "content",
+    "framework": [
+     "cname",
+     "docusaurus"
+    ],
+    "docDirs": [
+     "docs",
+     "website"
+    ],
+    "docFiles": 89,
+    "content": [
+     "Pedit-link:0.95/0.39:docs/introduction/GettingStarted.md",
+     "-other-repo:-/-:",
+     "-other-repo:-/-:",
+     "-other-repo:-/-:",
+     "Pedit-link:0.96/0.48:docs/usage/DebuggingRedux.md"
+    ]
+   },
+   {
+    "site": "https://redux.js.org/",
+    "repo": "reduxjs/redux-toolkit",
+    "why": [
+     "site-edit-link"
+    ],
+    "siteToRepo": true,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "3/3/5",
+    "validated": true,
+    "validatedBy": "content",
+    "framework": [
+     "cname"
+    ],
+    "docDirs": [
+     "docs"
+    ],
+    "docFiles": 64,
+    "content": [
+     "-other-repo:-/-:",
+     "Pedit-link:0.95/0.29:docs/api/autoBatchEnhancer.mdx",
+     "Pedit-link:0.98/0.42:docs/rtk-query/api/created-api/overview.mdx",
+     "Pedit-link:0.97/0.31:docs/rtk-query/usage/streaming-updates.mdx",
+     "-other-repo:-/-:"
+    ]
+   }
+  ],
+  "evidence": {
+   "registry": {
+    "homepage": "http://redux.js.org",
+    "repository": {
+     "url": "git+https://github.com/reduxjs/redux.git",
+     "type": "git"
+    }
+   },
+   "pkgRepo": {
+    "full": "reduxjs/redux",
+    "homepage": "https://redux.js.org",
+    "docFiles": 89,
+    "docDirs": [
+     "docs",
+     "website"
+    ],
+    "configs": [
+     {
+      "path": "CNAME",
+      "framework": "cname",
+      "hosts": [
+       "redux.js.org"
+      ]
+     },
+     {
+      "path": "website/docusaurus.config.ts",
+      "framework": "docusaurus",
+      "hosts": [
+       "redux.js.org"
+      ]
+     }
+    ],
+    "hasWiki": false
+   },
+   "candidates": [
+    {
+     "host": "redux.js.org",
+     "from": [
+      "registry-homepage",
+      "repo-homepage",
+      "repo-config:CNAME",
+      "repo-config:website/docusaurus.config.ts"
+     ]
+    }
+   ],
+   "sites": [
+    {
+     "url": "http://redux.js.org",
+     "final": "https://redux.js.org/",
+     "status": 200,
+     "editRepos": [
+      "reduxjs/redux",
+      "reduxjs/redux-toolkit"
+     ],
+     "repoLinks": [
+      "markerikson/react-redux-links",
+      "reduxjs/redux",
+      "reduxjs/redux-toolkit",
+      "reduxjs/redux-devtools"
+     ],
+     "sitemapPages": 172,
+     "versioned": [],
+     "from": [
+      "registry-homepage",
+      "repo-homepage",
+      "repo-config:CNAME",
+      "repo-config:website/docusaurus.config.ts"
+     ],
+     "samples": 5
+    }
+   ]
+  },
+  "requests": 0,
+  "expect": "Docusaurus, docs in the code repository",
+  "seconds": 0.025
+ },
+ {
+  "purl": "pkg:npm/vite",
+  "answer": {
+   "kind": "site+repo",
+   "site": "https://vite.dev/",
+   "repo": "vitejs/vite",
+   "sites": [
+    {
+     "site": "https://vite.dev/",
+     "pages": 56,
+     "from": [
+      "registry-homepage",
+      "repo-homepage",
+      "repo-config:docs/.vitepress/config.ts"
+     ]
+    },
+    {
+     "site": "https://viteconf.org/",
+     "pages": 6,
+     "from": [
+      "repo-config:docs/.vitepress/config.ts"
+     ]
+    }
+   ]
+  },
+  "pairs": [
+   {
+    "site": "https://vite.dev/",
+    "repo": "vitejs/vite",
+    "why": [
+     "package-repo-has-docs",
+     "site-edit-link"
+    ],
+    "siteToRepo": true,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "5/5/5",
+    "validated": true,
+    "validatedBy": "content",
+    "framework": [
+     "vitepress"
+    ],
+    "docDirs": [
+     "docs"
+    ],
+    "docFiles": 57,
+    "content": [
+     "Pedit-link:0.89/0.28:docs/blog/announcing-vite6.md",
+     "Pedit-link:0.94/0.1:docs/changes/this-environment-in-hooks.md",
+     "Pedit-link:0.96/0:docs/config/worker-options.md",
+     "Pedit-link:0.98/0.5:docs/guide/api-javascript.md",
+     "Pedit-link:0.98/0:docs/guide/philosophy.md"
+    ]
+   },
+   {
+    "site": "https://viteconf.org/",
+    "repo": "vitejs/vite",
+    "why": [
+     "package-repo-has-docs",
+     "site-edit-link"
+    ],
+    "siteToRepo": false,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "0/2/5",
+    "validated": false,
+    "validatedBy": "",
+    "framework": [
+     "vitepress"
+    ],
+    "docDirs": [
+     "docs"
+    ],
+    "docFiles": 57,
+    "content": [
+     "-no-text:-/-:",
+     "-no-text:-/-:",
+     "-no-file:-/-:",
+     "-no-text:-/-:",
+     "-no-file:-/-:"
+    ]
+   }
+  ],
+  "evidence": {
+   "registry": {
+    "homepage": "https://vite.dev",
+    "repository": {
+     "url": "git+https://github.com/vitejs/vite.git",
+     "type": "git",
+     "directory": "packages/vite"
+    }
+   },
+   "pkgRepo": {
+    "full": "vitejs/vite",
+    "homepage": "http://vite.dev",
+    "docFiles": 57,
+    "docDirs": [
+     "docs"
+    ],
+    "configs": [
+     {
+      "path": "docs/.vitepress/config.ts",
+      "framework": "vitepress",
+      "hosts": [
+       "vite.dev",
+       "viteconf.org"
+      ]
+     }
+    ],
+    "hasWiki": false
+   },
+   "candidates": [
+    {
+     "host": "vite.dev",
+     "from": [
+      "registry-homepage",
+      "repo-homepage",
+      "repo-config:docs/.vitepress/config.ts"
+     ]
+    },
+    {
+     "host": "viteconf.org",
+     "from": [
+      "repo-config:docs/.vitepress/config.ts"
+     ]
+    }
+   ],
+   "sites": [
+    {
+     "url": "https://vite.dev",
+     "final": "https://vite.dev/",
+     "status": 200,
+     "generator": "VitePress v2.0.0-alpha.20",
+     "editRepos": [
+      "vitejs/vite"
+     ],
+     "repoLinks": [
+      "vitejs/.github",
+      "vitejs/awesome-vite",
+      "vitejs/vite",
+      "sponsors/vitejs",
+      "vitejs/companies-using-vite",
+      "paulmillr/chokidar",
+      "css-modules/css-modules",
+      "vitejs/vite-ecosystem-ci"
+     ],
+     "sitemapPages": 56,
+     "versioned": [],
+     "from": [
+      "registry-homepage",
+      "repo-homepage",
+      "repo-config:docs/.vitepress/config.ts"
+     ],
+     "samples": 5
+    },
+    {
+     "url": "https://viteconf.org/",
+     "final": "https://viteconf.org/",
+     "status": 200,
+     "editRepos": [],
+     "repoLinks": [],
+     "sitemapPages": 6,
+     "versioned": [],
+     "from": [
+      "repo-config:docs/.vitepress/config.ts"
+     ],
+     "samples": 5
+    }
+   ]
+  },
+  "requests": 0,
+  "expect": "VitePress, docs in the code repository",
+  "seconds": 0.034
+ },
+ {
+  "purl": "pkg:npm/astro",
+  "answer": {
+   "kind": "site+repo",
+   "site": "https://docs.astro.build/",
+   "repo": "withastro/docs",
+   "sites": [
+    {
+     "site": "https://docs.astro.build/",
+     "pages": 5964,
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ]
+    },
+    {
+     "site": "https://docs.astro.build/",
+     "pages": 5964,
+     "from": [
+      "readme-link"
+     ]
+    }
+   ]
+  },
+  "pairs": [
+   {
+    "site": "https://docs.astro.build/",
+    "repo": "withastro/astro",
+    "why": [
+     "package-repo-has-docs"
+    ],
+    "siteToRepo": true,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "0/0/5",
+    "validated": false,
+    "validatedBy": "",
+    "framework": [
+     "astro"
+    ],
+    "docDirs": [
+     "packages"
+    ],
+    "docFiles": 22,
+    "content": [
+     "-other-repo:-/-:",
+     "-other-repo:-/-:",
+     "-other-repo:-/-:",
+     "-other-repo:-/-:",
+     "-other-repo:-/-:"
+    ]
+   },
+   {
+    "site": "https://docs.astro.build/",
+    "repo": "withastro/astro",
+    "why": [
+     "package-repo-has-docs"
+    ],
+    "siteToRepo": true,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "0/0/5",
+    "validated": false,
+    "validatedBy": "",
+    "framework": [
+     "astro"
+    ],
+    "docDirs": [
+     "packages"
+    ],
+    "docFiles": 22,
+    "content": [
+     "-other-repo:-/-:",
+     "-other-repo:-/-:",
+     "-other-repo:-/-:",
+     "-other-repo:-/-:",
+     "-other-repo:-/-:"
+    ]
+   },
+   {
+    "site": "https://docs.astro.build/",
+    "repo": "withastro/docs",
+    "why": [
+     "site-edit-link",
+     "site-edit-link",
+     "org-repo-homepage"
+    ],
+    "siteToRepo": true,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "5/5/5",
+    "validated": true,
+    "validatedBy": "content",
+    "framework": [
+     "astro"
+    ],
+    "docDirs": [
+     "src"
+    ],
+    "docFiles": 2625,
+    "content": [
+     "Pedit-link:0.96/0.33:src/content/docs/en/guides/cms/flotiq.mdx",
+     "Pedit-link:0.98/0.41:src/content/docs/fr/reference/modules/astro-i18n.mdx",
+     "Pedit-link:0.95/0.69:src/content/docs/en/upgrade-astro.mdx",
+     "Pedit-link:0.98/0.74:src/content/docs/en/guides/cms/emdash.mdx",
+     "Pedit-link:0.95/0.05:src/content/docs/en/reference/modules/astro-hono.mdx"
+    ]
+   },
+   {
+    "site": "https://docs.astro.build/",
+    "repo": "withastro/docs",
+    "why": [
+     "site-edit-link",
+     "site-edit-link",
+     "org-repo-homepage"
+    ],
+    "siteToRepo": true,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "5/5/5",
+    "validated": true,
+    "validatedBy": "content",
+    "framework": [
+     "astro"
+    ],
+    "docDirs": [
+     "src"
+    ],
+    "docFiles": 2625,
+    "content": [
+     "Pedit-link:0.96/0.33:src/content/docs/en/guides/cms/flotiq.mdx",
+     "Pedit-link:0.98/0.41:src/content/docs/fr/reference/modules/astro-i18n.mdx",
+     "Pedit-link:0.95/0.69:src/content/docs/en/upgrade-astro.mdx",
+     "Pedit-link:0.98/0.74:src/content/docs/en/guides/cms/emdash.mdx",
+     "Pedit-link:0.95/0.05:src/content/docs/en/reference/modules/astro-hono.mdx"
+    ]
+   }
+  ],
+  "evidence": {
+   "registry": {
+    "homepage": "https://astro.build",
+    "repository": {
+     "url": "git+https://github.com/withastro/astro.git",
+     "type": "git",
+     "directory": "packages/astro"
+    }
+   },
+   "pkgRepo": {
+    "full": "withastro/astro",
+    "homepage": "https://astro.build",
+    "docFiles": 22,
+    "docDirs": [
+     "packages"
+    ],
+    "configs": [
+     {
+      "path": "benchmark/static-projects/build-hybrid/astro.config.js",
+      "framework": "astro",
+      "hosts": []
+     },
+     {
+      "path": "benchmark/static-projects/build-server/astro.config.js",
+      "framework": "astro",
+      "hosts": []
+     },
+     {
+      "path": "benchmark/static-projects/build-static/astro.config.js",
+      "framework": "astro",
+      "hosts": []
+     }
+    ],
+    "hasWiki": false
+   },
+   "candidates": [
+    {
+     "host": "astro.build",
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ]
+    },
+    {
+     "host": "docs.astro.build",
+     "from": [
+      "readme-link"
+     ]
+    }
+   ],
+   "sites": [
+    {
+     "url": "https://astro.build",
+     "final": "https://docs.astro.build/",
+     "status": 200,
+     "editRepos": [
+      "withastro/docs"
+     ],
+     "repoLinks": [
+      "withastro/astro",
+      "flotiq/flotiq-api-ts",
+      "withastro/docs",
+      "portabletext/portabletext",
+      "emdash-cms/emdash"
+     ],
+     "sitemapPages": 5964,
+     "versioned": [
+      "v1",
+      "v2",
+      "v3",
+      "v4",
+      "v5",
+      "v6",
+      "v7"
+     ],
+     "entry": "https://docs.astro.build/",
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ],
+     "samples": 5
+    },
+    {
+     "url": "https://docs.astro.build/",
+     "final": "https://docs.astro.build/",
+     "status": 200,
+     "editRepos": [
+      "withastro/docs"
+     ],
+     "repoLinks": [
+      "withastro/astro",
+      "flotiq/flotiq-api-ts",
+      "withastro/docs",
+      "portabletext/portabletext",
+      "emdash-cms/emdash"
+     ],
+     "sitemapPages": 5964,
+     "versioned": [
+      "v1",
+      "v2",
+      "v3",
+      "v4",
+      "v5",
+      "v6",
+      "v7"
+     ],
+     "from": [
+      "readme-link"
+     ],
+     "samples": 5
+    }
+   ]
+  },
+  "requests": 0,
+  "expect": "Starlight, separate docs repository (withastro/docs)",
+  "seconds": 0.18
+ },
+ {
+  "purl": "pkg:npm/drizzle-orm",
+  "answer": {
+   "kind": "site+repo",
+   "site": "https://orm.drizzle.team/docs/get-started",
+   "repo": "drizzle-team/drizzle-orm-docs",
+   "sites": [
+    {
+     "site": "https://orm.drizzle.team/docs/get-started",
+     "pages": 793,
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ]
+    },
+    {
+     "site": "https://drizzle.team/",
+     "pages": 0,
+     "from": [
+      "readme-link"
+     ]
+    }
+   ]
+  },
+  "pairs": [
+   {
+    "site": "https://orm.drizzle.team/docs/get-started",
+    "repo": "drizzle-team/drizzle-orm-docs",
+    "why": [
+     "org-repo-homepage"
+    ],
+    "siteToRepo": false,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "5/5/5",
+    "validated": true,
+    "validatedBy": "content",
+    "framework": [
+     "astro"
+    ],
+    "docDirs": [
+     "src"
+    ],
+    "docFiles": 533,
+    "content": [
+     "Ppath-match:0.99/0.75:src/content/docs/pg/connect-effect-postgres.mdx",
+     "Ppath-match:1/0.16:src/content/docs/latest-releases/drizzle-orm-v0313.mdx",
+     "Ppath-match:1/0.13:src/content/docs/mysql/connect-aws-data-api-mysql.mdx",
+     "Ppath-match:0.89/0.29:src/content/docs/mssql/read-replicas.mdx",
+     "Ppath-match:0.97/0.17:src/content/docs/sqlite/generated-columns.mdx"
+    ]
+   },
+   {
+    "site": "https://drizzle.team/",
+    "repo": "drizzle-team/drizzle-orm-docs",
+    "why": [
+     "org-repo-homepage"
+    ],
+    "siteToRepo": false,
+    "repoToSite": false,
+    "authority": true,
+    "contentPass": "0/0/0",
+    "validated": false,
+    "validatedBy": "",
+    "framework": [
+     "astro"
+    ],
+    "docDirs": [
+     "src"
+    ],
+    "docFiles": 533,
+    "content": []
+   }
+  ],
+  "evidence": {
+   "registry": {
+    "homepage": "https://orm.drizzle.team",
+    "repository": {
+     "url": "git+https://github.com/drizzle-team/drizzle-orm.git",
+     "type": "git"
+    }
+   },
+   "pkgRepo": {
+    "full": "drizzle-team/drizzle-orm",
+    "homepage": "https://orm.drizzle.team",
+    "docFiles": 4,
+    "docDirs": [
+     "docs"
+    ],
+    "configs": [],
+    "hasWiki": true
+   },
+   "candidates": [
+    {
+     "host": "orm.drizzle.team",
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ]
+    },
+    {
+     "host": "drizzle.team",
+     "from": [
+      "readme-link"
+     ]
+    }
+   ],
+   "sites": [
+    {
+     "url": "https://orm.drizzle.team",
+     "final": "https://orm.drizzle.team/docs/get-started",
+     "status": 200,
+     "generator": "Astro v4.16.18",
+     "editRepos": [],
+     "repoLinks": [
+      "drizzle-team/drizzle-orm",
+      "drizzle-team/drizzle-studio-npm"
+     ],
+     "sitemapPages": 793,
+     "versioned": [],
+     "entry": "https://orm.drizzle.team/docs/get-started",
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ],
+     "samples": 5
+    },
+    {
+     "url": "https://drizzle.team",
+     "final": "https://drizzle.team/",
+     "status": 200,
+     "generator": "Astro v2.10.15",
+     "editRepos": [],
+     "repoLinks": [
+      "drizzle-team/brocli",
+      "drizzle-team/hanji",
+      "sponsors/drizzle-team"
+     ],
+     "sitemapPages": 0,
+     "versioned": [],
+     "from": [
+      "readme-link"
+     ],
+     "samples": 0
+    }
+   ]
+  },
+  "requests": 0,
+  "expect": "separate docs repository (drizzle-team/drizzle-orm-docs)",
+  "seconds": 0.039
+ },
+ {
+  "purl": "pkg:npm/swr",
+  "answer": {
+   "kind": "site+repo",
+   "site": "https://swr.vercel.app/docs/getting-started",
+   "repo": "vercel/swr-site",
+   "sites": [
+    {
+     "site": "https://swr.vercel.app/docs/getting-started",
+     "pages": 20,
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ]
+    }
+   ]
+  },
+  "pairs": [
+   {
+    "site": "https://swr.vercel.app/docs/getting-started",
+    "repo": "vercel/swr-site",
+    "why": [
+     "org-repo-homepage"
+    ],
+    "siteToRepo": false,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "5/5/5",
+    "validated": true,
+    "validatedBy": "content",
+    "framework": [
+     "fumadocs"
+    ],
+    "docDirs": [
+     "content"
+    ],
+    "docFiles": 232,
+    "content": [
+     "Ppath-match:0.97/0.48:content/docs/advanced/performance.mdx",
+     "Ppath-match:1/0.21:content/docs/arguments.mdx",
+     "Ppath-match:0.94/0.88:content/docs/error-handling.mdx",
+     "Ppath-match:0.99/0.51:content/docs/mutation.mdx",
+     "Ppath-match:1/0.26:content/docs/subscription.mdx"
+    ]
+   }
+  ],
+  "evidence": {
+   "registry": {
+    "homepage": "https://swr.vercel.app",
+    "repository": {
+     "url": "git+https://github.com/vercel/swr.git",
+     "type": "git"
+    }
+   },
+   "pkgRepo": {
+    "full": "vercel/swr",
+    "homepage": "https://swr.vercel.app",
+    "docFiles": 0,
+    "docDirs": [],
+    "configs": [],
+    "hasWiki": false
+   },
+   "candidates": [
+    {
+     "host": "swr.vercel.app",
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ]
+    }
+   ],
+   "sites": [
+    {
+     "url": "https://swr.vercel.app",
+     "final": "https://swr.vercel.app/docs/getting-started",
+     "status": 200,
+     "editRepos": [],
+     "repoLinks": [
+      "vercel/swr"
+     ],
+     "sitemapPages": 20,
+     "versioned": [],
+     "entry": "https://swr.vercel.app/docs/getting-started",
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ],
+     "samples": 5
+    }
+   ]
+  },
+  "requests": 0,
+  "expect": "Nextra, separate site repository (vercel/swr-site)",
+  "seconds": 0.033
+ },
+ {
+  "purl": "pkg:npm/hono",
+  "answer": {
+   "kind": "site+repo",
+   "site": "https://hono.dev/docs",
+   "repo": "honojs/website",
+   "sites": [
+    {
+     "site": "https://hono.dev/docs",
+     "pages": 91,
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ]
+    }
+   ]
+  },
+  "pairs": [
+   {
+    "site": "https://hono.dev/docs",
+    "repo": "honojs/website",
+    "why": [
+     "site-edit-link",
+     "org-repo-homepage"
+    ],
+    "siteToRepo": true,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "5/5/5",
+    "validated": true,
+    "validatedBy": "content",
+    "framework": [
+     "vitepress"
+    ],
+    "docDirs": [
+     "docs"
+    ],
+    "docFiles": 91,
+    "content": [
+     "Pedit-link:0.98/0.5:docs/concepts/routers.md",
+     "Pedit-link:0.98/0.33:docs/getting-started/nodejs.md",
+     "Pedit-link:0.96/0.29:docs/guides/others.md",
+     "Pedit-link:1/0.43:docs/helpers/proxy.md",
+     "Pedit-link:0.99/0.22:docs/middleware/builtin/jsx-renderer.md"
+    ]
+   },
+   {
+    "site": "https://hono.dev/docs",
+    "repo": "honojs/middleware",
+    "why": [
+     "org-repo-homepage"
+    ],
+    "siteToRepo": true,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "0/0/5",
+    "validated": false,
+    "validatedBy": "",
+    "framework": [],
+    "docDirs": [],
+    "docFiles": 0,
+    "content": [
+     "-other-repo:-/-:",
+     "-other-repo:-/-:",
+     "-other-repo:-/-:",
+     "-other-repo:-/-:",
+     "-other-repo:-/-:"
+    ]
+   },
+   {
+    "site": "https://hono.dev/docs",
+    "repo": "honojs/vite-plugins",
+    "why": [
+     "org-repo-homepage"
+    ],
+    "siteToRepo": true,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "0/0/5",
+    "validated": false,
+    "validatedBy": "",
+    "framework": [],
+    "docDirs": [],
+    "docFiles": 0,
+    "content": [
+     "-other-repo:-/-:",
+     "-other-repo:-/-:",
+     "-other-repo:-/-:",
+     "-other-repo:-/-:",
+     "-other-repo:-/-:"
+    ]
+   },
+   {
+    "site": "https://hono.dev/docs",
+    "repo": "honojs/examples",
+    "why": [
+     "org-repo-homepage"
+    ],
+    "siteToRepo": false,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "0/0/5",
+    "validated": false,
+    "validatedBy": "",
+    "framework": [],
+    "docDirs": [],
+    "docFiles": 0,
+    "content": [
+     "-other-repo:-/-:",
+     "-other-repo:-/-:",
+     "-other-repo:-/-:",
+     "-other-repo:-/-:",
+     "-other-repo:-/-:"
+    ]
+   }
+  ],
+  "evidence": {
+   "registry": {
+    "homepage": "https://hono.dev",
+    "repository": {
+     "url": "git+https://github.com/honojs/hono.git",
+     "type": "git"
+    }
+   },
+   "pkgRepo": {
+    "full": "honojs/hono",
+    "homepage": "https://hono.dev",
+    "docFiles": 2,
+    "docDirs": [
+     "docs"
+    ],
+    "configs": [],
+    "hasWiki": false
+   },
+   "candidates": [
+    {
+     "host": "hono.dev",
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ]
+    }
+   ],
+   "sites": [
+    {
+     "url": "https://hono.dev",
+     "final": "https://hono.dev/docs",
+     "status": 200,
+     "generator": "VitePress v1.6.3",
+     "editRepos": [
+      "honojs/website"
+     ],
+     "repoLinks": [
+      "orgs/honojs",
+      "honojs/node-server",
+      "honojs/middleware",
+      "honojs/website",
+      "pillarjs/path-to-regexp",
+      "honojs/vite-plugins",
+      "honojs/hono",
+      "sponsors/yusukebe",
+      "sponsors/usualoma"
+     ],
+     "sitemapPages": 91,
+     "versioned": [],
+     "entry": "https://hono.dev/docs/",
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ],
+     "samples": 5
+    }
+   ]
+  },
+  "requests": 0,
+  "expect": "separate site repository (honojs/website)",
+  "seconds": 0.031
+ },
+ {
+  "purl": "pkg:npm/@langchain/core",
+  "answer": {
+   "kind": "site+repo",
+   "site": "https://docs.langchain.com/oss/python/langchain/overview",
+   "repo": "langchain-ai/docs",
+   "sites": [
+    {
+     "site": "https://docs.langchain.com/oss/python/langchain/overview",
+     "pages": 1649,
+     "from": [
+      "repo-homepage"
+     ]
+    }
+   ]
+  },
+  "pairs": [
+   {
+    "site": "https://docs.langchain.com/oss/python/langchain/overview",
+    "repo": "langchain-ai/docs",
+    "why": [
+     "site-edit-link",
+     "org-repo-homepage"
+    ],
+    "siteToRepo": true,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "3/5/5",
+    "validated": true,
+    "validatedBy": "content",
+    "framework": [
+     "mintlify"
+    ],
+    "docDirs": [],
+    "docFiles": 0,
+    "content": [
+     "Pedit-link:0.97/0.15:src/langsmith/deploy-to-cloud.mdx",
+     "Pedit-link:0.99/0.15:src/langsmith/self-host-upgrades.mdx",
+     "-no-file:-/-:",
+     "-no-file:-/-:",
+     "Pedit-link:0.85/0.26:src/oss/langchain/test/evals.mdx"
+    ]
+   },
+   {
+    "site": "https://docs.langchain.com/oss/python/langchain/overview",
+    "repo": "langchain-ai/langgraphjs",
+    "why": [
+     "org-repo-homepage"
+    ],
+    "siteToRepo": false,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "0/2/5",
+    "validated": false,
+    "validatedBy": "",
+    "framework": [
+     "mkdocs"
+    ],
+    "docDirs": [
+     "docs",
+     "libs"
+    ],
+    "docFiles": 132,
+    "content": [
+     "-other-repo:-/-:",
+     "-other-repo:-/-:",
+     "-no-file:-/-:",
+     "-no-file:-/-:",
+     "-other-repo:-/-:"
+    ]
+   },
+   {
+    "site": "https://docs.langchain.com/oss/python/langchain/overview",
+    "repo": "langchain-ai/langgraph",
+    "why": [
+     "org-repo-homepage"
+    ],
+    "siteToRepo": false,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "0/2/5",
+    "validated": false,
+    "validatedBy": "",
+    "framework": [],
+    "docDirs": [
+     "docs"
+    ],
+    "docFiles": 1,
+    "content": [
+     "-other-repo:-/-:",
+     "-other-repo:-/-:",
+     "-no-file:-/-:",
+     "-no-file:-/-:",
+     "-other-repo:-/-:"
+    ]
+   },
+   {
+    "site": "https://docs.langchain.com/oss/python/langchain/overview",
+    "repo": "langchain-ai/langchain-google",
+    "why": [
+     "org-repo-homepage"
+    ],
+    "siteToRepo": false,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "0/2/5",
+    "validated": false,
+    "validatedBy": "",
+    "framework": [],
+    "docDirs": [],
+    "docFiles": 0,
+    "content": [
+     "-other-repo:-/-:",
+     "-other-repo:-/-:",
+     "-no-file:-/-:",
+     "-no-file:-/-:",
+     "-other-repo:-/-:"
+    ]
+   },
+   {
+    "site": "https://docs.langchain.com/oss/python/langchain/overview",
+    "repo": "langchain-ai/deepagentsjs",
+    "why": [
+     "org-repo-homepage"
+    ],
+    "siteToRepo": false,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "0/2/5",
+    "validated": false,
+    "validatedBy": "",
+    "framework": [],
+    "docDirs": [],
+    "docFiles": 0,
+    "content": [
+     "-other-repo:-/-:",
+     "-other-repo:-/-:",
+     "-no-file:-/-:",
+     "-no-file:-/-:",
+     "-other-repo:-/-:"
+    ]
+   },
+   {
+    "site": "https://docs.langchain.com/oss/python/langchain/overview",
+    "repo": "langchain-ai/langchain-mongodb",
+    "why": [
+     "org-repo-homepage"
+    ],
+    "siteToRepo": false,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "0/2/5",
+    "validated": false,
+    "validatedBy": "",
+    "framework": [
+     "readthedocs",
+     "sphinx"
+    ],
+    "docDirs": [
+     "docs"
+    ],
+    "docFiles": 7,
+    "content": [
+     "-other-repo:-/-:",
+     "-other-repo:-/-:",
+     "-no-file:-/-:",
+     "-no-file:-/-:",
+     "-other-repo:-/-:"
+    ]
+   }
+  ],
+  "evidence": {
+   "registry": {
+    "homepage": "https://github.com/langchain-ai/langchainjs/tree/main/langchain-core/",
+    "repository": {
+     "url": "git+ssh://git@github.com/langchain-ai/langchainjs.git",
+     "type": "git"
+    }
+   },
+   "pkgRepo": {
+    "full": "langchain-ai/langchainjs",
+    "homepage": "https://docs.langchain.com/langchain/",
+    "docFiles": 1,
+    "docDirs": [
+     "docs"
+    ],
+    "configs": [],
+    "hasWiki": false
+   },
+   "candidates": [
+    {
+     "host": "docs.langchain.com",
+     "from": [
+      "repo-homepage"
+     ]
+    }
+   ],
+   "sites": [
+    {
+     "url": "https://docs.langchain.com/langchain/",
+     "final": "https://docs.langchain.com/oss/python/langchain/overview",
+     "status": 200,
+     "generator": "Mintlify",
+     "editRepos": [
+      "langchain-ai/docs"
+     ],
+     "repoLinks": [
+      "langchain-ai/docs",
+      "langchain-ai/managed-deepagents",
+      "langchain-ai/openwiki",
+      "langchain-ai/helm",
+      "langchain-ai/deepagents",
+      "langchain-ai/agentevals"
+     ],
+     "sitemapPages": 1649,
+     "versioned": [],
+     "from": [
+      "repo-homepage"
+     ],
+     "samples": 5
+    }
+   ]
+  },
+  "requests": 0,
+  "expect": "Mintlify, separate docs repository (langchain-ai/docs)",
+  "seconds": 0.172
+ },
+ {
+  "purl": "pkg:npm/sharp",
+  "answer": {
+   "kind": "site-only",
+   "site": "https://sharp.pixelplumbing.com/",
+   "pages": 122,
+   "sites": [
+    {
+     "site": "https://sharp.pixelplumbing.com/",
+     "pages": 122,
+     "from": [
+      "registry-homepage",
+      "repo-homepage",
+      "repo-config:docs/astro.config.mjs"
+     ]
+    }
+   ]
+  },
+  "pairs": [
+   {
+    "site": "https://sharp.pixelplumbing.com/",
+    "repo": "lovell/sharp",
+    "why": [
+     "package-repo-has-docs"
+    ],
+    "siteToRepo": true,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "0/1/5",
+    "validated": false,
+    "validatedBy": "",
+    "framework": [
+     "astro"
+    ],
+    "docDirs": [
+     "docs"
+    ],
+    "docFiles": 14,
+    "content": [
+     "-no-text:-/-:",
+     "-no-text:-/-:",
+     "-no-text:-/-:",
+     "-no-file:-/-:",
+     "-no-text:-/-:"
+    ]
+   }
+  ],
+  "evidence": {
+   "registry": {
+    "homepage": "https://sharp.pixelplumbing.com",
+    "repository": {
+     "url": "git+https://github.com/lovell/sharp.git",
+     "type": "git"
+    }
+   },
+   "pkgRepo": {
+    "full": "lovell/sharp",
+    "homepage": "https://sharp.pixelplumbing.com",
+    "docFiles": 14,
+    "docDirs": [
+     "docs"
+    ],
+    "configs": [
+     {
+      "path": "docs/astro.config.mjs",
+      "framework": "astro",
+      "hosts": [
+       "sharp.pixelplumbing.com"
+      ]
+     }
+    ],
+    "hasWiki": false
+   },
+   "candidates": [
+    {
+     "host": "sharp.pixelplumbing.com",
+     "from": [
+      "registry-homepage",
+      "repo-homepage",
+      "repo-config:docs/astro.config.mjs"
+     ]
+    }
+   ],
+   "sites": [
+    {
+     "url": "https://sharp.pixelplumbing.com",
+     "final": "https://sharp.pixelplumbing.com/",
+     "status": 200,
+     "generator": "Astro v7.3.5",
+     "editRepos": [],
+     "repoLinks": [
+      "lovell/sharp",
+      "libvips/libvips",
+      "openseadragon/openseadragon",
+      "tjko/jpegoptim"
+     ],
+     "sitemapPages": 122,
+     "versioned": [],
+     "from": [
+      "registry-homepage",
+      "repo-homepage",
+      "repo-config:docs/astro.config.mjs"
+     ],
+     "samples": 5
+    }
+   ]
+  },
+  "requests": 0,
+  "expect": "docs in the code repository published to its own domain",
+  "seconds": 0.011
+ },
+ {
+  "purl": "pkg:pypi/fastapi",
+  "answer": {
+   "kind": "site+repo",
+   "site": "https://fastapi.tiangolo.com/",
+   "repo": "fastapi/fastapi",
+   "sites": [
+    {
+     "site": "https://fastapi.tiangolo.com/",
+     "pages": 151,
+     "from": [
+      "registry-docs-field",
+      "repo-homepage"
+     ]
+    }
+   ]
+  },
+  "pairs": [
+   {
+    "site": "https://fastapi.tiangolo.com/",
+    "repo": "fastapi/fastapi",
+    "why": [
+     "package-repo-has-docs"
+    ],
+    "siteToRepo": true,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "5/5/5",
+    "validated": true,
+    "validatedBy": "content",
+    "framework": [
+     "mkdocs"
+    ],
+    "docDirs": [
+     "docs"
+    ],
+    "docFiles": 1563,
+    "content": [
+     "Ppath-match:0.97/0.28:docs/en/docs/advanced/security/index.md",
+     "Ppath-match:0.87/0.06:docs/en/docs/fastapi-people.md",
+     "Ppath-match:1/0.08:docs/en/docs/reference/background.md",
+     "Ppath-match:0.98/0.8:docs/en/docs/release-notes.md",
+     "Ppath-match:0.95/0.1:docs/en/docs/tutorial/middleware.md"
+    ]
+   }
+  ],
+  "evidence": {
+   "registry": {
+    "project_urls": {
+     "Changelog": "https://fastapi.tiangolo.com/release-notes/",
+     "Documentation": "https://fastapi.tiangolo.com/",
+     "Homepage": "https://github.com/fastapi/fastapi",
+     "Issues": "https://github.com/fastapi/fastapi/issues",
+     "Repository": "https://github.com/fastapi/fastapi"
+    },
+    "home_page": null
+   },
+   "pkgRepo": {
+    "full": "fastapi/fastapi",
+    "homepage": "https://fastapi.tiangolo.com/",
+    "docFiles": 1563,
+    "docDirs": [
+     "docs"
+    ],
+    "configs": [
+     {
+      "path": "docs/en/mkdocs.yml",
+      "framework": "mkdocs",
+      "hosts": []
+     },
+     {
+      "path": "docs/hi/mkdocs.yml",
+      "framework": "mkdocs",
+      "hosts": []
+     }
+    ],
+    "hasWiki": false
+   },
+   "candidates": [
+    {
+     "host": "fastapi.tiangolo.com",
+     "from": [
+      "registry-docs-field",
+      "repo-homepage"
+     ]
+    },
+    {
+     "host": "youtube.com",
+     "from": [
+      "readme-link"
+     ]
+    }
+   ],
+   "sites": [
+    {
+     "url": "https://fastapi.tiangolo.com/",
+     "final": "https://fastapi.tiangolo.com/",
+     "status": 200,
+     "generator": "zensical-0.0.65",
+     "editRepos": [],
+     "repoLinks": [
+      "fastapi/fastapi",
+      "OAI/OpenAPI-Specification",
+      "swagger-api/swagger-ui",
+      "Redocly/redoc",
+      "JoshData/python-email-validator",
+      "Kludex/python-multipart",
+      "pydantic/pydantic-extra-types",
+      "ijl/orjson",
+      "ultrajson/ultrajson",
+      "sponsors/tiangolo",
+      "apps/pr-submit",
+      "apps/dependabot",
+      "apps/pre-commit-ci",
+      "fastapi/annotated-doc",
+      "tiangolo/fastapi",
+      "pydantic/bump-pydantic",
+      "apps/github-actions",
+      "encode/starlette",
+      "adriangb/xpresso",
+      "Kludex/bump-testclient",
+      "pydantic/pydantic",
+      "koxudaxi/pydantic-pycharm-plugin",
+      "microsoft/cookiecutter-spacy-fastapi",
+      "tiangolo/issue-manager",
+      "encode/databases",
+      "tiangolo/full-stack-fastapi-postgresql"
+     ],
+     "sitemapPages": 151,
+     "versioned": [],
+     "from": [
+      "registry-docs-field",
+      "repo-homepage"
+     ],
+     "samples": 5
+    }
+   ]
+  },
+  "requests": 0,
+  "expect": "MkDocs in the code repository; PyPI project_urls",
+  "seconds": 0.126
+ },
+ {
+  "purl": "pkg:pypi/django",
+  "answer": {
+   "kind": "site-only",
+   "site": "https://docs.djangoproject.com/en/6.1/",
+   "pages": 32835,
+   "sites": [
+    {
+     "site": "https://docs.djangoproject.com/en/6.1/",
+     "pages": 32835,
+     "from": [
+      "registry-docs-field"
+     ]
+    },
+    {
+     "site": "https://docs.djangoproject.com/en/6.1/",
+     "pages": 32835,
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ]
+    }
+   ]
+  },
+  "pairs": [
+   {
+    "site": "https://docs.djangoproject.com/en/6.1/",
+    "repo": "django/django",
+    "why": [
+     "package-repo-has-docs"
+    ],
+    "siteToRepo": true,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "2/5/5",
+    "validated": false,
+    "validatedBy": "",
+    "framework": [
+     "readthedocs",
+     "sphinx"
+    ],
+    "docDirs": [
+     "docs"
+    ],
+    "docFiles": 658,
+    "content": [
+     "Ppath-match:0.92/0.14:docs/topics/db/examples/one_to_one.txt",
+     "Ppath-match:0.98/0.11:docs/releases/5.0.8.txt",
+     "-path-match:0.22/0.29:docs/contents.txt",
+     "-no-file:-/-:",
+     "-path-match:0.24/0.1:docs/releases/1.10.5.txt"
+    ]
+   },
+   {
+    "site": "https://docs.djangoproject.com/en/6.1/",
+    "repo": "django/django",
+    "why": [
+     "package-repo-has-docs"
+    ],
+    "siteToRepo": true,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "2/5/5",
+    "validated": false,
+    "validatedBy": "",
+    "framework": [
+     "readthedocs",
+     "sphinx"
+    ],
+    "docDirs": [
+     "docs"
+    ],
+    "docFiles": 658,
+    "content": [
+     "Ppath-match:0.92/0.14:docs/topics/db/examples/one_to_one.txt",
+     "Ppath-match:0.98/0.11:docs/releases/5.0.8.txt",
+     "-path-match:0.22/0.29:docs/contents.txt",
+     "-no-file:-/-:",
+     "-path-match:0.24/0.1:docs/releases/1.10.5.txt"
+    ]
+   }
+  ],
+  "evidence": {
+   "registry": {
+    "project_urls": {
+     "Documentation": "https://docs.djangoproject.com/",
+     "Funding": "https://www.djangoproject.com/fundraising/",
+     "Homepage": "https://www.djangoproject.com/",
+     "Release notes": "https://docs.djangoproject.com/en/stable/releases/",
+     "Source": "https://github.com/django/django",
+     "Tracker": "https://code.djangoproject.com/"
+    },
+    "home_page": null
+   },
+   "pkgRepo": {
+    "full": "django/django",
+    "homepage": "https://www.djangoproject.com/",
+    "docFiles": 658,
+    "docDirs": [
+     "docs"
+    ],
+    "configs": [
+     {
+      "path": ".readthedocs.yml",
+      "framework": "readthedocs",
+      "hosts": []
+     },
+     {
+      "path": "docs/conf.py",
+      "framework": "sphinx",
+      "hosts": []
+     },
+     {
+      "path": "django/urls/conf.py",
+      "framework": "sphinx",
+      "hosts": []
+     }
+    ],
+    "hasWiki": false
+   },
+   "candidates": [
+    {
+     "host": "docs.djangoproject.com",
+     "from": [
+      "registry-docs-field"
+     ]
+    },
+    {
+     "host": "djangoproject.com",
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ]
+    }
+   ],
+   "sites": [
+    {
+     "url": "https://docs.djangoproject.com/",
+     "final": "https://docs.djangoproject.com/en/6.1/",
+     "status": 200,
+     "editRepos": [],
+     "repoLinks": [
+      "django/django",
+      "sponsors/django"
+     ],
+     "sitemapPages": 32835,
+     "versioned": [
+      "0.95",
+      "0.96",
+      "1.0",
+      "1.1",
+      "1.10",
+      "1.11",
+      "1.2",
+      "1.3"
+     ],
+     "from": [
+      "registry-docs-field"
+     ],
+     "samples": 5
+    },
+    {
+     "url": "https://www.djangoproject.com/",
+     "final": "https://docs.djangoproject.com/en/6.1/",
+     "status": 200,
+     "editRepos": [],
+     "repoLinks": [
+      "django/django",
+      "sponsors/django"
+     ],
+     "sitemapPages": 32835,
+     "versioned": [
+      "0.95",
+      "0.96",
+      "1.0",
+      "1.1",
+      "1.10",
+      "1.11",
+      "1.2",
+      "1.3"
+     ],
+     "entry": "https://docs.djangoproject.com/",
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ],
+     "samples": 5
+    }
+   ]
+  },
+  "requests": 0,
+  "expect": "Sphinx in the code repository; version branches",
+  "seconds": 0.201
+ },
+ {
+  "purl": "pkg:pypi/sqlalchemy",
+  "answer": {
+   "kind": "site+repo",
+   "site": "https://docs.sqlalchemy.org/en/21/",
+   "repo": "sqlalchemy/sqlalchemy",
+   "sites": [
+    {
+     "site": "https://docs.sqlalchemy.org/en/21/",
+     "pages": 60,
+     "from": [
+      "registry-docs-field"
+     ]
+    },
+    {
+     "site": "https://docs.sqlalchemy.org/en/21/",
+     "pages": 60,
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ]
+    }
+   ]
+  },
+  "pairs": [
+   {
+    "site": "https://docs.sqlalchemy.org/en/21/",
+    "repo": "sqlalchemy/sqlalchemy",
+    "why": [
+     "package-repo-has-docs"
+    ],
+    "siteToRepo": true,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "3/5/5",
+    "validated": true,
+    "validatedBy": "content",
+    "framework": [
+     "sphinx"
+    ],
+    "docDirs": [
+     "doc"
+    ],
+    "docFiles": 153,
+    "content": [
+     "-no-file:-/-:",
+     "Ppath-match:0.97/0.28:doc/build/core/event.rst",
+     "Ppath-match:0.95/0.18:doc/build/core/schema.rst",
+     "Ppath-match:0.93/0.17:doc/build/dialects/postgresql.rst",
+     "-path-match:0.67/0.44:doc/build/orm/extensions/hybrid.rst"
+    ]
+   },
+   {
+    "site": "https://docs.sqlalchemy.org/en/21/",
+    "repo": "sqlalchemy/sqlalchemy",
+    "why": [
+     "package-repo-has-docs"
+    ],
+    "siteToRepo": true,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "3/5/5",
+    "validated": true,
+    "validatedBy": "content",
+    "framework": [
+     "sphinx"
+    ],
+    "docDirs": [
+     "doc"
+    ],
+    "docFiles": 153,
+    "content": [
+     "-no-file:-/-:",
+     "Ppath-match:0.97/0.28:doc/build/core/event.rst",
+     "Ppath-match:0.95/0.18:doc/build/core/schema.rst",
+     "Ppath-match:0.93/0.17:doc/build/dialects/postgresql.rst",
+     "-path-match:0.67/0.44:doc/build/orm/extensions/hybrid.rst"
+    ]
+   }
+  ],
+  "evidence": {
+   "registry": {
+    "project_urls": {
+     "Changelog": "https://docs.sqlalchemy.org/latest/changelog/index.html",
+     "Discussions": "https://github.com/sqlalchemy/sqlalchemy/discussions",
+     "Documentation": "https://docs.sqlalchemy.org",
+     "Homepage": "https://www.sqlalchemy.org",
+     "Issue Tracker": "https://github.com/sqlalchemy/sqlalchemy/issues",
+     "Source Code": "https://github.com/sqlalchemy/sqlalchemy"
+    },
+    "home_page": null
+   },
+   "pkgRepo": {
+    "full": "sqlalchemy/sqlalchemy",
+    "homepage": "https://www.sqlalchemy.org",
+    "docFiles": 153,
+    "docDirs": [
+     "doc"
+    ],
+    "configs": [
+     {
+      "path": "doc/build/conf.py",
+      "framework": "sphinx",
+      "hosts": []
+     }
+    ],
+    "hasWiki": true
+   },
+   "candidates": [
+    {
+     "host": "docs.sqlalchemy.org",
+     "from": [
+      "registry-docs-field"
+     ]
+    },
+    {
+     "host": "sqlalchemy.org",
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ]
+    }
+   ],
+   "sites": [
+    {
+     "url": "https://docs.sqlalchemy.org",
+     "final": "https://docs.sqlalchemy.org/en/21/",
+     "status": 200,
+     "editRepos": [],
+     "repoLinks": [
+      "rtfd/readthedocs.org",
+      "sqlalchemy/sqlalchemy",
+      "sqlalchemyorg/zeekofile",
+      "EnigmaCurry/blogofile",
+      "sqlalchemy/sqlalchemy2-stubs",
+      "dropbox/sqlalchemy-stubs",
+      "python/typing",
+      "python/typeshed",
+      "microsoft/pylance-release",
+      "MagicStack/asyncpg"
+     ],
+     "sitemapPages": 60,
+     "versioned": [],
+     "from": [
+      "registry-docs-field"
+     ],
+     "samples": 5
+    },
+    {
+     "url": "https://www.sqlalchemy.org",
+     "final": "https://docs.sqlalchemy.org/en/21/",
+     "status": 200,
+     "editRepos": [],
+     "repoLinks": [
+      "rtfd/readthedocs.org",
+      "sqlalchemy/sqlalchemy",
+      "sqlalchemyorg/zeekofile",
+      "EnigmaCurry/blogofile",
+      "sqlalchemy/sqlalchemy2-stubs",
+      "dropbox/sqlalchemy-stubs",
+      "python/typing",
+      "python/typeshed",
+      "microsoft/pylance-release",
+      "MagicStack/asyncpg"
+     ],
+     "sitemapPages": 60,
+     "versioned": [],
+     "entry": "https://docs.sqlalchemy.org/",
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ],
+     "samples": 5
+    }
+   ]
+  },
+  "requests": 0,
+  "expect": "Sphinx under doc/build; versioned namespaces",
+  "seconds": 0.076
+ },
+ {
+  "purl": "pkg:pypi/pydantic",
+  "answer": {
+   "kind": "site-only",
+   "site": "https://pydantic.dev/docs/validation/latest/get-started/",
+   "pages": 1951,
+   "sites": [
+    {
+     "site": "https://pydantic.dev/docs/validation/latest/get-started/",
+     "pages": 1951,
+     "from": [
+      "registry-docs-field",
+      "repo-homepage"
+     ]
+    }
+   ]
+  },
+  "pairs": [
+   {
+    "site": "https://pydantic.dev/docs/validation/latest/get-started/",
+    "repo": "pydantic/pydantic",
+    "why": [
+     "package-repo-has-docs"
+    ],
+    "siteToRepo": true,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "1/5/5",
+    "validated": false,
+    "validatedBy": "",
+    "framework": [
+     "mkdocs"
+    ],
+    "docDirs": [
+     "docs"
+    ],
+    "docFiles": 90,
+    "content": [
+     "-no-file:-/-:",
+     "-no-file:-/-:",
+     "-path-match:0.78/0.63:docs/concepts/pydantic_settings.md",
+     "Ppath-match:0.76/0.42:docs/api/pydantic_core.md",
+     "-path-match:0.78/0.65:docs/concepts/models.md"
+    ]
+   },
+   {
+    "site": "https://pydantic.dev/docs/validation/latest/get-started/",
+    "repo": "pydantic/logfire-js",
+    "why": [
+     "org-repo-homepage"
+    ],
+    "siteToRepo": false,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "0/5/5",
+    "validated": false,
+    "validatedBy": "",
+    "framework": [],
+    "docDirs": [
+     "docs"
+    ],
+    "docFiles": 26,
+    "content": [
+     "-no-file:-/-:",
+     "-no-file:-/-:",
+     "-no-file:-/-:",
+     "-no-file:-/-:",
+     "-no-file:-/-:"
+    ]
+   },
+   {
+    "site": "https://pydantic.dev/docs/validation/latest/get-started/",
+    "repo": "pydantic/monty",
+    "why": [
+     "org-repo-homepage"
+    ],
+    "siteToRepo": true,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "0/5/5",
+    "validated": false,
+    "validatedBy": "",
+    "framework": [
+     "mkdocs"
+    ],
+    "docDirs": [
+     "docs"
+    ],
+    "docFiles": 61,
+    "content": [
+     "-no-file:-/-:",
+     "-path-match:0.64/0.54:crates/monty/README.md",
+     "-no-file:-/-:",
+     "-no-file:-/-:",
+     "-no-file:-/-:"
+    ]
+   },
+   {
+    "site": "https://pydantic.dev/docs/validation/latest/get-started/",
+    "repo": "pydantic/httpx2",
+    "why": [
+     "org-repo-homepage"
+    ],
+    "siteToRepo": false,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "0/5/5",
+    "validated": false,
+    "validatedBy": "",
+    "framework": [
+     "mkdocs"
+    ],
+    "docDirs": [
+     "docs",
+     "src"
+    ],
+    "docFiles": 38,
+    "content": [
+     "-no-file:-/-:",
+     "-no-file:-/-:",
+     "-no-file:-/-:",
+     "-no-file:-/-:",
+     "-no-file:-/-:"
+    ]
+   }
+  ],
+  "evidence": {
+   "registry": {
+    "project_urls": {
+     "Changelog": "https://pydantic.dev/docs/validation/latest/get-started/changelog/",
+     "Documentation": "https://pydantic.dev/docs/validation/latest/get-started/",
+     "Funding": "https://github.com/sponsors/samuelcolvin",
+     "Homepage": "https://github.com/pydantic/pydantic",
+     "Source": "https://github.com/pydantic/pydantic"
+    },
+    "home_page": null
+   },
+   "pkgRepo": {
+    "full": "pydantic/pydantic",
+    "homepage": "https://pydantic.dev/docs/validation",
+    "docFiles": 90,
+    "docDirs": [
+     "docs"
+    ],
+    "configs": [
+     {
+      "path": "mkdocs.yml",
+      "framework": "mkdocs",
+      "hosts": []
+     }
+    ],
+    "hasWiki": false
+   },
+   "candidates": [
+    {
+     "host": "pydantic.dev",
+     "from": [
+      "registry-docs-field",
+      "repo-homepage"
+     ]
+    }
+   ],
+   "sites": [
+    {
+     "url": "https://pydantic.dev/docs/validation/latest/get-started/",
+     "final": "https://pydantic.dev/docs/validation/latest/get-started/",
+     "status": 200,
+     "generator": "Astro v7.2.4",
+     "editRepos": [],
+     "repoLinks": [
+      "pydantic/pydantic",
+      "Kludex/awesome-pydantic",
+      "pydantic/pydantic-ai",
+      "pydantic/genai-prices",
+      "pydantic/monty",
+      "pydantic/pydantic-settings"
+     ],
+     "sitemapPages": 1951,
+     "versioned": [
+      "1.10",
+      "2.0",
+      "2.1",
+      "2.10",
+      "2.11",
+      "2.12",
+      "2.2",
+      "2.3"
+     ],
+     "from": [
+      "registry-docs-field",
+      "repo-homepage"
+     ],
+     "samples": 5
+    }
+   ]
+  },
+  "requests": 0,
+  "expect": "MkDocs in the code repository; versioned docs",
+  "seconds": 0.093
+ },
+ {
+  "purl": "pkg:pypi/requests",
+  "answer": {
+   "kind": "site+repo",
+   "site": "https://requests.readthedocs.io/en/latest/",
+   "repo": "psf/requests",
+   "sites": [
+    {
+     "site": "https://requests.readthedocs.io/en/latest/",
+     "pages": 17,
+     "from": [
+      "registry-docs-field",
+      "repo-homepage"
+     ]
+    }
+   ]
+  },
+  "pairs": [
+   {
+    "site": "https://requests.readthedocs.io/en/latest/",
+    "repo": "psf/requests",
+    "why": [
+     "package-repo-has-docs"
+    ],
+    "siteToRepo": true,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "2/3/5",
+    "validated": true,
+    "validatedBy": "content",
+    "framework": [
+     "readthedocs",
+     "sphinx"
+    ],
+    "docDirs": [
+     "docs"
+    ],
+    "docFiles": 15,
+    "content": [
+     "-no-text:-/-:",
+     "-no-text:-/-:",
+     "Ppath-match:0.5/0.17:docs/dev/authors.rst",
+     "-no-file:-/-:",
+     "Ppath-match:0.97/0.21:docs/user/authentication.rst"
+    ]
+   }
+  ],
+  "evidence": {
+   "registry": {
+    "project_urls": {
+     "Documentation": "https://requests.readthedocs.io",
+     "Source": "https://github.com/psf/requests"
+    },
+    "home_page": null
+   },
+   "pkgRepo": {
+    "full": "psf/requests",
+    "homepage": "https://requests.readthedocs.io/en/latest/",
+    "docFiles": 15,
+    "docDirs": [
+     "docs"
+    ],
+    "configs": [
+     {
+      "path": ".readthedocs.yaml",
+      "framework": "readthedocs",
+      "hosts": []
+     },
+     {
+      "path": "docs/conf.py",
+      "framework": "sphinx",
+      "hosts": []
+     }
+    ],
+    "hasWiki": true
+   },
+   "candidates": [
+    {
+     "host": "requests.readthedocs.io",
+     "from": [
+      "registry-docs-field",
+      "repo-homepage"
+     ]
+    },
+    {
+     "host": "readthedocs.org",
+     "from": [
+      "readme-link"
+     ]
+    }
+   ],
+   "sites": [
+    {
+     "url": "https://requests.readthedocs.io",
+     "final": "https://requests.readthedocs.io/en/latest/",
+     "status": 200,
+     "editRepos": [],
+     "repoLinks": [
+      "psf/requests",
+      "urllib3/urllib3",
+      "requests/requests-oauthlib",
+      "requests/requests-kerberos",
+      "requests/requests-ntlm"
+     ],
+     "sitemapPages": 17,
+     "versioned": [],
+     "from": [
+      "registry-docs-field",
+      "repo-homepage"
+     ],
+     "samples": 5
+    }
+   ]
+  },
+  "requests": 0,
+  "expect": "Read the Docs from the code repository",
+  "seconds": 0.011
+ },
+ {
+  "purl": "pkg:pypi/ruamel.yaml",
+  "answer": {
+   "kind": "site-only",
+   "site": "https://yaml.dev/doc/ruamel.yaml/",
+   "pages": 11,
+   "sites": [
+    {
+     "site": "https://yaml.dev/doc/ruamel.yaml/",
+     "pages": 11,
+     "from": [
+      "registry-docs-field"
+     ]
+    }
+   ]
+  },
+  "pairs": [],
+  "evidence": {
+   "registry": {
+    "project_urls": {
+     "Documentation": "https://yaml.dev/doc/ruamel.yaml",
+     "Home": "https://sourceforge.net/p/ruamel-yaml/",
+     "Source": "https://sourceforge.net/p/ruamel-yaml/code/ci/default/tree/",
+     "Tracker": "https://sourceforge.net/p/ruamel-yaml/tickets/"
+    },
+    "home_page": null
+   },
+   "candidates": [
+    {
+     "host": "yaml.dev",
+     "from": [
+      "registry-docs-field"
+     ]
+    },
+    {
+     "host": "opensource.org",
+     "from": [
+      "readme-link"
+     ]
+    }
+   ],
+   "sites": [
+    {
+     "url": "https://yaml.dev/doc/ruamel.yaml",
+     "final": "https://yaml.dev/doc/ruamel.yaml/",
+     "status": 200,
+     "editRepos": [],
+     "repoLinks": [],
+     "sitemapPages": 11,
+     "versioned": [],
+     "from": [
+      "registry-docs-field"
+     ],
+     "samples": 5
+    }
+   ]
+  },
+  "requests": 0,
+  "expect": "non-GitHub host (SourceForge)",
+  "seconds": 0.029
+ },
+ {
+  "purl": "pkg:cargo/serde",
+  "answer": {
+   "kind": "site+repo",
+   "site": "https://serde.rs/",
+   "repo": "serde-rs/serde-rs.github.io",
+   "sites": [
+    {
+     "site": "https://docs.rs/serde/latest/serde/",
+     "pages": 13,
+     "from": [
+      "registry-docs-field"
+     ]
+    },
+    {
+     "site": "https://serde.rs/",
+     "pages": 37,
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ]
+    }
+   ]
+  },
+  "pairs": [
+   {
+    "site": "https://docs.rs/serde/latest/serde/",
+    "repo": "serde-rs/serde-rs.github.io",
+    "why": [
+     "site-edit-link",
+     "org-repo-homepage"
+    ],
+    "siteToRepo": false,
+    "repoToSite": false,
+    "authority": true,
+    "contentPass": "0/0/0",
+    "validated": false,
+    "validatedBy": "",
+    "framework": [
+     "cname"
+    ],
+    "docDirs": [],
+    "docFiles": 0,
+    "content": []
+   },
+   {
+    "site": "https://serde.rs/",
+    "repo": "serde-rs/serde-rs.github.io",
+    "why": [
+     "site-edit-link",
+     "org-repo-homepage"
+    ],
+    "siteToRepo": true,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "5/5/5",
+    "validated": true,
+    "validatedBy": "content",
+    "framework": [
+     "cname"
+    ],
+    "docDirs": [],
+    "docFiles": 0,
+    "content": [
+     "Ppath-match:0.86/0.2:_src/attributes.md",
+     "Ppath-match:0.91/0.46:_src/data-model.md",
+     "Ppath-match:0.94/0.31:_src/error-handling.md",
+     "Ppath-match:0.96/0.17:_src/ignored-any.md",
+     "Ppath-match:1/0.45:_src/no-std.md"
+    ]
+   }
+  ],
+  "evidence": {
+   "registry": {
+    "homepage": "https://serde.rs",
+    "documentation": "https://docs.rs/serde",
+    "repository": "https://github.com/serde-rs/serde"
+   },
+   "pkgRepo": {
+    "full": "serde-rs/serde",
+    "homepage": "https://serde.rs/",
+    "docFiles": 0,
+    "docDirs": [],
+    "configs": [],
+    "hasWiki": false
+   },
+   "candidates": [
+    {
+     "host": "docs.rs",
+     "from": [
+      "registry-docs-field"
+     ]
+    },
+    {
+     "host": "serde.rs",
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ]
+    }
+   ],
+   "sites": [
+    {
+     "url": "https://docs.rs/serde",
+     "final": "https://docs.rs/serde/latest/serde/",
+     "status": 200,
+     "generator": "rustdoc",
+     "editRepos": [],
+     "repoLinks": [
+      "serde-rs/serde",
+      "serde-rs/json",
+      "jamesmunns/postcard",
+      "enarx/ciborium",
+      "dtolnay/serde-yaml",
+      "3Hren/msgpack-rust",
+      "birkenfeld/serde-pickle",
+      "ron-rs/ron",
+      "mongodb/bson-rust",
+      "callum-oakley/json5-rs",
+      "dtolnay/serde-starlark",
+      "softprops/envy",
+      "softprops/envy-store",
+      "rotty/lexpr-rs",
+      "google/flatbuffers",
+      "P3KI/bendy",
+      "oxidecomputer/serde_tokenstream",
+      "Canop/deser-hjson"
+     ],
+     "sitemapPages": 13,
+     "versioned": [],
+     "from": [
+      "registry-docs-field"
+     ],
+     "samples": 5
+    },
+    {
+     "url": "https://serde.rs",
+     "final": "https://serde.rs/",
+     "status": 200,
+     "generator": "GitBook 3.2.3",
+     "editRepos": [
+      "serde-rs/serde-rs.github.io"
+     ],
+     "repoLinks": [
+      "serde-rs/serde",
+      "serde-rs/json",
+      "jamesmunns/postcard",
+      "enarx/ciborium",
+      "dtolnay/serde-yaml",
+      "3Hren/msgpack-rust",
+      "birkenfeld/serde-pickle",
+      "ron-rs/ron",
+      "mongodb/bson-rust",
+      "callum-oakley/json5-rs",
+      "dtolnay/serde-starlark",
+      "softprops/envy",
+      "softprops/envy-store",
+      "rotty/lexpr-rs",
+      "google/flatbuffers",
+      "P3KI/bendy",
+      "oxidecomputer/serde_tokenstream",
+      "Canop/deser-hjson",
+      "serde-rs/serde-rs.github.io"
+     ],
+     "sitemapPages": 37,
+     "versioned": [],
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ],
+     "samples": 5
+    }
+   ]
+  },
+  "requests": 0,
+  "expect": "docs.rs reference plus a separate site repository (serde.rs)",
+  "seconds": 1.106
+ },
+ {
+  "purl": "pkg:cargo/clap",
+  "answer": {
+   "kind": "site-only",
+   "site": "https://docs.rs/clap/latest/clap/",
+   "pages": 37,
+   "sites": [
+    {
+     "site": "https://docs.rs/clap/latest/clap/",
+     "pages": 37,
+     "from": [
+      "registry-docs-field"
+     ]
+    }
+   ]
+  },
+  "pairs": [],
+  "evidence": {
+   "registry": {
+    "homepage": null,
+    "documentation": null,
+    "repository": "https://github.com/clap-rs/clap"
+   },
+   "pkgRepo": {
+    "full": "clap-rs/clap",
+    "homepage": "docs.rs/clap",
+    "docFiles": 0,
+    "docDirs": [],
+    "configs": [],
+    "hasWiki": false
+   },
+   "candidates": [
+    {
+     "host": "docs.rs",
+     "from": [
+      "registry-docs-field"
+     ]
+    }
+   ],
+   "sites": [
+    {
+     "url": "https://docs.rs/clap",
+     "final": "https://docs.rs/clap/latest/clap/",
+     "status": 200,
+     "generator": "rustdoc",
+     "editRepos": [],
+     "repoLinks": [
+      "clap-rs/clap",
+      "rust-cli/team",
+      "rust-cli/argparse-benchmarks-rs",
+      "TeXitoi/structopt",
+      "yuhr/fncmd",
+      "aobatact/clap-serde",
+      "rust-lang/rust"
+     ],
+     "sitemapPages": 37,
+     "versioned": [],
+     "from": [
+      "registry-docs-field"
+     ],
+     "samples": 5
+    }
+   ]
+  },
+  "requests": 0,
+  "expect": "docs.rs generated reference only",
+  "seconds": 1.075
+ },
+ {
+  "purl": "pkg:cargo/tokio",
+  "answer": {
+   "kind": "site-only",
+   "site": "https://docs.rs/tokio/latest/tokio/",
+   "pages": 43,
+   "sites": [
+    {
+     "site": "https://docs.rs/tokio/latest/tokio/",
+     "pages": 43,
+     "from": [
+      "registry-docs-field"
+     ]
+    },
+    {
+     "site": "https://tokio.rs/",
+     "pages": 3,
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ]
+    }
+   ]
+  },
+  "pairs": [
+   {
+    "site": "https://docs.rs/tokio/latest/tokio/",
+    "repo": "tokio-rs/website",
+    "why": [
+     "org-repo-homepage"
+    ],
+    "siteToRepo": false,
+    "repoToSite": false,
+    "authority": true,
+    "contentPass": "0/0/0",
+    "validated": false,
+    "validatedBy": "",
+    "framework": [],
+    "docDirs": [
+     "content"
+    ],
+    "docFiles": 69,
+    "content": []
+   },
+   {
+    "site": "https://tokio.rs/",
+    "repo": "tokio-rs/website",
+    "why": [
+     "org-repo-homepage"
+    ],
+    "siteToRepo": true,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "1/1/2",
+    "validated": false,
+    "validatedBy": "",
+    "framework": [],
+    "docDirs": [
+     "content"
+    ],
+    "docFiles": 69,
+    "content": [
+     "-no-text:-/-:",
+     "Pedit-link:0.95/0:content/blog/2026-10-06-tokioconf-2027-cfp.md"
+    ]
+   }
+  ],
+  "evidence": {
+   "registry": {
+    "homepage": "https://tokio.rs",
+    "documentation": null,
+    "repository": "https://github.com/tokio-rs/tokio"
+   },
+   "pkgRepo": {
+    "full": "tokio-rs/tokio",
+    "homepage": "https://tokio.rs",
+    "docFiles": 1,
+    "docDirs": [
+     "tokio"
+    ],
+    "configs": [],
+    "hasWiki": false
+   },
+   "candidates": [
+    {
+     "host": "docs.rs",
+     "from": [
+      "registry-docs-field"
+     ]
+    },
+    {
+     "host": "tokio.rs",
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ]
+    }
+   ],
+   "sites": [
+    {
+     "url": "https://docs.rs/tokio",
+     "final": "https://docs.rs/tokio/latest/tokio/",
+     "status": 200,
+     "generator": "rustdoc",
+     "editRepos": [],
+     "repoLinks": [
+      "tokio-rs/tokio"
+     ],
+     "sitemapPages": 43,
+     "versioned": [],
+     "from": [
+      "registry-docs-field"
+     ],
+     "samples": 5
+    },
+    {
+     "url": "https://tokio.rs",
+     "final": "https://tokio.rs/",
+     "status": 200,
+     "editRepos": [],
+     "repoLinks": [
+      "tokio-rs/tokio",
+      "hyperium/hyper",
+      "hyperium/tonic",
+      "tower-rs/tower",
+      "tokio-rs/mio",
+      "tokio-rs/tracing",
+      "tokio-rs/bytes",
+      "tokio-rs/turmoil",
+      "tokio-rs/loom",
+      "tokio-rs/website"
+     ],
+     "sitemapPages": 3,
+     "versioned": [],
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ],
+     "samples": 2
+    }
+   ]
+  },
+  "requests": 0,
+  "expect": "docs.rs plus a separate website repository (tokio-rs/website)",
+  "seconds": 1.074
+ }
+]

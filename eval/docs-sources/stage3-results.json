@@ -1,0 +1,1363 @@
+[
+ {
+  "purl": "pkg:npm/@angular/compiler-cli",
+  "answer": {
+   "kind": "site-only",
+   "site": "https://angular.dev/docs",
+   "pages": 0,
+   "sites": [
+    {
+     "site": "https://angular.dev/docs",
+     "pages": 0,
+     "from": [
+      "repo-homepage"
+     ]
+    }
+   ]
+  },
+  "pairs": [
+   {
+    "site": "https://angular.dev/docs",
+    "repo": "angular/angular",
+    "why": [
+     "package-repo-has-docs"
+    ],
+    "siteToRepo": false,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "0/0/0",
+    "validated": false,
+    "validatedBy": "",
+    "framework": [],
+    "docDirs": [
+     "devtools",
+     "packages",
+     "vscode-ng-language-service"
+    ],
+    "docFiles": 12,
+    "content": []
+   }
+  ],
+  "evidence": {
+   "registry": {
+    "homepage": "https://github.com/angular/angular/tree/main/packages/compiler-cli",
+    "repository": {
+     "url": "git+https://github.com/angular/angular.git",
+     "type": "git",
+     "directory": "packages/compiler-cli"
+    }
+   },
+   "pkgRepo": {
+    "full": "angular/angular",
+    "homepage": "https://angular.dev",
+    "docFiles": 12,
+    "docDirs": [
+     "devtools",
+     "packages",
+     "vscode-ng-language-service"
+    ],
+    "configs": [],
+    "hasWiki": false
+   },
+   "candidates": [
+    {
+     "host": "angular.dev",
+     "from": [
+      "repo-homepage"
+     ]
+    }
+   ],
+   "sites": [
+    {
+     "url": "https://angular.dev",
+     "final": "https://angular.dev/docs",
+     "status": 200,
+     "editRepos": [],
+     "repoLinks": [],
+     "sitemapPages": 0,
+     "versioned": [],
+     "entry": "https://angular.dev/docs",
+     "from": [
+      "repo-homepage"
+     ],
+     "samples": 0
+    }
+   ]
+  },
+  "requests": 0,
+  "seconds": 0.047
+ },
+ {
+  "purl": "pkg:npm/react-transition-group",
+  "answer": {
+   "kind": "site-only",
+   "site": "https://reactcommunity.org/react-transition-group/",
+   "pages": 6,
+   "sites": [
+    {
+     "site": "https://reactcommunity.org/react-transition-group/",
+     "pages": 6,
+     "from": [
+      "repo-homepage"
+     ]
+    }
+   ]
+  },
+  "pairs": [],
+  "evidence": {
+   "registry": {
+    "homepage": "https://github.com/reactjs/react-transition-group#readme",
+    "repository": {
+     "url": "git+https://github.com/reactjs/react-transition-group.git",
+     "type": "git"
+    }
+   },
+   "pkgRepo": {
+    "full": "reactjs/react-transition-group",
+    "homepage": "https://reactcommunity.org/react-transition-group/",
+    "docFiles": 0,
+    "docDirs": [],
+    "configs": [],
+    "hasWiki": false
+   },
+   "candidates": [
+    {
+     "host": "reactcommunity.org",
+     "from": [
+      "repo-homepage"
+     ]
+    }
+   ],
+   "sites": [
+    {
+     "url": "https://reactcommunity.org/react-transition-group/",
+     "final": "https://reactcommunity.org/react-transition-group/",
+     "status": 200,
+     "generator": "Gatsby 2.32.11",
+     "editRepos": [],
+     "repoLinks": [
+      "twbs/bootstrap",
+      "chenglou/react-motion",
+      "reactjs/react-transition-group"
+     ],
+     "sitemapPages": 6,
+     "versioned": [],
+     "from": [
+      "repo-homepage"
+     ],
+     "samples": 5
+    }
+   ]
+  },
+  "requests": 0,
+  "seconds": 0.01
+ },
+ {
+  "purl": "pkg:cargo/async-tar",
+  "answer": {
+   "kind": "site-only",
+   "site": "https://docs.rs/async-tar/latest/async_tar/",
+   "pages": 20,
+   "sites": [
+    {
+     "site": "https://docs.rs/async-tar/latest/async_tar/",
+     "pages": 20,
+     "from": [
+      "registry-docs-field"
+     ]
+    }
+   ]
+  },
+  "pairs": [],
+  "evidence": {
+   "registry": {
+    "homepage": "https://github.com/dignifiedquire/async-tar",
+    "documentation": "https://docs.rs/async-tar",
+    "repository": "https://github.com/dignifiedquire/async-tar"
+   },
+   "pkgRepo": {
+    "full": "dignifiedquire/async-tar",
+    "homepage": "",
+    "docFiles": 0,
+    "docDirs": [],
+    "configs": [],
+    "hasWiki": true
+   },
+   "candidates": [
+    {
+     "host": "docs.rs",
+     "from": [
+      "registry-docs-field"
+     ]
+    }
+   ],
+   "sites": [
+    {
+     "url": "https://docs.rs/async-tar",
+     "final": "https://docs.rs/async-tar/latest/async_tar/",
+     "status": 200,
+     "generator": "rustdoc",
+     "editRepos": [],
+     "repoLinks": [
+      "dignifiedquire/async-tar",
+      "rust-lang/rust"
+     ],
+     "sitemapPages": 20,
+     "versioned": [],
+     "from": [
+      "registry-docs-field"
+     ],
+     "samples": 5
+    }
+   ]
+  },
+  "requests": 0,
+  "seconds": 1.048
+ },
+ {
+  "purl": "pkg:npm/@types/jest",
+  "answer": {
+   "kind": "readme-only"
+  },
+  "pairs": [],
+  "evidence": {
+   "registry": {
+    "homepage": "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/jest",
+    "repository": {
+     "url": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+     "type": "git",
+     "directory": "types/jest"
+    }
+   },
+   "pkgRepo": {
+    "full": "DefinitelyTyped/DefinitelyTyped",
+    "homepage": "",
+    "docFiles": 1,
+    "docDirs": [
+     "docs"
+    ],
+    "configs": [],
+    "hasWiki": false
+   },
+   "candidates": [
+    {
+     "host": "typescriptlang.org",
+     "from": [
+      "readme-link"
+     ]
+    }
+   ],
+   "sites": []
+  },
+  "requests": 0,
+  "seconds": 0.096
+ },
+ {
+  "purl": "pkg:npm/@swimlane/eslint-config",
+  "answer": {
+   "kind": "readme-only"
+  },
+  "pairs": [],
+  "evidence": {
+   "registry": {
+    "homepage": "https://github.com/swimlane/eslint-config#readme",
+    "repository": {
+     "url": "git+https://github.com/swimlane/eslint-config.git",
+     "type": "git"
+    }
+   },
+   "pkgRepo": {
+    "full": "swimlane/eslint-config",
+    "homepage": "",
+    "docFiles": 0,
+    "docDirs": [],
+    "configs": [],
+    "hasWiki": false
+   },
+   "candidates": [],
+   "sites": []
+  },
+  "requests": 0,
+  "seconds": 0.004
+ },
+ {
+  "purl": "pkg:cargo/bytes",
+  "answer": {
+   "kind": "site-only",
+   "site": "https://docs.rs/bytes/latest/bytes/",
+   "pages": 10,
+   "sites": [
+    {
+     "site": "https://docs.rs/bytes/latest/bytes/",
+     "pages": 10,
+     "from": [
+      "registry-docs-field"
+     ]
+    }
+   ]
+  },
+  "pairs": [],
+  "evidence": {
+   "registry": {
+    "homepage": null,
+    "documentation": null,
+    "repository": "https://github.com/tokio-rs/bytes"
+   },
+   "pkgRepo": {
+    "full": "tokio-rs/bytes",
+    "docFiles": 0,
+    "docDirs": [],
+    "configs": [],
+    "hasWiki": false
+   },
+   "candidates": [
+    {
+     "host": "docs.rs",
+     "from": [
+      "registry-docs-field"
+     ]
+    }
+   ],
+   "sites": [
+    {
+     "url": "https://docs.rs/bytes",
+     "final": "https://docs.rs/bytes/latest/bytes/",
+     "status": 200,
+     "generator": "rustdoc",
+     "editRepos": [],
+     "repoLinks": [
+      "tokio-rs/bytes",
+      "Voultapher/sort-research-rs",
+      "Voultapher/driftsort",
+      "rust-lang/rust"
+     ],
+     "sitemapPages": 10,
+     "versioned": [],
+     "from": [
+      "registry-docs-field"
+     ],
+     "samples": 5
+    }
+   ]
+  },
+  "requests": 0,
+  "seconds": 1.019
+ },
+ {
+  "purl": "pkg:cargo/yaml_serde",
+  "answer": {
+   "kind": "site-only",
+   "site": "https://docs.rs/yaml_serde/latest/yaml_serde/",
+   "pages": 27,
+   "sites": [
+    {
+     "site": "https://docs.rs/yaml_serde/latest/yaml_serde/",
+     "pages": 27,
+     "from": [
+      "registry-docs-field"
+     ]
+    }
+   ]
+  },
+  "pairs": [],
+  "evidence": {
+   "registry": {
+    "homepage": null,
+    "documentation": "https://docs.rs/yaml_serde/",
+    "repository": "https://github.com/yaml/yaml-serde"
+   },
+   "pkgRepo": {
+    "full": "yaml/yaml-serde",
+    "homepage": "",
+    "docFiles": 0,
+    "docDirs": [],
+    "configs": [],
+    "hasWiki": false
+   },
+   "candidates": [
+    {
+     "host": "docs.rs",
+     "from": [
+      "registry-docs-field"
+     ]
+    }
+   ],
+   "sites": [
+    {
+     "url": "https://docs.rs/yaml_serde/",
+     "final": "https://docs.rs/yaml_serde/latest/yaml_serde/",
+     "status": 200,
+     "generator": "rustdoc",
+     "editRepos": [],
+     "repoLinks": [
+      "yaml/yaml-serde",
+      "serde-rs/serde",
+      "dtolnay/serde-yaml",
+      "serde-rs/json",
+      "rust-lang/rust"
+     ],
+     "sitemapPages": 27,
+     "versioned": [],
+     "from": [
+      "registry-docs-field"
+     ],
+     "samples": 5
+    }
+   ]
+  },
+  "requests": 0,
+  "seconds": 1.015
+ },
+ {
+  "purl": "pkg:npm/eslint-plugin-cypress",
+  "answer": {
+   "kind": "repo-only",
+   "repo": "cypress-io/eslint-plugin-cypress",
+   "dirs": [
+    "docs"
+   ]
+  },
+  "pairs": [],
+  "evidence": {
+   "registry": {
+    "homepage": "https://github.com/cypress-io/eslint-plugin-cypress#readme",
+    "repository": {
+     "url": "git+https://github.com/cypress-io/eslint-plugin-cypress.git",
+     "type": "git"
+    }
+   },
+   "pkgRepo": {
+    "full": "cypress-io/eslint-plugin-cypress",
+    "homepage": "",
+    "docFiles": 13,
+    "docDirs": [
+     "docs"
+    ],
+    "configs": [],
+    "hasWiki": true
+   },
+   "candidates": [],
+   "sites": []
+  },
+  "requests": 0,
+  "seconds": 0.005
+ },
+ {
+  "purl": "pkg:npm/ts-jest",
+  "answer": {
+   "kind": "site+repo",
+   "site": "https://kulshekhar.github.io/ts-jest/",
+   "repo": "kulshekhar/ts-jest",
+   "sites": [
+    {
+     "site": "https://kulshekhar.github.io/ts-jest/",
+     "pages": 150,
+     "from": [
+      "registry-homepage",
+      "repo-homepage",
+      "repo-config:website/docusaurus.config.ts"
+     ]
+    }
+   ]
+  },
+  "pairs": [
+   {
+    "site": "https://kulshekhar.github.io/ts-jest/",
+    "repo": "kulshekhar/ts-jest",
+    "why": [
+     "package-repo-has-docs",
+     "site-edit-link"
+    ],
+    "siteToRepo": true,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "4/4/5",
+    "validated": true,
+    "validatedBy": "content",
+    "framework": [
+     "docusaurus"
+    ],
+    "docDirs": [
+     "website"
+    ],
+    "docFiles": 143,
+    "content": [
+     "Pedit-link:0.95/0.4:website/versioned_docs/version-28.0/guides/troubleshooting.md",
+     "Ppath-match:0.53/0.14:website/versioned_docs/version-29.2/contributing.md",
+     "Pedit-link:0.82/0.1:website/versioned_docs/version-29.3/introduction.md",
+     "-no-text:-/-:",
+     "Pedit-link:0.97/0.31:website/docs/getting-started/installation.md"
+    ]
+   }
+  ],
+  "evidence": {
+   "registry": {
+    "homepage": "https://kulshekhar.github.io/ts-jest",
+    "repository": {
+     "url": "git+https://github.com/kulshekhar/ts-jest.git",
+     "type": "git"
+    }
+   },
+   "pkgRepo": {
+    "full": "kulshekhar/ts-jest",
+    "homepage": "https://kulshekhar.github.io/ts-jest",
+    "docFiles": 143,
+    "docDirs": [
+     "website"
+    ],
+    "configs": [
+     {
+      "path": "website/docusaurus.config.ts",
+      "framework": "docusaurus",
+      "hosts": [
+       "kulshekhar.github.io"
+      ]
+     }
+    ],
+    "hasWiki": true
+   },
+   "candidates": [
+    {
+     "host": "kulshekhar.github.io",
+     "from": [
+      "registry-homepage",
+      "repo-homepage",
+      "repo-config:website/docusaurus.config.ts"
+     ]
+    }
+   ],
+   "sites": [
+    {
+     "url": "https://kulshekhar.github.io/ts-jest",
+     "final": "https://kulshekhar.github.io/ts-jest/",
+     "status": 200,
+     "editRepos": [
+      "kulshekhar/ts-jest"
+     ],
+     "repoLinks": [
+      "kulshekhar/ts-jest"
+     ],
+     "sitemapPages": 150,
+     "versioned": [
+      "28.0",
+      "29.0",
+      "29.2",
+      "29.3"
+     ],
+     "from": [
+      "registry-homepage",
+      "repo-homepage",
+      "repo-config:website/docusaurus.config.ts"
+     ],
+     "samples": 5
+    }
+   ]
+  },
+  "requests": 0,
+  "seconds": 0.012
+ },
+ {
+  "purl": "pkg:npm/mobx-react",
+  "answer": {
+   "kind": "site+repo",
+   "site": "https://mobx.js.org/",
+   "repo": "mobxjs/mobx",
+   "sites": [
+    {
+     "site": "https://mobx.js.org/",
+     "pages": 53,
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ]
+    }
+   ]
+  },
+  "pairs": [
+   {
+    "site": "https://mobx.js.org/",
+    "repo": "mobxjs/mobx",
+    "why": [
+     "package-repo-has-docs",
+     "site-edit-link"
+    ],
+    "siteToRepo": true,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "2/2/5",
+    "validated": true,
+    "validatedBy": "content",
+    "framework": [],
+    "docDirs": [
+     "docs"
+    ],
+    "docFiles": 52,
+    "content": [
+     "-no-text:-/-:",
+     "Pedit-link:0.87/0.19:packages/mobx/src/errors.ts",
+     "Pedit-link:0.94/0.21:docs/migrating-from-4-or-5.md",
+     "-no-text:-/-:",
+     "-no-text:-/-:"
+    ]
+   }
+  ],
+  "evidence": {
+   "registry": {
+    "homepage": "https://mobx.js.org",
+    "repository": {
+     "url": "git+https://github.com/mobxjs/mobx.git",
+     "type": "git"
+    }
+   },
+   "pkgRepo": {
+    "full": "mobxjs/mobx",
+    "homepage": "http://mobx.js.org",
+    "docFiles": 52,
+    "docDirs": [
+     "docs"
+    ],
+    "configs": [],
+    "hasWiki": true
+   },
+   "candidates": [
+    {
+     "host": "mobx.js.org",
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ]
+    },
+    {
+     "host": "packtpub.com",
+     "from": [
+      "readme-link"
+     ]
+    }
+   ],
+   "sites": [
+    {
+     "url": "https://mobx.js.org",
+     "final": "https://mobx.js.org/",
+     "status": 200,
+     "editRepos": [
+      "mobxjs/mobx"
+     ],
+     "repoLinks": [
+      "mobxjs/mobx"
+     ],
+     "sitemapPages": 53,
+     "versioned": [],
+     "from": [
+      "registry-homepage",
+      "repo-homepage"
+     ],
+     "samples": 5
+    }
+   ]
+  },
+  "requests": 0,
+  "seconds": 0.008
+ },
+ {
+  "purl": "pkg:npm/@types/redux-logger",
+  "answer": {
+   "kind": "readme-only"
+  },
+  "pairs": [],
+  "evidence": {
+   "registry": {
+    "homepage": "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/redux-logger",
+    "repository": {
+     "url": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+     "type": "git",
+     "directory": "types/redux-logger"
+    }
+   },
+   "pkgRepo": {
+    "full": "DefinitelyTyped/DefinitelyTyped",
+    "homepage": "",
+    "docFiles": 1,
+    "docDirs": [
+     "docs"
+    ],
+    "configs": [],
+    "hasWiki": false
+   },
+   "candidates": [
+    {
+     "host": "typescriptlang.org",
+     "from": [
+      "readme-link"
+     ]
+    }
+   ],
+   "sites": []
+  },
+  "requests": 0,
+  "seconds": 0.09
+ },
+ {
+  "purl": "pkg:cargo/native-tls",
+  "answer": {
+   "kind": "site-only",
+   "site": "https://docs.rs/native-tls/latest/native_tls/",
+   "pages": 16,
+   "sites": [
+    {
+     "site": "https://docs.rs/native-tls/latest/native_tls/",
+     "pages": 16,
+     "from": [
+      "registry-docs-field"
+     ]
+    }
+   ]
+  },
+  "pairs": [],
+  "evidence": {
+   "registry": {
+    "homepage": "https://lib.rs/crates/native-tls",
+    "documentation": null,
+    "repository": "https://github.com/rust-native-tls/rust-native-tls"
+   },
+   "pkgRepo": {
+    "full": "rust-native-tls/rust-native-tls",
+    "docFiles": 0,
+    "docDirs": [],
+    "configs": [],
+    "hasWiki": false
+   },
+   "candidates": [
+    {
+     "host": "docs.rs",
+     "from": [
+      "registry-docs-field"
+     ]
+    }
+   ],
+   "sites": [
+    {
+     "url": "https://docs.rs/native-tls",
+     "final": "https://docs.rs/native-tls/latest/native_tls/",
+     "status": 200,
+     "generator": "rustdoc",
+     "editRepos": [],
+     "repoLinks": [
+      "rust-native-tls/rust-native-tls",
+      "rust-lang/rust"
+     ],
+     "sitemapPages": 16,
+     "versioned": [],
+     "from": [
+      "registry-docs-field"
+     ],
+     "samples": 5
+    }
+   ]
+  },
+  "requests": 0,
+  "seconds": 1.006
+ },
+ {
+  "purl": "pkg:npm/json-loader",
+  "answer": {
+   "kind": "site+repo",
+   "site": "https://webpack.js.org/migrate/3/",
+   "repo": "webpack/webpack.js.org",
+   "sites": [
+    {
+     "site": "https://webpack.js.org/migrate/3/",
+     "pages": 8,
+     "from": [
+      "readme-link"
+     ]
+    }
+   ]
+  },
+  "pairs": [
+   {
+    "site": "https://webpack.js.org/migrate/3/",
+    "repo": "webpack/webpack.js.org",
+    "why": [
+     "site-edit-link",
+     "org-repo-homepage"
+    ],
+    "siteToRepo": true,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "5/5/5",
+    "validated": true,
+    "validatedBy": "content",
+    "framework": [],
+    "docDirs": [],
+    "docFiles": 0,
+    "content": [
+     "Pedit-link:1/0.2:src/content/migrate/index.mdx",
+     "Pedit-link:0.96/0.42:src/content/migrate/3.mdx",
+     "Pedit-link:0.94/0.19:src/content/migrate/4.mdx",
+     "Pedit-link:0.94/0.22:src/content/migrate/4.mdx",
+     "Pedit-link:0.96/0.85:src/content/migrate/5.mdx"
+    ]
+   },
+   {
+    "site": "https://webpack.js.org/migrate/3/",
+    "repo": "webpack/webpack",
+    "why": [
+     "org-repo-homepage"
+    ],
+    "siteToRepo": true,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "0/0/5",
+    "validated": false,
+    "validatedBy": "",
+    "framework": [],
+    "docDirs": [
+     "docs"
+    ],
+    "docFiles": 7,
+    "content": [
+     "-other-repo:-/-:",
+     "-other-repo:-/-:",
+     "-other-repo:-/-:",
+     "-other-repo:-/-:",
+     "-other-repo:-/-:"
+    ]
+   }
+  ],
+  "evidence": {
+   "registry": {
+    "homepage": "https://github.com/webpack/json-loader#readme",
+    "repository": {
+     "url": "git+https://github.com/webpack/json-loader.git",
+     "type": "git"
+    }
+   },
+   "pkgRepo": {
+    "full": "webpack-contrib/json-loader",
+    "homepage": "",
+    "docFiles": 0,
+    "docDirs": [],
+    "configs": [],
+    "hasWiki": false
+   },
+   "candidates": [
+    {
+     "host": "webpack.js.org",
+     "from": [
+      "readme-link"
+     ]
+    }
+   ],
+   "sites": [
+    {
+     "url": "https://webpack.js.org/migrate/3/#json-loader-is-not-required-anymore",
+     "final": "https://webpack.js.org/migrate/3/",
+     "status": 200,
+     "editRepos": [
+      "webpack/webpack.js.org"
+     ],
+     "repoLinks": [
+      "webpack/webpack",
+      "webpack-contrib/json-loader",
+      "webpack/extract-text-webpack-plugin",
+      "webpack/webpack.js.org",
+      "codemod-com/codemod",
+      "browserslist/browserslist",
+      "webpack/schema-utils",
+      "webpack/loader-utils"
+     ],
+     "sitemapPages": 8,
+     "versioned": [],
+     "from": [
+      "readme-link"
+     ],
+     "samples": 5
+    }
+   ]
+  },
+  "requests": 0,
+  "seconds": 0.099
+ },
+ {
+  "purl": "pkg:cargo/async-compression",
+  "answer": {
+   "kind": "site-only",
+   "site": "https://docs.rs/async-compression/latest/async_compression/",
+   "pages": 11,
+   "sites": [
+    {
+     "site": "https://docs.rs/async-compression/latest/async_compression/",
+     "pages": 11,
+     "from": [
+      "registry-docs-field",
+      "repo-homepage"
+     ]
+    }
+   ]
+  },
+  "pairs": [],
+  "evidence": {
+   "registry": {
+    "homepage": null,
+    "documentation": null,
+    "repository": "https://github.com/Nullus157/async-compression"
+   },
+   "pkgRepo": {
+    "full": "Nullus157/async-compression",
+    "homepage": "https://docs.rs/async-compression",
+    "docFiles": 0,
+    "docDirs": [],
+    "configs": [],
+    "hasWiki": false
+   },
+   "candidates": [
+    {
+     "host": "docs.rs",
+     "from": [
+      "registry-docs-field",
+      "repo-homepage"
+     ]
+    }
+   ],
+   "sites": [
+    {
+     "url": "https://docs.rs/async-compression",
+     "final": "https://docs.rs/async-compression/latest/async_compression/",
+     "status": 200,
+     "generator": "rustdoc",
+     "editRepos": [],
+     "repoLinks": [
+      "Nullus157/async-compression",
+      "rust-lang/rust"
+     ],
+     "sitemapPages": 11,
+     "versioned": [],
+     "from": [
+      "registry-docs-field",
+      "repo-homepage"
+     ],
+     "samples": 5
+    }
+   ]
+  },
+  "requests": 0,
+  "seconds": 1.032
+ },
+ {
+  "purl": "pkg:npm/@angular-devkit/core",
+  "answer": {
+   "kind": "site-only",
+   "site": "https://angular.dev/docs",
+   "pages": 0,
+   "sites": [
+    {
+     "site": "https://angular.dev/docs",
+     "pages": 0,
+     "from": [
+      "repo-homepage"
+     ]
+    },
+    {
+     "site": "https://angular.dev/docs",
+     "pages": 0,
+     "from": [
+      "readme-link"
+     ]
+    }
+   ]
+  },
+  "pairs": [
+   {
+    "site": "https://angular.dev/docs",
+    "repo": "angular/angular-cli",
+    "why": [
+     "package-repo-has-docs"
+    ],
+    "siteToRepo": false,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "0/0/0",
+    "validated": false,
+    "validatedBy": "",
+    "framework": [],
+    "docDirs": [
+     "docs"
+    ],
+    "docFiles": 13,
+    "content": []
+   },
+   {
+    "site": "https://angular.dev/docs",
+    "repo": "angular/angular-cli",
+    "why": [
+     "package-repo-has-docs"
+    ],
+    "siteToRepo": false,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "0/0/0",
+    "validated": false,
+    "validatedBy": "",
+    "framework": [],
+    "docDirs": [
+     "docs"
+    ],
+    "docFiles": 13,
+    "content": []
+   },
+   {
+    "site": "https://angular.dev/docs",
+    "repo": "angular/angular",
+    "why": [
+     "org-repo-homepage"
+    ],
+    "siteToRepo": false,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "0/0/0",
+    "validated": false,
+    "validatedBy": "",
+    "framework": [],
+    "docDirs": [
+     "devtools",
+     "packages",
+     "vscode-ng-language-service"
+    ],
+    "docFiles": 12,
+    "content": []
+   },
+   {
+    "site": "https://angular.dev/docs",
+    "repo": "angular/angular",
+    "why": [
+     "org-repo-homepage"
+    ],
+    "siteToRepo": false,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "0/0/0",
+    "validated": false,
+    "validatedBy": "",
+    "framework": [],
+    "docDirs": [
+     "devtools",
+     "packages",
+     "vscode-ng-language-service"
+    ],
+    "docFiles": 12,
+    "content": []
+   }
+  ],
+  "evidence": {
+   "registry": {
+    "homepage": "https://github.com/angular/angular-cli",
+    "repository": {
+     "url": "git+https://github.com/angular/angular-cli.git",
+     "type": "git"
+    }
+   },
+   "pkgRepo": {
+    "full": "angular/angular-cli",
+    "homepage": "https://cli.angular.dev",
+    "docFiles": 13,
+    "docDirs": [
+     "docs"
+    ],
+    "configs": [],
+    "hasWiki": false
+   },
+   "candidates": [
+    {
+     "host": "cli.angular.dev",
+     "from": [
+      "repo-homepage"
+     ]
+    },
+    {
+     "host": "update.angular.dev",
+     "from": [
+      "readme-link"
+     ]
+    }
+   ],
+   "sites": [
+    {
+     "url": "https://cli.angular.dev",
+     "final": "https://angular.dev/docs",
+     "status": 200,
+     "editRepos": [],
+     "repoLinks": [],
+     "sitemapPages": 0,
+     "versioned": [],
+     "entry": "https://angular.dev/docs",
+     "from": [
+      "repo-homepage"
+     ],
+     "samples": 0
+    },
+    {
+     "url": "https://update.angular.dev/",
+     "final": "https://angular.dev/docs",
+     "status": 200,
+     "editRepos": [],
+     "repoLinks": [],
+     "sitemapPages": 0,
+     "versioned": [],
+     "entry": "https://angular.dev/docs",
+     "from": [
+      "readme-link"
+     ],
+     "samples": 0
+    }
+   ]
+  },
+  "requests": 0,
+  "seconds": 0.063
+ },
+ {
+  "purl": "pkg:npm/debug",
+  "answer": {
+   "kind": "readme-only"
+  },
+  "pairs": [],
+  "evidence": {
+   "registry": {
+    "homepage": "https://github.com/debug-js/debug#readme",
+    "repository": {
+     "url": "git://github.com/debug-js/debug.git",
+     "type": "git"
+    }
+   },
+   "pkgRepo": {
+    "full": "debug-js/debug",
+    "homepage": "",
+    "docFiles": 0,
+    "docDirs": [],
+    "configs": [],
+    "hasWiki": false
+   },
+   "candidates": [],
+   "sites": []
+  },
+  "requests": 0,
+  "seconds": 0.003
+ },
+ {
+  "purl": "pkg:npm/auto-launch",
+  "answer": {
+   "kind": "readme-only"
+  },
+  "pairs": [],
+  "evidence": {
+   "registry": {
+    "homepage": "https://github.com/4ver/node-auto-launch",
+    "repository": {
+     "url": "git+https://github.com/4ver/node-auto-launch.git",
+     "type": "git"
+    }
+   },
+   "pkgRepo": {
+    "full": "Teamwork/node-auto-launch",
+    "homepage": "",
+    "docFiles": 0,
+    "docDirs": [],
+    "configs": [],
+    "hasWiki": true
+   },
+   "candidates": [],
+   "sites": []
+  },
+  "requests": 0,
+  "seconds": 0.004
+ },
+ {
+  "purl": "pkg:npm/angular-cli-ghpages",
+  "answer": {
+   "kind": "readme-only"
+  },
+  "pairs": [],
+  "evidence": {
+   "registry": {
+    "homepage": "https://github.com/angular-schule/angular-cli-ghpages/#readme",
+    "repository": {
+     "url": "git+https://github.com/angular-schule/angular-cli-ghpages.git",
+     "type": "git"
+    }
+   },
+   "pkgRepo": {
+    "full": "angular-schule/angular-cli-ghpages",
+    "homepage": "https://www.npmjs.com/package/angular-cli-ghpages",
+    "docFiles": 3,
+    "docDirs": [
+     "docs"
+    ],
+    "configs": [],
+    "hasWiki": true
+   },
+   "candidates": [
+    {
+     "host": "pages.github.com",
+     "from": [
+      "readme-link"
+     ]
+    }
+   ],
+   "sites": []
+  },
+  "requests": 0,
+  "seconds": 0.019
+ },
+ {
+  "purl": "pkg:npm/conventional-changelog-angular",
+  "answer": {
+   "kind": "site+repo",
+   "site": "https://conventional-changelog.js.org/presets/angular/",
+   "repo": "conventional-changelog/conventional-changelog",
+   "sites": [
+    {
+     "site": "https://conventional-changelog.js.org/presets/angular/",
+     "pages": 3,
+     "from": [
+      "registry-homepage",
+      "repo-homepage",
+      "repo-config:website/astro.config.js"
+     ]
+    }
+   ]
+  },
+  "pairs": [
+   {
+    "site": "https://conventional-changelog.js.org/presets/angular/",
+    "repo": "conventional-changelog/conventional-changelog",
+    "why": [
+     "package-repo-has-docs",
+     "site-edit-link"
+    ],
+    "siteToRepo": true,
+    "repoToSite": true,
+    "authority": true,
+    "contentPass": "2/2/2",
+    "validated": true,
+    "validatedBy": "content",
+    "framework": [
+     "astro"
+    ],
+    "docDirs": [
+     "website"
+    ],
+    "docFiles": 20,
+    "content": [
+     "Pedit-link:0.97/0.22:website/src/content/docs/presets/angular/options.mdx",
+     "Pedit-link:0.99/0.33:website/src/content/docs/presets/conventional-commits/index.mdx"
+    ]
+   }
+  ],
+  "evidence": {
+   "registry": {
+    "homepage": "https://conventional-changelog.js.org/presets/angular/",
+    "repository": {
+     "url": "https://github.com/conventional-changelog/conventional-changelog.git",
+     "type": "git",
+     "directory": "packages/conventional-changelog-angular"
+    }
+   },
+   "pkgRepo": {
+    "full": "conventional-changelog/conventional-changelog",
+    "homepage": "http://conventional-changelog.js.org/",
+    "docFiles": 20,
+    "docDirs": [
+     "website"
+    ],
+    "configs": [
+     {
+      "path": "website/astro.config.js",
+      "framework": "astro",
+      "hosts": [
+       "conventional-changelog.js.org"
+      ]
+     }
+    ],
+    "hasWiki": false
+   },
+   "candidates": [
+    {
+     "host": "conventional-changelog.js.org",
+     "from": [
+      "registry-homepage",
+      "repo-homepage",
+      "repo-config:website/astro.config.js"
+     ]
+    }
+   ],
+   "sites": [
+    {
+     "url": "https://conventional-changelog.js.org/presets/angular/",
+     "final": "https://conventional-changelog.js.org/presets/angular/",
+     "status": 200,
+     "generator": "Astro v7.3.5",
+     "editRepos": [
+      "conventional-changelog/conventional-changelog"
+     ],
+     "repoLinks": [
+      "conventional-changelog/conventional-changelog",
+      "angular/angular",
+      "acme/app"
+     ],
+     "sitemapPages": 3,
+     "versioned": [],
+     "from": [
+      "registry-homepage",
+      "repo-homepage",
+      "repo-config:website/astro.config.js"
+     ],
+     "samples": 2
+    }
+   ]
+  },
+  "requests": 0,
+  "seconds": 0.01
+ },
+ {
+  "purl": "pkg:npm/@angular-eslint/template-parser",
+  "answer": {
+   "kind": "repo-only",
+   "repo": "angular-eslint/angular-eslint",
+   "dirs": [
+    "docs",
+    "packages"
+   ]
+  },
+  "pairs": [],
+  "evidence": {
+   "registry": {
+    "repository": {
+     "url": "https://github.com/angular-eslint/angular-eslint.git",
+     "type": "git",
+     "directory": "packages/template-parser"
+    }
+   },
+   "pkgRepo": {
+    "full": "angular-eslint/angular-eslint",
+    "homepage": "",
+    "docFiles": 99,
+    "docDirs": [
+     "docs",
+     "packages"
+    ],
+    "configs": [],
+    "hasWiki": false
+   },
+   "candidates": [
+    {
+     "host": "angular.dev",
+     "from": [
+      "readme-link"
+     ]
+    }
+   ],
+   "sites": []
+  },
+  "requests": 0,
+  "seconds": 0.016
+ }
+]

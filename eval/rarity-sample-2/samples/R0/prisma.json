@@ -1,0 +1,401 @@
+{
+ "technology": "prisma",
+ "rule": "GitHub code search for the technology's first package name quoted in package.json files (pages 1-10); keep files named exactly package.json that declare one of the technology's packages in dependencies or devDependencies at the catalog's current major; drop forks, archived and template repositories, repositories whose name, description or topics mark a tutorial, course, example, demo, starter, boilerplate or clone, the technology's own organisation, evaluation repositories and their forks or upstreams, and repositories over 200 MB; one repository per owner; rank by stars (then name); take the first 5.",
+ "selection": {
+  "pool": "code-search",
+  "major": "current",
+  "n": 5
+ },
+ "query": "\"prisma\" filename:package.json extension:json",
+ "major": "7",
+ "majors": [
+  "7"
+ ],
+ "drawn": "2026-10-15T17:00:00Z",
+ "candidates": 924,
+ "passed_over": [
+  {
+   "repo": "dubinc/dub",
+   "stars": 24893,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "riccardoperra/codeimage",
+   "stars": 2090,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "epicweb-dev/web-auth",
+   "stars": 336,
+   "why": "not a project (\"workshop\")"
+  },
+  {
+   "repo": "geldata/imdbench",
+   "stars": 256,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "mwakidenis/Mpesa-Based_Wi-Fi-Hotspot_Billing_System",
+   "stars": 229,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "prisma/ecosystem-tests",
+   "stars": 223,
+   "why": "the technology's own organisation"
+  },
+  {
+   "repo": "harshit-exe/FlowKit",
+   "stars": 102,
+   "why": "not a project (\"templates\")"
+  },
+  {
+   "repo": "dcodesdev/LetterSpace",
+   "stars": 100,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "braydenwerner/t3-turbo-next-app-router",
+   "stars": 88,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "houdunwang/v2022",
+   "stars": 54,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "prismatic-io/components",
+   "stars": 39,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "serudda/reward-system",
+   "stars": 33,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "nkeil/prisma-extension-random",
+   "stars": 26,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "kentcdodds/stream-away-the-wait-talk",
+   "stars": 24,
+   "why": "not a project (\"Demo\")"
+  },
+  {
+   "repo": "GabrielMainiere/events-backend",
+   "stars": 23,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "kungfu321/project-ai-sass",
+   "stars": 21,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "Yukaii/zuzugo",
+   "stars": 20,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "vishalvoid/cohort-2.0-handwritten-notes-harkirat-100xdevs",
+   "stars": 19,
+   "why": "not a project (\"Learning\")"
+  },
+  {
+   "repo": "damla/nextjs-w-app-router-starter",
+   "stars": 18,
+   "why": "template repository"
+  },
+  {
+   "repo": "omarouhra/Ayats-Wallpapers",
+   "stars": 18,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "SelfDevTV/reddit-clone",
+   "stars": 17,
+   "why": "not a project (\"clone\")"
+  },
+  {
+   "repo": "vishdadhich092004/geohunt",
+   "stars": 15,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "ajaymahadeven/crypto-order-book",
+   "stars": 13,
+   "why": "not a project (\"learn\")"
+  },
+  {
+   "repo": "ludicroushq/prisma-integration-test-example",
+   "stars": 13,
+   "why": "not a project (\"example\")"
+  },
+  {
+   "repo": "thaddeusdiamond/btc-toolkit",
+   "stars": 12,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "youranreus/note",
+   "stars": 12,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "mrwade/next-starter-kit",
+   "stars": 10,
+   "why": "not a project (\"starter\")"
+  },
+  {
+   "repo": "zannatul-naim-024/express-api-template",
+   "stars": 10,
+   "why": "template repository"
+  },
+  {
+   "repo": "Laboratoire-de-Chemoinformatique/chemspacecopilot",
+   "stars": 9,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "omegaup/website-OFMI",
+   "stars": 9,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "777genius/review-router-ai",
+   "stars": 8,
+   "why": "over 200 MB"
+  },
+  {
+   "repo": "AhriCat/ONI",
+   "stars": 8,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "asmraihan/next-admin",
+   "stars": 8,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "liangk/empirical-study",
+   "stars": 8,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "NextPhish/next-phish",
+   "stars": 8,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "cnr-isti-vclab/OCRA",
+   "stars": 7,
+   "why": "over 200 MB"
+  },
+  {
+   "repo": "enreina/ichibunzutsu",
+   "stars": 7,
+   "why": "not a project (\"practice\")"
+  },
+  {
+   "repo": "nearbycoder/next-auth-example",
+   "stars": 7,
+   "why": "not a project (\"example\")"
+  },
+  {
+   "repo": "softmarshmallow/inked-server",
+   "stars": 7,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "superiorkid/passweird",
+   "stars": 7,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "chamik/rozrazovak",
+   "stars": 6,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "R4Y4N3/Nexus-Web-Workshop",
+   "stars": 6,
+   "why": "not a project (\"Workshop\")"
+  },
+  {
+   "repo": "Survikrowa/Game-Critique",
+   "stars": 6,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "tinhour/bittorrent-download-app",
+   "stars": 6,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "2110336-2565-2/Sec33-group1-MeowMeow",
+   "stars": 5,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "Bostads-AB-Mimer/onecore",
+   "stars": 5,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "khrj/listen-to-jia",
+   "stars": 5,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "LilyMachado/microsaas",
+   "stars": 5,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "mimecuvalo/all-the-things",
+   "stars": 5,
+   "why": "template repository"
+  },
+  {
+   "repo": "quinnjr/pluma-online",
+   "stars": 5,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "with-heart/discord-bot-webapp-example",
+   "stars": 5,
+   "why": "not a project (\"example\")"
+  },
+  {
+   "repo": "ace0109/ace-nest-starter",
+   "stars": 4,
+   "why": "not a project (\"starter\")"
+  },
+  {
+   "repo": "alexthegoodman/deeptype",
+   "stars": 4,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "biantris/admin-analytics-api",
+   "stars": 4,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "calebkrainman/chatzone",
+   "stars": 4,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "Chengixx/MCP-Nest",
+   "stars": 4,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "eacc-labs/zLinks",
+   "stars": 4,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "eimg/pwd-2-O-1",
+   "stars": 4,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "FRONT-END-BOOTCAMP-PLUS-5/Fiterview",
+   "stars": 4,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "Gyannnnn/VeerPreps",
+   "stars": 4,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "kyyril/astro-personall",
+   "stars": 4,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "MM25Zamanian/prismate",
+   "stars": 4,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "nayeem-miah/TalkNative-English-Practice-Platform-api",
+   "stars": 4,
+   "why": "not a project (\"Practice\")"
+  },
+  {
+   "repo": "salimia40/gold_trading",
+   "stars": 4,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "YanivWein24/Similarity-API-Next.js",
+   "stars": 4,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "ArjunN10/Nextjs_Messenger_IO",
+   "stars": 3,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "educatalan02/advancedkillfeed-platform",
+   "stars": 3,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "fairdataihub/kamal-deploy",
+   "stars": 3,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  },
+  {
+   "repo": "FiF0o/books-API",
+   "stars": 3,
+   "why": "no package.json declaring prisma or @prisma/client at major 7"
+  }
+ ],
+ "repos": [
+  {
+   "repo": "biersoeckli/QuickStack",
+   "commit": "32bca570f4b974fbf7ca5222737b6f96c30b87f5",
+   "stars": 361,
+   "manifest": "package.json",
+   "declares": "prisma@7.1.0"
+  },
+  {
+   "repo": "manucoffin/faster-fixes",
+   "commit": "0c26240f036743350c55c1b04dc8ddee375fe146",
+   "stars": 41,
+   "manifest": "packages/database/package.json",
+   "declares": "@prisma/client@^7.2.0"
+  },
+  {
+   "repo": "REAIAN18/propra-app",
+   "commit": "0e0f0247e10864511b652572b941b4ca342ddb14",
+   "stars": 13,
+   "manifest": "package.json",
+   "declares": "prisma@^7.5.0"
+  },
+  {
+   "repo": "reallyMilo/AnnoStamps",
+   "commit": "82ab8972e5803285494e132705dc8dac794562a0",
+   "stars": 10,
+   "manifest": "package.json",
+   "declares": "@prisma/client@^7.9.0"
+  },
+  {
+   "repo": "Google-Vital-Trip/VitalTrip-client",
+   "commit": "31d96931d3543d4ee7bf8e567fc098c968a8d2d8",
+   "stars": 3,
+   "manifest": "client/package.json",
+   "declares": "prisma@^7.2.0"
+  }
+ ],
+ "counts": {}
+}

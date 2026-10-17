@@ -1,0 +1,177 @@
+{
+ "event": "jsontypes-prisma7",
+ "items": [
+  {
+   "id": "K1",
+   "commit": "be8491b",
+   "files": [
+    ".github/workflows/publish.yml"
+   ],
+   "change": "Added manual beta/latest publish-tag selection and passed the selected tag to npm publish.",
+   "responds_to": "Publishing the Prisma 7-compatible package as a beta release."
+  },
+  {
+   "id": "K2",
+   "commit": "be8491b",
+   "files": [
+    "README.md"
+   ],
+   "change": "Changed the documented client generator provider from prisma-client-js to prisma-client.",
+   "responds_to": "Prisma 7's replacement of the prisma-client-js generator."
+  },
+  {
+   "id": "K3",
+   "commit": "be8491b",
+   "files": [
+    "README.md"
+   ],
+   "change": "Added a version-compatibility section stating that package 4.x targets Prisma 7 and package 3.x and earlier target Prisma 6.",
+   "responds_to": "The Prisma 7 peer-dependency and generator transition."
+  },
+  {
+   "id": "K4",
+   "commit": "4318fbf",
+   "files": [
+    "README.md"
+   ],
+   "change": "Documented installing the beta package together with Prisma 7 and added a Prisma 7 support notice.",
+   "responds_to": "Prisma 7 support being released through the beta package."
+  },
+  {
+   "id": "K5",
+   "commit": "be8491b",
+   "files": [
+    "test/schemas/any.prisma",
+    "test/schemas/array.prisma",
+    "test/schemas/cockroach.prisma",
+    "test/schemas/literal.prisma",
+    "test/schemas/mongo.prisma",
+    "test/schemas/mssql.prisma",
+    "test/schemas/mysql.prisma",
+    "test/schemas/normal.prisma",
+    "test/schemas/skip.prisma",
+    "test/schemas/sqlite.prisma",
+    "test/schemas/string.prisma",
+    "test/schemas/unknown.prisma",
+    "test/schemas/use-type.prisma"
+   ],
+   "change": "Changed the test client generator provider from prisma-client-js to prisma-client.",
+   "responds_to": "Prisma 7's replacement of the prisma-client-js generator."
+  },
+  {
+   "id": "K6",
+   "commit": "be8491b",
+   "files": [
+    "test/schemas/any.prisma",
+    "test/schemas/array.prisma",
+    "test/schemas/cockroach.prisma",
+    "test/schemas/literal.prisma",
+    "test/schemas/mongo.prisma",
+    "test/schemas/mssql.prisma",
+    "test/schemas/mysql.prisma",
+    "test/schemas/normal-prisma-client.prisma",
+    "test/schemas/normal.prisma",
+    "test/schemas/skip.prisma",
+    "test/schemas/sqlite.prisma",
+    "test/schemas/string.prisma",
+    "test/schemas/unknown.prisma",
+    "test/schemas/use-type.prisma"
+   ],
+   "change": "Removed empty datasource url settings from the test schemas.",
+   "responds_to": "Prisma 7's datasource configuration change that no longer accepts the schema url setting in these test configurations."
+  },
+  {
+   "id": "K7",
+   "commit": "be8491b",
+   "files": [
+    "test/types/any.test-d.ts",
+    "test/types/array.test-d.ts",
+    "test/types/cockroach.test-d.ts",
+    "test/types/literal.test-d.ts",
+    "test/types/mongo.test-d.ts",
+    "test/types/mssql.test-d.ts",
+    "test/types/mysql.test-d.ts",
+    "test/types/normal.test-d.ts",
+    "test/types/skip.test-d.ts",
+    "test/types/sqlite.test-d.ts",
+    "test/types/string.test-d.ts",
+    "test/types/unknown.test-d.ts",
+    "test/types/use-type.test-d.ts"
+   ],
+   "change": "Updated generated-client test imports from target/index to target/client, and moved several generated input-type imports to target/pjtg or model files.",
+   "responds_to": "Prisma 7's new prisma-client output layout and split generated declaration files."
+  },
+  {
+   "id": "K8",
+   "commit": "f4e732d",
+   "files": [
+    "src/helpers/find-signature.ts",
+    "test/types/string.test-d.ts"
+   ],
+   "change": "Added Prisma-prefixed StringFieldUpdateOperationsInput and NullableStringFieldUpdateOperationsInput signatures to the transformation logic and added UpdateInput coverage.",
+   "responds_to": "Prisma 7 qualifying update-operation types with the Prisma. namespace."
+  },
+  {
+   "id": "K9",
+   "commit": "352908e",
+   "files": [
+    "src/helpers/find-signature.ts",
+    "test/schemas/number.prisma",
+    "test/types/number.test-d.ts"
+   ],
+   "change": "Added transformation support and tests for Int and Float field annotations, including nullable fields, scalar filters, update operations, and numeric arrays.",
+   "responds_to": "Prisma 7 generated numeric field, filter, and update-input signatures."
+  },
+  {
+   "id": "K10",
+   "commit": "f7c37d7",
+   "files": [
+    "src/helpers/find-signature.ts",
+    "test/schemas/string.prisma",
+    "test/types/string.test-d.ts"
+   ],
+   "change": "Added handling and tests for Prisma-prefixed StringNullableListFilter signatures and String[] model, create-input, and update-input types.",
+   "responds_to": "Prisma 7 qualifying generated list types with the Prisma. namespace."
+  },
+  {
+   "id": "K11",
+   "commit": "a3bd1d1",
+   "files": [
+    "src/helpers/find-signature.ts"
+   ],
+   "change": "Normalized signatures by stripping a leading Prisma. namespace and runtime. qualifiers before matching, replacing the duplicated qualified and unqualified cases.",
+   "responds_to": "Prisma 7 generated declarations introducing Prisma. and runtime. qualified type names."
+  },
+  {
+   "id": "K12",
+   "commit": "61fe502",
+   "files": [
+    "src/helpers/regex.ts",
+    "test/schemas/normal.prisma",
+    "test/types/normal.test-d.ts"
+   ],
+   "change": "Generated capitalized aggregate and groupBy output-type candidates while preserving original model casing for input types, and added lowercase-model groupBy tests.",
+   "responds_to": "Prisma 7 capitalizing output type names for lowercase Prisma model names."
+  },
+  {
+   "id": "K13",
+   "commit": "9e20699",
+   "files": [
+    "src/helpers/find-signature.ts",
+    "test/schemas/extensions.prisma",
+    "test/types/extensions.test-d.ts"
+   ],
+   "change": "Preserved the Prisma. namespace when generating NullableJsonNullValueInput unions and added extension-client coverage.",
+   "responds_to": "Prisma 7's Prisma-prefixed NullableJsonNullValueInput type."
+  }
+ ],
+ "final": "[\n  {\n    \"id\": \"K1\",\n    \"commit\": \"be8491b\",\n    \"files\": [\".github/workflows/publish.yml\"],\n    \"change\": \"Added manual beta/latest publish-tag selection and passed the selected tag to npm publish.\",\n    \"responds_to\": \"Publishing the Prisma 7-compatible package as a beta release.\"\n  },\n  {\n    \"id\": \"K2\",\n    \"commit\": \"be8491b\",\n    \"files\": [\"README.md\"],\n    \"change\": \"Changed the documented client generator provider from prisma-client-js to prisma-client.\",\n    \"responds_to\": \"Prisma 7's replacement of the prisma-client-js generator.\"\n  },\n  {\n    \"id\": \"K3\",\n    \"commit\": \"be8491b\",\n    \"files\": [\"README.md\"],\n    \"change\": \"Added a version-compatibility section stating that package 4.x targets Prisma 7 and package 3.x and earlier target Prisma 6.\",\n    \"responds_to\": \"The Prisma 7 peer-dependency and generator transition.\"\n  },\n  {\n    \"id\": \"K4\",\n    \"commit\": \"4318fbf\",\n    \"files\": [\"README.md\"],\n    \"change\": \"Documented installing the beta package together with Prisma 7 and added a Prisma 7 support notice.\",\n    \"responds_to\": \"Prisma 7 support being released through the beta package.\"\n  },\n  {\n    \"id\": \"K5\",\n    \"commit\": \"be8491b\",\n    \"files\": [\n      \"test/schemas/any.prisma\",\n      \"test/schemas/array.prisma\",\n      \"test/schemas/cockroach.prisma\",\n      \"test/schemas/literal.prisma\",\n      \"test/schemas/mongo.prisma\",\n      \"test/schemas/mssql.prisma\",\n      \"test/schemas/mysql.prisma\",\n      \"test/schemas/normal.prisma\",\n      \"test/schemas/skip.prisma\",\n      \"test/schemas/sqlite.prisma\",\n      \"test/schemas/string.prisma\",\n      \"test/schemas/unknown.prisma\",\n      \"test/schemas/use-type.prisma\"\n    ],\n    \"change\": \"Changed the test client generator provider from prisma-client-js to prisma-client.\",\n    \"responds_to\": \"Prisma 7's replacement of the prisma-client-js generator.\"\n  },\n  {\n    \"id\": \"K6\",\n    \"commit\": \"be8491b\",\n    \"files\": [\n      \"test/schemas/any.prisma\",\n      \"test/schemas/array.prisma\",\n      \"test/schemas/cockroach.prisma\",\n      \"test/schemas/literal.prisma\",\n      \"test/schemas/mongo.prisma\",\n      \"test/schemas/mssql.prisma\",\n      \"test/schemas/mysql.prisma\",\n      \"test/schemas/normal-prisma-client.prisma\",\n      \"test/schemas/normal.prisma\",\n      \"test/schemas/skip.prisma\",\n      \"test/schemas/sqlite.prisma\",\n      \"test/schemas/string.prisma\",\n      \"test/schemas/unknown.prisma\",\n      \"test/schemas/use-type.prisma\"\n    ],\n    \"change\": \"Removed empty datasource url settings from the test schemas.\",\n    \"responds_to\": \"Prisma 7's datasource configuration change that no longer accepts the schema url setting in these test configurations.\"\n  },\n  {\n    \"id\": \"K7\",\n    \"commit\": \"be8491b\",\n    \"files\": [\n      \"test/types/any.test-d.ts\",\n      \"test/types/array.test-d.ts\",\n      \"test/types/cockroach.test-d.ts\",\n      \"test/types/literal.test-d.ts\",\n      \"test/types/mongo.test-d.ts\",\n      \"test/types/mssql.test-d.ts\",\n      \"test/types/mysql.test-d.ts\",\n      \"test/types/normal.test-d.ts\",\n      \"test/types/skip.test-d.ts\",\n      \"test/types/sqlite.test-d.ts\",\n      \"test/types/string.test-d.ts\",\n      \"test/types/unknown.test-d.ts\",\n      \"test/types/use-type.test-d.ts\"\n    ],\n    \"change\": \"Updated generated-client test imports from target/index to target/client, and moved several generated input-type imports to target/pjtg or model files.\",\n    \"responds_to\": \"Prisma 7's new prisma-client output layout and split generated declaration files.\"\n  },\n  {\n    \"id\": \"K8\",\n    \"commit\": \"f4e732d\",\n    \"files\": [\"src/helpers/find-signature.ts\", \"test/types/string.test-d.ts\"],\n    \"change\": \"Added Prisma-prefixed StringFieldUpdateOperationsInput and NullableStringFieldUpdateOperationsInput signatures to the transformation logic and added UpdateInput coverage.\",\n    \"responds_to\": \"Prisma 7 qualifying update-operation types with the Prisma. namespace.\"\n  },\n  {\n    \"id\": \"K9\",\n    \"commit\": \"352908e\",\n    \"files\": [\"src/helpers/find-signature.ts\", \"test/schemas/number.prisma\", \"test/types/number.test-d.ts\"],\n    \"change\": \"Added transformation support and tests for Int and Float field annotations, including nullable fields, scalar filters, update operations, and numeric arrays.\",\n    \"responds_to\": \"Prisma 7 generated numeric field, filter, and update-input signatures.\"\n  },\n  {\n    \"id\": \"K10\",\n    \"commit\": \"f7c37d7\",\n    \"files\": [\"src/helpers/find-signature.ts\", \"test/schemas/string.prisma\", \"test/types/string.test-d.ts\"],\n    \"change\": \"Added handling and tests for Prisma-prefixed StringNullableListFilter signatures and String[] model, create-input, and update-input types.\",\n    \"responds_to\": \"Prisma 7 qualifying generated list types with the Prisma. namespace.\"\n  },\n  {\n    \"id\": \"K11\",\n    \"commit\": \"a3bd1d1\",\n    \"files\": [\"src/helpers/find-signature.ts\"],\n    \"change\": \"Normalized signatures by stripping a leading Prisma. namespace and runtime. qualifiers before matching, replacing the duplicated qualified and unqualified cases.\",\n    \"responds_to\": \"Prisma 7 generated declarations introducing Prisma. and runtime. qualified type names.\"\n  },\n  {\n    \"id\": \"K12\",\n    \"commit\": \"61fe502\",\n    \"files\": [\"src/helpers/regex.ts\", \"test/schemas/normal.prisma\", \"test/types/normal.test-d.ts\"],\n    \"change\": \"Generated capitalized aggregate and groupBy output-type candidates while preserving original model casing for input types, and added lowercase-model groupBy tests.\",\n    \"responds_to\": \"Prisma 7 capitalizing output type names for lowercase Prisma model names.\"\n  },\n  {\n    \"id\": \"K13\",\n    \"commit\": \"9e20699\",\n    \"files\": [\"src/helpers/find-signature.ts\", \"test/schemas/extensions.prisma\", \"test/types/extensions.test-d.ts\"],\n    \"change\": \"Preserved the Prisma. namespace when generating NullableJsonNullValueInput unions and added extension-client coverage.\",\n    \"responds_to\": \"Prisma 7's Prisma-prefixed NullableJsonNullValueInput type.\"\n  }\n]",
+ "usage": {
+  "input_tokens": 187308,
+  "cached_input_tokens": 151552,
+  "cache_write_input_tokens": 0,
+  "output_tokens": 4941,
+  "reasoning_output_tokens": 1819
+ },
+ "wall_s": 44.2
+}

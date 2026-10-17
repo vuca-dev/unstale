@@ -1,0 +1,568 @@
+{
+ "1amageek/SwiftAgent": [
+  "SwiftPM"
+ ],
+ "1Password/SCAM": [
+  "PyPI"
+ ],
+ "aashaexo/soundshuman": [
+  "npm"
+ ],
+ "Accenture/DBTestCompareGenerator": [
+  "NuGet"
+ ],
+ "altasoft/DomainPrimitives": [
+  "NuGet"
+ ],
+ "amvlab/WebATM": [
+  "PyPI",
+  "npm"
+ ],
+ "Andersbakken/rtags": [
+  "npm"
+ ],
+ "AndreaGriffiths11/annotation-overlay": [
+  "npm"
+ ],
+ "aotemiao/artemis": [
+  "Maven/Gradle"
+ ],
+ "arcboxlabs/buildkit-client": [
+  "crates.io"
+ ],
+ "ardriveapp/ardrive-web": [
+  "Go",
+  "Maven/Gradle",
+  "RubyGems",
+  "npm",
+  "pub"
+ ],
+ "Arize-ai/arize-skills": [
+  "PyPI"
+ ],
+ "Aurealibe/claude-config": [],
+ "axeII/home-ops": [],
+ "badlogic/vs-claude": [
+  "Go",
+  "npm"
+ ],
+ "baimard/gestion": [
+  "Composer",
+  "PyPI",
+  "npm"
+ ],
+ "bekker/qvopenapi-rs": [
+  "crates.io"
+ ],
+ "broadinstitute/delphy": [],
+ "BrowserOperator/browser-operator-core": [
+  "npm"
+ ],
+ "buttondown/docs": [
+  "npm"
+ ],
+ "Calc86/camRecorder": [
+  "Maven/Gradle"
+ ],
+ "caretive-ai/project-careti": [
+  "Go",
+  "PyPI",
+  "crates.io",
+  "npm"
+ ],
+ "cenconq25/claude-code-app-studio": [],
+ "charyou/SoraVault": [],
+ "ckotzbauer/vulnerability-operator": [
+  "Go"
+ ],
+ "co-cddo/cloudmaturity": [
+  "npm"
+ ],
+ "coverallsapp/coverage-reporter": [],
+ "cpuguy96/StepCOVNet": [
+  "PyPI"
+ ],
+ "CruGlobal/mobile-content-api": [
+  "RubyGems"
+ ],
+ "DamianB-BitFlipper/proton-drive-sync": [
+  "npm"
+ ],
+ "datopian/autoclaw.sh": [
+  "npm"
+ ],
+ "davraamides/todotxt-mode": [
+  "npm"
+ ],
+ "decentraland/events": [
+  "npm"
+ ],
+ "digitalpetri/opc-ua-demo-server": [
+  "Maven/Gradle"
+ ],
+ "dilee/zen-dev-toolkit": [],
+ "duckietown/dt-env-developer": [],
+ "dwebagents/AgentPipe": [
+  "PyPI",
+  "crates.io",
+  "npm"
+ ],
+ "edwnh/dqmc": [
+  "PyPI"
+ ],
+ "Endle/fireSeqSearch": [
+  "crates.io"
+ ],
+ "exoscale/cli": [
+  "Go"
+ ],
+ "extsoft/elegant-git": [
+  "Go"
+ ],
+ "FastEndpoints/Documentation": [
+  "npm"
+ ],
+ "fedir/ghstat": [
+  "Go"
+ ],
+ "fivetaku/llm-wiki": [],
+ "Flowscape-UI/core-sdk": [
+  "npm"
+ ],
+ "funiq-lab/your-mind": [],
+ "GabrielEValenzuela/CyberCba2077": [],
+ "Gerstep/HumanCompiler": [
+  "npm"
+ ],
+ "Glorktelligence/Claude-AI-Export-Renderer": [],
+ "glossarist/iev": [
+  "RubyGems"
+ ],
+ "glsorre/Crane": [],
+ "gogpu/gg": [
+  "Go"
+ ],
+ "GoogleContainerTools/config-sync": [
+  "Go"
+ ],
+ "graphframes/graphframes": [
+  "PyPI"
+ ],
+ "guoxiucai/ohos-scrcpy-app": [
+  "pub"
+ ],
+ "haddocking/haddock3": [
+  "PyPI"
+ ],
+ "hasseily/NoxArchaistCompanion": [],
+ "hdkhosravian/Cedrina": [
+  "PyPI"
+ ],
+ "hectcastro/gh-metrics": [
+  "Go"
+ ],
+ "hellooops/vscode-edi-support": [
+  "npm"
+ ],
+ "hengfengliya/imgood": [
+  "npm"
+ ],
+ "hezhijie0327/CNIPDb": [],
+ "hoangsonww/JWT-Module": [
+  "npm"
+ ],
+ "honishi/Hakumai": [
+  "RubyGems"
+ ],
+ "HorusGoul/eslint-plugin-react-render-types": [
+  "npm"
+ ],
+ "hschne/puny-monitor": [
+  "RubyGems"
+ ],
+ "hughjonesd/huxtable": [],
+ "Huxpro/vue-lynx": [
+  "Maven/Gradle",
+  "RubyGems",
+  "npm"
+ ],
+ "ichiroc/chatgpt2scratch": [
+  "npm"
+ ],
+ "ijry/uview-plus": [
+  "npm"
+ ],
+ "IlyaGrshin/wallet_animations": [
+  "npm"
+ ],
+ "ivanreeve/upspace": [
+  "npm"
+ ],
+ "J-D-3/density-clustering": [
+  "PyPI"
+ ],
+ "janderswag/docuchat.app": [
+  "PyPI"
+ ],
+ "jantimon/web-performance-debugger": [
+  "npm"
+ ],
+ "jasonanewcoder/abaqus_skills": [],
+ "jdevalk/seo-graph": [
+  "npm"
+ ],
+ "jeremy0dell/station": [
+  "npm"
+ ],
+ "jiawei686/wechat-dev-mcp": [
+  "npm"
+ ],
+ "joelhooks/atproto-agent-network": [
+  "npm"
+ ],
+ "johanzander/bess-manager": [
+  "PyPI",
+  "npm"
+ ],
+ "johnend/dots": [
+  "npm"
+ ],
+ "JonnyKreng/pebble-navi": [
+  "npm"
+ ],
+ "justinabrahms/agent-chat": [
+  "Go"
+ ],
+ "jvkersch/tmtools": [
+  "PyPI"
+ ],
+ "KaiserGranatapfel/GameCubeRecompiled": [
+  "crates.io"
+ ],
+ "kantord/headson": [
+  "PyPI",
+  "crates.io"
+ ],
+ "kchub-dev/cduestc-wiki": [
+  "npm"
+ ],
+ "kestra-io/plugin-nats": [
+  "Maven/Gradle"
+ ],
+ "Kevandrew/sophia": [
+  "Go"
+ ],
+ "khw1031/glowed": [
+  "Go"
+ ],
+ "kousen/java_8_recipes": [
+  "Maven/Gradle"
+ ],
+ "kt3k/bulbo": [
+  "npm"
+ ],
+ "kwannoel/the-controller": [
+  "crates.io",
+  "npm"
+ ],
+ "LeadMagic/gtm-skills": [
+  "npm"
+ ],
+ "leochiu-a/elden-ring-github": [
+  "npm"
+ ],
+ "liatrio/liatrio-otel-collector": [
+  "Go"
+ ],
+ "LindaHaviv/second-brain": [
+  "PyPI"
+ ],
+ "liustack/vibemaster": [],
+ "Lshika-linux/tuicc": [
+  "PyPI"
+ ],
+ "lucasmen9527/claude-suite": [
+  "crates.io",
+  "npm"
+ ],
+ "manifesto-ai/core-legacy": [
+  "npm"
+ ],
+ "manusa/podman-mcp-server": [
+  "Go",
+  "PyPI"
+ ],
+ "marcomuser/conformal": [
+  "npm"
+ ],
+ "Menghuan1918/drawio2go": [
+  "npm"
+ ],
+ "microsoft/Agent365-devTools": [
+  "NuGet",
+  "PyPI"
+ ],
+ "ministryofjustice/hmpps-contacts-ui": [
+  "npm"
+ ],
+ "MolarVerse/PQ": [],
+ "mshogin/archlint": [
+  "Go",
+  "PyPI",
+  "crates.io"
+ ],
+ "multiversx/mx-sovereign-sc": [
+  "crates.io"
+ ],
+ "murphyk/BLF": [],
+ "myyimu/codex-session-transfer": [
+  "crates.io",
+  "npm"
+ ],
+ "NanoNative/nano": [
+  "Maven/Gradle"
+ ],
+ "narnia-sh/layrr": [
+  "npm"
+ ],
+ "NaverPayDev/pie": [
+  "npm"
+ ],
+ "NetraRuntime/sam3.c": [
+  "PyPI",
+  "crates.io"
+ ],
+ "nirholas/universal-crypto-mcp": [
+  "Go",
+  "Maven/Gradle",
+  "PyPI",
+  "crates.io",
+  "npm"
+ ],
+ "northword/zotero-format-metadata": [
+  "npm"
+ ],
+ "nullclaw/nulltickets": [],
+ "nzh63/syc": [],
+ "oklabflensburg/open-city-planner": [
+  "PyPI",
+  "npm"
+ ],
+ "oozoofrog/mcp-baepsae": [
+  "SwiftPM",
+  "npm"
+ ],
+ "openshift-examples/web": [
+  "PyPI"
+ ],
+ "openshift/cluster-kube-descheduler-operator": [
+  "Go"
+ ],
+ "openshift/ocm-agent": [
+  "Go"
+ ],
+ "owncloud/notes": [
+  "Composer",
+  "npm"
+ ],
+ "patrick-motard/dotfiles": [],
+ "PaulBratslavsky/astro-strapi-example-project": [
+  "npm"
+ ],
+ "pawcoding/astro-loader-pocketbase": [
+  "npm"
+ ],
+ "PeggyJV/sommelier-strangelove": [
+  "npm"
+ ],
+ "PeonPing/openpeon": [
+  "npm"
+ ],
+ "peteromallet/Arnold": [
+  "PyPI"
+ ],
+ "phodal/harness-engineering": [
+  "npm"
+ ],
+ "pktgen/Pktgen-DPDK": [],
+ "pluskal-lab/EnzymeExplorer": [
+  "PyPI"
+ ],
+ "PreziosiRaffaele/markdown-llm.nvim": [],
+ "Prismer-AI/Prismer": [
+  "PyPI",
+  "npm"
+ ],
+ "Procrat/dotfiles": [],
+ "Protelis/Protelis": [
+  "Maven/Gradle",
+  "npm"
+ ],
+ "purton-tech/rust-on-nails": [
+  "crates.io"
+ ],
+ "quadbio/cell-annotator": [
+  "PyPI"
+ ],
+ "quilrai/AgentGuard": [
+  "crates.io",
+  "npm"
+ ],
+ "radekamirko/C.R.I.S.P": [],
+ "remarkablegames/setup-butler": [
+  "npm"
+ ],
+ "ricardodantas/feedo": [
+  "crates.io",
+  "npm"
+ ],
+ "rkpontes/flutter_official_architecture": [
+  "Maven/Gradle",
+  "pub"
+ ],
+ "RobertoMachorro/Moped": [
+  "SwiftPM"
+ ],
+ "rpmessner/waveform": [
+  "Hex"
+ ],
+ "rust-tieng-viet/rust-tieng-viet.github.io": [
+  "crates.io"
+ ],
+ "rvigo/cl": [
+  "crates.io"
+ ],
+ "sadopc/magnetism": [],
+ "sankichi92/LiveLog": [
+  "RubyGems",
+  "npm"
+ ],
+ "saubakirov/KZ-IT-telegram-list": [
+  "RubyGems"
+ ],
+ "saveoursecrets/sdk": [
+  "crates.io",
+  "npm"
+ ],
+ "schwehr/noaadata": [
+  "PyPI"
+ ],
+ "SchweizerischeBundesbahnen/open-source-polarion-java-repo-template": [
+  "Maven/Gradle",
+  "npm"
+ ],
+ "securego/gosec": [
+  "Go"
+ ],
+ "semos-labs/attyx": [
+  "npm"
+ ],
+ "sethlaw/sputr": [
+  "NuGet",
+  "PyPI"
+ ],
+ "shikokuchuo/secretbase": [],
+ "Shlomob/ocmonitor-share": [
+  "PyPI"
+ ],
+ "silvabyte/opencode.nvim": [],
+ "Smith42/astroPT": [
+  "PyPI"
+ ],
+ "SolaceLabs/solace-msg-utility": [
+  "Go",
+  "npm"
+ ],
+ "sous-chefs/xinetd": [],
+ "SSSYoung/vibe-coding-mobile-engineering": [
+  "Maven/Gradle",
+  "PyPI",
+  "npm",
+  "pub"
+ ],
+ "stackkit/laravel-google-cloud-scheduler": [
+  "Composer"
+ ],
+ "StanfordSpezi/spezi-web-design-system": [
+  "npm"
+ ],
+ "stefanbschneider/mobile-env": [
+  "PyPI"
+ ],
+ "Subaru-PFS/ics_agccActor": [
+  "PyPI"
+ ],
+ "supabase/pg-toolbelt": [
+  "npm"
+ ],
+ "TazWake/Public": [],
+ "tfcace/hash": [
+  "Go"
+ ],
+ "TheAndrewStaker/mcp-midi-control": [
+  "npm"
+ ],
+ "themoment-team/datagsm-server": [
+  "Maven/Gradle"
+ ],
+ "thomasnormal/codex-auto-continue": [
+  "PyPI"
+ ],
+ "thumbor/libthumbor": [
+  "PyPI"
+ ],
+ "tonkotsuboy/kano-portfolio": [
+  "npm"
+ ],
+ "topocm/topocm_content": [
+  "PyPI"
+ ],
+ "TornLux/UnrealBridge": [],
+ "tovifun/VivalArc": [],
+ "treyhunner/dotfiles": [],
+ "TryGhost/Deploy": [
+  "npm"
+ ],
+ "TulipaEnergy/TulipaEnergyModel.jl": [],
+ "ultralytics/magellan": [],
+ "URML-MARS/URML": [
+  "PyPI"
+ ],
+ "varnish/gateway": [
+  "Go",
+  "PyPI",
+  "crates.io"
+ ],
+ "VasilisPlavos/Cookie-AutoDeleteV3": [
+  "npm"
+ ],
+ "vcz-Gray/loophaus": [
+  "npm"
+ ],
+ "vichannnnn/holy-grail": [
+  "PyPI",
+  "npm"
+ ],
+ "vincentlaucsb/svg": [],
+ "Weaverse/.agents": [],
+ "Weixi779/WICompress": [
+  "SwiftPM"
+ ],
+ "workos/case": [
+  "npm"
+ ],
+ "Xceptance/neodymium": [
+  "Maven/Gradle"
+ ],
+ "yahiafarghaly/PrettyOS": [],
+ "yanyiwu/nodejieba": [
+  "npm"
+ ],
+ "yuanyuekejiJN/AivoClaw": [
+  "npm"
+ ],
+ "yungwood/ical-filter-proxy": [
+  "Go"
+ ],
+ "Zambav/ComfyUI-Agent-Toolkit": []
+}

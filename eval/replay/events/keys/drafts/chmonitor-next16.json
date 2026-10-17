@@ -1,0 +1,142 @@
+{
+ "event": "chmonitor-next16",
+ "items": [
+  {
+   "id": "K1",
+   "commit": "29f368e",
+   "files": [
+    "app/[host]/database/[database]/@nav/default.tsx",
+    "app/[host]/database/[database]/[table]/@dictionary/default.tsx",
+    "app/[host]/database/[database]/[table]/@materializedview/default.tsx",
+    "app/[host]/database/[database]/[table]/@mergetree/default.tsx",
+    "app/[host]/database/[database]/[table]/@view/default.tsx"
+   ],
+   "change": "Added null-rendering default.tsx files for all parallel route slots.",
+   "responds_to": "Next.js 16 requires default components for unmatched parallel route slots."
+  },
+  {
+   "id": "K2",
+   "commit": "29f368e",
+   "files": [
+    "app/[host]/clusters/[cluster]/replicas-status/page.tsx",
+    "app/[host]/clusters/page.tsx",
+    "app/[host]/database/[database]/@nav/[table]/page.tsx",
+    "app/[host]/database/[database]/@nav/nav.tsx",
+    "app/[host]/database/[database]/@nav/page.tsx",
+    "app/[host]/database/[database]/[table]/@dictionary/page.tsx",
+    "app/[host]/database/[database]/[table]/@materializedview/page.tsx",
+    "app/[host]/database/[database]/[table]/@mergetree/page.tsx",
+    "app/[host]/database/[database]/[table]/@view/page.tsx",
+    "app/[host]/database/[database]/[table]/extras/extras.tsx",
+    "app/[host]/database/[database]/[table]/extras/table-selector.tsx",
+    "app/[host]/database/[database]/default.tsx",
+    "app/[host]/database/[database]/layout.tsx",
+    "app/[host]/database/[database]/page.tsx",
+    "app/[host]/database/page.tsx",
+    "app/[host]/layout.tsx",
+    "app/[host]/replica/[replica]/tables/page.tsx"
+   ],
+   "change": "Changed dynamic route host parameter types from number to string and widened related cached-fetch parameters to accept route strings.",
+   "responds_to": "Next.js 16 supplies dynamic route parameters as strings."
+  },
+  {
+   "id": "K3",
+   "commit": "29f368e",
+   "files": [
+    "app/layout.tsx",
+    "app/global-error.tsx"
+   ],
+   "change": "Removed next/font/google Inter usage and changed the body class to font-sans.",
+   "responds_to": "The new build needed to avoid Google Font fetching and use a network-independent system font."
+  },
+  {
+   "id": "K4",
+   "commit": "29f368e",
+   "files": [
+    "lib/clickhouse-action.ts"
+   ],
+   "change": "Changed revalidateTag to await revalidateTag(CLICKHOUSE_CACHE_TAG, { expire: 0 }).",
+   "responds_to": "Next.js 16 requires a cache-life profile as the second revalidateTag argument."
+  },
+  {
+   "id": "K5",
+   "commit": "29f368e",
+   "files": [
+    "next.config.ts"
+   ],
+   "change": "Made OpenNext Cloudflare development initialization conditional on ENABLE_CLOUDFLARE=true and loaded it dynamically.",
+   "responds_to": "Next.js 16/Turbopack builds should not initialize the Cloudflare development integration unless explicitly enabled."
+  },
+  {
+   "id": "K6",
+   "commit": "29f368e",
+   "files": [
+    "next.config.ts"
+   ],
+   "change": "Added turbopack configuration and enabled turbopackUseSystemTlsCerts.",
+   "responds_to": "Next.js 16 uses Turbopack by default and exposed the system TLS certificate option for it."
+  },
+  {
+   "id": "K7",
+   "commit": "29f368e",
+   "files": [
+    "biome.json",
+    "package.json",
+    "eslint.config.mjs",
+    ".prettierignore",
+    "prettier.config.cjs",
+    "cypress/.eslintrc.json",
+    "docs/.eslintrc.json"
+   ],
+   "change": "Replaced the ESLint/Prettier setup with Biome, added Biome lint/format/check scripts, removed the ESLint and Prettier configuration files and dependencies, and applied the resulting lint fixes.",
+   "responds_to": "Next.js 16 removed the next lint workflow, so project linting and formatting were moved to Biome."
+  },
+  {
+   "id": "K8",
+   "commit": "29f368e",
+   "files": [
+    ".github/workflows/test.yml"
+   ],
+   "change": "Disabled the Cypress component-test job.",
+   "responds_to": "Cypress failed with webpackModule.init is not a function because its component runner depended on webpack internals changed by Next.js 16 Turbopack."
+  },
+  {
+   "id": "K9",
+   "commit": "753a320",
+   "files": [
+    "middleware.ts"
+   ],
+   "change": "Removed the middleware that added x-url and x-pathname headers for prefetch requests.",
+   "responds_to": "Next.js 16 emitted a deprecation warning for this middleware usage, and the headers were no longer used."
+  },
+  {
+   "id": "K10",
+   "commit": "753a320",
+   "files": [
+    "package.json",
+    "next.config.ts",
+    "README.md"
+   ],
+   "change": "Changed the production build and Cloudflare build instructions to use Webpack instead of Turbopack, while retaining Turbopack for development; documented the requirement.",
+   "responds_to": "Turbopack was not supported by the Cloudflare Workers OpenNext deployment path."
+  },
+  {
+   "id": "K11",
+   "commit": "28d2d33",
+   "files": [
+    "package.json"
+   ],
+   "change": "Removed the --webpack flag from the production build command.",
+   "responds_to": "Next.js 16 made Turbopack stable for production and the maintainers adopted it for faster builds."
+  }
+ ],
+ "final": "[\n  {\n    \"id\": \"K1\",\n    \"commit\": \"29f368e\",\n    \"files\": [\n      \"app/[host]/database/[database]/@nav/default.tsx\",\n      \"app/[host]/database/[database]/[table]/@dictionary/default.tsx\",\n      \"app/[host]/database/[database]/[table]/@materializedview/default.tsx\",\n      \"app/[host]/database/[database]/[table]/@mergetree/default.tsx\",\n      \"app/[host]/database/[database]/[table]/@view/default.tsx\"\n    ],\n    \"change\": \"Added null-rendering default.tsx files for all parallel route slots.\",\n    \"responds_to\": \"Next.js 16 requires default components for unmatched parallel route slots.\"\n  },\n  {\n    \"id\": \"K2\",\n    \"commit\": \"29f368e\",\n    \"files\": [\n      \"app/[host]/clusters/[cluster]/replicas-status/page.tsx\",\n      \"app/[host]/clusters/page.tsx\",\n      \"app/[host]/database/[database]/@nav/[table]/page.tsx\",\n      \"app/[host]/database/[database]/@nav/nav.tsx\",\n      \"app/[host]/database/[database]/@nav/page.tsx\",\n      \"app/[host]/database/[database]/[table]/@dictionary/page.tsx\",\n      \"app/[host]/database/[database]/[table]/@materializedview/page.tsx\",\n      \"app/[host]/database/[database]/[table]/@mergetree/page.tsx\",\n      \"app/[host]/database/[database]/[table]/@view/page.tsx\",\n      \"app/[host]/database/[database]/[table]/extras/extras.tsx\",\n      \"app/[host]/database/[database]/[table]/extras/table-selector.tsx\",\n      \"app/[host]/database/[database]/default.tsx\",\n      \"app/[host]/database/[database]/layout.tsx\",\n      \"app/[host]/database/[database]/page.tsx\",\n      \"app/[host]/database/page.tsx\",\n      \"app/[host]/layout.tsx\",\n      \"app/[host]/replica/[replica]/tables/page.tsx\"\n    ],\n    \"change\": \"Changed dynamic route host parameter types from number to string and widened related cached-fetch parameters to accept route strings.\",\n    \"responds_to\": \"Next.js 16 supplies dynamic route parameters as strings.\"\n  },\n  {\n    \"id\": \"K3\",\n    \"commit\": \"29f368e\",\n    \"files\": [\n      \"app/layout.tsx\",\n      \"app/global-error.tsx\"\n    ],\n    \"change\": \"Removed next/font/google Inter usage and changed the body class to font-sans.\",\n    \"responds_to\": \"The new build needed to avoid Google Font fetching and use a network-independent system font.\"\n  },\n  {\n    \"id\": \"K4\",\n    \"commit\": \"29f368e\",\n    \"files\": [\n      \"lib/clickhouse-action.ts\"\n    ],\n    \"change\": \"Changed revalidateTag to await revalidateTag(CLICKHOUSE_CACHE_TAG, { expire: 0 }).\",\n    \"responds_to\": \"Next.js 16 requires a cache-life profile as the second revalidateTag argument.\"\n  },\n  {\n    \"id\": \"K5\",\n    \"commit\": \"29f368e\",\n    \"files\": [\n      \"next.config.ts\"\n    ],\n    \"change\": \"Made OpenNext Cloudflare development initialization conditional on ENABLE_CLOUDFLARE=true and loaded it dynamically.\",\n    \"responds_to\": \"Next.js 16/Turbopack builds should not initialize the Cloudflare development integration unless explicitly enabled.\"\n  },\n  {\n    \"id\": \"K6\",\n    \"commit\": \"29f368e\",\n    \"files\": [\n      \"next.config.ts\"\n    ],\n    \"change\": \"Added turbopack configuration and enabled turbopackUseSystemTlsCerts.\",\n    \"responds_to\": \"Next.js 16 uses Turbopack by default and exposed the system TLS certificate option for it.\"\n  },\n  {\n    \"id\": \"K7\",\n    \"commit\": \"29f368e\",\n    \"files\": [\n      \"biome.json\",\n      \"package.json\",\n      \"eslint.config.mjs\",\n      \".prettierignore\",\n      \"prettier.config.cjs\",\n      \"cypress/.eslintrc.json\",\n      \"docs/.eslintrc.json\"\n    ],\n    \"change\": \"Replaced the ESLint/Prettier setup with Biome, added Biome lint/format/check scripts, removed the ESLint and Prettier configuration files and dependencies, and applied the resulting lint fixes.\",\n    \"responds_to\": \"Next.js 16 removed the next lint workflow, so project linting and formatting were moved to Biome.\"\n  },\n  {\n    \"id\": \"K8\",\n    \"commit\": \"29f368e\",\n    \"files\": [\n      \".github/workflows/test.yml\"\n    ],\n    \"change\": \"Disabled the Cypress component-test job.\",\n    \"responds_to\": \"Cypress failed with webpackModule.init is not a function because its component runner depended on webpack internals changed by Next.js 16 Turbopack.\"\n  },\n  {\n    \"id\": \"K9\",\n    \"commit\": \"753a320\",\n    \"files\": [\n      \"middleware.ts\"\n    ],\n    \"change\": \"Removed the middleware that added x-url and x-pathname headers for prefetch requests.\",\n    \"responds_to\": \"Next.js 16 emitted a deprecation warning for this middleware usage, and the headers were no longer used.\"\n  },\n  {\n    \"id\": \"K10\",\n    \"commit\": \"753a320\",\n    \"files\": [\n      \"package.json\",\n      \"next.config.ts\",\n      \"README.md\"\n    ],\n    \"change\": \"Changed the production build and Cloudflare build instructions to use Webpack instead of Turbopack, while retaining Turbopack for development; documented the requirement.\",\n    \"responds_to\": \"Turbopack was not supported by the Cloudflare Workers OpenNext deployment path.\"\n  },\n  {\n    \"id\": \"K11\",\n    \"commit\": \"28d2d33\",\n    \"files\": [\n      \"package.json\"\n    ],\n    \"change\": \"Removed the --webpack flag from the production build command.\",\n    \"responds_to\": \"Next.js 16 made Turbopack stable for production and the maintainers adopted it for faster builds.\"\n  }\n]",
+ "usage": {
+  "input_tokens": 1009902,
+  "cached_input_tokens": 920064,
+  "cache_write_input_tokens": 0,
+  "output_tokens": 8755,
+  "reasoning_output_tokens": 3385
+ },
+ "wall_s": 81.8
+}

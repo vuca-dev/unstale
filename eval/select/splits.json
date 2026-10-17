@@ -1,0 +1,90 @@
+{
+ "_policy": "Dev/held-out per labelled set, derived from what each set already documents; no new labels. A technology held out for a step must not be dev in any set of that step (thresholds are re-fitted on dev per step). `flags` lists where a set falls short of that, and every set without a PyPI technology. `assigned_here` marks a split this file chose because the set documented none.",
+ "sets": {
+  "extraction": {
+   "step": "A",
+   "file": "eval/sets/extraction-recall.json",
+   "by": "event",
+   "dev": ["aksel-next16", "workout-next16", "payloadplugins-next16", "cedar-prisma7", "invoicerr-prisma7", "zodgen-prisma7", "temporal-nest12", "invoicerr-nest12", "coros-nest12"],
+   "heldout": ["chmonitor-next16", "coh2stats-next16", "jsontypes-prisma7", "sigle-prisma7", "eudiplo-nest12", "satisfactory-nest12"],
+   "source": "the gate's DEV 9 / HELD-OUT 6 events (eval/gate/README.md); each item's `split` field",
+   "flags": [
+    "NOT technology-disjoint: Next.js, Prisma and NestJS events are on both sides",
+    "NOT document-disjoint: the 9 documents the items cite (6 release notes, 3 upgrade guides) serve dev and held-out items alike, so extraction tuned on dev documents has seen every held-out document",
+    "no PyPI technology"
+   ]
+  },
+  "gate": {
+   "step": "A+B end to end",
+   "by": "event",
+   "same_as": "extraction",
+   "flags": ["NOT technology-disjoint (as extraction)", "no PyPI technology"]
+  },
+  "benefit": {
+   "step": "D",
+   "file": "eval/sets/benefit/reference.json",
+   "by": "technology",
+   "dev": ["next", "prisma", "nestjs"],
+   "heldout": [],
+   "source": "eval/sets/README.md: 50 records each of next, prisma and nestjs",
+   "flags": ["ALL DEV: no held-out technology (a held-out benefit technology is a set to build)", "no PyPI technology"]
+  },
+  "breaking": {
+   "step": "D",
+   "file": "~/ati-slice2/results/datamodel/breaking/items.json",
+   "by": "technology",
+   "dev": ["next", "prisma", "nestjs"],
+   "heldout": ["laravel"],
+   "assigned_here": true,
+   "source": "the hill-climb used all 241 as one held-out set against a dev replay; Laravel (85 items, Composer) is the one technology in no other set, so it is the held-out side here",
+   "flags": [
+    "the breaking hill-climb's P4 prompt was written from errors on all 241 items, Laravel included: P4 numbers are in-sample (the pipeline's BREAKING_RUBRIC is P0)",
+    "states are synthesised from Slice 2 items, not the pipeline's own requests (states.ts breakingUnits)",
+    "no PyPI technology; Laravel is Composer, not npm"
+   ]
+  },
+  "within": {
+   "step": "E",
+   "file": "docs/match-audit.md",
+   "by": "technology",
+   "dev": ["next", "prisma", "nestjs"],
+   "heldout": [],
+   "source": "eval/sets/README.md: the guards were tuned on these 83, so it is not independent",
+   "flags": [
+    "ALL DEV (tuned on)",
+    "71 of 83 are Next.js: Next.js is dev here but held out in `guides`, so the guides set's Next.js holdout is not clean for step E unless these 71 are dropped from dev",
+    "no PyPI technology"
+   ]
+  },
+  "guides": {
+   "step": "E",
+   "file": "eval/guides/pairs.json",
+   "by": "technology",
+   "dev": ["prisma", "nestjs"],
+   "heldout": ["next"],
+   "source": "eval/sets/README.md: tuned in-sample on Prisma and NestJS; Next.js was held out",
+   "flags": [
+    "pairs exist only where Jev said p >= 0.5: a candidate that finds a SAME pair Jev scored below 0.5 is unscored (recall is bounded by Jev's)",
+    "Next.js is dev in `within` (see there)",
+    "no PyPI technology"
+   ]
+  },
+  "nuxt": {
+   "step": "E",
+   "file": "eval/heldout/pairs.json",
+   "by": "technology",
+   "dev": [],
+   "heldout": ["nuxt"],
+   "source": "docs/match-audit-heldout.md: pre-registered held-out technology",
+   "flags": [
+    "merges plus the pairs near the threshold, selected by Jev's p: same recall bound as `guides`",
+    "no PyPI technology"
+   ]
+  }
+ },
+ "steps": {
+  "A": {"dev": "extraction dev events", "heldout": "extraction held-out events (not technology- or document-disjoint)", "pypi_heldout": null},
+  "D": {"dev": ["next", "prisma", "nestjs"], "heldout": ["laravel"], "pypi_heldout": null},
+  "E": {"dev": ["prisma", "nestjs", "next (within only)"], "heldout": ["nuxt", "next (guides only; contaminated by within)"], "pypi_heldout": null}
+ }
+}
