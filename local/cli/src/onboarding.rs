@@ -60,6 +60,12 @@ pub struct Pending {
     /// The service limited new registrations: Unix seconds before which none are sent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub deferred_until: Option<u64>,
+    /// Why registration is deferred (absent in state written before it was recorded).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deferred_by: Option<Deferral>,
+    /// This run's `--wait`, when the deferral ends after it: the summary says the run did not wait (never saved).
+    #[serde(skip)]
+    pub past_wait: Option<u64>,
     /// Weekly npm downloads of unsubmitted packages, read once for `registration_order` (0 when unreadable).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub downloads: BTreeMap<String, u64>,
@@ -117,12 +123,14 @@ fn register(
                 pending.jobs.insert(p.clone(), j);
                 pending.unsubmitted.remove(&p);
                 pending.deferred_until = None;
+                pending.deferred_by = None;
                 pending.registration_issue = rejected.clone();
             }
             Err(e) if e.downcast_ref::<Limited>().is_some() => {
-                let retry_after = e.downcast_ref::<Limited>().map_or(3600, |l| l.retry_after);
+                let (retry_after, by) = e.downcast_ref::<Limited>().map_or((3600, Deferral::Address), |l| (l.retry_after, l.by));
                 diagnostics.push(format!("Registration deferred: {e}"));
                 pending.deferred_until = Some(unix_now() + retry_after);
+                pending.deferred_by = Some(by);
                 save(pending)?;
                 break;
             }
@@ -155,6 +163,38 @@ fn register(
     }
     Ok(())
 }
+/// Registers what is unsubmitted (`once`), and again whenever the service defers it to a time within what is left of
+/// `wait` (`hold` waits until then; false when the person left). A deferral past the wait is not waited for: with an
+/// explicit wait it is recorded in `past_wait` so the summary says this run did not wait. Default init (`linger`)
+/// and `--wait 0` never wait for registration.
+fn register_waiting(
+    pending: &mut Pending,
+    wait: u64,
+    linger: bool,
+    start: Instant,
+    mut hold: impl FnMut(&Pending, u64) -> bool,
+    mut once: impl FnMut(&mut Pending) -> Result<()>,
+) -> Result<()> {
+    loop {
+        // While the service's limit lasts, nothing new is sent; known jobs are still refreshed by the caller.
+        if let Some(until) = pending.deferred_until.filter(|t| *t > unix_now() && !pending.unsubmitted.is_empty()) {
+            let left = wait.saturating_sub(start.elapsed().as_secs());
+            if linger || wait == 0 || until.saturating_sub(unix_now()) > left {
+                if !linger && wait > 0 {
+                    pending.past_wait = Some(wait);
+                }
+                return Ok(());
+            }
+            if !hold(pending, until) {
+                return Ok(());
+            }
+        }
+        once(pending)?;
+        if pending.unsubmitted.is_empty() || !pending.deferred_until.is_some_and(|t| t > unix_now()) {
+            return Ok(());
+        }
+    }
+}
 fn registration_line(pending: &Pending) -> Option<String> {
     if pending.unsubmitted.is_empty() { return None; }
     if let Some(line) = deferred_line(pending) { return Some(line); }
@@ -173,14 +213,36 @@ fn registration_line(pending: &Pending) -> Option<String> {
         _ => "Coverage partially connected · some packages could not be registered. Run unstale status to retry; existing results remain usable.".into(),
     })
 }
-/// The coverage service refused a new registration for now (HTTP 429): a rate or budget limit, not a failure.
+/// Why the service deferred registrations: never a fault of the package or the client.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Deferral {
+    /// HTTP 503 with Retry-After: the service itself is out of capacity for now (a daily allowance, storage).
+    Unavailable,
+    /// HTTP 429, `limit: "address"`: this address sent its share of new packages for the hour.
+    Address,
+    /// HTTP 429, `limit: "budget"`: the service's allowance of new packages, shared by every client.
+    Budget,
+}
+impl Deferral {
+    fn reason(self) -> &'static str {
+        match self {
+            Deferral::Unavailable => "the coverage service is temporarily unavailable",
+            Deferral::Address => "this address reached the service's hourly limit for new packages",
+            Deferral::Budget => "the service reached its current limit for new packages",
+        }
+    }
+}
+/// The coverage service refused a new registration for now (429, or 503 with Retry-After): not a failure.
 #[derive(Debug)]
 pub struct Limited {
     pub retry_after: u64,
+    pub by: Deferral,
 }
 impl std::fmt::Display for Limited {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "coverage service is limiting new registrations; retry after {}s", self.retry_after)
+        let status = if self.by == Deferral::Unavailable { 503 } else { 429 };
+        write!(f, "{} (HTTP {status}); retry after {}s", self.by.reason(), self.retry_after)
     }
 }
 impl std::error::Error for Limited {}
@@ -189,14 +251,41 @@ fn unix_now() -> u64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs())
 }
-/// The calm line for registrations held back by a service limit, or None when nothing is deferred.
+/// The calm line for registrations held back by a service limit, or None when nothing is deferred: why, and when
+/// the next attempt is allowed.
 fn deferred_line(pending: &Pending) -> Option<String> {
-    pending.deferred_until.filter(|_| !pending.unsubmitted.is_empty()).map(|_| {
-        format!(
-            "Coverage queued for later · the service is limiting new registrations; {} public packages are sent on a later unstale status.",
-            pending.unsubmitted.len()
-        )
-    })
+    deferred_line_at(pending, unix_now())
+}
+fn deferred_line_at(pending: &Pending, now: u64) -> Option<String> {
+    let until = pending.deferred_until.filter(|_| !pending.unsubmitted.is_empty())?;
+    let n = pending.unsubmitted.len();
+    let reason = pending.deferred_by.map_or("the service is limiting new registrations", Deferral::reason);
+    if until <= now {
+        return Some(format!("Coverage queued for later · {reason}; {n} public packages are sent on the next unstale status."));
+    }
+    let past = pending.past_wait.map_or(String::new(), |w| format!(", after --wait {w}s"));
+    Some(format!(
+        "Coverage queued for later · {reason} until {} UTC (in {}{past}); {n} public packages are sent on an unstale status from then.",
+        clock(until),
+        span(until - now)
+    ))
+}
+/// `HH:MM` (UTC) of a Unix time, rounded up to the minute so it is never before the time it names.
+fn capitalized(s: &str) -> String {
+    let mut c = s.chars();
+    c.next().map_or(String::new(), |f| f.to_uppercase().chain(c).collect())
+}
+fn clock(t: u64) -> String {
+    let m = t.div_ceil(60) % (24 * 60);
+    format!("{:02}:{:02}", m / 60, m % 60)
+}
+/// A wait for a person to read: `40s`, `12m`, `5h 48m` (minutes rounded up).
+fn span(s: u64) -> String {
+    if s < 60 {
+        return format!("{s}s");
+    }
+    let m = s.div_ceil(60);
+    if m < 60 { format!("{m}m") } else { format!("{}h {:02}m", m / 60, m % 60) }
 }
 fn state_path(ctx: &Ctx) -> PathBuf {
     ctx.tool.join("state/coverage.json")
@@ -261,7 +350,14 @@ fn request_via(a: &ureq::Agent, service: &str, purl: &str, post: bool) -> Result
             .and_then(|v| v.to_str().ok())
             .and_then(|v| v.trim().parse().ok())
             .unwrap_or(3600);
-        return Err(Limited { retry_after }.into());
+        let by = if r.status() == 503 {
+            Deferral::Unavailable
+        } else {
+            // The body names the limit: this address's, or the service's own allowance shared by every client.
+            let body: serde_json::Value = r.body_mut().with_config().limit(64 * 1024).read_to_vec().ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+            if body.get("limit").and_then(serde_json::Value::as_str) == Some("budget") { Deferral::Budget } else { Deferral::Address }
+        };
+        return Err(Limited { retry_after, by }.into());
     }
     if !r.status().is_success() {
         return Err(HttpFailure(r.status().as_u16()).into());
@@ -1009,7 +1105,8 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
             .iter()
             .filter(|o| o.rec.r.technology == *tech)
             .collect();
-        let mut versions: BTreeSet<_> = relevant.iter().map(|o| o.installed.to_string()).collect();
+        // A record routed as version-unknown carries no installed version (its `installed` is a placeholder).
+        let mut versions: BTreeSet<_> = relevant.iter().filter(|o| o.route != funnel::Route::VersionUnknown).map(|o| o.installed.to_string()).collect();
         if versions.is_empty() {
             for job in pending.jobs.values().filter(|j| j.technology == *tech) {
                 if let Some(version) = w.stack.deps.get(&job.purl).and_then(|d| d.version.as_ref())
@@ -1018,10 +1115,11 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
                 }
             }
         }
+        let versions = if versions.is_empty() { "version unknown".to_string() } else { versions.into_iter().collect::<Vec<_>>().join(", ") };
         catalog_scope += &format!(
             "  {} {} · {} documented changes in the synced catalog\n",
             friendly(tech, pending),
-            versions.into_iter().collect::<Vec<_>>().join(", "),
+            versions,
             relevant.len()
         );
         catalog_scope += &format!(
@@ -1411,32 +1509,40 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
     }
     // Persist identities before the first request, even if the process is interrupted.
     save(ctx, &pending)?;
-    let registrations = pending.unsubmitted.len();
-    // While the service's limit lasts, nothing new is sent; known jobs below are still refreshed.
-    let deferred = pending.deferred_until.is_some_and(|t| t > unix_now());
-    pending.downloads.retain(|p, _| pending.unsubmitted.contains(p));
-    let unread: Vec<String> = pending.unsubmitted.iter().filter(|p| p.starts_with("pkg:npm/") && !pending.downloads.contains_key(*p)).cloned().collect();
-    if !deferred && !unread.is_empty() {
-        ui.update("Connecting public coverage · step 3/5", &format!("Ranking {registrations} public packages by adoption"), "Most-used packages are registered first");
-        // A count that cannot be read is kept as 0, so an npm outage costs one attempt, not one per run.
-        let read = npm_downloads(&unread);
-        pending.downloads.extend(unread.into_iter().map(|p| {
-            let d = read.get(&p).copied().unwrap_or(0);
-            (p, d)
-        }));
-        save(ctx, &pending)?;
-    }
-    let order = registration_order(&pending.unsubmitted, &st, &pending.downloads);
-    if !deferred {
-        register(&mut pending, order, |p| request(service, p, true), |index| {
+    // `--wait` counts from here, so a registration deferred for less than what is left of it is sent again then.
+    let start = Instant::now();
+    let hint = if std::io::stdin().is_terminal() { "Within --wait · Enter to finish" } else { "Within --wait" };
+    register_waiting(&mut pending, wait, linger, start, |p, until| {
+        let reason = p.deferred_by.map_or("the service is limiting new registrations", Deferral::reason);
+        while unix_now() < until && !leave.load(Ordering::Acquire) {
+            let detail = format!("{} · registering again at {} UTC (in {})", capitalized(reason), clock(until), span(until.saturating_sub(unix_now())));
+            ui.update("Connecting public coverage · step 3/5", &detail, hint);
+            std::thread::sleep(Duration::from_millis(200));
+        }
+        !leave.load(Ordering::Acquire)
+    }, |pending| {
+        let registrations = pending.unsubmitted.len();
+        pending.downloads.retain(|p, _| pending.unsubmitted.contains(p));
+        let unread: Vec<String> = pending.unsubmitted.iter().filter(|p| p.starts_with("pkg:npm/") && !pending.downloads.contains_key(*p)).cloned().collect();
+        if !unread.is_empty() {
+            ui.update("Connecting public coverage · step 3/5", &format!("Ranking {registrations} public packages by adoption"), "Most-used packages are registered first");
+            // A count that cannot be read is kept as 0, so an npm outage costs one attempt, not one per run.
+            let read = npm_downloads(&unread);
+            pending.downloads.extend(unread.into_iter().map(|p| {
+                let d = read.get(&p).copied().unwrap_or(0);
+                (p, d)
+            }));
+            save(ctx, pending)?;
+        }
+        let order = registration_order(&pending.unsubmitted, &st, &pending.downloads);
+        register(pending, order, |p| request(service, p, true), |index| {
             ui.update(
                 "Connecting public coverage · step 3/5",
                 &format!("Registered {index}/{registrations} public packages"),
                 "Public names only · acknowledged jobs continue centrally",
             );
-        }, &mut diagnostics, |p| save(ctx, p))?;
-    }
-    let start = Instant::now();
+        }, &mut diagnostics, |p| save(ctx, p))
+    })?;
     let mut saved_snapshot = String::new();
     let mut ready_hint = String::from("Your report is next; shared analysis can continue in background");
     loop {
@@ -1457,7 +1563,10 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
                 }
                 Err(e) => {
                     diagnostics.push(format!("Coverage {}: {e:#}", purls[i]));
-                    issue = Some("Coverage connection interrupted · cached results kept".into());
+                    issue = Some(match e.downcast_ref::<Limited>() {
+                        Some(l) => format!("Coverage results not refreshed · {} until {} UTC · cached results kept", l.by.reason(), clock(unix_now() + l.retry_after)),
+                        None => "Coverage connection interrupted · cached results kept".into(),
+                    });
                     disconnected = true;
                     return false;
                 }
@@ -1849,7 +1958,7 @@ mod tests {
         // Limited (429, or 503 with Retry-After): deferred until then.
         let mut pending = Pending::default();
         pending.unsubmitted.extend(order.iter().cloned());
-        register(&mut pending, order, |_| Err(Limited { retry_after: 600 }.into()), |_| {}, &mut vec![], |_| Ok(())).unwrap();
+        register(&mut pending, order, |_| Err(Limited { retry_after: 600, by: Deferral::Address }.into()), |_| {}, &mut vec![], |_| Ok(())).unwrap();
         assert!(pending.deferred_until.is_some_and(|t| t > unix_now() + 500));
         assert!(registration_line(&pending).unwrap().starts_with("Coverage queued for later"));
     }
@@ -1871,7 +1980,73 @@ mod tests {
             let _ = write!(stream, "HTTP/1.1 503 Service Unavailable\r\nRetry-After: 900\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
         });
         let err = request_via(&agent(), &base, "pkg:npm/a", true).unwrap_err();
-        assert_eq!(err.downcast_ref::<Limited>().map(|l| l.retry_after), Some(900));
+        assert_eq!(err.downcast_ref::<Limited>().map(|l| (l.retry_after, l.by)), Some((900, Deferral::Unavailable)));
+    }
+    #[test]
+    fn a_deferral_says_why_and_when_the_next_attempt_is_allowed() {
+        let mut pending = Pending::default();
+        pending.unsubmitted.extend(["pkg:npm/a", "pkg:npm/b"].map(String::from));
+        // 18:12:00 UTC; the gateway's 503 runs to 00:00 UTC.
+        let now = 1_792_001_520;
+        assert_eq!(clock(now), "18:12");
+        pending.deferred_until = Some(now + 20_880);
+        pending.deferred_by = Some(Deferral::Unavailable);
+        assert_eq!(
+            deferred_line_at(&pending, now).unwrap(),
+            "Coverage queued for later · the coverage service is temporarily unavailable until 00:00 UTC (in 5h 48m); 2 public packages are sent on an unstale status from then."
+        );
+        pending.past_wait = Some(180);
+        assert!(deferred_line_at(&pending, now).unwrap().contains("(in 5h 48m, after --wait 180s)"));
+        pending.deferred_by = Some(Deferral::Address);
+        pending.deferred_until = Some(now + 125);
+        assert!(deferred_line_at(&pending, now).unwrap().contains("this address reached the service's hourly limit for new packages until 18:15 UTC (in 3m"));
+        // Past its time, or from state written before the reason was recorded.
+        pending.deferred_by = None;
+        assert!(deferred_line_at(&pending, now + 200).unwrap().ends_with("the service is limiting new registrations; 2 public packages are sent on the next unstale status."));
+        let restored: Pending = serde_json::from_str(r#"{"jobs":{},"unsubmitted":["pkg:npm/a"],"deferred_until":1,"deferred_by":"budget"}"#).unwrap();
+        assert_eq!(restored.deferred_by, Some(Deferral::Budget));
+        assert_eq!(span(40), "40s");
+        assert_eq!(span(3600), "1h 00m");
+    }
+    #[test]
+    fn a_deferral_within_the_wait_is_retried_then_and_one_past_it_is_named() {
+        let fresh = || {
+            let mut p = Pending::default();
+            p.unsubmitted.insert("pkg:npm/a".into());
+            p
+        };
+        // Deferred 30s with 60s of wait left: held until then, then sent again.
+        let (mut pending, mut sends, mut held) = (fresh(), 0, vec![]);
+        register_waiting(&mut pending, 60, false, Instant::now(), |_, until| { held.push(until); true }, |p| {
+            sends += 1;
+            if sends == 1 {
+                p.deferred_until = Some(unix_now() + 30);
+                p.deferred_by = Some(Deferral::Address);
+            } else {
+                p.unsubmitted.clear();
+                p.deferred_until = None;
+            }
+            Ok(())
+        }).unwrap();
+        assert_eq!((sends, held.len(), pending.past_wait), (2, 1, None));
+        // Deferred beyond the wait: not waited for, and the summary says so.
+        let (mut pending, mut sends) = (fresh(), 0);
+        let defer = |p: &mut Pending| { p.deferred_until = Some(unix_now() + 3600); p.deferred_by = Some(Deferral::Unavailable); Ok(()) };
+        register_waiting(&mut pending, 60, false, Instant::now(), |_, _| panic!("must not wait"), |p| { sends += 1; defer(p) }).unwrap();
+        assert_eq!((sends, pending.past_wait), (1, Some(60)));
+        assert!(registration_line(&pending).unwrap().contains("after --wait 60s"));
+        // Already deferred from an earlier run: nothing is sent before then.
+        register_waiting(&mut pending, 60, false, Instant::now(), |_, _| panic!("must not wait"), |_| panic!("must not send")).unwrap();
+        // `--wait 0` and default init never wait, and name no wait.
+        for (wait, linger) in [(0, false), (30, true)] {
+            let mut pending = fresh();
+            register_waiting(&mut pending, wait, linger, Instant::now(), |_, _| panic!("must not wait"), defer).unwrap();
+            assert_eq!(pending.past_wait, None);
+        }
+        // Leaving (Enter) while held sends nothing more.
+        let (mut pending, mut sends) = (fresh(), 0);
+        register_waiting(&mut pending, 60, false, Instant::now(), |_, _| false, |p| { sends += 1; p.deferred_until = Some(unix_now() + 5); Ok(()) }).unwrap();
+        assert_eq!(sends, 1);
     }
     #[test]
     fn rejected_http_registration_is_classified_without_reading_untrusted_error_text() {
@@ -1927,7 +2102,7 @@ mod tests {
             let _ = write!(stream, "HTTP/1.1 429 Too Many Requests\r\nRetry-After: 120\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
         });
         let err = request_via(&agent(), &base, "pkg:npm/a", true).unwrap_err();
-        assert_eq!(err.downcast_ref::<Limited>().map(|l| l.retry_after), Some(120));
+        assert_eq!(err.downcast_ref::<Limited>().map(|l| (l.retry_after, l.by)), Some((120, Deferral::Budget)));
         let mut pending = Pending::default();
         pending.unsubmitted.insert("pkg:npm/a".into());
         assert_eq!(deferred_line(&pending), None);
