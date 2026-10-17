@@ -1,7 +1,7 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import { afterEach, describe, expect, test } from "vitest";
 import { isBlockedAddress } from "../src/collector/url-safety.ts";
-import { parseRetryAfter } from "../src/collector/http.ts";
+import { DEFAULT_HTTP, HttpClient, parseRetryAfter } from "../src/collector/http.ts";
 import { env, versioned, type TestEnv } from "./helpers.ts";
 
 let e: TestEnv | undefined;
@@ -53,6 +53,22 @@ describe("redirects", () => {
     e.route("/a", (_q, res) => void res.writeHead(302, { location: "/b" }).end());
     e.route("/b", (_q, res) => void res.writeHead(302, { location: "/a" }).end());
     expect((await e.collector.check(e.spec("/a"))).outcome).toMatchObject({ failure: "too_many_redirects" });
+  });
+
+  test("credentials stay with their origin across a redirect", async () => {
+    e = await env();
+    const other = await env();
+    try {
+      e.route("/a", (_q, res) => void res.writeHead(302, { location: `${other.base}/b` }).end());
+      other.route("/b", (_q, res) => void res.writeHead(200).end("ok"));
+      const client = new HttpClient({ ...DEFAULT_HTTP, allowHosts: ["127.0.0.1"] });
+      await client.get(`${e.base}/a`, { authorization: "Bearer secret", cookie: "s=1", "x-keep": "1" });
+      expect(e.requests[0]!.headers.authorization).toBe("Bearer secret");
+      const hop = other.requests[0]!.headers;
+      expect([hop.authorization, hop.cookie, hop["x-keep"]]).toEqual([undefined, undefined, "1"]);
+    } finally {
+      await other.close();
+    }
   });
 
   test("redirect without Location is http_status", async () => {

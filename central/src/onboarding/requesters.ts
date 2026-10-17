@@ -6,6 +6,22 @@ import { createHash } from "node:crypto";
 
 const sha256 = (s: string): string => createHash("sha256").update(s).digest("hex");
 
+/**
+ * Who a request counts as: an IPv4 address, or an IPv6 address's /64 (one allocation usually holds a whole /64, so
+ * counting its addresses one by one would make the limits per request, not per requester).
+ */
+export function requesterKey(address: string): string {
+  const a = address.trim().toLowerCase().replace(/%.*$/, "");
+  if (!a.includes(":")) return a;
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(a);
+  if (mapped) return mapped[1]!;
+  const [head = "", tail] = a.split("::", 2);
+  const left = head ? head.split(":") : [];
+  const right = tail ? tail.split(":") : [];
+  const groups = tail === undefined ? left : [...left, ...Array(Math.max(0, 8 - left.length - right.length)).fill("0"), ...right];
+  return `${groups.slice(0, 4).map((g) => Number.parseInt(g || "0", 16).toString(16)).join(":")}::/64`;
+}
+
 /** `kind`: which budget refused (new technologies, job runs, or release-note tokens). */
 export type Refusal = { limit: "address" | "budget"; retryAfter: number; kind?: "new" | "runs" | "tokens" };
 
@@ -18,7 +34,8 @@ export class AddressLimiter {
     this.perHour = perHour;
     this.maxAddresses = maxAddresses;
   }
-  take(address: string, now = Date.now()): Refusal | undefined {
+  take(requester: string, now = Date.now()): Refusal | undefined {
+    const address = requesterKey(requester);
     const recent = (this.seen.get(address) ?? []).filter((t) => t > now - 3600_000);
     if (recent.length >= this.perHour) {
       this.seen.set(address, recent);
@@ -48,7 +65,7 @@ export class Voters {
     this.max = max;
   }
   private key(technology: string, address: string): string {
-    return sha256(`${this.salt}\n${technology}\n${address}`);
+    return sha256(`${this.salt}\n${technology}\n${requesterKey(address)}`);
   }
   /** Whether this address already asked for this technology (in this process). */
   has(technology: string, address: string): boolean {

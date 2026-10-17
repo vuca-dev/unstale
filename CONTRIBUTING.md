@@ -48,6 +48,8 @@ Secrets and variables (Settings > Secrets and variables > Actions):
 | Name | Kind | Used by | What for |
 |---|---|---|---|
 | `UNSTALE_DEFAULT_SERVICE` | variable | release | Compiled into the client as the service `init` uses by default; the release fails when it is empty or not `https://` |
+| `UNSTALE_CATALOG_KEY` | variable | release, ingest | The catalog's Ed25519 public key, 64 hex characters. Compiled into the client, which then refuses an HTTP catalog whose root or indexes are not signed with the matching private key; ingest verifies the export against it before deploying. Create the pair once: `openssl genpkey -algorithm ed25519 -out unstale-signing.pem`, then `openssl pkey -in unstale-signing.pem -pubout -outform DER \| tail -c 32 \| xxd -p -c 64` prints this value |
+| `UNSTALE_SIGNING_KEY` | secret | ingest | The private key, the whole of `unstale-signing.pem`: `catalog export` signs `v1/root.json` and every `v1/tech/*.json` (`<file>.sig`, hex). Keep a copy offline; rotating it needs a client release with the new public key |
 | `NPM_PUBLISH` | variable | release | `true` publishes to npm (trusted publishing) and to the Homebrew tap; anything else is a dry run |
 | `HOMEBREW_TAP` | variable | release | The tap repository the formula is committed to (`owner/homebrew-tap`); unset, the formula is only an artifact |
 | `HOMEBREW_TAP_TOKEN` | secret | release | Fine-grained token with Contents: write on the tap repository only |

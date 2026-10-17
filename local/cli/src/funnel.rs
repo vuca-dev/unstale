@@ -605,7 +605,7 @@ pub(crate) mod fixtures {
                 .iter()
                 .map(|(n, v)| {
                     let p = crate::util::npm_purl(n);
-                    (p, Dep { name: n.to_string(), public_candidate: true, version: parse_version(v), source: "test".into() })
+                    (p, Dep { name: n.to_string(), public_candidate: true, version: parse_version(v), source: "test".into(), pins: vec![] })
                 })
                 .collect(),
             node: node.map(|v| (parse_version(v).unwrap(), "engines".into())),

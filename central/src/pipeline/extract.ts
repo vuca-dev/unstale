@@ -7,7 +7,7 @@ import { extractCached, extractLlm, parseJson } from "./llm.ts";
 import type { GuideNote, ReleaseNote } from "./fetch.ts";
 import type { Technology } from "./technologies.ts";
 import { CHANGE_TYPES, SURFACES } from "./vocab.ts";
-import { releaseLine } from "./util.ts";
+import { oneLine, releaseLine } from "./util.ts";
 import { markViews, PREAMBLE_MARKED, unmarkQuote } from "../docs/render.ts";
 
 export const MAX_CHUNK = 30_000;
@@ -414,19 +414,19 @@ export const strings = (v: unknown[] | null | undefined, max: number): string[] 
   const out: string[] = [];
   for (const x of v ?? []) {
     if (typeof x !== "string") continue;
-    const s = x.replace(/`/g, "").trim();
+    const s = oneLine(x.replace(/`/g, ""), 200);
     if (s && !out.includes(s) && out.length < max) out.push(s);
   }
   return out;
 };
 
 const words = (s: string, max: number): string => {
-  const w = s.trim().split(/\s+/);
-  return w.length <= max ? s.trim() : w.slice(0, max).join(" ").replace(/[,;:]$/, "") + "…";
+  const w = oneLine(s, 400).split(" ");
+  return w.length <= max ? w.join(" ") : w.slice(0, max).join(" ").replace(/[,;:]$/, "") + "…";
 };
 
 function cleanSubject(s: string): string {
-  return s.replace(/[`*]/g, "").replace(/\(\s*\)$/, "").replace(/\s+/g, " ").trim();
+  return oneLine(s.replace(/[`*]/g, "").replace(/\(\s*\)$/, ""), 200);
 }
 
 /** A guide's impact rating for the section holding a quote ("Likelihood Of Impact: High"), if the guide states one. */
@@ -547,9 +547,9 @@ export function toIncoming(t: Technology, rel: ReleaseNote | GuideNote | DocsNot
   for (const p of lab.prerequisites ?? []) {
     const q = Prereq.safeParse(p);
     if (!q.success) continue;
-    const pr: Prerequisite = { ecosystem: q.data.ecosystem.trim().toLowerCase(), name: q.data.name.trim() };
-    if (q.data.min != null && String(q.data.min).trim()) pr.min = String(q.data.min).trim();
-    if (q.data.max != null && String(q.data.max).trim()) pr.max = String(q.data.max).trim();
+    const pr: Prerequisite = { ecosystem: oneLine(q.data.ecosystem, 40).toLowerCase(), name: oneLine(q.data.name, 200) };
+    if (q.data.min != null && String(q.data.min).trim()) pr.min = oneLine(String(q.data.min), 40);
+    if (q.data.max != null && String(q.data.max).trim()) pr.max = oneLine(String(q.data.max), 40);
     if (!prerequisites.some((x) => x.ecosystem === pr.ecosystem && x.name === pr.name)) prerequisites.push(pr);
   }
   const guide = "kind" in rel && rel.kind === "upgrade_guide" ? rel : undefined;

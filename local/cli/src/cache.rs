@@ -89,6 +89,12 @@ pub struct TechData {
 pub type Shard = (Vec<Rec>, BTreeMap<String, String>, Vec<String>, usize);
 
 /// Parse a gzipped JSON-lines shard.
+/// A record id is printed in skill files and typed back as a command argument (`unstale record <id> …`), so a line
+/// whose id could carry anything else (spaces, backticks, brackets, line breaks) is skipped like an unreadable one.
+fn safe_id(id: &str) -> bool {
+    !id.is_empty() && id.len() <= 200 && id.bytes().all(|b| b.is_ascii_alphanumeric() || b"-_.:~@+".contains(&b))
+}
+
 pub fn parse_shard(gz: &[u8]) -> Result<Shard> {
     let mut text = String::new();
     flate2::read::GzDecoder::new(gz).read_to_string(&mut text).context("shard is not gzipped UTF-8 text")?;
@@ -104,12 +110,12 @@ pub fn parse_shard(gz: &[u8]) -> Result<Shard> {
             .map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect())
             .unwrap_or_default();
         match serde_json::from_value::<ShardLine>(v) {
-            Ok(ShardLine::Active(r)) => recs.push(Rec { r, borderline }),
-            Ok(ShardLine::Merged { id, merged_into }) => {
+            Ok(ShardLine::Active(r)) if safe_id(&r.id) => recs.push(Rec { r, borderline }),
+            Ok(ShardLine::Merged { id, merged_into }) if safe_id(&id) && safe_id(&merged_into) => {
                 merged.insert(id, merged_into);
             }
-            Ok(ShardLine::Retracted { id }) => retracted.push(id),
-            Ok(ShardLine::Unknown) | Err(_) => skipped += 1,
+            Ok(ShardLine::Retracted { id }) if safe_id(&id) => retracted.push(id),
+            _ => skipped += 1,
         }
     }
     Ok((recs, merged, retracted, skipped))

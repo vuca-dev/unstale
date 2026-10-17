@@ -6,6 +6,11 @@
 // copy sees what it would see from the service. Every index, root and referenced shard line is checked by the
 // generated Zod, and every referenced shard's size and sha256, before anything replaces `<dir>`. The tree is built in
 // a sibling directory and renamed into place, so a partial export is never at `<dir>`. Same catalog in, same bytes.
+//
+// With a signing key (UNSTALE_SIGNING_KEY, an Ed25519 private key as PKCS#8 PEM), the root and every index get a
+// detached signature beside them (`<file>.sig`, hex), which a release client checks against its compiled-in public
+// key. Indexes name their shards' sha256, so signing the indexes covers every shard.
+import { createPrivateKey, sign } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { gunzipSync } from "node:zlib";
@@ -52,7 +57,17 @@ export function savedJobs(): DescribedJob[] {
     });
 }
 
+/** A signer from an Ed25519 private key (PKCS#8 PEM): the hex signature of the exact bytes served. */
+export function catalogSigner(pem: string | undefined = process.env.UNSTALE_SIGNING_KEY): ((data: Buffer) => string) | undefined {
+  if (!pem?.trim()) return undefined;
+  const key = createPrivateKey(pem);
+  if (key.asymmetricKeyType !== "ed25519") throw new Error(`UNSTALE_SIGNING_KEY is a ${key.asymmetricKeyType} key, not ed25519`);
+  return (data) => sign(null, data, key).toString("hex");
+}
+
 export interface ExportResult {
+  /** Whether the root and indexes were signed. */
+  signed: boolean;
   technologies: number;
   shards: number;
   bytes: number;
@@ -68,7 +83,12 @@ function replaceable(dir: string): boolean {
   return !entries.length || (entries.includes(".nojekyll") && existsSync(join(dir, "v1", "root.json")));
 }
 
-export function exportCatalog(source: string, dir: string, opts: { now?: Date; jobs?: DescribedJob[]; lock?: PruneOptions["lock"]; statuses?: string } = {}): ExportResult {
+export function exportCatalog(
+  source: string,
+  dir: string,
+  opts: { now?: Date; jobs?: DescribedJob[]; lock?: PruneOptions["lock"]; statuses?: string; sign?: ((data: Buffer) => string) | undefined } = {},
+): ExportResult {
+  const signer = "sign" in opts ? opts.sign : catalogSigner();
   const src = resolve(source);
   const out = resolve(dir);
   if (!relative(src, out).startsWith("..") || !relative(out, src).startsWith("..")) throw new Error(`export directory ${out} overlaps the catalog ${src}`);
@@ -83,6 +103,10 @@ export function exportCatalog(source: string, dir: string, opts: { now?: Date; j
   const put = (path: string, data: Buffer | string): void => {
     mkdirSync(dirname(join(tmp, path)), { recursive: true });
     writeFileSync(join(tmp, path), data);
+  };
+  const putSigned = (path: string, data: Buffer): void => {
+    put(path, data);
+    if (signer) put(`${path}.sig`, signer(data));
   };
   try {
     const shards = new Set<string>();
@@ -110,7 +134,7 @@ export function exportCatalog(source: string, dir: string, opts: { now?: Date; j
           bytes += gz.length;
         }
       }
-      put(`v1/tech/${f}`, servedIndex(body, f.slice(0, -5), jobs));
+      putSigned(`v1/tech/${f}`, servedIndex(body, f.slice(0, -5), jobs));
       technologies++;
     }
     // Shards no index names that survived the prune: inside the grace period, copied as published.
@@ -138,13 +162,13 @@ export function exportCatalog(source: string, dir: string, opts: { now?: Date; j
       coverage++;
     }
     put(".nojekyll", "");
-    put("v1/root.json", root);
+    putSigned("v1/root.json", root);
     // The swap: a previous export moves aside, the new tree takes its name, the old one is removed.
     const old = join(dirname(out), `.${basename(out)}.old-${process.pid}`);
     if (existsSync(out)) renameSync(out, old);
     renameSync(tmp, out);
     rmSync(old, { recursive: true, force: true });
-    return { technologies, shards: shards.size, bytes, coverage, prune };
+    return { signed: !!signer, technologies, shards: shards.size, bytes, coverage, prune };
   } catch (e) {
     rmSync(tmp, { recursive: true, force: true });
     throw e;

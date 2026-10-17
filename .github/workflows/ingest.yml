@@ -91,9 +91,11 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           GATEWAY_DRAIN_TOKEN: ${{ secrets.GATEWAY_DRAIN_TOKEN }}
           INGEST_GITHUB_TOKEN: ${{ secrets.INGEST_GITHUB_TOKEN }}
+          UNSTALE_SIGNING_KEY: ${{ secrets.UNSTALE_SIGNING_KEY }}
+          UNSTALE_CATALOG_KEY: ${{ vars.UNSTALE_CATALOG_KEY }}
         run: |
           missing=0
-          for name in JEV_API_KEY AI_GATEWAY_API_KEY CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID GATEWAY_DRAIN_TOKEN; do
+          for name in JEV_API_KEY AI_GATEWAY_API_KEY CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID GATEWAY_DRAIN_TOKEN UNSTALE_SIGNING_KEY UNSTALE_CATALOG_KEY; do
             if [ -z "${!name}" ]; then echo "::error title=Missing secret::$name is not set"; missing=1; fi
           done
           if [ -z "$INGEST_GITHUB_TOKEN" ]; then
@@ -212,29 +214,41 @@ jobs:
       - name: Export the static catalog
         id: export
         if: (steps.pipeline.outcome == 'success' || steps.pipeline.outcome == 'skipped') && steps.drain.outcome == 'success' && steps.drain.outputs.ran == 'true'
+        env:
+          # Ed25519 private key (PKCS#8 PEM): the root and every index are signed; release clients refuse unsigned ones.
+          UNSTALE_SIGNING_KEY: ${{ secrets.UNSTALE_SIGNING_KEY }}
         run: npm --prefix central run catalog -- export "$SITE_DIR"
 
       # Guard: deploy only a tree whose root parses and whose every index entry has its shard, with the size and
-      # sha256 the index states (a client verifies the same), and which fits the static asset limits.
+      # sha256 the index states, whose root and indexes verify against the public key release clients carry
+      # (UNSTALE_CATALOG_KEY; a client verifies the same), and which fits the static asset limits.
       - name: Verify the exported catalog
         id: verify
         if: steps.export.outcome == 'success'
         env:
           DEPLOY: ${{ github.event_name == 'schedule' || inputs.deploy }}
+          UNSTALE_CATALOG_KEY: ${{ vars.UNSTALE_CATALOG_KEY }}
         run: |
           set -euo pipefail
           # shellcheck disable=SC2016 # JavaScript template literals, not shell expansions
           node --input-type=module -e '
-            import { createHash } from "node:crypto";
+            import { createHash, createPublicKey, verify } from "node:crypto";
             import { readFileSync, readdirSync } from "node:fs";
             import { join } from "node:path";
             const site = process.env.SITE_DIR;
+            const key = createPublicKey({ key: { kty: "OKP", crv: "Ed25519", x: Buffer.from(process.env.UNSTALE_CATALOG_KEY, "hex").toString("base64url") }, format: "jwk" });
+            const signed = (rel) => {
+              const sig = Buffer.from(readFileSync(join(site, `${rel}.sig`), "utf8").trim(), "hex");
+              if (!verify(null, readFileSync(join(site, rel)), key, sig)) throw new Error(`${rel}: signature does not verify against UNSTALE_CATALOG_KEY`);
+            };
+            signed("v1/root.json");
             const root = JSON.parse(readFileSync(join(site, "v1", "root.json"), "utf8"));
             if (typeof root.schema !== "number") throw new Error("v1/root.json has no schema");
             const techs = readdirSync(join(site, "v1", "tech")).filter((f) => f.endsWith(".json"));
             if (!techs.length) throw new Error("no technology indexes");
             let shards = 0;
             for (const f of techs) {
+              signed(`v1/tech/${f}`);
               const index = JSON.parse(readFileSync(join(site, "v1", "tech", f), "utf8"));
               for (const s of index.shards ?? []) {
                 const bytes = readFileSync(join(site, s.path));
@@ -244,7 +258,7 @@ jobs:
                 shards++;
               }
             }
-            console.log(`${techs.length} technologies, ${shards} shards verified`);
+            console.log(`${techs.length} technologies, ${shards} shards verified, root and indexes signed`);
           '
           files="$(find "$SITE_DIR" -type f | wc -l)"
           big="$(find "$SITE_DIR" -type f -size +25M | wc -l)"

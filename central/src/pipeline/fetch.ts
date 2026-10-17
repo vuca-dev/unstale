@@ -4,7 +4,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { centralDir } from "./paths.ts";
 import { SINCE, type Technology } from "./technologies.ts";
-import { compareVersions, readJson, sha256, writeAtomic } from "./util.ts";
+import { compareVersions, isRepoSlug, readJson, sha256, writeAtomic } from "./util.ts";
 import { DEFAULT_HTTP, HttpClient } from "../collector/http.ts";
 import { currentGuides } from "../docs/guides.ts";
 import { githubToken } from "../docs/fetcher.ts";
@@ -50,6 +50,7 @@ interface GhRelease {
 }
 
 async function listPage(repo: string, page: number): Promise<GhRelease[]> {
+  if (!isRepoSlug(repo)) throw new Error(`not a GitHub repository: ${repo}`);
   for (let attempt = 0; ; attempt++) {
     const res = await fetch(`https://api.github.com/repos/${repo}/releases?per_page=100&page=${page}`, {
       headers: { Authorization: `Bearer ${ghToken()}`, Accept: "application/vnd.github+json", "User-Agent": "unstale-central" },

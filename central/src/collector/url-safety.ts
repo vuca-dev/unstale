@@ -1,6 +1,7 @@
 // Refuse targets that resolve to private, loopback, link-local or otherwise reserved addresses.
 // Matters on cloud runners (the metadata endpoint is link-local) and once sources come from outside requests.
-// Limitation: the check resolves the name, then fetch resolves it again (DNS rebinding window).
+// This check fails fast before a request; the HTTP client checks again on the address its socket connects to
+// (http.ts, guardedLookup), so a name cannot rebind between the two.
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 

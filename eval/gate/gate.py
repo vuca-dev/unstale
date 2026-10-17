@@ -64,7 +64,8 @@ def set_window(ev):
 
 # ---------------------------------------------------------------------------------------------------- CLI queue
 
-REC = re.compile(r"^### \[([^\]]+)\] rev (\d+)\n\n(.*?)\n\n- Release: (\S+) (\S+) \(installed (\S+), target (\S+)\)\n- Change: ([^;]+); breaking: (yes|no)\n"
+# The summary sits in a fenced block (with any conditions on the next line), so upstream text cannot pose as instructions.
+REC = re.compile(r"^### \[([^\]]+)\] rev (\d+)\n\n`{3,}text\n(.*?)\n(?:Conditions [^\n]*\n)?`{3,}\n\n- Release: (\S+) (\S+) \(installed (\S+), target (\S+)\)\n- Change: ([^;]+); breaking: (yes|no)\n"
                  r"(?:.*?\n)*?- Matched terms: (.*?)\n", re.M | re.S)
 
 

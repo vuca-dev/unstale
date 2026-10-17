@@ -988,6 +988,7 @@ dependencies = [
  "clap",
  "flate2",
  "ignore",
+ "ring",
  "semver",
  "serde",
  "serde_json",

@@ -25,7 +25,10 @@ export function httpFetcher(http: HttpClient, robots: RobotsCache, token = githu
     if (!API_HOSTS.has(u.hostname) && u.pathname !== "/robots.txt" && !(await robots.allowed(url))) return { status: 0, url, text: "robots.txt disallows" };
     requests++;
     const headers: Record<string, string> = { ...DEFAULT_HEADERS, accept };
-    if (gh && token && u.hostname === "api.github.com") headers.authorization = `Bearer ${token}`;
+    // The token goes only to the API path as written: a `.` or `..` segment (which URL parsing resolves away) means a
+    // slug from crawled text was steering the request to another endpoint.
+    const dotted = /\/(?:\.|%2e){1,2}(?:[/?#]|$)/i.test(url.split("api.github.com")[1] ?? "");
+    if (gh && token && u.hostname === "api.github.com" && !dotted) headers.authorization = `Bearer ${token}`;
     try {
       const res = await http.get(url, headers);
       return { status: res.status, url: res.finalUrl, text: decode(res.body, res.headers.get("content-type")) };

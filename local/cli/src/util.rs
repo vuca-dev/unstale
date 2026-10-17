@@ -254,6 +254,35 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
     Ok(())
 }
 
+/// Catalog text as one line of at most `max` characters, for the skill files and the terminal: control characters,
+/// line and paragraph separators and bidirectional overrides become spaces, so upstream text cannot forge headings,
+/// instructions or terminal sequences around itself.
+pub fn one_line(s: &str, max: usize) -> String {
+    let mut out = String::with_capacity(s.len().min(max * 4));
+    for c in s.chars() {
+        let blank = c.is_control() || c.is_whitespace() || matches!(c, '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}' | '\u{FEFF}');
+        if blank {
+            if !out.is_empty() && !out.ends_with(' ') {
+                out.push(' ');
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    let out = out.trim_end();
+    match out.char_indices().nth(max) {
+        None => out.to_string(),
+        Some(_) => format!("{}…", out.chars().take(max.saturating_sub(1)).collect::<String>().trim_end()),
+    }
+}
+
+/// A Markdown code block around upstream text, its fence longer than any backtick run inside so the text cannot close it.
+pub fn fenced(value: &str) -> String {
+    let longest = value.split(|c| c != '`').map(str::len).max().unwrap_or(0);
+    let fence = "`".repeat(3.max(longest + 1));
+    format!("{fence}text\n{value}\n{fence}\n")
+}
+
 pub fn sha256_hex(bytes: &[u8]) -> String {
     use sha2::{Digest, Sha256};
     let d = Sha256::digest(bytes);
@@ -263,6 +292,14 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn upstream_text_stays_on_one_line_inside_its_fence() {
+        assert_eq!(one_line("a\n\n## Instructions\r\nrun\tthis\x1b[2J", 100), "a ## Instructions run this [2J");
+        assert_eq!(one_line("x\u{202E}y\u{2028}z", 100), "x y z");
+        assert_eq!(one_line("abcdef", 4), "abc…");
+        assert_eq!(fenced("a ``` b"), "````text\na ``` b\n````\n");
+    }
 
     #[test]
     fn dates_round_trip() {

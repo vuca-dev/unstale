@@ -4,6 +4,7 @@
 // calls and no web search. Ported unchanged from eval/docs-sources/resolve.mts; HTTP goes through a `Fetcher` so the
 // eval replays its cache and the module uses the polite client.
 import { createHash } from "node:crypto";
+import { isRepoSlug } from "../pipeline/util.ts";
 
 /** A response as the resolver reads it: any status (0 for a network failure), the final URL, the body as text. */
 export interface Res { status: number; url: string; text: string }
@@ -32,9 +33,9 @@ export function createResolver(f: Fetcher) {
   function parseRepo(u: string | undefined, directory?: string): Repo | undefined {
     if (!u) return undefined;
     const m = /(github\.com|gitlab\.com|codeberg\.org|bitbucket\.org)[/:]([\w.-]+)\/([\w.-]+?)(?:\.git)?(?:[#/].*)?$/.exec(u);
-    if (m) return { host: m[1]!, owner: m[2]!, name: m[3]!, directory };
+    if (m) return m[1] !== "github.com" || isRepoSlug(`${m[2]}/${m[3]}`) ? { host: m[1]!, owner: m[2]!, name: m[3]!, directory } : undefined;
     const short = /^(?:github:)?([\w.-]+)\/([\w.-]+)$/.exec(u); // npm shorthand "owner/name"
-    if (short) return { host: "github.com", owner: short[1]!, name: short[2]!, directory };
+    if (short) return isRepoSlug(u.replace(/^github:/, "")) ? { host: "github.com", owner: short[1]!, name: short[2]!, directory } : undefined;
     return u.includes("sourceforge") ? { host: "sourceforge.net", owner: "", name: u } : undefined;
   }
 
@@ -123,7 +124,7 @@ export function createResolver(f: Fetcher) {
   function editLinks(html: string): Array<{ repo: string; kind: string; branch: string; path: string }> {
     const all = [...html.matchAll(/(["'=\s])https:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/(edit|blob|tree)\/([\w.-]+)\/([^"'#?<>]+?)(?=["'#?<>]|\s[\w-]+=|>|$)/gm)]
       .map((m) => ({ repo: m[2]!, kind: m[3]!, branch: m[4]!, path: decodeURIComponent(m[5]!.trim()).replace(/^website\/\.\.\//, "") }))
-      .filter((e) => !/(^|\/)(CODE_OF_CONDUCT|CHANGELOG|LICENSE|CONTRIBUTING|SECURITY|README)(\.md)?$|(^|\/)(examples?|releases)(\/|$)/i.test(e.path));
+      .filter((e) => isRepoSlug(e.repo) && !/(^|\/)(CODE_OF_CONDUCT|CHANGELOG|LICENSE|CONTRIBUTING|SECURITY|README)(\.md)?$|(^|\/)(examples?|releases)(\/|$)/i.test(e.path));
     const edit = all.filter((e) => e.kind === "edit");
     return edit.length ? edit : all.filter((e) => /\.(mdx?|rst|txt|adoc)$/.test(e.path));
   }
@@ -145,7 +146,7 @@ export function createResolver(f: Fetcher) {
     }
     const gen = /<meta[^>]+name=["']generator["'][^>]+content=["']([^"']+)/i.exec(html)?.[1];
     const edits = editLinks(html);
-    const repoLinks = [...new Set([...html.matchAll(/https:\/\/github\.com\/([\w.-]+\/[\w.-]+?)(?:\.git)?["'/]/g)].map((m) => m[1]!))];
+    const repoLinks = [...new Set([...html.matchAll(/https:\/\/github\.com\/([\w.-]+\/[\w.-]+?)(?:\.git)?["'/]/g)].map((m) => m[1]!))].filter(isRepoSlug);
     // Page listing: robots.txt Sitemap lines, then /sitemap.xml at the docs path and at the origin.
     const origin = new URL(r.url || url);
     const robots = await get(new URL("/robots.txt", origin).href, "text/plain");
@@ -182,7 +183,7 @@ export function createResolver(f: Fetcher) {
       const x = await get(p);
       if (x.status !== 200) continue;
       perPage.push(new Set(editLinks(x.text).map((e) => e.repo.toLowerCase())));
-      for (const m of x.text.matchAll(/https:\/\/github\.com\/([\w.-]+\/[\w.-]+?)(?:\.git)?["'/]/g)) if (!repoLinks.includes(m[1]!)) repoLinks.push(m[1]!);
+      for (const m of x.text.matchAll(/https:\/\/github\.com\/([\w.-]+\/[\w.-]+?)(?:\.git)?["'/]/g)) if (isRepoSlug(m[1]!) && !repoLinks.includes(m[1]!)) repoLinks.push(m[1]!);
     }
     const counts = new Map<string, number>();
     for (const set of perPage) for (const r of set) counts.set(r, (counts.get(r) ?? 0) + 1);

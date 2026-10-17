@@ -23,6 +23,7 @@ export interface Env {
   GITHUB_REF?: string;
   RATE_PER_HOUR?: string;
   MAX_PENDING?: string;
+  NEW_PER_HOUR?: string;
   FAST_TRACK_PER_DAY?: string;
   FAST_TRACK_INTERVAL_MINUTES?: string;
 }
@@ -38,6 +39,9 @@ export class Coverage extends DurableObject<Env> {
     const outcome = this.queue.request(purl, address, known);
     if (outcome.type === "queued" && outcome.fastTrack) this.ctx.waitUntil(dispatch(this.env));
     return outcome;
+  }
+  held(purl: string): boolean {
+    return this.queue.held(purl);
   }
   position(purl: string) {
     return this.queue.position(purl);
@@ -81,6 +85,22 @@ async function sha256(s: string): Promise<string> {
 async function published(env: Env, url: URL, purl: string): Promise<Record<string, unknown> | undefined> {
   const res = await env.ASSETS.fetch(new URL(`/v1/coverage/${await sha256(purl)}.json`, url));
   return res.ok ? ((await res.json()) as Record<string, unknown>) : undefined;
+}
+
+/**
+ * Whether the public registry knows a package: only a 404 says no. A registry outage answers yes, since the coverage
+ * run verifies the identity again before any work; this check only keeps made-up names out of the queue.
+ */
+async function registered(purl: string): Promise<boolean> {
+  const name = packageIdentity(purl);
+  const url = purl.startsWith("pkg:pypi/") ? `https://pypi.org/pypi/${name}/json` : `https://registry.npmjs.org/${name.replace("/", "%2F")}/latest`;
+  try {
+    const res = await fetch(url, { headers: { Accept: "application/json", "User-Agent": "unstale-gateway" } });
+    await res.body?.cancel();
+    return res.status !== 404;
+  } catch {
+    return true;
+  }
 }
 
 /** A held package as a queued job, in the coverage service's format. */
@@ -137,6 +157,7 @@ export async function handle(request: Request, env: Env): Promise<Response> {
       const purl = await purlOf(request);
       const address = request.headers.get("CF-Connecting-IP") ?? "unknown";
       const known = await published(env, url, purl);
+      if (!known && !(await queue().held(purl)) && !(await registered(purl))) return json(404, { error: "No public package with this identity" });
       const outcome = await queue().request(purl, address, !!known);
       if (outcome.type === "refused")
         return json(

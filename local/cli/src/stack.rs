@@ -50,6 +50,18 @@ pub struct Dep {
     pub version: Option<Version>,
     /// Where the version came from, for the report.
     pub source: String,
+    /// What the lockfiles installed, with content hashes: the public registry must serve the same bytes for this
+    /// identity to be submitted (`onboarding::public_package`), so a private package whose name someone published
+    /// publicly is not mistaken for the public one. Empty without a lockfile hash.
+    pub pins: Vec<Pin>,
+}
+
+/// One locked version and its content hashes as the lockfile states them: npm `sha512-<base64>` integrity, PyPI
+/// `sha256:<hex>` file hashes.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Pin {
+    pub version: String,
+    pub hashes: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -215,8 +227,15 @@ pub fn detect(root: &Path) -> Result<Stack> {
                 let public_candidate = !local_names.contains(name) && !["workspace:","file:","link:","git:","git+","github:","https:","http:","../","./"].iter().any(|prefix|range.starts_with(prefix));
                 let purl = npm_purl(public_name);
                 declared.insert(purl.clone());
-                let entry = deps.entry(purl).or_insert_with(|| Dep { name: public_name.to_string(), public_candidate, version: None, source: String::new() });
+                let entry = deps.entry(purl).or_insert_with(|| Dep { name: public_name.to_string(), public_candidate, version: None, source: String::new(), pins: vec![] });
                 entry.public_candidate &= public_candidate;
+                if let Some((_, l)) = &lock
+                    && let Some(v) = l.version(&importer, name, range)
+                    && let Some(pin) = l.pin(name, &v).or_else(|| l.pin(public_name, &v))
+                    && !entry.pins.contains(&pin)
+                {
+                    entry.pins.push(pin);
+                }
                 let lower = match (&entry.version, &version) {
                     (None, Some(_)) => true,
                     (Some(a), Some(b)) => b < a,
@@ -283,6 +302,8 @@ pub struct Lock {
     /// yarn: (name, range) → version, and every version per name.
     by_range: BTreeMap<(String, String), Version>,
     by_name: BTreeMap<String, Vec<Version>>,
+    /// (name, version) → the lockfile's `sha512-` integrity values (npm, pnpm, yarn v1).
+    integrity: BTreeMap<(String, String), Vec<String>>,
 }
 
 /// npm lockfiles in the order used when nothing else decides between them, with the package manager that writes
@@ -373,6 +394,20 @@ impl Lock {
         }
         self.by_name.get(name).and_then(|vs| vs.iter().min().cloned())
     }
+
+    /// The locked version of `name` with its sha512 integrity, when the lockfile states one.
+    pub fn pin(&self, name: &str, v: &Version) -> Option<Pin> {
+        let hashes = self.integrity.get(&(name.to_string(), v.to_string()))?;
+        Some(Pin { version: v.to_string(), hashes: hashes.clone() })
+    }
+
+    fn add_integrity(&mut self, name: &str, version: &Version, integrity: &str) {
+        // Only sha512: what the public registry states as `dist.integrity` for every current package.
+        let hashes: Vec<String> = integrity.split_whitespace().filter(|h| h.starts_with("sha512-")).map(String::from).collect();
+        if !hashes.is_empty() {
+            self.integrity.insert((name.to_string(), version.to_string()), hashes);
+        }
+    }
 }
 
 pub fn parse_npm(text: &str) -> Lock {
@@ -387,12 +422,18 @@ pub fn parse_npm(text: &str) -> Lock {
             let importer = prefix.trim_end_matches('/');
             let importer = if importer.is_empty() { "." } else { importer };
             if let Some(ver) = meta.get("version").and_then(Value::as_str).and_then(parse_version) {
+                if let Some(i) = meta.get("integrity").and_then(Value::as_str) {
+                    l.add_integrity(name, &ver, i);
+                }
                 l.importers.entry(importer.to_string()).or_default().insert(name.to_string(), ver);
             }
         }
     } else if let Some(deps) = v.get("dependencies").and_then(Value::as_object) {
         for (name, meta) in deps {
             if let Some(ver) = meta.get("version").and_then(Value::as_str).and_then(parse_version) {
+                if let Some(i) = meta.get("integrity").and_then(Value::as_str) {
+                    l.add_integrity(name, &ver, i);
+                }
                 l.importers.entry(".".into()).or_default().insert(name.clone(), ver);
             }
         }
@@ -429,6 +470,25 @@ pub fn parse_pnpm(text: &str) -> Lock {
             stack.pop();
         }
         let path: Vec<&str> = stack.iter().map(|(_, k)| k.as_str()).collect();
+        // `packages:` entries: `name@1.2.3(peer@x)` (v6+) or `/name/1.2.3` (v5), with `resolution: {integrity: ...}`
+        // inline or as a nested key.
+        let integrity = match (path.as_slice(), val) {
+            (["packages", key], Some(v)) if k == "resolution" => {
+                v.split_once("integrity:").map(|(_, r)| (*key, r.trim().trim_end_matches('}').split(',').next().unwrap_or("").trim().to_string()))
+            }
+            (["packages", key, "resolution"], Some(v)) if k == "integrity" => Some((*key, v.to_string())),
+            _ => None,
+        };
+        if let Some((key, i)) = integrity {
+            let key = key.trim_start_matches('/');
+            let key = key.split('(').next().unwrap_or(key);
+            let split = key.get(1..).and_then(|r| r.rfind('@')).map(|at| (&key[..at + 1], &key[at + 2..])).or_else(|| key.rsplit_once('/'));
+            if let Some((name, ver)) = split
+                && let Some(v) = clean_pnpm_version(ver)
+            {
+                l.add_integrity(name, &v, i.trim_matches(['\'', '"']));
+            }
+        }
         let mut add = |importer: &str, name: &str, v: &str| {
             if let Some(ver) = clean_pnpm_version(v) {
                 l.importers.entry(importer.to_string()).or_default().insert(name.to_string(), ver);
@@ -464,12 +524,14 @@ fn split_key(body: &str) -> Option<(String, Option<&str>)> {
 pub fn parse_yarn(text: &str) -> Lock {
     let mut l = Lock::default();
     let mut specs: Vec<(String, String)> = vec![];
+    let mut version: Option<Version> = None;
     for line in text.lines() {
         if line.is_empty() || line.starts_with('#') {
             continue;
         }
         if !line.starts_with(' ') {
             specs.clear();
+            version = None;
             for s in line.trim_end_matches(':').split(", ") {
                 let s = s.trim().trim_matches('"');
                 let at = s[1..].find('@').map(|i| i + 1);
@@ -485,6 +547,14 @@ pub fn parse_yarn(text: &str) -> Lock {
             for (name, range) in &specs {
                 l.by_range.insert((name.clone(), range.clone()), v.clone());
                 l.by_name.entry(name.clone()).or_default().push(v.clone());
+            }
+            version = Some(v);
+        }
+        // yarn v1 `integrity sha512-...` (berry's `checksum` is its own format: no pin, the name check applies).
+        if let (Some(i), Some(v)) = (t.strip_prefix("integrity "), &version) {
+            let names: BTreeSet<&String> = specs.iter().map(|(n, _)| n).collect();
+            for name in names {
+                l.add_integrity(name, v, i.trim_matches('"'));
             }
         }
     }
@@ -541,6 +611,31 @@ mod tests {
         assert_eq!(s.deps["pkg:npm/prisma"].source, "pnpm-lock.yaml");
         assert_eq!(s.node.as_ref().unwrap().0, Version::new(20, 9, 0));
         assert!(s.candidates().contains("prisma") && s.candidates().contains("next") && s.candidates().contains("client"));
+    }
+
+    #[test]
+    fn lockfiles_pin_versions_with_their_sha512_integrity() {
+        let pin = |v: &str, h: &str| Pin { version: v.into(), hashes: vec![h.into()] };
+        let npm = parse_npm(r#"{"lockfileVersion":3,"packages":{"node_modules/next":{"version":"16.0.7","integrity":"sha512-AAA"},"node_modules/old":{"version":"1.0.0","integrity":"sha1-BBB"}}}"#);
+        assert_eq!(npm.pin("next", &Version::new(16, 0, 7)), Some(pin("16.0.7", "sha512-AAA")));
+        assert_eq!(npm.pin("old", &Version::new(1, 0, 0)), None, "sha1 only: no pin, the name check applies");
+        let pnpm = parse_pnpm("lockfileVersion: '9.0'\n\npackages:\n\n  '@prisma/client@6.19.3':\n    resolution: {integrity: sha512-CCC}\n\n  next@16.0.7(react@19.2.0):\n    resolution:\n      integrity: sha512-DDD\n");
+        assert_eq!(pnpm.pin("@prisma/client", &Version::new(6, 19, 3)), Some(pin("6.19.3", "sha512-CCC")));
+        assert_eq!(pnpm.pin("next", &Version::new(16, 0, 7)), Some(pin("16.0.7", "sha512-DDD")));
+        let v5 = parse_pnpm("lockfileVersion: 5.4\n\npackages:\n\n  /@scope/pkg/2.1.0:\n    resolution: {integrity: sha512-EEE}\n");
+        assert_eq!(v5.pin("@scope/pkg", &Version::new(2, 1, 0)), Some(pin("2.1.0", "sha512-EEE")));
+        let yarn = parse_yarn("acme-utils@^1.2.0:\n  version \"1.2.0\"\n  resolved \"https://npm.acme.internal/acme-utils/-/acme-utils-1.2.0.tgz\"\n  integrity sha512-FFF\n");
+        assert_eq!(yarn.pin("acme-utils", &Version::new(1, 2, 0)), Some(pin("1.2.0", "sha512-FFF")));
+    }
+
+    #[test]
+    fn a_dependency_carries_the_pins_of_its_lockfile() {
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "package.json", r#"{"name":"app","private":true,"dependencies":{"acme-utils":"^1.2.0","next":"^16.0.0"}}"#);
+        write(d.path(), "package-lock.json", r#"{"lockfileVersion":3,"packages":{"node_modules/acme-utils":{"version":"1.2.0","integrity":"sha512-internal"},"node_modules/next":{"version":"16.0.7"}}}"#);
+        let s = detect(d.path()).unwrap();
+        assert_eq!(s.deps["pkg:npm/acme-utils"].pins, vec![Pin { version: "1.2.0".into(), hashes: vec!["sha512-internal".into()] }]);
+        assert!(s.deps["pkg:npm/next"].pins.is_empty(), "no integrity in the lockfile");
     }
 
     #[test]

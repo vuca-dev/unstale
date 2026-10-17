@@ -33,7 +33,7 @@ import { advisoryIds, create, evidenceOf, K, kindOf, matchRequest, nearIdentical
 import { centralDir } from "./paths.ts";
 import { applyChange, combineReleases, mergeInto, union, type StoredRecord, type TechStore } from "./store.ts";
 import type { Technology } from "./technologies.ts";
-import { canonical, readJson, releaseLine, sha256, writeAtomic } from "./util.ts";
+import { canonical, oneLine, readJson, releaseLine, sha256, writeAtomic } from "./util.ts";
 
 const FRESH_MS = 12 * 3600 * 1000;
 const OSV = "https://api.osv.dev/v1/query";
@@ -209,7 +209,7 @@ export function fromOsv(v: OsvVuln, ours: ReadonlySet<string>): Advisory | undef
     aliases: [...new Set(ids.filter((x) => x !== id))].sort(),
     ...(sev && SEVERITY[sev] ? { severity: SEVERITY[sev] } : {}),
     url: id.startsWith("GHSA-") ? `https://github.com/advisories/${id}` : `https://osv.dev/vulnerability/${v.id}`,
-    summary: (v.summary ?? v.details?.split("\n")[0] ?? "").trim(),
+    summary: oneLine(v.summary ?? v.details?.split("\n")[0] ?? "", 400),
     ...(v.details ? { details: v.details } : {}),
     published: (v.published ?? "").slice(0, 10),
     affected,

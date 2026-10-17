@@ -4,6 +4,11 @@
 //! The catalog is a local directory (a path or `file://` URL) or an `http(s)://` base URL. Over HTTP the
 //! per-technology indexes are polled with conditional requests (`If-None-Match` / `If-Modified-Since` from the
 //! last 200), a 404 on an index means "not covered", and shards get the same size and sha256 checks as files.
+//!
+//! With a catalog key (compiled into release builds, or `UNSTALE_CATALOG_KEY`), an HTTP catalog's root and every
+//! index it serves must carry a valid Ed25519 signature (`<file>.sig`, hex). The indexes name each shard's sha256, so
+//! signed indexes cover the whole catalog: whoever controls the host but not the key cannot change what reaches an
+//! agent. A local directory is the user's own and is not checked.
 
 use anyhow::{Context, Result, anyhow, bail};
 use serde::{Deserialize, Serialize};
@@ -214,14 +219,55 @@ pub struct Report {
 /// Sync the candidates' indexes and shards into `cache`. `purls` are the repository's package URLs; a
 /// technology is kept only when one of its records' release components is among them (no alias table).
 pub fn sync(loc: &str, cache_dir: &Path, candidates: &BTreeSet<String>, purls: &BTreeSet<String>) -> Result<Report> {
-    sync_with(&resolve_source(loc)?, cache_dir, candidates, purls)
+    let src = resolve_source(loc)?;
+    let key = match src {
+        Source::Http { .. } => catalog_key()?,
+        Source::Dir(_) => None,
+    };
+    sync_with(&src, cache_dir, candidates, purls, key.as_ref())
 }
 
-fn sync_with(src: &Source, cache_dir: &Path, candidates: &BTreeSet<String>, purls: &BTreeSet<String>) -> Result<Report> {
+/// The catalog's Ed25519 public key (hex): `UNSTALE_CATALOG_KEY`, else the one compiled into release builds.
+fn catalog_key() -> Result<Option<[u8; 32]>> {
+    let Some(hex) = std::env::var("UNSTALE_CATALOG_KEY")
+        .ok()
+        .or_else(|| option_env!("UNSTALE_CATALOG_KEY").map(String::from))
+        .filter(|s| !s.trim().is_empty())
+    else {
+        return Ok(None);
+    };
+    let bytes = from_hex(hex.trim()).filter(|b| b.len() == 32).ok_or_else(|| anyhow!("UNSTALE_CATALOG_KEY is not a 32-byte hex Ed25519 public key"))?;
+    Ok(Some(bytes.try_into().unwrap()))
+}
+
+fn from_hex(s: &str) -> Option<Vec<u8>> {
+    if s.len() % 2 != 0 {
+        return None;
+    }
+    (0..s.len()).step_by(2).map(|i| u8::from_str_radix(s.get(i..i + 2)?, 16).ok()).collect()
+}
+
+/// `rel`'s bytes against the signature published beside it (`<rel>.sig`, hex).
+fn verify_signed(src: &Source, rel: &str, bytes: &[u8], key: &[u8; 32]) -> Result<()> {
+    let sig_rel = format!("{rel}.sig");
+    let sig = match src.get(&sig_rel, None)? {
+        Got::Body(b, _) => b,
+        _ => bail!("{} is not signed ({} not found)", src.describe(rel), src.describe(&sig_rel)),
+    };
+    let sig = std::str::from_utf8(&sig).ok().and_then(|s| from_hex(s.trim())).ok_or_else(|| anyhow!("{}: not a hex signature", src.describe(&sig_rel)))?;
+    ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, key)
+        .verify(bytes, &sig)
+        .map_err(|_| anyhow!("{}: the signature does not verify against the catalog key; nothing from it was used", src.describe(rel)))
+}
+
+fn sync_with(src: &Source, cache_dir: &Path, candidates: &BTreeSet<String>, purls: &BTreeSet<String>, key: Option<&[u8; 32]>) -> Result<Report> {
     let root_bytes = match src.get("v1/root.json", None)? {
         Got::Body(b, _) => b,
         _ => bail!("no catalog at {} (v1/root.json not found)", src.describe("v1/root.json")),
     };
+    if let Some(key) = key {
+        verify_signed(src, "v1/root.json", &root_bytes, key)?;
+    }
     let root: Root = serde_json::from_slice(&root_bytes).context("root.json does not parse")?;
     check_root(&root)?;
     write_atomic(&cache_dir.join("v1/root.json"), &root_bytes)?;
@@ -239,7 +285,16 @@ fn sync_with(src: &Source, cache_dir: &Path, candidates: &BTreeSet<String>, purl
             .and_then(|b| serde_json::from_slice::<Validators>(&b).ok())
             .filter(|v| cached.as_deref().is_some_and(|c| sha256_hex(c) == v.sha256));
         let (bytes, fresh_validators) = match src.get(&rel, cond.as_ref()) {
-            Ok(Got::Body(b, v)) => (b, Some(v)),
+            Ok(Got::Body(b, v)) => {
+                // A 304 reuses the cached index, verified when it arrived.
+                if let Some(key) = key
+                    && let Err(e) = verify_signed(src, &rel, &b, key)
+                {
+                    rep.failed.push((tech.clone(), format!("{e:#}")));
+                    continue;
+                }
+                (b, Some(v))
+            }
             Ok(Got::NotModified) => match cached {
                 Some(c) => (c, None),
                 None => {
@@ -547,6 +602,41 @@ mod tests {
     }
 
     #[test]
+    fn with_a_catalog_key_only_signed_files_are_used() {
+        use ring::signature::{Ed25519KeyPair, KeyPair};
+        let pair = Ed25519KeyPair::from_seed_unchecked(&[7u8; 32]).unwrap();
+        let key: [u8; 32] = pair.public_key().as_ref().try_into().unwrap();
+        let hex = |b: &[u8]| b.iter().map(|x| format!("{x:02x}")).collect::<String>();
+        let cat = FixtureCatalog::new();
+        cat.tech("next", &[("16", vec![rec("next:a", "pkg:npm/next", "16.0.1")])]);
+        cat.tech("prisma", &[("7", vec![rec("prisma:a", "pkg:npm/prisma", "7.0.0")])]);
+        let sign = |rel: &str| {
+            let p = cat.dir.path().join(rel);
+            std::fs::write(p.with_extension("json.sig"), hex(pair.sign(&std::fs::read(&p).unwrap()).as_ref())).unwrap();
+        };
+        let srv = TestServer::start(cat.dir.path().to_path_buf(), false);
+        let src = resolve_source(&srv.base).unwrap();
+        let cache = tempfile::tempdir().unwrap();
+        let all = purls(&["pkg:npm/next", "pkg:npm/prisma"]);
+        // An unsigned root stops the sync before anything is cached.
+        let err = sync_with(&src, cache.path(), &cands(&["next"]), &all, Some(&key)).err().unwrap();
+        assert!(format!("{err:#}").contains("is not signed"), "{err:#}");
+        assert!(!cache.path().join("v1/root.json").exists());
+        // Signed root and next; prisma's index altered after signing.
+        sign("v1/root.json");
+        sign("v1/tech/next.json");
+        sign("v1/tech/prisma.json");
+        let p = cat.dir.path().join("v1/tech/prisma.json");
+        let mut forged = std::fs::read(&p).unwrap();
+        forged.push(b'\n');
+        std::fs::write(&p, forged).unwrap();
+        let rep = sync_with(&src, cache.path(), &cands(&["next", "prisma"]), &all, Some(&key)).unwrap();
+        assert_eq!(rep.synced.iter().map(|t| t.technology.as_str()).collect::<Vec<_>>(), vec!["next"]);
+        assert!(rep.failed.len() == 1 && rep.failed[0].1.contains("does not verify"), "{:?}", rep.failed);
+        assert!(!index_path(cache.path(), "prisma").exists());
+    }
+
+    #[test]
     fn http_last_modified_alone_is_used_for_conditional_requests() {
         let cat = FixtureCatalog::new();
         cat.tech("next", &[("16", vec![rec("next:a", "pkg:npm/next", "16.0.1")])]);
@@ -616,7 +706,7 @@ mod tests {
         let cache = tempfile::tempdir().unwrap();
         let t0 = std::time::Instant::now();
         let src = http_source(base, Duration::from_millis(500));
-        let err = sync_with(&src, cache.path(), &cands(&["next"]), &purls(&[])).err().unwrap();
+        let err = sync_with(&src, cache.path(), &cands(&["next"]), &purls(&[]), None).err().unwrap();
         assert!(t0.elapsed() < Duration::from_secs(10));
         assert!(format!("{err:#}").to_lowercase().contains("timeout") || format!("{err:#}").to_lowercase().contains("timed out"), "{err:#}");
     }

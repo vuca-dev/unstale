@@ -15,6 +15,7 @@
 // A signal that cannot be read fails open: an unknown value does not reject a package that passes on another signal, and
 // a package with no readable signal at all is admitted. A parked package is checked again later (onboarding/service.ts).
 import { githubToken } from "../docs/fetcher.ts";
+import { isRepoSlug } from "./util.ts";
 
 export interface Signals {
   purl: string;
@@ -226,7 +227,7 @@ export async function signals(purl: string, repo?: string, known: { downloads?: 
     Object.assign(out, fromCargo(await json(`https://crates.io/api/v1/crates/${name}`)));
     out.downloadsWindow = "90d";
   }
-  if (repo) {
+  if (repo && isRepoSlug(repo)) {
     const token = githubToken();
     Object.assign(out, fromGithub(await json(`https://api.github.com/repos/${repo}`, token ? { authorization: `Bearer ${token}` } : {})));
     const starsOnly = t && out.stars !== undefined && out.stars >= t.minStars && !(out.downloads !== undefined && out.downloads >= t.minDownloads);

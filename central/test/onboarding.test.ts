@@ -25,6 +25,7 @@ afterEach(() => {
   if (previous === undefined) delete process.env.UNSTALE_STORE;
   else process.env.UNSTALE_STORE = previous;
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 test("identity vocabulary rejects private URLs, versions, traversal and arbitrary ecosystems", () => {
   expect(npmIdentity("pkg:npm/%40astrojs/mdx")).toBe("@astrojs/mdx");
@@ -191,6 +192,8 @@ test("cold jobs publish early, interleave history with the docs module's pass an
     return { technology: t.id, sites: [{ site: t.homepage, prefix: "", method: "sitemap", pages: 130, copyRule: "html", dropped: {} as never, namespaces: [] }], checked: 130, outcomes: { first_seen: 130 }, events: {}, sections: { publishable: 0, held: {} }, baseline: true };
   });
   const plan = vi.spyOn(docs, "extract");
+  // The advisories stage asks OSV; answered here with no advisories, so the test does not wait on the network.
+  vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ vulns: [] })));
   const service = new CoverageService(1, {
     admission: async () => ({ admit: true, why: "test" }),
   });

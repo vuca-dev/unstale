@@ -1,6 +1,7 @@
 // Public identity -> verified registry metadata -> official sources. No repository context enters here.
 import { HttpClient } from "../collector/http.ts";
 import { TECHNOLOGIES, type Technology } from "../pipeline/technologies.ts";
+import { isRepoSlug } from "../pipeline/util.ts";
 
 export interface PublicTechnology {
   discovery_version?: number;
@@ -59,7 +60,7 @@ async function discoverPypi(purl: string): Promise<PublicTechnology> {
     Object.entries(urls).find(([k]) => /source|code|repo|github/i.test(k))?.[1] ??
     [...Object.values(urls), info.home_page ?? ""].find((v) => /github\.com\//.test(v)) ??
     "";
-  const m = /github\.com\/([\w.-]+\/[\w.-]+?)(?:\.git)?(?:[/#?].*)?$/.exec(source);
+  const m = [/github\.com\/([\w.-]+\/[\w.-]+?)(?:\.git)?(?:[/#?].*)?$/.exec(source)].find((x) => x && isRepoSlug(x[1]!));
   const docs = Object.entries(urls).find(([k]) => /doc/i.test(k))?.[1];
   const home = docs ?? urls.Homepage ?? urls.homepage ?? info.home_page;
   const t: PublicTechnology = {
@@ -113,9 +114,7 @@ export async function discoverTechnology(
   const repoUrl =
     (typeof repository === "string" ? repository : repository?.url) ??
     (readmeRepo ? `https://github.com/${readmeRepo}` : "");
-  const m = /(?:github\.com[/:])([\w.-]+\/[\w.-]+?)(?:\.git)?(?:#.*)?$/.exec(
-    repoUrl,
-  );
+  const m = [/(?:github\.com[/:])([\w.-]+\/[\w.-]+?)(?:\.git)?(?:#.*)?$/.exec(repoUrl)].find((x) => x && isRepoSlug(x[1]!));
   const known = Object.values(TECHNOLOGIES).find((t) =>
     t.components.includes(purl),
   );

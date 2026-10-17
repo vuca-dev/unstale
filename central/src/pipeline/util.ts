@@ -54,6 +54,21 @@ export async function pool<T, R>(items: readonly T[], n: number, fn: (item: T, i
   return out;
 }
 
+/**
+ * Upstream text as one line of at most `max` characters: control characters, line and paragraph separators and
+ * bidirectional overrides become spaces, so a source cannot forge headings or instructions in what an edge renders.
+ */
+export function oneLine(s: string, max: number): string {
+  const t = s.replace(/[\p{Cc}\s\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]+/gu, " ").trim();
+  return [...t].length <= max ? t : [...t].slice(0, max - 1).join("").trimEnd() + "…";
+}
+
+/**
+ * A GitHub `owner/repo` as GitHub allows it. Slugs come from registry metadata and crawled pages and are put into
+ * API paths sent with the operator's token, so `..` or `.` (which a URL resolves to another API path) is refused.
+ */
+export const isRepoSlug = (s: string): boolean => /^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/(?!\.\.?$)[\w.-]{1,100}$/.test(s);
+
 export const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 /** Compares dotted numeric versions (`16.3.10` > `16.3.9`). */

@@ -1,14 +1,14 @@
 // Static export: a self-contained tree (root, indexes, every referenced shard verified, `.nojekyll`), byte-identical
 // on a rerun, technology indexes byte-identical to what the coverage service serves (its `components`), pruned first,
 // built aside so a failed export never replaces a good one.
-import { createHash } from "node:crypto";
+import { createHash, generateKeyPairSync, verify } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { DISCOVERY_VERSION } from "../src/onboarding/discovery.ts";
 import { CoverageService, createCoverageServer } from "../src/onboarding/service.ts";
-import { exportCatalog, savedJobs } from "../src/pipeline/export.ts";
+import { catalogSigner, exportCatalog, savedJobs } from "../src/pipeline/export.ts";
 import { catalogDir, centralDir } from "../src/pipeline/paths.ts";
 import { publishTechnology } from "../src/pipeline/publish.ts";
 import { sha256 } from "../src/pipeline/util.ts";
@@ -54,6 +54,20 @@ afterEach(() => {
 });
 
 describe("export", () => {
+  test("with a signing key, the root and every index carry a detached Ed25519 signature of their served bytes", () => {
+    const { privateKey, publicKey } = generateKeyPairSync("ed25519");
+    const r = exportCatalog(catalogDir(), out, { now: T0, sign: catalogSigner(privateKey.export({ type: "pkcs8", format: "pem" }).toString()) });
+    expect(r.signed).toBe(true);
+    for (const rel of ["v1/root.json", "v1/tech/next.json", "v1/tech/other.json"]) {
+      const sig = Buffer.from(readFileSync(join(out, `${rel}.sig`), "utf8"), "hex");
+      expect(verify(null, readFileSync(join(out, rel)), publicKey, sig)).toBe(true);
+    }
+    expect(readdirSync(join(out, "v1", "shards", "next")).some((f) => f.endsWith(".sig"))).toBe(false);
+    expect(exportCatalog(catalogDir(), out, { now: T0, sign: undefined }).signed).toBe(false);
+    expect(existsSync(join(out, "v1", "root.json.sig"))).toBe(false);
+    expect(() => catalogSigner(generateKeyPairSync("ec", { namedCurve: "P-256" }).privateKey.export({ type: "pkcs8", format: "pem" }).toString())).toThrow(/not ed25519/);
+  });
+
   test("self-contained and byte-identical on a rerun; history and central state stay out", () => {
     const r = exportCatalog(catalogDir(), out, { now: T0 });
     expect(r).toMatchObject({ technologies: 2, shards: 4 });

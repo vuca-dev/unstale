@@ -42,6 +42,9 @@ jobs:
       # Compiled into the client (option_env! in local/cli/src/main.rs): the service `unstale init` uses when
       # neither --service nor UNSTALE_SERVICE is given. Without it a release has no catalog location.
       UNSTALE_DEFAULT_SERVICE: ${{ vars.UNSTALE_DEFAULT_SERVICE }}
+      # Also compiled in (local/cli/src/sync.rs): the Ed25519 public key (hex) an HTTP catalog's root and indexes must
+      # be signed with; ingest.yml signs with the matching UNSTALE_SIGNING_KEY.
+      UNSTALE_CATALOG_KEY: ${{ vars.UNSTALE_CATALOG_KEY }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -56,6 +59,10 @@ jobs:
             https://*) echo "default service: $UNSTALE_DEFAULT_SERVICE" ;;
             *) echo "::error title=UNSTALE_DEFAULT_SERVICE is not https::Got '$UNSTALE_DEFAULT_SERVICE'"; exit 1 ;;
           esac
+          if ! [[ "$UNSTALE_CATALOG_KEY" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "::error title=UNSTALE_CATALOG_KEY is not set::Set the repository variable UNSTALE_CATALOG_KEY to the catalog's Ed25519 public key (64 hex characters; CONTRIBUTING.md). A release without it would accept an unsigned catalog."
+            exit 1
+          fi
       - name: Tag matches the crate version
         id: version
         run: |
@@ -82,6 +89,7 @@ jobs:
     timeout-minutes: 30
     env:
       UNSTALE_DEFAULT_SERVICE: ${{ vars.UNSTALE_DEFAULT_SERVICE }}
+      UNSTALE_CATALOG_KEY: ${{ vars.UNSTALE_CATALOG_KEY }}
       VERSION: ${{ needs.check.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -124,6 +132,7 @@ jobs:
           exe=unstale; [ "${{ matrix.key }}" = win32-x64 ] && exe=unstale.exe
           bin="npm/cli-${{ matrix.key }}/bin/$exe"
           grep -qaF "$UNSTALE_DEFAULT_SERVICE" "$bin" || { echo "::error::$bin does not contain $UNSTALE_DEFAULT_SERVICE"; exit 1; }
+          grep -qaF "$UNSTALE_CATALOG_KEY" "$bin" || { echo "::error::$bin does not contain the catalog key"; exit 1; }
           shasum -a 256 "$bin" "npm/dist/unstale-cli-${{ matrix.key }}-$VERSION.tgz"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

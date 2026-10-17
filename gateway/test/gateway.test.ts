@@ -1,12 +1,14 @@
 // The gateway: the coverage service's wire format answered from the exported catalog and a queue that holds new
 // packages between coverage runs; votes and address limits in memory only; a run takes what is held and acknowledges
 // it after its deploy; early runs within a daily count.
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { technologyId } from "../../central/src/onboarding/identity.ts";
 import { Coverage, handle, type Env } from "../src/index.ts";
 import { PendingQueue, settingsFrom, type Settings } from "../src/queue.ts";
 import { memorySql } from "./sqlite.ts";
 
+// The public registries: every package exists unless a test says otherwise.
+beforeEach(() => vi.stubGlobal("fetch", async () => new Response("{}")));
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
@@ -38,6 +40,19 @@ test("new packages are limited per address per hour; votes over the limit are no
   expect(q.list().find((r) => r.purl === "pkg:npm/known")).toBeUndefined();
   q.request("pkg:npm/c", "198.51.100.2", false, T);
   expect(q.request("pkg:npm/d", "198.51.100.3", false, T)).toMatchObject({ type: "refused", limit: "budget" });
+});
+
+test("an IPv6 /64 is one requester; new packages are capped per hour across all addresses", () => {
+  const q = new PendingQueue(memorySql(), settings({ perAddressPerHour: 2, newPerHour: 3 }));
+  q.request("pkg:npm/a", "2001:db8:1:2::1", false, T);
+  q.request("pkg:npm/b", "2001:db8:1:2:ffff::9", false, T);
+  expect(q.request("pkg:npm/c", "2001:db8:1:2:0:0:0:3", false, T)).toMatchObject({ type: "refused", limit: "address" });
+  q.request("pkg:npm/a", "2001:db8:1:2::77", false, T);
+  expect(q.list().find((r) => r.purl === "pkg:npm/a")?.demand).toBe(1);
+  q.request("pkg:npm/c", "2001:db8:1:3::1", false, T);
+  expect(q.request("pkg:npm/d", "198.51.100.1", false, T)).toMatchObject({ type: "refused", limit: "budget", retryAfter: 3600 });
+  expect(q.request("pkg:npm/a", "198.51.100.1", false, T)).toMatchObject({ type: "queued" });
+  expect(q.request("pkg:npm/d", "198.51.100.1", false, T + 3600_000)).toMatchObject({ type: "queued" });
 });
 
 test("an acknowledged run subtracts what it took; votes that arrived meanwhile stay for the next run", () => {
@@ -113,6 +128,17 @@ test("only one public identity is accepted, never from a browser", async () => {
   expect((await handle(post({ purl: "https://example.com/x" }), e)).status).toBe(400);
 });
 
+test("a name the public registry does not know is not queued", async () => {
+  const asked: string[] = [];
+  vi.stubGlobal("fetch", async (url: string) => (asked.push(url), new Response("not found", { status: url.includes("made-up") ? 404 : 200 })));
+  const { env: e } = env();
+  expect((await handle(post({ purl: "pkg:npm/made-up-name" }), e)).status).toBe(404);
+  expect((await handle(post({ purl: "pkg:npm/%40scope/real" }), e)).status).toBe(202);
+  expect(asked).toEqual(["https://registry.npmjs.org/made-up-name/latest", "https://registry.npmjs.org/@scope%2Freal/latest"]);
+  const auth = { Authorization: "Bearer drain-secret" };
+  expect(await (await handle(get("/internal/queue", auth), e)).json()).toEqual({ requests: [{ purl: "pkg:npm/%40scope/real", demand: 1 }] });
+});
+
 test("a refused registration is a 429 with Retry-After, as the coverage service answers", async () => {
   const { env: e } = env({}, { RATE_PER_HOUR: "1" });
   await handle(post({ purl: "pkg:npm/a" }), e);
@@ -144,7 +170,7 @@ test("everything else is the static catalog", async () => {
 test("a fast-tracked package starts the coverage workflow; without a token nothing is sent", async () => {
   const calls: { url: string; body: unknown }[] = [];
   vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
-    calls.push({ url, body: JSON.parse(String(init.body)) });
+    if (url.startsWith("https://api.github.com/")) calls.push({ url, body: JSON.parse(String(init.body)) });
     return new Response(null, { status: 204 });
   });
   const off = env({}, { FAST_TRACK_PER_DAY: "1" });

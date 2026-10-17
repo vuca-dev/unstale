@@ -10,7 +10,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use toml::Value;
 
-use crate::stack::{Dep, Kind, Package, walker};
+use crate::stack::{Dep, Kind, Package, Pin, walker};
 use crate::usage::{Role, path_role};
 
 /// PEP 503 name normalisation: lowercase, runs of `-`, `_` and `.` become one `-`.
@@ -197,6 +197,8 @@ fn pyproject(text: &str) -> Option<(Vec<Req>, bool)> {
 struct Lock {
     file: String,
     versions: BTreeMap<String, Version>,
+    /// The pinned version as written and its `sha256:` file hashes, by normalised name.
+    pins: BTreeMap<String, Pin>,
 }
 
 const LOCKFILES: &[&str] = &["uv.lock", "poetry.lock", "pdm.lock", "Pipfile.lock"];
@@ -207,13 +209,23 @@ fn read_locks(dir: &Path) -> Vec<Lock> {
     for f in LOCKFILES {
         let Ok(text) = std::fs::read_to_string(dir.join(f)) else { continue };
         let mut versions = BTreeMap::new();
+        let mut pins = BTreeMap::new();
+        let mut pin = |name: &str, version: &str, hashes: Vec<String>| {
+            let hashes: Vec<String> = hashes.into_iter().filter(|h| h.starts_with("sha256:")).collect();
+            if !hashes.is_empty() {
+                pins.entry(normalize(name)).or_insert(Pin { version: version.to_string(), hashes });
+            }
+        };
         if *f == "Pipfile.lock" {
             let Ok(j) = serde_json::from_str::<Json>(&text) else { continue };
             for section in ["default", "develop"] {
                 for (name, v) in j.get(section).and_then(Json::as_object).into_iter().flatten() {
-                    if let Some(ver) = v.get("version").and_then(Json::as_str).and_then(|s| parse_version(s.trim_start_matches("=="))) {
+                    let Some(raw) = v.get("version").and_then(Json::as_str).map(|s| s.trim_start_matches("==")) else { continue };
+                    if let Some(ver) = parse_version(raw) {
                         versions.entry(normalize(name)).or_insert(ver);
                     }
+                    let hashes = v.get("hashes").and_then(Json::as_array).into_iter().flatten().filter_map(Json::as_str).map(String::from).collect();
+                    pin(name, raw, hashes);
                 }
             }
         } else {
@@ -223,9 +235,13 @@ fn read_locks(dir: &Path) -> Vec<Lock> {
                 if let Some(v) = parse_version(ver) {
                     versions.entry(normalize(name)).or_insert(v);
                 }
+                // uv: `sdist` and `wheels`; Poetry and PDM: `files`. Each entry's `hash` is `sha256:<hex>`.
+                let files = p.get("sdist").into_iter().chain(["wheels", "files"].iter().filter_map(|k| p.get(*k)).filter_map(Value::as_array).flatten());
+                let hashes = files.filter_map(|x| x.get("hash").and_then(Value::as_str)).map(String::from).collect();
+                pin(name, ver, hashes);
             }
         }
-        out.push(Lock { file: f.to_string(), versions });
+        out.push(Lock { file: f.to_string(), versions, pins });
     }
     out
 }
@@ -377,8 +393,13 @@ pub fn detect(root: &Path, packages: &mut Vec<Package>, deps: &mut BTreeMap<Stri
                 (_, Kind::Library) => (spec_floor(&spec), format!("library floor of {spec}")),
                 _ => (spec_floor(&spec), format!("floor of {spec} (not in a lockfile)")),
             };
-            let entry = deps.entry(purl(&n)).or_insert_with(|| Dep { name: n.clone(), public_candidate: public, version: None, source: String::new() });
+            let entry = deps.entry(purl(&n)).or_insert_with(|| Dep { name: n.clone(), public_candidate: public, version: None, source: String::new(), pins: vec![] });
             entry.public_candidate &= public;
+            if let Some(pin) = lock.as_ref().and_then(|l| l.pins.get(&n))
+                && !entry.pins.contains(pin)
+            {
+                entry.pins.push(pin.clone());
+            }
             let lower = match (&entry.version, &version) {
                 (None, Some(_)) => true,
                 (Some(a), Some(b)) => b < a,
@@ -455,6 +476,17 @@ mod tests {
         let p = d.join(p);
         std::fs::create_dir_all(p.parent().unwrap()).unwrap();
         std::fs::write(p, t).unwrap();
+    }
+
+    #[test]
+    fn lockfiles_pin_versions_with_their_file_hashes() {
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "pyproject.toml", "[project]\nname = \"app\"\ndependencies = [\"acme-tools>=2\", \"httpx>=0.27\"]\n");
+        write(d.path(), "uv.lock", "version = 1\n\n[[package]]\nname = \"acme-tools\"\nversion = \"2.0\"\nsource = { registry = \"https://pypi.acme.internal/simple\" }\nsdist = { url = \"https://x/acme-tools-2.0.tar.gz\", hash = \"sha256:aa\", size = 1 }\nwheels = [{ url = \"https://x/acme_tools-2.0-py3-none-any.whl\", hash = \"sha256:bb\", size = 1 }]\n\n[[package]]\nname = \"httpx\"\nversion = \"0.27.0\"\nsource = { registry = \"https://pypi.org/simple\" }\n");
+        let (mut packages, mut deps, mut notes) = (vec![], BTreeMap::new(), vec![]);
+        detect(d.path(), &mut packages, &mut deps, &mut notes);
+        assert_eq!(deps["pkg:pypi/acme-tools"].pins, vec![Pin { version: "2.0".into(), hashes: vec!["sha256:aa".into(), "sha256:bb".into()] }]);
+        assert!(deps["pkg:pypi/httpx"].pins.is_empty(), "no hashes in the lockfile");
     }
 
     #[test]

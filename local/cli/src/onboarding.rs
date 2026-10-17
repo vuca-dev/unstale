@@ -24,12 +24,51 @@ pub struct Job {
 }
 #[derive(Default, Serialize, Deserialize)]
 pub struct Pending {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub registration_issue: Option<RegistrationIssue>,
     pub jobs: BTreeMap<String, Job>,
     #[serde(default)]
     pub unsubmitted: BTreeSet<String>,
     /// The service limited new registrations: Unix seconds before which none are sent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub deferred_until: Option<u64>,
+}
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum RegistrationIssue {
+    Temporary,
+    Rejected { ecosystem: String, status: u16 },
+    InvalidResponse,
+}
+#[derive(Debug)]
+struct HttpFailure(u16);
+impl std::fmt::Display for HttpFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { write!(f, "coverage service returned HTTP {}", self.0) }
+}
+impl std::error::Error for HttpFailure {}
+#[derive(Debug)]
+struct InvalidResponse;
+impl std::fmt::Display for InvalidResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { write!(f, "coverage service returned an invalid or mismatched response") }
+}
+impl std::error::Error for InvalidResponse {}
+fn registration_issue(error: &anyhow::Error, purl: &str) -> RegistrationIssue {
+    if error.downcast_ref::<InvalidResponse>().is_some() { return RegistrationIssue::InvalidResponse; }
+    if let Some(HttpFailure(status)) = error.downcast_ref::<HttpFailure>() {
+        if (400..500).contains(status) && !matches!(status, 408 | 425 | 429) {
+            return RegistrationIssue::Rejected { ecosystem: if purl.starts_with("pkg:pypi/") { "Python" } else if purl.starts_with("pkg:npm/") { "npm" } else { "Package" }.into(), status: *status };
+        }
+    }
+    RegistrationIssue::Temporary
+}
+fn registration_line(pending: &Pending) -> Option<String> {
+    if pending.unsubmitted.is_empty() { return None; }
+    if let Some(line) = deferred_line(pending) { return Some(line); }
+    Some(match pending.registration_issue.as_ref() {
+        Some(RegistrationIssue::Rejected { ecosystem, status }) => format!("Coverage partially connected · {ecosystem} registration was rejected (HTTP {status}). A tool-side fix is needed; existing results remain usable."),
+        Some(RegistrationIssue::InvalidResponse) => "Coverage partially connected · the service returned an invalid registration response. A tool-side fix is needed; existing results remain usable.".into(),
+        _ => "Coverage partially connected · some packages could not be registered. Run unstale status to retry; existing results remain usable.".into(),
+    })
 }
 /// The coverage service refused a new registration for now (HTTP 429): a rate or budget limit, not a failure.
 #[derive(Debug)]
@@ -121,14 +160,14 @@ fn request_via(a: &ureq::Agent, service: &str, purl: &str, post: bool) -> Result
         return Err(Limited { retry_after }.into());
     }
     if !r.status().is_success() {
-        bail!("coverage service returned HTTP {}", r.status());
+        return Err(HttpFailure(r.status().as_u16()).into());
     }
     let bytes = r
         .body_mut()
         .with_config()
         .limit(1024 * 1024)
         .read_to_vec()?;
-    let j: Job = serde_json::from_slice(&bytes)?;
+    let j: Job = serde_json::from_slice(&bytes).map_err(|_| InvalidResponse)?;
     if j.purl != purl
         || j.technology.is_empty()
         || !j
@@ -136,7 +175,7 @@ fn request_via(a: &ureq::Agent, service: &str, purl: &str, post: bool) -> Result
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || b"-._".contains(&b))
     {
-        bail!("coverage response identity mismatch");
+        return Err(InvalidResponse.into());
     }
     Ok(j)
 }
@@ -164,40 +203,38 @@ fn service_available(service: &str) -> bool {
         .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
         .is_some_and(|v| v.get("service").and_then(|x| x.as_str()) == Some("unstale-coverage"))
 }
-fn public_package(purl: &str) -> bool {
+/// Whether a package is the public one: the registry serves it, not marked private, and, when lockfiles state content
+/// hashes, it serves those same bytes at each locked version. A private registry's package whose name someone
+/// published publicly fails the hash check and is never submitted (its catalog would be the other package's notes).
+fn public_package(purl: &str, pins: &[stack::Pin]) -> bool {
+    let fetch = |url: String| -> Option<serde_json::Value> {
+        let mut r = agent().get(url).call().ok().filter(|r| r.status().is_success())?;
+        let bytes = r.body_mut().with_config().limit(4 * 1024 * 1024).read_to_vec().ok()?;
+        serde_json::from_slice(&bytes).ok()
+    };
     // PyPI has no private packages: a project page for the normalised name is the public identity.
     if let Some(name) = purl.strip_prefix("pkg:pypi/") {
-        return agent().get(format!("https://pypi.org/pypi/{}/json", encode(name))).call().is_ok_and(|r| r.status().is_success());
+        if pins.is_empty() {
+            return fetch(format!("https://pypi.org/pypi/{}/json", encode(name))).is_some();
+        }
+        return pins.iter().all(|pin| {
+            fetch(format!("https://pypi.org/pypi/{}/{}/json", encode(name), encode(&pin.version))).is_some_and(|v| {
+                v.get("urls").and_then(|u| u.as_array()).into_iter().flatten().filter_map(|f| f.pointer("/digests/sha256").and_then(|d| d.as_str())).any(|d| pin.hashes.contains(&format!("sha256:{d}")))
+            })
+        });
     }
     let Some(name) = util::npm_name(purl) else {
         return false;
     };
-    let Ok(mut r) = agent()
-        .get(format!(
-            "https://registry.npmjs.org/{}/latest",
-            encode(&name)
-        ))
-        .call()
-    else {
-        return false;
-    };
-    if !r.status().is_success() {
-        return false;
+    let public = |v: &serde_json::Value| v.get("name").and_then(|n| n.as_str()) == Some(&name) && v.get("private").and_then(|p| p.as_bool()) != Some(true);
+    if pins.is_empty() {
+        return fetch(format!("https://registry.npmjs.org/{}/latest", encode(&name))).is_some_and(|v| public(&v));
     }
-    let Ok(bytes) = r
-        .body_mut()
-        .with_config()
-        .limit(4 * 1024 * 1024)
-        .read_to_vec()
-    else {
-        return false;
-    };
-    serde_json::from_slice::<serde_json::Value>(&bytes)
-        .ok()
-        .is_some_and(|v| {
-            v.get("name").and_then(|n| n.as_str()) == Some(&name)
-                && v.get("private").and_then(|p| p.as_bool()) != Some(true)
+    pins.iter().all(|pin| {
+        fetch(format!("https://registry.npmjs.org/{}/{}", encode(&name), encode(&pin.version))).is_some_and(|v| {
+            public(&v) && v.pointer("/dist/integrity").and_then(|i| i.as_str()).is_some_and(|i| i.split_whitespace().any(|h| pin.hashes.iter().any(|x| x == h)))
         })
+    })
 }
 
 /// Standard skill discovery directories; no global config, credentials, or existing instructions overwritten.
@@ -638,14 +675,7 @@ fn coverage_summary(pending: &Pending) -> String {
     if seen.is_empty() {
         text += "  No acknowledged public coverage jobs in this local snapshot.\n";
     }
-    if let Some(line) = deferred_line(pending) {
-        text += &format!("  {line}\n");
-    } else if !pending.unsubmitted.is_empty() {
-        text += &format!(
-            "  {} requests not yet acknowledged; retry with unstale status.\n",
-            pending.unsubmitted.len()
-        );
-    }
+    if let Some(line) = registration_line(pending) { text += &format!("  {line}\n"); }
     text
 }
 // A source cannot terminate its evidence block by supplying its own Markdown fence.
@@ -732,6 +762,7 @@ fn finish(
         Line::new(format!("Mapped {} direct dependencies from {} and checked local references.", brief.direct, if brief.versions_from.contains(", ") { "workspace lockfiles" } else { &brief.versions_from }), Tone::Body),
     ];
     if let Some(issue) = issue { lines.push(Line::new(issue, Tone::Amber)); }
+    if let Some(line) = registration_line(pending) { lines.push(Line::new(line, if pending.deferred_until.is_some() { Tone::Muted } else { Tone::Amber })); }
     if !brief.limits.is_empty() { lines.push(Line::new("Scope · other dependency ecosystems are not covered; see report.", Tone::Amber)); }
     if !brief.version_notes.is_empty() { lines.push(Line::new("Versions · competing or out-of-date lockfiles; see report for which was read.", Tone::Amber)); }
     if brief.advisory_fixes > 0 {
@@ -755,11 +786,6 @@ fn finish(
         lines.push(Line::new("These are review candidates, not confirmed benefits or safe-to-apply changes.", Tone::Muted));
     }
     if let Some(footer) = coverage_footer(pending) { lines.push(Line::new(footer, Tone::Muted)); }
-    if let Some(line) = deferred_line(pending) {
-        lines.push(Line::new(line, Tone::Muted));
-    } else if !pending.unsubmitted.is_empty() {
-        lines.push(Line::new("Action needed · some registrations were not acknowledged. Run unstale status to retry.", Tone::Amber));
-    }
     if !brief.conflicts.is_empty() {
         lines.push(Line::new("Existing agent integrations preserved; details in the report. The prompt below uses the local skill directly.", Tone::Amber));
     }
@@ -1171,9 +1197,9 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
             .deps
             .iter()
             .filter(|(p, d)| !pending.jobs.contains_key(*p) && d.public_candidate)
-            .map(|(p, _)| {
+            .map(|(p, d)| {
                 let p = p.clone();
-                scope.spawn(move || if public_package(&p) { Some(p) } else { None })
+                scope.spawn(move || if public_package(&p, &d.pins) { Some(p) } else { None })
             })
             .collect();
         let total = handles.len();
@@ -1203,6 +1229,7 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
                 pending.jobs.insert(p.clone(), j);
                 pending.unsubmitted.remove(&p);
                 pending.deferred_until = None;
+                pending.registration_issue = None;
             }
             Err(e) if e.downcast_ref::<Limited>().is_some() => {
                 let retry_after = e.downcast_ref::<Limited>().map_or(3600, |l| l.retry_after);
@@ -1213,7 +1240,7 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
             }
             Err(e) => {
                 diagnostics.push(format!("Registration {p}: {e:#}"));
-                issue = Some("Some public coverage requests await acknowledgement; retry with unstale status".into());
+                pending.registration_issue = Some(registration_issue(&e, &p));
                 save(ctx, &pending)?;
                 break;
             }
@@ -1330,6 +1357,45 @@ mod tests {
             updated: "2026-10-15".into(),
             retry_at: None,
         }
+    }
+    #[test]
+    fn registration_retry_guidance_depends_on_whether_retry_can_help() {
+        let mut pending = Pending::default();
+        pending.unsubmitted.insert("pkg:pypi/aiohttp".into());
+        for status in [400, 401, 403, 404, 422] {
+            pending.registration_issue = Some(registration_issue(&HttpFailure(status).into(), "pkg:pypi/aiohttp"));
+            let line = registration_line(&pending).unwrap();
+            assert!(line.contains("Python registration was rejected") && line.contains("tool-side fix"));
+            assert!(!line.contains("retry") && !line.contains("Action needed"));
+            assert_eq!(coverage_summary(&pending).matches("registration was rejected").count(), 1);
+        }
+        for status in [408, 425, 500, 502, 503] {
+            pending.registration_issue = Some(registration_issue(&HttpFailure(status).into(), "pkg:pypi/aiohttp"));
+            assert!(registration_line(&pending).unwrap().contains("status to retry"));
+        }
+        pending.registration_issue = Some(registration_issue(&InvalidResponse.into(), "pkg:pypi/aiohttp"));
+        assert!(registration_line(&pending).unwrap().contains("invalid registration response"));
+        assert!(!registration_line(&pending).unwrap().contains("retry"));
+        let restored: Pending = serde_json::from_slice(&serde_json::to_vec(&pending).unwrap()).unwrap();
+        assert_eq!(registration_line(&restored), registration_line(&pending));
+        pending.unsubmitted.clear();
+        assert!(registration_line(&pending).is_none());
+    }
+    #[test]
+    fn rejected_http_registration_is_classified_without_reading_untrusted_error_text() {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buf = [0u8; 4096]; let _ = stream.read(&mut buf);
+            let body = "untrusted upstream explanation";
+            write!(stream, "HTTP/1.1 400 Bad Request\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body).unwrap();
+        });
+        let error = request_via(&agent(), &base, "pkg:pypi/aiohttp", true).unwrap_err();
+        server.join().unwrap();
+        assert!(matches!(registration_issue(&error, "pkg:pypi/aiohttp"), RegistrationIssue::Rejected { status: 400, .. }));
+        assert!(!error.to_string().contains("untrusted"));
     }
     #[test]
     fn budget_queue_and_unknown_states_never_claim_complete_coverage() {
