@@ -6,7 +6,10 @@
 // of the name; band populations weight the summary.
 //
 //   tsx scripts/scale-probe.ts [--per-band 8] [--concurrency 4] [--out <dir>] [--min-github 40]
-// Writes <out>/probe.jsonl (one line per package) and <out>/summary.json. Run against an empty UNSTALE_STORE, so the
+// A second docs pass right after the baseline measures the steady state when a release lands and nothing changed
+// (site signals, conditional requests, the shared page cache); releases in the last 90 days set how often a
+// technology's docs are checked under the release gate (docs/extract.ts). Writes <out>/probe.jsonl (one line per
+// package) and <out>/summary.json. Run against an empty UNSTALE_STORE, so the
 // store's growth is the probe's. Stops starting packages when GitHub's remaining requests fall under --min-github.
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
@@ -86,8 +89,11 @@ interface Row {
   band: string;
   outcome: "admitted" | "refused" | "no-sources" | "error";
   why?: string;
-  ms: { discover: number; admit: number; releases?: number; docs?: number; total: number };
+  ms: { discover: number; admit: number; releases?: number; docs?: number; docs2?: number; total: number };
   releases?: number;
+  releases_90d?: number;
+  /** The second pass: docs requests, pages checked page by page, sites skipped by a signal. */
+  second?: { requests: number; checked: number; quiet: number; sites: number };
   note_tokens?: number;
   docs_pages?: number;
   docs_sites?: number;
@@ -118,11 +124,18 @@ async function probe(purl: string, band: string, http: HttpClient): Promise<Row>
       const td = Date.now();
       const pass = await dailyPass(tech, { http, force: true });
       ms.docs = Date.now() - td;
+      const c2: Counter = { requests: {}, bytes: {} };
+      const t2 = Date.now();
+      const again = await scope.run(c2, () => dailyPass(tech, { http, force: true }));
+      ms.docs2 = Date.now() - t2;
+      for (const k of Object.keys(c2.requests)) c.requests[`second_${k}`] = c2.requests[k]!;
       const failed = pass ? Object.entries(pass.outcomes).filter(([k]) => k.startsWith("failed")).reduce((n, [, v]) => n + v, 0) : 0;
       return row({
         outcome: "admitted",
         why: verdict.why,
         releases: releases.notes.length,
+        releases_90d: releases.notes.filter((n) => Date.now() - Date.parse(n.date) < 90 * 86_400_000).length,
+        second: { requests: (c2.requests.docs ?? 0) + (c2.requests.github_api ?? 0), checked: again?.checked ?? 0, quiet: Object.keys(again?.quiet ?? {}).length, sites: again?.sites.length ?? 0 },
         note_tokens: releases.notes.reduce((n, x) => n + noteTokens(x.notes), 0),
         docs_pages: pass?.checked ?? 0,
         docs_sites: pass?.sites.length ?? 0,
@@ -217,6 +230,22 @@ async function main(): Promise<void> {
       note_tokens: per((r) => r.note_tokens ?? 0),
       weighted_mean: { seconds: weighted(secs), github_api_requests: weighted(gh), docs_pages: weighted(pages), store_bytes: weighted((r) => r.store_bytes ?? 0) },
     },
+    // Under the release gate a technology's docs are checked per release, plus one follow-up pass.
+    release_gate: (() => {
+      const passesPerDay = (r: Row) => ((r.releases_90d ?? 0) / 90) * 2;
+      const first = (r: Row) => (r.requests.docs ?? 0) + (r.requests.github_api ?? 0);
+      const second = (r: Row) => r.second?.requests ?? 0;
+      return {
+        releases_90d: per((r) => r.releases_90d ?? 0),
+        passes_per_day_weighted: Math.round(weighted(passesPerDay) * 1000) / 1000,
+        second_pass: { requests: per(second), seconds: per((r) => (r.ms.docs2 ?? 0) / 1000), sites_quiet: adm.reduce((n, r) => n + (r.second?.quiet ?? 0), 0), sites: adm.reduce((n, r) => n + (r.second?.sites ?? 0), 0) },
+        daily_requests_per_1k: {
+          daily_full_pass: Math.round(weighted(first) * 1000),
+          gate_if_docs_changed: Math.round(weighted((r) => passesPerDay(r) * first(r)) * 1000),
+          gate_if_unchanged: Math.round(weighted((r) => passesPerDay(r) * second(r)) * 1000),
+        },
+      };
+    })(),
     not_admitted: { seconds: per(secs, rows.filter((r) => r.outcome !== "admitted")), github_api_requests: per(gh, rows.filter((r) => r.outcome !== "admitted")) },
     throughput_per_hour: Math.round((rows.length / wall) * 3600),
     github: { limit: githubLimit, remaining_at_end: Number.isFinite(githubRemaining) ? githubRemaining : undefined },
