@@ -18,7 +18,8 @@
 #
 # Schedule: every 3 hours (the repository is public, so standard runners are free; a private one pays per minute, so
 # run it daily there). Model calls are cached per record, so a run with no new
-# releases makes none, and the coverage budget (UNSTALE_BUDGET_TOKENS) bounds what any run can spend. The gateway may
+# releases makes none, and the coverage budget (UNSTALE_BUDGET_TOKENS, with each technology's quarterly tokens) bounds
+# what any run can spend and so how fast new technologies drain; there is no daily count of them. The gateway may
 # also start a run early for a new package (`reason: fast-track`, at most FAST_TRACK_PER_DAY a day), but not while the
 # budget is spent: each drain tells the gateway until when.
 #

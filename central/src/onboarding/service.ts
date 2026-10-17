@@ -403,7 +403,7 @@ export class CoverageService {
     return this.budget.spent();
   }
   /** A budget refusal: the limits now at their cap join what this drain reports as holding work back (read once per
-   * limit, so a queue of new technologies refused one by one does not read the budget file twice each). */
+   * limit, so the jobs of a long drain refused one by one do not read the budget file twice each). */
   private heldBack(limit: Hold["limit"]) {
     if (this.holds.has(limit)) return;
     for (const h of this.budget.spent()) this.holds.set(h.limit, h);
@@ -432,17 +432,11 @@ export class CoverageService {
         this.heldBack("tokens");
         break;
       }
-      const isNew = this.tier(job) === 1;
-      const refused = this.budget.take(isNew ? ["runs", "new"] : "runs");
+      const refused = this.budget.takeRun();
       if (refused) {
-        const stage =
-          refused.kind === "new"
-            ? `Daily limit of new technologies reached; continues after ${day(Date.now() + refused.retryAfter * 1000)}`
-            : `Daily coverage budget reached; continues after ${day(Date.now() + refused.retryAfter * 1000)}`;
+        const stage = `Daily coverage budget reached; continues after ${day(Date.now() + refused.retryAfter * 1000)}`;
         if (job.state === "queued" && job.stage !== stage) this.save(job, "queued", stage);
-        this.heldBack(refused.kind === "new" ? "new_per_day" : refused.kind === "runs" ? "runs_per_day" : "unreadable");
-        // Only new technologies are capped by count: admitted work and overflow may still run today.
-        if (refused.kind === "new") continue;
+        this.heldBack(refused.kind === "runs" ? "runs_per_day" : "unreadable");
         break;
       }
       this.running.add(job.purl);

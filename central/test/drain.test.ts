@@ -28,7 +28,6 @@ afterEach(() => {
 const limits = (l: Partial<Limits> = {}): Limits => ({
   perAddressPerHour: 100,
   votesPerAddressPerHour: 1000,
-  newPerDay: 100,
   runsPerDay: 100,
   trustProxy: 0,
   tokensPerPeriod: 1_000_000,
@@ -73,6 +72,14 @@ test("drain works the queue until nothing more can start, then returns", async (
   for (const j of service.jobs.values()) expect(j.state).toBe("blocked");
 });
 
+test("no count of new technologies: a large repository's 400 packages all start in one drain while tokens last", async () => {
+  noSources();
+  const service = new CoverageService(50, { limits: limits({ runsPerDay: Infinity }) }).hold();
+  service.enqueue(Array.from({ length: 400 }, (_, i) => ({ purl: `pkg:npm/p${i}`, demand: 1 })));
+  expect(await service.drain(Date.now() + 60_000, 5_000, 10)).toEqual({ started: 400, unfinished: 0 });
+  expect(service.spent()).toEqual([]);
+});
+
 test("with the budget spent or the deadline passed, drain starts nothing and returns at once", async () => {
   const spy = noSources();
   const spent = new CoverageService(1, { limits: limits({ tokensPerPeriod: 0 }) }).hold();
@@ -89,19 +96,19 @@ test("with the budget spent or the deadline passed, drain starts nothing and ret
   expect(spy).not.toHaveBeenCalled();
 });
 
-test("a drain held back by the daily counts names each with its cap and reset", async () => {
+test("a drain held back by the daily run count names it with its cap and reset", async () => {
   noSources();
   // The clock (Date only; timers stay real) is frozen so a run across 00:00 UTC cannot change the day under the test.
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(Date.parse("2026-10-17T14:51:00Z"));
   const tomorrow = "2026-10-18T00:00:00.000Z";
-  const fresh = new CoverageService(1, { limits: limits({ newPerDay: 1 }) }).hold();
+  const fresh = new CoverageService(1, { limits: limits({ runsPerDay: 1 }) }).hold();
   fresh.enqueue(["a", "b"].map((n) => ({ purl: `pkg:npm/${n}`, demand: 1 })));
-  expect(await fresh.drain(Date.now() + 60_000, 5_000, 10)).toEqual({ started: 1, unfinished: 0, held: [{ limit: "new_per_day", cap: 1, resets: tomorrow }] });
-  expect(fresh.spent()).toEqual([{ limit: "new_per_day", cap: 1, resets: tomorrow }]);
-  // The counters persist, so the next drain the same day is held back by the same limit before starting anything.
-  const again = new CoverageService(1, { limits: limits({ newPerDay: 1, runsPerDay: 1 }) }).hold();
-  expect((await again.drain(Date.now() + 60_000, 5_000, 10)).held?.map((h) => h.limit)).toEqual(["new_per_day", "runs_per_day"]);
+  expect(await fresh.drain(Date.now() + 60_000, 5_000, 10)).toEqual({ started: 1, unfinished: 0, held: [{ limit: "runs_per_day", cap: 1, resets: tomorrow }] });
+  expect(fresh.spent()).toEqual([{ limit: "runs_per_day", cap: 1, resets: tomorrow }]);
+  // The counter persists, so the next drain the same day is held back by the same limit before starting anything.
+  const again = new CoverageService(1, { limits: limits({ runsPerDay: 1 }) }).hold();
+  expect(await again.drain(Date.now() + 60_000, 5_000, 10)).toMatchObject({ started: 0, held: [{ limit: "runs_per_day" }] });
 });
 
 test("statuses carry the queue position a waiting job would be told", () => {

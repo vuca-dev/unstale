@@ -22,7 +22,6 @@ afterAll(() => {
 const limits = (over: Partial<Limits> = {}): Limits => ({
   perAddressPerHour: 20,
   votesPerAddressPerHour: 1000,
-  newPerDay: 100,
   runsPerDay: 1000,
   trustProxy: 0,
   tokensPerPeriod: 1_000,
