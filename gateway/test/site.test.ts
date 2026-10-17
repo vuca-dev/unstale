@@ -109,6 +109,11 @@ test("pages: www and http go to the https apex; agents asking for Markdown get t
   expect(md.headers.get("Content-Type")).toMatch(/^text\/markdown/);
   expect(await md.text()).toBe("# What changed in next");
 
+  assets.set("/google0abc", "google-site-verification: google0abc.html");
+  const google = await get("https://unstale.sh/google0abc.html");
+  expect(google.status).toBe(200);
+  expect(await google.text()).toBe("google-site-verification: google0abc.html");
+
   const html = await get("https://unstale.sh/npm/next/", "text/html,*/*;q=0.8");
   expect(await html.text()).toBe("<html>next</html>");
   expect(html.headers.get("Vary")).toContain("Accept");

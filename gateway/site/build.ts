@@ -534,6 +534,9 @@ export function build(site: string, now = new Date().toISOString(), version?: st
   write(site, "llms-full.txt", llmsFull());
   write(site, ".well-known/security.txt", securityTxt(now));
   write(site, "_headers", HEADERS);
+  // Files that must sit at the root verbatim (search-engine ownership checks); see `page` in src/index.ts.
+  const statics = new URL("./static/", import.meta.url);
+  for (const f of readdirSync(statics)) write(site, f, readFileSync(new URL(f, statics), "utf8"));
   return pkgs.length;
 }
 

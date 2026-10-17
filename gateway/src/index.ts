@@ -311,6 +311,12 @@ export async function page(request: Request, env: Env, url: URL): Promise<Respon
   if (url.hostname.startsWith("www.") || url.protocol === "http:") {
     return Response.redirect(`https://${url.hostname.replace(/^www\./, "")}${url.pathname}${url.search}`, 301);
   }
+  // Google's ownership file must answer 200 at its exact .html path; the asset layer would redirect it to the
+  // extensionless path, so it is read from there.
+  if (/^\/google[0-9a-f]+\.html$/.test(url.pathname)) {
+    const file = await env.ASSETS.fetch(new URL(url.pathname.slice(0, -".html".length), url));
+    return new Response(file.body, { status: file.status, headers: { "Content-Type": "text/html; charset=utf-8" } });
+  }
   if (request.method === "GET" && url.pathname.endsWith("/") && prefersMarkdown(request.headers.get("Accept"))) {
     const md = await env.ASSETS.fetch(new URL(`${url.pathname}index.md`, url));
     if (md.ok) {
