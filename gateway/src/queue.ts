@@ -6,6 +6,12 @@
 // until when the budget is spent (a limit at its cap: release-note tokens, new technologies or runs a day), and until
 // then a new package is queued as always but starts no run, since a run could start nothing; the schedule takes it
 // after the reset.
+//
+// Rows read: a Durable Object bills every row a query visits (index rows too), and the free tier allows 5 million a
+// day. Registrations and status reads are frequent (an init registers hundreds of packages, then polls each of them on
+// every pass), so the request path never scans the table: the held rows and the line of new packages are read once per
+// wake of the object (one row each) and kept in memory, updated with each write, so a place in the line is a binary
+// search and the pending count is a size. A run's acknowledgement (rare) drops them, and the next request reads them again.
 import { AddressLimiter, Voters, type Refusal } from "../../central/src/onboarding/requesters.ts";
 
 /** The SQL surface used: a Durable Object's `ctx.storage.sql`, or node:sqlite in tests. */
@@ -86,12 +92,72 @@ const RUN_UNSTARTED_MS = 6 * 3600_000;
 /** Durations of recent early runs kept for the typical time a client is shown. */
 const RUN_DURATIONS_KEPT = 10;
 
+interface Held {
+  demand: number;
+  firstSeen: number;
+  known: boolean;
+}
+
+/** The held rows as the table has them, and the new packages among them in line order: most requested first, then
+ * first asked, then by name (the order `position` documents). */
+class Line {
+  readonly rows = new Map<string, Held>();
+  private readonly order: string[] = [];
+
+  constructor(rows: Record<string, unknown>[]) {
+    for (const r of rows) this.rows.set(String(r.purl), { demand: Number(r.demand), firstSeen: Number(r.first_seen), known: Number(r.known) !== 0 });
+    for (const [purl, h] of this.rows) if (!h.known) this.order.push(purl);
+    this.order.sort((a, b) => (this.ahead(a, b) ? -1 : this.ahead(b, a) ? 1 : 0));
+  }
+
+  get length(): number {
+    return this.order.length;
+  }
+
+  private ahead(a: string, b: string): boolean {
+    const x = this.rows.get(a)!;
+    const y = this.rows.get(b)!;
+    if (x.demand !== y.demand) return x.demand > y.demand;
+    if (x.firstSeen !== y.firstSeen) return x.firstSeen < y.firstSeen;
+    return a < b;
+  }
+
+  /** Where `purl` is (or would go) in the line: the number of new packages ahead of it. */
+  private place(purl: string): number {
+    let lo = 0;
+    let hi = this.order.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (this.order[mid] !== purl && this.ahead(this.order[mid]!, purl)) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  }
+
+  /** The 0-based place of a held new package, or -1. */
+  indexOf(purl: string): number {
+    if (this.rows.get(purl)?.known !== false) return -1;
+    const i = this.place(purl);
+    return this.order[i] === purl ? i : -1;
+  }
+
+  /** A row written: inserted, or its demand raised. */
+  set(purl: string, held: Held): void {
+    const i = this.indexOf(purl);
+    if (i >= 0) this.order.splice(i, 1);
+    this.rows.set(purl, held);
+    if (!held.known) this.order.splice(this.place(purl), 0, purl);
+  }
+}
+
 export class PendingQueue {
   private readonly sql: Sql;
   private readonly settings: Settings;
   private readonly addresses: AddressLimiter;
   private readonly votes: AddressLimiter;
   private readonly voters = new Voters();
+  /** The held rows, read once per wake of the object; undefined until needed and after an acknowledgement. */
+  private cached?: Line;
   constructor(sql: Sql, settings: Settings) {
     this.sql = sql;
     this.settings = settings;
@@ -106,12 +172,21 @@ export class PendingQueue {
   private vote(purl: string, address: string, known: boolean, now: number): void {
     if (this.voters.has(purl, address) || this.votes.take(address, now)) return;
     this.voters.add(purl, address);
+    const line = this.line();
     this.sql.exec(
       "INSERT INTO pending (purl, demand, first_seen, known) VALUES (?, 1, ?, ?) ON CONFLICT(purl) DO UPDATE SET demand = demand + 1",
       purl,
       now,
       known ? 1 : 0,
     );
+    // As the statement did: a held row keeps its first request and its kind.
+    const held = line.rows.get(purl);
+    line.set(purl, held ? { ...held, demand: held.demand + 1 } : { demand: 1, firstSeen: now, known });
+  }
+
+  /** The held rows: read whole once (one row each), then kept in step with every write. */
+  private line(): Line {
+    return (this.cached ??= new Line(this.sql.exec("SELECT purl, demand, first_seen, known FROM pending").toArray()));
   }
 
   /** A client's request; `known` when central already has a job for the package (its status is published). */
@@ -135,6 +210,7 @@ export class PendingQueue {
     this.setMeta("new_count", String(thisHour + 1));
     this.voters.add(purl, address);
     this.sql.exec("INSERT INTO pending (purl, demand, first_seen, known) VALUES (?, 1, ?, 0)", purl, now);
+    this.line().set(purl, { demand: 1, firstSeen: now, known: false });
     const fastTrack = this.fastTrack(now);
     if (fastTrack) this.setRun(purl, "dispatched", now);
     return { type: "queued", ...this.position(purl)!, fastTrack };
@@ -150,20 +226,20 @@ export class PendingQueue {
   }
 
   private count(): number {
-    return Number(this.sql.exec("SELECT COUNT(*) AS n FROM pending").toArray()[0]?.n ?? 0);
+    return this.line().rows.size;
   }
 
   held(purl: string): boolean {
-    return this.sql.exec("SELECT 1 FROM pending WHERE purl = ?", purl).toArray().length > 0;
+    return this.line().rows.has(purl);
   }
 
   /** The place of a held new package: most requested first, then first asked. Central drains new ones by demand too,
    * but breaks ties by adoption (registry downloads), which the gateway does not read: among equal demand this place
    * is an estimate. */
   position(purl: string): { position: number; length: number } | undefined {
-    const rows = this.sql.exec("SELECT purl FROM pending WHERE known = 0 ORDER BY demand DESC, first_seen ASC, purl ASC").toArray();
-    const i = rows.findIndex((r) => r.purl === purl);
-    return i < 0 ? undefined : { position: i + 1, length: rows.length };
+    const line = this.line();
+    const i = line.indexOf(purl);
+    return i < 0 ? undefined : { position: i + 1, length: line.length };
   }
 
   /** Everything held, for a coverage run to take. */
@@ -175,6 +251,8 @@ export class PendingQueue {
 
   /** A deployed run took these: their demand is subtracted, so votes that arrived meanwhile stay for the next run. */
   ack(taken: Request[], now = Date.now()): number {
+    // Rare (once a run): the held rows are read again on the next request rather than kept in step here.
+    this.cached = undefined;
     let removed = 0;
     for (const { purl, demand } of taken) {
       if (typeof purl !== "string" || !Number.isFinite(demand)) continue;

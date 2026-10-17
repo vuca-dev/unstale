@@ -254,14 +254,44 @@ function authorized(request: Request, token: string | undefined): boolean {
   return diff === 0;
 }
 
+/** A request the client must change: answered 400 (or its own status), never retried as it is. */
+class BadRequest extends Error {
+  readonly status: number;
+  constructor(message: string, status = 400) {
+    super(message);
+    this.status = status;
+  }
+}
+
+/** Reads a request's input; anything it throws is the input's fault. */
+async function input<T>(read: () => T | Promise<T>): Promise<T> {
+  try {
+    return await read();
+  } catch (error) {
+    throw error instanceof BadRequest ? error : new BadRequest(error instanceof Error ? error.message : "Invalid request");
+  }
+}
+
+/** Seconds until 00:00 UTC, when the Durable Objects free tier's daily allowance resets. */
+const untilUtcMidnight = (now = Date.now()) => Math.max(60, Math.ceil((86_400_000 - (now % 86_400_000)) / 1000));
+
+/** Anything else (storage, a daily allowance, the runtime) is the service's: a temporary 503 with Retry-After, so a
+ * client defers and retries instead of reading it as a rejection of the package. */
+function unavailable(error: unknown): Response {
+  const message = error instanceof Error ? error.message : String(error);
+  console.log(`unavailable: ${message.slice(0, 300)}`);
+  const retryAfter = /exceeded allowed|free tier/i.test(message) ? untilUtcMidnight() : 60;
+  return json(503, { error: "The coverage service is temporarily unavailable; retry later", retry_after: retryAfter }, { "Retry-After": String(retryAfter) });
+}
+
 /** The package URL of a request body: one public identity, nothing else. */
 async function purlOf(request: Request): Promise<string> {
   const body = await request.text();
-  if (body.length > 512) throw Object.assign(new Error("One public identity only"), { status: 413 });
+  if (body.length > 512) throw new BadRequest("One public identity only", 413);
   const parsed = JSON.parse(body) as unknown;
-  if (!parsed || typeof parsed !== "object" || Object.keys(parsed).join() !== "purl") throw new Error("Expected {\"purl\": ...} only");
+  if (!parsed || typeof parsed !== "object" || Object.keys(parsed).join() !== "purl") throw new BadRequest("Expected {\"purl\": ...} only");
   const purl = (parsed as { purl: unknown }).purl;
-  if (typeof purl !== "string" || purl.length > 230) throw new Error("purl must be a string of at most 230 characters");
+  if (typeof purl !== "string" || purl.length > 230) throw new BadRequest("purl must be a string of at most 230 characters");
   packageIdentity(purl);
   return purl;
 }
@@ -274,7 +304,7 @@ export async function handle(request: Request, env: Env): Promise<Response> {
     if (request.method === "POST" && url.pathname === "/coverage") {
       if (!request.headers.get("Content-Type")?.startsWith("application/json")) return json(415, { error: "application/json required" });
       if (request.headers.get("Origin")) return json(403, { error: "Browser registration is not supported" });
-      const purl = await purlOf(request);
+      const purl = await input(() => purlOf(request));
       const address = request.headers.get("CF-Connecting-IP") ?? "unknown";
       const known = await published(env, url, purl);
       if (!known && !(await queue().held(purl)) && !(await registered(purl))) return json(404, { error: "No public package with this identity" });
@@ -290,7 +320,7 @@ export async function handle(request: Request, env: Env): Promise<Response> {
     }
     if (request.method === "GET" && url.pathname === "/coverage") {
       const purl = url.searchParams.get("purl") ?? "";
-      packageIdentity(purl);
+      await input(() => packageIdentity(purl));
       const known = await published(env, url, purl);
       if (known) return json(200, known);
       const at = await queue().view(purl);
@@ -300,18 +330,19 @@ export async function handle(request: Request, env: Env): Promise<Response> {
       if (!authorized(request, env.DRAIN_TOKEN)) return json(401, { error: "Unauthorized" });
       if (request.method === "GET" && url.pathname === "/internal/queue") return json(200, { requests: await queue().list() });
       if (request.method === "POST" && url.pathname === "/internal/ack") {
-        const { requests } = (await request.json()) as { requests?: Taken[] };
+        const { requests } = (await input(() => request.json())) as { requests?: Taken[] };
         return json(200, { removed: await queue().ack(Array.isArray(requests) ? requests : []) });
       }
       if (request.method === "POST" && url.pathname === "/internal/progress") {
-        const body = await request.json();
-        return json(200, { reported: await queue().report(progressOf(body), budgetOf(body)) });
+        const body = await input(() => request.json());
+        const [updates, budget] = await input(() => [progressOf(body), budgetOf(body)] as const);
+        return json(200, { reported: await queue().report(updates, budget) });
       }
     }
     return page(request, env, url);
   } catch (error) {
-    const status = (error as { status?: number }).status ?? 400;
-    return json(status, { error: error instanceof Error ? error.message.slice(0, 200) : "Invalid request" });
+    if (error instanceof BadRequest) return json(error.status, { error: error.message.slice(0, 200) });
+    return unavailable(error);
   }
 }
 
