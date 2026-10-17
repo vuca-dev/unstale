@@ -5,6 +5,7 @@ import { join } from "node:path";
 import {
   CoverageService,
   createCoverageServer,
+  docsCoverage,
 } from "../src/onboarding/service.ts";
 import {
   npmIdentity,
@@ -283,4 +284,14 @@ test("a cached release from a different monorepo component is retracted, never r
   ).toBe(1);
   expect(store.records["ui:bad"]?.status).toBe("retracted");
   expect(store.ingested).toEqual({});
+});
+
+test("documentation reads as monitored only when pages were listed and all checked", () => {
+  const job = (enumeration: string, docs_done: number, docs_total: number, docs_failed = 0) => ({ enumeration, docs_done, docs_total, docs_failed });
+  expect(docsCoverage(job("complete", 212, 212))).toBe("documentation monitored (212/212 pages)");
+  expect(docsCoverage(job("empty", 0, 0))).toBe("documentation not monitored: a docs site was found but listed no pages");
+  expect(docsCoverage(job("complete", 0, 0))).toBe("documentation coverage partial (0/0 pages)");
+  expect(docsCoverage(job("unavailable", 0, 0))).toBe("documentation not found (0/0 pages)");
+  expect(docsCoverage(job("partial", 1653, 1657))).toBe("documentation coverage partial (1653/1657 pages)");
+  expect(docsCoverage(job("complete", 10, 10, 2))).toBe("documentation coverage partial (8/10 pages)");
 });

@@ -3,11 +3,13 @@
 
 use aho_corasick::{AhoCorasick, MatchKind};
 use ignore::gitignore::{Gitignore, GitignoreBuilder};
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::Path;
+use std::cell::RefCell;
 use std::sync::Mutex;
 
 use crate::stack::walker;
+use crate::util::{normalize_purl, purl_name};
 
 const TEXT_EXT: &[&str] = &[
     "js", "jsx", "ts", "tsx", "mjs", "cjs", "mts", "cts", "json", "jsonc", "json5", "prisma", "graphql", "gql", "yml", "yaml", "toml",
@@ -26,6 +28,230 @@ pub fn foreign_code(path: &str, ecosystem: &str) -> bool {
     let ext = path.rsplit_once('.').map(|(_, x)| x.to_ascii_lowercase()).unwrap_or_default();
     CODE_EXT.iter().any(|(e, exts)| *e != ecosystem && exts.contains(&ext.as_str()))
         && !CODE_EXT.iter().any(|(e, exts)| *e == ecosystem && exts.contains(&ext.as_str()))
+}
+
+/// Whether `path` is source code of `ecosystem`'s own languages.
+fn own_code(path: &str, ecosystem: &str) -> bool {
+    let ext = path.rsplit_once('.').map(|(_, x)| x.to_ascii_lowercase()).unwrap_or_default();
+    CODE_EXT.iter().any(|(e, exts)| *e == ecosystem && exts.contains(&ext.as_str()))
+}
+
+/// A literal that is one plain word (`cache`, `plugins`, `Comment`, `.extend`): every codebase writes it for its own
+/// reasons, so on its own it is no sign of a technology. Identifiers of more than one word (`setTimeout`,
+/// `minimumCacheTTL`), paths, qualified names (`z.object`) and file names are not plain words.
+pub fn plain_word(lit: &str) -> bool {
+    let s = lit.strip_prefix('.').unwrap_or(lit);
+    let mut cs = s.chars();
+    cs.next().is_some_and(|c| c.is_ascii_alphabetic()) && cs.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+}
+
+/// The literals whose hits are the files that name a package as a module, by the ecosystem's own syntax: a quoted
+/// npm specifier or subpath (`'vitest'`, `"next/image"`; imports, `require`, manifests, CSS `@import`), a Python
+/// `import`/`from` or a quoted requirement (`"pydantic>=2"` in `pyproject.toml`). Matched in `find`'s one pass.
+pub fn naming_lits(purl: &str) -> Vec<String> {
+    let Some(name) = purl_name(purl) else { return vec![] };
+    if normalize_purl(purl).starts_with("pkg:pypi/") {
+        // A module boundary after the name, so `requests` is not named by `import requests_cache`.
+        let module = name.to_ascii_lowercase().replace('-', "_");
+        let mut out = vec![];
+        for end in [" ", ".", ",", "\n", "\r", ";"] {
+            out.push(format!("import {module}{end}"));
+            out.push(format!("from {module}{end}"));
+        }
+        for q in ["'", "\""] {
+            for end in [q, ">", "<", "=", "~", "!", "[", " ", ";"] {
+                out.push(format!("{q}{name}{end}"));
+            }
+        }
+        return out;
+    }
+    ["'", "\""].iter().flat_map(|q| [format!("{q}{name}{q}"), format!("{q}{name}/")]).collect()
+}
+
+/// Which files can evidence one technology, and which of those are about it.
+///
+/// A file can use a technology when it is source code of the technology's ecosystem in a package that declares it
+/// (any enclosing one: a workspace package may rely on the root's dependencies), or when it names the technology: its
+/// text names one of its packages as a module (`naming_lits`; a manifest listing it), its path names a package
+/// (`vitest.config.ts`, `.eslintrc.json`, `prisma/schema.prisma`, `*.prisma`), or the technology's records name it as a
+/// file (`tsconfig.json`): a config file it reads. Data, config and markup files that do none of this (dashboard JSON,
+/// translations, Go linter YAML, Kubernetes manifests) never evidence it, nor does another ecosystem's code.
+///
+/// A file is about the technology when it is code that imports it or its path names it. A plain word (`plain_word`),
+/// or a qualified literal matched only by a plain-word tail (`test.describe` as `describe`), is shown as evidence only
+/// from those files, and they come before any other: they are where its calls are. The queue's order still counts a
+/// plain word in any file that can use the technology (`Evidence::used`).
+pub struct Scope<'a> {
+    ecosystem: &'a str,
+    owners: &'a [&'a str],
+    /// Lowercase package names and npm scopes, for path names.
+    stems: Vec<String>,
+    naming: HashSet<&'a str>,
+    config_names: BTreeSet<String>,
+    hits: &'a Hits,
+    /// `Repo::paths`, which `Hits::ix` indexes.
+    paths: &'a [String],
+    /// Per path index: whether the file names the technology's packages; and its `file`, once (0 not yet; else 1 +
+    /// `None`/`Some(false)`/`Some(true)`): the same files come up for every literal.
+    named_at: Vec<bool>,
+    memo: RefCell<Vec<u8>>,
+}
+
+impl<'a> Scope<'a> {
+    /// `purls`: the technology's components; `lits`: its literals (the file-name ones mark config files it reads).
+    pub fn new<'l>(
+        ecosystem: &'a str,
+        owners: &'a [&'a str],
+        purls: impl IntoIterator<Item = &'l String>,
+        lits: impl IntoIterator<Item = &'l String>,
+        hits: &'a Hits,
+        paths: &'a [String],
+    ) -> Self {
+        let mut stems = vec![];
+        let mut naming = HashSet::new();
+        let mut named_at = vec![false; paths.len()];
+        for p in purls {
+            for l in naming_lits(p) {
+                naming.extend(hits.usage.get(&l).into_iter().flatten().map(String::as_str));
+                for x in hits.ix.get(&l).into_iter().flatten() {
+                    if let Some(n) = named_at.get_mut(*x as usize) {
+                        *n = true;
+                    }
+                }
+            }
+            let name = purl_name(p).unwrap_or_default().to_ascii_lowercase();
+            // `@playwright/test` names `playwright`, not every `test/` directory; `vitest` names `vitest`.
+            let stem = name.strip_prefix('@').map_or(name.as_str(), |scoped| scoped.split('/').next().unwrap_or(""));
+            if stem.len() >= 3 && !stems.iter().any(|s| s == stem) {
+                stems.push(stem.to_string());
+            }
+        }
+        let config_names = lits
+            .into_iter()
+            .filter(|l| l.contains('.') && !l.contains(char::is_whitespace) && !l.contains('/'))
+            .map(|l| l.to_ascii_lowercase())
+            .collect();
+        let memo = RefCell::new(vec![0; paths.len()]);
+        Scope { ecosystem, owners, stems, naming, config_names, hits, paths, named_at, memo }
+    }
+
+    /// Whether the path names one of the technology's packages: a directory, the base name's head or first word, or
+    /// the extension equal to it, or to it plus `rc` (`.eslintrc`), or a prefix of it of 5 or more characters that
+    /// ends inside a word (`tailwind` for tailwindcss, not `react` for react-icons).
+    fn path_names(&self, path: &str) -> bool {
+        let lower = path.to_ascii_lowercase();
+        let (dirs, base) = lower.rsplit_once('/').unwrap_or(("", lower.as_str()));
+        let bare = base.trim_start_matches('.');
+        let head = bare.split('.').next().unwrap_or("");
+        let word = head.split(['-', '_']).next().unwrap_or("");
+        let ext = bare.rsplit_once('.').map_or("", |(_, x)| x);
+        let mut segs = dirs.split('/').filter(|d| !d.is_empty()).map(|d| d.trim_start_matches('.')).chain([head, word, ext]);
+        segs.any(|seg| {
+            self.stems.iter().any(|s| {
+                seg == s
+                    || seg.strip_prefix(s.as_str()) == Some("rc")
+                    || (seg.len() >= 5 && s.strip_prefix(seg).is_some_and(|rest| rest.starts_with(|c: char| c.is_ascii_alphanumeric())))
+            })
+        })
+    }
+
+    #[cfg(test)]
+    fn path_names_for_test(self) -> impl Fn(&str) -> bool {
+        move |p| self.path_names(p)
+    }
+
+    /// `None` when the file cannot evidence the technology; else whether it is about it.
+    pub fn file(&self, path: &str) -> Option<bool> {
+        self.classify(path, self.naming.contains(path))
+    }
+
+    /// `file` for the path at index `x` of `Repo::paths`, once per file.
+    fn file_at(&self, x: u32) -> Option<bool> {
+        let path = self.paths.get(x as usize)?;
+        let x = x as usize;
+        let known = self.memo.borrow()[x];
+        if known != 0 {
+            return [None, Some(false), Some(true)][known as usize - 1];
+        }
+        let f = self.classify(path, self.named_at[x]);
+        self.memo.borrow_mut()[x] = match f {
+            None => 1,
+            Some(false) => 2,
+            Some(true) => 3,
+        };
+        f
+    }
+
+    fn classify(&self, path: &str, named: bool) -> Option<bool> {
+        if foreign_code(path, self.ecosystem) {
+            return None;
+        }
+        let code = own_code(path, self.ecosystem);
+        if self.path_names(path) || (code && named) {
+            return Some(true);
+        }
+        let base = path.rsplit('/').next().unwrap_or(path).to_ascii_lowercase();
+        if named || self.config_names.contains(&base) {
+            return Some(false);
+        }
+        let declared = self.owners.is_empty()
+            || self.owners.iter().any(|o| *o == "." || path.strip_prefix(*o).is_some_and(|rest| rest.starts_with('/')));
+        (code && declared).then_some(false)
+    }
+
+    /// Whether a whole-token hit of `lit` in `path` (one of its `Hits::whole` files) shows the technology in use, by the
+    /// rule evidence is shown with: the applied check.
+    pub fn counts(&self, lit: &str, path: &str) -> bool {
+        self.file(path).is_some_and(|about| about || !plain_word(lit))
+    }
+
+    /// A literal's evidence in one pass over its hits (`by_path`: `role` is the path's own role, which `find`'s order
+    /// already follows, so only the first file is asked).
+    pub fn evidence(&self, lit: &str, role: impl Fn(&str) -> Role, by_path: bool) -> Evidence {
+        let plain = plain_word(lit);
+        let tails = self.hits.tail_only.get(lit);
+        let mut best: Vec<(bool, Role, usize, &str)> = Vec::with_capacity(4);
+        let mut e = Evidence::default();
+        for (i, x) in self.hits.ix.get(lit).into_iter().flatten().enumerate() {
+            let Some(about) = self.file_at(*x) else { continue };
+            let p = &self.paths[*x as usize];
+            let r = if by_path {
+                if !e.used {
+                    e.app = role(p) == Role::App;
+                }
+                Role::App
+            } else {
+                let r = role(p);
+                e.app |= r == Role::App;
+                r
+            };
+            e.used = true;
+            if !about && (plain || tails.is_some_and(|t| t.contains(x))) {
+                continue;
+            }
+            let key = (!about, r, i, p.as_str());
+            if best.len() < 3 || key < best[2] {
+                let at = best.partition_point(|k| *k < key);
+                best.insert(at, key);
+                best.truncate(3);
+            }
+        }
+        e.files = best.into_iter().map(|(not_about, _, _, p)| (p.to_string(), !not_about)).collect();
+        e
+    }
+}
+
+/// A literal's evidence for one technology (`Scope::evidence`).
+#[derive(Debug, Default)]
+pub struct Evidence {
+    /// Up to three files that show it is used, files about the technology first, then by role, then in `find`'s
+    /// order; each with whether it is about the technology.
+    pub files: Vec<(String, bool)>,
+    /// It occurs in a file that can use the technology, which is what orders the queue. A plain word counts too:
+    /// ignoring it outside files about the technology lost a held-out key change in the release gate.
+    pub used: bool,
+    /// One of those files is application code.
+    pub app: bool,
 }
 
 /// Text read as data rather than code (fixtures, corpora, recorded responses) when it sits in a test role.
@@ -261,6 +487,12 @@ pub struct Hits {
     pub usage: HashMap<String, Vec<String>>,
     /// literal → files where it is a whole token (`[\w-]` boundaries) or the file's name.
     pub whole: HashMap<String, Vec<String>>,
+    /// literal → the same files as `usage`, in its order, as indices into `Repo::paths`: per-technology work over
+    /// millions of hits indexes rather than hashes paths.
+    pub ix: HashMap<String, Vec<u32>>,
+    /// Qualified literal → files (indices into `Repo::paths`) it matched only by a plain-word tail (`test.describe` as
+    /// `describe`, not the whole literal). Such a hit counts only where the technology is named (`Scope`).
+    pub tail_only: HashMap<String, HashSet<u32>>,
 }
 
 
@@ -301,6 +533,8 @@ pub fn find(repo: &Repo, usage_lits: &BTreeSet<String>, whole_lits: &BTreeSet<St
     // only evaluates the literals whose patterns occur in it.
     let usage_ix: Vec<(&String, usize, Option<usize>, bool)> =
         usage_lits.iter().map(|l| (l, idx[l], tail_of(l).and_then(|t| idx.get(&t).copied()), is_word(l))).collect();
+    // Literals whose tail is a plain word: a hit by the tail alone is recorded as such.
+    let plain_tail: Vec<bool> = usage_ix.iter().map(|(_, _, t, _)| t.is_some_and(|t| plain_word(&patterns[t]))).collect();
     let whole_ix: Vec<(&String, usize)> = whole_lits.iter().map(|l| (l, idx[l])).collect();
     let mut usage_by_pat: Vec<Vec<usize>> = vec![vec![]; patterns.len()];
     for (i, (_, p, t, _)) in usage_ix.iter().enumerate() {
@@ -333,9 +567,9 @@ pub fn find(repo: &Repo, usage_lits: &BTreeSet<String>, whole_lits: &BTreeSet<St
             }
             *bits.entry(p).or_default() |= v;
         }
-        let (mut usage, mut whole): (Vec<usize>, Vec<usize>) = (vec![], vec![]);
+        let (mut usage, mut whole, mut tail): (Vec<usize>, Vec<usize>, Vec<usize>) = (vec![], vec![], vec![]);
         if bits.is_empty() {
-            return (usage, whole);
+            return (usage, whole, tail);
         }
         let has = |p: usize, bit: u8| bits.get(&p).is_some_and(|v| v & bit != 0);
         let mut cand: Vec<usize> = bits.keys().flat_map(|p| usage_by_pat[*p].iter().copied()).collect();
@@ -343,9 +577,13 @@ pub fn find(repo: &Repo, usage_lits: &BTreeSet<String>, whole_lits: &BTreeSet<St
         cand.dedup();
         for i in cand {
             let (_, p, t, word_lit) = usage_ix[i];
-            let hit = if word_lit { has(p, TOKEN) } else { has(p, ANY) || t.is_some_and(|t| has(t, TOKEN)) };
-            if hit {
+            let full = if word_lit { has(p, TOKEN) } else { has(p, ANY) };
+            let by_tail = !word_lit && !full && t.is_some_and(|t| has(t, TOKEN));
+            if full || by_tail {
                 usage.push(i);
+            }
+            if by_tail && plain_tail[i] {
+                tail.push(i);
             }
         }
         for i in bits.keys().flat_map(|p| whole_by_pat[*p].iter().copied()) {
@@ -353,14 +591,19 @@ pub fn find(repo: &Repo, usage_lits: &BTreeSet<String>, whole_lits: &BTreeSet<St
                 whole.push(i);
             }
         }
-        (usage, whole)
+        (usage, whole, tail)
     });
     // Hit files by index into `repo.files` (sorted by path) until the end: a large repository has millions of
     // literal × file hits.
+    let at: HashMap<&str, u32> = repo.paths.iter().enumerate().map(|(i, p)| (p.as_str(), i as u32)).collect();
+    let path_ix: Vec<u32> = repo.files.iter().map(|(p, _)| at.get(p.as_str()).copied().unwrap_or(u32::MAX)).collect();
     let mut usage_files: Vec<Vec<usize>> = vec![vec![]; usage_ix.len()];
-    for (f, (usage, whole)) in per_file.into_iter().enumerate() {
+    for (f, (usage, whole, tail)) in per_file.into_iter().enumerate() {
         for i in usage {
             usage_files[i].push(f);
+        }
+        for i in tail {
+            hits.tail_only.entry(usage_ix[i].0.clone()).or_default().insert(path_ix[f]);
         }
         for i in whole {
             hits.whole.entry(whole_ix[i].0.clone()).or_default().push(repo.files[f].0.clone());
@@ -377,22 +620,25 @@ pub fn find(repo: &Repo, usage_lits: &BTreeSet<String>, whole_lits: &BTreeSet<St
     }
     for (i, files) in usage_files.into_iter().enumerate() {
         let l = usage_ix[i].0;
-        let mut ranked: Vec<(Role, usize, &str)> = files
+        let mut ranked: Vec<(Role, usize, &str, u32)> = files
             .into_iter()
-            .map(|f| (*roles[f].get_or_insert_with(|| repo.role(&repo.files[f].0)), rank[f], repo.files[f].0.as_str()))
+            .map(|f| (*roles[f].get_or_insert_with(|| repo.role(&repo.files[f].0)), rank[f], repo.files[f].0.as_str(), path_ix[f]))
             .collect();
         ranked.sort_unstable();
         // A file-name literal (`middleware.ts`, `prisma/schema.prisma`) also matches a file of that name.
         if l.contains('.') && !l.contains(char::is_whitespace) && repo.names.contains(l) {
             let suffix = format!("/{l}");
-            let mut named: Vec<(Role, &str)> = ranked.iter().map(|(r, _, p)| (*r, *p)).collect();
-            named.extend(repo.paths.iter().filter(|p| *p == l || p.ends_with(&suffix)).map(|p| (repo.role(p), p.as_str())));
+            let mut named: Vec<(Role, &str, u32)> = ranked.iter().map(|(r, _, p, x)| (*r, *p, *x)).collect();
+            named.extend(
+                repo.paths.iter().enumerate().filter(|(_, p)| *p == l || p.ends_with(&suffix)).map(|(x, p)| (repo.role(p), p.as_str(), x as u32)),
+            );
             named.sort_unstable();
             named.dedup();
-            ranked = named.into_iter().map(|(r, p)| (r, 0, p)).collect();
+            ranked = named.into_iter().map(|(r, p, x)| (r, 0, p, x)).collect();
         }
         if !ranked.is_empty() {
-            hits.usage.insert(l.clone(), ranked.into_iter().map(|(_, _, p)| p.to_string()).collect());
+            hits.ix.insert(l.clone(), ranked.iter().map(|(.., x)| *x).collect());
+            hits.usage.insert(l.clone(), ranked.into_iter().map(|(_, _, p, _)| p.to_string()).collect());
         }
     }
     for l in whole_lits {
@@ -576,6 +822,118 @@ mod tests {
         for shared in ["docker-compose.yml", "package.json", "pyproject.toml", ".env.template", "schema.sql"] {
             assert!(!foreign_code(shared, "npm") && !foreign_code(shared, "pypi"), "{shared}");
         }
+    }
+
+    #[test]
+    fn plain_words_are_one_lowercase_or_capitalised_word() {
+        for w in ["cache", "plugins", "Comment", ".extend", "regex", "json2"] {
+            assert!(plain_word(w), "{w}");
+        }
+        for w in ["setTimeout", "minimumCacheTTL", "z.object", "next/cache", "NODE_ENV", "eslint:recommended", "@apply", "schema.prisma", "URL"] {
+            assert!(!plain_word(w), "{w}");
+        }
+    }
+
+    #[test]
+    fn naming_literals_follow_each_ecosystems_module_syntax() {
+        assert_eq!(naming_lits("pkg:npm/vitest"), vec!["'vitest'", "'vitest/", "\"vitest\"", "\"vitest/"]);
+        assert_eq!(naming_lits("pkg:npm/%40playwright/test")[0], "'@playwright/test'");
+        let py = naming_lits("pkg:pypi/requests");
+        for named in ["import requests\n", "from requests.adapters", "\"requests>=2", "'requests'"] {
+            assert!(py.iter().any(|l| named.contains(l.as_str())), "{named}");
+        }
+        for other in ["import requests_cache\n", "from requests_oauthlib import x", "\"requests-toolbelt>=1"] {
+            assert!(!py.iter().any(|l| other.contains(l.as_str())), "{other}");
+        }
+        assert!(naming_lits("pkg:cargo/serde").is_empty());
+    }
+
+    /// `find` over `files` with the literals and each package's naming literals, then a scope for those packages.
+    fn scoped(r: &Repo, lits: &[&str], purls: &[&str]) -> Hits {
+        let mut usage = set(lits);
+        usage.extend(purls.iter().flat_map(|p| naming_lits(p)));
+        find(r, &usage, &set(&[]))
+    }
+
+    #[test]
+    fn only_files_that_can_use_a_technology_evidence_it() {
+        let r = repo(&[
+            ("src/app.ts", "const x = 1"),
+            ("src/client.test.ts", "import { describe } from 'vitest'"),
+            ("vitest.config.ts", "export default {}"),
+            ("devenv/dashboards/table.json", "{\"cache\": true}"),
+            ("public/locales/en-US/app.json", "{\"plugins\": \"Plugins\"}"),
+            (".golangci.yml", "plugins: []"),
+            ("package.json", "{\"devDependencies\": {\"vitest\": \"4\"}}"),
+            ("sandbox/run.py", "cache = {}"),
+            ("tsconfig.json", "{}"),
+            ("backend/server.ts", "export {}"),
+        ]);
+        let purls = vec!["pkg:npm/vitest".to_string()];
+        let h = scoped(&r, &[], &["pkg:npm/vitest"]);
+        let lits = vec!["tsconfig.json".to_string()];
+        let root = ["."];
+        let s = Scope::new("npm", &root, &purls, &lits, &h, &r.paths);
+        assert_eq!(s.file("src/app.ts"), Some(false), "the ecosystem's code in a package declaring it");
+        assert_eq!(s.file("src/client.test.ts"), Some(true), "imports it");
+        assert_eq!(s.file("vitest.config.ts"), Some(true), "its path names it");
+        assert_eq!(s.file("package.json"), Some(false), "a manifest listing it: can use it, but is not about it");
+        assert_eq!(s.file("tsconfig.json"), Some(false), "a file its records name: a config file it reads");
+        for none in ["devenv/dashboards/table.json", "public/locales/en-US/app.json", ".golangci.yml", "sandbox/run.py"] {
+            assert_eq!(s.file(none), None, "{none}");
+        }
+        let owners = ["frontend"];
+        let s = Scope::new("npm", &owners, &purls, &lits, &h, &r.paths);
+        assert_eq!(s.file("backend/server.ts"), None, "no package declaring it encloses the file");
+    }
+
+    #[test]
+    fn paths_name_packages_by_directory_head_or_extension() {
+        let h = Hits::default();
+        let s = |purl: &str| Scope::new("npm", &[], &[purl.to_string()], &[], &h, &[]).path_names_for_test();
+        let eslint = s("pkg:npm/eslint");
+        assert!(eslint(".eslintrc.json") && eslint("eslint.config.js") && !eslint("src/lint.ts"));
+        let tw = s("pkg:npm/tailwindcss");
+        assert!(tw("tailwind.config.js") && tw("src/tailwindcss/theme.css"));
+        let pw = s("pkg:npm/%40playwright/test");
+        assert!(pw("playwright.config.ts") && pw("e2e/playwright/a.ts") && !pw("src/test/a.ts"), "the scope, not `test`");
+        let prisma = s("pkg:npm/prisma");
+        assert!(prisma("db/schema.prisma") && prisma("prisma/seed.ts"));
+        let icons = s("pkg:npm/react-icons");
+        assert!(!icons("src/react/app.tsx"), "`react` is a prefix of react-icons at a word boundary only");
+    }
+
+    #[test]
+    fn a_plain_word_counts_only_where_the_technology_is_named_and_named_files_come_first() {
+        let r = repo(&[
+            ("src/a/cache.ts", "export const cache = new Map(); test.describe('x')"),
+            ("src/b/store.test.ts", "import { vi } from 'vitest'; const cache = vi.fn(); describe('y')"),
+            ("src/c/helper.ts", "beforeAll(() => {}); const cache = 1"),
+            ("tests/d/spec.test.ts", "import { test } from 'vitest'; beforeAll(() => {}); test.describe('z')"),
+        ]);
+        let purls = vec!["pkg:npm/vitest".to_string()];
+        let h = scoped(&r, &["cache", "beforeAll", "test.describe"], &["pkg:npm/vitest"]);
+        let s = Scope::new("npm", &[], &purls, &[], &h, &r.paths);
+        let role = |p: &str| path_role(p);
+        let e = s.evidence("cache", role, true);
+        assert_eq!(e.files, vec![("src/b/store.test.ts".to_string(), true)], "a plain word, only in the file importing vitest");
+        assert!(e.used && e.app, "it still orders the queue, as application code");
+        let e = s.evidence("beforeAll", role, true);
+        let files: Vec<&str> = e.files.iter().map(|(p, _)| p.as_str()).collect();
+        assert_eq!(files, vec!["tests/d/spec.test.ts", "src/c/helper.ts"], "an identifier counts anywhere; call sites first");
+        let e = s.evidence("test.describe", role, true);
+        let files: Vec<&str> = e.files.iter().map(|(p, _)| p.as_str()).collect();
+        assert_eq!(
+            files,
+            vec!["src/b/store.test.ts", "tests/d/spec.test.ts", "src/a/cache.ts"],
+            "the plain-word tail where vitest is imported, the whole literal anywhere; files importing it first"
+        );
+        let r = repo(&[("src/a.ts", "describe('x')"), ("src/b.test.ts", "import 'vitest'; describe('y')")]);
+        let h = scoped(&r, &["test.describe"], &["pkg:npm/vitest"]);
+        let s = Scope::new("npm", &[], &purls, &[], &h, &r.paths);
+        let e = s.evidence("test.describe", role, true);
+        assert_eq!(e.files, vec![("src/b.test.ts".to_string(), true)], "a plain-word tail alone counts only where vitest is named");
+        assert!(e.used);
     }
 
     #[test]
