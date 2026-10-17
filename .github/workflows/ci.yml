@@ -1,9 +1,11 @@
-# Tests on every push and pull request: the Rust client and contract, the central service (which also runs
+# Tests on every pull request and every push to main: the Rust client and contract, the central service (which also runs
 # cargo, for the schema seam checks) and the gateway Worker. The same commands as CONTRIBUTING.md, "Tests".
 name: ci
 
 on:
+  # A branch is tested through its pull request; pushing it as well would run every job twice.
   push:
+    branches: [main]
   pull_request:
 
 permissions:
