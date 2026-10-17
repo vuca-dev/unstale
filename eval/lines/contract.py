@@ -4,7 +4,8 @@ has_change(record_releases, v, index) -> bool | None
   index: the tech index's `releases` (ascending by version; version, date, line, line_start).
   v in the index: line L = its line. Available iff
     (a) a release of the record on L at or before v (index position), or
-    (b) L's first release is marked line_start and was published after a release of the record on an older line.
+    (b) L's first release is marked line_start and was published on or after the day of a release of the record on an
+        older line (a same-day pair reads in version order).
   v not in the index, numeric dotted: L = v's first d components (d = the index lines' depth); (a) by numeric order.
   otherwise (no index, or a version the index cannot place): None (the caller uses the old rule).
 """
@@ -63,7 +64,7 @@ def has_change(versions, v, idx):
         start = idx.rel[f]["date"]
         for r in versions:
             lr = idx.line(r)
-            if lr and lr != L and idx.line_before(lr, L) and r in idx.pos and idx.rel[idx.pos[r]]["date"] < start:
+            if lr and lr != L and idx.line_before(lr, L) and r in idx.pos and idx.rel[idx.pos[r]]["date"] <= start:
                 return True
     return False
 

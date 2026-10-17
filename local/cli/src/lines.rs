@@ -5,8 +5,10 @@
 //! line (a set of versions inside which version order is publish order) and `line_start` on a line's first release
 //! when the line began in the window. A version `v` has a record's change when:
 //!   (a) a release of the record is on `v`'s line at or before `v` (by index position), or
-//!   (b) `v`'s line's first release is marked `line_start` and was published after a release of the record on an older
-//!       line (the line branched after the fix shipped).
+//!   (b) `v`'s line's first release is marked `line_start` and was published on or after the day of a release of the
+//!       record on an older line (the line branched after the fix shipped). Dates are days, so a same-day pair cannot
+//!       be ordered by date; it reads in version order, as central's line derivation reads same-day releases (and as
+//!       a catalog whose old releases all carry one import date needs: jsdom 3.0.0 is in 20.0.0).
 //! A version the index does not hold is placed by its first `depth` numeric components (the depth of the index's
 //! lines) and compared numerically; a version that is not numeric dotted, or a technology without an index (older
 //! catalogs), is not decided here and the caller keeps the old rule (`funnel::pick_release`).
@@ -96,7 +98,7 @@ impl<'a> Lines<'a> {
                 let Some(&i) = self.pos.get(r.version.as_str()) else { continue };
                 let rl = &self.rel[i].line;
                 let older = self.first.get(rl.as_str()).is_some_and(|&g| g < f);
-                if older && self.rel[i].date < *start && best.is_none_or(|(_, j)| i > j) {
+                if older && self.rel[i].date <= *start && best.is_none_or(|(_, j)| i > j) {
                     best = Some((*r, i));
                 }
             }
@@ -159,6 +161,23 @@ mod tests {
         // A line whose start is unknown (began before the window) inherits nothing.
         let b = rel("15.0.4");
         assert_eq!(l.has(&[&b], "15.1.9").map(|x| x.is_some()), Some(false));
+    }
+
+    #[test]
+    fn a_same_day_line_start_reads_in_version_order() {
+        // An import that dated every old release on one day (jsdom's index): 3.0.0 and 20.0.0 share a date, so the
+        // date cannot order them and version order does; 20 has what 3 shipped. A later-dated release still does not.
+        let i = idx(&[
+            ("3.0.0", "2026-03-15", "3", true),
+            ("3.1.2", "2026-03-15", "3", false),
+            ("20.0.0", "2026-03-15", "20", true),
+            ("20.0.1", "2026-03-15", "20", false),
+            ("3.1.3", "2026-04-01", "3", false),
+        ]);
+        let l = Lines::new(&i);
+        let (a, b) = (rel("3.0.0"), rel("3.1.3"));
+        assert_eq!(l.has(&[&a], "20.0.1").map(|x| x.map(|r| r.version.as_str())), Some(Some("3.0.0")));
+        assert_eq!(l.has(&[&b], "20.0.1").map(|x| x.is_some()), Some(false));
     }
 
     #[test]
