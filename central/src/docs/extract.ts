@@ -76,15 +76,19 @@ export const DOCS_GATE = {
   maxAgeMs: days(process.env.UNSTALE_DOCS_MAX_AGE_DAYS, 0),
 };
 
-/** What the gate remembers between passes: the releases last checked, a follow-up due, a pass left unfinished. */
+/**
+ * What the gate remembers between passes: the releases last checked, a follow-up due, a pass left unfinished, and
+ * when a site's listing last named no page (listed again a day later, not only on the next release).
+ */
 export interface DocsGate {
   release?: string;
   followupAt?: string;
   incomplete?: boolean;
+  unlistedAt?: string;
 }
 const gatePath = (tech: string) => join(docsDir(tech), "gate.json");
 
-export type PassReason = "baseline" | "release" | "followup" | "continue" | "age" | "daily";
+export type PassReason = "baseline" | "release" | "followup" | "continue" | "relist" | "age" | "daily";
 
 /**
  * Why a pass is due now, or undefined. `release` is the components' current versions (undefined when a registry
@@ -95,13 +99,14 @@ export function passDue(gate: DocsGate | undefined, release: string | undefined,
   if (release === undefined) return now - Date.parse(last) >= DOCS_PASS.freshMs ? "daily" : undefined;
   if (gate?.release !== release) return "release";
   if (gate.incomplete) return "continue";
+  if (gate.unlistedAt && now - Date.parse(gate.unlistedAt) >= DOCS_PASS.freshMs) return "relist";
   if (gate.followupAt && now >= Date.parse(gate.followupAt)) return "followup";
   if (g.maxAgeMs > 0 && now - Date.parse(last) >= g.maxAgeMs) return "age";
   return undefined;
 }
 
-/** The gate after a pass for `reason` that checked `checked` pages under `budget`. */
-export function nextGate(gate: DocsGate | undefined, reason: PassReason, release: string | undefined, checked: number, budget: number, now = Date.now(), g = DOCS_GATE): DocsGate {
+/** The gate after a pass for `reason` that checked `checked` pages under `budget`; `unlisted`: a site listed no page. */
+export function nextGate(gate: DocsGate | undefined, reason: PassReason, release: string | undefined, checked: number, budget: number, now = Date.now(), g = DOCS_GATE, unlisted = false): DocsGate {
   const out: DocsGate = { ...gate };
   if (release !== undefined) out.release = release;
   if (reason === "release") {
@@ -111,6 +116,8 @@ export function nextGate(gate: DocsGate | undefined, reason: PassReason, release
   if (reason === "followup" || reason === "baseline") delete out.followupAt;
   if (checked >= budget) out.incomplete = true;
   else delete out.incomplete;
+  if (unlisted) out.unlistedAt = new Date(now).toISOString();
+  else delete out.unlistedAt;
   return out;
 }
 
@@ -142,7 +149,7 @@ export async function dailyPass(
       { technology: t.id, purls },
       { http: opts.http, budget, ...(opts.progress ? { progress: opts.progress } : {}), ...(opts.log ? { log: opts.log } : {}) },
     );
-    writeAtomic(gatePath(t.id), JSON.stringify(nextGate(gate, reason, release, report.checked, budget), null, 1) + "\n");
+    writeAtomic(gatePath(t.id), JSON.stringify(nextGate(gate, reason, release, report.checked, budget, Date.now(), DOCS_GATE, report.sites.some((s) => s.listingFailed)), null, 1) + "\n");
     return { ...report, reason };
   });
 }

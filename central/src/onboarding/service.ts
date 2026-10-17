@@ -669,7 +669,10 @@ export class CoverageService {
       job.docs_total = pass.checked;
       job.docs_done = pass.checked;
       job.docs_failed = Object.entries(pass.outcomes).filter(([k]) => k.startsWith("failed")).reduce((n, [, v]) => n + v, 0);
-      job.enumeration = !pass.sites.length ? "unavailable" : !listed ? "empty" : pass.checked < listed ? "partial" : "complete";
+      // Every site passed here had pages when resolved, so a site whose listing named none is a failed listing, not
+      // a complete one: "failed" when no page is known at all, else "partial".
+      const unlisted = pass.sites.filter((x) => x.listingFailed).length;
+      job.enumeration = !pass.sites.length ? "unavailable" : !listed ? "failed" : unlisted || pass.checked < listed ? "partial" : "complete";
     }
     // Not due: another worker (the pipeline, for a catalog technology) checked them less than a day ago.
     job.docs_checked = lastPass(tech.id) ?? now();
@@ -711,9 +714,10 @@ export class CoverageService {
   }
 }
 /** The documentation part of a job's coverage line. "Monitored" only when pages were listed and every one checked: a
- * docs site that listed no pages (`empty`) is not monitored, and its records come from release notes alone. */
+ * docs site whose listing failed (`failed`; `empty` in older jobs) is not monitored, and its records come from release
+ * notes alone. */
 export function docsCoverage(j: Pick<Job, "enumeration" | "docs_done" | "docs_total" | "docs_failed">): string {
-  if (j.enumeration === "empty") return "documentation not monitored: a docs site was found but listed no pages";
+  if (j.enumeration === "failed" || j.enumeration === "empty") return "documentation not monitored: a docs site was found but listed no pages";
   const label = j.enumeration === "complete" && !j.docs_failed && j.docs_total > 0 ? "monitored" : j.enumeration === "unavailable" ? "not found" : "coverage partial";
   return `documentation ${label} (${j.docs_done - j.docs_failed}/${j.docs_total} pages)`;
 }
