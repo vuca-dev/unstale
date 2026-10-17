@@ -227,11 +227,16 @@ pub fn sync(loc: &str, cache_dir: &Path, candidates: &BTreeSet<String>, purls: &
     sync_with(&src, cache_dir, candidates, purls, key.as_ref())
 }
 
+/// The catalog key compiled into release builds. A `#[used]` static keeps it whole in the binary, which release.yml
+/// checks: read in place, an x86-64 build splits a short constant into instruction immediates.
+#[used]
+static CATALOG_KEY: Option<&str> = option_env!("UNSTALE_CATALOG_KEY");
+
 /// The catalog's Ed25519 public key (hex): `UNSTALE_CATALOG_KEY`, else the one compiled into release builds.
 fn catalog_key() -> Result<Option<[u8; 32]>> {
     let Some(hex) = std::env::var("UNSTALE_CATALOG_KEY")
         .ok()
-        .or_else(|| option_env!("UNSTALE_CATALOG_KEY").map(String::from))
+        .or_else(|| CATALOG_KEY.map(String::from))
         .filter(|s| !s.trim().is_empty())
     else {
         return Ok(None);

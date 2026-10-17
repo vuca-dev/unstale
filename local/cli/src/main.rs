@@ -180,6 +180,11 @@ const TOOL_DIR: &str = ".unstale";
 const LEDGER_FILE: &str = "ledger.jsonl";
 const GITATTR_LINE: &str = ".unstale/ledger.jsonl merge=union";
 
+/// The service `init` uses by default in release builds. A `#[used]` static keeps it whole in the binary, which
+/// release.yml checks: read in place, an x86-64 build splits a short constant into instruction immediates.
+#[used]
+static DEFAULT_SERVICE: Option<&str> = option_env!("UNSTALE_DEFAULT_SERVICE");
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
     match dispatch(cli) {
@@ -207,7 +212,7 @@ fn dispatch(cli: Cli) -> Result<u8> {
     if matches!(cli.cmd, Cmd::Uninstall) { return uninstall::run(&start); }
     if let Cmd::Init { catalog, mode, yes, service, wait, no_animation } = cli.cmd {
         let service = service.or_else(|| std::env::var("UNSTALE_SERVICE").ok())
-            .or_else(|| option_env!("UNSTALE_DEFAULT_SERVICE").filter(|s| !s.is_empty()).map(String::from));
+            .or_else(|| DEFAULT_SERVICE.filter(|s| !s.is_empty()).map(String::from));
         let catalog = catalog.or_else(|| std::env::var("UNSTALE_CATALOG").ok()).or_else(|| service.clone());
         let code = init(&start, catalog, mode, yes, service.is_some())?;
         let mut ctx = context(&start)?;
