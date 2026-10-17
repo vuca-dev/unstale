@@ -32,6 +32,9 @@ pub struct Pending {
     /// The service limited new registrations: Unix seconds before which none are sent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub deferred_until: Option<u64>,
+    /// Weekly npm downloads of unsubmitted packages, read once for `registration_order`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub downloads: BTreeMap<String, u64>,
 }
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -206,12 +209,12 @@ fn service_available(service: &str) -> bool {
 /// Whether a package is the public one: the registry serves it, not marked private, and, when lockfiles state content
 /// hashes, it serves those same bytes at each locked version. A private registry's package whose name someone
 /// published publicly fails the hash check and is never submitted (its catalog would be the other package's notes).
+fn fetch(url: String) -> Option<serde_json::Value> {
+    let mut r = agent().get(url).call().ok().filter(|r| r.status().is_success())?;
+    let bytes = r.body_mut().with_config().limit(4 * 1024 * 1024).read_to_vec().ok()?;
+    serde_json::from_slice(&bytes).ok()
+}
 fn public_package(purl: &str, pins: &[stack::Pin]) -> bool {
-    let fetch = |url: String| -> Option<serde_json::Value> {
-        let mut r = agent().get(url).call().ok().filter(|r| r.status().is_success())?;
-        let bytes = r.body_mut().with_config().limit(4 * 1024 * 1024).read_to_vec().ok()?;
-        serde_json::from_slice(&bytes).ok()
-    };
     // PyPI has no private packages: a project page for the normalised name is the public identity.
     if let Some(name) = purl.strip_prefix("pkg:pypi/") {
         if pins.is_empty() {
@@ -235,6 +238,55 @@ fn public_package(purl: &str, pins: &[stack::Pin]) -> bool {
             public(&v) && v.pointer("/dist/integrity").and_then(|i| i.as_str()).is_some_and(|i| i.split_whitespace().any(|h| pin.hashes.iter().any(|x| x == h)))
         })
     })
+}
+
+/// Weekly downloads from npm's downloads API, by purl: unscoped names 128 per request, scoped ones one each, a few at
+/// a time (the API rate-limits bursts). The names were verified public. A count that cannot be read is absent.
+fn npm_downloads(purls: &[String]) -> BTreeMap<String, u64> {
+    let named: Vec<(String, String)> = purls.iter().filter_map(|p| Some((p.clone(), util::npm_name(p)?))).collect();
+    let (scoped, plain): (Vec<_>, Vec<_>) = named.into_iter().partition(|(_, n)| n.starts_with('@'));
+    let count = |v: &serde_json::Value| v.get("downloads").and_then(|d| d.as_u64());
+    let mut out = BTreeMap::new();
+    for batch in plain.chunks(128) {
+        let names: Vec<&str> = batch.iter().map(|(_, n)| n.as_str()).collect();
+        let Some(v) = fetch(format!("https://api.npmjs.org/downloads/point/last-week/{}", names.join(","))) else { continue };
+        for (purl, name) in batch {
+            if let Some(d) = if batch.len() == 1 { count(&v) } else { v.get(name.as_str()).and_then(count) } {
+                out.insert(purl.clone(), d);
+            }
+        }
+    }
+    for chunk in scoped.chunks(8) {
+        std::thread::scope(|scope| {
+            let handles: Vec<_> = chunk
+                .iter()
+                .map(|(purl, name)| scope.spawn(move || (purl, fetch(format!("https://api.npmjs.org/downloads/point/last-week/{name}")))))
+                .collect();
+            for h in handles {
+                if let Ok((purl, Some(v))) = h.join() && let Some(d) = count(&v) {
+                    out.insert(purl.clone(), d);
+                }
+            }
+        });
+    }
+    out
+}
+
+/// The order new packages are sent in, so that what fits under the service's registration limit is what matters most:
+/// adoption as a proxy for impact. Within an ecosystem, weekly downloads (npm), then how many of this repository's
+/// manifests declare the package, then the name. Ecosystems take turns, so one without download counts is not starved.
+fn registration_order(purls: &BTreeSet<String>, st: &stack::Stack, downloads: &BTreeMap<String, u64>) -> Vec<String> {
+    let mut by_ecosystem: BTreeMap<&str, Vec<(&String, u64, usize)>> = BTreeMap::new();
+    for p in purls {
+        let declarers = st.packages.iter().filter(|m| m.declared.contains(p)).count();
+        let ecosystem = p.split('/').next().unwrap_or_default();
+        by_ecosystem.entry(ecosystem).or_default().push((p, downloads.get(p).copied().unwrap_or(0), declarers));
+    }
+    for list in by_ecosystem.values_mut() {
+        list.sort_by(|a, b| b.1.cmp(&a.1).then(b.2.cmp(&a.2)).then(a.0.cmp(b.0)));
+    }
+    let rounds = by_ecosystem.values().map(Vec::len).max().unwrap_or(0);
+    (0..rounds).flat_map(|i| by_ecosystem.values().filter_map(move |l| l.get(i)).map(|e| e.0.clone()).collect::<Vec<_>>()).collect()
 }
 
 /// Standard skill discovery directories; no global config, credentials, or existing instructions overwritten.
@@ -1242,7 +1294,15 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
     let registrations = pending.unsubmitted.len();
     // While the service's limit lasts, nothing new is sent; known jobs below are still refreshed.
     let deferred = pending.deferred_until.is_some_and(|t| t > unix_now());
-    for (index, p) in pending.unsubmitted.clone().into_iter().enumerate().filter(|_| !deferred) {
+    pending.downloads.retain(|p, _| pending.unsubmitted.contains(p));
+    let unread: Vec<String> = pending.unsubmitted.iter().filter(|p| p.starts_with("pkg:npm/") && !pending.downloads.contains_key(*p)).cloned().collect();
+    if !deferred && !unread.is_empty() {
+        ui.update("Connecting public coverage · step 3/5", &format!("Ranking {registrations} public packages by adoption"), "Most-used packages are registered first");
+        pending.downloads.extend(npm_downloads(&unread));
+        save(ctx, &pending)?;
+    }
+    let order = registration_order(&pending.unsubmitted, &st, &pending.downloads);
+    for (index, p) in order.into_iter().enumerate().filter(|_| !deferred) {
         ui.update(
             "Connecting public coverage · step 3/5",
             &format!("Registered {index}/{registrations} public packages"),
@@ -1370,6 +1430,30 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn registration_sends_the_most_adopted_first_and_ecosystems_take_turns() {
+        let manifest = |declared: &[&str]| crate::stack::Package {
+            dir: ".".into(),
+            kind: crate::stack::Kind::Application,
+            lockfile: None,
+            declared: declared.iter().map(|s| s.to_string()).collect(),
+        };
+        let st = crate::stack::Stack {
+            packages: vec![manifest(&["pkg:pypi/django", "pkg:pypi/aiohttp"]), manifest(&["pkg:pypi/django"])],
+            deps: Default::default(),
+            node: None,
+            notes: vec![],
+        };
+        let purls: BTreeSet<String> =
+            ["pkg:npm/%40codemirror/view", "pkg:npm/express", "pkg:npm/undici", "pkg:pypi/aiohttp", "pkg:pypi/django"].map(String::from).into();
+        let downloads: BTreeMap<String, u64> =
+            [("pkg:npm/%40codemirror/view", 2_000_000), ("pkg:npm/express", 60_000_000), ("pkg:npm/undici", 30_000_000)].map(|(p, d)| (p.to_string(), d)).into();
+        assert_eq!(
+            registration_order(&purls, &st, &downloads),
+            ["pkg:npm/express", "pkg:pypi/django", "pkg:npm/undici", "pkg:pypi/aiohttp", "pkg:npm/%40codemirror/view"]
+        );
+        assert_eq!(registration_order(&purls, &st, &BTreeMap::new())[0], "pkg:npm/%40codemirror/view", "without counts: declarers, then name");
+    }
     #[test]
     fn transient_installs() {
         for p in [
