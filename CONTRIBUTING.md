@@ -83,7 +83,7 @@ re-ingests from scratch with every model call uncached; to start from an operato
 ```sh
 gh release create catalog-state --draft --title "catalog state" --notes "Central store snapshots for the ingest workflow."
 gen="state-$(date -u +%Y%m%dT%H%M%SZ)-seed-1"; mkdir -p /tmp/seed
-tar -C .store --exclude='./central/records/*.lock' --exclude='./central/sample' --exclude='./central/onboarding/documents' \
+COPYFILE_DISABLE=1 tar -C .store --exclude='./central/records/*.lock' --exclude='./central/sample' --exclude='./central/onboarding/documents' \
   -cf - ./central ./catalog | zstd -T0 -10 -q | split -b 1900m -a 2 - "/tmp/seed/$gen.tar.zst."
 (cd /tmp/seed && shasum -a 256 "$gen".tar.zst.* > "$gen.sha256")
 gh release upload catalog-state /tmp/seed/"$gen".tar.zst.* && gh release upload catalog-state "/tmp/seed/$gen.sha256"

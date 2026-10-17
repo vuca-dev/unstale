@@ -19,7 +19,7 @@ import { readJson, sha256, writeAtomic } from "../pipeline/util.ts";
 import { reconcileSources } from "./source-quality.ts";
 import { synthesize } from "./synthesis.ts";
 import { publishTechnology } from "../pipeline/publish.ts";
-import { servedIndex } from "../pipeline/export.ts";
+import { JOB_FILE, servedIndex } from "../pipeline/export.ts";
 import { loadStore, saveStore } from "../pipeline/store.ts";
 import { advisoryStage } from "../pipeline/advisories.ts";
 import { withTechLock, withTechLockSync } from "../pipeline/lock.ts";
@@ -151,7 +151,7 @@ export class CoverageService {
     const folder = join(centralDir(), "onboarding", "jobs");
     if (existsSync(folder))
       for (const file of readdirSync(folder).filter((f) =>
-        f.endsWith(".json"),
+        JOB_FILE.test(f),
       )) {
         const job = readJson<Job>(join(folder, file));
         if (job) {

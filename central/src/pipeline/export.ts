@@ -18,6 +18,9 @@ import { readJson, sha256 } from "./util.ts";
 /** What the service route serves (service.ts); nothing outside it is exported. */
 const TECH_FILE = /^[a-z0-9._-]+\.json$/;
 const STATUS_FILE = /^[0-9a-f]{64}\.json$/;
+/** A saved job's file name, `<sha256(purl)>.json`; anything else in the jobs folder (an editor's or an archiver's
+ * file, such as macOS `._*` metadata) is not a job and is never read. */
+export const JOB_FILE = STATUS_FILE;
 const SHARD_PATH = /^v1\/shards\/[a-z0-9._-]+\/[a-zA-Z0-9._-]+\.jsonl\.gz$/;
 
 /** The onboarding job fields the index route reads. */
@@ -40,7 +43,7 @@ export function savedJobs(): DescribedJob[] {
   const folder = join(centralDir(), "onboarding", "jobs");
   if (!existsSync(folder)) return [];
   return readdirSync(folder)
-    .filter((f) => f.endsWith(".json"))
+    .filter((f) => JOB_FILE.test(f))
     .sort()
     .flatMap((f) => {
       const job = readJson<DescribedJob & { descriptor?: { discovery_version?: number } }>(join(folder, f));

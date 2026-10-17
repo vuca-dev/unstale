@@ -105,3 +105,10 @@ test("export publishes each status under the hash of its package and refuses a m
   writeFileSync(join(statuses, `${sha256("pkg:npm/other")}.json`), JSON.stringify(status));
   expect(() => exportCatalog(catalogDir(), out)).toThrow(/does not name the package/);
 });
+
+test("a file in the jobs folder that is not a saved job (macOS ._* metadata) is never read", () => {
+  new CoverageService(0, { limits: limits() }).submit("pkg:npm/a");
+  const jobs = join(centralDir(), "onboarding", "jobs");
+  writeFileSync(join(jobs, `._${sha256("pkg:npm/a")}.json`), Buffer.from("\x00\x05\x16\x07\x00\x02\x00\x00Mac OS X", "latin1"));
+  expect([...new CoverageService(0, { limits: limits() }).jobs.keys()]).toEqual(["pkg:npm/a"]);
+});

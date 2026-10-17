@@ -167,6 +167,9 @@ jobs:
           done < "$RUNNER_TEMP/assets.tsv"
           (cd "$dl" && sha256sum -c "$manifest")
           find "$dl" -name "$gen.tar.zst.*" | sort | xargs cat | zstd -d -q | tar -x -C "$UNSTALE_STORE"
+          # A store archived on macOS carries AppleDouble `._*` entries (extended attributes), which GNU tar extracts
+          # as files: `._<job>.json` would be read as a job.
+          find "$UNSTALE_STORE" -name '._*' -type f -delete
           rm -rf "$dl"
           du -sh "$UNSTALE_STORE"/*
 
