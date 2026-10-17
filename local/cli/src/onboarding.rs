@@ -1350,8 +1350,14 @@ mod tests {
         let base = format!("http://{}", listener.local_addr().unwrap());
         std::thread::spawn(move || {
             let (mut stream, _) = listener.accept().unwrap();
-            let mut buf = [0u8; 4096];
-            let _ = stream.read(&mut buf);
+            // The whole request first: replying before the body is read resets the connection on Linux.
+            let (mut req, mut buf) = (Vec::new(), [0u8; 4096]);
+            while !req.ends_with(b"}") {
+                match stream.read(&mut buf) {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => req.extend_from_slice(&buf[..n]),
+                }
+            }
             let body = r#"{"error":"Daily coverage budget reached; retry later","limit":"budget","retry_after":120}"#;
             let _ = write!(stream, "HTTP/1.1 429 Too Many Requests\r\nRetry-After: 120\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
         });
