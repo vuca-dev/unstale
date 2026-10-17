@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Bare `npx unstale` rehearsal against a LOCAL registry only: Verdaccio on 127.0.0.1 (no uplinks, so nothing can be
-# proxied from npmjs.org), the npm/dist tarballs published to it, then `npx unstale --version`, `init` and `run` in a
+# `npx @unstale/cli` rehearsal against a LOCAL registry only: Verdaccio on 127.0.0.1 (no uplinks, so nothing can be
+# proxied from npmjs.org), the npm/dist tarballs published to it, then `npx @unstale/cli --version`, `init` and `run` in a
 # clean directory with a fresh HOME, npm cache and user config, on a `cp -cR` copy of the next-prisma-app repository.
 #
 #   VERDACCIO_DIR=<dir with node_modules/.bin/verdaccio> npm/rehearse-npx.sh <scratch dir>
@@ -55,7 +55,7 @@ local_publish() {
   echo "\$ npm publish $(basename "$1") --registry $2"
   npm publish "$1" --registry "$2" 2>&1 | grep -E '^\+|npm (error|ERR)|notice Publishing'
 }
-for t in "$here"/dist/unstale-cli-*.tgz "$here"/dist/unstale-0*.tgz; do
+for t in "$here"/dist/unstale-cli-*.tgz; do
   local_publish "$t" "$REG"
 done
 
@@ -65,16 +65,16 @@ npm view unstale optionalDependencies --registry "$REG"
 cp -cR "$REPO_SRC" "$R/repo"
 export UNSTALE_CACHE_DIR="$R/unstale-cache"
 cd "$R/clean" || exit 1
-echo; echo "\$ cd <clean dir> && npx --yes --registry $REG unstale --version"
-npx --yes --loglevel http --registry "$REG" unstale --version 2>"$R/npx-http.log"; echo "(exit $?)"
+echo; echo "\$ cd <clean dir> && npx --yes --registry $REG @unstale/cli --version"
+npx --yes --loglevel http --registry "$REG" @unstale/cli --version 2>"$R/npx-http.log"; echo "(exit $?)"
 echo "registry requests made by npx: $(grep -c "npm http fetch" "$R/npx-http.log"), to hosts: $(grep -o 'npm http fetch GET [0-9]* https\?://[^/]*' "$R/npx-http.log" | awk '{print $NF}' | sort -u | tr '\n' ' ')"
 echo "platform packages installed by npx: $(ls "$HOME"/.npm/_npx/*/node_modules/@unstale/ | tr '\n' ' ')"
 
 cd "$R/repo" || exit 1
-echo; echo "\$ cd <copy of next-prisma-app/repo> && npx --registry $REG unstale init --catalog ~/unstale/.store/catalog --yes"
-npx --yes --registry "$REG" unstale init --catalog "$CATALOG" --yes; echo "(exit $?)"
-echo; echo "\$ npx --registry $REG unstale run"
-npx --yes --registry "$REG" unstale run >"$R/run.out" 2>&1; rc=$?
+echo; echo "\$ cd <copy of next-prisma-app/repo> && npx --registry $REG @unstale/cli init --catalog ~/unstale/.store/catalog --yes"
+npx --yes --registry "$REG" @unstale/cli init --catalog "$CATALOG" --yes; echo "(exit $?)"
+echo; echo "\$ npx --registry $REG @unstale/cli run"
+npx --yes --registry "$REG" @unstale/cli run >"$R/run.out" 2>&1; rc=$?
 head -8 "$R/run.out" | cut -c1-200
 echo "... ($(wc -l <"$R/run.out" | tr -d ' ') lines)"
 tail -3 "$R/run.out" | cut -c1-200

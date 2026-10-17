@@ -1,12 +1,18 @@
 {
   "name": "@unstale/cli-win32-x64",
   "version": "0.1.0",
-  "description": "The unstale CLI binary for Windows on x86-64. Install the `unstale` package instead.",
+  "description": "The unstale CLI binary for Windows on x86-64. Install `@unstale/cli` instead.",
   "license": "AGPL-3.0-only",
+  "author": "Jason Draper (https://vuca.dev)",
+  "homepage": "https://unstale.sh",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/unstale-ai/unstale.git",
+    "directory": "npm/cli-win32-x64"
+  },
+  "bugs": "https://github.com/unstale-ai/unstale/issues",
   "os": ["win32"],
   "cpu": ["x64"],
-  "files": [
-    "bin/unstale.exe"
-  ],
+  "files": ["bin/unstale.exe"],
   "preferUnplugged": true
 }

@@ -1,14 +1,33 @@
 {
-  "name": "unstale",
+  "name": "@unstale/cli",
   "version": "0.1.0",
   "description": "Keep a repository's dependencies from going stale: the unstale CLI (native binary, installed per platform).",
   "license": "AGPL-3.0-only",
+  "author": "Jason Draper (https://vuca.dev)",
+  "homepage": "https://unstale.sh",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/unstale-ai/unstale.git",
+    "directory": "npm/unstale"
+  },
+  "bugs": "https://github.com/unstale-ai/unstale/issues",
+  "keywords": [
+    "unstale",
+    "coding-agent",
+    "claude-code",
+    "codex",
+    "cursor",
+    "changelog",
+    "release-notes",
+    "upgrade",
+    "migration",
+    "dependencies",
+    "knowledge-cutoff"
+  ],
   "bin": {
     "unstale": "bin/unstale.js"
   },
-  "files": [
-    "bin/unstale.js"
-  ],
+  "files": ["bin/unstale.js"],
   "engines": {
     "node": ">=18"
   },

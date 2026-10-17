@@ -8,7 +8,8 @@ release notes, migration guides and docs changes, and your coding agent was trai
 unstale monitors official upstream sources, distills each change once, and intersects it with *your* repository. Your
 coding agent (Claude Code, Codex, Cursor) then knows exactly what changed that matters here, and nothing else.
 
-> Pre-release: build from source for now. `npx unstale init` arrives with the first release.
+> Pre-release: build from source for now. `npx @unstale/cli init` and `brew install unstale-ai/tap/unstale` arrive
+> with the first release.
 
 ## Why unstale
 
@@ -37,7 +38,7 @@ coding agent (Claude Code, Codex, Cursor) then knows exactly what changed that m
 ## Quick start
 
 ```sh
-git clone https://github.com/jasontd92/unstale && cd unstale
+git clone https://github.com/unstale-ai/unstale && cd unstale
 scripts/prepare-dogfood.sh                         # build, install locally, start the catalog service
 .dev/npm/bin/unstale -C /path/to/your/repo init
 ```

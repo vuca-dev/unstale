@@ -6,7 +6,7 @@ import { assertFetchable, BlockedUrlError } from "./url-safety.ts";
 import type { FailureKind } from "./schema.ts";
 
 export const DEFAULT_HEADERS: Readonly<Record<string, string>> = {
-  "user-agent": "unstale-collector/0.0 (+https://github.com/jasontd92/unstale)",
+  "user-agent": "unstale-collector/0.0 (+https://github.com/unstale-ai/unstale)",
   accept: "*/*",
 };
 

@@ -9,7 +9,7 @@
 # would be the MSVC ABI, a different binary from the one rehearsed. Every binary is then run on a native runner
 # (smoke job).
 #
-# Publishing uses npm trusted publishing: on npmjs.com, each of `unstale` and the five `@unstale/cli-*` packages
+# Publishing uses npm trusted publishing: on npmjs.com, each of `@unstale/cli` and the five `@unstale/cli-*` packages
 # names this repository and `release.yml` as its trusted publisher; no secret, the job's `id-token: write` is the
 # credential (npm >= 11.5.1). A trusted publisher can only be added to a package that exists, hence the 0.0.0
 # placeholders. Provenance is attached only while the repository is public (npm generates none from a private
@@ -203,7 +203,7 @@ jobs:
           pattern: npm-*
           path: npm/dist
           merge-multiple: true
-      - name: Pack the wrapper
+      - name: Pack the wrapper (@unstale/cli)
         run: cp LICENSE npm/unstale/LICENSE && (cd npm/unstale && npm pack --pack-destination ../dist)
       - name: npm publish ${{ env.DRY_RUN }}
         run: |
@@ -215,7 +215,7 @@ jobs:
             npm publish "npm/dist/unstale-cli-$key-$VERSION.tgz" $DRY_RUN $PROVENANCE --access public
           done
           # shellcheck disable=SC2086
-          npm publish "npm/dist/unstale-$VERSION.tgz" $DRY_RUN $PROVENANCE --access public
+          npm publish "npm/dist/unstale-cli-$VERSION.tgz" $DRY_RUN $PROVENANCE --access public
 
   homebrew:
     needs: [check, publish]

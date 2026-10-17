@@ -1,12 +1,18 @@
 {
   "name": "@unstale/cli-linux-arm64",
   "version": "0.1.0",
-  "description": "The unstale CLI binary for Linux on arm64 (static musl build; runs on glibc and musl distributions). Install the `unstale` package instead.",
+  "description": "The unstale CLI binary for Linux on arm64 (static musl build; runs on glibc and musl distributions). Install `@unstale/cli` instead.",
   "license": "AGPL-3.0-only",
+  "author": "Jason Draper (https://vuca.dev)",
+  "homepage": "https://unstale.sh",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/unstale-ai/unstale.git",
+    "directory": "npm/cli-linux-arm64"
+  },
+  "bugs": "https://github.com/unstale-ai/unstale/issues",
   "os": ["linux"],
   "cpu": ["arm64"],
-  "files": [
-    "bin/unstale"
-  ],
+  "files": ["bin/unstale"],
   "preferUnplugged": true
 }

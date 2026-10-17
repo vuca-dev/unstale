@@ -1,9 +1,10 @@
 # npm channel (local rehearsal)
 
 The npm install channel from the vault (Onboarding CLI, "Install channels": per-platform packages so
-`npx unstale init` works, the biome/esbuild pattern). Nothing here is published.
+`npx @unstale/cli init` works, the biome/esbuild pattern). npm refuses the bare name `unstale` (too similar to
+`install`), so the wrapper is `@unstale/cli`; its directory stays `unstale/`.
 
-- `unstale/`: the wrapper package. `bin/unstale.js` resolves `@unstale/cli-<platform>-<arch>` (an
+- `unstale/`: the wrapper package, `@unstale/cli`. `bin/unstale.js` resolves `@unstale/cli-<platform>-<arch>` (an
   optionalDependency), runs its `bin/unstale` with the same args and inherited stdio, and exits with its exit
   code (or re-raises its signal). A missing platform package is a clear error (exit 1). `UNSTALE_BINARY`
   overrides the binary path.
@@ -19,7 +20,7 @@ The npm install channel from the vault (Onboarding CLI, "Install channels": per-
   published `@unstale/cli-*` tarballs from the npm registry (sha256 from the local `.tgz`, which is what the registry
   serves), so a tap works while this repository is private and needs no second set of release assets. No Windows.
   Checked 16 October 2026: installed from a local tap with `brew install`, `brew test` and `brew style` clean.
-- `rehearse-npx.sh <scratch>`: bare `npx unstale` against a local Verdaccio on 127.0.0.1 only (no uplinks), with a
+- `rehearse-npx.sh <scratch>`: `npx @unstale/cli` against a local Verdaccio on 127.0.0.1 only (no uplinks), with a
   fresh HOME and npm cache; transcript in commit c71e1fb.
 
 Run so far (15 October 2026): darwin-arm64 natively, darwin-x64 under Rosetta, linux-arm64 and linux-x64 in Docker
