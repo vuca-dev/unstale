@@ -260,8 +260,9 @@ export async function refresh(src: Source, opts: RefreshOptions): Promise<Refres
   const pages: Record<string, PageState> = {};
   for (const [url, { site, page }] of listed) {
     const ns = site.listing.namespaces.find((n) => n.kept && n.kind === "version" && new URL(url).pathname.split("/")[n.position] === n.segment);
-    const nsMajor = ns && /^v?(\d+)/i.exec(ns.segment)?.[1];
     const old = prev?.pages[url];
+    // A page kept from an earlier listing (this one failed) keeps the namespace that listing found.
+    const nsMajor = (ns && /^v?(\d+)/i.exec(ns.segment)?.[1]) || (site.listingFailed ? old?.namespaceMajor : undefined);
     // An unnumbered guide's major was read from its text when first seen (below); the URL alone cannot restore it.
     const gm = guideMajor(url) ?? old?.guideMajor;
     pages[url] = {

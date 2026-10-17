@@ -146,9 +146,10 @@ export async function listSite(http: HttpClient, robots: RobotsCache, site: stri
   }
   const fromSitemap = found.size > 0;
   for (const at of [...new Set([new URL(base + "llms.txt", root).href, new URL("/llms.txt", root).href])]) {
-    const body = await text(http, at, "text/plain, text/markdown;q=0.9");
+    const got = await fetchText(http, at, "text/plain, text/markdown;q=0.9");
+    const body = got?.text;
     if (!body || /^\s*</.test(body)) continue; // an HTML fallback page, not llms.txt
-    for (const p of llmsPages(body, host, at)) {
+    for (const p of llmsPages(body, host, got.url)) { // relative links resolve against where the file was served
       const had = found.get(p.url);
       if (had) {
         if (p.copy && !had.copy) had.copy = p.copy;
@@ -163,7 +164,7 @@ export async function listSite(http: HttpClient, robots: RobotsCache, site: stri
     bare(u.hostname) === bare(host) && (!prefix || u.pathname === prefix || u.pathname.startsWith(prefix + "/")) && !NOT_A_PAGE.test(u.pathname) && !RELEASE_NOTES.test(u.pathname);
   // Too few pages named: the site's own navigation. A site whose entry page lands on another host is listed there.
   if ([...found.values()].filter((p) => inScope(new URL(p.url))).length < MIN_LISTED) {
-    const linked = await linkedPages(http, r, site, inScope, opts.maxLinkPages);
+    const linked = await linkedPages(http, robots, site, inScope, opts.maxLinkPages);
     if (!redirected && linked.final && bare(new URL(linked.final).hostname) !== bare(host)) {
       const to = new URL(linked.final);
       const keep = prefix && (to.pathname === prefix || to.pathname.startsWith(prefix + "/"));
@@ -179,7 +180,7 @@ export async function listSite(http: HttpClient, robots: RobotsCache, site: stri
   let pages: ListedPage[] = [];
   for (const p of found.values()) {
     if (!inScope(new URL(p.url))) dropped.scope++;
-    else if (!r.allowed(p.url)) dropped.robots++;
+    else if (!(await robots.allowed(p.url))) dropped.robots++; // per origin: www. has its own robots.txt
     else pages.push(p);
   }
   const namespaces = findNamespaces(pages.map((p) => new URL(p.url).pathname), opts.latestMajor);
@@ -205,17 +206,17 @@ export async function listSite(http: HttpClient, robots: RobotsCache, site: stri
  * directory share their sidebar, so a site of a few sections costs a few requests, at most `max`. `final` is where the
  * entry page landed after redirects.
  */
-export async function linkedPages(http: HttpClient, r: { allowed(url: string): boolean }, start: string, inScope: (u: URL) => boolean, max: number): Promise<{ urls: string[]; final?: string }> {
+export async function linkedPages(http: HttpClient, robots: { allowed(url: string): Promise<boolean> }, start: string, inScope: (u: URL) => boolean, max: number): Promise<{ urls: string[]; final?: string }> {
   const dirOf = (u: string) => new URL(u).pathname.replace(/\/[^/]*$/, "") || "/";
   const found = new Set<string>();
-  const queue = [normalizeUrl(start)];
+  const queue = [start]; // as given: a trailing slash is the base its relative links resolve against
   const read = new Set<string>();
   let final: string | undefined;
   for (let fetched = 0; fetched < max; ) {
     const next = queue.find((u) => !read.has(dirOf(u)));
     if (!next) break;
     read.add(dirOf(next));
-    if (!r.allowed(next)) continue;
+    if (!(await robots.allowed(next))) continue;
     fetched++;
     const page = await fetchText(http, next, "text/html, application/xhtml+xml;q=0.9");
     if (!page) continue;
@@ -232,9 +233,9 @@ export async function linkedPages(http: HttpClient, r: { allowed(url: string): b
       } catch {
         continue;
       }
-      if (!/^https?:$/.test(u.protocol) || !inScope(u) || !r.allowed(u.href)) continue;
+      if (!/^https?:$/.test(u.protocol) || !inScope(u)) continue;
       const n = normalizeUrl(u.href);
-      if (!found.has(n)) {
+      if (!found.has(n) && (await robots.allowed(n))) {
         found.add(n);
         queue.push(n);
       }

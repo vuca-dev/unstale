@@ -184,7 +184,14 @@ describe("listing from the site's links", () => {
     const l = await listSite(http, new RobotsCache(http), `${e.base}/docs/guide/a`, "/docs");
     expect([l.method, l.pages.map((p) => new URL(p.url).pathname)]).toEqual(["links", ["/docs/api/x", ...guide]]);
     expect(l.dropped.robots).toBe(0); // a disallowed link is never queued
-    expect([...hits.keys()].sort()).toEqual(["/docs/api/x", "/docs/guide/a"]);
+    expect([...hits].sort(([a], [b]) => a.localeCompare(b))).toEqual([["/docs/api/x", 1], ["/docs/guide/a", 1]]);
+  });
+
+  test("an entry with a trailing slash is the base of its relative links", async () => {
+    e.route("/docs/", (_q, r) => void r.writeHead(200, { "content-type": "text/html" }).end(nav(["a", "b"])));
+    const http = new HttpClient({ ...DEFAULT_HTTP, allowHosts: ["127.0.0.1"], retryBaseMs: 10, timeoutMs: 2_000 });
+    const l = await listSite(http, new RobotsCache(http), `${e.base}/docs/`, "/docs");
+    expect(l.pages.map((p) => new URL(p.url).pathname)).toEqual(["/docs", "/docs/a", "/docs/b"]);
   });
 
   test("an entry page that lands on another host is listed on that host", async () => {
