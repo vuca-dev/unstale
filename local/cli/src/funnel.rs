@@ -399,7 +399,10 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             // precondition (absent until adopted), so it never demotes the record (eval/rank/RESULTS.md, follow-up).
             let intro: BTreeSet<String> = rec.r.introduces.iter().filter_map(|x| clean_lit(x)).collect();
             let req: Vec<String> = rec.r.requires.iter().filter_map(|x| clean_lit(x)).filter(|x| !intro.contains(x)).collect();
-            let requires_miss = !req.is_empty() && !req.iter().any(|x| hits.used(x));
+            // A condition may be met in any config or data file (`postgresql` in a compose file), but never in another
+            // ecosystem's code.
+            let requires_miss = !req.is_empty()
+                && !req.iter().any(|x| hits.usage.get(x).into_iter().flatten().any(|p| !usage::foreign_code(p, &ecosystem)));
             let mut opp = Opp {
                 rec,
                 release: release.clone(),

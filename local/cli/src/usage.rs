@@ -51,8 +51,19 @@ pub fn plain_word(lit: &str) -> bool {
 pub fn naming_lits(purl: &str) -> Vec<String> {
     let Some(name) = purl_name(purl) else { return vec![] };
     if normalize_purl(purl).starts_with("pkg:pypi/") {
+        // A module boundary after the name, so `requests` is not named by `import requests_cache`.
         let module = name.to_ascii_lowercase().replace('-', "_");
-        return vec![format!("import {module}"), format!("from {module}"), format!("\"{name}"), format!("'{name}")];
+        let mut out = vec![];
+        for end in [" ", ".", ",", "\n", "\r", ";"] {
+            out.push(format!("import {module}{end}"));
+            out.push(format!("from {module}{end}"));
+        }
+        for q in ["'", "\""] {
+            for end in [q, ">", "<", "=", "~", "!", "[", " ", ";"] {
+                out.push(format!("{q}{name}{end}"));
+            }
+        }
+        return out;
     }
     ["'", "\""].iter().flat_map(|q| [format!("{q}{name}{q}"), format!("{q}{name}/")]).collect()
 }
@@ -827,7 +838,13 @@ mod tests {
     fn naming_literals_follow_each_ecosystems_module_syntax() {
         assert_eq!(naming_lits("pkg:npm/vitest"), vec!["'vitest'", "'vitest/", "\"vitest\"", "\"vitest/"]);
         assert_eq!(naming_lits("pkg:npm/%40playwright/test")[0], "'@playwright/test'");
-        assert_eq!(naming_lits("pkg:pypi/python-dateutil"), vec!["import python_dateutil", "from python_dateutil", "\"python-dateutil", "'python-dateutil"]);
+        let py = naming_lits("pkg:pypi/requests");
+        for named in ["import requests\n", "from requests.adapters", "\"requests>=2", "'requests'"] {
+            assert!(py.iter().any(|l| named.contains(l.as_str())), "{named}");
+        }
+        for other in ["import requests_cache\n", "from requests_oauthlib import x", "\"requests-toolbelt>=1"] {
+            assert!(!py.iter().any(|l| other.contains(l.as_str())), "{other}");
+        }
         assert!(naming_lits("pkg:cargo/serde").is_empty());
     }
 
