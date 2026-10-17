@@ -189,6 +189,11 @@ fn register_waiting(
                 return Ok(());
             }
         }
+        // An expired deferral says nothing about this attempt, whatever its outcome.
+        if pending.deferred_until.is_some_and(|t| t <= unix_now()) {
+            pending.deferred_until = None;
+            pending.deferred_by = None;
+        }
         once(pending)?;
         if pending.unsubmitted.is_empty() || !pending.deferred_until.is_some_and(|t| t > unix_now()) {
             return Ok(());
@@ -270,6 +275,28 @@ fn deferred_line_at(pending: &Pending, now: u64) -> Option<String> {
         span(until - now)
     ))
 }
+/// A `Retry-After` value in seconds from `now`: delay-seconds, or an HTTP-date (IMF-fixdate,
+/// `Sun, 06 Nov 1994 08:49:37 GMT`, the form senders must use).
+fn retry_after_secs(v: &str, now: u64) -> Option<u64> {
+    let v = v.trim();
+    if let Ok(s) = v.parse() {
+        return Some(s);
+    }
+    let parts: Vec<&str> = v.split_whitespace().collect();
+    let [_, day, month, year, time, "GMT"] = parts.as_slice() else { return None };
+    let month = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"].iter().position(|m| m == month)? as i64 + 1;
+    let (day, year): (i64, i64) = (day.parse().ok()?, year.parse().ok()?);
+    let hms: Vec<i64> = time.split(':').map(|x| x.parse().ok()).collect::<Option<_>>()?;
+    let [h, m, sec] = hms.as_slice() else { return None };
+    // Days since 1970-01-01 of a proleptic Gregorian date (Howard Hinnant's days_from_civil).
+    let y = if month <= 2 { year - 1 } else { year };
+    let era = y.div_euclid(400);
+    let yoe = y - era * 400;
+    let doy = (153 * (if month > 2 { month - 3 } else { month + 9 }) + 2) / 5 + day - 1;
+    let days = era * 146_097 + yoe * 365 + yoe / 4 - yoe / 100 + doy - 719_468;
+    let at = days * 86_400 + h * 3600 + m * 60 + sec;
+    Some((at - now as i64).max(0) as u64)
+}
 /// `HH:MM` (UTC) of a Unix time, rounded up to the minute so it is never before the time it names.
 fn capitalized(s: &str) -> String {
     let mut c = s.chars();
@@ -348,7 +375,7 @@ fn request_via(a: &ureq::Agent, service: &str, purl: &str, post: bool) -> Result
             .headers()
             .get("retry-after")
             .and_then(|v| v.to_str().ok())
-            .and_then(|v| v.trim().parse().ok())
+            .and_then(|v| retry_after_secs(v, unix_now()))
             .unwrap_or(3600);
         let by = if r.status() == 503 {
             Deferral::Unavailable
@@ -2006,6 +2033,10 @@ mod tests {
         let restored: Pending = serde_json::from_str(r#"{"jobs":{},"unsubmitted":["pkg:npm/a"],"deferred_until":1,"deferred_by":"budget"}"#).unwrap();
         assert_eq!(restored.deferred_by, Some(Deferral::Budget));
         assert_eq!(span(40), "40s");
+        assert_eq!(retry_after_secs(" 900 ", now), Some(900));
+        // 1_792_022_400 is Thursday 15 October 2026, 00:00:00 UTC.
+        assert_eq!(retry_after_secs("Thu, 15 Oct 2026 00:00:00 GMT", 1_792_022_400 - 20_880), Some(20_880));
+        assert_eq!(retry_after_secs("soon", now), None);
         assert_eq!(span(3600), "1h 00m");
     }
     #[test]
@@ -2029,6 +2060,12 @@ mod tests {
             Ok(())
         }).unwrap();
         assert_eq!((sends, held.len(), pending.past_wait), (2, 1, None));
+        // An expired deferral is cleared before the attempt, so another failure is not reported as the old limit.
+        let mut pending = fresh();
+        pending.deferred_until = Some(unix_now() - 1);
+        pending.deferred_by = Some(Deferral::Unavailable);
+        register_waiting(&mut pending, 60, false, Instant::now(), |_, _| panic!("must not wait"), |_| Ok(())).unwrap();
+        assert_eq!((pending.deferred_until, pending.deferred_by), (None, None));
         // Deferred beyond the wait: not waited for, and the summary says so.
         let (mut pending, mut sends) = (fresh(), 0);
         let defer = |p: &mut Pending| { p.deferred_until = Some(unix_now() + 3600); p.deferred_by = Some(Deferral::Unavailable); Ok(()) };

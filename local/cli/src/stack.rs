@@ -464,6 +464,12 @@ impl Catalogs {
     }
 }
 
+/// The entries of a one-line flow mapping (`{ next: 16.4.1, react: ^19 }`).
+fn flow(v: &str) -> Option<Vec<(String, Option<&str>)>> {
+    let inner = v.strip_prefix('{')?.strip_suffix('}')?;
+    Some(inner.split(',').filter_map(|e| split_key(e.trim())).collect())
+}
+
 /// The `catalog` and `catalogs` sections of `pnpm-workspace.yaml` (line-based, as `parse_pnpm`).
 pub fn parse_pnpm_workspace(text: &str) -> Catalogs {
     let mut c = Catalogs::default();
@@ -493,8 +499,19 @@ pub fn parse_pnpm_workspace(text: &str) -> Catalogs {
             ["catalogs", name] => Some(*name),
             _ => None,
         };
-        if let (Some(catalog), Some(v)) = (catalog, val) {
-            c.0.entry(catalog.to_string()).or_default().insert(k.clone(), v.trim_matches(['\'', '"']).to_string());
+        // A flow mapping (`catalog: { next: 16.4.1, react: ^19 }`) holds the entries of the catalog it names.
+        let (catalog, entries) = match (catalog, val.and_then(flow)) {
+            (None, Some(e)) if path.as_slice() == ["catalogs"] => (Some(k.as_str()), e),
+            (None, Some(e)) if path.is_empty() && k == "catalog" => (Some("default"), e),
+            (Some(cat), _) => (Some(cat), val.map(|v| vec![(k.clone(), Some(v))]).unwrap_or_default()),
+            _ => (None, vec![]),
+        };
+        if let Some(catalog) = catalog {
+            for (name, v) in entries {
+                if let Some(v) = v {
+                    c.0.entry(catalog.to_string()).or_default().insert(name, v.trim_matches(['\'', '"']).to_string());
+                }
+            }
         }
         if val.is_none() {
             stack.push((indent, k));
@@ -936,6 +953,10 @@ mod tests {
         assert!(react.readings.iter().all(|r| r.version == Version::new(18, 2, 0)), "{react:?}");
         assert!(react.readings.iter().any(|r| r.source == "library floor of ~18.2.0 from catalog:legacy"), "{react:?}");
         assert_eq!(s.deps["pkg:npm/left-pad"].version, None, "a catalog that does not list the package has no version");
+        let flow = parse_pnpm_workspace("catalog: { next: ^16.1.0, '@types/react': \"^19.0.0\" }\ncatalogs:\n  legacy: {react: ~18.2.0}\n");
+        assert_eq!(flow.resolve("next", "catalog:"), Some("^16.1.0"));
+        assert_eq!(flow.resolve("@types/react", "catalog:default"), Some("^19.0.0"));
+        assert_eq!(flow.resolve("react", "catalog:legacy"), Some("~18.2.0"));
         // A lockfile that resolved a catalog entry outside the catalog's range is out of date like any other.
         write(d.path(), "apps/web/pnpm-lock.yaml", "lockfileVersion: '9.0'\n\nimporters:\n\n  .:\n    dependencies:\n      next:\n        specifier: 'catalog:'\n        version: 15.5.0\n");
         let s = detect(d.path()).unwrap();
