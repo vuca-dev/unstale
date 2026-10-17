@@ -45,7 +45,7 @@ Central's operator commands: `npm --prefix central run catalog -- <command>` (pi
 
 | Workflow | Trigger | What it does |
 |---|---|---|
-| `.github/workflows/ci.yml` | every push and pull request | The commands under [Tests](#tests) (Rust job; central job with Rust for the schema checks; gateway job with a `wrangler deploy --dry-run` bundle), Node 24 |
+| `.github/workflows/ci.yml` | every pull request and push to `main` | The commands under [Tests](#tests) (Rust job; central job with Rust for the schema checks; gateway job with a `wrangler deploy --dry-run` bundle), Node 24 |
 | `.github/workflows/release.yml` | tag `v*` | Checks the tag equals the crate version; `npm/build.sh <platform>` per platform (darwin on macOS, linux and win32 with cargo-zigbuild on Ubuntu); runs every binary on a native runner; `npm publish` per package (`--dry-run` until `NPM_PUBLISH` is `true`; `--provenance` while the repository is public); generates the Homebrew formula (`npm/homebrew-formula.sh`) and commits it to the tap when publishing for real |
 | `.github/workflows/ingest.yml` | daily while the repository is private (every 3 hours once public), manually, and from the gateway (fast-track) | Restores the central store; runs `pipeline --refresh` (catalog technologies) and `drain` (registrations pulled from the gateway, refreshes, new technologies by demand, ties broken by adoption, under the coverage budget); exports and verifies the static catalog; deploys it with the gateway; saves the store; acknowledges the registrations it took |
 
