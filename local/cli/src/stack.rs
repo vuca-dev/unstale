@@ -149,15 +149,19 @@ pub struct Stack {
     /// The lowest Node version the project supports, and where that came from.
     pub node: Option<(Version, String)>,
     /// Where versions came from when that needed a choice: competing lockfiles in one directory, or a lockfile
-    /// that disagrees with the manifest beside it. For the report.
+    /// that disagrees with the manifest beside it; and the packages on different versions across manifests. For the
+    /// report.
     pub notes: Vec<String>,
+    /// How many packages are on different versions across manifests (the last note when nonzero; `settle`).
+    pub spread: usize,
 }
 
 impl Stack {
     /// Sets each dependency's version from its readings (`settle`).
     pub fn settle(&mut self) {
-        if let Some(n) = settle(&mut self.deps) {
-            self.notes.push(n);
+        if let Some((n, note)) = settle(&mut self.deps) {
+            self.spread = n;
+            self.notes.push(note);
         }
     }
 
@@ -194,8 +198,8 @@ impl Stack {
 }
 
 /// Sets each dependency's version and source from its readings (`Dep::headline`); a note naming the packages whose
-/// versions differ across manifests, when any do.
-pub fn settle(deps: &mut BTreeMap<String, Dep>) -> Option<String> {
+/// versions differ across manifests, with their count, when any do.
+pub fn settle(deps: &mut BTreeMap<String, Dep>) -> Option<(usize, String)> {
     let mut differ = vec![];
     for d in deps.values_mut() {
         let Some(h) = d.headline().cloned() else { continue };
@@ -220,12 +224,12 @@ pub fn settle(deps: &mut BTreeMap<String, Dep>) -> Option<String> {
     }
     let n = differ.len();
     differ.truncate(5);
-    Some(format!(
+    Some((n, format!(
         "{n} package{} on different versions across manifests: {}{}. The reviews use the root's version (else the shallowest manifest's); the bump digest names the others.",
         if n == 1 { " is" } else { "s are" },
         differ.join("; "),
         if n > 5 { format!("; {} more", n - 5) } else { String::new() }
-    ))
+    )))
 }
 
 const DEP_FIELDS: &[&str] = &["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"];
@@ -342,17 +346,28 @@ pub fn detect(root: &Path) -> Result<Stack> {
                 } else if let Some((ld, l)) = &lock
                     && let Some(v) = l.version(&importer, name, range)
                 {
-                    // A locked version the manifest no longer admits means the lockfile is out of date: the
-                    // declared range says more about what the project runs than the stale pin does.
-                    if !local && npm_satisfies(&v, range) == Some(false) {
-                        let s = stale.entry(join(&rel_dir(root, ld), &l.file)).or_default();
+                    let file = join(&rel_dir(root, ld), &l.file);
+                    if local || npm_satisfies(&v, range) != Some(false) {
+                        (Some(v), file)
+                    } else if let Some((other, set)) = l.replaced_by(name) {
+                        // Swapped for another package across the install: the locked version is the other's.
+                        (None, format!("replaced by {other} ({set})"))
+                    } else if let Some(set) = l.override_admitting(name, &v) {
+                        // A root override is a declaration too: it sets the version for every workspace.
+                        (Some(v), format!("{file} ({set})"))
+                    } else if *field == "peerDependencies" {
+                        // A peer range says what this workspace supports; the install resolves the package for
+                        // it elsewhere, so a pin outside it is what runs, not a sign of a stale lockfile.
+                        (Some(v), file)
+                    } else {
+                        // A locked version the manifest no longer admits means the lockfile is out of date: the
+                        // declared range says more about what the project runs than the stale pin does.
+                        let s = stale.entry(file.clone()).or_default();
                         s.0 += 1;
                         if s.1.len() < 3 {
                             s.1.push(format!("{name} {v} vs {range}"));
                         }
-                        (range_floor(range), format!("floor of {shown} ({} has {v}, outside the range)", join(&rel_dir(root, ld), &l.file)))
-                    } else {
-                        (Some(v), join(&rel_dir(root, ld), &l.file))
+                        (range_floor(range), format!("floor of {shown} ({file} has {v}, outside the range)"))
                     }
                 } else {
                     (range_floor(range), format!("floor of {shown} (not in a lockfile)"))
@@ -405,7 +420,7 @@ pub fn detect(root: &Path) -> Result<Stack> {
         ));
     }
     crate::pypi::detect(root, &mut packages, &mut deps, &mut notes);
-    let mut st = Stack { packages, deps, node, notes };
+    let mut st = Stack { packages, deps, node, notes, spread: 0 };
     st.settle();
     Ok(st)
 }
@@ -544,6 +559,8 @@ pub struct Lock {
     by_name: BTreeMap<String, Vec<Version>>,
     /// (name, version) → the lockfile's `sha512-` integrity values (npm, pnpm, yarn v1).
     integrity: BTreeMap<(String, String), Vec<String>>,
+    /// Root overrides its package manager applies to every workspace (`read_overrides`): name → (value, where set).
+    overrides: BTreeMap<String, Vec<(String, &'static str)>>,
 }
 
 /// npm lockfiles in the order used when nothing else decides between them, with the package manager that writes
@@ -569,7 +586,7 @@ fn choose_lock(root: &Path, dir: &Path, mut cands: Vec<Lock>, local_names: &BTre
     let manager = pj.get("packageManager").and_then(Value::as_str).and_then(|m| m.split('@').next()).unwrap_or("");
     // (outside the range, inside it) per candidate.
     let score = |l: &Lock| {
-        declared.iter().fold((0usize, 0usize), |(out, ins), (n, r)| match l.version(".", n, r).and_then(|v| npm_satisfies(&v, r)) {
+        declared.iter().fold((0usize, 0usize), |(out, ins), (n, r)| match l.version(".", n, r).and_then(|v| l.admits(n, &v, r)) {
             Some(false) => (out + 1, ins),
             Some(true) => (out, ins + 1),
             None => (out, ins),
@@ -614,9 +631,34 @@ impl Lock {
                 _ => parse_npm(&text),
             };
             l.file = f.to_string();
+            l.overrides = read_overrides(dir, f);
             out.push(l);
         }
         out
+    }
+
+    /// Whether the locked `v` is one the manifest declares: inside `range`, or set by a root override (`None`
+    /// when the range cannot be read).
+    pub fn admits(&self, name: &str, v: &Version, range: &str) -> Option<bool> {
+        match npm_satisfies(v, range) {
+            Some(false) if self.override_admitting(name, v).is_some() || self.replaced_by(name).is_some() => Some(true),
+            r => r,
+        }
+    }
+
+    /// Where an override that sets `name` and admits `v` is declared. One the range grammar cannot read (`patch:`,
+    /// npm's `$react`, `link:`) admits whatever the lockfile resolved for it.
+    fn override_admitting(&self, name: &str, v: &Version) -> Option<&'static str> {
+        self.overrides.get(name)?.iter().find(|(val, _)| npm_satisfies(v, val) != Some(false)).map(|(_, set)| *set)
+    }
+
+    /// The package an override swaps `name` for (`npm:noop-package@1.0.0`), and where that is declared.
+    fn replaced_by(&self, name: &str) -> Option<(&str, &'static str)> {
+        self.overrides.get(name)?.iter().find_map(|(val, set)| {
+            let alias = val.trim().strip_prefix("npm:")?;
+            let other = alias.get(1..).and_then(|r| r.find('@')).map_or(alias, |i| &alias[..i + 1]);
+            (!other.is_empty() && other != name).then_some((other, *set))
+        })
     }
 
     pub fn version(&self, importer: &str, name: &str, range: &str) -> Option<Version> {
@@ -649,6 +691,94 @@ impl Lock {
             self.integrity.insert((name.to_string(), version.to_string()), hashes);
         }
     }
+}
+
+/// Root overrides the package manager that writes `lockfile` applies across the install, read from the
+/// `package.json` (and `pnpm-workspace.yaml`) beside it: Yarn `resolutions`; npm `overrides`; pnpm `pnpm.overrides`,
+/// `resolutions` and the workspace file's `overrides`. Only selectors that apply everywhere count (`react`,
+/// `react@^18`, `**/react`, npm's `{"react": {".": "19"}}`); one under a parent (`a/react`, `a>react`, npm's nested
+/// keys) does not set a workspace's own dependency.
+fn read_overrides(dir: &Path, lockfile: &str) -> BTreeMap<String, Vec<(String, &'static str)>> {
+    let pj: Value = std::fs::read_to_string(dir.join("package.json")).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or(Value::Null);
+    let fields: &[(&str, &str)] = match lockfile {
+        "yarn.lock" => &[("/resolutions", "resolutions")],
+        "pnpm-lock.yaml" => &[("/pnpm/overrides", "pnpm.overrides"), ("/resolutions", "resolutions")],
+        _ => &[("/overrides", "overrides")],
+    };
+    let mut out: BTreeMap<String, Vec<(String, &'static str)>> = BTreeMap::new();
+    let mut add = |sel: &str, val: &str, set: &'static str| {
+        if let Some(name) = override_target(sel) {
+            out.entry(name.to_string()).or_default().push((val.to_string(), set));
+        }
+    };
+    for (ptr, set) in fields {
+        for (sel, val) in pj.pointer(ptr).and_then(Value::as_object).into_iter().flatten() {
+            match val {
+                Value::String(v) => add(sel, v, set),
+                // npm: `{"react": {".": "19.2.7", "child": "1"}}` sets react itself with `.`.
+                Value::Object(o) => {
+                    if let Some(v) = o.get(".").and_then(Value::as_str) {
+                        add(sel, v, set)
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    if lockfile == "pnpm-lock.yaml"
+        && let Ok(text) = std::fs::read_to_string(dir.join("pnpm-workspace.yaml"))
+    {
+        for (sel, val) in pnpm_workspace_overrides(&text) {
+            add(&sel, &val, "pnpm-workspace.yaml overrides");
+        }
+    }
+    out
+}
+
+/// The package an override selector sets everywhere: `name`, `@scope/name`, either with a version (`name@^1`,
+/// `name@npm:1.0.0`), or behind Yarn's `**/`. `None` for one that applies only under a parent.
+fn override_target(sel: &str) -> Option<&str> {
+    let s = sel.trim();
+    let s = s.strip_prefix("**/").unwrap_or(s);
+    if s.contains('>') {
+        return None; // pnpm `parent>child`
+    }
+    let name_end = match s.strip_prefix('@') {
+        Some(r) => {
+            let slash = r.find('/')? + 2;
+            slash + s[slash..].find(['@', '/']).unwrap_or(s.len() - slash)
+        }
+        None => s.find(['@', '/']).unwrap_or(s.len()),
+    };
+    let (name, rest) = s.split_at(name_end);
+    // Anything after the name and its version is a path below it (`parent/child`, `parent@1/child`).
+    (!name.is_empty() && !name.ends_with('/') && !rest.contains('/')).then_some(name)
+}
+
+/// The top-level `overrides` of `pnpm-workspace.yaml` (pnpm 10+), block or flow form.
+fn pnpm_workspace_overrides(text: &str) -> Vec<(String, String)> {
+    let (mut out, mut inside) = (vec![], false);
+    for raw in text.lines() {
+        let line = raw.find(" #").map_or(raw, |i| &raw[..i]).trim_end();
+        if line.trim().is_empty() || line.trim_start().starts_with('#') {
+            continue;
+        }
+        if line.starts_with("---") {
+            inside = false;
+            continue;
+        }
+        let top = !line.starts_with([' ', '\t']);
+        let Some((k, val)) = split_key(line.trim_start()) else { continue };
+        if top {
+            inside = k == "overrides" && val.is_none();
+            if k == "overrides" {
+                out.extend(val.and_then(flow).into_iter().flatten().filter_map(|(k, v)| Some((k, v?.trim_matches(['\'', '"']).to_string()))));
+            }
+        } else if inside && let Some(v) = val {
+            out.push((k, v.trim_matches(['\'', '"']).to_string()));
+        }
+    }
+    out
 }
 
 pub fn parse_npm(text: &str) -> Lock {
@@ -906,6 +1036,99 @@ mod tests {
         assert!(!s.notes.iter().any(|n| n.contains("out of date")), "{:?}", s.notes);
         assert_eq!(s.deps["pkg:npm/lodash"].version, Some(Version::new(4, 18, 1)));
         assert!(!s.deps["pkg:npm/%40grafana/data"].public_candidate);
+    }
+
+    #[test]
+    fn root_resolutions_are_not_a_stale_lockfile() {
+        // wp-calypso's shape: root `resolutions` force react 19.2.7 and @wordpress/components ^37 everywhere; a
+        // workspace still declares ^28 and a peer range ^18.2.0, and yarn.lock has only the forced entries.
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "package.json", r#"{"name":"calypso","private":true,"workspaces":["apps/*","packages/*"],
+            "dependencies":{"react":"19.2.7","@types/wordpress__block-editor":"^11.5.16"},
+            "resolutions":{"react":"19.2.7","**/react-dom":"19.2.7","@wordpress/components@npm:^28.0.0":"^37.0.0",
+                "@types/wordpress__block-editor":"npm:noop-package@1.0.0","jest-environment-jsdom/jsdom":"^20.0.3",
+                "@wordpress/element":"patch:@wordpress/element@npm%3A8.0.0#~/.yarn/patches/x.patch"}}"#);
+        write(d.path(), "apps/agents/package.json", r#"{"name":"agents","private":true,
+            "dependencies":{"@wordpress/components":"^28.23.0","@wordpress/element":"^7.0.0","jsdom":"^16.0.0"},
+            "peerDependencies":{"react":"^18.2.0","react-dom":"^18.2.0"}}"#);
+        write(d.path(), "packages/ui/package.json", r#"{"name":"ui","private":true,"devDependencies":{"react":"^18.3.1","react-dom":"^18.3.1"}}"#);
+        write(d.path(), "yarn.lock", "__metadata:\n  version: 8\n\n\"react@npm:19.2.7\":\n  version: 19.2.7\n  resolution: \"react@npm:19.2.7\"\n\n\"react-dom@npm:19.2.7\":\n  version: 19.2.7\n  resolution: \"react-dom@npm:19.2.7\"\n\n\"@wordpress/components@npm:^37.0.0\":\n  version: 37.0.0\n  resolution: \"@wordpress/components@npm:37.0.0\"\n\n\"@wordpress/element@patch:@wordpress/element@npm%3A8.0.0#~/.yarn/patches/x.patch\":\n  version: 8.0.0\n  resolution: \"@wordpress/element@patch:x\"\n\n\"@types/wordpress__block-editor@npm:noop-package@1.0.0\":\n  version: 1.0.0\n  resolution: \"noop-package@npm:1.0.0\"\n\n\"jsdom@npm:^20.0.3\":\n  version: 20.0.3\n  resolution: \"jsdom@npm:20.0.3\"\n");
+        let s = detect(d.path()).unwrap();
+        let react = &s.deps["pkg:npm/react"];
+        assert_eq!(react.version, Some(Version::new(19, 2, 7)));
+        assert!(react.readings.iter().all(|r| r.version == Version::new(19, 2, 7)), "{react:?}");
+        assert_eq!(react.readings.iter().find(|r| r.dir == "packages/ui").unwrap().source, "yarn.lock (resolutions)");
+        assert!(s.deps["pkg:npm/react-dom"].readings.iter().all(|r| r.version == Version::new(19, 2, 7)), "`**/` applies everywhere");
+        let components = &s.deps["pkg:npm/%40wordpress/components"];
+        assert_eq!((components.version.clone(), components.source.as_str()), (Some(Version::new(37, 0, 0)), "yarn.lock (resolutions)"));
+        assert_eq!(s.deps["pkg:npm/%40wordpress/element"].version, Some(Version::new(8, 0, 0)), "a patch override admits the pin");
+        let replaced = &s.deps["pkg:npm/%40types/wordpress__block-editor"];
+        assert_eq!((replaced.version.clone(), replaced.source.as_str()), (None, "replaced by noop-package (resolutions)"));
+        // A resolution under a parent (`jest-environment-jsdom/jsdom`) does not set a workspace's own jsdom.
+        assert_eq!(s.notes.len(), 1, "{:?}", s.notes);
+        assert!(s.notes[0].starts_with("yarn.lock: 1 locked version falls outside") && s.notes[0].contains("jsdom 20.0.3 vs ^16.0.0"), "{}", s.notes[0]);
+        assert_eq!(s.spread, 0);
+    }
+
+    #[test]
+    fn a_peer_range_alone_never_makes_a_lockfile_stale() {
+        // An application workspace's peer range says what it supports; the root's install is what runs.
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "package.json", r#"{"name":"root","private":true,"workspaces":["apps/*"],"dependencies":{"react":"^19.2.0"}}"#);
+        write(d.path(), "apps/help/package.json", r#"{"name":"help","private":true,"peerDependencies":{"react":"^18.2.0"}}"#);
+        write(d.path(), "yarn.lock", "__metadata:\n  version: 8\n\n\"react@npm:^19.2.0\":\n  version: 19.2.7\n  resolution: \"react@npm:19.2.7\"\n");
+        let s = detect(d.path()).unwrap();
+        let react = &s.deps["pkg:npm/react"];
+        assert!(react.readings.iter().all(|r| r.version == Version::new(19, 2, 7) && r.source == "yarn.lock"), "{react:?}");
+        assert!(s.notes.is_empty(), "{:?}", s.notes);
+    }
+
+    #[test]
+    fn npm_and_pnpm_overrides_count_as_declared() {
+        // npm `overrides`: plain, `name@range` and the `.` of a nested object set a package everywhere; a nested
+        // child does not.
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "package.json", r#"{"name":"root","private":true,"workspaces":["web"],"dependencies":{"foo":"^2.0.0"},
+            "overrides":{"foo":"$foo","bar@^1":"2.1.0","baz":{".":"3.0.0","qux":"1.0.0"}},"resolutions":{"qux":"9.9.9"}}"#);
+        write(d.path(), "web/package.json", r#"{"name":"web","private":true,"dependencies":{"foo":"^1.0.0","bar":"^1.0.0","baz":"^2.0.0","qux":"^0.5.0"}}"#);
+        write(d.path(), "package-lock.json", r#"{"lockfileVersion":3,"packages":{"node_modules/foo":{"version":"2.0.1"},"node_modules/bar":{"version":"2.1.0"},"node_modules/baz":{"version":"3.0.0"},"node_modules/qux":{"version":"1.0.0"}}}"#);
+        let s = detect(d.path()).unwrap();
+        for (n, v) in [("foo", Version::new(2, 0, 1)), ("bar", Version::new(2, 1, 0)), ("baz", Version::new(3, 0, 0))] {
+            assert_eq!(s.deps[&format!("pkg:npm/{n}")].version, Some(v), "{n}");
+        }
+        assert_eq!(s.notes.len(), 1, "npm ignores Yarn's `resolutions`: {:?}", s.notes);
+        assert!(s.notes[0].contains("qux 1.0.0 vs ^0.5.0"), "{}", s.notes[0]);
+        // pnpm: `pnpm.overrides` and the workspace file's `overrides`; `parent>child` applies under a parent only.
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "package.json", r#"{"name":"root","private":true,"pnpm":{"overrides":{"next":"16.4.1","a>zod":"4.0.0"}}}"#);
+        write(d.path(), "pnpm-workspace.yaml", "packages:\n  - web\noverrides:\n  '@types/react': ^19.0.0 # all workspaces\n");
+        write(d.path(), "web/package.json", r#"{"name":"web","private":true,"dependencies":{"next":"^15.0.0","@types/react":"^18.3.0","zod":"^3.0.0"}}"#);
+        write(d.path(), "pnpm-lock.yaml", "lockfileVersion: '9.0'\n\noverrides:\n  next: 16.4.1\n\nimporters:\n\n  web:\n    dependencies:\n      '@types/react':\n        specifier: ^19.0.0\n        version: 19.2.3\n      next:\n        specifier: 16.4.1\n        version: 16.4.1(react@19.2.0)\n      zod:\n        specifier: ^3.0.0\n        version: 4.0.0\n");
+        let s = detect(d.path()).unwrap();
+        assert_eq!(s.deps["pkg:npm/next"].version, Some(Version::new(16, 4, 1)));
+        assert_eq!(s.deps["pkg:npm/next"].source, "pnpm-lock.yaml (pnpm.overrides)");
+        assert_eq!(s.deps["pkg:npm/%40types/react"].source, "pnpm-lock.yaml (pnpm-workspace.yaml overrides)");
+        assert_eq!(s.notes.len(), 1, "{:?}", s.notes);
+        assert!(s.notes[0].contains("zod 4.0.0 vs ^3.0.0"), "{}", s.notes[0]);
+    }
+
+    #[test]
+    fn override_selectors_name_the_package_they_set_everywhere() {
+        for (sel, want) in [
+            ("react", Some("react")),
+            ("**/react", Some("react")),
+            ("react@^18", Some("react")),
+            ("@babel/core@npm:7.25.7", Some("@babel/core")),
+            ("@types/react", Some("@types/react")),
+            ("jest-environment-jsdom/jsdom", None),
+            ("keytar@npm:7.7.0/node-addon-api", None),
+            ("@scope/parent/child", None),
+            ("a>b", None),
+            ("@scope", None),
+            ("", None),
+        ] {
+            assert_eq!(override_target(sel), want, "{sel}");
+        }
     }
 
     #[test]

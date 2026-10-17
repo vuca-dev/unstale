@@ -98,6 +98,8 @@ pub struct Outcome<'a> {
     pub workspaces: BTreeMap<String, Vec<Workspace<'a>>>,
     /// Package URLs whose version differs across manifests: where the outputs' version comes from (directory, source).
     pub headline: BTreeMap<String, (String, String)>,
+    /// Why no technology is covered yet, when the client knows (a deferred registration); set by the caller.
+    pub uncovered: Option<String>,
 }
 
 /// Manifests on one version of a package other than the one the outputs use: a workspace with its own lockfile, a
@@ -663,7 +665,10 @@ pub fn why(out: &Outcome, routes: &[&str]) -> String {
         }
     }
     if out.technologies.is_empty() {
-        return "no catalog technology matches this repository's packages (run `unstale sync`)".into();
+        return match &out.uncovered {
+            Some(why) => format!("no catalog technology covers this repository yet: {why}"),
+            None => "no catalog technology matches this repository's packages (run `unstale sync`)".into(),
+        };
     }
     if parts.is_empty() {
         return format!("{} records for {} in the catalog", out.opps.len(), out.technologies.join(", "));
@@ -716,6 +721,7 @@ pub(crate) mod fixtures {
                 .collect(),
             node: node.map(|v| (parse_version(v).unwrap(), "engines".into())),
             notes: vec![],
+            spread: 0,
         }
     }
 
@@ -1098,6 +1104,16 @@ mod tests {
         assert_eq!(route_of(&out, "next:declined"), &Route::Withheld("declined"), "a label_version bump does not re-open");
         assert_eq!(route_of(&out, "next:revised"), &Route::UpgradeReview, "a revision bump re-opens");
         assert!(why(&out, &["upgrade review"]).contains("1 withheld by the ledger (1 declined)"));
+    }
+
+    #[test]
+    fn no_technology_names_a_deferred_registration_instead_of_sync() {
+        let (c, s, r, l) = (Catalog::default(), stack(&[("next", "16.0.0")], None), repo(&[]), Ledger::default());
+        let mut out = run_with(&c, &s, &r, &l);
+        assert!(why(&out, &["bump digest"]).contains("run `unstale sync`"));
+        out.uncovered = Some("coverage is deferred because the coverage service is temporarily unavailable until 00:00 UTC".into());
+        let w = why(&out, &["bump digest"]);
+        assert!(w.starts_with("no catalog technology covers this repository yet: coverage is deferred because") && !w.contains("sync"), "{w}");
     }
 
     #[test]
