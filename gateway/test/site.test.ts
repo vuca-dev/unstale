@@ -43,14 +43,19 @@ test("a package page lists majors newest first, breaking changes before fixes, w
   });
   expect(build(site, "2026-10-17T00:00:00Z")).toBe(1);
   const page = readFileSync(join(site, "npm", "next", "index.html"), "utf8");
-  expect(page.indexOf("<h2>next 16</h2>")).toBeLessThan(page.indexOf("<h2>next 15</h2>"));
-  const s16 = page.slice(page.indexOf("<h2>next 16</h2>"), page.indexOf("<h2>next 15</h2>"));
+  expect(page.indexOf(`id="v16"`)).toBeGreaterThan(0);
+  expect(page.indexOf(`id="v16"`)).toBeLessThan(page.indexOf(`id="v15"`));
+  const s16 = page.slice(page.indexOf(`id="v16"`), page.indexOf(`id="v15"`));
   expect(s16.indexOf("Breaking changes")).toBeLessThan(s16.indexOf("Fixes and other changes"));
   expect(s16).toContain('href="https://example.com/cache"');
   expect(page).not.toContain("gone changed");
   expect(page).not.toContain("noindex");
   expect(readFileSync(join(site, "sitemap.xml"), "utf8")).toContain("https://unstale.sh/npm/next/");
-  expect(readFileSync(join(site, "index.html"), "utf8")).toContain('href="/npm/next/"');
+  const home = readFileSync(join(site, "index.html"), "utf8");
+  expect(home).toContain('href="/npm/next/"');
+  expect(home).toContain("npx @unstale/cli init");
+  expect(readFileSync(join(site, "_headers"), "utf8")).toContain("Strict-Transport-Security");
+  expect(readFileSync(join(site, ".well-known", "security.txt"), "utf8")).toMatch(/^Contact: https:\/\/github\.com\/vuca-dev\/unstale\/security/);
 });
 
 test("thin pages are built but not indexed; scoped packages keep their scope; upstream text is escaped", () => {

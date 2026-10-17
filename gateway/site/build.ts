@@ -1,17 +1,30 @@
 // The public website at unstale.sh, built from an exported catalog tree (`node gateway/site/build.ts <site dir>`).
 // It writes next to `v1/` in the same tree, which the gateway deploys as static files: a home page, one page per
 // covered package listing its changes by major version (breaking changes first, each with its official sources),
-// sitemap.xml, robots.txt and llms.txt. Pages are generated from the catalog alone, with no per-package content.
-// A package with fewer than THIN_RECORDS changes gets a page but is not indexed by search engines.
+// sitemap.xml, robots.txt, llms.txt, security.txt and _headers. Pages are generated from the catalog alone, with no
+// per-package content. A package with fewer than THIN_RECORDS changes gets a page but is not indexed by search engines.
+// The look follows the CLI's `init` screen: its dot-matrix wordmark (GLYPHS, local/cli/src/onboarding_ui.rs) and its
+// tones (fresh green, stale amber, teal accent, muted).
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { gunzipSync } from "node:zlib";
 
 export const ORIGIN = "https://unstale.sh";
 export const REPO = "https://github.com/vuca-dev/unstale";
-// Flip with the first release: the install line shown everywhere.
-export const RELEASED = false;
+export const INSTALL_NPX = "npx @unstale/cli init";
+export const INSTALL_BREW = "brew install vuca-dev/tap/unstale";
 export const THIN_RECORDS = 10;
+
+/** The CLI's wordmark, "unstale", one 5×7 glyph per letter (rows top to bottom; 1 = dot). */
+export const GLYPHS: string[][] = [
+  ["00000", "00000", "10001", "10001", "10001", "10011", "01101"],
+  ["00000", "00000", "11110", "10001", "10001", "10001", "10001"],
+  ["00000", "00000", "01111", "10000", "01110", "00001", "11110"],
+  ["00100", "00100", "11111", "00100", "00100", "00100", "00010"],
+  ["00000", "00000", "01110", "00001", "01111", "10001", "01111"],
+  ["01100", "00100", "00100", "00100", "00100", "00100", "01110"],
+  ["00000", "00000", "01110", "10001", "11111", "10000", "01111"],
+];
 
 type Evidence = { kind: string; url: string; quote?: string };
 type Release = { component: string; version: string; line: string };
@@ -39,20 +52,23 @@ export type Package = {
   count: number;
 };
 
-const GROUPS: { title: string; id: string; test: (r: CatalogRecord) => boolean; collapsed?: boolean }[] = [
-  { title: "Breaking changes", id: "breaking", test: (r) => r.breaking === true || r.change_type === "removal" },
-  { title: "Security", id: "security", test: (r) => r.change_type === "security" || (r.benefit ?? []).includes("security") },
-  { title: "Deprecations", id: "deprecations", test: (r) => r.change_type === "deprecation" },
-  { title: "New APIs and options", id: "new", test: (r) => r.change_type === "new_api" || r.change_type === "new_option" },
-  { title: "Performance", id: "performance", test: (r) => r.change_type === "performance" },
+type Group = { title: string; chip: string; id: string; tone: string; test: (r: CatalogRecord) => boolean; collapsed?: boolean };
+const GROUPS: Group[] = [
+  { title: "Breaking changes", chip: "breaking", id: "breaking", tone: "amber", test: (r) => r.breaking === true || r.change_type === "removal" },
+  { title: "Security", chip: "security", id: "security", tone: "amber", test: (r) => r.change_type === "security" || (r.benefit ?? []).includes("security") },
+  { title: "Deprecations", chip: "deprecations", id: "deprecations", tone: "amber", test: (r) => r.change_type === "deprecation" },
+  { title: "New APIs and options", chip: "new APIs and options", id: "new", tone: "fresh", test: (r) => r.change_type === "new_api" || r.change_type === "new_option" },
+  { title: "Performance", chip: "performance", id: "performance", tone: "fresh", test: (r) => r.change_type === "performance" },
   {
-    title: "Behavior and default changes",
+    title: "Behavior and default changes", chip: "behavior and defaults",
     id: "behavior",
+    tone: "accent",
     test: (r) => ["behavior_change", "default_change", "stability_change"].includes(r.change_type ?? ""),
   },
-  { title: "Tooling", id: "tooling", test: (r) => r.change_type === "tooling" },
-  { title: "Fixes and other changes", id: "fixes", test: () => true, collapsed: true },
+  { title: "Tooling", chip: "tooling", id: "tooling", tone: "muted", test: (r) => r.change_type === "tooling" },
+  { title: "Fixes and other changes", chip: "fixes and other", id: "fixes", tone: "muted", test: () => true, collapsed: true },
 ];
+const groupOf = (r: CatalogRecord) => GROUPS.find((g) => g.test(r))!;
 
 const SOURCE_LABEL: Record<string, string> = {
   release_notes: "release notes",
@@ -134,11 +150,39 @@ export function prose(s: string): string {
   return esc(s).replace(/`([^`]+)`/g, "<code>$1</code>");
 }
 
-const INSTALL = RELEASED
-  ? `<pre><code>npx @unstale/cli init</code></pre>`
-  : `<pre><code>npx @unstale/cli init</code></pre><p class="note">Arrives with the first release. Until then, <a href="${REPO}#quick-start">build from source</a>.</p>`;
+/** The wordmark as an SVG, drawn as the CLI draws it: each glyph pixel a 4×3 block of braille sub-dots (the CLI's
+ * scale 3, at its grid offsets so dots group into the same braille cells), cells twice as tall as wide. */
+export function wordmarkSvg(className: string): string {
+  const dots = new Set<string>();
+  GLYPHS.forEach((glyph, letter) =>
+    glyph.forEach((row, y) =>
+      [...row].forEach((c, x) => {
+        if (c !== "1") return;
+        for (let dy = 0; dy < 3; dy++)
+          for (let dx = 0; dx <= 3; dx++) {
+            const sx = 3 + (letter * 6 + x) * 3 + dx;
+            const sy = 7 + y * 3 + dy;
+            const cx = Math.floor(sx / 2) + (sx % 2 ? 0.68 : 0.32) - 1;
+            const cy = Math.floor(sy / 4) * 2 + ((sy % 4) + 0.5) * 0.5 - 2;
+            dots.add(`<circle cx="${cx.toFixed(2)}" cy="${cy.toFixed(2)}" r="0.15"/>`);
+          }
+      }),
+    ),
+  );
+  return `<svg class="${className}" viewBox="0.4 1.5 62.2 10.5" role="img" aria-label="unstale"><title>unstale</title>${[...dots].join("")}</svg>`;
+}
 
-function layout(o: { title: string; description: string; path: string; body: string; noindex?: boolean; head?: string }): string {
+const FAVICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 7 9"><rect width="7" height="9" rx="1.4" fill="#0b1113"/>${
+  ["10001", "10001", "10001", "10011", "01101"]
+    .flatMap((row, y) => [...row].map((c, x) => (c === "1" ? `<circle cx="${x + 1.5}" cy="${y + 2.5}" r="0.44" fill="#67dc91"/>` : "")))
+    .join("")
+}</svg>`;
+
+function copyable(cmd: string, extra = ""): string {
+  return `<div class="cmd${extra}"><span class="dollar" aria-hidden="true">$</span><code>${esc(cmd)}</code><button type="button" class="copy" data-copy="${esc(cmd)}" aria-label="Copy command">Copy</button></div>`;
+}
+
+function layout(o: { title: string; description: string; path: string; body: string; noindex?: boolean; head?: string; wide?: boolean }): string {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -147,18 +191,23 @@ function layout(o: { title: string; description: string; path: string; body: str
 <title>${esc(o.title)}</title>
 <meta name="description" content="${esc(o.description)}">
 <link rel="canonical" href="${ORIGIN}${o.path}">
-${o.noindex ? '<meta name="robots" content="noindex">\n' : ""}<meta property="og:type" content="website">
+${o.noindex ? '<meta name="robots" content="noindex">\n' : ""}<meta name="theme-color" content="#0b1113" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f6f8f7" media="(prefers-color-scheme: light)">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="unstale">
 <meta property="og:title" content="${esc(o.title)}">
 <meta property="og:description" content="${esc(o.description)}">
 <meta property="og:url" content="${ORIGIN}${o.path}">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/site.css">
 ${o.head ?? ""}</head>
 <body>
-<header class="top"><div class="wrap"><a class="brand" href="/">unstale</a><nav><a href="/#packages">Packages</a><a href="${REPO}">GitHub</a></nav></div></header>
+<header class="top"><div class="wrap"><a class="brand" href="/" aria-label="unstale home">${wordmarkSvg("mark")}</a><nav><a href="/#packages">Packages</a><a href="${REPO}">GitHub</a></nav></div></header>
 <main class="wrap">
 ${o.body}
 </main>
-<footer class="wrap"><p>Open source under AGPL-3.0 · <a href="${REPO}">${REPO.replace("https://", "")}</a> · Built by <a href="https://vuca.dev">Jason Draper</a></p></footer>
+<footer class="wrap"><p>${wordmarkSvg("mark small")}<span>Open source, AGPL-3.0 · <a href="${REPO}">GitHub</a> · <a href="https://www.npmjs.com/package/@unstale/cli">npm</a> · <a href="${REPO}/blob/main/SECURITY.md">Security</a> · by <a href="https://vuca.dev">Jason Draper</a></span></p></footer>
+<script src="/site.js" defer></script>
 </body>
 </html>
 `;
@@ -166,11 +215,7 @@ ${o.body}
 
 function counts(p: Package): Record<string, number> {
   const c: Record<string, number> = {};
-  for (const { records } of p.lines)
-    for (const r of records) {
-      const g = GROUPS.find((g) => g.test(r))!;
-      c[g.id] = (c[g.id] ?? 0) + 1;
-    }
+  for (const { records } of p.lines) for (const r of records) c[groupOf(r).id] = (c[groupOf(r).id] ?? 0) + 1;
   return c;
 }
 
@@ -181,8 +226,8 @@ function recordItem(r: CatalogRecord): string {
   const sources = (r.evidence ?? [])
     .filter((e) => e.url && !seen.has(e.url) && seen.add(e.url))
     .map((e) => `<a href="${esc(e.url)}" rel="nofollow">${esc(SOURCE_LABEL[e.kind] ?? "source")}</a>`)
-    .join(" · ");
-  return `<li><p>${prose(r.summary!)}</p><p class="meta">${shown ? `<span class="v">${esc(shown)}</span>` : ""}${sources ? ` ${sources}` : ""}</p></li>`;
+    .join("");
+  return `<li><p>${prose(r.summary!)}</p><p class="meta">${shown ? `<span class="v">${esc(shown)}</span>` : ""}${sources}</p></li>`;
 }
 
 export function packagePage(p: Package): string {
@@ -198,28 +243,31 @@ export function packagePage(p: Package): string {
     `${p.count} changes in ${p.name} ${span} from its official release notes, upgrade guides and advisories` +
     (tally.length ? `: ${tally.join(", ")}.` : ".") +
     " Each one cited.";
+  const chips = GROUPS.filter((g) => c[g.id])
+    .map((g) => `<span class="chip ${g.tone}"><b>${c[g.id]}</b> ${g.chip}</span>`)
+    .join("");
   const sections = p.lines
     .map(({ line, records }) => {
       const groups = GROUPS.map((g) => {
-        const items = records.filter((r) => GROUPS.find((x) => x.test(r)) === g);
+        const items = records.filter((r) => groupOf(r) === g);
         if (!items.length) return "";
-        const list = `<ul class="changes">${items.map(recordItem).join("")}</ul>`;
+        const head = `<h3 class="${g.tone}">${g.title} <span class="n">${items.length}</span></h3>`;
+        const list = `<ul class="changes tone-${g.tone}">${items.map(recordItem).join("")}</ul>`;
         return g.collapsed
-          ? `<details><summary><h3>${g.title} <span class="n">${items.length}</span></h3></summary>${list}</details>`
-          : `<h3 id="${esc(line)}-${g.id}">${g.title} <span class="n">${items.length}</span></h3>${list}`;
+          ? `<details class="group"><summary>${head}</summary>${list}</details>`
+          : `<div class="group" id="${esc(line)}-${g.id}">${head}${list}</div>`;
       }).join("\n");
-      return `<section id="${esc(line)}"><h2>${esc(p.name)} ${esc(line)}</h2>\n${groups}</section>`;
+      return `<section class="line" id="v${esc(line)}"><h2><span class="pkg">${esc(p.name)}</span> ${esc(line)}<span class="n">${records.length} changes</span></h2>\n${groups}</section>`;
     })
     .join("\n");
   const toc = p.lines.length > 1
-    ? `<p class="toc">${p.lines.map((l) => `<a href="#${esc(l.line)}">${esc(l.line)}</a>`).join(" ")}</p>`
+    ? `<nav class="lines" aria-label="Major versions">${p.lines.map((l) => `<a href="#v${esc(l.line)}">${esc(l.line)}</a>`).join("")}</nav>`
     : "";
-  const body = `<p class="eco">${esc(p.ecosystem)}</p>
-<h1>What changed in ${esc(p.name)}</h1>
-<p class="lede">${esc(description)}${p.also.length ? ` Also covers ${p.also.map((a) => `<code>${esc(a)}</code>`).join(", ")}.` : ""} Sources checked ${esc(p.checked.slice(0, 10))}.</p>
-<aside class="cta"><p><strong>Which of these apply to your code?</strong> unstale matches each change against your
-repository on your machine and hands the ones that apply to Claude Code, Codex or Cursor, breaking changes first.</p>
-${INSTALL}</aside>
+  const body = `<p class="crumb"><a href="/#packages">${esc(p.ecosystem)}</a> / ${esc(p.name)}</p>
+<h1 class="pkgname">${esc(p.name)}</h1>
+<p class="sub">What changed in ${esc(p.name)} ${esc(span)}, from its official release notes, upgrade guides and advisories.${p.also.length ? ` Also covers ${p.also.map((a) => `<code>${esc(a)}</code>`).join(", ")}.` : ""} <span class="checked">Sources checked ${esc(p.checked.slice(0, 10))}.</span></p>
+<div class="chips">${chips}</div>
+<aside class="cta"><p><strong>Which of these apply to your code?</strong> unstale matches every change against your repository, on your machine, and hands the ones that apply to Claude Code, Codex or Cursor.</p>${copyable(INSTALL_NPX)}</aside>
 ${toc}
 ${sections}`;
   return layout({
@@ -229,6 +277,35 @@ ${sections}`;
     body,
     noindex: p.count < THIN_RECORDS,
   });
+}
+
+// Real `unstale init` output on a Next.js and Prisma app (`@unstale/cli` 0.1.0, 17 October 2026), trimmed, in the
+// CLI's tones.
+const TERMINAL: [string, string][] = [
+  ["cmd", "$ npx @unstale/cli init"],
+  ["fresh", "✓ my-app · Personal setup ready"],
+  ["body", "Mapped 119 direct dependencies from pnpm-lock.yaml and checked local references."],
+  ["amber", "Priority · 31 advisory fixes match installed versions. Review these first."],
+  ["", ""],
+  ["accent", "Upgrades to review · 3 shortlisted"],
+  ["body", "1. next 16.2.1 → 16.4.2 picks up 37 security, 90 fixes, 5 performance changes, 20 behaviour changes"],
+  ["body", "2. prisma 6.19.3 → 7.10.0 picks up 8 security, 82 fixes, 8 performance changes · unlocks 52 optional capabilities"],
+  ["", ""],
+  ["accent", "Capabilities to explore · 8 shortlisted"],
+  ["body", "1. next · available on 16.2.1 — updateTag provides Server Actions with read-your-writes cache expiration and immediate refresh semantics."],
+  ["muted", "   Reference (unverified): `next/cache` in src/entities/user/model/update-user.action.ts"],
+  ["", ""],
+  ["rule", ""],
+  ["fresh", "NEXT · Paste this prompt into your coding agent"],
+  ["prompt", "Use .unstale/skills/onboarding/SKILL.md to review .unstale/onboarding-report.md against this repository. Rank the upgrades and capabilities by likely impact, explain the trade-offs, and recommend what to do first. Return proposals only; do not edit files."],
+  ["rule", ""],
+];
+
+function terminal(): string {
+  const rows = TERMINAL.map(([tone, text]) =>
+    tone === "rule" ? `<span class="t-rule"></span>` : `<span class="t-${tone || "body"}">${esc(text) || "&nbsp;"}</span>`,
+  ).join("");
+  return `<figure class="term"><div class="term-bar"><i></i><i></i><i></i><span>my-app</span></div><pre>${rows}</pre><figcaption>Real <code>init</code> output on a Next.js and Prisma app, trimmed.</figcaption></figure>`;
 }
 
 export function homePage(pkgs: Package[]): string {
@@ -244,62 +321,53 @@ export function homePage(pkgs: Package[]): string {
     operatingSystem: "macOS, Linux, Windows",
     license: "https://www.gnu.org/licenses/agpl-3.0.html",
     url: ORIGIN,
+    downloadUrl: "https://www.npmjs.com/package/@unstale/cli",
     sameAs: [REPO, "https://www.npmjs.com/package/@unstale/cli"],
   };
   const list = pkgs
-    .map((p) => `<li data-name="${esc([p.name, ...p.also].join(" "))}"><a href="${esc(p.path)}">${esc(p.name)}</a> <span class="n">${p.count}</span></li>`)
+    .map((p) => `<li data-name="${esc([p.name, ...p.also].join(" "))}"><a href="${esc(p.path)}"><span>${esc(p.name)}</span><span class="n">${p.count}</span></a></li>`)
     .join("");
   const body = `<section class="hero">
+<canvas id="wordmark" class="wordmark" width="768" height="240" aria-hidden="true"></canvas>
 <h1>Everything that changed past your coding agent's knowledge cutoff.</h1>
-<p class="lede">Teams ship faster than ever, and so does every framework, SDK and platform they depend on. Nobody can
-read all the release notes, migration guides and docs changes, and your coding agent was trained before most of them
-existed.</p>
-<p class="lede">unstale reads the official release notes, migration guides, docs and security advisories of the
-packages you use, distills each change once, and matches it against your code. Your coding agent (Claude Code, Codex or
-Cursor) then knows what applies here: new APIs worth adopting, breaking changes for your next major upgrade,
-deprecations, and the security and performance fixes in each version bump. Nothing else.</p>
-${INSTALL}
+<p class="lede">unstale reads the official release notes, migration guides and advisories of the packages you use,
+matches each change against your code, and gives your agent the ones that apply: new APIs worth adopting, breaking
+changes for your next major upgrade, deprecations, and the security and performance fixes in each version bump.</p>
+${copyable(INSTALL_NPX, " big")}
+<p class="alt">or <code>${esc(INSTALL_BREW)}</code> · works with Claude Code, Codex and Cursor · npm and PyPI projects</p>
 </section>
-<section class="cols">
-<div><h2>What your agent gets</h2><ul>
-<li><strong>Upgrade reviews.</strong> What you must change to move to the next major version, obligations first, located in your code.</li>
-<li><strong>New capabilities.</strong> Features released since you wrote the code that could replace custom code, each with its stated benefit.</li>
-<li><strong>Bump digests.</strong> What a version bump actually fixes, including security advisories, with no model calls.</li>
-<li><strong>Ambient awareness.</strong> One line at the start of a Claude Code session when something new lands for your stack.</li>
-</ul></div>
-<div><h2>Why it holds up</h2><ul>
-<li><strong>Source-cited.</strong> Every item links to the release note, guide, docs page or advisory it came from.</li>
-<li><strong>Private.</strong> Matching runs on your machine. Your code, paths and versions never leave it, and there is no telemetry.</li>
-<li><strong>Signed.</strong> The catalog is signed; the client discards anything that does not verify.</li>
-<li><strong>Quiet when it should be.</strong> If nothing upstream matters to your code, your agent hears nothing.</li>
-<li><strong>Alongside your update bot.</strong> Dependabot and Renovate tell you a new version exists; unstale tells your agent what it means for your code.</li>
-</ul></div>
+${terminal()}
+<section class="features">
+<div><h3 class="amber">Upgrade reviews</h3><p>What your next major version requires, located in your code, obligations first.</p></div>
+<div><h3 class="fresh">New capabilities</h3><p>Features released since you wrote the code that could replace what you built by hand.</p></div>
+<div><h3 class="accent">Bump digests</h3><p>What a version bump actually fixes, security advisories included, with no model calls.</p></div>
 </section>
-<section>
-<h2>Proven on real upgrades</h2>
-<p>We replay 15 real major upgrades in open-source projects (Next.js 16, Prisma 7, NestJS 12) from the commit before
-the maintainers upgraded. Of the required changes that official sources document, the catalog covers 60 of 65, and
-the first batch of 16 the agent works through holds 34 of them. <a href="${REPO}/blob/main/eval/gate/MISSES.md">Method and results</a>.</p>
+<section class="trust">
+<div><b>Cited</b><span>Every change links to the release note, guide or advisory it came from.</span></div>
+<div><b>Private</b><span>Matching runs on your machine. No code leaves it; no telemetry.</span></div>
+<div><b>Signed</b><span>The catalog is signed. Anything that does not verify is discarded.</span></div>
+<div><b>Quiet</b><span>If nothing upstream matters to your code, your agent hears nothing.</span></div>
 </section>
-<section id="packages">
-<h2>What changed, package by package</h2>
-<p>${total.toLocaleString("en-US")} changes across ${pkgs.length} packages, read from official sources and kept current.
-Any npm or PyPI package your project uses is added on request.</p>
+<section class="proof">
+<h2>Tested on real upgrades</h2>
+<div class="stats">
+<div><b>92%</b><span>of the changes these upgrades required that release notes, guides or advisories describe were in the catalog (60 of 65).</span></div>
+<div><b>15</b><span>real major upgrades replayed (Next.js 16, Prisma 7, NestJS 12), checked against the changes the maintainers actually made.</span></div>
+</div>
+<p><a href="${REPO}/blob/main/eval/gate/MISSES.md">Method and results</a></p>
+</section>
+<section id="packages" class="packages">
+<h2>What changed, by package</h2>
+<p class="sub">${total.toLocaleString("en-US")} changes across ${pkgs.length} packages, read from official sources and kept current. Packages your projects use are added on request.</p>
 <input id="filter" type="search" placeholder="Filter packages" aria-label="Filter packages">
 <ul class="pkgs" id="pkgs">${list}</ul>
-</section>
-<script>
-document.getElementById("filter").addEventListener("input", (e) => {
-  const q = e.target.value.trim().toLowerCase();
-  for (const li of document.querySelectorAll("#pkgs li")) li.hidden = q !== "" && !li.dataset.name.toLowerCase().includes(q);
-});
-</script>`;
+</section>`;
   return layout({
     title: "unstale: what changed upstream that matters to your code, for coding agents",
     description,
     path: "/",
     body,
-    head: `<script type="application/ld+json">${JSON.stringify(ld)}</script>\n`,
+    head: `<script type="application/ld+json">${JSON.stringify(ld)}</script>\n<script>window.UNSTALE_GLYPHS=${JSON.stringify(GLYPHS)}</script>\n`,
   });
 }
 
@@ -311,7 +379,10 @@ export function llmsTxt(pkgs: Package[]): string {
 > security and performance fixes in each version bump. Changes come from official release notes, upgrade guides, docs
 > and security advisories, each cited. Matching runs locally; no code leaves the machine.
 
-- [Source, install and documentation](${REPO})
+Install: \`${INSTALL_NPX}\` (or \`${INSTALL_BREW}\`).
+
+- [Source and documentation](${REPO})
+- [npm package](https://www.npmjs.com/package/@unstale/cli)
 - [Security and data handling](${REPO}/blob/main/SECURITY.md)
 - [Evaluation on real upgrades](${REPO}/blob/main/eval/gate/MISSES.md)
 
@@ -331,6 +402,24 @@ export function sitemap(pkgs: Package[], now: string): string {
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join("\n")}\n</urlset>\n`;
 }
 
+/** Response headers for every static file (Workers static assets `_headers`). */
+export const HEADERS = `/*
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+`;
+
+export function securityTxt(now: string): string {
+  const expires = new Date(Date.parse(now) + 180 * 86_400_000).toISOString();
+  return `Contact: ${REPO}/security/advisories/new
+Expires: ${expires}
+Policy: ${REPO}/blob/main/SECURITY.md
+Preferred-Languages: en
+Canonical: ${ORIGIN}/.well-known/security.txt
+`;
+}
+
 function write(site: string, rel: string, text: string) {
   const file = join(site, rel);
   mkdirSync(dirname(file), { recursive: true });
@@ -341,10 +430,13 @@ export function build(site: string, now = new Date().toISOString()): number {
   const pkgs = loadPackages(site);
   write(site, "index.html", homePage(pkgs));
   for (const p of pkgs) write(site, join(p.path, "index.html"), packagePage(p));
-  write(site, "site.css", readFileSync(new URL("./site.css", import.meta.url), "utf8"));
+  for (const f of ["site.css", "site.js"]) write(site, f, readFileSync(new URL(`./${f}`, import.meta.url), "utf8"));
+  write(site, "favicon.svg", FAVICON);
   write(site, "sitemap.xml", sitemap(pkgs, now));
   write(site, "robots.txt", `User-agent: *\nAllow: /\n\nSitemap: ${ORIGIN}/sitemap.xml\n`);
   write(site, "llms.txt", llmsTxt(pkgs));
+  write(site, ".well-known/security.txt", securityTxt(now));
+  write(site, "_headers", HEADERS);
   return pkgs.length;
 }
 
