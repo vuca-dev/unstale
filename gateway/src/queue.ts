@@ -496,6 +496,8 @@ export class PendingQueue {
     this.voters.add(purl, address);
     this.votesHour[1]++;
     this.unkept = true;
+    // The operation above may have kept the counts just before this one: keep or schedule it too.
+    this.keepUsage(now);
   }
 
   /** A client's request; `known` when central already has a job for the package (its status is published). */
@@ -753,10 +755,15 @@ export class PendingQueue {
     this.op = "usage";
     (this.usage.ops.usage ??= { n: 0, read: 0, written: 0 }).n++;
     try {
-      const kept: KeptUsage = { ...this.usage, kept: now, votes: this.votesHour };
+      // Kept with its own row counted: an upsert into WITHOUT ROWID `meta` reads none and writes one (measured); if
+      // the cursor says otherwise, the difference is kept next time.
+      const own = (this.usage.ops.usage ??= { n: 0, read: 0, written: 0 });
+      const ahead = (u: Usage, d: number): Usage => ({ ...u, rows_written: u.rows_written + d, ops: { ...u.ops, usage: { ...own, written: own.written + d } } });
+      const kept: KeptUsage = { ...ahead(this.usage, 1), kept: now, votes: this.votesHour };
+      const before = this.usage.rows_read + this.usage.rows_written;
       this.exec("INSERT INTO meta (k, v) VALUES ('usage', ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v", JSON.stringify(kept));
       this.kept = now;
-      this.unkept = false;
+      this.unkept = this.usage.rows_read + this.usage.rows_written - before !== 1;
     } catch (error) {
       console.log(`gateway usage not kept: ${error instanceof Error ? error.message.slice(0, 200) : error}`);
     } finally {

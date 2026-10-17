@@ -120,6 +120,7 @@ test("each operation reads and writes a bounded number of rows however long the 
   // A run's progress in the same state is not written again until RUN_SAVE_MS.
   expect(cost("report", () => q.report([{ purl: "pkg:npm/p2", state: "running" }], T + 5000))).toEqual({ read: 0, written: 0 });
   const ack = cost("ack", () => q.ack(q.list(T), T));
+  expect(ack.read).toBeLessThanOrEqual(BUCKETS + 1);
   expect(ack.written).toBeLessThanOrEqual(BUCKETS + 1);
   expect(q.list(T)).toEqual([]);
   // Before (one rowid row per package): a wake read 3,000 rows, a new package wrote 4 and an acknowledgement of

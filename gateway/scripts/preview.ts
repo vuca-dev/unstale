@@ -63,7 +63,8 @@ const env = {
     },
   },
 } as unknown as Env;
-const object = new Coverage({ storage: { sql: memorySql() }, waitUntil: (p: Promise<unknown>) => void p.catch(() => {}) } as unknown as DurableObjectState, env);
+const sql = memorySql();
+const object = new Coverage({ storage: { sql, transactionSync: <T>(f: () => T) => sql.transaction(f) }, waitUntil: (p: Promise<unknown>) => void p.catch(() => {}) } as unknown as DurableObjectState, env);
 env.COVERAGE = { idFromName: () => "global", get: () => object } as unknown as Env["COVERAGE"];
 
 const internal = (path: string, body?: unknown) =>

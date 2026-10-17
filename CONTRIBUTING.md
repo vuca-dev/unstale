@@ -71,7 +71,8 @@ Secrets and variables (Settings > Secrets and variables > Actions):
 The Worker's own settings are in `gateway/wrangler.jsonc` (`RATE_PER_HOUR`, `VOTES_PER_HOUR`, `NEW_PER_HOUR`,
 `COUNTED_VOTES_PER_HOUR`, `MAX_PENDING`, `FAST_TRACK_PER_DAY`, `FAST_TRACK_INTERVAL_MINUTES`). It stays on the Workers
 free tier (5M rows read and 100k written a day, reset 00:00 UTC); `GET /internal/usage` (bearer `DRAIN_TOKEN`) shows
-the day's rows per operation, and a drain's final line and the acknowledgement print them (`gateway`, `usage`). Its
+the day's rows per operation; a drain's final line prints them as the gateway reported them when the run pulled the
+queue (`gateway`), and the acknowledgement as they are after it (`usage`). Its
 secrets are set once with `npx wrangler secret put` in `gateway/`: `DRAIN_TOKEN`, and for fast-track
 `GITHUB_DISPATCH_TOKEN`, a fine-grained token with **Actions: write** on this repository only.
 

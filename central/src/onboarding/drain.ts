@@ -40,8 +40,8 @@ interface Pulled {
   requests: { purl: string; demand: number }[];
 }
 
-/** The gateway's rows read and written today against its free-tier allowance, as its last answer reported them;
- * printed in the run's final line. */
+/** The gateway's rows read and written today against its free-tier allowance, as it reported them when this run pulled
+ * the queue (later rows are in the acknowledgement's answer); printed in the run's final line. */
 let gatewayUsage: unknown;
 
 /** The gateway's queue; unreachable or malformed answers pull nothing (the saved queue is still worked). */
