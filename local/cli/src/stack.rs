@@ -347,12 +347,12 @@ pub fn detect(root: &Path) -> Result<Stack> {
                     && let Some(v) = l.version(&importer, name, range)
                 {
                     let file = join(&rel_dir(root, ld), &l.file);
-                    if local || npm_satisfies(&v, range) != Some(false) {
-                        (Some(v), file)
-                    } else if let Some((other, set)) = l.replaced_by(name) {
+                    if let Some((other, set)) = l.replaced_by(name, range).filter(|_| !local) {
                         // Swapped for another package across the install: the locked version is the other's.
                         (None, format!("replaced by {other} ({set})"))
-                    } else if let Some(set) = l.override_admitting(name, &v) {
+                    } else if local || npm_satisfies(&v, range) != Some(false) {
+                        (Some(v), file)
+                    } else if let Some(set) = l.override_admitting(name, range, &v) {
                         // A root override is a declaration too: it sets the version for every workspace.
                         (Some(v), format!("{file} ({set})"))
                     } else if *field == "peerDependencies" {
@@ -559,8 +559,27 @@ pub struct Lock {
     by_name: BTreeMap<String, Vec<Version>>,
     /// (name, version) → the lockfile's `sha512-` integrity values (npm, pnpm, yarn v1).
     integrity: BTreeMap<(String, String), Vec<String>>,
-    /// Root overrides its package manager applies to every workspace (`read_overrides`): name → (value, where set).
-    overrides: BTreeMap<String, Vec<(String, &'static str)>>,
+    /// Root overrides its package manager applies to every workspace (`read_overrides`), by package name.
+    overrides: BTreeMap<String, Vec<Override>>,
+}
+
+/// One root override of a package.
+#[derive(Debug, Clone)]
+struct Override {
+    /// The selector's version (`react@^18` → `^18`): the override sets only dependencies declared in it.
+    when: Option<String>,
+    value: String,
+    /// Where it is declared (`resolutions`, `pnpm.overrides`, …).
+    set: &'static str,
+}
+
+impl Override {
+    /// Whether it sets a dependency declared with `range`: no selector version, the same one, or a range whose floor
+    /// the selector admits.
+    fn applies(&self, range: &str) -> bool {
+        let bare = |r: &str| r.trim().strip_prefix("npm:").unwrap_or(r.trim()).to_string();
+        self.when.as_deref().is_none_or(|w| bare(w) == bare(range) || range_floor(range).is_some_and(|f| npm_satisfies(&f, &bare(w)) == Some(true)))
+    }
 }
 
 /// npm lockfiles in the order used when nothing else decides between them, with the package manager that writes
@@ -641,23 +660,23 @@ impl Lock {
     /// when the range cannot be read).
     pub fn admits(&self, name: &str, v: &Version, range: &str) -> Option<bool> {
         match npm_satisfies(v, range) {
-            Some(false) if self.override_admitting(name, v).is_some() || self.replaced_by(name).is_some() => Some(true),
+            Some(false) if self.override_admitting(name, range, v).is_some() || self.replaced_by(name, range).is_some() => Some(true),
             r => r,
         }
     }
 
     /// Where an override that sets `name` and admits `v` is declared. One the range grammar cannot read (`patch:`,
     /// npm's `$react`, `link:`) admits whatever the lockfile resolved for it.
-    fn override_admitting(&self, name: &str, v: &Version) -> Option<&'static str> {
-        self.overrides.get(name)?.iter().find(|(val, _)| npm_satisfies(v, val) != Some(false)).map(|(_, set)| *set)
+    fn override_admitting(&self, name: &str, range: &str, v: &Version) -> Option<&'static str> {
+        self.overrides.get(name)?.iter().find(|o| o.applies(range) && npm_satisfies(v, &o.value) != Some(false)).map(|o| o.set)
     }
 
     /// The package an override swaps `name` for (`npm:noop-package@1.0.0`), and where that is declared.
-    fn replaced_by(&self, name: &str) -> Option<(&str, &'static str)> {
-        self.overrides.get(name)?.iter().find_map(|(val, set)| {
-            let alias = val.trim().strip_prefix("npm:")?;
+    fn replaced_by(&self, name: &str, range: &str) -> Option<(&str, &'static str)> {
+        self.overrides.get(name)?.iter().filter(|o| o.applies(range)).find_map(|o| {
+            let alias = o.value.trim().strip_prefix("npm:")?;
             let other = alias.get(1..).and_then(|r| r.find('@')).map_or(alias, |i| &alias[..i + 1]);
-            (!other.is_empty() && other != name).then_some((other, *set))
+            (!other.is_empty() && other != name).then_some((other, o.set))
         })
     }
 
@@ -698,17 +717,17 @@ impl Lock {
 /// `resolutions` and the workspace file's `overrides`. Only selectors that apply everywhere count (`react`,
 /// `react@^18`, `**/react`, npm's `{"react": {".": "19"}}`); one under a parent (`a/react`, `a>react`, npm's nested
 /// keys) does not set a workspace's own dependency.
-fn read_overrides(dir: &Path, lockfile: &str) -> BTreeMap<String, Vec<(String, &'static str)>> {
+fn read_overrides(dir: &Path, lockfile: &str) -> BTreeMap<String, Vec<Override>> {
     let pj: Value = std::fs::read_to_string(dir.join("package.json")).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or(Value::Null);
     let fields: &[(&str, &str)] = match lockfile {
         "yarn.lock" => &[("/resolutions", "resolutions")],
         "pnpm-lock.yaml" => &[("/pnpm/overrides", "pnpm.overrides"), ("/resolutions", "resolutions")],
         _ => &[("/overrides", "overrides")],
     };
-    let mut out: BTreeMap<String, Vec<(String, &'static str)>> = BTreeMap::new();
+    let mut out: BTreeMap<String, Vec<Override>> = BTreeMap::new();
     let mut add = |sel: &str, val: &str, set: &'static str| {
-        if let Some(name) = override_target(sel) {
-            out.entry(name.to_string()).or_default().push((val.to_string(), set));
+        if let Some((name, when)) = override_target(sel) {
+            out.entry(name.to_string()).or_default().push(Override { when: when.map(String::from), value: val.to_string(), set });
         }
     };
     for (ptr, set) in fields {
@@ -736,8 +755,8 @@ fn read_overrides(dir: &Path, lockfile: &str) -> BTreeMap<String, Vec<(String, &
 }
 
 /// The package an override selector sets everywhere: `name`, `@scope/name`, either with a version (`name@^1`,
-/// `name@npm:1.0.0`), or behind Yarn's `**/`. `None` for one that applies only under a parent.
-fn override_target(sel: &str) -> Option<&str> {
+/// `name@npm:1.0.0`), or behind Yarn's `**/`, with that version. `None` for one that applies only under a parent.
+fn override_target(sel: &str) -> Option<(&str, Option<&str>)> {
     let s = sel.trim();
     let s = s.strip_prefix("**/").unwrap_or(s);
     if s.contains('>') {
@@ -752,7 +771,8 @@ fn override_target(sel: &str) -> Option<&str> {
     };
     let (name, rest) = s.split_at(name_end);
     // Anything after the name and its version is a path below it (`parent/child`, `parent@1/child`).
-    (!name.is_empty() && !name.ends_with('/') && !rest.contains('/')).then_some(name)
+    let when = rest.strip_prefix('@').filter(|w| !w.is_empty());
+    (!name.is_empty() && !name.ends_with('/') && !rest.contains('/')).then_some((name, when))
 }
 
 /// The top-level `overrides` of `pnpm-workspace.yaml` (pnpm 10+), block or flow form.
@@ -1113,13 +1133,29 @@ mod tests {
     }
 
     #[test]
+    fn a_selector_version_limits_the_override_and_an_alias_replaces_even_in_range() {
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "package.json", r#"{"name":"root","private":true,"workspaces":["a","b"],
+            "resolutions":{"react@^18":"19.2.7","foo":"npm:bar@1.2.0"}}"#);
+        write(d.path(), "a/package.json", r#"{"name":"a","private":true,"dependencies":{"react":"^18.2.0","foo":"^1.0.0"}}"#);
+        write(d.path(), "b/package.json", r#"{"name":"b","private":true,"dependencies":{"react":"^16.0.0"}}"#);
+        write(d.path(), "yarn.lock", "__metadata:\n  version: 8\n\n\"react@npm:19.2.7\":\n  version: 19.2.7\n  resolution: \"react@npm:19.2.7\"\n\n\"foo@npm:bar@1.2.0\":\n  version: 1.2.0\n  resolution: \"bar@npm:1.2.0\"\n");
+        let s = detect(d.path()).unwrap();
+        let react = &s.deps["pkg:npm/react"];
+        assert_eq!(react.readings.iter().find(|r| r.dir == "a").unwrap().version, Version::new(19, 2, 7));
+        assert_eq!(react.readings.iter().find(|r| r.dir == "b").unwrap().version, Version::new(16, 0, 0), "`react@^18` does not set ^16");
+        assert!(s.notes.iter().any(|n| n.contains("react 19.2.7 vs ^16.0.0")), "{:?}", s.notes);
+        assert_eq!(s.deps["pkg:npm/foo"].source, "replaced by bar (resolutions)", "an in-range pin of another package");
+    }
+
+    #[test]
     fn override_selectors_name_the_package_they_set_everywhere() {
         for (sel, want) in [
-            ("react", Some("react")),
-            ("**/react", Some("react")),
-            ("react@^18", Some("react")),
-            ("@babel/core@npm:7.25.7", Some("@babel/core")),
-            ("@types/react", Some("@types/react")),
+            ("react", Some(("react", None))),
+            ("**/react", Some(("react", None))),
+            ("react@^18", Some(("react", Some("^18")))),
+            ("@babel/core@npm:7.25.7", Some(("@babel/core", Some("npm:7.25.7")))),
+            ("@types/react", Some(("@types/react", None))),
             ("jest-environment-jsdom/jsdom", None),
             ("keytar@npm:7.7.0/node-addon-api", None),
             ("@scope/parent/child", None),

@@ -265,12 +265,13 @@ fn deferred_line_at(pending: &Pending, now: u64) -> Option<String> {
     let until = pending.deferred_until.filter(|_| !pending.unsubmitted.is_empty())?;
     let n = pending.unsubmitted.len();
     let reason = pending.deferred_by.map_or("the service is limiting new registrations", Deferral::reason);
+    let sent = sent(n);
     if until <= now {
-        return Some(format!("Coverage queued for later · {reason}; {n} public packages are sent on the next unstale status."));
+        return Some(format!("Coverage queued for later · {reason}; {sent} on the next unstale status."));
     }
     let past = pending.past_wait.map_or(String::new(), |w| format!("; beyond --wait {w}s, so not waited for"));
     Some(format!(
-        "Coverage queued for later · {reason} until {} UTC (in {}{past}); {n} public packages are sent on an unstale status from then.",
+        "Coverage queued for later · {reason} until {} UTC (in {}{past}); {sent} on an unstale status from then.",
         clock(until),
         span(until - now)
     ))
@@ -282,12 +283,17 @@ pub fn deferral_note(ctx: &Ctx) -> Option<String> {
     let pending = read(ctx);
     let (until, n) = (pending.deferred_until.filter(|_| !pending.unsubmitted.is_empty())?, pending.unsubmitted.len());
     let reason = pending.deferred_by.map_or("the service is limiting new registrations", Deferral::reason);
+    let sent = sent(n);
     // No relative time: this text lands in skill files, which change only when their content does.
     Some(if until <= unix_now() {
-        format!("coverage is deferred because {reason}; {n} public packages are sent on the next unstale status")
+        format!("coverage is deferred because {reason}; {sent} on the next unstale status")
     } else {
-        format!("coverage is deferred because {reason} until {} UTC; {n} public packages are sent on an unstale status from then", clock(until))
+        format!("coverage is deferred because {reason} until {} UTC; {sent} on an unstale status from then", clock(until))
     })
+}
+/// "1 public package is sent", "N public packages are sent".
+fn sent(n: usize) -> String {
+    if n == 1 { "1 public package is sent".into() } else { format!("{n} public packages are sent") }
 }
 /// A `Retry-After` value in seconds from `now`: delay-seconds, or an HTTP-date (IMF-fixdate,
 /// `Sun, 06 Nov 1994 08:49:37 GMT`, the form senders must use).
@@ -1100,7 +1106,7 @@ fn summary(ctx: &Ctx, pending: &Pending, brief: &Brief, issue: Option<&str>) -> 
         lines.push(Line::new("Versions · competing or out-of-date lockfiles; see report for which was read.", Tone::Amber));
     } else if brief.spread > 0 {
         let n = brief.spread;
-        lines.push(Line::new(format!("Versions · {n} package{} on other versions in some workspaces; reviews use the root's. See report.", if n == 1 { " is" } else { "s are" }), Tone::Muted));
+        lines.push(Line::new(format!("Versions · {n} package{} on other versions in some workspaces; reviews use the root's version, else the shallowest manifest's. See report.", if n == 1 { " is" } else { "s are" }), Tone::Muted));
     }
     if brief.advisory_fixes > 0 {
         lines.push(Line::new(format!("Priority · {} advisory fixes match installed versions. Review these first.", brief.advisory_fixes), Tone::Amber));
@@ -2175,7 +2181,7 @@ mod tests {
         assert_eq!(deferred_line(&pending), None);
         pending.deferred_until = Some(unix_now() + 120);
         let line = deferred_line(&pending).unwrap();
-        assert!(line.starts_with("Coverage queued for later") && line.contains("1 public packages"), "{line}");
+        assert!(line.starts_with("Coverage queued for later") && line.contains("1 public package is sent"), "{line}");
         assert!(coverage_summary(&pending).contains("Coverage queued for later"));
         assert!(!coverage_summary(&pending).contains("not yet acknowledged"));
         // Older state files have no deferral and still read.
