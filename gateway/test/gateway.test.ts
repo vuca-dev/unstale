@@ -244,6 +244,53 @@ test("a declined, failed or silent run is not shown as working the package", () 
   expect(q.typicalSeconds()).toBe(90);
 });
 
+test("while central's budget is spent a new package is queued as always but starts no early run; after the reset it does", () => {
+  const q = new PendingQueue(memorySql(), settings({ fastTrackPerDay: 2, fastTrackIntervalMs: 0 }));
+  const reset = Date.parse("2026-10-18T00:00:00Z");
+  q.setBudget(reset);
+  expect(q.spentUntil(T)).toBe(reset);
+  expect(q.request("pkg:npm/a", "198.51.100.1", false, T)).toEqual({ type: "queued", position: 1, length: 1, fastTrack: false });
+  expect(q.run("pkg:npm/a", T)).toBeUndefined();
+  // The skipped early run does not use up the day's count.
+  expect(q.spentUntil(reset)).toBeUndefined();
+  expect(q.request("pkg:npm/b", "198.51.100.2", false, reset)).toMatchObject({ type: "queued", fastTrack: true });
+  expect(q.request("pkg:npm/c", "198.51.100.3", false, reset)).toMatchObject({ type: "queued", fastTrack: true });
+  // A run that reports the budget not spent (raised, or reset) clears it at once.
+  q.setBudget(reset + 86_400_000);
+  q.setBudget(undefined);
+  expect(q.spentUntil(reset)).toBeUndefined();
+});
+
+test("a run reports the budget with its progress; the gateway dispatches nothing while it is spent and says why", async () => {
+  const dispatches: string[] = [];
+  vi.stubGlobal("fetch", async (url: string) => {
+    if (url.startsWith("https://api.github.com/")) dispatches.push(url);
+    return new Response(null, { status: 204 });
+  });
+  const { env: e, waits } = env({}, { FAST_TRACK_PER_DAY: "5", FAST_TRACK_INTERVAL_MINUTES: "0", GITHUB_DISPATCH_TOKEN: "t" });
+  const auth = { Authorization: "Bearer drain-secret", "Content-Type": "application/json" };
+  const progress = (body: unknown) => handle(new Request("https://unstale.example/internal/progress", { method: "POST", headers: auth, body: JSON.stringify(body) }), e);
+  const until = new Date(Date.now() + 3 * 3600_000);
+  expect((await progress({ updates: [], budget: { spent_until: "soon" } })).status).toBe(400);
+  expect(await (await progress({ updates: [], budget: { spent_until: until.toISOString() } })).json()).toEqual({ reported: 0 });
+  const r = await handle(post({ purl: "pkg:npm/a" }), e);
+  expect(r.status).toBe(202);
+  const body = (await r.json()) as Record<string, string>;
+  expect(body.stage).toMatch(/^Waiting for the coverage budget, spent until \d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC \(position 1 of 1\); the next run that can take it is at \d{2}:\d{2} UTC$/);
+  expect(Date.parse(body.next_run!)).toBeGreaterThan(until.getTime());
+  await Promise.all(waits);
+  expect(dispatches).toEqual([]);
+  // A report without the field leaves it; one with null clears it.
+  await progress({ updates: [] });
+  await handle(post({ purl: "pkg:npm/b" }, { "CF-Connecting-IP": "198.51.100.10" }), e);
+  await Promise.all(waits);
+  expect(dispatches).toEqual([]);
+  await progress({ updates: [], budget: { spent_until: null } });
+  await handle(post({ purl: "pkg:npm/c" }, { "CF-Connecting-IP": "198.51.100.11" }), e);
+  await Promise.all(waits);
+  expect(dispatches).toHaveLength(1);
+});
+
 test("a failed or unreachable dispatch leaves the package waiting for the schedule; the next scheduled run is named", async () => {
   vi.stubGlobal("fetch", async (url: string) => {
     if (url.startsWith("https://api.github.com/") && failure === "network") throw new TypeError("fetch failed");

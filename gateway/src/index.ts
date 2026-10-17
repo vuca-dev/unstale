@@ -8,7 +8,8 @@
 //   GET /internal/queue         the held requests, for a coverage run (bearer DRAIN_TOKEN)
 //   POST /internal/ack          what a deployed run took (bearer DRAIN_TOKEN)
 //   POST /internal/progress     where a run is with the held packages it pulled (bearer DRAIN_TOKEN), so a client
-//                               that started one early can follow it until the package is published
+//                               that started one early can follow it until the package is published; with
+//                               `budget.spent_until`, until when central's budget is spent (no early run until then)
 // Only the public identity of a package is accepted; no repository context, and no client address is stored.
 import { DurableObject } from "cloudflare:workers";
 import { packageIdentity, technologyId } from "../../central/src/onboarding/identity.ts";
@@ -59,9 +60,11 @@ export class Coverage extends DurableObject<Env> {
   /** A held new package's place in the queue and the run working it, if any. */
   view(purl: string): View | undefined {
     const at = this.queue.position(purl);
-    return at && { ...at, run: this.queue.run(purl), typical: this.queue.typicalSeconds() };
+    return at && { ...at, run: this.queue.run(purl), typical: this.queue.typicalSeconds(), spentUntil: this.queue.spentUntil() };
   }
-  report(updates: { purl: string; state: RunState; job?: Progress }[]): number {
+  /** A run's progress; `budget` (when the report carries it) replaces what the gateway knows of central's budget. */
+  report(updates: { purl: string; state: RunState; job?: Progress }[], budget?: { spentUntil?: number }): number {
+    if (budget) this.queue.setBudget(budget.spentUntil);
     return this.queue.report(updates);
   }
   list(): Taken[] {
@@ -77,6 +80,8 @@ interface View {
   length: number;
   run?: Run;
   typical?: number;
+  /** Central's budget is spent until then (ms): no run takes a new package before it. */
+  spentUntil?: number;
 }
 
 /** Starts the coverage workflow early; a failure only means the package waits for the schedule. */
@@ -146,7 +151,9 @@ async function registered(purl: string): Promise<boolean> {
 function queued(purl: string, at: View, now = Date.now()) {
   const { run } = at;
   const place = `position ${at.position} of ${at.length}`;
-  const next = nextScheduled(now);
+  // While the budget is spent no run takes it, so the next run that can is the first scheduled after the reset.
+  const spent = at.spentUntil !== undefined && at.spentUntil > now ? at.spentUntil : undefined;
+  const next = nextScheduled(spent ?? now);
   const stage = (() => {
     switch (run?.state) {
       case "dispatched":
@@ -158,7 +165,9 @@ function queued(purl: string, at: View, now = Date.now()) {
       case "declined":
         return `Another package is ahead (${place}); waiting for the scheduled run at ${clock(next)}`;
       default:
-        return `Waiting for the next coverage run (${place})`;
+        return spent
+          ? `Waiting for the coverage budget, spent until ${new Date(spent).toISOString().slice(0, 10)} ${clock(new Date(spent))} (${place}); the next run that can take it is at ${clock(next)}`
+          : `Waiting for the next coverage run (${place})`;
     }
   })();
   // A job the run finished is not published until the deploy: still in progress to a client.
@@ -223,6 +232,17 @@ function progressOf(body: unknown): { purl: string; state: RunState; job?: Progr
   });
 }
 
+/** The budget a run's progress report carries: undefined when absent (unchanged), `{}` when not spent. */
+function budgetOf(body: unknown): { spentUntil?: number } | undefined {
+  const budget = (body as { budget?: unknown })?.budget;
+  if (budget === undefined) return undefined;
+  const until = (budget as { spent_until?: unknown })?.spent_until;
+  if (until === null) return {};
+  const ms = typeof until === "string" ? Date.parse(until) : NaN;
+  if (!Number.isFinite(ms)) throw new Error("Expected budget {\"spent_until\": ISO time or null}");
+  return { spentUntil: ms };
+}
+
 /** Constant time, so the token cannot be guessed byte by byte. */
 function authorized(request: Request, token: string | undefined): boolean {
   const given = request.headers.get("Authorization") ?? "";
@@ -282,8 +302,10 @@ export async function handle(request: Request, env: Env): Promise<Response> {
         const { requests } = (await request.json()) as { requests?: Taken[] };
         return json(200, { removed: await queue().ack(Array.isArray(requests) ? requests : []) });
       }
-      if (request.method === "POST" && url.pathname === "/internal/progress")
-        return json(200, { reported: await queue().report(progressOf(await request.json())) });
+      if (request.method === "POST" && url.pathname === "/internal/progress") {
+        const body = await request.json();
+        return json(200, { reported: await queue().report(progressOf(body), budgetOf(body)) });
+      }
     }
     return page(request, env, url);
   } catch (error) {

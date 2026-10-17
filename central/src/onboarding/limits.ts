@@ -107,6 +107,14 @@ interface BudgetFile {
 }
 const secondsToNextDay = (now: number) => Math.ceil((86_400_000 - (now % 86_400_000)) / 1000);
 
+/** A budget limit that holds work back, and when it resets (ISO time). `unreadable`: the budget file cannot be read
+ * (fail closed); it resets when the file is fixed or the day changes. */
+export interface Hold {
+  limit: "tokens" | "new_per_day" | "runs_per_day" | "unreadable";
+  cap?: number;
+  resets: string;
+}
+
 /** Counters per UTC day and tokens per period, persisted under the central store so a restart does not reset them. */
 export class DailyBudget {
   private announced = "";
@@ -159,6 +167,20 @@ export class DailyBudget {
     for (const kind of Array.isArray(kinds) ? kinds : [kinds]) file[kind]++;
     writeAtomic(this.path, JSON.stringify(file));
     return undefined;
+  }
+  /** The limits at their cap now, each with when it resets. Any one keeps a new technology from starting (a new one
+   * takes a run, a new-technology count and tokens), so the gateway reads a non-empty answer as "early runs are
+   * pointless until the latest reset". */
+  spent(now = Date.now()): Hold[] {
+    const file = this.read(now);
+    const tomorrow = new Date(nextPeriod("day", now)).toISOString();
+    if (!file) return [{ limit: "unreadable", resets: tomorrow }];
+    const out: Hold[] = [];
+    const cap = this.limits.tokensPerPeriod;
+    if (cap !== undefined && file.tokens! >= cap) out.push({ limit: "tokens", cap, resets: new Date(nextPeriod(this.period, now)).toISOString() });
+    if (file.new >= this.limits.newPerDay) out.push({ limit: "new_per_day", cap: this.limits.newPerDay, resets: tomorrow });
+    if (file.runs >= this.limits.runsPerDay) out.push({ limit: "runs_per_day", cap: this.limits.runsPerDay, resets: tomorrow });
+    return out;
   }
   /** Release-note tokens left in this period; 0 when the file cannot be read (fail closed). Unlimited without a cap. */
   tokensLeft(now = Date.now()): number {

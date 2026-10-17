@@ -35,7 +35,8 @@
     "NEW_PER_HOUR": "1000",
     // Coverage runs a new package may start at once per UTC day (0: wait for the schedule). The run works it only if
     // it is next in the line of new technologies (central drain --fast-track); admission and the coverage budget
-    // still apply. Free on a public repository; a private one pays per runner minute.
+    // still apply, and while the last run reported the budget spent no early run starts (the package still queues).
+    // Free on a public repository; a private one pays per runner minute.
     "FAST_TRACK_PER_DAY": "24",
     "FAST_TRACK_INTERVAL_MINUTES": "15",
     "GITHUB_REPOSITORY": "vuca-dev/unstale",
