@@ -9,9 +9,10 @@ use unstale_schema::ledger::{Entry, Invalid, Ledger};
 use crate::cache::Lookup;
 use crate::util::{add_days, parse_date, write_atomic};
 
-/// Days a deferral lasts (DECISIONS.md #3).
+/// Days a deferral lasts (vault: Implementation Decisions #3).
 pub const DEFER_DAYS: i64 = 30;
-/// The fixed re-review interval for "no site" (vault: "a short fixed interval"; DECISIONS.md, open choices).
+/// The fixed re-review interval for "no site" (vault: "a short fixed interval"; vault: Implementation Decisions, open
+/// choices).
 pub const NO_SITE_DAYS: i64 = 14;
 /// At most three deferrals (or no-site answers); the next one becomes declined.
 pub const MAX_DEFERRALS: u8 = 3;

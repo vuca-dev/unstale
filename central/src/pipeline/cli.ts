@@ -1,8 +1,8 @@
 // The central pipeline's command line.
 //
 //   npm run pipeline -- [--tech next] [--limit 3] [--refresh] [--offline] [--no-guides] [--no-docs] [--no-publish] [--sample] [--no-budget]
-//     (--sample: draw a rarity sample for a technology that has none, off by default (DECISIONS #4); an existing
-//      sample still counts; --no-sample is accepted and is the default;
+//     (--sample: draw a rarity sample for a technology that has none, off by default (vault: Implementation
+//      Decisions #4); an existing sample still counts; --no-sample is accepted and is the default;
 //      --offline: use the stored release lists whatever their age; --no-docs: no docs pass and no docs section notes)
 //   npm run catalog -- show <id>
 //   npm run catalog -- correct <id> <field>=<value>... [--claim] [--note text] [--no-publish]

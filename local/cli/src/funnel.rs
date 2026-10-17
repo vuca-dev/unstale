@@ -339,7 +339,8 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             if shown {
                 // An obligation is never blocked: the upgrade brings it whatever the project's floor, and a record that
                 // raises a minimum (Node, TypeScript) is exactly the one a floor below it must see (vault: Relevance
-                // Engine, "never drops a breaking change"; DECISIONS.md, "Obligations are never blocked").
+                // Engine, "never drops a breaking change"; vault: Implementation Decisions, "Obligations are never
+                // blocked").
                 let b = blocked(rec, inp.stack, &comp);
                 if let Some(b) = b.clone().filter(|_| !(opp.route == Route::UpgradeReview && is_obligation(rec))) {
                     opp.route = Route::Blocked(b);
@@ -353,7 +354,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                 }
             }
             // Applied: an introduced literal as a whole token; never for a breaking change (vault: Relevance
-            // Engine, "Fixes the funnel needs"; DECISIONS.md).
+            // Engine, "Fixes the funnel needs"; vault: Implementation Decisions).
             if matches!(opp.route, Route::UpgradeReview | Route::ImprovementsPass) && !rec.r.breaking {
                 let applied = rec
                     .r

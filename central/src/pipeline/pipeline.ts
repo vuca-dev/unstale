@@ -184,8 +184,9 @@ export async function runTechnology(
           }
         : {}),
     };
-    // The rarity sample is drawn only on request (DECISIONS #4: the catalog ships with the edge's fallback rarity,
-    // since no selection rule beat it); a sample in the store (`sample.json`) is still counted and published.
+    // The rarity sample is drawn only on request (vault: Implementation Decisions #4: the catalog ships with the edge's
+    // fallback rarity, since no selection rule beat it); a sample in the store (`sample.json`) is still counted and
+    // published.
     if (opts.sample === true) await drawSample(t, store);
     if (opts.publish !== false) {
       const sample = sampleCounts(t.id, activeTerms(store));

@@ -72,8 +72,9 @@ jobs:
       STATE_KEEP: "3"
       GH_REPO: ${{ github.repository }}
       GH_TOKEN: ${{ github.token }} # state release only; ingestion reads GitHub with INGEST_GITHUB_TOKEN
-      # Extraction on paid tokens through the gateway (flex tier by default; DECISIONS "Extraction model switch").
-      # The classifier's Codex fallback is not installed: a call it would answer fails, and the job retries later.
+      # Extraction on paid tokens through the gateway (flex tier by default; vault: Implementation Decisions,
+      # "Extraction model switch"). The classifier's Codex fallback is not installed: a call it would answer fails, and
+      # the job retries later.
       UNSTALE_EXTRACT_MODEL: vercel:openai/gpt-6-luna
       UNSTALE_BUDGET_TOKENS: ${{ vars.UNSTALE_BUDGET_TOKENS || '250000' }}
       UNSTALE_GATEWAY_URL: ${{ vars.UNSTALE_GATEWAY_URL }}

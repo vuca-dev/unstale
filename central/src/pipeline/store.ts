@@ -31,7 +31,7 @@ export interface StoredRecord {
   conditions: string[];
   requires: string[];
   introduces: string[];
-  /** Search terms; published with a sample count of 0 (no central sample: DECISIONS.md). */
+  /** Search terms; published with a sample count of 0 (no central sample: vault: Implementation Decisions). */
   terms: string[];
   replaces: string[];
   evidence: Evidence[];

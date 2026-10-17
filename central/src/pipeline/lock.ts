@@ -1,11 +1,11 @@
-// One writer per technology (DECISIONS.md, "Central: one writer per technology"). Every step that loads a
-// technology's store, changes it and publishes it (the pipeline, the advisories stage, manual catalog actions, the
-// onboarding service) holds this lock from the load to the publish, so two processes never overwrite each other's
-// records. The lock is a file next to the store, `records/<tech>.lock`, created with O_EXCL and holding the owner's
-// pid and start time. It is stale when that process is gone (or the pid now belongs to a newer process). Waiters poll
-// until a timeout (`UNSTALE_LOCK_TIMEOUT_MS`, default 20 minutes) and then fail with a message naming the holder.
-// Re-entrant within one async call chain (a held lock is not taken again by the code it wraps); a second chain in the
-// same process waits like any other process.
+// One writer per technology (vault: Implementation Decisions, "Central: one writer per technology"). Every step that
+// loads a technology's store, changes it and publishes it (the pipeline, the advisories stage, manual catalog actions,
+// the onboarding service) holds this lock from the load to the publish, so two processes never overwrite each other's
+// records. The lock is a file next to the store, `records/<tech>.lock`, created with O_EXCL and holding the owner's pid
+// and start time. It is stale when that process is gone (or the pid now belongs to a newer process). Waiters poll until
+// a timeout (`UNSTALE_LOCK_TIMEOUT_MS`, default 20 minutes) and then fail with a message naming the holder. Re-entrant
+// within one async call chain (a held lock is not taken again by the code it wraps); a second chain in the same process
+// waits like any other process.
 import { AsyncLocalStorage } from "node:async_hooks";
 import { execFileSync } from "node:child_process";
 import { closeSync, mkdirSync, openSync, readFileSync, statSync, unlinkSync, writeSync } from "node:fs";

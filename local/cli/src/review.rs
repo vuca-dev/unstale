@@ -61,8 +61,8 @@ impl std::str::FromStr for Pass {
     }
 }
 
-/// Review progress: the batch handed out per pass, its number, and records marked do-now (DECISIONS.md #3).
-/// Kept in `.unstale/state/`, which is never committed.
+/// Review progress: the batch handed out per pass, its number, and records marked do-now (vault: Implementation
+/// Decisions #3). Kept in `.unstale/state/`, which is never committed.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct State {
     #[serde(default)]
@@ -121,7 +121,7 @@ pub fn batch_for(pass: Pass, out: &Outcome, state: &mut State, advance: bool) ->
     let mut do_now: Vec<usize> = queue.iter().copied().filter(is_do_now).collect();
     // A do-now mark is the user's latest decision on this record at this revision on this clone (`decide` and
     // `record` on it clear the mark), so a withholding line for it was not written over the mark here: it never hides
-    // the record (DECISIONS.md, "A do-now mark wins over a withholding ledger line").
+    // the record (vault: Implementation Decisions, "A do-now mark wins over a withholding ledger line").
     do_now.extend((0..out.opps.len()).filter(|&i| out.opps[i].withheld_from.as_ref() == Some(&pass.route()) && is_do_now(&i)));
     let cur = state.batches.get(pass.name()).cloned().unwrap_or_default();
     let pending: Vec<usize> = open.iter().copied().filter(|i| cur.ids.iter().any(|x| x == out.opps[*i].id())).collect();

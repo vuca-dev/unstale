@@ -1,4 +1,5 @@
-//! `unstale`: the local half of ATI. Vault notes govern each rule; see DECISIONS.md for the open choices taken.
+//! `unstale`: the local half of ATI. Vault notes govern each rule; see the vault note Implementation Decisions for the
+//! open choices taken.
 
 mod cache;
 mod onboarding;

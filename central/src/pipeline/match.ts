@@ -147,7 +147,8 @@ export function matchRequest(techName: string, inc: Incoming, breaking: boolean,
 }
 
 // ---- Deterministic guards (can only block a merge; the judge at p >= SAME_P is the first gate). ----
-// Tuned on the 83 ingest matches of the first full run (DECISIONS.md), so not an independent measurement.
+// Tuned on the 83 ingest matches of the first full run (vault: Implementation Decisions), so not an independent
+// measurement.
 
 /** At or above this p the quote guard is skipped (the advisory and breaking guards still apply). */
 export const QUOTE_GUARD_BELOW = 0.95;
