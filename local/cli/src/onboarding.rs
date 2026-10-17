@@ -265,15 +265,35 @@ fn deferred_line_at(pending: &Pending, now: u64) -> Option<String> {
     let until = pending.deferred_until.filter(|_| !pending.unsubmitted.is_empty())?;
     let n = pending.unsubmitted.len();
     let reason = pending.deferred_by.map_or("the service is limiting new registrations", Deferral::reason);
+    let sent = sent(n);
     if until <= now {
-        return Some(format!("Coverage queued for later · {reason}; {n} public packages are sent on the next unstale status."));
+        return Some(format!("Coverage queued for later · {reason}; {sent} on the next unstale status."));
     }
-    let past = pending.past_wait.map_or(String::new(), |w| format!(", after --wait {w}s"));
+    let past = pending.past_wait.map_or(String::new(), |w| format!("; beyond --wait {w}s, so not waited for"));
     Some(format!(
-        "Coverage queued for later · {reason} until {} UTC (in {}{past}); {n} public packages are sent on an unstale status from then.",
+        "Coverage queued for later · {reason} until {} UTC (in {}{past}); {sent} on an unstale status from then.",
         clock(until),
         span(until - now)
     ))
+}
+/// For an output with no catalog technology: coverage is deferred, why and until when (from the recorded state),
+/// instead of a hint to sync. None when nothing is deferred or no service is configured.
+pub fn deferral_note(ctx: &Ctx) -> Option<String> {
+    ctx.config.service.as_ref()?;
+    let pending = read(ctx);
+    let (until, n) = (pending.deferred_until.filter(|_| !pending.unsubmitted.is_empty())?, pending.unsubmitted.len());
+    let reason = pending.deferred_by.map_or("the service is limiting new registrations", Deferral::reason);
+    let sent = sent(n);
+    // No relative time: this text lands in skill files, which change only when their content does.
+    Some(if until <= unix_now() {
+        format!("coverage is deferred because {reason}; {sent} on the next unstale status")
+    } else {
+        format!("coverage is deferred because {reason} until {} UTC; {sent} on an unstale status from then", clock(until))
+    })
+}
+/// "1 public package is sent", "N public packages are sent".
+fn sent(n: usize) -> String {
+    if n == 1 { "1 public package is sent".into() } else { format!("{n} public packages are sent") }
 }
 /// A `Retry-After` value in seconds from `now`: delay-seconds, or an HTTP-date (IMF-fixdate,
 /// `Sun, 06 Nov 1994 08:49:37 GMT`, the form senders must use).
@@ -1010,7 +1030,10 @@ struct Brief {
     conflicts: Vec<String>,
     upgrades: Vec<String>,
     limits: Vec<String>,
-    version_notes: Vec<String>,
+    /// Version-source notes about lockfiles (competing ones, one out of date), and the packages on different
+    /// versions across manifests.
+    lock_notes: usize,
+    spread: usize,
 }
 #[cfg(test)]
 fn coverage_counts(pending: &Pending) -> String {
@@ -1079,7 +1102,12 @@ fn summary(ctx: &Ctx, pending: &Pending, brief: &Brief, issue: Option<&str>) -> 
     if let Some(issue) = issue { lines.push(Line::new(issue, Tone::Amber)); }
     if let Some(line) = registration_line(pending) { lines.push(Line::new(line, if pending.deferred_until.is_some() { Tone::Muted } else { Tone::Amber })); }
     if !brief.limits.is_empty() { lines.push(Line::new("Scope · other dependency ecosystems are not covered; see report.", Tone::Amber)); }
-    if !brief.version_notes.is_empty() { lines.push(Line::new("Versions · competing or out-of-date lockfiles; see report for which was read.", Tone::Amber)); }
+    if brief.lock_notes > 0 {
+        lines.push(Line::new("Versions · competing or out-of-date lockfiles; see report for which was read.", Tone::Amber));
+    } else if brief.spread > 0 {
+        let n = brief.spread;
+        lines.push(Line::new(format!("Versions · {n} package{} on other versions in some workspaces; reviews use the root's version, else the shallowest manifest's. See report.", if n == 1 { " is" } else { "s are" }), Tone::Muted));
+    }
     if brief.advisory_fixes > 0 {
         lines.push(Line::new(format!("Priority · {} advisory fixes match installed versions. Review these first.", brief.advisory_fixes), Tone::Amber));
     }
@@ -1399,7 +1427,8 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
         conflicts,
         upgrades,
         limits,
-        version_notes: w.stack.notes.clone(),
+        lock_notes: w.stack.notes.len() - usize::from(w.stack.spread > 0),
+        spread: w.stack.spread,
     })
 }
 
@@ -1854,6 +1883,7 @@ mod tests {
             deps: Default::default(),
             node: None,
             notes: vec![],
+            spread: 0,
         };
         let purls: BTreeSet<String> =
             ["pkg:npm/%40codemirror/view", "pkg:npm/express", "pkg:npm/undici", "pkg:pypi/aiohttp", "pkg:pypi/django"].map(String::from).into();
@@ -2027,7 +2057,7 @@ mod tests {
             "Coverage queued for later · the coverage service is temporarily unavailable until 00:00 UTC (in 5h 48m); 2 public packages are sent on an unstale status from then."
         );
         pending.past_wait = Some(180);
-        assert!(deferred_line_at(&pending, now).unwrap().contains("(in 5h 48m, after --wait 180s)"));
+        assert!(deferred_line_at(&pending, now).unwrap().contains("until 00:00 UTC (in 5h 48m; beyond --wait 180s, so not waited for); 2 public"));
         pending.deferred_by = Some(Deferral::Address);
         pending.deferred_until = Some(now + 125);
         assert!(deferred_line_at(&pending, now).unwrap().contains("this address reached the service's hourly limit for new packages until 18:15 UTC (in 3m"));
@@ -2077,7 +2107,7 @@ mod tests {
         let defer = |p: &mut Pending| { p.deferred_until = Some(unix_now() + 3600); p.deferred_by = Some(Deferral::Unavailable); Ok(()) };
         register_waiting(&mut pending, 60, false, Instant::now(), |_, _| panic!("must not wait"), |p| { sends += 1; defer(p) }).unwrap();
         assert_eq!((sends, pending.past_wait), (1, Some(60)));
-        assert!(registration_line(&pending).unwrap().contains("after --wait 60s"));
+        assert!(registration_line(&pending).unwrap().contains("beyond --wait 60s, so not waited for"));
         // Already deferred from an earlier run: nothing is sent before then.
         register_waiting(&mut pending, 60, false, Instant::now(), |_, _| panic!("must not wait"), |_| panic!("must not send")).unwrap();
         // `--wait 0` and default init never wait, and name no wait.
@@ -2151,7 +2181,7 @@ mod tests {
         assert_eq!(deferred_line(&pending), None);
         pending.deferred_until = Some(unix_now() + 120);
         let line = deferred_line(&pending).unwrap();
-        assert!(line.starts_with("Coverage queued for later") && line.contains("1 public packages"), "{line}");
+        assert!(line.starts_with("Coverage queued for later") && line.contains("1 public package is sent"), "{line}");
         assert!(coverage_summary(&pending).contains("Coverage queued for later"));
         assert!(!coverage_summary(&pending).contains("not yet acknowledged"));
         // Older state files have no deferral and still read.
@@ -2196,7 +2226,7 @@ mod tests {
         assert!(major_step(&v("0.27.10"), &v("0.28.0")), "a minor step on 0.x is a major one");
         assert!(!major_step(&v("0.27.1"), &v("0.27.10")));
         assert!(major_step(&v("0.2.1"), &v("20.0.1")), "read the other way: a 0.2.1 capability predates a project on 20");
-        let st = crate::stack::Stack { packages: vec![], deps: Default::default(), node: None, notes: vec![] };
+        let st = crate::stack::Stack { packages: vec![], deps: Default::default(), node: None, notes: vec![], spread: 0 };
         assert!(!specific_reference("connection", &st));
         assert!(specific_reference("cacheLife", &st));
         assert!(specific_reference("client.beta.agents.environments", &st));

@@ -399,6 +399,8 @@ struct World {
     ledger_file: LedgerFile,
     ledger: unstale_schema::ledger::Ledger,
     today: String,
+    /// Why coverage has not arrived, when registration is deferred (`onboarding::deferral_note`).
+    deferral: Option<String>,
 }
 
 fn load_catalog(ctx: &Ctx, st: &stack::Stack) -> Catalog {
@@ -438,7 +440,7 @@ fn world_reusing(ctx: &Ctx, prev: Option<&World>) -> Result<World> {
         Some(w) => w.repo.clone(),
         None => Rc::new(usage::Repo::collect(&ctx.root)),
     };
-    Ok(World { stack: st, catalog, repo, ledger_file: lf, ledger, today: util::today() })
+    Ok(World { stack: st, catalog, repo, ledger_file: lf, ledger, today: util::today(), deferral: onboarding::deferral_note(ctx) })
 }
 
 fn parse_targets(t: &[String]) -> Result<BTreeMap<String, semver::Version>> {
@@ -452,7 +454,9 @@ fn parse_targets(t: &[String]) -> Result<BTreeMap<String, semver::Version>> {
 }
 
 fn outcome<'a>(w: &'a World, targets: BTreeMap<String, semver::Version>) -> Outcome<'a> {
-    funnel::run(&Input { catalog: &w.catalog, stack: &w.stack, repo: &w.repo, ledger: &w.ledger, today: &w.today, targets })
+    let mut out = funnel::run(&Input { catalog: &w.catalog, stack: &w.stack, repo: &w.repo, ledger: &w.ledger, today: &w.today, targets });
+    out.uncovered = w.deferral.clone();
+    out
 }
 
 fn rel(ctx: &Ctx, p: &Path) -> String {
