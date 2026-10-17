@@ -142,16 +142,27 @@ async function npmDependencies(component: string, version: string): Promise<stri
   return [...new Set([...names(meta.dependencies), ...names(meta.optionalDependencies), ...bundled])].map(npmPurl).sort();
 }
 
+/** `decodeURIComponent`, undefined for malformed percent-encoding (a link the notes got wrong is not recognised). */
+function decoded(x: string): string | undefined {
+  try {
+    return decodeURIComponent(x);
+  } catch {
+    return undefined;
+  }
+}
+
 /** npm: `https://www.npmjs.com/package/<name>` (`@scope/name` or `%40scope%2Fname`), any path after the name. */
 function npmRegistryPage(url: string): string | undefined {
   const m = /^https?:\/\/(?:www\.)?npmjs\.com\/package\/((?:@|%40)[^/?#\s]+(?:\/|%2f)[^/?#\s]+|[^@%/?#\s][^/?#\s]*)/i.exec(url.trim());
-  return m ? npmPurl(decodeURIComponent(m[1]!)) : undefined;
+  const name = m && decoded(m[1]!);
+  return name ? npmPurl(name) : undefined;
 }
 
 /** PyPI: `https://pypi.org/project/<name>/`. */
 function pypiRegistryPage(url: string): string | undefined {
   const m = /^https?:\/\/pypi\.org\/project\/([^/?#\s]+)/i.exec(url.trim());
-  return m ? pypiPurl(decodeURIComponent(m[1]!)) : undefined;
+  const name = m && decoded(m[1]!);
+  return name ? pypiPurl(name) : undefined;
 }
 
 /** PEP 503 name normalisation, as a package URL (`pkg:pypi/<name>`). */

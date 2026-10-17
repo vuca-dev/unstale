@@ -1104,10 +1104,12 @@ export async function relabelOtherPackage(
     if (r.status !== "active") continue;
     const was = relabelledFrom(r, OTHER_PACKAGE, OTHER_PACKAGE_RESTORED);
     const labels = was ?? r;
-    if (r.breaking || !(ARRIVES_WITH_BUMP.has(labels.change_type) || isSecurity(labels))) continue;
+    if (!(ARRIVES_WITH_BUMP.has(labels.change_type) || isSecurity(labels))) continue;
     // The package the record is about: false (it is this technology's change), the package URL, or undefined (unknown).
     const verdict = async (): Promise<string | false | undefined> => {
-      if (r.advisories?.length || !r.evidence.length || r.subject_kind !== "literal") return false;
+      // Breaking: an obligation of this technology's users, whatever package it names (a relabelled record that became
+      // breaking gets its labels back).
+      if (r.breaking || r.advisories?.length || !r.evidence.length || r.subject_kind !== "literal") return false;
       const name = r.subject.trim();
       if (!PACKAGE_NAME.test(name)) return false;
       if (!hooks) return undefined;

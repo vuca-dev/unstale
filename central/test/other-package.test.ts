@@ -106,6 +106,8 @@ describe("another package's release", () => {
     expect(npm("https://npmjs.com/package/@scope/name/v/1.2.3")).toBe("pkg:npm/%40scope/name");
     expect(npm("https://www.npmjs.com/package/%40scope%2Fname")).toBe("pkg:npm/%40scope/name");
     expect(npm("https://github.com/lodash/lodash")).toBeUndefined();
+    expect(npm("https://www.npmjs.com/package/bad%E0%A4%A")).toBeUndefined();
+    expect(ecosystemOf("pkg:pypi/x").registryPage!("https://pypi.org/project/bad%E0%A4%A/")).toBeUndefined();
     expect(ecosystemOf("pkg:pypi/x").registryPage!("https://pypi.org/project/Requests_Toolbelt/1.0/")).toBe("pkg:pypi/requests-toolbelt");
     const listed = listedPackages(BODY, [npm]);
     expect([...listed].sort()).toEqual(
@@ -158,6 +160,14 @@ describe("another package's release", () => {
     expect(back.restored).toEqual([id("lodash.omit")]);
     expect(s.records[id("lodash.omit")]).toMatchObject({ change_type: "security", benefit: ["security"], revision: 3 });
     expect(s.records[id("lodash.omit")]!.history.at(-1)).toMatchObject({ action: "other-package-restored" });
+    // Relabelled, then judged breaking: an obligation of this technology's users; labels back.
+    const t = s.records[id("lodash.template")]!;
+    t.breaking = true;
+    expect((await run(s, {})).restored).toEqual([id("lodash.template")]);
+    expect(t).toMatchObject({ change_type: "security", benefit: ["security"] });
+    t.breaking = false;
+    await run(s, {});
+    expect(t).toMatchObject({ change_type: "other", benefit: ["none"] });
     // A registry that cannot be read leaves the relabelled records as they are.
     const before = JSON.stringify(s.records[id("lodash.template")]);
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
