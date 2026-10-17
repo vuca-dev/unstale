@@ -41,7 +41,11 @@ with its stated benefit.
 In your repository:
 
 ```sh
+<<<<<<< Updated upstream
 npx @unstale/cli init            # or, from 0.1.1: npm init @unstale
+=======
+npx @unstale/cli init        # or: brew install vuca-dev/tap/unstale && unstale init
+>>>>>>> Stashed changes
 ```
 
 To keep `unstale` on your PATH for the commands below:
@@ -77,12 +81,11 @@ Poetry, PDM and Pipenv. Any package in a supported ecosystem works with no per-p
 We replay 15 real major upgrades in open-source projects (Next.js 16, Prisma 7, NestJS 12), starting from the commit
 before the maintainers upgraded, and compare what unstale gives the agent with the changes the maintainers had to make.
 
-- **It finds what upstream documents.** The maintainers made 94 required changes. 29 could not come from any upstream
-  source: 17 are follow-on edits to their own tests, CI and Docker files, and 12 appear in no release note, guide or
-  doc (workarounds for open bugs, undocumented internal types). Of the 65 that official sources do document, the
-  catalog covers **60**.
-- **The important ones come first.** A major upgrade's review runs to dozens of items. The first batch of 16 your
-  agent works through holds **34 of those 60**: breaking changes first, then by how your code uses each one.
+- **92% of what upstream documents.** Of the required changes that release notes, guides or advisories describe, the
+  catalog had 60 of 65. (The maintainers made 94 required changes in all; the other 29 appear in no upstream source:
+  follow-on edits to their own tests, CI and Docker files, workarounds for open bugs, undocumented internal types.)
+- **Most of it up front.** A major upgrade's review runs to dozens of items. More than half of those 60 changes are in
+  the first 16 items your agent reviews: breaking changes first, then by how your code uses each one.
 
 Every ranking change is pre-registered and must hold on upgrades never used for tuning.
 Method and results: [`eval/`](eval/gate/MISSES.md).
