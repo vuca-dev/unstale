@@ -6,7 +6,7 @@
 // - A generative model: the pipeline's CodexClassifier prompt and parser (the Codex fallback), run through ChatClient.
 import { join } from "node:path";
 import { CodexClassifier, Jev, type Classifier, type CodexRunner, type HttpOptions } from "../../central/src/pipeline/classify/adapter.ts";
-import { parseJson } from "../../central/src/pipeline/codex.ts";
+import { parseJson } from "../lib/codex.ts";
 import { dollars, loadPrices, logUsageLine, OUT_DIR, priceOf, type ChatClient, type Price, type Usage } from "./client.ts";
 
 export interface JevOptions {

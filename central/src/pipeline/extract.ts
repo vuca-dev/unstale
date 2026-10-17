@@ -3,8 +3,7 @@
 // is not asked: it is set by the classifier (vault: Capability Synthesis, "Breaking labels").
 // The extraction model's output schemas are hand-written Zod (vault: Implementation Stack, "Schema seam").
 import { z } from "zod";
-import { parseJson } from "./codex.ts";
-import { extractCached, extractLlm } from "./llm.ts";
+import { extractCached, extractLlm, parseJson } from "./llm.ts";
 import type { GuideNote, ReleaseNote } from "./fetch.ts";
 import type { Technology } from "./technologies.ts";
 import { CHANGE_TYPES, SURFACES } from "./vocab.ts";

@@ -33,8 +33,8 @@ ingested extraction is recorded, so a rerun makes no uncached calls and writes b
 | File | Role |
 |---|---|
 | `src/pipeline/fetch.ts` | Stable GitHub releases since 2025-10-15 (`GITHUB_TOKEN`, else `gh auth token`), stored raw with a `sha256:` snapshot |
-| `src/pipeline/extract.ts`, `codex.ts` | Codex extraction and free-text labels (subject, summary, terms, replaces, requires, prerequisites, conditions) |
-| `src/pipeline/classify/adapter.ts` | Classifier adapter: Jev first, Codex per-request fallback (replaced OpenAI Decisions), cache, usage log |
+| `src/pipeline/extract.ts`, `llm.ts` | Extraction and free-text labels (subject, summary, terms, replaces, requires, prerequisites, conditions) |
+| `src/pipeline/classify/adapter.ts` | Classifier adapter: Jev first, the extraction model answering choices as the per-request fallback, cache, usage log |
 | `src/pipeline/classify/labels.ts`, `vocab.ts`, `thresholds.ts` | change_type, surface, breaking and benefit questions; thresholds |
 | `src/pipeline/match.ts`, `store.ts` | Matching at ingest, id minting, revision and label counters, merge and retraction |
 | `src/pipeline/publish.ts` | Shards per technology and release line, index, root; every line validated by the generated Zod |
@@ -53,7 +53,8 @@ Every variable is optional; the defaults suit a developer machine.
 | `UNSTALE_HOST` | `127.0.0.1` | `serve`: listen address (`0.0.0.0` in a container) |
 | `UNSTALE_PORT` | `47831` | `serve`: listen port |
 | `GITHUB_TOKEN` | output of `gh auth token` | GitHub API token for release lists, docs resolution, admission signals and the sample |
-| `UNSTALE_CODEX_BIN` | `/opt/homebrew/bin/codex` | Codex CLI used for extraction and as the classifier fallback |
+| `UNSTALE_EXTRACT_MODEL` | `vercel:openai/gpt-6-luna` | Extraction and the classifier's fallback, `provider:model` (`vercel` is the AI gateway, flex tier; `openai` the OpenAI API) |
+| `AI_GATEWAY_API_KEY` | read from `~/.config/ati/vercel.env` | AI gateway key |
 | `JEV_API_KEY` | read from `UNSTALE_JEV_ENV_FILE` | Jev classifier key |
 | `UNSTALE_JEV_ENV_FILE` | `~/.config/ati/jev.env` | Env file holding `JEV_API_KEY=` when the variable itself is unset |
 | `UNSTALE_RATE_PER_HOUR` | `20` | `serve`: new technologies one client address may register per hour (a known one is never limited) |
@@ -69,13 +70,12 @@ Every variable is optional; the defaults suit a developer machine.
 
 ```sh
 docker build -t unstale-central central
-docker run -d -p 47831:47831 -v unstale-store:/data -e GITHUB_TOKEN -e JEV_API_KEY unstale-central
+docker run -d -p 47831:47831 -v unstale-store:/data -e GITHUB_TOKEN -e JEV_API_KEY -e AI_GATEWAY_API_KEY unstale-central
 ```
 
 Node 24 runs `src/` directly (type stripping), so there is no build step. The image runs as `node` (uid 1000) with
-`UNSTALE_STORE=/data` on a volume and `UNSTALE_HOST=0.0.0.0`; the healthcheck calls `GET /health`. It has no Codex
-binary: coverage jobs that extract need one mounted or added (`UNSTALE_CODEX_BIN`). Serving the catalog needs no
-secrets.
+`UNSTALE_STORE=/data` on a volume and `UNSTALE_HOST=0.0.0.0`; the healthcheck calls `GET /health`. Coverage jobs
+need `GITHUB_TOKEN`, `JEV_API_KEY` and `AI_GATEWAY_API_KEY`; serving the catalog needs no secrets.
 
 Without an always-on host, coverage runs in batches (`.github/workflows/ingest.yml`): `npm run drain -- [--minutes
 240] [--taken <file>]` pulls the gateway's registrations, works the queue until nothing more can start or the

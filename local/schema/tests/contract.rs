@@ -167,6 +167,11 @@ fn reads_the_classifier_field_and_tolerates_its_unknowns() {
     let ShardLine::Active(r) = serde_json::from_str::<ShardLine>(&format!("{{{base},{c}}}")).unwrap() else { panic!() };
     assert_eq!(r.classifier.as_ref().unwrap().classifier, Classifier::Codex);
     assert!(serde_json::to_string(&r).unwrap().contains(r#""classifier":"codex""#));
+    // The chat fallback (16 October 2026) reads, and is written back as `chat`.
+    let c = r#""classifier":{"classifier":"chat","model":"openai/gpt-6-luna","change_type":1,"surface":1,"breaking":0,"benefit":[]}"#;
+    let ShardLine::Active(r) = serde_json::from_str::<ShardLine>(&format!("{{{base},{c}}}")).unwrap() else { panic!() };
+    assert_eq!(r.classifier.as_ref().unwrap().classifier, Classifier::Chat);
+    assert!(serde_json::to_string(&r).unwrap().contains(r#""classifier":"chat""#));
     // A classifier from the future, an unknown benefit and an unknown field read; borderline defaults to empty.
     let c = r#""classifier":{"classifier":"clef","model":"m","change_type":1,"surface":1,"breaking":0,
         "benefit":[{"benefit":"joy","p":0.9}],"calibration":"v2"}"#;

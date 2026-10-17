@@ -23,8 +23,8 @@ const answer = (content: string, finish = "stop") =>
   new Response(JSON.stringify({ choices: [{ message: { content }, finish_reason: finish }], usage: { prompt_tokens: 100, completion_tokens: 20, cost: 0.001 } }), { status: 200 });
 
 describe("extractModel", () => {
-  test("defaults to Luna on Codex at low effort", () => {
-    expect(extractModel({})).toEqual({ provider: "codex", model: "gpt-5.6-luna", effort: "low", tier: "default" });
+  test("defaults to gpt-6-luna through the gateway at low effort, flex tier", () => {
+    expect(extractModel({})).toEqual({ provider: "vercel", model: "openai/gpt-6-luna", effort: "low", tier: "flex" });
   });
   test("parses provider:model and keeps slashes in the model", () => {
     expect(extractModel({ UNSTALE_EXTRACT_MODEL: "vercel:openai/gpt-6-luna", UNSTALE_EXTRACT_EFFORT: "medium" })).toEqual({ provider: "vercel", model: "openai/gpt-6-luna", effort: "medium", tier: "flex" });

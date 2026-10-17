@@ -6,7 +6,7 @@
 //
 //   cd central && UNSTALE_CENTRAL_DIR=... npx tsx ../eval/guides/audit.mts <out-dir> [--offline]
 import { join } from "node:path";
-import { codex, parseJson } from "../../central/src/pipeline/codex.ts";
+import { codex, parseJson } from "../lib/codex.ts";
 import { interpret, labelQuestions, recordState } from "../../central/src/pipeline/classify/labels.ts";
 import { extractRelease, type Incoming } from "../../central/src/pipeline/extract.ts";
 import { fetchGuides, fetchReleases } from "../../central/src/pipeline/fetch.ts";

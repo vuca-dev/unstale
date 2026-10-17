@@ -6,7 +6,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 process.env.UNSTALE_CENTRAL_DIR = join(import.meta.dirname, "..", "out", "slice4", "central");
-const { parseJson, CODEX_MODEL } = await import("../../../central/src/pipeline/codex.ts");
+const { parseJson, CODEX_MODEL } = await import("../../lib/codex.ts");
 const { chunk, EXTRACT_PROMPT, Extracted, fill, LABEL_PROMPT, strings, toIncoming } = await import("../../../central/src/pipeline/extract.ts");
 const { labelQuestions, recordState } = await import("../../../central/src/pipeline/classify/labels.ts");
 const { pipelineTechnology } = await import("../../../central/src/onboarding/discovery.ts");

@@ -7,7 +7,7 @@ const X = await import("../../../central/src/pipeline/extract.ts");
 const { TECHNOLOGIES } = await import("../../../central/src/pipeline/technologies.ts");
 const { centralDir } = await import("../../../central/src/pipeline/paths.ts");
 const { readJson, sha256 } = await import("../../../central/src/pipeline/util.ts");
-const { CODEX_MODEL, parseJson } = await import("../../../central/src/pipeline/codex.ts");
+const { CODEX_MODEL, parseJson } = await import("../../lib/codex.ts");
 const { DEFAULT_HTTP, HttpClient } = await import("../../../central/src/collector/http.ts");
 const structure = process.argv[2] as "two-call" | "one-call";
 const answer = (p: string) => { const k = sha256(`${CODEX_MODEL}\n${p}`); return readJson<{ text: string; usage?: { input_tokens: number; output_tokens: number; cached_input_tokens: number } }>(join(centralDir(), "cache", "codex", k.slice(0, 2), `${k}.json`)); };

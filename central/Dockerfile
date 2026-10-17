@@ -15,18 +15,17 @@
 #   UNSTALE_STORE           state + catalog root (/data)
 #   GITHUB_TOKEN            needed by coverage jobs (POST /coverage): release lists, docs resolution, admission
 #   JEV_API_KEY             classifier key for coverage jobs
-#   UNSTALE_CODEX_BIN       Codex CLI for extraction; not in this image, so jobs that need it fail until one is
-#                           provided (mount or derived image)
+#   AI_GATEWAY_API_KEY      extraction and the classifier's fallback (gpt-6-luna through the AI gateway)
 #   UNSTALE_RATE_PER_HOUR, UNSTALE_NEW_PER_DAY, UNSTALE_RUNS_PER_DAY, UNSTALE_TRUST_PROXY
 #                           abuse limits (src/onboarding/limits.ts); set UNSTALE_TRUST_PROXY=1 behind one proxy.
 #                           UNSTALE_RUNS_PER_DAY=0 serves the catalog without starting any job.
 # Serving the catalog and /health needs none of the secrets or network access; coverage jobs need outbound network.
 
-# Debian slim rather than alpine: glibc, so a Codex or gh binary added for coverage jobs runs unchanged.
+# Debian slim rather than alpine: glibc, so a gh binary added for coverage jobs runs unchanged.
 FROM node:24.22.0-bookworm-slim
 
 # tini as PID 1 forwards SIGTERM to node (which handles it and exits 0) and reaps any orphaned grandchildren of the
-# git/codex/gh subprocesses that coverage jobs spawn; node itself does not reap processes it did not start.
+# git/gh subprocesses that coverage jobs spawn; node itself does not reap processes it did not start.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends tini \
  && rm -rf /var/lib/apt/lists/*

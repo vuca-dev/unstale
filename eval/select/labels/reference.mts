@@ -14,7 +14,7 @@ import { join } from "node:path";
 import { parseArgs } from "node:util";
 const SELECT = join(import.meta.dirname, "..");
 const { fill, LABEL_PROMPT } = await import("../../../central/src/pipeline/extract.ts");
-const { parseJson: strictJson } = await import("../../../central/src/pipeline/codex.ts");
+const { parseJson: strictJson } = await import("../../lib/codex.ts");
 // Labelers occasionally write a regex-like term ("\\.safeParse(") with an invalid JSON escape; double such backslashes.
 const parseJson = (t: string, k: "array" | "object") => strictJson(t, k) ?? strictJson(t.replace(/\\(?!["\\/bfnrtu])/g, "\\\\"), k);
 const { pool, sha256 } = await import("../../../central/src/pipeline/util.ts");

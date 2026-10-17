@@ -1,16 +1,17 @@
-// The classifier adapter: Jev first, Codex per-request fallback (CONTRACT: "Classifier"; Codex since 15 October 2026).
-// fetch (Jev) and the Codex runner (the `codex exec` subprocess) are mocked.
+// The classifier adapter: Jev first, the extraction chat model per-request fallback (CONTRACT: "Classifier"; the chat
+// fallback since 16 October 2026). fetch (Jev) and the chat runner (llm.ts's extractLlm) are mocked.
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, test } from "vitest";
-import { ClassifierCache, CodexClassifier, FallbackClassifier, Jev, type CodexRunner, type Questions } from "../src/pipeline/classify/adapter.ts";
+import { ChatClassifier, ClassifierCache, FallbackClassifier, Jev, type ChatRunner, type Questions } from "../src/pipeline/classify/adapter.ts";
 
 const Q: Questions = {
   breaking: { instructions: "Breaking?", options: { yes: "Breaking.", no: "Not breaking." } },
   surface: { instructions: "Where?", options: { code_api: "Code.", configuration: "Config." } },
 };
 const STATE = { subject: "images.minimumCacheTTL", summary: "Default raised to 4 hours." };
+const MODEL = "openai/gpt-6-luna";
 
 type Call = { url: string; body: Record<string, unknown> };
 
@@ -23,8 +24,8 @@ function jevOk(body: { questions: Record<string, { criteria: Record<string, stri
   );
   return { model: "jev-1.13.0", answers, usage: { input_tokens: 100, output_tokens: 10 } };
 }
-/** A Codex answer as the prompt asks for it: the second option chosen at 0.7 for every question in the prompt. */
-function codexOk(prompt: string): string {
+/** A chat answer to the choice prompt: the second option for every question (with stated probabilities it ignores). */
+function chatOk(prompt: string): string {
   const qs = JSON.parse(prompt.slice(prompt.indexOf("Questions:\n") + 11)) as Record<string, { options: Record<string, string> }>;
   return JSON.stringify(
     Object.fromEntries(
@@ -36,8 +37,9 @@ function codexOk(prompt: string): string {
   );
 }
 
-/** A fetch (Jev) and a Codex runner that record calls; `jev` decides Jev's response per call. */
-function mockFetch(jev: (body: never, n: number) => Response | Promise<Response>, codexText: (prompt: string, n: number) => string = codexOk) {
+/** A fetch (Jev) and a chat runner that record calls; `jev` decides Jev's response per call. The runner retries as
+ * llm.ts does: up to three attempts, the first answer that parses. */
+function mockFetch(jev: (body: never, n: number) => Response | Promise<Response>, chatText: (prompt: string, n: number) => string = chatOk) {
   const calls: Call[] = [];
   let n = 0;
   let k = 0;
@@ -46,11 +48,15 @@ function mockFetch(jev: (body: never, n: number) => Response | Promise<Response>
     calls.push({ url, body });
     return jev(body, n++);
   }) as unknown as typeof fetch;
-  const run: CodexRunner = async (prompt, model) => {
-    calls.push({ url: `codex:${model}`, body: { prompt } });
-    return { text: codexText(prompt, k++), code: 0, usage: { input_tokens: 50, output_tokens: 5, cached_input_tokens: 0 } };
+  const run: ChatRunner = async (prompt, parse) => {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      calls.push({ url: "chat:", body: { prompt } });
+      const v = parse(chatText(prompt, k++));
+      if (v) return v;
+    }
+    return undefined;
   };
-  return { f, run, calls, jevCalls: () => calls.filter((c) => c.url.includes("typesafe")).length, codexCalls: () => calls.filter((c) => c.url.startsWith("codex:")).length };
+  return { f, run, calls, jevCalls: () => calls.filter((c) => c.url.includes("typesafe")).length, chatCalls: () => calls.filter((c) => c.url.startsWith("chat:")).length };
 }
 
 let dir: string;
@@ -62,7 +68,7 @@ beforeEach(() => {
 function make(jev: (body: never, n: number) => Response | Promise<Response>, timeoutMs = 30_000) {
   const m = mockFetch(jev);
   const opts = { fetch: m.f, apiKey: () => "test-key", backoffMs: 0 };
-  const fb = new FallbackClassifier(new Jev({ ...opts, timeoutMs }), new CodexClassifier({ run: m.run }), new ClassifierCache(join(dir, "cache")));
+  const fb = new FallbackClassifier(new Jev({ ...opts, timeoutMs }), new ChatClassifier({ model: MODEL, run: m.run }), new ClassifierCache(join(dir, "cache")));
   return { m, fb };
 }
 
@@ -73,32 +79,32 @@ describe("classifier adapter", () => {
     expect(r.classifier).toBe("jev");
     expect(r.model).toBe("jev-1.13.0");
     expect(r.answers.breaking).toEqual({ choice: "yes", confidence: 0.8, probabilities: { yes: 0.9, no: 0.1 } });
-    expect(m.codexCalls()).toBe(0);
+    expect(m.chatCalls()).toBe(0);
   });
 
   test("falls back on 401 without retrying Jev", async () => {
     const { m, fb } = make(() => new Response("no", { status: 401 }));
     const r = await fb.classify(STATE, Q);
-    expect(r.classifier).toBe("codex");
+    expect(r.classifier).toBe("chat");
     expect(r.answers.surface!.choice).toBe("configuration");
     // A text generator's answer is its choice alone: probability 1 for it, 0 for the rest, marked uncalibrated.
     expect(r.answers.surface).toEqual({ choice: "configuration", confidence: 1, probabilities: { code_api: 0, configuration: 1 } });
     expect(r.calibrated).toBe(false);
-    expect(r.model).toBe("gpt-5.6-luna");
-    expect([m.jevCalls(), m.codexCalls()]).toEqual([1, 1]);
+    expect(r.model).toBe(MODEL);
+    expect([m.jevCalls(), m.chatCalls()]).toEqual([1, 1]);
   });
 
   test("retries 5xx three times, then falls back", async () => {
     const { m, fb } = make(() => new Response("busy", { status: 503 }));
     const r = await fb.classify(STATE, Q);
-    expect(r.classifier).toBe("codex");
+    expect(r.classifier).toBe("chat");
     expect(m.jevCalls()).toBe(4);
   });
 
   test("a 529 that recovers within the retries stays on Jev", async () => {
     const { m, fb } = make((b, n) => (n < 2 ? new Response("", { status: 529 }) : Response.json(jevOk(b))));
     expect((await fb.classify(STATE, Q)).classifier).toBe("jev");
-    expect([m.jevCalls(), m.codexCalls()]).toEqual([3, 0]);
+    expect([m.jevCalls(), m.chatCalls()]).toEqual([3, 0]);
   });
 
   test("falls back on timeout", async () => {
@@ -112,8 +118,8 @@ describe("classifier adapter", () => {
       return m.f(url, init);
     }) as unknown as typeof fetch;
     const opts = { fetch: f, apiKey: () => "k", backoffMs: 0 };
-    const fb = new FallbackClassifier(new Jev({ ...opts, timeoutMs: 30 }), new CodexClassifier({ run: m.run }), new ClassifierCache(join(dir, "c")));
-    expect((await fb.classify(STATE, Q)).classifier).toBe("codex");
+    const fb = new FallbackClassifier(new Jev({ ...opts, timeoutMs: 30 }), new ChatClassifier({ model: MODEL, run: m.run }), new ClassifierCache(join(dir, "c")));
+    expect((await fb.classify(STATE, Q)).classifier).toBe("chat");
   });
 
   test("falls back on malformed answers: a choice outside the set, a missing id, missing probabilities", async () => {
@@ -136,7 +142,7 @@ describe("classifier adapter", () => {
     ];
     for (const mk of bad) {
       const { fb } = make((b) => Response.json(mk(b)));
-      expect((await fb.classify(STATE, Q)).classifier).toBe("codex");
+      expect((await fb.classify(STATE, Q)).classifier).toBe("chat");
     }
   });
 
@@ -144,7 +150,7 @@ describe("classifier adapter", () => {
     const { m, fb } = make(() => new Response("", { status: 401 }));
     for (let i = 0; i < 12; i++) await fb.classify({ ...STATE, i }, Q);
     expect(m.jevCalls()).toBe(10);
-    expect(m.codexCalls()).toBe(12);
+    expect(m.chatCalls()).toBe(12);
     expect(fb.disabled).toBe(true);
     const log = readFileSync(join(dir, "central", "usage.jsonl"), "utf8");
     expect(log).toContain('"event":"jev-disabled"');
@@ -168,7 +174,7 @@ describe("classifier adapter", () => {
     const again = make((x) => Response.json(jevOk(x)));
     const fb2 = new FallbackClassifier(
       new Jev({ fetch: again.m.f, apiKey: () => "k", backoffMs: 0 }),
-      new CodexClassifier({ run: again.m.run }),
+      new ChatClassifier({ model: MODEL, run: again.m.run }),
       new ClassifierCache(join(dir, "cache")),
     );
     expect(await fb2.classify(STATE, Q)).toEqual(a);
@@ -186,39 +192,36 @@ describe("classifier adapter", () => {
     expect(log[0]).toMatchObject({ api: "jev", model: "jev-1.13.0", input_tokens: 100, output_tokens: 10 });
   });
 
-  test("Codex fallback: usage is logged as api codex; a malformed answer is retried once, then unanswerable and recorded", async () => {
-    const ok = make(() => new Response("", { status: 401 }));
-    await ok.fb.classify(STATE, Q);
-    const log = readFileSync(join(dir, "central", "usage.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
-    expect(log.find((l) => l.api === "codex")).toMatchObject({ api: "codex", model: "gpt-5.6-luna", purpose: "classifier", input_tokens: 50 });
-
+  test("chat fallback: an answer naming an unknown option or skipping a question is retried, then unanswerable and recorded", async () => {
     const bad = [
       () => "not json",
-      (p: string) => codexOk(p).replace('"configuration"', '"elsewhere"'),
-      (p: string) => JSON.stringify({ breaking: JSON.parse(codexOk(p)).breaking }),
+      (p: string) => chatOk(p).replace('"configuration"', '"elsewhere"'),
+      (p: string) => JSON.stringify({ breaking: JSON.parse(chatOk(p)).breaking }),
     ];
     for (const text of bad) {
       const m = mockFetch(() => new Response("", { status: 401 }), text);
-      const fb = new FallbackClassifier(new Jev({ fetch: m.f, apiKey: () => "k", backoffMs: 0 }), new CodexClassifier({ run: m.run }), new ClassifierCache(join(dir, `bad-${bad.indexOf(text)}`)));
-      await expect(fb.classify(STATE, Q)).rejects.toThrow(/codex/);
-      expect(m.codexCalls()).toBe(2);
+      const fb = new FallbackClassifier(new Jev({ fetch: m.f, apiKey: () => "k", backoffMs: 0 }), new ChatClassifier({ model: MODEL, run: m.run }), new ClassifierCache(join(dir, `bad-${bad.indexOf(text)}`)));
+      await expect(fb.classify(STATE, Q)).rejects.toThrow(/chat classifier/);
+      expect(m.chatCalls()).toBe(3);
     }
     const events = readFileSync(join(dir, "central", "usage.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l)).filter((l) => l.event);
-    expect(events.filter((e) => e.event === "codex-unanswerable")).toHaveLength(3);
+    expect(events.filter((e) => e.event === "chat-unanswerable")).toHaveLength(3);
   });
 
-  test("Codex fallback asks for choices only and reads the plain {id: option} answer", async () => {
-    const c = new CodexClassifier({ run: async () => ({ text: '{"surface": "code_api", "breaking": "yes"}', code: 0 }) });
+  test("chat fallback asks for choices only and reads the plain {id: option} answer", async () => {
+    const c = new ChatClassifier({ model: MODEL, run: async (_p, parse) => parse('{"surface": "code_api", "breaking": "yes"}') });
     expect(c.prompt(STATE, Q)).not.toMatch(/probabilit/i);
     const r = await c.classify(STATE, Q);
     expect(r.answers.breaking).toEqual({ choice: "yes", confidence: 1, probabilities: { yes: 1, no: 0 } });
     expect(r.calibrated).toBe(false);
   });
 
-  test("Codex fallback: the second attempt's good answer is used", async () => {
-    const m = mockFetch(() => new Response("", { status: 401 }), (p, n) => (n === 0 ? "```json\n{}\n```" : codexOk(p)));
-    const fb = new FallbackClassifier(new Jev({ fetch: m.f, apiKey: () => "k", backoffMs: 0 }), new CodexClassifier({ run: m.run }), new ClassifierCache(join(dir, "retry")));
+  test("chat fallback: a later attempt's good answer is used; a failed call is a network error", async () => {
+    const m = mockFetch(() => new Response("", { status: 401 }), (p, n) => (n === 0 ? "```json\n{}\n```" : chatOk(p)));
+    const fb = new FallbackClassifier(new Jev({ fetch: m.f, apiKey: () => "k", backoffMs: 0 }), new ChatClassifier({ model: MODEL, run: m.run }), new ClassifierCache(join(dir, "retry")));
     expect((await fb.classify(STATE, Q)).answers.breaking).toEqual({ choice: "no", confidence: 1, probabilities: { yes: 0, no: 1 } });
-    expect(m.codexCalls()).toBe(2);
+    expect(m.chatCalls()).toBe(2);
+    const down = new ChatClassifier({ model: MODEL, run: async () => { throw new Error("fetch failed"); } });
+    await expect(down.classify(STATE, Q)).rejects.toMatchObject({ kind: "network" });
   });
 });

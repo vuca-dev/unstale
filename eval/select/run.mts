@@ -19,7 +19,7 @@ import { OUT_DIR, ChatClient, dollars, loadPrices, logUsageLine, PROVIDERS, pric
 process.env.UNSTALE_CENTRAL_DIR = join(OUT_DIR, "central");
 const { ClassifierCache, ClassifierError, CodexClassifier } = await import("../../central/src/pipeline/classify/adapter.ts");
 const { interpret, labelQuestions } = await import("../../central/src/pipeline/classify/labels.ts");
-const { runCodex, parseJson, CODEX_MODEL } = await import("../../central/src/pipeline/codex.ts");
+const { runCodex, parseJson, CODEX_MODEL } = await import("../lib/codex.ts");
 const { chunk, EXTRACT_PROMPT, Extracted, fill, LABEL_PROMPT, strings, toIncoming } = await import("../../central/src/pipeline/extract.ts");
 const { TECHNOLOGIES } = await import("../../central/src/pipeline/technologies.ts");
 const { pick } = await import("../../central/src/pipeline/match.ts");

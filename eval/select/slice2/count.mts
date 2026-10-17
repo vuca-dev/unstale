@@ -7,7 +7,7 @@ const { chunk, EXTRACT_PROMPT, ONE_CALL_PROMPT, fill } = await import("../../../
 const { TECHNOLOGIES } = await import("../../../central/src/pipeline/technologies.ts");
 const { centralDir } = await import("../../../central/src/pipeline/paths.ts");
 const { sha256 } = await import("../../../central/src/pipeline/util.ts");
-const { CODEX_MODEL } = await import("../../../central/src/pipeline/codex.ts");
+const { CODEX_MODEL } = await import("../../lib/codex.ts");
 const { DEFAULT_HTTP, HttpClient } = await import("../../../central/src/collector/http.ts");
 let docs = 0, chunks = 0, hitsA = 0, hits1 = 0, chars = 0;
 for (const id of ["next", "prisma", "nestjs"]) {

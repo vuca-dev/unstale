@@ -10,7 +10,7 @@ import { join } from "node:path";
 
 const SRC = process.env.UNSTALE_SRC;
 if (!SRC) throw new Error("set UNSTALE_SRC to an exported central/src");
-const { codex, parseJson, codexStats } = await import(`${SRC}/pipeline/codex.ts`);
+const { codex, parseJson, codexStats } = await import(new URL("../lib/codex.ts", import.meta.url).href);
 const { centralDir } = await import(`${SRC}/pipeline/paths.ts`);
 const { advisoryIds, nearIdenticalQuote } = await import(`${SRC}/pipeline/match.ts`);
 const { SAME_P, CROSS_SAME_P } = await import(`${SRC}/pipeline/thresholds.ts`);

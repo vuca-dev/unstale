@@ -9,7 +9,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 const SELECT = join(import.meta.dirname, "..");
 const { chunk, Extracted, strings } = await import("../../../central/src/pipeline/extract.ts");
-const { parseJson } = await import("../../../central/src/pipeline/codex.ts");
+const { parseJson } = await import("../../lib/codex.ts");
 
 interface Note { note_file: string; technology: string; name: string; version: string; kind?: string }
 const sets = [

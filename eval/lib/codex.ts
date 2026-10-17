@@ -1,11 +1,16 @@
-// Codex CLI calls (flags as `_codex` in ~/ati-slice0/harness/fw_spike.py), cached by sha256(model + prompt).
-// Only answers that parse are cached, so a failed or unparseable call is retried on the next run.
+// Codex CLI calls for eval scripts that reproduce results measured on Luna through `codex exec` (flags as `_codex` in
+// ~/ati-slice0/harness/fw_spike.py), cached by sha256(model + prompt) under the central store. Only answers that
+// parse are cached, so a failed or unparseable call is retried on the next run. Central itself calls no Codex
+// (central/src/pipeline/llm.ts).
 import { spawn } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { centralDir } from "./paths.ts";
-import { logUsage, readJson, sha256, sleep, writeAtomic } from "./util.ts";
+import { centralDir } from "../../central/src/pipeline/paths.ts";
+import { logUsage, readJson, sha256, sleep, writeAtomic } from "../../central/src/pipeline/util.ts";
+import { parseJson } from "../../central/src/pipeline/llm.ts";
+
+export { parseJson };
 
 export const CODEX_MODEL = "gpt-5.6-luna";
 const CODEX_BIN = process.env.UNSTALE_CODEX_BIN ?? "/opt/homebrew/bin/codex";
@@ -44,7 +49,7 @@ function exec(prompt: string, model: string): Promise<{ text: string; usage?: Co
     p.stdout.on("data", (d: Buffer) => (out += d.toString()));
     p.stderr.on("data", (d: Buffer) => (err += d.toString()));
     const timer = setTimeout(() => p.kill("SIGKILL"), TIMEOUT_MS);
-    // No Codex binary (an ephemeral runner): a failed call, as a non-zero exit is, not an unhandled error event.
+    // No Codex binary: a failed call, as a non-zero exit is, not an unhandled error event.
     p.on("error", (e) => {
       clearTimeout(timer);
       rmSync(work, { recursive: true, force: true });
@@ -77,18 +82,6 @@ function exec(prompt: string, model: string): Promise<{ text: string; usage?: Co
 
 /** One uncached Codex call under the shared concurrency limit (the classifier fallback caches by request itself). */
 export const runCodex = (prompt: string, model: string = CODEX_MODEL) => slot(() => exec(prompt, model));
-
-/** The first JSON value of the expected kind in a model answer. */
-export function parseJson(text: string, kind: "array" | "object"): unknown {
-  const re = kind === "array" ? /\[[\s\S]*\]/ : /\{[\s\S]*\}/;
-  const m = re.exec(text.replace(/^```(?:json)?\s*|\s*```$/g, ""));
-  if (!m) return undefined;
-  try {
-    return JSON.parse(m[0]);
-  } catch {
-    return undefined;
-  }
-}
 
 /** Runs a prompt; returns the parsed answer, or undefined after three failed attempts. */
 /** Where a parsed answer to this prompt is cached. */

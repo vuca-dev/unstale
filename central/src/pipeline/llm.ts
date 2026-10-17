@@ -1,20 +1,33 @@
 // OpenAI-compatible chat-completions calls, and the extraction model switch (steps A+B; vault: Inference Costs,
-// "Model selection"). UNSTALE_EXTRACT_MODEL is `provider:model`: `codex:gpt-5.6-luna` (the default, via `codex exec`)
-// or a chat-completions provider such as `vercel:openai/gpt-6-luna` (slice 3b's pick, reasoning `low`).
+// "Model selection"). UNSTALE_EXTRACT_MODEL is `provider:model`, default `vercel:openai/gpt-6-luna` through the AI
+// gateway (slice 3b's pick, reasoning `low`); `openai:<model>` calls the OpenAI API directly. The same model answers
+// the classifier's fallback (classify/adapter.ts, ChatClassifier). No step calls the Codex CLI.
 // UNSTALE_EXTRACT_EFFORT sets reasoning_effort (default low). UNSTALE_EXTRACT_SERVICE_TIER (default flex on the gateway)
 // asks for the provider's flex tier: the same model at 50% of list price, slower (verified 16 October 2026 on
 // openai/gpt-6-luna: billed at 0.50×); a flex call the provider refuses for capacity is retried once at the default
 // tier, and the tier is not part of the cache key (same model, same answer distribution). Answers are cached by sha256(provider + request body),
-// only when they parse (as codex.ts); a truncated answer counts as a failed attempt.
+// only when they parse, so a failed or unparseable call is retried on the next run; a truncated answer counts as a
+// failed attempt.
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { keyFromEnvFile } from "./classify/adapter.ts";
-import { codex, codexCachePath } from "./codex.ts";
 import { centralDir } from "./paths.ts";
 import { canonical, logUsage, readJson, sha256, sleep, writeAtomic } from "./util.ts";
 
 const keyDir = join(homedir(), ".config", "ati");
+
+/** The first JSON value of the expected kind in a model answer (fenced or not); undefined when none parses. */
+export function parseJson(text: string, kind: "array" | "object"): unknown {
+  const re = kind === "array" ? /\[[\s\S]*\]/ : /\{[\s\S]*\}/;
+  const m = re.exec(text.replace(/^```(?:json)?\s*|\s*```$/g, ""));
+  if (!m) return undefined;
+  try {
+    return JSON.parse(m[0]);
+  } catch {
+    return undefined;
+  }
+}
 
 export interface Provider {
   name: string;
@@ -176,11 +189,11 @@ export interface ExtractModel {
 }
 
 export function extractModel(env: NodeJS.ProcessEnv = process.env): ExtractModel {
-  const spec = env.UNSTALE_EXTRACT_MODEL ?? "codex:gpt-5.6-luna";
+  const spec = env.UNSTALE_EXTRACT_MODEL ?? "vercel:openai/gpt-6-luna";
   const i = spec.indexOf(":");
   if (i <= 0) throw new Error(`UNSTALE_EXTRACT_MODEL must be provider:model, got ${spec}`);
   const provider = spec.slice(0, i);
-  if (provider !== "codex" && !PROVIDERS[provider]) throw new Error(`UNSTALE_EXTRACT_MODEL: unknown provider ${provider}`);
+  if (!PROVIDERS[provider]) throw new Error(`UNSTALE_EXTRACT_MODEL: unknown provider ${provider}`);
   return { provider, model: spec.slice(i + 1), effort: env.UNSTALE_EXTRACT_EFFORT ?? "low", tier: env.UNSTALE_EXTRACT_SERVICE_TIER ?? (provider === "vercel" ? "flex" : "default") };
 }
 
@@ -190,7 +203,7 @@ const MAX_TOKENS = 16_000;
 const chatLimit = new Limiter(5);
 
 /** Runs an extraction or label prompt on the configured model; the parsed answer, or undefined after three failed attempts. */
-/** `responseFormat` (a chat-completions `response_format`) is sent to chat providers only; Codex gets the prompt alone. */
+/** `responseFormat` is a chat-completions `response_format`. */
 export interface CallOptions {
   responseFormat?: unknown;
   maxTokens?: number;
@@ -204,15 +217,18 @@ function chatRequest(m: ExtractModel, prompt: string, o: CallOptions): { body: C
   return { body, path: join(centralDir(), "cache", "llm", key.slice(0, 2), `${key}.json`) };
 }
 
+/** Where the configured model's parsed answer to this prompt is cached. */
+export function extractCachePath(prompt: string, o: CallOptions = {}): string {
+  return chatRequest(extractModel(), prompt, o).path;
+}
+
 /** Whether the configured model already has a parsed answer to this prompt cached (a call would be free). */
 export function extractCached(prompt: string, o: CallOptions = {}): boolean {
-  const m = extractModel();
-  return existsSync(m.provider === "codex" ? codexCachePath(prompt, m.model) : chatRequest(m, prompt, o).path);
+  return existsSync(extractCachePath(prompt, o));
 }
 
 export async function extractLlm<T>(prompt: string, parse: (text: string) => T | undefined, o: { fetch?: typeof fetch; backoffMs?: number } & CallOptions = {}): Promise<T | undefined> {
   const m = extractModel();
-  if (m.provider === "codex") return codex(prompt, parse, m.model);
   const p = PROVIDERS[m.provider]!;
   const { body, path } = chatRequest(m, prompt, o);
   const hit = readJson<{ text: string }>(path);

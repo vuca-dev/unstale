@@ -1,7 +1,8 @@
 // fetch → extract → label → classify → match → publish, per technology. Idempotent: every model call is cached and
 // every ingested extraction is recorded, so a rerun makes no uncached calls and leaves the catalog byte-identical.
 import { join } from "node:path";
-import { ClassifierCache, CodexClassifier, FallbackClassifier, Jev } from "./classify/adapter.ts";
+import { ChatClassifier, ClassifierCache, FallbackClassifier, Jev } from "./classify/adapter.ts";
+import { extractModel } from "./llm.ts";
 import { interpret, labelQuestions, recordState, type Labels } from "./classify/labels.ts";
 import { type DocsNote, extractRelease, releaseCached, type Incoming } from "./extract.ts";
 import type { PipelineBudget } from "./budget.ts";
@@ -22,10 +23,10 @@ import { completeEvents, dailyPass, DOCS_PASS, markExtracted, plan } from "../do
 
 export function makeClassifier(): FallbackClassifier {
   let lastLogged = "";
-  return new FallbackClassifier(new Jev(), new CodexClassifier(), new ClassifierCache(join(centralDir(), "cache", "classifier")), {
+  return new FallbackClassifier(new Jev(), new ChatClassifier(), new ClassifierCache(join(centralDir(), "cache", "classifier")), {
     fallback: (e) => {
       const msg = `${e.kind}: ${e.message}`;
-      if (msg !== lastLogged) console.error(`classifier: Jev → Codex fallback (${msg})`);
+      if (msg !== lastLogged) console.error(`classifier: Jev → ${extractModel().model} fallback (${msg})`);
       lastLogged = msg;
     },
   });

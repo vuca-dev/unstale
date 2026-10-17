@@ -10,7 +10,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { join } from "node:path";
 process.env.UNSTALE_CENTRAL_DIR = join(import.meta.dirname, "..", "out", "central");
 const { OUT_DIR, dollars, loadPrices, logUsageLine, priceOf } = await import("../client.ts");
-const { runCodex, parseJson, CODEX_MODEL } = await import("../../../central/src/pipeline/codex.ts");
+const { runCodex, parseJson, CODEX_MODEL } = await import("../../lib/codex.ts");
 const { chunk, EXTRACT_PROMPT, Extracted, fill, LABEL_PROMPT, strings, toIncoming } = await import("../../../central/src/pipeline/extract.ts");
 const { recordState } = await import("../../../central/src/pipeline/classify/labels.ts");
 const { pipelineTechnology, technologyId } = await import("../../../central/src/onboarding/discovery.ts");

@@ -41,6 +41,7 @@ export const Classifier = z.union([
 z.enum(["jev","other"]),
 z.literal("openai-decisions"),
 z.literal("codex"),
+z.literal("chat"),
 ]);
 export type Classifier = z.infer<typeof Classifier>;
 

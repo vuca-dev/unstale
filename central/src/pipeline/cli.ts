@@ -20,7 +20,6 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { advisoryStage, advisoryStats } from "./advisories.ts";
-import { codexStats } from "./codex.ts";
 import { extractModel, llmStats } from "./llm.ts";
 import { PipelineBudget } from "./budget.ts";
 import { fetchReleases } from "./fetch.ts";
@@ -103,7 +102,6 @@ async function pipeline(args: string[]): Promise<void> {
   for (const r of reports) console.log(JSON.stringify(r));
   const summary = {
     wall_s: Math.round((Date.now() - t0) / 1000),
-    codex: codexStats,
     extract_model: extractModel(),
     llm: llmStats,
     classifier_answers: cls.counts,

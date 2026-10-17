@@ -64,10 +64,10 @@ describe("schema seam", () => {
     expect(out.requires).toEqual([]);
   });
 
-  test("classifier names: jev, codex and the older openai-decisions are accepted; an unknown one is not written", () => {
+  test("classifier names: jev, chat and the older codex and openai-decisions are accepted; an unknown one is not written", () => {
     const base = active();
     const cls = (base.classifier ?? { model: "m", change_type: 1, surface: 1, breaking: 0, benefit: [], borderline: [] }) as Record<string, unknown>;
-    for (const name of ["jev", "codex", "openai-decisions"]) {
+    for (const name of ["jev", "chat", "codex", "openai-decisions"]) {
       expect(ShardLine.safeParse({ ...base, classifier: { ...cls, classifier: name } }).error).toBeUndefined();
     }
     expect(ShardLine.safeParse({ ...base, classifier: { ...cls, classifier: "clef" } }).success).toBe(false);

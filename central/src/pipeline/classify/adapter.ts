@@ -1,14 +1,15 @@
-// The classifier adapter: one interface, two implementations (Jev, and Codex in place of OpenAI Decisions since
-// 15 October 2026), a per-request fallback wrapper and a cache. Swapping or reordering classifiers touches only this
+// The classifier adapter: one interface, two implementations (Jev, and the extraction model answering choices as the
+// fallback since 16 October 2026), a per-request fallback wrapper and a cache. Swapping or reordering classifiers touches only this
 // module (CONTRACT: "Classifier: Jev first, fallback per request"; vault: Relevance Engine, "Classifier for labels
 // and ratings").
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { extractLlm, extractModel } from "../llm.ts";
 import { canonical, logUsage, readJson, sha256, sleep, writeAtomic } from "../util.ts";
 
-/** `openai-decisions` stays a known name: records labelled by it before 15 October 2026 keep it. */
-export type ClassifierName = "jev" | "openai-decisions" | "codex";
+/** `openai-decisions` and `codex` stay known names: records labelled by them (before 16 October 2026) keep them. */
+export type ClassifierName = "jev" | "openai-decisions" | "codex" | "chat";
 
 /** A closed choice: option → description. Yes/no judgements are choices over `yes` and `no`. */
 export interface ChoiceQuestion {
@@ -70,6 +71,7 @@ export const usageStats: Record<ClassifierName, { calls: number; input_tokens: n
   jev: { calls: 0, input_tokens: 0, output_tokens: 0 },
   "openai-decisions": { calls: 0, input_tokens: 0, output_tokens: 0 },
   codex: { calls: 0, input_tokens: 0, output_tokens: 0 },
+  chat: { calls: 0, input_tokens: 0, output_tokens: 0 },
 };
 
 /** POST with timeout and retries on 429/529/5xx (exponential backoff); 401/403 fail at once. */
@@ -193,10 +195,10 @@ export class Jev implements Classifier {
   }
 }
 
-/** Runs one Codex prompt (`codex exec`); the default is the pipeline's Codex runner (codex.ts). */
-export type CodexRunner = (prompt: string, model: string) => Promise<{ text: string; code: number | null; usage?: { input_tokens: number; output_tokens: number; cached_input_tokens: number } }>;
+/** Answers one choice prompt with the configured chat model: the parsed choices, or undefined when no answer parsed. */
+export type ChatRunner = (prompt: string, parse: (text: string) => Record<string, string> | undefined) => Promise<Record<string, string> | undefined>;
 
-const CODEX_PROMPT = `You answer closed-choice questions about a record. Read the state and answer every question by picking
+const CHOICE_PROMPT = `You answer closed-choice questions about a record. Read the state and answer every question by picking
 exactly one of its options.
 
 Output only a JSON object, no prose: {"<question id>": "<option>", ...}
@@ -208,63 +210,68 @@ Questions:
 %QUESTIONS%
 `;
 
+/** The extraction model's client (llm.ts: gateway, cache, retries, usage log). */
+const extractionModel: ChatRunner = (prompt, parse) => extractLlm(prompt, parse);
+
 /**
- * The fallback classifier: Codex (`codex exec`, gpt-5.6-luna) asked for one option per question, nothing else. A text
- * generator's stated probabilities are not scores: re-scored on choices alone, every chat model's "p >= 0.5" equalled
- * its choice, and thresholds fitted on its numbers only traded precision away (eval/select/slice4/RESULTS-choice.md).
- * So the answer is the choice, given as probability 1 (0 for the other options), and the classification is marked
- * `calibrated: false`: the judge then lets a "yes" merge only where its deterministic guards agree (match.ts pick).
- * Replaces the OpenAI Decisions adapter (user rule, 15 October 2026: Luna only through Codex). An unparseable or incomplete answer is retried once, then
- * is unanswerable: a `malformed` ClassifierError, recorded in the usage log. Caching is the FallbackClassifier's
- * (by request hash); every real call is logged as api "codex".
+ * The fallback classifier: the extraction model (llm.ts, `gpt-6-luna` through the gateway by default) asked for one
+ * option per question, nothing else. A text generator's stated probabilities are not scores: re-scored on choices
+ * alone, every chat model's "p >= 0.5" equalled its choice, and thresholds fitted on its numbers only traded precision
+ * away (eval/select/slice4/RESULTS-choice.md). So the answer is the choice, given as probability 1 (0 for the other
+ * options), and the classification is marked `calibrated: false`: the judge then lets a "yes" merge only where its
+ * deterministic guards agree (match.ts pick). An answer that names an unknown option or skips a question does not
+ * parse, so llm.ts retries it; after its attempts the request is unanswerable: a `malformed` ClassifierError. A failed
+ * call (network, auth) is a `network` ClassifierError. Replaces the Codex CLI fallback (user, 16 October 2026).
  */
-export class CodexClassifier implements Classifier {
-  readonly name = "codex" as const;
+export class ChatClassifier implements Classifier {
+  readonly name = "chat" as const;
   readonly model: string;
-  private readonly run: CodexRunner;
-  constructor(o: { model?: string; run?: CodexRunner } = {}) {
-    this.model = o.model ?? "gpt-5.6-luna";
-    this.run = o.run ?? (async (prompt, model) => (await import("../codex.ts")).runCodex(prompt, model));
+  private readonly run: ChatRunner;
+  constructor(o: { model?: string; run?: ChatRunner } = {}) {
+    this.model = o.model ?? extractModel().model;
+    this.run = o.run ?? extractionModel;
   }
 
   prompt(state: Record<string, unknown>, questions: Questions): string {
     const qs = Object.fromEntries(Object.entries(questions).map(([id, q]) => [id, { instructions: q.instructions, options: q.options }]));
-    return CODEX_PROMPT.replace("%STATE%", canonical(state)).replace("%QUESTIONS%", JSON.stringify(qs, null, 1));
+    return CHOICE_PROMPT.replace("%STATE%", canonical(state)).replace("%QUESTIONS%", JSON.stringify(qs, null, 1));
   }
 
   async classify(state: Record<string, unknown>, questions: Questions): Promise<Classification> {
-    const prompt = this.prompt(state, questions);
-    let last = "no answer";
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const r = await this.run(prompt, this.model);
-      if (r.usage) {
-        usageStats.codex.calls++;
-        usageStats.codex.input_tokens += r.usage.input_tokens;
-        usageStats.codex.output_tokens += r.usage.output_tokens;
-        logUsage({ api: "codex", model: this.model, purpose: "classifier", ...r.usage });
-      }
-      if (r.code !== 0) {
-        last = `codex exited ${r.code}`;
-        continue;
-      }
+    const parse = (text: string): Record<string, string> | undefined => {
+      const m = /\{[\s\S]*\}/.exec(text.replace(/^```(?:json)?\s*|\s*```$/g, ""));
+      let raw: Record<string, unknown>;
       try {
-        const m = /\{[\s\S]*\}/.exec(r.text.replace(/^```(?:json)?\s*|\s*```$/g, ""));
-        const raw = (m ? JSON.parse(m[0]) : undefined) as Record<string, unknown> | undefined;
-        if (!raw || typeof raw !== "object") throw new ClassifierError("malformed", "no JSON object");
-        const answers: Record<string, Answer> = {};
-        for (const [id, q] of Object.entries(questions)) {
-          const v = raw[id];
-          const choice = typeof v === "string" ? v : typeof (v as { choice?: unknown } | undefined)?.choice === "string" ? (v as { choice: string }).choice : undefined;
-          const probabilities = Object.fromEntries(Object.keys(q.options).map((o) => [o, o === choice ? 1 : 0]));
-          answers[id] = checkAnswer(id, q, choice === undefined ? undefined : { choice, confidence: 1, probabilities });
-        }
-        return { classifier: "codex", model: this.model, answers, calibrated: false };
-      } catch (e) {
-        last = e instanceof Error ? e.message : String(e);
+        raw = m ? (JSON.parse(m[0]) as Record<string, unknown>) : {};
+      } catch {
+        return undefined;
       }
+      const out: Record<string, string> = {};
+      for (const [id, q] of Object.entries(questions)) {
+        const v = raw[id];
+        const choice = typeof v === "string" ? v : typeof (v as { choice?: unknown } | undefined)?.choice === "string" ? (v as { choice: string }).choice : undefined;
+        if (choice === undefined || !Object.hasOwn(q.options, choice)) return undefined;
+        out[id] = choice;
+      }
+      return out;
+    };
+    let chosen: Record<string, string> | undefined;
+    try {
+      chosen = await this.run(this.prompt(state, questions), parse);
+    } catch (e) {
+      throw e instanceof ClassifierError ? e : new ClassifierError("network", `chat classifier: ${e instanceof Error ? e.message : String(e)}`);
     }
-    logUsage({ event: "codex-unanswerable", reason: last });
-    throw new ClassifierError("malformed", `codex: ${last}`);
+    if (!chosen) {
+      logUsage({ event: "chat-unanswerable", model: this.model });
+      throw new ClassifierError("malformed", "chat classifier: no answer named an option for every question");
+    }
+    usageStats.chat.calls++;
+    const answers: Record<string, Answer> = {};
+    for (const [id, q] of Object.entries(questions)) {
+      const choice = chosen[id]!;
+      answers[id] = checkAnswer(id, q, { choice, confidence: 1, probabilities: Object.fromEntries(Object.keys(q.options).map((o) => [o, o === choice ? 1 : 0])) });
+    }
+    return { classifier: "chat", model: this.model, answers, calibrated: false };
   }
 }
 
@@ -301,7 +308,7 @@ export interface FallbackEvents {
 export class FallbackClassifier {
   consecutive = 0;
   disabled = false;
-  readonly counts: Record<ClassifierName, number> = { jev: 0, "openai-decisions": 0, codex: 0 };
+  readonly counts: Record<ClassifierName, number> = { jev: 0, "openai-decisions": 0, codex: 0, chat: 0 };
   fallbacks = 0;
   private readonly primary: Classifier;
   private readonly fallback: Classifier;

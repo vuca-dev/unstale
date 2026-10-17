@@ -1,14 +1,14 @@
 // One call per chunk (UNSTALE_EXTRACT_STRUCTURE=one-call): records and their five label fields come from one answer.
-// The Codex call is mocked; parseJson is the real one.
+// The model call is mocked; parseJson is the real one.
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 const prompts: string[] = [];
 let answer = "";
-vi.mock("../src/pipeline/codex.ts", async (orig) => {
-  const real = await orig<typeof import("../src/pipeline/codex.ts")>();
+vi.mock("../src/pipeline/llm.ts", async (orig) => {
+  const real = await orig<typeof import("../src/pipeline/llm.ts")>();
   return {
     ...real,
-    codex: async <T>(prompt: string, parse: (text: string) => T | undefined) => {
+    extractLlm: async <T>(prompt: string, parse: (text: string) => T | undefined) => {
       prompts.push(prompt);
       return parse(answer);
     },

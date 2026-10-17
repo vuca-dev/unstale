@@ -18,7 +18,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { gunzipSync } from "node:zlib";
 import { affects, fetchAdvisories, fixesInWindow, inRange, npmName, semverCmp, type Advisory } from "../../central/src/pipeline/advisories.ts";
-import { codex, codexStats, parseJson } from "../../central/src/pipeline/codex.ts";
+import { codex, codexStats, parseJson } from "../lib/codex.ts";
 import { advisoryIds } from "../../central/src/pipeline/match.ts";
 import { centralDir } from "../../central/src/pipeline/paths.ts";
 import { TECHNOLOGIES } from "../../central/src/pipeline/technologies.ts";

@@ -226,8 +226,10 @@ pub enum Classifier {
     Jev,
     /// Kept readable for records labelled before 15 October 2026; no longer called.
     OpenaiDecisions,
-    /// The fallback since 15 October 2026 (Luna through `codex exec`).
+    /// Kept readable for records labelled 15–16 October 2026 (Luna through `codex exec`); no longer called.
     Codex,
+    /// The fallback since 16 October 2026: the extraction chat model (gpt-6-luna) asked for choices only.
+    Chat,
     #[serde(other)]
     Other,
 }
@@ -242,7 +244,7 @@ pub struct BenefitScore {
 /// The classifier's probabilities and confidence for a record's label fields.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Classification {
-    /// Which classifier answered: `jev`, `codex` or (older records) `openai-decisions`.
+    /// Which classifier answered: `jev`, `chat`, or (older records) `codex` or `openai-decisions`.
     pub classifier: Classifier,
     /// The model the API reported, e.g. `jev-1.13.0` or `gpt-6-luna`.
     pub model: String,

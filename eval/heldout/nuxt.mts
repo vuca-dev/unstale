@@ -8,7 +8,7 @@
 const SRC = process.env.UNSTALE_SRC;
 if (!SRC) throw new Error("set UNSTALE_SRC to an exported central/src");
 const { runTechnology, makeClassifier } = await import(`${SRC}/pipeline/pipeline.ts`);
-const { codexStats } = await import(`${SRC}/pipeline/codex.ts`);
+const { codexStats } = await import(new URL("../lib/codex.ts", import.meta.url).href);
 
 export const NUXT = {
   id: "nuxt",

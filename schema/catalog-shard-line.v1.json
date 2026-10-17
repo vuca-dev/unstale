@@ -335,7 +335,7 @@
         },
         "classifier": {
           "$ref": "#/$defs/Classifier",
-          "description": "Which classifier answered: `jev`, `codex` or (older records) `openai-decisions`."
+          "description": "Which classifier answered: `jev`, `chat`, or (older records) `codex` or `openai-decisions`."
         },
         "model": {
           "description": "The model the API reported, e.g. `jev-1.13.0` or `gpt-6-luna`.",
@@ -373,7 +373,12 @@
         },
         {
           "const": "codex",
-          "description": "The fallback since 15 October 2026 (Luna through `codex exec`).",
+          "description": "Kept readable for records labelled 15–16 October 2026 (Luna through `codex exec`); no longer called.",
+          "type": "string"
+        },
+        {
+          "const": "chat",
+          "description": "The fallback since 16 October 2026: the extraction chat model (gpt-6-luna) asked for choices only.",
           "type": "string"
         }
       ]
