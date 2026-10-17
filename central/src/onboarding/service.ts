@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import { readFileSync, readdirSync, existsSync, appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
-import { HttpClient, DEFAULT_HTTP } from "../collector/http.ts";
+import { HttpClient, DEFAULT_HTTP, FetchFailure } from "../collector/http.ts";
 import { dailyPass, DOCS_PASS, extract, lastPass } from "../docs/extract.ts";
 import {
   discoverTechnology,
@@ -31,7 +31,8 @@ import { npmPurl } from "../pipeline/ecosystems.ts";
 let classifier: ReturnType<typeof makeClassifier> | undefined;
 const advisoryClassifier = () => (classifier ??= makeClassifier());
 import { TECHNOLOGIES } from "../pipeline/technologies.ts";
-const docsHttp = new HttpClient({ ...DEFAULT_HTTP, concurrency: 8, perHost: 2 });
+// Docs requests in flight across all jobs; at most two per host, so more jobs at once never press one site harder.
+const docsHttp = new HttpClient({ ...DEFAULT_HTTP, concurrency: Number(process.env.UNSTALE_DOCS_CONCURRENCY ?? 16) || 16, perHost: 2 });
 export interface Job {
   schema: 1;
   purl: string;
@@ -427,10 +428,22 @@ export class CoverageService {
       "discovering",
       "Verifying public registry identity and official sources",
     );
-    const t =
-      !refresh && job.descriptor?.discovery_version === DISCOVERY_VERSION
-        ? job.descriptor
-        : await discoverTechnology(job.purl);
+    let t: PublicTechnology;
+    try {
+      t =
+        !refresh && job.descriptor?.discovery_version === DISCOVERY_VERSION
+          ? job.descriptor
+          : await discoverTechnology(job.purl);
+    } catch (e) {
+      // Not in its public registry (unpublished, or never published): parked and checked again in a week, not
+      // retried as a failure every few hours.
+      if (e instanceof FetchFailure && (e.httpStatus === 404 || e.httpStatus === 410)) {
+        job.retry_at = new Date(Date.now() + 7 * 86_400_000).toISOString();
+        this.save(job, "blocked", "Not found in its public registry (unpublished or never published); no coverage claimed");
+        return;
+      }
+      throw e;
+    }
     if (job.siblings?.length) t.components = [...new Set([...t.components, ...job.siblings])];
     job.descriptor = t;
     job.name = t.name;

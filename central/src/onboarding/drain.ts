@@ -4,7 +4,7 @@
 // writes every job's public status for the static catalog. The pulled packages are acknowledged only after the deploy
 // that publishes their status (`drain ack`), so a failed run loses no request.
 //
-//   npm run drain -- [--minutes 240] [--grace-minutes 10] [--taken <file>]
+//   npm run drain -- [--minutes 240] [--grace-minutes 10] [--concurrency 4] [--taken <file>]
 //   npm run drain -- ack <file>
 // Gateway: UNSTALE_GATEWAY_URL and UNSTALE_GATEWAY_TOKEN; without them only the saved queue is worked.
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
@@ -58,12 +58,13 @@ function writeStatuses(service: CoverageService): number {
 async function drain(args: string[]): Promise<void> {
   const { values } = parseArgs({
     args,
-    options: { minutes: { type: "string" }, "grace-minutes": { type: "string" }, taken: { type: "string" } },
+    options: { minutes: { type: "string" }, "grace-minutes": { type: "string" }, concurrency: { type: "string" }, taken: { type: "string" } },
   });
   if (!existsSync(join(catalogDir(), "v1/root.json")))
     writeAtomic(join(catalogDir(), "v1/root.json"), JSON.stringify({ schema: 1, min_client: "0.1.0" }));
   const t0 = Date.now();
-  const service = new CoverageService().hold();
+  // Jobs at once: the work is mostly waiting on docs sites (scale probe), so more than the server's default of 2.
+  const service = new CoverageService(Number(values.concurrency ?? 4) || 4).hold();
   const requests = await pull();
   const taken = service.enqueue(requests);
   if (values.taken) {

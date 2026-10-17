@@ -112,3 +112,14 @@ test("a file in the jobs folder that is not a saved job (macOS ._* metadata) is 
   writeFileSync(join(jobs, `._${sha256("pkg:npm/a")}.json`), Buffer.from("\x00\x05\x16\x07\x00\x02\x00\x00Mac OS X", "latin1"));
   expect([...new CoverageService(0, { limits: limits() }).jobs.keys()]).toEqual(["pkg:npm/a"]);
 });
+
+test("a package missing from its registry is parked for a week, not retried as a failure", async () => {
+  const { FetchFailure } = await import("../src/collector/http.ts");
+  vi.spyOn(discovery, "discoverTechnology").mockRejectedValue(new FetchFailure("http_status", "HTTP 404", 404));
+  const service = new CoverageService(1, { limits: limits() }).hold();
+  service.enqueue([{ purl: "pkg:npm/gone", demand: 1 }]);
+  await service.drain(Date.now() + 60_000, 5_000, 10);
+  const job = service.jobs.get("pkg:npm/gone")!;
+  expect(job).toMatchObject({ state: "blocked", stage: expect.stringMatching(/^Not found in its public registry/) });
+  expect(Date.parse(job.retry_at!) - Date.now()).toBeGreaterThan(6 * 86_400_000);
+});
