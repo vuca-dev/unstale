@@ -98,8 +98,8 @@ fn registration_issue(error: &anyhow::Error, purl: &str) -> RegistrationIssue {
     }
     RegistrationIssue::Temporary
 }
-/// Sends each package in `order`. A rejection (a 4xx) is that package's: it is named in the issue and the rest are still
-/// sent. A limit (429, or 503 with Retry-After) defers all of them until then; any other failure (the service down, an
+/// Sends each package in `order`. A rejection of the package (400, 404, 410, 422) is that package's: it is named in the
+/// issue and the rest are still sent; any other 4xx is the request's, so it is recorded and nothing more is sent. A limit (429, or 503 with Retry-After) defers all of them until then; any other failure (the service down, an
 /// invalid answer) stops here, and what is left is sent on a later run.
 fn register(
     pending: &mut Pending,
@@ -137,12 +137,18 @@ fn register(
                         rejected = Some(RegistrationIssue::Rejected { ecosystem, status, packages: vec![p.clone()] });
                     }
                     (issue, _) => {
-                        pending.registration_issue = Some(issue);
+                        // A package the service rejected stays named: it needs a fix, the rest only a later run.
+                        pending.registration_issue = rejected.clone().or(Some(issue));
                         save(pending)?;
                         break;
                     }
                 }
                 pending.registration_issue = rejected.clone();
+                // Request-wide (a refused origin or content type): every other package would fail alike.
+                if e.downcast_ref::<HttpFailure>().is_some_and(|HttpFailure(s)| !matches!(s, 400 | 404 | 410 | 422)) {
+                    save(pending)?;
+                    break;
+                }
             }
         }
         save(pending)?;
@@ -1812,6 +1818,22 @@ mod tests {
         // Older state files without the package list still read.
         let old: Pending = serde_json::from_str(r#"{"registration_issue":{"kind":"rejected","ecosystem":"npm","status":400},"jobs":{},"unsubmitted":["pkg:npm/a"]}"#).unwrap();
         assert!(registration_line(&old).unwrap().contains("npm registration was rejected (HTTP 400)"));
+    }
+    #[test]
+    fn a_rejection_stays_named_after_an_outage_and_a_request_wide_refusal_stops() {
+        let order: Vec<String> = ["pkg:npm/bad", "pkg:npm/b", "pkg:npm/c"].map(String::from).to_vec();
+        let mut pending = Pending::default();
+        pending.unsubmitted.extend(order.iter().cloned());
+        let mut sent = 0;
+        register(&mut pending, order.clone(), |p| { sent += 1; Err(HttpFailure(if p.contains("bad") { 400 } else { 502 }).into()) }, |_| {}, &mut vec![], |_| Ok(())).unwrap();
+        assert_eq!(sent, 2, "the outage stops the pass");
+        assert!(registration_line(&pending).unwrap().contains("rejected for bad (HTTP 400)"));
+        let mut pending = Pending::default();
+        pending.unsubmitted.extend(order.iter().cloned());
+        let mut sent = 0;
+        register(&mut pending, order, |_| { sent += 1; Err(HttpFailure(415).into()) }, |_| {}, &mut vec![], |_| Ok(())).unwrap();
+        assert_eq!(sent, 1, "every package would be refused alike");
+        assert!(registration_line(&pending).unwrap().contains("HTTP 415"));
     }
     #[test]
     fn an_unavailable_or_limited_service_defers_registration_and_is_never_a_tool_side_fix() {

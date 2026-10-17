@@ -97,6 +97,8 @@ test("a registration, a vote and a status read each read a bounded number of row
   const view = (purl: string) => (q.position(purl), q.run(purl, T), q.typicalSeconds(), q.spentUntil(T));
   // The first request after a wake reads the held rows once.
   const fresh = new PendingQueue(sql, settings({ perAddressPerHour: 1_000_000, newPerHour: 0 }));
+  // A vote on a known package does not need them.
+  expect(cost(() => fresh.request("pkg:npm/p0", "203.0.113.9", true, T))).toBe(1);
   expect(cost(() => fresh.held("pkg:npm/p1"))).toBeGreaterThanOrEqual(3000);
   expect(cost(() => fresh.held("pkg:npm/p2"))).toBe(0);
   const costs = {
@@ -188,13 +190,16 @@ test("storage that fails (a used-up daily allowance) is a temporary 503 with Ret
   const { env: e } = env();
   const quota = new Error("Exceeded allowed rows read in Durable Objects free tier.");
   e.COVERAGE = { idFromName: () => "global", get: () => new Proxy({}, { get: () => () => Promise.reject(quota) }) } as unknown as Env["COVERAGE"];
-  const now = Date.now();
+  // A fixed clock, away from midnight, so the expected reset cannot move during the test.
+  vi.useFakeTimers({ toFake: ["Date"] });
+  const now = Date.parse("2026-10-17T16:40:00Z");
+  vi.setSystemTime(now);
   for (const r of [post({ purl: "pkg:npm/a" }), get("/coverage?purl=pkg%3Anpm%2Fa")]) {
     const res = await handle(r, e);
     expect(res.status).toBe(503);
     // Until the allowance resets at 00:00 UTC.
     const after = Number(res.headers.get("Retry-After"));
-    expect(Math.abs(now + after * 1000 - (Math.floor(now / 86_400_000) + 1) * 86_400_000)).toBeLessThan(5000);
+    expect(after).toBe(7 * 3600 + 20 * 60);
     expect(await res.json()).toMatchObject({ retry_after: after });
   }
   e.COVERAGE = { idFromName: () => "global", get: () => new Proxy({}, { get: () => () => Promise.reject(new Error("Durable Object reset")) }) } as unknown as Env["COVERAGE"];
@@ -203,6 +208,9 @@ test("storage that fails (a used-up daily allowance) is a temporary 503 with Ret
   // Bad input is still the client's.
   expect((await handle(post({ purl: "pkg:npm/a@1.0.0" }), e)).status).toBe(400);
   expect((await handle(get("/coverage?purl=nonsense"), e)).status).toBe(400);
+  const ack = new Request("https://unstale.example/internal/ack", { method: "POST", headers: { Authorization: "Bearer drain-secret" }, body: "null" });
+  expect((await handle(ack, e)).status).toBe(400);
+  vi.useRealTimers();
 });
 
 test("a name the public registry does not know is not queued", async () => {

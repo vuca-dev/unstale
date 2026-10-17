@@ -171,17 +171,18 @@ export class PendingQueue {
   /** One vote per requester and package, inside the address's vote limit; over it the answer is the same, uncounted. */
   private vote(purl: string, address: string, known: boolean, now: number): void {
     if (this.voters.has(purl, address) || this.votes.take(address, now)) return;
-    this.voters.add(purl, address);
-    const line = this.line();
     this.sql.exec(
       "INSERT INTO pending (purl, demand, first_seen, known) VALUES (?, 1, ?, ?) ON CONFLICT(purl) DO UPDATE SET demand = demand + 1",
       purl,
       now,
       known ? 1 : 0,
     );
-    // As the statement did: a held row keeps its first request and its kind.
-    const held = line.rows.get(purl);
-    line.set(purl, held ? { ...held, demand: held.demand + 1 } : { demand: 1, firstSeen: now, known });
+    // Counted only once written: a failed write is retried, not taken as a repeat.
+    this.voters.add(purl, address);
+    // As the statement did: a held row keeps its first request and its kind. Not read yet, the next read has it.
+    const line = this.cached;
+    const held = line?.rows.get(purl);
+    line?.set(purl, held ? { ...held, demand: held.demand + 1 } : { demand: 1, firstSeen: now, known });
   }
 
   /** The held rows: read whole once (one row each), then kept in step with every write. */
@@ -208,8 +209,8 @@ export class PendingQueue {
     if (this.count() >= this.settings.maxPending) return { type: "refused", limit: "budget", retryAfter: 3600 };
     this.setMeta("new_hour", hour);
     this.setMeta("new_count", String(thisHour + 1));
-    this.voters.add(purl, address);
     this.sql.exec("INSERT INTO pending (purl, demand, first_seen, known) VALUES (?, 1, ?, 0)", purl, now);
+    this.voters.add(purl, address);
     this.line().set(purl, { demand: 1, firstSeen: now, known: false });
     const fastTrack = this.fastTrack(now);
     if (fastTrack) this.setRun(purl, "dispatched", now);

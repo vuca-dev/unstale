@@ -330,7 +330,11 @@ export async function handle(request: Request, env: Env): Promise<Response> {
       if (!authorized(request, env.DRAIN_TOKEN)) return json(401, { error: "Unauthorized" });
       if (request.method === "GET" && url.pathname === "/internal/queue") return json(200, { requests: await queue().list() });
       if (request.method === "POST" && url.pathname === "/internal/ack") {
-        const { requests } = (await input(() => request.json())) as { requests?: Taken[] };
+        const { requests } = await input(async () => {
+          const body = (await request.json()) as { requests?: Taken[] } | null;
+          if (!body || typeof body !== "object") throw new BadRequest("Expected {\"requests\": [...]}");
+          return body;
+        });
         return json(200, { removed: await queue().ack(Array.isArray(requests) ? requests : []) });
       }
       if (request.method === "POST" && url.pathname === "/internal/progress") {
