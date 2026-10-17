@@ -74,9 +74,9 @@ export function normalizeUrl(u: string): string {
 /** A host without its `www.`: a site and its listing often disagree on it. */
 const bare = (h: string) => h.toLowerCase().replace(/^www\./, "");
 
-async function fetchText(http: HttpClient, url: string, accept: string): Promise<{ text: string; url: string } | undefined> {
+async function fetchText(http: HttpClient, url: string, accept: string, hop?: (next: URL) => Promise<boolean>): Promise<{ text: string; url: string } | undefined> {
   try {
-    const res = await http.get(url, { ...DEFAULT_HEADERS, accept });
+    const res = await http.get(url, { ...DEFAULT_HEADERS, accept }, hop);
     return { text: decode(res.body, res.headers.get("content-type")), url: res.finalUrl };
   } catch (e) {
     if (e instanceof FetchFailure) return undefined;
@@ -218,7 +218,8 @@ export async function linkedPages(http: HttpClient, robots: { allowed(url: strin
     read.add(dirOf(next));
     if (!(await robots.allowed(next))) continue;
     fetched++;
-    const page = await fetchText(http, next, "text/html, application/xhtml+xml;q=0.9");
+    // Each redirect target is checked against its own robots.txt before it is requested.
+    const page = await fetchText(http, next, "text/html, application/xhtml+xml;q=0.9", (u) => robots.allowed(u.href));
     if (!page) continue;
     const at = new URL(page.url);
     if (!final) {

@@ -177,12 +177,15 @@ describe("listing from the site's links", () => {
     const api = ["/docs/api/x", "/docs/api/y"];
     const hits = new Map<string, number>();
     const serve = (p: string, body: string) => e.route(p, (_q, r) => { hits.set(p, (hits.get(p) ?? 0) + 1); r.writeHead(200, { "content-type": "text/html" }).end(body); });
-    e.route("/robots.txt", (_q, r) => void r.writeHead(200, { "content-type": "text/plain" }).end("User-agent: *\nDisallow: /docs/api/y\n"));
-    for (const p of guide) serve(p, nav([...guide, "/docs/api/x", "/blog/post", "https://elsewhere.dev/docs/z", "/docs/style.css"]));
+    e.route("/robots.txt", (_q, r) => void r.writeHead(200, { "content-type": "text/plain" }).end("User-agent: *\nDisallow: /docs/api/y\nDisallow: /private\n"));
+    e.route("/docs/old/z", (_q, r) => void r.writeHead(301, { location: "/private/z" }).end());
+    serve("/private/z", nav(["/docs/hidden/p"]));
+    for (const p of guide) serve(p, nav([...guide, "/docs/api/x", "/docs/old/z", "/blog/post", "https://elsewhere.dev/docs/z", "/docs/style.css"]));
     for (const p of api) serve(p, nav([...api, "./x#part", "/docs/guide/a"]));
     const http = new HttpClient({ ...DEFAULT_HTTP, allowHosts: ["127.0.0.1"], retryBaseMs: 10, timeoutMs: 2_000 });
     const l = await listSite(http, new RobotsCache(http), `${e.base}/docs/guide/a`, "/docs");
-    expect([l.method, l.pages.map((p) => new URL(p.url).pathname)]).toEqual(["links", ["/docs/api/x", ...guide]]);
+    // A redirect to a disallowed path is not read: its links never reach the listing.
+    expect([l.method, l.pages.map((p) => new URL(p.url).pathname)]).toEqual(["links", ["/docs/api/x", ...guide.slice(0, 1), ...guide.slice(1), "/docs/old/z"].sort()]);
     expect(l.dropped.robots).toBe(0); // a disallowed link is never queued
     expect([...hits].sort(([a], [b]) => a.localeCompare(b))).toEqual([["/docs/api/x", 1], ["/docs/guide/a", 1]]);
   });
