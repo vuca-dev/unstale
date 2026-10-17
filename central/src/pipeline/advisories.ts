@@ -21,12 +21,29 @@
 //      in the patched version, cross-kind threshold, advisory and breaking guards); no match makes a new record from
 //      the advisory (the release notes omitted it);
 //   7. every linked record gets the advisory (id, aliases, ranges, resolved versions) and a release on each line the
-//      fix shipped on in the window (a backport the notes left out).
+//      fix shipped on in the window (a backport the notes left out);
+//   8. another package's advisory: a security-labelled record built only from release-notes items that name advisory
+//      ids, none of them this technology's, each attributed by OSV (`GET api.osv.dev/v1/vulns/<id>` and its aliases,
+//      cached) only to other packages, each item worded as a dependency update (bump, upgrade, chore, deps, ... or the
+//      other package's name), where the release does not ship the fix to its users (none of those packages, and no
+//      package the item names, is among the runtime dependencies the registry lists for the release: ecosystems.ts
+//      `dependencies`; nothing bundled or vendored), is not a security fix a bump brings: `change_type` other,
+//      `benefit` none (history `foreign-advisory`, the labels it had kept there). Recomputed every run with no model
+//      call: a record that stops qualifying gets its labels back. An id OSV does not know or attributes to no package,
+//      and an ecosystem without the dependencies hook, keep the record as it is.
+//   9. another package's release: a record whose labels say the bump brings it (security, fix, performance,
+//      behaviour or default change, or benefit security; not breaking) built only from release-notes items, whose subject is a package the
+//      notes list on a line of its own as a link to its registry page (ecosystems.ts `registryPage`; lodash 4.18.0's
+//      "`lodash.*` modular packages": `- [lodash.omit](https://www.npmjs.com/package/lodash.omit)`), not one of the
+//      technology's packages (step 1) and not among the runtime dependencies the release installs, describes a change
+//      users of that package get, not users of this technology: `change_type` other, `benefit` none (history
+//      `other-package`, the labels it had kept there). Recomputed every run with no model call, restored like step 8.
+//      Unknown (a body not stored, no dependency data, an ecosystem without the hooks) keeps the record as it is.
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Classification, Questions } from "./classify/adapter.ts";
 import type { Labels } from "./classify/labels.ts";
-import { ecosystemOf, npmName as npmNameOf, npmPurl, semverOrder } from "./ecosystems.ts";
+import { canonicalPurl, ecosystemOf, npmName as npmNameOf, npmPurl, pypiPurl, semverOrder } from "./ecosystems.ts";
 import type { Incoming } from "./extract.ts";
 import { buildIndex, lineFn, recomputeReleases } from "./lines.ts";
 import { advisoryIds, create, evidenceOf, K, kindOf, matchRequest, nearIdenticalQuote, pick, retrieve } from "./match.ts";
@@ -37,6 +54,7 @@ import { canonical, oneLine, readJson, releaseLine, sha256, writeAtomic } from "
 
 const FRESH_MS = 12 * 3600 * 1000;
 const OSV = "https://api.osv.dev/v1/query";
+const OSV_VULN = "https://api.osv.dev/v1/vulns/";
 
 /** Network calls made by this module in this process (OSV pages, registry reads). */
 export const advisoryStats = { osvRequests: 0, registryLists: 0 };
@@ -83,12 +101,18 @@ const safe = (purl: string) => purl.replace(/^pkg:/, "").replace(/%40/g, "").rep
  * Cached; offline uses the cache; a failed sibling lookup falls back to the components.
  */
 export async function techPackages(t: Technology, opts: { refresh?: boolean; offline?: boolean } = {}): Promise<string[]> {
+  return (await packageList(t, opts)).purls;
+}
+
+/** `techPackages`, and whether the list is complete (false: siblings unread, offline with no cache or a failed lookup). */
+async function packageList(t: Technology, opts: { refresh?: boolean; offline?: boolean }): Promise<{ purls: string[]; complete: boolean }> {
   const p = join(dir(t), "packages.json");
   const cached = readJson<{ checked: string; purls?: string[] }>(p);
   const fresh = cached?.purls && Date.now() - Date.parse(cached.checked) < FRESH_MS;
-  if (cached?.purls && (opts.offline || (fresh && !opts.refresh))) return cached.purls;
+  if (cached?.purls && (opts.offline || (fresh && !opts.refresh))) return { purls: cached.purls, complete: true };
   const out = new Set(t.components);
-  if (opts.offline) return [...out].sort();
+  const hooked = t.components.some((c) => ecosystemOf(c).siblings);
+  if (opts.offline) return { purls: [...out].sort(), complete: !hooked };
   for (const eco of new Set(t.components.map(ecosystemOf))) {
     if (!eco.siblings) continue;
     try {
@@ -96,12 +120,12 @@ export async function techPackages(t: Technology, opts: { refresh?: boolean; off
       for (const x of await eco.siblings(t)) out.add(x);
     } catch (e) {
       console.error(`advisories: ${t.id}: sibling packages unavailable (${e instanceof Error ? e.message : e}); components only`);
-      return [...out].sort();
+      return { purls: [...out].sort(), complete: false };
     }
   }
   const purls = [...out].sort();
   writeAtomic(p, JSON.stringify({ checked: stamp(), purls }, null, 1) + "\n");
-  return purls;
+  return { purls, complete: true };
 }
 
 interface OsvEvent {
@@ -153,7 +177,8 @@ async function osvQuery(purl: string): Promise<OsvVuln[]> {
 
 /** The package URL of an OSV `affected` entry, canonical (`%40scope`), without version or qualifiers. */
 function entryPurl(a: NonNullable<OsvVuln["affected"]>[number]): string | undefined {
-  const p = a.package?.purl ?? (a.package?.ecosystem === "npm" && a.package.name ? npmPurl(a.package.name) : undefined);
+  const name = a.package?.name;
+  const p = a.package?.purl ?? (name && a.package?.ecosystem === "npm" ? npmPurl(name) : name && a.package?.ecosystem === "PyPI" ? pypiPurl(name) : undefined);
   return p?.replace(/@[^/]*$/, "").replace(/[?#].*$/, "").replace(/^pkg:npm\/@/, "pkg:npm/%40");
 }
 
@@ -249,6 +274,79 @@ export async function fetchAdvisories(t: Technology, opts: { refresh?: boolean; 
     }
   }
   return [...byId.values()].sort((a, b) => a.id.localeCompare(b.id));
+}
+
+/** One OSV vulnerability by id (`GET /v1/vulns/<id>`, retried like the queries); null when OSV does not know it. */
+async function osvVuln(id: string): Promise<OsvVuln | null> {
+  for (let attempt = 0; ; attempt++) {
+    advisoryStats.osvRequests++;
+    const res = await fetch(OSV_VULN + encodeURIComponent(id), { headers: { "User-Agent": "unstale-central" }, signal: AbortSignal.timeout(30_000) });
+    if (res.ok) return (await res.json()) as OsvVuln;
+    if (res.status === 404) return null;
+    if (attempt >= 2 || (res.status < 500 && res.status !== 429)) throw new Error(`OSV ${id}: ${res.status}`);
+    await new Promise((r) => setTimeout(r, 2000 * 2 ** attempt));
+  }
+}
+
+/** What the attribution check keeps of a vulnerability: its ids, whether it was withdrawn, its packages. */
+const attribution = (v: OsvVuln): OsvVuln => ({
+  id: v.id,
+  ...(v.aliases?.length ? { aliases: v.aliases } : {}),
+  ...(v.withdrawn ? { withdrawn: v.withdrawn } : {}),
+  affected: (v.affected ?? []).map((a) => ({ ...(a.package ? { package: a.package } : {}) })),
+});
+
+/**
+ * The packages (canonical package URLs) OSV attributes an advisory id to: the `affected` packages of the id's own entry
+ * and of its aliases' entries (a CVE entry names no package; its GHSA alias does), withdrawn entries left out. Undefined
+ * when OSV does not know the id or names no package for it. Each entry is cached under the technology's advisories
+ * like the queries (12 h; offline uses the cache). A failed request, or an id not cached when offline, throws.
+ */
+export async function advisoryPackages(t: Technology, id: string, opts: { refresh?: boolean; offline?: boolean } = {}): Promise<Set<string> | undefined> {
+  const entry = async (x: string): Promise<OsvVuln | null | undefined> => {
+    const file = join(dir(t), "vulns", `${x.toUpperCase().replace(/[^A-Z0-9._-]+/g, "_")}.json`);
+    const cached = readJson<{ checked: string; vuln: OsvVuln | null }>(file);
+    const fresh = cached && Date.now() - Date.parse(cached.checked) < FRESH_MS;
+    if (cached && (opts.offline || (fresh && !opts.refresh))) return cached.vuln;
+    if (opts.offline) throw new Error(`${x} not cached (offline)`);
+    const v = await osvVuln(x);
+    const vuln = v && attribution(v);
+    writeAtomic(file, JSON.stringify({ checked: stamp(), vuln }, null, 1) + "\n");
+    return vuln;
+  };
+  const own = await entry(id);
+  if (!own) return undefined;
+  const out = new Set<string>();
+  const seen = new Set([own.id.toUpperCase(), id.toUpperCase()]);
+  for (const v of [own, ...(await Promise.all((own.aliases ?? []).filter((x) => !seen.has(x.toUpperCase())).map(entry)))]) {
+    if (!v || v.withdrawn) continue;
+    for (const a of v.affected ?? []) {
+      const p = entryPurl(a);
+      if (p) out.add(p);
+    }
+  }
+  return out.size ? out : undefined;
+}
+
+/**
+ * The packages (canonical package URLs) a release of a component installs for its users (ecosystems.ts
+ * `dependencies`), cached under the technology's advisories with no expiry (a published release does not change).
+ * Null when the registry has no such release (the package was not published at that version: it installs nothing);
+ * undefined when the ecosystem has no hook (unknown); throws when the registry cannot be read or, offline, when nothing
+ * is cached.
+ */
+export async function releaseDependencies(t: Technology, component: string, version: string, opts: { offline?: boolean } = {}): Promise<string[] | null | undefined> {
+  const hook = ecosystemOf(component).dependencies;
+  if (!hook) return undefined;
+  const file = join(dir(t), "dependencies", `${safe(component)}@${version.replace(/[^A-Za-z0-9._+-]+/g, "_")}.json`);
+  const cached = readJson<{ checked: string; dependencies: string[] | null }>(file);
+  if (cached) return cached.dependencies;
+  if (opts.offline) throw new Error(`${component}@${version} dependencies not cached (offline)`);
+  advisoryStats.registryLists++;
+  const deps = await hook(component, version);
+  const dependencies = deps ? [...new Set(deps.map(canonicalPurl))].sort() : null;
+  writeAtomic(file, JSON.stringify({ checked: stamp(), dependencies }, null, 1) + "\n");
+  return dependencies;
 }
 
 // ---- Resolving ranges against the release index ----
@@ -384,19 +482,16 @@ const flat = (s: string) =>
     .trim();
 
 /**
- * Advisory ids on the list item of a release body that a quote was taken from (a Markdown list item names its
- * advisory in its link). The quote is located at the best-matching item, not at every item containing it: each window
- * of up to 4 lines that contains the quote is scored by coverage (quote length / the window's text length, links and
- * ids stripped); the best gives its ids. No window, or a tie for best between windows naming different ids, gives
- * none (the advisory is then judged).
- * Release notes that re-list an earlier advisory next to its follow-up ("... - Incomplete Fix Follow-Up") thus give
- * the earlier one's quote the earlier one's id only.
+ * The list item of a release body that a quote was taken from, as written (links and ids kept). The quote is located
+ * at the best-matching item, not at every item containing it: each window of up to 4 lines that contains the quote is
+ * scored by coverage (quote length / the window's text length, links and ids stripped); the best gives the item. No
+ * window, or a tie for best between windows naming different advisory ids, gives none.
  */
-export function idsAtQuote(body: string, quote: string): Set<string> {
+export function itemAtQuote(body: string, quote: string): string | undefined {
   const lines = body.split("\n");
   const q = flat(quote);
-  if (q.length < 8) return new Set();
-  let best: { cov: number; ids: Set<string> } | undefined;
+  if (q.length < 8) return undefined;
+  let best: { cov: number; raw: string; ids: Set<string> } | undefined;
   let tie = false;
   for (let len = 1; len <= 4; len++) {
     for (let i = 0; i + len <= lines.length; i++) {
@@ -405,7 +500,7 @@ export function idsAtQuote(body: string, quote: string): Set<string> {
       if (!text.includes(q)) continue;
       const cov = q.length / text.length;
       if (!best || cov > best.cov + 1e-9) {
-        best = { cov, ids: advisoryIds(raw) };
+        best = { cov, raw, ids: advisoryIds(raw) };
         tie = false;
       } else if (Math.abs(cov - best.cov) <= 1e-9) {
         const ids = advisoryIds(raw);
@@ -413,7 +508,18 @@ export function idsAtQuote(body: string, quote: string): Set<string> {
       }
     }
   }
-  return best && !tie ? best.ids : new Set();
+  return best && !tie ? best.raw : undefined;
+}
+
+/**
+ * Advisory ids on the list item of a release body that a quote was taken from (a Markdown list item names its
+ * advisory in its link), located by `itemAtQuote`; none when the item cannot be located (the advisory is then judged).
+ * Release notes that re-list an earlier advisory next to its follow-up ("... - Incomplete Fix Follow-Up") thus give
+ * the earlier one's quote the earlier one's id only.
+ */
+export function idsAtQuote(body: string, quote: string): Set<string> {
+  const item = itemAtQuote(body, quote);
+  return item === undefined ? new Set() : advisoryIds(item);
 }
 
 // A record made from an advisory: a security fix, not breaking, no classifier (nothing was asked of one).
@@ -478,6 +584,29 @@ export interface AttachReport {
   twinsMerged: Array<{ advisory: string; from: string; into: string }>;
   /** Advisories still on more than one record after the twin merge, reported (not guessed). */
   multiHolder: Array<{ advisory: string; records: string[] }>;
+  /** Records relabelled from security to a dependency update: the ids they name are other packages' (step 8). */
+  foreign: Array<{ record: string; ids: string[] }>;
+  /** Records given their labels back: they no longer qualify as another package's advisory. */
+  foreignRestored: string[];
+  /** Records relabelled as another package's release: the subject is a package the notes list, not this one (step 9). */
+  otherPackage: Array<{ record: string; package: string }>;
+  /** Records given their labels back: they no longer qualify as another package's release. */
+  otherPackageRestored: string[];
+}
+
+/**
+ * What step 8 needs: the technology's packages, the packages OSV attributes an id to, and the packages a release of a
+ * component installs for its users.
+ */
+export interface ForeignCheck {
+  packages: readonly string[];
+  /** Package URLs OSV attributes the id to; undefined when OSV does not know it. Throws when OSV cannot be read. */
+  lookup: (id: string) => Promise<Set<string> | undefined>;
+  /**
+   * Package URLs the release installs for its users; null when the package has no such release (it installs nothing);
+   * undefined when unknown (no hook). Throws when it cannot be read.
+   */
+  dependencies: (component: string, version: string) => Promise<string[] | null | undefined>;
 }
 
 /**
@@ -494,8 +623,9 @@ export async function attachAdvisories(
   advisories: Advisory[],
   releases: ReadonlyArray<{ version: string; date: string; url: string }>,
   judge: (state: Record<string, unknown>, questions: Questions) => Promise<Classification>,
+  foreign?: ForeignCheck,
 ): Promise<AttachReport> {
-  const report: AttachReport = { advisories: advisories.length, inWindow: 0, byId: 0, judged: 0, created: 0, releasesAdded: 0, recordsChanged: 0, removed: [], twinsMerged: [], multiHolder: [] };
+  const report: AttachReport = { advisories: advisories.length, inWindow: 0, byId: 0, judged: 0, created: 0, releasesAdded: 0, recordsChanged: 0, removed: [], twinsMerged: [], multiHolder: [], foreign: [], foreignRestored: [], otherPackage: [], otherPackageRestored: [] };
   const changed = new Set<string>();
   const lineOf = lineFn(s);
   // One release index: the store's (lines.ts, published in the tech index) when it has one. Each advisory carries a
@@ -632,6 +762,25 @@ export async function attachAdvisories(
   }
   report.multiHolder = multiHolders(s).map(([advisory, records]) => ({ advisory, records }));
 
+  // Step 8: another package's advisory named in the notes is a dependency update, not a security fix of this one.
+  if (foreign) {
+    const r = await relabelForeign(s, advisories, releases, body, foreign);
+    report.foreign = r.foreign;
+    report.foreignRestored = r.restored;
+    for (const x of r.foreign) changed.add(x.record);
+    for (const x of r.restored) changed.add(x);
+  }
+
+  // Step 9: a record about another package the notes list (its own release, published from this repository or not) is
+  // not a change this technology's users get with the bump.
+  if (foreign) {
+    const r = await relabelOtherPackage(s, releases, body, foreign);
+    report.otherPackage = r.relabelled;
+    report.otherPackageRestored = r.restored;
+    for (const x of r.relabelled) changed.add(x.record);
+    for (const x of r.restored) changed.add(x);
+  }
+
   // Releases recomputed from sources and attached advisories (lines.ts), dropping what a detached advisory added.
   for (const r of Object.values(s.records)) {
     if (r.status !== "active") continue;
@@ -691,6 +840,313 @@ export function findTwins(
   return undefined;
 }
 
+// ---- Another package's advisory (step 8) ----
+
+/** Wording of code shipped inside the package: its users get the fix with the bump whatever the registry lists. */
+const SHIPPED_WORDING = /\b(?:bundl(?:e|es|ed|ing)|vendor(?:s|ed|ing)?|compiled|inlined|embedded)\b/i;
+
+/** Dependency-update wording on a release-notes item (conventional-commit types and bot names included). */
+const DEPENDENCY_WORDING = /\b(?:bump(?:s|ed|ing)?|upgrad(?:e|es|ed|ing)|updat(?:e|es|ed|ing)|chore|deps?|dependenc(?:y|ies)|devdependencies|lockfile|renovate|dependabot)\b/i;
+
+/** Names a package URL goes by in prose: `@scope/name` and `name` (npm), the name alone elsewhere, lower-cased. */
+function packageNames(purl: string): string[] {
+  const path = decodeURIComponent(purl.replace(/^pkg:[^/]+\//, "")).toLowerCase();
+  const last = path.split("/").at(-1)!;
+  return [...new Set([path, last])].filter((x) => x.length >= 3);
+}
+
+const namesPackage = (text: string, purl: string): boolean => {
+  const t = text.toLowerCase();
+  return packageNames(purl).some((n) => new RegExp(`(^|[^a-z0-9@/_.-])${n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}($|[^a-z0-9_-])`).test(t));
+};
+
+/**
+ * The release-notes item a quote came from: the best-matching item (`itemAtQuote`), else the one line of the body that
+ * contains the quote as written (a quote that is an advisory id alone, `cve-2025-67779`, has no text left to score).
+ */
+export function sourceItem(body: string, quote: string): string | undefined {
+  const item = itemAtQuote(body, quote);
+  if (item !== undefined) return item;
+  const q = quote.toLowerCase().replace(/\s+/g, " ").trim();
+  if (!q) return undefined;
+  const lines = body.split("\n").filter((l) => l.toLowerCase().replace(/\s+/g, " ").includes(q));
+  return lines.length === 1 ? lines[0] : undefined;
+}
+
+const purlType = (purl: string): string => /^pkg:([^/]+)\//i.exec(purl)?.[1]?.toLowerCase() ?? "";
+
+const FOREIGN = "foreign-advisory";
+const FOREIGN_RESTORED = "foreign-advisory-restored";
+const WAS = /\(was ([a-z_]+); ([a-z, ]+)\)$/;
+
+/** The labels a record had before a step relabelled it, from the step's last entry still in force (step 8 by default). */
+function relabelledFrom(r: StoredRecord, action = FOREIGN, restored = FOREIGN_RESTORED): { change_type: StoredRecord["change_type"]; benefit: StoredRecord["benefit"] } | undefined {
+  for (let i = r.history.length - 1; i >= 0; i--) {
+    const h = r.history[i]!;
+    if (h.action === restored) return undefined;
+    if (h.action !== action) continue;
+    const m = WAS.exec(h.detail ?? "");
+    return m ? { change_type: m[1] as StoredRecord["change_type"], benefit: m[2]!.split(", ") as StoredRecord["benefit"] } : undefined;
+  }
+  return undefined;
+}
+
+/**
+ * The packages (canonical package URLs) the technology's packages install for their users at the versions a record
+ * lists: the runtime dependencies of every package of the technology (components and siblings: the dependency often
+ * sits in a sibling, @nestjs/platform-express). Undefined when unknown: a package whose dependencies cannot be known (no
+ * hook), none of the packages published at any of the versions, or a registry that cannot be read (logged).
+ */
+async function shippedPackages(
+  s: TechStore,
+  r: StoredRecord,
+  packages: ReadonlySet<string>,
+  dependencies: (component: string, version: string) => Promise<string[] | null | undefined>,
+): Promise<Set<string> | undefined> {
+  const shipped = new Set<string>();
+  let known = false;
+  for (const version of new Set(r.releases.map((x) => x.version))) {
+    for (const component of packages) {
+      let deps: string[] | null | undefined;
+      try {
+        deps = await dependencies(component, version);
+      } catch (e) {
+        console.error(`advisories: ${s.technology}: ${component}@${version} dependencies unavailable (${e instanceof Error ? e.message : e}); ${r.id} unchanged`);
+        return undefined;
+      }
+      // Any package whose dependencies cannot be known (no hook): unknown. Not published at the version: nothing.
+      if (deps === undefined) return undefined;
+      if (deps === null) continue;
+      known = true;
+      for (const d of deps) shipped.add(canonicalPurl(d));
+    }
+  }
+  return known ? shipped : undefined;
+}
+
+/** One `read` per key for the run (the registry and OSV answers are cached on disk too). */
+function memo<T>(read: (component: string, version: string) => Promise<T>): (component: string, version: string) => Promise<T> {
+  const seen = new Map<string, Promise<T>>();
+  return (component, version) => {
+    const k = `${component}@${version}`;
+    if (!seen.has(k)) seen.set(k, read(component, version));
+    return seen.get(k)!;
+  };
+}
+
+/**
+ * Step 8, deterministic and with no model call. A record is another package's advisory when it is active, carries no
+ * advisory of this technology, holds release-notes evidence only, every evidence item (the quote and the notes' item
+ * it came from) names advisory ids, none of them one of this technology's advisories (or their aliases), each
+ * attributed by OSV only to packages outside the technology's packages, the item is worded as a dependency update or
+ * names one of those packages and not as code shipped inside the package (bundled, vendored, compiled), and the
+ * release does not install the fix for its users: none of those packages, and no package an item names, is a runtime
+ * dependency of any of the technology's packages at the record's versions. So a fix of this package that also names
+ * another's advisory keeps its labels (it names this package's advisory, OSV attributes an id to this package, or it
+ * is not worded as an update), and so does a bump of a dependency the release installs. Such a record labelled
+ * security (change type or benefit) becomes `other` with benefit `none`; a relabelled record that no longer qualifies
+ * gets its labels back. Unknown keeps the record as it is: an id OSV does not know or attributes to no package, a
+ * package of another ecosystem, no dependencies known for any release. A source that cannot be read leaves the record
+ * unchanged this run.
+ */
+export async function relabelForeign(
+  s: TechStore,
+  advisories: readonly Advisory[],
+  releases: ReadonlyArray<{ version: string; url: string }>,
+  body: (version: string) => string | undefined,
+  check: ForeignCheck,
+): Promise<{ foreign: Array<{ record: string; ids: string[] }>; restored: string[] }> {
+  const ours = new Set(advisories.flatMap((a) => [a.id, ...a.aliases].map((x) => x.toUpperCase())));
+  const packages = new Set(check.packages.map(canonicalPurl));
+  const byUrl = new Map(releases.map((r) => [r.url, r]));
+  const looked = new Map<string, Promise<Set<string> | undefined>>();
+  const lookup = (id: string) => {
+    if (!looked.has(id)) looked.set(id, check.lookup(id));
+    return looked.get(id)!;
+  };
+  const dependencies = memo(check.dependencies);
+  const out = { foreign: [] as Array<{ record: string; ids: string[] }>, restored: [] as string[] };
+  for (const r of Object.values(s.records).sort((a, b) => a.id.localeCompare(b.id))) {
+    if (r.status !== "active") continue;
+    const was = relabelledFrom(r);
+    if (!isSecurity(r) && !was) continue;
+    // Whether the record is another package's advisory: true, false, or undefined (OSV could not be read).
+    const verdict = async (): Promise<{ ids: string[]; packages: string[] } | false | undefined> => {
+      if (r.advisories?.length || !r.evidence.length) return false;
+      const items: Array<{ text: string; ids: Set<string> }> = [];
+      for (const e of r.evidence) {
+        if ((e.kind ?? "release_notes") !== "release_notes") return false;
+        const rel = byUrl.get(e.url);
+        const b = rel && body(rel.version);
+        const item = b ? sourceItem(b, e.quote) : undefined;
+        const text = `${e.quote} ${item ?? ""}`;
+        const ids = advisoryIds(text);
+        if (!ids.size || [...ids].some((x) => ours.has(x))) return false;
+        items.push({ text, ids });
+      }
+      const ids = [...new Set(items.flatMap((x) => [...x.ids]))].sort();
+      const attributed = new Map<string, Set<string>>();
+      for (const id of ids) {
+        let p: Set<string> | undefined;
+        try {
+          p = await lookup(id);
+        } catch (e) {
+          console.error(`advisories: ${s.technology}: ${id} unavailable (${e instanceof Error ? e.message : e}); ${r.id} unchanged`);
+          return undefined;
+        }
+        // Unknown to OSV: the labels stay as they are (a relabelled record is not restored on missing data either).
+        if (!p) return undefined;
+        if ([...p].some((x) => packages.has(canonicalPurl(x)))) return false;
+        attributed.set(id, p);
+      }
+      for (const it of items) {
+        const theirs = [...it.ids].flatMap((x) => [...attributed.get(x)!]);
+        if (SHIPPED_WORDING.test(it.text)) return false;
+        if (!DEPENDENCY_WORDING.test(it.text) && !theirs.some((p) => namesPackage(it.text, p))) return false;
+      }
+      // A package of another ecosystem (a Go module named by an npm package's notes: a binary it downloads may be built
+      // with it) is beyond what the registry's dependencies can answer: kept.
+      const foreignPackages = [...new Set([...attributed.values()].flatMap((x) => [...x]))].sort();
+      const ecosystems = new Set([...packages].map(purlType));
+      if (foreignPackages.some((p) => !ecosystems.has(purlType(p)))) return undefined;
+      // Does the release ship the other package's fix to its users? The runtime dependencies of every package of the
+      // technology (components and siblings: the dependency often sits in a sibling, @nestjs/platform-express) at each
+      // version the record lists: one of the advisories' packages, or a package an item names (a direct dependency
+      // updated for a transitive one's advisory), keeps the record. A package with no hook, or no package published at
+      // any of the versions: unknown, as it is.
+      const shipped = await shippedPackages(s, r, packages, dependencies);
+      if (!shipped) return undefined;
+      if (foreignPackages.some((p) => shipped.has(canonicalPurl(p)))) return false;
+      if ([...shipped].some((d) => items.some((it) => namesPackage(it.text, d)))) return false;
+      return { ids, packages: foreignPackages };
+    };
+    const v = await verdict();
+    if (v === undefined) continue;
+    if (v) {
+      if (r.change_type === "other" && r.benefit.length === 1 && r.benefit[0] === "none") continue;
+      const detail = `${v.ids.join(", ")} attributed by OSV to ${v.packages.join(", ")} only: a dependency update, not a security fix of this technology (was ${r.change_type}; ${r.benefit.join(", ")})`;
+      applyChange(r, { change_type: "other", benefit: ["none"] }, FOREIGN, { detail });
+      out.foreign.push({ record: r.id, ids: v.ids });
+    } else if (was) {
+      const benefit = union(was.benefit.filter((b) => b !== "none"), r.benefit.filter((b) => b !== "none"));
+      const change_type = r.change_type === "other" ? was.change_type : r.change_type;
+      applyChange(r, { change_type, benefit: benefit.length ? benefit : ["none"] }, FOREIGN_RESTORED, { detail: "no longer another package's advisory: labels restored" });
+      out.restored.push(r.id);
+    }
+  }
+  return out;
+}
+
+// ---- Another package's release (step 9) ----
+
+const OTHER_PACKAGE = "other-package";
+const OTHER_PACKAGE_RESTORED = "other-package-restored";
+
+/** Change types a bump brings with no step of the project's (the bump digest's kinds): what step 9 looks at. */
+const ARRIVES_WITH_BUMP: ReadonlySet<StoredRecord["change_type"]> = new Set(["security", "fix", "performance", "behavior_change", "default_change"]);
+
+/** A package name as written (`lodash.omit`, `@scope/name`), nothing else: no spaces, call parentheses or paths. */
+const PACKAGE_NAME = /^@?[a-z0-9][a-z0-9._~-]*(?:\/[a-z0-9][a-z0-9._~-]*)?$/i;
+
+/**
+ * The packages (canonical package URLs) a release body lists: lines that are, list marker aside, only a link to a
+ * package's registry page (`- [lodash.omit](https://www.npmjs.com/package/lodash.omit)`, or the bare URL), read by
+ * the hooks given. A registry link inside a sentence ("compatible with [x](...)") is a mention, not a listing.
+ */
+export function listedPackages(body: string, pages: ReadonlyArray<(url: string) => string | undefined>): Set<string> {
+  const out = new Set<string>();
+  for (const raw of body.split("\n")) {
+    const line = raw.replace(/^\s*(?:[-*+]|\d+\.)\s+/, "").trim().replace(/[.,;]$/, "");
+    const url = /^\[[^\]\n]+\]\((\S+?)\)$/.exec(line)?.[1] ?? /^<?(https?:\/\/\S+?)>?$/.exec(line)?.[1];
+    if (!url) continue;
+    for (const page of pages) {
+      const p = page(url);
+      if (p) out.add(canonicalPurl(p));
+    }
+  }
+  return out;
+}
+
+/**
+ * Step 9, deterministic and with no model call. A record is another package's release when it is active, carries no
+ * advisory, holds release-notes evidence only, its labels (before this step relabelled it) say a bump brings it
+ * (`ARRIVES_WITH_BUMP` or benefit security, not breaking: an obligation or an opt-in change stays as it is), its subject is a literal
+ * package name, and in every release its evidence comes from the notes list that package on a line of its own as a
+ * registry link (`listedPackages`), the package is not one of the technology's packages (components and siblings),
+ * and it is not a runtime dependency of any of them at the record's versions (a bump that installs the package
+ * brings its fix). Such a record becomes `other` with benefit `none` (history `other-package`, the old labels kept
+ * there); a relabelled record that no longer qualifies gets its labels back. Unknown keeps the record as it is: a
+ * release body not stored, an ecosystem without the `registryPage` or `dependencies` hook, no dependencies known.
+ */
+export async function relabelOtherPackage(
+  s: TechStore,
+  releases: ReadonlyArray<{ version: string; url: string }>,
+  body: (version: string) => string | undefined,
+  check: Pick<ForeignCheck, "packages" | "dependencies">,
+): Promise<{ relabelled: Array<{ record: string; package: string }>; restored: string[] }> {
+  const packages = new Set(check.packages.map(canonicalPurl));
+  const types = [...new Set([...packages].map(purlType))];
+  // Every ecosystem of the technology must read registry pages; one that cannot leaves every record as it is.
+  const pages = types.map((x) => ecosystemOf(`pkg:${x}/x`).registryPage);
+  const hooks = pages.every((x) => !!x) ? (pages as Array<(url: string) => string | undefined>) : undefined;
+  const byUrl = new Map(releases.map((r) => [r.url, r]));
+  const listed = new Map<string, Set<string> | undefined>();
+  const listedIn = (version: string, read: Array<(url: string) => string | undefined>) => {
+    if (!listed.has(version)) {
+      const b = body(version);
+      listed.set(version, b === undefined ? undefined : listedPackages(b, read));
+    }
+    return listed.get(version);
+  };
+  const dependencies = memo(check.dependencies);
+  const out = { relabelled: [] as Array<{ record: string; package: string }>, restored: [] as string[] };
+  for (const r of Object.values(s.records).sort((a, b) => a.id.localeCompare(b.id))) {
+    if (r.status !== "active") continue;
+    const was = relabelledFrom(r, OTHER_PACKAGE, OTHER_PACKAGE_RESTORED);
+    const labels = was ?? r;
+    if (!(ARRIVES_WITH_BUMP.has(labels.change_type) || isSecurity(labels))) continue;
+    // The package the record is about: false (it is this technology's change), the package URL, or undefined (unknown).
+    const verdict = async (): Promise<string | false | undefined> => {
+      // Breaking: an obligation of this technology's users, whatever package it names (a relabelled record that became
+      // breaking gets its labels back).
+      if (r.breaking || r.advisories?.length || !r.evidence.length || r.subject_kind !== "literal") return false;
+      const name = r.subject.trim();
+      if (!PACKAGE_NAME.test(name)) return false;
+      if (!hooks) return undefined;
+      const candidates = new Set(types.map((x) => canonicalPurl(`pkg:${x}/${name}`)));
+      let pkg: string | undefined;
+      for (const e of r.evidence) {
+        if ((e.kind ?? "release_notes") !== "release_notes") return false;
+        const rel = byUrl.get(e.url);
+        if (!rel) return undefined;
+        const inBody = listedIn(rel.version, hooks);
+        if (!inBody) return undefined;
+        const hit = [...candidates].find((c) => inBody.has(c));
+        if (!hit) return false;
+        pkg = hit;
+      }
+      if (!pkg || packages.has(pkg)) return false;
+      const shipped = await shippedPackages(s, r, packages, dependencies);
+      if (!shipped) return undefined;
+      return shipped.has(pkg) ? false : pkg;
+    };
+    const v = await verdict();
+    if (v === undefined) continue;
+    if (v) {
+      if (r.change_type === "other" && r.benefit.length === 1 && r.benefit[0] === "none") continue;
+      const detail = `${r.subject} is ${v}, listed in the release notes, not one of this technology's packages and not installed by the release: that package's change, not this technology's (was ${r.change_type}; ${r.benefit.join(", ")})`;
+      applyChange(r, { change_type: "other", benefit: ["none"] }, OTHER_PACKAGE, { detail });
+      out.relabelled.push({ record: r.id, package: v });
+    } else if (was) {
+      const benefit = union(was.benefit.filter((b) => b !== "none"), r.benefit.filter((b) => b !== "none"));
+      const change_type = r.change_type === "other" ? was.change_type : r.change_type;
+      applyChange(r, { change_type, benefit: benefit.length ? benefit : ["none"] }, OTHER_PACKAGE_RESTORED, { detail: "no longer another package's release: labels restored" });
+      out.restored.push(r.id);
+    }
+  }
+  return out;
+}
+
 /**
  * The advisories stage for one technology: fetch (OSV, cached), resolve, attach. The caller holds the technology's
  * lock and saves and publishes the store. A source that cannot be read fails open: the store is left as it is and
@@ -716,5 +1172,16 @@ export async function advisoryStage(
     }
     return undefined;
   }
-  return attachAdvisories(t, s, advisories, releases, judge);
+  // Step 8 needs every package of the technology: with the siblings unread an advisory of one could pass for another
+  // package's, so the step is skipped (labels as they are).
+  const { purls: packages, complete } = await packageList(t, opts);
+  if (!complete) console.error(`advisories: ${t.id}: package list incomplete; another package's advisories not checked this run`);
+  return attachAdvisories(
+    t,
+    s,
+    advisories,
+    releases,
+    judge,
+    complete ? { packages, lookup: (id) => advisoryPackages(t, id, opts), dependencies: (component, version) => releaseDependencies(t, component, version, opts) } : undefined,
+  );
 }

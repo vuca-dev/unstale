@@ -24,6 +24,7 @@ use std::collections::BTreeMap;
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::rc::Rc;
 
 use crate::cache::{Catalog, Lookup};
 use crate::funnel::{Input, Outcome};
@@ -391,9 +392,10 @@ fn init(start: &Path, catalog: Option<String>, mode: Option<Mode>, _yes: bool, q
 // ------------------------------------------------------------------------------------------------------- shared
 
 struct World {
-    stack: stack::Stack,
+    /// The stack and the code are shared with later Worlds of the same process (`world_reusing`).
+    stack: Rc<stack::Stack>,
     catalog: Catalog,
-    repo: usage::Repo,
+    repo: Rc<usage::Repo>,
     ledger_file: LedgerFile,
     ledger: unstale_schema::ledger::Ledger,
     today: String,
@@ -414,7 +416,17 @@ fn load_catalog(ctx: &Ctx, st: &stack::Stack) -> Catalog {
 }
 
 fn world(ctx: &Ctx) -> Result<World> {
-    let st = stack::detect(&ctx.root)?;
+    world_reusing(ctx, None)
+}
+
+/// A World that takes the stack and the repository's code from `prev` when given, reading only the catalog and the
+/// ledger again: on a large repository reading the code is most of the time, and a process that reports more than
+/// once (init following coverage) needs it once.
+fn world_reusing(ctx: &Ctx, prev: Option<&World>) -> Result<World> {
+    let st = match prev {
+        Some(w) => w.stack.clone(),
+        None => Rc::new(stack::detect(&ctx.root)?),
+    };
     let catalog = load_catalog(ctx, &st);
     let lp = ctx.tool.join(LEDGER_FILE);
     let lf = LedgerFile::load(&lp);
@@ -422,7 +434,10 @@ fn world(ctx: &Ctx) -> Result<World> {
         eprintln!("{w}");
     }
     let (ledger, _) = ledgerops::reconcile(&lf.ledger, |id| catalog.lookup(id));
-    let repo = usage::Repo::collect(&ctx.root);
+    let repo = match prev {
+        Some(w) => w.repo.clone(),
+        None => Rc::new(usage::Repo::collect(&ctx.root)),
+    };
     Ok(World { stack: st, catalog, repo, ledger_file: lf, ledger, today: util::today() })
 }
 
@@ -508,17 +523,20 @@ fn cmd_sync(ctx: &Ctx) -> Result<u8> {
 
 fn cmd_digest(ctx: &Ctx) -> Result<u8> {
     let w = world(ctx)?;
-    let out = outcome(&w, BTreeMap::new());
-    let lines = review::digest_lines(&out);
+    print_digest(&w, &outcome(&w, BTreeMap::new()));
+    Ok(0)
+}
+
+fn print_digest(w: &World, out: &Outcome) {
+    let lines = review::digest_lines(out);
     if lines.is_empty() {
-        println!("Bump digest: nothing arrives with a bump. {}.", funnel::why(&out, &["bump digest"]));
+        println!("Bump digest: nothing arrives with a bump. {}.", funnel::why(out, &["bump digest"]));
     } else {
         println!("Bump digest (catalog: {}):", w.catalog.snapshot_line());
         for l in lines {
             println!("{l}");
         }
     }
-    Ok(0)
 }
 
 fn cmd_bump(ctx: &Ctx, pkg: &str) -> Result<u8> {
@@ -579,13 +597,16 @@ fn regenerate(ctx: &Ctx, w: &World, out: &Outcome, state: &mut State, passes: &[
 fn cmd_review(ctx: &Ctx, next: bool, target: &[String], pass: Option<Pass>) -> Result<u8> {
     let targets = parse_targets(target)?;
     let w = world(ctx)?;
-    let out = outcome(&w, targets);
+    review_with(ctx, &w, &outcome(&w, targets), next, pass)
+}
+
+fn review_with(ctx: &Ctx, w: &World, out: &Outcome, next: bool, pass: Option<Pass>) -> Result<u8> {
     let mut state = State::load(&ctx.tool);
     let passes: Vec<Pass> = match pass {
         Some(p) => vec![p],
         None => Pass::ALL.to_vec(),
     };
-    regenerate(ctx, &w, &out, &mut state, &passes, next, false)
+    regenerate(ctx, w, out, &mut state, &passes, next, false)
 }
 
 // ---------------------------------------------------------------------------------------------- decide / record
@@ -703,7 +724,11 @@ fn cmd_run(ctx: &Ctx, target: &[String]) -> Result<u8> {
             EXIT_ERROR
         }
     };
-    let d = cmd_digest(ctx)?;
-    let r = cmd_review(ctx, false, target, None)?;
-    Ok([s, d, r].into_iter().find(|c| *c != 0).unwrap_or(0))
+    // One reading of the repository for both: digest and review see the same code, stack and catalog.
+    let w = world(ctx)?;
+    let out = outcome(&w, BTreeMap::new());
+    print_digest(&w, &out);
+    let targets = parse_targets(target)?;
+    let r = if targets.is_empty() { review_with(ctx, &w, &out, false, None)? } else { review_with(ctx, &w, &outcome(&w, targets), false, None)? };
+    Ok([s, r].into_iter().find(|c| *c != 0).unwrap_or(0))
 }

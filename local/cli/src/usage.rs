@@ -5,6 +5,7 @@ use aho_corasick::{AhoCorasick, MatchKind};
 use ignore::gitignore::{Gitignore, GitignoreBuilder};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::Path;
+use std::sync::Mutex;
 
 use crate::stack::walker;
 
@@ -53,6 +54,9 @@ pub struct Repo {
     pub paths: Vec<String>,
     /// The root `.gitattributes` linguist lines, in file order (the last match wins, as in Git).
     attrs: Vec<(Gitignore, Role)>,
+    /// Each path's `.gitattributes` role once: matching is a glob set per line, asked for every hit file of every
+    /// technology.
+    attr_roles: Mutex<HashMap<String, Option<Role>>>,
 }
 
 /// What a file is for, from conventions every repository shares (no per-technology list): application code first,
@@ -156,8 +160,14 @@ impl Repo {
     /// declares the technology) that contains it, so a package's own code is application code for what it declares
     /// whatever its directory is called (`docs/` holding its own Next.js app). `.gitattributes` lines still win.
     pub fn role_for(&self, path: &str, owners: &[&str]) -> Role {
-        if let Some((_, r)) = self.attrs.iter().rev().find(|(g, _)| g.matched_path_or_any_parents(path, false).is_ignore()) {
-            return *r;
+        if !self.attrs.is_empty() {
+            let mut memo = self.attr_roles.lock().unwrap_or_else(|e| e.into_inner());
+            let attr = *memo.entry(path.to_string()).or_insert_with(|| {
+                self.attrs.iter().rev().find(|(g, _)| g.matched_path_or_any_parents(path, false).is_ignore()).map(|(_, r)| *r)
+            });
+            if let Some(r) = attr {
+                return r;
+            }
         }
         let rel = owners
             .iter()
@@ -169,6 +179,8 @@ impl Repo {
 
     pub fn collect(root: &Path) -> Repo {
         let mut r = Repo { attrs: read_attrs(root), ..Repo::default() };
+        // The reads, most of the time on a large repository, run on every core once the walk has listed the files.
+        let mut to_read: Vec<(String, std::path::PathBuf)> = vec![];
         for e in walker(root).flatten() {
             if !e.file_type().is_some_and(|t| t.is_file()) {
                 continue;
@@ -189,14 +201,27 @@ impl Repo {
             if e.metadata().map(|m| m.len() > MAX_BYTES).unwrap_or(true) {
                 continue;
             }
-            if let Ok(t) = std::fs::read_to_string(e.path()) {
-                r.files.push((rel, t));
-            }
+            to_read.push((rel, e.path().to_path_buf()));
         }
+        let texts = par_map(&to_read, |(_, p)| std::fs::read_to_string(p).ok());
+        r.files = to_read.into_iter().zip(texts).filter_map(|((rel, _), t)| t.map(|t| (rel, t))).collect();
         r.files.sort_by(|a, b| a.0.cmp(&b.0));
         r.paths.sort();
         r
     }
+}
+
+/// `f` over `items` on every core, results in order.
+fn par_map<T: Sync, R: Send>(items: &[T], f: impl Fn(&T) -> R + Sync) -> Vec<R> {
+    let threads = std::thread::available_parallelism().map_or(1, |n| n.get()).min(16);
+    if threads < 2 || items.len() < 64 {
+        return items.iter().map(&f).collect();
+    }
+    let chunk = items.len().div_ceil(threads);
+    std::thread::scope(|scope| {
+        let handles: Vec<_> = items.chunks(chunk).map(|c| scope.spawn(|| c.iter().map(&f).collect::<Vec<R>>())).collect();
+        handles.into_iter().flat_map(|h| h.join().expect("worker thread")).collect()
+    })
 }
 
 /// A search literal as written in a record, cleaned: trailing call parentheses, `/N` suffixes, backticks and
@@ -288,7 +313,8 @@ pub fn find(repo: &Repo, usage_lits: &BTreeSet<String>, whole_lits: &BTreeSet<St
     for (i, (_, p)) in whole_ix.iter().enumerate() {
         whole_by_pat[*p].push(i);
     }
-    for (path, text) in &repo.files {
+    // Per file, the usage and whole literals it holds; files are matched on every core and merged in file order.
+    let per_file = par_map(&repo.files, |(_, text)| {
         let b = text.as_bytes();
         let mut bits: HashMap<usize, u8> = HashMap::new();
         for m in ac.find_overlapping_iter(text) {
@@ -307,41 +333,67 @@ pub fn find(repo: &Repo, usage_lits: &BTreeSet<String>, whole_lits: &BTreeSet<St
             }
             *bits.entry(p).or_default() |= v;
         }
+        let (mut usage, mut whole): (Vec<usize>, Vec<usize>) = (vec![], vec![]);
         if bits.is_empty() {
-            continue;
+            return (usage, whole);
         }
         let has = |p: usize, bit: u8| bits.get(&p).is_some_and(|v| v & bit != 0);
         let mut cand: Vec<usize> = bits.keys().flat_map(|p| usage_by_pat[*p].iter().copied()).collect();
         cand.sort_unstable();
         cand.dedup();
         for i in cand {
-            let (l, p, t, word_lit) = usage_ix[i];
+            let (_, p, t, word_lit) = usage_ix[i];
             let hit = if word_lit { has(p, TOKEN) } else { has(p, ANY) || t.is_some_and(|t| has(t, TOKEN)) };
             if hit {
-                hits.usage.entry(l.clone()).or_default().push(path.clone());
+                usage.push(i);
             }
         }
         for i in bits.keys().flat_map(|p| whole_by_pat[*p].iter().copied()) {
-            let (l, p) = whole_ix[i];
-            if has(p, WHOLE) {
-                hits.whole.entry(l.clone()).or_default().push(path.clone());
+            if has(whole_ix[i].1, WHOLE) {
+                whole.push(i);
             }
         }
-    }
-    // A file-name literal (`middleware.ts`, `prisma/schema.prisma`) also matches a file of that name.
-    for l in usage_lits {
-        if !l.contains('.') || l.contains(char::is_whitespace) || !repo.names.contains(l) {
-            continue;
+        (usage, whole)
+    });
+    // Hit files by index into `repo.files` (sorted by path) until the end: a large repository has millions of
+    // literal × file hits.
+    let mut usage_files: Vec<Vec<usize>> = vec![vec![]; usage_ix.len()];
+    for (f, (usage, whole)) in per_file.into_iter().enumerate() {
+        for i in usage {
+            usage_files[i].push(f);
         }
-        let suffix = format!("/{l}");
-        for p in repo.paths.iter().filter(|p| *p == l || p.ends_with(&suffix)) {
-            hits.usage.entry(l.clone()).or_default().push(p.clone());
+        for i in whole {
+            hits.whole.entry(whole_ix[i].0.clone()).or_default().push(repo.files[f].0.clone());
         }
     }
-    // Application files first, so the evidence a reader sees (the first few) is production use when there is any.
-    for files in hits.usage.values_mut() {
-        files.sort_by_cached_key(|p| (repo.role(p), p.clone()));
-        files.dedup();
+    // Application files first, so the evidence a reader sees (the first few) is production use when there is any;
+    // then by path. A file's role is computed once, however many literals it holds.
+    let mut roles: Vec<Option<Role>> = vec![None; repo.files.len()];
+    let mut by_path: Vec<usize> = (0..repo.files.len()).collect();
+    by_path.sort_unstable_by(|a, b| repo.files[*a].0.cmp(&repo.files[*b].0));
+    let mut rank = vec![0; repo.files.len()];
+    for (r, f) in by_path.into_iter().enumerate() {
+        rank[f] = r;
+    }
+    for (i, files) in usage_files.into_iter().enumerate() {
+        let l = usage_ix[i].0;
+        let mut ranked: Vec<(Role, usize, &str)> = files
+            .into_iter()
+            .map(|f| (*roles[f].get_or_insert_with(|| repo.role(&repo.files[f].0)), rank[f], repo.files[f].0.as_str()))
+            .collect();
+        ranked.sort_unstable();
+        // A file-name literal (`middleware.ts`, `prisma/schema.prisma`) also matches a file of that name.
+        if l.contains('.') && !l.contains(char::is_whitespace) && repo.names.contains(l) {
+            let suffix = format!("/{l}");
+            let mut named: Vec<(Role, &str)> = ranked.iter().map(|(r, _, p)| (*r, *p)).collect();
+            named.extend(repo.paths.iter().filter(|p| *p == l || p.ends_with(&suffix)).map(|p| (repo.role(p), p.as_str())));
+            named.sort_unstable();
+            named.dedup();
+            ranked = named.into_iter().map(|(r, p)| (r, 0, p)).collect();
+        }
+        if !ranked.is_empty() {
+            hits.usage.insert(l.clone(), ranked.into_iter().map(|(_, _, p)| p.to_string()).collect());
+        }
     }
     for l in whole_lits {
         let suffix = format!("/{l}");
