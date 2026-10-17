@@ -1,8 +1,8 @@
-// The registration queue the gateway holds between coverage runs (vault: Central Scheduling and Infrastructure,
-// "Registration gateway" and "Admission queue"). One row per public package: its demand (distinct requesters since
-// the last run took it) and when it was first asked for. Votes are deduplicated and new packages address-limited in
-// memory only (central's requesters.ts), so the rows hold no address and no pseudonym. The queue is never refused for
-// budget: central's budget decides how fast it drains. `MAX_PENDING` only bounds storage against a flood.
+// The registration queue the gateway holds between coverage runs. One row per public package: its demand (distinct
+// requesters since the last run took it) and when it was first asked for. Votes are deduplicated and new packages
+// address-limited in memory only (central's requesters.ts), so the rows hold no address and no pseudonym. The queue is
+// never refused for budget: central's budget decides how fast it drains. `MAX_PENDING` only bounds storage against a
+// flood.
 import { AddressLimiter, Voters, type Refusal } from "../../central/src/onboarding/requesters.ts";
 
 /** The SQL surface used: a Durable Object's `ctx.storage.sql`, or node:sqlite in tests. */

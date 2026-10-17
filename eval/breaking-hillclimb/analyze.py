@@ -1,4 +1,4 @@
-"""Scores every (variant, classifier) label set: held-out agreement with the vault judges' agreed reference, P0-vs-P1
+"""Scores every (variant, classifier) label set: held-out agreement with the reference judges' agreed labels, P0-vs-P1
 flips, P0 reproduction of the catalog labels, and (via devrun.py) the dev metric. Writes <hc>/analysis.json.
 
     python3 analyze.py <hc dir> [--no-dev]

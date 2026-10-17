@@ -1,6 +1,5 @@
-// One arm of the decision 2 test (vault: Docs Monitoring - Handoff, "Decision 2 tested"): the versioned Next.js
-// sections of a replay (replay.mts) as extraction notes, synthesized into the store that UNSTALE_CENTRAL_DIR names
-// (a clone; arms.sh makes one per arm). Dry run unless --run.
+// One arm of the decision 2 test: the versioned Next.js sections of a replay (replay.mts) as extraction notes,
+// synthesized into the store that UNSTALE_CENTRAL_DIR names (a clone; arms.sh makes one per arm). Dry run unless --run.
 //   cd central && npx tsx ../eval/docs-sources/decision2/arm.mts <replay.json> --context=3|block [--words] [--kind=docs|guide] [--run]
 // --kind=guide labels guide sections as upgrade-guide evidence (option E); markers stay docs notes.
 import { readFileSync } from "node:fs";

@@ -1,7 +1,7 @@
 // Extraction and free-text labelling on the configured model (llm.ts). Prompts ported from ~/ati-slice2/harness/dm_ident.py (NEW: subject,
 // subject_kind, facet) and ~/ati-slice0/harness/fw_spike.py (PROMPT, LABEL_PROMPT_V2). Extraction's own `breaking`
-// is not asked: it is set by the classifier (vault: Capability Synthesis, "Breaking labels").
-// The extraction model's output schemas are hand-written Zod (vault: Implementation Stack, "Schema seam").
+// is not asked: it is set by the classifier.
+// The extraction model's output schemas are hand-written Zod.
 import { z } from "zod";
 import { extractCached, extractLlm, parseJson } from "./llm.ts";
 import type { GuideNote, ReleaseNote } from "./fetch.ts";
@@ -48,9 +48,9 @@ Release notes:
 </notes>
 `;
 
-// The meaning of `requires` (vault: Data Model Contract, `requires`): applies only to projects that already use X. At
-// the edge a record whose `requires` matches nothing in the repository goes to the end of the review, so a value the
-// change has the project add (the opposite of a precondition) demotes a required migration (eval/rank/RESULTS.md).
+// The meaning of `requires`: applies only to projects that already use X. At the edge a record whose `requires` matches
+// nothing in the repository goes to the end of the review, so a value the change has the project add (the opposite of a
+// precondition) demotes a required migration (eval/rank/RESULTS.md).
 export const REQUIRES_RULE = `"requires" (usually []): literals a project must ALREADY use for this change to apply to it at all: a database driver
 or adapter package, a dialect, a platform (for example \`oracledb\`, \`@prisma/adapter-d1\`, \`fastify\`). [] unless
 the notes limit the change to such projects. Never list what the change asks the project to add, install, load or
@@ -105,10 +105,9 @@ Release notes:
 </notes>
 `;
 
-// One call per chunk (vault: Inference Costs, "Model selection", slice 2): EXTRACT_PROMPT with LABEL_PROMPT's five
-// fields and their rules folded into each record, so the notes are read once. Assembled from the two prompts at load
-// time, so a change to either flows into it; a marker that is no longer found throws. Selected by
-// UNSTALE_EXTRACT_STRUCTURE=one-call (default: two calls).
+// One call per chunk: EXTRACT_PROMPT with LABEL_PROMPT's five fields and their rules folded into each record, so the
+// notes are read once. Assembled from the two prompts at load time, so a change to either flows into it; a marker that
+// is no longer found throws. Selected by UNSTALE_EXTRACT_STRUCTURE=one-call (default: two calls).
 function between(s: string, from: string, to: string): string {
   const a = s.indexOf(from);
   const b = s.indexOf(to, a + from.length);
@@ -217,10 +216,9 @@ export const extractStructure = (): ExtractStructure => {
   return s === "one-call" || s === "one-call-schema" ? s : "two-call";
 };
 
-// Evidence by unit id (vault: Inference Costs, "Answer by reference"): the notes go to the extract call with each unit
-// numbered (a line, or one sentence of a line longer than UNIT_MAX), and the record names the unit instead of copying
-// it; the quote is rebuilt from the notes, so it is grounded by construction. Selected by UNSTALE_EXTRACT_EVIDENCE=ids
-// (default: a verbatim quote).
+// Evidence by unit id: the notes go to the extract call with each unit numbered (a line, or one sentence of a line
+// longer than UNIT_MAX), and the record names the unit instead of copying it; the quote is rebuilt from the notes, so
+// it is grounded by construction. Selected by UNSTALE_EXTRACT_EVIDENCE=ids (default: a verbatim quote).
 export const UNIT_MAX = 240;
 export const MAX_UNITS_PER_QUOTE = 3;
 const EVIDENCE_QUOTE = '"evidence": a sentence or phrase copied verbatim from the notes that supports the record';

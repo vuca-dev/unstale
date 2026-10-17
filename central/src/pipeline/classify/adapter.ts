@@ -1,7 +1,6 @@
 // The classifier adapter: one interface, two implementations (Jev, and the extraction model answering choices as the
 // fallback since 16 October 2026), a per-request fallback wrapper and a cache. Swapping or reordering classifiers touches only this
-// module (CONTRACT: "Classifier: Jev first, fallback per request"; vault: Relevance Engine, "Classifier for labels
-// and ratings").
+// module (CONTRACT: "Classifier: Jev first, fallback per request").
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";

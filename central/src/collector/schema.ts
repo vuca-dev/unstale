@@ -65,7 +65,7 @@ export type Outcome =
       snapshot: string;
       previous: string;
       diff: LineDiff;
-      /** Section-scoped diff, for Markdown and HTML watches (vault: Capability Synthesis, section-scoped default). */
+      /** Section-scoped diff, for Markdown and HTML watches. */
       sections?: SectionChange[];
       /** Set when the new snapshot equals an earlier one in history: likely flapping (CDN edges serving different deploys) or a rollback. */
       revertsTo?: string;

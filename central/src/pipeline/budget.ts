@@ -1,10 +1,10 @@
-// The scheduled pipeline's share of the coverage budget (vault: Central Scheduling and Infrastructure, "Admission
-// queue"). Each release, guide or docs note that will reach the extraction model is charged its release-note tokens
-// against the same period budget the onboarding service spends (`onboarding/budget.json`), and against the
-// technology's quarterly tokens, before any model call. A note whose extraction is already in the cache under the
-// current model and prompts (`releaseCached`) is free. A note refused by the period budget, or past the technology's
-// quarterly cap, is deferred: it is not extracted this run and is charged when it runs. Past the cap a technology's
-// notes go last: the CLI runs those technologies a second time, cap lifted, only while the period budget lasts.
+// The scheduled pipeline's share of the coverage budget. Each release, guide or docs note that will reach the
+// extraction model is charged its release-note tokens against the same period budget the onboarding service spends
+// (`onboarding/budget.json`), and against the technology's quarterly tokens, before any model call. A note whose
+// extraction is already in the cache under the current model and prompts (`releaseCached`) is free. A note refused by
+// the period budget, or past the technology's quarterly cap, is deferred: it is not extracted this run and is charged
+// when it runs. Past the cap a technology's notes go last: the CLI runs those technologies a second time, cap lifted,
+// only while the period budget lasts.
 import { join } from "node:path";
 import { DailyBudget, limitsFromEnv, noteTokens, quarterKey, type Limits } from "../onboarding/limits.ts";
 import { centralDir } from "./paths.ts";

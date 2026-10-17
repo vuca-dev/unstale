@@ -1,5 +1,4 @@
-// D1 (vault: "Docs Sources - Eval"; design: "Source Registry and Coverage" > "Docs sources traced from the package").
-// Deterministic chain from a package URL to its official docs site and docs repository, with validation. No model
+// D1. Deterministic chain from a package URL to its official docs site and docs repository, with validation. No model
 // calls and no web search. Every HTTP response is cached under $CACHE, so reruns make no requests. The chain is
 // central/src/docs/resolve.ts (the docs module); this script is its sample runner.
 //

@@ -1,6 +1,5 @@
 // Release lines derived from the release index (lines.ts) and advisory attachment by best-matching item, recompute and
-// twin merge (advisories.ts). vault: Implementation Decisions: "Release lines from the release index", "Advisory
-// attachment".
+// twin merge (advisories.ts).
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

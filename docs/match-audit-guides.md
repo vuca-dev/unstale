@@ -2,7 +2,7 @@
 
 Every cross-source pair Jev scored p ≥ 0.5 when each upgrade-guide item (Next.js 16, Prisma 7, NestJS 12; 167 items)
 was judged against its retrieved candidates in the release-notes-only v2 store (a dry run: `eval/guides/audit.mts`, no
-store writes). Reference: Codex `gpt-5.6-luna` per pair under the vault's v3 identity rules (`dm_match.py` RULES_V3,
+store writes). Reference: Codex `gpt-5.6-luna` per pair under the v3 identity rules (`dm_match.py` RULES_V3,
 "different" when unsure), 12 pairs per call. My verdict column is mine: I read every pair (quotes and summaries); the
 six where I disagree with Codex are #59, #60, #62, #64, #71, #87. Data: `eval/guides/pairs.json`,
 `eval/guides/verdicts.json`; simulation: `eval/guides/rule_eval.py`.

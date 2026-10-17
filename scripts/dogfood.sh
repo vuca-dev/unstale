@@ -6,8 +6,7 @@
 #   3. decline everything, batch by batch, until both review queues are empty, and check the empty text says why;
 #   4. decisions survive real catalog changes made on a COPY of the central store and catalog: a label-only
 #      correction (still withheld), a merge (line rewritten to the target, target withheld), a revision-bumping
-#      correction (re-opens), a retraction (line deleted). Ledger rules: vault, Data Model Contract, "The ledger"
-#      ("Revisions and aliases", "Retired upstream").
+#      correction (re-opens), a retraction (line deleted).
 # Everything runs in a fresh scratch directory; ~/unstale/.store and the source repositories are never written.
 #
 #   scripts/dogfood.sh                 # both repositories
@@ -263,7 +262,7 @@ for NAME in $REPOS; do
                grep -qF "Dogfood label-only correction" <<<"$V" && echo "corrected summary is shown")
   check "$NAME: 4a label-only correction of $A_LABEL: same revision, still declined and withheld" "${P[@]+"${P[@]}"}"
 
-  # (b) merge A into B: the line is rewritten to B at B's current revision (vault rule). B is marked do now, so the
+  # (b) merge A into B: the line is rewritten to B at B's current revision. B is marked do now, so the
   # mark wins: B stays under "Marked do now" with a note naming the ledger line, never silently withheld.
   if [ -n "$TARGET" ]; then
     V="$(visible_text)"

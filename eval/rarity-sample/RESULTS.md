@@ -13,7 +13,7 @@ counts differ). Catalog: `catalog-v2` with the sample, before guides. Key change
 The Prisma key entries match only terms every Prisma 7 project has (`datasource`, `DATABASE_URL`, `process.env`,
 `generate`, `schema.prisma`: 5 of 5 sample repositories), so the sample gives them the minimum weight and records with
 rarer matches go ahead. That is the weight working as designed; it shows those key entries had no specific term.
-Three events: not a measurement of the sample's value (the vault's 233-adoption set is).
+Three events: not a measurement of the sample's value (the 233-adoption set is).
 
 ```sh
 python3 ../replay/run_replay.py --catalog CAT --work W setup; cp -c <final>/replay/<ev>/match.json W/replay/<ev>/

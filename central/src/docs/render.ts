@@ -1,6 +1,6 @@
 // A documentation change as extraction input: each changed section under its heading path, as unified hunks, inside a
-// fence that the page's own text cannot close (vault: ATI Overview, trust boundaries: official docs are data, never
-// instructions). Section-scoped with context is the measured default (Capability Synthesis, 14 October 2026).
+// fence that the page's own text cannot close (official docs are data, never instructions). Section-scoped with context
+// is the measured default (14 October 2026).
 import { markWords, type SectionChange } from "../collector/sections.ts";
 
 /** A backtick fence longer than any backtick run in the text, so the text cannot end it. */

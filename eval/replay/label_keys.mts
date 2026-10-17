@@ -1,6 +1,6 @@
 // Labels each replay answer-key change required or optional with the central classifier adapter (Jev first, Codex
 // fallback, cached; keys are read inside the adapter only). A classifier label, not ground truth.
-// Rubric: vault Capability Synthesis, "Breaking labels (15 October 2026)", reframed for a maintainer's change.
+// Rubric: the catalog's breaking-label rubric (15 October 2026), reframed for a maintainer's change.
 //
 //   cd ~/unstale/central && npx tsx ../eval/replay/label_keys.mts <work>/replay ../eval/replay/key_labels.json
 import { readFileSync, writeFileSync } from "node:fs";

@@ -7,7 +7,7 @@ Written and committed before any labelling call.
 The type-tier review regressed on the unstale catalog (replay, `eval/replay/RESULTS.md`): covered key changes whose
 entry is in the first type-tier batch of 16 fell from 18 to 13 of 19; found by review 17.5 → 10.5. Cause: `breaking`
 is now set by Jev with the strict rubric (`BREAKING_RUBRIC`, `central/src/pipeline/vocab.ts`). Is this (a) prompt
-sensitivity, (b) "evalism" (the replay rewarding labels the vault deliberately decided against: Next.js `middleware`
+sensitivity, (b) "evalism" (the replay rewarding labels the design deliberately decided against: Next.js `middleware`
 → `proxy` deprecation is NOT breaking; ESM-only Nest packages is a case no label recovers), (c) a model (Jev) problem,
 or (d) the rubric/design choice itself?
 
@@ -19,7 +19,7 @@ or (d) the rubric/design choice itself?
 - **P2** ("obligation"): yes if breaking by P0, OR the release deprecates, renames or replaces something existing
   projects use with a stated removal or a warning, i.e. the upgrade expects existing projects to act.
 - **P3**: P0's question with more input context. Held-out: the extraction `change_type` and the guide section around
-  the evidence (the context the vault's judges saw; 144 of 251 records have one). Dev: one request per catalog record
+  the evidence (the context the reference judges saw; 144 of 251 records have one). Dev: one request per catalog record
   carrying the whole merged record (all evidence quotes with their kinds, all releases, facet, change_type, surface,
   terms, requires, prerequisites, conditions, introduces, replaces) instead of one request per incoming extraction.
 - **P4**: ONE hill-climb revision, written only after seeing P0–P3 on the held-out and dev sets; its text and the
@@ -44,8 +44,8 @@ or (d) the rubric/design choice itself?
 The 251 records of `~/ati-slice2/results/datamodel/breaking/items.json` (161 upgrade-guide, 90 release-notes).
 State: `{technology, source: "upgrade guide"|"release notes", release, subject, summary, evidence}` (P3 adds as above).
 
-**Reference: the 241 records where the two vault judges (Codex `pipeline`, Sonnet `reference`) agree**, which the vault
-reports were read by hand and held up. The 10 judge disagreements have no recorded hand ruling (the vault calls them
+**Reference: the 241 records where the two reference judges (Codex `pipeline`, Sonnet `reference`) agree**, which were
+read by hand and held up. The 10 judge disagreements have no recorded hand ruling (they are
 borderline), so they are excluded from agreement and reported separately. Bias to note: Codex `gpt-5.6-luna` was
 one of the two reference judges, so Codex has a home advantage; Luna and Jev do not.
 
@@ -92,7 +92,7 @@ events, and compare "found" with RESULTS.md. If none qualifies, skip the reviews
 
 No push, no remote, no rebase/amend/reset. Commits stage only `eval/breaking-hillclimb/`, plain messages, no AI
 trailer. Keys loaded only inside the process. Network: api.typesafe.ai, api.openai.com/v1/decisions, `codex exec`.
-Read only: `~/ati-slice0`, `~/ati-slice2`, the vault, `~/unstale/.store`. Budget: Jev well under $1 ($0.042/M
+Read only: `~/ati-slice0`, `~/ati-slice2`, `~/unstale/.store`. Budget: Jev well under $1 ($0.042/M
 input), Codex under ~150 calls.
 
 ## P4 (appended 15 October 2026, after P0–P3 on both sets; before any P4 call)

@@ -57,7 +57,7 @@ interface Unit {
   state: Record<string, unknown>;
 }
 
-/** The breaking 241: items where the vault's two judges agree (as eval/sets/score.py breaking). */
+/** The breaking 241: items where the two reference judges agree (as eval/sets/score.py breaking). */
 function breakingAgreed(): Set<string> {
   const brk = join(homedir(), "ati-slice2", "results", "datamodel", "breaking");
   const judge = (arm: string) => {

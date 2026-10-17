@@ -1,5 +1,5 @@
 // Matching at ingest and the record store: candidate retrieval, the same-or-new pick with its threshold and breaking
-// guard, the combine rule, id minting, and the two counters (vault: Data Model Contract, "Identity and revision").
+// guard, the combine rule, id minting, and the two counters.
 import { describe, expect, test } from "vitest";
 import type { Classification } from "../src/pipeline/classify/adapter.ts";
 import type { Labels } from "../src/pipeline/classify/labels.ts";

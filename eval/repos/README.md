@@ -2,7 +2,7 @@
 
 Repositories that use coding agents (they carry an `AGENTS.md` or `CLAUDE.md`), so the population is unstale's
 users, not GitHub at large. Reusable across evaluations: ecosystem coverage, client latency, coverage-job timing
-(vault: Onboarding DX - Gap Hypotheses, H4 and H6) and later QA.
+ and later QA.
 
 | File | What |
 |---|---|

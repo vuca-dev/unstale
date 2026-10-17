@@ -26,7 +26,7 @@ export const TECHNOLOGIES: Record<string, Technology> = {
     name: "Prisma",
     repo: "prisma/prisma",
     components: ["pkg:npm/prisma", "pkg:npm/%40prisma/client"],
-    // Major 0 is Prisma Next, published under other packages (vault: Implementation Decisions).
+    // Major 0 is Prisma Next, published under other packages.
     tag: /^v?([1-9]\d*\.\d+\.\d+)$/,
     clean: (b) => b,
     // The docs moved from content/200-orm/.../400-upgrading-to-prisma-7.mdx (where Slice 0 read it) to apps/docs.

@@ -1,9 +1,8 @@
-// The term-rarity sample (vault: Relevance Engine, "Where term weights are computed"; Data Model Contract, "Term
-// rarity"; Catalog Publishing and Sync, "Term rarity travels in the record"). When a technology is added, a fixed rule
-// (SampleRule: candidate pool, major, n) picks public repositories that declare its package, no hand-picking. They are
-// shallow-cloned into the central store once, and every term is counted against the same commits by the edge's own
-// matching rule (`unstale count-terms`), so new terms are counted later without redrawing. Everything the selection
-// read from GitHub is cached under `sample/<tech>/gh/`. Rules compared in eval/rarity-sample-2/RESULTS.md.
+// The term-rarity sample. When a technology is added, a fixed rule (SampleRule: candidate pool, major, n) picks public
+// repositories that declare its package, no hand-picking. They are shallow-cloned into the central store once, and
+// every term is counted against the same commits by the edge's own matching rule (`unstale count-terms`), so new terms
+// are counted later without redrawing. Everything the selection read from GitHub is cached under `sample/<tech>/gh/`.
+// Rules compared in eval/rarity-sample-2/RESULTS.md.
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";

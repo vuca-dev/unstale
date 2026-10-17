@@ -1,4 +1,4 @@
-// Model-selection runner for one step on one provider and model (vault: Inference Costs, "Model selection").
+// Model-selection runner for one step on one provider and model.
 //
 //   cd central && npx tsx ../eval/select/run.mts --step extract|classify|judge --provider P --model M
 //     [--split dev|heldout|all] [--limit N --seed S] [--set NAME] [--structure two-call|one-call]

@@ -3,7 +3,7 @@
     python3 score.py extraction CATALOG_DIR             extraction recall on extraction-recall.json
     python3 score.py benefit LABELS.json                 benefit labels vs benefit/reference.json; LABELS = {id: [benefits]}
                                                          or a catalog dir (its records' `benefit`)
-    python3 score.py breaking LABELS.json                breaking labels vs the vault's 241 agreed judgements;
+    python3 score.py breaking LABELS.json                breaking labels vs the 241 agreed judgements;
                                                          LABELS = {rid: true|false}
 
 No model calls.

@@ -127,8 +127,7 @@ pub struct Evidence {
     pub snapshot: String,
 }
 
-/// A live record. Fields bump `revision` (decision fields) or `label_version` (ordering labels);
-/// see the vault's Data Model Contract.
+/// A live record. Fields bump `revision` (decision fields) or `label_version` (ordering labels).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct CapabilityRecord {
     /// `{technology}:{slug}`, assigned once.
@@ -166,8 +165,7 @@ pub struct CapabilityRecord {
     pub related: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub supersedes: Option<String>,
-    /// Classifier output for the label fields, read with its confidence (vault: Relevance Engine,
-    /// "Classifier for labels and ratings").
+    /// Classifier output for the label fields, read with its confidence.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub classifier: Option<Classification>,
     /// Reviewed security advisories whose fix this record describes, with the versions each affects. The edge
@@ -299,12 +297,11 @@ pub struct TechIndex {
     pub sample: Vec<SampleRepo>,
     /// The technology's release index: its stable releases in the catalog window, ascending by version, each with its
     /// publish date and its release line. A line is a set of versions inside which version order is publish order;
-    /// central derives it from this index (the smallest version-prefix depth for which that holds; vault:
-    /// Implementation Decisions, "Release lines from the release index"). The edge decides availability by position in
-    /// this list and by line (a record's release on the installed line at or before the installed version, or a line
-    /// whose first release, marked `line_start`, postdates the record's release on an older line), and resolves
-    /// advisory ranges (`AffectedRange::versions`) against it. Absent in catalogs before 16 October 2026: the edge then
-    /// uses the old rule (major, or 0.minor).
+    /// central derives it from this index (the smallest version-prefix depth for which that holds). The edge decides
+    /// availability by position in this list and by line (a record's release on the installed line at or before the
+    /// installed version, or a line whose first release, marked `line_start`, postdates the record's release on an
+    /// older line), and resolves advisory ranges (`AffectedRange::versions`) against it. Absent in catalogs before 16
+    /// October 2026: the edge then uses the old rule (major, or 0.minor).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub releases: Vec<IndexRelease>,
 }

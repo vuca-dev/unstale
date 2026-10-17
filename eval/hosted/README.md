@@ -1,7 +1,7 @@
 # Hosted-surface retirement tables (H7 probe)
 
-Can provider deprecation/retirement pages be read by **one** generic extractor, with no per-provider parser? Vault:
-Onboarding DX - Gap Hypotheses, H7.
+Can provider deprecation/retirement pages be read by **one** generic extractor, with no per-provider parser?
+(Onboarding hypothesis H7.)
 
 `tables.py` reads HTML tables and keeps rows from tables whose headers name an identifier column (model, endpoint,
 name, id; not price/date/status) and a retirement-date column (shutdown, retire, sunset, end of, removal; else a

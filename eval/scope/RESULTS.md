@@ -124,7 +124,7 @@ save crawling, docs snapshots and queue size. The cost lever is the technology u
    - **Rule:** use the registry's last release, prereleases included; keep `pushed_at` only when release dates are
      unreadable.
    - **Effect:** −28% technologies monitored; model cost about −1%.
-   - **Risk:** low. The vault's release-index re-admission (a parked package returns on its next release) already covers
+   - **Risk:** low. The release-index re-admission (a parked package returns on its next release) already covers
      dormant-then-active packages.
 3. **Stars count only for the repository's main package.**
    - **Finding:** 53% of admitted packages (35% of technologies, 6% of cost) pass on stars alone. Of the sampled

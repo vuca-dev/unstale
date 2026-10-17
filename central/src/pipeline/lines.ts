@@ -1,5 +1,4 @@
-// Release lines derived from the release index (vault: Implementation Decisions, "Release lines from the release
-// index").
+// Release lines derived from the release index.
 //
 // A release line is a set of versions inside which version order is publish order, so "a release on my line at or
 // below my version" means "published before mine on the branch I am on". The old rule (the major, or 0.minor) breaks

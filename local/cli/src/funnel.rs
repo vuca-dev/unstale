@@ -1,6 +1,5 @@
 //! The relevance funnel at the edge: availability, blocked, the ledger, applied, routing to the three outputs and
-//! their order (vault: Relevance Engine, "Relevance funnel"; Data Model Contract, "Local opportunity").
-//! Computed on every run, never stored.
+//! their order. Computed on every run, never stored.
 
 use semver::Version;
 use std::collections::{BTreeMap, BTreeSet};
@@ -120,8 +119,8 @@ pub fn is_obligation(r: &Rec) -> bool {
     r.r.breaking || matches!(r.r.change_type, ChangeType::Removal | ChangeType::Deprecation)
 }
 
-/// Opt-in: an adoption step is needed (vault: Data Model Contract, derived "opt-in or free"). The vault's list
-/// also names `configuration` and `schema_or_migration`, which are surfaces, not change types; they adopt anyway.
+/// Opt-in: an adoption step is needed. The adoption list also names `configuration` and `schema_or_migration`, which are
+/// surfaces, not change types; they adopt anyway.
 pub fn is_opt_in(r: &Rec) -> bool {
     !is_obligation(r)
         && matches!(r.r.change_type, ChangeType::NewApi | ChangeType::NewOption | ChangeType::StabilityChange | ChangeType::Tooling | ChangeType::Other)
@@ -222,7 +221,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
         out.technologies.push(tech.clone());
         out.packages.insert(tech.clone(), present.iter().filter_map(|c| purl_name(c)).collect());
         let tech_version: Option<Version> = present.iter().filter_map(|c| inp.stack.deps.get(*c).and_then(|d| d.version.clone())).min();
-        // Newest release per component: the default target (vault: Agent Adapter; contract "Default target").
+        // Newest release per component: the default target.
         let mut newest: BTreeMap<String, Version> = BTreeMap::new();
         for r in &td.records {
             for rel in &r.r.releases {
@@ -338,9 +337,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             let shown = matches!(opp.route, Route::UpgradeReview | Route::ImprovementsPass | Route::BumpDigest);
             if shown {
                 // An obligation is never blocked: the upgrade brings it whatever the project's floor, and a record that
-                // raises a minimum (Node, TypeScript) is exactly the one a floor below it must see (vault: Relevance
-                // Engine, "never drops a breaking change"; vault: Implementation Decisions, "Obligations are never
-                // blocked").
+                // raises a minimum (Node, TypeScript) is exactly the one a floor below it must see.
                 let b = blocked(rec, inp.stack, &comp);
                 if let Some(b) = b.clone().filter(|_| !(opp.route == Route::UpgradeReview && is_obligation(rec))) {
                     opp.route = Route::Blocked(b);
@@ -353,8 +350,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                     opp.unmet = b;
                 }
             }
-            // Applied: an introduced literal as a whole token; never for a breaking change (vault: Relevance
-            // Engine, "Fixes the funnel needs"; vault: Implementation Decisions).
+            // Applied: an introduced literal as a whole token; never for a breaking change.
             if matches!(opp.route, Route::UpgradeReview | Route::ImprovementsPass) && !rec.r.breaking {
                 let applied = rec
                     .r
@@ -418,8 +414,8 @@ fn blank<'a>(rec: &'a Rec, release: Release, route: Route) -> Opp<'a> {
     }
 }
 
-/// A structured npm prerequisite above the project's floor, or below a declared maximum. Names the project
-/// cannot answer (another ecosystem, a package it does not declare) fail open (vault: "never block the record").
+/// A structured npm prerequisite above the project's floor, or below a declared maximum. Names the project cannot
+/// answer (another ecosystem, a package it does not declare) fail open: never block the record.
 pub(crate) fn blocked(rec: &Rec, stack: &Stack, component: &str) -> Option<String> {
     for p in &rec.r.prerequisites {
         if !p.ecosystem.eq_ignore_ascii_case("npm") {
@@ -493,8 +489,7 @@ pub fn is_security(o: &Opp) -> bool {
     o.rec.r.change_type == ChangeType::Security || o.rec.r.benefit.contains(&Benefit::Security)
 }
 
-/// Records sharing a release and a matched or listed term follow each other within their tier (vault: Data Model
-/// Contract, `group` dropped: "records sharing a release and terms are ordered next to each other").
+/// Records sharing a release and a matched or listed term follow each other within their tier.
 fn siblings_together(opps: &[Opp], order: Vec<usize>) -> Vec<usize> {
     let terms = |o: &Opp| -> BTreeSet<String> { o.rec.r.terms.iter().filter_map(|t| clean_lit(&t.0)).collect() };
     let mut placed = vec![false; order.len()];

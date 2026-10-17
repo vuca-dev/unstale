@@ -24,7 +24,7 @@ packages. Until then, the options are:
 
 - keep Luna;
 - or route by input kind: Qwen on short notes, where it ties Luna (short held-out notes 42/43 for both), and Luna on
-  guides and major-version notes. The vault allows routing only "if one model cannot clear the floor on both kinds of
+  guides and major-version notes. The model-selection rules allow routing only "if one model cannot clear the floor on both kinds of
   input", and that is what the dev and gate evidence suggests. It is not proven on held-out data.
 
 ## Held-out (40 notes, 258 sure groups, 35 breaking groups), two calls

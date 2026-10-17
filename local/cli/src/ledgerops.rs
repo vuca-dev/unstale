@@ -1,6 +1,5 @@
-//! Ledger rules at the edge (vault: Data Model Contract, "The ledger", "Revisions and aliases", "Retired
-//! upstream"). The types and the parse/write round trip live in `unstale_schema::ledger`; this module adds the
-//! re-open rules, reconciliation against the catalog, dispositions, and the atomic file swap.
+//! Ledger rules at the edge. The types and the parse/write round trip live in `unstale_schema::ledger`; this module
+//! adds the re-open rules, reconciliation against the catalog, dispositions, and the atomic file swap.
 
 use anyhow::{Context, Result, bail};
 use std::path::Path;
@@ -9,10 +8,9 @@ use unstale_schema::ledger::{Entry, Invalid, Ledger};
 use crate::cache::Lookup;
 use crate::util::{add_days, parse_date, write_atomic};
 
-/// Days a deferral lasts (vault: Implementation Decisions #3).
+/// Days a deferral lasts.
 pub const DEFER_DAYS: i64 = 30;
-/// The fixed re-review interval for "no site" (vault: "a short fixed interval"; vault: Implementation Decisions, open
-/// choices).
+/// The fixed re-review interval for "no site".
 pub const NO_SITE_DAYS: i64 = 14;
 /// At most three deferrals (or no-site answers); the next one becomes declined.
 pub const MAX_DEFERRALS: u8 = 3;
@@ -186,8 +184,7 @@ pub fn reconcile(ledger: &Ledger, lookup: impl Fn(&str) -> Lookup) -> (Ledger, R
     (Ledger { entries: out.into_values().collect() }, rep)
 }
 
-/// The closed set an agent or user records (vault: Agent Adapter, "Upgrade review"; Data Model Contract,
-/// "The ledger").
+/// The closed set an agent or user records.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Disposition {
     Declined,
@@ -210,7 +207,7 @@ impl std::str::FromStr for Disposition {
 }
 
 /// Record a disposition for `id` at `rev`. A deferral or no-site answer counts up from the previous one at the
-/// same revision; the fourth becomes declined (vault: "at most three deferrals, then it becomes declined").
+/// same revision; the fourth becomes declined.
 pub fn dispose(ledger: &mut Ledger, id: &str, rev: u32, d: Disposition, today: &str, note: Option<String>) -> Entry {
     let prev = ledger.entries.iter().find(|e| e.id() == id).cloned();
     let prev_n = |want_deferred: bool| -> u8 {

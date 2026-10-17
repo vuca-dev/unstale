@@ -1,8 +1,7 @@
-// Coverage in batch mode, for an ephemeral runner (vault: Central Scheduling and Infrastructure, "Registration
-// gateway"). The gateway accepts registrations and holds them; this pulls them, works the same queue the service
-// works (refreshes and admitted history first, then new technologies by demand, all under the coverage budget), and
-// writes every job's public status for the static catalog. The pulled packages are acknowledged only after the deploy
-// that publishes their status (`drain ack`), so a failed run loses no request.
+// Coverage in batch mode, for an ephemeral runner. The gateway accepts registrations and holds them; this pulls them,
+// works the same queue the service works (refreshes and admitted history first, then new technologies by demand, all
+// under the coverage budget), and writes every job's public status for the static catalog. The pulled packages are
+// acknowledged only after the deploy that publishes their status (`drain ack`), so a failed run loses no request.
 //
 // `--fast-track` (a run the gateway started for a new package): requests are queued as always, but a job runs only if
 // a pulled package is next in the line of new technologies (most requested first, then first asked); then only those

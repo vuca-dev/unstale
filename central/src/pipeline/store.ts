@@ -1,5 +1,5 @@
-// The central record store: records per technology, persisted across runs, with the two counters of the vault's
-// Data Model Contract ("Identity and revision", "Record fields": which field bumps `revision`, which `label_version`).
+// The central record store: records per technology, persisted across runs, with two counters: which field bumps
+// `revision` and which `label_version`.
 import { join } from "node:path";
 import type { CapabilityRecord } from "../schema/catalog.ts";
 import { centralDir } from "./paths.ts";
@@ -31,7 +31,7 @@ export interface StoredRecord {
   conditions: string[];
   requires: string[];
   introduces: string[];
-  /** Search terms; published with a sample count of 0 (no central sample: vault: Implementation Decisions). */
+  /** Search terms; published with a sample count of 0 (no central sample). */
   terms: string[];
   replaces: string[];
   evidence: Evidence[];
@@ -98,7 +98,7 @@ export function mintId(technology: string, subject: string, facet: string | unde
   for (let n = 2; ; n++) if (!taken(`${base}~${n}`)) return `${base}~${n}`;
 }
 
-/** The highest release line a record lists: the shard it lives in (vault: Catalog Publishing and Sync). */
+/** The highest release line a record lists: the shard it lives in. */
 export function highestLine(r: Pick<StoredRecord, "releases">): string {
   return r.releases.map((x) => x.line).sort(compareVersions).at(-1) ?? "0";
 }

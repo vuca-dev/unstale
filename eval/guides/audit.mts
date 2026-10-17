@@ -1,7 +1,7 @@
 // Cross-source match audit (upgrade guide item → release-notes record). For every guide item: extract and label it
 // exactly as the pipeline does (cached Codex and Jev calls), retrieve its candidates from the current store (release
 // notes only; nothing is written to the store), ask the Jev same-or-new judge as ingest does, and keep every pair the
-// judge scores p >= 0.5. Each pair is then judged by Codex gpt-5.6-luna under the vault's v3 identity rules
+// judge scores p >= 0.5. Each pair is then judged by Codex gpt-5.6-luna under the v3 identity rules
 // (~/ati-slice2/harness/dm_match.py, RULES_V3) as the reference. Output: pairs.json (input to the audit table).
 //
 //   cd central && UNSTALE_CENTRAL_DIR=... npx tsx ../eval/guides/audit.mts <out-dir> [--offline]

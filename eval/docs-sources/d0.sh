@@ -1,6 +1,6 @@
 #!/bin/sh
-# D0 (vault: "Docs Sources - Eval"): Prisma docs before 7.0.0 vs before the February 2026 restructure,
-# searched for the two misses docs could carry (eval/gate/MISSES.md bucket 1). Read-only; writes under $1.
+# D0: Prisma docs before 7.0.0 vs before the February 2026 restructure, searched for the two misses docs could carry
+# (eval/gate/MISSES.md bucket 1). Read-only; writes under $1.
 set -eu
 W=${1:?work dir}; mkdir -p "$W/snap"; cd "$W"
 [ -d prisma-web ] || git clone -q --filter=blob:none --no-checkout --shallow-since=2025-09-01 https://github.com/prisma/web.git prisma-web

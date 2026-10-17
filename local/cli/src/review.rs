@@ -1,5 +1,5 @@
-//! The generated skill files and their lossless batches (vault: Agent Adapter, "Upgrade review": contents,
-//! batches of 16, `--next`, `bump <pkg>`, determinism), and the bump digest text.
+//! The generated skill files and their lossless batches (16 records each, `--next`, `bump <pkg>`, deterministic), and
+//! the bump digest text.
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -67,8 +67,8 @@ impl std::str::FromStr for Pass {
     }
 }
 
-/// Review progress: the batch handed out per pass, its number, and records marked do-now (vault: Implementation
-/// Decisions #3). Kept in `.unstale/state/`, which is never committed.
+/// Review progress: the batch handed out per pass, its number, and records marked do-now. Kept in `.unstale/state/`,
+/// which is never committed.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct State {
     #[serde(default)]
@@ -127,7 +127,7 @@ pub fn batch_for(pass: Pass, out: &Outcome, state: &mut State, advance: bool) ->
     let mut do_now: Vec<usize> = queue.iter().copied().filter(is_do_now).collect();
     // A do-now mark is the user's latest decision on this record at this revision on this clone (`decide` and
     // `record` on it clear the mark), so a withholding line for it was not written over the mark here: it never hides
-    // the record (vault: Implementation Decisions, "A do-now mark wins over a withholding ledger line").
+    // the record.
     do_now.extend((0..out.opps.len()).filter(|&i| out.opps[i].withheld_from.as_ref() == Some(&pass.route()) && is_do_now(&i)));
     let cur = state.batches.get(pass.name()).cloned().unwrap_or_default();
     let pending: Vec<usize> = open.iter().copied().filter(|i| cur.ids.iter().any(|x| x == out.opps[*i].id())).collect();
@@ -645,7 +645,7 @@ mod tests {
         let r = repo(&[]);
         let (old, _) = Ledger::parse("{\"schema\":1}\n{\"id\":\"next:d00\",\"rev\":1,\"status\":\"declined\",\"date\":\"2026-10-01\"}\n").unwrap();
         let (ledger, rep) = crate::ledgerops::reconcile(&old, |id| c.lookup(id));
-        assert_eq!(rep.rewritten, vec![("next:d00".to_string(), "next:d01".to_string())], "the merge rewrites the line (vault rule)");
+        assert_eq!(rep.rewritten, vec![("next:d00".to_string(), "next:d01".to_string())], "the merge rewrites the line");
         let mut state = State::default();
         state.do_now.insert("next:d01".into(), 1);
         let out = run(&Input { catalog: &c, stack: &s, repo: &r, ledger: &ledger, today: "2026-10-15", targets: Default::default() });

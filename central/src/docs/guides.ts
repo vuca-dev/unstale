@@ -1,7 +1,7 @@
-// The upgrade guides of a technology, found by the docs module for any technology (vault: Docs Monitoring - Handoff,
-// "Decision 2"): the pages its listing names as guides (`upgrading/version-16`, `upgrade-prisma-orm/v7`, or an
-// unnumbered `migration-guide` read from its text), for the current and the previous major, as the site's own copy.
-// Replaces the hand-kept per-technology table of guide paths.
+// The upgrade guides of a technology, found by the docs module for any technology: the pages its listing names as
+// guides (`upgrading/version-16`, `upgrade-prisma-orm/v7`, or an unnumbered `migration-guide` read from its text), for
+// the current and the previous major, as the site's own copy. Replaces the hand-kept per-technology table of guide
+// paths.
 import { join } from "node:path";
 import type { HttpClient } from "../collector/http.ts";
 import { FsStore } from "../collector/store.ts";

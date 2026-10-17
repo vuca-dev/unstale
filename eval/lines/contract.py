@@ -1,5 +1,4 @@
-"""The edge's availability contract on a published catalog (vault: Implementation Decisions, "Release lines from the
-release index"), as a reference for eval scripts. The Rust implementation is local/cli/src/lines.rs; their tests share the cases.
+"""The edge's availability contract on a published catalog, as a reference for eval scripts. The Rust implementation is local/cli/src/lines.rs; their tests share the cases.
 
 has_change(record_releases, v, index) -> bool | None
   index: the tech index's `releases` (ascending by version; version, date, line, line_start).

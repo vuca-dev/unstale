@@ -1,5 +1,4 @@
-// Version attribution for a documentation change (vault: Capability Synthesis, "parse version metadata first, model
-// second"; Docs Monitoring - Handoff, version-unknown changes). Per changed section, strongest first:
+// Version attribution for a documentation change. Per changed section, strongest first:
 //   marker     the added lines name the version ("Added in v15.2", `versionadded:: 5.1`, Node's `added: v22.3.0`)
 //   guide      the page is the upgrade guide to major N: version N.0.0, as the pipeline dates guides. Only the
 //              current or previous major: an edit to an older guide is upkeep, and a guide to a major not yet released

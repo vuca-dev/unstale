@@ -2,7 +2,7 @@
 
 Written 16 October 2026, before any candidate (Jev included) was run on a held-out request. Question: which model
 should answer `match.ts matchRequest` (does the incoming record describe the same change as candidate c1..cK, K = 8)?
-Vault: Inference Costs, "Model selection". Runner `run5.mts`, scorer `score5.mts` (this directory).
+Runner `run5.mts`, scorer `score5.mts` (this directory).
 
 ## Code state
 
@@ -76,7 +76,7 @@ higher (more conservative) thresholds. Also reported: every candidate at the pip
 
 - **False merges per 100 merges** = 100 × (DIFFERENT + 0.5 × UNSURE) / merges. **Judge-only**: best p ≥ fitted
   `SAME_P`, no guards. **Guarded**: `pick` with the fitted constants. **FLOOR: guarded ≤ 1.0 per 100** (pooled
-  held-out), the vault's criterion for step E. (The Nuxt pre-registration's own acceptance bar was 5 per 100 plus "no
+  held-out), the model-selection criterion for step E. (The Nuxt pre-registration's own acceptance bar was 5 per 100 plus "no
   hidden security change"; 1.0 is the stricter bar set for model selection.) The point estimate decides; the exact 95%
   interval is shown.
 - **Merge recall (capped):** items with at least one audited SAME pair that merge into an audited SAME candidate /

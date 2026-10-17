@@ -1,6 +1,5 @@
 //! Stack detection. npm here; PyPI in `pypi.rs`, merged into the same `Stack`. npm projects: every `package.json` outside `node_modules`, versions from the lockfile
-//! (application) or the declared range's floor (library), and the supported Node range (vault: Data Model
-//! Contract, "Local opportunity": available, needs upgrade, blocked).
+//! (application) or the declared range's floor (library), and the supported Node range: available, needs upgrade, or blocked.
 
 use anyhow::Result;
 use semver::Version;
@@ -10,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 use crate::util::{npm_purl, npm_satisfies, parse_version, range_floor};
 
-/// Directories never read, on top of `.gitignore` (vault: Relevance Engine; the Slice 0 harness skipped the same).
+/// Directories never read, on top of `.gitignore`.
 pub const SKIP_DIRS: &[&str] =
     &["node_modules", ".git", ".unstale", "dist", "build", "vendor", ".next", ".nuxt", ".output", ".venv", "venv", "coverage", ".turbo"];
 

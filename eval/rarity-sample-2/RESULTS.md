@@ -86,8 +86,8 @@ almost all in cedar-prisma7 (fallback 12 / 4, R0 9 / 8, R3 11 / 8) and zodgen-pr
 2 / 2 or 2 / 4); per-event rows in the scratch metrics files.
 
 **Stage 1 winner: R3** (adoption pool, previous major). **Stage 2:** n = 5 stays (n = 3 ties on tier, 31, and loses on
-usage, 22 vs 26; more repositories make it worse, 29 and 28). Larger n does not help here, consistent with the vault's
-"3 ≈ 25".
+usage, 22 vs 26; more repositories make it worse, 29 and 28). Larger n does not help here, consistent with the earlier
+"3 ≈ 25" finding.
 
 **Decision rule:** R3's DEV type tier, 31, is below the fallback's 32, so condition 2 fails: **keep the fallback**.
 (R3 + usage = 57 vs the fallback's 56, also short of the +2 margin.)

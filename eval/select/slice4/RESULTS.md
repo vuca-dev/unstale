@@ -146,7 +146,7 @@ run was aborted.
 7. **`score.py` cannot read `adjudicated.json`.** It now holds an `overrides` list (1 entry) beside the 233 records,
    and `score.py classify` raises `ValueError`. Scoring used a records-only copy (`out/slice4/adjudicated-records.json`).
    The scorer or the file needs a fix; it was not edited here.
-8. **The vault's projection for Jev understates step D.** "Jev about $15 at 10k technologies" assumed 35k Jev tokens
+8. **The earlier cost projection for Jev understates step D.** "Jev about $15 at 10k technologies" assumed 35k Jev tokens
    per technology. The measured R·S for D alone is about 257k tokens per technology-year: $108 at 10k, $2,158 at 200k.
 9. **Encoder:** the in-domain agreement (validation technologies) is optimistic. The cached Jev answers are the first
    answer to each request, not a fresh one.

@@ -3,7 +3,7 @@
     python3 -I analyze.py [timeline.jsonl] [--json out.json]
 
 Input: `.store/central/onboarding/timeline.jsonl` (one line per saved job state; `service.ts`, `timeline`). No model
-calls, no network. Pre-registered rule (vault: Onboarding DX - Gap Hypotheses, H6; eval/eta/README.md):
+calls, no network. Pre-registered rule (eval/eta/README.md):
 
   A range may be shown only if, over at least 30 jobs that reached `monitoring`, an interval fitted on the earlier
   half (per-unit p10 and p90 times the job's planned units, plus the queue wait's p10 and p90) holds the actual

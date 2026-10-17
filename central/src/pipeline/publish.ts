@@ -1,7 +1,7 @@
-// Publishing (vault: Catalog Publishing and Sync, "Catalog format" and "Manifest"): one gzipped JSON-lines shard per
-// technology and release line, named by content hash; then the technology's index; the root. Every line is
-// validated by the generated Zod before it is written. Same store in, byte-identical files out. Shards the new index
-// no longer names are recorded in the technology's history (prune.ts) so a prune can delete them after the grace period.
+// Publishing: one gzipped JSON-lines shard per technology and release line, named by content hash; then the
+// technology's index; the root. Every line is validated by the generated Zod before it is written. Same store in,
+// byte-identical files out. Shards the new index no longer names are recorded in the technology's history (prune.ts) so
+// a prune can delete them after the grace period.
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";

@@ -133,7 +133,7 @@
       "type": "object"
     },
     "CapabilityRecord": {
-      "description": "A live record. Fields bump `revision` (decision fields) or `label_version` (ordering labels);\nsee the vault's Data Model Contract.",
+      "description": "A live record. Fields bump `revision` (decision fields) or `label_version` (ordering labels).",
       "properties": {
         "advisories": {
           "description": "Reviewed security advisories whose fix this record describes, with the versions each affects. The edge\ndecides from these, not from `releases`, which advisories a bump fixes (backports included).",
@@ -163,7 +163,7 @@
               "type": "null"
             }
           ],
-          "description": "Classifier output for the label fields, read with its confidence (vault: Relevance Engine,\n\"Classifier for labels and ratings\")."
+          "description": "Classifier output for the label fields, read with its confidence."
         },
         "conditions": {
           "default": [],

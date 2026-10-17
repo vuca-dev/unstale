@@ -1,6 +1,6 @@
-// Section-scoped diffs (vault: Capability Synthesis, "Extraction from documentation diffs"; working default 14 October
-// 2026). A Markdown snapshot is split at ATX headings outside code fences; sections are matched by heading path, and
-// each changed section is reported under its path as unified hunks with context, removed lines included.
+// Section-scoped diffs (the working default since 14 October 2026). A Markdown snapshot is split at ATX headings
+// outside code fences; sections are matched by heading path, and each changed section is reported under its path as
+// unified hunks with context, removed lines included.
 import { diffArrays, structuredPatch } from "diff";
 
 export interface Section {

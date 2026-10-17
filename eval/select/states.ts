@@ -103,7 +103,7 @@ export function benefitUnits(central = join(STORE, "central-trust")): Built<Clas
 export const BREAKING_ITEMS = join(homedir(), "ati-slice2", "results", "datamodel", "breaking", "items.json");
 
 /**
- * The breaking set (vault 241, ~/ati-slice2 items.json). SYNTHESISED, not reconstructed: these records come from the
+ * The breaking set (241 records, ~/ati-slice2 items.json). SYNTHESISED, not reconstructed: these records come from the
  * Slice 2 extractor, not this pipeline, so there is no pipeline request to match. recordState is filled from the
  * item's fields (key → subject, evidence → quote, guide → upgrade guide); facet, section, introduces and replaces do not
  * exist in the item and are empty. The published 89.6% (Jev) used the hill-climb's P0 state (no introduces/replaces

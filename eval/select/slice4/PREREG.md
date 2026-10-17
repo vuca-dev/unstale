@@ -2,14 +2,14 @@
 
 Written 16 October 2026, before any candidate was run on the held-out set and before any held-out reference label
 was read. Question: which model should answer step D's eight questions (`classify/labels.ts`: change_type, surface,
-breaking, five benefit yes/no)? Vault: Inference Costs, "Model selection".
+breaking, five benefit yes/no)?
 
 ## Sets
 
 | Role | Set | Items | Use |
 |---|---|---|---|
 | DEV | `eval/sets/benefit/reference.json` | 150 records (170 faithful requests; item label = union over sources, as `states.ts aggregate`) | Fit `BENEFIT_P`; smoke samples |
-| DEV | Breaking, vault 241 (`states.ts breakingUnits`, the 241 where both judges agree) | 241 (143 breaking), states synthesised | Fit `BREAKING_P` |
+| DEV | Breaking 241 (`states.ts breakingUnits`, the 241 where both judges agree) | 241 (143 breaking), states synthesised | Fit `BREAKING_P` |
 | HELD-OUT (decision) | `eval/select/holdout/classify/records.json` + `labels/adjudicated.json` | 233 (posthog-js 80, zod 80, uvicorn 40, typer 33) | Scored once per candidate |
 
 Nothing from posthog-js, zod, uvicorn or typer is used for fitting or training. Laravel (85 of the breaking 241) is

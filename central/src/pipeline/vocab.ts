@@ -1,5 +1,5 @@
 // Closed sets and their definitions, as the classifier and the extraction prompt see them.
-// Sets: vault Data Model Contract ("Fields the experiments require", `benefit`); definitions ported from
+// Sets: the catalog's `benefit` field; definitions ported from
 // ~/ati-slice0/harness/benefit_label.py (PROMPT_V2) and ~/ati-slice2/harness/dm_breaking.py (rubric).
 import type { CapabilityRecord } from "../schema/catalog.ts";
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// Launcher for the unstale native binary (vault: Onboarding CLI, "Install channels": npm with
-// per-platform packages, the biome/esbuild pattern). Resolves the platform package installed through
-// optionalDependencies and execs its binary with the same args, stdio inherited, exit code propagated.
+// Launcher for the unstale native binary (npm with per-platform packages, the biome/esbuild pattern). Resolves the
+// platform package installed through optionalDependencies and execs its binary with the same args, stdio inherited,
+// exit code propagated.
 "use strict";
 
 const { spawnSync } = require("node:child_process");

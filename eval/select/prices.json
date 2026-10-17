@@ -1,5 +1,5 @@
 {
- "_note": "USD per million tokens. null = unknown: a run or bound that needs it reports \"price unknown\", never $0. Reasoning tokens are billed as output (OpenAI-compatible APIs count them inside completion_tokens). Cached input with a null cached_input price is billed at the input price (an upper bound, reported as such). Recheck every price before a decision (vault: Inference Costs).",
+ "_note": "USD per million tokens. null = unknown: a run or bound that needs it reports \"price unknown\", never $0. Reasoning tokens are billed as output (OpenAI-compatible APIs count them inside completion_tokens). Cached input with a null cached_input price is billed at the input price (an upper bound, reported as such). Recheck every price before a decision.",
  "models": [
   {
    "provider": "deepinfra",
@@ -7,7 +7,7 @@
    "input": 0.03,
    "cached_input": null,
    "output": 0.14,
-   "source": "vault Inference Costs, 'Cheapest paid tokens' (computeprices.com, morphllm.com DeepInfra pages)",
+   "source": "cost notes, 'Cheapest paid tokens' (computeprices.com, morphllm.com DeepInfra pages)",
    "checked": "2026-10-16"
   },
   {
@@ -17,7 +17,7 @@
    "cached_input": null,
    "output": 0.75,
    "batch": true,
-   "source": "vault Inference Costs, projected-cost table (batch price; morphllm.com, cloudzero.com Gemini pricing)",
+   "source": "cost notes, projected-cost table (batch price; morphllm.com, cloudzero.com Gemini pricing)",
    "checked": "2026-10-16"
   },
   {
@@ -26,7 +26,7 @@
    "input": 0.042,
    "cached_input": null,
    "output": 0,
-   "source": "vault Inference Costs, 'Classifiers' (thejevai.com/pricing): output free",
+   "source": "cost notes, 'Classifiers' (thejevai.com/pricing): output free",
    "checked": "2026-10-16"
   },
   {
@@ -35,7 +35,7 @@
    "input": 0.1,
    "cached_input": null,
    "output": 0,
-   "source": "vault Inference Costs, 'Classifiers' (Decisions API public beta, 6 October 2026): output free",
+   "source": "cost notes, 'Classifiers' (Decisions API public beta, 6 October 2026): output free",
    "checked": "2026-10-16"
   },
   {
@@ -44,7 +44,7 @@
    "input": null,
    "cached_input": null,
    "output": null,
-   "source": "TODO: the vault lists no Luna API price; fill from the OpenAI pricing page before slice 2",
+   "source": "TODO: the cost notes list no Luna API price; fill from the OpenAI pricing page before slice 2",
    "checked": null
   },
   {
@@ -53,7 +53,7 @@
    "input": null,
    "cached_input": null,
    "output": null,
-   "source": "TODO: the vault lists no OpenAI mini price and the model id is unconfirmed; fill from the OpenAI pricing page",
+   "source": "TODO: the cost notes list no OpenAI mini price and the model id is unconfirmed; fill from the OpenAI pricing page",
    "checked": null
   },
   {
@@ -62,7 +62,7 @@
    "input": 0.038,
    "cached_input": null,
    "output": null,
-   "source": "vault Inference Costs, 'Classifiers' (Cloudflare Workers AI Clef Flash, 9 October 2026; older pages say $0.09/M); output price and model id unknown",
+   "source": "cost notes, 'Classifiers' (Cloudflare Workers AI Clef Flash, 9 October 2026; older pages say $0.09/M); output price and model id unknown",
    "checked": "2026-10-16"
   },
   {

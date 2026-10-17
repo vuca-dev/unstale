@@ -1,11 +1,10 @@
-// Abuse limits and the coverage budget (vault: Central Scheduling and Infrastructure, "Registration gateway" and
-// "Admission queue"). A new technology costs crawling and model calls, so an anonymous client may register only a few
-// per hour; every accepted request is queued, never refused for budget. The budget limits how fast the queue drains:
-// at most a fixed number of new technologies and job runs per UTC day, and at most a number of release-note tokens per
-// period (the expected-cost unit: note volume is read from the release index before any model call). Asking about a
-// known technology is never refused. The budget is the one check that fails closed: a budget file that exists but
-// cannot be read refuses. Client addresses live in memory only and are never logged or written (vault: Source
-// Registry and Coverage, "Subscriptions and the shared registry").
+// Abuse limits and the coverage budget. A new technology costs crawling and model calls, so an anonymous client may
+// register only a few per hour; every accepted request is queued, never refused for budget. The budget limits how fast
+// the queue drains: at most a fixed number of new technologies and job runs per UTC day, and at most a number of
+// release-note tokens per period (the expected-cost unit: note volume is read from the release index before any model
+// call). Asking about a known technology is never refused. The budget is the one check that fails closed: a budget file
+// that exists but
+// cannot be read refuses. Client addresses live in memory only and are never logged or written.
 import type { IncomingMessage } from "node:http";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";

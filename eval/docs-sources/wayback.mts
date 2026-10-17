@@ -1,9 +1,9 @@
-// Compressed-timeline test of the docs daily pass for sites with no docs repo (vault: Docs Monitoring - Handoff,
-// "Paused"). For every site-only package in the resolver sample, takes the Internet Archive's distinct captures of the
-// site's docs pages over the last N days, samples pages that changed, and runs consecutive captures through the
-// module's own HTML extraction, normalisation, section diff and attribution. Measures what share of byte changes
-// survive extraction (template noise absorbed), and the kind and version share of the section changes that remain.
-// Polite: one request at a time, paced, with backoff on 429. Responses are cached under --cache.
+// Compressed-timeline test of the docs daily pass for sites with no docs repo. For every site-only package in the
+// resolver sample, takes the Internet Archive's distinct captures of the site's docs pages over the last N days,
+// samples pages that changed, and runs consecutive captures through the module's own HTML extraction, normalisation,
+// section diff and attribution. Measures what share of byte changes survive extraction (template noise absorbed), and
+// the kind and version share of the section changes that remain. Polite: one request at a time, paced, with backoff on
+// 429. Responses are cached under --cache.
 //
 //   cd central && npx tsx ../eval/docs-sources/wayback.mts <out.json> [--days 90] [--pages 10] [--captures 4] [--cache <dir>]
 import { createHash } from "node:crypto";

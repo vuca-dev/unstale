@@ -1,6 +1,6 @@
-// The admission queue (vault: Central Scheduling and Infrastructure, "Admission queue"): votes by distinct requesters,
-// drain order by tier then demand with no aging, the release-note token budget per period (persisted, fails closed),
-// the per-technology quarterly cap, the technology unit (one repository and release stream) and the deprecation notice.
+// The admission queue: votes by distinct requesters, drain order by tier then demand with no aging, the release-note
+// token budget per period (persisted, fails closed), the per-technology quarterly cap, the technology unit (one
+// repository and release stream) and the deprecation notice.
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

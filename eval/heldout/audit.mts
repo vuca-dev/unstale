@@ -1,7 +1,7 @@
 // Held-out match audit (docs/match-audit-heldout.md). Reads the side store the held-out run wrote, rebuilds every
 // pair the judge saw from the records' history (merges, p in [0.5, threshold), guard blocks at p >= 0.7) with each
 // candidate as it stood when the incoming item was judged, and asks Codex gpt-5.6-luna for a reference verdict under
-// the vault's v3 identity rules (12 pairs per call, cached by request). No store writes.
+// the v3 identity rules (12 pairs per call, cached by request). No store writes.
 //
 //   cd central && UNSTALE_SRC=<exported central/src> UNSTALE_CENTRAL_DIR=<side store> \
 //     npx tsx ../eval/heldout/audit.mts <technology> <out-dir>

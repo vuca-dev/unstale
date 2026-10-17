@@ -1,4 +1,4 @@
-"""Codex judge for the benefit-label set: the vault's benefit rule (Slice 0 benefit_label.py PROMPT_V2, "Improvements
+"""Codex judge for the benefit-label set: the benefit rule (Slice 0 benefit_label.py PROMPT_V2, "Improvements
 review: benefit labels", re-run with maintainability) applied to each sampled record, 25 records per call.
 
     python3 judge_codex.py ITEMS.json OUT.json

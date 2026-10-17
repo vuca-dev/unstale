@@ -1,7 +1,7 @@
-// The public face of unstale's catalog and coverage service on Cloudflare (vault: Central Scheduling and
-// Infrastructure, "Registration gateway"). Static files are the exported catalog (`v1/`, written by central's
-// `catalog export`) and are served without running this code. This code answers what a static host cannot, with the
-// same wire format as central's coverage service (onboarding/service.ts), so the client needs no change:
+// The public face of unstale's catalog and coverage service on Cloudflare. Static files are the exported catalog
+// (`v1/`, written by central's `catalog export`) and are served without running this code. This code answers what a
+// static host cannot, with the same wire format as central's coverage service (onboarding/service.ts), so the client
+// needs no change:
 //   GET /health                 the coverage service marker the client checks
 //   POST /coverage {purl}       a vote on a known package, or a new package queued for the next coverage run
 //   GET /coverage?purl=         a known package's published status, or a held one's place in the queue

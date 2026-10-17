@@ -5,7 +5,7 @@ Scripts: `label.mts` (Jev/Luna through the adapter, cached), `codex_label.py` (C
 `devrun.py` (relabelled store COPY → republish → replay `queue` → score with the final replay's match runs),
 `analyze.py`. Raw numbers: `analysis.json`; review scores: `scores/review_P4-luna.json`.
 
-**Reference (held-out):** the 241 of 251 records where both vault judges (Codex `pipeline`, Sonnet `reference`) agree
+**Reference (held-out):** the 241 of 251 records where both reference judges (Codex `pipeline`, Sonnet `reference`) agree
 (143 breaking). The 10 judge disagreements have no recorded hand ruling and are left out. Codex `gpt-5.6-luna` was
 one of the two judges (with the guide section as context), so Codex has a home advantage on this reference.
 
@@ -58,7 +58,7 @@ extractions (99.6%), 433 / 435 records; Luna 438 / 493 (47 more breaking); Codex
 - **Prompt sensitivity** (P1 flips > 5%): **fires for Jev (6.4% held-out) and Luna (8.0% / 9.7%)**, not Codex
   (4.4%). Jev's flips cost it 5 points of held-out agreement but leave dev unchanged (13).
 - **Evalism** (dev up, held-out down, or dev up through tier-0 inflation): **fires for P2** for both classifiers:
-  dev 13 → 15, held-out −6.6 (Jev), −17.4 (Luna), Codex −5.4. The gain is exactly two records the vault ruled not
+  dev 13 → 15, held-out −6.6 (Jev), −17.4 (Luna), Codex −5.4. The gain is exactly two records the reference ruled not
   breaking (below); Next tier 0 grows 44 → 49 for Jev, so it is the specific labels, not general crowding.
 - **Rubric/design** (classifiers agree with the reference under P0 and dev stays low): **fires.** All three agree
   with the rubric reference at 89.6–95.4%, and no rubric-faithful variant (P0, P1, P3, P4) for any classifier gets
@@ -85,7 +85,7 @@ Record labels (y/n, p(yes) for Jev and Luna) on the dev set, and the entry's typ
   ranks 46–59: Next's tier 0 holds 42–60 breaking records, ordered by usage score, and the workout app barely uses
   Turbopack-specific terms. A correct label does not reach the first 16.
 - **Nest ESM** is labelled not breaking by every classifier and variant on dev (the source says CommonJS apps keep
-  working; the vault: "no labelling rule recovers that"). Its rank 12–25 depends only on how many other Nest records
+  working; "no labelling rule recovers that"). Its rank 12–25 depends only on how many other Nest records
   are tier 0: in at 9–12 tier-0 records, out at 14+ (Codex P0, Luna, P4-Jev). Held-out `ESM-only Nest packages`
   (judges: not breaking) is called breaking by Jev, Luna and Codex under P0 and not under P3/P4.
 - **Nest Vitest** carries three key changes (Jest → Vitest), but it is a new-project default; only P4-Luna says yes

@@ -1,6 +1,5 @@
-// What kind of edit a changed section is, from an exact word diff of its removed and added lines (vault: Docs
-// Monitoring - Handoff, compressed-timeline test: about 38 % of section changes are not substantive). Deterministic,
-// so trivial edits are dropped before any model call:
+// What kind of edit a changed section is, from an exact word diff of its removed and added lines (about 38 % of section
+// changes are not substantive). Deterministic, so trivial edits are dropped before any model call:
 //   format       only whitespace, prose punctuation or case changed, or only MDX/HTML component tags added or removed
 //   link         only link targets changed
 //   renumber     only digits changed and no version did (generated "Defined in: file.ts:91" source links)

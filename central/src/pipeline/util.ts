@@ -82,7 +82,7 @@ export function compareVersions(a: string, b: string): number {
   return 0;
 }
 
-/** Release line: the major version, or major.minor below 1.0 (vault: Data Model Contract, `releases`). */
+/** Release line: the major version, or major.minor below 1.0. */
 export function releaseLine(version: string): string {
   const [maj, min] = version.split(".");
   return maj === "0" ? `0.${min ?? "0"}` : maj!;

@@ -1,5 +1,5 @@
 {
-  "note": "D1 stage 1 (vault: Docs Sources - Eval): hand-picked edge cases, fixed before resolving. 'expect' is the edge case each covers, not an answer.",
+  "note": "D1 stage 1: hand-picked edge cases, fixed before resolving. 'expect' is the edge case each covers, not an answer.",
   "packages": [
     { "purl": "pkg:npm/next", "expect": "docs in the code repository (vercel/next.js docs/); hand-kept guide path fixture" },
     { "purl": "pkg:npm/@prisma/client", "expect": "separate docs repository renamed (prisma/docs -> prisma/web), moved framework, versioned namespaces; guide fixture" },

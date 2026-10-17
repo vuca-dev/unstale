@@ -1,7 +1,6 @@
-// Admission signals and thresholds (vault: Source Registry and Coverage, ecosystem adapter contract and "Admission
-// findings"; Docs Monitoring - Handoff, admission). Crawling and model extraction cost scale with the number of admitted
-// packages, so a package is monitored only when it is maintained and used. The thresholds are per ecosystem, set once by
-// the maintainer of the deployment in THRESHOLDS, never per technology. The rules, in order (eval/scope/RESULTS.md):
+// Admission signals and thresholds. Crawling and model extraction cost scale with the number of admitted packages, so a
+// package is monitored only when it is maintained and used. The thresholds are per ecosystem, set once by the
+// maintainer of the deployment in THRESHOLDS, never per technology. The rules, in order (eval/scope/RESULTS.md):
 // - Type stubs (`@types/*` on npm, `types-*` on PyPI) are parked and name the package they type; they publish no notes.
 // - A deprecated package (npm `deprecated` on the latest version, PyPI's "7 - Inactive" classifier, every release
 //   yanked) is not monitored, but its verdict carries a `notice` so one "package deprecated" record can be published.

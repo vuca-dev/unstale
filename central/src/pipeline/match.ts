@@ -1,6 +1,6 @@
-// Matching at ingest (vault: Capability Synthesis, "Matching at ingest"; rules v3 from ~/ati-slice2/harness/dm_match.py):
-// up to 8 candidates of the same technology, a yes/no same-or-new judgement per candidate through the classifier
-// adapter, "same" only at p >= SAME_P, the breaking guard, and the combine rule. The id never changes on a match.
+// Matching at ingest (identity rules v3 from ~/ati-slice2/harness/dm_match.py): up to 8 candidates of the same
+// technology, a yes/no same-or-new judgement per candidate through the classifier adapter, "same" only at p >= SAME_P,
+// the breaking guard, and the combine rule. The id never changes on a match.
 import type { Classification, Questions } from "./classify/adapter.ts";
 import type { Labels } from "./classify/labels.ts";
 import type { Incoming } from "./extract.ts";
@@ -147,8 +147,7 @@ export function matchRequest(techName: string, inc: Incoming, breaking: boolean,
 }
 
 // ---- Deterministic guards (can only block a merge; the judge at p >= SAME_P is the first gate). ----
-// Tuned on the 83 ingest matches of the first full run (vault: Implementation Decisions), so not an independent
-// measurement.
+// Tuned on the 83 ingest matches of the first full run, so not an independent measurement.
 
 /** At or above this p the quote guard is skipped (the advisory and breaking guards still apply). */
 export const QUOTE_GUARD_BELOW = 0.95;
@@ -291,7 +290,7 @@ const wordsOf = (s: string) => new Set(s.toLowerCase().split(/[^\p{L}\p{N}]+/u).
  * `a` refines `b`: it keeps every specific of `b` and adds at least one, keeps every meaning-flipping word of `b`
  * ("stable", "deprecated", "default"), and keeps at least half of `b`'s other words, so a restatement that drops a
  * clause ("with a codemod available") is not taken ("The PRISMA_CLIENT_ENGINE_TYPE variable was removed" over "This
- * environment variable has been removed"; vault: Docs Monitoring - Handoff, "First real run").
+ * environment variable has been removed").
  */
 export function moreSpecific(a: string, b: string): boolean {
   const [sa, sb] = [specifics(a), specifics(b)];
@@ -317,7 +316,7 @@ export function guard(inc: IncomingForGuard, c: StoredRecord, p: number, crossP 
   const ca = advisoryIds(`${c.evidence.map((e) => e.quote).join(" ")} ${c.summary}`);
   if (ia.size && ca.size && ![...ia].some((x) => ca.has(x))) return "guard:advisory";
   // A later version of a document the candidate cites: the quote and cross-source guards do not apply, the bar is
-  // LINEAGE_SAME_P (vault: Docs Monitoring - Handoff, "Lineage matching").
+  // LINEAGE_SAME_P.
   if (sameLineage(inc, c)) return p < LINEAGE_SAME_P ? "guard:lineage" : undefined;
   const kind = inc.kind ?? "release_notes";
   const same = c.evidence.filter((e) => (e.kind ?? "release_notes") === kind);
@@ -377,7 +376,7 @@ const literal = (inc: Incoming): string[] =>
 /** Combine rule: evidence and releases added, `breaking` if either, the incoming subject and facet join the terms. */
 export function combine(r: StoredRecord, inc: Incoming, labels: Labels, components: string[], p?: number, judged: Judged[] = [], lineOf?: (version: string) => string): void {
   // A later version of a document the record cites, stating the fact more specifically, gives the record its summary:
-  // the document now says this (vault: Docs Monitoring - Handoff, "Lineage matching").
+  // the document now says this.
   const restated = sameLineage({ ...inc, breaking: labels.breaking, kind: kindOf(inc) }, r) && moreSpecific(inc.summary, r.summary);
   if (!r.evidence.some((e) => e.url === inc.url && e.quote === inc.quote)) r.evidence.push(evidenceOf(inc));
   const terms = union(r.terms, literal(inc).filter((t) => t !== r.subject));

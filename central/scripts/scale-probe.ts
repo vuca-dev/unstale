@@ -1,9 +1,8 @@
 // Scale probe: what a coverage run costs per technology before any model call, measured on a sample of real packages
-// (vault: Central Scheduling and Infrastructure, "Storage and hosting at scale"). Per package, as a drain does for a
-// new one: discovery, admission, and for an admitted package its release list and a forced docs pass. No extraction,
-// classifier, advisory or publish step runs, and every request to a model host is refused and counted (the run fails
-// if any is attempted). Packages come from eval/scope/pop.json, the same number per download band, chosen by sha256
-// of the name; band populations weight the summary.
+// Per package, as a drain does for a new one: discovery, admission, and for an admitted package its release list and a
+// forced docs pass. No extraction, classifier, advisory or publish step runs, and every request to a model host is
+// refused and counted (the run fails if any is attempted). Packages come from eval/scope/pop.json, the same number per
+// download band, chosen by sha256 of the name; band populations weight the summary.
 //
 //   tsx scripts/scale-probe.ts [--per-band 8] [--concurrency 4] [--out <dir>] [--min-github 40]
 // A second docs pass right after the baseline measures the steady state when a release lands and nothing changed

@@ -21,6 +21,6 @@ setup/queue/match (Codex, two runs) unchanged; queue orders with the sample weig
   driver adapter or accelerateUrl", judged below 0.5 at ingest), plus notes↔notes near-duplicates that were already
   there (three PrismaClient-constructor records).
 - **Crowding, not duplication, is what costs the tier batch:** guides add 30 breaking records to Next.js's tier 0 and
-  21 to Prisma's (vault: "guides mark most items breaking"). Prisma's first tier batch held 10 key entries before and 6
+  21 to Prisma's. Prisma's first tier batch held 10 key entries before and 6
   now. The whole-queue review gains most (13.5 → 17.5), from Next.js entries only the guide carries.
 - Reviews: 12 Codex calls, 3.51M input (2.83M cached), 75k output. Match: 6 calls, 157k input.

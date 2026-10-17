@@ -1,6 +1,6 @@
-// The schema seam's drift check (vault: Implementation Stack, "Schema seam": CI fails when generated code drifts).
-// Runs both generators' --check on a temp copy of the committed seam: the committed state passes, and a hand edit
-// of the generated Zod, of a JSON Schema file, or an unsupported keyword makes them fail.
+// The schema seam's drift check: CI fails when generated code drifts. Runs both generators' --check on a temp copy of
+// the committed seam: the committed state passes, and a hand edit of the generated Zod, of a JSON Schema file, or an
+// unsupported keyword makes them fail.
 import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";

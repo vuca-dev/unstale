@@ -1,4 +1,4 @@
-"""D1 stage 2 sample (vault: "Docs Sources - Eval"): distinct packages declared directly by recently active public
+"""D1 stage 2 sample: distinct packages declared directly by recently active public
 repositories, the population lazy registration meets. Rule fixed before drawing:
 
 - Repositories: GitHub repository search `stars:50..5000 pushed:>=2026-04-15 fork:false archived:false

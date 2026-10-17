@@ -1,8 +1,8 @@
-// The docs module's daily pass for one technology (vault: Docs Monitoring - Handoff, sequence step 2): resolve its
-// docs sources (cached), list each site's pages, check every page through the Collector, and record change events:
-// created, modified, deleted, moved, template and restructure, each changed section attributed to a version where the
-// page says which. Events are append-only and keyed by (document, previous snapshot, new snapshot), so a rerun adds
-// nothing. Extraction reads the events later (extract.ts); this pass makes no model calls.
+// The docs module's daily pass for one technology: resolve its docs sources (cached), list each site's pages, check
+// every page through the Collector, and record change events: created, modified, deleted, moved, template and
+// restructure, each changed section attributed to a version where the page says which. Events are append-only and keyed
+// by (document, previous snapshot, new snapshot), so a rerun adds nothing. Extraction reads the events later
+// (extract.ts); this pass makes no model calls.
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Collector } from "../collector/collector.ts";
@@ -263,7 +263,7 @@ export async function refresh(src: Source, opts: RefreshOptions): Promise<Refres
   }
 
   // 2. Pages that left the listing: a permanent redirect is a move, 404 or 410 a deletion, 200 an incomplete listing
-  //    (kept). A large share leaving at once is one restructure event (Change Monitoring, site restructures).
+  // (kept). A large share leaving at once is one restructure event.
   const store = new FsStore(join(dir, "store"));
   const events: DocsEvent[] = [];
   const gone = prev ? Object.keys(prev.pages).filter((u) => !pages[u]) : [];

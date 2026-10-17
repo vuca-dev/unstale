@@ -106,11 +106,10 @@ export async function fetchReleases(t: Technology, opts: { refresh?: boolean; of
   return { notes, checked: index.checked, stats };
 }
 
-// ---- Upgrade guides (vault: Slice 0 - Eval Results, "Replay with upgrade guides"; Docs Monitoring - Handoff,
-// "Decision 2"). The docs module finds a technology's guides for the current and previous major (docs/guides.ts), so no
-// table of guide paths is kept. Each guide page is ingested whole once, at the first snapshot seen; later edits reach
-// extraction as section notes from the docs module, matched to these records by lineage (match.ts sameLineage), so a
-// guide is never re-extracted whole. The stored index keeps, per page, that first snapshot and its text.
+// ---- Upgrade guides. The docs module finds a technology's guides for the current and previous major (docs/guides.ts),
+// so no table of guide paths is kept. Each guide page is ingested whole once, at the first snapshot seen; later edits
+// reach extraction as section notes from the docs module, matched to these records by lineage (match.ts sameLineage),
+// so a guide is never re-extracted whole. The stored index keeps, per page, that first snapshot and its text.
 
 export interface GuideNote extends ReleaseNote {
   kind: "upgrade_guide";

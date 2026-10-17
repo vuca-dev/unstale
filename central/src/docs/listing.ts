@@ -1,9 +1,9 @@
-// Page listing for one docs site (vault: Docs Monitoring - Handoff, gap 6). Sources, in order: robots.txt `Sitemap:`
-// lines, sitemap.xml at the docs path and the origin (indexes followed), then llms.txt. A Markdown URL that llms.txt
-// names is kept as the page's copy: the site itself publishes it for agents, and on a JavaScript-only site it is the
-// only readable form. The listing is cut to the resolver's scope prefix, robots.txt, and one version and locale:
-// version and locale namespaces are found from the listing itself (a path segment whose pages mirror unprefixed pages,
-// or that has sibling namespaces), not from a hand-kept list.
+// Page listing for one docs site. Sources, in order: robots.txt `Sitemap:` lines, sitemap.xml at the docs path and the
+// origin (indexes followed), then llms.txt. A Markdown URL that llms.txt names is kept as the page's copy: the site
+// itself publishes it for agents, and on a JavaScript-only site it is the only readable form. The listing is cut to the
+// resolver's scope prefix, robots.txt, and one version and locale: version and locale namespaces are found from the
+// listing itself (a path segment whose pages mirror unprefixed pages, or that has sibling namespaces), not from a
+// hand-kept list.
 import { decode } from "../collector/decode.ts";
 import { DEFAULT_HEADERS, FetchFailure, type HttpClient } from "../collector/http.ts";
 import type { RobotsCache } from "./robots.ts";

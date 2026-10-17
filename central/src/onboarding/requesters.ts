@@ -1,7 +1,6 @@
 // Per-requester limits held in memory only: a sliding hour of new registrations per address, and one vote per
-// requester and technology (salted hashes). Nothing here is ever written or logged (vault: Source Registry and
-// Coverage, "Subscriptions and the shared registry"). Shared by the coverage service and the gateway Worker, so it uses
-// nothing beyond node:crypto.
+// requester and technology (salted hashes). Nothing here is ever written or logged. Shared by the coverage service and
+// the gateway Worker, so it uses nothing beyond node:crypto.
 import { createHash } from "node:crypto";
 
 const sha256 = (s: string): string => createHash("sha256").update(s).digest("hex");

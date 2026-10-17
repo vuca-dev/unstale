@@ -2,7 +2,7 @@
   self       the record's own release component, or the technology's core package (says nothing)
   introduced the change has the project add it: the value is in `introduces`, or the summary tells the user to
              install / load / switch to / use something (`must|need to|requires? (install|load|switch|use)`, `switch to`)
-  condition  the rest: a driver, dialect, adapter or platform the record applies to (the vault's meaning)
+  condition  the rest: a driver, dialect, adapter or platform the record applies to (the field's documented meaning)
 A record counts once, by its first matching class over its values (introduced > self > condition).
     python3 requires_audit.py CATALOG_DIR [--list]"""
 import gzip, json, os, re, sys

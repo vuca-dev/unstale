@@ -1,15 +1,14 @@
 # Replay against the unstale catalog (15 October 2026)
 
 `~/ati-slice0/harness/replay.py` is run unchanged against the published unstale catalog through
-`run_replay.py`, and compared with the first replay (vault: Slice 0 - Eval Results, "Replay: reviews at the commit
-before a real upgrade (14 October 2026)"). Condition `orig`, the four original arms, K=2, and the original answer keys
+`run_replay.py`, and compared with the first replay (14 October 2026). Condition `orig`, the four original arms, K=2, and the original answer keys
 (58 changes, reused, not regenerated).
 
 - **Catalog:** the final catalog promoted at `~/unstale/.store/catalog` (1,005 active records), snapshotted with
   `cp -cR` before the run. sha256 prefixes of `v1/tech/{nestjs,next,prisma}.json`: `e6f1abd01cf3b295`,
   `3bfef217d009fe3c`, `2787c4159b995e36`.
 - **Laravel 12 (krayin-laravel12):** not covered (no Laravel in the catalog), so it was not run. Its 18 key changes are
-  left out of every table here, as in the vault's tables.
+  left out of every table here, as in the first replay's tables.
 - **No apply or check step exists in replay.py, and none was added.** Reviews propose changes; nothing is applied, built
   or tested. So the rule about running pending DB migrations did not trigger.
 
@@ -55,19 +54,18 @@ Prisma K3, NestJS K8, K11, K14. The keys' own `responds_to` text often says "req
 | Optional | 5 | 2 / **2** | 1 / **1** | 1 / **1** | 1.5 / **1** | 1 / 1 | 1 / 0.5 |
 
 (Baseline / unstale in each cell; the baseline split applies the same labels to the first replay's match and reviews,
-copied read-only, no model calls. It reproduces the vault's totals: 21 covered, 18 in the type-tier first batch,
+copied read-only, no model calls. It reproduces the first replay's totals: 21 covered, 18 in the type-tier first batch,
 17.5 and 19.5 found.)
 
 ## Why type tier fell
 
-The unstale catalog's `breaking` is set by the classifier with the strict rubric (vault: Capability Synthesis, "Breaking
-labels"). The entries behind the required key changes are now labelled not breaking, so they leave tier 0:
+The unstale catalog's `breaking` is set by the classifier with the strict rubric. The entries behind the required key changes are now labelled not breaking, so they leave tier 0:
 
 - **Next.js 16:** `next-proxy-ts` (new_api, tier 3, rank 71), `next-images-domains-domains` (deprecation that still
   warns, tier 1, rank 44), `next-turbopack` (default_change, tier 2, rank 66), behind 42 breaking records. In the
   baseline all three were tier 0 (ranks 5, 6, 44).
 - **NestJS 12:** `nestjs-esm-packages` is labelled not breaking (rank 15, inside the batch but in the middle). This is
-  the case the vault calls out: the source says CommonJS apps keep working, but invoicerr's Jest setup could not load the
+  the case the first replay called out: the source says CommonJS apps keep working, but invoicerr's Jest setup could not load the
   packages. Of the four type-tier and whole-queue reviews, two proposed it (one only as "later") and two did not; three covered key changes hang off it.
 - **Prisma 7** is unaffected: its entries are still breaking (54 of 81 queue entries are tier 0) and it matches or
   beats the baseline (10 covered, 10 of 10 in the first tier batch, 9 found by type tier and 10 by the whole queue).

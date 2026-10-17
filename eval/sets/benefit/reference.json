@@ -3650,7 +3650,7 @@
    ],
    "adjudication": {
     "sided_with": "claude",
-    "why": "nesting and array-index upload limits are DoS hardening (the vault rated the multipart nesting limit security)"
+    "why": "nesting and array-index upload limits are DoS hardening (the user-labelled set rated the multipart nesting limit security)"
    }
   },
   {

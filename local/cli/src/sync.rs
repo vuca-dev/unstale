@@ -1,5 +1,5 @@
 //! `unstale sync`: root, then only the stack's technology indexes, then their shards, verified, then the index
-//! swapped in (vault: Catalog Publishing and Sync, "Catalog format" and "Manifest").
+//! swapped in.
 //!
 //! The catalog is a local directory (a path or `file://` URL) or an `http(s)://` base URL. Over HTTP the
 //! per-technology indexes are polled with conditional requests (`If-None-Match` / `If-Modified-Since` from the

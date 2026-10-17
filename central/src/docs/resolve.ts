@@ -1,8 +1,7 @@
-// Docs source resolution (vault: Source Registry and Coverage, "Docs sources traced from the package"; measured in
-// Docs Sources - Eval D1: 90 % out of sample, no validated pair wrong). A deterministic chain from a package URL to its
-// official docs site(s) and docs repositories, each with the step that named it and a validation verdict. No model
-// calls and no web search. Ported unchanged from eval/docs-sources/resolve.mts; HTTP goes through a `Fetcher` so the
-// eval replays its cache and the module uses the polite client.
+// Docs source resolution (measured: 90 % out of sample, no validated pair wrong). A deterministic chain from a package
+// URL to its official docs site(s) and docs repositories, each with the step that named it and a validation verdict. No
+// model calls and no web search. Ported unchanged from eval/docs-sources/resolve.mts; HTTP goes through a `Fetcher` so
+// the eval replays its cache and the module uses the polite client.
 import { createHash } from "node:crypto";
 import { isRepoSlug } from "../pipeline/util.ts";
 

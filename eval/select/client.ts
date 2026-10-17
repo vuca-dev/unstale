@@ -1,7 +1,7 @@
-// One OpenAI-compatible chat-completions client for model selection (the HTTP call is central's llm.ts) (vault: Inference Costs, "Model selection",
-// slice 1). Provider = base URL + key file; model and body come from the caller. Answers are cached on disk by
-// sha256(provider + model + full request body), and only answers that parse are cached (as codex.ts). Every real call
-// appends one line to the usage log with tokens and dollars from prices.json; an unknown price is logged as null.
+// One OpenAI-compatible chat-completions client for model selection (the HTTP call is central's llm.ts). Provider =
+// base URL + key file; model and body come from the caller. Answers are cached on disk by sha256(provider + model +
+// full request body), and only answers that parse are cached (as codex.ts). Every real call appends one line to the
+// usage log with tokens and dollars from prices.json; an unknown price is logged as null.
 import { appendFileSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";

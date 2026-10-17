@@ -5,11 +5,10 @@ export const BENEFIT_P = 0.5;
 export const BORDERLINE: readonly [number, number] = [0.35, 0.65];
 /** change_type and surface are borderline below this confidence. */
 export const CHOICE_CONFIDENCE = 0.6;
-/** Same-or-new at ingest: "same" only at or above this (vault: Capability Synthesis, "Matching at ingest"). */
+/** Same-or-new at ingest: "same" only at or above this. */
 export const SAME_P = 0.7;
 /** Same-or-new across evidence kinds (a guide item against a release-notes record), where the quote guard does not
- * apply: "same" only at or above this. Set from docs/match-audit-guides.md (tuned in-sample; see vault: Implementation
- * Decisions). */
+ * apply: "same" only at or above this. Set from docs/match-audit-guides.md (tuned in-sample). */
 export const CROSS_SAME_P = 0.85;
 /** The same two bars for requests asked with the shorter rule text (match.ts shortRules), fitted on dev for it
  * (eval/select/slice5/RESULTS-judge2.md, "M8"): at the old bars it let one wrong merge through on held-out. */

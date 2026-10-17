@@ -66,8 +66,8 @@ export async function runTechnology(
   const releases = opts.limit ? fetched.notes.slice(0, opts.limit) : fetched.notes;
   console.log(`${t.id}: ${releases.length} releases (${fetched.stats.requests} list requests)`);
 
-  // The docs module's daily pass (vault: Docs Monitoring - Handoff, step 6): when due, check the technology's docs
-  // pages and record change events. Off for a trial (`limit`), offline, or opts.docs === false.
+  // The docs module's daily pass: when due, check the technology's docs pages and record change events. Off for a trial
+  // (`limit`), offline, or opts.docs === false.
   const docsOn = opts.docs !== false && !opts.limit;
   const http = new HttpClient(DEFAULT_HTTP);
   const pass = docsOn && !opts.offline ? await dailyPass(t, { http, log: (s) => console.error(`${t.id} docs: ${s}`) }) : undefined;
@@ -185,9 +185,8 @@ export async function runTechnology(
           }
         : {}),
     };
-    // The rarity sample is drawn only on request (vault: Implementation Decisions #4: the catalog ships with the edge's
-    // fallback rarity, since no selection rule beat it); a sample in the store (`sample.json`) is still counted and
-    // published.
+    // The rarity sample is drawn only on request (the catalog ships with the edge's fallback rarity, since no selection
+    // rule beat it); a sample in the store (`sample.json`) is still counted and published.
     if (opts.sample === true) await drawSample(t, store);
     if (opts.publish !== false) {
       const sample = sampleCounts(t.id, activeTerms(store));

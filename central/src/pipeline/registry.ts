@@ -1,4 +1,4 @@
-// Prerequisite names checked against the ecosystem's registry (vault: Data Model Contract, `prerequisites` row: "a
+// Prerequisite names checked against the ecosystem's registry ("a
 // package name is checked once against the ecosystem's registry (cached); platform names come from each ecosystem's
 // spec ... No alias table ... A name that cannot be checked stays as prose and never blocks the record (fails open)").
 //

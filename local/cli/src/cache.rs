@@ -1,5 +1,4 @@
-//! The per-user catalog cache and reading it (vault: Data Model Contract, "Local opportunity": the cache is per
-//! user and shared across repositories; Catalog Publishing and Sync, "Catalog format").
+//! The per-user catalog cache, shared across repositories, and reading it.
 //!
 //! Layout under the cache directory, mirroring the published catalog:
 //! `v1/root.json`, `v1/tech/{technology}.json` (the index bytes as published), `v1/shards/{technology}/{file}`.
@@ -56,9 +55,8 @@ pub fn verify_shard(r: &ShardRef, bytes: &[u8]) -> Result<()> {
     Ok(())
 }
 
-/// A live record with the classifier's borderline labels, read from the raw line so this crate does not depend
-/// on the optional `classifier` field being in the schema yet (vault: Relevance Engine, "Classifier for labels
-/// and ratings": borderline calls are flagged, never dropped).
+/// A live record with the classifier's borderline labels, read from the raw line so this crate does not depend on the
+/// optional `classifier` field being in the schema yet (borderline calls are flagged, never dropped).
 #[derive(Debug, Clone)]
 pub struct Rec {
     pub r: CapabilityRecord,

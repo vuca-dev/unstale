@@ -2,7 +2,7 @@
 
     python3 eval/docs-sources/replay_report.py <replay.json> [<wayback.json>] [--markers]
 
-The version share is the decision input for the `observed` field (vault: Docs Monitoring - Handoff): of the section
+The version share is the decision input for the `observed` field: of the section
 changes the daily pass would record, how many carry a version (marker or upgrade guide) and so can be published.
 """
 import collections

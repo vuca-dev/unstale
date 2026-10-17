@@ -1,7 +1,6 @@
 # npm channel (local rehearsal)
 
-The npm install channel from the vault (Onboarding CLI, "Install channels": per-platform packages so
-`npx @unstale/cli init` works, the biome/esbuild pattern). npm refuses the bare name `unstale` (too similar to
+The npm install channel: per-platform packages so `npx @unstale/cli init` works, the biome/esbuild pattern. npm refuses the bare name `unstale` (too similar to
 `install`), so the wrapper is `@unstale/cli`; its directory stays `unstale/`.
 
 - `unstale/`: the wrapper package, `@unstale/cli`. `bin/unstale.js` resolves `@unstale/cli-<platform>-<arch>` (an

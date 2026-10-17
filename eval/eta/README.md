@@ -1,7 +1,7 @@
 # Completion estimates for coverage jobs (H6)
 
-Question: can central tell a user how long shared coverage will take, as a **range**, without inventing it? Vault:
-Onboarding DX - Gap Hypotheses, H6.
+Question: can central tell a user how long shared coverage will take, as a **range**, without inventing it?
+(Onboarding hypothesis H6.)
 
 **Data.** `central/src/onboarding/service.ts` appends one line to `.store/central/onboarding/timeline.jsonl` on every
 saved job state: public identity, state, records, release and docs counters, time. Nothing about any repository.

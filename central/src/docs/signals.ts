@@ -1,6 +1,6 @@
 // Site-level change signals: one or two requests that say a whole docs site is unchanged since the last pass, so its
-// pages are not checked one by one (user, 16 October 2026; vault: Central Scheduling and Infrastructure, "Scale
-// probe"). Two signals, both from the site itself, with no per-site table:
+// pages are not checked one by one (user, 16 October 2026). Two signals, both from the site itself, with no per-site
+// table:
 //   - the site's `llms-full.txt` (the whole docs in one file; not `llms.txt`, which is only an index) is byte for byte
 //     what it was at the last pass;
 //   - the site is built from a repository (a validated site/repository pair from source resolution) and no commit has

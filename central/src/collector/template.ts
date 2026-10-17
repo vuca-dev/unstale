@@ -12,8 +12,8 @@ export interface TemplateEvent {
 }
 
 /**
- * `siteOf` groups pages by site rather than host where one host serves several sites (vault: Change Monitoring,
- * "Template events are grouped by site, not host"); the event's `host` field then holds that site key.
+ * `siteOf` groups pages by site rather than host where one host serves several sites; the event's `host` field then
+ * holds that site key.
  */
 export function findTemplateChanges(results: readonly CheckResult[], minPages = 3, siteOf: (r: CheckResult) => string = (r) => new URL(r.url).host): TemplateEvent[] {
   const groups = new Map<string, TemplateEvent>();

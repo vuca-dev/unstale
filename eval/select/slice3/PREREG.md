@@ -1,7 +1,7 @@
 # Slice 3 pre-registration: the generative model for steps A (+B)
 
-Written 16 October 2026, before any candidate (or a fresh Luna run) was scored on the held-out extraction set. Vault:
-Inference Costs, "Model selection". Question: which text-generation model should extract change records from release
+Written 16 October 2026, before any candidate (or a fresh Luna run) was scored on the held-out extraction set.
+Question: which text-generation model should extract change records from release
 notes (`EXTRACT_PROMPT`) and write their label fields (`LABEL_PROMPT`, or both in one call, `ONE_CALL_PROMPT`)?
 Slice 2 decides one call against two on Luna and owns `UNSTALE_EXTRACT_STRUCTURE`; this slice does not edit
 `central/src` and runs everything through `eval/select/slice3/run3.mts` (the pipeline's prompts, `chunk`, parsers and

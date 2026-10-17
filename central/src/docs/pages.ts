@@ -1,10 +1,10 @@
-// One fetch per docs page per day, however many technologies watch it (vault: Central Scheduling and Infrastructure,
-// "Scale probe": 29% of technology-page pairs were the same page, and one site was watched by 21 technologies). A
-// docs page fetched for one technology is kept for `ttlMs` and served to the next technology that checks it, with
-// the same request headers; each technology still keeps its own snapshots and events. A technology's own re-check
-// always fetches (a second release the same day must see the page as it is now). Conditional requests are answered
-// from the kept validators. Kept under the central cache, outside the saved state (it only matters within
-// a day, and a run's packages that release together share most of it).
+// One fetch per docs page per day, however many technologies watch it (in the scale probe, 29 % of technology-page
+// pairs were the same page, and one site was watched by 21 technologies). A docs page fetched for one technology is
+// kept for `ttlMs` and served to the next technology that checks it, with the same request headers; each technology
+// still keeps its own snapshots and events. A technology's own re-check always fetches (a second release the same day
+// must see the page as it is now). Conditional requests are answered from the kept validators. Kept under the central
+// cache, outside the saved state (it only matters within a day, and a run's packages that release together share most
+// of it).
 import { brotliCompressSync, brotliDecompressSync } from "node:zlib";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";

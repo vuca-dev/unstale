@@ -1,6 +1,5 @@
-//! Lexical matching over the repository: no model, no index (vault: Relevance Engine, "Relevance funnel" step 5
-//! and "Fixes the funnel needs"). Ported from the Slice 0 harness (`fw_spike._lits`, `_hit`; the whole-token
-//! applied check from `replay.py`).
+//! Lexical matching over the repository: no model, no index. Ported from the Slice 0 harness (`fw_spike._lits`, `_hit`;
+//! the whole-token applied check from `replay.py`).
 
 use aho_corasick::{AhoCorasick, MatchKind};
 use ignore::gitignore::{Gitignore, GitignoreBuilder};
@@ -355,9 +354,9 @@ pub fn find(repo: &Repo, usage_lits: &BTreeSet<String>, whole_lits: &BTreeSet<St
     hits
 }
 
-/// The central term-rarity sample (vault: Relevance Engine, "Where term weights are computed"): for each term, how
-/// many of the sample repositories contain it, by exactly the rule the funnel ranks with (`find`'s usage match on
-/// the term as `clean_lit` cleans it). A term `clean_lit` drops counts 0; the edge never matches it either.
+/// The central term-rarity sample: for each term, how many of the sample repositories contain it, by exactly the rule
+/// the funnel ranks with (`find`'s usage match on the term as `clean_lit` cleans it). A term `clean_lit` drops counts
+/// 0; the edge never matches it either.
 pub fn sample_counts(repos: &[Repo], terms: &[String]) -> BTreeMap<String, u32> {
     let lits: BTreeMap<&String, String> = terms.iter().filter_map(|t| clean_lit(t).map(|l| (t, l))).collect();
     let set: BTreeSet<String> = lits.values().cloned().collect();

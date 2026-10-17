@@ -1,8 +1,8 @@
 // Security advisories from OSV (osv.dev: GHSA, PyPA, RustSec, Go vulndb, ...), attached to the records that describe
-// their fix (vault: Data Model Contract, evidence kinds; Relevance Engine, "Bump digest"). Release notes name some
-// advisories and omit others, and date backports inconsistently; the advisory database states, per package, which
-// versions are affected and which version first has the fix. That is what the edge needs to say which advisories a
-// bump fixes, so each security record carries its advisories' ids and affected versions.
+// their fix. Release notes name some advisories and omit others, and date backports inconsistently; the advisory
+// database states, per package, which versions are affected and which version first has the fix. That is what the edge
+// needs to say which advisories a bump fixes, so each security record carries its advisories' ids and affected
+// versions.
 //
 // Steps, per technology:
 //   1. packages: the technology's components, plus siblings from the same repository through the ecosystem's hook

@@ -1,8 +1,7 @@
 # Label fields (step B): reference set, conditions hill-climb, input diet — pre-registration
 
 Written 16 October 2026 before any reference answer was scored or compared with a model's answer. Model settled:
-`vercel:openai/gpt-6-luna`, reasoning `low`, two calls (slice 3b). Vault: Inference Costs, "Cost levers and next
-experiments", #5 and #6.
+`vercel:openai/gpt-6-luna`, reasoning `low`, two calls (slice 3b; cost levers #5 and #6).
 
 ## The set (#5a)
 

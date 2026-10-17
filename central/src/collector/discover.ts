@@ -1,4 +1,4 @@
-// Find and validate the Markdown copy of a docs page, per Source Registry#Agent-facing docs surfaces:
+// Find and validate the Markdown copy of a docs page:
 // <link rel=alternate type=text/markdown> or a Link header, then URL conventions, then
 // Accept: text/markdown. A candidate is accepted only if it is Markdown (not an HTML soft 404)
 // and covers enough of the rendered page's content words.

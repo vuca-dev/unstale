@@ -99,9 +99,9 @@ const requestSchema = z.object({ purl: z.string().max(230) }).strict();
 const jobPath = (purl: string) =>
   join(centralDir(), "onboarding", "jobs", `${sha256(purl)}.json`);
 const now = () => new Date().toISOString();
-// Job timeline (vault: Onboarding DX - Gap Hypotheses, H6): one line per saved state, public identity and counters
-// only, so stage durations (queue wait, per release, per docs page) can be measured before any completion estimate
-// is shown. Fails open: a timeline write never fails a job.
+// Job timeline: one line per saved state, public identity and counters only, so stage durations (queue wait, per
+// release, per docs page) can be measured before any completion estimate is shown. Fails open: a timeline write never
+// fails a job.
 export const timelinePath = () => join(centralDir(), "onboarding", "timeline.jsonl");
 function timeline(job: Job) {
   try {
@@ -586,10 +586,10 @@ export class CoverageService {
       }
       publishTechnology(store, releases.checked, catalogDir());
     });
-    // The docs module (vault: Docs Monitoring - Handoff, step 6): the daily pass over the technology's official docs,
-    // then extraction of the changes that name their version. A first pass is a baseline: nothing is extracted from it.
-    // The crawl makes no model call; each planned docs note is charged its measured volume before extraction, like a
-    // release note, and counts toward the technology's quarterly tokens.
+    // The docs module: the daily pass over the technology's official docs, then extraction of the changes that name
+    // their version. A first pass is a baseline: nothing is extracted from it. The crawl makes no model call; each
+    // planned docs note is charged its measured volume before extraction, like a release note, and counts toward the
+    // technology's quarterly tokens.
     this.save(job, "partial", "Checking the official documentation");
     let saved = 0;
     const pass = await dailyPass(tech, {

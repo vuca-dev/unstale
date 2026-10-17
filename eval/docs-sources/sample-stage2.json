@@ -1,5 +1,5 @@
 {
- "note": "D1 stage 2 sample (vault: \"Docs Sources - Eval\"): distinct packages declared directly by recently active public",
+ "note": "D1 stage 2 sample: distinct packages declared directly by recently active public",
  "repositories": [
   {
    "repo": "latitude-dev/latitude-llm",

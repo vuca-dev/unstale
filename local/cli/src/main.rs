@@ -1,5 +1,5 @@
-//! `unstale`: the local half of ATI. Vault notes govern each rule; see the vault note Implementation Decisions for the
-//! open choices taken.
+//! `unstale`: the client. Stack detection, catalog sync, ranking, reports and the agent integration; the catalog
+//! service is `central/`.
 
 mod cache;
 mod onboarding;
@@ -631,7 +631,7 @@ fn write_disposition(ctx: &Ctx, w: &World, id: &str, rev: u32, d: Disposition, n
 }
 
 fn after_disposition(ctx: &Ctx, id: &str, clear_do_now: bool) -> Result<()> {
-    // The skill files are regenerated when the ledger changes (vault: Agent Adapter), without advancing a batch.
+    // The skill files are regenerated when the ledger changes, without advancing a batch.
     let w = world(ctx)?;
     let out = outcome(&w, BTreeMap::new());
     let mut state = State::load(&ctx.tool);

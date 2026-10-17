@@ -1,8 +1,7 @@
 # Label fields (step B) on gpt-6-luna: reference set, prompt variants, input diet
 
 16 October 2026. Pre-registration: `PREREG.md` (written before the reference set was scored). Model:
-`vercel:openai/gpt-6-luna`, reasoning `low`, two calls. Vault: Inference Costs, "Cost levers and next experiments",
-#5 and #6.
+`vercel:openai/gpt-6-luna`, reasoning `low`, two calls (cost levers #5 and #6).
 
 ## Verdicts
 

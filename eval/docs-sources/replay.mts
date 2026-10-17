@@ -1,9 +1,9 @@
-// Compressed-timeline test of the docs daily pass (vault: Docs Monitoring - Handoff, "Paused"). For every package in
-// the resolver sample whose docs history is in Git (a docs repo or repo docs directory from the resolver's validated
-// pairs, or the README for README-only packages), replays the last N days one day at a time through the module's own
-// normalisation, section diff, namespace and version-attribution rules, and measures what the daily pass would have
-// recorded: events per day, the share of changed sections that carry a version, and how many changes are formatting,
-// links or typos (the materiality question). No model calls. Clones are throwaway (blob-less, shallow) under --work.
+// Compressed-timeline test of the docs daily pass. For every package in the resolver sample whose docs history is in
+// Git (a docs repo or repo docs directory from the resolver's validated pairs, or the README for README-only packages),
+// replays the last N days one day at a time through the module's own normalisation, section diff, namespace and
+// version-attribution rules, and measures what the daily pass would have recorded: events per day, the share of changed
+// sections that carry a version, and how many changes are formatting, links or typos (the materiality question). No
+// model calls. Clones are throwaway (blob-less, shallow) under --work.
 //
 //   cd central && npx tsx ../eval/docs-sources/replay.mts <out.json> [--days 90] [--work <dir>] [--only <substring>]
 //

@@ -16,7 +16,7 @@
 - EUDIPLO/eudiplo
 
 12 new upgrade events (4 each for Next.js 15 → 16, Prisma 6 → 7 and NestJS 11 → 12) in public repositories, chosen by a
-written rule, with answer keys built the way the vault describes ("Replay: reviews at the commit before a real upgrade"),
+written rule, with answer keys built the way the first replay built them (reviews at the commit before a real upgrade),
 and each key change marked required or optional by a stated rule. Runnable with `../run_replay.py` (`--set new|all`).
 Deterministic metrics: `../RESULTS-expanded.md`.
 

@@ -1,8 +1,7 @@
-// Docs change events to extraction (vault: Docs Monitoring - Handoff, sequence step 2). Each event's sections that
-// carry a version (a marker on the page, or an upgrade guide) become one extraction note per version: the rendered,
-// fenced section diff, through the same extraction, labelling, matching and publishing as release notes. Sections
-// without a version are held (counted, never published) until the version-unknown schema decision. A dry run renders
-// the notes and makes no model calls.
+// Docs change events to extraction. Each event's sections that carry a version (a marker on the page, or an upgrade
+// guide) become one extraction note per version: the rendered, fenced section diff, through the same extraction,
+// labelling, matching and publishing as release notes. Sections without a version are held (counted, never published)
+// until the version-unknown schema decision. A dry run renders the notes and makes no model calls.
 import { join } from "node:path";
 import type { DocsNote } from "../pipeline/extract.ts";
 import type { GuideNote } from "../pipeline/fetch.ts";
@@ -47,19 +46,18 @@ export interface PlanOptions {
 }
 
 /**
- * Promoted 16 October 2026 on the 90-day replay (vault: Docs Monitoring - Handoff, "Diff and gating levers"): block
- * context and word marks lose no changed text and cut versioned input by 12 %; the gate drops format, link, renumber
- * and typo edits (−23 % estimated tokens, no false drop in 36 reviewed). Rewording is not gated: it dropped real
- * additions ("(CommonJS projects use Jest)").
+ * Promoted 16 October 2026 on the 90-day replay: block context and word marks lose no changed text and cut versioned
+ * input by 12 %; the gate drops format, link, renumber and typo edits (−23 % estimated tokens, no false drop in 36
+ * reviewed). Rewording is not gated: it dropped real additions ("(CommonJS projects use Jest)").
  */
 export const PLAN_DEFAULTS: Required<PlanOptions> = { context: "block", words: true, skip: new Set<EditKind>(["format", "link", "renumber", "typo"]), guideKind: "upgrade_guide" };
 
 const ledgerPath = (tech: string) => join(docsDir(tech), "extracted.json");
 
 /**
- * The docs pass's limits (vault: Docs Monitoring - Handoff, sequence step 6). A site larger than the page budget is
- * covered over several passes (least recently checked first); notes beyond the note budget wait for the next run,
- * guides first. `freshMs` is the old daily cadence, still used when a release cannot be read (fail open).
+ * The docs pass's limits. A site larger than the page budget is covered over several passes (least recently checked
+ * first); notes beyond the note budget wait for the next run, guides first. `freshMs` is the old daily cadence, still
+ * used when a release cannot be read (fail open).
  */
 export const DOCS_PASS = { freshMs: 20 * 3600 * 1000, pages: 3000, notes: 40 };
 
@@ -68,11 +66,10 @@ const days = (v: string | undefined, fallback: number) => {
   return (v !== undefined && v !== "" && Number.isFinite(n) && n >= 0 ? n : fallback) * 86_400_000;
 };
 /**
- * When a pass runs (user, 16 October 2026: on a new release, until shown otherwise; vault: Central Scheduling and
- * Infrastructure, "Scale probe"). Docs changes that matter land with releases, so a technology's docs are checked when
- * one of its packages publishes a new version, once more `followupMs` later (docs often follow the release by days),
- * and until a pass cut short by the page budget has covered the rest. `maxAgeMs` (0: off) re-checks a technology with
- * no release for that long.
+ * When a pass runs (user, 16 October 2026: on a new release, until shown otherwise). Docs changes that matter land with
+ * releases, so a technology's docs are checked when one of its packages publishes a new version, once more `followupMs`
+ * later (docs often follow the release by days), and until a pass cut short by the page budget has covered the rest.
+ * `maxAgeMs` (0: off) re-checks a technology with no release for that long.
  */
 export const DOCS_GATE = {
   followupMs: days(process.env.UNSTALE_DOCS_FOLLOWUP_DAYS, 3),

@@ -1,9 +1,9 @@
-// Shard prune after the grace period (vault: Catalog Publishing and Sync, "Manifest": a shard stays published for 7
-// days after the last index referencing it, so a client mid-sync never gets a 404). The history is one file per
-// technology at `<catalog>/history/<tech>.json`, beside the served tree (`v1/`) and never exported: for each shard no
-// longer referenced, when the last index referencing it was replaced. The publisher records it (an unchanged index
-// changes nothing, so a rerun leaves every file byte-identical); the prune starts the clock of an unreferenced shard
-// it has no history for (published before history existed) at first sight, so nothing is deleted on first sight.
+// Shard prune after the grace period: a shard stays published for 7 days after the last index referencing it, so a
+// client mid-sync never gets a 404. The history is one file per technology at `<catalog>/history/<tech>.json`, beside
+// the served tree (`v1/`) and never exported: for each shard no longer referenced, when the last index referencing it
+// was replaced. The publisher records it (an unchanged index changes nothing, so a rerun leaves every file
+// byte-identical); the prune starts the clock of an unreferenced shard it has no history for (published before history
+// existed) at first sight, so nothing is deleted on first sight.
 import { existsSync, readdirSync, readFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";

@@ -1,5 +1,5 @@
-// Worst-case cost per step (vault: Inference Costs, "Steps that call a model today"), with N, c, R and S measured on
-// the store (read only) and P from the pipeline's own prompts. No model calls.
+// Worst-case cost per step, with N, c, R and S measured on the store (read only) and P from the pipeline's own prompts.
+// No model calls.
 //
 //   A  extraction        input O(N + c·P_A)          output R·o_A
 //   B  field labelling   input O(N + R·o_A + c·P_B)  output R·o_B       (the notes are read a second time)

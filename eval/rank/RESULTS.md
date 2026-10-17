@@ -2,9 +2,8 @@
 
 Question: tier 1 (breaking changes and removals) now holds 786 records across the 15 replay events. Can an order
 inside it, built only from what the record and the repository give (no model at the edge, no per-technology tables),
-put more required key changes in the upgrade review's first batch of 16? Vault: Relevance Engine, "Default review
-order" and "Relevance funnel"; Capability Synthesis, "Breaking labels" ("the fix is applicability inside tier 1
-(`requires`, usage order), not stricter labels"); Data Model Contract, `requires`, `terms`, `replaces`.
+put more required key changes in the upgrade review's first batch of 16? (Design rule for breaking labels: "the fix is applicability inside tier 1
+(`requires`, usage order), not stricter labels"; fields `requires`, `terms`, `replaces`.)
 
 ## Pre-registration (written before any variant was measured)
 
@@ -93,10 +92,10 @@ written as preconditions rather than packages the upgrade introduces.
 
 ## Follow-up: the `requires` demotion (pre-registered before measuring, 15 October 2026)
 
-**What `requires` is meant to express.** Data Model Contract: "literals without which the record cannot apply (a
+**What `requires` is meant to express.** The data model: "literals without which the record cannot apply (a
 driver, dialect or platform: `oracledb`) ... empty unless the evidence names a driver, dialect or platform, each value a
 literal from the evidence. At the edge, a record whose `requires` matches nothing in the repository goes to the end of
-the queue; it is not dropped. To test: wrongful demotions of key changes in the replay." Relevance Engine: records "that
+the queue; it is not dropped. To test: wrongful demotions of key changes in the replay." The relevance design: records "that
 only apply with a specific driver, dialect or platform" get a required term. So: *applies only to projects that already
 use X*. A package the change has the project add is the opposite (absent until adopted, like `introduces`).
 
@@ -115,7 +114,7 @@ demoted in projects that do use those databases.
 - R1: as B, but a `requires` value that is also in the record's `introduces` is ignored (a literal the change
   introduces cannot be a precondition). An edge guard; it cannot see `dotenv`, which is not in `introduces`.
 
-**Decision rule.** Choose on DEV between A0 and R1 (tie → R1, the smaller change to the vault's rule). Ship only if
+**Decision rule.** Choose on DEV between A0 and R1 (tie → R1, the smaller change to the existing rule). Ship only if
 it beats B on DEV by at least 2 required changes, loses at most 1 on all key changes, the dogfood repositories'
 first batches lose no migration record to a record with only incidental matches (listed before/after; nest API stays
 empty with its reasons), and its HELD-OUT required count is not below B's. HELD-OUT has been looked at once already
@@ -175,10 +174,10 @@ gate result `cli-1d37187`: CLI first 16 DEV 30 / HELD-OUT 6), N on the published
 catalog.
 
 **Decision rule.**
-- N ships if its DEV first-16 required count is not below HEAD's (it is a correctness fix the vault already demands:
+- N ships if its DEV first-16 required count is not below HEAD's (it is a correctness fix the design already demands:
   a floor raise is never dropped), its unit test passes and `scripts/dogfood.sh` passes.
 - L (the relabelled catalog) is recommended for promotion if N + L beats N on DEV by at least 1 required change and
-  loses none on all key changes; otherwise it is reported only (the prompt change stays, as the vault's meaning).
+  loses none on all key changes; otherwise it is reported only (the prompt change stays, as the field's intended meaning).
 - HELD-OUT once for the final combination. The review arm (tier, K=3) runs only for the final combination and only
   if the deterministic DEV count improves over HEAD; reported against the gate baseline (tier DEV 26.3 / HELD-OUT 4.0)
   and HEAD (27.0 / 5.0).
@@ -210,13 +209,13 @@ Gate (`eval/gate/results/rank-node*.md`; required key changes; CLI first 16 is d
   dogfood repositories' first batches are identical to HEAD's; `scripts/dogfood.sh` 48/48. The gate script prints
   both splits at once, so HELD-OUT was seen for N and N + L together (one look each).
 - **L not recommended for promotion yet**: no DEV change over N (rule: at least +1); HELD-OUT +1 is not a decision
-  input. The prompt change stays in `extract.ts` because it states the vault's meaning; the catalog stays as it is
+  input. The prompt change stays in `extract.ts` because it states the field's intended meaning; the catalog stays as it is
   until a rebuild or an explicit promotion.
 - Codex: 35 (relabel) + 18 (review; 27 cache hits) = 53 calls. No other model calls.
 
 ## Follow-up: file roles (pre-registered before measuring, 15 October 2026)
 
-**Why.** The AuditAI rehearsal (vault: Onboarding DX - Gap Hypotheses, H1) showed matches in CI workflows, QA maps,
+**Why.** The AuditAI rehearsal showed matches in CI workflows, QA maps,
 evaluation corpora and test files taking the evidence and the score. The first follow-up above already names "a rare
 literal counted only outside CI/workflow files" as the next thing to test. `usage::Role` (application, test,
 tooling, example, docs, generated, vendored; path conventions plus `.gitattributes` linguist lines) now orders the

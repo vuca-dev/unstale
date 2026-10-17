@@ -3,7 +3,7 @@
 The harness is imported read-only; every path it writes to is redirected into a scratch work dir, and its catalog
 reader (fw_spike.records / relabelled, and the url lookup) is replaced by one that reads the published unstale
 catalog (v1/tech/<t>.json -> gz JSON-lines shards). Answer keys are the harness's own replay/<event>/key.json, copied,
-never regenerated. Vault: Slice 0 - Eval Results, "Replay: reviews at the commit before a real upgrade".
+never regenerated.
 
     python3 run_replay.py --catalog DIR --work DIR setup
     python3 run_replay.py --catalog DIR --work DIR queue|match|review|score [event ...] [--arms tier,all]

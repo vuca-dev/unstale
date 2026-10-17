@@ -30,7 +30,7 @@ the guards) with every constant as tuned: `SAME_P` 0.7, `CROSS_SAME_P` 0.85, `QU
 - Every merge the judge plus guards made (within source and across sources).
 - Near-misses: every pair with p in [0.5, threshold) (threshold 0.7 within source, 0.85 across), and every pair a
   guard blocked at p ≥ 0.7; all of them if there are at most 80, else a random sample of 80 (seeded by the pair key).
-- Reference: Codex `gpt-5.6-luna` under the vault's v3 identity rules (`dm_match.py` RULES_V3, "different" when
+- Reference: Codex `gpt-5.6-luna` under the v3 identity rules (`dm_match.py` RULES_V3, "different" when
   unsure), 12 pairs per call. I read every pair where Codex and the pipeline disagree and every pair where either side
   mentions a security fix or an advisory id, and give the final verdict (SAME / DIFFERENT / UNSURE). Security pairs are
   also checked against the GitHub Advisory Database entries for `nuxt`.

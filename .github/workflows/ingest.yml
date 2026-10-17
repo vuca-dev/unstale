@@ -5,7 +5,6 @@
 # The gateway (gateway/, a Cloudflare Worker) is the public address: it serves the exported catalog as static files,
 # answers the coverage protocol, and holds new registrations until a run takes them (`drain`). A run acknowledges
 # what it took only after its deploy published their status and its state is saved, so a failed run loses no request
-# (vault: Central Scheduling and Infrastructure, "Registration gateway").
 #
 # State: the central store (UNSTALE_STORE: central/ state and caches, catalog/ published tree) is the only thing
 # that must outlive a runner. It is kept as assets of a *draft* release tagged `catalog-state` in this repository:
@@ -15,8 +14,7 @@
 # alternatives: actions/cache is evicted after 7 days without access and shares a 10 GB repository limit, so it
 # cannot be the only copy; a git branch would put churning caches into history (and hit the 100 MB file limit);
 # artifacts expire. A draft release is durable, has no storage quota, is invisible to readers without push access,
-# and is a plain download for a later move to another scheduler (vault: Central Scheduling and Infrastructure,
-# "Portability stance"). Seeding it from an operator's store: CONTRIBUTING.md.
+# and is a plain download for a later move to another scheduler. Seeding it from an operator's store: CONTRIBUTING.md.
 #
 # Schedule: every 3 hours (the repository is public, so standard runners are free; a private one pays per minute, so
 # run it daily there). Model calls are cached per record, so a run with no new
@@ -73,7 +71,7 @@ jobs:
       GH_REPO: ${{ github.repository }}
       GH_TOKEN: ${{ github.token }} # state release only; ingestion reads GitHub with INGEST_GITHUB_TOKEN
       # Extraction and the classifier's fallback use central's default model, gpt-6-luna through the AI gateway (flex
-      # tier; vault: Implementation Decisions, "Extraction model switch").
+      # tier).
       UNSTALE_BUDGET_TOKENS: ${{ vars.UNSTALE_BUDGET_TOKENS || '250000' }}
       UNSTALE_GATEWAY_URL: ${{ vars.UNSTALE_GATEWAY_URL }}
       # Workers static assets allow 20,000 files per version on the free plan (100,000 paid).

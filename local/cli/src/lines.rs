@@ -1,5 +1,5 @@
-//! Availability by release line, from the tech index's release index (vault: Implementation Decisions, "Release lines
-//! from the release index"; reference implementation `eval/lines/contract.py`).
+//! Availability by release line, from the tech index's release index (reference implementation
+//! `eval/lines/contract.py`).
 //!
 //! Central publishes the technology's stable releases in the window, ascending by version, each with its derived
 //! line (a set of versions inside which version order is publish order) and `line_start` on a line's first release

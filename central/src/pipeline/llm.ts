@@ -1,13 +1,12 @@
-// OpenAI-compatible chat-completions calls, and the extraction model switch (steps A+B; vault: Inference Costs,
-// "Model selection"). UNSTALE_EXTRACT_MODEL is `provider:model`, default `vercel:openai/gpt-6-luna` through the AI
-// gateway (slice 3b's pick, reasoning `low`); `openai:<model>` calls the OpenAI API directly. The same model answers
-// the classifier's fallback (classify/adapter.ts, ChatClassifier). No step calls the Codex CLI.
-// UNSTALE_EXTRACT_EFFORT sets reasoning_effort (default low). UNSTALE_EXTRACT_SERVICE_TIER (default flex on the gateway)
-// asks for the provider's flex tier: the same model at 50% of list price, slower (verified 16 October 2026 on
-// openai/gpt-6-luna: billed at 0.50×); a flex call the provider refuses for capacity is retried once at the default
-// tier, and the tier is not part of the cache key (same model, same answer distribution). Answers are cached by sha256(provider + request body),
-// only when they parse, so a failed or unparseable call is retried on the next run; a truncated answer counts as a
-// failed attempt.
+// OpenAI-compatible chat-completions calls, and the extraction model switch (steps A+B). UNSTALE_EXTRACT_MODEL is
+// `provider:model`, default `vercel:openai/gpt-6-luna` through the AI gateway (slice 3b's pick, reasoning `low`);
+// `openai:<model>` calls the OpenAI API directly. The same model answers the classifier's fallback
+// (classify/adapter.ts, ChatClassifier). No step calls the Codex CLI. UNSTALE_EXTRACT_EFFORT sets reasoning_effort
+// (default low). UNSTALE_EXTRACT_SERVICE_TIER (default flex on the gateway) asks for the provider's flex tier: the same
+// model at 50% of list price, slower (verified 16 October 2026 on openai/gpt-6-luna: billed at 0.50×); a flex call the
+// provider refuses for capacity is retried once at the default tier, and the tier is not part of the cache key (same
+// model, same answer distribution). Answers are cached by sha256(provider + request body), only when they parse, so a
+// failed or unparseable call is retried on the next run; a truncated answer counts as a failed attempt.
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";

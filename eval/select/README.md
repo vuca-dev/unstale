@@ -1,6 +1,6 @@
 # Model selection: slice 1 (infrastructure)
 
-Tools for choosing the cheapest adequate model per central step (vault: Inference Costs, "Model selection"). No
+Tools for choosing the cheapest adequate model per central step. No
 scorer here makes a model call. The runner calls a model only without `--dry-run`, and only after the budget guard has
 passed. Everything it writes goes under `out/`, which is gitignored. `.store` is only read.
 
