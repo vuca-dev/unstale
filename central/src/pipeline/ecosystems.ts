@@ -16,7 +16,8 @@ export interface Ecosystem {
   osv: string;
   compare?: (a: string, b: string) => number | undefined;
   siblings?: (t: Technology) => Promise<string[]>;
-  /** Package URLs a release of `component` installs for its users; undefined when the registry does not list it. */
+  /** Package URLs a release of `component` installs for its users; undefined when the registry does not list it
+   * (the package was not published at that version). */
   dependencies?: (component: string, version: string) => Promise<string[] | undefined>;
 }
 
@@ -131,7 +132,10 @@ async function npmDependencies(component: string, version: string): Promise<stri
     | undefined;
   if (!meta) return undefined;
   const bundled = [meta.bundleDependencies, meta.bundledDependencies].flatMap((x) => (Array.isArray(x) ? x.filter((n): n is string => typeof n === "string") : []));
-  return [...new Set([...Object.keys(meta.dependencies ?? {}), ...Object.keys(meta.optionalDependencies ?? {}), ...bundled])].map(npmPurl).sort();
+  // An alias (`"x": "npm:@scope/y@^1"`) installs its target, the package OSV names.
+  const names = (deps: Record<string, string> = {}) =>
+    Object.entries(deps).flatMap(([name, spec]) => [name, ...(typeof spec === "string" && spec.startsWith("npm:") ? [spec.slice(4).replace(/(.)@[^/@]*$/, "$1")] : [])]);
+  return [...new Set([...names(meta.dependencies), ...names(meta.optionalDependencies), ...bundled])].map(npmPurl).sort();
 }
 
 /** PEP 503 name normalisation, as a package URL (`pkg:pypi/<name>`). */
@@ -144,7 +148,9 @@ async function pypiDependencies(component: string, version: string): Promise<str
   if (!meta?.info) return undefined;
   const out = new Set<string>();
   for (const req of meta.info.requires_dist ?? []) {
-    if (/;.*\bextra\s*==/.test(req)) continue;
+    // Only an extra installs it: a marker that is an `extra ==` condition alone (an `or` can install it by default).
+    const marker = req.split(";")[1] ?? "";
+    if (/\bextra\s*==/.test(marker) && !/\bor\b/.test(marker)) continue;
     const m = /^\s*([A-Za-z0-9][A-Za-z0-9._-]*)/.exec(req);
     if (m) out.add(pypiPurl(m[1]!));
   }

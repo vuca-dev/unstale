@@ -135,7 +135,8 @@ describe("another package's advisory", () => {
   test("a release's runtime dependencies from the registry (peer and development ones are not installed), cached", async () => {
     const asked = stubOsv();
     expect(await releaseDependencies(RHF, "pkg:npm/react-hook-form", "7.69.0")).toEqual([]);
-    expect(await releaseDependencies(RHF, "pkg:npm/react-hook-form", "0.0.0-unpublished")).toBeUndefined();
+    // Not published at that version: installs nothing (null), unlike unknown (undefined).
+    expect(await releaseDependencies(RHF, "pkg:npm/react-hook-form", "0.0.0-unpublished")).toBeNull();
     expect(await releaseDependencies(RHF, "pkg:npm/react-hook-form", "7.69.0", { offline: true })).toEqual([]);
     expect(asked.filter((u) => u.includes("registry"))).toHaveLength(2);
     // No hook for the ecosystem: unknown.
@@ -195,6 +196,23 @@ describe("another package's advisory", () => {
     expect(back.foreignRestored).toEqual([`${RHF.id}:cve-2025-55182`]);
     expect(rce).toMatchObject({ change_type: "security", benefit: ["security", "correctness"], revision: 3 });
     expect(s.records[`${RHF.id}:cve-2025-67779`]).toMatchObject({ change_type: "other", benefit: ["none"] });
+
+    // OSV no longer knows an id: missing data restores nothing.
+    const gone = await attachAdvisories(RHF, s, [], releases, noJudge, { packages: RHF.components, lookup: async () => undefined, dependencies });
+    expect(gone.foreignRestored).toEqual([]);
+    expect(s.records[`${RHF.id}:cve-2025-67779`]).toMatchObject({ change_type: "other" });
+  });
+
+  test("npm aliases install their target; PyPI requirements only an extra installs are left out", async () => {
+    vi.stubGlobal("fetch", async (url: string) => {
+      if (url === "https://registry.npmjs.org/a/1.0.0")
+        return new Response(JSON.stringify({ dependencies: { x: "npm:@s/y@^1.2.0", z: "^2" }, optionalDependencies: { w: "npm:v" }, bundleDependencies: ["b"] }));
+      if (url === "https://pypi.org/pypi/p/1.0/json")
+        return new Response(JSON.stringify({ info: { requires_dist: ["Requests_Toolbelt (>=1.0)", 'sphinx ; extra == "docs"', 'pywin32 ; extra == "docs" or sys_platform == "win32"'] } }));
+      return new Response("{}", { status: 404 });
+    });
+    expect(await releaseDependencies(RHF, "pkg:npm/a", "1.0.0")).toEqual(["pkg:npm/%40s/y", "pkg:npm/b", "pkg:npm/v", "pkg:npm/w", "pkg:npm/x", "pkg:npm/z"]);
+    expect(await releaseDependencies(RHF, "pkg:pypi/p", "1.0")).toEqual(["pkg:pypi/pywin32", "pkg:pypi/requests-toolbelt"]);
   });
 
   test("an id among this technology's own advisories is never looked up and keeps the record", async () => {

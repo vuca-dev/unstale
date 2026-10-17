@@ -35,7 +35,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Classification, Questions } from "./classify/adapter.ts";
 import type { Labels } from "./classify/labels.ts";
-import { canonicalPurl, ecosystemOf, npmName as npmNameOf, npmPurl, semverOrder } from "./ecosystems.ts";
+import { canonicalPurl, ecosystemOf, npmName as npmNameOf, npmPurl, pypiPurl, semverOrder } from "./ecosystems.ts";
 import type { Incoming } from "./extract.ts";
 import { buildIndex, lineFn, recomputeReleases } from "./lines.ts";
 import { advisoryIds, create, evidenceOf, K, kindOf, matchRequest, nearIdenticalQuote, pick, retrieve } from "./match.ts";
@@ -93,12 +93,18 @@ const safe = (purl: string) => purl.replace(/^pkg:/, "").replace(/%40/g, "").rep
  * Cached; offline uses the cache; a failed sibling lookup falls back to the components.
  */
 export async function techPackages(t: Technology, opts: { refresh?: boolean; offline?: boolean } = {}): Promise<string[]> {
+  return (await packageList(t, opts)).purls;
+}
+
+/** `techPackages`, and whether the list is complete (false: siblings unread, offline with no cache or a failed lookup). */
+async function packageList(t: Technology, opts: { refresh?: boolean; offline?: boolean }): Promise<{ purls: string[]; complete: boolean }> {
   const p = join(dir(t), "packages.json");
   const cached = readJson<{ checked: string; purls?: string[] }>(p);
   const fresh = cached?.purls && Date.now() - Date.parse(cached.checked) < FRESH_MS;
-  if (cached?.purls && (opts.offline || (fresh && !opts.refresh))) return cached.purls;
+  if (cached?.purls && (opts.offline || (fresh && !opts.refresh))) return { purls: cached.purls, complete: true };
   const out = new Set(t.components);
-  if (opts.offline) return [...out].sort();
+  const hooked = t.components.some((c) => ecosystemOf(c).siblings);
+  if (opts.offline) return { purls: [...out].sort(), complete: !hooked };
   for (const eco of new Set(t.components.map(ecosystemOf))) {
     if (!eco.siblings) continue;
     try {
@@ -106,12 +112,12 @@ export async function techPackages(t: Technology, opts: { refresh?: boolean; off
       for (const x of await eco.siblings(t)) out.add(x);
     } catch (e) {
       console.error(`advisories: ${t.id}: sibling packages unavailable (${e instanceof Error ? e.message : e}); components only`);
-      return [...out].sort();
+      return { purls: [...out].sort(), complete: false };
     }
   }
   const purls = [...out].sort();
   writeAtomic(p, JSON.stringify({ checked: stamp(), purls }, null, 1) + "\n");
-  return purls;
+  return { purls, complete: true };
 }
 
 interface OsvEvent {
@@ -163,7 +169,8 @@ async function osvQuery(purl: string): Promise<OsvVuln[]> {
 
 /** The package URL of an OSV `affected` entry, canonical (`%40scope`), without version or qualifiers. */
 function entryPurl(a: NonNullable<OsvVuln["affected"]>[number]): string | undefined {
-  const p = a.package?.purl ?? (a.package?.ecosystem === "npm" && a.package.name ? npmPurl(a.package.name) : undefined);
+  const name = a.package?.name;
+  const p = a.package?.purl ?? (name && a.package?.ecosystem === "npm" ? npmPurl(name) : name && a.package?.ecosystem === "PyPI" ? pypiPurl(name) : undefined);
   return p?.replace(/@[^/]*$/, "").replace(/[?#].*$/, "").replace(/^pkg:npm\/@/, "pkg:npm/%40");
 }
 
@@ -316,21 +323,22 @@ export async function advisoryPackages(t: Technology, id: string, opts: { refres
 /**
  * The packages (canonical package URLs) a release of a component installs for its users (ecosystems.ts
  * `dependencies`), cached under the technology's advisories with no expiry (a published release does not change).
- * Undefined when the ecosystem has no hook or the registry does not list the release; throws when the registry cannot
- * be read or, offline, when nothing is cached.
+ * Null when the registry has no such release (the package was not published at that version: it installs nothing);
+ * undefined when the ecosystem has no hook (unknown); throws when the registry cannot be read or, offline, when nothing
+ * is cached.
  */
-export async function releaseDependencies(t: Technology, component: string, version: string, opts: { offline?: boolean } = {}): Promise<string[] | undefined> {
+export async function releaseDependencies(t: Technology, component: string, version: string, opts: { offline?: boolean } = {}): Promise<string[] | null | undefined> {
   const hook = ecosystemOf(component).dependencies;
   if (!hook) return undefined;
   const file = join(dir(t), "dependencies", `${safe(component)}@${version.replace(/[^A-Za-z0-9._+-]+/g, "_")}.json`);
   const cached = readJson<{ checked: string; dependencies: string[] | null }>(file);
-  if (cached) return cached.dependencies ?? undefined;
+  if (cached) return cached.dependencies;
   if (opts.offline) throw new Error(`${component}@${version} dependencies not cached (offline)`);
   advisoryStats.registryLists++;
   const deps = await hook(component, version);
   const dependencies = deps ? [...new Set(deps.map(canonicalPurl))].sort() : null;
   writeAtomic(file, JSON.stringify({ checked: stamp(), dependencies }, null, 1) + "\n");
-  return dependencies ?? undefined;
+  return dependencies;
 }
 
 // ---- Resolving ranges against the release index ----
@@ -582,8 +590,11 @@ export interface ForeignCheck {
   packages: readonly string[];
   /** Package URLs OSV attributes the id to; undefined when OSV does not know it. Throws when OSV cannot be read. */
   lookup: (id: string) => Promise<Set<string> | undefined>;
-  /** Package URLs the release installs for its users; undefined when unknown. Throws when it cannot be read. */
-  dependencies: (component: string, version: string) => Promise<string[] | undefined>;
+  /**
+   * Package URLs the release installs for its users; null when the package has no such release (it installs nothing);
+   * undefined when unknown (no hook). Throws when it cannot be read.
+   */
+  dependencies: (component: string, version: string) => Promise<string[] | null | undefined>;
 }
 
 /**
@@ -888,7 +899,7 @@ export async function relabelForeign(
     if (!looked.has(id)) looked.set(id, check.lookup(id));
     return looked.get(id)!;
   };
-  const read = new Map<string, Promise<string[] | undefined>>();
+  const read = new Map<string, Promise<string[] | null | undefined>>();
   const dependencies = (component: string, version: string) => {
     const k = `${component}@${version}`;
     if (!read.has(k)) read.set(k, check.dependencies(component, version));
@@ -923,7 +934,9 @@ export async function relabelForeign(
           console.error(`advisories: ${s.technology}: ${id} unavailable (${e instanceof Error ? e.message : e}); ${r.id} unchanged`);
           return undefined;
         }
-        if (!p || [...p].some((x) => packages.has(canonicalPurl(x)))) return false;
+        // Unknown to OSV: the labels stay as they are (a relabelled record is not restored on missing data either).
+        if (!p) return undefined;
+        if ([...p].some((x) => packages.has(canonicalPurl(x)))) return false;
         attributed.set(id, p);
       }
       for (const it of items) {
@@ -935,28 +948,31 @@ export async function relabelForeign(
       // with it) is beyond what the registry's dependencies can answer: kept.
       const foreignPackages = [...new Set([...attributed.values()].flatMap((x) => [...x]))].sort();
       const ecosystems = new Set([...packages].map(purlType));
-      if (foreignPackages.some((p) => !ecosystems.has(purlType(p)))) return false;
+      if (foreignPackages.some((p) => !ecosystems.has(purlType(p)))) return undefined;
       // Does the release ship the other package's fix to its users? The runtime dependencies of every package of the
       // technology (components and siblings: the dependency often sits in a sibling, @nestjs/platform-express) at each
       // version the record lists: one of the advisories' packages, or a package an item names (a direct dependency
-      // updated for a transitive one's advisory), keeps the record. Nothing known about any release: kept.
+      // updated for a transitive one's advisory), keeps the record. A package with no hook, or no package published at
+      // any of the versions: unknown, as it is.
       const shipped = new Set<string>();
       let known = false;
       for (const version of new Set(r.releases.map((x) => x.version))) {
         for (const component of packages) {
-          let deps: string[] | undefined;
+          let deps: string[] | null | undefined;
           try {
             deps = await dependencies(component, version);
           } catch (e) {
             console.error(`advisories: ${s.technology}: ${component}@${version} dependencies unavailable (${e instanceof Error ? e.message : e}); ${r.id} unchanged`);
             return undefined;
           }
-          if (!deps) continue;
+          // Any package whose dependencies cannot be known (no hook): unknown. Not published at the version: nothing.
+          if (deps === undefined) return undefined;
+          if (deps === null) continue;
           known = true;
           for (const d of deps) shipped.add(canonicalPurl(d));
         }
       }
-      if (!known) return false;
+      if (!known) return undefined;
       if (foreignPackages.some((p) => shipped.has(canonicalPurl(p)))) return false;
       if ([...shipped].some((d) => items.some((it) => namesPackage(it.text, d)))) return false;
       return { ids, packages: foreignPackages };
@@ -1003,10 +1019,16 @@ export async function advisoryStage(
     }
     return undefined;
   }
-  const packages = await techPackages(t, opts);
-  return attachAdvisories(t, s, advisories, releases, judge, {
-    packages,
-    lookup: (id) => advisoryPackages(t, id, opts),
-    dependencies: (component, version) => releaseDependencies(t, component, version, opts),
-  });
+  // Step 8 needs every package of the technology: with the siblings unread an advisory of one could pass for another
+  // package's, so the step is skipped (labels as they are).
+  const { purls: packages, complete } = await packageList(t, opts);
+  if (!complete) console.error(`advisories: ${t.id}: package list incomplete; another package's advisories not checked this run`);
+  return attachAdvisories(
+    t,
+    s,
+    advisories,
+    releases,
+    judge,
+    complete ? { packages, lookup: (id) => advisoryPackages(t, id, opts), dependencies: (component, version) => releaseDependencies(t, component, version, opts) } : undefined,
+  );
 }
