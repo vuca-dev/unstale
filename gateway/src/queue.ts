@@ -53,6 +53,36 @@ export interface Request {
   demand: number;
 }
 
+/** Where a coverage run is with a held package: started early for it, working it, publishing it, or not taking it. */
+export type RunState = "dispatched" | "running" | "publishing" | "declined";
+export const RUN_STATES: readonly RunState[] = ["dispatched", "running", "publishing", "declined"];
+
+/** The public counters of a job a run reports while it works a package (central's Job, same names). */
+export interface Progress {
+  state: string;
+  stage: string;
+  records: number;
+  releases_done: number;
+  releases_total: number;
+  docs_done: number;
+  docs_total: number;
+}
+
+export interface Run {
+  state: RunState;
+  /** When the package's run was asked for (dispatched) or first reported. */
+  since: number;
+  updated: number;
+  job?: Progress;
+}
+
+/** A run that stopped reporting (cancelled, crashed, a failed deploy) is no longer shown. */
+const RUN_SILENT_MS = 30 * 60_000;
+/** Dispatched and never started (a long scheduled run ahead of it): shown as plain waiting. */
+const RUN_UNSTARTED_MS = 6 * 3600_000;
+/** Durations of recent early runs kept for the typical time a client is shown. */
+const RUN_DURATIONS_KEPT = 10;
+
 export class PendingQueue {
   private readonly sql: Sql;
   private readonly settings: Settings;
@@ -66,6 +96,7 @@ export class PendingQueue {
     this.votes = new AddressLimiter(settings.votesPerAddressPerHour);
     sql.exec("CREATE TABLE IF NOT EXISTS pending (purl TEXT PRIMARY KEY, demand INTEGER NOT NULL, first_seen INTEGER NOT NULL, known INTEGER NOT NULL)");
     sql.exec("CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT NOT NULL)");
+    sql.exec("CREATE TABLE IF NOT EXISTS runs (purl TEXT PRIMARY KEY, state TEXT NOT NULL, since INTEGER NOT NULL, updated INTEGER NOT NULL, job TEXT)");
   }
 
   /** One vote per requester and package, inside the address's vote limit; over it the answer is the same, uncounted. */
@@ -101,7 +132,9 @@ export class PendingQueue {
     this.setMeta("new_count", String(thisHour + 1));
     this.voters.add(purl, address);
     this.sql.exec("INSERT INTO pending (purl, demand, first_seen, known) VALUES (?, 1, ?, 0)", purl, now);
-    return { type: "queued", ...this.position(purl)!, fastTrack: this.fastTrack(now) };
+    const fastTrack = this.fastTrack(now);
+    if (fastTrack) this.setRun(purl, "dispatched", now);
+    return { type: "queued", ...this.position(purl)!, fastTrack };
   }
 
   private meta(k: string): string | undefined {
@@ -138,14 +171,75 @@ export class PendingQueue {
   }
 
   /** A deployed run took these: their demand is subtracted, so votes that arrived meanwhile stay for the next run. */
-  ack(taken: Request[]): number {
+  ack(taken: Request[], now = Date.now()): number {
     let removed = 0;
     for (const { purl, demand } of taken) {
       if (typeof purl !== "string" || !Number.isFinite(demand)) continue;
       this.sql.exec("UPDATE pending SET demand = demand - ? WHERE purl = ?", Math.max(0, Math.floor(demand)), purl);
       removed += this.sql.exec("DELETE FROM pending WHERE purl = ? AND demand <= 0 RETURNING purl", purl).toArray().length;
+      // The run published it, even when votes that arrived meanwhile keep the package held for the next run.
+      this.endRun(purl, now);
     }
     return removed;
+  }
+
+  private setRun(purl: string, state: RunState, now: number, job?: Progress): void {
+    this.sql.exec(
+      "INSERT INTO runs (purl, state, since, updated, job) VALUES (?, ?, ?, ?, ?) ON CONFLICT(purl) DO UPDATE SET state = excluded.state, updated = excluded.updated, job = COALESCE(excluded.job, runs.job)",
+      purl,
+      state,
+      now,
+      now,
+      job ? JSON.stringify(job) : null,
+    );
+  }
+
+  /** A held package's run, while it is current; undefined when no run is working it. */
+  run(purl: string, now = Date.now()): Run | undefined {
+    const row = this.sql.exec("SELECT state, since, updated, job FROM runs WHERE purl = ?", purl).toArray()[0];
+    if (!row) return undefined;
+    const run: Run = { state: String(row.state) as RunState, since: Number(row.since), updated: Number(row.updated), ...(row.job ? { job: JSON.parse(String(row.job)) as Progress } : {}) };
+    const silent = now - run.updated > (run.state === "dispatched" ? RUN_UNSTARTED_MS : RUN_SILENT_MS);
+    return silent ? undefined : run;
+  }
+
+  /** What a run reports about the held packages it pulled; packages no longer held are ignored. */
+  report(updates: { purl: string; state: RunState; job?: Progress }[], now = Date.now()): number {
+    let n = 0;
+    for (const u of updates) {
+      if (!this.held(u.purl)) continue;
+      this.setRun(u.purl, u.state, now, u.job);
+      n++;
+    }
+    return n;
+  }
+
+  /** The early run asked for a package could not be started: it waits for the schedule like any other. */
+  undispatched(purl: string): void {
+    this.sql.exec("DELETE FROM runs WHERE purl = ? AND state = 'dispatched'", purl);
+  }
+
+  /** A run's package was published and acknowledged: its time from request to acknowledgement joins the typical time. */
+  private endRun(purl: string, now: number): void {
+    const row = this.sql.exec("DELETE FROM runs WHERE purl = ? RETURNING state, since", purl).toArray()[0];
+    if (!row || row.state === "declined" || row.state === "dispatched") return;
+    const kept = [...this.durations(), Math.round((now - Number(row.since)) / 1000)].slice(-RUN_DURATIONS_KEPT);
+    this.setMeta("run_durations", JSON.stringify(kept));
+  }
+
+  private durations(): number[] {
+    try {
+      const v = JSON.parse(this.meta("run_durations") ?? "[]") as unknown;
+      return Array.isArray(v) ? v.filter((n): n is number => Number.isFinite(n)) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  /** The median time of recent runs from request to published, in seconds; undefined before there are any. */
+  typicalSeconds(): number | undefined {
+    const d = [...this.durations()].sort((a, b) => a - b);
+    return d.length ? d[Math.floor(d.length / 2)] : undefined;
   }
 
   /** Whether a new package may start a run now: within the day's count and the interval since the last one. */

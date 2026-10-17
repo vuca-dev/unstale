@@ -135,6 +135,7 @@ test("fast-track: only pulled packages at the head of the new-technology line ru
   // With only the head allowed, nothing else starts.
   const r = await service.drain(Date.now() + 60_000, 5_000, 10, new Set(["pkg:npm/popular"]));
   expect(r.started).toBe(1);
+  expect(service.working("pkg:npm/popular")).toBe(false);
   expect(service.jobs.get("pkg:npm/fresh")?.state).toBe("queued");
   expect([...service.newHead(new Set(["pkg:npm/fresh"]))]).toEqual(["pkg:npm/fresh"]);
 });
