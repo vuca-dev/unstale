@@ -289,9 +289,60 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
     d.iter().map(|b| format!("{b:02x}")).collect()
 }
 
+/// Requests sent at once by `concurrent`: enough that a few hundred round trips take seconds, few enough for one host.
+pub const REQUESTS_AT_ONCE: usize = 16;
+
+/// `work` over `items` on up to `width` threads. `each` runs on the calling thread as each result arrives, in completion
+/// order, so progress can be shown as it happens; returning false sends nothing further (work under way finishes).
+pub fn concurrent<T: Sync, R: Send>(items: &[T], width: usize, work: impl Fn(&T) -> R + Sync, mut each: impl FnMut(usize, R) -> bool) {
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    let (next, stop) = (AtomicUsize::new(0), AtomicBool::new(false));
+    std::thread::scope(|scope| {
+        let (tx, rx) = std::sync::mpsc::channel();
+        for _ in 0..width.clamp(1, items.len().max(1)) {
+            let (tx, next, stop, work) = (tx.clone(), &next, &stop, &work);
+            scope.spawn(move || {
+                while !stop.load(Ordering::Acquire) {
+                    let i = next.fetch_add(1, Ordering::AcqRel);
+                    let Some(item) = items.get(i) else { break };
+                    if tx.send((i, work(item))).is_err() {
+                        break;
+                    }
+                }
+            });
+        }
+        drop(tx);
+        for (i, r) in rx {
+            if !each(i, r) {
+                stop.store(true, Ordering::Release);
+                break;
+            }
+        }
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn concurrent_reports_every_result_and_stops_when_asked() {
+        let items: Vec<usize> = (0..100).collect();
+        let mut seen = vec![];
+        concurrent(&items, 8, |n| n * 2, |i, r| {
+            seen.push((i, r));
+            true
+        });
+        seen.sort();
+        assert_eq!(seen, items.iter().map(|&n| (n, n * 2)).collect::<Vec<_>>());
+        let mut taken = 0;
+        concurrent(&items, 4, |n| *n, |_, _| {
+            taken += 1;
+            taken < 3
+        });
+        assert_eq!(taken, 3);
+        concurrent(&[] as &[u8], 4, |_| (), |_, _| true);
+    }
 
     #[test]
     fn upstream_text_stays_on_one_line_inside_its_fence() {

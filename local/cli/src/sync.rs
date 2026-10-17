@@ -219,12 +219,17 @@ pub struct Report {
 /// Sync the candidates' indexes and shards into `cache`. `purls` are the repository's package URLs; a
 /// technology is kept only when one of its records' release components is among them (no alias table).
 pub fn sync(loc: &str, cache_dir: &Path, candidates: &BTreeSet<String>, purls: &BTreeSet<String>) -> Result<Report> {
+    sync_reporting(loc, cache_dir, candidates, purls, |_, _| {})
+}
+
+/// `sync`, calling `progress(checked, total)` as each candidate's index is settled.
+pub fn sync_reporting(loc: &str, cache_dir: &Path, candidates: &BTreeSet<String>, purls: &BTreeSet<String>, progress: impl FnMut(usize, usize)) -> Result<Report> {
     let src = resolve_source(loc)?;
     let key = match src {
         Source::Http { .. } => catalog_key()?,
         Source::Dir(_) => None,
     };
-    sync_with(&src, cache_dir, candidates, purls, key.as_ref())
+    sync_with(&src, cache_dir, candidates, purls, key.as_ref(), progress)
 }
 
 /// The catalog key compiled into release builds. A `#[used]` static keeps it whole in the binary, which release.yml
@@ -265,7 +270,7 @@ fn verify_signed(src: &Source, rel: &str, bytes: &[u8], key: &[u8; 32]) -> Resul
         .map_err(|_| anyhow!("{}: the signature does not verify against the catalog key; nothing from it was used", src.describe(rel)))
 }
 
-fn sync_with(src: &Source, cache_dir: &Path, candidates: &BTreeSet<String>, purls: &BTreeSet<String>, key: Option<&[u8; 32]>) -> Result<Report> {
+fn sync_with(src: &Source, cache_dir: &Path, candidates: &BTreeSet<String>, purls: &BTreeSet<String>, key: Option<&[u8; 32]>, mut progress: impl FnMut(usize, usize)) -> Result<Report> {
     let root_bytes = match src.get("v1/root.json", None)? {
         Got::Body(b, _) => b,
         _ => bail!("no catalog at {} (v1/root.json not found)", src.describe("v1/root.json")),
@@ -277,64 +282,83 @@ fn sync_with(src: &Source, cache_dir: &Path, candidates: &BTreeSet<String>, purl
     check_root(&root)?;
     write_atomic(&cache_dir.join("v1/root.json"), &root_bytes)?;
 
+    let techs: Vec<&String> = candidates.iter().filter(|t| !t.is_empty() && !t.contains(['/', '\\', '?', '#', '%']) && !t.starts_with('.')).collect();
+    // Each technology's files are its own, so indexes are fetched at once; the report keeps candidate order.
+    let mut outcomes: Vec<Option<Outcome>> = techs.iter().map(|_| None).collect();
+    let (total, mut done) = (techs.len(), 0);
+    progress(0, total);
+    crate::util::concurrent(&techs, crate::util::REQUESTS_AT_ONCE, |tech| sync_one(src, cache_dir, tech, purls, key), |i, outcome| {
+        outcomes[i] = Some(outcome);
+        done += 1;
+        progress(done, total);
+        true
+    });
     let mut rep = Report::default();
-    for tech in candidates {
-        if tech.is_empty() || tech.contains(['/', '\\', '?', '#', '%']) || tech.starts_with('.') {
-            continue;
-        }
-        let rel = format!("v1/tech/{tech}.json");
-        // A conditional request only when the cached index is the one the validators were stored with.
-        let cached = std::fs::read(index_path(cache_dir, tech)).ok();
-        let cond: Option<Validators> = std::fs::read(validators_path(cache_dir, tech))
-            .ok()
-            .and_then(|b| serde_json::from_slice::<Validators>(&b).ok())
-            .filter(|v| cached.as_deref().is_some_and(|c| sha256_hex(c) == v.sha256));
-        let (bytes, fresh_validators) = match src.get(&rel, cond.as_ref()) {
-            Ok(Got::Body(b, v)) => {
-                // A 304 reuses the cached index, verified when it arrived.
-                if let Some(key) = key
-                    && let Err(e) = verify_signed(src, &rel, &b, key)
-                {
-                    rep.failed.push((tech.clone(), format!("{e:#}")));
-                    continue;
-                }
-                (b, Some(v))
-            }
-            Ok(Got::NotModified) => match cached {
-                Some(c) => (c, None),
-                None => {
-                    rep.failed.push((tech.clone(), format!("{}: not modified, but no cached copy", src.describe(&rel))));
-                    continue;
-                }
-            },
-            Ok(Got::NotFound) => {
-                rep.not_covered.push(tech.clone());
-                continue;
-            }
-            Err(e) => {
-                rep.failed.push((tech.clone(), format!("{e:#}")));
-                continue;
-            }
-        };
-        match sync_tech(src, cache_dir, tech, &bytes, purls) {
-            Ok(Some(t)) => {
-                // Validators are stored after the swap, describing the index now in the cache.
-                if let Some(mut v) = fresh_validators {
-                    let vp = validators_path(cache_dir, tech);
-                    if v.etag.is_some() || v.last_modified.is_some() {
-                        v.sha256 = sha256_hex(&bytes);
-                        write_atomic(&vp, &serde_json::to_vec(&v)?)?;
-                    } else {
-                        let _ = std::fs::remove_file(vp);
-                    }
-                }
-                rep.synced.push(t)
-            }
-            Ok(None) => rep.not_in_stack.push(tech.clone()),
-            Err(e) => rep.failed.push((tech.clone(), format!("{e:#}"))),
+    for (tech, outcome) in techs.into_iter().zip(outcomes) {
+        match outcome {
+            Some(Outcome::Synced(t)) => rep.synced.push(t),
+            Some(Outcome::NotCovered) => rep.not_covered.push(tech.clone()),
+            Some(Outcome::NotInStack) => rep.not_in_stack.push(tech.clone()),
+            Some(Outcome::Failed(e)) => rep.failed.push((tech.clone(), e)),
+            None => rep.failed.push((tech.clone(), "not checked".into())),
         }
     }
     Ok(rep)
+}
+
+enum Outcome {
+    Synced(TechSync),
+    NotCovered,
+    NotInStack,
+    Failed(String),
+}
+
+/// One technology: its index (conditionally), then its shards, swapped into the cache.
+fn sync_one(src: &Source, cache_dir: &Path, tech: &str, purls: &BTreeSet<String>, key: Option<&[u8; 32]>) -> Outcome {
+    let rel = format!("v1/tech/{tech}.json");
+    // A conditional request only when the cached index is the one the validators were stored with.
+    let cached = std::fs::read(index_path(cache_dir, tech)).ok();
+    let cond: Option<Validators> = std::fs::read(validators_path(cache_dir, tech))
+        .ok()
+        .and_then(|b| serde_json::from_slice::<Validators>(&b).ok())
+        .filter(|v| cached.as_deref().is_some_and(|c| sha256_hex(c) == v.sha256));
+    let (bytes, fresh_validators) = match src.get(&rel, cond.as_ref()) {
+        Ok(Got::Body(b, v)) => {
+            // A 304 reuses the cached index, verified when it arrived.
+            if let Some(key) = key
+                && let Err(e) = verify_signed(src, &rel, &b, key)
+            {
+                return Outcome::Failed(format!("{e:#}"));
+            }
+            (b, Some(v))
+        }
+        Ok(Got::NotModified) => match cached {
+            Some(c) => (c, None),
+            None => return Outcome::Failed(format!("{}: not modified, but no cached copy", src.describe(&rel))),
+        },
+        Ok(Got::NotFound) => return Outcome::NotCovered,
+        Err(e) => return Outcome::Failed(format!("{e:#}")),
+    };
+    match sync_tech(src, cache_dir, tech, &bytes, purls) {
+        Ok(Some(t)) => {
+            // Validators are stored after the swap, describing the index now in the cache.
+            if let Some(mut v) = fresh_validators {
+                let vp = validators_path(cache_dir, tech);
+                if v.etag.is_some() || v.last_modified.is_some() {
+                    v.sha256 = sha256_hex(&bytes);
+                    let stored = serde_json::to_vec(&v).map_err(anyhow::Error::from).and_then(|b| write_atomic(&vp, &b));
+                    if let Err(e) = stored {
+                        return Outcome::Failed(format!("{e:#}"));
+                    }
+                } else {
+                    let _ = std::fs::remove_file(vp);
+                }
+            }
+            Outcome::Synced(t)
+        }
+        Ok(None) => Outcome::NotInStack,
+        Err(e) => Outcome::Failed(format!("{e:#}")),
+    }
 }
 
 fn sync_tech(src: &Source, cache_dir: &Path, tech: &str, index_bytes: &[u8], purls: &BTreeSet<String>) -> Result<Option<TechSync>> {
@@ -624,7 +648,7 @@ mod tests {
         let cache = tempfile::tempdir().unwrap();
         let all = purls(&["pkg:npm/next", "pkg:npm/prisma"]);
         // An unsigned root stops the sync before anything is cached.
-        let err = sync_with(&src, cache.path(), &cands(&["next"]), &all, Some(&key)).err().unwrap();
+        let err = sync_with(&src, cache.path(), &cands(&["next"]), &all, Some(&key), |_, _| {}).err().unwrap();
         assert!(format!("{err:#}").contains("is not signed"), "{err:#}");
         assert!(!cache.path().join("v1/root.json").exists());
         // Signed root and next; prisma's index altered after signing.
@@ -635,7 +659,7 @@ mod tests {
         let mut forged = std::fs::read(&p).unwrap();
         forged.push(b'\n');
         std::fs::write(&p, forged).unwrap();
-        let rep = sync_with(&src, cache.path(), &cands(&["next", "prisma"]), &all, Some(&key)).unwrap();
+        let rep = sync_with(&src, cache.path(), &cands(&["next", "prisma"]), &all, Some(&key), |_, _| {}).unwrap();
         assert_eq!(rep.synced.iter().map(|t| t.technology.as_str()).collect::<Vec<_>>(), vec!["next"]);
         assert!(rep.failed.len() == 1 && rep.failed[0].1.contains("does not verify"), "{:?}", rep.failed);
         assert!(!index_path(cache.path(), "prisma").exists());
@@ -711,7 +735,7 @@ mod tests {
         let cache = tempfile::tempdir().unwrap();
         let t0 = std::time::Instant::now();
         let src = http_source(base, Duration::from_millis(500));
-        let err = sync_with(&src, cache.path(), &cands(&["next"]), &purls(&[]), None).err().unwrap();
+        let err = sync_with(&src, cache.path(), &cands(&["next"]), &purls(&[]), None, |_, _| {}).err().unwrap();
         assert!(t0.elapsed() < Duration::from_secs(10));
         assert!(format!("{err:#}").to_lowercase().contains("timeout") || format!("{err:#}").to_lowercase().contains("timed out"), "{err:#}");
     }

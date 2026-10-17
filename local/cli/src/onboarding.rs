@@ -1239,6 +1239,15 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
         ),
         "No repository agent review runs during setup",
     );
+    // Every catalog refresh says how far it has got: on a large stack it is a few hundred requests. It returns the
+    // technologies it checked.
+    let catalog_sync = |title: &str, hint: &str| {
+        let cands = candidates(ctx, &st);
+        sync::sync_reporting(&ctx.config.catalog, &ctx.cache, &cands, &st.purls(), |done, total| {
+            ui.update(title, &format!("Matched {done}/{total} technologies against the published catalog"), hint)
+        })
+        .map(|_| cands)
+    };
     if !service_available(service) {
         // A static catalog host (GitHub Pages) at the service address has no coverage service: the catalog still
         // syncs, nothing is requested, and that is not a failure. A separate catalog with its service down is.
@@ -1248,7 +1257,7 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
             Err(_) => None,
         };
         if place(service).is_some_and(|p| Some(p) == place(&ctx.config.catalog))
-            && sync::sync(&ctx.config.catalog, &ctx.cache, &candidates(ctx, &st), &st.purls()).is_ok()
+            && catalog_sync("Matching published intelligence · step 2/5", "No repository agent review runs during setup").is_ok()
         {
             util::write_atomic(&log, b"No coverage service at this address; catalog synced, no coverage requested\n")?;
             let brief = report(ctx, &pending)?;
@@ -1281,14 +1290,14 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
         );
         return Ok(0);
     }
-    if let Err(e) = sync::sync(
-        &ctx.config.catalog,
-        &ctx.cache,
-        &candidates(ctx, &st),
-        &st.purls(),
-    ) {
-        diagnostics.push(format!("Initial catalog refresh: {e:#}"));
-        issue = Some("Catalog refresh unavailable · cached intelligence kept".into());
+    // When the catalog last synced, and for which technologies; step 4 syncs again only when that may be stale.
+    let mut synced = None;
+    match catalog_sync("Matching published intelligence · step 2/5", "No repository agent review runs during setup") {
+        Ok(cands) => synced = Some((Instant::now(), cands)),
+        Err(e) => {
+            diagnostics.push(format!("Initial catalog refresh: {e:#}"));
+            issue = Some("Catalog refresh unavailable · cached intelligence kept".into());
+        }
     }
     ui.update(
         "Connecting public coverage · step 3/5",
@@ -1299,23 +1308,15 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
         "Public names only · no repository identity shared",
     );
     let mut verified = vec![];
-    std::thread::scope(|scope| {
-        let handles: Vec<_> = st
-            .deps
-            .iter()
-            .filter(|(p, d)| !pending.jobs.contains_key(*p) && d.public_candidate)
-            .map(|(p, d)| {
-                let p = p.clone();
-                scope.spawn(move || if public_package(&p, &d.pins) { Some(p) } else { None })
-            })
-            .collect();
-        let total = handles.len();
-        for (index, h) in handles.into_iter().enumerate() {
-            ui.update("Verifying public packages · step 3/5", &format!("Checked {index}/{total} registry identities"), "Only verified public package names are submitted");
-            if let Ok(Some(p)) = h.join() {
-                verified.push(p);
-            }
+    let unchecked: Vec<_> = st.deps.iter().filter(|(p, d)| !pending.jobs.contains_key(*p) && d.public_candidate).collect();
+    let (total, mut done) = (unchecked.len(), 0);
+    util::concurrent(&unchecked, util::REQUESTS_AT_ONCE, |(p, d)| public_package(p, &d.pins), |i, public| {
+        if public {
+            verified.push(unchecked[i].0.clone());
         }
+        done += 1;
+        ui.update("Verifying public packages · step 3/5", &format!("Checked {done}/{total} registry identities"), "Only verified public package names are submitted");
+        true
     });
     for p in verified {
         pending.unsubmitted.insert(p);
@@ -1377,40 +1378,44 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
             &ready_hint,
         );
         let mut disconnected = false;
-        let total = pending.jobs.len();
-        for (index, (p, _)) in pending.jobs.clone().into_iter().enumerate() {
-            if leave.load(Ordering::Acquire) {
-                break;
-            }
-            match request(service, &p, false) {
+        let hint = || if linger || wait == 0 { "Your report is next; background analysis does not block setup".to_string() } else { format!("Watching for up to {}s more · Enter to finish", wait.saturating_sub(start.elapsed().as_secs())) };
+        let before: Vec<(String, String)> = pending.jobs.values().map(|j| (j.purl.clone(), j.state.clone())).collect();
+        let purls: Vec<String> = pending.jobs.keys().cloned().collect();
+        let (total, mut done, a) = (purls.len(), 0, agent());
+        util::concurrent(&purls, util::REQUESTS_AT_ONCE, |p| request_via(&a, service, p, false), |i, got| {
+            match got {
                 Ok(j) => {
-                    pending.jobs.insert(p, j);
+                    pending.jobs.insert(purls[i].clone(), j);
                 }
                 Err(e) => {
-                    diagnostics.push(format!("Coverage {p}: {e:#}"));
+                    diagnostics.push(format!("Coverage {}: {e:#}", purls[i]));
                     issue = Some("Coverage connection interrupted · cached results kept".into());
                     disconnected = true;
-                    break;
+                    return false;
                 }
             }
-            ui.update(
-                "Refreshing shared results · step 4/5",
-                &format!("Checked {}/{} packages", index + 1, total),
-                &if linger || wait == 0 { "Your report is next; background analysis does not block setup".into() } else { format!("Watching for up to {}s more · Enter to finish", wait.saturating_sub(start.elapsed().as_secs())) },
-            );
-        }
+            done += 1;
+            ui.update("Refreshing shared results · step 4/5", &format!("Checked coverage for {done}/{total} packages"), &hint());
+            !leave.load(Ordering::Acquire)
+        });
         save(ctx, &pending)?;
         if disconnected {
             break;
         }
-        if let Err(e) = sync::sync(
-            &ctx.config.catalog,
-            &ctx.cache,
-            &candidates(ctx, &st),
-            &st.purls(),
-        ) {
-            diagnostics.push(format!("Catalog refresh: {e:#}"));
-            issue = Some("Catalog refresh unavailable · cached intelligence kept".into());
+        // The catalog only changes when a run publishes, which moves its job; within a minute of the last sync, with
+        // no job moved and no technology added by a registration, there is nothing new to fetch.
+        let moved = before.iter().any(|(p, state)| pending.jobs.get(p).is_some_and(|j| &j.state != state));
+        let stale = synced.as_ref().is_none_or(|(at, cands): &(Instant, BTreeSet<String>)| {
+            at.elapsed() >= Duration::from_secs(60) || *cands != candidates(ctx, &st)
+        });
+        if moved || stale {
+            match catalog_sync("Refreshing shared results · step 4/5", &hint()) {
+                Ok(cands) => synced = Some((Instant::now(), cands)),
+                Err(e) => {
+                    diagnostics.push(format!("Catalog refresh: {e:#}"));
+                    issue = Some("Catalog refresh unavailable · cached intelligence kept".into());
+                }
+            }
         }
         if !linger && wait > 0 {
         let snapshot = world(ctx)?.catalog.snapshot_line();
