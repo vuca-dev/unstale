@@ -18,8 +18,8 @@
 # and is a plain download for a later move to another scheduler (vault: Central Scheduling and Infrastructure,
 # "Portability stance"). Seeding it from an operator's store: CONTRIBUTING.md.
 #
-# Schedule: once a day while the repository is private (its Actions minutes are metered); every 3 hours once it is
-# public (`23 */3 * * *`), where standard runners are free. Model calls are cached per record, so a run with no new
+# Schedule: every 3 hours (the repository is public, so standard runners are free; a private one pays per minute, so
+# run it daily there). Model calls are cached per record, so a run with no new
 # releases makes none, and the coverage budget (UNSTALE_BUDGET_TOKENS) bounds what any run can spend. The gateway may
 # also start a run early for a new package (`reason: fast-track`, at most FAST_TRACK_PER_DAY a day).
 #
@@ -31,7 +31,7 @@ name: ingest
 
 on:
   schedule:
-    - cron: "23 5 * * *"
+    - cron: "23 */3 * * *"
   workflow_dispatch:
     inputs:
       tech:
