@@ -10,6 +10,7 @@ import { memorySql } from "./sqlite.ts";
 // The public registries: every package exists unless a test says otherwise.
 beforeEach(() => vi.stubGlobal("fetch", async () => new Response("{}")));
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -210,7 +211,6 @@ test("storage that fails (a used-up daily allowance) is a temporary 503 with Ret
   expect((await handle(get("/coverage?purl=nonsense"), e)).status).toBe(400);
   const ack = new Request("https://unstale.example/internal/ack", { method: "POST", headers: { Authorization: "Bearer drain-secret" }, body: "null" });
   expect((await handle(ack, e)).status).toBe(400);
-  vi.useRealTimers();
 });
 
 test("a name the public registry does not know is not queued", async () => {
