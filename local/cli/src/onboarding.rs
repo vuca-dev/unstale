@@ -566,6 +566,11 @@ fn across_major(o: &funnel::Opp) -> bool {
 fn major_step(installed: &semver::Version, v: &semver::Version) -> bool {
     v.major > installed.major || (installed.major == 0 && v.major == 0 && v.minor > installed.minor)
 }
+/// A capability released before the installed major (minor on 0.x) began: the project has had it through at least
+/// one major upgrade, so it is not new to it (jsdom 0.2.1 features at 20.0.1). It stays in the improvements pass.
+fn predates_major(o: &funnel::Opp) -> bool {
+    util::parse_version(&o.release.version).is_some_and(|v| major_step(&v, &o.installed))
+}
 /// Opt-in capabilities a technology's upgrade would unlock across a major version, by technology.
 fn unlocked(out: &Outcome) -> BTreeMap<String, Vec<usize>> {
     let mut by: BTreeMap<String, Vec<usize>> = BTreeMap::new();
@@ -623,7 +628,7 @@ fn highlight_indices(out: &Outcome, w: &World) -> Vec<usize> {
             ) {
                 return None;
             }
-            if across_major(o) {
+            if across_major(o) || predates_major(o) {
                 return None;
             }
             let r = &o.rec.r;
@@ -1830,6 +1835,7 @@ mod tests {
         assert!(!major_step(&v("15.2.4"), &v("15.5.0")));
         assert!(major_step(&v("0.27.10"), &v("0.28.0")), "a minor step on 0.x is a major one");
         assert!(!major_step(&v("0.27.1"), &v("0.27.10")));
+        assert!(major_step(&v("0.2.1"), &v("20.0.1")), "read the other way: a 0.2.1 capability predates a project on 20");
         let st = crate::stack::Stack { packages: vec![], deps: Default::default(), node: None, notes: vec![] };
         assert!(!specific_reference("connection", &st));
         assert!(specific_reference("cacheLife", &st));

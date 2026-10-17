@@ -90,6 +90,26 @@ pub struct Outcome<'a> {
     pub packages: BTreeMap<String, Vec<String>>,
     /// The repository's version of each package it declares, by package URL (advisory ranges are per package).
     pub versions: BTreeMap<String, Version>,
+    /// Per technology: manifests on another version of one of its packages than the outputs use, with what a bump
+    /// picks up there (`stack::Dep::headline`).
+    pub workspaces: BTreeMap<String, Vec<Workspace<'a>>>,
+    /// Package URLs whose version differs across manifests: where the outputs' version comes from (directory, source).
+    pub headline: BTreeMap<String, (String, String)>,
+}
+
+/// Manifests on one version of a package other than the one the outputs use: a workspace with its own lockfile, a
+/// library's declared floor. Only the bump digest and the upgrade review's count are computed for it.
+#[derive(Debug, Clone)]
+pub struct Workspace<'a> {
+    pub component: String,
+    pub version: Version,
+    /// (directory, source), by directory.
+    pub dirs: Vec<(String, String)>,
+    pub target: Option<Version>,
+    /// Records that reach the bump digest or the upgrade review at this version (after the same ledger, prerequisite
+    /// and applied checks as the outputs).
+    /// (record, route, the release that decides it at this version).
+    pub records: Vec<(&'a Rec, Route, String)>,
 }
 
 pub fn benefit_rank(b: &Benefit) -> u8 {
@@ -133,6 +153,40 @@ fn line_of(v: &Version) -> String {
 
 /// The release that decides availability for a project at `installed`: the one on the installed line; otherwise
 /// the newest on an older line (it carried forward); otherwise the oldest on a newer line.
+/// The release that decides availability at `installed` and whether it is in `installed` and beyond `target`: by
+/// release line from the tech index (lines.rs), the old rule (`pick_release`) where that cannot decide.
+fn availability<'r>(lines: &Lines, candidates: &[&'r Release], installed: &Version, target: &Version, picked: (&'r Release, &Version)) -> (&'r Release, bool, bool) {
+    let (picked, rv) = picked;
+    match lines.has(candidates, &installed.to_string()) {
+        Some(Some(r)) => (r, true, false),
+        Some(None) => match lines.has(candidates, &target.to_string()) {
+            Some(Some(r)) => (r, false, false),
+            Some(None) => (picked, false, true),
+            None => (picked, false, rv > target),
+        },
+        None => (picked, rv <= installed, rv > target),
+    }
+}
+
+/// Where a record goes from its availability alone, before the ledger, prerequisites, applied and benefit checks.
+fn base_route(rec: &Rec, available: bool, beyond: bool) -> Route {
+    if !available && beyond {
+        Route::BeyondTarget
+    } else if !available {
+        if is_obligation(rec) {
+            Route::UpgradeReview
+        } else if is_opt_in(rec) {
+            Route::OptInAfterBump
+        } else {
+            Route::BumpDigest
+        }
+    } else if is_opt_in(rec) {
+        Route::ImprovementsPass
+    } else {
+        Route::AlreadyIncluded
+    }
+}
+
 pub fn pick_release<'r>(releases: &[&'r Release], installed: &Version) -> Option<(&'r Release, Version)> {
     let mut parsed: Vec<(&Release, Version)> = releases.iter().filter_map(|r| parse_version(&r.version).map(|v| (*r, v))).collect();
     parsed.sort_by(|a, b| a.1.cmp(&b.1));
@@ -221,6 +275,18 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
         out.technologies.push(tech.clone());
         out.packages.insert(tech.clone(), present.iter().filter_map(|c| purl_name(c)).collect());
         let tech_version: Option<Version> = present.iter().filter_map(|c| inp.stack.deps.get(*c).and_then(|d| d.version.clone())).min();
+        let mut workspaces: Vec<Workspace> = vec![];
+        for c in &present {
+            let Some(d) = inp.stack.deps.get(*c) else { continue };
+            let others = d.others();
+            if let (Some(h), false) = (d.headline(), others.is_empty()) {
+                out.headline.insert((*c).clone(), (h.dir.clone(), h.source.clone()));
+            }
+            for (version, rs) in others {
+                let dirs = rs.iter().map(|r| (r.dir.clone(), r.source.clone())).collect();
+                workspaces.push(Workspace { component: (*c).clone(), version, dirs, target: None, records: vec![] });
+            }
+        }
         // Newest release per component: the default target.
         let mut newest: BTreeMap<String, Version> = BTreeMap::new();
         for r in &td.records {
@@ -272,17 +338,9 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             };
             let Some((picked, rv)) = pick_release(&candidates, &installed) else { continue };
             let comp = normalize_purl(&picked.component);
-            let target = inp.targets.get(&comp).cloned().or_else(|| newest.get(&comp).cloned()).unwrap_or_else(|| installed.clone());
-            // Availability by release line from the tech index (lines.rs); the old rule where it cannot decide.
-            let (release, available, beyond) = match lines.has(&candidates, &installed.to_string()) {
-                Some(Some(r)) => (r, true, false),
-                Some(None) => match lines.has(&candidates, &target.to_string()) {
-                    Some(Some(r)) => (r, false, false),
-                    Some(None) => (picked, false, true),
-                    None => (picked, false, rv > target),
-                },
-                None => (picked, rv <= installed, rv > target),
-            };
+            let target_for = |c: &str, installed: &Version| inp.targets.get(c).cloned().or_else(|| newest.get(c).cloned()).unwrap_or_else(|| installed.clone());
+            let target = target_for(&comp, &installed);
+            let (release, available, beyond) = availability(&lines, &candidates, &installed, &target, (picked, &rv));
             let matched: Vec<(String, Vec<String>)> = ls
                 .iter()
                 .filter_map(|l| Some(in_language(hits.usage.get(l))).filter(|f| !f.is_empty()).map(|f| (l.clone(), f.into_iter().take(3).collect())))
@@ -319,21 +377,14 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                 withheld_from: None,
                 unmet: None,
             };
-            opp.route = if !available && beyond {
-                Route::BeyondTarget
-            } else if !available {
-                if is_obligation(rec) {
-                    Route::UpgradeReview
-                } else if is_opt_in(rec) {
-                    Route::OptInAfterBump
-                } else {
-                    Route::BumpDigest
-                }
-            } else if is_opt_in(rec) {
-                Route::ImprovementsPass
-            } else {
-                Route::AlreadyIncluded
+            // The ledger, prerequisite and applied checks do not depend on the version: shared with `workspaces`.
+            let ledger_status = || {
+                inp.ledger.entries.iter().find(|e| e.id() == rec.r.id).filter(|e| withholds(e, rec.r.revision, inp.today)).map(status_name)
             };
+            let applied = || {
+                rec.r.introduces.iter().filter_map(|x| clean_lit(x)).any(|x| in_language(hits.whole.get(&x)).iter().any(|p| usage::counts_as_applied(role(p), p)))
+            };
+            opp.route = base_route(rec, available, beyond);
             let shown = matches!(opp.route, Route::UpgradeReview | Route::ImprovementsPass | Route::BumpDigest);
             if shown {
                 // An obligation is never blocked: the upgrade brings it whatever the project's floor, and a record that
@@ -341,26 +392,36 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                 let b = blocked(rec, inp.stack, &comp);
                 if let Some(b) = b.clone().filter(|_| !(opp.route == Route::UpgradeReview && is_obligation(rec))) {
                     opp.route = Route::Blocked(b);
-                } else if let Some(e) = inp.ledger.entries.iter().find(|e| e.id() == rec.r.id)
-                    && withholds(e, rec.r.revision, inp.today) {
-                        opp.withheld_from = Some(opp.route.clone());
-                        opp.route = Route::Withheld(status_name(e));
-                    }
+                } else if let Some(s) = ledger_status() {
+                    opp.withheld_from = Some(opp.route.clone());
+                    opp.route = Route::Withheld(s);
+                }
                 if opp.route == Route::UpgradeReview {
                     opp.unmet = b;
                 }
             }
             // Applied: an introduced literal as a whole token; never for a breaking change.
-            if matches!(opp.route, Route::UpgradeReview | Route::ImprovementsPass) && !rec.r.breaking {
-                let applied = rec
-                    .r
-                    .introduces
-                    .iter()
-                    .filter_map(|x| clean_lit(x))
-                    .any(|x| in_language(hits.whole.get(&x)).iter().any(|p| usage::counts_as_applied(role(p), p)));
-                if applied {
-                    opp.route = Route::Applied;
+            if matches!(opp.route, Route::UpgradeReview | Route::ImprovementsPass) && !rec.r.breaking && applied() {
+                opp.route = Route::Applied;
+            }
+            // The same record for each manifest on another version of its package: only what reaches the bump digest
+            // or the upgrade review is kept, for the digest's per-workspace lines.
+            let first_comp = candidates.first().map(|r| normalize_purl(&r.component));
+            for w in workspaces.iter_mut().filter(|w| Some(&w.component) == first_comp.as_ref()) {
+                let Some((picked, rv)) = pick_release(&candidates, &w.version) else { continue };
+                let comp = normalize_purl(&picked.component);
+                let target = target_for(&comp, &w.version);
+                let (decides, available, beyond) = availability(&lines, &candidates, &w.version, &target, (picked, &rv));
+                let route = base_route(rec, available, beyond);
+                if !matches!(route, Route::UpgradeReview | Route::BumpDigest) {
+                    continue;
                 }
+                let blocks = blocked(rec, inp.stack, &comp).is_some() && !(route == Route::UpgradeReview && is_obligation(rec));
+                if blocks || ledger_status().is_some() || (route == Route::UpgradeReview && !rec.r.breaking && applied()) {
+                    continue;
+                }
+                w.target.get_or_insert(target);
+                w.records.push((rec, route, decides.version.clone()));
             }
             if opp.route == Route::ImprovementsPass {
                 let replaces_here = rec.r.replaces.iter().filter_map(|x| clean_lit(x)).any(|x| !in_language(hits.usage.get(&x)).is_empty());
@@ -389,6 +450,10 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                 opp.benefits = b;
             }
             out.opps.push(opp);
+        }
+        workspaces.retain(|w| !w.records.is_empty());
+        if !workspaces.is_empty() {
+            out.workspaces.insert(tech.clone(), workspaces);
         }
     }
     order(&mut out);
@@ -486,7 +551,11 @@ fn order(out: &mut Outcome) {
 }
 
 pub fn is_security(o: &Opp) -> bool {
-    o.rec.r.change_type == ChangeType::Security || o.rec.r.benefit.contains(&Benefit::Security)
+    is_security_rec(o.rec)
+}
+
+pub fn is_security_rec(r: &Rec) -> bool {
+    r.r.change_type == ChangeType::Security || r.r.benefit.contains(&Benefit::Security)
 }
 
 /// Records sharing a release and a matched or listed term follow each other within their tier.
@@ -600,7 +669,7 @@ pub(crate) mod fixtures {
                 .iter()
                 .map(|(n, v)| {
                     let p = crate::util::npm_purl(n);
-                    (p, Dep { name: n.to_string(), public_candidate: true, version: parse_version(v), source: "test".into(), pins: vec![] })
+                    (p, Dep { version: parse_version(v), source: "test".into(), ..Dep::new(n, true) })
                 })
                 .collect(),
             node: node.map(|v| (parse_version(v).unwrap(), "engines".into())),
@@ -835,6 +904,40 @@ mod tests {
         let out = run_with(&c, &s, &r, &l);
         assert_eq!(route_of(&out, "next:backport"), &Route::BumpDigest, "on 16.0.1 it arrives with 16.0.2");
         assert_eq!(out.opps.iter().find(|o| o.id() == "next:backport").unwrap().target, Version::new(16, 2, 0), "default target: newest release");
+    }
+
+    #[test]
+    fn a_workspace_on_another_version_gets_its_own_bump_records() {
+        // The root is on 16.1.0; a CI workspace locks 16.0.0 itself. The outputs use the root; the workspace's
+        // digest and obligation counts are computed at its own version.
+        let c = catalog(
+            "next",
+            0,
+            vec![
+                with(rec("next:fix", "pkg:npm/next", "16.0.5"), json!({"change_type":"fix"})),
+                with(rec("next:dep", "pkg:npm/next", "16.0.5"), json!({"change_type":"deprecation"})),
+                with(rec("next:new", "pkg:npm/next", "16.2.0"), json!({"change_type":"fix"})),
+            ],
+        );
+        let mut s = stack(&[], None);
+        let mut d = crate::stack::Dep::new("next", true);
+        d.read(".", parse_version("16.1.0"), "pnpm-lock.yaml".into());
+        d.read(".buildkite", parse_version("16.0.0"), ".buildkite/package-lock.json".into());
+        s.deps.insert(crate::util::npm_purl("next"), d);
+        s.settle();
+        let (r, l) = (repo(&[]), Ledger::default());
+        let out = run_with(&c, &s, &r, &l);
+        assert_eq!(route_of(&out, "next:fix"), &Route::AlreadyIncluded, "the root has it");
+        assert_eq!(route_of(&out, "next:new"), &Route::BumpDigest);
+        assert_eq!(out.headline["pkg:npm/next"], (".".to_string(), "pnpm-lock.yaml".to_string()));
+        let w = &out.workspaces["next"][0];
+        assert_eq!((w.version.to_string(), w.dirs[0].0.as_str(), w.target.as_ref().map(|t| t.to_string())), ("16.0.0".into(), ".buildkite", Some("16.2.0".into())));
+        let mut got: Vec<(&str, &Route)> = w.records.iter().map(|(r, route, _)| (r.r.id.as_str(), route)).collect();
+        got.sort_by_key(|(id, _)| *id);
+        assert_eq!(got, vec![("next:dep", &Route::UpgradeReview), ("next:fix", &Route::BumpDigest), ("next:new", &Route::BumpDigest)]);
+        let lines = crate::review::digest_lines(&out);
+        assert!(lines[0].starts_with("bumping next 16.1.0 → 16.2.0 in the root (pnpm-lock.yaml) picks up 1 fix"), "{lines:?}");
+        assert!(lines.contains(&"  16.0.0 in .buildkite (.buildkite/package-lock.json): bumping to 16.2.0 picks up 2 fixes; 1 obligation".to_string()), "{lines:?}");
     }
 
     #[test]

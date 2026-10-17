@@ -45,14 +45,76 @@ pub struct Dep {
     pub name: String,
     /// False for workspace/file/link/git dependencies; never submit these identities centrally.
     pub public_candidate: bool,
-    /// The version the funnel compares against: the lowest across the packages that declare it.
+    /// The version the funnel compares against: the root manifest's, else the shallowest manifest's that declares
+    /// it (the lowest on a tie); `Stack::settle`.
     pub version: Option<Version>,
     /// Where the version came from, for the report.
     pub source: String,
+    /// Every manifest's version of it, one per directory (that manifest's lowest when it declares it twice): a
+    /// workspace on another version is named in the bump digest (`funnel::Workspace`).
+    pub readings: Vec<Reading>,
     /// What the lockfiles installed, with content hashes: the public registry must serve the same bytes for this
     /// identity to be submitted (`onboarding::public_package`), so a private package whose name someone published
     /// publicly is not mistaken for the public one. Empty without a lockfile hash.
     pub pins: Vec<Pin>,
+}
+
+/// One manifest's version of a dependency.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Reading {
+    /// The manifest's directory relative to the repository root, `.` for the root.
+    pub dir: String,
+    pub version: Version,
+    pub source: String,
+}
+
+impl Dep {
+    pub fn new(name: &str, public_candidate: bool) -> Dep {
+        Dep { name: name.to_string(), public_candidate, version: None, source: String::new(), readings: vec![], pins: vec![] }
+    }
+
+    /// One manifest's version (`None` when it cannot be read: a tag, a workspace link). The headline is set by
+    /// `Stack::settle` once every manifest is read; until then `source` keeps the first unreadable one's reason.
+    pub fn read(&mut self, dir: &str, version: Option<Version>, source: String) {
+        let Some(version) = version else {
+            if self.source.is_empty() {
+                self.source = source;
+            }
+            return;
+        };
+        match self.readings.iter_mut().find(|r| r.dir == dir) {
+            Some(r) if version < r.version => *r = Reading { dir: dir.to_string(), version, source },
+            Some(_) => {}
+            None => self.readings.push(Reading { dir: dir.to_string(), version, source }),
+        }
+    }
+
+    /// The reading the outputs use: the root manifest's, else the shallowest manifest's, the lowest version on a
+    /// tie. The root (or the top of a workspace tree) is what the application resolves; a nested manifest with its
+    /// own lockfile (a CI tool) or a library's declared floor (a peer range) says what that one part runs or
+    /// supports, and is named beside it instead of setting the version for the whole repository.
+    pub fn headline(&self) -> Option<&Reading> {
+        self.readings.iter().min_by(|a, b| depth(&a.dir).cmp(&depth(&b.dir)).then_with(|| a.version.cmp(&b.version)).then_with(|| a.dir.cmp(&b.dir)))
+    }
+
+    /// Readings on another version than the headline, grouped by version (ascending), each with its directories.
+    pub fn others(&self) -> Vec<(Version, Vec<&Reading>)> {
+        let Some(h) = self.headline() else { return vec![] };
+        let mut by: BTreeMap<Version, Vec<&Reading>> = BTreeMap::new();
+        for r in self.readings.iter().filter(|r| r.version != h.version) {
+            by.entry(r.version.clone()).or_default().push(r);
+        }
+        by.into_iter().collect()
+    }
+}
+
+fn depth(dir: &str) -> usize {
+    if dir == "." { 0 } else { dir.split('/').count() }
+}
+
+/// "the root" or the directory, for the report.
+pub fn place(dir: &str) -> String {
+    if dir == "." { "the root".into() } else { dir.to_string() }
 }
 
 /// One locked version and its content hashes as the lockfile states them: npm `sha512-<base64>` integrity, PyPI
@@ -75,6 +137,13 @@ pub struct Stack {
 }
 
 impl Stack {
+    /// Sets each dependency's version from its readings (`settle`).
+    pub fn settle(&mut self) {
+        if let Some(n) = settle(&mut self.deps) {
+            self.notes.push(n);
+        }
+    }
+
     pub fn purls(&self) -> BTreeSet<String> {
         self.deps.keys().cloned().collect()
     }
@@ -105,6 +174,41 @@ impl Stack {
         }
         self.deps.get(&npm_purl(&name.to_lowercase())).and_then(|d| d.version.as_ref())
     }
+}
+
+/// Sets each dependency's version and source from its readings (`Dep::headline`); a note naming the packages whose
+/// versions differ across manifests, when any do.
+pub fn settle(deps: &mut BTreeMap<String, Dep>) -> Option<String> {
+    let mut differ = vec![];
+    for d in deps.values_mut() {
+        let Some(h) = d.headline().cloned() else { continue };
+        d.version = Some(h.version.clone());
+        d.source = if d.readings.len() > 1 { format!("{} in {}", h.source, place(&h.dir)) } else { h.source.clone() };
+        let others = d.others();
+        if let Some((v, rs)) = others.first() {
+            let more = others.iter().map(|(_, rs)| rs.len()).sum::<usize>() - 1;
+            differ.push(format!(
+                "{} {} ({}) and {v} in {} ({}){}",
+                d.name,
+                h.version,
+                d.source,
+                rs[0].dir,
+                rs[0].source,
+                if more > 0 { format!(" and {more} more") } else { String::new() }
+            ));
+        }
+    }
+    if differ.is_empty() {
+        return None;
+    }
+    let n = differ.len();
+    differ.truncate(5);
+    Some(format!(
+        "{n} package{} on different versions across manifests: {}{}. The reviews use the root's version (else the shallowest manifest's); the bump digest names the others.",
+        if n == 1 { " is" } else { "s are" },
+        differ.join("; "),
+        if n > 5 { format!("; {} more", n - 5) } else { String::new() }
+    ))
 }
 
 const DEP_FIELDS: &[&str] = &["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"];
@@ -179,7 +283,7 @@ pub fn detect(root: &Path) -> Result<Stack> {
         let mut d = Some(dir.as_path());
         while let Some(cur) = d {
             if !locks.contains_key(cur) {
-                locks.insert(cur.to_path_buf(), choose_lock(root, cur, Lock::read_all(cur), &mut notes));
+                locks.insert(cur.to_path_buf(), choose_lock(root, cur, Lock::read_all(cur), &local_names, &mut notes));
             }
             if let Some(Some(l)) = locks.get(cur) {
                 lock = Some((cur.to_path_buf(), l.clone()));
@@ -195,6 +299,9 @@ pub fn detect(root: &Path) -> Result<Stack> {
             let Some(map) = pj.get(*field).and_then(Value::as_object) else { continue };
             for (name, range) in map {
                 let range = range.as_str().unwrap_or("");
+                // A package of this repository (a workspace, a path): never public, and its locked version is a
+                // placeholder (Yarn 2+ `0.0.0-use.local`), not a pin the range could say is out of date.
+                let local = is_local(&local_names, name, range);
                 // A library is read at its declared floor, since that is what its users get; a peer range is
                 // the one that says so when it is declared.
                 let (version, source) = if kind == Kind::Library {
@@ -209,24 +316,24 @@ pub fn detect(root: &Path) -> Result<Stack> {
                 {
                     // A locked version the manifest no longer admits means the lockfile is out of date: the
                     // declared range says more about what the project runs than the stale pin does.
-                    if npm_satisfies(&v, range) == Some(false) {
+                    if !local && npm_satisfies(&v, range) == Some(false) {
                         let s = stale.entry(join(&rel_dir(root, ld), &l.file)).or_default();
                         s.0 += 1;
                         if s.1.len() < 3 {
                             s.1.push(format!("{name} {v} vs {range}"));
                         }
-                        (range_floor(range), format!("floor of {range} ({} has {v}, outside the range)", l.file))
+                        (range_floor(range), format!("floor of {range} ({} has {v}, outside the range)", join(&rel_dir(root, ld), &l.file)))
                     } else {
-                        (Some(v), l.file.clone())
+                        (Some(v), join(&rel_dir(root, ld), &l.file))
                     }
                 } else {
                     (range_floor(range), format!("floor of {range} (not in a lockfile)"))
                 };
                 let public_name = range.strip_prefix("npm:").and_then(|r|r.rsplit_once('@').map(|(n,_)|n)).filter(|n|!n.is_empty()).unwrap_or(name);
-                let public_candidate = !local_names.contains(name) && !["workspace:","file:","link:","git:","git+","github:","https:","http:","../","./"].iter().any(|prefix|range.starts_with(prefix));
+                let public_candidate = !local;
                 let purl = npm_purl(public_name);
                 declared.insert(purl.clone());
-                let entry = deps.entry(purl).or_insert_with(|| Dep { name: public_name.to_string(), public_candidate, version: None, source: String::new(), pins: vec![] });
+                let entry = deps.entry(purl).or_insert_with(|| Dep::new(public_name, public_candidate));
                 entry.public_candidate &= public_candidate;
                 if let Some((_, l)) = &lock
                     && let Some(v) = l.version(&importer, name, range)
@@ -235,15 +342,7 @@ pub fn detect(root: &Path) -> Result<Stack> {
                 {
                     entry.pins.push(pin);
                 }
-                let lower = match (&entry.version, &version) {
-                    (None, Some(_)) => true,
-                    (Some(a), Some(b)) => b < a,
-                    _ => false,
-                };
-                if lower || entry.source.is_empty() {
-                    entry.version = version.or(entry.version.take());
-                    entry.source = source;
-                }
+                entry.read(&rel, version, source);
             }
         }
         if let Some(r) = pj.pointer("/engines/node").and_then(Value::as_str)
@@ -278,7 +377,16 @@ pub fn detect(root: &Path) -> Result<Stack> {
         ));
     }
     crate::pypi::detect(root, &mut packages, &mut deps, &mut notes);
-    Ok(Stack { packages, deps, node, notes })
+    let mut st = Stack { packages, deps, node, notes };
+    st.settle();
+    Ok(st)
+}
+
+/// A dependency on a package of this repository (by name or by a local protocol): never public, and never compared
+/// with what a lockfile records for it.
+fn is_local(local_names: &BTreeSet<String>, name: &str, range: &str) -> bool {
+    local_names.contains(name)
+        || ["workspace:", "file:", "link:", "git:", "git+", "github:", "https:", "http:", "../", "./"].iter().any(|p| range.starts_with(p))
 }
 
 fn rel_dir(base: &Path, dir: &Path) -> String {
@@ -313,7 +421,7 @@ const LOCKFILES: &[(&str, &str)] =
 /// One lockfile for a directory that holds several (a switch of package manager that left the old file behind):
 /// the one whose versions the manifest beside it admits, then the one `packageManager` names, then the fixed
 /// order. The choice is recorded in `notes` whenever there was one to make.
-fn choose_lock(root: &Path, dir: &Path, mut cands: Vec<Lock>, notes: &mut Vec<String>) -> Option<Lock> {
+fn choose_lock(root: &Path, dir: &Path, mut cands: Vec<Lock>, local_names: &BTreeSet<String>, notes: &mut Vec<String>) -> Option<Lock> {
     if cands.len() < 2 {
         return cands.pop();
     }
@@ -323,6 +431,7 @@ fn choose_lock(root: &Path, dir: &Path, mut cands: Vec<Lock>, notes: &mut Vec<St
         .filter_map(|f| pj.get(*f).and_then(Value::as_object))
         .flatten()
         .filter_map(|(n, r)| r.as_str().map(|r| (n.as_str(), r)))
+        .filter(|(n, r)| !is_local(local_names, n, r))
         .collect();
     let manager = pj.get("packageManager").and_then(Value::as_str).and_then(|m| m.split('@').next()).unwrap_or("");
     // (outside the range, inside it) per candidate.
@@ -610,6 +719,52 @@ mod tests {
         assert_eq!(s.deps["pkg:npm/prisma"].source, "pnpm-lock.yaml");
         assert_eq!(s.node.as_ref().unwrap().0, Version::new(20, 9, 0));
         assert!(s.candidates().contains("prisma") && s.candidates().contains("next") && s.candidates().contains("client"));
+    }
+
+    #[test]
+    fn the_root_resolution_wins_over_a_nested_library_floor_and_a_side_lockfile() {
+        // Kibana's shape: the root locks react 18.2.0 and axios 1.20.0; a nested published package declares a peer
+        // range `^17`; a CI workspace keeps its own lockfile with axios 1.18.0.
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "package.json", r#"{"name":"kibana","version":"9.0.0","private":true,"dependencies":{"react":"18.2.0","axios":"1.20.0"}}"#);
+        write(d.path(), "pnpm-lock.yaml", "lockfileVersion: '9.0'\n\nimporters:\n\n  .:\n    dependencies:\n      axios:\n        specifier: 1.20.0\n        version: 1.20.0\n      react:\n        specifier: 18.2.0\n        version: 18.2.0\n");
+        write(d.path(), "src/plugins/console/packaging/package.json", r#"{"name":"@kbn/console","version":"1.0.0","main":"index.js","peerDependencies":{"react":"^17"}}"#);
+        write(d.path(), ".buildkite/package.json", r#"{"name":"ci","private":true,"dependencies":{"axios":"^1.18.0"}}"#);
+        write(d.path(), ".buildkite/package-lock.json", r#"{"lockfileVersion":3,"packages":{"node_modules/axios":{"version":"1.18.0"}}}"#);
+        let s = detect(d.path()).unwrap();
+        let (react, axios) = (&s.deps["pkg:npm/react"], &s.deps["pkg:npm/axios"]);
+        assert_eq!(react.version, Some(Version::new(18, 2, 0)));
+        assert_eq!(react.source, "pnpm-lock.yaml in the root");
+        assert_eq!(axios.version, Some(Version::new(1, 20, 0)));
+        let others: Vec<(String, Vec<(&str, &str)>)> =
+            axios.others().into_iter().map(|(v, rs)| (v.to_string(), rs.iter().map(|r| (r.dir.as_str(), r.source.as_str())).collect())).collect();
+        assert_eq!(others, vec![("1.18.0".to_string(), vec![(".buildkite", ".buildkite/package-lock.json")])]);
+        assert_eq!(react.others()[0].1[0].source, "library floor of ^17");
+        let note = s.notes.iter().find(|n| n.contains("different versions across manifests")).expect("a note");
+        assert!(note.starts_with("2 packages are") && note.contains("axios 1.20.0 (pnpm-lock.yaml in the root) and 1.18.0 in .buildkite"), "{note}");
+    }
+
+    #[test]
+    fn manifests_at_the_same_depth_keep_the_lowest() {
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "apps/web/package.json", r#"{"name":"web","private":true,"dependencies":{"react":"^19.1.0"}}"#);
+        write(d.path(), "packages/ui/package.json", r#"{"name":"ui","version":"1.0.0","main":"x.js","peerDependencies":{"react":"^18.3.0"}}"#);
+        let s = detect(d.path()).unwrap();
+        assert_eq!(s.deps["pkg:npm/react"].version, Some(Version::new(18, 3, 0)));
+    }
+
+    #[test]
+    fn yarn_workspace_entries_are_not_a_stale_lockfile() {
+        // Yarn 2+ records each workspace as `0.0.0-use.local`; a workspace depending on another by range is not stale.
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "package.json", r#"{"name":"grafana","private":true,"workspaces":["packages/*"],"dependencies":{"lodash":"^4.17.23"}}"#);
+        write(d.path(), "packages/data/package.json", r#"{"name":"@grafana/data","private":true,"version":"13.3.0-pre"}"#);
+        write(d.path(), "packages/compat/package.json", r#"{"name":"compat","private":true,"dependencies":{"@grafana/data":">=12.0.0"}}"#);
+        write(d.path(), "yarn.lock", "__metadata:\n  version: 8\n\n\"@grafana/data@npm:>=12.0.0, @grafana/data@workspace:packages/data\":\n  version: 0.0.0-use.local\n  resolution: \"@grafana/data@workspace:packages/data\"\n\n\"lodash@npm:^4.17.23\":\n  version: 4.18.1\n  resolution: \"lodash@npm:4.18.1\"\n");
+        let s = detect(d.path()).unwrap();
+        assert!(!s.notes.iter().any(|n| n.contains("out of date")), "{:?}", s.notes);
+        assert_eq!(s.deps["pkg:npm/lodash"].version, Some(Version::new(4, 18, 1)));
+        assert!(!s.deps["pkg:npm/%40grafana/data"].public_candidate);
     }
 
     #[test]
