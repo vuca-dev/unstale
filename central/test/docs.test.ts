@@ -5,14 +5,14 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { DEFAULT_HTTP, HttpClient } from "../src/collector/http.ts";
 import { attribute, guideMajor, markerIn } from "../src/docs/attribute.ts";
-import { findNamespaces, llmsPages, RELEASE_NOTES } from "../src/docs/listing.ts";
+import { findNamespaces, listSite, llmsPages, RELEASE_NOTES } from "../src/docs/listing.ts";
 import { extract, nextGate, passDue, plan, DOCS_PASS } from "../src/docs/extract.ts";
 import type { Technology } from "../src/pipeline/technologies.ts";
 import { docsDir, readEvents, refresh } from "../src/docs/monitor.ts";
 import { fetchGuides } from "../src/pipeline/fetch.ts";
 import { compact, fenceFor, markViews, renderChange, unmarkQuote } from "../src/docs/render.ts";
 import { editKind } from "../src/docs/materiality.ts";
-import { parseRobots } from "../src/docs/robots.ts";
+import { parseRobots, RobotsCache } from "../src/docs/robots.ts";
 import { siteSignal } from "../src/docs/signals.ts";
 import type { Fetcher } from "../src/docs/resolve.ts";
 import { writeAtomic } from "../src/pipeline/util.ts";
@@ -66,6 +66,14 @@ describe("namespaces", () => {
     expect(llmsPages("- [Controllers](https://docs.x.dev/controllers.md)\n- [Home](https://docs.x.dev/index.md)\n- [Elsewhere](https://y.dev/a.md)", "docs.x.dev")).toEqual([
       { url: "https://docs.x.dev/controllers", copy: "https://docs.x.dev/controllers.md" },
       { url: "https://docs.x.dev/", copy: "https://docs.x.dev/index.md" },
+    ]);
+  });
+
+  test("llms.txt links relative to the file are pages too; www. is the same host", () => {
+    expect(llmsPages("- [Config](/config.md)\n- [Guide](guide/why.md): why\n- [Blog](https://www.x.dev/blog)\n- [Mail](mailto:a@x.dev)", "x.dev", "https://x.dev/llms.txt")).toEqual([
+      { url: "https://x.dev/config", copy: "https://x.dev/config.md" },
+      { url: "https://x.dev/guide/why", copy: "https://x.dev/guide/why.md" },
+      { url: "https://www.x.dev/blog" },
     ]);
   });
 });
@@ -158,6 +166,50 @@ describe("render", () => {
   });
 });
 
+describe("listing from the site's links", () => {
+  let e: TestEnv;
+  beforeEach(async () => void (e = await env()));
+  afterEach(async () => e.close());
+  const nav = (links: string[]) => `<!doctype html><html><body><nav>${links.map((l) => `<a href=${l}>x</a>`).join("")}</nav><main>Text.</main></body></html>`;
+
+  test("no sitemap or llms.txt: one page read per directory, links in scope and allowed by robots.txt", async () => {
+    const guide = ["/docs/guide/a", "/docs/guide/b", "/docs/guide/c"];
+    const api = ["/docs/api/x", "/docs/api/y"];
+    const hits = new Map<string, number>();
+    const serve = (p: string, body: string) => e.route(p, (_q, r) => { hits.set(p, (hits.get(p) ?? 0) + 1); r.writeHead(200, { "content-type": "text/html" }).end(body); });
+    e.route("/robots.txt", (_q, r) => void r.writeHead(200, { "content-type": "text/plain" }).end("User-agent: *\nDisallow: /docs/api/y\nDisallow: /private\n"));
+    e.route("/docs/old/z", (_q, r) => void r.writeHead(301, { location: "/private/z" }).end());
+    serve("/private/z", nav(["/docs/hidden/p"]));
+    for (const p of guide) serve(p, nav([...guide, "/docs/api/x", "/docs/old/z", "/blog/post", "https://elsewhere.dev/docs/z", "/docs/style.css"]));
+    for (const p of api) serve(p, nav([...api, "./x#part", "/docs/guide/a"]));
+    const http = new HttpClient({ ...DEFAULT_HTTP, allowHosts: ["127.0.0.1"], retryBaseMs: 10, timeoutMs: 2_000 });
+    const l = await listSite(http, new RobotsCache(http), `${e.base}/docs/guide/a`, "/docs");
+    // A redirect to a disallowed path is not read: its links never reach the listing.
+    expect([l.method, l.pages.map((p) => new URL(p.url).pathname)]).toEqual(["links", ["/docs/api/x", ...guide.slice(0, 1), ...guide.slice(1), "/docs/old/z"].sort()]);
+    expect(l.dropped.robots).toBe(0); // a disallowed link is never queued
+    expect([...hits].sort(([a], [b]) => a.localeCompare(b))).toEqual([["/docs/api/x", 1], ["/docs/guide/a", 1]]);
+  });
+
+  test("an entry with a trailing slash is the base of its relative links", async () => {
+    e.route("/docs/", (_q, r) => void r.writeHead(200, { "content-type": "text/html" }).end(nav(["a", "b"])));
+    const http = new HttpClient({ ...DEFAULT_HTTP, allowHosts: ["127.0.0.1"], retryBaseMs: 10, timeoutMs: 2_000 });
+    const l = await listSite(http, new RobotsCache(http), `${e.base}/docs/`, "/docs");
+    expect(l.pages.map((p) => new URL(p.url).pathname)).toEqual(["/docs", "/docs/a", "/docs/b"]);
+  });
+
+  test("an entry page that lands on another host is listed on that host", async () => {
+    const http = new HttpClient({ ...DEFAULT_HTTP, allowHosts: ["127.0.0.1", "localhost"], retryBaseMs: 10, timeoutMs: 2_000 });
+    const other = e.base.replace("127.0.0.1", "localhost");
+    e.route("/docs/intro", (q, r) => {
+      if (q.headers.host?.startsWith("127.0.0.1")) return void r.writeHead(301, { location: `${other}/pages/start` }).end();
+      r.writeHead(404).end();
+    });
+    e.route("/pages/start", (_q, r) => void r.writeHead(200, { "content-type": "text/html" }).end(nav(["/pages/a", "/pages/b"])));
+    const l = await listSite(http, new RobotsCache(http), `${e.base}/docs/intro`, "/docs");
+    expect([l.site, l.prefix, l.method, l.pages.map((p) => p.url)]).toEqual([`${other}/pages/start`, "", "links", [`${other}/pages/a`, `${other}/pages/b`, `${other}/pages/start`]]);
+  });
+});
+
 describe("pass gate", () => {
   const T = Date.parse("2026-10-16T00:00:00Z");
   const day = 86_400_000;
@@ -182,6 +234,12 @@ describe("pass gate", () => {
     expect(passDue({ release: "r1" }, undefined, new Date(T - DOCS_PASS.freshMs).toISOString(), T, g)).toBe("daily");
     expect(passDue({ release: "r1" }, undefined, new Date(T - 3600_000).toISOString(), T, g)).toBeUndefined();
     expect(passDue({ release: "r1" }, "r1", new Date(T - 31 * day).toISOString(), T, { ...g, maxAgeMs: 30 * day })).toBe("age");
+  });
+  test("a site whose listing named no page is listed again a day later, without waiting for a release", () => {
+    const failed = nextGate(undefined, "baseline", "r1", 0, 3000, T, g, true);
+    expect(passDue(failed, "r1", last, T + 3600_000, g)).toBeUndefined();
+    expect(passDue(failed, "r1", last, T + DOCS_PASS.freshMs, g)).toBe("relist");
+    expect(nextGate(failed, "relist", "r1", 200, 3000, T + day, g).unlistedAt).toBeUndefined();
   });
 });
 
@@ -270,6 +328,31 @@ describe("monitor", () => {
     expect(await siteSignal(fetcher("", 403), { site: "https://docs.x.dev/", prefix: "" }, resolutions, last)).toEqual({});
     expect(await siteSignal(fetcher("[]"), { site: "https://docs.x.dev/", prefix: "" }, resolutions, { ...last, newPages: true })).toEqual({});
     expect(await siteSignal(fetcher("[]"), { site: "https://other.dev/", prefix: "" }, resolutions, last)).toEqual({});
+  });
+
+  test("a failed listing keeps the site's pages; pages first listed later are a baseline, not created", async () => {
+    const html = (body: string) => `<!doctype html><html><body><main>${body}</main></body></html>`;
+    const paths = ["/docs/a", "/docs/b"];
+    let sitemapUp = false;
+    e.route("/sitemap.xml", (_q, r) => {
+      if (!sitemapUp) return void r.writeHead(404).end();
+      r.writeHead(200, { "content-type": "application/xml" }).end(`<?xml version="1.0"?><urlset>${paths.map((p) => `<url><loc>${e.base}${p}</loc></url>`).join("")}</urlset>`);
+    });
+    for (const p of paths) e.route(p, (_q, r) => void r.writeHead(200, { "content-type": "text/html" }).end(html(`<h1>${p}</h1><p>Text.</p>`)));
+    writeAtomic(join(docsDir("f"), "sources.json"), JSON.stringify({
+      at: "x", purls: ["pkg:generic/f"],
+      resolutions: [{ purl: "pkg:generic/f", answer: { kind: "site-only", site: `${e.base}/docs`, sites: [{ site: `${e.base}/docs`, pages: 2, prefix: "/docs" }] }, pairs: [], evidence: {}, requests: 0 }],
+    }));
+    const http = new HttpClient({ ...DEFAULT_HTTP, allowHosts: ["127.0.0.1"], retryBaseMs: 10, timeoutMs: 2_000 });
+    const src = { technology: "f", purls: ["pkg:generic/f"] };
+    const first = await refresh(src, { http }); // nothing names a page (the entry page is a 404)
+    expect([first.checked, first.sites[0]!.listingFailed]).toEqual([0, true]);
+    sitemapUp = true;
+    const second = await refresh(src, { http });
+    expect([second.checked, second.events, second.sites[0]!.listingFailed]).toEqual([2, {}, undefined]);
+    sitemapUp = false;
+    const third = await refresh(src, { http });
+    expect([third.checked, third.events, third.sites[0]!.listingFailed]).toEqual([2, {}, true]);
   });
 
   test("a page budget checks new pages first, then the least recently checked; guides always", async () => {
