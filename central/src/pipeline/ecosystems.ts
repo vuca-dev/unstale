@@ -8,7 +8,10 @@
 //     ones), from registry metadata. Without it another package's advisory named in the notes is never taken for a
 //     dependency update (advisories.ts step 8): the record keeps its labels;
 //   - registryPage: the package a registry page URL is for (npm `npmjs.com/package/<name>`). Without it a record about
-//     another package listed in the notes is never recognised as such (advisories.ts step 9): the record keeps its labels.
+//     another package listed in the notes is never recognised as such (advisories.ts step 9): the record keeps its labels;
+//   - publishTimes: when each version of a package was published to the registry (npm `time`, PyPI the first file's
+//     upload). A release is dated by it (fetch.ts); without it, by its GitHub release, which a bulk import of old tags
+//     dates all on one day.
 // No hand-written package lists, no per-technology tables (memory rule: ecosystem vocabularies, fail open).
 import type { Technology } from "./technologies.ts";
 import { pool } from "./util.ts";
@@ -23,6 +26,8 @@ export interface Ecosystem {
   dependencies?: (component: string, version: string) => Promise<string[] | undefined>;
   /** The package (package URL) a registry page URL is for; undefined when the URL is not one of its package pages. */
   registryPage?: (url: string) => string | undefined;
+  /** Version → ISO publish time of `component` on the registry; undefined when the registry does not know it. */
+  publishTimes?: (component: string) => Promise<Record<string, string> | undefined>;
 }
 
 // ---- SemVer 2.0 precedence (OSV `SEMVER` ranges are SemVer by definition, whatever the ecosystem) ----
@@ -142,6 +147,28 @@ async function npmDependencies(component: string, version: string): Promise<stri
   return [...new Set([...names(meta.dependencies), ...names(meta.optionalDependencies), ...bundled])].map(npmPurl).sort();
 }
 
+/** npm: the packument's `time` (`registry.npmjs.org/<name>`; the abbreviated form has no times), `created` and
+ * `modified` left out. */
+async function npmPublishTimes(component: string): Promise<Record<string, string> | undefined> {
+  const doc = (await getJson(`https://registry.npmjs.org/${npmName(component).replace("/", "%2f")}`)) as { time?: Record<string, unknown> } | undefined;
+  if (!doc) return undefined;
+  return Object.fromEntries(Object.entries(doc.time ?? {}).filter((e): e is [string, string] => e[0] !== "created" && e[0] !== "modified" && typeof e[1] === "string"));
+}
+
+/** PyPI: per version, the earliest upload among its files (`pypi.org/pypi/<name>/json`); a version with no files has
+ * no time. */
+async function pypiPublishTimes(component: string): Promise<Record<string, string> | undefined> {
+  const name = decodeURIComponent(component.replace(/^pkg:pypi\//, ""));
+  const doc = (await getJson(`https://pypi.org/pypi/${encodeURIComponent(name)}/json`)) as { releases?: Record<string, Array<{ upload_time_iso_8601?: string }>> } | undefined;
+  if (!doc) return undefined;
+  const out: Record<string, string> = {};
+  for (const [v, files] of Object.entries(doc.releases ?? {})) {
+    const first = (files ?? []).map((f) => f.upload_time_iso_8601).filter((x): x is string => typeof x === "string" && !Number.isNaN(Date.parse(x))).sort((a, b) => Date.parse(a) - Date.parse(b))[0];
+    if (first) out[v] = first;
+  }
+  return out;
+}
+
 /** `decodeURIComponent`, undefined for malformed percent-encoding (a link the notes got wrong is not recognised). */
 function decoded(x: string): string | undefined {
   try {
@@ -186,9 +213,9 @@ async function pypiDependencies(component: string, version: string): Promise<str
 
 export const ECOSYSTEMS: Record<string, Ecosystem> = {
   // npm versions are SemVer.
-  npm: { osv: "npm", compare: semverOrder, siblings: npmSiblings, dependencies: npmDependencies, registryPage: npmRegistryPage },
+  npm: { osv: "npm", compare: semverOrder, siblings: npmSiblings, dependencies: npmDependencies, registryPage: npmRegistryPage, publishTimes: npmPublishTimes },
   // PyPI versions are PEP 440. No siblings hook: PyPI has no organisation listing to find a repository's packages.
-  pypi: { osv: "PyPI", compare: pep440Order, dependencies: pypiDependencies, registryPage: pypiRegistryPage },
+  pypi: { osv: "PyPI", compare: pep440Order, dependencies: pypiDependencies, registryPage: pypiRegistryPage, publishTimes: pypiPublishTimes },
 };
 
 /** A package URL in one comparable form: PyPI names PEP 503-normalised, npm scopes as `%40`, lower-cased otherwise. */

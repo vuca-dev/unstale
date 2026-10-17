@@ -446,7 +446,7 @@ export interface DocsNote extends ReleaseNote { kind: "docs"; keyTag: string }
 /** The first model call for one chunk of a note under the configured structure (what the cache is keyed on). */
 function firstCall(t: Technology, rel: ReleaseNote | GuideNote | DocsNote, notes: string, part: string) {
   const structure = extractStructure();
-  const base = { TECH: t.name, VERSION: rel.version, DATE: rel.date, PART: part };
+  const base = { TECH: t.name, VERSION: rel.version, DATE: rel.noteDate ?? rel.date, PART: part };
   if (structure === "one-call-schema") return { prompt: fill(SCHEMA_PROMPT, { ...base, NOTES: notes }), opts: { responseFormat: SCHEMA_RESPONSE_FORMAT, maxTokens: 24_000 } };
   if (structure === "one-call") return { prompt: fill(ONE_CALL_PROMPT, { ...base, NOTES: notes }), opts: {} };
   const numbered = extractEvidence() === "ids" ? numberUnits(notes) : undefined;
