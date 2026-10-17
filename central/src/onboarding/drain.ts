@@ -14,8 +14,8 @@
 // then `publishing` once analysed, `declined` when a fast-track run does not take them), so a client that asked for one
 // can follow it until the deploy publishes its status. Best effort: a report that fails never stops the run.
 //
-// Budget: the final line names the budget limits that held work back (`held`: tokens, new_per_day, runs_per_day, each
-// with its cap and reset time), so `"started": 0` is never unexplained. The last progress report also tells the
+// Budget: the final line names the budget limits that held work back (`held`: tokens or runs_per_day, each with its
+// cap and reset time, or an unreadable budget file), so `"started": 0` is never unexplained. The last progress report also tells the
 // gateway until when the budget is spent (`budget.spent_until`, the latest reset of the limits at their cap, null when
 // none is), and the gateway starts no early run until then: a fast-track run could start nothing. Sent on every run,
 // so a budget raised or reset clears it at the next one; registrations are still queued meanwhile.

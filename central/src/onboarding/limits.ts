@@ -2,11 +2,12 @@
 // cheap: an anonymous client may register a few hundred per hour (enough for a large repository in one pass), and votes
 // on known ones have a bucket of their own so they never spend that allowance. Every accepted request is queued, never
 // refused for budget. The budget limits how fast
-// the queue drains: at most a fixed number of new technologies and job runs per UTC day, and at most a number of
-// release-note tokens per period (the expected-cost unit: note volume is read from the release index before any model
-// call). Asking about a known technology is never refused. The budget is the one check that fails closed: a budget file
-// that exists but
-// cannot be read refuses. Client addresses live in memory only and are never logged or written.
+// the queue drains: release-note tokens per period (the expected-cost unit: note volume is read from the release index
+// before any model call), plus each technology's quarterly tokens. Model calls are the cost, so there is no count of new
+// technologies a day: a large repository's few hundred packages drain as fast as their tokens allow. An operator may
+// cap job runs a UTC day (`UNSTALE_RUNS_PER_DAY`, unset = no cap, 0 = start no job). Asking about a known technology
+// is never refused. The budget is the one check that fails closed: a budget file that exists but cannot be read
+// refuses. Client addresses live in memory only and are never logged or written.
 import type { IncomingMessage } from "node:http";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -20,9 +21,8 @@ export interface Limits {
   perAddressPerHour: number;
   /** Votes (requests for a known technology) one client address may cast per hour; over it they are not counted. */
   votesPerAddressPerHour: number;
-  /** New technologies accepted per UTC day, all clients together. */
-  newPerDay: number;
-  /** Job runs (first analysis, retries and refreshes) started per UTC day. */
+  /** Job runs (first analysis, retries and refreshes) started per UTC day; Infinity (unset) is no cap, 0 starts none.
+   * Tokens bound what those runs spend on models; this only bounds the work that spends none. */
   runsPerDay: number;
   /** Proxies in front of the service whose `X-Forwarded-For` entry is trusted; 0 reads the socket address. */
   trustProxy: number;
@@ -35,7 +35,7 @@ export interface Limits {
 
 export type Period = "day" | "week" | "month";
 
-const int = (value: string | undefined, fallback: number) => {
+const int = (value: string | undefined, fallback: number): number => {
   const n = Number(value);
   return value !== undefined && value !== "" && Number.isInteger(n) && n >= 0 ? n : fallback;
 };
@@ -43,8 +43,7 @@ export function limitsFromEnv(env: NodeJS.ProcessEnv = process.env): Limits {
   return {
     perAddressPerHour: int(env.UNSTALE_RATE_PER_HOUR, 250),
     votesPerAddressPerHour: int(env.UNSTALE_VOTES_PER_HOUR, 1000),
-    newPerDay: int(env.UNSTALE_NEW_PER_DAY, 100),
-    runsPerDay: int(env.UNSTALE_RUNS_PER_DAY, 1000),
+    runsPerDay: int(env.UNSTALE_RUNS_PER_DAY, Infinity),
     trustProxy: env.UNSTALE_TRUST_PROXY === "true" ? 1 : int(env.UNSTALE_TRUST_PROXY, 0),
     tokensPerPeriod: int(env.UNSTALE_BUDGET_TOKENS, 1_000_000),
     period: (["day", "week", "month"] as const).find((p) => p === env.UNSTALE_BUDGET_PERIOD) ?? "day",
@@ -99,7 +98,6 @@ export function clientAddress(req: IncomingMessage, trustProxy: number): string 
 
 interface BudgetFile {
   day: string;
-  new: number;
   runs: number;
   /** The token period these tokens belong to (absent in files written before the token budget). */
   period?: string;
@@ -110,7 +108,7 @@ const secondsToNextDay = (now: number) => Math.ceil((86_400_000 - (now % 86_400_
 /** A budget limit that holds work back, and when it resets (ISO time). `unreadable`: the budget file cannot be read
  * (fail closed); it has no reset time, since it holds until someone fixes the file. */
 export interface Hold {
-  limit: "tokens" | "new_per_day" | "runs_per_day" | "unreadable";
+  limit: "tokens" | "runs_per_day" | "unreadable";
   cap?: number;
   resets?: string;
 }
@@ -118,10 +116,10 @@ export interface Hold {
 /** Counters per UTC day and tokens per period, persisted under the central store so a restart does not reset them. */
 export class DailyBudget {
   private announced = "";
-  private readonly limits: Pick<Limits, "newPerDay" | "runsPerDay"> & Partial<Pick<Limits, "tokensPerPeriod" | "period">>;
+  private readonly limits: Partial<Pick<Limits, "runsPerDay" | "tokensPerPeriod" | "period">>;
   private readonly path: string;
   constructor(
-    limits: Pick<Limits, "newPerDay" | "runsPerDay"> & Partial<Pick<Limits, "tokensPerPeriod" | "period">>,
+    limits: Partial<Pick<Limits, "runsPerDay" | "tokensPerPeriod" | "period">>,
     path = join(centralDir(), "onboarding", "budget.json"),
   ) {
     this.limits = limits;
@@ -136,12 +134,13 @@ export class DailyBudget {
     const period = periodKey(this.period, now);
     try {
       const stored = existsSync(this.path) ? (JSON.parse(readFileSync(this.path, "utf8")) as BudgetFile) : undefined;
-      const file: BudgetFile = stored?.day === day ? { ...stored } : { day, new: 0, runs: 0, ...(stored?.period ? { period: stored.period, tokens: stored.tokens } : {}) };
+      // Rebuilt field by field, so a `new` count left by an older file is dropped.
+      const file: BudgetFile = { day, runs: stored?.day === day ? stored.runs : 0, ...(stored?.period ? { period: stored.period, tokens: stored.tokens } : {}) };
       if (file.period !== period) {
         file.period = period;
         file.tokens = 0;
       }
-      if (!Number.isFinite(file.new) || !Number.isFinite(file.runs) || !Number.isFinite(file.tokens)) throw new Error("bad counters");
+      if (!Number.isFinite(file.runs) || !Number.isFinite(file.tokens)) throw new Error("bad counters");
       return file;
     } catch {
       console.error(`coverage budget unreadable at ${this.path}; refusing until it is fixed or the day changes`);
@@ -153,24 +152,25 @@ export class DailyBudget {
     this.announced = key;
     console.log(message);
   }
-  /** One unit of each kind, all or none: a refusal of one kind spends nothing. */
-  take(kinds: "new" | "runs" | Array<"new" | "runs">, now = Date.now()): Refusal | undefined {
+  private get runsCap(): number {
+    return this.limits.runsPerDay ?? Infinity;
+  }
+  /** One job run, refused when the day's runs are at their cap (counted only while there is a cap). */
+  takeRun(now = Date.now()): Refusal | undefined {
     const file = this.read(now);
     if (!file) return { limit: "budget", retryAfter: secondsToNextDay(now) };
-    for (const kind of Array.isArray(kinds) ? kinds : [kinds]) {
-      const cap = kind === "new" ? this.limits.newPerDay : this.limits.runsPerDay;
-      if (file[kind] >= cap) {
-        this.announce(`${file.day} ${kind}`, `coverage budget reached for ${file.day}: ${cap} ${kind === "new" ? "new technologies" : "job runs"}`);
-        return { limit: "budget", retryAfter: secondsToNextDay(now), kind };
-      }
+    const cap = this.runsCap;
+    if (cap === Infinity) return undefined;
+    if (file.runs >= cap) {
+      this.announce(`${file.day} runs`, `coverage budget reached for ${file.day}: ${cap} job runs`);
+      return { limit: "budget", retryAfter: secondsToNextDay(now), kind: "runs" };
     }
-    for (const kind of Array.isArray(kinds) ? kinds : [kinds]) file[kind]++;
+    file.runs++;
     writeAtomic(this.path, JSON.stringify(file));
     return undefined;
   }
-  /** The limits at their cap now, each with when it resets. Any one keeps a new technology from starting (a new one
-   * takes a run, a new-technology count and tokens), so the gateway reads a non-empty answer as "early runs are
-   * pointless until the latest reset". */
+  /** The limits at their cap now, each with when it resets. Any one keeps a new technology from starting (it takes a
+   * run and tokens), so the gateway reads a non-empty answer as "early runs are pointless until the latest reset". */
   spent(now = Date.now()): Hold[] {
     const file = this.read(now);
     const tomorrow = new Date(nextPeriod("day", now)).toISOString();
@@ -178,8 +178,7 @@ export class DailyBudget {
     const out: Hold[] = [];
     const cap = this.limits.tokensPerPeriod;
     if (cap !== undefined && file.tokens! >= cap) out.push({ limit: "tokens", cap, resets: new Date(nextPeriod(this.period, now)).toISOString() });
-    if (file.new >= this.limits.newPerDay) out.push({ limit: "new_per_day", cap: this.limits.newPerDay, resets: tomorrow });
-    if (file.runs >= this.limits.runsPerDay) out.push({ limit: "runs_per_day", cap: this.limits.runsPerDay, resets: tomorrow });
+    if (file.runs >= this.runsCap) out.push({ limit: "runs_per_day", cap: this.runsCap, resets: tomorrow });
     return out;
   }
   /** Release-note tokens left in this period; 0 when the file cannot be read (fail closed). Unlimited without a cap. */

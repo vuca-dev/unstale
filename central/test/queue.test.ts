@@ -2,7 +2,7 @@
 // ties among new technologies), the release-note token budget per period (persisted, fails closed), the per-technology
 // quarterly cap, the technology unit (one repository and release stream) and the deprecation notice.
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CoverageService, sameStream, type Job } from "../src/onboarding/service.ts";
@@ -26,7 +26,6 @@ afterEach(() => {
 const limits = (l: Partial<Limits> = {}): Limits => ({
   perAddressPerHour: 100,
   votesPerAddressPerHour: 1000,
-  newPerDay: 100,
   runsPerDay: 100,
   trustProxy: 0,
   tokensPerPeriod: 1_000_000,
@@ -134,14 +133,14 @@ test("among new technologies of equal demand the most adopted drain first; an un
 test("token budget per period: spent per note, persisted, reset each period, first spend always passes, fails closed", () => {
   const path = join(dir, "budget.json");
   const t0 = Date.UTC(2026, 9, 16, 12);
-  const b = new DailyBudget({ newPerDay: 10, runsPerDay: 10, tokensPerPeriod: 100, period: "week" }, path);
+  const b = new DailyBudget({ runsPerDay: 10, tokensPerPeriod: 100, period: "week" }, path);
   expect(b.spend(500, t0)).toBeUndefined(); // one note larger than the budget cannot stall the queue
   expect(b.tokensLeft(t0)).toBe(0);
-  const again = new DailyBudget({ newPerDay: 10, runsPerDay: 10, tokensPerPeriod: 100, period: "week" }, path);
+  const again = new DailyBudget({ runsPerDay: 10, tokensPerPeriod: 100, period: "week" }, path);
   expect(again.spend(1, t0)).toMatchObject({ limit: "budget", kind: "tokens" });
   // The next ISO week starts Monday 19 October; the day counters reset daily without touching the week's tokens.
   expect(again.spend(1, Date.UTC(2026, 9, 18, 23))).toMatchObject({ kind: "tokens" });
-  expect(again.take("runs", Date.UTC(2026, 9, 17))).toBeUndefined();
+  expect(again.takeRun(Date.UTC(2026, 9, 17))).toBeUndefined();
   expect(again.tokensLeft(Date.UTC(2026, 9, 17))).toBe(0);
   expect(again.spend(60, Date.UTC(2026, 9, 19))).toBeUndefined();
   expect(again.spend(50, Date.UTC(2026, 9, 19))).toMatchObject({ kind: "tokens" });
@@ -154,7 +153,7 @@ test("token budget per period: spent per note, persisted, reset each period, fir
   expect(new Date(nextPeriod("month", t0)).toISOString().slice(0, 10)).toBe("2026-11-01");
   expect(quarterKey(t0)).toBe("2026-Q4");
   // A budget of 0 stops extraction; an unreadable file refuses and reports nothing left.
-  expect(new DailyBudget({ newPerDay: 1, runsPerDay: 1, tokensPerPeriod: 0 }, join(dir, "zero.json")).spend(1)).toMatchObject({ kind: "tokens" });
+  expect(new DailyBudget({ runsPerDay: 1, tokensPerPeriod: 0 }, join(dir, "zero.json")).spend(1)).toMatchObject({ kind: "tokens" });
   writeFileSync(path, "{not json");
   vi.spyOn(console, "error").mockImplementation(() => {});
   expect(again.spend(1)).toMatchObject({ limit: "budget" });
@@ -163,24 +162,31 @@ test("token budget per period: spent per note, persisted, reset each period, fir
 
 test("the spent limits name their cap and reset: tokens at the period's end, counts at the next UTC day", () => {
   const now = Date.parse("2026-10-17T14:51:00Z");
-  const b = new DailyBudget({ newPerDay: 1, runsPerDay: 5, tokensPerPeriod: 100, period: "week" }, join(dir, "spent.json"));
+  const b = new DailyBudget({ runsPerDay: 1, tokensPerPeriod: 100, period: "week" }, join(dir, "spent.json"));
   expect(b.spent(now)).toEqual([]);
-  expect(b.take(["runs", "new"], now)).toBeUndefined();
-  expect(b.spent(now)).toEqual([{ limit: "new_per_day", cap: 1, resets: "2026-10-18T00:00:00.000Z" }]);
+  expect(b.takeRun(now)).toBeUndefined();
+  expect(b.spent(now)).toEqual([{ limit: "runs_per_day", cap: 1, resets: "2026-10-18T00:00:00.000Z" }]);
   b.spend(80, now);
   expect(b.spend(30, now)).toMatchObject({ kind: "tokens" });
   expect(b.spent(now).map((h) => [h.limit, h.cap, h.resets])).toEqual([
     ["tokens", 100, "2026-10-19T00:00:00.000Z"],
-    ["new_per_day", 1, "2026-10-18T00:00:00.000Z"],
+    ["runs_per_day", 1, "2026-10-18T00:00:00.000Z"],
   ]);
   writeFileSync(join(dir, "spent.json"), "{");
   expect(b.spent(now)).toEqual([{ limit: "unreadable" }]);
 });
 
-test("a refusal of one kind spends nothing of the other", () => {
-  const b = new DailyBudget({ newPerDay: 0, runsPerDay: 1 }, join(dir, "b.json"));
-  expect(b.take(["runs", "new"])).toMatchObject({ kind: "new" });
-  expect(b.take("runs")).toBeUndefined();
+test("without a run cap runs are not counted and nothing is spent; a file left with a count of new technologies still reads", () => {
+  const path = join(dir, "b.json");
+  const day = new Date().toISOString().slice(0, 10);
+  writeFileSync(path, JSON.stringify({ day, new: 100, runs: 3 }));
+  const b = new DailyBudget({}, path);
+  for (let i = 0; i < 1500; i++) expect(b.takeRun()).toBeUndefined();
+  expect(b.spent()).toEqual([]);
+  expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({ day, new: 100, runs: 3 });
+  expect(new DailyBudget({ runsPerDay: 4 }, path).takeRun()).toBeUndefined();
+  expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({ day, runs: 4, period: day, tokens: 0 });
+  expect(new DailyBudget({ runsPerDay: 4 }, path).takeRun()).toMatchObject({ kind: "runs" });
 });
 
 test("with the period's tokens spent nothing starts, and the waiting job says why", () => {
@@ -194,15 +200,6 @@ test("with the period's tokens spent nothing starts, and the waiting job says wh
   }
 });
 
-test("over the daily count of new technologies, admitted work still runs", () => {
-  const service = new CoverageService(1, { limits: limits({ newPerDay: 0 }), admission: async () => ({ admit: true, why: "test" }) });
-  try {
-    const fresh = service.submit("pkg:npm/new");
-    expect(fresh.stage).toMatch(/^Daily limit of new technologies reached; continues after/);
-  } finally {
-    service.stop();
-  }
-});
 
 // --- work(): mocked discovery, release index, synthesis and docs pass ---
 async function mockWork(techs: Record<string, { repo: string; tags: string[]; size?: number }>) {

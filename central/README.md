@@ -59,8 +59,7 @@ Every variable is optional; the defaults suit a developer machine.
 | `UNSTALE_JEV_ENV_FILE` | `~/.config/ati/jev.env` | Env file holding `JEV_API_KEY=` when the variable itself is unset |
 | `UNSTALE_RATE_PER_HOUR` | `250` | `serve`: new technologies one client address may register per hour (a known one is never refused) |
 | `UNSTALE_VOTES_PER_HOUR` | `1000` | `serve`: votes (requests for a known technology) one client address may cast per hour, a bucket apart from new technologies; over it a vote is not counted |
-| `UNSTALE_NEW_PER_DAY` | `100` | `serve`: new technologies accepted per UTC day, all clients together |
-| `UNSTALE_RUNS_PER_DAY` | `1000` | `serve`: coverage job runs (first analysis, retries, refreshes) started per UTC day |
+| `UNSTALE_RUNS_PER_DAY` | unset (no cap) | Coverage job runs (first analysis, retries, refreshes) started per UTC day; `0` starts none. The token budget bounds what runs spend on models; there is no count of new technologies |
 | `UNSTALE_BUDGET_TOKENS` | `1000000` | Release-note tokens (characters / 4) extracted per budget period, all technologies together; 0 stops extraction. The ingest workflow sets 2,500,000 |
 | `UNSTALE_BUDGET_PERIOD` | `day` | The token budget's UTC period: `day`, `week` or `month` |
 | `UNSTALE_TECH_QUARTER_TOKENS` | `50000` | Release-note tokens one technology may use per calendar quarter before the rest waits behind other technologies |
