@@ -1431,7 +1431,14 @@ mod tests {
         let base = format!("http://{}", listener.local_addr().unwrap());
         let server = std::thread::spawn(move || {
             let (mut stream, _) = listener.accept().unwrap();
-            let mut buf = [0u8; 4096]; let _ = stream.read(&mut buf);
+            // The whole request first: replying before the body is read resets the connection.
+            let (mut req, mut buf) = (Vec::new(), [0u8; 4096]);
+            while !req.ends_with(b"}") {
+                match stream.read(&mut buf) {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => req.extend_from_slice(&buf[..n]),
+                }
+            }
             let body = "untrusted upstream explanation";
             write!(stream, "HTTP/1.1 400 Bad Request\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body).unwrap();
         });
