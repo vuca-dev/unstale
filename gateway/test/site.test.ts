@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { gzipSync } from "node:zlib";
 import { expect, test } from "vitest";
 import { build, compareVersions, prose, THIN_RECORDS, type CatalogRecord } from "../site/build.ts";
+import { page, prefersMarkdown, type Env } from "../src/index.ts";
 
 const rec = (id: string, version: string, r: Partial<CatalogRecord> = {}, component = "pkg:npm/next"): CatalogRecord => ({
   id,
@@ -54,6 +55,8 @@ test("a package page lists majors newest first, breaking changes before fixes, w
   const home = readFileSync(join(site, "index.html"), "utf8");
   expect(home).toContain('href="/npm/next/"');
   expect(home).toContain("npx @unstale/cli init");
+  expect(readFileSync(join(site, "npm", "next", "index.md"), "utf8")).toMatch(/^# What changed in next\n[\s\S]*## next 16[\s\S]*### Breaking changes\n\n- cache changed \(16\.1\.0\) — \[release notes\]\(https:\/\/example\.com\/cache\)/);
+  expect(readFileSync(join(site, "llms.txt"), "utf8")).toContain("https://unstale.sh/npm/next/index.md");
   expect(readFileSync(join(site, "_headers"), "utf8")).toContain("Strict-Transport-Security");
   expect(readFileSync(join(site, ".well-known", "security.txt"), "utf8")).toMatch(/^Contact: https:\/\/github\.com\/vuca-dev\/unstale\/security/);
 });
@@ -73,4 +76,40 @@ test("thin pages are built but not indexed; scoped packages keep their scope; up
 test("helpers", () => {
   expect(["15.10.0", "15.9.1", "16.0.0", "15.9.0"].sort(compareVersions)).toEqual(["15.9.0", "15.9.1", "15.10.0", "16.0.0"]);
   expect(prose("a `b` & c")).toBe("a <code>b</code> &amp; c");
+});
+
+test("Markdown is chosen only when a client ranks it above HTML", () => {
+  expect(prefersMarkdown("text/markdown")).toBe(true);
+  expect(prefersMarkdown("text/markdown, text/html;q=0.9")).toBe(true);
+  expect(prefersMarkdown("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")).toBe(false);
+  expect(prefersMarkdown("text/html, text/markdown;q=0.5")).toBe(false);
+  expect(prefersMarkdown(null)).toBe(false);
+});
+
+test("pages: www and http go to the https apex; agents asking for Markdown get the index.md twin", async () => {
+  const assets = new Map([["/npm/next/", "<html>next</html>"], ["/npm/next/index.md", "# What changed in next"]]);
+  const env = {
+    ASSETS: {
+      fetch: async (input: Request | URL) => {
+        const path = new URL(input instanceof Request ? input.url : input).pathname;
+        const body = assets.get(path);
+        return body ? new Response(body) : new Response("not found", { status: 404 });
+      },
+    },
+  } as unknown as Env;
+  const get = (href: string, accept?: string) =>
+    page(new Request(href, { headers: accept ? { Accept: accept } : {} }), env, new URL(href));
+
+  const www = await get("https://www.unstale.sh/npm/next/?x=1");
+  expect(www.status).toBe(301);
+  expect(www.headers.get("Location")).toBe("https://unstale.sh/npm/next/?x=1");
+  expect((await get("http://unstale.sh/")).headers.get("Location")).toBe("https://unstale.sh/");
+
+  const md = await get("https://unstale.sh/npm/next/", "text/markdown");
+  expect(md.headers.get("Content-Type")).toMatch(/^text\/markdown/);
+  expect(await md.text()).toBe("# What changed in next");
+
+  const html = await get("https://unstale.sh/npm/next/", "text/html,*/*;q=0.8");
+  expect(await html.text()).toBe("<html>next</html>");
+  expect(html.headers.get("Vary")).toContain("Accept");
 });

@@ -284,11 +284,46 @@ export async function handle(request: Request, env: Env): Promise<Response> {
       if (request.method === "POST" && url.pathname === "/internal/progress")
         return json(200, { reported: await queue().report(progressOf(await request.json())) });
     }
-    return env.ASSETS.fetch(request);
+    return page(request, env, url);
   } catch (error) {
     const status = (error as { status?: number }).status ?? 400;
     return json(status, { error: error instanceof Error ? error.message.slice(0, 200) : "Invalid request" });
   }
+}
+
+/** True when the client ranks Markdown above HTML (agents asking for `text/markdown`; browsers lead with HTML). */
+export function prefersMarkdown(accept: string | null): boolean {
+  const q = (type: string) => {
+    for (const part of (accept ?? "").split(",")) {
+      const [media, ...params] = part.trim().split(";");
+      if (media?.trim().toLowerCase() !== type) continue;
+      const v = params.map((p) => p.trim()).find((p) => p.startsWith("q="));
+      return v ? Number(v.slice(2)) || 0 : 1;
+    }
+    return 0;
+  };
+  return q("text/markdown") > 0 && q("text/markdown") >= q("text/html");
+}
+
+// Website pages (gateway/site/build.ts; routed here by run_worker_first: "/", "/npm/*", "/pypi/*"): the apex over
+// HTTPS, and a page's index.md twin for clients that ask for Markdown. Everything else is the static file.
+export async function page(request: Request, env: Env, url: URL): Promise<Response> {
+  if (url.hostname.startsWith("www.") || url.protocol === "http:") {
+    return Response.redirect(`https://${url.hostname.replace(/^www\./, "")}${url.pathname}${url.search}`, 301);
+  }
+  if (request.method === "GET" && url.pathname.endsWith("/") && prefersMarkdown(request.headers.get("Accept"))) {
+    const md = await env.ASSETS.fetch(new URL(`${url.pathname}index.md`, url));
+    if (md.ok) {
+      return new Response(md.body, {
+        headers: { "Content-Type": "text/markdown; charset=utf-8", Vary: "Accept", Link: `<${url.href}>; rel="canonical"` },
+      });
+    }
+  }
+  const res = await env.ASSETS.fetch(request);
+  if (!url.pathname.endsWith("/")) return res;
+  const out = new Response(res.body, res);
+  out.headers.append("Vary", "Accept");
+  return out;
 }
 
 export default { fetch: handle } satisfies ExportedHandler<Env>;

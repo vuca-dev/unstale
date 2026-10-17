@@ -1,8 +1,9 @@
 // The public website at unstale.sh, built from an exported catalog tree (`node gateway/site/build.ts <site dir>`).
 // It writes next to `v1/` in the same tree, which the gateway deploys as static files: a home page, one page per
 // covered package listing its changes by major version (breaking changes first, each with its official sources),
-// sitemap.xml, robots.txt, llms.txt, security.txt and _headers. Pages are generated from the catalog alone, with no
-// per-package content. A package with fewer than THIN_RECORDS changes gets a page but is not indexed by search engines.
+// sitemap.xml, robots.txt, llms.txt, llms-full.txt, security.txt and _headers, and an index.md beside every page for
+// agents. Pages are generated from the catalog alone, with no per-package content. A package with fewer than
+// THIN_RECORDS changes gets a page but is not indexed by search engines.
 // The look follows the CLI's `init` screen: its dot-matrix wordmark (GLYPHS, local/cli/src/onboarding_ui.rs) and its
 // tones (fresh green, stale amber, teal accent, muted).
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
@@ -178,11 +179,18 @@ const FAVICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 7 9"><rect
     .join("")
 }</svg>`;
 
+const NPM_URL = "https://www.npmjs.com/package/@unstale/cli";
+
 function copyable(cmd: string, extra = ""): string {
   return `<div class="cmd${extra}"><span class="dollar" aria-hidden="true">$</span><code>${esc(cmd)}</code><button type="button" class="copy" data-copy="${esc(cmd)}" aria-label="Copy command">Copy</button></div>`;
 }
 
-function layout(o: { title: string; description: string; path: string; body: string; noindex?: boolean; head?: string; wide?: boolean }): string {
+/** "@unstale/cli 0.1.1 on npm", linked: the package an `npx` reader checks before running it. */
+function npmLink(version: string | undefined): string {
+  return `<a href="${NPM_URL}"><code>@unstale/cli</code>${version ? ` ${esc(version)}` : ""} on npm</a>`;
+}
+
+function layout(o: { title: string; description: string; path: string; body: string; noindex?: boolean; head?: string }): string {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -191,6 +199,7 @@ function layout(o: { title: string; description: string; path: string; body: str
 <title>${esc(o.title)}</title>
 <meta name="description" content="${esc(o.description)}">
 <link rel="canonical" href="${ORIGIN}${o.path}">
+<link rel="alternate" type="text/markdown" href="${ORIGIN}${o.path}index.md">
 ${o.noindex ? '<meta name="robots" content="noindex">\n' : ""}<meta name="theme-color" content="#0b1113" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#f6f8f7" media="(prefers-color-scheme: light)">
 <meta property="og:type" content="website">
@@ -206,7 +215,7 @@ ${o.head ?? ""}</head>
 <main class="wrap">
 ${o.body}
 </main>
-<footer class="wrap"><p>${wordmarkSvg("mark small")}<span>Open source, AGPL-3.0 · <a href="${REPO}">GitHub</a> · <a href="https://www.npmjs.com/package/@unstale/cli">npm</a> · <a href="${REPO}/blob/main/SECURITY.md">Security</a> · by <a href="https://vuca.dev">Jason Draper</a></span></p></footer>
+<footer class="wrap"><p>${wordmarkSvg("mark small")}<span>AGPL-3.0 · <a href="${REPO}">GitHub</a> · <a href="${NPM_URL}">npm</a> · <a href="${REPO}/blob/main/SECURITY.md">Security</a> · <a href="/llms.txt">llms.txt</a> · by <a href="https://vuca.dev">Jason Draper</a></span></p></footer>
 <script src="/site.js" defer></script>
 </body>
 </html>
@@ -219,32 +228,44 @@ function counts(p: Package): Record<string, number> {
   return c;
 }
 
-function recordItem(r: CatalogRecord): string {
-  const versions = [...new Set((r.releases ?? []).map((x) => x.version))].sort(compareVersions);
-  const shown = versions.length > 3 ? `${versions[0]} … ${versions.at(-1)}` : versions.join(", ");
+const versionsOf = (r: CatalogRecord) => [...new Set((r.releases ?? []).map((x) => x.version))].sort(compareVersions);
+const shownVersions = (v: string[]) => (v.length > 3 ? `${v[0]} … ${v.at(-1)}` : v.join(", "));
+const sourcesOf = (r: CatalogRecord) => {
   const seen = new Set<string>();
-  const sources = (r.evidence ?? [])
-    .filter((e) => e.url && !seen.has(e.url) && seen.add(e.url))
+  return (r.evidence ?? []).filter((e) => e.url && !seen.has(e.url) && seen.add(e.url));
+};
+
+function recordItem(r: CatalogRecord): string {
+  const shown = shownVersions(versionsOf(r));
+  const sources = sourcesOf(r)
     .map((e) => `<a href="${esc(e.url)}" rel="nofollow">${esc(SOURCE_LABEL[e.kind] ?? "source")}</a>`)
     .join("");
   return `<li><p>${prose(r.summary!)}</p><p class="meta">${shown ? `<span class="v">${esc(shown)}</span>` : ""}${sources}</p></li>`;
 }
 
-export function packagePage(p: Package): string {
+function span(p: Package): string {
+  return p.lines.length > 1 ? `${p.lines.at(-1)!.line} to ${p.lines[0]!.line}` : p.lines[0]!.line;
+}
+
+function describe(p: Package): string {
   const c = counts(p);
-  const span = p.lines.length > 1 ? `${p.lines.at(-1)!.line} to ${p.lines[0]!.line}` : p.lines[0]!.line;
   const tally = [
     c.breaking && `${c.breaking} breaking`,
     c.deprecations && `${c.deprecations} deprecations`,
     c.security && `${c.security} security`,
     c.new && `${c.new} new APIs and options`,
   ].filter(Boolean);
-  const description =
-    `${p.count} changes in ${p.name} ${span} from its official release notes, upgrade guides and advisories` +
+  return (
+    `${p.count} changes in ${p.name} ${span(p)} from its official release notes, upgrade guides and advisories` +
     (tally.length ? `: ${tally.join(", ")}.` : ".") +
-    " Each one cited.";
-  const chips = GROUPS.filter((g) => c[g.id])
-    .map((g) => `<span class="chip ${g.tone}"><b>${c[g.id]}</b> ${g.chip}</span>`)
+    " Each one cited."
+  );
+}
+
+export function packagePage(p: Package, version?: string): string {
+  const c = counts(p);
+  const tally = GROUPS.filter((g) => c[g.id])
+    .map((g) => `<span><b class="${g.tone}">${c[g.id]}</b> ${g.chip}</span>`)
     .join("");
   const sections = p.lines
     .map(({ line, records }) => {
@@ -261,22 +282,47 @@ export function packagePage(p: Package): string {
     })
     .join("\n");
   const toc = p.lines.length > 1
-    ? `<nav class="lines" aria-label="Major versions">${p.lines.map((l) => `<a href="#v${esc(l.line)}">${esc(l.line)}</a>`).join("")}</nav>`
+    ? `<nav class="lines" aria-label="Major versions">${p.lines.map((l) => `<a href="#v${esc(l.line)}">${esc(p.name)} ${esc(l.line)}</a>`).join("")}</nav>`
     : "";
   const body = `<p class="crumb"><a href="/#packages">${esc(p.ecosystem)}</a> / ${esc(p.name)}</p>
 <h1 class="pkgname">${esc(p.name)}</h1>
-<p class="sub">What changed in ${esc(p.name)} ${esc(span)}, from its official release notes, upgrade guides and advisories.${p.also.length ? ` Also covers ${p.also.map((a) => `<code>${esc(a)}</code>`).join(", ")}.` : ""} <span class="checked">Sources checked ${esc(p.checked.slice(0, 10))}.</span></p>
-<div class="chips">${chips}</div>
-<aside class="cta"><p><strong>Which of these apply to your code?</strong> unstale matches every change against your repository, on your machine, and hands the ones that apply to Claude Code, Codex or Cursor.</p>${copyable(INSTALL_NPX)}</aside>
+<p class="sub">What changed in ${esc(p.name)} ${esc(span(p))}, from its official release notes, upgrade guides and advisories.${p.also.length ? ` Also covers ${p.also.map((a) => `<code>${esc(a)}</code>`).join(", ")}.` : ""} Sources checked ${esc(p.checked.slice(0, 10))}.</p>
+<p class="tally">${tally}</p>
+<div class="cta"><p>See which of these apply to your code, ranked, in your agent:</p>${copyable(INSTALL_NPX)}<p class="alt">${npmLink(version)}</p></div>
 ${toc}
 ${sections}`;
   return layout({
     title: `${p.name} changes by version: breaking changes, deprecations, new APIs · unstale`,
-    description,
+    description: describe(p),
     path: p.path,
     body,
     noindex: p.count < THIN_RECORDS,
   });
+}
+
+/** The same page as Markdown, for agents (`index.md` beside `index.html`; also served for `Accept: text/markdown`). */
+export function packageMarkdown(p: Package): string {
+  const out = [
+    `# What changed in ${p.name}`,
+    "",
+    `> ${describe(p)} Sources checked ${p.checked.slice(0, 10)}. HTML: ${ORIGIN}${p.path}`,
+    "",
+    `To see which of these apply to a repository, run \`${INSTALL_NPX}\` in it.`,
+  ];
+  for (const { line, records } of p.lines) {
+    out.push("", `## ${p.name} ${line}`);
+    for (const g of GROUPS) {
+      const items = records.filter((r) => groupOf(r) === g);
+      if (!items.length) continue;
+      out.push("", `### ${g.title}`, "");
+      for (const r of items) {
+        const v = shownVersions(versionsOf(r));
+        const src = sourcesOf(r).map((e) => `[${SOURCE_LABEL[e.kind] ?? "source"}](${e.url})`).join(", ");
+        out.push(`- ${r.summary!.replace(/\s+/g, " ")}${v ? ` (${v})` : ""}${src ? ` — ${src}` : ""}`);
+      }
+    }
+  }
+  return out.join("\n") + "\n";
 }
 
 // Real `unstale init` output on a Next.js and Prisma app (`@unstale/cli` 0.1.0, 17 October 2026), trimmed, in the
@@ -305,91 +351,133 @@ function terminal(): string {
   const rows = TERMINAL.map(([tone, text]) =>
     tone === "rule" ? `<span class="t-rule"></span>` : `<span class="t-${tone || "body"}">${esc(text) || "&nbsp;"}</span>`,
   ).join("");
-  return `<figure class="term"><div class="term-bar"><i></i><i></i><i></i><span>my-app</span></div><pre>${rows}</pre><figcaption>Real <code>init</code> output on a Next.js and Prisma app, trimmed.</figcaption></figure>`;
+  return `<figure class="term"><pre>${rows}</pre><figcaption>Real <code>init</code> output on a Next.js and Prisma app, trimmed.</figcaption></figure>`;
 }
 
-export function homePage(pkgs: Package[]): string {
+const SUMMARY =
+  "unstale tells Claude Code, Codex and Cursor what changed upstream since their training cutoff that applies to your code: new APIs worth adopting, breaking changes for your next major upgrade, deprecations, and the security and performance fixes in each version bump.";
+
+export function homePage(pkgs: Package[], version?: string): string {
   const total = pkgs.reduce((n, p) => n + p.count, 0);
-  const description =
-    "unstale tells Claude Code, Codex and Cursor what changed upstream since their training cutoff that applies to your code: new APIs worth adopting, breaking changes for your next major upgrade, deprecations, and the security and performance fixes in each version bump.";
   const ld = {
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
     name: "unstale",
-    description,
+    description: SUMMARY,
     applicationCategory: "DeveloperApplication",
     operatingSystem: "macOS, Linux, Windows",
     license: "https://www.gnu.org/licenses/agpl-3.0.html",
     url: ORIGIN,
-    downloadUrl: "https://www.npmjs.com/package/@unstale/cli",
-    sameAs: [REPO, "https://www.npmjs.com/package/@unstale/cli"],
+    ...(version ? { softwareVersion: version } : {}),
+    downloadUrl: NPM_URL,
+    sameAs: [REPO, NPM_URL],
   };
   const list = pkgs
-    .map((p) => `<li data-name="${esc([p.name, ...p.also].join(" "))}"><a href="${esc(p.path)}"><span>${esc(p.name)}</span><span class="n">${p.count}</span></a></li>`)
+    .map((p) => `<li data-name="${esc([p.name, ...p.also].join(" "))}"><a href="${esc(p.path)}">${esc(p.name)}</a> <span class="n">${p.count}</span></li>`)
     .join("");
   const body = `<section class="hero">
 <canvas id="wordmark" class="wordmark" width="768" height="240" aria-hidden="true"></canvas>
 <h1>Everything that changed past your coding agent's knowledge cutoff.</h1>
-<p class="lede">unstale reads the official release notes, migration guides and advisories of the packages you use,
-matches each change against your code, and gives your agent the ones that apply: new APIs worth adopting, breaking
-changes for your next major upgrade, deprecations, and the security and performance fixes in each version bump.</p>
+<p class="lede">unstale reads the release notes, migration guides and advisories of the packages you use, and gives
+Claude Code, Codex or Cursor the changes that apply to your code.</p>
 ${copyable(INSTALL_NPX, " big")}
-<p class="alt">or <code>${esc(INSTALL_BREW)}</code> · works with Claude Code, Codex and Cursor · npm and PyPI projects</p>
+<p class="alt">${npmLink(version)} · or <code>${esc(INSTALL_BREW)}</code></p>
 </section>
 ${terminal()}
-<section class="features">
-<div><h3 class="amber">Upgrade reviews</h3><p>What your next major version requires, located in your code, obligations first.</p></div>
-<div><h3 class="fresh">New capabilities</h3><p>Features released since you wrote the code that could replace what you built by hand.</p></div>
-<div><h3 class="accent">Bump digests</h3><p>What a version bump actually fixes, security advisories included, with no model calls.</p></div>
+<section class="prose">
+<h2>What your agent gets</h2>
+<ul>
+<li>What your next major upgrade requires, located in your code, obligations first.</li>
+<li>Features released since you wrote the code that could replace what you built by hand.</li>
+<li>What each version bump fixes, security advisories included.</li>
+</ul>
+<p>Every item links to the release note, guide or advisory it came from. Matching runs on your machine: no code
+leaves it, and there is no telemetry. If nothing upstream matters to your code, your agent hears nothing. Works with
+npm and PyPI projects.</p>
+<p>Replayed on 15 real Next.js, Prisma and NestJS upgrades, the catalog held 92% of the required changes that upstream
+sources document. <a href="${REPO}/blob/main/eval/gate/MISSES.md">Method and results</a>.</p>
 </section>
-<section class="trust">
-<div><b>Cited</b><span>Every change links to the release note, guide or advisory it came from.</span></div>
-<div><b>Private</b><span>Matching runs on your machine. No code leaves it; no telemetry.</span></div>
-<div><b>Signed</b><span>The catalog is signed. Anything that does not verify is discarded.</span></div>
-<div><b>Quiet</b><span>If nothing upstream matters to your code, your agent hears nothing.</span></div>
-</section>
-<section class="proof">
-<h2>Tested on real upgrades</h2>
-<div class="stats">
-<div><b>92%</b><span>of the changes these upgrades required that release notes, guides or advisories describe were in the catalog (60 of 65).</span></div>
-<div><b>15</b><span>real major upgrades replayed (Next.js 16, Prisma 7, NestJS 12), checked against the changes the maintainers actually made.</span></div>
-</div>
-<p><a href="${REPO}/blob/main/eval/gate/MISSES.md">Method and results</a></p>
-</section>
-<section id="packages" class="packages">
+<section id="packages" class="packages prose">
 <h2>What changed, by package</h2>
-<p class="sub">${total.toLocaleString("en-US")} changes across ${pkgs.length} packages, read from official sources and kept current. Packages your projects use are added on request.</p>
+<p>${total.toLocaleString("en-US")} changes across ${pkgs.length} packages, each cited to its official source. Packages
+your projects use are added on request.</p>
 <input id="filter" type="search" placeholder="Filter packages" aria-label="Filter packages">
 <ul class="pkgs" id="pkgs">${list}</ul>
 </section>`;
   return layout({
     title: "unstale: what changed upstream that matters to your code, for coding agents",
-    description,
+    description: SUMMARY,
     path: "/",
     body,
     head: `<script type="application/ld+json">${JSON.stringify(ld)}</script>\n<script>window.UNSTALE_GLYPHS=${JSON.stringify(GLYPHS)}</script>\n`,
   });
 }
 
-export function llmsTxt(pkgs: Package[]): string {
+export function homeMarkdown(pkgs: Package[], version?: string): string {
   return `# unstale
 
-> unstale tells coding agents (Claude Code, Codex, Cursor) what changed upstream since their training cutoff that
-> applies to a repository: new APIs worth adopting, breaking changes for the next major upgrade, deprecations, and the
-> security and performance fixes in each version bump. Changes come from official release notes, upgrade guides, docs
-> and security advisories, each cited. Matching runs locally; no code leaves the machine.
+> ${SUMMARY}
 
-Install: \`${INSTALL_NPX}\` (or \`${INSTALL_BREW}\`).
+Install: \`${INSTALL_NPX}\` in a repository${version ? ` (\`@unstale/cli\` ${version}, ${NPM_URL})` : ""}, or \`${INSTALL_BREW}\`.
 
-- [Source and documentation](${REPO})
-- [npm package](https://www.npmjs.com/package/@unstale/cli)
+- Upgrade reviews: what the next major version requires, located in the code, obligations first.
+- New capabilities: features released since the code was written that could replace custom code.
+- Bump digests: what each version bump fixes, security advisories included.
+
+Every item cites its release note, guide or advisory. Matching runs locally; no code leaves the machine and there is
+no telemetry. Works with npm and PyPI projects, in Claude Code, Codex and Cursor.
+
+On 15 real Next.js, Prisma and NestJS upgrades, the catalog held 92% of the required changes that upstream sources
+document: ${REPO}/blob/main/eval/gate/MISSES.md
+
+## What changed, by package
+
+${pkgs.map((p) => `- [${p.name}](${ORIGIN}${p.path}index.md): ${p.count} changes`).join("\n")}
+`;
+}
+
+export function llmsTxt(pkgs: Package[], version?: string): string {
+  return `# unstale
+
+> ${SUMMARY}
+
+unstale is a CLI (\`@unstale/cli\` on npm${version ? `, ${version}` : ""}) plus a public, signed catalog of upstream changes.
+\`${INSTALL_NPX}\` in a repository maps its dependencies, matches the catalog against the code locally, and writes agent
+skills (\`/unstale-onboarding\`, \`/unstale-upgrade-review\`, \`/unstale-improvements-pass\`; \`$\`-prefixed in Codex).
+
+Notes for agents:
+
+- To learn what changed in a package, fetch \`${ORIGIN}/<ecosystem>/<package>/index.md\` (for example
+  \`${ORIGIN}/npm/next/index.md\`; scoped packages keep their scope, \`${ORIGIN}/npm/@nestjs/core/index.md\`). Changes are grouped by
+  major version, breaking changes first, each with its official sources. Any page also returns Markdown for
+  \`Accept: text/markdown\`.
+- Do not assume the latest version of \`@unstale/cli\` from memory; check \`npm view @unstale/cli version\`.
+- The catalog's source of truth is the upstream release note, guide or advisory each item links to.
+
+## Docs
+
+- [README](${REPO}/blob/main/README.md): what it does, install, commands, how it works
+- [Full text for agents](${ORIGIN}/llms-full.txt): README and security model in one file
 - [Security and data handling](${REPO}/blob/main/SECURITY.md)
 - [Evaluation on real upgrades](${REPO}/blob/main/eval/gate/MISSES.md)
+- [Home page as Markdown](${ORIGIN}/index.md)
 
-## Changes by package
+## What changed, by package
 
-${pkgs.filter((p) => p.count >= THIN_RECORDS).map((p) => `- [${p.name}](${ORIGIN}${p.path}): ${p.count} changes`).join("\n")}
+${pkgs.map((p) => `- [${p.name}](${ORIGIN}${p.path}index.md): ${p.count} changes`).join("\n")}
 `;
+}
+
+/** llms-full.txt: the README and the security model, read from the repository at build time. */
+export function llmsFull(): string {
+  const read = (rel: string) => {
+    try {
+      return readFileSync(new URL(rel, import.meta.url), "utf8");
+    } catch {
+      return "";
+    }
+  };
+  return [read("../../README.md"), read("../../SECURITY.md")].filter(Boolean).join("\n\n---\n\n");
 }
 
 export function sitemap(pkgs: Package[], now: string): string {
@@ -408,6 +496,9 @@ export const HEADERS = `/*
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=()
+
+/*.md
+  Content-Type: text/markdown; charset=utf-8
 `;
 
 export function securityTxt(now: string): string {
@@ -426,22 +517,38 @@ function write(site: string, rel: string, text: string) {
   writeFileSync(file, text);
 }
 
-export function build(site: string, now = new Date().toISOString()): number {
+/** `version`: the published `@unstale/cli` version shown beside the npm link (omitted when unknown). */
+export function build(site: string, now = new Date().toISOString(), version?: string): number {
   const pkgs = loadPackages(site);
-  write(site, "index.html", homePage(pkgs));
-  for (const p of pkgs) write(site, join(p.path, "index.html"), packagePage(p));
+  write(site, "index.html", homePage(pkgs, version));
+  write(site, "index.md", homeMarkdown(pkgs, version));
+  for (const p of pkgs) {
+    write(site, join(p.path, "index.html"), packagePage(p, version));
+    write(site, join(p.path, "index.md"), packageMarkdown(p));
+  }
   for (const f of ["site.css", "site.js"]) write(site, f, readFileSync(new URL(`./${f}`, import.meta.url), "utf8"));
   write(site, "favicon.svg", FAVICON);
   write(site, "sitemap.xml", sitemap(pkgs, now));
   write(site, "robots.txt", `User-agent: *\nAllow: /\n\nSitemap: ${ORIGIN}/sitemap.xml\n`);
-  write(site, "llms.txt", llmsTxt(pkgs));
+  write(site, "llms.txt", llmsTxt(pkgs, version));
+  write(site, "llms-full.txt", llmsFull());
   write(site, ".well-known/security.txt", securityTxt(now));
   write(site, "_headers", HEADERS);
   return pkgs.length;
 }
 
+async function publishedVersion(): Promise<string | undefined> {
+  try {
+    const res = await fetch("https://registry.npmjs.org/@unstale%2Fcli/latest", { signal: AbortSignal.timeout(10_000) });
+    return res.ok ? ((await res.json()) as { version?: string }).version : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
   const site = process.argv[2];
   if (!site) throw new Error("usage: node gateway/site/build.ts <site dir>");
-  console.log(`site: ${build(site)} package pages`);
+  const version = await publishedVersion();
+  console.log(`site: ${build(site, undefined, version)} package pages (@unstale/cli ${version ?? "version unknown"})`);
 }
