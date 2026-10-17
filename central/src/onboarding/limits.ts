@@ -108,11 +108,11 @@ interface BudgetFile {
 const secondsToNextDay = (now: number) => Math.ceil((86_400_000 - (now % 86_400_000)) / 1000);
 
 /** A budget limit that holds work back, and when it resets (ISO time). `unreadable`: the budget file cannot be read
- * (fail closed); it resets when the file is fixed or the day changes. */
+ * (fail closed); it has no reset time, since it holds until someone fixes the file. */
 export interface Hold {
   limit: "tokens" | "new_per_day" | "runs_per_day" | "unreadable";
   cap?: number;
-  resets: string;
+  resets?: string;
 }
 
 /** Counters per UTC day and tokens per period, persisted under the central store so a restart does not reset them. */
@@ -174,7 +174,7 @@ export class DailyBudget {
   spent(now = Date.now()): Hold[] {
     const file = this.read(now);
     const tomorrow = new Date(nextPeriod("day", now)).toISOString();
-    if (!file) return [{ limit: "unreadable", resets: tomorrow }];
+    if (!file) return [{ limit: "unreadable" }];
     const out: Hold[] = [];
     const cap = this.limits.tokensPerPeriod;
     if (cap !== undefined && file.tokens! >= cap) out.push({ limit: "tokens", cap, resets: new Date(nextPeriod(this.period, now)).toISOString() });

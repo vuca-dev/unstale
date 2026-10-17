@@ -169,12 +169,12 @@ test("the spent limits name their cap and reset: tokens at the period's end, cou
   expect(b.spent(now)).toEqual([{ limit: "new_per_day", cap: 1, resets: "2026-10-18T00:00:00.000Z" }]);
   b.spend(80, now);
   expect(b.spend(30, now)).toMatchObject({ kind: "tokens" });
-  expect(b.spent(now).map((h) => [h.limit, h.resets])).toEqual([
-    ["tokens", "2026-10-19T00:00:00.000Z"],
-    ["new_per_day", "2026-10-18T00:00:00.000Z"],
+  expect(b.spent(now).map((h) => [h.limit, h.cap, h.resets])).toEqual([
+    ["tokens", 100, "2026-10-19T00:00:00.000Z"],
+    ["new_per_day", 1, "2026-10-18T00:00:00.000Z"],
   ]);
   writeFileSync(join(dir, "spent.json"), "{");
-  expect(b.spent(now)).toEqual([{ limit: "unreadable", resets: "2026-10-18T00:00:00.000Z" }]);
+  expect(b.spent(now)).toEqual([{ limit: "unreadable" }]);
 });
 
 test("a refusal of one kind spends nothing of the other", () => {

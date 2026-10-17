@@ -22,6 +22,7 @@ afterEach(() => {
   if (previous === undefined) delete process.env.UNSTALE_STORE;
   else process.env.UNSTALE_STORE = previous;
   vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 const limits = (l: Partial<Limits> = {}): Limits => ({
@@ -77,7 +78,10 @@ test("with the budget spent or the deadline passed, drain starts nothing and ret
   const spent = new CoverageService(1, { limits: limits({ tokensPerPeriod: 0 }) }).hold();
   spent.submit("pkg:npm/a");
   // Never an unexplained `started: 0`: the limit that held the queue back, its cap and when it resets.
-  const tomorrow = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate() + 1)).toISOString();
+  // The clock (Date only; timers stay real) is frozen so a run across 00:00 UTC cannot change the day under the test.
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(Date.parse("2026-10-17T14:51:00Z"));
+  const tomorrow = "2026-10-18T00:00:00.000Z";
   expect(await spent.drain(Date.now() + 60_000, 1_000, 10)).toEqual({ started: 0, unfinished: 0, held: [{ limit: "tokens", cap: 0, resets: tomorrow }] });
   const late = new CoverageService(1, { limits: limits() }).hold();
   late.submit("pkg:npm/b");
@@ -87,7 +91,10 @@ test("with the budget spent or the deadline passed, drain starts nothing and ret
 
 test("a drain held back by the daily counts names each with its cap and reset", async () => {
   noSources();
-  const tomorrow = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate() + 1)).toISOString();
+  // The clock (Date only; timers stay real) is frozen so a run across 00:00 UTC cannot change the day under the test.
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(Date.parse("2026-10-17T14:51:00Z"));
+  const tomorrow = "2026-10-18T00:00:00.000Z";
   const fresh = new CoverageService(1, { limits: limits({ newPerDay: 1 }) }).hold();
   fresh.enqueue(["a", "b"].map((n) => ({ purl: `pkg:npm/${n}`, demand: 1 })));
   expect(await fresh.drain(Date.now() + 60_000, 5_000, 10)).toEqual({ started: 1, unfinished: 0, held: [{ limit: "new_per_day", cap: 1, resets: tomorrow }] });

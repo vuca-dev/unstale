@@ -238,7 +238,8 @@ function budgetOf(body: unknown): { spentUntil?: number } | undefined {
   if (budget === undefined) return undefined;
   const until = (budget as { spent_until?: unknown })?.spent_until;
   if (until === null) return {};
-  const ms = typeof until === "string" ? Date.parse(until) : NaN;
+  // Exactly what Date#toISOString writes: a looser parse would read "0" as the year 2000 and clear a pause.
+  const ms = typeof until === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(until) ? Date.parse(until) : NaN;
   if (!Number.isFinite(ms)) throw new Error("Expected budget {\"spent_until\": ISO time or null}");
   return { spentUntil: ms };
 }

@@ -58,9 +58,13 @@ async function pull(): Promise<Pulled["requests"]> {
 
 type RunState = "running" | "publishing" | "declined";
 
-/** The budget as the gateway reads it: spent until the latest reset of the limits at their cap, or null. */
+/** The budget as the gateway reads it: spent until the latest reset of the limits at their cap, or null. An unreadable
+ * budget has no reset, so it is reported as spent for the longest period (31 days); every run reports again, so the
+ * first run after the file is fixed clears it. */
 function budgetOf(service: CoverageService): { spent_until: string | null } {
-  const resets = service.spent().map((h) => h.resets).sort();
+  const held = service.spent();
+  if (held.some((h) => !h.resets)) return { spent_until: new Date(Date.now() + 31 * 86_400_000).toISOString() };
+  const resets = held.map((h) => h.resets!).sort();
   return { spent_until: resets.at(-1) ?? null };
 }
 

@@ -271,7 +271,7 @@ test("a run reports the budget with its progress; the gateway dispatches nothing
   const auth = { Authorization: "Bearer drain-secret", "Content-Type": "application/json" };
   const progress = (body: unknown) => handle(new Request("https://unstale.example/internal/progress", { method: "POST", headers: auth, body: JSON.stringify(body) }), e);
   const until = new Date(Date.now() + 3 * 3600_000);
-  expect((await progress({ updates: [], budget: { spent_until: "soon" } })).status).toBe(400);
+  for (const bad of ["soon", "0", "2026-10-18"]) expect((await progress({ updates: [], budget: { spent_until: bad } })).status).toBe(400);
   expect(await (await progress({ updates: [], budget: { spent_until: until.toISOString() } })).json()).toEqual({ reported: 0 });
   const r = await handle(post({ purl: "pkg:npm/a" }), e);
   expect(r.status).toBe(202);
