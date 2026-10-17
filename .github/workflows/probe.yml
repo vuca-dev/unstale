@@ -1,0 +1,59 @@
+# Scale probe (central/scripts/scale-probe.ts): per technology, what a coverage run costs on a hosted runner before
+# any model call: discovery, admission, the release list and a forced docs pass, on a sample of real packages per
+# download band, into an empty store. No model key is passed and the probe refuses model hosts. Manual only.
+name: probe
+
+on:
+  workflow_dispatch:
+    inputs:
+      per_band:
+        description: "Packages per download band (12 bands; about 10 GitHub API requests each)"
+        required: false
+        default: "7"
+      concurrency:
+        description: "Packages probed at once"
+        required: false
+        default: "4"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: probe
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: central/package-lock.json
+      - name: npm ci
+        run: npm ci --prefix central --no-audit --no-fund
+      - name: Probe
+        env:
+          GITHUB_TOKEN: ${{ secrets.INGEST_GITHUB_TOKEN || github.token }}
+          UNSTALE_STORE: ${{ runner.temp }}/store
+          PER_BAND: ${{ inputs.per_band }}
+          CONCURRENCY: ${{ inputs.concurrency }}
+        run: |
+          cd central
+          npx tsx scripts/scale-probe.ts --per-band "$PER_BAND" --concurrency "$CONCURRENCY" --out "$RUNNER_TEMP/probe"
+          {
+            echo '```json'
+            cat "$RUNNER_TEMP/probe/summary.json"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: probe
+          path: ${{ runner.temp }}/probe
+          retention-days: 30
