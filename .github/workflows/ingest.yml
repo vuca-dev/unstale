@@ -190,8 +190,9 @@ jobs:
       # admitted history first, new technologies by demand, all under the coverage budget. Writes each job's status.
       # A fast-track run works a pulled package only if it is next in the line of new technologies (it never jumps
       # the queue); otherwise it ran nothing (`ran=false`), and nothing is exported, saved or acknowledged, so the
-      # gateway keeps the request for the next scheduled run. Either way the run reports its progress on the new packages
-      # it pulled to the gateway (running, publishing, declined), so a client that asked can follow it.
+      # gateway keeps the request for the next scheduled run. The run reports its progress to the gateway (running,
+      # publishing) on the new packages it works, and `declined` on all it pulled when it works none, so a client that
+      # asked can follow it.
       - name: Drain the coverage queue
         id: drain
         if: always() && (steps.pipeline.outcome == 'success' || steps.pipeline.outcome == 'failure' || steps.pipeline.outcome == 'skipped')

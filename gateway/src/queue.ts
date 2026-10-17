@@ -168,9 +168,9 @@ export class PendingQueue {
     for (const { purl, demand } of taken) {
       if (typeof purl !== "string" || !Number.isFinite(demand)) continue;
       this.sql.exec("UPDATE pending SET demand = demand - ? WHERE purl = ?", Math.max(0, Math.floor(demand)), purl);
-      const gone = this.sql.exec("DELETE FROM pending WHERE purl = ? AND demand <= 0 RETURNING purl", purl).toArray().length;
-      if (gone) this.endRun(purl, now);
-      removed += gone;
+      removed += this.sql.exec("DELETE FROM pending WHERE purl = ? AND demand <= 0 RETURNING purl", purl).toArray().length;
+      // The run published it, even when votes that arrived meanwhile keep the package held for the next run.
+      this.endRun(purl, now);
     }
     return removed;
   }
@@ -211,7 +211,7 @@ export class PendingQueue {
     this.sql.exec("DELETE FROM runs WHERE purl = ? AND state = 'dispatched'", purl);
   }
 
-  /** A run's package was published and taken: its time from request to acknowledgement joins the typical time. */
+  /** A run's package was published and acknowledged: its time from request to acknowledgement joins the typical time. */
   private endRun(purl: string, now: number): void {
     const row = this.sql.exec("DELETE FROM runs WHERE purl = ? RETURNING state, since", purl).toArray()[0];
     if (!row || row.state === "declined" || row.state === "dispatched") return;

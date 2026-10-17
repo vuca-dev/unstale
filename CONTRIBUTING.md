@@ -23,8 +23,9 @@ npm --prefix gateway run typecheck && npm --prefix gateway test
 ```
 
 A client following a fast-track run can be previewed locally: `node gateway/scripts/preview.ts --new pkg:npm/picocolors`
-runs the gateway with a played coverage run in place of GitHub (catalog and known statuses from the live gateway), then
-`unstale init --service http://127.0.0.1:8787` in a repository that depends on that package. `--declined` and `--stall`
+runs the gateway with a played coverage run in place of GitHub (catalog and known statuses from the live gateway) and
+keeps running; in a second terminal, run `unstale init --service http://127.0.0.1:8787` in a repository that depends on
+that package. `--declined` and `--stall`
 play the other outcomes.
 
 ## Scripts

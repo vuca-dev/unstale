@@ -227,15 +227,30 @@ test("a declined, failed or silent run is not shown as working the package", () 
   q.ack([{ purl: "pkg:npm/a", demand: 1 }, { purl: "pkg:npm/c", demand: 1 }], T + 90_000);
   expect(q.typicalSeconds()).toBe(90);
   expect(q.run("pkg:npm/c", T + 90_000)).toBeUndefined();
+  // Votes that arrived during the run keep the package held, but its run is over.
+  q.request("pkg:npm/d", "198.51.100.4", false, T);
+  q.report([{ purl: "pkg:npm/d", state: "publishing" }], T);
+  q.request("pkg:npm/d", "198.51.100.5", false, T);
+  q.ack([{ purl: "pkg:npm/d", demand: 1 }], T + 30_000);
+  expect(q.held("pkg:npm/d")).toBe(true);
+  expect(q.run("pkg:npm/d", T + 30_000)).toBeUndefined();
+  expect(q.typicalSeconds()).toBe(90);
 });
 
-test("a failed dispatch leaves the package waiting for the schedule; the next scheduled run is named", async () => {
-  vi.stubGlobal("fetch", async (url: string) => new Response(null, { status: url.startsWith("https://api.github.com/") ? 401 : 200 }));
-  const { env: e, waits } = env({}, { FAST_TRACK_PER_DAY: "1", GITHUB_DISPATCH_TOKEN: "t" });
+test("a failed or unreachable dispatch leaves the package waiting for the schedule; the next scheduled run is named", async () => {
+  vi.stubGlobal("fetch", async (url: string) => {
+    if (url.startsWith("https://api.github.com/") && failure === "network") throw new TypeError("fetch failed");
+    return new Response(null, { status: url.startsWith("https://api.github.com/") ? 401 : 200 });
+  });
+  let failure = "status";
+  const { env: e, waits } = env({}, { FAST_TRACK_PER_DAY: "2", FAST_TRACK_INTERVAL_MINUTES: "0", GITHUB_DISPATCH_TOKEN: "t" });
   await handle(post({ purl: "pkg:npm/a" }), e);
+  failure = "network";
+  await handle(post({ purl: "pkg:npm/b" }, { "CF-Connecting-IP": "198.51.100.10" }), e);
   await Promise.all(waits);
   const body = (await (await handle(get("/coverage?purl=pkg%3Anpm%2Fa"), e)).json()) as Record<string, unknown>;
   expect(body.run).toBeUndefined();
+  expect(((await (await handle(get("/coverage?purl=pkg%3Anpm%2Fb"), e)).json()) as Record<string, unknown>).run).toBeUndefined();
   expect(Date.parse(String(body.next_run))).toBeGreaterThan(Date.now());
   expect(nextScheduled(Date.parse("2026-10-17T12:00:00Z")).toISOString()).toBe("2026-10-17T12:23:00.000Z");
   expect(nextScheduled(Date.parse("2026-10-17T12:23:00Z")).toISOString()).toBe("2026-10-17T15:23:00.000Z");

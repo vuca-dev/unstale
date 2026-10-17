@@ -1401,7 +1401,9 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
         && !follow.is_empty()
         && !leave.load(Ordering::Acquire)
         && std::io::stdin().is_terminal()
-        && std::io::stderr().is_terminal();
+        && std::io::stderr().is_terminal()
+        // Following redraws lines in place, which a dumb terminal cannot: it exits as before.
+        && std::env::var("TERM").unwrap_or_default() != "dumb";
     if !live {
         finish(ctx, &pending, &brief, ui, issue.as_deref(), linger, &leave);
         return Ok(0);

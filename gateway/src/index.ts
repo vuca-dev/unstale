@@ -45,7 +45,11 @@ export class Coverage extends DurableObject<Env> {
   request(purl: string, address: string, known: boolean): Outcome {
     const outcome = this.queue.request(purl, address, known);
     if (outcome.type === "queued" && outcome.fastTrack)
-      this.ctx.waitUntil(dispatch(this.env).then((started) => started || this.queue.undispatched(purl)));
+      this.ctx.waitUntil(
+        dispatch(this.env)
+          .catch(() => false)
+          .then((started) => started || this.queue.undispatched(purl)),
+      );
     return outcome;
   }
   held(purl: string): boolean {

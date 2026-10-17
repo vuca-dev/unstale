@@ -68,10 +68,9 @@ async function report(updates: { purl: string; state: RunState; job?: Record<str
 function progressOf(service: CoverageService, purl: string): { purl: string; state: RunState; job: Record<string, unknown> } | undefined {
   const own = service.jobs.get(purl);
   const job = (own?.merged_into && service.jobs.get(own.merged_into)) || own;
-  if (!job || job.state === "queued") return undefined;
+  if (!job || (job.state === "queued" && !service.working(job.purl))) return undefined;
   const { state, stage, records, releases_done, releases_total, docs_done, docs_total } = job;
-  const working = state === "discovering" || state === "analyzing";
-  return { purl, state: working ? "running" : "publishing", job: { state, stage, records, releases_done, releases_total, docs_done, docs_total } };
+  return { purl, state: service.working(job.purl) ? "running" : "publishing", job: { state, stage, records, releases_done, releases_total, docs_done, docs_total } };
 }
 
 /** Replaces the status directory as a whole, so a job that no longer exists has no status left behind. */
@@ -128,11 +127,9 @@ async function drain(args: string[]): Promise<void> {
     500,
     only,
   ).finally(() => (clearTimeout(first), clearInterval(every)));
-  // What ran is published by this run's deploy; what did not start waits as before.
-  await report(followed.flatMap((p) => {
-    const at = progressOf(service, p);
-    return at ? [{ ...at, state: "publishing" as const }] : [];
-  }));
+  // What finished is published by this run's deploy; a job still running past the grace period stays `running` (its
+  // partial status is published, and the next run resumes it); what did not start waits as before.
+  await report(followed.flatMap((p) => progressOf(service, p) ?? []));
   const statuses = writeStatuses(service);
   const states: Record<string, number> = {};
   for (const j of service.jobs.values()) states[j.state] = (states[j.state] ?? 0) + 1;
