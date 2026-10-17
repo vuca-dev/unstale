@@ -123,3 +123,17 @@ test("a package missing from its registry is parked for a week, not retried as a
   expect(job).toMatchObject({ state: "blocked", stage: expect.stringMatching(/^Not found in its public registry/) });
   expect(Date.parse(job.retry_at!) - Date.now()).toBeGreaterThan(6 * 86_400_000);
 });
+
+test("fast-track: only pulled packages at the head of the new-technology line run; behind another, none", async () => {
+  noSources();
+  const service = new CoverageService(2, { limits: limits() }).hold();
+  service.submit("pkg:npm/popular").demand = 9; // already waiting, more requested
+  service.enqueue([{ purl: "pkg:npm/fresh", demand: 1 }]);
+  expect([...service.newHead(new Set(["pkg:npm/fresh"]))]).toEqual([]);
+  expect([...service.newHead(new Set(["pkg:npm/popular", "pkg:npm/fresh"]))]).toEqual(["pkg:npm/popular", "pkg:npm/fresh"]);
+  // With only the head allowed, nothing else starts.
+  const r = await service.drain(Date.now() + 60_000, 5_000, 10, new Set(["pkg:npm/popular"]));
+  expect(r.started).toBe(1);
+  expect(service.jobs.get("pkg:npm/fresh")?.state).toBe("queued");
+  expect([...service.newHead(new Set(["pkg:npm/fresh"]))]).toEqual(["pkg:npm/fresh"]);
+});

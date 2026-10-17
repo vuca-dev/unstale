@@ -91,7 +91,7 @@ function queued(purl: string, at: { position: number; length: number }, early: b
     technology: technologyId(purl),
     name: packageIdentity(purl),
     state: "queued",
-    stage: `${early ? "Starting a coverage run" : "Waiting for the next coverage run"} (position ${at.position} of ${at.length})`,
+    stage: early ? `Queued (position ${at.position} of ${at.length}); a coverage run is starting and takes it if it is next` : `Waiting for the next coverage run (position ${at.position} of ${at.length})`,
     updated: new Date().toISOString(),
     records: 0,
     releases_done: 0,

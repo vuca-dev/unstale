@@ -153,7 +153,7 @@ test("a fast-tracked package starts the coverage workflow; without a token nothi
   expect(calls).toEqual([]);
   const on = env({}, { FAST_TRACK_PER_DAY: "1", GITHUB_DISPATCH_TOKEN: "t" });
   const r = await handle(post({ purl: "pkg:npm/a" }), on.env);
-  expect(await r.json()).toMatchObject({ stage: "Starting a coverage run (position 1 of 1)" });
+  expect(await r.json()).toMatchObject({ stage: "Queued (position 1 of 1); a coverage run is starting and takes it if it is next" });
   await Promise.all(on.waits);
   expect(calls).toEqual([{ url: "https://api.github.com/repos/owner/repo/actions/workflows/ingest.yml/dispatches", body: { ref: "main", inputs: { reason: "fast-track" } } }]);
 });

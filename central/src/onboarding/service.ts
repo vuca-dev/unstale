@@ -122,6 +122,8 @@ export class CoverageService {
   private held = false;
   /** Jobs started since construction (a drain reports its share). */
   private launched = 0;
+  /** A drain restricted to these packages (fast-track); undefined works the whole queue. */
+  private only: ReadonlySet<string> | undefined;
   readonly concurrency: number;
   /** The advisories stage after a technology's history is published (off: `advisories: false` or UNSTALE_NO_ADVISORIES=1). */
   readonly advisories: boolean;
@@ -238,6 +240,19 @@ export class CoverageService {
     if (job.overflow === quarterKey()) return 2;
     return job.admitted || job.state === "monitoring" || job.completed?.length ? 0 : 1;
   }
+  /** The line of new technologies waiting for their first analysis, in drain order (tier 1). */
+  newLine(): Job[] {
+    return this.queue().filter((j) => this.tier(j) === 1 && !this.running.has(j.purl));
+  }
+  /** Of `candidates`, those at the head of the line of new technologies, in order: none when another is ahead. */
+  newHead(candidates: ReadonlySet<string>): Set<string> {
+    const out = new Set<string>();
+    for (const j of this.newLine()) {
+      if (!candidates.has(j.purl)) break;
+      out.add(j.purl);
+    }
+    return out;
+  }
   /** The drain order: by tier, then most requested first; ties keep arrival order (a continued job goes to the back). */
   queue(): Job[] {
     return [...this.jobs.values()]
@@ -315,11 +330,12 @@ export class CoverageService {
   /**
    * Batch mode for an ephemeral runner: works the queue until nothing more can start (empty, not yet due, or the
    * budget spent) or `deadline` passes, then waits for running jobs up to `grace` ms. A job still running then is
-   * resumed by the next run (an interrupted job is requeued on load).
+   * resumed by the next run (an interrupted job is requeued on load). With `only`, no other job starts.
    */
-  async drain(deadline: number, grace = 10 * 60_000, poll = 500): Promise<{ started: number; unfinished: number }> {
+  async drain(deadline: number, grace = 10 * 60_000, poll = 500, only?: ReadonlySet<string>): Promise<{ started: number; unfinished: number }> {
     this.draining = deadline;
     this.held = false;
+    this.only = only;
     const before = this.launched;
     // A finished job starts the next itself; when nothing is running and nothing more starts, the queue is done.
     while (Date.now() < deadline && (this.running.size || this.pump()))
@@ -345,7 +361,7 @@ export class CoverageService {
     let started = 0;
     for (const job of this.queue()) {
       if (this.running.size >= this.concurrency) break;
-      if (this.running.has(job.purl)) continue;
+      if (this.running.has(job.purl) || (this.only && !this.only.has(job.purl))) continue;
       if (this.budget.tokensLeft() <= 0) {
         const stage = `Coverage budget for this ${this.limits.period} spent; continues after ${day(nextPeriod(this.limits.period))}`;
         if (job.state === "queued" && job.stage !== stage) this.save(job, "queued", stage);

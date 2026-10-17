@@ -174,8 +174,10 @@ jobs:
           du -sh "$UNSTALE_STORE"/*
 
       # The catalog technologies (pipeline/technologies.ts): release notes, upgrade guides, docs and advisories.
+      # Not on a fast-track run (the gateway started it for a new package): refreshes are the schedule's.
       - name: Pipeline
         id: pipeline
+        if: inputs.reason != 'fast-track'
         timeout-minutes: 120
         env:
           GITHUB_TOKEN: ${{ secrets.INGEST_GITHUB_TOKEN || github.token }}
@@ -186,22 +188,30 @@ jobs:
 
       # Every other technology: registrations pulled from the gateway join the saved queue, then refreshes and
       # admitted history first, new technologies by demand, all under the coverage budget. Writes each job's status.
+      # A fast-track run works a pulled package only if it is next in the line of new technologies (it never jumps
+      # the queue); otherwise it ran nothing (`ran=false`), and nothing is exported, saved or acknowledged, so the
+      # gateway keeps the request for the next scheduled run.
       - name: Drain the coverage queue
         id: drain
-        if: always() && (steps.pipeline.outcome == 'success' || steps.pipeline.outcome == 'failure')
+        if: always() && (steps.pipeline.outcome == 'success' || steps.pipeline.outcome == 'failure' || steps.pipeline.outcome == 'skipped')
         timeout-minutes: 150
         env:
           GITHUB_TOKEN: ${{ secrets.INGEST_GITHUB_TOKEN || github.token }}
           JEV_API_KEY: ${{ secrets.JEV_API_KEY }}
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
           UNSTALE_GATEWAY_TOKEN: ${{ secrets.GATEWAY_DRAIN_TOKEN }}
-        run: npm --prefix central run drain -- --minutes 130 --grace-minutes 10 --concurrency 6 --taken "$TAKEN"
+          FAST: ${{ inputs.reason == 'fast-track' && 'true' || '' }}
+        run: |
+          set -o pipefail
+          npm --prefix central run -s drain -- --minutes 130 --grace-minutes 10 --concurrency 6 --taken "$TAKEN" ${FAST:+--fast-track} \
+            | tee "$RUNNER_TEMP/drain.log"
+          echo "ran=$(tail -n 1 "$RUNNER_TEMP/drain.log" | jq -r 'if .ran == false then "false" else "true" end')" >> "$GITHUB_OUTPUT"
 
       # Writes a self-contained static tree (with the coverage statuses) and prunes shards past their 7-day grace
       # period (the grace bookkeeping lives in the store, so this runs before the state is saved).
       - name: Export the static catalog
         id: export
-        if: steps.pipeline.outcome == 'success' && steps.drain.outcome == 'success'
+        if: (steps.pipeline.outcome == 'success' || steps.pipeline.outcome == 'skipped') && steps.drain.outcome == 'success' && steps.drain.outputs.ran == 'true'
         run: npm --prefix central run catalog -- export "$SITE_DIR"
 
       # Guard: deploy only a tree whose root parses and whose every index entry has its shard, with the size and
@@ -259,7 +269,7 @@ jobs:
       # day's shared docs page cache stay out.
       - name: Save state
         id: save
-        if: always() && steps.restore.outcome == 'success' && (steps.pipeline.outcome == 'success' || steps.pipeline.outcome == 'failure') && (steps.drain.outcome == 'success' || steps.drain.outcome == 'failure')
+        if: always() && steps.restore.outcome == 'success' && (steps.pipeline.outcome == 'success' || steps.pipeline.outcome == 'failure' || steps.pipeline.outcome == 'skipped') && (steps.drain.outcome == 'failure' || (steps.drain.outcome == 'success' && steps.drain.outputs.ran == 'true'))
         env:
           REL: ${{ steps.restore.outputs.release }}
         run: |

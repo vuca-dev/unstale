@@ -22,9 +22,10 @@
   "vars": {
     "RATE_PER_HOUR": "20",
     "MAX_PENDING": "50000",
-    // Early coverage runs for new packages per UTC day (0: wait for the schedule). Each costs runner minutes, which
-    // a private repository pays for; admission and the coverage budget still apply inside the run.
-    "FAST_TRACK_PER_DAY": "0",
+    // Coverage runs a new package may start at once per UTC day (0: wait for the schedule). The run works it only if
+    // it is next in the line of new technologies (central drain --fast-track); admission and the coverage budget
+    // still apply. Free on a public repository; a private one pays per runner minute.
+    "FAST_TRACK_PER_DAY": "24",
     "FAST_TRACK_INTERVAL_MINUTES": "15",
     "GITHUB_REPOSITORY": "vuca-dev/unstale",
     "GITHUB_WORKFLOW": "ingest.yml",
