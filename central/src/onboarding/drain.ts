@@ -8,6 +8,10 @@
 // at the head of the line run. Otherwise nothing runs and the final line says `"ran": false`, and the workflow saves
 // nothing, so the gateway keeps the request for the next scheduled run. Refreshes are the schedule's.
 //
+// Progress: while it works the new packages it pulled, a run reports their public counters to the gateway (`running`,
+// then `publishing` once analysed, `declined` when a fast-track run does not take them), so a client that asked for one
+// can follow it until the deploy publishes its status. Best effort: a report that fails never stops the run.
+//
 //   npm run drain -- [--minutes 240] [--grace-minutes 10] [--concurrency 4] [--taken <file>] [--fast-track]
 //   npm run drain -- ack <file>
 // Gateway: UNSTALE_GATEWAY_URL and UNSTALE_GATEWAY_TOKEN; without them only the saved queue is worked.
@@ -44,6 +48,32 @@ async function pull(): Promise<Pulled["requests"]> {
   }
 }
 
+type RunState = "running" | "publishing" | "declined";
+
+/** Where this run is with these pulled packages, for the clients that follow them; failures are logged once. */
+let reportFailed = false;
+async function report(updates: { purl: string; state: RunState; job?: Record<string, unknown> }[]): Promise<void> {
+  const g = gateway();
+  if (!g || !updates.length) return;
+  try {
+    const res = await fetch(`${g.url}/internal/progress`, { method: "POST", headers: g.headers, body: JSON.stringify({ updates }), signal: AbortSignal.timeout(10_000) });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  } catch (e) {
+    if (!reportFailed) console.error(`gateway progress not reported (${e instanceof Error ? e.message : e}); the run continues`);
+    reportFailed = true;
+  }
+}
+
+/** A pulled package's job as the gateway shows it: the job that works it (a merged package's is its technology's). */
+function progressOf(service: CoverageService, purl: string): { purl: string; state: RunState; job: Record<string, unknown> } | undefined {
+  const own = service.jobs.get(purl);
+  const job = (own?.merged_into && service.jobs.get(own.merged_into)) || own;
+  if (!job || job.state === "queued") return undefined;
+  const { state, stage, records, releases_done, releases_total, docs_done, docs_total } = job;
+  const working = state === "discovering" || state === "analyzing";
+  return { purl, state: working ? "running" : "publishing", job: { state, stage, records, releases_done, releases_total, docs_done, docs_total } };
+}
+
 /** Replaces the status directory as a whole, so a job that no longer exists has no status left behind. */
 function writeStatuses(service: CoverageService): number {
   const dir = join(centralDir(), "onboarding", "status");
@@ -72,12 +102,14 @@ async function drain(args: string[]): Promise<void> {
   const requests = await pull();
   const known = new Set(service.jobs.keys());
   const taken = service.enqueue(requests);
+  const fresh = taken.filter((p) => !known.has(p));
   // Fast-track: the pulled new packages at the head of the line of new technologies, in order; none when another
   // package is ahead of them.
   let only: Set<string> | undefined;
   if (values["fast-track"]) {
-    only = service.newHead(new Set(taken.filter((p) => !known.has(p))));
+    only = service.newHead(new Set(fresh));
     if (!only.size) {
+      await report(fresh.map((purl) => ({ purl, state: "declined" })));
       console.log(JSON.stringify({ wall_s: Math.round((Date.now() - t0) / 1000), pulled: requests.length, taken: taken.length, ran: false, next: service.newLine()[0]?.purl }));
       return;
     }
@@ -86,12 +118,21 @@ async function drain(args: string[]): Promise<void> {
     mkdirSync(dirname(values.taken), { recursive: true });
     writeFileSync(values.taken, JSON.stringify({ requests }));
   }
+  const followed = [...(only ?? fresh)];
+  const tick = () => report(followed.flatMap((p) => progressOf(service, p) ?? []));
+  const first = setTimeout(tick, 1000);
+  const every = setInterval(tick, 5000);
   const result = await service.drain(
     t0 + Number(values.minutes ?? 240) * 60_000,
     Number(values["grace-minutes"] ?? 10) * 60_000,
     500,
     only,
-  );
+  ).finally(() => (clearTimeout(first), clearInterval(every)));
+  // What ran is published by this run's deploy; what did not start waits as before.
+  await report(followed.flatMap((p) => {
+    const at = progressOf(service, p);
+    return at ? [{ ...at, state: "publishing" as const }] : [];
+  }));
   const statuses = writeStatuses(service);
   const states: Record<string, number> = {};
   for (const j of service.jobs.values()) states[j.state] = (states[j.state] ?? 0) + 1;

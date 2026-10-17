@@ -8,7 +8,7 @@ use std::sync::{
 use std::time::{Duration, Instant};
 use unstale_schema::catalog::{Benefit, ChangeType};
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Job {
     pub purl: String,
     pub technology: String,
@@ -21,6 +21,34 @@ pub struct Job {
     pub updated: String,
     #[serde(default)]
     pub retry_at: Option<String>,
+    #[serde(default)]
+    pub releases_done: usize,
+    #[serde(default)]
+    pub releases_total: usize,
+    #[serde(default)]
+    pub docs_done: usize,
+    #[serde(default)]
+    pub docs_total: usize,
+    /// A coverage run started early for this package, while it works it (the gateway's answer; never saved).
+    #[serde(default, skip_serializing)]
+    pub run: Option<Run>,
+    /// When the next scheduled coverage run starts (ISO 8601), for a package waiting for one.
+    #[serde(default, skip_serializing)]
+    pub next_run: Option<String>,
+}
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct Run {
+    /// dispatched, running, publishing or declined.
+    pub state: String,
+    #[serde(default)]
+    pub elapsed_s: u64,
+    /// Median seconds from request to published of recent runs.
+    #[serde(default)]
+    pub typical_s: Option<u64>,
+}
+/// A run is on its way to publishing this package, so a client can follow it.
+fn followable(job: &Job) -> bool {
+    job.run.as_ref().is_some_and(|r| matches!(r.state.as_str(), "dispatched" | "running" | "publishing"))
 }
 #[derive(Default, Serialize, Deserialize)]
 pub struct Pending {
@@ -1363,8 +1391,139 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
         );
         util::write_atomic(&path, text.as_bytes())?;
     }
-    finish(ctx, &pending, &brief, ui, issue.as_deref(), linger, &leave);
+    // Default init that asked a run to start for a new package: the report and its prompt print now and stay; the run
+    // is followed below them until it publishes, unless the person leaves (Enter) first.
+    let follow: Vec<String> = pending.jobs.values().filter(|j| followable(j)).map(|j| j.purl.clone()).collect();
+    let live = linger
+        && !follow.is_empty()
+        && !leave.load(Ordering::Acquire)
+        && std::io::stdin().is_terminal()
+        && std::io::stderr().is_terminal();
+    let echoed = if live { ui.input_echo_counter() } else { None };
+    finish(ctx, &pending, &brief, ui, issue.as_deref(), linger && !live, &leave);
+    if live {
+        follow_runs(ctx, service, &st, &mut pending, follow, &leave, echoed)?;
+    }
     Ok(0)
+}
+
+/// Seconds a run may stay requested without starting before the client stops waiting for it.
+const UNSTARTED_LIMIT: u64 = 300;
+/// The longest a client follows runs at all.
+const FOLLOW_LIMIT: Duration = Duration::from_secs(20 * 60);
+
+fn seconds(s: u64) -> String {
+    if s < 90 { format!("{s}s") } else { format!("{}m {:02}s", s / 60, s % 60) }
+}
+fn next_run_text(job: &Job) -> String {
+    job.next_run.as_deref().and_then(|t| t.get(11..16)).map_or("the next scheduled run".into(), |hm| format!("the scheduled run at {} UTC", display_text(hm)))
+}
+/// One line for a package a run is working: only what the run reported, with the time since it was requested.
+fn run_line(job: &Job, elapsed: u64) -> String {
+    let name = display_text(&job.name);
+    let state = job.run.as_ref().map_or("", |r| r.state.as_str());
+    match state {
+        "dispatched" => {
+            let typical = job.run.as_ref().and_then(|r| r.typical_s).map_or(String::new(), |t| format!(" · usually about {} in all", seconds(t)));
+            format!("{name} · run requested {} ago · waiting for a runner{typical}", seconds(elapsed))
+        }
+        "publishing" => format!("{name} · analysed · publishing the catalog · {}", seconds(elapsed)),
+        _ => {
+            let mut line = format!("{name} · {}", if job.stage.is_empty() { "working".into() } else { display_text(&job.stage) });
+            if job.releases_total > 0 { line += &format!(" · releases {}/{}", job.releases_done, job.releases_total); }
+            if job.docs_total > 0 { line += &format!(" · docs {}/{}", job.docs_done, job.docs_total); }
+            line + &format!(" · {}", seconds(elapsed))
+        }
+    }
+}
+
+/// Follows the runs working these packages in a few lines below the printed report, polling the service, until each
+/// is published, declined or given up on. A published package refreshes the catalog and the report the prompt reads.
+fn follow_runs(
+    ctx: &Ctx,
+    service: &str,
+    st: &stack::Stack,
+    pending: &mut Pending,
+    mut purls: Vec<String>,
+    leave: &AtomicBool,
+    echoed: Option<Arc<std::sync::atomic::AtomicUsize>>,
+) -> Result<()> {
+    use crate::onboarding_ui::{Line, Live, Tone};
+    let Some(mut live) = Live::start(echoed) else { return Ok(()) };
+    let started = Instant::now();
+    let mut polled: BTreeMap<String, Instant> = purls.iter().map(|p| (p.clone(), Instant::now())).collect();
+    let mut outcomes = vec![];
+    let mut published = 0;
+    let mut last_poll: Option<Instant> = None;
+    let mut frame = 0usize;
+    let elapsed = |job: &Job, at: &Instant| job.run.as_ref().map_or(0, |r| r.elapsed_s) + at.elapsed().as_secs();
+    while !purls.is_empty() && !leave.load(Ordering::Acquire) {
+        if last_poll.is_none_or(|t| t.elapsed() >= Duration::from_secs(2)) {
+            last_poll = Some(Instant::now());
+            for purl in &purls {
+                // A failed poll keeps the last answer; the next one may succeed.
+                if let Ok(job) = request(service, purl, false) {
+                    pending.jobs.insert(purl.clone(), job);
+                    polled.insert(purl.clone(), Instant::now());
+                }
+            }
+            let over = started.elapsed() >= FOLLOW_LIMIT;
+            purls.retain(|purl| {
+                let job = &pending.jobs[purl];
+                let name = display_text(&job.name);
+                let line = match job.run.as_ref().map(|r| r.state.as_str()) {
+                    // The catalog's published status (the gateway's held answers always name the next run).
+                    None if job.next_run.is_none() && job.state == "queued" => Line::new(format!("{name} · {} · unstale status picks it up", display_text(&job.stage)), Tone::Muted),
+                    None if job.next_run.is_none() => {
+                        published += 1;
+                        Line::new(format!("✓ {name} covered · {} records published", job.records), Tone::Fresh)
+                    }
+                    Some("declined") => Line::new(format!("{name} · another package is ahead in the queue · waiting for {}; unstale status picks it up", next_run_text(job)), Tone::Muted),
+                    None => Line::new(format!("{name} · the run stopped reporting · waiting for {}; unstale status picks it up", next_run_text(job)), Tone::Muted),
+                    Some("dispatched") if elapsed(job, &polled[purl]) > UNSTARTED_LIMIT => Line::new(format!("{name} · the run has not started after {} (another run may be ahead) · coverage continues centrally; unstale status picks it up", seconds(UNSTARTED_LIMIT)), Tone::Muted),
+                    Some(_) if over => Line::new(format!("{name} · still being worked centrally · unstale status picks it up"), Tone::Muted),
+                    Some(_) => return true,
+                };
+                outcomes.push(line);
+                false
+            });
+        }
+        if purls.is_empty() {
+            break;
+        }
+        let mut lines = vec![Line::new(
+            format!("{} Covering {} now · Enter to leave; coverage continues centrally", ["◐", "◓", "◑", "◒"][frame / 2 % 4], if purls.len() == 1 { "a new package".to_string() } else { format!("{} new packages", purls.len()) }),
+            Tone::Accent,
+        )];
+        lines.extend(purls.iter().map(|p| Line::new(run_line(&pending.jobs[p], elapsed(&pending.jobs[p], &polled[p])), Tone::Body)));
+        lines.extend(outcomes.iter().cloned());
+        live.draw(&lines);
+        frame += 1;
+        std::thread::sleep(Duration::from_millis(125));
+    }
+    if leave.load(Ordering::Acquire) && !purls.is_empty() {
+        outcomes.push(Line::new("Left early · coverage continues centrally; unstale status picks it up", Tone::Muted));
+    }
+    save(ctx, pending)?;
+    if published > 0 {
+        live.draw(&[Line::new("Refreshing the catalog and your report", Tone::Accent)]);
+        let path = ctx.tool.join("onboarding-report.md");
+        // Sections setup appended after the report (connection diagnostics) are kept.
+        let kept = std::fs::read_to_string(&path).ok().and_then(|t| t.find("\n## Connection diagnostics").map(|i| t[i..].to_string()));
+        let line = match sync::sync(&ctx.config.catalog, &ctx.cache, &candidates(ctx, st), &st.purls()).and_then(|_| report(ctx, pending)) {
+            Ok(brief) => {
+                if let Some(kept) = kept {
+                    let text = std::fs::read_to_string(&path)? + &kept;
+                    util::write_atomic(&path, text.as_bytes())?;
+                }
+                Line::new(format!("Report updated · {} upgrades · {} capabilities · the prompt above reads the new report", brief.upgrades.len(), brief.highlights.len()), Tone::Fresh)
+            }
+            Err(e) => Line::new(format!("Report not refreshed ({}) · run unstale status --wait 0", display_text(&format!("{e:#}"))), Tone::Amber),
+        };
+        outcomes.push(line);
+    }
+    live.settle(&outcomes);
+    Ok(())
 }
 
 #[cfg(test)]
@@ -1398,8 +1557,24 @@ mod tests {
             stage: "Awaiting extraction budget".into(),
             records: 0,
             updated: "2026-10-15".into(),
-            retry_at: None,
+            ..Default::default()
         }
+    }
+    #[test]
+    fn a_followed_run_shows_only_what_it_reported() {
+        let held: Job = serde_json::from_str(r#"{"schema":1,"purl":"pkg:npm/a","technology":"a","name":"a","state":"queued","stage":"Queued (position 1 of 1); a coverage run is starting","records":0,"next_run":"2026-10-17T12:23:00.000Z","run":{"state":"dispatched","elapsed_s":6,"typical_s":70},"future":1}"#).unwrap();
+        assert!(followable(&held));
+        assert_eq!(run_line(&held, 6), "a · run requested 6s ago · waiting for a runner · usually about 70s in all");
+        assert_eq!(next_run_text(&held), "the scheduled run at 12:23 UTC");
+        let working = Job { stage: "Reading release notes\u{1b}[2J".into(), releases_done: 3, releases_total: 12, docs_total: 0, run: Some(Run { state: "running".into(), ..Default::default() }), ..held.clone() };
+        assert_eq!(run_line(&working, 95), "a · Reading release notes [2J · releases 3/12 · 1m 35s");
+        let declined = Job { run: Some(Run { state: "declined".into(), ..Default::default() }), ..held.clone() };
+        assert!(!followable(&declined));
+        // The run state is the gateway's answer of the moment, never saved.
+        let saved = serde_json::to_string(&held).unwrap();
+        assert!(!saved.contains("\"run\"") && !saved.contains("next_run"));
+        let published: Job = serde_json::from_str(r#"{"purl":"pkg:npm/a","technology":"a","name":"a","state":"partial","stage":"done","records":5}"#).unwrap();
+        assert!(!followable(&published) && published.next_run.is_none());
     }
     #[test]
     fn registration_retry_guidance_depends_on_whether_retry_can_help() {

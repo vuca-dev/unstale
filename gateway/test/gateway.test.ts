@@ -3,7 +3,7 @@
 // it after its deploy; early runs within a daily count.
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { technologyId } from "../../central/src/onboarding/identity.ts";
-import { Coverage, handle, type Env } from "../src/index.ts";
+import { Coverage, handle, nextScheduled, type Env } from "../src/index.ts";
 import { PendingQueue, settingsFrom, type Settings } from "../src/queue.ts";
 import { memorySql } from "./sqlite.ts";
 
@@ -182,4 +182,62 @@ test("a fast-tracked package starts the coverage workflow; without a token nothi
   expect(await r.json()).toMatchObject({ stage: "Queued (position 1 of 1); a coverage run is starting and takes it if it is next" });
   await Promise.all(on.waits);
   expect(calls).toEqual([{ url: "https://api.github.com/repos/owner/repo/actions/workflows/ingest.yml/dispatches", body: { ref: "main", inputs: { reason: "fast-track" } } }]);
+});
+
+test("a run's progress on a held package: started early, working, publishing, then its published status", async () => {
+  vi.stubGlobal("fetch", async () => new Response(null, { status: 204 }));
+  const files: Record<string, unknown> = {};
+  const { env: e, waits } = env(files, { FAST_TRACK_PER_DAY: "1", GITHUB_DISPATCH_TOKEN: "t" });
+  await handle(post({ purl: "pkg:npm/a" }), e);
+  await Promise.all(waits);
+  const status = async () => (await (await handle(get("/coverage?purl=pkg%3Anpm%2Fa"), e)).json()) as Record<string, any>;
+  expect(await status()).toMatchObject({ state: "queued", run: { state: "dispatched" } });
+  const auth = { Authorization: "Bearer drain-secret", "Content-Type": "application/json" };
+  const progress = (updates: unknown) => handle(new Request("https://unstale.example/internal/progress", { method: "POST", headers: auth, body: JSON.stringify({ updates }) }), e);
+  expect((await handle(new Request("https://unstale.example/internal/progress", { method: "POST", body: "{}" }), e)).status).toBe(401);
+  const job = { state: "analyzing", stage: "Reading release notes\u001b[2J", records: 3, releases_done: 2, releases_total: 9, docs_done: 1, docs_total: 4, extra: "x" };
+  expect(await (await progress([{ purl: "pkg:npm/a", state: "running", job }, { purl: "pkg:npm/never-held", state: "running" }])).json()).toEqual({ reported: 1 });
+  expect(await status()).toMatchObject({ state: "analyzing", stage: "Reading release notes [2J", records: 3, releases_done: 2, releases_total: 9, docs_done: 1, docs_total: 4, run: { state: "running" } });
+  await progress([{ purl: "pkg:npm/a", state: "publishing" }]);
+  // The last counters stay while the catalog is published.
+  expect(await status()).toMatchObject({ state: "analyzing", records: 3, run: { state: "publishing" } });
+  files[await statusPath("pkg:npm/a")] = { schema: 1, purl: "pkg:npm/a", technology: "a", name: "a", state: "partial", stage: "done", records: 5 };
+  expect(await status()).toEqual(files[await statusPath("pkg:npm/a")]);
+  const ack = new Request("https://unstale.example/internal/ack", { method: "POST", headers: auth, body: JSON.stringify({ requests: [{ purl: "pkg:npm/a", demand: 1 }] }) });
+  await handle(ack, e);
+  delete files[await statusPath("pkg:npm/a")];
+  expect((await handle(get("/coverage?purl=pkg%3Anpm%2Fa"), e)).status).toBe(404);
+});
+
+test("a declined, failed or silent run is not shown as working the package", () => {
+  const q = new PendingQueue(memorySql(), settings({ fastTrackPerDay: 5, fastTrackIntervalMs: 0 }));
+  q.request("pkg:npm/a", "198.51.100.1", false, T);
+  expect(q.run("pkg:npm/a", T)).toMatchObject({ state: "dispatched", since: T });
+  q.report([{ purl: "pkg:npm/a", state: "declined" }], T + 60_000);
+  expect(q.run("pkg:npm/a", T + 60_000)).toMatchObject({ state: "declined", since: T });
+  q.request("pkg:npm/b", "198.51.100.2", false, T);
+  q.undispatched("pkg:npm/b");
+  expect(q.run("pkg:npm/b", T)).toBeUndefined();
+  q.request("pkg:npm/c", "198.51.100.3", false, T);
+  q.report([{ purl: "pkg:npm/c", state: "running" }], T);
+  expect(q.run("pkg:npm/c", T + 29 * 60_000)).toBeDefined();
+  expect(q.run("pkg:npm/c", T + 31 * 60_000)).toBeUndefined();
+  // The time from request to acknowledgement of finished runs only.
+  q.report([{ purl: "pkg:npm/c", state: "publishing" }], T + 60_000);
+  q.ack([{ purl: "pkg:npm/a", demand: 1 }, { purl: "pkg:npm/c", demand: 1 }], T + 90_000);
+  expect(q.typicalSeconds()).toBe(90);
+  expect(q.run("pkg:npm/c", T + 90_000)).toBeUndefined();
+});
+
+test("a failed dispatch leaves the package waiting for the schedule; the next scheduled run is named", async () => {
+  vi.stubGlobal("fetch", async (url: string) => new Response(null, { status: url.startsWith("https://api.github.com/") ? 401 : 200 }));
+  const { env: e, waits } = env({}, { FAST_TRACK_PER_DAY: "1", GITHUB_DISPATCH_TOKEN: "t" });
+  await handle(post({ purl: "pkg:npm/a" }), e);
+  await Promise.all(waits);
+  const body = (await (await handle(get("/coverage?purl=pkg%3Anpm%2Fa"), e)).json()) as Record<string, unknown>;
+  expect(body.run).toBeUndefined();
+  expect(Date.parse(String(body.next_run))).toBeGreaterThan(Date.now());
+  expect(nextScheduled(Date.parse("2026-10-17T12:00:00Z")).toISOString()).toBe("2026-10-17T12:23:00.000Z");
+  expect(nextScheduled(Date.parse("2026-10-17T12:23:00Z")).toISOString()).toBe("2026-10-17T15:23:00.000Z");
+  expect(nextScheduled(Date.parse("2026-10-17T22:50:00Z")).toISOString()).toBe("2026-10-18T00:23:00.000Z");
 });
