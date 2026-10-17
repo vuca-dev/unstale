@@ -15,6 +15,10 @@ The npm install channel from the vault (Onboarding CLI, "Install channels": per-
   `PLATFORMS` map against `local/cli/Cargo.toml`, builds each target, copies the binary in, and `npm pack`s all
   into `npm/dist/` (gitignored). Needs `rustup target add` for each triple, `brew install zig` and
   `cargo install cargo-zigbuild`.
+- `homebrew-formula.sh <dist dir> <homepage>`: prints the Homebrew formula for the crate version. It downloads the
+  published `@unstale/cli-*` tarballs from the npm registry (sha256 from the local `.tgz`, which is what the registry
+  serves), so a tap works while this repository is private and needs no second set of release assets. No Windows.
+  Checked 16 October 2026: installed from a local tap with `brew install`, `brew test` and `brew style` clean.
 - `rehearse-npx.sh <scratch>`: bare `npx unstale` against a local Verdaccio on 127.0.0.1 only (no uplinks), with a
   fresh HOME and npm cache; transcript in commit c71e1fb.
 

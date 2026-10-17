@@ -40,7 +40,7 @@ Central's operator commands: `npm --prefix central run catalog -- <command>` (pi
 | Workflow | Trigger | What it does |
 |---|---|---|
 | `.github/workflows/ci.yml` | every push and pull request | The commands under [Tests](#tests) (Rust job; central job with Rust for the schema checks; gateway job with a `wrangler deploy --dry-run` bundle), Node 24 |
-| `.github/workflows/release.yml` | tag `v*` | Checks the tag equals the crate version; `npm/build.sh <platform>` per platform (darwin on macOS, linux and win32 with cargo-zigbuild on Ubuntu); runs every binary on a native runner; `npm publish --dry-run --provenance` per package. Publishes nothing |
+| `.github/workflows/release.yml` | tag `v*` | Checks the tag equals the crate version; `npm/build.sh <platform>` per platform (darwin on macOS, linux and win32 with cargo-zigbuild on Ubuntu); runs every binary on a native runner; `npm publish` per package (`--dry-run` until `NPM_PUBLISH` is `true`; `--provenance` while the repository is public); generates the Homebrew formula (`npm/homebrew-formula.sh`) and commits it to the tap when publishing for real |
 | `.github/workflows/ingest.yml` | daily while the repository is private (every 3 hours once public), manually, and from the gateway (fast-track) | Restores the central store; runs `pipeline --refresh` (catalog technologies) and `drain` (registrations pulled from the gateway, refreshes, new technologies by demand, under the coverage budget); exports and verifies the static catalog; deploys it with the gateway; saves the store; acknowledges the registrations it took |
 
 Secrets and variables (Settings > Secrets and variables > Actions):
@@ -48,6 +48,9 @@ Secrets and variables (Settings > Secrets and variables > Actions):
 | Name | Kind | Used by | What for |
 |---|---|---|---|
 | `UNSTALE_DEFAULT_SERVICE` | variable | release | Compiled into the client as the service `init` uses by default; the release fails when it is empty or not `https://` |
+| `NPM_PUBLISH` | variable | release | `true` publishes to npm (trusted publishing) and to the Homebrew tap; anything else is a dry run |
+| `HOMEBREW_TAP` | variable | release | The tap repository the formula is committed to (`owner/homebrew-tap`); unset, the formula is only an artifact |
+| `HOMEBREW_TAP_TOKEN` | secret | release | Fine-grained token with Contents: write on the tap repository only |
 | `INGEST_GITHUB_TOKEN` | secret | ingest | Optional. Passed to central as `GITHUB_TOKEN`: a fine-grained token with public read-only access (5,000 requests an hour). Without it the workflow token is used, limited to 1,000 an hour per repository |
 | `JEV_API_KEY` | secret | ingest | Jev classifier |
 | `AI_GATEWAY_API_KEY` | secret | ingest | Extraction (`UNSTALE_EXTRACT_MODEL=vercel:openai/gpt-6-luna`, set in the workflow) |
@@ -61,9 +64,10 @@ The Worker's own settings are in `gateway/wrangler.jsonc` (`RATE_PER_HOUR`, `MAX
 `FAST_TRACK_INTERVAL_MINUTES`). Its secrets are set once with `npx wrangler secret put` in `gateway/`: `DRAIN_TOKEN`,
 and for fast-track `GITHUB_DISPATCH_TOKEN`, a fine-grained token with **Actions: write** on this repository only.
 
-The workflow's own token (`github.token`) manages the state release; nothing else is needed for CI. Real npm
-publishing is not enabled; `release.yml`'s header says what changes (npm trusted publishing for this repository and
-workflow, preferred, or an `NPM_TOKEN` secret; both need a `repository` field in each `npm/*/package.json`).
+The workflow's own token (`github.token`) manages the state release; nothing else is needed for CI. npm publishing
+needs no secret: each of `unstale` and `@unstale/cli-*` names this repository and `release.yml` as its trusted
+publisher on npmjs.com, and every `npm/*/package.json` has a `repository` field naming this repository (checked
+before a real publish). `release.yml`'s header has the details.
 
 
 **Ingest state.** The central store (`UNSTALE_STORE`: `central/` and `catalog/`) survives the ephemeral runner as

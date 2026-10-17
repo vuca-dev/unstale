@@ -1,5 +1,6 @@
-# Release rehearsal on a version tag (v0.1.0, ...): cross-build the client for the five npm platforms with
-# npm/build.sh, run each binary on a native runner, and dry-run `npm publish` for every package. Publishes nothing.
+# Release on a version tag (v0.1.0, ...): cross-build the client for the five npm platforms with npm/build.sh, run
+# each binary on a native runner, publish every npm package, then generate the Homebrew formula. Until the repository
+# variable NPM_PUBLISH is `true`, publishing is `npm publish --dry-run` and the formula is only an artifact.
 #
 # Runners: npm/build.sh is the one build recipe (it also checks versions and pins), so CI calls it per platform
 # instead of re-implementing it. darwin-* need Apple's SDK and linker, so they build on macOS (the arm64 runner
@@ -8,15 +9,16 @@
 # would be the MSVC ABI, a different binary from the one rehearsed. Every binary is then run on a native runner
 # (smoke job).
 #
-# Real publishing (not enabled): change the publish job's step to `npm publish "$f" --provenance --access public`
-# (platform packages first, the wrapper last, as below), and either
-#   - npm trusted publishing (preferred): on npmjs.com, add this repository and `release.yml` as the trusted
-#     publisher of `unstale` and each `@unstale/cli-*` package; no secret, the job's `id-token: write` is the
-#     credential (npm >= 11.5.1, which Node 24 ships); or
-#   - an automation token: a repository secret NPM_TOKEN, passed as `NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}`
-#     to the publish step (setup-node's `registry-url` writes the matching .npmrc).
-# Provenance also needs a `repository` field in every npm/*/package.json naming this GitHub repository; the
-# registry rejects a provenance bundle whose source repository does not match it.
+# Publishing uses npm trusted publishing: on npmjs.com, each of `unstale` and the five `@unstale/cli-*` packages
+# names this repository and `release.yml` as its trusted publisher; no secret, the job's `id-token: write` is the
+# credential (npm >= 11.5.1). A trusted publisher can only be added to a package that exists, hence the 0.0.0
+# placeholders. Provenance is attached only while the repository is public (npm generates none from a private
+# one), and then needs a `repository` field in every npm/*/package.json naming this repository; real publishing
+# checks that field either way.
+#
+# Homebrew: the formula (npm/homebrew-formula.sh) downloads the published npm tarballs, so it follows the npm
+# publish. With NPM_PUBLISH `true`, the variable HOMEBREW_TAP (owner/homebrew-tap) and the secret
+# HOMEBREW_TAP_TOKEN (fine-grained, Contents: write on the tap repository only), it is committed to the tap.
 name: release
 
 on:
@@ -160,15 +162,19 @@ jobs:
           echo "$out"
           [ "$out" = "unstale $VERSION" ] || { echo "::error::expected 'unstale $VERSION', got '$out'"; exit 1; }
 
-  publish-dry-run:
+  publish:
     needs: [check, smoke]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: read
-      id-token: write # npm provenance (and trusted publishing, once enabled)
+      id-token: write # npm trusted publishing and provenance
     env:
       VERSION: ${{ needs.check.outputs.version }}
+      # `--dry-run` until the repository variable NPM_PUBLISH is `true`.
+      DRY_RUN: ${{ vars.NPM_PUBLISH != 'true' && '--dry-run' || '' }}
+      PROVENANCE: ${{ github.event.repository.visibility == 'public' && '--provenance' || '' }}
+      REPOSITORY: ${{ github.repository }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -178,6 +184,20 @@ jobs:
           node-version: 24
           registry-url: https://registry.npmjs.org
           package-manager-cache: false
+      - name: Ready to publish
+        if: env.DRY_RUN == ''
+        run: |
+          set -euo pipefail
+          npm_version="$(npm --version)"
+          node -e 'const [a,b,c]=process.argv[1].split(".").map(Number); process.exit(a>11||(a==11&&(b>5||(b==5&&c>=1)))?0:1)' "$npm_version" \
+            || { echo "::error::trusted publishing needs npm >= 11.5.1, got $npm_version"; exit 1; }
+          for f in npm/unstale/package.json npm/cli-*/package.json; do
+            url="$(node -p "(require('./$f').repository || {}).url || ''")"
+            case "$url" in
+              *"github.com/$REPOSITORY.git" | *"github.com/$REPOSITORY") ;;
+              *) echo "::error file=$f::repository.url is '$url', not github.com/$REPOSITORY"; exit 1 ;;
+            esac
+          done
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: npm-*
@@ -185,12 +205,64 @@ jobs:
           merge-multiple: true
       - name: Pack the wrapper
         run: (cd npm/unstale && npm pack --pack-destination ../dist)
-      - name: npm publish --dry-run
+      - name: npm publish ${{ env.DRY_RUN }}
         run: |
           set -euo pipefail
           ls -l npm/dist
           # Platform packages first: the wrapper's optionalDependencies must resolve once it is live.
+          # shellcheck disable=SC2086 # DRY_RUN and PROVENANCE are a flag or empty
           for key in darwin-arm64 darwin-x64 linux-x64 linux-arm64 win32-x64; do
-            npm publish "npm/dist/unstale-cli-$key-$VERSION.tgz" --dry-run --provenance --access public
+            npm publish "npm/dist/unstale-cli-$key-$VERSION.tgz" $DRY_RUN $PROVENANCE --access public
           done
-          npm publish "npm/dist/unstale-$VERSION.tgz" --dry-run --provenance --access public
+          # shellcheck disable=SC2086
+          npm publish "npm/dist/unstale-$VERSION.tgz" $DRY_RUN $PROVENANCE --access public
+
+  homebrew:
+    needs: [check, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      VERSION: ${{ needs.check.outputs.version }}
+      HOMEBREW_TAP: ${{ vars.HOMEBREW_TAP }}
+      PUSH: ${{ vars.NPM_PUBLISH == 'true' && vars.HOMEBREW_TAP != '' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: npm-*
+          path: npm/dist
+          merge-multiple: true
+      - name: Generate the formula
+        run: |
+          set -euo pipefail
+          mkdir -p formula
+          npm/homebrew-formula.sh npm/dist "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" > formula/unstale.rb
+          ruby -c formula/unstale.rb
+          cat formula/unstale.rb
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: homebrew-formula
+          path: formula/unstale.rb
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: env.PUSH == 'true'
+        with:
+          repository: ${{ vars.HOMEBREW_TAP }}
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+      - name: Commit the formula to the tap
+        if: env.PUSH == 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p tap/Formula
+          cp formula/unstale.rb tap/Formula/unstale.rb
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/unstale.rb
+          git diff --cached --quiet && { echo "formula unchanged"; exit 0; }
+          git commit -m "unstale $VERSION"
+          git push
