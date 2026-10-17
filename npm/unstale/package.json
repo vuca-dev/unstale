@@ -1,7 +1,7 @@
 {
   "name": "@unstale/cli",
   "version": "0.1.0",
-  "description": "Keep a repository's dependencies from going stale: the unstale CLI (native binary, installed per platform).",
+  "description": "Tells Claude Code, Codex and Cursor what changed upstream since their training cutoff that applies to your code: new APIs worth adopting, breaking changes for your next major upgrade, deprecations, and the security and performance fixes in each version bump.",
   "license": "AGPL-3.0-only",
   "author": "Jason Draper (https://vuca.dev)",
   "homepage": "https://unstale.sh",
@@ -17,12 +17,16 @@
     "claude-code",
     "codex",
     "cursor",
-    "changelog",
+    "agent-skills",
+    "knowledge-cutoff",
     "release-notes",
+    "changelog",
     "upgrade",
     "migration",
-    "dependencies",
-    "knowledge-cutoff"
+    "breaking-changes",
+    "deprecation",
+    "security-advisories",
+    "dependencies"
   ],
   "bin": {
     "unstale": "bin/unstale.js"
