@@ -16,7 +16,7 @@ const SELECT = join(import.meta.dirname, "..");
 const OUT4 = join(SELECT, "out", "slice4");
 process.env.UNSTALE_CENTRAL_DIR = join(OUT4, "central");
 const { ChatClient, PROVIDERS, dollars, loadPrices, logUsageLine, priceOf, baseUrlOf } = await import("../client.ts");
-const { ChatClassifier, ClassifierCache, Jev, keyFromEnvFile } = await import("../../../central/src/pipeline/classify/adapter.ts");
+const { ClassifierCache, Jev, keyFromEnvFile } = await import("../../../central/src/pipeline/classify/adapter.ts");
 const { labelQuestions } = await import("../../../central/src/pipeline/classify/labels.ts");
 const { runCodex } = await import("../../lib/codex.ts");
 const { canonical, pool, sha256 } = await import("../../../central/src/pipeline/util.ts");
@@ -175,7 +175,21 @@ const EXTRA: Record<string, Record<string, unknown>> = {
   "deepseek/deepseek-v4-flash": { reasoning_effort: "none" },
 };
 const chat = new ChatClient({ provider: PROVIDERS.vercel!, cacheDir: join(OUT4, "cache", runId, "chat"), usageLog: join(OUT4, "chat-usage.jsonl"), concurrency: Number(a.concurrency) });
-const codexPrompt = new ChatClassifier({ run: async () => undefined });
+// The chat arms' prompt as slice 4 ran them: the pipeline's fallback prompt before 2fa5db0 (choice plus a probability per
+// option, which parseAll requires). The pipeline now asks for choices only (RESULTS-choice.md).
+const CHAT_PROMPT = `You answer closed-choice questions about a record. Read the state and answer every question by picking
+exactly one of its options and giving a probability for every option (the probabilities of one question sum to 1).
+
+Output only a JSON object, no prose: {"<question id>": {"choice": "<option>", "probabilities": {"<option>": <0..1>, ...}}, ...}
+
+State:
+%STATE%
+
+Questions:
+%QUESTIONS%
+`;
+const chatPrompt = (state: Record<string, unknown>, questions: Questions): string =>
+  CHAT_PROMPT.replace("%STATE%", canonical(state)).replace("%QUESTIONS%", JSON.stringify(Object.fromEntries(Object.entries(questions).map(([id, x]) => [id, { instructions: x.instructions, options: x.options }])), null, 1));
 
 /** Chat over the gateway: the pipeline's Codex-fallback prompt; an answer must parse in full or it is retried (3 attempts). */
 async function chatAsk(model: string, prompt: string, validate: (t: string) => unknown): Promise<string | undefined> {
@@ -245,7 +259,7 @@ const sysOne = cand === "jev" || cand === "clef" || cand === "subq";
 let planIn = 0;
 let planOut = 0;
 if (isBatch) for (let i = 0; i < units.length; i += B) (planIn += tok3(batchPrompt(units.slice(i, i + B)))), (planOut += MAX_TOKENS * 2);
-else for (const u of units) (planIn += tok3(sysOne ? JSON.stringify({ state: u.state, questions: q }) : codexPrompt.prompt(u.state, q))), (planOut += sysOne ? 0 : MAX_TOKENS);
+else for (const u of units) (planIn += tok3(sysOne ? JSON.stringify({ state: u.state, questions: q }) : chatPrompt(u.state, q))), (planOut += sysOne ? 0 : MAX_TOKENS);
 const modelOf = cand.replace(/^(vercel|batch):/, "");
 const price = cand === "jev" ? priceOf(prices, "jev", "jev-latest") : cand === "subq" ? priceOf(prices, "subq", "subq-snap-preview") : cand === "codex" ? priceOf(prices, "codex", "gpt-5.6-luna") : cand === "clef" ? { input: 0.038, output: 0, cached_input: null } as never : priceOf(prices, "vercel", modelOf);
 const worst = price ? dollars(price, { input_tokens: planIn, cached_input_tokens: 0, output_tokens: planOut, reasoning_tokens: null }) : null;
@@ -298,7 +312,7 @@ if (sysOne) {
     const hit = cache.get(fake, u.state, q);
     if (hit) answers[u.uid] = hit;
     else {
-      const t = await ask(codexPrompt.prompt(u.state, q), (x) => parseAll(x, q));
+      const t = await ask(chatPrompt(u.state, q), (x) => parseAll(x, q));
       const p = t === undefined ? undefined : parseAll(t, q);
       answers[u.uid] = p ? { classifier: "codex", model: modelOf, answers: p } : null;
       if (answers[u.uid]) cache.put(fake, u.state, q, answers[u.uid]!);
@@ -320,7 +334,7 @@ if (sysOne) {
       let p = got.get(i);
       if (!p) {
         singles++;
-        const t1 = await ask(codexPrompt.prompt(u.state, q), (x) => parseAll(x, q));
+        const t1 = await ask(chatPrompt(u.state, q), (x) => parseAll(x, q));
         p = t1 === undefined ? undefined : parseAll(t1, q);
       }
       answers[u.uid] = p ? { classifier: "codex", model: modelOf, answers: p } : null;

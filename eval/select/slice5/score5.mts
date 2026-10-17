@@ -223,7 +223,7 @@ const C5: Cand[] = [
 const JR: Cand[] = [J2[0]!, ...["M8", "T8"].map((arm) => ({ id: arm, name: arm, dev: `j2-${arm}-dev`, held: [`j2-${arm}-heldout`], K: 8 }))];
 const SUBQ: Cand[] = a.subq ? [{ id: `${a.subq}-subq`, name: `${a.subq} on SubQ Snap`, dev: `j2-${a.subq}-dev-subq`, held: [`j2-${a.subq}-heldout-subq`], K: Number(a.subq.slice(1)), ...(a.subq.startsWith("I") ? { readings: ["A", "B"] } : {}) }] : [];
 const C = [...(a.rules ? JR : a.judge2 ? J2 : C5), ...SUBQ];
-const SUFFIX = (a.rules ? "-rules" : a.judge2 ? "-judge2" : "") + (a.subq ? `-subq-${a.subq}` : "") + (a.fixed ? "-fixed" : "");
+const SUFFIX = (a.rules ? "-rules" : a.judge2 ? "-judge2" : "") + (a.subq ? `-subq-${a.subq}` : "") + (a.base !== "J1" ? `-vs-${a.base}` : "") + (a.fixed ? "-fixed" : "");
 /** Descriptive only (not the pre-registered fit): every candidate scored at these constants, "same,cross,quote". */
 const FIXED: Params | undefined = a.fixed ? (([same, cross, quote]) => ({ same: same!, cross: cross!, quote: quote!, guards: true }))(a.fixed.split(",").map(Number)) : undefined;
 const exists = (r: string) => existsSync(join(OUT5, "runs", r.split("#")[0]!, "answers.json"));

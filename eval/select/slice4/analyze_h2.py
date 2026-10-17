@@ -78,8 +78,9 @@ def main():
         hit = lambda p: {i: bool(p[i] and p[i]["breaking"]) == units[i]["breaking"] for i in ids}
         ca, cb = hit(j), hit(b)
         # McNemar on breaking refs (recall side) and on non-breaking refs (false positives, the precision side).
-        r["breaking_recall"] = sc.paired("breaking recall @0.5", pos, ca, cb, lambda s, x: recall(s, side(x), units), rng, clusters)
-        r["breaking_precision"] = sc.paired("breaking precision @0.5", ids, ca, cb, lambda s, x: precision(s, side(x), units), rng, clusters)
+        at = "@%g/@%g" % (RUNS["J1"][1], RUNS[arm][1])
+        r["breaking_recall"] = sc.paired("breaking recall " + at, pos, ca, cb, lambda s, x: recall(s, side(x), units), rng, clusters)
+        r["breaking_precision"] = sc.paired("breaking precision " + at, ids, ca, cb, lambda s, x: precision(s, side(x), units), rng, clusters)
         r["false_positive_mcnemar"] = sc.paired("non-breaking correct", neg, ca, cb, lambda s, x: 1 - sum(bool(side(x)[i] and side(x)[i]["breaking"]) for i in s) / len(s), rng, clusters)
         co = lambda p: {i: bool(p[i] and p[i]["change_type"] in OBLIG) for i in ids}
         r["obligation_recall"] = sc.paired("obligation recall (descr.)", obl, co(j), co(b), lambda s, x: oblig(s, side(x), units), rng, clusters)

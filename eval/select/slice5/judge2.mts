@@ -29,6 +29,8 @@ const { values: a } = parseArgs({
 });
 const USAGE = join(OUT5, "judge2-usage.jsonl");
 const JEV_CAP = 0.55;
+/** PREREG.md "SubQ Snap on the judge". */
+const SUBQ_CAP = 0.15;
 
 export interface Req { key: string; set: string; state: Record<string, unknown>; questions: Questions; split: "dev" | "heldout" }
 
@@ -118,6 +120,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   if (a["dry-run"]) process.exit(0);
   const spent = spendByProvider(USAGE).jev?.dollars ?? 0;
   if (cand === "jev" && spent + worst * 1.3 > JEV_CAP) throw new Error(`jev cap: spent $${spent.toFixed(4)}, this run ~$${worst.toFixed(4)}, cap $${JEV_CAP}`);
+  const subqSpent = spendByProvider(USAGE).subq?.dollars ?? 0;
+  if (cand === "subq" && subqSpent + worst * 1.3 > SUBQ_CAP) throw new Error(`subq cap: spent $${subqSpent.toFixed(4)}, this run ~$${worst.toFixed(4)}, cap $${SUBQ_CAP}`);
 
   const meter = { calls: 0, input: 0, output: 0, dollars: 0 };
   const cf = PROVIDERS.cloudflare!;

@@ -24,21 +24,21 @@ passed. Everything it writes goes under `out/`, which is gitignored. `.store` is
 cd central
 npx tsx ../eval/select/run.mts --step extract  --provider vercel --model openai/gpt-oss-20b [--structure one-call] --split dev --dry-run
 npx tsx ../eval/select/run.mts --step classify --provider jev --split dev [--set benefit|breaking] --limit 50 --seed 1
-npx tsx ../eval/select/run.mts --step judge    --provider codex --split heldout [--set within|guides|nuxt]
-npx tsx ../eval/select/run.mts --step <s>      --provider cache --split all     # the pipeline's own answers, no calls
+npx tsx ../eval/select/slice5/judge2.mts --arm M8 --split dev|heldout --cand jev|subq   # step E: slice 5's frozen requests
+npx tsx ../eval/select/run.mts --step classify --provider cache --split all     # the pipeline's own answers, no calls
 ```
 
 - **Providers:**
   - `vercel`, `cloudflare`: chat completions.
   - `openai`: only with `--allow-openai`.
-  - `jev`: classify and judge only.
+  - `jev`, `subq`: classify only (`run.mts --step judge` stops since f99833e; see below).
   - `codex`: Luna (`gpt-5.6-luna`) through the pipeline's `runCodex` on the user's plan. It reads the store's Codex cache first (read only), then `out/central/cache/codex`. Its usage lines hold the harness-inclusive tokens, plus `prompt_chars` and `prompt_tokens_est` (prompt characters / 4; no tokenizer is installed). They also hold `dollars_prompt_only`, so Luna can be costed at list price without the harness.
   - `cache`: replays the pipeline's stored answers.
 - **`--dry-run`** prints the documents or requests, the number of calls, and a worst-case token and dollar figure, without calling anything. Worst case means input is characters / 3 at the uncached rate, and output is the request's `max_tokens` (extract 16k, label 16k, one call 24k, classify 2k, judge 2k, clamped to the model's `max_output`). The figure is also shown ×3, in case every call is retried for an unparseable answer.
 - **Budget guard:** a real run is refused when its worst case ×3 exceeds what remains, and when the worst case is unknown because a price is missing.
   - `vercel`: the live gateway balance minus a $1 reserve.
   - `openai`: $2 minus logged OpenAI spend.
-  - `jev` and `cloudflare`: an explicit `--budget`.
+  - `jev`, `subq` and `cloudflare`: an explicit `--budget`.
   - `codex`: no dollar budget (it bills the plan).
 
   Cumulative spend per provider is printed after every run.

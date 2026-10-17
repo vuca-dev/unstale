@@ -49,23 +49,33 @@ export class SubqClassifier implements Classifier {
   private async post(body: unknown): Promise<{ model?: string; answers?: Record<string, unknown>; usage?: { input_tokens?: number; output_tokens?: number } }> {
     const f = this.o.fetch ?? fetch;
     const retries = this.o.retries ?? 3;
+    const backoff = (attempt: number) => new Promise((r) => setTimeout(r, (this.o.backoffMs ?? 1000) * 2 ** attempt));
+    let key: string;
+    try {
+      key = this.key();
+    } catch (e) {
+      throw e instanceof ClassifierError ? e : new ClassifierError("auth", "no SubQ key");
+    }
     for (let attempt = 0; ; attempt++) {
       let res: Response;
       try {
         res = await f(`${PROVIDERS.subq!.baseUrl}/systemone`, {
           method: "POST",
-          headers: { Authorization: `Bearer ${this.key()}`, "Content-Type": "application/json" },
+          headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
           body: JSON.stringify(body),
           signal: AbortSignal.timeout(60_000),
         });
       } catch (e) {
-        if (attempt < retries) continue;
+        if (attempt < retries) {
+          await backoff(attempt);
+          continue;
+        }
         throw new ClassifierError("network", String(e));
       }
       if (res.status === 401 || res.status === 403) throw new ClassifierError("auth", `HTTP ${res.status}`);
       if (res.status === 402) throw new ClassifierError("auth", "HTTP 402: no SubQ credits left");
       if ((res.status === 429 || res.status >= 500) && attempt < retries) {
-        await new Promise((r) => setTimeout(r, (this.o.backoffMs ?? 1000) * 2 ** attempt));
+        await backoff(attempt);
         continue;
       }
       if (!res.ok) throw new ClassifierError("http", `HTTP ${res.status}`);

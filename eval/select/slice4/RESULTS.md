@@ -173,8 +173,9 @@ pre-registered switch rule (slice 5 `PREREG.md`) keeps Jev. Runner `run4.mts --c
 
 - **H1 passes** the slice 4 floor, the cheapest passer there. At the live 0.5 Snap's benefit recall drops to 73.6, so it
   needs its own BENEFIT_P (0.10).
-- **H2 fails** at the threshold fitted on dev: the low BREAKING_P that H1's sparse breaking set rewards over-flags on
-  guides and major notes. At 0.5 it passes, but choosing 0.5 after seeing H2 would be leakage.
+- **H2 fails** at the threshold fitted on dev, which is the threshold the switch rule names (slice 5 `PREREG.md`). The
+  low BREAKING_P that H1's sparse breaking set rewards over-flags on guides and major notes. At 0.5, H2's own
+  pre-registered threshold, it passes. No single threshold passes both sets: at 0.5 Snap's H1 benefit recall falls to 73.6.
 - **Repeatability:** a second held-out run (`subq-heldout-run2`) returned identical probabilities on all 233 records.
   Jev changes 15 records between its two runs. Snap is deterministic; that is its clearest operational advantage.
 - **Spend:** SubQ $0.137 (2.74M input tokens) across slices 4 and 5, on the free preview credit.

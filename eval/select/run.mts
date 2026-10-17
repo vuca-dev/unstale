@@ -336,7 +336,8 @@ async function runClassify(): Promise<void> {
   const answers = new Map<string, Classification>();
   await pool(units, 4, async (u) => {
     const store = u.set === "benefit" && u.faithful ? join(S.STORE, "central-trust", "cache", "classifier") : undefined;
-    const r = await ask(cls, cache, u.state, q, store);
+    // The pipeline's cache holds the build-time wording; a model is asked the current one.
+    const r = await ask(cls, cache, u.state, cls ? q : S.buildTimeLabelQuestions(), store);
     if (r) answers.set(`${u.set}:${u.id}`, r);
   });
   mkdirSync(runDir, { recursive: true });

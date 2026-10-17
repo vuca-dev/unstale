@@ -174,5 +174,7 @@ SAME_P to 0.96, which leaves 42.1% held-out recall against Jev's 88.8%. It is no
   the floor (0.87: 3.6 per 100; 0.93: 1.9). On held-out its SAME pairs also sit lower (median p 0.957 against Jev's
   1.0), so it recalls less at every constant tried.
 - **Cost:** Snap bills 15% fewer tokens per request, but its price is 19% higher, so step E costs 1% more ($0.0111
-  against $0.0110 per technology-year).
+  against $0.0110 per technology-year). Both are scaled as the tables above (held-out $/request × K / mean candidates
+  per request × R), which the pre-registration's shorter "$/request × R" left out. Without the K factor it is $0.0104
+  against $0.0103: the same 1%.
 - **Spend:** SubQ $0.034 (smoke, dev, held-out). No Jev spend: Jev M8 is the run above.
