@@ -1,12 +1,14 @@
 // What the advisories stage needs from an ecosystem, beyond what any ecosystem port needs anyway (a registry adapter,
-// a release index, a lockfile reader at the edge). Both hooks are optional; an ecosystem without them fails open:
+// a release index, a lockfile reader at the edge). Every hook is optional; an ecosystem without one fails open:
 //   - compare: the ecosystem's version order, for OSV `ECOSYSTEM` ranges. Without it only the explicit `versions` list
 //     OSV gives for such a range is used, and a range with neither is left unresolved (the edge then says nothing);
 //   - siblings: other packages published from the technology's repository, from registry metadata only. Without it
 //     the technology's components are the only packages queried;
 //   - dependencies: the packages a release installs for its users (runtime dependencies, not development or peer
 //     ones), from registry metadata. Without it another package's advisory named in the notes is never taken for a
-//     dependency update (advisories.ts step 8): the record keeps its labels.
+//     dependency update (advisories.ts step 8): the record keeps its labels;
+//   - registryPage: the package a registry page URL is for (npm `npmjs.com/package/<name>`). Without it a record about
+//     another package listed in the notes is never recognised as such (advisories.ts step 9): the record keeps its labels.
 // No hand-written package lists, no per-technology tables (memory rule: ecosystem vocabularies, fail open).
 import type { Technology } from "./technologies.ts";
 import { pool } from "./util.ts";
@@ -19,6 +21,8 @@ export interface Ecosystem {
   /** Package URLs a release of `component` installs for its users; undefined when the registry does not list it
    * (the package was not published at that version). */
   dependencies?: (component: string, version: string) => Promise<string[] | undefined>;
+  /** The package (package URL) a registry page URL is for; undefined when the URL is not one of its package pages. */
+  registryPage?: (url: string) => string | undefined;
 }
 
 // ---- SemVer 2.0 precedence (OSV `SEMVER` ranges are SemVer by definition, whatever the ecosystem) ----
@@ -138,6 +142,18 @@ async function npmDependencies(component: string, version: string): Promise<stri
   return [...new Set([...names(meta.dependencies), ...names(meta.optionalDependencies), ...bundled])].map(npmPurl).sort();
 }
 
+/** npm: `https://www.npmjs.com/package/<name>` (`@scope/name` or `%40scope%2Fname`), any path after the name. */
+function npmRegistryPage(url: string): string | undefined {
+  const m = /^https?:\/\/(?:www\.)?npmjs\.com\/package\/((?:@|%40)[^/?#\s]+(?:\/|%2f)[^/?#\s]+|[^@%/?#\s][^/?#\s]*)/i.exec(url.trim());
+  return m ? npmPurl(decodeURIComponent(m[1]!)) : undefined;
+}
+
+/** PyPI: `https://pypi.org/project/<name>/`. */
+function pypiRegistryPage(url: string): string | undefined {
+  const m = /^https?:\/\/pypi\.org\/project\/([^/?#\s]+)/i.exec(url.trim());
+  return m ? pypiPurl(decodeURIComponent(m[1]!)) : undefined;
+}
+
 /** PEP 503 name normalisation, as a package URL (`pkg:pypi/<name>`). */
 export const pypiPurl = (name: string): string => `pkg:pypi/${name.toLowerCase().replace(/[-_.]+/g, "-")}`;
 
@@ -159,9 +175,9 @@ async function pypiDependencies(component: string, version: string): Promise<str
 
 export const ECOSYSTEMS: Record<string, Ecosystem> = {
   // npm versions are SemVer.
-  npm: { osv: "npm", compare: semverOrder, siblings: npmSiblings, dependencies: npmDependencies },
+  npm: { osv: "npm", compare: semverOrder, siblings: npmSiblings, dependencies: npmDependencies, registryPage: npmRegistryPage },
   // PyPI versions are PEP 440. No siblings hook: PyPI has no organisation listing to find a repository's packages.
-  pypi: { osv: "PyPI", compare: pep440Order, dependencies: pypiDependencies },
+  pypi: { osv: "PyPI", compare: pep440Order, dependencies: pypiDependencies, registryPage: pypiRegistryPage },
 };
 
 /** A package URL in one comparable form: PyPI names PEP 503-normalised, npm scopes as `%40`, lower-cased otherwise. */
