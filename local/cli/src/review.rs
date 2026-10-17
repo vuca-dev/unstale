@@ -313,12 +313,37 @@ pub fn digest_lines(out: &Outcome) -> Vec<String> {
         }
         // Manifests on another version (a workspace with its own lockfile, a library's floor): counts only.
         for w in workspaces {
+            // Advisories as for the headline, at this manifest's version: each fixed one counts once; a record whose
+            // advisories are all decided and none fixed says nothing; an undecidable one falls back to the record.
             let mut kinds = Kinds::default();
+            let mut fixed = std::collections::BTreeSet::new();
             for (rec, route, _) in &w.records {
-                if *route == Route::BumpDigest {
-                    kinds.add(rec);
+                if *route != Route::BumpDigest {
+                    continue;
                 }
+                if crate::funnel::is_security_rec(rec) && !rec.r.advisories.is_empty() {
+                    let target = w.target.as_ref().unwrap_or(&w.version);
+                    let st: Vec<Option<bool>> = rec
+                        .r
+                        .advisories
+                        .iter()
+                        .map(|a| match (advisory_affects(a, &w.component, &w.version), advisory_affects(a, &w.component, target)) {
+                            (Some(was), Some(still)) => Some(was && !still),
+                            _ => None,
+                        })
+                        .collect();
+                    for (a, f) in rec.r.advisories.iter().zip(&st) {
+                        if *f == Some(true) {
+                            fixed.insert(a.id.clone());
+                        }
+                    }
+                    if st.contains(&Some(true)) || !st.contains(&None) {
+                        continue;
+                    }
+                }
+                kinds.add(rec);
             }
+            kinds.add_security(fixed.len());
             let obligations = w.records.iter().filter(|(_, r, _)| *r == Route::UpgradeReview).count();
             let (dir, source) = &w.dirs[0];
             let more = if w.dirs.len() > 1 { format!(" and {} more", w.dirs.len() - 1) } else { String::new() };
@@ -489,9 +514,8 @@ pub fn bump_lines(out: &Outcome, pkg: &str) -> Option<Vec<String>> {
         return None;
     }
     let mut lines = vec![];
-    let entry = |lines: &mut Vec<String>, r: &crate::cache::Rec, version: &str, benefits: &[unstale_schema::catalog::Benefit]| {
+    let entry = |lines: &mut Vec<String>, r: &crate::cache::Rec, name: &str, version: &str, benefits: &[unstale_schema::catalog::Benefit]| {
         let b: Vec<&str> = benefits.iter().map(benefit).collect();
-        let name = r.r.releases.first().and_then(|x| purl_name(&x.component)).unwrap_or_else(|| r.r.technology.clone());
         lines.push(format!("[{}] {name} {version} · {} · benefit: {}", r.r.id, change_type(r.r.change_type), b.join(", ")));
         lines.push(format!("  {}", one_line(&r.r.summary, SUMMARY_MAX)));
         if let Some(e) = r.r.evidence.first() {
@@ -502,18 +526,19 @@ pub fn bump_lines(out: &Outcome, pkg: &str) -> Option<Vec<String>> {
         let mut listed = std::collections::BTreeSet::new();
         for &i in out.digest.get(c).map(Vec::as_slice).unwrap_or(&[]) {
             let o = &out.opps[i];
-            listed.insert(o.id().to_string());
-            entry(&mut lines, o.rec, &o.release.version, &o.benefits);
+            listed.insert((o.id().to_string(), o.release.version.clone()));
+            entry(&mut lines, o.rec, &pkg_name(o), &o.release.version, &o.benefits);
         }
         // A manifest on another version also picks up what its own version lacks.
         for w in out.workspaces.get(c).map(Vec::as_slice).unwrap_or(&[]) {
-            let extra: Vec<_> = w.records.iter().filter(|(r, route, _)| *route == Route::BumpDigest && !listed.contains(&r.r.id)).collect();
+            let extra: Vec<_> = w.records.iter().filter(|(r, route, v)| *route == Route::BumpDigest && !listed.contains(&(r.r.id.clone(), v.clone()))).collect();
             if extra.is_empty() {
                 continue;
             }
             lines.push(format!("{} on {} ({}) also picks up:", crate::stack::place(&w.dirs[0].0), w.version, w.dirs[0].1));
+            let name = purl_name(&w.component).unwrap_or_else(|| w.component.clone());
             for (r, _, version) in extra {
-                entry(&mut lines, r, version, &r.r.benefit);
+                entry(&mut lines, r, &name, version, &r.r.benefit);
             }
         }
     }
