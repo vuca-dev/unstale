@@ -54,7 +54,8 @@ pub struct Opp<'a> {
     pub score: f64,
     /// Matched literals with up to three files each, sorted.
     pub matched: Vec<(String, Vec<String>)>,
-    /// Up to three matched files across all literals, application files first (`usage::Role`), for evidence lines.
+    /// Up to three matched files across all literals, for evidence lines: files about the technology first (importing
+    /// or configuring it), then application files (`usage::Role`), as in `usage::Scope::evidence`.
     pub files: Vec<String>,
     /// `requires` names something and none of it is in the repository: ordered last.
     pub requires_miss: bool,
@@ -170,19 +171,6 @@ fn record_lits(r: &Rec, exclude: &BTreeSet<String>) -> Vec<String> {
     out
 }
 
-/// A literal's evidence for one technology: its hit files in the technology's language, the first three in `find`'s
-/// order and the first three by role inside the technology's packages, and whether any is application code.
-struct Evidence {
-    head: Vec<String>,
-    first: Vec<String>,
-    app: bool,
-}
-
-/// The files that evidence a technology of `ecosystem`: its own language and shared config and data files.
-fn in_language<'h>(files: Option<&'h Vec<String>>, ecosystem: &str) -> Vec<&'h String> {
-    files.into_iter().flatten().filter(|p| !usage::foreign_code(p, ecosystem)).collect()
-}
-
 /// The literals a technology's records are matched with: per record (`record_lits`, the technology's own package
 /// names excluded: they say nothing about which part is used, `fw_spike._hit` refs), plus every `requires` value
 /// (usage) and every `introduces` value of at least 6 characters (the applied check).
@@ -219,7 +207,11 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
         .filter(|(_, _, tl)| tl.comps.iter().any(|c| purls.contains(c)))
         .collect();
     // One pass over the repository for every technology: a literal's hits do not depend on the other literals.
-    let usage_lits: BTreeSet<String> = in_stack.iter().flat_map(|(_, _, tl)| tl.usage.iter().cloned()).collect();
+    // The literals that find the files naming each technology's packages (`usage::Scope`) ride along.
+    let usage_lits: BTreeSet<String> = in_stack
+        .iter()
+        .flat_map(|(_, _, tl)| tl.usage.iter().cloned().chain(tl.comps.iter().flat_map(|c| usage::naming_lits(c))))
+        .collect();
     let whole_lits: BTreeSet<String> = in_stack.iter().flat_map(|(_, _, tl)| tl.whole.iter().cloned()).collect();
     let hits: Hits = usage::find(inp.repo, &usage_lits, &whole_lits);
     for (tech, td, tl) in &in_stack {
@@ -227,7 +219,6 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
         let present: Vec<&String> = comps.iter().filter(|c| purls.contains(*c)).collect();
         // Packages that declare this technology: a file's role is judged inside the deepest one containing it.
         let owners: Vec<&str> = inp.stack.packages.iter().filter(|p| p.declared.iter().any(|d| comps.contains(&normalize_purl(d)))).map(|p| p.dir.as_str()).collect();
-        let nested = owners.iter().any(|o| *o != ".");
         // A file's role once per technology: a large repository has tens of thousands of hit files, and the same
         // files come up for every record sharing a literal.
         let roles: RefCell<HashMap<String, usage::Role>> = RefCell::default();
@@ -239,29 +230,17 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             roles.borrow_mut().insert(p.to_string(), r);
             r
         };
-        // Only this technology's language and shared config/data files evidence it.
+        // Only files that can use this technology evidence it, and a plain word only where it is named (`usage::Scope`).
         let ecosystem = comps.iter().find_map(|c| c.strip_prefix("pkg:").and_then(|r| r.split('/').next())).unwrap_or("npm").to_string();
-        let in_language = |files| in_language(files, &ecosystem);
+        let scope = usage::Scope::new(&ecosystem, &owners, comps, tl.usage.iter().chain(&tl.whole), &hits, &inp.repo.paths);
+        let nested = owners.iter().any(|o| *o != ".");
         // Each literal's evidence once per technology, however many records share it.
-        let evidence: RefCell<HashMap<String, Rc<Evidence>>> = RefCell::default();
-        let evidence_of = |l: &str| -> Rc<Evidence> {
+        let evidence: RefCell<HashMap<String, Rc<usage::Evidence>>> = RefCell::default();
+        let evidence_of = |l: &str| -> Rc<usage::Evidence> {
             if let Some(e) = evidence.borrow().get(l) {
                 return e.clone();
             }
-            let files = in_language(hits.usage.get(l));
-            let head: Vec<String> = files.iter().take(3).map(|p| (*p).clone()).collect();
-            let e = if nested {
-                let mut ranked: Vec<(usage::Role, &String)> = files.iter().map(|p| (role(p), *p)).collect();
-                ranked.sort();
-                Rc::new(Evidence {
-                    head,
-                    first: ranked.iter().take(3).map(|(_, p)| (*p).clone()).collect(),
-                    app: ranked.first().is_some_and(|(r, _)| *r == usage::Role::App),
-                })
-            } else {
-                // No package of the technology below the root: roles are the root's, in the order `find` sorted by.
-                Rc::new(Evidence { first: head.clone(), head, app: files.first().is_some_and(|p| role(p) == usage::Role::App) })
-            };
+            let e = Rc::new(scope.evidence(l, role, !nested));
             evidence.borrow_mut().insert(l.to_string(), e.clone());
             e
         };
@@ -270,7 +249,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             if let Some(a) = applied.borrow().get(x) {
                 return *a;
             }
-            let a = in_language(hits.whole.get(x)).into_iter().any(|p| usage::counts_as_applied(role(p), p));
+            let a = hits.whole.get(x).into_iter().flatten().any(|p| scope.counts(x, p) && usage::counts_as_applied(role(p), p));
             applied.borrow_mut().insert(x.to_string(), a);
             a
         };
@@ -339,14 +318,25 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                 },
                 None => (picked, rv <= installed, rv > target),
             };
-            let matched: Vec<(String, Vec<String>)> =
-                ls.iter().filter_map(|l| Some(evidence_of(l)).filter(|e| !e.head.is_empty()).map(|e| (l.clone(), e.head.clone()))).collect();
-            let score = matched.iter().map(|(l, _)| weight(l) * if evidence_of(l).app { 1.0 } else { NON_APP_WEIGHT }).sum::<f64>();
+            let matched: Vec<(String, Vec<String>)> = ls
+                .iter()
+                .filter_map(|l| Some(evidence_of(l)).filter(|e| !e.files.is_empty()).map(|e| (l.clone(), e.files.iter().map(|(p, _)| p.clone()).collect())))
+                .collect();
+            let score = ls
+                .iter()
+                .filter_map(|l| Some(evidence_of(l)).filter(|e| e.used).map(|e| weight(l) * if e.app { 1.0 } else { NON_APP_WEIGHT }))
+                .sum::<f64>();
             // The first three of the union are among the first three of each literal.
-            let mut files: Vec<(usage::Role, String)> = ls.iter().flat_map(|l| evidence_of(l).first.clone()).map(|p| (role(&p), p)).collect();
+            let mut files: Vec<(bool, usage::Role, String)> = ls
+                .iter()
+                .flat_map(|l| {
+                    let e = evidence_of(l);
+                    e.files.iter().map(|(p, about)| (!about, role(p), p.clone())).collect::<Vec<_>>()
+                })
+                .collect();
             files.sort();
             files.dedup();
-            let files: Vec<String> = files.into_iter().take(3).map(|(_, p)| p).collect();
+            let files: Vec<String> = files.into_iter().take(3).map(|(_, _, p)| p).collect();
             // A `requires` value the change itself introduces is something the upgrade has the project add, not a
             // precondition (absent until adopted), so it never demotes the record (eval/rank/RESULTS.md, follow-up).
             let intro: BTreeSet<String> = rec.r.introduces.iter().filter_map(|x| clean_lit(x)).collect();
@@ -412,7 +402,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                 }
             }
             if opp.route == Route::ImprovementsPass {
-                let replaces_here = rec.r.replaces.iter().filter_map(|x| clean_lit(x)).any(|x| !evidence_of(&x).head.is_empty());
+                let replaces_here = rec.r.replaces.iter().filter_map(|x| clean_lit(x)).any(|x| evidence_of(&x).used);
                 let mut b: Vec<Benefit> = rec
                     .r
                     .benefit
@@ -750,6 +740,35 @@ mod tests {
         );
         let rare = out.opps.iter().find(|o| o.id() == "prisma:brk-rare").unwrap();
         assert_eq!(rare.matched, vec![("datasourceUrl".to_string(), vec!["src/db.ts".to_string()])]);
+    }
+
+    #[test]
+    fn evidence_comes_from_files_that_can_use_the_technology() {
+        let c = catalog(
+            "zod",
+            0,
+            vec![
+                with(rec("zod:data-only", "pkg:npm/zod", "4.1.0"), json!({"change_type":"new_api","benefit":["correctness"],"terms":[["currencyCode",0]]})),
+                with(rec("zod:plain", "pkg:npm/zod", "4.1.0"), json!({"change_type":"new_api","benefit":["correctness"],"terms":[["shape",0],["z.object",0]]})),
+            ],
+        );
+        let s = stack(&[("zod", "4.1.0")], None);
+        let r = repo(&[
+            ("devenv/dashboards/a.json", "{\"currencyCode\": \"EUR\", \"shape\": 1}"),
+            ("src/theme.ts", "export const shape = { radius: 2 }"),
+            ("src/schema.ts", "import * as z from 'zod'; export const S = z.object({ shape: z.string() })"),
+        ]);
+        let l = Ledger::default();
+        let out = run_with(&c, &s, &r, &l);
+        let data = out.opps.iter().find(|o| o.id() == "zod:data-only").unwrap();
+        assert!(data.matched.is_empty() && data.files.is_empty() && data.score == 0.0, "dashboard JSON cannot use zod");
+        let plain = out.opps.iter().find(|o| o.id() == "zod:plain").unwrap();
+        assert_eq!(
+            plain.matched,
+            vec![("shape".to_string(), vec!["src/schema.ts".to_string()]), ("z.object".to_string(), vec!["src/schema.ts".to_string()])],
+            "`shape` is shown only where zod is imported"
+        );
+        assert!(plain.score > 0.0);
     }
 
     #[test]
