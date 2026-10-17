@@ -32,7 +32,7 @@ pub struct Pending {
     /// The service limited new registrations: Unix seconds before which none are sent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub deferred_until: Option<u64>,
-    /// Weekly npm downloads of unsubmitted packages, read once for `registration_order`.
+    /// Weekly npm downloads of unsubmitted packages, read once for `registration_order` (0 when unreadable).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub downloads: BTreeMap<String, u64>,
 }
@@ -1298,7 +1298,12 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
     let unread: Vec<String> = pending.unsubmitted.iter().filter(|p| p.starts_with("pkg:npm/") && !pending.downloads.contains_key(*p)).cloned().collect();
     if !deferred && !unread.is_empty() {
         ui.update("Connecting public coverage · step 3/5", &format!("Ranking {registrations} public packages by adoption"), "Most-used packages are registered first");
-        pending.downloads.extend(npm_downloads(&unread));
+        // A count that cannot be read is kept as 0, so an npm outage costs one attempt, not one per run.
+        let read = npm_downloads(&unread);
+        pending.downloads.extend(unread.into_iter().map(|p| {
+            let d = read.get(&p).copied().unwrap_or(0);
+            (p, d)
+        }));
         save(ctx, &pending)?;
     }
     let order = registration_order(&pending.unsubmitted, &st, &pending.downloads);
