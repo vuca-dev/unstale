@@ -40,6 +40,10 @@ interface Pulled {
   requests: { purl: string; demand: number }[];
 }
 
+/** The gateway's rows read and written today against its free-tier allowance, as its last answer reported them;
+ * printed in the run's final line. */
+let gatewayUsage: unknown;
+
 /** The gateway's queue; unreachable or malformed answers pull nothing (the saved queue is still worked). */
 async function pull(): Promise<Pulled["requests"]> {
   const g = gateway();
@@ -47,8 +51,9 @@ async function pull(): Promise<Pulled["requests"]> {
   try {
     const res = await fetch(`${g.url}/internal/queue`, { headers: g.headers, signal: AbortSignal.timeout(30_000) });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const body = (await res.json()) as Pulled;
+    const body = (await res.json()) as Pulled & { usage?: unknown };
     if (!Array.isArray(body.requests)) throw new Error("no requests array");
+    gatewayUsage = body.usage;
     return body.requests.filter((r) => typeof r?.purl === "string" && Number.isFinite(r?.demand));
   } catch (e) {
     console.error(`gateway queue not read (${e instanceof Error ? e.message : e}); working the saved queue only`);
@@ -132,7 +137,7 @@ async function drain(args: string[]): Promise<void> {
     only = service.newHead(new Set(fresh));
     if (!only.size) {
       await report(fresh.map((purl) => ({ purl, state: "declined" })), budgetOf(service));
-      console.log(JSON.stringify({ wall_s: Math.round((Date.now() - t0) / 1000), pulled: requests.length, taken: taken.length, ran: false, next: service.newLine()[0]?.purl }));
+      console.log(JSON.stringify({ wall_s: Math.round((Date.now() - t0) / 1000), pulled: requests.length, taken: taken.length, ran: false, next: service.newLine()[0]?.purl, gateway: gatewayUsage }));
       return;
     }
   }
@@ -156,7 +161,7 @@ async function drain(args: string[]): Promise<void> {
   const statuses = writeStatuses(service);
   const states: Record<string, number> = {};
   for (const j of service.jobs.values()) states[j.state] = (states[j.state] ?? 0) + 1;
-  console.log(JSON.stringify({ wall_s: Math.round((Date.now() - t0) / 1000), pulled: requests.length, taken: taken.length, ...result, statuses, states, ran: true, ...(only ? { only: [...only] } : {}) }));
+  console.log(JSON.stringify({ wall_s: Math.round((Date.now() - t0) / 1000), pulled: requests.length, taken: taken.length, ...result, statuses, states, ran: true, ...(only ? { only: [...only] } : {}), gateway: gatewayUsage }));
 }
 
 /** Tells the gateway what a deployed run took (with the demand it counted), so it stops holding them. */

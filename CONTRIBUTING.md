@@ -69,8 +69,11 @@ Secrets and variables (Settings > Secrets and variables > Actions):
 | `ASSET_FILE_LIMIT` | variable | ingest | Static files a Worker version may hold: 20,000 on the free plan (default), 100,000 on the paid plan |
 
 The Worker's own settings are in `gateway/wrangler.jsonc` (`RATE_PER_HOUR`, `VOTES_PER_HOUR`, `NEW_PER_HOUR`,
-`MAX_PENDING`, `FAST_TRACK_PER_DAY`, `FAST_TRACK_INTERVAL_MINUTES`). Its secrets are set once with `npx wrangler secret put` in `gateway/`: `DRAIN_TOKEN`,
-and for fast-track `GITHUB_DISPATCH_TOKEN`, a fine-grained token with **Actions: write** on this repository only.
+`COUNTED_VOTES_PER_HOUR`, `MAX_PENDING`, `FAST_TRACK_PER_DAY`, `FAST_TRACK_INTERVAL_MINUTES`). It stays on the Workers
+free tier (5M rows read and 100k written a day, reset 00:00 UTC); `GET /internal/usage` (bearer `DRAIN_TOKEN`) shows
+the day's rows per operation, and a drain's final line and the acknowledgement print them (`gateway`, `usage`). Its
+secrets are set once with `npx wrangler secret put` in `gateway/`: `DRAIN_TOKEN`, and for fast-track
+`GITHUB_DISPATCH_TOKEN`, a fine-grained token with **Actions: write** on this repository only.
 
 The workflow's own token (`github.token`) manages the state release; nothing else is needed for CI. npm publishing
 needs no secret: each of `@unstale/cli`, `@unstale/create` and `@unstale/cli-*` names this repository and

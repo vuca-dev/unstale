@@ -7,13 +7,15 @@
 //   GET /coverage?purl=         a known package's published status, or a held one's place in the queue
 //   GET /internal/queue         the held requests, for a coverage run (bearer DRAIN_TOKEN)
 //   POST /internal/ack          what a deployed run took (bearer DRAIN_TOKEN)
+//   GET /internal/usage         the object's rows read and written today against the free tier (bearer DRAIN_TOKEN);
+//                               also in the answers to /internal/queue and /internal/ack, which a run prints
 //   POST /internal/progress     where a run is with the held packages it pulled (bearer DRAIN_TOKEN), so a client
 //                               that started one early can follow it until the package is published; with
 //                               `budget.spent_until`, until when central's budget is spent (no early run until then)
 // Only the public identity of a package is accepted; no repository context, and no client address is stored.
 import { DurableObject } from "cloudflare:workers";
 import { packageIdentity, technologyId } from "../../central/src/onboarding/identity.ts";
-import { PendingQueue, RUN_STATES, settingsFrom, type Outcome, type Progress, type Request as Taken, type Run, type RunState } from "./queue.ts";
+import { PendingQueue, RUN_STATES, settingsFrom, type Outcome, type Progress, type Request as Taken, type RunState, type View } from "./queue.ts";
 
 export interface Env {
   ASSETS: Fetcher;
@@ -30,6 +32,7 @@ export interface Env {
   VOTES_PER_HOUR?: string;
   MAX_PENDING?: string;
   NEW_PER_HOUR?: string;
+  COUNTED_VOTES_PER_HOUR?: string;
   FAST_TRACK_PER_DAY?: string;
   FAST_TRACK_INTERVAL_MINUTES?: string;
 }
@@ -42,9 +45,14 @@ export class Coverage extends DurableObject<Env> {
     const settings = settingsFrom(env as unknown as Record<string, string | undefined>);
     // Without a way to start a run, no package is told one is starting.
     if (!env.GITHUB_DISPATCH_TOKEN || !env.GITHUB_REPOSITORY) settings.fastTrackPerDay = 0;
-    this.queue = new PendingQueue(ctx.storage.sql, settings);
+    this.queue = new PendingQueue(ctx.storage.sql, settings, {
+      transaction: (f) => ctx.storage.transactionSync(f),
+      timer: (f, ms) => void setTimeout(f, ms),
+    });
   }
-  request(purl: string, address: string, known: boolean): Outcome {
+  /** A request and, when the package is queued, what its client is shown: one call to the object, not two (the free
+   * tier counts requests to the object too). */
+  request(purl: string, address: string, known: boolean): { outcome: Outcome; view?: View } {
     const outcome = this.queue.request(purl, address, known);
     if (outcome.type === "queued" && outcome.fastTrack)
       this.ctx.waitUntil(
@@ -52,15 +60,14 @@ export class Coverage extends DurableObject<Env> {
           .catch(() => false)
           .then((started) => started || this.queue.undispatched(purl)),
       );
-    return outcome;
+    return { outcome, view: outcome.type === "queued" ? this.queue.view(purl) : undefined };
   }
   held(purl: string): boolean {
     return this.queue.held(purl);
   }
   /** A held new package's place in the queue and the run working it, if any. */
   view(purl: string): View | undefined {
-    const at = this.queue.position(purl);
-    return at && { ...at, run: this.queue.run(purl), typical: this.queue.typicalSeconds(), spentUntil: this.queue.spentUntil() };
+    return this.queue.view(purl);
   }
   /** A run's progress; `budget` (when the report carries it) replaces what the gateway knows of central's budget. */
   report(updates: { purl: string; state: RunState; job?: Progress }[], budget?: { spentUntil?: number }): number {
@@ -73,15 +80,9 @@ export class Coverage extends DurableObject<Env> {
   ack(taken: Taken[]): number {
     return this.queue.ack(taken);
   }
-}
-
-interface View {
-  position: number;
-  length: number;
-  run?: Run;
-  typical?: number;
-  /** Central's budget is spent until then (ms): no run takes a new package before it. */
-  spentUntil?: number;
+  usage(): ReturnType<PendingQueue["usageToday"]> {
+    return this.queue.usageToday();
+  }
 }
 
 /** Starts the coverage workflow early; a failure only means the package waits for the schedule. */
@@ -308,7 +309,7 @@ export async function handle(request: Request, env: Env): Promise<Response> {
       const address = request.headers.get("CF-Connecting-IP") ?? "unknown";
       const known = await published(env, url, purl);
       if (!known && !(await queue().held(purl)) && !(await registered(purl))) return json(404, { error: "No public package with this identity" });
-      const outcome = await queue().request(purl, address, !!known);
+      const { outcome, view } = await queue().request(purl, address, !!known);
       if (outcome.type === "refused")
         return json(
           429,
@@ -316,7 +317,7 @@ export async function handle(request: Request, env: Env): Promise<Response> {
           { "Retry-After": String(outcome.retryAfter) },
         );
       if (outcome.type === "voted") return json(202, known);
-      return json(202, queued(purl, (await queue().view(purl)) ?? outcome));
+      return json(202, queued(purl, view ?? outcome));
     }
     if (request.method === "GET" && url.pathname === "/coverage") {
       const purl = url.searchParams.get("purl") ?? "";
@@ -326,16 +327,17 @@ export async function handle(request: Request, env: Env): Promise<Response> {
       const at = await queue().view(purl);
       return at ? json(200, queued(purl, at)) : json(404, { error: "No shared job for this identity" });
     }
-    if (url.pathname === "/internal/queue" || url.pathname === "/internal/ack" || url.pathname === "/internal/progress") {
+    if (url.pathname.startsWith("/internal/")) {
       if (!authorized(request, env.DRAIN_TOKEN)) return json(401, { error: "Unauthorized" });
-      if (request.method === "GET" && url.pathname === "/internal/queue") return json(200, { requests: await queue().list() });
+      if (request.method === "GET" && url.pathname === "/internal/usage") return json(200, await queue().usage());
+      if (request.method === "GET" && url.pathname === "/internal/queue") return json(200, { requests: await queue().list(), usage: await queue().usage() });
       if (request.method === "POST" && url.pathname === "/internal/ack") {
         const { requests } = await input(async () => {
           const body = (await request.json()) as { requests?: Taken[] } | null;
           if (!body || typeof body !== "object") throw new BadRequest("Expected {\"requests\": [...]}");
           return body;
         });
-        return json(200, { removed: await queue().ack(Array.isArray(requests) ? requests : []) });
+        return json(200, { removed: await queue().ack(Array.isArray(requests) ? requests : []), usage: await queue().usage() });
       }
       if (request.method === "POST" && url.pathname === "/internal/progress") {
         const body = await input(() => request.json());
