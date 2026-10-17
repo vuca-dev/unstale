@@ -10,9 +10,6 @@ distills each change once, and matches it against *your* code. Your coding agent
 knows what applies here: new APIs worth adopting, breaking changes for your next major upgrade, deprecations, and the
 security and performance fixes in each version bump. Nothing else.
 
-> Pre-release: build from source for now. `npx @unstale/cli init` and `brew install vuca-dev/tap/unstale` arrive
-> with the first release.
-
 ## Why unstale
 
 - **Context-efficient by design.** Changes are distilled centrally, once, for everyone. Your agent receives a small,
@@ -41,11 +38,19 @@ with its stated benefit.
 
 ## Quick start
 
+In your repository:
+
 ```sh
-git clone https://github.com/vuca-dev/unstale && cd unstale
-scripts/prepare-dogfood.sh                         # build, install locally, start the catalog service
-.dev/npm/bin/unstale -C /path/to/your/repo init
+npx @unstale/cli init            # or, from 0.1.1: npm init @unstale
 ```
+
+To keep `unstale` on your PATH for the commands below:
+
+```sh
+npm install -g @unstale/cli      # or: brew install vuca-dev/tap/unstale
+```
+
+Building from source: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Then, in your agent, inside that repository:
 

@@ -19,6 +19,8 @@ The npm install channel: per-platform packages so `npx @unstale/cli init` works,
   published `@unstale/cli-*` tarballs from the npm registry (sha256 from the local `.tgz`, which is what the registry
   serves), so a tap works while this repository is private and needs no second set of release assets. No Windows.
   Checked 16 October 2026: installed from a local tap with `brew install`, `brew test` and `brew style` clean.
+- `create/`: `@unstale/create`, what `npm init @unstale` runs. `bin/create.js` runs `unstale init` through the
+  `@unstale/cli` it depends on (pinned to the same version), passing on further args; published after the wrapper.
 - `rehearse-npx.sh <scratch>`: `npx @unstale/cli` against a local Verdaccio on 127.0.0.1 only (no uplinks), with a
   fresh HOME and npm cache; transcript in commit c71e1fb.
 

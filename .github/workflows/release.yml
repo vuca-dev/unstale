@@ -9,11 +9,11 @@
 # would be the MSVC ABI, a different binary from the one rehearsed. Every binary is then run on a native runner
 # (smoke job).
 #
-# Publishing uses npm trusted publishing: on npmjs.com, each of `@unstale/cli` and the five `@unstale/cli-*` packages
-# names this repository and `release.yml` as its trusted publisher; no secret, the job's `id-token: write` is the
-# credential (npm >= 11.5.1). A trusted publisher can only be added to a package that exists, hence the 0.0.0
-# placeholders. Provenance is attached only while the repository is public (npm generates none from a private
-# one), and then needs a `repository` field in every npm/*/package.json naming this repository; real publishing
+# Publishing uses npm trusted publishing: on npmjs.com, each of `@unstale/cli`, `@unstale/create` and the five
+# `@unstale/cli-*` packages names this repository and `release.yml` as its trusted publisher; no secret, the job's
+# `id-token: write` is the credential (npm >= 11.5.1). A trusted publisher can only be added to a package that exists,
+# hence the 0.0.0 placeholders. Provenance is attached only while the repository is public (npm generates none from a
+# private one), and then needs a `repository` field in every npm/*/package.json naming this repository; real publishing
 # checks that field either way.
 #
 # Homebrew: the formula (npm/homebrew-formula.sh) downloads the published npm tarballs, so it follows the npm
@@ -200,7 +200,7 @@ jobs:
           npm_version="$(npm --version)"
           node -e 'const [a,b,c]=process.argv[1].split(".").map(Number); process.exit(a>11||(a==11&&(b>5||(b==5&&c>=1)))?0:1)' "$npm_version" \
             || { echo "::error::trusted publishing needs npm >= 11.5.1, got $npm_version"; exit 1; }
-          for f in npm/unstale/package.json npm/cli-*/package.json; do
+          for f in npm/unstale/package.json npm/create/package.json npm/cli-*/package.json; do
             url="$(node -p "(require('./$f').repository || {}).url || ''")"
             case "$url" in
               *"github.com/$REPOSITORY.git" | *"github.com/$REPOSITORY") ;;
@@ -212,8 +212,13 @@ jobs:
           pattern: npm-*
           path: npm/dist
           merge-multiple: true
-      - name: Pack the wrapper (@unstale/cli)
-        run: cp LICENSE npm/unstale/LICENSE && (cd npm/unstale && npm pack --pack-destination ../dist)
+      - name: Pack the wrapper (@unstale/cli) and `npm init @unstale` (@unstale/create)
+        run: |
+          set -euo pipefail
+          for d in unstale create; do
+            cp LICENSE "npm/$d/LICENSE"
+            (cd "npm/$d" && npm pack --pack-destination ../dist)
+          done
       - name: npm publish ${{ env.DRY_RUN }}
         run: |
           set -euo pipefail
@@ -225,6 +230,9 @@ jobs:
           done
           # shellcheck disable=SC2086
           npm publish "npm/dist/unstale-cli-$VERSION.tgz" $DRY_RUN $PROVENANCE --access public
+          # Last: @unstale/create depends on the wrapper.
+          # shellcheck disable=SC2086
+          npm publish "npm/dist/unstale-create-$VERSION.tgz" $DRY_RUN $PROVENANCE --access public
 
   homebrew:
     needs: [check, publish]

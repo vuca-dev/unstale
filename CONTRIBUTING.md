@@ -67,9 +67,9 @@ The Worker's own settings are in `gateway/wrangler.jsonc` (`RATE_PER_HOUR`, `MAX
 and for fast-track `GITHUB_DISPATCH_TOKEN`, a fine-grained token with **Actions: write** on this repository only.
 
 The workflow's own token (`github.token`) manages the state release; nothing else is needed for CI. npm publishing
-needs no secret: each of `@unstale/cli` and `@unstale/cli-*` names this repository and `release.yml` as its trusted
-publisher on npmjs.com, and every `npm/*/package.json` has a `repository` field naming this repository (checked
-before a real publish). `release.yml`'s header has the details.
+needs no secret: each of `@unstale/cli`, `@unstale/create` and `@unstale/cli-*` names this repository and
+`release.yml` as its trusted publisher on npmjs.com, and every `npm/*/package.json` has a `repository` field naming
+this repository (checked before a real publish). `release.yml`'s header has the details.
 
 
 **Ingest state.** The central store (`UNSTALE_STORE`: `central/` and `catalog/`) survives the ephemeral runner as

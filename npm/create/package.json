@@ -1,0 +1,33 @@
+{
+  "name": "@unstale/create",
+  "version": "0.1.0",
+  "description": "Set up unstale in a repository with `npm init @unstale`: runs `unstale init` from @unstale/cli.",
+  "license": "AGPL-3.0-only",
+  "author": "Jason Draper (https://vuca.dev)",
+  "homepage": "https://unstale.sh",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vuca-dev/unstale.git",
+    "directory": "npm/create"
+  },
+  "bugs": "https://github.com/vuca-dev/unstale/issues",
+  "keywords": [
+    "unstale",
+    "create",
+    "init",
+    "coding-agent",
+    "claude-code",
+    "codex",
+    "cursor"
+  ],
+  "bin": {
+    "create-unstale": "bin/create.js"
+  },
+  "files": ["bin/create.js"],
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@unstale/cli": "0.1.0"
+  }
+}

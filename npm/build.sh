@@ -2,7 +2,7 @@
 # Builds the release binary for each platform, copies it into that platform's package, and packs every npm package
 # into npm/dist/. Publishes nothing.
 #   npm/build.sh                     # every platform in TARGETS below
-#   npm/build.sh darwin-arm64 ...    # only these platforms (the wrapper is always packed)
+#   npm/build.sh darwin-arm64 ...    # only these platforms (the wrapper and create/ are always packed)
 # darwin-* build with cargo (rustup targets aarch64-apple-darwin, x86_64-apple-darwin); linux-* (static musl) and
 # win32-x64 (mingw) build with cargo-zigbuild and zig (`brew install zig`, `cargo install cargo-zigbuild`).
 set -euo pipefail
@@ -38,10 +38,15 @@ for dir in "$here"/cli-*/; do
   [ "$dep" = "$version" ] || { echo "optionalDependencies pin for $name is $dep, not $version" >&2; exit 1; }
   grep -q "\"$key\": \"$name\"" "$here/unstale/bin/unstale.js" || { echo "$key missing from PLATFORMS in unstale.js" >&2; exit 1; }
 done
+# `npm init @unstale` (create/) must match too and pin the wrapper at the same version.
+v="$(node -p "require('$here/create/package.json').version")"
+[ "$v" = "$version" ] || { echo "npm/create version $v != crate version $version" >&2; exit 1; }
+dep="$(node -p "require('$here/create/package.json').dependencies['@unstale/cli']")"
+[ "$dep" = "$version" ] || { echo "npm/create pins @unstale/cli $dep, not $version" >&2; exit 1; }
 
 rm -f "$here"/dist/*.tgz
 # Every package ships the license (gitignored copies of the root LICENSE).
-for dir in "$here"/unstale "$here"/cli-*; do cp "$root/LICENSE" "$dir/LICENSE"; done
+for dir in "$here"/unstale "$here"/create "$here"/cli-*; do cp "$root/LICENSE" "$dir/LICENSE"; done
 mkdir -p "$here/dist"
 for key in "${KEYS[@]}"; do
   t="$(triple "$key")"
@@ -57,4 +62,5 @@ for key in "${KEYS[@]}"; do
   (cd "$here/cli-$key" && npm pack --pack-destination "$here/dist")
 done
 (cd "$here/unstale" && npm pack --pack-destination "$here/dist")
+(cd "$here/create" && npm pack --pack-destination "$here/dist")
 ls -l "$here/dist"
