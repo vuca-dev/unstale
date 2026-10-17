@@ -1,6 +1,6 @@
 {
   "name": "@unstale/cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Tells Claude Code, Codex and Cursor what changed upstream since their training cutoff that applies to your code: new APIs to adopt, breaking changes for your next major upgrade, deprecations, and the security and performance fixes in each version bump.",
   "license": "AGPL-3.0-only",
   "author": "Jason Draper (https://vuca.dev)",
@@ -36,10 +36,10 @@
     "node": ">=18"
   },
   "optionalDependencies": {
-    "@unstale/cli-darwin-arm64": "0.1.0",
-    "@unstale/cli-darwin-x64": "0.1.0",
-    "@unstale/cli-linux-arm64": "0.1.0",
-    "@unstale/cli-linux-x64": "0.1.0",
-    "@unstale/cli-win32-x64": "0.1.0"
+    "@unstale/cli-darwin-arm64": "0.1.1",
+    "@unstale/cli-darwin-x64": "0.1.1",
+    "@unstale/cli-linux-arm64": "0.1.1",
+    "@unstale/cli-linux-x64": "0.1.1",
+    "@unstale/cli-win32-x64": "0.1.1"
   }
 }
