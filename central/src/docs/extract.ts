@@ -11,7 +11,7 @@ import { withTechLock } from "../pipeline/lock.ts";
 import { readJson, writeAtomic } from "../pipeline/util.ts";
 import { TECHNOLOGIES, type Technology } from "../pipeline/technologies.ts";
 import { publishable } from "./attribute.ts";
-import { docsDir, eventChanges, readEvents, refresh, type DocsEvent, type RefreshReport } from "./monitor.ts";
+import { docsDir, eventChanges, latestVersion, readEvents, refresh, type DocsEvent, type RefreshReport } from "./monitor.ts";
 import { editKind, type EditKind } from "./materiality.ts";
 import { renderChange } from "./render.ts";
 import type { Context } from "../collector/sections.ts";
@@ -57,29 +57,97 @@ export const PLAN_DEFAULTS: Required<PlanOptions> = { context: "block", words: t
 const ledgerPath = (tech: string) => join(docsDir(tech), "extracted.json");
 
 /**
- * The daily pass's cadence and per-run limits (vault: Docs Monitoring - Handoff, sequence step 6). The pipeline runs
- * every few hours; a technology's docs are checked once a day. A site larger than the page budget is covered over
- * several days (least recently checked first); notes beyond the note budget wait for the next run, guides first.
+ * The docs pass's limits (vault: Docs Monitoring - Handoff, sequence step 6). A site larger than the page budget is
+ * covered over several passes (least recently checked first); notes beyond the note budget wait for the next run,
+ * guides first. `freshMs` is the old daily cadence, still used when a release cannot be read (fail open).
  */
 export const DOCS_PASS = { freshMs: 20 * 3600 * 1000, pages: 3000, notes: 40 };
+
+const days = (v: string | undefined, fallback: number) => {
+  const n = Number(v);
+  return (v !== undefined && v !== "" && Number.isFinite(n) && n >= 0 ? n : fallback) * 86_400_000;
+};
+/**
+ * When a pass runs (user, 16 October 2026: on a new release, until shown otherwise; vault: Central Scheduling and
+ * Infrastructure, "Scale probe"). Docs changes that matter land with releases, so a technology's docs are checked when
+ * one of its packages publishes a new version, once more `followupMs` later (docs often follow the release by days),
+ * and until a pass cut short by the page budget has covered the rest. `maxAgeMs` (0: off) re-checks a technology with
+ * no release for that long.
+ */
+export const DOCS_GATE = {
+  followupMs: days(process.env.UNSTALE_DOCS_FOLLOWUP_DAYS, 3),
+  maxAgeMs: days(process.env.UNSTALE_DOCS_MAX_AGE_DAYS, 0),
+};
+
+/** What the gate remembers between passes: the releases last checked, a follow-up due, a pass left unfinished. */
+export interface DocsGate {
+  release?: string;
+  followupAt?: string;
+  incomplete?: boolean;
+}
+const gatePath = (tech: string) => join(docsDir(tech), "gate.json");
+
+export type PassReason = "baseline" | "release" | "followup" | "continue" | "age" | "daily";
+
+/**
+ * Why a pass is due now, or undefined. `release` is the components' current versions (undefined when a registry
+ * could not be read: the old daily cadence applies, so an unreadable registry never stops docs monitoring).
+ */
+export function passDue(gate: DocsGate | undefined, release: string | undefined, last: string | undefined, now = Date.now(), g = DOCS_GATE): PassReason | undefined {
+  if (!last) return "baseline";
+  if (release === undefined) return now - Date.parse(last) >= DOCS_PASS.freshMs ? "daily" : undefined;
+  if (gate?.release !== release) return "release";
+  if (gate.incomplete) return "continue";
+  if (gate.followupAt && now >= Date.parse(gate.followupAt)) return "followup";
+  if (g.maxAgeMs > 0 && now - Date.parse(last) >= g.maxAgeMs) return "age";
+  return undefined;
+}
+
+/** The gate after a pass for `reason` that checked `checked` pages under `budget`. */
+export function nextGate(gate: DocsGate | undefined, reason: PassReason, release: string | undefined, checked: number, budget: number, now = Date.now(), g = DOCS_GATE): DocsGate {
+  const out: DocsGate = { ...gate };
+  if (release !== undefined) out.release = release;
+  if (reason === "release") {
+    if (g.followupMs > 0) out.followupAt = new Date(now + g.followupMs).toISOString();
+    else delete out.followupAt;
+  }
+  if (reason === "followup" || reason === "baseline") delete out.followupAt;
+  if (checked >= budget) out.incomplete = true;
+  else delete out.incomplete;
+  return out;
+}
+
+/** The technology's current releases: each component's latest version, or undefined when any cannot be read. */
+async function currentRelease(http: HttpClient, purls: string[]): Promise<string | undefined> {
+  const versions = await Promise.all(purls.map((p) => latestVersion(http, p)));
+  if (versions.some((v) => !v)) return undefined;
+  return purls.map((p, i) => `${p}@${versions[i]}`).sort().join(" ");
+}
 
 /** When the technology's docs were last checked (the docs state's time), if ever. */
 export const lastPass = (tech: string): string | undefined => readJson<{ at?: string }>(join(docsDir(tech), "state.json"))?.at;
 
-/** The technology's docs, checked when its last pass is older than DOCS_PASS.freshMs (or `force`); undefined if not due. */
+/** The technology's docs, checked when the gate says a pass is due (or `force`); undefined if not due. */
 export async function dailyPass(
   t: Pick<Technology, "id" | "components">,
   opts: { http: HttpClient; force?: boolean; budget?: number; progress?: (done: number, total: number) => void; log?: (s: string) => void },
-): Promise<RefreshReport | undefined> {
-  const last = lastPass(t.id);
-  if (!opts.force && last && Date.now() - Date.parse(last) < DOCS_PASS.freshMs) return undefined;
+): Promise<(RefreshReport & { reason?: PassReason }) | undefined> {
+  const purls = t.components.map((p) => p.replace("%40", "@"));
+  const release = await currentRelease(opts.http, purls);
+  const budget = opts.budget ?? DOCS_PASS.pages;
   // One writer of a technology's docs state at a time (the pipeline and the onboarding service can both run it).
-  return withTechLock(`${t.id}.docs`, "docs", () =>
-    refresh(
-      { technology: t.id, purls: t.components.map((p) => p.replace("%40", "@")) },
-      { http: opts.http, budget: opts.budget ?? DOCS_PASS.pages, ...(opts.progress ? { progress: opts.progress } : {}), ...(opts.log ? { log: opts.log } : {}) },
-    ),
-  );
+  return withTechLock(`${t.id}.docs`, "docs", async () => {
+    const gate = readJson<DocsGate>(gatePath(t.id));
+    const reason = opts.force ? (lastPass(t.id) ? "release" : "baseline") : passDue(gate, release, lastPass(t.id));
+    if (!reason) return undefined;
+    opts.log?.(`docs pass: ${reason}`);
+    const report = await refresh(
+      { technology: t.id, purls },
+      { http: opts.http, budget, ...(opts.progress ? { progress: opts.progress } : {}), ...(opts.log ? { log: opts.log } : {}) },
+    );
+    writeAtomic(gatePath(t.id), JSON.stringify(nextGate(gate, reason, release, report.checked, budget), null, 1) + "\n");
+    return { ...report, reason };
+  });
 }
 
 /** Records events as extracted, so their notes are not planned again. */

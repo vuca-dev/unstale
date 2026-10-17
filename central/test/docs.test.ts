@@ -6,13 +6,15 @@ import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { DEFAULT_HTTP, HttpClient } from "../src/collector/http.ts";
 import { attribute, guideMajor, markerIn } from "../src/docs/attribute.ts";
 import { findNamespaces, llmsPages, RELEASE_NOTES } from "../src/docs/listing.ts";
-import { extract, plan } from "../src/docs/extract.ts";
+import { extract, nextGate, passDue, plan, DOCS_PASS } from "../src/docs/extract.ts";
 import type { Technology } from "../src/pipeline/technologies.ts";
 import { docsDir, readEvents, refresh } from "../src/docs/monitor.ts";
 import { fetchGuides } from "../src/pipeline/fetch.ts";
 import { compact, fenceFor, markViews, renderChange, unmarkQuote } from "../src/docs/render.ts";
 import { editKind } from "../src/docs/materiality.ts";
 import { parseRobots } from "../src/docs/robots.ts";
+import { siteSignal } from "../src/docs/signals.ts";
+import type { Fetcher } from "../src/docs/resolve.ts";
 import { writeAtomic } from "../src/pipeline/util.ts";
 import { env, type TestEnv } from "./helpers.ts";
 
@@ -156,6 +158,33 @@ describe("render", () => {
   });
 });
 
+describe("pass gate", () => {
+  const T = Date.parse("2026-10-16T00:00:00Z");
+  const day = 86_400_000;
+  const g = { followupMs: 3 * day, maxAgeMs: 0 };
+  const last = new Date(T - day).toISOString();
+  test("a pass runs first as a baseline, then on a new release, once more after the follow-up, and not otherwise", () => {
+    expect(passDue(undefined, "pkg:npm/a@1.0.0", undefined, T, g)).toBe("baseline");
+    let gate = nextGate(undefined, "baseline", "pkg:npm/a@1.0.0", 10, 3000, T, g);
+    expect(passDue(gate, "pkg:npm/a@1.0.0", last, T + 30 * day, g)).toBeUndefined(); // no release: no pass, however long
+    expect(passDue(gate, "pkg:npm/a@1.1.0", last, T, g)).toBe("release");
+    gate = nextGate(gate, "release", "pkg:npm/a@1.1.0", 10, 3000, T, g);
+    expect(passDue(gate, "pkg:npm/a@1.1.0", last, T + 2 * day, g)).toBeUndefined();
+    expect(passDue(gate, "pkg:npm/a@1.1.0", last, T + 3 * day, g)).toBe("followup");
+    gate = nextGate(gate, "followup", "pkg:npm/a@1.1.0", 10, 3000, T + 3 * day, g);
+    expect(gate.followupAt).toBeUndefined();
+    expect(passDue(gate, "pkg:npm/a@1.1.0", last, T + 60 * day, g)).toBeUndefined();
+  });
+  test("a pass cut short by the page budget continues; an unreadable registry falls back to the daily cadence; a max age re-checks", () => {
+    const cut = nextGate(undefined, "release", "r1", 3000, 3000, T, g);
+    expect(passDue(cut, "r1", last, T, g)).toBe("continue");
+    expect(passDue(nextGate(cut, "continue", "r1", 12, 3000, T, g), "r1", last, T, g)).toBeUndefined();
+    expect(passDue({ release: "r1" }, undefined, new Date(T - DOCS_PASS.freshMs).toISOString(), T, g)).toBe("daily");
+    expect(passDue({ release: "r1" }, undefined, new Date(T - 3600_000).toISOString(), T, g)).toBeUndefined();
+    expect(passDue({ release: "r1" }, "r1", new Date(T - 31 * day).toISOString(), T, { ...g, maxAgeMs: 30 * day })).toBe("age");
+  });
+});
+
 describe("monitor", () => {
   let e: TestEnv;
   let dir: string;
@@ -205,6 +234,42 @@ describe("monitor", () => {
     index.guides.push({ ...index.guides[0], url: "https://github.com/o/r/blob/abc/docs/upgrading/version-3.md", repo: "o/r", path: "docs/upgrading/version-3.md", commit: "abc" });
     writeAtomic(ip, JSON.stringify(index));
     expect((await fetchGuides(tech, [], { offline: true })).map((g) => new URL(g.url).hostname)).toEqual(["127.0.0.1", "127.0.0.1"]);
+  });
+
+  test("a site whose llms-full.txt is unchanged since every page was checked is not checked page by page", async () => {
+    const html = (body: string) => `<!doctype html><html><body><main>${body}</main></body></html>`;
+    const paths = ["/docs/a", "/docs/b"];
+    let full = "# Docs\n\n" + "The whole documentation in one file. ".repeat(10);
+    const hits = new Map<string, number>();
+    e.route("/sitemap.xml", (_q, r) => void r.writeHead(200, { "content-type": "application/xml" }).end(`<?xml version="1.0"?><urlset>${paths.map((p) => `<url><loc>${e.base}${p}</loc></url>`).join("")}</urlset>`));
+    e.route("/docs/llms-full.txt", (_q, r) => void r.writeHead(200, { "content-type": "text/plain" }).end(full));
+    for (const p of paths) e.route(p, (_q, r) => { hits.set(p, (hits.get(p) ?? 0) + 1); r.writeHead(200, { "content-type": "text/html" }).end(html(`<h1>${p}</h1><p>Text.</p>`)); });
+    writeAtomic(join(docsDir("q"), "sources.json"), JSON.stringify({
+      at: "x", purls: ["pkg:generic/q"],
+      resolutions: [{ purl: "pkg:generic/q", answer: { kind: "site-only", site: `${e.base}/docs`, sites: [{ site: `${e.base}/docs`, pages: 2, prefix: "/docs" }] }, pairs: [], evidence: {}, requests: 0 }],
+    }));
+    const http = new HttpClient({ ...DEFAULT_HTTP, allowHosts: ["127.0.0.1"], retryBaseMs: 10, timeoutMs: 2_000 });
+    const src = { technology: "q", purls: ["pkg:generic/q"] };
+    const on = (day: number) => refresh(src, { http, now: () => new Date(Date.UTC(2026, 9, day)) });
+    expect((await on(1)).checked).toBe(2);
+    const seen = hits.get("/docs/a");
+    const quiet = await on(2);
+    expect([quiet.checked, quiet.quiet]).toEqual([0, { [`${e.base}/docs`]: "llms-full" }]);
+    expect(hits.get("/docs/a")).toBe(seen);
+    full += "A new section.";
+    const changed = await on(3);
+    expect([changed.checked, changed.quiet]).toEqual([2, undefined]);
+  });
+
+  test("a site built from a repository is quiet when no commit touched its docs directories; GitHub unreadable is no signal", async () => {
+    const resolutions = [{ purl: "pkg:npm/x", answer: { kind: "site+repo" }, pairs: [{ site: "https://docs.x.dev/", repo: "o/x", validated: true, docDirs: ["docs"] }], evidence: {}, requests: 0 }] as never;
+    const fetcher = (commits: string, status = 200): Fetcher => ({ requests: 0, get: async (url) => (url.includes("api.github.com") ? { status, url, text: commits } : { status: 404, url, text: "" }) });
+    const last = { since: "2026-10-01T00:00:00Z", newPages: false };
+    expect(await siteSignal(fetcher("[]"), { site: "https://docs.x.dev/", prefix: "" }, resolutions, last)).toEqual({ quiet: "repo" });
+    expect(await siteSignal(fetcher('[{"sha":"a"}]'), { site: "https://docs.x.dev/", prefix: "" }, resolutions, last)).toEqual({});
+    expect(await siteSignal(fetcher("", 403), { site: "https://docs.x.dev/", prefix: "" }, resolutions, last)).toEqual({});
+    expect(await siteSignal(fetcher("[]"), { site: "https://docs.x.dev/", prefix: "" }, resolutions, { ...last, newPages: true })).toEqual({});
+    expect(await siteSignal(fetcher("[]"), { site: "https://other.dev/", prefix: "" }, resolutions, last)).toEqual({});
   });
 
   test("a page budget checks new pages first, then the least recently checked; guides always", async () => {

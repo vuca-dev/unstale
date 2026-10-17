@@ -19,6 +19,8 @@ import { httpFetcher } from "./fetcher.ts";
 import { listSite, type Listing, type ListedPage } from "./listing.ts";
 import { createResolver, type Resolution } from "./resolve.ts";
 import { RobotsCache } from "./robots.ts";
+import { sharedPages } from "./pages.ts";
+import { siteSignal } from "./signals.ts";
 
 export type EventKind = "created" | "modified" | "deleted" | "moved" | "template" | "restructure";
 
@@ -65,6 +67,8 @@ interface SiteState {
   /** How a page URL becomes its Markdown copy, decided once per site from sampled pages. */
   copyRule: "llms" | "append-md" | "index-md" | "negotiated" | "html";
   listing: Omit<Listing, "pages">;
+  /** sha256 of the site's llms-full.txt when every one of its pages was last checked (signals.ts). */
+  llmsFull?: string;
 }
 
 interface State {
@@ -209,6 +213,8 @@ export interface RefreshReport {
   events: Record<string, number>;
   sections: { publishable: number; held: Record<string, number> };
   baseline: boolean;
+  /** Sites whose pages were not checked because a site-level signal says nothing changed (signals.ts). */
+  quiet?: Record<string, "llms-full" | "repo">;
 }
 
 export async function refresh(src: Source, opts: RefreshOptions): Promise<RefreshReport> {
@@ -298,7 +304,27 @@ export async function refresh(src: Source, opts: RefreshOptions): Promise<Refres
     }
   }
 
-  // 3. Check pages: upgrade guides first (release priority), then new pages, then the least recently checked, within
+  // 3. Site-level signals (signals.ts): a site its llms-full.txt or its source repository shows unchanged since every
+  //    one of its pages was last checked is not checked page by page.
+  const fetcher = httpFetcher(opts.http, robots);
+  const quiet: Record<string, "llms-full" | "repo"> = {};
+  const signals = new Map<string, string | undefined>();
+  for (const st of sites) {
+    const own = Object.entries(pages).filter(([, p]) => p.site === st.site);
+    const checks = own.map(([, p]) => p.checked);
+    const since = own.length && checks.every(Boolean) ? (checks as string[]).sort()[0]! : undefined;
+    const before = prev?.sites.find((x) => x.site === st.site);
+    const newPages = own.some(([u]) => !prev?.pages[u]);
+    const sig = await siteSignal(fetcher, st, resolutions, before && since ? { since, llmsFull: before.llmsFull, newPages } : undefined);
+    signals.set(st.site, sig.llmsFull);
+    if (before?.llmsFull) st.llmsFull = before.llmsFull;
+    if (sig.quiet) {
+      quiet[st.site] = sig.quiet;
+      log(`${st.site}: unchanged (${sig.quiet}); pages not checked`);
+    }
+  }
+
+  // 4. Check pages: upgrade guides first (release priority), then new pages, then the least recently checked, within
   //    robots.txt and the run's budget.
   const guide = (u: string, p: PageState) => !!p.guideMajor || guideCandidate(u);
   const order = Object.entries(pages).sort(([a, x], [b, y]) => Number(guide(b, y)) - Number(guide(a, x)) || (x.checked ?? "").localeCompare(y.checked ?? "") || a.localeCompare(b));
@@ -306,6 +332,7 @@ export async function refresh(src: Source, opts: RefreshOptions): Promise<Refres
   const perSite = new Map<string, number>();
   let taken = 0;
   for (const [u, p] of order) {
+    if (quiet[p.site]) continue;
     const n = perSite.get(p.site) ?? 0;
     if (!guide(u, p) && ((opts.limit !== undefined && n >= opts.limit) || (opts.budget !== undefined && taken >= opts.budget))) continue; // guides always
     if (!(await robots.allowed(p.watch.url))) continue;
@@ -314,15 +341,21 @@ export async function refresh(src: Source, opts: RefreshOptions): Promise<Refres
     p.checked = at;
     specs.push(WatchSpec.parse(p.watch));
   }
+  // A site's llms-full.txt hash is kept once every one of its pages has been checked against it.
+  for (const st of sites) {
+    const sig = signals.get(st.site);
+    if (sig && !quiet[st.site] && Object.values(pages).every((p) => p.site !== st.site || p.checked === at)) st.llmsFull = sig;
+  }
   const byId = new Map(Object.entries(pages).map(([u, p]) => [p.watch.id, { url: u, page: p }]));
-  const collector = new Collector(opts.http, store);
+  // Pages fetched for another technology today are served from the shared page cache (pages.ts).
+  const collector = new Collector(sharedPages(opts.http, src.technology), store);
   let done = 0;
   const results = await collector.checkAll(specs, () => {
     if (++done % 100 === 0) log(`checked ${done}/${specs.length}`);
     opts.progress?.(done, specs.length);
   });
 
-  // 4. Outcomes to events. Template changes (one identical diff on several pages of a site) are one event.
+  // 5. Outcomes to events. Template changes (one identical diff on several pages of a site) are one event.
   const siteOfId = (r: CheckResult) => byId.get(r.id)?.page.site ?? new URL(r.url).host;
   const templates = findTemplateChanges(results, 3, siteOfId);
   const templated = new Set(templates.flatMap((t) => t.ids));
@@ -363,7 +396,7 @@ export async function refresh(src: Source, opts: RefreshOptions): Promise<Refres
     }
   }
 
-  // 5. Persist: events appended once each, then the state.
+  // 6. Persist: events appended once each, then the state.
   const logPath = join(dir, "events.jsonl");
   const have = new Set(existsSync(logPath) ? readFileSync(logPath, "utf8").split("\n").filter(Boolean).map((l) => (JSON.parse(l) as DocsEvent).key) : []);
   const fresh = events.filter((e) => !have.has(e.key));
@@ -395,6 +428,7 @@ export async function refresh(src: Source, opts: RefreshOptions): Promise<Refres
     events: counts,
     sections,
     baseline: !prev,
+    ...(Object.keys(quiet).length ? { quiet } : {}),
   };
 
   function log_(changes: SectionChange[], page: PageState, text: string | undefined): LoggedSection[] {

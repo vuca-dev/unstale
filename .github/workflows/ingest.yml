@@ -195,7 +195,7 @@ jobs:
           JEV_API_KEY: ${{ secrets.JEV_API_KEY }}
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
           UNSTALE_GATEWAY_TOKEN: ${{ secrets.GATEWAY_DRAIN_TOKEN }}
-        run: npm --prefix central run drain -- --minutes 130 --grace-minutes 10 --taken "$TAKEN"
+        run: npm --prefix central run drain -- --minutes 130 --grace-minutes 10 --concurrency 6 --taken "$TAKEN"
 
       # Writes a self-contained static tree (with the coverage statuses) and prunes shards past their 7-day grace
       # period (the grace bookkeeping lives in the store, so this runs before the state is saved).
@@ -255,7 +255,8 @@ jobs:
 
       # Saved after a failed pipeline or drain too: writes are atomic per file, stale technology locks are detected
       # by pid, and the model calls a partial run paid for are kept. Not saved when a step was cancelled or skipped.
-      # Dead parts of an operator's store (the parked rarity sample's clones, the retired onboarding documents) stay out.
+      # Dead parts of an operator's store (the parked rarity sample's clones, the retired onboarding documents) and the
+      # day's shared docs page cache stay out.
       - name: Save state
         id: save
         if: always() && steps.restore.outcome == 'success' && (steps.pipeline.outcome == 'success' || steps.pipeline.outcome == 'failure') && (steps.drain.outcome == 'success' || steps.drain.outcome == 'failure')
@@ -267,7 +268,7 @@ jobs:
           gen="state-$stamp"
           out="$RUNNER_TEMP/state-out"; rm -rf "$out"; mkdir -p "$out"
           tar -C "$UNSTALE_STORE" --exclude='./central/records/*.lock' --exclude='./central/sample' \
-            --exclude='./central/onboarding/documents' -cf - . \
+            --exclude='./central/onboarding/documents' --exclude='./central/cache/pages' -cf - . \
             | zstd -T0 -10 -q | split -b 1900m -a 2 - "$out/$gen.tar.zst."
           (cd "$out" && sha256sum "$gen".tar.zst.* > "$gen.sha256")
           ls -l "$out"
