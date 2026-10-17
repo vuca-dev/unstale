@@ -3,7 +3,10 @@
 //   - compare: the ecosystem's version order, for OSV `ECOSYSTEM` ranges. Without it only the explicit `versions` list
 //     OSV gives for such a range is used, and a range with neither is left unresolved (the edge then says nothing);
 //   - siblings: other packages published from the technology's repository, from registry metadata only. Without it
-//     the technology's components are the only packages queried.
+//     the technology's components are the only packages queried;
+//   - dependencies: the packages a release installs for its users (runtime dependencies, not development or peer
+//     ones), from registry metadata. Without it another package's advisory named in the notes is never taken for a
+//     dependency update (advisories.ts step 8): the record keeps its labels.
 // No hand-written package lists, no per-technology tables (memory rule: ecosystem vocabularies, fail open).
 import type { Technology } from "./technologies.ts";
 import { pool } from "./util.ts";
@@ -13,6 +16,9 @@ export interface Ecosystem {
   osv: string;
   compare?: (a: string, b: string) => number | undefined;
   siblings?: (t: Technology) => Promise<string[]>;
+  /** Package URLs a release of `component` installs for its users; undefined when the registry does not list it
+   * (the package was not published at that version). */
+  dependencies?: (component: string, version: string) => Promise<string[] | undefined>;
 }
 
 // ---- SemVer 2.0 precedence (OSV `SEMVER` ranges are SemVer by definition, whatever the ecosystem) ----
@@ -119,12 +125,52 @@ async function npmSiblings(t: Technology): Promise<string[]> {
   return out.sort();
 }
 
+/** npm: `dependencies`, `optionalDependencies` and bundled dependencies of the release (`registry.npmjs.org/<name>/<v>`). */
+async function npmDependencies(component: string, version: string): Promise<string[] | undefined> {
+  const meta = (await getJson(`https://registry.npmjs.org/${npmName(component).replace("/", "%2f")}/${encodeURIComponent(version)}`)) as
+    | { dependencies?: Record<string, string>; optionalDependencies?: Record<string, string>; bundleDependencies?: unknown; bundledDependencies?: unknown }
+    | undefined;
+  if (!meta) return undefined;
+  const bundled = [meta.bundleDependencies, meta.bundledDependencies].flatMap((x) => (Array.isArray(x) ? x.filter((n): n is string => typeof n === "string") : []));
+  // An alias (`"x": "npm:@scope/y@^1"`) installs its target, the package OSV names.
+  const names = (deps: Record<string, string> = {}) =>
+    Object.entries(deps).flatMap(([name, spec]) => [name, ...(typeof spec === "string" && spec.startsWith("npm:") ? [spec.slice(4).replace(/(.)@[^/@]*$/, "$1")] : [])]);
+  return [...new Set([...names(meta.dependencies), ...names(meta.optionalDependencies), ...bundled])].map(npmPurl).sort();
+}
+
+/** PEP 503 name normalisation, as a package URL (`pkg:pypi/<name>`). */
+export const pypiPurl = (name: string): string => `pkg:pypi/${name.toLowerCase().replace(/[-_.]+/g, "-")}`;
+
+/** PyPI: `requires_dist` of the release (`pypi.org/pypi/<name>/<v>/json`), requirements only an extra installs left out. */
+async function pypiDependencies(component: string, version: string): Promise<string[] | undefined> {
+  const name = decodeURIComponent(component.replace(/^pkg:pypi\//, ""));
+  const meta = (await getJson(`https://pypi.org/pypi/${encodeURIComponent(name)}/${encodeURIComponent(version)}/json`)) as { info?: { requires_dist?: string[] | null } } | undefined;
+  if (!meta?.info) return undefined;
+  const out = new Set<string>();
+  for (const req of meta.info.requires_dist ?? []) {
+    // Only an extra installs it: a marker that is an `extra ==` condition alone (an `or` can install it by default).
+    const marker = req.split(";")[1] ?? "";
+    if (/\bextra\s*==/.test(marker) && !/\bor\b/.test(marker)) continue;
+    const m = /^\s*([A-Za-z0-9][A-Za-z0-9._-]*)/.exec(req);
+    if (m) out.add(pypiPurl(m[1]!));
+  }
+  return [...out].sort();
+}
+
 export const ECOSYSTEMS: Record<string, Ecosystem> = {
   // npm versions are SemVer.
-  npm: { osv: "npm", compare: semverOrder, siblings: npmSiblings },
+  npm: { osv: "npm", compare: semverOrder, siblings: npmSiblings, dependencies: npmDependencies },
   // PyPI versions are PEP 440. No siblings hook: PyPI has no organisation listing to find a repository's packages.
-  pypi: { osv: "PyPI", compare: pep440Order },
+  pypi: { osv: "PyPI", compare: pep440Order, dependencies: pypiDependencies },
 };
+
+/** A package URL in one comparable form: PyPI names PEP 503-normalised, npm scopes as `%40`, lower-cased otherwise. */
+export function canonicalPurl(purl: string): string {
+  const p = purl.replace(/@[^/]*$/, "").replace(/[?#].*$/, "");
+  if (/^pkg:pypi\//i.test(p)) return pypiPurl(decodeURIComponent(p.replace(/^pkg:pypi\//i, "")));
+  if (/^pkg:npm\//i.test(p)) return npmPurl(decodeURIComponent(p.replace(/^pkg:npm\//i, "")));
+  return p.toLowerCase();
+}
 
 /** The ecosystem of a package URL's type (`pkg:npm/...` → npm); unknown types get no hooks. */
 export function ecosystemOf(purl: string): Ecosystem {
