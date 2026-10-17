@@ -3,7 +3,7 @@ import hashlib, json, os, subprocess, time, urllib.request, urllib.error
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CACHE = os.path.join(HERE, "cache")
-UA = "unstale-scope-research (github.com/unstale-ai/unstale)"
+UA = "unstale-scope-research (github.com/vuca-dev/unstale)"
 _gh = None
 
 

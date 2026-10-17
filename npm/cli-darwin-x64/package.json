@@ -7,10 +7,10 @@
   "homepage": "https://unstale.sh",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/unstale-ai/unstale.git",
+    "url": "git+https://github.com/vuca-dev/unstale.git",
     "directory": "npm/cli-darwin-x64"
   },
-  "bugs": "https://github.com/unstale-ai/unstale/issues",
+  "bugs": "https://github.com/vuca-dev/unstale/issues",
   "os": ["darwin"],
   "cpu": ["x64"],
   "files": ["bin/unstale"],
