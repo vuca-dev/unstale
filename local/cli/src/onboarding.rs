@@ -244,10 +244,9 @@ fn growing_jobs(pending: &Pending) -> Vec<&Job> {
     jobs.into_values().filter(|j| !matches!(j.state.as_str(), "monitoring" | "blocked" | "failed")).collect()
 }
 
-/// The agent's session-start notice (vault: Onboarding DX - Gap Hypotheses, H5): one line when shared coverage has
-/// published records since the last report, nothing otherwise. No network call when nothing is still gaining
-/// history; otherwise one short status request per growing technology. Never rewrites the report or the snapshot,
-/// so the line repeats until `unstale status` refreshes them.
+/// The agent's session-start notice: one line when shared coverage has published records since the last report, nothing
+/// otherwise. No network call when nothing is still gaining history; otherwise one short status request per growing
+/// technology. Never rewrites the report or the snapshot, so the line repeats until `unstale status` refreshes them.
 pub fn notify(ctx: &Ctx) -> Result<u8> {
     let pending = read(ctx);
     let growing = growing_jobs(&pending);
@@ -279,6 +278,35 @@ fn is_own_hook(h: &serde_json::Value) -> bool {
     h.get("command").and_then(|c| c.as_str()).is_some_and(|c| c.ends_with(" notify") && c.contains("unstale"))
 }
 
+/// An executable a package manager deletes or replaces: a one-off runner's cache or a versioned Homebrew directory.
+fn transient(p: &Path) -> bool {
+    p.components().any(|c| {
+        let c = c.as_os_str().to_string_lossy();
+        c == "_npx" || c == "dlx" || c == "Cellar" || c.starts_with("bunx-")
+    })
+}
+
+/// How the hook and the report name this executable: `current_exe()`, unless a package manager deletes or replaces it
+/// there. npx, pnpm dlx and bunx caches are cleaned at will and never upgrade; a Homebrew Cellar directory is removed
+/// after an upgrade. Then the `unstale` on PATH, when it is not in such a place itself, else this version through npx.
+pub(crate) fn invocation() -> String {
+    if let Ok(exe) = std::env::current_exe()
+        && !transient(&exe)
+    {
+        return format!("\"{}\"", exe.display());
+    }
+    let names: &[&str] = if cfg!(windows) { &["unstale.exe", "unstale.cmd"] } else { &["unstale"] };
+    let on_path = std::env::var_os("PATH").and_then(|path| {
+        std::env::split_paths(&path)
+            .flat_map(|dir| names.iter().map(move |n| dir.join(n)))
+            .find(|p| p.is_file() && !transient(p))
+    });
+    match on_path {
+        Some(p) => format!("\"{}\"", p.display()),
+        None => format!("npx --yes @unstale/cli@{}", env!("CARGO_PKG_VERSION")),
+    }
+}
+
 /// Claude Code's SessionStart hook runs `unstale notify` (per user: `.claude/settings.local.json`, Git-excluded,
 /// because it names this machine's executable). Other settings and hooks are kept; ours is replaced, not repeated.
 fn install_session_hook(ctx: &Ctx) -> Result<()> {
@@ -293,8 +321,7 @@ fn install_session_hook(ctx: &Ctx) -> Result<()> {
         },
         Err(_) => serde_json::json!({}),
     };
-    let exe = std::env::current_exe()?;
-    let command = format!("\"{}\" -C \"$CLAUDE_PROJECT_DIR\" notify", exe.display());
+    let command = format!("{} -C \"$CLAUDE_PROJECT_DIR\" notify", invocation());
     remove_own_hooks(&mut settings);
     let starts = settings
         .as_object_mut()
@@ -452,8 +479,7 @@ pub(crate) fn integrate(ctx: &Ctx) -> Result<Vec<String>> {
 }
 
 /// A capability reached only across a major version (a minor one on 0.x): it belongs under that upgrade's assessment,
-/// weighed against its obligations, never as a card that reads as the reason to upgrade (vault: Onboarding DX - Gap
-/// Hypotheses, H10).
+/// weighed against its obligations, never as a card that reads as the reason to upgrade.
 fn across_major(o: &funnel::Opp) -> bool {
     util::parse_version(&o.release.version).is_some_and(|v| major_step(&o.installed, &v))
 }
@@ -1027,12 +1053,10 @@ fn report(ctx: &Ctx, pending: &Pending) -> Result<Brief> {
     }
     text += &format!("\nCatalog snapshot: {}\n", w.catalog.snapshot_line());
     text += "\n## Review instructions\n\nAssess the upgrade and capability shortlists in this repository: check sources, actual usage, versions and prerequisites. Prioritize verified advisory matches, then rank proposals by repository impact; name affected files, benefits, risks and timing. Treat unmatched new features as exploratory, not confirmed needs. Refresh the candidate snapshot with unstale status --wait 0 before reviewing; honor current dispositions over this saved report. Do not change application code or advance any full review batch silently.\n";
-    if ctx.config.mode == Mode::Local
-        && let Ok(binary) = std::env::current_exe()
-    {
+    if ctx.config.mode == Mode::Local {
         text += &format!(
             "\nCLI for this installation: `{}` (use this executable for record/status commands if another unstale is on PATH; run status --wait 0 to refresh this snapshot before reviewing).\n",
-            binary.display()
+            invocation()
         );
     }
     let gap_path = ctx.tool.join("source-gaps.md");
@@ -1346,6 +1370,25 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn transient_installs() {
+        for p in [
+            "/Users/u/.npm/_npx/1a2b/node_modules/@unstale/cli-darwin-arm64/bin/unstale",
+            "/Users/u/Library/Caches/pnpm/dlx/abc/node_modules/@unstale/cli-darwin-arm64/bin/unstale",
+            "/tmp/bunx-501-@unstale/cli/node_modules/@unstale/cli-linux-x64/bin/unstale",
+            "/opt/homebrew/Cellar/unstale/0.1.0/bin/unstale",
+        ] {
+            assert!(transient(Path::new(p)), "{p}");
+        }
+        for p in [
+            "/opt/homebrew/bin/unstale",
+            "/opt/homebrew/lib/node_modules/@unstale/cli/node_modules/@unstale/cli-darwin-arm64/bin/unstale",
+            "/repo/node_modules/@unstale/cli-linux-x64/bin/unstale",
+            "/Users/u/.cargo/bin/unstale",
+        ] {
+            assert!(!transient(Path::new(p)), "{p}");
+        }
+    }
     fn job(state: &str) -> Job {
         Job {
             purl: "pkg:npm/test".into(),
