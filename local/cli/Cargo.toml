@@ -3,6 +3,7 @@ name = "unstale"
 version = "0.1.0"
 edition = "2024"
 publish = false
+license = "AGPL-3.0-only"
 description = "The local half of unstale: stack detection, catalog sync, the relevance funnel, the ledger and the review skill files."
 
 [[bin]]

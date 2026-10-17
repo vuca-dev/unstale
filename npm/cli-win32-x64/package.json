@@ -2,7 +2,7 @@
   "name": "@unstale/cli-win32-x64",
   "version": "0.1.0",
   "description": "The unstale CLI binary for Windows on x86-64. Install the `unstale` package instead.",
-  "license": "UNLICENSED",
+  "license": "AGPL-3.0-only",
   "os": ["win32"],
   "cpu": ["x64"],
   "files": [

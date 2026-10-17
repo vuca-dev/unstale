@@ -94,4 +94,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the layout, tests and development scr
 
 ## License
 
-To be announced before the public release.
+[GNU Affero General Public License v3.0](LICENSE) (`AGPL-3.0-only`).

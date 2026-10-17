@@ -7,3 +7,4 @@ dist/
 .dev/
 __pycache__/
 .wrangler/
+npm/*/LICENSE

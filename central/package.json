@@ -2,6 +2,7 @@
   "name": "@unstale/central",
   "version": "0.0.0",
   "private": true,
+  "license": "AGPL-3.0-only",
   "description": "Central pipeline: collects upstream docs, release notes and pricing, and detects changes.",
   "type": "module",
   "engines": {

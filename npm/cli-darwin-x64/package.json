@@ -2,7 +2,7 @@
   "name": "@unstale/cli-darwin-x64",
   "version": "0.1.0",
   "description": "The unstale CLI binary for macOS on Intel. Install the `unstale` package instead.",
-  "license": "UNLICENSED",
+  "license": "AGPL-3.0-only",
   "os": ["darwin"],
   "cpu": ["x64"],
   "files": [

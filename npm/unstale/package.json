@@ -2,7 +2,7 @@
   "name": "unstale",
   "version": "0.1.0",
   "description": "Keep a repository's dependencies from going stale: the unstale CLI (native binary, installed per platform).",
-  "license": "UNLICENSED",
+  "license": "AGPL-3.0-only",
   "bin": {
     "unstale": "bin/unstale.js"
   },

@@ -40,6 +40,8 @@ for dir in "$here"/cli-*/; do
 done
 
 rm -f "$here"/dist/*.tgz
+# Every package ships the license (gitignored copies of the root LICENSE).
+for dir in "$here"/unstale "$here"/cli-*; do cp "$root/LICENSE" "$dir/LICENSE"; done
 mkdir -p "$here/dist"
 for key in "${KEYS[@]}"; do
   t="$(triple "$key")"

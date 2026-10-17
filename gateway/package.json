@@ -2,6 +2,7 @@
   "name": "@unstale/gateway",
   "version": "0.0.0",
   "private": true,
+  "license": "AGPL-3.0-only",
   "description": "Cloudflare Worker: the exported catalog as static files, and the coverage registration queue.",
   "type": "module",
   "engines": {

@@ -204,7 +204,7 @@ jobs:
           path: npm/dist
           merge-multiple: true
       - name: Pack the wrapper
-        run: (cd npm/unstale && npm pack --pack-destination ../dist)
+        run: cp LICENSE npm/unstale/LICENSE && (cd npm/unstale && npm pack --pack-destination ../dist)
       - name: npm publish ${{ env.DRY_RUN }}
         run: |
           set -euo pipefail

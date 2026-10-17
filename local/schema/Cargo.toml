@@ -3,6 +3,7 @@ name = "unstale-schema"
 version = "0.0.0"
 edition = "2024"
 publish = false
+license = "AGPL-3.0-only"
 description = "Catalog and ledger types: the source of truth for the schema seam (JSON Schema and the central Zod are generated from these)."
 
 [dependencies]
