@@ -178,15 +178,16 @@ test("the spent limits name their cap and reset: tokens at the period's end, cou
 
 test("without a run cap runs are not counted and nothing is spent; a file left with a count of new technologies still reads", () => {
   const path = join(dir, "b.json");
-  const day = new Date().toISOString().slice(0, 10);
+  const now = Date.parse("2026-10-17T14:51:00Z");
+  const day = "2026-10-17";
   writeFileSync(path, JSON.stringify({ day, new: 100, runs: 3 }));
   const b = new DailyBudget({}, path);
-  for (let i = 0; i < 1500; i++) expect(b.takeRun()).toBeUndefined();
-  expect(b.spent()).toEqual([]);
+  for (let i = 0; i < 1500; i++) expect(b.takeRun(now)).toBeUndefined();
+  expect(b.spent(now)).toEqual([]);
   expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({ day, new: 100, runs: 3 });
-  expect(new DailyBudget({ runsPerDay: 4 }, path).takeRun()).toBeUndefined();
+  expect(new DailyBudget({ runsPerDay: 4 }, path).takeRun(now)).toBeUndefined();
   expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({ day, runs: 4, period: day, tokens: 0 });
-  expect(new DailyBudget({ runsPerDay: 4 }, path).takeRun()).toMatchObject({ kind: "runs" });
+  expect(new DailyBudget({ runsPerDay: 4 }, path).takeRun(now)).toMatchObject({ kind: "runs" });
 });
 
 test("with the period's tokens spent nothing starts, and the waiting job says why", () => {
