@@ -14,6 +14,12 @@
 // then `publishing` once analysed, `declined` when a fast-track run does not take them), so a client that asked for one
 // can follow it until the deploy publishes its status. Best effort: a report that fails never stops the run.
 //
+// Budget: the final line names the budget limits that held work back (`held`: tokens, new_per_day, runs_per_day, each
+// with its cap and reset time), so `"started": 0` is never unexplained. The last progress report also tells the
+// gateway until when the budget is spent (`budget.spent_until`, the latest reset of the limits at their cap, null when
+// none is), and the gateway starts no early run until then: a fast-track run could start nothing. Sent on every run,
+// so a budget raised or reset clears it at the next one; registrations are still queued meanwhile.
+//
 //   npm run drain -- [--minutes 240] [--grace-minutes 10] [--concurrency 4] [--taken <file>] [--fast-track]
 //   npm run drain -- ack <file>
 // Gateway: UNSTALE_GATEWAY_URL and UNSTALE_GATEWAY_TOKEN; without them only the saved queue is worked.
@@ -52,14 +58,28 @@ async function pull(): Promise<Pulled["requests"]> {
 
 type RunState = "running" | "publishing" | "declined";
 
-/** Where this run is with these pulled packages, for the clients that follow them; failures are logged once. */
+/** The budget as the gateway reads it: spent until the latest reset of the limits at their cap, or null. An unreadable
+ * budget has no reset, so it is reported as spent for the longest period (31 days); every run reports again, so the
+ * first run after the file is fixed clears it. */
+function budgetOf(service: CoverageService): { spent_until: string | null } {
+  const held = service.spent();
+  if (held.some((h) => !h.resets)) return { spent_until: new Date(Date.now() + 31 * 86_400_000).toISOString() };
+  const resets = held.map((h) => h.resets!).sort();
+  return { spent_until: resets.at(-1) ?? null };
+}
+
+/** Where this run is with these pulled packages, for the clients that follow them, in requests of at most 500 (the
+ * gateway's bound), the budget with the first; failures are logged once. */
 let reportFailed = false;
-async function report(updates: { purl: string; state: RunState; job?: Record<string, unknown> }[]): Promise<void> {
+async function report(updates: { purl: string; state: RunState; job?: Record<string, unknown> }[], budget?: { spent_until: string | null }): Promise<void> {
   const g = gateway();
-  if (!g || !updates.length) return;
+  if (!g || (!updates.length && !budget)) return;
   try {
-    const res = await fetch(`${g.url}/internal/progress`, { method: "POST", headers: g.headers, body: JSON.stringify({ updates }), signal: AbortSignal.timeout(10_000) });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    for (let i = 0; i === 0 || i < updates.length; i += 500) {
+      const body = { updates: updates.slice(i, i + 500), ...(i === 0 && budget ? { budget } : {}) };
+      const res = await fetch(`${g.url}/internal/progress`, { method: "POST", headers: g.headers, body: JSON.stringify(body), signal: AbortSignal.timeout(10_000) });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    }
   } catch (e) {
     if (!reportFailed) console.error(`gateway progress not reported (${e instanceof Error ? e.message : e}); the run continues`);
     reportFailed = true;
@@ -111,7 +131,7 @@ async function drain(args: string[]): Promise<void> {
   if (values["fast-track"]) {
     only = service.newHead(new Set(fresh));
     if (!only.size) {
-      await report(fresh.map((purl) => ({ purl, state: "declined" })));
+      await report(fresh.map((purl) => ({ purl, state: "declined" })), budgetOf(service));
       console.log(JSON.stringify({ wall_s: Math.round((Date.now() - t0) / 1000), pulled: requests.length, taken: taken.length, ran: false, next: service.newLine()[0]?.purl }));
       return;
     }
@@ -132,7 +152,7 @@ async function drain(args: string[]): Promise<void> {
   ).finally(() => (clearTimeout(first), clearInterval(every)));
   // What finished is published by this run's deploy; a job still running past the grace period stays `running` (its
   // partial status is published, and the next run resumes it); what did not start waits as before.
-  await report(followed.flatMap((p) => progressOf(service, p) ?? []));
+  await report(followed.flatMap((p) => progressOf(service, p) ?? []), budgetOf(service));
   const statuses = writeStatuses(service);
   const states: Record<string, number> = {};
   for (const j of service.jobs.values()) states[j.state] = (states[j.state] ?? 0) + 1;

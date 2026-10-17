@@ -25,7 +25,7 @@ import { advisoryStage } from "../pipeline/advisories.ts";
 import { withTechLock, withTechLockSync } from "../pipeline/lock.ts";
 import { makeClassifier } from "../pipeline/pipeline.ts";
 import { admit, signals, THRESHOLDS, weeklyDownloads, type Verdict } from "../pipeline/admission.ts";
-import { AddressLimiter, DailyBudget, Voters, clientAddress, limitsFromEnv, nextPeriod, noteTokens, quarterKey, type Limits, type Refusal } from "./limits.ts";
+import { AddressLimiter, DailyBudget, Voters, clientAddress, limitsFromEnv, nextPeriod, noteTokens, quarterKey, type Hold, type Limits, type Refusal } from "./limits.ts";
 import { deprecationOf, publishDeprecation } from "./notices.ts";
 import { npmPurl } from "../pipeline/ecosystems.ts";
 let classifier: ReturnType<typeof makeClassifier> | undefined;
@@ -125,6 +125,8 @@ export class CoverageService {
   private held = false;
   /** Jobs started since construction (a drain reports its share). */
   private launched = 0;
+  /** The budget limits that held work back since the drain began, by limit: a drain that starts nothing says why. */
+  private holds = new Map<Hold["limit"], Hold>();
   /** A drain restricted to these packages (fast-track); undefined works the whole queue. */
   private only: ReadonlySet<string> | undefined;
   readonly concurrency: number;
@@ -373,10 +375,18 @@ export class CoverageService {
   /**
    * Batch mode for an ephemeral runner: works the queue until nothing more can start (empty, not yet due, or the
    * budget spent) or `deadline` passes, then waits for running jobs up to `grace` ms. A job still running then is
-   * resumed by the next run (an interrupted job is requeued on load). With `only`, no other job starts.
+   * resumed by the next run (an interrupted job is requeued on load). With `only`, no other job starts. `held` names
+   * the budget limits that refused work during the drain, each with its cap and when it resets, so a drain that
+   * started nothing (or less than the queue held) says why.
    */
-  async drain(deadline: number, grace = 10 * 60_000, poll = 500, only?: ReadonlySet<string>): Promise<{ started: number; unfinished: number }> {
+  async drain(
+    deadline: number,
+    grace = 10 * 60_000,
+    poll = 500,
+    only?: ReadonlySet<string>,
+  ): Promise<{ started: number; unfinished: number; held?: Hold[] }> {
     this.draining = deadline;
+    this.holds.clear();
     this.held = false;
     this.only = only;
     const before = this.launched;
@@ -385,7 +395,18 @@ export class CoverageService {
       await new Promise((r) => setTimeout(r, poll));
     const stop = Date.now() + grace;
     while (this.running.size && Date.now() < stop) await new Promise((r) => setTimeout(r, poll));
-    return { started: this.launched - before, unfinished: this.running.size };
+    const held = [...this.holds.values()];
+    return { started: this.launched - before, unfinished: this.running.size, ...(held.length ? { held } : {}) };
+  }
+  /** The budget limits at their cap now (see DailyBudget.spent). */
+  spent(): Hold[] {
+    return this.budget.spent();
+  }
+  /** A budget refusal: the limits now at their cap join what this drain reports as holding work back (read once per
+   * limit, so a queue of new technologies refused one by one does not read the budget file twice each). */
+  private heldBack(limit: Hold["limit"]) {
+    if (this.holds.has(limit)) return;
+    for (const h of this.budget.spent()) this.holds.set(h.limit, h);
   }
   /** Every job as `GET /coverage` answers it (the queue order computed once), for a static copy of the answers. */
   statuses(): ReturnType<typeof publicJob>[] {
@@ -408,6 +429,7 @@ export class CoverageService {
       if (this.budget.tokensLeft() <= 0) {
         const stage = `Coverage budget for this ${this.limits.period} spent; continues after ${day(nextPeriod(this.limits.period))}`;
         if (job.state === "queued" && job.stage !== stage) this.save(job, "queued", stage);
+        this.heldBack("tokens");
         break;
       }
       const isNew = this.tier(job) === 1;
@@ -418,6 +440,7 @@ export class CoverageService {
             ? `Daily limit of new technologies reached; continues after ${day(Date.now() + refused.retryAfter * 1000)}`
             : `Daily coverage budget reached; continues after ${day(Date.now() + refused.retryAfter * 1000)}`;
         if (job.state === "queued" && job.stage !== stage) this.save(job, "queued", stage);
+        this.heldBack(refused.kind === "new" ? "new_per_day" : refused.kind === "runs" ? "runs_per_day" : "unreadable");
         // Only new technologies are capped by count: admitted work and overflow may still run today.
         if (refused.kind === "new") continue;
         break;
@@ -587,6 +610,7 @@ export class CoverageService {
         }
         const refused = this.budget.spend(cost);
         if (refused) {
+          this.heldBack("tokens");
           this.requeue(job, `${job.records} records available; coverage budget for this ${this.limits.period} spent; continues after ${day(Date.now() + refused.retryAfter * 1000)}`);
           return;
         }
@@ -665,6 +689,7 @@ export class CoverageService {
     });
     if (extracted.records !== undefined) job.records = extracted.records;
     if (docsRefused) {
+      this.heldBack("tokens");
       this.requeue(job, `${job.records} records available; coverage budget for this ${this.limits.period} spent; continues after ${day(Date.now() + docsRefused.retryAfter * 1000)}`);
       return;
     }

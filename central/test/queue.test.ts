@@ -161,6 +161,22 @@ test("token budget per period: spent per note, persisted, reset each period, fir
   expect(again.tokensLeft()).toBe(0);
 });
 
+test("the spent limits name their cap and reset: tokens at the period's end, counts at the next UTC day", () => {
+  const now = Date.parse("2026-10-17T14:51:00Z");
+  const b = new DailyBudget({ newPerDay: 1, runsPerDay: 5, tokensPerPeriod: 100, period: "week" }, join(dir, "spent.json"));
+  expect(b.spent(now)).toEqual([]);
+  expect(b.take(["runs", "new"], now)).toBeUndefined();
+  expect(b.spent(now)).toEqual([{ limit: "new_per_day", cap: 1, resets: "2026-10-18T00:00:00.000Z" }]);
+  b.spend(80, now);
+  expect(b.spend(30, now)).toMatchObject({ kind: "tokens" });
+  expect(b.spent(now).map((h) => [h.limit, h.cap, h.resets])).toEqual([
+    ["tokens", 100, "2026-10-19T00:00:00.000Z"],
+    ["new_per_day", 1, "2026-10-18T00:00:00.000Z"],
+  ]);
+  writeFileSync(join(dir, "spent.json"), "{");
+  expect(b.spent(now)).toEqual([{ limit: "unreadable" }]);
+});
+
 test("a refusal of one kind spends nothing of the other", () => {
   const b = new DailyBudget({ newPerDay: 0, runsPerDay: 1 }, join(dir, "b.json"));
   expect(b.take(["runs", "new"])).toMatchObject({ kind: "new" });

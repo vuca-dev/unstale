@@ -19,7 +19,8 @@
 # Schedule: every 3 hours (the repository is public, so standard runners are free; a private one pays per minute, so
 # run it daily there). Model calls are cached per record, so a run with no new
 # releases makes none, and the coverage budget (UNSTALE_BUDGET_TOKENS) bounds what any run can spend. The gateway may
-# also start a run early for a new package (`reason: fast-track`, at most FAST_TRACK_PER_DAY a day).
+# also start a run early for a new package (`reason: fast-track`, at most FAST_TRACK_PER_DAY a day), but not while the
+# budget is spent: each drain tells the gateway until when.
 #
 # 60-day rule: GitHub disables scheduled workflows in a public repository after 60 days without repository
 # activity. This job commits nothing (state lives in release assets), so it does not count as activity. When the
@@ -71,8 +72,9 @@ jobs:
       GH_REPO: ${{ github.repository }}
       GH_TOKEN: ${{ github.token }} # state release only; ingestion reads GitHub with INGEST_GITHUB_TOKEN
       # Extraction and the classifier's fallback use central's default model, gpt-6-luna through the AI gateway (flex
-      # tier).
-      UNSTALE_BUDGET_TOKENS: ${{ vars.UNSTALE_BUDGET_TOKENS || '250000' }}
+      # tier). Release-note tokens a UTC day: 2.5M is tens of cents at the measured rate (a pipeline run's 660k input
+      # and 266k output extraction tokens cost $0.11); 250k was spent by 08:00 UTC and left later runs nothing to start.
+      UNSTALE_BUDGET_TOKENS: ${{ vars.UNSTALE_BUDGET_TOKENS || '2500000' }}
       UNSTALE_GATEWAY_URL: ${{ vars.UNSTALE_GATEWAY_URL }}
       # Workers static assets allow 20,000 files per version on the free plan (100,000 paid).
       ASSET_FILE_LIMIT: ${{ vars.ASSET_FILE_LIMIT || '20000' }}
@@ -193,7 +195,7 @@ jobs:
       # the queue); otherwise it ran nothing (`ran=false`), and nothing is exported, saved or acknowledged, so the
       # gateway keeps the request for the next scheduled run. The run reports its progress to the gateway (running,
       # publishing) on the new packages it works, and `declined` on all it pulled when it works none, so a client that
-      # asked can follow it.
+      # asked can follow it. When a budget limit held work back, the final line's `held` names it and when it resets.
       - name: Drain the coverage queue
         id: drain
         if: always() && (steps.pipeline.outcome == 'success' || steps.pipeline.outcome == 'failure' || steps.pipeline.outcome == 'skipped')

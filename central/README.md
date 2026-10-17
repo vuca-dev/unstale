@@ -61,6 +61,9 @@ Every variable is optional; the defaults suit a developer machine.
 | `UNSTALE_VOTES_PER_HOUR` | `1000` | `serve`: votes (requests for a known technology) one client address may cast per hour, a bucket apart from new technologies; over it a vote is not counted |
 | `UNSTALE_NEW_PER_DAY` | `100` | `serve`: new technologies accepted per UTC day, all clients together |
 | `UNSTALE_RUNS_PER_DAY` | `1000` | `serve`: coverage job runs (first analysis, retries, refreshes) started per UTC day |
+| `UNSTALE_BUDGET_TOKENS` | `1000000` | Release-note tokens (characters / 4) extracted per budget period, all technologies together; 0 stops extraction. The ingest workflow sets 2,500,000 |
+| `UNSTALE_BUDGET_PERIOD` | `day` | The token budget's UTC period: `day`, `week` or `month` |
+| `UNSTALE_TECH_QUARTER_TOKENS` | `50000` | Release-note tokens one technology may use per calendar quarter before the rest waits behind other technologies |
 | `UNSTALE_TRUST_PROXY` | `0` | `serve`: number of proxies in front whose `X-Forwarded-For` entry is trusted (`true` = 1); 0 uses the socket address |
 | `UNSTALE_NO_ADVISORIES` | unset | `1` skips the advisories stage after a technology's history is published |
 | `UNSTALE_LOCK_TIMEOUT_MS` | `1200000` (20 minutes) | How long a writer waits for a technology's lock before failing |

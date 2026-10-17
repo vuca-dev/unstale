@@ -2,7 +2,10 @@
 // requesters since the last run took it) and when it was first asked for. Votes are deduplicated, and new packages and
 // votes are address-limited in separate buckets, in memory only (central's requesters.ts), so the rows hold no address
 // and no pseudonym. The queue is never refused for budget: central's budget decides how fast it drains. `MAX_PENDING`
-// only bounds storage against a flood.
+// only bounds storage against a flood. What central's budget does change is early runs: each coverage run reports
+// until when the budget is spent (a limit at its cap: release-note tokens, new technologies or runs a day), and until
+// then a new package is queued as always but starts no run, since a run could start nothing; the schedule takes it
+// after the reset.
 import { AddressLimiter, Voters, type Refusal } from "../../central/src/onboarding/requesters.ts";
 
 /** The SQL surface used: a Durable Object's `ctx.storage.sql`, or node:sqlite in tests. */
@@ -242,9 +245,22 @@ export class PendingQueue {
     return d.length ? d[Math.floor(d.length / 2)] : undefined;
   }
 
-  /** Whether a new package may start a run now: within the day's count and the interval since the last one. */
+  /** What the last coverage run reported: central's budget is spent until this time (ms); undefined clears it. */
+  setBudget(spentUntil: number | undefined): void {
+    if (spentUntil === undefined) this.sql.exec("DELETE FROM meta WHERE k = 'budget_until'");
+    else this.setMeta("budget_until", String(spentUntil));
+  }
+
+  /** Until when central's budget is spent (ms), while that is still ahead of `now`; undefined otherwise. */
+  spentUntil(now = Date.now()): number | undefined {
+    const until = Number(this.meta("budget_until"));
+    return Number.isFinite(until) && until > now ? until : undefined;
+  }
+
+  /** Whether a new package may start a run now: within the day's count and the interval since the last one, and not
+   * while central's budget is spent (that run would start nothing, and would use up the day's early runs). */
   private fastTrack(now: number): boolean {
-    if (!this.settings.fastTrackPerDay) return false;
+    if (!this.settings.fastTrackPerDay || this.spentUntil(now) !== undefined) return false;
     const day = new Date(now).toISOString().slice(0, 10);
     const used = this.meta("fast_day") === day ? Number(this.meta("fast_count") ?? 0) : 0;
     const last = Number(this.meta("fast_last") ?? 0);
