@@ -3,7 +3,7 @@
 // written keyed by the ORIGINAL request key, so score5.mts --judge2 scores them with the unchanged guards.
 //
 //   cd central && npx tsx ../eval/select/slice5/judge2.mts --arm F8|F4|O8|O4|O2|O1|I8|I4|M8|T8 --split smoke|dev|heldout
-//     [--cand jev|clef] [--dry-run] [--concurrency 4]
+//     [--cand jev|clef|subq] [--dry-run] [--concurrency 4]
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
@@ -14,7 +14,9 @@ const { PROVIDERS, baseUrlOf, dollars, loadPrices, logUsageLine, priceOf } = awa
 const { ClassifierCache, Jev, keyFromEnvFile } = await import("../../../central/src/pipeline/classify/adapter.ts");
 const { pool, sha256 } = await import("../../../central/src/pipeline/util.ts");
 const { spendByProvider } = await import("../budget.ts");
+const { SubqClassifier } = await import("../subq.ts");
 import type { Classification, Classifier, Questions } from "../../../central/src/pipeline/classify/adapter.ts";
+import type { Usage } from "../client.ts";
 
 const { values: a } = parseArgs({
   options: {
@@ -101,9 +103,9 @@ function compressed(r: Req, form: "M" | "T", K: number): { state: Record<string,
 if (import.meta.url === `file://${process.argv[1]}`) {
   const arm = a.arm ?? "";
   const split = a.split as "smoke" | "dev" | "heldout";
-  const cand = a.cand as "jev" | "clef";
+  const cand = a.cand as "jev" | "clef" | "subq";
   const prices = loadPrices();
-  const runId = ["j2", arm, split, ...(cand === "clef" ? ["clef"] : [])].join("-");
+  const runId = ["j2", arm, split, ...(cand !== "jev" ? [cand] : [])].join("-");
   const all = JSON.parse(readFileSync(join(OUT5, "units.json"), "utf8")) as { reqs: Record<string, Req> };
   let reqs = Object.values(all.reqs).filter((r) => (split === "heldout" ? r.split === "heldout" : r.split === "dev"));
   if (split === "smoke") reqs = [...reqs].sort((x, y) => sha256(`slice5:${x.key}`).localeCompare(sha256(`slice5:${y.key}`))).slice(0, 5);
@@ -111,8 +113,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const built = reqs.map((r) => ({ r, ...rewrite(r, arm) }));
   const tok = (s: string) => Math.ceil(s.length / 3.5);
   const planIn = built.reduce((s, b) => s + tok(JSON.stringify({ state: b.state, questions: b.questions })), 0);
-  const worst = cand === "jev" ? (planIn * 0.042) / 1e6 : 0;
-  console.log(`${runId}: ${reqs.length} requests, ~${planIn} input tokens (chars/3.5) ≈ $${worst.toFixed(4)} on Jev; ${(planIn / reqs.length).toFixed(0)} per request`);
+  const worst = cand === "jev" ? (planIn * 0.042) / 1e6 : cand === "subq" ? (planIn * 0.05) / 1e6 : 0;
+  console.log(`${runId}: ${reqs.length} requests, ~${planIn} input tokens (chars/3.5) ≈ $${worst.toFixed(4)} on ${cand === "subq" ? "SubQ Snap" : "Jev"}; ${(planIn / reqs.length).toFixed(0)} per request`);
   if (a["dry-run"]) process.exit(0);
   const spent = spendByProvider(USAGE).jev?.dollars ?? 0;
   if (cand === "jev" && spent + worst * 1.3 > JEV_CAP) throw new Error(`jev cap: spent $${spent.toFixed(4)}, this run ~$${worst.toFixed(4)}, cap $${JEV_CAP}`);
@@ -143,7 +145,15 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     }
     return res;
   };
-  const cls: Classifier = new Jev({ model: cand === "jev" ? "jev-latest" : "clef-flash", fetch: f, ...(cand === "clef" ? { apiKey: () => "unused" } : {}) });
+  // SubQ Snap (eval/select/subq.ts) takes Jev's request and answer shape at its own endpoint, with its own meter.
+  const onUsage = (u: Usage, d: number | null) => {
+    meter.calls++;
+    meter.input += u.input_tokens;
+    meter.output += u.output_tokens;
+    meter.dollars += d ?? 0;
+    logUsageLine(USAGE, { step: `judge2:${runId}`, provider: "subq", model: "subq-snap-preview", ...u, dollars: d });
+  };
+  const cls: Classifier = cand === "subq" ? new SubqClassifier({ step: `judge2:${runId}`, onUsage }) : new Jev({ model: cand === "jev" ? "jev-latest" : "clef-flash", fetch: f, ...(cand === "clef" ? { apiKey: () => "unused" } : {}) });
   // F8 reproduces J1 from J1's own caches (dev: the fresh dev run; held-out: run 1).
   const cacheDir = arm === "F8" && cand === "jev" ? join(OUT5, "cache", split === "heldout" ? "jev-heldout-r1" : split === "dev" ? "jev-dev" : "jev-smoke", "cls") : join(OUT5, "cache", runId, "cls");
   const cache = new ClassifierCache(cacheDir);

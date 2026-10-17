@@ -17,7 +17,7 @@ import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { OUT_DIR, ChatClient, dollars, loadPrices, logUsageLine, PROVIDERS, priceOf, type Price } from "./client.ts";
 process.env.UNSTALE_CENTRAL_DIR = join(OUT_DIR, "central");
-const { ClassifierCache, ClassifierError, CodexClassifier } = await import("../../central/src/pipeline/classify/adapter.ts");
+const { ChatClassifier, ClassifierCache, ClassifierError } = await import("../../central/src/pipeline/classify/adapter.ts");
 const { interpret, labelQuestions } = await import("../../central/src/pipeline/classify/labels.ts");
 const { runCodex, parseJson, CODEX_MODEL } = await import("../lib/codex.ts");
 const { chunk, EXTRACT_PROMPT, Extracted, fill, LABEL_PROMPT, strings, toIncoming } = await import("../../central/src/pipeline/extract.ts");
@@ -26,6 +26,7 @@ const { pick } = await import("../../central/src/pipeline/match.ts");
 const { pool, sha256, writeAtomic } = await import("../../central/src/pipeline/util.ts");
 const { checkBudget, printSpend, remainingBudget } = await import("./budget.ts");
 const { chatClassifier, jevClassifier } = await import("./jev.ts");
+const { SubqClassifier } = await import("./subq.ts");
 const { ONE_CALL_PROMPT } = await import("./prompts.ts");
 const S = await import("./states.ts");
 import type { Classification, Classifier, Questions } from "../../central/src/pipeline/classify/adapter.ts";
@@ -52,9 +53,11 @@ const step = a.step as "extract" | "classify" | "judge";
 const provider = a.provider ?? "";
 if (!["extract", "classify", "judge"].includes(step) || !provider) throw new Error("usage: --step extract|classify|judge --provider P --model M [--split dev|heldout|all] [--limit N] [--dry-run]");
 if (provider === "openai" && !a["allow-openai"]) throw new Error("the OpenAI API provider is disabled; pass --allow-openai (user: only if final results demand it)");
-if (provider === "jev" && step === "extract") throw new Error("Jev answers closed questions only: classify or judge");
+// Decision models (Jev, SubQ Snap) answer closed questions only.
+const decision = provider === "jev" || provider === "subq";
+if (decision && step === "extract") throw new Error(`${provider} answers closed questions only: classify or judge`);
 if (!(provider in PROVIDERS) && provider !== "cache") throw new Error(`unknown provider ${provider}`);
-const model = provider === "codex" ? (a.model ?? CODEX_MODEL) : provider === "jev" ? (a.model ?? "jev-latest") : provider === "cache" ? "pipeline" : (a.model ?? "");
+const model = provider === "codex" ? (a.model ?? CODEX_MODEL) : provider === "jev" ? (a.model ?? "jev-latest") : provider === "subq" ? (a.model ?? "subq-snap-preview") : provider === "cache" ? "pipeline" : (a.model ?? "");
 if (!model) throw new Error("--model is required");
 const split = a.split as "dev" | "heldout" | "all";
 const structure = a.structure as "two-call" | "one-call";
@@ -159,12 +162,9 @@ async function generate<T>(prompt: string, parse: (t: string) => T | undefined, 
 function classifier(stepName: string): Classifier | undefined {
   if (provider === "cache") return undefined;
   if (provider === "jev") return jevClassifier({ model, step: stepName });
+  if (provider === "subq") return new SubqClassifier({ model, step: stepName });
   if (provider === "codex") {
-    const run = async (prompt: string) => {
-      const t = await codexComplete(prompt, (x) => (parseJson(x, "object") === undefined ? undefined : x), stepName);
-      return { text: t ?? "", code: t === undefined ? 1 : 0 };
-    };
-    return new CodexClassifier({ model, run });
+    return new ChatClassifier({ model, run: (prompt, parse) => codexComplete(prompt, parse, stepName) });
   }
   return chatClassifier(chat!, model, stepName, { max_tokens: MAX_OUT[step === "judge" ? "judge" : "classify"]! });
 }
@@ -328,7 +328,7 @@ async function runClassify(): Promise<void> {
     console.log(`${s}: ${mine.length} requests (${mine.filter((u) => u.faithful).length} proven identical to the pipeline's), ${b.excluded.length} excluded${b.note ? `; ${b.note}` : ""}`);
     for (const e of b.excluded.slice(0, 10)) console.log(`  excluded ${e.item}: ${e.why}`);
   }
-  for (const u of units) planCall(tok(JSON.stringify({ state: u.state, questions: q })) + (provider === "jev" ? 0 : 400), provider === "jev" ? 0 : MAX_OUT.classify!);
+  for (const u of units) planCall(tok(JSON.stringify({ state: u.state, questions: q })) + (decision ? 0 : 400), decision ? 0 : MAX_OUT.classify!);
   await guard();
   if (dry) return;
   const cls = classifier("classify");
@@ -369,11 +369,15 @@ async function runJudge(): Promise<void> {
     console.log(`${s}: ${b.units.length} pairs reconstructed faithfully, ${b.excluded.length} not reconstructable`);
     for (const e of b.excluded) console.log(`  not reconstructable: ${e.item}: ${e.why}`);
   }
+  // Since f99833e the pipeline asks the shorter judge text (match.ts shortRules) and merges at SAME_P_SHORT, so a replay
+  // of the stores' ingest no longer reproduces the requests they were built with.
+  if (!built.some(({ b }) => b.units.length))
+    throw new Error("no judge pair rebuilds faithfully from the stores (the judge text changed after they were built); the faithful requests frozen before then are out/slice5/units.json: use slice5/judge2.mts and score5.mts");
   let units = built.flatMap(({ s, b }) => b.units.filter((u) => inSplit(s, u.tech)));
   units = sample(units, (u) => `${u.set}:${u.n}`);
   const reqs = new Map<string, (typeof units)[number]>();
   for (const u of units) reqs.set(sha256(JSON.stringify([u.state, u.questions])), u);
-  for (const u of reqs.values()) planCall(tok(JSON.stringify({ state: u.state, questions: u.questions })) + (provider === "jev" ? 0 : 400), provider === "jev" ? 0 : MAX_OUT.judge!);
+  for (const u of reqs.values()) planCall(tok(JSON.stringify({ state: u.state, questions: u.questions })) + (decision ? 0 : 400), decision ? 0 : MAX_OUT.judge!);
   await guard();
   if (dry) return;
   const cls = classifier("judge");

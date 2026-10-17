@@ -6,6 +6,8 @@
 //   cd central && npx tsx ../eval/select/slice5/score5.mts [--adjudicated ../eval/select/slice5/adjudicated.json]
 //   --rules: the "Judge rules compression" arms (M8, T8) against J1; writes *-rules.json.
 //   --judge2: the "Judge 2" arms (PREREG.md) against J1 instead of the slice 5 candidates; writes *-judge2.json.
+//   --subq <arm>: adds that arm answered by SubQ Snap (judge2.mts --cand subq); --base <id> compares against that
+//     candidate instead of J1 (e.g. --rules --subq M8 --base M8: Snap against Jev on the pipeline's own wording).
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
@@ -15,7 +17,7 @@ import type { Classification } from "../../../central/src/pipeline/classify/adap
 import type { IncomingForGuard } from "../../../central/src/pipeline/match.ts";
 import type { StoredRecord } from "../../../central/src/pipeline/store.ts";
 
-const { values: a } = parseArgs({ options: { adjudicated: { type: "string" }, unaudited: { type: "string" }, judge2: { type: "boolean", default: false }, rules: { type: "boolean", default: false }, clef: { type: "string" }, fixed: { type: "string" } } });
+const { values: a } = parseArgs({ options: { adjudicated: { type: "string" }, unaudited: { type: "string" }, judge2: { type: "boolean", default: false }, rules: { type: "boolean", default: false }, clef: { type: "string" }, subq: { type: "string" }, base: { type: "string", default: "J1" }, fixed: { type: "string" } } });
 const OUT5 = join(import.meta.dirname, "..", "out", "slice5");
 const D = JSON.parse(readFileSync(join(OUT5, "units.json"), "utf8")) as {
   units: Array<{ set: string; n: number; tech: string; key: string; candidate: string; index: number; p_audit: number; verdict: V; cross: boolean; split: "dev" | "heldout"; req: string; cands: StoredRecord[]; guardInc: IncomingForGuard }>;
@@ -219,8 +221,9 @@ const C5: Cand[] = [
 ];
 // --rules: "Judge rules compression" (PREREG.md), J1 against the compressed-rule arms; writes *-rules.json.
 const JR: Cand[] = [J2[0]!, ...["M8", "T8"].map((arm) => ({ id: arm, name: arm, dev: `j2-${arm}-dev`, held: [`j2-${arm}-heldout`], K: 8 }))];
-const C = a.rules ? JR : a.judge2 ? J2 : C5;
-const SUFFIX = (a.rules ? "-rules" : a.judge2 ? "-judge2" : "") + (a.fixed ? "-fixed" : "");
+const SUBQ: Cand[] = a.subq ? [{ id: `${a.subq}-subq`, name: `${a.subq} on SubQ Snap`, dev: `j2-${a.subq}-dev-subq`, held: [`j2-${a.subq}-heldout-subq`], K: Number(a.subq.slice(1)), ...(a.subq.startsWith("I") ? { readings: ["A", "B"] } : {}) }] : [];
+const C = [...(a.rules ? JR : a.judge2 ? J2 : C5), ...SUBQ];
+const SUFFIX = (a.rules ? "-rules" : a.judge2 ? "-judge2" : "") + (a.subq ? `-subq-${a.subq}` : "") + (a.fixed ? "-fixed" : "");
 /** Descriptive only (not the pre-registered fit): every candidate scored at these constants, "same,cross,quote". */
 const FIXED: Params | undefined = a.fixed ? (([same, cross, quote]) => ({ same: same!, cross: cross!, quote: quote!, guards: true }))(a.fixed.split(",").map(Number)) : undefined;
 const exists = (r: string) => existsSync(join(OUT5, "runs", r.split("#")[0]!, "answers.json"));
@@ -279,21 +282,23 @@ for (const c of C) {
   out.NM = { guarded: metrics(nm, {}) };
 }
 
-// Paired comparison with J1 (held-out items).
-const base = heldRows.J1;
+// Paired comparison with J1, or the --base candidate (held-out items).
+const B0 = a.base!;
+const VS = `vs_${B0}`;
+const base = heldRows[B0];
 if (base) {
   const cmp: Record<string, unknown> = {};
   for (const [id, rs] of Object.entries(heldRows)) {
-    if (id === "J1") continue;
+    if (id === B0) continue;
     const same = base.map((r, i) => [r, rs[i]!] as const).filter(([r]) => r.item.hasSame);
     const b = same.filter(([x, y]) => x.recalled && !y.recalled).length;
     const c2 = same.filter(([x, y]) => !x.recalled && y.recalled).length;
     const isFalse = (r: Row) => !!r.merged && r.v !== "SAME" && r.v !== "ADJ_SAME";
     const fb = base.filter((r, i) => isFalse(r) && !isFalse(rs[i]!)).length;
     const fc = base.filter((r, i) => !isFalse(r) && isFalse(rs[i]!)).length;
-    cmp[id] = { recall_J1_only: b, recall_cand_only: c2, recall_mcnemar_p: mcnemar(b, c2), recall_diff_ci95: bootstrapDiff(same.map(([x]) => x.recalled), same.map(([, y]) => y.recalled)), false_J1_only: fb, false_cand_only: fc, false_mcnemar_p: mcnemar(fb, fc) };
+    cmp[id] = { [`recall_${B0}_only`]: b, recall_cand_only: c2, recall_mcnemar_p: mcnemar(b, c2), recall_diff_ci95: bootstrapDiff(same.map(([x]) => x.recalled), same.map(([, y]) => y.recalled)), [`false_${B0}_only`]: fb, false_cand_only: fc, false_mcnemar_p: mcnemar(fb, fc) };
   }
-  out.vs_J1 = cmp;
+  out[VS] = cmp;
 }
 
 // Unaudited held-out merges, for adjudication (blind: no model names).
@@ -309,7 +314,7 @@ writeFileSync(join(OUT5, `summary${SUFFIX}.json`), JSON.stringify(out, null, 1) 
 // Compact table.
 console.log("| cand | fitted same/cross/quote | dev recall, false/100 | HO merges | HO judge-only false/100 | HO guarded false/100 audited / adj / bound [95% CI bound] | unaudited | HO recall | dup/100 | answered |");
 for (const [id, r] of Object.entries(out)) {
-  if (id === "vs_J1") continue;
+  if (id === VS) continue;
   if (id === "NM") { const m = (r as { guarded: Metrics }).guarded; console.log(`| NM | — | — | 0 | — | — | 0 | 0/${m.same_items} | ${fmt(m.dup_per_100)} | — |`); continue; }
   const x = r as Record<string, { guarded: Metrics; judge_only: Metrics } | Params | Metrics>;
   const P = x.fitted as Params, dv = x.dev as Metrics;
@@ -319,5 +324,5 @@ for (const [id, r] of Object.entries(out)) {
     console.log(`| ${id} ${h} | ${P.same}/${P.cross}/${P.quote} | ${dv.recalled}/${dv.same_items}, ${fmt(dv.false_bound)} | ${g.merges} | ${fmt(j.false_bound)} (${j.D}D ${j.U}U ${j.unaudited}?) | ${fmt(g.false_audited)} / ${fmt(g.false_adj)} / ${fmt(g.false_bound)} [${fmt(g.ci_bound[0])}–${fmt(g.ci_bound[1])}] (${g.D}D ${g.U}U) | ${g.unaudited} | ${g.recalled}/${g.same_items} = ${fmt(100 * g.recall)}% | ${fmt(g.dup_per_100)} | ${g.answered} |`);
   }
 }
-if (out.vs_J1) console.log(JSON.stringify(out.vs_J1, null, 1));
+if (out[VS]) console.log(JSON.stringify(out[VS], null, 1));
 console.log(`unaudited held-out merges (all candidates): ${un.size} → ${join(OUT5, `unaudited${SUFFIX}.json`)}`);

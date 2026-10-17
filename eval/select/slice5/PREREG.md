@@ -165,3 +165,27 @@ objective and grid). Passers are ranked by measured held-out $/request × R (114
 and 10k/50k/200k; the cheapest passer wins. Unguarded (judge-only) false merges are reported too.
 
 Caps: Jev ≤ $0.25 for this section. No gateway, no Cloudflare.
+
+## SubQ Snap on the judge (17 October 2026, written before any judge run of Snap)
+
+Question: does SubQ Snap (`subq-snap-preview`, Subquadratic's decision model: the same systemone request and answer
+shape as Jev, $0.05 per M input, output free in public preview) hold step E's floor on the pipeline's own judge text,
+and is it cheaper than Jev there? Snap already passed step D on held-out H1 (slice 4, `RESULTS.md` § "SubQ Snap").
+
+Arm: M8 (the pipeline's text since f99833e: `shortRules`, which `judge2.mts` `RULES.M` holds) answered by Snap,
+`judge2.mts --arm M8 --cand subq`; its own empty cache. Scorer `score5.mts --rules --subq M8`, once with `--base M8`
+(Jev on the same text: the production comparison) and once with J1. Same sets, faithful requests, split, fitting
+objective and grid as Judge 2; one look at held-out.
+
+**Pass rule (as Judge 2):** guarded false merges ≤ 1.0 per 100 merges on pooled held-out (point estimate; unaudited
+merges count as DIFFERENT unless adjudicated), AND merge recall not significantly below Jev M8 (exact McNemar on
+held-out items, p < 0.05 with fewer recalled = fail; paired bootstrap CI shown). Cost: measured held-out $/request
+× R (114.6 mean, 1,092 largest) → $/tech-year, against Jev M8's.
+
+**Switch rule (steps D and E together):** the pipeline's primary classifier moves from Jev to Snap only if Snap
+passes step D on both held-out sets (H1 and H2, slice 4 floors against Jev on the same wording), passes step E
+here, and its combined D + E $/tech-year is below Jev's. Snap's own thresholds (BREAKING_P, BENEFIT_P, SAME_P_SHORT,
+CROSS_SAME_P_SHORT, and the quote guard) are the ones fitted on dev; nothing is refitted on held-out. Otherwise Jev
+stays and the result is recorded.
+
+Cap: SubQ ≤ $0.15 for this section (free preview credit). No Jev, gateway or Cloudflare spend.

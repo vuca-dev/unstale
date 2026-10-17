@@ -154,3 +154,25 @@ For cross-source requests (notes ↔ guide), append:
 Release notes and an upgrade guide describe the same change in different words and detail.
 ```
 Constants: SAME_P 0.87, CROSS_SAME_P 0.87, QUOTE_GUARD_BELOW 0.95.
+
+## SubQ Snap on the judge (17 October 2026)
+
+Pre-registration: `PREREG.md` § "SubQ Snap on the judge", written before any judge run of Snap. Runner
+`judge2.mts --arm M8 --cand subq`; scorer `score5.mts --rules --subq M8 --base M8` → `out/slice5/summary-rules-subq-M8.json`.
+All 365 requests answered.
+
+**Verdict: Snap fails step E, and the switch rule keeps Jev.** To hold the false-merge floor on dev, the fit pushes
+SAME_P to 0.96, which leaves 42.1% held-out recall against Jev's 88.8%. It is not cheaper here either.
+
+| Arm | Fitted same / cross / quote | Dev recall, false per 100 | HO merges | HO guarded false per 100 | **HO recall** | vs Jev M8 (M8-only / Snap-only; McNemar p; Δ CI) | Input / request | $ / request |
+|---|---|---|---|---|---|---|---|---|
+| **Jev M8** (production) | 0.87 / 0.87 / 0.95 | 106/109, 0.9 | 178 | 0.8 (0 D, 3 U) | **88.8%** | — | 2,144 | 0.0000900 |
+| Snap M8, fitted | 0.96 / 0.96 / 0.95 | 53/109, 0.0 | 83 | 0.0 | **42.1%** | 92 / 0; p 4e-28; −54.3…−39.6 | 1,820 | 0.0000910 |
+| Snap M8 at Jev's constants (descriptive) | 0.87 / 0.87 / 0.95 | 92/109, **3.6** | 166 | 0.6 (0 D, 2 U) | 83.2% | — | | |
+
+- **Why it fails:** on dev, Snap gives high p(same) to DIFFERENT within-source pairs, so no constant near Jev's holds
+  the floor (0.87: 3.6 per 100; 0.93: 1.9). On held-out its SAME pairs also sit lower (median p 0.957 against Jev's
+  1.0), so it recalls less at every constant tried.
+- **Cost:** Snap bills 15% fewer tokens per request, but its price is 19% higher, so step E costs 1% more ($0.0111
+  against $0.0110 per technology-year).
+- **Spend:** SubQ $0.034 (smoke, dev, held-out). No Jev spend: Jev M8 is the run above.

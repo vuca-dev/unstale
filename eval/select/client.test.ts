@@ -137,11 +137,11 @@ describe("classifier candidates", () => {
     expect(log[0]!.dollars as number).toBeCloseTo((2000 * 0.042) / 1e6);
   });
 
-  it("a chat model answers the classifier's questions through the Codex-fallback prompt", async () => {
+  it("a chat model answers the classifier's questions through the pipeline's chat prompt, as a hard choice", async () => {
     const q = { breaking: { instructions: "Breaking?", options: { yes: "y", no: "n" } } };
     const t = setup([completion('{"breaking": {"choice": "yes", "probabilities": {"yes": 0.8, "no": 0.2}}}')]);
     const r = await chatClassifier(t.client, "m", "classify").classify({ subject: "x" }, q);
-    expect(r.answers.breaking).toEqual({ choice: "yes", confidence: 0.8, probabilities: { yes: 0.8, no: 0.2 } });
+    expect(r.answers.breaking).toEqual({ choice: "yes", confidence: 1, probabilities: { yes: 1, no: 0 } });
     expect(String((t.calls[0]!.body as { messages: Array<{ content: string }> }).messages[0]!.content)).toContain("closed-choice questions");
   });
 });
