@@ -1,5 +1,7 @@
-// Abuse limits and the coverage budget. A new technology costs crawling and model calls, so an anonymous client may
-// register only a few per hour; every accepted request is queued, never refused for budget. The budget limits how fast
+// Abuse limits and the coverage budget. A new technology costs crawling and model calls only when it drains, so entry is
+// cheap: an anonymous client may register a few hundred per hour (enough for a large repository in one pass), and votes
+// on known ones have a bucket of their own so they never spend that allowance. Every accepted request is queued, never
+// refused for budget. The budget limits how fast
 // the queue drains: at most a fixed number of new technologies and job runs per UTC day, and at most a number of
 // release-note tokens per period (the expected-cost unit: note volume is read from the release index before any model
 // call). Asking about a known technology is never refused. The budget is the one check that fails closed: a budget file
@@ -16,6 +18,8 @@ export { AddressLimiter, Voters, type Refusal } from "./requesters.ts";
 export interface Limits {
   /** New technologies one client address may register per hour. */
   perAddressPerHour: number;
+  /** Votes (requests for a known technology) one client address may cast per hour; over it they are not counted. */
+  votesPerAddressPerHour: number;
   /** New technologies accepted per UTC day, all clients together. */
   newPerDay: number;
   /** Job runs (first analysis, retries and refreshes) started per UTC day. */
@@ -37,7 +41,8 @@ const int = (value: string | undefined, fallback: number) => {
 };
 export function limitsFromEnv(env: NodeJS.ProcessEnv = process.env): Limits {
   return {
-    perAddressPerHour: int(env.UNSTALE_RATE_PER_HOUR, 20),
+    perAddressPerHour: int(env.UNSTALE_RATE_PER_HOUR, 250),
+    votesPerAddressPerHour: int(env.UNSTALE_VOTES_PER_HOUR, 1000),
     newPerDay: int(env.UNSTALE_NEW_PER_DAY, 100),
     runsPerDay: int(env.UNSTALE_RUNS_PER_DAY, 1000),
     trustProxy: env.UNSTALE_TRUST_PROXY === "true" ? 1 : int(env.UNSTALE_TRUST_PROXY, 0),

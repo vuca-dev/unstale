@@ -1,6 +1,6 @@
-// The admission queue: votes by distinct requesters, drain order by tier then demand with no aging, the release-note
-// token budget per period (persisted, fails closed), the per-technology quarterly cap, the technology unit (one
-// repository and release stream) and the deprecation notice.
+// The admission queue: votes by distinct requesters, drain order by tier then demand with no aging (adoption breaks
+// ties among new technologies), the release-note token budget per period (persisted, fails closed), the per-technology
+// quarterly cap, the technology unit (one repository and release stream) and the deprecation notice.
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -25,6 +25,7 @@ afterEach(() => {
 
 const limits = (l: Partial<Limits> = {}): Limits => ({
   perAddressPerHour: 100,
+  votesPerAddressPerHour: 1000,
   newPerDay: 100,
   runsPerDay: 100,
   trustProxy: 0,
@@ -34,18 +35,22 @@ const limits = (l: Partial<Limits> = {}): Limits => ({
   ...l,
 });
 
-test("a request for a queued technology is a vote: one per requester, within the address limit, persisted as a count", () => {
-  const service = new CoverageService(0, { limits: limits({ perAddressPerHour: 3 }) });
+test("a request for a queued technology is a vote: one per requester, within its own address limit, persisted as a count", () => {
+  const service = new CoverageService(0, { limits: limits({ perAddressPerHour: 3, votesPerAddressPerHour: 2 }) });
   service.register("pkg:npm/a", "198.51.100.1");
   service.register("pkg:npm/a", "198.51.100.1");
   service.register("pkg:npm/a", "198.51.100.2");
   expect(service.jobs.get("pkg:npm/a")?.demand).toBe(2);
-  // Over the address limit the answer is the same job, but the vote does not count.
+  // Over the vote limit the answer is the same job, but the vote does not count.
+  service.register("pkg:npm/b", "198.51.100.4");
+  service.register("pkg:npm/c", "198.51.100.4");
   service.register("pkg:npm/b", "198.51.100.3");
   service.register("pkg:npm/c", "198.51.100.3");
-  service.register("pkg:npm/d", "198.51.100.3");
   expect(service.register("pkg:npm/a", "198.51.100.3")).toMatchObject({ purl: "pkg:npm/a" });
   expect(service.jobs.get("pkg:npm/a")?.demand).toBe(2);
+  // Votes are a bucket apart: the address that spent its votes still registers new technologies.
+  for (const p of ["d", "e", "f"]) expect(service.register(`pkg:npm/${p}`, "198.51.100.3")).toMatchObject({ purl: `pkg:npm/${p}` });
+  expect(service.register("pkg:npm/g", "198.51.100.3")).toMatchObject({ limit: "address" });
   // Persisted: a restart keeps the counts (and nothing about who voted).
   expect(new CoverageService(0, { limits: limits() }).jobs.get("pkg:npm/a")?.demand).toBe(2);
 });
@@ -90,6 +95,40 @@ test("drain order: admitted work first, then new technologies by demand with no 
   expect(status.stage).toContain("(position 4 of 6)");
   expect(status).not.toHaveProperty("demand_voters");
   expect(service.publicStatus(parked)).not.toHaveProperty("queue_position");
+});
+
+test("among new technologies of equal demand the most adopted drain first; an unreadable count is 0, read once per process", async () => {
+  const asked: string[][] = [];
+  const adoption = async (purls: string[]) => {
+    asked.push(purls);
+    return new Map([["pkg:npm/big", 5_000_000], ["pkg:pypi/mid", 40_000], ["pkg:npm/admitted", 9e9]]);
+  };
+  const service = new CoverageService(0, { limits: limits(), adoption });
+  for (const p of ["pkg:npm/unread", "pkg:pypi/mid", "pkg:npm/big", "pkg:npm/wanted", "pkg:npm/admitted"]) service.submit(p).demand = 1;
+  service.jobs.get("pkg:npm/wanted")!.demand = 2;
+  service.jobs.get("pkg:npm/admitted")!.admitted = "maintained and used";
+  await service.readAdoption();
+  expect(asked).toEqual([["pkg:npm/unread", "pkg:pypi/mid", "pkg:npm/big", "pkg:npm/wanted"]]);
+  // Demand stays the first key; adoption only orders equal demand; admitted work is not reordered by it.
+  expect(service.queue().map((j) => j.purl)).toEqual(["pkg:npm/admitted", "pkg:npm/wanted", "pkg:npm/big", "pkg:pypi/mid", "pkg:npm/unread"]);
+  expect(service.publicStatus(service.jobs.get("pkg:npm/big")!)).not.toHaveProperty("downloads");
+  // Persisted; an unread count is not asked for again by this process, but is by the next.
+  await service.readAdoption();
+  expect(asked).toHaveLength(1);
+  const restarted = new CoverageService(0, { limits: limits(), adoption });
+  expect(restarted.jobs.get("pkg:npm/big")?.downloads).toBe(5_000_000);
+  await restarted.readAdoption();
+  expect(asked[1]).toContain("pkg:npm/unread");
+  expect(asked[1]).not.toContain("pkg:npm/big");
+  expect(asked[1]).not.toContain("pkg:pypi/mid");
+  // A failing reader leaves the order by demand and arrival.
+  const failing = new CoverageService(0, { limits: limits(), adoption: async () => Promise.reject(new Error("down")) });
+  await failing.readAdoption();
+  expect(failing.jobs.get("pkg:npm/unread")?.downloads).toBeUndefined();
+  // A reader slower than the timeout is not waited for.
+  const slow = new CoverageService(0, { limits: limits(), adoption: () => new Promise(() => {}) });
+  await slow.readAdoption(10);
+  expect(slow.jobs.get("pkg:npm/unread")?.downloads).toBeUndefined();
 });
 
 test("token budget per period: spent per note, persisted, reset each period, first spend always passes, fails closed", () => {

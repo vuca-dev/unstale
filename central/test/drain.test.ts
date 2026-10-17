@@ -26,6 +26,7 @@ afterEach(() => {
 
 const limits = (l: Partial<Limits> = {}): Limits => ({
   perAddressPerHour: 100,
+  votesPerAddressPerHour: 1000,
   newPerDay: 100,
   runsPerDay: 100,
   trustProxy: 0,

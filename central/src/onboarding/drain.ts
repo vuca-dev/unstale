@@ -1,12 +1,14 @@
 // Coverage in batch mode, for an ephemeral runner. The gateway accepts registrations and holds them; this pulls them,
-// works the same queue the service works (refreshes and admitted history first, then new technologies by demand, all
-// under the coverage budget), and writes every job's public status for the static catalog. The pulled packages are
-// acknowledged only after the deploy that publishes their status (`drain ack`), so a failed run loses no request.
+// works the same queue the service works (refreshes and admitted history first, then new technologies by demand, ties
+// broken by adoption, all under the coverage budget), and writes every job's public status for the static catalog. The
+// pulled packages are acknowledged only after the deploy that publishes their status (`drain ack`), so a failed run
+// loses no request.
 //
 // `--fast-track` (a run the gateway started for a new package): requests are queued as always, but a job runs only if
-// a pulled package is next in the line of new technologies (most requested first, then first asked); then only those
-// at the head of the line run. Otherwise nothing runs and the final line says `"ran": false`, and the workflow saves
-// nothing, so the gateway keeps the request for the next scheduled run. Refreshes are the schedule's.
+// a pulled package is next in the line of new technologies (most requested first, then most adopted, then first
+// asked); then only those at the head of the line run. Otherwise nothing runs and the final line says `"ran": false`,
+// and the workflow saves nothing, so the gateway keeps the request for the next scheduled run. Refreshes are the
+// schedule's.
 //
 // Progress: while it works the new packages it pulled, a run reports their public counters to the gateway (`running`,
 // then `publishing` once analysed, `declined` when a fast-track run does not take them), so a client that asked for one
@@ -101,6 +103,7 @@ async function drain(args: string[]): Promise<void> {
   const requests = await pull();
   const known = new Set(service.jobs.keys());
   const taken = service.enqueue(requests);
+  await service.readAdoption();
   const fresh = taken.filter((p) => !known.has(p));
   // Fast-track: the pulled new packages at the head of the line of new technologies, in order; none when another
   // package is ahead of them.

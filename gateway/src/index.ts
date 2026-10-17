@@ -26,6 +26,7 @@ export interface Env {
   /** The GitHub API base (a local stand-in for a preview); api.github.com otherwise. */
   GITHUB_API_URL?: string;
   RATE_PER_HOUR?: string;
+  VOTES_PER_HOUR?: string;
   MAX_PENDING?: string;
   NEW_PER_HOUR?: string;
   FAST_TRACK_PER_DAY?: string;

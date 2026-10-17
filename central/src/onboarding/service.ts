@@ -24,7 +24,7 @@ import { loadStore, saveStore } from "../pipeline/store.ts";
 import { advisoryStage } from "../pipeline/advisories.ts";
 import { withTechLock, withTechLockSync } from "../pipeline/lock.ts";
 import { makeClassifier } from "../pipeline/pipeline.ts";
-import { admit, signals, THRESHOLDS, type Verdict } from "../pipeline/admission.ts";
+import { admit, signals, THRESHOLDS, weeklyDownloads, type Verdict } from "../pipeline/admission.ts";
 import { AddressLimiter, DailyBudget, Voters, clientAddress, limitsFromEnv, nextPeriod, noteTokens, quarterKey, type Limits, type Refusal } from "./limits.ts";
 import { deprecationOf, publishDeprecation } from "./notices.ts";
 import { npmPurl } from "../pipeline/ecosystems.ts";
@@ -67,6 +67,9 @@ export interface Job {
   admitted?: string;
   /** Distinct requesters (a count only; who asked is never stored). The queue's order: most requested first. */
   demand?: number;
+  /** Weekly registry downloads, read once while the technology is new: among new ones of equal demand, the most
+   * adopted drain first. Never public. */
+  downloads?: number;
   /** Release-note tokens this technology used in a calendar quarter (the per-technology cap). */
   quarter?: { key: string; tokens: number };
   /** The quarter in which this technology passed its cap: its remaining notes wait behind other technologies. */
@@ -129,16 +132,23 @@ export class CoverageService {
   readonly advisories: boolean;
   readonly limits: Limits;
   readonly addresses: AddressLimiter;
+  /** Votes per address, a bucket apart from new technologies. */
+  readonly votes: AddressLimiter;
   private readonly budget: DailyBudget;
   private readonly voters = new Voters();
   /** Admission of a package before any crawl or model call; the default reads registry and GitHub signals. */
   private readonly admission: (purl: string, repo: string | undefined) => Promise<Verdict>;
+  /** Weekly downloads by purl, for the order of new technologies; a count left out reads as 0. */
+  private readonly adoption: (purls: string[]) => Promise<Map<string, number>>;
+  /** Jobs whose adoption this process already tried to read: an unreadable count is read again by the next process. */
+  private readonly adoptionTried = new Set<string>();
   constructor(
     concurrency = 2,
     opts: {
       advisories?: boolean;
       limits?: Limits;
       admission?: (purl: string, repo: string | undefined) => Promise<Verdict>;
+      adoption?: (purls: string[]) => Promise<Map<string, number>>;
     } = {},
   ) {
     this.concurrency = concurrency;
@@ -146,11 +156,13 @@ export class CoverageService {
       opts.advisories ?? process.env.UNSTALE_NO_ADVISORIES !== "1";
     this.limits = opts.limits ?? limitsFromEnv();
     this.addresses = new AddressLimiter(this.limits.perAddressPerHour);
+    this.votes = new AddressLimiter(this.limits.votesPerAddressPerHour);
     this.budget = new DailyBudget(this.limits);
     this.admission =
       opts.admission ??
       (async (purl, repo) =>
         admit(await signals(purl, repo), THRESHOLDS[/^pkg:(\w+)\//.exec(purl)?.[1] ?? ""]));
+    this.adoption = opts.adoption ?? weeklyDownloads;
     const folder = join(centralDir(), "onboarding", "jobs");
     if (existsSync(folder))
       for (const file of readdirSync(folder).filter((f) =>
@@ -203,8 +215,9 @@ export class CoverageService {
   }
   /**
    * A client's request. A known technology answers with its job, and the request is a vote: one per requester and
-   * technology, within the address limit (a vote over the limit is not counted; the answer is the same). A new one
-   * passes the address limit and is queued: the budget limits how fast the queue drains, never who may enter.
+   * technology, within the address's vote limit (a vote over it is not counted; the answer is the same). A new one
+   * passes the address's limit of new technologies, a separate bucket, and is queued: the budget limits how fast the
+   * queue drains, never who may enter.
    */
   register(purl: string, address: string): Job | Refusal {
     packageIdentity(purl);
@@ -222,7 +235,7 @@ export class CoverageService {
   private vote(job: Job, address: string, limited = true) {
     const target = (job.merged_into && this.jobs.get(job.merged_into)) || job;
     if (this.voters.has(target.purl, address)) return;
-    if (limited && this.addresses.take(address)) return;
+    if (limited && this.votes.take(address)) return;
     this.voters.add(target.purl, address);
     target.demand = (target.demand ?? 0) + 1;
     this.persist(target);
@@ -257,11 +270,33 @@ export class CoverageService {
     }
     return out;
   }
-  /** The drain order: by tier, then most requested first; ties keep arrival order (a continued job goes to the back). */
+  /**
+   * The drain order: by tier, then most requested first (pure demand, no aging). Among new technologies of equal demand
+   * the most adopted (weekly registry downloads) go first, a proxy for impact; an unread count is 0. Remaining ties keep
+   * arrival order (a continued job goes to the back).
+   */
   queue(): Job[] {
+    const adoption = (j: Job) => (this.tier(j) === 1 ? (j.downloads ?? 0) : 0);
     return [...this.jobs.values()]
       .filter((j) => this.due(j))
-      .sort((a, b) => this.tier(a) - this.tier(b) || (b.demand ?? 0) - (a.demand ?? 0));
+      .sort((a, b) => this.tier(a) - this.tier(b) || (b.demand ?? 0) - (a.demand ?? 0) || adoption(b) - adoption(a));
+  }
+  /** Reads adoption for waiting new technologies that lack it, once per process each, for at most `timeout` ms so a
+   * slow registry never holds up a drain; an unreadable count stays unset (fails open: 0 in the order). */
+  async readAdoption(timeout = 120_000): Promise<void> {
+    const want = [...this.jobs.values()].filter((j) => this.due(j) && this.tier(j) === 1 && j.downloads === undefined && !this.adoptionTried.has(j.purl));
+    if (!want.length) return;
+    for (const j of want) this.adoptionTried.add(j.purl);
+    let timer: NodeJS.Timeout | undefined;
+    const late = new Promise<Map<string, number>>((resolve) => (timer = setTimeout(() => resolve(new Map()), timeout)));
+    const counts = await Promise.race([this.adoption(want.map((j) => j.purl)).catch(() => new Map<string, number>()), late]);
+    clearTimeout(timer);
+    for (const j of want) {
+      const n = counts.get(j.purl);
+      if (n === undefined || !Number.isFinite(n)) continue;
+      j.downloads = n;
+      this.persist(j);
+    }
   }
   /** A job as clients see it: internal fields dropped; a waiting job carries its place in the queue. */
   publicStatus(job: Job) {
@@ -299,8 +334,12 @@ export class CoverageService {
     return job;
   }
   start() {
-    this.pump();
-    this.interval = setInterval(() => this.pump(), 5000);
+    const tick = () => {
+      void this.readAdoption();
+      this.pump();
+    };
+    tick();
+    this.interval = setInterval(tick, 5000);
     return this;
   }
   stop() {
@@ -665,6 +704,7 @@ function publicJob(j: Job) {
     siblings: _siblings,
     merged_into: _merged,
     deprecation_notice: _notice,
+    downloads: _downloads,
     ...fields
   } = j;
   return fields;
