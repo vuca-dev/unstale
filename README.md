@@ -41,11 +41,7 @@ with its stated benefit.
 In your repository:
 
 ```sh
-<<<<<<< Updated upstream
 npx @unstale/cli init            # or, from 0.1.1: npm init @unstale
-=======
-npx @unstale/cli init        # or: brew install vuca-dev/tap/unstale && unstale init
->>>>>>> Stashed changes
 ```
 
 To keep `unstale` on your PATH for the commands below:
