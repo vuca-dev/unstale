@@ -31,8 +31,9 @@ impl std::fmt::Display for Incompatible {
 }
 impl std::error::Error for Incompatible {}
 
-/// Largest body read over HTTP (an index or a shard). Shards are tens of kilobytes; this only bounds a bad server.
-const MAX_BODY: u64 = 64 * 1024 * 1024;
+/// Largest body read over HTTP (an index or a shard). Shards are at most a few hundred kilobytes; this only bounds a bad
+/// server, across all the requests a sync has in flight at once.
+const MAX_BODY: u64 = 8 * 1024 * 1024;
 
 /// Where the catalog is read from.
 pub enum Source {

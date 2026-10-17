@@ -1240,13 +1240,13 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
         "No repository agent review runs during setup",
     );
     // Every catalog refresh says how far it has got: on a large stack it is a few hundred requests. It returns the
-    // technologies it checked.
+    // technologies it checked when every one of them settled, so one that failed is tried again in step 4.
     let catalog_sync = |title: &str, hint: &str| {
         let cands = candidates(ctx, &st);
         sync::sync_reporting(&ctx.config.catalog, &ctx.cache, &cands, &st.purls(), |done, total| {
             ui.update(title, &format!("Matched {done}/{total} technologies against the published catalog"), hint)
         })
-        .map(|_| cands)
+        .map(|rep| rep.failed.is_empty().then_some(cands))
     };
     if !service_available(service) {
         // A static catalog host (GitHub Pages) at the service address has no coverage service: the catalog still
@@ -1293,7 +1293,7 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
     // When the catalog last synced, and for which technologies; step 4 syncs again only when that may be stale.
     let mut synced = None;
     match catalog_sync("Matching published intelligence · step 2/5", "No repository agent review runs during setup") {
-        Ok(cands) => synced = Some((Instant::now(), cands)),
+        Ok(cands) => synced = cands.map(|c| (Instant::now(), c)),
         Err(e) => {
             diagnostics.push(format!("Initial catalog refresh: {e:#}"));
             issue = Some("Catalog refresh unavailable · cached intelligence kept".into());
@@ -1410,7 +1410,7 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
         });
         if moved || stale {
             match catalog_sync("Refreshing shared results · step 4/5", &hint()) {
-                Ok(cands) => synced = Some((Instant::now(), cands)),
+                Ok(cands) => synced = cands.map(|c| (Instant::now(), c)),
                 Err(e) => {
                     diagnostics.push(format!("Catalog refresh: {e:#}"));
                     issue = Some("Catalog refresh unavailable · cached intelligence kept".into());

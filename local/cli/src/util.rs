@@ -293,12 +293,13 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
 pub const REQUESTS_AT_ONCE: usize = 16;
 
 /// `work` over `items` on up to `width` threads. `each` runs on the calling thread as each result arrives, in completion
-/// order, so progress can be shown as it happens; returning false sends nothing further (work under way finishes).
+/// order, so progress can be shown as it happens; returning false sends nothing further (work under way finishes). A
+/// worker hands over each result before taking the next item, so none runs ahead of `each`.
 pub fn concurrent<T: Sync, R: Send>(items: &[T], width: usize, work: impl Fn(&T) -> R + Sync, mut each: impl FnMut(usize, R) -> bool) {
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     let (next, stop) = (AtomicUsize::new(0), AtomicBool::new(false));
     std::thread::scope(|scope| {
-        let (tx, rx) = std::sync::mpsc::channel();
+        let (tx, rx) = std::sync::mpsc::sync_channel(0);
         for _ in 0..width.clamp(1, items.len().max(1)) {
             let (tx, next, stop, work) = (tx.clone(), &next, &stop, &work);
             scope.spawn(move || {
