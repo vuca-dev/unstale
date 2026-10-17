@@ -809,6 +809,10 @@ fn finish(
     linger: bool,
     leave: &AtomicBool,
 ) {
+    ui.present(summary(ctx, pending, brief, issue), linger, leave);
+}
+/// The setup summary and the prompt to paste, as presented at the end of setup.
+fn summary(ctx: &Ctx, pending: &Pending, brief: &Brief, issue: Option<&str>) -> Vec<crate::onboarding_ui::Line> {
     use crate::onboarding_ui::{Line, Tone};
     let name = ctx.root.file_name().unwrap_or_default().to_string_lossy();
     let mut lines = vec![
@@ -853,8 +857,7 @@ fn finish(
     lines.push(Line::new("", Tone::Rule));
     lines.push(Line::new(if ctx.config.mode == Mode::Local { "Decisions stay personal. Share later: unstale init --mode shared --wait 0" } else { "Decisions are shared through Git. Keep personal instead: unstale init --mode personal --wait 0" }, Tone::Muted));
     lines.push(Line::new("Full breakdown and evidence: .unstale/onboarding-report.md", Tone::Muted));
-
-    ui.present(lines, linger, leave);
+    lines
 }
 
 fn report(ctx: &Ctx, pending: &Pending) -> Result<Brief> {
@@ -1399,10 +1402,37 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
         && !leave.load(Ordering::Acquire)
         && std::io::stdin().is_terminal()
         && std::io::stderr().is_terminal();
-    let echoed = if live { ui.input_echo_counter() } else { None };
-    finish(ctx, &pending, &brief, ui, issue.as_deref(), linger && !live, &leave);
-    if live {
-        follow_runs(ctx, service, &st, &mut pending, follow, &leave, echoed)?;
+    if !live {
+        finish(ctx, &pending, &brief, ui, issue.as_deref(), linger, &leave);
+        return Ok(0);
+    }
+    use crate::onboarding_ui::{Line, Live, Tone};
+    let base = summary(ctx, &pending, &brief, issue.as_deref());
+    let with = |live: Vec<Line>| [base.clone(), live].concat();
+    // Room for the header, one line per package and its outcome under the artwork: it keeps moving until exit.
+    if ui.can_show(&with(vec![Line::new("", Tone::Body); 2 + 2 * follow.len()])) {
+        let (mut outcomes, published) = follow_runs(service, &mut pending, follow, &leave, |live| ui.show(with(live)));
+        let mut brief = brief;
+        if published {
+            ui.show(with([outcomes.clone(), vec![Line::new("Refreshing the catalog and your report", Tone::Accent)]].concat()));
+            let (fresh, line) = refresh(ctx, &st, &pending);
+            brief = fresh.unwrap_or(brief);
+            outcomes.push(line);
+        }
+        save(ctx, &pending)?;
+        ui.present([summary(ctx, &pending, &brief, issue.as_deref()), outcomes].concat(), false, &leave);
+    } else {
+        // Too small for the artwork with the summary: the summary prints and stays, the runs follow below it.
+        let echoed = ui.input_echo_counter();
+        ui.present(base, false, &leave);
+        let Some(mut region) = Live::start(echoed) else { return Ok(0) };
+        let (mut outcomes, published) = follow_runs(service, &mut pending, follow, &leave, |live| region.draw(&live));
+        if published {
+            region.draw(&[outcomes.clone(), vec![Line::new("Refreshing the catalog and your report", Tone::Accent)]].concat());
+            outcomes.push(refresh(ctx, &st, &pending).1);
+        }
+        save(ctx, &pending)?;
+        region.settle(&outcomes);
     }
     Ok(0)
 }
@@ -1437,19 +1467,17 @@ fn run_line(job: &Job, elapsed: u64) -> String {
     }
 }
 
-/// Follows the runs working these packages in a few lines below the printed report, polling the service, until each
-/// is published, declined or given up on. A published package refreshes the catalog and the report the prompt reads.
+/// Follows the runs working these packages, polling the service, until each is published, declined or given up on (or
+/// the person leaves): `draw` gets the lines to show each frame. Returns what became of them, and whether any was
+/// published.
 fn follow_runs(
-    ctx: &Ctx,
     service: &str,
-    st: &stack::Stack,
     pending: &mut Pending,
     mut purls: Vec<String>,
     leave: &AtomicBool,
-    echoed: Option<Arc<std::sync::atomic::AtomicUsize>>,
-) -> Result<()> {
-    use crate::onboarding_ui::{Line, Live, Tone};
-    let Some(mut live) = Live::start(echoed) else { return Ok(()) };
+    mut draw: impl FnMut(Vec<crate::onboarding_ui::Line>),
+) -> (Vec<crate::onboarding_ui::Line>, bool) {
+    use crate::onboarding_ui::{Line, Tone};
     let started = Instant::now();
     let mut polled: BTreeMap<String, Instant> = purls.iter().map(|p| (p.clone(), Instant::now())).collect();
     let mut outcomes = vec![];
@@ -1497,33 +1525,36 @@ fn follow_runs(
         )];
         lines.extend(purls.iter().map(|p| Line::new(run_line(&pending.jobs[p], elapsed(&pending.jobs[p], &polled[p])), Tone::Body)));
         lines.extend(outcomes.iter().cloned());
-        live.draw(&lines);
+        draw(lines);
         frame += 1;
         std::thread::sleep(Duration::from_millis(125));
     }
     if leave.load(Ordering::Acquire) && !purls.is_empty() {
         outcomes.push(Line::new("Left early · coverage continues centrally; unstale status picks it up", Tone::Muted));
     }
-    save(ctx, pending)?;
-    if published > 0 {
-        live.draw(&[Line::new("Refreshing the catalog and your report", Tone::Accent)]);
-        let path = ctx.tool.join("onboarding-report.md");
-        // Sections setup appended after the report (connection diagnostics) are kept.
-        let kept = std::fs::read_to_string(&path).ok().and_then(|t| t.find("\n## Connection diagnostics").map(|i| t[i..].to_string()));
-        let line = match sync::sync(&ctx.config.catalog, &ctx.cache, &candidates(ctx, st), &st.purls()).and_then(|_| report(ctx, pending)) {
-            Ok(brief) => {
-                if let Some(kept) = kept {
-                    let text = std::fs::read_to_string(&path)? + &kept;
-                    util::write_atomic(&path, text.as_bytes())?;
-                }
-                Line::new(format!("Report updated · {} upgrades · {} capabilities · the prompt above reads the new report", brief.upgrades.len(), brief.highlights.len()), Tone::Fresh)
-            }
-            Err(e) => Line::new(format!("Report not refreshed ({}) · run unstale status --wait 0", display_text(&format!("{e:#}"))), Tone::Amber),
-        };
-        outcomes.push(line);
+    (outcomes, published > 0)
+}
+
+/// After a package was published: the catalog and the report the prompt reads, refreshed; the new brief and one line.
+fn refresh(ctx: &Ctx, st: &stack::Stack, pending: &Pending) -> (Option<Brief>, crate::onboarding_ui::Line) {
+    use crate::onboarding_ui::{Line, Tone};
+    let path = ctx.tool.join("onboarding-report.md");
+    // Sections setup appended after the report (connection diagnostics) are kept.
+    let kept = std::fs::read_to_string(&path).ok().and_then(|t| t.find("\n## Connection diagnostics").map(|i| t[i..].to_string()));
+    let fresh = sync::sync(&ctx.config.catalog, &ctx.cache, &candidates(ctx, st), &st.purls()).and_then(|_| report(ctx, pending)).and_then(|brief| {
+        if let Some(kept) = kept {
+            let text = std::fs::read_to_string(&path)? + &kept;
+            util::write_atomic(&path, text.as_bytes())?;
+        }
+        Ok(brief)
+    });
+    match fresh {
+        Ok(brief) => {
+            let line = Line::new(format!("Report updated · {} upgrades · {} capabilities · the prompt above reads the new report", brief.upgrades.len(), brief.highlights.len()), Tone::Fresh);
+            (Some(brief), line)
+        }
+        Err(e) => (None, Line::new(format!("Report not refreshed ({}) · run unstale status --wait 0", display_text(&format!("{e:#}"))), Tone::Amber)),
     }
-    live.settle(&outcomes);
-    Ok(())
 }
 
 #[cfg(test)]

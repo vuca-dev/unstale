@@ -135,6 +135,8 @@ struct Progress {
     detail: String,
     hint: String,
     result: Option<Vec<Line>>,
+    /// Under a result: how the presentation ends (none while work continues below it).
+    footer: Option<String>,
 }
 pub struct Display {
     state: Arc<Mutex<Progress>>,
@@ -181,6 +183,8 @@ impl Display {
                 let mut size = size;
                 let mut measured = Instant::now();
                 let mut previous_rows = 0usize;
+                let mut last_frame: Vec<String> = vec![];
+                let mut drawn_size = size;
                 loop {
                     if measured.elapsed() >= Duration::from_secs(1) {
                         size = dimensions().unwrap_or(size);
@@ -201,12 +205,9 @@ impl Display {
                             color,
                         )
                     };
-                    if snapshot.result.is_some() && !done {
+                    if let Some(footer) = snapshot.footer.filter(|_| snapshot.result.is_some() && !done) {
                         body.extend(render(
-                            &[Line::new(
-                                "Setup finished · Enter to return now · closes automatically",
-                                Tone::Muted,
-                            )],
+                            &[Line::new(footer, Tone::Muted)],
                             size.1.saturating_sub(1),
                             color,
                         ));
@@ -250,9 +251,20 @@ impl Display {
                     if previous_rows > 0 {
                         let _ = write!(err, "\x1b[{}A", previous_rows + echoed);
                     }
-                    for line in frame {
-                        let _ = writeln!(err, "\r\x1b[2K{line}");
+                    // A row the previous frame drew the same is left untouched, so a selection in it (the prompt) survives
+                    // the artwork moving above it.
+                    if size != drawn_size || echoed > 0 {
+                        last_frame.clear();
+                        drawn_size = size;
                     }
+                    for (i, line) in frame.iter().enumerate() {
+                        if last_frame.get(i) == Some(line) {
+                            let _ = writeln!(err);
+                        } else {
+                            let _ = writeln!(err, "\r\x1b[2K{line}");
+                        }
+                    }
+                    last_frame = frame;
                     // Only erase rows owned by the previous frame, never earlier shell output.
                     for _ in rows..previous_rows {
                         let _ = writeln!(err, "\r\x1b[2K");
@@ -292,6 +304,7 @@ impl Display {
             detail: detail.into(),
             hint: hint.into(),
             result: None,
+            footer: None,
         };
         if self.thread.is_none() {
             let mut last = self.last_plain.lock().unwrap();
@@ -316,6 +329,17 @@ impl Display {
                     .any(|t| t == "echo")
             });
         echoes.then(|| self.echoed_lines.clone())
+    }
+    /// Whether `lines` fit under the moving artwork in this terminal.
+    pub fn can_show(&self, lines: &[Line]) -> bool {
+        let size = dimensions().unwrap_or(self.size);
+        self.animated && self.thread.is_some() && Layout::fit(size.0, size.1, render(lines, size.1.saturating_sub(1), false).len()).is_some()
+    }
+    /// Shows `lines` under the artwork, which keeps moving: work goes on, and `present` ends it.
+    pub fn show(&self, lines: Vec<Line>) {
+        let mut state = self.state.lock().unwrap();
+        state.result = Some(lines);
+        state.footer = None;
     }
     pub fn present(mut self, lines: Vec<Line>, linger: bool, leave: &AtomicBool) {
         let size = if self.thread.is_some() {
@@ -350,7 +374,11 @@ impl Display {
         let hold =
             linger && self.animated && Layout::fit(size.0, size.1, readable + footer).is_some();
         if hold {
-            self.state.lock().unwrap().result = Some(view);
+            {
+                let mut state = self.state.lock().unwrap();
+                state.result = Some(view);
+                state.footer = Some("Setup finished · Enter to return now · closes automatically".into());
+            }
             let presented = Instant::now();
             while (self.started.elapsed() < Duration::from_secs(8) || presented.elapsed() < Duration::from_secs(3)) && !leave.load(Ordering::Acquire)
             {
