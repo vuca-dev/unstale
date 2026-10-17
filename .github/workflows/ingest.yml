@@ -217,6 +217,20 @@ jobs:
           UNSTALE_SIGNING_KEY: ${{ secrets.UNSTALE_SIGNING_KEY }}
         run: npm --prefix central run catalog -- export "$SITE_DIR"
 
+      # The website at unstale.sh (gateway/site/build.ts): a home page and one page per package, generated from the
+      # exported tree and deployed with it. Built aside and copied in only when complete; a failure never blocks the
+      # catalog deploy.
+      - name: Build the website
+        if: steps.export.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          web="$RUNNER_TEMP/web"; rm -rf "$web"; mkdir -p "$web"
+          ln -s "$SITE_DIR/v1" "$web/v1"
+          node gateway/site/build.ts "$web"
+          rm "$web/v1"
+          cp -R "$web/." "$SITE_DIR/"
+
       # Guard: deploy only a tree whose root parses and whose every index entry has its shard, with the size and
       # sha256 the index states, whose root and indexes verify against the public key release clients carry
       # (UNSTALE_CATALOG_KEY; a client verifies the same), and which fits the static asset limits.

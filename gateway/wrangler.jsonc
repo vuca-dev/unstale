@@ -10,7 +10,11 @@
   "workers_dev": true,
   // The public address, compiled into release builds as UNSTALE_DEFAULT_SERVICE: keep it stable. The workers.dev
   // address stays on (UNSTALE_GATEWAY_URL may use either).
-  "routes": [{ "pattern": "api.unstale.sh", "custom_domain": true }],
+  // unstale.sh is the website (gateway/site/build.ts), served from the same static tree.
+  "routes": [
+    { "pattern": "api.unstale.sh", "custom_domain": true },
+    { "pattern": "unstale.sh", "custom_domain": true }
+  ],
   "assets": {
     "binding": "ASSETS",
     "run_worker_first": ["/health", "/coverage", "/internal/*"]
