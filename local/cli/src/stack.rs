@@ -467,7 +467,21 @@ impl Catalogs {
 /// The entries of a one-line flow mapping (`{ next: 16.4.1, react: ^19 }`).
 fn flow(v: &str) -> Option<Vec<(String, Option<&str>)>> {
     let inner = v.strip_prefix('{')?.strip_suffix('}')?;
-    Some(inner.split(',').filter_map(|e| split_key(e.trim())).collect())
+    // Commas inside a quoted scalar (`">=1.0.0, <2.0.0"`) belong to it.
+    let (mut entries, mut start, mut quote) = (vec![], 0, None);
+    for (i, ch) in inner.char_indices() {
+        match (quote, ch) {
+            (None, '\'' | '"') => quote = Some(ch),
+            (Some(q), _) if ch == q => quote = None,
+            (None, ',') => {
+                entries.push(&inner[start..i]);
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    entries.push(&inner[start..]);
+    Some(entries.into_iter().filter_map(|e| split_key(e.trim())).collect())
 }
 
 /// The `catalog` and `catalogs` sections of `pnpm-workspace.yaml` (line-based, as `parse_pnpm`).
@@ -957,6 +971,7 @@ mod tests {
         assert_eq!(flow.resolve("next", "catalog:"), Some("^16.1.0"));
         assert_eq!(flow.resolve("@types/react", "catalog:default"), Some("^19.0.0"));
         assert_eq!(flow.resolve("react", "catalog:legacy"), Some("~18.2.0"));
+        assert_eq!(parse_pnpm_workspace("catalog: { a: \">=1.0.0, <2.0.0\", b: ^3 }\n").resolve("a", "catalog:"), Some(">=1.0.0, <2.0.0"));
         // A lockfile that resolved a catalog entry outside the catalog's range is out of date like any other.
         write(d.path(), "apps/web/pnpm-lock.yaml", "lockfileVersion: '9.0'\n\nimporters:\n\n  .:\n    dependencies:\n      next:\n        specifier: 'catalog:'\n        version: 15.5.0\n");
         let s = detect(d.path()).unwrap();

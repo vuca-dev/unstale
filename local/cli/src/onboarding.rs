@@ -288,6 +288,10 @@ fn retry_after_secs(v: &str, now: u64) -> Option<u64> {
     let (day, year): (i64, i64) = (day.parse().ok()?, year.parse().ok()?);
     let hms: Vec<i64> = time.split(':').map(|x| x.parse().ok()).collect::<Option<_>>()?;
     let [h, m, sec] = hms.as_slice() else { return None };
+    // Out of range fields are malformed; bounding them keeps the arithmetic below from overflowing.
+    if !(1970..=9999).contains(&year) || !(1..=31).contains(&day) || !(0..24).contains(h) || !(0..60).contains(m) || !(0..=60).contains(sec) {
+        return None;
+    }
     // Days since 1970-01-01 of a proleptic Gregorian date (Howard Hinnant's days_from_civil).
     let y = if month <= 2 { year - 1 } else { year };
     let era = y.div_euclid(400);
@@ -2037,6 +2041,8 @@ mod tests {
         // 1_792_022_400 is Thursday 15 October 2026, 00:00:00 UTC.
         assert_eq!(retry_after_secs("Thu, 15 Oct 2026 00:00:00 GMT", 1_792_022_400 - 20_880), Some(20_880));
         assert_eq!(retry_after_secs("soon", now), None);
+        assert_eq!(retry_after_secs("Thu, 15 Oct 99999999999999999 00:00:00 GMT", now), None);
+        assert_eq!(retry_after_secs("Thu, 15 Oct 2026 25:00:00 GMT", now), None);
         assert_eq!(span(3600), "1h 00m");
     }
     #[test]
