@@ -1,0 +1,23 @@
+{
+  "name": "@unstale/gateway",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Cloudflare Worker: the exported catalog as static files, and the coverage registration queue.",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20261001.1",
+    "@types/node": "26.6.3",
+    "typescript": "7.0.2",
+    "vitest": "5.0.3",
+    "wrangler": "4.146.0"
+  }
+}

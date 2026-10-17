@@ -115,6 +115,12 @@ export class CoverageService {
   readonly jobs = new Map<string, Job>();
   private running = new Set<string>();
   private interval: NodeJS.Timeout | undefined;
+  /** Batch mode (`drain`): the time after which no job is started; 0 while serving. */
+  private draining = 0;
+  /** Batch mode before `drain`: requests are queued but nothing starts (`hold`). */
+  private held = false;
+  /** Jobs started since construction (a drain reports its share). */
+  private launched = 0;
   readonly concurrency: number;
   /** The advisories stage after a technology's history is published (off: `advisories: false` or UNSTALE_NO_ADVISORIES=1). */
   readonly advisories: boolean;
@@ -280,7 +286,62 @@ export class CoverageService {
   stop() {
     clearInterval(this.interval);
   }
-  private pump() {
+  /** Batch mode: queue requests without starting any job until `drain`. */
+  hold(): this {
+    this.held = true;
+    return this;
+  }
+  /**
+   * Requests gathered elsewhere (the gateway's queue): `demand` distinct requesters per package, already deduplicated
+   * and address-limited there. A known package gains the votes; a new one is queued. Invalid identities are skipped.
+   */
+  enqueue(requests: Iterable<{ purl: string; demand: number }>): string[] {
+    const taken: string[] = [];
+    for (const { purl, demand } of requests) {
+      try {
+        packageIdentity(purl);
+      } catch {
+        continue;
+      }
+      const job = this.jobs.get(purl) ?? this.submit(purl);
+      const target = (job.merged_into && this.jobs.get(job.merged_into)) || job;
+      target.demand = (target.demand ?? 0) + Math.max(0, Math.floor(demand));
+      this.persist(target);
+      taken.push(purl);
+    }
+    return taken;
+  }
+  /**
+   * Batch mode for an ephemeral runner: works the queue until nothing more can start (empty, not yet due, or the
+   * budget spent) or `deadline` passes, then waits for running jobs up to `grace` ms. A job still running then is
+   * resumed by the next run (an interrupted job is requeued on load).
+   */
+  async drain(deadline: number, grace = 10 * 60_000, poll = 500): Promise<{ started: number; unfinished: number }> {
+    this.draining = deadline;
+    this.held = false;
+    const before = this.launched;
+    // A finished job starts the next itself; when nothing is running and nothing more starts, the queue is done.
+    while (Date.now() < deadline && (this.running.size || this.pump()))
+      await new Promise((r) => setTimeout(r, poll));
+    const stop = Date.now() + grace;
+    while (this.running.size && Date.now() < stop) await new Promise((r) => setTimeout(r, poll));
+    return { started: this.launched - before, unfinished: this.running.size };
+  }
+  /** Every job as `GET /coverage` answers it (the queue order computed once), for a static copy of the answers. */
+  statuses(): ReturnType<typeof publicJob>[] {
+    const waiting = this.queue().filter((j) => !this.running.has(j.purl));
+    const at = new Map(waiting.map((j, i) => [j, i]));
+    return [...this.jobs.values()].map((job) => {
+      const i = at.get(job);
+      const fields = publicJob(job);
+      if (i === undefined) return fields;
+      return { ...fields, stage: `${job.stage} (position ${i + 1} of ${waiting.length})`, queue_position: i + 1, queue_length: waiting.length };
+    });
+  }
+  /** Starts what the queue and the budget allow; returns how many jobs it started. */
+  private pump(): number {
+    if (this.held) return 0;
+    let started = 0;
     for (const job of this.queue()) {
       if (this.running.size >= this.concurrency) break;
       if (this.running.has(job.purl)) continue;
@@ -302,6 +363,8 @@ export class CoverageService {
         break;
       }
       this.running.add(job.purl);
+      started++;
+      this.launched++;
       void this.work(job)
         .catch((error) => {
           job.failures = (job.failures ?? 0) + 1;
@@ -320,9 +383,10 @@ export class CoverageService {
         })
         .finally(() => {
           this.running.delete(job.purl);
-          this.pump();
+          if (!this.draining || Date.now() < this.draining) this.pump();
         });
     }
+    return started;
   }
   /** Back of its tier: a job that yields goes behind jobs of equal demand. */
   private requeue(job: Job, stage: string) {

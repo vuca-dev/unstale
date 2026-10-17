@@ -1,6 +1,5 @@
 // Public identity -> verified registry metadata -> official sources. No repository context enters here.
 import { HttpClient } from "../collector/http.ts";
-import { sha256 } from "../pipeline/util.ts";
 import { TECHNOLOGIES, type Technology } from "../pipeline/technologies.ts";
 
 export interface PublicTechnology {
@@ -15,34 +14,8 @@ export interface PublicTechnology {
   tag: string;
   components: string[];
 }
-export function npmIdentity(purl: string): string {
-  if (
-    !/^pkg:npm\/(?:%40[a-z0-9._-]+\/)?[a-z0-9._-]+$/.test(purl) ||
-    purl.length > 230
-  )
-    throw new Error(
-      "Expected a canonical public npm package URL, without version or qualifiers",
-    );
-  return purl.slice(8).replace("%40", "@");
-}
-/** A PEP 503-normalised PyPI name from a canonical `pkg:pypi/<name>` URL. */
-export function pypiIdentity(purl: string): string {
-  if (!/^pkg:pypi\/[a-z0-9]+(?:-[a-z0-9]+)*$/.test(purl) || purl.length > 230)
-    throw new Error("Expected a canonical public PyPI package URL (PEP 503 normalised), without version or qualifiers");
-  return purl.slice(9);
-}
-/** The package name of a public identity in an ecosystem this service registers (npm, PyPI). */
-export function packageIdentity(purl: string): string {
-  return purl.startsWith("pkg:pypi/") ? pypiIdentity(purl) : npmIdentity(purl);
-}
-export function technologyId(purl: string): string {
-  const name = packageIdentity(purl);
-  return (
-    name.replace(/^@/, "").replace(/[^a-z0-9.-]/g, "-") +
-    "-" +
-    sha256(purl).slice(0, 8)
-  );
-}
+export { npmIdentity, pypiIdentity, packageIdentity, technologyId } from "./identity.ts";
+import { npmIdentity, packageIdentity, pypiIdentity, technologyId } from "./identity.ts";
 export const DISCOVERY_VERSION = 2;
 export function releasePattern(
   purl: string,

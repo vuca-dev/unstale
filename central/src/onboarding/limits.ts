@@ -6,12 +6,13 @@
 // known technology is never refused. The budget is the one check that fails closed: a budget file that exists but
 // cannot be read refuses. Client addresses live in memory only and are never logged or written (vault: Source
 // Registry and Coverage, "Subscriptions and the shared registry").
-import { randomBytes } from "node:crypto";
 import type { IncomingMessage } from "node:http";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { centralDir } from "../pipeline/paths.ts";
-import { sha256, writeAtomic } from "../pipeline/util.ts";
+import { writeAtomic } from "../pipeline/util.ts";
+import type { Refusal } from "./requesters.ts";
+export { AddressLimiter, Voters, type Refusal } from "./requesters.ts";
 
 export interface Limits {
   /** New technologies one client address may register per hour. */
@@ -90,32 +91,7 @@ export function clientAddress(req: IncomingMessage, trustProxy: number): string 
   return hops[hops.length - trustProxy] ?? peer;
 }
 
-/** `kind`: which budget refused (new technologies, job runs, or release-note tokens). */
-export type Refusal = { limit: "address" | "budget"; retryAfter: number; kind?: "new" | "runs" | "tokens" };
 
-
-/** A sliding one-hour window per address, bounded in size; oldest addresses are dropped first. */
-export class AddressLimiter {
-  private readonly seen = new Map<string, number[]>();
-  readonly perHour: number;
-  private readonly maxAddresses: number;
-  constructor(perHour: number, maxAddresses = 10_000) {
-    this.perHour = perHour;
-    this.maxAddresses = maxAddresses;
-  }
-  take(address: string, now = Date.now()): Refusal | undefined {
-    const recent = (this.seen.get(address) ?? []).filter((t) => t > now - 3600_000);
-    if (recent.length >= this.perHour) {
-      this.seen.set(address, recent);
-      return { limit: "address", retryAfter: Math.ceil((recent[0]! + 3600_000 - now) / 1000) };
-    }
-    recent.push(now);
-    this.seen.delete(address);
-    this.seen.set(address, recent);
-    if (this.seen.size > this.maxAddresses) this.seen.delete(this.seen.keys().next().value!);
-    return undefined;
-  }
-}
 
 interface BudgetFile {
   day: string;
@@ -210,30 +186,3 @@ export class DailyBudget {
   }
 }
 
-/**
- * Demand: distinct requesters per technology, deduplicated in memory only. A requester is a salted hash of the client
- * address with a salt drawn once per process and never written, so not even the dedupe table holds an address; only
- * the counts are persisted (in the jobs). After a restart the same requester can vote once more for a technology it
- * voted for before; that is bounded by the address limit and can only reorder the queue, never raise spend. A salted
- * hash persisted across restarts (even rotated daily) would keep a per-requester pseudonym and allow correlation,
- * which the registry's privacy rule excludes ("avoid retention/correlation", no stable client ids).
- */
-export class Voters {
-  private readonly salt = randomBytes(16).toString("hex");
-  private readonly seen = new Map<string, true>();
-  private readonly max: number;
-  constructor(max = 200_000) {
-    this.max = max;
-  }
-  private key(technology: string, address: string): string {
-    return sha256(`${this.salt}\n${technology}\n${address}`);
-  }
-  /** Whether this address already asked for this technology (in this process). */
-  has(technology: string, address: string): boolean {
-    return this.seen.has(this.key(technology, address));
-  }
-  add(technology: string, address: string): void {
-    this.seen.set(this.key(technology, address), true);
-    if (this.seen.size > this.max) this.seen.delete(this.seen.keys().next().value!);
-  }
-}

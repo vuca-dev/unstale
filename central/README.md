@@ -63,6 +63,7 @@ Every variable is optional; the defaults suit a developer machine.
 | `UNSTALE_NO_ADVISORIES` | unset | `1` skips the advisories stage after a technology's history is published |
 | `UNSTALE_LOCK_TIMEOUT_MS` | `1200000` (20 minutes) | How long a writer waits for a technology's lock before failing |
 | `UNSTALE_BIN` | `<repo>/local/target/release/unstale` | Client binary used for `count-terms` by the rarity sample |
+| `UNSTALE_GATEWAY_URL`, `UNSTALE_GATEWAY_TOKEN` | unset | `drain`: the gateway whose held registrations are pulled and acknowledged; unset, only the saved queue is worked |
 
 ## Deploy
 
@@ -75,6 +76,11 @@ Node 24 runs `src/` directly (type stripping), so there is no build step. The im
 `UNSTALE_STORE=/data` on a volume and `UNSTALE_HOST=0.0.0.0`; the healthcheck calls `GET /health`. It has no Codex
 binary: coverage jobs that extract need one mounted or added (`UNSTALE_CODEX_BIN`). Serving the catalog needs no
 secrets.
+
+Without an always-on host, coverage runs in batches (`.github/workflows/ingest.yml`): `npm run drain -- [--minutes
+240] [--taken <file>]` pulls the gateway's registrations, works the queue until nothing more can start or the
+deadline passes, and writes each job's status for `catalog export`; `npm run drain -- ack <file>` acknowledges them
+after the deploy. The gateway (`gateway/`) is the public address in that setup.
 
 ## How a check works
 

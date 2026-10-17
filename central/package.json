@@ -17,6 +17,7 @@
     "pipeline": "tsx src/pipeline/cli.ts pipeline",
     "catalog": "tsx src/pipeline/cli.ts",
     "serve": "tsx src/onboarding/cli.ts",
+    "drain": "tsx src/onboarding/drain.ts",
     "docs": "tsx src/docs/cli.ts"
   },
   "dependencies": {

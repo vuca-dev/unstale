@@ -17,6 +17,7 @@ import { readJson, sha256 } from "./util.ts";
 
 /** What the service route serves (service.ts); nothing outside it is exported. */
 const TECH_FILE = /^[a-z0-9._-]+\.json$/;
+const STATUS_FILE = /^[0-9a-f]{64}\.json$/;
 const SHARD_PATH = /^v1\/shards\/[a-z0-9._-]+\/[a-zA-Z0-9._-]+\.jsonl\.gz$/;
 
 /** The onboarding job fields the index route reads. */
@@ -52,6 +53,8 @@ export interface ExportResult {
   technologies: number;
   shards: number;
   bytes: number;
+  /** Coverage status files exported. */
+  coverage: number;
   prune: PruneResult;
 }
 
@@ -62,7 +65,7 @@ function replaceable(dir: string): boolean {
   return !entries.length || (entries.includes(".nojekyll") && existsSync(join(dir, "v1", "root.json")));
 }
 
-export function exportCatalog(source: string, dir: string, opts: { now?: Date; jobs?: DescribedJob[]; lock?: PruneOptions["lock"] } = {}): ExportResult {
+export function exportCatalog(source: string, dir: string, opts: { now?: Date; jobs?: DescribedJob[]; lock?: PruneOptions["lock"]; statuses?: string } = {}): ExportResult {
   const src = resolve(source);
   const out = resolve(dir);
   if (!relative(src, out).startsWith("..") || !relative(out, src).startsWith("..")) throw new Error(`export directory ${out} overlaps the catalog ${src}`);
@@ -119,6 +122,18 @@ export function exportCatalog(source: string, dir: string, opts: { now?: Date; j
         bytes += gz.length;
       }
     }
+    // Coverage status per package (written by `coverage drain`), so a static host can answer `GET /coverage`:
+    // `v1/coverage/<sha256(purl)>.json`, each checked to name the package its file is named for.
+    let coverage = 0;
+    const statusDir = opts.statuses ?? join(centralDir(), "onboarding", "status");
+    for (const f of (existsSync(statusDir) ? readdirSync(statusDir) : []).filter((f) => STATUS_FILE.test(f)).sort()) {
+      const body = readFileSync(join(statusDir, f));
+      const status = JSON.parse(body.toString()) as { purl?: unknown; technology?: unknown };
+      if (typeof status.purl !== "string" || `${sha256(status.purl)}.json` !== f || typeof status.technology !== "string")
+        throw new Error(`coverage status ${f} does not name the package it is filed under`);
+      put(`v1/coverage/${f}`, body);
+      coverage++;
+    }
     put(".nojekyll", "");
     put("v1/root.json", root);
     // The swap: a previous export moves aside, the new tree takes its name, the old one is removed.
@@ -126,7 +141,7 @@ export function exportCatalog(source: string, dir: string, opts: { now?: Date; j
     if (existsSync(out)) renameSync(out, old);
     renameSync(tmp, out);
     rmSync(old, { recursive: true, force: true });
-    return { technologies, shards: shards.size, bytes, prune };
+    return { technologies, shards: shards.size, bytes, coverage, prune };
   } catch (e) {
     rmSync(tmp, { recursive: true, force: true });
     throw e;

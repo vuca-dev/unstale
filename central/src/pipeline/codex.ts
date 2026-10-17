@@ -44,6 +44,12 @@ function exec(prompt: string, model: string): Promise<{ text: string; usage?: Co
     p.stdout.on("data", (d: Buffer) => (out += d.toString()));
     p.stderr.on("data", (d: Buffer) => (err += d.toString()));
     const timer = setTimeout(() => p.kill("SIGKILL"), TIMEOUT_MS);
+    // No Codex binary (an ephemeral runner): a failed call, as a non-zero exit is, not an unhandled error event.
+    p.on("error", (e) => {
+      clearTimeout(timer);
+      rmSync(work, { recursive: true, force: true });
+      resolve({ text: "", code: null, stderr: String(e).slice(-300) });
+    });
     p.on("close", (code) => {
       clearTimeout(timer);
       rmSync(work, { recursive: true, force: true });

@@ -1,0 +1,30 @@
+// The unstale Worker (src/index.ts). Static files: the exported catalog, passed at deploy time
+// (`wrangler deploy --assets <export dir>`, ingest.yml). Secrets, set once with `wrangler secret put`:
+// DRAIN_TOKEN (shared with ingest.yml as GATEWAY_DRAIN_TOKEN) and, for fast-track, GITHUB_DISPATCH_TOKEN.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "unstale",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "assets": {
+    "binding": "ASSETS",
+    "run_worker_first": ["/health", "/coverage", "/internal/*"]
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "COVERAGE", "class_name": "Coverage" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Coverage"] }],
+  "vars": {
+    "RATE_PER_HOUR": "20",
+    "MAX_PENDING": "50000",
+    // Early coverage runs for new packages per UTC day (0: wait for the schedule). Each costs runner minutes, which
+    // a private repository pays for; admission and the coverage budget still apply inside the run.
+    "FAST_TRACK_PER_DAY": "0",
+    "FAST_TRACK_INTERVAL_MINUTES": "15",
+    "GITHUB_REPOSITORY": "jasontd92/unstale",
+    "GITHUB_WORKFLOW": "ingest.yml",
+    "GITHUB_REF": "main"
+  }
+}

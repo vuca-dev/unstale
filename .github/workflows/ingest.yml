@@ -1,6 +1,11 @@
-# Central ingestion as a batch job on an ephemeral runner, then a static catalog deploy to GitHub Pages.
+# Central ingestion and coverage as a batch job on an ephemeral runner, then a deploy of the catalog and the gateway.
 #
-#   restore state -> pipeline -> export static catalog -> verify -> save state -> deploy (Pages)
+#   restore state -> pipeline -> drain the coverage queue -> export -> verify -> deploy (Cloudflare) -> save -> ack
+#
+# The gateway (gateway/, a Cloudflare Worker) is the public address: it serves the exported catalog as static files,
+# answers the coverage protocol, and holds new registrations until a run takes them (`drain`). A run acknowledges
+# what it took only after its deploy published their status and its state is saved, so a failed run loses no request
+# (vault: Central Scheduling and Infrastructure, "Registration gateway").
 #
 # State: the central store (UNSTALE_STORE: central/ state and caches, catalog/ published tree) is the only thing
 # that must outlive a runner. It is kept as assets of a *draft* release tagged `catalog-state` in this repository:
@@ -8,15 +13,15 @@
 # `state-<stamp>.sha256`, uploaded last, so a generation without its checksum file is incomplete and ignored. The
 # newest three generations are kept (rollback); older ones are deleted after a successful save. Why not the
 # alternatives: actions/cache is evicted after 7 days without access and shares a 10 GB repository limit, so it
-# cannot be the only copy; a git branch would put ~1 GB of churning caches and shallow clones into history (and
-# hit the 100 MB file limit); artifacts expire. A draft release is durable, has no storage quota, is invisible to
-# readers without push access, and is a plain download for a later move to another scheduler (vault: Central
-# Scheduling and Infrastructure, "Portability stance"). Seeding it from an operator's store: CONTRIBUTING.md.
+# cannot be the only copy; a git branch would put churning caches into history (and hit the 100 MB file limit);
+# artifacts expire. A draft release is durable, has no storage quota, is invisible to readers without push access,
+# and is a plain download for a later move to another scheduler (vault: Central Scheduling and Infrastructure,
+# "Portability stance"). Seeding it from an operator's store: CONTRIBUTING.md.
 #
-# Schedule: every 3 hours. Each run re-lists releases (--refresh), so the catalog is at most ~3 hours behind
-# upstream; Pages allows about 10 deploys an hour, so this stays far inside the "hourly batched deploys" budget.
-# A run moves the whole state (1.1 GB on disk, ~0.5 GB compressed, October 2026) twice, which an hourly schedule
-# would multiply for little gain. Model calls are cached per record, so a run with no new releases makes none.
+# Schedule: once a day while the repository is private (its Actions minutes are metered); every 3 hours once it is
+# public (`23 */3 * * *`), where standard runners are free. Model calls are cached per record, so a run with no new
+# releases makes none, and the coverage budget (UNSTALE_BUDGET_TOKENS) bounds what any run can spend. The gateway may
+# also start a run early for a new package (`reason: fast-track`, at most FAST_TRACK_PER_DAY a day).
 #
 # 60-day rule: GitHub disables scheduled workflows in a public repository after 60 days without repository
 # activity. This job commits nothing (state lives in release assets), so it does not count as activity. When the
@@ -26,11 +31,11 @@ name: ingest
 
 on:
   schedule:
-    - cron: "23 */3 * * *"
+    - cron: "23 5 * * *"
   workflow_dispatch:
     inputs:
       tech:
-        description: "Only this technology (e.g. next); empty for all"
+        description: "Only this catalog technology in the pipeline step (e.g. next); empty for all"
         required: false
         type: string
       bootstrap:
@@ -39,10 +44,14 @@ on:
         type: boolean
         default: false
       deploy:
-        description: "Deploy the exported catalog to GitHub Pages"
+        description: "Deploy the exported catalog and the gateway"
         required: false
         type: boolean
         default: true
+      reason:
+        description: "Why the run started (the gateway sends fast-track)"
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -54,18 +63,22 @@ concurrency:
 jobs:
   ingest:
     runs-on: ubuntu-latest
-    # Under the 6-hour hosted-job limit, with the pipeline step capped lower so the state is still saved.
+    # Under the 6-hour hosted-job limit, with the pipeline and drain capped lower so the state is still saved.
     timeout-minutes: 300
     permissions:
       contents: write # the catalog-state draft release (read and write its assets)
-    outputs:
-      deploy: ${{ steps.verify.outputs.deploy }}
     env:
       STATE_TAG: catalog-state
       STATE_KEEP: "3"
       GH_REPO: ${{ github.repository }}
-      GH_TOKEN: ${{ github.token }} # state release only; ingestion uses INGEST_GITHUB_TOKEN
-      CODEX_VERSION: 0.162.1
+      GH_TOKEN: ${{ github.token }} # state release only; ingestion reads GitHub with INGEST_GITHUB_TOKEN
+      # Extraction on paid tokens through the gateway (flex tier by default; DECISIONS "Extraction model switch").
+      # The classifier's Codex fallback is not installed: a call it would answer fails, and the job retries later.
+      UNSTALE_EXTRACT_MODEL: vercel:openai/gpt-6-luna
+      UNSTALE_BUDGET_TOKENS: ${{ vars.UNSTALE_BUDGET_TOKENS || '250000' }}
+      UNSTALE_GATEWAY_URL: ${{ vars.UNSTALE_GATEWAY_URL }}
+      # Workers static assets allow 20,000 files per version on the free plan (100,000 paid).
+      ASSET_FILE_LIMIT: ${{ vars.ASSET_FILE_LIMIT || '20000' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -73,49 +86,44 @@ jobs:
 
       - name: Required secrets are set
         env:
-          INGEST_GITHUB_TOKEN: ${{ secrets.INGEST_GITHUB_TOKEN }}
           JEV_API_KEY: ${{ secrets.JEV_API_KEY }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          GATEWAY_DRAIN_TOKEN: ${{ secrets.GATEWAY_DRAIN_TOKEN }}
+          INGEST_GITHUB_TOKEN: ${{ secrets.INGEST_GITHUB_TOKEN }}
         run: |
           missing=0
-          for name in INGEST_GITHUB_TOKEN JEV_API_KEY OPENAI_API_KEY; do
+          for name in JEV_API_KEY AI_GATEWAY_API_KEY CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID GATEWAY_DRAIN_TOKEN; do
             if [ -z "${!name}" ]; then echo "::error title=Missing secret::$name is not set"; missing=1; fi
           done
+          if [ -z "$INGEST_GITHUB_TOKEN" ]; then
+            echo "::warning title=INGEST_GITHUB_TOKEN not set::Reading GitHub with the workflow token (1,000 requests an hour)."
+          fi
+          if [ -z "$UNSTALE_GATEWAY_URL" ]; then
+            echo "::warning title=UNSTALE_GATEWAY_URL not set::Registrations are not pulled; only the saved queue is worked."
+          fi
           exit "$missing"
 
       - name: Paths
         run: |
           {
             echo "UNSTALE_STORE=$RUNNER_TEMP/store"
-            echo "UNSTALE_BIN=$GITHUB_WORKSPACE/local/target/release/unstale"
             echo "SITE_DIR=$RUNNER_TEMP/site"
+            echo "TAKEN=$RUNNER_TEMP/taken.json"
           } >> "$GITHUB_ENV"
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: central/package-lock.json
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable branch
-        with:
-          toolchain: stable
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          workspaces: local
-      # The rarity sample counts terms with the client's own matcher (`unstale count-terms`, UNSTALE_BIN).
-      - name: Build the client
-        run: cargo build --release --locked --manifest-path local/Cargo.toml -p unstale
+          cache-dependency-path: |
+            central/package-lock.json
+            gateway/package-lock.json
       - name: npm ci
-        run: npm ci --prefix central --no-audit --no-fund
-
-      - name: Install and log in to the Codex CLI
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          npm install -g --no-audit --no-fund "@openai/codex@$CODEX_VERSION"
-          echo "UNSTALE_CODEX_BIN=$(command -v codex)" >> "$GITHUB_ENV"
-          printenv OPENAI_API_KEY | codex login --with-api-key
-          codex login status
+          npm ci --prefix central --no-audit --no-fund
+          npm ci --prefix gateway --no-audit --no-fund
 
       - name: Restore state
         id: restore
@@ -163,25 +171,39 @@ jobs:
           rm -rf "$dl"
           du -sh "$UNSTALE_STORE"/*
 
+      # The catalog technologies (pipeline/technologies.ts): release notes, upgrade guides, docs and advisories.
       - name: Pipeline
         id: pipeline
-        timeout-minutes: 240
+        timeout-minutes: 120
         env:
-          GITHUB_TOKEN: ${{ secrets.INGEST_GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.INGEST_GITHUB_TOKEN || github.token }}
           JEV_API_KEY: ${{ secrets.JEV_API_KEY }}
-          CODEX_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
           TECH: ${{ inputs.tech }}
         run: npm --prefix central run pipeline -- --refresh ${TECH:+--tech "$TECH"}
 
-      # Writes a self-contained static tree and prunes shards past their 7-day grace period (the grace bookkeeping
-      # lives in the store, so this runs before the state is saved).
+      # Every other technology: registrations pulled from the gateway join the saved queue, then refreshes and
+      # admitted history first, new technologies by demand, all under the coverage budget. Writes each job's status.
+      - name: Drain the coverage queue
+        id: drain
+        if: always() && (steps.pipeline.outcome == 'success' || steps.pipeline.outcome == 'failure')
+        timeout-minutes: 150
+        env:
+          GITHUB_TOKEN: ${{ secrets.INGEST_GITHUB_TOKEN || github.token }}
+          JEV_API_KEY: ${{ secrets.JEV_API_KEY }}
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+          UNSTALE_GATEWAY_TOKEN: ${{ secrets.GATEWAY_DRAIN_TOKEN }}
+        run: npm --prefix central run drain -- --minutes 130 --grace-minutes 10 --taken "$TAKEN"
+
+      # Writes a self-contained static tree (with the coverage statuses) and prunes shards past their 7-day grace
+      # period (the grace bookkeeping lives in the store, so this runs before the state is saved).
       - name: Export the static catalog
         id: export
-        if: steps.pipeline.outcome == 'success'
+        if: steps.pipeline.outcome == 'success' && steps.drain.outcome == 'success'
         run: npm --prefix central run catalog -- export "$SITE_DIR"
 
       # Guard: deploy only a tree whose root parses and whose every index entry has its shard, with the size and
-      # sha256 the index states (a client verifies the same), and which fits the Pages 1 GB site limit.
+      # sha256 the index states (a client verifies the same), and which fits the static asset limits.
       - name: Verify the exported catalog
         id: verify
         if: steps.export.outcome == 'success'
@@ -212,15 +234,29 @@ jobs:
             }
             console.log(`${techs.length} technologies, ${shards} shards verified`);
           '
-          kb="$(du -sk "$SITE_DIR" | cut -f1)"
-          echo "site: $kb KiB"
-          [ "$kb" -lt 900000 ] || { echo "::error::site is $kb KiB, near the 1 GB Pages limit"; exit 1; }
+          files="$(find "$SITE_DIR" -type f | wc -l)"
+          big="$(find "$SITE_DIR" -type f -size +25M | wc -l)"
+          echo "site: $files files, $(du -sh "$SITE_DIR" | cut -f1)"
+          [ "$files" -le "$ASSET_FILE_LIMIT" ] || { echo "::error::$files files, over the $ASSET_FILE_LIMIT static asset limit"; exit 1; }
+          [ "$big" -eq 0 ] || { echo "::error::$big files over the 25 MiB static asset limit"; exit 1; }
           echo "deploy=$DEPLOY" >> "$GITHUB_OUTPUT"
 
-      # Saved after a failed pipeline too: writes are atomic per file, stale technology locks are detected by pid,
-      # and the model calls a partial run paid for are kept. Not saved when the pipeline was cancelled or skipped.
+      - name: Deploy the catalog and the gateway
+        id: deploy
+        if: steps.verify.outputs.deploy == 'true'
+        working-directory: gateway
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: "false"
+        run: npx wrangler deploy --assets "$SITE_DIR"
+
+      # Saved after a failed pipeline or drain too: writes are atomic per file, stale technology locks are detected
+      # by pid, and the model calls a partial run paid for are kept. Not saved when a step was cancelled or skipped.
+      # Dead parts of an operator's store (the parked rarity sample's clones, the retired onboarding documents) stay out.
       - name: Save state
-        if: always() && steps.restore.outcome == 'success' && (steps.pipeline.outcome == 'success' || steps.pipeline.outcome == 'failure')
+        id: save
+        if: always() && steps.restore.outcome == 'success' && (steps.pipeline.outcome == 'success' || steps.pipeline.outcome == 'failure') && (steps.drain.outcome == 'success' || steps.drain.outcome == 'failure')
         env:
           REL: ${{ steps.restore.outputs.release }}
         run: |
@@ -228,7 +264,8 @@ jobs:
           stamp="$(date -u +%Y%m%dT%H%M%SZ)-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           gen="state-$stamp"
           out="$RUNNER_TEMP/state-out"; rm -rf "$out"; mkdir -p "$out"
-          tar -C "$UNSTALE_STORE" --exclude='./central/records/*.lock' -cf - . \
+          tar -C "$UNSTALE_STORE" --exclude='./central/records/*.lock' --exclude='./central/sample' \
+            --exclude='./central/onboarding/documents' -cf - . \
             | zstd -T0 -10 -q | split -b 1900m -a 2 - "$out/$gen.tar.zst."
           (cd "$out" && sha256sum "$gen".tar.zst.* > "$gen.sha256")
           ls -l "$out"
@@ -250,28 +287,13 @@ jobs:
             fi
           done < "$RUNNER_TEMP/assets.tsv"
 
+      # The gateway stops holding what this run took: their status is deployed and the jobs are in the saved state.
+      - name: Acknowledge the taken registrations
+        if: steps.deploy.outcome == 'success' && steps.save.outcome == 'success'
+        env:
+          UNSTALE_GATEWAY_TOKEN: ${{ secrets.GATEWAY_DRAIN_TOKEN }}
+        run: npm --prefix central run drain -- ack "$TAKEN"
+
       - name: Usage
         if: always() && steps.restore.outcome == 'success'
         run: npm --prefix central run catalog -- usage | tail -c 4000 || true
-
-      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
-        if: steps.verify.outputs.deploy == 'true'
-        with:
-          path: ${{ env.SITE_DIR }}
-          retention-days: 1
-
-  deploy:
-    needs: ingest
-    if: needs.ingest.outputs.deploy == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
-      - id: deployment
-        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
