@@ -10,6 +10,7 @@ import { memorySql } from "./sqlite.ts";
 // The public registries: every package exists unless a test says otherwise.
 beforeEach(() => vi.stubGlobal("fetch", async () => new Response("{}")));
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -83,6 +84,57 @@ test("early runs: at most the daily count, spaced by the interval, counted per U
   expect(new PendingQueue(memorySql(), settings()).request("pkg:npm/a", "x", false, T)).toMatchObject({ fastTrack: false });
 });
 
+// Rows read are billed per row visited (5 million a day on the free tier), and an init registers hundreds of packages
+// and polls each of them on every pass: no registration or status read may cost more as the queue grows.
+test("a registration, a vote and a status read each read a bounded number of rows however long the queue", () => {
+  const sql = memorySql();
+  const q = new PendingQueue(sql, settings({ perAddressPerHour: 1_000_000, newPerHour: 0, fastTrackPerDay: 5, fastTrackIntervalMs: 0 }));
+  for (let i = 0; i < 3000; i++) q.request(`pkg:npm/p${i}`, `198.51.${i % 200}.${i % 250}`, i % 3 === 0, T + i);
+  const cost = (f: () => unknown) => {
+    const before = sql.rowsRead;
+    f();
+    return sql.rowsRead - before;
+  };
+  const view = (purl: string) => (q.position(purl), q.run(purl, T), q.typicalSeconds(), q.spentUntil(T));
+  // The first request after a wake reads the held rows once.
+  const fresh = new PendingQueue(sql, settings({ perAddressPerHour: 1_000_000, newPerHour: 0 }));
+  // A vote on a known package does not need them.
+  expect(cost(() => fresh.request("pkg:npm/p0", "203.0.113.9", true, T))).toBe(1);
+  expect(cost(() => fresh.held("pkg:npm/p1"))).toBeGreaterThanOrEqual(3000);
+  expect(cost(() => fresh.held("pkg:npm/p2"))).toBe(0);
+  const costs = {
+    registration: cost(() => (q.request("pkg:npm/new", "203.0.113.1", false, T), view("pkg:npm/new"))),
+    vote: cost(() => (q.request("pkg:npm/p1", "203.0.113.2", false, T), view("pkg:npm/p1"))),
+    known: cost(() => q.request("pkg:npm/p0", "203.0.113.3", true, T)),
+    status: cost(() => view("pkg:npm/p2")),
+    progress: cost(() => q.report([{ purl: "pkg:npm/p2", state: "running" }], T)),
+  };
+  // Before the line was kept in memory: 9,015, 6,007, 1, 3,004 and 2 rows with 3,000 held.
+  for (const [what, rows] of Object.entries(costs)) expect(rows, what).toBeLessThanOrEqual(20);
+});
+
+test("the line kept in memory is the table's order through votes, new packages, acknowledgements and a wake", () => {
+  const sql = memorySql();
+  const s = settings({ perAddressPerHour: 1_000_000, votesPerAddressPerHour: 1_000_000, newPerHour: 0 });
+  let q = new PendingQueue(sql, s);
+  let seed = 7;
+  const rand = (n: number) => ((seed = (seed * 1103515245 + 12345) % 2 ** 31), seed % n);
+  const check = () => {
+    const rows = sql.db.prepare("SELECT purl FROM pending WHERE known = 0 ORDER BY demand DESC, first_seen ASC, purl ASC").all() as { purl: string }[];
+    rows.forEach((r, i) => expect(q.position(r.purl)).toEqual({ position: i + 1, length: rows.length }));
+    expect(q.position("pkg:npm/never")).toBeUndefined();
+  };
+  for (let step = 0; step < 600; step++) {
+    const purl = `pkg:npm/p${rand(80)}`;
+    const r = rand(20);
+    if (r === 0) q.ack(q.list().filter(() => rand(2) === 0).map((t) => ({ ...t, demand: rand(t.demand + 1) })), T);
+    else if (r === 1) q = new PendingQueue(sql, s);
+    else q.request(purl, `198.51.100.${rand(250)}`, rand(4) === 0, T + rand(5) * 1000);
+    if (step % 25 === 0) check();
+  }
+  check();
+});
+
 // The Worker over a fake runtime: static files from a map, the object called in-process.
 function env(files: Record<string, unknown> = {}, extra: Partial<Env> = {}) {
   const waits: Promise<unknown>[] = [];
@@ -133,6 +185,32 @@ test("only one public identity is accepted, never from a browser", async () => {
   expect((await handle(post({ purl: "pkg:npm/a", repo: "acme/private" }), e)).status).toBe(400);
   expect((await handle(post({ purl: "pkg:npm/a@1.0.0" }), e)).status).toBe(400);
   expect((await handle(post({ purl: "https://example.com/x" }), e)).status).toBe(400);
+});
+
+test("storage that fails (a used-up daily allowance) is a temporary 503 with Retry-After, never a 400", async () => {
+  const { env: e } = env();
+  const quota = new Error("Exceeded allowed rows read in Durable Objects free tier.");
+  e.COVERAGE = { idFromName: () => "global", get: () => new Proxy({}, { get: () => () => Promise.reject(quota) }) } as unknown as Env["COVERAGE"];
+  // A fixed clock, away from midnight, so the expected reset cannot move during the test.
+  vi.useFakeTimers({ toFake: ["Date"] });
+  const now = Date.parse("2026-10-17T16:40:00Z");
+  vi.setSystemTime(now);
+  for (const r of [post({ purl: "pkg:npm/a" }), get("/coverage?purl=pkg%3Anpm%2Fa")]) {
+    const res = await handle(r, e);
+    expect(res.status).toBe(503);
+    // Until the allowance resets at 00:00 UTC.
+    const after = Number(res.headers.get("Retry-After"));
+    expect(after).toBe(7 * 3600 + 20 * 60);
+    expect(await res.json()).toMatchObject({ retry_after: after });
+  }
+  e.COVERAGE = { idFromName: () => "global", get: () => new Proxy({}, { get: () => () => Promise.reject(new Error("Durable Object reset")) }) } as unknown as Env["COVERAGE"];
+  const other = await handle(post({ purl: "pkg:npm/a" }), e);
+  expect([other.status, other.headers.get("Retry-After")]).toEqual([503, "60"]);
+  // Bad input is still the client's.
+  expect((await handle(post({ purl: "pkg:npm/a@1.0.0" }), e)).status).toBe(400);
+  expect((await handle(get("/coverage?purl=nonsense"), e)).status).toBe(400);
+  const ack = new Request("https://unstale.example/internal/ack", { method: "POST", headers: { Authorization: "Bearer drain-secret" }, body: "null" });
+  expect((await handle(ack, e)).status).toBe(400);
 });
 
 test("a name the public registry does not know is not queued", async () => {

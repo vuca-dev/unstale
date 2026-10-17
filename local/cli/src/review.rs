@@ -266,56 +266,130 @@ pub fn digest_lines(out: &Outcome) -> Vec<String> {
     // Security records that carry advisories are listed per advisory (`advisory_fixes`), not per record.
     let fixes = advisory_fixes(out);
     let empty = vec![];
-    let techs: std::collections::BTreeSet<&String> = out.digest.keys().chain(fixes.keys()).collect();
+    let techs: std::collections::BTreeSet<&String> = out.digest.keys().chain(fixes.keys()).chain(out.workspaces.keys()).collect();
     for tech in techs {
         let idx = out.digest.get(tech).unwrap_or(&empty);
         let adv = fixes.get(tech).map(Vec::as_slice).unwrap_or(&[]);
-        let first = idx.first().map(|&i| &out.opps[i]).unwrap_or_else(|| &out.opps[adv[0].opp]);
         let pkgs = out.packages.get(tech).cloned().unwrap_or_default();
         let name = tech.clone();
         let label = if pkgs.len() == 1 && pkgs[0] == *tech || pkgs.is_empty() { tech.clone() } else { format!("{tech} ({})", pkgs.join(", ")) };
-        let mut kinds: BTreeMap<u8, (usize, &str, &str)> = BTreeMap::new();
-        for &i in idx {
-            let o = &out.opps[i];
-            let k = if is_security(o) && !o.rec.r.advisories.is_empty() && !listed_as_record(out, o) {
-                continue;
-            } else if is_security(o) {
-                (0, "security", "security")
-            } else {
-                match o.rec.r.change_type {
-                    ChangeType::Fix => (1, "fix", "fixes"),
-                    ChangeType::Performance => (2, "performance change", "performance changes"),
-                    ChangeType::BehaviorChange => (3, "behaviour change", "behaviour changes"),
-                    ChangeType::DefaultChange => (4, "default change", "default changes"),
-                    _ => (5, "other change", "other changes"),
+        let workspaces = out.workspaces.get(tech).map(Vec::as_slice).unwrap_or(&[]);
+        // Where the line's version comes from, when manifests disagree on it.
+        let scope = |component: &str| {
+            out.headline.get(component).map(|(dir, source)| format!(" in {} ({source})", crate::stack::place(dir))).unwrap_or_default()
+        };
+        let first = idx.first().map(|&i| &out.opps[i]).or_else(|| adv.first().map(|f| &out.opps[f.opp]));
+        if let Some(first) = first {
+            let mut kinds = Kinds::default();
+            for &i in idx {
+                let o = &out.opps[i];
+                if is_security(o) && !o.rec.r.advisories.is_empty() && !listed_as_record(out, o) {
+                    continue;
                 }
-            };
-            let e = kinds.entry(k.0).or_insert((0, k.1, k.2));
-            e.0 += 1;
-        }
-        if !adv.is_empty() {
-            kinds.entry(0).or_insert((0, "security", "security")).0 += adv.len();
-        }
-        let parts: Vec<String> = kinds.values().map(|(n, one, many)| plural(*n, one, many)).collect();
-        let obligations = out.upgrade.iter().filter(|&&i| out.opps[i].rec.r.technology == *tech).count();
-        let extra = if obligations > 0 { format!("; {} in the upgrade review", plural(obligations, "obligation", "obligations")) } else { String::new() };
-        lines.push(format!(
-            "bumping {label} {} → {} picks up {} (`unstale bump {name}`){extra}",
-            first.installed,
-            first.target,
-            parts.join(", ")
-        ));
-        for f in adv {
-            lines.push(f.line(out));
-        }
-        for &i in idx {
-            let o = &out.opps[i];
-            if is_security(o) && (o.rec.r.advisories.is_empty() || listed_as_record(out, o)) {
-                lines.push(format!("  security: {} [{}, {}]", one_line(&o.rec.r.summary, SUMMARY_MAX), o.id(), o.release.version));
+                kinds.add(o.rec);
             }
+            kinds.add_security(adv.len());
+            let obligations = out.upgrade.iter().filter(|&&i| out.opps[i].rec.r.technology == *tech).count();
+            lines.push(format!(
+                "bumping {label} {} → {}{} picks up {} (`unstale bump {name}`){}",
+                first.installed,
+                first.target,
+                scope(&first.component()),
+                kinds.parts(),
+                obligations_note(obligations)
+            ));
+            for f in adv {
+                lines.push(f.line(out));
+            }
+            for &i in idx {
+                let o = &out.opps[i];
+                if is_security(o) && (o.rec.r.advisories.is_empty() || listed_as_record(out, o)) {
+                    lines.push(format!("  security: {} [{}, {}]", one_line(&o.rec.r.summary, SUMMARY_MAX), o.id(), o.release.version));
+                }
+            }
+        } else if let Some(w) = workspaces.first() {
+            let have = out.versions.get(&w.component).map(|v| format!(" {v}")).unwrap_or_default();
+            lines.push(format!("bumping {label}{have}{} picks up nothing; other manifests are on other versions:", scope(&w.component)));
+        }
+        // Manifests on another version (a workspace with its own lockfile, a library's floor): counts only.
+        for w in workspaces {
+            // Advisories as for the headline, at this manifest's version: each fixed one counts once; a record whose
+            // advisories are all decided and none fixed says nothing; an undecidable one falls back to the record.
+            let mut kinds = Kinds::default();
+            let mut fixed = std::collections::BTreeSet::new();
+            for (rec, route, _) in &w.records {
+                if *route != Route::BumpDigest {
+                    continue;
+                }
+                if crate::funnel::is_security_rec(rec) && !rec.r.advisories.is_empty() {
+                    let target = w.target.as_ref().unwrap_or(&w.version);
+                    let st: Vec<Option<bool>> = rec
+                        .r
+                        .advisories
+                        .iter()
+                        .map(|a| match (advisory_affects(a, &w.component, &w.version), advisory_affects(a, &w.component, target)) {
+                            (Some(was), Some(still)) => Some(was && !still),
+                            _ => None,
+                        })
+                        .collect();
+                    for (a, f) in rec.r.advisories.iter().zip(&st) {
+                        if *f == Some(true) {
+                            fixed.insert(a.id.clone());
+                        }
+                    }
+                    if st.contains(&Some(true)) || !st.contains(&None) {
+                        continue;
+                    }
+                }
+                kinds.add(rec);
+            }
+            kinds.add_security(fixed.len());
+            let obligations = w.records.iter().filter(|(_, r, _)| *r == Route::UpgradeReview).count();
+            let (dir, source) = &w.dirs[0];
+            let more = if w.dirs.len() > 1 { format!(" and {} more", w.dirs.len() - 1) } else { String::new() };
+            let picks = if kinds.0.is_empty() { "nothing".to_string() } else { kinds.parts() };
+            let target = w.target.as_ref().map(|t| format!(" to {t}")).unwrap_or_default();
+            lines.push(format!(
+                "  {} in {dir} ({source}){more}: bumping{target} picks up {picks}{}",
+                w.version,
+                if obligations > 0 { format!("; {}", plural(obligations, "obligation", "obligations")) } else { String::new() }
+            ));
         }
     }
     lines
+}
+
+fn obligations_note(n: usize) -> String {
+    if n > 0 { format!("; {} in the upgrade review", plural(n, "obligation", "obligations")) } else { String::new() }
+}
+
+/// Bump-digest records counted by kind, security first.
+#[derive(Default)]
+struct Kinds(BTreeMap<u8, (usize, &'static str, &'static str)>);
+
+impl Kinds {
+    fn add(&mut self, r: &crate::cache::Rec) {
+        let k = if crate::funnel::is_security_rec(r) {
+            (0, "security", "security")
+        } else {
+            match r.r.change_type {
+                ChangeType::Fix => (1, "fix", "fixes"),
+                ChangeType::Performance => (2, "performance change", "performance changes"),
+                ChangeType::BehaviorChange => (3, "behaviour change", "behaviour changes"),
+                ChangeType::DefaultChange => (4, "default change", "default changes"),
+                _ => (5, "other change", "other changes"),
+            }
+        };
+        self.0.entry(k.0).or_insert((0, k.1, k.2)).0 += 1;
+    }
+    fn add_security(&mut self, n: usize) {
+        if n > 0 {
+            self.0.entry(0).or_insert((0, "security", "security")).0 += n;
+        }
+    }
+    fn parts(&self) -> String {
+        self.0.values().map(|(n, one, many)| plural(*n, one, many)).collect::<Vec<_>>().join(", ")
+    }
 }
 
 /// One advisory a bump fixes: the record that describes the fix and the range the installed version is in.
@@ -430,20 +504,41 @@ pub fn advisory_fixes(out: &Outcome) -> BTreeMap<String, Vec<AdvisoryFix>> {
 
 /// The records behind one package's digest line, for `unstale bump <pkg>`.
 pub fn bump_lines(out: &Outcome, pkg: &str) -> Option<Vec<String>> {
-    let comps: Vec<&String> =
-        out.digest.keys().filter(|t| *t == pkg || out.packages.get(*t).is_some_and(|p| p.iter().any(|x| x == pkg))).collect();
+    let comps: std::collections::BTreeSet<&String> = out
+        .digest
+        .keys()
+        .chain(out.workspaces.keys())
+        .filter(|t| *t == pkg || out.packages.get(*t).is_some_and(|p| p.iter().any(|x| x == pkg)))
+        .collect();
     if comps.is_empty() {
         return None;
     }
     let mut lines = vec![];
+    let entry = |lines: &mut Vec<String>, r: &crate::cache::Rec, name: &str, version: &str, benefits: &[unstale_schema::catalog::Benefit]| {
+        let b: Vec<&str> = benefits.iter().map(benefit).collect();
+        lines.push(format!("[{}] {name} {version} · {} · benefit: {}", r.r.id, change_type(r.r.change_type), b.join(", ")));
+        lines.push(format!("  {}", one_line(&r.r.summary, SUMMARY_MAX)));
+        if let Some(e) = r.r.evidence.first() {
+            lines.push(format!("  {}", one_line(&e.url, URL_MAX)));
+        }
+    };
     for c in comps {
-        for &i in &out.digest[c] {
+        let mut listed = std::collections::BTreeSet::new();
+        for &i in out.digest.get(c).map(Vec::as_slice).unwrap_or(&[]) {
             let o = &out.opps[i];
-            let b: Vec<&str> = o.benefits.iter().map(benefit).collect();
-            lines.push(format!("[{}] {} {} · {} · benefit: {}", o.id(), pkg_name(o), o.release.version, change_type(o.rec.r.change_type), b.join(", ")));
-            lines.push(format!("  {}", one_line(&o.rec.r.summary, SUMMARY_MAX)));
-            if let Some(e) = o.rec.r.evidence.first() {
-                lines.push(format!("  {}", one_line(&e.url, URL_MAX)));
+            listed.insert((o.id().to_string(), o.release.version.clone()));
+            entry(&mut lines, o.rec, &pkg_name(o), &o.release.version, &o.benefits);
+        }
+        // A manifest on another version also picks up what its own version lacks.
+        for w in out.workspaces.get(c).map(Vec::as_slice).unwrap_or(&[]) {
+            let extra: Vec<_> = w.records.iter().filter(|(r, route, v)| *route == Route::BumpDigest && !listed.contains(&(r.r.id.clone(), v.clone()))).collect();
+            if extra.is_empty() {
+                continue;
+            }
+            lines.push(format!("{} on {} ({}) also picks up:", crate::stack::place(&w.dirs[0].0), w.version, w.dirs[0].1));
+            let name = purl_name(&w.component).unwrap_or_else(|| w.component.clone());
+            for (r, _, version) in extra {
+                entry(&mut lines, r, &name, version, &r.r.benefit);
             }
         }
     }

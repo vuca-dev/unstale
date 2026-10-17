@@ -393,22 +393,14 @@ pub fn detect(root: &Path, packages: &mut Vec<Package>, deps: &mut BTreeMap<Stri
                 (_, Kind::Library) => (spec_floor(&spec), format!("library floor of {spec}")),
                 _ => (spec_floor(&spec), format!("floor of {spec} (not in a lockfile)")),
             };
-            let entry = deps.entry(purl(&n)).or_insert_with(|| Dep { name: n.clone(), public_candidate: public, version: None, source: String::new(), pins: vec![] });
+            let entry = deps.entry(purl(&n)).or_insert_with(|| Dep::new(&n, public));
             entry.public_candidate &= public;
             if let Some(pin) = lock.as_ref().and_then(|l| l.pins.get(&n))
                 && !entry.pins.contains(pin)
             {
                 entry.pins.push(pin.clone());
             }
-            let lower = match (&entry.version, &version) {
-                (None, Some(_)) => true,
-                (Some(a), Some(b)) => b < a,
-                _ => false,
-            };
-            if lower || entry.source.is_empty() {
-                entry.version = version.or(entry.version.take());
-                entry.source = source;
-            }
+            entry.read(&rel, version, source);
         }
     }
     for (file, (n, examples)) in stale {
@@ -485,6 +477,7 @@ mod tests {
         write(d.path(), "uv.lock", "version = 1\n\n[[package]]\nname = \"acme-tools\"\nversion = \"2.0\"\nsource = { registry = \"https://pypi.acme.internal/simple\" }\nsdist = { url = \"https://x/acme-tools-2.0.tar.gz\", hash = \"sha256:aa\", size = 1 }\nwheels = [{ url = \"https://x/acme_tools-2.0-py3-none-any.whl\", hash = \"sha256:bb\", size = 1 }]\n\n[[package]]\nname = \"httpx\"\nversion = \"0.27.0\"\nsource = { registry = \"https://pypi.org/simple\" }\n");
         let (mut packages, mut deps, mut notes) = (vec![], BTreeMap::new(), vec![]);
         detect(d.path(), &mut packages, &mut deps, &mut notes);
+        crate::stack::settle(&mut deps);
         assert_eq!(deps["pkg:pypi/acme-tools"].pins, vec![Pin { version: "2.0".into(), hashes: vec!["sha256:aa".into(), "sha256:bb".into()] }]);
         assert!(deps["pkg:pypi/httpx"].pins.is_empty(), "no hashes in the lockfile");
     }
@@ -501,6 +494,7 @@ mod tests {
         write(d.path(), "examples/demo/requirements.txt", "django==5.0\n");
         let (mut pk, mut deps) = (vec![], BTreeMap::new());
         detect(d.path(), &mut pk, &mut deps, &mut vec![]);
+        crate::stack::settle(&mut deps);
         assert_eq!(pk.len(), 1);
         assert_eq!(pk[0].kind, Kind::Application);
         assert_eq!(deps["pkg:pypi/openai"].version, Some(v("0.27.10")));
@@ -520,6 +514,7 @@ mod tests {
         write(d.path(), "poetry.lock", "[[package]]\nname = \"fastapi\"\nversion = \"0.115.4\"\n[[package]]\nname = \"openai\"\nversion = \"1.52.0\"\n");
         let (mut pk, mut deps, mut notes) = (vec![], BTreeMap::new(), vec![]);
         detect(d.path(), &mut pk, &mut deps, &mut notes);
+        crate::stack::settle(&mut deps);
         assert_eq!(deps["pkg:pypi/openai"].version, Some(v("1.52.0")));
         assert_eq!(pk[0].lockfile.as_deref(), Some("poetry.lock"));
         assert_eq!(notes.len(), 1, "{notes:?}");
@@ -533,6 +528,7 @@ mod tests {
         write(d.path(), "poetry.lock", "[[package]]\nname = \"openai\"\nversion = \"0.27.10\"\n[[package]]\nname = \"boto3\"\nversion = \"1.34.117\"\n");
         let (mut pk, mut deps, mut notes) = (vec![], BTreeMap::new(), vec![]);
         detect(d.path(), &mut pk, &mut deps, &mut notes);
+        crate::stack::settle(&mut deps);
         assert_eq!(deps["pkg:pypi/openai"].version, Some(v("1.40.0")));
         assert_eq!(deps["pkg:pypi/boto3"].version, Some(v("1.34.117")));
         assert!(notes[0].starts_with("poetry.lock: 1 pinned version falls outside"), "{}", notes[0]);
@@ -563,6 +559,7 @@ mod tests {
         write(d.path(), "sandbox/runtime/requirements.txt", "httpx==0.28.1\n");
         let (mut pk, mut deps) = (vec![], BTreeMap::new());
         detect(d.path(), &mut pk, &mut deps, &mut vec![]);
+        crate::stack::settle(&mut deps);
         assert_eq!(deps["pkg:pypi/httpx"].version, Some(v("0.28.1")));
         assert_eq!(pk.iter().find(|p| p.dir == "sandbox/runtime").unwrap().lockfile, None);
     }
@@ -579,6 +576,7 @@ mod tests {
         write(d.path(), "svc/uv.lock", "version = 1\n[[package]]\nname = \"httpx\"\nversion = \"0.28.1\"\n");
         let (mut pk, mut deps) = (vec![], BTreeMap::new());
         detect(d.path(), &mut pk, &mut deps, &mut vec![]);
+        crate::stack::settle(&mut deps);
         let kinds: Vec<(&str, Kind)> = pk.iter().map(|p| (p.dir.as_str(), p.kind)).collect();
         assert_eq!(kinds, vec![("lib", Kind::Library), ("svc", Kind::Application)]);
         assert_eq!(deps["pkg:pypi/httpx"].version, Some(v("0.27.0")), "the lowest across packages: the library's floor");
