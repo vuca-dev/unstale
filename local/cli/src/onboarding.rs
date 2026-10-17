@@ -64,11 +64,17 @@ pub struct Pending {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub downloads: BTreeMap<String, u64>,
 }
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum RegistrationIssue {
     Temporary,
-    Rejected { ecosystem: String, status: u16 },
+    /// The packages the service rejected (the first one's ecosystem and status); the others were still sent.
+    Rejected {
+        ecosystem: String,
+        status: u16,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        packages: Vec<String>,
+    },
     InvalidResponse,
 }
 #[derive(Debug)]
@@ -87,16 +93,82 @@ fn registration_issue(error: &anyhow::Error, purl: &str) -> RegistrationIssue {
     if error.downcast_ref::<InvalidResponse>().is_some() { return RegistrationIssue::InvalidResponse; }
     if let Some(HttpFailure(status)) = error.downcast_ref::<HttpFailure>() {
         if (400..500).contains(status) && !matches!(status, 408 | 425 | 429) {
-            return RegistrationIssue::Rejected { ecosystem: if purl.starts_with("pkg:pypi/") { "Python" } else if purl.starts_with("pkg:npm/") { "npm" } else { "Package" }.into(), status: *status };
+            return RegistrationIssue::Rejected { ecosystem: if purl.starts_with("pkg:pypi/") { "Python" } else if purl.starts_with("pkg:npm/") { "npm" } else { "Package" }.into(), status: *status, packages: vec![purl.into()] };
         }
     }
     RegistrationIssue::Temporary
+}
+/// Sends each package in `order`. A rejection of the package (400, 404, 410, 422) is that package's: it is named in the
+/// issue and the rest are still sent; any other 4xx is the request's, so it is recorded and nothing more is sent. A limit (429, or 503 with Retry-After) defers all of them until then; any other failure (the service down, an
+/// invalid answer) stops here, and what is left is sent on a later run.
+fn register(
+    pending: &mut Pending,
+    order: Vec<String>,
+    mut send: impl FnMut(&str) -> Result<Job>,
+    mut progress: impl FnMut(usize),
+    diagnostics: &mut Vec<String>,
+    mut save: impl FnMut(&Pending) -> Result<()>,
+) -> Result<()> {
+    let mut rejected: Option<RegistrationIssue> = None;
+    for (index, p) in order.into_iter().enumerate() {
+        progress(index);
+        match send(&p) {
+            Ok(j) => {
+                pending.jobs.insert(p.clone(), j);
+                pending.unsubmitted.remove(&p);
+                pending.deferred_until = None;
+                pending.registration_issue = rejected.clone();
+            }
+            Err(e) if e.downcast_ref::<Limited>().is_some() => {
+                let retry_after = e.downcast_ref::<Limited>().map_or(3600, |l| l.retry_after);
+                diagnostics.push(format!("Registration deferred: {e}"));
+                pending.deferred_until = Some(unix_now() + retry_after);
+                save(pending)?;
+                break;
+            }
+            Err(e) => {
+                diagnostics.push(format!("Registration {p}: {e:#}"));
+                match (registration_issue(&e, &p), rejected.as_mut()) {
+                    (RegistrationIssue::Rejected { ecosystem: other, .. }, Some(RegistrationIssue::Rejected { ecosystem, packages, .. })) => {
+                        if *ecosystem != other { *ecosystem = "Package".into(); }
+                        packages.push(p.clone());
+                    }
+                    (RegistrationIssue::Rejected { ecosystem, status, .. }, _) => {
+                        rejected = Some(RegistrationIssue::Rejected { ecosystem, status, packages: vec![p.clone()] });
+                    }
+                    (issue, _) => {
+                        // A package the service rejected stays named: it needs a fix, the rest only a later run.
+                        pending.registration_issue = rejected.clone().or(Some(issue));
+                        save(pending)?;
+                        break;
+                    }
+                }
+                pending.registration_issue = rejected.clone();
+                // Request-wide (a refused origin or content type): every other package would fail alike.
+                if e.downcast_ref::<HttpFailure>().is_some_and(|HttpFailure(s)| !matches!(s, 400 | 404 | 410 | 422)) {
+                    save(pending)?;
+                    break;
+                }
+            }
+        }
+        save(pending)?;
+    }
+    Ok(())
 }
 fn registration_line(pending: &Pending) -> Option<String> {
     if pending.unsubmitted.is_empty() { return None; }
     if let Some(line) = deferred_line(pending) { return Some(line); }
     Some(match pending.registration_issue.as_ref() {
-        Some(RegistrationIssue::Rejected { ecosystem, status }) => format!("Coverage partially connected · {ecosystem} registration was rejected (HTTP {status}). A tool-side fix is needed; existing results remain usable."),
+        Some(RegistrationIssue::Rejected { ecosystem, status, packages }) => {
+            let named = packages.iter().take(3).map(|p| p.split_once('/').map_or(p.as_str(), |(_, n)| n).replace("%40", "@")).collect::<Vec<_>>().join(", ");
+            let more = packages.len().saturating_sub(3);
+            let which = match (packages.len(), more) {
+                (0, _) => String::new(),
+                (_, 0) => format!(" for {named}"),
+                _ => format!(" for {named} and {more} more"),
+            };
+            format!("Coverage partially connected · {ecosystem} registration was rejected{which} (HTTP {status}). A tool-side fix is needed; existing results remain usable.")
+        }
         Some(RegistrationIssue::InvalidResponse) => "Coverage partially connected · the service returned an invalid registration response. A tool-side fix is needed; existing results remain usable.".into(),
         _ => "Coverage partially connected · some packages could not be registered. Run unstale status to retry; existing results remain usable.".into(),
     })
@@ -181,7 +253,8 @@ fn request_via(a: &ureq::Agent, service: &str, purl: &str, post: bool) -> Result
         ))
         .call()
     }?;
-    if r.status() == 429 {
+    // A limit (429), or the service unavailable for a known time (503 with Retry-After): both defer, neither is a fault.
+    if r.status() == 429 || (r.status() == 503 && r.headers().contains_key("retry-after")) {
         let retry_after = r
             .headers()
             .get("retry-after")
@@ -1354,34 +1427,14 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
         save(ctx, &pending)?;
     }
     let order = registration_order(&pending.unsubmitted, &st, &pending.downloads);
-    for (index, p) in order.into_iter().enumerate().filter(|_| !deferred) {
-        ui.update(
-            "Connecting public coverage · step 3/5",
-            &format!("Registered {index}/{registrations} public packages"),
-            "Public names only · acknowledged jobs continue centrally",
-        );
-        match request(service, &p, true) {
-            Ok(j) => {
-                pending.jobs.insert(p.clone(), j);
-                pending.unsubmitted.remove(&p);
-                pending.deferred_until = None;
-                pending.registration_issue = None;
-            }
-            Err(e) if e.downcast_ref::<Limited>().is_some() => {
-                let retry_after = e.downcast_ref::<Limited>().map_or(3600, |l| l.retry_after);
-                diagnostics.push(format!("Registration deferred: {e}"));
-                pending.deferred_until = Some(unix_now() + retry_after);
-                save(ctx, &pending)?;
-                break;
-            }
-            Err(e) => {
-                diagnostics.push(format!("Registration {p}: {e:#}"));
-                pending.registration_issue = Some(registration_issue(&e, &p));
-                save(ctx, &pending)?;
-                break;
-            }
-        }
-        save(ctx, &pending)?;
+    if !deferred {
+        register(&mut pending, order, |p| request(service, p, true), |index| {
+            ui.update(
+                "Connecting public coverage · step 3/5",
+                &format!("Registered {index}/{registrations} public packages"),
+                "Public names only · acknowledged jobs continue centrally",
+            );
+        }, &mut diagnostics, |p| save(ctx, p))?;
     }
     let start = Instant::now();
     let mut saved_snapshot = String::new();
@@ -1741,6 +1794,84 @@ mod tests {
         assert_eq!(registration_line(&restored), registration_line(&pending));
         pending.unsubmitted.clear();
         assert!(registration_line(&pending).is_none());
+    }
+    #[test]
+    fn a_rejected_package_is_named_and_the_others_are_still_registered() {
+        let mut pending = Pending::default();
+        let order: Vec<String> = ["pkg:npm/a", "pkg:npm/%40s/bad", "pkg:npm/c", "pkg:npm/bad2"].map(String::from).to_vec();
+        pending.unsubmitted.extend(order.iter().cloned());
+        let (mut sent, mut diagnostics, mut saves) = (vec![], vec![], 0);
+        register(&mut pending, order, |p| {
+            sent.push(p.to_string());
+            if p.contains("bad") { Err(HttpFailure(400).into()) } else { Ok(Job { purl: p.into(), technology: "t".into(), ..Default::default() }) }
+        }, |_| {}, &mut diagnostics, |_| { saves += 1; Ok(()) }).unwrap();
+        assert_eq!(sent.len(), 4, "every package is sent");
+        assert!(pending.jobs.contains_key("pkg:npm/a") && pending.jobs.contains_key("pkg:npm/c"));
+        assert_eq!(pending.unsubmitted.iter().cloned().collect::<Vec<_>>(), ["pkg:npm/%40s/bad", "pkg:npm/bad2"]);
+        let line = registration_line(&pending).unwrap();
+        assert!(line.contains("npm registration was rejected for @s/bad, bad2 (HTTP 400)") && line.contains("tool-side fix"), "{line}");
+        assert_eq!(diagnostics.len(), 2);
+        assert!(saves >= 4);
+        // The issue survives the state file.
+        let restored: Pending = serde_json::from_slice(&serde_json::to_vec(&pending).unwrap()).unwrap();
+        assert_eq!(registration_line(&restored), registration_line(&pending));
+        // Older state files without the package list still read.
+        let old: Pending = serde_json::from_str(r#"{"registration_issue":{"kind":"rejected","ecosystem":"npm","status":400},"jobs":{},"unsubmitted":["pkg:npm/a"]}"#).unwrap();
+        assert!(registration_line(&old).unwrap().contains("npm registration was rejected (HTTP 400)"));
+    }
+    #[test]
+    fn a_rejection_stays_named_after_an_outage_and_a_request_wide_refusal_stops() {
+        let order: Vec<String> = ["pkg:npm/bad", "pkg:npm/b", "pkg:npm/c"].map(String::from).to_vec();
+        let mut pending = Pending::default();
+        pending.unsubmitted.extend(order.iter().cloned());
+        let mut sent = 0;
+        register(&mut pending, order.clone(), |p| { sent += 1; Err(HttpFailure(if p.contains("bad") { 400 } else { 502 }).into()) }, |_| {}, &mut vec![], |_| Ok(())).unwrap();
+        assert_eq!(sent, 2, "the outage stops the pass");
+        assert!(registration_line(&pending).unwrap().contains("rejected for bad (HTTP 400)"));
+        let mut pending = Pending::default();
+        pending.unsubmitted.extend(order.iter().cloned());
+        let mut sent = 0;
+        register(&mut pending, order, |_| { sent += 1; Err(HttpFailure(415).into()) }, |_| {}, &mut vec![], |_| Ok(())).unwrap();
+        assert_eq!(sent, 1, "every package would be refused alike");
+        assert!(registration_line(&pending).unwrap().contains("HTTP 415"));
+    }
+    #[test]
+    fn an_unavailable_or_limited_service_defers_registration_and_is_never_a_tool_side_fix() {
+        let order: Vec<String> = ["pkg:npm/a", "pkg:npm/b", "pkg:npm/c"].map(String::from).to_vec();
+        // The service down (5xx without a time): stop, retry on a later run.
+        let mut pending = Pending::default();
+        pending.unsubmitted.extend(order.iter().cloned());
+        let mut sent = 0;
+        register(&mut pending, order.clone(), |_| { sent += 1; Err(HttpFailure(502).into()) }, |_| {}, &mut vec![], |_| Ok(())).unwrap();
+        assert_eq!(sent, 1);
+        let line = registration_line(&pending).unwrap();
+        assert!(line.contains("status to retry") && !line.contains("tool-side"), "{line}");
+        // Limited (429, or 503 with Retry-After): deferred until then.
+        let mut pending = Pending::default();
+        pending.unsubmitted.extend(order.iter().cloned());
+        register(&mut pending, order, |_| Err(Limited { retry_after: 600 }.into()), |_| {}, &mut vec![], |_| Ok(())).unwrap();
+        assert!(pending.deferred_until.is_some_and(|t| t > unix_now() + 500));
+        assert!(registration_line(&pending).unwrap().starts_with("Coverage queued for later"));
+    }
+    #[test]
+    fn a_503_with_retry_after_is_a_limit() {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let (mut req, mut buf) = (Vec::new(), [0u8; 4096]);
+            while !req.ends_with(b"}") {
+                match stream.read(&mut buf) {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => req.extend_from_slice(&buf[..n]),
+                }
+            }
+            let body = r#"{"error":"The coverage service is temporarily unavailable; retry later","retry_after":900}"#;
+            let _ = write!(stream, "HTTP/1.1 503 Service Unavailable\r\nRetry-After: 900\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+        });
+        let err = request_via(&agent(), &base, "pkg:npm/a", true).unwrap_err();
+        assert_eq!(err.downcast_ref::<Limited>().map(|l| l.retry_after), Some(900));
     }
     #[test]
     fn rejected_http_registration_is_classified_without_reading_untrusted_error_text() {
