@@ -100,7 +100,8 @@ export class HttpClient {
 
   /**
    * GET with redirects followed manually. Credentials and conditional headers are dropped on cross-origin redirects.
-   * `vet`, when given, vets each redirect target before it is requested (robots.txt for a crawl); refused is
+   * `vet`, when given, vets each HTTP(S) redirect target before it is requested (robots.txt for a crawl; other schemes are
+   * refused by the fetchability check); refused is
    * `blocked_url`.
    */
   async get(url: string, headers: Record<string, string>, vet?: (next: URL) => Promise<boolean>): Promise<FetchResult> {
@@ -113,7 +114,7 @@ export class HttpClient {
         const location = res.headers.get("location");
         if (!location) throw new FetchFailure("http_status", `redirect ${res.status} without Location`, res.status);
         current = new URL(location, current);
-        if (vet && !(await vet(current))) throw new FetchFailure("blocked_url", `redirect to ${current.href} refused`);
+        if (vet && /^https?:$/.test(current.protocol) && !(await vet(current))) throw new FetchFailure("blocked_url", `redirect to ${current.href} refused`);
         continue;
       }
       if (res.status === 304 || (res.status >= 200 && res.status < 300)) {
