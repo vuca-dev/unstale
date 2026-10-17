@@ -1,5 +1,7 @@
 # Applies the unstale.sh zone settings the Worker deploy does not cover (scripts/cloudflare-zone.sh): HTTPS only,
 # DNSSEC, CAA, no-mail SPF and DMARC, and the www redirect. Idempotent; run by hand after changing the script.
+# CLOUDFLARE_ZONE_TOKEN: a token for the unstale.sh zone only (Zone Settings, DNS, Zone and Single Redirect: Edit),
+# kept apart from the deploy token, which cannot edit the zone.
 name: zone
 
 on:
@@ -18,5 +20,5 @@ jobs:
           persist-credentials: false
       - name: Apply zone settings
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_ZONE_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
         run: bash scripts/cloudflare-zone.sh
