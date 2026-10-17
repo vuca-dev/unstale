@@ -31,15 +31,22 @@ test("a new package is queued once; repeat requests are votes, one per requester
   expect(JSON.stringify(sql.db.prepare("SELECT * FROM pending").all())).not.toMatch(/198\.51\.100/);
 });
 
-test("new packages are limited per address per hour; votes over the limit are not counted; the queue is bounded", () => {
-  const q = new PendingQueue(memorySql(), settings({ perAddressPerHour: 2, maxPending: 3 }));
+test("new packages are limited per address per hour; votes have their own limit, uncounted over it; the queue is bounded", () => {
+  const q = new PendingQueue(memorySql(), settings({ perAddressPerHour: 2, votesPerAddressPerHour: 2, maxPending: 5 }));
   q.request("pkg:npm/a", "198.51.100.1", false, T);
   q.request("pkg:npm/b", "198.51.100.1", false, T);
   expect(q.request("pkg:npm/c", "198.51.100.1", false, T)).toMatchObject({ type: "refused", limit: "address", retryAfter: 3600 });
-  q.request("pkg:npm/known", "198.51.100.1", true, T);
-  expect(q.list().find((r) => r.purl === "pkg:npm/known")).toBeUndefined();
-  q.request("pkg:npm/c", "198.51.100.2", false, T);
-  expect(q.request("pkg:npm/d", "198.51.100.3", false, T)).toMatchObject({ type: "refused", limit: "budget" });
+  // Votes on known packages have their own bucket; over it the answer is the same and the vote is not counted.
+  q.request("pkg:npm/k1", "198.51.100.1", true, T);
+  q.request("pkg:npm/k2", "198.51.100.1", true, T);
+  expect(q.request("pkg:npm/k3", "198.51.100.1", true, T)).toEqual({ type: "voted" });
+  expect(q.list().map((r) => r.purl)).toEqual(["pkg:npm/a", "pkg:npm/b", "pkg:npm/k1", "pkg:npm/k2"]);
+  // Votes take nothing from the new-package allowance: an address that voted twice still registers.
+  q.request("pkg:npm/a", "198.51.100.2", false, T);
+  q.request("pkg:npm/b", "198.51.100.2", false, T);
+  expect(q.list().find((r) => r.purl === "pkg:npm/a")?.demand).toBe(2);
+  expect(q.request("pkg:npm/c", "198.51.100.2", false, T)).toMatchObject({ type: "queued" });
+  expect(q.request("pkg:npm/d", "198.51.100.2", false, T)).toMatchObject({ type: "refused", limit: "budget" });
 });
 
 test("an IPv6 /64 is one requester; new packages are capped per hour across all addresses", () => {

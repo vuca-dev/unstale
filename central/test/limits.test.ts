@@ -22,6 +22,7 @@ afterEach(() => {
 
 const limits = (l: Partial<Limits>): Limits => ({
   perAddressPerHour: 100,
+  votesPerAddressPerHour: 1000,
   newPerDay: 100,
   runsPerDay: 100,
   trustProxy: 0,
@@ -42,9 +43,10 @@ async function serve(service: CoverageService) {
 
 test("environment defaults and overrides; invalid values keep the default", () => {
   const defaults = { tokensPerPeriod: 1_000_000, period: "day", techQuarterTokens: 50_000 };
-  expect(limitsFromEnv({})).toEqual({ perAddressPerHour: 20, newPerDay: 100, runsPerDay: 1000, trustProxy: 0, ...defaults });
-  expect(limitsFromEnv({ UNSTALE_RATE_PER_HOUR: "3", UNSTALE_NEW_PER_DAY: "0", UNSTALE_RUNS_PER_DAY: "x", UNSTALE_TRUST_PROXY: "true" })).toEqual({
+  expect(limitsFromEnv({})).toEqual({ perAddressPerHour: 250, votesPerAddressPerHour: 1000, newPerDay: 100, runsPerDay: 1000, trustProxy: 0, ...defaults });
+  expect(limitsFromEnv({ UNSTALE_RATE_PER_HOUR: "3", UNSTALE_VOTES_PER_HOUR: "7", UNSTALE_NEW_PER_DAY: "0", UNSTALE_RUNS_PER_DAY: "x", UNSTALE_TRUST_PROXY: "true" })).toEqual({
     perAddressPerHour: 3,
+    votesPerAddressPerHour: 7,
     newPerDay: 0,
     runsPerDay: 1000,
     trustProxy: 1,

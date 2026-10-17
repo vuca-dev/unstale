@@ -41,7 +41,7 @@ Central's operator commands: `npm --prefix central run catalog -- <command>` (pi
 |---|---|---|
 | `.github/workflows/ci.yml` | every push and pull request | The commands under [Tests](#tests) (Rust job; central job with Rust for the schema checks; gateway job with a `wrangler deploy --dry-run` bundle), Node 24 |
 | `.github/workflows/release.yml` | tag `v*` | Checks the tag equals the crate version; `npm/build.sh <platform>` per platform (darwin on macOS, linux and win32 with cargo-zigbuild on Ubuntu); runs every binary on a native runner; `npm publish` per package (`--dry-run` until `NPM_PUBLISH` is `true`; `--provenance` while the repository is public); generates the Homebrew formula (`npm/homebrew-formula.sh`) and commits it to the tap when publishing for real |
-| `.github/workflows/ingest.yml` | daily while the repository is private (every 3 hours once public), manually, and from the gateway (fast-track) | Restores the central store; runs `pipeline --refresh` (catalog technologies) and `drain` (registrations pulled from the gateway, refreshes, new technologies by demand, under the coverage budget); exports and verifies the static catalog; deploys it with the gateway; saves the store; acknowledges the registrations it took |
+| `.github/workflows/ingest.yml` | daily while the repository is private (every 3 hours once public), manually, and from the gateway (fast-track) | Restores the central store; runs `pipeline --refresh` (catalog technologies) and `drain` (registrations pulled from the gateway, refreshes, new technologies by demand, ties broken by adoption, under the coverage budget); exports and verifies the static catalog; deploys it with the gateway; saves the store; acknowledges the registrations it took |
 
 Secrets and variables (Settings > Secrets and variables > Actions):
 
@@ -62,8 +62,8 @@ Secrets and variables (Settings > Secrets and variables > Actions):
 | `UNSTALE_BUDGET_TOKENS` | variable | ingest | Release-note tokens a day the coverage budget allows (default 250,000 in the workflow) |
 | `ASSET_FILE_LIMIT` | variable | ingest | Static files a Worker version may hold: 20,000 on the free plan (default), 100,000 on the paid plan |
 
-The Worker's own settings are in `gateway/wrangler.jsonc` (`RATE_PER_HOUR`, `MAX_PENDING`, `FAST_TRACK_PER_DAY`,
-`FAST_TRACK_INTERVAL_MINUTES`). Its secrets are set once with `npx wrangler secret put` in `gateway/`: `DRAIN_TOKEN`,
+The Worker's own settings are in `gateway/wrangler.jsonc` (`RATE_PER_HOUR`, `VOTES_PER_HOUR`, `NEW_PER_HOUR`,
+`MAX_PENDING`, `FAST_TRACK_PER_DAY`, `FAST_TRACK_INTERVAL_MINUTES`). Its secrets are set once with `npx wrangler secret put` in `gateway/`: `DRAIN_TOKEN`,
 and for fast-track `GITHUB_DISPATCH_TOKEN`, a fine-grained token with **Actions: write** on this repository only.
 
 The workflow's own token (`github.token`) manages the state release; nothing else is needed for CI. npm publishing

@@ -1,8 +1,8 @@
 // The registration queue the gateway holds between coverage runs. One row per public package: its demand (distinct
-// requesters since the last run took it) and when it was first asked for. Votes are deduplicated and new packages
-// address-limited in memory only (central's requesters.ts), so the rows hold no address and no pseudonym. The queue is
-// never refused for budget: central's budget decides how fast it drains. `MAX_PENDING` only bounds storage against a
-// flood.
+// requesters since the last run took it) and when it was first asked for. Votes are deduplicated, and new packages and
+// votes are address-limited in separate buckets, in memory only (central's requesters.ts), so the rows hold no address
+// and no pseudonym. The queue is never refused for budget: central's budget decides how fast it drains. `MAX_PENDING`
+// only bounds storage against a flood.
 import { AddressLimiter, Voters, type Refusal } from "../../central/src/onboarding/requesters.ts";
 
 /** The SQL surface used: a Durable Object's `ctx.storage.sql`, or node:sqlite in tests. */
@@ -13,6 +13,9 @@ export interface Sql {
 export interface Settings {
   /** New packages one address may register per hour (central's UNSTALE_RATE_PER_HOUR). */
   perAddressPerHour: number;
+  /** Votes one address may cast per hour (central's UNSTALE_VOTES_PER_HOUR): a bucket of their own, so a repository
+   * whose packages are mostly known does not spend its new-package allowance on votes. */
+  votesPerAddressPerHour: number;
   /** Rows held at most; beyond it a new package is refused until a run takes some. */
   maxPending: number;
   /** New packages held per UTC hour, all clients together: a plain counter (no address), so it outlives the object's
@@ -30,7 +33,8 @@ export function settingsFrom(vars: Record<string, string | undefined>): Settings
     return v !== undefined && v !== "" && Number.isInteger(n) && n >= 0 ? n : fallback;
   };
   return {
-    perAddressPerHour: int(vars.RATE_PER_HOUR, 20),
+    perAddressPerHour: int(vars.RATE_PER_HOUR, 250),
+    votesPerAddressPerHour: int(vars.VOTES_PER_HOUR, 1000),
     maxPending: int(vars.MAX_PENDING, 50_000),
     newPerHour: int(vars.NEW_PER_HOUR, 1000),
     fastTrackPerDay: int(vars.FAST_TRACK_PER_DAY, 0),
@@ -53,18 +57,20 @@ export class PendingQueue {
   private readonly sql: Sql;
   private readonly settings: Settings;
   private readonly addresses: AddressLimiter;
+  private readonly votes: AddressLimiter;
   private readonly voters = new Voters();
   constructor(sql: Sql, settings: Settings) {
     this.sql = sql;
     this.settings = settings;
     this.addresses = new AddressLimiter(settings.perAddressPerHour);
+    this.votes = new AddressLimiter(settings.votesPerAddressPerHour);
     sql.exec("CREATE TABLE IF NOT EXISTS pending (purl TEXT PRIMARY KEY, demand INTEGER NOT NULL, first_seen INTEGER NOT NULL, known INTEGER NOT NULL)");
     sql.exec("CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT NOT NULL)");
   }
 
-  /** One vote per requester and package, inside the address limit; over it the answer is the same, uncounted. */
+  /** One vote per requester and package, inside the address's vote limit; over it the answer is the same, uncounted. */
   private vote(purl: string, address: string, known: boolean, now: number): void {
-    if (this.voters.has(purl, address) || this.addresses.take(address, now)) return;
+    if (this.voters.has(purl, address) || this.votes.take(address, now)) return;
     this.voters.add(purl, address);
     this.sql.exec(
       "INSERT INTO pending (purl, demand, first_seen, known) VALUES (?, 1, ?, ?) ON CONFLICT(purl) DO UPDATE SET demand = demand + 1",
@@ -115,7 +121,9 @@ export class PendingQueue {
     return this.sql.exec("SELECT 1 FROM pending WHERE purl = ?", purl).toArray().length > 0;
   }
 
-  /** The place of a held new package: most requested first, then first asked (central drains new ones the same way). */
+  /** The place of a held new package: most requested first, then first asked. Central drains new ones by demand too,
+   * but breaks ties by adoption (registry downloads), which the gateway does not read: among equal demand this place
+   * is an estimate. */
   position(purl: string): { position: number; length: number } | undefined {
     const rows = this.sql.exec("SELECT purl FROM pending WHERE known = 0 ORDER BY demand DESC, first_seen ASC, purl ASC").toArray();
     const i = rows.findIndex((r) => r.purl === purl);

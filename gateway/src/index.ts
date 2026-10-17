@@ -22,6 +22,7 @@ export interface Env {
   GITHUB_WORKFLOW?: string;
   GITHUB_REF?: string;
   RATE_PER_HOUR?: string;
+  VOTES_PER_HOUR?: string;
   MAX_PENDING?: string;
   NEW_PER_HOUR?: string;
   FAST_TRACK_PER_DAY?: string;

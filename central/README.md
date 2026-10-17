@@ -57,7 +57,8 @@ Every variable is optional; the defaults suit a developer machine.
 | `AI_GATEWAY_API_KEY` | read from `~/.config/ati/vercel.env` | AI gateway key |
 | `JEV_API_KEY` | read from `UNSTALE_JEV_ENV_FILE` | Jev classifier key |
 | `UNSTALE_JEV_ENV_FILE` | `~/.config/ati/jev.env` | Env file holding `JEV_API_KEY=` when the variable itself is unset |
-| `UNSTALE_RATE_PER_HOUR` | `20` | `serve`: new technologies one client address may register per hour (a known one is never limited) |
+| `UNSTALE_RATE_PER_HOUR` | `250` | `serve`: new technologies one client address may register per hour (a known one is never refused) |
+| `UNSTALE_VOTES_PER_HOUR` | `1000` | `serve`: votes (requests for a known technology) one client address may cast per hour, a bucket apart from new technologies; over it a vote is not counted |
 | `UNSTALE_NEW_PER_DAY` | `100` | `serve`: new technologies accepted per UTC day, all clients together |
 | `UNSTALE_RUNS_PER_DAY` | `1000` | `serve`: coverage job runs (first analysis, retries, refreshes) started per UTC day |
 | `UNSTALE_TRUST_PROXY` | `0` | `serve`: number of proxies in front whose `X-Forwarded-For` entry is trusted (`true` = 1); 0 uses the socket address |

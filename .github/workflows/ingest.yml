@@ -187,7 +187,8 @@ jobs:
         run: npm --prefix central run pipeline -- --refresh ${TECH:+--tech "$TECH"}
 
       # Every other technology: registrations pulled from the gateway join the saved queue, then refreshes and
-      # admitted history first, new technologies by demand, all under the coverage budget. Writes each job's status.
+      # admitted history first, new technologies by demand (ties by adoption), all under the coverage budget. Writes
+      # each job's status.
       # A fast-track run works a pulled package only if it is next in the line of new technologies (it never jumps
       # the queue); otherwise it ran nothing (`ran=false`), and nothing is exported, saved or acknowledged, so the
       # gateway keeps the request for the next scheduled run.

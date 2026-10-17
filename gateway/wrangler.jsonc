@@ -24,7 +24,10 @@
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Coverage"] }],
   "vars": {
-    "RATE_PER_HOUR": "20",
+    // New packages one address may register per hour, and votes on held or known ones (a bucket of their own).
+    // Entry is cheap: central's drain budget bounds spend, and NEW_PER_HOUR and MAX_PENDING bound a flood.
+    "RATE_PER_HOUR": "250",
+    "VOTES_PER_HOUR": "1000",
     "MAX_PENDING": "50000",
     // New packages held per UTC hour, all clients together (no addresses kept): bounds how fast the queue can fill.
     "NEW_PER_HOUR": "1000",

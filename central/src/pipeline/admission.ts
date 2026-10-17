@@ -146,6 +146,27 @@ export async function npmDownloads(names: readonly string[]): Promise<Map<string
   return out;
 }
 
+/** PyPI weekly downloads from pypistats, or undefined when unreadable. */
+const pypiDownloads = async (name: string): Promise<number | undefined> => {
+  const j = await json(`https://pypistats.org/api/packages/${name.toLowerCase()}/recent`);
+  return typeof j?.data?.last_week === "number" ? j.data.last_week : undefined;
+};
+
+/** Weekly downloads by purl (npm in bulk, PyPI from pypistats four at a time); an unreadable count is left out. */
+export async function weeklyDownloads(purls: readonly string[]): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  const npm = purls.filter((p) => ecosystemOf(p) === "npm");
+  const counts = await npmDownloads(npm.map(nameOf));
+  for (const p of npm) if (counts.has(nameOf(p))) out.set(p, counts.get(nameOf(p))!);
+  const pypi = purls.filter((p) => ecosystemOf(p) === "pypi");
+  for (let i = 0; i < pypi.length; i += 4)
+    await Promise.all(pypi.slice(i, i + 4).map(async (p) => {
+      const n = await pypiDownloads(nameOf(p));
+      if (n !== undefined) out.set(p, n);
+    }));
+  return out;
+}
+
 const newest = (dates: Iterable<string | undefined>): string | undefined => {
   let best: string | undefined;
   for (const d of dates) if (d && !Number.isNaN(Date.parse(d)) && (!best || Date.parse(d) > Date.parse(best))) best = d;
@@ -218,9 +239,9 @@ export async function signals(purl: string, repo?: string, known: { downloads?: 
     out.downloads = dl;
     out.downloadsWindow = "week";
   } else if (type === "pypi") {
-    const [doc, stats] = await Promise.all([json(`https://pypi.org/pypi/${name}/json`), json(`https://pypistats.org/api/packages/${name.toLowerCase()}/recent`)]);
+    const [doc, downloads] = await Promise.all([json(`https://pypi.org/pypi/${name}/json`), pypiDownloads(name)]);
     Object.assign(out, fromPypi(doc));
-    out.downloads = typeof stats?.data?.last_week === "number" ? stats.data.last_week : undefined;
+    out.downloads = downloads;
     out.downloadsWindow = "week";
   } else if (type === "cargo") {
     Object.assign(out, fromCargo(await json(`https://crates.io/api/v1/crates/${name}`)));
