@@ -261,7 +261,11 @@ fn render_record(pass: Pass, o: &Opp) -> String {
         s += &format!("- Not cited: code importing it under {}, which runs another release line than installed {}\n", o.elsewhere.join(", "), o.installed);
     }
     if let Some(m) = &o.unmet {
-        s += &format!("- Prerequisite not met here: {m} (the upgrade raises it; part of this obligation)\n");
+        if o.route == crate::funnel::Route::InEffect {
+            s += &format!("- Prerequisite not met here: {m}\n");
+        } else {
+            s += &format!("- Prerequisite not met here: {m} (the upgrade raises it; part of this obligation)\n");
+        }
     }
     if !r.requires.is_empty() && o.requires_miss {
         let requires: Vec<String> = r.requires.iter().map(|x| one_line(x, FIELD_MAX)).collect();
@@ -751,7 +755,7 @@ pub fn render(view: &View, out: &Outcome, catalog: &Catalog) -> String {
     s += "\n\n";
     if !view.in_effect.is_empty() {
         s += &format!(
-            "## In effect now ({})\n\nDeprecated at or below the installed version, and the deprecated API is still used here (matched outside comments in code that can use the technology, in a package that has it; an identifier only in a file that imports or configures it, or that its records name; a namespace that other APIs of the technology live under only beside the entry's specific terms; a site that also names the replacement is a kept fallback and is not listed). They need no upgrade of the technology itself; a record whose stated prerequisite the project does not meet is left out. Before moving code off a deprecated API, check that what replaces it works at the versions installed here: an old API is often kept because its replacement needs a newer version of another package (a peer, the runtime, a plugin host), and an entry may not say so. They are not part of the batches below and do not hold up `--next`.\n\n",
+            "## In effect now ({})\n\nDeprecated at or below the installed version, and the deprecated API is still used here (matched outside comments in code that can use the technology, in a package that has it; an identifier only in a file that imports or configures it, or that its records name; a namespace that other APIs of the technology live under only beside the entry's specific terms; a site that also names the replacement is a kept fallback and is not listed). They need no upgrade of the technology itself; a record whose stated prerequisite the project does not meet is left out, and one cited in a published package whose declared range still admits versions without the replacement says so under \"Prerequisite not met here\". Before moving code off a deprecated API, check that what replaces it works at the versions installed here: an old API is often kept because its replacement needs a newer version of another package (a peer, the runtime, a plugin host), and an entry may not say so. They are not part of the batches below and do not hold up `--next`.\n\n",
             plural(view.in_effect.len(), "record", "records")
         );
         for &i in &view.in_effect {
