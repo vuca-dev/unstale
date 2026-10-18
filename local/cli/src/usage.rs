@@ -558,7 +558,19 @@ fn comment_spans(path: &str, text: &str) -> Vec<(usize, usize)> {
 /// that is not in a comment and has none of `replacements` (the record's named successor) within `SITE_LINES` lines.
 /// Code that loads the replacement and keeps the old API only as a fallback beside it, or a test exercising both, has
 /// already moved. A file named `lit` (`middleware.ts`) is its use.
+#[cfg(test)]
 pub fn live_site(path: &str, text: &str, lit: &str, replacements: &[String]) -> bool {
+    live_site_near(path, text, lit, replacements, None)
+}
+
+/// `live_site`, and with `context` (`Some`) a site counts only where one of those literals also occurs (whole token,
+/// outside comments) within `SITE_LINES` lines: a namespace the technology's other APIs live under (`pytest.mark`,
+/// `namespace_of`) says nothing about which of them is used, so it takes the record's specific literals beside it
+/// (`@pytest.mark.tryfirst` above `def pytest_addoption`). `Some(&[])`: never.
+pub fn live_site_near(path: &str, text: &str, lit: &str, replacements: &[String], context: Option<&[String]>) -> bool {
+    if context.is_some_and(|c| c.is_empty()) {
+        return false;
+    }
     let base = path.rsplit('/').next().unwrap_or(path);
     if base.eq_ignore_ascii_case(lit) || path.eq_ignore_ascii_case(lit) || path.to_ascii_lowercase().ends_with(&format!("/{}", lit.to_ascii_lowercase())) {
         return true;
@@ -586,7 +598,30 @@ pub fn live_site(path: &str, text: &str, lit: &str, replacements: &[String]) -> 
     let starts: Vec<usize> = text.match_indices('\n').map(|(i, _)| i).collect();
     let line_of = |at: usize| starts.partition_point(|&n| n < at);
     let near: Vec<usize> = replacements.iter().flat_map(|r| sites(r)).map(line_of).collect();
-    sites(lit).into_iter().map(line_of).any(|l| !near.iter().any(|r| r.abs_diff(l) <= SITE_LINES))
+    let beside: Option<Vec<usize>> = context.map(|c| c.iter().flat_map(|x| sites(x)).map(line_of).collect());
+    sites(lit)
+        .into_iter()
+        .map(line_of)
+        .filter(|l| beside.as_ref().is_none_or(|b| b.iter().any(|x| x.abs_diff(*l) <= SITE_LINES)))
+        .any(|l| !near.iter().any(|r| r.abs_diff(l) <= SITE_LINES))
+}
+
+/// Whether `lit` is a qualified name: identifiers joined by `.` (`pytest.mark`, `config.inicfg`), not a file name
+/// (`middleware.ts`, `next.config.js`) and not a member written alone (`.extend`).
+pub fn qualified_name(lit: &str) -> bool {
+    let parts: Vec<&str> = lit.split('.').collect();
+    parts.len() >= 2
+        && parts.iter().all(|p| is_word(p) && !p.starts_with(|c: char| c.is_ascii_digit()))
+        && !TEXT_EXT.contains(&parts[parts.len() - 1].to_ascii_lowercase().as_str())
+}
+
+/// Whether `name` names a member of the qualified name `ns`, or something under one (`pytest.mark.parametrize`,
+/// `@pytest.mark.xfail(strict=True)` under `pytest.mark`): `ns.` then an identifier that is not a file extension
+/// (`next.config.js` is a file, not a member of `next.config`).
+pub fn member_of(name: &str, ns: &str) -> bool {
+    let Some(rest) = name.strip_prefix('@').unwrap_or(name).strip_prefix(ns).and_then(|r| r.strip_prefix('.')) else { return false };
+    let member: String = rest.chars().take_while(|c| c.is_alphanumeric() || *c == '_' || *c == '$').collect();
+    !member.is_empty() && !member.starts_with(|c: char| c.is_ascii_digit()) && !TEXT_EXT.contains(&member.to_ascii_lowercase().as_str())
 }
 
 const LOCKFILES: &[&str] = &["package-lock.json", "npm-shrinkwrap.json", "pnpm-lock.yaml", "yarn.lock"];
@@ -1376,6 +1411,24 @@ mod tests {
         assert_eq!(c, vec!["docs/middleware.ts", "packages/expo-server/src/utils/middleware.ts"], "through a workspace dependency that declares it");
         let none = Scope::new("npm", &[], &purls, &lits, &h, &r.paths);
         assert_eq!(cited(&none, "middleware.ts").len(), 3, "no manifest says: as before");
+    }
+
+    #[test]
+    fn a_namespace_needs_a_specific_literal_beside_it() {
+        assert!(qualified_name("pytest.mark") && qualified_name("config.inicfg") && qualified_name("np.testing.assert_warns"));
+        assert!(!qualified_name("middleware.ts") && !qualified_name("next.config.js") && !qualified_name(".extend") && !qualified_name("toBeCalled"));
+        assert!(member_of("pytest.mark.parametrize", "pytest.mark") && member_of("@pytest.mark.xfail(strict=True)", "pytest.mark"));
+        assert!(!member_of("next.config.js", "next.config") && !member_of("pytest.marker", "pytest.mark") && !member_of("pytest.mark", "pytest.mark"));
+        let ctx = vec!["pytest_addoption".to_string()];
+        let tests = "@pytest.mark.parametrize('x', [1])\ndef test_a(x): ...\n";
+        assert!(live_site_near("t.py", tests, "pytest.mark", &[], None), "no context asked: as before");
+        assert!(!live_site_near("t.py", tests, "pytest.mark", &[], Some(&ctx)));
+        assert!(!live_site_near("t.py", tests, "pytest.mark", &[], Some(&[])), "no specific literal: never");
+        let hook = "@pytest.mark.tryfirst\ndef pytest_addoption(parser): ...\n";
+        assert!(live_site_near("p.py", hook, "pytest.mark", &[], Some(&ctx)));
+        let far = format!("def pytest_addoption(parser): ...\n{}@pytest.mark.skip\ndef test_b(): ...\n", "x = 1\n".repeat(SITE_LINES + 1));
+        assert!(!live_site_near("p.py", &far, "pytest.mark", &[], Some(&ctx)), "the hook elsewhere in the file");
+        assert!(!live_site_near("p.py", "# pytest_addoption\n@pytest.mark.skip\n", "pytest.mark", &[], Some(&ctx)), "a comment is not context");
     }
 
     #[test]
