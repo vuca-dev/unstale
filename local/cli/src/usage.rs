@@ -583,7 +583,8 @@ pub fn live_site(path: &str, text: &str, lit: &str, replacements: &[String]) -> 
             .filter(|at| !in_comment(*at))
             .collect()
     };
-    let line_of = |at: usize| text[..at].bytes().filter(|c| *c == b'\n').count();
+    let starts: Vec<usize> = text.match_indices('\n').map(|(i, _)| i).collect();
+    let line_of = |at: usize| starts.partition_point(|&n| n < at);
     let near: Vec<usize> = replacements.iter().flat_map(|r| sites(r)).map(line_of).collect();
     sites(lit).into_iter().map(line_of).any(|l| !near.iter().any(|r| r.abs_diff(l) <= SITE_LINES))
 }
