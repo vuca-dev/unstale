@@ -2,7 +2,7 @@
 // on a rerun, technology indexes byte-identical to what the coverage service serves (its `components`), pruned first,
 // built aside so a failed export never replaces a good one.
 import { createHash, generateKeyPairSync, verify } from "node:crypto";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
@@ -105,21 +105,26 @@ describe("export", () => {
     const dir = mkdtempSync(join(tmpdir(), "unstale-place-"));
     const src = join(dir, "a.jsonl.gz");
     writeFileSync(src, "verified");
-    const read = { data: readFileSync(src), ino: statSync(src).ino };
+    const identity = (f: string) => {
+      const { ino, size, mtimeMs } = statSync(f);
+      return { data: readFileSync(f), ino, size, mtimeMs };
+    };
+    const read = identity(src);
     const crossDevice = () => {
       throw Object.assign(new Error("EXDEV: cross-device link not permitted"), { code: "EXDEV" });
     };
     expect(placeShard(src, join(dir, "copy"), read, crossDevice)).toBe(false);
     expect(readFileSync(join(dir, "copy"), "utf8")).toBe("verified");
     expect(statSync(join(dir, "copy")).ino).not.toBe(read.ino);
-    // Replaced (a new inode) between the read and the link: the verified bytes are written, not the new file linked.
-    rmSync(src);
-    writeFileSync(src, "replaced");
+    // Replaced (by rename, as every writer does) between the read and the link: the verified bytes are written, not
+    // the new file linked.
+    writeFileSync(`${src}.tmp`, "replaced");
+    renameSync(`${src}.tmp`, src);
     expect(placeShard(src, join(dir, "late"), read)).toBe(false);
     expect(readFileSync(join(dir, "late"), "utf8")).toBe("verified");
     // Any other failure is an error, not a silent copy.
     expect(() => placeShard(join(dir, "missing"), join(dir, "x"), read)).toThrow(/ENOENT/);
-    expect(placeShard(src, join(dir, "linked"), { data: readFileSync(src), ino: statSync(src).ino })).toBe(true);
+    expect(placeShard(src, join(dir, "linked"), identity(src))).toBe(true);
   });
 
   test("technology indexes are the bytes the service route serves, components included", async () => {

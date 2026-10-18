@@ -9,10 +9,10 @@
 //
 // Shards are hard links to the catalog's files, not copies, when both are on one filesystem (else copies): at 20,000
 // technologies the shards are about 3 GB, which a copy would add to the runner's disk every cycle. That is safe because
-// a shard is content-addressed (its name carries a prefix of its sha256) and never written in place: publish.ts writes a new
-// shard by rename, prune.ts and a new export only unlink, and the deploy's pack (gateway/scripts/pack.ts) only reads and
-// unlinks. The linked file is checked to be the one whose bytes were verified (same inode), else the verified bytes are
-// written.
+// a shard is content-addressed (its name carries a prefix of its sha256) and never written in place: publish.ts writes
+// a new shard by rename, prune.ts and a new export only unlink, and the deploy's pack (gateway/scripts/pack.ts) only
+// reads and unlinks. The linked file is checked to be the one whose bytes were verified (same inode, size and mtime),
+// else the verified bytes are written.
 //
 // With a signing key (UNSTALE_SIGNING_KEY, an Ed25519 private key as PKCS#8 PEM), the root and every index get a
 // detached signature beside them (`<file>.sig`, hex), which a release client checks against its compiled-in public
@@ -90,11 +90,20 @@ export interface ExportResult {
   prune: PruneResult;
 }
 
-/** A file's bytes and inode, read through one descriptor, so a link made afterwards can be checked to be that file. */
-function readWithInode(file: string): { data: Buffer<ArrayBuffer>; ino: number } {
+/** A shard's bytes as read, and the identity (inode, size, mtime) of the file they were read from. */
+export interface ReadShard {
+  data: Buffer;
+  ino: number;
+  size: number;
+  mtimeMs: number;
+}
+
+/** Reads through one descriptor, so a link made afterwards can be checked to be the file that was read. */
+function readShard(file: string): ReadShard & { data: Buffer<ArrayBuffer> } {
   const fd = openSync(file, "r");
   try {
-    return { ino: fstatSync(fd).ino, data: readFileSync(fd) };
+    const { ino, size, mtimeMs } = fstatSync(fd);
+    return { ino, size, mtimeMs, data: readFileSync(fd) };
   } finally {
     closeSync(fd);
   }
@@ -102,10 +111,11 @@ function readWithInode(file: string): { data: Buffer<ArrayBuffer>; ino: number }
 
 /** Places `src` at `dst` (whose directory exists) as a hard link, or as a copy of `data` (the verified bytes of `src`)
  * when the filesystem refuses the link or `src` was replaced since it was read. Returns whether it linked. */
-export function placeShard(src: string, dst: string, read: { data: Buffer; ino: number }, link: (src: string, dst: string) => void = linkSync): boolean {
+export function placeShard(src: string, dst: string, read: ReadShard, link: (src: string, dst: string) => void = linkSync): boolean {
   try {
     link(src, dst);
-    if (statSync(dst).ino === read.ino) return true;
+    const s = statSync(dst);
+    if (s.ino === read.ino && s.size === read.size && s.mtimeMs === read.mtimeMs && s.size === read.data.length) return true;
     rmSync(dst);
   } catch (e) {
     const code = (e as NodeJS.ErrnoException).code;
@@ -145,7 +155,7 @@ export function exportCatalog(
     writeFileSync(join(tmp, path), data);
   };
   let linked = 0;
-  const putShard = (path: string, read: { data: Buffer; ino: number }): void => {
+  const putShard = (path: string, read: ReadShard): void => {
     mkdirSync(dirname(join(tmp, path)), { recursive: true });
     if (placeShard(join(src, path), join(tmp, path), read)) linked++;
   };
@@ -169,7 +179,7 @@ export function exportCatalog(
         if (!SHARD_PATH.test(path)) throw new Error(`v1/tech/${f}: shard path ${s.path} is not servable`);
         const file = join(src, path);
         if (!existsSync(file)) throw new Error(`v1/tech/${f}: shard ${path} missing`);
-        const read = readWithInode(file);
+        const read = readShard(file);
         const gz = read.data;
         if (gz.length !== s.bytes || sha256(gz) !== s.sha256) throw new Error(`v1/tech/${f}: shard ${path} does not match its size and sha256`);
         if (!shards.has(path)) {
@@ -191,7 +201,7 @@ export function exportCatalog(
       for (const name of readdirSync(join(shardDir, tech)).filter((n) => SHARD_FILE.test(n)).sort()) {
         const path = `v1/shards/${tech}/${name}`;
         if (shards.has(path) || !SHARD_PATH.test(path)) continue;
-        const read = readWithInode(join(src, path));
+        const read = readShard(join(src, path));
         putShard(path, read);
         shards.add(path);
         bytes += read.data.length;
