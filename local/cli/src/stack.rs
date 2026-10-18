@@ -241,19 +241,7 @@ impl Stack {
     /// Technology ids worth asking the catalog for: each package name, and a scope's name. Only a candidate;
     /// a technology is in the stack when its records name one of these package URLs.
     pub fn candidates(&self) -> BTreeSet<String> {
-        let mut out = BTreeSet::new();
-        for d in self.deps.values() {
-            match d.name.strip_prefix('@').and_then(|s| s.split_once('/')) {
-                Some((scope, name)) => {
-                    out.insert(scope.to_lowercase());
-                    out.insert(name.to_lowercase());
-                }
-                None => {
-                    out.insert(d.name.to_lowercase());
-                }
-            }
-        }
-        out
+        self.deps.values().flat_map(dep_candidates).collect()
     }
 
     /// A version the project declares for a prerequisite name in the npm ecosystem: `node` from engines or
@@ -263,6 +251,14 @@ impl Stack {
             return self.node.as_ref().map(|(v, _)| v);
         }
         self.deps.get(&npm_purl(&name.to_lowercase())).and_then(|d| d.version.as_ref())
+    }
+}
+
+/// The catalog technologies a dependency's name may be: the name, or a scoped name's scope and name.
+pub fn dep_candidates(d: &Dep) -> Vec<String> {
+    match d.name.strip_prefix('@').and_then(|s| s.split_once('/')) {
+        Some((scope, name)) => vec![scope.to_lowercase(), name.to_lowercase()],
+        None => vec![d.name.to_lowercase()],
     }
 }
 

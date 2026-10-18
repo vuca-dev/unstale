@@ -398,3 +398,22 @@ test("a progress report that was not delivered is sent again at the next tick, n
   await tick(); // unchanged and delivered: no request
   expect(sent.length).toBe(2);
 });
+
+test("a pulled package is reported once its run started it, between slices too, with its save time and when its cycle publishes", async () => {
+  const { progressOf } = await import("../src/onboarding/progress.ts");
+  const job = (state: string, extra: Record<string, unknown> = {}) =>
+    ({ purl: "pkg:pypi/a", technology: "a", name: "a", state, stage: "s", updated: "2026-10-18T15:59:53.037Z", records: 0, releases_done: 0, releases_total: 10, docs_done: 0, docs_total: 0, docs_failed: 0, ...extra }) as never;
+  const by = "2026-10-18T16:17:00.000Z";
+  const service = (j: unknown, working = false) => ({ jobs: new Map([["pkg:pypi/a", j as never]]), working: () => working });
+  // Pulled, not started: its place in the queue is the gateway's to show.
+  expect(progressOf(service(job("queued")), "pkg:pypi/a", by)).toBeUndefined();
+  expect(progressOf(service(job("analyzing"), true), "pkg:pypi/a", by)).toMatchObject({ state: "running", job: { updated: "2026-10-18T15:59:53.037Z", publish_by: by } });
+  // Queued again after a slice: still this run's, with what it extracted so far.
+  const between = job("queued", { records: 18, releases_done: 3, completed: ["x", "y", "z"], stage: "18 records so far; more history queued" });
+  expect(progressOf(service(between), "pkg:pypi/a", by)).toMatchObject({ state: "running", job: { state: "queued", records: 18, releases_done: 3, stage: "18 records so far; more history queued" } });
+  expect(progressOf(service(job("partial", { records: 5 })), "pkg:pypi/a", by)).toMatchObject({ state: "publishing", job: { records: 5 } });
+  // A merged package shows the job that works it.
+  const host = job("analyzing", { purl: "pkg:pypi/host", records: 7 });
+  const merged = { jobs: new Map([["pkg:pypi/a", job("queued", { merged_into: "pkg:pypi/host" })], ["pkg:pypi/host", host]]), working: (p: string) => p === "pkg:pypi/host" };
+  expect(progressOf(merged, "pkg:pypi/a", by)).toMatchObject({ purl: "pkg:pypi/a", state: "running", job: { records: 7 } });
+});

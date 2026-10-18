@@ -380,10 +380,11 @@ test("a run's progress on a held package: started early, working, publishing, th
   expect((await handle(new Request("https://unstale.example/internal/progress", { method: "POST", body: "{}" }), e)).status).toBe(401);
   const job = { state: "analyzing", stage: "Reading release notes\u001b[2J", records: 3, releases_done: 2, releases_total: 9, docs_done: 1, docs_total: 4, extra: "x" };
   expect(await (await progress([{ purl: "pkg:npm/a", state: "running", job }, { purl: "pkg:npm/never-held", state: "running" }])).json()).toEqual({ reported: 1 });
-  expect(await status()).toMatchObject({ state: "analyzing", stage: "Reading release notes [2J", records: 3, releases_done: 2, releases_total: 9, docs_done: 1, docs_total: 4, run: { state: "running" } });
+  // What a run extracted is not in the catalog before its cycle publishes: pending, never counted as published.
+  expect(await status()).toMatchObject({ state: "analyzing", stage: "Reading release notes [2J", records: 0, records_pending: 3, releases_done: 2, releases_total: 9, docs_done: 1, docs_total: 4, run: { state: "running" } });
   await progress([{ purl: "pkg:npm/a", state: "publishing" }]);
   // The last counters stay while the catalog is published.
-  expect(await status()).toMatchObject({ state: "analyzing", records: 3, run: { state: "publishing" } });
+  expect(await status()).toMatchObject({ state: "analyzing", records: 0, records_pending: 3, run: { state: "publishing" } });
   files[await statusPath("pkg:npm/a")] = { schema: 1, purl: "pkg:npm/a", technology: "a", name: "a", state: "partial", stage: "done", records: 5 };
   expect(await status()).toEqual(files[await statusPath("pkg:npm/a")]);
   const ack = new Request("https://unstale.example/internal/ack", { method: "POST", headers: auth, body: JSON.stringify({ requests: [{ purl: "pkg:npm/a", demand: 1 }] }) });
@@ -705,4 +706,26 @@ test("the day's rows are on /internal/usage, and in the answers a run prints, wi
   expect(usage).toMatchObject({ allowance: { rows_read: 5_000_000, rows_written: 100_000 }, held: 1, ops: { register: { n: 1, written: 2 } } });
   expect(usage.rows_written).toBeGreaterThanOrEqual(2);
   expect(await (await handle(get("/internal/queue", auth), e)).json()).toMatchObject({ usage: { held: 1 } });
+});
+
+test("a run's reports carry central's save time and when the cycle publishes; an older save never replaces a newer one", async () => {
+  vi.stubGlobal("fetch", async () => new Response(null, { status: 204 }));
+  const { env: e } = env({});
+  await handle(post({ purl: "pkg:npm/a" }), e);
+  const status = async () => (await (await handle(get("/coverage?purl=pkg%3Anpm%2Fa"), e)).json()) as Record<string, any>;
+  const auth = { Authorization: "Bearer drain-secret", "Content-Type": "application/json" };
+  const progress = (updates: unknown) => handle(new Request("https://unstale.example/internal/progress", { method: "POST", headers: auth, body: JSON.stringify({ updates }) }), e);
+  const job = (records: number, updated: unknown, more: Record<string, unknown> = {}) => ({ state: "analyzing", stage: "Reading", records, releases_done: 0, releases_total: 10, docs_done: 0, docs_total: 0, updated, ...more });
+  const by = "2026-10-18T16:17:00.000Z";
+  await progress([{ purl: "pkg:npm/a", state: "running", job: job(18, "2026-10-18T15:59:53.037Z", { publish_by: by }) }]);
+  expect(await status()).toMatchObject({ records: 0, records_pending: 18, updated: "2026-10-18T15:59:53.037Z", publish_by: by });
+  // Out of order: the earlier save arrives last and is ignored.
+  await progress([{ purl: "pkg:npm/a", state: "running", job: job(0, "2026-10-18T15:59:18.026Z") }]);
+  expect(await status()).toMatchObject({ records_pending: 18, updated: "2026-10-18T15:59:53.037Z" });
+  // Times not in Date#toISOString's form are dropped, not passed on.
+  await progress([{ purl: "pkg:npm/a", state: "running", job: job(19, "0", { publish_by: "soon" }) }]);
+  const answer = await status();
+  expect(answer.records_pending).toBe(19);
+  expect(answer.publish_by).toBeUndefined();
+  expect(answer.updated).toMatch(/^\d{4}-\d{2}-\d{2}T/);
 });

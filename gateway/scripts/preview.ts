@@ -107,7 +107,7 @@ async function play(): Promise<void> {
   log("analysed; exporting and deploying");
   await wait(8);
   for (const { purl } of requests) {
-    published.set(await statusPath(purl), { schema: 1, purl, technology: technologyId(purl), name: packageIdentity(purl), state: "partial", stage: `${releases * 2} records available; continuing centrally`, records: releases * 2, updated: new Date().toISOString() });
+    published.set(await statusPath(purl), { schema: 1, purl, technology: technologyId(purl), name: packageIdentity(purl), state: "partial", stage: `${releases * 2} records so far; continuing centrally`, records: releases * 2, updated: new Date().toISOString() });
   }
   log("deployed; statuses published");
   await wait(3);

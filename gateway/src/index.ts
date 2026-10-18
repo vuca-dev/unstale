@@ -16,7 +16,10 @@
 //   GET /internal/usage         the object's rows read and written today against the free tier (bearer DRAIN_TOKEN);
 //                               also in the answers to /internal/queue and /internal/ack, which a run prints
 //   POST /internal/progress     where a run is with the held packages it pulled (bearer DRAIN_TOKEN), so a client
-//                               that started one early can follow it until the package is published; with
+//                               that started one early can follow it until the package is published (each job with
+//                               central's save time, `updated`, which orders the reports, and `publish_by`, when the
+//                               run's cycle publishes: a held package's records are `records_pending` until then,
+//                               never `records`, which counts only what the catalog has); with
 //                               `budget.spent_until`, until when central's budget is spent (no early run until then);
 //                               with `pulls.next`, when the run reads the queue again (no early run while it does;
 //                               null: it is done, and an early run held back meanwhile starts)
@@ -220,8 +223,13 @@ function queued(purl: string, at: View, now = Date.now()) {
     name: packageIdentity(purl),
     state,
     stage,
-    updated: new Date(run?.updated ?? now).toISOString(),
-    records: job?.records ?? 0,
+    // Central's own time of the job's last save when the run sent it, the clock its published status uses too, so a
+    // client can order the answers it gets for one job.
+    updated: job?.updated ?? new Date(run?.updated ?? now).toISOString(),
+    // Nothing a run reports is in the catalog before its cycle publishes: none of its records can be synced yet.
+    records: 0,
+    ...(job?.records && { records_pending: job.records }),
+    ...(job?.publish_by && { publish_by: job.publish_by }),
     releases_done: job?.releases_done ?? 0,
     releases_total: job?.releases_total ?? 0,
     docs_done: job?.docs_done ?? 0,
@@ -242,6 +250,8 @@ function queued(purl: string, at: View, now = Date.now()) {
   };
 }
 
+/** Exactly what Date#toISOString writes: a looser parse would read "0" as the year 2000. */
+const isoTime = (v: unknown): v is string => typeof v === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(v);
 const count = (v: unknown) => (Number.isInteger(v) && (v as number) >= 0 ? (v as number) : 0);
 
 /** A run's progress report: held packages and public counters only, bounded. */
@@ -265,6 +275,8 @@ function progressOf(body: unknown): { purl: string; state: RunState; job?: Progr
                 releases_total: count(job.releases_total),
                 docs_done: count(job.docs_done),
                 docs_total: count(job.docs_total),
+                ...(isoTime(job.updated) && { updated: job.updated as string }),
+                ...(isoTime(job.publish_by) && { publish_by: job.publish_by as string }),
               },
             }
           : {}),
@@ -279,8 +291,7 @@ function budgetOf(body: unknown): { spentUntil?: number } | undefined {
   if (budget === undefined) return undefined;
   const until = (budget as { spent_until?: unknown })?.spent_until;
   if (until === null) return {};
-  // Exactly what Date#toISOString writes: a looser parse would read "0" as the year 2000 and clear a pause.
-  const ms = typeof until === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(until) ? Date.parse(until) : NaN;
+  const ms = isoTime(until) ? Date.parse(until) : NaN;
   if (!Number.isFinite(ms)) throw new Error("Expected budget {\"spent_until\": ISO time or null}");
   return { spentUntil: ms };
 }
@@ -291,7 +302,7 @@ function pullsOf(body: unknown): { next?: number } | undefined {
   if (pulls === undefined) return undefined;
   const next = (pulls as { next?: unknown })?.next;
   if (next === null) return {};
-  const ms = typeof next === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(next) ? Date.parse(next) : NaN;
+  const ms = isoTime(next) ? Date.parse(next) : NaN;
   if (!Number.isFinite(ms)) throw new Error("Expected pulls {\"next\": ISO time or null}");
   return { next: ms };
 }
