@@ -322,6 +322,38 @@ fn dependents(packages: &[crate::stack::Package]) -> Vec<Vec<usize>> {
     out
 }
 
+/// Project boundaries, deepest first: every manifest's directory and every directory holding a `project.json` (an Nx
+/// project, which a root manifest declaring every dependency does not tell apart).
+fn boundaries<'p>(packages: &'p [crate::stack::Package], paths: &'p [String]) -> Vec<&'p str> {
+    let projects = paths.iter().filter_map(|p| match p.rsplit_once('/') {
+        Some((dir, "project.json")) => Some(dir),
+        None if p == "project.json" => Some("."),
+        _ => None,
+    });
+    let mut out: Vec<&str> = packages.iter().map(|p| p.dir.as_str()).chain(projects).collect();
+    out.sort_unstable_by_key(|d| (std::cmp::Reverse(if *d == "." { 0 } else { d.len() }), *d));
+    out.dedup();
+    out
+}
+
+/// The nearest project boundary containing `path` (`.` when none does).
+fn boundary_of<'b>(bounds: &[&'b str], path: &str) -> &'b str {
+    bounds.iter().copied().find(|d| *d == "." || path.strip_prefix(*d).is_some_and(|r| r.starts_with('/'))).unwrap_or(".")
+}
+
+/// The project boundaries where a technology's file conventions apply (`middleware.ts` is Next.js's file only in a
+/// Next.js project): a package that has the technology (`reaching`), or a project whose own code imports it. A file a
+/// record names counts only in one of these, at its nearest boundary: a NestJS generator's `middleware.ts` in a
+/// monorepo whose root manifest declares `next` is not Next.js's.
+fn conventions<'b>(bounds: &[&'b str], reach: &[&str], importers: impl Iterator<Item = impl AsRef<str>>) -> std::collections::HashSet<&'b str> {
+    let mut out: std::collections::HashSet<&'b str> = bounds.iter().copied().filter(|b| reach.contains(b)).collect();
+    if reach.contains(&".") {
+        out.insert(".");
+    }
+    out.extend(importers.map(|p| boundary_of(bounds, p.as_ref())));
+    out
+}
+
 /// Directories of the packages that declare one of `comps`, or depend (through the repository's own packages, at any
 /// depth: `dependents`) on a package that does: n8n's `packages/cli` gets typescript-eslint from the workspace
 /// `@n8n/eslint-config`.
@@ -677,6 +709,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
     let commands: BTreeSet<String> = in_stack.iter().flat_map(|(_, _, tl)| tl.comps.iter().flat_map(|c| usage::command_words(c))).collect();
     let all_hits: Hits = usage::find_with_commands(inp.repo, &usage_lits, &whole_lits, &commands);
     let dependents = dependents(&inp.stack.packages);
+    let bounds = boundaries(&inp.stack.packages, &inp.repo.paths);
     for (tech, td, tl) in &in_stack {
         let (tech, comps, lits) = (*tech, &tl.comps, &tl.per_record);
         // A CLI flag counts only on a command line that runs this technology: `--scope` in another CLI's help text or
@@ -796,6 +829,8 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             evidence.borrow_mut().insert(key, e.clone());
             e
         };
+        // Where the technology's file conventions apply (`convention_at`).
+        let convention = conventions(&bounds, &reach, scopes[0].importers().filter(|p| usage::own_code(p, &ecosystem)));
         // A deprecated literal's evidence: whole-literal hits only (`usage::Scope::exact_evidence`), at a live site
         // (`usage::live_site`: not in a comment, not a fallback beside the record's replacement). Per view, literal and
         // replacements.
@@ -806,7 +841,15 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             if let Some(e) = exact.borrow().get(&key) {
                 return e.clone();
             }
-            let live = |p: &str| inp.repo.text(p).is_none_or(|t| usage::live_site_near(p, t, l, repl, context));
+            let named_file = usage::file_name(l);
+            let live = |p: &str| {
+                if named_file {
+                    // A file named for the technology (`.eslintrc.json`) is its file wherever it is cited, as root-
+                    // declared tooling configures every package; a generic name (`middleware.ts`) only in its projects.
+                    return usage::is_file(p, l) && (scopes[v].names_path(p) || convention.contains(boundary_of(&bounds, p)));
+                }
+                inp.repo.text(p).is_none_or(|t| usage::live_site_near(p, t, l, repl, context))
+            };
             let e = Rc::new(scopes[v].exact_evidence_where(l, role, !nested, live));
             exact.borrow_mut().insert(key, e.clone());
             e
@@ -1031,6 +1074,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                     opp.withheld_from = Some(Route::InEffect);
                     opp.route = Route::Withheld(s);
                 }
+                opp.unmet = parse_version(&opp.release.version).and_then(|v| published_floor(inp.stack, &comp, &v, &opp.files));
             }
             let shown = matches!(opp.route, Route::UpgradeReview | Route::ImprovementsPass | Route::BumpDigest);
             if shown {
@@ -1135,6 +1179,31 @@ fn blank<'a>(rec: &'a Rec, release: Release, route: Route) -> Opp<'a> {
         unmet: None,
         elsewhere: vec![],
     }
+}
+
+/// For an in-effect deprecation cited in a published package: the replacement arrived in `introduced`, and the
+/// package's declared range lets its users install an older version, which lacks it. Moving off the deprecated API
+/// there takes raising the range first (`@nx/webpack` declares `terser-webpack-plugin` `^5.3.3`; `minimizerOptions`
+/// arrived in 5.6.0). The installed version says nothing about what the package's users get. A library's reading keeps
+/// its declared range (`stack::Reading::range`); an application's locked reading has none.
+fn published_floor(stack: &Stack, comp: &str, introduced: &Version, files: &[String]) -> Option<String> {
+    let (_, d) = stack.deps.iter().find(|(p, _)| normalize_purl(p) == comp)?;
+    let lib = |dir: &str| stack.packages.iter().any(|p| p.dir == dir && p.kind == crate::stack::Kind::Library);
+    let mut low: Vec<String> = files
+        .iter()
+        .filter_map(|f| owner(d, f))
+        .filter(|r| lib(&r.dir))
+        .filter_map(|r| {
+            let (shown, floor) = match r.range.as_ref()? {
+                crate::stack::Range::Npm(x) => (x, crate::util::range_floor(x)),
+                crate::stack::Range::Pypi(x) => (x, crate::pypi::spec_floor(x)),
+            };
+            floor.filter(|f| f < introduced).map(|_| format!("{} declares {} {shown}", place(&r.dir), d.name))
+        })
+        .collect();
+    low.sort();
+    low.dedup();
+    (!low.is_empty()).then(|| format!("{}, which admits versions before {introduced}, where the replacement is missing: raise the declared range to >={introduced}", low.join("; ")))
 }
 
 /// A structured npm prerequisite above the project's floor, or below a declared maximum. Names the project cannot
@@ -1592,6 +1661,83 @@ mod tests {
         let only = catalog("vitest", 0, vec![dep("vitest:tobe", json!({"replaces":["toBeCalledWith"]}))]);
         let out = run_with(&only, &s, &r, &l);
         assert_eq!(why(&out, &["upgrade review", IN_EFFECT]), "no other records for vitest in the catalog");
+    }
+
+    fn package(dir: &str, kind: crate::stack::Kind, declared: &[&str]) -> crate::stack::Package {
+        crate::stack::Package { dir: dir.into(), kind, lockfile: None, declared: declared.iter().map(|d| crate::util::npm_purl(d)).collect(), own: None }
+    }
+
+    #[test]
+    fn a_file_name_counts_only_as_the_file_in_a_project_of_the_technology() {
+        use crate::stack::Kind::Application;
+        let l = Ledger::default();
+        let c = catalog("next", 0, vec![with(rec("next:middleware", "pkg:npm/next", "16.0.0"), json!({"change_type":"deprecation","replaces":["middleware.ts"],"introduces":["proxy.ts"]}))]);
+        let mut s = stack(&[("next", "16.0.5")], None);
+        // A monorepo whose root manifest declares everything; projects are told apart by their own manifest or project.json.
+        s.packages = vec![package(".", Application, &["next"]), package("packages/nest", Application, &["@nestjs/core"])];
+        let files = [
+            ("docs/astro.config.mjs", "export default { middleware: ['./src/plugins/og.middleware.ts'] }"),
+            ("packages/nest/src/generators/middleware/middleware.ts", "export function middlewareGenerator() {}"),
+            ("tools/gen/project.json", "{}"),
+            ("tools/gen/middleware.ts", "export {}"),
+            ("apps/site/project.json", "{}"),
+            ("apps/site/page.tsx", "import Link from 'next/link';"),
+            ("apps/site/middleware.ts", "export function middleware() {}"),
+        ];
+        let r = repo(&files);
+        let out = run_with(&c, &s, &r, &l);
+        let o = out.opps.iter().find(|o| o.id() == "next:middleware").unwrap();
+        assert_eq!((&o.route, &o.files), (&Route::InEffect, &vec!["apps/site/middleware.ts".to_string()]), "only the file, in a project importing next");
+        let r = repo(&files[..4]);
+        assert!(run_with(&c, &s, &r, &l).in_effect.is_empty(), "a path string or another framework's file is not next's");
+        // A file named for the technology is its file under a root that has it, whatever the nearer project.
+        let c2 = catalog("next", 0, vec![with(rec("next:cfg", "pkg:npm/next", "16.0.0"), json!({"change_type":"deprecation","replaces":["next.config.js"]}))]);
+        let r = repo(&[("tools/gen/project.json", "{}"), ("tools/gen/next.config.js", "module.exports = {}")]);
+        let out = run_with(&c2, &s, &r, &l);
+        assert_eq!(ids(&out, &out.in_effect), vec!["next:cfg"]);
+        // A single-app repository: the root has the technology, so its file is next's.
+        let mut s1 = stack(&[("next", "16.0.5")], None);
+        s1.packages = vec![package(".", Application, &["next"])];
+        let r = repo(&[("middleware.ts", "export function middleware() {}")]);
+        let out = run_with(&c, &s1, &r, &l);
+        assert_eq!(ids(&out, &out.in_effect), vec!["next:middleware"]);
+    }
+
+    #[test]
+    fn in_effect_in_a_published_package_names_a_range_floor_below_the_replacement() {
+        use crate::stack::{Kind, Range, Reading};
+        let l = Ledger::default();
+        let c = catalog(
+            "terser-webpack-plugin",
+            0,
+            vec![with(rec("twp:minimizeroptions", "pkg:npm/terser-webpack-plugin", "5.6.0"), json!({"change_type":"deprecation","replaces":["terserOptions"],"introduces":["minimizerOptions"]}))],
+        );
+        let r = repo(&[
+            ("packages/webpack/src/config.ts", "import TerserPlugin from 'terser-webpack-plugin';\nnew TerserPlugin({ terserOptions: {} });"),
+            ("apps/web/webpack.config.ts", "import TerserPlugin from 'terser-webpack-plugin';\nnew TerserPlugin({ terserOptions: {} });"),
+        ]);
+        let reading = |dir: &str, range: Option<&str>| Reading { dir: dir.into(), version: parse_version("5.6.1").unwrap(), source: "lock".into(), standalone: false, range: range.map(|x| Range::Npm(x.into())) };
+        let at = |lib_range: &str| {
+            let mut s = stack(&[("terser-webpack-plugin", "5.6.1")], None);
+            s.packages = vec![
+                package(".", Kind::Application, &[]),
+                package("packages/webpack", Kind::Library, &["terser-webpack-plugin"]),
+                package("apps/web", Kind::Application, &["terser-webpack-plugin"]),
+            ];
+            s.deps.get_mut(&crate::util::npm_purl("terser-webpack-plugin")).unwrap().readings =
+                vec![reading("packages/webpack", Some(lib_range)), reading("apps/web", None)];
+            s
+        };
+        let s = at("^5.3.3");
+        let out = run_with(&c, &s, &r, &l);
+        let o = out.opps.iter().find(|o| o.id() == "twp:minimizeroptions").unwrap();
+        assert_eq!(o.route, Route::InEffect);
+        let m = o.unmet.as_deref().unwrap_or_default();
+        assert!(m.contains("packages/webpack declares terser-webpack-plugin ^5.3.3") && m.contains("raise the declared range to >=5.6.0"), "{m}");
+        assert!(!m.contains("apps/web"), "an application's users get its locked version: {m}");
+        let s = at("^5.6.0");
+        let out = run_with(&c, &s, &r, &l);
+        assert_eq!(out.opps.iter().find(|o| o.id() == "twp:minimizeroptions").unwrap().unmet, None, "the range's floor has the replacement");
     }
 
     #[test]

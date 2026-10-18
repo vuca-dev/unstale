@@ -321,6 +321,16 @@ impl<'a> Scope<'a> {
         })
     }
 
+    /// The files that name one of the technology's packages at a module position (import it, or configure it).
+    pub fn importers(&self) -> impl Iterator<Item = &str> + '_ {
+        self.importing.iter().copied()
+    }
+
+    /// Whether the path names one of the technology's packages (`path_names`): `.eslintrc.json`, `next.config.js`.
+    pub fn names_path(&self, path: &str) -> bool {
+        self.path_names(path)
+    }
+
     #[cfg(test)]
     fn path_names_for_test(self) -> impl Fn(&str) -> bool {
         move |p| self.path_names(p)
@@ -557,7 +567,7 @@ fn comment_spans(path: &str, text: &str) -> Vec<(usize, usize)> {
 /// Whether `text` (the file at `path`) uses deprecated literal `lit` live at some site: an occurrence as a whole token
 /// that is not in a comment and has none of `replacements` (the record's named successor) within `SITE_LINES` lines.
 /// Code that loads the replacement and keeps the old API only as a fallback beside it, or a test exercising both, has
-/// already moved. A file named `lit` (`middleware.ts`) is its use.
+/// already moved. A file named `lit` (`middleware.ts`) is its use, and for a file-name literal (`file_name`) only it.
 #[cfg(test)]
 pub fn live_site(path: &str, text: &str, lit: &str, replacements: &[String]) -> bool {
     live_site_near(path, text, lit, replacements, None)
@@ -571,9 +581,11 @@ pub fn live_site_near(path: &str, text: &str, lit: &str, replacements: &[String]
     if context.is_some_and(|c| c.is_empty()) {
         return false;
     }
-    let base = path.rsplit('/').next().unwrap_or(path);
-    if base.eq_ignore_ascii_case(lit) || path.eq_ignore_ascii_case(lit) || path.to_ascii_lowercase().ends_with(&format!("/{}", lit.to_ascii_lowercase())) {
+    if is_file(path, lit) {
         return true;
+    }
+    if file_name(lit) {
+        return false;
     }
     let comments = comment_spans(path, text);
     let in_comment = |at: usize| {
@@ -604,6 +616,21 @@ pub fn live_site_near(path: &str, text: &str, lit: &str, replacements: &[String]
         .map(line_of)
         .filter(|l| beside.as_ref().is_none_or(|b| b.iter().any(|x| x.abs_diff(*l) <= SITE_LINES)))
         .any(|l| !near.iter().any(|r| r.abs_diff(l) <= SITE_LINES))
+}
+
+/// Whether `lit` is a bare file name (`middleware.ts`, `next.config.js`): no directory, no whitespace, and a text file
+/// extension. Such a literal is a file convention of the technology: only the file itself is its use, never the name
+/// written inside other content (`./src/plugins/og.middleware.ts` in an Astro config).
+pub fn file_name(lit: &str) -> bool {
+    !lit.contains(['/', '\\']) && !lit.contains(char::is_whitespace) && lit.rsplit_once('.').is_some_and(|(stem, ext)| {
+        !stem.trim_start_matches('.').is_empty() && TEXT_EXT.contains(&ext.to_ascii_lowercase().as_str())
+    })
+}
+
+/// Whether `path` is the file `lit` names (its base name, or the path itself).
+pub fn is_file(path: &str, lit: &str) -> bool {
+    let base = path.rsplit('/').next().unwrap_or(path);
+    base.eq_ignore_ascii_case(lit) || path.eq_ignore_ascii_case(lit) || path.to_ascii_lowercase().ends_with(&format!("/{}", lit.to_ascii_lowercase()))
 }
 
 /// Whether `lit` is a qualified name: identifiers joined by `.` (`pytest.mark`, `config.inicfg`), not a file name
@@ -1429,6 +1456,14 @@ mod tests {
         let far = format!("def pytest_addoption(parser): ...\n{}@pytest.mark.skip\ndef test_b(): ...\n", "x = 1\n".repeat(SITE_LINES + 1));
         assert!(!live_site_near("p.py", &far, "pytest.mark", &[], Some(&ctx)), "the hook elsewhere in the file");
         assert!(!live_site_near("p.py", "# pytest_addoption\n@pytest.mark.skip\n", "pytest.mark", &[], Some(&ctx)), "a comment is not context");
+    }
+
+    #[test]
+    fn a_file_name_literal_is_live_only_as_the_file() {
+        assert!(file_name("middleware.ts") && file_name("next.config.js") && file_name(".eslintrc.json"));
+        assert!(!file_name("z.object") && !file_name("pytest.mark") && !file_name("prisma/schema.prisma") && !file_name(".ts"));
+        assert!(live_site("src/middleware.ts", "export {}", "middleware.ts", &[]));
+        assert!(!live_site("astro.config.mjs", "plugins: ['./src/plugins/og.middleware.ts', 'middleware.ts']", "middleware.ts", &[]));
     }
 
     #[test]
