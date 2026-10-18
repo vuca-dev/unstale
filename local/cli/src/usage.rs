@@ -208,12 +208,26 @@ impl<'a> Scope<'a> {
     /// A literal's evidence in one pass over its hits (`by_path`: `role` is the path's own role, which `find`'s order
     /// already follows, so only the first file is asked).
     pub fn evidence(&self, lit: &str, role: impl Fn(&str) -> Role, by_path: bool) -> Evidence {
+        self.evidence_with(lit, role, by_path, false)
+    }
+
+    /// `evidence` from files holding the whole literal: a dotted literal matched only by its last word is left out
+    /// everywhere. For a deprecated key that word is often the successor's name (`browser.isolate`, replaced by
+    /// `isolate`), so a tail match would cite the code that already moved.
+    pub fn exact_evidence(&self, lit: &str, role: impl Fn(&str) -> Role, by_path: bool) -> Evidence {
+        self.evidence_with(lit, role, by_path, true)
+    }
+
+    fn evidence_with(&self, lit: &str, role: impl Fn(&str) -> Role, by_path: bool, exact: bool) -> Evidence {
         let plain = plain_word(lit);
         let tails = self.hits.tail_only.get(lit);
         let mut best: Vec<(bool, Role, usize, &str)> = Vec::with_capacity(4);
         let mut e = Evidence::default();
         for (i, x) in self.hits.ix.get(lit).into_iter().flatten().enumerate() {
             let Some(about) = self.file_at(*x) else { continue };
+            if exact && tails.is_some_and(|t| t.contains(x)) {
+                continue;
+            }
             let p = &self.paths[*x as usize];
             let r = if by_path {
                 if !e.used {

@@ -580,15 +580,23 @@ fn regenerate(ctx: &Ctx, w: &World, out: &Outcome, state: &mut State, passes: &[
         };
         let text = review::render(&view, out, &w.catalog);
         let written = review::write_skill(&path, &text)?;
-        let what = if view.batch.is_empty() {
+        let mut what = if view.batch.is_empty() {
             if view.complete {
                 format!("batch {} complete; run `unstale review --next --pass {}`", view.number, p.name())
             } else {
-                format!("nothing to review: {}", funnel::why(out, &[if p == Pass::UpgradeReview { "upgrade review" } else { "improvements pass" }]))
+                format!(
+                    "nothing {}to review: {}",
+                    if view.in_effect.is_empty() { "" } else { "else " },
+                    funnel::why(out, &[if p == Pass::UpgradeReview { "upgrade review" } else { "improvements pass" }, funnel::IN_EFFECT])
+                )
             }
         } else {
             format!("batch {} with {} of {} open records", view.number, view.batch.len(), view.open)
         };
+        if !view.in_effect.is_empty() {
+            let n = view.in_effect.len();
+            what = format!("{n} {} in effect now (no upgrade needed); {what}", if n == 1 { "deprecation" } else { "deprecations" });
+        }
         if !only_existing {
             println!("{}: {what} → {} ({})", p.name(), rel(ctx, &path), if written { "written" } else { "unchanged" });
         }

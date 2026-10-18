@@ -843,6 +843,7 @@ fn highlight_indices(out: &Outcome, w: &World) -> Vec<usize> {
                     | funnel::Route::Withheld(_)
                     | funnel::Route::Applied
                     | funnel::Route::AlreadyIncluded
+                    | funnel::Route::InEffect
                     | funnel::Route::VersionUnknown
                     | funnel::Route::BeyondTarget
             ) {
@@ -1181,12 +1182,14 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
             versions,
             relevant.len()
         );
+        let in_effect = relevant.iter().filter(|o| o.route == funnel::Route::InEffect).count();
         catalog_scope += &format!(
-            "    {} upgrade obligations · {} potential improvements to assess · sources checked {}\n",
+            "    {} upgrade obligations{} · {} potential improvements to assess · sources checked {}\n",
             relevant
                 .iter()
                 .filter(|o| o.route == funnel::Route::UpgradeReview)
                 .count(),
+            match in_effect { 0 => String::new(), 1 => " · 1 deprecation in effect now".into(), n => format!(" · {n} deprecations in effect now") },
             relevant
                 .iter()
                 .filter(|o| matches!(
@@ -1315,6 +1318,11 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
         let prefix = format!("bumping {} ", friendly(technology, pending));
         if let Some(line) = digest.iter().find(|line| line.starts_with(&prefix)) {
             let mut summary = line.split(" (`unstale bump").next().unwrap_or(line).to_string();
+            match out.in_effect.iter().filter(|&&i| out.opps[i].rec.r.technology == *technology).count() {
+                0 => {}
+                1 => summary += " · 1 deprecation in effect now",
+                n => summary += &format!(" · {n} deprecations in effect now"),
+            }
             if let Some(n) = unlocks.get(technology).map(Vec::len).filter(|n| *n > 0) {
                 summary += &format!(" · unlocks {n} optional {}", if n == 1 { "capability" } else { "capabilities" });
             }
