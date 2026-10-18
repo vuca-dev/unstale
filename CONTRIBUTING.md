@@ -48,6 +48,7 @@ Central's operator commands: `npm --prefix central run catalog -- <command>` (pi
 | `.github/workflows/ci.yml` | every pull request and push to `main` | The commands under [Tests](#tests) (Rust job; central job with Rust for the schema checks; gateway job with a `wrangler deploy --dry-run` bundle), Node 24 |
 | `.github/workflows/release.yml` | tag `v*` | Checks the tag equals the crate version; `npm/build.sh <platform>` per platform (darwin on macOS, linux and win32 with cargo-zigbuild on Ubuntu); runs every binary on a native runner; `npm publish` per package (`--dry-run` until `NPM_PUBLISH` is `true`; `--provenance` while the repository is public); generates the Homebrew formula (`npm/homebrew-formula.sh`) and commits it to the tap when publishing for real |
 | `.github/workflows/ingest.yml` | daily while the repository is private (every 3 hours once public), manually, and from the gateway (fast-track) | Restores the central store; runs `pipeline --refresh` (catalog technologies) and `drain` (registrations pulled from the gateway, refreshes, new technologies by demand, ties broken by adoption, under the coverage budget); exports and verifies the static catalog; deploys it with the gateway; saves the store; acknowledges the registrations it took |
+| `.github/workflows/gateway-diagnostics.yml` | manually (`gh workflow run gateway-diagnostics.yml`) | Read-only: prints the gateway Durable Object's rows read and written, requests and storage per hour (`gateway/scripts/diagnostics.ts`, GraphQL Analytics), the Worker's invocations by status, its live logs and exceptions (`wrangler tail`) while it sends a few status reads, and `/health` and `/internal/usage`. Nothing secret is printed |
 
 Secrets and variables (Settings > Secrets and variables > Actions):
 
@@ -62,8 +63,8 @@ Secrets and variables (Settings > Secrets and variables > Actions):
 | `INGEST_GITHUB_TOKEN` | secret | ingest | Optional. Passed to central as `GITHUB_TOKEN`: a fine-grained token with public read-only access (5,000 requests an hour). Without it the workflow token is used, limited to 1,000 an hour per repository |
 | `JEV_API_KEY` | secret | ingest | Jev classifier |
 | `AI_GATEWAY_API_KEY` | secret | ingest | Extraction (`UNSTALE_EXTRACT_MODEL=vercel:openai/gpt-6-luna`, set in the workflow) |
-| `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | secrets | ingest | `wrangler deploy` of the gateway with the exported catalog |
-| `GATEWAY_DRAIN_TOKEN` | secret | ingest | Reads and acknowledges the gateway's queue and reports a run's progress on the packages it pulled; the same value is the Worker's `DRAIN_TOKEN` secret |
+| `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | secrets | ingest, gateway-diagnostics | `wrangler deploy` of the gateway with the exported catalog; diagnostics also need Account Analytics: Read and Workers Tail: Read |
+| `GATEWAY_DRAIN_TOKEN` | secret | ingest, gateway-diagnostics | Reads and acknowledges the gateway's queue and reports a run's progress on the packages it pulled; the same value is the Worker's `DRAIN_TOKEN` secret |
 | `UNSTALE_GATEWAY_URL` | variable | ingest | The deployed Worker's address (`https://unstale.<subdomain>.workers.dev`, or a custom domain) |
 | `UNSTALE_BUDGET_TOKENS` | variable | ingest | Release-note tokens a day the coverage budget allows (default 2,500,000 in the workflow) |
 | `ASSET_FILE_LIMIT` | variable | ingest | Static files a Worker version may hold: 20,000 on the free plan (default), 100,000 on the paid plan |
