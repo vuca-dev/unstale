@@ -203,6 +203,7 @@ describe("fetchReleases through changelogs and links", () => {
     const index = JSON.parse(readFileSync(join(dir, "releases", rr.id, "index.json"), "utf8"));
     const stored = index.releases.find((r: { version: string }) => r.version === "8.4.0");
     expect(n840.snapshot).not.toBe(stored.snapshot);
+    expect(n840.keyTag).toBe(`+linked.${stored.linked.snapshot.slice(7, 15)}`);
     expect(notes.find((n) => n.version === "8.3.1")!.notes).not.toContain("linked from");
   });
 

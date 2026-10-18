@@ -32,6 +32,9 @@ export interface ReleaseNote {
   snapshot: string;
   /** The body with non-change parts removed; quotes are taken from this. */
   notes: string;
+  /** Extraction-key tag of a note read through its link (`+linked.<first 8 hex of the linked snapshot>`): its records
+   * never take the keys of those extracted from the bare pointer before. */
+  keyTag?: string;
 }
 
 /** A release as the stored index keeps it: `date` is the GitHub release's day, `published` the registry's. */
@@ -224,14 +227,16 @@ export async function fetchReleases(t: Technology, opts: { refresh?: boolean; of
     const { published, linked, ...rest } = r;
     let notes = t.clean(raw);
     let snapshot = r.snapshot;
+    let keyTag: string | undefined;
     if (linked && !taken.has(linked.snapshot) && existsSync(linkedPath(t, r.version))) {
       const doc = readFileSync(linkedPath(t, r.version), "utf8");
       if (`sha256:${sha256(doc)}` !== linked.snapshot) throw new Error(`linked notes changed on disk: ${linkedPath(t, r.version)}`);
       taken.add(linked.snapshot);
       notes = `${notes.trim()}\n\n---\n\nRelease notes linked from this release (${linked.url}):\n\n${doc}`;
       snapshot = `sha256:${sha256(`${r.snapshot}\n${linked.snapshot}`)}`;
+      keyTag = `+linked.${linked.snapshot.slice(7, 15)}`;
     }
-    return { ...rest, snapshot, ...(published && published !== r.date ? { date: published, noteDate: r.date } : {}), notes };
+    return { ...rest, snapshot, ...(keyTag ? { keyTag } : {}), ...(published && published !== r.date ? { date: published, noteDate: r.date } : {}), notes };
   });
   return { notes, checked: index.checked, stats };
 }
