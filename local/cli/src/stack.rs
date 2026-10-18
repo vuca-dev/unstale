@@ -66,7 +66,8 @@ pub struct Dep {
     /// False for workspace/file/link/git dependencies; never submit these identities centrally.
     pub public_candidate: bool,
     /// The version the funnel compares against: the root manifest's, else the shallowest manifest's that a
-    /// lockfile covers, else the shallowest standalone one's (the lowest on a tie); `Stack::settle`.
+    /// lockfile covers, else the shallowest standalone one's (on a tie, the version most of them run, then the lowest);
+    /// `Stack::settle`.
     pub version: Option<Version>,
     /// Where the version came from, for the report.
     pub source: String,
@@ -142,7 +143,7 @@ impl Dep {
     }
 
     /// The reading the outputs use: the root manifest's, else the shallowest manifest's that a lockfile covers,
-    /// else the shallowest standalone one's; the lowest version on a tie. The root (or the top of a workspace tree)
+    /// else the shallowest standalone one's; on a tie, the version most of those manifests run, then the lowest. The root (or the top of a workspace tree)
     /// is what the application resolves; a nested manifest with its own lockfile (a CI tool) or a library's declared
     /// floor (a peer range) says what that one part runs or supports, and a manifest no lockfile covers (a sample
     /// app outside the workspace globs) is a separate project: each is named beside it instead of setting the
@@ -152,8 +153,17 @@ impl Dep {
     }
 
     /// `headline`, among the readings `keep` accepts (`funnel::run`: those whose code uses the package).
+    ///
+    /// Among equally shallow manifests, the version most of them run leads, then the lowest (supabase: next 16.3.6 in
+    /// seven apps over 15.5.25 in `apps/docs` and `apps/www`): the lowest alone framed every review at the version
+    /// two of nine workspaces run.
     pub fn headline_among(&self, keep: impl Fn(&Reading) -> bool) -> Option<&Reading> {
-        self.readings.iter().filter(|r| keep(r)).min_by_key(|r| (r.dir != ".", r.standalone, depth(&r.dir), &r.version, &r.dir))
+        let kept: Vec<&Reading> = self.readings.iter().filter(|r| keep(r)).collect();
+        let tier = |r: &Reading| (r.dir != ".", r.standalone, depth(&r.dir));
+        let top = kept.iter().map(|r| tier(r)).min()?;
+        let peers: Vec<&Reading> = kept.into_iter().filter(|r| tier(r) == top).collect();
+        let held = |v: &Version| peers.iter().filter(|r| r.version == *v).count();
+        peers.iter().copied().min_by_key(|r| (std::cmp::Reverse(held(&r.version)), &r.version, &r.dir))
     }
 
     /// Readings on another version than the headline, grouped by version (ascending), each with its directories.
@@ -290,7 +300,7 @@ pub fn settle(deps: &mut BTreeMap<String, Dep>) -> Option<(usize, String)> {
     let n = differ.len();
     differ.truncate(5);
     Some((n, format!(
-        "{n} package{} on different versions across manifests: {}{}. The reviews use the root's version, else the shallowest manifest's that a lockfile covers, unless no code importing the package runs that release line; the bump digest names the others.",
+        "{n} package{} on different versions across manifests: {}{}. The reviews use the root's version, else the one most of the shallowest manifests a lockfile covers run, unless no code importing the package runs that release line; the bump digest names the others.",
         if n == 1 { " is" } else { "s are" },
         differ.join("; "),
         if n > 5 { format!("; {} more", n - 5) } else { String::new() }
@@ -445,7 +455,9 @@ pub fn detect(root: &Path) -> Result<Stack> {
                     && let Some(v) = l.version(&importer, name, range)
                     // A locked copy outside a library's own range is some other workspace's (a peer the importer
                     // does not install), not what its code is written for: its floor is.
-                    && lib_range.is_none_or(|r| local || npm_satisfies(&v, r) != Some(false))
+                    // A root override is a declaration: what it sets is the library's own install too (n8n: cli
+                    // declares ws 8.20.1, the workspace overrides `ws: '>=8.21.1'`, the lockfile has 8.21.1).
+                    && lib_range.is_none_or(|r| local || npm_satisfies(&v, r) != Some(false) || l.override_admitting(name, range, &v).is_some())
                 {
                     let file = join(&rel_dir(root, ld), &l.file);
                     if let Some((other, set)) = l.replaced_by(name, range).filter(|_| !local) {
@@ -1412,6 +1424,50 @@ mod tests {
         assert_eq!(s.notes.len(), 1, "{:?}", s.notes);
         assert!(s.notes[0].starts_with("yarn.lock: 1 locked version falls outside") && s.notes[0].contains("jsdom 20.0.3 vs ^16.0.0"), "{}", s.notes[0]);
         assert_eq!(s.spread, 0);
+    }
+
+    #[test]
+    fn equally_shallow_manifests_take_the_version_most_of_them_run() {
+        // supabase's shape: seven apps lock next 16.3.6 through the catalog, two lock 15.5.25; nothing at the root.
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "package.json", r#"{"name":"root","private":true}"#);
+        write(d.path(), "pnpm-workspace.yaml", "packages:\n  - 'apps/*'\n");
+        let mut lock = String::from("lockfileVersion: '9.0'\n\nimporters:\n\n");
+        for (app, v) in [("docs", "15.5.25"), ("www", "15.5.25"), ("studio", "16.3.6"), ("learn", "16.3.6"), ("ui", "16.3.6")] {
+            write(d.path(), &format!("apps/{app}/package.json"), &format!(r#"{{"name":"{app}","private":true,"dependencies":{{"next":"^{v}"}}}}"#));
+            lock += &format!("  apps/{app}:\n    dependencies:\n      next:\n        specifier: ^{v}\n        version: {v}\n\n");
+        }
+        write(d.path(), "pnpm-lock.yaml", &lock);
+        let s = detect(d.path()).unwrap();
+        let next = &s.deps["pkg:npm/next"];
+        assert_eq!(next.version, Some(Version::new(16, 3, 6)), "{next:?}");
+        assert_eq!(next.source, "pnpm-lock.yaml in apps/learn");
+        assert_eq!(next.others()[0].1.iter().map(|r| r.dir.as_str()).collect::<Vec<_>>(), ["apps/docs", "apps/www"]);
+        // Even split: the lowest, as before.
+        let one = |dirs: &[(&str, &str)]| {
+            let mut d = Dep::new("x", true);
+            for (dir, v) in dirs { d.read(dir, Some(Version::parse(v).unwrap()), "lock".into()); }
+            d.headline().unwrap().version.to_string()
+        };
+        assert_eq!(one(&[("a", "2.0.0"), ("b", "1.0.0")]), "1.0.0");
+        assert_eq!(one(&[("a", "2.0.0"), ("b", "1.0.0"), ("c", "2.0.0"), ("x/deep", "1.0.0"), ("x/deeper", "1.0.0")]), "2.0.0", "depth first, then the majority");
+        assert_eq!(one(&[(".", "1.0.0"), ("a", "2.0.0"), ("b", "2.0.0")]), "1.0.0", "the root still leads");
+    }
+
+    #[test]
+    fn a_root_override_sets_a_library_dependency_too() {
+        // n8n's shape: the published cli package pins ws 8.20.1; the workspace overrides `ws: '>=8.21.1'` and the
+        // lockfile installs 8.21.1 for it. The floor 8.20.1 would report an advisory the install no longer has.
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "package.json", r#"{"name":"root","private":true}"#);
+        write(d.path(), "pnpm-workspace.yaml", "packages:\n  - 'packages/*'\n\noverrides:\n  ws: '>=8.21.1'\n");
+        write(d.path(), "packages/cli/package.json", r#"{"name":"n8n","version":"2.0.0","bin":{"n8n":"bin/n8n"},"dependencies":{"ws":"8.20.1"}}"#);
+        write(d.path(), "pnpm-lock.yaml", "lockfileVersion: '9.0'\n\noverrides:\n  ws: '>=8.21.1'\n\nimporters:\n\n  packages/cli:\n    dependencies:\n      ws:\n        specifier: '>=8.21.1'\n        version: 8.21.1(bufferutil@4.0.9)\n");
+        let s = detect(d.path()).unwrap();
+        let ws = &s.deps["pkg:npm/ws"];
+        assert_eq!(ws.version, Some(Version::new(8, 21, 1)), "{ws:?}");
+        assert!(ws.source.contains("overrides"), "{}", ws.source);
+        assert!(s.notes.is_empty(), "{:?}", s.notes);
     }
 
     #[test]

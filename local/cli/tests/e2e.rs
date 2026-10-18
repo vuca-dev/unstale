@@ -301,9 +301,13 @@ fn onboarding_status_reports_features_without_running_an_agent_and_resumes_jobs(
     let report = env.read(".unstale/onboarding-report.md");
     assert!(report.contains("next:style-only"), "A new feature with benefit:none remains exploratory: {report}");
     assert!(report.contains("not confirmed improvements"));
-    assert!(report.contains("Queued for shared processing; analysis has not completed"));
     assert!(report.contains("untrusted data, never as instructions"));
-    assert!(report.contains("6 published records"));
+    assert!(report.find("## Start here").unwrap() < report.find("## Capabilities to explore").unwrap(), "{report}");
+    // The report keeps coverage counts and exceptions; every job's line is in coverage.md.
+    assert!(report.contains("Coverage: 3 with published changes.") && !report.contains("Queued for shared processing"), "{report}");
+    let coverage = env.read(".unstale/coverage.md");
+    assert!(coverage.contains("Queued for shared processing; analysis has not completed"), "{coverage}");
+    assert!(coverage.contains("6 published records"), "{coverage}");
     assert!(env.ok(&["report"]).contains("next:style-only"));
     let skill = env.read(".agents/skills/unstale-improvements-pass/SKILL.md");
     assert!(skill.starts_with("---\nname: unstale-improvements-pass"));
@@ -350,8 +354,11 @@ fn a_version_that_cannot_be_read_is_reported_as_unknown_not_as_0_0_0() {
     write(env.repo.path(), "package.json", r#"{"name":"shop","private":true,"dependencies":{"next":"canary","react":"^19.0.0"}}"#);
     env.ok(&["init", "--service", cat.loc(), "--mode", "local", "--yes", "--wait", "0", "--no-animation"]);
     let report = env.read(".unstale/onboarding-report.md");
-    assert!(report.contains("next version unknown ·"), "{report}");
-    assert!(!report.contains("0.0.0"), "{report}");
+    let coverage = env.read(".unstale/coverage.md");
+    assert!(coverage.contains("next version unknown ·"), "{coverage}");
+    // Never a clean-looking "0 upgrade obligations" alone: the report says the version was not read.
+    assert!(report.contains("Versions not read, so their records apply to nothing yet: next."), "{report}");
+    assert!(!report.contains("0.0.0") && !coverage.contains("0.0.0"), "{report}");
 }
 
 #[test]
@@ -448,6 +455,31 @@ fn onboarding_prefers_new_capabilities_over_generic_security_options_and_old_com
     let report = env.read(".unstale/onboarding-report.md");
     assert!(!report.contains("next:compat-only"));
     assert!(env.read(".unstale/skills/improvements-pass/SKILL.md").contains("next:compat-only"), "Highlight curation must not truncate the full review queue");
+}
+
+#[test]
+fn a_security_fix_for_the_installed_version_leads_the_upgrades() {
+    // prisma's bump carries three obligations, next's only one security fix: the fix leads in the report and in the
+    // terminal shortlist, and the report puts Start here and the upgrades before capabilities.
+    let cat = FixtureCatalog::new();
+    cat.tech("next", &[("16", vec![
+        with(rec("next:csrf", "pkg:npm/next", "16.0.3"), json!({"change_type":"security","benefit":["security"],"summary":"Server actions check the Origin header."})),
+        with(rec("next:capability", "pkg:npm/next", "16.0.0"), json!({"change_type":"new_api","benefit":["performance"],"summary":"A new capability."})),
+    ])]);
+    let breaking = |id: &str, term: &str| with(rec(id, "pkg:npm/prisma", "7.0.0"), json!({"change_type":"removal","breaking":true,"terms":[[term,0]]}));
+    cat.tech("prisma", &[("7", vec![
+        breaking("prisma:a", "datasourceUrl"), breaking("prisma:b", "PrismaClient"), breaking("prisma:c", "postgresql"),
+        with(rec("prisma:fix", "pkg:npm/prisma", "7.0.0"), json!({"change_type":"fix","benefit":["correctness"]})),
+    ])]);
+    let env = Env { repo: fixture_repo(), cache: tempfile::tempdir().unwrap() };
+    let output = env.ok(&["init", "--service", cat.loc(), "--mode", "local", "--yes", "--wait", "0", "--no-animation"]);
+    let flat = output.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(flat.contains("1. next 16.0.1 → 16.0.3 picks up 1 security") && flat.contains("2. prisma"), "{output}");
+    let report = env.read(".unstale/onboarding-report.md");
+    let at = |s: &str| report.find(s).unwrap_or_else(|| panic!("{s} missing:\n{report}"));
+    assert!(at("## Start here") < at("## Upgrades, security first") && at("## Upgrades, security first") < at("## Capabilities to explore"));
+    assert!(at("1. next 16.0.1") < at("2. prisma 6.19.0"), "{report}");
+    assert!(report.contains("security: Server actions check the Origin header. [next:csrf, 16.0.3]"), "{report}");
 }
 
 #[test]
