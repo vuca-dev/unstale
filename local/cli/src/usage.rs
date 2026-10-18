@@ -31,7 +31,7 @@ pub fn foreign_code(path: &str, ecosystem: &str) -> bool {
 }
 
 /// Whether `path` is source code of `ecosystem`'s own languages.
-fn own_code(path: &str, ecosystem: &str) -> bool {
+pub fn own_code(path: &str, ecosystem: &str) -> bool {
     let ext = path.rsplit_once('.').map(|(_, x)| x.to_ascii_lowercase()).unwrap_or_default();
     CODE_EXT.iter().any(|(e, exts)| *e == ecosystem && exts.contains(&ext.as_str()))
 }
@@ -153,6 +153,56 @@ const NPM_MODULE_AT: &[&str] = &[
 /// and config files (manifests, `tsconfig.json` types, CSS `@import`) any quoted form names it.
 pub fn module_naming(lit: &str) -> bool {
     lit.starts_with("import ") || lit.starts_with("from ") || NPM_MODULE_AT.iter().any(|at| lit.starts_with(at))
+}
+
+/// A literal that is a relative path (`./src/*`, `../`): in a dependency's record it is a subpath of the dependency's
+/// own package or a path of the repository, never the repository's own package layout.
+pub fn relative_path(lit: &str) -> bool {
+    lit.starts_with("./") || lit.starts_with("../")
+}
+
+/// The fields of an npm manifest that lay out the repository's own package: its entry points, export and import maps,
+/// published files, binaries and workspaces. A relative path in them is this package's, so a dependency's literal
+/// (`./src/*` from a record about vitest's exports) never matches there.
+const OWN_LAYOUT_FIELDS: &[&str] = &[
+    "main", "module", "browser", "react-native", "types", "typings", "exports", "imports", "files", "bin", "man", "directories",
+    "workspaces", "typesVersions", "sideEffects", "unpkg", "jsdelivr", "source", "style",
+];
+
+/// A `package.json`'s text without its own-layout fields (`OWN_LAYOUT_FIELDS`); `None` when it is not a JSON object.
+fn without_own_layout(text: &str) -> Option<String> {
+    let mut v: serde_json::Value = serde_json::from_str(text).ok()?;
+    let o = v.as_object_mut()?;
+    for f in OWN_LAYOUT_FIELDS {
+        o.remove(*f);
+    }
+    Some(v.to_string())
+}
+
+/// The package subpath a relative literal names (`./src/*` → `src/`, `./config` → `config`): a trailing `*` dropped,
+/// at least one character left, no quote or whitespace. Whether the record means the package's subpath is the
+/// caller's question (`funnel::tech_lits`).
+pub fn subpath(lit: &str) -> Option<&str> {
+    let x = lit.strip_prefix("./")?;
+    let x = x.strip_suffix('*').unwrap_or(x);
+    (!x.is_empty() && !x.starts_with(['/', '.', '*']) && !x.contains(|c: char| c.is_whitespace() || c == '\'' || c == '"' || c == '`' || c == '*'))
+        .then_some(x)
+}
+
+/// The literals whose hits are the files that name subpath `x` of a package (`subpath`): `<package>/x` as a quoted
+/// specifier, ending at the quote or a further `/` (`'vitest/src/`, `"knip/config"`), and the same at a module position
+/// (`module_naming`). npm only; empty for other ecosystems.
+pub fn subpath_lits(purl: &str, x: &str) -> Vec<String> {
+    let Some(name) = purl_name(purl) else { return vec![] };
+    if !normalize_purl(purl).starts_with("pkg:npm/") {
+        return vec![];
+    }
+    let quoted: Vec<String> = ["'", "\""]
+        .iter()
+        .flat_map(|q| if x.ends_with('/') { vec![format!("{q}{name}/{x}")] } else { vec![format!("{q}{name}/{x}{q}"), format!("{q}{name}/{x}/")] })
+        .collect();
+    let module = NPM_MODULE_AT.iter().flat_map(|at| quoted.iter().map(move |q| format!("{at}{q}")));
+    quoted.iter().cloned().chain(module).collect()
 }
 
 /// Which files can evidence one technology, and which of those are about it.
@@ -732,6 +782,19 @@ pub fn find_with_commands(repo: &Repo, usage_lits: &BTreeSet<String>, whole_lits
             }
             *bits.entry(p).or_default() |= v;
         }
+        // A relative path in a manifest's own layout (`"exports": {"./src/*": …}`) is the repository's package, not a
+        // dependency's: such a literal counts there only when it also occurs outside those fields.
+        // Its tail (`client` of `./src/setup.client`) does not stand in for it there either.
+        let mut own_layout: HashSet<usize> = HashSet::new();
+        if path.rsplit('/').next() == Some("package.json") && bits.keys().any(|p| relative_path(&patterns[*p])) {
+            let rest = without_own_layout(text);
+            own_layout = bits
+                .keys()
+                .copied()
+                .filter(|p| relative_path(&patterns[*p]) && rest.as_ref().is_some_and(|r| !r.contains(patterns[*p].as_str())))
+                .collect();
+            bits.retain(|p, _| !own_layout.contains(p));
+        }
         let (mut usage, mut whole, mut tail): (Vec<usize>, Vec<usize>, Vec<(usize, bool)>) = (vec![], vec![], vec![]);
         if bits.is_empty() {
             return (usage, whole, tail, flags);
@@ -742,6 +805,9 @@ pub fn find_with_commands(repo: &Repo, usage_lits: &BTreeSet<String>, whole_lits
         cand.dedup();
         for i in cand {
             let (_, p, t, word_lit) = usage_ix[i];
+            if own_layout.contains(&p) {
+                continue;
+            }
             let full = if word_lit { has(p, TOKEN) } else { has(p, ANY) };
             let by_tail = !word_lit && !full && t.is_some_and(|t| has(t, TOKEN));
             if full || by_tail {
