@@ -305,24 +305,32 @@ pub fn deprecated_lits(r: &Rec, lits: &[String]) -> Vec<String> {
     lits.iter().filter(|l| replaces.contains(*l)).cloned().collect()
 }
 
-/// Directories of the packages that declare one of `comps`, or depend (through the repository's own packages, at any
-/// depth) on a package that does: n8n's `packages/cli` gets typescript-eslint from the workspace `@n8n/eslint-config`.
-fn reaching<'p>(packages: &'p [crate::stack::Package], comps: &BTreeSet<String>) -> Vec<&'p str> {
-    let mut has: Vec<bool> = packages.iter().map(|p| p.declared.iter().any(|d| comps.contains(&normalize_purl(d)))).collect();
-    let mut via: BTreeSet<String> = packages.iter().zip(&has).filter(|(_, h)| **h).filter_map(|(p, _)| p.own.as_deref().map(normalize_purl)).collect();
-    loop {
-        let mut grew = false;
-        for (i, p) in packages.iter().enumerate() {
-            if !has[i] && p.declared.iter().any(|d| via.contains(&normalize_purl(d))) {
-                has[i] = true;
-                grew = true;
-                if let Some(o) = &p.own {
-                    via.insert(normalize_purl(o));
-                }
+/// Per package (index into `packages`), the packages of this repository that declare it as a dependency: their
+/// manifests name its `name` (`Package::own`).
+fn dependents(packages: &[crate::stack::Package]) -> Vec<Vec<usize>> {
+    let by_own: HashMap<String, usize> = packages.iter().enumerate().filter_map(|(i, p)| p.own.as_deref().map(|o| (normalize_purl(o), i))).collect();
+    let mut out = vec![vec![]; packages.len()];
+    for (i, p) in packages.iter().enumerate() {
+        for d in &p.declared {
+            if let Some(&j) = by_own.get(&normalize_purl(d))
+                && j != i
+            {
+                out[j].push(i);
             }
         }
-        if !grew {
-            break;
+    }
+    out
+}
+
+/// Directories of the packages that declare one of `comps`, or depend (through the repository's own packages, at any
+/// depth: `dependents`) on a package that does: n8n's `packages/cli` gets typescript-eslint from the workspace
+/// `@n8n/eslint-config`.
+fn reaching<'p>(packages: &'p [crate::stack::Package], dependents: &[Vec<usize>], comps: &BTreeSet<String>) -> Vec<&'p str> {
+    let mut has = vec![false; packages.len()];
+    let mut todo: Vec<usize> = (0..packages.len()).filter(|&i| packages[i].declared.iter().any(|d| comps.contains(&normalize_purl(d)))).collect();
+    while let Some(i) = todo.pop() {
+        if !std::mem::replace(&mut has[i], true) {
+            todo.extend(dependents[i].iter().copied().filter(|&j| !has[j]));
         }
     }
     packages.iter().zip(has).filter(|(_, h)| *h).map(|(p, _)| p.dir.as_str()).collect()
@@ -643,6 +651,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
     // The words that run each technology from a command line, for its CLI-flag literals (`usage::cli_flag`).
     let commands: BTreeSet<String> = in_stack.iter().flat_map(|(_, _, tl)| tl.comps.iter().flat_map(|c| usage::command_words(c))).collect();
     let all_hits: Hits = usage::find_with_commands(inp.repo, &usage_lits, &whole_lits, &commands);
+    let dependents = dependents(&inp.stack.packages);
     for (tech, td, tl) in &in_stack {
         let (tech, comps, lits) = (*tech, &tl.comps, &tl.per_record);
         // A CLI flag counts only on a command line that runs this technology: `--scope` in another CLI's help text or
@@ -652,7 +661,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
         let present: Vec<&String> = comps.iter().filter(|c| purls.contains(*c)).collect();
         // Packages that declare this technology: a file's role is judged inside the deepest one containing it.
         let owners: Vec<&str> = inp.stack.packages.iter().filter(|p| p.declared.iter().any(|d| comps.contains(&normalize_purl(d)))).map(|p| p.dir.as_str()).collect();
-        let reach = reaching(&inp.stack.packages, comps);
+        let reach = reaching(&inp.stack.packages, &dependents, comps);
         // A deprecated literal that only loads one of the technology's packages (`from 'chat'`) is in every file using
         // it: no sign of the deprecated re-export or entry point.
         let own_names: Vec<String> = comps.iter().filter_map(|c| purl_name(c)).collect();
@@ -1389,7 +1398,7 @@ mod tests {
             pkg("packages/other", Some("other"), &["lodash"]),
         ];
         let comps: BTreeSet<String> = [crate::util::npm_purl("typescript-eslint")].into();
-        assert_eq!(reaching(&ps, &comps), vec!["packages/eslint-config", "packages/cli", "packages/editor"]);
+        assert_eq!(reaching(&ps, &dependents(&ps), &comps), vec!["packages/eslint-config", "packages/cli", "packages/editor"]);
     }
 
     #[test]
