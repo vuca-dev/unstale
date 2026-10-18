@@ -515,7 +515,12 @@ export class CoverageService {
     const at = new Map(waiting.map((j, i) => [j, i]));
     return [...this.jobs.values()].map((job) => {
       const i = at.get(job);
-      const fields = publicJob(job);
+      // A package covered as part of another technology answers with that technology's counters, so a client never
+      // reads its own zeros (it never extracts anything itself) as a source that yielded nothing.
+      const host = job.merged_into ? this.jobs.get(job.merged_into) : undefined;
+      const fields = host
+        ? { ...publicJob(job), records: host.records, releases_done: host.releases_done, releases_total: host.releases_total, docs_done: host.docs_done, docs_total: host.docs_total, docs_failed: host.docs_failed }
+        : publicJob(job);
       if (i === undefined) return fields;
       return { ...fields, stage: `${job.stage} (position ${i + 1} of ${waiting.length})`, queue_position: i + 1, queue_length: waiting.length };
     });
@@ -850,12 +855,18 @@ export class CoverageService {
     await withTechLock(tech.id, "onboarding", () =>
       publishTechnology(loadStore(tech.id), now(), catalogDir()),
     );
-    this.save(
-      job,
-      "monitoring",
-      `${job.records} verified records; ${docsCoverage(job)}`,
-    );
+    this.save(job, "monitoring", monitoringStage(job));
   }
+}
+/** A monitored job's stage. One whose official sources yielded no release or no record says so first: it is a source
+ * gap (the client reports it as one), not coverage that found nothing to report. */
+export function monitoringStage(j: Pick<Job, "records" | "releases_total" | "enumeration" | "docs_done" | "docs_total" | "docs_failed">): string {
+  const gap = !j.releases_total
+    ? "source gap: no release notes found in its official sources (GitHub releases or changelog); "
+    : !j.records
+      ? `source gap: no records extracted from ${j.releases_total} release ${j.releases_total === 1 ? "note" : "notes"}; `
+      : "";
+  return `${gap}${j.records} verified records; ${docsCoverage(j)}`;
 }
 /** The documentation part of a job's coverage line. "Monitored" only when pages were listed and every one checked: a
  * docs site whose listing failed (`failed`; `empty` in older jobs) is not monitored, and its records come from release

@@ -6,6 +6,7 @@ import {
   CoverageService,
   createCoverageServer,
   docsCoverage,
+  monitoringStage,
 } from "../src/onboarding/service.ts";
 import {
   npmIdentity,
@@ -286,6 +287,12 @@ test("a cached release from a different monorepo component is retracted, never r
   expect(store.ingested).toEqual({});
 });
 
+test("a monitored job whose sources gave no release or no record says it is a source gap", () => {
+  const docs = { enumeration: "complete", docs_done: 2, docs_total: 2, docs_failed: 0 };
+  expect(monitoringStage({ ...docs, records: 0, releases_total: 0 })).toBe("source gap: no release notes found in its official sources (GitHub releases or changelog); 0 verified records; documentation monitored (2/2 pages)");
+  expect(monitoringStage({ ...docs, records: 0, releases_total: 3 })).toMatch(/^source gap: no records extracted from 3 release notes; 0 verified/);
+  expect(monitoringStage({ ...docs, records: 44, releases_total: 57 })).toBe("44 verified records; documentation monitored (2/2 pages)");
+});
 test("documentation reads as monitored only when pages were listed and all checked", () => {
   const job = (enumeration: string, docs_done: number, docs_total: number, docs_failed = 0) => ({ enumeration, docs_done, docs_total, docs_failed });
   expect(docsCoverage(job("complete", 212, 212))).toBe("documentation monitored (212/212 pages)");
