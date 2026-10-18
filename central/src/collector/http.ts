@@ -21,10 +21,13 @@ export const DEFAULT_HEADERS: Readonly<Record<string, string>> = {
 export class FetchFailure extends Error {
   readonly kind: FailureKind;
   readonly httpStatus: number | undefined;
-  constructor(kind: FailureKind, message: string, httpStatus?: number) {
+  /** The server's Retry-After on a 429 or 503 it answered (longer than this client waits itself), in milliseconds. */
+  readonly retryAfterMs: number | undefined;
+  constructor(kind: FailureKind, message: string, httpStatus?: number, retryAfterMs?: number) {
     super(message);
     this.kind = kind;
     this.httpStatus = httpStatus;
+    this.retryAfterMs = retryAfterMs;
   }
 }
 
@@ -120,7 +123,8 @@ export class HttpClient {
       if (res.status === 304 || (res.status >= 200 && res.status < 300)) {
         return { status: res.status, finalUrl: current.toString(), headers: res.headers, body: res.body };
       }
-      throw new FetchFailure("http_status", `HTTP ${res.status}`, res.status);
+      const retryAfter = res.status === 429 || res.status === 503 ? parseRetryAfter(res.headers.get("retry-after")) : undefined;
+      throw new FetchFailure("http_status", `HTTP ${res.status}`, res.status, retryAfter);
     }
     throw new FetchFailure("too_many_redirects", `more than ${this.opts.maxRedirects} redirects`);
   }

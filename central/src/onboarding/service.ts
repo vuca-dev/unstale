@@ -82,7 +82,35 @@ export interface Job {
   siblings?: string[];
   /** When the registry's deprecation was published as a record (once). */
   deprecation_notice?: string;
+  /** A slice still running when its drain ended (killed with the cycle, resumed by the next): its work time so far,
+   * the cycles it spanned, its stage then, and whether it is a monitored technology's refresh. Cleared when a slice
+   * settles. Never public. */
+  interrupted?: { ms: number; cycles: number; stage: string; refresh?: boolean };
+  /** Rate-limited (HTTP 429): not started again before this time. Never public. */
+  paused_until?: string;
 }
+
+/** Work time after which an interrupted slice is not resumed: two full cycles (20 minutes each), about 12 times the
+ * longest slice measured (a 638-page docs pass, 199 s). Slices are meant to take about a minute. */
+export const SLICE_LIMIT_MS = 40 * 60_000;
+/** Cycles after which an interrupted slice is not resumed whatever its known work time: a run cancelled or crashed
+ * mid-cycle records no time. */
+export const SLICE_LIMIT_CYCLES = 4;
+/** A stopped slice is retried after the refresh period, so it holds a slot for at most two cycles in eighteen. */
+const STOPPED_RETRY_MS = 6 * 3600_000;
+/** The first pause after a rate limit, doubled for each rate limit that follows one, up to the last. */
+const RATE_PAUSE_MS = [60_000, 15 * 60_000] as const;
+/** A refusal for rate (HTTP 429) from any service a job reads: `HTTP 429` (the collector's client), `<url>: 429`
+ * (the registry and GitHub readers). */
+const RATE_LIMITED = /(?:HTTP |: )429\b/;
+/** Whether a job's error is a rate limit, and the server's Retry-After when it sent one. It says nothing about the
+ * package: it is the runner's own request rate. */
+export function rateLimit(error: unknown): { retryAfterMs?: number } | undefined {
+  if (error instanceof FetchFailure && error.httpStatus !== undefined)
+    return error.httpStatus === 429 ? (error.retryAfterMs === undefined ? {} : { retryAfterMs: error.retryAfterMs }) : undefined;
+  return RATE_LIMITED.test(String(error instanceof Error ? error.message : error)) ? {} : undefined;
+}
+const clock = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T", " ");
 
 /** Tags compared per package, and the share two packages must have in common to be one release stream. */
 const STREAM_TAGS = 100;
@@ -129,6 +157,15 @@ export class CoverageService {
   private holds = new Map<Hold["limit"], Hold>();
   /** Running jobs that started as new technologies (tier 1): what the slots kept for them hold. */
   private runningNew = new Set<string>();
+  /** Running slices: when each started, and whether it is a refresh (for the jobs a drain's end interrupts). */
+  private slices = new Map<string, { at: number; refresh: boolean }>();
+  /** Running slices resumed after an interruption: they never hold the slots kept for new technologies. */
+  private runningCarried = new Set<string>();
+  /** Interrupted slices stopped when this process loaded the jobs (stopSlice). */
+  private stopped = 0;
+  /** Rate limited: nothing starts before this time; the pause doubles while rate limits follow one another. */
+  private pausedUntil = 0;
+  private pauseMs = 0;
   readonly concurrency: number;
   /** The advisories stage after a technology's history is published (off: `advisories: false` or UNSTALE_NO_ADVISORIES=1). */
   readonly advisories: boolean;
@@ -193,12 +230,44 @@ export class CoverageService {
               "Refreshing public source identity and documentation scope";
           }
           if (["discovering", "analyzing", "partial"].includes(job.state)) {
-            job.state = "queued";
-            job.stage = "Resuming interrupted coverage";
+            // Interrupted without a drain's end to say so (a cancelled run, or a state saved before this field): one
+            // cycle, its time unknown.
+            job.interrupted ??= { ms: 0, cycles: 1, stage: job.stage };
+            if (job.interrupted.ms >= SLICE_LIMIT_MS || job.interrupted.cycles >= SLICE_LIMIT_CYCLES) this.stopSlice(job);
+            else {
+              job.state = "queued";
+              job.stage = "Resuming interrupted coverage";
+            }
+          }
+          // Rate limits were once counted as the job's failures (backoff up to 6 h for 429s the runner caused): such a
+          // job is retried now, its count cleared.
+          if (job.failures && (job.state === "failed" || (job.state === "monitoring" && job.stage.includes("refresh failed ("))) && RATE_LIMITED.test(job.stage)) {
+            job.failures = 0;
+            if (job.state === "failed") {
+              delete job.retry_at;
+              this.save(job, "queued", "Waiting for a coverage worker");
+            } else {
+              job.retry_at = now();
+              this.persist(job);
+            }
           }
           this.jobs.set(job.purl, job);
         }
       }
+  }
+  /** A slice interrupted past SLICE_LIMIT_MS of work (or SLICE_LIMIT_CYCLES) is not resumed every cycle: it is stopped,
+   * counted as a failure, its stage named, and retried after STOPPED_RETRY_MS. A monitored technology keeps its
+   * coverage and stays `monitoring`. */
+  private stopSlice(job: Job) {
+    const { ms, cycles, stage, refresh } = job.interrupted!;
+    delete job.interrupted;
+    job.failures = (job.failures ?? 0) + 1;
+    const at = Date.now() + STOPPED_RETRY_MS;
+    job.retry_at = new Date(at).toISOString();
+    const why = `"${stage}" did not finish in ${Math.round(ms / 60_000)} minutes over ${cycles} cycles; retried after ${clock(at)} UTC`;
+    if (refresh) this.save(job, "monitoring", `${job.records} verified records; refresh stopped: ${why}`);
+    else this.save(job, "failed", `Stopped: ${why}`);
+    this.stopped++;
   }
   /** Persists counters (a vote) without a timeline line: the timeline records state changes. */
   private persist(job: Job) {
@@ -246,6 +315,7 @@ export class CoverageService {
     // A blocked job is retried only when it set a time (admission); a job with no official sources stays blocked.
     return (
       !job.merged_into &&
+      !(Date.parse(job.paused_until ?? "") > Date.now()) &&
       (job.state === "queued" ||
         (["failed", "monitoring", "blocked"].includes(job.state) && Date.parse(job.retry_at ?? "") <= Date.now()))
     );
@@ -377,20 +447,57 @@ export class CoverageService {
     deadline: number,
     grace = 10 * 60_000,
     poll = 500,
-  ): Promise<{ started: number; unfinished: number; drained: boolean; held?: Hold[] }> {
+  ): Promise<{ started: number; unfinished: number; drained: boolean; held?: Hold[]; rate_limited?: number; stopped?: number }> {
     this.draining = deadline;
     this.holds.clear();
     this.held = false;
     const before = this.launched;
-    // A finished job starts the next itself; when nothing is running and nothing more starts, the queue is done.
-    while (Date.now() < deadline && (this.running.size || this.pump()))
+    // A finished job starts the next itself, and the queue is looked at every poll (a rate-limit pause ends); when
+    // nothing is running, nothing more starts and no rate-limited job resumes before the deadline, the queue is done.
+    while (Date.now() < deadline && (this.pump() || this.running.size || this.resumesBefore(deadline)))
       await new Promise((r) => setTimeout(r, poll));
     const drained = Date.now() < deadline;
     const stop = Date.now() + grace;
     while (this.running.size && Date.now() < stop) await new Promise((r) => setTimeout(r, poll));
+    // A slice still running is killed with this cycle and resumed by the next: its work time so far is kept, so one
+    // that cannot finish is stopped instead of being resumed first every cycle (stopSlice).
+    for (const purl of this.running) {
+      const job = this.jobs.get(purl)!;
+      const slice = this.slices.get(purl)!;
+      const prev = job.interrupted;
+      job.interrupted = { ms: (prev?.ms ?? 0) + Date.now() - slice.at, cycles: (prev?.cycles ?? 0) + 1, stage: job.stage, refresh: prev?.refresh ?? slice.refresh };
+      this.persist(job);
+    }
     const held = [...this.holds.values()];
-    const done = drained || (!this.running.size && !this.queue().length);
-    return { started: this.launched - before, unfinished: this.running.size, drained: done, ...(held.length ? { held } : {}) };
+    const paused = [...this.jobs.values()].filter((j) => Date.parse(j.paused_until ?? "") > Date.now()).length;
+    // A rate-limited job is work left: the next cycle retries it.
+    const done = !paused && (drained || (!this.running.size && !this.queue().length));
+    return {
+      started: this.launched - before,
+      unfinished: this.running.size,
+      drained: done,
+      ...(held.length ? { held } : {}),
+      ...(paused ? { rate_limited: paused } : {}),
+      ...(this.stopped ? { stopped: this.stopped } : {}),
+    };
+  }
+  /** Whether a rate-limit pause ends before `deadline` with work to start then. */
+  private resumesBefore(deadline: number): boolean {
+    const now = Date.now();
+    if (this.pausedUntil > now && this.pausedUntil < deadline && this.queue().length) return true;
+    for (const j of this.jobs.values()) {
+      const t = Date.parse(j.paused_until ?? "");
+      if (t > now && t < deadline) return true;
+    }
+    return false;
+  }
+  /** A rate limit: nothing starts for a pause (doubled while rate limits follow one another, at least the server's
+   * Retry-After); returns when the pause ends. */
+  private ratePause(retryAfterMs = 0): number {
+    const t = Date.now();
+    if (t >= this.pausedUntil) this.pauseMs = this.pauseMs ? Math.min(RATE_PAUSE_MS[1], this.pauseMs * 2) : RATE_PAUSE_MS[0];
+    this.pausedUntil = Math.max(this.pausedUntil, t + Math.max(this.pauseMs, retryAfterMs));
+    return this.pausedUntil;
   }
   /** The budget limits at their cap now (see DailyBudget.spent). */
   spent(): Hold[] {
@@ -417,7 +524,7 @@ export class CoverageService {
    * waiting new technology (a second pass fills what no new technology took); returns how many jobs it started. A
    * drain past its deadline starts nothing. */
   private pump(): number {
-    if (this.held || (this.draining && Date.now() >= this.draining)) return 0;
+    if (this.held || (this.draining && Date.now() >= this.draining) || Date.now() < this.pausedUntil) return 0;
     const queue = this.queue();
     let waitingNew = queue.filter((j) => this.tier(j) === 1 && !this.running.has(j.purl)).length;
     let started = 0;
@@ -425,6 +532,9 @@ export class CoverageService {
       for (const job of queue) {
         if (this.running.size >= this.concurrency) return started;
         if (this.running.has(job.purl)) continue;
+        // Resumed slices never take every slot: at most those admitted work may hold while a new technology waits,
+        // whether one waits now or not (a slot is never taken back from a running slice).
+        if (job.interrupted && this.runningCarried.size >= this.concurrency - this.newSlots) continue;
         const isNew = this.tier(job) === 1;
         if (capped && !isNew && waitingNew > 0 && this.running.size - this.runningNew.size >= this.concurrency - this.newSlots) continue;
         const outcome = this.launch(job, isNew);
@@ -449,27 +559,52 @@ export class CoverageService {
       this.heldBack(refused.kind === "runs" ? "runs_per_day" : "unreadable");
       return "held";
     }
-    this.running.add(job.purl);
-    if (isNew) this.runningNew.add(job.purl);
-    this.launched++;
     // A monitored technology's refresh that fails keeps its published coverage: it stays `monitoring`, retried with the
     // same backoff, the failure in its stage. `failed` is for a technology whose coverage could not be built; a
     // transient refusal (a registry's 429) during a refresh no longer flips monitored technologies to failed and back.
-    const refresh = job.state === "monitoring";
+    // A resumed refresh is still a refresh.
+    const refresh = job.state === "monitoring" || !!job.interrupted?.refresh;
+    this.running.add(job.purl);
+    if (isNew) this.runningNew.add(job.purl);
+    if (job.interrupted) this.runningCarried.add(job.purl);
+    this.slices.set(job.purl, { at: Date.now(), refresh });
+    this.launched++;
+    delete job.paused_until;
     void this.work(job)
+      .then(() => {
+        if (Date.now() >= this.pausedUntil) this.pauseMs = 0;
+      })
       .catch((error) => {
+        const why = String(error instanceof Error ? error.message : error).slice(0, 300);
+        // A rate limit is the runner's request rate, not the package: no failure counted, and the job is retried once
+        // the pause that holds every start ends (in this cycle, or the next).
+        const limited = rateLimit(error);
+        if (limited) {
+          const until = this.ratePause(limited.retryAfterMs);
+          job.paused_until = new Date(until).toISOString();
+          const retry = `retried after ${clock(until)} UTC`;
+          if (refresh) this.save(job, "monitoring", `${job.records} verified records; refresh rate-limited (${why}), ${retry}`);
+          else this.save(job, "queued", `Rate-limited (${why}); ${retry}`);
+          return;
+        }
         job.failures = (job.failures ?? 0) + 1;
         job.retry_at = new Date(
           Date.now() +
             Math.min(6 * 3600000, 60000 * 2 ** Math.min(job.failures - 1, 8)),
         ).toISOString();
-        const why = String(error instanceof Error ? error.message : error).slice(0, 300);
-        if (refresh) this.save(job, "monitoring", `${job.records} verified records; refresh failed (${why}), retried after ${job.retry_at.slice(0, 16).replace("T", " ")} UTC`);
+        if (refresh) this.save(job, "monitoring", `${job.records} verified records; refresh failed (${why}), retried after ${clock(Date.parse(job.retry_at))} UTC`);
         else this.save(job, "failed", why);
       })
       .finally(() => {
         this.running.delete(job.purl);
         this.runningNew.delete(job.purl);
+        this.runningCarried.delete(job.purl);
+        this.slices.delete(job.purl);
+        // The slice settled (finished, yielded or failed): it is no longer an interrupted one.
+        if (job.interrupted) {
+          delete job.interrupted;
+          this.persist(job);
+        }
         this.pump();
       });
     return "started";
@@ -744,6 +879,8 @@ function publicJob(j: Job) {
     merged_into: _merged,
     deprecation_notice: _notice,
     downloads: _downloads,
+    interrupted: _interrupted,
+    paused_until: _paused,
     ...fields
   } = j;
   return fields;
