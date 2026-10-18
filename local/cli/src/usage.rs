@@ -208,12 +208,26 @@ impl<'a> Scope<'a> {
     /// A literal's evidence in one pass over its hits (`by_path`: `role` is the path's own role, which `find`'s order
     /// already follows, so only the first file is asked).
     pub fn evidence(&self, lit: &str, role: impl Fn(&str) -> Role, by_path: bool) -> Evidence {
+        self.evidence_with(lit, role, by_path, false)
+    }
+
+    /// `evidence` from files holding the whole literal: a dotted literal matched only by its tail (a plain word or
+    /// not) is left out everywhere. For a deprecated key that word is often the successor's name (`browser.isolate`, replaced by
+    /// `isolate`), so a tail match would cite the code that already moved.
+    pub fn exact_evidence(&self, lit: &str, role: impl Fn(&str) -> Role, by_path: bool) -> Evidence {
+        self.evidence_with(lit, role, by_path, true)
+    }
+
+    fn evidence_with(&self, lit: &str, role: impl Fn(&str) -> Role, by_path: bool, exact: bool) -> Evidence {
         let plain = plain_word(lit);
         let tails = self.hits.tail_only.get(lit);
         let mut best: Vec<(bool, Role, usize, &str)> = Vec::with_capacity(4);
         let mut e = Evidence::default();
         for (i, x) in self.hits.ix.get(lit).into_iter().flatten().enumerate() {
             let Some(about) = self.file_at(*x) else { continue };
+            if exact && self.hits.by_tail.get(lit).is_some_and(|t| t.contains(x)) {
+                continue;
+            }
             let p = &self.paths[*x as usize];
             let r = if by_path {
                 if !e.used {
@@ -493,6 +507,9 @@ pub struct Hits {
     /// Qualified literal → files (indices into `Repo::paths`) it matched only by a plain-word tail (`test.describe` as
     /// `describe`, not the whole literal). Such a hit counts only where the technology is named (`Scope`).
     pub tail_only: HashMap<String, HashSet<u32>>,
+    /// Qualified literal → files it matched only by its tail, plain word or not (`test.beforeAll` as `beforeAll`): left
+    /// out of `Scope::exact_evidence`.
+    pub by_tail: HashMap<String, HashSet<u32>>,
 }
 
 
@@ -567,7 +584,7 @@ pub fn find(repo: &Repo, usage_lits: &BTreeSet<String>, whole_lits: &BTreeSet<St
             }
             *bits.entry(p).or_default() |= v;
         }
-        let (mut usage, mut whole, mut tail): (Vec<usize>, Vec<usize>, Vec<usize>) = (vec![], vec![], vec![]);
+        let (mut usage, mut whole, mut tail): (Vec<usize>, Vec<usize>, Vec<(usize, bool)>) = (vec![], vec![], vec![]);
         if bits.is_empty() {
             return (usage, whole, tail);
         }
@@ -582,8 +599,8 @@ pub fn find(repo: &Repo, usage_lits: &BTreeSet<String>, whole_lits: &BTreeSet<St
             if full || by_tail {
                 usage.push(i);
             }
-            if by_tail && plain_tail[i] {
-                tail.push(i);
+            if by_tail {
+                tail.push((i, plain_tail[i]));
             }
         }
         for i in bits.keys().flat_map(|p| whole_by_pat[*p].iter().copied()) {
@@ -602,8 +619,11 @@ pub fn find(repo: &Repo, usage_lits: &BTreeSet<String>, whole_lits: &BTreeSet<St
         for i in usage {
             usage_files[i].push(f);
         }
-        for i in tail {
-            hits.tail_only.entry(usage_ix[i].0.clone()).or_default().insert(path_ix[f]);
+        for (i, plain) in tail {
+            if plain {
+                hits.tail_only.entry(usage_ix[i].0.clone()).or_default().insert(path_ix[f]);
+            }
+            hits.by_tail.entry(usage_ix[i].0.clone()).or_default().insert(path_ix[f]);
         }
         for i in whole {
             hits.whole.entry(whole_ix[i].0.clone()).or_default().push(repo.files[f].0.clone());

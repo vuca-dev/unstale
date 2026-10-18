@@ -19,6 +19,9 @@ use crate::util::{normalize_purl, parse_version, purl_name};
 /// application code (tests, tooling, docs, examples; roles per `usage::Repo::role_for`).
 const NON_APP_WEIGHT: f64 = 0.5;
 
+/// A literal's evidence for one technology, memoised (`evidence_of`, or `exact_of` for a deprecated literal).
+type Cite<'a> = &'a dyn Fn(&str) -> Rc<usage::Evidence>;
+
 /// Where a record ends up for this repository.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Route {
@@ -34,7 +37,11 @@ pub enum Route {
     NoBenefit,
     /// Opt-in, arrives with an upgrade: the improvements pass sees it once the project is on that version.
     OptInAfterBump,
-    /// Already in the installed version and nothing to adopt (fixes, behaviour changes, past obligations).
+    /// A deprecation released at or below the installed version whose deprecated API (`replaces`) the code still
+    /// uses, by the usage rules: outstanding now, with no upgrade (`in_effect_evidence`).
+    InEffect,
+    /// Already in the installed version and nothing to adopt (fixes, behaviour changes, past obligations whose
+    /// deprecated API the code does not show).
     AlreadyIncluded,
     /// Released after the review's target version.
     BeyondTarget,
@@ -84,6 +91,8 @@ impl Opp<'_> {
 pub struct Outcome<'a> {
     pub opps: Vec<Opp<'a>>,
     pub upgrade: Vec<usize>,
+    /// Deprecations in effect at the installed version and still used here (`Route::InEffect`), by usage, then id.
+    pub in_effect: Vec<usize>,
     pub improvements: Vec<usize>,
     /// Per technology: indexes into `opps`, benefit order.
     pub digest: BTreeMap<String, Vec<usize>>,
@@ -142,6 +151,19 @@ pub fn tier(r: &Rec) -> u8 {
 /// Obligations: breaking changes, removals, deprecations, whatever their benefit.
 pub fn is_obligation(r: &Rec) -> bool {
     r.r.breaking || matches!(r.r.change_type, ChangeType::Removal | ChangeType::Deprecation)
+}
+
+/// The literals that name what a deprecation deprecates: its `replaces` among the record's literals (the
+/// technology's own package names excluded, as in `record_lits`). `terms` cannot say this: they may name the
+/// replacement (a record describing `toHaveBeenCalled` as the successor of `toBeCalled`) or a sibling that is not
+/// deprecated (`vitest/node` beside deprecated entry points). Empty for any other record, and for a deprecation
+/// without `replaces`.
+pub fn deprecated_lits(r: &Rec, lits: &[String]) -> Vec<String> {
+    if r.r.change_type != ChangeType::Deprecation {
+        return vec![];
+    }
+    let replaces: BTreeSet<String> = r.r.replaces.iter().filter_map(|x| clean_lit(x)).collect();
+    lits.iter().filter(|l| replaces.contains(*l)).cloned().collect()
 }
 
 /// Opt-in: an adoption step is needed. The adoption list also names `configuration` and `schema_or_migration`, which are
@@ -300,6 +322,29 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             evidence.borrow_mut().insert(l.to_string(), e.clone());
             e
         };
+        // A deprecated literal's evidence: whole-literal hits only (`usage::Scope::exact_evidence`).
+        let exact: RefCell<HashMap<String, Rc<usage::Evidence>>> = RefCell::default();
+        let exact_of = |l: &str| -> Rc<usage::Evidence> {
+            if let Some(e) = exact.borrow().get(l) {
+                return e.clone();
+            }
+            let e = Rc::new(scope.exact_evidence(l, role, !nested));
+            exact.borrow_mut().insert(l.to_string(), e.clone());
+            e
+        };
+        // The first three of the union are among the first three of each literal.
+        let files_of = |ls: &[String], cite: Cite| -> Vec<String> {
+            let mut files: Vec<(bool, usage::Role, String)> = ls
+                .iter()
+                .flat_map(|l| {
+                    let e = cite(l);
+                    e.files.iter().map(|(p, about)| (!about, role(p), p.clone())).collect::<Vec<_>>()
+                })
+                .collect();
+            files.sort();
+            files.dedup();
+            files.into_iter().take(3).map(|(_, _, p)| p).collect()
+        };
         let applied: RefCell<HashMap<String, bool>> = RefCell::default();
         let applied_of = |x: &str| -> bool {
             if let Some(a) = applied.borrow().get(x) {
@@ -378,25 +423,20 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             let target_for = |c: &str, installed: &Version| inp.targets.get(c).cloned().or_else(|| newest.get(c).cloned()).unwrap_or_else(|| installed.clone());
             let target = target_for(&comp, &installed);
             let (release, available, beyond) = availability(&lines, &candidates, &installed, &target, (picked, &rv));
-            let matched: Vec<(String, Vec<String>)> = ls
+            // A deprecation that names what it deprecates cites only that, as whole literals: a match on its other
+            // terms is not usage of the deprecated API. The score (the queue's order) still counts every literal.
+            let deprecated = deprecated_lits(rec, ls);
+            let (cited, cite): (&[String], Cite) =
+                if deprecated.is_empty() { (ls, &evidence_of) } else { (&deprecated, &exact_of) };
+            let matched: Vec<(String, Vec<String>)> = cited
                 .iter()
-                .filter_map(|l| Some(evidence_of(l)).filter(|e| !e.files.is_empty()).map(|e| (l.clone(), e.files.iter().map(|(p, _)| p.clone()).collect())))
+                .filter_map(|l| Some(cite(l)).filter(|e| !e.files.is_empty()).map(|e| (l.clone(), e.files.iter().map(|(p, _)| p.clone()).collect())))
                 .collect();
             let score = ls
                 .iter()
                 .filter_map(|l| Some(evidence_of(l)).filter(|e| e.used).map(|e| weight(l) * if e.app { 1.0 } else { NON_APP_WEIGHT }))
                 .sum::<f64>();
-            // The first three of the union are among the first three of each literal.
-            let mut files: Vec<(bool, usage::Role, String)> = ls
-                .iter()
-                .flat_map(|l| {
-                    let e = evidence_of(l);
-                    e.files.iter().map(|(p, about)| (!about, role(p), p.clone())).collect::<Vec<_>>()
-                })
-                .collect();
-            files.sort();
-            files.dedup();
-            let files: Vec<String> = files.into_iter().take(3).map(|(_, _, p)| p).collect();
+            let files = files_of(cited, cite);
             // A `requires` value the change itself introduces is something the upgrade has the project add, not a
             // precondition (absent until adopted), so it never demotes the record (eval/rank/RESULTS.md, follow-up).
             let intro: BTreeSet<String> = rec.r.introduces.iter().filter_map(|x| clean_lit(x)).collect();
@@ -429,6 +469,20 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                 rec.r.introduces.iter().filter_map(|x| clean_lit(x)).any(|x| applied_of(&x))
             };
             opp.route = base_route(rec, available, beyond);
+            // A deprecation already in the installed version is still owed while the code uses what it deprecates: its
+            // `replaces` literals, whole, under the shown evidence rule (files that can use the technology). A plain word
+            // (`message`) is too common to show that, so it takes a specific literal (`toBeCalledWith`, `terserOptions`)
+            // and cites only those. Nothing to block (it is installed) and no applied check (the old API is the signal:
+            // once it is gone the record is already included).
+            if opp.route == Route::AlreadyIncluded && !deprecated.is_empty() && opp.matched.iter().any(|(l, _)| !usage::plain_word(l)) {
+                opp.matched.retain(|(l, _)| !usage::plain_word(l));
+                opp.files = files_of(&opp.matched.iter().map(|(l, _)| l.clone()).collect::<Vec<_>>(), cite);
+                opp.route = Route::InEffect;
+                if let Some(s) = ledger_status() {
+                    opp.withheld_from = Some(Route::InEffect);
+                    opp.route = Route::Withheld(s);
+                }
+            }
             let shown = matches!(opp.route, Route::UpgradeReview | Route::ImprovementsPass | Route::BumpDigest);
             if shown {
                 // An obligation is never blocked: the upgrade brings it whatever the project's floor, and a record that
@@ -564,6 +618,9 @@ fn order(out: &mut Outcome) {
             .then_with(|| x.id().cmp(y.id()))
     });
     out.upgrade = siblings_together(opps, up);
+    let mut now: Vec<usize> = (0..opps.len()).filter(|&i| opps[i].route == Route::InEffect).collect();
+    now.sort_by(|&a, &b| cmp_score(opps[a].score, opps[b].score).then_with(|| opps[a].id().cmp(opps[b].id())));
+    out.in_effect = now;
     // Improvements pass: borderline last, then best benefit, then usage.
     let mut imp: Vec<usize> = (0..opps.len()).filter(|&i| opps[i].route == Route::ImprovementsPass).collect();
     let best = |o: &Opp| o.benefits.first().map(benefit_rank).unwrap_or(9);
@@ -630,6 +687,9 @@ fn siblings_together(opps: &[Opp], order: Vec<usize>) -> Vec<usize> {
     out
 }
 
+/// `why`'s label for `Route::InEffect`.
+pub const IN_EFFECT: &str = "in effect now (deprecated at the installed version, still used here)";
+
 /// Plain-language counts of where records went, for an empty or short output.
 pub fn why(out: &Outcome, routes: &[&str]) -> String {
     let mut c: BTreeMap<String, usize> = BTreeMap::new();
@@ -647,6 +707,7 @@ pub fn why(out: &Outcome, routes: &[&str]) -> String {
             Route::Applied => "already applied in the code",
             Route::NoBenefit => "opt-in with no benefit that counts here (benefit `none`; available on request)",
             Route::OptInAfterBump => "opt-in, available after an upgrade",
+            Route::InEffect => IN_EFFECT,
             Route::AlreadyIncluded => "already in the installed version with nothing to adopt",
             Route::BeyondTarget => "released after the target version",
             Route::VersionUnknown => "not applicable: the installed version could not be read",
@@ -671,6 +732,10 @@ pub fn why(out: &Outcome, routes: &[&str]) -> String {
         };
     }
     if parts.is_empty() {
+        // Every record went to one of `routes`, which the caller lists itself.
+        if !c.is_empty() {
+            return format!("no other records for {} in the catalog", out.technologies.join(", "));
+        }
         return format!("{} records for {} in the catalog", out.opps.len(), out.technologies.join(", "));
     }
     parts.join("; ")
@@ -772,11 +837,12 @@ mod tests {
                 with(rec("next:new-now", "pkg:npm/next", "16.0.0"), json!({"change_type":"new_api","benefit":["performance"]})),
                 with(rec("next:none-now", "pkg:npm/next", "16.0.0"), json!({"change_type":"new_option","benefit":["none"]})),
                 with(rec("next:internal-now", "pkg:npm/next", "16.0.0"), json!({"change_type":"new_api","surface":"runtime_internal"})),
-                with(rec("next:old-dep", "pkg:npm/next", "15.0.0"), json!({"change_type":"deprecation"})),
+                with(rec("next:old-dep", "pkg:npm/next", "15.0.0"), json!({"change_type":"deprecation","replaces":["unstable_oldCache"]})),
+                with(rec("next:old-dep-used", "pkg:npm/next", "15.0.0"), json!({"change_type":"deprecation","replaces":["unstable_noStore"]})),
             ],
         );
         let s = stack(&[("next", "16.0.5")], None);
-        let r = repo(&[]);
+        let r = repo(&[("app/page.tsx", "import { unstable_noStore } from 'next/cache';\nunstable_noStore();")]);
         let l = Ledger::default();
         let out = run_with(&c, &s, &r, &l);
         let mut up = ids(&out, &out.upgrade);
@@ -787,7 +853,79 @@ mod tests {
         assert_eq!(route_of(&out, "next:none-now"), &Route::NoBenefit, "`none` is left out of the improvements pass");
         assert_eq!(route_of(&out, "next:new-later"), &Route::OptInAfterBump);
         assert_eq!(route_of(&out, "next:internal-now"), &Route::AlreadyIncluded, "runtime_internal arrives with the bump");
-        assert_eq!(route_of(&out, "next:old-dep"), &Route::AlreadyIncluded);
+        // A deprecation at or below the installed version: owed now while the code uses what it deprecates, and
+        // listed apart from the obligations a bump brings; already included once the code shows none of it.
+        assert_eq!(route_of(&out, "next:old-dep"), &Route::AlreadyIncluded, "deprecated API not used here");
+        assert_eq!(ids(&out, &out.in_effect), vec!["next:old-dep-used"], "deprecated API still used: in effect now");
+    }
+
+    #[test]
+    fn in_effect_needs_the_deprecated_api_itself_in_code_that_can_use_the_technology() {
+        let dep = |id: &str, extra: serde_json::Value| with(with(rec(id, "pkg:npm/vitest", "4.1.0"), json!({"change_type":"deprecation"})), extra);
+        let c = catalog(
+            "vitest",
+            0,
+            vec![
+                // `replaces` names the deprecated matchers; `spy` and a made-up name are only terms.
+                dep("vitest:tobe", json!({"replaces":["toBeCalled","toBeCalledWith"],"terms":[["toBeCalled",0],["toBeInvoked",0],["spy",0]]})),
+                // The duplicate describing the replacement: terms match correct code, nothing in `replaces`.
+                dep("vitest:tohavebeen", json!({"terms":[["toHaveBeenCalled",0],["spy",0]]})),
+                // A plain word cannot show the deprecated API is used.
+                dep("vitest:message", json!({"replaces":["message"],"terms":[["message",0]]})),
+                // A dotted key matched only by its last word, which is the successor's name.
+                dep("vitest:browser-isolate", json!({"replaces":["browser.isolate"],"terms":[["browser.isolate",0]]})),
+                // The same with a tail that is not a plain word.
+                dep("vitest:test-before-all", json!({"replaces":["test.beforeAll"]})),
+                // The deprecated API only in a file that cannot use the technology (data, another ecosystem).
+                dep("vitest:old-flag", json!({"replaces":["oldFlagName"]})),
+                // Not a deprecation: a removal at or below the installed version is gone, not owed.
+                with(rec("vitest:gone", "pkg:npm/vitest", "4.1.0"), json!({"change_type":"removal","replaces":["toBeCalledWith"]})),
+                // Withheld by the ledger like any other record.
+                dep("vitest:declined", json!({"replaces":["toThrowError"]})),
+            ],
+        );
+        let s = stack(&[("vitest", "4.1.11")], None);
+        let r = repo(&[
+            ("test/a.spec.ts", "import { expect, vi } from 'vitest';\nconst spy = vi.fn();\nexpect(spy).toBeCalledWith(1);\nexpect(spy).toHaveBeenCalled();\nexpect(e.message).toThrowError();"),
+            ("vitest.config.ts", "export default { test: { isolate: false } }"),
+            ("test/b.spec.ts", "import { beforeAll } from 'vitest';\nbeforeAll(() => {});"),
+            ("fixtures/data.json", "{\"oldFlagName\": true}"),
+            ("scripts/x.py", "oldFlagName = 1"),
+        ]);
+        let (l, _) = Ledger::parse("{\"schema\":1}\n{\"id\":\"vitest:declined\",\"rev\":1,\"status\":\"declined\",\"date\":\"2026-10-01\"}\n").unwrap();
+        let out = run_with(&c, &s, &r, &l);
+        assert_eq!(ids(&out, &out.in_effect), vec!["vitest:tobe"]);
+        let o = out.opps.iter().find(|o| o.id() == "vitest:tobe").unwrap();
+        assert_eq!(o.matched, vec![("toBeCalledWith".to_string(), vec!["test/a.spec.ts".to_string()])], "cites `replaces` only, not `spy`");
+        for id in ["vitest:tohavebeen", "vitest:message", "vitest:browser-isolate", "vitest:test-before-all", "vitest:old-flag", "vitest:gone"] {
+            assert_eq!(route_of(&out, id), &Route::AlreadyIncluded, "{id}");
+        }
+        assert_eq!(route_of(&out, "vitest:declined"), &Route::Withheld("declined"));
+        assert!(out.upgrade.is_empty(), "the upgrade review's queue is unchanged");
+        assert!(why(&out, &[]).contains("1 in effect now (deprecated at the installed version, still used here)"), "{}", why(&out, &[]));
+        let only = catalog("vitest", 0, vec![dep("vitest:tobe", json!({"replaces":["toBeCalledWith"]}))]);
+        let out = run_with(&only, &s, &r, &l);
+        assert_eq!(why(&out, &["upgrade review", IN_EFFECT]), "no other records for vitest in the catalog");
+    }
+
+    #[test]
+    fn a_deprecation_in_the_upgrade_window_cites_what_it_deprecates() {
+        let c = catalog(
+            "vitest",
+            0,
+            vec![with(
+                rec("vitest:tobe", "pkg:npm/vitest", "4.1.0"),
+                json!({"change_type":"deprecation","replaces":["toBeCalled"],"terms":[["toBeCalled",0],["toHaveBeenCalled",0]]}),
+            )],
+        );
+        let s = stack(&[("vitest", "4.0.0")], None);
+        let r = repo(&[("test/a.spec.ts", "import { expect } from 'vitest';\nexpect(spy).toHaveBeenCalled();")]);
+        let l = Ledger::default();
+        let out = run_with(&c, &s, &r, &l);
+        assert_eq!(ids(&out, &out.upgrade), vec!["vitest:tobe"]);
+        let o = &out.opps[out.upgrade[0]];
+        assert!(o.matched.is_empty() && o.files.is_empty(), "the replacement's name is not evidence: {:?}", o.matched);
+        assert!(o.score > 0.0, "the queue's order still counts every literal");
     }
 
     #[test]
