@@ -2,7 +2,7 @@
 # The drain step of ingest.yml: cycles of drain then publish, so a package is published within a cycle of being
 # worked instead of at the end of the run.
 #
-#   cycle: drain (CYCLE_MINUTES, pulling the gateway every PULL_MINUTES) -> export -> website -> verify -> deploy
+#   cycle: drain (CYCLE_MINUTES, pulling the gateway every PULL_MINUTES) -> export -> website -> verify -> pack -> deploy
 #          -> save state -> acknowledge what the drain took
 #
 # Cycles repeat while work is left and the run's window (RUN_MINUTES) lasts. A drain that ends because nothing more
@@ -52,7 +52,11 @@ publish_tree() {
   fi
   rm -rf "$web"
   "${publish_env[@]}" node .github/scripts/verify-catalog.mjs "$SITE_DIR" || return 1
-  local files big
+  # Under the static asset file limit whatever the catalog holds: what does not fit as files goes into at most 4,096
+  # bucket files the Worker reads (gateway/src/pack.ts); the most requested files stay as they are.
+  local packed files big
+  packed="$("${publish_env[@]}" node gateway/scripts/pack.ts "$SITE_DIR" --max-files "$ASSET_FILE_LIMIT")" || return 1
+  log "pack: $packed"
   files="$(find "$SITE_DIR" -type f | wc -l)"
   big="$(find "$SITE_DIR" -type f -size +25M | wc -l)"
   log "site: $files files, $(du -sh "$SITE_DIR" | cut -f1)"

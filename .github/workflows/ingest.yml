@@ -89,7 +89,9 @@ jobs:
       # and 266k output extraction tokens cost $0.11); 250k was spent by 08:00 UTC and left later runs nothing to start.
       UNSTALE_BUDGET_TOKENS: ${{ vars.UNSTALE_BUDGET_TOKENS || '2500000' }}
       UNSTALE_GATEWAY_URL: ${{ vars.UNSTALE_GATEWAY_URL }}
-      # Workers static assets allow 20,000 files per version on the free plan (100,000 paid).
+      # Workers static assets allow 20,000 files per version on the free plan (100,000 paid); the deploy packs what does
+      # not fit into at most 4,096 bucket files the gateway reads (gateway/src/pack.ts). The pack fails instead if files
+      # it cannot pack leave no room under the limit or a bucket would exceed Workers' 25 MiB file limit.
       ASSET_FILE_LIMIT: ${{ vars.ASSET_FILE_LIMIT || '20000' }}
       # A run's drain window, in cycles that each publish (see the header). 15-minute cycles with 5-minute pulls put a
       # package worked at the head of the queue in the catalog about 10-25 minutes after it was registered.

@@ -1,5 +1,8 @@
 // The unstale Worker (src/index.ts). Static files: the exported catalog, passed at deploy time
-// (`wrangler deploy --assets <export dir>`, ingest.yml). Secrets, set once with `wrangler secret put`:
+// (`wrangler deploy --assets <export dir>`, ingest.yml), with what does not fit under the plan's file limit packed into
+// `_pack/` bucket files (scripts/pack.ts): a request for a packed file finds no static file and reaches the Worker,
+// which answers it from its bucket (src/assets.ts). Catalog paths (`/v1/*`) stay out of run_worker_first, so the files
+// left as they are cost no Worker request. Secrets, set once with `wrangler secret put`:
 // DRAIN_TOKEN (shared with ingest.yml as GATEWAY_DRAIN_TOKEN) and, for fast-track, GITHUB_DISPATCH_TOKEN.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
