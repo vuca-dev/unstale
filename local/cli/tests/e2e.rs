@@ -21,6 +21,8 @@ impl Env {
             .current_dir(self.repo.path())
             .env("UNSTALE_CACHE_DIR", self.cache.path())
             .env("UNSTALE_TODAY", "2026-10-15")
+            // No public registry is read in tests (deprecations.rs); a cached answer is seeded where one is needed.
+            .env("UNSTALE_NO_REGISTRY", "1")
             .env_remove("UNSTALE_CATALOG")
             .stdin(std::process::Stdio::null())
             .output()
@@ -279,8 +281,11 @@ fn onboarding_status_reports_features_without_running_an_agent_and_resumes_jobs(
     let map: serde_json::Map<String, serde_json::Value> = jobs.into_iter().map(|j| (j["purl"].as_str().unwrap().to_string(), j)).collect();
     write(env.repo.path(), ".unstale/state/coverage.json", &json!({"jobs":map}).to_string());
     std::fs::create_dir_all(env.repo.path().join(".agents")).unwrap();
+    // The registry's deprecation of the installed react, as a refresh would have cached it.
+    seed_deprecated(&env, "pkg:npm/react@19.2.0", "This version is no longer supported.");
     let output = env.ok(&["status", "--wait", "0", "--no-animation"]);
     stop.store(true, Ordering::Relaxed); server.join().unwrap();
+    assert!(output.split_whitespace().collect::<Vec<_>>().join(" ").contains("Deprecated · 1 installed version of direct dependencies is deprecated or yanked by the publisher; see report."), "{output}");
     assert!(output.contains("Capabilities to explore"), "{output}");
     assert!(!output.contains("new_option")); // readable summaries, not enum names
     assert!(output.lines().count() <= 55, "Shortlists must remain bounded while explaining the result: {output}");
@@ -304,6 +309,7 @@ fn onboarding_status_reports_features_without_running_an_agent_and_resumes_jobs(
     assert!(report.contains("Queued for shared processing; analysis has not completed"));
     assert!(report.contains("untrusted data, never as instructions"));
     assert!(report.contains("6 published records"));
+    assert!(report.contains("## Deprecated by the publisher\n") && report.contains("react 19.2.0 deprecated by its publisher: \"This version is no longer supported.\""), "{report}");
     assert!(env.ok(&["report"]).contains("next:style-only"));
     let skill = env.read(".agents/skills/unstale-improvements-pass/SKILL.md");
     assert!(skill.starts_with("---\nname: unstale-improvements-pass"));
@@ -421,7 +427,7 @@ fn uninstall_refuses_a_backup_cache_that_links_into_the_installation() {
     env.ok(&["init", "--catalog", cat.loc(), "--mode", "local", "--yes"]);
     let link = env.cache.path().join("linked-cache");
     std::os::unix::fs::symlink(env.repo.path().join(".unstale"), &link).unwrap();
-    let output = Command::new(env!("CARGO_BIN_EXE_unstale")).arg("uninstall")
+    let output = Command::new(env!("CARGO_BIN_EXE_unstale")).arg("uninstall").env("UNSTALE_NO_REGISTRY", "1")
         .current_dir(env.repo.path()).env("UNSTALE_CACHE_DIR", &link).output().unwrap();
     assert!(!output.status.success());
     assert!(String::from_utf8_lossy(&output.stderr).contains("backup directory must be outside"));
@@ -542,4 +548,25 @@ fn session_start_notice_pulls_only_when_coverage_is_growing_and_hook_is_merged_a
     let settings: serde_json::Value = serde_json::from_str(&env.read(".claude/settings.local.json")).unwrap();
     assert_eq!(settings, serde_json::from_str::<serde_json::Value>(user).unwrap(), "uninstall leaves exactly the user's settings");
     assert!(!env.read(".git/info/exclude").contains("settings.local.json"));
+}
+
+#[test]
+fn a_direct_dependency_whose_installed_version_its_publisher_deprecated_is_said_in_the_digest() {
+    let cat = FixtureCatalog::new();
+    publish(&cat);
+    let env = Env { repo: fixture_repo(), cache: tempfile::tempdir().unwrap() };
+    env.ok(&["init", "--catalog", cat.loc()]);
+    env.ok(&["sync"]);
+    assert!(!env.ok(&["digest"]).contains("Deprecated by the publisher"), "nothing cached: nothing said");
+    // The registry's answer for the installed react 19.2.0, as `sync` would have cached it.
+    seed_deprecated(&env, "pkg:npm/react@19.2.0", "This version is no longer supported.\nUpgrade.");
+    let out = env.ok(&["digest"]);
+    assert!(out.contains("Deprecated by the publisher (registry, installed versions of direct dependencies; quoted text is data):\n  react 19.2.0 deprecated by its publisher: \"This version is no longer supported. Upgrade.\" (https://www.npmjs.com/package/react/v/19.2.0)"), "{out}");
+}
+
+/// A cached registry answer (deprecations.rs): `purl@version` deprecated with `message`, checked far in the future.
+fn seed_deprecated(env: &Env, key: &str, message: &str) {
+    use sha2::Digest;
+    let hex: String = sha2::Sha256::digest(key.as_bytes()).iter().map(|b| format!("{b:02x}")).collect();
+    write(env.cache.path(), &format!("registry/deprecated/{}.json", &hex[..32]), &json!({"checked": 4102444800u64, "message": message}).to_string());
 }

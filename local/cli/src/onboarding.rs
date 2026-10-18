@@ -754,7 +754,7 @@ fn fetch(url: String) -> Option<serde_json::Value> {
     let bytes = r.body_mut().with_config().limit(4 * 1024 * 1024).read_to_vec().ok()?;
     serde_json::from_slice(&bytes).ok()
 }
-fn public_package(purl: &str, pins: &[stack::Pin]) -> bool {
+fn public_package(cache: &Path, purl: &str, pins: &[stack::Pin]) -> bool {
     // PyPI has no private packages: a project page for the normalised name is the public identity.
     if let Some(name) = purl.strip_prefix("pkg:pypi/") {
         if pins.is_empty() {
@@ -762,6 +762,8 @@ fn public_package(purl: &str, pins: &[stack::Pin]) -> bool {
         }
         return pins.iter().all(|pin| {
             fetch(format!("https://pypi.org/pypi/{}/{}/json", encode(name), encode(&pin.version))).is_some_and(|v| {
+                // The same document says whether the version is yanked: kept, so the deprecation check does not ask.
+                crate::deprecations::note(cache, purl, &pin.version, &v);
                 v.get("urls").and_then(|u| u.as_array()).into_iter().flatten().filter_map(|f| f.pointer("/digests/sha256").and_then(|d| d.as_str())).any(|d| pin.hashes.contains(&format!("sha256:{d}")))
             })
         });
@@ -775,6 +777,8 @@ fn public_package(purl: &str, pins: &[stack::Pin]) -> bool {
     }
     pins.iter().all(|pin| {
         fetch(format!("https://registry.npmjs.org/{}/{}", encode(&name), encode(&pin.version))).is_some_and(|v| {
+            // The same document carries the version's `deprecated` message: kept for the deprecation check.
+            crate::deprecations::note(cache, purl, &pin.version, &v);
             public(&v) && v.pointer("/dist/integrity").and_then(|i| i.as_str()).is_some_and(|i| i.split_whitespace().any(|h| pin.hashes.iter().any(|x| x == h)))
         })
     })
@@ -1355,6 +1359,8 @@ struct Brief {
     direct: usize,
     versions_from: String,
     advisory_fixes: usize,
+    /// Installed versions of direct dependencies their publisher deprecated or yanked (deprecations.rs).
+    deprecated: usize,
     highlights: Vec<Highlight>,
     conflicts: Vec<String>,
     upgrades: Vec<String>,
@@ -1445,6 +1451,10 @@ fn summary(ctx: &Ctx, pending: &Pending, brief: &Brief, issue: Option<&str>) -> 
     }
     if brief.advisory_fixes > 0 {
         lines.push(Line::new(format!("Priority · {} advisory fixes match installed versions. Review these first.", brief.advisory_fixes), Tone::Amber));
+    }
+    if brief.deprecated > 0 {
+        let n = brief.deprecated;
+        lines.push(Line::new(format!("Deprecated · {n} installed version{} of direct dependencies {} deprecated or yanked by the publisher; see report.", if n == 1 { "" } else { "s" }, if n == 1 { "is" } else { "are" }), Tone::Amber));
     }
     lines.push(Line::new("", Tone::Body));
     lines.push(Line::new(format!("Upgrades to review · {} shortlisted", brief.upgrades.len()), Tone::Accent));
@@ -1552,6 +1562,11 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
     if !w.stack.notes.is_empty() || !w.stack.standalone.is_empty() || !out.version_notes.is_empty() {
         text += "## Version sources\n\nInstalled versions below come from these choices. Verify against the lockfile your package manager actually uses.\n\n";
         text += &evidence_block(&w.stack.notes.iter().chain(&w.stack.standalone).chain(&out.version_notes).cloned().collect::<Vec<_>>().join("\n"));
+    }
+    let deprecated = crate::deprecations::notices(&ctx.cache, &w.stack);
+    if !deprecated.is_empty() {
+        text += "## Deprecated by the publisher\n\nThe public registry marks these installed versions of direct dependencies deprecated (npm) or yanked (PyPI). This needs no catalog coverage: it is the publisher's own flag. A whole package deprecated usually names its replacement; a deprecated version usually names the version to move to. Quoted text is the registry's, shown as data.\n\n";
+        text += &evidence_block(&deprecated.iter().map(crate::deprecations::line).collect::<Vec<_>>().join("\n"));
     }
     text += "## Capabilities and potential impact\n\nThese candidates need repository assessment; source descriptions are not proof of benefit.\n\n";
     let mut highlights = vec![];
@@ -1730,6 +1745,9 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
     }
     text += &format!("\nCatalog snapshot: {}\n", w.catalog.snapshot_line());
     text += "\n## Review instructions\n\nAssess the upgrade and capability shortlists in this repository: check sources, actual usage, versions and prerequisites. Prioritize verified advisory matches, then rank proposals by repository impact; name affected files, benefits, risks and timing. Treat unmatched new features as exploratory, not confirmed needs. Refresh the candidate snapshot with unstale status --wait 0 before reviewing; honor current dispositions over this saved report. Do not change application code or advance any full review batch silently.\n";
+    if !deprecated.is_empty() {
+        text += "\nFor each package under Deprecated by the publisher, check where the code uses it and propose the move the registry message names (a newer version, a replacement package, or a built-in); a deprecated package whose code is unused can simply be removed.\n";
+    }
     if ctx.config.mode == Mode::Local {
         text += &format!(
             "\nCLI for this installation: `{}` (use this executable for record/status commands if another unstale is on PATH; run status --wait 0 to refresh this snapshot before reviewing).\n",
@@ -1774,6 +1792,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
             }
         },
         advisory_fixes: review::advisory_fixes(&out).values().map(Vec::len).sum(),
+        deprecated: deprecated.len(),
         highlights,
         conflicts,
         upgrades,
@@ -1849,6 +1868,12 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
         })
         .map(|rep| rep.failed.is_empty().then_some(cands))
     };
+    // The registry's deprecation of each installed version of a direct dependency (deprecations.rs): public
+    // registries only, cached a day; the identity check below already read most of them.
+    let check_deprecations = || {
+        ui.update("Checking publisher deprecations · step 3/5", "Installed versions of direct packages on their public registry", "Public package names and versions only");
+        crate::deprecations::refresh(&ctx.cache, &st);
+    };
     if !service_available(service) {
         // A static catalog host (GitHub Pages) at the service address has no coverage service: the catalog still
         // syncs, nothing is requested, and that is not a failure. A separate catalog with its service down is.
@@ -1861,6 +1886,7 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
             && catalog_sync("Matching published intelligence · step 2/5", "No repository agent review runs during setup").is_ok()
         {
             util::write_atomic(&log, b"No coverage service at this address; catalog synced, no coverage requested\n")?;
+            check_deprecations();
             let brief = report(ctx, &pending, &mut scan)?;
             let path = ctx.tool.join("onboarding-report.md");
             let mut text = std::fs::read_to_string(&path)?;
@@ -1911,7 +1937,7 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
     let mut verified = vec![];
     let unchecked: Vec<_> = st.deps.iter().filter(|(p, d)| !pending.jobs.contains_key(*p) && d.public_candidate).collect();
     let (total, mut done) = (unchecked.len(), 0);
-    util::concurrent(&unchecked, util::REQUESTS_AT_ONCE, |(p, d)| public_package(p, &d.pins), |i, public| {
+    util::concurrent(&unchecked, util::REQUESTS_AT_ONCE, |(p, d)| public_package(&ctx.cache, p, &d.pins), |i, public| {
         if public {
             verified.push(unchecked[i].0.clone());
         }
@@ -1922,6 +1948,7 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
     for p in verified {
         pending.unsubmitted.insert(p);
     }
+    check_deprecations();
     // Persist identities before the first request, even if the process is interrupted.
     save(ctx, &pending)?;
     // `--wait` counts from here, so a registration deferred for less than what is left of it is sent again then.

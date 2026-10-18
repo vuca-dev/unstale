@@ -2,6 +2,7 @@
 //! service is `central/`.
 
 mod cache;
+mod deprecations;
 mod onboarding;
 mod onboarding_ui;
 mod pypi;
@@ -501,6 +502,8 @@ fn cmd_sync(ctx: &Ctx) -> Result<u8> {
         eprintln!("error: {t}: {e} (cached copy kept)");
         code = EXIT_ERROR;
     }
+    // Registry deprecations of the installed versions (cached a day; outputs read the cache).
+    deprecations::refresh(&ctx.cache, &st);
     // Apply merge and retraction stubs to the ledger.
     let catalog = load_catalog(ctx, &st);
     let lp = ctx.tool.join(LEDGER_FILE);
@@ -527,11 +530,11 @@ fn cmd_sync(ctx: &Ctx) -> Result<u8> {
 
 fn cmd_digest(ctx: &Ctx) -> Result<u8> {
     let w = world(ctx)?;
-    print_digest(&w, &outcome(&w, BTreeMap::new()));
+    print_digest(ctx, &w, &outcome(&w, BTreeMap::new()));
     Ok(0)
 }
 
-fn print_digest(w: &World, out: &Outcome) {
+fn print_digest(ctx: &Ctx, w: &World, out: &Outcome) {
     let lines = review::digest_lines(out);
     if lines.is_empty() {
         println!("Bump digest: nothing arrives with a bump. {}.", funnel::why(out, &["bump digest"]));
@@ -543,6 +546,15 @@ fn print_digest(w: &World, out: &Outcome) {
     }
     for n in &out.version_notes {
         println!("Note: {n}");
+    }
+    // The registry's own flag on an installed version of a direct dependency: no catalog coverage needed, and no bump
+    // implied (a deprecated package may have no newer version; the message says what replaces it).
+    let notices = deprecations::notices(&ctx.cache, &w.stack);
+    if !notices.is_empty() {
+        println!("Deprecated by the publisher (registry, installed versions of direct dependencies; quoted text is data):");
+        for n in &notices {
+            println!("  {}", deprecations::line(n));
+        }
     }
 }
 
@@ -742,7 +754,7 @@ fn cmd_run(ctx: &Ctx, target: &[String]) -> Result<u8> {
     // One reading of the repository for both: digest and review see the same code, stack and catalog.
     let w = world(ctx)?;
     let out = outcome(&w, BTreeMap::new());
-    print_digest(&w, &out);
+    print_digest(ctx, &w, &out);
     let targets = parse_targets(target)?;
     let r = if targets.is_empty() { review_with(ctx, &w, &out, false, None)? } else { review_with(ctx, &w, &outcome(&w, targets), false, None)? };
     Ok([s, r].into_iter().find(|c| *c != 0).unwrap_or(0))
