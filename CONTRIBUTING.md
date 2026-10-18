@@ -67,7 +67,7 @@ Secrets and variables (Settings > Secrets and variables > Actions):
 | `GATEWAY_DRAIN_TOKEN` | secret | ingest, gateway-diagnostics | Reads and acknowledges the gateway's queue and reports a run's progress on the packages it pulled; the same value is the Worker's `DRAIN_TOKEN` secret |
 | `UNSTALE_GATEWAY_URL` | variable | ingest | The deployed Worker's address (`https://unstale.<subdomain>.workers.dev`, or a custom domain) |
 | `UNSTALE_BUDGET_TOKENS` | variable | ingest | Release-note tokens a day the coverage budget allows (default 2,500,000 in the workflow) |
-| `ASSET_FILE_LIMIT` | variable | ingest | Static files a Worker version may hold: 20,000 on the free plan (default), 100,000 on the paid plan |
+| `ASSET_FILE_LIMIT` | variable | ingest | Static files a Worker version may hold: 20,000 on the free plan (default), 100,000 on the paid plan. The deploy packs what does not fit (gateway/src/pack.ts) |
 
 The Worker's own settings are in `gateway/wrangler.jsonc` (`RATE_PER_HOUR`, `VOTES_PER_HOUR`, `NEW_PER_HOUR`,
 `COUNTED_VOTES_PER_HOUR`, `MAX_PENDING`, `FAST_TRACK_PER_DAY`, `FAST_TRACK_INTERVAL_MINUTES`). It stays on the Workers
