@@ -373,16 +373,10 @@ pub fn joins(
     if let Some(p) = &w.package {
         return packages.iter().any(|q| q.eq_ignore_ascii_case(p)).then_some(2);
     }
-    if !imports(&w.path) {
-        return None;
-    }
     let named = packages.iter().flat_map(|p| spellings(p)).any(|s| w.words.contains(&s))
         || repos.iter().filter_map(|r| r.split('/').nth(1)).any(|r| (r.contains('-') || r.len() >= 8) && !r.contains('.') && w.words.contains(r));
-    if named {
-        Some(2)
-    } else {
-        w.refs.iter().any(|r| repos.contains(&r.repo)).then_some(1)
-    }
+    let strength = if named { 2 } else if w.refs.iter().any(|r| repos.contains(&r.repo)) { 1 } else { return None };
+    imports(&w.path).then_some(strength)
 }
 
 /// What the manifests say about a technology's packages: whether application manifests declare one for runtime (not
@@ -406,96 +400,96 @@ fn pep_name(s: &str) -> String {
     s.to_ascii_lowercase().replace(['_', '.'], "-")
 }
 
-pub fn facts(repo: &usage::Repo, packages: &[String]) -> Facts {
-    let mut f = Facts::default();
-    let (mut shipped, mut dev) = (false, false);
-    let named = |k: &str| packages.iter().any(|p| p == strip_version(k.rsplit('>').next().unwrap_or(k)));
-    let pep: Vec<String> = packages.iter().map(|p| pep_name(p)).collect();
-    // Only application manifests hold back what ships: a pin in an example, a CI script or a test fixture does not.
-    let set = |f: &mut Facts, what: &str, path: &str| {
-        if f.blocker.is_none() && repo.role(path) == Role::App {
-            f.blocker = Some(format!("{what} in {path}"));
-        }
-    };
+/// One manifest's declaration of a package, read once per report (`declarations`) and filtered per technology.
+#[derive(Debug, Clone)]
+pub struct Decl {
+    /// npm name as written; PyPI names normalized (`pep_name`).
+    name: String,
+    path: String,
+    /// The manifest is application code (`Role::App`), not an example, CI script or fixture.
+    app: bool,
+    /// Declared for development only (`devDependencies`, a dev requirements file, a dependency group, an extra, the
+    /// build system); `None` for an override, which neither ships nor develops it.
+    dev: Option<bool>,
+    /// What holds its version: "an exact pin" or "an override".
+    holds: Option<&'static str>,
+}
+
+fn req_name(r: &str) -> String {
+    pep_name(&r.chars().take_while(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.')).collect::<String>())
+}
+
+/// Every package declaration in the read manifests (package.json, pnpm-workspace.yaml, pyproject.toml,
+/// requirements files).
+pub fn declarations(repo: &usage::Repo) -> Vec<Decl> {
+    let mut out = vec![];
     for (path, text) in &repo.files {
         let app = repo.role(path) == Role::App;
+        let mut push = |name: String, dev: Option<bool>, holds: Option<&'static str>| out.push(Decl { name, path: path.clone(), app, dev, holds });
+        let key = |k: &str| strip_version(k.rsplit('>').next().unwrap_or(k)).to_string();
         match base(path) {
             "package.json" => {
                 let Ok(v) = serde_json::from_str::<serde_json::Value>(text) else { continue };
                 for field in ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"] {
                     let Some(m) = v.get(field).and_then(|m| m.as_object()) else { continue };
-                    for (_, spec) in m.iter().filter(|(k, _)| named(k)) {
-                        if field == "devDependencies" {
-                            dev = true;
-                        } else {
-                            shipped = true;
-                            f.runtime |= app;
-                        }
-                        if spec.as_str().is_some_and(exact) {
-                            set(&mut f, "an exact pin", path);
-                        }
+                    for (k, spec) in m {
+                        push(k.clone(), Some(field == "devDependencies"), spec.as_str().is_some_and(exact).then_some("an exact pin"));
                     }
                 }
                 for field in ["/overrides", "/resolutions", "/pnpm/overrides"] {
-                    if v.pointer(field).and_then(|m| m.as_object()).is_some_and(|m| m.keys().any(|k| named(k))) {
-                        set(&mut f, "an override", path);
+                    for k in v.pointer(field).and_then(|m| m.as_object()).into_iter().flat_map(|m| m.keys()) {
+                        push(key(k), None, Some("an override"));
                     }
                 }
             }
             "pnpm-workspace.yaml" => {
-                if yaml_block(text, "overrides").iter().any(|(_, k, _)| named(k)) {
-                    set(&mut f, "an override", path);
+                for (_, k, _) in yaml_block(text, "overrides") {
+                    push(key(k), None, Some("an override"));
                 }
-                if yaml_block(text, "catalog").iter().any(|(_, k, v)| named(k) && exact(v)) {
-                    set(&mut f, "an exact pin", path);
+                for (_, k, v) in yaml_block(text, "catalog") {
+                    if exact(v) {
+                        push(k.to_string(), None, Some("an exact pin"));
+                    }
                 }
             }
             "pyproject.toml" => {
                 let Ok(t) = text.parse::<toml::Table>() else { continue };
-                let reqs = t.get("project").and_then(|p| p.get("dependencies")).and_then(|d| d.as_array()).cloned().unwrap_or_default();
-                for r in reqs.iter().filter_map(|r| r.as_str()) {
-                    let name: String = r.chars().take_while(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.')).collect();
-                    if pep.contains(&pep_name(&name)) {
-                        shipped = true;
-                        f.runtime |= app;
-                        if r.contains("==") {
-                            set(&mut f, "an exact pin", path);
-                        }
-                    }
+                let reqs = |v: Option<&toml::Value>| v.and_then(|d| d.as_array()).into_iter().flatten().filter_map(|r| r.as_str()).map(String::from).collect::<Vec<_>>();
+                for r in reqs(t.get("project").and_then(|p| p.get("dependencies"))) {
+                    push(req_name(&r), Some(false), r.contains("==").then_some("an exact pin"));
                 }
                 let groups = [t.get("dependency-groups"), t.get("project").and_then(|p| p.get("optional-dependencies"))];
-                let listed = |v: &toml::Value| v.as_array().is_some_and(|a| a.iter().filter_map(|r| r.as_str()).any(|r| {
-                    let name: String = r.chars().take_while(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.')).collect();
-                    pep.contains(&pep_name(&name))
-                }));
-                if groups.iter().flatten().filter_map(|g| g.as_table()).any(|g| g.values().any(listed))
-                    || t.get("build-system").and_then(|b| b.get("requires")).is_some_and(listed)
-                {
-                    dev = true;
+                let mut dev: Vec<String> = groups.iter().flatten().filter_map(|g| g.as_table()).flat_map(|g| g.values()).flat_map(|v| reqs(Some(v))).collect();
+                dev.extend(reqs(t.get("build-system").and_then(|b| b.get("requires"))));
+                for r in dev {
+                    push(req_name(&r), Some(true), None);
                 }
             }
             name if name.starts_with("requirements") && name.ends_with(".txt") => {
-                let dev_file_name = name.contains("dev") || name.contains("test") || name.contains("lint") || name.contains("doc");
+                let dev = ["dev", "test", "lint", "doc"].iter().any(|d| name.contains(d));
                 for line in text.lines().map(str::trim) {
-                    let n: String = line.chars().take_while(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.')).collect();
-                    if !n.is_empty() && pep.contains(&pep_name(&n)) {
-                        if dev_file_name {
-                            dev = true;
-                        } else {
-                            shipped = true;
-                            f.runtime |= app;
-                        }
-                        if line.contains("==") {
-                            set(&mut f, "an exact pin", path);
-                        }
+                    let n = req_name(line);
+                    if !n.is_empty() {
+                        push(n, Some(dev), line.contains("==").then_some("an exact pin"));
                     }
                 }
             }
             _ => {}
         }
     }
-    f.dev_only = dev && !shipped;
-    f
+    out
+}
+
+pub fn facts(decls: &[Decl], packages: &[String]) -> Facts {
+    let names: BTreeSet<String> = packages.iter().flat_map(|p| [p.clone(), pep_name(p)]).collect();
+    let mine: Vec<&Decl> = decls.iter().filter(|d| names.contains(&d.name)).collect();
+    let shipped = mine.iter().any(|d| d.dev == Some(false));
+    Facts {
+        runtime: mine.iter().any(|d| d.app && d.dev == Some(false)),
+        dev_only: !shipped && mine.iter().any(|d| d.dev == Some(true)),
+        // Only application manifests hold back what ships: a pin in an example, a CI script or a test fixture does not.
+        blocker: mine.iter().find(|d| d.app && d.holds.is_some()).map(|d| format!("{} in {}", d.holds.unwrap_or_default(), d.path)),
+    }
 }
 
 #[cfg(test)]

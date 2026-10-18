@@ -1743,6 +1743,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
     };
     let specific = |o: &funnel::Opp| o.matched.iter().any(|(term, _)| specific_reference(term, &w.stack));
     let found = workarounds::detect(&w.repo);
+    let declared = workarounds::declarations(&w.repo);
     let groups = review::digest_groups(&out);
     let mut ranked: Vec<Ranked> = vec![];
     let mut quiet = 0;
@@ -1799,7 +1800,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
             }
             .is_some_and(|r| r.standalone)
         });
-        let facts = workarounds::facts(&w.repo, &packages);
+        let facts = workarounds::facts(&declared, &packages);
         // Runtime: a runtime dependency of an application manifest, or application source code (not config) using it.
         // Configuration written as code (`vite.config.ts`, `.eslintrc.js`, `conf.py`, `setup.py`) is tooling.
         let code = |f: &str| {
