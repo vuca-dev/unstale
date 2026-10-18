@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { sleep } from "../pipeline/util.ts";
+import { isLegacy } from "./layout.ts";
 
 export interface Asset {
   id: string;
@@ -25,6 +26,8 @@ export interface Remote {
   download(asset: Asset, file: string, start?: number, end?: number): Promise<void>;
   upload(file: string, name: string): Promise<void>;
   remove(asset: Asset): Promise<void>;
+  /** Assets whose upload never completed (a killed save's), which `list` leaves out. */
+  incomplete?(): Promise<Asset[]>;
 }
 
 export class DirRemote implements Remote {
@@ -58,12 +61,18 @@ export class DirRemote implements Remote {
     await pipeline(createReadStream(join(this.dir, asset.id), { start, end: end - 1 }), createWriteStream(file));
   }
   async upload(file: string, name: string): Promise<void> {
+    if (isLegacy(name)) throw new Error(`${name}: tarball-format assets are never replaced`);
     copyFileSync(file, join(this.dir, `.${name}.part`));
     copyFileSync(join(this.dir, `.${name}.part`), join(this.dir, name));
     unlinkSync(join(this.dir, `.${name}.part`));
   }
   async remove(asset: Asset): Promise<void> {
     if (existsSync(join(this.dir, asset.id))) unlinkSync(join(this.dir, asset.id));
+  }
+  async incomplete(): Promise<Asset[]> {
+    return readdirSync(this.dir)
+      .filter((n) => /^\..+\.part$/.test(n))
+      .map((id) => ({ id, name: id.slice(1, -".part".length), size: statSync(join(this.dir, id)).size }));
   }
 }
 
@@ -92,15 +101,24 @@ export class GithubRemote implements Remote {
     }
   }
 
-  async list(): Promise<Asset[]> {
-    const out: Asset[] = [];
+  /** Every asset of the release, an upload in progress or abandoned (state `starter`) included. */
+  private async all(): Promise<Array<{ id: number; name: string; size: number; state?: string }>> {
+    const out: Array<{ id: number; name: string; size: number; state?: string }> = [];
     for (let page = 1; ; page++) {
       const res = await this.call(`/repos/${this.repo}/releases/${this.release}/assets?per_page=100&page=${page}`);
       if (!res.ok) throw new Error(`listing release assets: ${res.status} ${await res.text()}`);
       const batch = (await res.json()) as Array<{ id: number; name: string; size: number; state?: string }>;
-      for (const a of batch) if (a.state === undefined || a.state === "uploaded") out.push({ id: String(a.id), name: a.name, size: a.size });
+      out.push(...batch);
       if (batch.length < 100) return out;
     }
+  }
+
+  async list(): Promise<Asset[]> {
+    return (await this.all()).filter((a) => a.state === undefined || a.state === "uploaded").map((a) => ({ id: String(a.id), name: a.name, size: a.size }));
+  }
+
+  async incomplete(): Promise<Asset[]> {
+    return (await this.all()).filter((a) => a.state !== undefined && a.state !== "uploaded").map((a) => ({ id: String(a.id), name: a.name, size: a.size }));
   }
 
   private async url(asset: Asset, fresh = false): Promise<string> {
@@ -141,6 +159,7 @@ export class GithubRemote implements Remote {
 
   /** As the tarball saves did: curl, the token on stdin (never in the process list). */
   async upload(file: string, name: string): Promise<void> {
+    if (isLegacy(name)) throw new Error(`${name}: tarball-format assets are never replaced`);
     const url = `https://uploads.github.com/repos/${this.repo}/releases/${this.release}/assets?name=${encodeURIComponent(name)}`;
     for (let attempt = 0; ; attempt++) {
       try {
@@ -155,8 +174,8 @@ export class GithubRemote implements Remote {
         if (attempt >= 3) throw e;
         await sleep(2000 * 2 ** attempt);
         // A failed upload can leave an asset of that name behind, which would refuse the retry.
-        const res = await this.call(`/repos/${this.repo}/releases/${this.release}/assets?per_page=100`);
-        const left = res.ok ? ((await res.json()) as Array<{ id: number; name: string }>).find((a) => a.name === name) : undefined;
+        // Only this generation's own names reach here (state-<stamp>.segNN, state-<stamp>.json), never an older asset.
+        const left = (await this.all()).find((a) => a.name === name);
         if (left) await this.call(`/repos/${this.repo}/releases/assets/${left.id}`, { method: "DELETE" });
       }
     }

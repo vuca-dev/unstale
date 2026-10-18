@@ -15,6 +15,7 @@
 // Compaction: a segment less than half live, or past the newest 48 a manifest references, has its live members copied
 // into the new segment (at most 1 GiB a save), so the release holds a bounded number of assets (GitHub allows 1,000).
 // Retention: the newest generation of each of the newest `keep` runs; segments no kept manifest references are deleted.
+// Tarball-format assets are never deleted or replaced, so reverting to the tarball code still restores.
 //
 // Restore: eager members only (ranges of each segment, coalesced); a docs store is restored on first use through the
 // state server (client.ts). A legacy tarball generation is still restored, so the first run of this code continues
@@ -29,7 +30,7 @@ import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, 
 import { dirname, join } from "node:path";
 import { constants, zstdCompressSync, zstdDecompressSync } from "node:zlib";
 import { writeAtomic } from "../pipeline/util.ts";
-import { areaOf, areaOfKey, bucketCount, excluded, kindOf, memberOf, memberRoot, STATE_DIR, whole, type Kind } from "./layout.ts";
+import { areaOf, areaOfKey, bucketCount, excluded, isLegacy, kindOf, memberOf, memberRoot, STATE_DIR, whole, type Kind } from "./layout.ts";
 import type { Asset, Remote } from "./remote.ts";
 import { pack, unpack, type Entry } from "./tar.ts";
 
@@ -58,7 +59,9 @@ export interface Manifest {
   members: Record<string, Member>;
 }
 
-export const SEGMENT_MAX = 1536 * 1024 * 1024;
+/** Under GitHub's 2 GiB asset limit. `UNSTALE_STATE_SEGMENT_MAX` lowers it (bytes), for a rehearsal with many segments. */
+const SEGMENT_LIMIT = 1536 * 1024 * 1024;
+export const SEGMENT_MAX = Math.min(SEGMENT_LIMIT, Number(process.env.UNSTALE_STATE_SEGMENT_MAX) || Infinity);
 export const SEGMENTS_KEPT = 48;
 export const COMPACT_BYTES = 1024 * 1024 * 1024;
 const LEVEL = 10;
@@ -171,9 +174,9 @@ class SegmentWriter {
     this.generation = generation;
   }
   add(data: Buffer): { seg: string; offset: number } {
-    if (data.length > SEGMENT_MAX) throw new Error(`a member of ${data.length} bytes exceeds the segment limit`);
+    if (data.length > SEGMENT_LIMIT) throw new Error(`a member of ${data.length} bytes exceeds the segment limit`);
     let cur = this.written.at(-1);
-    if (!cur || this.fd === undefined || cur.size + data.length > SEGMENT_MAX) {
+    if (!cur || this.fd === undefined || (cur.size > 0 && cur.size + data.length > SEGMENT_MAX)) {
       if (this.fd !== undefined) closeSync(this.fd);
       const name = `${this.generation}.seg${String(this.written.length).padStart(2, "0")}`;
       cur = { name, file: join(this.dir, name), size: 0 };
@@ -404,13 +407,16 @@ export function generations(assets: readonly Asset[]): Array<{ name: string; kin
 /**
  * Keeps the newest complete generation of each of the newest `keep` runs (and `current`), and every segment a kept
  * manifest references; deletes every other `state-` asset (older generations, parts of interrupted saves).
+ *
+ * Tarball-format assets are never deleted and do not count toward `keep`: they are what the code before manifests
+ * restores, so reverting to it continues from the last tarball. An operator deletes them once they are not needed.
  */
 export async function retain(remote: Remote, current: string, keep: number): Promise<string[]> {
   const assets = await remote.list();
   const seen = new Set<string>();
   const kept = new Set<string>([current]);
   for (const g of generations(assets)) {
-    if (seen.has(runOf(g.name)) || seen.size >= keep) continue;
+    if (g.kind !== "v2" || seen.has(runOf(g.name)) || seen.size >= keep) continue;
     seen.add(runOf(g.name));
     kept.add(g.name);
   }
@@ -420,9 +426,11 @@ export async function retain(remote: Remote, current: string, keep: number): Pro
     for (const s of Object.keys(m.segments)) live.add(s);
   }
   const deleted: string[] = [];
-  for (const a of assets) {
-    if (!a.name.startsWith("state-")) continue;
-    const gen = a.name.replace(/\.(json|sha256|tar\.zst\.[a-z]+)$/, "");
+  // A killed save's half-uploaded asset is never listed as uploaded: deleted too (never one of `current`'s).
+  const incomplete = (await remote.incomplete?.()) ?? [];
+  for (const a of [...assets, ...incomplete.filter((a) => !a.name.startsWith(`${current}.`))]) {
+    if (!a.name.startsWith("state-") || isLegacy(a.name)) continue;
+    const gen = a.name.replace(/\.json$/, "");
     if (live.has(a.name) || (kept.has(gen) && !/\.seg\d+$/.test(a.name))) continue;
     await remote.remove(a);
     deleted.push(a.name);

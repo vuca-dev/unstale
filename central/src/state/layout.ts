@@ -90,3 +90,9 @@ export function bucketCount(bytes: number, previous: number | undefined): number
   const avg = bytes / previous;
   return avg > 2 * TARGET_MEMBER || (previous > 1 && avg < TARGET_MEMBER / 4) ? want : previous;
 }
+
+/**
+ * An asset of the tarball format (`state-<stamp>.tar.zst.<part>`, `state-<stamp>.sha256`): what the code before
+ * manifests restores. Nothing here deletes or replaces one (snapshot.ts retain, remote.ts upload).
+ */
+export const isLegacy = (name: string): boolean => /^state-[^.]+\.(sha256|tar\.zst\.[a-z]+)$/.test(name);

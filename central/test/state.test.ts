@@ -257,6 +257,61 @@ describe("save and restore", () => {
     expect(contents(c)).toEqual(contents(a));
   });
 
+  test("tarball-format assets survive migration, retention and compaction, so a revert restores from them", async () => {
+    const a = tmp("a");
+    seed(a);
+    const legacy = ["state-20261017T000000Z-0-1", "state-20261017T030000Z-9-1", "state-20261017T060000Z-8-1"];
+    for (const gen of legacy) {
+      execFileSync("sh", ["-c", `tar -C "$0" -cf - central catalog | zstd -q -3 | split -b 200 -a 2 - "$1/${gen}.tar.zst."`, a, remoteDir]);
+      execFileSync("sh", ["-c", `cd "$0" && for f in ${gen}.tar.zst.*; do printf '%s  %s\\n' "$(shasum -a 256 "$f" | cut -d' ' -f1)" "$f"; done > ${gen}.sha256`, remoteDir]);
+    }
+    const before = assets(remoteDir);
+    const b = join(tmp("b"), "store");
+    expect((await restore(b, remote)).kind).toBe("legacy");
+    // Migration, then more runs than `keep`, each rewriting a large member so compaction runs too.
+    for (const [i, g] of ["state-20261018T000000Z-1-1", "state-20261018T030000Z-2-1", "state-20261018T060000Z-3-1", "state-20261018T090000Z-4-1"].entries()) {
+      put(b, "central/records/big.json", randomBytes(100_000 + i).toString("base64"));
+      await save(b, remote, { generation: g, keep: 1 });
+    }
+    for (const n of before) expect(assets(remoteDir)).toContain(n);
+    expect(readFileSync(join(remoteDir, `${legacy[2]}.sha256`), "utf8")).toContain(`${legacy[2]}.tar.zst.aa`);
+    await expect(remote.upload(join(remoteDir, `${legacy[0]}.sha256`), `${legacy[0]}.sha256`)).rejects.toThrow(/never replaced/);
+  });
+
+  test("a save that fails partway leaves the previous generation complete and restorable", async () => {
+    const a = tmp("a");
+    seed(a);
+    await save(a, remote, { generation: "state-20261018T000000Z-1-1" });
+    const want = contents(a);
+    // Uploads fail after the first: the new segment lands, its manifest never does.
+    let uploads = 0;
+    const flaky = Object.assign(Object.create(remote) as DirRemote, {
+      upload: async (file: string, name: string): Promise<void> => {
+        if (uploads++ >= 1) throw new Error("connection reset");
+        return remote.upload(file, name);
+      },
+    });
+    put(a, "central/records/next.json", JSON.stringify({ records: { a: 1, changed: true } }));
+    put(a, "central/docs/next/store/blobs/ee/ee55.br", "a new page");
+    await expect(save(a, flaky, { generation: "state-20261018T001500Z-1-1" })).rejects.toThrow(/connection reset/);
+    expect(assets(remoteDir)).toContain("state-20261018T001500Z-1-1.seg00");
+    expect(assets(remoteDir)).not.toContain("state-20261018T001500Z-1-1.json");
+    // A killed upload leaves a half-written asset, which no listing counts as uploaded.
+    writeFileSync(join(remoteDir, ".state-20261018T001500Z-1-1.json.part"), "{\"half");
+    expect(localManifest(a)?.generation).toBe("state-20261018T000000Z-1-1");
+    const b = join(tmp("b"), "store");
+    expect(await restore(b, remote, { all: true })).toMatchObject({ generation: "state-20261018T000000Z-1-1" });
+    expect(contents(b)).toEqual(want);
+
+    // The next save succeeds, carries the change, and drops the interrupted save's segment.
+    const s = await save(a, remote, { generation: "state-20261018T003000Z-1-1" });
+    expect(s.deleted).toEqual(expect.arrayContaining(["state-20261018T001500Z-1-1.seg00", "state-20261018T001500Z-1-1.json"]));
+    expect(readdirSync(remoteDir).filter((n) => n.endsWith(".part"))).toEqual([]);
+    const c = join(tmp("c"), "store");
+    await restore(c, remote, { all: true });
+    expect(contents(c)).toEqual(contents(a));
+  });
+
   test("a store whose files only changed their times is not rewritten", async () => {
     const a = tmp("a");
     seed(a);
