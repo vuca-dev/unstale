@@ -178,6 +178,9 @@ pub fn module_naming(lit: &str) -> bool {
 pub struct Scope<'a> {
     ecosystem: &'a str,
     owners: &'a [&'a str],
+    /// Packages that declare the technology or depend on a workspace package that does (`with_reach`; else `owners`):
+    /// where a file its records name (`middleware.ts`, `eslint.config.mjs`) is its file.
+    reach: &'a [&'a str],
     /// Lowercase package names and npm scopes, for path names.
     stems: Vec<String>,
     naming: HashSet<&'a str>,
@@ -238,7 +241,14 @@ impl<'a> Scope<'a> {
             .map(|l| l.to_ascii_lowercase())
             .collect();
         let memo = RefCell::new(vec![0; paths.len()]);
-        Scope { ecosystem, owners, stems, naming, importing, config_names, hits, paths, named_at, memo }
+        Scope { ecosystem, owners, reach: owners, stems, naming, importing, config_names, hits, paths, named_at, memo }
+    }
+
+    /// `reach`: the packages that declare the technology or depend, through the repository's own packages, on one that
+    /// does (a package whose ESLint config comes from a workspace config package).
+    pub fn with_reach(mut self, reach: &'a [&'a str]) -> Self {
+        self.reach = reach;
+        self
     }
 
     /// Whether the path names one of the technology's packages: a directory, the base name's head or first word, or
@@ -288,6 +298,20 @@ impl<'a> Scope<'a> {
         f
     }
 
+    /// Whether a file that can use the technology may be cited as evidence of it. A file that can use it only because
+    /// its records name the file (`middleware.ts`, `route.tsx`, `manifest.ts`) is cited only inside a package that has
+    /// the technology (`with_reach`): Expo Router's own `middleware.ts` is not Next.js's. Its hits still order the queue
+    /// (eligibility, as measured by the release gate).
+    fn citable(&self, x: u32) -> bool {
+        let Some(path) = self.paths.get(x as usize) else { return false };
+        let (named, imports) = self.named_at[x as usize];
+        if named || self.owners.is_empty() || under(path, self.reach) || self.path_names(path) {
+            return true;
+        }
+        let code = own_code(path, self.ecosystem);
+        (code && imports) || (code && under(path, self.owners))
+    }
+
     /// `named`: the file names a package (`naming_lits`), and whether at a module position (`module_naming`).
     fn classify(&self, path: &str, (named, imports): (bool, bool)) -> Option<bool> {
         if foreign_code(path, self.ecosystem) {
@@ -301,9 +325,7 @@ impl<'a> Scope<'a> {
         if named || self.config_names.contains(&base) {
             return Some(false);
         }
-        let declared = self.owners.is_empty()
-            || self.owners.iter().any(|o| *o == "." || path.strip_prefix(*o).is_some_and(|rest| rest.starts_with('/')));
-        (code && declared).then_some(false)
+        (code && under(path, self.owners)).then_some(false)
     }
 
     /// Whether a whole-token hit of `lit` in `path` (one of its `Hits::whole` files) shows the technology in use, by the
@@ -315,14 +337,21 @@ impl<'a> Scope<'a> {
     /// A literal's evidence in one pass over its hits (`by_path`: `role` is the path's own role, which `find`'s order
     /// already follows, so only the first file is asked).
     pub fn evidence(&self, lit: &str, role: impl Fn(&str) -> Role, by_path: bool) -> Evidence {
-        self.evidence_with(lit, role, by_path, false)
+        self.evidence_with(lit, role, by_path, false, |_| true)
     }
 
     /// `evidence` from files holding the whole literal: a dotted literal matched only by its tail (a plain word or
     /// not) is left out everywhere. For a deprecated key that word is often the successor's name (`browser.isolate`, replaced by
     /// `isolate`), so a tail match would cite the code that already moved.
+    #[cfg(test)]
     pub fn exact_evidence(&self, lit: &str, role: impl Fn(&str) -> Role, by_path: bool) -> Evidence {
-        self.evidence_with(lit, role, by_path, true)
+        self.evidence_with(lit, role, by_path, true, |_| true)
+    }
+
+    /// `exact_evidence` from the files `keep` accepts (`live_site`: a deprecated literal in a comment, or kept as the
+    /// fallback beside its replacement, is not live use). A file left out still orders the queue (`Evidence::used`).
+    pub fn exact_evidence_where(&self, lit: &str, role: impl Fn(&str) -> Role, by_path: bool, keep: impl Fn(&str) -> bool) -> Evidence {
+        self.evidence_with(lit, role, by_path, true, keep)
     }
 
     /// Whether the technology's records name the file at `path` (`tsconfig.json`): a config file it reads.
@@ -330,7 +359,7 @@ impl<'a> Scope<'a> {
         self.config_names.contains(&path.rsplit('/').next().unwrap_or(path).to_ascii_lowercase())
     }
 
-    fn evidence_with(&self, lit: &str, role: impl Fn(&str) -> Role, by_path: bool, exact: bool) -> Evidence {
+    fn evidence_with(&self, lit: &str, role: impl Fn(&str) -> Role, by_path: bool, exact: bool, keep: impl Fn(&str) -> bool) -> Evidence {
         let plain = plain_word(lit);
         let ident = identifier(lit);
         let tails = self.hits.tail_only.get(lit);
@@ -359,7 +388,7 @@ impl<'a> Scope<'a> {
                 continue;
             }
             let key = (!about, r, i, p.as_str());
-            if best.len() < 3 || key < best[2] {
+            if (best.len() < 3 || key < best[2]) && self.citable(*x) && keep(p) {
                 let at = best.partition_point(|k| *k < key);
                 best.insert(at, key);
                 best.truncate(3);
@@ -368,6 +397,11 @@ impl<'a> Scope<'a> {
         e.files = best.into_iter().map(|(not_about, _, _, p)| (p.to_string(), !not_about)).collect();
         e
     }
+}
+
+/// Whether `path` is inside one of the package directories `dirs` (`.` is the root; none known: every file).
+fn under(path: &str, dirs: &[&str]) -> bool {
+    dirs.is_empty() || dirs.iter().any(|o| *o == "." || path.strip_prefix(*o).is_some_and(|rest| rest.starts_with('/')))
 }
 
 /// A literal's evidence for one technology (`Scope::evidence`).
@@ -394,6 +428,114 @@ pub fn counts_as_applied(role: Role, path: &str) -> bool {
         Role::Test => !DATA_EXT.contains(&path.rsplit_once('.').map(|(_, x)| x.to_ascii_lowercase()).unwrap_or_default().as_str()),
         _ => false,
     }
+}
+
+/// Lines either side of a deprecated literal within which its replacement makes the site a fallback (`live_site`):
+/// `try { require('new') } catch { require('old') }`, `obj.newApi ? obj.newApi() : obj.oldApi()`.
+pub const SITE_LINES: usize = 5;
+
+/// How comments are written in a file, by extension: C-style (`//`, `/* */`) in the JS family and JSONC, `#` in
+/// Python, YAML and TOML, block comments only in stylesheets.
+#[derive(Clone, Copy, PartialEq)]
+enum CommentStyle {
+    CLike,
+    Hash,
+    Block,
+    None,
+}
+
+fn comment_style(path: &str) -> CommentStyle {
+    let ext = path.rsplit_once('.').map(|(_, x)| x.to_ascii_lowercase()).unwrap_or_default();
+    match ext.as_str() {
+        "js" | "jsx" | "ts" | "tsx" | "mjs" | "cjs" | "mts" | "cts" | "vue" | "svelte" | "astro" | "jsonc" | "json5" | "prisma" | "graphql" | "gql" => {
+            CommentStyle::CLike
+        }
+        "py" | "pyi" | "yml" | "yaml" | "toml" => CommentStyle::Hash,
+        "css" | "scss" => CommentStyle::Block,
+        _ => CommentStyle::None,
+    }
+}
+
+/// Byte ranges of `text` that are comments, skipping string literals (`'…'`, `"…"`, `` `…` ``, with escapes) so a URL
+/// in a string is not a `//` comment. A lexer, not a parser: regular-expression literals are read as code.
+fn comment_spans(path: &str, text: &str) -> Vec<(usize, usize)> {
+    let style = comment_style(path);
+    let mut out = vec![];
+    if style == CommentStyle::None {
+        return out;
+    }
+    let b = text.as_bytes();
+    let mut i = 0;
+    let line_end = |from: usize| text[from..].find('\n').map_or(b.len(), |n| from + n);
+    while i < b.len() {
+        let c = b[i];
+        let next = b.get(i + 1).copied();
+        match c {
+            b'\'' | b'"' | b'`' if style != CommentStyle::Block || c != b'`' => {
+                let q = c;
+                i += 1;
+                while i < b.len() && b[i] != q {
+                    // A quote's string ends at the line's end, except a template literal or a Python triple quote.
+                    if b[i] == b'\n' && q != b'`' {
+                        break;
+                    }
+                    i += if b[i] == b'\\' { 2 } else { 1 };
+                }
+                i += 1;
+            }
+            b'/' if style != CommentStyle::Hash && next == Some(b'*') => {
+                let end = text[i + 2..].find("*/").map_or(b.len(), |n| i + 2 + n + 2);
+                out.push((i, end));
+                i = end;
+            }
+            b'/' if style == CommentStyle::CLike && next == Some(b'/') => {
+                let end = line_end(i);
+                out.push((i, end));
+                i = end;
+            }
+            b'#' if style == CommentStyle::Hash => {
+                let end = line_end(i);
+                out.push((i, end));
+                i = end;
+            }
+            _ => i += 1,
+        }
+    }
+    out
+}
+
+/// Whether `text` (the file at `path`) uses deprecated literal `lit` live at some site: an occurrence as a whole token
+/// that is not in a comment and has none of `replacements` (the record's named successor) within `SITE_LINES` lines.
+/// Code that loads the replacement and keeps the old API only as a fallback beside it, or a test exercising both, has
+/// already moved. A file named `lit` (`middleware.ts`) is its use.
+pub fn live_site(path: &str, text: &str, lit: &str, replacements: &[String]) -> bool {
+    let base = path.rsplit('/').next().unwrap_or(path);
+    if base.eq_ignore_ascii_case(lit) || path.eq_ignore_ascii_case(lit) || path.to_ascii_lowercase().ends_with(&format!("/{}", lit.to_ascii_lowercase())) {
+        return true;
+    }
+    let comments = comment_spans(path, text);
+    let in_comment = |at: usize| {
+        let k = comments.partition_point(|(s, _)| *s <= at);
+        k > 0 && at < comments[k - 1].1
+    };
+    let b = text.as_bytes();
+    let wordish = |c: Option<&u8>| c.is_some_and(|c| c.is_ascii_alphanumeric() || *c == b'_' || *c == b'-' || *c >= 0x80);
+    let sites = |needle: &str| -> Vec<usize> {
+        let n = needle.as_bytes();
+        let (first, last) = (n.first(), n.last());
+        text.match_indices(needle)
+            .filter(|(at, _)| {
+                let before = at.checked_sub(1).and_then(|i| b.get(i));
+                let after = b.get(at + n.len());
+                (!wordish(first) || !wordish(before)) && (!wordish(last) || !wordish(after))
+            })
+            .map(|(at, _)| at)
+            .filter(|at| !in_comment(*at))
+            .collect()
+    };
+    let line_of = |at: usize| text[..at].bytes().filter(|c| *c == b'\n').count();
+    let near: Vec<usize> = replacements.iter().flat_map(|r| sites(r)).map(line_of).collect();
+    sites(lit).into_iter().map(line_of).any(|l| !near.iter().any(|r| r.abs_diff(l) <= SITE_LINES))
 }
 
 const LOCKFILES: &[&str] = &["package-lock.json", "npm-shrinkwrap.json", "pnpm-lock.yaml", "yarn.lock"];
@@ -506,6 +648,11 @@ fn read_attrs(root: &Path) -> Vec<(Gitignore, Role)> {
 }
 
 impl Repo {
+    /// A read file's text (`files` is sorted by path).
+    pub fn text(&self, path: &str) -> Option<&str> {
+        self.files.binary_search_by(|(p, _)| p.as_str().cmp(path)).ok().map(|i| self.files[i].1.as_str())
+    }
+
     /// A file's role: the last matching `.gitattributes` linguist line, else the path's conventions.
     pub fn role(&self, path: &str) -> Role {
         self.role_for(path, &[])
@@ -581,6 +728,20 @@ fn par_map<T: Sync, R: Send>(items: &[T], f: impl Fn(&T) -> R + Sync) -> Vec<R> 
 
 /// A search literal as written in a record, cleaned: trailing call parentheses, `/N` suffixes, backticks and
 /// quotes removed; shorter than 4 characters is dropped (`fw_spike._lits`).
+/// Whether `lit` only loads one of the packages `names` (`from 'chat'`, `require("chat")`, `'chat'`), the whole
+/// package rather than an API, entry point or subpath of it.
+pub fn loads_only(lit: &str, names: &[String]) -> bool {
+    let mut x = lit.trim();
+    for p in ["from ", "import(", "import ", "require.resolve(", "require("] {
+        if let Some(r) = x.strip_prefix(p) {
+            x = r;
+            break;
+        }
+    }
+    let x = x.trim().trim_matches(|c: char| c == '\'' || c == '"' || c == '`' || c == '(' || c == ')' || c == ';' || c.is_whitespace());
+    names.iter().any(|n| n == x)
+}
+
 pub fn clean_lit(s: &str) -> Option<String> {
     let mut x = s.replace('`', "");
     if let Some(i) = x.find('(')
@@ -845,6 +1006,7 @@ mod tests {
             r.names.insert(p.rsplit('/').next().unwrap().to_string());
             r.paths.push(p.to_string());
         }
+        r.files.sort_by(|a, b| a.0.cmp(&b.0));
         r
     }
     fn set(x: &[&str]) -> BTreeSet<String> {
@@ -1119,6 +1281,54 @@ mod tests {
         let s = Scope::new("pypi", &["."], &py, &[], &h, &r.paths);
         assert_eq!(s.file("tools/run.py"), Some(true));
         assert_eq!(s.file("tools/req.py"), Some(false), "a quoted requirement in code is a string");
+    }
+
+    #[test]
+    fn a_file_a_record_names_counts_only_in_a_package_declaring_the_technology() {
+        // expo/expo: only `docs/` declares next; Expo Router's own `middleware.ts`, `Route.tsx` and `manifest.ts` are
+        // not Next.js's middleware, route handler or metadata file.
+        let r = repo(&[
+            ("docs/middleware.ts", "export function middleware() {}"),
+            ("packages/expo-server/src/utils/middleware.ts", "export function run() {}"),
+            ("packages/expo-router/src/Route.tsx", "/** Returns the exports from +middleware.ts */"),
+            ("tsconfig.json", "{}"),
+        ]);
+        let purls = vec!["pkg:npm/next".to_string()];
+        let lits = vec!["middleware.ts".to_string(), "route.tsx".to_string(), "tsconfig.json".to_string()];
+        let h = scoped(&r, &["middleware.ts", "strictNullChecks"], &["pkg:npm/next"]);
+        let cited = |s: &Scope, lit: &str| -> Vec<String> { s.evidence(lit, |p: &str| path_role(p), true).files.into_iter().map(|(p, _)| p).collect() };
+        let s = Scope::new("npm", &["docs"], &purls, &lits, &h, &r.paths);
+        let e = s.evidence("middleware.ts", |p: &str| path_role(p), true);
+        assert_eq!(e.files, vec![("docs/middleware.ts".to_string(), false)], "Expo's own files are not Next.js's");
+        assert!(e.used);
+        assert_eq!(s.file("packages/expo-router/src/Route.tsx"), Some(false), "it still orders the queue (eligibility)");
+        let reach = ["docs", "packages/expo-server"];
+        let via = Scope::new("npm", &["docs"], &purls, &lits, &h, &r.paths).with_reach(&reach);
+        let mut c = cited(&via, "middleware.ts");
+        c.sort();
+        assert_eq!(c, vec!["docs/middleware.ts", "packages/expo-server/src/utils/middleware.ts"], "through a workspace dependency that declares it");
+        let none = Scope::new("npm", &[], &purls, &lits, &h, &r.paths);
+        assert_eq!(cited(&none, "middleware.ts").len(), 3, "no manifest says: as before");
+    }
+
+    #[test]
+    fn a_deprecated_literal_is_live_outside_comments_and_away_from_its_replacement() {
+        let old = "react-native/Libraries/Core/InitializeCore";
+        let new = vec!["react-native/setup-env".to_string()];
+        let fallback = "try {\n  require('react-native/setup-env');\n} catch {\n  // NOTE: fallback for React Native < 0.87\n  require('react-native/Libraries/Core/InitializeCore');\n}\n";
+        assert!(!live_site("src/setup.ts", fallback, old, &new), "kept only as a fallback beside the replacement");
+        assert!(live_site("src/setup.ts", fallback, old, &[]), "with no replacement known, it is a use");
+        let far = format!("require('react-native/setup-env');\n{}require('react-native/Libraries/Core/InitializeCore');\n", "x();\n".repeat(SITE_LINES + 1));
+        assert!(live_site("src/a.ts", &far, old, &new), "the replacement elsewhere in the file: this site has not moved");
+        let commented = "/** Loads `react-native/Libraries/Core/InitializeCore` first. */\nconst url = 'http://x';// react-native/Libraries/Core/InitializeCore\n";
+        assert!(!live_site("src/b.ts", commented, old, &new), "comments only");
+        assert!(live_site("src/c.ts", "const u = 'http://react-native/Libraries/Core/InitializeCore';", old, &new), "`//` inside a string is not a comment");
+        assert!(!live_site("conf.yaml", "# toBeCalledWith\nkey: 1", "toBeCalledWith", &[]));
+        assert!(live_site("app/middleware.ts", "export default function m() {}", "middleware.ts", &[]), "the file of that name is its use");
+        assert!(!live_site("src/a.ts", "x.toBeCalledWithArgs()", "toBeCalledWith", &[]), "whole literal only");
+        let names = vec!["chat".to_string()];
+        assert!(loads_only("from 'chat", &names) && loads_only("require(\"chat\")", &names) && loads_only("chat", &names));
+        assert!(!loads_only("from 'chat/ai", &names) && !loads_only("toAiMessages", &names));
     }
 
     #[test]

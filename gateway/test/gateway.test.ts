@@ -447,6 +447,7 @@ test("a run reports its pulls with its progress: a held package names the next p
   const r = (await (await handle(post({ purl: "pkg:npm/a" }), e)).json()) as Record<string, string>;
   expect(r.stage).toMatch(/^Queued \(position 1 of 1\); the coverage run in progress takes new requests at about \d{2}:\d{2} UTC$/);
   expect(r.next_run).toBe(next.toISOString());
+  expect(r.next_run_pull).toBe(true);
   await Promise.all(waits);
   expect(dispatches).toEqual([]);
   expect(await (await progress({ updates: [], pulls: { next: null } })).json()).toEqual({ reported: 0, dispatched: true });

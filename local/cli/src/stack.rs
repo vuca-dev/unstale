@@ -55,6 +55,9 @@ pub struct Package {
     /// Package URLs this manifest declares directly: a file under this directory is the package's own code for
     /// those technologies (`usage::Repo::role_for`).
     pub declared: BTreeSet<String>,
+    /// The manifest's own package URL (its `name`), which other manifests of the repository may declare: a workspace
+    /// package reaches the technologies its workspace dependencies declare (`funnel`, record-named files).
+    pub own: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -494,6 +497,7 @@ pub fn detect(root: &Path) -> Result<Stack> {
             kind,
             lockfile: lock.map(|(ld, l)| join(&rel_dir(root, &ld), &l.file)),
             declared,
+            own: pj.get("name").and_then(Value::as_str).filter(|n| !n.is_empty()).map(npm_purl),
         });
     }
     // Only a repository with no covered manifest at all (no lockfile, or none that installs anything here) takes its

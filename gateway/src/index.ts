@@ -178,7 +178,9 @@ function queued(purl: string, at: View, now = Date.now()) {
       case "publishing":
         return "Analysed; the coverage run is publishing the catalog";
       case "declined":
-        return `Another package is ahead (${place}); waiting for the scheduled run at ${clock(next)}`;
+        return pulls !== undefined
+          ? `Another package is ahead (${place}); the coverage run in progress takes new requests at about ${clock(pulls)}`
+          : `Another package is ahead (${place}); waiting for the scheduled run at ${clock(next)}`;
       default:
         if (spent)
           return `Waiting for the coverage budget, spent until ${new Date(spent).toISOString().slice(0, 10)} ${clock(new Date(spent))} (${place}); the next run that can take it is at ${clock(next)}`;
@@ -206,6 +208,8 @@ function queued(purl: string, at: View, now = Date.now()) {
     queue_position: at.position,
     queue_length: at.length,
     next_run: next.toISOString(),
+    // `next_run` is when the run in progress next reads the queue, not a scheduled start.
+    ...(pulls !== undefined && { next_run_pull: true }),
     ...(run && {
       run: {
         state: run.state,
