@@ -1277,6 +1277,7 @@ fn coverage_line(job: &Job) -> String {
     if let Some(why) = empty_monitoring(job) {
         let mut line = format!("{} · Source gap: monitored, but {why} · {} published records", display_text(&job.name), job.records);
         if job.releases_total > 0 { line += &format!(" · releases {}/{}", job.releases_done, job.releases_total); }
+        if let Some(note) = &job.note { line += &format!(" · {}", display_text(note)); }
         if !job.updated.is_empty() { line += &format!(" · last update {}", display_text(&job.updated)); }
         return line;
     }
