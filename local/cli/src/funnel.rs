@@ -945,14 +945,16 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             deprecated.retain(|l| !usage::loads_only(l, &own_names));
             let replacement = replacement_lits(rec, ls, &deprecated);
             // A deprecated namespace (`pytest.mark`, for markers on hook implementations) counts only beside a specific
-            // literal of the record: not the namespace or a part of it, not the replacement, not a plain word.
+            // literal of the record: not the namespace or a part of it, not a member other records are about (another
+            // API: `pytest.mark.parametrize`), not the replacement, not a plain word.
             let broad: Vec<&String> = deprecated.iter().filter(|l| namespace_of(tl, ri, l)).collect();
+            let sibling = |l: &str| tl.named.get(l.strip_prefix('@').unwrap_or(l)).is_some_and(|rs| rs.iter().any(|&j| j != ri));
             let context: Vec<String> = if broad.is_empty() {
                 vec![]
             } else {
                 ls.iter()
                     .filter(|l| {
-                        !broad.iter().any(|b| b.contains(l.as_str()))
+                        !broad.iter().any(|b| b.contains(l.as_str()) || (usage::member_of(l, b) && sibling(l)))
                             && !replacement.contains(l)
                             && !usage::plain_word(l)
                             && !namespace_of(tl, ri, l)
@@ -1504,7 +1506,14 @@ mod tests {
         assert!(out.in_effect.is_empty(), "markers on tests are not hook markers");
         // Nothing else of the technology lives under it: `pytest.mark` reads as one API, as before.
         let c = catalog("pytest", 0, records(false));
-        assert_eq!(ids(&run_with(&c, &s, &r, &l), &run_with(&c, &s, &r, &l).in_effect), vec!["pytest:hook-markers"]);
+        let out = run_with(&c, &s, &r, &l);
+        assert_eq!(ids(&out, &out.in_effect), vec!["pytest:hook-markers"]);
+        // A member another record is about is another API, not context: `pytest.mark.parametrize` named by this record
+        // too does not make test markers count.
+        let mut v = records(true);
+        v[0] = dep("pytest:hook-markers", json!({"replaces":["pytest.mark"],"terms":[["pytest.mark",0],["pytest.mark.parametrize",0],["pytest_addoption",0]]}));
+        let c = catalog("pytest", 0, v);
+        assert!(run_with(&c, &s, &r, &l).in_effect.is_empty());
         // A marker on a hook the record names is the deprecated use.
         let hooked = "import pytest\n\n@pytest.mark.tryfirst\ndef pytest_addoption(parser):\n    pass\n";
         let r = repo(&[("tests/test_a.py", tests), ("plugin/plugin.py", hooked)]);
