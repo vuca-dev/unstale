@@ -49,11 +49,15 @@ pub struct Job {
     #[serde(default, skip_serializing)]
     pub run: Option<Run>,
     /// When the next scheduled coverage run starts (ISO 8601), for a package waiting for one; with `next_run_pull`,
-    /// when the run in progress next takes new requests.
+    /// when the run in progress next pulls the queue (and takes this package).
     #[serde(default, skip_serializing)]
     pub next_run: Option<String>,
     #[serde(default, skip_serializing)]
     pub next_run_pull: bool,
+    /// For a package waiting in a run's queue: when the run is estimated to reach it (ISO 8601), from the run's
+    /// measured throughput; the time `next_run` names for a held package, and the only one a published status has.
+    #[serde(default, skip_serializing)]
+    pub starts_at: Option<String>,
 }
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct Run {
@@ -75,7 +79,7 @@ fn merged(prev: Option<&Job>, mut new: Job) -> Job {
     if prev.live == new.live && new.updated < prev.updated {
         let mut kept = prev.clone();
         // What says when the service may change next is the newest answer's.
-        (kept.run, kept.next_run, kept.next_run_pull, kept.retry_at) = (new.run, new.next_run, new.next_run_pull, new.retry_at);
+        (kept.run, kept.next_run, kept.next_run_pull, kept.starts_at, kept.retry_at) = (new.run, new.next_run, new.next_run_pull, new.starts_at, new.retry_at);
         return kept;
     }
     if new.updated == prev.updated {
@@ -117,7 +121,11 @@ fn may_publish_by(job: &Job, deadline: u64) -> bool {
     if followable(job) || matches!(job.state.as_str(), "discovering" | "analyzing") {
         return true;
     }
-    job.next_run.as_deref().is_none_or(|t| iso_unix(t).is_none_or(|at| at <= deadline))
+    next_change(job).is_none_or(|t| iso_unix(t).is_none_or(|at| at <= deadline))
+}
+/// When a waiting package may next change: the run or pull the service names, or when a run is estimated to reach it.
+fn next_change(job: &Job) -> Option<&str> {
+    job.next_run.as_deref().or(job.starts_at.as_deref())
 }
 /// Unix seconds of an ISO 8601 UTC time (`2026-10-17T12:23:00.000Z`).
 fn iso_unix(t: &str) -> Option<u64> {
@@ -144,7 +152,7 @@ fn next_poll(job: &Job, at: u64) -> u64 {
     if followable(job) || matches!(job.state.as_str(), "discovering" | "analyzing" | "partial") {
         return at + ACTIVE_POLL_S;
     }
-    let due = if job.state == "failed" { job.retry_at.as_deref() } else { job.next_run.as_deref() }.and_then(iso_unix);
+    let due = if job.state == "failed" { job.retry_at.as_deref() } else { next_change(job) }.and_then(iso_unix);
     match due {
         Some(t) if t <= at => at + DUE_POLL_S,
         Some(t) => t.min(at + IDLE_POLL_S),
@@ -1910,6 +1918,7 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
         !leave.load(Ordering::Acquire)
     }, |pending| {
         let registrations = pending.unsubmitted.len();
+        let known = pending.jobs.len();
         pending.downloads.retain(|p, _| pending.unsubmitted.contains(p));
         let unread: Vec<String> = pending.unsubmitted.iter().filter(|p| p.starts_with("pkg:npm/") && !pending.downloads.contains_key(*p)).cloned().collect();
         if !unread.is_empty() {
@@ -1925,11 +1934,7 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
         let order = registration_order(&pending.unsubmitted, &st, &pending.downloads);
         let a = agent();
         register(pending, order, |batch| register_batch(&a, service, batch), |accepted| {
-            ui.update(
-                "Connecting public coverage · step 3/5",
-                &format!("Registered {accepted}/{registrations} public packages"),
-                "Public names only · acknowledged jobs continue centrally",
-            );
+            ui.update("Connecting public coverage · step 3/5", &registered_text(accepted, registrations, known), "Public names only · acknowledged jobs continue centrally");
         }, &mut diagnostics, |p| save(ctx, p))
     })?;
     // A limit that outlasts the wait is known now: said now, not only in the summary once the wait is over.
@@ -2090,14 +2095,24 @@ const UNSTARTED_LIMIT: u64 = 300;
 /// The longest a client follows runs at all.
 const FOLLOW_LIMIT: Duration = Duration::from_secs(20 * 60);
 
+/// The registration line: what this pass sends, or (nothing left to send, as on `status --wait`) that every package
+/// was registered before, never "0/0".
+fn registered_text(accepted: usize, registrations: usize, known: usize) -> String {
+    match (registrations, known) {
+        (0, 0) => "No public packages to register".into(),
+        (0, 1) => "The public package is already registered".into(),
+        (0, n) => format!("All {n} public packages already registered"),
+        (r, _) => format!("Registered {accepted}/{r} public packages"),
+    }
+}
 fn seconds(s: u64) -> String {
     if s < 90 { format!("{s}s") } else { format!("{}m {:02}s", s / 60, s % 60) }
 }
 fn next_run_text(job: &Job) -> String {
     let at = job.next_run.as_deref().and_then(|t| t.get(11..16)).map(display_text);
     match (at, job.next_run_pull) {
-        (Some(hm), true) => format!("the coverage run in progress, which takes new requests at about {hm} UTC"),
-        (None, true) => "the coverage run in progress to take new requests".into(),
+        (Some(hm), true) => format!("the coverage run in progress, which takes it at its next pull at about {hm} UTC"),
+        (None, true) => "the coverage run in progress to take it".into(),
         (Some(hm), false) => format!("the scheduled run at {hm} UTC"),
         (None, false) => "the next scheduled run".into(),
     }
@@ -2162,6 +2177,8 @@ fn follow_runs(
                         published += 1;
                         Line::new(format!("✓ {name} covered · {} records published", job.records), Tone::Fresh)
                     }
+                    // Taken by the run in progress and waiting in its queue: its place and estimate are in the stage.
+                    Some("waiting") => Line::new(format!("{name} · {} · unstale status picks it up", display_text(&job.stage)), Tone::Muted),
                     Some("declined") => Line::new(format!("{name} · another package is ahead in the queue · waiting for {}; unstale status picks it up", next_run_text(job)), Tone::Muted),
                     None => Line::new(format!("{name} · the run stopped reporting · waiting for {}; unstale status picks it up", next_run_text(job)), Tone::Muted),
                     Some("dispatched") if elapsed(job, &polled[purl]) > UNSTARTED_LIMIT => Line::new(format!("{name} · the run has not started after {} (another run may be ahead) · coverage continues centrally; unstale status picks it up", seconds(UNSTARTED_LIMIT)), Tone::Muted),
@@ -2340,7 +2357,7 @@ mod tests {
         assert_eq!(run_line(&held, 6), "a · run requested 6s ago · waiting for a runner · usually about 70s in all");
         assert_eq!(next_run_text(&held), "the scheduled run at 12:23 UTC");
         let pulling = Job { next_run_pull: true, ..held.clone() };
-        assert_eq!(next_run_text(&pulling), "the coverage run in progress, which takes new requests at about 12:23 UTC");
+        assert_eq!(next_run_text(&pulling), "the coverage run in progress, which takes it at its next pull at about 12:23 UTC");
         let working = Job { stage: "Reading release notes\u{1b}[2J".into(), releases_done: 3, releases_total: 12, docs_total: 0, run: Some(Run { state: "running".into(), ..Default::default() }), ..held.clone() };
         assert_eq!(run_line(&working, 95), "a · Reading release notes [2J · releases 3/12 · 1m 35s");
         let declined = Job { run: Some(Run { state: "declined".into(), ..Default::default() }), ..held.clone() };
@@ -2604,6 +2621,20 @@ mod tests {
         assert!(may_publish_by(&job(&format!(r#"{{{base},"state":"failed","retry_at":"2026-10-17T12:03:00.000Z"}}"#)), deadline));
         assert!(!may_publish_by(&job(&format!(r#"{{{base},"state":"failed","retry_at":"2026-10-17T14:00:00.000Z"}}"#)), deadline));
         assert!(!may_publish_by(&job(&format!(r#"{{{base},"state":"failed"}}"#)), deadline));
+        // Waiting in a run's queue: the run's estimate decides, from the gateway or a published status alike.
+        assert!(!may_publish_by(&job(&format!(r#"{{{base},"state":"queued","next_run":"2026-10-17T12:47:00.000Z","starts_at":"2026-10-17T12:47:00.000Z","run":{{"state":"waiting"}}}}"#)), deadline));
+        assert!(!may_publish_by(&job(&format!(r#"{{{base},"state":"queued","starts_at":"2026-10-17T12:47:00.000Z"}}"#)), deadline));
+        assert!(may_publish_by(&job(&format!(r#"{{{base},"state":"queued","starts_at":"2026-10-17T12:02:00.000Z"}}"#)), deadline));
+        // A published status's estimate is when to read it again.
+        let published = job(&format!(r#"{{{base},"state":"queued","starts_at":"2026-10-17T12:02:00.000Z"}}"#));
+        assert_eq!(next_poll(&published, iso_unix("2026-10-17T12:00:00Z").unwrap()), iso_unix("2026-10-17T12:02:00Z").unwrap());
+    }
+    #[test]
+    fn registering_nothing_new_says_so_instead_of_zero_of_zero() {
+        assert_eq!(registered_text(0, 0, 177), "All 177 public packages already registered");
+        assert_eq!(registered_text(0, 0, 1), "The public package is already registered");
+        assert_eq!(registered_text(0, 0, 0), "No public packages to register");
+        assert_eq!(registered_text(3, 210, 0), "Registered 3/210 public packages");
     }
     #[test]
     fn a_503_with_retry_after_is_a_limit() {

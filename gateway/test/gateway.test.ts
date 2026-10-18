@@ -186,8 +186,11 @@ test("the client's protocol: health, a new package queued as a job, a known one 
   expect(await (await handle(get("/health"), e)).json()).toEqual({ schema: 1, service: "unstale-coverage" });
   const fresh = await handle(post({ purl: "pkg:pypi/requests" }), e);
   expect(fresh.status).toBe(202);
-  expect(await fresh.json()).toMatchObject({ purl: "pkg:pypi/requests", technology: technologyId("pkg:pypi/requests"), name: "requests", state: "queued", queue_position: 1 });
-  expect(await (await handle(get("/coverage?purl=pkg%3Apypi%2Frequests"), e)).json()).toMatchObject({ state: "queued", stage: "Waiting for the next coverage run (position 1 of 1)" });
+  expect(await fresh.json()).toMatchObject({ purl: "pkg:pypi/requests", technology: technologyId("pkg:pypi/requests"), name: "requests", state: "queued" });
+  // Not taken by a run yet: no place (the run places it by demand), only when a run takes it.
+  const held = (await (await handle(get("/coverage?purl=pkg%3Apypi%2Frequests"), e)).json()) as Record<string, unknown>;
+  expect(held).toMatchObject({ state: "queued", stage: expect.stringMatching(/^Waiting for the next coverage run, at \d{2}:\d{2} UTC$/) });
+  expect(held).not.toHaveProperty("queue_position");
   const vote = await handle(post({ purl: "pkg:npm/next" }), e);
   expect([vote.status, await vote.json()]).toEqual([202, known]);
   expect(await (await handle(get("/coverage?purl=pkg%3Anpm%2Fnext"), e)).json()).toEqual(known);
@@ -222,7 +225,7 @@ test("a batch answers each package as its own request would, in one Worker reque
     ["pkg:npm/b", 429],
   ]);
   expect(results[0]!.job).toEqual(known);
-  expect(results[1]!.job).toMatchObject({ purl: "pkg:pypi/requests", state: "queued", queue_position: 1 });
+  expect(results[1]!.job).toMatchObject({ purl: "pkg:pypi/requests", state: "queued" });
   expect(results[3]).toMatchObject({ limit: "address", retry_after: 3600 });
   expect(calls).toEqual(["heldMany", "requestMany"]);
   // Status reads: the published status, a held package's place, nothing for one never asked for; one call.
@@ -362,7 +365,7 @@ test("a fast-tracked package starts the coverage workflow; without a token nothi
   expect(calls).toEqual([]);
   const on = env({}, { FAST_TRACK_PER_DAY: "1", GITHUB_DISPATCH_TOKEN: "t" });
   const r = await handle(post({ purl: "pkg:npm/a" }), on.env);
-  expect(await r.json()).toMatchObject({ stage: "Queued (position 1 of 1); a coverage run is starting and takes it if it is next" });
+  expect(await r.json()).toMatchObject({ stage: "A coverage run is starting; it takes this package and places it by demand" });
   await Promise.all(on.waits);
   expect(calls).toEqual([{ url: "https://api.github.com/repos/owner/repo/actions/workflows/ingest.yml/dispatches", body: { ref: "main", inputs: { reason: "fast-track" } } }]);
 });
@@ -453,7 +456,7 @@ test("a run reports the budget with its progress; the gateway dispatches nothing
   const r = await handle(post({ purl: "pkg:npm/a" }), e);
   expect(r.status).toBe(202);
   const body = (await r.json()) as Record<string, string>;
-  expect(body.stage).toMatch(/^Waiting for the coverage budget, spent until \d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC \(position 1 of 1\); the next run that can take it is at \d{2}:\d{2} UTC$/);
+  expect(body.stage).toMatch(/^Waiting for the coverage budget, spent until \d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC; the next run that can take it is at \d{2}:\d{2} UTC$/);
   expect(Date.parse(body.next_run!)).toBeGreaterThan(until.getTime());
   await Promise.all(waits);
   expect(dispatches).toEqual([]);
@@ -520,7 +523,7 @@ test("a run reports its pulls with its progress: a held package names the next p
   const next = new Date(Date.now() + 5 * 60_000);
   expect(await (await progress({ updates: [], pulls: { next: next.toISOString() } })).json()).toEqual({ reported: 0, dispatched: false });
   const r = (await (await handle(post({ purl: "pkg:npm/a" }), e)).json()) as Record<string, string>;
-  expect(r.stage).toMatch(/^Queued \(position 1 of 1\); the coverage run in progress takes new requests at about \d{2}:\d{2} UTC$/);
+  expect(r.stage).toMatch(/^Registered; the coverage run in progress takes it at its next pull, at about \d{2}:\d{2} UTC, and places it by demand$/);
   expect(r.next_run).toBe(next.toISOString());
   expect(r.next_run_pull).toBe(true);
   await Promise.all(waits);
@@ -528,6 +531,50 @@ test("a run reports its pulls with its progress: a held package names the next p
   expect(await (await progress({ updates: [], pulls: { next: null } })).json()).toEqual({ reported: 0, dispatched: true });
   await Promise.all(waits);
   expect(dispatches).toHaveLength(1);
+});
+
+test("a package the run took waits at the run's place and estimate: one place, an ETA that moves only with the run", async () => {
+  vi.stubGlobal("fetch", async () => new Response(null, { status: 200 }));
+  const { env: e } = env({});
+  const auth = { Authorization: "Bearer drain-secret", "Content-Type": "application/json" };
+  const progress = (body: unknown) => handle(new Request("https://unstale.example/internal/progress", { method: "POST", headers: auth, body: JSON.stringify(body) }), e);
+  await handle(post({ purl: "pkg:npm/a" }), e);
+  const pull = new Date(Date.now() + 5 * 60_000).toISOString();
+  const starts = new Date(Date.now() + 47 * 60_000).toISOString();
+  const updated = new Date().toISOString();
+  const stage = "Waiting for a coverage worker (position 120 of 400 new technologies; a run reaches it at about 17:40 UTC)";
+  const job = { state: "queued", stage, records: 0, updated, queue_position: 120, queue_length: 400, starts_at: starts };
+  expect(await (await progress({ updates: [{ purl: "pkg:npm/a", state: "waiting", job }], pulls: { next: pull } })).json()).toMatchObject({ reported: 1 });
+  const r = (await (await handle(get("/coverage?purl=pkg%3Anpm%2Fa"), e)).json()) as Record<string, unknown>;
+  // The run's place, and when it reaches it: not the next pull.
+  expect(r).toMatchObject({ state: "queued", stage, queue_position: 120, queue_length: 400, next_run: starts, starts_at: starts, run: { state: "waiting" } });
+  expect(r).not.toHaveProperty("next_run_pull");
+  // The next report moves it, as the run starts jobs ahead of it.
+  const later = { ...job, stage: stage.replace("120", "84"), queue_position: 84, updated: new Date(Date.now() + 1).toISOString() };
+  await progress({ updates: [{ purl: "pkg:npm/a", state: "waiting", job: later }] });
+  expect(await (await handle(get("/coverage?purl=pkg%3Anpm%2Fa"), e)).json()).toMatchObject({ queue_position: 84, next_run: starts });
+  // Before the run has measured its throughput: its place, and no time.
+  const unmeasured = { ...later, updated: new Date(Date.now() + 2).toISOString(), starts_at: undefined };
+  await progress({ updates: [{ purl: "pkg:npm/a", state: "waiting", job: unmeasured }] });
+  const none = (await (await handle(get("/coverage?purl=pkg%3Anpm%2Fa"), e)).json()) as Record<string, unknown>;
+  expect(none).toMatchObject({ queue_position: 84 });
+  expect(none).not.toHaveProperty("next_run");
+});
+
+test("a waiting package is written once when it starts waiting, not again while its place moves", () => {
+  const q = new PendingQueue(memorySql(), settings());
+  q.request("pkg:npm/a", "198.51.100.1", false, T);
+  const written = () => q.usageToday(T + 3600_000).ops.report?.written ?? 0;
+  const job = (n: number) => ({ state: "queued", stage: `(position ${n} of 9)`, records: 0, releases_done: 0, releases_total: 0, docs_done: 0, docs_total: 0, queue_position: n, queue_length: 9 });
+  q.report([{ purl: "pkg:npm/a", state: "waiting", job: job(9) }], T);
+  const first = written();
+  expect(first).toBe(1);
+  // Past RUN_SAVE_MS a worked package is written again; a waiting one is not.
+  q.report([{ purl: "pkg:npm/a", state: "waiting", job: job(3) }], T + 20 * 60_000);
+  expect(written()).toBe(first);
+  expect(q.view("pkg:npm/a", T + 20 * 60_000)?.run?.job?.queue_position).toBe(3);
+  q.report([{ purl: "pkg:npm/a", state: "running", job: job(0) }], T + 21 * 60_000);
+  expect(written()).toBe(first + 1);
 });
 
 test("a failed or unreachable dispatch leaves the package waiting for the schedule; the next scheduled run is named", async () => {

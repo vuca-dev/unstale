@@ -89,9 +89,11 @@ test("drain order: admitted work first, then new technologies by demand with no 
   // A quarter later the cap has reset: the overflowing technology is ordinary admitted work again.
   overflow.overflow = "2000-Q1";
   expect(service.queue()[0]!.purl).toBe("pkg:npm/overflow");
+  // A place is in the job's line: a new technology waits only behind new ones (admitted work has its own slots).
   const status = service.publicStatus(middle);
-  expect(status).toMatchObject({ queue_position: 4, queue_length: 6 });
-  expect(status.stage).toContain("(position 4 of 6)");
+  expect(status).toMatchObject({ queue_position: 2, queue_length: 4 });
+  expect(status.stage).toBe("Waiting for a coverage worker (position 2 of 4 new technologies)");
+  expect(service.publicStatus(continuing)).toMatchObject({ queue_position: 2, queue_length: 2 });
   expect(status).not.toHaveProperty("demand_voters");
   expect(service.publicStatus(parked)).not.toHaveProperty("queue_position");
 });

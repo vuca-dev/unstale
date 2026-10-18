@@ -28,6 +28,8 @@ import { admit, signals, THRESHOLDS, weeklyDownloads, type Verdict } from "../pi
 import { AddressLimiter, DailyBudget, Voters, clientAddress, limitsFromEnv, nextPeriod, noteTokens, quarterKey, type Hold, type Limits, type Refusal } from "./limits.ts";
 import { deprecationOf, publishDeprecation } from "./notices.ts";
 import { npmPurl } from "../pipeline/ecosystems.ts";
+import { clockText, startsAt, type Line, type Rates } from "./eta.ts";
+import { PUBLISH_MS } from "./progress.ts";
 let classifier: ReturnType<typeof makeClassifier> | undefined;
 const advisoryClassifier = () => (classifier ??= makeClassifier());
 import { TECHNOLOGIES } from "../pipeline/technologies.ts";
@@ -134,6 +136,20 @@ const now = () => new Date().toISOString();
 // release, per docs page) can be measured before any completion estimate is shown. Fails open: a timeline write never
 // fails a job.
 export const timelinePath = () => join(centralDir(), "onboarding", "timeline.jsonl");
+/** The last drain's throughput per line (eta.ts), for the estimates a drain gives before it has measured its own. */
+const throughputPath = () => join(centralDir(), "onboarding", "throughput.json");
+/** A drain's own rate is used once it has run this long; before, the last drain's. */
+const MEASURE_MS = 5 * 60_000;
+
+/** A waiting job's place in its line (eta.ts), the estimate of when a run starts it, and the stage a client reads. */
+export interface Place {
+  line: Line;
+  position: number;
+  length: number;
+  /** When a run is estimated to start it (ISO 8601), from the measured throughput of its line; absent without one. */
+  starts_at?: string;
+  stage: string;
+}
 function timeline(job: Job) {
   try {
     mkdirSync(join(centralDir(), "onboarding"), { recursive: true });
@@ -166,6 +182,11 @@ export class CoverageService {
   /** Rate limited: nothing starts before this time; the pause doubles while rate limits follow one another. */
   private pausedUntil = 0;
   private pauseMs = 0;
+  /** This drain's starts per line, the first fill of its slots apart (not throughput), and when it began. */
+  private lineStarts: Record<Line, number> = { new: 0, admitted: 0 };
+  private fill: Record<Line, number> = { new: 0, admitted: 0 };
+  private drainStart = 0;
+  private graceMs = 0;
   readonly concurrency: number;
   /** The advisories stage after a technology's history is published (off: `advisories: false` or UNSTALE_NO_ADVISORIES=1). */
   readonly advisories: boolean;
@@ -346,6 +367,80 @@ export class CoverageService {
       .filter((j) => this.due(j))
       .sort((a, b) => this.tier(a) - this.tier(b) || (b.demand ?? 0) - (a.demand ?? 0) || adoption(b) - adoption(a));
   }
+  /** The line a waiting job is in (eta.ts): new technologies wait only behind new ones (`newSlots`), the rest behind
+   * the rest. */
+  private line(job: Job): Line {
+    return this.tier(job) === 1 ? "new" : "admitted";
+  }
+  /** Starts a minute per line: this drain's own once it has run MEASURE_MS, otherwise the last drain's. */
+  rates(at = Date.now()): Rates {
+    const own = this.measured(at);
+    let last: Rates = {};
+    if (!own.new || !own.admitted) last = readJson<{ rates?: Rates }>(throughputPath())?.rates ?? {};
+    const out: Rates = {};
+    for (const l of ["new", "admitted"] as const) {
+      const r = own[l] ?? last[l];
+      if (r !== undefined) out[l] = r;
+    }
+    return out;
+  }
+  /** This drain's starts a minute per line after its first fill, once it has run MEASURE_MS; a line that started
+   * nothing since has no rate (it may have had nothing waiting). */
+  private measured(at: number): Rates {
+    const elapsed = Math.min(at, this.draining || at) - this.drainStart;
+    if (!this.drainStart || elapsed < MEASURE_MS) return {};
+    const out: Rates = {};
+    for (const l of ["new", "admitted"] as const) {
+      const n = this.lineStarts[l] - this.fill[l];
+      if (n > 0) out[l] = n / (elapsed / 60_000);
+    }
+    return out;
+  }
+  /**
+   * Every waiting job's place in its line, the queue computed once, and when a run is estimated to start it (only in
+   * a drain, from its line's measured rate and the drain's cycles; none while the budget holds work back). A
+   * monitored technology waiting for its refresh counts in its line (it takes a start) but is shown no place: it has
+   * its coverage, a place is noise there.
+   */
+  waiting(at = Date.now()): Map<string, Place> {
+    const queue = this.queue().filter((j) => !this.running.has(j.purl));
+    const count: Record<Line, number> = { new: 0, admitted: 0 };
+    const placed = queue.map((job) => {
+      const line = this.line(job);
+      return { job, line, position: ++count[line] };
+    });
+    const rates = this.draining && !this.holds.size ? this.rates(at) : {};
+    const windowMs = this.draining - this.drainStart;
+    const cadence = {
+      windowEnd: this.draining,
+      gapMs: Math.max(0, this.draining + this.graceMs - Math.max(at, this.draining)) + PUBLISH_MS,
+      windowMs,
+      cycleGapMs: this.graceMs + PUBLISH_MS,
+    };
+    const out = new Map<string, Place>();
+    for (const { job, line, position } of placed) {
+      if (job.state === "monitoring") continue;
+      const length = count[line];
+      const t = this.draining ? startsAt(at, position, rates[line], cadence) : undefined;
+      const what = line === "new" ? "new technologies" : "technologies continuing coverage";
+      const when = t === undefined ? "" : `; a run reaches it at about ${clockText(t, at)}`;
+      out.set(job.purl, {
+        line,
+        position,
+        length,
+        ...(t !== undefined && { starts_at: new Date(t).toISOString() }),
+        // A failed or blocked job due for its retry waits too: its stage says why it failed, the place is the retry's.
+        stage: `${job.stage} (${job.state === "queued" ? "" : "retry: "}position ${position} of ${length} ${what}${when})`,
+      });
+    }
+    return out;
+  }
+  /** A job's public fields, with its place when it waits. */
+  private placed(job: Job, place: Place | undefined) {
+    const fields = publicJob(job);
+    if (!place) return fields;
+    return { ...fields, stage: place.stage, queue_position: place.position, queue_length: place.length, ...(place.starts_at && { starts_at: place.starts_at }) };
+  }
   /** Reads adoption for waiting new technologies that lack it, once per process each, for at most `timeout` ms so a
    * slow registry never holds up a drain; an unreadable count stays unset (fails open: 0 in the order). */
   async readAdoption(timeout = 120_000): Promise<void> {
@@ -365,11 +460,7 @@ export class CoverageService {
   }
   /** A job as clients see it: internal fields dropped; a waiting job carries its place in the queue. */
   publicStatus(job: Job) {
-    const waiting = this.queue().filter((j) => !this.running.has(j.purl));
-    const at = waiting.indexOf(job);
-    const fields = publicJob(job);
-    if (at < 0) return fields;
-    return { ...fields, stage: `${job.stage} (position ${at + 1} of ${waiting.length})`, queue_position: at + 1, queue_length: waiting.length };
+    return this.placed(job, this.waiting().get(job.purl));
   }
   submit(purl: string): Job {
     packageIdentity(purl);
@@ -449,9 +540,15 @@ export class CoverageService {
     poll = 500,
   ): Promise<{ started: number; unfinished: number; drained: boolean; held?: Hold[]; rate_limited?: number; stopped?: number }> {
     this.draining = deadline;
+    this.graceMs = grace;
     this.holds.clear();
     this.held = false;
     const before = this.launched;
+    // The first fill of the slots is not throughput: the rates a client's estimate uses start after it.
+    this.drainStart = Date.now();
+    this.lineStarts = { new: 0, admitted: 0 };
+    this.pump();
+    this.fill = { ...this.lineStarts };
     // A finished job starts the next itself, and the queue is looked at every poll (a rate-limit pause ends); when
     // nothing is running, nothing more starts and no rate-limited job resumes before the deadline, the queue is done.
     while (Date.now() < deadline && (this.pump() || this.running.size || this.resumesBefore(deadline)))
@@ -468,6 +565,7 @@ export class CoverageService {
       job.interrupted = { ms: (prev?.ms ?? 0) + Date.now() - slice.at, cycles: (prev?.cycles ?? 0) + 1, stage: job.stage, refresh: prev?.refresh ?? slice.refresh };
       this.persist(job);
     }
+    this.keepRates();
     const held = [...this.holds.values()];
     const paused = [...this.jobs.values()].filter((j) => Date.parse(j.paused_until ?? "") > Date.now()).length;
     // A rate-limited job is work left: the next cycle retries it.
@@ -480,6 +578,13 @@ export class CoverageService {
       ...(paused ? { rate_limited: paused } : {}),
       ...(this.stopped ? { stopped: this.stopped } : {}),
     };
+  }
+  /** This drain's measured rates, for the next drain's first minutes; a line it measured nothing for keeps the last. */
+  private keepRates(): void {
+    const own = this.measured(Date.now());
+    if (!own.new && !own.admitted) return;
+    const last = readJson<{ rates?: Rates }>(throughputPath())?.rates ?? {};
+    writeAtomic(throughputPath(), JSON.stringify({ at: now(), rates: { ...last, ...own } }));
   }
   /** Whether a rate-limit pause ends before `deadline` with work to start then. */
   private resumesBefore(deadline: number): boolean {
@@ -511,14 +616,8 @@ export class CoverageService {
   }
   /** Every job as `GET /coverage` answers it (the queue order computed once), for a static copy of the answers. */
   statuses(): ReturnType<typeof publicJob>[] {
-    const waiting = this.queue().filter((j) => !this.running.has(j.purl));
-    const at = new Map(waiting.map((j, i) => [j, i]));
-    return [...this.jobs.values()].map((job) => {
-      const i = at.get(job);
-      const fields = publicJob(job);
-      if (i === undefined) return fields;
-      return { ...fields, stage: `${job.stage} (position ${i + 1} of ${waiting.length})`, queue_position: i + 1, queue_length: waiting.length };
-    });
+    const waiting = this.waiting();
+    return [...this.jobs.values()].map((job) => this.placed(job, waiting.get(job.purl)));
   }
   /** Starts what the queue and the budget allow, in queue order except that admitted work leaves `newSlots` to a
    * waiting new technology (a second pass fills what no new technology took); returns how many jobs it started. A
@@ -565,6 +664,7 @@ export class CoverageService {
     // A resumed refresh is still a refresh.
     const refresh = job.state === "monitoring" || !!job.interrupted?.refresh;
     this.running.add(job.purl);
+    this.lineStarts[isNew ? "new" : "admitted"]++;
     if (isNew) this.runningNew.add(job.purl);
     if (job.interrupted) this.runningCarried.add(job.purl);
     this.slices.set(job.purl, { at: Date.now(), refresh });

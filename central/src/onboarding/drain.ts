@@ -14,9 +14,13 @@
 // run is pulling: it would only wait behind this one. `drain idle` (the run's last step) says it pulls no more; the
 // gateway then starts the early run it held back, if a new package asked for one meanwhile.
 //
-// Progress: while it works the new packages it pulled, a run reports their public counters to the gateway (`running`,
-// then `publishing` once analysed), so a client that asked for one can follow it until the deploy publishes its status:
-// when they change (looked at every 5 s), and at least every 5 minutes while unchanged (progressTicker; one not delivered is sent again). Best effort: a report that fails never stops the run.
+// Progress: a run reports the new packages it pulled to the gateway: `waiting` from the pull on, with their place in
+// this drain's queue (by demand, in their line) and when the run is estimated to reach them (eta.ts: from measured
+// throughput and the cycles, so a package the run will not reach this cycle is told the later time), then `running`
+// and `publishing` with their public counters, so a client that asked for one sees one place and follows it until the
+// deploy publishes its status. Only what changed is sent (looked at every 5 s), and everything at least every 5
+// minutes (progressTicker; a waiting package's place goes with that heartbeat, not with every start; one not
+// delivered is sent again). Best effort: a report that fails never stops the run.
 //
 // Budget: the final line names the budget limits that held work back (`held`: tokens or runs_per_day, each with its
 // cap and reset time, or an unreadable budget file), so `"started": 0` is never unexplained. The last progress report
@@ -45,7 +49,7 @@ import { parseArgs } from "node:util";
 import { catalogDir, centralDir } from "../pipeline/paths.ts";
 import { sha256, writeAtomic } from "../pipeline/util.ts";
 import { CoverageService } from "./service.ts";
-import { PROGRESS_EVERY_MS, PUBLISH_MS, progressOf, progressTicker, type RunState } from "./progress.ts";
+import { PROGRESS_EVERY_MS, PUBLISH_MS, progressKey, progressOf, progressTicker, type RunState } from "./progress.ts";
 import { Taken, type Request } from "./taken.ts";
 
 const gateway = () => {
@@ -155,6 +159,8 @@ async function drain(args: string[]): Promise<void> {
   let accepted = 0;
   // The new packages this drain pulled: their clients may be following them.
   const followed = new Set<string>();
+  // The progress tick, once the drain works: a pull's new packages are reported waiting at once, at their place.
+  let tick: (() => Promise<unknown>) | undefined;
   const take = async () => {
     const known = new Set(service.jobs.keys());
     const added = service.enqueue(taken.add(await pull()));
@@ -163,6 +169,7 @@ async function drain(args: string[]): Promise<void> {
     if (values.taken) writeAtomic(values.taken, JSON.stringify({ requests: taken.requests() }));
     if (pullMs) await report([], { pulls: { next: new Date(Date.now() + pullMs).toISOString() } });
     await service.readAdoption();
+    await tick?.();
   };
   await take();
   let pulling: Promise<void> | undefined;
@@ -176,10 +183,16 @@ async function drain(args: string[]): Promise<void> {
   // The drain ends by its deadline and grace period, and the cycle then publishes what it did.
   const [minutes, grace] = [Number(values.minutes ?? 240), Number(values["grace-minutes"] ?? 10)];
   const publishBy = new Date(t0 + (minutes + grace) * 60_000 + PUBLISH_MS).toISOString();
-  const progress = () => [...followed].flatMap((p) => progressOf(service, p, publishBy) ?? []);
-  const tick = progressTicker(progress, async (u) => (await deliver(u)).ok);
-  const first = setTimeout(tick, 1000);
-  const every = setInterval(tick, PROGRESS_EVERY_MS);
+  // Taken and not started yet: reported `waiting`, with their place in this drain's queue and its estimate (once per
+  // tick, the queue computed once).
+  const progress = () => {
+    const waiting = service.waiting();
+    return [...followed].flatMap((p) => progressOf(service, p, publishBy, waiting) ?? []);
+  };
+  const ticker = progressTicker(progress, async (u) => (await deliver(u)).ok, undefined, progressKey);
+  tick = ticker;
+  const first = setTimeout(ticker, 1000);
+  const every = setInterval(ticker, PROGRESS_EVERY_MS);
   const result = await service
     .drain(t0 + minutes * 60_000, grace * 60_000, 500)
     .finally(() => (clearTimeout(first), clearInterval(every), clearInterval(again)));

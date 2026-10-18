@@ -37,7 +37,7 @@
     // New packages held per UTC hour, all clients together (no addresses kept): bounds how fast the queue can fill.
     // With COUNTED_VOTES_PER_HOUR (votes counted per UTC hour, all clients; beyond it a vote is answered the same,
     // uncounted) it bounds the rows the object writes a day, the free tier's scarce allowance (100,000):
-    // 2 × NEW_PER_HOUR × 24 + COUNTED_VOTES_PER_HOUR × 24 + ~6,000 (src/queue.ts header). GET /internal/usage shows
+    // 3 × NEW_PER_HOUR × 24 + COUNTED_VOTES_PER_HOUR × 24 + ~6,000 (src/queue.ts header). GET /internal/usage shows
     // the day's rows.
     "NEW_PER_HOUR": "500",
     "COUNTED_VOTES_PER_HOUR": "1500",
