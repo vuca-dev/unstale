@@ -2,7 +2,9 @@
 // on chunks under 1,000 characters, plus a fresh `low` replicate of 150 of them (the noise reference).
 //
 //   cd central && npx tsx ../eval/select/slice3/run3d.mts --notes <central dir with releases/, onboarding/jobs/>
-//     --cache <central dir with cache/llm/> run [--limit N] | score
+//     --cache <central dir with cache/llm/> run [--limit N] | score | run-p [--cap 0.1] | score-p
+//
+// Arm P (packing short notes) is described above runP; its usage goes to out/slice3d/usage-p.jsonl.
 //
 // Prompts are rebuilt as extract.ts twoCall does (EXTRACT_PROMPT, then LABEL_PROMPT on the call's own records). A chunk
 // is eligible when its cached extract answer (and, for a non-empty answer, its label answer) is found under the
@@ -10,7 +12,7 @@
 // pipeline skips them (extract.ts contentFree). Sample: seed 20261017, at most 5 chunks per technology, 400 chunks;
 // the replicate is the first 150 in sample order. Calls go to the gateway at flex tier (falling back to the default
 // tier as llm.ts does), never through the cache. Usage: out/slice3d/usage.jsonl; every call is refused once that log
-// reaches the cap ($0.20).
+// reaches the cap (--cap, default $0.20).
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
@@ -21,18 +23,21 @@ const { values: a, positionals } = parseArgs({
 });
 const OUT = join(SELECT, "out", "slice3d");
 process.env.UNSTALE_CENTRAL_DIR = a.cache!;
-const { chunk, contentFree, EXTRACT_PROMPT, Extracted, fill, LABEL_PROMPT, strings, toIncoming } = await import("../../../central/src/pipeline/extract.ts");
+const { chunk, contentFree, EXTRACT_PROMPT, Extracted, fill, LABEL_PROMPT, locate, strings, toIncoming } = await import("../../../central/src/pipeline/extract.ts");
 const { extractCachePath, parseJson, postChat, PROVIDERS, HttpError } = await import("../../../central/src/pipeline/llm.ts");
 const { keyFromEnvFile } = await import("../../../central/src/pipeline/classify/adapter.ts");
 const { TECHNOLOGIES } = await import("../../../central/src/pipeline/technologies.ts");
 const { pool, readJson } = await import("../../../central/src/pipeline/util.ts");
 import type { Extracted as Rec, Incoming } from "../../../central/src/pipeline/extract.ts";
+import type { Usage } from "../../../central/src/pipeline/llm.ts";
+/** A cached answer's tokens at gpt-6-luna flex prices ($0.05 / $0.25 per million, as billed on the runs). */
+const flexUsd = (u?: Usage): number => (u ? (u.input_tokens * 0.05 + u.output_tokens * 0.25) / 1e6 : 0);
 
-const SEED = 20261017, N = 400, REP = 150, PER_TECH = 5, SHORT = 1_000, MODEL = "openai/gpt-6-luna";
+const SEED = 20261017, N = 400, REP = 150, PER_TECH = 5, SHORT = 1_000, PACK_NOTE = 2_000, PACK_MAX = 8_000, P_TECHS = 60, P_PER = 5, MODEL = "openai/gpt-6-luna";
 const CAP = Number(a.cap);
-const USAGE = join(OUT, "usage.jsonl");
+let USAGE = join(OUT, "usage.jsonl");
 
-interface Chunk { key: string; tech: string; name: string; version: string; date: string; url: string; snapshot: string; notes: string; cachedExtract: string; cachedLabel?: string }
+interface Chunk { key: string; tech: string; name: string; version: string; date: string; url: string; snapshot: string; notes: string; cachedExtract: string; cachedLabel?: string; cachedUsd?: number }
 
 function mulberry32(s: number) {
   return () => {
@@ -61,15 +66,17 @@ function labelPrompt(c: Chunk, recs: Rec[]): string {
   return fill(LABEL_PROMPT, { TECH: c.name, VERSION: c.version, RECORDS: JSON.stringify(brief, null, 1), NOTES: c.notes });
 }
 
-/** Every eligible chunk (cached `low` answer found, under SHORT characters, single-chunk note, not content-free). */
-function eligible(): Chunk[] {
+/** Every single-chunk, non-content-free note under `max` characters, in index order per technology; `ok` when its
+ * cached extract answer (and, for a non-empty answer, its label answer) is found. A note of `max` or more characters
+ * stays in the list (not ok) so it breaks a run of consecutive notes (arm P). */
+function scan(max: number): Array<Chunk & { ok: boolean }> {
   const rel = join(a.notes!, "releases"), jobs = join(a.notes!, "onboarding", "jobs");
   const names = new Map<string, string>();
   for (const f of readdirSync(jobs)) {
     const j = JSON.parse(readFileSync(join(jobs, f), "utf8")) as { technology?: string; name?: string };
     if (j.technology && j.name) names.set(j.technology, j.name);
   }
-  const out: Chunk[] = [];
+  const out: Array<Chunk & { ok: boolean }> = [];
   for (const id of readdirSync(rel).sort()) {
     const ip = join(rel, id, "index.json");
     if (!existsSync(ip)) continue;
@@ -82,20 +89,23 @@ function eligible(): Chunk[] {
       const bp = join(rel, id, `${r.version}.md`);
       if (!existsSync(bp)) continue;
       const parts = chunk(clean(readFileSync(bp, "utf8")));
-      if (parts.length !== 1) continue;
-      const notes = parts[0]!;
-      if (notes.length >= SHORT || !notes.trim() || contentFree(notes)) continue;
-      const c = { key: `${id}@${r.version}`, tech: id, name, version: r.version, date: r.date, url: r.url, snapshot: r.snapshot, notes, cachedExtract: "" } as Chunk;
-      const hit = readJson<{ text: string }>(extractCachePath(extractPrompt(c)));
+      const notes = parts[0] ?? "";
+      if (parts.length === 1 && (!notes.trim() || contentFree(notes))) continue;
+      const c = { key: `${id}@${r.version}`, tech: id, name, version: r.version, date: r.date, url: r.url, snapshot: r.snapshot, notes, cachedExtract: "", ok: false } as Chunk & { ok: boolean };
+      out.push(c);
+      if (parts.length !== 1 || notes.length >= max) continue;
+      const hit = readJson<{ text: string; usage?: Usage }>(extractCachePath(extractPrompt(c)));
       const recs = hit && parseRecs(hit.text);
       if (!hit || !recs) continue;
       c.cachedExtract = hit.text;
+      c.cachedUsd = flexUsd(hit.usage);
       if (recs.length) {
-        const lab = readJson<{ text: string }>(extractCachePath(labelPrompt(c, recs)));
+        const lab = readJson<{ text: string; usage?: Usage }>(extractCachePath(labelPrompt(c, recs)));
         if (!lab || !parseLabels(lab.text)) continue;
         c.cachedLabel = lab.text;
+        c.cachedUsd += flexUsd(lab.usage);
       }
-      out.push(c);
+      c.ok = true;
     }
   }
   return out;
@@ -270,8 +280,163 @@ function score(chunks: Chunk[]) {
   console.log(checks, Object.values(checks).every(Boolean) ? "ADOPT" : "REJECT");
 }
 
-const all = eligible();
+// ---- arm P: several short notes of one technology and release line per call ----
+// Fixed before any arm P call (PREREG.md arm P; effort `low`, since arm E was rejected). Sample: technologies with a
+// run of P_PER consecutive notes (index order, content-free notes skipped as the pipeline skips them) that are all ok,
+// under PACK_NOTE characters and on one release line; P_TECHS of them by seeded shuffle, one run each at a seeded
+// start. Runs are packed greedily up to PACK_MAX characters, each note under a `## Release <version> (<date>)` header.
+// The extract prompt is EXTRACT_PROMPT with the versions listed and PACK_PART; the label call is LABEL_PROMPT on the
+// pack's kept records and the packed text. A record belongs to the one note its quote is found in (locate); a record
+// found in none or in several sends its note (the release it names, else every candidate) to a fresh single-note
+// call, whose records replace that note's packed ones. Wrong version: a record whose stated release is not the note its
+// quote is found in. Shared change across release lines: a sampled note one of whose cached quotes also occurs in a
+// note of the same technology on another release line.
+const releaseLine = (v: string) => {
+  const [maj, min] = v.split(".");
+  return maj === "0" ? `0.${min ?? "0"}` : maj!;
+};
+const header = (c: Chunk) => `## Release ${c.version} (${c.date})`;
+const packText = (ns: Chunk[]) => ns.map((c) => `${header(c)}\n\n${c.notes}`).join("\n\n");
+const PACK_PART = (n: number) =>
+  `\nThese notes hold ${n} releases, each under its own "## Release <version> (<date>)" header. Give each record "release": the version of the release it comes from. A change listed in several releases is a record for each.`;
+const packExtractPrompt = (ns: Chunk[]) =>
+  fill(EXTRACT_PROMPT, { TECH: ns[0]!.name, VERSION: ns.map((c) => c.version).join(", "), DATE: `${ns[0]!.date} to ${ns.at(-1)!.date}`, PART: PACK_PART(ns.length), NOTES: packText(ns) });
+const packLabelPrompt = (ns: Chunk[], recs: Rec[]) =>
+  labelPrompt({ ...ns[0]!, version: ns.map((c) => c.version).join(", "), notes: packText(ns) }, recs);
+const parsePack = (text: string): Array<{ r: Rec; release: string }> | undefined => {
+  const v = parseJson(text, "array");
+  if (!Array.isArray(v)) return undefined;
+  return v.flatMap((x) => {
+    const p = Extracted.safeParse(x);
+    return p.success ? [{ r: p.data, release: String((x as { release?: unknown }).release ?? "").replace(/^v/, "") }] : [];
+  });
+};
+
+function packSample(list: Array<Chunk & { ok: boolean }>): { notes: Chunk[]; packs: Chunk[][] } {
+  const byTech = new Map<string, Array<Chunk & { ok: boolean }>>();
+  for (const c of list) byTech.set(c.tech, [...(byTech.get(c.tech) ?? []), c]);
+  const starts = new Map<string, number[]>();
+  for (const [t, ns] of byTech) {
+    const ok = (c: Chunk & { ok: boolean }) => c.ok && c.notes.length < PACK_NOTE;
+    const s: number[] = [];
+    for (let i = 0; i + P_PER <= ns.length; i++) {
+      const run = ns.slice(i, i + P_PER);
+      if (run.every(ok) && run.every((c) => releaseLine(c.version) === releaseLine(run[0]!.version))) s.push(i);
+    }
+    if (s.length) starts.set(t, s);
+  }
+  const rnd = mulberry32(SEED + 2);
+  const techs = [...starts.keys()].map((t) => ({ t, r: rnd() })).sort((x, y) => x.r - y.r).slice(0, P_TECHS).map((x) => x.t);
+  const notes: Chunk[] = [], packs: Chunk[][] = [];
+  for (const t of techs) {
+    const s = starts.get(t)!;
+    const i = s[Math.floor(rnd() * s.length)]!;
+    const run = byTech.get(t)!.slice(i, i + P_PER);
+    notes.push(...run);
+    let cur: Chunk[] = [];
+    for (const c of run) {
+      if (cur.length && packText([...cur, c]).length > PACK_MAX) (packs.push(cur), (cur = []));
+      cur.push(c);
+    }
+    packs.push(cur);
+  }
+  return { notes, packs };
+}
+
+interface PRow { key: string; source: "pack" | "fallback"; extract: string | null; label: string | null; failed: string | null; wrong: number; grounded: number }
+
+async function runP(packs: Chunk[][]) {
+  mkdirSync(OUT, { recursive: true });
+  USAGE = join(OUT, "usage-p.jsonl");
+  running = spent();
+  const f = join(OUT, "pack.jsonl");
+  const done = new Set(existsSync(f) ? readFileSync(f, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l).key as string) : []);
+  const todo = packs.filter((p) => p.some((c) => !done.has(c.key))).slice(0, a.limit ? Number(a.limit) : undefined);
+  console.log(`arm P: spent so far $${running.toFixed(4)}; ${todo.length} packs to do`);
+  await pool(todo, Number(a.concurrency), async (ns) => {
+    const pk = ns.map((c) => c.key).join("+");
+    const ex = await call("pack", "extract", pk, "low", packExtractPrompt(ns), parsePack);
+    const rows = new Map<string, PRow>(ns.map((c) => [c.key, { key: c.key, source: "pack", extract: "[]", label: null, failed: ex.failed ?? null, wrong: 0, grounded: 0 }]));
+    const fallback = new Set<string>();
+    const own = new Map<string, Array<{ r: Rec; release: string }>>(ns.map((c) => [c.key, []]));
+    for (const x of ex.v ?? []) {
+      const where = ns.filter((c) => locate(c.notes, (x.r.evidence ?? "").trim()).grounded);
+      const named = ns.find((c) => c.version === x.release);
+      if (where.length === 1) {
+        own.get(where[0]!.key)!.push(x);
+        rows.get(where[0]!.key)!.grounded++;
+        if (named !== where[0]) rows.get(where[0]!.key)!.wrong++;
+      } else for (const c of named && (where.length === 0 || where.includes(named)) ? [named] : where.length ? where : ns) fallback.add(c.key);
+    }
+    const kept = ns.filter((c) => !fallback.has(c.key)).flatMap((c) => own.get(c.key)!.map((x) => ({ ...x, key: c.key })));
+    let labels: Record<string, unknown> | undefined;
+    if (kept.length) {
+      const lab = await call("pack", "label", pk, "low", packLabelPrompt(ns, kept.map((k) => k.r)), parseLabels);
+      labels = lab.v;
+      if (lab.failed) for (const c of ns) rows.get(c.key)!.failed ??= lab.failed;
+    }
+    for (const c of ns) {
+      const row = rows.get(c.key)!;
+      if (fallback.has(c.key)) {
+        const e = await call("pack", "fallback-extract", c.key, "low", extractPrompt(c), parseRecs);
+        const l = e.v?.length ? await call("pack", "fallback-label", c.key, "low", labelPrompt(c, e.v), parseLabels) : undefined;
+        Object.assign(row, { source: "fallback", extract: e.text ?? null, label: l?.text ?? null, failed: e.failed ?? l?.failed ?? null });
+      } else {
+        const mine = kept.map((k, i) => ({ ...k, id: `r${i + 1}` })).filter((k) => k.key === c.key);
+        row.extract = JSON.stringify(mine.map((k) => k.r));
+        row.label = JSON.stringify(Object.fromEntries(mine.map((k, i) => [`r${i + 1}`, labels?.[k.id] ?? {}])));
+      }
+      appendFileSync(f, JSON.stringify(row) + "\n");
+    }
+  });
+  console.log(`arm P: spent $${spent().toFixed(4)}`);
+}
+
+function scoreP(notes: Chunk[], packs: Chunk[][], others: Chunk[]) {
+  USAGE = join(OUT, "usage-p.jsonl");
+  const rows = new Map(readFileSync(join(OUT, "pack.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l) as PRow).map((r) => [r.key, r]));
+  const P = armStats(notes, rows);
+  const [lo, hi] = ci(P.f1);
+  // E's replicate (150 chunks under 1,000 characters) is the noise reference, as pre-registered.
+  const repRows = new Map(readFileSync(join(OUT, "low_rep.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)).map((r) => [r.key as string, r]));
+  const R = armStats(chunks.slice(0, REP), repRows);
+  const rs = [...rows.values()];
+  const grounded = rs.reduce((s, r) => s + r.grounded, 0), wrong = rs.reduce((s, r) => s + r.wrong, 0);
+  const fb = rs.filter((r) => r.source === "fallback").length;
+  // Notes sharing a change across release lines (a cached quote of 25+ folded characters found in another line's note).
+  const shared = notes.filter((c) => {
+    const qs = incoming(c, c.cachedExtract, c.cachedLabel ?? null).map((r) => norm(r.quote)).filter((q) => q.length >= 25);
+    return others.some((o) => o.tech === c.tech && releaseLine(o.version) !== releaseLine(c.version) && qs.some((q) => norm(o.notes).includes(q)));
+  });
+  const recs = (c: Chunk, ex: string | null) => (ex ? parseRecs(ex)?.length ?? 0 : 0);
+  const sharedP = shared.reduce((s, c) => s + recs(c, rows.get(c.key)!.extract), 0), sharedC = shared.reduce((s, c) => s + recs(c, c.cachedExtract), 0);
+  const usage = existsSync(USAGE) ? readFileSync(USAGE, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)) : [];
+  const usd = usage.reduce((s, u) => s + (u.dollars ?? 0), 0), cachedUsd = notes.reduce((s, c) => s + (c.cachedUsd ?? 0), 0);
+  const calls = (step: string) => usage.filter((u) => u.step === step && u.attempt === 0).length;
+  console.log(`arm P: ${notes.length} notes from ${new Set(notes.map((c) => c.tech)).size} technologies in ${packs.length} packs (mean ${(notes.length / packs.length).toFixed(2)} notes, ${Math.round(mean(packs.map((p) => packText(p).length)))} characters); notes mean ${Math.round(mean(notes.map((c) => c.notes.length)))} characters`);
+  console.log(`pack (${P.n}): F1 ${pct(mean(P.f1))} (CI ${pct(lo)}…${pct(hi)}); [] agreement ${pct(mean(P.emptyAgree))}; records ${P.recArm} vs cached ${P.recBase} (${((P.recArm / P.recBase - 1) * 100).toFixed(1)}%); terms Jaccard ${pct(mean(P.jac))} on ${P.jac.length} matched; failed ${P.failed} (${pct(P.failed / P.n)}%)`);
+  console.log(`replicate (E, 150): F1 ${pct(mean(R.f1))}; terms Jaccard ${pct(mean(R.jac))}`);
+  console.log(`wrong version ${wrong} of ${grounded} attributed records (${pct(wrong / (grounded || 1))}%); fallback notes ${fb} of ${notes.length}; shared-across-lines notes ${shared.length}: records ${sharedP} vs cached ${sharedC}`);
+  console.log(`calls: extract ${calls("extract")} + label ${calls("label")} + fallback ${calls("fallback-extract")}/${calls("fallback-label")} for ${notes.length} notes; $ ${usd.toFixed(4)} vs cached single-note ${cachedUsd.toFixed(4)} at flex (${((usd / cachedUsd - 1) * 100).toFixed(1)}%)`);
+  const checks = {
+    f1_margin: mean(P.f1) >= mean(R.f1) - 0.03,
+    f1_ci_not_wholly_below: hi >= mean(R.f1),
+    records_within_10pct: Math.abs(P.recArm / P.recBase - 1) <= 0.1,
+    terms_jaccard: mean(P.jac) >= mean(R.jac) - 0.05,
+    parse_failures: P.failed / P.n <= 0.02,
+    wrong_version: wrong / (grounded || 1) <= 0.01,
+    shared_no_fall: sharedP >= sharedC,
+  };
+  console.log(checks, Object.values(checks).every(Boolean) ? "ADOPT" : "REJECT");
+}
+
+const notesAll = scan(PACK_NOTE);
+const all = notesAll.filter((c) => c.ok && c.notes.length < SHORT);
 const chunks = sample(all);
 console.log(`eligible ${all.length}; sample ${chunks.length} from ${new Set(chunks.map((c) => c.tech)).size} technologies; mean ${Math.round(mean(chunks.map((c) => c.notes.length)))} characters`);
+const P = packSample(notesAll);
 if (positionals[0] === "run") await run(chunks);
 else if (positionals[0] === "score") score(chunks);
+else if (positionals[0] === "run-p") await runP(P.packs);
+else if (positionals[0] === "score-p") scoreP(P.notes, P.packs, notesAll);
+else console.log(`arm P sample: ${P.notes.length} notes, ${new Set(P.notes.map((c) => c.tech)).size} technologies, ${P.packs.length} packs`);
