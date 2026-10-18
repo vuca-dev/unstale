@@ -2,8 +2,10 @@
 // identity rules stated once in the state instead of in every question, or one answer-by-id question. Answers are
 // written keyed by the ORIGINAL request key, so score5.mts --judge2 scores them with the unchanged guards.
 //
-//   cd central && npx tsx ../eval/select/slice5/judge2.mts --arm F8|F4|O8|O4|O2|O1|I8|I4|M8|T8 --split smoke|dev|heldout
-//     [--cand jev|clef] [--dry-run] [--concurrency 4]
+//   cd central && npx tsx ../eval/select/slice5/judge2.mts --arm F8|F4|O8|O4|O2|O1|I8|I4|M8|T8|Q8 --split smoke|dev|heldout
+//     [--cand jev|clef] [--floor F] [--dry-run] [--concurrency 4]
+// Q8 ("Question floor"): M8's questions, asked only for candidates retrieved at or above --floor (floor.mts --scores);
+// a request left with none is not sent and has no answers (no merge).
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
@@ -23,17 +25,26 @@ const { values: a } = parseArgs({
     cand: { type: "string", default: "jev" },
     "dry-run": { type: "boolean", default: false },
     concurrency: { type: "string", default: "4" },
+    floor: { type: "string" },
   },
 });
 const USAGE = join(OUT5, "judge2-usage.jsonl");
 const JEV_CAP = 0.55;
+/** PREREG.md "Question floor": its own usage log and cap. */
+const FLOOR_USAGE = join(OUT5, "floor-usage.jsonl");
+const FLOOR_CAP = 0.3;
 
 export interface Req { key: string; set: string; state: Record<string, unknown>; questions: Questions; split: "dev" | "heldout" }
 
 const PREFIX = /^Does the incoming record describe the same change as candidate c1\?\n/;
 /** The request as the arm asks it. */
-export function rewrite(r: Req, arm: string): { state: Record<string, unknown>; questions: Questions } {
+export function rewrite(r: Req, arm: string, scores?: number[], floor?: number): { state: Record<string, unknown>; questions: Questions } {
   const form = arm[0]!;
+  if (form === "Q") {
+    if (!scores || floor === undefined) throw new Error("Q arms need --floor and floor-scores.json");
+    const m = compressed(r, "M", 8);
+    return { state: m.state, questions: Object.fromEntries(Object.entries(m.questions).filter(([q]) => scores[Number(q.slice("same_c".length)) - 1]! >= floor)) };
+  }
   const K = Number(arm.slice(1));
   const st = r.state as { technology: string; incoming: unknown; candidates: Record<string, unknown> };
   const ids = Object.keys(r.questions).map((q) => q.replace("same_", "")).slice(0, K);
@@ -104,18 +115,23 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const cand = a.cand as "jev" | "clef";
   const prices = loadPrices();
   const runId = ["j2", arm, split, ...(cand === "clef" ? ["clef"] : [])].join("-");
+  const floor = a.floor === undefined ? undefined : Number(a.floor);
+  const scores = arm.startsWith("Q") ? (JSON.parse(readFileSync(join(OUT5, "floor-scores.json"), "utf8")) as Record<string, number[]>) : {};
+  const usage = arm.startsWith("Q") ? FLOOR_USAGE : USAGE;
   const all = JSON.parse(readFileSync(join(OUT5, "units.json"), "utf8")) as { reqs: Record<string, Req> };
   let reqs = Object.values(all.reqs).filter((r) => (split === "heldout" ? r.split === "heldout" : r.split === "dev"));
   if (split === "smoke") reqs = [...reqs].sort((x, y) => sha256(`slice5:${x.key}`).localeCompare(sha256(`slice5:${y.key}`))).slice(0, 5);
 
-  const built = reqs.map((r) => ({ r, ...rewrite(r, arm) }));
+  const built = reqs.map((r) => ({ r, ...rewrite(r, arm, scores[r.key], floor) }));
   const tok = (s: string) => Math.ceil(s.length / 3.5);
-  const planIn = built.reduce((s, b) => s + tok(JSON.stringify({ state: b.state, questions: b.questions })), 0);
+  const planIn = built.reduce((s, b) => s + (Object.keys(b.questions).length ? tok(JSON.stringify({ state: b.state, questions: b.questions })) : 0), 0);
   const worst = cand === "jev" ? (planIn * 0.042) / 1e6 : 0;
   console.log(`${runId}: ${reqs.length} requests, ~${planIn} input tokens (chars/3.5) ≈ $${worst.toFixed(4)} on Jev; ${(planIn / reqs.length).toFixed(0)} per request`);
   if (a["dry-run"]) process.exit(0);
   const spent = spendByProvider(USAGE).jev?.dollars ?? 0;
   if (cand === "jev" && spent + worst * 1.3 > JEV_CAP) throw new Error(`jev cap: spent $${spent.toFixed(4)}, this run ~$${worst.toFixed(4)}, cap $${JEV_CAP}`);
+  const floorSpent = spendByProvider(FLOOR_USAGE).jev?.dollars ?? 0;
+  if (arm.startsWith("Q") && floorSpent + worst * 1.3 > FLOOR_CAP) throw new Error(`question floor cap: spent $${floorSpent.toFixed(4)}, this run ~$${worst.toFixed(4)}, cap $${FLOOR_CAP}`);
 
   const meter = { calls: 0, input: 0, output: 0, dollars: 0 };
   const cf = PROVIDERS.cloudflare!;
@@ -139,7 +155,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       meter.input += u.input_tokens;
       meter.output += u.output_tokens;
       meter.dollars += d ?? 0;
-      logUsageLine(USAGE, { step: `judge2:${runId}`, provider: cand === "jev" ? "jev" : "cloudflare", model: cand === "jev" ? "jev-latest" : "clef-flash", ...u, dollars: d });
+      logUsageLine(usage, { step: `judge2:${runId}`, provider: cand === "jev" ? "jev" : "cloudflare", model: cand === "jev" ? "jev-latest" : "clef-flash", ...u, dollars: d });
     }
     return res;
   };
@@ -150,7 +166,13 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const answers: Record<string, Classification | null> = {};
   let hits = 0;
   let done = 0;
+  let skipped = 0;
   await pool(built, Number(a.concurrency), async (b) => {
+    if (!Object.keys(b.questions).length) {
+      skipped++;
+      answers[b.r.key] = { classifier: "jev", model: "floor", answers: {} };
+      return;
+    }
     const hit = cache.get(cls, b.state, b.questions);
     if (hit) hits++;
     try {
@@ -165,7 +187,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   });
   const n = reqs.length;
   const answered = Object.values(answers).filter(Boolean).length;
-  const meta = { runId, arm, cand, split, requests: n, answered, cache_hits: hits, ...meter, input_per_request: meter.input / Math.max(1, n - hits), dollars_per_request: meter.dollars / Math.max(1, n - hits), planned_input_per_request: planIn / n };
+  const meta = { runId, arm, cand, split, ...(floor === undefined ? {} : { floor, skipped }), requests: n, answered, cache_hits: hits, ...meter, input_per_request: meter.input / Math.max(1, n - hits), dollars_per_request: meter.dollars / Math.max(1, n - hits), planned_input_per_request: planIn / n };
   const runDir = join(OUT5, "runs", runId);
   mkdirSync(runDir, { recursive: true });
   writeFileSync(join(runDir, "answers.json"), JSON.stringify(answers, null, 1) + "\n");
