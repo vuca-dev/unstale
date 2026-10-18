@@ -732,6 +732,10 @@ pub fn why(out: &Outcome, routes: &[&str]) -> String {
         };
     }
     if parts.is_empty() {
+        // Every record went to one of `routes`, which the caller lists itself.
+        if !c.is_empty() {
+            return format!("no other records for {} in the catalog", out.technologies.join(", "));
+        }
         return format!("{} records for {} in the catalog", out.opps.len(), out.technologies.join(", "));
     }
     parts.join("; ")
@@ -870,6 +874,8 @@ mod tests {
                 dep("vitest:message", json!({"replaces":["message"],"terms":[["message",0]]})),
                 // A dotted key matched only by its last word, which is the successor's name.
                 dep("vitest:browser-isolate", json!({"replaces":["browser.isolate"],"terms":[["browser.isolate",0]]})),
+                // The same with a tail that is not a plain word.
+                dep("vitest:test-before-all", json!({"replaces":["test.beforeAll"]})),
                 // The deprecated API only in a file that cannot use the technology (data, another ecosystem).
                 dep("vitest:old-flag", json!({"replaces":["oldFlagName"]})),
                 // Not a deprecation: a removal at or below the installed version is gone, not owed.
@@ -882,6 +888,7 @@ mod tests {
         let r = repo(&[
             ("test/a.spec.ts", "import { expect, vi } from 'vitest';\nconst spy = vi.fn();\nexpect(spy).toBeCalledWith(1);\nexpect(spy).toHaveBeenCalled();\nexpect(e.message).toThrowError();"),
             ("vitest.config.ts", "export default { test: { isolate: false } }"),
+            ("test/b.spec.ts", "import { beforeAll } from 'vitest';\nbeforeAll(() => {});"),
             ("fixtures/data.json", "{\"oldFlagName\": true}"),
             ("scripts/x.py", "oldFlagName = 1"),
         ]);
@@ -890,12 +897,15 @@ mod tests {
         assert_eq!(ids(&out, &out.in_effect), vec!["vitest:tobe"]);
         let o = out.opps.iter().find(|o| o.id() == "vitest:tobe").unwrap();
         assert_eq!(o.matched, vec![("toBeCalledWith".to_string(), vec!["test/a.spec.ts".to_string()])], "cites `replaces` only, not `spy`");
-        for id in ["vitest:tohavebeen", "vitest:message", "vitest:browser-isolate", "vitest:old-flag", "vitest:gone"] {
+        for id in ["vitest:tohavebeen", "vitest:message", "vitest:browser-isolate", "vitest:test-before-all", "vitest:old-flag", "vitest:gone"] {
             assert_eq!(route_of(&out, id), &Route::AlreadyIncluded, "{id}");
         }
         assert_eq!(route_of(&out, "vitest:declined"), &Route::Withheld("declined"));
         assert!(out.upgrade.is_empty(), "the upgrade review's queue is unchanged");
         assert!(why(&out, &[]).contains("1 in effect now (deprecated at the installed version, still used here)"), "{}", why(&out, &[]));
+        let only = catalog("vitest", 0, vec![dep("vitest:tobe", json!({"replaces":["toBeCalledWith"]}))]);
+        let out = run_with(&only, &s, &r, &l);
+        assert_eq!(why(&out, &["upgrade review", IN_EFFECT]), "no other records for vitest in the catalog");
     }
 
     #[test]
