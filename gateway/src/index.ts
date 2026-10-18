@@ -1,7 +1,8 @@
 // The public face of unstale's catalog and coverage service on Cloudflare. Static files are the exported catalog
-// (`v1/`, written by central's `catalog export`) and are served without running this code. This code answers what a
-// static host cannot, with the same wire format as central's coverage service (onboarding/service.ts), so the client
-// needs no change:
+// (`v1/`, written by central's `catalog export`) and are served without running this code, except those packed into
+// bucket files to keep the deployed file count under the plan's limit (pack.ts), which it reads out of their bucket
+// and answers byte for byte as the static file (assets.ts). It also answers what a static host cannot, with the same
+// wire format as central's coverage service (onboarding/service.ts), so the client needs no change:
 //   GET /health                 the coverage service marker the client checks
 //   POST /coverage {purl}       a vote on a known package, or a new package queued for the next coverage run
 //   GET /coverage?purl=         a known package's published status, or a held one's place in the queue
@@ -16,6 +17,7 @@
 //                               null: it is done, and an early run held back meanwhile starts)
 // Only the public identity of a package is accepted; no repository context, and no client address is stored.
 import { DurableObject } from "cloudflare:workers";
+import { asset, packedAsset } from "./assets.ts";
 import { packageIdentity, technologyId } from "../../central/src/onboarding/identity.ts";
 import { PendingQueue, RUN_STATES, settingsFrom, type Outcome, type Progress, type Request as Taken, type RunState, type View } from "./queue.ts";
 
@@ -135,7 +137,7 @@ async function sha256(s: string): Promise<string> {
 
 /** A known package's status as the last coverage run published it, or undefined. */
 async function published(env: Env, url: URL, purl: string): Promise<Record<string, unknown> | undefined> {
-  const res = await env.ASSETS.fetch(new URL(`/v1/coverage/${await sha256(purl)}.json`, url));
+  const res = await asset(env, new Request(new URL(`/v1/coverage/${await sha256(purl)}.json`, url)));
   return res.ok ? ((await res.json()) as Record<string, unknown>) : undefined;
 }
 
@@ -379,6 +381,12 @@ export async function handle(request: Request, env: Env): Promise<Response> {
         return json(200, await queue().report(updates, budget, pulls));
       }
     }
+    // A packed catalog file, answered as the static file was: before the website's redirects, which the asset layer
+    // never made for it (the catalog is not routed to the Worker first).
+    if (url.pathname.startsWith("/v1/")) {
+      const file = await packedAsset(env, request);
+      if (file) return file;
+    }
     return page(request, env, url);
   } catch (error) {
     if (error instanceof BadRequest) return json(error.status, { error: error.message.slice(0, 200) });
@@ -401,7 +409,8 @@ export function prefersMarkdown(accept: string | null): boolean {
 }
 
 // Website pages (gateway/site/build.ts; routed here by run_worker_first: "/", "/npm/*", "/pypi/*"): the apex over
-// HTTPS, and a page's index.md twin for clients that ask for Markdown. Everything else is the static file.
+// HTTPS, and a page's index.md twin for clients that ask for Markdown. Everything else is the static file, packed or
+// not (assets.ts): a request for a packed catalog file finds no static file and so reaches the Worker here.
 export async function page(request: Request, env: Env, url: URL): Promise<Response> {
   if (url.hostname.startsWith("www.") || url.protocol === "http:") {
     return Response.redirect(`https://${url.hostname.replace(/^www\./, "")}${url.pathname}${url.search}`, 301);
@@ -413,14 +422,14 @@ export async function page(request: Request, env: Env, url: URL): Promise<Respon
     return new Response(file.body, { status: file.status, headers: { "Content-Type": "text/html; charset=utf-8" } });
   }
   if (request.method === "GET" && url.pathname.endsWith("/") && prefersMarkdown(request.headers.get("Accept"))) {
-    const md = await env.ASSETS.fetch(new URL(`${url.pathname}index.md`, url));
+    const md = await asset(env, new Request(new URL(`${url.pathname}index.md`, url)));
     if (md.ok) {
       return new Response(md.body, {
         headers: { "Content-Type": "text/markdown; charset=utf-8", Vary: "Accept", Link: `<${url.href}>; rel="canonical"` },
       });
     }
   }
-  const res = await env.ASSETS.fetch(request);
+  const res = await asset(env, request);
   if (!url.pathname.endsWith("/")) return res;
   const out = new Response(res.body, res);
   out.headers.append("Vary", "Accept");
