@@ -82,8 +82,24 @@ pub fn naming_lits(purl: &str) -> Vec<String> {
 
 /// What precedes a quoted specifier where JavaScript code loads it as a module: `import … from`, a side-effect or
 /// dynamic `import`, `require` and `require.resolve`, a test runner's module mock or original (`vi.mock`,
-/// `vi.doMock`, `jest.requireActual`, `vi.importActual`), and a triple-slash `types` reference.
-const NPM_MODULE_AT: &[&str] = &["from ", "import ", "import(", "require(", "resolve(", "mock(", "Mock(", "Actual(", "types="];
+/// `jest.doMock`, `jest.requireActual`, `vi.importActual`), and a triple-slash `types` reference. Loader calls only:
+/// `path.resolve('sharp')` or a local `mock('sharp')` is a string.
+const NPM_MODULE_AT: &[&str] = &[
+    "from ",
+    "import ",
+    "import(",
+    "require(",
+    "require.resolve(",
+    "vi.mock(",
+    "jest.mock(",
+    "vi.doMock(",
+    "jest.doMock(",
+    "requireActual(",
+    "importActual(",
+    "requireMock(",
+    "importMock(",
+    "types=",
+];
 
 /// Whether a naming literal (`naming_lits`) names the package at a module position, which is what makes code about
 /// it. A quoted name alone does not: `type Falloff = 'linear' | 'sharp'` is a string, not an import of sharp. In data
@@ -922,7 +938,9 @@ mod tests {
         ] {
             assert!(vt.iter().any(|l| module_naming(l) && at.contains(l.as_str())), "{at}");
         }
-        assert!(!vt.iter().any(|l| module_naming(l) && "type T = 'vitest' | 'jest'".contains(l.as_str())), "a string is not an import");
+        for not in ["type T = 'vitest' | 'jest'", "path.resolve('vitest')", "const m = mock('vitest')"] {
+            assert!(!vt.iter().any(|l| module_naming(l) && not.contains(l.as_str())), "a string is not an import: {not}");
+        }
         assert_eq!(naming_lits("pkg:npm/%40playwright/test")[0], "'@playwright/test'");
         let py = naming_lits("pkg:pypi/requests");
         for named in ["import requests\n", "from requests.adapters", "\"requests>=2", "'requests'"] {

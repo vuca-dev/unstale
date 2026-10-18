@@ -81,6 +81,8 @@ describe("items", () => {
   test("pull requests and commits are refs; issues are not", () => {
     const refs = changeRefs("Fix x ([#12](https://github.com/o/r/pull/12)), see https://github.com/o/r/issues/99 and [`abc1234`](https://github.com/o/r/commit/abc1234def)");
     expect([...refs].sort()).toEqual(["commit:abc1234", "pr:12"]);
+    expect([...changeRefs("Fix y ([#99](https://github.com/o/r/issues/99))")], "an issue link's label is not a PR").toEqual([]);
+    expect(itemOf("  ## React DOM\n\n- Fix z (#1)\n", "Fix z")!.headings, "up to three spaces before an ATX heading").toEqual(["React DOM"]);
   });
 });
 
@@ -107,6 +109,16 @@ describe("step 10: backport twins", () => {
     expect(into.releases.map((r) => r.version).sort()).toEqual(["19.0.4", "19.1.5", "19.2.4"]);
     expect(s.records[`${REACT.id}:server-actions~3`]!.status).toBe("merged");
     expect(mergeBackports(s, releases, body)).toEqual([]);
+  });
+
+  test("a record twin of one but not another joins the group it fits; the rest still merge", () => {
+    // `DOS` and the longer quote are near-identical, and so are the longer and the shortest, but not `DOS` and the
+    // shortest: the first two merge, the shortest stays.
+    const longer = `${DOS} and Server Functions`;
+    const s = store([record("a", "19.2.4", DOS), record("b", "19.1.5", longer), record("c", "19.0.4", "Server Actions and Server Functions")]);
+    const quote = (v: string) => ({ "19.2.4": DOS, "19.1.5": longer, "19.0.4": "Server Actions and Server Functions" })[v]!;
+    const bodies = (v: string) => (["19.2.4", "19.1.5", "19.0.4"].includes(v) ? `## React Server Components\n\n- ${quote(v)} (#35632)\n` : body(v));
+    expect(findBackportTwins(s, releases, bodies)).toEqual([{ records: [`${REACT.id}:a`, `${REACT.id}:b`], refs: ["pr:35632"] }]);
   });
 
   test("no merge on one line, across breaking, or without a ref on the item", () => {

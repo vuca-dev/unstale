@@ -32,7 +32,7 @@ export interface Ecosystem {
   /** Version → ISO publish time of `component` on the registry; undefined when the registry does not know it. */
   publishTimes?: (component: string) => Promise<Record<string, string> | undefined>;
   /** Packages published from the technology's repository, with their registry descriptions. */
-  repositoryPackages?: (t: Technology) => Promise<RegistryPackage[]>;
+  repositoryPackages?: (t: Technology) => Promise<RegistryPackage[] | undefined>;
 }
 
 /** A package as the registry describes it (`repositoryPackages`). */
@@ -152,12 +152,13 @@ const MAINTAINER_LIST_MAX = 1000;
 /**
  * npm: the packages of the components' maintainers (`maintainer:<name>` in the registry search) whose registry
  * `repository` is the technology's repository. A monorepo's unscoped packages (react, react-dom,
- * react-server-dom-webpack) have no scope listing but share a maintainer and a repository. The maintainer with the
- * fewest packages is read (all pages); one with more than `MAINTAINER_LIST_MAX` is not (none read: no packages).
+ * react-server-dom-webpack) have no scope listing but share a maintainer and a repository. Every maintainer's list is
+ * read (all pages) except one with more than `MAINTAINER_LIST_MAX`; undefined (unknown) when none could be read or a
+ * list ended early.
  */
-async function npmRepositoryPackages(t: Technology): Promise<RegistryPackage[]> {
+async function npmRepositoryPackages(t: Technology): Promise<RegistryPackage[] | undefined> {
   const repo = t.repo.toLowerCase();
-  if (!repo) return [];
+  if (!repo) return undefined;
   const maintainers = new Set<string>();
   for (const c of t.components) {
     const meta = (await getJson(`https://registry.npmjs.org/${npmName(c).replace("/", "%2f")}/latest`)) as { maintainers?: Array<{ name?: unknown }> } | undefined;
@@ -165,19 +166,23 @@ async function npmRepositoryPackages(t: Technology): Promise<RegistryPackage[]> 
   }
   type Page = { total?: number; objects?: Array<{ package?: { name?: unknown; description?: unknown; links?: { repository?: unknown } } }> };
   const page = async (m: string, from: number) => (await getJson(`https://registry.npmjs.org/-/v1/search?text=${encodeURIComponent(`maintainer:${m}`)}&size=250&from=${from}`)) as Page | undefined;
-  let best: { m: string; first: Page; total: number } | undefined;
+  const objects: NonNullable<Page["objects"]> = [];
+  let read = 0;
   for (const m of [...maintainers].sort()) {
     const first = await page(m, 0);
     const total = first?.total ?? 0;
-    if (first && total > 0 && total <= MAINTAINER_LIST_MAX && (!best || total < best.total)) best = { m, first, total };
+    if (!first || total === 0 || total > MAINTAINER_LIST_MAX) continue;
+    const mine = [...(first.objects ?? [])];
+    for (let from = mine.length; from < total; from += 250) {
+      const more = (await page(m, from))?.objects ?? [];
+      // A list that ends early is not the maintainer's whole list: unknown, not empty.
+      if (!more.length) return undefined;
+      mine.push(...more);
+    }
+    objects.push(...mine);
+    read++;
   }
-  if (!best) return [];
-  const objects = [...(best.first.objects ?? [])];
-  for (let from = objects.length; from < best.total; from += 250) {
-    const more = (await page(best.m, from))?.objects ?? [];
-    if (!more.length) break;
-    objects.push(...more);
-  }
+  if (!read) return undefined;
   const out = new Map<string, RegistryPackage>();
   for (const o of objects) {
     const p = o.package;

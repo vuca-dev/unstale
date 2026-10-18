@@ -81,6 +81,7 @@ export async function repositoryPackages(t: Technology, opts: { offline?: boolea
   if (opts.offline) return undefined;
   try {
     const packages = await hook(t);
+    if (!packages) return undefined;
     writeAtomic(file, JSON.stringify({ checked: stamp(), packages }, null, 1) + "\n");
     return packages;
   } catch (e) {

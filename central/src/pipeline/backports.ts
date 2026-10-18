@@ -73,21 +73,17 @@ export function findBackportTwins(
     );
   };
   const cands = recs.filter((r) => prof.has(r.id));
-  // Connected groups by the twin relation, then kept only when every pair is twins and every line distinct.
-  const seen = new Set<string>();
-  const out: Array<{ records: string[]; refs: string[] }> = [];
+  // Groups in which every pair is twins (near-identical quotes are not transitive): each record, in natural order,
+  // joins the first group all of whose members it is a twin of, else starts one.
+  const groups: StoredRecord[][] = [];
   for (const r of cands) {
-    if (seen.has(r.id)) continue;
-    const group = [r];
-    seen.add(r.id);
-    for (let i = 0; i < group.length; i++) {
-      for (const o of cands) if (!seen.has(o.id) && twin(group[i]!, o)) (seen.add(o.id), group.push(o));
-    }
+    const g = groups.find((g) => g.every((o) => twin(o, r)));
+    if (g) g.push(r);
+    else groups.push([r]);
+  }
+  const out: Array<{ records: string[]; refs: string[] }> = [];
+  for (const group of groups) {
     if (group.length < 2) continue;
-    group.sort((a, b) => naturalId(a.id, b.id));
-    let ok = true;
-    for (let i = 0; i < group.length && ok; i++) for (let j = i + 1; j < group.length && ok; j++) ok = twin(group[i]!, group[j]!);
-    if (!ok) continue;
     const refs = [...group.map((g) => prof.get(g.id)!.refs).reduce((a, b) => new Set([...a].filter((x) => b.has(x))))].sort();
     if (!refs.length) continue;
     out.push({ records: group.map((g) => g.id), refs });

@@ -13,7 +13,7 @@ const flat = (s: string) =>
     .toLowerCase()
     .trim();
 
-const HEADING = /^(#{1,6})[ \t]+(.+?)(?:[ \t]+#+)?[ \t]*$/;
+const HEADING = /^ {0,3}(#{1,6})[ \t]+(.+?)(?:[ \t]+#+)?[ \t]*$/;
 const FENCE = /^\s*(`{3,}|~{3,})/;
 const LIST_ITEM = /^\s*(?:[-*+]|\d+\.)\s+/;
 
@@ -75,7 +75,8 @@ export function itemOf(body: string, quote: string): Item | undefined {
  */
 export function changeRefs(item: string): Set<string> {
   const out = new Set<string>();
-  const noIssues = item.replace(/https?:\/\/\S*\/issues\/\d+\S*/g, " ");
+  // An issue link goes whole, its label (`[#123](…/issues/123)`) too.
+  const noIssues = item.replace(/\[[^\]]*\]\(\s*https?:\/\/[^)\s]*\/issues\/\d+[^)]*\)/g, " ").replace(/https?:\/\/\S*\/issues\/\d+\S*/g, " ");
   for (const m of noIssues.matchAll(/\/pull\/(\d+)/g)) out.add(`pr:${m[1]}`);
   for (const m of noIssues.replace(/\]\([^)]*\)/g, "]").matchAll(/(?<![\w/&])#(\d+)\b/g)) out.add(`pr:${m[1]}`);
   for (const m of noIssues.matchAll(/\/commit\/([0-9a-f]{7,40})\b/gi)) out.add(`commit:${m[1]!.slice(0, 7).toLowerCase()}`);

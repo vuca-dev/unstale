@@ -637,7 +637,7 @@ export async function attachAdvisories(
   releases: ReadonlyArray<{ version: string; date: string; url: string }>,
   judge: (state: Record<string, unknown>, questions: Questions) => Promise<Classification>,
   foreign?: ForeignCheck,
-  sections?: readonly RegistryPackage[],
+  sections?: { packages: readonly RegistryPackage[]; dependencies: ForeignCheck["dependencies"] },
 ): Promise<AttachReport> {
   const report: AttachReport = {
     advisories: advisories.length,
@@ -821,9 +821,9 @@ export async function attachAdvisories(
   }
 
   // Step 11: an item under a heading naming other packages of the repository is their change.
-  if (sections && foreign) {
-    const dependencies = memo(foreign.dependencies);
-    const r = await attributeSections(t, s, releases, body, sections, (x) => shippedPackages(s, x, new Set(t.components.map(canonicalPurl)), dependencies));
+  if (sections) {
+    const dependencies = memo(sections.dependencies);
+    const r = await attributeSections(t, s, releases, body, sections.packages, (x) => shippedPackages(s, x, new Set(t.components.map(canonicalPurl)), dependencies));
     report.sectionMoved = r.moved;
     report.sectionRestored = r.restored;
     for (const x of r.moved) changed.add(x.record);
@@ -1232,6 +1232,9 @@ export async function advisoryStage(
     releases,
     judge,
     complete ? { packages, lookup: (id) => advisoryPackages(t, id, opts), dependencies: (component, version) => releaseDependencies(t, component, version, opts) } : undefined,
-    await repositoryPackages(t, opts),
+    await (async () => {
+      const packages = await repositoryPackages(t, opts);
+      return packages && { packages, dependencies: (component: string, version: string) => releaseDependencies(t, component, version, opts) };
+    })(),
   );
 }
