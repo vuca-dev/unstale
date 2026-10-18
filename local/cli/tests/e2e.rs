@@ -463,10 +463,7 @@ fn onboarding_prefers_new_capabilities_over_generic_security_options_and_old_com
     assert!(env.read(".unstale/skills/improvements-pass/SKILL.md").contains("next:compat-only"), "Highlight curation must not truncate the full review queue");
 }
 
-#[test]
-fn a_security_fix_for_the_installed_version_leads_the_upgrades() {
-    // prisma's bump carries three obligations, next's only one security fix: the fix leads in the report and in the
-    // terminal shortlist, and the report puts Start here and the upgrades before capabilities.
+fn security_and_breaking_catalog() -> FixtureCatalog {
     let cat = FixtureCatalog::new();
     cat.tech("next", &[("16", vec![
         with(rec("next:csrf", "pkg:npm/next", "16.0.3"), json!({"change_type":"security","benefit":["security"],"summary":"Server actions check the Origin header."})),
@@ -477,15 +474,40 @@ fn a_security_fix_for_the_installed_version_leads_the_upgrades() {
         breaking("prisma:a", "datasourceUrl"), breaking("prisma:b", "PrismaClient"), breaking("prisma:c", "postgresql"),
         with(rec("prisma:fix", "pkg:npm/prisma", "7.0.0"), json!({"change_type":"fix","benefit":["correctness"]})),
     ])]);
+    cat
+}
+
+#[test]
+fn upgrades_rank_by_value_with_security_as_a_line_on_its_upgrade() {
+    // next's bump brings a security fix and a capability on its own major; prisma's three obligations need a major
+    // upgrade. next leads on version fit, its security fix shown as a line, and the report puts Start here and the
+    // upgrades before capabilities.
+    let cat = security_and_breaking_catalog();
     let env = Env { repo: fixture_repo(), cache: tempfile::tempdir().unwrap() };
     let output = env.ok(&["init", "--service", cat.loc(), "--mode", "local", "--yes", "--wait", "0", "--no-animation"]);
     let flat = output.split_whitespace().collect::<Vec<_>>().join(" ");
     assert!(flat.contains("1. next 16.0.1 → 16.0.3 picks up 1 security") && flat.contains("2. prisma"), "{output}");
     let report = env.read(".unstale/onboarding-report.md");
     let at = |s: &str| report.find(s).unwrap_or_else(|| panic!("{s} missing:\n{report}"));
-    assert!(at("## Start here") < at("## Upgrades, security first") && at("## Upgrades, security first") < at("## Capabilities to explore"));
+    assert!(at("## Start here") < at("## Upgrades, by value") && at("## Upgrades, by value") < at("## Capabilities to explore"));
     assert!(at("1. next 16.0.1") < at("2. prisma 6.19.0"), "{report}");
     assert!(report.contains("security: Server actions check the Origin header. [next:csrf, 16.0.3]"), "{report}");
+    assert!(!report.contains("security leads"), "no pin or override holds next: update PRs can apply the fix\n{report}");
+}
+
+#[test]
+fn an_upgrade_that_may_retire_a_patched_package_leads() {
+    // The repository patches prisma: its upgrade leads, ahead of next's security fix, with the patch named.
+    let cat = security_and_breaking_catalog();
+    let repo = fixture_repo();
+    write(repo.path(), "patches/prisma@6.19.0.patch", "--- a/index.js\n+++ b/index.js\n");
+    let env = Env { repo, cache: tempfile::tempdir().unwrap() };
+    let output = env.ok(&["init", "--service", cat.loc(), "--mode", "local", "--yes", "--wait", "0", "--no-animation"]);
+    let flat = output.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(flat.contains("Workarounds · 1 upgrade may let you delete") && flat.contains("1. prisma") && flat.contains("may retire your workaround (patches/prisma@6.19.0.patch)"), "{output}");
+    let report = env.read(".unstale/onboarding-report.md");
+    assert!(report.contains("  workaround: patched package at patches/prisma@6.19.0.patch; this upgrade may let you delete it"), "{report}");
+    assert!(report.find("1. prisma 6.19.0").unwrap() < report.find("2. next 16.0.1").unwrap(), "{report}");
 }
 
 #[test]
