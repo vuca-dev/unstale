@@ -7,7 +7,7 @@
 //   unstale init --service http://127.0.0.1:8787     (in a repository that depends on a --new package)
 //
 // --new      packages treated as not yet covered, even if the live catalog has them (any it lacks are new anyway)
-// --declined the played run finds another package ahead and takes none (drain --fast-track's `ran: false`)
+// --declined the played run reports `declined` (a gateway state no current drain sends; kept for older runs)
 // --stall    the played run never starts (the client gives up after 5 minutes)
 // --speed    2 plays the run twice as fast
 import { createServer } from "node:http";

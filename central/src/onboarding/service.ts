@@ -127,8 +127,8 @@ export class CoverageService {
   private launched = 0;
   /** The budget limits that held work back since the drain began, by limit: a drain that starts nothing says why. */
   private holds = new Map<Hold["limit"], Hold>();
-  /** A drain restricted to these packages (fast-track); undefined works the whole queue. */
-  private only: ReadonlySet<string> | undefined;
+  /** Running jobs that started as new technologies (tier 1): what the slots kept for them hold. */
+  private runningNew = new Set<string>();
   readonly concurrency: number;
   /** The advisories stage after a technology's history is published (off: `advisories: false` or UNSTALE_NO_ADVISORIES=1). */
   readonly advisories: boolean;
@@ -259,18 +259,11 @@ export class CoverageService {
   working(purl: string): boolean {
     return this.running.has(purl);
   }
-  /** The line of new technologies waiting for their first analysis, in drain order (tier 1). */
-  newLine(): Job[] {
-    return this.queue().filter((j) => this.tier(j) === 1 && !this.running.has(j.purl));
-  }
-  /** Of `candidates`, those at the head of the line of new technologies, in order: none when another is ahead. */
-  newHead(candidates: ReadonlySet<string>): Set<string> {
-    const out = new Set<string>();
-    for (const j of this.newLine()) {
-      if (!candidates.has(j.purl)) break;
-      out.add(j.purl);
-    }
-    return out;
+  /** Slots a waiting new technology may always take: refreshes and continued history (tier 0, and tier 2) fill at
+   * most the rest while one waits, so a new package starts at the next free slot however much admitted work is due.
+   * It never jumps the line of new technologies, which keeps its own order. One slot in three; none with one slot. */
+  get newSlots(): number {
+    return this.concurrency > 1 ? Math.max(1, Math.floor(this.concurrency / 3)) : 0;
   }
   /**
    * The drain order: by tier, then most requested first (pure demand, no aging). Among new technologies of equal demand
@@ -375,28 +368,29 @@ export class CoverageService {
   /**
    * Batch mode for an ephemeral runner: works the queue until nothing more can start (empty, not yet due, or the
    * budget spent) or `deadline` passes, then waits for running jobs up to `grace` ms. A job still running then is
-   * resumed by the next run (an interrupted job is requeued on load). With `only`, no other job starts. `held` names
-   * the budget limits that refused work during the drain, each with its cap and when it resets, so a drain that
-   * started nothing (or less than the queue held) says why.
+   * resumed by the next run (an interrupted job is requeued on load). Requests enqueued meanwhile join the queue.
+   * `drained`: nothing more could start, before the deadline or once the grace period's jobs finished (work may be
+   * left only when it is false). `held` names the budget limits that refused work during the drain, each with its cap and when it
+   * resets, so a drain that started nothing (or less than the queue held) says why.
    */
   async drain(
     deadline: number,
     grace = 10 * 60_000,
     poll = 500,
-    only?: ReadonlySet<string>,
-  ): Promise<{ started: number; unfinished: number; held?: Hold[] }> {
+  ): Promise<{ started: number; unfinished: number; drained: boolean; held?: Hold[] }> {
     this.draining = deadline;
     this.holds.clear();
     this.held = false;
-    this.only = only;
     const before = this.launched;
     // A finished job starts the next itself; when nothing is running and nothing more starts, the queue is done.
     while (Date.now() < deadline && (this.running.size || this.pump()))
       await new Promise((r) => setTimeout(r, poll));
+    const drained = Date.now() < deadline;
     const stop = Date.now() + grace;
     while (this.running.size && Date.now() < stop) await new Promise((r) => setTimeout(r, poll));
     const held = [...this.holds.values()];
-    return { started: this.launched - before, unfinished: this.running.size, ...(held.length ? { held } : {}) };
+    const done = drained || (!this.running.size && !this.queue().length);
+    return { started: this.launched - before, unfinished: this.running.size, drained: done, ...(held.length ? { held } : {}) };
   }
   /** The budget limits at their cap now (see DailyBudget.spent). */
   spent(): Hold[] {
@@ -419,51 +413,67 @@ export class CoverageService {
       return { ...fields, stage: `${job.stage} (position ${i + 1} of ${waiting.length})`, queue_position: i + 1, queue_length: waiting.length };
     });
   }
-  /** Starts what the queue and the budget allow; returns how many jobs it started. */
+  /** Starts what the queue and the budget allow, in queue order except that admitted work leaves `newSlots` to a
+   * waiting new technology (a second pass fills what no new technology took); returns how many jobs it started. A
+   * drain past its deadline starts nothing. */
   private pump(): number {
-    if (this.held) return 0;
+    if (this.held || (this.draining && Date.now() >= this.draining)) return 0;
+    const queue = this.queue();
+    let waitingNew = queue.filter((j) => this.tier(j) === 1 && !this.running.has(j.purl)).length;
     let started = 0;
-    for (const job of this.queue()) {
-      if (this.running.size >= this.concurrency) break;
-      if (this.running.has(job.purl) || (this.only && !this.only.has(job.purl))) continue;
-      if (this.budget.tokensLeft() <= 0) {
-        const stage = `Coverage budget for this ${this.limits.period} spent; continues after ${day(nextPeriod(this.limits.period))}`;
-        if (job.state === "queued" && job.stage !== stage) this.save(job, "queued", stage);
-        this.heldBack("tokens");
-        break;
+    for (const capped of [true, false])
+      for (const job of queue) {
+        if (this.running.size >= this.concurrency) return started;
+        if (this.running.has(job.purl)) continue;
+        const isNew = this.tier(job) === 1;
+        if (capped && !isNew && waitingNew > 0 && this.running.size - this.runningNew.size >= this.concurrency - this.newSlots) continue;
+        const outcome = this.launch(job, isNew);
+        if (outcome === "held") return started;
+        started++;
+        if (isNew) waitingNew--;
       }
-      const refused = this.budget.takeRun();
-      if (refused) {
-        const stage = `Daily coverage budget reached; continues after ${day(Date.now() + refused.retryAfter * 1000)}`;
-        if (job.state === "queued" && job.stage !== stage) this.save(job, "queued", stage);
-        this.heldBack(refused.kind === "runs" ? "runs_per_day" : "unreadable");
-        break;
-      }
-      this.running.add(job.purl);
-      started++;
-      this.launched++;
-      void this.work(job)
-        .catch((error) => {
-          job.failures = (job.failures ?? 0) + 1;
-          job.retry_at = new Date(
-            Date.now() +
-              Math.min(6 * 3600000, 60000 * 2 ** Math.min(job.failures - 1, 8)),
-          ).toISOString();
-          this.save(
-            job,
-            "failed",
-            String(error instanceof Error ? error.message : error).slice(
-              0,
-              300,
-            ),
-          );
-        })
-        .finally(() => {
-          this.running.delete(job.purl);
-          if (!this.draining || Date.now() < this.draining) this.pump();
-        });
-    }
     return started;
+  }
+  /** Starts one job unless the budget refuses it ("held": nothing more may start). */
+  private launch(job: Job, isNew: boolean): "started" | "held" {
+    if (this.budget.tokensLeft() <= 0) {
+      const stage = `Coverage budget for this ${this.limits.period} spent; continues after ${day(nextPeriod(this.limits.period))}`;
+      if (job.state === "queued" && job.stage !== stage) this.save(job, "queued", stage);
+      this.heldBack("tokens");
+      return "held";
+    }
+    const refused = this.budget.takeRun();
+    if (refused) {
+      const stage = `Daily coverage budget reached; continues after ${day(Date.now() + refused.retryAfter * 1000)}`;
+      if (job.state === "queued" && job.stage !== stage) this.save(job, "queued", stage);
+      this.heldBack(refused.kind === "runs" ? "runs_per_day" : "unreadable");
+      return "held";
+    }
+    this.running.add(job.purl);
+    if (isNew) this.runningNew.add(job.purl);
+    this.launched++;
+    void this.work(job)
+      .catch((error) => {
+        job.failures = (job.failures ?? 0) + 1;
+        job.retry_at = new Date(
+          Date.now() +
+            Math.min(6 * 3600000, 60000 * 2 ** Math.min(job.failures - 1, 8)),
+        ).toISOString();
+        this.save(
+          job,
+          "failed",
+          String(error instanceof Error ? error.message : error).slice(
+            0,
+            300,
+          ),
+        );
+      })
+      .finally(() => {
+        this.running.delete(job.purl);
+        this.runningNew.delete(job.purl);
+        this.pump();
+      });
+    return "started";
   }
   /** Back of its tier: a job that yields goes behind jobs of equal demand. */
   private requeue(job: Job, stage: string) {

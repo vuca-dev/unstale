@@ -47,7 +47,7 @@ Central's operator commands: `npm --prefix central run catalog -- <command>` (pi
 |---|---|---|
 | `.github/workflows/ci.yml` | every pull request and push to `main` | The commands under [Tests](#tests) (Rust job; central job with Rust for the schema checks; gateway job with a `wrangler deploy --dry-run` bundle), Node 24 |
 | `.github/workflows/release.yml` | tag `v*` | Checks the tag equals the crate version; `npm/build.sh <platform>` per platform (darwin on macOS, linux and win32 with cargo-zigbuild on Ubuntu); runs every binary on a native runner; `npm publish` per package (`--dry-run` until `NPM_PUBLISH` is `true`; `--provenance` while the repository is public); generates the Homebrew formula (`npm/homebrew-formula.sh`) and commits it to the tap when publishing for real |
-| `.github/workflows/ingest.yml` | daily while the repository is private (every 3 hours once public), manually, and from the gateway (fast-track) | Restores the central store; runs `pipeline --refresh` (catalog technologies) and `drain` (registrations pulled from the gateway, refreshes, new technologies by demand, ties broken by adoption, under the coverage budget); exports and verifies the static catalog; deploys it with the gateway; saves the store; acknowledges the registrations it took |
+| `.github/workflows/ingest.yml` | daily while the repository is private (every 3 hours once public), manually, from the gateway (fast-track), and from itself when a run's window ends with work left (continue) | Restores the central store; runs `pipeline --refresh` (catalog technologies); then, in 15-minute cycles (`.github/scripts/ingest-cycles.sh`), `drain` (registrations pulled from the gateway every 5 minutes, refreshes, new technologies by demand, ties broken by adoption, one slot in three kept for a waiting new technology, under the coverage budget), exports and verifies the static catalog, deploys it with the gateway, saves the store and acknowledges the registrations the cycle took. A run whose pipeline failed, or a `deploy: false` run, drains once for the whole 140-minute window instead of in cycles; the first then only saves the store, the second exports, verifies and saves it. Neither deploys or acknowledges anything |
 | `.github/workflows/gateway-diagnostics.yml` | manually (`gh workflow run gateway-diagnostics.yml`) | Read-only: prints the gateway Durable Object's rows read and written, requests and storage per hour (`gateway/scripts/diagnostics.ts`, GraphQL Analytics), the Worker's invocations by status, its live logs and exceptions (`wrangler tail`) while it sends a few status reads, and `/health` and `/internal/usage`. Nothing secret is printed |
 
 Secrets and variables (Settings > Secrets and variables > Actions):
@@ -86,10 +86,11 @@ this repository (checked before a real publish). `release.yml`'s header has the 
 **Ingest state.** The central store (`UNSTALE_STORE`: `central/` and `catalog/`) survives the ephemeral runner as
 assets of a draft release tagged `catalog-state`: each generation is `state-<stamp>.tar.zst.aa, .ab, …` (a zstd
 tarball split under the 2 GiB asset limit) plus `state-<stamp>.sha256`, uploaded last, so a generation without it is
-ignored. The newest three are kept. The state is saved after a failed pipeline or drain too (paid model calls are
-kept), but a catalog is deployed only after the pipeline, the drain, the export and the verification (every index's
-shards present with the stated size and sha256) all pass, and the gateway's queue is acknowledged only after the
-deploy and the save. actions/cache is not used for it: entries are evicted after 7 days without
+ignored. A run saves once a cycle; the newest generation of each of the newest three runs is kept. The state is saved
+after a failed pipeline, drain or publish too (paid model calls are kept), but a catalog is deployed only after the
+pipeline, the drain, the export and the verification (every index's shards present with the stated size and sha256)
+all pass, and the gateway's queue is acknowledged only after the deploy and the save of the same cycle, so a
+cancelled run loses at most its current cycle. actions/cache is not used for it: entries are evicted after 7 days without
 access and share a 10 GB limit. With no saved state the run fails unless started manually with `bootstrap`, which
 re-ingests from scratch with every model call uncached; to start from an operator's store instead:
 

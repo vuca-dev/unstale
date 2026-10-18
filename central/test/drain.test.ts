@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import * as discovery from "../src/onboarding/discovery.ts";
 import { CoverageService } from "../src/onboarding/service.ts";
+import { Taken } from "../src/onboarding/taken.ts";
 import type { Limits } from "../src/onboarding/limits.ts";
 import { exportCatalog } from "../src/pipeline/export.ts";
 import { catalogDir, centralDir } from "../src/pipeline/paths.ts";
@@ -68,7 +69,7 @@ test("drain works the queue until nothing more can start, then returns", async (
   const service = new CoverageService(2, { limits: limits() }).hold();
   service.enqueue(["a", "b", "c"].map((n) => ({ purl: `pkg:npm/${n}`, demand: 1 })));
   const r = await service.drain(Date.now() + 60_000, 5_000, 10);
-  expect(r).toEqual({ started: 3, unfinished: 0 });
+  expect(r).toEqual({ started: 3, unfinished: 0, drained: true });
   for (const j of service.jobs.values()) expect(j.state).toBe("blocked");
 });
 
@@ -76,7 +77,7 @@ test("no count of new technologies: a large repository's 400 packages all start 
   noSources();
   const service = new CoverageService(50, { limits: limits({ runsPerDay: Infinity }) }).hold();
   service.enqueue(Array.from({ length: 400 }, (_, i) => ({ purl: `pkg:npm/p${i}`, demand: 1 })));
-  expect(await service.drain(Date.now() + 60_000, 5_000, 10)).toEqual({ started: 400, unfinished: 0 });
+  expect(await service.drain(Date.now() + 60_000, 5_000, 10)).toEqual({ started: 400, unfinished: 0, drained: true });
   expect(service.spent()).toEqual([]);
 });
 
@@ -89,10 +90,10 @@ test("with the budget spent or the deadline passed, drain starts nothing and ret
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(Date.parse("2026-10-17T14:51:00Z"));
   const tomorrow = "2026-10-18T00:00:00.000Z";
-  expect(await spent.drain(Date.now() + 60_000, 1_000, 10)).toEqual({ started: 0, unfinished: 0, held: [{ limit: "tokens", cap: 0, resets: tomorrow }] });
+  expect(await spent.drain(Date.now() + 60_000, 1_000, 10)).toEqual({ started: 0, unfinished: 0, drained: true, held: [{ limit: "tokens", cap: 0, resets: tomorrow }] });
   const late = new CoverageService(1, { limits: limits() }).hold();
   late.submit("pkg:npm/b");
-  expect(await late.drain(Date.now() - 1, 1_000, 10)).toEqual({ started: 0, unfinished: 0 });
+  expect(await late.drain(Date.now() - 1, 1_000, 10)).toEqual({ started: 0, unfinished: 0, drained: false });
   expect(spy).not.toHaveBeenCalled();
 });
 
@@ -104,7 +105,7 @@ test("a drain held back by the daily run count names it with its cap and reset",
   const tomorrow = "2026-10-18T00:00:00.000Z";
   const fresh = new CoverageService(1, { limits: limits({ runsPerDay: 1 }) }).hold();
   fresh.enqueue(["a", "b"].map((n) => ({ purl: `pkg:npm/${n}`, demand: 1 })));
-  expect(await fresh.drain(Date.now() + 60_000, 5_000, 10)).toEqual({ started: 1, unfinished: 0, held: [{ limit: "runs_per_day", cap: 1, resets: tomorrow }] });
+  expect(await fresh.drain(Date.now() + 60_000, 5_000, 10)).toEqual({ started: 1, unfinished: 0, drained: true, held: [{ limit: "runs_per_day", cap: 1, resets: tomorrow }] });
   expect(fresh.spent()).toEqual([{ limit: "runs_per_day", cap: 1, resets: tomorrow }]);
   // The counter persists, so the next drain the same day is held back by the same limit before starting anything.
   const again = new CoverageService(1, { limits: limits({ runsPerDay: 1 }) }).hold();
@@ -153,17 +154,71 @@ test("a package missing from its registry is parked for a week, not retried as a
   expect(Date.parse(job.retry_at!) - Date.now()).toBeGreaterThan(6 * 86_400_000);
 });
 
-test("fast-track: only pulled packages at the head of the new-technology line run; behind another, none", async () => {
-  noSources();
+// Discovery that never answers: a job started stays running, so a test can see which jobs hold the slots.
+const hanging = () => vi.spyOn(discovery, "discoverTechnology").mockImplementation(() => new Promise(() => {}));
+
+/** A monitored technology whose refresh is due (tier 0). */
+const dueRefresh = (service: CoverageService, purl: string, demand = 5) => {
+  const job = service.submit(purl);
+  Object.assign(job, { state: "monitoring", retry_at: "2000-01-01T00:00:00.000Z", demand, admitted: "test" });
+};
+
+test("a waiting new technology takes one slot in three however much admitted work is due; the line keeps its order", async () => {
+  hanging();
+  const service = new CoverageService(3, { limits: limits() }).hold();
+  expect(service.newSlots).toBe(1);
+  for (const n of ["r1", "r2", "r3", "r4"]) dueRefresh(service, `pkg:npm/${n}`);
+  service.enqueue([{ purl: "pkg:npm/second", demand: 1 }]);
+  service.enqueue([{ purl: "pkg:npm/first", demand: 2 }]);
+  const r = await service.drain(Date.now() + 100, 0, 10);
+  expect(r).toMatchObject({ started: 3, drained: false });
+  const working = [...service.jobs.keys()].filter((p) => service.working(p));
+  // Refreshes first in queue order, but one slot goes to the head of the new line (most requested), never the rest.
+  expect(working).toEqual(["pkg:npm/r1", "pkg:npm/r2", "pkg:npm/first"]);
+});
+
+test("with no new technology waiting, admitted work fills every slot; one slot runs strictly in order", async () => {
+  hanging();
+  const service = new CoverageService(3, { limits: limits() }).hold();
+  for (const n of ["r1", "r2", "r3", "r4"]) dueRefresh(service, `pkg:npm/${n}`);
+  await service.drain(Date.now() + 100, 0, 10);
+  expect([...service.jobs.keys()].filter((p) => service.working(p))).toEqual(["pkg:npm/r1", "pkg:npm/r2", "pkg:npm/r3"]);
+  const one = new CoverageService(1, { limits: limits() });
+  expect(one.newSlots).toBe(0);
+});
+
+test("a request enqueued after the deadline (a pull during the grace period) is kept for the next cycle, not started", async () => {
+  hanging();
   const service = new CoverageService(2, { limits: limits() }).hold();
-  service.submit("pkg:npm/popular").demand = 9; // already waiting, more requested
-  service.enqueue([{ purl: "pkg:npm/fresh", demand: 1 }]);
-  expect([...service.newHead(new Set(["pkg:npm/fresh"]))]).toEqual([]);
-  expect([...service.newHead(new Set(["pkg:npm/popular", "pkg:npm/fresh"]))]).toEqual(["pkg:npm/popular", "pkg:npm/fresh"]);
-  // With only the head allowed, nothing else starts.
-  const r = await service.drain(Date.now() + 60_000, 5_000, 10, new Set(["pkg:npm/popular"]));
-  expect(r.started).toBe(1);
-  expect(service.working("pkg:npm/popular")).toBe(false);
-  expect(service.jobs.get("pkg:npm/fresh")?.state).toBe("queued");
-  expect([...service.newHead(new Set(["pkg:npm/fresh"]))]).toEqual(["pkg:npm/fresh"]);
+  service.enqueue([{ purl: "pkg:npm/slow", demand: 1 }]);
+  // Well inside the grace period (1 s), so a slow machine cannot reach its end first.
+  setTimeout(() => service.enqueue([{ purl: "pkg:npm/late", demand: 1 }]), 150);
+  const r = await service.drain(Date.now() + 50, 1_000, 10);
+  expect(r).toMatchObject({ started: 1, unfinished: 1, drained: false });
+  expect(service.working("pkg:npm/late")).toBe(false);
+  expect(service.jobs.get("pkg:npm/late")).toMatchObject({ state: "queued", demand: 1 });
+});
+
+test("a drain whose last job finishes in the grace period with nothing left to start is drained", async () => {
+  const slow = noSources().getMockImplementation()!;
+  vi.spyOn(discovery, "discoverTechnology").mockImplementation(async (purl) => (await new Promise((r) => setTimeout(r, 150)), slow(purl)));
+  const service = new CoverageService(1, { limits: limits() }).hold();
+  service.enqueue([{ purl: "pkg:npm/one", demand: 1 }]);
+  expect(await service.drain(Date.now() + 50, 2_000, 10)).toEqual({ started: 1, unfinished: 0, drained: true });
+});
+
+test("pulls during a drain take only what grew since the last one, and the acknowledgement is the whole", () => {
+  const taken = new Taken();
+  expect(taken.add([{ purl: "pkg:npm/a", demand: 2 }, { purl: "pkg:npm/b", demand: 1 }])).toEqual([{ purl: "pkg:npm/a", demand: 2 }, { purl: "pkg:npm/b", demand: 1 }]);
+  // The gateway answers held requests whole until acknowledged: a second pull adds the new vote and the new package only.
+  expect(taken.add([{ purl: "pkg:npm/a", demand: 3 }, { purl: "pkg:npm/b", demand: 1 }, { purl: "pkg:npm/c", demand: 1 }])).toEqual([{ purl: "pkg:npm/a", demand: 1 }, { purl: "pkg:npm/c", demand: 1 }]);
+  expect(taken.add([{ purl: "pkg:npm/a", demand: 3 }])).toEqual([]);
+  expect(taken.size).toBe(3);
+  expect(taken.requests()).toEqual([{ purl: "pkg:npm/a", demand: 3 }, { purl: "pkg:npm/b", demand: 1 }, { purl: "pkg:npm/c", demand: 1 }]);
+  // Enqueued as deltas, the service counts each requester once.
+  const service = new CoverageService(0, { limits: limits() });
+  const t = new Taken();
+  service.enqueue(t.add([{ purl: "pkg:npm/a", demand: 2 }]));
+  service.enqueue(t.add([{ purl: "pkg:npm/a", demand: 3 }]));
+  expect(service.jobs.get("pkg:npm/a")?.demand).toBe(3);
 });
