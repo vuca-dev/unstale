@@ -345,7 +345,7 @@ pub fn digest_lines(out: &Outcome) -> Vec<String> {
             let o = &out.opps[i];
             lines.push(format!("{label} {}{}: nothing arrives with a bump{}", o.installed, scope(&o.component()), in_effect_note(out, tech, "; ")));
         }
-        // Manifests on another version (a workspace with its own lockfile, a library's floor): counts only.
+        // Manifests on another version (a workspace with its own lockfile, an unlocked manifest's floor): counts only.
         for w in workspaces {
             // Advisories as for the headline, at this manifest's version: each fixed one counts once; a record whose
             // advisories are all decided and none fixed says nothing; an undecidable one falls back to the record.

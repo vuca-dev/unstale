@@ -1,5 +1,5 @@
 //! Stack detection. npm here; PyPI in `pypi.rs`, merged into the same `Stack`. npm projects: every `package.json` outside `node_modules`, versions from the lockfile
-//! (application) or the declared range's floor (library), and the supported Node range: available, needs upgrade, or blocked.
+//! that covers the manifest, else the declared range's floor, and the supported Node range: available, needs upgrade, or blocked.
 
 use anyhow::Result;
 use semver::Version;
@@ -89,8 +89,9 @@ pub struct Reading {
     /// No lockfile covers the manifest (not its own, not a workspace member or importer of one above it): a separate,
     /// unlocked project, named beside the headline but never setting it while a covered manifest declares the package.
     pub standalone: bool,
-    /// The declared range when `version` is its floor (a library's floor, an unlocked manifest): the code there is
-    /// written for the whole range, not for the floor alone. `None` for a locked version.
+    /// The declared range the code there is written for, not for one version alone: the range of a floor reading (an
+    /// unlocked manifest, a stale lockfile entry), and a library's range for what its users install, locked or not.
+    /// `None` for an application's locked version.
     pub range: Option<Range>,
 }
 
@@ -302,10 +303,15 @@ pub fn settle(deps: &mut BTreeMap<String, Dep>) -> Option<(usize, String)> {
 
 const DEP_FIELDS: &[&str] = &["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"];
 
-fn is_library(pj: &Value) -> bool {
+/// A package published for others: not `private`, a `name` and `version`, and a field that says what to publish
+/// (`module`, `exports`, `types`, `typings`, `bin`, `files`, `publishConfig`), or `main` alone when the manifest has no
+/// lockfile of its own beside it. `main` is what `npm init` writes for every package, so beside the manifest's own
+/// lockfile (an install root: a deployed server, a CI script) it says nothing about publishing.
+fn is_library(pj: &Value, own_lockfile: bool) -> bool {
     let private = pj.get("private").and_then(Value::as_bool).unwrap_or(false);
     let published = pj.get("name").is_some() && pj.get("version").is_some();
-    let entry = ["main", "module", "exports", "types", "typings", "bin", "files"].iter().any(|k| pj.get(k).is_some());
+    let entry = ["module", "exports", "types", "typings", "bin", "files", "publishConfig"].iter().any(|k| pj.get(k).is_some())
+        || (pj.get("main").is_some() && !own_lockfile);
     !private && published && entry
 }
 
@@ -372,7 +378,6 @@ pub fn detect(root: &Path) -> Result<Stack> {
         let Ok(pj) = serde_json::from_str::<Value>(&text) else { continue };
         let dir = e.path().parent().unwrap_or(root).to_path_buf();
         let rel = rel_dir(root, &dir);
-        let kind = if is_library(&pj) { Kind::Library } else { Kind::Application };
         let mut declared = BTreeSet::new();
         let cat = Catalogs::nearest(root, &dir, &mut catalogs);
         // The nearest lockfile at or above the package that covers it, up to the repository root. One that does not
@@ -399,6 +404,7 @@ pub fn detect(root: &Path) -> Result<Stack> {
             d = cur.parent();
         }
         let importer = lock.as_ref().map(|(ld, _)| rel_dir(ld, &dir)).unwrap_or_else(|| ".".into());
+        let kind = if is_library(&pj, lock.as_ref().is_some_and(|(ld, _)| *ld == dir)) { Kind::Library } else { Kind::Application };
         let standalone = lock.is_none();
         // A manifest that declares nothing (a directory's `main` entry) is no project of its own to name.
         let declares = DEP_FIELDS.iter().any(|f| pj.get(*f).and_then(Value::as_object).is_some_and(|m| !m.is_empty()));
@@ -427,33 +433,37 @@ pub fn detect(root: &Path) -> Result<Stack> {
                 // A package of this repository (a workspace, a path): never public, and its locked version is a
                 // placeholder (Yarn 2+ `0.0.0-use.local`), not a pin the range could say is out of date.
                 let local = is_local(&local_names, name, range);
-                // A library's dependencies and peers are read at the declared floor, since that is what its users
-                // get; a peer range is the one that says so when it is declared. Its devDependencies reach no user:
-                // they are the repository's own tooling, read like an application's.
-                let (version, source, floor) = if kind == Kind::Library && *field != "devDependencies" {
-                    let r = if *field != "peerDependencies" {
+                // What a library's users install (its dependencies and peers) may resolve anywhere in the declared
+                // range, the peer range when it declares one: the reading keeps that range, so code written for
+                // the range is cited for any version in it. Its version is still what this repository's own code
+                // runs and tests against, the covering lockfile's, and the floor only when nothing locks it. Its
+                // devDependencies reach no user: they are the repository's own tooling, read like an application's.
+                let lib_range = (kind == Kind::Library && *field != "devDependencies").then(|| {
+                    if *field != "peerDependencies" {
                         pj.get("peerDependencies").and_then(|p| p.get(name)).and_then(Value::as_str).unwrap_or(range)
                     } else {
                         range
-                    };
-                    let r_shown = if r == range { shown.clone() } else { r.to_string() };
-                    (range_floor(r), format!("library floor of {r_shown}"), Some(r))
-                } else if let Some((ld, l)) = &lock
+                    }
+                });
+                let (version, source, floor) = if let Some((ld, l)) = &lock
                     && let Some(v) = l.version(&importer, name, range)
+                    // A locked copy outside a library's own range is some other workspace's (a peer the importer
+                    // does not install), not what its code is written for: its floor is.
+                    && lib_range.is_none_or(|r| local || npm_satisfies(&v, r) != Some(false))
                 {
                     let file = join(&rel_dir(root, ld), &l.file);
                     if let Some((other, set)) = l.replaced_by(name, range).filter(|_| !local) {
                         // Swapped for another package across the install: the locked version is the other's.
                         (None, format!("replaced by {other} ({set})"), None)
                     } else if local || npm_satisfies(&v, range) != Some(false) {
-                        (Some(v), file, None)
+                        (Some(v), file, lib_range)
                     } else if let Some(set) = l.override_admitting(name, range, &v) {
                         // A root override is a declaration too: it sets the version for every workspace.
-                        (Some(v), format!("{file} ({set})"), None)
+                        (Some(v), format!("{file} ({set})"), lib_range)
                     } else if *field == "peerDependencies" {
                         // A peer range says what this workspace supports; the install resolves the package for
                         // it elsewhere, so a pin outside it is what runs, not a sign of a stale lockfile.
-                        (Some(v), file, None)
+                        (Some(v), file, lib_range)
                     } else {
                         // A locked version the manifest no longer admits means the lockfile is out of date: the
                         // declared range says more about what the project runs than the stale pin does.
@@ -464,6 +474,9 @@ pub fn detect(root: &Path) -> Result<Stack> {
                         }
                         (range_floor(range), format!("floor of {shown} ({file} has {v}, outside the range)"), Some(range))
                     }
+                } else if let Some(r) = lib_range {
+                    let r_shown = if r == range { shown.clone() } else { r.to_string() };
+                    (range_floor(r), format!("library floor of {r_shown}"), Some(r))
                 } else if let Some(file) = passed.as_ref().filter(|_| standalone) {
                     (range_floor(range), format!("floor of {shown} (outside the {file} workspace)"), Some(range))
                 } else {
@@ -1554,10 +1567,10 @@ mod tests {
     }
 
     #[test]
-    fn library_reads_what_users_get_at_the_floor_and_its_own_tooling_locked() {
+    fn a_library_reads_its_lockfile_and_keeps_the_range_its_users_get() {
         // recharts' shape: one published package, a root package-lock.json, no workspaces.
         let d = tempfile::tempdir().unwrap();
-        write(d.path(), "package.json", r#"{"name":"lib","version":"1.0.0","main":"index.js",
+        write(d.path(), "package.json", r#"{"name":"lib","version":"1.0.0","main":"lib/index.js","files":["lib"],
             "dependencies":{"immer":"^11.1.8","rxjs":"^7.8.0"},
             "peerDependencies":{"@nestjs/core":"^10.0.0 || ^11.0.0","react":"^16.8.0 || ^17 || ^18 || ^19"},
             "devDependencies":{"@nestjs/core":"^11.1.0","vite":"^6.4.0","react":"^18.3.1"}}"#);
@@ -1567,8 +1580,16 @@ mod tests {
         let s = detect(d.path()).unwrap();
         assert_eq!(s.packages[0].kind, Kind::Library);
         let v = |p: &str| s.deps[p].version.clone();
-        assert_eq!(v("pkg:npm/immer"), Some(Version::new(11, 1, 8)), "a dependency is read at the floor its users get");
-        assert_eq!(s.deps["pkg:npm/immer"].source, "library floor of ^11.1.8");
+        // A dependency is what the repository's code runs and tests against, its lockfile's; users get any version
+        // in the range, which the reading keeps (code written for ^11.1.8 is cited at 11.1.21).
+        assert_eq!(v("pkg:npm/immer"), Some(Version::new(11, 1, 18)));
+        assert_eq!(s.deps["pkg:npm/immer"].source, "package-lock.json");
+        let immer = &s.deps["pkg:npm/immer"].readings[0];
+        assert_eq!(immer.range, Some(Range::Npm("^11.1.8".into())));
+        assert!(immer.runs(&Version::new(11, 1, 21)) && !immer.runs(&Version::new(12, 0, 0)));
+        // Nothing locks rxjs: the floor of its range.
+        assert_eq!(v("pkg:npm/rxjs"), Some(Version::new(7, 8, 0)));
+        assert_eq!(s.deps["pkg:npm/rxjs"].source, "library floor of ^7.8.0");
         assert_eq!(v("pkg:npm/vite"), Some(Version::new(6, 4, 3)), "a devDependency is the repository's own, locked");
         assert_eq!(s.deps["pkg:npm/vite"].source, "package-lock.json");
         assert_eq!(v("pkg:npm/react"), Some(Version::new(18, 3, 1)), "the devDependency, not the peer floor");
@@ -1577,6 +1598,31 @@ mod tests {
         assert!(s.notes.is_empty(), "{:?}", s.notes);
         assert_eq!(s.node.as_ref().unwrap().0, Version::new(18, 19, 0));
         assert_eq!(s.node.as_ref().unwrap().1, ".nvmrc");
+    }
+
+    #[test]
+    fn main_beside_its_own_lockfile_is_an_install_root_not_a_published_library() {
+        // Infisical's shape: `backend/` is a deployed server with `npm init`'s `main` and its own package-lock.json;
+        // no root lockfile. A workspace member with `main` only and no lockfile of its own is still published.
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "backend/package.json", r#"{"name":"backend","version":"1.0.0","main":"./dist/main.mjs","license":"ISC",
+            "dependencies":{"zod":"^3.22.4","ioredis":"^5.3.2"},"peerDependencies":{"pg":"^8.0.0"}}"#);
+        write(d.path(), "backend/package-lock.json", r#"{"lockfileVersion":3,"packages":{"":{"name":"backend"},"node_modules/zod":{"version":"3.25.76"},
+            "node_modules/ioredis":{"version":"5.10.1"},"node_modules/pg":{"version":"8.16.3"}}}"#);
+        write(d.path(), "libs/package.json", r#"{"name":"libs","private":true,"workspaces":["pkg-*"]}"#);
+        write(d.path(), "libs/package-lock.json", r#"{"lockfileVersion":3,"packages":{"node_modules/react":{"version":"17.0.2"}}}"#);
+        write(d.path(), "libs/pkg-a/package.json", r#"{"name":"pkg-a","version":"58.0.1","main":"index.js","peerDependencies":{"react":">=18"}}"#);
+        let s = detect(d.path()).unwrap();
+        let kind = |dir: &str| s.packages.iter().find(|p| p.dir == dir).unwrap().kind;
+        assert_eq!((kind("backend"), kind("libs/pkg-a")), (Kind::Application, Kind::Library));
+        let one = |p: &str| s.deps[p].readings.iter().map(|r| (r.version.to_string(), r.source.clone(), r.range.clone())).collect::<Vec<_>>();
+        assert_eq!(one("pkg:npm/zod"), vec![("3.25.76".into(), "backend/package-lock.json".into(), None)]);
+        assert_eq!(one("pkg:npm/ioredis")[0].0, "5.10.1");
+        assert_eq!(one("pkg:npm/pg")[0].0, "8.16.3");
+        // The only react the workspace locks is outside the library's peer range: another copy, not what its code is
+        // written for, so the floor of the range.
+        assert_eq!(one("pkg:npm/react"), vec![("18.0.0".into(), "library floor of >=18".into(), Some(Range::Npm(">=18".into())))]);
+        assert!(s.notes.is_empty(), "{:?}", s.notes);
     }
 
     #[test]
@@ -1598,7 +1644,8 @@ mod tests {
     #[test]
     fn a_floor_reading_keeps_its_range_and_fits_the_versions_it_admits() {
         // A library's peer range is what its code is written for: `>=18.0.0` describes code run on 19; a locked
-        // version describes only its own release line.
+        // version describes only its own release line. The library's reading is the version the workspace installs
+        // for it (19.2.4), with its range kept.
         let d = tempfile::tempdir().unwrap();
         write(d.path(), "package.json", r#"{"name":"root","private":true,"workspaces":["packages/*"],"devDependencies":{"react":"^19.2.0"}}"#);
         write(d.path(), "packages/ui/package.json", r#"{"name":"ui","version":"1.0.0","main":"i.js","peerDependencies":{"react":">=18.0.0"}}"#);
@@ -1607,7 +1654,7 @@ mod tests {
         let rs = &s.deps["pkg:npm/react"].readings;
         let root = rs.iter().find(|r| r.dir == ".").unwrap();
         let ui = rs.iter().find(|r| r.dir == "packages/ui").unwrap();
-        assert_eq!((root.range.clone(), ui.range.clone(), ui.version.to_string()), (None, Some(Range::Npm(">=18.0.0".into())), "18.0.0".into()));
+        assert_eq!((root.range.clone(), ui.range.clone(), ui.version.to_string()), (None, Some(Range::Npm(">=18.0.0".into())), "19.2.4".into()));
         let v19 = Version::new(19, 2, 4);
         assert!(ui.fits(&v19) && ui.runs(&v19), "the peer range admits 19.2.4");
         assert!(root.fits(&Version::new(19, 0, 0)) && !root.runs(&Version::new(19, 0, 0)), "same line, another version");

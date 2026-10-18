@@ -250,8 +250,8 @@ fn flag_filtered<'l>(hits: &Hits, comps: &BTreeSet<String>, lits: impl IntoItera
     Some(out)
 }
 
-/// Manifests on one version of a package other than the one the outputs use: a workspace with its own lockfile, a
-/// library's declared floor. Only the bump digest and the upgrade review's count are computed for it.
+/// Manifests on one version of a package other than the one the outputs use: a workspace with its own lockfile, an
+/// unlocked manifest's declared floor. Only the bump digest and the upgrade review's count are computed for it.
 #[derive(Debug, Clone)]
 pub struct Workspace<'a> {
     pub component: String,
