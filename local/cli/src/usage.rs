@@ -61,19 +61,20 @@ pub fn cli_flag(lit: &str) -> bool {
     lit.strip_prefix("--").is_some_and(|r| r.starts_with(|c: char| c.is_ascii_alphabetic()))
 }
 
-/// The words that run a package from a command line: its name, a scoped package's scope and name (`@playwright/test`
-/// runs as `playwright`), and the name's first hyphen-separated word (`webpack-cli` as `webpack`, an
-/// `eslint-plugin-*` on an `eslint` line). Lowercase.
+/// The words that run a package from a command line: its name, a scoped package's scope (`@playwright/test` runs as
+/// `playwright`; its name only when one starts with the other, `@biomejs/biome`, since `test` or `cli` is any script's
+/// word), and the name's first hyphen-separated word (`webpack-cli` as `webpack`, an `eslint-plugin-*` on an `eslint`
+/// line). Lowercase.
 pub fn command_words(purl: &str) -> Vec<String> {
     let Some(name) = purl_name(purl) else { return vec![] };
     let name = name.to_ascii_lowercase();
-    let (scope, base) = match name.strip_prefix('@').and_then(|s| s.split_once('/')) {
-        Some((scope, base)) => (Some(scope.to_string()), base.to_string()),
-        None => (None, name.clone()),
+    let words: Vec<String> = match name.strip_prefix('@').and_then(|s| s.split_once('/')) {
+        Some((scope, base)) if scope.starts_with(base) || base.starts_with(scope) => vec![scope.to_string(), base.to_string()],
+        Some((scope, _)) => vec![scope.to_string()],
+        None => vec![name.clone(), name.split('-').next().unwrap_or("").to_string()],
     };
-    let head = base.split('-').next().unwrap_or("").to_string();
     let mut out: Vec<String> = vec![];
-    for w in scope.into_iter().chain([base, head]) {
+    for w in words {
         if w.len() >= 2 && !out.contains(&w) {
             out.push(w);
         }
@@ -701,8 +702,8 @@ pub fn find_with_commands(repo: &Repo, usage_lits: &BTreeSet<String>, whole_lits
         let mut flags: Vec<(usize, BTreeSet<String>)> = vec![];
         for m in ac.find_overlapping_iter(text) {
             let p = m.pattern().as_usize();
-            // A flag is a whole word: `--run` is not in `--runner`, `--runInBand` or `var(--run-data--color)`.
-            if is_flag[p] && wordish(b.get(m.end()).copied()) {
+            // A flag is a whole word: `--run` is not in `--runner`, `--runInBand`, `var(--run-data--color)` or `--custom--run`.
+            if is_flag[p] && (wordish(m.start().checked_sub(1).map(|i| b[i])) || wordish(b.get(m.end()).copied())) {
                 continue;
             }
             if flag_pat[p] {
@@ -856,6 +857,7 @@ mod tests {
             ("package.json", "{\"bench\": \"vitest bench --run\",\n\"x\": \"node s.mjs --runner direct\"}"),
             ("a.vue", "<style>.a { color: var(--run-data--color) }</style>"),
             ("b.css", ".b { --run: 1 }"),
+            ("c.json", "{\"x\": \"vitest --custom--run\"}"),
         ]);
         let h = find_with_commands(&r, &set(&["--run"]), &set(&[]), &set(&["vitest", "node"]));
         assert_eq!(h.usage["--run"], vec!["b.css".to_string(), "package.json".to_string()], "not `--runner` nor `--run-data`");
@@ -863,7 +865,8 @@ mod tests {
         assert_eq!(words[&0], set(&["vitest"]), "package.json: the words of the line holding it");
         assert_eq!(words[&2], set(&[CSS_PROPERTY]));
         assert!(cli_flag("--scope") && cli_flag("--import tsx") && !cli_flag("-webkit-mask") && !cli_flag("--") && !cli_flag("---"));
-        assert_eq!(command_words("pkg:npm/%40playwright/test"), vec!["playwright", "test"]);
+        assert_eq!(command_words("pkg:npm/%40playwright/test"), vec!["playwright"], "`test` is any script's name");
+        assert_eq!(command_words("pkg:npm/%40biomejs/biome"), vec!["biomejs", "biome"]);
         assert_eq!(command_words("pkg:npm/webpack-cli"), vec!["webpack-cli", "webpack"]);
     }
 
