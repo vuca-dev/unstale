@@ -15,9 +15,13 @@
 # calls are cached. Saved after a failed drain or publish too (writes are atomic per file, stale locks are detected
 # by pid, and the model calls a partial run paid for are kept), then the step fails.
 #
-# Single cycle, state saved but nothing acknowledged: when the pipeline failed (no export, as before), or when the run
-# does not deploy (DEPLOY=false: export and verify only). Several unacknowledged cycles would take the same requests
-# twice.
+# Single cycle, state saved but nothing acknowledged: when the run does not deploy (DEPLOY=false: export and verify
+# only). Several unacknowledged cycles would take the same requests twice.
+#
+# A failed pipeline (the catalog technologies' refresh, PIPELINE_OK=false) holds nothing back: the cycles publish as
+# usual and the job still fails on the pipeline step. Holding the deploy protected nothing (the drain wrote the same
+# store, the state was saved and the next run exported it) and only delayed every other technology by a run: in run
+# 39155206031 a classifier refusal on `next` kept 490 starts and 411 registrations unpublished for 140 minutes.
 #
 # State: one generation per save (state-<stamp>-<run>-<attempt>), the newest of each run kept for the newest
 # STATE_KEEP runs, so saving every cycle keeps the same rollback depth as one save a run; a save uploads only what the
@@ -99,7 +103,8 @@ finish() {
 trap finish EXIT
 
 cycles=true
-[ "$PIPELINE_OK" = true ] && [ "$DEPLOY" = true ] || cycles=false
+[ "$DEPLOY" = true ] || cycles=false
+[ "$PIPELINE_OK" = true ] || echo "::warning title=Pipeline failed::The catalog technologies were not refreshed; the drain's cycles publish as usual."
 start="$(date +%s)"
 end=$((start + RUN_MINUTES * 60))
 cycle=0
@@ -124,11 +129,6 @@ while :; do
   fi
   line="$(tail -n 1 "$RUNNER_TEMP/drain.log")"
   log "cycle $cycle drained: $(jq -c '{wall_s, pulled, taken, started, unfinished, drained, held}' <<< "$line")"
-  if [ "$PIPELINE_OK" != true ]; then
-    echo "::warning title=Not published::The pipeline failed; the drained state is saved, nothing is deployed or acknowledged."
-    save_state
-    break
-  fi
   echo "::group::Cycle $cycle: publish"
   ok=true
   publish_tree || ok=false

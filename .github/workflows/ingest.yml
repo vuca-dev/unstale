@@ -250,7 +250,8 @@ jobs:
   # waits in the concurrency group until this one ends.
   continue:
     needs: ingest
-    if: needs.ingest.outputs.continue == 'true'
+    # always(): a run whose pipeline step failed still publishes its cycles, and its work left continues the same way.
+    if: always() && needs.ingest.outputs.continue == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
