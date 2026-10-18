@@ -598,7 +598,7 @@ fn regenerate(ctx: &Ctx, w: &World, out: &Outcome, state: &mut State, passes: &[
         };
         if !view.in_effect.is_empty() {
             let n = view.in_effect.len();
-            what = format!("{n} {} in effect now (no upgrade needed); {what}", if n == 1 { "deprecation" } else { "deprecations" });
+            what = format!("{n} {} in effect now (at the installed version); {what}", if n == 1 { "deprecation" } else { "deprecations" });
         }
         if !only_existing {
             println!("{}: {what} → {} ({})", p.name(), rel(ctx, &path), if written { "written" } else { "unchanged" });

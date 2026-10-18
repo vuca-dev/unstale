@@ -5,7 +5,7 @@ use semver::Version;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::rc::Rc;
-use unstale_schema::catalog::{Benefit, ChangeType, Release, Surface};
+use unstale_schema::catalog::{Benefit, ChangeType, IndexRelease, Release, Surface};
 use unstale_schema::ledger::Ledger;
 
 use crate::cache::{Catalog, Rec, TechData};
@@ -13,7 +13,12 @@ use crate::ledgerops::{status_name, withholds};
 use crate::lines::Lines;
 use crate::stack::{Dep, Reading, Stack, place};
 use crate::usage::{self, Hits, Repo, clean_lit};
-use crate::util::{normalize_purl, parse_version, purl_name};
+use crate::util::{normalize_purl, parse_date, parse_version, purl_name};
+
+/// How long before the installed version an opt-in from an older release line becomes part of that version's baseline
+/// (`Route::Baseline`): a year. Majors come every few weeks for some technologies (electron) and every few years for
+/// others (jsdom), so a count of lines cannot say what is still new; time can.
+const BASELINE_DAYS: i64 = 365;
 
 /// The share of its rarity weight a literal keeps when every file it matched is outside the technology's
 /// application code (tests, tooling, docs, examples; roles per `usage::Repo::role_for`).
@@ -40,6 +45,13 @@ pub enum Route {
     NoBenefit,
     /// Opt-in, arrives with an upgrade: the improvements pass sees it once the project is on that version.
     OptInAfterBump,
+    /// Opt-in and installed, but released on an older line than the installed one and at least `BASELINE_DAYS` before
+    /// the installed version (jsdom 6.3.0's `window.atob` at 23.0.1): part of what the installed version is, which
+    /// every user of it has, not something new to adopt (`baseline`).
+    Baseline,
+    /// Opt-in and installed, but its `requires` (a package, driver or setting the change applies to) is nowhere in the
+    /// repository: nothing here to apply it to (knip's Stencil support without `@stencil/core`).
+    RequiresAbsent,
     /// A deprecation released at or below the installed version whose deprecated API (`replaces`) the code still
     /// uses, by the usage rules: outstanding now, with no upgrade (`in_effect_evidence`).
     InEffect,
@@ -194,6 +206,50 @@ fn hits_without<'l>(hits: &Hits, lits: impl IntoIterator<Item = &'l String>, off
     h
 }
 
+/// `hits` for one technology when one of its CLI-flag literals (`usage::cli_flag`) occurs in a file only off a command
+/// line that runs it (no word of `usage::command_words` on the flag's line, and not a CSS custom property): those files
+/// are dropped from the flag's hits. `None` when every flag hit stands, so the shared hits serve as they are.
+fn flag_filtered<'l>(hits: &Hits, comps: &BTreeSet<String>, lits: impl IntoIterator<Item = &'l String>, paths: &[String]) -> Option<Hits> {
+    let words: BTreeSet<String> = comps.iter().flat_map(|c| usage::command_words(c)).collect();
+    let lits: BTreeSet<&String> = lits.into_iter().collect();
+    // `paths` is sorted (`Repo::collect`), so a whole-token hit's path finds its index.
+    let runs = |l: &str, p: &str| {
+        let Ok(x) = paths.binary_search_by(|q| q.as_str().cmp(p)) else { return true };
+        hits.flag_lines.get(l).and_then(|f| f.get(&(x as u32))).is_none_or(|ws| ws.iter().any(|w| w == usage::CSS_PROPERTY || words.contains(w)))
+    };
+    let drop: BTreeMap<&String, std::collections::HashSet<&str>> = lits
+        .iter()
+        .copied()
+        .filter(|l| usage::cli_flag(l))
+        .filter_map(|l| {
+            let files = hits.usage.get(l).into_iter().chain(hits.whole.get(l)).flatten();
+            let bad: std::collections::HashSet<&str> = files.map(String::as_str).filter(|p| !runs(l, p)).collect();
+            (!bad.is_empty()).then_some((l, bad))
+        })
+        .collect();
+    if drop.is_empty() {
+        return None;
+    }
+    // Every literal the technology reads, and the ones naming its packages, copied; the flags without the dropped files.
+    let naming: BTreeSet<String> = comps.iter().flat_map(|c| usage::naming_lits(c)).collect();
+    let mut out = hits_without(hits, lits.iter().copied().chain(&naming), &vec![false; paths.len()], paths);
+    for (l, bad) in drop {
+        if let Some(v) = out.usage.get_mut(l) {
+            v.retain(|p| !bad.contains(p.as_str()));
+        }
+        if let Some(v) = out.whole.get_mut(l) {
+            v.retain(|p| !bad.contains(p.as_str()));
+        }
+        if let Some(v) = out.ix.get_mut(l) {
+            v.retain(|x| paths.get(*x as usize).is_none_or(|p| !bad.contains(p.as_str())));
+        }
+    }
+    out.usage.retain(|_, v| !v.is_empty());
+    out.whole.retain(|_, v| !v.is_empty());
+    out.ix.retain(|_, v| !v.is_empty());
+    Some(out)
+}
+
 /// Manifests on one version of a package other than the one the outputs use: a workspace with its own lockfile, a
 /// library's declared floor. Only the bump digest and the upgrade review's count are computed for it.
 #[derive(Debug, Clone)]
@@ -251,14 +307,54 @@ pub fn deprecated_lits(r: &Rec, lits: &[String]) -> Vec<String> {
 
 /// Opt-in: an adoption step is needed. The adoption list also names `configuration` and `schema_or_migration`, which are
 /// surfaces, not change types; they adopt anyway.
+///
+/// Not opt-in: a runtime-internal change, and the tool's own behaviour, a tooling change to its build or configuration
+/// handling (knip detecting custom elements, a Vite 8 peer range, TypeScript 6 support) or a stability change to it:
+/// every user of that version gets it, with nothing to write. Of 60 such records sampled from the catalog (17 October
+/// 2026), 58 were support, compatibility or detection the tool applies itself.
 pub fn is_opt_in(r: &Rec) -> bool {
     !is_obligation(r)
         && matches!(r.r.change_type, ChangeType::NewApi | ChangeType::NewOption | ChangeType::StabilityChange | ChangeType::Tooling | ChangeType::Other)
         && r.r.surface != Surface::RuntimeInternal
+        && !tool_behaviour(r)
+}
+
+/// A tooling change to the tool's build or configuration handling, or a stability change to its build (`is_opt_in`).
+fn tool_behaviour(r: &Rec) -> bool {
+    matches!(
+        (r.r.change_type, r.r.surface),
+        (ChangeType::Tooling, Surface::BuildTooling | Surface::Configuration) | (ChangeType::StabilityChange, Surface::BuildTooling)
+    )
 }
 
 fn line_of(v: &Version) -> String {
     if v.major > 0 { v.major.to_string() } else { format!("0.{}", v.minor) }
+}
+
+/// Whether `v` is on a release line older than `installed`'s (major, or minor on 0.x).
+fn older_line(v: &Version, installed: &Version) -> bool {
+    v.major < installed.major || (v.major == 0 && installed.major == 0 && v.minor < installed.minor)
+}
+
+/// An opt-in the installed version has had as a given (`Route::Baseline`): released on an older line, and at least
+/// `BASELINE_DAYS` before the installed version. Dates come from the release, else the tech index; a date or version
+/// that cannot be read keeps the record (fail open). The installed version's date is its own index entry's, else the
+/// newest release at or below it (a floor between releases).
+fn baseline(release: &Release, installed: &Version, index: &[IndexRelease]) -> bool {
+    let Some(v) = parse_version(&release.version) else { return false };
+    if !older_line(&v, installed) {
+        return false;
+    }
+    // The newest index release at or below `want`, and whether it is `want` itself.
+    let at_or_below = |want: &Version| {
+        index.iter().filter_map(|r| parse_version(&r.version).map(|x| (x, r))).filter(|(x, _)| x <= want).max_by(|a, b| a.0.cmp(&b.0))
+    };
+    let released = parse_date(&release.date).or_else(|| at_or_below(&v).filter(|(x, _)| *x == v).and_then(|(_, r)| parse_date(&r.date)));
+    let installed_on = at_or_below(installed).and_then(|(_, r)| parse_date(&r.date));
+    match (released, installed_on) {
+        (Some(r), Some(i)) => i - r >= BASELINE_DAYS,
+        _ => false,
+    }
 }
 
 /// Whether a record is in the installed version, in an upgrade from it, or in neither (`Avail`).
@@ -404,9 +500,15 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
         .flat_map(|(_, _, tl)| tl.usage.iter().cloned().chain(tl.comps.iter().flat_map(|c| usage::naming_lits(c))))
         .collect();
     let whole_lits: BTreeSet<String> = in_stack.iter().flat_map(|(_, _, tl)| tl.whole.iter().cloned()).collect();
-    let hits: Hits = usage::find(inp.repo, &usage_lits, &whole_lits);
+    // The words that run each technology from a command line, for its CLI-flag literals (`usage::cli_flag`).
+    let commands: BTreeSet<String> = in_stack.iter().flat_map(|(_, _, tl)| tl.comps.iter().flat_map(|c| usage::command_words(c))).collect();
+    let all_hits: Hits = usage::find_with_commands(inp.repo, &usage_lits, &whole_lits, &commands);
     for (tech, td, tl) in &in_stack {
         let (tech, comps, lits) = (*tech, &tl.comps, &tl.per_record);
+        // A CLI flag counts only on a command line that runs this technology: `--scope` in another CLI's help text or
+        // a `claude mcp add --scope` string is not turbo's flag.
+        let flagged = flag_filtered(&all_hits, comps, tl.usage.iter().chain(&tl.whole), &inp.repo.paths);
+        let hits: &Hits = flagged.as_ref().unwrap_or(&all_hits);
         let present: Vec<&String> = comps.iter().filter(|c| purls.contains(*c)).collect();
         // Packages that declare this technology: a file's role is judged inside the deepest one containing it.
         let owners: Vec<&str> = inp.stack.packages.iter().filter(|p| p.declared.iter().any(|d| comps.contains(&normalize_purl(d)))).map(|p| p.dir.as_str()).collect();
@@ -424,7 +526,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
         // Only files that can use this technology evidence it, and a plain word only where it is named (`usage::Scope`).
         let ecosystem = comps.iter().find_map(|c| c.strip_prefix("pkg:").and_then(|r| r.split('/').next())).unwrap_or("npm").to_string();
         let scope_lits = || tl.usage.iter().chain(&tl.whole);
-        let all = usage::Scope::new(&ecosystem, &owners, comps, scope_lits(), &hits, &inp.repo.paths);
+        let all = usage::Scope::new(&ecosystem, &owners, comps, scope_lits(), hits, &inp.repo.paths);
         // Per package: the version the outputs use, from the code that imports it (`Choice`).
         let choices: BTreeMap<&String, Choice> = present
             .iter()
@@ -472,11 +574,11 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
         } else {
             let naming: BTreeSet<String> = comps.iter().flat_map(|c| usage::naming_lits(c)).collect();
             let lits: BTreeSet<&String> = scope_lits().chain(&naming).collect();
-            masks.iter().map(|m| hits_without(&hits, lits.iter().copied(), &m.iter().map(Option::is_some).collect::<Vec<_>>(), &inp.repo.paths)).collect()
+            masks.iter().map(|m| hits_without(hits, lits.iter().copied(), &m.iter().map(Option::is_some).collect::<Vec<_>>(), &inp.repo.paths)).collect()
         };
         let mut scopes = vec![all];
         scopes.extend(filtered.iter().map(|f| usage::Scope::new(&ecosystem, &owners, comps, scope_lits(), f, &inp.repo.paths)));
-        let hits_of = |v: usize| if v == 0 { &hits } else { &filtered[v - 1] };
+        let hits_of = |v: usize| if v == 0 { hits } else { &filtered[v - 1] };
         // Per view and literal, the manifests left out whose code importing the technology it matches (`Opp::elsewhere`).
         let elsewhere: Memo<Rc<BTreeSet<u16>>> = RefCell::default();
         let elsewhere_of = |v: usize, l: &str| -> Rc<BTreeSet<u16>> {
@@ -778,6 +880,16 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                     }
                 }
                 opp.benefits = b;
+                // The improvements pass offers what the code could newly adopt: not an older line's long-standing API,
+                // nor a change for a package or setting the repository does not have. Asked last, so the ledger,
+                // applied and benefit routes stay as they were.
+                if opp.route == Route::ImprovementsPass {
+                    if baseline(release, &installed, &td.index.releases) {
+                        opp.route = Route::Baseline;
+                    } else if requires_miss {
+                        opp.route = Route::RequiresAbsent;
+                    }
+                }
             } else {
                 let mut b = rec.r.benefit.clone();
                 b.sort_by_key(benefit_rank);
@@ -945,6 +1057,8 @@ pub fn why(out: &Outcome, routes: &[&str]) -> String {
             Route::Applied => "already applied in the code",
             Route::NoBenefit => "opt-in with no benefit that counts here (benefit `none`; available on request)",
             Route::OptInAfterBump => "opt-in, available after an upgrade",
+            Route::Baseline => "opt-in from an older release line, a year or more before the installed version (part of it, nothing new to adopt)",
+            Route::RequiresAbsent => "opt-in for a package or setting this repository does not have (its `requires` is not found)",
             Route::InEffect => IN_EFFECT,
             Route::AlreadyIncluded => "already in the installed version with nothing to adopt",
             Route::BeyondTarget => "released after the target version",
@@ -1697,5 +1811,120 @@ mod tests {
         let out = run_with(&c, &s, &r, &l);
         // Scores: mw-a and other tie on one rare match (id order puts mw-a first); mw-b has none, but follows its sibling.
         assert_eq!(ids(&out, &out.upgrade), vec!["next:mw-a", "next:mw-b", "next:other"]);
+    }
+
+    #[test]
+    fn the_improvements_pass_leaves_out_an_older_lines_long_standing_api() {
+        // n8n-io/n8n: jsdom 23.0.1 was offered jsdom 6.3.0's `window.atob` and 16.0.0's `Comment` constructor.
+        let mut c = catalog(
+            "jsdom",
+            0,
+            vec![
+                with(rec("jsdom:atob", "pkg:npm/jsdom", "6.3.0"), json!({"benefit":["correctness"],"releases":[{"component":"pkg:npm/jsdom","version":"6.3.0","date":"2015-08-30","line":"6"}]})),
+                // An older line, but within a year of the installed version: still new to adopt (electron, vitest majors).
+                with(rec("jsdom:recent", "pkg:npm/jsdom", "22.1.0"), json!({"releases":[{"component":"pkg:npm/jsdom","version":"22.1.0","date":"2023-06-01","line":"22"}]})),
+                // The installed line, however old.
+                with(rec("jsdom:same", "pkg:npm/jsdom", "23.0.0"), json!({"releases":[{"component":"pkg:npm/jsdom","version":"23.0.0","date":"2023-11-01","line":"23"}]})),
+                rec("jsdom:newest", "pkg:npm/jsdom", "24.0.0"),
+            ],
+        );
+        let idx = |v: &str, d: &str, l: &str, s: bool| unstale_schema::catalog::IndexRelease { version: v.into(), date: d.into(), line: l.into(), line_start: s };
+        c.techs.get_mut("jsdom").unwrap().index.releases = vec![
+            idx("6.3.0", "2015-08-30", "6", true),
+            idx("22.1.0", "2023-06-01", "22", true),
+            idx("23.0.0", "2023-11-01", "23", true),
+            idx("23.0.1", "2023-11-30", "23", false),
+            idx("24.0.0", "2024-02-01", "24", true),
+        ];
+        let (r, l) = (repo(&[]), Ledger::default());
+        let s = stack(&[("jsdom", "23.0.1")], None);
+        let out = run_with(&c, &s, &r, &l);
+        assert_eq!(route_of(&out, "jsdom:atob"), &Route::Baseline);
+        assert_eq!(ids(&out, &out.improvements), vec!["jsdom:recent", "jsdom:same"]);
+        assert!(why(&out, &[]).contains("1 opt-in from an older release line"), "{}", why(&out, &[]));
+        // Without a date for the installed version the record stays (fail open).
+        for x in c.techs.get_mut("jsdom").unwrap().index.releases.iter_mut().filter(|x| x.version == "23.0.1") {
+            x.date = String::new();
+        }
+        let out = run_with(&c, &s, &r, &l);
+        assert_eq!(route_of(&out, "jsdom:atob"), &Route::ImprovementsPass);
+    }
+
+    #[test]
+    fn the_improvements_pass_leaves_out_an_opt_in_whose_requires_is_absent() {
+        // n8n-io/n8n: knip's Stencil support took a batch slot with "Requires `@stencil/core` (not found)".
+        let c = catalog(
+            "knip",
+            0,
+            vec![
+                with(rec("knip:stencil", "pkg:npm/knip", "6.16.0"), json!({"change_type":"new_option","requires":["@stencil/core"],"terms":[["knip.ts",0]]})),
+                rec("knip:newest", "pkg:npm/knip", "6.40.0"),
+            ],
+        );
+        let (s, l) = (stack(&[("knip", "6.35.1")], None), Ledger::default());
+        let r = repo(&[("knip.ts", "export default {}")]);
+        let out = run_with(&c, &s, &r, &l);
+        assert_eq!(route_of(&out, "knip:stencil"), &Route::RequiresAbsent);
+        assert!(out.improvements.is_empty());
+        let r = repo(&[("package.json", r#"{"dependencies":{"@stencil/core":"4.0.0"}}"#)]);
+        let out = run_with(&c, &s, &r, &l);
+        assert_eq!(route_of(&out, "knip:stencil"), &Route::ImprovementsPass);
+    }
+
+    #[test]
+    fn the_tools_own_build_and_configuration_handling_is_not_opt_in() {
+        let t = |id: &str, ct: &str, surface: &str, v: &str| with(rec(id, "pkg:npm/knip", v), json!({"change_type": ct, "surface": surface}));
+        let c = catalog(
+            "knip",
+            0,
+            vec![
+                t("knip:custom-elements", "tooling", "build_tooling", "6.16.0"),
+                t("knip:orval", "tooling", "configuration", "6.15.0"),
+                t("knip:rust-builds", "stability_change", "build_tooling", "6.15.0"),
+                t("knip:vite8", "tooling", "build_tooling", "6.40.0"),
+                // A new command or flag is still adopted by whoever runs it.
+                t("knip:new-command", "tooling", "command_line", "6.16.0"),
+                rec("knip:newest", "pkg:npm/knip", "6.40.0"),
+            ],
+        );
+        let (s, r, l) = (stack(&[("knip", "6.35.1")], None), repo(&[]), Ledger::default());
+        let out = run_with(&c, &s, &r, &l);
+        for id in ["knip:custom-elements", "knip:orval", "knip:rust-builds"] {
+            assert_eq!(route_of(&out, id), &Route::AlreadyIncluded, "{id}");
+        }
+        assert_eq!(route_of(&out, "knip:vite8"), &Route::BumpDigest, "arrives with the bump, nothing to adopt");
+        assert_eq!(route_of(&out, "knip:new-command"), &Route::ImprovementsPass);
+    }
+
+    #[test]
+    fn a_cli_flag_counts_only_on_a_command_line_that_runs_the_technology() {
+        // n8n-io/n8n: turbo's deprecated `--scope` matched n8n's own CLI help and `claude mcp add --scope` strings.
+        let c = catalog(
+            "turbo",
+            0,
+            vec![
+                with(rec("turbo:prune-scope", "pkg:npm/turbo", "2.8.17"), json!({"change_type":"deprecation","replaces":["--scope"],"terms":[["--scope",0],["turbo prune",0]]})),
+                with(rec("turbo:json", "pkg:npm/turbo", "2.9.0"), json!({"change_type":"new_option","introduces":["--json-logs"]})),
+                rec("turbo:newest", "pkg:npm/turbo", "2.12.0"),
+            ],
+        );
+        let (s, l) = (stack(&[("turbo", "2.11.4")], None), Ledger::default());
+        let other = repo(&[
+            ("src/cli/list.ts", "const usage = 'promotion-connection list --scope=instance';"),
+            ("src/setup.test.ts", "expect(cmd).toBe('claude mcp add --scope user');\nconst x = 'tool --json-logs';"),
+            ("src/style.css", ":root { --scope: 1px; }"),
+        ]);
+        let out = run_with(&c, &s, &other, &l);
+        assert_eq!(route_of(&out, "turbo:prune-scope"), &Route::AlreadyIncluded, "no turbo command line uses it");
+        assert_eq!(route_of(&out, "turbo:json"), &Route::ImprovementsPass, "another tool's flag does not apply it");
+        let runs = repo(&[(
+            "package.json",
+            "{\"devDependencies\": {\"turbo\": \"2.11.4\"},\n\"scripts\": {\"prune\": \"pnpm turbo prune --scope=api --docker\", \"build\": \"turbo run build \\\\\n --json-logs\"}}",
+        )]);
+        let out = run_with(&c, &s, &runs, &l);
+        assert_eq!(ids(&out, &out.in_effect), vec!["turbo:prune-scope"]);
+        let o = out.opps.iter().find(|o| o.id() == "turbo:prune-scope").unwrap();
+        assert_eq!(o.matched, vec![("--scope".to_string(), vec!["package.json".to_string()])]);
+        assert_eq!(route_of(&out, "turbo:json"), &Route::Applied, "a continued command line counts");
     }
 }
