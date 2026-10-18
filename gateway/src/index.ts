@@ -21,6 +21,9 @@
 //                               run's cycle publishes: a held package's records are `records_pending` until then,
 //                               never `records`, which counts only what the catalog has); with
 //                               `budget.spent_until`, until when central's budget is spent (no early run until then);
+//                               a package the run took and has not started is `waiting`, with its place in the run's
+//                               queue and `starts_at`, when the run is estimated to reach it, the one place a client
+//                               is shown;
 //                               with `pulls.next`, when the run reads the queue again (no early run while it does;
 //                               null: it is done, and an early run held back meanwhile starts)
 // Only the public identity of a package is accepted; no repository context, and no client address is stored.
@@ -185,31 +188,40 @@ async function registered(purl: string): Promise<boolean> {
 /**
  * A held package as a job, in the coverage service's format. While a run has it, `run` says where (and the job's
  * counters are the run's), so a client can follow it until its published status replaces this answer.
+ *
+ * One place: a run that took the package reports its place in the run's own queue (in its line, by demand) and when
+ * the run is estimated to reach it (`starts_at`, from measured throughput, as `publish_by` says when a cycle
+ * publishes); that is what a client is shown. Before a run takes it, no place: the gateway's own order is only how it
+ * holds requests, and the run places each by demand when it pulls (every few minutes while one is in progress, and
+ * every request held at once).
  */
 function queued(purl: string, at: View, now = Date.now()) {
   const { run } = at;
-  const place = `position ${at.position} of ${at.length}`;
   // While the budget is spent no run takes it, so the next run that can is the first scheduled after the reset.
   const spent = at.spentUntil !== undefined && at.spentUntil > now ? at.spentUntil : undefined;
-  // A run working the queue takes a new request at its next pull (a late pull reads as now).
+  // A run working the queue takes every held request at its next pull (a late pull reads as now).
   const pulls = at.pullsNext !== undefined && !spent ? new Date(Math.max(at.pullsNext, now)) : undefined;
   const next = pulls ?? nextScheduled(spent ?? now);
+  // Taken by the run in progress: its place and estimate are the run's.
+  const waiting: Partial<Progress> | undefined = run?.state === "waiting" ? (run.job ?? {}) : undefined;
+  const startsAt = waiting?.starts_at;
   const stage = (() => {
     switch (run?.state) {
       case "dispatched":
-        return `Queued (${place}); a coverage run is starting and takes it if it is next`;
+        return "A coverage run is starting; it takes this package and places it by demand";
+      case "waiting":
+        return run.job?.stage || "Taken by the coverage run in progress; waiting for a coverage worker";
       case "running":
         return run.job?.stage ?? "A coverage run is working it";
       case "publishing":
         return "Analysed; the coverage run is publishing the catalog";
-      case "declined":
-        return pulls !== undefined
-          ? `Another package is ahead (${place}); the coverage run in progress takes new requests at about ${clock(pulls)}`
-          : `Another package is ahead (${place}); waiting for the scheduled run at ${clock(next)}`;
       default:
+        // `declined` (no run sends it any more) reads as not taken yet.
         if (spent)
-          return `Waiting for the coverage budget, spent until ${new Date(spent).toISOString().slice(0, 10)} ${clock(new Date(spent))} (${place}); the next run that can take it is at ${clock(next)}`;
-        return pulls !== undefined ? `Queued (${place}); the coverage run in progress takes new requests at about ${clock(pulls)}` : `Waiting for the next coverage run (${place})`;
+          return `Waiting for the coverage budget, spent until ${new Date(spent).toISOString().slice(0, 10)} ${clock(new Date(spent))}; the next run that can take it is at ${clock(next)}`;
+        return pulls !== undefined
+          ? `Registered; the coverage run in progress takes it at its next pull, at about ${clock(pulls)}, and places it by demand`
+          : `Waiting for the next coverage run, at ${clock(next)}`;
     }
   })();
   // A job the run finished is not published until the deploy: still in progress to a client.
@@ -225,7 +237,8 @@ function queued(purl: string, at: View, now = Date.now()) {
     stage,
     // Central's own time of the job's last save when the run sent it, the clock its published status uses too, so a
     // client can order the answers it gets for one job.
-    updated: job?.updated ?? new Date(run?.updated ?? now).toISOString(),
+    // A waiting package's: the time of the run's estimate, on the same clock.
+    updated: (job ?? waiting)?.updated ?? new Date(run?.updated ?? now).toISOString(),
     // Nothing a run reports is in the catalog before its cycle publishes: none of its records can be synced yet.
     records: 0,
     ...(job?.records && { records_pending: job.records }),
@@ -235,11 +248,12 @@ function queued(purl: string, at: View, now = Date.now()) {
     docs_done: job?.docs_done ?? 0,
     docs_total: job?.docs_total ?? 0,
     docs_failed: 0,
-    queue_position: at.position,
-    queue_length: at.length,
-    next_run: next.toISOString(),
+    ...(waiting?.queue_position && { queue_position: waiting.queue_position, queue_length: waiting.queue_length ?? waiting.queue_position }),
+    // Waiting in a run: when the run is estimated to reach it (none before the run has measured its throughput).
+    // Otherwise when a run next takes requests: the pull of the run in progress, or a scheduled start.
+    ...(waiting ? startsAt && { next_run: startsAt, starts_at: startsAt } : { next_run: next.toISOString() }),
     // `next_run` is when the run in progress next reads the queue, not a scheduled start.
-    ...(pulls !== undefined && { next_run_pull: true }),
+    ...(!waiting && pulls !== undefined && { next_run_pull: true }),
     ...(run && {
       run: {
         state: run.state,
@@ -277,6 +291,8 @@ function progressOf(body: unknown): { purl: string; state: RunState; job?: Progr
                 docs_total: count(job.docs_total),
                 ...(isoTime(job.updated) && { updated: job.updated as string }),
                 ...(isoTime(job.publish_by) && { publish_by: job.publish_by as string }),
+                ...(count(job.queue_position) && { queue_position: count(job.queue_position), queue_length: count(job.queue_length) }),
+                ...(isoTime(job.starts_at) && { starts_at: job.starts_at as string }),
               },
             }
           : {}),

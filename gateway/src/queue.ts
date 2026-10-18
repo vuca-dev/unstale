@@ -36,13 +36,15 @@
 //   a run's pulls        0/1 (`pulls_next`, each pull; `fast_held` once while it pulls; none for an unchanged value)
 // Worst case a day at the defaults, every limit reached all day:
 //   written: new 500/h × 24 × 2 = 24,000; counted votes 1,500/h × 24 = 36,000; runs' progress ≤ 100 packages worked
-//   a day (central's UNSTALE_NEW_PER_DAY) × (3 states + 150 min / 10) ≈ 1,800; acknowledgements ≤ 32 runs ×
+//   a day (central's UNSTALE_NEW_PER_DAY) × (3 states + 150 min / 10) ≈ 1,800; a pulled package's `waiting` once
+//   (each pull's report writes ≤ BUCKETS, and a package enters it once: ≤ min(new 12,000, 288 pulls × 64) = 12,000,
+//   never rewritten while it waits); acknowledgements ≤ 32 runs ×
 //   (BUCKETS + 1) ≈ 2,100 (an acknowledgement per cycle since 18 October 2026: one per publish of a run, at most about
 //   one every 15 minutes, so ≤ 96 × 65 ≈ 6,200); a run's pulls ≤ 1 every 5 minutes = 288; usage kept ≤ 1 a 45 s =
-//   1,920; budget and early runs ≤ 60. About 70,000 of 100,000.
+//   1,920; budget and early runs ≤ 60. About 82,000 of 100,000.
 //   read: about one per vote or new package (≈ 48,000), plus a wake at most every 70 s (an object is evicted only
 //   after that long idle) × 72 ≈ 89,000; status reads and `/internal/queue` none. About 140,000 of 5,000,000.
-// So NEW_PER_HOUR (500) and COUNTED_VOTES_PER_HOUR (1,500) bound the day: rows written ≈ 2 × NEW_PER_HOUR × 24 +
+// So NEW_PER_HOUR (500) and COUNTED_VOTES_PER_HOUR (1,500) bound the day: rows written ≈ 3 × NEW_PER_HOUR × 24 +
 // COUNTED_VOTES_PER_HOUR × 24 + ~6,000. Only deliberate abuse beyond those (it cannot pass them) or raised settings
 // can spend the allowance. MAX_PENDING bounds memory and bucket size, not rows.
 import { AddressLimiter, Voters, type Refusal } from "../../central/src/onboarding/requesters.ts";
@@ -107,9 +109,10 @@ export interface Request {
   demand: number;
 }
 
-/** Where a coverage run is with a held package: started early for it, working it, publishing it, or not taking it. */
-export type RunState = "dispatched" | "running" | "publishing" | "declined";
-export const RUN_STATES: readonly RunState[] = ["dispatched", "running", "publishing", "declined"];
+/** Where a coverage run is with a held package: started early for it, took it and has it waiting in its queue (at the
+ * place and estimate it reports), working it, publishing it, or not taking it. */
+export type RunState = "dispatched" | "waiting" | "running" | "publishing" | "declined";
+export const RUN_STATES: readonly RunState[] = ["dispatched", "waiting", "running", "publishing", "declined"];
 
 /** The public counters of a job a run reports while it works a package (central's Job, same names). */
 export interface Progress {
@@ -124,6 +127,11 @@ export interface Progress {
   updated?: string;
   /** When the run's current cycle publishes, at the latest (ISO 8601): the records it counts are in the catalog then. */
   publish_by?: string;
+  /** Waiting: its place in the run's queue (in its line, by demand) and when the run is estimated to start it (ISO
+   * 8601, from the run's measured throughput and cycles; absent before it has measured any). */
+  queue_position?: number;
+  queue_length?: number;
+  starts_at?: string;
 }
 
 export interface Run {
@@ -657,7 +665,10 @@ export class PendingQueue {
           if (u.job?.updated && prev?.job?.updated && u.job.updated < prev.job.updated) continue;
           const job = u.job ?? prev?.job;
           const next: Entry = { ...e, run: { state: u.state, since: prev?.since ?? now, updated: now, ...(job ? { job } : {}) } };
-          if (!prev || prev.state !== u.state || now - (this.runSaved.get(u.purl) ?? 0) >= RUN_SAVE_MS) this.put(u.purl, next);
+          // A waiting package's place moves with every start and is reported every few minutes: kept in memory, written
+          // only when it starts waiting (after a restart of the object the next report brings the place back).
+          const resave = u.state !== "waiting" && now - (this.runSaved.get(u.purl) ?? 0) >= RUN_SAVE_MS;
+          if (!prev || prev.state !== u.state || resave) this.put(u.purl, next);
           else line.set(u.purl, next);
         }
         this.commit();

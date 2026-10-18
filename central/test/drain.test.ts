@@ -405,7 +405,7 @@ test("a pulled package is reported once its run started it, between slices too, 
     ({ purl: "pkg:pypi/a", technology: "a", name: "a", state, stage: "s", updated: "2026-10-18T15:59:53.037Z", records: 0, releases_done: 0, releases_total: 10, docs_done: 0, docs_total: 0, docs_failed: 0, ...extra }) as never;
   const by = "2026-10-18T16:17:00.000Z";
   const service = (j: unknown, working = false) => ({ jobs: new Map([["pkg:pypi/a", j as never]]), working: () => working });
-  // Pulled, not started: its place in the queue is the gateway's to show.
+  // Pulled, not started, and not waiting in the drain's queue (no place given): nothing to report.
   expect(progressOf(service(job("queued")), "pkg:pypi/a", by)).toBeUndefined();
   expect(progressOf(service(job("analyzing"), true), "pkg:pypi/a", by)).toMatchObject({ state: "running", job: { updated: "2026-10-18T15:59:53.037Z", publish_by: by } });
   // Queued again after a slice: still this run's, with what it extracted so far.
@@ -416,6 +416,128 @@ test("a pulled package is reported once its run started it, between slices too, 
   const host = job("analyzing", { purl: "pkg:pypi/host", records: 7 });
   const merged = { jobs: new Map([["pkg:pypi/a", job("queued", { merged_into: "pkg:pypi/host" })], ["pkg:pypi/host", host]]), working: (p: string) => p === "pkg:pypi/host" };
   expect(progressOf(merged, "pkg:pypi/a", by)).toMatchObject({ purl: "pkg:pypi/a", state: "running", job: { records: 7 } });
+});
+
+test("an estimate is the place over its line's rate inside the window, and adds a cycle's gap per window it spans", async () => {
+  const { startsAt, clockText } = await import("../src/onboarding/eta.ts");
+  const min = 60_000;
+  const c = { windowEnd: 10 * min, gapMs: 8 * min, windowMs: 15 * min, cycleGapMs: 8 * min };
+  // 2 starts a minute: the 10th starts 5 minutes from now, inside the window.
+  expect(startsAt(0, 10, 2, c)).toBe(5 * min);
+  // The 30th needs 15 minutes of starts: 10 in this window, then the gap, then 5 in the next.
+  expect(startsAt(0, 30, 2, c)).toBe((10 + 8 + 5) * min);
+  // The 60th: this window (10), the gap, a full window (15) and its gap, then 5 more.
+  expect(startsAt(0, 60, 2, c)).toBe((10 + 8 + 15 + 8 + 5) * min);
+  // Exactly a window's worth past this one: the last start of the next window, not the start of the one after.
+  expect(startsAt(0, 50, 2, c)).toBe((10 + 8 + 15) * min);
+  // Asked after the window (a drain's end): the next window starts after the gap.
+  expect(startsAt(12 * min, 1, 1, c)).toBe((12 + 8 + 1) * min);
+  // No rate measured: no estimate.
+  expect(startsAt(0, 1, undefined, c)).toBeUndefined();
+  expect(startsAt(0, 1, 0, c)).toBeUndefined();
+  expect(clockText(Date.parse("2026-10-18T17:40:00Z"), Date.parse("2026-10-18T17:00:00Z"))).toBe("17:40 UTC");
+  expect(clockText(Date.parse("2026-10-19T01:10:00Z"), Date.parse("2026-10-18T17:00:00Z"))).toBe("2026-10-19 01:10 UTC");
+});
+
+test("a monitored technology waiting for its refresh takes a place in its line but is shown none", () => {
+  const service = new CoverageService(0, { limits: limits() });
+  const nx = service.submit("pkg:npm/nx");
+  nx.state = "monitoring";
+  nx.stage = "639 verified records; documentation coverage partial (702/796 pages)";
+  nx.retry_at = new Date(Date.now() - 1000).toISOString();
+  const later = service.submit("pkg:npm/later");
+  later.admitted = "maintained and used";
+  later.completed = ["1.0.0"];
+  const byPurl = Object.fromEntries(service.statuses().map((s) => [s.purl, s]));
+  expect(byPurl["pkg:npm/nx"]).not.toHaveProperty("queue_position");
+  expect(byPurl["pkg:npm/nx"]!.stage).toBe("639 verified records; documentation coverage partial (702/796 pages)");
+  expect(byPurl["pkg:npm/later"]).toMatchObject({ queue_position: 2, queue_length: 2 });
+  // A failed job due for its retry: the place is the retry's, after the failure it names.
+  const failed = service.submit("pkg:npm/failed");
+  failed.state = "failed";
+  failed.stage = "HTTP 500";
+  failed.retry_at = new Date(Date.now() - 1000).toISOString();
+  expect(service.publicStatus(failed).stage).toBe("HTTP 500 (retry: position 1 of 1 new technologies)");
+});
+
+test("in a drain a waiting job is told when the run reaches it, from its line's rate; without a rate, its place only", async () => {
+  // Discovery that does not finish until released: the one slot stays taken, the rest wait.
+  let release: () => void = () => {};
+  const held = new Promise<void>((r) => (release = r));
+  vi.spyOn(discovery, "discoverTechnology").mockImplementation(async (purl) => {
+    await held;
+    return { discovery_version: discovery.DISCOVERY_VERSION, purl, id: discovery.technologyId(purl), name: discovery.packageIdentity(purl), latest: "1.0.0", tag: "^v?(\\d+\\.\\d+\\.\\d+)$", components: [purl] };
+  });
+  const service = new CoverageService(1, { limits: limits() }).hold();
+  service.enqueue(["a", "b", "c"].map((n, i) => ({ purl: `pkg:npm/${n}`, demand: 3 - i })));
+  const drained = service.drain(Date.now() + 15 * 60_000, 5 * 60_000, 10);
+  await new Promise((r) => setTimeout(r, 30));
+  const before = service.waiting();
+  expect(before.get("pkg:npm/b")).toMatchObject({ position: 1, length: 2, stage: "Waiting for a coverage worker (position 1 of 2 new technologies)" });
+  expect(before.get("pkg:npm/b")).not.toHaveProperty("starts_at");
+  // The last drain measured 1 new technology a minute: c (position 2) starts in about 2 minutes.
+  writeFileSync(join(centralDir(), "onboarding", "throughput.json"), JSON.stringify({ rates: { new: 1 } }));
+  const now = Date.now();
+  const c = service.waiting(now).get("pkg:npm/c")!;
+  expect(Date.parse(c.starts_at!)).toBe(now + 2 * 60_000);
+  expect(c.stage).toMatch(/^Waiting for a coverage worker \(position 2 of 2 new technologies; a run reaches it at about .+ UTC\)$/);
+  // The progress a run reports for a pulled package that waits: its place and estimate, `waiting`.
+  const { progressOf } = await import("../src/onboarding/progress.ts");
+  expect(progressOf(service, "pkg:npm/c", "2026-10-18T17:00:00.000Z", service.waiting(now))).toMatchObject({
+    purl: "pkg:npm/c",
+    state: "waiting",
+    job: { state: "queued", queue_position: 2, queue_length: 2, starts_at: c.starts_at, stage: c.stage, records: 0 },
+  });
+  release();
+  expect(await drained).toMatchObject({ started: 3, drained: true });
+});
+
+test("a waiting package's place is sent with the heartbeat, not with every start; other changes are sent alone", async () => {
+  const { PROGRESS_HEARTBEAT_MS, progressKey, progressTicker } = await import("../src/onboarding/progress.ts");
+  let now = 0;
+  type U = { purl: string; state: "waiting" | "running"; job: Record<string, unknown> };
+  let current: U[] = [
+    { purl: "pkg:npm/w", state: "waiting", job: { queue_position: 9 } },
+    { purl: "pkg:npm/r", state: "running", job: { records: 1 } },
+  ];
+  const sent: U[][] = [];
+  const tick = progressTicker(() => current, async (u) => (sent.push(u), true), () => now, progressKey);
+  await tick(); // the first: everything
+  current = [{ ...current[0]!, job: { queue_position: 8 } }, current[1]!];
+  now += 5000;
+  await tick(); // only the place moved: nothing
+  current = [current[0]!, { ...current[1]!, job: { records: 2 } }];
+  now += 5000;
+  await tick(); // the running package alone
+  current = [{ ...current[0]!, state: "running", job: { records: 0 } }, current[1]!];
+  now += 5000;
+  await tick(); // the waiting one started: sent
+  now += PROGRESS_HEARTBEAT_MS;
+  await tick(); // the heartbeat: everything
+  expect(sent.map((u) => u.map((x) => `${x.purl.slice(8)}:${x.state}`))).toEqual([["w:waiting", "r:running"], ["r:running"], ["w:running"], ["w:running", "r:running"]]);
+});
+
+test("a request pulled mid-drain joins the drain's queue at its demand position and moves as jobs start", async () => {
+  let release: () => void = () => {};
+  const held = new Promise<void>((r) => (release = r));
+  const order: string[] = [];
+  vi.spyOn(discovery, "discoverTechnology").mockImplementation(async (purl) => {
+    order.push(purl.slice(8));
+    await held;
+    return { discovery_version: discovery.DISCOVERY_VERSION, purl, id: discovery.technologyId(purl), name: discovery.packageIdentity(purl), latest: "1.0.0", tag: "^v?(\\d+\\.\\d+\\.\\d+)$", components: [purl] };
+  });
+  const service = new CoverageService(1, { limits: limits() }).hold();
+  service.enqueue(["a", "b", "c"].map((n) => ({ purl: `pkg:npm/${n}`, demand: 1 })));
+  const drained = service.drain(Date.now() + 60_000, 5_000, 10);
+  await new Promise((r) => setTimeout(r, 30));
+  // A pull mid-drain: two requesters, ahead of the waiting single-requester jobs.
+  const t = new Taken();
+  service.enqueue(t.add([{ purl: "pkg:npm/hot", demand: 2 }]));
+  expect(service.waiting().get("pkg:npm/hot")).toMatchObject({ position: 1, length: 3 });
+  expect(service.waiting().get("pkg:npm/c")).toMatchObject({ position: 3, length: 3 });
+  release();
+  await drained;
+  expect(order).toEqual(["a", "hot", "b", "c"]);
 });
 
 test("token-free first pass: a waiting new technology's advisories are published with the budget spent, no model call, and it keeps its place", async () => {
