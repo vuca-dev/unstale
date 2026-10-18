@@ -67,7 +67,10 @@ jobs:
           TAIL_SECONDS: ${{ inputs.tail_seconds }}
         run: |
           set -u
-          secs="$(( ${TAIL_SECONDS:-60} > 300 ? 300 : ${TAIL_SECONDS:-60} ))"
+          # Digits only (never evaluated as an expression), 10 to 300 seconds.
+          secs=60
+          if [[ "${TAIL_SECONDS:-}" =~ ^[0-9]{1,4}$ ]]; then secs=$((10#$TAIL_SECONDS)); fi
+          secs=$(( secs < 10 ? 10 : secs > 300 ? 300 : secs ))
           out="$RUNNER_TEMP/tail.jsonl"
           timeout "$secs" npx wrangler tail --format json > "$out" 2> "$RUNNER_TEMP/tail.err" &
           sleep 15 # the tail connects
