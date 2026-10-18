@@ -12,6 +12,10 @@ import { githubToken } from "../docs/fetcher.ts";
 import { ecosystemOf } from "./ecosystems.ts";
 import { registryCache } from "./registry.ts";
 import { techLocal } from "../state/client.ts";
+import { capped, pageText, pickChangelog, pointerLinks, repoFileLink, sectionFor, siteOf, versionSections } from "./changelog.ts";
+import { httpFetcher } from "../docs/fetcher.ts";
+import { RobotsCache } from "../docs/robots.ts";
+import type { Fetcher } from "../docs/resolve.ts";
 
 export interface ReleaseNote {
   technology: string;
@@ -23,7 +27,8 @@ export interface ReleaseNote {
    * (the extraction cache's key) does not move when a release gets its registry date. */
   noteDate?: string;
   url: string;
-  /** `sha256:` + digest of the raw body as GitHub returned it. */
+  /** `sha256:` + digest of the raw body as GitHub returned it; for a pointer body, of the body and the document it
+   * links (so a release read again through its link is a new extraction); for a changelog section, of the section. */
   snapshot: string;
   /** The body with non-change parts removed; quotes are taken from this. */
   notes: string;
@@ -38,11 +43,17 @@ interface StoredRelease {
   published?: string;
   url: string;
   snapshot: string;
+  /** A pointer body's linked document (`<version>.linked.md`): its URL and `sha256:` snapshot; null when the body was
+   * checked and nothing it links could be read as this release's notes. Absent: not checked yet. */
+  linked?: { url: string; snapshot: string } | null;
 }
 
 interface ReleaseIndex {
   checked: string;
   tagPattern?: string;
+  /** Whether any GitHub release of the repository (of any date) matched the tag pattern at the last listing. None
+   * did: the project ships no GitHub releases for the package, and its changelog file is read instead. */
+  matched?: boolean;
   releases: StoredRelease[];
 }
 
@@ -128,16 +139,19 @@ export async function fetchReleases(t: Technology, opts: { refresh?: boolean; of
   let index = readJson<ReleaseIndex>(indexPath(t));
   const stats: FetchStats = { requests: 0, newReleases: 0 };
   const fresh = index && index.tagPattern === t.tag.source && Date.now() - Date.parse(index.checked) < FRESH_MS;
-  // `offline`: the stored release list is used whatever its age (a rebuild that must not pick up new releases).
-  const listed = !index || opts.refresh || (!fresh && !opts.offline);
+  // `offline`: the stored release list is used whatever its age (a rebuild that must not pick up new releases). An
+  // empty index from before `matched` was kept is listed once more, to learn whether the changelog is the source.
+  const listed = !index || opts.refresh || (!opts.offline && (!fresh || (!index.releases.length && index.matched === undefined)));
   const known = new Map((index?.releases ?? []).filter((r) => !listed || t.tag.test(r.tag)).map((r) => [r.tag, r]));
   const found = new Map<string, { r: GhRelease; release: StoredRelease }>();
+  let matched = false;
   if (listed) {
     for (let page = 1; page < 60; page++) {
       const rows = await listPage(t.repo, page);
       stats.requests++;
       for (const r of rows) {
         const m = t.tag.exec(r.tag_name);
+        if (m && !r.draft) matched = true;
         const date = (r.published_at ?? "").slice(0, 10);
         if (!m || r.prerelease || r.draft || date < SINCE || known.has(r.tag_name) || found.has(r.tag_name)) continue;
         found.set(r.tag_name, { r, release: { technology: t.id, tag: r.tag_name, version: m[1]!, date, url: r.html_url, snapshot: `sha256:${sha256(r.body ?? "")}` } });
@@ -172,19 +186,231 @@ export async function fetchReleases(t: Technology, opts: { refresh?: boolean; of
   if (listed || changed || !prev) {
     // Only a listing renews the check time and tag pattern; filling in registry days alone keeps them.
     const releases = [...known.values()].sort((a, b) => day(a).localeCompare(day(b)) || compareVersions(a.version, b.version));
-    index = prev && !listed ? { ...prev, releases } : { tagPattern: t.tag.source, checked: new Date().toISOString().replace(/\.\d+Z$/, "Z"), releases };
+    index = prev && !listed ? { ...prev, releases } : { tagPattern: t.tag.source, checked: new Date().toISOString().replace(/\.\d+Z$/, "Z"), matched, releases };
     writeAtomic(indexPath(t), JSON.stringify(index, null, 1) + "\n");
   }
   if (!index) throw new Error(`release index unreadable: ${indexPath(t)}`);
+  // No GitHub release of this package at all: its changelog file is its release notes.
+  if (!index.releases.length && index.matched === false && t.repo) {
+    const notes = await changelogNotes(t, opts, stats);
+    return { notes, checked: index.checked, stats };
+  }
+  // Pointer bodies are read through their link once (a release body is never requested again, nor its link).
+  if (!opts.offline && index.releases.some((r) => r.linked === undefined)) {
+    let fetcher: Fetcher | undefined;
+    let sites: Promise<Set<string> | undefined> | undefined;
+    for (const r of index.releases) {
+      if (r.linked !== undefined) continue;
+      const raw = readBody(t, r);
+      const urls = pointerLinks(raw);
+      if (!urls.length) {
+        r.linked = null;
+        continue;
+      }
+      fetcher ??= linkFetcher();
+      sites ??= publisherSites(t, fetcher);
+      const doc = await linkedDocument(t, urls, r.version, fetcher, await sites, stats);
+      if (doc === "retry") continue; // a link that could not be read now is tried again on the next read
+      if (doc) writeAtomic(linkedPath(t, r.version), doc.text);
+      r.linked = doc ? { url: doc.url, snapshot: `sha256:${sha256(doc.text)}` } : null;
+    }
+    writeAtomic(indexPath(t), JSON.stringify(index, null, 1) + "\n");
+  }
+  // A document several releases link (TypeScript 6.0.2 and 6.0.3 both link the 6.0 announcement) goes with the first
+  // of them only: the later ones are their own bodies, so it is never extracted twice.
+  const taken = new Set<string>();
   const notes = index.releases.map((r) => {
-    const p = bodyPath(t, r.version);
-    if (!existsSync(p)) throw new Error(`release body missing: ${p}`);
-    const raw = readFileSync(p, "utf8");
-    if (`sha256:${sha256(raw)}` !== r.snapshot) throw new Error(`release body changed on disk: ${p}`);
-    const { published, ...rest } = r;
-    return { ...rest, ...(published && published !== r.date ? { date: published, noteDate: r.date } : {}), notes: t.clean(raw) };
+    const raw = readBody(t, r);
+    const { published, linked, ...rest } = r;
+    let notes = t.clean(raw);
+    let snapshot = r.snapshot;
+    if (linked && !taken.has(linked.snapshot) && existsSync(linkedPath(t, r.version))) {
+      const doc = readFileSync(linkedPath(t, r.version), "utf8");
+      if (`sha256:${sha256(doc)}` !== linked.snapshot) throw new Error(`linked notes changed on disk: ${linkedPath(t, r.version)}`);
+      taken.add(linked.snapshot);
+      notes = `${notes.trim()}\n\n---\n\nRelease notes linked from this release (${linked.url}):\n\n${doc}`;
+      snapshot = `sha256:${sha256(`${r.snapshot}\n${linked.snapshot}`)}`;
+    }
+    return { ...rest, snapshot, ...(published && published !== r.date ? { date: published, noteDate: r.date } : {}), notes };
   });
   return { notes, checked: index.checked, stats };
+}
+
+function readBody(t: Technology, r: StoredRelease): string {
+  const p = bodyPath(t, r.version);
+  if (!existsSync(p)) throw new Error(`release body missing: ${p}`);
+  const raw = readFileSync(p, "utf8");
+  if (`sha256:${sha256(raw)}` !== r.snapshot) throw new Error(`release body changed on disk: ${p}`);
+  return raw;
+}
+
+const linkedPath = (t: Technology, version: string) => join(dir(t), `${version}.linked.md`);
+const linkHttp = () => new HttpClient({ ...DEFAULT_HTTP, perHost: 2 });
+function linkFetcher(): Fetcher {
+  const http = linkHttp();
+  return httpFetcher(http, new RobotsCache(http), ghToken());
+}
+
+/** The sites the publisher declares (the repository's homepage, its owner's website), as registrable domains: a page
+ * a pointer body links counts as release notes only there. A code host is nobody's publisher site. Undefined when
+ * GitHub could not be read (the links are tried again later). */
+async function publisherSites(t: Technology, f: Fetcher): Promise<Set<string> | undefined> {
+  const out = new Set<string>();
+  const owner = t.repo.split("/")[0]!;
+  for (const [path, field] of [[`repos/${t.repo}`, "homepage"], [`users/${owner}`, "blog"]] as const) {
+    const r = await f.get(`https://api.github.com/${path}`, "application/vnd.github+json", true);
+    if (r.status === 404) continue;
+    if (r.status !== 200) return undefined;
+    try {
+      const v = (JSON.parse(r.text) as Record<string, unknown>)[field];
+      if (typeof v !== "string" || !v.trim()) continue;
+      const host = new URL(/^https?:/i.test(v) ? v : `https://${v}`).hostname;
+      if (!/(^|\.)(github\.com|github\.io|gitlab\.com|npmjs\.com)$/i.test(host)) out.add(siteOf(host));
+    } catch {
+      /* not a URL: no site */
+    }
+  }
+  return out;
+}
+
+/** The first link of a pointer body that reads as this release's notes: the version's section of a Markdown file in
+ * the repository, or a page on a publisher site. */
+async function linkedDocument(t: Technology, urls: string[], version: string, f: Fetcher, sites: Set<string> | undefined, stats: FetchStats): Promise<{ url: string; text: string } | "retry" | undefined> {
+  let transient = false;
+  const failed = (status: number) => (transient ||= status === 0 || status === 429 || status >= 500);
+  for (const url of urls.slice(0, 3)) {
+    const file = repoFileLink(url);
+    if (file) {
+      if (file.repo.toLowerCase() !== t.repo.toLowerCase()) continue;
+      const r = await f.get(file.raw, "text/plain, text/markdown;q=0.9, */*;q=0.1");
+      stats.requests++;
+      failed(r.status);
+      const section = r.status === 200 ? sectionFor(r.text, version) : undefined;
+      if (section && section.text.length > section.heading.length + 20) return { url, text: section.text + "\n" };
+      continue;
+    }
+    let host: string;
+    try {
+      const u = new URL(url);
+      if (u.protocol !== "https:") continue;
+      host = u.hostname;
+    } catch {
+      continue;
+    }
+    if (/(^|\.)github\.com$/i.test(host)) continue;
+    if (!sites) {
+      transient = true;
+      continue;
+    }
+    if (!sites.has(siteOf(host))) continue;
+    const r = await f.get(url.replace(/#.*$/, ""), "text/html,application/xhtml+xml;q=0.9,*/*;q=0.1");
+    stats.requests++;
+    if (r.status !== 200) {
+      failed(r.status);
+      continue;
+    }
+    let page: string;
+    try {
+      page = /^\s*</.test(r.text) ? pageText(r.text) : r.text;
+    } catch {
+      continue;
+    }
+    // A changelog page (Cypress's docs changelog, one heading per version) gives the version's section, or nothing
+    // when it has none for it; a page that names no version in its headings (an announcement post) is read whole.
+    const sections = versionSections(page);
+    const own = sections.find((x) => x.version === version);
+    const text = own ? own.text : sections.length >= 2 ? "" : capped(page);
+    if (text.trim().length >= (own ? 40 : 500)) return { url, text: text.trim() + "\n" };
+  }
+  return transient ? "retry" : undefined;
+}
+
+// ---- Changelog files: a package with no GitHub release ships its notes in the repository (changelog.ts).
+
+interface ChangelogIndex {
+  checked: string;
+  /** The file read (repository path) and the commit it was read at; null when the repository has none. */
+  path: string | null;
+  commit?: string;
+  releases: StoredRelease[];
+}
+
+const changelogDir = (t: Technology) => join(dir(t), "changelog");
+const changelogPath = (t: Technology, version: string) => join(changelogDir(t), `${version}.md`);
+
+/** GitHub's anchor for a heading. */
+const anchor = (heading: string) =>
+  heading
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/<[^>]+>/g, "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N} _-]/gu, "")
+    .replace(/ /g, "-");
+
+/**
+ * The technology's changelog as release notes: the package directory's changelog file, else the repository root's,
+ * read at the last commit that touched it, one note per stable version section. A version is taken when its
+ * registry knows it (dated by its publish day) and it is in the window; where the registry has no publish times, a
+ * date in its heading dates it. Each version is stored once and never read again; the file is checked at most once
+ * per freshness window.
+ */
+async function changelogNotes(t: Technology, opts: { refresh?: boolean; offline?: boolean }, stats: FetchStats): Promise<ReleaseNote[]> {
+  const ip = join(changelogDir(t), "index.json");
+  let cl = readJson<ChangelogIndex>(ip);
+  const fresh = cl && Date.now() - Date.parse(cl.checked) < FRESH_MS;
+  if (!opts.offline && (!fresh || opts.refresh)) {
+    const f = linkFetcher();
+    const api = async <T>(path: string): Promise<T | undefined> => {
+      stats.requests++;
+      const r = await f.get(`https://api.github.com/repos/${t.repo}/${path}`, "application/vnd.github+json", true);
+      if (r.status === 404) return undefined;
+      if (r.status !== 200) throw new Error(`GitHub ${t.repo} ${path}: ${r.status}`);
+      return JSON.parse(r.text) as T;
+    };
+    let path: string | undefined;
+    for (const d of [...new Set([t.directory?.replace(/^\/+|\/+$/g, "") ?? "", ""])]) {
+      const list = await api<Array<{ name: string; type: string }>>(`contents/${d.split("/").map(encodeURIComponent).join("/")}`);
+      const name = Array.isArray(list) ? pickChangelog(list.filter((e) => e.type === "file").map((e) => e.name)) : undefined;
+      if (name) {
+        path = d ? `${d}/${name}` : name;
+        break;
+      }
+    }
+    const releases = cl?.releases ?? [];
+    let commit = cl?.commit;
+    if (path) {
+      const commits = await api<Array<{ sha: string }>>(`commits?path=${encodeURIComponent(path)}&per_page=1`);
+      const sha = commits?.[0]?.sha;
+      if (sha && (sha !== cl?.commit || path !== cl?.path)) {
+        stats.requests++;
+        const r = await f.get(`https://raw.githubusercontent.com/${t.repo}/${sha}/${path.split("/").map(encodeURIComponent).join("/")}`, "text/plain, */*;q=0.1");
+        if (r.status !== 200) throw new Error(`changelog ${t.repo}/${path}: ${r.status}`);
+        const have = new Set(releases.map((x) => x.version));
+        const sections = versionSections(r.text).filter((s) => !have.has(s.version));
+        const days = await publishDates(t, sections.map((s) => s.version), opts);
+        const registryDated = t.components.some((c) => ecosystemOf(c).publishTimes);
+        for (const s of sections) {
+          const day = days.get(s.version) ?? (registryDated ? undefined : /\b(20\d\d-\d\d-\d\d)\b/.exec(s.heading)?.[1]);
+          if (!day || day < SINCE) continue;
+          const text = s.text + "\n";
+          writeAtomic(changelogPath(t, s.version), text);
+          releases.push({ technology: t.id, tag: `${path}@${s.version}`, version: s.version, date: day, url: `https://github.com/${t.repo}/blob/${sha}/${path}#${anchor(s.heading)}`, snapshot: `sha256:${sha256(text)}` });
+          stats.newReleases++;
+        }
+        commit = sha;
+      }
+    }
+    releases.sort((a, b) => a.date.localeCompare(b.date) || compareVersions(a.version, b.version));
+    cl = { checked: new Date().toISOString().replace(/\.\d+Z$/, "Z"), path: path ?? null, ...(commit ? { commit } : {}), releases };
+    writeAtomic(ip, JSON.stringify(cl, null, 1) + "\n");
+  }
+  return (cl?.releases ?? []).map((r) => {
+    const p = changelogPath(t, r.version);
+    const raw = readFileSync(p, "utf8");
+    if (`sha256:${sha256(raw)}` !== r.snapshot) throw new Error(`changelog section changed on disk: ${p}`);
+    return { ...r, notes: t.clean(raw) };
+  });
 }
 
 // ---- Upgrade guides. The docs module finds a technology's guides for the current and previous major (docs/guides.ts),

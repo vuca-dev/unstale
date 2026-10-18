@@ -1,5 +1,6 @@
 import { loadStore, saveStore, type TechStore } from "../pipeline/store.ts";
 import type { Technology } from "../pipeline/technologies.ts";
+import { isChangelogName } from "../pipeline/changelog.ts";
 /** Never attribute another monorepo component's release to this technology. Also repairs cached early runs. */
 export function reconcileSources(
   t: Technology,
@@ -13,8 +14,12 @@ export function reconcileSources(
       try {
         const url = new URL(e.url);
         const prefix = `/${t.repo}/releases/tag/`;
+        if (url.hostname !== "github.com") return false;
+        // A section of the repository's changelog file (fetch.ts, a package with no GitHub release): the file is the
+        // package's own or the repository root's, never another component's release.
+        if (url.pathname.startsWith(`/${t.repo}/blob/`))
+          return isChangelogName(decodeURIComponent(url.pathname.split("/").at(-1) ?? ""));
         return (
-          url.hostname === "github.com" &&
           url.pathname.startsWith(prefix) &&
           t.tag.test(decodeURIComponent(url.pathname.slice(prefix.length)))
         );

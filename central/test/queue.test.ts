@@ -386,3 +386,32 @@ test("the deprecation notice is read from either verdict shape and absent otherw
   expect(deprecationOf({ admit: false, why: "w", notice: "deprecated" } as never)).toBe("w");
   expect(deprecationOf({ admit: true, why: "w" })).toBeUndefined();
 });
+
+test("a monitored technology's upgrade guide is extracted once, charged like a note", async () => {
+  const { synth } = await mockWork({ "pkg:npm/mui": { repo: "ex/mui", tags: ["v9.1.0"] } });
+  const fetching = await import("../src/pipeline/fetch.ts");
+  const guide = {
+    technology: "mui",
+    kind: "upgrade_guide" as const,
+    tag: "guide-9",
+    keyTag: "+guide.0123abcd",
+    version: "9.0.0",
+    date: "2026-04-08",
+    url: "https://mui.com/material-ui/migration/upgrade-to-v9/",
+    snapshot: "sha256:0123abcd" + "0".repeat(56),
+    notes: "## Removed `FormHelperTextProps`\n\nUse `slotProps.formHelperText` instead.",
+  };
+  const guides = vi.spyOn(fetching, "fetchGuides").mockResolvedValue([guide]);
+  const service = new CoverageService(1, { advisories: false, limits: limits(), admission: async () => ({ admit: true, why: "test" }) });
+  try {
+    service.register("pkg:npm/mui", "198.51.100.1");
+    await vi.waitFor(() => expect(service.jobs.get("pkg:npm/mui")?.state).toBe("monitoring"), { timeout: 3000 });
+    const job = service.jobs.get("pkg:npm/mui")!;
+    expect(synth.mock.calls.map(([, n]) => n.tag)).toEqual(["v9.1.0", "guide-9"]);
+    expect(job.guides_done).toEqual(["+guide.0123abcd:audience-v1"]);
+    expect(guides).toHaveBeenCalledWith(expect.objectContaining({ id: "mui" }), expect.any(Array), expect.objectContaining({ checked: true }));
+    expect(service.statuses().find((s) => s.purl === "pkg:npm/mui")).not.toHaveProperty("guides_done");
+  } finally {
+    service.stop();
+  }
+});

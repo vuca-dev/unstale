@@ -14,7 +14,7 @@ import {
   type PublicTechnology,
 } from "./discovery.ts";
 import { catalogDir, centralDir } from "../pipeline/paths.ts";
-import { fetchReleases } from "../pipeline/fetch.ts";
+import { fetchGuides, fetchReleases, type GuideNote } from "../pipeline/fetch.ts";
 import { readJson, sha256, writeAtomic } from "../pipeline/util.ts";
 import { reconcileSources } from "./source-quality.ts";
 import { synthesize } from "./synthesis.ts";
@@ -59,6 +59,8 @@ export interface Job {
   enumeration?: string;
   failures?: number;
   completed?: string[];
+  /** Upgrade guides extracted, by `<keyTag>:audience-v1` (a guide is ingested whole once; edits come as docs notes). */
+  guides_done?: string[];
   /** Legacy: page ids of the old inline docs loop; unused, never public. */
   docs_completed?: string[];
   docs_checked?: string;
@@ -834,6 +836,27 @@ export class CoverageService {
       return true;
     });
     if (extracted.records !== undefined) job.records = extracted.records;
+    // Upgrade guides (the current and previous major's, as the docs pass found them): with release notes they carry
+    // the history; a removal stated only in a migration guide (MUI v9) is in no release body. Charged like a note.
+    if (!docsRefused) {
+      let guides: GuideNote[] = [];
+      try {
+        guides = await fetchGuides(tech, releases.notes, { http: docsHttp, checked: true });
+      } catch (e) {
+        console.error(`coverage: ${job.purl}: upgrade guides unreadable (${e instanceof Error ? e.message : e}); release notes and docs only`);
+      }
+      for (const g of guides) {
+        const key = `${g.keyTag}:audience-v1`;
+        if (job.guides_done?.includes(key)) continue;
+        const cost = noteTokens(g.notes);
+        docsRefused = this.budget.spend(cost);
+        if (docsRefused) break;
+        job.quarter.tokens += cost;
+        this.save(job, "partial", `Analyzing the upgrade guide for ${g.version.split(".")[0]}.x`);
+        job.records = await synthesize(tech, g);
+        job.guides_done = [...(job.guides_done ?? []), key];
+      }
+    }
     if (docsRefused) {
       this.heldBack("tokens");
       this.requeue(job, `${job.records} records so far; coverage budget for this ${this.limits.period} spent; continues after ${day(Date.now() + docsRefused.retryAfter * 1000)}`);
@@ -879,6 +902,7 @@ export function docsCoverage(j: Pick<Job, "enumeration" | "docs_done" | "docs_to
 function publicJob(j: Job) {
   const {
     completed: _completed,
+    guides_done: _guides,
     docs_completed: _docs,
     descriptor: _descriptor,
     next_task: _task,

@@ -32,7 +32,8 @@ ingested extraction is recorded, so a rerun makes no uncached calls and writes b
 
 | File | Role |
 |---|---|
-| `src/pipeline/fetch.ts` | Stable GitHub releases since 2025-10-15 (`GITHUB_TOKEN`, else `gh auth token`), stored raw with a `sha256:` snapshot |
+| `src/pipeline/fetch.ts` | Stable GitHub releases since 2025-10-15 (`GITHUB_TOKEN`, else `gh auth token`), stored raw with a `sha256:` snapshot; a body that only links its notes is read through the link once; a package with no GitHub release is read from its changelog file |
+| `src/pipeline/changelog.ts` | Changelog sections per version (ATX and setext headings), pointer-body detection, publisher-site pages |
 | `src/pipeline/extract.ts`, `llm.ts` | Extraction and free-text labels (subject, summary, terms, replaces, requires, prerequisites, conditions) |
 | `src/pipeline/classify/adapter.ts` | Classifier adapter: Jev first, the extraction model answering choices as the per-request fallback, cache, usage log |
 | `src/pipeline/packs.ts` | The content-hash caches (classifier, model, registry, the day's docs pages) as append-only pack files, a few thousand instead of one file per entry |
