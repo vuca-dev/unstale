@@ -66,7 +66,8 @@ Every variable is optional; the defaults suit a developer machine.
 | `UNSTALE_BUDGET_PERIOD` | `day` | The token budget's UTC period: `day`, `week` or `month` |
 | `UNSTALE_TECH_QUARTER_TOKENS` | `50000` | Release-note tokens one technology may use per calendar quarter before the rest waits behind other technologies |
 | `UNSTALE_TRUST_PROXY` | `0` | `serve`: number of proxies in front whose `X-Forwarded-For` entry is trusted (`true` = 1); 0 uses the socket address |
-| `UNSTALE_NO_ADVISORIES` | unset | `1` skips the advisories stage after a technology's history is published |
+| `UNSTALE_NO_ADVISORIES` | unset | `1` skips the advisories stage after a technology's history is published, and the first pass below |
+| `UNSTALE_ADVISORIES_FIRST` | `2` | `drain`: token-free first passes at once, beside the job slots: a waiting new technology's advisories (OSV, resolved against its release list) are published before its release-note history, with no model call, and it keeps its place in the queue; `0` turns them off |
 | `UNSTALE_LOCK_TIMEOUT_MS` | `1200000` (20 minutes) | How long a writer waits for a technology's lock before failing |
 | `UNSTALE_BIN` | `<repo>/local/target/release/unstale` | Client binary used for `count-terms` by the rarity sample |
 | `UNSTALE_GATEWAY_URL`, `UNSTALE_GATEWAY_TOKEN` | unset | `drain`: the gateway whose held registrations are pulled and acknowledged; unset, only the saved queue is worked |

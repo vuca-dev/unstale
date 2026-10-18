@@ -19,7 +19,11 @@
 //      has the fix on that line, links the record (deterministic);
 //   6. the rest are judged like any other source at ingest (match.ts: Jev same-or-new against the records released
 //      in the patched version, cross-kind threshold, advisory and breaking guards); no match makes a new record from
-//      the advisory (the release notes omitted it);
+//      the advisory (the release notes omitted it). A fix whose release notes are not read yet (`unread`: the
+//      token-free first pass at registration, or history still being read) is not judged: the advisory gets a record
+//      of its own at once (basis `early`), judged once every fix's notes are read and merged into the record that
+//      describes it (or kept, `advisory-settled`). A record made from the advisory alone whose notes later name the
+//      advisory by id merges into that record. One advisory, one record;
 //   7. every linked record gets the advisory (id, aliases, ranges, resolved versions) and a release on each line the
 //      fix shipped on in the window (a backport the notes left out);
 //   8. another package's advisory: a security-labelled record built only from release-notes items that name advisory
@@ -564,19 +568,37 @@ export function advisoryIncoming(t: Technology, a: Advisory, fix: { line: string
   } as unknown as Incoming;
 }
 
-/** How a record came to hold an advisory, from its history: the first `advisory` entry naming it decides. */
-export type Basis = "id" | "judged" | "created" | "unknown";
+/** The history wording of a record made from an advisory before the release notes of its fix were read. */
+export const EARLY = "from the advisory, before its release notes were read";
+/** History action: an early record whose fix's notes were read and none describes it; it stays, as a created one. */
+const SETTLED = "advisory-settled";
+
+/**
+ * How a record came to hold an advisory, from its history: the first `advisory` entry naming it decides. `early`: made
+ * from the advisory while the release notes of its fix were not read yet (the token-free first pass, or history still
+ * being read); it is judged against those notes once they are read, and becomes `created` when none describes it.
+ */
+export type Basis = "id" | "judged" | "created" | "early" | "unknown";
 export function basisOf(r: StoredRecord, id: string): Basis {
+  let early = false;
   for (const h of r.history) {
+    if (early) {
+      if (h.action === SETTLED && h.detail?.startsWith(`${id}:`)) return "created";
+      continue;
+    }
     if (h.action === "advisory-match" && h.detail?.toUpperCase().includes(`+ADVISORY.${id}`)) return "judged";
     if (h.action !== "advisory" || !h.detail?.startsWith(`${id} (`)) continue;
     const how = h.detail.slice(id.length + 2, -1);
     if (how === "named in the release notes") return "id";
     if (how === "judged") return "judged";
     if (how === "from the advisory") return "created";
+    if (how === EARLY) early = true;
   }
-  return "unknown";
+  return early ? "early" : "unknown";
 }
+
+/** A record whose only evidence is advisories: one made from an advisory that no release-notes item joined. */
+const advisoryOnly = (r: StoredRecord): boolean => r.evidence.length > 0 && r.evidence.every((e) => e.kind === "advisory");
 
 export interface AttachReport {
   advisories: number;
@@ -584,6 +606,13 @@ export interface AttachReport {
   byId: number;
   judged: number;
   created: number;
+  /** Of `created`: made before the release notes of the fix were read (judged against them once they are). */
+  early: number;
+  /** Records made from an advisory merged into the release-notes record that describes it: named there by id, or
+   * judged the same once the notes were read. One advisory, one record. */
+  standIns: Array<{ advisory: string; from: string; into: string }>;
+  /** Early records whose fix's notes were read and none describes them: kept as records of their own. */
+  settled: number;
   releasesAdded: number;
   recordsChanged: number;
   /** Id-based attachments whose basis no longer holds (the id is not at the record's quote any more): removed. */
@@ -639,6 +668,7 @@ export async function attachAdvisories(
   judge: (state: Record<string, unknown>, questions: Questions) => Promise<Classification>,
   foreign?: ForeignCheck,
   sections?: { packages: readonly RegistryPackage[]; dependencies: ForeignCheck["dependencies"] },
+  unread: ReadonlySet<string> = new Set(),
 ): Promise<AttachReport> {
   const report: AttachReport = {
     advisories: advisories.length,
@@ -646,6 +676,9 @@ export async function attachAdvisories(
     byId: 0,
     judged: 0,
     created: 0,
+    early: 0,
+    standIns: [],
+    settled: 0,
     releasesAdded: 0,
     recordsChanged: 0,
     removed: [],
@@ -710,12 +743,39 @@ export async function attachAdvisories(
     report.removed.push({ advisory: a.id, record: r.id });
   };
 
+  const active = () => Object.values(s.records).filter((r) => r.status === "active");
+  // Step 5's judgement: against the records released in a patched version, one request per fixed line, never `except`
+  // nor a record made from another advisory.
+  // A fixed version whose notes are not read yet has nothing to be judged against: no request (the token-free first
+  // pass makes no model call).
+  const judgeFix = async (a: Advisory, fixes: Array<{ line: string; version: string; date: string }>, except?: StoredRecord): Promise<StoredRecord | undefined> => {
+    for (const fix of fixes) {
+      if (unread.has(fix.version)) continue;
+      const inc = advisoryIncoming(t, a, fix);
+      // A record made from another advisory is never the same change (the advisory guard refuses disjoint ids): not asked.
+      const pool = active().filter((r) => r !== except && !advisoryOnly(r) && r.releases.some((x) => x.version === fix.version));
+      const scored = retrieve(inc, pool).map((c) => s.records[c.id]!);
+      const rest = pool.filter((r) => !scored.includes(r)).sort((x, y) => Number(isSecurity(y)) - Number(isSecurity(x)) || x.id.localeCompare(y.id));
+      const cands = [...scored, ...rest].slice(0, K);
+      if (!cands.length) continue;
+      report.judged++;
+      const req = matchRequest(t.name, inc, false, cands);
+      const verdict = await judge(req.state, req.questions);
+      const chosen = pick(cands, verdict.answers, { breaking: false, quote: inc.quote, summary: inc.summary, kind: kindOf(inc) }, verdict.calibrated !== false);
+      if (chosen.id) {
+        const m = s.records[chosen.id]!;
+        m.history.push({ action: "advisory-match", detail: `${inc.key} p=${chosen.p}`, revision: m.revision, label_version: m.label_version, judged: chosen.judged });
+        return m;
+      }
+    }
+    return undefined;
+  };
+
   for (const a of advisories) {
     const fixes = fixesInWindow(a, releases, lineOf);
     if (!fixes.length) continue;
     report.inWindow++;
     const aliases = new Set([a.id, ...a.aliases.map((x) => x.toUpperCase())]);
-    const active = () => Object.values(s.records).filter((r) => r.status === "active");
     // Named by id at the record's quote in a release that first has the fix on its line (recomputed every run:
     // deterministic). A release the database does not list as fixed can mention an advisory without fixing it ("this
     // preserves the fix for CVE-..."), so it counts only for a twin of a holder (findTwins).
@@ -728,41 +788,52 @@ export async function attachAdvisories(
       if (basisOf(r, a.id) === "id") unlink(r, a, fixes);
       else sticky.push(r);
     }
+    // A record made from the advisory alone stands in for the notes' own description of the fix: merged into it.
+    const standIn = (r: StoredRecord, into: StoredRecord, why: string) => {
+      mergeInto(s, r.id, into.id, why);
+      report.standIns.push({ advisory: a.id, from: r.id, into: into.id });
+      changed.add(r.id);
+      changed.add(into.id);
+    };
     if (direct.length) {
       if (direct.some((r) => !holders.includes(r))) report.byId++;
       for (const r of direct) link(r, a, fixes, holders.includes(r) ? "attached" : "named in the release notes");
-      for (const r of sticky) link(r, a, fixes, "attached");
+      for (const r of sticky) {
+        const basis = basisOf(r, a.id);
+        if ((basis === "created" || basis === "early") && advisoryOnly(r)) standIn(r, direct[0]!, `the release notes name ${a.id}`);
+        else link(r, a, fixes, "attached");
+      }
       continue;
     }
+    // Made before the notes of its fix were read: judged against them once every fix's notes are read (the judgement
+    // the stage would have made had it run after the history), then merged or kept as a record of its own.
+    const allRead = !fixes.some((f) => unread.has(f.version));
+    let matched: StoredRecord | undefined;
+    for (const r of sticky.filter((x) => basisOf(x, a.id) === "early")) {
+      if (!allRead) continue;
+      const m = advisoryOnly(r) ? await judgeFix(a, fixes, r) : undefined;
+      if (m) {
+        link(m, a, fixes, "judged");
+        standIn(r, m, `judged the same change as ${a.id} in the release notes`);
+        sticky.splice(sticky.indexOf(r), 1);
+        matched = m;
+      } else {
+        r.history.push({ action: SETTLED, detail: `${a.id}: no record of its fix's release notes describes it`, revision: r.revision, label_version: r.label_version });
+        report.settled++;
+      }
+    }
     // Judged or made from the advisory before: kept (refreshed), nothing to judge.
-    if (sticky.length) {
+    if (sticky.length || matched) {
       for (const r of sticky) link(r, a, fixes, "attached");
       continue;
     }
     // Step 5: judged against the records released in a patched version, one request per fixed line.
-    let matched: StoredRecord | undefined;
-    for (const fix of fixes) {
-      const inc = advisoryIncoming(t, a, fix);
-      const pool = active().filter((r) => r.releases.some((x) => x.version === fix.version));
-      const scored = retrieve(inc, pool).map((c) => s.records[c.id]!);
-      const rest = pool.filter((r) => !scored.includes(r)).sort((x, y) => Number(isSecurity(y)) - Number(isSecurity(x)) || x.id.localeCompare(y.id));
-      const cands = [...scored, ...rest].slice(0, K);
-      if (!cands.length) continue;
-      report.judged++;
-      const req = matchRequest(t.name, inc, false, cands);
-      const verdict = await judge(req.state, req.questions);
-      const chosen = pick(cands, verdict.answers, { breaking: false, quote: inc.quote, summary: inc.summary, kind: kindOf(inc) }, verdict.calibrated !== false);
-      if (chosen.id) {
-        matched = s.records[chosen.id]!;
-        matched.history.push({ action: "advisory-match", detail: `${inc.key} p=${chosen.p}`, revision: matched.revision, label_version: matched.label_version, judged: chosen.judged });
-        break;
-      }
-    }
+    matched = await judgeFix(a, fixes);
     if (matched) {
       link(matched, a, fixes, "judged");
       continue;
     }
-    // Step 5, no match: the release notes omitted the advisory; a record of its own.
+    // Step 5, no match: the release notes omitted the advisory (or are not read yet); a record of its own.
     const inc = advisoryIncoming(t, a, fixes[0]!);
     if (s.ingested[inc.key]) {
       // Made before and merged or retracted since: the record it went into (if active) holds it.
@@ -774,7 +845,8 @@ export async function attachAdvisories(
     delete r.classifier;
     s.ingested[inc.key] = r.id;
     report.created++;
-    link(r, a, fixes, "from the advisory");
+    if (!allRead) report.early++;
+    link(r, a, fixes, allRead ? "from the advisory" : EARLY);
     changed.add(r.id);
   }
 
@@ -1199,7 +1271,10 @@ export async function relabelOtherPackage(
 
 /**
  * The advisories stage for one technology: fetch (OSV, cached), resolve, attach. The caller holds the technology's
- * lock and saves and publishes the store. A source that cannot be read fails open: the store is left as it is and
+ * lock and saves and publishes the store. `unread`: release versions whose notes are listed but not read yet (history
+ * still being extracted, or the token-free first pass before any): an advisory fixed only there is never judged (no
+ * model call) and gets a record of its own, which is judged against those notes once they are read (step 6). A source
+ * that cannot be read fails open: the store is left as it is and
  * the reason is logged (the records already published stay; the edge says nothing new).
  */
 export async function advisoryStage(
@@ -1207,7 +1282,7 @@ export async function advisoryStage(
   s: TechStore,
   releases: ReadonlyArray<{ version: string; date: string; url: string }>,
   judge: (state: Record<string, unknown>, questions: Questions) => Promise<Classification>,
-  opts: { refresh?: boolean; offline?: boolean } = {},
+  opts: { refresh?: boolean; offline?: boolean; unread?: ReadonlySet<string> } = {},
 ): Promise<AttachReport | undefined> {
   // The release index and its derived lines first (lines.ts): the attachment and the releases below use them.
   s.releaseIndex = buildIndex(releases);
@@ -1234,8 +1309,11 @@ export async function advisoryStage(
     judge,
     complete ? { packages, lookup: (id) => advisoryPackages(t, id, opts), dependencies: (component, version) => releaseDependencies(t, component, version, opts) } : undefined,
     await (async () => {
+      // Step 11 reads release-notes headings: with no such record (a first pass) the registry is not asked.
+      if (!Object.values(s.records).some((r) => r.status === "active" && r.evidence.some((e) => (e.kind ?? "release_notes") === "release_notes"))) return undefined;
       const packages = await repositoryPackages(t, opts);
       return packages && { packages, dependencies: (component: string, version: string) => releaseDependencies(t, component, version, opts) };
     })(),
+    opts.unread,
   );
 }
