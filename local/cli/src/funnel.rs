@@ -530,6 +530,23 @@ struct TechLits {
     /// Relative literals that name a subpath of the technology's own package (`./src/*` in a record about vitest's
     /// `exports`) → the literals naming `<package>/<subpath>` (`usage::subpath_lits`) that stand in for its hits.
     subpaths: BTreeMap<String, Vec<String>>,
+    /// Every literal any record names (`terms`, `replaces`, `introduces`, `requires`; a leading `@` dropped) → the
+    /// records (indices into `per_record`) naming it, for `namespace_of`.
+    named: BTreeMap<String, BTreeSet<usize>>,
+}
+
+/// Whether record `i`'s literal `lit` is a namespace of the technology's API rather than one API: a qualified name
+/// (`usage::qualified_name`) under which another of the technology's records names a member (`pytest.mark` when
+/// others are about `pytest.mark.parametrize` and `pytest.mark.xfail`). Every user writes it for whichever member
+/// they need, so on its own it does not show the deprecated use (`usage::live_site_near`). From the catalog, not
+/// from the repository: an options object written with its keys (`webpack.treeshake.removeDebugLogging`) is a use of
+/// a deprecated `webpack.treeshake`.
+fn namespace_of(tl: &TechLits, i: usize, lit: &str) -> bool {
+    if !usage::qualified_name(lit) {
+        return false;
+    }
+    let head = format!("{lit}.");
+    tl.named.range(head.clone()..).take_while(|(k, _)| k.starts_with(&head)).any(|(k, rs)| usage::member_of(k, lit) && rs.iter().any(|&j| j != i))
 }
 
 fn tech_lits(tech: &str, td: &TechData) -> TechLits {
@@ -543,6 +560,14 @@ fn tech_lits(tech: &str, td: &TechData) -> TechLits {
     let mut exclude: BTreeSet<String> = comps.iter().filter_map(|c| purl_name(c)).collect();
     exclude.insert(tech.to_string());
     let per_record: Vec<Vec<String>> = td.records.iter().map(|r| record_lits(r, &exclude)).collect();
+    let mut named: BTreeMap<String, BTreeSet<usize>> = BTreeMap::new();
+    for (i, r) in td.records.iter().enumerate() {
+        for x in r.r.terms.iter().map(|t| &t.0).chain(&r.r.replaces).chain(&r.r.introduces).chain(&r.r.requires) {
+            if let Some(l) = clean_lit(x) {
+                named.entry(l.strip_prefix('@').unwrap_or(&l).to_string()).or_default().insert(i);
+            }
+        }
+    }
     let mut usage: BTreeSet<String> = per_record.iter().flatten().cloned().collect();
     let mut whole = BTreeSet::new();
     for r in &td.records {
@@ -575,7 +600,7 @@ fn tech_lits(tech: &str, td: &TechData) -> TechLits {
         }
     }
     subpaths.retain(|_, v| !v.is_empty());
-    TechLits { comps, per_record, usage, whole, subpaths }
+    TechLits { comps, per_record, usage, whole, subpaths, named }
 }
 
 /// `hits` for one technology with each package-subpath literal (`TechLits::subpaths`) matched as `<package>/<subpath>`
@@ -775,12 +800,13 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
         // (`usage::live_site`: not in a comment, not a fallback beside the record's replacement). Per view, literal and
         // replacements.
         let exact: Memo<Rc<usage::Evidence>> = RefCell::default();
-        let exact_of = |v: usize, l: &str, repl: &[String]| -> Rc<usage::Evidence> {
-            let key = (v, format!("{l}\0{}", repl.join("\0")));
+        let exact_of = |v: usize, l: &str, repl: &[String], context: Option<&[String]>| -> Rc<usage::Evidence> {
+            let ctx = context.map_or("-".to_string(), |c| c.join("\0"));
+            let key = (v, format!("{l}\0{}\u{1}{ctx}", repl.join("\0")));
             if let Some(e) = exact.borrow().get(&key) {
                 return e.clone();
             }
-            let live = |p: &str| inp.repo.text(p).is_none_or(|t| usage::live_site(p, t, l, repl));
+            let live = |p: &str| inp.repo.text(p).is_none_or(|t| usage::live_site_near(p, t, l, repl, context));
             let e = Rc::new(scopes[v].exact_evidence_where(l, role, !nested, live));
             exact.borrow_mut().insert(key, e.clone());
             e
@@ -887,7 +913,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             }
         };
         let lines = Lines::new(&td.index.releases);
-        for (rec, ls) in td.records.iter().zip(lits) {
+        for (ri, (rec, ls)) in td.records.iter().zip(lits).enumerate() {
             // The releases of the packages this repository uses; else of the technology's own packages (a record names
             // every component, and the repository uses at least one). A record about other packages of the technology's
             // repository only (a release-notes section central attributed to them) applies only where one is used.
@@ -918,10 +944,28 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             let mut deprecated = deprecated_lits(rec, ls);
             deprecated.retain(|l| !usage::loads_only(l, &own_names));
             let replacement = replacement_lits(rec, ls, &deprecated);
+            // A deprecated namespace (`pytest.mark`, for markers on hook implementations) counts only beside a specific
+            // literal of the record: not the namespace or a part of it, not a member other records are about (another
+            // API: `pytest.mark.parametrize`), not the replacement, not a plain word.
+            let broad: Vec<&String> = deprecated.iter().filter(|l| namespace_of(tl, ri, l)).collect();
+            let sibling = |l: &str| tl.named.get(l.strip_prefix('@').unwrap_or(l)).is_some_and(|rs| rs.iter().any(|&j| j != ri));
+            let context: Vec<String> = if broad.is_empty() {
+                vec![]
+            } else {
+                ls.iter()
+                    .filter(|l| {
+                        !broad.iter().any(|b| b.contains(l.as_str()) || (usage::member_of(l, b) && sibling(l)))
+                            && !replacement.contains(l)
+                            && !usage::plain_word(l)
+                            && !namespace_of(tl, ri, l)
+                    })
+                    .cloned()
+                    .collect()
+            };
             // The record reads the view of its package (code on the outputs' release line only).
             let view = candidates.first().and_then(|r| view_of.get(&normalize_purl(&r.component))).copied().unwrap_or(0);
             let ev = |l: &str| evidence_of(view, l);
-            let ex = |l: &str| exact_of(view, l, &replacement);
+            let ex = |l: &str| exact_of(view, l, &replacement, broad.iter().any(|b| *b == l).then_some(&context[..]));
             let (cited, cite): (&[String], Cite) = if deprecated.is_empty() { (ls, &ev) } else { (&deprecated, &ex) };
             let matched: Vec<(String, Vec<String>)> = cited
                 .iter()
@@ -1433,6 +1477,50 @@ mod tests {
         let out = run_with(&c, &s, &r, &l);
         let o = out.opps.iter().find(|o| o.id() == "react-native:initializecore").unwrap();
         assert_eq!((&o.route, &o.matched), (&Route::InEffect, &vec![(old.to_string(), vec!["src/app.ts".to_string()])]), "cites the live site only");
+    }
+
+    #[test]
+    fn a_deprecated_namespace_counts_only_beside_a_specific_literal_of_its_record() {
+        // locustio/locust: pytest 9.1 schedules hook markers (`@pytest.mark.tryfirst` on a `pytest_*` hook) for removal;
+        // the record `replaces` `pytest.mark`, the namespace every marker lives under, and other pytest records are
+        // about `pytest.mark.parametrize` and `pytest.mark.xfail`. Test markers are not the deprecated use.
+        let purl = "pkg:pypi/pytest";
+        let dep = |id: &str, extra: serde_json::Value| with(with(rec(id, purl, "9.1.0"), json!({"change_type":"deprecation"})), extra);
+        let markers = json!({"replaces":["pytest.mark"],"terms":[["pytest.mark",0],["pytest.hookimpl",0],["pytest_plugins",0],["pytest_addoption",0]]});
+        let records = |others: bool| {
+            let mut v = vec![dep("pytest:hook-markers", markers.clone())];
+            if others {
+                v.push(with(rec("pytest:parametrize", purl, "9.0.0"), json!({"terms":[["pytest.mark.parametrize",0]]})));
+                v.push(with(rec("pytest:xfail", purl, "9.0.0"), json!({"change_type":"new_option","terms":[["@pytest.mark.xfail",0]]})));
+            }
+            v
+        };
+        let mut s = stack(&[], None);
+        s.deps.insert(purl.into(), crate::stack::Dep { version: parse_version("9.1.1"), source: "test".into(), ..crate::stack::Dep::new("pytest", true) });
+        let tests = "import pytest\n\n@pytest.mark.parametrize('x', [1])\ndef test_a(x):\n    pass\n\n@pytest.mark.skip\ndef test_b():\n    pass\n";
+        let plugin = "import pytest\n\ndef pytest_addoption(parser):\n    pass\n";
+        let l = Ledger::default();
+        let r = repo(&[("tests/test_a.py", tests), ("plugin/plugin.py", plugin)]);
+        let c = catalog("pytest", 0, records(true));
+        let out = run_with(&c, &s, &r, &l);
+        assert!(out.in_effect.is_empty(), "markers on tests are not hook markers");
+        // Nothing else of the technology lives under it: `pytest.mark` reads as one API, as before.
+        let c = catalog("pytest", 0, records(false));
+        let out = run_with(&c, &s, &r, &l);
+        assert_eq!(ids(&out, &out.in_effect), vec!["pytest:hook-markers"]);
+        // A member another record is about is another API, not context: `pytest.mark.parametrize` named by this record
+        // too does not make test markers count.
+        let mut v = records(true);
+        v[0] = dep("pytest:hook-markers", json!({"replaces":["pytest.mark"],"terms":[["pytest.mark",0],["pytest.mark.parametrize",0],["pytest_addoption",0]]}));
+        let c = catalog("pytest", 0, v);
+        assert!(run_with(&c, &s, &r, &l).in_effect.is_empty());
+        // A marker on a hook the record names is the deprecated use.
+        let hooked = "import pytest\n\n@pytest.mark.tryfirst\ndef pytest_addoption(parser):\n    pass\n";
+        let r = repo(&[("tests/test_a.py", tests), ("plugin/plugin.py", hooked)]);
+        let c = catalog("pytest", 0, records(true));
+        let out = run_with(&c, &s, &r, &l);
+        let o = out.opps.iter().find(|o| o.id() == "pytest:hook-markers").unwrap();
+        assert_eq!((&o.route, &o.matched), (&Route::InEffect, &vec![("pytest.mark".to_string(), vec!["plugin/plugin.py".to_string()])]));
     }
 
     #[test]
