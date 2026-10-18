@@ -14,7 +14,7 @@ import {
   type PublicTechnology,
 } from "./discovery.ts";
 import { catalogDir, centralDir } from "../pipeline/paths.ts";
-import { fetchReleases } from "../pipeline/fetch.ts";
+import { advisoryReleases, fetchReleases } from "../pipeline/fetch.ts";
 import { readJson, sha256, writeAtomic } from "../pipeline/util.ts";
 import { reconcileSources } from "./source-quality.ts";
 import { synthesize } from "./synthesis.ts";
@@ -30,6 +30,11 @@ import { deprecationOf, publishDeprecation } from "./notices.ts";
 import { npmPurl } from "../pipeline/ecosystems.ts";
 let classifier: ReturnType<typeof makeClassifier> | undefined;
 const advisoryClassifier = () => (classifier ??= makeClassifier());
+/** The judge of the token-free first pass: never asked (no notes are read, so nothing is judged), and refusing if it
+ * were, so the pass can never spend a model call. */
+const noModel = async (): Promise<never> => {
+  throw new Error("the advisories first pass makes no model call");
+};
 import { TECHNOLOGIES } from "../pipeline/technologies.ts";
 // Docs requests in flight across all jobs; at most two per host, so more jobs at once never press one site harder.
 const docsHttp = new HttpClient({ ...DEFAULT_HTTP, concurrency: Number(process.env.UNSTALE_DOCS_CONCURRENCY ?? 16) || 16, perHost: 2 });
@@ -82,6 +87,9 @@ export interface Job {
   siblings?: string[];
   /** When the registry's deprecation was published as a record (once). */
   deprecation_notice?: string;
+  /** When the token-free first pass ran (advisories published ahead of the release history): the job keeps its place
+   * among new technologies until its first slice, which clears it. Never public. */
+  advisories_first?: string;
   /** A slice still running when its drain ended (killed with the cycle, resumed by the next): its work time so far,
    * the cycles it spanned, its stage then, and whether it is a monitored technology's refresh. Cleared when a slice
    * settles. Never public. */
@@ -122,6 +130,7 @@ export function sameStream(a: string[] | undefined, b: string[] | undefined): bo
   const common = [...x].filter((t) => y.has(t)).length;
   return common / (x.size + y.size - common) >= SAME_STREAM;
 }
+const advisoryRecords = (n: number) => `${n} security advisory record${n === 1 ? "" : "s"}`;
 const day = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 /** The package URL of a package name in the same ecosystem as `purl` (PyPI names PEP 503-normalised). */
 export const typedPurl = (purl: string, name: string): string =>
@@ -169,6 +178,10 @@ export class CoverageService {
   readonly concurrency: number;
   /** The advisories stage after a technology's history is published (off: `advisories: false` or UNSTALE_NO_ADVISORIES=1). */
   readonly advisories: boolean;
+  /** Token-free first passes at once (advisories before history, `advisoryPass`); 0: none. Apart from `concurrency`. */
+  readonly advisoriesFirst: number;
+  /** Jobs in a first pass now. */
+  private passing = new Set<string>();
   readonly limits: Limits;
   readonly addresses: AddressLimiter;
   /** Votes per address, a bucket apart from new technologies. */
@@ -185,6 +198,8 @@ export class CoverageService {
     concurrency = 2,
     opts: {
       advisories?: boolean;
+      /** First passes at once (default 0: off; the batch drain turns them on). */
+      advisoriesFirst?: number;
       limits?: Limits;
       admission?: (purl: string, repo: string | undefined) => Promise<Verdict>;
       adoption?: (purls: string[]) => Promise<Map<string, number>>;
@@ -193,6 +208,7 @@ export class CoverageService {
     this.concurrency = concurrency;
     this.advisories =
       opts.advisories ?? process.env.UNSTALE_NO_ADVISORIES !== "1";
+    this.advisoriesFirst = this.advisories ? Math.max(0, Math.floor(opts.advisoriesFirst ?? 0)) : 0;
     this.limits = opts.limits ?? limitsFromEnv();
     this.addresses = new AddressLimiter(this.limits.perAddressPerHour);
     this.votes = new AddressLimiter(this.limits.votesPerAddressPerHour);
@@ -323,6 +339,8 @@ export class CoverageService {
   /** 0: refreshes, retries and continued history of admitted technologies; 1: new; 2: past their quarterly cap. */
   private tier(job: Job): number {
     if (job.overflow === quarterKey()) return 2;
+    // Admitted by the first pass only: still new, in the same line as before it.
+    if (job.advisories_first && !job.completed?.length && job.state !== "monitoring") return 1;
     return job.admitted || job.state === "monitoring" || job.completed?.length ? 0 : 1;
   }
   /** Whether a job is being worked now (its state alone does not say: `partial` continues through the docs pass). */
@@ -454,11 +472,12 @@ export class CoverageService {
     const before = this.launched;
     // A finished job starts the next itself, and the queue is looked at every poll (a rate-limit pause ends); when
     // nothing is running, nothing more starts and no rate-limited job resumes before the deadline, the queue is done.
-    while (Date.now() < deadline && (this.pump() || this.running.size || this.resumesBefore(deadline)))
+    // First passes are token-free: they go on while the budget holds every slice back.
+    while (Date.now() < deadline && (this.pump() || this.running.size || this.passing.size || this.resumesBefore(deadline)))
       await new Promise((r) => setTimeout(r, poll));
     const drained = Date.now() < deadline;
     const stop = Date.now() + grace;
-    while (this.running.size && Date.now() < stop) await new Promise((r) => setTimeout(r, poll));
+    while ((this.running.size || this.passing.size) && Date.now() < stop) await new Promise((r) => setTimeout(r, poll));
     // A slice still running is killed with this cycle and resumed by the next: its work time so far is kept, so one
     // that cannot finish is stopped instead of being resumed first every cycle (stopSlice).
     for (const purl of this.running) {
@@ -529,6 +548,11 @@ export class CoverageService {
    * waiting new technology (a second pass fills what no new technology took); returns how many jobs it started. A
    * drain past its deadline starts nothing. */
   private pump(): number {
+    const started = this.pumpJobs();
+    this.pumpAdvisories();
+    return started;
+  }
+  private pumpJobs(): number {
     if (this.held || (this.draining && Date.now() >= this.draining) || Date.now() < this.pausedUntil) return 0;
     const queue = this.queue();
     let waitingNew = queue.filter((j) => this.tier(j) === 1 && !this.running.has(j.purl)).length;
@@ -536,7 +560,7 @@ export class CoverageService {
     for (const capped of [true, false])
       for (const job of queue) {
         if (this.running.size >= this.concurrency) return started;
-        if (this.running.has(job.purl)) continue;
+        if (this.running.has(job.purl) || this.passing.has(job.purl)) continue;
         // Resumed slices never take every slot: at most those admitted work may hold while a new technology waits,
         // whether one waits now or not (a slot is never taken back from a running slice).
         if (job.interrupted && this.runningCarried.size >= this.concurrency - this.newSlots) continue;
@@ -549,17 +573,21 @@ export class CoverageService {
       }
     return started;
   }
+  /** A waiting job's stage, saying what its first pass published when it did. */
+  private passed(job: Job, stage: string): string {
+    return job.advisories_first && job.records ? `${advisoryRecords(job.records)} published; release history: ${stage[0]!.toLowerCase()}${stage.slice(1)}` : stage;
+  }
   /** Starts one job unless the budget refuses it ("held": nothing more may start). */
   private launch(job: Job, isNew: boolean): "started" | "held" {
     if (this.budget.tokensLeft() <= 0) {
-      const stage = `Coverage budget for this ${this.limits.period} spent; continues after ${day(nextPeriod(this.limits.period))}`;
+      const stage = this.passed(job, `Coverage budget for this ${this.limits.period} spent; continues after ${day(nextPeriod(this.limits.period))}`);
       if (job.state === "queued" && job.stage !== stage) this.save(job, "queued", stage);
       this.heldBack("tokens");
       return "held";
     }
     const refused = this.budget.takeRun();
     if (refused) {
-      const stage = `Daily coverage budget reached; continues after ${day(Date.now() + refused.retryAfter * 1000)}`;
+      const stage = this.passed(job, `Daily coverage budget reached; continues after ${day(Date.now() + refused.retryAfter * 1000)}`);
       if (job.state === "queued" && job.stage !== stage) this.save(job, "queued", stage);
       this.heldBack(refused.kind === "runs" ? "runs_per_day" : "unreadable");
       return "held";
@@ -646,13 +674,19 @@ export class CoverageService {
     delete job.stream;
     this.save(job, "monitoring", `Covered as part of ${host.name}: ${why}`);
   }
-  private async work(job: Job) {
-    const refresh = job.state === "monitoring";
-    this.save(
-      job,
-      "discovering",
-      "Verifying public registry identity and official sources",
-    );
+  /**
+   * Discovery and admission, before any release or docs read: the public identity and official sources, then the
+   * admission rules (a deprecated package's notice published, type stubs joined to their package, a refused package
+   * parked). Undefined when the job settled here (blocked, parked or merged). `quiet`: no intermediate state saved (the
+   * token-free first pass leaves a job queued).
+   */
+  private async identify(job: Job, refresh: boolean, quiet = false): Promise<PublicTechnology | undefined> {
+    if (!quiet)
+      this.save(
+        job,
+        "discovering",
+        "Verifying public registry identity and official sources",
+      );
     let t: PublicTechnology;
     try {
       t =
@@ -705,6 +739,108 @@ export class CoverageService {
       }
       job.admitted = verdict.why;
     }
+    return t;
+  }
+  /**
+   * The token-free first pass of a new technology, ahead of its turn in the queue: discovery and admission, the release
+   * list, then the advisories stage with every release's notes unread, so each advisory fixed in the window is published
+   * at once as a record of its own (no model call: nothing is judged before the notes are read; advisories.ts step 6).
+   * When the history is read later, the advisories stage judges each against the notes and merges it into the record
+   * that describes it. The job stays queued in its place (`advisories_first`), and later slices run as before.
+   */
+  private async advisoryPass(job: Job): Promise<void> {
+    const t = await this.identify(job, false, true);
+    if (!t) return;
+    const tech = pipelineTechnology(t);
+    const releases = t.repo ? await fetchReleases(tech) : undefined;
+    if (releases) {
+      job.stream = releases.notes.map((n) => n.tag).slice(0, STREAM_TAGS);
+      if (!job.completed?.length && !job.records) {
+        const host = this.streamHost(job, t.repo!);
+        if (host) {
+          this.merge(job, host, "same repository and release stream");
+          return;
+        }
+      }
+    }
+    const notes = releases?.notes ?? [];
+    const index = await advisoryReleases(tech, notes);
+    let made = 0;
+    let checked = false;
+    if (index.length)
+      await withTechLock(tech.id, "onboarding", async () => {
+        const store = loadStore(tech.id);
+        // No release's notes are read yet (a first pass precedes every slice), whatever the store holds: nothing is
+        // judged, so no model call is possible.
+        const unread = new Set(index.map((n) => n.version));
+        const r = await advisoryStage(tech, store, index, noModel, { unread });
+        if (!r) return;
+        checked = true;
+        saveStore(store);
+        made = Object.values(store.records).filter((x) => x.status === "active").length;
+        if (made) publishTechnology(store, releases?.checked ?? now(), catalogDir());
+      });
+    job.records = Math.max(job.records, made);
+    this.save(
+      job,
+      "queued",
+      made
+        ? `${advisoryRecords(made)} published; release history waits for a coverage worker`
+        : checked
+          ? "Security advisories checked (none fixed in the last year); release history waits for a coverage worker"
+          : "Waiting for a coverage worker",
+    );
+  }
+  /** Starts token-free first passes for waiting new technologies, in queue order, at most `advisoriesFirst` at once. */
+  private pumpAdvisories(): number {
+    if (!this.advisoriesFirst || this.held || (this.draining && Date.now() >= this.draining) || Date.now() < this.pausedUntil) return 0;
+    let started = 0;
+    for (const job of this.queue()) {
+      if (this.passing.size >= this.advisoriesFirst) break;
+      if (!this.firstPassDue(job)) continue;
+      this.passing.add(job.purl);
+      started++;
+      // Marked from the start, so the admission it may record never moves the job to admitted work (`tier`).
+      job.advisories_first = now();
+      void this.advisoryPass(job)
+        .catch((error) => {
+          const limited = rateLimit(error);
+          if (limited) {
+            // The runner's request rate, not the package: tried again after the pause, as if never passed.
+            this.ratePause(limited.retryAfterMs);
+            delete job.advisories_first;
+            delete job.admitted;
+            return;
+          }
+          // Not a failure of the job: its turn in the queue runs the same steps and reports any error there.
+          console.error(`advisories first: ${job.purl}: ${String(error instanceof Error ? error.message : error).slice(0, 300)}`);
+          this.persist(job);
+        })
+        .finally(() => {
+          this.passing.delete(job.purl);
+          this.pumpAdvisories();
+        });
+    }
+    return started;
+  }
+  /** A waiting new technology no slice and no first pass has touched. */
+  private firstPassDue(job: Job): boolean {
+    return (
+      job.state === "queued" &&
+      !job.admitted &&
+      !job.advisories_first &&
+      !job.completed?.length &&
+      !this.running.has(job.purl) &&
+      !this.passing.has(job.purl) &&
+      this.due(job)
+    );
+  }
+  private async work(job: Job) {
+    const refresh = job.state === "monitoring";
+    const t = await this.identify(job, refresh);
+    if (!t) return;
+    // The first pass's place in the line is over: from here the job is worked as any admitted one.
+    delete job.advisories_first;
     const tech = pipelineTechnology(t);
     this.save(job, "analyzing", "Reading official release history");
     const releases = t.repo
@@ -783,15 +919,20 @@ export class CoverageService {
           return;
         }
       }
+    // The advisories stage (OSV, resolved against the release index, attached to the records of their fix), like any
+    // other stage: a new technology gets advisories with no manual step. Fails open (advisories.ts). Notes not read yet
+    // are named, so an advisory fixed only there is not judged before they are; a technology with no release notes
+    // resolves against its registry's versions.
+    const index = this.advisories ? await advisoryReleases(tech, releases.notes) : [];
     await withTechLock(tech.id, "onboarding", async () => {
       const store = loadStore(tech.id);
-      // The advisories stage (OSV, resolved against the release index, attached to the records of their fix),
-      // like any other stage: a new technology gets advisories with no manual step. Fails open (advisories.ts).
-      if (this.advisories && t.repo && releases.notes.length) {
+      if (index.length) {
         this.save(job, "partial", "Checking security advisories");
-        const r = await advisoryStage(tech, store, releases.notes, (st, q) =>
+        const read = new Set(job.completed ?? []);
+        const unread = new Set(releases.notes.filter((n) => !read.has(`${n.tag}:${n.snapshot}:audience-v1`)).map((n) => n.version));
+        const r = await advisoryStage(tech, store, index, (st, q) =>
           advisoryClassifier().classify(st, q),
-        );
+        { unread });
         if (r) saveStore(store);
       }
       publishTechnology(store, releases.checked, catalogDir());
@@ -889,6 +1030,7 @@ function publicJob(j: Job) {
     siblings: _siblings,
     merged_into: _merged,
     deprecation_notice: _notice,
+    advisories_first: _first,
     downloads: _downloads,
     interrupted: _interrupted,
     paused_until: _paused,

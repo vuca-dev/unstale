@@ -33,7 +33,9 @@ export function progressTicker<U>(updates: () => U[], send: (updates: U[]) => Pr
 export function progressOf(service: Pick<CoverageService, "jobs" | "working">, purl: string, publishBy: string): { purl: string; state: RunState; job: Record<string, unknown> } | undefined {
   const own = service.jobs.get(purl);
   const job = (own?.merged_into && service.jobs.get(own.merged_into)) || own;
-  const started = job && (service.working(job.purl) || job.state !== "queued" || job.records > 0 || !!job.completed?.length || !!job.interrupted);
+  // Records from the token-free first pass alone (advisories published while the job waits) do not start it: the
+  // gateway keeps the queued answer, and the cycle's published status carries them.
+  const started = job && (service.working(job.purl) || job.state !== "queued" || (job.records > 0 && !job.advisories_first) || !!job.completed?.length || !!job.interrupted);
   if (!job || !started) return undefined;
   const { state, stage, records, releases_done, releases_total, docs_done, docs_total, updated } = job;
   return {
