@@ -84,11 +84,15 @@ export async function runTechnology(
   // refused note is deferred to a later run. Notes are charged newest first, as fetched.
   const nameOf = (rel: ReleaseNote | GuideNote | DocsNote) => ("keyTag" in rel ? `${rel.version}${rel.keyTag}` : rel.version);
   const deferred = { budget: 0, cap: 0 };
+  // Release versions whose notes this run does not read: the advisories stage judges nothing against them yet.
+  const unread = new Set<string>();
   const admitted = (rel: ReleaseNote | GuideNote | DocsNote): boolean => {
     if (!opts.budget) return true;
     const c = opts.budget.charge(t.id, rel.notes, releaseCached(t, rel), !!opts.liftCap);
     if (c === "budget" || c === "cap") deferred[c]++;
-    return c === "ok" || c === "cached";
+    const ok = c === "ok" || c === "cached";
+    if (!ok && !("keyTag" in rel)) unread.add(rel.version);
+    return ok;
   };
   const notesToRun = [...releases, ...guides].filter(admitted);
   const docsNotes = docsPlanned.filter((n) => admitted(n.note));
@@ -154,7 +158,7 @@ export async function runTechnology(
     // Security advisories (OSV) attached to the records of their fix (advisories.ts).
     let advisoryReport: AttachReport | undefined;
     if (opts.advisories !== false && !opts.limit) {
-      advisoryReport = await advisoryStage(t, store, fetched.notes, (s, q) => cls.classify(s, q), { refresh: !!opts.refresh, offline: !!opts.offline });
+      advisoryReport = await advisoryStage(t, store, fetched.notes, (s, q) => cls.classify(s, q), { refresh: !!opts.refresh, offline: !!opts.offline, unread });
       saveStore(store);
     }
     const recs = Object.values(store.records);
