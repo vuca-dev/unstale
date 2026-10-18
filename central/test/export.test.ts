@@ -2,13 +2,13 @@
 // on a rerun, technology indexes byte-identical to what the coverage service serves (its `components`), pruned first,
 // built aside so a failed export never replaces a good one.
 import { createHash, generateKeyPairSync, verify } from "node:crypto";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { DISCOVERY_VERSION } from "../src/onboarding/discovery.ts";
 import { CoverageService, createCoverageServer } from "../src/onboarding/service.ts";
-import { catalogSigner, exportCatalog, savedJobs } from "../src/pipeline/export.ts";
+import { catalogSigner, exportCatalog, placeShard, savedJobs } from "../src/pipeline/export.ts";
 import { catalogDir, centralDir } from "../src/pipeline/paths.ts";
 import { publishTechnology } from "../src/pipeline/publish.ts";
 import { sha256 } from "../src/pipeline/util.ts";
@@ -58,7 +58,7 @@ describe("export", () => {
     const { privateKey, publicKey } = generateKeyPairSync("ed25519");
     const r = exportCatalog(catalogDir(), out, { now: T0, sign: catalogSigner(privateKey.export({ type: "pkcs8", format: "pem" }).toString()) });
     expect(r.signed).toBe(true);
-    for (const rel of ["v1/root.json", "v1/tech/next.json", "v1/tech/other.json"]) {
+    for (const rel of ["v1/root.json", "v1/technologies.json", "v1/tech/next.json", "v1/tech/other.json"]) {
       const sig = Buffer.from(readFileSync(join(out, `${rel}.sig`), "utf8"), "hex");
       expect(verify(null, readFileSync(join(out, rel)), publicKey, sig)).toBe(true);
     }
@@ -79,9 +79,66 @@ describe("export", () => {
       for (const s of index.shards) expect(first[s.path]).toBe(s.sha256);
     }
     expect(readFileSync(join(out, "v1", "root.json"))).toEqual(readFileSync(join(catalogDir(), "v1", "root.json")));
+    // Every exported index, and nothing else, is named with the hash of its served bytes: a client asks only for these,
+    // and only when its copy differs.
+    const listed = JSON.parse(readFileSync(join(out, "v1", "technologies.json"), "utf8")) as { schema: number; technologies: Record<string, string> };
+    expect(Object.keys(listed.technologies)).toEqual(["next", "other"]);
+    for (const tech of ["next", "other"]) expect(listed.technologies[tech]).toBe(first[`v1/tech/${tech}.json`]!.slice(0, 16));
     exportCatalog(catalogDir(), out, { now: T0 });
     expect(files(out)).toEqual(first);
     expect(readdirSync(join(out, ".."))).toEqual(["site"]); // no partial or old tree left beside it
+  });
+
+  test("shards are hard links to the catalog's files, not copies; everything else is written", () => {
+    const r = exportCatalog(catalogDir(), out, { now: T0 });
+    expect(r.linked).toBe(r.shards);
+    const index = JSON.parse(readFileSync(join(out, "v1", "tech", "next.json"), "utf8")) as { shards: { path: string }[] };
+    for (const s of index.shards) expect(statSync(join(out, s.path)).ino).toBe(statSync(join(catalogDir(), s.path)).ino);
+    expect(statSync(join(out, "v1", "root.json")).ino).not.toBe(statSync(join(catalogDir(), "v1", "root.json")).ino);
+    // A rerun unlinks the previous export; the catalog's shards are untouched.
+    const before = files(catalogDir());
+    exportCatalog(catalogDir(), out, { now: T0 });
+    expect(files(catalogDir())).toEqual(before);
+  });
+
+  test("a shard is copied when the filesystem refuses the link, or when the file was replaced after it was read", () => {
+    const dir = mkdtempSync(join(tmpdir(), "unstale-place-"));
+    const src = join(dir, "a.jsonl.gz");
+    writeFileSync(src, "verified");
+    const identity = (f: string) => {
+      const { ino, size, mtimeMs } = statSync(f);
+      return { data: readFileSync(f), ino, size, mtimeMs };
+    };
+    const read = identity(src);
+    const crossDevice = () => {
+      throw Object.assign(new Error("EXDEV: cross-device link not permitted"), { code: "EXDEV" });
+    };
+    expect(placeShard(src, join(dir, "copy"), read, crossDevice)).toBe(false);
+    expect(readFileSync(join(dir, "copy"), "utf8")).toBe("verified");
+    expect(statSync(join(dir, "copy")).ino).not.toBe(read.ino);
+    // Replaced (by rename, as every writer does) between the read and the link: the verified bytes are written, not
+    // the new file linked.
+    writeFileSync(`${src}.tmp`, "replaced");
+    renameSync(`${src}.tmp`, src);
+    expect(placeShard(src, join(dir, "late"), read)).toBe(false);
+    expect(readFileSync(join(dir, "late"), "utf8")).toBe("verified");
+    // Any other failure is an error, not a silent copy.
+    expect(() => placeShard(join(dir, "missing"), join(dir, "x"), read)).toThrow(/ENOENT/);
+    expect(placeShard(src, join(dir, "linked"), identity(src))).toBe(true);
+    // A link that lands as a symlink (Linux links a symlink itself) passes stat on its target's identity; it is
+    // replaced by the verified bytes as a regular file.
+    const target = join(dir, "target");
+    writeFileSync(target, "verified");
+    const viaSymlink = (_s: string, d: string) => symlinkSync(target, d);
+    expect(placeShard(src, join(dir, "sym"), identity(target), viaSymlink)).toBe(false);
+    expect(lstatSync(join(dir, "sym")).isFile()).toBe(true);
+    expect(readFileSync(join(dir, "sym"), "utf8")).toBe("verified");
+    // A shard that is itself a symlink: whatever the platform's link does, the export holds a regular file.
+    const linkedShard = join(dir, "b.jsonl.gz");
+    symlinkSync(target, linkedShard);
+    placeShard(linkedShard, join(dir, "real"), identity(target));
+    expect(lstatSync(join(dir, "real")).isFile()).toBe(true);
+    expect(readFileSync(join(dir, "real"), "utf8")).toBe("verified");
   });
 
   test("technology indexes are the bytes the service route serves, components included", async () => {
@@ -118,7 +175,10 @@ describe("export", () => {
     exportCatalog(catalogDir(), out, { now: T0 });
     const good = files(out);
     const shard = JSON.parse(readFileSync(join(catalogDir(), "v1", "tech", "next.json"), "utf8")).shards[0].path as string;
-    copyFileSync(join(catalogDir(), "v1", "root.json"), join(catalogDir(), shard)); // wrong bytes under the shard's name
+    // Wrong bytes under the shard's name, replacing the file as every writer does (never in place: the previous export's
+    // shards are links to the catalog's).
+    rmSync(join(catalogDir(), shard));
+    copyFileSync(join(catalogDir(), "v1", "root.json"), join(catalogDir(), shard));
     expect(() => exportCatalog(catalogDir(), out, { now: T0 })).toThrow(/does not match its size and sha256/);
     expect(files(out)).toEqual(good);
     expect(readdirSync(join(out, ".."))).toEqual(["site"]);

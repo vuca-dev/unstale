@@ -250,3 +250,46 @@ The diet arm failed (H2 required −6.8, H1 pooled −6.6, both CIs below 0) wit
 Arm 4b keeps every field and changes only the format (JSON on one line, no indentation), at effort `low` against the
 slice 3b baselines (`--diet compact`, `UNSTALE_EXTRACT_DIET=compact`). Same floor, nits and cost rules. This is the
 seventh look at H1/H2 in this slice; its result is reported with that caveat.
+
+# Slice 3d pre-registration: reasoning effort by chunk size, and packing short notes (not run)
+
+17 October 2026. Written before any 3d model call; nothing below has been run. Setup under test: slice 3b/3c's
+`vercel:openai/gpt-6-luna`, `low`, two calls, flex tier.
+
+## Free evidence already in hand (no model calls)
+
+Production replay (the onboarding store's cached answers, prompts rebuilt from the stored notes: 5,304 extract and 4,373
+label answers, 405 technologies): A+B costs $1.96, $0.0051 per technology-year at flex. Reasoning is 27% of that $, and
+72% of the reasoning $ is on chunks under 1,000 characters (16% of all A+B $; under 3,000 characters: 22%).
+
+Post hoc hybrid on H1 from existing runs (slice 3c `effort_none` for notes under T characters, slice 3b `low` otherwise;
+`stats.py compare` against the 3b baseline): T = 1,000: pooled −0.4, macro −1.3, breaking 0.0, precision −0.5;
+T = 3,000: −0.8 / −2.6 / −2.9 / −0.5. All CIs include 0. This is a further look at H1. The `none` gate losses (3c) were
+all on long documents (Next.js 16 guide, Prisma 7 notes), which stay at `low` under routing.
+
+## Arm E: reasoning `none` for chunks under 1,000 characters (both calls), `low` otherwise
+
+- **Set:** 400 chunks under 1,000 characters drawn (seed 20261017) from the production store's cached `low` answers, at
+  most 5 per technology. Cached `low` answers are the free baseline. A `low` replicate of 150 of them is the noise
+  reference.
+- **Metrics:** records per chunk; record agreement with the cached `low` answer (a record matches when its grounded
+  quote overlaps the other's, else same subject after case folding), as F1 per chunk, note-bootstrap 95% CI; `[]`
+  agreement; label fields on matched records (terms Jaccard; `requires` / `replaces` / `conditions` non-empty rate);
+  parse failures.
+- **Rule:** adopt if F1(`none`, cached) is no more than 3 points below F1(`low` replicate, cached) and its CI is not
+  wholly below that, records per chunk within ±10%, terms Jaccard no more than 5 points below the replicate's, and
+  parse failures ≤ 2%. Then a gate rebuild is not required (long documents are unchanged).
+- **Cost:** about $0.07 (`none` arm) + $0.05 (replicate) = **$0.12**, flex. Cap $0.20 from the run's usage log.
+
+## Arm P: several short notes of one technology per call (only if E is decided)
+
+- **Design:** consecutive uncached notes of one technology and one release line, each under 2,000 characters, packed
+  up to 8,000 characters, each under a `## Release <version> (<date>)` header. A record belongs to the note its quote
+  is found in (`locate`); an ungrounded or ambiguous record falls back to a single-note call for that note. Cached
+  notes are never repacked.
+- **Free estimate:** 3,932 of 5,304 extract calls and 3,069 of 4,373 label calls removed, saving the fixed prompt
+  (≈535 and ≈790 input tokens) and the per-call reasoning: about 12–14% of A+B, less after E (both target short notes).
+- **Set and rule:** as E, 300 short notes from 60 technologies (the packed arm against the cached single-note answers,
+  with E's replicate as the noise reference), plus the share of records attributed to the wrong version (quote found in
+  another note of the pack) ≤ 1%, and no fall in records on notes that share a change across release lines.
+- **Cost:** about $0.04 (packed arm) + the replicate from E = **$0.04** extra.

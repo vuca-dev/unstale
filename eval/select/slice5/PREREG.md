@@ -189,3 +189,67 @@ CROSS_SAME_P_SHORT, and the quote guard) are the ones fitted on dev; nothing is 
 stays and the result is recorded.
 
 Cap: SubQ ≤ $0.15 for this section (free preview credit). No Jev, gateway or Cloudflare spend.
+
+## Question floor (17 October 2026, written after the dev fit and before any held-out run of this arm)
+
+Question: can step E ask fewer questions without changing what Jev sees? The state keeps all K = 8 candidates,
+unchanged. A `same_cN` question is asked only for a candidate whose retrieval score (match.ts `retrieve`) is at or
+above a floor. With no question left, there is no call: the request is "new". Arm **Q8**: the production M8 text
+(`shortRules`) and the floor. Runner `judge2.mts --arm Q8 --floor F`. Scores: `floor.mts`. Scorer:
+`score5.mts --floor --base M8`.
+
+**Scores.** They are stored nowhere (not in `units.json`, not in the store's `judged` history). `floor.mts --scores`
+recomputes them deterministically: `retrieve` on each request's own stored extraction and its candidates as they stood.
+It must reproduce every request's candidate order; it does for 365/365. `floor.mts --population` re-runs ingest from
+empty over central-v1 (Next.js, Prisma, NestJS, the dev technologies), following the store's own decisions (1,072/1,072
+reproduce). That gives all 1,001 judge requests of the dev technologies, labelled or not, and their 67 merges.
+
+**Seen on dev before writing this (no held-out answers read):**
+- The lowest-scoring audited SAME candidate on dev scores 0.628. It is also the lowest-scoring of the 67 merges.
+- Below 0.60 there are four dev candidates with M8 p ≥ 0.5: 3 DIFFERENT, 1 UNSURE.
+- At 0.60 the dev population skips 34.7% of requests, keeps 35.1% of questions and saves 57.7% of the request
+  characters.
+  *Correction (17 October 2026, code review): that replay built records without their releases (no same-line bonus in
+  retrieval). Fixed, it gives 30.6% / 39.9% / 52.9%. The fitting rule below does not use these figures, and the lowest
+  merge score stays 0.628.*
+- Run-to-run noise (J1 held-out run 1 vs run 2, 1,774 questions): mean |Δp| 0.0030, 89% of questions identical,
+  p95 0.02, max 0.20.
+
+**Floor-fitting rule (dev only).** The floor is the largest multiple of 0.05 strictly below the lowest retrieval score
+among the dev audited SAME candidates and the central-v1 merge targets. **This gives 0.60.** The 0.05 step is a margin
+below the dev minimum, so the floor does not sit on one pair.
+
+**Invariance check (dev run).** Compare Q8's p with the M8 dev run's p, question by question, on the questions Q8
+still asks. Invariance holds if:
+- the mean |Δp| ≤ 0.0045 (1.5 × the run-to-run 0.0030), and
+- no |Δp| exceeds 0.20 (the run-to-run maximum).
+
+Held-out Δp is reported too.
+
+**Pass rule (held-out, one look).** Q8 and M8 are both scored at production's constants: SAME_P_SHORT 0.87,
+CROSS_SAME_P_SHORT 0.87, QUOTE_GUARD_BELOW 0.95. M8 is the existing `j2-M8-heldout` run. Q8 passes if all three hold:
+1. **False merges.** Guarded false merges per 100 (unaudited merges counted as DIFFERENT unless adjudicated) are not
+   above 1.0. Also not significantly above M8: exact McNemar on the per-item false-merge indicator, where p < 0.05 with
+   more false merges fails.
+2. **Recall.** Merge recall is not significantly below M8: exact McNemar on held-out SAME items, where p < 0.05 with
+   fewer recalled fails. The paired bootstrap CI is shown.
+3. **Invariance** holds on dev.
+
+Reported:
+- held-out items lost or gained against M8, by name;
+- the floor applied to M8's own held-out answers (questions below the floor set to p = 0, no calls), which separates
+  the floor's effect from run-to-run noise;
+- Jev input tokens per request against M8's;
+- the population's saving (central-v1, and central-trust-nuxt after the held-out look).
+
+**Scope if it passes.** Only where M8 itself was measured: requests that use the shorter rules (`shortRulesApply`:
+release notes and upgrade guides, no lineage). Advisories, docs and lineage keep every question.
+
+**Evalisms.**
+- Recall is measured within Jev's pair set.
+- Every eval pair had Jev p ≥ 0.5 when it was found. So these sets hold almost no requests the floor would skip
+  entirely. The population replay measures the saving; the labelled sets measure the risk.
+- A true match retrieved below the floor is a certain miss. Only the scores of audited pairs show this, so the
+  population's merges are counted too.
+
+Cap: Jev ≤ $0.30 for this section (the runner refuses past it). No gateway, no Cloudflare.

@@ -7,15 +7,27 @@
 // generated Zod, and every referenced shard's size and sha256, before anything replaces `<dir>`. The tree is built in
 // a sibling directory and renamed into place, so a partial export is never at `<dir>`. Same catalog in, same bytes.
 //
+// Shards are hard links to the catalog's files, not copies, when both are on one filesystem (else copies): at 20,000
+// technologies the shards are about 3 GB, which a copy would add to the runner's disk every cycle. That is safe because
+// a shard is content-addressed (its name carries a prefix of its sha256) and never written in place: publish.ts writes
+// a new shard by rename, prune.ts and a new export only unlink, and the deploy's pack (gateway/scripts/pack.ts) only
+// reads and unlinks. The linked file is checked to be the one whose bytes were verified (same inode, size and mtime),
+// else the verified bytes are written.
+//
 // With a signing key (UNSTALE_SIGNING_KEY, an Ed25519 private key as PKCS#8 PEM), the root and every index get a
 // detached signature beside them (`<file>.sig`, hex), which a release client checks against its compiled-in public
 // key. Indexes name their shards' sha256, so signing the indexes covers every shard.
+//
+// `v1/technologies.json` (signed too) names every exported index with a hash of its served bytes, so a client asks only
+// for the indexes of the candidates it names, and only those its cache does not hold: a candidate the catalog does not
+// cover costs no request (a 404 for a missing static file would run the Worker, gateway/, whose daily allowance is the
+// free plan's scarcest), and neither does an unchanged index, even one served by the Worker.
 import { createPrivateKey, sign } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, fstatSync, linkSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { gunzipSync } from "node:zlib";
 import { DISCOVERY_VERSION } from "../onboarding/discovery.ts";
-import { Root, ShardLine, TechIndex } from "../schema/catalog.ts";
+import { Root, ShardLine, TechIndex, Technologies } from "../schema/catalog.ts";
 import { centralDir } from "./paths.ts";
 import { pruneCatalog, SHARD_FILE, type PruneOptions, type PruneResult } from "./prune.ts";
 import { readJson, sha256 } from "./util.ts";
@@ -71,9 +83,49 @@ export interface ExportResult {
   technologies: number;
   shards: number;
   bytes: number;
+  /** Shards exported as hard links to the catalog's files (the rest are copies). */
+  linked: number;
   /** Coverage status files exported. */
   coverage: number;
   prune: PruneResult;
+}
+
+/** A shard's bytes as read, and the identity (inode, size, mtime) of the file they were read from. */
+export interface ReadShard {
+  data: Buffer;
+  ino: number;
+  size: number;
+  mtimeMs: number;
+}
+
+/** Reads through one descriptor, so a link made afterwards can be checked to be the file that was read. */
+function readShard(file: string): ReadShard & { data: Buffer<ArrayBuffer> } {
+  const fd = openSync(file, "r");
+  try {
+    const { ino, size, mtimeMs } = fstatSync(fd);
+    return { ino, size, mtimeMs, data: readFileSync(fd) };
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/** Places `src` at `dst` (whose directory exists) as a hard link, or as a copy of `data` (the verified bytes of `src`)
+ * when the filesystem refuses the link or `src` was replaced since it was read. Returns whether it linked. */
+export function placeShard(src: string, dst: string, read: ReadShard, link: (src: string, dst: string) => void = linkSync): boolean {
+  try {
+    link(src, dst);
+    // lstat, not stat: a link to a symlink (as Linux makes) would pass on its target's identity while the exported
+    // path resolves wherever the symlink points. Only a regular file that is the one read is kept.
+    const s = lstatSync(dst);
+    if (s.isFile() && s.ino === read.ino && s.size === read.size && s.mtimeMs === read.mtimeMs && s.size === read.data.length) return true;
+    rmSync(dst);
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code;
+    // Another filesystem, or one without hard links (or at its link limit): copy instead.
+    if (!["EXDEV", "EPERM", "ENOTSUP", "EOPNOTSUPP", "EMLINK", "ENOSYS"].includes(code ?? "")) throw e;
+  }
+  writeFileSync(dst, read.data);
+  return false;
 }
 
 /** A previous export or an empty directory may be replaced; anything else is refused. */
@@ -104,13 +156,19 @@ export function exportCatalog(
     mkdirSync(dirname(join(tmp, path)), { recursive: true });
     writeFileSync(join(tmp, path), data);
   };
+  let linked = 0;
+  const putShard = (path: string, read: ReadShard): void => {
+    mkdirSync(dirname(join(tmp, path)), { recursive: true });
+    if (placeShard(join(src, path), join(tmp, path), read)) linked++;
+  };
   const putSigned = (path: string, data: Buffer): void => {
     put(path, data);
     if (signer) put(`${path}.sig`, signer(data));
   };
   try {
     const shards = new Set<string>();
-    let technologies = 0;
+    // No prototype: an index named `__proto__` is a key like any other, not lost to the inherited setter.
+    const technologies: Record<string, string> = Object.create(null);
     let bytes = 0;
     const techDir = join(src, "v1", "tech");
     for (const f of (existsSync(techDir) ? readdirSync(techDir) : []).filter((f) => TECH_FILE.test(f)).sort()) {
@@ -123,19 +181,21 @@ export function exportCatalog(
         if (!SHARD_PATH.test(path)) throw new Error(`v1/tech/${f}: shard path ${s.path} is not servable`);
         const file = join(src, path);
         if (!existsSync(file)) throw new Error(`v1/tech/${f}: shard ${path} missing`);
-        const gz = readFileSync(file);
+        const read = readShard(file);
+        const gz = read.data;
         if (gz.length !== s.bytes || sha256(gz) !== s.sha256) throw new Error(`v1/tech/${f}: shard ${path} does not match its size and sha256`);
         if (!shards.has(path)) {
           const lines = gunzipSync(gz).toString("utf8").trimEnd().split("\n");
           if (lines.length !== s.records) throw new Error(`${path}: ${lines.length} lines, index says ${s.records}`);
           for (const l of lines) ShardLine.parse(JSON.parse(l));
-          put(path, gz);
+          putShard(path, read);
           shards.add(path);
           bytes += gz.length;
         }
       }
-      putSigned(`v1/tech/${f}`, servedIndex(body, f.slice(0, -5), jobs));
-      technologies++;
+      const served = servedIndex(body, f.slice(0, -5), jobs);
+      putSigned(`v1/tech/${f}`, served);
+      technologies[f.slice(0, -5)] = sha256(served).slice(0, 16);
     }
     // Shards no index names that survived the prune: inside the grace period, copied as published.
     const shardDir = join(src, "v1", "shards");
@@ -143,10 +203,10 @@ export function exportCatalog(
       for (const name of readdirSync(join(shardDir, tech)).filter((n) => SHARD_FILE.test(n)).sort()) {
         const path = `v1/shards/${tech}/${name}`;
         if (shards.has(path) || !SHARD_PATH.test(path)) continue;
-        const gz = readFileSync(join(src, path));
-        put(path, gz);
+        const read = readShard(join(src, path));
+        putShard(path, read);
         shards.add(path);
-        bytes += gz.length;
+        bytes += read.data.length;
       }
     }
     // Coverage status per package (written by `coverage drain`), so a static host can answer `GET /coverage`:
@@ -162,13 +222,16 @@ export function exportCatalog(
       coverage++;
     }
     put(".nojekyll", "");
+    // Checked against the schema, but the map itself is written: a parsed copy is an ordinary object again.
+    Technologies.parse({ schema: 1, technologies });
+    putSigned("v1/technologies.json", Buffer.from(JSON.stringify({ schema: 1, technologies })));
     putSigned("v1/root.json", root);
     // The swap: a previous export moves aside, the new tree takes its name, the old one is removed.
     const old = join(dirname(out), `.${basename(out)}.old-${process.pid}`);
     if (existsSync(out)) renameSync(out, old);
     renameSync(tmp, out);
     rmSync(old, { recursive: true, force: true });
-    return { signed: !!signer, technologies, shards: shards.size, bytes, coverage, prune };
+    return { signed: !!signer, technologies: Object.keys(technologies).length, shards: shards.size, bytes, linked, coverage, prune };
   } catch (e) {
     rmSync(tmp, { recursive: true, force: true });
     throw e;

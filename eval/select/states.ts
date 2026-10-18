@@ -11,6 +11,7 @@ import type { Classification, Questions } from "../../central/src/pipeline/class
 import { interpret, labelQuestions, recordState, type Labels } from "../../central/src/pipeline/classify/labels.ts";
 import type { Incoming } from "../../central/src/pipeline/extract.ts";
 import { ingest, kindOf, matchRequest, retrieve, type IncomingForGuard } from "../../central/src/pipeline/match.ts";
+import { hashedPacks } from "../../central/src/pipeline/packs.ts";
 import { REPO_ROOT } from "../../central/src/pipeline/paths.ts";
 import type { StoredRecord, TechStore } from "../../central/src/pipeline/store.ts";
 import { TECHNOLOGIES } from "../../central/src/pipeline/technologies.ts";
@@ -24,7 +25,7 @@ const readJson = <T>(p: string): T => JSON.parse(readFileSync(p, "utf8")) as T;
 /** Technologies outside TECHNOLOGIES that a set uses (eval/heldout/nuxt.mts NUXT). */
 const EXTRA: Record<string, { name: string; components: string[] }> = { nuxt: { name: "Nuxt", components: ["pkg:npm/nuxt"] } };
 export const techName = (id: string): string => TECHNOLOGIES[id]?.name ?? EXTRA[id]?.name ?? id;
-const components = (id: string): string[] => TECHNOLOGIES[id]?.components ?? EXTRA[id]?.components ?? [];
+export const components = (id: string): string[] => TECHNOLOGIES[id]?.components ?? EXTRA[id]?.components ?? [];
 
 /**
  * The label questions in the wording the stores were built with (before f99833e shortened them to slice 4's "v1"). The
@@ -49,9 +50,8 @@ export function buildTimeLabelQuestions(): Questions {
 export function cached(cacheDirs: string | string[], state: Record<string, unknown>, questions: Questions): Classification | undefined {
   for (const dir of typeof cacheDirs === "string" ? [cacheDirs] : cacheDirs)
     for (const [classifier, model] of [["jev", "jev-latest"], ["codex", "gpt-5.6-luna"]] as const) {
-      const k = sha256(canonical({ classifier, model, state, questions }));
-      const p = join(dir, k.slice(0, 2), `${k}.json`);
-      if (existsSync(p)) return readJson<Classification>(p);
+      const v = hashedPacks(dir, 3).get(sha256(canonical({ classifier, model, state, questions })));
+      if (v) return JSON.parse(v.toString("utf8")) as Classification;
     }
   return undefined;
 }
@@ -224,7 +224,7 @@ export async function replay(central: string, tech: string): Promise<{ requests:
       misses++;
       const no = { choice: "no", confidence: 1, probabilities: { yes: 0, no: 1 } };
       return { classifier: "jev", model: "miss", answers: Object.fromEntries(Object.keys(questions).map((k) => [k, no])) };
-    });
+    }, { questionFloor: false }); // the stores were built before QUESTION_FLOOR: every candidate was asked
   }
   return { requests, hits, misses };
 }

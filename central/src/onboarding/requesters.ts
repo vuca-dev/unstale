@@ -21,8 +21,8 @@ export function requesterKey(address: string): string {
   return `${groups.slice(0, 4).map((g) => Number.parseInt(g || "0", 16).toString(16)).join(":")}::/64`;
 }
 
-/** `kind`: which budget refused (new technologies, job runs, or release-note tokens). */
-export type Refusal = { limit: "address" | "budget"; retryAfter: number; kind?: "new" | "runs" | "tokens" };
+/** `kind`: which budget refused (job runs or release-note tokens). */
+export type Refusal = { limit: "address" | "budget"; retryAfter: number; kind?: "runs" | "tokens" };
 
 /** A sliding one-hour window per address, bounded in size; oldest addresses are dropped first. */
 export class AddressLimiter {

@@ -83,6 +83,13 @@
       "description": "When the technology's sources were last checked (ISO timestamp).",
       "type": "string"
     },
+    "components": {
+      "description": "The technology's own packages (package URLs), as the coverage service describes the technology. A record whose\nreleases name only other packages (published from the same repository, under a release-notes heading naming\nthem) applies only where the repository uses one of those. Absent (older catalogs, technologies without a\ndescriptor): every package a record names counts as the technology's.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
     "releases": {
       "description": "The technology's release index: its stable releases in the catalog window, ascending by version, each with its\npublish date and its release line. A line is a set of versions inside which version order is publish order;\ncentral derives it from this index (the smallest version-prefix depth for which that holds). The edge decides\navailability by position in this list and by line (a record's release on the installed line at or before the\ninstalled version, or a line whose first release, marked `line_start`, postdates the record's release on an\nolder line), and resolves advisory ranges (`AffectedRange::versions`) against it. Absent in catalogs before 16\nOctober 2026: the edge then uses the old rule (major, or 0.minor).",
       "items": {

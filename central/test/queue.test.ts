@@ -2,7 +2,7 @@
 // ties among new technologies), the release-note token budget per period (persisted, fails closed), the per-technology
 // quarterly cap, the technology unit (one repository and release stream) and the deprecation notice.
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CoverageService, sameStream, type Job } from "../src/onboarding/service.ts";
@@ -26,7 +26,6 @@ afterEach(() => {
 const limits = (l: Partial<Limits> = {}): Limits => ({
   perAddressPerHour: 100,
   votesPerAddressPerHour: 1000,
-  newPerDay: 100,
   runsPerDay: 100,
   trustProxy: 0,
   tokensPerPeriod: 1_000_000,
@@ -90,9 +89,11 @@ test("drain order: admitted work first, then new technologies by demand with no 
   // A quarter later the cap has reset: the overflowing technology is ordinary admitted work again.
   overflow.overflow = "2000-Q1";
   expect(service.queue()[0]!.purl).toBe("pkg:npm/overflow");
+  // A place is in the job's line: a new technology waits only behind new ones (admitted work has its own slots).
   const status = service.publicStatus(middle);
-  expect(status).toMatchObject({ queue_position: 4, queue_length: 6 });
-  expect(status.stage).toContain("(position 4 of 6)");
+  expect(status).toMatchObject({ queue_position: 2, queue_length: 4 });
+  expect(status.stage).toBe("Waiting for a coverage worker (position 2 of 4 new technologies)");
+  expect(service.publicStatus(continuing)).toMatchObject({ queue_position: 2, queue_length: 2 });
   expect(status).not.toHaveProperty("demand_voters");
   expect(service.publicStatus(parked)).not.toHaveProperty("queue_position");
 });
@@ -134,14 +135,14 @@ test("among new technologies of equal demand the most adopted drain first; an un
 test("token budget per period: spent per note, persisted, reset each period, first spend always passes, fails closed", () => {
   const path = join(dir, "budget.json");
   const t0 = Date.UTC(2026, 9, 16, 12);
-  const b = new DailyBudget({ newPerDay: 10, runsPerDay: 10, tokensPerPeriod: 100, period: "week" }, path);
+  const b = new DailyBudget({ runsPerDay: 10, tokensPerPeriod: 100, period: "week" }, path);
   expect(b.spend(500, t0)).toBeUndefined(); // one note larger than the budget cannot stall the queue
   expect(b.tokensLeft(t0)).toBe(0);
-  const again = new DailyBudget({ newPerDay: 10, runsPerDay: 10, tokensPerPeriod: 100, period: "week" }, path);
+  const again = new DailyBudget({ runsPerDay: 10, tokensPerPeriod: 100, period: "week" }, path);
   expect(again.spend(1, t0)).toMatchObject({ limit: "budget", kind: "tokens" });
   // The next ISO week starts Monday 19 October; the day counters reset daily without touching the week's tokens.
   expect(again.spend(1, Date.UTC(2026, 9, 18, 23))).toMatchObject({ kind: "tokens" });
-  expect(again.take("runs", Date.UTC(2026, 9, 17))).toBeUndefined();
+  expect(again.takeRun(Date.UTC(2026, 9, 17))).toBeUndefined();
   expect(again.tokensLeft(Date.UTC(2026, 9, 17))).toBe(0);
   expect(again.spend(60, Date.UTC(2026, 9, 19))).toBeUndefined();
   expect(again.spend(50, Date.UTC(2026, 9, 19))).toMatchObject({ kind: "tokens" });
@@ -154,7 +155,7 @@ test("token budget per period: spent per note, persisted, reset each period, fir
   expect(new Date(nextPeriod("month", t0)).toISOString().slice(0, 10)).toBe("2026-11-01");
   expect(quarterKey(t0)).toBe("2026-Q4");
   // A budget of 0 stops extraction; an unreadable file refuses and reports nothing left.
-  expect(new DailyBudget({ newPerDay: 1, runsPerDay: 1, tokensPerPeriod: 0 }, join(dir, "zero.json")).spend(1)).toMatchObject({ kind: "tokens" });
+  expect(new DailyBudget({ runsPerDay: 1, tokensPerPeriod: 0 }, join(dir, "zero.json")).spend(1)).toMatchObject({ kind: "tokens" });
   writeFileSync(path, "{not json");
   vi.spyOn(console, "error").mockImplementation(() => {});
   expect(again.spend(1)).toMatchObject({ limit: "budget" });
@@ -163,24 +164,32 @@ test("token budget per period: spent per note, persisted, reset each period, fir
 
 test("the spent limits name their cap and reset: tokens at the period's end, counts at the next UTC day", () => {
   const now = Date.parse("2026-10-17T14:51:00Z");
-  const b = new DailyBudget({ newPerDay: 1, runsPerDay: 5, tokensPerPeriod: 100, period: "week" }, join(dir, "spent.json"));
+  const b = new DailyBudget({ runsPerDay: 1, tokensPerPeriod: 100, period: "week" }, join(dir, "spent.json"));
   expect(b.spent(now)).toEqual([]);
-  expect(b.take(["runs", "new"], now)).toBeUndefined();
-  expect(b.spent(now)).toEqual([{ limit: "new_per_day", cap: 1, resets: "2026-10-18T00:00:00.000Z" }]);
+  expect(b.takeRun(now)).toBeUndefined();
+  expect(b.spent(now)).toEqual([{ limit: "runs_per_day", cap: 1, resets: "2026-10-18T00:00:00.000Z" }]);
   b.spend(80, now);
   expect(b.spend(30, now)).toMatchObject({ kind: "tokens" });
   expect(b.spent(now).map((h) => [h.limit, h.cap, h.resets])).toEqual([
     ["tokens", 100, "2026-10-19T00:00:00.000Z"],
-    ["new_per_day", 1, "2026-10-18T00:00:00.000Z"],
+    ["runs_per_day", 1, "2026-10-18T00:00:00.000Z"],
   ]);
   writeFileSync(join(dir, "spent.json"), "{");
   expect(b.spent(now)).toEqual([{ limit: "unreadable" }]);
 });
 
-test("a refusal of one kind spends nothing of the other", () => {
-  const b = new DailyBudget({ newPerDay: 0, runsPerDay: 1 }, join(dir, "b.json"));
-  expect(b.take(["runs", "new"])).toMatchObject({ kind: "new" });
-  expect(b.take("runs")).toBeUndefined();
+test("without a run cap runs are not counted and nothing is spent; a file left with a count of new technologies still reads", () => {
+  const path = join(dir, "b.json");
+  const now = Date.parse("2026-10-17T14:51:00Z");
+  const day = "2026-10-17";
+  writeFileSync(path, JSON.stringify({ day, new: 100, runs: 3 }));
+  const b = new DailyBudget({}, path);
+  for (let i = 0; i < 1500; i++) expect(b.takeRun(now)).toBeUndefined();
+  expect(b.spent(now)).toEqual([]);
+  expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({ day, new: 100, runs: 3 });
+  expect(new DailyBudget({ runsPerDay: 4 }, path).takeRun(now)).toBeUndefined();
+  expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({ day, runs: 4, period: day, tokens: 0 });
+  expect(new DailyBudget({ runsPerDay: 4 }, path).takeRun(now)).toMatchObject({ kind: "runs" });
 });
 
 test("with the period's tokens spent nothing starts, and the waiting job says why", () => {
@@ -194,15 +203,6 @@ test("with the period's tokens spent nothing starts, and the waiting job says wh
   }
 });
 
-test("over the daily count of new technologies, admitted work still runs", () => {
-  const service = new CoverageService(1, { limits: limits({ newPerDay: 0 }), admission: async () => ({ admit: true, why: "test" }) });
-  try {
-    const fresh = service.submit("pkg:npm/new");
-    expect(fresh.stage).toMatch(/^Daily limit of new technologies reached; continues after/);
-  } finally {
-    service.stop();
-  }
-});
 
 // --- work(): mocked discovery, release index, synthesis and docs pass ---
 async function mockWork(techs: Record<string, { repo: string; tags: string[]; size?: number }>) {
@@ -322,6 +322,10 @@ test("one repository and release stream is one technology: a second package join
     expect(core.siblings).toEqual(["pkg:npm/addon"]);
     expect(core.demand).toBe(2);
     expect(synth).toHaveBeenCalledTimes(3); // nothing extracted twice
+    // Its public status carries the technology's counters, not its own zeros (which a client would read as a gap).
+    const status = service.statuses().find((s) => s.purl === "pkg:npm/addon")!;
+    expect([status.records, status.releases_total]).toEqual([core.records, core.releases_total]);
+    expect(core.releases_total).toBe(3);
     // A vote for the joined package counts for its technology.
     service.register("pkg:npm/addon", "198.51.100.3");
     expect(core.demand).toBe(3);
@@ -383,4 +387,33 @@ test("the deprecation notice is read from either verdict shape and absent otherw
   expect(deprecationOf({ admit: false, why: "w", notice: { kind: "deprecated", message: "n" } } as never)).toBe("n");
   expect(deprecationOf({ admit: false, why: "w", notice: "deprecated" } as never)).toBe("w");
   expect(deprecationOf({ admit: true, why: "w" })).toBeUndefined();
+});
+
+test("a monitored technology's upgrade guide is extracted once, charged like a note", async () => {
+  const { synth } = await mockWork({ "pkg:npm/mui": { repo: "ex/mui", tags: ["v9.1.0"] } });
+  const fetching = await import("../src/pipeline/fetch.ts");
+  const guide = {
+    technology: "mui",
+    kind: "upgrade_guide" as const,
+    tag: "guide-9",
+    keyTag: "+guide.0123abcd",
+    version: "9.0.0",
+    date: "2026-04-08",
+    url: "https://mui.com/material-ui/migration/upgrade-to-v9/",
+    snapshot: "sha256:0123abcd" + "0".repeat(56),
+    notes: "## Removed `FormHelperTextProps`\n\nUse `slotProps.formHelperText` instead.",
+  };
+  const guides = vi.spyOn(fetching, "fetchGuides").mockResolvedValue([guide]);
+  const service = new CoverageService(1, { advisories: false, limits: limits(), admission: async () => ({ admit: true, why: "test" }) });
+  try {
+    service.register("pkg:npm/mui", "198.51.100.1");
+    await vi.waitFor(() => expect(service.jobs.get("pkg:npm/mui")?.state).toBe("monitoring"), { timeout: 3000 });
+    const job = service.jobs.get("pkg:npm/mui")!;
+    expect(synth.mock.calls.map(([, n]) => n.tag)).toEqual(["v9.1.0", "guide-9"]);
+    expect(job.guides_done).toEqual(["+guide.0123abcd:audience-v1"]);
+    expect(guides).toHaveBeenCalledWith(expect.objectContaining({ id: "mui" }), expect.any(Array), expect.objectContaining({ checked: true }));
+    expect(service.statuses().find((s) => s.purl === "pkg:npm/mui")).not.toHaveProperty("guides_done");
+  } finally {
+    service.stop();
+  }
 });

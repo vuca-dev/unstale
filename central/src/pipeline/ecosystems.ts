@@ -11,7 +11,13 @@
 //     another package listed in the notes is never recognised as such (advisories.ts step 9): the record keeps its labels;
 //   - publishTimes: when each version of a package was published to the registry (npm `time`, PyPI the first file's
 //     upload). A release is dated by it (fetch.ts); without it, by its GitHub release, which a bulk import of old tags
-//     dates all on one day.
+//     dates all on one day;
+//   - repositoryPackages: packages published from the technology's repository, with their descriptions, from registry
+//     metadata (npm: the packages of a maintainer of the components). Without it no heading is read as naming another package
+//     (advisories.ts step 11): the record keeps its components.
+//   - versionPage: the registry page of one version. With publishTimes, a technology with no GitHub release notes gets
+//     the registry's versions as its release index (fetch.ts `registryReleases`), so its advisories resolve; without
+//     it such a technology gets no advisories (as before).
 // No hand-written package lists, no per-technology tables (memory rule: ecosystem vocabularies, fail open).
 import type { Technology } from "./technologies.ts";
 import { pool } from "./util.ts";
@@ -28,6 +34,17 @@ export interface Ecosystem {
   registryPage?: (url: string) => string | undefined;
   /** Version → ISO publish time of `component` on the registry; undefined when the registry does not know it. */
   publishTimes?: (component: string) => Promise<Record<string, string> | undefined>;
+  /** Packages published from the technology's repository, with their registry descriptions. */
+  repositoryPackages?: (t: Technology) => Promise<RegistryPackage[] | undefined>;
+  /** The registry page of one version of `component` (where a release with no notes points, fetch.ts). */
+  versionPage?: (component: string, version: string) => string;
+}
+
+/** A package as the registry describes it (`repositoryPackages`). */
+export interface RegistryPackage {
+  purl: string;
+  name: string;
+  description: string;
 }
 
 // ---- SemVer 2.0 precedence (OSV `SEMVER` ranges are SemVer by definition, whatever the ecosystem) ----
@@ -116,22 +133,82 @@ async function getJson(url: string): Promise<unknown> {
 
 /**
  * npm siblings: packages of the components' scopes (the registry's public scope listing) whose registry `repository`
- * points at the technology's repository. An unscoped technology has none.
+ * points at the technology's repository. An unscoped technology has none. A scope is listed only when a component in
+ * it is published from the technology's repository: a merged type stub (`@types/ws`, published from DefinitelyTyped)
+ * would otherwise list another repository's scope, 11,427 packages for `@types`, read one by one at every advisories
+ * stage. A package that cannot be read fails the lookup (the caller then uses the components only, uncached) instead
+ * of counting as not a sibling: a rate-limited registry ends the lookup at its first refusal, and an incomplete list
+ * is never cached as complete.
  */
 async function npmSiblings(t: Technology): Promise<string[]> {
   const repo = t.repo.toLowerCase();
   if (!repo) return [];
-  const scopes = new Set(t.components.map(npmName).filter((n) => n.startsWith("@")).map((n) => n.slice(1).split("/")[0]!));
+  const latest = async (name: string) => (await getJson(`https://registry.npmjs.org/${name.replace("/", "%2f")}/latest`)) as { repository?: unknown } | undefined;
+  const scopes = new Set<string>();
+  for (const name of new Set(t.components.map(npmName).filter((n) => n.startsWith("@"))))
+    if (githubRepo((await latest(name))?.repository) === repo) scopes.add(name.slice(1).split("/")[0]!);
   const out: string[] = [];
   for (const scope of scopes) {
     const listing = (await getJson(`https://registry.npmjs.org/-/org/${encodeURIComponent(scope)}/package`)) as Record<string, string> | undefined;
     const names = Object.keys(listing ?? {}).filter((n) => n.startsWith(`@${scope}/`)).sort();
+    let failure: unknown;
     await pool(names, 8, async (name) => {
-      const meta = (await getJson(`https://registry.npmjs.org/${name.replace("/", "%2f")}/latest`).catch(() => undefined)) as { repository?: unknown } | undefined;
-      if (githubRepo(meta?.repository) === repo) out.push(npmPurl(name));
+      if (failure) return;
+      try {
+        if (githubRepo((await latest(name))?.repository) === repo) out.push(npmPurl(name));
+      } catch (e) {
+        failure ??= e;
+      }
     });
+    if (failure) throw failure;
   }
   return out.sort();
+}
+
+/** Above this many packages a maintainer's list is not read (an organisation account publishing thousands). */
+const MAINTAINER_LIST_MAX = 1000;
+
+/**
+ * npm: the packages of the components' maintainers (`maintainer:<name>` in the registry search) whose registry
+ * `repository` is the technology's repository. A monorepo's unscoped packages (react, react-dom,
+ * react-server-dom-webpack) have no scope listing but share a maintainer and a repository. Every maintainer's list is
+ * read (all pages) except one with more than `MAINTAINER_LIST_MAX`; undefined (unknown) when none could be read or a
+ * list ended early.
+ */
+async function npmRepositoryPackages(t: Technology): Promise<RegistryPackage[] | undefined> {
+  const repo = t.repo.toLowerCase();
+  if (!repo) return undefined;
+  const maintainers = new Set<string>();
+  for (const c of t.components) {
+    const meta = (await getJson(`https://registry.npmjs.org/${npmName(c).replace("/", "%2f")}/latest`)) as { maintainers?: Array<{ name?: unknown }> } | undefined;
+    for (const m of meta?.maintainers ?? []) if (typeof m.name === "string") maintainers.add(m.name);
+  }
+  type Page = { total?: number; objects?: Array<{ package?: { name?: unknown; description?: unknown; links?: { repository?: unknown } } }> };
+  const page = async (m: string, from: number) => (await getJson(`https://registry.npmjs.org/-/v1/search?text=${encodeURIComponent(`maintainer:${m}`)}&size=250&from=${from}`)) as Page | undefined;
+  const objects: NonNullable<Page["objects"]> = [];
+  let read = 0;
+  for (const m of [...maintainers].sort()) {
+    const first = await page(m, 0);
+    const total = first?.total ?? 0;
+    if (!first || total === 0 || total > MAINTAINER_LIST_MAX) continue;
+    const mine = [...(first.objects ?? [])];
+    for (let from = mine.length; from < total; from += 250) {
+      const more = (await page(m, from))?.objects ?? [];
+      // A list that ends early is not the maintainer's whole list: unknown, not empty.
+      if (!more.length) return undefined;
+      mine.push(...more);
+    }
+    objects.push(...mine);
+    read++;
+  }
+  if (!read) return undefined;
+  const out = new Map<string, RegistryPackage>();
+  for (const o of objects) {
+    const p = o.package;
+    if (typeof p?.name !== "string" || githubRepo(p.links?.repository) !== repo) continue;
+    out.set(p.name, { purl: npmPurl(p.name), name: p.name, description: typeof p.description === "string" ? p.description : "" });
+  }
+  return [...out.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /** npm: `dependencies`, `optionalDependencies` and bundled dependencies of the release (`registry.npmjs.org/<name>/<v>`). */
@@ -213,9 +290,25 @@ async function pypiDependencies(component: string, version: string): Promise<str
 
 export const ECOSYSTEMS: Record<string, Ecosystem> = {
   // npm versions are SemVer.
-  npm: { osv: "npm", compare: semverOrder, siblings: npmSiblings, dependencies: npmDependencies, registryPage: npmRegistryPage, publishTimes: npmPublishTimes },
+  npm: {
+    osv: "npm",
+    compare: semverOrder,
+    siblings: npmSiblings,
+    dependencies: npmDependencies,
+    registryPage: npmRegistryPage,
+    publishTimes: npmPublishTimes,
+    repositoryPackages: npmRepositoryPackages,
+    versionPage: (component, version) => `https://www.npmjs.com/package/${npmName(component)}/v/${encodeURIComponent(version)}`,
+  },
   // PyPI versions are PEP 440. No siblings hook: PyPI has no organisation listing to find a repository's packages.
-  pypi: { osv: "PyPI", compare: pep440Order, dependencies: pypiDependencies, registryPage: pypiRegistryPage, publishTimes: pypiPublishTimes },
+  pypi: {
+    osv: "PyPI",
+    compare: pep440Order,
+    dependencies: pypiDependencies,
+    registryPage: pypiRegistryPage,
+    publishTimes: pypiPublishTimes,
+    versionPage: (component, version) => `https://pypi.org/project/${decodeURIComponent(component.replace(/^pkg:pypi\//, ""))}/${encodeURIComponent(version)}/`,
+  },
 };
 
 /** A package URL in one comparable form: PyPI names PEP 503-normalised, npm scopes as `%40`, lower-cased otherwise. */

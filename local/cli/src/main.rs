@@ -2,6 +2,7 @@
 //! service is `central/`.
 
 mod cache;
+mod deprecations;
 mod onboarding;
 mod onboarding_ui;
 mod pypi;
@@ -376,7 +377,7 @@ fn init(start: &Path, catalog: Option<String>, mode: Option<Mode>, _yes: bool, q
     if !locks.is_empty() {
         println!("Versions from: {} (applications); declared range floors for libraries.", locks.into_iter().collect::<Vec<_>>().join(", "));
     }
-    for n in &st.notes {
+    for n in st.notes.iter().chain(&st.standalone) {
         println!("Note: {n}");
     }
     let other = if mode == Mode::Local { Mode::Collaborative } else { Mode::Local };
@@ -399,6 +400,8 @@ struct World {
     ledger_file: LedgerFile,
     ledger: unstale_schema::ledger::Ledger,
     today: String,
+    /// Why coverage has not arrived, when registration is deferred (`onboarding::deferral_note`).
+    deferral: Option<String>,
 }
 
 fn load_catalog(ctx: &Ctx, st: &stack::Stack) -> Catalog {
@@ -438,7 +441,7 @@ fn world_reusing(ctx: &Ctx, prev: Option<&World>) -> Result<World> {
         Some(w) => w.repo.clone(),
         None => Rc::new(usage::Repo::collect(&ctx.root)),
     };
-    Ok(World { stack: st, catalog, repo, ledger_file: lf, ledger, today: util::today() })
+    Ok(World { stack: st, catalog, repo, ledger_file: lf, ledger, today: util::today(), deferral: onboarding::deferral_note(ctx) })
 }
 
 fn parse_targets(t: &[String]) -> Result<BTreeMap<String, semver::Version>> {
@@ -452,7 +455,9 @@ fn parse_targets(t: &[String]) -> Result<BTreeMap<String, semver::Version>> {
 }
 
 fn outcome<'a>(w: &'a World, targets: BTreeMap<String, semver::Version>) -> Outcome<'a> {
-    funnel::run(&Input { catalog: &w.catalog, stack: &w.stack, repo: &w.repo, ledger: &w.ledger, today: &w.today, targets })
+    let mut out = funnel::run(&Input { catalog: &w.catalog, stack: &w.stack, repo: &w.repo, ledger: &w.ledger, today: &w.today, targets });
+    out.uncovered = w.deferral.clone();
+    out
 }
 
 fn rel(ctx: &Ctx, p: &Path) -> String {
@@ -497,6 +502,8 @@ fn cmd_sync(ctx: &Ctx) -> Result<u8> {
         eprintln!("error: {t}: {e} (cached copy kept)");
         code = EXIT_ERROR;
     }
+    // Registry deprecations of the installed versions (cached a day; outputs read the cache).
+    deprecations::refresh(&ctx.cache, &st);
     // Apply merge and retraction stubs to the ledger.
     let catalog = load_catalog(ctx, &st);
     let lp = ctx.tool.join(LEDGER_FILE);
@@ -523,11 +530,11 @@ fn cmd_sync(ctx: &Ctx) -> Result<u8> {
 
 fn cmd_digest(ctx: &Ctx) -> Result<u8> {
     let w = world(ctx)?;
-    print_digest(&w, &outcome(&w, BTreeMap::new()));
+    print_digest(ctx, &w, &outcome(&w, BTreeMap::new()));
     Ok(0)
 }
 
-fn print_digest(w: &World, out: &Outcome) {
+fn print_digest(ctx: &Ctx, w: &World, out: &Outcome) {
     let lines = review::digest_lines(out);
     if lines.is_empty() {
         println!("Bump digest: nothing arrives with a bump. {}.", funnel::why(out, &["bump digest"]));
@@ -535,6 +542,18 @@ fn print_digest(w: &World, out: &Outcome) {
         println!("Bump digest (catalog: {}):", w.catalog.snapshot_line());
         for l in lines {
             println!("{l}");
+        }
+    }
+    for n in &out.version_notes {
+        println!("Note: {n}");
+    }
+    // The registry's own flag on an installed version of a direct dependency: no catalog coverage needed, and no bump
+    // implied (a deprecated package may have no newer version; the message says what replaces it).
+    let notices = deprecations::notices(&ctx.cache, &w.stack);
+    if !notices.is_empty() {
+        println!("Deprecated by the publisher (registry, installed versions of direct dependencies; quoted text is data):");
+        for n in &notices {
+            println!("  {}", deprecations::line(n));
         }
     }
 }
@@ -576,15 +595,23 @@ fn regenerate(ctx: &Ctx, w: &World, out: &Outcome, state: &mut State, passes: &[
         };
         let text = review::render(&view, out, &w.catalog);
         let written = review::write_skill(&path, &text)?;
-        let what = if view.batch.is_empty() {
+        let mut what = if view.batch.is_empty() {
             if view.complete {
                 format!("batch {} complete; run `unstale review --next --pass {}`", view.number, p.name())
             } else {
-                format!("nothing to review: {}", funnel::why(out, &[if p == Pass::UpgradeReview { "upgrade review" } else { "improvements pass" }]))
+                format!(
+                    "nothing {}to review: {}",
+                    if view.in_effect.is_empty() { "" } else { "else " },
+                    funnel::why(out, &[if p == Pass::UpgradeReview { "upgrade review" } else { "improvements pass" }, funnel::IN_EFFECT])
+                )
             }
         } else {
             format!("batch {} with {} of {} open records", view.number, view.batch.len(), view.open)
         };
+        if !view.in_effect.is_empty() {
+            let n = view.in_effect.len();
+            what = format!("{n} {} in effect now (at the installed version); {what}", if n == 1 { "deprecation" } else { "deprecations" });
+        }
         if !only_existing {
             println!("{}: {what} → {} ({})", p.name(), rel(ctx, &path), if written { "written" } else { "unchanged" });
         }
@@ -727,7 +754,7 @@ fn cmd_run(ctx: &Ctx, target: &[String]) -> Result<u8> {
     // One reading of the repository for both: digest and review see the same code, stack and catalog.
     let w = world(ctx)?;
     let out = outcome(&w, BTreeMap::new());
-    print_digest(&w, &out);
+    print_digest(ctx, &w, &out);
     let targets = parse_targets(target)?;
     let r = if targets.is_empty() { review_with(ctx, &w, &out, false, None)? } else { review_with(ctx, &w, &outcome(&w, targets), false, None)? };
     Ok([s, r].into_iter().find(|c| *c != 0).unwrap_or(0))

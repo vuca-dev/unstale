@@ -1,19 +1,36 @@
 // The public face of unstale's catalog and coverage service on Cloudflare. Static files are the exported catalog
-// (`v1/`, written by central's `catalog export`) and are served without running this code. This code answers what a
-// static host cannot, with the same wire format as central's coverage service (onboarding/service.ts), so the client
-// needs no change:
+// (`v1/`, written by central's `catalog export`) and are served without running this code, except those packed into
+// bucket files to keep the deployed file count under the plan's limit (pack.ts), which it reads out of their bucket
+// and answers byte for byte as the static file (assets.ts). It also answers what a static host cannot, with the same
+// wire format as central's coverage service (onboarding/service.ts), so the client needs no change:
 //   GET /health                 the coverage service marker the client checks
 //   POST /coverage {purl}       a vote on a known package, or a new package queued for the next coverage run
 //   GET /coverage?purl=         a known package's published status, or a held one's place in the queue
+//   POST /coverage/status       {purls}: what GET /coverage answers, for up to BATCH packages in one request
+//   POST /coverage/register     {purls}: what POST /coverage answers, for up to BATCH packages in one request, in order
+//                               (`{results: [{purl, status, job}` or `{purl, status, error, ...}]}`; a client falls back
+//                               to one request per package where a service answers neither. The Worker's free
+//                               allowance is counted in requests, so one request for many packages is the saving)
 //   GET /internal/queue         the held requests, for a coverage run (bearer DRAIN_TOKEN)
 //   POST /internal/ack          what a deployed run took (bearer DRAIN_TOKEN)
+//   GET /internal/usage         the object's rows read and written today against the free tier (bearer DRAIN_TOKEN);
+//                               also in the answers to /internal/queue and /internal/ack, which a run prints
 //   POST /internal/progress     where a run is with the held packages it pulled (bearer DRAIN_TOKEN), so a client
-//                               that started one early can follow it until the package is published; with
-//                               `budget.spent_until`, until when central's budget is spent (no early run until then)
+//                               that started one early can follow it until the package is published (each job with
+//                               central's save time, `updated`, which orders the reports, and `publish_by`, when the
+//                               run's cycle publishes: a held package's records are `records_pending` until then,
+//                               never `records`, which counts only what the catalog has); with
+//                               `budget.spent_until`, until when central's budget is spent (no early run until then);
+//                               a package the run took and has not started is `waiting`, with its place in the run's
+//                               queue and `starts_at`, when the run is estimated to reach it, the one place a client
+//                               is shown;
+//                               with `pulls.next`, when the run reads the queue again (no early run while it does;
+//                               null: it is done, and an early run held back meanwhile starts)
 // Only the public identity of a package is accepted; no repository context, and no client address is stored.
 import { DurableObject } from "cloudflare:workers";
+import { asset, packedAsset } from "./assets.ts";
 import { packageIdentity, technologyId } from "../../central/src/onboarding/identity.ts";
-import { PendingQueue, RUN_STATES, settingsFrom, type Outcome, type Progress, type Request as Taken, type Run, type RunState } from "./queue.ts";
+import { BATCH, PendingQueue, RUN_STATES, settingsFrom, type Outcome, type Progress, type Request as Taken, type RunState, type View } from "./queue.ts";
 
 export interface Env {
   ASSETS: Fetcher;
@@ -30,6 +47,7 @@ export interface Env {
   VOTES_PER_HOUR?: string;
   MAX_PENDING?: string;
   NEW_PER_HOUR?: string;
+  COUNTED_VOTES_PER_HOUR?: string;
   FAST_TRACK_PER_DAY?: string;
   FAST_TRACK_INTERVAL_MINUTES?: string;
 }
@@ -42,9 +60,14 @@ export class Coverage extends DurableObject<Env> {
     const settings = settingsFrom(env as unknown as Record<string, string | undefined>);
     // Without a way to start a run, no package is told one is starting.
     if (!env.GITHUB_DISPATCH_TOKEN || !env.GITHUB_REPOSITORY) settings.fastTrackPerDay = 0;
-    this.queue = new PendingQueue(ctx.storage.sql, settings);
+    this.queue = new PendingQueue(ctx.storage.sql, settings, {
+      transaction: (f) => ctx.storage.transactionSync(f),
+      timer: (f, ms) => void setTimeout(f, ms),
+    });
   }
-  request(purl: string, address: string, known: boolean): Outcome {
+  /** A request and, when the package is queued, what its client is shown: one call to the object, not two (the free
+   * tier counts requests to the object too). */
+  request(purl: string, address: string, known: boolean): { outcome: Outcome; view?: View } {
     const outcome = this.queue.request(purl, address, known);
     if (outcome.type === "queued" && outcome.fastTrack)
       this.ctx.waitUntil(
@@ -52,20 +75,44 @@ export class Coverage extends DurableObject<Env> {
           .catch(() => false)
           .then((started) => started || this.queue.undispatched(purl)),
       );
-    return outcome;
+    return { outcome, view: outcome.type === "queued" ? this.queue.view(purl) : undefined };
   }
   held(purl: string): boolean {
     return this.queue.held(purl);
   }
+  /** `request` for several packages in order, in one call to the object. */
+  requestMany(items: { purl: string; known: boolean }[], address: string): { outcome: Outcome; view?: View }[] {
+    return items.map(({ purl, known }) => this.request(purl, address, known));
+  }
+  /** Which of these packages are held, in one call to the object. */
+  heldMany(purls: string[]): string[] {
+    return purls.filter((purl) => this.queue.held(purl));
+  }
   /** A held new package's place in the queue and the run working it, if any. */
   view(purl: string): View | undefined {
-    const at = this.queue.position(purl);
-    return at && { ...at, run: this.queue.run(purl), typical: this.queue.typicalSeconds(), spentUntil: this.queue.spentUntil() };
+    return this.queue.view(purl);
   }
-  /** A run's progress; `budget` (when the report carries it) replaces what the gateway knows of central's budget. */
-  report(updates: { purl: string; state: RunState; job?: Progress }[], budget?: { spentUntil?: number }): number {
+  /** `view` for several packages, in one call to the object: the held ones only. */
+  views(purls: string[]): Record<string, View> {
+    const out: Record<string, View> = {};
+    for (const purl of purls) {
+      const at = this.queue.view(purl);
+      if (at) out[purl] = at;
+    }
+    return out;
+  }
+  /** A run's progress; `budget` (when the report carries it) replaces what the gateway knows of central's budget, and
+   * `pulls` what it knows of the run's pulls. A run done pulling starts the early run held back meanwhile, if any. */
+  report(updates: { purl: string; state: RunState; job?: Progress }[], budget?: { spentUntil?: number }, pulls?: { next?: number }): { reported: number; dispatched?: boolean } {
     if (budget) this.queue.setBudget(budget.spentUntil);
-    return this.queue.report(updates);
+    const started = pulls ? this.queue.setPulls(pulls.next) : [];
+    if (started.length)
+      this.ctx.waitUntil(
+        dispatch(this.env)
+          .catch(() => false)
+          .then((ok) => ok || started.forEach((purl) => this.queue.undispatched(purl))),
+      );
+    return { reported: this.queue.report(updates), ...(pulls ? { dispatched: started.length > 0 } : {}) };
   }
   list(): Taken[] {
     return this.queue.list();
@@ -73,15 +120,9 @@ export class Coverage extends DurableObject<Env> {
   ack(taken: Taken[]): number {
     return this.queue.ack(taken);
   }
-}
-
-interface View {
-  position: number;
-  length: number;
-  run?: Run;
-  typical?: number;
-  /** Central's budget is spent until then (ms): no run takes a new package before it. */
-  spentUntil?: number;
+  usage(): ReturnType<PendingQueue["usageToday"]> {
+    return this.queue.usageToday();
+  }
 }
 
 /** Starts the coverage workflow early; a failure only means the package waits for the schedule. */
@@ -124,7 +165,7 @@ async function sha256(s: string): Promise<string> {
 
 /** A known package's status as the last coverage run published it, or undefined. */
 async function published(env: Env, url: URL, purl: string): Promise<Record<string, unknown> | undefined> {
-  const res = await env.ASSETS.fetch(new URL(`/v1/coverage/${await sha256(purl)}.json`, url));
+  const res = await asset(env, new Request(new URL(`/v1/coverage/${await sha256(purl)}.json`, url)));
   return res.ok ? ((await res.json()) as Record<string, unknown>) : undefined;
 }
 
@@ -147,27 +188,40 @@ async function registered(purl: string): Promise<boolean> {
 /**
  * A held package as a job, in the coverage service's format. While a run has it, `run` says where (and the job's
  * counters are the run's), so a client can follow it until its published status replaces this answer.
+ *
+ * One place: a run that took the package reports its place in the run's own queue (in its line, by demand) and when
+ * the run is estimated to reach it (`starts_at`, from measured throughput, as `publish_by` says when a cycle
+ * publishes); that is what a client is shown. Before a run takes it, no place: the gateway's own order is only how it
+ * holds requests, and the run places each by demand when it pulls (every few minutes while one is in progress, and
+ * every request held at once).
  */
 function queued(purl: string, at: View, now = Date.now()) {
   const { run } = at;
-  const place = `position ${at.position} of ${at.length}`;
   // While the budget is spent no run takes it, so the next run that can is the first scheduled after the reset.
   const spent = at.spentUntil !== undefined && at.spentUntil > now ? at.spentUntil : undefined;
-  const next = nextScheduled(spent ?? now);
+  // A run working the queue takes every held request at its next pull (a late pull reads as now).
+  const pulls = at.pullsNext !== undefined && !spent ? new Date(Math.max(at.pullsNext, now)) : undefined;
+  const next = pulls ?? nextScheduled(spent ?? now);
+  // Taken by the run in progress: its place and estimate are the run's.
+  const waiting: Partial<Progress> | undefined = run?.state === "waiting" ? (run.job ?? {}) : undefined;
+  const startsAt = waiting?.starts_at;
   const stage = (() => {
     switch (run?.state) {
       case "dispatched":
-        return `Queued (${place}); a coverage run is starting and takes it if it is next`;
+        return "A coverage run is starting; it takes this package and places it by demand";
+      case "waiting":
+        return run.job?.stage || "Taken by the coverage run in progress; waiting for a coverage worker";
       case "running":
         return run.job?.stage ?? "A coverage run is working it";
       case "publishing":
         return "Analysed; the coverage run is publishing the catalog";
-      case "declined":
-        return `Another package is ahead (${place}); waiting for the scheduled run at ${clock(next)}`;
       default:
-        return spent
-          ? `Waiting for the coverage budget, spent until ${new Date(spent).toISOString().slice(0, 10)} ${clock(new Date(spent))} (${place}); the next run that can take it is at ${clock(next)}`
-          : `Waiting for the next coverage run (${place})`;
+        // `declined` (no run sends it any more) reads as not taken yet.
+        if (spent)
+          return `Waiting for the coverage budget, spent until ${new Date(spent).toISOString().slice(0, 10)} ${clock(new Date(spent))}; the next run that can take it is at ${clock(next)}`;
+        return pulls !== undefined
+          ? `Registered; the coverage run in progress takes it at its next pull, at about ${clock(pulls)}, and places it by demand`
+          : `Waiting for the next coverage run, at ${clock(next)}`;
     }
   })();
   // A job the run finished is not published until the deploy: still in progress to a client.
@@ -181,16 +235,25 @@ function queued(purl: string, at: View, now = Date.now()) {
     name: packageIdentity(purl),
     state,
     stage,
-    updated: new Date(run?.updated ?? now).toISOString(),
-    records: job?.records ?? 0,
+    // Central's own time of the job's last save when the run sent it, the clock its published status uses too, so a
+    // client can order the answers it gets for one job.
+    // A waiting package's: the time of the run's estimate, on the same clock.
+    updated: (job ?? waiting)?.updated ?? new Date(run?.updated ?? now).toISOString(),
+    // Nothing a run reports is in the catalog before its cycle publishes: none of its records can be synced yet.
+    records: 0,
+    ...(job?.records && { records_pending: job.records }),
+    ...(job?.publish_by && { publish_by: job.publish_by }),
     releases_done: job?.releases_done ?? 0,
     releases_total: job?.releases_total ?? 0,
     docs_done: job?.docs_done ?? 0,
     docs_total: job?.docs_total ?? 0,
     docs_failed: 0,
-    queue_position: at.position,
-    queue_length: at.length,
-    next_run: next.toISOString(),
+    ...(waiting?.queue_position && { queue_position: waiting.queue_position, queue_length: waiting.queue_length ?? waiting.queue_position }),
+    // Waiting in a run: when the run is estimated to reach it (none before the run has measured its throughput).
+    // Otherwise when a run next takes requests: the pull of the run in progress, or a scheduled start.
+    ...(waiting ? startsAt && { next_run: startsAt, starts_at: startsAt } : { next_run: next.toISOString() }),
+    // `next_run` is when the run in progress next reads the queue, not a scheduled start.
+    ...(!waiting && pulls !== undefined && { next_run_pull: true }),
     ...(run && {
       run: {
         state: run.state,
@@ -201,6 +264,8 @@ function queued(purl: string, at: View, now = Date.now()) {
   };
 }
 
+/** Exactly what Date#toISOString writes: a looser parse would read "0" as the year 2000. */
+const isoTime = (v: unknown): v is string => typeof v === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(v);
 const count = (v: unknown) => (Number.isInteger(v) && (v as number) >= 0 ? (v as number) : 0);
 
 /** A run's progress report: held packages and public counters only, bounded. */
@@ -224,6 +289,10 @@ function progressOf(body: unknown): { purl: string; state: RunState; job?: Progr
                 releases_total: count(job.releases_total),
                 docs_done: count(job.docs_done),
                 docs_total: count(job.docs_total),
+                ...(isoTime(job.updated) && { updated: job.updated as string }),
+                ...(isoTime(job.publish_by) && { publish_by: job.publish_by as string }),
+                ...(count(job.queue_position) && { queue_position: count(job.queue_position), queue_length: count(job.queue_length) }),
+                ...(isoTime(job.starts_at) && { starts_at: job.starts_at as string }),
               },
             }
           : {}),
@@ -238,10 +307,20 @@ function budgetOf(body: unknown): { spentUntil?: number } | undefined {
   if (budget === undefined) return undefined;
   const until = (budget as { spent_until?: unknown })?.spent_until;
   if (until === null) return {};
-  // Exactly what Date#toISOString writes: a looser parse would read "0" as the year 2000 and clear a pause.
-  const ms = typeof until === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(until) ? Date.parse(until) : NaN;
+  const ms = isoTime(until) ? Date.parse(until) : NaN;
   if (!Number.isFinite(ms)) throw new Error("Expected budget {\"spent_until\": ISO time or null}");
   return { spentUntil: ms };
+}
+
+/** The pulls a run's progress report carries: undefined when absent (unchanged), `{}` when the run pulls no more. */
+function pullsOf(body: unknown): { next?: number } | undefined {
+  const pulls = (body as { pulls?: unknown })?.pulls;
+  if (pulls === undefined) return undefined;
+  const next = (pulls as { next?: unknown })?.next;
+  if (next === null) return {};
+  const ms = isoTime(next) ? Date.parse(next) : NaN;
+  if (!Number.isFinite(ms)) throw new Error("Expected pulls {\"next\": ISO time or null}");
+  return { next: ms };
 }
 
 /** Constant time, so the token cannot be guessed byte by byte. */
@@ -272,15 +351,30 @@ async function input<T>(read: () => T | Promise<T>): Promise<T> {
   }
 }
 
-/** Seconds until 00:00 UTC, when the Durable Objects free tier's daily allowance resets. */
-const untilUtcMidnight = (now = Date.now()) => Math.max(60, Math.ceil((86_400_000 - (now % 86_400_000)) / 1000));
+/** Cloudflare's reset of the daily allowance at 00:00 UTC lags: on 18 October 2026 it took effect about 00:13. */
+const RESET_LAG_S = 30 * 60;
+/** How soon to retry while the allowance still reads as spent just after 00:00 UTC. */
+const RESET_RETRY_S = 300;
+/** Retries told the same time are spread over this much after it (a share each, by `Math.random`), so the clients a
+ * spent allowance deferred do not all come back in the same minute, the one the allowance has just restarted. */
+const RETRY_SPREAD_S = 30 * 60;
+
+/** Seconds until the Durable Objects free tier's daily allowance resets: 00:00 UTC, or shortly while that reset is
+ * still landing (a client told "after midnight" at 00:05 would otherwise wait a whole day); spread over RETRY_SPREAD_S
+ * after the reset (over RESET_RETRY_S while it lands). */
+function untilReset(now = Date.now(), share = Math.random()): number {
+  const sinceMidnight = (now % 86_400_000) / 1000;
+  if (sinceMidnight < RESET_LAG_S) return RESET_RETRY_S + Math.floor(share * RESET_RETRY_S);
+  return Math.max(60, Math.ceil(86_400 - sinceMidnight)) + Math.floor(share * RETRY_SPREAD_S);
+}
 
 /** Anything else (storage, a daily allowance, the runtime) is the service's: a temporary 503 with Retry-After, so a
- * client defers and retries instead of reading it as a rejection of the package. */
+ * client defers and retries instead of reading it as a rejection of the package. A spent daily allowance is retried
+ * after its reset (untilReset: minutes, not a day, while Cloudflare's 00:00 UTC reset is still landing). */
 function unavailable(error: unknown): Response {
   const message = error instanceof Error ? error.message : String(error);
   console.log(`unavailable: ${message.slice(0, 300)}`);
-  const retryAfter = /exceeded allowed|free tier/i.test(message) ? untilUtcMidnight() : 60;
+  const retryAfter = /exceeded allowed|free tier/i.test(message) ? untilReset() : 60 + Math.floor(Math.random() * 60);
   return json(503, { error: "The coverage service is temporarily unavailable; retry later", retry_after: retryAfter }, { "Retry-After": String(retryAfter) });
 }
 
@@ -296,6 +390,30 @@ async function purlOf(request: Request): Promise<string> {
   return purl;
 }
 
+/** The package URLs of a batch request body, `{"purls": [...]}`: public identities only, at most BATCH, no repeats. */
+async function purlsOf(request: Request): Promise<string[]> {
+  const body = await request.text();
+  if (body.length > BATCH * 240 + 64) throw new BadRequest(`At most ${BATCH} public identities`, 413);
+  const parsed = JSON.parse(body) as unknown;
+  if (!parsed || typeof parsed !== "object" || Object.keys(parsed).join() !== "purls") throw new BadRequest("Expected {\"purls\": [...]} only");
+  const purls = (parsed as { purls: unknown }).purls;
+  if (!Array.isArray(purls) || !purls.length || purls.length > BATCH) throw new BadRequest(`purls must list 1 to ${BATCH} packages`);
+  for (const purl of purls) {
+    if (typeof purl !== "string" || purl.length > 230) throw new BadRequest("Each purl must be a string of at most 230 characters");
+    packageIdentity(purl);
+  }
+  if (new Set(purls).size !== purls.length) throw new BadRequest("Each package once");
+  return purls as string[];
+}
+
+/** A registration's outcome as POST /coverage answers it: status and body. */
+function registration(purl: string, outcome: Outcome, view: View | undefined, known: Record<string, unknown> | undefined): { status: number; body: Record<string, unknown> } {
+  if (outcome.type === "refused")
+    return { status: 429, body: { error: "Too many new technologies from this address; retry later", limit: outcome.limit, retry_after: outcome.retryAfter } };
+  if (outcome.type === "voted") return { status: 202, body: known ?? {} };
+  return { status: 202, body: queued(purl, view ?? outcome) };
+}
+
 export async function handle(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const queue = () => env.COVERAGE.get(env.COVERAGE.idFromName("global"));
@@ -308,15 +426,45 @@ export async function handle(request: Request, env: Env): Promise<Response> {
       const address = request.headers.get("CF-Connecting-IP") ?? "unknown";
       const known = await published(env, url, purl);
       if (!known && !(await queue().held(purl)) && !(await registered(purl))) return json(404, { error: "No public package with this identity" });
-      const outcome = await queue().request(purl, address, !!known);
-      if (outcome.type === "refused")
-        return json(
-          429,
-          { error: "Too many new technologies from this address; retry later", limit: outcome.limit, retry_after: outcome.retryAfter },
-          { "Retry-After": String(outcome.retryAfter) },
-        );
-      if (outcome.type === "voted") return json(202, known);
-      return json(202, queued(purl, (await queue().view(purl)) ?? outcome));
+      const { outcome, view } = await queue().request(purl, address, !!known);
+      const { status, body } = registration(purl, outcome, view, known);
+      return json(status, body, outcome.type === "refused" ? { "Retry-After": String(outcome.retryAfter) } : {});
+    }
+    // A batch of registrations: each package as POST /coverage would answer it, in the order sent.
+    if (request.method === "POST" && url.pathname === "/coverage/register") {
+      if (!request.headers.get("Content-Type")?.startsWith("application/json")) return json(415, { error: "application/json required" });
+      if (request.headers.get("Origin")) return json(403, { error: "Browser registration is not supported" });
+      const purls = await input(() => purlsOf(request));
+      const address = request.headers.get("CF-Connecting-IP") ?? "unknown";
+      const known = await Promise.all(purls.map((purl) => published(env, url, purl)));
+      const unknown = purls.filter((_, i) => !known[i]);
+      const held = new Set(unknown.length ? await queue().heldMany(unknown) : []);
+      const exists = await Promise.all(purls.map((purl, i) => !!known[i] || held.has(purl) || registered(purl)));
+      const asked = purls.flatMap((purl, i) => (exists[i] ? [{ purl, known: !!known[i] }] : []));
+      const answers = asked.length ? await queue().requestMany(asked, address) : [];
+      const by = new Map(asked.map(({ purl }, i) => [purl, answers[i]!]));
+      return json(200, {
+        results: purls.map((purl, i) => {
+          const answer = by.get(purl);
+          if (!answer) return { purl, status: 404, error: "No public package with this identity" };
+          const { status, body } = registration(purl, answer.outcome, answer.view, known[i]);
+          return status === 202 ? { purl, status, job: body } : { purl, status, ...body };
+        }),
+      });
+    }
+    // A batch of status reads: each package as GET /coverage would answer it.
+    if (request.method === "POST" && url.pathname === "/coverage/status") {
+      const purls = await input(() => purlsOf(request));
+      const known = await Promise.all(purls.map((purl) => published(env, url, purl)));
+      const unknown = purls.filter((_, i) => !known[i]);
+      const views: Record<string, View> = unknown.length ? await queue().views(unknown) : {};
+      return json(200, {
+        results: purls.map((purl, i) => {
+          const at = views[purl];
+          if (known[i]) return { purl, status: 200, job: known[i] };
+          return at ? { purl, status: 200, job: queued(purl, at) } : { purl, status: 404, error: "No shared job for this identity" };
+        }),
+      });
     }
     if (request.method === "GET" && url.pathname === "/coverage") {
       const purl = url.searchParams.get("purl") ?? "";
@@ -326,22 +474,29 @@ export async function handle(request: Request, env: Env): Promise<Response> {
       const at = await queue().view(purl);
       return at ? json(200, queued(purl, at)) : json(404, { error: "No shared job for this identity" });
     }
-    if (url.pathname === "/internal/queue" || url.pathname === "/internal/ack" || url.pathname === "/internal/progress") {
+    if (url.pathname.startsWith("/internal/")) {
       if (!authorized(request, env.DRAIN_TOKEN)) return json(401, { error: "Unauthorized" });
-      if (request.method === "GET" && url.pathname === "/internal/queue") return json(200, { requests: await queue().list() });
+      if (request.method === "GET" && url.pathname === "/internal/usage") return json(200, await queue().usage());
+      if (request.method === "GET" && url.pathname === "/internal/queue") return json(200, { requests: await queue().list(), usage: await queue().usage() });
       if (request.method === "POST" && url.pathname === "/internal/ack") {
         const { requests } = await input(async () => {
           const body = (await request.json()) as { requests?: Taken[] } | null;
           if (!body || typeof body !== "object") throw new BadRequest("Expected {\"requests\": [...]}");
           return body;
         });
-        return json(200, { removed: await queue().ack(Array.isArray(requests) ? requests : []) });
+        return json(200, { removed: await queue().ack(Array.isArray(requests) ? requests : []), usage: await queue().usage() });
       }
       if (request.method === "POST" && url.pathname === "/internal/progress") {
         const body = await input(() => request.json());
-        const [updates, budget] = await input(() => [progressOf(body), budgetOf(body)] as const);
-        return json(200, { reported: await queue().report(updates, budget) });
+        const [updates, budget, pulls] = await input(() => [progressOf(body), budgetOf(body), pullsOf(body)] as const);
+        return json(200, await queue().report(updates, budget, pulls));
       }
+    }
+    // A packed catalog file, answered as the static file was: before the website's redirects, which the asset layer
+    // never made for it (the catalog is not routed to the Worker first).
+    if (url.pathname.startsWith("/v1/")) {
+      const file = await packedAsset(env, request);
+      if (file) return file;
     }
     return page(request, env, url);
   } catch (error) {
@@ -365,7 +520,8 @@ export function prefersMarkdown(accept: string | null): boolean {
 }
 
 // Website pages (gateway/site/build.ts; routed here by run_worker_first: "/", "/npm/*", "/pypi/*"): the apex over
-// HTTPS, and a page's index.md twin for clients that ask for Markdown. Everything else is the static file.
+// HTTPS, and a page's index.md twin for clients that ask for Markdown. Everything else is the static file, packed or
+// not (assets.ts): a request for a packed catalog file finds no static file and so reaches the Worker here.
 export async function page(request: Request, env: Env, url: URL): Promise<Response> {
   if (url.hostname.startsWith("www.") || url.protocol === "http:") {
     return Response.redirect(`https://${url.hostname.replace(/^www\./, "")}${url.pathname}${url.search}`, 301);
@@ -377,14 +533,14 @@ export async function page(request: Request, env: Env, url: URL): Promise<Respon
     return new Response(file.body, { status: file.status, headers: { "Content-Type": "text/html; charset=utf-8" } });
   }
   if (request.method === "GET" && url.pathname.endsWith("/") && prefersMarkdown(request.headers.get("Accept"))) {
-    const md = await env.ASSETS.fetch(new URL(`${url.pathname}index.md`, url));
+    const md = await asset(env, new Request(new URL(`${url.pathname}index.md`, url)));
     if (md.ok) {
       return new Response(md.body, {
         headers: { "Content-Type": "text/markdown; charset=utf-8", Vary: "Accept", Link: `<${url.href}>; rel="canonical"` },
       });
     }
   }
-  const res = await env.ASSETS.fetch(request);
+  const res = await asset(env, request);
   if (!url.pathname.endsWith("/")) return res;
   const out = new Response(res.body, res);
   out.headers.append("Vary", "Accept");

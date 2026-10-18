@@ -4,7 +4,7 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { technologyId } from "../../central/src/onboarding/identity.ts";
 import { Coverage, handle, nextScheduled, type Env } from "../src/index.ts";
-import { PendingQueue, settingsFrom, type Settings } from "../src/queue.ts";
+import { BATCH, BUCKETS, PendingQueue, settingsFrom, type Settings } from "../src/queue.ts";
 import { memorySql } from "./sqlite.ts";
 
 // The public registries: every package exists unless a test says otherwise.
@@ -16,6 +16,11 @@ afterEach(() => {
 });
 
 const settings = (s: Partial<Settings> = {}): Settings => ({ ...settingsFrom({}), ...s });
+/** The entries as storage has them (every bucket decoded). */
+const stored = (sql: ReturnType<typeof memorySql>) =>
+  (sql.db.prepare("SELECT entries FROM queue").all() as { entries: string }[]).flatMap((r) =>
+    (JSON.parse(r.entries) as [string, number, number, number, unknown?][]).map(([purl, demand, firstSeen, known, run]) => ({ purl, demand, firstSeen, known, run })),
+  );
 const T = Date.parse("2026-10-17T12:00:00Z");
 
 test("a new package is queued once; repeat requests are votes, one per requester", () => {
@@ -29,7 +34,7 @@ test("a new package is queued once; repeat requests are votes, one per requester
   for (const ip of ["198.51.100.3", "198.51.100.4", "198.51.100.5"]) q.request("pkg:npm/b", ip, false, T);
   expect(q.position("pkg:npm/b")).toEqual({ position: 1, length: 2 });
   // Nothing written names a requester.
-  expect(JSON.stringify(sql.db.prepare("SELECT * FROM pending").all())).not.toMatch(/198\.51\.100/);
+  expect(JSON.stringify(sql.db.prepare("SELECT * FROM queue").all())).not.toMatch(/198\.51\.100/);
 });
 
 test("new packages are limited per address per hour; votes have their own limit, uncounted over it; the queue is bounded", () => {
@@ -84,33 +89,42 @@ test("early runs: at most the daily count, spaced by the interval, counted per U
   expect(new PendingQueue(memorySql(), settings()).request("pkg:npm/a", "x", false, T)).toMatchObject({ fastTrack: false });
 });
 
-// Rows read are billed per row visited (5 million a day on the free tier), and an init registers hundreds of packages
-// and polls each of them on every pass: no registration or status read may cost more as the queue grows.
-test("a registration, a vote and a status read each read a bounded number of rows however long the queue", () => {
+// Rows are billed per row visited or written (5 million read and 100,000 written a day on the free tier), and an init
+// registers hundreds of packages and polls each of them on every pass: no registration, vote, status read, wake or
+// acknowledgement may cost more as the queue grows, and each write is one row.
+test("each operation reads and writes a bounded number of rows however long the queue", () => {
   const sql = memorySql();
-  const q = new PendingQueue(sql, settings({ perAddressPerHour: 1_000_000, newPerHour: 0, fastTrackPerDay: 5, fastTrackIntervalMs: 0 }));
+  const s = settings({ perAddressPerHour: 1_000_000, votesPerAddressPerHour: 1_000_000, newPerHour: 0, votesPerHour: 0, fastTrackPerDay: 5000, fastTrackIntervalMs: 0 });
+  let q = new PendingQueue(sql, s);
   for (let i = 0; i < 3000; i++) q.request(`pkg:npm/p${i}`, `198.51.${i % 200}.${i % 250}`, i % 3 === 0, T + i);
-  const cost = (f: () => unknown) => {
-    const before = sql.rowsRead;
+  q.report([{ purl: "pkg:npm/p2", state: "running" }], T);
+  // A wake reads the buckets and meta once, whatever the length.
+  q = new PendingQueue(sql, { ...s, fastTrackPerDay: 0 });
+  const cost = (op: string, f: () => unknown) => {
+    const before = { ...(q.usageToday(T).ops[op] ?? { n: 0, read: 0, written: 0 }) };
     f();
-    return sql.rowsRead - before;
+    const after = q.usageToday(T).ops[op]!;
+    return { read: after.read - before.read, written: after.written - before.written };
   };
-  const view = (purl: string) => (q.position(purl), q.run(purl, T), q.typicalSeconds(), q.spentUntil(T));
-  // The first request after a wake reads the held rows once.
-  const fresh = new PendingQueue(sql, settings({ perAddressPerHour: 1_000_000, newPerHour: 0 }));
-  // A vote on a known package does not need them.
-  expect(cost(() => fresh.request("pkg:npm/p0", "203.0.113.9", true, T))).toBe(1);
-  expect(cost(() => fresh.held("pkg:npm/p1"))).toBeGreaterThanOrEqual(3000);
-  expect(cost(() => fresh.held("pkg:npm/p2"))).toBe(0);
-  const costs = {
-    registration: cost(() => (q.request("pkg:npm/new", "203.0.113.1", false, T), view("pkg:npm/new"))),
-    vote: cost(() => (q.request("pkg:npm/p1", "203.0.113.2", false, T), view("pkg:npm/p1"))),
-    known: cost(() => q.request("pkg:npm/p0", "203.0.113.3", true, T)),
-    status: cost(() => view("pkg:npm/p2")),
-    progress: cost(() => q.report([{ purl: "pkg:npm/p2", state: "running" }], T)),
-  };
-  // Before the line was kept in memory: 9,015, 6,007, 1, 3,004 and 2 rows with 3,000 held.
-  for (const [what, rows] of Object.entries(costs)) expect(rows, what).toBeLessThanOrEqual(20);
+  const { ops } = q.usageToday(T);
+  expect(ops.wake!.read).toBeLessThanOrEqual(BUCKETS + 8);
+  expect(ops.wake!.written).toBe(0);
+  expect(cost("register", () => q.request("pkg:npm/new", "203.0.113.1", false, T))).toEqual({ read: 2, written: 2 });
+  expect(cost("view", () => q.view("pkg:npm/new", T))).toEqual({ read: 0, written: 0 });
+  expect(cost("vote", () => q.request("pkg:npm/p1", "203.0.113.2", false, T))).toEqual({ read: 1, written: 1 });
+  expect(cost("vote", () => q.request("pkg:npm/p0", "203.0.113.3", true, T))).toEqual({ read: 1, written: 1 });
+  // A repeated vote is not counted, and writes nothing.
+  expect(cost("vote", () => q.request("pkg:npm/p0", "203.0.113.3", true, T))).toEqual({ read: 0, written: 0 });
+  expect(cost("view", () => q.view("pkg:npm/p2", T))).toEqual({ read: 0, written: 0 });
+  expect(cost("list", () => q.list(T))).toEqual({ read: 0, written: 0 });
+  // A run's progress in the same state is not written again until RUN_SAVE_MS.
+  expect(cost("report", () => q.report([{ purl: "pkg:npm/p2", state: "running" }], T + 5000))).toEqual({ read: 0, written: 0 });
+  const ack = cost("ack", () => q.ack(q.list(T), T));
+  expect(ack.read).toBeLessThanOrEqual(BUCKETS + 1);
+  expect(ack.written).toBeLessThanOrEqual(BUCKETS + 1);
+  expect(q.list(T)).toEqual([]);
+  // Before (one rowid row per package): a wake read 3,000 rows, a new package wrote 4 and an acknowledgement of
+  // 3,000 read 9,008 and wrote 11,008.
 });
 
 test("the line kept in memory is the table's order through votes, new packages, acknowledgements and a wake", () => {
@@ -120,7 +134,9 @@ test("the line kept in memory is the table's order through votes, new packages, 
   let seed = 7;
   const rand = (n: number) => ((seed = (seed * 1103515245 + 12345) % 2 ** 31), seed % n);
   const check = () => {
-    const rows = sql.db.prepare("SELECT purl FROM pending WHERE known = 0 ORDER BY demand DESC, first_seen ASC, purl ASC").all() as { purl: string }[];
+    const rows = stored(sql)
+      .filter((r) => r.known === 0)
+      .sort((a, b) => b.demand - a.demand || a.firstSeen - b.firstSeen || (a.purl < b.purl ? -1 : a.purl > b.purl ? 1 : 0));
     rows.forEach((r, i) => expect(q.position(r.purl)).toEqual({ position: i + 1, length: rows.length }));
     expect(q.position("pkg:npm/never")).toBeUndefined();
   };
@@ -138,7 +154,8 @@ test("the line kept in memory is the table's order through votes, new packages, 
 // The Worker over a fake runtime: static files from a map, the object called in-process.
 function env(files: Record<string, unknown> = {}, extra: Partial<Env> = {}) {
   const waits: Promise<unknown>[] = [];
-  const ctx = { storage: { sql: memorySql() }, waitUntil: (p: Promise<unknown>) => waits.push(p) } as unknown as DurableObjectState;
+  const sql = memorySql();
+  const ctx = { storage: { sql, transactionSync: <T>(f: () => T) => sql.transaction(f) }, waitUntil: (p: Promise<unknown>) => waits.push(p) } as unknown as DurableObjectState;
   const e = {
     DRAIN_TOKEN: "drain-secret",
     GITHUB_REPOSITORY: "owner/repo",
@@ -169,12 +186,80 @@ test("the client's protocol: health, a new package queued as a job, a known one 
   expect(await (await handle(get("/health"), e)).json()).toEqual({ schema: 1, service: "unstale-coverage" });
   const fresh = await handle(post({ purl: "pkg:pypi/requests" }), e);
   expect(fresh.status).toBe(202);
-  expect(await fresh.json()).toMatchObject({ purl: "pkg:pypi/requests", technology: technologyId("pkg:pypi/requests"), name: "requests", state: "queued", queue_position: 1 });
-  expect(await (await handle(get("/coverage?purl=pkg%3Apypi%2Frequests"), e)).json()).toMatchObject({ state: "queued", stage: "Waiting for the next coverage run (position 1 of 1)" });
+  expect(await fresh.json()).toMatchObject({ purl: "pkg:pypi/requests", technology: technologyId("pkg:pypi/requests"), name: "requests", state: "queued" });
+  // Not taken by a run yet: no place (the run places it by demand), only when a run takes it.
+  const held = (await (await handle(get("/coverage?purl=pkg%3Apypi%2Frequests"), e)).json()) as Record<string, unknown>;
+  expect(held).toMatchObject({ state: "queued", stage: expect.stringMatching(/^Waiting for the next coverage run, at \d{2}:\d{2} UTC$/) });
+  expect(held).not.toHaveProperty("queue_position");
   const vote = await handle(post({ purl: "pkg:npm/next" }), e);
   expect([vote.status, await vote.json()]).toEqual([202, known]);
   expect(await (await handle(get("/coverage?purl=pkg%3Anpm%2Fnext"), e)).json()).toEqual(known);
   expect((await handle(get("/coverage?purl=pkg%3Anpm%2Fnever"), e)).status).toBe(404);
+});
+
+const batch = (path: string, body: unknown, headers: Record<string, string> = {}) =>
+  new Request(`https://unstale.example${path}`, { method: "POST", headers: { "Content-Type": "application/json", "CF-Connecting-IP": "198.51.100.9", ...headers }, body: typeof body === "string" ? body : JSON.stringify(body) });
+
+test("a batch answers each package as its own request would, in one Worker request and at most two calls to the object", async () => {
+  const known = { schema: 1, purl: "pkg:npm/next", technology: "next", name: "next", state: "monitoring", stage: "done", records: 12 };
+  vi.stubGlobal("fetch", async (url: string) => new Response("{}", { status: url.includes("made-up") ? 404 : 200 }));
+  const { env: e } = env({ [await statusPath("pkg:npm/next")]: known }, { RATE_PER_HOUR: "1" });
+  const object = e.COVERAGE.get(e.COVERAGE.idFromName("global"));
+  const calls: string[] = [];
+  e.COVERAGE = { idFromName: () => "global", get: () => new Proxy(object, {
+        get: (t, k) => {
+          const v = (t as unknown as Record<string | symbol, unknown>)[k];
+          if (typeof v !== "function") return v;
+          calls.push(String(k));
+          return v.bind(t);
+        },
+      }) } as unknown as Env["COVERAGE"];
+  const purls = ["pkg:npm/next", "pkg:pypi/requests", "pkg:npm/made-up", "pkg:npm/b"];
+  const res = await handle(batch("/coverage/register", { purls }), e);
+  expect(res.status).toBe(200);
+  const { results } = (await res.json()) as { results: Record<string, unknown>[] };
+  expect(results.map((r) => [r.purl, r.status])).toEqual([
+    ["pkg:npm/next", 202],
+    ["pkg:pypi/requests", 202],
+    ["pkg:npm/made-up", 404],
+    ["pkg:npm/b", 429],
+  ]);
+  expect(results[0]!.job).toEqual(known);
+  expect(results[1]!.job).toMatchObject({ purl: "pkg:pypi/requests", state: "queued" });
+  expect(results[3]).toMatchObject({ limit: "address", retry_after: 3600 });
+  expect(calls).toEqual(["heldMany", "requestMany"]);
+  // Status reads: the published status, a held package's place, nothing for one never asked for; one call.
+  calls.length = 0;
+  const read = await handle(batch("/coverage/status", { purls: ["pkg:npm/next", "pkg:pypi/requests", "pkg:npm/never"] }), e);
+  const { results: statuses } = (await read.json()) as { results: Record<string, unknown>[] };
+  expect(statuses.map((r) => [r.purl, r.status])).toEqual([
+    ["pkg:npm/next", 200],
+    ["pkg:pypi/requests", 200],
+    ["pkg:npm/never", 404],
+  ]);
+  expect(statuses[0]!.job).toEqual(known);
+  // As GET /coverage answers it, but for the time of the answer (and so the next run, across a scheduled run's start).
+  const single = (await (await handle(get("/coverage?purl=pkg%3Apypi%2Frequests"), e)).json()) as Record<string, unknown>;
+  expect({ ...(statuses[1]!.job as object), updated: single.updated, next_run: single.next_run }).toEqual(single);
+  expect(calls).toEqual(["views", "view"]);
+  // Known packages only: no call to the object at all.
+  calls.length = 0;
+  expect((await handle(batch("/coverage/status", { purls: ["pkg:npm/next"] }), e)).status).toBe(200);
+  expect(calls).toEqual([]);
+});
+
+test("a batch takes public identities only, at most BATCH of them, never from a browser", async () => {
+  const { env: e } = env();
+  const many = Array.from({ length: BATCH + 1 }, (_, i) => `pkg:npm/p${i}`);
+  expect((await handle(batch("/coverage/status", { purls: many }), e)).status).toBe(400);
+  expect((await handle(batch("/coverage/status", { purls: [] }), e)).status).toBe(400);
+  expect((await handle(batch("/coverage/status", { purls: ["pkg:npm/a", "pkg:npm/a"] }), e)).status).toBe(400);
+  expect((await handle(batch("/coverage/status", { purls: ["pkg:npm/a@1.0.0"] }), e)).status).toBe(400);
+  expect((await handle(batch("/coverage/register", { purls: ["pkg:npm/a"], repo: "acme/private" }), e)).status).toBe(400);
+  expect((await handle(batch("/coverage/register", "x".repeat(BATCH * 240 + 100)), e)).status).toBe(413);
+  expect((await handle(batch("/coverage/register", { purls: ["pkg:npm/a"] }, { Origin: "https://evil.example" }), e)).status).toBe(403);
+  expect((await handle(batch("/coverage/register", { purls: ["pkg:npm/a"] }, { "Content-Type": "text/plain" }), e)).status).toBe(415);
+  expect((await handle(batch("/coverage/register", { purls: many.slice(0, BATCH) }), e)).status).toBe(200);
 });
 
 test("only one public identity is accepted, never from a browser", async () => {
@@ -193,6 +278,8 @@ test("storage that fails (a used-up daily allowance) is a temporary 503 with Ret
   e.COVERAGE = { idFromName: () => "global", get: () => new Proxy({}, { get: () => () => Promise.reject(quota) }) } as unknown as Env["COVERAGE"];
   // A fixed clock, away from midnight, so the expected reset cannot move during the test.
   vi.useFakeTimers({ toFake: ["Date"] });
+  // The earliest of the spread retry times (Math.random 0); the spread itself is checked below.
+  const random = vi.spyOn(Math, "random").mockReturnValue(0);
   const now = Date.parse("2026-10-17T16:40:00Z");
   vi.setSystemTime(now);
   for (const r of [post({ purl: "pkg:npm/a" }), get("/coverage?purl=pkg%3Anpm%2Fa")]) {
@@ -203,6 +290,20 @@ test("storage that fails (a used-up daily allowance) is a temporary 503 with Ret
     expect(after).toBe(7 * 3600 + 20 * 60);
     expect(await res.json()).toMatchObject({ retry_after: after });
   }
+  // Just after 00:00 UTC Cloudflare's reset may not have landed yet: retry in minutes, not a day.
+  vi.setSystemTime(Date.parse("2026-10-18T00:05:00Z"));
+  expect((await handle(get("/coverage?purl=pkg%3Anpm%2Fa"), e)).headers.get("Retry-After")).toBe("300");
+  vi.setSystemTime(Date.parse("2026-10-18T00:30:00Z"));
+  expect((await handle(get("/coverage?purl=pkg%3Anpm%2Fa"), e)).headers.get("Retry-After")).toBe(String(23 * 3600 + 30 * 60));
+  vi.setSystemTime(Date.parse("2026-10-17T23:59:30Z"));
+  expect((await handle(get("/coverage?purl=pkg%3Anpm%2Fa"), e)).headers.get("Retry-After")).toBe("60");
+  // Clients deferred to the reset come back spread over the half hour after it, not all in its first minute; while
+  // the reset lands, over five minutes after the first retry.
+  random.mockReturnValue(0.5);
+  expect((await handle(get("/coverage?purl=pkg%3Anpm%2Fa"), e)).headers.get("Retry-After")).toBe(String(60 + 15 * 60));
+  vi.setSystemTime(Date.parse("2026-10-18T00:05:00Z"));
+  expect((await handle(get("/coverage?purl=pkg%3Anpm%2Fa"), e)).headers.get("Retry-After")).toBe("450");
+  random.mockReturnValue(0);
   e.COVERAGE = { idFromName: () => "global", get: () => new Proxy({}, { get: () => () => Promise.reject(new Error("Durable Object reset")) }) } as unknown as Env["COVERAGE"];
   const other = await handle(post({ purl: "pkg:npm/a" }), e);
   expect([other.status, other.headers.get("Retry-After")]).toEqual([503, "60"]);
@@ -221,7 +322,7 @@ test("a name the public registry does not know is not queued", async () => {
   expect((await handle(post({ purl: "pkg:npm/%40scope/real" }), e)).status).toBe(202);
   expect(asked).toEqual(["https://registry.npmjs.org/made-up-name/latest", "https://registry.npmjs.org/@scope%2Freal/latest"]);
   const auth = { Authorization: "Bearer drain-secret" };
-  expect(await (await handle(get("/internal/queue", auth), e)).json()).toEqual({ requests: [{ purl: "pkg:npm/%40scope/real", demand: 1 }] });
+  expect(await (await handle(get("/internal/queue", auth), e)).json()).toMatchObject({ requests: [{ purl: "pkg:npm/%40scope/real", demand: 1 }] });
 });
 
 test("a refused registration is a 429 with Retry-After, as the coverage service answers", async () => {
@@ -242,7 +343,7 @@ test("a coverage run reads and acknowledges the queue with the drain token only"
   const { requests } = (await (await handle(get("/internal/queue", auth), e)).json()) as { requests: unknown[] };
   expect(requests).toEqual([{ purl: "pkg:npm/a", demand: 1 }]);
   const ack = new Request("https://unstale.example/internal/ack", { method: "POST", headers: { ...auth, "Content-Type": "application/json" }, body: JSON.stringify({ requests }) });
-  expect(await (await handle(ack, e)).json()).toEqual({ removed: 1 });
+  expect(await (await handle(ack, e)).json()).toMatchObject({ removed: 1, usage: { held: 0 } });
   expect((await handle(get("/coverage?purl=pkg%3Anpm%2Fa"), e)).status).toBe(404);
 });
 
@@ -264,7 +365,7 @@ test("a fast-tracked package starts the coverage workflow; without a token nothi
   expect(calls).toEqual([]);
   const on = env({}, { FAST_TRACK_PER_DAY: "1", GITHUB_DISPATCH_TOKEN: "t" });
   const r = await handle(post({ purl: "pkg:npm/a" }), on.env);
-  expect(await r.json()).toMatchObject({ stage: "Queued (position 1 of 1); a coverage run is starting and takes it if it is next" });
+  expect(await r.json()).toMatchObject({ stage: "A coverage run is starting; it takes this package and places it by demand" });
   await Promise.all(on.waits);
   expect(calls).toEqual([{ url: "https://api.github.com/repos/owner/repo/actions/workflows/ingest.yml/dispatches", body: { ref: "main", inputs: { reason: "fast-track" } } }]);
 });
@@ -282,10 +383,11 @@ test("a run's progress on a held package: started early, working, publishing, th
   expect((await handle(new Request("https://unstale.example/internal/progress", { method: "POST", body: "{}" }), e)).status).toBe(401);
   const job = { state: "analyzing", stage: "Reading release notes\u001b[2J", records: 3, releases_done: 2, releases_total: 9, docs_done: 1, docs_total: 4, extra: "x" };
   expect(await (await progress([{ purl: "pkg:npm/a", state: "running", job }, { purl: "pkg:npm/never-held", state: "running" }])).json()).toEqual({ reported: 1 });
-  expect(await status()).toMatchObject({ state: "analyzing", stage: "Reading release notes [2J", records: 3, releases_done: 2, releases_total: 9, docs_done: 1, docs_total: 4, run: { state: "running" } });
+  // What a run extracted is not in the catalog before its cycle publishes: pending, never counted as published.
+  expect(await status()).toMatchObject({ state: "analyzing", stage: "Reading release notes [2J", records: 0, records_pending: 3, releases_done: 2, releases_total: 9, docs_done: 1, docs_total: 4, run: { state: "running" } });
   await progress([{ purl: "pkg:npm/a", state: "publishing" }]);
   // The last counters stay while the catalog is published.
-  expect(await status()).toMatchObject({ state: "analyzing", records: 3, run: { state: "publishing" } });
+  expect(await status()).toMatchObject({ state: "analyzing", records: 0, records_pending: 3, run: { state: "publishing" } });
   files[await statusPath("pkg:npm/a")] = { schema: 1, purl: "pkg:npm/a", technology: "a", name: "a", state: "partial", stage: "done", records: 5 };
   expect(await status()).toEqual(files[await statusPath("pkg:npm/a")]);
   const ack = new Request("https://unstale.example/internal/ack", { method: "POST", headers: auth, body: JSON.stringify({ requests: [{ purl: "pkg:npm/a", demand: 1 }] }) });
@@ -354,7 +456,7 @@ test("a run reports the budget with its progress; the gateway dispatches nothing
   const r = await handle(post({ purl: "pkg:npm/a" }), e);
   expect(r.status).toBe(202);
   const body = (await r.json()) as Record<string, string>;
-  expect(body.stage).toMatch(/^Waiting for the coverage budget, spent until \d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC \(position 1 of 1\); the next run that can take it is at \d{2}:\d{2} UTC$/);
+  expect(body.stage).toMatch(/^Waiting for the coverage budget, spent until \d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC; the next run that can take it is at \d{2}:\d{2} UTC$/);
   expect(Date.parse(body.next_run!)).toBeGreaterThan(until.getTime());
   await Promise.all(waits);
   expect(dispatches).toEqual([]);
@@ -367,6 +469,112 @@ test("a run reports the budget with its progress; the gateway dispatches nothing
   await handle(post({ purl: "pkg:npm/c" }, { "CF-Connecting-IP": "198.51.100.11" }), e);
   await Promise.all(waits);
   expect(dispatches).toHaveLength(1);
+});
+
+test("while a run pulls the queue no early run starts and none of the day's count is used; when it is done, one held back starts", () => {
+  const q = new PendingQueue(memorySql(), settings({ fastTrackPerDay: 2, fastTrackIntervalMs: 0 }));
+  q.setPulls(T + 5 * 60_000, T);
+  expect(q.pullsNext(T)).toBe(T + 5 * 60_000);
+  expect(q.request("pkg:npm/a", "198.51.100.1", false, T)).toMatchObject({ type: "queued", fastTrack: false });
+  expect(q.request("pkg:npm/b", "198.51.100.2", false, T + 60_000)).toMatchObject({ type: "queued", fastTrack: false });
+  expect(q.view("pkg:npm/a", T)).toMatchObject({ pullsNext: T + 5 * 60_000 });
+  expect(q.run("pkg:npm/a", T)).toBeUndefined();
+  // Done pulling: the one early run held back starts now, counts, and its packages show it.
+  expect(q.setPulls(undefined, T + 2 * 60_000)).toEqual(["pkg:npm/a", "pkg:npm/b"]);
+  expect(q.run("pkg:npm/b", T + 2 * 60_000)).toMatchObject({ state: "dispatched" });
+  expect(q.pullsNext(T + 2 * 60_000)).toBeUndefined();
+  expect(q.setPulls(undefined, T + 3 * 60_000)).toEqual([]);
+  expect(q.request("pkg:npm/c", "198.51.100.3", false, T + 4 * 60_000)).toMatchObject({ fastTrack: true });
+  expect(q.request("pkg:npm/d", "198.51.100.4", false, T + 5 * 60_000)).toMatchObject({ fastTrack: false }); // the day's 2 are used
+  // Nothing held back: a run done pulling starts nothing.
+  const quiet = new PendingQueue(memorySql(), settings({ fastTrackPerDay: 2, fastTrackIntervalMs: 0 }));
+  quiet.setPulls(T + 5 * 60_000, T);
+  expect(quiet.setPulls(undefined, T + 60_000)).toEqual([]);
+  // Held back, but the pulling run took and published the package: nothing is left to start a run for.
+  const took = new PendingQueue(memorySql(), settings({ fastTrackPerDay: 2, fastTrackIntervalMs: 0 }));
+  took.setPulls(T + 5 * 60_000, T);
+  took.request("pkg:npm/a", "198.51.100.1", false, T);
+  took.ack([{ purl: "pkg:npm/a", demand: 1 }], T + 60_000);
+  expect(took.setPulls(undefined, T + 2 * 60_000)).toEqual([]);
+  expect(took.request("pkg:npm/b", "198.51.100.2", false, T + 3 * 60_000)).toMatchObject({ fastTrack: true });
+  expect(took.request("pkg:npm/c", "198.51.100.3", false, T + 4 * 60_000)).toMatchObject({ fastTrack: true }); // none of the 2 used before
+});
+
+test("a run that stops pulling without saying so is waited for only a while; then early runs start again", () => {
+  const q = new PendingQueue(memorySql(), settings({ fastTrackPerDay: 5, fastTrackIntervalMs: 0 }));
+  q.setPulls(T, T);
+  expect(q.request("pkg:npm/a", "198.51.100.1", false, T + 14 * 60_000)).toMatchObject({ fastTrack: false });
+  expect(q.pullsNext(T + 16 * 60_000)).toBeUndefined();
+  expect(q.request("pkg:npm/b", "198.51.100.2", false, T + 16 * 60_000)).toMatchObject({ fastTrack: true });
+  // The early run that started took what was held back too: a later "done" starts no second one.
+  expect(q.setPulls(undefined, T + 17 * 60_000)).toEqual([]);
+});
+
+test("a run reports its pulls with its progress: a held package names the next pull, and the run's last word starts what waited", async () => {
+  const dispatches: string[] = [];
+  vi.stubGlobal("fetch", async (url: string) => {
+    if (url.startsWith("https://api.github.com/")) dispatches.push(url);
+    return new Response(null, { status: 204 });
+  });
+  const { env: e, waits } = env({}, { FAST_TRACK_PER_DAY: "5", FAST_TRACK_INTERVAL_MINUTES: "0", GITHUB_DISPATCH_TOKEN: "t" });
+  const auth = { Authorization: "Bearer drain-secret", "Content-Type": "application/json" };
+  const progress = (body: unknown) => handle(new Request("https://unstale.example/internal/progress", { method: "POST", headers: auth, body: JSON.stringify(body) }), e);
+  for (const bad of ["soon", 5, "2026-10-18"]) expect((await progress({ updates: [], pulls: { next: bad } })).status).toBe(400);
+  const next = new Date(Date.now() + 5 * 60_000);
+  expect(await (await progress({ updates: [], pulls: { next: next.toISOString() } })).json()).toEqual({ reported: 0, dispatched: false });
+  const r = (await (await handle(post({ purl: "pkg:npm/a" }), e)).json()) as Record<string, string>;
+  expect(r.stage).toMatch(/^Registered; the coverage run in progress takes it at its next pull, at about \d{2}:\d{2} UTC, and places it by demand$/);
+  expect(r.next_run).toBe(next.toISOString());
+  expect(r.next_run_pull).toBe(true);
+  await Promise.all(waits);
+  expect(dispatches).toEqual([]);
+  expect(await (await progress({ updates: [], pulls: { next: null } })).json()).toEqual({ reported: 0, dispatched: true });
+  await Promise.all(waits);
+  expect(dispatches).toHaveLength(1);
+});
+
+test("a package the run took waits at the run's place and estimate: one place, an ETA that moves only with the run", async () => {
+  vi.stubGlobal("fetch", async () => new Response(null, { status: 200 }));
+  const { env: e } = env({});
+  const auth = { Authorization: "Bearer drain-secret", "Content-Type": "application/json" };
+  const progress = (body: unknown) => handle(new Request("https://unstale.example/internal/progress", { method: "POST", headers: auth, body: JSON.stringify(body) }), e);
+  await handle(post({ purl: "pkg:npm/a" }), e);
+  const pull = new Date(Date.now() + 5 * 60_000).toISOString();
+  const starts = new Date(Date.now() + 47 * 60_000).toISOString();
+  const updated = new Date().toISOString();
+  const stage = "Waiting for a coverage worker (position 120 of 400 new technologies; a run reaches it at about 17:40 UTC)";
+  const job = { state: "queued", stage, records: 0, updated, queue_position: 120, queue_length: 400, starts_at: starts };
+  expect(await (await progress({ updates: [{ purl: "pkg:npm/a", state: "waiting", job }], pulls: { next: pull } })).json()).toMatchObject({ reported: 1 });
+  const r = (await (await handle(get("/coverage?purl=pkg%3Anpm%2Fa"), e)).json()) as Record<string, unknown>;
+  // The run's place, and when it reaches it: not the next pull.
+  expect(r).toMatchObject({ state: "queued", stage, queue_position: 120, queue_length: 400, next_run: starts, starts_at: starts, run: { state: "waiting" } });
+  expect(r).not.toHaveProperty("next_run_pull");
+  // The next report moves it, as the run starts jobs ahead of it.
+  const later = { ...job, stage: stage.replace("120", "84"), queue_position: 84, updated: new Date(Date.now() + 1).toISOString() };
+  await progress({ updates: [{ purl: "pkg:npm/a", state: "waiting", job: later }] });
+  expect(await (await handle(get("/coverage?purl=pkg%3Anpm%2Fa"), e)).json()).toMatchObject({ queue_position: 84, next_run: starts });
+  // Before the run has measured its throughput: its place, and no time.
+  const unmeasured = { ...later, updated: new Date(Date.now() + 2).toISOString(), starts_at: undefined };
+  await progress({ updates: [{ purl: "pkg:npm/a", state: "waiting", job: unmeasured }] });
+  const none = (await (await handle(get("/coverage?purl=pkg%3Anpm%2Fa"), e)).json()) as Record<string, unknown>;
+  expect(none).toMatchObject({ queue_position: 84 });
+  expect(none).not.toHaveProperty("next_run");
+});
+
+test("a waiting package is written once when it starts waiting, not again while its place moves", () => {
+  const q = new PendingQueue(memorySql(), settings());
+  q.request("pkg:npm/a", "198.51.100.1", false, T);
+  const written = () => q.usageToday(T + 3600_000).ops.report?.written ?? 0;
+  const job = (n: number) => ({ state: "queued", stage: `(position ${n} of 9)`, records: 0, releases_done: 0, releases_total: 0, docs_done: 0, docs_total: 0, queue_position: n, queue_length: 9 });
+  q.report([{ purl: "pkg:npm/a", state: "waiting", job: job(9) }], T);
+  const first = written();
+  expect(first).toBe(1);
+  // Past RUN_SAVE_MS a worked package is written again; a waiting one is not.
+  q.report([{ purl: "pkg:npm/a", state: "waiting", job: job(3) }], T + 20 * 60_000);
+  expect(written()).toBe(first);
+  expect(q.view("pkg:npm/a", T + 20 * 60_000)?.run?.job?.queue_position).toBe(3);
+  q.report([{ purl: "pkg:npm/a", state: "running", job: job(0) }], T + 21 * 60_000);
+  expect(written()).toBe(first + 1);
 });
 
 test("a failed or unreachable dispatch leaves the package waiting for the schedule; the next scheduled run is named", async () => {
@@ -387,4 +595,184 @@ test("a failed or unreachable dispatch leaves the package waiting for the schedu
   expect(nextScheduled(Date.parse("2026-10-17T12:00:00Z")).toISOString()).toBe("2026-10-17T12:23:00.000Z");
   expect(nextScheduled(Date.parse("2026-10-17T12:23:00Z")).toISOString()).toBe("2026-10-17T15:23:00.000Z");
   expect(nextScheduled(Date.parse("2026-10-17T22:50:00Z")).toISOString()).toBe("2026-10-18T00:23:00.000Z");
+});
+
+/** An object as the previous layout left it: one rowid row per package and per run, the counters in separate keys. */
+function oldLayout() {
+  const sql = memorySql();
+  sql.db.exec(`
+    CREATE TABLE pending (purl TEXT PRIMARY KEY, demand INTEGER NOT NULL, first_seen INTEGER NOT NULL, known INTEGER NOT NULL);
+    CREATE TABLE meta (k TEXT PRIMARY KEY, v TEXT NOT NULL);
+    CREATE TABLE runs (purl TEXT PRIMARY KEY, state TEXT NOT NULL, since INTEGER NOT NULL, updated INTEGER NOT NULL, job TEXT);
+  `);
+  const job = { state: "analyzing", stage: "Reading release notes", records: 4, releases_done: 1, releases_total: 3, docs_done: 0, docs_total: 0 };
+  for (const [purl, demand, first, known] of [["pkg:npm/a", 3, T, 0], ["pkg:npm/b", 1, T + 1, 0], ["pkg:npm/k", 2, T, 1]] as const)
+    sql.db.prepare("INSERT INTO pending VALUES (?, ?, ?, ?)").run(purl, demand, first, known);
+  sql.db.prepare("INSERT INTO runs VALUES (?, ?, ?, ?, ?)").run("pkg:npm/a", "running", T - 60_000, T, JSON.stringify(job));
+  sql.db.prepare("INSERT INTO runs VALUES (?, ?, ?, ?, NULL)").run("pkg:npm/b", "declined", T, T);
+  const meta = { new_hour: "2026-10-17T12", new_count: "2", fast_day: "2026-10-17", fast_count: "1", fast_last: String(T - 3600_000), run_durations: "[30,90]", budget_until: String(T - 1) };
+  for (const [k, v] of Object.entries(meta)) sql.db.prepare("INSERT INTO meta VALUES (?, ?)").run(k, v);
+  return { sql, job };
+}
+
+test("an object in the previous layout is migrated once, keeping every package, run and counter", () => {
+  const { sql, job } = oldLayout();
+  const s = settings({ newPerHour: 3, fastTrackPerDay: 2, fastTrackIntervalMs: 0 });
+  const q = new PendingQueue(sql, s, { transaction: (f) => sql.transaction(f) });
+  expect(q.list(T)).toEqual([{ purl: "pkg:npm/a", demand: 3 }, { purl: "pkg:npm/k", demand: 2 }, { purl: "pkg:npm/b", demand: 1 }]);
+  expect([q.position("pkg:npm/a"), q.position("pkg:npm/b"), q.position("pkg:npm/k")]).toEqual([{ position: 1, length: 2 }, { position: 2, length: 2 }, undefined]);
+  expect(q.run("pkg:npm/a", T)).toEqual({ state: "running", since: T - 60_000, updated: T, job });
+  expect(q.run("pkg:npm/b", T)).toMatchObject({ state: "declined" });
+  expect(q.typicalSeconds()).toBe(90);
+  expect(q.spentUntil(T - 2)).toBe(T - 1);
+  // The hour's count (2 of 3) and the day's early runs (1 of 2) carry on.
+  expect(q.request("pkg:npm/c", "198.51.100.1", false, T)).toMatchObject({ type: "queued", fastTrack: true });
+  expect(q.request("pkg:npm/d", "198.51.100.2", false, T)).toMatchObject({ type: "refused", limit: "budget" });
+  const tables = sql.db.prepare("SELECT name, sql FROM sqlite_master WHERE type = 'table' ORDER BY name").all() as { name: string; sql: string }[];
+  expect(tables.map((t) => t.name)).toEqual(["meta", "queue"]);
+  expect(tables[0]!.sql).toMatch(/WITHOUT ROWID/);
+  const keys = (sql.db.prepare("SELECT k FROM meta ORDER BY k").all() as { k: string }[]).map((r) => r.k);
+  expect(keys).toEqual(["budget_until", "fast", "new", "run_durations", "schema", "usage"]);
+  // A later wake reads the new layout and migrates nothing.
+  const again = new PendingQueue(sql, s, { transaction: (f) => sql.transaction(f) });
+  expect(again.list(T).map((r) => r.purl)).toEqual(["pkg:npm/a", "pkg:npm/c", "pkg:npm/k", "pkg:npm/b"]);
+  expect(again.run("pkg:npm/c", T)).toMatchObject({ state: "dispatched" });
+  expect(again.usageToday(T).ops.migrate?.n ?? 0).toBe(1);
+  expect(again.usageToday(T).ops.wake!.read).toBeLessThanOrEqual(BUCKETS + 8);
+});
+
+test("a migration that fails part way leaves the previous layout whole, and the next request migrates it", () => {
+  const { sql } = oldLayout();
+  let fail = true;
+  const flaky = {
+    exec: (query: string, ...bindings: unknown[]) => {
+      if (fail && /^DROP TABLE pending/.test(query)) throw new Error("Exceeded allowed rows written in Durable Objects free tier.");
+      return sql.exec(query, ...bindings);
+    },
+  };
+  const q = new PendingQueue(flaky, settings(), { transaction: (f) => sql.transaction(f) });
+  expect(() => q.list(T)).toThrow(/free tier/);
+  expect(sql.db.prepare("SELECT COUNT(*) AS n FROM pending").get()).toEqual({ n: 3 });
+  expect(sql.db.prepare("SELECT v FROM meta WHERE k = 'new_count'").get()).toEqual({ v: "2" });
+  expect(sql.db.prepare("SELECT COUNT(*) AS n FROM queue").get()).toEqual({ n: 0 });
+  fail = false;
+  expect(q.list(T).map((r) => r.purl)).toEqual(["pkg:npm/a", "pkg:npm/k", "pkg:npm/b"]);
+});
+
+test("rows are counted per UTC day and operation, kept in meta at most every few minutes, and carried over a wake", () => {
+  const sql = memorySql();
+  const s = settings();
+  const q = new PendingQueue(sql, s);
+  const kept = () => JSON.parse(String((sql.db.prepare("SELECT v FROM meta WHERE k = 'usage'").get() as { v: string }).v)) as { rows_written: number; kept: number };
+  q.request("pkg:npm/a", "198.51.100.1", false, T);
+  const first = kept().kept;
+  q.request("pkg:npm/b", "198.51.100.1", false, T + 60_000);
+  q.request("pkg:npm/b", "198.51.100.2", false, T + 120_000);
+  // Not kept again within five minutes; then it is.
+  expect(kept().kept).toBe(first);
+  q.request("pkg:npm/c", "198.51.100.1", false, T + 6 * 60_000);
+  expect(kept().kept).toBe(T + 6 * 60_000);
+  const u = q.usageToday(T + 6 * 60_000);
+  const sum = (k: "read" | "written") => Object.values(u.ops).reduce((n, o) => n + o[k], 0);
+  expect([u.rows_read, u.rows_written]).toEqual([sum("read"), sum("written")]);
+  expect(u.ops.register).toMatchObject({ n: 3, written: 6 });
+  expect(u.ops.vote).toMatchObject({ n: 1, written: 1 });
+  expect(u).toMatchObject({ day: "2026-10-17", allowance: { rows_read: 5_000_000, rows_written: 100_000 }, held: 3, new_this_hour: 3, votes_this_hour: 1 });
+  expect(u.left.rows_written).toBe(100_000 - u.rows_written);
+  // A wake goes on from what was kept; the next UTC day starts again.
+  const woke = new PendingQueue(sql, s).usageToday(T + 7 * 60_000);
+  expect(woke.ops.register!.n).toBe(3);
+  expect(woke.rows_written).toBeGreaterThanOrEqual(u.rows_written);
+  const next = new PendingQueue(sql, s).usageToday(T + 86_400_000);
+  expect(next.day).toBe("2026-10-18");
+  expect(next.ops.register).toBeUndefined();
+});
+
+test("after requests pause, the timer keeps the counts, so an idle object's last requests are not lost", () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(T);
+  const sql = memorySql();
+  const timers: (() => void)[] = [];
+  const q = new PendingQueue(sql, settings(), { timer: (f) => void timers.push(f) });
+  q.request("pkg:npm/a", "198.51.100.1", false, T);
+  q.request("pkg:npm/b", "198.51.100.1", false, T + 1000);
+  expect(timers).toHaveLength(1);
+  vi.setSystemTime(T + 60_000);
+  timers.shift()!();
+  const kept = JSON.parse(String((sql.db.prepare("SELECT v FROM meta WHERE k = 'usage'").get() as { v: string }).v)) as { ops: Record<string, { n: number }> };
+  expect(kept.ops.register!.n).toBe(2);
+});
+
+test("votes counted per hour across all addresses are bounded; over it the answer is the same, uncounted, even after a wake", () => {
+  const sql = memorySql();
+  const s = settings({ votesPerHour: 2 });
+  const q = new PendingQueue(sql, s);
+  for (const ip of ["198.51.100.1", "198.51.100.2", "198.51.100.3"]) expect(q.request("pkg:npm/k", ip, true, T)).toEqual({ type: "voted" });
+  expect(q.list(T)).toEqual([{ purl: "pkg:npm/k", demand: 2 }]);
+  q.usageToday(T);
+  const woke = new PendingQueue(sql, s);
+  woke.request("pkg:npm/k", "198.51.100.4", true, T + 1000);
+  expect(woke.list(T)).toEqual([{ purl: "pkg:npm/k", demand: 2 }]);
+  woke.request("pkg:npm/k", "198.51.100.4", true, T + 3600_000);
+  expect(woke.list(T)).toEqual([{ purl: "pkg:npm/k", demand: 3 }]);
+});
+
+test("a write that changes nothing is skipped; a run's progress is written on a change of state or every ten minutes", () => {
+  const sql = memorySql();
+  const q = new PendingQueue(sql, settings());
+  // Rows written by the operation itself, not by keeping the usage counters.
+  const own = () => Object.entries(q.usageToday(T).ops).reduce((n, [op, u]) => n + (op === "usage" ? 0 : u.written), 0);
+  const written = (f: () => unknown) => {
+    const before = own();
+    f();
+    return own() - before;
+  };
+  const job = (records: number) => ({ state: "analyzing", stage: "Reading", records, releases_done: 0, releases_total: 1, docs_done: 0, docs_total: 0 });
+  q.usageToday(T);
+  expect(written(() => q.setBudget(undefined, T))).toBe(0);
+  expect(written(() => q.setBudget(T + 1, T))).toBe(1);
+  expect(written(() => q.setBudget(T + 1, T))).toBe(0);
+  q.request("pkg:npm/a", "198.51.100.1", false, T);
+  expect(written(() => q.ack([{ purl: "pkg:npm/a", demand: 0 }], T))).toBe(0);
+  expect(written(() => q.report([{ purl: "pkg:npm/a", state: "running", job: job(1) }], T))).toBe(1);
+  expect(written(() => q.report([{ purl: "pkg:npm/a", state: "running", job: job(2) }], T + 5000))).toBe(0);
+  // Shown at once; a wake shows what was written.
+  expect(q.run("pkg:npm/a", T + 5000)).toMatchObject({ updated: T + 5000, job: { records: 2 } });
+  expect(new PendingQueue(sql, settings()).run("pkg:npm/a", T + 5000)).toMatchObject({ updated: T, job: { records: 1 } });
+  expect(written(() => q.report([{ purl: "pkg:npm/a", state: "running", job: job(3) }], T + 10 * 60_000))).toBe(1);
+  expect(written(() => q.report([{ purl: "pkg:npm/a", state: "publishing" }], T + 10 * 60_000 + 5000))).toBe(1);
+  expect(new PendingQueue(sql, settings()).run("pkg:npm/a", T + 11 * 60_000)).toMatchObject({ state: "publishing", since: T, job: { records: 3 } });
+});
+
+test("the day's rows are on /internal/usage, and in the answers a run prints, with the drain token only", async () => {
+  const { env: e } = env();
+  await handle(post({ purl: "pkg:npm/a" }), e);
+  expect((await handle(get("/internal/usage"), e)).status).toBe(401);
+  const auth = { Authorization: "Bearer drain-secret" };
+  const usage = (await (await handle(get("/internal/usage", auth), e)).json()) as Record<string, any>;
+  expect(usage).toMatchObject({ allowance: { rows_read: 5_000_000, rows_written: 100_000 }, held: 1, ops: { register: { n: 1, written: 2 } } });
+  expect(usage.rows_written).toBeGreaterThanOrEqual(2);
+  expect(await (await handle(get("/internal/queue", auth), e)).json()).toMatchObject({ usage: { held: 1 } });
+});
+
+test("a run's reports carry central's save time and when the cycle publishes; an older save never replaces a newer one", async () => {
+  vi.stubGlobal("fetch", async () => new Response(null, { status: 204 }));
+  const { env: e } = env({});
+  await handle(post({ purl: "pkg:npm/a" }), e);
+  const status = async () => (await (await handle(get("/coverage?purl=pkg%3Anpm%2Fa"), e)).json()) as Record<string, any>;
+  const auth = { Authorization: "Bearer drain-secret", "Content-Type": "application/json" };
+  const progress = (updates: unknown) => handle(new Request("https://unstale.example/internal/progress", { method: "POST", headers: auth, body: JSON.stringify({ updates }) }), e);
+  const job = (records: number, updated: unknown, more: Record<string, unknown> = {}) => ({ state: "analyzing", stage: "Reading", records, releases_done: 0, releases_total: 10, docs_done: 0, docs_total: 0, updated, ...more });
+  const by = "2026-10-18T16:17:00.000Z";
+  await progress([{ purl: "pkg:npm/a", state: "running", job: job(18, "2026-10-18T15:59:53.037Z", { publish_by: by }) }]);
+  expect(await status()).toMatchObject({ records: 0, records_pending: 18, updated: "2026-10-18T15:59:53.037Z", publish_by: by });
+  // Out of order: the earlier save arrives last and is ignored.
+  await progress([{ purl: "pkg:npm/a", state: "running", job: job(0, "2026-10-18T15:59:18.026Z") }]);
+  expect(await status()).toMatchObject({ records_pending: 18, updated: "2026-10-18T15:59:53.037Z" });
+  // Times not in Date#toISOString's form are dropped, not passed on.
+  await progress([{ purl: "pkg:npm/a", state: "running", job: job(19, "0", { publish_by: "soon" }) }]);
+  const answer = await status();
+  expect(answer.records_pending).toBe(19);
+  expect(answer.publish_by).toBeUndefined();
+  expect(answer.updated).toMatch(/^\d{4}-\d{2}-\d{2}T/);
 });

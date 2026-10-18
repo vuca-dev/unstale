@@ -1,5 +1,5 @@
 //! Stack detection. npm here; PyPI in `pypi.rs`, merged into the same `Stack`. npm projects: every `package.json` outside `node_modules`, versions from the lockfile
-//! (application) or the declared range's floor (library), and the supported Node range: available, needs upgrade, or blocked.
+//! that covers the manifest, else the declared range's floor, and the supported Node range: available, needs upgrade, or blocked.
 
 use anyhow::Result;
 use semver::Version;
@@ -55,6 +55,9 @@ pub struct Package {
     /// Package URLs this manifest declares directly: a file under this directory is the package's own code for
     /// those technologies (`usage::Repo::role_for`).
     pub declared: BTreeSet<String>,
+    /// The manifest's own package URL (its `name`), which other manifests of the repository may declare: a workspace
+    /// package reaches the technologies its workspace dependencies declare (`funnel`, record-named files).
+    pub own: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -62,8 +65,9 @@ pub struct Dep {
     pub name: String,
     /// False for workspace/file/link/git dependencies; never submit these identities centrally.
     pub public_candidate: bool,
-    /// The version the funnel compares against: the root manifest's, else the shallowest manifest's that declares
-    /// it (the lowest on a tie); `Stack::settle`.
+    /// The version the funnel compares against: the root manifest's, else the shallowest manifest's that a
+    /// lockfile covers, else the shallowest standalone one's (on a tie, the version most of them run, then the lowest);
+    /// `Stack::settle`.
     pub version: Option<Version>,
     /// Where the version came from, for the report.
     pub source: String,
@@ -83,6 +87,31 @@ pub struct Reading {
     pub dir: String,
     pub version: Version,
     pub source: String,
+    /// No lockfile covers the manifest (not its own, not a workspace member or importer of one above it): a separate,
+    /// unlocked project, named beside the headline but never setting it while a covered manifest declares the package.
+    pub standalone: bool,
+    /// The declared range the code there is written for, not for one version alone: the range of a floor reading (an
+    /// unlocked manifest, a stale lockfile entry), and a library's range for what its users install, locked or not.
+    /// `None` for an application's locked version.
+    pub range: Option<Range>,
+}
+
+/// A declared range, in its ecosystem's grammar.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Range {
+    Npm(String),
+    /// A PEP 440 (or Poetry) specifier.
+    Pypi(String),
+}
+
+impl Range {
+    /// Whether the range admits `v` (false when it cannot be read).
+    pub fn admits(&self, v: &Version) -> bool {
+        match self {
+            Range::Npm(r) => npm_satisfies(v, r) == Some(true),
+            Range::Pypi(s) => crate::pypi::spec_satisfies(v, s) == Some(true),
+        }
+    }
 }
 
 impl Dep {
@@ -92,36 +121,82 @@ impl Dep {
 
     /// One manifest's version (`None` when it cannot be read: a tag, a workspace link). The headline is set by
     /// `Stack::settle` once every manifest is read; until then `source` keeps the first unreadable one's reason.
+    #[cfg(test)]
     pub fn read(&mut self, dir: &str, version: Option<Version>, source: String) {
+        self.read_in(dir, version, source, false, None)
+    }
+
+    /// `read`, for a manifest that may be `standalone` (no lockfile covers it); `range` when `version` is its floor.
+    pub fn read_in(&mut self, dir: &str, version: Option<Version>, source: String, standalone: bool, range: Option<Range>) {
         let Some(version) = version else {
             if self.source.is_empty() {
                 self.source = source;
             }
             return;
         };
+        let reading = Reading { dir: dir.to_string(), version, source, standalone, range };
         match self.readings.iter_mut().find(|r| r.dir == dir) {
-            Some(r) if version < r.version => *r = Reading { dir: dir.to_string(), version, source },
+            Some(r) if reading.version < r.version => *r = reading,
             Some(_) => {}
-            None => self.readings.push(Reading { dir: dir.to_string(), version, source }),
+            None => self.readings.push(reading),
         }
     }
 
-    /// The reading the outputs use: the root manifest's, else the shallowest manifest's, the lowest version on a
-    /// tie. The root (or the top of a workspace tree) is what the application resolves; a nested manifest with its
-    /// own lockfile (a CI tool) or a library's declared floor (a peer range) says what that one part runs or
-    /// supports, and is named beside it instead of setting the version for the whole repository.
+    /// The reading the outputs use: the root manifest's, else the shallowest manifest's that a lockfile covers,
+    /// else the shallowest standalone one's; on a tie, the version most of those manifests run, then the lowest. The root (or the top of a workspace tree)
+    /// is what the application resolves; a nested manifest with its own lockfile (a CI tool) or a library's declared
+    /// floor (a peer range) says what that one part runs or supports, and a manifest no lockfile covers (a sample
+    /// app outside the workspace globs) is a separate project: each is named beside it instead of setting the
+    /// version for the whole repository.
     pub fn headline(&self) -> Option<&Reading> {
-        self.readings.iter().min_by(|a, b| depth(&a.dir).cmp(&depth(&b.dir)).then_with(|| a.version.cmp(&b.version)).then_with(|| a.dir.cmp(&b.dir)))
+        self.headline_among(|_| true)
+    }
+
+    /// `headline`, among the readings `keep` accepts (`funnel::run`: those whose code uses the package).
+    ///
+    /// Among equally shallow manifests, the version most of them run leads, then the lowest (supabase: next 16.3.6 in
+    /// seven apps over 15.5.25 in `apps/docs` and `apps/www`): the lowest alone framed every review at the version
+    /// two of nine workspaces run.
+    pub fn headline_among(&self, keep: impl Fn(&Reading) -> bool) -> Option<&Reading> {
+        let kept: Vec<&Reading> = self.readings.iter().filter(|r| keep(r)).collect();
+        let tier = |r: &Reading| (r.dir != ".", r.standalone, depth(&r.dir));
+        let top = kept.iter().map(|r| tier(r)).min()?;
+        let peers: Vec<&Reading> = kept.into_iter().filter(|r| tier(r) == top).collect();
+        let held = |v: &Version| peers.iter().filter(|r| r.version == *v).count();
+        peers.iter().copied().min_by_key(|r| (std::cmp::Reverse(held(&r.version)), &r.version, &r.dir))
     }
 
     /// Readings on another version than the headline, grouped by version (ascending), each with its directories.
     pub fn others(&self) -> Vec<(Version, Vec<&Reading>)> {
-        let Some(h) = self.headline() else { return vec![] };
+        self.headline().map(|h| self.others_than(h)).unwrap_or_default()
+    }
+
+    /// Readings on another version than `h`, grouped by version (ascending), each with its directories.
+    pub fn others_than(&self, h: &Reading) -> Vec<(Version, Vec<&Reading>)> {
         let mut by: BTreeMap<Version, Vec<&Reading>> = BTreeMap::new();
         for r in self.readings.iter().filter(|r| r.version != h.version) {
             by.entry(r.version.clone()).or_default().push(r);
         }
         by.into_iter().collect()
+    }
+}
+
+impl Reading {
+    /// Whether this manifest's code runs a version on `v`'s release line (major, or 0.minor), or is written for a range
+    /// that admits `v` (a library's peer floor `>=18` admits 19): records judged at `v` describe that code.
+    pub fn fits(&self, v: &Version) -> bool {
+        let line = |v: &Version| if v.major > 0 { (v.major, 0) } else { (0, v.minor) };
+        line(&self.version) == line(v) || self.range.as_ref().is_some_and(|r| r.admits(v))
+    }
+
+    /// Whether this manifest's code runs `v` itself: its locked version, or a range that admits it.
+    pub fn runs(&self, v: &Version) -> bool {
+        self.version == *v || self.range.as_ref().is_some_and(|r| r.admits(v))
+    }
+
+    /// Whether `path` (relative to the repository root) is inside this manifest's directory.
+    pub fn contains(&self, path: &str) -> bool {
+        self.dir == "." || path.strip_prefix(self.dir.as_str()).is_some_and(|rest| rest.starts_with('/'))
     }
 }
 
@@ -146,18 +221,26 @@ pub struct Pin {
 pub struct Stack {
     pub packages: Vec<Package>,
     pub deps: BTreeMap<String, Dep>,
-    /// The lowest Node version the project supports, and where that came from.
+    /// The lowest Node version the project supports, and where that came from: the lowest `engines.node` floor of
+    /// the manifests a lockfile covers (standalone ones only when none is covered), else `.nvmrc`/`.node-version`.
     pub node: Option<(Version, String)>,
     /// Where versions came from when that needed a choice: competing lockfiles in one directory, or a lockfile
-    /// that disagrees with the manifest beside it. For the report.
+    /// that disagrees with the manifest beside it; and the packages on different versions across manifests. For the
+    /// report.
     pub notes: Vec<String>,
+    /// How many packages are on different versions across manifests (the last note when nonzero; `settle`).
+    pub spread: usize,
+    /// Per lockfile, the npm manifests below it that it does not cover (separate, unlocked projects), as a report
+    /// note. Not a lockfile problem, so kept apart from `notes`.
+    pub standalone: Vec<String>,
 }
 
 impl Stack {
     /// Sets each dependency's version from its readings (`settle`).
     pub fn settle(&mut self) {
-        if let Some(n) = settle(&mut self.deps) {
-            self.notes.push(n);
+        if let Some((n, note)) = settle(&mut self.deps) {
+            self.spread = n;
+            self.notes.push(note);
         }
     }
 
@@ -168,19 +251,7 @@ impl Stack {
     /// Technology ids worth asking the catalog for: each package name, and a scope's name. Only a candidate;
     /// a technology is in the stack when its records name one of these package URLs.
     pub fn candidates(&self) -> BTreeSet<String> {
-        let mut out = BTreeSet::new();
-        for d in self.deps.values() {
-            match d.name.strip_prefix('@').and_then(|s| s.split_once('/')) {
-                Some((scope, name)) => {
-                    out.insert(scope.to_lowercase());
-                    out.insert(name.to_lowercase());
-                }
-                None => {
-                    out.insert(d.name.to_lowercase());
-                }
-            }
-        }
-        out
+        self.deps.values().flat_map(dep_candidates).collect()
     }
 
     /// A version the project declares for a prerequisite name in the npm ecosystem: `node` from engines or
@@ -193,9 +264,17 @@ impl Stack {
     }
 }
 
+/// The catalog technologies a dependency's name may be: the name, or a scoped name's scope and name.
+pub fn dep_candidates(d: &Dep) -> Vec<String> {
+    match d.name.strip_prefix('@').and_then(|s| s.split_once('/')) {
+        Some((scope, name)) => vec![scope.to_lowercase(), name.to_lowercase()],
+        None => vec![d.name.to_lowercase()],
+    }
+}
+
 /// Sets each dependency's version and source from its readings (`Dep::headline`); a note naming the packages whose
-/// versions differ across manifests, when any do.
-pub fn settle(deps: &mut BTreeMap<String, Dep>) -> Option<String> {
+/// versions differ across manifests, with their count, when any do.
+pub fn settle(deps: &mut BTreeMap<String, Dep>) -> Option<(usize, String)> {
     let mut differ = vec![];
     for d in deps.values_mut() {
         let Some(h) = d.headline().cloned() else { continue };
@@ -220,20 +299,25 @@ pub fn settle(deps: &mut BTreeMap<String, Dep>) -> Option<String> {
     }
     let n = differ.len();
     differ.truncate(5);
-    Some(format!(
-        "{n} package{} on different versions across manifests: {}{}. The reviews use the root's version (else the shallowest manifest's); the bump digest names the others.",
+    Some((n, format!(
+        "{n} package{} on different versions across manifests: {}{}. The reviews use the root's version, else the one most of the shallowest manifests a lockfile covers run, unless no code importing the package runs that release line; the bump digest names the others.",
         if n == 1 { " is" } else { "s are" },
         differ.join("; "),
         if n > 5 { format!("; {} more", n - 5) } else { String::new() }
-    ))
+    )))
 }
 
 const DEP_FIELDS: &[&str] = &["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"];
 
-fn is_library(pj: &Value) -> bool {
+/// A package published for others: not `private`, a `name` and `version`, and a field that says what to publish
+/// (`module`, `exports`, `types`, `typings`, `bin`, `files`, `publishConfig`), or `main` alone when the manifest has no
+/// lockfile of its own beside it. `main` is what `npm init` writes for every package, so beside the manifest's own
+/// lockfile (an install root: a deployed server, a CI script) it says nothing about publishing.
+fn is_library(pj: &Value, own_lockfile: bool) -> bool {
     let private = pj.get("private").and_then(Value::as_bool).unwrap_or(false);
     let published = pj.get("name").is_some() && pj.get("version").is_some();
-    let entry = ["main", "module", "exports", "types", "typings", "bin", "files"].iter().any(|k| pj.get(k).is_some());
+    let entry = ["module", "exports", "types", "typings", "bin", "files", "publishConfig"].iter().any(|k| pj.get(k).is_some())
+        || (pj.get("main").is_some() && !own_lockfile);
     !private && published && entry
 }
 
@@ -280,7 +364,13 @@ pub fn detect(root: &Path) -> Result<Stack> {
         .filter_map(|v|v.get("name").and_then(Value::as_str).map(String::from)).collect();
     let mut packages = vec![];
     let mut deps: BTreeMap<String, Dep> = BTreeMap::new();
+    // The lowest engines.node floor among manifests a lockfile covers, and among standalone ones (used only when no
+    // manifest is covered: a standalone project's engines never set a locked project's range).
     let mut node: Option<(Version, String)> = None;
+    let mut node_standalone: Option<(Version, String)> = None;
+    // Directories of covered manifests (`.nvmrc` fallback), and per lockfile the standalone manifests below it.
+    let mut covered: Vec<String> = vec![];
+    let mut outside: BTreeMap<String, Vec<String>> = BTreeMap::new();
     let mut locks: BTreeMap<PathBuf, Option<Lock>> = BTreeMap::new();
     let mut catalogs: BTreeMap<PathBuf, Catalogs> = BTreeMap::new();
     let mut notes = vec![];
@@ -294,11 +384,13 @@ pub fn detect(root: &Path) -> Result<Stack> {
         let Ok(pj) = serde_json::from_str::<Value>(&text) else { continue };
         let dir = e.path().parent().unwrap_or(root).to_path_buf();
         let rel = rel_dir(root, &dir);
-        let kind = if is_library(&pj) { Kind::Library } else { Kind::Application };
         let mut declared = BTreeSet::new();
         let cat = Catalogs::nearest(root, &dir, &mut catalogs);
-        // The nearest lockfile at or above the package, up to the repository root.
+        // The nearest lockfile at or above the package that covers it, up to the repository root. One that does not
+        // (a sample app outside the workspace globs) leaves the manifest a separate, unlocked project unless a
+        // lockfile further up covers it.
         let mut lock: Option<(PathBuf, Lock)> = None;
+        let mut passed: Option<String> = None;
         let mut d = Some(dir.as_path());
         while let Some(cur) = d {
             if !locks.contains_key(cur) {
@@ -306,8 +398,11 @@ pub fn detect(root: &Path) -> Result<Stack> {
                 locks.insert(cur.to_path_buf(), choose_lock(root, cur, Lock::read_all(cur), &local_names, &cur_cat, &mut notes));
             }
             if let Some(Some(l)) = locks.get(cur) {
-                lock = Some((cur.to_path_buf(), l.clone()));
-                break;
+                if l.covers(&rel_dir(cur, &dir)) {
+                    lock = Some((cur.to_path_buf(), l.clone()));
+                    break;
+                }
+                passed.get_or_insert_with(|| join(&rel_dir(root, cur), &l.file));
             }
             if cur == root {
                 break;
@@ -315,9 +410,24 @@ pub fn detect(root: &Path) -> Result<Stack> {
             d = cur.parent();
         }
         let importer = lock.as_ref().map(|(ld, _)| rel_dir(ld, &dir)).unwrap_or_else(|| ".".into());
+        let kind = if is_library(&pj, lock.as_ref().is_some_and(|(ld, _)| *ld == dir)) { Kind::Library } else { Kind::Application };
+        let standalone = lock.is_none();
+        // A manifest that declares nothing (a directory's `main` entry) is no project of its own to name.
+        let declares = DEP_FIELDS.iter().any(|f| pj.get(*f).and_then(Value::as_object).is_some_and(|m| !m.is_empty()));
+        match (&passed, standalone) {
+            (_, false) => covered.push(rel.clone()),
+            (Some(file), true) if declares => outside.entry(file.clone()).or_default().push(rel.clone()),
+            _ => {}
+        }
+        let dev = pj.get("devDependencies").and_then(Value::as_object);
         for field in DEP_FIELDS {
             let Some(map) = pj.get(*field).and_then(Value::as_object) else { continue };
             for (name, range) in map {
+                // A library's peer range is what it supports; a devDependency on the same package is what the
+                // repository itself installs, develops and tests against, so that one is its reading.
+                if kind == Kind::Library && *field == "peerDependencies" && dev.is_some_and(|d| d.contains_key(name)) {
+                    continue;
+                }
                 let declared_range = range.as_str().unwrap_or("");
                 // A pnpm catalog reference (`catalog:`, `catalog:<name>`) stands for the range the catalog gives.
                 let resolved = cat.resolve(name, declared_range);
@@ -329,33 +439,56 @@ pub fn detect(root: &Path) -> Result<Stack> {
                 // A package of this repository (a workspace, a path): never public, and its locked version is a
                 // placeholder (Yarn 2+ `0.0.0-use.local`), not a pin the range could say is out of date.
                 let local = is_local(&local_names, name, range);
-                // A library is read at its declared floor, since that is what its users get; a peer range is
-                // the one that says so when it is declared.
-                let (version, source) = if kind == Kind::Library {
-                    let r = if *field != "peerDependencies" {
+                // What a library's users install (its dependencies and peers) may resolve anywhere in the declared
+                // range, the peer range when it declares one: the reading keeps that range, so code written for
+                // the range is cited for any version in it. Its version is still what this repository's own code
+                // runs and tests against, the covering lockfile's, and the floor only when nothing locks it. Its
+                // devDependencies reach no user: they are the repository's own tooling, read like an application's.
+                let lib_range = (kind == Kind::Library && *field != "devDependencies").then(|| {
+                    if *field != "peerDependencies" {
                         pj.get("peerDependencies").and_then(|p| p.get(name)).and_then(Value::as_str).unwrap_or(range)
                     } else {
                         range
-                    };
-                    let r_shown = if r == range { shown.clone() } else { r.to_string() };
-                    (range_floor(r), format!("library floor of {r_shown}"))
-                } else if let Some((ld, l)) = &lock
+                    }
+                });
+                let (version, source, floor) = if let Some((ld, l)) = &lock
                     && let Some(v) = l.version(&importer, name, range)
+                    // A locked copy outside a library's own range is some other workspace's (a peer the importer
+                    // does not install), not what its code is written for: its floor is.
+                    // A root override is a declaration: what it sets is the library's own install too (n8n: cli
+                    // declares ws 8.20.1, the workspace overrides `ws: '>=8.21.1'`, the lockfile has 8.21.1).
+                    && lib_range.is_none_or(|r| local || npm_satisfies(&v, r) != Some(false) || l.override_admitting(name, range, &v).is_some())
                 {
-                    // A locked version the manifest no longer admits means the lockfile is out of date: the
-                    // declared range says more about what the project runs than the stale pin does.
-                    if !local && npm_satisfies(&v, range) == Some(false) {
-                        let s = stale.entry(join(&rel_dir(root, ld), &l.file)).or_default();
+                    let file = join(&rel_dir(root, ld), &l.file);
+                    if let Some((other, set)) = l.replaced_by(name, range).filter(|_| !local) {
+                        // Swapped for another package across the install: the locked version is the other's.
+                        (None, format!("replaced by {other} ({set})"), None)
+                    } else if local || npm_satisfies(&v, range) != Some(false) {
+                        (Some(v), file, lib_range)
+                    } else if let Some(set) = l.override_admitting(name, range, &v) {
+                        // A root override is a declaration too: it sets the version for every workspace.
+                        (Some(v), format!("{file} ({set})"), lib_range)
+                    } else if *field == "peerDependencies" {
+                        // A peer range says what this workspace supports; the install resolves the package for
+                        // it elsewhere, so a pin outside it is what runs, not a sign of a stale lockfile.
+                        (Some(v), file, lib_range)
+                    } else {
+                        // A locked version the manifest no longer admits means the lockfile is out of date: the
+                        // declared range says more about what the project runs than the stale pin does.
+                        let s = stale.entry(file.clone()).or_default();
                         s.0 += 1;
                         if s.1.len() < 3 {
                             s.1.push(format!("{name} {v} vs {range}"));
                         }
-                        (range_floor(range), format!("floor of {shown} ({} has {v}, outside the range)", join(&rel_dir(root, ld), &l.file)))
-                    } else {
-                        (Some(v), join(&rel_dir(root, ld), &l.file))
+                        (range_floor(range), format!("floor of {shown} ({file} has {v}, outside the range)"), Some(range))
                     }
+                } else if let Some(r) = lib_range {
+                    let r_shown = if r == range { shown.clone() } else { r.to_string() };
+                    (range_floor(r), format!("library floor of {r_shown}"), Some(r))
+                } else if let Some(file) = passed.as_ref().filter(|_| standalone) {
+                    (range_floor(range), format!("floor of {shown} (outside the {file} workspace)"), Some(range))
                 } else {
-                    (range_floor(range), format!("floor of {shown} (not in a lockfile)"))
+                    (range_floor(range), format!("floor of {shown} (not in a lockfile)"), Some(range))
                 };
                 let public_name = range.strip_prefix("npm:").and_then(|r|r.rsplit_once('@').map(|(n,_)|n)).filter(|n|!n.is_empty()).unwrap_or(name);
                 let public_candidate = !local;
@@ -370,23 +503,32 @@ pub fn detect(root: &Path) -> Result<Stack> {
                 {
                     entry.pins.push(pin);
                 }
-                entry.read(&rel, version, source);
+                entry.read_in(&rel, version, source, standalone, floor.map(|r| Range::Npm(r.to_string())));
             }
         }
+        let floor = if standalone { &mut node_standalone } else { &mut node };
         if let Some(r) = pj.pointer("/engines/node").and_then(Value::as_str)
             && let Some(v) = range_floor(r)
-                && node.as_ref().is_none_or(|(n, _)| &v < n) {
-                    node = Some((v, format!("engines.node {r} in {}", join(&rel, "package.json"))));
-                }
+            && floor.as_ref().is_none_or(|(n, _)| &v < n)
+        {
+            *floor = Some((v, format!("engines.node {r} in {}", join(&rel, "package.json"))));
+        }
         packages.push(Package {
             dir: rel,
             kind,
             lockfile: lock.map(|(ld, l)| join(&rel_dir(root, &ld), &l.file)),
             declared,
+            own: pj.get("name").and_then(Value::as_str).filter(|n| !n.is_empty()).map(npm_purl),
         });
     }
+    // Only a repository with no covered manifest at all (no lockfile, or none that installs anything here) takes its
+    // Node range from standalone manifests.
+    let any_covered = !covered.is_empty();
+    if !any_covered {
+        node = node_standalone;
+    }
     if node.is_none() {
-        for p in &packages {
+        for p in packages.iter().filter(|p| !any_covered || covered.contains(&p.dir)) {
             for f in [".nvmrc", ".node-version"] {
                 let path = root.join(&p.dir).join(f);
                 let Ok(t) = std::fs::read_to_string(&path) else { continue };
@@ -404,8 +546,28 @@ pub fn detect(root: &Path) -> Result<Stack> {
             examples.join(", ")
         ));
     }
+    // The sample apps and other separate projects below a lockfile that does not install them: read as their own,
+    // unlocked projects (`Stack::standalone`).
+    let mut standalone = vec![];
+    for (file, dirs) in outside {
+        let more = if dirs.len() > 3 { format!(" and {} more", dirs.len() - 3) } else { String::new() };
+        let one = dirs.len() == 1;
+        standalone.push(format!(
+            "{} manifest{} outside the {file} workspace and {} no lockfile of {} own ({}{more}): read as {} at {} declared floors. The bump digest names {}; {} never set{} the reviewed version, the lockfile check or the Node range.",
+            dirs.len(),
+            if one { " is" } else { "s are" },
+            if one { "has" } else { "have" },
+            if one { "its" } else { "their" },
+            dirs[..dirs.len().min(3)].join(", "),
+            if one { "a separate project" } else { "separate projects" },
+            if one { "its" } else { "their" },
+            if one { "it" } else { "them" },
+            if one { "it" } else { "they" },
+            if one { "s" } else { "" },
+        ));
+    }
     crate::pypi::detect(root, &mut packages, &mut deps, &mut notes);
-    let mut st = Stack { packages, deps, node, notes };
+    let mut st = Stack { packages, deps, node, notes, spread: 0, standalone };
     st.settle();
     Ok(st)
 }
@@ -544,6 +706,124 @@ pub struct Lock {
     by_name: BTreeMap<String, Vec<Version>>,
     /// (name, version) → the lockfile's `sha512-` integrity values (npm, pnpm, yarn v1).
     integrity: BTreeMap<(String, String), Vec<String>>,
+    /// Root overrides its package manager applies to every workspace (`read_overrides`), by package name.
+    overrides: BTreeMap<String, Vec<Override>>,
+    /// Directories the lockfile lists as installed projects (pnpm importers, npm workspace entries, Yarn 2+
+    /// `@workspace:` resolutions), relative to its own directory.
+    listed: BTreeSet<String>,
+    /// The workspace globs its package manager reads (`Members::read`).
+    members: Members,
+}
+
+/// Workspace members by the package manager's own globs: `pnpm-workspace.yaml` `packages` for pnpm, the
+/// `package.json` `workspaces` field (an array, or Yarn's `{"packages": [...]}`) for npm and Yarn. A `!` pattern
+/// excludes what it matches.
+#[derive(Debug, Clone, Default)]
+struct Members {
+    /// Each include pattern with its matcher: a wildcard never matches a dot-prefixed name (pnpm, npm and Yarn glob
+    /// with `dot: false`), so a `.name` segment must be spelled out in the pattern.
+    include: Vec<(globset::GlobMatcher, String)>,
+    exclude: globset::GlobSet,
+}
+
+impl Members {
+    fn read(dir: &Path, lockfile: &str) -> Members {
+        let patterns: Vec<String> = if lockfile == "pnpm-lock.yaml" {
+            std::fs::read_to_string(dir.join("pnpm-workspace.yaml")).map(|t| pnpm_workspace_packages(&t)).unwrap_or_default()
+        } else {
+            let pj: Value = std::fs::read_to_string(dir.join("package.json")).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or(Value::Null);
+            let ws = pj.get("workspaces");
+            ws.and_then(|w| w.get("packages")).or(ws).and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).map(String::from).collect()
+        };
+        let (mut include, mut exclude) = (vec![], globset::GlobSetBuilder::new());
+        for p in &patterns {
+            let (negated, p) = match p.trim().strip_prefix('!') {
+                Some(rest) => (true, rest),
+                None => (false, p.trim()),
+            };
+            let p = p.trim_start_matches("./").trim_end_matches('/');
+            let Ok(g) = globset::GlobBuilder::new(p).literal_separator(true).build() else { continue };
+            if negated {
+                exclude.add(g);
+            } else {
+                include.push((g.compile_matcher(), p.to_string()));
+            }
+        }
+        Members { include, exclude: exclude.build().unwrap_or_default() }
+    }
+
+    fn contains(&self, rel: &str) -> bool {
+        let dotted: Vec<&str> = rel.split('/').filter(|s| s.starts_with('.')).collect();
+        self.include.iter().any(|(g, p)| g.is_match(rel) && dotted.iter().all(|d| p.split('/').any(|s| s == *d)))
+            && !self.exclude.is_match(rel)
+    }
+}
+
+/// The `packages` globs of `pnpm-workspace.yaml`, block (`- apps/*`) or flow (`[apps/*, packages/*]`, on one line
+/// or several) form.
+fn pnpm_workspace_packages(text: &str) -> Vec<String> {
+    let unquote = |v: &str| v.trim().trim_matches(['\'', '"']).to_string();
+    let (mut out, mut inside) = (vec![], false);
+    // An open flow sequence, collected until its `]`.
+    let mut flow: Option<String> = None;
+    for raw in text.lines() {
+        let line = raw.find(" #").map_or(raw, |i| &raw[..i]).trim_end();
+        if line.trim().is_empty() || line.trim_start().starts_with('#') {
+            continue;
+        }
+        if let Some(acc) = flow.as_mut() {
+            acc.push_str(line.trim());
+            acc.push(' ');
+        }
+        if let Some(acc) = flow.take() {
+            match acc.split_once(']') {
+                Some((items, _)) => out.extend(items.trim_start_matches('[').split(',').map(unquote).filter(|p| !p.is_empty())),
+                None => flow = Some(acc),
+            }
+            continue;
+        }
+        if line.starts_with("---") {
+            inside = false;
+            continue;
+        }
+        if !line.starts_with([' ', '\t', '-']) {
+            let Some((k, val)) = split_key(line) else {
+                inside = false;
+                continue;
+            };
+            inside = k == "packages" && val.is_none();
+            if k == "packages"
+                && let Some(v) = val.map(str::trim).filter(|v| v.starts_with('['))
+            {
+                match v.split_once(']') {
+                    Some((items, _)) => out.extend(items.trim_start_matches('[').split(',').map(unquote).filter(|p| !p.is_empty())),
+                    None => flow = Some(format!("{v} ")),
+                }
+            }
+        } else if inside && let Some(item) = line.trim_start().strip_prefix('-') {
+            out.push(unquote(item));
+        }
+    }
+    out
+}
+
+/// One root override of a package.
+#[derive(Debug, Clone)]
+struct Override {
+    /// The selector's version (`react@^18` → `^18`): the override sets only dependencies declared in it.
+    when: Option<String>,
+    value: String,
+    /// Where it is declared (`resolutions`, `pnpm.overrides`, …).
+    set: &'static str,
+}
+
+impl Override {
+    /// Whether it sets a dependency declared with `range`: no selector version, the same one, or a range whose floor
+    /// the selector admits.
+    fn applies(&self, range: &str) -> bool {
+        let bare = |r: &str| r.trim().strip_prefix("npm:").unwrap_or(r.trim()).to_string();
+        self.when.as_deref().is_none_or(|w| bare(w) == bare(range) || range_floor(range).is_some_and(|f| npm_satisfies(&f, &bare(w)) == Some(true)))
+    }
 }
 
 /// npm lockfiles in the order used when nothing else decides between them, with the package manager that writes
@@ -569,7 +849,7 @@ fn choose_lock(root: &Path, dir: &Path, mut cands: Vec<Lock>, local_names: &BTre
     let manager = pj.get("packageManager").and_then(Value::as_str).and_then(|m| m.split('@').next()).unwrap_or("");
     // (outside the range, inside it) per candidate.
     let score = |l: &Lock| {
-        declared.iter().fold((0usize, 0usize), |(out, ins), (n, r)| match l.version(".", n, r).and_then(|v| npm_satisfies(&v, r)) {
+        declared.iter().fold((0usize, 0usize), |(out, ins), (n, r)| match l.version(".", n, r).and_then(|v| l.admits(n, &v, r)) {
             Some(false) => (out + 1, ins),
             Some(true) => (out, ins + 1),
             None => (out, ins),
@@ -614,9 +894,42 @@ impl Lock {
                 _ => parse_npm(&text),
             };
             l.file = f.to_string();
+            l.overrides = read_overrides(dir, f);
+            l.members = Members::read(dir, f);
             out.push(l);
         }
         out
+    }
+
+    /// Whether the locked `v` is one the manifest declares: inside `range`, or set by a root override (`None`
+    /// when the range cannot be read).
+    pub fn admits(&self, name: &str, v: &Version, range: &str) -> Option<bool> {
+        match npm_satisfies(v, range) {
+            Some(false) if self.override_admitting(name, range, v).is_some() || self.replaced_by(name, range).is_some() => Some(true),
+            r => r,
+        }
+    }
+
+    /// Where an override that sets `name` and admits `v` is declared. One the range grammar cannot read (`patch:`,
+    /// npm's `$react`, `link:`) admits whatever the lockfile resolved for it.
+    fn override_admitting(&self, name: &str, range: &str, v: &Version) -> Option<&'static str> {
+        self.overrides.get(name)?.iter().find(|o| o.applies(range) && npm_satisfies(v, &o.value) != Some(false)).map(|o| o.set)
+    }
+
+    /// The package an override swaps `name` for (`npm:noop-package@1.0.0`), and where that is declared.
+    fn replaced_by(&self, name: &str, range: &str) -> Option<(&str, &'static str)> {
+        self.overrides.get(name)?.iter().filter(|o| o.applies(range)).find_map(|o| {
+            let alias = o.value.trim().strip_prefix("npm:")?;
+            let other = alias.get(1..).and_then(|r| r.find('@')).map_or(alias, |i| &alias[..i + 1]);
+            (!other.is_empty() && other != name).then_some((other, o.set))
+        })
+    }
+
+    /// Whether the lockfile installs the manifest in `rel` (relative to the lockfile's directory): its own
+    /// directory's, a workspace member by the package manager's globs, or an importer it lists. Any other manifest
+    /// below it is a separate project the install never touches.
+    pub fn covers(&self, rel: &str) -> bool {
+        rel == "." || self.listed.contains(rel) || self.members.contains(rel)
     }
 
     pub fn version(&self, importer: &str, name: &str, range: &str) -> Option<Version> {
@@ -651,11 +964,103 @@ impl Lock {
     }
 }
 
+/// Root overrides the package manager that writes `lockfile` applies across the install, read from the
+/// `package.json` (and `pnpm-workspace.yaml`) beside it: Yarn `resolutions`; npm `overrides`; pnpm `pnpm.overrides`,
+/// `resolutions` and the workspace file's `overrides`. Only selectors that apply everywhere count (`react`,
+/// `react@^18`, `**/react`, npm's `{"react": {".": "19"}}`); one under a parent (`a/react`, `a>react`, npm's nested
+/// keys) does not set a workspace's own dependency.
+fn read_overrides(dir: &Path, lockfile: &str) -> BTreeMap<String, Vec<Override>> {
+    let pj: Value = std::fs::read_to_string(dir.join("package.json")).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or(Value::Null);
+    let fields: &[(&str, &str)] = match lockfile {
+        "yarn.lock" => &[("/resolutions", "resolutions")],
+        "pnpm-lock.yaml" => &[("/pnpm/overrides", "pnpm.overrides"), ("/resolutions", "resolutions")],
+        _ => &[("/overrides", "overrides")],
+    };
+    let mut out: BTreeMap<String, Vec<Override>> = BTreeMap::new();
+    let mut add = |sel: &str, val: &str, set: &'static str| {
+        if let Some((name, when)) = override_target(sel) {
+            out.entry(name.to_string()).or_default().push(Override { when: when.map(String::from), value: val.to_string(), set });
+        }
+    };
+    for (ptr, set) in fields {
+        for (sel, val) in pj.pointer(ptr).and_then(Value::as_object).into_iter().flatten() {
+            match val {
+                Value::String(v) => add(sel, v, set),
+                // npm: `{"react": {".": "19.2.7", "child": "1"}}` sets react itself with `.`.
+                Value::Object(o) => {
+                    if let Some(v) = o.get(".").and_then(Value::as_str) {
+                        add(sel, v, set)
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    if lockfile == "pnpm-lock.yaml"
+        && let Ok(text) = std::fs::read_to_string(dir.join("pnpm-workspace.yaml"))
+    {
+        for (sel, val) in pnpm_workspace_overrides(&text) {
+            add(&sel, &val, "pnpm-workspace.yaml overrides");
+        }
+    }
+    out
+}
+
+/// The package an override selector sets everywhere: `name`, `@scope/name`, either with a version (`name@^1`,
+/// `name@npm:1.0.0`), or behind Yarn's `**/`, with that version. `None` for one that applies only under a parent.
+fn override_target(sel: &str) -> Option<(&str, Option<&str>)> {
+    let s = sel.trim();
+    let s = s.strip_prefix("**/").unwrap_or(s);
+    if s.contains('>') {
+        return None; // pnpm `parent>child`
+    }
+    let name_end = match s.strip_prefix('@') {
+        Some(r) => {
+            let slash = r.find('/')? + 2;
+            slash + s[slash..].find(['@', '/']).unwrap_or(s.len() - slash)
+        }
+        None => s.find(['@', '/']).unwrap_or(s.len()),
+    };
+    let (name, rest) = s.split_at(name_end);
+    // Anything after the name and its version is a path below it (`parent/child`, `parent@1/child`).
+    let when = rest.strip_prefix('@').filter(|w| !w.is_empty());
+    (!name.is_empty() && !name.ends_with('/') && !rest.contains('/')).then_some((name, when))
+}
+
+/// The top-level `overrides` of `pnpm-workspace.yaml` (pnpm 10+), block or flow form.
+fn pnpm_workspace_overrides(text: &str) -> Vec<(String, String)> {
+    let (mut out, mut inside) = (vec![], false);
+    for raw in text.lines() {
+        let line = raw.find(" #").map_or(raw, |i| &raw[..i]).trim_end();
+        if line.trim().is_empty() || line.trim_start().starts_with('#') {
+            continue;
+        }
+        if line.starts_with("---") {
+            inside = false;
+            continue;
+        }
+        let top = !line.starts_with([' ', '\t']);
+        let Some((k, val)) = split_key(line.trim_start()) else { continue };
+        if top {
+            inside = k == "overrides" && val.is_none();
+            if k == "overrides" {
+                out.extend(val.and_then(flow).into_iter().flatten().filter_map(|(k, v)| Some((k, v?.trim_matches(['\'', '"']).to_string()))));
+            }
+        } else if inside && let Some(v) = val {
+            out.push((k, v.trim_matches(['\'', '"']).to_string()));
+        }
+    }
+    out
+}
+
 pub fn parse_npm(text: &str) -> Lock {
     let mut l = Lock::default();
     let Ok(v) = serde_json::from_str::<Value>(text) else { return l };
     if let Some(pk) = v.get("packages").and_then(Value::as_object) {
         for (key, meta) in pk {
+            if !key.is_empty() && !key.contains("node_modules/") {
+                l.listed.insert(key.trim_start_matches("./").to_string()); // a workspace member (`packages/ui`)
+            }
             let Some((prefix, name)) = key.rsplit_once("node_modules/") else { continue };
             if name.is_empty() || prefix.contains("node_modules/") {
                 continue; // nested dependencies of dependencies
@@ -743,6 +1148,9 @@ pub fn parse_pnpm(text: &str) -> Lock {
                 l.importers.entry(importer.to_string()).or_default().insert(name.to_string(), ver);
             }
         };
+        if path.as_slice() == ["importers"] {
+            l.listed.insert(k.clone()); // `apps/web:`, or `packages/tsconfig: {}` with no dependencies
+        }
         match (path.as_slice(), val) {
             (["importers", imp, sec], Some(v)) if SECTIONS.contains(sec) => add(imp, &k, v),
             (["importers", imp, sec, name], Some(v)) if SECTIONS.contains(sec) && k == "version" => add(imp, name, v),
@@ -785,6 +1193,9 @@ pub fn parse_yarn(text: &str) -> Lock {
                 let s = s.trim().trim_matches('"');
                 let at = s[1..].find('@').map(|i| i + 1);
                 if let Some(i) = at {
+                    if let Some(path) = s[i + 1..].strip_prefix("workspace:") {
+                        l.listed.insert(path.to_string()); // Yarn 2+: `@grafana/data@workspace:packages/data`
+                    }
                     specs.push((s[..i].to_string(), s[i + 1..].to_string()));
                 }
             }
@@ -886,6 +1297,81 @@ mod tests {
     }
 
     #[test]
+    fn manifests_outside_the_workspace_are_separate_unlocked_projects() {
+        // supabase's shape: pnpm workspace `apps/*`, root engines >=22.13, sample apps under `examples/` with no
+        // lockfile; one declares an older next, a newer eslint and a lower Node floor.
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "package.json", r#"{"name":"root","private":true,"engines":{"node":">=22.13"},"devDependencies":{"eslint":"^9.0.0"}}"#);
+        write(d.path(), "pnpm-workspace.yaml", "packages:\n  - 'apps/*'\n  - \"!apps/legacy\" # retired\n\ncatalog:\n  next: ^16.3.6\n");
+        write(d.path(), "apps/www/package.json", r#"{"name":"www","private":true,"dependencies":{"next":"catalog:"}}"#);
+        write(d.path(), "apps/docs/package.json", r#"{"name":"docs","private":true,"dependencies":{"next":"^15.5.0"}}"#);
+        write(d.path(), "apps/legacy/package.json", r#"{"name":"legacy","private":true,"dependencies":{"next":"^14.0.0"}}"#);
+        write(d.path(), "examples/clerk/package.json", r#"{"name":"clerk","private":true,"engines":{"node":">=20.0.0"},"dependencies":{"next":"15.3.1","eslint":"^10.0.0"}}"#);
+        write(d.path(), "examples/index-only/package.json", r#"{"main":"index.js"}"#);
+        write(d.path(), "pnpm-lock.yaml", "lockfileVersion: '9.0'\n\nimporters:\n\n  .:\n    devDependencies:\n      eslint:\n        specifier: ^9.0.0\n        version: 9.37.0\n\n  apps/docs:\n    dependencies:\n      next:\n        specifier: ^15.5.0\n        version: 15.5.25(react@19.0.0)\n\n  apps/www:\n    dependencies:\n      next:\n        specifier: 'catalog:'\n        version: 16.3.6(react@19.0.0)\n");
+        let s = detect(d.path()).unwrap();
+        let next = &s.deps["pkg:npm/next"];
+        assert_eq!(next.version, Some(Version::new(15, 5, 25)), "a locked member beats an unlocked floor at the same depth");
+        assert_eq!(next.source, "pnpm-lock.yaml in apps/docs");
+        let clerk = next.readings.iter().find(|r| r.dir == "examples/clerk").unwrap();
+        assert!(clerk.standalone);
+        assert_eq!(clerk.source, "floor of 15.3.1 (outside the pnpm-lock.yaml workspace)");
+        let legacy = next.readings.iter().find(|r| r.dir == "apps/legacy").unwrap();
+        assert!(legacy.standalone, "a negated glob excludes the member");
+        assert!(!s.notes.iter().any(|n| n.contains("out of date")), "{:?}", s.notes);
+        assert_eq!(s.deps["pkg:npm/eslint"].version, Some(Version::new(9, 37, 0)));
+        assert_eq!(s.node, Some((Version::new(22, 13, 0), "engines.node >=22.13 in package.json".into())));
+        assert_eq!(s.packages.iter().find(|p| p.dir == "examples/clerk").unwrap().lockfile, None);
+        assert_eq!(s.standalone.len(), 1, "{:?}", s.standalone);
+        assert!(s.standalone[0].starts_with("2 manifests are outside the pnpm-lock.yaml workspace and have no lockfile of their own (apps/legacy, examples/clerk)"), "{}", s.standalone[0]);
+    }
+
+    #[test]
+    fn standalone_manifests_set_versions_and_node_only_when_nothing_is_locked() {
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "examples/a/package.json", r#"{"name":"a","private":true,"engines":{"node":">=20"},"dependencies":{"next":"^15.0.0"}}"#);
+        write(d.path(), "examples/b/package.json", r#"{"name":"b","private":true,"engines":{"node":">=18"},"dependencies":{"next":"^16.0.0"}}"#);
+        let s = detect(d.path()).unwrap();
+        assert_eq!(s.deps["pkg:npm/next"].version, Some(Version::new(15, 0, 0)));
+        assert_eq!(s.deps["pkg:npm/next"].source, "floor of ^15.0.0 (not in a lockfile) in examples/a");
+        assert_eq!(s.node.as_ref().unwrap().0, Version::new(18, 0, 0));
+        assert!(s.standalone.is_empty(), "no lockfile to be outside of");
+    }
+
+    #[test]
+    fn workspace_members_by_package_json_globs_and_lockfile_importers() {
+        // npm: `workspaces` with a negation; the lockfile also lists a member the globs miss.
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "package.json", r#"{"name":"root","private":true,"workspaces":["./packages/**","!**/fixtures/**"]}"#);
+        write(d.path(), "packages/ui/package.json", r#"{"name":"ui","private":true,"dependencies":{"react":"^18.0.0"}}"#);
+        write(d.path(), "packages/ui/test/fixtures/app/package.json", r#"{"name":"fx","private":true,"dependencies":{"react":"^17.0.0"}}"#);
+        write(d.path(), "tools/scripts/gen/package.json", r#"{"name":"gen","private":true,"dependencies":{"react":"^16.0.0"}}"#);
+        write(d.path(), "package-lock.json", r#"{"lockfileVersion":3,"packages":{"":{"name":"root"},"packages/ui":{"name":"ui"},"tools/scripts/gen":{"name":"gen"},
+            "node_modules/react":{"version":"18.3.1"},"tools/scripts/gen/node_modules/react":{"version":"16.14.0"}}}"#);
+        let s = detect(d.path()).unwrap();
+        let react = &s.deps["pkg:npm/react"];
+        let by_dir = |dir: &str| react.readings.iter().find(|r| r.dir == dir).unwrap();
+        assert_eq!((by_dir("packages/ui").version.to_string(), by_dir("packages/ui").standalone), ("18.3.1".into(), false));
+        assert_eq!((by_dir("tools/scripts/gen").version.to_string(), by_dir("tools/scripts/gen").standalone), ("16.14.0".into(), false), "listed by the lockfile");
+        let fx = by_dir("packages/ui/test/fixtures/app");
+        assert!(fx.standalone && fx.version == Version::new(17, 0, 0), "{fx:?}");
+        assert_eq!(react.version, Some(Version::new(18, 3, 1)));
+        assert!(!s.notes.iter().any(|n| n.contains("out of date")), "{:?}", s.notes);
+        // Yarn's `{"packages": [...]}` form and pnpm's flow list.
+        assert!(pnpm_workspace_packages("packages: ['apps/*', \"e2e/*\"]\nonlyBuilt: x\n") == vec!["apps/*", "e2e/*"]);
+        assert!(pnpm_workspace_packages("packages: [\n  'apps/*', # web\n  packages/*\n]\ncatalog:\n  a: 1\n") == vec!["apps/*", "packages/*"]);
+        assert!(pnpm_workspace_packages("packages:\n  - apps/*\n  - '.config/*'\n") == vec!["apps/*", ".config/*"]);
+        let dots = tempfile::tempdir().unwrap();
+        write(dots.path(), "pnpm-workspace.yaml", "packages:\n  - 'packages/*'\n  - .config/*\n");
+        let m = Members::read(dots.path(), "pnpm-lock.yaml");
+        assert!(m.contains("packages/ui") && !m.contains("packages/.hidden") && m.contains(".config/lint"), "a wildcard skips dot names");
+        let y = tempfile::tempdir().unwrap();
+        write(y.path(), "package.json", r#"{"workspaces":{"packages":["libs/*"],"nohoist":["**/x"]}}"#);
+        let m = Members::read(y.path(), "yarn.lock");
+        assert!(m.contains("libs/a") && !m.contains("libs/a/b") && !m.contains("examples/a"));
+    }
+
+    #[test]
     fn manifests_at_the_same_depth_keep_the_lowest() {
         let d = tempfile::tempdir().unwrap();
         write(d.path(), "apps/web/package.json", r#"{"name":"web","private":true,"dependencies":{"react":"^19.1.0"}}"#);
@@ -906,6 +1392,159 @@ mod tests {
         assert!(!s.notes.iter().any(|n| n.contains("out of date")), "{:?}", s.notes);
         assert_eq!(s.deps["pkg:npm/lodash"].version, Some(Version::new(4, 18, 1)));
         assert!(!s.deps["pkg:npm/%40grafana/data"].public_candidate);
+    }
+
+    #[test]
+    fn root_resolutions_are_not_a_stale_lockfile() {
+        // wp-calypso's shape: root `resolutions` force react 19.2.7 and @wordpress/components ^37 everywhere; a
+        // workspace still declares ^28 and a peer range ^18.2.0, and yarn.lock has only the forced entries.
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "package.json", r#"{"name":"calypso","private":true,"workspaces":["apps/*","packages/*"],
+            "dependencies":{"react":"19.2.7","@types/wordpress__block-editor":"^11.5.16"},
+            "resolutions":{"react":"19.2.7","**/react-dom":"19.2.7","@wordpress/components@npm:^28.0.0":"^37.0.0",
+                "@types/wordpress__block-editor":"npm:noop-package@1.0.0","jest-environment-jsdom/jsdom":"^20.0.3",
+                "@wordpress/element":"patch:@wordpress/element@npm%3A8.0.0#~/.yarn/patches/x.patch"}}"#);
+        write(d.path(), "apps/agents/package.json", r#"{"name":"agents","private":true,
+            "dependencies":{"@wordpress/components":"^28.23.0","@wordpress/element":"^7.0.0","jsdom":"^16.0.0"},
+            "peerDependencies":{"react":"^18.2.0","react-dom":"^18.2.0"}}"#);
+        write(d.path(), "packages/ui/package.json", r#"{"name":"ui","private":true,"devDependencies":{"react":"^18.3.1","react-dom":"^18.3.1"}}"#);
+        write(d.path(), "yarn.lock", "__metadata:\n  version: 8\n\n\"react@npm:19.2.7\":\n  version: 19.2.7\n  resolution: \"react@npm:19.2.7\"\n\n\"react-dom@npm:19.2.7\":\n  version: 19.2.7\n  resolution: \"react-dom@npm:19.2.7\"\n\n\"@wordpress/components@npm:^37.0.0\":\n  version: 37.0.0\n  resolution: \"@wordpress/components@npm:37.0.0\"\n\n\"@wordpress/element@patch:@wordpress/element@npm%3A8.0.0#~/.yarn/patches/x.patch\":\n  version: 8.0.0\n  resolution: \"@wordpress/element@patch:x\"\n\n\"@types/wordpress__block-editor@npm:noop-package@1.0.0\":\n  version: 1.0.0\n  resolution: \"noop-package@npm:1.0.0\"\n\n\"jsdom@npm:^20.0.3\":\n  version: 20.0.3\n  resolution: \"jsdom@npm:20.0.3\"\n");
+        let s = detect(d.path()).unwrap();
+        let react = &s.deps["pkg:npm/react"];
+        assert_eq!(react.version, Some(Version::new(19, 2, 7)));
+        assert!(react.readings.iter().all(|r| r.version == Version::new(19, 2, 7)), "{react:?}");
+        assert_eq!(react.readings.iter().find(|r| r.dir == "packages/ui").unwrap().source, "yarn.lock (resolutions)");
+        assert!(s.deps["pkg:npm/react-dom"].readings.iter().all(|r| r.version == Version::new(19, 2, 7)), "`**/` applies everywhere");
+        let components = &s.deps["pkg:npm/%40wordpress/components"];
+        assert_eq!((components.version.clone(), components.source.as_str()), (Some(Version::new(37, 0, 0)), "yarn.lock (resolutions)"));
+        assert_eq!(s.deps["pkg:npm/%40wordpress/element"].version, Some(Version::new(8, 0, 0)), "a patch override admits the pin");
+        let replaced = &s.deps["pkg:npm/%40types/wordpress__block-editor"];
+        assert_eq!((replaced.version.clone(), replaced.source.as_str()), (None, "replaced by noop-package (resolutions)"));
+        // A resolution under a parent (`jest-environment-jsdom/jsdom`) does not set a workspace's own jsdom.
+        assert_eq!(s.notes.len(), 1, "{:?}", s.notes);
+        assert!(s.notes[0].starts_with("yarn.lock: 1 locked version falls outside") && s.notes[0].contains("jsdom 20.0.3 vs ^16.0.0"), "{}", s.notes[0]);
+        assert_eq!(s.spread, 0);
+    }
+
+    #[test]
+    fn equally_shallow_manifests_take_the_version_most_of_them_run() {
+        // supabase's shape: seven apps lock next 16.3.6 through the catalog, two lock 15.5.25; nothing at the root.
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "package.json", r#"{"name":"root","private":true}"#);
+        write(d.path(), "pnpm-workspace.yaml", "packages:\n  - 'apps/*'\n");
+        let mut lock = String::from("lockfileVersion: '9.0'\n\nimporters:\n\n");
+        for (app, v) in [("docs", "15.5.25"), ("www", "15.5.25"), ("studio", "16.3.6"), ("learn", "16.3.6"), ("ui", "16.3.6")] {
+            write(d.path(), &format!("apps/{app}/package.json"), &format!(r#"{{"name":"{app}","private":true,"dependencies":{{"next":"^{v}"}}}}"#));
+            lock += &format!("  apps/{app}:\n    dependencies:\n      next:\n        specifier: ^{v}\n        version: {v}\n\n");
+        }
+        write(d.path(), "pnpm-lock.yaml", &lock);
+        let s = detect(d.path()).unwrap();
+        let next = &s.deps["pkg:npm/next"];
+        assert_eq!(next.version, Some(Version::new(16, 3, 6)), "{next:?}");
+        assert_eq!(next.source, "pnpm-lock.yaml in apps/learn");
+        assert_eq!(next.others()[0].1.iter().map(|r| r.dir.as_str()).collect::<Vec<_>>(), ["apps/docs", "apps/www"]);
+        // Even split: the lowest, as before.
+        let one = |dirs: &[(&str, &str)]| {
+            let mut d = Dep::new("x", true);
+            for (dir, v) in dirs { d.read(dir, Some(Version::parse(v).unwrap()), "lock".into()); }
+            d.headline().unwrap().version.to_string()
+        };
+        assert_eq!(one(&[("a", "2.0.0"), ("b", "1.0.0")]), "1.0.0");
+        assert_eq!(one(&[("a", "2.0.0"), ("b", "1.0.0"), ("c", "2.0.0"), ("x/deep", "1.0.0"), ("x/deeper", "1.0.0")]), "2.0.0", "depth first, then the majority");
+        assert_eq!(one(&[(".", "1.0.0"), ("a", "2.0.0"), ("b", "2.0.0")]), "1.0.0", "the root still leads");
+    }
+
+    #[test]
+    fn a_root_override_sets_a_library_dependency_too() {
+        // n8n's shape: the published cli package pins ws 8.20.1; the workspace overrides `ws: '>=8.21.1'` and the
+        // lockfile installs 8.21.1 for it. The floor 8.20.1 would report an advisory the install no longer has.
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "package.json", r#"{"name":"root","private":true}"#);
+        write(d.path(), "pnpm-workspace.yaml", "packages:\n  - 'packages/*'\n\noverrides:\n  ws: '>=8.21.1'\n");
+        write(d.path(), "packages/cli/package.json", r#"{"name":"n8n","version":"2.0.0","bin":{"n8n":"bin/n8n"},"dependencies":{"ws":"8.20.1"}}"#);
+        write(d.path(), "pnpm-lock.yaml", "lockfileVersion: '9.0'\n\noverrides:\n  ws: '>=8.21.1'\n\nimporters:\n\n  packages/cli:\n    dependencies:\n      ws:\n        specifier: '>=8.21.1'\n        version: 8.21.1(bufferutil@4.0.9)\n");
+        let s = detect(d.path()).unwrap();
+        let ws = &s.deps["pkg:npm/ws"];
+        assert_eq!(ws.version, Some(Version::new(8, 21, 1)), "{ws:?}");
+        assert!(ws.source.contains("overrides"), "{}", ws.source);
+        assert!(s.notes.is_empty(), "{:?}", s.notes);
+    }
+
+    #[test]
+    fn a_peer_range_alone_never_makes_a_lockfile_stale() {
+        // An application workspace's peer range says what it supports; the root's install is what runs.
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "package.json", r#"{"name":"root","private":true,"workspaces":["apps/*"],"dependencies":{"react":"^19.2.0"}}"#);
+        write(d.path(), "apps/help/package.json", r#"{"name":"help","private":true,"peerDependencies":{"react":"^18.2.0"}}"#);
+        write(d.path(), "yarn.lock", "__metadata:\n  version: 8\n\n\"react@npm:^19.2.0\":\n  version: 19.2.7\n  resolution: \"react@npm:19.2.7\"\n");
+        let s = detect(d.path()).unwrap();
+        let react = &s.deps["pkg:npm/react"];
+        assert!(react.readings.iter().all(|r| r.version == Version::new(19, 2, 7) && r.source == "yarn.lock"), "{react:?}");
+        assert!(s.notes.is_empty(), "{:?}", s.notes);
+    }
+
+    #[test]
+    fn npm_and_pnpm_overrides_count_as_declared() {
+        // npm `overrides`: plain, `name@range` and the `.` of a nested object set a package everywhere; a nested
+        // child does not.
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "package.json", r#"{"name":"root","private":true,"workspaces":["web"],"dependencies":{"foo":"^2.0.0"},
+            "overrides":{"foo":"$foo","bar@^1":"2.1.0","baz":{".":"3.0.0","qux":"1.0.0"}},"resolutions":{"qux":"9.9.9"}}"#);
+        write(d.path(), "web/package.json", r#"{"name":"web","private":true,"dependencies":{"foo":"^1.0.0","bar":"^1.0.0","baz":"^2.0.0","qux":"^0.5.0"}}"#);
+        write(d.path(), "package-lock.json", r#"{"lockfileVersion":3,"packages":{"node_modules/foo":{"version":"2.0.1"},"node_modules/bar":{"version":"2.1.0"},"node_modules/baz":{"version":"3.0.0"},"node_modules/qux":{"version":"1.0.0"}}}"#);
+        let s = detect(d.path()).unwrap();
+        for (n, v) in [("foo", Version::new(2, 0, 1)), ("bar", Version::new(2, 1, 0)), ("baz", Version::new(3, 0, 0))] {
+            assert_eq!(s.deps[&format!("pkg:npm/{n}")].version, Some(v), "{n}");
+        }
+        assert_eq!(s.notes.len(), 1, "npm ignores Yarn's `resolutions`: {:?}", s.notes);
+        assert!(s.notes[0].contains("qux 1.0.0 vs ^0.5.0"), "{}", s.notes[0]);
+        // pnpm: `pnpm.overrides` and the workspace file's `overrides`; `parent>child` applies under a parent only.
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "package.json", r#"{"name":"root","private":true,"pnpm":{"overrides":{"next":"16.4.1","a>zod":"4.0.0"}}}"#);
+        write(d.path(), "pnpm-workspace.yaml", "packages:\n  - web\noverrides:\n  '@types/react': ^19.0.0 # all workspaces\n");
+        write(d.path(), "web/package.json", r#"{"name":"web","private":true,"dependencies":{"next":"^15.0.0","@types/react":"^18.3.0","zod":"^3.0.0"}}"#);
+        write(d.path(), "pnpm-lock.yaml", "lockfileVersion: '9.0'\n\noverrides:\n  next: 16.4.1\n\nimporters:\n\n  web:\n    dependencies:\n      '@types/react':\n        specifier: ^19.0.0\n        version: 19.2.3\n      next:\n        specifier: 16.4.1\n        version: 16.4.1(react@19.2.0)\n      zod:\n        specifier: ^3.0.0\n        version: 4.0.0\n");
+        let s = detect(d.path()).unwrap();
+        assert_eq!(s.deps["pkg:npm/next"].version, Some(Version::new(16, 4, 1)));
+        assert_eq!(s.deps["pkg:npm/next"].source, "pnpm-lock.yaml (pnpm.overrides)");
+        assert_eq!(s.deps["pkg:npm/%40types/react"].source, "pnpm-lock.yaml (pnpm-workspace.yaml overrides)");
+        assert_eq!(s.notes.len(), 1, "{:?}", s.notes);
+        assert!(s.notes[0].contains("zod 4.0.0 vs ^3.0.0"), "{}", s.notes[0]);
+    }
+
+    #[test]
+    fn a_selector_version_limits_the_override_and_an_alias_replaces_even_in_range() {
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "package.json", r#"{"name":"root","private":true,"workspaces":["a","b"],
+            "resolutions":{"react@^18":"19.2.7","foo":"npm:bar@1.2.0"}}"#);
+        write(d.path(), "a/package.json", r#"{"name":"a","private":true,"dependencies":{"react":"^18.2.0","foo":"^1.0.0"}}"#);
+        write(d.path(), "b/package.json", r#"{"name":"b","private":true,"dependencies":{"react":"^16.0.0"}}"#);
+        write(d.path(), "yarn.lock", "__metadata:\n  version: 8\n\n\"react@npm:19.2.7\":\n  version: 19.2.7\n  resolution: \"react@npm:19.2.7\"\n\n\"foo@npm:bar@1.2.0\":\n  version: 1.2.0\n  resolution: \"bar@npm:1.2.0\"\n");
+        let s = detect(d.path()).unwrap();
+        let react = &s.deps["pkg:npm/react"];
+        assert_eq!(react.readings.iter().find(|r| r.dir == "a").unwrap().version, Version::new(19, 2, 7));
+        assert_eq!(react.readings.iter().find(|r| r.dir == "b").unwrap().version, Version::new(16, 0, 0), "`react@^18` does not set ^16");
+        assert!(s.notes.iter().any(|n| n.contains("react 19.2.7 vs ^16.0.0")), "{:?}", s.notes);
+        assert_eq!(s.deps["pkg:npm/foo"].source, "replaced by bar (resolutions)", "an in-range pin of another package");
+    }
+
+    #[test]
+    fn override_selectors_name_the_package_they_set_everywhere() {
+        for (sel, want) in [
+            ("react", Some(("react", None))),
+            ("**/react", Some(("react", None))),
+            ("react@^18", Some(("react", Some("^18")))),
+            ("@babel/core@npm:7.25.7", Some(("@babel/core", Some("npm:7.25.7")))),
+            ("@types/react", Some(("@types/react", None))),
+            ("jest-environment-jsdom/jsdom", None),
+            ("keytar@npm:7.7.0/node-addon-api", None),
+            ("@scope/parent/child", None),
+            ("a>b", None),
+            ("@scope", None),
+            ("", None),
+        ] {
+            assert_eq!(override_target(sel), want, "{sel}");
+        }
     }
 
     #[test]
@@ -980,17 +1619,62 @@ mod tests {
     }
 
     #[test]
-    fn library_uses_range_floor_and_peer_range() {
+    fn a_library_reads_its_lockfile_and_keeps_the_range_its_users_get() {
+        // recharts' shape: one published package, a root package-lock.json, no workspaces.
         let d = tempfile::tempdir().unwrap();
-        write(d.path(), "package.json", r#"{"name":"lib","version":"1.0.0","main":"index.js",
-            "peerDependencies":{"@nestjs/core":"^10.0.0 || ^11.0.0"},"devDependencies":{"@nestjs/core":"^11.1.0"}}"#);
-        write(d.path(), "package-lock.json", r#"{"lockfileVersion":3,"packages":{"node_modules/@nestjs/core":{"version":"11.1.6"}}}"#);
+        write(d.path(), "package.json", r#"{"name":"lib","version":"1.0.0","main":"lib/index.js","files":["lib"],
+            "dependencies":{"immer":"^11.1.8","rxjs":"^7.8.0"},
+            "peerDependencies":{"@nestjs/core":"^10.0.0 || ^11.0.0","react":"^16.8.0 || ^17 || ^18 || ^19"},
+            "devDependencies":{"@nestjs/core":"^11.1.0","vite":"^6.4.0","react":"^18.3.1"}}"#);
+        write(d.path(), "package-lock.json", r#"{"lockfileVersion":3,"packages":{"":{"name":"lib"},"node_modules/@nestjs/core":{"version":"11.1.6"},
+            "node_modules/immer":{"version":"11.1.18"},"node_modules/vite":{"version":"6.4.3"},"node_modules/react":{"version":"18.3.1"}}}"#);
         write(d.path(), ".nvmrc", "v18.19.0\n");
         let s = detect(d.path()).unwrap();
         assert_eq!(s.packages[0].kind, Kind::Library);
-        assert_eq!(s.deps["pkg:npm/%40nestjs/core"].version, Some(Version::new(10, 0, 0)), "a library is read at its floor");
+        let v = |p: &str| s.deps[p].version.clone();
+        // A dependency is what the repository's code runs and tests against, its lockfile's; users get any version
+        // in the range, which the reading keeps (code written for ^11.1.8 is cited at 11.1.21).
+        assert_eq!(v("pkg:npm/immer"), Some(Version::new(11, 1, 18)));
+        assert_eq!(s.deps["pkg:npm/immer"].source, "package-lock.json");
+        let immer = &s.deps["pkg:npm/immer"].readings[0];
+        assert_eq!(immer.range, Some(Range::Npm("^11.1.8".into())));
+        assert!(immer.runs(&Version::new(11, 1, 21)) && !immer.runs(&Version::new(12, 0, 0)));
+        // Nothing locks rxjs: the floor of its range.
+        assert_eq!(v("pkg:npm/rxjs"), Some(Version::new(7, 8, 0)));
+        assert_eq!(s.deps["pkg:npm/rxjs"].source, "library floor of ^7.8.0");
+        assert_eq!(v("pkg:npm/vite"), Some(Version::new(6, 4, 3)), "a devDependency is the repository's own, locked");
+        assert_eq!(s.deps["pkg:npm/vite"].source, "package-lock.json");
+        assert_eq!(v("pkg:npm/react"), Some(Version::new(18, 3, 1)), "the devDependency, not the peer floor");
+        assert_eq!(v("pkg:npm/%40nestjs/core"), Some(Version::new(11, 1, 6)));
+        assert_eq!(s.deps["pkg:npm/react"].readings.len(), 1);
+        assert!(s.notes.is_empty(), "{:?}", s.notes);
         assert_eq!(s.node.as_ref().unwrap().0, Version::new(18, 19, 0));
         assert_eq!(s.node.as_ref().unwrap().1, ".nvmrc");
+    }
+
+    #[test]
+    fn main_beside_its_own_lockfile_is_an_install_root_not_a_published_library() {
+        // Infisical's shape: `backend/` is a deployed server with `npm init`'s `main` and its own package-lock.json;
+        // no root lockfile. A workspace member with `main` only and no lockfile of its own is still published.
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "backend/package.json", r#"{"name":"backend","version":"1.0.0","main":"./dist/main.mjs","license":"ISC",
+            "dependencies":{"zod":"^3.22.4","ioredis":"^5.3.2"},"peerDependencies":{"pg":"^8.0.0"}}"#);
+        write(d.path(), "backend/package-lock.json", r#"{"lockfileVersion":3,"packages":{"":{"name":"backend"},"node_modules/zod":{"version":"3.25.76"},
+            "node_modules/ioredis":{"version":"5.10.1"},"node_modules/pg":{"version":"8.16.3"}}}"#);
+        write(d.path(), "libs/package.json", r#"{"name":"libs","private":true,"workspaces":["pkg-*"]}"#);
+        write(d.path(), "libs/package-lock.json", r#"{"lockfileVersion":3,"packages":{"node_modules/react":{"version":"17.0.2"}}}"#);
+        write(d.path(), "libs/pkg-a/package.json", r#"{"name":"pkg-a","version":"58.0.1","main":"index.js","peerDependencies":{"react":">=18"}}"#);
+        let s = detect(d.path()).unwrap();
+        let kind = |dir: &str| s.packages.iter().find(|p| p.dir == dir).unwrap().kind;
+        assert_eq!((kind("backend"), kind("libs/pkg-a")), (Kind::Application, Kind::Library));
+        let one = |p: &str| s.deps[p].readings.iter().map(|r| (r.version.to_string(), r.source.clone(), r.range.clone())).collect::<Vec<_>>();
+        assert_eq!(one("pkg:npm/zod"), vec![("3.25.76".into(), "backend/package-lock.json".into(), None)]);
+        assert_eq!(one("pkg:npm/ioredis")[0].0, "5.10.1");
+        assert_eq!(one("pkg:npm/pg")[0].0, "8.16.3");
+        // The only react the workspace locks is outside the library's peer range: another copy, not what its code is
+        // written for, so the floor of the range.
+        assert_eq!(one("pkg:npm/react"), vec![("18.0.0".into(), "library floor of >=18".into(), Some(Range::Npm(">=18".into())))]);
+        assert!(s.notes.is_empty(), "{:?}", s.notes);
     }
 
     #[test]
@@ -1007,6 +1691,30 @@ mod tests {
         let s = detect(d.path()).unwrap();
         assert_eq!(s.packages.len(), 3);
         assert_eq!(s.deps["pkg:npm/next"].version, Some(Version::new(15, 5, 2)));
+    }
+
+    #[test]
+    fn a_floor_reading_keeps_its_range_and_fits_the_versions_it_admits() {
+        // A library's peer range is what its code is written for: `>=18.0.0` describes code run on 19; a locked
+        // version describes only its own release line. The library's reading is the version the workspace installs
+        // for it (19.2.4), with its range kept.
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "package.json", r#"{"name":"root","private":true,"workspaces":["packages/*"],"devDependencies":{"react":"^19.2.0"}}"#);
+        write(d.path(), "packages/ui/package.json", r#"{"name":"ui","version":"1.0.0","main":"i.js","peerDependencies":{"react":">=18.0.0"}}"#);
+        write(d.path(), "package-lock.json", r#"{"lockfileVersion":3,"packages":{"node_modules/react":{"version":"19.2.4"}}}"#);
+        let s = detect(d.path()).unwrap();
+        let rs = &s.deps["pkg:npm/react"].readings;
+        let root = rs.iter().find(|r| r.dir == ".").unwrap();
+        let ui = rs.iter().find(|r| r.dir == "packages/ui").unwrap();
+        assert_eq!((root.range.clone(), ui.range.clone(), ui.version.to_string()), (None, Some(Range::Npm(">=18.0.0".into())), "19.2.4".into()));
+        let v19 = Version::new(19, 2, 4);
+        assert!(ui.fits(&v19) && ui.runs(&v19), "the peer range admits 19.2.4");
+        assert!(root.fits(&Version::new(19, 0, 0)) && !root.runs(&Version::new(19, 0, 0)), "same line, another version");
+        assert!(!root.fits(&Version::new(18, 3, 1)));
+        assert!(ui.contains("packages/ui/src/a.ts") && !ui.contains("packages/uikit/a.ts") && root.contains("anything.ts"));
+        // A PyPI floor reads its specifier with PEP 440 rules.
+        let py = Reading { dir: "lib".into(), version: Version::new(1, 0, 0), source: "library floor of >=1".into(), standalone: false, range: Some(Range::Pypi(">=1".into())) };
+        assert!(py.runs(&Version::new(2, 3, 0)) && py.fits(&Version::new(2, 3, 0)));
     }
 
     #[test]

@@ -6,8 +6,11 @@
 //   cd central && npx tsx ../eval/select/slice5/score5.mts [--adjudicated ../eval/select/slice5/adjudicated.json]
 //   --rules: the "Judge rules compression" arms (M8, T8) against J1; writes *-rules.json.
 //   --judge2: the "Judge 2" arms (PREREG.md) against J1 instead of the slice 5 candidates; writes *-judge2.json.
-//   --subq <arm>: adds that arm answered by SubQ Snap (judge2.mts --cand subq); --base <id> compares against that
-//     candidate instead of J1 (e.g. --rules --subq M8 --base M8: Snap against Jev on the pipeline's own wording).
+//   --base <id>: compares against that candidate instead of J1.
+//   --subq <arm>: adds that arm answered by SubQ Snap (judge2.mts --cand subq), e.g. --rules --subq M8 --base M8:
+//     Snap against Jev on the pipeline's own wording.
+//   --floor F: the "Question floor" arm (PREREG.md): M8, Q8 (judge2.mts --arm Q8 --floor F) and M8 with the floor
+//     applied to its own answers (no calls); use with --base M8 --fixed 0.87,0.87,0.95. Writes *-floor.json.
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
@@ -17,7 +20,7 @@ import type { Classification } from "../../../central/src/pipeline/classify/adap
 import type { IncomingForGuard } from "../../../central/src/pipeline/match.ts";
 import type { StoredRecord } from "../../../central/src/pipeline/store.ts";
 
-const { values: a } = parseArgs({ options: { adjudicated: { type: "string" }, unaudited: { type: "string" }, judge2: { type: "boolean", default: false }, rules: { type: "boolean", default: false }, clef: { type: "string" }, subq: { type: "string" }, base: { type: "string", default: "J1" }, fixed: { type: "string" } } });
+const { values: a } = parseArgs({ options: { adjudicated: { type: "string" }, unaudited: { type: "string" }, judge2: { type: "boolean", default: false }, rules: { type: "boolean", default: false }, clef: { type: "string" }, subq: { type: "string" }, floor: { type: "string" }, base: { type: "string", default: "J1" }, fixed: { type: "string" } } });
 const OUT5 = join(import.meta.dirname, "..", "out", "slice5");
 const D = JSON.parse(readFileSync(join(OUT5, "units.json"), "utf8")) as {
   units: Array<{ set: string; n: number; tech: string; key: string; candidate: string; index: number; p_audit: number; verdict: V; cross: boolean; split: "dev" | "heldout"; req: string; cands: StoredRecord[]; guardInc: IncomingForGuard }>;
@@ -94,9 +97,15 @@ function fromId(ans: Answers, reading: string): Answers {
   }
   return out;
 }
+/** A run's answers with the questions of candidates retrieved below the floor removed (floor.mts --scores). */
+function belowFloor(ans: Answers, floor: number): Answers {
+  const scores = JSON.parse(readFileSync(join(OUT5, "floor-scores.json"), "utf8")) as Record<string, number[]>;
+  return Object.fromEntries(Object.entries(ans).map(([k, c]) => [k, c && { ...c, answers: Object.fromEntries(Object.entries(c.answers).filter(([q]) => scores[k]![Number(q.slice("same_c".length)) - 1]! >= floor)) }]));
+}
 const load = (run: string): Answers => {
   const [name, reading] = run.split("#");
   const raw = JSON.parse(readFileSync(join(OUT5, "runs", name!, "answers.json"), "utf8")) as Answers;
+  if (reading?.startsWith("floor=")) return belowFloor(raw, Number(reading.slice("floor=".length)));
   return reading ? fromId(raw, reading) : raw;
 };
 
@@ -221,9 +230,15 @@ const C5: Cand[] = [
 ];
 // --rules: "Judge rules compression" (PREREG.md), J1 against the compressed-rule arms; writes *-rules.json.
 const JR: Cand[] = [J2[0]!, ...["M8", "T8"].map((arm) => ({ id: arm, name: arm, dev: `j2-${arm}-dev`, held: [`j2-${arm}-heldout`], K: 8 }))];
+// --floor: "Question floor" (PREREG.md).
+const QF: Cand[] = a.floor ? [
+  { id: "M8", name: "M8 (production)", dev: "j2-M8-dev", held: ["j2-M8-heldout"], K: 8 },
+  { id: "Q8", name: `Q8: M8 questions at retrieval score >= ${a.floor}`, dev: "j2-Q8-dev", held: ["j2-Q8-heldout"], K: 8 },
+  { id: "M8floor", name: `M8's own answers below ${a.floor} removed (no calls)`, dev: `j2-M8-dev#floor=${a.floor}`, held: [`j2-M8-heldout#floor=${a.floor}`], K: 8 },
+] : [];
 const SUBQ: Cand[] = a.subq ? [{ id: `${a.subq}-subq`, name: `${a.subq} on SubQ Snap`, dev: `j2-${a.subq}-dev-subq`, held: [`j2-${a.subq}-heldout-subq`], K: Number(a.subq.slice(1)), ...(a.subq.startsWith("I") ? { readings: ["A", "B"] } : {}) }] : [];
-const C = [...(a.rules ? JR : a.judge2 ? J2 : C5), ...SUBQ];
-const SUFFIX = (a.rules ? "-rules" : a.judge2 ? "-judge2" : "") + (a.subq ? `-subq-${a.subq}` : "") + (a.base !== "J1" ? `-vs-${a.base}` : "") + (a.fixed ? "-fixed" : "");
+const C = [...(a.floor ? QF : a.rules ? JR : a.judge2 ? J2 : C5), ...SUBQ];
+const SUFFIX = (a.floor ? "-floor" : a.rules ? "-rules" : a.judge2 ? "-judge2" : "") + (a.subq ? `-subq-${a.subq}` : "") + (a.base !== "J1" ? `-vs-${a.base}` : "") + (a.fixed ? "-fixed" : "");
 /** Descriptive only (not the pre-registered fit): every candidate scored at these constants, "same,cross,quote". */
 const FIXED: Params | undefined = a.fixed ? (([same, cross, quote]) => ({ same: same!, cross: cross!, quote: quote!, guards: true }))(a.fixed.split(",").map(Number)) : undefined;
 const exists = (r: string) => existsSync(join(OUT5, "runs", r.split("#")[0]!, "answers.json"));

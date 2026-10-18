@@ -168,6 +168,7 @@ export type ShardLine = z.infer<typeof ShardLine>;
 
 export const TechIndex = z.strictObject({
   "checked": z.string(),
+  "components": z.array(z.string()).optional(),
   "releases": z.array(IndexRelease).optional(),
   "sample": z.array(SampleRepo).optional(),
   "sample_n": z.number().int().min(0).max(4294967295),
@@ -182,3 +183,9 @@ export const Root = z.strictObject({
   "schema": z.number().int().min(0).max(4294967295),
 });
 export type Root = z.infer<typeof Root>;
+
+export const Technologies = z.strictObject({
+  "schema": z.number().int().min(0).max(4294967295),
+  "technologies": z.record(z.string(), z.string()),
+});
+export type Technologies = z.infer<typeof Technologies>;

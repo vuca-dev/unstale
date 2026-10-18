@@ -17,6 +17,8 @@ aho-corasick = "1"
 clap = { version = "4", features = ["derive"] }
 flate2 = "1"
 ignore = "0.4"
+# Workspace globs (pnpm-workspace.yaml `packages`, package.json `workspaces`); already in the build through ignore.
+globset = "0.4"
 semver = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

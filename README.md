@@ -31,6 +31,8 @@ code.
 - **New capabilities.** Framework features released since you wrote the code that could replace custom code, each
 with its stated benefit.
 - **Bump digests.** What a version bump actually fixes, including security advisories, with no model calls at all.
+- **Publisher deprecations.** An installed version of a direct dependency that its publisher deprecated on npm or
+yanked on PyPI, with the registry's message, whether or not the catalog covers the package yet.
 - **Ambient awareness.** One line at the start of an agent session when something new lands for your stack
 (Claude Code).
 - **An instant first report.** Your stack, upgrades and a shortlist of relevant capabilities, seconds after
@@ -105,6 +107,9 @@ prints one line. Collaborative mode also adds one line to `.gitattributes`. `uns
 and backs up your decisions.
 - **What leaves your machine.** Requests for catalog files, named by public package identity (`pkg:npm/next`), and
 coverage requests for packages the catalog does not have yet. Your code, paths and versions do not. No telemetry.
+The client also reads the public npm and PyPI registries for your direct packages at their installed versions, as a
+package manager does, to check that a name is the public package and whether its publisher deprecated (npm) or
+yanked (PyPI) that version.
 - **A signed catalog.** Catalog indexes carry an Ed25519 signature and name each shard's sha256; the client discards
 anything that does not verify.
 - **Upstream text is data.** Release notes and docs reach your agent as quoted, untrusted data, never as

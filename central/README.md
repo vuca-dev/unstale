@@ -32,14 +32,17 @@ ingested extraction is recorded, so a rerun makes no uncached calls and writes b
 
 | File | Role |
 |---|---|
-| `src/pipeline/fetch.ts` | Stable GitHub releases since 2025-10-15 (`GITHUB_TOKEN`, else `gh auth token`), stored raw with a `sha256:` snapshot |
+| `src/pipeline/fetch.ts` | Stable GitHub releases since 2025-10-15 (`GITHUB_TOKEN`, else `gh auth token`), stored raw with a `sha256:` snapshot; a body that only links its notes is read through the link once; a package with no GitHub release is read from its changelog file |
+| `src/pipeline/changelog.ts` | Changelog sections per version (ATX and setext headings), pointer-body detection, publisher-site pages |
 | `src/pipeline/extract.ts`, `llm.ts` | Extraction and free-text labels (subject, summary, terms, replaces, requires, prerequisites, conditions) |
 | `src/pipeline/classify/adapter.ts` | Classifier adapter: Jev first, the extraction model answering choices as the per-request fallback, cache, usage log |
+| `src/pipeline/packs.ts` | The content-hash caches (classifier, model, registry, the day's docs pages) as append-only pack files, a few thousand instead of one file per entry |
 | `src/pipeline/classify/labels.ts`, `vocab.ts`, `thresholds.ts` | change_type, surface, breaking and benefit questions; thresholds |
 | `src/pipeline/match.ts`, `store.ts` | Matching at ingest, id minting, revision and label counters, merge and retraction |
 | `src/pipeline/publish.ts` | Shards per technology and release line, index, root; every line validated by the generated Zod |
 | `src/pipeline/prune.ts` | Shard history (`catalog/history/<tech>.json`, outside `v1/`) and the 7-day grace-period prune |
 | `src/pipeline/export.ts` | Static export: verified copy of `v1/` with the served `components`, built aside and swapped in |
+| `src/state/` | Store snapshots for the ingest workflow: content-addressed members in segments, incremental saves, a technology's docs store and files restored on first use (`npm run state -- restore\|save\|serve\|hydrate\|caches\|stats`) |
 
 ## Operator environment
 
@@ -59,16 +62,18 @@ Every variable is optional; the defaults suit a developer machine.
 | `UNSTALE_JEV_ENV_FILE` | `~/.config/ati/jev.env` | Env file holding `JEV_API_KEY=` when the variable itself is unset |
 | `UNSTALE_RATE_PER_HOUR` | `250` | `serve`: new technologies one client address may register per hour (a known one is never refused) |
 | `UNSTALE_VOTES_PER_HOUR` | `1000` | `serve`: votes (requests for a known technology) one client address may cast per hour, a bucket apart from new technologies; over it a vote is not counted |
-| `UNSTALE_NEW_PER_DAY` | `100` | `serve`: new technologies accepted per UTC day, all clients together |
-| `UNSTALE_RUNS_PER_DAY` | `1000` | `serve`: coverage job runs (first analysis, retries, refreshes) started per UTC day |
+| `UNSTALE_RUNS_PER_DAY` | unset (no cap) | Coverage job runs (first analysis, retries, refreshes) started per UTC day; `0` starts none. Model work is bounded by the release-note token budget (estimated note volume, charged before any model call) instead; there is no count of new technologies |
 | `UNSTALE_BUDGET_TOKENS` | `1000000` | Release-note tokens (characters / 4) extracted per budget period, all technologies together; 0 stops extraction. The ingest workflow sets 2,500,000 |
 | `UNSTALE_BUDGET_PERIOD` | `day` | The token budget's UTC period: `day`, `week` or `month` |
 | `UNSTALE_TECH_QUARTER_TOKENS` | `50000` | Release-note tokens one technology may use per calendar quarter before the rest waits behind other technologies |
 | `UNSTALE_TRUST_PROXY` | `0` | `serve`: number of proxies in front whose `X-Forwarded-For` entry is trusted (`true` = 1); 0 uses the socket address |
-| `UNSTALE_NO_ADVISORIES` | unset | `1` skips the advisories stage after a technology's history is published |
+| `UNSTALE_NO_ADVISORIES` | unset | `1` skips the advisories stage after a technology's history is published, and the first pass below |
+| `UNSTALE_ADVISORIES_FIRST` | `2` | `drain`: token-free first passes at once, beside the job slots: a waiting new technology's advisories (OSV, resolved against its release list) are published before its release-note history, with no model call, and it keeps its place in the queue; `0` turns them off |
 | `UNSTALE_LOCK_TIMEOUT_MS` | `1200000` (20 minutes) | How long a writer waits for a technology's lock before failing |
 | `UNSTALE_BIN` | `<repo>/local/target/release/unstale` | Client binary used for `count-terms` by the rarity sample |
 | `UNSTALE_GATEWAY_URL`, `UNSTALE_GATEWAY_TOKEN` | unset | `drain`: the gateway whose held registrations are pulled and acknowledged; unset, only the saved queue is worked |
+| `UNSTALE_STATE_REMOTE` | unset | `state`: where snapshots live, `github:<owner>/<repo>#<release id>` (with `GH_TOKEN`) or `dir:<path>` |
+| `UNSTALE_STATE_SOCKET` | unset | The state server's socket: a store restored from a snapshot restores a technology's docs store and files through it on first use |
 
 ## Deploy
 

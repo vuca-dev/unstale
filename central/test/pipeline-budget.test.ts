@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import type { Limits } from "../src/onboarding/limits.ts";
 import { PipelineBudget } from "../src/pipeline/budget.ts";
-import { extractCachePath } from "../src/pipeline/llm.ts";
+import { putExtractCache } from "../src/pipeline/llm.ts";
 import { EXTRACT_PROMPT, fill, releaseCached } from "../src/pipeline/extract.ts";
 import type { Technology } from "../src/pipeline/technologies.ts";
 
@@ -22,7 +22,6 @@ afterAll(() => {
 const limits = (over: Partial<Limits> = {}): Limits => ({
   perAddressPerHour: 20,
   votesPerAddressPerHour: 1000,
-  newPerDay: 100,
   runsPerDay: 1000,
   trustProxy: 0,
   tokensPerPeriod: 1_000,
@@ -69,9 +68,7 @@ describe("releaseCached", () => {
     const t = { id: "zod", name: "zod", components: ["pkg:npm/zod"] } as unknown as Technology;
     const rel = { version: "4.1.0", date: "2026-08-20", notes: "## Breaking\n- `z.string().email()` is removed." } as Parameters<typeof releaseCached>[1];
     expect(releaseCached(t, rel)).toBe(false);
-    const path = extractCachePath(fill(EXTRACT_PROMPT, { TECH: t.name, VERSION: rel.version, DATE: rel.date, PART: "", NOTES: rel.notes }));
-    mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, JSON.stringify({ text: "[]" }));
+    putExtractCache(fill(EXTRACT_PROMPT, { TECH: t.name, VERSION: rel.version, DATE: rel.date, PART: "", NOTES: rel.notes }), "[]");
     expect(releaseCached(t, rel)).toBe(true);
   });
 });

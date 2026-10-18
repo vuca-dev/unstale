@@ -7,7 +7,7 @@
 //   unstale init --service http://127.0.0.1:8787     (in a repository that depends on a --new package)
 //
 // --new      packages treated as not yet covered, even if the live catalog has them (any it lacks are new anyway)
-// --declined the played run finds another package ahead and takes none (drain --fast-track's `ran: false`)
+// --declined the played run reports `declined` (a gateway state no current drain sends; kept for older runs)
 // --stall    the played run never starts (the client gives up after 5 minutes)
 // --speed    2 plays the run twice as fast
 import { createServer } from "node:http";
@@ -63,7 +63,8 @@ const env = {
     },
   },
 } as unknown as Env;
-const object = new Coverage({ storage: { sql: memorySql() }, waitUntil: (p: Promise<unknown>) => void p.catch(() => {}) } as unknown as DurableObjectState, env);
+const sql = memorySql();
+const object = new Coverage({ storage: { sql, transactionSync: <T>(f: () => T) => sql.transaction(f) }, waitUntil: (p: Promise<unknown>) => void p.catch(() => {}) } as unknown as DurableObjectState, env);
 env.COVERAGE = { idFromName: () => "global", get: () => object } as unknown as Env["COVERAGE"];
 
 const internal = (path: string, body?: unknown) =>
@@ -106,7 +107,7 @@ async function play(): Promise<void> {
   log("analysed; exporting and deploying");
   await wait(8);
   for (const { purl } of requests) {
-    published.set(await statusPath(purl), { schema: 1, purl, technology: technologyId(purl), name: packageIdentity(purl), state: "partial", stage: `${releases * 2} records available; continuing centrally`, records: releases * 2, updated: new Date().toISOString() });
+    published.set(await statusPath(purl), { schema: 1, purl, technology: technologyId(purl), name: packageIdentity(purl), state: "partial", stage: `${releases * 2} records so far; continuing centrally`, records: releases * 2, updated: new Date().toISOString() });
   }
   log("deployed; statuses published");
   await wait(3);

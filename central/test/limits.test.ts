@@ -23,7 +23,6 @@ afterEach(() => {
 const limits = (l: Partial<Limits>): Limits => ({
   perAddressPerHour: 100,
   votesPerAddressPerHour: 1000,
-  newPerDay: 100,
   runsPerDay: 100,
   trustProxy: 0,
   tokensPerPeriod: 1_000_000,
@@ -43,12 +42,11 @@ async function serve(service: CoverageService) {
 
 test("environment defaults and overrides; invalid values keep the default", () => {
   const defaults = { tokensPerPeriod: 1_000_000, period: "day", techQuarterTokens: 50_000 };
-  expect(limitsFromEnv({})).toEqual({ perAddressPerHour: 250, votesPerAddressPerHour: 1000, newPerDay: 100, runsPerDay: 1000, trustProxy: 0, ...defaults });
-  expect(limitsFromEnv({ UNSTALE_RATE_PER_HOUR: "3", UNSTALE_VOTES_PER_HOUR: "7", UNSTALE_NEW_PER_DAY: "0", UNSTALE_RUNS_PER_DAY: "x", UNSTALE_TRUST_PROXY: "true" })).toEqual({
+  expect(limitsFromEnv({})).toEqual({ perAddressPerHour: 250, votesPerAddressPerHour: 1000, runsPerDay: Infinity, trustProxy: 0, ...defaults });
+  expect(limitsFromEnv({ UNSTALE_RATE_PER_HOUR: "3", UNSTALE_VOTES_PER_HOUR: "7", UNSTALE_RUNS_PER_DAY: "x", UNSTALE_TRUST_PROXY: "true" })).toEqual({
     perAddressPerHour: 3,
     votesPerAddressPerHour: 7,
-    newPerDay: 0,
-    runsPerDay: 1000,
+    runsPerDay: Infinity,
     trustProxy: 1,
     ...defaults,
   });
@@ -92,8 +90,9 @@ test("behind a trusted proxy, the entry the proxy appended is the client", async
   }
 });
 
-test("over the daily cap of new technologies a request is queued, not refused; the cap survives a restart and resets the next UTC day", async () => {
-  const service = new CoverageService(0, { limits: limits({ newPerDay: 0 }) });
+test("over the daily cap of job runs a request is queued, not refused; the cap survives a restart and resets the next UTC day", async () => {
+  expect(limitsFromEnv({ UNSTALE_RUNS_PER_DAY: "0" }).runsPerDay).toBe(0);
+  const service = new CoverageService(0, { limits: limits({ runsPerDay: 0 }) });
   const { register, close } = await serve(service);
   try {
     expect((await register("pkg:npm/a")).status).toBe(202);
@@ -104,18 +103,19 @@ test("over the daily cap of new technologies a request is queued, not refused; t
     await close();
     service.stop();
   }
-  const budget = new DailyBudget({ newPerDay: 1, runsPerDay: 1 });
-  expect(budget.take("new")).toBeUndefined();
-  expect(new DailyBudget({ newPerDay: 1, runsPerDay: 1 }).take("new")).toMatchObject({ limit: "budget", kind: "new" });
-  expect(budget.take("new", Date.now() + 86_400_000)).toBeUndefined();
+  const budget = new DailyBudget({ runsPerDay: 1 });
+  expect(budget.takeRun()).toBeUndefined();
+  expect(new DailyBudget({ runsPerDay: 1 }).takeRun()).toMatchObject({ limit: "budget", kind: "runs" });
+  expect(budget.takeRun(Date.now() + 86_400_000)).toBeUndefined();
 });
 
 test("an unreadable budget refuses (the one limit that fails closed)", () => {
   const path = join(dir, "budget.json");
   writeFileSync(path, "{not json");
   vi.spyOn(console, "error").mockImplementation(() => {});
-  expect(new DailyBudget({ newPerDay: 10, runsPerDay: 10 }, path).take("new")).toMatchObject({ limit: "budget" });
-  expect(new DailyBudget({ newPerDay: 10, runsPerDay: 10 }, join(dir, "absent.json")).take("new")).toBeUndefined();
+  expect(new DailyBudget({ runsPerDay: 10 }, path).takeRun()).toMatchObject({ limit: "budget" });
+  expect(new DailyBudget({}, path).takeRun()).toMatchObject({ limit: "budget" }); // fails closed without a run cap too
+  expect(new DailyBudget({ runsPerDay: 10 }, join(dir, "absent.json")).takeRun()).toBeUndefined();
 });
 
 test("the address window slides and the address table is bounded", () => {

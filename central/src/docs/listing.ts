@@ -1,9 +1,12 @@
 // Page listing for one docs site. Sources, in order: robots.txt `Sitemap:` lines, sitemap.xml at the docs path and the
-// origin (indexes followed), then llms.txt. A Markdown URL that llms.txt names is kept as the page's copy: the site
-// itself publishes it for agents, and on a JavaScript-only site it is the only readable form. The listing is cut to the
+// origin (indexes followed), then llms.txt (absolute or site-relative links), then, when those name fewer than
+// `MIN_LISTED` pages in scope, the links in the site's own pages (one page read per directory, since pages in one
+// directory share their navigation). A Markdown URL that llms.txt names is kept as the page's copy: the site itself
+// publishes it for agents, and on a JavaScript-only site it is the only readable form. The listing is cut to the
 // resolver's scope prefix, robots.txt, and one version and locale: version and locale namespaces are found from the
 // listing itself (a path segment whose pages mirror unprefixed pages, or that has sibling namespaces), not from a
-// hand-kept list.
+// hand-kept list. Hosts compare without `www.`, and a site whose entry page redirects to another host is listed on
+// that host.
 import { decode } from "../collector/decode.ts";
 import { DEFAULT_HEADERS, FetchFailure, type HttpClient } from "../collector/http.ts";
 import type { RobotsCache } from "./robots.ts";
@@ -28,7 +31,8 @@ export interface Namespace {
 export interface Listing {
   site: string;
   prefix: string;
-  method: "sitemap" | "llms.txt" | "sitemap+llms.txt" | "none";
+  /** The sources that named pages, joined by "+" (`sitemap`, `llms.txt`, `links`), or `none`. */
+  method: string;
   pages: ListedPage[];
   namespaces: Namespace[];
   /** Pages dropped: outside the prefix or host, disallowed by robots.txt, or in an excluded namespace. */
@@ -42,9 +46,13 @@ export interface ListOptions {
   latestMajor?: string | undefined;
   maxSitemaps: number;
   maxPages: number;
+  /** Pages read for their links when the sitemaps and llms.txt name too few pages. */
+  maxLinkPages: number;
 }
 
-const DEFAULTS: ListOptions = { maxSitemaps: 50, maxPages: 5000 };
+const DEFAULTS: ListOptions = { maxSitemaps: 50, maxPages: 5000, maxLinkPages: 40 };
+/** Fewer pages in scope than this from sitemaps and llms.txt, and the site's own links are read too (as the resolver does). */
+export const MIN_LISTED = 5;
 const NOT_A_PAGE = /\.(css|js|mjs|png|jpe?g|gif|svg|ico|webp|avif|xml|json|txt|pdf|zip|gz|woff2?|ttf|mp4|webm)$/i;
 /** Release notes are the release pipeline's source; as docs pages their "markers" name past fixes (SQLAlchemy). */
 export const RELEASE_NOTES = /\/(changelogs?|changes|release-notes|releases)(\/|$)/i;
@@ -63,27 +71,34 @@ export function normalizeUrl(u: string): string {
   return x.toString();
 }
 
-async function text(http: HttpClient, url: string, accept: string): Promise<string | undefined> {
+/** A host without its `www.`: a site and its listing often disagree on it. */
+const bare = (h: string) => h.toLowerCase().replace(/^www\./, "");
+
+async function fetchText(http: HttpClient, url: string, accept: string, hop?: (next: URL) => Promise<boolean>): Promise<{ text: string; url: string } | undefined> {
   try {
-    const res = await http.get(url, { ...DEFAULT_HEADERS, accept });
-    return decode(res.body, res.headers.get("content-type"));
+    const res = await http.get(url, { ...DEFAULT_HEADERS, accept }, hop);
+    return { text: decode(res.body, res.headers.get("content-type")), url: res.finalUrl };
   } catch (e) {
     if (e instanceof FetchFailure) return undefined;
     throw e;
   }
 }
+const text = async (http: HttpClient, url: string, accept: string) => (await fetchText(http, url, accept))?.text;
 
-/** Pages named by llms.txt; a `.md` link is a copy of the page at the URL without it. */
-export function llmsPages(body: string, host: string): ListedPage[] {
+/**
+ * Pages named by llms.txt; a `.md` link is a copy of the page at the URL without it. Links may be absolute or relative
+ * to `base` (the llms.txt URL): many sites write `[Config](/config.md)`.
+ */
+export function llmsPages(body: string, host: string, base?: string): ListedPage[] {
   const out: ListedPage[] = [];
-  for (const m of body.matchAll(/\]\((https?:\/\/[^)\s]+)\)/g)) {
+  for (const m of body.matchAll(/\]\(\s*([^)\s]+)[^)]*\)/g)) {
     let u: URL;
     try {
-      u = new URL(m[1]!);
+      u = base ? new URL(m[1]!, base) : new URL(m[1]!);
     } catch {
       continue;
     }
-    if (u.hostname.toLowerCase() !== host) continue;
+    if (!/^https?:$/.test(u.protocol) || bare(u.hostname) !== bare(host)) continue;
     if (/\.md$/.test(u.pathname)) {
       const page = new URL(u);
       page.pathname = u.pathname.replace(/\/index\.md$/, "/").replace(/\.md$/, "");
@@ -93,7 +108,7 @@ export function llmsPages(body: string, host: string): ListedPage[] {
   return out;
 }
 
-export async function listSite(http: HttpClient, robots: RobotsCache, site: string, prefix: string, options: Partial<ListOptions> = {}): Promise<Listing> {
+export async function listSite(http: HttpClient, robots: RobotsCache, site: string, prefix: string, options: Partial<ListOptions> = {}, redirected = false): Promise<Listing> {
   const opts = { ...DEFAULTS, ...options };
   const root = new URL(site);
   const host = root.hostname.toLowerCase();
@@ -102,6 +117,7 @@ export async function listSite(http: HttpClient, robots: RobotsCache, site: stri
   const todo = [...new Set([...r.sitemaps, new URL(base + "sitemap.xml", root).href, new URL("/sitemap.xml", root).href, new URL("/sitemap-index.xml", root).href])];
   const seen = new Set<string>();
   const found = new Map<string, ListedPage>();
+  const sources = new Set<string>();
   let truncated = false;
   let sitemaps = 0;
   while (todo.length) {
@@ -112,7 +128,7 @@ export async function listSite(http: HttpClient, robots: RobotsCache, site: stri
       break;
     }
     seen.add(s);
-    if (new URL(s).hostname.toLowerCase() !== host) continue;
+    if (bare(new URL(s).hostname) !== bare(host)) continue;
     const body = await text(http, s, "application/xml, text/xml;q=0.9");
     if (!body || !/<(urlset|sitemapindex)[\s>]/.test(body)) continue;
     sitemaps++;
@@ -122,34 +138,49 @@ export async function listSite(http: HttpClient, robots: RobotsCache, site: stri
       try {
         const u = normalizeUrl(l);
         if (!found.has(u)) found.set(u, { url: u });
+        sources.add("sitemap");
       } catch {
         /* not a URL */
       }
     }
   }
   const fromSitemap = found.size > 0;
-  let fromLlms = false;
   for (const at of [...new Set([new URL(base + "llms.txt", root).href, new URL("/llms.txt", root).href])]) {
-    const body = await text(http, at, "text/plain, text/markdown;q=0.9");
+    const got = await fetchText(http, at, "text/plain, text/markdown;q=0.9");
+    const body = got?.text;
     if (!body || /^\s*</.test(body)) continue; // an HTML fallback page, not llms.txt
-    for (const p of llmsPages(body, host)) {
+    for (const p of llmsPages(body, host, got.url)) { // relative links resolve against where the file was served
       const had = found.get(p.url);
       if (had) {
         if (p.copy && !had.copy) had.copy = p.copy;
       } else if (!fromSitemap) {
         found.set(p.url, p);
-        fromLlms = true;
-      } else if (p.copy) fromLlms = true;
+        sources.add("llms.txt");
+      } else if (p.copy) sources.add("llms.txt");
+    }
+  }
+
+  const inScope = (u: URL) =>
+    bare(u.hostname) === bare(host) && (!prefix || u.pathname === prefix || u.pathname.startsWith(prefix + "/")) && !NOT_A_PAGE.test(u.pathname) && !RELEASE_NOTES.test(u.pathname);
+  // Too few pages named: the site's own navigation. A site whose entry page lands on another host is listed there.
+  if ([...found.values()].filter((p) => inScope(new URL(p.url))).length < MIN_LISTED) {
+    const linked = await linkedPages(http, robots, site, inScope, opts.maxLinkPages);
+    if (!redirected && linked.final && bare(new URL(linked.final).hostname) !== bare(host)) {
+      const to = new URL(linked.final);
+      const keep = prefix && (to.pathname === prefix || to.pathname.startsWith(prefix + "/"));
+      return listSite(http, robots, linked.final, keep ? prefix : "", options, true);
+    }
+    for (const u of linked.urls) if (!found.has(u)) {
+      found.set(u, { url: u });
+      sources.add("links");
     }
   }
 
   const dropped = { scope: 0, robots: 0, namespace: 0 };
   let pages: ListedPage[] = [];
   for (const p of found.values()) {
-    const u = new URL(p.url);
-    const inScope = u.hostname === host && (!prefix || u.pathname === prefix || u.pathname.startsWith(prefix + "/")) && !NOT_A_PAGE.test(u.pathname) && !RELEASE_NOTES.test(u.pathname);
-    if (!inScope) dropped.scope++;
-    else if (!r.allowed(p.url)) dropped.robots++;
+    if (!inScope(new URL(p.url))) dropped.scope++;
+    else if (!(await robots.allowed(p.url))) dropped.robots++; // per origin: www. has its own robots.txt
     else pages.push(p);
   }
   const namespaces = findNamespaces(pages.map((p) => new URL(p.url).pathname), opts.latestMajor);
@@ -165,8 +196,53 @@ export async function listSite(http: HttpClient, robots: RobotsCache, site: stri
     pages = pages.slice(0, opts.maxPages);
     truncated = true;
   }
-  const method = fromSitemap && fromLlms ? "sitemap+llms.txt" : fromSitemap ? "sitemap" : fromLlms ? "llms.txt" : "none";
+  const method = ["sitemap", "llms.txt", "links"].filter((x) => sources.has(x)).join("+") || "none";
   return { site, prefix, method, pages, namespaces, dropped, sitemaps, truncated };
+}
+
+/**
+ * Pages linked from the site's own pages, from `start`: for a site with no sitemap or llms.txt (or one that misses the
+ * docs), where the navigation is the only listing. One page is read per directory not read yet, since pages in one
+ * directory share their sidebar, so a site of a few sections costs a few requests, at most `max`. `final` is where the
+ * entry page landed after redirects.
+ */
+export async function linkedPages(http: HttpClient, robots: { allowed(url: string): Promise<boolean> }, start: string, inScope: (u: URL) => boolean, max: number): Promise<{ urls: string[]; final?: string }> {
+  const dirOf = (u: string) => new URL(u).pathname.replace(/\/[^/]*$/, "") || "/";
+  const found = new Set<string>();
+  const queue = [start]; // as given: a trailing slash is the base its relative links resolve against
+  const read = new Set<string>();
+  let final: string | undefined;
+  for (let fetched = 0; fetched < max; ) {
+    const next = queue.find((u) => !read.has(dirOf(u)));
+    if (!next) break;
+    read.add(dirOf(next));
+    if (!(await robots.allowed(next))) continue;
+    fetched++;
+    // Each redirect target is checked against its own robots.txt before it is requested.
+    const page = await fetchText(http, next, "text/html, application/xhtml+xml;q=0.9", (u) => robots.allowed(u.href));
+    if (!page) continue;
+    const at = new URL(page.url);
+    if (!final) {
+      final = page.url;
+      if (bare(at.hostname) !== bare(new URL(start).hostname)) return { urls: [], final }; // listed on that host instead
+    }
+    if (inScope(at)) found.add(normalizeUrl(page.url));
+    for (const m of page.text.matchAll(/\bhref\s*=\s*["']?([^"'\s>]+)/gi)) {
+      let u: URL;
+      try {
+        u = new URL(m[1]!.replaceAll("&amp;", "&"), at);
+      } catch {
+        continue;
+      }
+      if (!/^https?:$/.test(u.protocol) || !inScope(u)) continue;
+      const n = normalizeUrl(u.href);
+      if (!found.has(n) && (await robots.allowed(n))) {
+        found.add(n);
+        queue.push(n);
+      }
+    }
+  }
+  return { urls: [...found], ...(final ? { final } : {}) };
 }
 
 const major = (s: string) => /^v?(\d+)/i.exec(s)?.[1];

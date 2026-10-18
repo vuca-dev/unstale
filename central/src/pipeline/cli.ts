@@ -37,6 +37,7 @@ import { ShardLine } from "../schema/catalog.ts";
 import { applyChange, LABEL_FIELDS, loadStore, mergeInto, retract, REVISION_FIELDS, saveStore, type EditableField, type StoredRecord } from "./store.ts";
 import { TECHNOLOGIES } from "./technologies.ts";
 import { readJson } from "./util.ts";
+import { techLocal } from "../state/client.ts";
 
 const ARRAY_FIELDS = new Set(["releases", "prerequisites", "requires", "replaces", "benefit", "introduces", "terms", "related", "conditions"]);
 
@@ -54,7 +55,7 @@ function parseValue(field: string, raw: string): unknown {
 }
 
 function checkedOf(tech: string): string {
-  const idx = readJson<{ checked: string }>(join(centralDir(), "releases", tech, "index.json"));
+  const idx = readJson<{ checked: string }>(join(centralDir(), "releases", techLocal(tech), "index.json"));
   return idx?.checked ?? new Date(0).toISOString();
 }
 
@@ -241,11 +242,12 @@ async function main(): Promise<void> {
       const r = exportCatalog(catalogDir(), positionals[0]!);
       const { deleted, started, kept, unreadable } = r.prune;
       if (!r.signed) console.error("export: UNSTALE_SIGNING_KEY is not set; the catalog is unsigned, and release clients refuse it over HTTP");
-      console.log(JSON.stringify({ signed: r.signed, technologies: r.technologies, shards: r.shards, bytes: r.bytes, coverage: r.coverage, pruned: deleted, clock_started: started.length, in_grace: kept.length, unreadable }));
+      console.log(JSON.stringify({ signed: r.signed, technologies: r.technologies, shards: r.shards, linked: r.linked, bytes: r.bytes, coverage: r.coverage, pruned: deleted, clock_started: started.length, in_grace: kept.length, unreadable }));
       return;
     }
     case "usage": {
-      const lines = readFileSync(join(centralDir(), "usage.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l) as Record<string, unknown>);
+      // The current UTC month: the state save moves earlier months to central/archive (state/snapshot.ts).
+      const lines = readFileSync(join(centralDir(), "usage.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l) as Record<string, unknown>);
       const by: Record<string, { calls: number; input_tokens: number; output_tokens: number }> = {};
       for (const l of lines) {
         if (typeof l.api !== "string") continue;

@@ -20,6 +20,7 @@ import { TECHNOLOGIES, type Technology } from "./technologies.ts";
 import { compareVersions, pool, writeAtomic } from "./util.ts";
 import { DEFAULT_HTTP, HttpClient } from "../collector/http.ts";
 import { completeEvents, dailyPass, DOCS_PASS, markExtracted, plan } from "../docs/extract.ts";
+import { techLocal } from "../state/client.ts";
 
 export function makeClassifier(): FallbackClassifier {
   let lastLogged = "";
@@ -83,17 +84,21 @@ export async function runTechnology(
   // refused note is deferred to a later run. Notes are charged newest first, as fetched.
   const nameOf = (rel: ReleaseNote | GuideNote | DocsNote) => ("keyTag" in rel ? `${rel.version}${rel.keyTag}` : rel.version);
   const deferred = { budget: 0, cap: 0 };
+  // Release versions whose notes this run does not read: the advisories stage judges nothing against them yet.
+  const unread = new Set<string>();
   const admitted = (rel: ReleaseNote | GuideNote | DocsNote): boolean => {
     if (!opts.budget) return true;
     const c = opts.budget.charge(t.id, rel.notes, releaseCached(t, rel), !!opts.liftCap);
     if (c === "budget" || c === "cap") deferred[c]++;
-    return c === "ok" || c === "cached";
+    const ok = c === "ok" || c === "cached";
+    if (!ok && !("keyTag" in rel)) unread.add(rel.version);
+    return ok;
   };
   const notesToRun = [...releases, ...guides].filter(admitted);
   const docsNotes = docsPlanned.filter((n) => admitted(n.note));
   const extracted = await pool([...notesToRun, ...docsNotes.map((n) => n.note)], 6, async (rel) => {
     const r = await extractRelease(t, rel);
-    writeAtomic(join(centralDir(), "extractions", t.id, `${nameOf(rel)}.json`), JSON.stringify(r.incoming, null, 1) + "\n");
+    writeAtomic(join(centralDir(), "extractions", techLocal(t.id), `${nameOf(rel)}.json`), JSON.stringify(r.incoming, null, 1) + "\n");
     return r;
   });
   if (deferred.budget || deferred.cap) console.log(`${t.id}: ${deferred.budget} notes deferred by the period budget, ${deferred.cap} past the quarterly cap`);
@@ -101,27 +106,30 @@ export async function runTechnology(
   const failedCalls = extracted.reduce((s, e) => s + e.failed, 0);
   console.log(`${t.id}: ${incoming.length} records extracted and labelled${failedCalls ? `, ${failedCalls} failed calls` : ""}`);
 
-  const questions = labelQuestions();
-  const labels: Labels[] = await pool(incoming, 4, async (inc) => interpret(await cls.classify(recordState(t.name, inc), questions)));
-  console.log(`${t.id}: classified`);
+  const order = [...incoming].sort(
+    (a, b) => a.date.localeCompare(b.date) || compareVersions(a.version, b.version) || a.key.localeCompare(b.key, "en", { numeric: true }),
+  );
+  const label = (inc: Incoming) => cls.classify(recordState(t.name, inc), labelQuestions()).then(interpret);
+  // Only records the ingest loop will take are labelled: an ingested key is skipped there and its labels discarded. The
+  // store read here (outside the lock) is a guess; the loop labels any record it takes that was not labelled here.
+  const labels = await labelPending(order, loadStore(t.id).ingested, label);
+  console.log(`${t.id}: classified ${labels.size} of ${incoming.length} (the rest are skipped by ingestion)`);
 
   // From loading the store to publishing it, this process is the technology's only writer (lock.ts).
   return withTechLock(t.id, "pipeline", async () => {
     const store = loadStore(t.id);
     // Release lines derived from the release index (lines.ts), before anything combines releases.
     if (!opts.limit) store.releaseIndex = buildIndex(fetched.notes);
-    const order = incoming
-      .map((inc, i) => ({ inc, lab: labels[i]! }))
-      .sort((a, b) => a.inc.date.localeCompare(b.inc.date) || compareVersions(a.inc.version, b.inc.version) || a.inc.key.localeCompare(b.inc.key, "en", { numeric: true }));
     // Prerequisite names of records not yet ingested are checked against the npm registry (one cached GET per name).
-    const fresh = order.filter((o) => !store.ingested[o.inc.key]).map((o) => o.inc as Incoming & { registry?: string });
+    const fresh = order.filter((inc) => !store.ingested[inc.key]) as Array<Incoming & { registry?: string }>;
     const movedToConditions = opts.registry === false ? 0 : await checkIncoming(fresh);
     let ingestedNow = 0;
     let matched = 0;
     const guardBlocked = { breaking: 0, advisory: 0, quote: 0, cross: 0, lineage: 0 };
     let relatedLinks = 0;
-    for (const { inc, lab } of order) {
+    for (const inc of order) {
       if (store.ingested[inc.key]) continue;
+      const lab = labels.get(inc) ?? (await label(inc));
       const o = await ingest(store, t.name, t.components, inc, lab, (s, q) => cls.classify(s, q));
       const reg = (inc as Incoming & { registry?: string }).registry;
       if (reg) {
@@ -150,7 +158,7 @@ export async function runTechnology(
     // Security advisories (OSV) attached to the records of their fix (advisories.ts).
     let advisoryReport: AttachReport | undefined;
     if (opts.advisories !== false && !opts.limit) {
-      advisoryReport = await advisoryStage(t, store, fetched.notes, (s, q) => cls.classify(s, q), { refresh: !!opts.refresh, offline: !!opts.offline });
+      advisoryReport = await advisoryStage(t, store, fetched.notes, (s, q) => cls.classify(s, q), { refresh: !!opts.refresh, offline: !!opts.offline, unread });
       saveStore(store);
     }
     const recs = Object.values(store.records);
@@ -198,6 +206,17 @@ export async function runTechnology(
     }
     return report;
   });
+}
+
+/**
+ * Labels the records an ingest in this order will take: the first of each key not in `ingested` (ingest records every
+ * key it takes, so a later record with the same key is skipped too). Labels of any other record would be discarded.
+ */
+export async function labelPending(order: Incoming[], ingested: Record<string, string>, label: (inc: Incoming) => Promise<Labels>): Promise<Map<Incoming, Labels>> {
+  const seen = new Set(Object.keys(ingested));
+  const todo = order.filter((inc) => !seen.has(inc.key) && !!seen.add(inc.key));
+  const out = await pool(todo, 4, label);
+  return new Map(todo.map((inc, i) => [inc, out[i]!]));
 }
 
 export function technologies(filter?: string): Technology[] {

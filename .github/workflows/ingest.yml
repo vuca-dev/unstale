@@ -1,16 +1,33 @@
 # Central ingestion and coverage as a batch job on an ephemeral runner, then a deploy of the catalog and the gateway.
 #
-#   restore state -> pipeline -> drain the coverage queue -> export -> verify -> deploy (Cloudflare) -> save -> ack
+#   restore state -> pipeline -> cycles of [drain -> export -> verify -> deploy (Cloudflare) -> save -> ack]
 #
 # The gateway (gateway/, a Cloudflare Worker) is the public address: it serves the exported catalog as static files,
 # answers the coverage protocol, and holds new registrations until a run takes them (`drain`). A run acknowledges
-# what it took only after its deploy published their status and its state is saved, so a failed run loses no request
+# what it took only after its deploy published their status and its state is saved, so a failed run loses no request.
+#
+# Cycles (.github/scripts/ingest-cycles.sh): the drain works the queue for at most CYCLE_MINUTES, pulling the gateway
+# every PULL_MINUTES, then the cycle publishes what it did and acknowledges it; cycles repeat while work is left and
+# the run's window (RUN_MINUTES) lasts. So a package is published within a cycle of being worked, a registration that
+# arrives mid-run joins it within minutes, and a cancelled run loses at most one cycle. A window that ends with work
+# left starts the next run at once (`reason: continue`). Every run does the same work whatever started it (schedule,
+# gateway, continuation): GitHub keeps one pending run per concurrency group and a new one cancels it, so no kind of
+# run may carry work another lacks.
 #
 # State: the central store (UNSTALE_STORE: central/ state and caches, catalog/ published tree) is the only thing
-# that must outlive a runner. It is kept as assets of a *draft* release tagged `catalog-state` in this repository:
-# one generation = `state-<stamp>.tar.zst.<aa,ab,...>` (zstd tarball split under the 2 GiB asset limit) plus
-# `state-<stamp>.sha256`, uploaded last, so a generation without its checksum file is incomplete and ignored. The
-# newest three generations are kept (rollback); older ones are deleted after a successful save. Why not the
+# that must outlive a runner. It is kept as assets of a *draft* release tagged `catalog-state` in this repository, as
+# generations of content-addressed members (central/src/state/snapshot.ts): `state-<stamp>.json`, the manifest,
+# uploaded last (a generation without it is incomplete and ignored), naming where each member is in the segments
+# `state-<stamp>.segNN` (under 1.5 GiB; the asset limit is 2 GiB). A save uploads only the members that changed, in one
+# new segment, so a cycle's save is the size of its work, not of the store. A restore downloads the eager members
+# (caches, the catalog, onboarding jobs: not what is kept per technology); a technology's docs store, and its records,
+# release notes, advisories and docs metadata, are restored when first read, by the state server this step starts with
+# the release token (the drain never holds it), and removed again by the cycle's save once saved, so the runner's disk
+# holds the technologies of one cycle. A run saves once a cycle; the newest generation of each of the newest STATE_KEEP (3) runs is kept
+# (rollback) with every segment it references, the rest is deleted after a successful save. A legacy tarball
+# generation (`state-<stamp>.tar.zst.*` + `.sha256`) is still restored, and never deleted: reverting to the tarball
+# code restores the last tarball, losing the state saved since the migration (an operator deletes the tarballs once
+# they are not needed). Why not the
 # alternatives: actions/cache is evicted after 7 days without access and shares a 10 GB repository limit, so it
 # cannot be the only copy; a git branch would put churning caches into history (and hit the 100 MB file limit);
 # artifacts expire. A draft release is durable, has no storage quota, is invisible to readers without push access,
@@ -18,9 +35,11 @@
 #
 # Schedule: every 3 hours (the repository is public, so standard runners are free; a private one pays per minute, so
 # run it daily there). Model calls are cached per record, so a run with no new
-# releases makes none, and the coverage budget (UNSTALE_BUDGET_TOKENS) bounds what any run can spend. The gateway may
+# releases makes none, and the coverage budget (UNSTALE_BUDGET_TOKENS, with each technology's quarterly tokens) bounds
+# what any run can spend and so how fast new technologies drain; there is no daily count of them. The gateway may
 # also start a run early for a new package (`reason: fast-track`, at most FAST_TRACK_PER_DAY a day), but not while the
-# budget is spent: each drain tells the gateway until when.
+# budget is spent (each drain tells the gateway until when), nor while a run is pulling the queue (it takes the
+# package within minutes; the gateway starts the held-back run when that run says it is done).
 #
 # 60-day rule: GitHub disables scheduled workflows in a public repository after 60 days without repository
 # activity. This job commits nothing (state lives in release assets), so it does not count as activity. When the
@@ -48,7 +67,7 @@ on:
         type: boolean
         default: true
       reason:
-        description: "Why the run started (the gateway sends fast-track)"
+        description: "Why the run started (the gateway sends fast-track; a run that ends with work left, continue)"
         required: false
         type: string
 
@@ -62,10 +81,12 @@ concurrency:
 jobs:
   ingest:
     runs-on: ubuntu-latest
-    # Under the 6-hour hosted-job limit, with the pipeline and drain capped lower so the state is still saved.
-    timeout-minutes: 300
+    # Under the 6-hour hosted-job limit: setup, the pipeline (120) and the cycles (190) fit, so the state is saved.
+    timeout-minutes: 345
     permissions:
       contents: write # the catalog-state draft release (read and write its assets)
+    outputs:
+      continue: ${{ steps.cycles.outputs.continue }}
     env:
       STATE_TAG: catalog-state
       STATE_KEEP: "3"
@@ -76,8 +97,17 @@ jobs:
       # and 266k output extraction tokens cost $0.11); 250k was spent by 08:00 UTC and left later runs nothing to start.
       UNSTALE_BUDGET_TOKENS: ${{ vars.UNSTALE_BUDGET_TOKENS || '2500000' }}
       UNSTALE_GATEWAY_URL: ${{ vars.UNSTALE_GATEWAY_URL }}
-      # Workers static assets allow 20,000 files per version on the free plan (100,000 paid).
+      # Workers static assets allow 20,000 files per version on the free plan (100,000 paid); the deploy packs what does
+      # not fit into at most 4,096 bucket files the gateway reads (gateway/src/pack.ts). The pack fails instead if files
+      # it cannot pack leave no room under the limit or a bucket would exceed Workers' 25 MiB file limit.
       ASSET_FILE_LIMIT: ${{ vars.ASSET_FILE_LIMIT || '20000' }}
+      # A run's drain window, in cycles that each publish (see the header). 15-minute cycles with 5-minute pulls put a
+      # package worked at the head of the queue in the catalog about 10-25 minutes after it was registered.
+      RUN_MINUTES: "140"
+      CYCLE_MINUTES: "15"
+      GRACE_MINUTES: "5"
+      PULL_MINUTES: "5"
+      CONCURRENCY: "6"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -126,6 +156,8 @@ jobs:
           npm ci --prefix central --no-audit --no-fund
           npm ci --prefix gateway --no-audit --no-fund
 
+      # The eager members of the newest complete generation, then the state server that restores a technology's docs
+      # store when the pipeline or the drain first reads it (UNSTALE_STATE_SOCKET; it runs until the job ends).
       - name: Restore state
         id: restore
         env:
@@ -144,42 +176,33 @@ jobs:
             rel="$(gh api -X POST "repos/$GH_REPO/releases" -f tag_name="$STATE_TAG" -F draft=true \
               -f name="catalog state" -f body="Central store snapshots for the ingest workflow. Do not publish." --jq .id)"
             echo "::warning::Created draft release $STATE_TAG; starting from an empty store."
-            echo "release=$rel" >> "$GITHUB_OUTPUT"
-            exit 0
           fi
           echo "release=$rel" >> "$GITHUB_OUTPUT"
-          gh api "repos/$GH_REPO/releases/$rel/assets?per_page=100" --paginate --jq '.[] | "\(.id)\t\(.name)"' > "$RUNNER_TEMP/assets.tsv"
-          manifest="$(cut -f2 "$RUNNER_TEMP/assets.tsv" | grep -E '^state-.*\.sha256$' | sort | tail -1 || true)"
-          if [ -z "$manifest" ]; then
+          export UNSTALE_STATE_REMOTE="github:$GH_REPO#$rel"
+          echo "UNSTALE_STATE_REMOTE=$UNSTALE_STATE_REMOTE" >> "$GITHUB_ENV"
+          status=0
+          npm --prefix central run -s state -- restore || status=$?
+          if [ "$status" -eq 3 ]; then
             if [ "$BOOTSTRAP" != "true" ]; then
-              echo "::error title=No saved state::Release '$STATE_TAG' has no complete generation (no state-*.sha256)."
+              echo "::error title=No saved state::Release '$STATE_TAG' has no complete generation (no state-*.json or state-*.sha256)."
               exit 1
             fi
             echo "::warning::No saved generation; starting from an empty store."
-            exit 0
+          elif [ "$status" -ne 0 ]; then
+            exit "$status"
           fi
-          gen="${manifest%.sha256}"
-          echo "restoring $gen"
-          dl="$RUNNER_TEMP/state-in"; mkdir -p "$dl"
-          while IFS=$'\t' read -r id name; do
-            case "$name" in "$gen".*)
-              curl -fsSL --retry 3 -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/octet-stream" \
-                -o "$dl/$name" "$GITHUB_API_URL/repos/$GH_REPO/releases/assets/$id" ;;
-            esac
-          done < "$RUNNER_TEMP/assets.tsv"
-          (cd "$dl" && sha256sum -c "$manifest")
-          find "$dl" -name "$gen.tar.zst.*" | sort | xargs cat | zstd -d -q | tar -x -C "$UNSTALE_STORE"
-          # A store archived on macOS carries AppleDouble `._*` entries (extended attributes), which GNU tar extracts
-          # as files: `._<job>.json` would be read as a job.
-          find "$UNSTALE_STORE" -name '._*' -type f -delete
-          rm -rf "$dl"
-          du -sh "$UNSTALE_STORE"/*
+          sock="$RUNNER_TEMP/state.sock"
+          nohup npm --prefix central run -s state -- serve --socket "$sock" > "$RUNNER_TEMP/state-serve.log" 2>&1 &
+          for _ in $(seq 1 60); do [ -S "$sock" ] && break; sleep 1; done
+          [ -S "$sock" ] || { cat "$RUNNER_TEMP/state-serve.log"; echo "::error::The state server did not start"; exit 1; }
+          echo "UNSTALE_STATE_SOCKET=$sock" >> "$GITHUB_ENV"
+          du -sh "$UNSTALE_STORE"/* 2>/dev/null || true
 
-      # The catalog technologies (pipeline/technologies.ts): release notes, upgrade guides, docs and advisories.
-      # Not on a fast-track run (the gateway started it for a new package): refreshes are the schedule's.
+      # The catalog technologies (pipeline/technologies.ts): release notes, upgrade guides, docs and advisories. On
+      # every run (cached model calls make a run with no new release cost about 20 seconds): a run of any kind may
+      # replace a pending scheduled one.
       - name: Pipeline
         id: pipeline
-        if: inputs.reason != 'fast-track'
         timeout-minutes: 120
         env:
           GITHUB_TOKEN: ${{ secrets.INGEST_GITHUB_TOKEN || github.token }}
@@ -188,156 +211,65 @@ jobs:
           TECH: ${{ inputs.tech }}
         run: npm --prefix central run pipeline -- --refresh ${TECH:+--tech "$TECH"}
 
-      # Every other technology: registrations pulled from the gateway join the saved queue, then refreshes and
-      # admitted history first, new technologies by demand (ties by adoption), all under the coverage budget. Writes
-      # each job's status.
-      # A fast-track run works a pulled package only if it is next in the line of new technologies (it never jumps
-      # the queue); otherwise it ran nothing (`ran=false`), and nothing is exported, saved or acknowledged, so the
-      # gateway keeps the request for the next scheduled run. The run reports its progress to the gateway (running,
-      # publishing) on the new packages it works, and `declined` on all it pulled when it works none, so a client that
-      # asked can follow it. When a budget limit held work back, the final line's `held` names it and when it resets.
-      - name: Drain the coverage queue
-        id: drain
-        if: always() && (steps.pipeline.outcome == 'success' || steps.pipeline.outcome == 'failure' || steps.pipeline.outcome == 'skipped')
-        timeout-minutes: 150
+      # Every other technology: registrations pulled from the gateway join the saved queue (and keep joining it during
+      # the run), then refreshes and admitted history first, new technologies by demand (ties by adoption, one slot in
+      # three kept for a waiting new technology), all under the coverage budget. Each cycle exports and verifies the
+      # static catalog (with every job's status), builds the website (gateway/site/build.ts), deploys both, saves the
+      # state and acknowledges what it took. The run reports its progress to the gateway (running, publishing) on the
+      # new packages it works, so a client that asked can follow it. When a budget limit held work back, a drain's
+      # final line's `held` names it and when it resets. Pruning of shards past their 7-day grace happens in export,
+      # before the save (the grace bookkeeping lives in the store).
+      - name: Drain and publish
+        id: cycles
+        if: always() && steps.restore.outcome == 'success' && (steps.pipeline.outcome == 'success' || steps.pipeline.outcome == 'failure')
+        # RUN_MINUTES (140) + the last cycle's grace (5) + about a minute of publish per cycle (10), with slack.
+        timeout-minutes: 190
         env:
           GITHUB_TOKEN: ${{ secrets.INGEST_GITHUB_TOKEN || github.token }}
           JEV_API_KEY: ${{ secrets.JEV_API_KEY }}
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
           UNSTALE_GATEWAY_TOKEN: ${{ secrets.GATEWAY_DRAIN_TOKEN }}
-          FAST: ${{ inputs.reason == 'fast-track' && 'true' || '' }}
-        run: |
-          set -o pipefail
-          npm --prefix central run -s drain -- --minutes 130 --grace-minutes 10 --concurrency 6 --taken "$TAKEN" ${FAST:+--fast-track} \
-            | tee "$RUNNER_TEMP/drain.log"
-          echo "ran=$(tail -n 1 "$RUNNER_TEMP/drain.log" | jq -r 'if .ran == false then "false" else "true" end')" >> "$GITHUB_OUTPUT"
-
-      # Writes a self-contained static tree (with the coverage statuses) and prunes shards past their 7-day grace
-      # period (the grace bookkeeping lives in the store, so this runs before the state is saved).
-      - name: Export the static catalog
-        id: export
-        if: (steps.pipeline.outcome == 'success' || steps.pipeline.outcome == 'skipped') && steps.drain.outcome == 'success' && steps.drain.outputs.ran == 'true'
-        env:
           # Ed25519 private key (PKCS#8 PEM): the root and every index are signed; release clients refuse unsigned ones.
-          UNSTALE_SIGNING_KEY: ${{ secrets.UNSTALE_SIGNING_KEY }}
-        run: npm --prefix central run catalog -- export "$SITE_DIR"
-
-      # The website at unstale.sh (gateway/site/build.ts): a home page and one page per package, generated from the
-      # exported tree and deployed with it. Built aside and copied in only when complete; a failure never blocks the
-      # catalog deploy.
-      - name: Build the website
-        if: steps.export.outcome == 'success'
-        continue-on-error: true
-        run: |
-          set -euo pipefail
-          web="$RUNNER_TEMP/web"; rm -rf "$web"; mkdir -p "$web"
-          ln -s "$SITE_DIR/v1" "$web/v1"
-          node gateway/site/build.ts "$web"
-          rm "$web/v1"
-          cp -R "$web/." "$SITE_DIR/"
-
-      # Guard: deploy only a tree whose root parses and whose every index entry has its shard, with the size and
-      # sha256 the index states, whose root and indexes verify against the public key release clients carry
-      # (UNSTALE_CATALOG_KEY; a client verifies the same), and which fits the static asset limits.
-      - name: Verify the exported catalog
-        id: verify
-        if: steps.export.outcome == 'success'
-        env:
-          DEPLOY: ${{ github.event_name == 'schedule' || inputs.deploy }}
+          SECRET_SIGNING_KEY: ${{ secrets.UNSTALE_SIGNING_KEY }}
+          SECRET_CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          SECRET_CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           UNSTALE_CATALOG_KEY: ${{ vars.UNSTALE_CATALOG_KEY }}
-        run: |
-          set -euo pipefail
-          # shellcheck disable=SC2016 # JavaScript template literals, not shell expansions
-          node --input-type=module -e '
-            import { createHash, createPublicKey, verify } from "node:crypto";
-            import { readFileSync, readdirSync } from "node:fs";
-            import { join } from "node:path";
-            const site = process.env.SITE_DIR;
-            const key = createPublicKey({ key: { kty: "OKP", crv: "Ed25519", x: Buffer.from(process.env.UNSTALE_CATALOG_KEY, "hex").toString("base64url") }, format: "jwk" });
-            const signed = (rel) => {
-              const sig = Buffer.from(readFileSync(join(site, `${rel}.sig`), "utf8").trim(), "hex");
-              if (!verify(null, readFileSync(join(site, rel)), key, sig)) throw new Error(`${rel}: signature does not verify against UNSTALE_CATALOG_KEY`);
-            };
-            signed("v1/root.json");
-            const root = JSON.parse(readFileSync(join(site, "v1", "root.json"), "utf8"));
-            if (typeof root.schema !== "number") throw new Error("v1/root.json has no schema");
-            const techs = readdirSync(join(site, "v1", "tech")).filter((f) => f.endsWith(".json"));
-            if (!techs.length) throw new Error("no technology indexes");
-            let shards = 0;
-            for (const f of techs) {
-              signed(`v1/tech/${f}`);
-              const index = JSON.parse(readFileSync(join(site, "v1", "tech", f), "utf8"));
-              for (const s of index.shards ?? []) {
-                const bytes = readFileSync(join(site, s.path));
-                if (bytes.length !== s.bytes) throw new Error(`${s.path}: ${bytes.length} bytes, index says ${s.bytes}`);
-                const sha = createHash("sha256").update(bytes).digest("hex");
-                if (sha !== s.sha256) throw new Error(`${s.path}: sha256 ${sha}, index says ${s.sha256}`);
-                shards++;
-              }
-            }
-            console.log(`${techs.length} technologies, ${shards} shards verified, root and indexes signed`);
-          '
-          files="$(find "$SITE_DIR" -type f | wc -l)"
-          big="$(find "$SITE_DIR" -type f -size +25M | wc -l)"
-          echo "site: $files files, $(du -sh "$SITE_DIR" | cut -f1)"
-          [ "$files" -le "$ASSET_FILE_LIMIT" ] || { echo "::error::$files files, over the $ASSET_FILE_LIMIT static asset limit"; exit 1; }
-          [ "$big" -eq 0 ] || { echo "::error::$big files over the 25 MiB static asset limit"; exit 1; }
-          echo "deploy=$DEPLOY" >> "$GITHUB_OUTPUT"
-
-      - name: Deploy the catalog and the gateway
-        id: deploy
-        if: steps.verify.outputs.deploy == 'true'
-        working-directory: gateway
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          WRANGLER_SEND_METRICS: "false"
-        run: npx wrangler deploy --assets "$SITE_DIR"
-
-      # Saved after a failed pipeline or drain too: writes are atomic per file, stale technology locks are detected
-      # by pid, and the model calls a partial run paid for are kept. Not saved when a step was cancelled or skipped.
-      # Dead parts of an operator's store (the parked rarity sample's clones, the retired onboarding documents) and the
-      # day's shared docs page cache stay out.
-      - name: Save state
-        id: save
-        if: always() && steps.restore.outcome == 'success' && (steps.pipeline.outcome == 'success' || steps.pipeline.outcome == 'failure' || steps.pipeline.outcome == 'skipped') && (steps.drain.outcome == 'failure' || (steps.drain.outcome == 'success' && steps.drain.outputs.ran == 'true'))
-        env:
-          REL: ${{ steps.restore.outputs.release }}
-        run: |
-          set -euo pipefail
-          stamp="$(date -u +%Y%m%dT%H%M%SZ)-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          gen="state-$stamp"
-          out="$RUNNER_TEMP/state-out"; rm -rf "$out"; mkdir -p "$out"
-          tar -C "$UNSTALE_STORE" --exclude='./central/records/*.lock' --exclude='./central/sample' \
-            --exclude='./central/onboarding/documents' --exclude='./central/cache/pages' -cf - . \
-            | zstd -T0 -10 -q | split -b 1900m -a 2 - "$out/$gen.tar.zst."
-          (cd "$out" && sha256sum "$gen".tar.zst.* > "$gen.sha256")
-          ls -l "$out"
-          upload() {
-            curl -fsS --retry 3 -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Content-Type: application/octet-stream" \
-              -T "$1" "https://uploads.github.com/repos/$GH_REPO/releases/$REL/assets?name=$(basename "$1")" > /dev/null
-          }
-          for f in "$out/$gen".tar.zst.*; do upload "$f"; done
-          upload "$out/$gen.sha256" # last: marks the generation complete
-          # Keep the newest STATE_KEEP complete generations; delete everything else (older ones, and parts left by an
-          # interrupted save).
-          gh api "repos/$GH_REPO/releases/$REL/assets?per_page=100" --paginate --jq '.[] | "\(.id)\t\(.name)"' > "$RUNNER_TEMP/assets.tsv"
-          keep="$(cut -f2 "$RUNNER_TEMP/assets.tsv" | grep -E '^state-.*\.sha256$' | sort | tail -n "$STATE_KEEP" | sed 's/\.sha256$//')"
-          while IFS=$'\t' read -r id name; do
-            g="${name%.sha256}"; g="${g%.tar.zst.*}"
-            if ! grep -qxF "$g" <<< "$keep"; then
-              echo "deleting $name"
-              gh api -X DELETE "repos/$GH_REPO/releases/assets/$id"
-            fi
-          done < "$RUNNER_TEMP/assets.tsv"
-
-      # The gateway stops holding what this run took: their status is deployed and the jobs are in the saved state.
-      - name: Acknowledge the taken registrations
-        if: steps.deploy.outcome == 'success' && steps.save.outcome == 'success'
-        env:
-          UNSTALE_GATEWAY_TOKEN: ${{ secrets.GATEWAY_DRAIN_TOKEN }}
-        run: npm --prefix central run drain -- ack "$TAKEN"
+          PIPELINE_OK: ${{ steps.pipeline.outcome == 'success' }}
+          DEPLOY: ${{ github.event_name == 'schedule' || inputs.deploy }}
+        run: bash .github/scripts/ingest-cycles.sh
 
       - name: Usage
         if: always() && steps.restore.outcome == 'success'
-        run: npm --prefix central run catalog -- usage | tail -c 4000 || true
+        run: |
+          npm --prefix central run catalog -- usage | tail -c 4000 || true
+          echo "docs stores restored on first use: $(grep -c '] restored docs:' "$RUNNER_TEMP/state-serve.log" || true)"
+          echo "technologies restored on first use: $(grep -c '] restored tech:' "$RUNNER_TEMP/state-serve.log" || true)"
+
+  # A run whose window ended with work left starts the next one at once. A job of its own, so the token that can start
+  # workflows (actions: write) is never in the ingest job, whose GITHUB_TOKEN falls back to the job token. The new run
+  # waits in the concurrency group until this one ends.
+  continue:
+    needs: ingest
+    if: needs.ingest.outputs.continue == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      # The ingest run did not tell the gateway it was done (the next run pulls soon): if the next run cannot be
+      # started, say so now, so the gateway starts early runs again (`drain idle`'s report) instead of waiting out its
+      # 15 minutes.
+      - name: Start the next run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          REF: ${{ github.ref_name }}
+          UNSTALE_GATEWAY_URL: ${{ vars.UNSTALE_GATEWAY_URL }}
+          UNSTALE_GATEWAY_TOKEN: ${{ secrets.GATEWAY_DRAIN_TOKEN }}
+        run: |
+          gh workflow run ingest.yml --repo "$GH_REPO" --ref "$REF" -f reason=continue && exit 0
+          if [ -n "$UNSTALE_GATEWAY_URL" ]; then
+            curl -fsS --retry 3 -X POST -H "Authorization: Bearer $UNSTALE_GATEWAY_TOKEN" -H "Content-Type: application/json" \
+              -d '{"updates":[],"pulls":{"next":null}}' "${UNSTALE_GATEWAY_URL%/}/internal/progress" || true
+          fi
+          exit 1

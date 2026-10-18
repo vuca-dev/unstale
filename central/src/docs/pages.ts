@@ -4,13 +4,14 @@
 // still keeps its own snapshots and events. A technology's own re-check always fetches (a second release the same day
 // must see the page as it is now). Conditional requests are answered from the kept validators. Kept under the central
 // cache, outside the saved state (it only matters within a day, and a run's packages that release together share most
-// of it).
+// of it). A page is one pack record (pipeline/packs.ts): its metadata line, then its Brotli body.
 import { brotliCompressSync, brotliDecompressSync } from "node:zlib";
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { HttpClient, type FetchResult } from "../collector/http.ts";
 import { centralDir } from "../pipeline/paths.ts";
-import { canonical, readJson, sha256, writeAtomic } from "../pipeline/util.ts";
+import { Packs } from "../pipeline/packs.ts";
+import { canonical, sha256 } from "../pipeline/util.ts";
 
 interface Kept {
   at: string;
@@ -28,6 +29,7 @@ export class SharedPages extends HttpClient {
   readonly technology: string;
   readonly dir: string;
   readonly ttlMs: number;
+  private readonly packs: Packs;
   hits = 0;
   constructor(inner: HttpClient, technology: string, ttlMs = 20 * 3600 * 1000, dir = join(centralDir(), "cache", "pages")) {
     super(inner.opts);
@@ -35,6 +37,7 @@ export class SharedPages extends HttpClient {
     this.technology = technology;
     this.ttlMs = ttlMs;
     this.dir = dir;
+    this.packs = new Packs(dir, { width: 2 });
   }
 
   /** The request as far as the response depends on it: URL and headers, without the caller's validators. */
@@ -42,29 +45,31 @@ export class SharedPages extends HttpClient {
     const h = Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v]).filter(([k]) => !CONDITIONAL.has(k!)));
     return sha256(canonical({ url, headers: h }));
   }
-  private paths(key: string) {
-    const d = join(this.dir, key.slice(0, 2));
-    return { d, meta: join(d, `${key}.json`), body: join(d, `${key}.br`) };
+  private read(key: string): { kept: Kept; body: Buffer } | undefined {
+    const v = this.packs.get(key);
+    const nl = v?.indexOf(0x0a) ?? -1;
+    if (!v || nl < 0) return undefined;
+    return { kept: JSON.parse(v.subarray(0, nl).toString("utf8")) as Kept, body: v.subarray(nl + 1) };
   }
 
   override async get(url: string, headers: Record<string, string>): Promise<FetchResult> {
-    const p = this.paths(this.key(url, headers));
-    const kept = readJson<Kept>(p.meta);
-    if (kept && kept.by !== this.technology && Date.now() - Date.parse(kept.at) < this.ttlMs && existsSync(p.body)) {
+    const key = this.key(url, headers);
+    const page = this.read(key);
+    const kept = page?.kept;
+    if (page && kept && kept.by !== this.technology && Date.now() - Date.parse(kept.at) < this.ttlMs) {
       this.hits++;
       const h = new Headers(kept.headers);
       const lower = Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v]));
       const etag = h.get("etag");
       if ((lower["if-none-match"] && etag && lower["if-none-match"] === etag) || (!lower["if-none-match"] && lower["if-modified-since"] && h.get("last-modified") === lower["if-modified-since"]))
         return { status: 304, finalUrl: kept.finalUrl, headers: h, body: new Uint8Array() };
-      return { status: 200, finalUrl: kept.finalUrl, headers: h, body: new Uint8Array(brotliDecompressSync(readFileSync(p.body))) };
+      return { status: 200, finalUrl: kept.finalUrl, headers: h, body: new Uint8Array(brotliDecompressSync(page.body)) };
     }
     const res = await this.inner.get(url, headers);
     if (res.status === 200) {
-      mkdirSync(p.d, { recursive: true });
-      writeFileSync(p.body, brotliCompressSync(res.body));
       const h = Object.fromEntries(KEPT_HEADERS.flatMap((k) => (res.headers.get(k) ? [[k, res.headers.get(k)!]] : [])));
-      writeAtomic(p.meta, JSON.stringify({ at: new Date().toISOString(), by: this.technology, finalUrl: res.finalUrl, headers: h } satisfies Kept));
+      const meta = JSON.stringify({ at: new Date().toISOString(), by: this.technology, finalUrl: res.finalUrl, headers: h } satisfies Kept);
+      this.packs.put(key, Buffer.concat([Buffer.from(`${meta}\n`), brotliCompressSync(res.body)]));
     }
     return res;
   }
@@ -73,21 +78,20 @@ export class SharedPages extends HttpClient {
     return this.inner.probe(url, headers);
   }
 
-  /** Drops pages kept longer than the TTL. */
+  /** Drops pages kept longer than the TTL, and the one-file-per-page layout this cache had before packs. */
   prune(now = Date.now()): number {
-    let n = 0;
     if (!existsSync(this.dir)) return 0;
-    for (const sub of readdirSync(this.dir)) {
-      const d = join(this.dir, sub);
-      if (!statSync(d).isDirectory()) continue;
-      for (const f of readdirSync(d).filter((f) => f.endsWith(".json"))) {
-        const kept = readJson<Kept>(join(d, f));
-        if (kept && now - Date.parse(kept.at) < this.ttlMs) continue;
-        rmSync(join(d, f), { force: true });
-        rmSync(join(d, f.replace(/\.json$/, ".br")), { force: true });
-        n++;
-      }
-    }
+    for (const sub of readdirSync(this.dir)) if (/^[0-9a-f]{2}$/.test(sub)) rmSync(`${this.dir}/${sub}`, { recursive: true, force: true });
+    let n = 0;
+    for (const f of this.packs.files())
+      n += this.packs.compact(f, (_, data) => {
+        const nl = data.indexOf(0x0a);
+        try {
+          return nl > 0 && now - Date.parse((JSON.parse(data.subarray(0, nl).toString("utf8")) as Kept).at) < this.ttlMs;
+        } catch {
+          return false;
+        }
+      });
     return n;
   }
 }

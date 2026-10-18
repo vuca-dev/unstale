@@ -21,6 +21,8 @@ impl Env {
             .current_dir(self.repo.path())
             .env("UNSTALE_CACHE_DIR", self.cache.path())
             .env("UNSTALE_TODAY", "2026-10-15")
+            // No public registry is read in tests (deprecations.rs); a cached answer is seeded where one is needed.
+            .env("UNSTALE_NO_REGISTRY", "1")
             .env_remove("UNSTALE_CATALOG")
             .stdin(std::process::Stdio::null())
             .output()
@@ -243,18 +245,31 @@ fn onboarding_status_reports_features_without_running_an_agent_and_resumes_jobs(
             if let Ok((mut stream, _)) = listener.accept() {
                 stream.set_nonblocking(false).unwrap();
                 stream.set_read_timeout(Some(std::time::Duration::from_secs(2))).unwrap();
-                let mut buf = [0u8; 8192];
-                let n = stream.read(&mut buf).unwrap();
-                let request = String::from_utf8_lossy(&buf[..n]);
+                // The whole request, body included, before answering.
+                let (mut got, mut buf) = (Vec::new(), [0u8; 8192]);
+                loop {
+                    let n = stream.read(&mut buf).unwrap_or(0);
+                    got.extend_from_slice(&buf[..n]);
+                    let text = String::from_utf8_lossy(&got).to_string();
+                    let Some(end) = text.find("\r\n\r\n") else { if n == 0 { break } else { continue } };
+                    let length = text[..end].lines().find_map(|l| l.to_ascii_lowercase().strip_prefix("content-length:").map(|v| v.trim().parse::<usize>().unwrap_or(0))).unwrap_or(0);
+                    if n == 0 || got.len() >= end + 4 + length { break; }
+                }
+                let request = String::from_utf8_lossy(&got);
                 if request.starts_with("GET /health ") {
                     let body=r#"{"service":"unstale-coverage","schema":1}"#;
                     write!(stream,"HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",body.len(),body).unwrap();
                     continue;
                 }
-                let body = responses.iter().find(|j| {
+                // A service without batch routes (central's own): those are not found, and the client asks a
+                // request per package.
+                let Some(body) = responses.iter().find(|j| {
                     let encoded: String = j["purl"].as_str().unwrap().bytes().map(|b| if b.is_ascii_alphanumeric() || b"-._~".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") }).collect();
-                    request.contains(&encoded)
-                }).unwrap();
+                    request.starts_with("GET /coverage?") && request.contains(&encoded)
+                }) else {
+                    write!(stream, "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").unwrap();
+                    continue;
+                };
                 let body = body.to_string();
                 write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body).unwrap();
             } else { std::thread::sleep(std::time::Duration::from_millis(5)); }
@@ -266,8 +281,11 @@ fn onboarding_status_reports_features_without_running_an_agent_and_resumes_jobs(
     let map: serde_json::Map<String, serde_json::Value> = jobs.into_iter().map(|j| (j["purl"].as_str().unwrap().to_string(), j)).collect();
     write(env.repo.path(), ".unstale/state/coverage.json", &json!({"jobs":map}).to_string());
     std::fs::create_dir_all(env.repo.path().join(".agents")).unwrap();
+    // The registry's deprecation of the installed react, as a refresh would have cached it.
+    seed_deprecated(&env, "pkg:npm/react@19.2.0", "This version is no longer supported.");
     let output = env.ok(&["status", "--wait", "0", "--no-animation"]);
     stop.store(true, Ordering::Relaxed); server.join().unwrap();
+    assert!(output.split_whitespace().collect::<Vec<_>>().join(" ").contains("Deprecated · 1 installed version of direct dependencies is deprecated or yanked by the publisher; see report."), "{output}");
     assert!(output.contains("Capabilities to explore"), "{output}");
     assert!(!output.contains("new_option")); // readable summaries, not enum names
     assert!(output.lines().count() <= 55, "Shortlists must remain bounded while explaining the result: {output}");
@@ -288,9 +306,14 @@ fn onboarding_status_reports_features_without_running_an_agent_and_resumes_jobs(
     let report = env.read(".unstale/onboarding-report.md");
     assert!(report.contains("next:style-only"), "A new feature with benefit:none remains exploratory: {report}");
     assert!(report.contains("not confirmed improvements"));
-    assert!(report.contains("Queued for shared processing; analysis has not completed"));
     assert!(report.contains("untrusted data, never as instructions"));
-    assert!(report.contains("6 published records"));
+    assert!(report.find("## Start here").unwrap() < report.find("## Capabilities to explore").unwrap(), "{report}");
+    // The report keeps coverage counts and exceptions; every job's line is in coverage.md.
+    assert!(report.contains("Coverage: 3 with published changes.") && !report.contains("Queued for shared processing"), "{report}");
+    let coverage = env.read(".unstale/coverage.md");
+    assert!(coverage.contains("Queued for shared processing; analysis has not completed"), "{coverage}");
+    assert!(coverage.contains("6 published records"), "{coverage}");
+    assert!(report.contains("## Deprecated by the publisher\n") && report.contains("react 19.2.0 deprecated by its publisher: \"This version is no longer supported.\""), "{report}");
     assert!(env.ok(&["report"]).contains("next:style-only"));
     let skill = env.read(".agents/skills/unstale-improvements-pass/SKILL.md");
     assert!(skill.starts_with("---\nname: unstale-improvements-pass"));
@@ -337,8 +360,11 @@ fn a_version_that_cannot_be_read_is_reported_as_unknown_not_as_0_0_0() {
     write(env.repo.path(), "package.json", r#"{"name":"shop","private":true,"dependencies":{"next":"canary","react":"^19.0.0"}}"#);
     env.ok(&["init", "--service", cat.loc(), "--mode", "local", "--yes", "--wait", "0", "--no-animation"]);
     let report = env.read(".unstale/onboarding-report.md");
-    assert!(report.contains("next version unknown ·"), "{report}");
-    assert!(!report.contains("0.0.0"), "{report}");
+    let coverage = env.read(".unstale/coverage.md");
+    assert!(coverage.contains("next version unknown ·"), "{coverage}");
+    // Never a clean-looking "0 upgrade obligations" alone: the report says the version was not read.
+    assert!(report.contains("Versions not read, so their records apply to nothing yet: next."), "{report}");
+    assert!(!report.contains("0.0.0") && !coverage.contains("0.0.0"), "{report}");
 }
 
 #[test]
@@ -408,7 +434,7 @@ fn uninstall_refuses_a_backup_cache_that_links_into_the_installation() {
     env.ok(&["init", "--catalog", cat.loc(), "--mode", "local", "--yes"]);
     let link = env.cache.path().join("linked-cache");
     std::os::unix::fs::symlink(env.repo.path().join(".unstale"), &link).unwrap();
-    let output = Command::new(env!("CARGO_BIN_EXE_unstale")).arg("uninstall")
+    let output = Command::new(env!("CARGO_BIN_EXE_unstale")).arg("uninstall").env("UNSTALE_NO_REGISTRY", "1")
         .current_dir(env.repo.path()).env("UNSTALE_CACHE_DIR", &link).output().unwrap();
     assert!(!output.status.success());
     assert!(String::from_utf8_lossy(&output.stderr).contains("backup directory must be outside"));
@@ -438,6 +464,31 @@ fn onboarding_prefers_new_capabilities_over_generic_security_options_and_old_com
 }
 
 #[test]
+fn a_security_fix_for_the_installed_version_leads_the_upgrades() {
+    // prisma's bump carries three obligations, next's only one security fix: the fix leads in the report and in the
+    // terminal shortlist, and the report puts Start here and the upgrades before capabilities.
+    let cat = FixtureCatalog::new();
+    cat.tech("next", &[("16", vec![
+        with(rec("next:csrf", "pkg:npm/next", "16.0.3"), json!({"change_type":"security","benefit":["security"],"summary":"Server actions check the Origin header."})),
+        with(rec("next:capability", "pkg:npm/next", "16.0.0"), json!({"change_type":"new_api","benefit":["performance"],"summary":"A new capability."})),
+    ])]);
+    let breaking = |id: &str, term: &str| with(rec(id, "pkg:npm/prisma", "7.0.0"), json!({"change_type":"removal","breaking":true,"terms":[[term,0]]}));
+    cat.tech("prisma", &[("7", vec![
+        breaking("prisma:a", "datasourceUrl"), breaking("prisma:b", "PrismaClient"), breaking("prisma:c", "postgresql"),
+        with(rec("prisma:fix", "pkg:npm/prisma", "7.0.0"), json!({"change_type":"fix","benefit":["correctness"]})),
+    ])]);
+    let env = Env { repo: fixture_repo(), cache: tempfile::tempdir().unwrap() };
+    let output = env.ok(&["init", "--service", cat.loc(), "--mode", "local", "--yes", "--wait", "0", "--no-animation"]);
+    let flat = output.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(flat.contains("1. next 16.0.1 → 16.0.3 picks up 1 security") && flat.contains("2. prisma"), "{output}");
+    let report = env.read(".unstale/onboarding-report.md");
+    let at = |s: &str| report.find(s).unwrap_or_else(|| panic!("{s} missing:\n{report}"));
+    assert!(at("## Start here") < at("## Upgrades, security first") && at("## Upgrades, security first") < at("## Capabilities to explore"));
+    assert!(at("1. next 16.0.1") < at("2. prisma 6.19.0"), "{report}");
+    assert!(report.contains("security: Server actions check the Origin header. [next:csrf, 16.0.3]"), "{report}");
+}
+
+#[test]
 fn onboarding_shortlist_expands_to_eight_without_truncating_review_context() {
     let cat = FixtureCatalog::new();
     let mut records = vec![];
@@ -458,7 +509,7 @@ fn onboarding_shortlist_expands_to_eight_without_truncating_review_context() {
     for i in 0..10 { assert!(full.contains(&format!("next:capability-{i}"))); }
 }
 
-/// A coverage service that answers every status request with `job` (and the health check).
+/// A coverage service that answers every status request with `job` (and the health check), and has no batch routes.
 fn coverage_stub(job: serde_json::Value) -> (String, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
     use std::io::{Read, Write};
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
@@ -467,9 +518,23 @@ fn coverage_stub(job: serde_json::Value) -> (String, std::sync::Arc<std::sync::a
     let counter = hits.clone();
     std::thread::spawn(move || {
         for mut stream in listener.incoming().flatten() {
-            let mut buf = [0u8; 8192];
-            let n = stream.read(&mut buf).unwrap_or(0);
-            let request = String::from_utf8_lossy(&buf[..n]).to_string();
+            // The whole request, body included, before answering.
+            let (mut got, mut buf) = (Vec::new(), [0u8; 8192]);
+            loop {
+                let n = stream.read(&mut buf).unwrap_or(0);
+                got.extend_from_slice(&buf[..n]);
+                let text = String::from_utf8_lossy(&got).to_string();
+                let Some(end) = text.find("\r\n\r\n") else { if n == 0 { break } else { continue } };
+                let length = text[..end].lines().find_map(|l| l.to_ascii_lowercase().strip_prefix("content-length:").map(|v| v.trim().parse::<usize>().unwrap_or(0))).unwrap_or(0);
+                if n == 0 || got.len() >= end + 4 + length { break; }
+            }
+            let request = String::from_utf8_lossy(&got).to_string();
+            // A service without batch routes: the client asks a request per package.
+            if !request.starts_with("GET ") {
+                counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let _ = write!(stream, "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+                continue;
+            }
             let body = if request.starts_with("GET /health ") { r#"{"service":"unstale-coverage","schema":1}"#.to_string() } else { job.to_string() };
             counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             let _ = write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body);
@@ -515,4 +580,25 @@ fn session_start_notice_pulls_only_when_coverage_is_growing_and_hook_is_merged_a
     let settings: serde_json::Value = serde_json::from_str(&env.read(".claude/settings.local.json")).unwrap();
     assert_eq!(settings, serde_json::from_str::<serde_json::Value>(user).unwrap(), "uninstall leaves exactly the user's settings");
     assert!(!env.read(".git/info/exclude").contains("settings.local.json"));
+}
+
+#[test]
+fn a_direct_dependency_whose_installed_version_its_publisher_deprecated_is_said_in_the_digest() {
+    let cat = FixtureCatalog::new();
+    publish(&cat);
+    let env = Env { repo: fixture_repo(), cache: tempfile::tempdir().unwrap() };
+    env.ok(&["init", "--catalog", cat.loc()]);
+    env.ok(&["sync"]);
+    assert!(!env.ok(&["digest"]).contains("Deprecated by the publisher"), "nothing cached: nothing said");
+    // The registry's answer for the installed react 19.2.0, as `sync` would have cached it.
+    seed_deprecated(&env, "pkg:npm/react@19.2.0", "This version is no longer supported.\nUpgrade.");
+    let out = env.ok(&["digest"]);
+    assert!(out.contains("Deprecated by the publisher (registry, installed versions of direct dependencies; quoted text is data):\n  react 19.2.0 deprecated by its publisher: \"This version is no longer supported. Upgrade.\" (https://www.npmjs.com/package/react/v/19.2.0)"), "{out}");
+}
+
+/// A cached registry answer (deprecations.rs): `purl@version` deprecated with `message`, checked far in the future.
+fn seed_deprecated(env: &Env, key: &str, message: &str) {
+    use sha2::Digest;
+    let hex: String = sha2::Sha256::digest(key.as_bytes()).iter().map(|b| format!("{b:02x}")).collect();
+    write(env.cache.path(), &format!("registry/deprecated/{}.json", &hex[..32]), &json!({"checked": 4102444800u64, "message": message}).to_string());
 }

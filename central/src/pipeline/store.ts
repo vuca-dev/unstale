@@ -5,6 +5,7 @@ import type { CapabilityRecord } from "../schema/catalog.ts";
 import { centralDir } from "./paths.ts";
 import { combineByLine, lineFn, type ReleaseIndex } from "./lines.ts";
 import { compareVersions, readJson, writeAtomic } from "./util.ts";
+import { techLocal } from "../state/client.ts";
 
 export type Release = CapabilityRecord["releases"][number];
 export type Evidence = CapabilityRecord["evidence"][number];
@@ -49,7 +50,8 @@ export interface StoredRecord {
 export interface Judged {
   id: string;
   p: number;
-  outcome: "same" | "below" | "not-best" | "guard:breaking" | "guard:advisory" | "guard:quote" | "guard:cross" | "guard:lineage";
+  /** "unasked": retrieved below QUESTION_FLOOR, so no question was asked (p is 0). */
+  outcome: "same" | "below" | "unasked" | "not-best" | "guard:breaking" | "guard:advisory" | "guard:quote" | "guard:cross" | "guard:lineage";
 }
 
 export interface TechStore {
@@ -62,16 +64,18 @@ export interface TechStore {
   releaseIndex?: ReleaseIndex;
 }
 
-const path = (tech: string) => join(centralDir(), "records", `${tech}.json`);
+const path = (tech: string) => join(centralDir(), "records", `${techLocal(tech)}.json`);
 
 export function loadStore(tech: string): TechStore {
   return readJson<TechStore>(path(tech)) ?? { technology: tech, records: {}, ingested: {} };
 }
 
+/** Compact JSON: a record store is internal state, never published or signed (the catalog's shards and indexes are
+ * written from it, publish.ts), and indentation was 28% of its bytes. A store written indented still reads. */
 export function saveStore(s: TechStore): void {
   const records = Object.fromEntries(Object.keys(s.records).sort().map((k) => [k, s.records[k]!]));
   const ingested = Object.fromEntries(Object.keys(s.ingested).sort().map((k) => [k, s.ingested[k]!]));
-  writeAtomic(path(s.technology), JSON.stringify({ technology: s.technology, records, ingested, ...(s.releaseIndex ? { releaseIndex: s.releaseIndex } : {}) }, null, 1) + "\n");
+  writeAtomic(path(s.technology), JSON.stringify({ technology: s.technology, records, ingested, ...(s.releaseIndex ? { releaseIndex: s.releaseIndex } : {}) }) + "\n");
 }
 
 /** Fields whose change bumps `revision` (re-opens declines); the rest of the record's fields bump `label_version`. */

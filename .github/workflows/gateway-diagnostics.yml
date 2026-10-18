@@ -1,0 +1,93 @@
+# Read-only diagnostics for the production gateway (the `unstale` Worker and its Durable Object), for when nobody has
+# local Cloudflare credentials. Run it from Actions > gateway-diagnostics, or
+#   gh workflow run gateway-diagnostics.yml --repo vuca-dev/unstale [-f hours=48] [-f tail_seconds=60]
+# and read the log. It prints:
+#   1. the Durable Object's rows read and written, requests and storage per hour (GraphQL Analytics API), and the
+#      Worker's invocations by status (gateway/scripts/diagnostics.ts analytics);
+#   2. the Worker's live logs and exceptions (`wrangler tail`) while it sends a few requests: /health, a GET status
+#      read of a package nobody registers, and GET /internal/usage;
+#   3. the answers of /health and GET /internal/usage.
+# It writes nothing and registers nothing (no POST); a status read wakes the object as any client's would. Only
+# counters, status codes, log lines and exception messages are printed: no headers, no tokens.
+# Secrets: CLOUDFLARE_API_TOKEN (needs Account Analytics: Read and Workers Tail: Read besides the deploy permissions;
+# a section it cannot read says so and the rest still runs), CLOUDFLARE_ACCOUNT_ID, GATEWAY_DRAIN_TOKEN.
+name: gateway-diagnostics
+
+on:
+  workflow_dispatch:
+    inputs:
+      hours:
+        description: "Hours of analytics to show (at most 168)"
+        required: false
+        type: string
+        default: "48"
+      tail_seconds:
+        description: "Seconds of Worker logs to capture"
+        required: false
+        type: string
+        default: "60"
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GATEWAY: ${{ vars.UNSTALE_DEFAULT_SERVICE || 'https://api.unstale.sh' }}
+      WRANGLER_SEND_METRICS: "false"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: gateway/package-lock.json
+      - name: npm ci
+        run: npm ci --prefix gateway --no-audit --no-fund
+
+      - name: Durable Object and Worker analytics
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          HOURS: ${{ inputs.hours }}
+        run: node gateway/scripts/diagnostics.ts analytics --hours "$HOURS"
+
+      - name: Worker logs while probing
+        continue-on-error: true
+        working-directory: gateway
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          DRAIN_TOKEN: ${{ secrets.GATEWAY_DRAIN_TOKEN }}
+          TAIL_SECONDS: ${{ inputs.tail_seconds }}
+        run: |
+          set -u
+          # Digits only (never evaluated as an expression), 10 to 300 seconds.
+          secs=60
+          if [[ "${TAIL_SECONDS:-}" =~ ^[0-9]{1,4}$ ]]; then secs=$((10#$TAIL_SECONDS)); fi
+          secs=$(( secs < 10 ? 10 : secs > 300 ? 300 : secs ))
+          out="$RUNNER_TEMP/tail.jsonl"
+          timeout "$secs" npx wrangler tail --format json > "$out" 2> "$RUNNER_TEMP/tail.err" &
+          sleep 15 # the tail connects
+          probe() { curl -s -o /dev/null -w "  $1 -> %{http_code}\n" "${@:2}" "$GATEWAY$1"; }
+          for i in 1 2 3; do
+            probe /health
+            probe "/coverage?purl=pkg:npm/unstale-diagnostics-probe"
+            probe /internal/usage -H "Authorization: Bearer $DRAIN_TOKEN"
+            sleep 5
+          done
+          wait || true
+          echo "tail stderr:"; grep -v -i token "$RUNNER_TEMP/tail.err" | tail -n 20 || true
+          node scripts/diagnostics.ts tail "$out"
+
+      - name: Health and usage
+        env:
+          DRAIN_TOKEN: ${{ secrets.GATEWAY_DRAIN_TOKEN }}
+        run: |
+          echo "GET /health"; curl -s -i "$GATEWAY/health" | grep -i -E '^(HTTP|retry-after)|^\{' ; echo
+          echo "GET /internal/usage"; curl -s -i -H "Authorization: Bearer $DRAIN_TOKEN" "$GATEWAY/internal/usage" | grep -i -E '^(HTTP|retry-after)|^\{'; echo

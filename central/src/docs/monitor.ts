@@ -13,6 +13,7 @@ import { allAdded, sectionDiff, type Context, type SectionChange } from "../coll
 import { FsStore } from "../collector/store.ts";
 import { findTemplateChanges } from "../collector/template.ts";
 import { centralDir } from "../pipeline/paths.ts";
+import { ensureLocal, techLocal } from "../state/client.ts";
 import { readJson, sha256, writeAtomic } from "../pipeline/util.ts";
 import { attribute, guideCandidate, guideMajor, publishable, type Attribution } from "./attribute.ts";
 import { httpFetcher } from "./fetcher.ts";
@@ -69,6 +70,8 @@ interface SiteState {
   listing: Omit<Listing, "pages">;
   /** sha256 of the site's llms-full.txt when every one of its pages was last checked (signals.ts). */
   llmsFull?: string;
+  /** The listing named no page (the site had pages when resolved); its previous pages, if any, were kept. */
+  listingFailed?: boolean;
 }
 
 interface State {
@@ -84,7 +87,9 @@ export interface Source {
   purls: string[];
 }
 
-export const docsDir = (tech: string) => join(centralDir(), "docs", tech);
+export const docsDir = (tech: string) => join(centralDir(), "docs", techLocal(tech));
+/** A technology's page snapshots and watch states, restored from the saved state on first use (state/client.ts). */
+export const docsStore = (tech: string): FsStore => new FsStore(join(docsDir(tech), "store"), () => ensureLocal(`docs:${tech}`));
 
 export async function latestVersion(http: HttpClient, purl: string): Promise<string | undefined> {
   const [, type, rest] = /^pkg:(\w+)\/(.+)$/.exec(purl) ?? [];
@@ -207,7 +212,7 @@ export interface RefreshOptions {
 
 export interface RefreshReport {
   technology: string;
-  sites: Array<{ site: string; prefix: string; method: string; pages: number; copyRule: string; dropped: Listing["dropped"]; namespaces: string[] }>;
+  sites: Array<{ site: string; prefix: string; method: string; pages: number; listingFailed?: boolean; copyRule: string; dropped: Listing["dropped"]; namespaces: string[] }>;
   checked: number;
   outcomes: Record<string, number>;
   events: Record<string, number>;
@@ -231,25 +236,36 @@ export async function refresh(src: Source, opts: RefreshOptions): Promise<Refres
   const prev = readJson<State>(join(dir, "state.json"));
   const at = now().toISOString();
 
-  // 1. Listing, per site.
+  // 1. Listing, per site. Every site here had pages when resolved (sitesOf), so a listing of none is a failed listing:
+  //    the site's previous pages are kept and checked as before (never "deleted"), and a site that had none yet is a
+  //    baseline when its pages first appear (never "created").
   const sites: SiteState[] = [];
   const listed = new Map<string, { site: SiteState; page: ListedPage }>();
+  const hadPages = (site: string) => !!prev && Object.values(prev.pages).some((p) => p.site === site);
+  const baselineSites = new Set<string>();
   for (const { site, prefix } of sitesOf(resolutions)) {
     const listing = await listSite(opts.http, robots, site, prefix, { latestMajor });
-    const known = prev?.sites.find((s) => s.site === site);
+    if (!hadPages(site)) baselineSites.add(site);
+    // The copy rule is learned from listed pages; one learned from an empty listing is learned again.
+    const known = hadPages(site) ? prev?.sites.find((s) => s.site === site) : undefined;
     const rule = known?.copyRule ?? (await copyRule(opts.http, listing.pages));
     const { pages, ...rest } = listing;
     const st: SiteState = { site, prefix, copyRule: rule, listing: rest };
     sites.push(st);
     for (const p of pages) if (!listed.has(p.url)) listed.set(p.url, { site: st, page: p });
-    log(`${site}: ${pages.length} pages (${listing.method}), copy rule ${rule}`);
+    if (!pages.length) {
+      st.listingFailed = true;
+      for (const [u, p] of Object.entries(prev?.pages ?? {})) if (p.site === site && !listed.has(u)) listed.set(u, { site: st, page: { url: u } });
+    }
+    log(`${site}: ${pages.length} pages (${listing.method})${st.listingFailed ? ", listing failed" : ""}, copy rule ${rule}`);
   }
 
   const pages: Record<string, PageState> = {};
   for (const [url, { site, page }] of listed) {
     const ns = site.listing.namespaces.find((n) => n.kept && n.kind === "version" && new URL(url).pathname.split("/")[n.position] === n.segment);
-    const nsMajor = ns && /^v?(\d+)/i.exec(ns.segment)?.[1];
     const old = prev?.pages[url];
+    // A page kept from an earlier listing (this one failed) keeps the namespace that listing found.
+    const nsMajor = (ns && /^v?(\d+)/i.exec(ns.segment)?.[1]) || (site.listingFailed ? old?.namespaceMajor : undefined);
     // An unnumbered guide's major was read from its text when first seen (below); the URL alone cannot restore it.
     const gm = guideMajor(url) ?? old?.guideMajor;
     pages[url] = {
@@ -264,7 +280,7 @@ export async function refresh(src: Source, opts: RefreshOptions): Promise<Refres
 
   // 2. Pages that left the listing: a permanent redirect is a move, 404 or 410 a deletion, 200 an incomplete listing
   // (kept). A large share leaving at once is one restructure event.
-  const store = new FsStore(join(dir, "store"));
+  const store = docsStore(src.technology);
   const events: DocsEvent[] = [];
   const gone = prev ? Object.keys(prev.pages).filter((u) => !pages[u]) : [];
   const movedTo = new Map<string, { from: string; snapshot?: string }>();
@@ -386,7 +402,7 @@ export async function refresh(src: Source, opts: RefreshOptions): Promise<Refres
       const text = await store.getBlob(o.snapshot);
       const sections = log_(o.sections ?? sectionDiff(await store.getBlob(o.previous), text), hit.page, text);
       events.push(ev(src, { kind: "modified", at, url: hit.url, site: hit.page.site, watch: r.id, previous: o.previous, snapshot: o.snapshot, sections, ...(o.revertsTo ? { revertsTo: o.revertsTo } : {}) }));
-    } else if (o.status === "first_seen" && prev && !restructure && !prev.pages[hit.url]) {
+    } else if (o.status === "first_seen" && prev && !restructure && !prev.pages[hit.url] && !baselineSites.has(hit.page.site)) {
       const text = await store.getBlob(o.snapshot);
       const from = movedTo.get(hit.url);
       if (from) {
@@ -403,7 +419,8 @@ export async function refresh(src: Source, opts: RefreshOptions): Promise<Refres
   if (fresh.length) appendFileSync(logPath, fresh.map((e) => JSON.stringify(e)).join("\n") + "\n");
   // Every listed page is kept, checked or not (a trial limit): "created" means new to the listing, so a page first
   // checked on a later run is baselined, not reported.
-  writeAtomic(join(dir, "state.json"), JSON.stringify({ technology: src.technology, at, sites, pages } satisfies State, null, 1) + "\n");
+  // Compact JSON: internal state, never published (13% smaller than indented).
+  writeAtomic(join(dir, "state.json"), JSON.stringify({ technology: src.technology, at, sites, pages } satisfies State) + "\n");
 
   const sections = { publishable: 0, held: {} as Record<string, number> };
   for (const e of fresh) for (const s of e.sections ?? []) {
@@ -419,6 +436,7 @@ export async function refresh(src: Source, opts: RefreshOptions): Promise<Refres
       prefix: s.prefix,
       method: s.listing.method,
       pages: Object.values(pages).filter((p) => p.site === s.site).length,
+      ...(s.listingFailed ? { listingFailed: true } : {}),
       copyRule: s.copyRule,
       dropped: s.listing.dropped,
       namespaces: s.listing.namespaces.map((n) => `${n.kept ? "+" : "-"}${n.kind}:${n.segment}@${n.position}(${n.pages}, mirror ${n.mirror})`),
@@ -449,7 +467,7 @@ export function readEvents(tech: string): DocsEvent[] {
 
 /** The hunks of an event's sections, recomputed from its snapshots (the log keeps only their hashes). */
 export async function eventChanges(e: DocsEvent, context: Context = 3): Promise<SectionChange[]> {
-  const store = new FsStore(join(docsDir(e.technology), "store"));
+  const store = docsStore(e.technology);
   const before = e.previous ? await store.getBlob(e.previous) : "";
   const after = e.snapshot && e.kind !== "template" ? await store.getBlob(e.snapshot) : "";
   if (e.kind === "created") return allAdded(after);

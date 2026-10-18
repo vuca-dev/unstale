@@ -16,7 +16,7 @@
 #   GITHUB_TOKEN            needed by coverage jobs (POST /coverage): release lists, docs resolution, admission
 #   JEV_API_KEY             classifier key for coverage jobs
 #   AI_GATEWAY_API_KEY      extraction and the classifier's fallback (gpt-6-luna through the AI gateway)
-#   UNSTALE_RATE_PER_HOUR, UNSTALE_VOTES_PER_HOUR, UNSTALE_NEW_PER_DAY, UNSTALE_RUNS_PER_DAY, UNSTALE_TRUST_PROXY
+#   UNSTALE_RATE_PER_HOUR, UNSTALE_VOTES_PER_HOUR, UNSTALE_RUNS_PER_DAY, UNSTALE_TRUST_PROXY
 #                           abuse limits (src/onboarding/limits.ts); set UNSTALE_TRUST_PROXY=1 behind one proxy.
 #                           UNSTALE_RUNS_PER_DAY=0 serves the catalog without starting any job.
 # Serving the catalog and /health needs none of the secrets or network access; coverage jobs need outbound network.
