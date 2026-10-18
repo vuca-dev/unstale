@@ -945,7 +945,7 @@ mod tests {
             ],
         );
         let s = stack(&[("prisma", "6.19.0")], None);
-        let r = repo(&[("prisma/schema.prisma", "datasource db {}"), ("src/db.ts", "new PrismaClient({ datasourceUrl })")]);
+        let r = repo(&[("prisma/schema.prisma", "datasource db {}"), ("src/db.ts", "import { PrismaClient } from 'prisma/client'; new PrismaClient({ datasourceUrl })")]);
         let l = Ledger::default();
         let out = run_with(&c, &s, &r, &l);
         // behaviour change is not an obligation unless breaking: digest.

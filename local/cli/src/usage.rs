@@ -45,6 +45,15 @@ pub fn plain_word(lit: &str) -> bool {
     cs.next().is_some_and(|c| c.is_ascii_alphabetic()) && cs.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
 }
 
+/// A literal that is one identifier of more than one word (`defaultOptions`, `toBeCalledWith`, `.safeParse`): any code
+/// can declare one of its own (a local `const defaultOptions`), so in a file that neither imports the technology nor is
+/// named by its records it is no sign of the technology's API. Plain words, qualified names, hyphenated tokens
+/// (`overflow-ellipsis`), paths and file names are not.
+pub fn identifier(lit: &str) -> bool {
+    let s = lit.strip_prefix('.').unwrap_or(lit);
+    !plain_word(lit) && s.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_' || c == '$') && is_word(s)
+}
+
 /// The literals whose hits are the files that name a package as a module, by the ecosystem's own syntax: a quoted
 /// npm specifier or subpath (`'vitest'`, `"next/image"`; imports, `require`, manifests, CSS `@import`), a Python
 /// `import`/`from` or a quoted requirement (`"pydantic>=2"` in `pyproject.toml`). Matched in `find`'s one pass.
@@ -77,10 +86,16 @@ pub fn naming_lits(purl: &str) -> Vec<String> {
 /// file (`tsconfig.json`): a config file it reads. Data, config and markup files that do none of this (dashboard JSON,
 /// translations, Go linter YAML, Kubernetes manifests) never evidence it, nor does another ecosystem's code.
 ///
-/// A file is about the technology when it is code that imports it or its path names it. A plain word (`plain_word`),
-/// or a qualified literal matched only by a plain-word tail (`test.describe` as `describe`), is shown as evidence only
-/// from those files, and they come before any other: they are where its calls are. The queue's order still counts a
-/// plain word in any file that can use the technology (`Evidence::used`).
+/// A file is about the technology when it is code that imports it or its path names it. Evidence lists only files
+/// that hold the literal itself, by these rules, and files about the technology come first: they are where its calls
+/// are.
+/// - A plain word (`plain_word`) is shown only from files about the technology.
+/// - An identifier (`identifier`) is shown only from those, or from a file the technology's records name.
+/// - A qualified literal matched only by its tail is shown under the tail's rule when the tail is an identifier
+///   (`expect.toBeCalledWith` written `expect(x).toBeCalledWith`), and never when it is a plain word: `node.properties`
+///   is not `z.properties`.
+///
+/// The queue's order still counts every hit in a file that can use the technology (`Evidence::used`).
 pub struct Scope<'a> {
     ecosystem: &'a str,
     owners: &'a [&'a str],
@@ -218,14 +233,22 @@ impl<'a> Scope<'a> {
         self.evidence_with(lit, role, by_path, true)
     }
 
+    /// Whether the technology's records name the file at `path` (`tsconfig.json`): a config file it reads.
+    fn record_named(&self, path: &str) -> bool {
+        self.config_names.contains(&path.rsplit('/').next().unwrap_or(path).to_ascii_lowercase())
+    }
+
     fn evidence_with(&self, lit: &str, role: impl Fn(&str) -> Role, by_path: bool, exact: bool) -> Evidence {
         let plain = plain_word(lit);
+        let ident = identifier(lit);
         let tails = self.hits.tail_only.get(lit);
+        let by_tail = self.hits.by_tail.get(lit);
         let mut best: Vec<(bool, Role, usize, &str)> = Vec::with_capacity(4);
         let mut e = Evidence::default();
         for (i, x) in self.hits.ix.get(lit).into_iter().flatten().enumerate() {
             let Some(about) = self.file_at(*x) else { continue };
-            if exact && self.hits.by_tail.get(lit).is_some_and(|t| t.contains(x)) {
+            let tail_hit = by_tail.is_some_and(|t| t.contains(x));
+            if exact && tail_hit {
                 continue;
             }
             let p = &self.paths[*x as usize];
@@ -240,7 +263,7 @@ impl<'a> Scope<'a> {
                 r
             };
             e.used = true;
-            if !about && (plain || tails.is_some_and(|t| t.contains(x))) {
+            if tails.is_some_and(|t| t.contains(x)) || (!about && (plain || ((ident || tail_hit) && !self.record_named(p)))) {
                 continue;
             }
             let key = (!about, r, i, p.as_str());
@@ -505,10 +528,10 @@ pub struct Hits {
     /// millions of hits indexes rather than hashes paths.
     pub ix: HashMap<String, Vec<u32>>,
     /// Qualified literal → files (indices into `Repo::paths`) it matched only by a plain-word tail (`test.describe` as
-    /// `describe`, not the whole literal). Such a hit counts only where the technology is named (`Scope`).
+    /// `describe`, not the whole literal). Such a hit orders the queue but is never shown as evidence (`Scope`).
     pub tail_only: HashMap<String, HashSet<u32>>,
     /// Qualified literal → files it matched only by its tail, plain word or not (`test.beforeAll` as `beforeAll`): left
-    /// out of `Scope::exact_evidence`.
+    /// out of `Scope::exact_evidence`, and elsewhere shown only under the identifier rule.
     pub by_tail: HashMap<String, HashSet<u32>>,
 }
 
@@ -940,20 +963,72 @@ mod tests {
         assert!(e.used && e.app, "it still orders the queue, as application code");
         let e = s.evidence("beforeAll", role, true);
         let files: Vec<&str> = e.files.iter().map(|(p, _)| p.as_str()).collect();
-        assert_eq!(files, vec!["tests/d/spec.test.ts", "src/c/helper.ts"], "an identifier counts anywhere; call sites first");
+        assert_eq!(files, vec!["tests/d/spec.test.ts"], "an identifier only where vitest is imported, not a helper's own `beforeAll`");
+        assert!(e.used && e.app, "the helper still orders the queue");
         let e = s.evidence("test.describe", role, true);
         let files: Vec<&str> = e.files.iter().map(|(p, _)| p.as_str()).collect();
-        assert_eq!(
-            files,
-            vec!["src/b/store.test.ts", "tests/d/spec.test.ts", "src/a/cache.ts"],
-            "the plain-word tail where vitest is imported, the whole literal anywhere; files importing it first"
-        );
+        assert_eq!(files, vec!["tests/d/spec.test.ts", "src/a/cache.ts"], "the whole literal; files importing it first");
         let r = repo(&[("src/a.ts", "describe('x')"), ("src/b.test.ts", "import 'vitest'; describe('y')")]);
         let h = scoped(&r, &["test.describe"], &["pkg:npm/vitest"]);
         let s = Scope::new("npm", &[], &purls, &[], &h, &r.paths);
         let e = s.evidence("test.describe", role, true);
-        assert_eq!(e.files, vec![("src/b.test.ts".to_string(), true)], "a plain-word tail alone counts only where vitest is named");
-        assert!(e.used);
+        assert!(e.files.is_empty(), "a plain-word tail is not the literal, even where vitest is imported: {:?}", e.files);
+        assert!(e.used, "it still orders the queue");
+    }
+
+    #[test]
+    fn a_term_is_cited_only_from_files_holding_it() {
+        // udecode/plate: `z.properties` was cited from files holding only `node.properties`, and typescript-eslint's
+        // `defaultOptions` from a local `const defaultOptions` in a package that does not import it.
+        let r = repo(&[
+            ("src/schema.ts", "import { z } from 'zod'; const s = z.object({}); node.properties.x = 1"),
+            ("src/hast.ts", "export const f = (node) => node.properties"),
+            ("src/scroll.ts", "const defaultOptions = { block: 'nearest' }"),
+            ("src/rule.ts", "import { ESLintUtils } from '@typescript-eslint/utils'; export const r = { defaultOptions: [] }"),
+            ("src/view.tsx", "<div className=\"overflow-ellipsis\" />"),
+            ("tsconfig.json", "{\"compilerOptions\": {\"strictNullChecks\": true}}"),
+            ("src/spec.test.ts", "import { vi } from 'vitest'; expect(f).toBeCalledWith(1)"),
+            ("src/jest.test.ts", "expect(f).toBeCalledWith(1)"),
+        ]);
+        let role = |p: &str| path_role(p);
+        let zod = vec!["pkg:npm/zod".to_string()];
+        let h = scoped(&r, &["z.properties", "z.object"], &["pkg:npm/zod"]);
+        let s = Scope::new("npm", &[], &zod, &[], &h, &r.paths);
+        let e = s.evidence("z.properties", role, true);
+        assert!(e.files.is_empty() && e.used, "its plain-word tail orders the queue but is not the term: {:?}", e.files);
+        assert_eq!(s.evidence("z.object", role, true).files, vec![("src/schema.ts".to_string(), true)]);
+
+        let tse = vec!["pkg:npm/typescript-eslint".to_string(), "pkg:npm/%40typescript-eslint/utils".to_string()];
+        let lits = vec!["defaultOptions".to_string(), "tsconfig.json".to_string()];
+        let h = scoped(&r, &["defaultOptions", "strictNullChecks"], &["pkg:npm/typescript-eslint", "pkg:npm/%40typescript-eslint/utils"]);
+        let s = Scope::new("npm", &[], &tse, &lits, &h, &r.paths);
+        for e in [s.evidence("defaultOptions", role, true), s.exact_evidence("defaultOptions", role, true)] {
+            assert_eq!(e.files, vec![("src/rule.ts".to_string(), true)], "not a local constant in code that only could use it");
+            assert!(e.used);
+        }
+        assert_eq!(s.evidence("strictNullChecks", role, true).files, vec![("tsconfig.json".to_string(), false)], "a file its records name");
+
+        let tw = vec!["pkg:npm/tailwindcss".to_string()];
+        let h = scoped(&r, &["overflow-ellipsis"], &["pkg:npm/tailwindcss"]);
+        let s = Scope::new("npm", &[], &tw, &[], &h, &r.paths);
+        assert_eq!(s.exact_evidence("overflow-ellipsis", role, true).files, vec![("src/view.tsx".to_string(), false)], "no code declares a class name");
+
+        let vt = vec!["pkg:npm/vitest".to_string()];
+        let h = scoped(&r, &["expect.toBeCalledWith"], &["pkg:npm/vitest"]);
+        let s = Scope::new("npm", &[], &vt, &[], &h, &r.paths);
+        let e = s.evidence("expect.toBeCalledWith", role, true);
+        assert_eq!(e.files, vec![("src/spec.test.ts".to_string(), true)], "an identifier tail is the call, where vitest is imported");
+        assert!(s.exact_evidence("expect.toBeCalledWith", role, true).files.is_empty());
+    }
+
+    #[test]
+    fn identifiers_are_single_tokens_of_more_than_one_word() {
+        for y in ["defaultOptions", "toBeCalledWith", ".safeParse", "ES2022", "_internal", "$state"] {
+            assert!(identifier(y), "{y}");
+        }
+        for n in ["cache", ".extend", "Comment", "z.object", "overflow-ellipsis", "next/image", "tsconfig.json", "2fa"] {
+            assert!(!identifier(n), "{n}");
+        }
     }
 
     #[test]
