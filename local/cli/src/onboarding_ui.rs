@@ -138,13 +138,30 @@ struct Progress {
     /// Under a result: how the presentation ends (none while work continues below it).
     footer: Option<String>,
 }
+/// The lines plain output prints for an update: one per stage, with its first detail; when the stage changes, the
+/// previous stage's last detail first if it moved on (a count's final value, not its first).
+fn plain_lines(last: &mut (String, String, String), title: &str, detail: &str) -> Vec<String> {
+    if last.0 == title {
+        last.2 = detail.into();
+        return vec![];
+    }
+    let mut out = vec![];
+    if !last.0.is_empty() && last.2 != last.1 {
+        out.push(format!("  {} · {}", last.0, last.2));
+    }
+    out.push(format!("  {title} · {detail}"));
+    *last = (title.into(), detail.into(), detail.into());
+    out
+}
+
 pub struct Display {
     state: Arc<Mutex<Progress>>,
     stop: Arc<AtomicBool>,
     echoed_lines: Arc<AtomicUsize>,
     body_rows: Arc<AtomicUsize>,
     thread: Option<std::thread::JoinHandle<()>>,
-    last_plain: Mutex<String>,
+    /// Plain output: the stage last printed, the detail printed with it, and its latest detail.
+    last_plain: Mutex<(String, String, String)>,
     animated: bool,
     size: (usize, usize),
     started: Instant,
@@ -292,7 +309,7 @@ impl Display {
             echoed_lines,
             body_rows,
             thread,
-            last_plain: Mutex::new(String::new()),
+            last_plain: Mutex::new(Default::default()),
             animated,
             size,
             started,
@@ -308,9 +325,18 @@ impl Display {
         };
         if self.thread.is_none() {
             let mut last = self.last_plain.lock().unwrap();
-            if *last != title {
-                eprintln!("  {title} · {detail}");
-                *last = title.into();
+            for line in plain_lines(&mut last, title, detail) {
+                eprintln!("{line}");
+            }
+        }
+    }
+    /// Plain output: the current stage's last detail, when it moved on since it was printed.
+    fn flush_plain(&self) {
+        if self.thread.is_none() {
+            let mut last = self.last_plain.lock().unwrap();
+            if !last.0.is_empty() && last.2 != last.1 {
+                eprintln!("  {} · {}", last.0, last.2);
+                last.1 = last.2.clone();
             }
         }
     }
@@ -342,6 +368,7 @@ impl Display {
         state.footer = None;
     }
     pub fn present(mut self, lines: Vec<Line>, linger: bool, leave: &AtomicBool) {
+        self.flush_plain();
         let size = if self.thread.is_some() {
             dimensions().unwrap_or(self.size)
         } else {
@@ -637,6 +664,18 @@ fn cloud_with(t: f64, layout: Layout, ambient: bool) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
+    use super::plain_lines;
+
+    #[test]
+    fn plain_output_ends_a_stage_with_its_last_count() {
+        let mut last = Default::default();
+        let mut out = vec![];
+        for (t, d) in [("Connecting", "Registered 0/239 public packages"), ("Connecting", "Registered 159/239 public packages"), ("Connecting", "Registered 160/239 public packages"), ("Refreshing", "Fetching"), ("Refreshing", "Fetching"), ("Preparing", "Checking")] {
+            out.extend(plain_lines(&mut last, t, d));
+        }
+        assert_eq!(out, vec!["  Connecting · Registered 0/239 public packages", "  Connecting · Registered 160/239 public packages", "  Refreshing · Fetching", "  Preparing · Checking"]);
+    }
+
     use super::*;
     #[test]
     fn action_panel_has_plain_copyable_prompt_and_width_bounded_rules() {

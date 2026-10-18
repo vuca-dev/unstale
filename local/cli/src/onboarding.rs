@@ -46,6 +46,29 @@ pub struct Run {
     #[serde(default)]
     pub typical_s: Option<u64>,
 }
+/// Whether a job may publish results by `deadline` (Unix seconds): a run is working it or about to, or the next
+/// scheduled run that can take it starts by then, or (failed) its retry is due by then. A job in progress whose
+/// schedule the service does not name may.
+fn may_publish_by(job: &Job, deadline: u64) -> bool {
+    if matches!(job.state.as_str(), "monitoring" | "blocked") {
+        return false;
+    }
+    // A failed job is retried once its `retry_at` is due.
+    if job.state == "failed" {
+        return job.retry_at.as_deref().and_then(iso_unix).is_some_and(|at| at <= deadline);
+    }
+    if followable(job) || matches!(job.state.as_str(), "discovering" | "analyzing") {
+        return true;
+    }
+    job.next_run.as_deref().is_none_or(|t| iso_unix(t).is_none_or(|at| at <= deadline))
+}
+/// Unix seconds of an ISO 8601 UTC time (`2026-10-17T12:23:00.000Z`).
+fn iso_unix(t: &str) -> Option<u64> {
+    let days = util::parse_date(t.get(..10)?)?;
+    let hms: Vec<i64> = t.get(11..19)?.split(':').map(|x| x.parse().ok()).collect::<Option<_>>()?;
+    let [h, m, sec] = hms.as_slice() else { return None };
+    u64::try_from(days * 86_400 + h * 3600 + m * 60 + sec).ok()
+}
 /// A run is on its way to publishing this package, so a client can follow it.
 fn followable(job: &Job) -> bool {
     job.run.as_ref().is_some_and(|r| matches!(r.state.as_str(), "dispatched" | "running" | "publishing"))
@@ -104,7 +127,7 @@ fn registration_issue(error: &anyhow::Error, purl: &str) -> RegistrationIssue {
     }
     RegistrationIssue::Temporary
 }
-/// Sends each package in `order`. A rejection of the package (400, 404, 410, 422) is that package's: it is named in the
+/// Sends each package in `order`; `progress` gets how many the service has accepted so far. A rejection of the package (400, 404, 410, 422) is that package's: it is named in the
 /// issue and the rest are still sent; any other 4xx is the request's, so it is recorded and nothing more is sent. A limit (429, or 503 with Retry-After) defers all of them until then; any other failure (the service down, an
 /// invalid answer) stops here, and what is left is sent on a later run.
 fn register(
@@ -116,10 +139,13 @@ fn register(
     mut save: impl FnMut(&Pending) -> Result<()>,
 ) -> Result<()> {
     let mut rejected: Option<RegistrationIssue> = None;
-    for (index, p) in order.into_iter().enumerate() {
-        progress(index);
+    let mut accepted = 0;
+    progress(accepted);
+    for p in order {
         match send(&p) {
             Ok(j) => {
+                accepted += 1;
+                progress(accepted);
                 pending.jobs.insert(p.clone(), j);
                 pending.unsubmitted.remove(&p);
                 pending.deferred_until = None;
@@ -269,7 +295,7 @@ fn deferred_line_at(pending: &Pending, now: u64) -> Option<String> {
     if until <= now {
         return Some(format!("Coverage queued for later · {reason}; {sent} on the next unstale status."));
     }
-    let past = pending.past_wait.map_or(String::new(), |w| format!("; beyond --wait {w}s, so not waited for"));
+    let past = pending.past_wait.map_or(String::new(), |w| format!("; later than --wait {w}s reaches, so not retried in this run"));
     Some(format!(
         "Coverage queued for later · {reason} until {} UTC (in {}{past}); {sent} on an unstale status from then.",
         clock(until),
@@ -1107,7 +1133,7 @@ fn summary(ctx: &Ctx, pending: &Pending, brief: &Brief, issue: Option<&str>) -> 
         lines.push(Line::new("Versions · competing or out-of-date lockfiles; see report for which was read.", Tone::Amber));
     } else if brief.spread > 0 {
         let n = brief.spread;
-        lines.push(Line::new(format!("Versions · {n} package{} on other versions in some workspaces; reviews use the root's version, else that of the shallowest manifest a lockfile covers. See report.", if n == 1 { " is" } else { "s are" }), Tone::Muted));
+        lines.push(Line::new(format!("Versions · {n} package{} on other versions in some workspaces; reviews use the root's version, else that of the shallowest manifest a lockfile covers, unless no code importing it runs that version. See report.", if n == 1 { " is" } else { "s are" }), Tone::Muted));
     }
     if brief.advisory_fixes > 0 {
         lines.push(Line::new(format!("Priority · {} advisory fixes match installed versions. Review these first.", brief.advisory_fixes), Tone::Amber));
@@ -1213,9 +1239,9 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
         .collect();
     text += "## What setup did\n\nMapped npm and PyPI manifests and versions, matched published upstream changes to local references, and prepared agent review context. No application edits or agent assessment ran. Upstream record counts are history, not a count of useful changes for this repository.\n\n";
     if !limits.is_empty() { text += "## Scope limits\n\n"; text += &evidence_block(&limits.join("\n")); }
-    if !w.stack.notes.is_empty() || !w.stack.standalone.is_empty() {
+    if !w.stack.notes.is_empty() || !w.stack.standalone.is_empty() || !out.version_notes.is_empty() {
         text += "## Version sources\n\nInstalled versions below come from these choices. Verify against the lockfile your package manager actually uses.\n\n";
-        text += &evidence_block(&w.stack.notes.iter().chain(&w.stack.standalone).cloned().collect::<Vec<_>>().join("\n"));
+        text += &evidence_block(&w.stack.notes.iter().chain(&w.stack.standalone).chain(&out.version_notes).cloned().collect::<Vec<_>>().join("\n"));
     }
     text += "## Capabilities and potential impact\n\nThese candidates need repository assessment; source descriptions are not proof of benefit.\n\n";
     let mut highlights = vec![];
@@ -1603,14 +1629,19 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
             save(ctx, pending)?;
         }
         let order = registration_order(&pending.unsubmitted, &st, &pending.downloads);
-        register(pending, order, |p| request(service, p, true), |index| {
+        register(pending, order, |p| request(service, p, true), |accepted| {
             ui.update(
                 "Connecting public coverage · step 3/5",
-                &format!("Registered {index}/{registrations} public packages"),
+                &format!("Registered {accepted}/{registrations} public packages"),
                 "Public names only · acknowledged jobs continue centrally",
             );
         }, &mut diagnostics, |p| save(ctx, p))
     })?;
+    // A limit that outlasts the wait is known now: said now, not only in the summary once the wait is over.
+    if let Some(line) = pending.past_wait.and_then(|_| deferred_line(&pending)) {
+        let line = line.strip_prefix("Coverage queued for later · ").unwrap_or(&line);
+        ui.update("Registration deferred · step 3/5", line, "Packages already registered are still followed while they may publish");
+    }
     let mut saved_snapshot = String::new();
     let mut ready_hint = String::from("Your report is next; shared analysis can continue in background");
     loop {
@@ -1679,10 +1710,8 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
         if leave.load(Ordering::Acquire)
             || linger // Default init prepares a first report; long-running coverage belongs to explicit status --wait.
             || start.elapsed().as_secs() >= wait
-            || pending
-                .jobs
-                .values()
-                .all(|j| matches!(j.state.as_str(), "monitoring" | "blocked"))
+            // Nothing can publish before the wait ends: waiting longer only delays the report.
+            || !pending.jobs.values().any(|j| may_publish_by(j, unix_now() + wait.saturating_sub(start.elapsed().as_secs())))
         {
             break;
         }
@@ -2033,6 +2062,44 @@ mod tests {
         assert!(registration_line(&pending).unwrap().starts_with("Coverage queued for later"));
     }
     #[test]
+    fn progress_counts_accepted_registrations() {
+        // udecode/plate: 160 of 239 accepted before the hourly limit; the count was the attempt index of the first.
+        let order: Vec<String> = ["pkg:npm/a", "pkg:npm/b", "pkg:npm/c", "pkg:npm/d"].map(String::from).to_vec();
+        let mut pending = Pending::default();
+        pending.unsubmitted.extend(order.iter().cloned());
+        let (mut seen, mut n) = (vec![], 0);
+        register(&mut pending, order, |p| {
+            n += 1;
+            match n {
+                2 => Err(HttpFailure(404).into()),
+                4 => Err(Limited { retry_after: 600, by: Deferral::Address }.into()),
+                _ => Ok(Job { purl: p.into(), ..Job::default() }),
+            }
+        }, |accepted| seen.push(accepted), &mut vec![], |_| Ok(())).unwrap();
+        assert_eq!(seen, vec![0, 1, 2], "a rejected and a deferred package are not counted");
+        assert_eq!((pending.jobs.len(), pending.unsubmitted.len()), (2, 2));
+    }
+    #[test]
+    fn a_wait_ends_when_nothing_can_publish_before_it() {
+        let job = |json: &str| -> Job { serde_json::from_str(json).unwrap() };
+        let deadline = iso_unix("2026-10-17T12:05:00.000Z").unwrap();
+        assert_eq!(deadline - iso_unix("2026-10-17T12:00:00Z").unwrap(), 300);
+        let base = r#""purl":"pkg:npm/a","technology":"a","name":"a","stage":"""#;
+        // Held for a scheduled run after the deadline, another package ahead: nothing arrives within the wait.
+        assert!(!may_publish_by(&job(&format!(r#"{{{base},"state":"queued","next_run":"2026-10-17T13:00:00.000Z","run":{{"state":"declined"}}}}"#)), deadline));
+        // A run about to take it, a run working it, a scheduled run within the wait: it may.
+        assert!(may_publish_by(&job(&format!(r#"{{{base},"state":"queued","next_run":"2026-10-17T13:00:00.000Z","run":{{"state":"dispatched"}}}}"#)), deadline));
+        assert!(may_publish_by(&job(&format!(r#"{{{base},"state":"analyzing","next_run":"2026-10-17T13:00:00.000Z"}}"#)), deadline));
+        assert!(may_publish_by(&job(&format!(r#"{{{base},"state":"queued","next_run":"2026-10-17T12:04:00.000Z"}}"#)), deadline));
+        // No schedule named (the central service's own answer): it may; settled jobs never do.
+        assert!(may_publish_by(&job(&format!(r#"{{{base},"state":"partial"}}"#)), deadline));
+        assert!(!may_publish_by(&job(&format!(r#"{{{base},"state":"monitoring"}}"#)), deadline));
+        // A failed job retried within the wait may; one retried later, or never, does not.
+        assert!(may_publish_by(&job(&format!(r#"{{{base},"state":"failed","retry_at":"2026-10-17T12:03:00.000Z"}}"#)), deadline));
+        assert!(!may_publish_by(&job(&format!(r#"{{{base},"state":"failed","retry_at":"2026-10-17T14:00:00.000Z"}}"#)), deadline));
+        assert!(!may_publish_by(&job(&format!(r#"{{{base},"state":"failed"}}"#)), deadline));
+    }
+    #[test]
     fn a_503_with_retry_after_is_a_limit() {
         use std::io::{Read, Write};
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
@@ -2066,7 +2133,7 @@ mod tests {
             "Coverage queued for later · the coverage service is temporarily unavailable until 00:00 UTC (in 5h 48m); 2 public packages are sent on an unstale status from then."
         );
         pending.past_wait = Some(180);
-        assert!(deferred_line_at(&pending, now).unwrap().contains("until 00:00 UTC (in 5h 48m; beyond --wait 180s, so not waited for); 2 public"));
+        assert!(deferred_line_at(&pending, now).unwrap().contains("until 00:00 UTC (in 5h 48m; later than --wait 180s reaches, so not retried in this run); 2 public"));
         pending.deferred_by = Some(Deferral::Address);
         pending.deferred_until = Some(now + 125);
         assert!(deferred_line_at(&pending, now).unwrap().contains("this address reached the service's hourly limit for new packages until 18:15 UTC (in 3m"));
@@ -2116,7 +2183,7 @@ mod tests {
         let defer = |p: &mut Pending| { p.deferred_until = Some(unix_now() + 3600); p.deferred_by = Some(Deferral::Unavailable); Ok(()) };
         register_waiting(&mut pending, 60, false, Instant::now(), |_, _| panic!("must not wait"), |p| { sends += 1; defer(p) }).unwrap();
         assert_eq!((sends, pending.past_wait), (1, Some(60)));
-        assert!(registration_line(&pending).unwrap().contains("beyond --wait 60s, so not waited for"));
+        assert!(registration_line(&pending).unwrap().contains("later than --wait 60s reaches, so not retried in this run"));
         // Already deferred from an earlier run: nothing is sent before then.
         register_waiting(&mut pending, 60, false, Instant::now(), |_, _| panic!("must not wait"), |_| panic!("must not send")).unwrap();
         // `--wait 0` and default init never wait, and name no wait.

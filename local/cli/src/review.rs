@@ -200,6 +200,11 @@ fn pkg_name(o: &Opp) -> String {
     purl_name(&o.release.component).unwrap_or_else(|| o.release.component.clone())
 }
 
+#[cfg(test)]
+pub(crate) fn render_record_for_test(out: &Outcome, id: &str) -> String {
+    render_record(Pass::UpgradeReview, out.opps.iter().find(|o| o.id() == id).unwrap())
+}
+
 fn render_record(pass: Pass, o: &Opp) -> String {
     let r = &o.rec.r;
     let mut s = format!("### [{}] rev {}\n\n", r.id, r.revision);
@@ -251,6 +256,9 @@ fn render_record(pass: Pass, o: &Opp) -> String {
         // A deprecation that names what it deprecates cites only that (`funnel::deprecated_lits`).
         let what = if crate::funnel::deprecated_lits(o.rec, &o.matched.iter().map(|(t, _)| t.clone()).collect::<Vec<_>>()).is_empty() { "Matched terms" } else { "Deprecated API used here" };
         s += &format!("- {what}: {}\n", m.join("; "));
+    }
+    if !o.elsewhere.is_empty() {
+        s += &format!("- Not cited: code importing it under {}, which runs another release line than installed {}\n", o.elsewhere.join(", "), o.installed);
     }
     if let Some(m) = &o.unmet {
         s += &format!("- Prerequisite not met here: {m} (the upgrade raises it; part of this obligation)\n");
@@ -374,8 +382,9 @@ pub fn digest_lines(out: &Outcome) -> Vec<String> {
             let picks = if kinds.0.is_empty() { "nothing".to_string() } else { kinds.parts() };
             let target = w.target.as_ref().map(|t| format!(" to {t}")).unwrap_or_default();
             lines.push(format!(
-                "  {} in {dir} ({source}){more}: bumping{target} picks up {picks}{}",
+                "  {} in {} ({source}){more}: bumping{target} picks up {picks}{}",
                 w.version,
+                crate::stack::place(dir),
                 if obligations > 0 { format!("; {}", plural(obligations, "obligation", "obligations")) } else { String::new() }
             ));
         }
