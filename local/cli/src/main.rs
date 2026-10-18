@@ -16,6 +16,7 @@ mod sync;
 #[cfg(test)]
 mod testcat;
 mod usage;
+mod workarounds;
 mod util;
 
 use anyhow::{Context, Result, anyhow, bail};
