@@ -94,9 +94,14 @@ this repository (checked before a real publish). `release.yml`'s header has the 
 
 
 **Ingest state.** The central store (`UNSTALE_STORE`: `central/` and `catalog/`) survives the ephemeral runner as
-assets of a draft release tagged `catalog-state`: each generation is `state-<stamp>.tar.zst.aa, .ab, …` (a zstd
-tarball split under the 2 GiB asset limit) plus `state-<stamp>.sha256`, uploaded last, so a generation without it is
-ignored. A run saves once a cycle; the newest generation of each of the newest three runs is kept. The state is saved
+assets of a draft release tagged `catalog-state` (`central/src/state/`). A generation is a manifest,
+`state-<stamp>.json`, uploaded last (a generation without it is ignored; a tarball generation, `.sha256` last, still
+restores and is never deleted, so a revert restores it, losing the state saved since the migration), naming where each member (a deterministic
+zstd tar of some of the store's files) lies in the segments `state-<stamp>.segNN` (each under 1.5 GiB; the asset limit
+is 2 GiB). A save writes only the members that changed (plus up to 1 GiB of live members compacted out of sparse or old
+segments), so a cycle uploads its work, not the store; a restore downloads the eager members (not the technologies'
+docs stores, which a state server restores when a technology's docs are first read, nor the archived log months). A run saves once a cycle; the newest generation of each of the newest three runs is kept with the segments
+it references. The state is saved
 after a failed pipeline, drain or publish too (paid model calls are kept), but a catalog is deployed only after the
 pipeline, the drain, the export and the verification (every index's shards present with the stated size and sha256)
 all pass, and the gateway's queue is acknowledged only after the deploy and the save of the same cycle, so a
@@ -106,12 +111,14 @@ re-ingests from scratch with every model call uncached; to start from an operato
 
 ```sh
 gh release create catalog-state --draft --title "catalog state" --notes "Central store snapshots for the ingest workflow."
-gen="state-$(date -u +%Y%m%dT%H%M%SZ)-seed-1"; mkdir -p /tmp/seed
-COPYFILE_DISABLE=1 tar -C .store --exclude='./central/records/*.lock' --exclude='./central/sample' --exclude='./central/onboarding/documents' \
-  -cf - ./central ./catalog | zstd -T0 -10 -q | split -b 1900m -a 2 - "/tmp/seed/$gen.tar.zst."
-(cd /tmp/seed && shasum -a 256 "$gen".tar.zst.* > "$gen.sha256")
-gh release upload catalog-state /tmp/seed/"$gen".tar.zst.* && gh release upload catalog-state "/tmp/seed/$gen.sha256"
+rel="$(gh api repos/vuca-dev/unstale/releases --jq '.[] | select(.draft and .tag_name == "catalog-state") | .id')"
+UNSTALE_STATE_REMOTE="github:vuca-dev/unstale#$rel" GH_TOKEN="$(gh auth token)" \
+  npm --prefix central run state -- save --generation "state-$(date -u +%Y%m%dT%H%M%SZ)-seed-1"
 ```
+
+To read a saved state locally: `UNSTALE_STORE=/tmp/s UNSTALE_STATE_REMOTE=... GH_TOKEN=... npm --prefix central run
+state -- restore --all` (every member; without `--all`, `state -- hydrate docs:<tech>` restores one docs store), then
+`UNSTALE_STORE=/tmp/s npm --prefix central run state -- stats` for its composition.
 
 GitHub disables a public repository's scheduled workflows after 60 days without repository activity, and ingest
 commits nothing; re-enable it with `gh workflow enable ingest.yml`.

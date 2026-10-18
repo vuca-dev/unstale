@@ -4,9 +4,8 @@
 // paths.
 import { join } from "node:path";
 import type { HttpClient } from "../collector/http.ts";
-import { FsStore } from "../collector/store.ts";
 import { readJson } from "../pipeline/util.ts";
-import { docsDir, latestVersion, refresh, type Source } from "./monitor.ts";
+import { docsDir, docsStore, latestVersion, refresh, type Source } from "./monitor.ts";
 
 export interface CurrentGuide {
   url: string;
@@ -28,7 +27,7 @@ export async function currentGuides(src: Source, opts: { http: HttpClient; offli
   const latest = opts.offline ? undefined : (await Promise.all(src.purls.map((p) => latestVersion(opts.http, p)))).find(Boolean);
   const majors = Object.values(state.pages).map((p) => Number(p.guideMajor)).filter((n) => Number.isFinite(n));
   const max = latest ? Number(latest.split(".")[0]) : Math.max(...majors);
-  const store = new FsStore(join(docsDir(src.technology), "store"));
+  const store = docsStore(src.technology);
   const out: CurrentGuide[] = [];
   for (const [url, p] of Object.entries(state.pages)) {
     const major = Number(p.guideMajor);
