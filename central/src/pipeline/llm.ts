@@ -7,14 +7,14 @@
 // provider refuses for capacity is retried once at the default tier, and the tier is not part of the cache key (same
 // model, same answer distribution). Answers are cached by sha256(provider + request body), only when they parse, so a
 // failed or unparseable call is retried on the next run. A truncated answer (finish_reason `length`) is not retried:
-// the same request would run out of room again. It is recorded beside the cache (`<key>.length.json`), so a later run
+// the same request would run out of room again. It is recorded beside the answers (`<key>.length`), so a later run
 // does not pay for it again, and the caller is told (`onLength`): extraction splits the chunk (extract.ts).
-import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { keyFromEnvFile } from "./classify/adapter.ts";
+import { hashedPacks } from "./packs.ts";
 import { centralDir } from "./paths.ts";
-import { canonical, logUsage, readJson, sha256, sleep, writeAtomic } from "./util.ts";
+import { canonical, logUsage, sha256, sleep } from "./util.ts";
 
 const keyDir = join(homedir(), ".config", "ati");
 
@@ -210,29 +210,35 @@ export interface CallOptions {
   maxTokens?: number;
 }
 
-function chatRequest(m: ExtractModel, prompt: string, o: CallOptions): { body: ChatBody; path: string } {
+/** The model cache: an answer under its request's key, a truncated answer's usage under `<key>.length` (packs.ts). */
+const llmCache = () => hashedPacks(join(centralDir(), "cache", "llm"), 3);
+
+function chatRequest(m: ExtractModel, prompt: string, o: CallOptions): { body: ChatBody; key: string } {
   const p = PROVIDERS[m.provider]!;
   const body: ChatBody = { model: m.model, messages: [{ role: "user", content: prompt }], max_tokens: o.maxTokens ?? MAX_TOKENS, reasoning_effort: m.effort };
   if (o.responseFormat) body.response_format = o.responseFormat;
   const key = sha256(`${p.name}\n${canonical(body)}`);
-  return { body, path: join(centralDir(), "cache", "llm", key.slice(0, 2), `${key}.json`) };
+  return { body, key };
 }
 
-/** Where the configured model's parsed answer to this prompt is cached. */
-export function extractCachePath(prompt: string, o: CallOptions = {}): string {
-  return chatRequest(extractModel(), prompt, o).path;
+/** The key the configured model's answer to this prompt is cached under. */
+export function extractCacheKey(prompt: string, o: CallOptions = {}): string {
+  return chatRequest(extractModel(), prompt, o).key;
+}
+
+/** Caches an answer for the configured model (tests). */
+export function putExtractCache(prompt: string, text: string, o: CallOptions = {}): void {
+  llmCache().put(extractCacheKey(prompt, o), JSON.stringify({ text }));
 }
 
 /** Whether the configured model already has a parsed answer to this prompt cached (a call would be free). */
 export function extractCached(prompt: string, o: CallOptions = {}): boolean {
-  return existsSync(extractCachePath(prompt, o));
+  return llmCache().has(extractCacheKey(prompt, o));
 }
-
-const lengthPath = (path: string): string => path.replace(/\.json$/, ".length.json");
 
 /** Whether the configured model's answer to this prompt was truncated (finish_reason `length`): extractLlm will not ask again. */
 export function extractTruncated(prompt: string, o: CallOptions = {}): boolean {
-  return existsSync(lengthPath(extractCachePath(prompt, o)));
+  return llmCache().has(`${extractCacheKey(prompt, o)}.length`);
 }
 
 export async function extractLlm<T>(
@@ -242,8 +248,10 @@ export async function extractLlm<T>(
 ): Promise<T | undefined> {
   const m = extractModel();
   const p = PROVIDERS[m.provider]!;
-  const { body, path } = chatRequest(m, prompt, o);
-  const hit = readJson<{ text: string }>(path);
+  const { body, key } = chatRequest(m, prompt, o);
+  const cache = llmCache();
+  const cached = cache.get(key);
+  const hit = cached && (JSON.parse(cached.toString("utf8")) as { text: string });
   if (hit) {
     const v = parse(hit.text);
     if (v !== undefined) {
@@ -251,7 +259,7 @@ export async function extractLlm<T>(
       return v;
     }
   }
-  if (existsSync(lengthPath(path))) {
+  if (cache.has(`${key}.length`)) {
     llmStats.truncated++;
     o.onLength?.();
     return undefined;
@@ -287,7 +295,7 @@ export async function extractLlm<T>(
       }
       if (r.finish === "length") {
         console.error(`${p.name}/${m.model}: attempt ${attempt + 1} truncated; not retried`);
-        writeAtomic(lengthPath(path), JSON.stringify({ provider: p.name, model: m.model, finish: r.finish, usage: r.usage }) + "\n");
+        cache.put(`${key}.length`, JSON.stringify({ provider: p.name, model: m.model, finish: r.finish, usage: r.usage }) + "\n");
         llmStats.truncated++;
         llmStats.failed++;
         o.onLength?.();
@@ -295,7 +303,7 @@ export async function extractLlm<T>(
       }
       const v = parse(r.text);
       if (v !== undefined) {
-        writeAtomic(path, JSON.stringify({ provider: p.name, model: m.model, text: r.text, usage: r.usage }) + "\n");
+        cache.put(key, JSON.stringify({ provider: p.name, model: m.model, text: r.text, usage: r.usage }) + "\n");
         return v;
       }
       console.error(`${p.name}/${m.model}: attempt ${attempt + 1} unparseable`);

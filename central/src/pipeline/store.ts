@@ -5,6 +5,7 @@ import type { CapabilityRecord } from "../schema/catalog.ts";
 import { centralDir } from "./paths.ts";
 import { combineByLine, lineFn, type ReleaseIndex } from "./lines.ts";
 import { compareVersions, readJson, writeAtomic } from "./util.ts";
+import { techLocal } from "../state/client.ts";
 
 export type Release = CapabilityRecord["releases"][number];
 export type Evidence = CapabilityRecord["evidence"][number];
@@ -63,7 +64,7 @@ export interface TechStore {
   releaseIndex?: ReleaseIndex;
 }
 
-const path = (tech: string) => join(centralDir(), "records", `${tech}.json`);
+const path = (tech: string) => join(centralDir(), "records", `${techLocal(tech)}.json`);
 
 export function loadStore(tech: string): TechStore {
   return readJson<TechStore>(path(tech)) ?? { technology: tech, records: {}, ingested: {} };

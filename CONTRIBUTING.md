@@ -99,9 +99,13 @@ assets of a draft release tagged `catalog-state` (`central/src/state/`). A gener
 restores and is never deleted, so a revert restores it, losing the state saved since the migration), naming where each member (a deterministic
 zstd tar of some of the store's files) lies in the segments `state-<stamp>.segNN` (each under 1.5 GiB; the asset limit
 is 2 GiB). A save writes only the members that changed (plus up to 1 GiB of live members compacted out of sparse or old
-segments), so a cycle uploads its work, not the store; a restore downloads the eager members (not the technologies'
-docs stores, which a state server restores when a technology's docs are first read, nor the archived log months). A run saves once a cycle; the newest generation of each of the newest three runs is kept with the segments
-it references. The state is saved
+segments), so a cycle uploads its work, not the store; a restore downloads the eager members (caches, catalog,
+onboarding jobs; not what is kept per technology, which a state server restores when a technology is first worked, nor
+the archived log months). A cycle's save then removes the technologies it restored from the runner (`--evict`), and the
+content-hash caches are kept in a few thousand pack files rather than one file per entry (`central/src/pipeline/packs.ts`),
+so the runner's disk holds the catalog and one cycle's work. A generation saved before packs restores, its cache files
+moved into packs; before running code from before packs on a store, `state -- caches unpack`. A run saves once a cycle;
+the newest generation of each of the newest three runs is kept with the segments it references. The state is saved
 after a failed pipeline, drain or publish too (paid model calls are kept), but a catalog is deployed only after the
 pipeline, the drain, the export and the verification (every index's shards present with the stated size and sha256)
 all pass, and the gateway's queue is acknowledged only after the deploy and the save of the same cycle, so a
@@ -117,7 +121,8 @@ UNSTALE_STATE_REMOTE="github:vuca-dev/unstale#$rel" GH_TOKEN="$(gh auth token)" 
 ```
 
 To read a saved state locally: `UNSTALE_STORE=/tmp/s UNSTALE_STATE_REMOTE=... GH_TOKEN=... npm --prefix central run
-state -- restore --all` (every member; without `--all`, `state -- hydrate docs:<tech>` restores one docs store), then
+state -- restore --all` (every member; without `--all`, `state -- hydrate docs:<tech>` restores one docs store and
+`hydrate tech:<tech>` a technology's other files), then
 `UNSTALE_STORE=/tmp/s npm --prefix central run state -- stats` for its composition.
 
 GitHub disables a public repository's scheduled workflows after 60 days without repository activity, and ingest

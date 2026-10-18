@@ -1,20 +1,24 @@
 // State snapshots (src/state/): the deterministic tar, the member layout, save and restore against a directory remote
-// (incremental saves, docs stores restored on first use through the state server, the refusal to save a docs store
-// that was never restored, log rotation, compaction, retention) and the legacy tarball generation.
-import { execFileSync } from "node:child_process";
+// (incremental saves, docs stores and technologies' files restored on first use through the state server, the refusal
+// to save a lazy member that was never restored, eviction after a save, log rotation, compaction, retention), the
+// legacy tarball generation and a manifest saved before technologies' files were lazy and caches packed.
+import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, linkSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { brotliCompressSync } from "node:zlib";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { ensureLocal } from "../src/state/client.ts";
+import { ensureLocal, techLocal } from "../src/state/client.ts";
 import { bucketCount, excluded, memberOf, TARGET_MEMBER } from "../src/state/layout.ts";
 import { DirRemote } from "../src/state/remote.ts";
-import { serve } from "../src/state/server.ts";
 import { hydrate, localManifest, restore, retain, save, walk, type Manifest } from "../src/state/snapshot.ts";
 import { pack, unpack } from "../src/state/tar.ts";
 import { docsStore } from "../src/docs/monitor.ts";
+import { hashedPacks, migrateCaches } from "../src/pipeline/packs.ts";
+import { loadStore } from "../src/pipeline/store.ts";
+import { createHash } from "node:crypto";
+import { zstdCompressSync } from "node:zlib";
 
 const tmp = (p: string): string => mkdtempSync(join(tmpdir(), `unstale-state-${p}-`));
 const put = (root: string, rel: string, body: string | Buffer): void => {
@@ -28,11 +32,12 @@ const assets = (dir: string): string[] => readdirSync(dir).filter((n) => !n.star
 function seed(root: string): void {
   put(root, "central/records/next.json", JSON.stringify({ records: { a: 1 } }));
   put(root, "central/records/vite.json", JSON.stringify({ records: { b: 2 } }));
-  put(root, "central/cache/llm/ab/ab12.json", "{\"text\":\"x\"}");
+  hashedPacks(join(root, "central/cache/llm"), 3).put("ab12", "{\"text\":\"x\"}");
   put(root, "central/docs/next/state.json", "{\"pages\":{}}");
   put(root, "central/docs/next/store/blobs/aa/aa11.br", brotliCompressSync("page one"));
   put(root, "central/docs/next/store/state/https%3A%2F%2Fnextjs.org%2Fdocs%20html.json", "{\"configHash\":\"c\",\"snapshot\":\"aa11\"}");
   put(root, "central/docs/vite/store/blobs/bb/bb22.br", "page two");
+  put(root, "central/releases/next/index.json", "{\"checked\":\"2026-10-01T00:00:00Z\"}");
   put(root, "catalog/v1/root.json", "{}");
   put(root, "catalog/v1/shards/next/16.abc.jsonl.gz", "shard");
   put(root, "central/usage.jsonl", "");
@@ -42,6 +47,18 @@ function seed(root: string): void {
   put(root, "central/cache/pages/00/x.br", "x");
   put(root, "central/records/next.json.4242.tmp", "partial");
   put(root, "central/records/._next.json", "meta");
+}
+
+/** The state server in its own process, as the workflow runs it (a technology's files are restored synchronously). */
+async function serveProcess(store: string, remoteDir: string): Promise<{ socket: string; child: ChildProcess }> {
+  const socket = join(mkdtempSync("/tmp/us-"), "s");
+  const child = spawn(join(import.meta.dirname, "../node_modules/.bin/tsx"), [join(import.meta.dirname, "../src/state/cli.ts"), "serve", "--socket", socket], {
+    env: { ...process.env, UNSTALE_STORE: store, UNSTALE_STATE_REMOTE: `dir:${remoteDir}` },
+    stdio: "ignore",
+  });
+  for (let i = 0; i < 200 && !existsSync(socket); i++) await new Promise((r) => setTimeout(r, 50));
+  if (!existsSync(socket)) throw new Error("state server did not start");
+  return { socket, child };
 }
 
 const previousEnv = { store: process.env.UNSTALE_STORE, central: process.env.UNSTALE_CENTRAL_DIR, socket: process.env.UNSTALE_STATE_SOCKET };
@@ -83,10 +100,13 @@ describe("layout", () => {
   test("docs stores are lazy members, archives whole, everything else eager buckets", () => {
     const one = (): number => 1;
     expect(memberOf("central/docs/next/store/blobs/aa/aa11.br", one)).toBe("docs:next");
-    expect(memberOf("central/docs/next/state.json", one)).toBe("central/docs@1/0");
+    for (const p of ["central/docs/next/state.json", "central/records/next.json", "central/releases/next/1.0.0.md", "central/advisories/next/osv/x.json", "central/guides/next/a.md", "central/extractions/next/x.json"])
+      expect(memberOf(p, one), p).toBe("tech:next");
+    expect(memberOf("central/cache/llm/abc.pack", one)).toBe("central/cache@1/0");
+    expect(memberOf("central/onboarding/jobs/a.json", one)).toBe("central/onboarding@1/0");
     expect(memberOf("central/archive/usage-2026-09.jsonl", one)).toBe("archive:usage-2026-09.jsonl");
     expect(memberOf("catalog/v1/shards/next/16.abc.jsonl.gz", () => 4)).toMatch(/^catalog\/v1@4\/[0-3]$/);
-    for (const p of ["central/cache/codex/00/x.json", "central/cache/pages/00/x.br", "central/records/next.lock", "central/sample/x/y", "central/onboarding/documents/a", ".state/manifest.json", "a/b.123.tmp", "a/._b"])
+    for (const p of ["central/cache/codex/00/x.json", "central/cache/pages/00/x.br", "central/records/next.lock", "central/sample/x/y", "central/onboarding/documents/a", "central/onboarding/watches/a.json", ".state/manifest.json", "a/b.123.tmp", "a/._b"])
       expect(excluded(p), p).toBe(true);
     expect(excluded("central/records/next.json")).toBe(false);
   });
@@ -133,30 +153,36 @@ describe("save and restore", () => {
     await save(a, remote, { generation: "state-20261018T000000Z-1-1" });
     const b = join(tmp("b"), "store");
     const r = await restore(b, remote);
-    expect(r.deferred).toBe(2);
-    expect(existsSync(join(b, "central/records/next.json"))).toBe(true);
+    expect(r.deferred).toBe(4);
+    expect(existsSync(join(b, "central/cache/llm"))).toBe(true);
+    expect(existsSync(join(b, "central/records/next.json"))).toBe(false);
     expect(existsSync(join(b, "central/docs/next/store"))).toBe(false);
 
     // The docs code reads through the state server, as the drain does.
     process.env.UNSTALE_STORE = b;
     delete process.env.UNSTALE_CENTRAL_DIR;
-    const socket = join(mkdtempSync("/tmp/us-"), "s");
-    const server = await serve(b, remote, socket);
+    const { socket, child } = await serveProcess(b, remoteDir);
     process.env.UNSTALE_STATE_SOCKET = socket;
     try {
       expect((await docsStore("next").getState("https://nextjs.org/docs html"))?.snapshot).toBe("aa11");
       expect(await docsStore("next").getBlob("aa11")).toBe("page one");
       // A technology the saved state never had starts empty.
       expect(await docsStore("brand-new").getState("x")).toBeUndefined();
+      // A technology's records and other files come back synchronously, through the same server, on first use.
+      expect(loadStore("next").records).toEqual({ a: 1 });
+      expect(readFileSync(join(b, "central/docs/next/state.json"), "utf8")).toBe("{\"pages\":{}}");
+      expect(existsSync(join(b, "central/releases/next/index.json"))).toBe(true);
+      expect(techLocal("brand-new")).toBe("brand-new");
     } finally {
-      server.close();
+      child.kill();
     }
     expect(existsSync(join(b, "central/docs/vite/store"))).toBe(false);
+    expect(existsSync(join(b, "central/records/vite.json"))).toBe(false);
 
     put(b, "central/records/next.json", JSON.stringify({ records: { a: 1, c: 3 } }));
     put(b, "central/docs/next/store/blobs/cc/cc33.br", "page one, changed");
     const s = await save(b, remote, { generation: "state-20261018T030000Z-2-1" });
-    expect(s).toMatchObject({ written: 2, cold: 1 });
+    expect(s).toMatchObject({ written: 2, cold: 2 });
 
     const c = join(tmp("c"), "store");
     await restore(c, remote, { all: true });
@@ -194,6 +220,116 @@ describe("save and restore", () => {
     await expect(ensureLocal("docs:operator-only")).resolves.toBeUndefined();
   });
 
+  test("a technology's files written without being restored are refused; without the server they fail loudly", async () => {
+    const a = tmp("a");
+    seed(a);
+    await save(a, remote, { generation: "state-20261018T000000Z-1-1" });
+    const b = join(tmp("b"), "store");
+    await restore(b, remote);
+    process.env.UNSTALE_STORE = b;
+    delete process.env.UNSTALE_CENTRAL_DIR;
+    delete process.env.UNSTALE_STATE_SOCKET;
+    expect(() => techLocal("vite")).toThrow(/not restored here/);
+    put(b, "central/releases/vite/index.json", "{}");
+    await expect(save(b, remote, { generation: "state-20261018T030000Z-2-1" })).rejects.toThrow(/tech:vite exists locally but was not restored/);
+    await expect(hydrate(b, remote, "tech:vite")).rejects.toThrow(/exists but was not restored/);
+    rmSync(join(b, "central/releases/vite"), { recursive: true });
+    expect(await hydrate(b, remote, "tech:vite")).toBe("restored");
+    expect(techLocal("vite")).toBe("vite");
+    expect(readFileSync(join(b, "central/records/vite.json"), "utf8")).toBe(JSON.stringify({ records: { b: 2 } }));
+  });
+
+  test("a restore on first use that fails part way takes back what it moved in", async () => {
+    const a = tmp("a");
+    seed(a);
+    put(a, "central/releases/vite/index.json", "{}");
+    await save(a, remote, { generation: "state-20261018T000000Z-1-1" });
+    const b = join(tmp("b"), "store");
+    await restore(b, remote);
+    put(b, "central/releases/vite", "a file where the directory goes");
+    await expect(hydrate(b, remote, "tech:vite")).rejects.toThrow();
+    expect(existsSync(join(b, "central/records/vite.json"))).toBe(false);
+    rmSync(join(b, "central/releases/vite"));
+    expect(await hydrate(b, remote, "tech:vite")).toBe("restored");
+    expect(readFileSync(join(b, "central/releases/vite/index.json"), "utf8")).toBe("{}");
+  });
+
+  test("a save that evicts removes the lazy members it holds; they come back on next use and are carried over meanwhile", async () => {
+    const a = tmp("a");
+    seed(a);
+    await save(a, remote, { generation: "state-20261018T000000Z-1-1" });
+    const want = contents(a);
+    const b = join(tmp("b"), "store");
+    await restore(b, remote);
+    expect(await hydrate(b, remote, "tech:next")).toBe("restored");
+    expect(await hydrate(b, remote, "docs:next")).toBe("restored");
+    put(b, "central/records/next.json", JSON.stringify({ records: { a: 1, d: 4 } }));
+    const s = await save(b, remote, { generation: "state-20261018T030000Z-2-1", evict: true });
+    expect(s).toMatchObject({ written: 1, cold: 2, evicted: 2 });
+    for (const p of ["central/records/next.json", "central/docs/next", "central/releases/next"]) expect(existsSync(join(b, p)), p).toBe(false);
+    expect(existsSync(join(b, "central/cache/llm"))).toBe(true);
+    // Carried over by the next save, restored again on use.
+    expect(await save(b, remote, { generation: "state-20261018T031500Z-2-1", evict: true })).toMatchObject({ written: 0, cold: 4, evicted: 0 });
+    expect(await hydrate(b, remote, "tech:next")).toBe("restored");
+    expect(readFileSync(join(b, "central/records/next.json"), "utf8")).toBe(JSON.stringify({ records: { a: 1, d: 4 } }));
+    const c = join(tmp("c"), "store");
+    await restore(c, remote, { all: true });
+    expect(contents(c)).toEqual({ ...want, "central/records/next.json": JSON.stringify({ records: { a: 1, d: 4 } }) });
+  });
+
+  test("a generation saved before technologies' files were lazy and caches packed restores, and the next save converts it", async () => {
+    // As the code of #35 saved it: every file but docs stores and archives in eager members by area, caches one file
+    // per entry, and the onboarding watch specs since left out.
+    const a = tmp("a");
+    seed(a);
+    rmSync(join(a, "central/cache/llm"), { recursive: true });
+    put(a, "central/cache/llm/ab/ab12.json", "{\"text\":\"x\"}");
+    put(a, "central/cache/llm/ab/ab12.length.json", "{\"finish\":\"length\"}\n");
+    put(a, "central/cache/classifier/c0/c0ffee.json", "{\"classifier\":\"jev\"}\n");
+    put(a, "central/cache/registry/npm/0123.json", "{\"name\":\"x\"}\n");
+    put(a, "central/cache/registry/pypi/times/4567.json", "{\"checked\":\"t\"}\n");
+    put(a, "central/onboarding/watches/w.json", "{}");
+    const files = walk(a).map((f) => f.rel).concat("central/onboarding/watches/w.json");
+    const keyOf = (rel: string): string => (/^central\/docs\/[^/]+\/store\//.test(rel) ? `docs:${rel.split("/")[2]}` : `${rel.split("/").slice(0, 2).join("/")}@1/0`);
+    const groups = new Map<string, string[]>();
+    for (const rel of files) groups.set(keyOf(rel), [...(groups.get(keyOf(rel)) ?? []), rel]);
+    const gen = "state-20261017T000000Z-0-1";
+    const members: Manifest["members"] = {};
+    const chunks: Buffer[] = [];
+    let offset = 0;
+    for (const [key, rels] of [...groups].sort()) {
+      const tar = pack(rels.map((rel) => ({ path: rel, data: readFileSync(join(a, rel)) })));
+      const data = zstdCompressSync(tar);
+      const sha = (b: Buffer): string => createHash("sha256").update(b).digest("hex");
+      members[key] = { kind: key.startsWith("docs:") ? "lazy" : "eager", seg: `${gen}.seg00`, offset, length: data.length, sha256: sha(data), digest: sha(tar), files: rels.length, bytes: 0 };
+      chunks.push(data);
+      offset += data.length;
+    }
+    writeFileSync(join(remoteDir, `${gen}.seg00`), Buffer.concat(chunks));
+    const old: Manifest = { version: 2, generation: gen, created: "2026-10-17T00:00:00Z", buckets: {}, segments: { [`${gen}.seg00`]: offset }, members };
+    writeFileSync(join(remoteDir, `${gen}.json`), JSON.stringify(old));
+
+    const b = join(tmp("b"), "store");
+    const r = await restore(b, remote);
+    expect(r).toMatchObject({ kind: "v2", deferred: 2, packed: 5 });
+    // Technologies' files come back with the eager members; caches are in packs and read as before; dead files skipped.
+    expect(readFileSync(join(b, "central/records/next.json"), "utf8")).toBe(JSON.stringify({ records: { a: 1 } }));
+    expect(existsSync(join(b, "central/cache/llm/ab"))).toBe(false);
+    expect(hashedPacks(join(b, "central/cache/llm"), 3).get("ab12.length")?.toString()).toBe("{\"finish\":\"length\"}\n");
+    expect(existsSync(join(b, "central/onboarding/watches"))).toBe(false);
+
+    const s = await save(b, remote, { generation: "state-20261018T000000Z-1-1", evict: true });
+    expect(s.cold).toBe(2);
+    const saved = localManifest(b)!;
+    expect(Object.keys(saved.members).filter((k) => k.startsWith("tech:")).sort()).toEqual(["tech:next", "tech:vite"]);
+    expect(Object.keys(saved.members).some((k) => k.startsWith("central/records"))).toBe(false);
+    const c = join(tmp("c"), "store");
+    await restore(c, remote, { all: true });
+    migrateCaches(join(a, "central"));
+    rmSync(join(a, "central/onboarding/watches"), { recursive: true });
+    expect(contents(c)).toEqual(contents(a));
+  });
+
   test("months of append-only logs move to archive members, which a run does not restore", async () => {
     const a = tmp("a");
     seed(a);
@@ -206,7 +342,7 @@ describe("save and restore", () => {
     await restore(b, remote);
     expect(existsSync(join(b, "central/archive"))).toBe(false);
     const again = await save(b, remote, { generation: "state-20261018T030000Z-2-1", now: new Date("2026-10-18T03:00:00Z") });
-    expect(again).toMatchObject({ written: 0, cold: 3 });
+    expect(again).toMatchObject({ written: 0, cold: 5 });
     expect(await hydrate(b, remote, "archive:usage-2026-09.jsonl")).toBe("restored");
     expect(readFileSync(join(b, "central/archive/usage-2026-09.jsonl"), "utf8")).toBe(`${line("2026-09-30T23:59:00Z")}\n`);
   });
@@ -248,12 +384,14 @@ describe("save and restore", () => {
   test("a legacy tarball generation restores whole, and the next save starts the manifest", async () => {
     const a = tmp("a");
     seed(a);
+    put(a, "central/cache/classifier/c0/c0ffee.json", "{\"classifier\":\"jev\"}\n");
     const gen = "state-20261017T000000Z-0-1";
     execFileSync("sh", ["-c", `tar -C "$0" -cf - central catalog | zstd -q -3 | split -b 200 -a 2 - "$1/${gen}.tar.zst."`, a, remoteDir]);
     execFileSync("sh", ["-c", `cd "$0" && for f in ${gen}.tar.zst.*; do printf '%s  %s\\n' "$(shasum -a 256 "$f" | cut -d' ' -f1)" "$f"; done > ${gen}.sha256`, remoteDir]);
+    migrateCaches(join(a, "central"));
     const b = join(tmp("b"), "store");
     const r = await restore(b, remote);
-    expect(r.kind).toBe("legacy");
+    expect(r).toMatchObject({ kind: "legacy", packed: 1 });
     expect(existsSync(join(b, "central/records/._next.json"))).toBe(false);
     const s = await save(b, remote, { generation: "state-20261018T000000Z-1-1" });
     expect(s.written).toBe(s.members);
@@ -338,7 +476,7 @@ describe("save and restore", () => {
     const p = join(a, "central/records/next.json");
     utimesSync(p, new Date(), new Date(statSync(p).mtimeMs + 60_000));
     expect((await save(a, remote, { generation: "state-20261018T001500Z-1-1" })).written).toBe(0);
-    rmSync(join(a, "central/records/vite.json"));
+    rmSync(join(a, "catalog/v1/root.json"));
     const s = await save(a, remote, { generation: "state-20261018T003000Z-1-1" });
     expect(s.written).toBe(1);
   });

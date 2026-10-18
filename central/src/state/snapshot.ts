@@ -2,35 +2,40 @@
 // incrementally and restored by need. Replaces the single tarball (`state-<stamp>.tar.zst.*`), which every cycle
 // re-uploaded whole and every run downloaded whole: 289 -> 480 MB at 733-840 technologies, about 11 GB at 20,000.
 //
-//   member     the files of one key (layout.ts): an eager bucket, one technology's docs store, or a log archive; a
-//              deterministic tar (tar.ts), zstd-compressed. Its `digest` (sha256 of the tar) says whether it changed.
+//   member     the files of one key (layout.ts): an eager bucket, one technology's docs store or other files, or a log
+//              archive; a deterministic tar (tar.ts), zstd-compressed. Its `digest` (sha256 of the tar) says whether it
+//              changed.
 //   segment    `<generation>.segNN`, members back to back, under 1.5 GiB (the asset limit is 2 GiB).
 //   manifest   `<generation>.json`, uploaded last: where every member of that generation is (segment, offset, length,
 //              sha256). A generation without its manifest is incomplete and ignored.
 //
 // Save: members whose files are unchanged (same stat fingerprint, else same digest) keep their place in an earlier
 // segment; only changed members are written, to one new segment. So a cycle uploads what it changed, not the store.
-// Members of a technology whose docs store was not restored this run are carried over untouched; one that exists
-// locally without having been restored is refused (it would overwrite the saved store with a partial one).
+// Lazy members not restored this run are carried over untouched; one that exists locally without having been restored
+// is refused (it would overwrite the saved member with a partial one). With `evict` (between the cycles of a run), the
+// lazy members the new generation holds as they are here are then removed locally, restored again on next use.
 // Compaction: a segment less than half live, or past the newest 48 a manifest references, has its live members copied
 // into the new segment (at most 1 GiB a save), so the release holds a bounded number of assets (GitHub allows 1,000).
 // Retention: the newest generation of each of the newest `keep` runs; segments no kept manifest references are deleted.
 // Tarball-format assets are never deleted or replaced, so reverting to the tarball code still restores.
 //
-// Restore: eager members only (ranges of each segment, coalesced); a docs store is restored on first use through the
+// Restore: eager members only (ranges of each segment, coalesced); a lazy member is restored on first use through the
 // state server (client.ts). A legacy tarball generation is still restored, so the first run of this code continues
-// from the last tarball and saves the first manifest.
+// from the last tarball and saves the first manifest. A generation saved before a layout change restores too: its
+// per-technology files come back with its eager members (the next save makes them lazy members), files since left out
+// are skipped, and cache files saved one per entry are moved into packs (pipeline/packs.ts).
 //
 // Local bookkeeping in `<store>/.state/`: the manifest restored or last saved, the stat fingerprints of the members
-// restored or saved (`prints.json`), and those of the docs stores restored on demand (`hydrated.json`, written only by
-// the state server).
+// restored or saved (`prints.json`), and those of the lazy members restored on demand (`hydrated.json`, written by the
+// state server, and by a save that evicts).
 import { spawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, renameSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, renameSync, rmdirSync, rmSync, statSync, unlinkSync, writeFileSync, writeSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { constants, zstdCompressSync, zstdDecompressSync } from "node:zlib";
 import { writeAtomic } from "../pipeline/util.ts";
-import { areaOf, areaOfKey, bucketCount, excluded, isLegacy, kindOf, memberOf, memberRoot, STATE_DIR, whole, type Kind } from "./layout.ts";
+import { migrateCaches } from "../pipeline/packs.ts";
+import { areaOf, areaOfKey, bucketCount, excluded, isLegacy, kindOf, memberOf, memberRoot, STATE_DIR, TECH_DIRS, techOf, whole, type Kind } from "./layout.ts";
 import type { Asset, Remote } from "./remote.ts";
 import { pack, unpack, type Entry } from "./tar.ts";
 
@@ -87,8 +92,10 @@ interface FileStat {
 
 const statOf = (rel: string, s: { size: number; mtimeMs: number; ctimeMs: number; ino: number }): FileStat => ({ rel, size: s.size, mtimeMs: s.mtimeMs, ctimeMs: s.ctimeMs, ino: s.ino });
 
-/** Every file of the store that belongs in a snapshot, sorted. */
-export function walk(root: string): FileStat[] {
+const byRel = (a: FileStat, b: FileStat): number => (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0);
+
+/** Every file of the store that belongs in a snapshot (under `tops`, store paths of files or directories, if given), sorted. */
+export function walk(root: string, tops: readonly string[] = [""]): FileStat[] {
   const out: FileStat[] = [];
   const visit = (dir: string, rel: string): void => {
     for (const d of readdirSync(dir, { withFileTypes: true })) {
@@ -100,8 +107,20 @@ export function walk(root: string): FileStat[] {
       }
     }
   };
-  if (existsSync(root)) visit(root, "");
-  return out.sort((a, b) => (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0));
+  for (const top of tops) {
+    const p = join(root, top);
+    if (!existsSync(p)) continue;
+    if (statSync(p).isDirectory()) visit(p, top);
+    else if (!excluded(top)) out.push(statOf(top, statSync(p)));
+  }
+  return out.sort(byRel);
+}
+
+/** The local files of a lazy or archive member. */
+export function memberFiles(root: string, key: string): FileStat[] {
+  const t = techOf(key);
+  const tops = key.startsWith("tech:") ? [`central/records/${t}.json`, `central/docs/${t}`, ...TECH_DIRS.map((d) => `central/${d}/${t}`)] : [memberRoot(key)];
+  return walk(root, tops).filter((f) => whole(f.rel) === key);
 }
 
 /** Stat fingerprint of a member's files: any write changes it (size, mtime, ctime, or a new inode). */
@@ -245,6 +264,8 @@ export interface SaveOptions {
   now?: Date;
   tmp?: string;
   log?: (s: string) => void;
+  /** Remove the lazy members this save holds from the store (`evict`): between the cycles of a run. */
+  evict?: boolean;
 }
 
 export interface SaveReport {
@@ -260,6 +281,8 @@ export interface SaveReport {
   total_bytes: number;
   uploaded_bytes: number;
   deleted: string[];
+  /** Lazy members removed from the store once saved (`evict`). */
+  evicted: number;
 }
 
 const KIND_ORDER: Record<Kind, number> = { eager: 0, lazy: 1, archive: 2 };
@@ -377,6 +400,7 @@ export async function save(root: string, remote: Remote, o: SaveOptions): Promis
   writeAtomic(join(stateDir(root), "manifest.json"), JSON.stringify(manifest) + "\n");
   writeAtomic(join(stateDir(root), "prints.json"), JSON.stringify(newPrints) + "\n");
   rmSync(tmp, { recursive: true, force: true });
+  const evicted = o.evict ? evict(root, manifest, local, newPrints) : [];
 
   const deleted = await retain(remote, o.generation, o.keep ?? 3);
   return {
@@ -392,6 +416,7 @@ export async function save(root: string, remote: Remote, o: SaveOptions): Promis
     total_bytes: Object.values(segments).reduce((a, b) => a + b, 0),
     uploaded_bytes: uploaded,
     deleted,
+    evicted: evicted.length,
   };
 }
 
@@ -474,6 +499,8 @@ export interface RestoreReport {
   downloaded_bytes: number;
   /** Members left for restore on first use. */
   deferred: number;
+  /** Cache files of a state saved before packs, moved into packs (pipeline/packs.ts). */
+  packed?: number;
 }
 
 /** Restores the newest complete generation into an empty store: eager members (all members with `all`). */
@@ -484,7 +511,12 @@ export async function restore(root: string, remote: Remote, o: { all?: boolean; 
   const assets = await remote.list();
   const newest = generations(assets)[0];
   if (!newest) return { kind: "none", members: 0, files: 0, downloaded_bytes: 0, deferred: 0 };
-  if (newest.kind === "legacy") return restoreLegacy(root, remote, assets, newest.name, newest.asset, o.tmp ?? join(root, `${STATE_DIR}-in`));
+  if (newest.kind === "legacy") {
+    const r = await restoreLegacy(root, remote, assets, newest.name, newest.asset, o.tmp ?? join(root, `${STATE_DIR}-in`));
+    const packed = migrateCaches(join(root, "central"));
+    if (packed) log(`moved ${packed} cache files into packs`);
+    return { ...r, ...(packed ? { packed } : {}) };
+  }
   const manifest = JSON.parse((await remote.read(newest.asset)).toString("utf8")) as Manifest;
   if (manifest.version !== 2) throw new Error(`${newest.name}: manifest version ${String(manifest.version)} is not 2`);
   const byName = new Map(assets.map((a) => [a.name, a]));
@@ -513,7 +545,8 @@ export async function restore(root: string, remote: Remote, o: { all?: boolean; 
       downloaded += r.end - r.start;
       const buf = readFileSync(file);
       for (const [key, m] of r.ms) {
-        const entries = decode(key, m, buf.subarray(m.offset - r.start, m.offset - r.start + m.length));
+        // Files left out of the state since this member was saved (dead weight) are not written.
+        const entries = decode(key, m, buf.subarray(m.offset - r.start, m.offset - r.start + m.length)).filter((e) => !excluded(e.path));
         writeEntries(root, entries);
         prints[key] = fingerprint(statsOf(root, entries));
         files += entries.length;
@@ -524,7 +557,9 @@ export async function restore(root: string, remote: Remote, o: { all?: boolean; 
   rmSync(tmp, { recursive: true, force: true });
   writeAtomic(join(stateDir(root), "manifest.json"), JSON.stringify(manifest) + "\n");
   writeAtomic(join(stateDir(root), "prints.json"), JSON.stringify(prints) + "\n");
-  return { generation: newest.name, kind: "v2", members: wanted.length, files, downloaded_bytes: downloaded, deferred: Object.keys(manifest.members).length - wanted.length };
+  const packed = migrateCaches(join(root, "central"));
+  if (packed) log(`moved ${packed} cache files into packs`);
+  return { generation: newest.name, kind: "v2", members: wanted.length, files, downloaded_bytes: downloaded, deferred: Object.keys(manifest.members).length - wanted.length, ...(packed ? { packed } : {}) };
 }
 
 /** A tarball generation: its parts in order, checked against `<gen>.sha256`, through zstd and tar. */
@@ -571,27 +606,83 @@ async function restoreLegacy(root: string, remote: Remote, assets: readonly Asse
 }
 
 /**
- * Restores one docs store or archive on first use (the state server calls this; one at a time per key). "new" when
- * the saved state has no such member, "local" when it is already here.
+ * Restores one lazy member (a docs store or a technology's files) or an archive on first use (the state server calls
+ * this; one at a time per key). "new" when the saved state has no such member, "local" when it is already here.
  */
 export async function hydrate(root: string, remote: Remote, key: string, assets?: (fresh: boolean) => Promise<Map<string, Asset>>): Promise<"restored" | "local" | "new"> {
   const manifest = localManifest(root);
   const m = manifest?.members[key];
   if (!m) return "new";
   if (hydratedPrints(root)[key] !== undefined || localPrints(root)[key] !== undefined) return "local";
-  const dest = join(root, memberRoot(key));
-  if (existsSync(dest)) throw new Error(`${memberRoot(key)} exists but was not restored from the saved state`);
+  if (memberFiles(root, key).length) throw new Error(`${memberRoot(key)} exists but was not restored from the saved state`);
   const list = assets ?? (async () => new Map((await remote.list()).map((a) => [a.name, a])));
   const asset = (await list(false)).get(m.seg) ?? (await list(true)).get(m.seg);
   if (!asset) throw new Error(`${key}: segment ${m.seg} is missing from the release`);
-  const entries = decode(key, m, await remote.read(asset, m.offset, m.offset + m.length));
+  const entries = decode(key, m, await remote.read(asset, m.offset, m.offset + m.length)).filter((e) => !excluded(e.path));
   const stage = join(stateDir(root), "tmp", randomBytes(6).toString("hex"));
-  writeEntries(stage, entries);
-  mkdirSync(dirname(dest), { recursive: true });
-  renameSync(join(stage, memberRoot(key)), dest);
-  rmSync(stage, { recursive: true, force: true });
+  // Whole or not at all: a restore that fails part way (a full disk) takes back what it moved in, so the member is not
+  // left half here, which every later restore and save would refuse.
+  const moved: string[] = [];
+  try {
+    writeEntries(stage, entries);
+    for (const e of entries) {
+      mkdirSync(dirname(join(root, e.path)), { recursive: true });
+      renameSync(join(stage, e.path), join(root, e.path));
+      moved.push(e.path);
+    }
+  } catch (err) {
+    for (const p of moved) {
+      rmSync(join(root, p), { force: true });
+      pruneEmpty(dirname(join(root, p)), join(root, "central"));
+    }
+    throw err;
+  } finally {
+    rmSync(stage, { recursive: true, force: true });
+  }
   // Read and written in one synchronous step: concurrent restores of other keys in this process lose no entry.
   const hydrated = { ...hydratedPrints(root), [key]: fingerprint(statsOf(root, entries)) };
   writeAtomic(join(stateDir(root), "hydrated.json"), JSON.stringify(hydrated) + "\n");
   return "restored";
+}
+
+/** Removes `dir` and its parents up to `stop` while they are empty. */
+function pruneEmpty(dir: string, stop: string): void {
+  for (let d = dir; d.startsWith(`${stop}/`); d = dirname(d)) {
+    try {
+      rmdirSync(d);
+    } catch {
+      return;
+    }
+  }
+}
+
+/**
+ * After a save: the lazy members the saved generation now holds exactly as they are here are removed from this store,
+ * so a run's disk holds the technologies of its current cycle, not of every cycle so far. One is restored again on its
+ * next use. Its bookkeeping goes first, so an interrupted eviction leaves files the state does not count as restored
+ * (a save or a restore then refuses them, loudly) rather than restored files that are gone (which would save as
+ * deleted). Only between processes: a live process keeps its own record of what it made local (client.ts).
+ */
+function evict(root: string, saved: Manifest, local: Map<string, FileStat[]>, prints: Record<string, string>): string[] {
+  const out: string[] = [];
+  for (const [key, files] of local) {
+    if (kindOf(key) !== "lazy" || !saved.members[key] || prints[key] === undefined) continue;
+    const now = files.map((f) => (existsSync(join(root, f.rel)) ? statOf(f.rel, statSync(join(root, f.rel))) : undefined));
+    if (now.some((f) => !f) || fingerprint(now as FileStat[]) !== prints[key]) continue;
+    out.push(key);
+  }
+  if (!out.length) return out;
+  const hydrated = hydratedPrints(root);
+  for (const key of out) {
+    delete prints[key];
+    delete hydrated[key];
+  }
+  writeAtomic(join(stateDir(root), "prints.json"), JSON.stringify(prints) + "\n");
+  writeAtomic(join(stateDir(root), "hydrated.json"), JSON.stringify(hydrated) + "\n");
+  for (const key of out)
+    for (const f of local.get(key)!) {
+      unlinkSync(join(root, f.rel));
+      pruneEmpty(dirname(join(root, f.rel)), join(root, "central"));
+    }
+  return out;
 }

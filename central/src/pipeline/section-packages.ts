@@ -25,6 +25,7 @@ import { centralDir } from "./paths.ts";
 import { applyChange, type Release, type StoredRecord, type TechStore } from "./store.ts";
 import type { Technology } from "./technologies.ts";
 import { readJson, writeAtomic } from "./util.ts";
+import { techLocal } from "../state/client.ts";
 
 export const OTHER_SECTION = "other-package-section";
 export const OTHER_SECTION_RESTORED = "other-package-section-restored";
@@ -74,7 +75,7 @@ const stamp = () => new Date().toISOString().replace(/\.\d+Z$/, "Z");
 export async function repositoryPackages(t: Technology, opts: { offline?: boolean; refresh?: boolean } = {}): Promise<RegistryPackage[] | undefined> {
   const hook = ecosystemOf(t.components[0] ?? "").repositoryPackages;
   if (!hook) return undefined;
-  const file = join(centralDir(), "advisories", t.id, "repository-packages.json");
+  const file = join(centralDir(), "advisories", techLocal(t.id), "repository-packages.json");
   const cached = readJson<{ checked: string; packages: RegistryPackage[] }>(file);
   const fresh = cached && Date.now() - Date.parse(cached.checked) < FRESH_MS;
   if (cached && (opts.offline || (fresh && !opts.refresh))) return cached.packages;

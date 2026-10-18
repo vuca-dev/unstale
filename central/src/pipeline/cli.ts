@@ -37,6 +37,7 @@ import { ShardLine } from "../schema/catalog.ts";
 import { applyChange, LABEL_FIELDS, loadStore, mergeInto, retract, REVISION_FIELDS, saveStore, type EditableField, type StoredRecord } from "./store.ts";
 import { TECHNOLOGIES } from "./technologies.ts";
 import { readJson } from "./util.ts";
+import { techLocal } from "../state/client.ts";
 
 const ARRAY_FIELDS = new Set(["releases", "prerequisites", "requires", "replaces", "benefit", "introduces", "terms", "related", "conditions"]);
 
@@ -54,7 +55,7 @@ function parseValue(field: string, raw: string): unknown {
 }
 
 function checkedOf(tech: string): string {
-  const idx = readJson<{ checked: string }>(join(centralDir(), "releases", tech, "index.json"));
+  const idx = readJson<{ checked: string }>(join(centralDir(), "releases", techLocal(tech), "index.json"));
   return idx?.checked ?? new Date(0).toISOString();
 }
 

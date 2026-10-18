@@ -5,7 +5,8 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { extractLlm, extractModel } from "../llm.ts";
-import { canonical, logUsage, readJson, sha256, sleep, writeAtomic } from "../util.ts";
+import { hashedPacks, type Packs } from "../packs.ts";
+import { canonical, logUsage, sha256, sleep } from "../util.ts";
 
 /** `openai-decisions` and `codex` stay known names: records labelled by them (before 16 October 2026) keep them. */
 export type ClassifierName = "jev" | "openai-decisions" | "codex" | "chat";
@@ -275,23 +276,22 @@ export class ChatClassifier implements Classifier {
 }
 
 /** Caches answers on disk by a hash of the full request (classifier + model + state + questions). */
+/** Answers by sha256 of classifier, model, state and questions, in packs (packs.ts; one file per answer before). */
 export class ClassifierCache {
   hits = 0;
-  private readonly dir: string;
+  private readonly packs: Packs;
   constructor(dir: string) {
-    this.dir = dir;
+    this.packs = hashedPacks(dir, 3);
   }
   key(c: Classifier, state: Record<string, unknown>, questions: Questions): string {
     return sha256(canonical({ classifier: c.name, model: c.model, state, questions }));
   }
-  private path(k: string): string {
-    return join(this.dir, k.slice(0, 2), `${k}.json`);
-  }
   get(c: Classifier, state: Record<string, unknown>, questions: Questions): Classification | undefined {
-    return readJson<Classification>(this.path(this.key(c, state, questions)));
+    const v = this.packs.get(this.key(c, state, questions));
+    return v && (JSON.parse(v.toString("utf8")) as Classification);
   }
   put(c: Classifier, state: Record<string, unknown>, questions: Questions, v: Classification): void {
-    writeAtomic(this.path(this.key(c, state, questions)), JSON.stringify(v) + "\n");
+    this.packs.put(this.key(c, state, questions), JSON.stringify(v) + "\n");
   }
 }
 

@@ -1,10 +1,18 @@
-// Restores a member on first use. The ingest run restores only eager members (snapshot.ts); a technology's docs store
-// is restored when its docs are first read or written, by the state server (server.ts) the workflow starts with the
-// state release's token, which the drain never holds. `UNSTALE_STATE_SOCKET` names the server's socket.
+// Restores a lazy member on first use. The ingest run restores only eager members (snapshot.ts); a technology's docs
+// store, and the rest of its files, are restored when first read or written, by the state server (server.ts) the
+// workflow starts with the state release's token, which the drain never holds. `UNSTALE_STATE_SOCKET` names the
+// server's socket.
+//
+//   ensureLocal(`docs:<tech>`)   before a docs store is read or written (FsStore's `ready`; asynchronous)
+//   techLocal(<tech>)            in the path functions of a technology's records, docs metadata, release notes,
+//                                advisories, guides and extractions; synchronous (most of their readers are), so it
+//                                asks the server through `curl` and waits
 //
 // A store without `.state/manifest.json` (an operator's store, a test) holds everything locally: nothing to do. A
-// store restored from a manifest with no server reachable fails loudly instead of treating the docs store as new,
-// which would rebaseline its pages and then replace the saved store on the next save (the save refuses that too).
+// store restored from a manifest with no server reachable fails loudly instead of treating the member as new, which
+// would rebaseline its pages or re-ingest its releases and then replace the saved member on the next save (the save
+// refuses that too).
+import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { request } from "node:http";
 import { join } from "node:path";
@@ -46,4 +54,31 @@ export function ensureLocal(key: string): Promise<void> {
     done.set(key, p);
   }
   return p;
+}
+
+const techDone = new Set<string>();
+
+/**
+ * Makes the files of technology `tech` local (`tech:<tech>`) before they are read or written: once per technology per
+ * process and store. Returns `tech`, so a path function can wrap its argument.
+ */
+export function techLocal(tech: string): string {
+  const root = stateRoot();
+  const memo = `${root}\0${tech}`;
+  if (techDone.has(memo)) return tech;
+  const key = `tech:${tech}`;
+  if (existsSync(join(root, STATE_DIR, "manifest.json"))) {
+    const socket = process.env.UNSTALE_STATE_SOCKET;
+    if (socket) {
+      const r = spawnSync("curl", ["-sS", "--fail-with-body", "--max-time", "600", "--unix-socket", socket, "-X", "POST", `http://state/hydrate?key=${encodeURIComponent(key)}`], { encoding: "utf8" });
+      if (r.error) throw new Error(`restoring ${key}: ${r.error.message}`);
+      if (r.status !== 0) throw new Error(`restoring ${key}: ${(r.stdout || r.stderr || `curl exit ${r.status}`).trim()}`);
+    } else {
+      const saved = localManifest(root)?.members[key];
+      if (saved && localPrints(root)[key] === undefined && hydratedPrints(root)[key] === undefined)
+        throw new Error(`${key} is in the saved state but not restored here: run the state server (UNSTALE_STATE_SOCKET) or \`npm run state -- hydrate ${key}\``);
+    }
+  }
+  techDone.add(memo);
+  return tech;
 }

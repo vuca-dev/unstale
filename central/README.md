@@ -35,12 +35,13 @@ ingested extraction is recorded, so a rerun makes no uncached calls and writes b
 | `src/pipeline/fetch.ts` | Stable GitHub releases since 2025-10-15 (`GITHUB_TOKEN`, else `gh auth token`), stored raw with a `sha256:` snapshot |
 | `src/pipeline/extract.ts`, `llm.ts` | Extraction and free-text labels (subject, summary, terms, replaces, requires, prerequisites, conditions) |
 | `src/pipeline/classify/adapter.ts` | Classifier adapter: Jev first, the extraction model answering choices as the per-request fallback, cache, usage log |
+| `src/pipeline/packs.ts` | The content-hash caches (classifier, model, registry, the day's docs pages) as append-only pack files, a few thousand instead of one file per entry |
 | `src/pipeline/classify/labels.ts`, `vocab.ts`, `thresholds.ts` | change_type, surface, breaking and benefit questions; thresholds |
 | `src/pipeline/match.ts`, `store.ts` | Matching at ingest, id minting, revision and label counters, merge and retraction |
 | `src/pipeline/publish.ts` | Shards per technology and release line, index, root; every line validated by the generated Zod |
 | `src/pipeline/prune.ts` | Shard history (`catalog/history/<tech>.json`, outside `v1/`) and the 7-day grace-period prune |
 | `src/pipeline/export.ts` | Static export: verified copy of `v1/` with the served `components`, built aside and swapped in |
-| `src/state/` | Store snapshots for the ingest workflow: content-addressed members in segments, incremental saves, docs stores restored on first use (`npm run state -- restore\|save\|serve\|hydrate\|stats`) |
+| `src/state/` | Store snapshots for the ingest workflow: content-addressed members in segments, incremental saves, a technology's docs store and files restored on first use (`npm run state -- restore\|save\|serve\|hydrate\|caches\|stats`) |
 
 ## Operator environment
 
@@ -70,7 +71,7 @@ Every variable is optional; the defaults suit a developer machine.
 | `UNSTALE_BIN` | `<repo>/local/target/release/unstale` | Client binary used for `count-terms` by the rarity sample |
 | `UNSTALE_GATEWAY_URL`, `UNSTALE_GATEWAY_TOKEN` | unset | `drain`: the gateway whose held registrations are pulled and acknowledged; unset, only the saved queue is worked |
 | `UNSTALE_STATE_REMOTE` | unset | `state`: where snapshots live, `github:<owner>/<repo>#<release id>` (with `GH_TOKEN`) or `dir:<path>` |
-| `UNSTALE_STATE_SOCKET` | unset | The state server's socket: a store restored from a snapshot restores a technology's docs store through it on first use |
+| `UNSTALE_STATE_SOCKET` | unset | The state server's socket: a store restored from a snapshot restores a technology's docs store and files through it on first use |
 
 ## Deploy
 
