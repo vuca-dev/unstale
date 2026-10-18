@@ -273,15 +273,26 @@ async function input<T>(read: () => T | Promise<T>): Promise<T> {
   }
 }
 
-/** Seconds until 00:00 UTC, when the Durable Objects free tier's daily allowance resets. */
-const untilUtcMidnight = (now = Date.now()) => Math.max(60, Math.ceil((86_400_000 - (now % 86_400_000)) / 1000));
+/** Cloudflare's reset of the daily allowance at 00:00 UTC lags: on 18 October 2026 it took effect about 00:13. */
+const RESET_LAG_S = 30 * 60;
+/** How soon to retry while the allowance still reads as spent just after 00:00 UTC. */
+const RESET_RETRY_S = 300;
+
+/** Seconds until the Durable Objects free tier's daily allowance resets: 00:00 UTC, or shortly while that reset is
+ * still landing (a client told "after midnight" at 00:05 would otherwise wait a whole day). */
+function untilReset(now = Date.now()): number {
+  const sinceMidnight = (now % 86_400_000) / 1000;
+  if (sinceMidnight < RESET_LAG_S) return RESET_RETRY_S;
+  return Math.max(60, Math.ceil(86_400 - sinceMidnight));
+}
 
 /** Anything else (storage, a daily allowance, the runtime) is the service's: a temporary 503 with Retry-After, so a
- * client defers and retries instead of reading it as a rejection of the package. */
+ * client defers and retries instead of reading it as a rejection of the package. A spent daily allowance is retried
+ * after its reset (untilReset: minutes, not a day, while Cloudflare's 00:00 UTC reset is still landing). */
 function unavailable(error: unknown): Response {
   const message = error instanceof Error ? error.message : String(error);
   console.log(`unavailable: ${message.slice(0, 300)}`);
-  const retryAfter = /exceeded allowed|free tier/i.test(message) ? untilUtcMidnight() : 60;
+  const retryAfter = /exceeded allowed|free tier/i.test(message) ? untilReset() : 60;
   return json(503, { error: "The coverage service is temporarily unavailable; retry later", retry_after: retryAfter }, { "Retry-After": String(retryAfter) });
 }
 
