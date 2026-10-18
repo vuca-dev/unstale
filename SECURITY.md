@@ -16,7 +16,10 @@ gateway in `gateway/`. Only the latest release receives fixes.
   `.claude/settings.local.json` that prints one line. Collaborative mode also adds one line to `.gitattributes`.
   `unstale uninstall` removes all of it and backs up your decisions outside the repository.
 - **Network.** The client fetches catalog files, named by public package identity such as `pkg:npm/next`, and asks
-  for coverage of packages the catalog does not have yet. It sends no code, paths or versions, and no telemetry.
+  for coverage of packages the catalog does not have yet. It sends no code, paths or versions, and no telemetry. It
+  also reads the public npm and PyPI registries for the direct packages it found, at their installed versions, as a
+  package manager does: to verify a name is the public package, and to read a version's deprecation (npm) or yank
+  (PyPI). `UNSTALE_NO_REGISTRY=1` turns the deprecation reads off.
 - **Catalog integrity.** Catalog indexes carry an Ed25519 signature and name each shard's sha256. Anything that does
   not verify is discarded, not used.
 - **Upstream text.** Release notes, migration guides and docs are passed to your agent as quoted, untrusted data,

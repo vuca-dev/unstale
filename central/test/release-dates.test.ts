@@ -145,3 +145,25 @@ describe("release dates", () => {
     ]);
   });
 });
+
+describe("a technology with no GitHub release notes", () => {
+  test("its advisories resolve against the registry's versions in the window: stable, dated by the registry, linked to their page", async () => {
+    const MD: Technology = { id: "markdown-it-1", name: "markdown-it", repo: "markdown-it/markdown-it", components: ["pkg:npm/markdown-it"], tag: /^v?(\d+\.\d+\.\d+)$/, clean: (b) => b };
+    stub({ "https://registry.npmjs.org/markdown-it": { name: "markdown-it", time: { created: "2014-12-01T00:00:00Z", modified: "2026-10-01T00:00:00Z", "13.0.1": "2022-05-03T00:00:00Z", "14.2.0": "2026-06-01T08:00:00Z", "15.0.0-beta.1": "2026-08-01T00:00:00Z", "14.3.1": "2026-09-29T23:30:00Z", "15.0.1": "2026-09-30T01:00:00Z" } } });
+    const { advisoryReleases, registryReleases } = await import("../src/pipeline/fetch.ts");
+    const rel = await registryReleases(MD);
+    expect(rel).toEqual([
+      { version: "14.2.0", date: "2026-06-01", url: "https://www.npmjs.com/package/markdown-it/v/14.2.0" },
+      { version: "14.3.1", date: "2026-09-29", url: "https://www.npmjs.com/package/markdown-it/v/14.3.1" },
+      { version: "15.0.1", date: "2026-09-30", url: "https://www.npmjs.com/package/markdown-it/v/15.0.1" },
+    ]);
+    // Cached as `publishDates` keeps it: the next read asks nothing; and release notes, when there are any, win.
+    calls = [];
+    expect(await advisoryReleases(MD, [])).toEqual(rel);
+    expect(calls).toEqual([]);
+    const notes = [{ version: "14.3.1", date: "2026-09-29", url: "https://github.com/x/y/releases/tag/14.3.1" }];
+    expect(await advisoryReleases(MD, notes)).toBe(notes);
+    // An ecosystem without the hooks: none (no advisories, as before).
+    expect(await registryReleases({ ...MD, components: ["pkg:cargo/serde"] })).toEqual([]);
+  });
+});

@@ -6,7 +6,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
-import { attachAdvisories, fixesInWindow, fromOsv, idsAtQuote, inRange, resolveRange, semverCmp, type Advisory, type AffectedRange } from "../src/pipeline/advisories.ts";
+import { attachAdvisories, basisOf, fixesInWindow, fromOsv, idsAtQuote, inRange, resolveRange, semverCmp, type Advisory, type AffectedRange } from "../src/pipeline/advisories.ts";
 import { ecosystemOf, githubRepo, pep440Order } from "../src/pipeline/ecosystems.ts";
 import type { Classification } from "../src/pipeline/classify/adapter.ts";
 import type { StoredRecord, TechStore } from "../src/pipeline/store.ts";
@@ -237,6 +237,104 @@ describe("advisories", () => {
     await attachAdvisories(t, s, advisories, releases, judge);
     expect(JSON.stringify(s)).toBe(before);
     expect(asked.length).toBe(n);
+  });
+});
+
+describe("advisories before the release notes are read", () => {
+  const t = TECHNOLOGIES.next!;
+  const releases = ["16.2.5", "16.3.0"].map((v) => ({ version: v, date: "2026-05-11", url: `https://github.com/vercel/next.js/releases/tag/v${v}` }));
+  const advisories = [
+    adv("GHSA-MG66-MRH9-M8JX", [[">= 16.0.0, < 16.2.5", "16.2.5"]], "Denial of Service via connection exhaustion in applications using Cache Components"),
+    adv("GHSA-IMG0-IMG0-IMG0", [[">= 16.0.0, < 16.3.0", "16.3.0"]], "SSRF in Image Optimization"),
+    adv("GHSA-NEW0-NEW0-NEW0", [[">= 16.0.0, < 16.3.0", "16.3.0"]], "Cache poisoning nobody wrote down"),
+  ];
+  const asked: string[] = [];
+  const judge = async (state: Record<string, unknown>): Promise<Classification> => {
+    const inc = (state.incoming as { summary: string }).summary;
+    asked.push(inc);
+    const cands = state.candidates as Record<string, { subject: string }>;
+    const answers = Object.fromEntries(
+      Object.entries(cands).map(([k, c]) => {
+        const y = inc.startsWith("SSRF") && c.subject === "image" ? 0.9 : 0.1;
+        return [`same_${k}`, { choice: y > 0.5 ? "yes" : "no", confidence: 0.9, probabilities: { yes: y, no: 1 - y } }];
+      }),
+    );
+    return { classifier: "jev", model: "jev-1.13.0", answers };
+  };
+  const holders = (s: TechStore, id: string) => Object.values(s.records).filter((r) => r.status === "active" && r.advisories?.some((a) => a.id === id)).map((r) => r.id);
+
+  test("first pass: every advisory gets a record at once and nothing is judged; the notes, once read, take them over", async () => {
+    writeAtomic(join(process.env.UNSTALE_CENTRAL_DIR!, "releases", "next", "16.2.5.md"), BODY);
+    const s: TechStore = { technology: "next", ingested: {}, records: {} };
+    const unread = new Set(releases.map((r) => r.version));
+    const first = await attachAdvisories(t, s, advisories, releases, async () => {
+      throw new Error("no model call before the notes are read");
+    }, undefined, undefined, unread);
+    expect(first).toMatchObject({ inWindow: 3, judged: 0, created: 3, early: 3 });
+    for (const a of advisories) expect(holders(s, a.id)).toHaveLength(1);
+    const early = Object.values(s.records);
+    expect(early.every((r) => r.change_type === "security" && r.evidence.every((e) => e.kind === "advisory"))).toBe(true);
+    // Rerun before the notes are read: unchanged, still no model call.
+    const snap = JSON.stringify(s);
+    await attachAdvisories(t, s, advisories, releases, async () => {
+      throw new Error("no model call");
+    }, undefined, undefined, unread);
+    expect(JSON.stringify(s)).toBe(snap);
+
+    // The history lands: one record names GHSA-MG66 in 16.2.5's notes, another is the SSRF fix (no id), nothing
+    // describes the third.
+    s.records["next:cache-components"] = record("next:cache-components", "16.2.5", "Denial of Service via connection exhaustion in applications using Cache Components");
+    s.records["next:image"] = record("next:image", "16.3.0", "Fixed an SSRF in the image optimizer", { change_type: "fix", benefit: ["correctness"] });
+    const later = await attachAdvisories(t, s, advisories, releases, judge);
+    // Named by id: merged with no model call; judged once each for the other two, as the stage would have after history.
+    expect(asked.filter((x) => x.startsWith("Denial"))).toEqual([]);
+    expect(asked).toEqual(["SSRF in Image Optimization", "Cache poisoning nobody wrote down"]);
+    expect(later.standIns.map((x) => [x.advisory, x.into])).toEqual([
+      ["GHSA-MG66-MRH9-M8JX", "next:cache-components"],
+      ["GHSA-IMG0-IMG0-IMG0", "next:image"],
+    ]);
+    expect(later.settled).toBe(1);
+    expect(holders(s, "GHSA-MG66-MRH9-M8JX")).toEqual(["next:cache-components"]);
+    expect(holders(s, "GHSA-IMG0-IMG0-IMG0")).toEqual(["next:image"]);
+    const kept = holders(s, "GHSA-NEW0-NEW0-NEW0");
+    expect(kept).toHaveLength(1);
+    expect(basisOf(s.records[kept[0]!]!, "GHSA-NEW0-NEW0-NEW0")).toBe("created");
+    expect(basisOf(s.records["next:image"]!, "GHSA-IMG0-IMG0-IMG0")).toBe("judged");
+    expect(s.records["next:image"]!.benefit).toContain("security");
+    // Merged records keep their history, and their advisory evidence went with them.
+    expect(Object.values(s.records).filter((r) => r.status === "merged")).toHaveLength(2);
+    expect(s.records["next:image"]!.evidence.some((e) => e.kind === "advisory")).toBe(true);
+    // Settled: a rerun asks nothing and changes nothing.
+    const n = asked.length;
+    const settled = JSON.stringify(s);
+    await attachAdvisories(t, s, advisories, releases, judge);
+    expect(asked.length).toBe(n);
+    expect(JSON.stringify(s)).toBe(settled);
+  });
+
+  test("history read in part: only the read releases are judged; an advisory fixed in an unread one waits", async () => {
+    const s: TechStore = { technology: "next", ingested: {}, records: {} };
+    s.records["next:image"] = record("next:image", "16.3.0", "Fixed an SSRF in the image optimizer", { change_type: "fix", benefit: ["correctness"] });
+    asked.length = 0;
+    const r = await attachAdvisories(t, s, advisories, releases, judge, undefined, undefined, new Set(["16.2.5"]));
+    // 16.3.0 is read: judged there; 16.2.5 is not: its advisory is a record of its own, unjudged.
+    expect(asked).toEqual(["SSRF in Image Optimization", "Cache poisoning nobody wrote down"]);
+    expect(r).toMatchObject({ created: 2, early: 1 });
+    const mg = holders(s, "GHSA-MG66-MRH9-M8JX");
+    expect(basisOf(s.records[mg[0]!]!, "GHSA-MG66-MRH9-M8JX")).toBe("early");
+    expect(basisOf(s.records[holders(s, "GHSA-NEW0-NEW0-NEW0")[0]!]!, "GHSA-NEW0-NEW0-NEW0")).toBe("created");
+  });
+
+  test("a record made from an advisory, later named by id in the notes, merges into that record", async () => {
+    writeAtomic(join(process.env.UNSTALE_CENTRAL_DIR!, "releases", "next", "16.2.5.md"), BODY);
+    const s: TechStore = { technology: "next", ingested: {}, records: {} };
+    await attachAdvisories(t, s, advisories.slice(0, 1), releases, judge);
+    const made = holders(s, "GHSA-MG66-MRH9-M8JX");
+    expect(basisOf(s.records[made[0]!]!, "GHSA-MG66-MRH9-M8JX")).toBe("created");
+    s.records["next:cache-components"] = record("next:cache-components", "16.2.5", "Denial of Service via connection exhaustion in applications using Cache Components");
+    const r = await attachAdvisories(t, s, advisories.slice(0, 1), releases, judge);
+    expect(r.standIns).toEqual([{ advisory: "GHSA-MG66-MRH9-M8JX", from: made[0], into: "next:cache-components" }]);
+    expect(holders(s, "GHSA-MG66-MRH9-M8JX")).toEqual(["next:cache-components"]);
   });
 });
 
