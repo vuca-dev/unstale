@@ -251,9 +251,20 @@ jobs:
     permissions:
       actions: write
     steps:
+      # The ingest run did not tell the gateway it was done (the next run pulls soon): if the next run cannot be
+      # started, say so now, so the gateway starts early runs again (`drain idle`'s report) instead of waiting out its
+      # 15 minutes.
       - name: Start the next run
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           REF: ${{ github.ref_name }}
-        run: gh workflow run ingest.yml --repo "$GH_REPO" --ref "$REF" -f reason=continue
+          UNSTALE_GATEWAY_URL: ${{ vars.UNSTALE_GATEWAY_URL }}
+          UNSTALE_GATEWAY_TOKEN: ${{ secrets.GATEWAY_DRAIN_TOKEN }}
+        run: |
+          gh workflow run ingest.yml --repo "$GH_REPO" --ref "$REF" -f reason=continue && exit 0
+          if [ -n "$UNSTALE_GATEWAY_URL" ]; then
+            curl -fsS --retry 3 -X POST -H "Authorization: Bearer $UNSTALE_GATEWAY_TOKEN" -H "Content-Type: application/json" \
+              -d '{"updates":[],"pulls":{"next":null}}' "${UNSTALE_GATEWAY_URL%/}/internal/progress" || true
+          fi
+          exit 1
