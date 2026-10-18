@@ -77,7 +77,8 @@ jobs:
     timeout-minutes: 345
     permissions:
       contents: write # the catalog-state draft release (read and write its assets)
-      actions: write # a run whose window ends with work left starts the next one (workflow_dispatch)
+    outputs:
+      continue: ${{ steps.cycles.outputs.continue }}
     env:
       STATE_TAG: catalog-state
       STATE_KEEP: "3"
@@ -238,3 +239,21 @@ jobs:
       - name: Usage
         if: always() && steps.restore.outcome == 'success'
         run: npm --prefix central run catalog -- usage | tail -c 4000 || true
+
+  # A run whose window ended with work left starts the next one at once. A job of its own, so the token that can start
+  # workflows (actions: write) is never in the ingest job, whose GITHUB_TOKEN falls back to the job token. The new run
+  # waits in the concurrency group until this one ends.
+  continue:
+    needs: ingest
+    if: needs.ingest.outputs.continue == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      - name: Start the next run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          REF: ${{ github.ref_name }}
+        run: gh workflow run ingest.yml --repo "$GH_REPO" --ref "$REF" -f reason=continue

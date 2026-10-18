@@ -6,8 +6,8 @@
 #          -> save state -> acknowledge what the drain took
 #
 # Cycles repeat while work is left and the run's window (RUN_MINUTES) lasts. A drain that ends because nothing more
-# can start (queue empty, or the budget spent) ends the run. A window that ends with work left starts the next run
-# at once (`reason: continue`) instead of waiting for the schedule. Every run is the same whatever started it, so a
+# can start (queue empty, or the budget spent) ends the run. A window that ends with work left sets the step output
+# `continue=true`, and ingest.yml's `continue` job starts the next run at once instead of waiting for the schedule. Every run is the same whatever started it, so a
 # run that replaces another pending one (GitHub keeps one pending run per concurrency group) loses nothing.
 #
 # Crash safety: state and acknowledgement move in step, once a cycle. A cancelled run loses at most its current cycle,
@@ -30,8 +30,7 @@ set -euo pipefail
 : "${STATE_KEEP:=3}" "${ASSET_FILE_LIMIT:=20000}" "${PIPELINE_OK:=true}" "${DEPLOY:=true}"
 
 # The drain fetches untrusted pages; it never sees the publish secrets. Publishing never sees the model keys. Neither
-# sees GH_TOKEN (the job's token, with write access to the state release and Actions): only this script's own state
-# save and continuation dispatch use it.
+# sees GH_TOKEN (the job's token, with write access to the state release): only this script's state save uses it.
 drain_env=(env -u GH_TOKEN -u SECRET_SIGNING_KEY -u SECRET_CLOUDFLARE_API_TOKEN -u SECRET_CLOUDFLARE_ACCOUNT_ID)
 publish_env=(env -u GH_TOKEN -u SECRET_SIGNING_KEY -u SECRET_CLOUDFLARE_API_TOKEN -u SECRET_CLOUDFLARE_ACCOUNT_ID -u JEV_API_KEY -u AI_GATEWAY_API_KEY -u GITHUB_TOKEN -u UNSTALE_GATEWAY_TOKEN)
 
@@ -160,7 +159,6 @@ while :; do
 done
 
 if [ "$continuing" = true ]; then
-  log "work left at the end of the window: starting the next run"
-  # A failed handoff fails the step (visible), and the exit trap still tells the gateway this run is done.
-  gh workflow run ingest.yml --repo "$GH_REPO" --ref "$GITHUB_REF_NAME" -f reason=continue || { continuing=false; exit 1; }
+  log "work left at the end of the window: the next run starts at once (the workflow's continue job)"
+  echo "continue=true" >> "$GITHUB_OUTPUT"
 fi
