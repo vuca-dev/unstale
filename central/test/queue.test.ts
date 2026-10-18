@@ -320,6 +320,10 @@ test("one repository and release stream is one technology: a second package join
     expect(core.siblings).toEqual(["pkg:npm/addon"]);
     expect(core.demand).toBe(2);
     expect(synth).toHaveBeenCalledTimes(3); // nothing extracted twice
+    // Its public status carries the technology's counters, not its own zeros (which a client would read as a gap).
+    const status = service.statuses().find((s) => s.purl === "pkg:npm/addon")!;
+    expect([status.records, status.releases_total]).toEqual([core.records, core.releases_total]);
+    expect(core.releases_total).toBe(3);
     // A vote for the joined package counts for its technology.
     service.register("pkg:npm/addon", "198.51.100.3");
     expect(core.demand).toBe(3);

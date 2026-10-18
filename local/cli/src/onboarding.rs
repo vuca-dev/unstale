@@ -1261,7 +1261,25 @@ fn display_text(value: &str) -> String {
         .map(|c| if c.is_control() { ' ' } else { c })
         .collect()
 }
+/// Why a settled job covers nothing: `monitoring` with no release found in its official sources, or with no record
+/// from what was found. Such a job is a source gap, never coverage: its zero documented changes would otherwise read as
+/// all-clear. The reasons are fixed text (no upstream or repository detail), so they may go into the public draft.
+fn empty_monitoring(job: &Job) -> Option<&'static str> {
+    if job.state != "monitoring" { return None; }
+    if job.releases_total == 0 && job.records == 0 { return Some("no release notes or records found in its official sources"); }
+    if job.releases_total == 0 { return Some("no release notes found in its official sources; records come from documentation only"); }
+    if job.records == 0 { return Some("release notes found, but no records were extracted from them"); }
+    None
+}
+/// A source gap: blocked, failed, or monitored with nothing covered (`empty_monitoring`).
+fn is_source_gap(job: &Job) -> bool { matches!(job.state.as_str(), "blocked" | "failed") || empty_monitoring(job).is_some() }
 fn coverage_line(job: &Job) -> String {
+    if let Some(why) = empty_monitoring(job) {
+        let mut line = format!("{} · Source gap: monitored, but {why} · {} published records", display_text(&job.name), job.records);
+        if job.releases_total > 0 { line += &format!(" · releases {}/{}", job.releases_done, job.releases_total); }
+        if !job.updated.is_empty() { line += &format!(" · last update {}", display_text(&job.updated)); }
+        return line;
+    }
     let status = match job.state.as_str() {
         "queued" => "Queued for shared processing; analysis has not completed",
         "discovering" => "Discovering official sources",
@@ -1348,14 +1366,12 @@ struct Brief {
 #[cfg(test)]
 fn coverage_counts(pending: &Pending) -> String {
     let jobs: BTreeMap<_, _> = pending.jobs.values().map(|j| (&j.technology, j)).collect();
-    let usable = jobs.values().filter(|j| j.records > 0).count();
+    let usable = jobs.values().filter(|j| j.records > 0 && !is_source_gap(j)).count();
     let waiting = jobs.values().filter(|j| j.records == 0 && !matches!(j.state.as_str(), "monitoring" | "blocked" | "failed")).count();
-    let attention = jobs.values().filter(|j| matches!(j.state.as_str(), "failed" | "blocked")).count();
-    let checked_empty = jobs.values().filter(|j| j.records == 0 && j.state == "monitoring").count();
+    let attention = jobs.values().filter(|j| is_source_gap(j)).count();
     let mut parts = vec![];
     if usable > 0 { parts.push(format!("{usable} with published changes")); }
     if waiting > 0 { parts.push(format!("{waiting} awaiting first results")); }
-    if checked_empty > 0 { parts.push(format!("{checked_empty} checked, no published changes")); }
     if attention > 0 { parts.push(format!("{attention} source {}", if attention == 1 { "gap" } else { "gaps" })); }
 
     if !pending.unsubmitted.is_empty() {
@@ -1368,10 +1384,18 @@ fn coverage_counts(pending: &Pending) -> String {
     }
 }
 fn source_gap_draft(pending: &Pending) -> Option<String> {
-    let gaps: BTreeSet<_> = pending.jobs.values().filter(|j| j.state == "blocked").map(|j| display_text(&j.purl)).collect();
+    // Only the public identity and a fixed reason: a blocked job's stage can carry upstream diagnostics.
+    let gaps: BTreeMap<_, _> = pending
+        .jobs
+        .values()
+        .filter_map(|j| match j.state.as_str() {
+            "blocked" => Some((display_text(&j.purl), "coverage blocked")),
+            _ => empty_monitoring(j).map(|why| (display_text(&j.purl), why)),
+        })
+        .collect();
     if gaps.is_empty() { return None; }
     let mut draft = String::from("# Official source coverage gaps\n\nPlease investigate official release/documentation sources for these public package identities. No repository identity, paths, installed versions or application code are included. Generated locally; no issue has been submitted.\n\n");
-    for purl in gaps { draft += &format!("- {purl}\n"); }
+    for (purl, why) in gaps { draft += &format!("- {purl}: {why}\n"); }
     Some(draft)
 }
 fn technology_count(n: usize) -> String { format!("{n} {}", if n == 1 { "technology" } else { "technologies" }) }
@@ -1381,7 +1405,7 @@ fn coverage_footer(pending: &Pending) -> Option<String> {
     let jobs: BTreeMap<_, _> = pending.jobs.values().map(|j| (&j.technology, j)).collect();
     let settled = |j: &&Job| matches!(j.state.as_str(), "monitoring" | "blocked" | "failed");
     let growing = jobs.values().filter(|j| !settled(j)).count();
-    let gaps = jobs.values().filter(|j| matches!(j.state.as_str(), "blocked" | "failed")).count();
+    let gaps = jobs.values().filter(|j| is_source_gap(j)).count();
     let mut parts = vec![];
     if jobs.is_empty() { parts.push("no shared coverage acknowledged yet".to_string()); }
     if growing > 0 { parts.push(format!("{} still gaining history", technology_count(growing))); }
@@ -1485,8 +1509,10 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
             }
         }
         let versions = if versions.is_empty() { "version unknown".to_string() } else { versions.into_iter().collect::<Vec<_>>().join(", ") };
+        // Zero documented changes from a technology whose sources yielded nothing is a gap, not an all-clear.
+        let gap = if pending.jobs.values().any(|j| j.technology == *tech && empty_monitoring(j).is_some()) { " · source gap: its official sources gave no records (see coverage details)" } else { "" };
         catalog_scope += &format!(
-            "  {} {} · {} documented changes in the synced catalog\n",
+            "  {} {} · {} documented changes in the synced catalog{gap}\n",
             friendly(tech, pending),
             versions,
             relevant.len()
@@ -2735,8 +2761,35 @@ mod tests {
                 && line.contains("0 published records")
         );
         assert!(coverage_line(&job("new-server-state")).contains("completeness unknown"));
-        assert!(coverage_line(&job("monitoring")).contains("checked scope"));
+        let covered = Job { records: 5, releases_done: 3, releases_total: 3, ..job("monitoring") };
+        assert!(coverage_line(&covered).contains("checked scope"));
         assert!(coverage_line(&job("blocked")).contains("incomplete"));
+    }
+    #[test]
+    fn monitoring_with_no_releases_or_no_records_is_a_source_gap_never_coverage() {
+        // As the A/B runs saw them (17 October 2026): react-router-dom, puppeteer, qs and markdown-it monitored with 0
+        // releases and 0 records; typescript with 3 of 3 releases and 0 records.
+        let none = Job { purl: "pkg:npm/qs".into(), technology: "qs".into(), name: "qs".into(), ..job("monitoring") };
+        let unextracted = Job { purl: "pkg:npm/typescript".into(), technology: "typescript".into(), name: "typescript".into(), releases_done: 3, releases_total: 3, ..job("monitoring") };
+        let docs_only = Job { purl: "pkg:npm/d".into(), technology: "d".into(), name: "d".into(), records: 4, ..job("monitoring") };
+        let covered = Job { purl: "pkg:npm/vite".into(), technology: "vite".into(), name: "vite".into(), records: 44, releases_done: 57, releases_total: 57, ..job("monitoring") };
+        for (j, why) in [(&none, "no release notes or records"), (&unextracted, "no records were extracted"), (&docs_only, "documentation only")] {
+            let line = coverage_line(j);
+            assert!(line.contains("Source gap") && line.contains(why) && !line.contains("Monitoring active"), "{line}");
+        }
+        assert!(coverage_line(&covered).contains("Monitoring active"));
+        let mut pending = Pending::default();
+        for j in [&none, &unextracted, &docs_only, &covered] { pending.jobs.insert(j.purl.clone(), j.clone()); }
+        let counts = coverage_counts(&pending);
+        assert!(counts.contains("1 with published changes") && counts.contains("3 source gaps") && !counts.contains("checked, no published"), "{counts}");
+        assert_eq!(coverage_footer(&pending).unwrap(), "Coverage · 3 source gaps. details in the report.");
+        let draft = source_gap_draft(&pending).unwrap();
+        assert!(draft.contains("- pkg:npm/qs: no release notes or records found"), "{draft}");
+        assert!(draft.contains("- pkg:npm/typescript: release notes found, but no records"), "{draft}");
+        assert!(!draft.contains("pkg:npm/vite"), "{draft}");
+        let mut only_covered = Pending::default();
+        only_covered.jobs.insert("v".into(), covered);
+        assert_eq!(source_gap_draft(&only_covered), None);
     }
     #[test]
     fn a_limited_registration_is_typed_and_shown_as_queued_not_as_an_error() {
@@ -2825,7 +2878,7 @@ mod tests {
         let text = coverage_footer(&pending).unwrap();
         assert_eq!(text, "Coverage · 1 technology still gaining history; 1 source gap. unstale status later adds to this brief.");
         let mut done = Pending::default();
-        done.jobs.insert("a".into(), job("monitoring"));
+        done.jobs.insert("a".into(), Job { records: 3, releases_total: 2, releases_done: 2, ..job("monitoring") });
         assert_eq!(coverage_footer(&done), None, "nothing growing or missing: no line");
         let mut partial = job("queued");
         partial.records = 8;
