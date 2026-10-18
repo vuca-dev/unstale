@@ -11,7 +11,7 @@ use unstale_schema::ledger::Ledger;
 use crate::cache::{Catalog, Rec, TechData};
 use crate::ledgerops::{status_name, withholds};
 use crate::lines::Lines;
-use crate::stack::Stack;
+use crate::stack::{Dep, Reading, Stack, place};
 use crate::usage::{self, Hits, Repo, clean_lit};
 use crate::util::{normalize_purl, parse_version, purl_name};
 
@@ -75,6 +75,10 @@ pub struct Opp<'a> {
     /// An obligation whose structured prerequisite the project's supported range does not meet: shown anyway, with
     /// this note (raising the minimum is part of the upgrade, often the obligation itself).
     pub unmet: Option<String>,
+    /// Manifests on another release line (`stack::Reading::fits`) whose code importing the technology matches the
+    /// record's terms: those files run another version than `installed`, so they are left out of `matched` and
+    /// `files`, and named here instead.
+    pub elsewhere: Vec<String>,
 }
 
 impl Opp<'_> {
@@ -109,6 +113,75 @@ pub struct Outcome<'a> {
     pub headline: BTreeMap<String, (String, String)>,
     /// Why no technology is covered yet, when the client knows (a deferred registration); set by the caller.
     pub uncovered: Option<String>,
+    /// Where the outputs' version follows the code rather than `Dep::headline`, and code left uncited because it runs
+    /// another release line (`Choice`): for the report's version sources.
+    pub version_notes: Vec<String>,
+}
+
+/// The version the outputs use for one package, and the manifests whose code they do not describe.
+///
+/// The headline (`Dep::headline`) stands unless files import the package and none of them runs the headline's version
+/// (`Reading::runs`): then it is the headline among the manifests holding those files. A root
+/// devDependency no file imports does not set the version for code that runs another major (udecode/plate: root zod
+/// 4.1.12, every importer in apps/www on 3.25.76). Files whose manifest runs another line are not cited either way.
+struct Choice<'d> {
+    head: &'d Reading,
+    /// The headline it replaced, when the code moved it.
+    moved: Option<&'d Reading>,
+    /// Readings that do not fit `head`: their files are left out of the evidence.
+    off: Vec<&'d Reading>,
+    /// Of `off`, those whose directory holds code importing the package.
+    off_sites: Vec<&'d Reading>,
+}
+
+/// The reading whose manifest a file's import resolves to: the deepest one containing it.
+fn owner<'d>(d: &'d Dep, path: &str) -> Option<&'d Reading> {
+    d.readings.iter().filter(|r| r.contains(path)).max_by_key(|r| if r.dir == "." { 0 } else { r.dir.len() })
+}
+
+fn choose<'d>(d: &'d Dep, sites: impl FnOnce() -> Vec<String>) -> Option<Choice<'d>> {
+    let h = d.headline()?;
+    if d.readings.iter().all(|r| r.fits(&h.version)) {
+        return Some(Choice { head: h, moved: None, off: vec![], off_sites: vec![] });
+    }
+    let held: Vec<&Reading> = {
+        let mut v: Vec<&Reading> = sites().iter().filter_map(|p| owner(d, p)).collect();
+        v.sort_by(|a, b| a.dir.cmp(&b.dir));
+        v.dedup_by(|a, b| a.dir == b.dir);
+        v
+    };
+    let (head, moved) = match held.iter().any(|r| r.runs(&h.version)) || held.is_empty() {
+        true => (h, None),
+        false => (d.headline_among(|r| held.iter().any(|x| x.dir == r.dir)).unwrap_or(h), Some(h)),
+    };
+    let off: Vec<&Reading> = d.readings.iter().filter(|r| !r.fits(&head.version)).collect();
+    let off_sites = off.iter().copied().filter(|r| held.iter().any(|x| x.dir == r.dir)).collect();
+    Some(Choice { head, moved, off, off_sites })
+}
+
+/// `hits` for `lits` without the files `off` marks (indices into `Repo::paths`).
+fn hits_without<'l>(hits: &Hits, lits: impl IntoIterator<Item = &'l String>, off: &[bool], paths: &[String]) -> Hits {
+    let skip: std::collections::HashSet<&str> = paths.iter().zip(off).filter(|(_, o)| **o).map(|(p, _)| p.as_str()).collect();
+    let keep = |v: &Vec<String>| -> Vec<String> { v.iter().filter(|p| !skip.contains(p.as_str())).cloned().collect() };
+    let mut h = Hits::default();
+    for l in lits {
+        if let Some(v) = hits.usage.get(l) {
+            h.usage.insert(l.clone(), keep(v));
+        }
+        if let Some(v) = hits.whole.get(l) {
+            h.whole.insert(l.clone(), keep(v));
+        }
+        if let Some(v) = hits.ix.get(l) {
+            h.ix.insert(l.clone(), v.iter().copied().filter(|x| !off.get(*x as usize).copied().unwrap_or(false)).collect());
+        }
+        if let Some(v) = hits.tail_only.get(l) {
+            h.tail_only.insert(l.clone(), v.clone());
+        }
+        if let Some(v) = hits.by_tail.get(l) {
+            h.by_tail.insert(l.clone(), v.clone());
+        }
+    }
+    h
 }
 
 /// Manifests on one version of a package other than the one the outputs use: a workspace with its own lockfile, a
@@ -310,7 +383,86 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
         };
         // Only files that can use this technology evidence it, and a plain word only where it is named (`usage::Scope`).
         let ecosystem = comps.iter().find_map(|c| c.strip_prefix("pkg:").and_then(|r| r.split('/').next())).unwrap_or("npm").to_string();
-        let scope = usage::Scope::new(&ecosystem, &owners, comps, tl.usage.iter().chain(&tl.whole), &hits, &inp.repo.paths);
+        let scope_lits = || tl.usage.iter().chain(&tl.whole);
+        let all = usage::Scope::new(&ecosystem, &owners, comps, scope_lits(), &hits, &inp.repo.paths);
+        // Per package: the version the outputs use, from the code that imports it (`Choice`).
+        let choices: BTreeMap<&String, Choice> = present
+            .iter()
+            .filter_map(|c| {
+                let d = inp.stack.deps.get(*c)?;
+                let sites = || {
+                    let mut v: Vec<String> = usage::naming_lits(c)
+                        .iter()
+                        .flat_map(|l| hits.usage.get(l).into_iter().flatten())
+                        .filter(|p| all.file(p) == Some(true))
+                        .cloned()
+                        .collect();
+                    v.sort();
+                    v.dedup();
+                    v
+                };
+                choose(d, sites).map(|ch| (*c, ch))
+            })
+            .collect();
+        // Files whose manifest runs another release line than the outputs' version, by path index: which of
+        // `off_labels` (the manifest, the package and its version) they belong to. Left out of the evidence.
+        let mut off_labels: Vec<String> = vec![];
+        let mut off_at: Vec<Option<u16>> = vec![];
+        for (c, ch) in choices.iter().filter(|(_, ch)| !ch.off.is_empty()) {
+            let d = &inp.stack.deps[*c];
+            off_at.resize(inp.repo.paths.len(), None);
+            for (i, p) in inp.repo.paths.iter().enumerate() {
+                if off_at[i].is_some() {
+                    continue;
+                }
+                let Some(r) = owner(d, p).filter(|r| ch.off.iter().any(|o| o.dir == r.dir)) else { continue };
+                let label = format!("{} ({} {})", place(&r.dir), d.name, r.version);
+                let k = off_labels.iter().position(|l| *l == label).unwrap_or_else(|| {
+                    off_labels.push(label);
+                    off_labels.len() - 1
+                });
+                off_at[i] = Some(k as u16);
+            }
+        }
+        let filtered: Option<Hits> = off_at.iter().any(Option::is_some).then(|| {
+            let naming: BTreeSet<String> = comps.iter().flat_map(|c| usage::naming_lits(c)).collect();
+            let lits: BTreeSet<&String> = scope_lits().chain(&naming).collect();
+            let off: Vec<bool> = off_at.iter().map(Option::is_some).collect();
+            hits_without(&hits, lits, &off, &inp.repo.paths)
+        });
+        // The hits the outputs cite: the files on the outputs' release lines.
+        let th: &Hits = filtered.as_ref().unwrap_or(&hits);
+        let on_line;
+        let scope = match &filtered {
+            Some(f) => {
+                on_line = usage::Scope::new(&ecosystem, &owners, comps, scope_lits(), f, &inp.repo.paths);
+                &on_line
+            }
+            None => &all,
+        };
+        // Per literal, the manifests on another line whose code importing the technology it matches (`Opp::elsewhere`).
+        let elsewhere: RefCell<HashMap<String, Rc<BTreeSet<u16>>>> = RefCell::default();
+        let elsewhere_of = |l: &str| -> Rc<BTreeSet<u16>> {
+            if let Some(e) = elsewhere.borrow().get(l) {
+                return e.clone();
+            }
+            let e: BTreeSet<u16> = if off_labels.is_empty() {
+                BTreeSet::new()
+            } else {
+                hits.ix
+                    .get(l)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|x| {
+                        let k = off_at[*x as usize]?;
+                        all.file(&inp.repo.paths[*x as usize]).filter(|about| *about).map(|_| k)
+                    })
+                    .collect()
+            };
+            let e = Rc::new(e);
+            elsewhere.borrow_mut().insert(l.to_string(), e.clone());
+            e
+        };
         let nested = owners.iter().any(|o| *o != ".");
         // Each literal's evidence once per technology, however many records share it.
         let evidence: RefCell<HashMap<String, Rc<usage::Evidence>>> = RefCell::default();
@@ -350,19 +502,40 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             if let Some(a) = applied.borrow().get(x) {
                 return *a;
             }
-            let a = hits.whole.get(x).into_iter().flatten().any(|p| scope.counts(x, p) && usage::counts_as_applied(role(p), p));
+            let a = th.whole.get(x).into_iter().flatten().any(|p| scope.counts(x, p) && usage::counts_as_applied(role(p), p));
             applied.borrow_mut().insert(x.to_string(), a);
             a
         };
         out.technologies.push(tech.clone());
         out.packages.insert(tech.clone(), present.iter().filter_map(|c| purl_name(c)).collect());
-        let tech_version: Option<Version> = present.iter().filter_map(|c| inp.stack.deps.get(*c).and_then(|d| d.version.clone())).min();
+        let version_of = |c: &str| -> Option<Version> {
+            choices.get(&c.to_string()).map(|ch| ch.head.version.clone()).or_else(|| inp.stack.deps.get(c).and_then(|d| d.version.clone()))
+        };
+        let tech_version: Option<Version> = present.iter().filter_map(|c| version_of(c)).min();
         let mut workspaces: Vec<Workspace> = vec![];
         for c in &present {
-            let Some(d) = inp.stack.deps.get(*c) else { continue };
-            let others = d.others();
-            if let (Some(h), false) = (d.headline(), others.is_empty()) {
+            let (Some(d), Some(ch)) = (inp.stack.deps.get(*c), choices.get(*c)) else { continue };
+            let h = ch.head;
+            let others = d.others_than(h);
+            if !others.is_empty() {
                 out.headline.insert((*c).clone(), (h.dir.clone(), h.source.clone()));
+            }
+            if let Some(m) = ch.moved {
+                out.versions.insert(normalize_purl(c), h.version.clone());
+                out.version_notes.push(format!(
+                    "{}: the reviews use {} in {} ({}), where the code that imports it is; no file importing it runs {} ({} in {}).",
+                    d.name, h.version, place(&h.dir), h.source, m.version, m.source, place(&m.dir)
+                ));
+            }
+            if !ch.off_sites.is_empty() {
+                let dirs: Vec<String> = ch.off_sites.iter().take(5).map(|r| format!("{} ({})", place(&r.dir), r.version)).collect();
+                let more = if ch.off_sites.len() > 5 { format!(" and {} more manifests", ch.off_sites.len() - 5) } else { String::new() };
+                out.version_notes.push(format!(
+                    "{}: code importing it under {}{more} runs another release line than the reviews' {}; it is not cited in them.",
+                    d.name,
+                    dirs.join(", "),
+                    h.version
+                ));
             }
             for (version, rs) in others {
                 let dirs = rs.iter().map(|r| (r.dir.clone(), r.source.clone())).collect();
@@ -410,7 +583,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             let rels: Vec<&Release> = rec.r.releases.iter().filter(|x| comps.contains(&normalize_purl(&x.component))).collect();
             let own: Vec<&Release> = rels.iter().copied().filter(|x| purls.contains(&normalize_purl(&x.component))).collect();
             let candidates = if own.is_empty() { rels } else { own };
-            let installed_for = |c: &str| inp.stack.deps.get(c).and_then(|d| d.version.clone()).or_else(|| tech_version.clone());
+            let installed_for = |c: &str| version_of(c).or_else(|| tech_version.clone());
             let Some(installed) = candidates.first().and_then(|r| installed_for(&normalize_purl(&r.component))) else {
                 let release = candidates.first().map(|r| (*r).clone());
                 if let Some(release) = release {
@@ -437,6 +610,10 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                 .filter_map(|l| Some(evidence_of(l)).filter(|e| e.used).map(|e| weight(l) * if e.app { 1.0 } else { NON_APP_WEIGHT }))
                 .sum::<f64>();
             let files = files_of(cited, cite);
+            let elsewhere: Vec<String> = {
+                let ks: BTreeSet<u16> = cited.iter().flat_map(|l| elsewhere_of(l).iter().copied().collect::<Vec<_>>()).collect();
+                ks.into_iter().map(|k| off_labels[k as usize].clone()).collect()
+            };
             // A `requires` value the change itself introduces is something the upgrade has the project add, not a
             // precondition (absent until adopted), so it never demotes the record (eval/rank/RESULTS.md, follow-up).
             let intro: BTreeSet<String> = rec.r.introduces.iter().filter_map(|x| clean_lit(x)).collect();
@@ -460,6 +637,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                 borderline_benefit: false,
                 withheld_from: None,
                 unmet: None,
+                elsewhere,
             };
             // The ledger, prerequisite and applied checks do not depend on the version: shared with `workspaces`.
             let ledger_status = || {
@@ -574,6 +752,7 @@ fn blank<'a>(rec: &'a Rec, release: Release, route: Route) -> Opp<'a> {
         borderline_benefit: false,
         withheld_from: None,
         unmet: None,
+        elsewhere: vec![],
     }
 }
 
@@ -1154,6 +1333,79 @@ mod tests {
         let lines = crate::review::digest_lines(&out);
         assert!(lines[0].starts_with("bumping next 16.1.0 → 16.2.0 in the root (pnpm-lock.yaml) picks up 1 fix"), "{lines:?}");
         assert!(lines.contains(&"  16.0.0 in .buildkite (.buildkite/package-lock.json): bumping to 16.2.0 picks up 2 fixes; 1 obligation".to_string()), "{lines:?}");
+    }
+
+    fn zod_removal() -> Catalog {
+        catalog(
+            "zod",
+            0,
+            vec![with(
+                rec("zod:properties", "pkg:npm/zod", "4.6.3"),
+                json!({"change_type":"removal","breaking":true,"terms":[["z.properties",0]]}),
+            )],
+        )
+    }
+
+    #[test]
+    fn the_version_follows_the_code_when_no_importer_runs_the_headline() {
+        // udecode/plate: the root's devDependency zod 4.1.12 is imported nowhere; apps/www locks 3.25.76 and a
+        // library pins 3.25.61, and they hold every importer. The reviews use apps/www's version, and a file under the
+        // root (on 4.x) that matches the term is not cited.
+        let c = zod_removal();
+        let mut s = stack(&[], None);
+        let mut d = crate::stack::Dep::new("zod", true);
+        d.read(".", parse_version("4.1.12"), "pnpm-lock.yaml".into());
+        d.read("apps/www", parse_version("3.25.76"), "pnpm-lock.yaml".into());
+        d.read_in("packages/udecode/lib", parse_version("3.25.61"), "library floor of 3.25.61".into(), false, Some("3.25.61"));
+        s.deps.insert(crate::util::npm_purl("zod"), d);
+        s.settle();
+        let r = repo(&[
+            ("apps/www/src/a.ts", "import { z } from 'zod'; export const A = z.properties({})"),
+            ("packages/udecode/lib/src/b.ts", "import { z } from 'zod'; export const B = z.properties({})"),
+            ("scripts/c.ts", "export const C = z.properties({})"),
+        ]);
+        let l = Ledger::default();
+        let out = run_with(&c, &s, &r, &l);
+        let o = out.opps.iter().find(|o| o.id() == "zod:properties").unwrap();
+        assert_eq!((o.installed.to_string(), &o.route), ("3.25.76".into(), &Route::UpgradeReview));
+        assert_eq!(o.files, vec!["apps/www/src/a.ts".to_string(), "packages/udecode/lib/src/b.ts".to_string()], "scripts/ resolves the root's 4.1.12");
+        assert!(o.elsewhere.is_empty(), "no file under the root imports zod: {:?}", o.elsewhere);
+        assert_eq!(out.headline["pkg:npm/zod"], ("apps/www".to_string(), "pnpm-lock.yaml".to_string()));
+        assert_eq!(out.versions["pkg:npm/zod"], Version::new(3, 25, 76));
+        assert!(out.version_notes.iter().any(|n| n.starts_with("zod: the reviews use 3.25.76 in apps/www (pnpm-lock.yaml)")), "{:?}", out.version_notes);
+        let lines = crate::review::digest_lines(&out);
+        assert!(lines.iter().any(|l| l.starts_with("  4.1.12 in the root (pnpm-lock.yaml): bumping to 4.6.3")), "{lines:?}");
+        assert!(lines.iter().any(|l| l.starts_with("  3.25.61 in packages/udecode/lib")), "{lines:?}");
+        assert!(!lines.iter().any(|l| l.starts_with("  3.25.76")), "the headline is not also a workspace line: {lines:?}");
+    }
+
+    #[test]
+    fn code_on_another_release_line_is_not_cited() {
+        // The root imports zod 4 itself, so it keeps the headline; apps/old locks 3.x and its importer is left out
+        // and named. A library whose peer range admits the root's version is written for it, so it is cited.
+        let c = zod_removal();
+        let mut s = stack(&[], None);
+        let mut d = crate::stack::Dep::new("zod", true);
+        d.read(".", parse_version("4.1.12"), "pnpm-lock.yaml".into());
+        d.read("apps/old", parse_version("3.25.76"), "pnpm-lock.yaml".into());
+        d.read_in("packages/peer", parse_version("3.0.0"), "library floor of >=3.0.0".into(), false, Some(">=3.0.0"));
+        s.deps.insert(crate::util::npm_purl("zod"), d);
+        s.settle();
+        let r = repo(&[
+            ("src/x.ts", "import { z } from 'zod'; export const X = z.properties({})"),
+            ("apps/old/src/y.ts", "import { z } from 'zod'; export const Y = z.properties({})"),
+            ("packages/peer/src/z.ts", "import { z } from 'zod'; export const Z = z.properties({})"),
+        ]);
+        let l = Ledger::default();
+        let out = run_with(&c, &s, &r, &l);
+        let o = out.opps.iter().find(|o| o.id() == "zod:properties").unwrap();
+        assert_eq!(o.installed, Version::new(4, 1, 12));
+        assert_eq!(o.files, vec!["packages/peer/src/z.ts".to_string(), "src/x.ts".to_string()]);
+        assert_eq!(o.elsewhere, vec!["apps/old (zod 3.25.76)".to_string()]);
+        assert!(!out.headline.is_empty() && out.headline["pkg:npm/zod"].0 == ".");
+        assert!(out.version_notes.iter().any(|n| n.contains("under apps/old (3.25.76) runs another release line than the reviews' 4.1.12")), "{:?}", out.version_notes);
+        let skill = crate::review::render_record_for_test(&out, "zod:properties");
+        assert!(skill.contains("- Not cited: code importing it under apps/old (zod 3.25.76), which runs another release line than installed 4.1.12"), "{skill}");
     }
 
     #[test]

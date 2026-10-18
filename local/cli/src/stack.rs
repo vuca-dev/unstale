@@ -86,6 +86,9 @@ pub struct Reading {
     /// No lockfile covers the manifest (not its own, not a workspace member or importer of one above it): a separate,
     /// unlocked project, named beside the headline but never setting it while a covered manifest declares the package.
     pub standalone: bool,
+    /// The declared range when `version` is its floor (a library's floor, an unlocked manifest): the code there is
+    /// written for the whole range, not for the floor alone. `None` for a locked version.
+    pub range: Option<String>,
 }
 
 impl Dep {
@@ -96,21 +99,22 @@ impl Dep {
     /// One manifest's version (`None` when it cannot be read: a tag, a workspace link). The headline is set by
     /// `Stack::settle` once every manifest is read; until then `source` keeps the first unreadable one's reason.
     pub fn read(&mut self, dir: &str, version: Option<Version>, source: String) {
-        self.read_in(dir, version, source, false)
+        self.read_in(dir, version, source, false, None)
     }
 
-    /// `read`, for a manifest that may be `standalone` (no lockfile covers it).
-    pub fn read_in(&mut self, dir: &str, version: Option<Version>, source: String, standalone: bool) {
+    /// `read`, for a manifest that may be `standalone` (no lockfile covers it); `range` when `version` is its floor.
+    pub fn read_in(&mut self, dir: &str, version: Option<Version>, source: String, standalone: bool, range: Option<&str>) {
         let Some(version) = version else {
             if self.source.is_empty() {
                 self.source = source;
             }
             return;
         };
+        let reading = Reading { dir: dir.to_string(), version, source, standalone, range: range.map(String::from) };
         match self.readings.iter_mut().find(|r| r.dir == dir) {
-            Some(r) if version < r.version => *r = Reading { dir: dir.to_string(), version, source, standalone },
+            Some(r) if reading.version < r.version => *r = reading,
             Some(_) => {}
-            None => self.readings.push(Reading { dir: dir.to_string(), version, source, standalone }),
+            None => self.readings.push(reading),
         }
     }
 
@@ -121,17 +125,45 @@ impl Dep {
     /// app outside the workspace globs) is a separate project: each is named beside it instead of setting the
     /// version for the whole repository.
     pub fn headline(&self) -> Option<&Reading> {
-        self.readings.iter().min_by_key(|r| (r.dir != ".", r.standalone, depth(&r.dir), &r.version, &r.dir))
+        self.headline_among(|_| true)
+    }
+
+    /// `headline`, among the readings `keep` accepts (`funnel::run`: those whose code uses the package).
+    pub fn headline_among(&self, keep: impl Fn(&Reading) -> bool) -> Option<&Reading> {
+        self.readings.iter().filter(|r| keep(r)).min_by_key(|r| (r.dir != ".", r.standalone, depth(&r.dir), &r.version, &r.dir))
     }
 
     /// Readings on another version than the headline, grouped by version (ascending), each with its directories.
     pub fn others(&self) -> Vec<(Version, Vec<&Reading>)> {
-        let Some(h) = self.headline() else { return vec![] };
+        self.headline().map(|h| self.others_than(h)).unwrap_or_default()
+    }
+
+    /// Readings on another version than `h`, grouped by version (ascending), each with its directories.
+    pub fn others_than(&self, h: &Reading) -> Vec<(Version, Vec<&Reading>)> {
         let mut by: BTreeMap<Version, Vec<&Reading>> = BTreeMap::new();
         for r in self.readings.iter().filter(|r| r.version != h.version) {
             by.entry(r.version.clone()).or_default().push(r);
         }
         by.into_iter().collect()
+    }
+}
+
+impl Reading {
+    /// Whether this manifest's code runs a version on `v`'s release line (major, or 0.minor), or is written for a range
+    /// that admits `v` (a library's peer floor `>=18` admits 19): records judged at `v` describe that code.
+    pub fn fits(&self, v: &Version) -> bool {
+        let line = |v: &Version| if v.major > 0 { (v.major, 0) } else { (0, v.minor) };
+        line(&self.version) == line(v) || self.range.as_deref().is_some_and(|r| npm_satisfies(v, r) == Some(true))
+    }
+
+    /// Whether this manifest's code runs `v` itself: its locked version, or a range that admits it.
+    pub fn runs(&self, v: &Version) -> bool {
+        self.version == *v || self.range.as_deref().is_some_and(|r| npm_satisfies(v, r) == Some(true))
+    }
+
+    /// Whether `path` (relative to the repository root) is inside this manifest's directory.
+    pub fn contains(&self, path: &str) -> bool {
+        self.dir == "." || path.strip_prefix(self.dir.as_str()).is_some_and(|rest| rest.starts_with('/'))
     }
 }
 
@@ -239,7 +271,7 @@ pub fn settle(deps: &mut BTreeMap<String, Dep>) -> Option<(usize, String)> {
     let n = differ.len();
     differ.truncate(5);
     Some((n, format!(
-        "{n} package{} on different versions across manifests: {}{}. The reviews use the root's version, else the shallowest manifest's that a lockfile covers; the bump digest names the others.",
+        "{n} package{} on different versions across manifests: {}{}. The reviews use the root's version, else the shallowest manifest's that a lockfile covers, unless no code importing the package runs that release line; the bump digest names the others.",
         if n == 1 { " is" } else { "s are" },
         differ.join("; "),
         if n > 5 { format!("; {} more", n - 5) } else { String::new() }
@@ -376,30 +408,30 @@ pub fn detect(root: &Path) -> Result<Stack> {
                 // A library's dependencies and peers are read at the declared floor, since that is what its users
                 // get; a peer range is the one that says so when it is declared. Its devDependencies reach no user:
                 // they are the repository's own tooling, read like an application's.
-                let (version, source) = if kind == Kind::Library && *field != "devDependencies" {
+                let (version, source, floor) = if kind == Kind::Library && *field != "devDependencies" {
                     let r = if *field != "peerDependencies" {
                         pj.get("peerDependencies").and_then(|p| p.get(name)).and_then(Value::as_str).unwrap_or(range)
                     } else {
                         range
                     };
                     let r_shown = if r == range { shown.clone() } else { r.to_string() };
-                    (range_floor(r), format!("library floor of {r_shown}"))
+                    (range_floor(r), format!("library floor of {r_shown}"), Some(r))
                 } else if let Some((ld, l)) = &lock
                     && let Some(v) = l.version(&importer, name, range)
                 {
                     let file = join(&rel_dir(root, ld), &l.file);
                     if let Some((other, set)) = l.replaced_by(name, range).filter(|_| !local) {
                         // Swapped for another package across the install: the locked version is the other's.
-                        (None, format!("replaced by {other} ({set})"))
+                        (None, format!("replaced by {other} ({set})"), None)
                     } else if local || npm_satisfies(&v, range) != Some(false) {
-                        (Some(v), file)
+                        (Some(v), file, None)
                     } else if let Some(set) = l.override_admitting(name, range, &v) {
                         // A root override is a declaration too: it sets the version for every workspace.
-                        (Some(v), format!("{file} ({set})"))
+                        (Some(v), format!("{file} ({set})"), None)
                     } else if *field == "peerDependencies" {
                         // A peer range says what this workspace supports; the install resolves the package for
                         // it elsewhere, so a pin outside it is what runs, not a sign of a stale lockfile.
-                        (Some(v), file)
+                        (Some(v), file, None)
                     } else {
                         // A locked version the manifest no longer admits means the lockfile is out of date: the
                         // declared range says more about what the project runs than the stale pin does.
@@ -408,12 +440,12 @@ pub fn detect(root: &Path) -> Result<Stack> {
                         if s.1.len() < 3 {
                             s.1.push(format!("{name} {v} vs {range}"));
                         }
-                        (range_floor(range), format!("floor of {shown} ({file} has {v}, outside the range)"))
+                        (range_floor(range), format!("floor of {shown} ({file} has {v}, outside the range)"), Some(range))
                     }
                 } else if let Some(file) = passed.as_ref().filter(|_| standalone) {
-                    (range_floor(range), format!("floor of {shown} (outside the {file} workspace)"))
+                    (range_floor(range), format!("floor of {shown} (outside the {file} workspace)"), Some(range))
                 } else {
-                    (range_floor(range), format!("floor of {shown} (not in a lockfile)"))
+                    (range_floor(range), format!("floor of {shown} (not in a lockfile)"), Some(range))
                 };
                 let public_name = range.strip_prefix("npm:").and_then(|r|r.rsplit_once('@').map(|(n,_)|n)).filter(|n|!n.is_empty()).unwrap_or(name);
                 let public_candidate = !local;
@@ -428,7 +460,7 @@ pub fn detect(root: &Path) -> Result<Stack> {
                 {
                     entry.pins.push(pin);
                 }
-                entry.read_in(&rel, version, source, standalone);
+                entry.read_in(&rel, version, source, standalone, floor);
             }
         }
         let floor = if standalone { &mut node_standalone } else { &mut node };
@@ -1538,6 +1570,26 @@ mod tests {
         let s = detect(d.path()).unwrap();
         assert_eq!(s.packages.len(), 3);
         assert_eq!(s.deps["pkg:npm/next"].version, Some(Version::new(15, 5, 2)));
+    }
+
+    #[test]
+    fn a_floor_reading_keeps_its_range_and_fits_the_versions_it_admits() {
+        // A library's peer range is what its code is written for: `>=18.0.0` describes code run on 19; a locked
+        // version describes only its own release line.
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "package.json", r#"{"name":"root","private":true,"workspaces":["packages/*"],"devDependencies":{"react":"^19.2.0"}}"#);
+        write(d.path(), "packages/ui/package.json", r#"{"name":"ui","version":"1.0.0","main":"i.js","peerDependencies":{"react":">=18.0.0"}}"#);
+        write(d.path(), "package-lock.json", r#"{"lockfileVersion":3,"packages":{"node_modules/react":{"version":"19.2.4"}}}"#);
+        let s = detect(d.path()).unwrap();
+        let rs = &s.deps["pkg:npm/react"].readings;
+        let root = rs.iter().find(|r| r.dir == ".").unwrap();
+        let ui = rs.iter().find(|r| r.dir == "packages/ui").unwrap();
+        assert_eq!((root.range.as_deref(), ui.range.as_deref(), ui.version.to_string()), (None, Some(">=18.0.0"), "18.0.0".into()));
+        let v19 = Version::new(19, 2, 4);
+        assert!(ui.fits(&v19) && ui.runs(&v19), "the peer range admits 19.2.4");
+        assert!(root.fits(&Version::new(19, 0, 0)) && !root.runs(&Version::new(19, 0, 0)), "same line, another version");
+        assert!(!root.fits(&Version::new(18, 3, 1)));
+        assert!(ui.contains("packages/ui/src/a.ts") && !ui.contains("packages/uikit/a.ts") && root.contains("anything.ts"));
     }
 
     #[test]

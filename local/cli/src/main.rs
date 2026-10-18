@@ -541,6 +541,9 @@ fn print_digest(w: &World, out: &Outcome) {
             println!("{l}");
         }
     }
+    for n in &out.version_notes {
+        println!("Note: {n}");
+    }
 }
 
 fn cmd_bump(ctx: &Ctx, pkg: &str) -> Result<u8> {
