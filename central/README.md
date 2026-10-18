@@ -40,6 +40,7 @@ ingested extraction is recorded, so a rerun makes no uncached calls and writes b
 | `src/pipeline/publish.ts` | Shards per technology and release line, index, root; every line validated by the generated Zod |
 | `src/pipeline/prune.ts` | Shard history (`catalog/history/<tech>.json`, outside `v1/`) and the 7-day grace-period prune |
 | `src/pipeline/export.ts` | Static export: verified copy of `v1/` with the served `components`, built aside and swapped in |
+| `src/state/` | Store snapshots for the ingest workflow: content-addressed members in segments, incremental saves, docs stores restored on first use (`npm run state -- restore\|save\|serve\|hydrate\|stats`) |
 
 ## Operator environment
 
@@ -68,6 +69,8 @@ Every variable is optional; the defaults suit a developer machine.
 | `UNSTALE_LOCK_TIMEOUT_MS` | `1200000` (20 minutes) | How long a writer waits for a technology's lock before failing |
 | `UNSTALE_BIN` | `<repo>/local/target/release/unstale` | Client binary used for `count-terms` by the rarity sample |
 | `UNSTALE_GATEWAY_URL`, `UNSTALE_GATEWAY_TOKEN` | unset | `drain`: the gateway whose held registrations are pulled and acknowledged; unset, only the saved queue is worked |
+| `UNSTALE_STATE_REMOTE` | unset | `state`: where snapshots live, `github:<owner>/<repo>#<release id>` (with `GH_TOKEN`) or `dir:<path>` |
+| `UNSTALE_STATE_SOCKET` | unset | The state server's socket: a store restored from a snapshot restores a technology's docs store through it on first use |
 
 ## Deploy
 

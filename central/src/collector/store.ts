@@ -16,8 +16,11 @@ export interface Store {
 
 export class FsStore implements Store {
   readonly root: string;
-  constructor(root: string) {
+  /** Awaited before every read and write: makes the store local first (a docs store restored on first use). */
+  private readonly ready: () => Promise<void>;
+  constructor(root: string, ready: () => Promise<void> = async () => {}) {
     this.root = root;
+    this.ready = ready;
   }
 
   #blobPath(hash: string) {
@@ -29,6 +32,7 @@ export class FsStore implements Store {
   }
 
   async putBlob(text: string): Promise<string> {
+    await this.ready();
     const hash = sha256(text);
     const path = this.#blobPath(hash);
     try {
@@ -45,11 +49,13 @@ export class FsStore implements Store {
   }
 
   async getBlob(hash: string): Promise<string> {
+    await this.ready();
     return brotliDecompressSync(await readFile(this.#blobPath(hash))).toString("utf8");
   }
 
   /** Missing state is undefined. Unreadable state is moved aside and treated as missing, so one corrupt file cannot stop a run. */
   async getState(id: string): Promise<WatchState | undefined> {
+    await this.ready();
     const path = this.#statePath(id);
     let raw: string;
     try {
@@ -67,6 +73,7 @@ export class FsStore implements Store {
   }
 
   async putState(id: string, state: WatchState): Promise<void> {
+    await this.ready();
     await mkdir(join(this.root, "state"), { recursive: true });
     await atomicWrite(this.#statePath(id), JSON.stringify(state, null, 1));
   }
