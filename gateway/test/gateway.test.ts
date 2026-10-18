@@ -393,6 +393,58 @@ test("a run reports the budget with its progress; the gateway dispatches nothing
   expect(dispatches).toHaveLength(1);
 });
 
+test("while a run pulls the queue no early run starts and none of the day's count is used; when it is done, one held back starts", () => {
+  const q = new PendingQueue(memorySql(), settings({ fastTrackPerDay: 2, fastTrackIntervalMs: 0 }));
+  q.setPulls(T + 5 * 60_000, T);
+  expect(q.pullsNext(T)).toBe(T + 5 * 60_000);
+  expect(q.request("pkg:npm/a", "198.51.100.1", false, T)).toMatchObject({ type: "queued", fastTrack: false });
+  expect(q.request("pkg:npm/b", "198.51.100.2", false, T + 60_000)).toMatchObject({ type: "queued", fastTrack: false });
+  expect(q.view("pkg:npm/a", T)).toMatchObject({ pullsNext: T + 5 * 60_000 });
+  expect(q.run("pkg:npm/a", T)).toBeUndefined();
+  // Done pulling: the one early run held back starts now, and counts.
+  expect(q.setPulls(undefined, T + 2 * 60_000)).toBe(true);
+  expect(q.pullsNext(T + 2 * 60_000)).toBeUndefined();
+  expect(q.setPulls(undefined, T + 3 * 60_000)).toBe(false);
+  expect(q.request("pkg:npm/c", "198.51.100.3", false, T + 4 * 60_000)).toMatchObject({ fastTrack: true });
+  expect(q.request("pkg:npm/d", "198.51.100.4", false, T + 5 * 60_000)).toMatchObject({ fastTrack: false }); // the day's 2 are used
+  // Nothing held back: a run done pulling starts nothing.
+  const quiet = new PendingQueue(memorySql(), settings({ fastTrackPerDay: 2, fastTrackIntervalMs: 0 }));
+  quiet.setPulls(T + 5 * 60_000, T);
+  expect(quiet.setPulls(undefined, T + 60_000)).toBe(false);
+});
+
+test("a run that stops pulling without saying so is waited for only a while; then early runs start again", () => {
+  const q = new PendingQueue(memorySql(), settings({ fastTrackPerDay: 5, fastTrackIntervalMs: 0 }));
+  q.setPulls(T, T);
+  expect(q.request("pkg:npm/a", "198.51.100.1", false, T + 14 * 60_000)).toMatchObject({ fastTrack: false });
+  expect(q.pullsNext(T + 16 * 60_000)).toBeUndefined();
+  expect(q.request("pkg:npm/b", "198.51.100.2", false, T + 16 * 60_000)).toMatchObject({ fastTrack: true });
+  // The early run that started took what was held back too: a later "done" starts no second one.
+  expect(q.setPulls(undefined, T + 17 * 60_000)).toBe(false);
+});
+
+test("a run reports its pulls with its progress: a held package names the next pull, and the run's last word starts what waited", async () => {
+  const dispatches: string[] = [];
+  vi.stubGlobal("fetch", async (url: string) => {
+    if (url.startsWith("https://api.github.com/")) dispatches.push(url);
+    return new Response(null, { status: 204 });
+  });
+  const { env: e, waits } = env({}, { FAST_TRACK_PER_DAY: "5", FAST_TRACK_INTERVAL_MINUTES: "0", GITHUB_DISPATCH_TOKEN: "t" });
+  const auth = { Authorization: "Bearer drain-secret", "Content-Type": "application/json" };
+  const progress = (body: unknown) => handle(new Request("https://unstale.example/internal/progress", { method: "POST", headers: auth, body: JSON.stringify(body) }), e);
+  for (const bad of ["soon", 5, "2026-10-18"]) expect((await progress({ updates: [], pulls: { next: bad } })).status).toBe(400);
+  const next = new Date(Date.now() + 5 * 60_000);
+  expect(await (await progress({ updates: [], pulls: { next: next.toISOString() } })).json()).toEqual({ reported: 0, dispatched: false });
+  const r = (await (await handle(post({ purl: "pkg:npm/a" }), e)).json()) as Record<string, string>;
+  expect(r.stage).toMatch(/^Queued \(position 1 of 1\); the coverage run in progress takes new requests at about \d{2}:\d{2} UTC$/);
+  expect(r.next_run).toBe(next.toISOString());
+  await Promise.all(waits);
+  expect(dispatches).toEqual([]);
+  expect(await (await progress({ updates: [], pulls: { next: null } })).json()).toEqual({ reported: 0, dispatched: true });
+  await Promise.all(waits);
+  expect(dispatches).toHaveLength(1);
+});
+
 test("a failed or unreachable dispatch leaves the package waiting for the schedule; the next scheduled run is named", async () => {
   vi.stubGlobal("fetch", async (url: string) => {
     if (url.startsWith("https://api.github.com/") && failure === "network") throw new TypeError("fetch failed");

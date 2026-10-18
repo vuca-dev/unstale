@@ -11,7 +11,9 @@
 //                               also in the answers to /internal/queue and /internal/ack, which a run prints
 //   POST /internal/progress     where a run is with the held packages it pulled (bearer DRAIN_TOKEN), so a client
 //                               that started one early can follow it until the package is published; with
-//                               `budget.spent_until`, until when central's budget is spent (no early run until then)
+//                               `budget.spent_until`, until when central's budget is spent (no early run until then);
+//                               with `pulls.next`, when the run reads the queue again (no early run while it does;
+//                               null: it is done, and an early run held back meanwhile starts)
 // Only the public identity of a package is accepted; no repository context, and no client address is stored.
 import { DurableObject } from "cloudflare:workers";
 import { packageIdentity, technologyId } from "../../central/src/onboarding/identity.ts";
@@ -69,10 +71,13 @@ export class Coverage extends DurableObject<Env> {
   view(purl: string): View | undefined {
     return this.queue.view(purl);
   }
-  /** A run's progress; `budget` (when the report carries it) replaces what the gateway knows of central's budget. */
-  report(updates: { purl: string; state: RunState; job?: Progress }[], budget?: { spentUntil?: number }): number {
+  /** A run's progress; `budget` (when the report carries it) replaces what the gateway knows of central's budget, and
+   * `pulls` what it knows of the run's pulls. A run done pulling starts the early run held back meanwhile, if any. */
+  report(updates: { purl: string; state: RunState; job?: Progress }[], budget?: { spentUntil?: number }, pulls?: { next?: number }): { reported: number; dispatched?: boolean } {
     if (budget) this.queue.setBudget(budget.spentUntil);
-    return this.queue.report(updates);
+    const start = pulls ? this.queue.setPulls(pulls.next) : false;
+    if (start) this.ctx.waitUntil(dispatch(this.env).catch(() => false));
+    return { reported: this.queue.report(updates), ...(pulls ? { dispatched: start } : {}) };
   }
   list(): Taken[] {
     return this.queue.list();
@@ -154,7 +159,9 @@ function queued(purl: string, at: View, now = Date.now()) {
   const place = `position ${at.position} of ${at.length}`;
   // While the budget is spent no run takes it, so the next run that can is the first scheduled after the reset.
   const spent = at.spentUntil !== undefined && at.spentUntil > now ? at.spentUntil : undefined;
-  const next = nextScheduled(spent ?? now);
+  // A run working the queue takes a new request at its next pull (a late pull reads as now).
+  const pulls = at.pullsNext !== undefined && !spent ? new Date(Math.max(at.pullsNext, now)) : undefined;
+  const next = pulls ?? nextScheduled(spent ?? now);
   const stage = (() => {
     switch (run?.state) {
       case "dispatched":
@@ -166,9 +173,9 @@ function queued(purl: string, at: View, now = Date.now()) {
       case "declined":
         return `Another package is ahead (${place}); waiting for the scheduled run at ${clock(next)}`;
       default:
-        return spent
-          ? `Waiting for the coverage budget, spent until ${new Date(spent).toISOString().slice(0, 10)} ${clock(new Date(spent))} (${place}); the next run that can take it is at ${clock(next)}`
-          : `Waiting for the next coverage run (${place})`;
+        if (spent)
+          return `Waiting for the coverage budget, spent until ${new Date(spent).toISOString().slice(0, 10)} ${clock(new Date(spent))} (${place}); the next run that can take it is at ${clock(next)}`;
+        return pulls !== undefined ? `Queued (${place}); the coverage run in progress takes new requests at about ${clock(pulls)}` : `Waiting for the next coverage run (${place})`;
     }
   })();
   // A job the run finished is not published until the deploy: still in progress to a client.
@@ -243,6 +250,17 @@ function budgetOf(body: unknown): { spentUntil?: number } | undefined {
   const ms = typeof until === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(until) ? Date.parse(until) : NaN;
   if (!Number.isFinite(ms)) throw new Error("Expected budget {\"spent_until\": ISO time or null}");
   return { spentUntil: ms };
+}
+
+/** The pulls a run's progress report carries: undefined when absent (unchanged), `{}` when the run pulls no more. */
+function pullsOf(body: unknown): { next?: number } | undefined {
+  const pulls = (body as { pulls?: unknown })?.pulls;
+  if (pulls === undefined) return undefined;
+  const next = (pulls as { next?: unknown })?.next;
+  if (next === null) return {};
+  const ms = typeof next === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(next) ? Date.parse(next) : NaN;
+  if (!Number.isFinite(ms)) throw new Error("Expected pulls {\"next\": ISO time or null}");
+  return { next: ms };
 }
 
 /** Constant time, so the token cannot be guessed byte by byte. */
@@ -352,8 +370,8 @@ export async function handle(request: Request, env: Env): Promise<Response> {
       }
       if (request.method === "POST" && url.pathname === "/internal/progress") {
         const body = await input(() => request.json());
-        const [updates, budget] = await input(() => [progressOf(body), budgetOf(body)] as const);
-        return json(200, { reported: await queue().report(updates, budget) });
+        const [updates, budget, pulls] = await input(() => [progressOf(body), budgetOf(body), pullsOf(body)] as const);
+        return json(200, await queue().report(updates, budget, pulls));
       }
     }
     return page(request, env, url);

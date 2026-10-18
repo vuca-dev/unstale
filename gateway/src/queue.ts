@@ -31,10 +31,13 @@
 //                        for a new state or after RUN_SAVE_MS
 //   `/internal/queue`    2N/0 → 0/0
 //   acknowledgement      about 4N/2N → at most BUCKETS + 1 each (225/115 → 39/40 for 56)
+//   a run's pulls        0/1 (`pulls_next`, each pull; `fast_held` once while it pulls; none for an unchanged value)
 // Worst case a day at the defaults, every limit reached all day:
 //   written: new 500/h × 24 × 2 = 24,000; counted votes 1,500/h × 24 = 36,000; runs' progress ≤ 100 packages worked
 //   a day (central's UNSTALE_NEW_PER_DAY) × (3 states + 150 min / 10) ≈ 1,800; acknowledgements ≤ 32 runs ×
-//   (BUCKETS + 1) ≈ 2,100; usage kept ≤ 1 a 45 s = 1,920; budget and early runs ≤ 60. About 66,000 of 100,000.
+//   (BUCKETS + 1) ≈ 2,100 (an acknowledgement per cycle since 18 October 2026: one per publish of a run, at most about
+//   one every 15 minutes, so ≤ 96 × 65 ≈ 6,200); a run's pulls ≤ 1 every 5 minutes = 288; usage kept ≤ 1 a 45 s =
+//   1,920; budget and early runs ≤ 60. About 70,000 of 100,000.
 //   read: about one per vote or new package (≈ 48,000), plus a wake at most every 70 s (an object is evicted only
 //   after that long idle) × 72 ≈ 89,000; status reads and `/internal/queue` none. About 140,000 of 5,000,000.
 // So NEW_PER_HOUR (500) and COUNTED_VOTES_PER_HOUR (1,500) bound the day: rows written ≈ 2 × NEW_PER_HOUR × 24 +
@@ -133,6 +136,8 @@ export interface View {
   typical?: number;
   /** Central's budget is spent until then (ms): no run takes a new package before it. */
   spentUntil?: number;
+  /** A run is working the queue and reads it again at about this time (ms): it takes the package then. */
+  pullsNext?: number;
 }
 
 /** A run that stopped reporting (cancelled, crashed, a failed deploy) is no longer shown. */
@@ -143,6 +148,9 @@ const RUN_UNSTARTED_MS = 6 * 3600_000;
 const RUN_DURATIONS_KEPT = 10;
 /** A run's progress in the same state is written at most this often (well inside RUN_SILENT_MS). */
 const RUN_SAVE_MS = 10 * 60_000;
+/** A run that said when it pulls next counts as pulling until this long after that time: its cycle's grace period and
+ * publish come between two pulls, and a run that stopped without saying so (cancelled, crashed) is no longer waited for. */
+export const PULLS_LATE_MS = 15 * 60_000;
 /** Rows the queue is stored in. Changing it needs a new SCHEMA whose migration re-buckets the entries. */
 export const BUCKETS = 64;
 /** The storage layout; anything older (or a new object) is migrated once. */
@@ -561,7 +569,14 @@ export class PendingQueue {
       const run = this.run(purl, now);
       const typical = this.typicalSeconds();
       const spentUntil = this.spentUntil(now);
-      return { ...at, ...(run && { run }), ...(typical !== undefined && { typical }), ...(spentUntil !== undefined && { spentUntil }) };
+      const pullsNext = this.pullsNext(now);
+      return {
+        ...at,
+        ...(run && { run }),
+        ...(typical !== undefined && { typical }),
+        ...(spentUntil !== undefined && { spentUntil }),
+        ...(pullsNext !== undefined && { pullsNext }),
+      };
     });
   }
 
@@ -688,17 +703,48 @@ export class PendingQueue {
     return Number.isFinite(until) && until > now ? until : undefined;
   }
 
+  /** What a run reports of its pulls: it reads the queue again at `next` (ms), or (undefined) no more. When it pulls no
+   * more and a new package was held back from an early run meanwhile, that run may start now (within the day's count
+   * and interval, as any early run): returns whether to dispatch it. */
+  setPulls(next: number | undefined, now = Date.now()): boolean {
+    return this.operate(
+      "report",
+      now,
+      () => {
+        this.setMeta("pulls_next", next === undefined ? undefined : String(next));
+        const start = next === undefined && this.getMeta("fast_held") !== undefined && this.fastTrack(now);
+        this.commit();
+        return start;
+      },
+      true,
+    );
+  }
+
+  /** When the run working the queue pulls next (ms), while it counts as pulling (PULLS_LATE_MS); undefined otherwise. */
+  pullsNext(now = Date.now()): number | undefined {
+    const next = Number(this.getMeta("pulls_next"));
+    return Number.isFinite(next) && next + PULLS_LATE_MS > now ? next : undefined;
+  }
+
   /** Whether a new package may start a run now: within the day's count and the interval since the last one, and not
-   * while central's budget is spent (that run would start nothing, and would use up the day's early runs). Counted in
-   * one `meta` key: "<UTC day> <runs that day> <last run ms>". */
+   * while central's budget is spent (that run would start nothing, and would use up the day's early runs). Not while a
+   * run is pulling the queue either: it takes the package within minutes, and a run started now would only wait
+   * behind it (GitHub keeps one pending run per concurrency group, so each would cancel the last). That early run is
+   * held back (`fast_held`, using none of the day's count) and starts when the pulling run says it is done, for what
+   * arrived after its last pull. Counted in one `meta` key: "<UTC day> <runs that day> <last run ms>". */
   private fastTrack(now: number): boolean {
     if (!this.settings.fastTrackPerDay || this.spentUntil(now) !== undefined) return false;
+    if (this.pullsNext(now) !== undefined) {
+      this.setMeta("fast_held", "1");
+      return false;
+    }
     const day = utcDay(now);
     const [d, c, l] = (this.getMeta("fast") ?? "").split(" ");
     const used = d === day ? Number(c) || 0 : 0;
     const last = Number(l) || 0;
     if (used >= this.settings.fastTrackPerDay || now - last < this.settings.fastTrackIntervalMs) return false;
     this.setMeta("fast", `${day} ${used + 1} ${now}`);
+    this.setMeta("fast_held", undefined);
     return true;
   }
 
