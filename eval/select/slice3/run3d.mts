@@ -38,6 +38,7 @@ const flexUsd = (u?: Usage): number => (u ? (u.input_tokens * 0.05 + u.output_to
 
 const SEED = 20261017, N = 400, REP = 150, PER_TECH = 5, SHORT = 1_000, PACK_NOTE = 2_000, PACK_MAX = 8_000, P_TECHS = 60, P_PER = 5, MODEL = "openai/gpt-6-luna";
 const CAP = Number(a.cap);
+if (!Number.isFinite(CAP) || CAP < 0) throw new Error(`--cap must be a non-negative number, got ${a.cap}`);
 let USAGE = join(OUT, "usage.jsonl");
 
 interface Chunk { key: string; tech: string; name: string; version: string; date: string; url: string; snapshot: string; notes: string; cachedExtract: string; cachedLabel?: string; cachedUsd?: number }
@@ -415,7 +416,8 @@ function scoreP(notes: Chunk[], packs: Chunk[][], others: Chunk[]) {
   const rs = [...rows.values()];
   const grounded = rs.reduce((s, r) => s + r.grounded, 0), wrong = rs.reduce((s, r) => s + r.wrong, 0);
   const fb = rs.filter((r) => r.source === "fallback").length;
-  // Notes sharing a change across release lines (a cached quote of 25+ folded characters found in another line's note).
+  // Notes sharing a change across release lines (a cached quote of 25+ folded characters found in another line's note;
+  // scan keeps only a note's first chunk, so a quote in a later chunk is not seen).
   const shared = notes.filter((c) => {
     const qs = incoming(c, c.cachedExtract, c.cachedLabel ?? null).map((r) => norm(r.quote)).filter((q) => q.length >= 25);
     return others.some((o) => o.tech === c.tech && releaseLine(o.version) !== releaseLine(c.version) && qs.some((q) => norm(o.notes).includes(q)));

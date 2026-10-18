@@ -2,8 +2,8 @@
 
 17 October 2026. Pre-registration: `PREREG.md`, "Slice 3d", arms E and P, unchanged. Runner `run3d.mts` (`run`/`score` for E,
 `run-p`/`score-p` for P).
-Setup under test: `vercel:openai/gpt-6-luna`, two calls, flex tier, reasoning `none` for both calls on chunks under
-1,000 characters, against the production store's cached `low` answers.
+Setup under test: `vercel:openai/gpt-6-luna`, two calls, flex tier. Arm E: reasoning `none` for both calls on chunks
+under 1,000 characters, against the production store's cached `low` answers. Arm P: setup below.
 
 ## Decision
 
@@ -75,7 +75,7 @@ Effort `low` (E was rejected). Every design detail below was fixed in the runner
 | Terms Jaccard no more than 5 points below the replicate's | 40.7 (483 matched) | 46.0 | **No** (−5.3) |
 | Parse failures ≤ 2% | 0 of 300 | | Yes |
 | Wrong version ≤ 1% | 1 of 502 attributed records (0.2%) | | Yes |
-| No fall on notes sharing a change across release lines | no such note in the sample | | Yes (vacuous) |
+| No fall on notes sharing a change across release lines | no such note found (other notes searched in their first chunk only) | | Yes (vacuous) |
 
 - **`[]` agreement:** 96.7%.
 - **Fallbacks:** 5 of 300 notes, for ungrounded or ambiguous quotes.
@@ -91,4 +91,4 @@ Effort `low` (E was rejected). Every design detail below was fixed in the runner
 - **Arm P:** $0.0442 provider-reported, from `out/slice3d/usage-p.jsonl` (cap $0.10); the estimate was $0.04.
 - **Gateway credit:** arm E: $3.40 before the run, $3.27 after. The balance fell $0.137, more than the run's log. The
   difference is presumably other gateway traffic in the same window; it cannot be separated here. Arm P: $3.25 before,
-$3.15 after. The balance fell $0.102, against $0.044 logged; the gap is unexplained in the same way.
+  $3.15 after. The balance fell $0.102, against $0.044 logged; the gap is unexplained in the same way.
