@@ -495,14 +495,20 @@ fn tech_lits(tech: &str, td: &TechData) -> TechLits {
             let Some(x) = usage::subpath(l) else { continue };
             let x_bare = x.trim_end_matches('/');
             let names_it = all.iter().any(|o| o == "exports" || names.iter().any(|n| o.strip_prefix(n.as_str()).and_then(|t| t.strip_prefix('/')).is_some_and(|t| t.trim_end_matches(['*', '/']) == x_bare)));
-            if names_it && !subpaths.contains_key(l) {
-                let v: Vec<String> = comps.iter().flat_map(|c| usage::subpath_lits(c, x)).collect();
-                if !v.is_empty() {
-                    subpaths.insert(l.clone(), v);
+            if names_it {
+                // `<package>/<x>` of the packages that shipped this record (all of the technology's when it names none).
+                let own: Vec<String> = r.r.releases.iter().map(|x| normalize_purl(&x.component)).filter(|c| comps.contains(c)).collect();
+                let pkgs: Vec<&String> = if own.is_empty() { comps.iter().collect() } else { own.iter().collect() };
+                let v = subpaths.entry(l.clone()).or_default();
+                for spec in pkgs.into_iter().flat_map(|c| usage::subpath_lits(c, x)) {
+                    if !v.contains(&spec) {
+                        v.push(spec);
+                    }
                 }
             }
         }
     }
+    subpaths.retain(|_, v| !v.is_empty());
     TechLits { comps, per_record, usage, whole, subpaths }
 }
 
@@ -2019,10 +2025,12 @@ mod tests {
                 with(rec("vitest:config", "pkg:npm/vitest", "5.0.0"), json!({"change_type":"new_api","benefit":["correctness"],"terms":[["./config",0],["vitest/config",0]]})),
                 // A path of the repository: matched as it is, but never in the manifest's own layout.
                 with(rec("vitest:dir", "pkg:npm/vitest", "5.0.0"), json!({"change_type":"behavior_change","terms":[["./tests",0]]})),
+                // Nor by its tail (`client`) there.
+                with(rec("vitest:tail", "pkg:npm/vitest", "5.0.0"), json!({"change_type":"behavior_change","terms":[["./tests/setup.client",0]]})),
             ],
         );
         let s = stack(&[("vitest", "4.1.0")], None);
-        let manifest = r#"{"name":"lib","main":"./tests/x.js","exports":{".":"./dist/x.js","./src/*":"./src/*"},"files":["./tests"],"devDependencies":{"vitest":"^4.1.0"}}"#;
+        let manifest = r#"{"name":"lib","main":"./tests/x.js","exports":{".":"./dist/x.js","./src/*":"./src/*"},"files":["./tests","./tests/setup.client"],"devDependencies":{"vitest":"^4.1.0"}}"#;
         let r = repo(&[
             ("package.json", manifest),
             ("tsconfig.json", r#"{"compilerOptions":{"paths":{"@/*":["./src/*"]}}}"#),
@@ -2034,6 +2042,8 @@ mod tests {
         assert!(m("vitest:src").iter().all(|(t, _)| t != "./src/*"), "{:?}", m("vitest:src"));
         assert!(m("vitest:config").iter().all(|(t, _)| t != "./config"), "a relative import is the repository's module: {:?}", m("vitest:config"));
         assert!(m("vitest:dir").is_empty(), "main and files are the package's own layout: {:?}", m("vitest:dir"));
+        let tail = out.opps.iter().find(|o| o.id() == "vitest:tail").unwrap();
+        assert!(tail.matched.is_empty() && tail.score == 0.0, "its tail does not count for the order either: {}", tail.score);
         // An import of the subpath, or a config value quoting it, is the dependency's subpath.
         // A relative path outside the manifest's own layout (a script's argument) still counts.
         let scripted = manifest.replace(r#""devDependencies""#, r#""scripts":{"t":"vitest ./tests"},"devDependencies""#);

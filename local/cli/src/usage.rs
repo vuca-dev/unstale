@@ -165,7 +165,7 @@ pub fn relative_path(lit: &str) -> bool {
 /// published files, binaries and workspaces. A relative path in them is this package's, so a dependency's literal
 /// (`./src/*` from a record about vitest's exports) never matches there.
 const OWN_LAYOUT_FIELDS: &[&str] = &[
-    "main", "module", "browser", "types", "typings", "exports", "imports", "files", "bin", "man", "directories",
+    "main", "module", "browser", "react-native", "types", "typings", "exports", "imports", "files", "bin", "man", "directories",
     "workspaces", "typesVersions", "sideEffects", "unpkg", "jsdelivr", "source", "style",
 ];
 
@@ -784,9 +784,16 @@ pub fn find_with_commands(repo: &Repo, usage_lits: &BTreeSet<String>, whole_lits
         }
         // A relative path in a manifest's own layout (`"exports": {"./src/*": …}`) is the repository's package, not a
         // dependency's: such a literal counts there only when it also occurs outside those fields.
+        // Its tail (`client` of `./src/setup.client`) does not stand in for it there either.
+        let mut own_layout: HashSet<usize> = HashSet::new();
         if path.rsplit('/').next() == Some("package.json") && bits.keys().any(|p| relative_path(&patterns[*p])) {
             let rest = without_own_layout(text);
-            bits.retain(|p, _| !relative_path(&patterns[*p]) || rest.as_ref().is_none_or(|r| r.contains(patterns[*p].as_str())));
+            own_layout = bits
+                .keys()
+                .copied()
+                .filter(|p| relative_path(&patterns[*p]) && rest.as_ref().is_some_and(|r| !r.contains(patterns[*p].as_str())))
+                .collect();
+            bits.retain(|p, _| !own_layout.contains(p));
         }
         let (mut usage, mut whole, mut tail): (Vec<usize>, Vec<usize>, Vec<(usize, bool)>) = (vec![], vec![], vec![]);
         if bits.is_empty() {
@@ -798,6 +805,9 @@ pub fn find_with_commands(repo: &Repo, usage_lits: &BTreeSet<String>, whole_lits
         cand.dedup();
         for i in cand {
             let (_, p, t, word_lit) = usage_ix[i];
+            if own_layout.contains(&p) {
+                continue;
+            }
             let full = if word_lit { has(p, TOKEN) } else { has(p, ANY) };
             let by_tail = !word_lit && !full && t.is_some_and(|t| has(t, TOKEN));
             if full || by_tail {

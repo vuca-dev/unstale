@@ -1341,7 +1341,8 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
     let unlocks = unlocked(&out);
     let mut upgrade_ranking = vec![];
     for (technology, indices) in &out.digest {
-        let references = indices.iter().filter(|&&index| out.opps[index].matched.iter().any(|(term, _)| specific_reference(term, &w.stack))).count();
+        // References of records that are a reason to upgrade: not those of an advisory the bump does not fix.
+        let references = indices.iter().filter(|&&index| review::security_reason(&out, &out.opps[index]) && out.opps[index].matched.iter().any(|(term, _)| specific_reference(term, &w.stack))).count();
         let obligations = out.upgrade.iter().filter(|&&index| out.opps[index].rec.r.technology == *technology).count();
         let advisories = fixes.get(technology).map_or(0, Vec::len);
         if references == 0 && obligations == 0 && advisories == 0 { continue; }
@@ -1366,12 +1367,14 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
         text += "\n## Upgrades and their impact\n\nGrouped by technology and version range. Counts describe upstream changes; review obligations are checks, not confirmed breakages in your code.\n\n";
         text += &evidence_block(&digest.join("\n"));
     }
-    for (technology, indices) in &out.digest {
+    for (technology, all) in &out.digest {
         // As in the digest: a security record whose advisories never affected the installed version (or still affect
-        // the target) is no reason to upgrade, so it is not shown as one.
-        let indices: Vec<usize> = indices.iter().copied().filter(|&i| review::security_reason(&out, &out.opps[i])).collect();
-        if indices.is_empty() { continue; }
-        let first = &out.opps[indices[0]];
+        // the target) is no reason to upgrade, so it is not shown as one. The capabilities it unlocks still are.
+        let indices: Vec<usize> = all.iter().copied().filter(|&i| review::security_reason(&out, &out.opps[i])).collect();
+        let caps = unlocks.get(technology).filter(|c| !c.is_empty());
+        let Some(&head) = all.first() else { continue };
+        if indices.is_empty() && caps.is_none() { continue; }
+        let first = &out.opps[head];
         text += &format!("\n### {}\n\n", display_text(&friendly(technology, pending)));
         let mut detail = format!("Installed {} → target {}\n", first.installed, first.target);
         for index in indices.iter().take(4) {
@@ -1383,7 +1386,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
             if let Some(evidence) = o.rec.r.evidence.first() { detail += &format!("  Source: {} · record {}\n", evidence.url, o.id()); }
         }
         if indices.len() > 4 { detail += &format!("{} further records are in the prepared review context.\n", indices.len() - 4); }
-        if let Some(caps) = unlocks.get(technology).filter(|c| !c.is_empty()) {
+        if let Some(caps) = caps {
             detail += &format!("Capabilities this upgrade unlocks ({}; optional, weigh against the obligations above, not a reason on their own):\n", caps.len());
             for index in caps.iter().take(5) {
                 let o = &out.opps[*index];
