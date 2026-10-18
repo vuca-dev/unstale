@@ -101,27 +101,30 @@ export async function runTechnology(
   const failedCalls = extracted.reduce((s, e) => s + e.failed, 0);
   console.log(`${t.id}: ${incoming.length} records extracted and labelled${failedCalls ? `, ${failedCalls} failed calls` : ""}`);
 
-  const questions = labelQuestions();
-  const labels: Labels[] = await pool(incoming, 4, async (inc) => interpret(await cls.classify(recordState(t.name, inc), questions)));
-  console.log(`${t.id}: classified`);
+  const order = [...incoming].sort(
+    (a, b) => a.date.localeCompare(b.date) || compareVersions(a.version, b.version) || a.key.localeCompare(b.key, "en", { numeric: true }),
+  );
+  const label = (inc: Incoming) => cls.classify(recordState(t.name, inc), labelQuestions()).then(interpret);
+  // Only records the ingest loop will take are labelled: an ingested key is skipped there and its labels discarded. The
+  // store read here (outside the lock) is a guess; the loop labels any record it takes that was not labelled here.
+  const labels = await labelPending(order, loadStore(t.id).ingested, label);
+  console.log(`${t.id}: classified ${labels.size} of ${incoming.length} (the rest are ingested)`);
 
   // From loading the store to publishing it, this process is the technology's only writer (lock.ts).
   return withTechLock(t.id, "pipeline", async () => {
     const store = loadStore(t.id);
     // Release lines derived from the release index (lines.ts), before anything combines releases.
     if (!opts.limit) store.releaseIndex = buildIndex(fetched.notes);
-    const order = incoming
-      .map((inc, i) => ({ inc, lab: labels[i]! }))
-      .sort((a, b) => a.inc.date.localeCompare(b.inc.date) || compareVersions(a.inc.version, b.inc.version) || a.inc.key.localeCompare(b.inc.key, "en", { numeric: true }));
     // Prerequisite names of records not yet ingested are checked against the npm registry (one cached GET per name).
-    const fresh = order.filter((o) => !store.ingested[o.inc.key]).map((o) => o.inc as Incoming & { registry?: string });
+    const fresh = order.filter((inc) => !store.ingested[inc.key]) as Array<Incoming & { registry?: string }>;
     const movedToConditions = opts.registry === false ? 0 : await checkIncoming(fresh);
     let ingestedNow = 0;
     let matched = 0;
     const guardBlocked = { breaking: 0, advisory: 0, quote: 0, cross: 0, lineage: 0 };
     let relatedLinks = 0;
-    for (const { inc, lab } of order) {
+    for (const inc of order) {
       if (store.ingested[inc.key]) continue;
+      const lab = labels.get(inc) ?? (await label(inc));
       const o = await ingest(store, t.name, t.components, inc, lab, (s, q) => cls.classify(s, q));
       const reg = (inc as Incoming & { registry?: string }).registry;
       if (reg) {
@@ -198,6 +201,17 @@ export async function runTechnology(
     }
     return report;
   });
+}
+
+/**
+ * Labels the records an ingest in this order will take: the first of each key not in `ingested` (ingest records every
+ * key it takes, so a later record with the same key is skipped too). Labels of any other record would be discarded.
+ */
+export async function labelPending(order: Incoming[], ingested: Record<string, string>, label: (inc: Incoming) => Promise<Labels>): Promise<Map<Incoming, Labels>> {
+  const seen = new Set(Object.keys(ingested));
+  const todo = order.filter((inc) => !seen.has(inc.key) && !!seen.add(inc.key));
+  const out = await pool(todo, 4, label);
+  return new Map(todo.map((inc, i) => [inc, out[i]!]));
 }
 
 export function technologies(filter?: string): Technology[] {
