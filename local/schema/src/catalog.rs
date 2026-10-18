@@ -304,6 +304,12 @@ pub struct TechIndex {
     /// October 2026: the edge then uses the old rule (major, or 0.minor).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub releases: Vec<IndexRelease>,
+    /// The technology's own packages (package URLs), as the coverage service describes the technology. A record whose
+    /// releases name only other packages (published from the same repository, under a release-notes heading naming
+    /// them) applies only where the repository uses one of those. Absent (older catalogs, technologies without a
+    /// descriptor): every package a record names counts as the technology's.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub components: Vec<String>,
 }
 
 /// One release of a technology's release index (`TechIndex::releases`).

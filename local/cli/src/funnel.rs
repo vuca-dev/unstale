@@ -48,8 +48,15 @@ pub enum Route {
     AlreadyIncluded,
     /// Released after the review's target version.
     BeyondTarget,
+    /// Released only on lines below the installed version (a backport to an older maintenance line, published after
+    /// the installed version): the installed line never receives that release, so it is in no upgrade from here. When
+    /// the change also shipped on a newer line, that release (merged into the record, or a record of its own) carries it.
+    OlderLine,
     /// The project's version for the component cannot be read (a tag, a workspace link).
     VersionUnknown,
+    /// About other packages published from the technology's repository (`TechIndex::components` names the
+    /// technology's own), none of which the repository uses: React Server Components items for a client-only app.
+    OtherPackage,
 }
 
 #[derive(Debug, Clone)]
@@ -254,28 +261,50 @@ fn line_of(v: &Version) -> String {
     if v.major > 0 { v.major.to_string() } else { format!("0.{}", v.minor) }
 }
 
-/// The release that decides availability for a project at `installed`: the one on the installed line; otherwise
-/// the newest on an older line (it carried forward); otherwise the oldest on a newer line.
-/// The release that decides availability at `installed` and whether it is in `installed` and beyond `target`: by
-/// release line from the tech index (lines.rs), the old rule (`pick_release`) where that cannot decide.
-fn availability<'r>(lines: &Lines, candidates: &[&'r Release], installed: &Version, target: &Version, picked: (&'r Release, &Version)) -> (&'r Release, bool, bool) {
+/// Whether a record is in the installed version, in an upgrade from it, or in neither (`Avail`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Avail {
+    Installed,
+    /// In the window: installed < release <= target.
+    Upgrade,
+    BeyondTarget,
+    /// Only in releases at or below the installed version on older lines, which the installed line does not get.
+    OlderLine,
+}
+
+/// The release that decides availability at `installed`, and where that leaves the record: by release line from the
+/// tech index (lines.rs), the old rule (`pick_release`) where that cannot decide. An upgrade picks up a change only
+/// through a release above the installed version: a release semver-below it (a backport to an older line, whatever its
+/// date) is never in the upgrade range, so the target is asked about the record's releases above `installed` only.
+fn availability<'r>(lines: &Lines, candidates: &[&'r Release], installed: &Version, target: &Version, picked: (&'r Release, &Version)) -> (&'r Release, Avail) {
     let (picked, rv) = picked;
     match lines.has(candidates, &installed.to_string()) {
-        Some(Some(r)) => (r, true, false),
-        Some(None) => match lines.has(candidates, &target.to_string()) {
-            Some(Some(r)) => (r, false, false),
-            Some(None) => (picked, false, true),
-            None => (picked, false, rv > target),
-        },
-        None => (picked, rv <= installed, rv > target),
+        Some(Some(r)) => (r, Avail::Installed),
+        Some(None) => {
+            let above: Vec<&'r Release> = candidates.iter().copied().filter(|r| parse_version(&r.version).is_none_or(|v| v > *installed)).collect();
+            if above.is_empty() {
+                return (picked, Avail::OlderLine);
+            }
+            let first = above.iter().copied().min_by_key(|r| parse_version(&r.version)).unwrap_or(picked);
+            match lines.has(&above, &target.to_string()) {
+                Some(Some(r)) => (r, Avail::Upgrade),
+                Some(None) => (first, Avail::BeyondTarget),
+                None => (first, if parse_version(&first.version).is_some_and(|v| v > *target) { Avail::BeyondTarget } else { Avail::Upgrade }),
+            }
+        }
+        None if *rv <= *installed => (picked, Avail::Installed),
+        None if rv > target => (picked, Avail::BeyondTarget),
+        None => (picked, Avail::Upgrade),
     }
 }
 
 /// Where a record goes from its availability alone, before the ledger, prerequisites, applied and benefit checks.
-fn base_route(rec: &Rec, available: bool, beyond: bool) -> Route {
-    if !available && beyond {
+fn base_route(rec: &Rec, avail: Avail) -> Route {
+    if avail == Avail::OlderLine {
+        Route::OlderLine
+    } else if avail == Avail::BeyondTarget {
         Route::BeyondTarget
-    } else if !available {
+    } else if avail == Avail::Upgrade {
         if is_obligation(rec) {
             Route::UpgradeReview
         } else if is_opt_in(rec) {
@@ -290,6 +319,8 @@ fn base_route(rec: &Rec, available: bool, beyond: bool) -> Route {
     }
 }
 
+/// The release that decides availability for a project at `installed`: the one on the installed line; otherwise
+/// the newest on an older line (it carried forward); otherwise the oldest on a newer line.
 pub fn pick_release<'r>(releases: &[&'r Release], installed: &Version) -> Option<(&'r Release, Version)> {
     let mut parsed: Vec<(&Release, Version)> = releases.iter().filter_map(|r| parse_version(&r.version).map(|v| (*r, v))).collect();
     parsed.sort_by(|a, b| a.1.cmp(&b.1));
@@ -336,7 +367,13 @@ struct TechLits {
 }
 
 fn tech_lits(tech: &str, td: &TechData) -> TechLits {
-    let comps: BTreeSet<String> = td.records.iter().flat_map(|r| r.r.releases.iter().map(|x| normalize_purl(&x.component))).collect();
+    // The technology's own packages: the index's, else every package its records name (older catalogs). A technology
+    // with no records is not in the stack either way.
+    let comps: BTreeSet<String> = if td.index.components.is_empty() || td.records.is_empty() {
+        td.records.iter().flat_map(|r| r.r.releases.iter().map(|x| normalize_purl(&x.component))).collect()
+    } else {
+        td.index.components.iter().map(|c| normalize_purl(c)).collect()
+    };
     let mut exclude: BTreeSet<String> = comps.iter().filter_map(|c| purl_name(c)).collect();
     exclude.insert(tech.to_string());
     let per_record: Vec<Vec<String>> = td.records.iter().map(|r| record_lits(r, &exclude)).collect();
@@ -546,8 +583,14 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                 workspaces.push(Workspace { component: (*c).clone(), version, dirs, target: None, records: vec![] });
             }
         }
-        // Newest release per component: the default target.
+        // Newest release per component: the default target. The technology's own packages take the newest release any
+        // of its records names, also one central gave to another package of the repository (they share the release).
         let mut newest: BTreeMap<String, Version> = BTreeMap::new();
+        if let Some(v) = td.records.iter().flat_map(|r| r.r.releases.iter()).filter_map(|x| parse_version(&x.version)).max() {
+            for c in comps.iter() {
+                newest.insert(c.clone(), v.clone());
+            }
+        }
         for r in &td.records {
             for rel in &r.r.releases {
                 if let Some(v) = parse_version(&rel.version) {
@@ -584,8 +627,17 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
         };
         let lines = Lines::new(&td.index.releases);
         for (rec, ls) in td.records.iter().zip(lits) {
+            // The releases of the packages this repository uses; else of the technology's own packages (a record names
+            // every component, and the repository uses at least one). A record about other packages of the technology's
+            // repository only (a release-notes section central attributed to them) applies only where one is used.
+            let own: Vec<&Release> = rec.r.releases.iter().filter(|x| purls.contains(&normalize_purl(&x.component))).collect();
             let rels: Vec<&Release> = rec.r.releases.iter().filter(|x| comps.contains(&normalize_purl(&x.component))).collect();
-            let own: Vec<&Release> = rels.iter().copied().filter(|x| purls.contains(&normalize_purl(&x.component))).collect();
+            if own.is_empty() && rels.is_empty() {
+                if let Some(release) = rec.r.releases.first() {
+                    out.opps.push(blank(rec, release.clone(), Route::OtherPackage));
+                }
+                continue;
+            }
             let candidates = if own.is_empty() { rels } else { own };
             let installed_for = |c: &str| version_of(c).or_else(|| tech_version.clone());
             let Some(installed) = candidates.first().and_then(|r| installed_for(&normalize_purl(&r.component))) else {
@@ -599,7 +651,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             let comp = normalize_purl(&picked.component);
             let target_for = |c: &str, installed: &Version| inp.targets.get(c).cloned().or_else(|| newest.get(c).cloned()).unwrap_or_else(|| installed.clone());
             let target = target_for(&comp, &installed);
-            let (release, available, beyond) = availability(&lines, &candidates, &installed, &target, (picked, &rv));
+            let (release, avail) = availability(&lines, &candidates, &installed, &target, (picked, &rv));
             // A deprecation that names what it deprecates cites only that, as whole literals: a match on its other
             // terms is not usage of the deprecated API. The score (the queue's order) still counts every literal.
             let deprecated = deprecated_lits(rec, ls);
@@ -653,7 +705,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             // Applied in the code the record describes; a workspace on another version is judged on the whole repository.
             let applied_in = |v: usize| rec.r.introduces.iter().filter_map(|x| clean_lit(x)).any(|x| applied_of(v, &x));
             let applied = || applied_in(view);
-            opp.route = base_route(rec, available, beyond);
+            opp.route = base_route(rec, avail);
             // A deprecation already in the installed version is still owed while the code uses what it deprecates: its
             // `replaces` literals, whole, under the shown evidence rule (files that can use the technology). A plain word
             // (`message`) is too common to show that, so it takes a specific literal (`toBeCalledWith`, `terserOptions`)
@@ -694,8 +746,8 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                 let Some((picked, rv)) = pick_release(&candidates, &w.version) else { continue };
                 let comp = normalize_purl(&picked.component);
                 let target = target_for(&comp, &w.version);
-                let (decides, available, beyond) = availability(&lines, &candidates, &w.version, &target, (picked, &rv));
-                let route = base_route(rec, available, beyond);
+                let (decides, avail) = availability(&lines, &candidates, &w.version, &target, (picked, &rv));
+                let route = base_route(rec, avail);
                 if !matches!(route, Route::UpgradeReview | Route::BumpDigest) {
                     continue;
                 }
@@ -896,6 +948,8 @@ pub fn why(out: &Outcome, routes: &[&str]) -> String {
             Route::InEffect => IN_EFFECT,
             Route::AlreadyIncluded => "already in the installed version with nothing to adopt",
             Route::BeyondTarget => "released after the target version",
+            Route::OlderLine => "released only on older release lines than the installed version",
+            Route::OtherPackage => "about another package of the technology's repository that this repository does not use",
             Route::VersionUnknown => "not applicable: the installed version could not be read",
         };
         *c.entry(k.to_string()).or_default() += 1;
@@ -1306,6 +1360,85 @@ mod tests {
         let out = run_with(&c, &s, &r, &l);
         assert_eq!(route_of(&out, "next:backport"), &Route::BumpDigest, "on 16.0.1 it arrives with 16.0.2");
         assert_eq!(out.opps.iter().find(|o| o.id() == "next:backport").unwrap().target, Version::new(16, 2, 0), "default target: newest release");
+    }
+
+    #[test]
+    fn a_backport_to_a_line_below_the_installed_version_is_in_no_upgrade() {
+        // DavidHDev/react-bits: react 19.1.1 installed, 19.3.1 the target. 19.0.4 shipped after 19.1.1 and before 19.3
+        // began, so by date 19.3 has it, but a 19.1.x install never gets a 19.0.x release: the change arrives through
+        // 19.1.5 (its own record, or a release of the same record), never through 19.0.4.
+        let mut c = catalog(
+            "react",
+            0,
+            vec![
+                with(rec("react:only-old", "pkg:npm/react", "19.0.4"), json!({"change_type":"security","benefit":["security"]})),
+                with(
+                    rec("react:merged", "pkg:npm/react", "19.0.4"),
+                    json!({"change_type":"security","benefit":["security"],"releases":[
+                        {"component":"pkg:npm/react","version":"19.0.4","date":"2026-01-26","line":"19"},
+                        {"component":"pkg:npm/react","version":"19.1.5","date":"2026-01-26","line":"19"},
+                        {"component":"pkg:npm/react","version":"19.2.4","date":"2026-01-26","line":"19"}]}),
+                ),
+                rec("react:new", "pkg:npm/react", "19.3.1"),
+            ],
+        );
+        let idx = |v: &str, d: &str, l: &str, s: bool| unstale_schema::catalog::IndexRelease { version: v.into(), date: d.into(), line: l.into(), line_start: s };
+        c.techs.get_mut("react").unwrap().index.releases = vec![
+            idx("19.0.4", "2026-01-26", "19.0", false),
+            idx("19.1.1", "2025-07-28", "19.1", false),
+            idx("19.1.5", "2026-01-26", "19.1", false),
+            idx("19.2.4", "2026-01-26", "19.2", false),
+            idx("19.3.0", "2026-09-09", "19.3", true),
+            idx("19.3.1", "2026-10-14", "19.3", false),
+        ];
+        let (r, l) = (repo(&[]), Ledger::default());
+        let s = stack(&[("react", "19.1.1")], None);
+        let out = run_with(&c, &s, &r, &l);
+        assert_eq!(route_of(&out, "react:only-old"), &Route::OlderLine, "19.0.4 is below 19.1.1, whatever its date");
+        assert_eq!(route_of(&out, "react:merged"), &Route::BumpDigest);
+        let o = out.opps.iter().find(|o| o.id() == "react:merged").unwrap();
+        assert_ne!(o.release.version, "19.0.4", "cited by a release above the installed version");
+        assert!(why(&out, &[]).contains("1 released only on older release lines than the installed version"), "{}", why(&out, &[]));
+        // On the 19.0 line itself the backport is the upgrade.
+        let s = stack(&[("react", "19.0.1")], None);
+        let out = run_with(&c, &s, &r, &l);
+        assert_eq!(route_of(&out, "react:only-old"), &Route::BumpDigest);
+    }
+
+    #[test]
+    fn a_record_about_another_package_of_the_repository_applies_only_where_it_is_used() {
+        // React's "React Server Components" section: central gives those records react-server-dom-* releases. A
+        // client-only app (react, react-dom) gets none of them; an app on react-server-dom-webpack does.
+        let rsc = |id: &str| {
+            with(
+                rec(id, "pkg:npm/react-server-dom-webpack", "19.1.5"),
+                json!({"change_type":"security","benefit":["security"],"releases":[
+                    {"component":"pkg:npm/react-server-dom-parcel","version":"19.1.5","date":"2026-01-26","line":"19"},
+                    {"component":"pkg:npm/react-server-dom-webpack","version":"19.1.5","date":"2026-01-26","line":"19"}]}),
+            )
+        };
+        let mut c = catalog("react", 0, vec![
+                rsc("react:server-actions"),
+                with(rec("react:fix", "pkg:npm/react", "19.1.5"), json!({"change_type":"fix"})),
+                with(rec("react:dom", "pkg:npm/react-dom", "19.1.5"), json!({"change_type":"fix"})),
+            ]);
+        c.techs.get_mut("react").unwrap().index.components = vec!["pkg:npm/react".into()];
+        let (r, l) = (repo(&[]), Ledger::default());
+        let s = stack(&[("react", "19.1.1"), ("react-dom", "19.1.1")], None);
+        let out = run_with(&c, &s, &r, &l);
+        assert_eq!(route_of(&out, "react:server-actions"), &Route::OtherPackage);
+        assert_eq!(route_of(&out, "react:fix"), &Route::BumpDigest);
+        assert_eq!(route_of(&out, "react:dom"), &Route::BumpDigest, "a package of the repository that is used here");
+        assert_eq!(out.packages["react"], vec!["react".to_string()], "the technology's packages are the index's");
+        let s = stack(&[("react", "19.1.1"), ("react-server-dom-webpack", "19.1.1")], None);
+        let out = run_with(&c, &s, &r, &l);
+        assert_eq!(route_of(&out, "react:server-actions"), &Route::BumpDigest);
+        assert_eq!(out.opps.iter().find(|o| o.id() == "react:server-actions").unwrap().component(), "pkg:npm/react-server-dom-webpack");
+        // Without index components (an older catalog), every package a record names is the technology's: as before.
+        c.techs.get_mut("react").unwrap().index.components = vec![];
+        let s = stack(&[("react", "19.1.1")], None);
+        let out = run_with(&c, &s, &r, &l);
+        assert_eq!(route_of(&out, "react:server-actions"), &Route::BumpDigest);
     }
 
     #[test]
