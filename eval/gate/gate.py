@@ -65,8 +65,9 @@ def set_window(ev):
 # ---------------------------------------------------------------------------------------------------- CLI queue
 
 # The summary sits in a fenced block (with any conditions on the next line), so upstream text cannot pose as instructions.
-REC = re.compile(r"^### \[([^\]]+)\] rev (\d+)\n\n`{3,}text\n(.*?)\n(?:Conditions [^\n]*\n)?`{3,}\n\n- Release: (\S+) (\S+) \(installed (\S+), target (\S+)\)\n- Change: ([^;]+); breaking: (yes|no)\n"
-                 r"(?:.*?\n)*?- Matched terms: (.*?)\n", re.M | re.S)
+# No part crosses into the next entry: an "In effect now" entry has another release line and must not swallow it.
+REC = re.compile(r"^### \[([^\]]+)\] rev (\d+)\n\n`{3,}text\n((?:(?!\n### ).)*?)\n(?:Conditions [^\n]*\n)?`{3,}\n\n- Release: (\S+) (\S+) \(installed (\S+), target (\S+)\)\n- Change: ([^;]+); breaking: (yes|no)\n"
+                 r"(?:(?!### )[^\n]*\n)*?- (?:Matched terms|Deprecated API used here): (.*?)\n", re.M | re.S)
 
 
 def cli_queue(ev, binary, catalog):
