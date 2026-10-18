@@ -829,7 +829,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             evidence.borrow_mut().insert(key, e.clone());
             e
         };
-        // Where the technology's file conventions apply (`convention_at`).
+        // Where the technology's file conventions apply (`conventions`); no manifest declaring it: everywhere, as before.
         let convention = conventions(&bounds, &reach, scopes[0].importers().filter(|p| usage::own_code(p, &ecosystem)));
         // A deprecated literal's evidence: whole-literal hits only (`usage::Scope::exact_evidence`), at a live site
         // (`usage::live_site`: not in a comment, not a fallback beside the record's replacement). Per view, literal and
@@ -846,7 +846,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                 if named_file {
                     // A file named for the technology (`.eslintrc.json`) is its file wherever it is cited, as root-
                     // declared tooling configures every package; a generic name (`middleware.ts`) only in its projects.
-                    return usage::is_file(p, l) && (scopes[v].names_path(p) || convention.contains(boundary_of(&bounds, p)));
+                    return usage::is_file(p, l) && (reach.is_empty() || scopes[v].names_path(p) || convention.contains(boundary_of(&bounds, p)));
                 }
                 inp.repo.text(p).is_none_or(|t| usage::live_site_near(p, t, l, repl, context))
             };
