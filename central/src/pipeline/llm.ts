@@ -6,7 +6,9 @@
 // model at 50% of list price, slower (verified 16 October 2026 on openai/gpt-6-luna: billed at 0.50×); a flex call the
 // provider refuses for capacity is retried once at the default tier, and the tier is not part of the cache key (same
 // model, same answer distribution). Answers are cached by sha256(provider + request body), only when they parse, so a
-// failed or unparseable call is retried on the next run; a truncated answer counts as a failed attempt.
+// failed or unparseable call is retried on the next run. A truncated answer (finish_reason `length`) is not retried:
+// the same request would run out of room again. It is recorded beside the cache (`<key>.length.json`), so a later run
+// does not pay for it again, and the caller is told (`onLength`): extraction splits the chunk (extract.ts).
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -196,7 +198,7 @@ export function extractModel(env: NodeJS.ProcessEnv = process.env): ExtractModel
   return { provider, model: spec.slice(i + 1), effort: env.UNSTALE_EXTRACT_EFFORT ?? "low", tier: env.UNSTALE_EXTRACT_SERVICE_TIER ?? (provider === "vercel" ? "flex" : "default") };
 }
 
-export const llmStats = { calls: 0, cached: 0, failed: 0, input_tokens: 0, cached_input_tokens: 0, output_tokens: 0, reasoning_tokens: 0, dollars: 0 };
+export const llmStats = { calls: 0, cached: 0, failed: 0, truncated: 0, input_tokens: 0, cached_input_tokens: 0, output_tokens: 0, reasoning_tokens: 0, dollars: 0 };
 
 const MAX_TOKENS = 16_000;
 const chatLimit = new Limiter(5);
@@ -226,7 +228,18 @@ export function extractCached(prompt: string, o: CallOptions = {}): boolean {
   return existsSync(extractCachePath(prompt, o));
 }
 
-export async function extractLlm<T>(prompt: string, parse: (text: string) => T | undefined, o: { fetch?: typeof fetch; backoffMs?: number } & CallOptions = {}): Promise<T | undefined> {
+const lengthPath = (path: string): string => path.replace(/\.json$/, ".length.json");
+
+/** Whether the configured model's answer to this prompt was truncated (finish_reason `length`): extractLlm will not ask again. */
+export function extractTruncated(prompt: string, o: CallOptions = {}): boolean {
+  return existsSync(lengthPath(extractCachePath(prompt, o)));
+}
+
+export async function extractLlm<T>(
+  prompt: string,
+  parse: (text: string) => T | undefined,
+  o: { fetch?: typeof fetch; backoffMs?: number; onLength?: () => void } & CallOptions = {},
+): Promise<T | undefined> {
   const m = extractModel();
   const p = PROVIDERS[m.provider]!;
   const { body, path } = chatRequest(m, prompt, o);
@@ -237,6 +250,11 @@ export async function extractLlm<T>(prompt: string, parse: (text: string) => T |
       llmStats.cached++;
       return v;
     }
+  }
+  if (existsSync(lengthPath(path))) {
+    llmStats.truncated++;
+    o.onLength?.();
+    return undefined;
   }
   const backoffMs = o.backoffMs ?? 2000;
   return chatLimit.run(async () => {
@@ -267,12 +285,20 @@ export async function extractLlm<T>(prompt: string, parse: (text: string) => T |
         llmStats.dollars += r.cost ?? 0;
         logUsage({ api: p.name, model: m.model, effort: m.effort, tier: m.tier, ...r.usage, ...(r.cost !== undefined ? { dollars: r.cost } : {}), finish: r.finish });
       }
-      const v = r.finish === "length" ? undefined : parse(r.text);
+      if (r.finish === "length") {
+        console.error(`${p.name}/${m.model}: attempt ${attempt + 1} truncated; not retried`);
+        writeAtomic(lengthPath(path), JSON.stringify({ provider: p.name, model: m.model, finish: r.finish, usage: r.usage }) + "\n");
+        llmStats.truncated++;
+        llmStats.failed++;
+        o.onLength?.();
+        return undefined;
+      }
+      const v = parse(r.text);
       if (v !== undefined) {
         writeAtomic(path, JSON.stringify({ provider: p.name, model: m.model, text: r.text, usage: r.usage }) + "\n");
         return v;
       }
-      console.error(`${p.name}/${m.model}: attempt ${attempt + 1} ${r.finish === "length" ? "truncated" : "unparseable"}`);
+      console.error(`${p.name}/${m.model}: attempt ${attempt + 1} unparseable`);
       await sleep(backoffMs * (attempt + 1));
     }
     llmStats.failed++;

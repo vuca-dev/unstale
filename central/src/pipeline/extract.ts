@@ -3,12 +3,12 @@
 // is not asked: it is set by the classifier.
 // The extraction model's output schemas are hand-written Zod.
 import { z } from "zod";
-import { extractCached, extractLlm, parseJson } from "./llm.ts";
+import { extractCached, extractLlm, extractTruncated, parseJson } from "./llm.ts";
 import type { GuideNote, ReleaseNote } from "./fetch.ts";
 import type { Technology } from "./technologies.ts";
 import { CHANGE_TYPES, SURFACES } from "./vocab.ts";
 import { oneLine, releaseLine } from "./util.ts";
-import { markViews, PREAMBLE_MARKED, unmarkQuote } from "../docs/render.ts";
+import { markViews, PREAMBLE, PREAMBLE_MARKED, unmarkQuote } from "../docs/render.ts";
 
 export const MAX_CHUNK = 30_000;
 
@@ -391,6 +391,72 @@ export function chunk(notes: string, max = MAX_CHUNK): string[] {
   return out;
 }
 
+/** A chunk whose extract answer was truncated is split into pieces of about half its length; one shorter than this is
+ * not split again (its answer would fit unless the model loops). */
+export const MIN_SPLIT = 2_000;
+
+/** The pieces of a chunk whose extract answer ran out of room: two or more, at headings or lines, losing nothing. A
+ * rendered docs change (docs/render.ts) keeps its instructions in every piece: each later piece starts with the
+ * preamble and page line, and, when it begins inside a section's fence, with that section line and fence. */
+export function splitChunk(notes: string): string[] {
+  const pieces = chunk(notes, Math.ceil(notes.length / 2));
+  const page = notes.startsWith(PREAMBLE_MARKED) || notes.startsWith(PREAMBLE) ? /^[\s\S]*?\nPage: [^\n]*/.exec(notes)?.[0] : undefined;
+  if (!page) return pieces;
+  let section = "";
+  let fence: string | undefined;
+  let opener = "";
+  const led = pieces.map((p, j) => {
+    const lead = j === 0 ? "" : [page, "", ...(fence ? [section, opener] : [])].join("\n") + "\n";
+    for (const line of p.split("\n")) {
+      if (fence) {
+        if (line === fence) fence = undefined;
+        continue;
+      }
+      if (line.startsWith("Section: ")) section = line;
+      const f = /^(`{3,})(diff)?$/.exec(line);
+      if (f) [fence, opener] = [f[1], line];
+    }
+    return lead + p;
+  });
+  // Every piece must be shorter than the chunk, or splitting would not end.
+  return led.every((p) => p.length < notes.length) ? led : pieces;
+}
+
+/** A heading that only frames a release: a version, date or `pkg@version`, or a changesets / GitHub section label.
+ * Any other heading ("Node.js 20 is now required") is content. */
+const STRUCTURAL_HEADING = /^(?:(?:patch|minor|major) changes|what'?s changed|changelog|release notes|view changes on github)?$/i;
+
+/** Notes with nothing a change record could come from, so no model call is made: once structural headings, links,
+ * bare URLs, "Full Changelog" and "View changes on GitHub" lines, "No (significant) changes" and a changesets "Updated
+ * dependencies" list (its header and `pkg@version` lines) are set aside, no letter or digit is left. On the production
+ * store (17 October 2026) 224 of 4,814 cached extract answers were for such notes, and every one was `[]`. */
+export function contentFree(notes: string): boolean {
+  let deps = false;
+  for (const raw of notes.split("\n")) {
+    const line = raw.trim();
+    if (!line) continue;
+    const text = line.replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/https?:\/\/\S+/g, "").replace(/&nbsp;/g, "");
+    const heading = /^#{1,6}\s+(.*)$/.exec(text);
+    if (heading) {
+      const label = heading[1]!.replace(/@?[\w./-]*@\d[\w.+-]*|\bv?\d[\w.+-]*/g, "").replace(/[^\p{L}\p{N}' ]+/gu, " ").replace(/\s+/g, " ").trim();
+      if (STRUCTURAL_HEADING.test(label)) continue;
+      return false;
+    }
+    // The changesets header only: "Updated dependencies", optionally with its commit hashes or PR numbers.
+    if (/^[-*]?\s*Updated dependencies[\s.,:;()#`\\[\]0-9a-f]*$/.test(text)) {
+      deps = true;
+      continue;
+    }
+    if (deps && /^\s*[-*]\s*@?[\w./-]+@[\w.+-]+\s*$/.test(raw)) continue;
+    deps = false;
+    if (/^\**\s*Full Changelog\**:?\s*\S*\s*$/i.test(text)) continue;
+    if (/^[#\s]*View changes on GitHub\s*$/i.test(text)) continue;
+    if (/^[*_\s]*No (significant )?changes[.!]?[*_\s]*$/i.test(text)) continue;
+    if (/[\p{L}\p{N}]/u.test(text)) return false;
+  }
+  return true;
+}
+
 const norm = (s: string): string => s.replace(/[`*_\\]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
 
 /** Where a quote sits in the notes: whether it is verbatim (after whitespace and markup folding) and its heading. */
@@ -461,12 +527,21 @@ const partLine = (parts: string[], ci: number) => (parts.length > 1 ? `\nPart ${
  * (budget.ts). A cached first call implies its label call was made with it. */
 export function releaseCached(t: Technology, rel: ReleaseNote | GuideNote | DocsNote): boolean {
   const parts = chunk(rel.notes);
-  return parts.every((notes, ci) => {
-    if (!notes.trim()) return true;
-    const c = firstCall(t, rel, notes, partLine(parts, ci));
-    return extractCached(c.prompt, c.opts);
-  });
+  return parts.every((notes, ci) => chunkCached(t, rel, notes, partLine(parts, ci)));
 }
+
+function chunkCached(t: Technology, rel: ReleaseNote | GuideNote | DocsNote, notes: string, part: string): boolean {
+  if (!notes.trim() || contentFree(notes)) return true;
+  const c = firstCall(t, rel, notes, part);
+  if (extractCached(c.prompt, c.opts)) return true;
+  // A truncated answer is not asked again; a two-call chunk long enough is extracted as pieces instead.
+  if (!extractTruncated(c.prompt, c.opts)) return false;
+  if (extractStructure() !== "two-call" || notes.length < MIN_SPLIT) return true;
+  const pieces = splitChunk(notes);
+  return pieces.every((p, j) => chunkCached(t, rel, p, piecePart(part, j, pieces.length)));
+}
+
+const piecePart = (part: string, j: number, n: number): string => `${part}\nPiece ${j + 1} of ${n} of this text.`;
 
 export async function extractRelease(t: Technology, rel: ReleaseNote | GuideNote | DocsNote): Promise<{ incoming: Incoming[]; failed: number }> {
   const parts = chunk(rel.notes);
@@ -475,7 +550,13 @@ export async function extractRelease(t: Technology, rel: ReleaseNote | GuideNote
   let failed = 0;
   await Promise.all(
     parts.map(async (notes, ci) => {
-      if (!notes.trim()) return;
+      if (!notes.trim() || contentFree(notes)) return;
+      if (structure === "two-call") {
+        const r = await twoCall(t, rel, notes, partLine(parts, ci));
+        failed += r.failed;
+        r.recs.forEach((x, i) => out.push(toIncoming(t, rel, ci, i, x.record, x.labels, x.notes)));
+        return;
+      }
       const first = firstCall(t, rel, notes, partLine(parts, ci));
       if (structure === "one-call-schema") {
         const recs = await extractLlm(first.prompt, parseSchemaAnswer, first.opts);
@@ -483,50 +564,65 @@ export async function extractRelease(t: Technology, rel: ReleaseNote | GuideNote
         recs?.forEach((r, i) => out.push(toIncoming(t, rel, ci, i, r.record, r.labels, notes)));
         return;
       }
-      if (structure === "one-call") {
-        const recs = await extractLlm(first.prompt, parseOneCall);
-        if (!recs) failed++;
-        recs?.forEach((r, i) => out.push(toIncoming(t, rel, ci, i, r.record, r.labels, notes)));
-        return;
-      }
-      const numbered = first.numbered;
-      const recs = await extractLlm(first.prompt, (text) => {
-        if (numbered) return parseIdsAnswer(text, numbered.units);
-        const v = parseJson(text, "array");
-        if (!Array.isArray(v)) return undefined;
-        return v.flatMap((r) => {
-          const p = Extracted.safeParse(r);
-          return p.success ? [p.data] : [];
-        });
-      });
-      if (!recs) {
-        failed++;
-        return;
-      }
-      if (!recs.length) return;
-      const brief = recs.map((r, i) => ({
-        id: `r${i + 1}`,
-        subject: r.subject,
-        facet: r.facet ?? null,
-        change_type: r.change_type ?? null,
-        summary: r.summary,
-        introduces: strings(r.introduces, 20),
-        evidence: r.evidence ?? "",
-      }));
-      const labels = await extractLlm(
-        fill(LABEL_PROMPT, { TECH: t.name, VERSION: rel.version, RECORDS: JSON.stringify(brief, null, 1), NOTES: notes }),
-        (text) => {
-          const v = parseJson(text, "object");
-          if (!v || typeof v !== "object" || Array.isArray(v)) return undefined;
-          return v as Record<string, unknown>;
-        },
-      );
-      if (!labels) failed++;
-      recs.forEach((r: Extracted, i) => out.push(toIncoming(t, rel, ci, i, r, labels?.[`r${i + 1}`], notes)));
+      const recs = await extractLlm(first.prompt, parseOneCall);
+      if (!recs) failed++;
+      recs?.forEach((r, i) => out.push(toIncoming(t, rel, ci, i, r.record, r.labels, notes)));
     }),
   );
   out.sort((a, b) => a.key.localeCompare(b.key, "en", { numeric: true }));
   return { incoming: out, failed };
+}
+
+/** Two calls (extract, then label) on one chunk. An extract answer that ran out of room is not asked again: a chunk
+ * of at least MIN_SPLIT characters is extracted as pieces (splitChunk), whose records follow one another in order. */
+async function twoCall(
+  t: Technology,
+  rel: ReleaseNote | GuideNote | DocsNote,
+  notes: string,
+  part: string,
+): Promise<{ recs: Array<{ record: Extracted; labels: unknown; notes: string }>; failed: number }> {
+  if (!notes.trim() || contentFree(notes)) return { recs: [], failed: 0 };
+  const first = firstCall(t, rel, notes, part);
+  const numbered = first.numbered;
+  let truncated = false;
+  const recs = await extractLlm(
+    first.prompt,
+    (text) => {
+      if (numbered) return parseIdsAnswer(text, numbered.units);
+      const v = parseJson(text, "array");
+      if (!Array.isArray(v)) return undefined;
+      return v.flatMap((r) => {
+        const p = Extracted.safeParse(r);
+        return p.success ? [p.data] : [];
+      });
+    },
+    { onLength: () => (truncated = true) },
+  );
+  if (!recs) {
+    if (!truncated || notes.length < MIN_SPLIT) return { recs: [], failed: 1 };
+    const pieces = splitChunk(notes);
+    const done = await Promise.all(pieces.map((p, j) => twoCall(t, rel, p, piecePart(part, j, pieces.length))));
+    return { recs: done.flatMap((d) => d.recs), failed: done.reduce((s, d) => s + d.failed, 0) };
+  }
+  if (!recs.length) return { recs: [], failed: 0 };
+  const brief = recs.map((r, i) => ({
+    id: `r${i + 1}`,
+    subject: r.subject,
+    facet: r.facet ?? null,
+    change_type: r.change_type ?? null,
+    summary: r.summary,
+    introduces: strings(r.introduces, 20),
+    evidence: r.evidence ?? "",
+  }));
+  const labels = await extractLlm(
+    fill(LABEL_PROMPT, { TECH: t.name, VERSION: rel.version, RECORDS: JSON.stringify(brief, null, 1), NOTES: notes }),
+    (text) => {
+      const v = parseJson(text, "object");
+      if (!v || typeof v !== "object" || Array.isArray(v)) return undefined;
+      return v as Record<string, unknown>;
+    },
+  );
+  return { recs: recs.map((record, i) => ({ record, labels: labels?.[`r${i + 1}`], notes })), failed: labels ? 0 : 1 };
 }
 
 export function toIncoming(t: Technology, rel: ReleaseNote | GuideNote | DocsNote, ci: number, i: number, r: Extracted, rawLabels: unknown, notes: string): Incoming {

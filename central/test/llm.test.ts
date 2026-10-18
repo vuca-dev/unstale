@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
-import { extractLlm, extractModel, llmStats } from "../src/pipeline/llm.ts";
+import { extractLlm, extractModel, extractTruncated, llmStats } from "../src/pipeline/llm.ts";
 
 const prev = { ...process.env };
 beforeAll(() => {
@@ -66,16 +66,25 @@ describe("extractLlm on chat completions", () => {
     expect(await extractLlm("prompt flex", (t) => JSON.parse(t) as number[], { fetch: f, backoffMs: 1 })).toEqual([7]);
     expect(tiers).toHaveLength(before); // cached under the tier-free key
   });
-  test("a truncated answer is retried, never parsed", async () => {
+  test("a truncated answer is not retried or parsed; it is recorded, so the same request is never paid for again", async () => {
     let n = 0;
     const f = (async () => (++n === 1 ? answer("[1", "length") : answer("[3]"))) as unknown as typeof fetch;
     const seen: string[] = [];
-    const v = await extractLlm("prompt two", (t) => {
+    let lengths = 0;
+    const o = { fetch: f, backoffMs: 1, onLength: () => lengths++ };
+    const parse = (t: string) => {
       seen.push(t);
       return JSON.parse(t) as number[];
-    }, { fetch: f, backoffMs: 1 });
-    expect(v).toEqual([3]);
-    expect(seen).toEqual(["[3]"]);
+    };
+    expect(await extractLlm("prompt two", parse, o)).toBeUndefined();
+    expect(n).toBe(1);
+    expect(lengths).toBe(1);
+    expect(extractTruncated("prompt two")).toBe(true);
+    expect(await extractLlm("prompt two", parse, o)).toBeUndefined();
+    expect(n).toBe(1);
+    expect(lengths).toBe(2);
+    expect(seen).toEqual([]);
+    expect(extractTruncated("prompt other")).toBe(false);
   });
   test("undefined after three unparseable answers", async () => {
     const f = (async () => answer("not json")) as unknown as typeof fetch;
