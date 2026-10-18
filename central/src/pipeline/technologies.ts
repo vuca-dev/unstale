@@ -3,6 +3,8 @@ export interface Technology {
   id: string;
   name: string;
   repo: string;
+  /** The package's directory in a monorepository (registry metadata), where its own changelog is looked for. */
+  directory?: string;
   components: string[];
   /** Stable release tags; group 1 is the version. Canary and prerelease tags do not match. */
   tag: RegExp;

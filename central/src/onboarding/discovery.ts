@@ -36,7 +36,9 @@ export function releasePattern(
   const name = npmIdentity(purl),
     leaf = name.split("/").at(-1)!;
   const prefixOnly = !!directory && repo?.split("/").at(-1) !== leaf;
-  return `^(?:${escape(name)}@|${escape(leaf)}@${prefixOnly ? "" : "|v?"})(\\d+\\.\\d+\\.\\d+)$`;
+  // `name@1.2.3`, `leaf@1.2.3`, `leaf-v1.2.3` (release-please monorepos: puppeteer-v25.14.0 beside
+  // puppeteer-core-v25.14.0) and, unless the package is one of several in its repository, `v1.2.3`.
+  return `^(?:${escape(name)}@|${escape(leaf)}@|${escape(leaf)}-v?${prefixOnly ? "" : "|v?"})(\\d+\\.\\d+\\.\\d+)$`;
 }
 const http = new HttpClient();
 export async function json(url: string): Promise<any> {
@@ -139,6 +141,7 @@ export function pipelineTechnology(t: PublicTechnology): Technology {
     id: t.id,
     name: t.name,
     repo: t.repo ?? "",
+    ...(t.directory ? { directory: t.directory } : {}),
     components: t.components,
     tag: new RegExp(t.tag),
     clean: (body) => body.replace(/\n#+\s*Credits[\s\S]*$/, ""),

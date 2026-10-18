@@ -96,6 +96,20 @@ export function htmlToMarkdown(html: string, selector: string | undefined, remov
   return tidy(roots.map((r) => render(r, { pre: false })).join("\n\n"));
 }
 
+/**
+ * An article page (a release announcement on a blog) as Markdown: of the page's `article` elements, the one with the
+ * most text, page chrome removed; else what `htmlToMarkdown` takes. A post's comments and "read next" cards are
+ * articles too, each shorter than the post.
+ */
+export function articleToMarkdown(html: string): string {
+  const doc = parseDocument(html, { decodeEntities: true });
+  for (const sel of CHROME) for (const el of selectAll(sel, doc)) removeElement(el);
+  const articles = selectAll("article", doc).map((el) => ({ el, n: textContent(el).replace(/\s+/g, " ").length }));
+  const best = articles.sort((a, b) => b.n - a.n)[0];
+  if (!best || best.n < 1000) return htmlToMarkdown(html, undefined, []);
+  return tidy(render(best.el, { pre: false }));
+}
+
 interface Ctx {
   pre: boolean;
 }
