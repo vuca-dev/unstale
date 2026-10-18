@@ -641,7 +641,7 @@ pub fn render(view: &View, out: &Outcome, catalog: &Catalog) -> String {
     s += "\n\n";
     if !view.in_effect.is_empty() {
         s += &format!(
-            "## In effect now ({})\n\nDeprecated at or below the installed version, and the deprecated API is still used here (matched in code that can use the technology). No upgrade is needed to act on these. They are not part of the batches below and do not hold up `--next`.\n\n",
+            "## In effect now ({})\n\nDeprecated at or below the installed version, and the deprecated API is still used here (matched in code that can use the technology; an identifier only in a file that imports or configures it, or that its records name). No upgrade is needed to act on these. They are not part of the batches below and do not hold up `--next`.\n\n",
             plural(view.in_effect.len(), "record", "records")
         );
         for &i in &view.in_effect {
