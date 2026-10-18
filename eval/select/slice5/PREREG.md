@@ -185,6 +185,9 @@ reproduce). That gives all 1,001 judge requests of the dev technologies, labelle
 - Below 0.60 there are four dev candidates with M8 p ≥ 0.5: 3 DIFFERENT, 1 UNSURE.
 - At 0.60 the dev population skips 34.7% of requests, keeps 35.1% of questions and saves 57.7% of the request
   characters.
+  *Correction (17 October 2026, code review): that replay built records without their releases (no same-line bonus in
+  retrieval). Fixed, it gives 30.6% / 39.9% / 52.9%. The fitting rule below does not use these figures, and the lowest
+  merge score stays 0.628.*
 - Run-to-run noise (J1 held-out run 1 vs run 2, 1,774 questions): mean |Δp| 0.0030, 89% of questions identical,
   p95 0.02, max 0.20.
 

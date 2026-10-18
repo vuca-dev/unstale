@@ -10,14 +10,15 @@
 // --population: every judge request of a store, rebuilt by re-running ingest from empty and following the store's own
 // decisions (each incoming merges where `ingested` says it did), so the candidate sets are ingest's own. Per floor:
 // requests skipped, questions kept, Jev input saved (characters of the request JSON, M8 text), and the store's merges
-// whose target falls below the floor.
+// whose target falls below the floor. The floor applies only where the shorter rules do (match.ts shortRulesApply);
+// other requests keep every question. The replay itself asks every candidate, as the store was built.
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 const OUT5 = join(import.meta.dirname, "..", "out", "slice5");
 process.env.UNSTALE_CENTRAL_DIR = join(OUT5, "central");
 const S = await import("../states.ts");
-const { ingest, matchRequest, retrieve } = await import("../../../central/src/pipeline/match.ts");
+const { ingest, matchRequest, retrieve, shortRulesApply } = await import("../../../central/src/pipeline/match.ts");
 const { interpret, recordState } = await import("../../../central/src/pipeline/classify/labels.ts");
 const { compareVersions } = await import("../../../central/src/pipeline/util.ts");
 import type { Incoming } from "../../../central/src/pipeline/extract.ts";
@@ -60,7 +61,7 @@ if (a.scores) {
 
 if (a.population) {
   const central = join(S.STORE, a.store!);
-  const rows: Array<{ tech: string; key: string; scores: number[]; target: number; stateChars: number; full: number; q: number[] }> = [];
+  const rows: Array<{ tech: string; key: string; scores: number[]; short: boolean; target: number; stateChars: number; full: number; q: number[] }> = [];
   for (const tech of a.population.split(",")) {
     const real = readJson<TechStore>(join(central, "records", `${tech}.json`));
     const cache = join(central, "cache", "classifier");
@@ -80,15 +81,16 @@ if (a.population) {
       const cands = retrieve(inc, Object.values(s.records));
       const want = real.ingested[inc.key]!;
       if (cands.length) {
-        const req = matchRequest(S.techName(tech), inc, lab.breaking, cands.map((c) => s.records[c.id]!));
+        const recs = cands.map((c) => s.records[c.id]!);
+        const req = matchRequest(S.techName(tech), inc, lab.breaking, recs);
         const qs = Object.keys(req.questions);
-        rows.push({ tech, key: inc.key, scores: cands.map((c) => c.score), target: cands.findIndex((c) => c.id === want), stateChars: JSON.stringify(req.state).length, full: reqChars(req.state, req.questions), q: qs.map((k) => JSON.stringify({ [k]: req.questions[k] }).length) });
+        rows.push({ tech, key: inc.key, scores: cands.map((c) => c.score), short: shortRulesApply(inc, recs), target: cands.findIndex((c) => c.id === want), stateChars: JSON.stringify(req.state).length, full: reqChars(req.state, req.questions), q: qs.map((k) => JSON.stringify({ [k]: req.questions[k] }).length) });
       }
       // Follow the store: p 1 for the record it merged into, 0 elsewhere.
-      const o = await ingest(s, S.techName(tech), [], inc, lab, async (_st, qs) => ({
+      const o = await ingest(s, S.techName(tech), S.components(tech), inc, lab, async (_st, qs) => ({
         classifier: "jev", model: "follow",
-        answers: Object.fromEntries(Object.keys(qs).map((k, i) => { const y = cands[i]?.id === want ? 1 : 0; return [k, { choice: y ? "yes" : "no", confidence: 1, probabilities: { yes: y, no: 1 - y } }]; })),
-      }));
+        answers: Object.fromEntries(Object.keys(qs).map((k) => { const y = cands[Number(k.slice("same_c".length)) - 1]?.id === want ? 1 : 0; return [k, { choice: y ? "yes" : "no", confidence: 1, probabilities: { yes: y, no: 1 - y } }]; })),
+      }), { questionFloor: false });
       if (o.id === want) agree++;
     }
     console.log(`${tech}: ${order.length} incoming (${missing} without a cached label), ${agree} decisions reproduce the store's`);
@@ -101,14 +103,14 @@ if (a.population) {
   for (const f of FLOORS) {
     let qs = 0, kept = 0, skipped = 0, chars = 0;
     for (const r of rows) {
-      const k = r.scores.map((x, i) => (x >= f ? i : -1)).filter((i) => i >= 0);
+      const k = r.scores.map((x, i) => (!r.short || x >= f ? i : -1)).filter((i) => i >= 0);
       qs += r.scores.length;
       kept += k.length;
       if (!k.length) skipped++;
       // The request JSON without the dropped questions (each question's JSON counted as its own share).
       else chars += r.full - r.q.reduce((t, n, i) => t + (k.includes(i) ? 0 : n), 0);
     }
-    const lost = merges.filter((r) => r.scores[r.target]! < f).length;
+    const lost = merges.filter((r) => r.short && r.scores[r.target]! < f).length;
     if (Math.round(f * 100) % 5 === 0) console.log(`| ${f.toFixed(2)} | ${(100 * skipped / reqs).toFixed(1)}% | ${(100 * kept / qs).toFixed(1)}% | ${(100 * (1 - chars / fullChars)).toFixed(1)}% | ${lost} |`);
   }
   writeFileSync(join(OUT5, `floor-population-${a.store}.json`), JSON.stringify(rows) + "\n");

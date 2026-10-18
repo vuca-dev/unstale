@@ -448,6 +448,15 @@ describe("question floor (eval/select/slice5/RESULTS-judge2.md, Question floor)"
     expect(s.records[b.id]!.history[0]!.judged).toEqual(b.judged);
   });
 
+  test("questionFloor: false asks every candidate, as replays of stores built before the floor need", async () => {
+    const s = store();
+    const j = judge(() => 0);
+    await ingest(s, "Next.js", COMPONENTS, inc({ key: "a" }), labels(), j.fn);
+    const b = await ingest(s, "Next.js", COMPONENTS, far("b"), labels(), j.fn, { questionFloor: false });
+    expect(j.calls).toHaveLength(1);
+    expect(b.judged).toEqual([{ id: expect.any(String), p: 0, outcome: "below" }]);
+  });
+
   test("pick marks a candidate with no answer unasked, never below", () => {
     const c = (id: string) => ({ id, breaking: false, summary: "s", evidence: [{ quote: "q" }] }) as StoredRecord;
     const yes = { choice: "yes", confidence: 1, probabilities: { yes: 1, no: 0 } };

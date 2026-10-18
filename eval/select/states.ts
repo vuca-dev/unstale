@@ -24,7 +24,7 @@ const readJson = <T>(p: string): T => JSON.parse(readFileSync(p, "utf8")) as T;
 /** Technologies outside TECHNOLOGIES that a set uses (eval/heldout/nuxt.mts NUXT). */
 const EXTRA: Record<string, { name: string; components: string[] }> = { nuxt: { name: "Nuxt", components: ["pkg:npm/nuxt"] } };
 export const techName = (id: string): string => TECHNOLOGIES[id]?.name ?? EXTRA[id]?.name ?? id;
-const components = (id: string): string[] => TECHNOLOGIES[id]?.components ?? EXTRA[id]?.components ?? [];
+export const components = (id: string): string[] => TECHNOLOGIES[id]?.components ?? EXTRA[id]?.components ?? [];
 
 /**
  * The label questions in the wording the stores were built with (before f99833e shortened them to slice 4's "v1"). The
@@ -224,7 +224,7 @@ export async function replay(central: string, tech: string): Promise<{ requests:
       misses++;
       const no = { choice: "no", confidence: 1, probabilities: { yes: 0, no: 1 } };
       return { classifier: "jev", model: "miss", answers: Object.fromEntries(Object.keys(questions).map((k) => [k, no])) };
-    });
+    }, { questionFloor: false }); // the stores were built before QUESTION_FLOOR: every candidate was asked
   }
   return { requests, hits, misses };
 }

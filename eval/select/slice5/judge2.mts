@@ -6,7 +6,7 @@
 //     [--cand jev|clef] [--floor F] [--dry-run] [--concurrency 4]
 // Q8 ("Question floor"): M8's questions, asked only for candidates retrieved at or above --floor (floor.mts --scores);
 // a request left with none is not sent and has no answers (no merge).
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 const SELECT = join(import.meta.dirname, "..");
@@ -116,6 +116,11 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const prices = loadPrices();
   const runId = ["j2", arm, split, ...(cand === "clef" ? ["clef"] : [])].join("-");
   const floor = a.floor === undefined ? undefined : Number(a.floor);
+  if (floor !== undefined && !Number.isFinite(floor)) throw new Error(`--floor must be a number, got ${a.floor}`);
+  const runDir = join(OUT5, "runs", runId);
+  // One run directory per arm and split: a run at another floor must not overwrite the recorded one.
+  const prevMeta = join(runDir, "meta.json");
+  if (existsSync(prevMeta) && (JSON.parse(readFileSync(prevMeta, "utf8")) as { floor?: number }).floor !== floor) throw new Error(`${runId} was run at another floor; move ${runDir} first`);
   const scores = arm.startsWith("Q") ? (JSON.parse(readFileSync(join(OUT5, "floor-scores.json"), "utf8")) as Record<string, number[]>) : {};
   const usage = arm.startsWith("Q") ? FLOOR_USAGE : USAGE;
   const all = JSON.parse(readFileSync(join(OUT5, "units.json"), "utf8")) as { reqs: Record<string, Req> };
@@ -188,7 +193,6 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const n = reqs.length;
   const answered = Object.values(answers).filter(Boolean).length;
   const meta = { runId, arm, cand, split, ...(floor === undefined ? {} : { floor, skipped }), requests: n, answered, cache_hits: hits, ...meter, input_per_request: meter.input / Math.max(1, n - hits), dollars_per_request: meter.dollars / Math.max(1, n - hits), planned_input_per_request: planIn / n };
-  const runDir = join(OUT5, "runs", runId);
   mkdirSync(runDir, { recursive: true });
   writeFileSync(join(runDir, "answers.json"), JSON.stringify(answers, null, 1) + "\n");
   writeFileSync(join(runDir, "meta.json"), JSON.stringify(meta, null, 1) + "\n");

@@ -169,7 +169,7 @@ record is new. Scripts:
 
 **Verdict: Q8 passes. Ship the floor at 0.60.** On held-out it matches production M8 on false merges, and recall is no
 worse (one item gained, none lost). Applied to M8's own held-out answers, the floor changes no decision at all. It
-removes a quarter of the Jev input on the labelled requests. Over a technology's whole ingest it removes about half of
+removes a quarter of the Jev input on the labelled requests. Over a technology's whole ingest it removes 41–53% of
 step E's Jev input.
 
 | | Production M8 | **Q8 (floor 0.60)** |
@@ -182,8 +182,8 @@ step E's Jev input.
 | M8's own answers with the floor applied (no calls) | — | identical to M8: 178 merges, 175/197, 0.8 |
 | Dev recall, false per 100 | 106/109, 0.9 | 104/109, 0.5 |
 | Jev input per labelled request (HO / dev) | 2,144 / 2,262 | **1,591 / 1,686 (−26% / −25%)** |
-| Population: requests not sent / questions kept / **Jev input saved** | — | central-v1 (Next.js, Prisma, NestJS; 1,001 requests): 34.7% / 35.1% / **57.7%**; Nuxt (768): 17.1% / 44.4% / **47.0%** |
-| $ per 10k technologies a year (from M8's $110) | $110 | about **$46–58** |
+| Population: requests not sent / questions kept / **Jev input saved** | — | central-v1 (Next.js, Prisma, NestJS; 1,001 requests): 30.6% / 39.9% / **52.9%**; Nuxt (768): 13.7% / 50.8% / **40.9%** |
+| $ per 10k technologies a year (from M8's $110) | $110 | about **$52–65** |
 
 All rows are scored at production's constants: SAME_P_SHORT 0.87, CROSS_SAME_P_SHORT 0.87, QUOTE_GUARD_BELOW 0.95.
 
@@ -197,8 +197,13 @@ All rows are scored at production's constants: SAME_P_SHORT 0.87, CROSS_SAME_P_S
   0.87–0.90 under M8 and moved by 0.03–0.04, all at retrieval scores ≥ 1.7. M8's own dev answers with the floor applied
   keep 106/109.
 - **Labelled sets understate the saving.** Every eval pair had Jev p ≥ 0.5 when it was found, so only 3 of 365
-  requests are skipped. The population replay measures the saving. In it the fully skipped requests are 17–35%, and the
+  requests are skipped. The population replay measures the saving. In it the fully skipped requests are 14–31%, and the
   questions dropped from requests that are still sent supply the rest.
+- **Correction (17 October 2026, code review).** The population figures first reported here (central-v1 34.7% / 35.1% /
+  57.7%, Nuxt 17.1% / 44.4% / 47.0%, about $46–58) came from a replay that built records without their releases, so no
+  candidate got retrieval's same-line bonus (+0.05). The figures above are from the fixed replay. The floor fit and the
+  held-out result do not use the replay: their scores come from the stored candidates (`floor.mts --scores`). The
+  lowest merge scores are unchanged (0.628 central-v1, 0.389 Nuxt).
 
 **What the floor gives up:**
 - **The floor misses some true matches, but M8 rejects these too.**

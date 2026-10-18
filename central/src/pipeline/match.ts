@@ -458,7 +458,10 @@ export interface MatchOutcome {
   related: string[];
 }
 
-/** Ingests one incoming record into the store: match or create; links finer/broader candidates via `related`. */
+/**
+ * Ingests one incoming record into the store: match or create; links finer/broader candidates via `related`.
+ * `questionFloor: false` asks every candidate, as ingest did before QUESTION_FLOOR: for replaying stores built then.
+ */
 export async function ingest(
   s: TechStore,
   techName: string,
@@ -466,6 +469,7 @@ export async function ingest(
   inc: Incoming,
   labels: Labels,
   judge: (state: Record<string, unknown>, questions: Questions) => Promise<Classification>,
+  { questionFloor = true }: { questionFloor?: boolean } = {},
 ): Promise<MatchOutcome> {
   const prev = s.ingested[inc.key];
   if (prev) return { key: inc.key, id: prev, matched: false, candidates: 0, judged: [], related: [] };
@@ -473,7 +477,7 @@ export async function ingest(
   const cands = found.map((c) => s.records[c.id]!);
   let chosen: { id?: string; p?: number; judged: Judged[] } = { judged: [] };
   if (cands.length) {
-    const req = matchRequest(techName, inc, labels.breaking, cands, found.map((c) => c.score));
+    const req = matchRequest(techName, inc, labels.breaking, cands, questionFloor ? found.map((c) => c.score) : undefined);
     // No candidate at the question floor: nothing to ask, the record is new.
     const verdict: Pick<Classification, "answers" | "calibrated"> = Object.keys(req.questions).length ? await judge(req.state, req.questions) : { answers: {} };
     chosen = pick(cands, verdict.answers, { breaking: labels.breaking, quote: inc.quote, summary: inc.summary, kind: kindOf(inc), url: inc.url, snapshot: inc.snapshot, version: inc.version }, verdict.calibrated !== false);
