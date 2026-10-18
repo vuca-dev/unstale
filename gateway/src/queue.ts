@@ -17,7 +17,9 @@
 // - Everything is read once per wake (the buckets and the few `meta` rows, WITHOUT ROWID) and kept in memory, in step
 //   with every write (this object is the only writer). Status reads, positions and `/internal/queue` read nothing.
 // - A write that changes nothing is skipped. A run's progress is kept in memory as reported, and written when its
-//   state changes or RUN_SAVE_MS after it was last written (a wake shows counters at most that old).
+//   state changes or RUN_SAVE_MS after it was last written (a wake shows counters at most that old, until the run's
+//   next report, at most PROGRESS_HEARTBEAT_MS later; each answer carries central's save time, so a client keeps the
+//   newer counters it already had).
 // - Rows read and written are counted (the cursor's counters) per UTC day and per operation, kept in `meta` at most
 //   every USAGE_FLUSH_MS (and after USAGE_IDLE_MS without requests), and shown on `/internal/usage`.
 //
@@ -118,6 +120,10 @@ export interface Progress {
   releases_total: number;
   docs_done: number;
   docs_total: number;
+  /** When central last saved the job (ISO 8601): the order of reports, and the time a client is shown. */
+  updated?: string;
+  /** When the run's current cycle publishes, at the latest (ISO 8601): the records it counts are in the catalog then. */
+  publish_by?: string;
 }
 
 export interface Run {
@@ -647,6 +653,8 @@ export class PendingQueue {
           if (!e) continue;
           n++;
           const prev = e.run;
+          // A report of an older save of the job (two in flight, arriving out of order) never replaces a newer one.
+          if (u.job?.updated && prev?.job?.updated && u.job.updated < prev.job.updated) continue;
           const job = u.job ?? prev?.job;
           const next: Entry = { ...e, run: { state: u.state, since: prev?.since ?? now, updated: now, ...(job ? { job } : {}) } };
           if (!prev || prev.state !== u.state || now - (this.runSaved.get(u.purl) ?? 0) >= RUN_SAVE_MS) this.put(u.purl, next);

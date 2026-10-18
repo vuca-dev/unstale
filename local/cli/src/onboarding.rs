@@ -15,10 +15,26 @@ pub struct Job {
     pub name: String,
     pub state: String,
     pub stage: String,
+    /// Records in the published catalog: what `unstale run` can sync.
     #[serde(default)]
     pub records: usize,
+    /// Records a coverage run extracted that its cycle has not published yet (not in the catalog, so not synced).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub records_pending: usize,
+    /// When the cycle that extracted `records_pending` publishes, at the latest (ISO 8601).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub publish_by: Option<String>,
+    /// The job's last save (ISO 8601, central's clock): the order of answers about one job.
     #[serde(default)]
     pub updated: String,
+    /// Whether the answer is a held package's (the gateway's: a run's live progress, or its wait) or a published
+    /// status: the two are ordered apart.
+    /// None in state saved before it was recorded, whose answers are never ordered against new ones.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub live: Option<bool>,
+    /// Why this answer shows less than the one before it (a restart, records withdrawn, a run that stopped).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
     #[serde(default)]
     pub retry_at: Option<String>,
     #[serde(default)]
@@ -48,6 +64,44 @@ pub struct Run {
     /// Median seconds from request to published of recent runs.
     #[serde(default)]
     pub typical_s: Option<u64>,
+}
+fn is_zero(n: &usize) -> bool { *n == 0 }
+/// The job to keep for a package when the service answers `new` and `prev` was known: never an older answer about the
+/// same job in place of a newer one (a service answers from what it kept, which a restart can set back), and an answer
+/// that shows less than the one before it says why. Answers of one kind (live progress, published status) are ordered
+/// by `updated`; a published status replaces live progress whatever its time.
+fn merged(prev: Option<&Job>, mut new: Job) -> Job {
+    let Some(prev) = prev.filter(|p| p.technology == new.technology && p.live.is_some()) else { return new };
+    if prev.live == new.live && new.updated < prev.updated {
+        let mut kept = prev.clone();
+        // What says when the service may change next is the newest answer's.
+        (kept.run, kept.next_run, kept.next_run_pull, kept.retry_at) = (new.run, new.next_run, new.next_run_pull, new.retry_at);
+        return kept;
+    }
+    if new.updated == prev.updated {
+        new.note = new.note.or_else(|| prev.note.clone());
+        return new;
+    }
+    let mut why = vec![];
+    if new.records < prev.records && new.live == Some(false) {
+        why.push(format!("published records went from {} to {}: the catalog withdrew or merged some", prev.records, new.records));
+    }
+    if new.releases_total > 0 && new.releases_done < prev.releases_done {
+        why.push(format!(
+            "history restarted on the current release list ({}/{} releases before, {}/{} now)",
+            prev.releases_done, prev.releases_total, new.releases_done, new.releases_total
+        ));
+    }
+    let (before, now) = (prev.records + prev.records_pending, new.records + new.records_pending);
+    if prev.records_pending > 0 && now < before {
+        why.push(format!(
+            "{} of {} extracted records are no longer reported: the run that extracted them stopped before its cycle published them, and a later run works this package again",
+            before - now,
+            prev.records_pending
+        ));
+    }
+    new.note = (!why.is_empty()).then(|| why.join("; "));
+    new
 }
 /// Whether a job may publish results by `deadline` (Unix seconds): a run is working it or about to, or the next
 /// scheduled run that can take it starts by then, or (failed) its retry is due by then. A job in progress whose
@@ -420,6 +474,32 @@ pub fn read(ctx: &Ctx) -> Pending {
 fn save(ctx: &Ctx, p: &Pending) -> Result<()> {
     util::write_atomic(&state_path(ctx), &serde_json::to_vec_pretty(p)?)
 }
+/// A catalog refresh's progress in direct packages: each is done once every name it is looked up under is settled.
+struct PackageProgress {
+    /// Per package, the names not yet settled.
+    left: Vec<BTreeSet<String>>,
+}
+impl PackageProgress {
+    fn new(st: &stack::Stack, pending: &Pending) -> Self {
+        let left = st
+            .deps
+            .iter()
+            .map(|(purl, d)| {
+                let mut names: BTreeSet<String> = stack::dep_candidates(d).into_iter().collect();
+                names.extend(pending.jobs.get(purl).map(|j| j.technology.clone()));
+                names
+            })
+            .collect();
+        PackageProgress { left }
+    }
+    /// `name` is settled: the packages done and the total.
+    fn settle(&mut self, name: &str) -> (usize, usize) {
+        for names in &mut self.left {
+            names.remove(name);
+        }
+        (self.left.iter().filter(|n| n.is_empty()).count(), self.left.len())
+    }
+}
 pub fn candidates(ctx: &Ctx, st: &stack::Stack) -> BTreeSet<String> {
     let mut c = st.candidates();
     for j in read(ctx).jobs.values() {
@@ -489,7 +569,15 @@ fn request_via(a: &ureq::Agent, service: &str, purl: &str, post: bool) -> Result
 }
 /// A job the service answered for `purl`: it must name that package and a plain technology id.
 fn job_of(value: serde_json::Value, purl: &str) -> Result<Job> {
-    let j: Job = serde_json::from_value(value).map_err(|_| InvalidResponse)?;
+    let mut j: Job = serde_json::from_value(value).map_err(|_| InvalidResponse)?;
+    // A held package's answer (the gateway's: it names its run or the next one): nothing in it is published yet. A
+    // service that still counts a run's records as `records` has them moved where they belong.
+    j.live = Some(j.run.is_some() || j.next_run.is_some());
+    if j.live == Some(true) {
+        j.records_pending = j.records_pending.max(j.records);
+        j.records = 0;
+    }
+    j.note = None;
     if j.purl != purl
         || j.technology.is_empty()
         || !j
@@ -1190,8 +1278,14 @@ fn coverage_line(job: &Job) -> String {
         status,
         job.records
     );
+    if job.records_pending > 0 {
+        line += &format!(" · {}", pending_text(job));
+    }
     if !job.stage.is_empty() {
         line += &format!(" · {}", display_text(&job.stage));
+    }
+    if let Some(note) = &job.note {
+        line += &format!(" · {}", display_text(note));
     }
     if let Some(retry) = &job.retry_at {
         line += &format!(" · retry no earlier than {}", display_text(retry));
@@ -1200,6 +1294,15 @@ fn coverage_line(job: &Job) -> String {
         line += &format!(" · last update {}", display_text(&job.updated));
     }
     line
+}
+/// Records a run extracted that are not in the catalog yet, and when they will be.
+fn pending_text(job: &Job) -> String {
+    let n = job.records_pending;
+    let what = format!("{n} extracted {} not in the catalog yet", if n == 1 { "record" } else { "records" });
+    match job.publish_by.as_deref().and_then(iso_unix) {
+        Some(at) => format!("{what}, published when this coverage cycle ends (by about {} UTC)", clock(at)),
+        None => format!("{what}, published when this coverage cycle ends"),
+    }
 }
 fn coverage_summary(pending: &Pending) -> String {
     let mut text = String::from("Coverage snapshot (shared jobs; not a completeness guarantee)\n");
@@ -1708,10 +1811,14 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
     );
     // Every catalog refresh says how far it has got: on a large stack it is a few hundred requests. It returns the
     // technologies it checked when every one of them settled, so one that failed is tried again in step 4.
+    // Counted in direct packages, not in the names looked up: a package is looked up under its name and, once it has a
+    // coverage job, its job's technology too, and counting both would double the total once jobs exist.
     let catalog_sync = |title: &str, hint: &str| {
         let cands = candidates(ctx, &st);
-        sync::sync_reporting(&ctx.config.catalog, &ctx.cache, &cands, &st.purls(), |done, total| {
-            ui.update(title, &format!("Matched {done}/{total} technologies against the published catalog"), hint)
+        let mut counter = PackageProgress::new(&st, &read(ctx));
+        sync::sync_reporting(&ctx.config.catalog, &ctx.cache, &cands, &st.purls(), |settled| {
+            let (done, total) = counter.settle(settled);
+            ui.update(title, &format!("Checked {done}/{total} direct packages against the published catalog"), hint)
         })
         .map(|rep| rep.failed.is_empty().then_some(cands))
     };
@@ -1851,7 +1958,8 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
             match got {
                 Ok(j) => {
                     poll_at.insert(purls[i].clone(), next_poll(&j, now));
-                    pending.jobs.insert(purls[i].clone(), j);
+                    let kept = merged(pending.jobs.get(&purls[i]), j);
+                    pending.jobs.insert(purls[i].clone(), kept);
                 }
                 Err(e) => {
                     diagnostics.push(format!("Coverage {}: {e:#}", purls[i]));
@@ -2037,7 +2145,8 @@ fn follow_runs(
             // A failed poll keeps the last answer; the next one may succeed.
             statuses(&a, service, &purls, |i, got| {
                 if let Ok(job) = got {
-                    pending.jobs.insert(purls[i].clone(), job);
+                    let kept = merged(pending.jobs.get(&purls[i]), job);
+                    pending.jobs.insert(purls[i].clone(), kept);
                     polled.insert(purls[i].clone(), Instant::now());
                 }
                 true
@@ -2137,6 +2246,61 @@ mod tests {
             ["pkg:npm/express", "pkg:pypi/django", "pkg:npm/undici", "pkg:pypi/aiohttp", "pkg:npm/%40codemirror/view"]
         );
         assert_eq!(registration_order(&purls, &st, &BTreeMap::new())[0], "pkg:npm/%40codemirror/view", "without counts: declarers, then name");
+    }
+    fn answer(json: &str) -> Job { job_of(serde_json::from_str(json).unwrap(), "pkg:pypi/g").unwrap() }
+    #[test]
+    fn a_runs_records_are_pending_until_its_cycle_publishes_and_an_older_answer_never_replaces_a_newer_one() {
+        // The gateway's live answers at 16:02 and 16:11 (locust QA, 18 October 2026): the second is an older save the
+        // gateway fell back to, not a restart.
+        let at_1602 = answer(r#"{"purl":"pkg:pypi/g","technology":"g-1","name":"g","state":"analyzing","stage":"Analyzing official release 2.5.1 (2/10)","records":0,"records_pending":18,"publish_by":"2026-10-18T16:17:00.000Z","updated":"2026-10-18T15:59:53.037Z","releases_done":2,"releases_total":10,"run":{"state":"running"}}"#);
+        assert_eq!((at_1602.records, at_1602.records_pending, at_1602.live), (0, 18, Some(true)));
+        let line = coverage_line(&at_1602);
+        assert!(line.contains("0 published records · 18 extracted records not in the catalog yet, published when this coverage cycle ends (by about 16:17 UTC)"), "{line}");
+        // A gateway that still counts them as records: moved to pending all the same.
+        let old = answer(r#"{"purl":"pkg:pypi/g","technology":"g-1","name":"g","state":"analyzing","stage":"s","records":18,"updated":"2026-10-18T15:59:53.037Z","run":{"state":"running"}}"#);
+        assert_eq!((old.records, old.records_pending), (0, 18));
+        let at_1611 = answer(r#"{"purl":"pkg:pypi/g","technology":"g-1","name":"g","state":"analyzing","stage":"Analyzing official release 2.6.1 (0/10)","records":0,"updated":"2026-10-18T15:59:18.026Z","releases_done":0,"releases_total":10,"run":{"state":"running","elapsed_s":894}}"#);
+        let kept = merged(Some(&at_1602), at_1611);
+        assert_eq!((kept.records_pending, kept.releases_done, kept.updated.as_str(), kept.note.as_deref()), (18, 2, "2026-10-18T15:59:53.037Z", None));
+        assert_eq!(kept.run.as_ref().map(|r| r.elapsed_s), Some(894), "when to read it again is the newest answer's");
+        // Published at the cycle's end: replaces the live progress whatever its time, and nothing regressed.
+        let published = answer(r#"{"purl":"pkg:pypi/g","technology":"g-1","name":"g","state":"partial","stage":"s","records":18,"updated":"2026-10-18T15:59:50.000Z","releases_done":2,"releases_total":10}"#);
+        let now = merged(Some(&kept), published);
+        assert_eq!((now.records, now.records_pending, now.live, now.note.as_deref()), (18, 0, Some(false), None));
+        // Newer, but showing less: says why, and keeps saying it while the job does not change.
+        let restarted = answer(r#"{"purl":"pkg:pypi/g","technology":"g-1","name":"g","state":"partial","stage":"s","records":12,"updated":"2026-10-18T22:00:00.000Z","releases_done":0,"releases_total":11}"#);
+        let note = merged(Some(&now), restarted.clone()).note.unwrap();
+        assert!(note.contains("from 18 to 12") && note.contains("history restarted on the current release list (2/10 releases before, 0/11 now)"), "{note}");
+        let again = merged(Some(&merged(Some(&now), restarted.clone())), restarted);
+        assert!(again.note.is_some());
+        // A run that stopped before publishing: what it extracted is no longer reported, and that is said.
+        let waiting = answer(r#"{"purl":"pkg:pypi/g","technology":"g-1","name":"g","state":"queued","stage":"Waiting for the next coverage run (position 3 of 9)","records":0,"updated":"2026-10-18T17:00:00.000Z","next_run":"2026-10-18T17:10:00.000Z"}"#);
+        let note = merged(Some(&at_1602), waiting).note.unwrap();
+        assert!(note.starts_with("18 of 18 extracted records are no longer reported"), "{note}");
+        // State saved before answers were told apart is never ordered against a new answer.
+        let legacy: Job = serde_json::from_str(r#"{"purl":"pkg:pypi/g","technology":"g-1","name":"g","state":"analyzing","stage":"s","records":18,"updated":"2026-10-18T16:14:30.000Z"}"#).unwrap();
+        assert_eq!(merged(Some(&legacy), now.clone()).updated, now.updated);
+        let saved = serde_json::to_string(&kept).unwrap();
+        assert!(saved.contains("\"records_pending\":18") && saved.contains("\"live\":true"), "{saved}");
+    }
+    #[test]
+    fn catalog_progress_counts_each_direct_package_once_whatever_names_it_is_looked_up_under() {
+        let dep = |name: &str| crate::stack::Dep { name: name.into(), public_candidate: true, version: None, source: String::new(), readings: vec![], pins: vec![] };
+        let st = crate::stack::Stack {
+            packages: vec![],
+            deps: [("pkg:pypi/flask", dep("flask")), ("pkg:npm/%40babel/core", dep("@babel/core"))].map(|(p, d)| (p.to_string(), d)).into(),
+            node: None,
+            notes: vec![],
+            spread: 0,
+            standalone: vec![],
+        };
+        let mut pending = Pending::default();
+        pending.jobs.insert("pkg:pypi/flask".into(), Job { purl: "pkg:pypi/flask".into(), technology: "flask-8bc209ae".into(), ..Default::default() });
+        let mut p = PackageProgress::new(&st, &pending);
+        assert_eq!(p.settle("flask"), (0, 2), "its job's technology is still being looked up");
+        assert_eq!(p.settle("flask-8bc209ae"), (1, 2));
+        assert_eq!(p.settle("babel"), (1, 2));
+        assert_eq!(p.settle("core"), (2, 2));
     }
     #[test]
     fn transient_installs() {

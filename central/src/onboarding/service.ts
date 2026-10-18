@@ -749,7 +749,7 @@ export class CoverageService {
         const refused = this.budget.spend(cost);
         if (refused) {
           this.heldBack("tokens");
-          this.requeue(job, `${job.records} records available; coverage budget for this ${this.limits.period} spent; continues after ${day(Date.now() + refused.retryAfter * 1000)}`);
+          this.requeue(job, `${job.records} records so far; coverage budget for this ${this.limits.period} spent; continues after ${day(Date.now() + refused.retryAfter * 1000)}`);
           return;
         }
         job.quarter.tokens += cost;
@@ -764,14 +764,14 @@ export class CoverageService {
         this.save(
           job,
           "partial",
-          `${job.records} source-backed records published; continuing history`,
+          `${job.records} source-backed records so far; continuing history`,
         );
         if (++batch >= 3 && (job.completed.length < notes.length || docsDue)) {
           job.next_task = "docs";
           this.save(
             job,
             "queued",
-            `${job.records} records available; more history queued`,
+            `${job.records} records so far; more history queued`,
           );
           this.jobs.delete(job.purl);
           this.jobs.set(job.purl, job);
@@ -831,7 +831,7 @@ export class CoverageService {
     if (extracted.records !== undefined) job.records = extracted.records;
     if (docsRefused) {
       this.heldBack("tokens");
-      this.requeue(job, `${job.records} records available; coverage budget for this ${this.limits.period} spent; continues after ${day(Date.now() + docsRefused.retryAfter * 1000)}`);
+      this.requeue(job, `${job.records} records so far; coverage budget for this ${this.limits.period} spent; continues after ${day(Date.now() + docsRefused.retryAfter * 1000)}`);
       return;
     }
     if (job.releases_done < job.releases_total) {
@@ -839,8 +839,8 @@ export class CoverageService {
       this.requeue(
         job,
         job.overflow === quarter
-          ? `${job.records} records available; ${job.releases_done}/${job.releases_total} releases; this technology's release-note budget for ${quarter} is used (${job.quarter.tokens} of ${cap} tokens), the rest waits behind other technologies by demand`
-          : `${job.records} records available; ${job.releases_done}/${job.releases_total} releases, ${job.docs_done}/${job.docs_total} docs; continuing centrally`,
+          ? `${job.records} records so far; ${job.releases_done}/${job.releases_total} releases; this technology's release-note budget for ${quarter} is used (${job.quarter.tokens} of ${cap} tokens), the rest waits behind other technologies by demand`
+          : `${job.records} records so far; ${job.releases_done}/${job.releases_total} releases, ${job.docs_done}/${job.docs_total} docs; continuing centrally`,
       );
       return;
     }

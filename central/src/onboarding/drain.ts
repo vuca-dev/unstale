@@ -45,7 +45,7 @@ import { parseArgs } from "node:util";
 import { catalogDir, centralDir } from "../pipeline/paths.ts";
 import { sha256, writeAtomic } from "../pipeline/util.ts";
 import { CoverageService } from "./service.ts";
-import { PROGRESS_EVERY_MS, progressTicker } from "./progress.ts";
+import { PROGRESS_EVERY_MS, PUBLISH_MS, progressOf, progressTicker, type RunState } from "./progress.ts";
 import { Taken, type Request } from "./taken.ts";
 
 const gateway = () => {
@@ -76,8 +76,6 @@ async function pull(): Promise<Request[]> {
     return [];
   }
 }
-
-type RunState = "running" | "publishing";
 
 /** The budget as the gateway reads it: spent until the latest reset of the limits at their cap, or null. An unreadable
  * budget has no reset, so it is reported as spent for the longest period (31 days); every run reports again, so the
@@ -119,15 +117,6 @@ async function deliver(updates: { purl: string; state: RunState; job?: Record<st
     return { ok: false, first };
   }
   return { ok: true, first };
-}
-
-/** A pulled package's job as the gateway shows it: the job that works it (a merged package's is its technology's). */
-function progressOf(service: CoverageService, purl: string): { purl: string; state: RunState; job: Record<string, unknown> } | undefined {
-  const own = service.jobs.get(purl);
-  const job = (own?.merged_into && service.jobs.get(own.merged_into)) || own;
-  if (!job || (job.state === "queued" && !service.working(job.purl))) return undefined;
-  const { state, stage, records, releases_done, releases_total, docs_done, docs_total } = job;
-  return { purl, state: service.working(job.purl) ? "running" : "publishing", job: { state, stage, records, releases_done, releases_total, docs_done, docs_total } };
 }
 
 /** Replaces the status directory as a whole, so a job that no longer exists has no status left behind. */
@@ -184,16 +173,20 @@ async function drain(args: string[]): Promise<void> {
           .finally(() => (pulling = undefined));
       }, pullMs)
     : undefined;
-  const tick = progressTicker(() => [...followed].flatMap((p) => progressOf(service, p) ?? []), async (u) => (await deliver(u)).ok);
+  // The drain ends by its deadline and grace period, and the cycle then publishes what it did.
+  const [minutes, grace] = [Number(values.minutes ?? 240), Number(values["grace-minutes"] ?? 10)];
+  const publishBy = new Date(t0 + (minutes + grace) * 60_000 + PUBLISH_MS).toISOString();
+  const progress = () => [...followed].flatMap((p) => progressOf(service, p, publishBy) ?? []);
+  const tick = progressTicker(progress, async (u) => (await deliver(u)).ok);
   const first = setTimeout(tick, 1000);
   const every = setInterval(tick, PROGRESS_EVERY_MS);
   const result = await service
-    .drain(t0 + Number(values.minutes ?? 240) * 60_000, Number(values["grace-minutes"] ?? 10) * 60_000, 500)
+    .drain(t0 + minutes * 60_000, grace * 60_000, 500)
     .finally(() => (clearTimeout(first), clearInterval(every), clearInterval(again)));
   await pulling;
   // What finished is published by this cycle's deploy; a job still running past the grace period stays `running` (its
   // partial status is published, and the next cycle resumes it); what did not start waits as before.
-  await report([...followed].flatMap((p) => progressOf(service, p) ?? []), { budget: budgetOf(service) });
+  await report(progress(), { budget: budgetOf(service) });
   const statuses = writeStatuses(service);
   const states: Record<string, number> = {};
   for (const j of service.jobs.values()) states[j.state] = (states[j.state] ?? 0) + 1;
