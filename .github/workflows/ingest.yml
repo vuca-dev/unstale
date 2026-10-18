@@ -25,7 +25,8 @@
 # holds it). A run saves once a cycle; the newest generation of each of the newest STATE_KEEP (3) runs is kept
 # (rollback) with every segment it references, the rest is deleted after a successful save. A legacy tarball
 # generation (`state-<stamp>.tar.zst.*` + `.sha256`) is still restored, and never deleted: reverting to the tarball
-# code continues from it (an operator deletes the tarballs once they are not needed). Why not the
+# code restores the last tarball, losing the state saved since the migration (an operator deletes the tarballs once
+# they are not needed). Why not the
 # alternatives: actions/cache is evicted after 7 days without access and shares a 10 GB repository limit, so it
 # cannot be the only copy; a git branch would put churning caches into history (and hit the 100 MB file limit);
 # artifacts expire. A draft release is durable, has no storage quota, is invisible to readers without push access,

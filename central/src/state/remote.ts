@@ -4,7 +4,7 @@
 // GitHub: a download asks the API once for the asset's signed URL (valid an hour; kept for 30 minutes) and reads byte
 // ranges from it, so restoring a member costs one ranged read and no API request when its segment was read recently.
 // Uploads go through curl as the tarball saves did; a failed upload's leftover asset is deleted before the retry.
-import { copyFileSync, createReadStream, createWriteStream, existsSync, mkdirSync, openSync, readSync, closeSync, readdirSync, statSync, unlinkSync } from "node:fs";
+import { copyFileSync, createReadStream, createWriteStream, existsSync, mkdirSync, openSync, readSync, closeSync, readdirSync, renameSync, statSync, unlinkSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { join } from "node:path";
 import { Readable } from "node:stream";
@@ -62,9 +62,9 @@ export class DirRemote implements Remote {
   }
   async upload(file: string, name: string): Promise<void> {
     if (isLegacy(name)) throw new Error(`${name}: tarball-format assets are never replaced`);
+    // Copied under a hidden name, then renamed: a listed asset is always complete.
     copyFileSync(file, join(this.dir, `.${name}.part`));
-    copyFileSync(join(this.dir, `.${name}.part`), join(this.dir, name));
-    unlinkSync(join(this.dir, `.${name}.part`));
+    renameSync(join(this.dir, `.${name}.part`), join(this.dir, name));
   }
   async remove(asset: Asset): Promise<void> {
     if (existsSync(join(this.dir, asset.id))) unlinkSync(join(this.dir, asset.id));
