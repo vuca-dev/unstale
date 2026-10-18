@@ -73,8 +73,8 @@ concurrency:
 jobs:
   ingest:
     runs-on: ubuntu-latest
-    # Under the 6-hour hosted-job limit, with the pipeline and the cycles capped lower so the state is still saved.
-    timeout-minutes: 300
+    # Under the 6-hour hosted-job limit: setup, the pipeline (120) and the cycles (190) fit, so the state is saved.
+    timeout-minutes: 345
     permissions:
       contents: write # the catalog-state draft release (read and write its assets)
       actions: write # a run whose window ends with work left starts the next one (workflow_dispatch)
@@ -218,7 +218,8 @@ jobs:
       - name: Drain and publish
         id: cycles
         if: always() && steps.restore.outcome == 'success' && (steps.pipeline.outcome == 'success' || steps.pipeline.outcome == 'failure')
-        timeout-minutes: 200
+        # RUN_MINUTES (140) + the last cycle's grace (5) + about a minute of publish per cycle (10), with slack.
+        timeout-minutes: 190
         env:
           GITHUB_TOKEN: ${{ secrets.INGEST_GITHUB_TOKEN || github.token }}
           JEV_API_KEY: ${{ secrets.JEV_API_KEY }}

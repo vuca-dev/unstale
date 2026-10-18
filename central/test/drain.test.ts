@@ -191,11 +191,20 @@ test("a request enqueued after the deadline (a pull during the grace period) is 
   hanging();
   const service = new CoverageService(2, { limits: limits() }).hold();
   service.enqueue([{ purl: "pkg:npm/slow", demand: 1 }]);
+  // Well inside the grace period (1 s), so a slow machine cannot reach its end first.
   setTimeout(() => service.enqueue([{ purl: "pkg:npm/late", demand: 1 }]), 150);
-  const r = await service.drain(Date.now() + 50, 300, 10);
+  const r = await service.drain(Date.now() + 50, 1_000, 10);
   expect(r).toMatchObject({ started: 1, unfinished: 1, drained: false });
   expect(service.working("pkg:npm/late")).toBe(false);
   expect(service.jobs.get("pkg:npm/late")).toMatchObject({ state: "queued", demand: 1 });
+});
+
+test("a drain whose last job finishes in the grace period with nothing left to start is drained", async () => {
+  const slow = noSources().getMockImplementation()!;
+  vi.spyOn(discovery, "discoverTechnology").mockImplementation(async (purl) => (await new Promise((r) => setTimeout(r, 150)), slow(purl)));
+  const service = new CoverageService(1, { limits: limits() }).hold();
+  service.enqueue([{ purl: "pkg:npm/one", demand: 1 }]);
+  expect(await service.drain(Date.now() + 50, 2_000, 10)).toEqual({ started: 1, unfinished: 0, drained: true });
 });
 
 test("pulls during a drain take only what grew since the last one, and the acknowledgement is the whole", () => {

@@ -23,7 +23,8 @@ for (const f of techs) {
   signed(`v1/tech/${f}`);
   const index = JSON.parse(readFileSync(join(site, "v1", "tech", f), "utf8"));
   for (const s of index.shards ?? []) {
-    const bytes = readFileSync(join(site, s.path));
+    // As the client resolves it (sync.rs): `v1/shards/…` as is, `shards/…` under `v1/`.
+    const bytes = readFileSync(join(site, s.path.startsWith("v1/") ? s.path : join("v1", s.path)));
     if (bytes.length !== s.bytes) throw new Error(`${s.path}: ${bytes.length} bytes, index says ${s.bytes}`);
     const sha = createHash("sha256").update(bytes).digest("hex");
     if (sha !== s.sha256) throw new Error(`${s.path}: sha256 ${sha}, index says ${s.sha256}`);

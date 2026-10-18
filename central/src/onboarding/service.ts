@@ -369,8 +369,8 @@ export class CoverageService {
    * Batch mode for an ephemeral runner: works the queue until nothing more can start (empty, not yet due, or the
    * budget spent) or `deadline` passes, then waits for running jobs up to `grace` ms. A job still running then is
    * resumed by the next run (an interrupted job is requeued on load). Requests enqueued meanwhile join the queue.
-   * `drained`: the drain ended because nothing more could start, not at the deadline (work may be left only when it
-   * is false). `held` names the budget limits that refused work during the drain, each with its cap and when it
+   * `drained`: nothing more could start, before the deadline or once the grace period's jobs finished (work may be
+   * left only when it is false). `held` names the budget limits that refused work during the drain, each with its cap and when it
    * resets, so a drain that started nothing (or less than the queue held) says why.
    */
   async drain(
@@ -389,7 +389,8 @@ export class CoverageService {
     const stop = Date.now() + grace;
     while (this.running.size && Date.now() < stop) await new Promise((r) => setTimeout(r, poll));
     const held = [...this.holds.values()];
-    return { started: this.launched - before, unfinished: this.running.size, drained, ...(held.length ? { held } : {}) };
+    const done = drained || (!this.running.size && !this.queue().length);
+    return { started: this.launched - before, unfinished: this.running.size, drained: done, ...(held.length ? { held } : {}) };
   }
   /** The budget limits at their cap now (see DailyBudget.spent). */
   spent(): Hold[] {

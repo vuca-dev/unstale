@@ -29,9 +29,11 @@ set -euo pipefail
 : "${RUN_MINUTES:=140}" "${CYCLE_MINUTES:=15}" "${GRACE_MINUTES:=5}" "${PULL_MINUTES:=5}" "${CONCURRENCY:=6}"
 : "${STATE_KEEP:=3}" "${ASSET_FILE_LIMIT:=20000}" "${PIPELINE_OK:=true}" "${DEPLOY:=true}"
 
-# The drain fetches untrusted pages; it never sees the publish secrets. Publishing never sees the model keys.
-drain_env=(env -u SECRET_SIGNING_KEY -u SECRET_CLOUDFLARE_API_TOKEN -u SECRET_CLOUDFLARE_ACCOUNT_ID)
-publish_env=(env -u SECRET_SIGNING_KEY -u SECRET_CLOUDFLARE_API_TOKEN -u SECRET_CLOUDFLARE_ACCOUNT_ID -u JEV_API_KEY -u AI_GATEWAY_API_KEY -u GITHUB_TOKEN -u UNSTALE_GATEWAY_TOKEN)
+# The drain fetches untrusted pages; it never sees the publish secrets. Publishing never sees the model keys. Neither
+# sees GH_TOKEN (the job's token, with write access to the state release and Actions): only this script's own state
+# save and continuation dispatch use it.
+drain_env=(env -u GH_TOKEN -u SECRET_SIGNING_KEY -u SECRET_CLOUDFLARE_API_TOKEN -u SECRET_CLOUDFLARE_ACCOUNT_ID)
+publish_env=(env -u GH_TOKEN -u SECRET_SIGNING_KEY -u SECRET_CLOUDFLARE_API_TOKEN -u SECRET_CLOUDFLARE_ACCOUNT_ID -u JEV_API_KEY -u AI_GATEWAY_API_KEY -u GITHUB_TOKEN -u UNSTALE_GATEWAY_TOKEN)
 
 log() { echo "[$(date -u +%H:%M:%S)] $*"; }
 
@@ -159,5 +161,6 @@ done
 
 if [ "$continuing" = true ]; then
   log "work left at the end of the window: starting the next run"
-  gh workflow run ingest.yml --repo "$GH_REPO" --ref "$GITHUB_REF_NAME" -f reason=continue || continuing=false
+  # A failed handoff fails the step (visible), and the exit trap still tells the gateway this run is done.
+  gh workflow run ingest.yml --repo "$GH_REPO" --ref "$GITHUB_REF_NAME" -f reason=continue || { continuing=false; exit 1; }
 fi

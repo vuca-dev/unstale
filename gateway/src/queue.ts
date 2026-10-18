@@ -704,17 +704,27 @@ export class PendingQueue {
   }
 
   /** What a run reports of its pulls: it reads the queue again at `next` (ms), or (undefined) no more. When it pulls no
-   * more and a new package was held back from an early run meanwhile, that run may start now (within the day's count
-   * and interval, as any early run): returns whether to dispatch it. */
-  setPulls(next: number | undefined, now = Date.now()): boolean {
+   * more, an early run held back meanwhile may start now, for the new packages still held that asked since then (the
+   * run took and published the others), within the day's count and interval as any early run; those packages are then
+   * shown as dispatched. Returns them: dispatch the run when there are any. */
+  setPulls(next: number | undefined, now = Date.now()): string[] {
     return this.operate(
       "report",
       now,
       () => {
         this.setMeta("pulls_next", next === undefined ? undefined : String(next));
-        const start = next === undefined && this.getMeta("fast_held") !== undefined && this.fastTrack(now);
+        const since = Number(this.getMeta("fast_held"));
+        let started: string[] = [];
+        if (next === undefined && Number.isFinite(since)) {
+          const waiting = [...this.state().line.rows].filter(([, e]) => !e.known && !e.run && e.firstSeen >= since);
+          if (!waiting.length) this.setMeta("fast_held", undefined);
+          else if (this.fastTrack(now)) {
+            for (const [purl, e] of waiting) this.put(purl, { ...e, run: { state: "dispatched", since: now, updated: now } });
+            started = waiting.map(([purl]) => purl);
+          }
+        }
         this.commit();
-        return start;
+        return started;
       },
       true,
     );
@@ -730,12 +740,12 @@ export class PendingQueue {
    * while central's budget is spent (that run would start nothing, and would use up the day's early runs). Not while a
    * run is pulling the queue either: it takes the package within minutes, and a run started now would only wait
    * behind it (GitHub keeps one pending run per concurrency group, so each would cancel the last). That early run is
-   * held back (`fast_held`, using none of the day's count) and starts when the pulling run says it is done, for what
-   * arrived after its last pull. Counted in one `meta` key: "<UTC day> <runs that day> <last run ms>". */
+   * held back (`fast_held`: when the first was, using none of the day's count) and starts when the pulling run says it
+   * is done, if a package that asked since then is still held (arrived after the run's last pull). Counted in one `meta` key: "<UTC day> <runs that day> <last run ms>". */
   private fastTrack(now: number): boolean {
     if (!this.settings.fastTrackPerDay || this.spentUntil(now) !== undefined) return false;
     if (this.pullsNext(now) !== undefined) {
-      this.setMeta("fast_held", "1");
+      if (this.getMeta("fast_held") === undefined) this.setMeta("fast_held", String(now));
       return false;
     }
     const day = utcDay(now);

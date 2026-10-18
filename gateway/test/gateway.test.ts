@@ -401,16 +401,25 @@ test("while a run pulls the queue no early run starts and none of the day's coun
   expect(q.request("pkg:npm/b", "198.51.100.2", false, T + 60_000)).toMatchObject({ type: "queued", fastTrack: false });
   expect(q.view("pkg:npm/a", T)).toMatchObject({ pullsNext: T + 5 * 60_000 });
   expect(q.run("pkg:npm/a", T)).toBeUndefined();
-  // Done pulling: the one early run held back starts now, and counts.
-  expect(q.setPulls(undefined, T + 2 * 60_000)).toBe(true);
+  // Done pulling: the one early run held back starts now, counts, and its packages show it.
+  expect(q.setPulls(undefined, T + 2 * 60_000)).toEqual(["pkg:npm/a", "pkg:npm/b"]);
+  expect(q.run("pkg:npm/b", T + 2 * 60_000)).toMatchObject({ state: "dispatched" });
   expect(q.pullsNext(T + 2 * 60_000)).toBeUndefined();
-  expect(q.setPulls(undefined, T + 3 * 60_000)).toBe(false);
+  expect(q.setPulls(undefined, T + 3 * 60_000)).toEqual([]);
   expect(q.request("pkg:npm/c", "198.51.100.3", false, T + 4 * 60_000)).toMatchObject({ fastTrack: true });
   expect(q.request("pkg:npm/d", "198.51.100.4", false, T + 5 * 60_000)).toMatchObject({ fastTrack: false }); // the day's 2 are used
   // Nothing held back: a run done pulling starts nothing.
   const quiet = new PendingQueue(memorySql(), settings({ fastTrackPerDay: 2, fastTrackIntervalMs: 0 }));
   quiet.setPulls(T + 5 * 60_000, T);
-  expect(quiet.setPulls(undefined, T + 60_000)).toBe(false);
+  expect(quiet.setPulls(undefined, T + 60_000)).toEqual([]);
+  // Held back, but the pulling run took and published the package: nothing is left to start a run for.
+  const took = new PendingQueue(memorySql(), settings({ fastTrackPerDay: 2, fastTrackIntervalMs: 0 }));
+  took.setPulls(T + 5 * 60_000, T);
+  took.request("pkg:npm/a", "198.51.100.1", false, T);
+  took.ack([{ purl: "pkg:npm/a", demand: 1 }], T + 60_000);
+  expect(took.setPulls(undefined, T + 2 * 60_000)).toEqual([]);
+  expect(took.request("pkg:npm/b", "198.51.100.2", false, T + 3 * 60_000)).toMatchObject({ fastTrack: true });
+  expect(took.request("pkg:npm/c", "198.51.100.3", false, T + 4 * 60_000)).toMatchObject({ fastTrack: true }); // none of the 2 used before
 });
 
 test("a run that stops pulling without saying so is waited for only a while; then early runs start again", () => {
@@ -420,7 +429,7 @@ test("a run that stops pulling without saying so is waited for only a while; the
   expect(q.pullsNext(T + 16 * 60_000)).toBeUndefined();
   expect(q.request("pkg:npm/b", "198.51.100.2", false, T + 16 * 60_000)).toMatchObject({ fastTrack: true });
   // The early run that started took what was held back too: a later "done" starts no second one.
-  expect(q.setPulls(undefined, T + 17 * 60_000)).toBe(false);
+  expect(q.setPulls(undefined, T + 17 * 60_000)).toEqual([]);
 });
 
 test("a run reports its pulls with its progress: a held package names the next pull, and the run's last word starts what waited", async () => {

@@ -75,9 +75,14 @@ export class Coverage extends DurableObject<Env> {
    * `pulls` what it knows of the run's pulls. A run done pulling starts the early run held back meanwhile, if any. */
   report(updates: { purl: string; state: RunState; job?: Progress }[], budget?: { spentUntil?: number }, pulls?: { next?: number }): { reported: number; dispatched?: boolean } {
     if (budget) this.queue.setBudget(budget.spentUntil);
-    const start = pulls ? this.queue.setPulls(pulls.next) : false;
-    if (start) this.ctx.waitUntil(dispatch(this.env).catch(() => false));
-    return { reported: this.queue.report(updates), ...(pulls ? { dispatched: start } : {}) };
+    const started = pulls ? this.queue.setPulls(pulls.next) : [];
+    if (started.length)
+      this.ctx.waitUntil(
+        dispatch(this.env)
+          .catch(() => false)
+          .then((ok) => ok || started.forEach((purl) => this.queue.undispatched(purl))),
+      );
+    return { reported: this.queue.report(updates), ...(pulls ? { dispatched: started.length > 0 } : {}) };
   }
   list(): Taken[] {
     return this.queue.list();
