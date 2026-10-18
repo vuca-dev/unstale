@@ -644,7 +644,9 @@ pub struct Lock {
 /// excludes what it matches.
 #[derive(Debug, Clone, Default)]
 struct Members {
-    include: globset::GlobSet,
+    /// Each include pattern with its matcher: a wildcard never matches a dot-prefixed name (pnpm, npm and Yarn glob
+    /// with `dot: false`), so a `.name` segment must be spelled out in the pattern.
+    include: Vec<(globset::GlobMatcher, String)>,
     exclude: globset::GlobSet,
 }
 
@@ -657,32 +659,51 @@ impl Members {
             let ws = pj.get("workspaces");
             ws.and_then(|w| w.get("packages")).or(ws).and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).map(String::from).collect()
         };
-        let (mut include, mut exclude) = (globset::GlobSetBuilder::new(), globset::GlobSetBuilder::new());
+        let (mut include, mut exclude) = (vec![], globset::GlobSetBuilder::new());
         for p in &patterns {
-            let (set, p) = match p.trim().strip_prefix('!') {
-                Some(rest) => (&mut exclude, rest),
-                None => (&mut include, p.trim()),
+            let (negated, p) = match p.trim().strip_prefix('!') {
+                Some(rest) => (true, rest),
+                None => (false, p.trim()),
             };
             let p = p.trim_start_matches("./").trim_end_matches('/');
-            if let Ok(g) = globset::GlobBuilder::new(p).literal_separator(true).build() {
-                set.add(g);
+            let Ok(g) = globset::GlobBuilder::new(p).literal_separator(true).build() else { continue };
+            if negated {
+                exclude.add(g);
+            } else {
+                include.push((g.compile_matcher(), p.to_string()));
             }
         }
-        Members { include: include.build().unwrap_or_default(), exclude: exclude.build().unwrap_or_default() }
+        Members { include, exclude: exclude.build().unwrap_or_default() }
     }
 
     fn contains(&self, rel: &str) -> bool {
-        self.include.is_match(rel) && !self.exclude.is_match(rel)
+        let dotted: Vec<&str> = rel.split('/').filter(|s| s.starts_with('.')).collect();
+        self.include.iter().any(|(g, p)| g.is_match(rel) && dotted.iter().all(|d| p.split('/').any(|s| s == *d)))
+            && !self.exclude.is_match(rel)
     }
 }
 
-/// The `packages` globs of `pnpm-workspace.yaml`, block (`- apps/*`) or flow (`[apps/*, packages/*]`) form.
+/// The `packages` globs of `pnpm-workspace.yaml`, block (`- apps/*`) or flow (`[apps/*, packages/*]`, on one line
+/// or several) form.
 fn pnpm_workspace_packages(text: &str) -> Vec<String> {
     let unquote = |v: &str| v.trim().trim_matches(['\'', '"']).to_string();
     let (mut out, mut inside) = (vec![], false);
+    // An open flow sequence, collected until its `]`.
+    let mut flow: Option<String> = None;
     for raw in text.lines() {
         let line = raw.find(" #").map_or(raw, |i| &raw[..i]).trim_end();
         if line.trim().is_empty() || line.trim_start().starts_with('#') {
+            continue;
+        }
+        if let Some(acc) = flow.as_mut() {
+            acc.push_str(line.trim());
+            acc.push(' ');
+        }
+        if let Some(acc) = flow.take() {
+            match acc.split_once(']') {
+                Some((items, _)) => out.extend(items.trim_start_matches('[').split(',').map(unquote).filter(|p| !p.is_empty())),
+                None => flow = Some(acc),
+            }
             continue;
         }
         if line.starts_with("---") {
@@ -696,9 +717,12 @@ fn pnpm_workspace_packages(text: &str) -> Vec<String> {
             };
             inside = k == "packages" && val.is_none();
             if k == "packages"
-                && let Some(items) = val.and_then(|v| v.trim().strip_prefix('[')?.strip_suffix(']'))
+                && let Some(v) = val.map(str::trim).filter(|v| v.starts_with('['))
             {
-                out.extend(items.split(',').map(unquote).filter(|p| !p.is_empty()));
+                match v.split_once(']') {
+                    Some((items, _)) => out.extend(items.trim_start_matches('[').split(',').map(unquote).filter(|p| !p.is_empty())),
+                    None => flow = Some(format!("{v} ")),
+                }
             }
         } else if inside && let Some(item) = line.trim_start().strip_prefix('-') {
             out.push(unquote(item));
@@ -1259,6 +1283,12 @@ mod tests {
         assert!(!s.notes.iter().any(|n| n.contains("out of date")), "{:?}", s.notes);
         // Yarn's `{"packages": [...]}` form and pnpm's flow list.
         assert!(pnpm_workspace_packages("packages: ['apps/*', \"e2e/*\"]\nonlyBuilt: x\n") == vec!["apps/*", "e2e/*"]);
+        assert!(pnpm_workspace_packages("packages: [\n  'apps/*', # web\n  packages/*\n]\ncatalog:\n  a: 1\n") == vec!["apps/*", "packages/*"]);
+        assert!(pnpm_workspace_packages("packages:\n  - apps/*\n  - '.config/*'\n") == vec!["apps/*", ".config/*"]);
+        let dots = tempfile::tempdir().unwrap();
+        write(dots.path(), "pnpm-workspace.yaml", "packages:\n  - 'packages/*'\n  - .config/*\n");
+        let m = Members::read(dots.path(), "pnpm-lock.yaml");
+        assert!(m.contains("packages/ui") && !m.contains("packages/.hidden") && m.contains(".config/lint"), "a wildcard skips dot names");
         let y = tempfile::tempdir().unwrap();
         write(y.path(), "package.json", r#"{"workspaces":{"packages":["libs/*"],"nohoist":["**/x"]}}"#);
         let m = Members::read(y.path(), "yarn.lock");
