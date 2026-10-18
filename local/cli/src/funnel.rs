@@ -305,6 +305,72 @@ pub fn deprecated_lits(r: &Rec, lits: &[String]) -> Vec<String> {
     lits.iter().filter(|l| replaces.contains(*l)).cloned().collect()
 }
 
+/// Per package (index into `packages`), the packages of this repository that declare it as a dependency: their
+/// manifests name its `name` (`Package::own`).
+fn dependents(packages: &[crate::stack::Package]) -> Vec<Vec<usize>> {
+    let by_own: HashMap<String, usize> = packages.iter().enumerate().filter_map(|(i, p)| p.own.as_deref().map(|o| (normalize_purl(o), i))).collect();
+    let mut out = vec![vec![]; packages.len()];
+    for (i, p) in packages.iter().enumerate() {
+        for d in &p.declared {
+            if let Some(&j) = by_own.get(&normalize_purl(d))
+                && j != i
+            {
+                out[j].push(i);
+            }
+        }
+    }
+    out
+}
+
+/// Directories of the packages that declare one of `comps`, or depend (through the repository's own packages, at any
+/// depth: `dependents`) on a package that does: n8n's `packages/cli` gets typescript-eslint from the workspace
+/// `@n8n/eslint-config`.
+fn reaching<'p>(packages: &'p [crate::stack::Package], dependents: &[Vec<usize>], comps: &BTreeSet<String>) -> Vec<&'p str> {
+    let mut has = vec![false; packages.len()];
+    let mut todo: Vec<usize> = (0..packages.len()).filter(|&i| packages[i].declared.iter().any(|d| comps.contains(&normalize_purl(d)))).collect();
+    while let Some(i) = todo.pop() {
+        if !std::mem::replace(&mut has[i], true) {
+            todo.extend(dependents[i].iter().copied().filter(|&j| !has[j]));
+        }
+    }
+    packages.iter().zip(has).filter(|(_, h)| *h).map(|(p, _)| p.dir.as_str()).collect()
+}
+
+/// The literals that name what replaces a deprecation's deprecated API (`deprecated`): its `introduces`, and its
+/// other literals of the same shape as a deprecated one (a module path for a module path, a flag for a flag, a file
+/// name for a file name, an identifier for an identifier), neither part of nor containing it, and not plain words or
+/// phrases (`react-native/setup-env` for `react-native/Libraries/Core/InitializeCore`; not `InitializeCore`, not
+/// `no-restricted-imports` inside `@typescript-eslint/no-restricted-imports`, not the command `turbo prune` beside
+/// `--scope`). Terms often name the successor, which is why they are never evidence of the deprecated API; here that
+/// is what is wanted. Empty when `deprecated` is.
+pub fn replacement_lits(r: &Rec, lits: &[String], deprecated: &[String]) -> Vec<String> {
+    if deprecated.is_empty() {
+        return vec![];
+    }
+    let shape = |l: &str| -> u8 {
+        if usage::cli_flag(l) {
+            1
+        } else if l.contains('/') {
+            2
+        } else if l.rsplit_once('.').is_some_and(|(_, x)| !x.is_empty() && x.chars().all(|c| c.is_ascii_lowercase())) && !l.starts_with('.') {
+            3
+        } else {
+            4
+        }
+    };
+    let shapes: BTreeSet<u8> = deprecated.iter().map(|d| shape(d)).collect();
+    let intro: BTreeSet<String> = r.r.introduces.iter().filter_map(|x| clean_lit(x)).collect();
+    let mut out: Vec<String> = vec![];
+    for l in intro.iter().chain(lits) {
+        let related = deprecated.iter().any(|d| d.contains(l.as_str()) || l.contains(d.as_str()));
+        let fits = intro.contains(l) || shapes.contains(&shape(l));
+        if fits && !related && !usage::plain_word(l) && !l.contains(char::is_whitespace) && !out.contains(l) {
+            out.push(l.clone());
+        }
+    }
+    out
+}
+
 /// Opt-in: an adoption step is needed. The adoption list also names `configuration` and `schema_or_migration`, which are
 /// surfaces, not change types; they adopt anyway.
 ///
@@ -585,6 +651,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
     // The words that run each technology from a command line, for its CLI-flag literals (`usage::cli_flag`).
     let commands: BTreeSet<String> = in_stack.iter().flat_map(|(_, _, tl)| tl.comps.iter().flat_map(|c| usage::command_words(c))).collect();
     let all_hits: Hits = usage::find_with_commands(inp.repo, &usage_lits, &whole_lits, &commands);
+    let dependents = dependents(&inp.stack.packages);
     for (tech, td, tl) in &in_stack {
         let (tech, comps, lits) = (*tech, &tl.comps, &tl.per_record);
         // A CLI flag counts only on a command line that runs this technology: `--scope` in another CLI's help text or
@@ -594,6 +661,10 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
         let present: Vec<&String> = comps.iter().filter(|c| purls.contains(*c)).collect();
         // Packages that declare this technology: a file's role is judged inside the deepest one containing it.
         let owners: Vec<&str> = inp.stack.packages.iter().filter(|p| p.declared.iter().any(|d| comps.contains(&normalize_purl(d)))).map(|p| p.dir.as_str()).collect();
+        let reach = reaching(&inp.stack.packages, &dependents, comps);
+        // A deprecated literal that only loads one of the technology's packages (`from 'chat'`) is in every file using
+        // it: no sign of the deprecated re-export or entry point.
+        let own_names: Vec<String> = comps.iter().filter_map(|c| purl_name(c)).collect();
         let ecosystem = comps.iter().find_map(|c| c.strip_prefix("pkg:").and_then(|r| r.split('/').next())).unwrap_or("npm").to_string();
         // A subpath of the technology's own package (`./src/*`) counts only where `<package>/<subpath>` is named.
         let subpathed = subpath_filtered(hits, tl, &ecosystem, &owners, inp.repo);
@@ -611,7 +682,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
         };
         // Only files that can use this technology evidence it, and a plain word only where it is named (`usage::Scope`).
         let scope_lits = || tl.usage.iter().chain(&tl.whole);
-        let all = usage::Scope::new(&ecosystem, &owners, comps, scope_lits(), hits, &inp.repo.paths);
+        let all = usage::Scope::new(&ecosystem, &owners, comps, scope_lits(), hits, &inp.repo.paths).with_reach(&reach);
         // Per package: the version the outputs use, from the code that imports it (`Choice`).
         let choices: BTreeMap<&String, Choice> = present
             .iter()
@@ -662,7 +733,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             masks.iter().map(|m| hits_without(hits, lits.iter().copied(), &m.iter().map(Option::is_some).collect::<Vec<_>>(), &inp.repo.paths)).collect()
         };
         let mut scopes = vec![all];
-        scopes.extend(filtered.iter().map(|f| usage::Scope::new(&ecosystem, &owners, comps, scope_lits(), f, &inp.repo.paths)));
+        scopes.extend(filtered.iter().map(|f| usage::Scope::new(&ecosystem, &owners, comps, scope_lits(), f, &inp.repo.paths).with_reach(&reach)));
         let hits_of = |v: usize| if v == 0 { hits } else { &filtered[v - 1] };
         // Per view and literal, the manifests left out whose code importing the technology it matches (`Opp::elsewhere`).
         let elsewhere: Memo<Rc<BTreeSet<u16>>> = RefCell::default();
@@ -700,14 +771,17 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             evidence.borrow_mut().insert(key, e.clone());
             e
         };
-        // A deprecated literal's evidence: whole-literal hits only (`usage::Scope::exact_evidence`).
+        // A deprecated literal's evidence: whole-literal hits only (`usage::Scope::exact_evidence`), at a live site
+        // (`usage::live_site`: not in a comment, not a fallback beside the record's replacement). Per view, literal and
+        // replacements.
         let exact: Memo<Rc<usage::Evidence>> = RefCell::default();
-        let exact_of = |v: usize, l: &str| -> Rc<usage::Evidence> {
-            let key = (v, l.to_string());
+        let exact_of = |v: usize, l: &str, repl: &[String]| -> Rc<usage::Evidence> {
+            let key = (v, format!("{l}\0{}", repl.join("\0")));
             if let Some(e) = exact.borrow().get(&key) {
                 return e.clone();
             }
-            let e = Rc::new(scopes[v].exact_evidence(l, role, !nested));
+            let live = |p: &str| inp.repo.text(p).is_none_or(|t| usage::live_site(p, t, l, repl));
+            let e = Rc::new(scopes[v].exact_evidence_where(l, role, !nested, live));
             exact.borrow_mut().insert(key, e.clone());
             e
         };
@@ -841,11 +915,13 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             let (release, avail) = availability(&lines, &candidates, &installed, &target, (picked, &rv));
             // A deprecation that names what it deprecates cites only that, as whole literals: a match on its other
             // terms is not usage of the deprecated API. The score (the queue's order) still counts every literal.
-            let deprecated = deprecated_lits(rec, ls);
+            let mut deprecated = deprecated_lits(rec, ls);
+            deprecated.retain(|l| !usage::loads_only(l, &own_names));
+            let replacement = replacement_lits(rec, ls, &deprecated);
             // The record reads the view of its package (code on the outputs' release line only).
             let view = candidates.first().and_then(|r| view_of.get(&normalize_purl(&r.component))).copied().unwrap_or(0);
             let ev = |l: &str| evidence_of(view, l);
-            let ex = |l: &str| exact_of(view, l);
+            let ex = |l: &str| exact_of(view, l, &replacement);
             let (cited, cite): (&[String], Cite) = if deprecated.is_empty() { (ls, &ev) } else { (&deprecated, &ex) };
             let matched: Vec<(String, Vec<String>)> = cited
                 .iter()
@@ -902,7 +978,12 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                 opp.matched.retain(|(l, _)| !usage::plain_word(l));
                 opp.files = files_of(&opp.matched.iter().map(|(l, _)| l.clone()).collect::<Vec<_>>(), cite);
                 opp.route = Route::InEffect;
-                if let Some(s) = ledger_status() {
+                // A known prerequisite of acting on it (the replacement needs a newer peer: ESLint's core rule handles
+                // TypeScript imports from 9.37) that the project's version does not meet: the deprecated API is still
+                // the right one here, so it is not owed now.
+                if let Some(b) = blocked(rec, inp.stack, &comp) {
+                    opp.route = Route::Blocked(b);
+                } else if let Some(s) = ledger_status() {
                     opp.withheld_from = Some(Route::InEffect);
                     opp.route = Route::Withheld(s);
                 }
@@ -1238,6 +1319,7 @@ pub(crate) mod fixtures {
             r.names.insert(p.rsplit('/').next().unwrap().to_string());
             r.paths.push(p.to_string());
         }
+        r.files.sort_by(|a, b| a.0.cmp(&b.0));
         r
     }
 
@@ -1297,6 +1379,82 @@ mod tests {
         // listed apart from the obligations a bump brings; already included once the code shows none of it.
         assert_eq!(route_of(&out, "next:old-dep"), &Route::AlreadyIncluded, "deprecated API not used here");
         assert_eq!(ids(&out, &out.in_effect), vec!["next:old-dep-used"], "deprecated API still used: in effect now");
+    }
+
+    #[test]
+    fn a_package_reaches_a_technology_through_workspace_packages() {
+        let pkg = |dir: &str, own: Option<&str>, declared: &[&str]| crate::stack::Package {
+            dir: dir.into(),
+            kind: crate::stack::Kind::Application,
+            lockfile: None,
+            declared: declared.iter().map(|d| crate::util::npm_purl(d)).collect(),
+            own: own.map(crate::util::npm_purl),
+        };
+        let ps = vec![
+            pkg(".", Some("root"), &["turbo"]),
+            pkg("packages/eslint-config", Some("@n8n/eslint-config"), &["typescript-eslint"]),
+            pkg("packages/cli", Some("n8n"), &["@n8n/eslint-config"]),
+            pkg("packages/editor", Some("editor"), &["n8n"]),
+            pkg("packages/other", Some("other"), &["lodash"]),
+        ];
+        let comps: BTreeSet<String> = [crate::util::npm_purl("typescript-eslint")].into();
+        assert_eq!(reaching(&ps, &dependents(&ps), &comps), vec!["packages/eslint-config", "packages/cli", "packages/editor"]);
+    }
+
+    #[test]
+    fn in_effect_leaves_out_fallbacks_beside_the_replacement_and_comments() {
+        // expo/expo: `react-native/setup-env` is loaded first and the deprecated path kept in a `catch`; tests assert
+        // that both are handled. A comment naming the old path is not a use.
+        let dep = |id: &str, extra: serde_json::Value| with(with(rec(id, "pkg:npm/react-native", "0.88.0"), json!({"change_type":"deprecation"})), extra);
+        let old = "react-native/Libraries/Core/InitializeCore";
+        let c = catalog(
+            "react-native",
+            0,
+            vec![
+                dep("react-native:initializecore", json!({"replaces":[old],"terms":[[old,0],["InitializeCore",0],["react-native/setup-env",0]]})),
+                dep("react-native:other", json!({"replaces":["react-native/Libraries/Old"],"terms":[["react-native/New",0]]})),
+                // A re-export deprecated in favour of a subpath: `from 'react-native'` is in every file that uses it.
+                dep("react-native:reexport", json!({"replaces":["from 'react-native'", "\"react-native\""]})),
+            ],
+        );
+        let s = stack(&[("react-native", "0.88.0")], None);
+        let fallback = "try {\n  require('react-native/setup-env');\n} catch {\n  require('react-native/Libraries/Core/InitializeCore');\n}\n";
+        let r = repo(&[
+            ("src/setup.ts", fallback),
+            ("src/__tests__/warn.test.ts", "transform(`\n  require('react-native/Libraries/Core/InitializeCore');\n  require('react-native/setup-env');\n`);"),
+            ("src/doc.ts", "/** Replaces react-native/Libraries/Core/InitializeCore */\nexport {};"),
+            ("src/live.ts", "import 'react-native/Libraries/Old';\nimport { View } from 'react-native';"),
+        ]);
+        let l = Ledger::default();
+        let out = run_with(&c, &s, &r, &l);
+        assert_eq!(ids(&out, &out.in_effect), vec!["react-native:other"]);
+        assert_eq!(route_of(&out, "react-native:initializecore"), &Route::AlreadyIncluded, "already moved; the old path is a fallback");
+        let r = repo(&[("src/setup.ts", fallback), ("src/app.ts", "import 'react-native/Libraries/Core/InitializeCore';")]);
+        let out = run_with(&c, &s, &r, &l);
+        let o = out.opps.iter().find(|o| o.id() == "react-native:initializecore").unwrap();
+        assert_eq!((&o.route, &o.matched), (&Route::InEffect, &vec![(old.to_string(), vec!["src/app.ts".to_string()])]), "cites the live site only");
+    }
+
+    #[test]
+    fn in_effect_respects_a_known_prerequisite_of_the_replacement() {
+        // typescript-eslint deprecated its `no-restricted-imports` extension rule because ESLint's core rule handles
+        // TypeScript imports from 9.37; at ESLint 9.29 the extension rule is still the right one.
+        let rec = |pre: serde_json::Value| {
+            with(
+                rec("typescript-eslint:no-restricted-imports", "pkg:npm/typescript-eslint", "8.65.0"),
+                json!({"change_type":"deprecation","replaces":["@typescript-eslint/no-restricted-imports"],"prerequisites":pre}),
+            )
+        };
+        let r = repo(&[("eslint.config.mjs", "import tseslint from 'typescript-eslint';\nexport default { rules: { '@typescript-eslint/no-restricted-imports': 'error' } };")]);
+        let pre = json!([{"ecosystem":"npm","name":"eslint","min":"9.37.0"}]);
+        let (l, c) = (Ledger::default(), catalog("typescript-eslint", 0, vec![rec(pre)]));
+        let old = stack(&[("typescript-eslint", "8.70.0"), ("eslint", "9.29.0")], None);
+        let out = run_with(&c, &old, &r, &l);
+        assert!(out.in_effect.is_empty());
+        assert!(matches!(route_of(&out, "typescript-eslint:no-restricted-imports"), Route::Blocked(b) if b.contains("eslint >= 9.37.0") && b.contains("9.29.0")));
+        let new = stack(&[("typescript-eslint", "8.70.0"), ("eslint", "9.39.1")], None);
+        let out = run_with(&c, &new, &r, &l);
+        assert_eq!(ids(&out, &out.in_effect), vec!["typescript-eslint:no-restricted-imports"], "met: in effect now");
     }
 
     #[test]

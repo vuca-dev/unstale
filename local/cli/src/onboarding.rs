@@ -32,9 +32,12 @@ pub struct Job {
     /// A coverage run started early for this package, while it works it (the gateway's answer; never saved).
     #[serde(default, skip_serializing)]
     pub run: Option<Run>,
-    /// When the next scheduled coverage run starts (ISO 8601), for a package waiting for one.
+    /// When the next scheduled coverage run starts (ISO 8601), for a package waiting for one; with `next_run_pull`,
+    /// when the run in progress next takes new requests.
     #[serde(default, skip_serializing)]
     pub next_run: Option<String>,
+    #[serde(default, skip_serializing)]
+    pub next_run_pull: bool,
 }
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct Run {
@@ -1983,7 +1986,13 @@ fn seconds(s: u64) -> String {
     if s < 90 { format!("{s}s") } else { format!("{}m {:02}s", s / 60, s % 60) }
 }
 fn next_run_text(job: &Job) -> String {
-    job.next_run.as_deref().and_then(|t| t.get(11..16)).map_or("the next scheduled run".into(), |hm| format!("the scheduled run at {} UTC", display_text(hm)))
+    let at = job.next_run.as_deref().and_then(|t| t.get(11..16)).map(display_text);
+    match (at, job.next_run_pull) {
+        (Some(hm), true) => format!("the coverage run in progress, which takes new requests at about {hm} UTC"),
+        (None, true) => "the coverage run in progress to take new requests".into(),
+        (Some(hm), false) => format!("the scheduled run at {hm} UTC"),
+        (None, false) => "the next scheduled run".into(),
+    }
 }
 /// One line for a package a run is working: only what the run reported, with the time since it was requested.
 fn run_line(job: &Job, elapsed: u64) -> String {
@@ -2109,6 +2118,7 @@ mod tests {
             kind: crate::stack::Kind::Application,
             lockfile: None,
             declared: declared.iter().map(|s| s.to_string()).collect(),
+            own: None,
         };
         let st = crate::stack::Stack {
             packages: vec![manifest(&["pkg:pypi/django", "pkg:pypi/aiohttp"]), manifest(&["pkg:pypi/django"])],
@@ -2165,6 +2175,8 @@ mod tests {
         assert!(followable(&held));
         assert_eq!(run_line(&held, 6), "a · run requested 6s ago · waiting for a runner · usually about 70s in all");
         assert_eq!(next_run_text(&held), "the scheduled run at 12:23 UTC");
+        let pulling = Job { next_run_pull: true, ..held.clone() };
+        assert_eq!(next_run_text(&pulling), "the coverage run in progress, which takes new requests at about 12:23 UTC");
         let working = Job { stage: "Reading release notes\u{1b}[2J".into(), releases_done: 3, releases_total: 12, docs_total: 0, run: Some(Run { state: "running".into(), ..Default::default() }), ..held.clone() };
         assert_eq!(run_line(&working, 95), "a · Reading release notes [2J · releases 3/12 · 1m 35s");
         let declined = Job { run: Some(Run { state: "declined".into(), ..Default::default() }), ..held.clone() };

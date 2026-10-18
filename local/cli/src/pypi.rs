@@ -371,7 +371,7 @@ pub fn detect(root: &Path, packages: &mut Vec<Package>, deps: &mut BTreeMap<Stri
         let rel = dir.strip_prefix(root).ok().map(|p| p.to_string_lossy().replace('\\', "/")).filter(|p| !p.is_empty()).unwrap_or_else(|| ".".into());
         let declared: BTreeSet<String> = reqs.iter().map(|(n, _, _)| purl(n)).collect();
         if seen_dirs.insert(rel.clone()) {
-            packages.push(Package { dir: rel.clone(), kind, lockfile: lock.as_ref().map(|l| l.file.clone()), declared });
+            packages.push(Package { dir: rel.clone(), kind, lockfile: lock.as_ref().map(|l| l.file.clone()), declared, own: None });
         }
         for (name, spec, public) in reqs {
             let n = normalize(&name);
