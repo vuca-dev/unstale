@@ -1367,6 +1367,9 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
         text += &evidence_block(&digest.join("\n"));
     }
     for (technology, indices) in &out.digest {
+        // As in the digest: a security record whose advisories never affected the installed version (or still affect
+        // the target) is no reason to upgrade, so it is not shown as one.
+        let indices: Vec<usize> = indices.iter().copied().filter(|&i| review::security_reason(&out, &out.opps[i])).collect();
         if indices.is_empty() { continue; }
         let first = &out.opps[indices[0]];
         text += &format!("\n### {}\n\n", display_text(&friendly(technology, pending)));
@@ -1374,6 +1377,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
         for index in indices.iter().take(4) {
             let o = &out.opps[*index];
             detail += &format!("{:?}: {}\n", o.rec.r.change_type, o.rec.r.summary);
+            for note in review::advisory_lines(&out, o) { detail += &format!("  {note}\n"); }
             if o.files.is_empty() { detail += "  Repository impact not established; dependency presence alone is not usage evidence.\n"; }
             else { detail += &format!("  Related references: {} (requires assessment)\n", o.files.join(", ")); }
             if let Some(evidence) = o.rec.r.evidence.first() { detail += &format!("  Source: {} · record {}\n", evidence.url, o.id()); }
