@@ -108,7 +108,7 @@ export async function runTechnology(
   // Only records the ingest loop will take are labelled: an ingested key is skipped there and its labels discarded. The
   // store read here (outside the lock) is a guess; the loop labels any record it takes that was not labelled here.
   const labels = await labelPending(order, loadStore(t.id).ingested, label);
-  console.log(`${t.id}: classified ${labels.size} of ${incoming.length} (the rest are ingested)`);
+  console.log(`${t.id}: classified ${labels.size} of ${incoming.length} (the rest are skipped by ingestion)`);
 
   // From loading the store to publishing it, this process is the technology's only writer (lock.ts).
   return withTechLock(t.id, "pipeline", async () => {
