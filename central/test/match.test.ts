@@ -6,6 +6,7 @@ import type { Labels } from "../src/pipeline/classify/labels.ts";
 import type { Incoming } from "../src/pipeline/extract.ts";
 import { advisoryIds, documentKey, finerOrBroader, guard, ingest, nearIdenticalQuote, normQuote, pick, retrieve, sameLineage, similarity } from "../src/pipeline/match.ts";
 import { applyChange, combineReleases, mergeInto, mintId, retract, type StoredRecord, type TechStore } from "../src/pipeline/store.ts";
+import { QUESTION_FLOOR } from "../src/pipeline/thresholds.ts";
 
 const COMPONENTS = ["pkg:npm/next"];
 
@@ -411,6 +412,48 @@ describe("shorter rule text scope (eval/select/slice5/RESULTS-judge2.md, M8)", (
     expect(shortRulesApply({ kind: "advisory" }, [rec("release_notes")])).toBe(false);
     expect(shortRulesApply({ kind: "docs" }, [rec("release_notes")])).toBe(false);
     expect(shortRulesApply({}, [rec("release_notes"), rec("docs")])).toBe(false);
+  });
+});
+
+describe("question floor (eval/select/slice5/RESULTS-judge2.md, Question floor)", () => {
+  // Shares only "optimized" and the release line with the stored record: retrieved, scored far below QUESTION_FLOOR.
+  const far = (key: string) => inc({ key, snapshot: `sha256:${key}`, url: `u-${key}`, subject: "turbopack persistent caching", summary: "Turbopack caches optimized builds on disk.", terms: ["turbopack"], quote: "Turbopack caches builds" });
+
+  test("a candidate below the floor keeps its place in the state but gets no question; the others keep their numbers", async () => {
+    const { matchRequest } = await import("../src/pipeline/match.ts");
+    const s = store();
+    await ingest(s, "Next.js", COMPONENTS, inc({ key: "a" }), labels(), judge(() => 0).fn);
+    await ingest(s, "Next.js", COMPONENTS, inc({ key: "b", snapshot: "sha256:b", subject: "images.qualities", summary: "Image qualities must be configured." }), labels(), judge(() => 0).fn);
+    const cands = Object.values(s.records);
+    const c = inc({ key: "c", snapshot: "sha256:c" });
+    const all = matchRequest("Next.js", c, false, cands);
+    const r = matchRequest("Next.js", c, false, cands, [QUESTION_FLOOR - 0.01, QUESTION_FLOOR]);
+    expect(r.state).toEqual(all.state);
+    expect(r.questions).toEqual({ same_c2: all.questions.same_c2 });
+    // Without scores every candidate is asked; outside the shorter rules' scope the floor does not apply.
+    expect(Object.keys(all.questions)).toEqual(["same_c1", "same_c2"]);
+    expect(Object.keys(matchRequest("Next.js", { ...c, kind: "docs" }, false, cands, [0, 0]).questions)).toEqual(["same_c1", "same_c2"]);
+  });
+
+  test("with no candidate at the floor the judge is not called and the record is new; the candidate is kept as unasked", async () => {
+    const s = store();
+    const j = judge(() => 1);
+    const a = await ingest(s, "Next.js", COMPONENTS, inc({ key: "a" }), labels(), j.fn);
+    const [c] = retrieve(far("b"), Object.values(s.records));
+    expect(c!.score).toBeGreaterThan(0);
+    expect(c!.score).toBeLessThan(QUESTION_FLOOR);
+    const b = await ingest(s, "Next.js", COMPONENTS, far("b"), labels(), j.fn);
+    expect(j.calls).toHaveLength(0);
+    expect(b).toMatchObject({ matched: false, candidates: 1, judged: [{ id: a.id, p: 0, outcome: "unasked" }] });
+    expect(s.records[b.id]!.history[0]!.judged).toEqual(b.judged);
+  });
+
+  test("pick marks a candidate with no answer unasked, never below", () => {
+    const c = (id: string) => ({ id, breaking: false, summary: "s", evidence: [{ quote: "q" }] }) as StoredRecord;
+    const yes = { choice: "yes", confidence: 1, probabilities: { yes: 1, no: 0 } };
+    const r = pick([c("a"), c("b")], { same_c2: yes }, { breaking: false, quote: "q", summary: "s" });
+    expect(r.id).toBe("b");
+    expect(r.judged).toEqual([{ id: "a", p: 0, outcome: "unasked" }, { id: "b", p: 1, outcome: "same" }]);
   });
 });
 
