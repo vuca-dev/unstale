@@ -251,10 +251,15 @@ fn onboarding_status_reports_features_without_running_an_agent_and_resumes_jobs(
                     write!(stream,"HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",body.len(),body).unwrap();
                     continue;
                 }
-                let body = responses.iter().find(|j| {
+                // A service without batch routes (central's own): those are not found, and the client asks a
+                // request per package.
+                let Some(body) = responses.iter().find(|j| {
                     let encoded: String = j["purl"].as_str().unwrap().bytes().map(|b| if b.is_ascii_alphanumeric() || b"-._~".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") }).collect();
-                    request.contains(&encoded)
-                }).unwrap();
+                    request.starts_with("GET /coverage?") && request.contains(&encoded)
+                }) else {
+                    write!(stream, "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").unwrap();
+                    continue;
+                };
                 let body = body.to_string();
                 write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body).unwrap();
             } else { std::thread::sleep(std::time::Duration::from_millis(5)); }

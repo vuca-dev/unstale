@@ -342,3 +342,12 @@ pub struct Root {
     pub schema: u32,
     pub min_client: String,
 }
+
+/// `v1/technologies.json`: the id of every technology the catalog has an index for (`v1/tech/<id>.json`), sorted. A
+/// client asks only for the indexes of candidates named here, so an uncovered candidate costs no request; without
+/// this file (an older export, a local directory) it asks for every candidate's index, a 404 meaning not covered.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct Technologies {
+    pub schema: u32,
+    pub technologies: Vec<String>,
+}

@@ -1,6 +1,6 @@
 // Guard before a deploy (ingest.yml): the exported tree's root parses, every index entry has its shard with the size
 // and sha256 the index states, and the root and every index verify against the public key release clients carry
-// (UNSTALE_CATALOG_KEY; a client verifies the same).
+// (UNSTALE_CATALOG_KEY; a client verifies the same), as does the list of technologies, which names exactly the indexes.
 //   node .github/scripts/verify-catalog.mjs <site>
 import { createHash, createPublicKey, verify } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -31,4 +31,10 @@ for (const f of techs) {
     shards++;
   }
 }
+// The list clients read to know which indexes to ask for (sync.rs): signed, and naming exactly the indexes, since a
+// client never asks for an index it does not name.
+signed("v1/technologies.json");
+const listed = JSON.parse(readFileSync(join(site, "v1", "technologies.json"), "utf8")).technologies ?? [];
+const indexed = techs.map((f) => f.slice(0, -".json".length)).sort();
+if (JSON.stringify([...listed].sort()) !== JSON.stringify(indexed)) throw new Error(`v1/technologies.json names ${listed.length} technologies, the tree has ${indexed.length} indexes`);
 console.log(`${techs.length} technologies, ${shards} shards verified, root and indexes signed`);

@@ -18,6 +18,7 @@ const DOCS: Array<[file: string, name: string]> = [
   ["catalog-shard-line.v1.json", "ShardLine"],
   ["catalog-tech-index.v1.json", "TechIndex"],
   ["catalog-root.v1.json", "Root"],
+  ["catalog-technologies.v1.json", "Technologies"],
 ];
 // Keywords that carry no validation, or that are handled where they appear.
 const IGNORED = new Set(["$schema", "title", "description", "$defs", "format"]);

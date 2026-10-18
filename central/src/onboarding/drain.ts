@@ -15,8 +15,8 @@
 // gateway then starts the early run it held back, if a new package asked for one meanwhile.
 //
 // Progress: while it works the new packages it pulled, a run reports their public counters to the gateway (`running`,
-// then `publishing` once analysed), so a client that asked for one can follow it until the deploy publishes its status.
-// Best effort: a report that fails never stops the run.
+// then `publishing` once analysed), so a client that asked for one can follow it until the deploy publishes its status:
+// when they change (looked at every 5 s), and at least every 5 minutes while unchanged (progressTicker). Best effort: a report that fails never stops the run.
 //
 // Budget: the final line names the budget limits that held work back (`held`: tokens or runs_per_day, each with its
 // cap and reset time, or an unreadable budget file), so `"started": 0` is never unexplained. The last progress report
@@ -35,6 +35,7 @@ import { parseArgs } from "node:util";
 import { catalogDir, centralDir } from "../pipeline/paths.ts";
 import { sha256, writeAtomic } from "../pipeline/util.ts";
 import { CoverageService } from "./service.ts";
+import { PROGRESS_EVERY_MS, progressTicker } from "./progress.ts";
 import { Taken, type Request } from "./taken.ts";
 
 const gateway = () => {
@@ -168,9 +169,9 @@ async function drain(args: string[]): Promise<void> {
           .finally(() => (pulling = undefined));
       }, pullMs)
     : undefined;
-  const tick = () => report([...followed].flatMap((p) => progressOf(service, p) ?? []));
+  const tick = progressTicker(() => [...followed].flatMap((p) => progressOf(service, p) ?? []), report);
   const first = setTimeout(tick, 1000);
-  const every = setInterval(tick, 5000);
+  const every = setInterval(tick, PROGRESS_EVERY_MS);
   const result = await service
     .drain(t0 + Number(values.minutes ?? 240) * 60_000, Number(values["grace-minutes"] ?? 10) * 60_000, 500)
     .finally(() => (clearTimeout(first), clearInterval(every), clearInterval(again)));
