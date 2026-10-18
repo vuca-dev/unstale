@@ -376,7 +376,7 @@ fn init(start: &Path, catalog: Option<String>, mode: Option<Mode>, _yes: bool, q
     if !locks.is_empty() {
         println!("Versions from: {} (applications); declared range floors for libraries.", locks.into_iter().collect::<Vec<_>>().join(", "));
     }
-    for n in &st.notes {
+    for n in st.notes.iter().chain(&st.standalone) {
         println!("Note: {n}");
     }
     let other = if mode == Mode::Local { Mode::Collaborative } else { Mode::Local };

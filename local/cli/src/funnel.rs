@@ -722,6 +722,7 @@ pub(crate) mod fixtures {
             node: node.map(|v| (parse_version(v).unwrap(), "engines".into())),
             notes: vec![],
             spread: 0,
+            standalone: vec![],
         }
     }
 
