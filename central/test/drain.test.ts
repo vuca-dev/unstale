@@ -539,3 +539,67 @@ test("a request pulled mid-drain joins the drain's queue at its demand position 
   await drained;
   expect(order).toEqual(["a", "hot", "b", "c"]);
 });
+
+test("token-free first pass: a waiting new technology's advisories are published with the budget spent, no model call, and it keeps its place", async () => {
+  const fetching = await import("../src/pipeline/fetch.ts");
+  vi.spyOn(discovery, "discoverTechnology").mockImplementation(async (purl) => ({
+    discovery_version: discovery.DISCOVERY_VERSION,
+    purl,
+    id: discovery.technologyId(purl),
+    name: discovery.packageIdentity(purl),
+    latest: "1.2.0",
+    repo: `example/${discovery.packageIdentity(purl)}`,
+    tag: "^v?(\\d+\\.\\d+\\.\\d+)$",
+    components: [purl],
+  }));
+  vi.spyOn(fetching, "fetchReleases").mockImplementation(async (t) => ({
+    checked: "2026-10-18T00:00:00Z",
+    stats: { requests: 1, newReleases: 2 },
+    notes: ["1.1.0", "1.2.0"].map((version) => ({
+      technology: t.id,
+      tag: `v${version}`,
+      version,
+      date: "2026-09-01",
+      url: `https://github.com/example/${t.id}/releases/tag/v${version}`,
+      snapshot: "sha256:" + "0".repeat(64),
+      notes: "- Fixed things",
+    })),
+  }));
+  const hosts = new Map<string, number>();
+  vi.stubGlobal("fetch", async (input: string | URL, init?: RequestInit) => {
+    const url = new URL(String(input));
+    hosts.set(url.host, (hosts.get(url.host) ?? 0) + 1);
+    if (url.host === "api.osv.dev") {
+      const purl = (JSON.parse(String(init?.body)) as { package: { purl: string } }).package.purl;
+      const name = purl.replace("pkg:npm/", "");
+      return new Response(JSON.stringify({ vulns: [{ id: `GHSA-${name.slice(0, 4).padEnd(4, "x")}-aaaa-bbbb`, summary: `Prototype pollution in ${name}`, published: "2026-09-01T00:00:00Z", database_specific: { severity: "HIGH", github_reviewed: true }, affected: [{ package: { ecosystem: "npm", name }, ranges: [{ type: "SEMVER", events: [{ introduced: "0" }, { fixed: "1.2.0" }] }] }] }] }));
+    }
+    return new Response("{}", { status: 404 });
+  });
+  const service = new CoverageService(1, { limits: limits({ tokensPerPeriod: 0 }), admission: async () => ({ admit: true, why: "test" }), advisoriesFirst: 2 }).hold();
+  service.enqueue([{ purl: "pkg:npm/alpha", demand: 2 }, { purl: "pkg:npm/beta", demand: 1 }]);
+  const r = await service.drain(Date.now() + 10_000, 1_000, 10);
+  // The budget held every slice back; the first passes still ran.
+  expect(r).toMatchObject({ started: 0, held: [{ limit: "tokens" }] });
+  expect([...hosts.keys()].filter((h) => !["api.osv.dev", "registry.npmjs.org"].includes(h))).toEqual([]);
+  for (const purl of ["pkg:npm/alpha", "pkg:npm/beta"]) {
+    const job = service.jobs.get(purl)!;
+    expect(job).toMatchObject({ state: "queued", records: 1 });
+    expect(job.advisories_first).toBeDefined();
+    expect(job.stage).toMatch(/^1 security advisory record published; release history/);
+    // Still new: the line of new technologies keeps its order (demand), not jumped ahead to admitted work.
+    expect((service as unknown as { tier: (j: unknown) => number }).tier(job)).toBe(1);
+    const index = JSON.parse(readFileSync(join(catalogDir(), "v1", "tech", `${job.technology}.json`), "utf8"));
+    expect(index.shards.reduce((n: number, s: { records: number }) => n + s.records, 0)).toBe(1);
+  }
+  expect(service.queue().map((j) => j.purl)).toEqual(["pkg:npm/alpha", "pkg:npm/beta"]);
+  // Nothing reported to the gateway for a job only its first pass touched: its held answer stays, no row written.
+  const { progressOf } = await import("../src/onboarding/progress.ts");
+  expect(progressOf(service, "pkg:npm/alpha", "2026-10-18T00:00:00Z")).toBeUndefined();
+  // Public status: the records, the reason it waits; nothing internal.
+  expect(service.statuses().find((s) => s.purl === "pkg:npm/alpha")).not.toHaveProperty("advisories_first");
+  // A second drain does not pass them again.
+  const osv = hosts.get("api.osv.dev");
+  await service.drain(Date.now() + 2_000, 500, 10);
+  expect(hosts.get("api.osv.dev")).toBe(osv);
+});

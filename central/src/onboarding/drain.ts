@@ -154,7 +154,10 @@ async function drain(args: string[]): Promise<void> {
   const t0 = Date.now();
   const pullMs = Math.max(0, Number(values["pull-minutes"] ?? 5) || 0) * 60_000;
   // Jobs at once: the work is mostly waiting on docs sites (scale probe), so more than the server's default of 2.
-  const service = new CoverageService(Number(values.concurrency ?? 4) || 4).hold();
+  // Token-free first passes (advisories ahead of the release history) beside the slots: UNSTALE_ADVISORIES_FIRST at
+  // once, default 2; 0 turns them off.
+  const passes = Number(process.env.UNSTALE_ADVISORIES_FIRST ?? 2);
+  const service = new CoverageService(Number(values.concurrency ?? 4) || 4, { advisoriesFirst: Number.isFinite(passes) ? passes : 2 }).hold();
   const taken = new Taken();
   let accepted = 0;
   // The new packages this drain pulled: their clients may be following them.

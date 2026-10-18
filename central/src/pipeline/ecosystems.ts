@@ -15,6 +15,9 @@
 //   - repositoryPackages: packages published from the technology's repository, with their descriptions, from registry
 //     metadata (npm: the packages of a maintainer of the components). Without it no heading is read as naming another package
 //     (advisories.ts step 11): the record keeps its components.
+//   - versionPage: the registry page of one version. With publishTimes, a technology with no GitHub release notes gets
+//     the registry's versions as its release index (fetch.ts `registryReleases`), so its advisories resolve; without
+//     it such a technology gets no advisories (as before).
 // No hand-written package lists, no per-technology tables (memory rule: ecosystem vocabularies, fail open).
 import type { Technology } from "./technologies.ts";
 import { pool } from "./util.ts";
@@ -33,6 +36,8 @@ export interface Ecosystem {
   publishTimes?: (component: string) => Promise<Record<string, string> | undefined>;
   /** Packages published from the technology's repository, with their registry descriptions. */
   repositoryPackages?: (t: Technology) => Promise<RegistryPackage[] | undefined>;
+  /** The registry page of one version of `component` (where a release with no notes points, fetch.ts). */
+  versionPage?: (component: string, version: string) => string;
 }
 
 /** A package as the registry describes it (`repositoryPackages`). */
@@ -293,9 +298,17 @@ export const ECOSYSTEMS: Record<string, Ecosystem> = {
     registryPage: npmRegistryPage,
     publishTimes: npmPublishTimes,
     repositoryPackages: npmRepositoryPackages,
+    versionPage: (component, version) => `https://www.npmjs.com/package/${npmName(component)}/v/${encodeURIComponent(version)}`,
   },
   // PyPI versions are PEP 440. No siblings hook: PyPI has no organisation listing to find a repository's packages.
-  pypi: { osv: "PyPI", compare: pep440Order, dependencies: pypiDependencies, registryPage: pypiRegistryPage, publishTimes: pypiPublishTimes },
+  pypi: {
+    osv: "PyPI",
+    compare: pep440Order,
+    dependencies: pypiDependencies,
+    registryPage: pypiRegistryPage,
+    publishTimes: pypiPublishTimes,
+    versionPage: (component, version) => `https://pypi.org/project/${decodeURIComponent(component.replace(/^pkg:pypi\//, ""))}/${encodeURIComponent(version)}/`,
+  },
 };
 
 /** A package URL in one comparable form: PyPI names PEP 503-normalised, npm scopes as `%40`, lower-cased otherwise. */

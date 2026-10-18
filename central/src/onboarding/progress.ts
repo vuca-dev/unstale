@@ -60,7 +60,8 @@ export function progressOf(
   const own = service.jobs.get(purl);
   const job = (own?.merged_into && service.jobs.get(own.merged_into)) || own;
   if (!job) return undefined;
-  const started = service.working(job.purl) || job.state !== "queued" || job.records > 0 || !!job.completed?.length || !!job.interrupted;
+  // Records from the token-free first pass alone (advisories published while the job waits) do not start it.
+  const started = service.working(job.purl) || job.state !== "queued" || (job.records > 0 && !job.advisories_first) || !!job.completed?.length || !!job.interrupted;
   // Taken, not started yet: its place in this run's queue and when the run is estimated to reach it, the one place a
   // client is shown (the gateway's own line is only the order it holds requests in).
   const place = waiting.get(job.purl);

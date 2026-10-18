@@ -10,6 +10,7 @@ import { DEFAULT_HTTP, HttpClient } from "../collector/http.ts";
 import { currentGuides } from "../docs/guides.ts";
 import { githubToken } from "../docs/fetcher.ts";
 import { ecosystemOf } from "./ecosystems.ts";
+import { isStable } from "./lines.ts";
 import { registryCache } from "./registry.ts";
 import { techLocal } from "../state/client.ts";
 
@@ -122,6 +123,50 @@ export async function publishDates(t: Technology, versions: readonly string[], o
     missing = missing.filter((v) => !out.has(v));
   }
   return out;
+}
+
+/**
+ * The versions the registry published in the window, for a technology with no GitHub release notes (a changelog file
+ * only: markdown-it, mathjs): the release index the advisories stage resolves against, so its advisories are not lost
+ * for want of notes. Stable versions (lines.ts), dated by the registry (UTC day), each pointing at its registry page.
+ * The first component whose ecosystem has the `publishTimes` and `versionPage` hooks answers; its publish times are
+ * the cache `publishDates` keeps. Empty when none can be read (fails open: no advisories, as before).
+ */
+export async function registryReleases(t: Technology, opts: { refresh?: boolean; offline?: boolean } = {}): Promise<Array<{ version: string; date: string; url: string }>> {
+  for (const component of t.components) {
+    const eco = ecosystemOf(component);
+    if (!eco.publishTimes || !eco.versionPage) continue;
+    const p = timesName(component);
+    const kept = registryCache().get(p);
+    let cached = kept && (JSON.parse(kept.toString("utf8")) as { checked: string; times: Record<string, string> | null });
+    const stale = !cached || opts.refresh || Date.now() - Date.parse(cached.checked) >= FRESH_MS;
+    if (!opts.offline && stale) {
+      try {
+        cached = { checked: new Date().toISOString().replace(/\.\d+Z$/, "Z"), times: (await eco.publishTimes(component)) ?? null };
+        registryCache().put(p, JSON.stringify(cached) + "\n");
+      } catch (e) {
+        console.error(`releases: ${t.id}: publish times of ${component} unreadable (${e instanceof Error ? e.message : e})`);
+      }
+    }
+    const out: Array<{ version: string; date: string; url: string }> = [];
+    for (const [version, iso] of Object.entries(cached?.times ?? {})) {
+      if (!isStable(version) || Number.isNaN(Date.parse(iso))) continue;
+      const date = new Date(iso).toISOString().slice(0, 10);
+      if (date >= SINCE) out.push({ version, date, url: eco.versionPage(component, version) });
+    }
+    if (out.length) return out.sort((a, b) => a.date.localeCompare(b.date) || compareVersions(a.version, b.version));
+  }
+  return [];
+}
+
+/** The releases the advisories stage resolves against: the release notes when GitHub lists any, else the registry's
+ * versions in the window (`registryReleases`). */
+export async function advisoryReleases(
+  t: Technology,
+  notes: ReadonlyArray<{ version: string; date: string; url: string }>,
+  opts: { refresh?: boolean; offline?: boolean } = {},
+): Promise<ReadonlyArray<{ version: string; date: string; url: string }>> {
+  return notes.length ? notes : registryReleases(t, opts);
 }
 
 export async function fetchReleases(t: Technology, opts: { refresh?: boolean; offline?: boolean } = {}): Promise<{ notes: ReleaseNote[]; checked: string; stats: FetchStats }> {
