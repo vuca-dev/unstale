@@ -220,6 +220,13 @@ test("storage that fails (a used-up daily allowance) is a temporary 503 with Ret
     expect(after).toBe(7 * 3600 + 20 * 60);
     expect(await res.json()).toMatchObject({ retry_after: after });
   }
+  // Just after 00:00 UTC Cloudflare's reset may not have landed yet: retry in minutes, not a day.
+  vi.setSystemTime(Date.parse("2026-10-18T00:05:00Z"));
+  expect((await handle(get("/coverage?purl=pkg%3Anpm%2Fa"), e)).headers.get("Retry-After")).toBe("300");
+  vi.setSystemTime(Date.parse("2026-10-18T00:30:00Z"));
+  expect((await handle(get("/coverage?purl=pkg%3Anpm%2Fa"), e)).headers.get("Retry-After")).toBe(String(23 * 3600 + 30 * 60));
+  vi.setSystemTime(Date.parse("2026-10-17T23:59:30Z"));
+  expect((await handle(get("/coverage?purl=pkg%3Anpm%2Fa"), e)).headers.get("Retry-After")).toBe("60");
   e.COVERAGE = { idFromName: () => "global", get: () => new Proxy({}, { get: () => () => Promise.reject(new Error("Durable Object reset")) }) } as unknown as Env["COVERAGE"];
   const other = await handle(post({ purl: "pkg:npm/a" }), e);
   expect([other.status, other.headers.get("Retry-After")]).toEqual([503, "60"]);
