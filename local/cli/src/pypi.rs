@@ -375,7 +375,7 @@ pub fn detect(root: &Path, packages: &mut Vec<Package>, deps: &mut BTreeMap<Stri
         }
         for (name, spec, public) in reqs {
             let n = normalize(&name);
-            let (version, source) = match (&lock, kind) {
+            let (version, source, floor) = match (&lock, kind) {
                 (Some(l), Kind::Application) if l.versions.contains_key(&n) => {
                     let v = &l.versions[&n];
                     // A pin the declared specifier no longer admits: the lockfile is out of date for this one.
@@ -385,13 +385,13 @@ pub fn detect(root: &Path, packages: &mut Vec<Package>, deps: &mut BTreeMap<Stri
                         if s.1.len() < 3 {
                             s.1.push(format!("{n} {v} vs {spec}"));
                         }
-                        (spec_floor(&spec), format!("floor of {spec} ({} has {v}, outside the specifier)", l.file))
+                        (spec_floor(&spec), format!("floor of {spec} ({} has {v}, outside the specifier)", l.file), true)
                     } else {
-                        (Some(v.clone()), l.file.clone())
+                        (Some(v.clone()), l.file.clone(), false)
                     }
                 }
-                (_, Kind::Library) => (spec_floor(&spec), format!("library floor of {spec}")),
-                _ => (spec_floor(&spec), format!("floor of {spec} (not in a lockfile)")),
+                (_, Kind::Library) => (spec_floor(&spec), format!("library floor of {spec}"), true),
+                _ => (spec_floor(&spec), format!("floor of {spec} (not in a lockfile)"), true),
             };
             let entry = deps.entry(purl(&n)).or_insert_with(|| Dep::new(&n, public));
             entry.public_candidate &= public;
@@ -400,7 +400,7 @@ pub fn detect(root: &Path, packages: &mut Vec<Package>, deps: &mut BTreeMap<Stri
             {
                 entry.pins.push(pin.clone());
             }
-            entry.read(&rel, version, source);
+            entry.read_in(&rel, version, source, false, floor.then(|| crate::stack::Range::Pypi(spec.clone())));
         }
     }
     for (file, (n, examples)) in stale {

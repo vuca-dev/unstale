@@ -47,10 +47,15 @@ pub struct Run {
     pub typical_s: Option<u64>,
 }
 /// Whether a job may publish results by `deadline` (Unix seconds): a run is working it or about to, or the next
-/// scheduled run that can take it starts by then. A job in progress whose schedule the service does not name may.
+/// scheduled run that can take it starts by then, or (failed) its retry is due by then. A job in progress whose
+/// schedule the service does not name may.
 fn may_publish_by(job: &Job, deadline: u64) -> bool {
-    if matches!(job.state.as_str(), "monitoring" | "blocked" | "failed") {
+    if matches!(job.state.as_str(), "monitoring" | "blocked") {
         return false;
+    }
+    // A failed job is retried once its `retry_at` is due.
+    if job.state == "failed" {
+        return job.retry_at.as_deref().and_then(iso_unix).is_some_and(|at| at <= deadline);
     }
     if followable(job) || matches!(job.state.as_str(), "discovering" | "analyzing") {
         return true;
@@ -2089,6 +2094,10 @@ mod tests {
         // No schedule named (the central service's own answer): it may; settled jobs never do.
         assert!(may_publish_by(&job(&format!(r#"{{{base},"state":"partial"}}"#)), deadline));
         assert!(!may_publish_by(&job(&format!(r#"{{{base},"state":"monitoring"}}"#)), deadline));
+        // A failed job retried within the wait may; one retried later, or never, does not.
+        assert!(may_publish_by(&job(&format!(r#"{{{base},"state":"failed","retry_at":"2026-10-17T12:03:00.000Z"}}"#)), deadline));
+        assert!(!may_publish_by(&job(&format!(r#"{{{base},"state":"failed","retry_at":"2026-10-17T14:00:00.000Z"}}"#)), deadline));
+        assert!(!may_publish_by(&job(&format!(r#"{{{base},"state":"failed"}}"#)), deadline));
     }
     #[test]
     fn a_503_with_retry_after_is_a_limit() {

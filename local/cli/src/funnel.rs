@@ -22,6 +22,9 @@ const NON_APP_WEIGHT: f64 = 0.5;
 /// A literal's evidence for one technology, memoised (`evidence_of`, or `exact_of` for a deprecated literal).
 type Cite<'a> = &'a dyn Fn(&str) -> Rc<usage::Evidence>;
 
+/// Per view (`run`'s evidence views) and literal, memoised.
+type Memo<T> = RefCell<HashMap<(usize, String), T>>;
+
 /// Where a record ends up for this repository.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Route {
@@ -404,49 +407,47 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                 choose(d, sites).map(|ch| (*c, ch))
             })
             .collect();
-        // Files whose manifest runs another release line than the outputs' version, by path index: which of
-        // `off_labels` (the manifest, the package and its version) they belong to. Left out of the evidence.
+        // Per package with code on another release line than the outputs' version: a view of the repository without
+        // those files (a mask by path index naming which of `off_labels` each belongs to: the manifest, the package and
+        // its version). View 0 is the whole repository; a record reads the view of its package.
         let mut off_labels: Vec<String> = vec![];
-        let mut off_at: Vec<Option<u16>> = vec![];
+        let mut masks: Vec<Vec<Option<u16>>> = vec![];
+        let mut view_of: BTreeMap<&String, usize> = BTreeMap::new();
         for (c, ch) in choices.iter().filter(|(_, ch)| !ch.off.is_empty()) {
             let d = &inp.stack.deps[*c];
-            off_at.resize(inp.repo.paths.len(), None);
+            let mut mask = vec![None; inp.repo.paths.len()];
             for (i, p) in inp.repo.paths.iter().enumerate() {
-                if off_at[i].is_some() {
-                    continue;
-                }
                 let Some(r) = owner(d, p).filter(|r| ch.off.iter().any(|o| o.dir == r.dir)) else { continue };
                 let label = format!("{} ({} {})", place(&r.dir), d.name, r.version);
                 let k = off_labels.iter().position(|l| *l == label).unwrap_or_else(|| {
                     off_labels.push(label);
                     off_labels.len() - 1
                 });
-                off_at[i] = Some(k as u16);
+                mask[i] = Some(k as u16);
+            }
+            if mask.iter().any(Option::is_some) {
+                masks.push(mask);
+                view_of.insert(*c, masks.len());
             }
         }
-        let filtered: Option<Hits> = off_at.iter().any(Option::is_some).then(|| {
+        let filtered: Vec<Hits> = if masks.is_empty() {
+            vec![]
+        } else {
             let naming: BTreeSet<String> = comps.iter().flat_map(|c| usage::naming_lits(c)).collect();
             let lits: BTreeSet<&String> = scope_lits().chain(&naming).collect();
-            let off: Vec<bool> = off_at.iter().map(Option::is_some).collect();
-            hits_without(&hits, lits, &off, &inp.repo.paths)
-        });
-        // The hits the outputs cite: the files on the outputs' release lines.
-        let th: &Hits = filtered.as_ref().unwrap_or(&hits);
-        let on_line;
-        let scope = match &filtered {
-            Some(f) => {
-                on_line = usage::Scope::new(&ecosystem, &owners, comps, scope_lits(), f, &inp.repo.paths);
-                &on_line
-            }
-            None => &all,
+            masks.iter().map(|m| hits_without(&hits, lits.iter().copied(), &m.iter().map(Option::is_some).collect::<Vec<_>>(), &inp.repo.paths)).collect()
         };
-        // Per literal, the manifests on another line whose code importing the technology it matches (`Opp::elsewhere`).
-        let elsewhere: RefCell<HashMap<String, Rc<BTreeSet<u16>>>> = RefCell::default();
-        let elsewhere_of = |l: &str| -> Rc<BTreeSet<u16>> {
-            if let Some(e) = elsewhere.borrow().get(l) {
+        let mut scopes = vec![all];
+        scopes.extend(filtered.iter().map(|f| usage::Scope::new(&ecosystem, &owners, comps, scope_lits(), f, &inp.repo.paths)));
+        let hits_of = |v: usize| if v == 0 { &hits } else { &filtered[v - 1] };
+        // Per view and literal, the manifests left out whose code importing the technology it matches (`Opp::elsewhere`).
+        let elsewhere: Memo<Rc<BTreeSet<u16>>> = RefCell::default();
+        let elsewhere_of = |v: usize, l: &str| -> Rc<BTreeSet<u16>> {
+            let key = (v, l.to_string());
+            if let Some(e) = elsewhere.borrow().get(&key) {
                 return e.clone();
             }
-            let e: BTreeSet<u16> = if off_labels.is_empty() {
+            let e: BTreeSet<u16> = if v == 0 {
                 BTreeSet::new()
             } else {
                 hits.ix
@@ -454,34 +455,36 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                     .into_iter()
                     .flatten()
                     .filter_map(|x| {
-                        let k = off_at[*x as usize]?;
-                        all.file(&inp.repo.paths[*x as usize]).filter(|about| *about).map(|_| k)
+                        let k = masks[v - 1][*x as usize]?;
+                        scopes[0].file(&inp.repo.paths[*x as usize]).filter(|about| *about).map(|_| k)
                     })
                     .collect()
             };
             let e = Rc::new(e);
-            elsewhere.borrow_mut().insert(l.to_string(), e.clone());
+            elsewhere.borrow_mut().insert(key, e.clone());
             e
         };
         let nested = owners.iter().any(|o| *o != ".");
-        // Each literal's evidence once per technology, however many records share it.
-        let evidence: RefCell<HashMap<String, Rc<usage::Evidence>>> = RefCell::default();
-        let evidence_of = |l: &str| -> Rc<usage::Evidence> {
-            if let Some(e) = evidence.borrow().get(l) {
+        // Each literal's evidence once per technology and view, however many records share it.
+        let evidence: Memo<Rc<usage::Evidence>> = RefCell::default();
+        let evidence_of = |v: usize, l: &str| -> Rc<usage::Evidence> {
+            let key = (v, l.to_string());
+            if let Some(e) = evidence.borrow().get(&key) {
                 return e.clone();
             }
-            let e = Rc::new(scope.evidence(l, role, !nested));
-            evidence.borrow_mut().insert(l.to_string(), e.clone());
+            let e = Rc::new(scopes[v].evidence(l, role, !nested));
+            evidence.borrow_mut().insert(key, e.clone());
             e
         };
         // A deprecated literal's evidence: whole-literal hits only (`usage::Scope::exact_evidence`).
-        let exact: RefCell<HashMap<String, Rc<usage::Evidence>>> = RefCell::default();
-        let exact_of = |l: &str| -> Rc<usage::Evidence> {
-            if let Some(e) = exact.borrow().get(l) {
+        let exact: Memo<Rc<usage::Evidence>> = RefCell::default();
+        let exact_of = |v: usize, l: &str| -> Rc<usage::Evidence> {
+            let key = (v, l.to_string());
+            if let Some(e) = exact.borrow().get(&key) {
                 return e.clone();
             }
-            let e = Rc::new(scope.exact_evidence(l, role, !nested));
-            exact.borrow_mut().insert(l.to_string(), e.clone());
+            let e = Rc::new(scopes[v].exact_evidence(l, role, !nested));
+            exact.borrow_mut().insert(key, e.clone());
             e
         };
         // The first three of the union are among the first three of each literal.
@@ -497,13 +500,14 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             files.dedup();
             files.into_iter().take(3).map(|(_, _, p)| p).collect()
         };
-        let applied: RefCell<HashMap<String, bool>> = RefCell::default();
-        let applied_of = |x: &str| -> bool {
-            if let Some(a) = applied.borrow().get(x) {
+        let applied: Memo<bool> = RefCell::default();
+        let applied_of = |v: usize, x: &str| -> bool {
+            let key = (v, x.to_string());
+            if let Some(a) = applied.borrow().get(&key) {
                 return *a;
             }
-            let a = th.whole.get(x).into_iter().flatten().any(|p| scope.counts(x, p) && usage::counts_as_applied(role(p), p));
-            applied.borrow_mut().insert(x.to_string(), a);
+            let a = hits_of(v).whole.get(x).into_iter().flatten().any(|p| scopes[v].counts(x, p) && usage::counts_as_applied(role(p), p));
+            applied.borrow_mut().insert(key, a);
             a
         };
         out.technologies.push(tech.clone());
@@ -599,19 +603,22 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             // A deprecation that names what it deprecates cites only that, as whole literals: a match on its other
             // terms is not usage of the deprecated API. The score (the queue's order) still counts every literal.
             let deprecated = deprecated_lits(rec, ls);
-            let (cited, cite): (&[String], Cite) =
-                if deprecated.is_empty() { (ls, &evidence_of) } else { (&deprecated, &exact_of) };
+            // The record reads the view of its package (code on the outputs' release line only).
+            let view = candidates.first().and_then(|r| view_of.get(&normalize_purl(&r.component))).copied().unwrap_or(0);
+            let ev = |l: &str| evidence_of(view, l);
+            let ex = |l: &str| exact_of(view, l);
+            let (cited, cite): (&[String], Cite) = if deprecated.is_empty() { (ls, &ev) } else { (&deprecated, &ex) };
             let matched: Vec<(String, Vec<String>)> = cited
                 .iter()
                 .filter_map(|l| Some(cite(l)).filter(|e| !e.files.is_empty()).map(|e| (l.clone(), e.files.iter().map(|(p, _)| p.clone()).collect())))
                 .collect();
             let score = ls
                 .iter()
-                .filter_map(|l| Some(evidence_of(l)).filter(|e| e.used).map(|e| weight(l) * if e.app { 1.0 } else { NON_APP_WEIGHT }))
+                .filter_map(|l| Some(ev(l)).filter(|e| e.used).map(|e| weight(l) * if e.app { 1.0 } else { NON_APP_WEIGHT }))
                 .sum::<f64>();
             let files = files_of(cited, cite);
             let elsewhere: Vec<String> = {
-                let ks: BTreeSet<u16> = cited.iter().flat_map(|l| elsewhere_of(l).iter().copied().collect::<Vec<_>>()).collect();
+                let ks: BTreeSet<u16> = cited.iter().flat_map(|l| elsewhere_of(view, l).iter().copied().collect::<Vec<_>>()).collect();
                 ks.into_iter().map(|k| off_labels[k as usize].clone()).collect()
             };
             // A `requires` value the change itself introduces is something the upgrade has the project add, not a
@@ -643,9 +650,9 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             let ledger_status = || {
                 inp.ledger.entries.iter().find(|e| e.id() == rec.r.id).filter(|e| withholds(e, rec.r.revision, inp.today)).map(status_name)
             };
-            let applied = || {
-                rec.r.introduces.iter().filter_map(|x| clean_lit(x)).any(|x| applied_of(&x))
-            };
+            // Applied in the code the record describes; a workspace on another version is judged on the whole repository.
+            let applied_in = |v: usize| rec.r.introduces.iter().filter_map(|x| clean_lit(x)).any(|x| applied_of(v, &x));
+            let applied = || applied_in(view);
             opp.route = base_route(rec, available, beyond);
             // A deprecation already in the installed version is still owed while the code uses what it deprecates: its
             // `replaces` literals, whole, under the shown evidence rule (files that can use the technology). A plain word
@@ -693,14 +700,14 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                     continue;
                 }
                 let blocks = blocked(rec, inp.stack, &comp).is_some() && !(route == Route::UpgradeReview && is_obligation(rec));
-                if blocks || ledger_status().is_some() || (route == Route::UpgradeReview && !rec.r.breaking && applied()) {
+                if blocks || ledger_status().is_some() || (route == Route::UpgradeReview && !rec.r.breaking && applied_in(0)) {
                     continue;
                 }
                 w.target.get_or_insert(target);
                 w.records.push((rec, route, decides.version.clone()));
             }
             if opp.route == Route::ImprovementsPass {
-                let replaces_here = rec.r.replaces.iter().filter_map(|x| clean_lit(x)).any(|x| evidence_of(&x).used);
+                let replaces_here = rec.r.replaces.iter().filter_map(|x| clean_lit(x)).any(|x| ev(&x).used);
                 let mut b: Vec<Benefit> = rec
                     .r
                     .benefit
@@ -1356,7 +1363,7 @@ mod tests {
         let mut d = crate::stack::Dep::new("zod", true);
         d.read(".", parse_version("4.1.12"), "pnpm-lock.yaml".into());
         d.read("apps/www", parse_version("3.25.76"), "pnpm-lock.yaml".into());
-        d.read_in("packages/udecode/lib", parse_version("3.25.61"), "library floor of 3.25.61".into(), false, Some("3.25.61"));
+        d.read_in("packages/udecode/lib", parse_version("3.25.61"), "library floor of 3.25.61".into(), false, Some(crate::stack::Range::Npm("3.25.61".into())));
         s.deps.insert(crate::util::npm_purl("zod"), d);
         s.settle();
         let r = repo(&[
@@ -1388,7 +1395,7 @@ mod tests {
         let mut d = crate::stack::Dep::new("zod", true);
         d.read(".", parse_version("4.1.12"), "pnpm-lock.yaml".into());
         d.read("apps/old", parse_version("3.25.76"), "pnpm-lock.yaml".into());
-        d.read_in("packages/peer", parse_version("3.0.0"), "library floor of >=3.0.0".into(), false, Some(">=3.0.0"));
+        d.read_in("packages/peer", parse_version("3.0.0"), "library floor of >=3.0.0".into(), false, Some(crate::stack::Range::Npm(">=3.0.0".into())));
         s.deps.insert(crate::util::npm_purl("zod"), d);
         s.settle();
         let r = repo(&[
@@ -1406,6 +1413,39 @@ mod tests {
         assert!(out.version_notes.iter().any(|n| n.contains("under apps/old (3.25.76) runs another release line than the reviews' 4.1.12")), "{:?}", out.version_notes);
         let skill = crate::review::render_record_for_test(&out, "zod:properties");
         assert!(skill.contains("- Not cited: code importing it under apps/old (zod 3.25.76), which runs another release line than installed 4.1.12"), "{skill}");
+    }
+
+    #[test]
+    fn a_package_left_out_elsewhere_does_not_hide_evidence_for_its_sibling() {
+        // One technology, two packages: apps/old runs ui-dom on another line, ui on the headline's. A ui record
+        // still cites apps/old; a ui-dom record does not.
+        let c = catalog(
+            "ui",
+            0,
+            vec![
+                with(rec("ui:a", "pkg:npm/ui", "2.5.0"), json!({"change_type":"removal","breaking":true,"terms":[["useThing",0]]})),
+                with(rec("ui:b", "pkg:npm/ui-dom", "2.5.0"), json!({"change_type":"removal","breaking":true,"terms":[["useThing",0]]})),
+            ],
+        );
+        let mut s = stack(&[], None);
+        let mut ui = crate::stack::Dep::new("ui", true);
+        ui.read(".", parse_version("2.1.0"), "package-lock.json".into());
+        ui.read("apps/old", parse_version("2.0.0"), "package-lock.json".into());
+        let mut dom = crate::stack::Dep::new("ui-dom", true);
+        dom.read(".", parse_version("2.1.0"), "package-lock.json".into());
+        dom.read("apps/old", parse_version("1.9.0"), "package-lock.json".into());
+        s.deps.insert(crate::util::npm_purl("ui"), ui);
+        s.deps.insert(crate::util::npm_purl("ui-dom"), dom);
+        s.settle();
+        let r = repo(&[
+            ("src/x.ts", "import { useThing } from 'ui'; import 'ui-dom'; useThing()"),
+            ("apps/old/src/y.ts", "import { useThing } from 'ui'; import 'ui-dom'; useThing()"),
+        ]);
+        let l = Ledger::default();
+        let out = run_with(&c, &s, &r, &l);
+        let files = |id: &str| out.opps.iter().find(|o| o.id() == id).unwrap().files.clone();
+        assert_eq!(files("ui:a"), vec!["apps/old/src/y.ts".to_string(), "src/x.ts".to_string()]);
+        assert_eq!(files("ui:b"), vec!["src/x.ts".to_string()]);
     }
 
     #[test]

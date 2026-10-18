@@ -88,7 +88,25 @@ pub struct Reading {
     pub standalone: bool,
     /// The declared range when `version` is its floor (a library's floor, an unlocked manifest): the code there is
     /// written for the whole range, not for the floor alone. `None` for a locked version.
-    pub range: Option<String>,
+    pub range: Option<Range>,
+}
+
+/// A declared range, in its ecosystem's grammar.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Range {
+    Npm(String),
+    /// A PEP 440 (or Poetry) specifier.
+    Pypi(String),
+}
+
+impl Range {
+    /// Whether the range admits `v` (false when it cannot be read).
+    pub fn admits(&self, v: &Version) -> bool {
+        match self {
+            Range::Npm(r) => npm_satisfies(v, r) == Some(true),
+            Range::Pypi(s) => crate::pypi::spec_satisfies(v, s) == Some(true),
+        }
+    }
 }
 
 impl Dep {
@@ -98,19 +116,20 @@ impl Dep {
 
     /// One manifest's version (`None` when it cannot be read: a tag, a workspace link). The headline is set by
     /// `Stack::settle` once every manifest is read; until then `source` keeps the first unreadable one's reason.
+    #[cfg(test)]
     pub fn read(&mut self, dir: &str, version: Option<Version>, source: String) {
         self.read_in(dir, version, source, false, None)
     }
 
     /// `read`, for a manifest that may be `standalone` (no lockfile covers it); `range` when `version` is its floor.
-    pub fn read_in(&mut self, dir: &str, version: Option<Version>, source: String, standalone: bool, range: Option<&str>) {
+    pub fn read_in(&mut self, dir: &str, version: Option<Version>, source: String, standalone: bool, range: Option<Range>) {
         let Some(version) = version else {
             if self.source.is_empty() {
                 self.source = source;
             }
             return;
         };
-        let reading = Reading { dir: dir.to_string(), version, source, standalone, range: range.map(String::from) };
+        let reading = Reading { dir: dir.to_string(), version, source, standalone, range };
         match self.readings.iter_mut().find(|r| r.dir == dir) {
             Some(r) if reading.version < r.version => *r = reading,
             Some(_) => {}
@@ -153,12 +172,12 @@ impl Reading {
     /// that admits `v` (a library's peer floor `>=18` admits 19): records judged at `v` describe that code.
     pub fn fits(&self, v: &Version) -> bool {
         let line = |v: &Version| if v.major > 0 { (v.major, 0) } else { (0, v.minor) };
-        line(&self.version) == line(v) || self.range.as_deref().is_some_and(|r| npm_satisfies(v, r) == Some(true))
+        line(&self.version) == line(v) || self.range.as_ref().is_some_and(|r| r.admits(v))
     }
 
     /// Whether this manifest's code runs `v` itself: its locked version, or a range that admits it.
     pub fn runs(&self, v: &Version) -> bool {
-        self.version == *v || self.range.as_deref().is_some_and(|r| npm_satisfies(v, r) == Some(true))
+        self.version == *v || self.range.as_ref().is_some_and(|r| r.admits(v))
     }
 
     /// Whether `path` (relative to the repository root) is inside this manifest's directory.
@@ -460,7 +479,7 @@ pub fn detect(root: &Path) -> Result<Stack> {
                 {
                     entry.pins.push(pin);
                 }
-                entry.read_in(&rel, version, source, standalone, floor);
+                entry.read_in(&rel, version, source, standalone, floor.map(|r| Range::Npm(r.to_string())));
             }
         }
         let floor = if standalone { &mut node_standalone } else { &mut node };
@@ -1584,12 +1603,15 @@ mod tests {
         let rs = &s.deps["pkg:npm/react"].readings;
         let root = rs.iter().find(|r| r.dir == ".").unwrap();
         let ui = rs.iter().find(|r| r.dir == "packages/ui").unwrap();
-        assert_eq!((root.range.as_deref(), ui.range.as_deref(), ui.version.to_string()), (None, Some(">=18.0.0"), "18.0.0".into()));
+        assert_eq!((root.range.clone(), ui.range.clone(), ui.version.to_string()), (None, Some(Range::Npm(">=18.0.0".into())), "18.0.0".into()));
         let v19 = Version::new(19, 2, 4);
         assert!(ui.fits(&v19) && ui.runs(&v19), "the peer range admits 19.2.4");
         assert!(root.fits(&Version::new(19, 0, 0)) && !root.runs(&Version::new(19, 0, 0)), "same line, another version");
         assert!(!root.fits(&Version::new(18, 3, 1)));
         assert!(ui.contains("packages/ui/src/a.ts") && !ui.contains("packages/uikit/a.ts") && root.contains("anything.ts"));
+        // A PyPI floor reads its specifier with PEP 440 rules.
+        let py = Reading { dir: "lib".into(), version: Version::new(1, 0, 0), source: "library floor of >=1".into(), standalone: false, range: Some(Range::Pypi(">=1".into())) };
+        assert!(py.runs(&Version::new(2, 3, 0)) && py.fits(&Version::new(2, 3, 0)));
     }
 
     #[test]

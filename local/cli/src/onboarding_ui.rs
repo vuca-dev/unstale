@@ -330,6 +330,16 @@ impl Display {
             }
         }
     }
+    /// Plain output: the current stage's last detail, when it moved on since it was printed.
+    fn flush_plain(&self) {
+        if self.thread.is_none() {
+            let mut last = self.last_plain.lock().unwrap();
+            if !last.0.is_empty() && last.2 != last.1 {
+                eprintln!("  {} · {}", last.0, last.2);
+                last.1 = last.2.clone();
+            }
+        }
+    }
     pub fn input_echo_counter(&self) -> Option<Arc<AtomicUsize>> {
         self.thread.as_ref()?;
         let echoes = std::process::Command::new("stty")
@@ -358,6 +368,7 @@ impl Display {
         state.footer = None;
     }
     pub fn present(mut self, lines: Vec<Line>, linger: bool, leave: &AtomicBool) {
+        self.flush_plain();
         let size = if self.thread.is_some() {
             dimensions().unwrap_or(self.size)
         } else {
