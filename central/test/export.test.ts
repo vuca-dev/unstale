@@ -2,7 +2,7 @@
 // on a rerun, technology indexes byte-identical to what the coverage service serves (its `components`), pruned first,
 // built aside so a failed export never replaces a good one.
 import { createHash, generateKeyPairSync, verify } from "node:crypto";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
@@ -125,6 +125,20 @@ describe("export", () => {
     // Any other failure is an error, not a silent copy.
     expect(() => placeShard(join(dir, "missing"), join(dir, "x"), read)).toThrow(/ENOENT/);
     expect(placeShard(src, join(dir, "linked"), identity(src))).toBe(true);
+    // A link that lands as a symlink (Linux links a symlink itself) passes stat on its target's identity; it is
+    // replaced by the verified bytes as a regular file.
+    const target = join(dir, "target");
+    writeFileSync(target, "verified");
+    const viaSymlink = (_s: string, d: string) => symlinkSync(target, d);
+    expect(placeShard(src, join(dir, "sym"), identity(target), viaSymlink)).toBe(false);
+    expect(lstatSync(join(dir, "sym")).isFile()).toBe(true);
+    expect(readFileSync(join(dir, "sym"), "utf8")).toBe("verified");
+    // A shard that is itself a symlink: whatever the platform's link does, the export holds a regular file.
+    const linkedShard = join(dir, "b.jsonl.gz");
+    symlinkSync(target, linkedShard);
+    placeShard(linkedShard, join(dir, "real"), identity(target));
+    expect(lstatSync(join(dir, "real")).isFile()).toBe(true);
+    expect(readFileSync(join(dir, "real"), "utf8")).toBe("verified");
   });
 
   test("technology indexes are the bytes the service route serves, components included", async () => {

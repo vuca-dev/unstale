@@ -23,7 +23,7 @@
 // cover costs no request (a 404 for a missing static file would run the Worker, gateway/, whose daily allowance is the
 // free plan's scarcest), and neither does an unchanged index, even one served by the Worker.
 import { createPrivateKey, sign } from "node:crypto";
-import { closeSync, existsSync, fstatSync, linkSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, fstatSync, linkSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { gunzipSync } from "node:zlib";
 import { DISCOVERY_VERSION } from "../onboarding/discovery.ts";
@@ -114,8 +114,10 @@ function readShard(file: string): ReadShard & { data: Buffer<ArrayBuffer> } {
 export function placeShard(src: string, dst: string, read: ReadShard, link: (src: string, dst: string) => void = linkSync): boolean {
   try {
     link(src, dst);
-    const s = statSync(dst);
-    if (s.ino === read.ino && s.size === read.size && s.mtimeMs === read.mtimeMs && s.size === read.data.length) return true;
+    // lstat, not stat: a link to a symlink (as Linux makes) would pass on its target's identity while the exported
+    // path resolves wherever the symlink points. Only a regular file that is the one read is kept.
+    const s = lstatSync(dst);
+    if (s.isFile() && s.ino === read.ino && s.size === read.size && s.mtimeMs === read.mtimeMs && s.size === read.data.length) return true;
     rmSync(dst);
   } catch (e) {
     const code = (e as NodeJS.ErrnoException).code;
