@@ -1,4 +1,4 @@
-"""Confirm H on H2 (PREREG.md): breaking recall and precision at the live 0.5 threshold for J1, H and JQ1 on the H2
+"""Confirm H on H2 (PREREG.md): breaking recall and precision at the live 0.5 threshold for J1, H, JQ1 (and SubQ Snap) on the H2
 units, paired against J1 with score.py's section-cluster bootstrap and exact McNemar. Stdlib only.
 
     python3 analyze_h2.py [--json OUT]
@@ -10,15 +10,17 @@ spec = importlib.util.spec_from_file_location("score", os.path.join(HERE, "..", 
 sc = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(sc)
 OUT4 = os.path.join(HERE, "..", "out", "slice4")
-RUNS = {"J1": "jev-heldout2", "H": "jev-heldout2-qh", "JQ1": "jev-heldout2-qv1"}
-P = 0.5
+# arm -> (run, breaking threshold). S/S20: SubQ Snap on the pipeline's wording at the live 0.5 and at its dev-fitted 0.20.
+RUNS = {"J1": ("jev-heldout2", 0.5), "H": ("jev-heldout2-qh", 0.5), "JQ1": ("jev-heldout2-qv1", 0.5), "S": ("subq-heldout2", 0.5), "S20": ("subq-heldout2", 0.20)}
 OBLIG = {"removal", "deprecation"}
 
 
 def load():
     units = {u["id"]: u for u in sc.rj(os.path.join(OUT4, "h2-units.json"))["units"]}
     preds = {}
-    for arm, run in RUNS.items():
+    for arm, (run, P) in RUNS.items():
+        if not os.path.exists(os.path.join(OUT4, "runs", run, "answers.json")):
+            continue
         ans = sc.rj(os.path.join(OUT4, "runs", run, "answers.json"))
         preds[arm] = {}
         for uid in units:
@@ -67,7 +69,7 @@ def main():
     pos = [i for i in ids if units[i]["breaking"]]
     neg = [i for i in ids if not units[i]["breaking"]]
     obl = [i for i in ids if units[i]["obligation"]]
-    for arm in ("H", "JQ1"):
+    for arm in [x for x in preds if x != "J1"]:
         b = preds[arm]
         side = lambda s: j if s == "a" else b
         print("== %s vs J1 (A = J1, B = %s; section-cluster bootstrap)" % (arm, arm))
@@ -76,8 +78,9 @@ def main():
         hit = lambda p: {i: bool(p[i] and p[i]["breaking"]) == units[i]["breaking"] for i in ids}
         ca, cb = hit(j), hit(b)
         # McNemar on breaking refs (recall side) and on non-breaking refs (false positives, the precision side).
-        r["breaking_recall"] = sc.paired("breaking recall @0.5", pos, ca, cb, lambda s, x: recall(s, side(x), units), rng, clusters)
-        r["breaking_precision"] = sc.paired("breaking precision @0.5", ids, ca, cb, lambda s, x: precision(s, side(x), units), rng, clusters)
+        at = "@%g/@%g" % (RUNS["J1"][1], RUNS[arm][1])
+        r["breaking_recall"] = sc.paired("breaking recall " + at, pos, ca, cb, lambda s, x: recall(s, side(x), units), rng, clusters)
+        r["breaking_precision"] = sc.paired("breaking precision " + at, ids, ca, cb, lambda s, x: precision(s, side(x), units), rng, clusters)
         r["false_positive_mcnemar"] = sc.paired("non-breaking correct", neg, ca, cb, lambda s, x: 1 - sum(bool(side(x)[i] and side(x)[i]["breaking"]) for i in s) / len(s), rng, clusters)
         co = lambda p: {i: bool(p[i] and p[i]["change_type"] in OBLIG) for i in ids}
         r["obligation_recall"] = sc.paired("obligation recall (descr.)", obl, co(j), co(b), lambda s, x: oblig(s, side(x), units), rng, clusters)

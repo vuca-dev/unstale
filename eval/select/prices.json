@@ -30,6 +30,15 @@
    "checked": "2026-10-16"
   },
   {
+   "provider": "subq",
+   "model": "subq-snap-preview",
+   "input": 0.05,
+   "cached_input": null,
+   "output": 0,
+   "source": "subq.ai/pricing: $0.05/M input, output free (public preview)",
+   "checked": "2026-10-17"
+  },
+  {
    "provider": "openai-decisions",
    "model": "gpt-6-luna",
    "input": 0.1,

@@ -7,9 +7,10 @@ passed. Everything it writes goes under `out/`, which is gitignored. `.store` is
 | File | What it is |
 |---|---|
 | `client.ts` | One OpenAI-compatible chat-completions client. Providers: `vercel` (AI Gateway), `cloudflare` (Workers AI), `openai` (disabled unless `--allow-openai`). It retries 429, 5xx and network errors with backoff, honours `Retry-After`, and has a timeout and a concurrency limit. The disk cache is keyed by sha256(provider + model + full body), and only answers that parse are cached. Each real call writes one line to `out/usage.jsonl` with input, cached input, output and reasoning tokens and dollars. Dollars come from the provider's reported cost when the response has one, otherwise from `prices.json`. An unknown price is logged as `null`. |
-| `jev.ts` | Classifier candidates behind the pipeline's own `Classifier` interface. **Jev** is the pipeline's `Jev` class (its HTTP, batching and answer checks), with a fetch that copies each response's usage into the same log. A **chat model** gets the pipeline's Codex-fallback prompt and parser (`CodexClassifier`), run through `ChatClient`. |
+| `jev.ts` | Classifier candidates behind the pipeline's own `Classifier` interface. **Jev** is the pipeline's `Jev` class (its HTTP, batching and answer checks), with a fetch that copies each response's usage into the same log. A **chat model** gets the pipeline's chat-fallback prompt and parser (`ChatClassifier`, choices only), run through `ChatClient`. |
+| `subq.ts` | **SubQ Snap** (`subq-snap-preview`) as a classifier candidate: Jev's request, batching and answer checks at SubQ's systemone endpoint, key in `~/.config/ati/subq.env` (`SUBQ_API_KEY`). Eval only; results in `slice4/RESULTS.md` and `slice5/RESULTS-judge2.md`. |
 | `budget.ts` | The budget guard, gateway balance (`GET /v1/credits`) and cumulative spend per provider from `usage.jsonl`. |
-| `prices.json`, `prices.mts` | $ per million tokens, each row with `source` and `checked`. The gateway rows (317 models, plus `max_output`) come from `GET https://ai-gateway.vercel.sh/v1/models`; refresh them with `npx tsx ../eval/select/prices.mts`. Hand rows: DeepInfra gpt-oss-20b, Gemini 3.1 Flash-Lite batch, Jev, Decisions `gpt-6-luna`, Cloudflare Clef Flash (input only; the output price and model id are TODO). The OpenAI direct rows are TODO (null). `codex/gpt-5.6-luna` is the gateway's list price for `openai/gpt-5.6-luna` ($0.20 / $0.02 cached / $1.20). |
+| `prices.json`, `prices.mts` | $ per million tokens, each row with `source` and `checked`. The gateway rows (317 models, plus `max_output`) come from `GET https://ai-gateway.vercel.sh/v1/models`; refresh them with `npx tsx ../eval/select/prices.mts`. Hand rows: DeepInfra gpt-oss-20b, Gemini 3.1 Flash-Lite batch, Jev, SubQ Snap, Decisions `gpt-6-luna`, Cloudflare Clef Flash (input only; the output price and model id are TODO). The OpenAI direct rows are TODO (null). `codex/gpt-5.6-luna` is the gateway's list price for `openai/gpt-5.6-luna` ($0.20 / $0.02 cached / $1.20). |
 | `prompts.ts` | `ONE_CALL_PROMPT`: `EXTRACT_PROMPT` with the five label fields and `LABEL_PROMPT`'s rules folded in. It is assembled from the pipeline's prompts at load time and throws if a marker moves. |
 | `states.ts` | Rebuilds the sets' classifier and judge requests from stored data and proves they are faithful (below). |
 | `run.mts` | The runner. |
@@ -23,21 +24,21 @@ passed. Everything it writes goes under `out/`, which is gitignored. `.store` is
 cd central
 npx tsx ../eval/select/run.mts --step extract  --provider vercel --model openai/gpt-oss-20b [--structure one-call] --split dev --dry-run
 npx tsx ../eval/select/run.mts --step classify --provider jev --split dev [--set benefit|breaking] --limit 50 --seed 1
-npx tsx ../eval/select/run.mts --step judge    --provider codex --split heldout [--set within|guides|nuxt]
-npx tsx ../eval/select/run.mts --step <s>      --provider cache --split all     # the pipeline's own answers, no calls
+npx tsx ../eval/select/slice5/judge2.mts --arm M8 --split dev|heldout --cand jev|subq   # step E: slice 5's frozen requests
+npx tsx ../eval/select/run.mts --step classify --provider cache --split all     # the pipeline's own answers, no calls
 ```
 
 - **Providers:**
   - `vercel`, `cloudflare`: chat completions.
   - `openai`: only with `--allow-openai`.
-  - `jev`: classify and judge only.
+  - `jev`, `subq`: classify only (`run.mts --step judge` stops since f99833e; see below).
   - `codex`: Luna (`gpt-5.6-luna`) through the pipeline's `runCodex` on the user's plan. It reads the store's Codex cache first (read only), then `out/central/cache/codex`. Its usage lines hold the harness-inclusive tokens, plus `prompt_chars` and `prompt_tokens_est` (prompt characters / 4; no tokenizer is installed). They also hold `dollars_prompt_only`, so Luna can be costed at list price without the harness.
   - `cache`: replays the pipeline's stored answers.
 - **`--dry-run`** prints the documents or requests, the number of calls, and a worst-case token and dollar figure, without calling anything. Worst case means input is characters / 3 at the uncached rate, and output is the request's `max_tokens` (extract 16k, label 16k, one call 24k, classify 2k, judge 2k, clamped to the model's `max_output`). The figure is also shown ×3, in case every call is retried for an unparseable answer.
 - **Budget guard:** a real run is refused when its worst case ×3 exceeds what remains, and when the worst case is unknown because a price is missing.
   - `vercel`: the live gateway balance minus a $1 reserve.
   - `openai`: $2 minus logged OpenAI spend.
-  - `jev` and `cloudflare`: an explicit `--budget`.
+  - `jev`, `subq` and `cloudflare`: an explicit `--budget`.
   - `codex`: no dollar budget (it bills the plan).
 
   Cumulative spend per provider is printed after every run.
@@ -65,6 +66,13 @@ npx tsx ../eval/select/run.mts --step <s>      --provider cache --split all     
 - Extraction-set "splits" are events, not documents. The same 9 documents serve dev and held-out items (see `splits.json`).
 
 ## Faithful requests for D and E
+
+**Since f99833e (16 October 2026)** the pipeline asks shorter label and judge text than the stores were built with.
+Label faithfulness is proven against the build-time wording (`states.ts` `buildTimeLabelQuestions`; the states did not
+change), and a run asks the current `labelQuestions()`. Judge pairs no longer rebuild: `ingest` now asks `shortRules`
+and merges at `SAME_P_SHORT`, so `run.mts --step judge` stops. Step E is compared on the requests slice 5 froze while
+they were faithful (`out/slice5/units.json`), with `slice5/judge2.mts` (any wording arm, `--cand jev|clef|subq`) and
+`slice5/score5.mts`. The table below is as of 16 October 2026, before the change.
 
 A rebuilt request counts only if it is byte-identical to one the pipeline asked. That is proven by a hit in the
 pipeline's classifier cache, which is keyed by sha256 of the full request. For judge pairs, the cached answer must also

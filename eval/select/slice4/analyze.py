@@ -34,6 +34,8 @@ CANDS = {
     "deepseek-v4-flash": ("vercel_deepseek_deepseek-v4-flash-dev", "vercel_deepseek_deepseek-v4-flash-heldout"),
     "Luna (codex)": ("codex-dev", "codex-heldout"),
     "Encoder (ModernBERT)": ("encoder-dev", "encoder-heldout"),
+    "SubQ Snap": ("subq-dev", "subq-heldout"),
+    "SubQ Snap (S2)": ("subq-dev", "subq-heldout-run2"),
 }
 BATCH_RE = "batch_"
 

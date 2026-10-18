@@ -3,10 +3,9 @@
 // - Jev: the pipeline's `Jev` (its own HTTP, batching and answer checks) with a fetch that copies each response's usage
 //   into eval/select/out/usage.jsonl. Jev's own logUsage writes to $UNSTALE_CENTRAL_DIR, which run.mts points at
 //   eval/select/out/central so the store is never written.
-// - A generative model: the pipeline's CodexClassifier prompt and parser (the Codex fallback), run through ChatClient.
+// - A generative model: the pipeline's ChatClassifier prompt and parser (the chat fallback), run through ChatClient.
 import { join } from "node:path";
-import { CodexClassifier, Jev, type Classifier, type CodexRunner, type HttpOptions } from "../../central/src/pipeline/classify/adapter.ts";
-import { parseJson } from "../lib/codex.ts";
+import { ChatClassifier, Jev, type ChatRunner, type Classifier, type HttpOptions } from "../../central/src/pipeline/classify/adapter.ts";
 import { dollars, loadPrices, logUsageLine, OUT_DIR, priceOf, type ChatClient, type Price, type Usage } from "./client.ts";
 
 export interface JevOptions {
@@ -47,11 +46,8 @@ export function jevClassifier(o: JevOptions): Classifier {
   return new Jev(opts);
 }
 
-/** A chat model answering the classifier's questions with the pipeline's Codex-fallback prompt and parser. */
+/** A chat model answering the classifier's questions with the pipeline's chat-fallback prompt and parser. */
 export function chatClassifier(client: ChatClient, model: string, step: string, extra: Record<string, unknown> = {}): Classifier {
-  const run: CodexRunner = async (prompt, m) => {
-    const c = await client.complete({ ...extra, model: m, messages: [{ role: "user", content: prompt }] }, (t) => (parseJson(t, "object") === undefined ? undefined : t), { step });
-    return { text: c.text, code: c.value === undefined ? 1 : 0 };
-  };
-  return new CodexClassifier({ model, run });
+  const run: ChatRunner = async (prompt, parse) => (await client.complete({ ...extra, model, messages: [{ role: "user", content: prompt }] }, parse, { step })).value;
+  return new ChatClassifier({ model, run });
 }

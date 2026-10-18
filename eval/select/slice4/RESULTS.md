@@ -151,9 +151,40 @@ run was aborted.
 9. **Encoder:** the in-domain agreement (validation technologies) is optimistic. The cached Jev answers are the first
    answer to each request, not a fresh one.
 
+## SubQ Snap (17 October 2026)
+
+**Verdict: Jev stays.** Snap (`subq-snap-preview`, Subquadratic's decision model: Jev's systemone request and answer
+shape, $0.05 per M input, output free in public preview) passes step D on H1 but fails at its own fitted threshold on
+H2, and fails step E (slice 5, `RESULTS-judge2.md` § "SubQ Snap"). Together it is about 2% cheaper than Jev, so the
+pre-registered switch rule (slice 5 `PREREG.md`) keeps Jev. Runner `run4.mts --cand subq` (eval-only
+`eval/select/subq.ts`), on the pipeline's own wording (v1 since f99833e).
+
+| Held-out | Snap | Jev | Paired difference (95% CI) |
+|---|---|---|---|
+| H1 at fitted thresholds (Snap 0.20 / 0.10, J1 as above): breaking R | 96.6 | 93.1 | +3.4 [0, +10.3] |
+| H1 benefit-vs-none R | 96.7 | 99.2 | −2.5 [−5.8, 0] |
+| H1 actionable R | 84.9 | 83.6 | +1.4 [−5.5, +8.2] |
+| H1 breaking P / accuracy | 51.9 / 88.4 | 36.0 / 78.5 | accuracy **+9.9 [+5.2, +14.6]** |
+| H2 breaking R / P at 0.5 (vs J1) | 95.7 / 93.2 | 90.0 / 94.5 | R **+5.7 [+2.8, +8.2]**; P −1.3 [−4.4, +2.0] |
+| H2 at Snap's fitted 0.20 | 98.7 / 89.7 | 90.0 / 94.5 | P **−4.8 [−8.8, −1.9]**: fails |
+| H2 removal + deprecation R (descriptive) | 80.7 | 85.6 | **−5.0 [−9.0, −0.6]** |
+| Input tokens per record (same wording as Jev v1) | 1,663 | 2,074 | Snap's tokenizer counts about 20% fewer |
+| **$ per technology-year, step D** | **0.0095** | 0.0100 (v1) | −5% (−12% against J1's older wording) |
+
+- **H1 passes** the slice 4 floor, the cheapest passer there. At the live 0.5 Snap's benefit recall drops to 73.6, so it
+  needs its own BENEFIT_P (0.10).
+- **H2 fails** at the threshold fitted on dev, which is the threshold the switch rule names (slice 5 `PREREG.md`). The
+  low BREAKING_P that H1's sparse breaking set rewards over-flags on guides and major notes. At 0.5, H2's own
+  pre-registered threshold, it passes. No single threshold passes both sets: at 0.5 Snap's H1 benefit recall falls to 73.6.
+- **Repeatability:** a second held-out run (`subq-heldout-run2`) returned identical probabilities on all 233 records.
+  Jev changes 15 records between its two runs. Snap is deterministic; that is its clearest operational advantage.
+- **Spend:** SubQ $0.137 (2.74M input tokens) across slices 4 and 5, on the free preview credit.
+- **Revisit** if Snap's judge improves (the step-E gap is calibration on DIFFERENT pairs, not cost), or if its price
+  falls: at today's prices even a pass on both steps saves about 2%.
+
 ## Files
 
-`PREREG.md`; `run4.mts` (runner: Jev, Clef via the `Jev` class, gateway chat, Codex, b = 10); `analyze.py` (dev fit,
+`PREREG.md`; `run4.mts` (runner: Jev, Clef via the `Jev` class, SubQ Snap, gateway chat, Codex, b = 10); `analyze.py` (dev fit,
 held-out mapping, `score.py` metrics and `compare`, cost); `repeat.py` (Jev flips); `encoder-data.mts`,
 `dump-units.mts`, `train_encoder.py` (encoder). Outputs: `eval/select/out/slice4/` (runs, `report.json`,
 `compare.txt`, `fits.json`, logs, `encoder/meta.json`). Reproduce the tables with `python3 eval/select/slice4/analyze.py`.

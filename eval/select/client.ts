@@ -21,6 +21,7 @@ const keyDir = join(homedir(), ".config", "ati");
 export const PROVIDERS: Record<string, Provider> = {
   ...CHAT_PROVIDERS,
   jev: { name: "jev", baseUrl: "https://api.typesafe.ai/v1", keyFile: join(keyDir, "jev.env"), keyVar: "JEV_API_KEY" },
+  subq: { name: "subq", baseUrl: "https://api.subq.ai/v1", keyFile: join(keyDir, "subq.env"), keyVar: "SUBQ_API_KEY" },
   codex: { name: "codex", baseUrl: "", keyFile: "", keyVar: "" },
 };
 
