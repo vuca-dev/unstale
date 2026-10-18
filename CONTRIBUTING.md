@@ -95,11 +95,12 @@ this repository (checked before a real publish). `release.yml`'s header has the 
 
 **Ingest state.** The central store (`UNSTALE_STORE`: `central/` and `catalog/`) survives the ephemeral runner as
 assets of a draft release tagged `catalog-state` (`central/src/state/`). A generation is a manifest,
-`state-<stamp>.json`, uploaded last (a generation without it is ignored), naming where each member (a deterministic
+`state-<stamp>.json`, uploaded last (a generation without it is ignored; a tarball generation, `.sha256` last, still
+restores and is never deleted, so a revert continues from it), naming where each member (a deterministic
 zstd tar of some of the store's files) lies in the segments `state-<stamp>.segNN` (each under 1.5 GiB; the asset limit
-is 2 GiB). A save writes only the members that changed, so a cycle uploads its work, not the store; a restore
-downloads everything but the technologies' docs stores, which a state server restores when a technology's docs are
-first read. A run saves once a cycle; the newest generation of each of the newest three runs is kept with the segments
+is 2 GiB). A save writes only the members that changed (plus up to 1 GiB of live members compacted out of sparse or old
+segments), so a cycle uploads its work, not the store; a restore downloads the eager members (not the technologies'
+docs stores, which a state server restores when a technology's docs are first read, nor the archived log months). A run saves once a cycle; the newest generation of each of the newest three runs is kept with the segments
 it references. The state is saved
 after a failed pipeline, drain or publish too (paid model calls are kept), but a catalog is deployed only after the
 pipeline, the drain, the export and the verification (every index's shards present with the stated size and sha256)
@@ -117,7 +118,7 @@ UNSTALE_STATE_REMOTE="github:vuca-dev/unstale#$rel" GH_TOKEN="$(gh auth token)" 
 
 To read a saved state locally: `UNSTALE_STORE=/tmp/s UNSTALE_STATE_REMOTE=... GH_TOKEN=... npm --prefix central run
 state -- restore --all` (every member; without `--all`, `state -- hydrate docs:<tech>` restores one docs store), then
-`npm --prefix central run state -- stats` for its composition.
+`UNSTALE_STORE=/tmp/s npm --prefix central run state -- stats` for its composition.
 
 GitHub disables a public repository's scheduled workflows after 60 days without repository activity, and ingest
 commits nothing; re-enable it with `gh workflow enable ingest.yml`.

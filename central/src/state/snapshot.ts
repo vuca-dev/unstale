@@ -80,7 +80,12 @@ interface FileStat {
   rel: string;
   size: number;
   mtimeMs: number;
+  /** Change time and inode: a write that keeps the size and restores the mtime still changes these. */
+  ctimeMs: number;
+  ino: number;
 }
+
+const statOf = (rel: string, s: { size: number; mtimeMs: number; ctimeMs: number; ino: number }): FileStat => ({ rel, size: s.size, mtimeMs: s.mtimeMs, ctimeMs: s.ctimeMs, ino: s.ino });
 
 /** Every file of the store that belongs in a snapshot, sorted. */
 export function walk(root: string): FileStat[] {
@@ -91,8 +96,7 @@ export function walk(root: string): FileStat[] {
       if (excluded(r)) continue;
       if (d.isDirectory()) visit(join(dir, d.name), r);
       else if (d.isFile()) {
-        const s = statSync(join(dir, d.name));
-        out.push({ rel: r, size: s.size, mtimeMs: s.mtimeMs });
+        out.push(statOf(r, statSync(join(dir, d.name))));
       }
     }
   };
@@ -100,10 +104,10 @@ export function walk(root: string): FileStat[] {
   return out.sort((a, b) => (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0));
 }
 
-/** Stat fingerprint of a member's files: a write (new inode time, size) changes it. */
+/** Stat fingerprint of a member's files: any write changes it (size, mtime, ctime, or a new inode). */
 export function fingerprint(files: readonly FileStat[]): string {
   const h = createHash("sha256");
-  for (const f of files) h.update(`${f.rel}\0${f.size}\0${f.mtimeMs}\n`);
+  for (const f of files) h.update(`${f.rel}\0${f.size}\0${f.mtimeMs}\0${f.ctimeMs}\0${f.ino}\n`);
   return h.digest("hex");
 }
 
@@ -459,10 +463,7 @@ function decode(key: string, m: Member, data: Buffer): Entry[] {
 }
 
 const statsOf = (root: string, entries: readonly Entry[]): FileStat[] =>
-  entries.map((e) => {
-    const s = statSync(join(root, e.path));
-    return { rel: e.path, size: s.size, mtimeMs: s.mtimeMs };
-  }).sort((a, b) => (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0));
+  entries.map((e) => statOf(e.path, statSync(join(root, e.path)))).sort((a, b) => (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0));
 
 export interface RestoreReport {
   generation?: string;

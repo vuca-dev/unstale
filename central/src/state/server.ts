@@ -18,7 +18,7 @@ export function serve(root: string, remote: Remote, socket: string, log: (s: str
   const server = createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://state");
     const key = url.searchParams.get("key") ?? "";
-    if (req.method !== "POST" || url.pathname !== "/hydrate" || kindOf(key) === "eager") {
+    if (req.method !== "POST" || url.pathname !== "/hydrate" || kindOf(key) !== "lazy") {
       res.writeHead(404).end("POST /hydrate?key=docs:<tech>");
       return;
     }

@@ -50,7 +50,9 @@ export function pack(entries: readonly Entry[]): Buffer {
       const pax = paxPath(e.path);
       parts.push(header("PaxHeader", pax.length, "x"), pax, pad(pax.length));
     }
-    parts.push(header(Buffer.from(e.path).subarray(0, 100).toString("utf8").replace(/�+$/, ""), e.data.byteLength, "0"));
+    // The ustar name of a long path is informational (the pax record wins): its first 100 bytes, less a split character.
+    const name = Buffer.byteLength(e.path) <= 100 ? e.path : Buffer.from(e.path).subarray(0, 100).toString("utf8").replace(/\uFFFD+$/, "");
+    parts.push(header(name, e.data.byteLength, "0"));
     parts.push(Buffer.from(e.data.buffer, e.data.byteOffset, e.data.byteLength), pad(e.data.byteLength));
   }
   parts.push(Buffer.alloc(BLOCK * 2));
@@ -82,9 +84,14 @@ export function unpack(buf: Uint8Array): Entry[] {
     const data = b.subarray(at + BLOCK, at + BLOCK + size);
     at += BLOCK + size + ((BLOCK - (size % BLOCK)) % BLOCK);
     if (type === "x") {
-      for (const rec of data.toString("utf8").split("\n")) {
-        const m = /^\d+ path=(.*)$/s.exec(rec);
-        if (m) longPath = m[1];
+      // Records `<len> <key>=<value>\n`, each `len` bytes long: a value may itself hold a newline.
+      for (let p = 0; p < data.length; ) {
+        const space = data.indexOf(0x20, p);
+        const len = space < 0 ? NaN : Number(data.subarray(p, space).toString("latin1"));
+        if (!Number.isSafeInteger(len) || len <= space - p || p + len > data.length) throw new Error("tar: malformed pax header");
+        const rec = data.subarray(space + 1, p + len - 1).toString("utf8");
+        if (rec.startsWith("path=")) longPath = rec.slice(5);
+        p += len;
       }
       continue;
     }

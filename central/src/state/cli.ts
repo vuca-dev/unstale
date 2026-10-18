@@ -16,6 +16,12 @@ import { hydrate, localManifest, restore, save } from "./snapshot.ts";
 
 const log = (s: string): void => console.error(`[state] ${s}`);
 
+function count(flag: string, value: string | undefined, fallback: number): number {
+  const n = value === undefined ? fallback : Number(value);
+  if (!Number.isSafeInteger(n) || n < 0) throw new Error(`${flag} must be a non-negative integer, not ${value}`);
+  return n;
+}
+
 async function main(): Promise<void> {
   const [cmd, ...rest] = process.argv.slice(2);
   const root = storeRoot();
@@ -30,7 +36,9 @@ async function main(): Promise<void> {
     case "save": {
       const { values } = parseArgs({ args: rest, options: { generation: { type: "string" }, keep: { type: "string" } } });
       if (!values.generation || !/^state-[^.]+$/.test(values.generation)) throw new Error("save --generation state-<stamp>");
-      console.log(JSON.stringify(await save(root, remoteFromEnv(), { generation: values.generation, keep: Number(values.keep ?? 3), log })));
+      const keep = count("--keep", values.keep, 3);
+      if (keep < 1) throw new Error("save --keep must be at least 1");
+      console.log(JSON.stringify(await save(root, remoteFromEnv(), { generation: values.generation, keep, log })));
       return;
     }
     case "serve": {
@@ -59,7 +67,7 @@ async function main(): Promise<void> {
         b.compressed += x.length;
         by.set(area, b);
       }
-      const rows = [...by].sort(([, a], [, b]) => b.compressed - a.compressed).slice(0, Number(values.top ?? 1000));
+      const rows = [...by].sort(([, a], [, b]) => b.compressed - a.compressed).slice(0, count("--top", values.top, 1000));
       for (const [area, b] of rows) console.log(JSON.stringify({ area, ...b }));
       const segs = Object.values(m.segments);
       console.log(JSON.stringify({ generation: m.generation, members: Object.keys(m.members).length, segments: segs.length, segment_bytes: segs.reduce((a, b) => a + b, 0), largest_segment: Math.max(0, ...segs) }));

@@ -157,10 +157,21 @@ export class GithubRemote implements Remote {
     if (statSync(file).size !== end - start) throw new Error(`${asset.name}: downloaded ${statSync(file).size} bytes, expected ${end - start}`);
   }
 
+  private uploads: string | undefined;
+  /** The release's own upload endpoint (uploads.github.com, or a GitHub Enterprise host's). */
+  private async uploadUrl(): Promise<string> {
+    if (this.uploads) return this.uploads;
+    const res = await this.call(`/repos/${this.repo}/releases/${this.release}`);
+    if (!res.ok) throw new Error(`reading release ${this.release}: ${res.status} ${await res.text()}`);
+    const { upload_url } = (await res.json()) as { upload_url?: string };
+    if (!upload_url) throw new Error(`release ${this.release} has no upload_url`);
+    return (this.uploads = upload_url.replace(/\{[^}]*\}$/, ""));
+  }
+
   /** As the tarball saves did: curl, the token on stdin (never in the process list). */
   async upload(file: string, name: string): Promise<void> {
     if (isLegacy(name)) throw new Error(`${name}: tarball-format assets are never replaced`);
-    const url = `https://uploads.github.com/repos/${this.repo}/releases/${this.release}/assets?name=${encodeURIComponent(name)}`;
+    const url = `${await this.uploadUrl()}?name=${encodeURIComponent(name)}`;
     for (let attempt = 0; ; attempt++) {
       try {
         await new Promise<void>((resolve, reject) => {

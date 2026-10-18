@@ -68,6 +68,12 @@ describe("tar", () => {
     expect(execFileSync("tar", ["-tf", join(dir, "m.tar")], { encoding: "utf8" }).trim().split("\n")).toEqual(["a.txt", long]);
   });
 
+  test("a path with a newline or a trailing U+FFFD comes back as it went in", () => {
+    const paths = [`a/${"long ".repeat(30)}\nline.json`, "a/short\uFFFD", `a/${"é".repeat(60)}`];
+    const back = unpack(pack(paths.map((path) => ({ path, data: Buffer.from(path) })))).map((e) => e.path);
+    expect(back).toEqual([...paths].sort());
+  });
+
   test("a path out of the store is refused", () => {
     expect(() => unpack(pack([{ path: "../escape", data: Buffer.from("x") }]))).toThrow(/unsafe path/);
   });
@@ -185,7 +191,7 @@ describe("save and restore", () => {
     const operator = tmp("operator");
     seed(operator);
     process.env.UNSTALE_STORE = operator;
-    await expect(ensureLocal("docs:next")).resolves.toBeUndefined();
+    await expect(ensureLocal("docs:operator-only")).resolves.toBeUndefined();
   });
 
   test("months of append-only logs move to archive members, which a run does not restore", async () => {
@@ -310,6 +316,19 @@ describe("save and restore", () => {
     const c = join(tmp("c"), "store");
     await restore(c, remote, { all: true });
     expect(contents(c)).toEqual(contents(a));
+  });
+
+  test("a rewrite that keeps the size and restores the mtime is still saved", async () => {
+    const a = tmp("a");
+    seed(a);
+    const p = join(a, "central/records/next.json");
+    const t = new Date("2026-10-01T00:00:00Z");
+    utimesSync(p, t, t);
+    await save(a, remote, { generation: "state-20261018T000000Z-1-1" });
+    writeFileSync(p, readFileSync(p, "utf8").replace("1", "9"));
+    utimesSync(p, t, t);
+    expect(statSync(p).mtimeMs).toBe(t.getTime());
+    expect((await save(a, remote, { generation: "state-20261018T001500Z-1-1" })).written).toBe(1);
   });
 
   test("a store whose files only changed their times is not rewritten", async () => {
