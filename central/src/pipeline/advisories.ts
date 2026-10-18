@@ -39,15 +39,22 @@
 //      users of that package get, not users of this technology: `change_type` other, `benefit` none (history
 //      `other-package`, the labels it had kept there). Recomputed every run with no model call, restored like step 8.
 //      Unknown (a body not stored, no dependency data, an ecosystem without the hooks) keeps the record as it is.
+//  10. backport twins: records of one upstream change (every item cites a common pull request or commit) with
+//      near-identical quotes on different release lines merge into one (backports.ts).
+//  11. another package's section: a record whose every item sits under a release-notes heading naming other packages
+//      of the repository (not this technology's) has its releases name those packages (section-packages.ts), so the
+//      edge applies it only where one of them is used.
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Classification, Questions } from "./classify/adapter.ts";
 import type { Labels } from "./classify/labels.ts";
-import { canonicalPurl, ecosystemOf, npmName as npmNameOf, npmPurl, pypiPurl, semverOrder } from "./ecosystems.ts";
+import { mergeBackports } from "./backports.ts";
+import { canonicalPurl, ecosystemOf, npmName as npmNameOf, npmPurl, pypiPurl, semverOrder, type RegistryPackage } from "./ecosystems.ts";
 import type { Incoming } from "./extract.ts";
 import { buildIndex, lineFn, recomputeReleases } from "./lines.ts";
 import { advisoryIds, create, evidenceOf, K, kindOf, matchRequest, nearIdenticalQuote, pick, retrieve } from "./match.ts";
 import { centralDir } from "./paths.ts";
+import { attributeSections, repositoryPackages } from "./section-packages.ts";
 import { applyChange, combineReleases, mergeInto, union, type StoredRecord, type TechStore } from "./store.ts";
 import type { Technology } from "./technologies.ts";
 import { canonical, oneLine, readJson, releaseLine, sha256, writeAtomic } from "./util.ts";
@@ -592,6 +599,12 @@ export interface AttachReport {
   otherPackage: Array<{ record: string; package: string }>;
   /** Records given their labels back: they no longer qualify as another package's release. */
   otherPackageRestored: string[];
+  /** Backport twins merged (step 10): the same upstream change extracted once per release line. */
+  backportsMerged: Array<{ from: string; into: string; refs: string[] }>;
+  /** Records whose releases now name the packages their release-notes heading names (step 11). */
+  sectionMoved: Array<{ record: string; packages: string[]; heading: string }>;
+  /** Records given this technology's components back (step 11). */
+  sectionRestored: string[];
 }
 
 /**
@@ -624,8 +637,27 @@ export async function attachAdvisories(
   releases: ReadonlyArray<{ version: string; date: string; url: string }>,
   judge: (state: Record<string, unknown>, questions: Questions) => Promise<Classification>,
   foreign?: ForeignCheck,
+  sections?: readonly RegistryPackage[],
 ): Promise<AttachReport> {
-  const report: AttachReport = { advisories: advisories.length, inWindow: 0, byId: 0, judged: 0, created: 0, releasesAdded: 0, recordsChanged: 0, removed: [], twinsMerged: [], multiHolder: [], foreign: [], foreignRestored: [], otherPackage: [], otherPackageRestored: [] };
+  const report: AttachReport = {
+    advisories: advisories.length,
+    inWindow: 0,
+    byId: 0,
+    judged: 0,
+    created: 0,
+    releasesAdded: 0,
+    recordsChanged: 0,
+    removed: [],
+    twinsMerged: [],
+    multiHolder: [],
+    foreign: [],
+    foreignRestored: [],
+    otherPackage: [],
+    otherPackageRestored: [],
+    backportsMerged: [],
+    sectionMoved: [],
+    sectionRestored: [],
+  };
   const changed = new Set<string>();
   const lineOf = lineFn(s);
   // One release index: the store's (lines.ts, published in the tech index) when it has one. Each advisory carries a
@@ -778,6 +810,23 @@ export async function attachAdvisories(
     report.otherPackage = r.relabelled;
     report.otherPackageRestored = r.restored;
     for (const x of r.relabelled) changed.add(x.record);
+    for (const x of r.restored) changed.add(x);
+  }
+
+  // Step 10: one upstream change on several release lines is one record.
+  report.backportsMerged = mergeBackports(s, releases, body);
+  for (const m of report.backportsMerged) {
+    changed.add(m.into);
+    changed.add(m.from);
+  }
+
+  // Step 11: an item under a heading naming other packages of the repository is their change.
+  if (sections && foreign) {
+    const dependencies = memo(foreign.dependencies);
+    const r = await attributeSections(t, s, releases, body, sections, (x) => shippedPackages(s, x, new Set(t.components.map(canonicalPurl)), dependencies));
+    report.sectionMoved = r.moved;
+    report.sectionRestored = r.restored;
+    for (const x of r.moved) changed.add(x.record);
     for (const x of r.restored) changed.add(x);
   }
 
@@ -1183,5 +1232,6 @@ export async function advisoryStage(
     releases,
     judge,
     complete ? { packages, lookup: (id) => advisoryPackages(t, id, opts), dependencies: (component, version) => releaseDependencies(t, component, version, opts) } : undefined,
+    await repositoryPackages(t, opts),
   );
 }

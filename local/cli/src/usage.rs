@@ -54,9 +54,10 @@ pub fn identifier(lit: &str) -> bool {
     !plain_word(lit) && s.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_' || c == '$') && is_word(s)
 }
 
-/// The literals whose hits are the files that name a package as a module, by the ecosystem's own syntax: a quoted
-/// npm specifier or subpath (`'vitest'`, `"next/image"`; imports, `require`, manifests, CSS `@import`), a Python
-/// `import`/`from` or a quoted requirement (`"pydantic>=2"` in `pyproject.toml`). Matched in `find`'s one pass.
+/// The literals whose hits are the files that name a package, by the ecosystem's own syntax: a quoted npm specifier or
+/// subpath (`'vitest'`, `"next/image"`; manifests, CSS `@import`) and the same at a module position in code
+/// (`module_naming`), a Python `import`/`from` or a quoted requirement (`"pydantic>=2"` in `pyproject.toml`). Matched in
+/// `find`'s one pass.
 pub fn naming_lits(purl: &str) -> Vec<String> {
     let Some(name) = purl_name(purl) else { return vec![] };
     if normalize_purl(purl).starts_with("pkg:pypi/") {
@@ -74,7 +75,21 @@ pub fn naming_lits(purl: &str) -> Vec<String> {
         }
         return out;
     }
-    ["'", "\""].iter().flat_map(|q| [format!("{q}{name}{q}"), format!("{q}{name}/")]).collect()
+    let quoted: Vec<String> = ["'", "\""].iter().flat_map(|q| [format!("{q}{name}{q}"), format!("{q}{name}/")]).collect();
+    let module = NPM_MODULE_AT.iter().flat_map(|at| quoted.iter().map(move |q| format!("{at}{q}")));
+    quoted.iter().cloned().chain(module).collect()
+}
+
+/// What precedes a quoted specifier where JavaScript code loads it as a module: `import … from`, a side-effect or
+/// dynamic `import`, `require` and `require.resolve`, a test runner's module mock or original (`vi.mock`,
+/// `vi.doMock`, `jest.requireActual`, `vi.importActual`), and a triple-slash `types` reference.
+const NPM_MODULE_AT: &[&str] = &["from ", "import ", "import(", "require(", "resolve(", "mock(", "Mock(", "Actual(", "types="];
+
+/// Whether a naming literal (`naming_lits`) names the package at a module position, which is what makes code about
+/// it. A quoted name alone does not: `type Falloff = 'linear' | 'sharp'` is a string, not an import of sharp. In data
+/// and config files (manifests, `tsconfig.json` types, CSS `@import`) any quoted form names it.
+pub fn module_naming(lit: &str) -> bool {
+    lit.starts_with("import ") || lit.starts_with("from ") || NPM_MODULE_AT.iter().any(|at| lit.starts_with(at))
 }
 
 /// Which files can evidence one technology, and which of those are about it.
@@ -86,9 +101,10 @@ pub fn naming_lits(purl: &str) -> Vec<String> {
 /// file (`tsconfig.json`): a config file it reads. Data, config and markup files that do none of this (dashboard JSON,
 /// translations, Go linter YAML, Kubernetes manifests) never evidence it, nor does another ecosystem's code.
 ///
-/// A file is about the technology when it is code that imports it or its path names it. Evidence lists only files
-/// that hold the literal itself, by these rules, and files about the technology come first: they are where its calls
-/// are.
+/// A file is about the technology when it is code that imports it (a quoted specifier at a module position,
+/// `module_naming`: a string such as `'sharp'` in a union type is not an import) or its path names it. Evidence lists
+/// only files that hold the literal itself, by these rules, and files about the technology come first: they are where
+/// its calls are.
 /// - A plain word (`plain_word`) is shown only from files about the technology.
 /// - An identifier (`identifier`) is shown only from those, or from a file the technology's records name.
 /// - A qualified literal matched only by its tail is shown under the tail's rule when the tail is an identifier
@@ -102,13 +118,15 @@ pub struct Scope<'a> {
     /// Lowercase package names and npm scopes, for path names.
     stems: Vec<String>,
     naming: HashSet<&'a str>,
+    /// Of `naming`, the files that name a package at a module position (`module_naming`).
+    importing: HashSet<&'a str>,
     config_names: BTreeSet<String>,
     hits: &'a Hits,
     /// `Repo::paths`, which `Hits::ix` indexes.
     paths: &'a [String],
-    /// Per path index: whether the file names the technology's packages; and its `file`, once (0 not yet; else 1 +
-    /// `None`/`Some(false)`/`Some(true)`): the same files come up for every literal.
-    named_at: Vec<bool>,
+    /// Per path index: whether the file names the technology's packages, and whether at a module position; and its
+    /// `file`, once (0 not yet; else 1 + `None`/`Some(false)`/`Some(true)`): the same files come up for every literal.
+    named_at: Vec<(bool, bool)>,
     memo: RefCell<Vec<u8>>,
 }
 
@@ -124,13 +142,23 @@ impl<'a> Scope<'a> {
     ) -> Self {
         let mut stems = vec![];
         let mut naming = HashSet::new();
-        let mut named_at = vec![false; paths.len()];
+        let mut importing = HashSet::new();
+        let mut named_at = vec![(false, false); paths.len()];
         for p in purls {
             for l in naming_lits(p) {
-                naming.extend(hits.usage.get(&l).into_iter().flatten().map(String::as_str));
+                let module = module_naming(&l);
+                let files = hits.usage.get(&l).into_iter().flatten().map(String::as_str);
+                if module {
+                    let files: Vec<&str> = files.collect();
+                    naming.extend(files.iter().copied());
+                    importing.extend(files);
+                } else {
+                    naming.extend(files);
+                }
                 for x in hits.ix.get(&l).into_iter().flatten() {
                     if let Some(n) = named_at.get_mut(*x as usize) {
-                        *n = true;
+                        n.0 = true;
+                        n.1 |= module;
                     }
                 }
             }
@@ -147,7 +175,7 @@ impl<'a> Scope<'a> {
             .map(|l| l.to_ascii_lowercase())
             .collect();
         let memo = RefCell::new(vec![0; paths.len()]);
-        Scope { ecosystem, owners, stems, naming, config_names, hits, paths, named_at, memo }
+        Scope { ecosystem, owners, stems, naming, importing, config_names, hits, paths, named_at, memo }
     }
 
     /// Whether the path names one of the technology's packages: a directory, the base name's head or first word, or
@@ -177,7 +205,7 @@ impl<'a> Scope<'a> {
 
     /// `None` when the file cannot evidence the technology; else whether it is about it.
     pub fn file(&self, path: &str) -> Option<bool> {
-        self.classify(path, self.naming.contains(path))
+        self.classify(path, (self.naming.contains(path), self.importing.contains(path)))
     }
 
     /// `file` for the path at index `x` of `Repo::paths`, once per file.
@@ -197,12 +225,13 @@ impl<'a> Scope<'a> {
         f
     }
 
-    fn classify(&self, path: &str, named: bool) -> Option<bool> {
+    /// `named`: the file names a package (`naming_lits`), and whether at a module position (`module_naming`).
+    fn classify(&self, path: &str, (named, imports): (bool, bool)) -> Option<bool> {
         if foreign_code(path, self.ecosystem) {
             return None;
         }
         let code = own_code(path, self.ecosystem);
-        if self.path_names(path) || (code && named) {
+        if self.path_names(path) || (code && imports) {
             return Some(true);
         }
         let base = path.rsplit('/').next().unwrap_or(path).to_ascii_lowercase();
@@ -879,7 +908,21 @@ mod tests {
 
     #[test]
     fn naming_literals_follow_each_ecosystems_module_syntax() {
-        assert_eq!(naming_lits("pkg:npm/vitest"), vec!["'vitest'", "'vitest/", "\"vitest\"", "\"vitest/"]);
+        let vt = naming_lits("pkg:npm/vitest");
+        assert_eq!(vt[..4], ["'vitest'", "'vitest/", "\"vitest\"", "\"vitest/"]);
+        for at in [
+            "import { x } from 'vitest'",
+            "import 'vitest/globals'",
+            "await import(\"vitest\")",
+            "require('vitest')",
+            "vi.mock('vitest/x')",
+            "vi.doMock(\"vitest\", () => ({}))",
+            "await vi.importActual('vitest')",
+            "/// <reference types=\"vitest\" />",
+        ] {
+            assert!(vt.iter().any(|l| module_naming(l) && at.contains(l.as_str())), "{at}");
+        }
+        assert!(!vt.iter().any(|l| module_naming(l) && "type T = 'vitest' | 'jest'".contains(l.as_str())), "a string is not an import");
         assert_eq!(naming_lits("pkg:npm/%40playwright/test")[0], "'@playwright/test'");
         let py = naming_lits("pkg:pypi/requests");
         for named in ["import requests\n", "from requests.adapters", "\"requests>=2", "'requests'"] {
@@ -928,6 +971,34 @@ mod tests {
         let owners = ["frontend"];
         let s = Scope::new("npm", &owners, &purls, &lits, &h, &r.paths);
         assert_eq!(s.file("backend/server.ts"), None, "no package declaring it encloses the file");
+    }
+
+    #[test]
+    fn a_quoted_name_in_code_is_not_an_import() {
+        // DavidHDev/react-bits: `type Falloff = 'linear' | 'smooth' | 'sharp'` in React components made them "about"
+        // sharp, so its plain-word terms (`width`, `left`, `background`) were cited from component code.
+        let r = repo(&[
+            ("src/CursorGrid.tsx", "export type Falloff = 'linear' | 'sharp'; const width = 1"),
+            ("scripts/og.js", "import sharp from 'sharp'; const width = 1"),
+            ("scripts/thumbs.cjs", "const s = require(\"sharp\"); s().resize({ width: 1 })"),
+            ("package.json", "{\"devDependencies\": {\"sharp\": \"^0.34.5\"}}"),
+            ("tools/run.py", "import sharp\nwidth = 1"),
+            ("tools/req.py", "deps = ['sharp']"),
+        ]);
+        let purls = vec!["pkg:npm/sharp".to_string()];
+        let h = scoped(&r, &["width"], &["pkg:npm/sharp"]);
+        let s = Scope::new("npm", &["."], &purls, &[], &h, &r.paths);
+        assert_eq!(s.file("src/CursorGrid.tsx"), Some(false), "code in a package declaring it: can use it, not about it");
+        assert_eq!(s.file("scripts/og.js"), Some(true));
+        assert_eq!(s.file("scripts/thumbs.cjs"), Some(true));
+        assert_eq!(s.file("package.json"), Some(false), "a manifest names it quoted");
+        let files: Vec<String> = s.evidence("width", |p: &str| path_role(p), true).files.into_iter().map(|(p, _)| p).collect();
+        assert_eq!(files, vec!["scripts/og.js", "scripts/thumbs.cjs"]);
+        let py = vec!["pkg:pypi/sharp".to_string()];
+        let h = scoped(&r, &[], &["pkg:pypi/sharp"]);
+        let s = Scope::new("pypi", &["."], &py, &[], &h, &r.paths);
+        assert_eq!(s.file("tools/run.py"), Some(true));
+        assert_eq!(s.file("tools/req.py"), Some(false), "a quoted requirement in code is a string");
     }
 
     #[test]
