@@ -1372,8 +1372,8 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
         // the target) is no reason to upgrade, so it is not shown as one. The capabilities it unlocks still are.
         let indices: Vec<usize> = all.iter().copied().filter(|&i| review::security_reason(&out, &out.opps[i])).collect();
         let caps = unlocks.get(technology).filter(|c| !c.is_empty());
-        let Some(&head) = all.first() else { continue };
-        if indices.is_empty() && caps.is_none() { continue; }
+        // The range of what is shown: the first record kept, else the first capability.
+        let Some(&head) = indices.first().or_else(|| caps.and_then(|c| c.first())) else { continue };
         let first = &out.opps[head];
         text += &format!("\n### {}\n\n", display_text(&friendly(technology, pending)));
         let mut detail = format!("Installed {} → target {}\n", first.installed, first.target);
