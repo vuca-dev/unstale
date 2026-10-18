@@ -19,7 +19,8 @@
     "catalog": "tsx src/pipeline/cli.ts",
     "serve": "tsx src/onboarding/cli.ts",
     "drain": "tsx src/onboarding/drain.ts",
-    "docs": "tsx src/docs/cli.ts"
+    "docs": "tsx src/docs/cli.ts",
+    "state": "tsx src/state/cli.ts"
   },
   "dependencies": {
     "css-select": "7.0.0",

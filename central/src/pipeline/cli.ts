@@ -245,7 +245,8 @@ async function main(): Promise<void> {
       return;
     }
     case "usage": {
-      const lines = readFileSync(join(centralDir(), "usage.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l) as Record<string, unknown>);
+      // The current UTC month: the state save moves earlier months to central/archive (state/snapshot.ts).
+      const lines = readFileSync(join(centralDir(), "usage.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l) as Record<string, unknown>);
       const by: Record<string, { calls: number; input_tokens: number; output_tokens: number }> = {};
       for (const l of lines) {
         if (typeof l.api !== "string") continue;

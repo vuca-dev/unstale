@@ -314,12 +314,14 @@ pub fn digest_lines(out: &Outcome) -> Vec<String> {
             }
             kinds.add_security(adv.len());
             let obligations = out.upgrade.iter().filter(|&&i| out.opps[i].rec.r.technology == *tech).count();
+            // Every record left out (security records whose advisories the bump does not fix): nothing to count.
+            let parts = kinds.parts();
             lines.push(format!(
                 "bumping {label} {} → {}{} picks up {} (`unstale bump {name}`){}{}",
                 first.installed,
                 first.target,
                 scope(&first.component()),
-                kinds.parts(),
+                if parts.is_empty() { "nothing" } else { &parts },
                 obligations_note(obligations),
                 in_effect_note(out, tech, "; ")
             ));
@@ -436,6 +438,8 @@ pub struct AdvisoryFix {
     pub opp: usize,
     pub advisory: usize,
     pub patched: Option<String>,
+    /// `patched` is a backport on the installed version's own line (`Fixed::backport`).
+    pub backport: bool,
 }
 
 impl AdvisoryFix {
@@ -446,8 +450,9 @@ impl AdvisoryFix {
         tags.extend(a.severity.as_deref().map(|x| one_line(x, 40)));
         let tags = if tags.is_empty() { String::new() } else { format!(" ({})", tags.join(", ")) };
         let at = self.patched.clone().unwrap_or_else(|| o.release.version.clone());
+        let at = if self.backport { format!("{} on the installed line", one_line(&at, 40)) } else { one_line(&at, 40) };
         let what = one_line(if a.summary.trim().is_empty() { &o.rec.r.summary } else { &a.summary }, SUMMARY_MAX);
-        format!("  security: {}{tags}: {what} [{}, {}]", one_line(&a.id, FIELD_MAX), o.id(), one_line(&at, 40))
+        format!("  security: {}{tags}: {what} [{}, {at}]", one_line(&a.id, FIELD_MAX), o.id())
     }
 }
 
@@ -469,35 +474,75 @@ pub fn advisory_affects(a: &unstale_schema::catalog::Advisory, component: &str, 
 
 /// What a bump does to one advisory of a record, for the repository's installed versions and the record's target.
 enum AdvisoryStatus {
-    /// An installed version of an affected package is affected and the target is not; the range's patched version.
-    Fixed(Option<String>),
-    /// Decided otherwise: not affected, still affected at the target, or no affected package declared.
-    NotFixed,
+    /// An installed version of an affected package is affected and the target is not.
+    Fixed(Fixed),
+    /// Every declared affected package's installed version is outside the advisory's ranges (or none is declared):
+    /// the bump brings no fix for it, so it is no security reason to upgrade.
+    NotAffected,
+    /// An installed version is affected and so is the target.
+    StillAffected,
     /// Some declared package's installed or target version is unknown to the resolved index.
     Unknown,
 }
 
-fn advisory_status(out: &Outcome, o: &Opp, a: &unstale_schema::catalog::Advisory) -> AdvisoryStatus {
-    let mut unknown = false;
+/// An advisory fix a bump brings: the installed version and the patched version of the range it is in.
+struct Fixed {
+    installed: String,
+    patched: Option<String>,
+    /// `patched` is on the installed version's own line (same major, or 0.minor) and the advisory was also fixed on a
+    /// newer line: a backport (vite 7.3.2 next to 8.0.5), so moving within the line is enough.
+    backport: bool,
+}
+
+/// Whether `patched` is a backport: another range of the same package has a patched version later in the release
+/// index (no version parsing; unknown places say no).
+fn is_backport(a: &unstale_schema::catalog::Advisory, component: &str, patched: &str) -> bool {
+    let Some(index) = a.index.as_ref() else { return false };
+    let Some(at) = index.iter().position(|x| x == patched) else { return false };
+    a.affected
+        .iter()
+        .filter(|r| crate::util::normalize_purl(&r.component) == component)
+        .filter_map(|r| r.patched.as_deref())
+        .any(|p| index.iter().position(|x| x == p).is_some_and(|q| q > at))
+}
+
+/// `AdvisoryStatus` of one advisory for each declared package's installed version (`installed`) and `target`.
+fn advisory_status_at(a: &unstale_schema::catalog::Advisory, installed: impl Fn(&str) -> Option<semver::Version>, target: &semver::Version) -> AdvisoryStatus {
+    let (mut unknown, mut still) = (false, false);
     let mut comps: Vec<String> = a.affected.iter().map(|r| crate::util::normalize_purl(&r.component)).collect();
+    comps.sort();
     comps.dedup();
     for c in comps {
-        let Some(installed) = out.versions.get(&c) else { continue };
-        match (advisory_affects(a, &c, installed), advisory_affects(a, &c, &o.target)) {
+        let Some(v) = installed(&c) else { continue };
+        match (advisory_affects(a, &c, &v), advisory_affects(a, &c, target)) {
             (Some(true), Some(false)) => {
-                let iv = installed.to_string();
+                let iv = v.to_string();
                 let patched = a
                     .affected
                     .iter()
                     .find(|r| crate::util::normalize_purl(&r.component) == c && r.versions.as_ref().is_some_and(|vs| vs.contains(&iv)))
                     .and_then(|r| r.patched.clone());
-                return AdvisoryStatus::Fixed(patched);
+                // On the installed version's own line (same major, or 0.minor) and not the newest line's fix.
+                let same_line = |p: &str| crate::util::parse_version(p).is_some_and(|p| crate::funnel::line_of(&p) == crate::funnel::line_of(&v));
+                let backport = patched.as_deref().is_some_and(|p| same_line(p) && is_backport(a, &c, p));
+                return AdvisoryStatus::Fixed(Fixed { installed: iv, patched, backport });
             }
-            (Some(_), Some(_)) => {}
+            (Some(true), Some(true)) => still = true,
+            (Some(false), Some(_)) => {}
             _ => unknown = true,
         }
     }
-    if unknown { AdvisoryStatus::Unknown } else { AdvisoryStatus::NotFixed }
+    if unknown {
+        AdvisoryStatus::Unknown
+    } else if still {
+        AdvisoryStatus::StillAffected
+    } else {
+        AdvisoryStatus::NotAffected
+    }
+}
+
+fn advisory_status(out: &Outcome, o: &Opp, a: &unstale_schema::catalog::Advisory) -> AdvisoryStatus {
+    advisory_status_at(a, |c| out.versions.get(c).cloned(), &o.target)
 }
 
 /// Whether a security record with advisories is still listed as a record: none of its advisories is listed and at
@@ -506,6 +551,48 @@ fn advisory_status(out: &Outcome, o: &Opp, a: &unstale_schema::catalog::Advisory
 fn listed_as_record(out: &Outcome, o: &Opp) -> bool {
     let st: Vec<AdvisoryStatus> = o.rec.r.advisories.iter().map(|a| advisory_status(out, o, a)).collect();
     !st.iter().any(|s| matches!(s, AdvisoryStatus::Fixed(_))) && st.iter().any(|s| matches!(s, AdvisoryStatus::Unknown))
+}
+
+/// Whether a bump-digest record is a security reason to upgrade. Not when it is a security record whose advisories
+/// are all decided and none is fixed by the bump: the installed version was never affected (vite 6.4.3 and an advisory
+/// of 7.1.0–7.3.1 and 8.0.0–8.0.4, fixed in 8.0.5), or the target still is. The digest neither counts nor lists such a
+/// record, and the onboarding report leaves it out of a technology's upgrade detail. Records without advisories, and
+/// ones with an advisory the index cannot decide, are security reasons as before (fail open).
+pub fn security_reason(out: &Outcome, o: &Opp) -> bool {
+    if !is_security(o) || o.rec.r.advisories.is_empty() {
+        return true;
+    }
+    let st: Vec<AdvisoryStatus> = o.rec.r.advisories.iter().map(|a| advisory_status(out, o, a)).collect();
+    st.iter().any(|s| matches!(s, AdvisoryStatus::Fixed(_) | AdvisoryStatus::Unknown))
+}
+
+/// A line saying what the bump from the installed version does to one advisory of a record, for `unstale bump` and the
+/// onboarding report: the record's release alone does not say whether the installed version was ever affected. `None`
+/// when the index cannot decide (the record stands as before; nothing is guessed).
+fn advisory_notes(a: &unstale_schema::catalog::Advisory, installed: impl Fn(&str) -> Option<semver::Version>, target: &semver::Version, shown: &str) -> Option<String> {
+    let id = one_line(&a.id, FIELD_MAX);
+    Some(match advisory_status_at(a, &installed, target) {
+        AdvisoryStatus::Fixed(f) => {
+            let at = f.patched.map(|p| {
+                let p = one_line(&p, 40);
+                if f.backport { format!("; fixed in {p} on the installed line") } else { format!("; fixed in {p}") }
+            });
+            format!("advisory {id}: affects installed {}{}", f.installed, at.unwrap_or_default())
+        }
+        AdvisoryStatus::NotAffected => {
+            let ranges: Vec<String> = a.affected.iter().map(|r| one_line(&r.range, 80)).filter(|r| !r.is_empty()).collect();
+            let ranges = if ranges.is_empty() { String::new() } else { format!(" (affected: {})", ranges.join("; ")) };
+            format!("advisory {id}: installed {shown} not affected{ranges}; not a security reason to upgrade")
+        }
+        AdvisoryStatus::StillAffected => format!("advisory {id}: affects installed {shown} and target {target} alike"),
+        AdvisoryStatus::Unknown => return None,
+    })
+}
+
+/// The advisory lines of one bump-digest record (`advisory_notes`) at the repository's installed versions.
+pub fn advisory_lines(out: &Outcome, o: &Opp) -> Vec<String> {
+    let shown = o.installed.to_string();
+    o.rec.r.advisories.iter().filter_map(|a| advisory_notes(a, |c| out.versions.get(c).cloned(), &o.target, &shown)).collect()
 }
 
 /// Per technology, the advisories that moving each package from its installed to its target version fixes:
@@ -521,9 +608,9 @@ pub fn advisory_fixes(out: &Outcome) -> BTreeMap<String, Vec<AdvisoryFix>> {
             continue;
         }
         for (ai, a) in o.rec.r.advisories.iter().enumerate() {
-            if let AdvisoryStatus::Fixed(patched) = advisory_status(out, o, a)
+            if let AdvisoryStatus::Fixed(f) = advisory_status(out, o, a)
                 && seen.insert((o.rec.r.technology.clone(), a.id.clone())) {
-                    by.entry(o.rec.r.technology.clone()).or_default().push(AdvisoryFix { opp: oi, advisory: ai, patched });
+                    by.entry(o.rec.r.technology.clone()).or_default().push(AdvisoryFix { opp: oi, advisory: ai, patched: f.patched, backport: f.backport });
                 }
         }
     }
@@ -553,10 +640,12 @@ pub fn bump_lines(out: &Outcome, pkg: &str) -> Option<Vec<String>> {
         return None;
     }
     let mut lines = vec![];
-    let entry = |lines: &mut Vec<String>, r: &crate::cache::Rec, name: &str, version: &str, benefits: &[unstale_schema::catalog::Benefit]| {
+    let entry = |lines: &mut Vec<String>, r: &crate::cache::Rec, name: &str, version: &str, benefits: &[unstale_schema::catalog::Benefit], notes: Vec<String>| {
         let b: Vec<&str> = benefits.iter().map(benefit).collect();
         lines.push(format!("[{}] {name} {version} · {} · benefit: {}", r.r.id, change_type(r.r.change_type), b.join(", ")));
         lines.push(format!("  {}", one_line(&r.r.summary, SUMMARY_MAX)));
+        // What each advisory means at the installed version: the record's release does not say it was ever affected.
+        lines.extend(notes.into_iter().map(|n| format!("  {n}")));
         if let Some(e) = r.r.evidence.first() {
             lines.push(format!("  {}", one_line(&e.url, URL_MAX)));
         }
@@ -566,7 +655,7 @@ pub fn bump_lines(out: &Outcome, pkg: &str) -> Option<Vec<String>> {
         for &i in out.digest.get(c).map(Vec::as_slice).unwrap_or(&[]) {
             let o = &out.opps[i];
             listed.insert((o.id().to_string(), o.release.version.clone()));
-            entry(&mut lines, o.rec, &pkg_name(o), &o.release.version, &o.benefits);
+            entry(&mut lines, o.rec, &pkg_name(o), &o.release.version, &o.benefits, advisory_lines(out, o));
         }
         // A manifest on another version also picks up what its own version lacks.
         for w in out.workspaces.get(c).map(Vec::as_slice).unwrap_or(&[]) {
@@ -576,8 +665,11 @@ pub fn bump_lines(out: &Outcome, pkg: &str) -> Option<Vec<String>> {
             }
             lines.push(format!("{} on {} ({}) also picks up:", crate::stack::place(&w.dirs[0].0), w.version, w.dirs[0].1));
             let name = purl_name(&w.component).unwrap_or_else(|| w.component.clone());
+            let target = w.target.as_ref().unwrap_or(&w.version);
+            let shown = w.version.to_string();
             for (r, _, version) in extra {
-                entry(&mut lines, r, &name, version, &r.r.benefit);
+                let notes = r.r.advisories.iter().filter_map(|a| advisory_notes(a, |c| (c == w.component).then(|| w.version.clone()), target, &shown)).collect();
+                entry(&mut lines, r, &name, version, &r.r.benefit, notes);
             }
         }
     }
@@ -966,5 +1058,50 @@ mod tests {
         assert_eq!(advisory_affects(adv_a, "pkg:npm/next", &semver::Version::parse("16.2.1").unwrap()), Some(true));
         assert_eq!(advisory_affects(adv_a, "pkg:npm/next", &semver::Version::parse("16.2.5").unwrap()), Some(false));
         assert_eq!(advisory_affects(adv_a, "pkg:npm/next", &semver::Version::parse("16.2.2").unwrap()), None);
+    }
+
+    #[test]
+    fn an_advisory_says_whether_the_installed_version_was_ever_affected() {
+        // vite GHSA-V2WJ-Q39Q-566R: affects 7.1.0–7.3.1 (patched 7.3.2) and 8.0.0–8.0.4 (patched 8.0.5).
+        let index = ["6.4.3", "7.3.0", "7.3.1", "7.3.2", "8.0.0", "8.0.1", "8.0.4", "8.0.5", "8.3.4"];
+        let adv = json!({"id": "GHSA-v2wj", "aliases": [], "severity": "high", "summary": "fs.deny bypass.", "url": "u", "index": index,
+            "affected": [
+                {"component": "pkg:npm/vite", "range": ">= 8.0.0, < 8.0.5", "patched": "8.0.5", "versions": ["8.0.0", "8.0.1", "8.0.4"]},
+                {"component": "pkg:npm/vite", "range": ">= 7.1.0, < 7.3.2", "patched": "7.3.2", "versions": ["7.3.0", "7.3.1"]}]});
+        let sec = with(with(rec("vite:deny", "pkg:npm/vite", "8.0.5"), json!({"change_type": "security", "benefit": ["security"]})), json!({"advisories": [adv],
+            "releases": [{"component": "pkg:npm/vite", "version": "7.3.2", "date": "2026-04-01", "line": "7"}, {"component": "pkg:npm/vite", "version": "8.0.5", "date": "2026-04-01", "line": "8"}]}));
+        let fix = with(rec("vite:fix", "pkg:npm/vite", "8.3.4"), json!({"change_type": "fix", "benefit": ["correctness"]}));
+        let cat = catalog("vite", 0, vec![sec, fix]);
+        let r = repo(&[]);
+        let l = Ledger::default();
+        let at = |installed: &str| {
+            let s = stack(&[("vite", installed)], None);
+            let out = run(&Input { catalog: &cat, stack: &s, repo: &r, ledger: &l, today: "2026-10-15", targets: Default::default() });
+            let opp = out.opps.iter().position(|o| o.id() == "vite:deny").unwrap();
+            (digest_lines(&out).join("\n"), bump_lines(&out, "vite").unwrap_or_default().join("\n"), security_reason(&out, &out.opps[opp]))
+        };
+        // Never affected: not counted, not listed, and `bump` says so.
+        let (digest, bump, reason) = at("6.4.3");
+        assert!(!reason);
+        assert!(digest.starts_with("bumping vite 6.4.3 → 8.3.4 picks up 1 fix (`unstale bump vite`)") && !digest.contains("GHSA"), "{digest}");
+        assert!(bump.contains("  advisory GHSA-v2wj: installed 6.4.3 not affected (affected: >= 8.0.0, < 8.0.5; >= 7.1.0, < 7.3.2); not a security reason to upgrade"), "{bump}");
+        // Affected, with the fix backported to the installed line.
+        let (digest, bump, reason) = at("7.3.0");
+        assert!(reason);
+        assert!(digest.contains("picks up 1 security, 1 fix") && digest.contains("  security: GHSA-v2wj (high): fs.deny bypass. [vite:deny, 7.3.2 on the installed line]"), "{digest}");
+        assert!(bump.contains("  advisory GHSA-v2wj: affects installed 7.3.0; fixed in 7.3.2 on the installed line"), "{bump}");
+        // Affected on the newest line: fixed in its own release.
+        let (digest, bump, _) = at("8.0.1");
+        assert!(digest.contains("[vite:deny, 8.0.5]"), "{digest}");
+        assert!(bump.contains("  advisory GHSA-v2wj: affects installed 8.0.1; fixed in 8.0.5"), "{bump}");
+        // A range reaching below the fix's line: the older fix is not on the installed line.
+        let wide: unstale_schema::catalog::Advisory = serde_json::from_value(json!({"id": "GHSA-wide", "aliases": [], "summary": "s", "url": "u", "index": index,
+            "affected": [
+                {"component": "pkg:npm/vite", "range": ">= 6.0.0, < 7.3.2", "patched": "7.3.2", "versions": ["6.4.3", "7.3.0", "7.3.1"]},
+                {"component": "pkg:npm/vite", "range": ">= 8.0.0, < 8.0.5", "patched": "8.0.5", "versions": ["8.0.0", "8.0.1", "8.0.4"]}]})).unwrap();
+        let v = |s: &str| semver::Version::parse(s).unwrap();
+        let note = |installed: &str| advisory_notes(&wide, |_| Some(v(installed)), &v("8.3.4"), installed).unwrap();
+        assert_eq!(note("6.4.3"), "advisory GHSA-wide: affects installed 6.4.3; fixed in 7.3.2");
+        assert_eq!(note("7.3.0"), "advisory GHSA-wide: affects installed 7.3.0; fixed in 7.3.2 on the installed line");
     }
 }

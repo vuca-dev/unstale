@@ -20,9 +20,11 @@
 # twice.
 #
 # State: one generation per save (state-<stamp>-<run>-<attempt>), the newest of each run kept for the newest
-# STATE_KEEP runs, so saving every cycle keeps the same rollback depth as one save a run.
+# STATE_KEEP runs, so saving every cycle keeps the same rollback depth as one save a run; a save uploads only what the
+# cycle changed.
 #
-# Environment: UNSTALE_STORE, SITE_DIR, TAKEN, REL (the state release id), PIPELINE_OK, DEPLOY, the central and gateway
+# Environment: UNSTALE_STORE, SITE_DIR, TAKEN, UNSTALE_STATE_REMOTE and UNSTALE_STATE_SOCKET (ingest.yml's restore),
+# PIPELINE_OK, DEPLOY, the central and gateway
 # variables of ingest.yml, and the publish secrets under SECRET_* names, handed only to the command that needs them.
 set -euo pipefail
 
@@ -69,38 +71,16 @@ deploy() {
     WRANGLER_SEND_METRICS=false npx wrangler deploy --assets "$SITE_DIR")
 }
 
-# Dead parts of an operator's store (the parked rarity sample's clones, the retired onboarding documents) and the
-# day's shared docs page cache stay out.
+# One generation a save (central/src/state/snapshot.ts): the members this cycle changed, in one new segment, then the
+# manifest; older generations past the newest of the newest STATE_KEEP runs, and segments none of those references,
+# are deleted. The parked rarity sample, the retired onboarding documents, the day's shared docs page cache and the
+# retired classifier's cache stay out (state/layout.ts); a month of the usage and timeline logs moves to an archive
+# member once it is over.
 save_state() {
-  local stamp gen out
-  stamp="$(date -u +%Y%m%dT%H%M%SZ)-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-  gen="state-$stamp"
-  out="$RUNNER_TEMP/state-out"; rm -rf "$out"; mkdir -p "$out"
-  tar -C "$UNSTALE_STORE" --exclude='./central/records/*.lock' --exclude='./central/sample' \
-    --exclude='./central/onboarding/documents' --exclude='./central/cache/pages' -cf - . \
-    | zstd -T0 -10 -q | split -b 1900m -a 2 - "$out/$gen.tar.zst."
-  (cd "$out" && sha256sum "$gen".tar.zst.* > "$gen.sha256")
-  upload() {
-    curl -fsS --retry 3 -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Content-Type: application/octet-stream" \
-      -T "$1" "https://uploads.github.com/repos/$GH_REPO/releases/$REL/assets?name=$(basename "$1")" > /dev/null
-  }
-  for f in "$out/$gen".tar.zst.*; do upload "$f"; done
-  upload "$out/$gen.sha256" # last: marks the generation complete
-  log "saved $gen ($(du -ch "$out/$gen".tar.zst.* | tail -1 | cut -f1))"
-  rm -rf "$out"
-  # Keep the newest complete generation of each of the newest STATE_KEEP runs; delete everything else (this run's
-  # earlier cycles, older runs, and parts left by an interrupted save).
-  gh api "repos/$GH_REPO/releases/$REL/assets?per_page=100" --paginate --jq '.[] | "\(.id)\t\(.name)"' > "$RUNNER_TEMP/assets.tsv"
-  local keep
-  keep="$(cut -f2 "$RUNNER_TEMP/assets.tsv" | grep -E '^state-.*\.sha256$' | sed 's/\.sha256$//' | sort -r \
-    | awk -F- '!seen[$3 "-" $4]++' | head -n "$STATE_KEEP")"
-  while IFS=$'\t' read -r id name; do
-    local g="${name%.sha256}"; g="${g%.tar.zst.*}"
-    if ! grep -qxF "$g" <<< "$keep"; then
-      log "deleting $name"
-      gh api -X DELETE "repos/$GH_REPO/releases/assets/$id"
-    fi
-  done < "$RUNNER_TEMP/assets.tsv"
+  local gen report
+  gen="state-$(date -u +%Y%m%dT%H%M%SZ)-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+  report="$(npm --prefix central run -s state -- save --generation "$gen" --keep "$STATE_KEEP")"
+  log "saved $gen: $(jq -c '{written, written_bytes, uploaded_bytes, cold, compacted_bytes, segments, total_bytes, rotated, deleted: (.deleted | length)}' <<< "$report")"
 }
 
 # The gateway starts no early run while this run pulls; tell it when the run is done (best effort: it stops waiting

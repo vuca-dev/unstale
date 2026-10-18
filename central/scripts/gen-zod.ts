@@ -18,6 +18,7 @@ const DOCS: Array<[file: string, name: string]> = [
   ["catalog-shard-line.v1.json", "ShardLine"],
   ["catalog-tech-index.v1.json", "TechIndex"],
   ["catalog-root.v1.json", "Root"],
+  ["catalog-technologies.v1.json", "Technologies"],
 ];
 // Keywords that carry no validation, or that are handled where they appear.
 const IGNORED = new Set(["$schema", "title", "description", "$defs", "format"]);
@@ -128,6 +129,9 @@ function expr(s: Schema, path: string): string {
       return `z.array(${expr(s.items as Schema, `${path}[]`)})`;
     case "object":
       checkKeys(s, path, ["type", "properties", "required", "additionalProperties"]);
+      // A map (a Rust BTreeMap<String, V>): string keys, every value of one schema.
+      if (s.properties === undefined && s.required === undefined && s.additionalProperties && typeof s.additionalProperties === "object")
+        return `z.record(z.string(), ${expr(s.additionalProperties as Schema, `${path}{}`)})`;
       if (s.additionalProperties !== undefined && s.additionalProperties !== false) fail(path, "open map");
       return `z.strictObject(${objectBody(s, path)})`;
     default:

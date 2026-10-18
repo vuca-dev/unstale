@@ -58,7 +58,7 @@ describe("export", () => {
     const { privateKey, publicKey } = generateKeyPairSync("ed25519");
     const r = exportCatalog(catalogDir(), out, { now: T0, sign: catalogSigner(privateKey.export({ type: "pkcs8", format: "pem" }).toString()) });
     expect(r.signed).toBe(true);
-    for (const rel of ["v1/root.json", "v1/tech/next.json", "v1/tech/other.json"]) {
+    for (const rel of ["v1/root.json", "v1/technologies.json", "v1/tech/next.json", "v1/tech/other.json"]) {
       const sig = Buffer.from(readFileSync(join(out, `${rel}.sig`), "utf8"), "hex");
       expect(verify(null, readFileSync(join(out, rel)), publicKey, sig)).toBe(true);
     }
@@ -79,6 +79,11 @@ describe("export", () => {
       for (const s of index.shards) expect(first[s.path]).toBe(s.sha256);
     }
     expect(readFileSync(join(out, "v1", "root.json"))).toEqual(readFileSync(join(catalogDir(), "v1", "root.json")));
+    // Every exported index, and nothing else, is named with the hash of its served bytes: a client asks only for these,
+    // and only when its copy differs.
+    const listed = JSON.parse(readFileSync(join(out, "v1", "technologies.json"), "utf8")) as { schema: number; technologies: Record<string, string> };
+    expect(Object.keys(listed.technologies)).toEqual(["next", "other"]);
+    for (const tech of ["next", "other"]) expect(listed.technologies[tech]).toBe(first[`v1/tech/${tech}.json`]!.slice(0, 16));
     exportCatalog(catalogDir(), out, { now: T0 });
     expect(files(out)).toEqual(first);
     expect(readdirSync(join(out, ".."))).toEqual(["site"]); // no partial or old tree left beside it

@@ -222,3 +222,37 @@ test("pulls during a drain take only what grew since the last one, and the ackno
   service.enqueue(t.add([{ purl: "pkg:npm/a", demand: 3 }]));
   expect(service.jobs.get("pkg:npm/a")?.demand).toBe(3);
 });
+
+test("a run reports progress when it changes, and while unchanged only every PROGRESS_HEARTBEAT_MS", async () => {
+  const { PROGRESS_HEARTBEAT_MS, progressTicker } = await import("../src/onboarding/progress.ts");
+  let now = 0;
+  let current = [{ purl: "pkg:npm/a", records: 1 }];
+  const sent: unknown[] = [];
+  const tick = progressTicker(() => current, async (u) => (sent.push(u), true), () => now);
+  await tick();
+  now += 5000;
+  await tick(); // unchanged: no request
+  current = [{ purl: "pkg:npm/a", records: 2 }];
+  now += 5000;
+  await tick();
+  now += PROGRESS_HEARTBEAT_MS - 1;
+  await tick(); // unchanged, inside the heartbeat
+  now += 1;
+  await tick(); // unchanged, the heartbeat: the gateway never calls a followed run silent
+  expect(sent).toEqual([[{ purl: "pkg:npm/a", records: 1 }], [{ purl: "pkg:npm/a", records: 2 }], [{ purl: "pkg:npm/a", records: 2 }]]);
+});
+
+test("a progress report that was not delivered is sent again at the next tick, not after the heartbeat", async () => {
+  const { progressTicker } = await import("../src/onboarding/progress.ts");
+  let now = 0;
+  let up = false;
+  const sent: unknown[] = [];
+  const tick = progressTicker(() => [{ purl: "pkg:npm/a", records: 1 }], async (u) => (sent.push(u), up), () => now);
+  await tick(); // the gateway is down: not delivered
+  now += 5000;
+  up = true;
+  await tick(); // sent again, delivered
+  now += 5000;
+  await tick(); // unchanged and delivered: no request
+  expect(sent.length).toBe(2);
+});

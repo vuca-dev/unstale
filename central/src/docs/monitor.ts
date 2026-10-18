@@ -13,6 +13,7 @@ import { allAdded, sectionDiff, type Context, type SectionChange } from "../coll
 import { FsStore } from "../collector/store.ts";
 import { findTemplateChanges } from "../collector/template.ts";
 import { centralDir } from "../pipeline/paths.ts";
+import { ensureLocal } from "../state/client.ts";
 import { readJson, sha256, writeAtomic } from "../pipeline/util.ts";
 import { attribute, guideCandidate, guideMajor, publishable, type Attribution } from "./attribute.ts";
 import { httpFetcher } from "./fetcher.ts";
@@ -87,6 +88,8 @@ export interface Source {
 }
 
 export const docsDir = (tech: string) => join(centralDir(), "docs", tech);
+/** A technology's page snapshots and watch states, restored from the saved state on first use (state/client.ts). */
+export const docsStore = (tech: string): FsStore => new FsStore(join(docsDir(tech), "store"), () => ensureLocal(`docs:${tech}`));
 
 export async function latestVersion(http: HttpClient, purl: string): Promise<string | undefined> {
   const [, type, rest] = /^pkg:(\w+)\/(.+)$/.exec(purl) ?? [];
@@ -277,7 +280,7 @@ export async function refresh(src: Source, opts: RefreshOptions): Promise<Refres
 
   // 2. Pages that left the listing: a permanent redirect is a move, 404 or 410 a deletion, 200 an incomplete listing
   // (kept). A large share leaving at once is one restructure event.
-  const store = new FsStore(join(dir, "store"));
+  const store = docsStore(src.technology);
   const events: DocsEvent[] = [];
   const gone = prev ? Object.keys(prev.pages).filter((u) => !pages[u]) : [];
   const movedTo = new Map<string, { from: string; snapshot?: string }>();
@@ -463,7 +466,7 @@ export function readEvents(tech: string): DocsEvent[] {
 
 /** The hunks of an event's sections, recomputed from its snapshots (the log keeps only their hashes). */
 export async function eventChanges(e: DocsEvent, context: Context = 3): Promise<SectionChange[]> {
-  const store = new FsStore(join(docsDir(e.technology), "store"));
+  const store = docsStore(e.technology);
   const before = e.previous ? await store.getBlob(e.previous) : "";
   const after = e.snapshot && e.kind !== "template" ? await store.getBlob(e.snapshot) : "";
   if (e.kind === "created") return allAdded(after);

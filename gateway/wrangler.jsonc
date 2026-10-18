@@ -22,7 +22,7 @@
   "assets": {
     "binding": "ASSETS",
     // Site pages run the Worker first for the www/https redirects and Markdown for agents (src/index.ts, page).
-    "run_worker_first": ["/health", "/coverage", "/internal/*", "/", "/npm/*", "/pypi/*", "/google*"]
+    "run_worker_first": ["/health", "/coverage", "/coverage/*", "/internal/*", "/", "/npm/*", "/pypi/*", "/google*"]
   },
   "durable_objects": {
     "bindings": [{ "name": "COVERAGE", "class_name": "Coverage" }]

@@ -153,6 +153,11 @@ const RUN_SAVE_MS = 10 * 60_000;
 export const PULLS_LATE_MS = 15 * 60_000;
 /** Rows the queue is stored in. Changing it needs a new SCHEMA whose migration re-buckets the entries. */
 export const BUCKETS = 64;
+
+/** Packages in one batch request (index.ts: POST /coverage/status, /coverage/register). Each reads its published status
+ * (a static file) and a new one its public registry, and a batch makes at most two calls to the object, so a full batch
+ * stays inside the free plan's 50 subrequests. (Here, not in index.ts: a Worker's main module exports handlers only.) */
+export const BATCH = 16;
 /** The storage layout; anything older (or a new object) is migrated once. */
 const SCHEMA = "2";
 /** The usage counters are kept at most this often while requests continue, and once requests pause this long (an

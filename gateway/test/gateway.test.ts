@@ -4,7 +4,7 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { technologyId } from "../../central/src/onboarding/identity.ts";
 import { Coverage, handle, nextScheduled, type Env } from "../src/index.ts";
-import { BUCKETS, PendingQueue, settingsFrom, type Settings } from "../src/queue.ts";
+import { BATCH, BUCKETS, PendingQueue, settingsFrom, type Settings } from "../src/queue.ts";
 import { memorySql } from "./sqlite.ts";
 
 // The public registries: every package exists unless a test says otherwise.
@@ -194,6 +194,71 @@ test("the client's protocol: health, a new package queued as a job, a known one 
   expect((await handle(get("/coverage?purl=pkg%3Anpm%2Fnever"), e)).status).toBe(404);
 });
 
+const batch = (path: string, body: unknown, headers: Record<string, string> = {}) =>
+  new Request(`https://unstale.example${path}`, { method: "POST", headers: { "Content-Type": "application/json", "CF-Connecting-IP": "198.51.100.9", ...headers }, body: typeof body === "string" ? body : JSON.stringify(body) });
+
+test("a batch answers each package as its own request would, in one Worker request and at most two calls to the object", async () => {
+  const known = { schema: 1, purl: "pkg:npm/next", technology: "next", name: "next", state: "monitoring", stage: "done", records: 12 };
+  vi.stubGlobal("fetch", async (url: string) => new Response("{}", { status: url.includes("made-up") ? 404 : 200 }));
+  const { env: e } = env({ [await statusPath("pkg:npm/next")]: known }, { RATE_PER_HOUR: "1" });
+  const object = e.COVERAGE.get(e.COVERAGE.idFromName("global"));
+  const calls: string[] = [];
+  e.COVERAGE = { idFromName: () => "global", get: () => new Proxy(object, {
+        get: (t, k) => {
+          const v = (t as unknown as Record<string | symbol, unknown>)[k];
+          if (typeof v !== "function") return v;
+          calls.push(String(k));
+          return v.bind(t);
+        },
+      }) } as unknown as Env["COVERAGE"];
+  const purls = ["pkg:npm/next", "pkg:pypi/requests", "pkg:npm/made-up", "pkg:npm/b"];
+  const res = await handle(batch("/coverage/register", { purls }), e);
+  expect(res.status).toBe(200);
+  const { results } = (await res.json()) as { results: Record<string, unknown>[] };
+  expect(results.map((r) => [r.purl, r.status])).toEqual([
+    ["pkg:npm/next", 202],
+    ["pkg:pypi/requests", 202],
+    ["pkg:npm/made-up", 404],
+    ["pkg:npm/b", 429],
+  ]);
+  expect(results[0]!.job).toEqual(known);
+  expect(results[1]!.job).toMatchObject({ purl: "pkg:pypi/requests", state: "queued", queue_position: 1 });
+  expect(results[3]).toMatchObject({ limit: "address", retry_after: 3600 });
+  expect(calls).toEqual(["heldMany", "requestMany"]);
+  // Status reads: the published status, a held package's place, nothing for one never asked for; one call.
+  calls.length = 0;
+  const read = await handle(batch("/coverage/status", { purls: ["pkg:npm/next", "pkg:pypi/requests", "pkg:npm/never"] }), e);
+  const { results: statuses } = (await read.json()) as { results: Record<string, unknown>[] };
+  expect(statuses.map((r) => [r.purl, r.status])).toEqual([
+    ["pkg:npm/next", 200],
+    ["pkg:pypi/requests", 200],
+    ["pkg:npm/never", 404],
+  ]);
+  expect(statuses[0]!.job).toEqual(known);
+  // As GET /coverage answers it, but for the time of the answer (and so the next run, across a scheduled run's start).
+  const single = (await (await handle(get("/coverage?purl=pkg%3Apypi%2Frequests"), e)).json()) as Record<string, unknown>;
+  expect({ ...(statuses[1]!.job as object), updated: single.updated, next_run: single.next_run }).toEqual(single);
+  expect(calls).toEqual(["views", "view"]);
+  // Known packages only: no call to the object at all.
+  calls.length = 0;
+  expect((await handle(batch("/coverage/status", { purls: ["pkg:npm/next"] }), e)).status).toBe(200);
+  expect(calls).toEqual([]);
+});
+
+test("a batch takes public identities only, at most BATCH of them, never from a browser", async () => {
+  const { env: e } = env();
+  const many = Array.from({ length: BATCH + 1 }, (_, i) => `pkg:npm/p${i}`);
+  expect((await handle(batch("/coverage/status", { purls: many }), e)).status).toBe(400);
+  expect((await handle(batch("/coverage/status", { purls: [] }), e)).status).toBe(400);
+  expect((await handle(batch("/coverage/status", { purls: ["pkg:npm/a", "pkg:npm/a"] }), e)).status).toBe(400);
+  expect((await handle(batch("/coverage/status", { purls: ["pkg:npm/a@1.0.0"] }), e)).status).toBe(400);
+  expect((await handle(batch("/coverage/register", { purls: ["pkg:npm/a"], repo: "acme/private" }), e)).status).toBe(400);
+  expect((await handle(batch("/coverage/register", "x".repeat(BATCH * 240 + 100)), e)).status).toBe(413);
+  expect((await handle(batch("/coverage/register", { purls: ["pkg:npm/a"] }, { Origin: "https://evil.example" }), e)).status).toBe(403);
+  expect((await handle(batch("/coverage/register", { purls: ["pkg:npm/a"] }, { "Content-Type": "text/plain" }), e)).status).toBe(415);
+  expect((await handle(batch("/coverage/register", { purls: many.slice(0, BATCH) }), e)).status).toBe(200);
+});
+
 test("only one public identity is accepted, never from a browser", async () => {
   const { env: e } = env();
   expect((await handle(post({ purl: "pkg:npm/a" }, { "Content-Type": "text/plain" }), e)).status).toBe(415);
@@ -210,6 +275,8 @@ test("storage that fails (a used-up daily allowance) is a temporary 503 with Ret
   e.COVERAGE = { idFromName: () => "global", get: () => new Proxy({}, { get: () => () => Promise.reject(quota) }) } as unknown as Env["COVERAGE"];
   // A fixed clock, away from midnight, so the expected reset cannot move during the test.
   vi.useFakeTimers({ toFake: ["Date"] });
+  // The earliest of the spread retry times (Math.random 0); the spread itself is checked below.
+  const random = vi.spyOn(Math, "random").mockReturnValue(0);
   const now = Date.parse("2026-10-17T16:40:00Z");
   vi.setSystemTime(now);
   for (const r of [post({ purl: "pkg:npm/a" }), get("/coverage?purl=pkg%3Anpm%2Fa")]) {
@@ -227,6 +294,13 @@ test("storage that fails (a used-up daily allowance) is a temporary 503 with Ret
   expect((await handle(get("/coverage?purl=pkg%3Anpm%2Fa"), e)).headers.get("Retry-After")).toBe(String(23 * 3600 + 30 * 60));
   vi.setSystemTime(Date.parse("2026-10-17T23:59:30Z"));
   expect((await handle(get("/coverage?purl=pkg%3Anpm%2Fa"), e)).headers.get("Retry-After")).toBe("60");
+  // Clients deferred to the reset come back spread over the half hour after it, not all in its first minute; while
+  // the reset lands, over five minutes after the first retry.
+  random.mockReturnValue(0.5);
+  expect((await handle(get("/coverage?purl=pkg%3Anpm%2Fa"), e)).headers.get("Retry-After")).toBe(String(60 + 15 * 60));
+  vi.setSystemTime(Date.parse("2026-10-18T00:05:00Z"));
+  expect((await handle(get("/coverage?purl=pkg%3Anpm%2Fa"), e)).headers.get("Retry-After")).toBe("450");
+  random.mockReturnValue(0);
   e.COVERAGE = { idFromName: () => "global", get: () => new Proxy({}, { get: () => () => Promise.reject(new Error("Durable Object reset")) }) } as unknown as Env["COVERAGE"];
   const other = await handle(post({ purl: "pkg:npm/a" }), e);
   expect([other.status, other.headers.get("Retry-After")]).toEqual([503, "60"]);

@@ -76,6 +76,27 @@ fn iso_unix(t: &str) -> Option<u64> {
 fn followable(job: &Job) -> bool {
     job.run.as_ref().is_some_and(|r| matches!(r.state.as_str(), "dispatched" | "running" | "publishing"))
 }
+/// Seconds between status reads of a package a run is working: about as often as a run reports its progress.
+const ACTIVE_POLL_S: u64 = 5;
+/// Seconds before a package whose change is due now (a run's next pull, a late one) is read again.
+const DUE_POLL_S: u64 = 60;
+/// The longest a waiting client leaves a package no run is working unread: such a package changes when a run takes it,
+/// at the time the service names (`next_run`, `retry_at`), and otherwise rarely.
+const IDLE_POLL_S: u64 = 300;
+/// When (Unix seconds) to read a package's status again after reading it at `at`: soon while a run works it, at the
+/// time the service said it may change, and in any case within IDLE_POLL_S. Each read is a request to the service,
+/// whose hosted Worker has a daily allowance of them: a client that waits must not read what cannot have changed.
+fn next_poll(job: &Job, at: u64) -> u64 {
+    if followable(job) || matches!(job.state.as_str(), "discovering" | "analyzing" | "partial") {
+        return at + ACTIVE_POLL_S;
+    }
+    let due = if job.state == "failed" { job.retry_at.as_deref() } else { job.next_run.as_deref() }.and_then(iso_unix);
+    match due {
+        Some(t) if t <= at => at + DUE_POLL_S,
+        Some(t) => t.min(at + IDLE_POLL_S),
+        None => at + IDLE_POLL_S,
+    }
+}
 #[derive(Default, Serialize, Deserialize)]
 pub struct Pending {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -130,13 +151,16 @@ fn registration_issue(error: &anyhow::Error, purl: &str) -> RegistrationIssue {
     }
     RegistrationIssue::Temporary
 }
-/// Sends each package in `order`; `progress` gets how many the service has accepted so far. A rejection of the package (400, 404, 410, 422) is that package's: it is named in the
-/// issue and the rest are still sent; any other 4xx is the request's, so it is recorded and nothing more is sent. A limit (429, or 503 with Retry-After) defers all of them until then; any other failure (the service down, an
-/// invalid answer) stops here, and what is left is sent on a later run.
+/// Sends the packages in `order`, `BATCH` at a time (`send` answers a result per package it sent, in order, and may
+/// stop early); `progress` gets how many the service has accepted so far. A rejection of the package (400, 404, 410,
+/// 422) is that package's: it is named in the issue and the rest are still sent; any other 4xx is the request's, so it
+/// is recorded and nothing more is sent. A limit (429, or 503 with Retry-After) defers all of them until then; any
+/// other failure (the service down, an invalid answer) stops here, and what is left is sent on a later run. Packages a
+/// batch answered after one of these are still recorded as answered.
 fn register(
     pending: &mut Pending,
     order: Vec<String>,
-    mut send: impl FnMut(&str) -> Result<Job>,
+    mut send: impl FnMut(&[String]) -> Vec<Result<Job>>,
     mut progress: impl FnMut(usize),
     diagnostics: &mut Vec<String>,
     mut save: impl FnMut(&Pending) -> Result<()>,
@@ -144,49 +168,66 @@ fn register(
     let mut rejected: Option<RegistrationIssue> = None;
     let mut accepted = 0;
     progress(accepted);
-    for p in order {
-        match send(&p) {
-            Ok(j) => {
-                accepted += 1;
-                progress(accepted);
-                pending.jobs.insert(p.clone(), j);
-                pending.unsubmitted.remove(&p);
-                pending.deferred_until = None;
-                pending.deferred_by = None;
-                pending.registration_issue = rejected.clone();
-            }
-            Err(e) if e.downcast_ref::<Limited>().is_some() => {
-                let (retry_after, by) = e.downcast_ref::<Limited>().map_or((3600, Deferral::Address), |l| (l.retry_after, l.by));
-                diagnostics.push(format!("Registration deferred: {e}"));
-                pending.deferred_until = Some(unix_now() + retry_after);
-                pending.deferred_by = Some(by);
-                save(pending)?;
-                break;
-            }
-            Err(e) => {
-                diagnostics.push(format!("Registration {p}: {e:#}"));
-                match (registration_issue(&e, &p), rejected.as_mut()) {
-                    (RegistrationIssue::Rejected { ecosystem: other, .. }, Some(RegistrationIssue::Rejected { ecosystem, packages, .. })) => {
-                        if *ecosystem != other { *ecosystem = "Package".into(); }
-                        packages.push(p.clone());
+    for chunk in order.chunks(BATCH) {
+        let mut limited: Option<(u64, Deferral)> = None;
+        // Some when this batch ends the round: the issue to record (None: the rejections so far say it).
+        let mut ended: Option<Option<RegistrationIssue>> = None;
+        for (p, result) in chunk.iter().zip(send(chunk)) {
+            match result {
+                Ok(j) => {
+                    accepted += 1;
+                    progress(accepted);
+                    pending.jobs.insert(p.clone(), j);
+                    pending.unsubmitted.remove(p);
+                    if limited.is_none() {
+                        pending.deferred_until = None;
+                        pending.deferred_by = None;
                     }
-                    (RegistrationIssue::Rejected { ecosystem, status, .. }, _) => {
-                        rejected = Some(RegistrationIssue::Rejected { ecosystem, status, packages: vec![p.clone()] });
-                    }
-                    (issue, _) => {
-                        // A package the service rejected stays named: it needs a fix, the rest only a later run.
-                        pending.registration_issue = rejected.clone().or(Some(issue));
-                        save(pending)?;
-                        break;
+                    pending.registration_issue = rejected.clone();
+                }
+                Err(e) if e.downcast_ref::<Limited>().is_some() => {
+                    if limited.is_none() {
+                        diagnostics.push(format!("Registration deferred: {e}"));
+                        limited = e.downcast_ref::<Limited>().map(|l| (l.retry_after, l.by));
                     }
                 }
-                pending.registration_issue = rejected.clone();
-                // Request-wide (a refused origin or content type): every other package would fail alike.
-                if e.downcast_ref::<HttpFailure>().is_some_and(|HttpFailure(s)| !matches!(s, 400 | 404 | 410 | 422)) {
-                    save(pending)?;
-                    break;
+                Err(e) => {
+                    diagnostics.push(format!("Registration {p}: {e:#}"));
+                    match (registration_issue(&e, p), rejected.as_mut()) {
+                        (RegistrationIssue::Rejected { ecosystem: other, .. }, Some(RegistrationIssue::Rejected { ecosystem, packages, .. })) => {
+                            if *ecosystem != other { *ecosystem = "Package".into(); }
+                            packages.push(p.clone());
+                        }
+                        (RegistrationIssue::Rejected { ecosystem, status, .. }, _) => {
+                            rejected = Some(RegistrationIssue::Rejected { ecosystem, status, packages: vec![p.clone()] });
+                        }
+                        (issue, _) => {
+                            // A package the service rejected stays named: it needs a fix, the rest only a later run.
+                            ended.get_or_insert(Some(issue));
+                            continue;
+                        }
+                    }
+                    pending.registration_issue = rejected.clone();
+                    // Request-wide (a refused origin or content type): every other package would fail alike.
+                    if ends_registration(&e, p) {
+                        ended.get_or_insert(None);
+                    }
                 }
             }
+        }
+        if let Some((retry_after, by)) = limited {
+            pending.deferred_until = Some(unix_now() + retry_after);
+            pending.deferred_by = Some(by);
+            save(pending)?;
+            break;
+        }
+        if let Some(issue) = ended {
+            pending.registration_issue = match issue {
+                Some(issue) => rejected.clone().or(Some(issue)),
+                None => rejected.clone(),
+            };
+            save(pending)?;
+            break;
         }
         save(pending)?;
     }
@@ -406,9 +447,6 @@ fn encode(s: &str) -> String {
         })
         .collect()
 }
-fn request(service: &str, purl: &str, post: bool) -> Result<Job> {
-    request_via(&agent(), service, purl, post)
-}
 fn request_via(a: &ureq::Agent, service: &str, purl: &str, post: bool) -> Result<Job> {
     let mut r = if post {
         a.post(format!("{}/coverage", service.trim_end_matches('/')))
@@ -447,7 +485,11 @@ fn request_via(a: &ureq::Agent, service: &str, purl: &str, post: bool) -> Result
         .with_config()
         .limit(1024 * 1024)
         .read_to_vec()?;
-    let j: Job = serde_json::from_slice(&bytes).map_err(|_| InvalidResponse)?;
+    job_of(serde_json::from_slice(&bytes).map_err(|_| InvalidResponse)?, purl)
+}
+/// A job the service answered for `purl`: it must name that package and a plain technology id.
+fn job_of(value: serde_json::Value, purl: &str) -> Result<Job> {
+    let j: Job = serde_json::from_value(value).map_err(|_| InvalidResponse)?;
     if j.purl != purl
         || j.technology.is_empty()
         || !j
@@ -458,6 +500,139 @@ fn request_via(a: &ureq::Agent, service: &str, purl: &str, post: bool) -> Result
         return Err(InvalidResponse.into());
     }
     Ok(j)
+}
+
+/// Packages in one batch request (the gateway's BATCH): one Worker request answers this many packages, where one
+/// request per package would spend the free plan's daily allowance of Worker requests a request each.
+const BATCH: usize = 16;
+/// Services that answered a batch route as unknown (central's own service, an older gateway): asked one request per
+/// package for the rest of this process, as before batches existed.
+static UNBATCHED: std::sync::Mutex<BTreeSet<String>> = std::sync::Mutex::new(BTreeSet::new());
+fn batched(service: &str) -> bool {
+    !UNBATCHED.lock().is_ok_and(|u| u.contains(service))
+}
+#[derive(Deserialize)]
+struct BatchAnswer {
+    results: Vec<BatchResult>,
+}
+#[derive(Deserialize)]
+struct BatchResult {
+    purl: String,
+    status: u16,
+    #[serde(default)]
+    job: Option<serde_json::Value>,
+    #[serde(default)]
+    limit: Option<String>,
+    #[serde(default)]
+    retry_after: Option<u64>,
+}
+/// One batch request (`POST {service}/coverage/{route}` with `{"purls": [...]}`): a result per package, in order; an
+/// error for the whole batch as the first package's only (a limit, the service unreachable); or None when the service
+/// has no such route, so the caller asks one request per package.
+fn batch_via(a: &ureq::Agent, service: &str, route: &str, purls: &[String]) -> Option<Vec<Result<Job>>> {
+    let url = format!("{}/coverage/{route}", service.trim_end_matches('/'));
+    let sent = serde_json::to_vec(&serde_json::json!({ "purls": purls })).ok()?;
+    let mut r = match a.post(&url).header("Content-Type", "application/json").send(&sent[..]) {
+        Ok(r) => r,
+        Err(e) => return Some(vec![Err(anyhow!("POST {url}: {e}"))]),
+    };
+    let status = r.status().as_u16();
+    if status == 429 || (status == 503 && r.headers().contains_key("retry-after")) {
+        let retry_after = r.headers().get("retry-after").and_then(|v| v.to_str().ok()).and_then(|v| retry_after_secs(v, unix_now())).unwrap_or(3600);
+        let by = if status == 503 { Deferral::Unavailable } else { Deferral::Address };
+        return Some(vec![Err(Limited { retry_after, by }.into())]);
+    }
+    let answer = (status == 200)
+        .then(|| r.body_mut().with_config().limit(BATCH as u64 * 1024 * 1024).read_to_vec().ok())
+        .flatten()
+        .and_then(|b| serde_json::from_slice::<BatchAnswer>(&b).ok());
+    // The service's own failure: the whole batch's, as when it is unreachable, and batches stay on.
+    if status >= 500 && answer.is_none() {
+        return Some(vec![Err(HttpFailure(status).into())]);
+    }
+    let Some(answer) = answer else {
+        // A batch the service could not read (400, 413) is asked again a package at a time, batches staying on.
+        if !matches!(status, 400 | 413) && let Ok(mut u) = UNBATCHED.lock() {
+            u.insert(service.to_string());
+        }
+        return None;
+    };
+    if answer.results.len() != purls.len() || answer.results.iter().zip(purls).any(|(r, p)| r.purl != *p) {
+        return Some(vec![Err(InvalidResponse.into())]);
+    }
+    Some(
+        answer
+            .results
+            .into_iter()
+            .map(|r| match (r.status, r.job) {
+                (200..=299, Some(job)) => job_of(job, &r.purl),
+                (429, _) => Err(Limited {
+                    retry_after: r.retry_after.unwrap_or(3600),
+                    by: if r.limit.as_deref() == Some("budget") { Deferral::Budget } else { Deferral::Address },
+                }
+                .into()),
+                (200..=299, None) => Err(InvalidResponse.into()),
+                (status, _) => Err(HttpFailure(status).into()),
+            })
+            .collect(),
+    )
+}
+/// Each package's status as `GET /coverage` answers it, `BATCH` to a request where the service takes batches, else a
+/// request each, `REQUESTS_AT_ONCE` at once. `each` gets the index into `purls` and the answer, in completion order;
+/// false sends nothing further. A failure of a whole batch reaches `each` as its first package's.
+fn statuses(a: &ureq::Agent, service: &str, purls: &[String], mut each: impl FnMut(usize, Result<Job>) -> bool) {
+    let mut answered = vec![false; purls.len()];
+    if batched(service) {
+        let chunks: Vec<&[String]> = purls.chunks(BATCH).collect();
+        let (mut unsupported, mut stopped) = (false, false);
+        util::concurrent(&chunks, 4, |c| batch_via(a, service, "status", c), |ci, got| {
+            let Some(results) = got else {
+                unsupported = true;
+                return false;
+            };
+            for (k, r) in results.into_iter().enumerate() {
+                answered[ci * BATCH + k] = true;
+                if !each(ci * BATCH + k, r) {
+                    stopped = true;
+                    return false;
+                }
+            }
+            true
+        });
+        if stopped || !unsupported {
+            return;
+        }
+    }
+    let rest: Vec<usize> = (0..purls.len()).filter(|&i| !answered[i]).collect();
+    util::concurrent(&rest, util::REQUESTS_AT_ONCE, |&i| request_via(a, service, &purls[i], false), |k, r| each(rest[k], r));
+}
+/// Whether a registration's failure ends this round of registrations (`register`): a limit, the service's own
+/// failure, or a refusal of the request rather than of the package.
+fn ends_registration(e: &anyhow::Error, purl: &str) -> bool {
+    e.downcast_ref::<Limited>().is_some()
+        || !matches!(registration_issue(e, purl), RegistrationIssue::Rejected { .. })
+        || e.downcast_ref::<HttpFailure>().is_some_and(|HttpFailure(s)| !matches!(s, 400 | 404 | 410 | 422))
+}
+/// `send` a package at a time, in order, up to the first answer that ends the round: a result per package sent.
+fn one_at_a_time(purls: &[String], mut send: impl FnMut(&str) -> Result<Job>) -> Vec<Result<Job>> {
+    let mut out = vec![];
+    for p in purls {
+        let r = send(p);
+        let end = r.as_ref().err().is_some_and(|e| ends_registration(e, p));
+        out.push(r);
+        if end {
+            break;
+        }
+    }
+    out
+}
+/// Registers these packages (at most BATCH) as `POST /coverage` would, in one request where the service takes
+/// batches: a result per package sent, in order.
+fn register_batch(a: &ureq::Agent, service: &str, purls: &[String]) -> Vec<Result<Job>> {
+    if batched(service) && let Some(results) = batch_via(a, service, "register", purls) {
+        return results;
+    }
+    one_at_a_time(purls, |p| request_via(a, service, p, true))
 }
 fn service_available(service: &str) -> bool {
     let a: ureq::Agent = ureq::Agent::config_builder()
@@ -574,22 +749,20 @@ fn growing_jobs(pending: &Pending) -> Vec<&Job> {
 }
 
 /// The agent's session-start notice: one line when shared coverage has published records since the last report, nothing
-/// otherwise. No network call when nothing is still gaining history; otherwise one short status request per growing
-/// technology. Never rewrites the report or the snapshot, so the line repeats until `unstale status` refreshes them.
+/// otherwise. No network call when nothing is still gaining history; otherwise short status requests for the growing
+/// technologies (BATCH to a request). Never rewrites the report or the snapshot, so the line repeats until `unstale status` refreshes them.
 pub fn notify(ctx: &Ctx) -> Result<u8> {
     let pending = read(ctx);
     let growing = growing_jobs(&pending);
     let Some(service) = ctx.config.service.as_deref().filter(|_| !growing.is_empty()) else { return Ok(0) };
     let quick: ureq::Agent = ureq::Agent::config_builder().http_status_as_error(false).timeout_global(Some(Duration::from_secs(2))).build().into();
-    let gains: Vec<usize> = std::thread::scope(|scope| {
-        let handles: Vec<_> = growing
-            .iter()
-            .map(|j| {
-                let quick = &quick;
-                scope.spawn(move || request_via(quick, service, &j.purl, false).map_or(0, |now| now.records.saturating_sub(j.records)))
-            })
-            .collect();
-        handles.into_iter().map(|h| h.join().unwrap_or(0)).collect()
+    let purls: Vec<String> = growing.iter().map(|j| j.purl.clone()).collect();
+    let mut gains = vec![0; growing.len()];
+    statuses(&quick, service, &purls, |i, got| {
+        if let Ok(now) = got {
+            gains[i] = now.records.saturating_sub(growing[i].records);
+        }
+        true
     });
     let (records, techs) = (gains.iter().sum::<usize>(), gains.iter().filter(|g| **g > 0).count());
     if records > 0 {
@@ -1344,7 +1517,8 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
     let unlocks = unlocked(&out);
     let mut upgrade_ranking = vec![];
     for (technology, indices) in &out.digest {
-        let references = indices.iter().filter(|&&index| out.opps[index].matched.iter().any(|(term, _)| specific_reference(term, &w.stack))).count();
+        // References of records that are a reason to upgrade: not those of an advisory the bump does not fix.
+        let references = indices.iter().filter(|&&index| review::security_reason(&out, &out.opps[index]) && out.opps[index].matched.iter().any(|(term, _)| specific_reference(term, &w.stack))).count();
         let obligations = out.upgrade.iter().filter(|&&index| out.opps[index].rec.r.technology == *technology).count();
         let advisories = fixes.get(technology).map_or(0, Vec::len);
         if references == 0 && obligations == 0 && advisories == 0 { continue; }
@@ -1369,20 +1543,26 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
         text += "\n## Upgrades and their impact\n\nGrouped by technology and version range. Counts describe upstream changes; review obligations are checks, not confirmed breakages in your code.\n\n";
         text += &evidence_block(&digest.join("\n"));
     }
-    for (technology, indices) in &out.digest {
-        if indices.is_empty() { continue; }
-        let first = &out.opps[indices[0]];
+    for (technology, all) in &out.digest {
+        // As in the digest: a security record whose advisories never affected the installed version (or still affect
+        // the target) is no reason to upgrade, so it is not shown as one. The capabilities it unlocks still are.
+        let indices: Vec<usize> = all.iter().copied().filter(|&i| review::security_reason(&out, &out.opps[i])).collect();
+        let caps = unlocks.get(technology).filter(|c| !c.is_empty());
+        // The range of what is shown: the first record kept, else the first capability.
+        let Some(&head) = indices.first().or_else(|| caps.and_then(|c| c.first())) else { continue };
+        let first = &out.opps[head];
         text += &format!("\n### {}\n\n", display_text(&friendly(technology, pending)));
         let mut detail = format!("Installed {} → target {}\n", first.installed, first.target);
         for index in indices.iter().take(4) {
             let o = &out.opps[*index];
             detail += &format!("{:?}: {}\n", o.rec.r.change_type, o.rec.r.summary);
+            for note in review::advisory_lines(&out, o) { detail += &format!("  {note}\n"); }
             if o.files.is_empty() { detail += "  Repository impact not established; dependency presence alone is not usage evidence.\n"; }
             else { detail += &format!("  Related references: {} (requires assessment)\n", o.files.join(", ")); }
             if let Some(evidence) = o.rec.r.evidence.first() { detail += &format!("  Source: {} · record {}\n", evidence.url, o.id()); }
         }
         if indices.len() > 4 { detail += &format!("{} further records are in the prepared review context.\n", indices.len() - 4); }
-        if let Some(caps) = unlocks.get(technology).filter(|c| !c.is_empty()) {
+        if let Some(caps) = caps {
             detail += &format!("Capabilities this upgrade unlocks ({}; optional, weigh against the obligations above, not a reason on their own):\n", caps.len());
             for index in caps.iter().take(5) {
                 let o = &out.opps[*index];
@@ -1636,7 +1816,8 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
             save(ctx, pending)?;
         }
         let order = registration_order(&pending.unsubmitted, &st, &pending.downloads);
-        register(pending, order, |p| request(service, p, true), |accepted| {
+        let a = agent();
+        register(pending, order, |batch| register_batch(&a, service, batch), |accepted| {
             ui.update(
                 "Connecting public coverage · step 3/5",
                 &format!("Registered {accepted}/{registrations} public packages"),
@@ -1651,6 +1832,8 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
     }
     let mut saved_snapshot = String::new();
     let mut ready_hint = String::from("Your report is next; shared analysis can continue in background");
+    // When each package's status is next read (Unix seconds); absent: at the next pass.
+    let mut poll_at: BTreeMap<String, u64> = BTreeMap::new();
     loop {
         ui.update(
             "Refreshing shared results · step 4/5",
@@ -1660,11 +1843,14 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
         let mut disconnected = false;
         let hint = || if linger || wait == 0 { "Your report is next; background analysis does not block setup".to_string() } else { format!("Watching for up to {}s more · Enter to finish", wait.saturating_sub(start.elapsed().as_secs())) };
         let before: Vec<(String, String)> = pending.jobs.values().map(|j| (j.purl.clone(), j.state.clone())).collect();
-        let purls: Vec<String> = pending.jobs.keys().cloned().collect();
+        // Only the packages that may have changed since they were last read (next_poll); all of them the first time.
+        let now = unix_now();
+        let purls: Vec<String> = pending.jobs.keys().filter(|p| poll_at.get(*p).is_none_or(|t| *t <= now)).cloned().collect();
         let (total, mut done, a) = (purls.len(), 0, agent());
-        util::concurrent(&purls, util::REQUESTS_AT_ONCE, |p| request_via(&a, service, p, false), |i, got| {
+        statuses(&a, service, &purls, |i, got| {
             match got {
                 Ok(j) => {
+                    poll_at.insert(purls[i].clone(), next_poll(&j, now));
                     pending.jobs.insert(purls[i].clone(), j);
                 }
                 Err(e) => {
@@ -1685,11 +1871,11 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
         if disconnected {
             break;
         }
-        // The catalog only changes when a run publishes, which moves its job; within a minute of the last sync, with
-        // no job moved and no technology added by a registration, there is nothing new to fetch.
+        // The catalog only changes when a run publishes, which moves its job; within IDLE_POLL_S of the last sync,
+        // with no job moved and no technology added by a registration, there is nothing new to fetch.
         let moved = before.iter().any(|(p, state)| pending.jobs.get(p).is_some_and(|j| &j.state != state));
         let stale = synced.as_ref().is_none_or(|(at, cands): &(Instant, BTreeSet<String>)| {
-            at.elapsed() >= Duration::from_secs(60) || *cands != candidates(ctx, &st)
+            at.elapsed() >= Duration::from_secs(IDLE_POLL_S) || *cands != candidates(ctx, &st)
         });
         if moved || stale {
             match catalog_sync("Refreshing shared results · step 4/5", &hint()) {
@@ -1838,7 +2024,7 @@ fn follow_runs(
     mut draw: impl FnMut(Vec<crate::onboarding_ui::Line>),
 ) -> (Vec<crate::onboarding_ui::Line>, bool) {
     use crate::onboarding_ui::{Line, Tone};
-    let started = Instant::now();
+    let (started, a) = (Instant::now(), agent());
     let mut polled: BTreeMap<String, Instant> = purls.iter().map(|p| (p.clone(), Instant::now())).collect();
     let mut outcomes = vec![];
     let mut published = 0;
@@ -1846,15 +2032,16 @@ fn follow_runs(
     let mut frame = 0usize;
     let elapsed = |job: &Job, at: &Instant| job.run.as_ref().map_or(0, |r| r.elapsed_s) + at.elapsed().as_secs();
     while !purls.is_empty() && !leave.load(Ordering::Acquire) {
-        if last_poll.is_none_or(|t| t.elapsed() >= Duration::from_secs(2)) {
+        if last_poll.is_none_or(|t| t.elapsed() >= Duration::from_secs(ACTIVE_POLL_S)) {
             last_poll = Some(Instant::now());
-            for purl in &purls {
-                // A failed poll keeps the last answer; the next one may succeed.
-                if let Ok(job) = request(service, purl, false) {
-                    pending.jobs.insert(purl.clone(), job);
-                    polled.insert(purl.clone(), Instant::now());
+            // A failed poll keeps the last answer; the next one may succeed.
+            statuses(&a, service, &purls, |i, got| {
+                if let Ok(job) = got {
+                    pending.jobs.insert(purls[i].clone(), job);
+                    polled.insert(purls[i].clone(), Instant::now());
                 }
-            }
+                true
+            });
             let over = started.elapsed() >= FOLLOW_LIMIT;
             purls.retain(|purl| {
                 let job = &pending.jobs[purl];
@@ -1920,6 +2107,10 @@ fn refresh(ctx: &Ctx, st: &stack::Stack, pending: &Pending, scan: &mut Option<Wo
 #[cfg(test)]
 mod tests {
     use super::*;
+    /// `register` with a sender of one package at a time, as a service without batches is asked.
+    fn register1(pending: &mut Pending, order: Vec<String>, mut send: impl FnMut(&str) -> Result<Job>, progress: impl FnMut(usize), diagnostics: &mut Vec<String>, save: impl FnMut(&Pending) -> Result<()>) -> Result<()> {
+        register(pending, order, |batch| one_at_a_time(batch, &mut send), progress, diagnostics, save)
+    }
     #[test]
     fn registration_sends_the_most_adopted_first_and_ecosystems_take_turns() {
         let manifest = |declared: &[&str]| crate::stack::Package {
@@ -2019,13 +2210,147 @@ mod tests {
         pending.unsubmitted.clear();
         assert!(registration_line(&pending).is_none());
     }
+    /// A coverage service on a local port: `answer(method and path, body)` gives the status and body of each request;
+    /// the log keeps `METHOD /path` of each.
+    fn service_stub(answer: impl Fn(&str, &str) -> (u16, String) + Send + 'static) -> (String, Arc<std::sync::Mutex<Vec<String>>>) {
+        use std::io::{BufRead, BufReader, Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let log = Arc::new(std::sync::Mutex::new(vec![]));
+        let seen = log.clone();
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { continue };
+                let mut reader = BufReader::new(stream.try_clone().unwrap());
+                let mut line = String::new();
+                if reader.read_line(&mut line).is_err() { continue; }
+                let mut length = 0;
+                loop {
+                    let mut h = String::new();
+                    if reader.read_line(&mut h).unwrap_or(0) == 0 || h.trim().is_empty() { break; }
+                    if let Some((k, v)) = h.split_once(':') && k.trim().eq_ignore_ascii_case("content-length") { length = v.trim().parse().unwrap_or(0); }
+                }
+                let mut body = vec![0; length];
+                let _ = reader.read_exact(&mut body);
+                let target = line.split_whitespace().take(2).collect::<Vec<_>>().join(" ");
+                seen.lock().unwrap().push(target.split('?').next().unwrap_or("").to_string());
+                let (status, out) = answer(&target, &String::from_utf8_lossy(&body));
+                let _ = write!(stream, "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{out}", out.len());
+            }
+        });
+        (base, log)
+    }
+    fn job_json(purl: &str) -> serde_json::Value {
+        serde_json::json!({"purl": purl, "technology": "t", "name": "n", "state": "queued", "stage": ""})
+    }
+    #[test]
+    fn statuses_are_read_a_batch_to_a_request_or_a_request_each_where_the_service_has_no_batches() {
+        let purls: Vec<String> = (0..40).map(|i| format!("pkg:npm/p{i}")).collect();
+        // A gateway: 40 packages in 3 requests, each answered in order; one it does not know is a 404 of its own.
+        let (base, log) = service_stub(|target, body| {
+            assert_eq!(target, "POST /coverage/status");
+            let asked: serde_json::Value = serde_json::from_str(body).unwrap();
+            let results: Vec<_> = asked["purls"].as_array().unwrap().iter().map(|p| {
+                let p = p.as_str().unwrap();
+                if p == "pkg:npm/p7" { serde_json::json!({"purl": p, "status": 404, "error": "No shared job"}) } else { serde_json::json!({"purl": p, "status": 200, "job": job_json(p)}) }
+            }).collect();
+            (200, serde_json::json!({ "results": results }).to_string())
+        });
+        let mut got = BTreeMap::new();
+        statuses(&agent(), &base, &purls, |i, r| { got.insert(i, r.map(|j| j.purl).map_err(|e| e.downcast_ref::<HttpFailure>().map(|f| f.0))); true });
+        assert_eq!(log.lock().unwrap().len(), 3);
+        assert_eq!(got.len(), 40);
+        assert_eq!(got[&7], Err(Some(404)));
+        assert!((0..40).filter(|i| *i != 7).all(|i| got[&i] == Ok(format!("pkg:npm/p{i}"))));
+        // A service without the route: one batch request, then a request per package, and no batch again.
+        let (base, log) = service_stub(|target, _| match target.strip_prefix("GET /coverage?purl=") { Some(p) => (200, job_json(&p.replace("%3A", ":").replace("%2F", "/")).to_string()), None => (404, "{}".into()) });
+        let mut n = 0;
+        let posts = || log.lock().unwrap().iter().filter(|l| l.starts_with("POST")).count();
+        statuses(&agent(), &base, &purls[..20], |_, r| { n += usize::from(r.is_ok()); true });
+        // The batches already in flight (two here) learn it at once.
+        let tried = posts();
+        assert!((1..=2).contains(&tried));
+        statuses(&agent(), &base, &purls[..3], |_, r| { n += usize::from(r.is_ok()); true });
+        assert_eq!((n, posts()), (23, tried));
+        assert_eq!(log.lock().unwrap().iter().filter(|l| l.starts_with("GET")).count(), 23);
+        // A service failing for a moment (a 5xx): the batch's failure, not a request per package, and batches stay on.
+        let failed = std::sync::atomic::AtomicBool::new(false);
+        let (base, log) = service_stub(move |_, body| {
+            if !failed.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                return (500, "{}".into());
+            }
+            let asked: serde_json::Value = serde_json::from_str(body).unwrap();
+            let results: Vec<_> = asked["purls"].as_array().unwrap().iter().map(|p| serde_json::json!({"purl": p, "status": 200, "job": job_json(p.as_str().unwrap())})).collect();
+            (200, serde_json::json!({ "results": results }).to_string())
+        });
+        let mut answers = vec![];
+        statuses(&agent(), &base, &purls[..3], |i, r| { answers.push((i, r.err().and_then(|e| e.downcast_ref::<HttpFailure>().map(|f| f.0)))); true });
+        assert_eq!(answers, vec![(0, Some(500))]);
+        let mut n = 0;
+        statuses(&agent(), &base, &purls[..3], |_, r| { n += usize::from(r.is_ok()); true });
+        assert_eq!(n, 3);
+        assert_eq!(*log.lock().unwrap(), vec!["POST /coverage/status", "POST /coverage/status"]);
+    }
+    #[test]
+    fn a_batch_registers_in_one_request_and_answers_each_package_as_its_own_request_would() {
+        let (base, log) = service_stub(|target, body| {
+            assert_eq!(target, "POST /coverage/register");
+            let asked: serde_json::Value = serde_json::from_str(body).unwrap();
+            let results: Vec<_> = asked["purls"].as_array().unwrap().iter().map(|p| match p.as_str().unwrap() {
+                "pkg:npm/gone" => serde_json::json!({"purl": "pkg:npm/gone", "status": 404, "error": "No public package"}),
+                "pkg:npm/late" => serde_json::json!({"purl": "pkg:npm/late", "status": 429, "error": "Too many", "limit": "budget", "retry_after": 1200}),
+                p => serde_json::json!({"purl": p, "status": 202, "job": job_json(p)}),
+            }).collect();
+            (200, serde_json::json!({ "results": results }).to_string())
+        });
+        let order: Vec<String> = ["pkg:npm/a", "pkg:npm/gone", "pkg:npm/late", "pkg:npm/b"].into_iter().chain((0..20).map(|i| format!("pkg:npm/x{i}")).collect::<Vec<_>>().iter().map(String::as_str)).map(String::from).collect();
+        let mut pending = Pending::default();
+        pending.unsubmitted.extend(order.iter().cloned());
+        let a = agent();
+        register(&mut pending, order, |batch| register_batch(&a, &base, batch), |_| {}, &mut vec![], |_| Ok(())).unwrap();
+        // One request: the limit ends the round after the batch it came in, and what that batch accepted is kept.
+        assert_eq!(log.lock().unwrap().len(), 1);
+        assert!(pending.jobs.contains_key("pkg:npm/a") && pending.jobs.contains_key("pkg:npm/b"));
+        assert_eq!(pending.jobs.len(), BATCH - 2);
+        assert_eq!(pending.deferred_by, Some(Deferral::Budget));
+        assert!(pending.deferred_until.is_some_and(|t| t >= unix_now() + 1100));
+        assert!(pending.unsubmitted.contains("pkg:npm/gone") && pending.unsubmitted.contains("pkg:npm/late") && pending.unsubmitted.contains("pkg:npm/x19"));
+        assert!(matches!(pending.registration_issue, Some(RegistrationIssue::Rejected { status: 404, .. })));
+    }
+    /// Unix seconds as the service writes times (`2026-10-17T12:23:00.000Z`).
+    fn iso(t: u64) -> String {
+        let date = util::add_days("1970-01-01", (t / 86_400) as i64).unwrap();
+        format!("{date}T{:02}:{:02}:{:02}.000Z", t % 86_400 / 3600, t % 3600 / 60, t % 60)
+    }
+    #[test]
+    fn a_waiting_client_reads_a_package_again_only_when_it_may_have_changed() {
+        let at = 1_792_000_000;
+        let job = |state: &str, run: Option<&str>, next_run: Option<u64>, retry_at: Option<u64>| Job {
+            state: state.into(),
+            run: run.map(|r| Run { state: r.into(), ..Default::default() }),
+            next_run: next_run.map(iso),
+            retry_at: retry_at.map(iso),
+            ..Default::default()
+        };
+        // A run working it: about as often as the run reports.
+        assert_eq!(next_poll(&job("queued", Some("running"), None, None), at), at + ACTIVE_POLL_S);
+        assert_eq!(next_poll(&job("analyzing", None, None, None), at), at + ACTIVE_POLL_S);
+        assert_eq!(next_poll(&job("partial", None, None, None), at), at + ACTIVE_POLL_S);
+        // Waiting for a run: when it starts, within IDLE_POLL_S; a run due now, within DUE_POLL_S.
+        assert_eq!(next_poll(&job("queued", None, Some(at + 120), None), at), at + 120);
+        assert_eq!(next_poll(&job("queued", None, Some(at + 7200), None), at), at + IDLE_POLL_S);
+        assert_eq!(next_poll(&job("queued", None, Some(at), None), at), at + DUE_POLL_S);
+        assert_eq!(next_poll(&job("failed", None, None, Some(at + 30)), at), at + 30);
+        // Published: within IDLE_POLL_S.
+        assert_eq!(next_poll(&job("monitoring", None, None, None), at), at + IDLE_POLL_S);
+    }
     #[test]
     fn a_rejected_package_is_named_and_the_others_are_still_registered() {
         let mut pending = Pending::default();
         let order: Vec<String> = ["pkg:npm/a", "pkg:npm/%40s/bad", "pkg:npm/c", "pkg:npm/bad2"].map(String::from).to_vec();
         pending.unsubmitted.extend(order.iter().cloned());
         let (mut sent, mut diagnostics, mut saves) = (vec![], vec![], 0);
-        register(&mut pending, order, |p| {
+        register1(&mut pending, order, |p| {
             sent.push(p.to_string());
             if p.contains("bad") { Err(HttpFailure(400).into()) } else { Ok(Job { purl: p.into(), technology: "t".into(), ..Default::default() }) }
         }, |_| {}, &mut diagnostics, |_| { saves += 1; Ok(()) }).unwrap();
@@ -2035,7 +2360,8 @@ mod tests {
         let line = registration_line(&pending).unwrap();
         assert!(line.contains("npm registration was rejected for @s/bad, bad2 (HTTP 400)") && line.contains("tool-side fix"), "{line}");
         assert_eq!(diagnostics.len(), 2);
-        assert!(saves >= 4);
+        // Saved after each batch (one request): these four are one.
+        assert_eq!(saves, 1);
         // The issue survives the state file.
         let restored: Pending = serde_json::from_slice(&serde_json::to_vec(&pending).unwrap()).unwrap();
         assert_eq!(registration_line(&restored), registration_line(&pending));
@@ -2049,13 +2375,13 @@ mod tests {
         let mut pending = Pending::default();
         pending.unsubmitted.extend(order.iter().cloned());
         let mut sent = 0;
-        register(&mut pending, order.clone(), |p| { sent += 1; Err(HttpFailure(if p.contains("bad") { 400 } else { 502 }).into()) }, |_| {}, &mut vec![], |_| Ok(())).unwrap();
+        register1(&mut pending, order.clone(), |p| { sent += 1; Err(HttpFailure(if p.contains("bad") { 400 } else { 502 }).into()) }, |_| {}, &mut vec![], |_| Ok(())).unwrap();
         assert_eq!(sent, 2, "the outage stops the pass");
         assert!(registration_line(&pending).unwrap().contains("rejected for bad (HTTP 400)"));
         let mut pending = Pending::default();
         pending.unsubmitted.extend(order.iter().cloned());
         let mut sent = 0;
-        register(&mut pending, order, |_| { sent += 1; Err(HttpFailure(415).into()) }, |_| {}, &mut vec![], |_| Ok(())).unwrap();
+        register1(&mut pending, order, |_| { sent += 1; Err(HttpFailure(415).into()) }, |_| {}, &mut vec![], |_| Ok(())).unwrap();
         assert_eq!(sent, 1, "every package would be refused alike");
         assert!(registration_line(&pending).unwrap().contains("HTTP 415"));
     }
@@ -2066,14 +2392,14 @@ mod tests {
         let mut pending = Pending::default();
         pending.unsubmitted.extend(order.iter().cloned());
         let mut sent = 0;
-        register(&mut pending, order.clone(), |_| { sent += 1; Err(HttpFailure(502).into()) }, |_| {}, &mut vec![], |_| Ok(())).unwrap();
+        register1(&mut pending, order.clone(), |_| { sent += 1; Err(HttpFailure(502).into()) }, |_| {}, &mut vec![], |_| Ok(())).unwrap();
         assert_eq!(sent, 1);
         let line = registration_line(&pending).unwrap();
         assert!(line.contains("status to retry") && !line.contains("tool-side"), "{line}");
         // Limited (429, or 503 with Retry-After): deferred until then.
         let mut pending = Pending::default();
         pending.unsubmitted.extend(order.iter().cloned());
-        register(&mut pending, order, |_| Err(Limited { retry_after: 600, by: Deferral::Address }.into()), |_| {}, &mut vec![], |_| Ok(())).unwrap();
+        register1(&mut pending, order, |_| Err(Limited { retry_after: 600, by: Deferral::Address }.into()), |_| {}, &mut vec![], |_| Ok(())).unwrap();
         assert!(pending.deferred_until.is_some_and(|t| t > unix_now() + 500));
         assert!(registration_line(&pending).unwrap().starts_with("Coverage queued for later"));
     }
@@ -2084,7 +2410,7 @@ mod tests {
         let mut pending = Pending::default();
         pending.unsubmitted.extend(order.iter().cloned());
         let (mut seen, mut n) = (vec![], 0);
-        register(&mut pending, order, |p| {
+        register1(&mut pending, order, |p| {
             n += 1;
             match n {
                 2 => Err(HttpFailure(404).into()),

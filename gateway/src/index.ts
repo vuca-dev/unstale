@@ -6,6 +6,11 @@
 //   GET /health                 the coverage service marker the client checks
 //   POST /coverage {purl}       a vote on a known package, or a new package queued for the next coverage run
 //   GET /coverage?purl=         a known package's published status, or a held one's place in the queue
+//   POST /coverage/status       {purls}: what GET /coverage answers, for up to BATCH packages in one request
+//   POST /coverage/register     {purls}: what POST /coverage answers, for up to BATCH packages in one request, in order
+//                               (`{results: [{purl, status, job}` or `{purl, status, error, ...}]}`; a client falls back
+//                               to one request per package where a service answers neither. The Worker's free
+//                               allowance is counted in requests, so one request for many packages is the saving)
 //   GET /internal/queue         the held requests, for a coverage run (bearer DRAIN_TOKEN)
 //   POST /internal/ack          what a deployed run took (bearer DRAIN_TOKEN)
 //   GET /internal/usage         the object's rows read and written today against the free tier (bearer DRAIN_TOKEN);
@@ -19,7 +24,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { asset, packedAsset } from "./assets.ts";
 import { packageIdentity, technologyId } from "../../central/src/onboarding/identity.ts";
-import { PendingQueue, RUN_STATES, settingsFrom, type Outcome, type Progress, type Request as Taken, type RunState, type View } from "./queue.ts";
+import { BATCH, PendingQueue, RUN_STATES, settingsFrom, type Outcome, type Progress, type Request as Taken, type RunState, type View } from "./queue.ts";
 
 export interface Env {
   ASSETS: Fetcher;
@@ -69,9 +74,26 @@ export class Coverage extends DurableObject<Env> {
   held(purl: string): boolean {
     return this.queue.held(purl);
   }
+  /** `request` for several packages in order, in one call to the object. */
+  requestMany(items: { purl: string; known: boolean }[], address: string): { outcome: Outcome; view?: View }[] {
+    return items.map(({ purl, known }) => this.request(purl, address, known));
+  }
+  /** Which of these packages are held, in one call to the object. */
+  heldMany(purls: string[]): string[] {
+    return purls.filter((purl) => this.queue.held(purl));
+  }
   /** A held new package's place in the queue and the run working it, if any. */
   view(purl: string): View | undefined {
     return this.queue.view(purl);
+  }
+  /** `view` for several packages, in one call to the object: the held ones only. */
+  views(purls: string[]): Record<string, View> {
+    const out: Record<string, View> = {};
+    for (const purl of purls) {
+      const at = this.queue.view(purl);
+      if (at) out[purl] = at;
+    }
+    return out;
   }
   /** A run's progress; `budget` (when the report carries it) replaces what the gateway knows of central's budget, and
    * `pulls` what it knows of the run's pulls. A run done pulling starts the early run held back meanwhile, if any. */
@@ -306,13 +328,17 @@ async function input<T>(read: () => T | Promise<T>): Promise<T> {
 const RESET_LAG_S = 30 * 60;
 /** How soon to retry while the allowance still reads as spent just after 00:00 UTC. */
 const RESET_RETRY_S = 300;
+/** Retries told the same time are spread over this much after it (a share each, by `Math.random`), so the clients a
+ * spent allowance deferred do not all come back in the same minute, the one the allowance has just restarted. */
+const RETRY_SPREAD_S = 30 * 60;
 
 /** Seconds until the Durable Objects free tier's daily allowance resets: 00:00 UTC, or shortly while that reset is
- * still landing (a client told "after midnight" at 00:05 would otherwise wait a whole day). */
-function untilReset(now = Date.now()): number {
+ * still landing (a client told "after midnight" at 00:05 would otherwise wait a whole day); spread over RETRY_SPREAD_S
+ * after the reset (over RESET_RETRY_S while it lands). */
+function untilReset(now = Date.now(), share = Math.random()): number {
   const sinceMidnight = (now % 86_400_000) / 1000;
-  if (sinceMidnight < RESET_LAG_S) return RESET_RETRY_S;
-  return Math.max(60, Math.ceil(86_400 - sinceMidnight));
+  if (sinceMidnight < RESET_LAG_S) return RESET_RETRY_S + Math.floor(share * RESET_RETRY_S);
+  return Math.max(60, Math.ceil(86_400 - sinceMidnight)) + Math.floor(share * RETRY_SPREAD_S);
 }
 
 /** Anything else (storage, a daily allowance, the runtime) is the service's: a temporary 503 with Retry-After, so a
@@ -321,7 +347,7 @@ function untilReset(now = Date.now()): number {
 function unavailable(error: unknown): Response {
   const message = error instanceof Error ? error.message : String(error);
   console.log(`unavailable: ${message.slice(0, 300)}`);
-  const retryAfter = /exceeded allowed|free tier/i.test(message) ? untilReset() : 60;
+  const retryAfter = /exceeded allowed|free tier/i.test(message) ? untilReset() : 60 + Math.floor(Math.random() * 60);
   return json(503, { error: "The coverage service is temporarily unavailable; retry later", retry_after: retryAfter }, { "Retry-After": String(retryAfter) });
 }
 
@@ -337,6 +363,30 @@ async function purlOf(request: Request): Promise<string> {
   return purl;
 }
 
+/** The package URLs of a batch request body, `{"purls": [...]}`: public identities only, at most BATCH, no repeats. */
+async function purlsOf(request: Request): Promise<string[]> {
+  const body = await request.text();
+  if (body.length > BATCH * 240 + 64) throw new BadRequest(`At most ${BATCH} public identities`, 413);
+  const parsed = JSON.parse(body) as unknown;
+  if (!parsed || typeof parsed !== "object" || Object.keys(parsed).join() !== "purls") throw new BadRequest("Expected {\"purls\": [...]} only");
+  const purls = (parsed as { purls: unknown }).purls;
+  if (!Array.isArray(purls) || !purls.length || purls.length > BATCH) throw new BadRequest(`purls must list 1 to ${BATCH} packages`);
+  for (const purl of purls) {
+    if (typeof purl !== "string" || purl.length > 230) throw new BadRequest("Each purl must be a string of at most 230 characters");
+    packageIdentity(purl);
+  }
+  if (new Set(purls).size !== purls.length) throw new BadRequest("Each package once");
+  return purls as string[];
+}
+
+/** A registration's outcome as POST /coverage answers it: status and body. */
+function registration(purl: string, outcome: Outcome, view: View | undefined, known: Record<string, unknown> | undefined): { status: number; body: Record<string, unknown> } {
+  if (outcome.type === "refused")
+    return { status: 429, body: { error: "Too many new technologies from this address; retry later", limit: outcome.limit, retry_after: outcome.retryAfter } };
+  if (outcome.type === "voted") return { status: 202, body: known ?? {} };
+  return { status: 202, body: queued(purl, view ?? outcome) };
+}
+
 export async function handle(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const queue = () => env.COVERAGE.get(env.COVERAGE.idFromName("global"));
@@ -350,14 +400,44 @@ export async function handle(request: Request, env: Env): Promise<Response> {
       const known = await published(env, url, purl);
       if (!known && !(await queue().held(purl)) && !(await registered(purl))) return json(404, { error: "No public package with this identity" });
       const { outcome, view } = await queue().request(purl, address, !!known);
-      if (outcome.type === "refused")
-        return json(
-          429,
-          { error: "Too many new technologies from this address; retry later", limit: outcome.limit, retry_after: outcome.retryAfter },
-          { "Retry-After": String(outcome.retryAfter) },
-        );
-      if (outcome.type === "voted") return json(202, known);
-      return json(202, queued(purl, view ?? outcome));
+      const { status, body } = registration(purl, outcome, view, known);
+      return json(status, body, outcome.type === "refused" ? { "Retry-After": String(outcome.retryAfter) } : {});
+    }
+    // A batch of registrations: each package as POST /coverage would answer it, in the order sent.
+    if (request.method === "POST" && url.pathname === "/coverage/register") {
+      if (!request.headers.get("Content-Type")?.startsWith("application/json")) return json(415, { error: "application/json required" });
+      if (request.headers.get("Origin")) return json(403, { error: "Browser registration is not supported" });
+      const purls = await input(() => purlsOf(request));
+      const address = request.headers.get("CF-Connecting-IP") ?? "unknown";
+      const known = await Promise.all(purls.map((purl) => published(env, url, purl)));
+      const unknown = purls.filter((_, i) => !known[i]);
+      const held = new Set(unknown.length ? await queue().heldMany(unknown) : []);
+      const exists = await Promise.all(purls.map((purl, i) => !!known[i] || held.has(purl) || registered(purl)));
+      const asked = purls.flatMap((purl, i) => (exists[i] ? [{ purl, known: !!known[i] }] : []));
+      const answers = asked.length ? await queue().requestMany(asked, address) : [];
+      const by = new Map(asked.map(({ purl }, i) => [purl, answers[i]!]));
+      return json(200, {
+        results: purls.map((purl, i) => {
+          const answer = by.get(purl);
+          if (!answer) return { purl, status: 404, error: "No public package with this identity" };
+          const { status, body } = registration(purl, answer.outcome, answer.view, known[i]);
+          return status === 202 ? { purl, status, job: body } : { purl, status, ...body };
+        }),
+      });
+    }
+    // A batch of status reads: each package as GET /coverage would answer it.
+    if (request.method === "POST" && url.pathname === "/coverage/status") {
+      const purls = await input(() => purlsOf(request));
+      const known = await Promise.all(purls.map((purl) => published(env, url, purl)));
+      const unknown = purls.filter((_, i) => !known[i]);
+      const views: Record<string, View> = unknown.length ? await queue().views(unknown) : {};
+      return json(200, {
+        results: purls.map((purl, i) => {
+          const at = views[purl];
+          if (known[i]) return { purl, status: 200, job: known[i] };
+          return at ? { purl, status: 200, job: queued(purl, at) } : { purl, status: 404, error: "No shared job for this identity" };
+        }),
+      });
     }
     if (request.method === "GET" && url.pathname === "/coverage") {
       const purl = url.searchParams.get("purl") ?? "";

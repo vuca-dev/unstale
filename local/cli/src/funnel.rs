@@ -385,7 +385,8 @@ fn tool_behaviour(r: &Rec) -> bool {
     )
 }
 
-fn line_of(v: &Version) -> String {
+/// A version's release line by SemVer: its major, or `0.minor` below 1.0.
+pub(crate) fn line_of(v: &Version) -> String {
     if v.major > 0 { v.major.to_string() } else { format!("0.{}", v.minor) }
 }
 
@@ -518,6 +519,9 @@ struct TechLits {
     per_record: Vec<Vec<String>>,
     usage: BTreeSet<String>,
     whole: BTreeSet<String>,
+    /// Relative literals that name a subpath of the technology's own package (`./src/*` in a record about vitest's
+    /// `exports`) → the literals naming `<package>/<subpath>` (`usage::subpath_lits`) that stand in for its hits.
+    subpaths: BTreeMap<String, Vec<String>>,
 }
 
 fn tech_lits(tech: &str, td: &TechData) -> TechLits {
@@ -537,7 +541,83 @@ fn tech_lits(tech: &str, td: &TechData) -> TechLits {
         usage.extend(r.r.requires.iter().filter_map(|x| clean_lit(x)));
         whole.extend(r.r.introduces.iter().filter_map(|x| clean_lit(x)).filter(|x| x.chars().count() >= 6));
     }
-    TechLits { comps, per_record, usage, whole }
+    // A relative literal is the technology's package subpath when its record says so: it also names the manifest's
+    // `exports` field, or `<package>/<subpath>` itself (knip's `./config` next to `knip/config`). Otherwise it is a
+    // path of the repository (webpack's default `./src` entry, SvelteKit's `./$types`) and is matched as it is.
+    let names: Vec<String> = comps.iter().filter_map(|c| purl_name(c)).collect();
+    let mut subpaths: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for (r, lits) in td.records.iter().zip(&per_record) {
+        let mut all: Vec<String> = lits.clone();
+        all.extend(r.r.introduces.iter().chain(&r.r.requires).filter_map(|x| clean_lit(x)));
+        for l in &all {
+            let Some(x) = usage::subpath(l) else { continue };
+            let x_bare = x.trim_end_matches('/');
+            let names_it = all.iter().any(|o| o == "exports" || names.iter().any(|n| o.strip_prefix(n.as_str()).and_then(|t| t.strip_prefix('/')).is_some_and(|t| t.trim_end_matches(['*', '/']) == x_bare)));
+            if names_it {
+                // `<package>/<x>` of the packages that shipped this record (all of the technology's when it names none).
+                let own: Vec<String> = r.r.releases.iter().map(|x| normalize_purl(&x.component)).filter(|c| comps.contains(c)).collect();
+                let pkgs: Vec<&String> = if own.is_empty() { comps.iter().collect() } else { own.iter().collect() };
+                let v = subpaths.entry(l.clone()).or_default();
+                for spec in pkgs.into_iter().flat_map(|c| usage::subpath_lits(c, x)) {
+                    if !v.contains(&spec) {
+                        v.push(spec);
+                    }
+                }
+            }
+        }
+    }
+    subpaths.retain(|_, v| !v.is_empty());
+    TechLits { comps, per_record, usage, whole, subpaths }
+}
+
+/// `hits` for one technology with each package-subpath literal (`TechLits::subpaths`) matched as `<package>/<subpath>`
+/// only: a file that names it at a module position (an import or require of `vitest/src/…`), a data or config file
+/// that quotes it, or code about the technology that quotes it as a value. A bare `./src/*` is the repository's own
+/// path (its `exports` map, a `tsconfig` alias), never the dependency's subpath. `None` when there are none.
+fn subpath_filtered(
+    hits: &Hits,
+    tl: &TechLits,
+    ecosystem: &str,
+    owners: &[&str],
+    repo: &usage::Repo,
+) -> Option<Hits> {
+    if tl.subpaths.is_empty() {
+        return None;
+    }
+    let paths = &repo.paths;
+    let naming: BTreeSet<String> = tl.comps.iter().flat_map(|c| usage::naming_lits(c)).collect();
+    let lits: BTreeSet<&String> = tl.usage.iter().chain(&tl.whole).chain(&naming).collect();
+    let mut out = hits_without(hits, lits.iter().copied(), &vec![false; paths.len()], paths);
+    let scope = usage::Scope::new(ecosystem, owners, &tl.comps, tl.usage.iter().chain(&tl.whole), hits, paths);
+    for (lit, specs) in &tl.subpaths {
+        let mut files: BTreeSet<u32> = BTreeSet::new();
+        for spec in specs {
+            let module = usage::module_naming(spec);
+            for x in hits.ix.get(spec).into_iter().flatten() {
+                let Some(p) = paths.get(*x as usize) else { continue };
+                if module || !usage::own_code(p, ecosystem) || scope.file(p) == Some(true) {
+                    files.insert(*x);
+                }
+            }
+        }
+        let mut ranked: Vec<(usage::Role, u32)> = files.into_iter().map(|x| (repo.role(&paths[x as usize]), x)).collect();
+        ranked.sort_unstable();
+        let named: Vec<String> = ranked.iter().map(|(_, x)| paths[*x as usize].clone()).collect();
+        out.tail_only.remove(lit);
+        out.by_tail.remove(lit);
+        if named.is_empty() {
+            out.usage.remove(lit);
+            out.ix.remove(lit);
+            out.whole.remove(lit);
+            continue;
+        }
+        if tl.whole.contains(lit) {
+            out.whole.insert(lit.clone(), named.clone());
+        }
+        out.ix.insert(lit.clone(), ranked.iter().map(|(_, x)| *x).collect());
+        out.usage.insert(lit.clone(), named);
+    }
+    Some(out)
 }
 
 pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
@@ -555,7 +635,9 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
     // The literals that find the files naming each technology's packages (`usage::Scope`) ride along.
     let usage_lits: BTreeSet<String> = in_stack
         .iter()
-        .flat_map(|(_, _, tl)| tl.usage.iter().cloned().chain(tl.comps.iter().flat_map(|c| usage::naming_lits(c))))
+        .flat_map(|(_, _, tl)| {
+            tl.usage.iter().cloned().chain(tl.comps.iter().flat_map(|c| usage::naming_lits(c))).chain(tl.subpaths.values().flatten().cloned())
+        })
         .collect();
     let whole_lits: BTreeSet<String> = in_stack.iter().flat_map(|(_, _, tl)| tl.whole.iter().cloned()).collect();
     // The words that run each technology from a command line, for its CLI-flag literals (`usage::cli_flag`).
@@ -574,6 +656,10 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
         // A deprecated literal that only loads one of the technology's packages (`from 'chat'`) is in every file using
         // it: no sign of the deprecated re-export or entry point.
         let own_names: Vec<String> = comps.iter().filter_map(|c| purl_name(c)).collect();
+        let ecosystem = comps.iter().find_map(|c| c.strip_prefix("pkg:").and_then(|r| r.split('/').next())).unwrap_or("npm").to_string();
+        // A subpath of the technology's own package (`./src/*`) counts only where `<package>/<subpath>` is named.
+        let subpathed = subpath_filtered(hits, tl, &ecosystem, &owners, inp.repo);
+        let hits: &Hits = subpathed.as_ref().unwrap_or(hits);
         // A file's role once per technology: a large repository has tens of thousands of hit files, and the same
         // files come up for every record sharing a literal.
         let roles: RefCell<HashMap<String, usage::Role>> = RefCell::default();
@@ -586,7 +672,6 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             r
         };
         // Only files that can use this technology evidence it, and a plain word only where it is named (`usage::Scope`).
-        let ecosystem = comps.iter().find_map(|c| c.strip_prefix("pkg:").and_then(|r| r.split('/').next())).unwrap_or("npm").to_string();
         let scope_lits = || tl.usage.iter().chain(&tl.whole);
         let all = usage::Scope::new(&ecosystem, &owners, comps, scope_lits(), hits, &inp.repo.paths).with_reach(&reach);
         // Per package: the version the outputs use, from the code that imports it (`Choice`).
@@ -2075,5 +2160,54 @@ mod tests {
         let o = out.opps.iter().find(|o| o.id() == "turbo:prune-scope").unwrap();
         assert_eq!(o.matched, vec![("--scope".to_string(), vec!["package.json".to_string()])]);
         assert_eq!(route_of(&out, "turbo:json"), &Route::Applied, "a continued command line counts");
+    }
+
+    #[test]
+    fn a_package_subpath_matches_only_where_the_package_subpath_is_named() {
+        let c = catalog(
+            "vitest",
+            0,
+            vec![
+                // A subpath of vitest's own exports: the record names the `exports` field.
+                with(rec("vitest:src", "pkg:npm/vitest", "5.0.0"), json!({"change_type":"removal","breaking":true,"replaces":["./src/*"],"terms":[["./src/*",0],["exports",0],["package.json",0]]})),
+                // Named next to `vitest/config` itself.
+                with(rec("vitest:config", "pkg:npm/vitest", "5.0.0"), json!({"change_type":"new_api","benefit":["correctness"],"terms":[["./config",0],["vitest/config",0]]})),
+                // A path of the repository: matched as it is, but never in the manifest's own layout.
+                with(rec("vitest:dir", "pkg:npm/vitest", "5.0.0"), json!({"change_type":"behavior_change","terms":[["./tests",0]]})),
+                // Nor by its tail (`client`) there.
+                with(rec("vitest:tail", "pkg:npm/vitest", "5.0.0"), json!({"change_type":"behavior_change","terms":[["./tests/setup.client",0]]})),
+            ],
+        );
+        let s = stack(&[("vitest", "4.1.0")], None);
+        let manifest = r#"{"name":"lib","main":"./tests/x.js","exports":{".":"./dist/x.js","./src/*":"./src/*"},"files":["./tests","./tests/setup.client"],"devDependencies":{"vitest":"^4.1.0"}}"#;
+        let r = repo(&[
+            ("package.json", manifest),
+            ("tsconfig.json", r#"{"compilerOptions":{"paths":{"@/*":["./src/*"]}}}"#),
+            ("src/a.test.ts", "import { test } from 'vitest';\nimport cfg from './config';\n"),
+        ]);
+        let l = Ledger::default();
+        let out = run_with(&c, &s, &r, &l);
+        let m = |id: &str| out.opps.iter().find(|o| o.id() == id).unwrap().matched.clone();
+        assert!(m("vitest:src").iter().all(|(t, _)| t != "./src/*"), "{:?}", m("vitest:src"));
+        assert!(m("vitest:config").iter().all(|(t, _)| t != "./config"), "a relative import is the repository's module: {:?}", m("vitest:config"));
+        assert!(m("vitest:dir").is_empty(), "main and files are the package's own layout: {:?}", m("vitest:dir"));
+        let tail = out.opps.iter().find(|o| o.id() == "vitest:tail").unwrap();
+        assert!(tail.matched.is_empty() && tail.score == 0.0, "its tail does not count for the order either: {}", tail.score);
+        // An import of the subpath, or a config value quoting it, is the dependency's subpath.
+        // A relative path outside the manifest's own layout (a script's argument) still counts.
+        let scripted = manifest.replace(r#""devDependencies""#, r#""scripts":{"t":"vitest ./tests"},"devDependencies""#);
+        let r = repo(&[
+            ("package.json", scripted.as_str()),
+            ("src/b.test.ts", "import { x } from 'vitest/src/runtime';\n"),
+            ("vitest.config.ts", "import { defineConfig } from 'vitest/config';\nexport default defineConfig({ setupFiles: ['vitest/src/setup'] })\n"),
+        ]);
+        let out = run_with(&c, &s, &r, &l);
+        let m = |id: &str| out.opps.iter().find(|o| o.id() == id).unwrap().matched.clone();
+        let mut src = m("vitest:src").into_iter().find(|(t, _)| t == "./src/*").map(|(_, f)| f).unwrap_or_default();
+        src.sort();
+        assert_eq!(src, vec!["src/b.test.ts".to_string(), "vitest.config.ts".to_string()]);
+        let cfg = m("vitest:config").into_iter().find(|(t, _)| t == "./config").map(|(_, f)| f).unwrap_or_default();
+        assert_eq!(cfg, vec!["vitest.config.ts".to_string()]);
+        assert_eq!(m("vitest:dir"), vec![("./tests".to_string(), vec!["package.json".to_string()])]);
     }
 }
