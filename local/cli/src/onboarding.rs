@@ -1107,7 +1107,7 @@ fn summary(ctx: &Ctx, pending: &Pending, brief: &Brief, issue: Option<&str>) -> 
         lines.push(Line::new("Versions · competing or out-of-date lockfiles; see report for which was read.", Tone::Amber));
     } else if brief.spread > 0 {
         let n = brief.spread;
-        lines.push(Line::new(format!("Versions · {n} package{} on other versions in some workspaces; reviews use the root's version, else the shallowest manifest's. See report.", if n == 1 { " is" } else { "s are" }), Tone::Muted));
+        lines.push(Line::new(format!("Versions · {n} package{} on other versions in some workspaces; reviews use the root's version, else that of the shallowest manifest a lockfile covers. See report.", if n == 1 { " is" } else { "s are" }), Tone::Muted));
     }
     if brief.advisory_fixes > 0 {
         lines.push(Line::new(format!("Priority · {} advisory fixes match installed versions. Review these first.", brief.advisory_fixes), Tone::Amber));
@@ -1213,9 +1213,9 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
         .collect();
     text += "## What setup did\n\nMapped npm and PyPI manifests and versions, matched published upstream changes to local references, and prepared agent review context. No application edits or agent assessment ran. Upstream record counts are history, not a count of useful changes for this repository.\n\n";
     if !limits.is_empty() { text += "## Scope limits\n\n"; text += &evidence_block(&limits.join("\n")); }
-    if !w.stack.notes.is_empty() {
+    if !w.stack.notes.is_empty() || !w.stack.standalone.is_empty() {
         text += "## Version sources\n\nInstalled versions below come from these choices. Verify against the lockfile your package manager actually uses.\n\n";
-        text += &evidence_block(&w.stack.notes.join("\n"));
+        text += &evidence_block(&w.stack.notes.iter().chain(&w.stack.standalone).cloned().collect::<Vec<_>>().join("\n"));
     }
     text += "## Capabilities and potential impact\n\nThese candidates need repository assessment; source descriptions are not proof of benefit.\n\n";
     let mut highlights = vec![];
@@ -1892,6 +1892,7 @@ mod tests {
             node: None,
             notes: vec![],
             spread: 0,
+            standalone: vec![],
         };
         let purls: BTreeSet<String> =
             ["pkg:npm/%40codemirror/view", "pkg:npm/express", "pkg:npm/undici", "pkg:pypi/aiohttp", "pkg:pypi/django"].map(String::from).into();
@@ -2234,7 +2235,7 @@ mod tests {
         assert!(major_step(&v("0.27.10"), &v("0.28.0")), "a minor step on 0.x is a major one");
         assert!(!major_step(&v("0.27.1"), &v("0.27.10")));
         assert!(major_step(&v("0.2.1"), &v("20.0.1")), "read the other way: a 0.2.1 capability predates a project on 20");
-        let st = crate::stack::Stack { packages: vec![], deps: Default::default(), node: None, notes: vec![], spread: 0 };
+        let st = crate::stack::Stack { packages: vec![], deps: Default::default(), node: None, notes: vec![], spread: 0, standalone: vec![] };
         assert!(!specific_reference("connection", &st));
         assert!(specific_reference("cacheLife", &st));
         assert!(specific_reference("client.beta.agents.environments", &st));

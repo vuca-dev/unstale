@@ -987,6 +987,7 @@ dependencies = [
  "anyhow",
  "clap",
  "flate2",
+ "globset",
  "ignore",
  "ring",
  "semver",
