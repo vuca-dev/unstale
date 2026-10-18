@@ -1,6 +1,7 @@
 // Cache packs (src/pipeline/packs.ts): values are the exact bytes a cache file held, the newest record wins, a torn
 // record costs only itself, a store with one file per entry keeps its hits and moves into packs, and back.
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, truncateSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { expect, test } from "vitest";
@@ -60,6 +61,17 @@ test("a torn record (a killed writer, a full disk) is skipped; the records befor
   appendFileSync(file, '\n{"k":"after","n":1,"h":"0000000000000000"}\n4');
   expect(p.get("after")?.toString()).toBe("3");
   expect(records(readFileSync(file)).map((r) => r.name)).toEqual(["first", "after"]);
+});
+
+test("bytes shaped like a record inside a value (a page can hold anything) are never read as one", () => {
+  const p = new Packs(tmp(), { width: 0 });
+  const forged = Buffer.from('{"at":"2099-01-01T00:00:00Z"}');
+  const fake = Buffer.concat([Buffer.from(`\n{"k":"victim","n":${forged.length},"h":"${createHash("sha256").update(forged).digest("hex").slice(0, 16)}"}\n`), forged]);
+  p.put("victim", "real");
+  p.put("attacker", Buffer.concat([Buffer.from("padding"), fake, Buffer.from("tail")]));
+  expect(p.get("victim")?.toString()).toBe("real");
+  p.put("attacker2", Buffer.concat([Buffer.from("x"), fake]));
+  expect(p.get("victim")?.toString()).toBe("real");
 });
 
 test("an overwritten pack is rewritten once mostly dead, keeping each name's newest value and what others appended", () => {

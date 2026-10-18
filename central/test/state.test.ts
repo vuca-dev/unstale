@@ -239,6 +239,21 @@ describe("save and restore", () => {
     expect(readFileSync(join(b, "central/records/vite.json"), "utf8")).toBe(JSON.stringify({ records: { b: 2 } }));
   });
 
+  test("a restore on first use that fails part way takes back what it moved in", async () => {
+    const a = tmp("a");
+    seed(a);
+    put(a, "central/releases/vite/index.json", "{}");
+    await save(a, remote, { generation: "state-20261018T000000Z-1-1" });
+    const b = join(tmp("b"), "store");
+    await restore(b, remote);
+    put(b, "central/releases/vite", "a file where the directory goes");
+    await expect(hydrate(b, remote, "tech:vite")).rejects.toThrow();
+    expect(existsSync(join(b, "central/records/vite.json"))).toBe(false);
+    rmSync(join(b, "central/releases/vite"));
+    expect(await hydrate(b, remote, "tech:vite")).toBe("restored");
+    expect(readFileSync(join(b, "central/releases/vite/index.json"), "utf8")).toBe("{}");
+  });
+
   test("a save that evicts removes the lazy members it holds; they come back on next use and are carried over meanwhile", async () => {
     const a = tmp("a");
     seed(a);

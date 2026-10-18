@@ -6,7 +6,6 @@
 // registry packages and are kept as they are. Every other name gets one GET of registry.npmjs.org/<name> (read only,
 // no auth), cached forever per name. A name the registry does not know is not corrected (no alias table): it moves
 // from `prerequisites` to `conditions` as prose ("<name> >= <min>"), where it is shown and never blocks.
-import { join } from "node:path";
 /** A prerequisite as extracted or as stored (the stored shape allows null bounds). */
 type Prereq = { ecosystem: string; name: string; min?: string | null | undefined; max?: string | null | undefined };
 import { PACKED_CACHES } from "./packs.ts";

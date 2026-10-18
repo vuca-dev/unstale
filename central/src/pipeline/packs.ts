@@ -12,7 +12,8 @@
 //            store not yet migrated keeps its hits; `migrate` moves those files into packs (the state restore runs it).
 //
 // A value is the exact bytes the file held, so `expand` gives the files back byte for byte. A lookup reads its pack and
-// searches it backwards (no index kept in memory), so it sees what another process appended a moment before. An
+// scans it forward from the start (no index kept in memory), so it sees what another process appended a moment before,
+// and a value that holds bytes shaped like a record (a docs page can hold anything) is never read as one. An
 // overwrite (a refreshed registry time list, a refetched page) leaves the old record behind; a pack more than half dead
 // is rewritten when it is next overwritten.
 import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, rmdirSync, rmSync, statSync, unlinkSync, writeFileSync, writeSync } from "node:fs";
@@ -37,8 +38,17 @@ export interface PackRecord {
 /** A record's value: its bytes, decompressed. */
 export const valueOf = (r: PackRecord): Buffer => (r.br ? brotliDecompressSync(r.data) : Buffer.from(r.data));
 
-/** The record whose header starts at `i` (the `\n` before `{"k":`), if it is whole and its bytes match. */
-function recordAt(buf: Buffer, i: number): PackRecord | undefined {
+interface Head {
+  name: string;
+  n: number;
+  h: string;
+  br: boolean;
+  /** Offset of the record's bytes. */
+  at: number;
+}
+
+/** The header that starts at `i` (the `\n` before `{"k":`), if it parses and its bytes fit in the buffer. */
+function headAt(buf: Buffer, i: number): Head | undefined {
   const nl = buf.indexOf(0x0a, i + 1);
   if (nl < 0) return undefined;
   let h: { k?: unknown; n?: unknown; h?: unknown; z?: unknown };
@@ -48,25 +58,47 @@ function recordAt(buf: Buffer, i: number): PackRecord | undefined {
     return undefined;
   }
   if (typeof h.k !== "string" || typeof h.n !== "number" || !Number.isSafeInteger(h.n) || h.n < 0 || typeof h.h !== "string" || (h.z !== undefined && h.z !== "br")) return undefined;
-  const end = nl + 1 + h.n;
-  if (end > buf.length) return undefined;
-  const data = buf.subarray(nl + 1, end);
-  return hash16(data) === h.h ? { name: h.k, data, br: h.z === "br", end } : undefined;
+  if (nl + 1 + h.n > buf.length) return undefined;
+  return { name: h.k, n: h.n, h: h.h, br: h.z === "br", at: nl + 1 };
 }
 
 const HEAD = Buffer.from('\n{"k":');
 
-/** Every valid record of a pack, in file order. */
-export function records(buf: Buffer): PackRecord[] {
-  const out: PackRecord[] = [];
+const sound = (buf: Buffer, h: Head): boolean => hash16(buf.subarray(h.at, h.at + h.n)) === h.h;
+
+/**
+ * The records of a pack, in file order, read forward from its start: only a record that starts where the previous one
+ * ends counts, so bytes inside a value (a page body can hold anything) are never taken for a record. A record whose
+ * end is not the start of another (a torn write) must match its checksum, or the scan resumes at the next header;
+ * `verify` checks every record's.
+ */
+function scan(buf: Buffer, verify: boolean): Array<Head & { end: number }> {
+  const out: Array<Head & { end: number }> = [];
   for (let pos = 0; pos < buf.length; ) {
     const i = buf.indexOf(HEAD, pos);
     if (i < 0) break;
-    const r = recordAt(buf, i);
-    if (r) out.push(r);
-    pos = r ? r.end : i + 1;
+    const h = headAt(buf, i);
+    if (!h) {
+      pos = i + 1;
+      continue;
+    }
+    const end = h.at + h.n;
+    const joined = end === buf.length || (buf.length - end >= HEAD.length && buf.subarray(end, end + HEAD.length).equals(HEAD));
+    if ((verify || !joined) && !sound(buf, h)) {
+      pos = i + 1;
+      continue;
+    }
+    out.push({ ...h, end });
+    pos = end;
   }
   return out;
+}
+
+const toRecord = (buf: Buffer, h: Head & { end: number }): PackRecord => ({ name: h.name, data: buf.subarray(h.at, h.end), br: h.br, end: h.end });
+
+/** Every valid record of a pack, in file order. */
+export function records(buf: Buffer): PackRecord[] {
+  return scan(buf, true).map((h) => toRecord(buf, h));
 }
 
 /** A record of stored bytes (`br`: already compressed). */
@@ -126,16 +158,10 @@ export class Packs {
     if (!NAME.test(name) || name.includes("..")) throw new Error(`not a pack entry name: ${name}`);
   }
 
-  /** The newest record of `name` in its pack. */
+  /** The newest sound record of `name` in its pack (a forward scan: see `scan`). */
   private find(buf: Buffer, name: string): PackRecord | undefined {
-    const needle = Buffer.from(`\n{"k":${JSON.stringify(name)},`);
-    for (let at = buf.length; at >= 0; ) {
-      const i = buf.lastIndexOf(needle, at);
-      if (i < 0) return undefined;
-      const r = recordAt(buf, i);
-      if (r && r.name === name) return r;
-      at = i - 1;
-    }
+    const mine = scan(buf, false).filter((h) => h.name === name);
+    for (let j = mine.length - 1; j >= 0; j--) if (sound(buf, mine[j]!)) return toRecord(buf, mine[j]!);
     return undefined;
   }
 

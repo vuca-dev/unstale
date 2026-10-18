@@ -620,12 +620,25 @@ export async function hydrate(root: string, remote: Remote, key: string, assets?
   if (!asset) throw new Error(`${key}: segment ${m.seg} is missing from the release`);
   const entries = decode(key, m, await remote.read(asset, m.offset, m.offset + m.length)).filter((e) => !excluded(e.path));
   const stage = join(stateDir(root), "tmp", randomBytes(6).toString("hex"));
-  writeEntries(stage, entries);
-  for (const e of entries) {
-    mkdirSync(dirname(join(root, e.path)), { recursive: true });
-    renameSync(join(stage, e.path), join(root, e.path));
+  // Whole or not at all: a restore that fails part way (a full disk) takes back what it moved in, so the member is not
+  // left half here, which every later restore and save would refuse.
+  const moved: string[] = [];
+  try {
+    writeEntries(stage, entries);
+    for (const e of entries) {
+      mkdirSync(dirname(join(root, e.path)), { recursive: true });
+      renameSync(join(stage, e.path), join(root, e.path));
+      moved.push(e.path);
+    }
+  } catch (err) {
+    for (const p of moved) {
+      rmSync(join(root, p), { force: true });
+      pruneEmpty(dirname(join(root, p)), join(root, "central"));
+    }
+    throw err;
+  } finally {
+    rmSync(stage, { recursive: true, force: true });
   }
-  rmSync(stage, { recursive: true, force: true });
   // Read and written in one synchronous step: concurrent restores of other keys in this process lose no entry.
   const hydrated = { ...hydratedPrints(root), [key]: fingerprint(statsOf(root, entries)) };
   writeAtomic(join(stateDir(root), "hydrated.json"), JSON.stringify(hydrated) + "\n");

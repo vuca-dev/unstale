@@ -11,6 +11,7 @@ import type { Classification, Questions } from "../../central/src/pipeline/class
 import { interpret, labelQuestions, recordState, type Labels } from "../../central/src/pipeline/classify/labels.ts";
 import type { Incoming } from "../../central/src/pipeline/extract.ts";
 import { ingest, kindOf, matchRequest, retrieve, type IncomingForGuard } from "../../central/src/pipeline/match.ts";
+import { hashedPacks } from "../../central/src/pipeline/packs.ts";
 import { REPO_ROOT } from "../../central/src/pipeline/paths.ts";
 import type { StoredRecord, TechStore } from "../../central/src/pipeline/store.ts";
 import { TECHNOLOGIES } from "../../central/src/pipeline/technologies.ts";
@@ -49,9 +50,8 @@ export function buildTimeLabelQuestions(): Questions {
 export function cached(cacheDirs: string | string[], state: Record<string, unknown>, questions: Questions): Classification | undefined {
   for (const dir of typeof cacheDirs === "string" ? [cacheDirs] : cacheDirs)
     for (const [classifier, model] of [["jev", "jev-latest"], ["codex", "gpt-5.6-luna"]] as const) {
-      const k = sha256(canonical({ classifier, model, state, questions }));
-      const p = join(dir, k.slice(0, 2), `${k}.json`);
-      if (existsSync(p)) return readJson<Classification>(p);
+      const v = hashedPacks(dir, 3).get(sha256(canonical({ classifier, model, state, questions })));
+      if (v) return JSON.parse(v.toString("utf8")) as Classification;
     }
   return undefined;
 }
