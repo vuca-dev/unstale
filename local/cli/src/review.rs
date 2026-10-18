@@ -284,7 +284,12 @@ fn plural(n: usize, one: &str, many: &str) -> String {
 /// One line per package: "bumping next 16.0.3 → 16.1.2 picks up 4 fixes, 1 security (`unstale bump next`)",
 /// then security records inline.
 pub fn digest_lines(out: &Outcome) -> Vec<String> {
-    let mut lines = vec![];
+    digest_groups(out).into_iter().flat_map(|(_, lines)| lines).collect()
+}
+
+/// `digest_lines`, grouped by technology: its head line first, then its advisory, security and workspace lines.
+pub fn digest_groups(out: &Outcome) -> Vec<(String, Vec<String>)> {
+    let mut groups = vec![];
     // Security records that carry advisories are listed per advisory (`advisory_fixes`), not per record.
     let fixes = advisory_fixes(out);
     let empty = vec![];
@@ -292,6 +297,7 @@ pub fn digest_lines(out: &Outcome) -> Vec<String> {
     let techs: std::collections::BTreeSet<&String> =
         out.digest.keys().chain(fixes.keys()).chain(out.workspaces.keys()).chain(in_effect).collect();
     for tech in techs {
+        let mut lines = vec![];
         let idx = out.digest.get(tech).unwrap_or(&empty);
         let adv = fixes.get(tech).map(Vec::as_slice).unwrap_or(&[]);
         let pkgs = out.packages.get(tech).cloned().unwrap_or_default();
@@ -390,8 +396,11 @@ pub fn digest_lines(out: &Outcome) -> Vec<String> {
                 if obligations > 0 { format!("; {}", plural(obligations, "obligation", "obligations")) } else { String::new() }
             ));
         }
+        if !lines.is_empty() {
+            groups.push((tech.clone(), lines));
+        }
     }
-    lines
+    groups
 }
 
 /// "1 deprecation in effect now (at the installed version)": a technology's `Outcome::in_effect` records, after `sep`.
@@ -443,7 +452,7 @@ pub struct AdvisoryFix {
 }
 
 impl AdvisoryFix {
-    fn line(&self, out: &Outcome) -> String {
+    pub fn line(&self, out: &Outcome) -> String {
         let o = &out.opps[self.opp];
         let a = &o.rec.r.advisories[self.advisory];
         let mut tags: Vec<String> = a.aliases.iter().map(|x| one_line(x, FIELD_MAX)).collect();
