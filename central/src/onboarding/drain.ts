@@ -25,6 +25,16 @@
 // drain, so a budget raised or reset clears it at the next one; registrations are still queued meanwhile.
 // `drained: false` on the final line means the deadline ended the drain with work left.
 //
+// Slices that outlast a cycle: a job still running at the drain's end is killed with it and resumed by the next cycle,
+// its work time kept. Resumed slices hold at most the slots admitted work may hold while a new technology waits, so
+// they never take every slot; one that has worked 40 minutes (or spanned 4 cycles) without finishing is stopped, its
+// stage named, and retried after 6 h (`stopped` on the final line).
+//
+// Rate limits (HTTP 429, from any service a job reads) are the runner's own request rate, not the package's: no
+// failure is counted. Every start pauses (1 minute, doubling while 429s follow one another up to 15, at least the
+// server's Retry-After), the job is retried after the pause, and the drain waits for it when the pause ends before the
+// deadline. `rate_limited` on the final line counts jobs still paused; they are work left (`drained: false`).
+//
 //   npm run drain -- [--minutes 240] [--grace-minutes 10] [--concurrency 4] [--pull-minutes 5] [--taken <file>]
 //   npm run drain -- ack <file>
 //   npm run drain -- idle

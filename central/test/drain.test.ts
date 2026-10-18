@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import * as discovery from "../src/onboarding/discovery.ts";
-import { CoverageService } from "../src/onboarding/service.ts";
+import { CoverageService, SLICE_LIMIT_CYCLES, SLICE_LIMIT_MS } from "../src/onboarding/service.ts";
 import { Taken } from "../src/onboarding/taken.ts";
 import type { Limits } from "../src/onboarding/limits.ts";
 import { exportCatalog } from "../src/pipeline/export.ts";
@@ -156,15 +156,144 @@ test("a package missing from its registry is parked for a week, not retried as a
 
 test("a monitored technology whose refresh fails stays monitoring with its records; a new one that fails is failed", async () => {
   const { FetchFailure } = await import("../src/collector/http.ts");
-  vi.spyOn(discovery, "discoverTechnology").mockRejectedValue(new FetchFailure("http_status", "HTTP 429", 429));
+  vi.spyOn(discovery, "discoverTechnology").mockRejectedValue(new FetchFailure("http_status", "HTTP 500", 500));
   const service = new CoverageService(2, { limits: limits() }).hold();
   const covered = service.submit("pkg:npm/covered");
   Object.assign(covered, { state: "monitoring", retry_at: "2000-01-01T00:00:00.000Z", admitted: "test", records: 12 });
   service.enqueue([{ purl: "pkg:npm/new", demand: 1 }]);
   await service.drain(Date.now() + 60_000, 5_000, 10);
-  expect(covered).toMatchObject({ state: "monitoring", failures: 1, stage: expect.stringMatching(/^12 verified records; refresh failed \(HTTP 429\), retried after /) });
+  expect(covered).toMatchObject({ state: "monitoring", failures: 1, stage: expect.stringMatching(/^12 verified records; refresh failed \(HTTP 500\), retried after /) });
   expect(Date.parse(covered.retry_at!)).toBeGreaterThan(Date.now());
-  expect(service.jobs.get("pkg:npm/new")).toMatchObject({ state: "failed", stage: "HTTP 429", failures: 1 });
+  expect(service.jobs.get("pkg:npm/new")).toMatchObject({ state: "failed", stage: "HTTP 500", failures: 1 });
+});
+
+test("a rate limit counts no failure: the job waits out a pause that holds every start, then the next cycle retries it", async () => {
+  const { FetchFailure } = await import("../src/collector/http.ts");
+  const spy = vi.spyOn(discovery, "discoverTechnology").mockRejectedValue(new FetchFailure("http_status", "HTTP 429", 429));
+  const service = new CoverageService(1, { limits: limits() }).hold();
+  const covered = service.submit("pkg:npm/covered");
+  Object.assign(covered, { state: "monitoring", retry_at: "2000-01-01T00:00:00.000Z", admitted: "test", records: 12, failures: 0 });
+  service.enqueue([{ purl: "pkg:npm/new", demand: 1 }]);
+  const r = await service.drain(Date.now() + 300, 1_000, 10);
+  // One slot: the first job's 429 pauses every start (a minute at first), so the second is not sent into the same refusal.
+  expect(r).toEqual({ started: 1, unfinished: 0, drained: false, rate_limited: 1 });
+  expect(spy).toHaveBeenCalledTimes(1);
+  expect(covered).toMatchObject({ state: "monitoring", failures: 0, stage: expect.stringMatching(/^12 verified records; refresh rate-limited \(HTTP 429\), retried after /) });
+  expect(Date.parse(covered.paused_until!) - Date.now()).toBeGreaterThan(50_000);
+  // Paused jobs are not due; a new process (the next cycle) respects the pause it saved.
+  const next = new CoverageService(1, { limits: limits() });
+  expect(next.queue().map((j) => j.purl)).toEqual(["pkg:npm/new"]);
+  expect(next.jobs.get("pkg:npm/covered")).toMatchObject({ failures: 0 });
+  expect(next.statuses().find((s) => s.purl === "pkg:npm/covered")).not.toHaveProperty("paused_until");
+});
+
+test("a pause that ends before the deadline is waited out in the same drain, longer when the server's Retry-After says so", async () => {
+  vi.useFakeTimers();
+  const { FetchFailure } = await import("../src/collector/http.ts");
+  const answer = noSources().getMockImplementation()!;
+  let calls = 0;
+  vi.spyOn(discovery, "discoverTechnology").mockImplementation(async (purl) => {
+    if (++calls === 1) throw new FetchFailure("http_status", "HTTP 429", 429, 120_000);
+    return answer(purl);
+  });
+  const service = new CoverageService(1, { limits: limits() }).hold();
+  service.enqueue([{ purl: "pkg:npm/a", demand: 2 }, { purl: "pkg:npm/b", demand: 1 }]);
+  const t0 = Date.now();
+  const done = service.drain(t0 + 10 * 60_000, 0, 500);
+  await vi.advanceTimersByTimeAsync(100_000);
+  // Inside the server's 120 s: the first job is paused and nothing else started.
+  expect(service.jobs.get("pkg:npm/a")).toMatchObject({ state: "queued", stage: expect.stringMatching(/^Rate-limited \(HTTP 429\)/) });
+  expect(calls).toBe(1);
+  await vi.advanceTimersByTimeAsync(30_000);
+  const r = await done;
+  expect(r).toEqual({ started: 3, unfinished: 0, drained: true });
+  expect(Date.now() - t0).toBeLessThan(10 * 60_000);
+  expect(service.jobs.get("pkg:npm/a")).toMatchObject({ state: "blocked" });
+  expect(service.jobs.get("pkg:npm/a")?.failures).toBeUndefined();
+});
+
+test("jobs whose failures were rate limits (the old accounting) are retried at once with their count cleared", () => {
+  const jobs = join(centralDir(), "onboarding", "jobs");
+  mkdirSync(jobs, { recursive: true });
+  const later = new Date(Date.now() + 4 * 3600_000).toISOString();
+  const write = (purl: string, fields: object) =>
+    writeFileSync(join(jobs, `${sha256(purl)}.json`), JSON.stringify({ schema: 1, purl, technology: purl, name: purl, updated: later, records: 0, releases_done: 0, releases_total: 0, docs_done: 0, docs_total: 0, docs_failed: 0, ...fields }));
+  write("pkg:npm/limited", { state: "failed", stage: "HTTP 429", failures: 10, retry_at: later });
+  write("pkg:npm/refresh", { state: "monitoring", stage: "3 verified records; refresh failed (https://registry.npmjs.org/x: 429), retried after x", failures: 2, retry_at: later, records: 3, admitted: "t" });
+  write("pkg:npm/broken", { state: "failed", stage: "HTTP 500", failures: 4, retry_at: later });
+  const service = new CoverageService(0, { limits: limits() });
+  expect(service.jobs.get("pkg:npm/limited")).toMatchObject({ state: "queued", stage: "Waiting for a coverage worker", failures: 0 });
+  expect(service.jobs.get("pkg:npm/refresh")).toMatchObject({ state: "monitoring", failures: 0 });
+  expect(service.jobs.get("pkg:npm/broken")).toMatchObject({ state: "failed", failures: 4, retry_at: later });
+  expect(service.queue().map((j) => j.purl).sort()).toEqual(["pkg:npm/limited", "pkg:npm/refresh"]);
+});
+
+test("a slice killed with its cycle keeps its work time; past the limit it is stopped with its stage, not resumed first", async () => {
+  hanging();
+  const service = new CoverageService(2, { limits: limits() }).hold();
+  dueRefresh(service, "pkg:npm/refresh");
+  service.enqueue([{ purl: "pkg:npm/new", demand: 1 }]);
+  expect(await service.drain(Date.now() + 50, 0, 10)).toMatchObject({ started: 2, unfinished: 2, drained: false });
+  const next = new CoverageService(2, { limits: limits() });
+  for (const purl of ["pkg:npm/refresh", "pkg:npm/new"])
+    expect(next.jobs.get(purl)).toMatchObject({ state: "queued", stage: "Resuming interrupted coverage", interrupted: { cycles: 1, stage: "Verifying public registry identity and official sources" } });
+  expect(next.jobs.get("pkg:npm/refresh")!.interrupted!.refresh).toBe(true);
+  expect(next.statuses().find((s) => s.purl === "pkg:npm/new")).not.toHaveProperty("interrupted");
+  // Two full cycles of work without finishing (the limit), as the saved state of a later cycle would hold.
+  const jobs = join(centralDir(), "onboarding", "jobs");
+  for (const purl of ["pkg:npm/refresh", "pkg:npm/new"]) {
+    const file = join(jobs, `${sha256(purl)}.json`);
+    const job = JSON.parse(readFileSync(file, "utf8"));
+    job.state = "partial";
+    job.stage = "Checking security advisories";
+    job.interrupted.ms = SLICE_LIMIT_MS;
+    job.interrupted.stage = "Checking security advisories";
+    job.interrupted.cycles = 2;
+    writeFileSync(file, JSON.stringify(job));
+  }
+  const third = new CoverageService(2, { limits: limits() }).hold();
+  const stopped = /"Checking security advisories" did not finish in 40 minutes over 2 cycles; retried after /;
+  expect(third.jobs.get("pkg:npm/refresh")).toMatchObject({ state: "monitoring", failures: 1, stage: expect.stringMatching(stopped) });
+  expect(third.jobs.get("pkg:npm/new")).toMatchObject({ state: "failed", failures: 1, stage: expect.stringMatching(/^Stopped: /) });
+  expect(Date.parse(third.jobs.get("pkg:npm/new")!.retry_at!) - Date.now()).toBeGreaterThan(5 * 3600_000);
+  expect(third.jobs.get("pkg:npm/new")).not.toHaveProperty("interrupted");
+  expect(third.queue()).toEqual([]);
+  expect(await third.drain(Date.now() + 50, 0, 10)).toMatchObject({ started: 0, stopped: 2 });
+});
+
+test("a slice found interrupted with no recorded time (a cancelled run) counts a cycle; after SLICE_LIMIT_CYCLES it is stopped", () => {
+  const jobs = join(centralDir(), "onboarding", "jobs");
+  mkdirSync(jobs, { recursive: true });
+  const write = (purl: string, fields: object) =>
+    writeFileSync(join(jobs, `${sha256(purl)}.json`), JSON.stringify({ schema: 1, purl, technology: purl, name: purl, updated: "x", records: 4, releases_done: 0, releases_total: 0, docs_done: 0, docs_total: 0, docs_failed: 0, admitted: "t", ...fields }));
+  write("pkg:npm/legacy", { state: "partial", stage: "Checking security advisories" });
+  write("pkg:npm/crashing", { state: "analyzing", stage: "Reading official release history", interrupted: { ms: 0, cycles: SLICE_LIMIT_CYCLES - 1, stage: "Reading official release history" } });
+  const service = new CoverageService(0, { limits: limits() });
+  expect(service.jobs.get("pkg:npm/legacy")).toMatchObject({ state: "queued", interrupted: { ms: 0, cycles: 1, stage: "Checking security advisories" } });
+  expect(service.jobs.get("pkg:npm/crashing")).toMatchObject({ state: "queued", interrupted: { cycles: SLICE_LIMIT_CYCLES - 1 } });
+  // The next process finds it interrupted again, with no drain's end to count it: the cycle it loads at is the limit.
+  const file = join(jobs, `${sha256("pkg:npm/crashing")}.json`);
+  const job = JSON.parse(readFileSync(file, "utf8"));
+  Object.assign(job, { state: "analyzing", interrupted: { ...job.interrupted, cycles: SLICE_LIMIT_CYCLES } });
+  writeFileSync(file, JSON.stringify(job));
+  expect(new CoverageService(0, { limits: limits() }).jobs.get("pkg:npm/crashing")).toMatchObject({ state: "failed", stage: expect.stringMatching(/^Stopped: "Reading official release history" did not finish in 0 minutes over 4 cycles/) });
+});
+
+test("resumed slices never take every slot, even with nothing else waiting when they start", async () => {
+  hanging();
+  const first = new CoverageService(3, { limits: limits() }).hold();
+  for (const n of ["c1", "c2", "c3"]) dueRefresh(first, `pkg:npm/${n}`);
+  await first.drain(Date.now() + 50, 0, 10);
+  const service = new CoverageService(3, { limits: limits() }).hold();
+  const done = service.drain(Date.now() + 300, 0, 10);
+  // A new package arrives after the resumed slices took their slots: one slot is still free for it.
+  setTimeout(() => service.enqueue([{ purl: "pkg:npm/new", demand: 1 }]), 100);
+  expect(await done).toMatchObject({ started: 3, unfinished: 3 });
+  const working = [...service.jobs.keys()].filter((p) => service.working(p));
+  expect(working).toContain("pkg:npm/new");
+  // Two resumed slices ran (now interrupted twice); the third waits for a slot they may hold.
+  expect(working.filter((p) => service.jobs.get(p)?.interrupted?.cycles === 2).length).toBe(2);
+  expect(service.jobs.get("pkg:npm/new")?.interrupted?.cycles).toBe(1);
 });
 
 // Discovery that never answers: a job started stays running, so a test can see which jobs hold the slots.
