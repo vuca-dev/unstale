@@ -241,7 +241,7 @@ async function main(): Promise<void> {
       const r = exportCatalog(catalogDir(), positionals[0]!);
       const { deleted, started, kept, unreadable } = r.prune;
       if (!r.signed) console.error("export: UNSTALE_SIGNING_KEY is not set; the catalog is unsigned, and release clients refuse it over HTTP");
-      console.log(JSON.stringify({ signed: r.signed, technologies: r.technologies, shards: r.shards, bytes: r.bytes, coverage: r.coverage, pruned: deleted, clock_started: started.length, in_grace: kept.length, unreadable }));
+      console.log(JSON.stringify({ signed: r.signed, technologies: r.technologies, shards: r.shards, linked: r.linked, bytes: r.bytes, coverage: r.coverage, pruned: deleted, clock_started: started.length, in_grace: kept.length, unreadable }));
       return;
     }
     case "usage": {
