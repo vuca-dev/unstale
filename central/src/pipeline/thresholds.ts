@@ -14,6 +14,10 @@ export const CROSS_SAME_P = 0.85;
  * (eval/select/slice5/RESULTS-judge2.md, "M8"): at the old bars it let one wrong merge through on held-out. */
 export const SAME_P_SHORT = 0.87;
 export const CROSS_SAME_P_SHORT = 0.87;
+/** Under the shorter rule text, a candidate gets a same-or-new question only at or above this retrieval score
+ * (match.ts retrieve); the state still shows every candidate, and a request left with no question is not sent. Fitted
+ * on dev, where the lowest-scoring true match scored 0.63 (eval/select/slice5/RESULTS-judge2.md, "Question floor"). */
+export const QUESTION_FLOOR = 0.6;
 
 export const isBorderline = (p: number): boolean => p >= BORDERLINE[0] && p < BORDERLINE[1];
 

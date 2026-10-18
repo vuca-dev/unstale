@@ -6,7 +6,7 @@ import type { Labels } from "./classify/labels.ts";
 import type { Incoming } from "./extract.ts";
 import { lineFn } from "./lines.ts";
 import { applyChange, combineReleases, mintId, union, type Evidence, type Judged, type StoredRecord, type TechStore } from "./store.ts";
-import { CROSS_SAME_P, CROSS_SAME_P_SHORT, LINEAGE_SAME_P, SAME_P, SAME_P_SHORT } from "./thresholds.ts";
+import { CROSS_SAME_P, CROSS_SAME_P_SHORT, LINEAGE_SAME_P, QUESTION_FLOOR, SAME_P, SAME_P_SHORT } from "./thresholds.ts";
 import { FLIPS, technical } from "../docs/materiality.ts";
 
 export const K = 8;
@@ -115,7 +115,11 @@ const brief = (r: { subject: string; facet?: string | undefined; summary: string
 export const kindsOf = (r: Pick<StoredRecord, "evidence">): Set<Evidence["kind"]> => new Set(r.evidence.map((e) => e.kind ?? "release_notes"));
 export const kindOf = (inc: { kind?: Incoming["kind"] }): Evidence["kind"] => inc.kind ?? "release_notes";
 
-export function matchRequest(techName: string, inc: Incoming, breaking: boolean, cands: StoredRecord[]): { state: Record<string, unknown>; questions: Questions } {
+/**
+ * The judge request. With retrieval `scores` (one per candidate) and the shorter rules, only candidates scored at or
+ * above QUESTION_FLOOR get a question; the state keeps every candidate, so the questions asked read the same request.
+ */
+export function matchRequest(techName: string, inc: Incoming, breaking: boolean, cands: StoredRecord[], scores?: number[]): { state: Record<string, unknown>; questions: Questions } {
   // Sources are named only when something other than release notes takes part, so release-notes-only requests (and
   // their cached answers) are byte-identical to the ones before upgrade guides were added.
   const mixed = kindOf(inc) !== "release_notes" || cands.some((c) => [...kindsOf(c)].some((k) => k !== "release_notes"));
@@ -132,16 +136,20 @@ export function matchRequest(techName: string, inc: Incoming, breaking: boolean,
   };
   const rules = kindOf(inc) === "advisory" ? `${RULES_V3}\n${ADVISORY_RULE}` : mixed ? `${RULES_V3}\n${CROSS_SOURCE_RULE}` : RULES_V3;
   const short = shortRulesApply(inc, cands);
+  const asked = (i: number) => !short || !scores || scores[i]! >= QUESTION_FLOOR;
   const questions: Questions = Object.fromEntries(
-    cands.map((_, i) => [
-      `same_c${i + 1}`,
-      {
-        instructions: short
-          ? `${shortRules(`c${i + 1}`)}${mixed ? `\n${SHORT_CROSS_RULE}` : ""}`
-          : `Does the incoming record describe the same change as candidate c${i + 1}?\n${rules}`,
-        options: { yes: `The same change as candidate c${i + 1}.`, no: `A different change from candidate c${i + 1}, or unsure.` },
-      },
-    ]),
+    cands
+      .map((_, i) => i)
+      .filter(asked)
+      .map((i) => [
+        `same_c${i + 1}`,
+        {
+          instructions: short
+            ? `${shortRules(`c${i + 1}`)}${mixed ? `\n${SHORT_CROSS_RULE}` : ""}`
+            : `Does the incoming record describe the same change as candidate c${i + 1}?\n${rules}`,
+          options: { yes: `The same change as candidate c${i + 1}.`, no: `A different change from candidate c${i + 1}, or unsure.` },
+        },
+      ]),
   );
   return { state, questions };
 }
@@ -335,7 +343,9 @@ export function pick(cands: StoredRecord[], answers: Classification["answers"], 
   const sameP = short ? SAME_P_SHORT : SAME_P;
   const crossP = short ? CROSS_SAME_P_SHORT : CROSS_SAME_P;
   const judged: Judged[] = cands.map((c, i) => {
-    const p = answers[`same_c${i + 1}`]?.probabilities.yes ?? 0;
+    const a = answers[`same_c${i + 1}`];
+    if (!a) return { id: c.id, p: 0, outcome: "unasked" };
+    const p = a.probabilities.yes ?? 0;
     if (p < sameP) return { id: c.id, p, outcome: "below" };
     // An uncalibrated "yes" (a text generator's choice, adapter.ts) is no evidence of how sure the judge is: every
     // probability-gated guard applies as if p were 0, so it merges only on a near-identical quote of the same kind,
@@ -448,7 +458,10 @@ export interface MatchOutcome {
   related: string[];
 }
 
-/** Ingests one incoming record into the store: match or create; links finer/broader candidates via `related`. */
+/**
+ * Ingests one incoming record into the store: match or create; links finer/broader candidates via `related`.
+ * `questionFloor: false` asks every candidate, as ingest did before QUESTION_FLOOR: for replaying stores built then.
+ */
 export async function ingest(
   s: TechStore,
   techName: string,
@@ -456,14 +469,17 @@ export async function ingest(
   inc: Incoming,
   labels: Labels,
   judge: (state: Record<string, unknown>, questions: Questions) => Promise<Classification>,
+  { questionFloor = true }: { questionFloor?: boolean } = {},
 ): Promise<MatchOutcome> {
   const prev = s.ingested[inc.key];
   if (prev) return { key: inc.key, id: prev, matched: false, candidates: 0, judged: [], related: [] };
-  const cands = retrieve(inc, Object.values(s.records)).map((c) => s.records[c.id]!);
+  const found = retrieve(inc, Object.values(s.records));
+  const cands = found.map((c) => s.records[c.id]!);
   let chosen: { id?: string; p?: number; judged: Judged[] } = { judged: [] };
   if (cands.length) {
-    const req = matchRequest(techName, inc, labels.breaking, cands);
-    const verdict = await judge(req.state, req.questions);
+    const req = matchRequest(techName, inc, labels.breaking, cands, questionFloor ? found.map((c) => c.score) : undefined);
+    // No candidate at the question floor: nothing to ask, the record is new.
+    const verdict: Pick<Classification, "answers" | "calibrated"> = Object.keys(req.questions).length ? await judge(req.state, req.questions) : { answers: {} };
     chosen = pick(cands, verdict.answers, { breaking: labels.breaking, quote: inc.quote, summary: inc.summary, kind: kindOf(inc), url: inc.url, snapshot: inc.snapshot, version: inc.version }, verdict.calibrated !== false);
   }
   if (chosen.id) {

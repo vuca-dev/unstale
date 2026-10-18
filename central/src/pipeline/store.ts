@@ -49,7 +49,8 @@ export interface StoredRecord {
 export interface Judged {
   id: string;
   p: number;
-  outcome: "same" | "below" | "not-best" | "guard:breaking" | "guard:advisory" | "guard:quote" | "guard:cross" | "guard:lineage";
+  /** "unasked": retrieved below QUESTION_FLOOR, so no question was asked (p is 0). */
+  outcome: "same" | "below" | "unasked" | "not-best" | "guard:breaking" | "guard:advisory" | "guard:quote" | "guard:cross" | "guard:lineage";
 }
 
 export interface TechStore {

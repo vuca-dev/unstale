@@ -15,6 +15,7 @@ import { REPO_ROOT } from "../../central/src/pipeline/paths.ts";
 import type { StoredRecord, TechStore } from "../../central/src/pipeline/store.ts";
 import { TECHNOLOGIES } from "../../central/src/pipeline/technologies.ts";
 import { canonical, compareVersions, sha256 } from "../../central/src/pipeline/util.ts";
+import { BENEFIT_DEFS, BENEFIT_RULE, BREAKING_RUBRIC } from "../../central/src/pipeline/vocab.ts";
 
 export const STORE = join(REPO_ROOT, ".store");
 export const EVAL = join(REPO_ROOT, "eval");
@@ -23,7 +24,26 @@ const readJson = <T>(p: string): T => JSON.parse(readFileSync(p, "utf8")) as T;
 /** Technologies outside TECHNOLOGIES that a set uses (eval/heldout/nuxt.mts NUXT). */
 const EXTRA: Record<string, { name: string; components: string[] }> = { nuxt: { name: "Nuxt", components: ["pkg:npm/nuxt"] } };
 export const techName = (id: string): string => TECHNOLOGIES[id]?.name ?? EXTRA[id]?.name ?? id;
-const components = (id: string): string[] => TECHNOLOGIES[id]?.components ?? EXTRA[id]?.components ?? [];
+export const components = (id: string): string[] => TECHNOLOGIES[id]?.components ?? EXTRA[id]?.components ?? [];
+
+/**
+ * The label questions in the wording the stores were built with (before f99833e shortened them to slice 4's "v1"). The
+ * stores' caches are keyed by that wording, so faithfulness is proven against it; the states themselves did not change.
+ * A run asks the pipeline's current labelQuestions().
+ */
+export function buildTimeLabelQuestions(): Questions {
+  const q = structuredClone(labelQuestions());
+  q.change_type!.instructions = "What kind of change does this record describe? Pick the one type that fits the change best.";
+  q.breaking = { instructions: `Is this change BREAKING?\n${BREAKING_RUBRIC}`, options: { yes: "Breaking, by the rubric.", no: "Not breaking, by the rubric." } };
+  for (const id of Object.keys(q).filter((k) => k.startsWith("benefit_"))) {
+    const b = id.slice("benefit_".length) as keyof typeof BENEFIT_DEFS;
+    q[id] = {
+      instructions: `Does this change bring a ${b} benefit to a project that uses it? ${b}: ${BENEFIT_DEFS[b]} ${BENEFIT_RULE}`,
+      options: { yes: `A ${b} benefit, stated by the source or the documented purpose of the feature.`, no: `No ${b} benefit stated or implied by the documented purpose.` },
+    };
+  }
+  return q;
+}
 
 /** The pipeline's cached answer to exactly this request (Jev as primary, the Codex fallback second), if any. */
 export function cached(cacheDirs: string | string[], state: Record<string, unknown>, questions: Questions): Classification | undefined {
@@ -77,7 +97,7 @@ export function benefitUnits(central = join(STORE, "central-trust")): Built<Clas
   const excluded: Built<ClassifyUnit>["excluded"] = [];
   const stores = new Map<string, TechStore>();
   const exts = new Map<string, Map<string, Incoming>>();
-  const q = labelQuestions();
+  const q = buildTimeLabelQuestions();
   for (const { id } of ref) {
     const tech = id.slice(0, id.indexOf(":"));
     if (!stores.has(tech)) stores.set(tech, readJson<TechStore>(join(central, "records", `${tech}.json`)));
@@ -178,7 +198,7 @@ const guardOf = (inc: Incoming, breaking: boolean): IncomingForGuard => ({ break
 export async function replay(central: string, tech: string): Promise<{ requests: Map<string, Request>; hits: number; misses: number }> {
   const cache = join(central, "cache", "classifier");
   const real = readJson<TechStore>(join(central, "records", `${tech}.json`));
-  const q = labelQuestions();
+  const q = buildTimeLabelQuestions();
   const order: Array<{ inc: Incoming; lab: Labels }> = [];
   let hits = 0;
   let misses = 0;
@@ -204,7 +224,7 @@ export async function replay(central: string, tech: string): Promise<{ requests:
       misses++;
       const no = { choice: "no", confidence: 1, probabilities: { yes: 0, no: 1 } };
       return { classifier: "jev", model: "miss", answers: Object.fromEntries(Object.keys(questions).map((k) => [k, no])) };
-    });
+    }, { questionFloor: false }); // the stores were built before QUESTION_FLOOR: every candidate was asked
   }
   return { requests, hits, misses };
 }
@@ -262,7 +282,7 @@ export function guideUnits(central = join(STORE, "central-pre-rematch")): Built<
     if (!exts.has(t)) exts.set(t, new Map([...extractions(join(STORE, "central"), t), ...extractions(central, t)]));
     if (!reqs.has(p.incoming.key)) {
       const inc = exts.get(t)!.get(p.incoming.key);
-      const lab = inc && cached(cache, recordState(techName(t), inc), labelQuestions());
+      const lab = inc && cached(cache, recordState(techName(t), inc), buildTimeLabelQuestions());
       if (!inc || !lab) {
         reqs.set(p.incoming.key, undefined);
         excluded.push({ item: `guides ${p.incoming.key}`, why: inc ? "guide item's label request not in any cache" : "guide item has no stored extraction" });

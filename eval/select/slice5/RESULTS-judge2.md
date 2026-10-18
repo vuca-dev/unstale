@@ -154,3 +154,81 @@ For cross-source requests (notes ↔ guide), append:
 Release notes and an upgrade guide describe the same change in different words and detail.
 ```
 Constants: SAME_P 0.87, CROSS_SAME_P 0.87, QUOTE_GUARD_BELOW 0.95.
+
+## Question floor (17 October 2026)
+
+Pre-registration: `PREREG.md` § "Question floor", written after the dev fit and before the held-out run. Arm **Q8**:
+the production M8 request, with every candidate still in the state. A `same_cN` question is asked only when the
+candidate's retrieval score (match.ts `retrieve`) is at least **0.60**. With no question left, there is no call and the
+record is new. Scripts:
+- `floor.mts` recomputes the scores. They are stored nowhere; the recomputation reproduces 365/365 candidate orders.
+- `floor.mts` also measures the population. Ingest is replayed from empty, following each store's own decisions:
+  1,072/1,072 decisions reproduce for central-v1 and 794/794 for Nuxt.
+- `judge2.mts --arm Q8 --floor 0.6` runs the arm.
+- `score5.mts --floor 0.6 --base M8 --fixed 0.87,0.87,0.95` scores it, writing `out/slice5/summary-floor-vs-M8-fixed.json`.
+
+**Verdict: Q8 passes. Ship the floor at 0.60.** On held-out it matches production M8 on false merges, and recall is no
+worse (one item gained, none lost). Applied to M8's own held-out answers, the floor changes no decision at all. It
+removes a quarter of the Jev input on the labelled requests. Over a technology's whole ingest it removes 41–53% of
+step E's Jev input.
+
+| | Production M8 | **Q8 (floor 0.60)** |
+|---|---|---|
+| HO merges | 178 | 179 |
+| **HO guarded false per 100** [95% CI] | 0.8 [0.3–4.8] (0 D, 3 U) | **0.8** [0.3–4.8] (0 D, 3 U) |
+| HO judge-only false per 100 | 2.4 | 2.4 |
+| **HO recall** | 88.8% (175/197) | **89.3%** (176/197) |
+| vs M8 | — | recall 0 lost / 1 gained, McNemar p 1.0, Δ CI 0…+1.5 pts; false merges 0 / 0, p 1.0 |
+| M8's own answers with the floor applied (no calls) | — | identical to M8: 178 merges, 175/197, 0.8 |
+| Dev recall, false per 100 | 106/109, 0.9 | 104/109, 0.5 |
+| Jev input per labelled request (HO / dev) | 2,144 / 2,262 | **1,591 / 1,686 (−26% / −25%)** |
+| Population: requests not sent / questions kept / **Jev input saved** | — | central-v1 (Next.js, Prisma, NestJS; 1,001 requests): 30.6% / 39.9% / **52.9%**; Nuxt (768): 13.7% / 50.8% / **40.9%** |
+| $ per 10k technologies a year (from M8's $110) | $110 | about **$52–65** |
+
+All rows are scored at production's constants: SAME_P_SHORT 0.87, CROSS_SAME_P_SHORT 0.87, QUOTE_GUARD_BELOW 0.95.
+
+**How it was measured:**
+- **Invariance (Q8's p against M8's p on the questions still asked).**
+  - Dev: 612 questions, mean |Δp| 0.0030, 85% identical, p95 0.02, max 0.14.
+  - Held-out: 1,033 questions, mean 0.0034, max 0.10.
+  - Run-to-run (J1 run 1 against run 2): mean 0.0030, 89% identical, max 0.20.
+  - No drift in either direction: the signed mean is within ±0.001 per set. Dropping a question doesn't move the others.
+- **The dev recall difference (104 against 106) is that noise.** Three guide items asked in both arms sat at
+  0.87–0.90 under M8 and moved by 0.03–0.04, all at retrieval scores ≥ 1.7. M8's own dev answers with the floor applied
+  keep 106/109.
+- **Labelled sets understate the saving.** Every eval pair had Jev p ≥ 0.5 when it was found, so only 3 of 365
+  requests are skipped. The population replay measures the saving. In it the fully skipped requests are 14–31%, and the
+  questions dropped from requests that are still sent supply the rest.
+- **Correction (17 October 2026, code review).** The population figures first reported here (central-v1 34.7% / 35.1% /
+  57.7%, Nuxt 17.1% / 44.4% / 47.0%, about $46–58) came from a replay that built records without their releases, so no
+  candidate got retrieval's same-line bonus (+0.05). The figures above are from the fixed replay. The floor fit and the
+  held-out result do not use the replay: their scores come from the stored candidates (`floor.mts --scores`). The
+  lowest merge scores are unchanged (0.628 central-v1, 0.389 Nuxt).
+
+**What the floor gives up:**
+- **The floor misses some true matches, but M8 rejects these too.**
+  - Of the population's 235 merges, one falls below 0.60: Nuxt `nuxt@4.3.1#0.1` → `nuxt:default-ignore`, audited SAME,
+    score 0.39.
+  - The held-out set has 2 audited SAME pairs below 0.60, and M8 rejects both anyway: p 0.78 and 0.75, below its 0.87
+    bar.
+  - The floor is safe at the current SAME_P_SHORT. **If that bar falls toward 0.7, refit the floor.**
+- **Floors below 0.60 also remove wrong merges.** On dev, four candidates sit below 0.60 at M8 p ≥ 0.5: 3 DIFFERENT
+  and 1 UNSURE. Below the floor, Jev's high p is mostly wrong.
+
+**Scope:** release notes and upgrade guides (`shortRulesApply`), where M8 was measured. Advisories, docs and lineage
+keep every question. An unasked candidate is recorded in the history with outcome `unasked` (p 0), distinct from
+`below`.
+
+**Rejected (not run):**
+- **A higher floor (0.65 to 1.0):** central-v1 has a true merge at 0.63, so a floor that high was rejected on dev.
+- **A floor fitted on held-out:** that would be leakage.
+
+**Evalisms:**
+- Recall is measured within Jev's pair set.
+- Next.js is in both the guide holdout and dev.
+- One merge is 0.55 per 100.
+- The population saving is measured in request characters (Jev input tokens scale with them). It covers four
+  technologies. The store's 11.4k judged requests have no stored incoming items, so they can't be replayed. Their p
+  profile (72% with no candidate at p ≥ 0.05) is consistent with this saving.
+
+**Spend:** Jev $0.025: dev $0.009, held-out $0.016 (`out/slice5/floor-usage.jsonl`). No gateway or Cloudflare.
