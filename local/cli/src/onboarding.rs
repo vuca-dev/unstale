@@ -874,6 +874,8 @@ fn highlight_indices(out: &Outcome, w: &World) -> Vec<usize> {
                     | funnel::Route::BeyondTarget
                     | funnel::Route::OlderLine
                     | funnel::Route::OtherPackage
+                    | funnel::Route::Baseline
+                    | funnel::Route::RequiresAbsent
             ) {
                 return None;
             }

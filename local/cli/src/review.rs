@@ -219,7 +219,7 @@ fn render_record(pass: Pass, o: &Opp) -> String {
     let pkg = pkg_name(o);
     match pass {
         Pass::UpgradeReview if o.route == Route::InEffect => {
-            s += &format!("- Release: {pkg} {} (installed {}; in effect now, no upgrade needed)\n", o.release.version, o.installed)
+            s += &format!("- Release: {pkg} {} (installed {}; in effect now)\n", o.release.version, o.installed)
         }
         Pass::UpgradeReview => {
             s += &format!("- Release: {pkg} {} (installed {}, target {})\n", o.release.version, o.installed, o.target)
@@ -392,10 +392,10 @@ pub fn digest_lines(out: &Outcome) -> Vec<String> {
     lines
 }
 
-/// "1 deprecation in effect now (no upgrade needed)": a technology's `Outcome::in_effect` records, after `sep`.
+/// "1 deprecation in effect now (at the installed version)": a technology's `Outcome::in_effect` records, after `sep`.
 fn in_effect_note(out: &Outcome, tech: &str, sep: &str) -> String {
     let n = out.in_effect.iter().filter(|&&i| out.opps[i].rec.r.technology == tech).count();
-    if n > 0 { format!("{sep}{} in effect now (no upgrade needed)", plural(n, "deprecation", "deprecations")) } else { String::new() }
+    if n > 0 { format!("{sep}{} in effect now (at the installed version)", plural(n, "deprecation", "deprecations")) } else { String::new() }
 }
 
 fn obligations_note(n: usize) -> String {
@@ -650,7 +650,7 @@ pub fn render(view: &View, out: &Outcome, catalog: &Catalog) -> String {
     s += "\n\n";
     if !view.in_effect.is_empty() {
         s += &format!(
-            "## In effect now ({})\n\nDeprecated at or below the installed version, and the deprecated API is still used here (matched in code that can use the technology; an identifier only in a file that imports or configures it, or that its records name). No upgrade is needed to act on these. They are not part of the batches below and do not hold up `--next`.\n\n",
+            "## In effect now ({})\n\nDeprecated at or below the installed version, and the deprecated API is still used here (matched in code that can use the technology; an identifier only in a file that imports or configures it, or that its records name). They need no upgrade of the technology itself. Before moving code off a deprecated API, check that what replaces it works at the versions installed here: an old API is often kept because its replacement needs a newer version of another package (a peer, the runtime, a plugin host), and an entry may not say so. They are not part of the batches below and do not hold up `--next`.\n\n",
             plural(view.in_effect.len(), "record", "records")
         );
         for &i in &view.in_effect {
@@ -882,10 +882,10 @@ mod tests {
         let text = render(&v, &out, &c);
         assert!(text.contains("## In effect now (1 record)\n\nDeprecated at or below the installed version"), "{text}");
         assert!(text.contains("### [next:old] rev 1"), "{text}");
-        assert!(text.contains("- Release: next 15.0.0 (installed 16.0.5; in effect now, no upgrade needed)"), "{text}");
+        assert!(text.contains("- Release: next 15.0.0 (installed 16.0.5; in effect now)"), "{text}");
         assert!(text.contains("- Deprecated API used here: `unstable_noStore` (app/page.tsx)"), "{text}");
         assert!(text.find("## In effect now").unwrap() < text.find("## Batch 1 of 1").unwrap(), "{text}");
-        assert!(digest_lines(&out).iter().any(|l| l == "next 16.0.5: nothing arrives with a bump; 1 deprecation in effect now (no upgrade needed)"), "{:?}", digest_lines(&out));
+        assert!(digest_lines(&out).iter().any(|l| l == "next 16.0.5: nothing arrives with a bump; 1 deprecation in effect now (at the installed version)"), "{:?}", digest_lines(&out));
         // The improvements pass never lists them; a do-now mark moves one under "Marked do now".
         assert!(batch_for(Pass::ImprovementsPass, &out, &mut st, false).unwrap().in_effect.is_empty());
         st.do_now.insert("next:old".into(), 1);

@@ -54,6 +54,53 @@ pub fn identifier(lit: &str) -> bool {
     !plain_word(lit) && s.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_' || c == '$') && is_word(s)
 }
 
+/// A literal that is a command-line flag (`--scope`, `--detect-async-leaks`, `--import tsx`): two dashes, then a letter.
+/// Every CLI has flags of these names, so one counts only on a command line that runs the technology
+/// (`command_words`, `Hits::flag_lines`). Single-dash literals are CSS (`-webkit-…`) or too short to be matched.
+pub fn cli_flag(lit: &str) -> bool {
+    lit.strip_prefix("--").is_some_and(|r| r.starts_with(|c: char| c.is_ascii_alphabetic()))
+}
+
+/// The words that run a package from a command line: its name, a scoped package's scope (`@playwright/test` runs as
+/// `playwright`; its name only when one starts with the other, `@biomejs/biome`, since `test` or `cli` is any script's
+/// word), and the name's first hyphen-separated word (`webpack-cli` as `webpack`, an `eslint-plugin-*` on an `eslint`
+/// line). Lowercase.
+pub fn command_words(purl: &str) -> Vec<String> {
+    let Some(name) = purl_name(purl) else { return vec![] };
+    let name = name.to_ascii_lowercase();
+    let words: Vec<String> = match name.strip_prefix('@').and_then(|s| s.split_once('/')) {
+        Some((scope, base)) if scope.starts_with(base) || base.starts_with(scope) => vec![scope.to_string(), base.to_string()],
+        Some((scope, _)) => vec![scope.to_string()],
+        None => vec![name.clone(), name.split('-').next().unwrap_or("").to_string()],
+    };
+    let mut out: Vec<String> = vec![];
+    for w in words {
+        if w.len() >= 2 && !out.contains(&w) {
+            out.push(w);
+        }
+    }
+    out
+}
+
+/// Words on the command line holding byte `at` of `text`: its line, joined with the lines a trailing `\` continues
+/// from or into. Split at anything but `[A-Za-z0-9_-]` (`npx turbo`, `node_modules/.bin/turbo`), lowercase.
+fn line_words(text: &str, at: usize) -> impl Iterator<Item = String> + '_ {
+    let b = text.as_bytes();
+    let continued = |end: usize| text[..end].trim_end_matches(['\r', ' ', '\t']).ends_with('\\');
+    let mut start = text[..at].rfind('\n').map_or(0, |i| i + 1);
+    while start > 0 && continued(start - 1) {
+        start = text[..start - 1].rfind('\n').map_or(0, |i| i + 1);
+    }
+    let mut end = text[at..].find('\n').map_or(b.len(), |i| at + i);
+    while end < b.len() && continued(end) {
+        end = text[end + 1..].find('\n').map_or(b.len(), |i| end + 1 + i);
+    }
+    text[start..end].split(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '-')).filter(|w| !w.is_empty()).map(str::to_ascii_lowercase)
+}
+
+/// Stylesheets, where `--name` is a custom property (`--spacing`), never a flag.
+const STYLE_EXT: &[&str] = &["css", "scss", "sass", "less"];
+
 /// The literals whose hits are the files that name a package, by the ecosystem's own syntax: a quoted npm specifier or
 /// subpath (`'vitest'`, `"next/image"`; manifests, CSS `@import`) and the same at a module position in code
 /// (`module_naming`), a Python `import`/`from` or a quoted requirement (`"pydantic>=2"` in `pyproject.toml`). Matched in
@@ -578,7 +625,14 @@ pub struct Hits {
     /// Qualified literal → files it matched only by its tail, plain word or not (`test.beforeAll` as `beforeAll`): left
     /// out of `Scope::exact_evidence`, and elsewhere shown only under the identifier rule.
     pub by_tail: HashMap<String, HashSet<u32>>,
+    /// CLI-flag literal (`cli_flag`) → file (index into `Repo::paths`) → the command words (`find_with_commands`'
+    /// `commands`) on the lines holding it; `*` when one occurrence is a CSS custom property (a stylesheet,
+    /// `var(--x`, `--x:`). The funnel keeps a flag's hit only where a word runs its technology (`flag_filtered`).
+    pub flag_lines: HashMap<String, HashMap<u32, BTreeSet<String>>>,
 }
+
+/// Mark in `Hits::flag_lines` for an occurrence that is a CSS custom property.
+pub const CSS_PROPERTY: &str = "*";
 
 
 impl Hits {
@@ -590,6 +644,12 @@ impl Hits {
 /// Match `usage_lits` (the ordering rule: a word literal as a token, anything else as a substring, or its tail
 /// as a token) and `whole_lits` (whole tokens or file names only).
 pub fn find(repo: &Repo, usage_lits: &BTreeSet<String>, whole_lits: &BTreeSet<String>) -> Hits {
+    find_with_commands(repo, usage_lits, whole_lits, &BTreeSet::new())
+}
+
+/// `find`, also noting for each CLI-flag literal which of `commands` (lowercase words that run a technology,
+/// `command_words`) share a command line with it (`Hits::flag_lines`). Empty `commands`: no flag is noted.
+pub fn find_with_commands(repo: &Repo, usage_lits: &BTreeSet<String>, whole_lits: &BTreeSet<String>, commands: &BTreeSet<String>) -> Hits {
     let mut patterns: Vec<String> = vec![];
     let mut idx: BTreeMap<String, usize> = BTreeMap::new();
     let mut add = |p: &str, patterns: &mut Vec<String>| {
@@ -633,13 +693,33 @@ pub fn find(repo: &Repo, usage_lits: &BTreeSet<String>, whole_lits: &BTreeSet<St
         whole_by_pat[*p].push(i);
     }
     // Per file, the usage and whole literals it holds; files are matched on every core and merged in file order.
-    let per_file = par_map(&repo.files, |(_, text)| {
+    let is_flag: Vec<bool> = patterns.iter().map(|p| cli_flag(p)).collect();
+    let flag_pat: Vec<bool> = is_flag.iter().map(|f| *f && !commands.is_empty()).collect();
+    let per_file = par_map(&repo.files, |(path, text)| {
         let b = text.as_bytes();
         let mut bits: HashMap<usize, u8> = HashMap::new();
+        let style = path.rsplit_once('.').is_some_and(|(_, x)| STYLE_EXT.contains(&x.to_ascii_lowercase().as_str()));
+        let mut flags: Vec<(usize, BTreeSet<String>)> = vec![];
         for m in ac.find_overlapping_iter(text) {
+            let p = m.pattern().as_usize();
+            // A flag is a whole word: `--run` is not in `--runner`, `--runInBand`, `var(--run-data--color)` or `--custom--run`.
+            if is_flag[p] && (wordish(m.start().checked_sub(1).map(|i| b[i])) || wordish(b.get(m.end()).copied())) {
+                continue;
+            }
+            if flag_pat[p] {
+                let css = style || text[..m.start()].ends_with("var(") || b.get(m.end()) == Some(&b':');
+                let words: BTreeSet<String> = if css {
+                    [CSS_PROPERTY.to_string()].into()
+                } else {
+                    line_words(text, m.start()).filter(|w| commands.contains(w)).collect()
+                };
+                match flags.iter_mut().find(|(q, _)| *q == p) {
+                    Some((_, ws)) => ws.extend(words),
+                    None => flags.push((p, words)),
+                }
+            }
             let before = if m.start() == 0 { None } else { Some(b[m.start() - 1]) };
             let after = b.get(m.end()).copied();
-            let p = m.pattern().as_usize();
             let pat = patterns[p].as_bytes();
             let (first, last) = (Some(pat[0]), Some(pat[pat.len() - 1]));
             let mut v = ANY;
@@ -654,7 +734,7 @@ pub fn find(repo: &Repo, usage_lits: &BTreeSet<String>, whole_lits: &BTreeSet<St
         }
         let (mut usage, mut whole, mut tail): (Vec<usize>, Vec<usize>, Vec<(usize, bool)>) = (vec![], vec![], vec![]);
         if bits.is_empty() {
-            return (usage, whole, tail);
+            return (usage, whole, tail, flags);
         }
         let has = |p: usize, bit: u8| bits.get(&p).is_some_and(|v| v & bit != 0);
         let mut cand: Vec<usize> = bits.keys().flat_map(|p| usage_by_pat[*p].iter().copied()).collect();
@@ -676,14 +756,17 @@ pub fn find(repo: &Repo, usage_lits: &BTreeSet<String>, whole_lits: &BTreeSet<St
                 whole.push(i);
             }
         }
-        (usage, whole, tail)
+        (usage, whole, tail, flags)
     });
     // Hit files by index into `repo.files` (sorted by path) until the end: a large repository has millions of
     // literal × file hits.
     let at: HashMap<&str, u32> = repo.paths.iter().enumerate().map(|(i, p)| (p.as_str(), i as u32)).collect();
     let path_ix: Vec<u32> = repo.files.iter().map(|(p, _)| at.get(p.as_str()).copied().unwrap_or(u32::MAX)).collect();
     let mut usage_files: Vec<Vec<usize>> = vec![vec![]; usage_ix.len()];
-    for (f, (usage, whole, tail)) in per_file.into_iter().enumerate() {
+    for (f, (usage, whole, tail, flags)) in per_file.into_iter().enumerate() {
+        for (p, words) in flags {
+            hits.flag_lines.entry(patterns[p].clone()).or_default().entry(path_ix[f]).or_default().extend(words);
+        }
         for i in usage {
             usage_files[i].push(f);
         }
@@ -766,6 +849,25 @@ mod tests {
     }
     fn set(x: &[&str]) -> BTreeSet<String> {
         x.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn cli_flags_are_whole_words_and_note_the_command_line() {
+        let r = repo(&[
+            ("package.json", "{\"bench\": \"vitest bench --run\",\n\"x\": \"node s.mjs --runner direct\"}"),
+            ("a.vue", "<style>.a { color: var(--run-data--color) }</style>"),
+            ("b.css", ".b { --run: 1 }"),
+            ("c.json", "{\"x\": \"vitest --custom--run\"}"),
+        ]);
+        let h = find_with_commands(&r, &set(&["--run"]), &set(&[]), &set(&["vitest", "node"]));
+        assert_eq!(h.usage["--run"], vec!["b.css".to_string(), "package.json".to_string()], "not `--runner` nor `--run-data`");
+        let words = &h.flag_lines["--run"];
+        assert_eq!(words[&0], set(&["vitest"]), "package.json: the words of the line holding it");
+        assert_eq!(words[&2], set(&[CSS_PROPERTY]));
+        assert!(cli_flag("--scope") && cli_flag("--import tsx") && !cli_flag("-webkit-mask") && !cli_flag("--") && !cli_flag("---"));
+        assert_eq!(command_words("pkg:npm/%40playwright/test"), vec!["playwright"], "`test` is any script's name");
+        assert_eq!(command_words("pkg:npm/%40biomejs/biome"), vec!["biomejs", "biome"]);
+        assert_eq!(command_words("pkg:npm/webpack-cli"), vec!["webpack-cli", "webpack"]);
     }
 
     #[test]
