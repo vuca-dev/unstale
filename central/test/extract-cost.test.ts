@@ -4,17 +4,21 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from "vitest";
+import { PREAMBLE_MARKED, renderChange } from "../src/docs/render.ts";
 import { contentFree, extractRelease, MIN_SPLIT, releaseCached, splitChunk } from "../src/pipeline/extract.ts";
 import { TECHNOLOGIES } from "../src/pipeline/technologies.ts";
 
 const prev = { ...process.env };
+// The default extraction modes (two calls, quoted evidence, no diet), whatever the environment sets.
+const OWN = ["UNSTALE_CENTRAL_DIR", "AI_GATEWAY_API_KEY", "UNSTALE_EXTRACT_MODEL", "UNSTALE_EXTRACT_STRUCTURE", "UNSTALE_EXTRACT_EVIDENCE", "UNSTALE_EXTRACT_DIET"];
 beforeAll(() => {
+  for (const k of OWN) delete process.env[k];
   process.env.UNSTALE_CENTRAL_DIR = mkdtempSync(join(tmpdir(), "unstale-extract-cost-"));
   process.env.AI_GATEWAY_API_KEY = "test-key";
   process.env.UNSTALE_EXTRACT_MODEL = "vercel:openai/gpt-6-luna";
 });
 afterAll(() => {
-  for (const k of ["UNSTALE_CENTRAL_DIR", "AI_GATEWAY_API_KEY", "UNSTALE_EXTRACT_MODEL"]) {
+  for (const k of OWN) {
     if (prev[k] === undefined) delete process.env[k];
     else process.env[k] = prev[k];
   }
@@ -33,6 +37,8 @@ describe("contentFree", () => {
     expect(contentFree("*No significant changes*\n\n##### &nbsp;&nbsp;[View changes on GitHub](https://github.com/o/r/compare/v1...v2)")).toBe(true);
     expect(contentFree("**Full Changelog**: https://github.com/o/r/compare/v2.30.0...v2.30.1")).toBe(true);
     expect(contentFree("## Changelog\n\n")).toBe(true);
+    expect(contentFree("### Patch Changes\n\n-   Updated dependencies \\[[`040d469`](https://example.test/c/040d469)]:\n    -   @assistant-ui/react@0.14.0\n")).toBe(true);
+    expect(contentFree("### Patch Changes\n\n- Updated dependencies. ([#51138](https://example.test/51138))\n  - expo-font@58.0.7")).toBe(true);
   });
   test("any other text is content", () => {
     expect(contentFree("- Updated dependencies [abc]\n  - @x/y@1.0.0\n- Fix `parse` on empty input")).toBe(false);
@@ -41,6 +47,9 @@ describe("contentFree", () => {
     expect(contentFree("- chore(deps): bump webpack-sources to v3")).toBe(false);
     expect(contentFree("### Bug Fixes\n\n* fix CITGM [#1154](https://example.test/1154)")).toBe(false);
     expect(contentFree("## 2.0.0\n- 移除旧接口")).toBe(false);
+    expect(contentFree("## Node.js 20 is now required\n\n**Full Changelog**: https://example.test/compare/v1...v2")).toBe(false);
+    expect(contentFree("- Updated dependencies can now be configured per client")).toBe(false);
+    expect(contentFree("* Updated dependencies, notably `tough-cookie`, which no longer prints a deprecation warning.")).toBe(false);
   });
   test("a content-free note makes no call and counts as cached", async () => {
     const f = vi.fn(async () => reply("[]"));
@@ -104,5 +113,24 @@ describe("a truncated extract answer", () => {
     expect(releaseCached(TECHNOLOGIES.prisma!, r)).toBe(true);
     expect(await extractRelease(TECHNOLOGIES.prisma!, r)).toEqual({ incoming: [], failed: 1 });
     expect(calls).toBe(1);
+  });
+});
+
+describe("a split docs change", () => {
+  test("every piece keeps the instructions, the page and the section it starts in", () => {
+    const hunks = Array.from({ length: 60 }, (_, i) => `+Option \`opt${i}\` is added to the configuration file.`).join("\n");
+    const notes = renderChange("https://example.test/docs/config", "guide", [{ path: ["Config"], status: "changed", hunks } as never], { words: true });
+    expect(notes.length).toBeGreaterThanOrEqual(MIN_SPLIT);
+    const pieces = splitChunk(notes);
+    expect(pieces.length).toBeGreaterThanOrEqual(2);
+    expect(pieces[0]).toBe(notes.slice(0, pieces[0]!.length));
+    for (const p of pieces.slice(1)) {
+      expect(p.startsWith(PREAMBLE_MARKED)).toBe(true);
+      expect(p).toContain("Page: https://example.test/docs/config (guide)");
+      expect(p).toContain("Section: Config (changed)");
+      expect(p.length).toBeLessThan(notes.length);
+    }
+    const body = (p: string) => p.slice(p.indexOf("+Option"));
+    expect(pieces.map(body).join("\n")).toBe(body(notes));
   });
 });

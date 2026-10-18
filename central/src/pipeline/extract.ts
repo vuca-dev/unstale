@@ -8,7 +8,7 @@ import type { GuideNote, ReleaseNote } from "./fetch.ts";
 import type { Technology } from "./technologies.ts";
 import { CHANGE_TYPES, SURFACES } from "./vocab.ts";
 import { oneLine, releaseLine } from "./util.ts";
-import { markViews, PREAMBLE_MARKED, unmarkQuote } from "../docs/render.ts";
+import { markViews, PREAMBLE, PREAMBLE_MARKED, unmarkQuote } from "../docs/render.ts";
 
 export const MAX_CHUNK = 30_000;
 
@@ -395,20 +395,55 @@ export function chunk(notes: string, max = MAX_CHUNK): string[] {
  * not split again (its answer would fit unless the model loops). */
 export const MIN_SPLIT = 2_000;
 
-/** The pieces of a chunk whose extract answer ran out of room: two or more, at headings or lines, losing nothing. */
-export const splitChunk = (notes: string): string[] => chunk(notes, Math.ceil(notes.length / 2));
+/** The pieces of a chunk whose extract answer ran out of room: two or more, at headings or lines, losing nothing. A
+ * rendered docs change (docs/render.ts) keeps its instructions in every piece: each later piece starts with the
+ * preamble and page line, and, when it begins inside a section's fence, with that section line and fence. */
+export function splitChunk(notes: string): string[] {
+  const pieces = chunk(notes, Math.ceil(notes.length / 2));
+  const page = notes.startsWith(PREAMBLE_MARKED) || notes.startsWith(PREAMBLE) ? /^[\s\S]*?\nPage: [^\n]*/.exec(notes)?.[0] : undefined;
+  if (!page) return pieces;
+  let section = "";
+  let fence: string | undefined;
+  let opener = "";
+  const led = pieces.map((p, j) => {
+    const lead = j === 0 ? "" : [page, "", ...(fence ? [section, opener] : [])].join("\n") + "\n";
+    for (const line of p.split("\n")) {
+      if (fence) {
+        if (line === fence) fence = undefined;
+        continue;
+      }
+      if (line.startsWith("Section: ")) section = line;
+      const f = /^(`{3,})(diff)?$/.exec(line);
+      if (f) [fence, opener] = [f[1], line];
+    }
+    return lead + p;
+  });
+  // Every piece must be shorter than the chunk, or splitting would not end.
+  return led.every((p) => p.length < notes.length) ? led : pieces;
+}
 
-/** Notes with nothing a change record could come from, so no model call is made: once headings, links, bare URLs,
- * "Full Changelog" and "View changes on GitHub" lines, "No (significant) changes" and a changesets "Updated
- * dependencies" list (its `pkg@version` lines) are set aside, no letter or digit is left. On the production store
- * (17 October 2026) 224 of 4,814 cached extract answers were for such notes, and every one was `[]`. */
+/** A heading that only frames a release: a version, date or `pkg@version`, or a changesets / GitHub section label.
+ * Any other heading ("Node.js 20 is now required") is content. */
+const STRUCTURAL_HEADING = /^(?:(?:patch|minor|major) changes|what'?s changed|changelog|release notes|view changes on github)?$/i;
+
+/** Notes with nothing a change record could come from, so no model call is made: once structural headings, links,
+ * bare URLs, "Full Changelog" and "View changes on GitHub" lines, "No (significant) changes" and a changesets "Updated
+ * dependencies" list (its header and `pkg@version` lines) are set aside, no letter or digit is left. On the production
+ * store (17 October 2026) 224 of 4,814 cached extract answers were for such notes, and every one was `[]`. */
 export function contentFree(notes: string): boolean {
   let deps = false;
   for (const raw of notes.split("\n")) {
     const line = raw.trim();
-    if (!line || /^#{1,6}\s/.test(line)) continue;
+    if (!line) continue;
     const text = line.replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/https?:\/\/\S+/g, "").replace(/&nbsp;/g, "");
-    if (/^[-*]?\s*Updated dependencies\b/.test(text)) {
+    const heading = /^#{1,6}\s+(.*)$/.exec(text);
+    if (heading) {
+      const label = heading[1]!.replace(/@?[\w./-]*@\d[\w.+-]*|\bv?\d[\w.+-]*/g, "").replace(/[^\p{L}\p{N}' ]+/gu, " ").replace(/\s+/g, " ").trim();
+      if (STRUCTURAL_HEADING.test(label)) continue;
+      return false;
+    }
+    // The changesets header only: "Updated dependencies", optionally with its commit hashes or PR numbers.
+    if (/^[-*]?\s*Updated dependencies[\s.,:;()#`\\[\]0-9a-f]*$/.test(text)) {
       deps = true;
       continue;
     }
