@@ -20,6 +20,7 @@ import { TECHNOLOGIES, type Technology } from "./technologies.ts";
 import { compareVersions, pool, writeAtomic } from "./util.ts";
 import { DEFAULT_HTTP, HttpClient } from "../collector/http.ts";
 import { completeEvents, dailyPass, DOCS_PASS, markExtracted, plan } from "../docs/extract.ts";
+import { techLocal } from "../state/client.ts";
 
 export function makeClassifier(): FallbackClassifier {
   let lastLogged = "";
@@ -93,7 +94,7 @@ export async function runTechnology(
   const docsNotes = docsPlanned.filter((n) => admitted(n.note));
   const extracted = await pool([...notesToRun, ...docsNotes.map((n) => n.note)], 6, async (rel) => {
     const r = await extractRelease(t, rel);
-    writeAtomic(join(centralDir(), "extractions", t.id, `${nameOf(rel)}.json`), JSON.stringify(r.incoming, null, 1) + "\n");
+    writeAtomic(join(centralDir(), "extractions", techLocal(t.id), `${nameOf(rel)}.json`), JSON.stringify(r.incoming, null, 1) + "\n");
     return r;
   });
   if (deferred.budget || deferred.cap) console.log(`${t.id}: ${deferred.budget} notes deferred by the period budget, ${deferred.cap} past the quarterly cap`);

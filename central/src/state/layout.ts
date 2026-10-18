@@ -1,17 +1,21 @@
 // Which state member a store file belongs to (snapshot.ts). Three kinds:
 //
-//   lazy     a technology's docs store, `central/docs/<tech>/store/**` (the page snapshots and their watch states): 74%
-//            of the snapshot, read only when that technology's docs are checked or extracted. Restored on first use
-//            (client.ts), so a run downloads the stores of the technologies it works, not all of them.
+//   lazy     restored on first use (client.ts), so a run downloads what it works, not the whole catalog's state:
+//            `docs:<tech>`, a technology's docs store (`central/docs/<tech>/store/**`, the page snapshots and their watch
+//            states), read only when that technology's docs are checked or extracted; and `tech:<tech>`, the rest of
+//            what is kept per technology (its records `central/records/<tech>.json`, its docs metadata
+//            `central/docs/<tech>/*`, and `central/{releases,advisories,guides,extractions}/<tech>/**`), read only when
+//            that technology is worked, published or shown.
 //   archive  a month of an append-only log (`central/archive/<log>-<YYYY-MM>.jsonl`, rotated out by the save): kept,
 //            never restored unless asked for.
-//   eager    everything else, restored before the run: per area (the first two path segments: `central/records`,
+//   eager    everything else, restored before the run: per area (the first two path segments: `central/cache`,
 //            `catalog/v1`, ...) in buckets by the hash of the path, as many buckets as keep a bucket near 256 KiB
 //            compressed, so a cycle that changes a few files rewrites a few small members, not the area.
 //
 // Left out (as the tarball left them out, plus dead weight): locks of live processes, the parked rarity sample, the
-// retired onboarding documents, the day's shared page cache, the `codex` classifier cache (no code has read it since
-// cb4bc28 moved every model call to gpt-6-luna), interrupted atomic writes and macOS metadata.
+// retired onboarding documents and their watch specs (`central/onboarding/watches`, no reader since b042f5f), the
+// day's shared page cache, the `codex` classifier cache (no code has read it since cb4bc28 moved every model call to
+// gpt-6-luna), interrupted atomic writes and macOS metadata.
 import { createHash } from "node:crypto";
 
 export type Kind = "eager" | "lazy" | "archive";
@@ -24,6 +28,7 @@ const EXCLUDED: readonly RegExp[] = [
   /^central\/records\/[^/]+\.lock$/,
   /^central\/sample(\/|$)/,
   /^central\/onboarding\/documents(\/|$)/,
+  /^central\/onboarding\/watches(\/|$)/,
   /^central\/cache\/pages(\/|$)/,
   /^central\/cache\/codex(\/|$)/,
   /\.\d+(\.[a-z0-9]+)?\.tmp$/,
@@ -32,18 +37,26 @@ const EXCLUDED: readonly RegExp[] = [
 
 export const excluded = (rel: string): boolean => EXCLUDED.some((r) => r.test(rel));
 
-const LAZY = /^central\/docs\/([^/]+)\/store\//;
+const DOCS_STORE = /^central\/docs\/([^/]+)\/store\//;
+/** A technology's files outside its docs store: records, docs metadata, release notes, advisories, guides, extractions. */
+const TECH = /^central\/(?:records\/([^/]+)\.json$|docs\/([^/]+)\/[^/]+$|(?:releases|advisories|guides|extractions)\/([^/]+)\/)/;
 const ARCHIVE = /^central\/archive\/([^/]+)$/;
+/** Directories that hold a technology's files under its own name (`<area>/<tech>/**`). */
+export const TECH_DIRS = ["releases", "advisories", "guides", "extractions"] as const;
 
-/** The directory (or file) a lazy or archive member restores as a whole. */
+/** The technology a `tech:` or `docs:` key names. */
+export const techOf = (key: string): string => key.slice(key.indexOf(":") + 1);
+
+/** The directory (or file) a docs store or archive member restores as a whole. */
 export function memberRoot(key: string): string {
   if (key.startsWith("docs:")) return `central/docs/${key.slice(5)}/store`;
   if (key.startsWith("archive:")) return `central/archive/${key.slice(8)}`;
+  if (key.startsWith("tech:")) return `central/{records,docs,${TECH_DIRS.join(",")}}/${key.slice(5)}`;
   throw new Error(`${key} is not a lazy or archive member`);
 }
 
 export function kindOf(key: string): Kind {
-  return key.startsWith("docs:") ? "lazy" : key.startsWith("archive:") ? "archive" : "eager";
+  return key.startsWith("docs:") || key.startsWith("tech:") ? "lazy" : key.startsWith("archive:") ? "archive" : "eager";
 }
 
 /** `central/records/next.json` -> `central/records`; a file at the top is its own area. */
@@ -61,8 +74,10 @@ export const areaOfKey = (key: string): string => key.slice(0, key.lastIndexOf("
 
 /** The lazy or archive member a file belongs to whole, if any. */
 export function whole(rel: string): string | undefined {
-  const lazy = LAZY.exec(rel);
-  if (lazy) return `docs:${lazy[1]}`;
+  const docs = DOCS_STORE.exec(rel);
+  if (docs) return `docs:${docs[1]}`;
+  const tech = TECH.exec(rel);
+  if (tech) return `tech:${tech[1] ?? tech[2] ?? tech[3]}`;
   const archive = ARCHIVE.exec(rel);
   return archive ? `archive:${archive[1]}` : undefined;
 }

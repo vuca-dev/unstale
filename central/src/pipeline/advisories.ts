@@ -58,6 +58,7 @@ import { attributeSections, repositoryPackages } from "./section-packages.ts";
 import { applyChange, combineReleases, mergeInto, union, type StoredRecord, type TechStore } from "./store.ts";
 import type { Technology } from "./technologies.ts";
 import { canonical, oneLine, readJson, releaseLine, sha256, writeAtomic } from "./util.ts";
+import { techLocal } from "../state/client.ts";
 
 const FRESH_MS = 12 * 3600 * 1000;
 const OSV = "https://api.osv.dev/v1/query";
@@ -99,7 +100,7 @@ export interface Advisory {
 export const purl = npmPurl;
 export const npmName = npmNameOf;
 
-const dir = (t: Technology) => join(centralDir(), "advisories", t.id);
+const dir = (t: Technology) => join(centralDir(), "advisories", techLocal(t.id));
 const stamp = () => new Date().toISOString().replace(/\.\d+Z$/, "Z");
 const safe = (purl: string) => purl.replace(/^pkg:/, "").replace(/%40/g, "").replace(/[^A-Za-z0-9._-]+/g, "__");
 
@@ -665,7 +666,7 @@ export async function attachAdvisories(
   const indexVersions = s.releaseIndex ? s.releaseIndex.releases.map((x) => x.version) : releases.map((x) => x.version);
   const byUrl = new Map(releases.map((r) => [r.url, r]));
   const body = (version: string): string | undefined => {
-    const p = join(centralDir(), "releases", t.id, `${version}.md`);
+    const p = join(centralDir(), "releases", techLocal(t.id), `${version}.md`);
     return existsSync(p) ? readFileSync(p, "utf8") : undefined;
   };
   // Ids named on the source lines of each record's release-notes evidence, with the release they came from.

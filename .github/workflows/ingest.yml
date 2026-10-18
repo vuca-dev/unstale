@@ -20,9 +20,10 @@
 # uploaded last (a generation without it is incomplete and ignored), naming where each member is in the segments
 # `state-<stamp>.segNN` (under 1.5 GiB; the asset limit is 2 GiB). A save uploads only the members that changed, in one
 # new segment, so a cycle's save is the size of its work, not of the store. A restore downloads the eager members
-# (everything but the technologies' docs stores, about a third of the bytes); a docs store is restored when a
-# technology's docs are first read, by the state server this step starts with the release token (the drain never
-# holds it). A run saves once a cycle; the newest generation of each of the newest STATE_KEEP (3) runs is kept
+# (caches, the catalog, onboarding jobs: not what is kept per technology); a technology's docs store, and its records,
+# release notes, advisories and docs metadata, are restored when first read, by the state server this step starts with
+# the release token (the drain never holds it), and removed again by the cycle's save once saved, so the runner's disk
+# holds the technologies of one cycle. A run saves once a cycle; the newest generation of each of the newest STATE_KEEP (3) runs is kept
 # (rollback) with every segment it references, the rest is deleted after a successful save. A legacy tarball
 # generation (`state-<stamp>.tar.zst.*` + `.sha256`) is still restored, and never deleted: reverting to the tarball
 # code restores the last tarball, losing the state saved since the migration (an operator deletes the tarballs once
@@ -241,7 +242,8 @@ jobs:
         if: always() && steps.restore.outcome == 'success'
         run: |
           npm --prefix central run catalog -- usage | tail -c 4000 || true
-          echo "docs stores restored on first use: $(grep -c '] restored ' "$RUNNER_TEMP/state-serve.log" || true)"
+          echo "docs stores restored on first use: $(grep -c '] restored docs:' "$RUNNER_TEMP/state-serve.log" || true)"
+          echo "technologies restored on first use: $(grep -c '] restored tech:' "$RUNNER_TEMP/state-serve.log" || true)"
 
   # A run whose window ended with work left starts the next one at once. A job of its own, so the token that can start
   # workflows (actions: write) is never in the ingest job, whose GITHUB_TOKEN falls back to the job token. The new run

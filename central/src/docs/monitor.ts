@@ -13,7 +13,7 @@ import { allAdded, sectionDiff, type Context, type SectionChange } from "../coll
 import { FsStore } from "../collector/store.ts";
 import { findTemplateChanges } from "../collector/template.ts";
 import { centralDir } from "../pipeline/paths.ts";
-import { ensureLocal } from "../state/client.ts";
+import { ensureLocal, techLocal } from "../state/client.ts";
 import { readJson, sha256, writeAtomic } from "../pipeline/util.ts";
 import { attribute, guideCandidate, guideMajor, publishable, type Attribution } from "./attribute.ts";
 import { httpFetcher } from "./fetcher.ts";
@@ -87,7 +87,7 @@ export interface Source {
   purls: string[];
 }
 
-export const docsDir = (tech: string) => join(centralDir(), "docs", tech);
+export const docsDir = (tech: string) => join(centralDir(), "docs", techLocal(tech));
 /** A technology's page snapshots and watch states, restored from the saved state on first use (state/client.ts). */
 export const docsStore = (tech: string): FsStore => new FsStore(join(docsDir(tech), "store"), () => ensureLocal(`docs:${tech}`));
 

@@ -3,6 +3,7 @@
 // the asset layer answers it unpacked (bytes, ETag, headers, 304, HEAD, redirects into page directories and to the
 // canonical encoding of a path). The asset layer is a stand-in here (`layer`, after Cloudflare's asset-worker); the
 // real one is compared with scripts/compare-catalog.ts under wrangler dev.
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -56,6 +57,9 @@ function walk(dir: string, rel = ""): string[] {
     return e.isDirectory() ? walk(dir, path) : [path];
   });
 }
+
+/** Every file of a tree, path -> sha256 of its bytes. */
+const snapshot = (dir: string): Record<string, string> => Object.fromEntries(walk(dir).sort().map((p) => [p, createHash("sha256").update(readFileSync(join(dir, p))).digest("hex")]));
 
 const TYPES: Record<string, string> = { json: "application/json", sig: "application/pgp-signature", gz: "application/gzip", html: "text/html", md: "text/markdown", txt: "text/plain", bin: "application/octet-stream" };
 
@@ -270,9 +274,12 @@ test("a bucket the asset layer fails to serve is not taken for an empty one", as
 test("a pack that fails part way leaves the tree unpacked, so it can be packed again", async () => {
   const big = `v1/coverage/${"f".repeat(64)}.json`;
   const site = tree(3, { [big]: "x".repeat(26 * 1024 * 1024) });
+  const before = snapshot(site);
   await expect(pack(site, 20_000)).rejects.toThrow(/file limit/);
   expect(existsSync(join(site, "_pack"))).toBe(false);
   expect(existsSync(join(site, "v1/tech/t00.json"))).toBe(true);
+  // Originals removed as their buckets were written are back, byte for byte.
+  expect(snapshot(site)).toEqual(before);
   rmSync(join(site, big));
   await pack(site, 20_000);
   expect(existsSync(join(site, "_pack"))).toBe(true);

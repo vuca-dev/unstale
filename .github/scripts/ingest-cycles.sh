@@ -76,14 +76,18 @@ deploy() {
 
 # One generation a save (central/src/state/snapshot.ts): the members this cycle changed, in one new segment, then the
 # manifest; older generations past the newest of the newest STATE_KEEP runs, and segments none of those references,
-# are deleted. The parked rarity sample, the retired onboarding documents, the day's shared docs page cache and the
-# retired classifier's cache stay out (state/layout.ts); a month of the usage and timeline logs moves to an archive
-# member once it is over.
+# are deleted. The parked rarity sample, the retired onboarding documents and watch specs, the day's shared docs page
+# cache and the retired classifier's cache stay out (state/layout.ts); a month of the usage and timeline logs moves to
+# an archive member once it is over. Then the technologies the cycle restored (docs stores, records, release notes)
+# are removed from the store (`--evict`; the next cycle restores what it works again), and the site, deployed or not,
+# is gone before the save writes its segment: at 20,000 technologies the disk holds one cycle's work, not the run's.
 save_state() {
   local gen report
+  rm -rf "$SITE_DIR"
   gen="state-$(date -u +%Y%m%dT%H%M%SZ)-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-  report="$(npm --prefix central run -s state -- save --generation "$gen" --keep "$STATE_KEEP")"
-  log "saved $gen: $(jq -c '{written, written_bytes, uploaded_bytes, cold, compacted_bytes, segments, total_bytes, rotated, deleted: (.deleted | length)}' <<< "$report")"
+  report="$(npm --prefix central run -s state -- save --generation "$gen" --keep "$STATE_KEEP" --evict)"
+  log "saved $gen: $(jq -c '{written, written_bytes, uploaded_bytes, cold, evicted, compacted_bytes, segments, total_bytes, rotated, deleted: (.deleted | length)}' <<< "$report")"
+  log "disk: $(df -h "$UNSTALE_STORE" | awk 'NR == 2 {print $3 " used, " $4 " free"}')"
 }
 
 # The gateway starts no early run while this run pulls; tell it when the run is done (best effort: it stops waiting

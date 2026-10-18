@@ -12,9 +12,11 @@
 // never packed, nor a file whose `_headers` rules differ from those of the probe the Worker copies headers from.
 // Prints one JSON line.
 //
-// Every packed file is read back out of its bucket and compared before the originals are removed; a bucket over the
+// Every packed file is read back out of its bucket and compared before its original is removed; a bucket over the
 // 25 MiB file limit, a tree still over the limit, or a `_redirects` file (rules the Worker does not reproduce) fails
-// the pack.
+// the pack. A bucket's originals are removed as soon as it is written, so the tree never holds every packed file twice
+// (at 20,000 technologies the packed files are gigabytes); a pack that fails part way writes them back from the buckets
+// written so far, and the tree is as it was.
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { parseArgs } from "node:util";
@@ -153,7 +155,8 @@ export async function pack(site: string, maxFiles = 20_000): Promise<PackResult>
   }
   let largest = 0;
   let total = 0;
-  // A failure part way leaves the tree as it was: no originals are removed before every bucket is written.
+  const written: string[] = [];
+  // A failure part way leaves the tree as it was: the originals removed so far are written back from their buckets.
   try {
     for (const [b, paths] of buckets) {
       const header: BucketHeader = { files: {} };
@@ -181,14 +184,25 @@ export async function pack(site: string, maxFiles = 20_000): Promise<PackResult>
       if (!file || !Buffer.from(file.bytes).equals(readFileSync(join(site, last)))) throw new Error(`${last} does not read back from ${bucketFile(b)}`);
       mkdirSync(join(site, PACK_DIR), { recursive: true });
       writeFileSync(join(site, bucketFile(b)), body);
+      written.push(bucketFile(b));
+      for (const p of paths) rmSync(join(site, p));
       largest = Math.max(largest, body.length);
       total += body.length;
     }
   } catch (e) {
+    for (const f of written) {
+      const body = readFileSync(join(site, f));
+      const nl = body.indexOf(0x0a);
+      const { files: entries } = JSON.parse(new TextDecoder().decode(body.subarray(0, nl))) as BucketHeader;
+      for (const [p, [offset, length]] of Object.entries(entries)) {
+        if (existsSync(join(site, p))) continue;
+        mkdirSync(dirname(join(site, p)), { recursive: true });
+        writeFileSync(join(site, p), body.subarray(nl + 1 + offset, nl + 1 + offset + length));
+      }
+    }
     rmSync(join(site, PACK_DIR), { recursive: true, force: true });
     throw e;
   }
-  for (const p of packed) rmSync(join(site, p));
   for (const ext of new Set(packed.map(extensionOf))) {
     mkdirSync(dirname(join(site, probeFile(ext))), { recursive: true });
     writeFileSync(join(site, probeFile(ext)), "");

@@ -1,5 +1,6 @@
-// The state server: restores docs stores on first use (client.ts) for the processes of an ingest run, which do not
-// hold the state release's token. It listens on a Unix socket and answers one request, `POST /hydrate?key=docs:<tech>`:
+// The state server: restores lazy members on first use (client.ts) for the processes of an ingest run, which do not
+// hold the state release's token. It listens on a Unix socket and answers one request, `POST /hydrate?key=<key>` for a
+// docs store (`docs:<tech>`) or a technology's other files (`tech:<tech>`):
 // 200 once the member is local (restored now, already here, or not in the saved state), 500 with the reason otherwise.
 // It reads the store's current manifest on every request, so it follows the saves of the run's cycles.
 import { existsSync, unlinkSync } from "node:fs";
@@ -19,7 +20,7 @@ export function serve(root: string, remote: Remote, socket: string, log: (s: str
     const url = new URL(req.url ?? "/", "http://state");
     const key = url.searchParams.get("key") ?? "";
     if (req.method !== "POST" || url.pathname !== "/hydrate" || kindOf(key) !== "lazy") {
-      res.writeHead(404).end("POST /hydrate?key=docs:<tech>");
+      res.writeHead(404).end("POST /hydrate?key=docs:<tech> or tech:<tech>");
       return;
     }
     let p = pending.get(key);

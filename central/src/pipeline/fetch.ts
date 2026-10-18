@@ -10,6 +10,8 @@ import { DEFAULT_HTTP, HttpClient } from "../collector/http.ts";
 import { currentGuides } from "../docs/guides.ts";
 import { githubToken } from "../docs/fetcher.ts";
 import { ecosystemOf } from "./ecosystems.ts";
+import { registryCache } from "./registry.ts";
+import { techLocal } from "../state/client.ts";
 
 export interface ReleaseNote {
   technology: string;
@@ -45,12 +47,12 @@ interface ReleaseIndex {
 }
 
 const FRESH_MS = 12 * 3600 * 1000;
-const dir = (t: Technology) => join(centralDir(), "releases", t.id);
+const dir = (t: Technology) => join(centralDir(), "releases", techLocal(t.id));
 const indexPath = (t: Technology) => join(dir(t), "index.json");
 const bodyPath = (t: Technology, version: string) => join(dir(t), `${version}.md`);
-const timesPath = (component: string) => {
+const timesName = (component: string) => {
   const type = /^pkg:([a-z0-9.+-]+)\//i.exec(component)?.[1]?.toLowerCase() ?? "other";
-  return join(centralDir(), "cache", "registry", type, "times", `${sha256(component).slice(0, 32)}.json`);
+  return `${type}/times/${sha256(component).slice(0, 32)}`;
 };
 
 let token: string | undefined;
@@ -101,13 +103,14 @@ export async function publishDates(t: Technology, versions: readonly string[], o
     if (!missing.length) break;
     const hook = ecosystemOf(component).publishTimes;
     if (!hook) continue;
-    const p = timesPath(component);
-    let cached = readJson<{ checked: string; times: Record<string, string> | null }>(p);
+    const p = timesName(component);
+    const kept = registryCache().get(p);
+    let cached = kept && (JSON.parse(kept.toString("utf8")) as { checked: string; times: Record<string, string> | null });
     const stale = !cached || opts.refresh || Date.now() - Date.parse(cached.checked) >= FRESH_MS;
     if (!opts.offline && stale && missing.some((v) => !cached?.times?.[v])) {
       try {
         cached = { checked: new Date().toISOString().replace(/\.\d+Z$/, "Z"), times: (await hook(component)) ?? null };
-        writeAtomic(p, JSON.stringify(cached) + "\n");
+        registryCache().put(p, JSON.stringify(cached) + "\n");
       } catch (e) {
         console.error(`releases: ${t.id}: publish times of ${component} unreadable (${e instanceof Error ? e.message : e}); GitHub dates kept`);
       }
@@ -200,7 +203,7 @@ interface GuideIndex {
   guides: Array<Omit<GuideNote, "notes">>;
 }
 
-const guideDir = (t: Technology) => join(centralDir(), "guides", t.id);
+const guideDir = (t: Technology) => join(centralDir(), "guides", techLocal(t.id));
 
 export async function fetchGuides(
   t: Technology,

@@ -9,8 +9,9 @@
 import { join } from "node:path";
 /** A prerequisite as extracted or as stored (the stored shape allows null bounds). */
 type Prereq = { ecosystem: string; name: string; min?: string | null | undefined; max?: string | null | undefined };
+import { PACKED_CACHES } from "./packs.ts";
 import { centralDir } from "./paths.ts";
-import { logUsage, pool, readJson, sha256, sleep, writeAtomic } from "./util.ts";
+import { logUsage, pool, sha256, sleep } from "./util.ts";
 
 /** package.json `engines` names (npm docs, "engines"): platforms, not registry packages. */
 export const NPM_PLATFORM_NAMES = new Set(["node", "npm"]);
@@ -25,7 +26,9 @@ export interface RegistryCheck {
   checked?: string;
 }
 
-const cachePath = (name: string) => join(centralDir(), "cache", "registry", "npm", `${sha256(name).slice(0, 32)}.json`);
+/** The registry cache (packs.ts): `npm/<hash>` here, `<type>/times/<hash>` in fetch.ts. */
+export const registryCache = () => PACKED_CACHES.find((c) => c.dir === "cache/registry")!.open(centralDir());
+const cacheName = (name: string) => `npm/${sha256(name).slice(0, 32)}`;
 
 export const registryStats = { requests: 0, cached: 0 };
 
@@ -39,7 +42,8 @@ export async function checkNpmName(name: string, fetcher: Fetcher = fetch): Prom
   if (!/^\S+$/.test(name) || name.length > 214) {
     return { name, status: "missing" };
   }
-  const hit = readJson<RegistryCheck>(cachePath(name));
+  const cached = registryCache().get(cacheName(name));
+  const hit = cached && (JSON.parse(cached.toString("utf8")) as RegistryCheck);
   if (hit) {
     registryStats.cached++;
     return hit;
@@ -59,7 +63,7 @@ export async function checkNpmName(name: string, fetcher: Fetcher = fetch): Prom
     logUsage({ api: "npm-registry", name, status });
     if (status === 200 || status === 404) {
       const r: RegistryCheck = { name, status: status === 200 ? "exists" : "missing", http: status, checked: new Date().toISOString().replace(/\.\d+Z$/, "Z") };
-      writeAtomic(cachePath(name), JSON.stringify(r) + "\n");
+      registryCache().put(cacheName(name), JSON.stringify(r) + "\n");
       return r;
     }
     await sleep(1000 * 2 ** attempt);
