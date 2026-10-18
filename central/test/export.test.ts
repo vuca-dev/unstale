@@ -2,13 +2,13 @@
 // on a rerun, technology indexes byte-identical to what the coverage service serves (its `components`), pruned first,
 // built aside so a failed export never replaces a good one.
 import { createHash, generateKeyPairSync, verify } from "node:crypto";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { DISCOVERY_VERSION } from "../src/onboarding/discovery.ts";
 import { CoverageService, createCoverageServer } from "../src/onboarding/service.ts";
-import { catalogSigner, exportCatalog, savedJobs } from "../src/pipeline/export.ts";
+import { catalogSigner, exportCatalog, placeShard, savedJobs } from "../src/pipeline/export.ts";
 import { catalogDir, centralDir } from "../src/pipeline/paths.ts";
 import { publishTechnology } from "../src/pipeline/publish.ts";
 import { sha256 } from "../src/pipeline/util.ts";
@@ -89,6 +89,39 @@ describe("export", () => {
     expect(readdirSync(join(out, ".."))).toEqual(["site"]); // no partial or old tree left beside it
   });
 
+  test("shards are hard links to the catalog's files, not copies; everything else is written", () => {
+    const r = exportCatalog(catalogDir(), out, { now: T0 });
+    expect(r.linked).toBe(r.shards);
+    const index = JSON.parse(readFileSync(join(out, "v1", "tech", "next.json"), "utf8")) as { shards: { path: string }[] };
+    for (const s of index.shards) expect(statSync(join(out, s.path)).ino).toBe(statSync(join(catalogDir(), s.path)).ino);
+    expect(statSync(join(out, "v1", "root.json")).ino).not.toBe(statSync(join(catalogDir(), "v1", "root.json")).ino);
+    // A rerun unlinks the previous export; the catalog's shards are untouched.
+    const before = files(catalogDir());
+    exportCatalog(catalogDir(), out, { now: T0 });
+    expect(files(catalogDir())).toEqual(before);
+  });
+
+  test("a shard is copied when the filesystem refuses the link, or when the file was replaced after it was read", () => {
+    const dir = mkdtempSync(join(tmpdir(), "unstale-place-"));
+    const src = join(dir, "a.jsonl.gz");
+    writeFileSync(src, "verified");
+    const read = { data: readFileSync(src), ino: statSync(src).ino };
+    const crossDevice = () => {
+      throw Object.assign(new Error("EXDEV: cross-device link not permitted"), { code: "EXDEV" });
+    };
+    expect(placeShard(src, join(dir, "copy"), read, crossDevice)).toBe(false);
+    expect(readFileSync(join(dir, "copy"), "utf8")).toBe("verified");
+    expect(statSync(join(dir, "copy")).ino).not.toBe(read.ino);
+    // Replaced (a new inode) between the read and the link: the verified bytes are written, not the new file linked.
+    rmSync(src);
+    writeFileSync(src, "replaced");
+    expect(placeShard(src, join(dir, "late"), read)).toBe(false);
+    expect(readFileSync(join(dir, "late"), "utf8")).toBe("verified");
+    // Any other failure is an error, not a silent copy.
+    expect(() => placeShard(join(dir, "missing"), join(dir, "x"), read)).toThrow(/ENOENT/);
+    expect(placeShard(src, join(dir, "linked"), { data: readFileSync(src), ino: statSync(src).ino })).toBe(true);
+  });
+
   test("technology indexes are the bytes the service route serves, components included", async () => {
     exportCatalog(catalogDir(), out, { now: T0 });
     const server = createCoverageServer(new CoverageService(0));
@@ -123,7 +156,10 @@ describe("export", () => {
     exportCatalog(catalogDir(), out, { now: T0 });
     const good = files(out);
     const shard = JSON.parse(readFileSync(join(catalogDir(), "v1", "tech", "next.json"), "utf8")).shards[0].path as string;
-    copyFileSync(join(catalogDir(), "v1", "root.json"), join(catalogDir(), shard)); // wrong bytes under the shard's name
+    // Wrong bytes under the shard's name, replacing the file as every writer does (never in place: the previous export's
+    // shards are links to the catalog's).
+    rmSync(join(catalogDir(), shard));
+    copyFileSync(join(catalogDir(), "v1", "root.json"), join(catalogDir(), shard));
     expect(() => exportCatalog(catalogDir(), out, { now: T0 })).toThrow(/does not match its size and sha256/);
     expect(files(out)).toEqual(good);
     expect(readdirSync(join(out, ".."))).toEqual(["site"]);

@@ -69,10 +69,12 @@ export function loadStore(tech: string): TechStore {
   return readJson<TechStore>(path(tech)) ?? { technology: tech, records: {}, ingested: {} };
 }
 
+/** Compact JSON: a record store is internal state, never published or signed (the catalog's shards and indexes are
+ * written from it, publish.ts), and indentation was 28% of its bytes. A store written indented still reads. */
 export function saveStore(s: TechStore): void {
   const records = Object.fromEntries(Object.keys(s.records).sort().map((k) => [k, s.records[k]!]));
   const ingested = Object.fromEntries(Object.keys(s.ingested).sort().map((k) => [k, s.ingested[k]!]));
-  writeAtomic(path(s.technology), JSON.stringify({ technology: s.technology, records, ingested, ...(s.releaseIndex ? { releaseIndex: s.releaseIndex } : {}) }, null, 1) + "\n");
+  writeAtomic(path(s.technology), JSON.stringify({ technology: s.technology, records, ingested, ...(s.releaseIndex ? { releaseIndex: s.releaseIndex } : {}) }) + "\n");
 }
 
 /** Fields whose change bumps `revision` (re-opens declines); the rest of the record's fields bump `label_version`. */

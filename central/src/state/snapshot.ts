@@ -151,22 +151,22 @@ export function group(root: string, files: readonly FileStat[], previous: Manife
 }
 
 interface Payload {
-  data: Buffer;
+  tar: Buffer;
   digest: string;
   files: number;
   bytes: number;
 }
 
+/** A member's tar and digest; compressed (`compress`) only when it is written. A member whose stat fingerprint changed
+ * without its bytes changing (a link or unlink changes the ctime: the catalog export hard-links every shard, export.ts)
+ * then costs a read and a hash, not a zstd pass. */
 function payload(root: string, files: readonly FileStat[]): Payload {
   const entries: Entry[] = files.map((f) => ({ path: f.rel, data: readFileSync(join(root, f.rel)) }));
   const tar = pack(entries);
-  return {
-    data: zstdCompressSync(tar, { params: { [constants.ZSTD_c_compressionLevel]: LEVEL } }),
-    digest: sha(tar),
-    files: entries.length,
-    bytes: entries.reduce((n, e) => n + e.data.byteLength, 0),
-  };
+  return { tar, digest: sha(tar), files: entries.length, bytes: entries.reduce((n, e) => n + e.data.byteLength, 0) };
 }
+
+const compress = (tar: Buffer): Buffer => zstdCompressSync(tar, { params: { [constants.ZSTD_c_compressionLevel]: LEVEL } });
 
 class SegmentWriter {
   readonly dir: string;
@@ -280,9 +280,11 @@ export async function save(root: string, remote: Remote, o: SaveOptions): Promis
   const newPrints: Record<string, string> = {};
   let written = 0;
   let writtenBytes = 0;
-  const put = (key: string, p: Payload): void => {
-    const at = writer.add(p.data);
-    next[key] = { kind: kindOf(key), ...at, length: p.data.length, sha256: sha(p.data), digest: p.digest, files: p.files, bytes: p.bytes };
+  const put = (key: string, p: Payload): number => {
+    const data = compress(p.tar);
+    const at = writer.add(data);
+    next[key] = { kind: kindOf(key), ...at, length: data.length, sha256: sha(data), digest: p.digest, files: p.files, bytes: p.bytes };
+    return data.length;
   };
 
   const keys = [...local.keys()].sort((a, b) => KIND_ORDER[kindOf(a)] - KIND_ORDER[kindOf(b)] || (a < b ? -1 : 1));
@@ -303,9 +305,8 @@ export async function save(root: string, remote: Remote, o: SaveOptions): Promis
       next[key] = prev;
       continue;
     }
-    put(key, p);
     written++;
-    writtenBytes += p.data.length;
+    writtenBytes += put(key, p);
   }
   // Members not present locally: a docs store or archive not restored this run is carried over; an eager member, or
   // a restored docs store, that is gone was deleted.
@@ -336,7 +337,7 @@ export async function save(root: string, remote: Remote, o: SaveOptions): Promis
       if (local.has(key)) {
         const p = payload(root, local.get(key)!);
         if (p.digest !== m.digest) throw new Error(`${key}: local files differ from the member they were matched to`);
-        data = p.data;
+        data = compress(p.tar);
       } else {
         const asset = assets.get(seg);
         if (!asset) throw new Error(`segment ${seg} is missing from the release`);

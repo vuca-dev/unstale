@@ -3,7 +3,7 @@
 // that was never restored, log rotation, compaction, retention) and the legacy tarball generation.
 import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, linkSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { brotliCompressSync } from "node:zlib";
 import { dirname, join } from "node:path";
@@ -341,5 +341,20 @@ describe("save and restore", () => {
     rmSync(join(a, "central/records/vite.json"));
     const s = await save(a, remote, { generation: "state-20261018T003000Z-1-1" });
     expect(s.written).toBe(1);
+  });
+
+  test("a shard an export linked and a later export unlinked (a new ctime, the same bytes) is not rewritten", async () => {
+    const a = tmp("a");
+    seed(a);
+    await save(a, remote, { generation: "state-20261018T000000Z-1-1" });
+    const shard = join(a, "catalog/v1/shards/next/16.abc.jsonl.gz");
+    const ctime = statSync(shard).ctimeMs;
+    const site = join(tmp("site"), "16.abc.jsonl.gz");
+    while (statSync(shard).ctimeMs === ctime) {
+      rmSync(site, { force: true });
+      linkSync(shard, site);
+    }
+    rmSync(site);
+    expect((await save(a, remote, { generation: "state-20261018T001500Z-1-1" })).written).toBe(0);
   });
 });

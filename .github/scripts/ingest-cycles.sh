@@ -40,6 +40,9 @@ log() { echo "[$(date -u +%H:%M:%S)] $*"; }
 
 # Each command checked explicitly: called in a condition, a function runs without `set -e`, and a failed export must
 # never let the previous cycle's tree be verified and deployed in its place.
+#
+# The export's shards are hard links to the store's (central/src/pipeline/export.ts): every step here only reads,
+# unlinks or adds files in "$SITE_DIR", never writes one in place, which would change the store's shard too.
 publish_tree() {
   rm -rf "$SITE_DIR"
   "${publish_env[@]}" UNSTALE_SIGNING_KEY="$SECRET_SIGNING_KEY" npm --prefix central run -s catalog -- export "$SITE_DIR" || return 1
