@@ -68,6 +68,10 @@ struct Validators {
     /// sha256 of the index bytes these validators describe.
     #[serde(default)]
     sha256: String,
+    /// sha256 of the catalog key the bytes were verified with (the technologies list only), so a copy kept before
+    /// signing was required or under another key is fetched and verified again rather than reused on a 304.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    key: Option<String>,
 }
 
 /// Per-request timeout in seconds: `UNSTALE_HTTP_TIMEOUT`, default 30.
@@ -159,7 +163,7 @@ impl Source {
                             .limit(MAX_BODY)
                             .read_to_vec()
                             .map_err(|e| anyhow!("GET {url}: reading the body: {e}"))?;
-                        Ok(Got::Body(bytes, Validators { url, etag, last_modified, sha256: String::new() }))
+                        Ok(Got::Body(bytes, Validators { url, etag, last_modified, sha256: String::new(), key: None }))
                     }
                     304 if cond.is_some() => Ok(Got::NotModified),
                     404 | 410 => Ok(Got::NotFound),
@@ -186,10 +190,11 @@ fn technologies_validators_path(cache_dir: &Path) -> PathBuf {
 fn listed_technologies(src: &Source, cache_dir: &Path, key: Option<&[u8; 32]>) -> Option<BTreeMap<String, String>> {
     let cached_path = cache_dir.join(TECHNOLOGIES);
     let cached = std::fs::read(&cached_path).ok();
+    let key_id = key.map(|k| sha256_hex(k));
     let cond: Option<Validators> = std::fs::read(technologies_validators_path(cache_dir))
         .ok()
         .and_then(|b| serde_json::from_slice::<Validators>(&b).ok())
-        .filter(|v| cached.as_deref().is_some_and(|c| sha256_hex(c) == v.sha256));
+        .filter(|v| cached.as_deref().is_some_and(|c| sha256_hex(c) == v.sha256) && (key_id.is_none() || v.key == key_id));
     let (bytes, fresh) = match src.get(TECHNOLOGIES, cond.as_ref()).ok()? {
         Got::Body(b, v) => {
             if let Some(key) = key {
@@ -209,6 +214,7 @@ fn listed_technologies(src: &Source, cache_dir: &Path, key: Option<&[u8; 32]>) -
     }
     if let Some(mut v) = fresh.filter(|v| v.etag.is_some() || v.last_modified.is_some()) {
         v.sha256 = sha256_hex(&bytes);
+        v.key = key_id;
         if write_atomic(&cached_path, &bytes).is_ok() {
             let _ = serde_json::to_vec(&v).map_err(anyhow::Error::from).and_then(|b| write_atomic(&technologies_validators_path(cache_dir), &b));
         }
@@ -748,6 +754,15 @@ mod tests {
         let _ = sync_with(&resolve_source(&srv.base).unwrap(), other.path(), &all, &purls(&["pkg:npm/next"]), Some(&key), |_, _| {});
         let log = srv.take_log();
         assert!(log.contains(&"/v1/technologies.json.sig 404".to_string()) && log.contains(&"/v1/tech/vite.json 404".to_string()), "{log:?}");
+        // A list cached without a key is fetched and verified again once a key is required, not reused on a 304;
+        // after that, the verified copy is.
+        let sig: String = pair.sign(&std::fs::read(&list).unwrap()).as_ref().iter().map(|x| format!("{x:02x}")).collect();
+        std::fs::write(cat.dir.path().join("v1/technologies.json.sig"), sig).unwrap();
+        let _ = sync_with(&resolve_source(&srv.base).unwrap(), cache.path(), &all, &purls(&["pkg:npm/next"]), Some(&key), |_, _| {});
+        let log = srv.take_log();
+        assert!(log.contains(&"/v1/technologies.json 200".to_string()) && log.contains(&"/v1/technologies.json.sig 200".to_string()), "{log:?}");
+        let _ = sync_with(&resolve_source(&srv.base).unwrap(), cache.path(), &all, &purls(&["pkg:npm/next"]), Some(&key), |_, _| {});
+        assert!(srv.take_log().contains(&"/v1/technologies.json 304".to_string()));
     }
 
     #[test]

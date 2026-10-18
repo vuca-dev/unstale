@@ -84,7 +84,7 @@ const IDLE_POLL_S: u64 = 300;
 /// time the service said it may change, and in any case within IDLE_POLL_S. Each read is a request to the service,
 /// whose hosted Worker has a daily allowance of them: a client that waits must not read what cannot have changed.
 fn next_poll(job: &Job, at: u64) -> u64 {
-    if followable(job) || matches!(job.state.as_str(), "discovering" | "analyzing") {
+    if followable(job) || matches!(job.state.as_str(), "discovering" | "analyzing" | "partial") {
         return at + ACTIVE_POLL_S;
     }
     let due = if job.state == "failed" { job.retry_at.as_deref() } else { job.next_run.as_deref() }.and_then(iso_unix);
@@ -543,6 +543,10 @@ fn batch_via(a: &ureq::Agent, service: &str, route: &str, purls: &[String]) -> O
         .then(|| r.body_mut().with_config().limit(BATCH as u64 * 1024 * 1024).read_to_vec().ok())
         .flatten()
         .and_then(|b| serde_json::from_slice::<BatchAnswer>(&b).ok());
+    // The service's own failure: the whole batch's, as when it is unreachable, and batches stay on.
+    if status >= 500 && answer.is_none() {
+        return Some(vec![Err(HttpFailure(status).into())]);
+    }
     let Some(answer) = answer else {
         // A batch the service could not read (400, 413) is asked again a package at a time, batches staying on.
         if !matches!(status, 400 | 413) && let Ok(mut u) = UNBATCHED.lock() {
@@ -2250,6 +2254,23 @@ mod tests {
         statuses(&agent(), &base, &purls[..3], |_, r| { n += usize::from(r.is_ok()); true });
         assert_eq!((n, posts()), (23, tried));
         assert_eq!(log.lock().unwrap().iter().filter(|l| l.starts_with("GET")).count(), 23);
+        // A service failing for a moment (a 5xx): the batch's failure, not a request per package, and batches stay on.
+        let failed = std::sync::atomic::AtomicBool::new(false);
+        let (base, log) = service_stub(move |_, body| {
+            if !failed.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                return (500, "{}".into());
+            }
+            let asked: serde_json::Value = serde_json::from_str(body).unwrap();
+            let results: Vec<_> = asked["purls"].as_array().unwrap().iter().map(|p| serde_json::json!({"purl": p, "status": 200, "job": job_json(p.as_str().unwrap())})).collect();
+            (200, serde_json::json!({ "results": results }).to_string())
+        });
+        let mut answers = vec![];
+        statuses(&agent(), &base, &purls[..3], |i, r| { answers.push((i, r.err().and_then(|e| e.downcast_ref::<HttpFailure>().map(|f| f.0)))); true });
+        assert_eq!(answers, vec![(0, Some(500))]);
+        let mut n = 0;
+        statuses(&agent(), &base, &purls[..3], |_, r| { n += usize::from(r.is_ok()); true });
+        assert_eq!(n, 3);
+        assert_eq!(*log.lock().unwrap(), vec!["POST /coverage/status", "POST /coverage/status"]);
     }
     #[test]
     fn a_batch_registers_in_one_request_and_answers_each_package_as_its_own_request_would() {
@@ -2295,6 +2316,7 @@ mod tests {
         // A run working it: about as often as the run reports.
         assert_eq!(next_poll(&job("queued", Some("running"), None, None), at), at + ACTIVE_POLL_S);
         assert_eq!(next_poll(&job("analyzing", None, None, None), at), at + ACTIVE_POLL_S);
+        assert_eq!(next_poll(&job("partial", None, None, None), at), at + ACTIVE_POLL_S);
         // Waiting for a run: when it starts, within IDLE_POLL_S; a run due now, within DUE_POLL_S.
         assert_eq!(next_poll(&job("queued", None, Some(at + 120), None), at), at + 120);
         assert_eq!(next_poll(&job("queued", None, Some(at + 7200), None), at), at + IDLE_POLL_S);

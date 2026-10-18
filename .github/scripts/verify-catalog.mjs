@@ -34,7 +34,11 @@ for (const f of techs) {
 // The list clients read to know which indexes to ask for (sync.rs): signed, naming exactly the indexes, each with the
 // hash of its bytes, since a client never asks for an index it does not name or whose hash its copy has.
 signed("v1/technologies.json");
-const listed = JSON.parse(readFileSync(join(site, "v1", "technologies.json"), "utf8")).technologies ?? {};
+const list = JSON.parse(readFileSync(join(site, "v1", "technologies.json"), "utf8"));
+// A list clients cannot read (another schema, no map) costs every client a request per candidate again.
+if (list?.schema !== 1 || !list.technologies || typeof list.technologies !== "object" || Array.isArray(list.technologies))
+  throw new Error("v1/technologies.json is not schema 1 with a map of technologies");
+const listed = list.technologies;
 const indexed = techs.map((f) => f.slice(0, -".json".length)).sort();
 if (JSON.stringify(Object.keys(listed).sort()) !== JSON.stringify(indexed)) throw new Error(`v1/technologies.json names ${Object.keys(listed).length} technologies, the tree has ${indexed.length} indexes`);
 for (const id of indexed) {

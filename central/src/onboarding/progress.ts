@@ -8,13 +8,17 @@ export const PROGRESS_HEARTBEAT_MS = 5 * 60_000;
 
 /** A progress tick that reports only what changed since the last report, or after PROGRESS_HEARTBEAT_MS: each report
  * is a Worker request, and a run waiting on docs sites changes nothing for minutes at a time. */
-export function progressTicker<U>(updates: () => U[], send: (updates: U[]) => Promise<unknown>, now = () => Date.now()): () => Promise<unknown> {
+/** `send` resolves whether the report was delivered: one that was not is sent again at the next tick. */
+export function progressTicker<U>(updates: () => U[], send: (updates: U[]) => Promise<boolean>, now = () => Date.now()): () => Promise<unknown> {
   let last: { body: string; at: number } | undefined;
   return () => {
     const current = updates();
     const body = JSON.stringify(current);
     if (last && last.body === body && now() - last.at < PROGRESS_HEARTBEAT_MS) return Promise.resolve(undefined);
-    last = { body, at: now() };
-    return send(current);
+    // Kept while in flight, so a tick meanwhile does not send it twice; forgotten if it is not delivered.
+    const sent = (last = { body, at: now() });
+    return send(current).then((ok) => {
+      if (!ok && last === sent) last = undefined;
+    });
   };
 }

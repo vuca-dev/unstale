@@ -115,7 +115,8 @@ export function exportCatalog(
   };
   try {
     const shards = new Set<string>();
-    const technologies: Record<string, string> = {};
+    // No prototype: an index named `__proto__` is a key like any other, not lost to the inherited setter.
+    const technologies: Record<string, string> = Object.create(null);
     let bytes = 0;
     const techDir = join(src, "v1", "tech");
     for (const f of (existsSync(techDir) ? readdirSync(techDir) : []).filter((f) => TECH_FILE.test(f)).sort()) {
@@ -168,7 +169,9 @@ export function exportCatalog(
       coverage++;
     }
     put(".nojekyll", "");
-    putSigned("v1/technologies.json", Buffer.from(JSON.stringify(Technologies.parse({ schema: 1, technologies }))));
+    // Checked against the schema, but the map itself is written: a parsed copy is an ordinary object again.
+    Technologies.parse({ schema: 1, technologies });
+    putSigned("v1/technologies.json", Buffer.from(JSON.stringify({ schema: 1, technologies })));
     putSigned("v1/root.json", root);
     // The swap: a previous export moves aside, the new tree takes its name, the old one is removed.
     const old = join(dirname(out), `.${basename(out)}.old-${process.pid}`);
