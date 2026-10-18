@@ -3,7 +3,7 @@
 // the asset layer answers it unpacked (bytes, ETag, headers, 304, HEAD, redirects into page directories and to the
 // canonical encoding of a path). The asset layer is a stand-in here (`layer`, after Cloudflare's asset-worker); the
 // real one is compared with scripts/compare-catalog.ts under wrangler dev.
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { beforeEach, expect, test } from "vitest";
@@ -247,4 +247,33 @@ test("a file whose _headers rules differ from its probe's stays a file; redirect
   await expect(pack(tree(1, { _redirects: "/a /b 301\n" }))).rejects.toThrow(/_redirects/);
   // Without room for the buckets, the pack fails instead of deploying over the limit.
   await expect(pack(tree(1), 100)).rejects.toThrow(/no room/);
+});
+
+test("a bucket the asset layer fails to serve is not taken for an empty one", async () => {
+  const site = tree(3);
+  await pack(site, 20_000);
+  const env = layer(site);
+  let fail = true;
+  const real = env.ASSETS.fetch.bind(env.ASSETS);
+  const flaky = {
+    fetch: (input: Request) => {
+      if (fail && new URL(input.url).pathname.startsWith("/_pack/") && !new URL(input.url).pathname.startsWith("/_pack/type/")) return Promise.resolve(new Response("busy", { status: 503 }));
+      return real(input);
+    },
+  } as unknown as Fetcher;
+  const ask = () => asset({ ASSETS: flaky }, new Request("https://unstale.example/v1/coverage/" + "0".repeat(64) + ".json", { redirect: "manual" }));
+  await expect(ask()).rejects.toThrow(/HTTP 503/);
+  fail = false;
+  expect((await ask()).status).toBe(200);
+});
+
+test("a pack that fails part way leaves the tree unpacked, so it can be packed again", async () => {
+  const big = `v1/coverage/${"f".repeat(64)}.json`;
+  const site = tree(3, { [big]: "x".repeat(26 * 1024 * 1024) });
+  await expect(pack(site, 20_000)).rejects.toThrow(/file limit/);
+  expect(existsSync(join(site, "_pack"))).toBe(false);
+  expect(existsSync(join(site, "v1/tech/t00.json"))).toBe(true);
+  rmSync(join(site, big));
+  await pack(site, 20_000);
+  expect(existsSync(join(site, "_pack"))).toBe(true);
 });

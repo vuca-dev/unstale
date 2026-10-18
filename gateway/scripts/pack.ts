@@ -153,27 +153,40 @@ export async function pack(site: string, maxFiles = 20_000): Promise<PackResult>
   }
   let largest = 0;
   let total = 0;
-  for (const [b, paths] of buckets) {
-    const header: BucketHeader = { files: {} };
-    const parts: Buffer[] = [];
-    let offset = 0;
-    for (const p of paths.sort()) {
-      const bytes = readFileSync(join(site, p));
-      header.files[p] = [offset, bytes.length, assetHash(p, bytes)];
-      parts.push(bytes);
-      offset += bytes.length;
+  // A failure part way leaves the tree as it was: no originals are removed before every bucket is written.
+  try {
+    for (const [b, paths] of buckets) {
+      const header: BucketHeader = { files: {} };
+      const parts: Buffer[] = [];
+      let offset = 0;
+      for (const p of paths.sort()) {
+        const bytes = readFileSync(join(site, p));
+        header.files[p] = [offset, bytes.length, assetHash(p, bytes)];
+        parts.push(bytes);
+        offset += bytes.length;
+      }
+      const body = Buffer.concat([Buffer.from(`${JSON.stringify(header)}\n`), ...parts]);
+      if (body.length > MAX_FILE_BYTES) throw new Error(`${bucketFile(b)}: ${body.length} bytes, over the ${MAX_FILE_BYTES}-byte file limit`);
+      // Read back before anything is removed: every file from the header the Worker parses, and the last one through
+      // the Worker's own reader (one pass over the bucket, not one per file).
+      const { header: read } = await readPacked(new Blob([body]).stream(), "");
+      const data = body.subarray(body.indexOf(0x0a) + 1);
+      let last = paths[0]!;
+      for (const p of paths) {
+        const entry = Object.hasOwn(read.files, p) ? read.files[p] : undefined;
+        if (!entry || !data.subarray(entry[0], entry[0] + entry[1]).equals(readFileSync(join(site, p)))) throw new Error(`${p} does not read back from ${bucketFile(b)}`);
+        if (entry[0] >= read.files[last]![0]) last = p;
+      }
+      const { file } = await readPacked(new Blob([body]).stream(), last);
+      if (!file || !Buffer.from(file.bytes).equals(readFileSync(join(site, last)))) throw new Error(`${last} does not read back from ${bucketFile(b)}`);
+      mkdirSync(join(site, PACK_DIR), { recursive: true });
+      writeFileSync(join(site, bucketFile(b)), body);
+      largest = Math.max(largest, body.length);
+      total += body.length;
     }
-    const body = Buffer.concat([Buffer.from(`${JSON.stringify(header)}\n`), ...parts]);
-    if (body.length > MAX_FILE_BYTES) throw new Error(`${bucketFile(b)}: ${body.length} bytes, over the ${MAX_FILE_BYTES}-byte file limit`);
-    // Read back as the Worker reads it, before anything is removed.
-    for (const p of paths) {
-      const { file } = await readPacked(new Blob([body]).stream(), p);
-      if (!file || !Buffer.from(file.bytes).equals(readFileSync(join(site, p)))) throw new Error(`${p} does not read back from ${bucketFile(b)}`);
-    }
-    mkdirSync(join(site, PACK_DIR), { recursive: true });
-    writeFileSync(join(site, bucketFile(b)), body);
-    largest = Math.max(largest, body.length);
-    total += body.length;
+  } catch (e) {
+    rmSync(join(site, PACK_DIR), { recursive: true, force: true });
+    throw e;
   }
   for (const p of packed) rmSync(join(site, p));
   for (const ext of new Set(packed.map(extensionOf))) {

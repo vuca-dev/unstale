@@ -12,7 +12,7 @@
 // Prints one line per difference and a JSON summary; exits 1 on any difference. Headers that differ per response
 // (Date, CF-Ray, Report-To, NEL and the like) are not compared.
 import { createHash } from "node:crypto";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { assetHash } from "./pack.ts";
@@ -69,6 +69,7 @@ export function probes(site: string, n: number, seed: number): Probe[] {
       { path: `/${p}`, headers: { Accept: "text/html,*/*;q=0.8" } },
       { path: `/${p}`, headers: { Accept: "text/markdown" } },
       { path: `/${p}`, conditional: true },
+      { path: `/${p}`, method: "HEAD" },
       { path: `/${p}index.md` },
       { path: `/${p}index.md`, conditional: true },
       { path: `/${p}index.html` },
@@ -145,13 +146,17 @@ export async function compare(
 
 /** Whether a deployment's ETags are Workers' asset hash of the bytes (scripts/pack.ts, assetHash): checked against
  * production, it shows a packed file keeps the ETag clients hold for it. */
-export async function checkEtags(base: string, list: Probe[]): Promise<{ checked: number; mismatches: string[] }> {
+export async function checkEtags(base: string, list: Probe[], site?: string): Promise<{ checked: number; mismatches: string[] }> {
   const mismatches: string[] = [];
   let checked = 0;
   for (const p of list.filter((p) => !p.method && !p.conditional && !p.headers && p.path.startsWith("/v1/"))) {
     const res = await fetch(new URL(p.path, base), { headers: { "Accept-Encoding": "identity" }, redirect: "manual" });
     const body = Buffer.from(await res.arrayBuffer());
-    if (res.status !== 200) continue;
+    if (res.status !== 200) {
+      // A file of the tree the deployment does not serve is a failure, not a pass (a wrong URL, another catalog).
+      if (site && existsSync(join(site, p.path))) mismatches.push(`${p.path}: HTTP ${res.status}, in the tree`);
+      continue;
+    }
     checked++;
     const want = `"${assetHash(p.path, body)}"`;
     if (res.headers.get("etag") !== want) mismatches.push(`${p.path}: ETag ${res.headers.get("etag")}, asset hash ${want}`);
@@ -169,10 +174,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     throw new Error("usage: compare-catalog.ts <before URL> <after URL> <unpacked site dir> [--sample N] [--seed N] [--etags compare|own]\n       compare-catalog.ts --check-etags <URL> <unpacked site dir> [--sample N]");
   const list = probes(site, Number(values.sample), Number(values.seed));
   if (values["check-etags"]) {
-    const r = await checkEtags(values["check-etags"], list);
+    const r = await checkEtags(values["check-etags"], list, site);
     for (const m of r.mismatches) console.log(m);
     console.log(JSON.stringify({ checked: r.checked, mismatches: r.mismatches.length }));
-    process.exitCode = r.mismatches.length ? 1 : 0;
+    process.exitCode = r.mismatches.length || !r.checked ? 1 : 0;
   } else {
     const r = await compare(before!, after!, list, { etags: values.etags === "own" ? "own" : "compare" });
     for (const d of r.differences) console.log(d);

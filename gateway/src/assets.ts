@@ -26,6 +26,11 @@ async function header(env: Assets, base: string, file: string): Promise<BucketHe
   const known = headers.get(bucket);
   if (known) return known;
   const res = await env.ASSETS.fetch(new Request(new URL(`/${bucketFile(bucket)}`, base)));
+  // Only a bucket that is not there is an empty one; any other failure is not kept, so it cannot hide packed files.
+  if (res.status !== 404 && (!res.ok || !res.body)) {
+    await res.body?.cancel();
+    throw new Error(`${bucketFile(bucket)}: HTTP ${res.status}`);
+  }
   const h = res.ok && res.body ? (await readPacked(res.body, "")).header : (await res.body?.cancel(), EMPTY);
   if (headers.size >= HEADERS_KEPT) headers.delete(headers.keys().next().value!);
   headers.set(bucket, h);
