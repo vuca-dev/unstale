@@ -5,7 +5,7 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, beforeAll, describe, expect, test } from "vitest";
+import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
 import { attachAdvisories, fixesInWindow, fromOsv, idsAtQuote, inRange, resolveRange, semverCmp, type Advisory, type AffectedRange } from "../src/pipeline/advisories.ts";
 import { ecosystemOf, githubRepo, pep440Order } from "../src/pipeline/ecosystems.ts";
 import type { Classification } from "../src/pipeline/classify/adapter.ts";
@@ -137,6 +137,37 @@ describe("advisories", () => {
     expect(githubRepo({ url: "git+https://github.com/nestjs/nest.git", directory: "packages/core" })).toBe("nestjs/nest");
     expect(githubRepo("github:vercel/next.js")).toBe("vercel/next.js");
     expect(githubRepo("https://gitlab.com/a/b")).toBeUndefined();
+  });
+
+  test("npm siblings: only a scope a component is published in from the repository is listed; a failed read fails the lookup", async () => {
+    const repo = (r: string) => ({ repository: { url: `git+https://github.com/${r}.git` } });
+    const answers: Record<string, unknown> = {
+      "@types%2fws/latest": repo("DefinitelyTyped/DefinitelyTyped"),
+      "@acme%2fcore/latest": repo("acme/acme"),
+      "-/org/acme/package": { "@acme/core": "write", "@acme/cli": "write", "@acme/other": "write" },
+      "@acme%2fcli/latest": repo("acme/acme"),
+      "@acme%2fother/latest": repo("someone/else"),
+    };
+    const asked: string[] = [];
+    let refuse = "";
+    vi.stubGlobal("fetch", async (url: string) => {
+      const key = url.replace("https://registry.npmjs.org/", "");
+      asked.push(key);
+      if (key === refuse) return new Response("", { status: 403 });
+      return key in answers ? Response.json(answers[key]) : new Response("", { status: 404 });
+    });
+    try {
+      const siblings = ecosystemOf("pkg:npm/ws").siblings!;
+      const tech = (components: string[], r: string) => ({ ...TECHNOLOGIES.next!, repo: r, components });
+      // A merged type stub's scope belongs to another repository: never listed.
+      expect(await siblings(tech(["pkg:npm/ws", "pkg:npm/%40types/ws"], "websockets/ws"))).toEqual([]);
+      expect(asked).toEqual(["@types%2fws/latest"]);
+      expect(await siblings(tech(["pkg:npm/%40acme/core"], "acme/acme"))).toEqual(["pkg:npm/%40acme/cli", "pkg:npm/%40acme/core"]);
+      refuse = "@acme%2fother/latest";
+      await expect(siblings(tech(["pkg:npm/%40acme/core"], "acme/acme"))).rejects.toThrow(/403/);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   test("the fix per line inside the window: a canary-only or out-of-window patch does not count", () => {

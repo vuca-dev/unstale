@@ -452,6 +452,10 @@ export class CoverageService {
     this.running.add(job.purl);
     if (isNew) this.runningNew.add(job.purl);
     this.launched++;
+    // A monitored technology's refresh that fails keeps its published coverage: it stays `monitoring`, retried with the
+    // same backoff, the failure in its stage. `failed` is for a technology whose coverage could not be built; a
+    // transient refusal (a registry's 429) during a refresh no longer flips monitored technologies to failed and back.
+    const refresh = job.state === "monitoring";
     void this.work(job)
       .catch((error) => {
         job.failures = (job.failures ?? 0) + 1;
@@ -459,14 +463,9 @@ export class CoverageService {
           Date.now() +
             Math.min(6 * 3600000, 60000 * 2 ** Math.min(job.failures - 1, 8)),
         ).toISOString();
-        this.save(
-          job,
-          "failed",
-          String(error instanceof Error ? error.message : error).slice(
-            0,
-            300,
-          ),
-        );
+        const why = String(error instanceof Error ? error.message : error).slice(0, 300);
+        if (refresh) this.save(job, "monitoring", `${job.records} verified records; refresh failed (${why}), retried after ${job.retry_at.slice(0, 16).replace("T", " ")} UTC`);
+        else this.save(job, "failed", why);
       })
       .finally(() => {
         this.running.delete(job.purl);
