@@ -128,20 +128,34 @@ async function getJson(url: string): Promise<unknown> {
 
 /**
  * npm siblings: packages of the components' scopes (the registry's public scope listing) whose registry `repository`
- * points at the technology's repository. An unscoped technology has none.
+ * points at the technology's repository. An unscoped technology has none. A scope is listed only when a component in
+ * it is published from the technology's repository: a merged type stub (`@types/ws`, published from DefinitelyTyped)
+ * would otherwise list another repository's scope, 11,427 packages for `@types`, read one by one at every advisories
+ * stage. A package that cannot be read fails the lookup (the caller then uses the components only, uncached) instead
+ * of counting as not a sibling: a rate-limited registry ends the lookup at its first refusal, and an incomplete list
+ * is never cached as complete.
  */
 async function npmSiblings(t: Technology): Promise<string[]> {
   const repo = t.repo.toLowerCase();
   if (!repo) return [];
-  const scopes = new Set(t.components.map(npmName).filter((n) => n.startsWith("@")).map((n) => n.slice(1).split("/")[0]!));
+  const latest = async (name: string) => (await getJson(`https://registry.npmjs.org/${name.replace("/", "%2f")}/latest`)) as { repository?: unknown } | undefined;
+  const scopes = new Set<string>();
+  for (const name of new Set(t.components.map(npmName).filter((n) => n.startsWith("@"))))
+    if (githubRepo((await latest(name))?.repository) === repo) scopes.add(name.slice(1).split("/")[0]!);
   const out: string[] = [];
   for (const scope of scopes) {
     const listing = (await getJson(`https://registry.npmjs.org/-/org/${encodeURIComponent(scope)}/package`)) as Record<string, string> | undefined;
     const names = Object.keys(listing ?? {}).filter((n) => n.startsWith(`@${scope}/`)).sort();
+    let failure: unknown;
     await pool(names, 8, async (name) => {
-      const meta = (await getJson(`https://registry.npmjs.org/${name.replace("/", "%2f")}/latest`).catch(() => undefined)) as { repository?: unknown } | undefined;
-      if (githubRepo(meta?.repository) === repo) out.push(npmPurl(name));
+      if (failure) return;
+      try {
+        if (githubRepo((await latest(name))?.repository) === repo) out.push(npmPurl(name));
+      } catch (e) {
+        failure ??= e;
+      }
     });
+    if (failure) throw failure;
   }
   return out.sort();
 }

@@ -154,6 +154,19 @@ test("a package missing from its registry is parked for a week, not retried as a
   expect(Date.parse(job.retry_at!) - Date.now()).toBeGreaterThan(6 * 86_400_000);
 });
 
+test("a monitored technology whose refresh fails stays monitoring with its records; a new one that fails is failed", async () => {
+  const { FetchFailure } = await import("../src/collector/http.ts");
+  vi.spyOn(discovery, "discoverTechnology").mockRejectedValue(new FetchFailure("http_status", "HTTP 429", 429));
+  const service = new CoverageService(2, { limits: limits() }).hold();
+  const covered = service.submit("pkg:npm/covered");
+  Object.assign(covered, { state: "monitoring", retry_at: "2000-01-01T00:00:00.000Z", admitted: "test", records: 12 });
+  service.enqueue([{ purl: "pkg:npm/new", demand: 1 }]);
+  await service.drain(Date.now() + 60_000, 5_000, 10);
+  expect(covered).toMatchObject({ state: "monitoring", failures: 1, stage: expect.stringMatching(/^12 verified records; refresh failed \(HTTP 429\), retried after /) });
+  expect(Date.parse(covered.retry_at!)).toBeGreaterThan(Date.now());
+  expect(service.jobs.get("pkg:npm/new")).toMatchObject({ state: "failed", stage: "HTTP 429", failures: 1 });
+});
+
 // Discovery that never answers: a job started stays running, so a test can see which jobs hold the slots.
 const hanging = () => vi.spyOn(discovery, "discoverTechnology").mockImplementation(() => new Promise(() => {}));
 
