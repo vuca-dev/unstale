@@ -23,6 +23,9 @@ const { values: a, positionals } = parseArgs({
 });
 const OUT = join(SELECT, "out", "slice3d");
 process.env.UNSTALE_CENTRAL_DIR = a.cache!;
+// The cached baseline is production's Luna `low`: pin the cache key so an inherited override cannot select another one.
+process.env.UNSTALE_EXTRACT_MODEL = "vercel:openai/gpt-6-luna";
+process.env.UNSTALE_EXTRACT_EFFORT = "low";
 const { chunk, contentFree, EXTRACT_PROMPT, Extracted, fill, LABEL_PROMPT, locate, strings, toIncoming } = await import("../../../central/src/pipeline/extract.ts");
 const { extractCachePath, parseJson, postChat, PROVIDERS, HttpError } = await import("../../../central/src/pipeline/llm.ts");
 const { keyFromEnvFile } = await import("../../../central/src/pipeline/classify/adapter.ts");
@@ -127,6 +130,9 @@ function sample(all: Chunk[]): Chunk[] {
 
 const spent = (): number => (existsSync(USAGE) ? readFileSync(USAGE, "utf8").split("\n").filter(Boolean).reduce((s, l) => s + (Number(JSON.parse(l).dollars) || 0), 0) : 0);
 let running = 0;
+/** Worst-case dollars of the calls in flight (16k output tokens at the default tier's $0.50 per million, input counted
+ * as one token per character at $0.10), so concurrent calls cannot pass the cap together. */
+let reserved = 0;
 
 /** One call, three attempts on an unparseable answer; a truncated answer fails at once. */
 async function call<T>(arm: string, step: string, key: string, effort: string, prompt: string, parse: (t: string) => T | undefined): Promise<{ v?: T; text?: string; failed?: string }> {
@@ -134,13 +140,19 @@ async function call<T>(arm: string, step: string, key: string, effort: string, p
   const body = { model: MODEL, messages: [{ role: "user", content: prompt }], max_tokens: 16_000, reasoning_effort: effort };
   const post = (b: Record<string, unknown>) => postChat(p, b as never, { apiKey: keyFromEnvFile(p.keyFile, p.keyVar), backoffMs: 2000, timeoutMs: 10 * 60 * 1000, retries: 4 });
   for (let attempt = 0; attempt < 3; attempt++) {
-    if (running + 0.002 > CAP) throw new Error(`cap $${CAP} reached ($${running.toFixed(4)})`);
+    const worst = (prompt.length * 0.1 + 16_000 * 0.5) / 1e6;
+    if (running + reserved + worst > CAP) throw new Error(`cap $${CAP} reached ($${running.toFixed(4)} spent, $${reserved.toFixed(4)} in flight)`);
+    reserved += worst;
     let r;
     try {
-      r = await post({ ...body, providerOptions: { gateway: { serviceTier: "flex" } } });
-    } catch (e) {
-      if (!(e instanceof HttpError) || (e.status !== 429 && e.status < 500)) throw e;
-      r = await post(body);
+      try {
+        r = await post({ ...body, providerOptions: { gateway: { serviceTier: "flex" } } });
+      } catch (e) {
+        if (!(e instanceof HttpError) || (e.status !== 429 && e.status < 500)) throw e;
+        r = await post(body);
+      }
+    } finally {
+      reserved -= worst;
     }
     running += r.cost ?? 0;
     appendFileSync(USAGE, JSON.stringify({ arm, step, key, effort, attempt, ...r.usage, dollars: r.cost ?? null, finish: r.finish, at: new Date().toISOString() }) + "\n");

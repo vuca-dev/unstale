@@ -7,11 +7,11 @@ Setup under test: `vercel:openai/gpt-6-luna`, two calls, flex tier, reasoning `n
 
 ## Decision
 
-**Rejected. Keep `low` on every chunk.** Reasoning `none` fails two of the five pre-registered conditions: record
-agreement and label terms. It saves 40% of A+B dollars on short chunks, or about 16% of all A+B (the replay estimate),
+**Rejected. Keep `low` on every chunk.** Reasoning `none` fails three of the five pre-registered checks: both
+record-agreement checks and label terms. It saves 40% of A+B dollars on short chunks, or about 16% of all A+B (the replay estimate),
 but it changes which records and terms come out by more than a second `low` run does. **Arm P (packing short notes)
 is rejected too** (below): it saves 38% on the notes it packs and misattributes almost nothing, but it fails the same
-two conditions.
+three checks.
 
 | Condition (rule) | `none` vs cached | `low` replicate vs cached | Pass |
 |---|---|---|---|
