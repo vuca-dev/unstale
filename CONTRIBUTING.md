@@ -77,14 +77,15 @@ queue (`gateway`), and the acknowledgement as they are after it (`usage`). Its
 secrets are set once with `npx wrangler secret put` in `gateway/`: `DRAIN_TOKEN`, and for fast-track
 `GITHUB_DISPATCH_TOKEN`, a fine-grained token with **Actions: write** on this repository only.
 
-The free plan's scarcest allowance is **100,000 Worker requests a day** (requests fail after it). A request served by a
-static file costs none; one that runs the Worker costs one: every coverage route, the `run_worker_first` paths, and a
-request for a file that does not exist (on 17 October 2026, 404s for uncovered technologies' indexes were 65% of the
-day's 93,544). So clients ask only for indexes `v1/technologies.json` names, read and register coverage `BATCH` (16) packages to
-a request (`POST /coverage/status`, `POST /coverage/register`; a request each where a service lacks them), and a
-waiting client reads a package again only when it may have changed (`next_poll` in `local/cli/src/onboarding.rs`).
-Rejected: `Cache-Control` on status reads (a Worker on a custom domain runs before the cache, so a cached answer still
-costs a request) and `not_found_handling` (a miss must reach the Worker once catalog files are packed past the static file limit).
+The free plan's scarcest allowance is **100,000 Worker requests a day** (requests fail after it). A request served by
+a static file costs none; one that runs the Worker costs one: every coverage route, the `run_worker_first` paths, and
+a request for a file that does not exist (on 17 October 2026, 404s for uncovered technologies' indexes were 65% of the
+day's 93,544). So clients ask only for indexes `v1/technologies.json` names with a hash their cached copy lacks, read
+and register coverage `BATCH` (16) packages to a request (`POST /coverage/status`, `POST /coverage/register`; a
+request each where a service lacks them), and a waiting client reads a package again only when it may have changed
+(`next_poll` in `local/cli/src/onboarding.rs`). Rejected: `Cache-Control` on status reads (a Worker on a custom domain
+runs before the cache, so a cached answer still costs a request) and `not_found_handling` (a miss must reach the
+Worker once catalog files are packed past the static file limit).
 
 The workflow's own token (`github.token`) manages the state release; nothing else is needed for CI. npm publishing
 needs no secret: each of `@unstale/cli`, `@unstale/create` and `@unstale/cli-*` names this repository and

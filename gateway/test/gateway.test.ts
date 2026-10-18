@@ -235,7 +235,9 @@ test("a batch answers each package as its own request would, in one Worker reque
     ["pkg:npm/never", 404],
   ]);
   expect(statuses[0]!.job).toEqual(known);
-  expect(statuses[1]!.job).toEqual(await (await handle(get("/coverage?purl=pkg%3Apypi%2Frequests"), e)).json());
+  // As GET /coverage answers it, but for the time of the answer.
+  const single = (await (await handle(get("/coverage?purl=pkg%3Apypi%2Frequests"), e)).json()) as Record<string, unknown>;
+  expect({ ...(statuses[1]!.job as object), updated: single.updated }).toEqual(single);
   expect(calls).toEqual(["views", "view"]);
   // Known packages only: no call to the object at all.
   calls.length = 0;

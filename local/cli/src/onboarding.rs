@@ -2240,7 +2240,7 @@ mod tests {
         assert_eq!(got[&7], Err(Some(404)));
         assert!((0..40).filter(|i| *i != 7).all(|i| got[&i] == Ok(format!("pkg:npm/p{i}"))));
         // A service without the route: one batch request, then a request per package, and no batch again.
-        let (base, log) = service_stub(|target, _| if target.starts_with("GET /coverage?purl=") { (200, job_json(&target["GET /coverage?purl=".len()..].replace("%3A", ":").replace("%2F", "/")).to_string()) } else { (404, "{}".into()) });
+        let (base, log) = service_stub(|target, _| match target.strip_prefix("GET /coverage?purl=") { Some(p) => (200, job_json(&p.replace("%3A", ":").replace("%2F", "/")).to_string()), None => (404, "{}".into()) });
         let mut n = 0;
         let posts = || log.lock().unwrap().iter().filter(|l| l.starts_with("POST")).count();
         statuses(&agent(), &base, &purls[..20], |_, r| { n += usize::from(r.is_ok()); true });

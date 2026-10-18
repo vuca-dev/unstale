@@ -129,6 +129,9 @@ function expr(s: Schema, path: string): string {
       return `z.array(${expr(s.items as Schema, `${path}[]`)})`;
     case "object":
       checkKeys(s, path, ["type", "properties", "required", "additionalProperties"]);
+      // A map (a Rust BTreeMap<String, V>): string keys, every value of one schema.
+      if (s.properties === undefined && s.required === undefined && s.additionalProperties && typeof s.additionalProperties === "object")
+        return `z.record(z.string(), ${expr(s.additionalProperties as Schema, `${path}{}`)})`;
       if (s.additionalProperties !== undefined && s.additionalProperties !== false) fail(path, "open map");
       return `z.strictObject(${objectBody(s, path)})`;
     default:

@@ -79,8 +79,11 @@ describe("export", () => {
       for (const s of index.shards) expect(first[s.path]).toBe(s.sha256);
     }
     expect(readFileSync(join(out, "v1", "root.json"))).toEqual(readFileSync(join(catalogDir(), "v1", "root.json")));
-    // Every exported index, and nothing else, is named: a client asks only for these.
-    expect(JSON.parse(readFileSync(join(out, "v1", "technologies.json"), "utf8"))).toEqual({ schema: 1, technologies: ["next", "other"] });
+    // Every exported index, and nothing else, is named with the hash of its served bytes: a client asks only for these,
+    // and only when its copy differs.
+    const listed = JSON.parse(readFileSync(join(out, "v1", "technologies.json"), "utf8")) as { schema: number; technologies: Record<string, string> };
+    expect(Object.keys(listed.technologies)).toEqual(["next", "other"]);
+    for (const tech of ["next", "other"]) expect(listed.technologies[tech]).toBe(first[`v1/tech/${tech}.json`]!.slice(0, 16));
     exportCatalog(catalogDir(), out, { now: T0 });
     expect(files(out)).toEqual(first);
     expect(readdirSync(join(out, ".."))).toEqual(["site"]); // no partial or old tree left beside it

@@ -243,9 +243,17 @@ fn onboarding_status_reports_features_without_running_an_agent_and_resumes_jobs(
             if let Ok((mut stream, _)) = listener.accept() {
                 stream.set_nonblocking(false).unwrap();
                 stream.set_read_timeout(Some(std::time::Duration::from_secs(2))).unwrap();
-                let mut buf = [0u8; 8192];
-                let n = stream.read(&mut buf).unwrap();
-                let request = String::from_utf8_lossy(&buf[..n]);
+                // The whole request, body included, before answering.
+                let (mut got, mut buf) = (Vec::new(), [0u8; 8192]);
+                loop {
+                    let n = stream.read(&mut buf).unwrap_or(0);
+                    got.extend_from_slice(&buf[..n]);
+                    let text = String::from_utf8_lossy(&got).to_string();
+                    let Some(end) = text.find("\r\n\r\n") else { if n == 0 { break } else { continue } };
+                    let length = text[..end].lines().find_map(|l| l.to_ascii_lowercase().strip_prefix("content-length:").map(|v| v.trim().parse::<usize>().unwrap_or(0))).unwrap_or(0);
+                    if n == 0 || got.len() >= end + 4 + length { break; }
+                }
+                let request = String::from_utf8_lossy(&got);
                 if request.starts_with("GET /health ") {
                     let body=r#"{"service":"unstale-coverage","schema":1}"#;
                     write!(stream,"HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",body.len(),body).unwrap();
@@ -463,7 +471,7 @@ fn onboarding_shortlist_expands_to_eight_without_truncating_review_context() {
     for i in 0..10 { assert!(full.contains(&format!("next:capability-{i}"))); }
 }
 
-/// A coverage service that answers every status request with `job` (and the health check).
+/// A coverage service that answers every status request with `job` (and the health check), and has no batch routes.
 fn coverage_stub(job: serde_json::Value) -> (String, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
     use std::io::{Read, Write};
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
@@ -472,9 +480,23 @@ fn coverage_stub(job: serde_json::Value) -> (String, std::sync::Arc<std::sync::a
     let counter = hits.clone();
     std::thread::spawn(move || {
         for mut stream in listener.incoming().flatten() {
-            let mut buf = [0u8; 8192];
-            let n = stream.read(&mut buf).unwrap_or(0);
-            let request = String::from_utf8_lossy(&buf[..n]).to_string();
+            // The whole request, body included, before answering.
+            let (mut got, mut buf) = (Vec::new(), [0u8; 8192]);
+            loop {
+                let n = stream.read(&mut buf).unwrap_or(0);
+                got.extend_from_slice(&buf[..n]);
+                let text = String::from_utf8_lossy(&got).to_string();
+                let Some(end) = text.find("\r\n\r\n") else { if n == 0 { break } else { continue } };
+                let length = text[..end].lines().find_map(|l| l.to_ascii_lowercase().strip_prefix("content-length:").map(|v| v.trim().parse::<usize>().unwrap_or(0))).unwrap_or(0);
+                if n == 0 || got.len() >= end + 4 + length { break; }
+            }
+            let request = String::from_utf8_lossy(&got).to_string();
+            // A service without batch routes: the client asks a request per package.
+            if !request.starts_with("GET ") {
+                counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let _ = write!(stream, "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+                continue;
+            }
             let body = if request.starts_with("GET /health ") { r#"{"service":"unstale-coverage","schema":1}"#.to_string() } else { job.to_string() };
             counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             let _ = write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body);

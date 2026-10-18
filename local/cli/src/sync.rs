@@ -10,14 +10,15 @@
 //! signed indexes cover the whole catalog: whoever controls the host but not the key cannot change what reaches an
 //! agent. A local directory is the user's own and is not checked.
 //!
-//! The catalog's list of technologies (`v1/technologies.json`, signed like an index) names every index it has: only
-//! candidates on it are asked for, so a candidate the catalog does not cover costs no request (on the hosted catalog a
-//! 404 runs the Worker, whose free allowance is the scarce one; a listed index is a static file). Without the list (an
-//! older export), or when it cannot be read or verified, every candidate's index is asked for, as before.
+//! The catalog's list of technologies (`v1/technologies.json`, signed like an index) names every index it has, with a
+//! hash of its bytes: only candidates on it are asked for, and not those whose cached index has that hash, so neither
+//! a candidate the catalog does not cover nor an unchanged index costs a request (on the hosted catalog a 404, or a
+//! file the Worker serves, spends the Worker's daily allowance, the free plan's scarcest). Without the list (an older
+//! export), or when it cannot be read or verified, every candidate's index is asked for, as before.
 
 use anyhow::{Context, Result, anyhow, bail};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Component, Path, PathBuf};
 use std::time::Duration;
 use unstale_schema::catalog::{CATALOG_SCHEMA, Root, TechIndex, Technologies};
@@ -179,9 +180,10 @@ fn technologies_validators_path(cache_dir: &Path) -> PathBuf {
     cache_dir.join("v1/technologies.http.json")
 }
 
-/// The technologies the catalog has an index for, or None when it publishes no list (or it cannot be read or does not
-/// verify): then every candidate is asked for. Conditional over HTTP, the cached copy reused on a 304.
-fn listed_technologies(src: &Source, cache_dir: &Path, key: Option<&[u8; 32]>) -> Option<BTreeSet<String>> {
+/// The technologies the catalog has an index for, each with the first 16 hex digits of its index's sha256, or None when
+/// it publishes no list (or it cannot be read or does not verify): then every candidate is asked for. Conditional over
+/// HTTP, the cached copy reused on a 304.
+fn listed_technologies(src: &Source, cache_dir: &Path, key: Option<&[u8; 32]>) -> Option<BTreeMap<String, String>> {
     let cached_path = cache_dir.join(TECHNOLOGIES);
     let cached = std::fs::read(&cached_path).ok();
     let cond: Option<Validators> = std::fs::read(technologies_validators_path(cache_dir))
@@ -211,7 +213,7 @@ fn listed_technologies(src: &Source, cache_dir: &Path, key: Option<&[u8; 32]>) -
             let _ = serde_json::to_vec(&v).map_err(anyhow::Error::from).and_then(|b| write_atomic(&technologies_validators_path(cache_dir), &b));
         }
     }
-    Some(list.technologies.into_iter().collect())
+    Some(list.technologies)
 }
 
 /// Check a root against this client. The message names what to do.
@@ -340,10 +342,14 @@ fn sync_with(src: &Source, cache_dir: &Path, candidates: &BTreeSet<String>, purl
     let (total, mut done) = (techs.len(), 0);
     progress(0, total);
     crate::util::concurrent(&techs, crate::util::REQUESTS_AT_ONCE, |tech| {
-        if listed.as_ref().is_some_and(|l| !l.contains(*tech)) {
-            return Outcome::NotCovered;
-        }
-        sync_one(src, cache_dir, tech, purls, key)
+        let hash = match &listed {
+            Some(l) => match l.get(*tech) {
+                Some(h) => Some(h.as_str()),
+                None => return Outcome::NotCovered,
+            },
+            None => None,
+        };
+        sync_one(src, cache_dir, tech, purls, key, hash)
     }, |i, outcome| {
         outcomes[i] = Some(outcome);
         done += 1;
@@ -370,11 +376,23 @@ enum Outcome {
     Failed(String),
 }
 
-/// One technology: its index (conditionally), then its shards, swapped into the cache.
-fn sync_one(src: &Source, cache_dir: &Path, tech: &str, purls: &BTreeSet<String>, key: Option<&[u8; 32]>) -> Outcome {
+/// One technology: its index (conditionally; not at all when `listed`, the hash the catalog's list gives it, is the
+/// cached index's), then its shards, swapped into the cache.
+fn sync_one(src: &Source, cache_dir: &Path, tech: &str, purls: &BTreeSet<String>, key: Option<&[u8; 32]>, listed: Option<&str>) -> Outcome {
     let rel = format!("v1/tech/{tech}.json");
     // A conditional request only when the cached index is the one the validators were stored with.
     let cached = std::fs::read(index_path(cache_dir, tech)).ok();
+    // The cached index is the listed one: as a 304, without asking (it was verified when it arrived).
+    if let (Some(c), Some(h)) = (&cached, listed)
+        && h.len() == 16
+        && sha256_hex(c).starts_with(h)
+    {
+        return match sync_tech(src, cache_dir, tech, c, purls) {
+            Ok(Some(t)) => Outcome::Synced(t),
+            Ok(None) => Outcome::NotInStack,
+            Err(e) => Outcome::Failed(format!("{e:#}")),
+        };
+    }
     let cond: Option<Validators> = std::fs::read(validators_path(cache_dir, tech))
         .ok()
         .and_then(|b| serde_json::from_slice::<Validators>(&b).ok())
@@ -693,7 +711,11 @@ mod tests {
         let cat = FixtureCatalog::new();
         cat.tech("next", &[("16", vec![rec("next:a", "pkg:npm/next", "16.0.1")])]);
         let list = cat.dir.path().join("v1/technologies.json");
-        std::fs::write(&list, r#"{"schema":1,"technologies":["next"]}"#).unwrap();
+        let listing = |techs: &[&str]| {
+            let entries: Vec<String> = techs.iter().map(|t| format!("\"{t}\":\"{}\"", &sha256_hex(&std::fs::read(cat.dir.path().join(format!("v1/tech/{t}.json"))).unwrap())[..16])).collect();
+            std::fs::write(&list, format!("{{\"schema\":1,\"technologies\":{{{}}}}}", entries.join(","))).unwrap();
+        };
+        listing(&["next"]);
         let srv = TestServer::start(cat.dir.path().to_path_buf(), false);
         let cache = tempfile::tempdir().unwrap();
         let all = cands(&["next", "react", "types", "vite"]);
@@ -702,15 +724,19 @@ mod tests {
         let log = srv.take_log();
         let asked: Vec<&str> = log.iter().map(String::as_str).filter(|l| !l.starts_with("/v1/shards/")).collect();
         assert_eq!(asked, vec!["/v1/root.json 200", "/v1/technologies.json 200", "/v1/tech/next.json 200"]);
-        // Again: the list and the index are not modified, and no uncovered candidate is asked for.
-        sync_with(&resolve_source(&srv.base).unwrap(), cache.path(), &all, &purls(&["pkg:npm/next"]), None, |_, _| {}).unwrap();
-        assert_eq!(srv.take_log(), vec!["/v1/root.json 200", "/v1/technologies.json 304", "/v1/tech/next.json 304"]);
-        // A technology the list starts to name is asked for at the next sync.
+        // Again: the list is not modified and names the cached index's hash, so neither it nor any uncovered
+        // candidate is asked for.
+        let rep = sync_with(&resolve_source(&srv.base).unwrap(), cache.path(), &all, &purls(&["pkg:npm/next"]), None, |_, _| {}).unwrap();
+        assert_eq!((rep.synced.len(), rep.synced[0].unchanged), (1, true));
+        assert_eq!(srv.take_log(), vec!["/v1/root.json 200", "/v1/technologies.json 304"]);
+        // A technology the list starts to name, and an index whose hash changed, are asked for at the next sync.
         cat.tech("react", &[("19", vec![rec("react:a", "pkg:npm/react", "19.0.0")])]);
-        std::fs::write(&list, r#"{"schema":1,"technologies":["next","react"]}"#).unwrap();
+        cat.tech("next", &[("16", vec![rec("next:a", "pkg:npm/next", "16.0.1")]), ("15", vec![rec("next:b", "pkg:npm/next", "15.0.1")])]);
+        listing(&["next", "react"]);
         let rep = sync_with(&resolve_source(&srv.base).unwrap(), cache.path(), &all, &purls(&["pkg:npm/next", "pkg:npm/react"]), None, |_, _| {}).unwrap();
         assert_eq!((rep.synced.len(), rep.not_covered), (2, vec!["types".to_string(), "vite".to_string()]));
-        assert!(srv.take_log().contains(&"/v1/tech/react.json 200".to_string()));
+        let log = srv.take_log();
+        assert!(log.contains(&"/v1/tech/react.json 200".to_string()) && log.contains(&"/v1/tech/next.json 200".to_string()), "{log:?}");
         // With a catalog key, a list that is not signed is not trusted: every candidate is asked for, as without one.
         let pair = Ed25519KeyPair::from_seed_unchecked(&[7u8; 32]).unwrap();
         let key: [u8; 32] = pair.public_key().as_ref().try_into().unwrap();

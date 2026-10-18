@@ -186,6 +186,6 @@ export type Root = z.infer<typeof Root>;
 
 export const Technologies = z.strictObject({
   "schema": z.number().int().min(0).max(4294967295),
-  "technologies": z.array(z.string()),
+  "technologies": z.record(z.string(), z.string()),
 });
 export type Technologies = z.infer<typeof Technologies>;

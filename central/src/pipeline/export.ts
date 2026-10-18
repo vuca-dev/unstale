@@ -11,9 +11,10 @@
 // detached signature beside them (`<file>.sig`, hex), which a release client checks against its compiled-in public
 // key. Indexes name their shards' sha256, so signing the indexes covers every shard.
 //
-// `v1/technologies.json` (signed too) names every exported index, so a client asks only for the indexes of the
-// candidates it names: a candidate the catalog does not cover costs no request, where a 404 for a missing static file
-// would run the Worker (gateway/), the free plan's scarce allowance.
+// `v1/technologies.json` (signed too) names every exported index with a hash of its served bytes, so a client asks only
+// for the indexes of the candidates it names, and only those its cache does not hold: a candidate the catalog does not
+// cover costs no request (a 404 for a missing static file would run the Worker, gateway/, whose daily allowance is the
+// free plan's scarcest), and neither does an unchanged index, even one served by the Worker.
 import { createPrivateKey, sign } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
@@ -114,7 +115,7 @@ export function exportCatalog(
   };
   try {
     const shards = new Set<string>();
-    const technologies: string[] = [];
+    const technologies: Record<string, string> = {};
     let bytes = 0;
     const techDir = join(src, "v1", "tech");
     for (const f of (existsSync(techDir) ? readdirSync(techDir) : []).filter((f) => TECH_FILE.test(f)).sort()) {
@@ -138,8 +139,9 @@ export function exportCatalog(
           bytes += gz.length;
         }
       }
-      putSigned(`v1/tech/${f}`, servedIndex(body, f.slice(0, -5), jobs));
-      technologies.push(f.slice(0, -5));
+      const served = servedIndex(body, f.slice(0, -5), jobs);
+      putSigned(`v1/tech/${f}`, served);
+      technologies[f.slice(0, -5)] = sha256(served).slice(0, 16);
     }
     // Shards no index names that survived the prune: inside the grace period, copied as published.
     const shardDir = join(src, "v1", "shards");
@@ -173,7 +175,7 @@ export function exportCatalog(
     if (existsSync(out)) renameSync(out, old);
     renameSync(tmp, out);
     rmSync(old, { recursive: true, force: true });
-    return { signed: !!signer, technologies: technologies.length, shards: shards.size, bytes, coverage, prune };
+    return { signed: !!signer, technologies: Object.keys(technologies).length, shards: shards.size, bytes, coverage, prune };
   } catch (e) {
     rmSync(tmp, { recursive: true, force: true });
     throw e;
