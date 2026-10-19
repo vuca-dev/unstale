@@ -85,7 +85,7 @@ We replay 15 real major upgrades in open-source projects (Next.js 16, Prisma 7, 
 before the maintainers upgraded, and compare what unstale gives the agent with the changes the maintainers had to make.
 
 - **92% of what upstream documents.** Of the required changes that release notes, guides or advisories describe, the
-  catalog had 60 of 65. (The maintainers made 94 required changes in all; the other 29 appear in no upstream source:
+  catalog had 60 of 65, measured with Codex as the matching agent. (The maintainers made 94 required changes in all; the other 29 appear in no upstream source:
   follow-on edits to their own tests, CI and Docker files, workarounds for open bugs, undocumented internal types.)
 - **Most of it up front.** A major upgrade's review runs to dozens of items. More than half of those 60 changes are in
   the first 16 items your agent reviews: breaking changes first, then by how your code uses each one.
@@ -112,6 +112,8 @@ prints one line. Collaborative mode also adds one line to `.gitattributes`. `uns
 and backs up your decisions.
 - **What leaves your machine.** Requests for catalog files, named by public package identity (`pkg:npm/next`), and
 coverage requests for packages the catalog does not have yet. Your code, paths and versions do not. No telemetry.
+The service, hosted on Cloudflare, sees your IP address. It keeps it in memory only, to apply rate limits and count
+each address once per package, and never writes it to storage; there is no account or client ID.
 The client also reads the public npm and PyPI registries for your direct packages at their installed versions, as a
 package manager does, to check that a name is the public package and whether its publisher deprecated (npm) or
 yanked (PyPI) that version. It sends the package names and versions its lockfiles resolve to OSV (`api.osv.dev`) for
