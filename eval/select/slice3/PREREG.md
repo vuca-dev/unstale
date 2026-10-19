@@ -399,3 +399,101 @@ parsed come from the run's own cache; the failed chunks and their label calls ar
 (≥ 56/61, ≥ 83/96, ≤ 1 failed chunk). If it passes, H1 and H2 run once each under rule 2 unchanged, with the projection
 rule above (M5's DEV $0.258 projects $0.69 for H1 + H2 plus $0.26 = $0.95 ≤ $1.40). N54 then runs only under the
 original condition (a mini passed DEV and the cap covers it), with the same repair.
+
+# Slice 3f: strict structured output for gpt-5-mini, and gpt-5.6-luna on the OpenAI API
+
+18 October 2026. Written before any 3f model output exists (no smoke, DEV, H1 or H2 call has been made with any 3f arm).
+Why: slice 3e's gpt-5-mini lost two DEV chunks to a format fault (string values opened with `\"`); with a repair it fell
+one required group short (55/61) inside run-to-run noise. Strict structured output removes format faults at the source
+instead of repairing them. Second, OpenAI's help article on complimentary data-sharing tokens
+(help.openai.com/en/articles/10306912, updated about 8 October 2026, as relayed by the coordinator; the page refuses
+automated fetches, so it is not re-checked here) lists gpt-5.6-luna in the 2.5M tokens/day group (Build tier) and
+gpt-6-luna in a separate 250k/day group. gpt-5.6-luna was slice 3's "Luna fresh" baseline through `codex exec`; through
+the API, prompt only, it has not been measured.
+
+## Arms
+
+| Id | Model | Reasoning | Output format | Runs |
+|---|---|---|---|---|
+| **M5s** | `gpt-5-mini` | low | strict structured output, both calls (`--strict`) | smoke, DEV, then H1 + H2 once if DEV passes |
+| **L56** | `gpt-5.6-luna` | low | plain JSON as in 3e (production unchanged) | smoke, DEV, then H1 + H2 once if DEV passes |
+| **L56s** | `gpt-5.6-luna` | low | strict structured output, both calls (`--strict`) | smoke, DEV, then H1 + H2 once if DEV passes |
+
+L56s is a separate sub-arm: L56 and L56s are judged independently by the same rule.
+
+Common to all: `run3.mts --cand openai:<model> [--strict] --out slice3f --cap 4`, the OpenAI API directly (Standard
+tier), two calls in pipeline order, production's prompts byte for byte (`prompt_sha` extract `68e134fe…`, label
+`e654eae8…`), `max_completion_tokens` 16,000 per call, up to 3 attempts on an unparseable answer, a truncated answer fails
+its chunk with zero records (counted, never dropped). No repair (`--repair` is not used by any 3f arm). No Vercel, Jev or
+Codex spend; the comparisons reuse stored gpt-6-luna runs, as 3e did.
+
+## The strict format (`--strict`), the only change in M5s and L56s
+
+- **Extract call:** `response_format: {type: "json_schema", json_schema: {name: "change_records", strict: true, schema}}`
+  with schema `{"records": [record]}` (object root, `records` required, no other property). The record schema is
+  `SCHEMA_RESPONSE_FORMAT`'s record item (extract.ts, used by slice 3c's one-call-schema) without its `id`: `subject`,
+  `subject_kind` (enum literal|concept), `facet` (string or null), `change_type` (enum), `surface` (enum), `summary`,
+  `audience` (enum), `introduces` (array of strings), `evidence`; all required, `additionalProperties: false`.
+  The prompt still says "Output only a JSON array"; strict mode needs an object root, so the answer is
+  `{"records": [...]}` and the parser unwraps `records` before the unchanged `Extracted` parse. **This wrapper is the only
+  change to the extraction contract.** The schema's enums equal the values the prompt lists.
+- **Label call:** the prompt already asks for an object keyed by record id, so no wrapper. The schema lists exactly the
+  ids sent (`r1`…`rN`, all required, nothing else), each `SCHEMA_RESPONSE_FORMAT`'s label item without its `id`: `terms`,
+  `replaces`, `requires`, `conditions` (arrays of strings), `prerequisites` (array of `{ecosystem, name, min, max}`, `min`
+  and `max` string or null).
+- **Normalising back:** `facet: null` is what the plain path already accepts; a null `min` or `max` is deleted (the prompt
+  says omit it). Everything else goes through the existing parsers and `toIncoming` unchanged.
+- **Known risk, not mitigated:** slice 3c found that gpt-6-luna under a strict schema (one call) wrote compact JSON and lost
+  about 14 points on guides. If the strict arms lose recall on long documents, that is the arm's result.
+- **If the API rejects a schema (HTTP 400),** a construction bug in the runner may be fixed and the arm restarted; this
+  depends on no model output. A model that does not support strict output at all ends the arm as "not run".
+
+## Sets, baselines and decision rule: slice 3e's, unchanged
+
+- **DEV gate** (decides which arms see held-out): required fetched ≥ 56 of 61 AND in fetched sources ≥ 83 of 96 AND at
+  most 1 of 12 chunks failed, scored by `eval/sets/score.py extraction` on the run's catalog. Baseline gpt-6-luna `low`
+  (3b gate rebuild): 59/61, 87/96; reference gpt-6-luna `none` (3c DEV run): 56/61, 84/96.
+- **Held-out, one look per arm that passes DEV**, against gpt-6-luna `low` (`out/slice3b/runs/vercel_openai_gpt-6-luna-
+  two-call-heldout` and `…-heldout2`): H1 (`stats.py compare`, note bootstrap: pooled and macro group recall excluding
+  unsure, breaking recall) and H2 (`stats3b.py compare`, section bootstrap: required recall excluding unsure, breaking
+  recall). Each floor metric no more than **5 points** below the baseline AND the 95% bootstrap CI of candidate −
+  baseline not entirely below 0, on both sets. **Nits gate:** precision no more than **10 points** below the baseline on
+  each set.
+- **Verdict per arm:** pass or fail by the two steps. Among passers, the fewest tokens per technology-year wins (a tie goes
+  to the cheaper list price). Nothing in production changes in this slice.
+- **Verbatim quotes:** the share of records whose quote is not found verbatim in the notes (`meta.json` `ungrounded`) is
+  reported for every run, with gpt-6-luna's (≈2–4%) beside it. **It is not a separate gate.** It already acts through the
+  rule above: the scorer matches records to reference groups by quote (recall) and counts unmatched records against
+  precision (nits gate). No other pass criterion is added after seeing data.
+- This is a further look at H1/H2 (they have been looked at many times in 3b–3c); prompts are not tuned to them.
+
+## Tokens (pre-registered measurement)
+
+As slice 3e (`tokens3e.py`): tokens per record (input, cached input, output, reasoning, over every call including
+retries) for DEV, H1 and H2; tokens per technology-year by `cost3.py`'s worst-case formula on the mean technology
+(records scaled against gpt-6-luna on the same set: the 3c `none` DEV run for DEV, the 3b runs for H1/H2), the larger of
+the H1- and H2-based figures (DEV-based if the arm stops at DEV); tokens per day at 20k technologies against the 2.5M/day
+cap; $/yr with the excess on gpt-6-luna flex (slice 3d replay $0.0051 and 3b worst case $0.0096 per technology-year).
+Added in 3f (`tokens3e.py`, `free_techs_combined`): the combined free headroom if gpt-6-luna's own 250k/day group is used
+too: technologies served free = 2.5M × 365 / the arm's tokens per technology-year + 250k × 365 / 81.0k (gpt-6-luna
+`low`, the larger of its H1/H2 figures), the remaining technologies at gpt-6-luna flex. The strict schemas' own tokens
+(if OpenAI counts them as input) are inside the measured input.
+
+## Budget
+
+- **OpenAI cap $4.00** in total for 3f at Standard list price (`prices.json`; gpt-5.6-luna $0.20 / $0.02 cached / $1.20
+  per M, flex half, from the OpenAI pricing page, checked 18 October 2026), from `out/slice3f/usage.jsonl`, enforced by
+  run3.mts's hard per-call cap (a call starts only if the log plus every in-flight call's worst case stays within $4.00).
+  **M5s alone is held to $2.50.**
+- Order: smoke M5s, L56, L56s; DEV M5s, L56, L56s; then held-out for DEV passers in the order M5s, L56, L56s. An arm's
+  held-out runs start only if its DEV $ + DEV $/char × 280,740 held-out characters × 1.5 fits what is left of the $4.00
+  cap (and, for M5s, of its $2.50). An arm whose projection does not fit is reported as "not run (budget)".
+- Dry-run worst cases (every call at 16,000 output tokens): DEV M5s $0.87, L56/L56s $0.55 each; smoke $0.14 / $0.09.
+  Expected from 3e's gpt-5-mini DEV ($0.26) and its 3e projection: about $1 per gpt-5-mini arm with held-out, less for
+  gpt-5.6-luna (cheaper output).
+
+## Known limits
+
+- One run per arm; gpt-6-luna's replicate spread (H1 breaking ±3 points, H2 required −3.6; DEV 56–59) is the noise
+  reference. DEV is a count with margins of 3 groups and 5 points.
+- Standard tier is measured; the free allowance is counted in tokens, which the tier does not change.
