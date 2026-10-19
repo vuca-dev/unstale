@@ -15,6 +15,9 @@
 //!
 //! A package only dev dependencies reach is never shown for a low, moderate or unrated advisory.
 //!
+//! A direct npm runtime dependency that nothing in the code or configuration names and no package requires reads as
+//! unused (`removable`): its lines say removing it clears them, not "at runtime" or "fix blocked".
+//!
 //! Read at the network moments (`init`/`status`, `sync`/`run`), cached a day per package version and per advisory
 //! revision; outputs read the cache only. `UNSTALE_NO_REGISTRY=1` turns it off.
 
@@ -706,6 +709,10 @@ pub struct Report {
     pub queried: usize,
     pub raw: usize,
     pub items: Vec<Item>,
+    /// Direct dependencies (`name version`) nothing in the code or configuration names and no package requires
+    /// (`removable`): removing one clears every advisory listed under it alone.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub unused: Vec<String>,
 }
 
 /// Applies the conditions to the matches: `matches` per (ecosystem, name, version) the advisory ids OSV returned,
@@ -893,6 +900,73 @@ pub fn evaluate(
     (raw, out)
 }
 
+/// The direct dependencies an advisory is listed under (`Item::via`, or the package itself) that the code does not
+/// use: an npm runtime dependency of a project (dev tools load by convention, `eslint-plugin-x` as `x`) that no package
+/// of any lockfile requires (a peer or a parent keeps it installed: `react-dom` under `next`) and whose name `named`
+/// finds nowhere. Removing it removes everything only it pulls in. PyPI is never judged: an import name need not be
+/// the distribution's (`yaml` for `pyyaml`).
+pub fn removable(gs: &[Graph], items: &[Item], named: impl Fn(&[&str]) -> BTreeSet<String>) -> Vec<String> {
+    let mut cands: BTreeSet<String> = items.iter().flat_map(|i| if i.via.is_empty() { vec![format!("{} {}", i.name, i.version)] } else { i.via.clone() }).collect();
+    for g in gs {
+        let mut kept: BTreeSet<String> = BTreeSet::new();
+        for nd in &g.nodes {
+            for e in &nd.edges {
+                let to = &g.nodes[e.to];
+                let key = format!("{} {}", to.name, to.version);
+                if !cands.contains(&key) {
+                    continue;
+                }
+                if g.eco != "npm" || to.local.is_some() || nd.local.is_none() || e.dev {
+                    kept.insert(key);
+                }
+            }
+        }
+        cands.retain(|c| !kept.contains(c));
+    }
+    // Only names some graph declares as a runtime direct dependency of a project.
+    cands.retain(|c| gs.iter().any(|g| g.eco == "npm" && g.nodes.iter().any(|nd| nd.local.is_some() && nd.edges.iter().any(|e| !e.dev && format!("{} {}", g.nodes[e.to].name, g.nodes[e.to].version) == *c))));
+    let names: BTreeSet<&str> = cands.iter().filter_map(|c| c.rsplit_once(' ').map(|(n, _)| n)).collect();
+    let names: Vec<&str> = names.into_iter().collect();
+    let found = if names.is_empty() { BTreeSet::new() } else { named(&names) };
+    cands.retain(|c| c.rsplit_once(' ').is_some_and(|(n, _)| !found.contains(n)));
+    cands.into_iter().collect()
+}
+
+/// Dependency maps of a manifest: declaring a package there is not using it.
+const DECLARES: &[&str] = &["dependencies", "devDependencies", "peerDependencies", "optionalDependencies", "peerDependenciesMeta", "bundleDependencies", "bundledDependencies", "overrides", "resolutions", "pnpm"];
+
+/// Which of `names` any file of the repository names, as written anywhere in its text: code and configuration
+/// (`usage::Repo`, lockfiles left out), scripts, container and make files, and a `package.json` outside its dependency
+/// maps (its scripts and config count). A substring, so a longer name containing it counts too (fail safe).
+fn named_in(root: &Path, names: &[&str]) -> BTreeSet<String> {
+    let repo = crate::usage::Repo::collect(root);
+    let mut texts: Vec<String> = vec![];
+    for (path, text) in &repo.files {
+        if path == "package.json" || path.ends_with("/package.json") {
+            match serde_json::from_str::<Value>(text) {
+                Ok(Value::Object(mut m)) => {
+                    for k in DECLARES {
+                        m.remove(*k);
+                    }
+                    texts.push(Value::Object(m).to_string());
+                }
+                _ => texts.push(text.clone()),
+            }
+        } else {
+            texts.push(text.clone());
+        }
+    }
+    // Files `Repo` does not read: shell scripts, Dockerfiles, Makefiles, Procfiles.
+    for path in &repo.paths {
+        let base = path.rsplit('/').next().unwrap_or(path);
+        let other = base.starts_with("Dockerfile") || base.ends_with(".dockerfile") || base.ends_with(".sh") || matches!(base, "Makefile" | "makefile" | "GNUmakefile" | "Procfile" | "Justfile" | "justfile");
+        if other && let Ok(t) = std::fs::read_to_string(root.join(path)) {
+            texts.push(t);
+        }
+    }
+    names.iter().filter(|n| texts.iter().any(|t| t.contains(**n))).map(|n| n.to_string()).collect()
+}
+
 // ----------------------------------------------------------------------------------------------------------- cache
 
 #[derive(Default, Serialize, Deserialize)]
@@ -1025,7 +1099,8 @@ pub fn refresh_with(
     };
     let today = (at / 86400) as i64;
     let (raw, items) = evaluate(&gs, &matches, &docs, overrides, today);
-    let rep = Report { checked: at, queried: wanted.len(), raw, items };
+    let unused = removable(&gs, &items, |names| named_in(root, names));
+    let rep = Report { checked: at, queried: wanted.len(), raw, items, unused };
     if let Ok(b) = serde_json::to_vec(&rep) {
         let _ = util::write_atomic(&report_path(cache, root), &b);
     }
@@ -1058,6 +1133,45 @@ fn groups(r: &Report) -> BTreeMap<String, Vec<&Item>> {
     groups
 }
 
+/// When every item of a group is listed under unused direct dependencies only (`Report::unused`): the phrase that
+/// replaces the conditions (an unused package is not at runtime, and its blocked fix is no route), e.g.
+/// "unused: removing nuxt-og-image clears 6 advisories".
+fn clears(r: &Report, its: &[&Item]) -> Option<String> {
+    let mut deps: Vec<String> = vec![];
+    for it in its {
+        let own = if it.via.is_empty() { vec![format!("{} {}", it.name, it.version)] } else { it.via.clone() };
+        for d in own {
+            if !r.unused.contains(&d) {
+                return None;
+            }
+            let name = d.rsplit_once(' ').map_or(d.clone(), |(n, _)| n.to_string());
+            if !deps.contains(&name) {
+                deps.push(name);
+            }
+        }
+    }
+    let n = its.len();
+    Some(format!("unused: removing {} clears {n} advisor{}", deps.join(" and "), if n == 1 { "y" } else { "ies" }))
+}
+
+/// `clears` for a group, counting every item listed under the same unused dependencies only: removal clears the
+/// advisories of all their groups (deer-flow: 6 via nuxt-og-image and 3 on it, 9).
+fn clear_phrase(r: &Report, its: &[&Item]) -> Option<String> {
+    clears(r, its)?;
+    let mine = |i: &Item| if i.via.is_empty() { vec![format!("{} {}", i.name, i.version)] } else { i.via.clone() };
+    let deps: BTreeSet<String> = its.iter().flat_map(|i| mine(i)).collect();
+    let with: Vec<&Item> = r.items.iter().filter(|i| mine(i).iter().any(|d| deps.contains(d)) && mine(i).iter().all(|d| r.unused.contains(d))).collect();
+    clears(r, &with)
+}
+
+/// An item's conditions, or the removal phrase in place of the runtime and fix conditions (its date stays).
+fn why(it: &Item, clear: Option<&String>) -> String {
+    match clear {
+        None => it.why.join("; "),
+        Some(c) => std::iter::once(c.clone()).chain(it.why.iter().filter(|w| w.starts_with("published ")).cloned()).collect::<Vec<_>>().join("; "),
+    }
+}
+
 fn clean(t: &str) -> String {
     t.chars().map(|c| if c.is_control() { ' ' } else { c }).collect()
 }
@@ -1078,7 +1192,8 @@ pub fn lines(r: &Report) -> Vec<String> {
         } else {
             String::new()
         };
-        let worst = format!("{} {} {}{fix} · {} · {} (https://osv.dev/vulnerability/{})", w.severity.word(), w.name, w.version, w.why.join("; "), clean(&w.summary), w.id);
+        let clear = clear_phrase(r, its);
+        let worst = format!("{} {} {}{fix} · {} · {} (https://osv.dev/vulnerability/{})", w.severity.word(), w.name, w.version, why(w, clear.as_ref()), clean(&w.summary), w.id);
         if its.len() == 1 {
             out.push(format!("{head}: {worst}"));
             continue;
@@ -1109,6 +1224,7 @@ pub fn lines(r: &Report) -> Vec<String> {
 pub fn detail_lines(r: &Report) -> Vec<String> {
     let mut out = vec![];
     for (head, its) in groups(r) {
+        let clear = clear_phrase(r, &its);
         out.push(format!("{head}:"));
         // Several advisories on one package version read as one line: the version that fixes them all, the count by
         // severity, the worst one's summary, then the ids.
@@ -1120,7 +1236,7 @@ pub fn detail_lines(r: &Report) -> Vec<String> {
             if its.len() < 3 {
                 for it in its {
                     let fix = it.fix.as_ref().map(|f| format!(" → {f}")).unwrap_or_default();
-                    out.push(format!("  {} {} · {name} {version}{fix} · {} · {} (https://osv.dev/vulnerability/{})", it.id, it.severity.word(), it.why.join("; "), clean(&it.summary), it.id));
+                    out.push(format!("  {} {} · {name} {version}{fix} · {} · {} (https://osv.dev/vulnerability/{})", it.id, it.severity.word(), why(it, clear.as_ref()), clean(&it.summary), it.id));
                 }
                 continue;
             }
@@ -1131,9 +1247,12 @@ pub fn detail_lines(r: &Report) -> Vec<String> {
             };
             let mut counts: BTreeMap<Severity, usize> = BTreeMap::new();
             let mut why: Vec<&str> = vec![];
+            if let Some(c) = &clear {
+                why.push(c);
+            }
             for it in &its {
                 *counts.entry(it.severity).or_default() += 1;
-                for w in &it.why {
+                for w in it.why.iter().filter(|w| clear.is_none() || w.starts_with("published ")) {
                     // "published 2026-09-30" once per date, the rest once.
                     if !why.contains(&w.as_str()) {
                         why.push(w);
@@ -1237,7 +1356,7 @@ mod tests {
         assert_eq!(items[2].id, "GHSA-pin");
         assert_eq!(items[2].why, vec!["fix blocked: . declares 1.0.0"]);
         assert!(items[2].via.is_empty());
-        let r = Report { checked: 0, queried: 7, raw, items };
+        let r = Report { checked: 0, queried: 7, raw, items, unused: vec![] };
         let l = lines(&r);
         assert!(l.iter().any(|x| x.starts_with("via @react-router/serve 7.18.2: high proxy-addr 2.0.7 → 2.0.8 · high at runtime")), "{l:?}");
         assert!(l.iter().any(|x| x.starts_with("pinned 1.0.0 (direct): moderate pinned 1.0.0 → 1.0.1")), "{l:?}");
@@ -1278,11 +1397,66 @@ mod tests {
             items.push(item(&format!("C-{k:02}"), &format!("c{k:02}"), Severity::High, "2.0.0", ""));
         }
         items.sort_by(|a, b| b.severity.cmp(&a.severity).then(a.name.cmp(&b.name)).then(a.id.cmp(&b.id)));
-        let l = lines(&Report { checked: 0, queried: 20, raw: 20, items });
+        let l = lines(&Report { checked: 0, queried: 20, raw: 20, items, unused: vec![] });
         assert_eq!(l.len(), SHOWN_GROUPS + 1, "{l:?}");
         assert_eq!(l[0], "via top 1.0.0: 3 advisories (1 critical, 1 high, 1 moderate), worst critical a 1.0.0 → 1.0.3 · high at runtime · A-1 summary (https://osv.dev/vulnerability/A-1) · also b 1.0.0");
         assert!(l[1].starts_with("c00 1.0.0 (direct): high c00 1.0.0 → 2.0.0"), "{}", l[1]);
         assert_eq!(l[SHOWN_GROUPS], "and 3 more dependencies with 3 advisories (`unstale advisories` lists every one)");
+    }
+
+    #[test]
+    fn an_unused_direct_dependency_reads_as_removable() {
+        // bytedance/deer-flow: nuxt-og-image in a Next.js app's dependencies, named nowhere else, read as "high at
+        // runtime" (its Vue subtree) and "fix blocked" (a major away); removing it clears all nine.
+        let lock = r#"{"lockfileVersion": 3, "packages": {
+            "": {"name": "app", "dependencies": {"og": "^5.1.0", "used": "1.0.0", "peer": "1.0.0", "next": "1.0.0"}, "devDependencies": {"eslint-plugin-x": "1.0.0"}},
+            "node_modules/og": {"version": "5.1.0", "dependencies": {"vue": "^3.0.0"}},
+            "node_modules/vue": {"version": "3.5.0"},
+            "node_modules/used": {"version": "1.0.0"},
+            "node_modules/peer": {"version": "1.0.0"},
+            "node_modules/next": {"version": "1.0.0", "peerDependencies": {"peer": "1.0.0"}},
+            "node_modules/eslint-plugin-x": {"version": "1.0.0", "dev": true}}}"#;
+        let g = npm_lock(lock, ".", "package-lock.json");
+        let it = |id: &str, name: &str, version: &str, via: &[&str], why: &[&str]| Item {
+            id: id.into(),
+            name: name.into(),
+            version: version.into(),
+            severity: Severity::High,
+            summary: "s".into(),
+            fix: Some("9.0.0".into()),
+            why: why.iter().map(|w| w.to_string()).collect(),
+            via: via.iter().map(|v| v.to_string()).collect(),
+        };
+        let items = vec![
+            it("V-1", "vue", "3.5.0", &["og 5.1.0"], &["high at runtime", "published 2026-10-05"]),
+            it("O-1", "og", "5.1.0", &[], &["high at runtime", "fix blocked: . declares ^5.1.0"]),
+            it("U-1", "used", "1.0.0", &[], &["high at runtime"]),
+            it("P-1", "peer", "1.0.0", &[], &["high at runtime"]),
+            it("E-1", "eslint-plugin-x", "1.0.0", &[], &["no fixed version: replace or mitigate"]),
+        ];
+        // `named` sees every candidate but the ones a package requires (peer) or only development declares.
+        let asked = std::cell::RefCell::new(vec![]);
+        let unused = removable(&[g], &items, |names| {
+            asked.borrow_mut().extend(names.iter().map(|n| n.to_string()));
+            names.iter().filter(|n| **n == "used").map(|n| n.to_string()).collect()
+        });
+        assert_eq!(asked.into_inner(), vec!["og", "used"]);
+        assert_eq!(unused, vec!["og 5.1.0"]);
+        let l = lines(&Report { checked: 0, queried: 7, raw: 5, items, unused });
+        assert!(l.contains(&"via og 5.1.0: high vue 3.5.0 → 9.0.0 · unused: removing og clears 2 advisories; published 2026-10-05 · s (https://osv.dev/vulnerability/V-1)".to_string()), "{l:?}");
+        assert!(l.contains(&"og 5.1.0 (direct): high og 5.1.0 → 9.0.0 · unused: removing og clears 2 advisories · s (https://osv.dev/vulnerability/O-1)".to_string()), "{l:?}");
+        assert!(l.iter().any(|x| x.starts_with("used 1.0.0 (direct): high used 1.0.0 → 9.0.0 · high at runtime")), "{l:?}");
+    }
+
+    #[test]
+    fn a_package_json_names_a_package_outside_its_dependency_maps() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("package.json"), r#"{"scripts": {"serve": "sirv build"}, "dependencies": {"og": "1", "sirv": "1", "cmd": "1", "lib": "1"}}"#).unwrap();
+        std::fs::write(d.path().join("Dockerfile"), "RUN npx cmd --port 3000\n").unwrap();
+        std::fs::create_dir(d.path().join("src")).unwrap();
+        std::fs::write(d.path().join("src/a.ts"), "import x from 'lib/sub';\n").unwrap();
+        let got = named_in(d.path(), &["og", "sirv", "cmd", "lib"]);
+        assert_eq!(got, ["cmd", "lib", "sirv"].iter().map(|s| s.to_string()).collect());
     }
 
     #[test]

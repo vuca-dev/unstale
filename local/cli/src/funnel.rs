@@ -1239,6 +1239,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                     .copied()
                     .filter(|b| !matches!(b, Benefit::None | Benefit::Other))
                     .filter(|b| *b != Benefit::Maintainability || replaces_here)
+                    .filter(|b| *b != Benefit::Security || !fixed_by_install(rec, installed_for))
                     .collect();
                 b.sort_by_key(benefit_rank);
                 b.dedup();
@@ -1280,6 +1281,19 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
     }
     order(&mut out);
     out
+}
+
+/// Whether an opt-in's security benefit is already in the installed version, so it needs no adoption (#55): the
+/// record joins advisories, and the installed version of each one's packages is outside its affected ranges. The
+/// advisory's fix shipped as the release's default (an advisory's patched version is one that installing fixes), and
+/// the option is tuning on top of it (next's `images.maximumDiskCacheSize` beside GHSA-3X4C-7XQ6-9PQ8's default LRU
+/// bound). No advisory, or one the resolved index cannot decide: the benefit stands (fail open).
+fn fixed_by_install(rec: &Rec, installed_for: impl Fn(&str) -> Option<Version>) -> bool {
+    !rec.r.advisories.is_empty()
+        && rec.r.advisories.iter().all(|a| {
+            let comps: BTreeSet<String> = a.affected.iter().map(|r| normalize_purl(&r.component)).collect();
+            !comps.is_empty() && comps.iter().all(|c| installed_for(c).is_some_and(|v| crate::review::advisory_affects(a, c, &v) == Some(false)))
+        })
 }
 
 fn blank<'a>(rec: &'a Rec, release: Release, route: Route) -> Opp<'a> {
@@ -2468,6 +2482,38 @@ mod tests {
         }
         let out = run_with(&c, &s, &r, &l);
         assert_eq!(route_of(&out, "jsdom:atob"), &Route::ImprovementsPass);
+    }
+
+    #[test]
+    fn a_security_benefit_the_installed_version_already_has_needs_no_adoption() {
+        // bytedance/deer-flow: next 16.3.8 was offered `images.maximumDiskCacheSize` as a security improvement for
+        // GHSA-3X4C-7XQ6-9PQ8, which 16.1.7 fixed by default (the LRU disk cache bounds itself with no config).
+        let index = json!(["16.0.0", "16.1.6", "16.1.7", "16.2.0", "16.3.8"]);
+        let adv = |id: &str, versions: serde_json::Value| json!({"id": id, "aliases": [], "severity": "medium", "summary": "s", "url": "u", "index": index,
+            "affected": [{"component": "pkg:npm/next", "range": "< 16.1.7", "patched": "16.1.7", "versions": versions}]});
+        let opt = |id: &str, benefit: serde_json::Value, advisories: serde_json::Value| with(rec(id, "pkg:npm/next", "16.1.7"), json!({"change_type": "new_option", "benefit": benefit, "advisories": advisories}));
+        let c = catalog(
+            "next",
+            0,
+            vec![
+                opt("next:fixed-by-install", json!(["security"]), json!([adv("GHSA-a", json!(["16.0.0", "16.1.6"]))])),
+                // Its other benefit stays, and leads the batch by it.
+                opt("next:also-perf", json!(["security", "performance"]), json!([adv("GHSA-b", json!(["16.0.0", "16.1.6"]))])),
+                // The installed version is still affected: adopting the option is the mitigation.
+                opt("next:still-affected", json!(["security"]), json!([adv("GHSA-c", json!(["16.0.0", "16.1.6", "16.3.8"]))])),
+                // No advisory, or one the index cannot decide: the benefit stands (fail open).
+                opt("next:no-advisory", json!(["security"]), json!([])),
+                opt("next:undecided", json!(["security"]), json!([{"id": "GHSA-d", "aliases": [], "summary": "s", "url": "u", "affected": [{"component": "pkg:npm/next", "range": "< 16.1.7"}]}])),
+            ],
+        );
+        let (s, l) = (stack(&[("next", "16.3.8")], None), Ledger::default());
+        let r = repo(&[]);
+        let out = run_with(&c, &s, &r, &l);
+        assert_eq!(route_of(&out, "next:fixed-by-install"), &Route::NoBenefit);
+        let benefits = |id: &str| out.opps.iter().find(|o| o.rec.r.id == id).unwrap().benefits.clone();
+        assert_eq!(benefits("next:also-perf"), vec![Benefit::Performance]);
+        assert_eq!(benefits("next:still-affected"), vec![Benefit::Security]);
+        assert_eq!(ids(&out, &out.improvements), vec!["next:no-advisory", "next:still-affected", "next:undecided", "next:also-perf"]);
     }
 
     #[test]
