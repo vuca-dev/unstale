@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { DEFAULT_HTTP, HttpClient } from "../src/collector/http.ts";
-import { attribute, guideMajor, markerIn } from "../src/docs/attribute.ts";
+import { attribute, guideCandidate, guideMajor, markerIn } from "../src/docs/attribute.ts";
 import { findNamespaces, listSite, llmsPages, RELEASE_NOTES } from "../src/docs/listing.ts";
 import { extract, nextGate, passDue, plan, DOCS_PASS } from "../src/docs/extract.ts";
 import type { Technology } from "../src/pipeline/technologies.ts";
@@ -87,6 +87,13 @@ describe("attribution", () => {
     expect(guideMajor("https://docs.nestjs.com/migration-guide", "# Migration guide\n\nThis article provides a set of guidelines for migrating from NestJS version 11 to version 12.")).toBe("12");
     expect(guideMajor("https://nextjs.org/docs/app/guides/upgrading/codemods", "upgrade to version 16")).toBeUndefined();
     expect(guideMajor("https://developers.cloudflare.com/workers/testing/vitest-integration/migration-guides/migrate-from-miniflare-2")).toBeUndefined();
+    // The AI SDK numbers its guides by release: the major's guide is `<major>-0`; a minor's or a part's is not one.
+    expect(guideMajor("https://ai-sdk.dev/docs/migration-guides/migration-guide-7-0")).toBe("7");
+    expect(guideCandidate("https://ai-sdk.dev/docs/migration-guides/migration-guide-7-0")).toBe(true);
+    expect(guideMajor("https://ai-sdk.dev/docs/migration-guides/migration-guide-5-1")).toBeUndefined();
+    expect(guideMajor("https://ai-sdk.dev/docs/migration-guides/migration-guide-5-0-data")).toBeUndefined();
+    expect(guideMajor("https://ai-sdk.dev/docs/migration-guides/versioning")).toBeUndefined();
+    expect(guideMajor("https://ai-sdk.dev/docs/migration-guides")).toBeUndefined();
   });
 
   test("markers on added lines name the version; runtime versions above the current major are ignored", () => {

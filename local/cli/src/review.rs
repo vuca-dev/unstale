@@ -798,7 +798,7 @@ pub fn render(view: &View, out: &Outcome, catalog: &Catalog) -> String {
     s += "\n\n";
     if !view.in_effect.is_empty() {
         s += &format!(
-            "## In effect now ({})\n\nDeprecated at or below the installed version, and the deprecated API is still used here (matched outside comments in code that can use the technology, in a package that has it; an identifier only in a file that imports or configures it, or that its records name; a namespace that other APIs of the technology live under only beside the entry's specific terms; a site that also names the replacement is a kept fallback and is not listed). They need no upgrade of the technology itself; a record whose stated prerequisite the project does not meet is left out, and one cited in a published package whose declared range still admits versions without the replacement says so under \"Prerequisite not met here\". Before moving code off a deprecated API, check that what replaces it works at the versions installed here: an old API is often kept because its replacement needs a newer version of another package (a peer, the runtime, a plugin host), and an entry may not say so. They are not part of the batches below and do not hold up `--next`.\n\n",
+            "## In effect now ({})\n\nDeprecated at or below the installed version, and the deprecated API is still used here (matched outside comments in code that can use the technology, in a package that has it; an identifier only in a file that imports or configures it, or that its records name; a configuration option in code only where that code imports or configures it; a file convention only in an application, not in a published library or a file importing the replacement; a plain word only as a key of an object passed to a function imported from the technology; a namespace that other APIs of the technology live under only beside the entry's specific terms; a site that also names the replacement is a kept fallback and is not listed). They need no upgrade of the technology itself; a record whose stated prerequisite the project does not meet is left out, and one cited in a published package whose declared range still admits versions without the replacement says so under \"Prerequisite not met here\". Before moving code off a deprecated API, check that what replaces it works at the versions installed here: an old API is often kept because its replacement needs a newer version of another package (a peer, the runtime, a plugin host), and an entry may not say so. They are not part of the batches below and do not hold up `--next`.\n\n",
             plural(view.in_effect.len(), "record", "records")
         );
         for &i in &view.in_effect {
@@ -1013,15 +1013,23 @@ mod tests {
     /// that name is not `createRule({ defaultOptions })`) and tsdown's `noExternal` (Vite's own `ssr.noExternal` in
     /// `vite.config.ts` is not tsdown's), with a capped list saying how many files it leaves out.
     fn in_effect_text(tech: &str, r: serde_json::Value, declared: &[(&str, &str)], files: &[(&str, &str)]) -> String {
+        in_effect_in(tech, r, declared, &[(".", crate::stack::Kind::Application)], files)
+    }
+
+    /// `in_effect_text` with these packages (directory, kind), each declaring every one of `declared`.
+    fn in_effect_in(tech: &str, r: serde_json::Value, declared: &[(&str, &str)], packages: &[(&str, crate::stack::Kind)], files: &[(&str, &str)]) -> String {
         let c = catalog(tech, 0, vec![r]);
         let mut s = stack(declared, None);
-        s.packages = vec![crate::stack::Package {
-            dir: ".".into(),
-            kind: crate::stack::Kind::Application,
-            lockfile: None,
-            declared: declared.iter().map(|(n, _)| crate::util::npm_purl(n)).collect(),
-            own: None,
-        }];
+        s.packages = packages
+            .iter()
+            .map(|(dir, kind)| crate::stack::Package {
+                dir: (*dir).into(),
+                kind: *kind,
+                lockfile: None,
+                declared: declared.iter().map(|(n, _)| crate::util::npm_purl(n)).collect(),
+                own: None,
+            })
+            .collect();
         let r = repo(files);
         let l = Ledger::default();
         let out = run(&Input { catalog: &c, stack: &s, repo: &r, ledger: &l, today: "2026-10-18", targets: Default::default() });
@@ -1057,6 +1065,67 @@ mod tests {
         assert!(text.contains("- Deprecated API used here: `noExternal` (tsdown.config.ts)\n"), "{text}");
         let text = in_effect_text("tsdown", r, &declared, &[("docs/vite.config.ts", vite)]);
         assert!(!text.contains("## In effect now"), "Vite's ssr.noExternal alone is not tsdown's: {text}");
+    }
+
+    /// fuma-nama/fumadocs: `@fumadocs/vite`'s runtime `index.ts` returns Vite's `ssr: { noExternal }`. The package
+    /// builds with tsdown and a tsdown record names `index.ts`, but the file neither imports tsdown nor is its config.
+    #[test]
+    fn a_configuration_option_counts_in_code_only_where_it_configures_the_technology() {
+        let r = with(
+            rec("tsdown:deps.alwaysbundle", "pkg:npm/tsdown", "0.21.0"),
+            json!({"change_type":"deprecation","surface":"configuration","replaces":["noExternal"],"introduces":["deps.alwaysBundle"],"terms":[["index.ts",0]],"summary":"Replaces noExternal."}),
+        );
+        let plugin = "import type { Plugin } from 'vite';\nexport function plugin(framework: string[]): Plugin {\n  return { config() { return { ssr: { noExternal: framework } }; } };\n}\n";
+        let own = "import { defineConfig } from 'tsdown';\nexport default defineConfig({ noExternal: ['y'] });\n";
+        let declared = [("tsdown", "0.23.0")];
+        let text = in_effect_text("tsdown", r.clone(), &declared, &[("packages/vite/src/index.ts", plugin), ("packages/vite/tsdown.config.ts", own)]);
+        assert!(text.contains("- Deprecated API used here: `noExternal` (packages/vite/tsdown.config.ts)\n"), "{text}");
+        let text = in_effect_text("tsdown", r.clone(), &declared, &[("packages/vite/src/index.ts", plugin)]);
+        assert!(!text.contains("## In effect now"), "another tool's option in a record-named file: {text}");
+        // Code importing the technology still counts.
+        let api = "import { build } from 'tsdown';\nawait build({ noExternal: ['z'] });\n";
+        let text = in_effect_text("tsdown", r, &declared, &[("scripts/build.ts", api)]);
+        assert!(text.contains("- Deprecated API used here: `noExternal` (scripts/build.ts)\n"), "{text}");
+    }
+
+    /// fuma-nama/fumadocs: `packages/core/src/i18n/middleware.ts` is a published library's helper (users call it from
+    /// their own `proxy.ts`) that already returns `NextProxy`. Next.js resolves `middleware.ts` in the application.
+    #[test]
+    fn a_file_convention_counts_in_an_application_and_not_where_the_file_imports_the_successor() {
+        use crate::stack::Kind;
+        let r = with(
+            rec("next:middleware", "pkg:npm/next", "16.0.0"),
+            json!({"change_type":"deprecation","surface":"file_convention","replaces":["middleware.ts","middleware.js"],"introduces":["proxy"],"terms":[["NextRequest",0],["NextResponse",0]],"summary":"Middleware is deprecated; use Proxy."}),
+        );
+        let old = "import { NextResponse, type NextRequest } from 'next/server';\nexport function middleware(req: NextRequest) { return NextResponse.next(); }\n";
+        let helper = "import { type NextProxy, NextResponse } from 'next/server';\nexport function createI18nMiddleware(): NextProxy { return () => NextResponse.next(); }\n";
+        let declared = [("next", "16.3.8")];
+        let packages = [(".", Kind::Application), ("packages/core", Kind::Library), ("apps/docs", Kind::Application)];
+        let text = in_effect_in("next", r.clone(), &declared, &packages, &[("packages/core/src/i18n/middleware.ts", old)]);
+        assert!(!text.contains("## In effect now"), "a published library's file is not the convention: {text}");
+        let text = in_effect_in("next", r.clone(), &declared, &packages, &[("apps/docs/middleware.ts", helper)]);
+        assert!(!text.contains("## In effect now"), "a file importing NextProxy is written against proxy: {text}");
+        let text = in_effect_in("next", r, &declared, &packages, &[("apps/docs/middleware.ts", old), ("packages/core/src/i18n/middleware.ts", helper)]);
+        assert!(text.contains("- Deprecated API used here: `middleware.ts` (apps/docs/middleware.ts)\n"), "{text}");
+    }
+
+    /// fuma-nama/fumadocs: AI SDK 7 deprecates the `system` option of `streamText`/`generateText` for `instructions`;
+    /// `packages/preview/src/pages/_api/api/chat.ts` still passes `system: systemPrompt`. `system` is a plain word, so it
+    /// counts only as a key of an object passed to a function the file imports from `ai`.
+    #[test]
+    fn a_plain_word_option_is_in_effect_as_a_key_of_a_call_to_the_technology() {
+        let r = with(
+            rec("ai:system~3", "pkg:npm/ai", "7.0.0"),
+            json!({"change_type":"deprecation","surface":"code_api","replaces":["system"],"introduces":[],"terms":[["system",0],["prompt",0]],"summary":"Deprecated in favor of instructions."}),
+        );
+        let chat = "import {\n  streamText,\n  stepCountIs,\n} from 'ai';\nconst result = streamText({\n  model,\n  system: systemPrompt,\n  messages: [],\n});\n";
+        let role = "import { generateText } from 'ai';\nconst messages = [{ role: 'system', content: 'x' }];\nconst config = { system: true };\nawait generateText({ model, messages });\n";
+        let other = "import { streamText } from 'other-sdk';\nstreamText({ system: 'x' });\n";
+        let files = [("packages/preview/src/pages/_api/api/chat.ts", chat), ("src/role.ts", role), ("src/other.ts", other)];
+        let text = in_effect_text("ai", r.clone(), &[("ai", "7.0.127")], &files);
+        assert!(text.contains("- Deprecated API used here: `system` (packages/preview/src/pages/_api/api/chat.ts)\n"), "{text}");
+        let text = in_effect_text("ai", r, &[("ai", "7.0.127")], &files[1..]);
+        assert!(!text.contains("## In effect now"), "a role value, a plain object and another package's call are not the option: {text}");
     }
 
     #[test]

@@ -83,8 +83,10 @@ export function attribute(s: SectionChange, ctx: AttributionContext): Attributio
  * unnumbered guide (`/migration`), from its opening text ("from version 11 to version 12").
  */
 /** A guide segment, not any page about migrations (`prisma-migrate`, `migrations`) nor a folder of guides from other
- * tools (`migration-guides/migrate-from-miniflare-2`). */
-const GUIDE_SEGMENT = /^(upgrad(e|ing)|migration$|migration-guide$|migrating-to|migrate-to)/;
+ * tools (`migration-guides/migrate-from-miniflare-2`). A guide numbered by its release (`migration-guide-7-0`, the
+ * AI SDK's) is a major's guide only at `<major>-0` or `<major>`: `migration-guide-5-1` is a minor's, and
+ * `migration-guide-5-0-data` a part of one. */
+const GUIDE_SEGMENT = /^(upgrad(e|ing)|migration$|migration-guide(-v?\d{1,3}(-0)?)?$|migrating-to|migrate-to)/;
 
 /** The URL ends in a guide segment, so the page may be an unnumbered guide whose major only its text names. */
 export function guideCandidate(url: string): boolean {
@@ -96,6 +98,8 @@ export function guideMajor(url: string, text?: string): string | undefined {
   const at = segs.findIndex((s) => GUIDE_SEGMENT.test(s));
   if (at < 0) return undefined;
   const rest = segs.slice(at).join("/");
+  const numbered = /^migration-guide-v?(\d{1,3})(?:-0)?$/.exec(segs[at]!)?.[1];
+  if (numbered) return numbered;
   const n = /(?:version-|to-(?:[a-z-]+-)?v?|\bv|-)(\d{1,3})(?:\.x)?$/.exec(rest)?.[1] ?? /(?:version-|\bv)(\d{1,3})(?:\D|$)/.exec(rest)?.[1];
   if (n) return n;
   if (at !== segs.length - 1) return undefined; // a page under a guide section (codemods), not the guide itself

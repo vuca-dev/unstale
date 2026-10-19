@@ -359,6 +359,25 @@ fn keyed_api(r: &unstale_schema::catalog::CapabilityRecord, lits: &[String], lit
             || lits.iter().chain(&r.introduces).any(|x| x != lit && usage::qualified_name(x) && x.rsplit('.').next() == Some(lit)))
 }
 
+/// The words of what replaces a deprecation (`introduces`: `proxy` for Next.js's `middleware`), lowercase: single
+/// identifiers and file names' stems only (`proxy.ts` → `proxy`), split at case changes and `_`/`-` (`createProxy` →
+/// `create`, `proxy`); words under three letters dropped. A file named for the deprecated convention that imports a name of these words from the technology already
+/// uses the successor (`usage::imports_successor`).
+fn successor_words(r: &unstale_schema::catalog::CapabilityRecord) -> Vec<String> {
+    let stem = |x: String| -> Option<String> {
+        if usage::file_name(&x) {
+            x.trim_start_matches('.').split('.').next().map(str::to_string)
+        } else {
+            (!x.contains(['.', '/']) && !x.contains(char::is_whitespace)).then_some(x)
+        }
+    };
+    let mut out: Vec<String> =
+        r.introduces.iter().filter_map(|x| clean_lit(x)).filter_map(stem).flat_map(|x| usage::camel_words(&x)).filter(|w| w.len() >= 3).collect();
+    out.sort();
+    out.dedup();
+    out
+}
+
 /// The nearest project boundary containing `path` (`.` when none does).
 fn boundary_of<'b>(bounds: &[&'b str], path: &str) -> &'b str {
     bounds.iter().copied().find(|d| *d == "." || path.strip_prefix(*d).is_some_and(|r| r.starts_with('/'))).unwrap_or(".")
@@ -742,6 +761,9 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
     let dependents = dependents(&inp.stack.packages);
     let bounds = boundaries(&inp.stack.packages, &inp.repo.paths);
     let tools = tools(&inp.stack.packages);
+    // Published libraries: a framework resolves its file conventions in the application that runs it, never inside a
+    // package others install.
+    let libraries: std::collections::HashSet<&str> = inp.stack.packages.iter().filter(|p| p.kind == crate::stack::Kind::Library).map(|p| p.dir.as_str()).collect();
     for (tech, td, tl) in &in_stack {
         let (tech, comps, lits) = (*tech, &tl.comps, &tl.per_record);
         // A CLI flag counts only on a command line that runs this technology: `--scope` in another CLI's help text or
@@ -867,9 +889,10 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
         // (`usage::live_site`: not in a comment, not a fallback beside the record's replacement). Per view, literal and
         // replacements.
         let exact: Memo<Rc<usage::Evidence>> = RefCell::default();
-        let exact_of = |v: usize, l: &str, repl: &[String], context: Option<&[String]>, keyed: bool| -> Rc<usage::Evidence> {
+        let modules: Vec<String> = comps.iter().filter_map(|c| purl_name(c)).collect();
+        let exact_of = |v: usize, l: &str, repl: &[String], context: Option<&[String]>, keyed: bool, config: bool, succ: &[String], call: bool| -> Rc<usage::Evidence> {
             let ctx = context.map_or("-".to_string(), |c| c.join("\0"));
-            let key = (v, format!("{l}\0{}\u{1}{ctx}\u{2}{keyed}", repl.join("\0")));
+            let key = (v, format!("{l}\0{}\u{1}{ctx}\u{2}{keyed}\u{3}{config}\u{4}{}\u{5}{call}", repl.join("\0"), succ.join("\0")));
             if let Some(e) = exact.borrow().get(&key) {
                 return e.clone();
             }
@@ -878,13 +901,36 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             let live = |p: &str| {
                 if named_file {
                     // A file named for the technology (`.eslintrc.json`) is its file wherever it is cited, as root-
-                    // declared tooling configures every package; a generic name (`middleware.ts`) only in its projects.
-                    return usage::is_file(p, l) && (reach.is_empty() || scopes[v].names_path(p) || convention.contains(boundary_of(&bounds, p)));
+                    // declared tooling configures every package; a generic name (`middleware.ts`) only in its projects,
+                    // never in a published library (the application installing it resolves the convention: fumadocs'
+                    // `packages/core/src/i18n/middleware.ts` is a helper users call from their own `proxy.ts`), and not
+                    // where the file already imports the successor from the technology (`NextProxy` for `proxy`).
+                    if !usage::is_file(p, l) {
+                        return false;
+                    }
+                    if reach.is_empty() || scopes[v].names_path(p) {
+                        return true;
+                    }
+                    let at = boundary_of(&bounds, p);
+                    return convention.contains(at)
+                        && !libraries.contains(at)
+                        && inp.repo.text(p).is_none_or(|t| !usage::imports_successor(t, &modules, succ));
                 }
                 // An option or API name other tools share (`noExternal`: Vite's `ssr.noExternal`) counts in a file
                 // that neither imports the technology nor is named for it only when that file is not another
                 // declared tool's config (`vite.config.ts` in a package declaring `vite`).
                 if option && scopes[v].file(p) == Some(false) && usage::config_tool(p).is_some_and(|t| tools.contains(&t)) {
+                    return false;
+                }
+                // A configuration option counts in code only where that code configures the technology: its own config
+                // file or code importing it (`Scope::file` about). A record-named generic file (`index.ts`) returning
+                // another tool's options (`@fumadocs/vite`'s `ssr: { noExternal }`) is not. Data files are unchanged.
+                if option && config && usage::own_code(p, &ecosystem) && scopes[v].file(p) == Some(false) {
+                    return false;
+                }
+                // A plain word in effect (`call`): only as a key of an object passed to a function the file imports from
+                // the technology (`streamText({ system })`, `usage::call_key`).
+                if call && !(usage::own_code(p, &ecosystem) && scopes[v].file(p) == Some(true) && inp.repo.text(p).is_some_and(|t| usage::call_key(t, l, &modules))) {
                     return false;
                 }
                 inp.repo.text(p).is_none_or(|t| usage::live_site_near(p, t, l, repl, context, keyed))
@@ -1052,7 +1098,10 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             // The record reads the view of its package (code on the outputs' release line only).
             let view = candidates.first().and_then(|r| view_of.get(&normalize_purl(&r.component))).copied().unwrap_or(0);
             let ev = |l: &str| evidence_of(view, l);
-            let ex = |l: &str| exact_of(view, l, &replacement, broad.iter().any(|b| *b == l).then_some(&context[..]), keyed_api(&rec.r, ls, l));
+            let succ = successor_words(&rec.r);
+            let config = rec.r.surface == Surface::Configuration;
+            let ex_with = |l: &str, call: bool| exact_of(view, l, &replacement, broad.iter().any(|b| *b == l).then_some(&context[..]), keyed_api(&rec.r, ls, l), config, &succ, call);
+            let ex = |l: &str| ex_with(l, false);
             let (cited, cite): (&[String], Cite) = if deprecated.is_empty() { (ls, &ev) } else { (&deprecated, &ex) };
             let found: Vec<(String, Rc<usage::Evidence>)> = cited.iter().map(|l| (l.clone(), cite(l))).filter(|(_, e)| !e.files.is_empty()).collect();
             let more: BTreeMap<String, usize> = found.iter().filter(|(_, e)| e.more > 0).map(|(l, e)| (l.clone(), e.more)).collect();
@@ -1105,9 +1154,32 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             // (`message`) is too common to show that, so it takes a specific literal (`toBeCalledWith`, `terserOptions`)
             // and cites only those. Nothing to block (it is installed) and no applied check (the old API is the signal:
             // once it is gone the record is already included).
-            if opp.route == Route::AlreadyIncluded && !deprecated.is_empty() && opp.matched.iter().any(|(l, _)| !usage::plain_word(l)) {
+            // A plain word counts too where written as a key of an object passed to a function imported from the
+            // technology (`streamText({ system })` for the AI SDK's `system`, `usage::call_key`), cited at those sites.
+            let calls: Vec<(String, Vec<String>)> = if opp.route == Route::AlreadyIncluded && !deprecated.is_empty() {
+                deprecated
+                    .iter()
+                    .filter(|l| usage::plain_word(l))
+                    .map(|l| (l.clone(), ex_with(l, true).files.iter().map(|(p, _)| p.clone()).collect::<Vec<_>>()))
+                    .filter(|(_, f)| !f.is_empty())
+                    .collect()
+            } else {
+                vec![]
+            };
+            if opp.route == Route::AlreadyIncluded && !deprecated.is_empty() && (opp.matched.iter().any(|(l, _)| !usage::plain_word(l)) || !calls.is_empty()) {
                 opp.matched.retain(|(l, _)| !usage::plain_word(l));
-                opp.files = files_of(&opp.matched.iter().map(|(l, _)| l.clone()).collect::<Vec<_>>(), cite);
+                opp.matched.extend(calls.iter().cloned());
+                opp.matched.sort();
+                for (l, _) in &calls {
+                    let n = ex_with(l, true).more;
+                    if n > 0 {
+                        opp.more.insert(l.clone(), n);
+                    } else {
+                        opp.more.remove(l);
+                    }
+                }
+                let strict = |l: &str| if usage::plain_word(l) { ex_with(l, true) } else { ex(l) };
+                opp.files = files_of(&opp.matched.iter().map(|(l, _)| l.clone()).collect::<Vec<_>>(), &strict);
                 opp.route = Route::InEffect;
                 // A known prerequisite of acting on it (the replacement needs a newer peer: ESLint's core rule handles
                 // TypeScript imports from 9.37) that the project's version does not meet: the deprecated API is still
