@@ -1,6 +1,6 @@
 # @unstale/create
 
-**Everything that changed past your coding agent's knowledge cutoff.**
+**You don't know what you don't know. Neither does your agent.**
 
 Sets up [unstale](https://github.com/vuca-dev/unstale) in the current repository:
 

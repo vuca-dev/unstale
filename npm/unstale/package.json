@@ -1,7 +1,7 @@
 {
   "name": "@unstale/cli",
   "version": "0.1.1",
-  "description": "Tells Claude Code, Codex and Cursor what changed upstream since their training cutoff that applies to your code: new APIs to adopt, breaking changes for your next major upgrade, deprecations, and the security and performance fixes in each version bump.",
+  "description": "Finds the breaking changes, security fixes, deprecations and new APIs in your dependencies that touch your code, and hands them to Claude Code, Codex or Cursor. Local, cited, open source.",
   "license": "AGPL-3.0-only",
   "author": "Jason Draper (https://vuca.dev)",
   "homepage": "https://unstale.sh",
