@@ -426,6 +426,7 @@ impl<'a> Scope<'a> {
         let by_tail = self.hits.by_tail.get(lit);
         let mut best: Vec<(bool, Role, usize, &str)> = Vec::with_capacity(4);
         let mut e = Evidence::default();
+        let mut cited = 0;
         for (i, x) in self.hits.ix.get(lit).into_iter().flatten().enumerate() {
             let Some(about) = self.file_at(*x) else { continue };
             let tail_hit = by_tail.is_some_and(|t| t.contains(x));
@@ -448,12 +449,18 @@ impl<'a> Scope<'a> {
                 continue;
             }
             let key = (!about, r, i, p.as_str());
-            if (best.len() < 3 || key < best[2]) && self.citable(*x) && keep(p) {
-                let at = best.partition_point(|k| *k < key);
-                best.insert(at, key);
-                best.truncate(3);
+            // A deprecated literal counts every citable file, so a capped list can say how many it leaves out.
+            let better = best.len() < 3 || key < best[2];
+            if (better || exact) && self.citable(*x) && keep(p) {
+                cited += 1;
+                if better {
+                    let at = best.partition_point(|k| *k < key);
+                    best.insert(at, key);
+                    best.truncate(3);
+                }
             }
         }
+        e.more = if exact { cited - best.len() } else { 0 };
         e.files = best.into_iter().map(|(not_about, _, _, p)| (p.to_string(), !not_about)).collect();
         e
     }
@@ -470,6 +477,8 @@ pub struct Evidence {
     /// Up to three files that show it is used, files about the technology first, then by role, then in `find`'s
     /// order; each with whether it is about the technology.
     pub files: Vec<(String, bool)>,
+    /// For a deprecated literal (`exact_evidence_where`): how many more files would be cited than `files` holds.
+    pub more: usize,
     /// It occurs in a file that can use the technology, which is what orders the queue. A plain word counts too:
     /// ignoring it outside files about the technology lost a held-out key change in the release gate.
     pub used: bool,
@@ -570,14 +579,18 @@ fn comment_spans(path: &str, text: &str) -> Vec<(usize, usize)> {
 /// already moved. A file named `lit` (`middleware.ts`) is its use, and for a file-name literal (`file_name`) only it.
 #[cfg(test)]
 pub fn live_site(path: &str, text: &str, lit: &str, replacements: &[String]) -> bool {
-    live_site_near(path, text, lit, replacements, None)
+    live_site_near(path, text, lit, replacements, None, false)
 }
 
 /// `live_site`, and with `context` (`Some`) a site counts only where one of those literals also occurs (whole token,
 /// outside comments) within `SITE_LINES` lines: a namespace the technology's other APIs live under (`pytest.mark`,
 /// `namespace_of`) says nothing about which of them is used, so it takes the record's specific literals beside it
 /// (`@pytest.mark.tryfirst` above `def pytest_addoption`). `Some(&[])`: never.
-pub fn live_site_near(path: &str, text: &str, lit: &str, replacements: &[String], context: Option<&[String]>) -> bool {
+///
+/// `keyed`: the record's deprecated API is an object property or option key (`keyed_api`), so in JavaScript-family code
+/// a site counts only where the identifier is written as a key or a member (`key_or_member`): a module-level
+/// `const defaultOptions = {...}` and its references are a variable of the same name, not the property.
+pub fn live_site_near(path: &str, text: &str, lit: &str, replacements: &[String], context: Option<&[String]>, keyed: bool) -> bool {
     if context.is_some_and(|c| c.is_empty()) {
         return false;
     }
@@ -611,11 +624,84 @@ pub fn live_site_near(path: &str, text: &str, lit: &str, replacements: &[String]
     let line_of = |at: usize| starts.partition_point(|&n| n < at);
     let near: Vec<usize> = replacements.iter().flat_map(|r| sites(r)).map(line_of).collect();
     let beside: Option<Vec<usize>> = context.map(|c| c.iter().flat_map(|x| sites(x)).map(line_of).collect());
+    let keyed = keyed && js_code(path);
     sites(lit)
         .into_iter()
+        .filter(|at| !keyed || key_or_member(b, *at, lit.len()))
         .map(line_of)
         .filter(|l| beside.as_ref().is_none_or(|b| b.iter().any(|x| x.abs_diff(*l) <= SITE_LINES)))
         .any(|l| !near.iter().any(|r| r.abs_diff(l) <= SITE_LINES))
+}
+
+/// Whether `path` is JavaScript-family code (TypeScript, JSX, Vue, Svelte, Astro).
+fn js_code(path: &str) -> bool {
+    let ext = path.rsplit_once('.').map(|(_, x)| x.to_ascii_lowercase()).unwrap_or_default();
+    matches!(ext.as_str(), "js" | "jsx" | "ts" | "tsx" | "mjs" | "cjs" | "mts" | "cts" | "vue" | "svelte" | "astro")
+}
+
+/// Whether the token at `at` (`len` bytes) is written as an object key or a member: `name: …` or `'name': …` after `{`,
+/// `,` or `;` (an object literal or a type's members), `{ name }` / `, name,` shorthand inside braces, or `x.name`. Not a binding
+/// (`const name = …`, `const name: T`, a parameter `(name: T)`), a reference (`name.field`, `f(name)`) or a spread
+/// (`...name`). A lexer's view: a ternary's `? name :` is not a key either.
+fn key_or_member(b: &[u8], at: usize, len: usize) -> bool {
+    let ws = |c: u8| c.is_ascii_whitespace();
+    let prev_at = |mut i: usize| {
+        while i > 0 && ws(b[i - 1]) {
+            i -= 1;
+        }
+        i.checked_sub(1).map(|j| (j, b[j]))
+    };
+    let next_at = |mut i: usize| {
+        while i < b.len() && ws(b[i]) {
+            i += 1;
+        }
+        b.get(i).map(|c| (i, *c))
+    };
+    if at > 0 && b[at - 1] == b'.' && (at < 2 || b[at - 2] != b'.') {
+        return true;
+    }
+    let (mut start, mut end) = (at, at + len);
+    if let (Some(&q), Some(&q2)) = (at.checked_sub(1).and_then(|i| b.get(i)), b.get(end))
+        && (q == b'\'' || q == b'"')
+        && q2 == q
+    {
+        (start, end) = (at - 1, end + 1);
+    }
+    let Some((_, before)) = prev_at(start) else { return false };
+    if !matches!(before, b'{' | b',' | b';') {
+        return false;
+    }
+    match next_at(end) {
+        Some((i, b'?')) => matches!(next_at(i + 1), Some((j, b':')) if b.get(j + 1) != Some(&b':')),
+        Some((i, b':')) => b.get(i + 1) != Some(&b':'),
+        Some((_, b',' | b'}')) => start == at && opener(b, start) == Some(b'{'),
+        _ => false,
+    }
+}
+
+/// The unmatched bracket before `at` (`{` of an object literal, `(` of a call's arguments), by counting brackets back.
+fn opener(b: &[u8], at: usize) -> Option<u8> {
+    let mut depth = 0usize;
+    for &c in b[..at].iter().rev() {
+        match c {
+            b')' | b']' | b'}' => depth += 1,
+            b'(' | b'[' | b'{' if depth == 0 => return Some(c),
+            b'(' | b'[' | b'{' => depth -= 1,
+            _ => {}
+        }
+    }
+    None
+}
+
+/// The tool a config file is named for (`vite` for `vite.config.ts`, `prettier` for `.prettierrc.json`): the head of a
+/// `<tool>.config.<ext>` or `.<tool>rc[.<ext>]` base name, lowercase.
+pub fn config_tool(path: &str) -> Option<String> {
+    let base = path.rsplit('/').next().unwrap_or(path).to_ascii_lowercase();
+    if let Some((head, _)) = base.trim_start_matches('.').split_once(".config.") {
+        return Some(head.to_string()).filter(|h| !h.is_empty());
+    }
+    let head = base.strip_prefix('.')?.split('.').next()?.strip_suffix("rc")?;
+    Some(head.to_string()).filter(|h| !h.is_empty())
 }
 
 /// Whether `lit` is a bare file name (`middleware.ts`, `next.config.js`): no directory, no whitespace, and a text file
@@ -1448,14 +1534,28 @@ mod tests {
         assert!(!member_of("next.config.js", "next.config") && !member_of("pytest.marker", "pytest.mark") && !member_of("pytest.mark", "pytest.mark"));
         let ctx = vec!["pytest_addoption".to_string()];
         let tests = "@pytest.mark.parametrize('x', [1])\ndef test_a(x): ...\n";
-        assert!(live_site_near("t.py", tests, "pytest.mark", &[], None), "no context asked: as before");
-        assert!(!live_site_near("t.py", tests, "pytest.mark", &[], Some(&ctx)));
-        assert!(!live_site_near("t.py", tests, "pytest.mark", &[], Some(&[])), "no specific literal: never");
+        let key = |t: &str| live_site_near("r.ts", t, "defaultOptions", &[], None, true);
+        assert!(key("createRule({\n  defaultOptions: [],\n});"));
+        assert!(key("const r = { 'defaultOptions': [] };") && key("f({ defaultOptions })") && key("x = { a, defaultOptions, b }"));
+        assert!(key("rule.defaultOptions = [];") && key("type R = { name: string; defaultOptions?: unknown }"));
+        assert!(!key("const defaultOptions = { a: 1 };\nconst s = defaultOptions.a;\nObject.assign({}, defaultOptions, b);"), "a variable");
+        assert!(!key("function f(defaultOptions: X) {}") && !key("const defaultOptions: X = y;") && !key("g({ ...defaultOptions })"));
+        assert!(!key("const v = c ? defaultOptions : 1;"), "a ternary is not a key");
+        assert!(live_site_near("r.json", "{\"defaultOptions\": 1}", "defaultOptions", &[], None, true), "keyed applies to code only");
+        assert!(live_site_near("r.ts", "const defaultOptions = 1;", "defaultOptions", &[], None, false), "not keyed: as before");
+        assert_eq!(config_tool("docs/vite.config.ts").as_deref(), Some("vite"));
+        assert_eq!(config_tool(".prettierrc.json").as_deref(), Some("prettier"));
+        assert_eq!(config_tool(".eslintrc").as_deref(), Some("eslint"));
+        assert_eq!(config_tool("tsconfig.json"), None);
+        assert_eq!(config_tool("src/rc.ts"), None);
+        assert!(live_site_near("t.py", tests, "pytest.mark", &[], None, false), "no context asked: as before");
+        assert!(!live_site_near("t.py", tests, "pytest.mark", &[], Some(&ctx), false));
+        assert!(!live_site_near("t.py", tests, "pytest.mark", &[], Some(&[]), false), "no specific literal: never");
         let hook = "@pytest.mark.tryfirst\ndef pytest_addoption(parser): ...\n";
-        assert!(live_site_near("p.py", hook, "pytest.mark", &[], Some(&ctx)));
+        assert!(live_site_near("p.py", hook, "pytest.mark", &[], Some(&ctx), false));
         let far = format!("def pytest_addoption(parser): ...\n{}@pytest.mark.skip\ndef test_b(): ...\n", "x = 1\n".repeat(SITE_LINES + 1));
-        assert!(!live_site_near("p.py", &far, "pytest.mark", &[], Some(&ctx)), "the hook elsewhere in the file");
-        assert!(!live_site_near("p.py", "# pytest_addoption\n@pytest.mark.skip\n", "pytest.mark", &[], Some(&ctx)), "a comment is not context");
+        assert!(!live_site_near("p.py", &far, "pytest.mark", &[], Some(&ctx), false), "the hook elsewhere in the file");
+        assert!(!live_site_near("p.py", "# pytest_addoption\n@pytest.mark.skip\n", "pytest.mark", &[], Some(&ctx), false), "a comment is not context");
     }
 
     #[test]

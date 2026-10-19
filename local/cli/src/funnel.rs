@@ -83,6 +83,8 @@ pub struct Opp<'a> {
     pub score: f64,
     /// Matched literals with up to three files each, sorted.
     pub matched: Vec<(String, Vec<String>)>,
+    /// Per matched deprecated literal: how many more files use it than the three `matched` lists (none: all listed).
+    pub more: BTreeMap<String, usize>,
     /// Up to three matched files across all literals, for evidence lines: files about the technology first (importing
     /// or configuring it), then application files (`usage::Role`), as in `usage::Scope::evidence`.
     pub files: Vec<String>,
@@ -334,6 +336,22 @@ fn boundaries<'p>(packages: &'p [crate::stack::Package], paths: &'p [String]) ->
     out.sort_unstable_by_key(|d| (std::cmp::Reverse(if *d == "." { 0 } else { d.len() }), *d));
     out.dedup();
     out
+}
+
+/// The tools the repository declares, by the name their config files take (`usage::config_tool`): a package's name, or
+/// its scope (`@vitejs/plugin-react` → `vitejs`), lowercase.
+fn tools(packages: &[crate::stack::Package]) -> std::collections::HashSet<String> {
+    let names = packages.iter().flat_map(|p| &p.declared).filter_map(|d| purl_name(d));
+    names.map(|n| n.to_ascii_lowercase()).map(|n| n.strip_prefix('@').map_or(n.clone(), |s| s.split('/').next().unwrap_or("").to_string())).collect()
+}
+
+/// Whether a record's deprecated identifier `lit` is an object property or option key: the record is about
+/// configuration, or one of its literals is a qualified name ending in it (`meta.defaultOptions` for `defaultOptions`).
+/// Its sites in code are then where it is written as a key or member (`usage::live_site_near`).
+fn keyed_api(r: &unstale_schema::catalog::CapabilityRecord, lits: &[String], lit: &str) -> bool {
+    usage::identifier(lit)
+        && (r.surface == Surface::Configuration
+            || lits.iter().chain(&r.introduces).any(|x| x != lit && usage::qualified_name(x) && x.rsplit('.').next() == Some(lit)))
 }
 
 /// The nearest project boundary containing `path` (`.` when none does).
@@ -710,6 +728,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
     let all_hits: Hits = usage::find_with_commands(inp.repo, &usage_lits, &whole_lits, &commands);
     let dependents = dependents(&inp.stack.packages);
     let bounds = boundaries(&inp.stack.packages, &inp.repo.paths);
+    let tools = tools(&inp.stack.packages);
     for (tech, td, tl) in &in_stack {
         let (tech, comps, lits) = (*tech, &tl.comps, &tl.per_record);
         // A CLI flag counts only on a command line that runs this technology: `--scope` in another CLI's help text or
@@ -835,20 +854,27 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
         // (`usage::live_site`: not in a comment, not a fallback beside the record's replacement). Per view, literal and
         // replacements.
         let exact: Memo<Rc<usage::Evidence>> = RefCell::default();
-        let exact_of = |v: usize, l: &str, repl: &[String], context: Option<&[String]>| -> Rc<usage::Evidence> {
+        let exact_of = |v: usize, l: &str, repl: &[String], context: Option<&[String]>, keyed: bool| -> Rc<usage::Evidence> {
             let ctx = context.map_or("-".to_string(), |c| c.join("\0"));
-            let key = (v, format!("{l}\0{}\u{1}{ctx}", repl.join("\0")));
+            let key = (v, format!("{l}\0{}\u{1}{ctx}\u{2}{keyed}", repl.join("\0")));
             if let Some(e) = exact.borrow().get(&key) {
                 return e.clone();
             }
             let named_file = usage::file_name(l);
+            let option = usage::identifier(l) || usage::qualified_name(l);
             let live = |p: &str| {
                 if named_file {
                     // A file named for the technology (`.eslintrc.json`) is its file wherever it is cited, as root-
                     // declared tooling configures every package; a generic name (`middleware.ts`) only in its projects.
                     return usage::is_file(p, l) && (reach.is_empty() || scopes[v].names_path(p) || convention.contains(boundary_of(&bounds, p)));
                 }
-                inp.repo.text(p).is_none_or(|t| usage::live_site_near(p, t, l, repl, context))
+                // An option or API name other tools share (`noExternal`: Vite's `ssr.noExternal`) counts in a file
+                // that neither imports the technology nor is named for it only when that file is not another
+                // declared tool's config (`vite.config.ts` in a package declaring `vite`).
+                if option && scopes[v].file(p) == Some(false) && usage::config_tool(p).is_some_and(|t| tools.contains(&t)) {
+                    return false;
+                }
+                inp.repo.text(p).is_none_or(|t| usage::live_site_near(p, t, l, repl, context, keyed))
             };
             let e = Rc::new(scopes[v].exact_evidence_where(l, role, !nested, live));
             exact.borrow_mut().insert(key, e.clone());
@@ -1008,12 +1034,11 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             // The record reads the view of its package (code on the outputs' release line only).
             let view = candidates.first().and_then(|r| view_of.get(&normalize_purl(&r.component))).copied().unwrap_or(0);
             let ev = |l: &str| evidence_of(view, l);
-            let ex = |l: &str| exact_of(view, l, &replacement, broad.iter().any(|b| *b == l).then_some(&context[..]));
+            let ex = |l: &str| exact_of(view, l, &replacement, broad.iter().any(|b| *b == l).then_some(&context[..]), keyed_api(&rec.r, ls, l));
             let (cited, cite): (&[String], Cite) = if deprecated.is_empty() { (ls, &ev) } else { (&deprecated, &ex) };
-            let matched: Vec<(String, Vec<String>)> = cited
-                .iter()
-                .filter_map(|l| Some(cite(l)).filter(|e| !e.files.is_empty()).map(|e| (l.clone(), e.files.iter().map(|(p, _)| p.clone()).collect())))
-                .collect();
+            let found: Vec<(String, Rc<usage::Evidence>)> = cited.iter().map(|l| (l.clone(), cite(l))).filter(|(_, e)| !e.files.is_empty()).collect();
+            let more: BTreeMap<String, usize> = found.iter().filter(|(_, e)| e.more > 0).map(|(l, e)| (l.clone(), e.more)).collect();
+            let matched: Vec<(String, Vec<String>)> = found.into_iter().map(|(l, e)| (l, e.files.iter().map(|(p, _)| p.clone()).collect())).collect();
             let score = ls
                 .iter()
                 .filter_map(|l| Some(ev(l)).filter(|e| e.used).map(|e| weight(l) * if e.app { 1.0 } else { NON_APP_WEIGHT }))
@@ -1040,6 +1065,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                 tier: tier(rec),
                 score,
                 matched,
+                more,
                 files,
                 requires_miss,
                 benefits: vec![],
@@ -1171,6 +1197,7 @@ fn blank<'a>(rec: &'a Rec, release: Release, route: Route) -> Opp<'a> {
         tier: tier(rec),
         score: 0.0,
         matched: vec![],
+        more: BTreeMap::new(),
         files: vec![],
         requires_miss: false,
         benefits: vec![],
