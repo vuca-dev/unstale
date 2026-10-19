@@ -704,6 +704,124 @@ pub fn config_tool(path: &str) -> Option<String> {
     Some(head.to_string()).filter(|h| !h.is_empty())
 }
 
+/// The words of an identifier, lowercase, split at `_`, `-` and lower-to-upper case changes (`NextProxy` → `next`,
+/// `proxy`; `HTTPServer` stays one word).
+pub fn camel_words(id: &str) -> Vec<String> {
+    let mut out = vec![];
+    for part in id.split(|c: char| !c.is_ascii_alphanumeric()) {
+        let mut cur = String::new();
+        let mut prev_lower = false;
+        for c in part.chars() {
+            if c.is_ascii_uppercase() && prev_lower && !cur.is_empty() {
+                out.push(std::mem::take(&mut cur).to_ascii_lowercase());
+            }
+            prev_lower = c.is_ascii_lowercase() || c.is_ascii_digit();
+            cur.push(c);
+        }
+        if !cur.is_empty() {
+            out.push(cur.to_ascii_lowercase());
+        }
+    }
+    out
+}
+
+/// Whether `text` imports, from one of `modules` (the technology's package names, or a subpath of one), a name with
+/// one of `words` among its words (`camel_words`): `import { type NextProxy, NextResponse } from 'next/server'` for
+/// Next.js's successor `proxy`. A file named for a deprecated convention that does so is already written against the
+/// successor. JavaScript-family `import … from` statements only.
+pub fn imports_successor(text: &str, modules: &[String], words: &[String]) -> bool {
+    !words.is_empty() && imported_names(text, modules).iter().any(|n| camel_words(n).iter().any(|w| words.contains(w)))
+}
+
+/// The local names `text` imports from one of `modules` (a package name or a subpath of one), JavaScript-family
+/// `import … from` statements: `streamText` from `import { streamText, type UIMessage } from 'ai'`; the alias of
+/// `x as y`.
+pub fn imported_names(text: &str, modules: &[String]) -> Vec<String> {
+    let mut out = vec![];
+    let mut rest = text;
+    while let Some(i) = rest.find("from") {
+        let after = rest[i + 4..].trim_start();
+        let head = &rest[..i];
+        rest = &rest[i + 4..];
+        let Some(q) = after.chars().next().filter(|c| *c == '\'' || *c == '"') else { continue };
+        let spec = after[1..].split(q).next().unwrap_or("");
+        if !modules.iter().any(|m| spec == m || spec.strip_prefix(m.as_str()).is_some_and(|r| r.starts_with('/'))) {
+            continue;
+        }
+        let Some(start) = head.rfind("import") else { continue };
+        let names = &head[start + 6..];
+        if names.contains(';') {
+            continue;
+        }
+        let toks: Vec<&str> = names.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '$')).filter(|n| !n.is_empty() && *n != "type").collect();
+        let mut k = 0;
+        while k < toks.len() {
+            if toks.get(k + 1) == Some(&"as") {
+                if let Some(alias) = toks.get(k + 2) {
+                    out.push(alias.to_string());
+                }
+                k += 3;
+            } else {
+                out.push(toks[k].to_string());
+                k += 1;
+            }
+        }
+    }
+    out
+}
+
+/// Whether `text` (JavaScript-family code) writes `lit` as a key of an object literal passed straight to a function it
+/// imports from one of `modules`: `streamText({ model, system: prompt })` with `streamText` from `ai`. A plain-word
+/// option (`system`) is too common to show its API anywhere else; here the call names whose option it is.
+pub fn call_key(text: &str, lit: &str, modules: &[String]) -> bool {
+    let names = imported_names(text, modules);
+    if names.is_empty() {
+        return false;
+    }
+    let b = text.as_bytes();
+    let word = |c: u8| c.is_ascii_alphanumeric() || c == b'_' || c == b'$';
+    let mut from = 0;
+    while let Some(i) = text[from..].find(lit).map(|i| i + from) {
+        from = i + lit.len();
+        if (i > 0 && word(b[i - 1])) || b.get(from).is_some_and(|c| word(*c)) {
+            continue;
+        }
+        let line = text[..i].rsplit('\n').next().unwrap_or("").trim_start();
+        if line.contains("//") || line.starts_with('*') {
+            continue;
+        }
+        let tail = text[from..].trim_start_matches([' ', '\t']);
+        if !(tail.starts_with(':') || tail.starts_with("?:")) || !matches!(text[..i].trim_end().bytes().last(), Some(b'{' | b',')) {
+            continue;
+        }
+        // The object's opening brace, then the call it is the first argument of: `name(` or `name<T>(` before it.
+        let mut depth = 0usize;
+        let mut at = None;
+        for j in (i.saturating_sub(4000)..i).rev() {
+            match b[j] {
+                b'}' | b')' | b']' => depth += 1,
+                b'{' | b'(' | b'[' if depth > 0 => depth -= 1,
+                b'{' => {
+                    at = Some(j);
+                    break;
+                }
+                b'(' | b'[' => break,
+                _ => {}
+            }
+        }
+        let Some(open) = at else { continue };
+        let before = text[..open].trim_end();
+        let Some(call) = before.strip_suffix('(') else { continue };
+        let call = call.trim_end();
+        let call = if call.ends_with('>') { call.rsplit_once('<').map_or(call, |(h, _)| h) } else { call };
+        let callee: String = call.bytes().rev().take_while(|c| word(*c)).map(char::from).collect::<Vec<_>>().into_iter().rev().collect();
+        if names.contains(&callee) {
+            return true;
+        }
+    }
+    false
+}
+
 /// Whether `lit` is a bare file name (`middleware.ts`, `next.config.js`): no directory, no whitespace, and a text file
 /// extension. Such a literal is a file convention of the technology: only the file itself is its use, never the name
 /// written inside other content (`./src/plugins/og.middleware.ts` in an Astro config).
@@ -1543,6 +1661,24 @@ mod tests {
         assert!(!key("const v = c ? defaultOptions : 1;"), "a ternary is not a key");
         assert!(live_site_near("r.json", "{\"defaultOptions\": 1}", "defaultOptions", &[], None, true), "keyed applies to code only");
         assert!(live_site_near("r.ts", "const defaultOptions = 1;", "defaultOptions", &[], None, false), "not keyed: as before");
+        assert_eq!(camel_words("NextProxy"), ["next", "proxy"]);
+        assert_eq!(camel_words("createI18nMiddleware"), ["create", "i18n", "middleware"]);
+        assert_eq!(camel_words("HTTPServer_x"), ["httpserver", "x"]);
+        let words = ["proxy".to_string()];
+        let next = ["next".to_string()];
+        assert!(imports_successor("import { type NextProxy, NextResponse } from 'next/server';", &next, &words));
+        assert!(imports_successor("import type {\n  NextProxy,\n} from \"next/server\";", &next, &words));
+        assert!(!imports_successor("import { NextResponse } from 'next/server';\nconst proxy = 1;", &next, &words));
+        assert!(!imports_successor("import { createProxy } from 'http-proxy';", &next, &words));
+        assert!(!imports_successor("import { NextProxy } from 'nextra';", &next, &words));
+        let ai = ["ai".to_string()];
+        let chat = "import {\n  streamText,\n  type UIMessage,\n} from 'ai';\nconst result = streamText({\n  model,\n  tools: { search: { x: 1 } },\n  system: systemPrompt,\n});\n";
+        assert!(call_key(chat, "system", &ai));
+        assert!(call_key("import { generateText as gen } from 'ai';\nawait gen<T>({ system: 'x' });", "system", &ai));
+        assert!(!call_key("import { streamText } from 'ai';\nconst m = [{ role: 'system', content: 'x' }];\nconst o = { system: 1 };", "system", &ai));
+        assert!(!call_key("import { streamText } from 'ai';\nfoo({ system: 1 });", "system", &ai));
+        assert!(!call_key("import { streamText } from 'ai';\nstreamText({ model, // system: x\n});", "system", &ai));
+        assert!(!call_key("import { streamText } from 'ai';\nstreamText({ opts: { system: 1 } });", "system", &ai), "a nested object is another API's");
         assert_eq!(config_tool("docs/vite.config.ts").as_deref(), Some("vite"));
         assert_eq!(config_tool(".prettierrc.json").as_deref(), Some("prettier"));
         assert_eq!(config_tool(".eslintrc").as_deref(), Some("eslint"));

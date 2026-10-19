@@ -99,6 +99,27 @@ async function listPage(repo: string, page: number): Promise<GhRelease[]> {
   }
 }
 
+async function releaseByTag(repo: string, tag: string): Promise<GhRelease | undefined> {
+  if (!isRepoSlug(repo)) throw new Error(`not a GitHub repository: ${repo}`);
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(`https://api.github.com/repos/${repo}/releases/tags/${encodeURIComponent(tag)}`, {
+      headers: { Authorization: `Bearer ${ghToken()}`, Accept: "application/vnd.github+json", "User-Agent": "unstale-central" },
+    });
+    if (res.ok) return (await res.json()) as GhRelease;
+    if (res.status === 404) return undefined;
+    if (attempt >= 2 || (res.status < 500 && res.status !== 429)) throw new Error(`GitHub ${repo} tag ${tag}: ${res.status}`);
+    await new Promise((r) => setTimeout(r, 2000 * 2 ** attempt));
+  }
+}
+
+/** The first release of `version`'s line (lines.ts: the major, or `0.minor` below 1.0): `7.0.0`, `0.21.0`. Undefined
+ * for a version that is not plain `x.y.z`. */
+export function lineStart(version: string): string | undefined {
+  const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);
+  if (!m) return undefined;
+  return m[1] === "0" ? `0.${m[2]}.0` : `${m[1]}.0.0`;
+}
+
 export interface FetchStats {
   requests: number;
   newReleases: number;
@@ -193,6 +214,7 @@ export async function fetchReleases(t: Technology, opts: { refresh?: boolean; of
   const known = new Map((index?.releases ?? []).filter((r) => !listed || t.tag.test(r.tag)).map((r) => [r.tag, r]));
   const found = new Map<string, { r: GhRelease; release: StoredRelease }>();
   let matched = false;
+  let truncated = true;
   if (listed) {
     for (let page = 1; page < 60; page++) {
       const rows = await listPage(t.repo, page);
@@ -205,7 +227,30 @@ export async function fetchReleases(t: Technology, opts: { refresh?: boolean; of
         found.set(r.tag_name, { r, release: { technology: t.id, tag: r.tag_name, version: m[1]!, date, url: r.html_url, snapshot: `sha256:${sha256(r.body ?? "")}` } });
       }
       const oldest = rows.at(-1)?.published_at ?? "";
-      if (rows.length < 100 || (oldest && oldest.slice(0, 10) < SINCE)) break;
+      if (rows.length < 100 || (oldest && oldest.slice(0, 10) < SINCE)) {
+        truncated = false;
+        break;
+      }
+    }
+    // A listing that ran out of pages before the window's start (a repository releasing many packages: vercel/ai
+    // tags about 100 a day, so its 59 pages reach back two months) misses the start of an older line, the x.0.0 release
+    // whose notes carry the major's changes. Each line's start is then asked for by its tag, its line's tag with the
+    // version replaced; one request per missing line start per listing.
+    if (truncated) {
+      const seen = new Map<string, string>();
+      for (const r of [...known.values(), ...[...found.values()].map((f) => f.release)]) seen.set(r.version, r.tag);
+      for (const [version, tag] of [...seen]) {
+        const start = lineStart(version);
+        if (!start || seen.has(start)) continue;
+        const startTag = tag.split(version).join(start);
+        seen.set(start, startTag);
+        if (t.tag.exec(startTag)?.[1] !== start) continue;
+        const r = await releaseByTag(t.repo, startTag);
+        stats.requests++;
+        const date = (r?.published_at ?? "").slice(0, 10);
+        if (!r || r.prerelease || r.draft || date < SINCE) continue;
+        found.set(r.tag_name, { r, release: { technology: t.id, tag: r.tag_name, version: start, date, url: r.html_url, snapshot: `sha256:${sha256(r.body ?? "")}` } });
+      }
     }
   }
   // Dated by the registry: a stored release without a registry day gets one when the registry has it (stored indexes

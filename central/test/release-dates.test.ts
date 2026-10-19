@@ -95,6 +95,33 @@ describe("release dates", () => {
     expect(stats.newReleases).toBe(2);
   });
 
+  test("a listing that runs out of pages before the window's start asks for each line's x.0.0 by its tag", async () => {
+    // vercel/ai tags every package of the repository (about 100 a day): its 59 pages end two months back, past
+    // ai@7.0.0 (25 June 2026), so the release whose notes carry the major's changes was never listed.
+    const AI: Technology = { id: "ai-21ad95de", name: "ai", repo: "vercel/ai", components: ["pkg:npm/ai"], tag: /^ai@(\d+\.\d+\.\d+)$/, clean: (b) => b };
+    const rel = (tag: string, day: string) => ({ ...gh(tag, day), html_url: `https://github.com/vercel/ai/releases/tag/${encodeURIComponent(tag)}` });
+    const page = [rel("ai@7.0.66", "2026-08-14"), rel("ai@6.0.300", "2026-08-14"), ...Array.from({ length: 98 }, (_, i) => rel(`@ai-sdk/openai@3.0.${i}`, "2026-08-14"))];
+    stub({
+      "https://api.github.com/repos/vercel/ai/releases/tags/ai%407.0.0": rel("ai@7.0.0", "2026-06-25"),
+      "https://api.github.com/repos/vercel/ai/releases?": page,
+      "https://registry.npmjs.org/ai": { name: "ai", time: { "7.0.0": "2026-06-25T12:47:23.880Z", "7.0.66": "2026-08-14T18:41:57.488Z", "6.0.0": "2025-12-22T17:11:49.521Z", "6.0.300": "2026-08-14T10:00:00.000Z" } },
+    });
+    const { notes } = await fetchReleases(AI);
+    expect(notes.map((n) => n.version)).toEqual(["7.0.0", "6.0.300", "7.0.66"]);
+    // 6.0.0 has no GitHub release (404): asked once, nothing added; 7.0.0 once.
+    expect(calls.filter((u) => u.includes("/releases/tags/"))).toEqual([
+      "https://api.github.com/repos/vercel/ai/releases/tags/ai%407.0.0",
+      "https://api.github.com/repos/vercel/ai/releases/tags/ai%406.0.0",
+    ]);
+    expect(calls.filter((u) => u.includes("/releases?")).length).toBe(59);
+  });
+
+  test("a listing that reaches the window's start asks for no tag", async () => {
+    stub({ "https://api.github.com/repos/jsdom/jsdom/releases": [gh("v30.0.5", "2026-07-28")], "https://registry.npmjs.org/jsdom": { name: "jsdom", time: NPM_TIME } });
+    await fetchReleases(JSDOM);
+    expect(calls.filter((u) => u.includes("/releases/tags/"))).toEqual([]);
+  });
+
   test("the registry's publish times are cached; offline answers from the cache alone", async () => {
     stub({ "https://registry.npmjs.org/jsdom": { name: "jsdom", time: NPM_TIME } });
     expect(await publishDates(JSDOM, ["29.0.0"], { offline: true })).toEqual(new Map());
