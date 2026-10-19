@@ -8,6 +8,9 @@
 // Luna-fresh reads no stored answer (own cache under out/slice3/cache/<run>); Luna-cached makes no call.
 // Output: out/slice3/runs/<run>/incoming.json, raw.jsonl (every answer), meta.json; dev also writes catalog/.
 // Gateway usage goes to out/slice3/usage.jsonl; every call is refused once that log reaches the slice cap ($4).
+// Slice 3e (PREREG.md, "Slice 3e"): --cand openai:<model> calls the OpenAI API directly (central's `openai` provider,
+// max_completion_tokens, priced from prices.json at Standard list). For openai the cap is hard per call: a call starts only
+// if the log plus every in-flight call's worst case (prompt chars/3 at input + max output at output) stays within --cap.
 import { spawn } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { gzipSync } from "node:zlib";
@@ -29,6 +32,7 @@ const { values: a } = parseArgs({
     evidence: { type: "string", default: "quote" },
     diet: { type: "string" },
     addendum: { type: "string" },
+    repair: { type: "string" },
   },
 });
 // Slice 3b (PREREG.md, "Slice 3b"): --out slice3b --cap 2.5; split heldout2 = held-out set 2 (holdout-majors); smoke3b
@@ -50,15 +54,16 @@ const cand = a.cand ?? "";
 const split = a.split as "heldout" | "dev" | "smoke" | "heldout2" | "smoke3b";
 const structure = a.structure as "two-call" | "one-call" | "one-call-schema";
 const dry = a["dry-run"];
-const kind = cand === "luna-fresh" ? "codex" : cand === "luna-cached" ? "cached" : cand.startsWith("vercel:") ? "vercel" : "";
+const kind = cand === "luna-fresh" ? "codex" : cand === "luna-cached" ? "cached" : cand.startsWith("vercel:") ? "vercel" : cand.startsWith("openai:") ? "openai" : "";
+const api = kind === "vercel" || kind === "openai";
 if (!kind || !["heldout", "dev", "smoke", "heldout2", "smoke3b"].includes(split) || !["two-call", "one-call", "one-call-schema"].includes(structure)) throw new Error("usage: --cand luna-fresh|luna-cached|vercel:<model> --split heldout|dev|smoke [--structure two-call|one-call]");
-const model = kind === "vercel" ? cand.slice("vercel:".length) : CODEX_MODEL;
+const model = api ? cand.slice(kind.length + 1) : CODEX_MODEL;
 const evidence = a.evidence as "quote" | "ids";
-const runId = [cand.replace(/[^\w.-]+/g, "_"), structure, split, ...(evidence === "ids" ? ["ev_ids"] : []), ...(a.diet ? [a.diet === "compact" ? "compact" : "diet"] : []), ...(a.addendum ? [`add_${a.addendum}`] : []), ...(a.effort ? [`effort_${a.effort}`] : []), ...(a.tag ? [a.tag] : [])].join("-");
+const runId = [cand.replace(/[^\w.-]+/g, "_"), structure, split, ...(evidence === "ids" ? ["ev_ids"] : []), ...(a.diet ? [a.diet === "compact" ? "compact" : "diet"] : []), ...(a.addendum ? [`add_${a.addendum}`] : []), ...(a.effort ? [`effort_${a.effort}`] : []), ...(a.repair ? ["repair"] : []), ...(a.tag ? [a.tag] : [])].join("-");
 const runDir = join(OUT3, "runs", runId);
 const USAGE = join(OUT3, "usage.jsonl");
 const prices = loadPrices();
-const price = kind === "vercel" ? priceOf(prices, "vercel", model) : priceOf(prices, "codex", CODEX_MODEL);
+const price = api ? priceOf(prices, kind, model) : priceOf(prices, "codex", CODEX_MODEL);
 const MAX_OUT: Record<string, number> = { extract: 16_000, label: 16_000, "one-call": 24_000, "one-call-schema": 24_000 };
 if (price?.max_output) for (const k of Object.keys(MAX_OUT)) MAX_OUT[k] = Math.min(MAX_OUT[k]!, price.max_output);
 const EXTRA: Record<string, Record<string, unknown>> = {
@@ -72,6 +77,10 @@ const EXTRA: Record<string, Record<string, unknown>> = {
   "nvidia/nemotron-3.5-lightning": { reasoning_effort: "none" },
   "alibaba/qwen3.7-flash": { reasoning_effort: "none" },
   "zai/glm-4.7-flash": { reasoning_effort: "none" },
+  // Slice 3e: OpenAI API directly, reasoning low as production's gpt-6-luna.
+  "gpt-5.4-mini": { reasoning_effort: "low" },
+  "gpt-5-mini": { reasoning_effort: "low" },
+  "gpt-5.4-nano": { reasoning_effort: "low" },
 };
 if (a.effort) EXTRA[model] = { reasoning_effort: a.effort };
 const ATTEMPTS = 3;
@@ -141,10 +150,10 @@ if (split === "smoke3b") docs = [[...heldoutDocs()].sort((x, y) => x.rel.notes.l
 function sliceSpend(): number {
   if (!existsSync(USAGE)) return 0;
   let d = 0;
-  for (const l of readFileSync(USAGE, "utf8").split("\n")) if (l.trim()) { const e = JSON.parse(l); if (e.provider === "vercel" && typeof e.dollars === "number") d += e.dollars; }
+  for (const l of readFileSync(USAGE, "utf8").split("\n")) if (l.trim()) { const e = JSON.parse(l); if (e.provider === (kind === "openai" ? "openai" : "vercel") && typeof e.dollars === "number") d += e.dollars; }
   return d;
 }
-const meter = { calls: 0, input: 0, cached_input: 0, output: 0, reasoning: 0, dollars: 0, unparseable: 0, truncated: 0, http_failed: 0, refused: 0, store_hits: 0, own_cache_hits: 0, prompt_tokens_est: 0 };
+const meter = { calls: 0, input: 0, cached_input: 0, output: 0, reasoning: 0, dollars: 0, unparseable: 0, truncated: 0, http_failed: 0, refused: 0, store_hits: 0, own_cache_hits: 0, prompt_tokens_est: 0, repaired: 0 };
 function log(step: string, u: { input_tokens: number; cached_input_tokens: number; output_tokens: number; reasoning_tokens: number | null }, d: number | null, extra: Record<string, unknown>) {
   meter.calls++;
   meter.input += u.input_tokens;
@@ -153,7 +162,7 @@ function log(step: string, u: { input_tokens: number; cached_input_tokens: numbe
   meter.reasoning += u.reasoning_tokens ?? 0;
   meter.dollars += d ?? 0;
   mkdirSync(OUT3, { recursive: true });
-  appendFileSync(USAGE, JSON.stringify({ run: runId, step, provider: kind === "vercel" ? "vercel" : "codex", model, ...u, dollars: d, ...extra, at: new Date().toISOString() }) + "\n");
+  appendFileSync(USAGE, JSON.stringify({ run: runId, step, provider: api ? kind : "codex", model, ...u, dollars: d, ...extra, at: new Date().toISOString() }) + "\n");
 }
 const raw = (o: Record<string, unknown>) => { mkdirSync(runDir, { recursive: true }); appendFileSync(join(runDir, "raw.jsonl"), JSON.stringify(o) + "\n"); };
 
@@ -168,7 +177,9 @@ const readCache = (dir: string, key: string): string | undefined => {
 const writeCache = (key: string, text: string, usage: unknown) => writeAtomic(join(cacheDir, key.slice(0, 2), `${key}.json`), JSON.stringify({ model, text, usage }) + "\n");
 
 const limiter = new Limiter(Number(a.concurrency));
-const apiKey = kind === "vercel" ? keyFromEnvFile(PROVIDERS.vercel!.keyFile, PROVIDERS.vercel!.keyVar) : () => "";
+const PROV = PROVIDERS[kind === "openai" ? "openai" : "vercel"]!;
+const apiKey = api ? keyFromEnvFile(PROV.keyFile, PROV.keyVar) : () => "";
+let reserved = 0; // openai: worst case of the calls in flight (hard cap)
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function post(body: Record<string, unknown>): Promise<{ text: string; finish?: string; usage?: ReturnType<typeof parseUsage>; cost?: number; reasoningText?: number } | undefined> {
@@ -177,7 +188,7 @@ async function post(body: Record<string, unknown>): Promise<{ text: string; fini
     const timer = setTimeout(() => ctrl.abort(), 10 * 60 * 1000);
     let res: Response;
     try {
-      res = await fetch(`${baseUrlOf(PROVIDERS.vercel!)}/chat/completions`, { method: "POST", headers: { Authorization: `Bearer ${apiKey()}`, "Content-Type": "application/json" }, body: JSON.stringify(body), signal: ctrl.signal });
+      res = await fetch(`${baseUrlOf(PROV)}/chat/completions`, { method: "POST", headers: { Authorization: `Bearer ${apiKey()}`, "Content-Type": "application/json" }, body: JSON.stringify(body), signal: ctrl.signal });
     } catch (e) {
       clearTimeout(timer);
       if (attempt < 4) { await sleep(2000 * 2 ** attempt); continue; }
@@ -198,14 +209,18 @@ async function post(body: Record<string, unknown>): Promise<{ text: string; fini
 }
 
 async function viaGateway<T>(prompt: string, parse: (t: string) => T | undefined, step: string, meta: Record<string, unknown>): Promise<Outcome<T>> {
-  const body = { model, messages: [{ role: "user", content: prompt }], max_tokens: MAX_OUT[step]!, ...(EXTRA[model] ?? {}), ...(step === "one-call-schema" ? { response_format: SCHEMA_RESPONSE_FORMAT } : {}) };
+  const body = { model, messages: [{ role: "user", content: prompt }], [kind === "openai" ? "max_completion_tokens" : "max_tokens"]: MAX_OUT[step]!, ...(EXTRA[model] ?? {}), ...(step === "one-call-schema" ? { response_format: SCHEMA_RESPONSE_FORMAT } : {}) };
   const key = sha256(JSON.stringify(body));
   const hit = readCache(cacheDir, key);
   if (hit !== undefined) { const v = parse(hit); if (v !== undefined) { meter.own_cache_hits++; return { value: v }; } }
   return limiter.run(async () => {
     for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
       if (sliceSpend() >= SLICE_CAP) { meter.refused++; console.error("refused: slice cap reached"); return { why: "refused" }; }
-      const r = await post(body);
+      const callWorst = kind === "openai" ? dollars(price, { input_tokens: Math.ceil(prompt.length / 3), cached_input_tokens: 0, output_tokens: MAX_OUT[step]!, reasoning_tokens: null }) ?? Infinity : 0;
+      if (kind === "openai" && sliceSpend() + reserved + callWorst > SLICE_CAP) { meter.refused++; console.error("refused: this call's worst case would pass the slice cap"); return { why: "refused" }; }
+      reserved += callWorst;
+      let r: Awaited<ReturnType<typeof post>>;
+      try { r = await post(body); } finally { reserved -= callWorst; }
       if (!r) { meter.http_failed++; raw({ ...meta, step, attempt, http_failed: true }); return { why: "http" }; }
       const u = r.usage ?? { input_tokens: 0, cached_input_tokens: 0, output_tokens: 0, reasoning_tokens: null };
       log(step, u, r.cost ?? dollars(price, u), { cost_source: r.cost !== undefined ? "provider" : "prices.json", finish: r.finish, attempt, ...meta });
@@ -283,16 +298,26 @@ async function viaCodex<T>(prompt: string, parse: (t: string) => T | undefined, 
 }
 
 const generate = <T,>(prompt: string, parse: (t: string) => T | undefined, step: string, meta: Record<string, unknown>): Promise<Outcome<T>> =>
-  kind === "vercel" ? viaGateway(prompt, parse, step, meta) : viaCodex(prompt, parse, step, meta);
+  api ? viaGateway(prompt, parse, step, meta) : viaCodex(prompt, parse, step, meta);
 
-const records = (text: string) => {
+// Slice 3e arm M5r (--repair escaped-quote): only when an answer does not parse, a line `"<field>": \"<text>\"` (or `\""`)
+// is rewritten to `"<field>": "<text>"` (gpt-5-mini opens string values with an escaped quote).
+const repairLine = (t: string) => t.replace(/^(\s*"[A-Za-z_]+":\s*)\\"(.*?)\\?"+(,?)\s*$/gm, '$1"$2"$3');
+const repaired = <T,>(p: (t: string) => T | undefined) => (t: string): T | undefined => {
+  const v = p(t);
+  if (v !== undefined || a.repair !== "escaped-quote") return v;
+  const r = p(repairLine(t));
+  if (r !== undefined) meter.repaired++;
+  return r;
+};
+const records = repaired((text: string) => {
   const v = parseJson(text, "array");
   return Array.isArray(v) ? v.flatMap((r) => { const p = Extracted.safeParse(r); return p.success ? [p.data] : []; }) : undefined;
-};
-const labelObject = (text: string) => {
+});
+const labelObject = repaired((text: string) => {
   const v = parseJson(text, "object");
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined;
-};
+});
 
 // ---- Extraction ----
 
@@ -360,10 +385,11 @@ for (const d of docs) for (const n of chunk(d.rel.notes)) {
   if (structure !== "two-call") { worstIn += base; worstOut += MAX_OUT["one-call"]!; }
   else { worstIn += base + Math.ceil((fill(LABEL_PROMPT, { TECH: "", VERSION: "", RECORDS: "", NOTES: n }).length) / 3) + Math.ceil(1.5 * MAX_OUT.extract!); worstOut += MAX_OUT.extract! + MAX_OUT.label!; }
 }
-const worst = kind === "vercel" ? dollars(price, { input_tokens: worstIn, cached_input_tokens: 0, output_tokens: worstOut, reasoning_tokens: null }) : 0;
+const worst = api ? dollars(price, { input_tokens: worstIn, cached_input_tokens: 0, output_tokens: worstOut, reasoning_tokens: null }) : 0;
 console.log(`${runId}: ${docs.length} documents, ${chunks} chunks, ${chars} chars; worst case ${worstIn} in + ${worstOut} out = ${worst === null ? "price unknown" : `$${worst.toFixed(4)}`}` +
   (price ? ` [${price.input}/${price.cached_input}/${price.output} per M]` : "") + `; slice spend so far $${sliceSpend().toFixed(4)} of $${SLICE_CAP}`);
 if (dry) process.exit(0);
+if (kind === "openai" && worst === null) throw new Error("no price: refusing");
 if (kind === "vercel") {
   if (worst === null) throw new Error("no price: refusing");
   const left = SLICE_CAP - sliceSpend();
@@ -387,7 +413,7 @@ const meta = {
   label_failed: chunkLog.filter((c) => c.label).length, docs_complete: docsCovered, wall_s: wall, ...meter,
   label_fill: Object.fromEntries((["terms", "replaces", "requires", "prerequisites", "conditions"] as const).map((k) => [k, incoming.filter((i) => (i[k] as unknown[]).length > 0).length])),
   chunk_log: chunkLog.sort((x, y) => x.doc.localeCompare(y.doc) || x.ci - y.ci),
-  evidence, diet: a.diet ?? null, addendum: a.addendum ?? null, prompt_sha: { extract: sha256(DIET(evidence === "ids" ? EXTRACT_PROMPT_IDS : EXTRACT_PROMPT)), label: sha256(LABEL_PROMPT), one_call: sha256(ONE_CALL_PROMPT), schema: sha256(SCHEMA_PROMPT) },
+  evidence, diet: a.diet ?? null, addendum: a.addendum ?? null, repair: a.repair ?? null, prompt_sha: { extract: sha256(DIET(evidence === "ids" ? EXTRACT_PROMPT_IDS : EXTRACT_PROMPT)), label: sha256(LABEL_PROMPT), one_call: sha256(ONE_CALL_PROMPT), schema: sha256(SCHEMA_PROMPT) },
 };
 writeFileSync(join(runDir, "meta.json"), JSON.stringify(meta, null, 1) + "\n");
 console.log(JSON.stringify({ ...meta, chunk_log: undefined, docs_complete: docsCovered.length }));

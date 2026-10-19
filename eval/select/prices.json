@@ -66,6 +66,50 @@
    "checked": null
   },
   {
+   "provider": "openai",
+   "model": "gpt-5.4-mini",
+   "input": 0.75,
+   "cached_input": 0.075,
+   "output": 4.5,
+   "flex": {"input": 0.375, "cached_input": 0.0375, "output": 2.25},
+   "free_allowance": "complimentary data-sharing tokens (shared 2.5M/day group)",
+   "source": "https://developers.openai.com/api/docs/pricing (Standard; flex beside it); API answered on this key 2026-10-18",
+   "checked": "2026-10-18"
+  },
+  {
+   "provider": "openai",
+   "model": "gpt-5.4-nano",
+   "input": 0.2,
+   "cached_input": 0.02,
+   "output": 1.25,
+   "flex": {"input": 0.1, "cached_input": 0.01, "output": 0.625},
+   "free_allowance": "complimentary data-sharing tokens (shared 2.5M/day group)",
+   "source": "https://developers.openai.com/api/docs/pricing (Standard; flex beside it); API answered on this key 2026-10-18",
+   "checked": "2026-10-18"
+  },
+  {
+   "provider": "openai",
+   "model": "gpt-5-mini",
+   "input": 0.25,
+   "cached_input": 0.025,
+   "output": 2,
+   "flex": {"input": 0.125, "cached_input": 0.0125, "output": 1},
+   "free_allowance": "complimentary data-sharing tokens (shared 2.5M/day group)",
+   "source": "https://developers.openai.com/api/docs/pricing (Standard; flex beside it); API answered on this key 2026-10-18",
+   "checked": "2026-10-18"
+  },
+  {
+   "provider": "openai",
+   "model": "gpt-5-nano",
+   "input": 0.05,
+   "cached_input": 0.005,
+   "output": 0.4,
+   "flex": {"input": 0.025, "cached_input": 0.0025, "output": 0.2},
+   "free_allowance": "complimentary data-sharing tokens (shared 2.5M/day group)",
+   "source": "https://developers.openai.com/api/docs/pricing (Standard; flex beside it); API answered on this key 2026-10-18",
+   "checked": "2026-10-18"
+  },
+  {
    "provider": "cloudflare",
    "model": "TODO-clef-flash-model-id",
    "input": 0.038,
