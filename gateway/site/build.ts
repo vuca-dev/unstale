@@ -414,7 +414,7 @@ limits and count each address once per package, and never writes it to storage. 
 <a href="https://osv.dev">OSV</a>, as <code>npm audit</code> would, and it reads the public npm and PyPI registries.</p>
 <h2>Does it work?</h2>
 <p>We replayed 15 real Next.js, Prisma and NestJS upgrades from the commit before the maintainers did them. The
-catalog had 60 of the 65 required changes that upstream documents (92%), measured with Codex. The misses are public,
+catalog had 60 of the 65 required changes that upstream documents (92%). The misses are public,
 along with 29 changes the maintainers made that no release note mentions. <a href="${EVAL}">Method and results</a>.</p>
 <h2>Free and open source</h2>
 <p>AGPL-3.0. <a href="${REPO}">GitHub</a>.</p>
@@ -474,7 +474,7 @@ No telemetry. To check advisories, the CLI sends the package names and versions 
 ## Does it work?
 
 We replayed 15 real Next.js, Prisma and NestJS upgrades from the commit before the maintainers did them. The catalog
-had 60 of the 65 required changes that upstream documents (92%), measured with Codex. The misses are public, along with
+had 60 of the 65 required changes that upstream documents (92%). The misses are public, along with
 29 changes the maintainers made that no release note mentions: ${EVAL}
 
 AGPL-3.0, free and open source: ${REPO}
