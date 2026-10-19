@@ -11,6 +11,7 @@
 // Slice 3e (PREREG.md, "Slice 3e"): --cand openai:<model> calls the OpenAI API directly (central's `openai` provider,
 // max_completion_tokens, priced from prices.json at Standard list). For openai the cap is hard per call: a call starts only
 // if the log plus every in-flight call's worst case (prompt chars/3 at input + max output at output) stays within --cap.
+// Slice 3f (PREREG.md, "Slice 3f"): --strict adds OpenAI strict structured output to both two-call answers (below).
 import { spawn } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { gzipSync } from "node:zlib";
@@ -33,6 +34,7 @@ const { values: a } = parseArgs({
     diet: { type: "string" },
     addendum: { type: "string" },
     repair: { type: "string" },
+    strict: { type: "boolean", default: false },
   },
 });
 // Slice 3b (PREREG.md, "Slice 3b"): --out slice3b --cap 2.5; split heldout2 = held-out set 2 (holdout-majors); smoke3b
@@ -59,7 +61,7 @@ const api = kind === "vercel" || kind === "openai";
 if (!kind || !["heldout", "dev", "smoke", "heldout2", "smoke3b"].includes(split) || !["two-call", "one-call", "one-call-schema"].includes(structure)) throw new Error("usage: --cand luna-fresh|luna-cached|vercel:<model> --split heldout|dev|smoke [--structure two-call|one-call]");
 const model = api ? cand.slice(kind.length + 1) : CODEX_MODEL;
 const evidence = a.evidence as "quote" | "ids";
-const runId = [cand.replace(/[^\w.-]+/g, "_"), structure, split, ...(evidence === "ids" ? ["ev_ids"] : []), ...(a.diet ? [a.diet === "compact" ? "compact" : "diet"] : []), ...(a.addendum ? [`add_${a.addendum}`] : []), ...(a.effort ? [`effort_${a.effort}`] : []), ...(a.repair ? ["repair"] : []), ...(a.tag ? [a.tag] : [])].join("-");
+const runId = [cand.replace(/[^\w.-]+/g, "_"), structure, split, ...(evidence === "ids" ? ["ev_ids"] : []), ...(a.diet ? [a.diet === "compact" ? "compact" : "diet"] : []), ...(a.addendum ? [`add_${a.addendum}`] : []), ...(a.effort ? [`effort_${a.effort}`] : []), ...(a.repair ? ["repair"] : []), ...(a.strict ? ["strict"] : []), ...(a.tag ? [a.tag] : [])].join("-");
 const runDir = join(OUT3, "runs", runId);
 const USAGE = join(OUT3, "usage.jsonl");
 const prices = loadPrices();
@@ -81,6 +83,8 @@ const EXTRA: Record<string, Record<string, unknown>> = {
   "gpt-5.4-mini": { reasoning_effort: "low" },
   "gpt-5-mini": { reasoning_effort: "low" },
   "gpt-5.4-nano": { reasoning_effort: "low" },
+  // Slice 3f: gpt-5.6-luna on the OpenAI API directly (slice 3's Luna baseline ran it through codex exec).
+  "gpt-5.6-luna": { reasoning_effort: "low" },
 };
 if (a.effort) EXTRA[model] = { reasoning_effort: a.effort };
 const ATTEMPTS = 3;
@@ -208,8 +212,8 @@ async function post(body: Record<string, unknown>): Promise<{ text: string; fini
   }
 }
 
-async function viaGateway<T>(prompt: string, parse: (t: string) => T | undefined, step: string, meta: Record<string, unknown>): Promise<Outcome<T>> {
-  const body = { model, messages: [{ role: "user", content: prompt }], [kind === "openai" ? "max_completion_tokens" : "max_tokens"]: MAX_OUT[step]!, ...(EXTRA[model] ?? {}), ...(step === "one-call-schema" ? { response_format: SCHEMA_RESPONSE_FORMAT } : {}) };
+async function viaGateway<T>(prompt: string, parse: (t: string) => T | undefined, step: string, meta: Record<string, unknown>, rf?: unknown): Promise<Outcome<T>> {
+  const body = { model, messages: [{ role: "user", content: prompt }], [kind === "openai" ? "max_completion_tokens" : "max_tokens"]: MAX_OUT[step]!, ...(EXTRA[model] ?? {}), ...(step === "one-call-schema" ? { response_format: SCHEMA_RESPONSE_FORMAT } : rf ? { response_format: rf } : {}) };
   const key = sha256(JSON.stringify(body));
   const hit = readCache(cacheDir, key);
   if (hit !== undefined) { const v = parse(hit); if (v !== undefined) { meter.own_cache_hits++; return { value: v }; } }
@@ -297,8 +301,38 @@ async function viaCodex<T>(prompt: string, parse: (t: string) => T | undefined, 
   return { why: "unparseable" };
 }
 
-const generate = <T,>(prompt: string, parse: (t: string) => T | undefined, step: string, meta: Record<string, unknown>): Promise<Outcome<T>> =>
-  api ? viaGateway(prompt, parse, step, meta) : viaCodex(prompt, parse, step, meta);
+const generate = <T,>(prompt: string, parse: (t: string) => T | undefined, step: string, meta: Record<string, unknown>, rf?: unknown): Promise<Outcome<T>> =>
+  api ? viaGateway(prompt, parse, step, meta, rf) : viaCodex(prompt, parse, step, meta);
+
+// Slice 3f (--strict): OpenAI strict structured output for both two-call answers, the prompts unchanged. The schemas are
+// SCHEMA_RESPONSE_FORMAT's record and label items without "id" (every property required, additionalProperties false,
+// optional values as null). The extract prompt asks for a top-level array and a strict schema needs an object root, so the
+// answer is {"records": [...]} and is unwrapped here; the label answer is already an object keyed r1..rN, so its schema
+// lists exactly those ids. Null prerequisite bounds are dropped (the prompt says omit), the rest parses as before.
+if (a.strict && kind !== "openai") throw new Error("--strict is for --cand openai:<model>");
+const SR = SCHEMA_RESPONSE_FORMAT.json_schema.schema.properties;
+const withoutId = (o: { properties: Record<string, unknown>; required: readonly string[] }) => ({ ...o, properties: Object.fromEntries(Object.entries(o.properties).filter(([k]) => k !== "id")), required: o.required.filter((k) => k !== "id") });
+const RECORD_SCHEMA = withoutId(SR.records.items as never);
+const LABEL_SCHEMA = withoutId(SR.labels.items as never);
+const strictFormat = (name: string, schema: unknown) => ({ type: "json_schema", json_schema: { name, strict: true, schema } });
+const EXTRACT_RF = strictFormat("change_records", { type: "object", properties: { records: { type: "array", items: RECORD_SCHEMA } }, required: ["records"], additionalProperties: false });
+const labelRf = (n: number) => {
+  const ids = Array.from({ length: n }, (_, i) => `r${i + 1}`);
+  return strictFormat("record_labels", { type: "object", properties: Object.fromEntries(ids.map((id) => [id, LABEL_SCHEMA])), required: ids, additionalProperties: false });
+};
+const unwrapRecords = (t: string): string => {
+  if (!a.strict) return t;
+  const v = parseJson(t, "object") as { records?: unknown } | undefined;
+  return v && Array.isArray(v.records) ? JSON.stringify(v.records) : t;
+};
+const dropNullBounds = (o: Record<string, unknown>): Record<string, unknown> => {
+  if (!a.strict) return o;
+  for (const l of Object.values(o)) {
+    const ps = (l as { prerequisites?: unknown })?.prerequisites;
+    if (Array.isArray(ps)) for (const p of ps) if (p && typeof p === "object") for (const k of ["min", "max"]) if ((p as Record<string, unknown>)[k] === null) delete (p as Record<string, unknown>)[k];
+  }
+  return o;
+};
 
 // Slice 3e arm M5r (--repair escaped-quote): only when an answer does not parse, a line `"<field>": \"<text>\"` (or `\""`)
 // is rewritten to `"<field>": "<text>"` (gpt-5-mini opens string values with an escaped quote).
@@ -311,12 +345,12 @@ const repaired = <T,>(p: (t: string) => T | undefined) => (t: string): T | undef
   return r;
 };
 const records = repaired((text: string) => {
-  const v = parseJson(text, "array");
+  const v = parseJson(unwrapRecords(text), "array");
   return Array.isArray(v) ? v.flatMap((r) => { const p = Extracted.safeParse(r); return p.success ? [p.data] : []; }) : undefined;
 });
 const labelObject = repaired((text: string) => {
   const v = parseJson(text, "object");
-  return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined;
+  return v && typeof v === "object" && !Array.isArray(v) ? dropNullBounds(v as Record<string, unknown>) : undefined;
 });
 
 // ---- Extraction ----
@@ -351,12 +385,12 @@ async function extractDoc(d: Doc): Promise<Incoming[]> {
     const numbered = evidence === "ids" ? numberUnits(notes) : undefined;
     const r = numbered
       ? await generate(fill(DIET(EXTRACT_PROMPT_IDS), { ...vars, NOTES: numbered.text }), (t) => parseIdsAnswer(t, numbered.units), "extract", meta)
-      : await generate(fill(DIET(EXTRACT_PROMPT), vars), records, "extract", meta);
+      : await generate(fill(DIET(EXTRACT_PROMPT), vars), records, "extract", meta, a.strict ? EXTRACT_RF : undefined);
     if (!r.value) return void (row.extract = r.why);
     row.records = r.value.length;
     if (!r.value.length) return;
     const brief = r.value.map((x, i) => ({ id: `r${i + 1}`, subject: x.subject, facet: x.facet ?? null, change_type: x.change_type ?? null, summary: x.summary, introduces: strings(x.introduces, 20), evidence: x.evidence ?? "" }));
-    const l = await generate(fill(LABEL_PROMPT, { TECH: d.t.name, VERSION: d.rel.version, RECORDS: JSON.stringify(brief, null, 1), NOTES: notes }), labelObject, "label", meta);
+    const l = await generate(fill(LABEL_PROMPT, { TECH: d.t.name, VERSION: d.rel.version, RECORDS: JSON.stringify(brief, null, 1), NOTES: notes }), labelObject, "label", meta, a.strict ? labelRf(r.value.length) : undefined);
     if (!l.value) row.label = l.why;
     r.value.forEach((x, i) => out.push(toIncoming(d.t as never, d.rel as never, ci, i, x, l.value?.[`r${i + 1}`], notes)));
   }));
@@ -413,7 +447,7 @@ const meta = {
   label_failed: chunkLog.filter((c) => c.label).length, docs_complete: docsCovered, wall_s: wall, ...meter,
   label_fill: Object.fromEntries((["terms", "replaces", "requires", "prerequisites", "conditions"] as const).map((k) => [k, incoming.filter((i) => (i[k] as unknown[]).length > 0).length])),
   chunk_log: chunkLog.sort((x, y) => x.doc.localeCompare(y.doc) || x.ci - y.ci),
-  evidence, diet: a.diet ?? null, addendum: a.addendum ?? null, repair: a.repair ?? null, prompt_sha: { extract: sha256(DIET(evidence === "ids" ? EXTRACT_PROMPT_IDS : EXTRACT_PROMPT)), label: sha256(LABEL_PROMPT), one_call: sha256(ONE_CALL_PROMPT), schema: sha256(SCHEMA_PROMPT) },
+  evidence, diet: a.diet ?? null, addendum: a.addendum ?? null, repair: a.repair ?? null, strict: a.strict, prompt_sha: { extract: sha256(DIET(evidence === "ids" ? EXTRACT_PROMPT_IDS : EXTRACT_PROMPT)), label: sha256(LABEL_PROMPT), one_call: sha256(ONE_CALL_PROMPT), schema: sha256(SCHEMA_PROMPT) },
 };
 writeFileSync(join(runDir, "meta.json"), JSON.stringify(meta, null, 1) + "\n");
 console.log(JSON.stringify({ ...meta, chunk_log: undefined, docs_complete: docsCovered.length }));

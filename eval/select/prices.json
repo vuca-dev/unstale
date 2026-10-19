@@ -50,11 +50,13 @@
   {
    "provider": "openai",
    "model": "gpt-5.6-luna",
-   "input": null,
-   "cached_input": null,
-   "output": null,
-   "source": "TODO: the cost notes list no Luna API price; fill from the OpenAI pricing page before slice 2",
-   "checked": null
+   "input": 0.2,
+   "cached_input": 0.02,
+   "output": 1.2,
+   "flex": {"input": 0.1, "cached_input": 0.01, "output": 0.6},
+   "free_allowance": "complimentary data-sharing tokens (shared 2.5M/day group, per help.openai.com/en/articles/10306912 as relayed; the article itself was not reachable from here)",
+   "source": "https://developers.openai.com/api/docs/pricing (Standard; flex beside it)",
+   "checked": "2026-10-18"
   },
   {
    "provider": "openai",
