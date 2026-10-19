@@ -3,12 +3,23 @@
 // patches that go stale amber until green repair particles land on them. Each braille cell takes the colour of its
 // brightest dot, as in the terminal. A still, healed frame when the visitor prefers reduced motion.
 for (const button of document.querySelectorAll("button.copy")) {
+  let reset;
   button.addEventListener("click", async () => {
     try {
       await navigator.clipboard.writeText(button.dataset.copy);
-      button.textContent = "Copied";
-      setTimeout(() => (button.textContent = "Copy"), 1600);
-    } catch {}
+      clearTimeout(reset);
+      button.classList.add("copied");
+      button.setAttribute("aria-label", "Command copied");
+      button.title = "Copied";
+      reset = setTimeout(() => {
+        button.classList.remove("copied");
+        button.setAttribute("aria-label", "Copy command");
+        button.title = "Copy command";
+      }, 1600);
+    } catch {
+      button.setAttribute("aria-label", "Copy failed. Select and copy the command.");
+      button.title = "Select and copy the command";
+    }
   });
 }
 
@@ -16,7 +27,12 @@ const filter = document.getElementById("filter");
 if (filter) {
   filter.addEventListener("input", () => {
     const q = filter.value.trim().toLowerCase();
-    for (const li of document.querySelectorAll("#pkgs li")) li.hidden = q !== "" && !li.dataset.name.toLowerCase().includes(q);
+    let matches = 0;
+    for (const li of document.querySelectorAll("#pkgs li")) {
+      li.hidden = q !== "" && !li.dataset.name.toLowerCase().includes(q);
+      if (!li.hidden) matches++;
+    }
+    document.getElementById("package-empty").hidden = matches !== 0;
   });
 }
 

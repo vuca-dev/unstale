@@ -73,6 +73,19 @@ test("thin pages are built but not indexed; scoped packages keep their scope; up
   expect(readFileSync(join(site, "sitemap.xml"), "utf8")).not.toContain("azure");
 });
 
+test("catalog counters include active changes and distinct related package identities", () => {
+  const shared = { releases: [
+    { component: "pkg:npm/prisma", version: "7.0.0", line: "7" },
+    { component: "pkg:npm/%40prisma/client", version: "7.0.0", line: "7" },
+  ] };
+  const site = tree({ prisma: { "7": [rec("a", "7.0.0", shared), rec("b", "7.0.0", shared), rec("retired", "7.0.0", { status: "retracted" })] } });
+  build(site);
+  const home = readFileSync(join(site, "index.html"), "utf8");
+  expect(home).toContain('<dt>changes indexed</dt><dd>2+</dd>');
+  expect(home).toContain('<dt>packages covered</dt><dd>2+</dd>');
+  expect(readFileSync(join(site, "index.md"), "utf8")).toContain("2+ changes indexed · 2+ packages covered");
+});
+
 test("helpers", () => {
   expect(["15.10.0", "15.9.1", "16.0.0", "15.9.0"].sort(compareVersions)).toEqual(["15.9.0", "15.9.1", "15.10.0", "16.0.0"]);
   expect(prose("a `b` & c")).toBe("a <code>b</code> &amp; c");
