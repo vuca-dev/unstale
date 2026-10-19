@@ -770,8 +770,9 @@ pub fn evaluate(
                 raw += 1;
                 let sev = d.severity.unwrap_or(Severity::Unrated);
                 let high = sev >= Severity::High;
-                if !runtime[i] && !high {
-                    continue; // dev-only, low or moderate or unrated
+                // Low and unrated never call for action; dev-only below critical never does either.
+                if sev < Severity::Moderate || (!runtime[i] && sev < Severity::Critical) {
+                    continue;
                 }
                 let mut fixes: Vec<Version> = d
                     .fixed
@@ -786,7 +787,9 @@ pub fn evaluate(
                 if high && runtime[i] {
                     why.push(format!("{} at runtime", sev.word()));
                 }
+                let mut blocked = false;
                 if fixes.is_empty() {
+                    blocked = true;
                     why.push("no fixed version: replace or mitigate".into());
                 } else {
                     // The first range or override refusing the lowest fix, when every fix is refused.
@@ -811,16 +814,27 @@ pub fn evaluate(
                     if fixes.iter().all(|f| refuses(f).is_some())
                         && let Some(by) = refuses(&fixes[0])
                     {
+                        blocked = true;
                         why.push(format!("fix blocked: {by}"));
                     }
                 }
-                if let Some(days) = d.published.get(..10).and_then(util::parse_date)
-                    && today - days <= FRESH_DAYS
-                {
-                    why.push(format!("published {}", &d.published[..10]));
-                }
-                if why.is_empty() {
+                let fresh = d.published.get(..10).and_then(util::parse_date).is_some_and(|days| today - days <= FRESH_DAYS);
+                // What calls for action: critical or high at runtime; critical dev-only with no fix the ranges admit;
+                // moderate at runtime when its fix is refused by a range, pin or override, or when it is new on a
+                // direct dependency. A moderate with no fixed version anywhere, or new on a transitive package, is
+                // a nit: nothing to bump.
+                let shown = if !runtime[i] {
+                    blocked
+                } else if high {
+                    true
+                } else {
+                    (blocked && !fixes.is_empty()) || (direct[i] && fresh)
+                };
+                if !shown {
                     continue;
+                }
+                if fresh {
+                    why.push(format!("published {}", &d.published[..10]));
                 }
                 // The nearest direct dependencies above it.
                 let mut via = BTreeSet::new();
@@ -1001,9 +1015,11 @@ pub fn report(cache: &Path, root: &Path) -> Option<Report> {
     read_json(&report_path(cache, root))
 }
 
-/// The report as lines: one heading per direct dependency (or group of them) that pulls packages in, the advisories
-/// under it. Summaries are OSV's text, shown as data.
-pub fn lines(r: &Report) -> Vec<String> {
+/// The shown groups at most: the rest are counted on one line that names `unstale advisories`.
+pub const SHOWN_GROUPS: usize = 10;
+
+/// The items under one heading per direct dependency (or set of them) that pulls packages in.
+fn groups(r: &Report) -> BTreeMap<String, Vec<&Item>> {
     let mut groups: BTreeMap<String, Vec<&Item>> = BTreeMap::new();
     for it in &r.items {
         let head = if it.via.is_empty() {
@@ -1017,9 +1033,60 @@ pub fn lines(r: &Report) -> Vec<String> {
         };
         groups.entry(head).or_default().push(it);
     }
-    let clean = |t: &str| t.chars().map(|c| if c.is_control() { ' ' } else { c }).collect::<String>();
+    groups
+}
+
+fn clean(t: &str) -> String {
+    t.chars().map(|c| if c.is_control() { ' ' } else { c }).collect()
+}
+
+/// The report in short: one line per direct dependency (or set of them), with the count by severity and the worst
+/// advisory; the worst groups first, at most `SHOWN_GROUPS`. Summaries are OSV's text, shown as data.
+pub fn lines(r: &Report) -> Vec<String> {
+    let mut gs: Vec<(String, Vec<&Item>)> = groups(r).into_iter().collect();
+    // Items are sorted worst first (`evaluate`), so each group's first item is its worst.
+    gs.sort_by(|(ha, a), (hb, b)| b[0].severity.cmp(&a[0].severity).then(b.len().cmp(&a.len())).then(ha.cmp(hb)));
     let mut out = vec![];
-    for (head, its) in groups {
+    for (head, its) in gs.iter().take(SHOWN_GROUPS) {
+        let w = its[0];
+        // The version that fixes every advisory on the worst package version, when each has one.
+        let same: Vec<&&Item> = its.iter().filter(|i| i.name == w.name && i.version == w.version).collect();
+        let fix = if same.iter().all(|i| i.fix.is_some()) {
+            same.iter().filter_map(|i| i.fix.as_deref()).max_by_key(|f| util::parse_version(f).or_else(|| crate::pypi::parse_version(f))).map(|f| format!(" → {f}")).unwrap_or_default()
+        } else {
+            String::new()
+        };
+        let worst = format!("{} {} {}{fix} · {} · {} (https://osv.dev/vulnerability/{})", w.severity.word(), w.name, w.version, w.why.join("; "), clean(&w.summary), w.id);
+        if its.len() == 1 {
+            out.push(format!("{head}: {worst}"));
+            continue;
+        }
+        let mut counts: BTreeMap<Severity, usize> = BTreeMap::new();
+        let mut others: Vec<String> = vec![];
+        for it in its {
+            *counts.entry(it.severity).or_default() += 1;
+            let p = format!("{} {}", it.name, it.version);
+            if p != format!("{} {}", w.name, w.version) && !others.contains(&p) {
+                others.push(p);
+            }
+        }
+        let counts: Vec<String> = counts.iter().rev().map(|(s, n)| format!("{n} {}", s.word())).collect();
+        let also = if others.is_empty() { String::new() } else { format!(" · also {}", others.join(", ")) };
+        out.push(format!("{head}: {} advisories ({}), worst {worst}{also}", its.len(), counts.join(", ")));
+    }
+    if gs.len() > SHOWN_GROUPS {
+        let rest = &gs[SHOWN_GROUPS..];
+        let n: usize = rest.iter().map(|(_, its)| its.len()).sum();
+        out.push(format!("and {} more dependenc{} with {n} advisor{} (`unstale advisories` lists every one)", rest.len(), if rest.len() == 1 { "y" } else { "ies" }, if n == 1 { "y" } else { "ies" }));
+    }
+    out
+}
+
+/// The report in full (`unstale advisories`): one heading per direct dependency (or set of them), the advisories
+/// under it. Summaries are OSV's text, shown as data.
+pub fn detail_lines(r: &Report) -> Vec<String> {
+    let mut out = vec![];
+    for (head, its) in groups(r) {
         out.push(format!("{head}:"));
         // Several advisories on one package version read as one line: the version that fixes them all, the count by
         // severity, the worst one's summary, then the ids.
@@ -1063,7 +1130,7 @@ pub fn lines(r: &Report) -> Vec<String> {
 /// One summary line: shown against matched.
 pub fn summary(r: &Report) -> String {
     format!(
-        "{} of {} advisor{} on {} locked package versions call for action (critical or high at runtime, a blocked fix, no fix, or published in the last {FRESH_DAYS} days); the rest are counted, not shown",
+        "{} of {} advisor{} on {} locked package versions call for action (critical or high at runtime, moderate at runtime with a blocked fix or new on a direct dependency, critical in development with no fix the ranges admit); the rest are counted, not shown",
         r.items.len(),
         r.raw,
         if r.raw == 1 { "y" } else { "ies" },
@@ -1121,14 +1188,25 @@ mod tests {
             ("GHSA-pin", doc(Some(Severity::Moderate), "2025-01-01T00:00:00Z", &[("npm", "pinned", &["1.0.1"])], &[])),
             // Dev-only and moderate: dropped even with no fix and fresh.
             ("GHSA-braces", doc(Some(Severity::Moderate), "2026-10-01T00:00:00Z", &[], &[])),
-            // Dev-only and high, no fix: shown (c).
-            ("GHSA-braces2", doc(Some(Severity::High), "2024-01-01T00:00:00Z", &[], &[])),
+            // Dev-only and high, no fix, fresh: dropped (a development tool's DoS is not worth acting on).
+            ("GHSA-braces2", doc(Some(Severity::High), "2026-10-01T00:00:00Z", &[], &[])),
+            // Dev-only and critical, no fix: shown (c).
+            ("MAL-braces", doc(None, "2024-01-01T00:00:00Z", &[], &[])),
+            // Dev-only and critical with a fix the ranges admit: dropped.
+            ("GHSA-braces3", doc(Some(Severity::Critical), "2024-01-01T00:00:00Z", &[("npm", "braces", &["3.0.3"])], &[])),
         ];
-        let (raw, items) = run(g, &docs, &[("proxy-addr", "2.0.7", &["GHSA-proxy"]), ("markdown-it", "14.1.0", &["GHSA-md"]), ("pinned", "1.0.0", &["GHSA-pin"]), ("braces", "2.0.0", &["GHSA-braces", "GHSA-braces2"])], "2026-10-18");
-        assert_eq!(raw, 5);
+        let mut docs = docs.to_vec();
+        docs[5].1.severity = Some(Severity::Critical); // `read_osv` rates MAL- records critical
+        let (raw, items) = run(
+            g,
+            &docs,
+            &[("proxy-addr", "2.0.7", &["GHSA-proxy"]), ("markdown-it", "14.1.0", &["GHSA-md"]), ("pinned", "1.0.0", &["GHSA-pin"]), ("braces", "2.0.0", &["GHSA-braces", "GHSA-braces2", "MAL-braces"]), ("braces", "3.0.2", &["GHSA-braces3"])],
+            "2026-10-18",
+        );
+        assert_eq!(raw, 7);
         let got: Vec<(&str, &[String], &[String])> = items.iter().map(|i| (i.id.as_str(), i.why.as_slice(), i.via.as_slice())).collect();
         assert_eq!(got.len(), 3, "{got:?}");
-        assert_eq!(items[0].id, "GHSA-braces2");
+        assert_eq!(items[0].id, "MAL-braces");
         assert_eq!(items[0].why, vec!["no fixed version: replace or mitigate"]);
         assert_eq!(items[0].via, vec!["jest 29.0.0"]);
         assert_eq!(items[1].id, "GHSA-proxy");
@@ -1137,9 +1215,52 @@ mod tests {
         assert_eq!(items[2].id, "GHSA-pin");
         assert_eq!(items[2].why, vec!["fix blocked: . declares 1.0.0"]);
         assert!(items[2].via.is_empty());
-        let l = lines(&Report { checked: 0, queried: 7, raw, items });
-        assert!(l.contains(&"via @react-router/serve 7.18.2:".to_string()), "{l:?}");
-        assert!(l.contains(&"pinned 1.0.0 (direct):".to_string()), "{l:?}");
+        let r = Report { checked: 0, queried: 7, raw, items };
+        let l = lines(&r);
+        assert!(l.iter().any(|x| x.starts_with("via @react-router/serve 7.18.2: high proxy-addr 2.0.7 → 2.0.8 · high at runtime")), "{l:?}");
+        assert!(l.iter().any(|x| x.starts_with("pinned 1.0.0 (direct): moderate pinned 1.0.0 → 1.0.1")), "{l:?}");
+        assert!(detail_lines(&r).contains(&"pinned 1.0.0 (direct):".to_string()));
+    }
+
+    #[test]
+    fn a_moderate_shows_only_at_runtime_when_blocked_or_new_on_a_direct_dependency() {
+        let docs = [("GHSA-new", doc(Some(Severity::Moderate), "2026-10-01T00:00:00Z", &[("npm", "proxy-addr", &["2.0.8"]), ("npm", "markdown-it", &["14.1.1"])], &[]))];
+        // New on a transitive package, with an admitted fix: nothing to act on.
+        let g = npm_lock(NPM_LOCK, ".", "package-lock.json");
+        assert_eq!(run(g, &docs, &[("proxy-addr", "2.0.7", &["GHSA-new"])], "2026-10-18").1, vec![]);
+        // New on a direct dependency: shown.
+        let g = npm_lock(NPM_LOCK, ".", "package-lock.json");
+        let items = run(g, &docs, &[("markdown-it", "14.1.0", &["GHSA-new"])], "2026-10-18").1;
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].why, vec!["published 2026-10-01"]);
+        // No fixed version anywhere: a moderate nit.
+        let docs = [("GHSA-nofix", doc(Some(Severity::Moderate), "2024-01-01T00:00:00Z", &[], &[]))];
+        let g = npm_lock(NPM_LOCK, ".", "package-lock.json");
+        assert_eq!(run(g, &docs, &[("proxy-addr", "2.0.7", &["GHSA-nofix"])], "2026-10-18").1, vec![]);
+    }
+
+    #[test]
+    fn one_line_per_dependency_worst_first_and_capped() {
+        let item = |id: &str, name: &str, sev: Severity, fix: &str, via: &str| Item {
+            id: id.into(),
+            name: name.into(),
+            version: "1.0.0".into(),
+            severity: sev,
+            summary: format!("{id} summary"),
+            fix: Some(fix.into()),
+            why: vec!["high at runtime".into()],
+            via: if via.is_empty() { vec![] } else { vec![via.into()] },
+        };
+        let mut items = vec![item("A-1", "a", Severity::Critical, "1.0.1", "top 1.0.0"), item("A-2", "a", Severity::High, "1.0.3", "top 1.0.0"), item("B-1", "b", Severity::Moderate, "1.1.0", "top 1.0.0")];
+        for k in 0..12 {
+            items.push(item(&format!("C-{k:02}"), &format!("c{k:02}"), Severity::High, "2.0.0", ""));
+        }
+        items.sort_by(|a, b| b.severity.cmp(&a.severity).then(a.name.cmp(&b.name)).then(a.id.cmp(&b.id)));
+        let l = lines(&Report { checked: 0, queried: 20, raw: 20, items });
+        assert_eq!(l.len(), SHOWN_GROUPS + 1, "{l:?}");
+        assert_eq!(l[0], "via top 1.0.0: 3 advisories (1 critical, 1 high, 1 moderate), worst critical a 1.0.0 → 1.0.3 · high at runtime · A-1 summary (https://osv.dev/vulnerability/A-1) · also b 1.0.0");
+        assert!(l[1].starts_with("c00 1.0.0 (direct): high c00 1.0.0 → 2.0.0"), "{}", l[1]);
+        assert_eq!(l[SHOWN_GROUPS], "and 3 more dependencies with 3 advisories (`unstale advisories` lists every one)");
     }
 
     #[test]
@@ -1264,6 +1385,10 @@ fn live_osv() {
     let r = report(&cache, &root).unwrap();
     println!("requests {asked}\n{}", summary(&r));
     for l in lines(&r) {
+        println!("{l}");
+    }
+    println!("--- detail");
+    for l in detail_lines(&r) {
         println!("{l}");
     }
 }

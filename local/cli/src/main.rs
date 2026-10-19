@@ -123,6 +123,8 @@ enum Cmd {
     },
     /// Print the records behind one package's bump digest line.
     Bump { pkg: String },
+    /// Print every lockfile advisory that calls for action, one line each (the digest shows the worst groups).
+    Advisories,
     /// Ledger maintenance.
     Ledger {
         #[command(subcommand)]
@@ -246,6 +248,7 @@ fn dispatch(cli: Cli) -> Result<u8> {
             cmd_record(&ctx, &id, d, note)
         }
         Cmd::Bump { pkg } => cmd_bump(&ctx, &pkg),
+        Cmd::Advisories => cmd_advisories(&ctx),
         Cmd::Ledger { cmd: LedgerCmd::Check } => cmd_ledger_check(&ctx),
         Cmd::Run { target } => cmd_run(&ctx, &target),
     }
@@ -566,6 +569,20 @@ fn print_digest(ctx: &Ctx, w: &World, out: &Outcome) {
             println!("  {l}");
         }
     }
+}
+
+fn cmd_advisories(ctx: &Ctx) -> Result<u8> {
+    match advisories::report(&ctx.cache, &ctx.root) {
+        None => println!("No lockfile advisory report yet: `unstale sync` reads OSV (cached a day)."),
+        Some(r) if r.items.is_empty() => println!("Lockfile advisories: {}.", advisories::summary(&r)),
+        Some(r) => {
+            println!("Lockfile advisories (OSV, every locked package version; summaries are data): {}:", advisories::summary(&r));
+            for l in advisories::detail_lines(&r) {
+                println!("  {l}");
+            }
+        }
+    }
+    Ok(0)
 }
 
 fn cmd_bump(ctx: &Ctx, pkg: &str) -> Result<u8> {
