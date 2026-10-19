@@ -182,7 +182,7 @@ const FAVICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 7 9"><rect
 const NPM_URL = "https://www.npmjs.com/package/@unstale/cli";
 
 function copyable(cmd: string, extra = ""): string {
-  return `<div class="cmd${extra}"><span class="dollar" aria-hidden="true">$</span><code>${esc(cmd)}</code><button type="button" class="copy" data-copy="${esc(cmd)}" aria-label="Copy command">Copy</button></div>`;
+  return `<div class="cmd${extra}"><span class="dollar" aria-hidden="true">$</span><code>${esc(cmd)}</code><button type="button" class="copy" data-copy="${esc(cmd)}" aria-label="Copy command" title="Copy command"><svg class="copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></svg><svg class="copied-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg></button></div>`;
 }
 
 /** "@unstale/cli 0.1.1 on npm", linked: the package an `npx` reader checks before running it. */
@@ -256,7 +256,7 @@ function describe(p: Package): string {
     c.new && `${c.new} new APIs and options`,
   ].filter(Boolean);
   return (
-    `${p.count} changes in ${p.name} ${span(p)} from its official release notes, upgrade guides and advisories` +
+    `${p.count} ${p.count === 1 ? "change" : "changes"} in ${p.name} ${span(p)} from its official release notes, upgrade guides and advisories` +
     (tally.length ? `: ${tally.join(", ")}.` : ".") +
     " Each one cited."
   );
@@ -334,8 +334,8 @@ const TERMINAL: [string, string][] = [
   ["amber", "Priority · 31 advisory fixes match installed versions. Review these first."],
   ["", ""],
   ["accent", "Upgrades to review · 3 shortlisted"],
-  ["body", "1. next 16.2.1 → 16.4.2 picks up 37 security, 90 fixes, 5 performance changes, 20 behaviour changes"],
-  ["body", "2. prisma 6.19.3 → 7.10.0 picks up 8 security, 82 fixes, 8 performance changes · unlocks 52 optional capabilities"],
+  ["body", "1. next 16.2.1 → 16.4.2 picks up 37 security fixes, 90 bug fixes, 5 performance changes, 20 behaviour changes"],
+  ["body", "2. prisma 6.19.3 → 7.10.0 picks up 8 security fixes, 82 bug fixes, 8 performance changes · unlocks 52 optional capabilities"],
   ["", ""],
   ["accent", "Capabilities to explore · 8 shortlisted"],
   ["body", "1. next · available on 16.2.1 — updateTag provides Server Actions with read-your-writes cache expiration and immediate refresh semantics."],
@@ -359,8 +359,14 @@ const SUMMARY =
 
 const EVAL = `${REPO}/blob/main/eval/gate/MISSES.md`;
 
+/** Distinct package identities, including related packages grouped on a single page. */
+function catalogStats(pkgs: Package[]) {
+  const names = new Set(pkgs.flatMap((p) => [p.name, ...p.also].map((name) => `${p.ecosystem}/${name}`)));
+  return { changes: pkgs.reduce((n, p) => n + p.count, 0).toLocaleString("en-US"), packages: names.size.toLocaleString("en-US") };
+}
+
 export function homePage(pkgs: Package[], version?: string): string {
-  const total = pkgs.reduce((n, p) => n + p.count, 0);
+  const stats = catalogStats(pkgs);
   const ld = {
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
@@ -379,51 +385,58 @@ export function homePage(pkgs: Package[], version?: string): string {
     .join("");
   const body = `<section class="hero">
 <canvas id="wordmark" class="wordmark" width="768" height="240" aria-hidden="true"></canvas>
-<h1>Your coding agent was trained before your packages' latest releases</h1>
-<p class="lede">Releases come out faster than anyone can read them. unstale reads them for you, then tells you and
-Claude Code, Codex or Cursor what changed for the versions in your lockfile and the code that uses them. Every item
-cites its source. It runs on your machine, and it's free and open source.</p>
+<h1>You don't know what you don't know. Neither does your agent.</h1>
+<p class="lede">unstale keeps up with your dependencies for you. It finds the breaking changes, fixes and new APIs that
+touch your code, so your agent can use them. For Claude Code, Codex and Cursor.</p>
+<p class="hero-facts">Runs locally · Free · Open source</p>
+<div class="get-started" aria-labelledby="get-started">
+<h2 id="get-started">Get started</h2>
+<p class="install-hint">Run in your project directory.</p>
 ${copyable(INSTALL_NPX, " big")}
-<p class="alt">${npmLink(version)} · or <code>${esc(INSTALL_BREW)}</code></p>
+<details class="brew-install"><summary>Install with Homebrew</summary>
+${copyable(INSTALL_BREW)}
+<p class="install-hint">Then run in your project:</p>
+${copyable("unstale init")}
+</details>
+</div>
+</section>
+<section class="catalog-proof" aria-label="Current catalog coverage">
+<dl class="catalog-stats">
+<div><dt>changes indexed</dt><dd>${stats.changes}+</dd></div>
+<div><dt>packages covered</dt><dd>${stats.packages}+</dd></div>
+</dl>
+<a class="catalog-explore" href="#packages">Explore your stack <span aria-hidden="true">↓</span></a>
 </section>
 ${terminal()}
 <section class="prose">
 <h2>What you get</h2>
 <ul>
-<li><strong>Your next major upgrade, mapped to your code.</strong> The breaking changes and deprecations you'll hit,
-with the files that hit them, required work first.</li>
-<li><strong>What each version bump fixes.</strong> Security advisories, bug fixes and behaviour changes between your
-installed version and the next one.</li>
-<li><strong>Features you could be using.</strong> APIs released since you wrote the code that could replace something
-you built by hand.</li>
+<li><strong>Upgrade plans.</strong> Breaking changes, deprecations and affected files. Required work first.</li>
+<li><strong>Fixes worth upgrading for.</strong> Security, bug fixes and behaviour changes between versions.</li>
+<li><strong>APIs you could use.</strong> New capabilities that could replace code you maintain.</li>
 </ul>
-<p>Every item links to the release note, guide or advisory it came from.</p>
 <h2>How it works</h2>
 <ol>
-<li><strong>It reads your lockfile.</strong> npm and PyPI projects. npm has the deepest catalog today.</li>
-<li><strong>It matches upstream changes to your code locally.</strong> Release notes, migration guides and advisories
-are summarised once, centrally, into a signed catalog. The matching against your code happens on your machine.</li>
-<li><strong>Your agent reviews it.</strong> You get a short report and a prompt to paste into Claude Code, Codex or
-Cursor. In Claude Code, a line at session start tells you when something new applies, so you don't have to remember to
-ask. If nothing upstream matters to your code, your agent hears nothing.</li>
+<li><strong>Read your lockfile.</strong> npm and PyPI. Coverage is deepest for npm.</li>
+<li><strong>Match changes locally.</strong> A signed upstream catalog, checked against your versions and code.</li>
+<li><strong>Review with your agent.</strong> A report and a ready-to-paste prompt. Claude Code also flags relevant changes at session start.</li>
 </ol>
-<h2>What leaves your machine</h2>
+<h2>Safe for private repos: What leaves your machine</h2>
+<p>Code stays local. unstale receives public package names; <a href="https://osv.dev">OSV</a> receives package names and versions for advisory checks. No telemetry.</p>
+<details class="privacy-details"><summary>Network details</summary>
 <p>Public package names (like <code>pkg:npm/next</code>) to fetch the changes that apply. Not your code, file paths,
 versions or any ID. The service, hosted on Cloudflare, sees your IP address. It keeps it in memory only, to apply rate
 limits and count each address once per package, and never writes it to storage. No telemetry. To check advisories, the CLI sends the package names and versions your lockfiles resolve to
 <a href="https://osv.dev">OSV</a>, as <code>npm audit</code> would, and it reads the public npm and PyPI registries.</p>
-<h2>Does it work?</h2>
-<p>We replayed 15 real Next.js, Prisma and NestJS upgrades from the commit before the maintainers did them. The
-catalog had 60 of the 65 required changes that upstream documents (92%). The misses are public,
-along with 29 changes the maintainers made that no release note mentions. <a href="${EVAL}">Method and results</a>.</p>
-<h2>Free and open source</h2>
-<p>AGPL-3.0. <a href="${REPO}">GitHub</a>.</p>
+</details>
+<h2>Recent catches</h2>
+<p>unstale flagged critical <a href="https://github.com/vercel/next.js/security/advisories/GHSA-2464-fhr4-w9xw">Next.js security fixes</a> before the GitHub advisory database had them, and caught <a href="https://github.com/supabase/supabase/pull/51869">Supabase&#8217;s Next.js auth blocks</a> breaking on Next.js 16.</p>
+<p class="license">AGPL-3.0 · <a href="${REPO}">GitHub</a></p>
 </section>
 <section id="packages" class="packages prose">
-<h2>What changed, by package</h2>
-<p>${total.toLocaleString("en-US")} changes across ${pkgs.length} packages, each cited to its official source. Packages
-your projects use are added on request.</p>
-<input id="filter" type="search" placeholder="Filter packages" aria-label="Filter packages">
+<h2>Explore your stack</h2>
+<input id="filter" type="search" placeholder="Search your dependencies…" aria-label="Search your dependencies" aria-controls="pkgs">
+<p id="package-empty" class="package-empty" role="status" hidden>No match yet. Run <code>${esc(INSTALL_NPX)}</code> in your project to request coverage.</p>
 <ul class="pkgs" id="pkgs">${list}</ul>
 </section>`;
   return layout({
@@ -442,9 +455,11 @@ export function homeMarkdown(pkgs: Package[], version?: string): string {
 
 Install: \`${INSTALL_NPX}\` in a repository${version ? ` (\`@unstale/cli\` ${version}, ${NPM_URL})` : ""}, or \`${INSTALL_BREW}\`.
 
-Releases come out faster than anyone can read them. unstale reads them for you, then tells you and Claude Code, Codex
-or Cursor what changed for the versions in your lockfile and the code that uses them. Every item cites its source. It
-runs on your machine, and it's free and open source.
+**You don't know what you don't know. Neither does your agent.**
+
+unstale keeps up with your dependencies for you. It finds the breaking changes, fixes and new APIs that touch your code,
+so your agent can use them. For Claude Code, Codex and Cursor. Every item cites its source. Runs locally, free and open
+source.
 
 ## What you get
 
@@ -463,7 +478,7 @@ runs on your machine, and it's free and open source.
    line at session start says when something new applies. If nothing upstream matters to your code, your agent hears
    nothing.
 
-## What leaves your machine
+## Safe for private repos: What leaves your machine
 
 Public package names (like \`pkg:npm/next\`) to fetch the changes that apply. Not your code, file paths, versions or
 any ID. The service, hosted on Cloudflare, sees your IP address. It keeps it in memory only, to apply rate limits and count
@@ -471,17 +486,18 @@ each address once per package, and never writes it to storage.
 No telemetry. To check advisories, the CLI sends the package names and versions your lockfiles resolve to OSV
 (https://osv.dev), as \`npm audit\` would, and it reads the public npm and PyPI registries.
 
-## Does it work?
+## Recent catches
 
-We replayed 15 real Next.js, Prisma and NestJS upgrades from the commit before the maintainers did them. The catalog
-had 60 of the 65 required changes that upstream documents (92%). The misses are public, along with
-29 changes the maintainers made that no release note mentions: ${EVAL}
+unstale flagged critical [Next.js security fixes](https://github.com/vercel/next.js/security/advisories/GHSA-2464-fhr4-w9xw) before the GitHub advisory database had them, and caught [Supabase's Next.js auth blocks](https://github.com/supabase/supabase/pull/51869) breaking on Next.js 16.
 
 AGPL-3.0, free and open source: ${REPO}
 
-## What changed, by package
+## Upstream changes, indexed
 
-${pkgs.map((p) => `- [${p.name}](${ORIGIN}${p.path}index.md): ${p.count} changes`).join("\n")}
+${catalogStats(pkgs).changes}+ changes indexed · ${catalogStats(pkgs).packages}+ packages covered in the current published catalog.
+Every change links to an official source.
+
+${pkgs.map((p) => `- [${p.name}](${ORIGIN}${p.path}index.md): ${p.count} ${p.count === 1 ? "change" : "changes"}`).join("\n")}
 `;
 }
 
@@ -511,9 +527,12 @@ Notes for agents:
 - [Evaluation on real upgrades](${REPO}/blob/main/eval/gate/MISSES.md)
 - [Home page as Markdown](${ORIGIN}/index.md)
 
-## What changed, by package
+## Upstream changes, indexed
 
-${pkgs.map((p) => `- [${p.name}](${ORIGIN}${p.path}index.md): ${p.count} changes`).join("\n")}
+${catalogStats(pkgs).changes}+ changes indexed · ${catalogStats(pkgs).packages}+ packages covered in the current published catalog.
+Every change links to an official source.
+
+${pkgs.map((p) => `- [${p.name}](${ORIGIN}${p.path}index.md): ${p.count} ${p.count === 1 ? "change" : "changes"}`).join("\n")}
 `;
 }
 

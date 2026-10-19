@@ -111,3 +111,32 @@ ul.changes.tone-amber li::before { background: var(--amber); } ul.changes.tone-f
 ul.changes li p { margin: 0; font-size: 0.95rem; }
 ul.changes .meta { font-size: 0.78rem; margin-top: 2px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 2px 12px; }
 .v { color: var(--muted); }
+
+/* Current catalog coverage, beside the decision to try the CLI. */
+.catalog-proof { margin-top: 32px; padding: 22px 0 18px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.catalog-stats { display: flex; flex-wrap: wrap; gap: 20px 56px; margin: 0; }
+.catalog-stats > div { display: flex; flex-direction: column-reverse; }
+.catalog-stats dt { color: var(--muted); font-size: 0.85rem; }
+.catalog-stats dd { margin: 0; color: var(--fresh); font-size: clamp(2rem, 6vw, 2.75rem); font-weight: 650; letter-spacing: -0.045em; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.catalog-explore { display: inline-block; margin-top: 14px; font-size: 0.85rem; }
+.hero-facts { margin: 12px 0 0; color: var(--muted); font-size: 0.85rem; }
+.privacy-details { color: var(--muted); font-size: 0.9rem; }
+.privacy-details summary { width: fit-content; cursor: pointer; }
+.privacy-details[open] summary { margin-bottom: 10px; }
+.prose .license { margin-top: 24px; color: var(--muted); font-size: 0.85rem; }
+.package-empty { color: var(--muted); font-size: 0.92rem; }
+
+.get-started { margin-top: 26px; }
+.get-started h2 { font-size: 1rem; margin: 0 0 4px; }
+.install-hint { margin: 0 0 10px; font-size: 0.85rem; color: var(--muted); }
+.get-started .cmd.big { margin-top: 0; }
+.copy { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; padding: 8px; }
+.copy svg { width: 18px; height: 18px; flex: none; }
+.copy .copied-icon, .copy.copied .copy-icon { display: none; }
+.copy.copied .copied-icon { display: block; }
+.copy.copied { color: var(--fresh); }
+.copy:focus-visible, .brew-install summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.brew-install { margin-top: 14px; font-size: 0.85rem; color: var(--muted); }
+.brew-install summary { cursor: pointer; width: fit-content; }
+.brew-install[open] summary { margin-bottom: 12px; }
+.brew-install .install-hint { margin: 12px 0 8px; }
