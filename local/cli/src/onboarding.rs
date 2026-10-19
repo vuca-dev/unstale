@@ -175,7 +175,7 @@ pub struct Pending {
     /// This run's `--wait`, when the deferral ends after it: the summary says the run did not wait (never saved).
     #[serde(skip)]
     pub past_wait: Option<u64>,
-    /// Weekly npm downloads of unsubmitted packages, read once for `registration_order` (0 when unreadable).
+    /// Weekly npm and PyPI downloads of unsubmitted packages, read once for `registration_order` (0 when unreadable).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub downloads: BTreeMap<String, u64>,
 }
@@ -824,8 +824,39 @@ fn npm_downloads(purls: &[String]) -> BTreeMap<String, u64> {
     out
 }
 
+/// Weekly downloads by purl: npm's downloads API, and PyPI's from pypistats (the endpoint central's admission reads),
+/// four at a time (it rate-limits bursts). A count that cannot be read is absent.
+fn weekly_downloads(purls: &[String]) -> BTreeMap<String, u64> {
+    let (pypi, npm): (Vec<String>, Vec<String>) = purls.iter().cloned().partition(|p| p.starts_with("pkg:pypi/"));
+    let mut out = npm_downloads(&npm);
+    for chunk in pypi.chunks(4) {
+        std::thread::scope(|scope| {
+            let handles: Vec<_> = chunk
+                .iter()
+                .map(|purl| scope.spawn(move || (purl, fetch(format!("https://pypistats.org/api/packages/{}/recent", encode(&pypi_project(purl)))))))
+                .collect();
+            for h in handles {
+                if let Ok((purl, Some(v))) = h.join()
+                    && let Some(d) = pypistats_last_week(&v)
+                {
+                    out.insert(purl.clone(), d);
+                }
+            }
+        });
+    }
+    out
+}
+/// A PyPI purl's project name as pypistats keys it: lowercase.
+fn pypi_project(purl: &str) -> String {
+    purl.strip_prefix("pkg:pypi/").unwrap_or(purl).split(['@', '?', '#']).next().unwrap_or_default().to_lowercase()
+}
+/// pypistats' `recent` answer: `{"data": {"last_day": .., "last_week": .., "last_month": ..}}`.
+fn pypistats_last_week(v: &serde_json::Value) -> Option<u64> {
+    v.pointer("/data/last_week").and_then(|d| d.as_u64())
+}
+
 /// The order new packages are sent in, so that what fits under the service's registration limit is what matters most:
-/// adoption as a proxy for impact. Within an ecosystem, weekly downloads (npm), then how many of this repository's
+/// adoption as a proxy for impact. Within an ecosystem, weekly downloads (npm, PyPI), then how many of this repository's
 /// manifests declare the package, then the name. Ecosystems take turns, so one without download counts is not starved.
 fn registration_order(purls: &BTreeSet<String>, st: &stack::Stack, downloads: &BTreeMap<String, u64>) -> Vec<String> {
     let mut by_ecosystem: BTreeMap<&str, Vec<(&String, u64, usize)>> = BTreeMap::new();
@@ -1478,6 +1509,7 @@ fn summary(ctx: &Ctx, pending: &Pending, brief: &Brief, issue: Option<&str>) -> 
         Line::new(format!("Mapped {} direct dependencies from {} and checked local references.", brief.direct, if brief.versions_from.contains(", ") { "workspace lockfiles" } else { &brief.versions_from }), Tone::Body),
     ];
     if let Some(issue) = issue { lines.push(Line::new(issue, Tone::Amber)); }
+    if let Some(line) = pending_line(pending, unix_now()) { lines.push(Line::new(line, Tone::Muted)); }
     if let Some(line) = registration_line(pending) { lines.push(Line::new(line, if pending.deferred_until.is_some() { Tone::Muted } else { Tone::Amber })); }
     if !brief.limits.is_empty() { lines.push(Line::new("Scope · other dependency ecosystems are not covered; see report.", Tone::Amber)); }
     if brief.lock_notes > 0 {
@@ -2336,11 +2368,11 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
         let registrations = pending.unsubmitted.len();
         let known = pending.jobs.len();
         pending.downloads.retain(|p, _| pending.unsubmitted.contains(p));
-        let unread: Vec<String> = pending.unsubmitted.iter().filter(|p| p.starts_with("pkg:npm/") && !pending.downloads.contains_key(*p)).cloned().collect();
+        let unread: Vec<String> = pending.unsubmitted.iter().filter(|p| (p.starts_with("pkg:npm/") || p.starts_with("pkg:pypi/")) && !pending.downloads.contains_key(*p)).cloned().collect();
         if !unread.is_empty() {
             ui.update("Connecting public coverage · step 3/5", &format!("Ranking {registrations} public packages by adoption"), "Most-used packages are registered first");
             // A count that cannot be read is kept as 0, so an npm outage costs one attempt, not one per run.
-            let read = npm_downloads(&unread);
+            let read = weekly_downloads(&unread);
             pending.downloads.extend(unread.into_iter().map(|p| {
                 let d = read.get(&p).copied().unwrap_or(0);
                 (p, d)
@@ -2362,6 +2394,9 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
     let mut ready_hint = String::from("Your report is next; shared analysis can continue in background");
     // When each package's status is next read (Unix seconds); absent: at the next pass.
     let mut poll_at: BTreeMap<String, u64> = BTreeMap::new();
+    if wait > 0 && !linger {
+        interrupt::install(leave.clone());
+    }
     loop {
         ui.update(
             "Refreshing shared results · step 4/5",
@@ -2463,7 +2498,10 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
     }
     // Default init that asked a run to start for a new package: the report and its prompt print now and stay; the run
     // is followed below them until it publishes, unless the person leaves (Enter) first.
-    let follow: Vec<String> = pending.jobs.values().filter(|j| followable(j)).map(|j| j.purl.clone()).collect();
+    // Every package estimated to publish within FOLLOW_HORIZON_S of registration (or that a run is on), not only those a
+    // run works now: a package waiting in a run's queue gets its decision at that cycle's publish.
+    let horizon = unix_now() + FOLLOW_HORIZON_S.saturating_sub(start.elapsed().as_secs());
+    let follow: Vec<String> = pending.jobs.values().filter(|j| worth_following(j, horizon)).map(|j| j.purl.clone()).collect();
     let live = linger
         && !follow.is_empty()
         && !leave.load(Ordering::Acquire)
@@ -2475,12 +2513,13 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
         finish(ctx, &pending, &brief, ui, issue.as_deref(), linger, &leave);
         return Ok(0);
     }
+    interrupt::install(leave.clone());
     use crate::onboarding_ui::{Line, Live, Tone};
     let base = summary(ctx, &pending, &brief, issue.as_deref());
     let with = |live: Vec<Line>| [base.clone(), live].concat();
     // Room for the header, one line per package and its outcome under the artwork: it keeps moving until exit.
     if ui.can_show(&with(vec![Line::new("", Tone::Body); 2 + 2 * follow.len()])) {
-        let (mut outcomes, published) = follow_runs(service, &mut pending, follow, &leave, |live| ui.show(with(live)));
+        let (mut outcomes, published) = follow_runs(service, &mut pending, follow, horizon, &leave, |live| ui.show(with(live)));
         let mut brief = brief;
         if published {
             ui.show(with([outcomes.clone(), vec![Line::new("Refreshing the catalog and your report", Tone::Accent)]].concat()));
@@ -2495,21 +2534,106 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
         let echoed = ui.input_echo_counter();
         ui.present(base, false, &leave);
         let Some(mut region) = Live::start(echoed) else { return Ok(0) };
-        let (mut outcomes, published) = follow_runs(service, &mut pending, follow, &leave, |live| region.draw(&live));
+        let (mut outcomes, published) = follow_runs(service, &mut pending, follow, horizon, &leave, |live| region.draw(&live));
         if published {
             region.draw(&[outcomes.clone(), vec![Line::new("Refreshing the catalog and your report", Tone::Accent)]].concat());
             outcomes.push(refresh(ctx, &st, &pending, &mut scan).1);
         }
         save(ctx, &pending)?;
+        if let Some(line) = pending_line(&pending, unix_now()) {
+            outcomes.push(Line::new(line, Tone::Muted));
+        }
         region.settle(&outcomes);
     }
-    Ok(0)
+    Ok(if interrupt::pressed() { 130 } else { 0 })
 }
 
-/// Seconds a run may stay requested without starting before the client stops waiting for it.
-const UNSTARTED_LIMIT: u64 = 300;
-/// The longest a client follows runs at all.
-const FOLLOW_LIMIT: Duration = Duration::from_secs(20 * 60);
+/// Ctrl-C while init or status follows coverage: the first leaves as Enter does (the state is saved after every read and
+/// written atomically, so the summary, what is pending and the command that follows it print as usual); a second exits
+/// at once with 130.
+mod interrupt {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    pub static HIT: AtomicBool = AtomicBool::new(false);
+    static INSTALLED: AtomicBool = AtomicBool::new(false);
+    const SIGINT: i32 = 2;
+    unsafe extern "C" {
+        fn signal(sig: i32, handler: extern "C" fn(i32)) -> usize;
+        fn _exit(code: i32) -> !;
+    }
+    extern "C" fn on(_: i32) {
+        if HIT.swap(true, Ordering::AcqRel) {
+            unsafe { _exit(130) }
+        }
+        // Some C libraries reset the handler on delivery: installed again for the second press.
+        unsafe { signal(SIGINT, on) };
+    }
+    /// Installs the handler once; `leave` is set within 100 ms of a press.
+    pub fn install(leave: std::sync::Arc<AtomicBool>) {
+        if INSTALLED.swap(true, Ordering::AcqRel) {
+            return;
+        }
+        unsafe { signal(SIGINT, on) };
+        std::thread::spawn(move || {
+            while !HIT.load(Ordering::Acquire) {
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+            leave.store(true, Ordering::Release);
+        });
+    }
+    pub fn pressed() -> bool {
+        HIT.load(Ordering::Acquire)
+    }
+}
+
+/// How long default init stays to follow coverage: the packages estimated to publish within this of registration.
+const FOLLOW_HORIZON_S: u64 = 30 * 60;
+/// While following, the longest a package that waits in a run's queue goes unread: its decision is published by the
+/// cycle that took it, minutes after the pull (central's early publish).
+const WAITING_POLL_S: u64 = 60;
+
+/// Whether a package is still on its way to its first published coverage: a run holds or works it, a run is due to take
+/// it, or it waits in the published queue. Published (partial or monitoring), blocked and failed packages are settled.
+fn unsettled(job: &Job) -> bool {
+    job.run.is_some() || job.next_run.is_some() || matches!(job.state.as_str(), "queued" | "discovering" | "analyzing")
+}
+/// When a package is estimated to be published (Unix seconds): its cycle's publish (`publish_by`), else when a run is
+/// estimated to reach it (`starts_at`), else when a run takes it (`next_run`). None: the service gave no estimate.
+fn estimate(job: &Job) -> Option<u64> {
+    job.publish_by.as_deref().or(job.starts_at.as_deref()).or(job.next_run.as_deref()).and_then(iso_unix)
+}
+/// Whether default init keeps following a package: still unsettled, and a run is on it or it is estimated by `horizon`.
+fn worth_following(job: &Job, horizon: u64) -> bool {
+    unsettled(job) && (followable(job) || estimate(job).is_some_and(|t| t <= horizon))
+}
+/// The line that says what is still on its way when this run returns, with the latest estimate and the exact command
+/// that follows it; None when nothing is.
+fn pending_line(pending: &Pending, now: u64) -> Option<String> {
+    let open: Vec<&Job> = pending.jobs.values().filter(|j| unsettled(j)).collect();
+    if open.is_empty() {
+        return None;
+    }
+    let n = open.len();
+    let what = format!("{n} package{} still on {} way to coverage", if n == 1 { "" } else { "s" }, if n == 1 { "its" } else { "their" });
+    let dated: Vec<u64> = open.iter().filter_map(|j| estimate(j)).collect();
+    Some(match dated.iter().max() {
+        Some(&t) if t > now => {
+            // Rounded up to the minute, with five minutes for the publish to land.
+            let wait = (t - now + 300).div_ceil(60) * 60;
+            let undated = n - dated.len();
+            let rest = if undated > 0 { format!("; {undated} without an estimate yet") } else { String::new() };
+            format!("Pending · {what}, the last estimated at about {} UTC (in {}){rest}. Follow them: unstale status --wait {wait}", clock(t), span(t - now))
+        }
+        _ => format!("Pending · {what}, no estimate past now. Check again: unstale status --wait {}", FOLLOW_HORIZON_S),
+    })
+}
+/// For a package left unfollowed: what it waits for, and when it is estimated.
+fn eta_text(job: &Job, now: u64) -> String {
+    match estimate(job) {
+        Some(t) if t > now => format!("estimated at about {} UTC (in {})", clock(t), span(t - now)),
+        Some(_) => "due now".into(),
+        None => "no estimate yet".into(),
+    }
+}
 
 /// The registration line: what this pass sends, or (nothing left to send, as on `status --wait`) that every package
 /// was registered before, never "0/0".
@@ -2559,12 +2683,15 @@ fn follow_runs(
     service: &str,
     pending: &mut Pending,
     mut purls: Vec<String>,
+    horizon: u64,
     leave: &AtomicBool,
     mut draw: impl FnMut(Vec<crate::onboarding_ui::Line>),
 ) -> (Vec<crate::onboarding_ui::Line>, bool) {
     use crate::onboarding_ui::{Line, Tone};
-    let (started, a) = (Instant::now(), agent());
+    let a = agent();
     let mut polled: BTreeMap<String, Instant> = purls.iter().map(|p| (p.clone(), Instant::now())).collect();
+    // When each package is read next: as a run reports while one works it, within a minute while it waits in a queue.
+    let mut poll_at: BTreeMap<String, u64> = BTreeMap::new();
     let mut outcomes = vec![];
     let mut published = 0;
     let mut last_poll: Option<Instant> = None;
@@ -2573,33 +2700,42 @@ fn follow_runs(
     while !purls.is_empty() && !leave.load(Ordering::Acquire) {
         if last_poll.is_none_or(|t| t.elapsed() >= Duration::from_secs(ACTIVE_POLL_S)) {
             last_poll = Some(Instant::now());
+            let now = unix_now();
+            let due: Vec<String> = purls.iter().filter(|p| poll_at.get(*p).is_none_or(|t| *t <= now)).cloned().collect();
             // A failed poll keeps the last answer; the next one may succeed.
-            statuses(&a, service, &purls, |i, got| {
+            statuses(&a, service, &due, |i, got| {
                 if let Ok(job) = got {
-                    let kept = merged(pending.jobs.get(&purls[i]), job);
-                    pending.jobs.insert(purls[i].clone(), kept);
-                    polled.insert(purls[i].clone(), Instant::now());
+                    poll_at.insert(due[i].clone(), next_poll(&job, now).min(now + WAITING_POLL_S));
+                    let kept = merged(pending.jobs.get(&due[i]), job);
+                    pending.jobs.insert(due[i].clone(), kept);
+                    polled.insert(due[i].clone(), Instant::now());
                 }
                 true
             });
-            let over = started.elapsed() >= FOLLOW_LIMIT;
             purls.retain(|purl| {
                 let job = &pending.jobs[purl];
                 let name = display_text(&job.name);
-                let line = match job.run.as_ref().map(|r| r.state.as_str()) {
-                    // The catalog's published status (the gateway's held answers always name the next run).
-                    None if job.next_run.is_none() && job.state == "queued" => Line::new(format!("{name} · {} · unstale status picks it up", display_text(&job.stage)), Tone::Muted),
-                    None if job.next_run.is_none() => {
-                        published += 1;
-                        Line::new(format!("✓ {name} covered · {} records published", job.records), Tone::Fresh)
+                let line = if !unsettled(job) {
+                    // The catalog's published status: a firm decision either way.
+                    match job.state.as_str() {
+                        "blocked" => Line::new(format!("{name} · not covered · {}", display_text(&job.stage)), Tone::Muted),
+                        "failed" => Line::new(format!("{name} · coverage failed · {} · retried centrally", display_text(&job.stage)), Tone::Amber),
+                        _ => {
+                            published += 1;
+                            Line::new(format!("✓ {name} covered · {} records published", job.records), Tone::Fresh)
+                        }
                     }
-                    // Taken by the run in progress and waiting in its queue: its place and estimate are in the stage.
-                    Some("waiting") => Line::new(format!("{name} · {} · unstale status picks it up", display_text(&job.stage)), Tone::Muted),
-                    Some("declined") => Line::new(format!("{name} · another package is ahead in the queue · waiting for {}; unstale status picks it up", next_run_text(job)), Tone::Muted),
-                    None => Line::new(format!("{name} · the run stopped reporting · waiting for {}; unstale status picks it up", next_run_text(job)), Tone::Muted),
-                    Some("dispatched") if elapsed(job, &polled[purl]) > UNSTARTED_LIMIT => Line::new(format!("{name} · the run has not started after {} (another run may be ahead) · coverage continues centrally; unstale status picks it up", seconds(UNSTARTED_LIMIT)), Tone::Muted),
-                    Some(_) if over => Line::new(format!("{name} · still being worked centrally · unstale status picks it up"), Tone::Muted),
-                    Some(_) => return true,
+                } else if now >= horizon || !worth_following(job, horizon) {
+                    // Past what this run waits for: said with its estimate, and the summary names the command.
+                    let why = match job.run.as_ref().map(|r| r.state.as_str()) {
+                        Some("declined") => format!("another package is ahead in the queue · waiting for {}", next_run_text(job)),
+                        None if job.next_run.is_some() => format!("waiting for {}", next_run_text(job)),
+                        _ if job.stage.is_empty() => "waiting for a coverage run".into(),
+                        _ => display_text(&job.stage),
+                    };
+                    Line::new(format!("{name} · {why} · {}", eta_text(job, now)), Tone::Muted)
+                } else {
+                    return true;
                 };
                 outcomes.push(line);
                 false
@@ -2609,7 +2745,7 @@ fn follow_runs(
             break;
         }
         let mut lines = vec![Line::new(
-            format!("{} Covering {} now · Enter to leave; coverage continues centrally", ["◐", "◓", "◑", "◒"][frame / 2 % 4], if purls.len() == 1 { "a new package".to_string() } else { format!("{} new packages", purls.len()) }),
+            format!("{} Following {} until published · Enter or Ctrl-C to leave; coverage continues centrally", ["◐", "◓", "◑", "◒"][frame / 2 % 4], if purls.len() == 1 { "a new package".to_string() } else { format!("{} new packages", purls.len()) }),
             Tone::Accent,
         )];
         lines.extend(purls.iter().map(|p| Line::new(run_line(&pending.jobs[p], elapsed(&pending.jobs[p], &polled[p])), Tone::Body)));
@@ -2619,7 +2755,7 @@ fn follow_runs(
         std::thread::sleep(Duration::from_millis(125));
     }
     if leave.load(Ordering::Acquire) && !purls.is_empty() {
-        outcomes.push(Line::new("Left early · coverage continues centrally; unstale status picks it up", Tone::Muted));
+        outcomes.push(Line::new("Left early · coverage continues centrally", Tone::Muted));
     }
     (outcomes, published > 0)
 }
@@ -2693,6 +2829,39 @@ mod tests {
             ["pkg:npm/express", "pkg:pypi/django", "pkg:npm/undici", "pkg:pypi/aiohttp", "pkg:npm/%40codemirror/view"]
         );
         assert_eq!(registration_order(&purls, &st, &BTreeMap::new())[0], "pkg:npm/%40codemirror/view", "without counts: declarers, then name");
+    }
+    #[test]
+    fn pypi_adoption_is_read_from_pypistats_and_orders_pypi_registration() {
+        assert_eq!(pypi_project("pkg:pypi/Django@5.1"), "django");
+        let v: serde_json::Value = serde_json::from_str(r#"{"data":{"last_day":1,"last_month":40,"last_week":12},"package":"django","type":"recent_downloads"}"#).unwrap();
+        assert_eq!(pypistats_last_week(&v), Some(12));
+        assert_eq!(pypistats_last_week(&serde_json::json!({"data": {}})), None);
+        let st = stack::Stack { packages: vec![], deps: Default::default(), node: None, notes: vec![], spread: 0, standalone: vec![] };
+        let purls: BTreeSet<String> = ["pkg:pypi/aiohttp", "pkg:pypi/django", "pkg:pypi/zstandard"].map(String::from).into();
+        let downloads: BTreeMap<String, u64> = [("pkg:pypi/zstandard", 9_000_000), ("pkg:pypi/django", 3_000_000)].map(|(p, d)| (p.to_string(), d)).into();
+        assert_eq!(registration_order(&purls, &st, &downloads), ["pkg:pypi/zstandard", "pkg:pypi/django", "pkg:pypi/aiohttp"]);
+    }
+    #[test]
+    fn default_init_follows_what_is_estimated_within_its_horizon_and_names_the_command_for_the_rest() {
+        let now = iso_unix("2026-10-18T16:00:00.000Z").unwrap();
+        let horizon = now + FOLLOW_HORIZON_S;
+        // Waiting in the run's queue, reached at 16:20: followed (its decision publishes at that cycle).
+        let soon = answer(r#"{"purl":"pkg:pypi/g","technology":"g-1","name":"g","state":"queued","stage":"Admitted for coverage (maintained and used); waits","records":0,"updated":"2026-10-18T16:00:00.000Z","starts_at":"2026-10-18T16:20:00.000Z","run":{"state":"waiting"}}"#);
+        assert!(worth_following(&soon, horizon));
+        // Reached at 17:10: past the horizon, not followed.
+        let late = answer(r#"{"purl":"pkg:pypi/g","technology":"g-1","name":"g","state":"queued","stage":"waits","records":0,"updated":"2026-10-18T16:00:00.000Z","starts_at":"2026-10-18T17:10:00.000Z"}"#);
+        assert!(!worth_following(&late, horizon));
+        // Decided and published: settled either way.
+        let blocked = answer(r#"{"purl":"pkg:pypi/g","technology":"g-1","name":"g","state":"blocked","stage":"Not admitted for monitoring: no release in 365 days","records":0,"updated":"2026-10-18T16:00:00.000Z"}"#);
+        assert!(!unsettled(&blocked) && !worth_following(&blocked, horizon));
+        let mut pending = Pending::default();
+        pending.jobs.insert("pkg:pypi/a".into(), late.clone());
+        pending.jobs.insert("pkg:pypi/b".into(), blocked);
+        let line = pending_line(&pending, now).unwrap();
+        // 70 minutes to 17:10, five more for the publish.
+        assert_eq!(line, "Pending · 1 package still on its way to coverage, the last estimated at about 17:10 UTC (in 1h 10m). Follow them: unstale status --wait 4500");
+        pending.jobs.remove("pkg:pypi/a");
+        assert_eq!(pending_line(&pending, now), None);
     }
     fn answer(json: &str) -> Job { job_of(serde_json::from_str(json).unwrap(), "pkg:pypi/g").unwrap() }
     #[test]

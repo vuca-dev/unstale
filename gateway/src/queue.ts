@@ -40,8 +40,9 @@
 //   (each pull's report writes ≤ BUCKETS, and a package enters it once: ≤ min(new 12,000, 288 pulls × 64) = 12,000,
 //   never rewritten while it waits); acknowledgements ≤ 32 runs ×
 //   (BUCKETS + 1) ≈ 2,100 (an acknowledgement per cycle since 18 October 2026: one per publish of a run, at most about
-//   one every 15 minutes, so ≤ 96 × 65 ≈ 6,200); a run's pulls ≤ 1 every 5 minutes = 288; usage kept ≤ 1 a 45 s =
-//   1,920; budget and early runs ≤ 60. About 82,000 of 100,000.
+//   one every 15 minutes, so ≤ 96 × 65 ≈ 6,200; since a cycle may end early to publish its new packages' decisions,
+//   at most about one every 7 minutes, so ≤ 206 × 65 ≈ 13,400); a run's pulls ≤ 1 every 5 minutes plus one a cycle
+//   ≈ 500; usage kept ≤ 1 a 45 s = 1,920; budget and early runs ≤ 60. About 89,500 of 100,000.
 //   read: about one per vote or new package (≈ 48,000), plus a wake at most every 70 s (an object is evicted only
 //   after that long idle) × 72 ≈ 89,000; status reads and `/internal/queue` none. About 140,000 of 5,000,000.
 // So NEW_PER_HOUR (500) and COUNTED_VOTES_PER_HOUR (1,500) bound the day: rows written ≈ 3 × NEW_PER_HOUR × 24 +

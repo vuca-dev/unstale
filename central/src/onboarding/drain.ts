@@ -29,6 +29,13 @@
 // drain, so a budget raised or reset clears it at the next one; registrations are still queued meanwhile.
 // `drained: false` on the final line means the deadline ended the drain with work left.
 //
+// Early publish (`--early-minutes`, ingest-cycles.sh): a drain that pulled packages new to central ends as soon as each
+// of them has a firm decision (its token-free first pass: admitted, refused with the reason, no official sources, or
+// joined to another technology) and it has run that many minutes, with `--early-grace-minutes` for the slices still
+// running (one still running then resumes next cycle). The cycle then publishes those decisions and the advisories
+// the first passes found, minutes after the pull instead of at the cycle's end; `early: true` on the final line.
+// The minimum keeps publishes at least that far apart: each costs an acknowledgement (≤ 65 gateway rows) and a deploy.
+//
 // Slices that outlast a cycle: a job still running at the drain's end is killed with it and resumed by the next cycle,
 // its work time kept. Resumed slices hold at most the slots admitted work may hold while a new technology waits, so
 // they never take every slot; one that has worked 40 minutes (or spanned 4 cycles) without finishing is stopped, its
@@ -40,6 +47,7 @@
 // deadline. `rate_limited` on the final line counts jobs still paused; they are work left (`drained: false`).
 //
 //   npm run drain -- [--minutes 240] [--grace-minutes 10] [--concurrency 4] [--pull-minutes 5] [--taken <file>]
+//                    [--early-minutes 5] [--early-grace-minutes 1]
 //   npm run drain -- ack <file>
 //   npm run drain -- idle
 // Gateway: UNSTALE_GATEWAY_URL and UNSTALE_GATEWAY_TOKEN; without them only the saved queue is worked.
@@ -49,7 +57,7 @@ import { parseArgs } from "node:util";
 import { catalogDir, centralDir } from "../pipeline/paths.ts";
 import { sha256, writeAtomic } from "../pipeline/util.ts";
 import { CoverageService } from "./service.ts";
-import { PROGRESS_EVERY_MS, PUBLISH_MS, progressKey, progressOf, progressTicker, type RunState } from "./progress.ts";
+import { PROGRESS_EVERY_MS, PUBLISH_MS, earlyDue, progressKey, progressOf, progressTicker, type RunState } from "./progress.ts";
 import { Taken, type Request } from "./taken.ts";
 
 const gateway = () => {
@@ -147,6 +155,8 @@ async function drain(args: string[]): Promise<void> {
       concurrency: { type: "string" },
       "pull-minutes": { type: "string" },
       taken: { type: "string" },
+      "early-minutes": { type: "string" },
+      "early-grace-minutes": { type: "string" },
     },
   });
   if (!existsSync(join(catalogDir(), "v1/root.json")))
@@ -185,7 +195,7 @@ async function drain(args: string[]): Promise<void> {
     : undefined;
   // The drain ends by its deadline and grace period, and the cycle then publishes what it did.
   const [minutes, grace] = [Number(values.minutes ?? 240), Number(values["grace-minutes"] ?? 10)];
-  const publishBy = new Date(t0 + (minutes + grace) * 60_000 + PUBLISH_MS).toISOString();
+  let publishBy = new Date(t0 + (minutes + grace) * 60_000 + PUBLISH_MS).toISOString();
   // Taken and not started yet: reported `waiting`, with their place in this drain's queue and its estimate (once per
   // tick, the queue computed once).
   const progress = () => {
@@ -196,10 +206,17 @@ async function drain(args: string[]): Promise<void> {
   tick = ticker;
   const first = setTimeout(ticker, 1000);
   const every = setInterval(ticker, PROGRESS_EVERY_MS);
+  const earlyMinutes = values["early-minutes"] === undefined ? undefined : Number(values["early-minutes"]);
+  const early =
+    earlyMinutes !== undefined && Number.isFinite(earlyMinutes)
+      ? { due: () => Date.now() >= t0 + earlyMinutes * 60_000 && earlyDue(service, followed), graceMs: Math.max(0, Number(values["early-grace-minutes"] ?? 1) || 0) * 60_000 }
+      : undefined;
   const result = await service
-    .drain(t0 + minutes * 60_000, grace * 60_000, 500)
+    .drain(t0 + minutes * 60_000, grace * 60_000, 500, early)
     .finally(() => (clearTimeout(first), clearInterval(every), clearInterval(again)));
   await pulling;
+  // Ended early: this cycle publishes now, not at its deadline.
+  if (result.early) publishBy = new Date(Date.now() + PUBLISH_MS).toISOString();
   // What finished is published by this cycle's deploy; a job still running past the grace period stays `running` (its
   // partial status is published, and the next cycle resumes it); what did not start waits as before.
   await report(progress(), { budget: budgetOf(service) });

@@ -588,7 +588,8 @@ test("token-free first pass: a waiting new technology's advisories are published
     const job = service.jobs.get(purl)!;
     expect(job).toMatchObject({ state: "queued", records: 1 });
     expect(job.advisories_first).toBeDefined();
-    expect(job.stage).toMatch(/^1 security advisory record published; release history/);
+    // The decision leads: admitted, with the reason, then what the pass published.
+    expect(job.stage).toMatch(/^Admitted for coverage \(test\); 1 security advisory record published; release history/);
     // Still new: the line of new technologies keeps its order (demand), not jumped ahead to admitted work.
     expect((service as unknown as { tier: (j: unknown) => number }).tier(job)).toBe(1);
     const index = JSON.parse(readFileSync(join(catalogDir(), "v1", "tech", `${job.technology}.json`), "utf8"));
@@ -604,4 +605,15 @@ test("token-free first pass: a waiting new technology's advisories are published
   const osv = hosts.get("api.osv.dev");
   await service.drain(Date.now() + 2_000, 500, 10);
   expect(hosts.get("api.osv.dev")).toBe(osv);
+  // Early publish: a drain that pulled a new package ends once it is decided, not at its deadline.
+  const { earlyDue } = await import("../src/onboarding/progress.ts");
+  service.enqueue([{ purl: "pkg:npm/gamma", demand: 1 }]);
+  const fresh = new Set(["pkg:npm/gamma"]);
+  expect(earlyDue(service, fresh)).toBe(false);
+  expect(earlyDue(service, new Set())).toBe(false);
+  const t = Date.now();
+  const e = await service.drain(Date.now() + 30_000, 30_000, 10, { due: () => earlyDue(service, fresh), graceMs: 0 });
+  expect(e).toMatchObject({ early: true, drained: false });
+  expect(Date.now() - t).toBeLessThan(10_000);
+  expect(service.jobs.get("pkg:npm/gamma")!.stage).toMatch(/^Admitted for coverage \(test\); 1 security advisory record published/);
 });
