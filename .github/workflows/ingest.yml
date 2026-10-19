@@ -66,6 +66,10 @@ on:
         required: false
         type: boolean
         default: true
+      concurrency:
+        description: "Drain slots (jobs at once; a third, at least one, kept for new technologies); empty for the default"
+        required: false
+        type: string
       reason:
         description: "Why the run started (the gateway sends fast-track; a run that ends with work left, continue)"
         required: false
@@ -107,7 +111,8 @@ jobs:
       CYCLE_MINUTES: "15"
       GRACE_MINUTES: "5"
       PULL_MINUTES: "5"
-      CONCURRENCY: "6"
+      # Drain slots. A continuation or scheduled run takes the default: an input applies to the run it was given to.
+      CONCURRENCY: ${{ inputs.concurrency || '6' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

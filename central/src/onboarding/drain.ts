@@ -206,7 +206,7 @@ async function drain(args: string[]): Promise<void> {
   const statuses = writeStatuses(service);
   const states: Record<string, number> = {};
   for (const j of service.jobs.values()) states[j.state] = (states[j.state] ?? 0) + 1;
-  console.log(JSON.stringify({ wall_s: Math.round((Date.now() - t0) / 1000), pulled: taken.size, taken: accepted, ...result, statuses, states, gateway: gatewayUsage }));
+  console.log(JSON.stringify({ wall_s: Math.round((Date.now() - t0) / 1000), pulled: taken.size, taken: accepted, ...result, statuses, states, gateway: gatewayUsage, metrics: service.metrics() }));
 }
 
 /** Tells the gateway what a deployed run took (with the demand it counted), so it stops holding them. */
