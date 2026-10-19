@@ -373,3 +373,13 @@ through the gateway, and failed).
 - H1/H2 have been looked at many times in slices 3b–3c; prompts are not tuned here, so a model swap is not fitted to them.
 - Standard tier is measured; flex for these models is half list. Token counts, not dollars, decide the allowance.
 - One run per arm; gpt-6-luna's own replicate spread (H1 breaking ±3 points, H2 required −3.6) is the noise reference.
+
+### Slice 3e amendment: projection from DEV, fixed after the smoke and before any DEV run
+
+The smoke ($0.0139 M5, $0.0244 M54; 0 failures; subjects, verbatim quotes and labels plausible) is two notes of about
+2,000 characters, where the fixed prompts (≈1,470 tokens per chunk) dominate. Its $/char projects $2.14 (M5) and $3.76
+(M54) for DEV + H1 + H2, which slice 3b/3c's own runs contradict (gpt-6-luna spent 1.4–2.9× fewer tokens per character
+on DEV/H2 than on short notes). The pre-registered $1.40 abort is therefore applied to a projection from the arm's DEV
+run instead (166k characters, long guides included): DEV $/char × (H1 + H2 characters, 280,740) × 1.5 + DEV $ must be
+≤ $1.40, and an arm's held-out runs start only if that projection fits what is left of the $3.00 cap. The hard per-call
+cap is unchanged.
