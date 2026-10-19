@@ -32,6 +32,7 @@ const { values: a } = parseArgs({
     evidence: { type: "string", default: "quote" },
     diet: { type: "string" },
     addendum: { type: "string" },
+    repair: { type: "string" },
   },
 });
 // Slice 3b (PREREG.md, "Slice 3b"): --out slice3b --cap 2.5; split heldout2 = held-out set 2 (holdout-majors); smoke3b
@@ -58,7 +59,7 @@ const api = kind === "vercel" || kind === "openai";
 if (!kind || !["heldout", "dev", "smoke", "heldout2", "smoke3b"].includes(split) || !["two-call", "one-call", "one-call-schema"].includes(structure)) throw new Error("usage: --cand luna-fresh|luna-cached|vercel:<model> --split heldout|dev|smoke [--structure two-call|one-call]");
 const model = api ? cand.slice(kind.length + 1) : CODEX_MODEL;
 const evidence = a.evidence as "quote" | "ids";
-const runId = [cand.replace(/[^\w.-]+/g, "_"), structure, split, ...(evidence === "ids" ? ["ev_ids"] : []), ...(a.diet ? [a.diet === "compact" ? "compact" : "diet"] : []), ...(a.addendum ? [`add_${a.addendum}`] : []), ...(a.effort ? [`effort_${a.effort}`] : []), ...(a.tag ? [a.tag] : [])].join("-");
+const runId = [cand.replace(/[^\w.-]+/g, "_"), structure, split, ...(evidence === "ids" ? ["ev_ids"] : []), ...(a.diet ? [a.diet === "compact" ? "compact" : "diet"] : []), ...(a.addendum ? [`add_${a.addendum}`] : []), ...(a.effort ? [`effort_${a.effort}`] : []), ...(a.repair ? ["repair"] : []), ...(a.tag ? [a.tag] : [])].join("-");
 const runDir = join(OUT3, "runs", runId);
 const USAGE = join(OUT3, "usage.jsonl");
 const prices = loadPrices();
@@ -152,7 +153,7 @@ function sliceSpend(): number {
   for (const l of readFileSync(USAGE, "utf8").split("\n")) if (l.trim()) { const e = JSON.parse(l); if (e.provider === (kind === "openai" ? "openai" : "vercel") && typeof e.dollars === "number") d += e.dollars; }
   return d;
 }
-const meter = { calls: 0, input: 0, cached_input: 0, output: 0, reasoning: 0, dollars: 0, unparseable: 0, truncated: 0, http_failed: 0, refused: 0, store_hits: 0, own_cache_hits: 0, prompt_tokens_est: 0 };
+const meter = { calls: 0, input: 0, cached_input: 0, output: 0, reasoning: 0, dollars: 0, unparseable: 0, truncated: 0, http_failed: 0, refused: 0, store_hits: 0, own_cache_hits: 0, prompt_tokens_est: 0, repaired: 0 };
 function log(step: string, u: { input_tokens: number; cached_input_tokens: number; output_tokens: number; reasoning_tokens: number | null }, d: number | null, extra: Record<string, unknown>) {
   meter.calls++;
   meter.input += u.input_tokens;
@@ -299,14 +300,24 @@ async function viaCodex<T>(prompt: string, parse: (t: string) => T | undefined, 
 const generate = <T,>(prompt: string, parse: (t: string) => T | undefined, step: string, meta: Record<string, unknown>): Promise<Outcome<T>> =>
   api ? viaGateway(prompt, parse, step, meta) : viaCodex(prompt, parse, step, meta);
 
-const records = (text: string) => {
+// Slice 3e arm M5r (--repair escaped-quote): only when an answer does not parse, a line `"<field>": \"<text>\"` (or `\""`)
+// is rewritten to `"<field>": "<text>"` (gpt-5-mini opens string values with an escaped quote).
+const repairLine = (t: string) => t.replace(/^(\s*"[A-Za-z_]+":\s*)\\"(.*?)\\?"+(,?)\s*$/gm, '$1"$2"$3');
+const repaired = <T,>(p: (t: string) => T | undefined) => (t: string): T | undefined => {
+  const v = p(t);
+  if (v !== undefined || a.repair !== "escaped-quote") return v;
+  const r = p(repairLine(t));
+  if (r !== undefined) meter.repaired++;
+  return r;
+};
+const records = repaired((text: string) => {
   const v = parseJson(text, "array");
   return Array.isArray(v) ? v.flatMap((r) => { const p = Extracted.safeParse(r); return p.success ? [p.data] : []; }) : undefined;
-};
-const labelObject = (text: string) => {
+});
+const labelObject = repaired((text: string) => {
   const v = parseJson(text, "object");
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined;
-};
+});
 
 // ---- Extraction ----
 
@@ -402,7 +413,7 @@ const meta = {
   label_failed: chunkLog.filter((c) => c.label).length, docs_complete: docsCovered, wall_s: wall, ...meter,
   label_fill: Object.fromEntries((["terms", "replaces", "requires", "prerequisites", "conditions"] as const).map((k) => [k, incoming.filter((i) => (i[k] as unknown[]).length > 0).length])),
   chunk_log: chunkLog.sort((x, y) => x.doc.localeCompare(y.doc) || x.ci - y.ci),
-  evidence, diet: a.diet ?? null, addendum: a.addendum ?? null, prompt_sha: { extract: sha256(DIET(evidence === "ids" ? EXTRACT_PROMPT_IDS : EXTRACT_PROMPT)), label: sha256(LABEL_PROMPT), one_call: sha256(ONE_CALL_PROMPT), schema: sha256(SCHEMA_PROMPT) },
+  evidence, diet: a.diet ?? null, addendum: a.addendum ?? null, repair: a.repair ?? null, prompt_sha: { extract: sha256(DIET(evidence === "ids" ? EXTRACT_PROMPT_IDS : EXTRACT_PROMPT)), label: sha256(LABEL_PROMPT), one_call: sha256(ONE_CALL_PROMPT), schema: sha256(SCHEMA_PROMPT) },
 };
 writeFileSync(join(runDir, "meta.json"), JSON.stringify(meta, null, 1) + "\n");
 console.log(JSON.stringify({ ...meta, chunk_log: undefined, docs_complete: docsCovered.length }));

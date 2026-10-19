@@ -383,3 +383,19 @@ on DEV/H2 than on short notes). The pre-registered $1.40 abort is therefore appl
 run instead (166k characters, long guides included): DEV $/char × (H1 + H2 characters, 280,740) × 1.5 + DEV $ must be
 ≤ $1.40, and an arm's held-out runs start only if that projection fits what is left of the $3.00 cap. The hard per-call
 cap is unchanged.
+
+### Slice 3e amendment: DEV outcome and arm M5r, fixed before any held-out run
+
+DEV (rule 1): **M54 fails** (42/61 required fetched, 61/96 in fetched sources, 0 failed chunks; it writes no record for
+Nest 12's ESM move, Prisma 7's driver adapter or `prisma-client`). **M5 fails** (49/61, 82/96) with 2 of 12 chunks
+unparseable after 3 attempts: in 7 of 9 failed answers gpt-5-mini opens a JSON string value with an escaped quote
+(`"evidence": \"…\"`), always in `evidence`. Post hoc (no calls), repairing that one pattern in the two chunks' last
+answers gives 56/61 and 89/96, inside the DEV thresholds. N54 does not run (no mini passed DEV as registered).
+
+**Arm M5r** (a choice made on DEV only, as the brief allows): gpt-5-mini, low, with one deterministic repair applied only
+when an answer does not parse: a line `"<field>": \"<text>\"` (optionally `\""`) becomes `"<field>": "<text>"`
+(`run3.mts --repair escaped-quote`). It needs a parser change in production if adopted. It reruns DEV (answers that
+parsed come from the run's own cache; the failed chunks and their label calls are called again) and must pass rule 1
+(≥ 56/61, ≥ 83/96, ≤ 1 failed chunk). If it passes, H1 and H2 run once each under rule 2 unchanged, with the projection
+rule above (M5's DEV $0.258 projects $0.69 for H1 + H2 plus $0.26 = $0.95 ≤ $1.40). N54 then runs only under the
+original condition (a mini passed DEV and the cap covers it), with the same repair.
