@@ -414,6 +414,14 @@ impl<'a> Scope<'a> {
         self.evidence_with(lit, role, by_path, true, keep)
     }
 
+    /// Whether the code file at `path` configures the technology or calls its API: it imports one of its packages, or is
+    /// a config file named for it (`tsdown.config.ts`, `.eslintrc.js`). Not a path that only names it in a directory
+    /// (`src/types/` for TypeScript), nor a generic file its records name (`index.ts`): a configuration option written
+    /// there is another tool's or the application's own key.
+    pub fn configures(&self, path: &str) -> bool {
+        self.importing.contains(path) || config_tool(path).is_some_and(|t| self.path_names(&t))
+    }
+
     /// Whether the technology's records name the file at `path` (`tsconfig.json`): a config file it reads.
     fn record_named(&self, path: &str) -> bool {
         self.config_names.contains(&path.rsplit('/').next().unwrap_or(path).to_ascii_lowercase())
@@ -590,7 +598,18 @@ pub fn live_site(path: &str, text: &str, lit: &str, replacements: &[String]) -> 
 /// `keyed`: the record's deprecated API is an object property or option key (`keyed_api`), so in JavaScript-family code
 /// a site counts only where the identifier is written as a key or a member (`key_or_member`): a module-level
 /// `const defaultOptions = {...}` and its references are a variable of the same name, not the property.
+#[cfg(test)]
 pub fn live_site_near(path: &str, text: &str, lit: &str, replacements: &[String], context: Option<&[String]>, keyed: bool) -> bool {
+    live_site_under(path, text, lit, replacements, context, keyed, None)
+}
+
+/// `live_site_near`, and with `parent` (`Some`) a site counts only where it is written under that key (`under_key`): an
+/// option value the record names as the option of one key (`as-needed` of ESLint's `radix`) is not that option under
+/// another key in the same file (`'@stylistic/arrow-parens': ['error', 'as-needed']`).
+pub fn live_site_under(path: &str, text: &str, lit: &str, replacements: &[String], context: Option<&[String]>, keyed: bool, parent: Option<&str>) -> bool {
+    if parent.is_some_and(|k| !text.contains(k)) {
+        return false;
+    }
     if context.is_some_and(|c| c.is_empty()) {
         return false;
     }
@@ -628,6 +647,7 @@ pub fn live_site_near(path: &str, text: &str, lit: &str, replacements: &[String]
     sites(lit)
         .into_iter()
         .filter(|at| !keyed || key_or_member(b, *at, lit.len()))
+        .filter(|at| parent.is_none_or(|k| under_key(b, *at, k, !js_code(path))))
         .map(line_of)
         .filter(|l| beside.as_ref().is_none_or(|b| b.iter().any(|x| x.abs_diff(*l) <= SITE_LINES)))
         .any(|l| !near.iter().any(|r| r.abs_diff(l) <= SITE_LINES))
@@ -680,6 +700,63 @@ fn key_or_member(b: &[u8], at: usize, len: usize) -> bool {
 }
 
 /// The unmatched bracket before `at` (`{` of an object literal, `(` of a call's arguments), by counting brackets back.
+/// Whether the value at `at` is written under the key `key`: one of the nearest three keys of the containers enclosing
+/// it, innermost first, is `key` (quoted or not), within 4000 bytes. `'as-needed'` is under `radix` in
+/// `radix: ['error', 'as-needed']`, `"radix": ["error", "as-needed"]` and a YAML `radix: [error, as-needed]`; not in
+/// `'@stylistic/arrow-parens': ['error', 'as-needed']` beside `radix: 'error'`. A key ends at `:` (and at `=` when
+/// `assign`: TOML, INI); a sibling's key (after a `,` or `;`) is skipped. A lexer's view; quoted strings are skipped.
+fn under_key(b: &[u8], at: usize, key: &str, assign: bool) -> bool {
+    let key_at = |end: usize| -> &[u8] {
+        let mut e = end;
+        while e > 0 && b[e - 1].is_ascii_whitespace() && b[e - 1] != b'\n' {
+            e -= 1;
+        }
+        let quoted = e > 0 && matches!(b[e - 1], b'\'' | b'"');
+        if quoted {
+            e -= 1;
+        }
+        let mut s = e;
+        while s > 0 && (b[s - 1].is_ascii_alphanumeric() || matches!(b[s - 1], b'_' | b'-' | b'$' | b'@' | b'/' | b'.')) {
+            s -= 1;
+        }
+        &b[s..e]
+    };
+    let lo = at.saturating_sub(4000);
+    let (mut depth, mut sibling, mut keys) = (0usize, false, 0);
+    // From before the value's own opening quote.
+    let mut j = if at > 0 && matches!(b[at - 1], b'\'' | b'"' | b'`') { at - 1 } else { at };
+    while j > lo {
+        j -= 1;
+        let c = b[j];
+        match c {
+            b'\'' | b'"' | b'`' => {
+                // The string's opening quote on the same line.
+                if let Some(k) = b[lo..j].iter().rposition(|x| *x == c || *x == b'\n')
+                    && b[lo + k] == c
+                {
+                    j = lo + k;
+                }
+            }
+            b')' | b']' | b'}' => depth += 1,
+            b'(' | b'[' | b'{' if depth > 0 => depth -= 1,
+            b'(' | b'[' | b'{' => sibling = false,
+            b',' | b';' if depth == 0 => sibling = true,
+            b':' | b'=' if depth == 0 && !sibling && (c == b':' || assign) && b.get(j + 1) != Some(&c) && (j == 0 || b[j - 1] != c) => {
+                if key_at(j) == key.as_bytes() {
+                    return true;
+                }
+                keys += 1;
+                if keys == 3 {
+                    return false;
+                }
+                sibling = true;
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
 fn opener(b: &[u8], at: usize) -> Option<u8> {
     let mut depth = 0usize;
     for &c in b[..at].iter().rev() {
@@ -1661,6 +1738,12 @@ mod tests {
         assert!(!key("const v = c ? defaultOptions : 1;"), "a ternary is not a key");
         assert!(live_site_near("r.json", "{\"defaultOptions\": 1}", "defaultOptions", &[], None, true), "keyed applies to code only");
         assert!(live_site_near("r.ts", "const defaultOptions = 1;", "defaultOptions", &[], None, false), "not keyed: as before");
+        let under = |t: &str, lit: &str, k: &str| live_site_under("x.yml", t, lit, &[], None, false, Some(k));
+        assert!(under("rules:\n  radix: [error, as-needed]\n", "as-needed", "radix"));
+        assert!(under("rules:\n  radix:\n    - error\n    - as-needed\n", "as-needed", "radix"), "block YAML");
+        assert!(under("{\"radix\": [\"error\", {\"mode\": \"as-needed\"}]}", "as-needed", "radix"), "nested option object");
+        assert!(!under("radix: error\narrow-parens:\n  - error\n  - as-needed\n", "as-needed", "radix"));
+        assert!(!under("{\"arrow-parens\": [\"error\", \"as-needed\"], \"radix\": \"error\"}", "as-needed", "radix"));
         assert_eq!(camel_words("NextProxy"), ["next", "proxy"]);
         assert_eq!(camel_words("createI18nMiddleware"), ["create", "i18n", "middleware"]);
         assert_eq!(camel_words("HTTPServer_x"), ["httpserver", "x"]);
