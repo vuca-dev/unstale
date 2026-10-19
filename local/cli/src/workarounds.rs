@@ -46,6 +46,9 @@ pub struct Workaround {
     /// `patch:postcss@npm%3A7.0.39#…`, `name@1.2.3`): the copy it changes. None for an alias, a fork or a comment.
     pub version: Option<String>,
     pub refs: Vec<Ref>,
+    /// A comment cites an upstream tracker: an issue or pull request in `refs`, or a bug or issue URL on any host
+    /// (`bugs.webkit.org/show_bug.cgi?id=1`). Such a comment is about the bug it cites.
+    pub cites: bool,
     /// Lowercased words of a comment (split on everything but letters, digits, `@`, `/`, `-`, `_`; dotted paths
     /// split too, so `geventhttpclient.useragent` names `geventhttpclient`).
     pub words: BTreeSet<String>,
@@ -152,15 +155,25 @@ fn is_git(spec: &str) -> bool {
     ["github:", "git+", "git://", "https://github.com/", "gitlab:", "bitbucket:"].iter().any(|p| spec.starts_with(p))
 }
 
-/// An alias or fork declared for `name` with `spec`: `npm:other@1` names another package; a Git URL a fork.
+/// The npm scope that publishes a package: its `@scope`, or an unscoped package's own name (`typescript` owns
+/// `@typescript/…`).
+fn publisher(pkg: &str) -> &str {
+    pkg.strip_prefix('@').map_or(pkg, |p| p.split('/').next().unwrap_or(p))
+}
+
+/// An alias or fork declared for `name` with `spec`: `npm:other@1` names another package; a Git URL a fork. An alias
+/// to a package its own publisher's scope holds (`typescript: npm:@typescript/typescript6@^6`) is another copy of the
+/// same technology kept on purpose (stack.rs `parallel_copy`), not a workaround an upgrade of it retires.
 fn declared(path: &str, line: usize, name: &str, spec: &str, out: &mut Vec<Workaround>) {
     let name = strip_version(name).to_string();
     if let Some(target) = spec.strip_prefix("npm:") {
-        if strip_version(target) != name {
-            out.push(Workaround { kind: Kind::Alias, path: path.into(), line, package: Some(name), version: None, refs: vec![], words: BTreeSet::new() });
+        let target = strip_version(target);
+        let vendor = target.starts_with('@') && publisher(target).eq_ignore_ascii_case(publisher(&name));
+        if target != name && !vendor {
+            out.push(Workaround { kind: Kind::Alias, path: path.into(), line, package: Some(name), version: None, refs: vec![], cites: false, words: BTreeSet::new() });
         }
     } else if is_git(spec) {
-        out.push(Workaround { kind: Kind::Fork, path: path.into(), line, package: Some(name), version: None, refs: vec![], words: BTreeSet::new() });
+        out.push(Workaround { kind: Kind::Fork, path: path.into(), line, package: Some(name), version: None, refs: vec![], cites: false, words: BTreeSet::new() });
     }
 }
 
@@ -233,6 +246,18 @@ pub fn refs(text: &str) -> Vec<Ref> {
     out.into_iter().collect()
 }
 
+/// Whether a comment cites an upstream tracker: an issue or pull request reference, or a URL whose host or path names a
+/// bug or issue as a word (`bugs.webkit.org/show_bug.cgi`, `bugzilla.…`, `…/-/issues/2`; not `/docs/debug`).
+fn cites(text: &str) -> bool {
+    !refs(text).is_empty()
+        || text.match_indices("http").any(|(i, _)| {
+            let url = text[i..].split(|c: char| c.is_whitespace() || matches!(c, ')' | '>' | '"' | '\'' | '`')).next().unwrap_or("");
+            let url = url.to_ascii_lowercase();
+            (url.starts_with("https://") || url.starts_with("http://"))
+                && url.split(|c: char| !c.is_ascii_alphanumeric()).any(|w| w.starts_with("bug") || w.starts_with("issue"))
+        })
+}
+
 fn words(text: &str) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
     for w in text.split(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '@' | '/' | '-' | '_' | '.'))) {
@@ -279,7 +304,7 @@ pub fn detect(repo: &usage::Repo) -> Vec<Workaround> {
         let in_patches = path.rsplit('/').nth(1).is_some_and(|d| d == "patches");
         if in_patches && let Some(pkg) = patch_package(base(path)) && first(&mut patched, &pkg, patch_version(base(path))) {
             let version = patch_version(base(path));
-            out.push(Workaround { kind: Kind::Patch, path: path.clone(), line: 0, package: Some(pkg), version, refs: vec![], words: BTreeSet::new() });
+            out.push(Workaround { kind: Kind::Patch, path: path.clone(), line: 0, package: Some(pkg), version, refs: vec![], cites: false, words: BTreeSet::new() });
         }
     }
     for (path, text) in &repo.files {
@@ -294,7 +319,7 @@ pub fn detect(repo: &usage::Repo) -> Vec<Workaround> {
                         let pkg = strip_version(k).to_string();
                         let version = entry_version(k, None);
                         if first(&mut patched, &pkg, version.clone()) {
-                            out.push(Workaround { kind: Kind::Patch, path: path.clone(), line: line_of(text, k), package: Some(pkg), version, refs: vec![], words: BTreeSet::new() });
+                            out.push(Workaround { kind: Kind::Patch, path: path.clone(), line: line_of(text, k), package: Some(pkg), version, refs: vec![], cites: false, words: BTreeSet::new() });
                         }
                     }
                 }
@@ -305,7 +330,7 @@ pub fn detect(repo: &usage::Repo) -> Vec<Workaround> {
                             let k = k.rsplit('>').next().unwrap_or(k);
                             let version = entry_version(k, Some(spec));
                             if spec.starts_with("patch:") && first(&mut patched, strip_version(k), version.clone()) {
-                                out.push(Workaround { kind: Kind::Patch, path: path.clone(), line: line_of(text, spec), package: Some(strip_version(k).to_string()), version, refs: vec![], words: BTreeSet::new() });
+                                out.push(Workaround { kind: Kind::Patch, path: path.clone(), line: line_of(text, spec), package: Some(strip_version(k).to_string()), version, refs: vec![], cites: false, words: BTreeSet::new() });
                             }
                             declared(path, line_of(text, spec), k, spec, &mut out);
                         }
@@ -317,7 +342,7 @@ pub fn detect(repo: &usage::Repo) -> Vec<Workaround> {
                     let pkg = strip_version(k).to_string();
                     let version = entry_version(k, None);
                     if first(&mut patched, &pkg, version.clone()) {
-                        out.push(Workaround { kind: Kind::Patch, path: path.clone(), line: n, package: Some(pkg), version, refs: vec![], words: BTreeSet::new() });
+                        out.push(Workaround { kind: Kind::Patch, path: path.clone(), line: n, package: Some(pkg), version, refs: vec![], cites: false, words: BTreeSet::new() });
                     }
                 }
                 for block in ["overrides", "catalog"] {
@@ -334,7 +359,7 @@ pub fn detect(repo: &usage::Repo) -> Vec<Workaround> {
                         && name.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '[' | ']'))
                     {
                         let name = name.split('[').next().unwrap_or(name).to_string();
-                        out.push(Workaround { kind: Kind::Fork, path: path.clone(), line: n + 1, package: Some(name), version: None, refs: vec![], words: BTreeSet::new() });
+                        out.push(Workaround { kind: Kind::Fork, path: path.clone(), line: n + 1, package: Some(name), version: None, refs: vec![], cites: false, words: BTreeSet::new() });
                     }
                 }
             }
@@ -362,7 +387,7 @@ pub fn detect(repo: &usage::Repo) -> Vec<Workaround> {
             let lower = block.to_ascii_lowercase();
             if let Some(m) = marker(&lower) {
                 let at = (start..i).find(|&j| lines[j].to_ascii_lowercase().contains(m)).unwrap_or(start) + 1;
-                out.push(Workaround { kind: Kind::Comment, path: path.clone(), line: at, package: None, version: None, refs: refs(&block), words: words(&block) });
+                out.push(Workaround { kind: Kind::Comment, path: path.clone(), line: at, package: None, version: None, refs: refs(&block), cites: cites(&block), words: words(&block) });
             }
         }
     }
@@ -410,7 +435,8 @@ pub fn evidence_refs(urls_quotes: &[(&str, &str)]) -> (BTreeSet<String>, BTreeSe
 /// How strongly a workaround joins a technology: 3 when one of its records cites the same upstream issue or pull
 /// request; 2 when the manifest patches, aliases or forks its package, or a comment names the package (or its
 /// distinctive upstream repository) in a file that imports it; 1 when such a comment cites an issue in its upstream
-/// repository; `None` otherwise.
+/// repository; `None` otherwise. A comment that cites upstream trackers, none of them the technology's repository, is
+/// about another bug: naming the technology in its prose does not join it (a WebKit bug that mentions the test runner).
 pub fn joins(
     w: &Workaround,
     packages: &[String],
@@ -427,6 +453,9 @@ pub fn joins(
     }
     let named = packages.iter().flat_map(|p| spellings(p)).any(|s| w.words.contains(&s))
         || repos.iter().filter_map(|r| r.split('/').nth(1)).any(|r| (r.contains('-') || r.len() >= 8) && !r.contains('.') && w.words.contains(r));
+    if w.cites && !repos.is_empty() && !w.refs.iter().any(|r| repos.contains(&r.repo)) {
+        return None;
+    }
     let strength = if named { 2 } else if w.refs.iter().any(|r| repos.contains(&r.repo)) { 1 } else { return None };
     imports(&w.path).then_some(strength)
 }
@@ -648,17 +677,31 @@ mod tests {
     fn a_comment_joins_by_cited_issue_or_by_name_in_an_importing_file() {
         let w = Workaround {
             kind: Kind::Comment, path: "src/a.ts".into(), line: 3, package: None, version: None,
-            refs: refs("until vercel/chat#950 lands"), words: words("Remove when bumping redux-toolkit to v2"),
+            refs: refs("until vercel/chat#950 lands"), cites: true, words: words("Remove when bumping redux-toolkit to v2"),
         };
         let (repos, cited) = evidence_refs(&[("https://github.com/vercel/chat/releases/tag/x", "Send the flag (#950)")]);
         assert_eq!(joins(&w, &["@chat-adapter/teams".into()], &repos, &cited, None, |_| false), Some(3));
         let (repos, cited) = evidence_refs(&[("https://github.com/reduxjs/redux-toolkit/releases/tag/v2.12.0", "fix")]);
-        assert_eq!(joins(&w, &["@reduxjs/toolkit".into()], &repos, &cited, None, |_| true), Some(2));
-        assert_eq!(joins(&w, &["@reduxjs/toolkit".into()], &repos, &cited, None, |_| false), None, "the file must import it");
-        let short = Workaround { words: words("workaround: the next line needs this"), refs: vec![], ..w.clone() };
+        assert_eq!(joins(&w, &["@reduxjs/toolkit".into()], &repos, &cited, None, |_| true), None, "it cites another repository's issue");
+        let named = Workaround { refs: vec![], cites: false, ..w.clone() };
+        assert_eq!(joins(&named, &["@reduxjs/toolkit".into()], &repos, &cited, None, |_| true), Some(2));
+        assert_eq!(joins(&named, &["@reduxjs/toolkit".into()], &repos, &cited, None, |_| false), None, "the file must import it");
+        let short = Workaround { words: words("workaround: the next line needs this"), refs: vec![], cites: false, ..w.clone() };
         assert_eq!(joins(&short, &["next".into()], &BTreeSet::new(), &BTreeSet::new(), None, |_| true), None, "a plain short word is not a name");
-        let monkey = Workaround { words: words("Monkey patch geventhttpclient.useragent.CompatRequest so that Cookiejar works"), refs: vec![], ..w };
+        let monkey = Workaround { words: words("Monkey patch geventhttpclient.useragent.CompatRequest so that Cookiejar works"), refs: vec![], cites: false, ..w.clone() };
         assert_eq!(joins(&monkey, &["geventhttpclient".into()], &BTreeSet::new(), &BTreeSet::new(), None, |_| true), Some(2));
+        let text = "To work around a drag and drop bug in Safari ... as playwright will complain that pointer-events are intercepted. \
+                    https://bugs.webkit.org/show_bug.cgi?id=66547 See: https://github.com/WordPress/gutenberg/pull/56625";
+        let other = Workaround { words: words(text), refs: refs(text), cites: cites(text), ..w.clone() };
+        let (repos, cited) = evidence_refs(&[("https://github.com/microsoft/playwright/releases/tag/v1.64.0", "fix")]);
+        assert_eq!(joins(&other, &["playwright".into()], &repos, &cited, None, |_| true), None, "another project's bug");
+        let webkit = Workaround { refs: vec![], cites: cites("https://bugs.webkit.org/show_bug.cgi?id=66547"), ..other.clone() };
+        assert_eq!(joins(&webkit, &["playwright".into()], &repos, &cited, None, |_| true), None, "a bug URL on any host");
+        let own = Workaround { refs: refs("microsoft/playwright#123"), cites: true, ..other };
+        assert_eq!(joins(&own, &["playwright".into()], &repos, &cited, None, |_| true), Some(2), "its own repository");
+        assert!(!cites("see https://playwright.dev/docs/actionability"));
+        assert!(!cites("see https://example.dev/docs/debug and https://example.dev/tissue"));
+        assert!(cites("https://gitlab.com/a/b/-/issues/2") && cites("(https://bugzilla.mozilla.org/show_bug.cgi?id=1)"));
     }
 
     #[test]
@@ -667,6 +710,8 @@ mod tests {
         declared("pnpm-workspace.yaml", 46, "@lexical/code", "npm:lexical-code-no-prism@0.41.0", &mut out);
         declared("package.json", 3, "lodash", "npm:lodash@4.17.21", &mut out);
         declared("package.json", 4, "slate", "github:me/slate#fix", &mut out);
+        declared("package.json", 5, "typescript", "npm:@typescript/typescript6@^6.0.2", &mut out);
+        declared("package.json", 6, "@lexical/code", "npm:@lexical/code-legacy@0.40.0", &mut out);
         assert_eq!(out.iter().map(|w| (w.kind, w.package.clone().unwrap())).collect::<Vec<_>>(), vec![(Kind::Alias, "@lexical/code".into()), (Kind::Fork, "slate".into())]);
         let yaml = "packages:\n  - a\npatchedDependencies:\n  '@chat-adapter/teams@4.37.0': patches/x.patch\n  ics: patches/ics.patch\noverrides:\n  foo: 1.0.0\n";
         assert!(exact("4.37.0") && exact("=1.2.3") && !exact("^1.2.3") && !exact("1.x") && !exact("workspace:*"));
