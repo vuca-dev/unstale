@@ -60,6 +60,9 @@ struct Node {
     /// A project of this repository (an importer, a workspace member): its directory relative to the repository
     /// root. Not queried; its edges are the direct dependencies.
     local: Option<String>,
+    /// A project published for others (`stack::Kind::Library`): a pin there reaches its users, so a blocked fix names
+    /// it before an application's.
+    published: bool,
     /// Installed from somewhere other than the public registry (a private registry, git, a tarball or a path): its
     /// name is never sent.
     private: bool,
@@ -572,7 +575,11 @@ pub fn graphs(root: &Path, st: &Stack) -> Vec<Graph> {
     // registry configuration places on a private registry (`privacy`: a configuration wins over a public lockfile URL)
     // are never sent.
     let own: BTreeSet<String> = st.packages.iter().filter_map(|p| p.own.as_deref()).filter_map(util::purl_name).collect();
+    let libraries: BTreeSet<String> = st.packages.iter().filter(|p| p.kind == crate::stack::Kind::Library).map(|p| join_dir(&p.dir, "")).collect();
     for g in &mut out {
+        for n in &mut g.nodes {
+            n.published = n.local.as_ref().is_some_and(|d| libraries.contains(d));
+        }
         // A test, example or fixture lockfile: its directory's own configuration applies too.
         let fixture = !matches!(crate::usage::path_role(&g.file), crate::usage::Role::App | crate::usage::Role::Tooling);
         for n in &mut g.nodes {
@@ -610,7 +617,7 @@ impl Severity {
             _ => Severity::Unrated,
         }
     }
-    fn word(self) -> &'static str {
+    pub fn word(self) -> &'static str {
         match self {
             Severity::Critical => "critical",
             Severity::High => "high",
@@ -700,6 +707,9 @@ pub struct Item {
     pub why: Vec<String>,
     /// The direct dependencies that pull it in (`name version`, runtime ones first), or empty when it is one.
     pub via: Vec<String>,
+    /// In the runtime closure of an application or published package (not development only).
+    #[serde(default)]
+    pub runtime: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -807,10 +817,13 @@ pub fn evaluate(
                     blocked = true;
                     why.push("no fixed version: replace or mitigate".into());
                 } else {
-                    // The first range or override refusing the lowest fix, when every fix is refused.
+                    // The first range or override refusing the lowest fix, when every fix is refused; a published
+                    // project's range first.
                     let ovs = overrides(g, &nd.name);
+                    let mut ps = parents[i].clone();
+                    ps.sort_by_key(|(p, _)| !g.nodes[*p].published);
                     let refuses = |f: &Version| -> Option<String> {
-                        for (p, r) in &parents[i] {
+                        for (p, r) in &ps {
                             // A range the installed version is outside of is superseded (an override set it).
                             if let Some(r) = r
                                 && ovs.is_empty()
@@ -835,15 +848,16 @@ pub fn evaluate(
                 }
                 let fresh = d.published.get(..10).and_then(util::parse_date).is_some_and(|days| today - days <= FRESH_DAYS);
                 // What calls for action: critical or high at runtime; critical dev-only with no fix the ranges admit;
-                // moderate at runtime when its fix is refused by a range, pin or override, or when it is new on a
-                // direct dependency. A moderate with no fixed version anywhere, or new on a transitive package, is
-                // a nit: nothing to bump.
+                // moderate at runtime when its fix is refused by a range, pin or override, when no release fixes it
+                // on a direct dependency (replace or mitigate: nothing will fix it by itself), or when it is new on a
+                // direct dependency. A moderate with no fixed version on a transitive package, or new on one, is a
+                // nit: nothing to bump.
                 let shown = if !runtime[i] {
                     blocked
                 } else if high {
                     true
                 } else {
-                    (blocked && !fixes.is_empty()) || (direct[i] && fresh)
+                    (blocked && (!fixes.is_empty() || direct[i])) || (direct[i] && fresh)
                 };
                 if !shown {
                     continue;
@@ -881,7 +895,9 @@ pub fn evaluate(
                     fix: fixes.first().map(|f| f.to_string()),
                     why: vec![],
                     via: vec![],
+                    runtime: false,
                 });
+                it.runtime |= runtime[i];
                 for w in why {
                     if !it.why.contains(&w) {
                         it.why.push(w);
@@ -1374,10 +1390,16 @@ mod tests {
         let items = run(g, &docs, &[("markdown-it", "14.1.0", &["GHSA-new"])], "2026-10-18").1;
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].why, vec!["published 2026-10-01"]);
-        // No fixed version anywhere: a moderate nit.
+        // No fixed version anywhere: a moderate nit on a transitive package.
         let docs = [("GHSA-nofix", doc(Some(Severity::Moderate), "2024-01-01T00:00:00Z", &[], &[]))];
         let g = npm_lock(NPM_LOCK, ".", "package-lock.json");
         assert_eq!(run(g, &docs, &[("proxy-addr", "2.0.7", &["GHSA-nofix"])], "2026-10-18").1, vec![]);
+        // On a runtime direct dependency nothing will fix it by itself: shown, replace or mitigate (n8n's showdown).
+        let g = npm_lock(NPM_LOCK, ".", "package-lock.json");
+        let items = run(g, &docs, &[("markdown-it", "14.1.0", &["GHSA-nofix"])], "2026-10-18").1;
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].why, vec!["no fixed version: replace or mitigate"]);
+        assert!(items[0].runtime && items[0].fix.is_none());
     }
 
     #[test]
@@ -1391,6 +1413,7 @@ mod tests {
             fix: Some(fix.into()),
             why: vec!["high at runtime".into()],
             via: if via.is_empty() { vec![] } else { vec![via.into()] },
+            runtime: true,
         };
         let mut items = vec![item("A-1", "a", Severity::Critical, "1.0.1", "top 1.0.0"), item("A-2", "a", Severity::High, "1.0.3", "top 1.0.0"), item("B-1", "b", Severity::Moderate, "1.1.0", "top 1.0.0")];
         for k in 0..12 {
@@ -1426,6 +1449,7 @@ mod tests {
             fix: Some("9.0.0".into()),
             why: why.iter().map(|w| w.to_string()).collect(),
             via: via.iter().map(|v| v.to_string()).collect(),
+            runtime: true,
         };
         let items = vec![
             it("V-1", "vue", "3.5.0", &["og 5.1.0"], &["high at runtime", "published 2026-10-05"]),

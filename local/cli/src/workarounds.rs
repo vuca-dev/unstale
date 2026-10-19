@@ -473,6 +473,8 @@ pub struct Decl {
     dev: Option<bool>,
     /// What holds its version: "an exact pin" or "an override".
     holds: Option<&'static str>,
+    /// A package published for others (`stack::is_library`): its pin reaches its users, so it is named first.
+    published: bool,
 }
 
 fn req_name(r: &str) -> String {
@@ -485,7 +487,14 @@ pub fn declarations(repo: &usage::Repo) -> Vec<Decl> {
     let mut out = vec![];
     for (path, text) in &repo.files {
         let app = repo.role(path) == Role::App;
-        let mut push = |name: String, dev: Option<bool>, holds: Option<&'static str>| out.push(Decl { name, path: path.clone(), app, dev, holds });
+        let published = base(path) == "package.json" && serde_json::from_str::<serde_json::Value>(text).is_ok_and(|v| {
+            let dir = path.rsplit_once('/').map_or("", |(d, _)| d);
+            let beside = ["package-lock.json", "pnpm-lock.yaml", "yarn.lock", "npm-shrinkwrap.json"]
+                .iter()
+                .any(|l| repo.paths.binary_search(&if dir.is_empty() { l.to_string() } else { format!("{dir}/{l}") }).is_ok());
+            crate::stack::is_library(&v, beside)
+        });
+        let mut push = |name: String, dev: Option<bool>, holds: Option<&'static str>| out.push(Decl { name, path: path.clone(), app, dev, holds, published });
         let key = |k: &str| strip_version(k.rsplit('>').next().unwrap_or(k)).to_string();
         match base(path) {
             "package.json" => {
@@ -548,13 +557,34 @@ pub fn facts(decls: &[Decl], packages: &[String]) -> Facts {
         runtime: mine.iter().any(|d| d.app && d.dev == Some(false)),
         dev_only: !shipped && mine.iter().any(|d| d.dev == Some(true)),
         // Only application manifests hold back what ships: a pin in an example, a CI script or a test fixture does not.
-        blocker: mine.iter().find(|d| d.app && d.holds.is_some()).map(|d| format!("{} in {}", d.holds.unwrap_or_default(), d.path)),
+        // A published package's pin first: it holds the version for its users too.
+        blocker: mine
+            .iter()
+            .filter(|d| d.app && d.holds.is_some())
+            .min_by_key(|d| !d.published)
+            .map(|d| format!("{} in {}", d.holds.unwrap_or_default(), d.path)),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_published_packages_pin_is_named_before_an_applications() {
+        // plate's shape: the private site and the published package both pin the same version.
+        let mut repo = usage::Repo::default();
+        for (p, t) in [
+            ("apps/www/package.json", r#"{"name":"www","private":true,"dependencies":{"@excalidraw/excalidraw":"0.18.0"}}"#),
+            ("packages/excalidraw/package.json", r#"{"name":"@platejs/excalidraw","version":"1.0.0","exports":{},"dependencies":{"@excalidraw/excalidraw":"0.18.0"}}"#),
+        ] {
+            repo.files.push((p.into(), t.into()));
+            repo.paths.push(p.into());
+        }
+        let f = facts(&declarations(&repo), &["@excalidraw/excalidraw".into()]);
+        assert_eq!(f.blocker.as_deref(), Some("an exact pin in packages/excalidraw/package.json"));
+        assert!(f.runtime);
+    }
 
     #[test]
     fn patch_file_names_give_the_package() {

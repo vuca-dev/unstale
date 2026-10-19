@@ -1444,7 +1444,7 @@ struct Brief {
     direct: usize,
     versions_from: String,
     advisory_fixes: usize,
-    /// Upgrades whose security fix leads: runtime use, and a pin or override update PRs cannot move.
+    /// Upgrades whose security fix leads: runtime use, and a pin or override update PRs cannot move, or no fix.
     security_leads: usize,
     /// Upgrades that may retire a workaround in the code (`workarounds`).
     workarounds: usize,
@@ -1568,7 +1568,7 @@ fn summary(ctx: &Ctx, pending: &Pending, brief: &Brief, issue: Option<&str>) -> 
     }
     if brief.security_leads > 0 {
         let n = brief.security_leads;
-        lines.push(Line::new(format!("Priority · {n} security fix{} update PRs cannot apply: runtime code uses the package and a pin or override holds it.", if n == 1 { "" } else { "es" }), Tone::Amber));
+        lines.push(Line::new(format!("Priority · {n} security fix{} update PRs cannot apply: runtime code uses the package, and a pin or override holds it or no release fixes it.", if n == 1 { "" } else { "es" }), Tone::Amber));
     } else if brief.advisory_fixes > 0 {
         lines.push(Line::new(format!("Security · {} advisory fixes match installed versions; each is noted on its upgrade.", brief.advisory_fixes), Tone::Muted));
     }
@@ -1668,9 +1668,73 @@ struct Ranked<'a, 'o> {
     fixes: &'a [review::AdvisoryFix],
     notes: Vec<&'a funnel::Opp<'o>>,
     joins: Vec<Join>,
-    /// What keeps update PRs from applying a runtime security fix, when security leads.
-    leads: Option<String>,
+    /// Lockfile advisories (`advisories`, OSV) on this technology's own packages that no record of it carries.
+    lock: Vec<&'a crate::advisories::Item>,
+    /// Why a runtime security fix leads, when it does.
+    leads: Option<Lead>,
     value: String,
+}
+
+/// Why an upgrade's security fix leads: runtime code uses the package, and update PRs (Dependabot, Renovate) cannot
+/// fix it, because a pin or override holds the version or no release fixes it.
+#[derive(Debug, Clone, PartialEq)]
+enum Lead {
+    Held(String),
+    NoFix,
+}
+
+impl Lead {
+    fn terminal(&self) -> String {
+        match self {
+            Lead::Held(by) => format!("security fix blocked by {by}"),
+            Lead::NoFix => "advisory with no fixed release: replace or mitigate".into(),
+        }
+    }
+    fn line(&self) -> String {
+        match self {
+            Lead::Held(by) => format!("runtime code uses it, and {by} keeps update PRs (Dependabot, Renovate) from applying the fix"),
+            Lead::NoFix => "runtime code uses it, and no release fixes an advisory on the installed version: replace or mitigate".into(),
+        }
+    }
+}
+
+/// A name as lockfiles and manifests compare: PyPI's normalization, which leaves npm names as they are.
+fn package_key(name: &str) -> String {
+    name.to_ascii_lowercase().replace(['_', '.'], "-")
+}
+
+/// The lockfile advisories on a technology's own packages that none of its records' advisories (`fixes`) already
+/// names, by id or alias.
+fn lockfile_items<'a>(items: &'a [crate::advisories::Item], packages: &[String], fixes: &[review::AdvisoryFix], out: &Outcome) -> Vec<&'a crate::advisories::Item> {
+    let names: BTreeSet<String> = packages.iter().map(|p| package_key(p)).collect();
+    let known: BTreeSet<&str> = fixes
+        .iter()
+        .flat_map(|f| {
+            let a = &out.opps[f.opp].rec.r.advisories[f.advisory];
+            std::iter::once(a.id.as_str()).chain(a.aliases.iter().map(String::as_str))
+        })
+        .collect();
+    items.iter().filter(|it| names.contains(&package_key(&it.name)) && !known.contains(it.id.as_str())).collect()
+}
+
+/// A lockfile advisory as a security line on its upgrade: whether the upgrade's target fixes it.
+fn lock_line(it: &crate::advisories::Item, target: Option<&semver::Version>) -> String {
+    let parse = |v: &str| crate::util::parse_version(v).or_else(|| crate::pypi::parse_version(v));
+    let fix = match (it.fix.as_deref(), target) {
+        (None, _) => "no fixed release: replace or mitigate".to_string(),
+        (Some(f), Some(t)) if parse(f).is_some_and(|f| f > *t) => format!("fixed in {}, after this upgrade's target", display_text(f)),
+        (Some(f), _) => format!("fixed in {}", display_text(f)),
+    };
+    let why: Vec<&String> = it.why.iter().filter(|w| !w.starts_with("no fixed version")).collect();
+    let why = if why.is_empty() { String::new() } else { format!("; {}", why.iter().map(|w| display_text(w)).collect::<Vec<_>>().join("; ")) };
+    format!(
+        "  security: {} ({}, lockfile {} {}): {} [{fix}{why}]",
+        display_text(&it.id),
+        it.severity.word(),
+        display_text(&it.name),
+        display_text(&it.version),
+        display_text(&it.summary)
+    )
 }
 
 /// The workarounds an upgrade's records join (`workarounds::joins`), record-level joins first.
@@ -1826,6 +1890,8 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
     let found = workarounds::detect(&w.repo);
     let declared = workarounds::declarations(&w.repo);
     let groups = review::digest_groups(&out);
+    // Lockfile advisories (OSV, `advisories`) on a technology's own packages count as its upgrade's security evidence.
+    let lockfile = crate::advisories::report(&ctx.cache, &ctx.root).unwrap_or_default();
     let mut ranked: Vec<Ranked> = vec![];
     let mut quiet = 0;
     for (technology, lines) in &groups {
@@ -1833,7 +1899,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
         let tech_fixes = fixes.get(technology).map(Vec::as_slice).unwrap_or(&[]);
         // Release-note security fixes: security records the digest lists as records (no advisory, or one the index
         // cannot decide), not those whose advisories it counts.
-        let notes: Vec<&funnel::Opp> = indices
+        let mut notes: Vec<&funnel::Opp> = indices
             .iter()
             .map(|&i| &out.opps[i])
             .filter(|o| funnel::is_security(o) && review::security_reason(&out, o) && !tech_fixes.iter().any(|f| std::ptr::eq(&out.opps[f.opp], *o)))
@@ -1848,6 +1914,14 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
         members.sort_unstable();
         members.dedup();
         let packages = out.packages.get(technology).cloned().unwrap_or_default();
+        let lock = lockfile_items(&lockfile.items, &packages, tech_fixes, &out);
+        // A release note whose advisory the lockfile line already states (by id, or the advisory's own title as the
+        // note's summary) is said once, with what blocks its fix.
+        notes.retain(|o| {
+            !lock.iter().any(|it| {
+                o.rec.r.advisories.iter().any(|a| it.id == a.id || a.aliases.contains(&it.id)) || o.rec.r.summary.trim().eq_ignore_ascii_case(it.summary.trim())
+            })
+        });
         let joins = workaround_joins(&found, &members, &out, &packages, w);
         let mut classes: BTreeMap<Class, (usize, usize)> = BTreeMap::new();
         // Version fit: value this code shows evidence for that arrives without a major upgrade (an advisory fixed on
@@ -1865,7 +1939,15 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
                 fit |= !across_major(o);
             }
         }
-        if joins.is_empty() && tech_fixes.is_empty() && notes.is_empty() && obligations.is_empty() && in_effect.is_empty() && references == 0 && !classes.values().any(|c| c.0 > 0) {
+        // A lockfile advisory is security evidence in this code: the installed version is affected.
+        if !lock.is_empty() {
+            let e = classes.entry(Class::Security).or_default();
+            e.0 += lock.len();
+            e.1 += lock.len();
+            let parse = |v: &str| crate::util::parse_version(v).or_else(|| crate::pypi::parse_version(v));
+            fit |= lock.iter().any(|it| it.fix.as_deref().and_then(parse).zip(parse(&it.version)).is_some_and(|(f, i)| !major_step(&i, &f)));
+        }
+        if joins.is_empty() && tech_fixes.is_empty() && lock.is_empty() && notes.is_empty() && obligations.is_empty() && in_effect.is_empty() && references == 0 && !classes.values().any(|c| c.0 > 0) {
             quiet += 1;
             continue;
         }
@@ -1890,7 +1972,18 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
                 && !name.contains(".config.") && !name.starts_with('.') && !matches!(name, "conf.py" | "setup.py" | "noxfile.py" | "conftest.py")
         };
         let runtime = facts.runtime || (!facts.dev_only && members.iter().any(|&i| out.opps[i].files.iter().any(|f| code(f) && w.repo.role(f) == usage::Role::App)));
-        let leads = (!tech_fixes.is_empty() && runtime && !standalone).then_some(facts.blocker).flatten();
+        // A runtime security fix leads when update PRs cannot apply it: a pin or override in an application manifest
+        // holds the version (the manifest's own, else the one the lockfile advisory names), or no release fixes it.
+        let lock_held = lock.iter().find_map(|it| it.why.iter().find_map(|w| w.strip_prefix("fix blocked: ")).map(String::from));
+        let leads = if !runtime || standalone {
+            None
+        } else if lock.iter().any(|it| it.fix.is_none()) {
+            Some(Lead::NoFix)
+        } else if !tech_fixes.is_empty() || !lock.is_empty() {
+            facts.blocker.or(lock_held).map(Lead::Held)
+        } else {
+            None
+        };
         let evidenced = classes.values().map(|c| c.0).sum::<usize>();
         let class = if !joins.is_empty() {
             Class::Workaround
@@ -1919,7 +2012,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
             classes.len(),
             (obligations.len() + in_effect.len()).min(50),
         );
-        ranked.push(Ranked { key, class, technology, lines, fixes: tech_fixes, notes, joins, leads, value });
+        ranked.push(Ranked { key, class, technology, lines, fixes: tech_fixes, notes, lock, joins, leads, value });
     }
     ranked.sort_by(|a, b| b.key.cmp(&a.key).then_with(|| a.technology.cmp(b.technology)));
     let ranked = diversified(ranked, 8, 3);
@@ -1948,8 +2041,8 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
             }
             if let Some((k, _, _)) = r.joins.first() {
                 terminal += &format!(" · may retire your workaround ({})", found[*k].place());
-            } else if let Some(blocker) = &r.leads {
-                terminal += &format!(" · security fix blocked by {blocker}");
+            } else if let Some(lead) = &r.leads {
+                terminal += &format!(" · {}", lead.terminal());
             }
             upgrades.push(terminal);
         }
@@ -1969,14 +2062,17 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
             upgrade_text += &format!("  … {} more workarounds name this technology\n", r.joins.len() - 3);
         }
         upgrade_text += &format!("{}\n", r.value);
-        if let Some(blocker) = &r.leads {
-            upgrade_text += &format!("  security leads: runtime code uses it, and {blocker} keeps update PRs (Dependabot, Renovate) from applying the fix\n");
+        if let Some(lead) = &r.leads {
+            upgrade_text += &format!("  security leads: {}\n", lead.line());
         }
         // The worst advisories first, then release-note security fixes with a reference here; the rest are one
         // command away.
         let mut shown: Vec<&review::AdvisoryFix> = tech_fixes.iter().collect();
         shown.sort_by_key(|f| std::cmp::Reverse(severity(f)));
-        let mut detail: Vec<String> = shown.iter().map(|f| f.line(&out)).collect();
+        let target = out.digest.get(*technology).and_then(|v| v.first()).map(|&i| &out.opps[i].target);
+        let mut detail: Vec<String> = r.lock.iter().filter(|it| it.fix.is_none()).map(|it| lock_line(it, target)).collect();
+        detail.extend(shown.iter().map(|f| f.line(&out)));
+        detail.extend(r.lock.iter().filter(|it| it.fix.is_some()).map(|it| lock_line(it, target)));
         let mut sec: Vec<&&funnel::Opp> = notes.iter().collect();
         sec.sort_by_key(|o| !specific(o));
         detail.extend(sec.iter().map(|o| format!("  security: {} [{}, {}]", display_text(&o.rec.r.summary), o.id(), o.release.version)));
@@ -2024,8 +2120,36 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
         ));
     }
     let leading = ranked.iter().filter(|r| r.leads.is_some()).count();
-    if leading > 0 {
-        start.push(format!("Security fixes update PRs cannot apply: {} for packages runtime code uses, held by an exact pin or an override.", technology_count(leading)));
+    let held = ranked.iter().filter(|r| matches!(r.leads, Some(Lead::Held(_)))).count();
+    if held > 0 {
+        start.push(format!("Security fixes update PRs cannot apply: {} for packages runtime code uses, held by an exact pin or an override.", technology_count(held)));
+    }
+    // No fixed release on a runtime direct dependency: nothing to bump, so it leads whether or not it has an upgrade.
+    let no_fix: Vec<&crate::advisories::Item> = lockfile.items.iter().filter(|it| it.fix.is_none() && it.via.is_empty() && it.runtime).collect();
+    if !no_fix.is_empty() {
+        // One entry per package version, with its advisory ids.
+        let mut by: BTreeMap<(&str, &str), Vec<&str>> = BTreeMap::new();
+        for it in &no_fix {
+            by.entry((it.name.as_str(), it.version.as_str())).or_default().push(it.id.as_str());
+        }
+        let mut names: Vec<String> = by.iter().map(|((n, v), ids)| format!("{} {} ({})", display_text(n), display_text(v), display_text(&ids.join(", ")))).collect();
+        let more = names.len().saturating_sub(5);
+        names.truncate(5);
+        start.push(format!(
+            "No fixed release, so replace or mitigate: {} on direct dependencies{}. See Lockfile advisories.",
+            names.join(", "),
+            if more > 0 { format!(" and {more} more") } else { String::new() }
+        ));
+    }
+    let lock_on: Vec<&Ranked> = ranked.iter().filter(|r| !r.lock.is_empty()).collect();
+    if !lock_on.is_empty() {
+        let names: Vec<String> = lock_on.iter().take(5).map(|r| display_text(&friendly(r.technology, pending))).collect();
+        start.push(format!(
+            "Lockfile advisories on upgraded packages, noted on their upgrades: {} in {}{}.",
+            lock_on.iter().map(|r| r.lock.len()).sum::<usize>(),
+            names.join(", "),
+            if lock_on.len() > 5 { format!(" and {} more", lock_on.len() - 5) } else { String::new() }
+        ));
     }
     let advisories: usize = fixes.values().map(Vec::len).sum();
     if advisories > 0 {
@@ -2846,10 +2970,38 @@ mod tests {
     }
 
     #[test]
+    fn a_lockfile_advisory_on_the_technologys_package_is_a_line_on_its_upgrade() {
+        let item = |id: &str, name: &str, fix: Option<&str>, why: &[&str]| crate::advisories::Item {
+            id: id.into(),
+            name: name.into(),
+            version: "3.1.8".into(),
+            severity: crate::advisories::Severity::Moderate,
+            summary: "safe_join() allows Windows special device names".into(),
+            fix: fix.map(String::from),
+            why: why.iter().map(|w| w.to_string()).collect(),
+            via: vec![],
+            runtime: true,
+        };
+        let items = vec![item("GHSA-w", "werkzeug", Some("3.1.9"), &["published 2026-10-05"]), item("GHSA-x", "flask", Some("3.1.2"), &[])];
+        let out = Outcome::default();
+        // PyPI names compare normalized; another package's advisory is not this upgrade's.
+        let lock = lockfile_items(&items, &["Werkzeug".into()], &[], &out);
+        assert_eq!(lock.iter().map(|i| i.id.as_str()).collect::<Vec<_>>(), ["GHSA-w"]);
+        let target = semver::Version::new(3, 1, 9);
+        assert_eq!(
+            lock_line(lock[0], Some(&target)),
+            "  security: GHSA-w (moderate, lockfile werkzeug 3.1.8): safe_join() allows Windows special device names [fixed in 3.1.9; published 2026-10-05]"
+        );
+        let none = item("GHSA-s", "showdown", None, &["no fixed version: replace or mitigate"]);
+        assert!(lock_line(&none, Some(&target)).ends_with("[no fixed release: replace or mitigate]"));
+        assert_eq!(Lead::NoFix.terminal(), "advisory with no fixed release: replace or mitigate");
+    }
+
+    #[test]
     fn the_first_slots_spread_across_value_classes() {
         let names: Vec<String> = (0..6).map(|i| format!("t{i}")).collect();
         let lines = vec![String::new()];
-        let make = |i: usize, class: Class| Ranked { key: (0, false, false, false, false, false, 0, 0, 0, 0), class, technology: &names[i], lines: &lines, fixes: &[], notes: vec![], joins: vec![], leads: None, value: String::new() };
+        let make = |i: usize, class: Class| Ranked { key: (0, false, false, false, false, false, 0, 0, 0, 0), class, technology: &names[i], lines: &lines, fixes: &[], notes: vec![], joins: vec![], lock: vec![], leads: None, value: String::new() };
         let order = |v: Vec<Ranked>| v.iter().map(|r| r.technology.as_str()).collect::<Vec<_>>().join(" ");
         let ranked = vec![make(0, Class::Compatibility), make(1, Class::Compatibility), make(2, Class::Compatibility), make(3, Class::Security), make(4, Class::Feature)];
         assert_eq!(order(diversified(ranked, 3, 1)), "t0 t3 t4 t1 t2", "one compatibility bump, then the next classes");
