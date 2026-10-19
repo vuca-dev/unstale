@@ -1132,6 +1132,16 @@ fn clears(r: &Report, its: &[&Item]) -> Option<String> {
     Some(format!("unused: removing {} clears {n} advisor{}", deps.join(" and "), if n == 1 { "y" } else { "ies" }))
 }
 
+/// `clears` for a group, counting every item listed under the same unused dependencies only: removal clears the
+/// advisories of all their groups (deer-flow: 6 via nuxt-og-image and 3 on it, 9).
+fn clear_phrase(r: &Report, its: &[&Item]) -> Option<String> {
+    clears(r, its)?;
+    let mine = |i: &Item| if i.via.is_empty() { vec![format!("{} {}", i.name, i.version)] } else { i.via.clone() };
+    let deps: BTreeSet<String> = its.iter().flat_map(|i| mine(i)).collect();
+    let with: Vec<&Item> = r.items.iter().filter(|i| mine(i).iter().any(|d| deps.contains(d)) && mine(i).iter().all(|d| r.unused.contains(d))).collect();
+    clears(r, &with)
+}
+
 /// An item's conditions, or the removal phrase in place of the runtime and fix conditions (its date stays).
 fn why(it: &Item, clear: Option<&String>) -> String {
     match clear {
@@ -1148,7 +1158,6 @@ fn clean(t: &str) -> String {
 /// advisory; the worst groups first, at most `SHOWN_GROUPS`. Summaries are OSV's text, shown as data.
 pub fn lines(r: &Report) -> Vec<String> {
     let mut gs: Vec<(String, Vec<&Item>)> = groups(r).into_iter().collect();
-    let all: Vec<&Item> = r.items.iter().collect();
     // Items are sorted worst first (`evaluate`), so each group's first item is its worst.
     gs.sort_by(|(ha, a), (hb, b)| b[0].severity.cmp(&a[0].severity).then(b.len().cmp(&a.len())).then(ha.cmp(hb)));
     let mut out = vec![];
@@ -1161,13 +1170,7 @@ pub fn lines(r: &Report) -> Vec<String> {
         } else {
             String::new()
         };
-        // Removal clears the advisories of every group listed under the same unused dependencies, so it counts them all.
-        let clear = clears(r, its).map(|_| {
-            let mine = |i: &&Item| if i.via.is_empty() { vec![format!("{} {}", i.name, i.version)] } else { i.via.clone() };
-            let deps: BTreeSet<String> = its.iter().flat_map(mine).collect();
-            let with: Vec<&Item> = all.iter().filter(|i| mine(i).iter().any(|d| deps.contains(d)) && mine(i).iter().all(|d| r.unused.contains(d))).copied().collect();
-            clears(r, &with).unwrap_or_default()
-        });
+        let clear = clear_phrase(r, its);
         let worst = format!("{} {} {}{fix} · {} · {} (https://osv.dev/vulnerability/{})", w.severity.word(), w.name, w.version, why(w, clear.as_ref()), clean(&w.summary), w.id);
         if its.len() == 1 {
             out.push(format!("{head}: {worst}"));
@@ -1199,7 +1202,7 @@ pub fn lines(r: &Report) -> Vec<String> {
 pub fn detail_lines(r: &Report) -> Vec<String> {
     let mut out = vec![];
     for (head, its) in groups(r) {
-        let clear = clears(r, &its);
+        let clear = clear_phrase(r, &its);
         out.push(format!("{head}:"));
         // Several advisories on one package version read as one line: the version that fixes them all, the count by
         // severity, the worst one's summary, then the ids.
