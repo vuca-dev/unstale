@@ -240,6 +240,16 @@ pub fn npm_name(purl: &str) -> Option<String> {
     Some(path.replace("%40", "@").replace("%2F", "/").replace("%2f", "/"))
 }
 
+/// A type-stubs package: npm `@types/*`, PyPI `types-*` (typeshed) and `*-stubs` (PEP 561). It ships types only, so
+/// it has no runtime release notes, and in a technology beside its runtime package it never names the release.
+pub fn stub_package(purl: &str) -> bool {
+    let p = normalize_purl(purl);
+    if let Some(n) = p.strip_prefix("pkg:npm/") {
+        return n.starts_with("%40types/");
+    }
+    p.strip_prefix("pkg:pypi/").is_some_and(|n| n.starts_with("types-") || n.ends_with("-stubs"))
+}
+
 /// Write a file atomically: a temporary sibling, then a rename.
 pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
     let dir = path.parent().context("path has no parent")?;
