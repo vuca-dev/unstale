@@ -355,7 +355,9 @@ function terminal(): string {
 }
 
 const SUMMARY =
-  "unstale tells Claude Code, Codex and Cursor what changed upstream since their training cutoff that applies to your code: new APIs worth adopting, breaking changes for your next major upgrade, deprecations, and the security and performance fixes in each version bump.";
+  "unstale tells you and your coding agent what changed upstream for your package versions and your code. Cited, local, free and open source.";
+
+const EVAL = `${REPO}/blob/main/eval/gate/MISSES.md`;
 
 export function homePage(pkgs: Package[], version?: string): string {
   const total = pkgs.reduce((n, p) => n + p.count, 0);
@@ -377,25 +379,45 @@ export function homePage(pkgs: Package[], version?: string): string {
     .join("");
   const body = `<section class="hero">
 <canvas id="wordmark" class="wordmark" width="768" height="240" aria-hidden="true"></canvas>
-<h1>Everything that changed past your coding agent's knowledge cutoff.</h1>
-<p class="lede">unstale reads the release notes, migration guides and advisories of the packages you use, and gives
-Claude Code, Codex or Cursor the changes that apply to your code.</p>
+<h1>Your coding agent was trained before your packages' latest releases</h1>
+<p class="lede">Releases come out faster than anyone can read them. unstale reads them for you, then tells you and
+Claude Code, Codex or Cursor what changed for the versions in your lockfile and the code that uses them. Every item
+cites its source. It runs on your machine, and it's free and open source.</p>
 ${copyable(INSTALL_NPX, " big")}
 <p class="alt">${npmLink(version)} · or <code>${esc(INSTALL_BREW)}</code></p>
 </section>
 ${terminal()}
 <section class="prose">
-<h2>What your agent gets</h2>
+<h2>What you get</h2>
 <ul>
-<li>What your next major upgrade requires, located in your code, obligations first.</li>
-<li>Features released since you wrote the code that could replace what you built by hand.</li>
-<li>What each version bump fixes, security advisories included.</li>
+<li><strong>Your next major upgrade, mapped to your code.</strong> The breaking changes and deprecations you'll hit,
+with the files that hit them, required work first.</li>
+<li><strong>What each version bump fixes.</strong> Security advisories, bug fixes and behaviour changes between your
+installed version and the next one.</li>
+<li><strong>Features you could be using.</strong> APIs released since you wrote the code that could replace something
+you built by hand.</li>
 </ul>
-<p>Every item links to the release note, guide or advisory it came from. Matching runs on your machine: no code
-leaves it, and there is no telemetry. If nothing upstream matters to your code, your agent hears nothing. Works with
-npm and PyPI projects.</p>
-<p>Replayed on 15 real Next.js, Prisma and NestJS upgrades, the catalog held 92% of the required changes that upstream
-sources document. <a href="${REPO}/blob/main/eval/gate/MISSES.md">Method and results</a>.</p>
+<p>Every item links to the release note, guide or advisory it came from.</p>
+<h2>How it works</h2>
+<ol>
+<li><strong>It reads your lockfile.</strong> npm and PyPI projects. npm has the deepest catalog today.</li>
+<li><strong>It matches upstream changes to your code locally.</strong> Release notes, migration guides and advisories
+are summarised once, centrally, into a signed catalog. The matching against your code happens on your machine.</li>
+<li><strong>Your agent reviews it.</strong> You get a short report and a prompt to paste into Claude Code, Codex or
+Cursor. In Claude Code, a line at session start tells you when something new applies, so you don't have to remember to
+ask. If nothing upstream matters to your code, your agent hears nothing.</li>
+</ol>
+<h2>What leaves your machine</h2>
+<p>Public package names (like <code>pkg:npm/next</code>) to fetch the changes that apply. Not your code, file paths,
+versions or any ID. The service, hosted on Cloudflare, sees your IP address. It keeps it in memory only, to apply rate
+limits and count each address once per package, and never writes it to storage. No telemetry. To check advisories, the CLI sends the package names and versions your lockfiles resolve to
+<a href="https://osv.dev">OSV</a>, as <code>npm audit</code> would, and it reads the public npm and PyPI registries.</p>
+<h2>Does it work?</h2>
+<p>We replayed 15 real Next.js, Prisma and NestJS upgrades from the commit before the maintainers did them. The
+catalog had 60 of the 65 required changes that upstream documents (92%). The misses are public,
+along with 29 changes the maintainers made that no release note mentions. <a href="${EVAL}">Method and results</a>.</p>
+<h2>Free and open source</h2>
+<p>AGPL-3.0. <a href="${REPO}">GitHub</a>.</p>
 </section>
 <section id="packages" class="packages prose">
 <h2>What changed, by package</h2>
@@ -420,15 +442,42 @@ export function homeMarkdown(pkgs: Package[], version?: string): string {
 
 Install: \`${INSTALL_NPX}\` in a repository${version ? ` (\`@unstale/cli\` ${version}, ${NPM_URL})` : ""}, or \`${INSTALL_BREW}\`.
 
-- Upgrade reviews: what the next major version requires, located in the code, obligations first.
-- New capabilities: features released since the code was written that could replace custom code.
-- Bump digests: what each version bump fixes, security advisories included.
+Releases come out faster than anyone can read them. unstale reads them for you, then tells you and Claude Code, Codex
+or Cursor what changed for the versions in your lockfile and the code that uses them. Every item cites its source. It
+runs on your machine, and it's free and open source.
 
-Every item cites its release note, guide or advisory. Matching runs locally; no code leaves the machine and there is
-no telemetry. Works with npm and PyPI projects, in Claude Code, Codex and Cursor.
+## What you get
 
-On 15 real Next.js, Prisma and NestJS upgrades, the catalog held 92% of the required changes that upstream sources
-document: ${REPO}/blob/main/eval/gate/MISSES.md
+- Your next major upgrade, mapped to your code: the breaking changes and deprecations you'll hit, with the files that
+  hit them, required work first.
+- What each version bump fixes: security advisories, bug fixes and behaviour changes between your installed version
+  and the next one.
+- Features you could be using: APIs released since you wrote the code that could replace something you built by hand.
+
+## How it works
+
+1. It reads your lockfile. npm and PyPI projects; npm has the deepest catalog today.
+2. It matches upstream changes to your code locally. Release notes, migration guides and advisories are summarised
+   once, centrally, into a signed catalog; the matching against your code happens on your machine.
+3. Your agent reviews it: a short report and a prompt to paste into Claude Code, Codex or Cursor. In Claude Code, a
+   line at session start says when something new applies. If nothing upstream matters to your code, your agent hears
+   nothing.
+
+## What leaves your machine
+
+Public package names (like \`pkg:npm/next\`) to fetch the changes that apply. Not your code, file paths, versions or
+any ID. The service, hosted on Cloudflare, sees your IP address. It keeps it in memory only, to apply rate limits and count
+each address once per package, and never writes it to storage.
+No telemetry. To check advisories, the CLI sends the package names and versions your lockfiles resolve to OSV
+(https://osv.dev), as \`npm audit\` would, and it reads the public npm and PyPI registries.
+
+## Does it work?
+
+We replayed 15 real Next.js, Prisma and NestJS upgrades from the commit before the maintainers did them. The catalog
+had 60 of the 65 required changes that upstream documents (92%). The misses are public, along with
+29 changes the maintainers made that no release note mentions: ${EVAL}
+
+AGPL-3.0, free and open source: ${REPO}
 
 ## What changed, by package
 

@@ -112,6 +112,8 @@ prints one line. Collaborative mode also adds one line to `.gitattributes`. `uns
 and backs up your decisions.
 - **What leaves your machine.** Requests for catalog files, named by public package identity (`pkg:npm/next`), and
 coverage requests for packages the catalog does not have yet. Your code, paths and versions do not. No telemetry.
+The service, hosted on Cloudflare, sees your IP address. It keeps it in memory only, to apply rate limits and count
+each address once per package, and never writes it to storage; there is no account or client ID.
 The client also reads the public npm and PyPI registries for your direct packages at their installed versions, as a
 package manager does, to check that a name is the public package and whether its publisher deprecated (npm) or
 yanked (PyPI) that version. It sends the package names and versions its lockfiles resolve to OSV (`api.osv.dev`) for
