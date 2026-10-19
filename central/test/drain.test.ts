@@ -71,6 +71,8 @@ test("drain works the queue until nothing more can start, then returns", async (
   const r = await service.drain(Date.now() + 60_000, 5_000, 10);
   expect(r).toEqual({ started: 3, unfinished: 0, drained: true });
   for (const j of service.jobs.values()) expect(j.state).toBe("blocked");
+  // The final line's measurements: three new technologies started and settled, nothing rate limited.
+  expect(service.metrics()).toMatchObject({ slices: { new: { started: 3, finished: 3, failed: 0, rate_limited: 0 }, refresh: { started: 0 } }, pauses: 0 });
 });
 
 test("no count of new technologies: a large repository's 400 packages all start in one drain while tokens last", async () => {
