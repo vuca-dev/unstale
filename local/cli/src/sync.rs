@@ -14,7 +14,11 @@
 //! hash of its bytes: only candidates on it are asked for, and not those whose cached index has that hash, so neither
 //! a candidate the catalog does not cover nor an unchanged index costs a request (on the hosted catalog a 404, or a
 //! file the Worker serves, spends the Worker's daily allowance, the free plan's scarcest). Without the list (an older
-//! export), or when it cannot be read or verified, every candidate's index is asked for, as before.
+//! export), or when it cannot be read or verified, an HTTP catalog is asked for every candidate's index except those
+//! only private dependencies give (`withheld`, `Stack::withheld`): a request names its candidate, and a private
+//! package's name must not reach the catalog host, its logs or anyone on the path. Those are reported as `withheld`
+//! and settled without a request; they are not in a public catalog anyway, and the next sync with the list reads any
+//! that is. A local directory is read whole, as nothing leaves the machine.
 
 use anyhow::{Context, Result, anyhow, bail};
 use serde::{Deserialize, Serialize};
@@ -269,22 +273,24 @@ pub struct Report {
     /// An index exists but none of its records names a package this repository uses.
     pub not_in_stack: Vec<String>,
     pub failed: Vec<(String, String)>,
+    /// Not asked for: only private dependencies give the name, and the catalog published no list to check it against.
+    pub withheld: Vec<String>,
 }
 
 /// Sync the candidates' indexes and shards into `cache`. `purls` are the repository's package URLs; a
 /// technology is kept only when one of its records' release components is among them (no alias table).
-pub fn sync(loc: &str, cache_dir: &Path, candidates: &BTreeSet<String>, purls: &BTreeSet<String>) -> Result<Report> {
-    sync_reporting(loc, cache_dir, candidates, purls, |_| {})
+pub fn sync(loc: &str, cache_dir: &Path, candidates: &BTreeSet<String>, withheld: &BTreeSet<String>, purls: &BTreeSet<String>) -> Result<Report> {
+    sync_reporting(loc, cache_dir, candidates, withheld, purls, |_| {})
 }
 
 /// `sync`, calling `progress` with each candidate once it is settled (synced, not covered or failed).
-pub fn sync_reporting(loc: &str, cache_dir: &Path, candidates: &BTreeSet<String>, purls: &BTreeSet<String>, progress: impl FnMut(&str)) -> Result<Report> {
+pub fn sync_reporting(loc: &str, cache_dir: &Path, candidates: &BTreeSet<String>, withheld: &BTreeSet<String>, purls: &BTreeSet<String>, progress: impl FnMut(&str)) -> Result<Report> {
     let src = resolve_source(loc)?;
     let key = match src {
         Source::Http { .. } => catalog_key()?,
         Source::Dir(_) => None,
     };
-    sync_with(&src, cache_dir, candidates, purls, key.as_ref(), progress)
+    sync_with(&src, cache_dir, candidates, withheld, purls, key.as_ref(), progress)
 }
 
 /// The catalog key compiled into release builds. A `#[used]` static keeps it whole in the binary, which release.yml
@@ -306,7 +312,7 @@ fn catalog_key() -> Result<Option<[u8; 32]>> {
 }
 
 fn from_hex(s: &str) -> Option<Vec<u8>> {
-    if s.len() % 2 != 0 {
+    if !s.len().is_multiple_of(2) {
         return None;
     }
     (0..s.len()).step_by(2).map(|i| u8::from_str_radix(s.get(i..i + 2)?, 16).ok()).collect()
@@ -325,7 +331,7 @@ fn verify_signed(src: &Source, rel: &str, bytes: &[u8], key: &[u8; 32]) -> Resul
         .map_err(|_| anyhow!("{}: the signature does not verify against the catalog key; nothing from it was used", src.describe(rel)))
 }
 
-fn sync_with(src: &Source, cache_dir: &Path, candidates: &BTreeSet<String>, purls: &BTreeSet<String>, key: Option<&[u8; 32]>, mut progress: impl FnMut(&str)) -> Result<Report> {
+fn sync_with(src: &Source, cache_dir: &Path, candidates: &BTreeSet<String>, withheld: &BTreeSet<String>, purls: &BTreeSet<String>, key: Option<&[u8; 32]>, mut progress: impl FnMut(&str)) -> Result<Report> {
     let root_bytes = match src.get("v1/root.json", None)? {
         Got::Body(b, _) => b,
         _ => bail!("no catalog at {} (v1/root.json not found)", src.describe("v1/root.json")),
@@ -337,7 +343,7 @@ fn sync_with(src: &Source, cache_dir: &Path, candidates: &BTreeSet<String>, purl
     check_root(&root)?;
     write_atomic(&cache_dir.join("v1/root.json"), &root_bytes)?;
 
-    let techs: Vec<&String> = candidates.iter().filter(|t| !t.is_empty() && !t.contains(['/', '\\', '?', '#', '%']) && !t.starts_with('.')).collect();
+    let mut techs: Vec<&String> = candidates.iter().filter(|t| !t.is_empty() && !t.contains(['/', '\\', '?', '#', '%']) && !t.starts_with('.')).collect();
     // A name that cannot be a technology id is settled at once: no request, nothing covered.
     for t in candidates.iter().filter(|t| !techs.contains(t)) {
         progress(t);
@@ -347,6 +353,18 @@ fn sync_with(src: &Source, cache_dir: &Path, candidates: &BTreeSet<String>, purl
         Source::Http { .. } => listed_technologies(src, cache_dir, key),
         Source::Dir(_) => None,
     };
+    // No list over HTTP: a private dependency's name is not asked for (it would be named in the request).
+    let mut rep = Report::default();
+    if listed.is_none() && matches!(src, Source::Http { .. }) {
+        techs.retain(|t| {
+            let keep = !withheld.contains(*t);
+            if !keep {
+                rep.withheld.push((*t).clone());
+                progress(t);
+            }
+            keep
+        });
+    }
     // Each technology's files are its own, so indexes are fetched at once; the report keeps candidate order.
     let mut outcomes: Vec<Option<Outcome>> = techs.iter().map(|_| None).collect();
     crate::util::concurrent(&techs, crate::util::REQUESTS_AT_ONCE, |tech| {
@@ -363,7 +381,6 @@ fn sync_with(src: &Source, cache_dir: &Path, candidates: &BTreeSet<String>, purl
         progress(techs[i]);
         true
     });
-    let mut rep = Report::default();
     for (tech, outcome) in techs.into_iter().zip(outcomes) {
         match outcome {
             Some(Outcome::Synced(t)) => rep.synced.push(t),
@@ -517,6 +534,10 @@ mod tests {
     }
     fn cands(p: &[&str]) -> BTreeSet<String> {
         p.iter().map(|s| s.to_string()).collect()
+    }
+    /// `super::sync` with nothing withheld.
+    fn sync(loc: &str, cache_dir: &Path, candidates: &BTreeSet<String>, purls: &BTreeSet<String>) -> Result<Report> {
+        super::sync(loc, cache_dir, candidates, &BTreeSet::new(), purls)
     }
 
     #[test]
@@ -726,21 +747,21 @@ mod tests {
         let srv = TestServer::start(cat.dir.path().to_path_buf(), false);
         let cache = tempfile::tempdir().unwrap();
         let all = cands(&["next", "react", "types", "vite"]);
-        let rep = sync_with(&resolve_source(&srv.base).unwrap(), cache.path(), &all, &purls(&["pkg:npm/next"]), None, |_| {}).unwrap();
+        let rep = sync_with(&resolve_source(&srv.base).unwrap(), cache.path(), &all, &BTreeSet::new(), &purls(&["pkg:npm/next"]), None, |_| {}).unwrap();
         assert_eq!((rep.synced.len(), rep.not_covered.len()), (1, 3));
         let log = srv.take_log();
         let asked: Vec<&str> = log.iter().map(String::as_str).filter(|l| !l.starts_with("/v1/shards/")).collect();
         assert_eq!(asked, vec!["/v1/root.json 200", "/v1/technologies.json 200", "/v1/tech/next.json 200"]);
         // Again: the list is not modified and names the cached index's hash, so neither it nor any uncovered
         // candidate is asked for.
-        let rep = sync_with(&resolve_source(&srv.base).unwrap(), cache.path(), &all, &purls(&["pkg:npm/next"]), None, |_| {}).unwrap();
+        let rep = sync_with(&resolve_source(&srv.base).unwrap(), cache.path(), &all, &BTreeSet::new(), &purls(&["pkg:npm/next"]), None, |_| {}).unwrap();
         assert_eq!((rep.synced.len(), rep.synced[0].unchanged), (1, true));
         assert_eq!(srv.take_log(), vec!["/v1/root.json 200", "/v1/technologies.json 304"]);
         // A technology the list starts to name, and an index whose hash changed, are asked for at the next sync.
         cat.tech("react", &[("19", vec![rec("react:a", "pkg:npm/react", "19.0.0")])]);
         cat.tech("next", &[("16", vec![rec("next:a", "pkg:npm/next", "16.0.1")]), ("15", vec![rec("next:b", "pkg:npm/next", "15.0.1")])]);
         listing(&["next", "react"]);
-        let rep = sync_with(&resolve_source(&srv.base).unwrap(), cache.path(), &all, &purls(&["pkg:npm/next", "pkg:npm/react"]), None, |_| {}).unwrap();
+        let rep = sync_with(&resolve_source(&srv.base).unwrap(), cache.path(), &all, &BTreeSet::new(), &purls(&["pkg:npm/next", "pkg:npm/react"]), None, |_| {}).unwrap();
         assert_eq!((rep.synced.len(), rep.not_covered), (2, vec!["types".to_string(), "vite".to_string()]));
         let log = srv.take_log();
         assert!(log.contains(&"/v1/tech/react.json 200".to_string()) && log.contains(&"/v1/tech/next.json 200".to_string()), "{log:?}");
@@ -752,18 +773,43 @@ mod tests {
             std::fs::write(cat.dir.path().join(format!("{rel}.sig")), sig).unwrap();
         }
         let other = tempfile::tempdir().unwrap();
-        let _ = sync_with(&resolve_source(&srv.base).unwrap(), other.path(), &all, &purls(&["pkg:npm/next"]), Some(&key), |_| {});
+        let _ = sync_with(&resolve_source(&srv.base).unwrap(), other.path(), &all, &BTreeSet::new(), &purls(&["pkg:npm/next"]), Some(&key), |_| {});
         let log = srv.take_log();
         assert!(log.contains(&"/v1/technologies.json.sig 404".to_string()) && log.contains(&"/v1/tech/vite.json 404".to_string()), "{log:?}");
         // A list cached without a key is fetched and verified again once a key is required, not reused on a 304;
         // after that, the verified copy is.
         let sig: String = pair.sign(&std::fs::read(&list).unwrap()).as_ref().iter().map(|x| format!("{x:02x}")).collect();
         std::fs::write(cat.dir.path().join("v1/technologies.json.sig"), sig).unwrap();
-        let _ = sync_with(&resolve_source(&srv.base).unwrap(), cache.path(), &all, &purls(&["pkg:npm/next"]), Some(&key), |_| {});
+        let _ = sync_with(&resolve_source(&srv.base).unwrap(), cache.path(), &all, &BTreeSet::new(), &purls(&["pkg:npm/next"]), Some(&key), |_| {});
         let log = srv.take_log();
         assert!(log.contains(&"/v1/technologies.json 200".to_string()) && log.contains(&"/v1/technologies.json.sig 200".to_string()), "{log:?}");
-        let _ = sync_with(&resolve_source(&srv.base).unwrap(), cache.path(), &all, &purls(&["pkg:npm/next"]), Some(&key), |_| {});
+        let _ = sync_with(&resolve_source(&srv.base).unwrap(), cache.path(), &all, &BTreeSet::new(), &purls(&["pkg:npm/next"]), Some(&key), |_| {});
         assert!(srv.take_log().contains(&"/v1/technologies.json 304".to_string()));
+    }
+
+    #[test]
+    fn without_a_list_a_private_dependencys_name_is_never_asked_for() {
+        let cat = FixtureCatalog::new();
+        cat.tech("next", &[("16", vec![rec("next:a", "pkg:npm/next", "16.0.1")])]);
+        let srv = TestServer::start(cat.dir.path().to_path_buf(), false);
+        let cache = tempfile::tempdir().unwrap();
+        let (all, withheld) = (cands(&["next", "acme", "secret-sdk"]), cands(&["acme", "secret-sdk"]));
+        let mut settled = vec![];
+        let rep = sync_with(&resolve_source(&srv.base).unwrap(), cache.path(), &all, &withheld, &purls(&["pkg:npm/next"]), None, |t| settled.push(t.to_string())).unwrap();
+        assert_eq!((rep.synced.len(), rep.withheld.clone()), (1, vec!["acme".to_string(), "secret-sdk".to_string()]));
+        settled.sort();
+        assert_eq!(settled, ["acme", "next", "secret-sdk"], "every candidate is settled, withheld ones without a request");
+        let log = srv.take_log();
+        assert!(log.iter().all(|l| !l.contains("acme") && !l.contains("secret-sdk")), "{log:?}");
+        assert!(log.contains(&"/v1/technologies.json 404".to_string()) && log.contains(&"/v1/tech/next.json 200".to_string()), "{log:?}");
+        // With the list, only what it names is asked for, so nothing is withheld (and the private names are not on it).
+        std::fs::write(cat.dir.path().join("v1/technologies.json"), format!("{{\"schema\":1,\"technologies\":{{\"next\":\"{}\"}}}}", &sha256_hex(&std::fs::read(cat.dir.path().join("v1/tech/next.json")).unwrap())[..16])).unwrap();
+        let rep = sync_with(&resolve_source(&srv.base).unwrap(), cache.path(), &all, &withheld, &purls(&["pkg:npm/next"]), None, |_| {}).unwrap();
+        assert!(rep.withheld.is_empty() && rep.not_covered == ["acme", "secret-sdk"]);
+        assert!(srv.take_log().iter().all(|l| !l.contains("acme") && !l.contains("secret-sdk")));
+        // A local catalog is the user's own directory: read whole.
+        let rep = super::sync(cat.loc(), cache.path(), &all, &withheld, &purls(&["pkg:npm/next"])).unwrap();
+        assert!(rep.withheld.is_empty());
     }
 
     #[test]
@@ -784,7 +830,7 @@ mod tests {
         let cache = tempfile::tempdir().unwrap();
         let all = purls(&["pkg:npm/next", "pkg:npm/prisma"]);
         // An unsigned root stops the sync before anything is cached.
-        let err = sync_with(&src, cache.path(), &cands(&["next"]), &all, Some(&key), |_| {}).err().unwrap();
+        let err = sync_with(&src, cache.path(), &cands(&["next"]), &BTreeSet::new(), &all, Some(&key), |_| {}).err().unwrap();
         assert!(format!("{err:#}").contains("is not signed"), "{err:#}");
         assert!(!cache.path().join("v1/root.json").exists());
         // Signed root and next; prisma's index altered after signing.
@@ -795,7 +841,7 @@ mod tests {
         let mut forged = std::fs::read(&p).unwrap();
         forged.push(b'\n');
         std::fs::write(&p, forged).unwrap();
-        let rep = sync_with(&src, cache.path(), &cands(&["next", "prisma"]), &all, Some(&key), |_| {}).unwrap();
+        let rep = sync_with(&src, cache.path(), &cands(&["next", "prisma"]), &BTreeSet::new(), &all, Some(&key), |_| {}).unwrap();
         assert_eq!(rep.synced.iter().map(|t| t.technology.as_str()).collect::<Vec<_>>(), vec!["next"]);
         assert!(rep.failed.len() == 1 && rep.failed[0].1.contains("does not verify"), "{:?}", rep.failed);
         assert!(!index_path(cache.path(), "prisma").exists());
@@ -871,7 +917,7 @@ mod tests {
         let cache = tempfile::tempdir().unwrap();
         let t0 = std::time::Instant::now();
         let src = http_source(base, Duration::from_millis(500));
-        let err = sync_with(&src, cache.path(), &cands(&["next"]), &purls(&[]), None, |_| {}).err().unwrap();
+        let err = sync_with(&src, cache.path(), &cands(&["next"]), &BTreeSet::new(), &purls(&[]), None, |_| {}).err().unwrap();
         assert!(t0.elapsed() < Duration::from_secs(10));
         assert!(format!("{err:#}").to_lowercase().contains("timeout") || format!("{err:#}").to_lowercase().contains("timed out"), "{err:#}");
     }

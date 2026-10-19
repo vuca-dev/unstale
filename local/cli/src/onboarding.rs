@@ -206,10 +206,9 @@ impl std::fmt::Display for InvalidResponse {
 impl std::error::Error for InvalidResponse {}
 fn registration_issue(error: &anyhow::Error, purl: &str) -> RegistrationIssue {
     if error.downcast_ref::<InvalidResponse>().is_some() { return RegistrationIssue::InvalidResponse; }
-    if let Some(HttpFailure(status)) = error.downcast_ref::<HttpFailure>() {
-        if (400..500).contains(status) && !matches!(status, 408 | 425 | 429) {
-            return RegistrationIssue::Rejected { ecosystem: if purl.starts_with("pkg:pypi/") { "Python" } else if purl.starts_with("pkg:npm/") { "npm" } else { "Package" }.into(), status: *status, packages: vec![purl.into()] };
-        }
+    if let Some(HttpFailure(status)) = error.downcast_ref::<HttpFailure>()
+        && (400..500).contains(status) && !matches!(status, 408 | 425 | 429) {
+        return RegistrationIssue::Rejected { ecosystem: if purl.starts_with("pkg:pypi/") { "Python" } else if purl.starts_with("pkg:npm/") { "npm" } else { "Package" }.into(), status: *status, packages: vec![purl.into()] };
     }
     RegistrationIssue::Temporary
 }
@@ -218,7 +217,9 @@ fn registration_issue(error: &anyhow::Error, purl: &str) -> RegistrationIssue {
 /// 422) is that package's: it is named in the issue and the rest are still sent; any other 4xx is the request's, so it
 /// is recorded and nothing more is sent. A limit (429, or 503 with Retry-After) defers all of them until then; any
 /// other failure (the service down, an invalid answer) stops here, and what is left is sent on a later run. Packages a
-/// batch answered after one of these are still recorded as answered.
+/// batch answered after one of these are still recorded as answered. A package the service could not confirm for now
+/// (`ItemDeferred`) stays unsubmitted for a later run and the round goes on; only a batch where every package came
+/// back so defers the rest, as the service being unavailable.
 fn register(
     pending: &mut Pending,
     order: Vec<String>,
@@ -234,8 +235,15 @@ fn register(
         let mut limited: Option<(u64, Deferral)> = None;
         // Some when this batch ends the round: the issue to record (None: the rejections so far say it).
         let mut ended: Option<Option<RegistrationIssue>> = None;
-        for (p, result) in chunk.iter().zip(send(chunk)) {
+        let results = send(chunk);
+        let (answered, mut item_deferred, mut item_retry) = (results.len(), 0, 0);
+        for (p, result) in chunk.iter().zip(results) {
             match result {
+                Err(e) if e.downcast_ref::<ItemDeferred>().is_some() => {
+                    diagnostics.push(format!("Registration {p}: {e}"));
+                    item_deferred += 1;
+                    item_retry = item_retry.max(e.downcast_ref::<ItemDeferred>().map_or(0, |d| d.retry_after));
+                }
                 Ok(j) => {
                     accepted += 1;
                     progress(accepted);
@@ -276,6 +284,9 @@ fn register(
                     }
                 }
             }
+        }
+        if limited.is_none() && answered > 0 && item_deferred == answered {
+            limited = Some((item_retry, Deferral::Unavailable));
         }
         if let Some((retry_after, by)) = limited {
             pending.deferred_until = Some(unix_now() + retry_after);
@@ -383,6 +394,18 @@ impl std::fmt::Display for Limited {
     }
 }
 impl std::error::Error for Limited {}
+/// One package of a batch the service could not confirm with its registry for now (a 503 result inside a 200 batch):
+/// that package waits for a later run; the others are not held up by it.
+#[derive(Debug)]
+pub struct ItemDeferred {
+    pub retry_after: u64,
+}
+impl std::fmt::Display for ItemDeferred {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "the service could not confirm this package with its registry for now (HTTP 503); retry after {}s", self.retry_after)
+    }
+}
+impl std::error::Error for ItemDeferred {}
 fn unix_now() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -511,7 +534,8 @@ impl PackageProgress {
 pub fn candidates(ctx: &Ctx, st: &stack::Stack) -> BTreeSet<String> {
     let mut c = st.candidates();
     for j in read(ctx).jobs.values() {
-        if st.deps.contains_key(&j.purl) {
+        // A job of a package now kept private (`privacy`) is not named, not even by its technology.
+        if st.deps.get(&j.purl).is_some_and(|d| d.public_candidate) {
             c.insert(j.technology.clone());
         }
     }
@@ -667,6 +691,8 @@ fn batch_via(a: &ureq::Agent, service: &str, route: &str, purls: &[String]) -> O
                     by: if r.limit.as_deref() == Some("budget") { Deferral::Budget } else { Deferral::Address },
                 }
                 .into()),
+                // The service could not confirm this package with its registry for now: this package waits.
+                (503, _) => Err(ItemDeferred { retry_after: r.retry_after.unwrap_or(3600) }.into()),
                 (200..=299, None) => Err(InvalidResponse.into()),
                 (status, _) => Err(HttpFailure(status).into()),
             })
@@ -763,6 +789,10 @@ fn fetch(url: String) -> Option<serde_json::Value> {
     serde_json::from_slice(&bytes).ok()
 }
 fn public_package(cache: &Path, purl: &str, pins: &[stack::Pin]) -> bool {
+    // No third-party lookup (`UNSTALE_NO_REGISTRY=1`): nothing is verified, so nothing is submitted.
+    if crate::privacy::registry_off() {
+        return false;
+    }
     // PyPI has no private packages: a project page for the normalised name is the public identity.
     if let Some(name) = purl.strip_prefix("pkg:pypi/") {
         if pins.is_empty() {
@@ -780,16 +810,22 @@ fn public_package(cache: &Path, purl: &str, pins: &[stack::Pin]) -> bool {
         return false;
     };
     let public = |v: &serde_json::Value| v.get("name").and_then(|n| n.as_str()) == Some(&name) && v.get("private").and_then(|p| p.as_bool()) != Some(true);
-    if pins.is_empty() {
-        return fetch(format!("https://registry.npmjs.org/{}/latest", encode(&name))).is_some_and(|v| public(&v));
-    }
-    pins.iter().all(|pin| {
-        fetch(format!("https://registry.npmjs.org/{}/{}", encode(&name), encode(&pin.version))).is_some_and(|v| {
-            // The same document carries the version's `deprecated` message: kept for the deprecation check.
-            crate::deprecations::note(cache, purl, &pin.version, &v);
-            public(&v) && v.pointer("/dist/integrity").and_then(|i| i.as_str()).is_some_and(|i| i.split_whitespace().any(|h| pin.hashes.iter().any(|x| x == h)))
+    let verified = if pins.is_empty() {
+        fetch(format!("https://registry.npmjs.org/{}/latest", encode(&name))).is_some_and(|v| public(&v))
+    } else {
+        pins.iter().all(|pin| {
+            fetch(format!("https://registry.npmjs.org/{}/{}", encode(&name), encode(&pin.version))).is_some_and(|v| {
+                // The same document carries the version's `deprecated` message: kept for the deprecation check.
+                crate::deprecations::note(cache, purl, &pin.version, &v);
+                public(&v) && v.pointer("/dist/integrity").and_then(|i| i.as_str()).is_some_and(|i| i.split_whitespace().any(|h| pin.hashes.iter().any(|x| x == h)))
+            })
         })
-    })
+    };
+    // An anonymous read served it: the advisory check need not ask again (`privacy::confirm_public`).
+    if verified {
+        crate::privacy::note_public(cache, purl, unix_now());
+    }
+    verified
 }
 
 /// Weekly downloads from npm's downloads API, by purl: unscoped names 128 per request, scoped ones one each, a few at
@@ -827,6 +863,9 @@ fn npm_downloads(purls: &[String]) -> BTreeMap<String, u64> {
 /// Weekly downloads by purl: npm's downloads API, and PyPI's from pypistats (the endpoint central's admission reads),
 /// four at a time (it rate-limits bursts). A count that cannot be read is absent.
 fn weekly_downloads(purls: &[String]) -> BTreeMap<String, u64> {
+    if crate::privacy::registry_off() {
+        return BTreeMap::new();
+    }
     let (pypi, npm): (Vec<String>, Vec<String>) = purls.iter().cloned().partition(|p| p.starts_with("pkg:pypi/"));
     let mut out = npm_downloads(&npm);
     for chunk in pypi.chunks(4) {
@@ -883,7 +922,11 @@ fn growing_jobs(pending: &Pending) -> Vec<&Job> {
 /// otherwise. No network call when nothing is still gaining history; otherwise short status requests for the growing
 /// technologies (BATCH to a request). Never rewrites the report or the snapshot, so the line repeats until `unstale status` refreshes them.
 pub fn notify(ctx: &Ctx) -> Result<u8> {
-    let pending = read(ctx);
+    let mut pending = read(ctx);
+    // Without the stack walk (session start must be quick), the registry configuration still decides: a job of a
+    // package it now keeps private is not asked about (`run` drops it at the next `unstale status`).
+    let registries = crate::privacy::Registries::read(&ctx.root, &BTreeSet::new(), &[], &crate::privacy::Env::current());
+    pending.jobs.retain(|purl, _| registries.may_name(purl, crate::privacy::Seen::Unknown));
     let growing = growing_jobs(&pending);
     let Some(service) = ctx.config.service.as_deref().filter(|_| !growing.is_empty()) else { return Ok(0) };
     let quick: ureq::Agent = ureq::Agent::config_builder().http_status_as_error(false).timeout_global(Some(Duration::from_secs(2))).build().into();
@@ -1650,7 +1693,7 @@ fn workaround_joins(found: &[workarounds::Workaround], members: &[usize], out: &
         w.repo.text(path).is_some_and(|t| {
             packages.iter().any(|p| {
                 [format!("'{p}"), format!("\"{p}"), format!("import {p}"), format!("from {p}")].iter().any(|n| {
-                    t.match_indices(n.as_str()).any(|(at, m)| t[at + m.len()..].starts_with(|c: char| matches!(c, '\'' | '"' | '/' | '.' | ' ' | '\n' | ',')))
+                    t.match_indices(n.as_str()).any(|(at, m)| t[at + m.len()..].starts_with(['\'', '"', '/', '.', ' ', '\n', ',']))
                 })
             })
         })
@@ -1659,7 +1702,7 @@ fn workaround_joins(found: &[workarounds::Workaround], members: &[usize], out: &
         .iter()
         .enumerate()
         .filter_map(|(k, wa)| {
-            let strength = workarounds::joins(wa, packages, &repos, &cited, upgrade, &imports)?;
+            let strength = workarounds::joins(wa, packages, &repos, &cited, upgrade, imports)?;
             let at = (strength == 3)
                 .then(|| per.iter().find_map(|(i, refs)| wa.refs.iter().find(|r| refs.contains(r)).map(|r| (*i, r.clone()))))
                 .flatten();
@@ -2246,7 +2289,9 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
     let mut pending = read(ctx);
     // The World of this run's first report; later reports reuse its stack and code (`report`).
     let mut scan: Option<World> = None;
-    pending.jobs.retain(|purl, _| st.deps.contains_key(purl));
+    // Jobs of packages no longer in the stack, or now kept private (a registry configured since they were registered):
+    // dropped, so no status request or catalog read names them again.
+    pending.jobs.retain(|purl, _| st.deps.get(purl).is_some_and(|d| d.public_candidate));
     pending
         .unsubmitted
         .retain(|purl| st.deps.get(purl).is_some_and(|d| d.public_candidate));
@@ -2269,7 +2314,7 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
     let catalog_sync = |title: &str, hint: &str| {
         let cands = candidates(ctx, &st);
         let mut counter = PackageProgress::new(&st, &read(ctx));
-        sync::sync_reporting(&ctx.config.catalog, &ctx.cache, &cands, &st.purls(), |settled| {
+        sync::sync_reporting(&ctx.config.catalog, &ctx.cache, &cands, &st.withheld(&ctx.cache), &st.purls(), |settled| {
             let (done, total) = counter.settle(settled);
             ui.update(title, &format!("Checked {done}/{total} direct packages against the published catalog"), hint)
         })
@@ -2772,7 +2817,7 @@ fn refresh(ctx: &Ctx, st: &stack::Stack, pending: &Pending, scan: &mut Option<Wo
     let path = ctx.tool.join("onboarding-report.md");
     // Sections setup appended after the report (connection diagnostics) are kept.
     let kept = std::fs::read_to_string(&path).ok().and_then(|t| t.find("\n## Connection diagnostics").map(|i| t[i..].to_string()));
-    let fresh = sync::sync(&ctx.config.catalog, &ctx.cache, &candidates(ctx, st), &st.purls()).and_then(|_| report(ctx, pending, scan)).and_then(|brief| {
+    let fresh = sync::sync(&ctx.config.catalog, &ctx.cache, &candidates(ctx, st), &st.withheld(&ctx.cache), &st.purls()).and_then(|_| report(ctx, pending, scan)).and_then(|brief| {
         if let Some(kept) = kept {
             let text = std::fs::read_to_string(&path)? + &kept;
             util::write_atomic(&path, text.as_bytes())?;
@@ -2833,6 +2878,8 @@ mod tests {
             notes: vec![],
             spread: 0,
             standalone: vec![],
+            registries: Default::default(),
+            fixture_registries: Default::default(),
         };
         let purls: BTreeSet<String> =
             ["pkg:npm/%40codemirror/view", "pkg:npm/express", "pkg:npm/undici", "pkg:pypi/aiohttp", "pkg:pypi/django"].map(String::from).into();
@@ -2850,7 +2897,7 @@ mod tests {
         let v: serde_json::Value = serde_json::from_str(r#"{"data":{"last_day":1,"last_month":40,"last_week":12},"package":"django","type":"recent_downloads"}"#).unwrap();
         assert_eq!(pypistats_last_week(&v), Some(12));
         assert_eq!(pypistats_last_week(&serde_json::json!({"data": {}})), None);
-        let st = stack::Stack { packages: vec![], deps: Default::default(), node: None, notes: vec![], spread: 0, standalone: vec![] };
+        let st = stack::Stack { packages: vec![], deps: Default::default(), node: None, notes: vec![], spread: 0, standalone: vec![], registries: Default::default(), fixture_registries: Default::default() };
         let purls: BTreeSet<String> = ["pkg:pypi/aiohttp", "pkg:pypi/django", "pkg:pypi/zstandard"].map(String::from).into();
         let downloads: BTreeMap<String, u64> = [("pkg:pypi/zstandard", 9_000_000), ("pkg:pypi/django", 3_000_000)].map(|(p, d)| (p.to_string(), d)).into();
         assert_eq!(registration_order(&purls, &st, &downloads), ["pkg:pypi/zstandard", "pkg:pypi/django", "pkg:pypi/aiohttp"]);
@@ -2915,7 +2962,7 @@ mod tests {
     }
     #[test]
     fn catalog_progress_counts_each_direct_package_once_whatever_names_it_is_looked_up_under() {
-        let dep = |name: &str| crate::stack::Dep { name: name.into(), public_candidate: true, version: None, source: String::new(), readings: vec![], pins: vec![] };
+        let dep = |name: &str| crate::stack::Dep { name: name.into(), public_candidate: true, version: None, source: String::new(), readings: vec![], pins: vec![], seen: Default::default() };
         let st = crate::stack::Stack {
             packages: vec![],
             deps: [("pkg:pypi/flask", dep("flask")), ("pkg:npm/%40babel/core", dep("@babel/core"))].map(|(p, d)| (p.to_string(), d)).into(),
@@ -2923,6 +2970,8 @@ mod tests {
             notes: vec![],
             spread: 0,
             standalone: vec![],
+            registries: Default::default(),
+            fixture_registries: Default::default(),
         };
         let mut pending = Pending::default();
         pending.jobs.insert("pkg:pypi/flask".into(), Job { purl: "pkg:pypi/flask".into(), technology: "flask-8bc209ae".into(), ..Default::default() });
@@ -3270,6 +3319,113 @@ mod tests {
         assert_eq!(err.downcast_ref::<Limited>().map(|l| (l.retry_after, l.by)), Some((900, Deferral::Unavailable)));
     }
     #[test]
+    fn a_batch_items_503_defers_it_and_the_others_still_count() {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let (mut req, mut buf) = (Vec::new(), [0u8; 4096]);
+            while !req.ends_with(b"}") {
+                match stream.read(&mut buf) {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => req.extend_from_slice(&buf[..n]),
+                }
+            }
+            let body = r#"{"results":[{"purl":"pkg:npm/a","status":200,"job":{"purl":"pkg:npm/a","technology":"a","name":"a","state":"queued","stage":"queued"}},{"purl":"pkg:npm/b","status":503,"error":"The registry could not confirm this package; retry later","retry_after":600}]}"#;
+            let _ = write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+        });
+        let purls = ["pkg:npm/a", "pkg:npm/b"].map(String::from);
+        let results = batch_via(&agent(), &base, "register", &purls).unwrap();
+        assert!(results[0].is_ok());
+        let err = results[1].as_ref().unwrap_err();
+        assert_eq!(err.downcast_ref::<ItemDeferred>().map(|d| d.retry_after), Some(600));
+        // Registered: a is a job; b stays unsubmitted for a later run, with no deferral of the round and no rejection.
+        let mut pending = Pending::default();
+        pending.unsubmitted.extend(purls.iter().cloned());
+        let mut results = Some(results);
+        register(&mut pending, purls.to_vec(), |_| results.take().unwrap(), |_| {}, &mut vec![], |_| Ok(())).unwrap();
+        assert!(pending.jobs.contains_key("pkg:npm/a"));
+        assert_eq!(pending.unsubmitted.iter().collect::<Vec<_>>(), ["pkg:npm/b"]);
+        assert_eq!((pending.deferred_until, pending.deferred_by), (None, None));
+        assert!(pending.registration_issue.is_none());
+    }
+    #[test]
+    fn one_items_503_does_not_stall_the_round_but_a_batch_of_them_defers_it() {
+        let purls: Vec<String> = (0..BATCH + 4).map(|i| format!("pkg:npm/p{i}")).collect();
+        let job = |p: &str| Job { purl: p.into(), technology: p.trim_start_matches("pkg:npm/").into(), ..Default::default() };
+        // The first batch's first package could not be confirmed; everything else registers, the second batch too.
+        let mut pending = Pending::default();
+        pending.unsubmitted.extend(purls.iter().cloned());
+        let mut sent = vec![];
+        register(&mut pending, purls.clone(), |chunk| {
+            sent.push(chunk.len());
+            chunk.iter().map(|p| if p == "pkg:npm/p0" { Err(ItemDeferred { retry_after: 600 }.into()) } else { Ok(job(p)) }).collect()
+        }, |_| {}, &mut vec![], |_| Ok(())).unwrap();
+        assert_eq!(sent, [BATCH, 4], "the second batch is still sent");
+        assert_eq!(pending.jobs.len(), BATCH + 3);
+        assert_eq!(pending.unsubmitted.iter().collect::<Vec<_>>(), ["pkg:npm/p0"]);
+        assert_eq!(pending.deferred_by, None);
+        // Every package of a batch came back so: the service is unavailable for now, and the rest waits for it.
+        let mut pending = Pending::default();
+        pending.unsubmitted.extend(purls.iter().cloned());
+        let mut sent = vec![];
+        register(&mut pending, purls.clone(), |chunk| {
+            sent.push(chunk.len());
+            chunk.iter().map(|_| Err(ItemDeferred { retry_after: 900 }.into())).collect()
+        }, |_| {}, &mut vec![], |_| Ok(())).unwrap();
+        assert_eq!(sent, [BATCH]);
+        assert_eq!(pending.deferred_by, Some(Deferral::Unavailable));
+        assert!(pending.deferred_until.is_some_and(|t| t >= unix_now() + 899));
+        assert_eq!(pending.unsubmitted.len(), BATCH + 4);
+    }
+    #[test]
+    fn jobs_of_packages_now_private_are_neither_polled_nor_fetched() {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let seen = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+        let log = seen.clone();
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { continue };
+                stream.set_read_timeout(Some(Duration::from_millis(200))).unwrap();
+                let mut buf = [0u8; 65536];
+                while let Ok(n) = stream.read(&mut buf) {
+                    if n == 0 {
+                        break;
+                    }
+                    log.lock().unwrap().push_str(&String::from_utf8_lossy(&buf[..n]));
+                }
+                let _ = write!(stream, "HTTP/1.1 500 X\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+            }
+        });
+        let repo = tempfile::tempdir().unwrap();
+        std::fs::write(repo.path().join("package.json"), r#"{"name": "app", "dependencies": {"react": "18.2.0", "@corp/auth": "1.0.0"}}"#).unwrap();
+        // Registered when they were public; the scope has since been configured for a private registry.
+        std::fs::write(repo.path().join(".npmrc"), "@corp:registry=https://npm.corp.example/\n").unwrap();
+        let cache = tempfile::tempdir().unwrap();
+        let ctx = crate::Ctx {
+            root: repo.path().to_path_buf(),
+            tool: repo.path().join(".unstale"),
+            config: crate::Config { schema: 1, catalog: base.clone(), mode: crate::Mode::Local, service: Some(base.clone()) },
+            cache: cache.path().to_path_buf(),
+        };
+        let mut pending = Pending::default();
+        for (p, t) in [("pkg:npm/react", "react"), ("pkg:npm/%40corp/auth", "corp-auth-1a2b")] {
+            pending.jobs.insert(p.into(), Job { purl: p.into(), technology: t.into(), state: "queued".into(), ..Default::default() });
+        }
+        save(&ctx, &pending).unwrap();
+        let st = stack::detect(repo.path()).unwrap();
+        let c = candidates(&ctx, &st);
+        // The job's technology is not a candidate; the package's own names are, asked for only by the catalog's list.
+        assert!(c.contains("react") && !c.contains("corp-auth-1a2b"), "{c:?}");
+        assert!(st.withheld(cache.path()).contains("corp"));
+        notify(&ctx).unwrap();
+        let asked = seen.lock().unwrap().clone();
+        assert!(asked.contains("react") && !asked.contains("corp"), "{asked}");
+    }
+    #[test]
     fn a_deferral_says_why_and_when_the_next_attempt_is_allowed() {
         let mut pending = Pending::default();
         pending.unsubmitted.extend(["pkg:npm/a", "pkg:npm/b"].map(String::from));
@@ -3479,7 +3635,7 @@ mod tests {
         assert!(major_step(&v("0.27.10"), &v("0.28.0")), "a minor step on 0.x is a major one");
         assert!(!major_step(&v("0.27.1"), &v("0.27.10")));
         assert!(major_step(&v("0.2.1"), &v("20.0.1")), "read the other way: a 0.2.1 capability predates a project on 20");
-        let st = crate::stack::Stack { packages: vec![], deps: Default::default(), node: None, notes: vec![], spread: 0, standalone: vec![] };
+        let st = crate::stack::Stack { packages: vec![], deps: Default::default(), node: None, notes: vec![], spread: 0, standalone: vec![], registries: Default::default(), fixture_registries: Default::default() };
         assert!(!specific_reference("connection", &st));
         assert!(specific_reference("cacheLife", &st));
         assert!(specific_reference("client.beta.agents.environments", &st));

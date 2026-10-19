@@ -41,10 +41,6 @@ struct Cached {
     yanked: bool,
 }
 
-fn off() -> bool {
-    std::env::var("UNSTALE_NO_REGISTRY").is_ok_and(|v| v == "1")
-}
-
 fn now() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
@@ -110,7 +106,7 @@ fn cached(cache: &Path, purl: &str, version: &str) -> Option<Cached> {
     serde_json::from_slice(&std::fs::read(path(cache, purl, version)).ok()?).ok()
 }
 
-/// The installed versions of each public direct dependency: the lockfile's pinned versions, else the locked headline
+/// The installed versions of each public direct dependency (never one `privacy` keeps private): the lockfile's pinned versions, else the locked headline
 /// version. A declared range alone (no lockfile) installs no known version and is not asked.
 pub fn installed(st: &Stack) -> Vec<(String, String, String)> {
     let mut out = vec![];
@@ -135,7 +131,7 @@ pub fn installed(st: &Stack) -> Vec<(String, String, String)> {
 /// Reads the registry for every installed version whose cached answer is missing or older than a day. Returns how
 /// many were asked.
 pub fn refresh(cache: &Path, st: &Stack) -> usize {
-    if off() {
+    if crate::privacy::registry_off() {
         return 0;
     }
     let agent: ureq::Agent = ureq::Agent::config_builder().http_status_as_error(false).timeout_global(Some(Duration::from_secs(8))).build().into();
@@ -199,7 +195,7 @@ mod tests {
     use crate::stack::{Dep, Pin, Reading};
 
     fn stack(deps: &[(&str, &str, Option<&str>)]) -> Stack {
-        let mut st = Stack { packages: vec![], deps: Default::default(), node: None, notes: vec![], spread: 0, standalone: vec![] };
+        let mut st = Stack { packages: vec![], deps: Default::default(), node: None, notes: vec![], spread: 0, standalone: vec![], registries: Default::default(), fixture_registries: Default::default() };
         for (purl, name, pin) in deps {
             let mut d = Dep::new(name, true);
             if let Some(v) = pin {

@@ -10,6 +10,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use toml::Value;
 
+use crate::privacy::Seen;
 use crate::stack::{Dep, Kind, Package, Pin, walker};
 use crate::usage::{Role, path_role};
 
@@ -199,6 +200,8 @@ struct Lock {
     versions: BTreeMap<String, Version>,
     /// The pinned version as written and its `sha256:` file hashes, by normalised name.
     pins: BTreeMap<String, Pin>,
+    /// Where it says each package came from, by normalised name (`privacy`), when it says.
+    seen: BTreeMap<String, Seen>,
 }
 
 const LOCKFILES: &[&str] = &["uv.lock", "poetry.lock", "pdm.lock", "Pipfile.lock"];
@@ -210,6 +213,11 @@ fn read_locks(dir: &Path) -> Vec<Lock> {
         let Ok(text) = std::fs::read_to_string(dir.join(f)) else { continue };
         let mut versions = BTreeMap::new();
         let mut pins = BTreeMap::new();
+        let mut seen: BTreeMap<String, Seen> = BTreeMap::new();
+        let mut saw = |name: &str, s: Seen| {
+            let e = seen.entry(normalize(name)).or_default();
+            *e = e.and(s);
+        };
         let mut pin = |name: &str, version: &str, hashes: Vec<String>| {
             let hashes: Vec<String> = hashes.into_iter().filter(|h| h.starts_with("sha256:")).collect();
             if !hashes.is_empty() {
@@ -218,8 +226,21 @@ fn read_locks(dir: &Path) -> Vec<Lock> {
         };
         if *f == "Pipfile.lock" {
             let Ok(j) = serde_json::from_str::<Json>(&text) else { continue };
+            // `_meta.sources` names each index; an entry's `index` says which one it came from.
+            let sources: BTreeMap<&str, &str> = j
+                .pointer("/_meta/sources")
+                .and_then(Json::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(|s| Some((s.get("name")?.as_str()?, s.get("url")?.as_str()?)))
+                .collect();
             for section in ["default", "develop"] {
                 for (name, v) in j.get(section).and_then(Json::as_object).into_iter().flatten() {
+                    if let Some(i) = v.get("index").and_then(Json::as_str) {
+                        saw(name, sources.get(i).map_or(Seen::Elsewhere, |u| Seen::pypi_url(u)));
+                    } else if ["git", "path", "file", "editable"].iter().any(|k| v.get(*k).is_some()) {
+                        saw(name, Seen::Elsewhere);
+                    }
                     let Some(raw) = v.get("version").and_then(Json::as_str).map(|s| s.trim_start_matches("==")) else { continue };
                     if let Some(ver) = parse_version(raw) {
                         versions.entry(normalize(name)).or_insert(ver);
@@ -232,6 +253,14 @@ fn read_locks(dir: &Path) -> Vec<Lock> {
             let Ok(doc) = toml::from_str::<Value>(&text) else { continue };
             for p in doc.get("package").and_then(Value::as_array).into_iter().flatten() {
                 let (Some(name), Some(ver)) = (p.get("name").and_then(Value::as_str), p.get("version").and_then(Value::as_str)) else { continue };
+                // uv: `source = { registry = "<index>" }` (or git, a URL, a path). Poetry: no `[package.source]` for
+                // PyPI, its URL for any other source. PDM says nothing here.
+                match (*f, p.get("source")) {
+                    ("uv.lock", Some(src)) => saw(name, src.get("registry").and_then(Value::as_str).map_or(Seen::Elsewhere, Seen::pypi_url)),
+                    ("poetry.lock", Some(src)) => saw(name, src.get("url").and_then(Value::as_str).filter(|_| src.get("type").and_then(Value::as_str).is_none_or(|t| t == "legacy")).map_or(Seen::Elsewhere, Seen::pypi_url)),
+                    ("poetry.lock", None) => saw(name, Seen::Public),
+                    _ => {}
+                }
                 if let Some(v) = parse_version(ver) {
                     versions.entry(normalize(name)).or_insert(v);
                 }
@@ -241,7 +270,7 @@ fn read_locks(dir: &Path) -> Vec<Lock> {
                 pin(name, ver, hashes);
             }
         }
-        out.push(Lock { file: f.to_string(), versions, pins });
+        out.push(Lock { file: f.to_string(), versions, pins, seen });
     }
     out
 }
@@ -316,7 +345,7 @@ pub fn detect(root: &Path, packages: &mut Vec<Package>, deps: &mut BTreeMap<Stri
             continue;
         }
         let rel = e.path().strip_prefix(root).unwrap_or(e.path()).to_string_lossy().replace('\\', "/");
-        if !matches!(path_role(&rel), Role::App | Role::Tooling) {
+        if rel.contains("{{") || !matches!(path_role(&rel), Role::App | Role::Tooling) {
             continue;
         }
         let Ok(text) = std::fs::read_to_string(e.path()) else { continue };
@@ -395,6 +424,9 @@ pub fn detect(root: &Path, packages: &mut Vec<Package>, deps: &mut BTreeMap<Stri
             };
             let entry = deps.entry(purl(&n)).or_insert_with(|| Dep::new(&n, public));
             entry.public_candidate &= public;
+            if let Some(s) = lock.as_ref().and_then(|l| l.seen.get(&n)) {
+                entry.seen = entry.seen.and(*s);
+            }
             if let Some(pin) = lock.as_ref().and_then(|l| l.pins.get(&n))
                 && !entry.pins.contains(pin)
             {
