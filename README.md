@@ -33,6 +33,9 @@ with its stated benefit.
 - **Bump digests.** What a version bump actually fixes, including security advisories, with no model calls at all.
 - **Publisher deprecations.** An installed version of a direct dependency that its publisher deprecated on npm or
 yanked on PyPI, with the registry's message, whether or not the catalog covers the package yet.
+- **Lockfile advisories.** OSV advisories on every version your lockfiles install, transitive ones included, grouped
+under the direct dependency that pulls each in. Only what calls for action is shown: critical or high at runtime, a
+fix your ranges, pins or overrides block, no fix at all, or published in the last 30 days.
 - **Ambient awareness.** One line at the start of an agent session when something new lands for your stack
 (Claude Code).
 - **An instant first report.** Your stack, upgrades and a shortlist of relevant capabilities, seconds after
@@ -109,7 +112,8 @@ and backs up your decisions.
 coverage requests for packages the catalog does not have yet. Your code, paths and versions do not. No telemetry.
 The client also reads the public npm and PyPI registries for your direct packages at their installed versions, as a
 package manager does, to check that a name is the public package and whether its publisher deprecated (npm) or
-yanked (PyPI) that version.
+yanked (PyPI) that version. It sends the package names and versions its lockfiles resolve to OSV (`api.osv.dev`) for
+advisories, as `npm audit` would.
 - **A signed catalog.** Catalog indexes carry an Ed25519 signature and name each shard's sha256; the client discards
 anything that does not verify.
 - **Upstream text is data.** Release notes and docs reach your agent as quoted, untrusted data, never as

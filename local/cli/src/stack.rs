@@ -955,6 +955,11 @@ impl Lock {
         Some(Pin { version: v.to_string(), hashes: hashes.clone() })
     }
 
+    /// The values root overrides set `name` to (`overrides`, `resolutions`, `pnpm.overrides`), with where each is set.
+    pub fn override_values(&self, name: &str) -> Vec<(String, &'static str)> {
+        self.overrides.get(name).into_iter().flatten().map(|o| (o.value.clone(), o.set)).collect()
+    }
+
     fn add_integrity(&mut self, name: &str, version: &Version, integrity: &str) {
         // Only sha512: what the public registry states as `dist.integrity` for every current package.
         let hashes: Vec<String> = integrity.split_whitespace().filter(|h| h.starts_with("sha512-")).map(String::from).collect();
@@ -1087,7 +1092,7 @@ pub fn parse_npm(text: &str) -> Lock {
     l
 }
 
-fn clean_pnpm_version(v: &str) -> Option<Version> {
+pub(crate) fn clean_pnpm_version(v: &str) -> Option<Version> {
     let v = v.trim().trim_matches(['\'', '"']);
     if v.starts_with("link:") || v.starts_with("file:") || v.starts_with("workspace:") {
         return None;
@@ -1166,7 +1171,7 @@ pub fn parse_pnpm(text: &str) -> Lock {
 }
 
 /// `key: value` → (key, Some(value)); `key:` → (key, None). Quotes around the key are removed.
-fn split_key(body: &str) -> Option<(String, Option<&str>)> {
+pub(crate) fn split_key(body: &str) -> Option<(String, Option<&str>)> {
     let (k, rest) = if let Some(q) = body.strip_prefix('\'').or_else(|| body.strip_prefix('"')) {
         let end = q.find(['\'', '"'])?;
         (&q[..end], q[end + 1..].strip_prefix(':')?)
