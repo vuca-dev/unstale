@@ -56,6 +56,9 @@ struct Node {
     /// A project of this repository (an importer, a workspace member): its directory relative to the repository
     /// root. Not queried; its edges are the direct dependencies.
     local: Option<String>,
+    /// Installed from somewhere other than the public registry (a private registry, git, a tarball or a path): its
+    /// name is never sent.
+    private: bool,
     edges: Vec<Edge>,
 }
 
@@ -93,9 +96,15 @@ impl Graph {
             self.nodes[from].edges.push(Edge { to, range: range.map(String::from), dev });
         }
     }
-    /// The package versions to query: every non-local node with a version.
+    fn private(&mut self, i: usize) {
+        self.nodes[i].private = true;
+    }
+    /// The package versions to query: every public package version (not a project of the repository, not one
+    /// installed from elsewhere than the public registry, not a name a project of the repository has).
     pub fn packages(&self) -> BTreeSet<(String, String)> {
-        self.nodes.iter().filter(|n| n.local.is_none() && !n.name.is_empty() && !n.version.is_empty()).map(|n| (n.name.clone(), n.version.clone())).collect()
+        self.nodes
+            .iter()
+            .filter(|n| n.local.is_none() && !n.private && !n.name.is_empty() && !n.version.is_empty()).map(|n| (n.name.clone(), n.version.clone())).collect()
     }
 }
 
@@ -129,7 +138,11 @@ pub fn npm_lock(text: &str, lock_dir: &str, file: &str) -> Graph {
         } else {
             let name = meta.get("name").and_then(Value::as_str).unwrap_or_else(|| key.rsplit_once("node_modules/").map(|(_, n)| n).unwrap_or(key));
             let ver = meta.get("version").and_then(Value::as_str).unwrap_or("");
-            g.node(&format!("npm:{key}"), name, ver)
+            let i = g.node(&format!("npm:{key}"), name, ver);
+            if meta.get("resolved").and_then(Value::as_str).is_some_and(|u| !public_npm(u)) {
+                g.private(i);
+            }
+            i
         };
         idx.insert(key.as_str(), i);
     }
@@ -230,6 +243,12 @@ pub fn pnpm_lock(text: &str, lock_dir: &str, file: &str) -> Graph {
             (["snapshots" | "packages"], _) => {
                 pkg(&mut g, &k);
             }
+            // `resolution: {tarball: …}`, `{type: git, …}` or `{type: directory, …}`: not the registry.
+            (["packages", key], Some(v)) if k == "resolution" && (v.contains("tarball:") || v.contains("type:")) => {
+                if let Some(i) = pkg(&mut g, key) {
+                    g.private(i);
+                }
+            }
             (["snapshots" | "packages", key, "dependencies" | "optionalDependencies"], Some(v)) => {
                 if let (Some(from), dir) = (pkg(&mut g, key), lock_dir.to_string())
                     && let Some(to) = target(&mut g, &mut pkg, &dir, &k, v)
@@ -290,6 +309,10 @@ pub fn yarn_lock(text: &str, file: &str, manifests: &[(String, Value)]) -> Graph
                 }
                 cur = Some(i);
             }
+        } else if let (Some(u), Some(i)) = (t.strip_prefix("resolved "), cur) {
+            if !public_npm(u.trim_matches('"')) {
+                g.private(i);
+            }
         } else if in_deps && let Some(i) = cur {
             let (n, r) = t.split_once(": ").or_else(|| t.split_once(' ')).unwrap_or((t, ""));
             deps.push((i, n.trim_matches('"').to_string(), bare(r)));
@@ -333,7 +356,13 @@ pub fn uv_lock(text: &str, lock_dir: &str, file: &str) -> Graph {
         let local = ["editable", "virtual", "directory"].iter().find_map(|k| src.and_then(|s| s.get(*k)).and_then(|d| d.as_str()));
         let i = match local {
             Some(d) => g.local(&join_dir(lock_dir, d)),
-            None => g.node(&format!("uv:{name}@{ver}"), &name, &ver),
+            None => {
+                let i = g.node(&format!("uv:{name}@{ver}"), &name, &ver);
+                if src.and_then(|s| s.get("registry")).and_then(|r| r.as_str()).is_none_or(|r| !r.starts_with("https://pypi.org/")) {
+                    g.private(i); // git, a URL, a path, or another index
+                }
+                i
+            }
         };
         by_name.entry(name).or_default().push((ver, i));
         ids.push(i);
@@ -428,6 +457,9 @@ pub fn poetry_lock(text: &str, pyproject: &str, lock_dir: &str, file: &str) -> G
         let name = crate::pypi::normalize(p.get("name").and_then(|x| x.as_str()).unwrap_or(""));
         let ver = p.get("version").and_then(|x| x.as_str()).unwrap_or("");
         let i = g.node(&format!("poetry:{name}@{ver}"), &name, ver);
+        if p.get("source").is_some_and(|s| s.get("url").and_then(|u| u.as_str()).is_none_or(|u| !u.starts_with("https://pypi.org/"))) {
+            g.private(i); // `[package.source]`: git, a file, a directory or another index
+        }
         by_name.entry(name).or_insert(i);
         ids.push(i);
     }
@@ -460,6 +492,9 @@ pub fn pipfile_lock(text: &str, lock_dir: &str, file: &str) -> Graph {
             let Some(ver) = m.get("version").and_then(Value::as_str) else { continue };
             let (name, ver) = (crate::pypi::normalize(n), ver.trim_start_matches("==").to_string());
             let to = g.node(&format!("pipfile:{name}@{ver}"), &name, &ver);
+            if m.get("index").and_then(Value::as_str).is_some_and(|i| i != "pypi") {
+                g.private(to);
+            }
             g.edge(from, to, m.get("version").and_then(Value::as_str), dev);
         }
     }
@@ -517,7 +552,30 @@ pub fn graphs(root: &Path, st: &Stack) -> Vec<Graph> {
         };
         out.push(g);
     }
+    // Names of the repository's own packages, and npm scopes `.npmrc` maps to another registry, are never sent.
+    let own: BTreeSet<String> = st.packages.iter().filter_map(|p| p.own.as_deref()).filter_map(util::purl_name).collect();
+    let scopes: Vec<String> = std::fs::read_to_string(root.join(".npmrc"))
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|l| {
+            let (k, v) = l.trim().split_once('=')?;
+            let scope = k.trim().strip_suffix(":registry")?;
+            (!public_npm(v.trim())).then(|| format!("{scope}/"))
+        })
+        .collect();
+    for g in &mut out {
+        for n in &mut g.nodes {
+            if own.contains(&n.name) || (g.eco == "npm" && scopes.iter().any(|s| n.name.starts_with(s.as_str()))) {
+                n.private = true;
+            }
+        }
+    }
     out
+}
+
+/// The public npm registry (and Yarn's mirror of it).
+fn public_npm(url: &str) -> bool {
+    url.starts_with("https://registry.npmjs.org/") || url.starts_with("https://registry.yarnpkg.com/") || url == "https://registry.npmjs.org"
 }
 
 // ------------------------------------------------------------------------------------------------------ advisories
@@ -885,6 +943,8 @@ pub fn refresh_with(cache: &Path, root: &Path, st: &Stack, at: u64, post: impl F
             batch.results.insert(key(w), (at, vulns));
         }
     }
+    // Answers not asked for in 30 days go (lockfiles moved on).
+    batch.results.retain(|_, (t, _)| at.saturating_sub(*t) < 30 * 86400);
     if let Ok(b) = serde_json::to_vec(&batch) {
         let _ = util::write_atomic(&bp, &b);
     }
@@ -1034,6 +1094,8 @@ mod tests {
         "node_modules/proxy-addr": {"version": "2.0.7"},
         "node_modules/markdown-it": {"version": "14.1.0"},
         "node_modules/pinned": {"version": "1.0.0"},
+        "node_modules/@acme/secret": {"version": "1.0.0", "resolved": "https://npm.acme.internal/@acme/secret/-/secret-1.0.0.tgz"},
+        "node_modules/@corp/tool": {"version": "2.0.0", "resolved": "https://registry.npmjs.org/@corp/tool/-/tool-2.0.0.tgz"},
         "node_modules/jest": {"version": "29.0.0", "dev": true, "dependencies": {"braces": "^3.0.2"}},
         "node_modules/braces": {"version": "3.0.2", "dev": true},
         "node_modules/jest/node_modules/braces": {"version": "2.0.0", "dev": true}
@@ -1049,6 +1111,7 @@ mod tests {
     fn npm_lock_resolves_like_node_and_marks_the_conditions() {
         let g = npm_lock(NPM_LOCK, ".", "package-lock.json");
         assert!(g.packages().contains(&("braces".into(), "2.0.0".into())), "a nested copy is its own package version");
+        assert!(!g.packages().iter().any(|(n, _)| n == "@acme/secret"), "a private registry's package is never sent");
         let docs = [
             // (a) high, runtime, through an unused direct dependency: grouped under it.
             ("GHSA-proxy", doc(Some(Severity::High), "2025-01-01T00:00:00Z", &[("npm", "proxy-addr", &["2.0.8"])], &[])),
@@ -1098,11 +1161,12 @@ mod tests {
 
     #[test]
     fn pnpm_v9_graph_with_importers_snapshots_and_links() {
-        let text = "---\nlockfileVersion: '9.0'\nimporters:\n  .:\n    dependencies:\n      pnpm:\n        specifier: 11.0.0\n        version: 11.0.0\n---\nlockfileVersion: '9.0'\n\nimporters:\n\n  .:\n    dependencies:\n      markdown-it:\n        specifier: ^14.1.0\n        version: 14.2.0\n      '@kbn/ui':\n        specifier: link:packages/ui\n        version: link:packages/ui\n    devDependencies:\n      jest:\n        specifier: ^29\n        version: 29.0.0(@types/node@20.0.0)\n\n  packages/ui:\n    dependencies:\n      maplibre-gl:\n        specifier: 5.0.0\n        version: 5.0.0\n\npackages:\n\n  markdown-it@14.2.0:\n    resolution: {integrity: sha512-x}\n\nsnapshots:\n\n  markdown-it@14.2.0:\n    dependencies:\n      linkify-it: 5.0.2\n      string-width-cjs: string-width@4.2.3\n\n  linkify-it@5.0.2: {}\n\n  jest@29.0.0(@types/node@20.0.0):\n    dependencies:\n      braces: 3.0.2\n\n  braces@3.0.2: {}\n\n  maplibre-gl@5.0.0: {}\n";
+        let text = "---\nlockfileVersion: '9.0'\nimporters:\n  .:\n    dependencies:\n      pnpm:\n        specifier: 11.0.0\n        version: 11.0.0\n---\nlockfileVersion: '9.0'\n\nimporters:\n\n  .:\n    dependencies:\n      markdown-it:\n        specifier: ^14.1.0\n        version: 14.2.0\n      '@kbn/ui':\n        specifier: link:packages/ui\n        version: link:packages/ui\n    devDependencies:\n      jest:\n        specifier: ^29\n        version: 29.0.0(@types/node@20.0.0)\n\n  packages/ui:\n    dependencies:\n      maplibre-gl:\n        specifier: 5.0.0\n        version: 5.0.0\n\npackages:\n\n  markdown-it@14.2.0:\n    resolution: {integrity: sha512-x}\n\n  braces@3.0.2:\n    resolution: {integrity: sha512-y, tarball: https://npm.acme.internal/braces-3.0.2.tgz}\n\nsnapshots:\n\n  markdown-it@14.2.0:\n    dependencies:\n      linkify-it: 5.0.2\n      string-width-cjs: string-width@4.2.3\n\n  linkify-it@5.0.2: {}\n\n  jest@29.0.0(@types/node@20.0.0):\n    dependencies:\n      braces: 3.0.2\n\n  braces@3.0.2: {}\n\n  maplibre-gl@5.0.0: {}\n";
         let g = pnpm_lock(text, ".", "pnpm-lock.yaml");
         let p = g.packages();
         assert!(!p.contains(&("pnpm".into(), "11.0.0".into())), "the package manager's own lock is not the project's");
-        for (n, v) in [("markdown-it", "14.2.0"), ("linkify-it", "5.0.2"), ("string-width", "4.2.3"), ("jest", "29.0.0"), ("braces", "3.0.2"), ("maplibre-gl", "5.0.0")] {
+        assert!(!p.contains(&("braces".into(), "3.0.2".into())), "a tarball outside the registry is never sent");
+        for (n, v) in [("markdown-it", "14.2.0"), ("linkify-it", "5.0.2"), ("string-width", "4.2.3"), ("jest", "29.0.0"), ("maplibre-gl", "5.0.0")] {
             assert!(p.contains(&(n.into(), v.into())), "{n} {p:?}");
         }
         let docs = [
@@ -1165,7 +1229,10 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         std::fs::write(d.path().join("package.json"), r#"{"name": "app", "dependencies": {"@react-router/serve": "7.18.2"}}"#).unwrap();
         std::fs::write(d.path().join("package-lock.json"), NPM_LOCK).unwrap();
+        std::fs::write(d.path().join(".npmrc"), "@corp:registry=https://npm.corp.example/\n").unwrap();
         let st = crate::stack::detect(d.path()).unwrap();
+        let names: BTreeSet<String> = graphs(d.path(), &st).iter().flat_map(|g| g.packages()).map(|p| p.0).collect();
+        assert!(!names.contains("@corp/tool") && !names.contains("@acme/secret") && names.contains("proxy-addr"), "{names:?}");
         let cache = tempfile::tempdir().unwrap();
         let posts = std::sync::Mutex::new(0);
         let post = |b: &Value| {
@@ -1177,7 +1244,7 @@ mod tests {
         assert_eq!(report(cache.path(), d.path()), None);
         assert_eq!(refresh_with(cache.path(), d.path(), &st, 1_000_000, post, get), 2, "one batch, one record");
         let r = report(cache.path(), d.path()).unwrap();
-        assert_eq!((r.queried, r.raw, r.items.len()), (8, 1, 1));
+        assert_eq!((r.queried, r.raw, r.items.len()), (8, 1, 1), "the private and the .npmrc-scoped packages are not queried");
         assert_eq!(refresh_with(cache.path(), d.path(), &st, 1_000_000 + 3600, post, get), 0, "fresh: nothing asked");
         assert_eq!(refresh_with(cache.path(), d.path(), &st, 1_000_000 + FRESH_SECS, post, |_| None), 1, "the batch again; the record is cached at its revision");
         assert_eq!(*posts.lock().unwrap(), 2);
