@@ -247,13 +247,14 @@ pub fn refs(text: &str) -> Vec<Ref> {
 }
 
 /// Whether a comment cites an upstream tracker: an issue or pull request reference, or a URL whose host or path names a
-/// bug or issue (`bugs.webkit.org/show_bug.cgi`, `crbug.com/1`, `…/-/issues/2`).
+/// bug or issue as a word (`bugs.webkit.org/show_bug.cgi`, `bugzilla.…`, `…/-/issues/2`; not `/docs/debug`).
 fn cites(text: &str) -> bool {
     !refs(text).is_empty()
         || text.match_indices("http").any(|(i, _)| {
             let url = text[i..].split(|c: char| c.is_whitespace() || matches!(c, ')' | '>' | '"' | '\'' | '`')).next().unwrap_or("");
             let url = url.to_ascii_lowercase();
-            (url.starts_with("https://") || url.starts_with("http://")) && (url.contains("bug") || url.contains("issue"))
+            (url.starts_with("https://") || url.starts_with("http://"))
+                && url.split(|c: char| !c.is_ascii_alphanumeric()).any(|w| w.starts_with("bug") || w.starts_with("issue"))
         })
 }
 
@@ -699,6 +700,8 @@ mod tests {
         let own = Workaround { refs: refs("microsoft/playwright#123"), cites: true, ..other };
         assert_eq!(joins(&own, &["playwright".into()], &repos, &cited, None, |_| true), Some(2), "its own repository");
         assert!(!cites("see https://playwright.dev/docs/actionability"));
+        assert!(!cites("see https://example.dev/docs/debug and https://example.dev/tissue"));
+        assert!(cites("https://gitlab.com/a/b/-/issues/2") && cites("(https://bugzilla.mozilla.org/show_bug.cgi?id=1)"));
     }
 
     #[test]
