@@ -35,11 +35,19 @@ export class Semaphore {
   #active = 0;
   readonly #waiting: Array<() => void> = [];
   readonly limit: number;
+  /** Acquisitions that queued, and their total wait in milliseconds (the drain reports the docs pool's). */
+  waits = 0;
+  waitedMs = 0;
   constructor(limit: number) {
     this.limit = limit;
   }
   async acquire(): Promise<() => void> {
-    if (this.#active >= this.limit) await new Promise<void>((resolve) => this.#waiting.push(resolve));
+    if (this.#active >= this.limit) {
+      const t = Date.now();
+      await new Promise<void>((resolve) => this.#waiting.push(resolve));
+      this.waits++;
+      this.waitedMs += Date.now() - t;
+    }
     this.#active++;
     let released = false;
     return () => {
@@ -93,6 +101,11 @@ export class HttpClient {
   constructor(opts: HttpOptions = DEFAULT_HTTP) {
     this.opts = opts;
     this.#global = new Semaphore(opts.concurrency);
+  }
+
+  /** Requests that waited for a slot of the global pool (not a host's), and how long in total. */
+  poolWaits(): { waits: number; waited_ms: number } {
+    return { waits: this.#global.waits, waited_ms: this.#global.waitedMs };
   }
 
   #host(host: string): Semaphore {

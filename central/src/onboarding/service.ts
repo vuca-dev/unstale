@@ -199,6 +199,11 @@ export class CoverageService {
   private lineStarts: Record<Line, number> = { new: 0, admitted: 0 };
   private fill: Record<Line, number> = { new: 0, admitted: 0 };
   private drainStart = 0;
+  /** This drain's slices by kind (new technology, refresh, other admitted work): started, and settled by outcome. */
+  private tally = blankTally();
+  /** Rate-limit pauses begun this drain (a 429 while one holds extends it, and is not counted again). */
+  private pauses = 0;
+  private measuredDrain?: DrainMetrics;
   private graceMs = 0;
   readonly concurrency: number;
   /** The advisories stage after a technology's history is published (off: `advisories: false` or UNSTALE_NO_ADVISORIES=1). */
@@ -563,6 +568,11 @@ export class CoverageService {
     early?: { due: () => boolean; graceMs: number },
   ): Promise<{ started: number; unfinished: number; drained: boolean; early?: true; held?: Hold[]; rate_limited?: number; stopped?: number }> {
     this.draining = deadline;
+    this.tally = blankTally();
+    this.pauses = 0;
+    const tokensBefore = this.budget.tokensLeft();
+    const pool = docsHttp.poolWaits();
+    const cpu = process.cpuUsage();
     this.graceMs = grace;
     this.endedEarly = false;
     this.holds.clear();
@@ -597,6 +607,14 @@ export class CoverageService {
       this.persist(job);
     }
     this.keepRates();
+    this.measuredDrain = {
+      slices: this.tally,
+      pauses: this.pauses,
+      tokens: Number.isFinite(tokensBefore) ? Math.max(0, tokensBefore - this.budget.tokensLeft()) : null,
+      docs_pool: { waits: docsHttp.poolWaits().waits - pool.waits, waited_ms: docsHttp.poolWaits().waited_ms - pool.waited_ms },
+      cpu_s: ((used) => Math.round((used.user + used.system) / 1e5) / 10)(process.cpuUsage(cpu)),
+      max_rss_mb: Math.round(process.resourceUsage().maxRSS / 1024),
+    };
     const held = [...this.holds.values()];
     const paused = [...this.jobs.values()].filter((j) => Date.parse(j.paused_until ?? "") > Date.now()).length;
     // A rate-limited job is work left: the next cycle retries it.
@@ -610,6 +628,10 @@ export class CoverageService {
       ...(paused ? { rate_limited: paused } : {}),
       ...(this.stopped ? { stopped: this.stopped } : {}),
     };
+  }
+  /** The last drain's own measurements (its final line's `metrics`). */
+  metrics(): DrainMetrics | undefined {
+    return this.measuredDrain;
   }
   /** This drain's measured rates, for the next drain's first minutes; a line it measured nothing for keeps the last. */
   private keepRates(): void {
@@ -632,6 +654,7 @@ export class CoverageService {
    * Retry-After); returns when the pause ends. */
   private ratePause(retryAfterMs = 0): number {
     const t = Date.now();
+    if (t >= this.pausedUntil) this.pauses++;
     if (t >= this.pausedUntil) this.pauseMs = this.pauseMs ? Math.min(RATE_PAUSE_MS[1], this.pauseMs * 2) : RATE_PAUSE_MS[0];
     this.pausedUntil = Math.max(this.pausedUntil, t + Math.max(this.pauseMs, retryAfterMs));
     return this.pausedUntil;
@@ -732,9 +755,12 @@ export class CoverageService {
     if (job.interrupted) this.runningCarried.add(job.purl);
     this.slices.set(job.purl, { at: Date.now(), refresh });
     this.launched++;
+    const kind = this.tally[isNew ? "new" : refresh ? "refresh" : "other"];
+    kind.started++;
     delete job.paused_until;
     void this.work(job)
       .then(() => {
+        kind[job.state === "queued" ? "yielded" : job.state === "failed" ? "failed" : "finished"]++;
         if (Date.now() >= this.pausedUntil) this.pauseMs = 0;
       })
       .catch((error) => {
@@ -742,6 +768,7 @@ export class CoverageService {
         // A rate limit is the runner's request rate, not the package: no failure counted, and the job is retried once
         // the pause that holds every start ends (in this cycle, or the next).
         const limited = rateLimit(error);
+        kind[limited ? "rate_limited" : "failed"]++;
         if (limited) {
           const until = this.ratePause(limited.retryAfterMs);
           job.paused_until = new Date(until).toISOString();
@@ -1298,4 +1325,21 @@ export function createCoverageServer(service = new CoverageService()) {
       });
     }
   });
+}
+
+type SliceTally = { started: number; finished: number; yielded: number; failed: number; rate_limited: number };
+/** A drain's own measurements, on its final line: what parallelism buys (ingest.yml's CONCURRENCY) and costs. */
+export interface DrainMetrics {
+  slices: Record<"new" | "refresh" | "other", SliceTally>;
+  pauses: number;
+  /** Coverage-budget tokens this drain spent; null without a cap. */
+  tokens: number | null;
+  /** The docs crawl's shared pool: requests that queued for a slot and their total wait. */
+  docs_pool: { waits: number; waited_ms: number };
+  cpu_s: number;
+  max_rss_mb: number;
+}
+function blankTally(): DrainMetrics["slices"] {
+  const t = (): SliceTally => ({ started: 0, finished: 0, yielded: 0, failed: 0, rate_limited: 0 });
+  return { new: t(), refresh: t(), other: t() };
 }
