@@ -1259,12 +1259,16 @@ pub(crate) fn yaml_flow_lines(text: &str) -> Vec<String> {
     for line in text.lines() {
         let mut quote: Option<char> = None;
         let mut d = depth;
+        let mut prev = ' ';
         for c in line.chars() {
+            let after_space = prev.is_whitespace();
+            prev = c;
             match (quote, c) {
                 (Some(q), c) if c == q => quote = None,
                 (Some(_), _) => {}
                 (None, '\'' | '"') => quote = Some(c),
-                (None, '#') if d == depth => break,
+                // A comment starts at a `#` after whitespace (a URL fragment's does not).
+                (None, '#') if after_space => break,
                 (None, '{' | '[') => d += 1,
                 (None, '}' | ']') => d -= 1,
                 _ => {}
@@ -1381,7 +1385,7 @@ pub fn parse_pnpm(text: &str) -> Lock {
     if missed > 0 {
         let first = entries.difference(&resolved).next().map(String::as_str).unwrap_or("");
         l.unread = Some(format!("{missed} of {} package entries with no readable resolution, first {first}", entries.len()));
-    } else if l.importers.is_empty() && l.listed.is_empty() && text.lines().any(|t| !t.trim().is_empty() && !t.trim_start().starts_with('#')) {
+    } else if l.importers.is_empty() && l.listed.is_empty() && text.lines().any(|t| SECTIONS.iter().any(|s| t.trim_start().strip_prefix(s).is_some_and(|r| r.starts_with(':')))) {
         l.unread = Some("no importers or dependencies found".into());
     }
     l
@@ -1509,6 +1513,9 @@ mod tests {
     #[test]
     fn unreadable_lockfiles_say_so() {
         assert!(parse_npm("{\"packages\": {").unread.is_some());
+        assert_eq!(parse_pnpm("lockfileVersion: '9.0'\n").unread, None, "an empty project");
+        assert!(parse_pnpm("lockfileVersion: '9.0'\ndependencies:\n  a: ~\n").unread.is_some());
+        assert_eq!(yaml_flow_lines("a:\n  {\n    t: https://x/y.tgz#h,\n  } # done\nb: 1\n"), vec!["a: { t: https://x/y.tgz#h, } # done", "b: 1"]);
         let l = parse_pnpm("lockfileVersion: '9.0'\nimporters:\n  .:\n    dependencies:\n      a:\n        specifier: 1.0.0\n        version: 1.0.0\npackages:\n  a@1.0.0:\n    resolution: <<unknown>>\n");
         assert!(l.unread.as_deref().is_some_and(|u| u.starts_with("1 of 1 package entries")), "{:?}", l.unread);
         let d = tempfile::tempdir().unwrap();
