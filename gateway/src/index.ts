@@ -170,20 +170,27 @@ async function published(env: Env, url: URL, purl: string): Promise<Record<strin
 }
 
 /**
- * Whether the public registry knows a package: only a 404 says no. A registry outage answers yes, since the coverage
- * run verifies the identity again before any work; this check only keeps made-up names out of the queue.
+ * Whether the public registry knows a package: true when it serves it, false on a 404, undefined when it cannot tell
+ * (unreachable, any other status). A package the registry could not confirm is not queued (fails closed): the client
+ * is told to retry, so a registry outage never lets a made-up name into the queue or its demand.
  */
-async function registered(purl: string): Promise<boolean> {
+async function registered(purl: string): Promise<boolean | undefined> {
   const name = packageIdentity(purl);
   const url = purl.startsWith("pkg:pypi/") ? `https://pypi.org/pypi/${name}/json` : `https://registry.npmjs.org/${name.replace("/", "%2F")}/latest`;
   try {
     const res = await fetch(url, { headers: { Accept: "application/json", "User-Agent": "unstale-gateway" } });
     await res.body?.cancel();
-    return res.status !== 404;
+    return res.status === 404 ? false : res.ok ? true : undefined;
   } catch {
-    return true;
+    return undefined;
   }
 }
+
+/** A registration the registry could not confirm: retried in a minute or two (spread, as `unavailable` spreads). */
+const unconfirmed = () => {
+  const retryAfter = 60 + Math.floor(Math.random() * 60);
+  return { error: "The public registry could not confirm this identity; retry later", retry_after: retryAfter };
+};
 
 /**
  * A held package as a job, in the coverage service's format. While a run has it, `run` says where (and the job's
@@ -425,7 +432,12 @@ export async function handle(request: Request, env: Env): Promise<Response> {
       const purl = await input(() => purlOf(request));
       const address = request.headers.get("CF-Connecting-IP") ?? "unknown";
       const known = await published(env, url, purl);
-      if (!known && !(await queue().held(purl)) && !(await registered(purl))) return json(404, { error: "No public package with this identity" });
+      const exists = !!known || (await queue().held(purl)) || (await registered(purl));
+      if (exists === false) return json(404, { error: "No public package with this identity" });
+      if (exists === undefined) {
+        const body = unconfirmed();
+        return json(503, body, { "Retry-After": String(body.retry_after) });
+      }
       const { outcome, view } = await queue().request(purl, address, !!known);
       const { status, body } = registration(purl, outcome, view, known);
       return json(status, body, outcome.type === "refused" ? { "Retry-After": String(outcome.retryAfter) } : {});
@@ -446,7 +458,7 @@ export async function handle(request: Request, env: Env): Promise<Response> {
       return json(200, {
         results: purls.map((purl, i) => {
           const answer = by.get(purl);
-          if (!answer) return { purl, status: 404, error: "No public package with this identity" };
+          if (!answer) return exists[i] === false ? { purl, status: 404, error: "No public package with this identity" } : { purl, status: 503, ...unconfirmed() };
           const { status, body } = registration(purl, answer.outcome, answer.view, known[i]);
           return status === 202 ? { purl, status, job: body } : { purl, status, ...body };
         }),

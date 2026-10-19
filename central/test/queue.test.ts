@@ -5,7 +5,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CoverageService, sameStream, type Job } from "../src/onboarding/service.ts";
+import { CoverageService, logName, sameStream, type Job } from "../src/onboarding/service.ts";
 import { DailyBudget, nextPeriod, periodKey, quarterKey, Voters, type Limits } from "../src/onboarding/limits.ts";
 import { deprecationOf } from "../src/onboarding/notices.ts";
 import { servedIndex } from "../src/pipeline/export.ts";
@@ -95,7 +95,18 @@ test("drain order: admitted work first, then new technologies by demand with no 
   expect(status.stage).toBe("Waiting for a coverage worker (position 2 of 4 new technologies)");
   expect(service.publicStatus(continuing)).toMatchObject({ queue_position: 2, queue_length: 2 });
   expect(status).not.toHaveProperty("demand_voters");
+  // The requester count orders the queue but is never published: the coverage files would tell how many use a package.
+  expect(status).not.toHaveProperty("demand");
+  expect(service.statuses().filter((s) => "demand" in s)).toEqual([]);
   expect(service.publicStatus(parked)).not.toHaveProperty("queue_position");
+});
+
+test("the public run logs name a requested package only once it is admitted; before, a hash prefix stands for it", () => {
+  const purl = "pkg:npm/someones-internal-name";
+  const hidden = logName({ purl });
+  expect(hidden).toMatch(/^requested package [0-9a-f]{12}$/);
+  expect(hidden).not.toContain("someones");
+  expect(logName({ purl, admitted: "maintained and used" })).toBe(purl);
 });
 
 test("among new technologies of equal demand the most adopted drain first; an unreadable count is 0, read once per process", async () => {
