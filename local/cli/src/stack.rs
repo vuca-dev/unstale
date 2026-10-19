@@ -235,7 +235,7 @@ pub struct Pin {
     pub hashes: Vec<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Stack {
     pub packages: Vec<Package>,
     pub deps: BTreeMap<String, Dep>,
@@ -361,7 +361,7 @@ pub(crate) fn is_library(pj: &Value, own_lockfile: bool) -> bool {
 /// Dependency manifests of ecosystems this client does not read yet, by file name (or extension, `.csproj`). The
 /// list is per ecosystem, not per technology; a new ecosystem adapter removes its line.
 const OTHER_MANIFESTS: &[(&str, &str)] = &[
-    // Python (PyPI) is read by `pypi.rs`; a `setup.py`-only project declares nothing statically readable.
+    // Python (PyPI) is read by `pypi.rs`; its unread manifests are `UNREAD_MANIFESTS`.
     ("go.mod", "Go modules"),
     ("pom.xml", "Java (Maven)"),
     ("build.gradle", "Java/Kotlin (Gradle)"),
@@ -375,24 +375,51 @@ const OTHER_MANIFESTS: &[(&str, &str)] = &[
     ("pubspec.yaml", "Dart (pub)"),
 ];
 
+/// Dependency manifests of a read ecosystem that this client does not read, with the package-URL prefix of that
+/// ecosystem. `setup.py` is a program: its requirement lists are whatever it computes when run (variables, environment
+/// switches, files it opens), so it is never parsed or executed. `setup.cfg` is not read either. They count as
+/// uncovered only where no read manifest of the same directory declares a package of that ecosystem.
+const UNREAD_MANIFESTS: &[(&str, &str, &str)] = &[
+    ("setup.py", "Python (setuptools)", "pkg:pypi/"),
+    ("setup.cfg", "Python (setuptools)", "pkg:pypi/"),
+];
+
 /// Manifests of uncovered ecosystems anywhere in the repository (`.gitignore` respected), per ecosystem with their
-/// paths. Manifests in examples, documentation, test fixtures, generated or vendored code are not the project's.
-pub fn uncovered_manifests(repo: &crate::usage::Repo) -> BTreeMap<&'static str, Vec<String>> {
+/// paths, and the unread manifests of read ecosystems where nothing beside them was read (`UNREAD_MANIFESTS`).
+/// Manifests in examples, documentation, test fixtures, generated or vendored code are not the project's.
+pub fn uncovered_manifests(repo: &crate::usage::Repo, stack: &Stack) -> BTreeMap<&'static str, Vec<String>> {
     use crate::usage::Role;
     let mut out: BTreeMap<&'static str, Vec<String>> = BTreeMap::new();
     for p in &repo.paths {
         let base = p.rsplit('/').next().unwrap_or(p);
-        let Some((_, eco)) = OTHER_MANIFESTS
-            .iter()
-            .find(|(m, _)| if m.starts_with('.') { base.ends_with(m) } else { base == *m })
-        else {
-            continue;
+        let other = OTHER_MANIFESTS.iter().find(|(m, _)| if m.starts_with('.') { base.ends_with(m) } else { base == *m }).map(|(_, eco)| *eco);
+        let unread = || {
+            let (_, eco, prefix) = UNREAD_MANIFESTS.iter().find(|(m, _, _)| base == *m)?;
+            let dir = p.rsplit_once('/').map_or(".", |(d, _)| d);
+            let read = stack.packages.iter().any(|k| k.dir == dir && k.declared.iter().any(|u| u.starts_with(prefix)));
+            (!read).then_some(*eco)
         };
+        let Some(eco) = other.or_else(unread) else { continue };
         if matches!(repo.role(p), Role::App | Role::Tooling) {
             out.entry(eco).or_default().push(p.clone());
         }
     }
     out
+}
+
+/// Why nothing was checked, when no dependency was read at all: the manifests that declare them are ones this client
+/// does not read (`uncovered_manifests`), or no manifest it reads declares any.
+pub fn unread_note(repo: &crate::usage::Repo, stack: &Stack) -> Option<String> {
+    if !stack.deps.is_empty() {
+        return None;
+    }
+    let m = uncovered_manifests(repo, stack);
+    Some(if m.is_empty() {
+        "no dependency manifest this client reads (package.json, pyproject.toml, requirements*.txt, Pipfile) declares any packages".into()
+    } else {
+        let list: Vec<String> = m.iter().map(|(eco, paths)| format!("{eco}: {}", paths[..paths.len().min(3)].join(", "))).collect();
+        format!("this repository declares its dependencies in manifests this client does not read ({})", list.join("; "))
+    })
 }
 
 pub fn detect(root: &Path) -> Result<Stack> {
@@ -1472,13 +1499,37 @@ mod tests {
         ] {
             r.paths.push(p.to_string());
         }
-        let m = uncovered_manifests(&r);
+        let m = uncovered_manifests(&r, &Stack::default());
         assert!(!m.contains_key("Python (PyPI)"), "read by the PyPI adapter");
         assert_eq!(m["Rust (crates.io)"], vec!["native/agentive_nif/Cargo.toml"]);
         assert_eq!(m["Elixir (Hex)"], vec!["mix.exs"]);
         assert_eq!(m["C# (NuGet)"], vec!["src/App/App.csproj"]);
         assert!(!m.contains_key("Go modules"), "a fixture's manifest is not the project's");
         assert_eq!(m.len(), 3);
+    }
+
+    #[test]
+    fn setup_py_is_uncovered_only_where_nothing_beside_it_was_read() {
+        let mut r = crate::usage::Repo::default();
+        for p in ["setup.py", "pyproject.toml", "svc/setup.cfg", "svc/requirements.txt", "examples/demo/setup.py"] {
+            r.paths.push(p.to_string());
+        }
+        let pkg = |dir: &str, declared: &[&str]| Package {
+            dir: dir.into(),
+            kind: Kind::Application,
+            lockfile: None,
+            declared: declared.iter().map(|s| s.to_string()).collect(),
+            own: None,
+        };
+        // txtai: a `pyproject.toml` holding only tool settings, every requirement in `setup.py`.
+        let mut st = Stack { packages: vec![pkg(".", &[]), pkg("svc", &["pkg:pypi/httpx"])], ..Default::default() };
+        let m = uncovered_manifests(&r, &st);
+        assert_eq!(m["Python (setuptools)"], vec!["setup.py"], "svc/ read its requirements; examples are not the project's");
+        let why = unread_note(&r, &st).unwrap();
+        assert!(why.contains("does not read") && why.contains("setup.py"), "{why}");
+        st.packages[0].declared.insert("pkg:pypi/numpy".into());
+        assert!(uncovered_manifests(&r, &st).is_empty(), "a read pyproject.toml beside it declares the packages");
+        assert!(unread_note(&crate::usage::Repo::default(), &Stack::default()).unwrap().contains("declares any packages"));
     }
 
     use super::*;

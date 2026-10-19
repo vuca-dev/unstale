@@ -1440,6 +1440,8 @@ struct Brief {
     conflicts: Vec<String>,
     upgrades: Vec<String>,
     limits: Vec<String>,
+    /// Why nothing was checked, when no dependency was read (`stack::unread_note`).
+    unread: Option<String>,
     /// Version-source notes about lockfiles (competing ones, one out of date), and the packages on different
     /// versions across manifests.
     lock_notes: usize,
@@ -1543,7 +1545,11 @@ fn summary(ctx: &Ctx, pending: &Pending, brief: &Brief, issue: Option<&str>) -> 
     if let Some(issue) = issue { lines.push(Line::new(issue, Tone::Amber)); }
     if let Some(line) = pending_line(pending, unix_now()) { lines.push(Line::new(line, Tone::Muted)); }
     if let Some(line) = registration_line(pending) { lines.push(Line::new(line, if pending.deferred_until.is_some() { Tone::Muted } else { Tone::Amber })); }
-    if !brief.limits.is_empty() { lines.push(Line::new("Scope · other dependency ecosystems are not covered; see report.", Tone::Amber)); }
+    if let Some(why) = &brief.unread {
+        lines.push(Line::new(format!("Scope · nothing was checked: {why}."), Tone::Amber));
+    } else if !brief.limits.is_empty() {
+        lines.push(Line::new("Scope · other dependency ecosystems are not covered; see report.", Tone::Amber));
+    }
     if brief.unreadable > 0 {
         let n = brief.unreadable;
         lines.push(Line::new(format!("Lockfile · {n} lockfile{} could not be read in full; versions may be missing. See report.", if n == 1 { "" } else { "s" }), Tone::Amber));
@@ -1571,13 +1577,19 @@ fn summary(ctx: &Ctx, pending: &Pending, brief: &Brief, issue: Option<&str>) -> 
     lines.push(Line::new("", Tone::Body));
     lines.push(Line::new(format!("Upgrades to review · {} shortlisted", brief.upgrades.len()), Tone::Accent));
     if !brief.upgrades.is_empty() { lines.push(Line::new("Upstream change counts, not confirmed issues in your code.", Tone::Muted)); }
-    if brief.upgrades.is_empty() { lines.push(Line::new("No upgrades met the local-reference, compatibility or advisory threshold.", Tone::Muted)); }
+    if brief.upgrades.is_empty() {
+        let none = if brief.unread.is_some() { "No dependencies were read, so no upgrades were checked." } else { "No upgrades met the local-reference, compatibility or advisory threshold." };
+        lines.push(Line::new(none, Tone::Muted));
+    }
     for (index, upgrade) in brief.upgrades.iter().enumerate() {
         lines.push(Line::new(format!("{}. {}", index + 1, upgrade.trim_start_matches("bumping ")), Tone::Body));
     }
     lines.push(Line::new("", Tone::Body));
     lines.push(Line::new(format!("Capabilities to explore · {} shortlisted", brief.highlights.len()), Tone::Accent));
-    if brief.highlights.is_empty() { lines.push(Line::new("No strong capability candidates in the coverage checked so far.", Tone::Muted)); }
+    if brief.highlights.is_empty() {
+        let none = if brief.unread.is_some() { "No dependencies were read, so no capabilities were checked." } else { "No strong capability candidates in the coverage checked so far." };
+        lines.push(Line::new(none, Tone::Muted));
+    }
     for (index, item) in brief.highlights.iter().enumerate() {
         lines.push(Line::new(format!("{}. {} · {} — {}", index + 1, item.technology, item.availability, item.summary), Tone::Body));
         lines.push(Line::new(&item.context, Tone::Muted));
@@ -1793,11 +1805,14 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
     if !deprecated.is_empty() {
         text += "For each package under Deprecated by the publisher, check where the code uses it and propose the move the registry message names (a newer version, a replacement package, or a built-in); a deprecated package whose code is unused can simply be removed.\n\n";
     }
-    let limits: Vec<String> = stack::uncovered_manifests(&w.repo)
+    let limits: Vec<String> = stack::uncovered_manifests(&w.repo, &w.stack)
         .into_iter()
         .map(|(ecosystem, paths)| {
             let more = if paths.len() > 3 { format!(" and {} more", paths.len() - 3) } else { String::new() };
-            format!("{ecosystem}: {}{more}. Not covered by this scan (npm and PyPI only).", paths[..paths.len().min(3)].join(", "))
+            format!(
+                "{ecosystem}: {}{more}. Not read by this scan (package.json, pyproject.toml, requirements*.txt and Pipfile only).",
+                paths[..paths.len().min(3)].join(", ")
+            )
         })
         .collect();
 
@@ -2338,6 +2353,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
         conflicts,
         upgrades,
         limits,
+        unread: stack::unread_note(&w.repo, &w.stack),
         lock_notes: w.stack.notes.len() - usize::from(w.stack.spread > 0),
         unreadable: w.stack.unreadable,
         spread: w.stack.spread,

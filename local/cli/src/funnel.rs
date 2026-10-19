@@ -142,6 +142,8 @@ pub struct Outcome<'a> {
     pub headline: BTreeMap<String, (String, String)>,
     /// Why no technology is covered yet, when the client knows (a deferred registration); set by the caller.
     pub uncovered: Option<String>,
+    /// Why nothing was checked, when no dependency was read at all (`stack::unread_note`); set by the caller.
+    pub unread: Option<String>,
     /// Where the outputs' version follows the code rather than `Dep::headline`, and code left uncited because it runs
     /// another release line (`Choice`): for the report's version sources.
     pub version_notes: Vec<String>,
@@ -1595,6 +1597,9 @@ fn why_scoped(out: &Outcome, techs: Option<&[String]>, routes: &[&str]) -> Strin
         return format!("no records for {named} in the catalog");
     }
     if out.technologies.is_empty() {
+        if let Some(why) = &out.unread {
+            return format!("nothing was checked: {why}");
+        }
         return match &out.uncovered {
             Some(why) => format!("no catalog technology covers this repository yet: {why}"),
             None => "no catalog technology matches this repository's packages (run `unstale sync`)".into(),
@@ -2547,6 +2552,9 @@ mod tests {
         out.uncovered = Some("coverage is deferred because the coverage service is temporarily unavailable until 00:00 UTC".into());
         let w = why(&out, &["bump digest"]);
         assert!(w.starts_with("no catalog technology covers this repository yet: coverage is deferred because") && !w.contains("sync"), "{w}");
+        out.unread = Some("this repository declares its dependencies in manifests this client does not read (Python (setuptools): setup.py)".into());
+        let w = why(&out, &["bump digest"]);
+        assert!(w.starts_with("nothing was checked: ") && w.contains("setup.py") && !w.contains("sync"), "{w}");
     }
 
     #[test]
