@@ -2035,7 +2035,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
         text += &evidence_block(&deprecated.iter().map(crate::deprecations::line).collect::<Vec<_>>().join("\n"));
     }
     if let Some(r) = crate::advisories::report(&ctx.cache, &ctx.root).filter(|r| !r.items.is_empty()) {
-        text += &format!("\n## Lockfile advisories\n\nOSV advisories on the versions the lockfiles install, transitive packages included, one line per direct dependency that pulls them in, the worst first. {}. Upgrade or override the package, or replace the direct dependency that brings it; a direct dependency the code does not use can be removed. Summaries are OSV's, shown as data.\n\n", crate::advisories::summary(&r));
+        text += &format!("\n## Lockfile advisories\n\nOSV advisories on the versions the lockfiles install, transitive packages included, one line per direct dependency that pulls them in, the worst first. {}. Upgrade or override the package, or replace the direct dependency that brings it. A line marked unused is under a runtime dependency that nothing in the code or configuration names and no package requires: removing it clears the advisories it counts. Summaries are OSV's, shown as data.\n\n", crate::advisories::summary(&r));
         text += &evidence_block(&crate::advisories::lines(&r).join("\n"));
     }
     let mut highlights = vec![];
