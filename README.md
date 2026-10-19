@@ -34,8 +34,10 @@ with its stated benefit.
 - **Publisher deprecations.** An installed version of a direct dependency that its publisher deprecated on npm or
 yanked on PyPI, with the registry's message, whether or not the catalog covers the package yet.
 - **Lockfile advisories.** OSV advisories on every version your lockfiles install, transitive ones included, grouped
-under the direct dependency that pulls each in. Only what calls for action is shown: critical or high at runtime, a
-fix your ranges, pins or overrides block, no fix at all, or published in the last 30 days.
+under the direct dependency that pulls each in, one line per dependency, the worst ten shown (`unstale advisories`
+lists the rest). Only what calls for action counts: critical or high at runtime, moderate at runtime when your
+ranges, pins or overrides block the fix or it is new on a direct dependency, and critical development-only packages
+with no fix the ranges admit. Low, unrated and other development-only advisories are counted, not shown.
 - **Ambient awareness.** One line at the start of an agent session when something new lands for your stack
 (Claude Code).
 - **An instant first report.** Your stack, upgrades and a shortlist of relevant capabilities, seconds after
