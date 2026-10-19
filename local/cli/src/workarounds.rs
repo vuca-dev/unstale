@@ -42,6 +42,9 @@ pub struct Workaround {
     pub line: usize,
     /// The package it works around, when the manifest or file name says (patch, alias, fork).
     pub package: Option<String>,
+    /// The version a patch applies to, when its file name or manifest entry says (`postcss-npm-7.0.39-….patch`,
+    /// `patch:postcss@npm%3A7.0.39#…`, `name@1.2.3`): the copy it changes. None for an alias, a fork or a comment.
+    pub version: Option<String>,
     pub refs: Vec<Ref>,
     /// Lowercased words of a comment (split on everything but letters, digits, `@`, `/`, `-`, `_`; dotted paths
     /// split too, so `geventhttpclient.useragent` names `geventhttpclient`).
@@ -78,6 +81,40 @@ pub fn patch_package(file: &str) -> Option<String> {
         strip_version(&s).to_string()
     };
     (!name.is_empty() && name != "@").then_some(name)
+}
+
+/// The version a patch file is for, from the same three naming schemes: `@scope__name@4.37.0.patch` and
+/// `name+1.2.3.patch` (the first package of a nested one), `name-npm-1.2.3-hash.patch`.
+pub fn patch_version(file: &str) -> Option<String> {
+    let stem = file.strip_suffix(".patch").or_else(|| file.strip_suffix(".diff"))?;
+    let v = if let Some((_, rest)) = stem.split_once("-npm-") {
+        rest.rsplit_once('-').map_or(rest, |(v, _)| v)
+    } else if stem.contains('+') {
+        let parts: Vec<&str> = stem.split('+').collect();
+        parts.get(if stem.starts_with('@') { 2 } else { 1 }).copied()?
+    } else {
+        spec_version(stem)?
+    };
+    plain_version(v)
+}
+
+/// The version after a name's `@` (`name@1.2.3`, `@scope/name@npm:1.2.3`), without an `npm:` prefix.
+fn spec_version(s: &str) -> Option<&str> {
+    let name = strip_version(s);
+    let v = s.get(name.len() + 1..)?;
+    Some(v.strip_prefix("npm:").unwrap_or(v))
+}
+
+/// A plain version (`7.0.39`, `1.0.0-beta.1`), not a range.
+fn plain_version(v: &str) -> Option<String> {
+    exact(v).then(|| v.to_string())
+}
+
+/// The version a manifest's patch entry applies to: the patched spec of `patch:postcss@npm%3A7.0.39#./x.patch`, else
+/// the key's own version (`postcss@npm:7.0.36`, pnpm's `name@1.2.3`).
+fn entry_version(key: &str, spec: Option<&str>) -> Option<String> {
+    let from_spec = spec.and_then(|sp| sp.strip_prefix("patch:")).map(|sp| sp.split('#').next().unwrap_or(sp).replace("%3A", ":"));
+    from_spec.as_deref().and_then(spec_version).and_then(plain_version).or_else(|| spec_version(key).and_then(plain_version))
 }
 
 /// `name@1.2.3` → `name`, `@scope/name@^1` → `@scope/name`.
@@ -120,10 +157,10 @@ fn declared(path: &str, line: usize, name: &str, spec: &str, out: &mut Vec<Worka
     let name = strip_version(name).to_string();
     if let Some(target) = spec.strip_prefix("npm:") {
         if strip_version(target) != name {
-            out.push(Workaround { kind: Kind::Alias, path: path.into(), line, package: Some(name), refs: vec![], words: BTreeSet::new() });
+            out.push(Workaround { kind: Kind::Alias, path: path.into(), line, package: Some(name), version: None, refs: vec![], words: BTreeSet::new() });
         }
     } else if is_git(spec) {
-        out.push(Workaround { kind: Kind::Fork, path: path.into(), line, package: Some(name), refs: vec![], words: BTreeSet::new() });
+        out.push(Workaround { kind: Kind::Fork, path: path.into(), line, package: Some(name), version: None, refs: vec![], words: BTreeSet::new() });
     }
 }
 
@@ -224,14 +261,25 @@ fn comment(line: &str) -> Option<&str> {
     line.find(" // ").or_else(|| line.find(" # ")).map(|i| &line[i + 3..])
 }
 
+/// Whether a patch of `pkg` at `version` is new: one per package and patched version (a patch file and the manifest
+/// entry that applies it are one patch; postcss 7 and postcss 8 patches are two). One whose version is not known is
+/// new only when no patch of the package is listed.
+fn first(seen: &mut BTreeSet<(String, Option<String>)>, pkg: &str, version: Option<String>) -> bool {
+    if version.is_none() && seen.iter().any(|(p, _)| p == pkg) {
+        return false;
+    }
+    seen.insert((pkg.to_string(), version))
+}
+
 /// Every workaround in the repository's read files and paths.
 pub fn detect(repo: &usage::Repo) -> Vec<Workaround> {
     let mut out = vec![];
     let mut patched = BTreeSet::new();
     for path in &repo.paths {
         let in_patches = path.rsplit('/').nth(1).is_some_and(|d| d == "patches");
-        if in_patches && let Some(pkg) = patch_package(base(path)) && patched.insert(pkg.clone()) {
-            out.push(Workaround { kind: Kind::Patch, path: path.clone(), line: 0, package: Some(pkg), refs: vec![], words: BTreeSet::new() });
+        if in_patches && let Some(pkg) = patch_package(base(path)) && first(&mut patched, &pkg, patch_version(base(path))) {
+            let version = patch_version(base(path));
+            out.push(Workaround { kind: Kind::Patch, path: path.clone(), line: 0, package: Some(pkg), version, refs: vec![], words: BTreeSet::new() });
         }
     }
     for (path, text) in &repo.files {
@@ -244,8 +292,9 @@ pub fn detect(repo: &usage::Repo) -> Vec<Workaround> {
                 if let Some(m) = v.pointer("/pnpm/patchedDependencies").and_then(|m| m.as_object()) {
                     for k in m.keys() {
                         let pkg = strip_version(k).to_string();
-                        if patched.insert(pkg.clone()) {
-                            out.push(Workaround { kind: Kind::Patch, path: path.clone(), line: line_of(text, k), package: Some(pkg), refs: vec![], words: BTreeSet::new() });
+                        let version = entry_version(k, None);
+                        if first(&mut patched, &pkg, version.clone()) {
+                            out.push(Workaround { kind: Kind::Patch, path: path.clone(), line: line_of(text, k), package: Some(pkg), version, refs: vec![], words: BTreeSet::new() });
                         }
                     }
                 }
@@ -254,8 +303,9 @@ pub fn detect(repo: &usage::Repo) -> Vec<Workaround> {
                     for (k, spec) in m {
                         if let Some(spec) = spec.as_str() {
                             let k = k.rsplit('>').next().unwrap_or(k);
-                            if spec.starts_with("patch:") && patched.insert(strip_version(k).to_string()) {
-                                out.push(Workaround { kind: Kind::Patch, path: path.clone(), line: line_of(text, spec), package: Some(strip_version(k).to_string()), refs: vec![], words: BTreeSet::new() });
+                            let version = entry_version(k, Some(spec));
+                            if spec.starts_with("patch:") && first(&mut patched, strip_version(k), version.clone()) {
+                                out.push(Workaround { kind: Kind::Patch, path: path.clone(), line: line_of(text, spec), package: Some(strip_version(k).to_string()), version, refs: vec![], words: BTreeSet::new() });
                             }
                             declared(path, line_of(text, spec), k, spec, &mut out);
                         }
@@ -265,8 +315,9 @@ pub fn detect(repo: &usage::Repo) -> Vec<Workaround> {
             "pnpm-workspace.yaml" => {
                 for (n, k, _) in yaml_block(text, "patchedDependencies") {
                     let pkg = strip_version(k).to_string();
-                    if patched.insert(pkg.clone()) {
-                        out.push(Workaround { kind: Kind::Patch, path: path.clone(), line: n, package: Some(pkg), refs: vec![], words: BTreeSet::new() });
+                    let version = entry_version(k, None);
+                    if first(&mut patched, &pkg, version.clone()) {
+                        out.push(Workaround { kind: Kind::Patch, path: path.clone(), line: n, package: Some(pkg), version, refs: vec![], words: BTreeSet::new() });
                     }
                 }
                 for block in ["overrides", "catalog"] {
@@ -283,7 +334,7 @@ pub fn detect(repo: &usage::Repo) -> Vec<Workaround> {
                         && name.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '[' | ']'))
                     {
                         let name = name.split('[').next().unwrap_or(name).to_string();
-                        out.push(Workaround { kind: Kind::Fork, path: path.clone(), line: n + 1, package: Some(name), refs: vec![], words: BTreeSet::new() });
+                        out.push(Workaround { kind: Kind::Fork, path: path.clone(), line: n + 1, package: Some(name), version: None, refs: vec![], words: BTreeSet::new() });
                     }
                 }
             }
@@ -311,7 +362,7 @@ pub fn detect(repo: &usage::Repo) -> Vec<Workaround> {
             let lower = block.to_ascii_lowercase();
             if let Some(m) = marker(&lower) {
                 let at = (start..i).find(|&j| lines[j].to_ascii_lowercase().contains(m)).unwrap_or(start) + 1;
-                out.push(Workaround { kind: Kind::Comment, path: path.clone(), line: at, package: None, refs: refs(&block), words: words(&block) });
+                out.push(Workaround { kind: Kind::Comment, path: path.clone(), line: at, package: None, version: None, refs: refs(&block), words: words(&block) });
             }
         }
     }
@@ -365,18 +416,27 @@ pub fn joins(
     packages: &[String],
     repos: &BTreeSet<String>,
     cited: &BTreeSet<Ref>,
+    upgrade: Option<(&semver::Version, &semver::Version)>,
     imports: impl Fn(&str) -> bool,
 ) -> Option<u8> {
     if w.refs.iter().any(|r| cited.contains(r)) {
         return Some(3);
     }
     if let Some(p) = &w.package {
-        return packages.iter().any(|q| q.eq_ignore_ascii_case(p)).then_some(2);
+        return (packages.iter().any(|q| q.eq_ignore_ascii_case(p)) && on_upgrade(w, upgrade)).then_some(2);
     }
     let named = packages.iter().flat_map(|p| spellings(p)).any(|s| w.words.contains(&s))
         || repos.iter().filter_map(|r| r.split('/').nth(1)).any(|r| (r.contains('-') || r.len() >= 8) && !r.contains('.') && w.words.contains(r));
     let strength = if named { 2 } else if w.refs.iter().any(|r| repos.contains(&r.repo)) { 1 } else { return None };
     imports(&w.path).then_some(strength)
+}
+
+/// Whether a patch's version is one the upgrade moves (`upgrade`: installed, target): on the installed copy's release
+/// line (its major, or `0.minor`) or within installed..=target. A patch for postcss 7.0.39 is another copy than the
+/// postcss 8.5.28 an 8.5.31 bump moves. An unknown version on either side joins (fail open).
+fn on_upgrade(w: &Workaround, upgrade: Option<(&semver::Version, &semver::Version)>) -> bool {
+    let (Some(v), Some((installed, target))) = (w.version.as_deref().and_then(crate::util::parse_version), upgrade) else { return true };
+    crate::funnel::line_of(&v) == crate::funnel::line_of(installed) || (*installed <= v && v <= *target)
 }
 
 /// What the manifests say about a technology's packages: whether application manifests declare one for runtime (not
@@ -508,6 +568,46 @@ mod tests {
     }
 
     #[test]
+    fn patches_say_the_version_they_patch() {
+        assert_eq!(patch_version("postcss-npm-7.0.39-0f8737296e.patch").as_deref(), Some("7.0.39"));
+        assert_eq!(patch_version("@scope-name-npm-1.0.0-beta.1-abcdef.patch").as_deref(), Some("1.0.0-beta.1"));
+        assert_eq!(patch_version("@chat-adapter__teams@4.37.0.patch").as_deref(), Some("4.37.0"));
+        assert_eq!(patch_version("@scope+name+1.2.3.patch").as_deref(), Some("1.2.3"));
+        assert_eq!(patch_version("react-native+0.72.0++metro+0.76.patch").as_deref(), Some("0.72.0"));
+        assert_eq!(patch_version("ics.patch"), None);
+        assert_eq!(entry_version("postcss@npm:^7.0.16", Some("patch:postcss@npm%3A7.0.39#~/.yarn/patches/x.patch")).as_deref(), Some("7.0.39"));
+        assert_eq!(entry_version("bull@4.16.4", None).as_deref(), Some("4.16.4"));
+        assert_eq!(entry_version("bull", None), None);
+        assert_eq!(entry_version("postcss@^7", None), None, "a range is not the patched version");
+    }
+
+    #[test]
+    fn a_patch_joins_only_an_upgrade_of_its_copy() {
+        // MetaMask/metamask-extension: a postcss 7.0.39 patch (wired to transitive 7.x by resolutions) was offered as
+        // retired by the direct postcss 8.5.28 → 8.5.31 bump.
+        let pkg = r#"{"resolutions":{"postcss@npm:7.0.36":"patch:postcss@npm%3A7.0.39#~/.yarn/patches/postcss-npm-7.0.39-0f8737296e.patch"}}"#;
+        let repo = crate::funnel::fixtures::repo(&[
+            (".yarn/patches/postcss-npm-7.0.39-0f8737296e.patch", ""),
+            (".yarn/patches/postcss-npm-8.5.28-1a2b3c4d5e.patch", ""),
+            ("package.json", pkg),
+        ]);
+        let found = detect(&repo);
+        let versions: Vec<_> = found.iter().map(|w| w.version.as_deref()).collect();
+        assert_eq!(versions, vec![Some("7.0.39"), Some("8.5.28")], "one patch per version; its resolution is the same patch");
+        let v = |s: &str| semver::Version::parse(s).unwrap();
+        let (none, pk) = (BTreeSet::new(), vec!["postcss".to_string()]);
+        let join = |w: &Workaround, i: &str, t: &str| joins(w, &pk, &none, &BTreeSet::new(), Some((&v(i), &v(t))), |_| true);
+        assert_eq!(join(&found[0], "8.5.28", "8.5.31"), None, "another major's copy");
+        assert_eq!(join(&found[1], "8.5.28", "8.5.31"), Some(2));
+        assert_eq!(join(&found[0], "7.0.36", "8.5.31"), Some(2), "the installed copy's line");
+        assert_eq!(join(&found[1], "7.0.36", "8.5.31"), Some(2), "within the upgrade's range");
+        let unknown = Workaround { version: None, ..found[0].clone() };
+        assert_eq!(join(&unknown, "8.5.28", "8.5.31"), Some(2), "an unknown version joins");
+        let zero = Workaround { version: Some("0.4.2".into()), ..found[0].clone() };
+        assert_eq!(join(&zero, "0.5.0", "0.5.3"), None, "0.minor is the line below 1.0");
+    }
+
+    #[test]
     fn comments_cite_upstream_issues() {
         let r = refs("Drop the patch once upstream sends the flag (vercel/chat#950). See https://github.com/a/b/pull/12.");
         assert_eq!(r, vec![Ref { repo: "a/b".into(), number: 12 }, Ref { repo: "vercel/chat".into(), number: 950 }]);
@@ -523,18 +623,18 @@ mod tests {
     #[test]
     fn a_comment_joins_by_cited_issue_or_by_name_in_an_importing_file() {
         let w = Workaround {
-            kind: Kind::Comment, path: "src/a.ts".into(), line: 3, package: None,
+            kind: Kind::Comment, path: "src/a.ts".into(), line: 3, package: None, version: None,
             refs: refs("until vercel/chat#950 lands"), words: words("Remove when bumping redux-toolkit to v2"),
         };
         let (repos, cited) = evidence_refs(&[("https://github.com/vercel/chat/releases/tag/x", "Send the flag (#950)")]);
-        assert_eq!(joins(&w, &["@chat-adapter/teams".into()], &repos, &cited, |_| false), Some(3));
+        assert_eq!(joins(&w, &["@chat-adapter/teams".into()], &repos, &cited, None, |_| false), Some(3));
         let (repos, cited) = evidence_refs(&[("https://github.com/reduxjs/redux-toolkit/releases/tag/v2.12.0", "fix")]);
-        assert_eq!(joins(&w, &["@reduxjs/toolkit".into()], &repos, &cited, |_| true), Some(2));
-        assert_eq!(joins(&w, &["@reduxjs/toolkit".into()], &repos, &cited, |_| false), None, "the file must import it");
+        assert_eq!(joins(&w, &["@reduxjs/toolkit".into()], &repos, &cited, None, |_| true), Some(2));
+        assert_eq!(joins(&w, &["@reduxjs/toolkit".into()], &repos, &cited, None, |_| false), None, "the file must import it");
         let short = Workaround { words: words("workaround: the next line needs this"), refs: vec![], ..w.clone() };
-        assert_eq!(joins(&short, &["next".into()], &BTreeSet::new(), &BTreeSet::new(), |_| true), None, "a plain short word is not a name");
+        assert_eq!(joins(&short, &["next".into()], &BTreeSet::new(), &BTreeSet::new(), None, |_| true), None, "a plain short word is not a name");
         let monkey = Workaround { words: words("Monkey patch geventhttpclient.useragent.CompatRequest so that Cookiejar works"), refs: vec![], ..w };
-        assert_eq!(joins(&monkey, &["geventhttpclient".into()], &BTreeSet::new(), &BTreeSet::new(), |_| true), Some(2));
+        assert_eq!(joins(&monkey, &["geventhttpclient".into()], &BTreeSet::new(), &BTreeSet::new(), None, |_| true), Some(2));
     }
 
     #[test]

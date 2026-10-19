@@ -1117,8 +1117,9 @@ fn specific_reference(term: &str, stack: &stack::Stack) -> bool {
     {
         return false;
     }
-    // A plain lowercase word (`connection`, `environment`) is prose as often as code: never shown as the reference.
-    if term.chars().all(|c| c.is_ascii_lowercase()) {
+    // A plain word (`connection`, `environment`, `Node`) is prose or any codebase's own name as often as the
+    // technology's: never the reference on its own.
+    if term.chars().all(|c| c.is_ascii_lowercase()) || usage::plain_word(term) {
         return false;
     }
     let ext = Path::new(term)
@@ -1152,6 +1153,7 @@ fn highlight_indices(out: &Outcome, w: &World) -> Vec<usize> {
                     | funnel::Route::OtherPackage
                     | funnel::Route::Baseline
                     | funnel::Route::RequiresAbsent
+                    | funnel::Route::NoSite
             ) {
                 return None;
             }
@@ -1606,6 +1608,9 @@ fn workaround_joins(found: &[workarounds::Workaround], members: &[usize], out: &
         .collect();
     let all: Vec<(&str, &str)> = members.iter().flat_map(|&i| out.opps[i].rec.r.evidence.iter().map(|e| (e.url.as_str(), e.quote.as_str()))).collect();
     let (repos, cited) = workarounds::evidence_refs(&all);
+    // The copy the upgrade moves: its installed version and the furthest target its records reach.
+    let installed = members.iter().map(|&i| &out.opps[i].installed).min();
+    let upgrade = installed.zip(members.iter().map(|&i| &out.opps[i].target).max());
     // A file imports a package when its text names it at a module position: in quotes (JavaScript) or after
     // `import`/`from` (Python).
     let imports = |path: &str| {
@@ -1621,7 +1626,7 @@ fn workaround_joins(found: &[workarounds::Workaround], members: &[usize], out: &
         .iter()
         .enumerate()
         .filter_map(|(k, wa)| {
-            let strength = workarounds::joins(wa, packages, &repos, &cited, &imports)?;
+            let strength = workarounds::joins(wa, packages, &repos, &cited, upgrade, &imports)?;
             let at = (strength == 3)
                 .then(|| per.iter().find_map(|(i, refs)| wa.refs.iter().find(|r| refs.contains(r)).map(|r| (*i, r.clone()))))
                 .flatten();
