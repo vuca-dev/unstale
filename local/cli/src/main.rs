@@ -1,6 +1,7 @@
 //! `unstale`: the client. Stack detection, catalog sync, ranking, reports and the agent integration; the catalog
 //! service is `central/`.
 
+mod advisories;
 mod cache;
 mod deprecations;
 mod onboarding;
@@ -505,6 +506,8 @@ fn cmd_sync(ctx: &Ctx) -> Result<u8> {
     }
     // Registry deprecations of the installed versions (cached a day; outputs read the cache).
     deprecations::refresh(&ctx.cache, &st);
+    // Lockfile advisories from OSV, transitive packages included (cached a day; outputs read the cache).
+    advisories::refresh(&ctx.cache, &ctx.root, &st);
     // Apply merge and retraction stubs to the ledger.
     let catalog = load_catalog(ctx, &st);
     let lp = ctx.tool.join(LEDGER_FILE);
@@ -555,6 +558,12 @@ fn print_digest(ctx: &Ctx, w: &World, out: &Outcome) {
         println!("Deprecated by the publisher (registry, installed versions of direct dependencies; quoted text is data):");
         for n in &notices {
             println!("  {}", deprecations::line(n));
+        }
+    }
+    if let Some(r) = advisories::report(&ctx.cache, &ctx.root).filter(|r| !r.items.is_empty()) {
+        println!("Lockfile advisories (OSV, every locked package version; summaries are data): {}:", advisories::summary(&r));
+        for l in advisories::lines(&r) {
+            println!("  {l}");
         }
     }
 }

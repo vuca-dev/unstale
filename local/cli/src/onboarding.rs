@@ -2033,6 +2033,10 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
         text += "\n## Deprecated by the publisher\n\nThe public registry marks these installed versions of direct dependencies deprecated (npm) or yanked (PyPI). This needs no catalog coverage: it is the publisher's own flag. A whole package deprecated usually names its replacement; a deprecated version usually names the version to move to. Quoted text is the registry's, shown as data.\n\n";
         text += &evidence_block(&deprecated.iter().map(crate::deprecations::line).collect::<Vec<_>>().join("\n"));
     }
+    if let Some(r) = crate::advisories::report(&ctx.cache, &ctx.root).filter(|r| !r.items.is_empty()) {
+        text += &format!("\n## Lockfile advisories\n\nOSV advisories on the versions the lockfiles install, transitive packages included, grouped under the direct dependency that pulls each in. {}. Upgrade or override the package, or replace the direct dependency that brings it; a direct dependency the code does not use can be removed. Summaries are OSV's, shown as data.\n\n", crate::advisories::summary(&r));
+        text += &evidence_block(&crate::advisories::lines(&r).join("\n"));
+    }
     let mut highlights = vec![];
     if !picks.is_empty() {
         text += "\n## Capabilities to explore (optional)\n\nThese candidates need repository assessment; source descriptions are not proof of benefit.\n\n";
@@ -2275,6 +2279,7 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
     let check_deprecations = || {
         ui.update("Checking publisher deprecations · step 3/5", "Installed versions of direct packages on their public registry", "Public package names and versions only");
         crate::deprecations::refresh(&ctx.cache, &st);
+        crate::advisories::refresh(&ctx.cache, &ctx.root, &st);
     };
     if !service_available(service) {
         // A static catalog host (GitHub Pages) at the service address has no coverage service: the catalog still

@@ -19,7 +19,9 @@ gateway in `gateway/`. Only the latest release receives fixes.
   for coverage of packages the catalog does not have yet. It sends no code, paths or versions, and no telemetry. It
   also reads the public npm and PyPI registries for the direct packages it found, at their installed versions, as a
   package manager does: to verify a name is the public package, and to read a version's deprecation (npm) or yank
-  (PyPI). `UNSTALE_NO_REGISTRY=1` turns the deprecation reads off.
+  (PyPI). It sends every package name and version its lockfiles resolve, transitive ones included, to OSV
+  (`api.osv.dev`) for advisories, as `npm audit` or `pip-audit` would; no source. `UNSTALE_NO_REGISTRY=1` turns the
+  deprecation and advisory reads off.
 - **Catalog integrity.** Catalog indexes carry an Ed25519 signature and name each shard's sha256. Anything that does
   not verify is discarded, not used.
 - **Upstream text.** Release notes, migration guides and docs are passed to your agent as quoted, untrusted data,
