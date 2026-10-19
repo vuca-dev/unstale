@@ -325,6 +325,34 @@ test("a name the public registry does not know is not queued", async () => {
   expect(await (await handle(get("/internal/queue", auth), e)).json()).toMatchObject({ requests: [{ purl: "pkg:npm/%40scope/real", demand: 1 }] });
 });
 
+test("a registry that cannot confirm a name fails closed: a 503 with Retry-After, nothing queued", async () => {
+  // Unreachable for one name, an error status for another; a third the registry serves.
+  vi.stubGlobal("fetch", async (url: string) => {
+    if (url.includes("down")) throw new TypeError("fetch failed");
+    return new Response("{}", { status: url.includes("busy") ? 502 : 200 });
+  });
+  const { env: e } = env();
+  for (const purl of ["pkg:npm/down", "pkg:pypi/busy"]) {
+    const res = await handle(post({ purl }), e);
+    expect(res.status).toBe(503);
+    const retry = Number(res.headers.get("Retry-After"));
+    expect(retry).toBeGreaterThanOrEqual(60);
+    expect(await res.json()).toMatchObject({ retry_after: retry });
+  }
+  // In a batch, the unconfirmed package's own result says to retry; the rest are answered as usual.
+  const res = await handle(batch("/coverage/register", { purls: ["pkg:npm/down", "pkg:npm/up", "pkg:npm/busy"] }), e);
+  const { results } = (await res.json()) as { results: Record<string, unknown>[] };
+  expect(results.map((r) => [r.purl, r.status])).toEqual([
+    ["pkg:npm/down", 503],
+    ["pkg:npm/up", 202],
+    ["pkg:npm/busy", 503],
+  ]);
+  expect(results[0]).toMatchObject({ retry_after: expect.any(Number) });
+  const auth = { Authorization: "Bearer drain-secret" };
+  expect(await (await handle(get("/internal/queue", auth), e)).json()).toMatchObject({ requests: [{ purl: "pkg:npm/up", demand: 1 }] });
+  expect((await handle(get("/coverage?purl=pkg%3Anpm%2Fdown"), e)).status).toBe(404);
+});
+
 test("a refused registration is a 429 with Retry-After, as the coverage service answers", async () => {
   const { env: e } = env({}, { RATE_PER_HOUR: "1" });
   await handle(post({ purl: "pkg:npm/a" }), e);

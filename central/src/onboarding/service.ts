@@ -74,7 +74,8 @@ export interface Job {
   next_task?: "history" | "docs";
   /** Why the package passed admission; checked once, before the first crawl or extraction. */
   admitted?: string;
-  /** Distinct requesters (a count only; who asked is never stored). The queue's order: most requested first. */
+  /** Distinct requesters (a count only; who asked is never stored). The queue's order: most requested first. Never
+   * public: a published count would tell how many people use a package. */
   demand?: number;
   /** Weekly registry downloads, read once while the technology is new: among new ones of equal demand, the most
    * adopted drain first. Never public. */
@@ -974,7 +975,7 @@ export class CoverageService {
             return;
           }
           // Not a failure of the job: its turn in the queue runs the same steps and reports any error there.
-          console.error(`advisories first: ${job.purl}: ${String(error instanceof Error ? error.message : error).slice(0, 300)}`);
+          console.error(`advisories first: ${logName(job)}: ${String(error instanceof Error ? error.message : error).slice(0, 300)}`);
           // The admission it reached is still a firm decision: said, as a finished pass says it.
           if (job.admitted && job.state === "queued") this.save(job, "queued", `Admitted for coverage (${job.admitted}); release history waits for a coverage worker`);
           else this.persist(job);
@@ -1145,7 +1146,7 @@ export class CoverageService {
       try {
         guides = await fetchGuides(tech, releases.notes, { http: docsHttp, checked: true });
       } catch (e) {
-        console.error(`coverage: ${job.purl}: upgrade guides unreadable (${e instanceof Error ? e.message : e}); release notes and docs only`);
+        console.error(`coverage: ${logName(job)}: upgrade guides unreadable (${e instanceof Error ? e.message : e}); release notes and docs only`);
       }
       for (const g of guides) {
         const key = `${g.keyTag}:audience-v1`;
@@ -1201,6 +1202,11 @@ export function docsCoverage(j: Pick<Job, "enumeration" | "docs_done" | "docs_to
   const label = j.enumeration === "complete" && !j.docs_failed && j.docs_total > 0 ? "monitored" : j.enumeration === "unavailable" ? "not found" : "coverage partial";
   return `documentation ${label} (${j.docs_done - j.docs_failed}/${j.docs_total} pages)`;
 }
+/** A job's name in the run logs, which are public: a package clients asked for is named only once admitted (a public
+ * technology); before, a hash prefix of its purl (that of its job and coverage files) stands for it. */
+export function logName(j: Pick<Job, "purl" | "admitted">): string {
+  return j.admitted ? j.purl : `requested package ${sha256(j.purl).slice(0, 12)}`;
+}
 function publicJob(j: Job) {
   const {
     completed: _completed,
@@ -1219,6 +1225,7 @@ function publicJob(j: Job) {
     downloads: _downloads,
     interrupted: _interrupted,
     paused_until: _paused,
+    demand: _demand,
     ...fields
   } = j;
   return fields;

@@ -1,6 +1,6 @@
 // Read-only diagnostics for the production gateway, run by .github/workflows/gateway-diagnostics.yml (no local
 // Cloudflare credentials needed). Prints nothing secret: tokens come from the environment and only counters, status
-// codes, log lines and exception messages are printed.
+// codes, log lines and exception messages are printed; a requested package's name (`?purl=`) is redacted.
 //
 //   node gateway/scripts/diagnostics.ts analytics [--hours 48]   Durable Object rows read/written, requests, storage
 //                                                                 per hour, and the Worker's invocations by status
@@ -216,7 +216,8 @@ function tail(file: string): void {
     let path = "";
     if (req?.url) {
       const u = new URL(req.url);
-      path = `${req.method} ${u.host}${u.pathname}${u.searchParams.has("purl") ? `?purl=${u.searchParams.get("purl")}` : ""}`;
+      // The package a client asked about is never printed (the workflow's logs are public): only that it asked.
+      path = `${req.method} ${u.host}${u.pathname}${u.searchParams.has("purl") ? "?purl=(redacted)" : ""}`;
     } else if (e.event?.rpcMethod) path = `rpc ${e.event.rpcMethod}`;
     else if (e.event) path = Object.keys(e.event).join(",");
     const status = e.event?.response?.status ?? "";
