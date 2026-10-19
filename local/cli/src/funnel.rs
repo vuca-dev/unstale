@@ -387,6 +387,20 @@ fn option_of<'r>(r: &'r unstale_schema::catalog::CapabilityRecord, lit: &str) ->
     (r.surface == Surface::Configuration && r.subject_kind == SubjectKind::Literal && r.facet.is_some() && keylike && !lit.contains(s) && !s.contains(lit)).then_some(s)
 }
 
+/// The key a configuration record's dotted option path `lit` ends in (`fsModuleCache` of `experimental.fsModuleCache`),
+/// for the applied check: a config file writes the path nested (`experimental: { fsModuleCache: true }`), and an option
+/// promoted or moved between releases keeps that key under another parent (Vitest 5's top-level `fsModuleCache`, set in
+/// faker's `vitest.config.ts`). Only a specific key: not a plain word, 6 characters or more.
+fn option_leaf(r: &unstale_schema::catalog::CapabilityRecord, lit: &str) -> Option<String> {
+    if r.surface != Surface::Configuration {
+        return None;
+    }
+    let l = clean_lit(lit)?;
+    let (_, leaf) = l.rsplit_once('.')?;
+    let keylike = leaf.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-')) && !l.contains(|c: char| c.is_whitespace() || matches!(c, '\'' | '"' | ':' | '=' | '/'));
+    (keylike && leaf.chars().count() >= 6 && !usage::plain_word(leaf)).then(|| leaf.to_string())
+}
+
 /// The nearest project boundary containing `path` (`.` when none does).
 fn boundary_of<'b>(bounds: &[&'b str], path: &str) -> &'b str {
     bounds.iter().copied().find(|d| *d == "." || path.strip_prefix(*d).is_some_and(|r| r.starts_with('/'))).unwrap_or(".")
@@ -461,6 +475,9 @@ pub fn replacement_lits(r: &Rec, lits: &[String], deprecated: &[String]) -> Vec<
 /// handling (knip detecting custom elements, a Vite 8 peer range, TypeScript 6 support) or a stability change to it:
 /// every user of that version gets it, with nothing to write. Of 60 such records sampled from the catalog (17 October
 /// 2026), 58 were support, compatibility or detection the tool applies itself.
+/// The same holds for a tooling change to its type checking or editor support (`types_only`) or with no surface
+/// (`other`): of 50 sampled (19 October 2026), 48 were checks, hints, typings or language-server features the tool
+/// applies itself.
 pub fn is_opt_in(r: &Rec) -> bool {
     !is_obligation(r)
         && matches!(r.r.change_type, ChangeType::NewApi | ChangeType::NewOption | ChangeType::StabilityChange | ChangeType::Tooling | ChangeType::Other)
@@ -468,11 +485,14 @@ pub fn is_opt_in(r: &Rec) -> bool {
         && !tool_behaviour(r)
 }
 
-/// A tooling change to the tool's build or configuration handling, or a stability change to its build (`is_opt_in`).
+/// A tooling change to the tool's build or configuration handling, its type checking or editor support (`types_only`:
+/// vue-tsc's destructured-props hints, typed `definePage` params), or with no surface (`other`: language-server features,
+/// provenance republishes); or a stability change to its build (`is_opt_in`).
 fn tool_behaviour(r: &Rec) -> bool {
     matches!(
         (r.r.change_type, r.r.surface),
-        (ChangeType::Tooling, Surface::BuildTooling | Surface::Configuration) | (ChangeType::StabilityChange, Surface::BuildTooling)
+        (ChangeType::Tooling, Surface::BuildTooling | Surface::Configuration | Surface::TypesOnly | Surface::Other)
+            | (ChangeType::StabilityChange, Surface::BuildTooling)
     )
 }
 
@@ -664,6 +684,7 @@ fn tech_lits(tech: &str, td: &TechData) -> TechLits {
     for r in &td.records {
         usage.extend(r.r.requires.iter().filter_map(|x| clean_lit(x)));
         whole.extend(r.r.introduces.iter().filter_map(|x| clean_lit(x)).filter(|x| x.chars().count() >= 6));
+        whole.extend(r.r.introduces.iter().filter_map(|x| option_leaf(&r.r, x)));
     }
     // A relative literal is the technology's package subpath when its record says so: it also names the manifest's
     // `exports` field, or `<package>/<subpath>` itself (knip's `./config` next to `knip/config`). Otherwise it is a
@@ -1195,7 +1216,16 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                 inp.ledger.entries.iter().find(|e| e.id() == rec.r.id).filter(|e| withholds(e, rec.r.revision, inp.today)).map(status_name)
             };
             // Applied in the code the record describes; a workspace on another version is judged on the whole repository.
-            let applied_in = |v: usize| rec.r.introduces.iter().filter_map(|x| clean_lit(x)).any(|x| applied_of(v, &x));
+            // A configuration option's own key (`option_leaf`) also counts, in code that configures the technology only.
+            let leaf_applied = |v: usize, f: &str| {
+                hits_of(v).whole.get(f).into_iter().flatten().any(|p| {
+                    scopes[v].counts(f, p) && usage::counts_as_applied(role(p), p) && (!usage::own_code(p, &ecosystem) || scopes[v].configures(p))
+                })
+            };
+            let applied_in = |v: usize| {
+                rec.r.introduces.iter().filter_map(|x| clean_lit(x)).any(|x| applied_of(v, &x))
+                    || rec.r.introduces.iter().filter_map(|x| option_leaf(&rec.r, x)).any(|f| leaf_applied(v, &f))
+            };
             let applied = || applied_in(view);
             opp.route = base_route(rec, avail);
             // A deprecation already in the installed version is still owed while the code uses what it deprecates: its
@@ -2686,6 +2716,9 @@ mod tests {
                 t("knip:orval", "tooling", "configuration", "6.15.0"),
                 t("knip:rust-builds", "stability_change", "build_tooling", "6.15.0"),
                 t("knip:vite8", "tooling", "build_tooling", "6.40.0"),
+                // Type-checker and editor fixes (vue-tsc's destructured-props hints), language-server features.
+                t("knip:hints", "tooling", "types_only", "6.16.0"),
+                t("knip:lsp", "tooling", "other", "6.16.0"),
                 // A new command or flag is still adopted by whoever runs it.
                 t("knip:new-command", "tooling", "command_line", "6.16.0"),
                 rec("knip:newest", "pkg:npm/knip", "6.40.0"),
@@ -2693,11 +2726,38 @@ mod tests {
         );
         let (s, r, l) = (stack(&[("knip", "6.35.1")], None), repo(&[]), Ledger::default());
         let out = run_with(&c, &s, &r, &l);
-        for id in ["knip:custom-elements", "knip:orval", "knip:rust-builds"] {
+        for id in ["knip:custom-elements", "knip:orval", "knip:rust-builds", "knip:hints", "knip:lsp"] {
             assert_eq!(route_of(&out, id), &Route::AlreadyIncluded, "{id}");
         }
         assert_eq!(route_of(&out, "knip:vite8"), &Route::BumpDigest, "arrives with the bump, nothing to adopt");
         assert_eq!(route_of(&out, "knip:new-command"), &Route::ImprovementsPass);
+    }
+
+    #[test]
+    fn a_moved_option_is_applied_by_its_own_key_in_the_technologys_config() {
+        // faker-js/faker: Vitest 4.0.11's `experimental.fsModuleCache`, promoted in 5.0 to a top-level `fsModuleCache`
+        // that faker's vitest.config.ts already sets.
+        let opt = |id: &str, lit: &str| with(rec(id, "pkg:npm/vitest", "4.0.11"), json!({"change_type":"new_option","surface":"configuration","introduces":[lit]}));
+        let c = catalog(
+            "vitest",
+            0,
+            vec![
+                opt("vitest:cache", "experimental.fsModuleCache"),
+                opt("vitest:elsewhere", "experimental.printImportBreakdown"),
+                opt("vitest:plain", "experimental.openTelemetry.enabled"),
+                rec("vitest:newest", "pkg:npm/vitest", "4.1.0"),
+            ],
+        );
+        let s = stack(&[("vitest", "4.0.12")], None);
+        let r = repo(&[
+            ("vitest.config.ts", "import { defineConfig } from 'vitest/config';\nexport default defineConfig({ test: { fsModuleCache: true, enabled: true } });"),
+            ("src/report.ts", "export const printImportBreakdown = true;"),
+        ]);
+        let l = Ledger::default();
+        let out = run_with(&c, &s, &r, &l);
+        assert_eq!(route_of(&out, "vitest:cache"), &Route::Applied);
+        assert_eq!(route_of(&out, "vitest:elsewhere"), &Route::ImprovementsPass, "the key outside the technology's config");
+        assert_eq!(route_of(&out, "vitest:plain"), &Route::ImprovementsPass, "a plain-word key is not specific");
     }
 
     #[test]
