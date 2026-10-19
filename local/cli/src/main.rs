@@ -45,7 +45,7 @@ const EXIT_LEDGER: u8 = 5;
     name = "unstale",
     version,
     about = "Keeps a repository current with verified changes in the libraries and frameworks it uses.",
-    after_help = "Exit codes: 0 ok; 1 error; 2 usage; 3 a review batch is incomplete (--next); 4 the catalog needs a newer unstale (cache kept); 5 the ledger has invalid lines.\n\nUNSTALE_NO_REGISTRY=1 turns off every third-party lookup (npm and PyPI registries, OSV advisories), and with it coverage requests. Packages from a private registry are never named to anyone either way."
+    after_help = "Exit codes: 0 ok; 1 error; 2 usage; 3 a review batch is incomplete (--next); 4 the catalog needs a newer unstale (cache kept); 5 the ledger has invalid lines.\n\nUNSTALE_NO_REGISTRY=1 turns off every third-party lookup (npm and PyPI registries, OSV advisories), and with it new coverage registrations. Packages from a private registry are never named to anyone either way."
 )]
 struct Cli {
     /// Run as if started in this directory.
@@ -475,7 +475,7 @@ fn rel(ctx: &Ctx, p: &Path) -> String {
 fn cmd_sync(ctx: &Ctx) -> Result<u8> {
     let st = stack::detect(&ctx.root)?;
     let cands = onboarding::candidates(ctx, &st);
-    let rep = match sync::sync(&ctx.config.catalog, &ctx.cache, &cands, &st.withheld(), &st.purls()) {
+    let rep = match sync::sync(&ctx.config.catalog, &ctx.cache, &cands, &st.withheld(&ctx.cache), &st.purls()) {
         Ok(r) => r,
         Err(e) if e.downcast_ref::<sync::Incompatible>().is_some() => {
             eprintln!("sync refused: {e}");

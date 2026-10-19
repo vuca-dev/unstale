@@ -240,6 +240,8 @@ pub struct Stack {
     pub standalone: Vec<String>,
     /// The registry configuration that applies to the repository (`privacy`): which lockfile packages OSV may see.
     pub registries: Registries,
+    /// The configuration of its test, example and fixture directories, for what only they install.
+    pub fixture_registries: Registries,
 }
 
 impl Stack {
@@ -261,11 +263,14 @@ impl Stack {
         self.deps.values().flat_map(dep_candidates).collect()
     }
 
-    /// Candidates that only private dependencies give (`Dep::public_candidate`): a catalog without a list of its
-    /// technologies is never asked for these by name (`sync`).
-    pub fn withheld(&self) -> BTreeSet<String> {
-        let public: BTreeSet<String> = self.deps.values().filter(|d| d.public_candidate).flat_map(dep_candidates).collect();
-        self.deps.values().filter(|d| !d.public_candidate).flat_map(dep_candidates).filter(|c| !public.contains(c)).collect()
+    /// Candidates that only private dependencies give (`Dep::public_candidate`, and a scoped npm package the public
+    /// registry has not confirmed while credentials for it are configured: `privacy::Registries::needs_identity`, read
+    /// from `cache` only): a catalog without a list of its technologies is never asked for these by name (`sync`).
+    pub fn withheld(&self, cache: &Path) -> BTreeSet<String> {
+        let at = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+        let named = |(p, d): &(&String, &Dep)| d.public_candidate && (!self.registries.needs_identity(p) || crate::privacy::known_public(cache, p, at));
+        let public: BTreeSet<String> = self.deps.iter().filter(named).flat_map(|(_, d)| dep_candidates(d)).collect();
+        self.deps.iter().filter(|e| !named(e)).flat_map(|(_, d)| dep_candidates(d)).filter(|c| !public.contains(c)).collect()
     }
 
     /// A version the project declares for a prerequisite name in the npm ecosystem: `node` from engines or
@@ -373,9 +378,7 @@ pub fn uncovered_manifests(repo: &crate::usage::Repo) -> BTreeMap<&'static str, 
 }
 
 pub fn detect(root: &Path) -> Result<Stack> {
-    // Unit tests read no developer's own configuration (`~/.npmrc`, `PIP_INDEX_URL`): they give theirs to `detect_in`.
-    let env = if cfg!(test) { crate::privacy::Env::default() } else { crate::privacy::Env::process() };
-    detect_in(root, &env)
+    detect_in(root, &crate::privacy::Env::current())
 }
 
 /// `detect` with the environment the package managers' configuration is read from (tests set their own).
@@ -525,7 +528,7 @@ pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
                 } else {
                     (range_floor(range), format!("floor of {shown} (not in a lockfile)"), Some(range))
                 };
-                let public_name = range.strip_prefix("npm:").and_then(|r|r.rsplit_once('@').map(|(n,_)|n)).filter(|n|!n.is_empty()).unwrap_or(name);
+                let public_name = alias_target(range).unwrap_or(name);
                 let public_candidate = !local;
                 let purl = npm_purl(public_name);
                 declared.insert(purl.clone());
@@ -608,13 +611,28 @@ pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
     }
     crate::pypi::detect(root, &mut packages, &mut deps, &mut notes);
     // No name a private registry serves is ever named to a third party (`privacy`).
-    let registries = Registries::read(root, &manifest_dirs, &configs, env);
+    // A test, example or fixture directory's configuration is its own (a local Verdaccio a test publishes to): it keeps
+    // private the packages only such directories declare, and, for the rest, only the scopes and names it lists.
+    let local = |p: &Path| matches!(crate::usage::path_role(&rel_dir(root, p)), crate::usage::Role::App | crate::usage::Role::Tooling);
+    let (app_configs, other_configs): (Vec<PathBuf>, Vec<PathBuf>) = configs.into_iter().partition(|p| local(&p.parent().unwrap_or(root).join("x")));
+    let (app_dirs, other_dirs): (BTreeSet<PathBuf>, BTreeSet<PathBuf>) = manifest_dirs.into_iter().partition(|d| local(&d.join("x")));
+    let fixture_registries = Registries::read_local(&other_dirs, &other_configs);
+    let registries = Registries::read(root, &app_dirs, &app_configs, env).union(&fixture_registries.narrow());
     for (purl, d) in deps.iter_mut() {
-        d.public_candidate &= registries.may_name(purl, d.seen);
+        let fixture_only = !d.readings.is_empty() && d.readings.iter().all(|r| !local(&root.join(&r.dir).join("x")));
+        d.public_candidate &= registries.may_name(purl, d.seen) && (!fixture_only || fixture_registries.may_name(purl, d.seen));
     }
-    let mut st = Stack { packages, deps, node, notes, spread: 0, standalone, registries };
+    let mut st = Stack { packages, deps, node, notes, spread: 0, standalone, registries, fixture_registries };
     st.settle();
     Ok(st)
+}
+
+/// The package an npm alias installs (`npm:@corp/bar@^1`, `npm:bar`, `npm:@corp/bar`): the name before the version's
+/// `@`, never the alias key.
+fn alias_target(range: &str) -> Option<&str> {
+    let r = range.trim().strip_prefix("npm:")?;
+    let end = r.get(1..).and_then(|t| t.find('@')).map_or(r.len(), |i| i + 1);
+    Some(&r[..end]).filter(|n| !n.is_empty())
 }
 
 /// A dependency on a package of this repository (by name or by a local protocol): never public, and never compared

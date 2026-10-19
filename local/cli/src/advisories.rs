@@ -565,14 +565,20 @@ pub fn graphs(root: &Path, st: &Stack) -> Vec<Graph> {
         };
         out.push(g);
     }
-    // Names of the repository's own packages, direct dependencies kept private, and packages the registry
-    // configuration places on a private registry (`privacy`: a lockfile entry from the public registry is public
-    // whatever the configuration says) are never sent.
+    // Names of the repository's own packages, direct dependencies kept private, and packages a lockfile or the
+    // registry configuration places on a private registry (`privacy`: a configuration wins over a public lockfile URL)
+    // are never sent.
     let own: BTreeSet<String> = st.packages.iter().filter_map(|p| p.own.as_deref()).filter_map(util::purl_name).collect();
     for g in &mut out {
+        // A test, example or fixture lockfile: its directory's own configuration applies too.
+        let fixture = !matches!(crate::usage::path_role(&g.file), crate::usage::Role::App | crate::usage::Role::Tooling);
         for n in &mut g.nodes {
             let purl = if g.eco == "PyPI" { crate::pypi::purl(&n.name) } else { util::npm_purl(&n.name) };
-            if own.contains(&n.name) || st.deps.get(&purl).is_some_and(|d| !d.public_candidate) || !st.registries.may_name(&purl, n.seen) {
+            if own.contains(&n.name)
+                || st.deps.get(&purl).is_some_and(|d| !d.public_candidate)
+                || !st.registries.may_name(&purl, n.seen)
+                || (fixture && !st.fixture_registries.may_name(&purl, n.seen))
+            {
                 n.private = true;
             }
         }
@@ -929,13 +935,31 @@ pub fn refresh(cache: &Path, root: &Path, st: &Stack) -> usize {
     };
     let post = |body: &Value| read(agent.post(format!("{OSV}/querybatch")).header("Content-Type", "application/json").send(serde_json::to_vec(body).unwrap_or_default().as_slice()));
     let get = |id: &str| read(agent.get(format!("{OSV}/vulns/{id}")).call());
-    refresh_with(cache, root, st, now(), post, get)
+    let npm: ureq::Agent = ureq::Agent::config_builder().http_status_as_error(false).timeout_global(Some(Duration::from_secs(8))).build().into();
+    refresh_with(cache, root, st, now(), post, get, |purl| crate::privacy::npm_identity(&npm, purl))
 }
 
-/// `refresh` with the clock and the two readers given (tests).
-pub fn refresh_with(cache: &Path, root: &Path, st: &Stack, at: u64, post: impl Fn(&Value) -> Option<Value>, get: impl Fn(&str) -> Option<Value> + Sync) -> usize {
+/// `refresh` with the clock and the readers given (tests): `identity` is the public npm registry's anonymous answer
+/// for a scoped package that needs one (`privacy::Registries::needs_identity`).
+pub fn refresh_with(
+    cache: &Path,
+    root: &Path,
+    st: &Stack,
+    at: u64,
+    post: impl Fn(&Value) -> Option<Value>,
+    get: impl Fn(&str) -> Option<Value> + Sync,
+    identity: impl Fn(&str) -> Option<bool> + Sync,
+) -> usize {
     let gs = graphs(root, st);
-    let wanted: BTreeSet<(String, String, String)> = gs.iter().flat_map(|g| g.packages().into_iter().map(|(n, v)| (g.eco.to_string(), n, v))).collect();
+    let mut wanted: BTreeSet<(String, String, String)> = gs.iter().flat_map(|g| g.packages().into_iter().map(|(n, v)| (g.eco.to_string(), n, v))).collect();
+    // A scoped package from the public registry while credentials for it are configured may be a paid private one:
+    // sent only once npm confirms it public (`privacy`).
+    let unconfirmed: Vec<String> =
+        wanted.iter().filter(|(e, _, _)| e == "npm").map(|(_, n, _)| util::npm_purl(n)).filter(|p| st.registries.needs_identity(p)).collect::<BTreeSet<_>>().into_iter().collect();
+    if !unconfirmed.is_empty() {
+        let public = crate::privacy::confirm_public(cache, at, &unconfirmed, identity);
+        wanted.retain(|(e, n, _)| e != "npm" || !st.registries.needs_identity(&util::npm_purl(n)) || public.contains(&util::npm_purl(n)));
+    }
     if wanted.is_empty() {
         let _ = std::fs::remove_file(report_path(cache, root));
         return 0;
@@ -1361,11 +1385,11 @@ mod tests {
         };
         let get = |id: &str| Some(serde_json::json!({"id": id, "modified": "m1", "published": "2020-01-01T00:00:00Z", "summary": "proxy", "database_specific": {"severity": "HIGH"}, "affected": [{"package": {"ecosystem": "npm", "name": "proxy-addr"}, "ranges": [{"events": [{"introduced": "0"}, {"fixed": "2.0.8"}]}]}]}));
         assert_eq!(report(cache.path(), d.path()), None);
-        assert_eq!(refresh_with(cache.path(), d.path(), &st, 1_000_000, post, get), 2, "one batch, one record");
+        assert_eq!(refresh_with(cache.path(), d.path(), &st, 1_000_000, post, get, |_| None), 2, "one batch, one record");
         let r = report(cache.path(), d.path()).unwrap();
         assert_eq!((r.queried, r.raw, r.items.len()), (8, 1, 1), "the private and the .npmrc-scoped packages are not queried");
-        assert_eq!(refresh_with(cache.path(), d.path(), &st, 1_000_000 + 3600, post, get), 0, "fresh: nothing asked");
-        assert_eq!(refresh_with(cache.path(), d.path(), &st, 1_000_000 + FRESH_SECS, post, |_| None), 1, "the batch again; the record is cached at its revision");
+        assert_eq!(refresh_with(cache.path(), d.path(), &st, 1_000_000 + 3600, post, get, |_| None), 0, "fresh: nothing asked");
+        assert_eq!(refresh_with(cache.path(), d.path(), &st, 1_000_000 + FRESH_SECS, post, |_| None, |_| None), 1, "the batch again; the record is cached at its revision");
         assert_eq!(*posts.lock().unwrap(), 2);
         assert_eq!(report(cache.path(), d.path()).unwrap().items.len(), 1);
     }

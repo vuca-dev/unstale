@@ -17,17 +17,31 @@
 //! kept private. Such a setup gets no registry, advisory or coverage requests from the client; the alternative would
 //! send private names. A scoped private registry, the common setup, costs only that scope's packages.
 //!
+//! Paid private packages live on `registry.npmjs.org` itself, under a public URL, and are always scoped. With
+//! credentials for the public registry configured (`//registry.npmjs.org/:_authToken`, Yarn's `npmAuthToken`, Bun's
+//! token), a scoped package is named to OSV or the catalog host only once an anonymous read of the public registry
+//! confirms it (`needs_identity`, `confirm_public`, cached). That read goes to npm, which serves the package already,
+//! so it tells npm nothing new; the deprecation and identity reads go to npm too. An unscoped package cannot be one.
+//!
+//! Public mirrors (`NPM_MIRRORS`, `PYPI_MIRRORS`) serve only public names and count as the public registry. A test,
+//! example or fixture directory's configuration (`usage::path_role`) keeps private whatever only such directories
+//! declare, and elsewhere only the scopes and names it lists: a test's local Verdaccio does not hide the application's
+//! packages. A configuration file that does not parse may say anything, so its ecosystem is kept private; bytes that
+//! are not UTF-8 are read as far as they are text.
+//!
 //! Configuration read, all of it (any source that applies makes a package private; a nested `.npmrc` is counted for
 //! the whole repository rather than its own directory only):
-//! - npm: `.npmrc` (the repository, its directories and their ancestors, `~/.npmrc`, `NPM_CONFIG_USERCONFIG` and
-//!   `NPM_CONFIG_GLOBALCONFIG`), `NPM_CONFIG_REGISTRY` and `NPM_CONFIG_@scope:registry` (any case), `.yarnrc.yml`
-//!   (`npmRegistryServer`, `npmScopes`), `.yarnrc`, `YARN_NPM_REGISTRY_SERVER`, `bunfig.toml` and `BUN_CONFIG_REGISTRY`.
-//!   A scope Yarn or Bun configures with credentials is private even on the public registry (paid private packages).
-//! - PyPI: `pip.conf` (user, site, `PIP_CONFIG_FILE`, the virtualenv's), `PIP_INDEX_URL`, `PIP_EXTRA_INDEX_URL`,
-//!   `PIP_FIND_LINKS`, requirements files' `--index-url`, `--extra-index-url` and `--find-links`, uv (`[tool.uv]`,
-//!   `uv.toml`, `~/.config/uv/uv.toml`, `UV_INDEX`, `UV_INDEX_URL`, `UV_DEFAULT_INDEX`, `UV_EXTRA_INDEX_URL`,
-//!   `UV_FIND_LINKS`; an `explicit` index serves only the packages pinned to it), Poetry sources, PDM sources and
-//!   Pipfile sources.
+//! - npm: `.npmrc` (the repository, its directories and their ancestors, `~/.npmrc`, `NPM_CONFIG_USERCONFIG`,
+//!   `NPM_CONFIG_GLOBALCONFIG`, `$PREFIX/etc/npmrc` from `NPM_CONFIG_PREFIX` or the `node` on PATH, `/etc/npmrc`,
+//!   `%APPDATA%\npm\etc\npmrc`), pnpm's global `rc`, `NPM_CONFIG_REGISTRY` and `NPM_CONFIG_@scope:registry` (any
+//!   case), `.yarnrc.yml` (`npmRegistryServer`, `npmScopes`), `.yarnrc`, `YARN_NPM_REGISTRY_SERVER`, `YARN_REGISTRY`,
+//!   `bunfig.toml` and `BUN_CONFIG_REGISTRY`. A scope Yarn or Bun configures with credentials is private.
+//! - PyPI: `pip.conf`/`pip.ini` (user, site, Windows `%APPDATA%`, `%USERPROFILE%` and `%PROGRAMDATA%`,
+//!   `PIP_CONFIG_FILE`, the virtualenv's), `PIP_INDEX_URL`, `PIP_EXTRA_INDEX_URL`, `PIP_FIND_LINKS` (any case),
+//!   requirements files' `--index-url`, `--extra-index-url` and `--find-links`, uv (`[tool.uv]`, `uv.toml`, the user's
+//!   and `%APPDATA%`'s, `UV_CONFIG_FILE` by any name, `UV_INDEX`, `UV_INDEX_URL`, `UV_DEFAULT_INDEX`,
+//!   `UV_EXTRA_INDEX_URL`, `UV_FIND_LINKS`; an `explicit` index serves only the packages pinned to it), Poetry sources,
+//!   PDM sources and Pipfile sources.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -81,14 +95,25 @@ fn host(url: &str) -> Option<String> {
     (!h.is_empty()).then_some(h)
 }
 
-/// The public npm registry (and Yarn's mirror of it).
+/// Public mirrors of the npm registry: read-only copies that serve no package the public registry does not, so a
+/// name they serve is a public name. Only well-known mirrors whose operators publish nothing of anyone else's.
+const NPM_MIRRORS: &[&str] = &["registry.npmmirror.com", "registry.npm.taobao.org", "mirrors.cloud.tencent.com"];
+/// Public PyPI mirrors (same rule), and PyTorch's index, which serves only PyTorch's own published wheels.
+const PYPI_MIRRORS: &[&str] = &["pypi.tuna.tsinghua.edu.cn", "mirrors.tuna.tsinghua.edu.cn", "mirrors.aliyun.com", "mirrors.cloud.tencent.com", "download.pytorch.org"];
+
+/// The public npm registry (and Yarn's mirror of it), or a public mirror (`NPM_MIRRORS`).
 pub fn public_npm(url: &str) -> bool {
+    host(url).is_some_and(|h| h == "registry.npmjs.org" || h == "registry.yarnpkg.com" || NPM_MIRRORS.contains(&h.as_str()))
+}
+
+/// The public npm registry itself: where a paid private package can live beside public ones.
+fn npmjs(url: &str) -> bool {
     host(url).is_some_and(|h| h == "registry.npmjs.org" || h == "registry.yarnpkg.com")
 }
 
-/// PyPI: its index and the host of its files.
+/// PyPI: its index and the host of its files, or a public mirror (`PYPI_MIRRORS`).
 pub fn public_pypi(url: &str) -> bool {
-    host(url).is_some_and(|h| h == "pypi.org" || h == "pypi.python.org" || h == "files.pythonhosted.org")
+    host(url).is_some_and(|h| h == "pypi.org" || h == "pypi.python.org" || h == "files.pythonhosted.org" || PYPI_MIRRORS.contains(&h.as_str()))
 }
 
 /// The environment the package managers read: the home directory and the variables. Passed in, so tests set their own.
@@ -99,12 +124,18 @@ pub struct Env {
 }
 
 impl Env {
+    /// This process's environment; an empty one in unit tests, which never read a developer's own configuration
+    /// (`~/.npmrc`, `PIP_INDEX_URL`) and give theirs explicitly.
+    pub fn current() -> Env {
+        if cfg!(test) { Env::default() } else { Env::process() }
+    }
     pub fn process() -> Env {
         let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")).filter(|h| !h.is_empty()).map(PathBuf::from);
         Env { home, vars: std::env::vars().collect() }
     }
+    /// A variable by name, in any case when the exact one is not set (Windows names are case-insensitive).
     fn var(&self, k: &str) -> Option<&str> {
-        self.vars.get(k).map(String::as_str).filter(|v| !v.trim().is_empty())
+        self.vars.get(k).or_else(|| self.vars.iter().find(|(n, _)| n.eq_ignore_ascii_case(k)).map(|(_, v)| v)).map(String::as_str).filter(|v| !v.trim().is_empty())
     }
     /// `${NAME}` references expanded (npm and Yarn allow them in values); None when one is not set.
     fn expand(&self, v: &str) -> Option<String> {
@@ -120,41 +151,133 @@ impl Env {
         out.push_str(rest);
         Some(out)
     }
-    /// Files in the user's configuration: the home directory's, and the XDG and macOS configuration directories'.
-    fn user_files(&self) -> Vec<PathBuf> {
+    /// Files in the user's and the system's configuration, with how each is read: the home directory's, the XDG,
+    /// macOS and Windows configuration directories', npm's global `npmrc`, and those the environment names.
+    fn user_files(&self) -> Vec<(PathBuf, Kind)> {
         let mut out = vec![];
         if let Some(h) = &self.home {
-            for f in [".npmrc", ".yarnrc.yml", ".yarnrc", ".bunfig.toml", ".pip/pip.conf", "Library/Application Support/pip/pip.conf"] {
-                out.push(h.join(f));
+            for (f, k) in [
+                (".npmrc", Kind::Npmrc),
+                (".yarnrc.yml", Kind::YarnrcYml),
+                (".yarnrc", Kind::Yarnrc),
+                (".bunfig.toml", Kind::Bunfig),
+                (".pip/pip.conf", Kind::Pip),
+                ("pip/pip.ini", Kind::Pip),
+                ("Library/Application Support/pip/pip.conf", Kind::Pip),
+                ("Library/Preferences/pnpm/rc", Kind::Npmrc),
+            ] {
+                out.push((h.join(f), k));
             }
         }
         let xdg = self.var("XDG_CONFIG_HOME").map(PathBuf::from).or_else(|| self.home.as_ref().map(|h| h.join(".config")));
         if let Some(x) = xdg {
-            for f in ["pip/pip.conf", "uv/uv.toml", ".bunfig.toml"] {
-                out.push(x.join(f));
+            for (f, k) in [("pip/pip.conf", Kind::Pip), ("uv/uv.toml", Kind::Uv), (".bunfig.toml", Kind::Bunfig), ("pnpm/rc", Kind::Npmrc)] {
+                out.push((x.join(f), k));
+            }
+        }
+        // Windows: %APPDATA%, %LOCALAPPDATA%, %USERPROFILE% and %PROGRAMDATA%.
+        for (var, f, k) in [
+            ("APPDATA", "pip/pip.ini", Kind::Pip),
+            ("APPDATA", "uv/uv.toml", Kind::Uv),
+            ("APPDATA", "npm/etc/npmrc", Kind::Npmrc),
+            ("LOCALAPPDATA", "pnpm/config/rc", Kind::Npmrc),
+            ("USERPROFILE", "pip/pip.ini", Kind::Pip),
+            ("USERPROFILE", ".npmrc", Kind::Npmrc),
+            ("PROGRAMDATA", "pip/pip.ini", Kind::Pip),
+            ("PROGRAMDATA", "uv/uv.toml", Kind::Uv),
+        ] {
+            if let Some(v) = self.var(var) {
+                out.push((Path::new(v).join(f), k));
             }
         }
         if let Some(v) = self.var("VIRTUAL_ENV") {
-            out.push(Path::new(v).join("pip.conf"));
+            out.push((Path::new(v).join("pip.conf"), Kind::Pip));
+            out.push((Path::new(v).join("pip.ini"), Kind::Pip));
         }
-        for k in ["NPM_CONFIG_USERCONFIG", "npm_config_userconfig", "NPM_CONFIG_GLOBALCONFIG", "npm_config_globalconfig", "PIP_CONFIG_FILE", "UV_CONFIG_FILE"] {
-            if let Some(v) = self.var(k) {
-                out.push(PathBuf::from(v));
+        // npm's global configuration: `$PREFIX/etc/npmrc`, the prefix named, else the one beside the `node` on PATH
+        // (`<prefix>/bin/node`; on Windows `node.exe` sits in the prefix itself).
+        let mut prefixes: Vec<PathBuf> = ["NPM_CONFIG_PREFIX", "PREFIX"].iter().filter_map(|k| self.var(k)).map(PathBuf::from).collect();
+        for dir in self.var("PATH").map(std::env::split_paths).into_iter().flatten() {
+            if dir.join("node").is_file() {
+                prefixes.extend(dir.parent().map(Path::to_path_buf));
+            }
+            if dir.join("node.exe").is_file() {
+                prefixes.push(dir);
             }
         }
-        for f in ["/etc/pip.conf", "/etc/xdg/pip/pip.conf", "/etc/uv/uv.toml"] {
-            out.push(PathBuf::from(f));
+        for p in prefixes {
+            out.push((p.join("etc/npmrc"), Kind::Npmrc));
+        }
+        for (k, kind) in [
+            ("NPM_CONFIG_USERCONFIG", Kind::Npmrc),
+            ("NPM_CONFIG_GLOBALCONFIG", Kind::Npmrc),
+            ("PIP_CONFIG_FILE", Kind::Pip),
+            ("UV_CONFIG_FILE", Kind::Uv),
+        ] {
+            if let Some(v) = self.var(k) {
+                out.push((PathBuf::from(v), kind));
+            }
+        }
+        for (f, k) in [("/etc/pip.conf", Kind::Pip), ("/etc/xdg/pip/pip.conf", Kind::Pip), ("/etc/uv/uv.toml", Kind::Uv), ("/etc/npmrc", Kind::Npmrc)] {
+            out.push((PathBuf::from(f), k));
         }
         out
+    }
+}
+
+/// How a configuration file is read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Kind {
+    Npmrc,
+    YarnrcYml,
+    Yarnrc,
+    Bunfig,
+    Pip,
+    Uv,
+    Pyproject,
+    Pipfile,
+    Requirements,
+}
+
+impl Kind {
+    /// By file name, for the files of the repository.
+    fn of(name: &str) -> Option<Kind> {
+        Some(match name {
+            ".npmrc" => Kind::Npmrc,
+            ".yarnrc.yml" => Kind::YarnrcYml,
+            ".yarnrc" => Kind::Yarnrc,
+            "bunfig.toml" => Kind::Bunfig,
+            "pip.conf" => Kind::Pip,
+            "uv.toml" => Kind::Uv,
+            "pyproject.toml" => Kind::Pyproject,
+            "Pipfile" => Kind::Pipfile,
+            n if (n.starts_with("requirements") || n.starts_with("constraints")) && n.ends_with(".txt") => Kind::Requirements,
+            _ => return None,
+        })
     }
 }
 
 /// The configuration files read in a project directory (`is_config` for the names the repository walk collects).
 const DIR_FILES: &[&str] = &[".npmrc", ".yarnrc.yml", ".yarnrc", "bunfig.toml", "uv.toml", "pip.conf", "pyproject.toml", "Pipfile"];
 
+/// The configuration files of these directories (fixed names, and the requirements files among their entries,
+/// gitignored or not) and `files`, with how each is read.
+fn project_files(dirs: &BTreeSet<PathBuf>, files: &[PathBuf]) -> BTreeSet<(PathBuf, Kind)> {
+    let mut all: BTreeSet<(PathBuf, Kind)> = files.iter().filter_map(|f| Some((f.clone(), Kind::of(&f.file_name()?.to_string_lossy())?))).collect();
+    for d in dirs {
+        for f in DIR_FILES {
+            all.extend(Kind::of(f).map(|k| (d.join(f), k)));
+        }
+        for e in std::fs::read_dir(d).into_iter().flatten().flatten() {
+            all.extend(Kind::of(&e.file_name().to_string_lossy()).map(|k| (e.path(), k)));
+        }
+    }
+    all
+}
+
 /// A file whose registry or index settings count (`Registries::read`).
 pub fn is_config(name: &str) -> bool {
-    DIR_FILES.contains(&name) || ((name.starts_with("requirements") || name.starts_with("constraints")) && name.ends_with(".txt"))
+    Kind::of(name).is_some()
 }
 
 /// The registry and index configuration that applies to this repository: what points anywhere but the public
@@ -169,6 +292,9 @@ pub struct Registries {
     pypi_any: bool,
     /// PyPI names (normalised) pinned to another index or source.
     pypi_pinned: BTreeSet<String>,
+    /// npm: credentials for the public registry itself are configured, so paid private packages (always scoped) can
+    /// be installed from it under a public URL (`needs_identity`).
+    npm_token: bool,
 }
 
 impl Registries {
@@ -176,45 +302,61 @@ impl Registries {
     /// directory in `dirs` (a gitignored `.npmrc` beside a manifest is still the package manager's), in the user's
     /// configuration and in the environment.
     pub fn read(root: &Path, dirs: &BTreeSet<PathBuf>, files: &[PathBuf], env: &Env) -> Registries {
-        let mut r = Registries::default();
-        let mut all: BTreeSet<PathBuf> = files.iter().cloned().collect();
-        for d in root.ancestors().chain(dirs.iter().map(PathBuf::as_path)) {
+        let mut all = project_files(dirs, files);
+        for d in root.ancestors() {
             for f in DIR_FILES {
-                all.insert(d.join(f));
+                all.extend(Kind::of(f).map(|k| (d.join(f), k)));
             }
         }
-        // Requirements files beside the root and the manifests, gitignored or not.
-        for d in std::iter::once(root).chain(dirs.iter().map(PathBuf::as_path)) {
-            for e in std::fs::read_dir(d).into_iter().flatten().flatten() {
-                if is_config(&e.file_name().to_string_lossy()) {
-                    all.insert(e.path());
-                }
-            }
-        }
+        all.extend(project_files(&BTreeSet::from([root.to_path_buf()]), &[]));
         all.extend(env.user_files());
-        for p in all {
-            let Ok(text) = std::fs::read_to_string(&p) else { continue };
-            let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-            match name.as_str() {
-                ".npmrc" | "npmrc" => r.npmrc(&text, env),
-                ".yarnrc.yml" => r.yarnrc_yml(&text, env),
-                ".yarnrc" => r.yarnrc(&text),
-                "bunfig.toml" | ".bunfig.toml" => r.bunfig(&text),
-                "pip.conf" | "pip.ini" => r.pip_conf(&text),
-                "uv.toml" => {
-                    if let Ok(t) = toml::from_str::<Value>(&text) {
-                        r.uv(&t);
-                    }
-                }
-                "pyproject.toml" => r.pyproject(&text),
-                "Pipfile" => r.pipfile(&text),
-                n if is_config(n) => r.requirements(&text),
-                // A configuration file named by the environment (NPM_CONFIG_USERCONFIG, PIP_CONFIG_FILE): by content.
-                _ if text.lines().any(|l| l.trim_start().starts_with('[')) => r.pip_conf(&text),
-                _ => r.npmrc(&text, env),
+        let mut r = Registries::from_files(all, env);
+        r.env(env);
+        r
+    }
+
+    /// Only the settings in these directories and files: no ancestor's, the user's or the environment's. For the test,
+    /// example and fixture directories of a repository (`stack::detect_in`), whose settings are their own.
+    pub fn read_local(dirs: &BTreeSet<PathBuf>, files: &[PathBuf]) -> Registries {
+        Registries::from_files(project_files(dirs, files), &Env::default())
+    }
+
+    /// What names packages one by one (scopes and pins), without the settings that cover a whole ecosystem.
+    pub fn narrow(&self) -> Registries {
+        Registries { npm_scopes: self.npm_scopes.clone(), pypi_pinned: self.pypi_pinned.clone(), ..Registries::default() }
+    }
+
+    /// Both configurations: a package either keeps private is private.
+    pub fn union(mut self, other: &Registries) -> Registries {
+        self.npm_default |= other.npm_default;
+        self.pypi_any |= other.pypi_any;
+        self.npm_token |= other.npm_token;
+        self.npm_scopes.extend(other.npm_scopes.iter().cloned());
+        self.pypi_pinned.extend(other.pypi_pinned.iter().cloned());
+        self
+    }
+
+    fn from_files(all: BTreeSet<(PathBuf, Kind)>, env: &Env) -> Registries {
+        let mut r = Registries::default();
+        for (p, kind) in all {
+            // Bytes that are not UTF-8 are read as far as they are text, never skipped: a setting must not be lost.
+            let Ok(bytes) = std::fs::read(&p) else { continue };
+            let text = String::from_utf8_lossy(&bytes);
+            match kind {
+                Kind::Npmrc => r.npmrc(&text, env),
+                Kind::YarnrcYml => r.yarnrc_yml(&text, env),
+                Kind::Yarnrc => r.yarnrc(&text),
+                Kind::Bunfig => r.bunfig(&text),
+                Kind::Pip => r.pip_conf(&text),
+                Kind::Uv => match toml::from_str::<Value>(&text) {
+                    Ok(t) => r.uv(&t),
+                    Err(_) => r.pypi_any = true,
+                },
+                Kind::Pyproject => r.pyproject(&text),
+                Kind::Pipfile => r.pipfile(&text),
+                Kind::Requirements => r.requirements(&text),
             }
         }
-        r.env(env);
         r
     }
 
@@ -231,7 +373,21 @@ impl Registries {
         }
     }
 
-    /// `.npmrc`: `registry=` and `@scope:registry=` (an unset `${VAR}` in the value is not the public registry).
+    /// A credential setting (`_authToken`, `_auth`, `_password`, `username`) for `//host/...:` or for the default
+    /// registry: one for the public registry itself means paid private packages may be installed from it.
+    fn npm_credential(&mut self, key: &str) {
+        let (target, setting) = key.rsplit_once(':').unwrap_or(("", key));
+        let setting = setting.to_ascii_lowercase();
+        if !matches!(setting.as_str(), "_authtoken" | "_auth" | "_password" | "username" | "certfile" | "keyfile") {
+            return;
+        }
+        if target.is_empty() || target.strip_prefix("//").is_some_and(|t| npmjs(&format!("https://{t}"))) {
+            self.npm_token = true;
+        }
+    }
+
+    /// `.npmrc`: `registry=` and `@scope:registry=` (an unset `${VAR}` in the value is not the public registry), and
+    /// credentials for the public registry.
     fn npmrc(&mut self, text: &str, env: &Env) {
         for line in text.lines() {
             let l = line.trim();
@@ -244,6 +400,8 @@ impl Registries {
                 self.npm_registry(None, v.as_deref());
             } else if let Some(scope) = k.strip_suffix(":registry").filter(|s| s.starts_with('@')) {
                 self.npm_registry(Some(scope), v.as_deref());
+            } else {
+                self.npm_credential(k);
             }
         }
     }
@@ -267,6 +425,11 @@ impl Registries {
             let v = val.map(|v| v.trim().trim_matches(['"', '\'']));
             match path.as_slice() {
                 [] if k == "npmRegistryServer" => self.npm_registry(None, v.and_then(|v| env.expand(v)).as_deref()),
+                // Credentials for the default registry, or under `npmRegistries` for the public one.
+                [] if k == "npmAuthToken" || k == "npmAuthIdent" => self.npm_token = true,
+                ["npmRegistries", reg] if (k == "npmAuthToken" || k == "npmAuthIdent") && npmjs(&format!("https:{}", reg.trim_start_matches("https:"))) => {
+                    self.npm_token = true
+                }
                 ["npmScopes"] => {
                     scopes.entry(k.clone()).or_default();
                 }
@@ -305,13 +468,20 @@ impl Registries {
         }
     }
 
-    /// `bunfig.toml`: `[install] registry` and `[install.scopes]`, a string or `{ url, token, ... }`.
+    /// `bunfig.toml`: `[install] registry` and `[install.scopes]`, a string or `{ url, token, ... }`. One that does not
+    /// parse may say anything: every npm package is kept private.
     fn bunfig(&mut self, text: &str) {
-        let Ok(doc) = toml::from_str::<Value>(text) else { return };
+        let Ok(doc) = toml::from_str::<Value>(text) else {
+            self.npm_default = true;
+            return;
+        };
         let Some(install) = doc.get("install") else { return };
         let url = |v: &Value| v.as_str().map(String::from).or_else(|| v.get("url").and_then(Value::as_str).map(String::from));
         if let Some(reg) = install.get("registry") {
             self.npm_registry(None, url(reg).as_deref());
+            if reg.as_table().is_some_and(|t| t.keys().any(|k| k != "url")) && url(reg).is_none_or(|u| npmjs(&u)) {
+                self.npm_token = true;
+            }
         }
         for (scope, v) in install.get("scopes").and_then(Value::as_table).into_iter().flatten() {
             let credentials = v.as_table().is_some_and(|t| t.keys().any(|k| k != "url"));
@@ -410,7 +580,11 @@ impl Registries {
 
     /// `pyproject.toml`: uv's settings, Poetry's sources and per-dependency `source`, PDM's sources.
     fn pyproject(&mut self, text: &str) {
-        let Ok(doc) = toml::from_str::<Value>(text) else { return };
+        // One that does not parse may name any index: every Python package is kept private.
+        let Ok(doc) = toml::from_str::<Value>(text) else {
+            self.pypi_any = true;
+            return;
+        };
         let tool = doc.get("tool");
         if let Some(uv) = tool.and_then(|t| t.get("uv")) {
             self.uv(uv);
@@ -446,7 +620,10 @@ impl Registries {
 
     /// `Pipfile`: `[[source]]` URLs, and packages pinned to an `index` other than PyPI.
     fn pipfile(&mut self, text: &str) {
-        let Ok(doc) = toml::from_str::<Value>(text) else { return };
+        let Ok(doc) = toml::from_str::<Value>(text) else {
+            self.pypi_any = true;
+            return;
+        };
         let mut names: BTreeMap<String, String> = BTreeMap::new();
         for s in doc.get("source").and_then(Value::as_array).into_iter().flatten() {
             let url = s.get("url").and_then(Value::as_str).unwrap_or("unnamed");
@@ -476,10 +653,15 @@ impl Registries {
                     self.npm_registry(None, Some(v));
                 } else if let Some(scope) = rest.strip_suffix(":registry").filter(|s| s.starts_with('@')) {
                     self.npm_registry(Some(scope), Some(v));
+                } else {
+                    self.npm_credential(rest);
                 }
             }
         }
-        for k in ["YARN_NPM_REGISTRY_SERVER", "BUN_CONFIG_REGISTRY"] {
+        if ["YARN_NPM_AUTH_TOKEN", "YARN_NPM_AUTH_IDENT", "BUN_CONFIG_TOKEN"].iter().any(|k| env.var(k).is_some()) {
+            self.npm_token = true;
+        }
+        for k in ["YARN_NPM_REGISTRY_SERVER", "YARN_REGISTRY", "BUN_CONFIG_REGISTRY"] {
             if let Some(v) = env.var(k) {
                 self.npm_registry(None, Some(v));
             }
@@ -514,6 +696,91 @@ impl Registries {
             Seen::Elsewhere => false,
             Seen::Public | Seen::Unknown => !self.configured_private(purl),
         }
+    }
+
+    /// Whether this package, though `may_name` allows it, needs the public registry to confirm it first: a scoped npm
+    /// package while credentials for the public registry are configured. npm's paid private packages are always scoped
+    /// and installed from `registry.npmjs.org` itself, so neither a lockfile URL nor a configuration tells them apart.
+    pub fn needs_identity(&self, purl: &str) -> bool {
+        self.npm_token && crate::util::npm_name(purl).is_some_and(|n| n.starts_with('@'))
+    }
+}
+
+/// A confirmed public identity is asked again after this long; a refusal (a private or missing package) after a day.
+const IDENTITY_PUBLIC_SECS: u64 = 30 * 86400;
+const IDENTITY_PRIVATE_SECS: u64 = 86400;
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Identity {
+    checked: u64,
+    public: bool,
+}
+
+fn identity_path(cache: &Path, purl: &str) -> PathBuf {
+    cache.join("registry/identity").join(format!("{}.json", &crate::util::sha256_hex(purl.as_bytes())[..32]))
+}
+
+/// What the cache says of a package's public identity, while fresh.
+fn identity_cached(cache: &Path, purl: &str, at: u64) -> Option<bool> {
+    let c: Identity = serde_json::from_slice(&std::fs::read(identity_path(cache, purl)).ok()?).ok()?;
+    let fresh = if c.public { IDENTITY_PUBLIC_SECS } else { IDENTITY_PRIVATE_SECS };
+    (at.saturating_sub(c.checked) < fresh).then_some(c.public)
+}
+
+/// Keeps a public identity confirmed elsewhere (`onboarding::public_package` reads the same documents).
+pub fn note_public(cache: &Path, purl: &str, at: u64) {
+    if let Ok(b) = serde_json::to_vec(&Identity { checked: at, public: true }) {
+        let _ = crate::util::write_atomic(&identity_path(cache, purl), &b);
+    }
+}
+
+/// Whether the cache holds a fresh confirmation that this package is public (no request).
+pub fn known_public(cache: &Path, purl: &str, at: u64) -> bool {
+    identity_cached(cache, purl, at) == Some(true)
+}
+
+/// The packages among `purls` the public npm registry confirms, reading the cache first. `ask` reads the registry
+/// anonymously: `Some(true)` public, `Some(false)` refused or missing, `None` not answered (asked again next time).
+/// Asking npm about a package npm itself serves tells it nothing it does not know; asking anyone else would.
+pub fn confirm_public(cache: &Path, at: u64, purls: &[String], ask: impl Fn(&str) -> Option<bool> + Sync) -> BTreeSet<String> {
+    let mut out: BTreeSet<String> = BTreeSet::new();
+    let mut due = vec![];
+    for p in purls {
+        match identity_cached(cache, p, at) {
+            Some(true) => {
+                out.insert(p.clone());
+            }
+            Some(false) => {}
+            None => due.push(p.clone()),
+        }
+    }
+    crate::util::concurrent(&due, crate::util::REQUESTS_AT_ONCE, |p| ask(p), |i, got| {
+        if let Some(public) = got {
+            if let Ok(b) = serde_json::to_vec(&Identity { checked: at, public }) {
+                let _ = crate::util::write_atomic(&identity_path(cache, &due[i]), &b);
+            }
+            if public {
+                out.insert(due[i].clone());
+            }
+        }
+        true
+    });
+    out
+}
+
+/// An anonymous read of a package's latest version on the public npm registry: public when it is served under its
+/// own name and not marked private.
+pub fn npm_identity(agent: &ureq::Agent, purl: &str) -> Option<bool> {
+    let name = crate::util::npm_name(purl)?;
+    let enc: String = name.bytes().map(|b| if b.is_ascii_alphanumeric() || b"-._~".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") }).collect();
+    let mut r = agent.get(format!("https://registry.npmjs.org/{enc}/latest")).call().ok()?;
+    match r.status().as_u16() {
+        200 => {
+            let v: serde_json::Value = serde_json::from_slice(&r.body_mut().with_config().limit(4 * 1024 * 1024).read_to_vec().ok()?).ok()?;
+            Some(v.get("name").and_then(|n| n.as_str()) == Some(name.as_str()) && v.get("private").and_then(|p| p.as_bool()) != Some(true))
+        }
+        401 | 403 | 404 => Some(false),
+        _ => None,
     }
 }
 
@@ -712,21 +979,35 @@ mod tests {
     }
 
     /// Every request the client would build for a stack: npm/PyPI version documents (deprecations, which the identity
-    /// check shares the filter of), OSV queries, and catalog candidates asked for without a list.
-    fn requests(root: &Path, e: &Env) -> (crate::stack::Stack, Vec<String>, Vec<String>) {
+    /// check shares the filter of), OSV queries, and the anonymous npm identity reads (`identity` answers them).
+    fn requests_with(root: &Path, e: &Env, cache: &Path, identity: impl Fn(&str) -> Option<bool> + Sync) -> (crate::stack::Stack, Vec<String>, Vec<String>, Vec<String>) {
         let st = crate::stack::detect_in(root, e).unwrap();
-        let cache = tempfile::tempdir().unwrap();
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
         let urls = std::sync::Mutex::new(vec![]);
-        crate::deprecations::refresh_with(cache.path(), &st, 1, |u| {
+        crate::deprecations::refresh_with(cache, &st, now, |u| {
             urls.lock().unwrap().push(u.to_string());
             None
         });
-        let osv = std::sync::Mutex::new(vec![]);
-        crate::advisories::refresh_with(cache.path(), root, &st, 1, |b| {
+        let (osv, asked) = (std::sync::Mutex::new(vec![]), std::sync::Mutex::new(vec![]));
+        let post = |b: &serde_json::Value| {
             osv.lock().unwrap().extend(b["queries"].as_array().unwrap().iter().map(|q| q["package"]["name"].as_str().unwrap().to_string()));
             None
-        }, |_| None);
-        (st, urls.into_inner().unwrap(), osv.into_inner().unwrap())
+        };
+        let ask = |p: &str| {
+            asked.lock().unwrap().push(p.to_string());
+            identity(p)
+        };
+        crate::advisories::refresh_with(cache, root, &st, now, post, |_| None, ask);
+        let mut osv = osv.into_inner().unwrap();
+        osv.sort();
+        let mut asked = asked.into_inner().unwrap();
+        asked.sort();
+        (st, urls.into_inner().unwrap(), osv, asked)
+    }
+    fn requests(root: &Path, e: &Env) -> (crate::stack::Stack, Vec<String>, Vec<String>) {
+        let cache = tempfile::tempdir().unwrap();
+        let (st, urls, osv, _) = requests_with(root, e, cache.path(), |_| None);
+        (st, urls, osv)
     }
 
     const APP: &str = r#"{"name": "app", "dependencies": {"react": "18.2.0", "@corp/auth": "1.0.0", "@acme/ui": "2.0.0"}}"#;
@@ -760,7 +1041,7 @@ mod tests {
         assert_eq!(urls, ["https://registry.npmjs.org/react/18.2.0"]);
         assert_eq!(osv, ["react"], "the transitive @corp/crypto is not sent either");
         // The catalog is not asked for a private package's name without its list; the public ones' still are.
-        assert_eq!(st.withheld(), ["acme", "auth", "corp", "ui"].map(String::from).into());
+        assert_eq!(st.withheld(tempfile::tempdir().unwrap().path()), ["acme", "auth", "corp", "ui"].map(String::from).into());
         assert!(st.candidates().contains("react"));
     }
 
@@ -775,5 +1056,166 @@ mod tests {
         let (st, urls, osv) = requests(repo.path(), &env(Some(home.path()), &[("PIP_EXTRA_INDEX_URL", "https://pypi.corp.example/simple")]));
         assert!(st.deps.values().all(|d| !d.public_candidate));
         assert!(urls.is_empty() && osv.is_empty(), "{urls:?} {osv:?}");
+    }
+
+    #[test]
+    fn windows_locations_and_case_insensitive_variables() {
+        let d = tempfile::tempdir().unwrap();
+        let repo = tempfile::tempdir().unwrap();
+        let at = |var: &str, rel: &str, text: &str| {
+            let dir = d.path().join(var);
+            write(&dir, rel, text);
+            env(None, &[(var, dir.to_str().unwrap())])
+        };
+        for (var, rel) in [("APPDATA", "pip/pip.ini"), ("USERPROFILE", "pip/pip.ini"), ("PROGRAMDATA", "pip/pip.ini")] {
+            let e = at(var, rel, "[global]\nindex-url = https://pypi.corp.example/simple\n");
+            assert!(!read(repo.path(), &e).may_name("pkg:pypi/requests", U), "{var}");
+        }
+        let e = at("APPDATA", "uv/uv.toml", "[[index]]\nurl = \"https://pypi.corp.example/simple\"\n");
+        assert!(!read(repo.path(), &e).may_name("pkg:pypi/requests", U));
+        let e = at("APPDATA", "npm/etc/npmrc", "@corp:registry=https://npm.corp.example/\n");
+        assert!(!read(repo.path(), &e).may_name("pkg:npm/%40corp/x", U));
+        let e = at("LOCALAPPDATA", "pnpm/config/rc", "registry=https://npm.corp.example/\n");
+        assert!(!read(repo.path(), &e).may_name("pkg:npm/react", U));
+        // Windows keeps a variable's case as set; pip reads it in any.
+        assert!(!read(repo.path(), &env(None, &[("Pip_Index_Url", "https://pypi.corp.example/simple")])).may_name("pkg:pypi/requests", U));
+        assert!(!read(repo.path(), &env(None, &[("pip_extra_index_url", "https://pypi.corp.example/simple")])).may_name("pkg:pypi/requests", U));
+    }
+
+    #[test]
+    fn global_npmrc_pnpm_rc_yarn_registry_and_a_custom_uv_config_file() {
+        let d = tempfile::tempdir().unwrap();
+        let repo = tempfile::tempdir().unwrap();
+        // `$PREFIX/etc/npmrc`, named or found beside the `node` on PATH.
+        write(d.path(), "prefix/etc/npmrc", "@corp:registry=https://npm.corp.example/\n");
+        let prefix = d.path().join("prefix");
+        assert!(!read(repo.path(), &env(None, &[("NPM_CONFIG_PREFIX", prefix.to_str().unwrap())])).may_name("pkg:npm/%40corp/x", U));
+        write(d.path(), "prefix/bin/node", "");
+        let bin = prefix.join("bin");
+        assert!(!read(repo.path(), &env(None, &[("PATH", bin.to_str().unwrap())])).may_name("pkg:npm/%40corp/x", U));
+        let home = tempfile::tempdir().unwrap();
+        write(home.path(), ".config/pnpm/rc", "@acme:registry=https://npm.acme.example/\n");
+        assert!(!read(repo.path(), &env(Some(home.path()), &[])).may_name("pkg:npm/%40acme/x", U));
+        write(home.path(), "Library/Preferences/pnpm/rc", "registry=https://npm.acme.example/\n");
+        assert!(!read(repo.path(), &env(Some(home.path()), &[])).may_name("pkg:npm/react", U));
+        assert!(!read(repo.path(), &env(None, &[("YARN_REGISTRY", "https://npm.corp.example/")])).may_name("pkg:npm/react", U));
+        // UV_CONFIG_FILE by any name is uv's TOML; `UV_INDEX` with a query string is still that index.
+        write(d.path(), "ci/uv-ci.toml", "[[index]]\nurl = \"https://pypi.corp.example/simple\"\n");
+        let f = d.path().join("ci/uv-ci.toml");
+        assert!(!read(repo.path(), &env(None, &[("UV_CONFIG_FILE", f.to_str().unwrap())])).may_name("pkg:pypi/requests", U));
+        assert!(!read(repo.path(), &env(None, &[("UV_INDEX", "https://pypi.corp.example/simple?x=1")])).may_name("pkg:pypi/requests", U));
+    }
+
+    #[test]
+    fn unreadable_or_unparsable_configuration_fails_closed() {
+        let d = tempfile::tempdir().unwrap();
+        // Not UTF-8 before the setting: read anyway.
+        let p = d.path().join(".npmrc");
+        std::fs::write(&p, [b"# caf\xe9\n".as_slice(), b"@corp:registry=https://npm.corp.example/\n"].concat()).unwrap();
+        assert!(!read(d.path(), &env(None, &[])).may_name("pkg:npm/%40corp/x", U));
+        std::fs::remove_file(&p).unwrap();
+        write(d.path(), "bunfig.toml", "[install\nregistry = ");
+        assert!(!read(d.path(), &env(None, &[])).may_name("pkg:npm/react", U));
+        std::fs::remove_file(d.path().join("bunfig.toml")).unwrap();
+        write(d.path(), "pyproject.toml", "[tool.uv\nindex = ");
+        let r = read(d.path(), &env(None, &[]));
+        assert!(!r.may_name("pkg:pypi/requests", U));
+        assert!(r.may_name("pkg:npm/react", U), "only that ecosystem");
+        std::fs::remove_file(d.path().join("pyproject.toml")).unwrap();
+        write(d.path(), "uv.toml", "index = [");
+        assert!(!read(d.path(), &env(None, &[])).may_name("pkg:pypi/requests", U));
+    }
+
+    #[test]
+    fn public_mirrors_are_public() {
+        let d = tempfile::tempdir().unwrap();
+        for (url, purl) in [
+            ("https://registry.npmmirror.com/", "pkg:npm/react"),
+            ("https://mirrors.cloud.tencent.com/npm/", "pkg:npm/react"),
+            ("https://pypi.tuna.tsinghua.edu.cn/simple", "pkg:pypi/requests"),
+            ("https://mirrors.aliyun.com/pypi/simple/", "pkg:pypi/requests"),
+            ("https://download.pytorch.org/whl/cpu", "pkg:pypi/requests"),
+        ] {
+            let var = if purl.starts_with("pkg:npm/") { "NPM_CONFIG_REGISTRY" } else { "PIP_EXTRA_INDEX_URL" };
+            assert!(read(d.path(), &env(None, &[(var, url)])).may_name(purl, U), "{url}");
+        }
+        assert!(!public_npm("https://npmmirror.com.corp.example/"));
+    }
+
+    #[test]
+    fn fixture_and_example_configuration_keeps_only_what_those_directories_declare() {
+        let repo = tempfile::tempdir().unwrap();
+        write(repo.path(), "package.json", r#"{"name": "app", "dependencies": {"react": "18.2.0"}}"#);
+        // A test's local Verdaccio, and the package only that test installs from it.
+        write(repo.path(), "test/fixtures/proj/.npmrc", "registry=http://localhost:4873/\n@fx:registry=http://localhost:4873/\n");
+        write(repo.path(), "test/fixtures/proj/package.json", r#"{"name": "proj", "dependencies": {"fixture-only-lib": "1.0.0", "@fx/a": "1.0.0"}}"#);
+        write(repo.path(), "packages/web/package.json", r#"{"name": "web", "dependencies": {"@fx/b": "1.0.0"}}"#);
+        write(repo.path(), "requirements.txt", "--extra-index-url https://download.pytorch.org/whl/cpu\ntorch==2.3.0\nrequests==2.32.0\n");
+        let st = crate::stack::detect_in(repo.path(), &env(None, &[])).unwrap();
+        let public = |p: &str| st.deps[p].public_candidate;
+        assert!(public("pkg:npm/react") && public("pkg:pypi/torch") && public("pkg:pypi/requests"));
+        assert!(!public("pkg:npm/fixture-only-lib"), "the fixture's blanket registry covers what only it declares");
+        // A scope a fixture lists stays private everywhere.
+        assert!(!public("pkg:npm/%40fx/a") && !public("pkg:npm/%40fx/b"));
+    }
+
+    #[test]
+    fn an_alias_without_a_version_is_named_by_its_target() {
+        let repo = tempfile::tempdir().unwrap();
+        write(repo.path(), "package.json", r#"{"name": "app", "dependencies": {"foo": "npm:@corp/bar", "baz": "npm:qux@^2"}}"#);
+        write(repo.path(), ".npmrc", "@corp:registry=https://npm.corp.example/\n");
+        let st = crate::stack::detect_in(repo.path(), &env(None, &[])).unwrap();
+        assert!(!st.deps.contains_key("pkg:npm/foo") && !st.deps.contains_key("pkg:npm/baz"), "{:?}", st.deps.keys());
+        assert!(!st.deps["pkg:npm/%40corp/bar"].public_candidate);
+        assert!(st.deps["pkg:npm/qux"].public_candidate);
+    }
+
+    #[test]
+    fn credentials_for_the_public_registry_need_npm_to_confirm_a_scoped_package() {
+        let home = tempfile::tempdir().unwrap();
+        let repo = tempfile::tempdir().unwrap();
+        write(repo.path(), "package.json", r#"{"name": "app", "dependencies": {"react": "18.2.0", "@myorg/secret": "1.0.0", "@types/node": "22.0.0"}}"#);
+        write(
+            repo.path(),
+            "package-lock.json",
+            r#"{"lockfileVersion": 3, "packages": {
+            "": {"name": "app", "dependencies": {"react": "18.2.0", "@myorg/secret": "1.0.0", "@types/node": "22.0.0"}},
+            "node_modules/react": {"version": "18.2.0", "resolved": "https://registry.npmjs.org/react/-/react-18.2.0.tgz", "integrity": "sha512-aa"},
+            "node_modules/@myorg/secret": {"version": "1.0.0", "resolved": "https://registry.npmjs.org/@myorg/secret/-/secret-1.0.0.tgz", "integrity": "sha512-bb"},
+            "node_modules/@types/node": {"version": "22.0.0", "resolved": "https://registry.npmjs.org/@types/node/-/node-22.0.0.tgz", "integrity": "sha512-cc"}
+        }}"#,
+        );
+        let identity = |p: &str| Some(p == "pkg:npm/%40types/node");
+        // No credentials: nothing to confirm.
+        let cache = tempfile::tempdir().unwrap();
+        let (_, _, osv, asked) = requests_with(repo.path(), &env(Some(home.path()), &[]), cache.path(), identity);
+        assert_eq!((osv.len(), asked.len()), (3, 0));
+        // Logged in to the public registry (paid private packages): a scoped package goes to OSV only once an anonymous
+        // read of npm confirms it; an unscoped one cannot be private there.
+        write(home.path(), ".npmrc", "//registry.npmjs.org/:_authToken=${NPM_TOKEN}\n");
+        let e = env(Some(home.path()), &[]);
+        let cache = tempfile::tempdir().unwrap();
+        let (st, _, osv, asked) = requests_with(repo.path(), &e, cache.path(), identity);
+        assert_eq!(osv, ["@types/node", "react"]);
+        assert_eq!(asked, ["pkg:npm/%40myorg/secret", "pkg:npm/%40types/node"]);
+        // The answers are cached: the next run asks nobody.
+        let (_, _, osv, asked) = requests_with(repo.path(), &e, cache.path(), |_| panic!("asked again"));
+        assert_eq!((osv, asked.len()), (vec!["@types/node".to_string(), "react".to_string()], 0));
+        // The catalog without its list is not asked for an unconfirmed scoped package's names.
+        let withheld = st.withheld(cache.path());
+        assert!(withheld.contains("myorg") && withheld.contains("secret") && !withheld.contains("types"), "{withheld:?}");
+        // The same credentials from Yarn or the environment.
+        for (rc, var) in [(Some("npmAuthToken: \"${NPM_TOKEN}\"\n"), None), (None, Some(("NPM_CONFIG_//registry.npmjs.org/:_authToken", "x")))] {
+            let repo2 = tempfile::tempdir().unwrap();
+            if let Some(rc) = rc {
+                write(repo2.path(), ".yarnrc.yml", rc);
+            }
+            let r = read(repo2.path(), &env(None, var.as_slice()));
+            assert!(r.needs_identity("pkg:npm/%40myorg/secret") && !r.needs_identity("pkg:npm/react"));
+        }
+        // Credentials for another registry say nothing about the public one.
+        let repo3 = tempfile::tempdir().unwrap();
+        write(repo3.path(), ".npmrc", "//npm.corp.example/:_authToken=x\n");
+        assert!(!read(repo3.path(), &env(None, &[])).needs_identity("pkg:npm/%40myorg/secret"));
     }
 }

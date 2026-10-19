@@ -1473,6 +1473,7 @@ pub(crate) mod fixtures {
             spread: 0,
             standalone: vec![],
             registries: Default::default(),
+            fixture_registries: Default::default(),
         }
     }
 
