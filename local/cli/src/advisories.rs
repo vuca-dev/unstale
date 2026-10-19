@@ -227,7 +227,7 @@ pub fn pnpm_lock(text: &str, lock_dir: &str, file: &str) -> Graph {
     // `catalogs:` (pnpm 9 catalogs): the range a `catalog:` / `catalog:<name>` specifier stands for, by (catalog,
     // package). Resolved after the walk, so the section's place in the file does not matter.
     let mut catalogs: BTreeMap<(String, String), String> = BTreeMap::new();
-    for raw in doc.lines() {
+    for raw in crate::stack::yaml_flow_lines(doc) {
         let t = raw.trim_end();
         if t.trim().is_empty() || t.trim_start().starts_with('#') {
             continue;
@@ -1212,10 +1212,13 @@ pub fn lines(r: &Report) -> Vec<String> {
         let w = its[0];
         // The version that fixes every advisory on the worst package version, when each has one.
         let same: Vec<&&Item> = its.iter().filter(|i| i.name == w.name && i.version == w.version).collect();
-        let fix = if same.iter().all(|i| i.fix.is_some()) {
-            same.iter().filter_map(|i| i.fix.as_deref()).max_by_key(|f| util::parse_version(f).or_else(|| crate::pypi::parse_version(f))).map(|f| format!(" → {f}")).unwrap_or_default()
-        } else {
-            String::new()
+        // The worst advisory's own fix beside its id, and, when it differs, the one that fixes them all: one fix
+        // version per advisory.
+        let all = same.iter().all(|i| i.fix.is_some()).then(|| same.iter().filter_map(|i| i.fix.as_deref()).max_by_key(|f| util::parse_version(f).or_else(|| crate::pypi::parse_version(f)))).flatten();
+        let fix = match (w.fix.as_deref(), all) {
+            (Some(own), Some(all)) if own != all => format!(" → {own} ({all} fixes all {})", same.len()),
+            (Some(own), _) => format!(" → {own}"),
+            _ => String::new(),
         };
         let clear = clear_phrase(r, its);
         let worst = format!("{} {} {}{fix} · {} · {} (https://osv.dev/vulnerability/{})", w.severity.word(), w.name, w.version, why(w, clear.as_ref()), clean(&w.summary), w.id);
@@ -1448,7 +1451,7 @@ mod tests {
         items.sort_by(|a, b| b.severity.cmp(&a.severity).then(a.name.cmp(&b.name)).then(a.id.cmp(&b.id)));
         let l = lines(&Report { checked: 0, queried: 20, raw: 20, items, unused: vec![] });
         assert_eq!(l.len(), SHOWN_GROUPS + 1, "{l:?}");
-        assert_eq!(l[0], "via top 1.0.0: 3 advisories (1 critical, 1 high, 1 moderate), worst critical a 1.0.0 → 1.0.3 · high at runtime · A-1 summary (https://osv.dev/vulnerability/A-1) · also b 1.0.0");
+        assert_eq!(l[0], "via top 1.0.0: 3 advisories (1 critical, 1 high, 1 moderate), worst critical a 1.0.0 → 1.0.1 (1.0.3 fixes all 2) · high at runtime · A-1 summary (https://osv.dev/vulnerability/A-1) · also b 1.0.0");
         assert!(l[1].starts_with("c00 1.0.0 (direct): high c00 1.0.0 → 2.0.0"), "{}", l[1]);
         assert_eq!(l[SHOWN_GROUPS], "and 3 more dependencies with 3 advisories (`unstale advisories` lists every one)");
     }

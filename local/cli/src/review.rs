@@ -312,7 +312,6 @@ pub fn digest_groups(out: &Outcome) -> Vec<(String, Vec<String>)> {
         let idx = out.digest.get(tech).unwrap_or(&empty);
         let adv = fixes.get(tech).map(Vec::as_slice).unwrap_or(&[]);
         let pkgs = out.packages.get(tech).cloned().unwrap_or_default();
-        let name = tech.clone();
         let label = if pkgs.len() == 1 && pkgs[0] == *tech || pkgs.is_empty() { tech.clone() } else { format!("{tech} ({})", pkgs.join(", ")) };
         let workspaces = out.workspaces.get(tech).map(Vec::as_slice).unwrap_or(&[]);
         // Where the line's version comes from, when manifests disagree on it.
@@ -321,6 +320,7 @@ pub fn digest_groups(out: &Outcome) -> Vec<(String, Vec<String>)> {
         };
         let first = idx.first().map(|&i| &out.opps[i]).or_else(|| adv.first().map(|f| &out.opps[f.opp]));
         if let Some(first) = first {
+            let name = bump_name(out, tech);
             let mut kinds = Kinds::default();
             for &i in idx {
                 let o = &out.opps[i];
@@ -658,17 +658,30 @@ pub fn advisory_lines(out: &Outcome, o: &Opp) -> Vec<String> {
 /// left out, as elsewhere.
 pub fn advisory_fixes(out: &Outcome) -> BTreeMap<String, Vec<AdvisoryFix>> {
     let mut by: BTreeMap<String, Vec<AdvisoryFix>> = BTreeMap::new();
-    let mut seen = std::collections::BTreeSet::new();
+    // One fix per advisory, though several records (a backport and the current line's release) cite it: the one on
+    // the installed line, else the earliest in the release index.
+    let pos = |f: &AdvisoryFix| {
+        let a = &out.opps[f.opp].rec.r.advisories[f.advisory];
+        f.patched.as_ref().and_then(|p| a.index.as_ref()?.iter().position(|x| x == p))
+    };
+    let mut best: BTreeMap<(String, String), AdvisoryFix> = BTreeMap::new();
     for (oi, o) in out.opps.iter().enumerate() {
         if matches!(o.route, Route::Withheld(_) | Route::Blocked(_) | Route::VersionUnknown) {
             continue;
         }
         for (ai, a) in o.rec.r.advisories.iter().enumerate() {
-            if let AdvisoryStatus::Fixed(f) = advisory_status(out, o, a)
-                && seen.insert((o.rec.r.technology.clone(), a.id.clone())) {
-                    by.entry(o.rec.r.technology.clone()).or_default().push(AdvisoryFix { opp: oi, advisory: ai, patched: f.patched, backport: f.backport });
+            if let AdvisoryStatus::Fixed(f) = advisory_status(out, o, a) {
+                let fix = AdvisoryFix { opp: oi, advisory: ai, patched: f.patched, backport: f.backport };
+                let key = (o.rec.r.technology.clone(), a.id.clone());
+                let better = |old: &AdvisoryFix| (!fix.backport, pos(&fix).unwrap_or(usize::MAX)) < (!old.backport, pos(old).unwrap_or(usize::MAX));
+                if best.get(&key).is_none_or(better) {
+                    best.insert(key, fix);
                 }
+            }
         }
+    }
+    for ((tech, _), fix) in best {
+        by.entry(tech).or_default().push(fix);
     }
     for v in by.values_mut() {
         v.sort_by(|x, y| {
@@ -682,6 +695,15 @@ pub fn advisory_fixes(out: &Outcome) -> BTreeMap<String, Vec<AdvisoryFix>> {
         });
     }
     by
+}
+
+/// What to type after `unstale bump` for a technology: the package its digest head names (`express`, not the
+/// catalog id `express-8b04a3ca`), else one of its packages here, else the id.
+pub fn bump_name(out: &Outcome, tech: &str) -> String {
+    let head = out.digest.get(tech).and_then(|v| v.first()).map(|&i| out.opps[i].component());
+    head.and_then(|c| purl_name(&c))
+        .or_else(|| out.packages.get(tech).and_then(|p| p.first().cloned()))
+        .unwrap_or_else(|| tech.to_string())
 }
 
 /// The records behind one package's digest line, for `unstale bump <pkg>`.
@@ -1298,6 +1320,18 @@ mod tests {
         assert_eq!(advisory_affects(adv_a, "pkg:npm/next", &semver::Version::parse("16.2.1").unwrap()), Some(true));
         assert_eq!(advisory_affects(adv_a, "pkg:npm/next", &semver::Version::parse("16.2.5").unwrap()), Some(false));
         assert_eq!(advisory_affects(adv_a, "pkg:npm/next", &semver::Version::parse("16.2.2").unwrap()), None);
+    }
+
+    #[test]
+    fn the_digest_names_a_package_to_bump_not_a_catalog_id() {
+        let fix = with(rec("express-8b04a3ca:fix", "pkg:npm/express", "5.3.0"), json!({"change_type": "fix", "technology": "express-8b04a3ca"}));
+        let cat = catalog("express-8b04a3ca", 0, vec![fix]);
+        let (r, l) = (repo(&[]), Ledger::default());
+        let s = stack(&[("express", "5.2.1")], None);
+        let out = run(&Input { catalog: &cat, stack: &s, repo: &r, ledger: &l, today: "2026-10-15", targets: Default::default() });
+        let digest = digest_lines(&out).join("\n");
+        assert!(digest.contains("(`unstale bump express`)"), "{digest}");
+        assert_eq!(bump_name(&out, "express-8b04a3ca"), "express");
     }
 
     #[test]

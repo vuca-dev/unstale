@@ -246,6 +246,11 @@ pub struct Stack {
     /// that disagrees with the manifest beside it; and the packages on different versions across manifests. For the
     /// report.
     pub notes: Vec<String>,
+    /// How many of `notes` say a lockfile could not be read in full (`Lock::unread`).
+    pub unreadable: usize,
+    /// The locked version of each runtime package that only its type stub names directly (`@types/express` with
+    /// express from `@nestjs/platform-express`), by purl: that technology's installed version, never the stub's.
+    pub stub_runtimes: BTreeMap<String, Version>,
     /// How many packages are on different versions across manifests (the last note when nonzero; `settle`).
     pub spread: usize,
     /// Per lockfile, the npm manifests below it that it does not cover (separate, unlocked projects), as a report
@@ -425,6 +430,8 @@ pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
     let mut locks: BTreeMap<PathBuf, Option<Lock>> = BTreeMap::new();
     let mut catalogs: BTreeMap<PathBuf, Catalogs> = BTreeMap::new();
     let mut notes = vec![];
+    let mut unreadable = 0;
+    let mut stub_runtimes: BTreeMap<String, Version> = BTreeMap::new();
     // Per lockfile path: locked versions outside the declared range, with a few examples.
     let mut stale: BTreeMap<String, (usize, Vec<String>)> = BTreeMap::new();
     for e in walker(root).flatten() {
@@ -446,7 +453,14 @@ pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
         while let Some(cur) = d {
             if !locks.contains_key(cur) {
                 let cur_cat = Catalogs::nearest(root, cur, &mut catalogs);
-                locks.insert(cur.to_path_buf(), choose_lock(root, cur, Lock::read_all(cur), &local_names, &cur_cat, &mut notes));
+                let read = Lock::read_all(cur);
+                for l in &read {
+                    if let Some(why) = &l.unread {
+                        notes.push(format!("{}: could not be read in full ({why}); versions or registry identities it holds may be missing from this report.", join(&rel_dir(root, cur), &l.file)));
+                        unreadable += 1;
+                    }
+                }
+                locks.insert(cur.to_path_buf(), choose_lock(root, cur, read, &local_names, &cur_cat, &mut notes));
             }
             if let Some(Some(l)) = locks.get(cur) {
                 if l.covers(&rel_dir(cur, &dir)) {
@@ -545,6 +559,12 @@ pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
                 let public_candidate = !local;
                 let purl = npm_purl(public_name);
                 declared.insert(purl.clone());
+                if let Some((_, l)) = &lock
+                    && let Some(runtime) = stub_runtime(public_name)
+                    && let Some(v) = l.installed(&runtime)
+                {
+                    stub_runtimes.insert(npm_purl(&runtime), v);
+                }
                 let entry = deps.entry(purl).or_insert_with(|| Dep::new(public_name, public_candidate));
                 entry.public_candidate &= public_candidate;
                 if public_name == name {
@@ -644,7 +664,7 @@ pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
         let fixture_only = !d.readings.is_empty() && d.readings.iter().all(|r| !local(&root.join(&r.dir).join("x")));
         d.public_candidate &= registries.may_name(purl, d.seen) && (!fixture_only || fixture_registries.may_name(purl, d.seen));
     }
-    let mut st = Stack { packages, deps, node, notes, spread: 0, standalone, registries, fixture_registries };
+    let mut st = Stack { packages, deps, node, notes, unreadable, stub_runtimes, spread: 0, standalone, registries, fixture_registries };
     st.settle();
     Ok(st)
 }
@@ -800,6 +820,9 @@ pub struct Lock {
     members: Members,
     /// Where it says each package came from, by name (`resolved`, a pnpm `tarball`), when it says.
     seen: BTreeMap<String, Seen>,
+    /// What the reader could not make out (unparsable JSON, package entries with no readable resolution), for a
+    /// visible warning: a lockfile is never dropped silently.
+    pub unread: Option<String>,
 }
 
 /// Workspace members by the package manager's own globs: `pnpm-workspace.yaml` `packages` for pnpm, the
@@ -1036,6 +1059,17 @@ impl Lock {
         self.by_name.get(name).and_then(|vs| vs.iter().min().cloned())
     }
 
+    /// The one version of `name` the install runs where no manifest declares it: the copy at the lockfile root
+    /// (npm hoists it there), else the only version the lockfile holds. Several and none hoisted: unknown.
+    pub fn installed(&self, name: &str) -> Option<Version> {
+        if let Some(v) = self.importers.get(".").and_then(|m| m.get(name)) {
+            return Some(v.clone());
+        }
+        let mut all: BTreeSet<Version> = self.integrity.keys().filter(|(n, _)| n == name).filter_map(|(_, v)| parse_version(v)).collect();
+        all.extend(self.by_name.get(name).into_iter().flatten().cloned());
+        if all.len() == 1 { all.pop_first() } else { None }
+    }
+
     /// The locked version of `name` with its sha512 integrity, when the lockfile states one.
     pub fn pin(&self, name: &str, v: &Version) -> Option<Pin> {
         let hashes = self.integrity.get(&(name.to_string(), v.to_string()))?;
@@ -1152,7 +1186,10 @@ fn pnpm_workspace_overrides(text: &str) -> Vec<(String, String)> {
 
 pub fn parse_npm(text: &str) -> Lock {
     let mut l = Lock::default();
-    let Ok(v) = serde_json::from_str::<Value>(text) else { return l };
+    let Ok(v) = serde_json::from_str::<Value>(text) else {
+        l.unread = Some("not valid JSON".into());
+        return l;
+    };
     if let Some(pk) = v.get("packages").and_then(Value::as_object) {
         for (key, meta) in pk {
             if !key.is_empty() && !key.contains("node_modules/") {
@@ -1203,13 +1240,65 @@ pub(crate) fn clean_pnpm_version(v: &str) -> Option<Version> {
     parse_version(v)
 }
 
+/// The runtime package a type stub describes: npm `@types/express` → `express`, `@types/babel__core` →
+/// `@babel/core`.
+pub(crate) fn stub_runtime(name: &str) -> Option<String> {
+    let n = name.strip_prefix("@types/")?;
+    Some(match n.split_once("__") {
+        Some((scope, rest)) => format!("@{scope}/{rest}"),
+        None => n.to_string(),
+    })
+}
+
+/// YAML lines with each flow collection (`{ … }`, `[ … ]`) that spans several lines joined onto the line that opens
+/// its key, as Prettier and other formatters write them (`resolution:\n  {\n    integrity: sha512-…,\n  }`); the
+/// line-based readers then see the one-line form pnpm itself writes. Brackets inside quotes and comments do not count.
+pub(crate) fn yaml_flow_lines(text: &str) -> Vec<String> {
+    let mut out: Vec<String> = vec![];
+    let mut depth = 0i32;
+    for line in text.lines() {
+        let mut quote: Option<char> = None;
+        let mut d = depth;
+        let mut prev = ' ';
+        for c in line.chars() {
+            let after_space = prev.is_whitespace();
+            prev = c;
+            match (quote, c) {
+                (Some(q), c) if c == q => quote = None,
+                (Some(_), _) => {}
+                (None, '\'' | '"') => quote = Some(c),
+                // A comment starts at a `#` after whitespace (a URL fragment's does not).
+                (None, '#') if after_space => break,
+                (None, '{' | '[') => d += 1,
+                (None, '}' | ']') => d -= 1,
+                _ => {}
+            }
+        }
+        // A collection opened on the line after its key (`resolution:` then `{`) belongs to that key.
+        let opens_value = depth == 0 && line.trim_start().starts_with(['{', '[']) && out.last().is_some_and(|p| p.trim_end().ends_with(':'));
+        match out.last_mut() {
+            Some(prev) if depth > 0 || opens_value => {
+                prev.push(' ');
+                prev.push_str(line.trim());
+            }
+            _ => out.push(line.to_string()),
+        }
+        depth = d.max(0);
+    }
+    out
+}
+
 /// A line-based reader for the parts of `pnpm-lock.yaml` needed here (importers, or top-level dependencies in
-/// single-project lockfiles); no YAML dependency.
+/// single-project lockfiles); no YAML dependency. Formatter output (double quotes, multi-line flow mappings with
+/// trailing commas) reads as pnpm's own.
 pub fn parse_pnpm(text: &str) -> Lock {
     let mut l = Lock::default();
     let mut stack: Vec<(usize, String)> = vec![];
     const SECTIONS: &[&str] = &["dependencies", "devDependencies", "optionalDependencies"];
-    for raw in text.lines() {
+    // `packages:` entries, and those whose resolution said where they came from or what they hash to.
+    let (mut entries, mut resolved) = (BTreeSet::<String>::new(), BTreeSet::<String>::new());
+    for raw in yaml_flow_lines(text) {
+        let raw = raw.as_str();
         let trimmed = raw.trim_end();
         if trimmed.trim().is_empty() || trimmed.trim_start().starts_with('#') {
             continue;
@@ -1227,6 +1316,9 @@ pub fn parse_pnpm(text: &str) -> Lock {
             stack.pop();
         }
         let path: Vec<&str> = stack.iter().map(|(_, k)| k.as_str()).collect();
+        if path.as_slice() == ["packages"] {
+            entries.insert(k.clone());
+        }
         // `packages:` entries: `name@1.2.3(peer@x)` (v6+) or `/name/1.2.3` (v5), with `resolution: {integrity: ...}`
         // inline or as a nested key.
         let integrity = match (path.as_slice(), val) {
@@ -1250,6 +1342,9 @@ pub fn parse_pnpm(text: &str) -> Lock {
             (["packages", key, "resolution"], Some(_)) if k == "type" => Some((*key, Seen::Elsewhere)),
             _ => None,
         };
+        if let Some(key) = integrity.as_ref().filter(|(_, i)| !i.is_empty()).map(|(k, _)| *k).or(source.as_ref().map(|(k, _)| *k)) {
+            resolved.insert(key.to_string());
+        }
         if let Some((key, seen)) = source {
             let key = key.trim_start_matches('/');
             let key = key.split('(').next().unwrap_or(key);
@@ -1285,6 +1380,13 @@ pub fn parse_pnpm(text: &str) -> Lock {
         if val.is_none() {
             stack.push((indent, k));
         }
+    }
+    let missed = entries.difference(&resolved).count();
+    if missed > 0 {
+        let first = entries.difference(&resolved).next().map(String::as_str).unwrap_or("");
+        l.unread = Some(format!("{missed} of {} package entries with no readable resolution, first {first}", entries.len()));
+    } else if l.importers.is_empty() && l.listed.is_empty() && text.lines().any(|t| SECTIONS.iter().any(|s| t.trim_start().strip_prefix(s).is_some_and(|r| r.starts_with(':')))) {
+        l.unread = Some("no importers or dependencies found".into());
     }
     l
 }
@@ -1380,6 +1482,49 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn pnpm_lock_formatted_by_prettier_reads_as_pnpms_own() {
+        // vercel/commerce: double quotes, and each resolution a multi-line flow mapping with a trailing comma.
+        let text = "lockfileVersion: \"9.0\"\n\nimporters:\n  .:\n    dependencies:\n      \"@headlessui/react\":\n        specifier: ^2.2.0\n        version: 2.2.0(react@19.0.0)\n      react:\n        specifier: 19.0.0\n        version: 19.0.0\n\npackages:\n  \"@headlessui/react@2.2.0\":\n    resolution:\n      {\n        integrity: sha512-aa==,\n      }\n    engines: { node: \">=10\" }\n    cpu: [arm64]\n\n  react@19.0.0:\n    resolution:\n      {\n        integrity: sha512-bb==,\n        tarball: \"https://registry.npmjs.org/react/-/react-19.0.0.tgz\",\n      }\n";
+        let l = parse_pnpm(text);
+        assert_eq!(l.unread, None);
+        let v = l.version(".", "@headlessui/react", "^2.2.0").unwrap();
+        assert_eq!(l.pin("@headlessui/react", &v).unwrap().hashes, vec!["sha512-aa=="]);
+        let r = l.version(".", "react", "19.0.0").unwrap();
+        assert_eq!(l.pin("react", &r).unwrap().hashes, vec!["sha512-bb=="]);
+        let g = crate::advisories::pnpm_lock(text, ".", "pnpm-lock.yaml");
+        assert!(format!("{g:?}").contains("react@19.0.0"));
+    }
+
+    #[test]
+    fn a_type_stub_records_its_runtime_packages_locked_version() {
+        assert_eq!(stub_runtime("@types/babel__core").as_deref(), Some("@babel/core"));
+        assert_eq!(stub_runtime("express"), None);
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "package.json", r#"{"dependencies": {"@nestjs/platform-express": "^12.0.1"}, "devDependencies": {"@types/express": "^5.0.0"}}"#);
+        write(d.path(), "package-lock.json", r#"{"lockfileVersion": 3, "packages": {"": {}, "node_modules/@nestjs/platform-express": {"version": "12.0.1"}, "node_modules/@types/express": {"version": "5.0.6"}, "node_modules/express": {"version": "5.2.1"}}}"#);
+        let s = detect(d.path()).unwrap();
+        assert_eq!(s.deps["pkg:npm/%40types/express"].version, Some(Version::new(5, 0, 6)));
+        assert!(!s.deps.contains_key("pkg:npm/express"));
+        assert_eq!(s.stub_runtimes["pkg:npm/express"], Version::new(5, 2, 1));
+    }
+
+    #[test]
+    fn unreadable_lockfiles_say_so() {
+        assert!(parse_npm("{\"packages\": {").unread.is_some());
+        assert_eq!(parse_pnpm("lockfileVersion: '9.0'\n").unread, None, "an empty project");
+        assert!(parse_pnpm("lockfileVersion: '9.0'\ndependencies:\n  a: ~\n").unread.is_some());
+        assert_eq!(yaml_flow_lines("a:\n  {\n    t: https://x/y.tgz#h,\n  } # done\nb: 1\n"), vec!["a: { t: https://x/y.tgz#h, } # done", "b: 1"]);
+        let l = parse_pnpm("lockfileVersion: '9.0'\nimporters:\n  .:\n    dependencies:\n      a:\n        specifier: 1.0.0\n        version: 1.0.0\npackages:\n  a@1.0.0:\n    resolution: <<unknown>>\n");
+        assert!(l.unread.as_deref().is_some_and(|u| u.starts_with("1 of 1 package entries")), "{:?}", l.unread);
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "package.json", r#"{"dependencies": {"a": "1.0.0"}}"#);
+        write(d.path(), "package-lock.json", "{ not json");
+        let s = detect(d.path()).unwrap();
+        assert_eq!(s.unreadable, 1);
+        assert!(s.notes.iter().any(|n| n.starts_with("package-lock.json: could not be read in full (not valid JSON)")), "{:?}", s.notes);
+    }
 
     fn write(dir: &Path, rel: &str, text: &str) {
         let p = dir.join(rel);

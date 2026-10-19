@@ -108,8 +108,8 @@ fn init_sync_digest_review_decide_run() {
     assert!(err.contains("--catalog"), "{err}");
 
     let out = env.ok(&["init", "--catalog", cat.loc()]);
-    assert!(out.contains("Mode: local (personal by default; no setup questions)"), "{out}");
-    assert!(out.contains("Switch with `unstale init --mode collaborative`"), "{out}");
+    assert!(out.contains("Mode: personal (the default; no setup questions)"), "{out}");
+    assert!(out.contains("Switch with `unstale init --mode shared`"), "{out}");
     assert!(out.contains("1 manifests (1 application, 0 library), 4 packages; Node >= 20.9.0"), "{out}");
     assert_eq!(env.read(".unstale/.gitignore"), "*\n");
     assert_eq!(env.read(".unstale/ledger.jsonl"), "{\"schema\":1}\n");
@@ -280,7 +280,6 @@ fn onboarding_status_reports_features_without_running_an_agent_and_resumes_jobs(
     write(env.repo.path(), ".unstale/config.json", &config.to_string());
     let map: serde_json::Map<String, serde_json::Value> = jobs.into_iter().map(|j| (j["purl"].as_str().unwrap().to_string(), j)).collect();
     write(env.repo.path(), ".unstale/state/coverage.json", &json!({"jobs":map}).to_string());
-    std::fs::create_dir_all(env.repo.path().join(".agents")).unwrap();
     // The registry's deprecation of the installed react, as a refresh would have cached it.
     seed_deprecated(&env, "pkg:npm/react@19.2.0", "This version is no longer supported.");
     let output = env.ok(&["status", "--wait", "0", "--no-animation"]);

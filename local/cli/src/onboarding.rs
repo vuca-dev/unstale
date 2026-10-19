@@ -1047,25 +1047,11 @@ pub(crate) fn remove_own_hooks(settings: &mut serde_json::Value) -> bool {
 pub(crate) fn integrate(ctx: &Ctx) -> Result<Vec<String>> {
     let mut installed = vec![];
     let mut conflicts = vec![];
-    let runtimes = [
-        ("Codex", "codex", ".agents/skills"),
-        ("Claude Code", "claude", ".claude/skills"),
-        ("Cursor", "cursor", ".agents/skills"),
-    ];
-    for (name, exe, dir) in runtimes {
-        let configured = ctx
-            .root
-            .join(if name == "Cursor" {
-                ".cursor"
-            } else {
-                dir.split('/').next().unwrap()
-            })
-            .is_dir();
-        let found = std::env::var_os("PATH")
-            .is_some_and(|path| std::env::split_paths(&path).any(|p| p.join(exe).is_file()));
-        if !configured && !found {
-            continue;
-        }
+    // Every supported agent's skill directory, whether or not its command is on PATH: desktop apps and editor
+    // extensions (Cursor, Claude Code in an IDE) install none, and the README's slash commands must exist either
+    // way. Codex and Cursor both read `.agents/skills`; in local mode the files are excluded from Git.
+    let runtimes: [(&[&str], &str); 2] = [(&["Codex", "Cursor"], ".agents/skills"), (&["Claude Code"], ".claude/skills")];
+    for (names, dir) in runtimes {
         let mut onboarding_installed = false;
         for skill in ["upgrade-review", "improvements-pass", "onboarding"] {
             let source = ctx.tool.join("skills").join(skill).join("SKILL.md");
@@ -1141,10 +1127,10 @@ pub(crate) fn integrate(ctx: &Ctx) -> Result<Vec<String>> {
             }
         }
         if onboarding_installed {
-            if name == "Claude Code" {
+            if names.contains(&"Claude Code") {
                 install_session_hook(ctx)?;
             }
-            installed.push(name.to_string());
+            installed.extend(names.iter().map(|n| n.to_string()));
         }
     }
     util::write_atomic(
@@ -1457,6 +1443,8 @@ struct Brief {
     /// Version-source notes about lockfiles (competing ones, one out of date), and the packages on different
     /// versions across manifests.
     lock_notes: usize,
+    /// Lockfiles that could not be read in full (`Stack::unreadable`).
+    unreadable: usize,
     spread: usize,
 }
 fn coverage_counts(pending: &Pending) -> String {
@@ -1556,7 +1544,11 @@ fn summary(ctx: &Ctx, pending: &Pending, brief: &Brief, issue: Option<&str>) -> 
     if let Some(line) = pending_line(pending, unix_now()) { lines.push(Line::new(line, Tone::Muted)); }
     if let Some(line) = registration_line(pending) { lines.push(Line::new(line, if pending.deferred_until.is_some() { Tone::Muted } else { Tone::Amber })); }
     if !brief.limits.is_empty() { lines.push(Line::new("Scope · other dependency ecosystems are not covered; see report.", Tone::Amber)); }
-    if brief.lock_notes > 0 {
+    if brief.unreadable > 0 {
+        let n = brief.unreadable;
+        lines.push(Line::new(format!("Lockfile · {n} lockfile{} could not be read in full; versions may be missing. See report.", if n == 1 { "" } else { "s" }), Tone::Amber));
+    }
+    if brief.lock_notes > brief.unreadable {
         lines.push(Line::new("Versions · competing or out-of-date lockfiles; see report for which was read.", Tone::Amber));
     } else if brief.spread > 0 {
         let n = brief.spread;
@@ -2053,7 +2045,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
             upgrade_text += &format!("{line}\n");
         }
         if total > 3 {
-            upgrade_text += &format!("  … {} more security items: unstale bump {technology}\n", total - 3);
+            upgrade_text += &format!("  … {} more security items: unstale bump {}\n", total - 3, review::bump_name(&out, technology));
         }
         let mut files: Vec<&String> = shown.iter().flat_map(|f| &out.opps[f.opp].files).chain(sec.iter().flat_map(|o| &o.files)).collect();
         files.dedup();
@@ -2069,11 +2061,11 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
             upgrade_text += &format!("{line}\n");
         }
         if workspaces.len() > 3 {
-            upgrade_text += &format!("  … {} more manifests on other versions: unstale bump {technology}\n", workspaces.len() - 3);
+            upgrade_text += &format!("  … {} more manifests on other versions: unstale bump {}\n", workspaces.len() - 3, review::bump_name(&out, technology));
         }
     }
     if ranked.len() > DETAILED_UPGRADES {
-        upgrade_text += &format!("Items after {DETAILED_UPGRADES} show their head line only: unstale bump <technology> lists each one's records.\n");
+        upgrade_text += &format!("Items after {DETAILED_UPGRADES} show their head line only: unstale bump <package> lists each one's records.\n");
     }
     if quiet > 0 {
         upgrade_text += &format!("{quiet} further {} only fixes and behaviour changes: no security fix, obligation or local reference. unstale digest lists every bump.\n", if quiet == 1 { "bump picks up" } else { "bumps pick up" });
@@ -2164,7 +2156,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
     }
     start.push(format!("Upgrades below: {} ranked by value: workarounds they retire, then local evidence across features, performance, cost, compatibility and security, version fit and runtime use.{}", ranked.len(), if picks.is_empty() { String::new() } else { format!(" Then {} optional capabilities.", picks.len()) }));
     start.push(format!("Coverage: {}. Per-technology detail: .unstale/coverage.md.", coverage_counts(pending)));
-    start.push("Full records: .unstale/skills/upgrade-review/SKILL.md and improvements-pass/SKILL.md; one technology's: unstale bump <technology>.".into());
+    start.push("Full records: .unstale/skills/upgrade-review/SKILL.md and improvements-pass/SKILL.md; one technology's: unstale bump <package>.".into());
     text += "## Start here\n\n";
     text += &evidence_block(&start.join("\n"));
 
@@ -2347,6 +2339,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
         upgrades,
         limits,
         lock_notes: w.stack.notes.len() - usize::from(w.stack.spread > 0),
+        unreadable: w.stack.unreadable,
         spread: w.stack.spread,
     })
 }
@@ -2975,7 +2968,7 @@ mod tests {
             deps: Default::default(),
             node: None,
             notes: vec![],
-            spread: 0,
+            unreadable: 0, stub_runtimes: Default::default(), spread: 0,
             standalone: vec![],
             registries: Default::default(),
             fixture_registries: Default::default(),
@@ -2996,7 +2989,7 @@ mod tests {
         let v: serde_json::Value = serde_json::from_str(r#"{"data":{"last_day":1,"last_month":40,"last_week":12},"package":"django","type":"recent_downloads"}"#).unwrap();
         assert_eq!(pypistats_last_week(&v), Some(12));
         assert_eq!(pypistats_last_week(&serde_json::json!({"data": {}})), None);
-        let st = stack::Stack { packages: vec![], deps: Default::default(), node: None, notes: vec![], spread: 0, standalone: vec![], registries: Default::default(), fixture_registries: Default::default() };
+        let st = stack::Stack { packages: vec![], deps: Default::default(), node: None, notes: vec![], unreadable: 0, stub_runtimes: Default::default(), spread: 0, standalone: vec![], registries: Default::default(), fixture_registries: Default::default() };
         let purls: BTreeSet<String> = ["pkg:pypi/aiohttp", "pkg:pypi/django", "pkg:pypi/zstandard"].map(String::from).into();
         let downloads: BTreeMap<String, u64> = [("pkg:pypi/zstandard", 9_000_000), ("pkg:pypi/django", 3_000_000)].map(|(p, d)| (p.to_string(), d)).into();
         assert_eq!(registration_order(&purls, &st, &downloads), ["pkg:pypi/zstandard", "pkg:pypi/django", "pkg:pypi/aiohttp"]);
@@ -3067,7 +3060,7 @@ mod tests {
             deps: [("pkg:pypi/flask", dep("flask")), ("pkg:npm/%40babel/core", dep("@babel/core"))].map(|(p, d)| (p.to_string(), d)).into(),
             node: None,
             notes: vec![],
-            spread: 0,
+            unreadable: 0, stub_runtimes: Default::default(), spread: 0,
             standalone: vec![],
             registries: Default::default(),
             fixture_registries: Default::default(),
@@ -3734,7 +3727,7 @@ mod tests {
         assert!(major_step(&v("0.27.10"), &v("0.28.0")), "a minor step on 0.x is a major one");
         assert!(!major_step(&v("0.27.1"), &v("0.27.10")));
         assert!(major_step(&v("0.2.1"), &v("20.0.1")), "read the other way: a 0.2.1 capability predates a project on 20");
-        let st = crate::stack::Stack { packages: vec![], deps: Default::default(), node: None, notes: vec![], spread: 0, standalone: vec![], registries: Default::default(), fixture_registries: Default::default() };
+        let st = crate::stack::Stack { packages: vec![], deps: Default::default(), node: None, notes: vec![], unreadable: 0, stub_runtimes: Default::default(), spread: 0, standalone: vec![], registries: Default::default(), fixture_registries: Default::default() };
         assert!(!specific_reference("connection", &st));
         assert!(specific_reference("cacheLife", &st));
         assert!(specific_reference("client.beta.agents.environments", &st));
