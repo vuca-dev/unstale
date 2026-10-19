@@ -176,6 +176,8 @@ export class CoverageService {
   private interval: NodeJS.Timeout | undefined;
   /** Batch mode (`drain`): the time after which no job is started; 0 while serving. */
   private draining = 0;
+  /** The drain ended before its deadline to publish its newly pulled packages' decisions (`drain`'s `early`). */
+  private endedEarly = false;
   /** Batch mode before `drain`: requests are queued but nothing starts (`hold`). */
   private held = false;
   /** Jobs started since construction (a drain reports its share). */
@@ -558,9 +560,11 @@ export class CoverageService {
     deadline: number,
     grace = 10 * 60_000,
     poll = 500,
-  ): Promise<{ started: number; unfinished: number; drained: boolean; held?: Hold[]; rate_limited?: number; stopped?: number }> {
+    early?: { due: () => boolean; graceMs: number },
+  ): Promise<{ started: number; unfinished: number; drained: boolean; early?: true; held?: Hold[]; rate_limited?: number; stopped?: number }> {
     this.draining = deadline;
     this.graceMs = grace;
+    this.endedEarly = false;
     this.holds.clear();
     this.held = false;
     const before = this.launched;
@@ -572,10 +576,16 @@ export class CoverageService {
     // A finished job starts the next itself, and the queue is looked at every poll (a rate-limit pause ends); when
     // nothing is running, nothing more starts and no rate-limited job resumes before the deadline, the queue is done.
     // First passes are token-free: they go on while the budget holds every slice back.
-    while (Date.now() < deadline && (this.pump() || this.running.size || this.passing.size || this.resumesBefore(deadline)))
+    // `early`: the cycle ends before its deadline so that it publishes now (its newly pulled packages are decided); the
+    // shorter grace keeps that publish minutes away, and a slice still running then resumes in the next cycle.
+    let ended = false;
+    while (Date.now() < deadline && !(ended = !!early?.due()) && (this.pump() || this.running.size || this.passing.size || this.resumesBefore(deadline)))
       await new Promise((r) => setTimeout(r, poll));
-    const drained = Date.now() < deadline;
-    const stop = Date.now() + grace;
+    // Nothing starts from here, as past a deadline (pump). The estimates keep the full cycle's window: later cycles
+    // are full ones unless they too end early, so a later estimate stays on the safe side.
+    this.endedEarly = ended;
+    const drained = !ended && Date.now() < deadline;
+    const stop = Date.now() + (ended ? early!.graceMs : grace);
     while ((this.running.size || this.passing.size) && Date.now() < stop) await new Promise((r) => setTimeout(r, poll));
     // A slice still running is killed with this cycle and resumed by the next: its work time so far is kept, so one
     // that cannot finish is stopped instead of being resumed first every cycle (stopSlice).
@@ -595,6 +605,7 @@ export class CoverageService {
       started: this.launched - before,
       unfinished: this.running.size,
       drained: done,
+      ...(ended ? { early: true as const } : {}),
       ...(held.length ? { held } : {}),
       ...(paused ? { rate_limited: paused } : {}),
       ...(this.stopped ? { stopped: this.stopped } : {}),
@@ -657,7 +668,7 @@ export class CoverageService {
     return started;
   }
   private pumpJobs(): number {
-    if (this.held || (this.draining && Date.now() >= this.draining) || Date.now() < this.pausedUntil) return 0;
+    if (this.held || (this.draining && (this.endedEarly || Date.now() >= this.draining)) || Date.now() < this.pausedUntil) return 0;
     const queue = this.queue();
     let waitingNew = queue.filter((j) => this.tier(j) === 1 && !this.running.has(j.purl)).length;
     let started = 0;
@@ -677,9 +688,23 @@ export class CoverageService {
       }
     return started;
   }
-  /** A waiting job's stage, saying what its first pass published when it did. */
+  /** A waiting job's stage, saying what its first pass decided and published when it did. */
   private passed(job: Job, stage: string): string {
-    return job.advisories_first && job.records ? `${advisoryRecords(job.records)} published; release history: ${stage[0]!.toLowerCase()}${stage.slice(1)}` : stage;
+    if (!job.advisories_first || !job.admitted) return stage;
+    const records = job.records ? `${advisoryRecords(job.records)} published; ` : "";
+    return `Admitted for coverage (${job.admitted}); ${records}release history: ${stage[0]!.toLowerCase()}${stage.slice(1)}`;
+  }
+  /**
+   * Whether a package has a firm decision: admitted (by its first pass or a slice), refused or blocked with the reason
+   * in its stage, or joined to another technology. A first pass that failed for another reason than a rate limit counts
+   * as decided too: its turn in the queue reports the error, and waiting for it would hold a cycle's publish forever.
+   */
+  decided(purl: string): boolean {
+    const job = this.jobs.get(purl);
+    if (!job || job.merged_into) return true;
+    if (this.passing.has(purl)) return false;
+    if (job.state === "queued") return !!job.admitted || !!job.advisories_first;
+    return job.state !== "discovering";
   }
   /** Starts one job unless the budget refuses it ("held": nothing more may start). */
   private launch(job: Job, isNew: boolean): "started" | "held" {
@@ -886,19 +911,23 @@ export class CoverageService {
         if (made) publishTechnology(store, releases?.checked ?? now(), catalogDir());
       });
     job.records = Math.max(job.records, made);
+    // The admission decision leads the stage: a client reads a firm "will be covered" at the first publish after the
+    // pull, as a refused package reads why it is not.
+    const decided = `Admitted for coverage (${job.admitted ?? "admitted"}); `;
     this.save(
       job,
       "queued",
-      made
-        ? `${advisoryRecords(made)} published; release history waits for a coverage worker`
-        : checked
-          ? "Security advisories checked (none fixed in the last year); release history waits for a coverage worker"
-          : "Waiting for a coverage worker",
+      decided +
+        (made
+          ? `${advisoryRecords(made)} published; release history waits for a coverage worker`
+          : checked
+            ? "security advisories checked (none fixed in the last year); release history waits for a coverage worker"
+            : "release history waits for a coverage worker"),
     );
   }
   /** Starts token-free first passes for waiting new technologies, in queue order, at most `advisoriesFirst` at once. */
   private pumpAdvisories(): number {
-    if (!this.advisoriesFirst || this.held || (this.draining && Date.now() >= this.draining) || Date.now() < this.pausedUntil) return 0;
+    if (!this.advisoriesFirst || this.held || (this.draining && (this.endedEarly || Date.now() >= this.draining)) || Date.now() < this.pausedUntil) return 0;
     let started = 0;
     for (const job of this.queue()) {
       if (this.passing.size >= this.advisoriesFirst) break;
@@ -919,7 +948,9 @@ export class CoverageService {
           }
           // Not a failure of the job: its turn in the queue runs the same steps and reports any error there.
           console.error(`advisories first: ${job.purl}: ${String(error instanceof Error ? error.message : error).slice(0, 300)}`);
-          this.persist(job);
+          // The admission it reached is still a firm decision: said, as a finished pass says it.
+          if (job.admitted && job.state === "queued") this.save(job, "queued", `Admitted for coverage (${job.admitted}); release history waits for a coverage worker`);
+          else this.persist(job);
         })
         .finally(() => {
           this.passing.delete(job.purl);

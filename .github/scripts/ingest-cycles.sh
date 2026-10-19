@@ -5,6 +5,12 @@
 #   cycle: drain (CYCLE_MINUTES, pulling the gateway every PULL_MINUTES) -> export -> website -> verify -> pack -> deploy
 #          -> save state -> acknowledge what the drain took
 #
+# Early publish: a cycle whose drain pulled packages new to central ends once each has a firm decision (its token-free
+# first pass: admitted, refused and why, no official sources) and it has drained EARLY_MINUTES, with EARLY_GRACE_MINUTES
+# for running slices, so decisions and advisories are published minutes after registration (onboarding/drain.ts).
+# EARLY_MINUTES keeps publishes that far apart: at most about one every 7 minutes (5 of drain, 1 of grace, about 1 of
+# publish), about 206 acknowledgements a day at ≤ 65 gateway rows each, inside the free tier (gateway/src/queue.ts).
+#
 # Cycles repeat while work is left and the run's window (RUN_MINUTES) lasts. A drain that ends because nothing more
 # can start (queue empty, or the budget spent) ends the run. A window that ends with work left sets the step output
 # `continue=true`, and ingest.yml's `continue` job starts the next run at once instead of waiting for the schedule. Every run is the same whatever started it, so a
@@ -33,6 +39,7 @@
 set -euo pipefail
 
 : "${RUN_MINUTES:=140}" "${CYCLE_MINUTES:=15}" "${GRACE_MINUTES:=5}" "${PULL_MINUTES:=5}" "${CONCURRENCY:=6}"
+: "${EARLY_MINUTES:=5}" "${EARLY_GRACE_MINUTES:=1}"
 : "${STATE_KEEP:=3}" "${ASSET_FILE_LIMIT:=20000}" "${PIPELINE_OK:=true}" "${DEPLOY:=true}"
 
 # The drain fetches untrusted pages; it never sees the publish secrets. Publishing never sees the model keys. Neither
@@ -114,11 +121,14 @@ while :; do
   minutes=$left
   [ "$cycles" = true ] && [ "$CYCLE_MINUTES" -lt "$left" ] && minutes=$CYCLE_MINUTES
   [ "$minutes" -ge 1 ] || minutes=1
+  # Early publish only between cycles: a single cycle (DEPLOY=false) works its whole window.
+  early=()
+  [ "$cycles" = true ] && early=(--early-minutes "$EARLY_MINUTES" --early-grace-minutes "$EARLY_GRACE_MINUTES")
   echo "::group::Cycle $cycle: drain up to $minutes min"
   log "cycle $cycle: drain up to $minutes min"
   set +e
   "${drain_env[@]}" npm --prefix central run -s drain -- --minutes "$minutes" --grace-minutes "$GRACE_MINUTES" \
-    --pull-minutes "$PULL_MINUTES" --concurrency "$CONCURRENCY" --taken "$TAKEN" | tee "$RUNNER_TEMP/drain.log"
+    --pull-minutes "$PULL_MINUTES" --concurrency "$CONCURRENCY" --taken "$TAKEN" ${early[@]+"${early[@]}"} | tee "$RUNNER_TEMP/drain.log"
   status=$?
   set -e
   echo "::endgroup::"
@@ -128,7 +138,7 @@ while :; do
     exit 1
   fi
   line="$(tail -n 1 "$RUNNER_TEMP/drain.log")"
-  log "cycle $cycle drained: $(jq -c '{wall_s, pulled, taken, started, unfinished, drained, held}' <<< "$line")"
+  log "cycle $cycle drained: $(jq -c '{wall_s, pulled, taken, started, unfinished, drained, early, held}' <<< "$line")"
   echo "::group::Cycle $cycle: publish"
   ok=true
   publish_tree || ok=false

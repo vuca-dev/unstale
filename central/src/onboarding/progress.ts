@@ -97,3 +97,11 @@ export function progressOf(
 /** The longest a cycle's publish (export, verify, pack, deploy) takes after its drain ends: measured at under a minute
  * (ingest-cycles.sh), so a client is never told a time before which the records cannot be there. */
 export const PUBLISH_MS = 3 * 60_000;
+
+/** Whether a drain should end now so its cycle publishes: it pulled packages new to central, and each has a firm
+ * decision (drain.ts, early publish). */
+export function earlyDue(service: Pick<CoverageService, "decided">, fresh: ReadonlySet<string>): boolean {
+  if (!fresh.size) return false;
+  for (const p of fresh) if (!service.decided(p)) return false;
+  return true;
+}
