@@ -52,6 +52,11 @@ pub enum Route {
     /// Opt-in and installed, but its `requires` (a package, driver or setting the change applies to) is nowhere in the
     /// repository: nothing here to apply it to (knip's Stencil support without `@stencil/core`).
     RequiresAbsent,
+    /// Opt-in and installed on the installed line, released at least `BASELINE_DAYS` before the installed version, and
+    /// this code shows no site for it: no `replaces` it uses, no specific term (not a plain word) in a file about the
+    /// technology. What every user of the version has had for a year is part of it, not an opt-in left to apply
+    /// (jsdom 16.0.0's working `Comment` constructor at 16.7.0, matched only by `Node`) (`settled`).
+    NoSite,
     /// A deprecation released at or below the installed version whose deprecated API (`replaces`) the code still
     /// uses, by the usage rules: outstanding now, with no upgrade (`in_effect_evidence`).
     InEffect,
@@ -458,10 +463,18 @@ fn older_line(v: &Version, installed: &Version) -> bool {
 /// that cannot be read keeps the record (fail open). The installed version's date is its own index entry's, else the
 /// newest release at or below it (a floor between releases).
 fn baseline(release: &Release, installed: &Version, index: &[IndexRelease]) -> bool {
+    parse_version(&release.version).is_some_and(|v| older_line(&v, installed)) && long_before(release, installed, index)
+}
+
+/// An opt-in on the installed line that the code shows no site for (`Route::NoSite`), released `BASELINE_DAYS` or more
+/// before the installed version.
+fn settled(release: &Release, installed: &Version, index: &[IndexRelease], site: bool) -> bool {
+    !site && parse_version(&release.version).is_some_and(|v| line_of(&v) == line_of(installed) && v <= *installed) && long_before(release, installed, index)
+}
+
+/// Whether `release` came at least `BASELINE_DAYS` before the installed version (`baseline`'s dates; unreadable: no).
+fn long_before(release: &Release, installed: &Version, index: &[IndexRelease]) -> bool {
     let Some(v) = parse_version(&release.version) else { return false };
-    if !older_line(&v, installed) {
-        return false;
-    }
     // The newest index release at or below `want`, and whether it is `want` itself.
     let at_or_below = |want: &Version| {
         index.iter().filter_map(|r| parse_version(&r.version).map(|x| (x, r))).filter(|(x, _)| x <= want).max_by(|a, b| a.0.cmp(&b.0))
@@ -1164,10 +1177,15 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                 // nor a change for a package or setting the repository does not have. Asked last, so the ledger,
                 // applied and benefit routes stay as they were.
                 if opp.route == Route::ImprovementsPass {
+                    // A site: a `replaces` the code uses, or a specific term (a plain word such as `Node` is every
+                    // codebase's own) in a file about the technology.
+                    let site = replaces_here || ls.iter().any(|l| !usage::plain_word(l) && ev(l).files.iter().any(|(_, about)| *about));
                     if baseline(release, &installed, &td.index.releases) {
                         opp.route = Route::Baseline;
                     } else if requires_miss {
                         opp.route = Route::RequiresAbsent;
+                    } else if settled(release, &installed, &td.index.releases, site) {
+                        opp.route = Route::NoSite;
                     }
                 }
             } else {
@@ -1365,6 +1383,7 @@ pub fn why(out: &Outcome, routes: &[&str]) -> String {
             Route::OptInAfterBump => "opt-in, available after an upgrade",
             Route::Baseline => "opt-in from an older release line, a year or more before the installed version (part of it, nothing new to adopt)",
             Route::RequiresAbsent => "opt-in for a package or setting this repository does not have (its `requires` is not found)",
+            Route::NoSite => "opt-in on the installed line for a year or more with no site in this code (part of the installed version)",
             Route::InEffect => IN_EFFECT,
             Route::AlreadyIncluded => "already in the installed version with nothing to adopt",
             Route::BeyondTarget => "released after the target version",
@@ -2352,6 +2371,37 @@ mod tests {
         }
         let out = run_with(&c, &s, &r, &l);
         assert_eq!(route_of(&out, "jsdom:atob"), &Route::ImprovementsPass);
+    }
+
+    #[test]
+    fn the_improvements_pass_leaves_out_a_year_old_opt_in_on_the_installed_line_with_no_site() {
+        // MetaMask/metamask-extension: jsdom 16.7.0 was offered 16.0.0's working `Comment` constructor, matched only by
+        // `Node` in a test helper, and `DocumentFragment` by `document.createDocumentFragment` in extension code.
+        let r16 = |id: &str, v: &str, d: &str, terms: serde_json::Value| with(rec(id, "pkg:npm/jsdom", v), json!({"benefit":["correctness"],"terms":terms,"releases":[{"component":"pkg:npm/jsdom","version":v,"date":d,"line":"16"}]}));
+        let mut c = catalog(
+            "jsdom",
+            0,
+            vec![
+                r16("jsdom:comment", "16.0.0", "2020-01-13", json!([["Node", 0]])),
+                r16("jsdom:fragment", "16.0.0", "2020-01-13", json!([["document.createDocumentFragment", 0], ["Node", 0]])),
+                // A specific term in a file that imports jsdom is a site, however old.
+                r16("jsdom:sited", "16.0.0", "2020-01-13", json!([["pretendToBeVisual", 0]])),
+                // Under a year before the installed version: still new to adopt, site or none.
+                r16("jsdom:recent", "16.6.0", "2021-06-01", json!([["Node", 0]])),
+            ],
+        );
+        let idx = |v: &str, d: &str, s: bool| unstale_schema::catalog::IndexRelease { version: v.into(), date: d.into(), line: "16".into(), line_start: s };
+        c.techs.get_mut("jsdom").unwrap().index.releases = vec![idx("16.0.0", "2020-01-13", true), idx("16.6.0", "2021-06-01", false), idx("16.7.0", "2021-08-01", false)];
+        let r = repo(&[
+            ("test/setup-helper.js", "import { JSDOM } from 'jsdom';\nconst dom = new JSDOM('', { pretendToBeVisual: true });\nglobal.Node = dom.window.Node;\n"),
+            ("app/inject.ts", "const f = document.createDocumentFragment();\n"),
+        ]);
+        let (s, l) = (stack(&[("jsdom", "16.7.0")], None), Ledger::default());
+        let out = run_with(&c, &s, &r, &l);
+        assert_eq!(route_of(&out, "jsdom:comment"), &Route::NoSite, "a plain word is no site");
+        assert_eq!(route_of(&out, "jsdom:fragment"), &Route::NoSite, "a file that does not use jsdom is no site");
+        assert_eq!(ids(&out, &out.improvements), vec!["jsdom:sited", "jsdom:recent"]);
+        assert!(why(&out, &[]).contains("2 opt-in on the installed line for a year or more with no site"), "{}", why(&out, &[]));
     }
 
     #[test]
