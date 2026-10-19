@@ -465,6 +465,7 @@ fn parse_targets(t: &[String]) -> Result<BTreeMap<String, semver::Version>> {
 fn outcome<'a>(w: &'a World, targets: BTreeMap<String, semver::Version>) -> Outcome<'a> {
     let mut out = funnel::run(&Input { catalog: &w.catalog, stack: &w.stack, repo: &w.repo, ledger: &w.ledger, today: &w.today, targets });
     out.uncovered = w.deferral.clone();
+    out.unread = stack::unread_note(&w.repo, &w.stack);
     out
 }
 
@@ -500,6 +501,9 @@ fn cmd_sync(ctx: &Ctx) -> Result<u8> {
             cands.len(),
             st.deps.len()
         );
+        if let Some(why) = st.deps.is_empty().then(|| stack::unread_note(&usage::Repo::collect(&ctx.root), &st)).flatten() {
+            println!("Nothing was checked: {why}.");
+        }
     }
     let uncovered = rep.not_covered.len() + rep.not_in_stack.len();
     if uncovered > 0 {
