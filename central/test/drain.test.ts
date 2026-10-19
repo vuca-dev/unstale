@@ -10,9 +10,9 @@ import { CoverageService, SLICE_LIMIT_CYCLES, SLICE_LIMIT_MS } from "../src/onbo
 import { Taken } from "../src/onboarding/taken.ts";
 import type { Limits } from "../src/onboarding/limits.ts";
 import { exportCatalog } from "../src/pipeline/export.ts";
-import { catalogDir, centralDir } from "../src/pipeline/paths.ts";
+import { catalogDir, centralDir, usageLog } from "../src/pipeline/paths.ts";
 import { publishTechnology } from "../src/pipeline/publish.ts";
-import { sha256 } from "../src/pipeline/util.ts";
+import { logUsage, sha256 } from "../src/pipeline/util.ts";
 import { store } from "./catalog-fixture.ts";
 
 const previous = process.env.UNSTALE_STORE;
@@ -143,6 +143,30 @@ test("a file in the jobs folder that is not a saved job (macOS ._* metadata) is 
   const jobs = join(centralDir(), "onboarding", "jobs");
   writeFileSync(join(jobs, `._${sha256("pkg:npm/a")}.json`), Buffer.from("\x00\x05\x16\x07\x00\x02\x00\x00Mac OS X", "latin1"));
   expect([...new CoverageService(0, { limits: limits() }).jobs.keys()]).toEqual(["pkg:npm/a"]);
+});
+
+test("usage phase: a new technology's slice is onboarding and a monitored one's refresh is monitoring, at once", async () => {
+  // A model call inside each job's work, the two slices interleaving between their calls.
+  const answer = noSources().getMockImplementation()!;
+  vi.spyOn(discovery, "discoverTechnology").mockImplementation(async (purl) => {
+    for (let i = 0; i < 3; i++) {
+      await new Promise((r) => setTimeout(r, purl.endsWith("new") ? 3 : 2));
+      logUsage({ api: "vercel", purl, input_tokens: 1, output_tokens: 1 });
+    }
+    return answer(purl);
+  });
+  const service = new CoverageService(2, { limits: limits() }).hold();
+  const covered = service.submit("pkg:npm/covered");
+  Object.assign(covered, { state: "monitoring", retry_at: "2000-01-01T00:00:00.000Z", admitted: "test", records: 12 });
+  service.enqueue([{ purl: "pkg:npm/new", demand: 1 }]);
+  await service.drain(Date.now() + 60_000, 5_000, 10);
+  const lines = readFileSync(usageLog(), "utf8").trim().split("\n").map((l) => JSON.parse(l) as Record<string, unknown>);
+  const calls = lines.filter((l) => l.api);
+  expect(calls.map((l) => l.purl)).not.toEqual([...Array(3).fill(calls[0]!.purl), ...Array(3).fill(calls[3]!.purl)]);
+  for (const l of calls) expect(l.phase).toBe(l.purl === "pkg:npm/new" ? "onboarding" : "monitoring");
+  expect(new Set(calls.map((l) => l.tech))).toEqual(new Set([covered.technology, service.jobs.get("pkg:npm/new")!.technology]));
+  // Neither finished a first coverage (no sources: blocked), so no milestone.
+  expect(lines.filter((l) => l.milestone)).toEqual([]);
 });
 
 test("a package missing from its registry is parked for a week, not retried as a failure", async () => {

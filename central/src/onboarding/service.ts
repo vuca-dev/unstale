@@ -15,7 +15,7 @@ import {
 } from "./discovery.ts";
 import { catalogDir, centralDir } from "../pipeline/paths.ts";
 import { advisoryReleases, fetchGuides, fetchReleases, type GuideNote } from "../pipeline/fetch.ts";
-import { readJson, sha256, writeAtomic } from "../pipeline/util.ts";
+import { logUsage, readJson, sha256, withUsagePhase, writeAtomic } from "../pipeline/util.ts";
 import { reconcileSources } from "./source-quality.ts";
 import { synthesize } from "./synthesis.ts";
 import { publishTechnology } from "../pipeline/publish.ts";
@@ -759,9 +759,13 @@ export class CoverageService {
     const kind = this.tally[isNew ? "new" : refresh ? "refresh" : "other"];
     kind.started++;
     delete job.paused_until;
-    void this.work(job)
+    // Every model call of the slice is the technology's first coverage or its monitoring (util.ts, usage phases); the
+    // context goes with the slice's own call chain, so slices running at once never take each other's calls.
+    void withUsagePhase(refresh ? "monitoring" : "onboarding", job.technology, () => this.work(job))
       .then(() => {
         kind[job.state === "queued" ? "yielded" : job.state === "failed" ? "failed" : "finished"]++;
+        // First coverage done: counted, so onboarding's cost divides by the technologies it covered.
+        if (!refresh && job.state === "monitoring" && !job.merged_into) logUsage({ phase: "onboarding", tech: job.technology, milestone: "onboarded" });
         if (Date.now() >= this.pausedUntil) this.pauseMs = 0;
       })
       .catch((error) => {
@@ -964,7 +968,7 @@ export class CoverageService {
       started++;
       // Marked from the start, so the admission it may record never moves the job to admitted work (`tier`).
       job.advisories_first = now();
-      void this.advisoryPass(job)
+      void withUsagePhase("onboarding", job.technology, () => this.advisoryPass(job))
         .catch((error) => {
           const limited = rateLimit(error);
           if (limited) {

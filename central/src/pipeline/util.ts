@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
@@ -34,10 +35,25 @@ export function readJson<T>(path: string): T | undefined {
   return existsSync(path) ? (JSON.parse(readFileSync(path, "utf8")) as T) : undefined;
 }
 
-/** One line per real (uncached) model call, or an event (CONTRACT: Paths, usage log). */
+/**
+ * What a model call is spent on, so the ongoing cost per technology-year is measured apart from the one-time cost of
+ * covering a technology: `onboarding` is a technology's first coverage (its history, guides and docs baseline, every
+ * slice until it is first monitored), `monitoring` is the work on a technology already monitored (new releases, docs
+ * changes, advisories), `other` anything else (manual catalog actions, evals).
+ */
+export type UsagePhase = "onboarding" | "monitoring" | "other";
+const usagePhase = new AsyncLocalStorage<{ phase: UsagePhase; tech?: string }>();
+
+/** Runs `fn` with every usage line it writes, however deep and concurrent, attributed to `phase` (and `tech`). */
+export function withUsagePhase<T>(phase: UsagePhase, tech: string | undefined, fn: () => T): T {
+  return usagePhase.run({ phase, ...(tech ? { tech } : {}) }, fn);
+}
+
+/** One line per real (uncached) model call, an event, or a milestone (CONTRACT: Paths, usage log), with its phase. */
 export function logUsage(entry: Record<string, unknown>): void {
+  const ctx = usagePhase.getStore();
   mkdirSync(dirname(usageLog()), { recursive: true });
-  appendFileSync(usageLog(), JSON.stringify({ ...entry, at: new Date().toISOString() }) + "\n");
+  appendFileSync(usageLog(), JSON.stringify({ phase: ctx?.phase ?? "other", ...(ctx?.tech ? { tech: ctx.tech } : {}), ...entry, at: new Date().toISOString() }) + "\n");
 }
 
 /** Runs `fn` over `items` with at most `n` in flight; results keep the input order. */
