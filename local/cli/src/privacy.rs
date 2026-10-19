@@ -321,9 +321,11 @@ impl Registries {
         Registries::from_files(project_files(dirs, files), &Env::default())
     }
 
-    /// What names packages one by one (scopes and pins), without the settings that cover a whole ecosystem.
+    /// What names packages one by one (scopes and pins), without the settings that keep a whole ecosystem private.
+    /// Credentials for the public npm registry are kept: they only make a scoped package wait for npm to confirm it
+    /// (`needs_identity`), which fails closed.
     pub fn narrow(&self) -> Registries {
-        Registries { npm_scopes: self.npm_scopes.clone(), pypi_pinned: self.pypi_pinned.clone(), ..Registries::default() }
+        Registries { npm_scopes: self.npm_scopes.clone(), pypi_pinned: self.pypi_pinned.clone(), npm_token: self.npm_token, ..Registries::default() }
     }
 
     /// Both configurations: a package either keeps private is private.
@@ -1217,5 +1219,44 @@ mod tests {
         let repo3 = tempfile::tempdir().unwrap();
         write(repo3.path(), ".npmrc", "//npm.corp.example/:_authToken=x\n");
         assert!(!read(repo3.path(), &env(None, &[])).needs_identity("pkg:npm/%40myorg/secret"));
+    }
+
+    #[test]
+    fn an_examples_npm_credentials_still_need_npm_to_confirm_its_scoped_packages() {
+        let repo = tempfile::tempdir().unwrap();
+        write(repo.path(), "package.json", r#"{"name": "app", "dependencies": {"react": "18.2.0"}}"#);
+        // The only npmjs credentials are an example's; that example installs a vendor's scoped package from npmjs.
+        write(repo.path(), "examples/enterprise/.npmrc", "//registry.npmjs.org/:_authToken=${NPM_TOKEN}\n");
+        write(repo.path(), "examples/enterprise/package.json", r#"{"name": "enterprise-example", "dependencies": {"@vendor/enterprise-sdk": "3.0.0"}}"#);
+        write(
+            repo.path(),
+            "examples/enterprise/package-lock.json",
+            r#"{"lockfileVersion": 3, "packages": {
+            "": {"name": "enterprise-example", "dependencies": {"@vendor/enterprise-sdk": "3.0.0"}},
+            "node_modules/@vendor/enterprise-sdk": {"version": "3.0.0", "resolved": "https://registry.npmjs.org/@vendor/enterprise-sdk/-/enterprise-sdk-3.0.0.tgz", "integrity": "sha512-ee"}
+        }}"#,
+        );
+        let cache = tempfile::tempdir().unwrap();
+        let (st, _, osv, asked) = requests_with(repo.path(), &env(None, &[]), cache.path(), |_| Some(false));
+        assert!(!osv.iter().any(|n| n.contains("vendor")), "{osv:?}");
+        assert_eq!(asked, ["pkg:npm/%40vendor/enterprise-sdk"], "npm, which serves it, is asked first");
+        let withheld = st.withheld(cache.path());
+        assert!(withheld.contains("vendor") && withheld.contains("enterprise-sdk"), "{withheld:?}");
+        // Confirmed public by npm: sent as any other.
+        let cache = tempfile::tempdir().unwrap();
+        let (_, _, osv, _) = requests_with(repo.path(), &env(None, &[]), cache.path(), |_| Some(true));
+        assert!(osv.contains(&"@vendor/enterprise-sdk".to_string()), "{osv:?}");
+    }
+
+    #[test]
+    fn a_project_templates_files_are_not_the_repositorys_configuration() {
+        let repo = tempfile::tempdir().unwrap();
+        write(repo.path(), "requirements.txt", "requests==2.32.0\n");
+        // A cookiecutter template: not valid TOML until rendered, and not this repository's project.
+        write(repo.path(), "{{cookiecutter.slug}}/pyproject.toml", "[project]\nname = \"{{cookiecutter.slug}}\"\ndependencies = [{% for d in deps %}\"{{ d }}\",{% endfor %}]\n");
+        write(repo.path(), "{{cookiecutter.slug}}/.npmrc", "registry={{cookiecutter.registry}}\n");
+        write(repo.path(), "package.json", r#"{"name": "app", "dependencies": {"react": "18.2.0"}}"#);
+        let st = crate::stack::detect_in(repo.path(), &env(None, &[])).unwrap();
+        assert!(st.deps["pkg:pypi/requests"].public_candidate && st.deps["pkg:npm/react"].public_candidate);
     }
 }

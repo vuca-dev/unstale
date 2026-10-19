@@ -345,7 +345,7 @@ pub fn detect(root: &Path, packages: &mut Vec<Package>, deps: &mut BTreeMap<Stri
             continue;
         }
         let rel = e.path().strip_prefix(root).unwrap_or(e.path()).to_string_lossy().replace('\\', "/");
-        if !matches!(path_role(&rel), Role::App | Role::Tooling) {
+        if rel.contains("{{") || !matches!(path_role(&rel), Role::App | Role::Tooling) {
             continue;
         }
         let Ok(text) = std::fs::read_to_string(e.path()) else { continue };

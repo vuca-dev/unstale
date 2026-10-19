@@ -613,7 +613,11 @@ pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
     // No name a private registry serves is ever named to a third party (`privacy`).
     // A test, example or fixture directory's configuration is its own (a local Verdaccio a test publishes to): it keeps
     // private the packages only such directories declare, and, for the rest, only the scopes and names it lists.
-    let local = |p: &Path| matches!(crate::usage::path_role(&rel_dir(root, p)), crate::usage::Role::App | crate::usage::Role::Tooling);
+    // A project template's directory (`{{cookiecutter.slug}}`, copier) is not the repository's own project either.
+    let local = |p: &Path| {
+        let rel = rel_dir(root, p);
+        !rel.contains("{{") && matches!(crate::usage::path_role(&rel), crate::usage::Role::App | crate::usage::Role::Tooling)
+    };
     let (app_configs, other_configs): (Vec<PathBuf>, Vec<PathBuf>) = configs.into_iter().partition(|p| local(&p.parent().unwrap_or(root).join("x")));
     let (app_dirs, other_dirs): (BTreeSet<PathBuf>, BTreeSet<PathBuf>) = manifest_dirs.into_iter().partition(|d| local(&d.join("x")));
     let fixture_registries = Registries::read_local(&other_dirs, &other_configs);
