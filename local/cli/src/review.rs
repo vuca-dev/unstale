@@ -798,7 +798,7 @@ pub fn render(view: &View, out: &Outcome, catalog: &Catalog) -> String {
     s += "\n\n";
     if !view.in_effect.is_empty() {
         s += &format!(
-            "## In effect now ({})\n\nDeprecated at or below the installed version, and the deprecated API is still used here (matched outside comments in code that can use the technology, in a package that has it; an identifier only in a file that imports or configures it, or that its records name; a configuration option in code only where that code imports or configures it; a file convention only in an application, not in a published library or a file importing the replacement; a plain word only as a key of an object passed to a function imported from the technology; a namespace that other APIs of the technology live under only beside the entry's specific terms; a site that also names the replacement is a kept fallback and is not listed). They need no upgrade of the technology itself; a record whose stated prerequisite the project does not meet is left out, and one cited in a published package whose declared range still admits versions without the replacement says so under \"Prerequisite not met here\". Before moving code off a deprecated API, check that what replaces it works at the versions installed here: an old API is often kept because its replacement needs a newer version of another package (a peer, the runtime, a plugin host), and an entry may not say so. They are not part of the batches below and do not hold up `--next`.\n\n",
+            "## In effect now ({})\n\nDeprecated at or below the installed version, and the deprecated API is still used here (matched outside comments in code that can use the technology, in a package that has it; an identifier only in a file that imports or configures it, or that its records name; a configuration option in code only where that code imports it or is its config file; an option value only under the key its record names; a file convention only in an application, not in a published library or a file importing the replacement; a plain word only as a key of an object passed to a function imported from the technology; a namespace that other APIs of the technology live under only beside the entry's specific terms; a site that also names the replacement is a kept fallback and is not listed). They need no upgrade of the technology itself; a record whose stated prerequisite the project does not meet is left out, and one cited in a published package whose declared range still admits versions without the replacement says so under \"Prerequisite not met here\". Before moving code off a deprecated API, check that what replaces it works at the versions installed here: an old API is often kept because its replacement needs a newer version of another package (a peer, the runtime, a plugin host), and an entry may not say so. They are not part of the batches below and do not hold up `--next`.\n\n",
             plural(view.in_effect.len(), "record", "records")
         );
         for &i in &view.in_effect {
@@ -1126,6 +1126,43 @@ mod tests {
         assert!(text.contains("- Deprecated API used here: `system` (packages/preview/src/pages/_api/api/chat.ts)\n"), "{text}");
         let text = in_effect_text("ai", r, &[("ai", "7.0.127")], &files[1..]);
         assert!(!text.contains("## In effect now"), "a role value, a plain object and another package's call are not the option: {text}");
+    }
+
+    /// ChromeDevTools/chrome-devtools-mcp: ESLint 10 deprecates the `as-needed` option of `radix`. Its
+    /// `eslint.config.js` sets `radix: 'error'`; its `as-needed` values are `@stylistic/arrow-parens`' and `quote-props`'.
+    #[test]
+    fn an_option_value_counts_only_under_the_key_its_record_names() {
+        let r = with(
+            rec("eslint:radix-as-needed", "pkg:npm/eslint", "10.0.0"),
+            json!({"change_type":"deprecation","surface":"configuration","subject":"radix","facet":"as-needed","replaces":["\"as-needed\""],"terms":[["radix",0],["as-needed",0],["\"as-needed\"",0]],"summary":"The as-needed option of radix is deprecated."}),
+        );
+        let others = "export default [{\n  rules: {\n    '@stylistic/arrow-parens': ['error', 'as-needed'],\n    radix: 'error',\n    '@stylistic/quote-props': ['error', 'as-needed'],\n  },\n}];\n";
+        let declared = [("eslint", "10.7.0")];
+        let text = in_effect_text("eslint", r.clone(), &declared, &[("eslint.config.js", others)]);
+        assert!(!text.contains("## In effect now"), "another rule's as-needed: {text}");
+        let own = "export default [{\n  rules: {\n    '@stylistic/arrow-parens': ['error', 'as-needed'],\n    radix: ['error', 'as-needed'],\n  },\n}];\n";
+        let text = in_effect_text("eslint", r.clone(), &declared, &[("eslint.config.js", own)]);
+        assert!(text.contains("- Deprecated API used here: `as-needed` (eslint.config.js)\n"), "{text}");
+        let json = "{ \"rules\": { \"radix\": [\"error\", \"as-needed\"] } }";
+        let text = in_effect_text("eslint", r, &declared, &[(".eslintrc.json", json)]);
+        assert!(text.contains("- Deprecated API used here: `as-needed` (.eslintrc.json)\n"), "{text}");
+    }
+
+    /// ComposioHQ/composio: TypeScript 6 deprecates the `baseUrl` compiler option. `ts/packages/core/src/types/
+    /// toolkit.types.ts` has `baseUrl: z.string()` keys of zod schemas; its `types/` directory is not TypeScript's config.
+    #[test]
+    fn a_configuration_option_counts_in_code_only_in_the_technologys_config_or_api_calls() {
+        let r = with(
+            rec("typescript:baseurl", "pkg:npm/typescript", "6.0.2"),
+            json!({"change_type":"deprecation","surface":"configuration","subject":"baseUrl","replaces":["baseUrl"],"terms":[["baseUrl",0],["compilerOptions.baseUrl",0],["\"baseUrl\"",0],["paths",0]],"summary":"baseUrl is deprecated."}),
+        );
+        let schema = "import { z } from 'zod';\nexport const Toolkit = z.object({\n  baseUrl: z.string().optional(),\n});\n";
+        let declared = [("typescript", "6.0.2")];
+        let text = in_effect_text("typescript", r.clone(), &declared, &[("ts/packages/core/src/types/toolkit.types.ts", schema)]);
+        assert!(!text.contains("## In effect now"), "an application's own key under types/: {text}");
+        let api = "import ts from 'typescript';\nts.createProgram([], { baseUrl: '.' });\n";
+        let text = in_effect_text("typescript", r, &declared, &[("ts/packages/core/src/types/toolkit.types.ts", schema), ("scripts/compile.ts", api)]);
+        assert!(text.contains("- Deprecated API used here: `baseUrl` (scripts/compile.ts)\n"), "{text}");
     }
 
     #[test]

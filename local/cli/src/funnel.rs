@@ -5,7 +5,7 @@ use semver::Version;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::rc::Rc;
-use unstale_schema::catalog::{Benefit, ChangeType, IndexRelease, Release, Surface};
+use unstale_schema::catalog::{Benefit, ChangeType, IndexRelease, Release, SubjectKind, Surface};
 use unstale_schema::ledger::Ledger;
 
 use crate::cache::{Catalog, Rec, TechData};
@@ -376,6 +376,15 @@ fn successor_words(r: &unstale_schema::catalog::CapabilityRecord) -> Vec<String>
     out.sort();
     out.dedup();
     out
+}
+
+/// The key a configuration record's deprecated option value `lit` belongs to: the record's subject, when the record is
+/// about one facet of it (ESLint's `radix` rule, facet `as-needed`) and `lit` is not the subject itself. Such a value
+/// counts only where written under that key (`usage::under_key`): `as-needed` is an option of many rules.
+fn option_of<'r>(r: &'r unstale_schema::catalog::CapabilityRecord, lit: &str) -> Option<&'r str> {
+    let s = r.subject.as_str();
+    let keylike = !s.is_empty() && !s.contains(|c: char| c.is_whitespace() || matches!(c, '(' | ')' | '\'' | '"' | ':' | '=' | '.'));
+    (r.surface == Surface::Configuration && r.subject_kind == SubjectKind::Literal && r.facet.is_some() && keylike && !lit.contains(s) && !s.contains(lit)).then_some(s)
 }
 
 /// The nearest project boundary containing `path` (`.` when none does).
@@ -912,9 +921,9 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
         // replacements.
         let exact: Memo<Rc<usage::Evidence>> = RefCell::default();
         let modules: Vec<String> = comps.iter().filter_map(|c| purl_name(c)).collect();
-        let exact_of = |v: usize, l: &str, repl: &[String], context: Option<&[String]>, keyed: bool, config: bool, succ: &[String], call: bool| -> Rc<usage::Evidence> {
+        let exact_of = |v: usize, l: &str, repl: &[String], context: Option<&[String]>, keyed: bool, config: bool, succ: &[String], call: bool, parent: Option<&str>| -> Rc<usage::Evidence> {
             let ctx = context.map_or("-".to_string(), |c| c.join("\0"));
-            let key = (v, format!("{l}\0{}\u{1}{ctx}\u{2}{keyed}\u{3}{config}\u{4}{}\u{5}{call}", repl.join("\0"), succ.join("\0")));
+            let key = (v, format!("{l}\0{}\u{1}{ctx}\u{2}{keyed}\u{3}{config}\u{4}{}\u{5}{call}\u{6}{parent:?}", repl.join("\0"), succ.join("\0")));
             if let Some(e) = exact.borrow().get(&key) {
                 return e.clone();
             }
@@ -947,7 +956,9 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                 // A configuration option counts in code only where that code configures the technology: its own config
                 // file or code importing it (`Scope::file` about). A record-named generic file (`index.ts`) returning
                 // another tool's options (`@fumadocs/vite`'s `ssr: { noExternal }`) is not. Data files are unchanged.
-                if option && config && usage::own_code(p, &ecosystem) && scopes[v].file(p) == Some(false) {
+                // Only that code: a path naming the technology in a directory (`src/types/` for TypeScript) is not
+                // its config (composio's zod schema key `baseUrl` in `types/toolkit.types.ts`).
+                if option && config && usage::own_code(p, &ecosystem) && !scopes[v].configures(p) {
                     return false;
                 }
                 // A plain word in effect (`call`): only as a key of an object passed to a function the file imports from
@@ -955,7 +966,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                 if call && !(usage::own_code(p, &ecosystem) && scopes[v].file(p) == Some(true) && inp.repo.text(p).is_some_and(|t| usage::call_key(t, l, &modules))) {
                     return false;
                 }
-                inp.repo.text(p).is_none_or(|t| usage::live_site_near(p, t, l, repl, context, keyed))
+                inp.repo.text(p).is_none_or(|t| usage::live_site_under(p, t, l, repl, context, keyed, parent))
             };
             let e = Rc::new(scopes[v].exact_evidence_where(l, role, !nested, live));
             exact.borrow_mut().insert(key, e.clone());
@@ -1138,7 +1149,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             let ev = |l: &str| evidence_of(view, l);
             let succ = successor_words(&rec.r);
             let config = rec.r.surface == Surface::Configuration;
-            let ex_with = |l: &str, call: bool| exact_of(view, l, &replacement, broad.iter().any(|b| *b == l).then_some(&context[..]), keyed_api(&rec.r, ls, l), config, &succ, call);
+            let ex_with = |l: &str, call: bool| exact_of(view, l, &replacement, broad.iter().any(|b| *b == l).then_some(&context[..]), keyed_api(&rec.r, ls, l), config, &succ, call, option_of(&rec.r, l));
             let ex = |l: &str| ex_with(l, false);
             let (cited, cite): (&[String], Cite) = if deprecated.is_empty() { (ls, &ev) } else { (&deprecated, &ex) };
             let found: Vec<(String, Rc<usage::Evidence>)> = cited.iter().map(|l| (l.clone(), cite(l))).filter(|(_, e)| !e.files.is_empty()).collect();
