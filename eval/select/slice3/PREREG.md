@@ -293,3 +293,83 @@ all on long documents (Next.js 16 guide, Prisma 7 notes), which stay at `low` un
   with E's replicate as the noise reference), plus the share of records attributed to the wrong version (quote found in
   another note of the pack) ≤ 1%, and no fall in records on notes that share a change across release lines.
 - **Cost:** about $0.04 (packed arm) + the replicate from E = **$0.04** extra.
+
+# Slice 3e: OpenAI small models on the free data-sharing allowance
+
+18 October 2026. Written before any 3e model output exists on DEV, H1 or H2 (only three one-word key checks, "Reply
+with the single word: ok", have been made). Why: the OpenAI org is eligible for complimentary tokens on shared traffic,
+2.5M tokens/day (input + output) shared across gpt-5.4-mini, gpt-5.4-nano, gpt-5-mini, gpt-5-nano, gpt-4.1-mini,
+gpt-4.1-nano, gpt-4o-mini, o3-mini and o4-mini. gpt-6-luna is not eligible. If one of them holds extraction quality,
+steps A+B could become nearly free. None has been evaluated on extraction here (slice 3b's gpt-5-nano was `minimal`,
+through the gateway, and failed).
+
+## Setup
+
+- **Runner:** `run3.mts --cand openai:<model> --out slice3e --cap 3`: the OpenAI API directly (central's `openai`
+  provider, `~/.config/ati/openai.env`), Standard tier, `max_completion_tokens` 16,000 per call (the parameter these
+  models take in place of `max_tokens`), reasoning `low`. Two calls in pipeline order, production's prompts unchanged
+  (`prompt_sha` extract `68e134fe…`, label `e654eae8…`, equal to slice 3b's baselines). Failures as slice 3b: a
+  truncated answer fails its chunk with zero records and is never dropped (production since #30 splits a truncated
+  chunk instead; the count is reported); up to 3 attempts on an unparseable answer.
+- **No Vercel, Jev or Codex spend.** The comparison reuses slice 3b's stored gpt-6-luna runs.
+
+## Arms
+
+| Id | Model | Reasoning | Runs |
+|---|---|---|---|
+| M54 | `gpt-5.4-mini` | low | smoke, DEV, then H1 + H2 once if DEV passes |
+| M5 | `gpt-5-mini` | low | smoke, DEV, then H1 + H2 once if DEV passes |
+| N54 | `gpt-5.4-nano` | low | only if a mini passes DEV and the cap left covers N54's projected DEV + H1 + H2 after the passing minis' held-out runs |
+
+## Sets and baselines
+
+| Set | Use | Baseline (gpt-6-luna, low, two calls) | Noise reference |
+|---|---|---|---|
+| Smoke | `--split smoke`: the two smallest DEV documents (no held-out text); eyeball subjects, quotes, labels; measure $/char | — | — |
+| **DEV** | 9 documents, `eval/sets/score.py extraction` on the run's catalog. Choose here only | 3b gate rebuild: 87/96 in fetched sources, 59/61 required fetched | gpt-6-luna `none` DEV run (3c): 84/96, 56/61 (that setting passed both held-out sets) |
+| **H1** | `holdout/extraction`, 40 notes, `stats.py compare` (note bootstrap) | `out/slice3b/runs/vercel_openai_gpt-6-luna-two-call-heldout` | 3c replicate `…-heldout-rep2` |
+| **H2** | `holdout-majors/extraction`, 7 documents, `score.py compare` (section bootstrap) | `out/slice3b/runs/vercel_openai_gpt-6-luna-two-call-heldout2` | 3b replicate `…-heldout2-rep2` |
+
+## Decision rule (fixed now)
+
+1. **DEV gate** (decides which arms see held-out): required fetched ≥ 56 of 61 (no more than 3 below the baseline's 59)
+   AND in fetched sources ≥ 83 of 96 (no more than 5 points below 90.6%) AND at most 1 of 12 chunks failed.
+2. **Held-out, one look per arm**, exactly slice 3b/3c's rule against gpt-6-luna: on H1 (pooled and macro group recall
+   excluding unsure, breaking recall) and H2 (required recall excluding unsure, breaking recall), each floor metric no more
+   than **5 points** below the baseline AND the 95% bootstrap CI of candidate − baseline not entirely below 0. Both sets.
+   **Nits gate:** precision no more than 10 points below the baseline on each set. (Slice 3d's 3-point F1 rule measured
+   agreement with cached production answers on short chunks, a different instrument; every model swap in this slice was
+   judged by the 3b rule above, so that is the one reused.)
+3. **Verdict per arm:** pass or fail by (1) and (2). Among passers, the most free tokens per record wins (fewest tokens per
+   technology-year, below); a tie goes to the cheaper list price. Nothing in production changes in this slice: a pass is
+   a recommendation for a production switch, and its gate rebuild is the next step.
+
+## Tokens (pre-registered measurement)
+
+- **Per record, per run:** input, cached input, output and reasoning tokens (reasoning is inside output), summed over
+  every call including retries, divided by the run's records. Reported for DEV, H1 and H2.
+- **Per technology-year:** `cost3.py`'s worst-case formula in tokens: input = 2N + R·o_A·1.5 + c·(P_A + P_B),
+  output = R′ × measured output tokens per record (reasoning included), R′ = R scaled by the arm's records relative to
+  the baseline on the same set, both × the attempt factor (a failed chunk counts 3 attempts). Mean technology (N 6,460,
+  c 17.5, R 114.6). The larger of the H1- and H2-based figures.
+- **Per day at 20k technologies:** per technology-year × 20,000 / 365, against the 2.5M/day cap. Cross-checked with
+  slice 3d's production replay (A+B $0.0051 per technology-year at gpt-6-luna flex, $102/yr at 20k).
+- **$/yr if past-cap traffic falls back to gpt-6-luna flex:** share over the cap × $102 (replay) and × the 3b worst
+  case at flex ($0.0096 per technology-year), with the free share at $0. Assumes uniform daily traffic; onboarding bursts
+  above 2.5M/day spill to Luna.
+
+## Budget
+
+- **OpenAI cap $3.00** at Standard list price (prices.json, checked 18 October 2026), from `out/slice3e/usage.jsonl`.
+  The runner refuses any call whose worst case (prompt chars/3 at input + 16,000 at output), added to the log and the
+  worst cases of the calls in flight, would pass $3.00. The complimentary allowance may make the real charge $0; the
+  cap is counted at list either way.
+- **Projection after the smoke:** smoke $ per input character × (DEV + H1 + H2 characters) × 1.5. An arm projected above
+  $1.40 is aborted (two minis must fit in $3).
+- Order: M5 (cheaper) and M54 smoke and DEV; held-out for DEV passers, cheaper first.
+
+## Known limits
+
+- H1/H2 have been looked at many times in slices 3b–3c; prompts are not tuned here, so a model swap is not fitted to them.
+- Standard tier is measured; flex for these models is half list. Token counts, not dollars, decide the allowance.
+- One run per arm; gpt-6-luna's own replicate spread (H1 breaking ±3 points, H2 required −3.6) is the noise reference.
