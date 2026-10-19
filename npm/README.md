@@ -53,8 +53,8 @@ Transcript excerpt:
 $ unstale --version
 unstale 0.1.0
 $ unstale init --catalog ~/unstale/.store/catalog --yes
-Mode: collaborative (preselected: a remote and 2 authors in the last 90 days).
-Initialised unstale in .../npm-rehearsal/repo (collaborative mode).
+Mode: personal (the default; no setup questions).
+Initialised unstale in .../npm-rehearsal/repo (personal mode).
 Stack: 1 package.json (1 application, 0 library), 119 npm packages; no supported Node range declared.
 Next: `unstale run` (sync, digest, review).
 $ unstale run

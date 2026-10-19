@@ -106,10 +106,11 @@ Method and results: [`eval/`](eval/gate/MISSES.md).
 
 ## Trust and privacy
 
-- **What** `init` **writes.** `.unstale/` (configuration, decision ledger, reports), agent skills in `.claude/skills`,
-`.agents/skills` and `.cursor/skills`, and a Claude Code session-start hook in `.claude/settings.local.json` that
-prints one line. Collaborative mode also adds one line to `.gitattributes`. `unstale uninstall` removes all of it
-and backs up your decisions.
+- **What** `init` **writes.** `.unstale/` (configuration, decision ledger, reports), agent skills in `.claude/skills`
+(Claude Code) and `.agents/skills` (Codex and Cursor), whether or not each agent is installed, and a Claude Code
+session-start hook in `.claude/settings.local.json` that prints one line. Personal mode, the default, keeps all of it
+out of Git; shared mode (`unstale init --mode shared`) commits the ledger and skill files and adds one line to
+`.gitattributes`. `unstale uninstall` removes all of it and backs up your decisions.
 - **What leaves your machine.** Requests for catalog files, named by public package identity (`pkg:npm/next`), and
 coverage requests for packages the catalog does not have yet. Your code, paths and versions do not. No telemetry.
 The service, hosted on Cloudflare, sees your IP address. It keeps it in memory only, to apply rate limits and count

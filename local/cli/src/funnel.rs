@@ -1020,8 +1020,10 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
         out.packages.insert(tech.clone(), present.iter().filter_map(|c| purl_name(c)).collect());
         let version_of = |c: &str| -> Option<Version> {
             choices.get(&c.to_string()).map(|ch| ch.head.version.clone()).or_else(|| inp.stack.deps.get(c).and_then(|d| d.version.clone()))
+                .or_else(|| inp.stack.stub_runtimes.get(c).cloned())
         };
-        let tech_version: Option<Version> = present.iter().filter_map(|c| version_of(c)).min();
+        // A type stub's version is never its technology's (`@types/express` 5.0.6 beside express 5.2.1).
+        let tech_version: Option<Version> = present.iter().filter(|c| !crate::util::stub_package(c)).filter_map(|c| version_of(c)).min();
         let mut workspaces: Vec<Workspace> = vec![];
         for c in &present {
             let (Some(d), Some(ch)) = (inp.stack.deps.get(*c), choices.get(*c)) else { continue };
@@ -1653,7 +1655,7 @@ pub(crate) mod fixtures {
                 .collect(),
             node: node.map(|v| (parse_version(v).unwrap(), "engines".into())),
             notes: vec![],
-            spread: 0,
+            unreadable: 0, stub_runtimes: Default::default(), spread: 0,
             standalone: vec![],
             registries: Default::default(),
             fixture_registries: Default::default(),
@@ -2582,6 +2584,24 @@ mod tests {
         let out = run_with(&c, &s, &r, &l);
         assert_eq!(out.opps.iter().find(|o| o.id() == "axios:fix").unwrap().component(), "pkg:npm/%40types/axios");
         assert!(crate::util::stub_package("pkg:pypi/types-requests") && crate::util::stub_package("pkg:pypi/boto3-stubs") && !crate::util::stub_package("pkg:pypi/requests"));
+    }
+
+    #[test]
+    fn a_stubs_version_never_stands_for_its_runtime_package() {
+        // A NestJS starter: `@types/express` 5.0.6 is direct, express 5.2.1 comes with @nestjs/platform-express.
+        let rels = json!({"releases":[{"component":"pkg:npm/express","version":"5.1.0","date":"2026-01-01","line":"5"}]});
+        let mut c = catalog("express", 0, vec![with(rec("express:fix", "pkg:npm/express", "5.1.0"), rels)]);
+        c.techs.get_mut("express").unwrap().index.components = vec!["pkg:npm/express".into(), "pkg:npm/%40types/express".into()];
+        let (r, l) = (repo(&[]), Ledger::default());
+        let mut s = stack(&[("@types/express", "5.0.6")], None);
+        let out = run_with(&c, &s, &r, &l);
+        let o = out.opps.iter().find(|o| o.id() == "express:fix").unwrap();
+        assert_eq!(o.route, Route::VersionUnknown, "never the stub's 5.0.6: {}", o.installed);
+        s.stub_runtimes.insert("pkg:npm/express".into(), parse_version("5.2.1").unwrap());
+        let out = run_with(&c, &s, &r, &l);
+        let o = out.opps.iter().find(|o| o.id() == "express:fix").unwrap();
+        assert_eq!(o.installed.to_string(), "5.2.1");
+        assert!(!out.digest.values().flatten().any(|&i| out.opps[i].id() == "express:fix"), "5.1.0 is already installed");
     }
 
     #[test]

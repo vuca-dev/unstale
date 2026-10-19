@@ -62,7 +62,7 @@ enum Cmd {
         /// Catalog location: a directory or file:// URL (default: $UNSTALE_CATALOG).
         #[arg(long)]
         catalog: Option<String>,
-        /// Local (decisions stay out of Git) or collaborative (ledger and skill files committed).
+        /// Personal (decisions and skill files stay out of Git; the default) or shared (ledger and skill files committed).
         #[arg(long, value_enum)]
         mode: Option<Mode>,
         /// Accept defaults (setup is noninteractive by default).
@@ -154,9 +154,11 @@ enum LedgerCmd {
 #[derive(Clone, Copy, PartialEq, Eq, ValueEnum, Serialize, Deserialize, Debug)]
 #[serde(rename_all = "lowercase")]
 enum Mode {
-    #[value(alias = "personal")]
+    // Named personal and shared everywhere a user reads them (`--help`, `init`, the README); `local` and
+    // `collaborative` stay accepted, and are what config.json stores.
+    #[value(name = "personal", alias = "local")]
     Local,
-    #[value(alias = "shared")]
+    #[value(name = "shared", alias = "collaborative")]
     Collaborative,
 }
 
@@ -295,8 +297,8 @@ fn git(root: &Path, args: &[&str]) -> Option<String> {
 
 fn mode_name(m: Mode) -> &'static str {
     match m {
-        Mode::Local => "local",
-        Mode::Collaborative => "collaborative",
+        Mode::Local => "personal",
+        Mode::Collaborative => "shared",
     }
 }
 
@@ -325,7 +327,7 @@ fn init(start: &Path, catalog: Option<String>, mode: Option<Mode>, _yes: bool, q
     };
     // Start privately; sharing decisions is reversible and never blocks seeing the first report.
     let mode = mode.or_else(|| existing.as_ref().map(|e| e.mode)).unwrap_or(Mode::Local);
-    if !quiet && existing.is_none() { println!("Mode: {} (personal by default; no setup questions).", mode_name(mode)); }
+    if !quiet && existing.is_none() { println!("Mode: {} (the default; no setup questions).", mode_name(mode)); }
     std::fs::create_dir_all(&tool)?;
     let config = Config { schema: 1, catalog, mode, service: existing.as_ref().and_then(|e| e.service.clone()) };
     util::write_atomic(&tool.join("config.json"), format!("{}\n", serde_json::to_string_pretty(&config)?).as_bytes())?;
@@ -595,7 +597,26 @@ fn cmd_advisories(ctx: &Ctx) -> Result<u8> {
 fn cmd_bump(ctx: &Ctx, pkg: &str) -> Result<u8> {
     let w = world(ctx)?;
     let out = outcome(&w, BTreeMap::new());
-    match review::bump_lines(&out, pkg) {
+    // What the user typed: a package name (`express`, `@nestjs/core`, a PyPI name), a technology's name as the
+    // report shows it (`Next.js`), or its catalog id. Each resolves to the technologies it names.
+    let purls = [util::npm_purl(pkg), pypi::purl(pkg)];
+    let names = onboarding::read(ctx);
+    let mut techs: Vec<String> = w
+        .catalog
+        .techs
+        .iter()
+        .filter(|(t, td)| {
+            t.as_str() == pkg
+                || names.jobs.values().any(|j| j.technology == **t && j.name.eq_ignore_ascii_case(pkg))
+                || out.packages.get(*t).is_some_and(|p| p.iter().any(|x| x == pkg))
+                || td.index.components.iter().any(|c| purls.contains(&util::normalize_purl(c)))
+                || out.opps.iter().any(|o| o.rec.r.technology == **t && purls.contains(&util::normalize_purl(&o.component())))
+        })
+        .map(|(t, _)| t.clone())
+        .collect();
+    techs.sort();
+    let found: Vec<String> = techs.iter().filter_map(|t| review::bump_lines(&out, t)).flatten().collect();
+    match (!found.is_empty()).then_some(found) {
         Some(lines) => {
             for l in lines {
                 println!("{l}");
@@ -603,22 +624,10 @@ fn cmd_bump(ctx: &Ctx, pkg: &str) -> Result<u8> {
             Ok(0)
         }
         None => {
-            // The technologies `pkg` names: a synced technology id (one with no records is still synced for this
-            // stack), or a package of one. The counts are theirs, not the whole catalog's.
-            let purl = util::npm_purl(pkg);
-            let techs: Vec<String> = w
-                .catalog
-                .techs
-                .iter()
-                .filter(|(t, td)| {
-                    *t == pkg
-                        || out.packages.get(*t).is_some_and(|p| p.iter().any(|x| x == pkg))
-                        || td.index.components.iter().any(|c| util::normalize_purl(c) == purl)
-                })
-                .map(|(t, _)| t.clone())
-                .collect();
-            if !w.catalog.techs.contains_key(pkg) && !w.stack.deps.contains_key(&purl) {
-                bail!("{pkg} is not a package this repository uses");
+            // The technologies `pkg` names (one with no records is still synced for this stack): the counts are
+            // theirs, not the whole catalog's.
+            if techs.is_empty() && !purls.iter().any(|p| w.stack.deps.contains_key(p)) {
+                bail!("{pkg} is not a package or technology this repository uses");
             }
             if techs.is_empty() {
                 println!("Bumping {pkg} picks up nothing in the catalog: no catalog technology covers {pkg}.");
