@@ -10,7 +10,8 @@
 //!   dependencies install and run with it), not a CI, test or example manifest's;
 //! - (b) a fixed version exists but every one is refused by a range that requires the package (a parent's range, the
 //!   manifest's exact pin) or by a root override or resolution, so an update PR cannot apply it alone;
-//! - (c) no fixed version exists for the installed one (replace or mitigate);
+//! - (c) no fixed version exists for the installed one (replace or mitigate); a moderate one only on a direct
+//!   runtime dependency;
 //! - (d) published within `FRESH_DAYS`.
 //!
 //! A package only dev dependencies reach is never shown for a low, moderate or unrated advisory.
@@ -60,6 +61,9 @@ struct Node {
     /// A project of this repository (an importer, a workspace member): its directory relative to the repository
     /// root. Not queried; its edges are the direct dependencies.
     local: Option<String>,
+    /// A project published for others (`stack::Kind::Library`): a range it declares reaches every installer, so a
+    /// refused fix is named against it before an application of the repository that declares the same.
+    published: bool,
     /// Installed from somewhere other than the public registry (a private registry, git, a tarball or a path): its
     /// name is never sent.
     private: bool,
@@ -220,6 +224,9 @@ pub fn pnpm_lock(text: &str, lock_dir: &str, file: &str) -> Graph {
     let mut stack: Vec<(usize, String)> = vec![];
     // Importer edges wait for their `version:` line; the `specifier:` line comes first.
     let mut spec: Option<String> = None;
+    // `catalogs:` (pnpm 9 catalogs): the range a `catalog:` / `catalog:<name>` specifier stands for, by (catalog,
+    // package). Resolved after the walk, so the section's place in the file does not matter.
+    let mut catalogs: BTreeMap<(String, String), String> = BTreeMap::new();
     for raw in doc.lines() {
         let t = raw.trim_end();
         if t.trim().is_empty() || t.trim_start().starts_with('#') {
@@ -235,6 +242,9 @@ pub fn pnpm_lock(text: &str, lock_dir: &str, file: &str) -> Graph {
         match (p.as_slice(), val) {
             (["importers"], _) => {
                 g.local(&join_dir(lock_dir, &k));
+            }
+            (["catalogs", cat, name], Some(v)) if k == "specifier" => {
+                catalogs.insert((cat.to_string(), name.to_string()), v.trim_matches(['\'', '"']).to_string());
             }
             (["importers", imp, sec, name], Some(v)) if SECTIONS.iter().any(|s| s.0 == *sec) => {
                 if k == "specifier" {
@@ -275,6 +285,14 @@ pub fn pnpm_lock(text: &str, lock_dir: &str, file: &str) -> Graph {
         }
         if val.is_none() {
             stack.push((indent, k));
+        }
+    }
+    for i in 0..g.nodes.len() {
+        for e in 0..g.nodes[i].edges.len() {
+            let to = g.nodes[i].edges[e].to;
+            let Some(cat) = g.nodes[i].edges[e].range.as_deref().and_then(|r| r.strip_prefix("catalog:")) else { continue };
+            let cat = if cat.is_empty() { "default" } else { cat };
+            g.nodes[i].edges[e].range = catalogs.get(&(cat.to_string(), g.nodes[to].name.clone())).cloned();
         }
     }
     g
@@ -572,7 +590,11 @@ pub fn graphs(root: &Path, st: &Stack) -> Vec<Graph> {
     // registry configuration places on a private registry (`privacy`: a configuration wins over a public lockfile URL)
     // are never sent.
     let own: BTreeSet<String> = st.packages.iter().filter_map(|p| p.own.as_deref()).filter_map(util::purl_name).collect();
+    let libraries: BTreeSet<String> = st.packages.iter().filter(|p| p.kind == crate::stack::Kind::Library).map(|p| join_dir(&p.dir, "")).collect();
     for g in &mut out {
+        for n in &mut g.nodes {
+            n.published = n.local.as_deref().is_some_and(|d| libraries.contains(&join_dir(d, "")));
+        }
         // A test, example or fixture lockfile: its directory's own configuration applies too.
         let fixture = !matches!(crate::usage::path_role(&g.file), crate::usage::Role::App | crate::usage::Role::Tooling);
         for n in &mut g.nodes {
@@ -610,7 +632,7 @@ impl Severity {
             _ => Severity::Unrated,
         }
     }
-    fn word(self) -> &'static str {
+    pub fn word(self) -> &'static str {
         match self {
             Severity::Critical => "critical",
             Severity::High => "high",
@@ -809,8 +831,11 @@ pub fn evaluate(
                 } else {
                     // The first range or override refusing the lowest fix, when every fix is refused.
                     let ovs = overrides(g, &nd.name);
+                    // Published projects first: their range is the one every installer meets.
+                    let mut ps: Vec<&(usize, Option<&str>)> = parents[i].iter().collect();
+                    ps.sort_by_key(|(p, _)| !g.nodes[*p].published);
                     let refuses = |f: &Version| -> Option<String> {
-                        for (p, r) in &parents[i] {
+                        for (p, r) in ps.iter().copied() {
                             // A range the installed version is outside of is superseded (an override set it).
                             if let Some(r) = r
                                 && ovs.is_empty()
@@ -835,15 +860,15 @@ pub fn evaluate(
                 }
                 let fresh = d.published.get(..10).and_then(util::parse_date).is_some_and(|days| today - days <= FRESH_DAYS);
                 // What calls for action: critical or high at runtime; critical dev-only with no fix the ranges admit;
-                // moderate at runtime when its fix is refused by a range, pin or override, or when it is new on a
-                // direct dependency. A moderate with no fixed version anywhere, or new on a transitive package, is
-                // a nit: nothing to bump.
+                // moderate at runtime when its fix is refused by a range, pin or override, when it is new on a
+                // direct dependency, or when no release fixes it on a direct dependency (replace or mitigate: the
+                // code calls it). A moderate with no fixed version on a transitive package, or new on one, is a nit.
                 let shown = if !runtime[i] {
                     blocked
                 } else if high {
                     true
                 } else {
-                    (blocked && !fixes.is_empty()) || (direct[i] && fresh)
+                    (blocked && !fixes.is_empty()) || (direct[i] && (fresh || fixes.is_empty()))
                 };
                 if !shown {
                     continue;
@@ -1271,7 +1296,7 @@ pub fn detail_lines(r: &Report) -> Vec<String> {
 /// One summary line: shown against matched.
 pub fn summary(r: &Report) -> String {
     format!(
-        "{} of {} advisor{} on {} locked package versions call for action (critical or high at runtime, moderate at runtime with a blocked fix or new on a direct dependency, critical in development with no fix the ranges admit); the rest are counted, not shown",
+        "{} of {} advisor{} on {} locked package versions call for action (critical or high at runtime, moderate at runtime with a blocked fix, or on a direct dependency when new or when no release fixes it, critical in development with no fix the ranges admit); the rest are counted, not shown",
         r.items.len(),
         r.raw,
         if r.raw == 1 { "y" } else { "ies" },
@@ -1374,10 +1399,34 @@ mod tests {
         let items = run(g, &docs, &[("markdown-it", "14.1.0", &["GHSA-new"])], "2026-10-18").1;
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].why, vec!["published 2026-10-01"]);
-        // No fixed version anywhere: a moderate nit.
+        // No fixed version anywhere, on a transitive package: a moderate nit.
         let docs = [("GHSA-nofix", doc(Some(Severity::Moderate), "2024-01-01T00:00:00Z", &[], &[]))];
         let g = npm_lock(NPM_LOCK, ".", "package-lock.json");
         assert_eq!(run(g, &docs, &[("proxy-addr", "2.0.7", &["GHSA-nofix"])], "2026-10-18").1, vec![]);
+        // On a runtime direct dependency the code calls (n8n's showdown XSS): replace or mitigate.
+        let g = npm_lock(NPM_LOCK, ".", "package-lock.json");
+        let items = run(g, &docs, &[("markdown-it", "14.1.0", &["GHSA-nofix"])], "2026-10-18").1;
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].why, vec!["no fixed version: replace or mitigate"]);
+    }
+
+    #[test]
+    fn a_refused_fix_is_named_against_the_published_manifest() {
+        // plate: apps/www (an application) and packages/excalidraw (published) both pin @excalidraw/excalidraw 0.18.0.
+        let lock = r#"{"lockfileVersion": 3, "packages": {
+            "": {"name": "root", "workspaces": ["apps/*", "packages/*"]},
+            "apps/www": {"name": "www", "dependencies": {"pinned": "1.0.0"}},
+            "packages/lib": {"name": "lib", "version": "1.0.0", "dependencies": {"pinned": "1.0.0"}},
+            "node_modules/pinned": {"version": "1.0.0"}
+        }}"#;
+        let docs = [("GHSA-pin", doc(Some(Severity::High), "2024-01-01T00:00:00Z", &[("npm", "pinned", &["1.0.1"])], &[]))];
+        let mut g = npm_lock(lock, ".", "package-lock.json");
+        for n in &mut g.nodes {
+            n.published = n.local.as_deref() == Some("packages/lib");
+        }
+        let items = run(g, &docs, &[("pinned", "1.0.0", &["GHSA-pin"])], "2026-10-18").1;
+        assert_eq!(items.len(), 1);
+        assert!(items[0].why.contains(&"fix blocked: packages/lib declares 1.0.0".to_string()), "{:?}", items[0].why);
     }
 
     #[test]
@@ -1502,6 +1551,17 @@ mod tests {
             ],
             "a workspace member's dependency is direct and runtime through the link; dev-only low is dropped"
         );
+    }
+
+    #[test]
+    fn a_pnpm_catalog_specifier_reads_as_its_catalog_range() {
+        // n8n: `markdown-it: catalog:` with the default catalog at ^13.0.2 refuses the 14.3.1 fix.
+        let text = "lockfileVersion: '9.0'\n\ncatalogs:\n  default:\n    markdown-it:\n      specifier: ^13.0.2\n      version: 13.0.2\n\nimporters:\n\n  packages/ui:\n    dependencies:\n      markdown-it:\n        specifier: 'catalog:'\n        version: 13.0.2\n\npackages:\n\n  markdown-it@13.0.2:\n    resolution: {integrity: sha512-x}\n\nsnapshots:\n\n  markdown-it@13.0.2: {}\n";
+        let g = pnpm_lock(text, ".", "pnpm-lock.yaml");
+        let docs = [("GHSA-md", doc(Some(Severity::Moderate), "2024-01-01T00:00:00Z", &[("npm", "markdown-it", &["14.3.1"])], &[]))];
+        let items = run(g, &docs, &[("markdown-it", "13.0.2", &["GHSA-md"])], "2026-10-18").1;
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].why, vec!["fix blocked: packages/ui declares ^13.0.2"]);
     }
 
     #[test]
