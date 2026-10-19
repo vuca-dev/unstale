@@ -7,11 +7,11 @@ export type ChangeType = CapabilityRecord["change_type"];
 export type Surface = CapabilityRecord["surface"];
 
 export const CHANGE_TYPES: Record<Exclude<ChangeType, never>, string> = {
-  new_api: "A new function, class, component, hook, module, command or file convention that did not exist before.",
+  new_api: "A new function, class, component, hook, module, command or file convention that did not exist before. Not an implementation catching up with a standard or a documented API (a missing or broken constructor, method or property now provided): that is a fix.",
   new_option: "A new option, flag, parameter, argument or configuration key on something that already exists.",
   behavior_change: "Existing code or configuration now behaves differently at run time or build time (not only a default value, not a bug fix).",
   default_change: "The default value of an existing option, setting or mode changed.",
-  fix: "A bug fix: wrong results, crashes, errors or regressions corrected, restoring intended or documented behaviour.",
+  fix: "A bug fix: wrong results, crashes, errors or regressions corrected, restoring intended, standard or documented behaviour.",
   deprecation: "Something still works but is marked for future removal (a warning, a deprecation notice).",
   removal: "Something that existed was removed or no longer works, including dropped support for a runtime or platform version.",
   stability_change: "An API or feature moved between experimental, preview, beta, unstable and stable.",

@@ -342,9 +342,7 @@ pub fn digest_groups(out: &Outcome) -> Vec<(String, Vec<String>)> {
                 obligations_note(obligations),
                 in_effect_note(out, tech, "; ")
             ));
-            for f in adv {
-                lines.push(f.line(out));
-            }
+            lines.extend(advisory_lines_grouped(out, adv, &name));
             for &i in idx {
                 let o = &out.opps[i];
                 if is_security(o) && (o.rec.r.advisories.is_empty() || listed_as_record(out, o)) {
@@ -474,6 +472,44 @@ impl AdvisoryFix {
         let what = one_line(if a.summary.trim().is_empty() { &o.rec.r.summary } else { &a.summary }, SUMMARY_MAX);
         format!("  security: {}{tags}: {what} [{}, {at}]", one_line(&a.id, FIELD_MAX), o.id())
     }
+}
+
+/// Advisories at or above this many fixed by one release read as one line in the digest (`unstale bump` lists each).
+const ADVISORY_GROUP: usize = 4;
+
+/// The digest's advisory lines: one per advisory, except that the advisories one release fixes (a vendor's batch: 41
+/// Electron advisories in one first pass) read as one line when there are `ADVISORY_GROUP` or more, with the count by
+/// severity and the ids.
+pub fn advisory_lines_grouped(out: &Outcome, adv: &[AdvisoryFix], tech: &str) -> Vec<String> {
+    let at = |f: &AdvisoryFix| (f.patched.clone().unwrap_or_else(|| out.opps[f.opp].release.version.clone()), f.backport);
+    let mut by: Vec<((String, bool), Vec<&AdvisoryFix>)> = vec![];
+    for f in adv {
+        let k = at(f);
+        match by.iter_mut().find(|(x, _)| *x == k) {
+            Some((_, v)) => v.push(f),
+            None => by.push((k, vec![f])),
+        }
+    }
+    let mut lines = vec![];
+    for ((version, backport), fs) in by {
+        if fs.len() < ADVISORY_GROUP {
+            lines.extend(fs.iter().map(|f| f.line(out)));
+            continue;
+        }
+        let mut counts: BTreeMap<String, usize> = BTreeMap::new();
+        for f in &fs {
+            let a = &out.opps[f.opp].rec.r.advisories[f.advisory];
+            *counts.entry(a.severity.as_deref().map(|s| one_line(s, 20).to_lowercase()).unwrap_or_else(|| "unrated".into())).or_default() += 1;
+        }
+        let order = ["critical", "high", "moderate", "medium", "low", "unrated"];
+        let mut counts: Vec<(String, usize)> = counts.into_iter().collect();
+        counts.sort_by_key(|(s, _)| order.iter().position(|o| o == s).unwrap_or(order.len()));
+        let counts: Vec<String> = counts.iter().map(|(s, n)| format!("{n} {s}")).collect();
+        let ids: Vec<String> = fs.iter().map(|f| one_line(&out.opps[f.opp].rec.r.advisories[f.advisory].id, FIELD_MAX)).collect();
+        let at = if backport { format!("{} on the installed line", one_line(&version, 40)) } else { one_line(&version, 40) };
+        lines.push(format!("  security: {} advisories fixed in {at} ({}; each in `unstale bump {tech}`): {}", fs.len(), counts.join(", "), ids.join(", ")));
+    }
+    lines
 }
 
 /// Whether an advisory affects version `v` of `component`, from the versions central resolved (`Advisory::index`,
@@ -1078,6 +1114,34 @@ mod tests {
         let lines = bump_lines(&out, "next").unwrap();
         assert_eq!(lines[0], "[next:sec] next 16.1.0 · security · benefit: security");
         assert!(bump_lines(&out, "react").is_none());
+    }
+
+    #[test]
+    fn one_release_fixing_many_advisories_reads_as_one_digest_line() {
+        let index = ["43.3.0", "43.4.1", "43.5.0"];
+        let adv = |id: &str, sev: &str, patched: &str| {
+            let versions: Vec<&str> = index.iter().take_while(|x| **x != patched).cloned().collect();
+            json!({"id": id, "aliases": [], "severity": sev, "summary": format!("Advisory {id}."), "url": "u", "index": index,
+                "affected": [{"component": "pkg:npm/electron", "range": format!("< {patched}"), "patched": patched, "versions": versions}]})
+        };
+        let sec = json!({"change_type": "security", "benefit": ["security"]});
+        let mut recs = vec![];
+        for (i, sev) in ["critical", "high", "high", "high", "moderate"].iter().enumerate() {
+            let id = format!("electron:a{i}");
+            recs.push(with(with(rec(&id, "pkg:npm/electron", "43.4.1"), sec.clone()), json!({"advisories": [adv(&format!("GHSA-{i}"), sev, "43.4.1")]})));
+        }
+        recs.push(with(with(rec("electron:b", "pkg:npm/electron", "43.5.0"), sec), json!({"advisories": [adv("GHSA-9", "high", "43.5.0")]})));
+        let cat = catalog("electron", 0, recs);
+        let s = stack(&[("electron", "43.3.0")], None);
+        let (r, l) = (repo(&[]), Ledger::default());
+        let out = run(&Input { catalog: &cat, stack: &s, repo: &r, ledger: &l, today: "2026-10-15", targets: Default::default() });
+        let lines = digest_lines(&out);
+        let text = lines.join("\n");
+        assert!(lines[0].contains("picks up 6 security"), "{text}");
+        assert!(text.contains("  security: 5 advisories fixed in 43.4.1 (1 critical, 3 high, 1 moderate; each in `unstale bump electron`): GHSA-0, GHSA-1, GHSA-2, GHSA-3, GHSA-4"), "{text}");
+        assert!(text.contains("  security: GHSA-9 (high): Advisory GHSA-9. [electron:b, 43.5.0]"), "{text}");
+        assert_eq!(lines.len(), 3, "{text}");
+        assert_eq!(bump_lines(&out, "electron").unwrap().iter().filter(|l| l.starts_with("[electron:")).count(), 6, "bump lists each");
     }
 
     #[test]

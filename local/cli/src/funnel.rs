@@ -1007,7 +1007,12 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                 }
                 continue;
             }
-            let candidates = if own.is_empty() { rels } else { own };
+            let mut candidates = if own.is_empty() { rels } else { own };
+            // A type-stubs member never names the release while a runtime package of the technology is a candidate
+            // (`types-requests` beside `requests`): the change ships in the runtime package.
+            if candidates.iter().any(|x| !crate::util::stub_package(&x.component)) {
+                candidates.retain(|x| !crate::util::stub_package(&x.component));
+            }
             let installed_for = |c: &str| version_of(c).or_else(|| tech_version.clone());
             let Some(installed) = candidates.first().and_then(|r| installed_for(&normalize_purl(&r.component))) else {
                 let release = candidates.first().map(|r| (*r).clone());
@@ -2334,6 +2339,24 @@ mod tests {
         let out = run_with(&c, &s, &r, &l);
         // Scores: mw-a and other tie on one rare match (id order puts mw-a first); mw-b has none, but follows its sibling.
         assert_eq!(ids(&out, &out.upgrade), vec!["next:mw-a", "next:mw-b", "next:other"]);
+    }
+
+    #[test]
+    fn a_stubs_member_never_names_the_release_beside_its_runtime_package() {
+        // ultralytics: `types-requests` in the requests technology took requests' records and their advisory.
+        let rels = json!({"releases":[
+            {"component":"pkg:npm/%40types/axios","version":"1.2.0","date":"2026-01-01","line":"1"},
+            {"component":"pkg:npm/axios","version":"1.2.0","date":"2026-01-01","line":"1"}]});
+        let c = catalog("axios", 0, vec![with(rec("axios:fix", "pkg:npm/axios", "1.2.0"), rels)]);
+        let (r, l) = (repo(&[]), Ledger::default());
+        let s = stack(&[("axios", "1.0.0"), ("@types/axios", "1.0.0")], None);
+        let out = run_with(&c, &s, &r, &l);
+        assert_eq!(out.opps.iter().find(|o| o.id() == "axios:fix").unwrap().component(), "pkg:npm/axios");
+        // The stubs alone installed: they still name it (nothing else could).
+        let s = stack(&[("@types/axios", "1.0.0")], None);
+        let out = run_with(&c, &s, &r, &l);
+        assert_eq!(out.opps.iter().find(|o| o.id() == "axios:fix").unwrap().component(), "pkg:npm/%40types/axios");
+        assert!(crate::util::stub_package("pkg:pypi/types-requests") && crate::util::stub_package("pkg:pypi/boto3-stubs") && !crate::util::stub_package("pkg:pypi/requests"));
     }
 
     #[test]

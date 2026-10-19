@@ -1279,7 +1279,8 @@ fn display_text(value: &str) -> String {
 /// from what was found. Such a job is a source gap, never coverage: its zero documented changes would otherwise read as
 /// all-clear. The reasons are fixed text (no upstream or repository detail), so they may go into the public draft.
 fn empty_monitoring(job: &Job) -> Option<&'static str> {
-    if job.state != "monitoring" { return None; }
+    // A type-stubs package has no runtime release notes to find: its empty history is not a gap of the technology.
+    if job.state != "monitoring" || util::stub_package(&job.purl) { return None; }
     if job.releases_total == 0 && job.records == 0 { return Some("no release notes or records found in its official sources"); }
     if job.releases_total == 0 { return Some("no release notes found in its official sources; records come from documentation only"); }
     if job.records == 0 { return Some("release notes found, but no records were extracted from them"); }
@@ -1420,7 +1421,7 @@ fn coverage_exceptions(pending: &Pending) -> String {
         Some(format!("{label} ({n}): {}{more}", names.join(", ")))
     };
     lines.extend(listed("Source gaps, sources blocked or failed", &|j| matches!(j.state.as_str(), "blocked" | "failed")));
-    lines.extend(listed("Checked, no published changes (their release history may be outside the sources read)", &|j| j.records == 0 && j.state == "monitoring"));
+    lines.extend(listed("Checked, no published changes (their release history may be outside the sources read)", &|j| j.records == 0 && j.state == "monitoring" && !util::stub_package(&j.purl)));
     if jobs.is_empty() {
         lines.push("No acknowledged public coverage jobs in this local snapshot.".into());
     }
@@ -2649,6 +2650,14 @@ fn refresh(ctx: &Ctx, st: &stack::Stack, pending: &Pending, scan: &mut Option<Wo
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_stubs_package_with_no_history_is_not_a_source_gap() {
+        let job = |purl: &str| Job { purl: purl.into(), technology: "requests-0f6698b2".into(), name: "requests".into(), state: "monitoring".into(), ..Default::default() };
+        assert_eq!(empty_monitoring(&job("pkg:pypi/types-requests")), None);
+        assert!(!is_source_gap(&job("pkg:pypi/types-requests")));
+        assert!(empty_monitoring(&job("pkg:pypi/requests")).is_some());
+    }
 
     #[test]
     fn the_first_slots_spread_across_value_classes() {
