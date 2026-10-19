@@ -1666,6 +1666,8 @@ struct Ranked<'a, 'o> {
     technology: &'a String,
     lines: &'a Vec<String>,
     fixes: &'a [review::AdvisoryFix],
+    /// Lockfile advisories on its own package (`advisories`) no record names.
+    lock: Vec<&'a crate::advisories::Item>,
     notes: Vec<&'a funnel::Opp<'o>>,
     joins: Vec<Join>,
     /// What keeps update PRs from applying a runtime security fix, when security leads.
@@ -1812,6 +1814,37 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
     // from fixing it; otherwise it is a line on its upgrade. Then local evidence, version fit and reachability, and the
     // first slots spread across value classes.
     let fixes = review::advisory_fixes(&out);
+    // Lockfile advisories (OSV on the installed versions, `advisories`) on a technology's own package as a direct
+    // dependency: its upgrade carries them as it carries the record advisories it fixes (same evidence, same lead
+    // when a pin holds it), unless a record already names the advisory. Transitive ones stay under the direct
+    // dependency that pulls them in: bumping that one need not move them.
+    let lock_report = crate::advisories::report(&ctx.cache, &ctx.root).unwrap_or_default();
+    let lock_items = |technology: &str, tech_fixes: &[review::AdvisoryFix]| -> Vec<&crate::advisories::Item> {
+        let norm = |s: &str| s.to_ascii_lowercase().replace(['_', '.'], "-");
+        let mut names: BTreeSet<String> = out.packages.get(technology).into_iter().flatten().map(|p| norm(p)).collect();
+        names.insert(norm(technology));
+        let named = |id: &str| tech_fixes.iter().any(|f| {
+            let a = &out.opps[f.opp].rec.r.advisories[f.advisory];
+            a.id == id || a.aliases.iter().any(|x| x == id)
+        });
+        lock_report.items.iter().filter(|it| it.via.is_empty() && names.contains(&norm(&it.name)) && !named(&it.id)).collect()
+    };
+    let lock_severity = |it: &crate::advisories::Item| -> u8 {
+        match it.severity {
+            crate::advisories::Severity::Critical => 4,
+            crate::advisories::Severity::High => 3,
+            crate::advisories::Severity::Moderate => 2,
+            crate::advisories::Severity::Low => 1,
+            crate::advisories::Severity::Unrated => 0,
+        }
+    };
+    let lock_line = |it: &crate::advisories::Item| -> String {
+        let at = match &it.fix {
+            Some(f) => format!("{} {} → {}", it.name, it.version, display_text(f)),
+            None => format!("{} {}, no fixed version: replace or mitigate", it.name, it.version),
+        };
+        format!("  security: {} ({}): {} [lockfile {at}]", it.id, it.severity.word(), display_text(&util::one_line(&it.summary, 160)))
+    };
     let unlocks = unlocked(&out);
     let severity = |f: &review::AdvisoryFix| -> u8 {
         match out.opps[f.opp].rec.r.advisories[f.advisory].severity.as_deref().map(str::to_ascii_lowercase).as_deref() {
@@ -1831,12 +1864,17 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
     for (technology, lines) in &groups {
         let indices = out.digest.get(technology).map(Vec::as_slice).unwrap_or(&[]);
         let tech_fixes = fixes.get(technology).map(Vec::as_slice).unwrap_or(&[]);
+        let lock = lock_items(technology, tech_fixes);
+        // Those this upgrade fixes (a fixed version exists); one with none is shown, not counted.
+        let lock_fixed: Vec<&crate::advisories::Item> = lock.iter().copied().filter(|it| it.fix.is_some()).collect();
         // Release-note security fixes: security records the digest lists as records (no advisory, or one the index
         // cannot decide), not those whose advisories it counts.
         let notes: Vec<&funnel::Opp> = indices
             .iter()
             .map(|&i| &out.opps[i])
             .filter(|o| funnel::is_security(o) && review::security_reason(&out, o) && !tech_fixes.iter().any(|f| std::ptr::eq(&out.opps[f.opp], *o)))
+            // A record that restates a lockfile advisory (its summary is the advisory's title) is that advisory.
+            .filter(|o| !lock.iter().any(|it| it.summary.trim().eq_ignore_ascii_case(o.rec.r.summary.trim())))
             .collect();
         let references = indices.iter().filter(|&&i| review::security_reason(&out, &out.opps[i]) && specific(&out.opps[i])).count();
         let of_tech = |v: &Vec<usize>| v.iter().copied().filter(|&i| out.opps[i].rec.r.technology == *technology).collect::<Vec<_>>();
@@ -1865,7 +1903,16 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
                 fit |= !across_major(o);
             }
         }
-        if joins.is_empty() && tech_fixes.is_empty() && notes.is_empty() && obligations.is_empty() && in_effect.is_empty() && references == 0 && !classes.values().any(|c| c.0 > 0) {
+        // A lockfile advisory is a security fix the installed version is affected by: local evidence, and version
+        // fit when its fix is on the installed major.
+        for it in &lock_fixed {
+            let e = classes.entry(Class::Security).or_default();
+            e.0 += 1;
+            e.1 += 1;
+            let on_line = |v: &str| util::parse_version(v).map(|v| (v.major, if v.major == 0 { v.minor } else { 0 }));
+            fit |= it.fix.as_deref().and_then(on_line).is_some_and(|f| on_line(&it.version) == Some(f));
+        }
+        if joins.is_empty() && tech_fixes.is_empty() && lock.is_empty() && notes.is_empty() && obligations.is_empty() && in_effect.is_empty() && references == 0 && !classes.values().any(|c| c.0 > 0) {
             quiet += 1;
             continue;
         }
@@ -1890,7 +1937,10 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
                 && !name.contains(".config.") && !name.starts_with('.') && !matches!(name, "conf.py" | "setup.py" | "noxfile.py" | "conftest.py")
         };
         let runtime = facts.runtime || (!facts.dev_only && members.iter().any(|&i| out.opps[i].files.iter().any(|f| code(f) && w.repo.role(f) == usage::Role::App)));
-        let leads = (!tech_fixes.is_empty() && runtime && !standalone).then_some(facts.blocker).flatten();
+        // What holds the fix back: a pin or override in an application manifest, else the range the lockfile
+        // advisory names as refusing its fix.
+        let lock_blocker = lock_fixed.iter().find_map(|it| it.why.iter().find_map(|w| w.strip_prefix("fix blocked: ")).map(String::from));
+        let leads = ((!tech_fixes.is_empty() || !lock_fixed.is_empty()) && runtime && !standalone).then(|| facts.blocker.or(lock_blocker)).flatten();
         let evidenced = classes.values().map(|c| c.0).sum::<usize>();
         let class = if !joins.is_empty() {
             Class::Workaround
@@ -1919,7 +1969,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
             classes.len(),
             (obligations.len() + in_effect.len()).min(50),
         );
-        ranked.push(Ranked { key, class, technology, lines, fixes: tech_fixes, notes, joins, leads, value });
+        ranked.push(Ranked { key, class, technology, lines, fixes: tech_fixes, lock, notes, joins, leads, value });
     }
     ranked.sort_by(|a, b| b.key.cmp(&a.key).then_with(|| a.technology.cmp(b.technology)));
     let ranked = diversified(ranked, 8, 3);
@@ -1953,7 +2003,16 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
             }
             upgrades.push(terminal);
         }
-        upgrade_text += &format!("{}. {}\n", n + 1, head.trim_start_matches("bumping "));
+        // Lockfile advisories are not in the digest's head line: named on it, so a bump past the detailed ones still
+        // says it fixes one (n8n's @langchain/mongodb read "1 fix").
+        let lock_note = match r.lock.iter().filter(|it| it.fix.is_some()).max_by_key(|it| lock_severity(it)) {
+            None => String::new(),
+            Some(w) => {
+                let k = r.lock.iter().filter(|it| it.fix.is_some()).count();
+                format!("; fixes {k} lockfile advisor{} (worst {}, {})", if k == 1 { "y" } else { "ies" }, w.severity.word(), w.id)
+            }
+        };
+        upgrade_text += &format!("{}. {}{lock_note}\n", n + 1, head.trim_start_matches("bumping "));
         // Past the first twenty, the head line is enough to place a bump; its detail is one command away.
         if n >= DETAILED_UPGRADES {
             continue;
@@ -1974,9 +2033,10 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
         }
         // The worst advisories first, then release-note security fixes with a reference here; the rest are one
         // command away.
-        let mut shown: Vec<&review::AdvisoryFix> = tech_fixes.iter().collect();
-        shown.sort_by_key(|f| std::cmp::Reverse(severity(f)));
-        let mut detail: Vec<String> = shown.iter().map(|f| f.line(&out)).collect();
+        let shown: Vec<&review::AdvisoryFix> = tech_fixes.iter().collect();
+        let mut worst: Vec<(u8, String)> = shown.iter().map(|f| (severity(f), f.line(&out))).chain(r.lock.iter().map(|it| (lock_severity(it), lock_line(it)))).collect();
+        worst.sort_by_key(|(s, _)| std::cmp::Reverse(*s));
+        let mut detail: Vec<String> = worst.into_iter().map(|(_, l)| l).collect();
         let mut sec: Vec<&&funnel::Opp> = notes.iter().collect();
         sec.sort_by_key(|o| !specific(o));
         detail.extend(sec.iter().map(|o| format!("  security: {} [{}, {}]", display_text(&o.rec.r.summary), o.id(), o.release.version)));
@@ -2025,27 +2085,58 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
     }
     let leading = ranked.iter().filter(|r| r.leads.is_some()).count();
     if leading > 0 {
-        start.push(format!("Security fixes update PRs cannot apply: {} for packages runtime code uses, held by an exact pin or an override.", technology_count(leading)));
+        start.push(format!("Security fixes update PRs cannot apply: {} for packages runtime code uses, held by an exact pin, an override or a declared range that refuses the fix.", technology_count(leading)));
     }
-    let advisories: usize = fixes.values().map(Vec::len).sum();
+    // Record advisories and lockfile ones an upgrade fixes count alike.
+    let lock_fixed: Vec<&crate::advisories::Item> = ranked.iter().flat_map(|r| r.lock.iter().copied()).filter(|it| it.fix.is_some()).collect();
+    let advisories: usize = fixes.values().map(Vec::len).sum::<usize>() + lock_fixed.len();
     if advisories > 0 {
         let mut by = [0usize; 5];
         for f in fixes.values().flatten() {
             by[severity(f) as usize] += 1;
+        }
+        for it in &lock_fixed {
+            by[lock_severity(it) as usize] += 1;
         }
         let parts: Vec<String> = [(4, "critical"), (3, "high"), (2, "medium"), (1, "low"), (0, "unrated")]
             .iter()
             .filter(|(i, _)| by[*i] > 0)
             .map(|(i, name)| format!("{} {name}", by[*i]))
             .collect();
-        let techs: Vec<String> = ranked.iter().filter(|r| !r.fixes.is_empty()).take(5).map(|r| display_text(&friendly(r.technology, pending))).collect();
-        let more = fixes.len().saturating_sub(techs.len());
+        let fixing = |r: &&Ranked| !r.fixes.is_empty() || r.lock.iter().any(|it| it.fix.is_some());
+        let techs: Vec<String> = ranked.iter().filter(fixing).take(5).map(|r| display_text(&friendly(r.technology, pending))).collect();
+        let all: BTreeSet<&str> = fixes.keys().map(String::as_str).chain(ranked.iter().filter(fixing).map(|r| r.technology.as_str())).collect();
+        let more = all.len().saturating_sub(techs.len());
         start.push(format!(
             "Security fixes for the installed versions, noted on their upgrades: {advisories} {} the lockfile's version is affected by and the target is not ({}), in {}{}.",
             if advisories == 1 { "advisory" } else { "advisories" },
             parts.join(", "),
             techs.join(", "),
             if more > 0 { format!(" and {more} more") } else { String::new() }
+        ));
+    }
+    // An advisory no release fixes on a runtime direct dependency: no upgrade clears it, so it is named here.
+    let unfixed: Vec<&crate::advisories::Item> = lock_report.items.iter().filter(|it| it.via.is_empty() && it.fix.is_none() && !lock_report.unused.contains(&format!("{} {}", it.name, it.version))).collect();
+    if !unfixed.is_empty() {
+        let mut by: Vec<(String, Vec<&crate::advisories::Item>)> = vec![];
+        for it in &unfixed {
+            let p = format!("{} {}", it.name, it.version);
+            match by.iter_mut().find(|(q, _)| *q == p) {
+                Some((_, v)) => v.push(it),
+                None => by.push((p, vec![it])),
+            }
+        }
+        // Items are worst first (`advisories::evaluate`), so each package's first is its worst.
+        let mut names: Vec<String> = by
+            .iter()
+            .map(|(p, its)| if its.len() == 1 { format!("{p} ({}, {})", its[0].severity.word(), its[0].id) } else { format!("{p} ({} advisories, worst {})", its.len(), its[0].severity.word()) })
+            .collect();
+        let more = if names.len() > 5 { format!(" and {} more", names.len() - 5) } else { String::new() };
+        names.truncate(5);
+        start.push(format!(
+            "Advisories with no fixed version on direct dependencies: {}{more}. No upgrade clears {}; replace the package or mitigate in the code that uses it. Lockfile advisories lists each.",
+            names.join(", "),
+            if unfixed.len() == 1 { "it" } else { "them" }
         ));
     }
     let release_notes: usize = ranked.iter().map(|r| r.notes.len()).sum();
@@ -2239,7 +2330,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
                 locks.into_iter().collect::<Vec<_>>().join(", ")
             }
         },
-        advisory_fixes: review::advisory_fixes(&out).values().map(Vec::len).sum(),
+        advisory_fixes: advisories,
         security_leads: leading,
         workarounds: retiring.len(),
         deprecated: deprecated.len(),
@@ -2849,7 +2940,7 @@ mod tests {
     fn the_first_slots_spread_across_value_classes() {
         let names: Vec<String> = (0..6).map(|i| format!("t{i}")).collect();
         let lines = vec![String::new()];
-        let make = |i: usize, class: Class| Ranked { key: (0, false, false, false, false, false, 0, 0, 0, 0), class, technology: &names[i], lines: &lines, fixes: &[], notes: vec![], joins: vec![], leads: None, value: String::new() };
+        let make = |i: usize, class: Class| Ranked { key: (0, false, false, false, false, false, 0, 0, 0, 0), class, technology: &names[i], lines: &lines, fixes: &[], lock: vec![], notes: vec![], joins: vec![], leads: None, value: String::new() };
         let order = |v: Vec<Ranked>| v.iter().map(|r| r.technology.as_str()).collect::<Vec<_>>().join(" ");
         let ranked = vec![make(0, Class::Compatibility), make(1, Class::Compatibility), make(2, Class::Compatibility), make(3, Class::Security), make(4, Class::Feature)];
         assert_eq!(order(diversified(ranked, 3, 1)), "t0 t3 t4 t1 t2", "one compatibility bump, then the next classes");

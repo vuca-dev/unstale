@@ -468,6 +468,9 @@ pub struct Decl {
     path: String,
     /// The manifest is application code (`Role::App`), not an example, CI script or fixture.
     app: bool,
+    /// The manifest is a package published for others (`stack::is_library`): its pin reaches every installer, so it
+    /// is the one named as holding the version before an application of the repository that pins the same.
+    published: bool,
     /// Declared for development only (`devDependencies`, a dev requirements file, a dependency group, an extra, the
     /// build system); `None` for an override, which neither ships nor develops it.
     dev: Option<bool>,
@@ -485,7 +488,14 @@ pub fn declarations(repo: &usage::Repo) -> Vec<Decl> {
     let mut out = vec![];
     for (path, text) in &repo.files {
         let app = repo.role(path) == Role::App;
-        let mut push = |name: String, dev: Option<bool>, holds: Option<&'static str>| out.push(Decl { name, path: path.clone(), app, dev, holds });
+        let published = base(path) == "package.json" && serde_json::from_str::<serde_json::Value>(text).is_ok_and(|v| {
+            let dir = path.rsplit_once('/').map_or("", |(d, _)| d);
+            let own_lockfile = ["package-lock.json", "npm-shrinkwrap.json", "pnpm-lock.yaml", "yarn.lock", "bun.lock"]
+                .iter()
+                .any(|l| repo.files.iter().any(|(f, _)| *f == if dir.is_empty() { l.to_string() } else { format!("{dir}/{l}") }));
+            crate::stack::is_library(&v, own_lockfile)
+        });
+        let mut push = |name: String, dev: Option<bool>, holds: Option<&'static str>| out.push(Decl { name, path: path.clone(), app, published, dev, holds });
         let key = |k: &str| strip_version(k.rsplit('>').next().unwrap_or(k)).to_string();
         match base(path) {
             "package.json" => {
@@ -548,13 +558,27 @@ pub fn facts(decls: &[Decl], packages: &[String]) -> Facts {
         runtime: mine.iter().any(|d| d.app && d.dev == Some(false)),
         dev_only: !shipped && mine.iter().any(|d| d.dev == Some(true)),
         // Only application manifests hold back what ships: a pin in an example, a CI script or a test fixture does not.
-        blocker: mine.iter().find(|d| d.app && d.holds.is_some()).map(|d| format!("{} in {}", d.holds.unwrap_or_default(), d.path)),
+        blocker: mine.iter().filter(|d| d.app && d.holds.is_some()).min_by_key(|d| !d.published).map(|d| format!("{} in {}", d.holds.unwrap_or_default(), d.path)),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_pin_is_named_against_the_published_manifest() {
+        // plate: apps/www and the published packages/excalidraw both pin @excalidraw/excalidraw 0.18.0.
+        let mut repo = usage::Repo::default();
+        for (p, t) in [
+            ("apps/www/package.json", r#"{"name":"www","private":true,"dependencies":{"x":"0.18.0"}}"#),
+            ("packages/excalidraw/package.json", r#"{"name":"@p/excalidraw","version":"1.0.0","exports":{},"dependencies":{"x":"0.18.0"}}"#),
+        ] {
+            repo.files.push((p.into(), t.into()));
+        }
+        let f = facts(&declarations(&repo), &["x".into()]);
+        assert_eq!(f.blocker.as_deref(), Some("an exact pin in packages/excalidraw/package.json"));
+    }
 
     #[test]
     fn patch_file_names_give_the_package() {

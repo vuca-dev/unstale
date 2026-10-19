@@ -345,7 +345,7 @@ const DEP_FIELDS: &[&str] = &["dependencies", "devDependencies", "optionalDepend
 /// (`module`, `exports`, `types`, `typings`, `bin`, `files`, `publishConfig`), or `main` alone when the manifest has no
 /// lockfile of its own beside it. `main` is what `npm init` writes for every package, so beside the manifest's own
 /// lockfile (an install root: a deployed server, a CI script) it says nothing about publishing.
-fn is_library(pj: &Value, own_lockfile: bool) -> bool {
+pub(crate) fn is_library(pj: &Value, own_lockfile: bool) -> bool {
     let private = pj.get("private").and_then(Value::as_bool).unwrap_or(false);
     let published = pj.get("name").is_some() && pj.get("version").is_some();
     let entry = ["module", "exports", "types", "typings", "bin", "files", "publishConfig"].iter().any(|k| pj.get(k).is_some())
