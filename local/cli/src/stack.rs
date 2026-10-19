@@ -83,6 +83,12 @@ pub struct Dep {
     /// Where the lockfiles say it came from (`privacy`): a package from anywhere but the public registry is never named
     /// to a third party.
     pub seen: Seen,
+    /// The names an npm alias installs it under (`typescript6: npm:@typescript/typescript6@^6`, also through a
+    /// `catalog:<name>` entry that is one), when no manifest declares it under its own name: a parallel copy kept
+    /// beside another package (`Dep::parallel_copy`).
+    pub aliases: BTreeSet<String>,
+    /// Some manifest declares it under its own name.
+    pub unaliased: bool,
 }
 
 /// One manifest's version of a dependency.
@@ -120,8 +126,15 @@ impl Range {
 }
 
 impl Dep {
+    /// Installed only through npm aliases: a deliberate side-by-side copy (TypeScript 6 kept for its compiler API beside
+    /// TypeScript 7), not the version of the technology the repository runs when it also installs a package of that
+    /// technology under its own name (`funnel`).
+    pub fn parallel_copy(&self) -> bool {
+        !self.aliases.is_empty() && !self.unaliased
+    }
+
     pub fn new(name: &str, public_candidate: bool) -> Dep {
-        Dep { name: name.to_string(), public_candidate, version: None, source: String::new(), readings: vec![], pins: vec![], seen: Seen::Unknown }
+        Dep { name: name.to_string(), public_candidate, version: None, source: String::new(), readings: vec![], pins: vec![], seen: Seen::Unknown, aliases: BTreeSet::new(), unaliased: false }
     }
 
     /// One manifest's version (`None` when it cannot be read: a tag, a workspace link). The headline is set by
@@ -534,6 +547,11 @@ pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
                 declared.insert(purl.clone());
                 let entry = deps.entry(purl).or_insert_with(|| Dep::new(public_name, public_candidate));
                 entry.public_candidate &= public_candidate;
+                if public_name == name {
+                    entry.unaliased = true;
+                } else {
+                    entry.aliases.insert(name.clone());
+                }
                 if let Some((_, l)) = &lock
                     && let Some(seen) = l.seen.get(name).or_else(|| l.seen.get(public_name))
                 {
@@ -1683,6 +1701,24 @@ mod tests {
         let s = detect(d.path()).unwrap();
         assert_eq!(s.deps["pkg:npm/acme-utils"].pins, vec![Pin { version: "1.2.0".into(), hashes: vec!["sha512-internal".into()] }]);
         assert!(s.deps["pkg:npm/next"].pins.is_empty(), "no integrity in the lockfile");
+    }
+
+    #[test]
+    fn a_named_catalog_npm_alias_is_its_own_package_and_a_parallel_copy() {
+        // ComposioHQ/composio: the root runs typescript 7.0.2 and keeps TypeScript 6 as `typescript6` from the `ts6`
+        // catalog; core installs that alias under `typescript` itself.
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "package.json", r#"{"name":"root","private":true,"devDependencies":{"typescript":"catalog:","typescript6":"catalog:ts6"}}"#);
+        write(d.path(), "core/package.json", r#"{"name":"core","devDependencies":{"typescript":"catalog:ts6"}}"#);
+        write(d.path(), "pnpm-workspace.yaml", "packages:\n  - core\ncatalog:\n  typescript: ^7.0.2\ncatalogs:\n  ts6:\n    typescript: npm:@typescript/typescript6@^6.0.2\n    typescript6: npm:@typescript/typescript6@^6.0.2\n");
+        write(d.path(), "pnpm-lock.yaml", "lockfileVersion: '9.0'\n\nimporters:\n\n  .:\n    devDependencies:\n      typescript:\n        specifier: 'catalog:'\n        version: 7.0.2\n      typescript6:\n        specifier: catalog:ts6\n        version: '@typescript/typescript6@6.0.2'\n\n  core:\n    devDependencies:\n      typescript:\n        specifier: catalog:ts6\n        version: '@typescript/typescript6@6.0.2'\n");
+        let s = detect(d.path()).unwrap();
+        let ts = &s.deps["pkg:npm/typescript"];
+        assert_eq!((ts.version.clone(), ts.readings.len(), ts.parallel_copy()), (Some(Version::new(7, 0, 2)), 1, false), "{ts:?}");
+        let six = &s.deps[&npm_purl("@typescript/typescript6")];
+        assert_eq!(six.version, Some(Version::new(6, 0, 2)), "{six:?}");
+        assert_eq!(six.aliases, ["typescript".to_string(), "typescript6".to_string()].into());
+        assert!(six.parallel_copy());
     }
 
     #[test]

@@ -2962,7 +2962,7 @@ mod tests {
     }
     #[test]
     fn catalog_progress_counts_each_direct_package_once_whatever_names_it_is_looked_up_under() {
-        let dep = |name: &str| crate::stack::Dep { name: name.into(), public_candidate: true, version: None, source: String::new(), readings: vec![], pins: vec![], seen: Default::default() };
+        let dep = |name: &str| crate::stack::Dep::new(name, true);
         let st = crate::stack::Stack {
             packages: vec![],
             deps: [("pkg:pypi/flask", dep("flask")), ("pkg:npm/%40babel/core", dep("@babel/core"))].map(|(p, d)| (p.to_string(), d)).into(),

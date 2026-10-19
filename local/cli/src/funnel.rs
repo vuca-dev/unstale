@@ -771,6 +771,28 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
         let flagged = flag_filtered(&all_hits, comps, tl.usage.iter().chain(&tl.whole), &inp.repo.paths);
         let hits: &Hits = flagged.as_ref().unwrap_or(&all_hits);
         let present: Vec<&String> = comps.iter().filter(|c| purls.contains(*c)).collect();
+        // A package installed only through npm aliases beside one of the technology's packages installed under its own
+        // name is a deliberate parallel copy (ComposioHQ/composio: `typescript6: npm:@typescript/typescript6@^6` and
+        // `catalog:ts6` for the compiler API beside TypeScript 7): it sets neither the technology's version nor a
+        // workspace line, and no record is read against it.
+        let parallel_copy = |c: &String| inp.stack.deps.get(c).is_some_and(|d| d.parallel_copy());
+        let parallel: BTreeSet<&String> =
+            if present.iter().any(|c| !parallel_copy(c)) { present.iter().copied().filter(|c| parallel_copy(c)).collect() } else { BTreeSet::new() };
+        for c in &parallel {
+            let d = &inp.stack.deps[*c];
+            let mut dirs: Vec<String> = d.readings.iter().map(|r| format!("{} ({})", place(&r.dir), r.version)).collect();
+            dirs.dedup();
+            let names: Vec<String> = d.aliases.iter().map(|a| format!("`{a}`")).collect();
+            out.version_notes.push(format!(
+                "{}: installed through the npm {} {} in {}, a side-by-side copy beside {}; its version is not the technology's and no bump is proposed for it.",
+                d.name,
+                if names.len() == 1 { "alias" } else { "aliases" },
+                names.join(", "),
+                dirs.join(", "),
+                present.iter().filter(|p| !parallel.contains(*p)).filter_map(|p| purl_name(p)).collect::<Vec<_>>().join(", ")
+            ));
+        }
+        let present: Vec<&String> = present.into_iter().filter(|c| !parallel.contains(c)).collect();
         // Packages that declare this technology: a file's role is judged inside the deepest one containing it.
         let owners: Vec<&str> = inp.stack.packages.iter().filter(|p| p.declared.iter().any(|d| comps.contains(&normalize_purl(d)))).map(|p| p.dir.as_str()).collect();
         let reach = reaching(&inp.stack.packages, &dependents, comps);
@@ -1045,8 +1067,24 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             // The releases of the packages this repository uses; else of the technology's own packages (a record names
             // every component, and the repository uses at least one). A record about other packages of the technology's
             // repository only (a release-notes section central attributed to them) applies only where one is used.
-            let own: Vec<&Release> = rec.r.releases.iter().filter(|x| purls.contains(&normalize_purl(&x.component))).collect();
-            let rels: Vec<&Release> = rec.r.releases.iter().filter(|x| comps.contains(&normalize_purl(&x.component))).collect();
+            let own: Vec<&Release> = rec
+                .r
+                .releases
+                .iter()
+                .filter(|x| {
+                    let c = normalize_purl(&x.component);
+                    purls.contains(&c) && !parallel.contains(&c)
+                })
+                .collect();
+            let rels: Vec<&Release> = rec
+                .r
+                .releases
+                .iter()
+                .filter(|x| {
+                    let c = normalize_purl(&x.component);
+                    comps.contains(&c) && !parallel.contains(&c)
+                })
+                .collect();
             if own.is_empty() && rels.is_empty() {
                 if let Some(release) = rec.r.releases.first() {
                     out.opps.push(blank(rec, release.clone(), Route::OtherPackage));
@@ -1457,9 +1495,20 @@ pub const IN_EFFECT: &str = "in effect now (deprecated at the installed version,
 
 /// Plain-language counts of where records went, for an empty or short output.
 pub fn why(out: &Outcome, routes: &[&str]) -> String {
+    why_scoped(out, None, routes)
+}
+
+/// `why` over the records of `techs` only: what one technology's bump picks up is not the whole catalog's funnel.
+pub fn why_for(out: &Outcome, techs: &[String], routes: &[&str]) -> String {
+    why_scoped(out, Some(techs), routes)
+}
+
+fn why_scoped(out: &Outcome, techs: Option<&[String]>, routes: &[&str]) -> String {
     let mut c: BTreeMap<String, usize> = BTreeMap::new();
     let mut withheld: BTreeMap<&str, usize> = BTreeMap::new();
-    for o in &out.opps {
+    let mut n_opps = 0;
+    for o in out.opps.iter().filter(|o| techs.is_none_or(|t| t.contains(&o.rec.r.technology))) {
+        n_opps += 1;
         let k = match &o.route {
             Route::UpgradeReview => "upgrade review",
             Route::ImprovementsPass => "improvements pass",
@@ -1495,6 +1544,13 @@ pub fn why(out: &Outcome, routes: &[&str]) -> String {
             parts.push(format!("{n} {k}"));
         }
     }
+    let named = match techs {
+        Some(t) => t.join(", "),
+        None => out.technologies.join(", "),
+    };
+    if techs.is_some_and(|t| !t.is_empty()) && n_opps == 0 {
+        return format!("no records for {named} in the catalog");
+    }
     if out.technologies.is_empty() {
         return match &out.uncovered {
             Some(why) => format!("no catalog technology covers this repository yet: {why}"),
@@ -1504,9 +1560,9 @@ pub fn why(out: &Outcome, routes: &[&str]) -> String {
     if parts.is_empty() {
         // Every record went to one of `routes`, which the caller lists itself.
         if !c.is_empty() {
-            return format!("no other records for {} in the catalog", out.technologies.join(", "));
+            return format!("no other records for {named} in the catalog");
         }
-        return format!("{} records for {} in the catalog", out.opps.len(), out.technologies.join(", "));
+        return format!("{n_opps} records for {named} in the catalog");
     }
     parts.join("; ")
 }
@@ -2203,6 +2259,46 @@ mod tests {
         let lines = crate::review::digest_lines(&out);
         assert!(lines[0].starts_with("bumping next 16.1.0 → 16.2.0 in the root (pnpm-lock.yaml) picks up 1 fix"), "{lines:?}");
         assert!(lines.contains(&"  16.0.0 in .buildkite (.buildkite/package-lock.json): bumping to 16.2.0 picks up 2 fixes; 1 obligation".to_string()), "{lines:?}");
+    }
+
+    #[test]
+    fn a_package_installed_only_through_an_npm_alias_is_a_parallel_copy() {
+        // ComposioHQ/composio: the root runs typescript 7.0.2 and keeps `typescript6: npm:@typescript/typescript6@^6`
+        // beside it; core and cli install the alias as `typescript`. The records name both packages.
+        let both = |id: &str, v: &str| {
+            with(
+                rec(id, "pkg:npm/typescript", v),
+                json!({"change_type":"fix","releases":[
+                    {"component":"pkg:npm/@typescript/typescript6","version":v,"date":"2026-01-01","line":v.split('.').next().unwrap()},
+                    {"component":"pkg:npm/typescript","version":v,"date":"2026-01-01","line":v.split('.').next().unwrap()}]}),
+            )
+        };
+        let c = catalog("typescript", 0, vec![both("typescript:six", "6.0.1"), both("typescript:seven", "7.0.2")]);
+        let mut s = stack(&[], None);
+        let mut ts = crate::stack::Dep::new("typescript", true);
+        ts.unaliased = true;
+        ts.read(".", parse_version("7.0.2"), "pnpm-lock.yaml".into());
+        let mut six = crate::stack::Dep::new("@typescript/typescript6", true);
+        six.aliases = ["typescript".to_string(), "typescript6".to_string()].into();
+        six.read(".", parse_version("6.0.2"), "pnpm-lock.yaml".into());
+        six.read("ts/packages/core", parse_version("6.0.2"), "pnpm-lock.yaml".into());
+        s.deps.insert(crate::util::npm_purl("typescript"), ts);
+        s.deps.insert(crate::util::npm_purl("@typescript/typescript6"), six);
+        s.settle();
+        let (r, l) = (repo(&[]), Ledger::default());
+        let out = run_with(&c, &s, &r, &l);
+        assert_eq!(out.packages["typescript"], vec!["typescript".to_string()]);
+        assert!(out.digest.get("typescript").is_none_or(|d| d.is_empty()), "the root already runs 7.0.2");
+        assert!(out.opps.iter().all(|o| o.installed.to_string() == "7.0.2"));
+        assert!(out.workspaces.get("typescript").is_none_or(|w| w.is_empty()), "the alias is no outdated workspace");
+        assert!(out.version_notes.iter().any(|n| n.starts_with("@typescript/typescript6: installed through the npm aliases `typescript`, `typescript6`")), "{:?}", out.version_notes);
+        // `unstale bump` counts one technology's records, not the catalog's.
+        assert_eq!(why_for(&out, &["sinon".into()], &["bump digest"]), "no records for sinon in the catalog");
+        assert!(why_for(&out, &["typescript".into()], &["bump digest"]).starts_with("2 already in the installed version"), "{}", why_for(&out, &["typescript".into()], &[]));
+        // Only the alias installs the technology: it is what runs.
+        s.deps.remove(&crate::util::npm_purl("typescript"));
+        let out = run_with(&c, &s, &r, &l);
+        assert_eq!(route_of(&out, "typescript:seven"), &Route::BumpDigest);
     }
 
     fn zod_removal() -> Catalog {

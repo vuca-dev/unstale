@@ -602,11 +602,31 @@ fn cmd_bump(ctx: &Ctx, pkg: &str) -> Result<u8> {
             }
             Ok(0)
         }
-        None if w.stack.deps.contains_key(&util::npm_purl(pkg)) || out.technologies.iter().any(|t| t == pkg) => {
-            println!("Bumping {pkg} picks up nothing in the catalog: {}.", funnel::why(&out, &["bump digest"]));
+        None => {
+            // The technologies `pkg` names: a synced technology id (one with no records is still synced for this
+            // stack), or a package of one. The counts are theirs, not the whole catalog's.
+            let purl = util::npm_purl(pkg);
+            let techs: Vec<String> = w
+                .catalog
+                .techs
+                .iter()
+                .filter(|(t, td)| {
+                    *t == pkg
+                        || out.packages.get(*t).is_some_and(|p| p.iter().any(|x| x == pkg))
+                        || td.index.components.iter().any(|c| util::normalize_purl(c) == purl)
+                })
+                .map(|(t, _)| t.clone())
+                .collect();
+            if !w.catalog.techs.contains_key(pkg) && !w.stack.deps.contains_key(&purl) {
+                bail!("{pkg} is not a package this repository uses");
+            }
+            if techs.is_empty() {
+                println!("Bumping {pkg} picks up nothing in the catalog: no catalog technology covers {pkg}.");
+            } else {
+                println!("Bumping {pkg} picks up nothing in the catalog: {}.", funnel::why_for(&out, &techs, &["bump digest"]));
+            }
             Ok(0)
         }
-        None => bail!("{pkg} is not a package this repository uses"),
     }
 }
 
