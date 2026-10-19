@@ -923,6 +923,56 @@ pub fn qualified_name(lit: &str) -> bool {
         && !TEXT_EXT.contains(&parts[parts.len() - 1].to_ascii_lowercase().as_str())
 }
 
+/// The last segment of a qualified option key (`experimental.fsModuleCache` → `fsModuleCache`) when it is specific
+/// enough to stand for the option under another parent: an identifier of more than one word (`identifier`), not a
+/// plain word (`isolate` under `browser.` is another option than top-level `isolate`).
+pub fn option_leaf(lit: &str) -> Option<&str> {
+    if !qualified_name(lit) {
+        return None;
+    }
+    let leaf = lit.rsplit('.').next()?;
+    (leaf.chars().count() >= 6 && identifier(leaf)).then_some(leaf)
+}
+
+/// Whether `text` sets `key` as a key with a value: a whole token (`[\w$-]` boundaries), quoted or not, at the start of a
+/// line or after `{`, `,` or `;`, followed by `:` (not `::`) or `=` (not `==` or `=>`). `fsModuleCache: true` in an
+/// object, JSON, YAML; `fsModuleCache = true` in TOML or INI. Not a member read (`config.fsModuleCache`), a binding
+/// (`const fsModuleCache = …`) or a mention in a string.
+pub fn sets_key(text: &str, key: &str) -> bool {
+    let b = text.as_bytes();
+    let tok = |c: u8| c.is_ascii_alphanumeric() || matches!(c, b'_' | b'$' | b'-');
+    let mut from = 0;
+    while let Some(i) = text[from..].find(key) {
+        let at = from + i;
+        from = at + key.len();
+        let end = at + key.len();
+        if (at > 0 && tok(b[at - 1])) || b.get(end).is_some_and(|c| tok(*c)) {
+            continue;
+        }
+        let (mut s, mut e) = (at, end);
+        if s > 0 && matches!(b[s - 1], b'\'' | b'"') && b.get(e) == Some(&b[s - 1]) {
+            s -= 1;
+            e += 1;
+        }
+        let mut j = s;
+        while j > 0 && matches!(b[j - 1], b' ' | b'\t') {
+            j -= 1;
+        }
+        if j > 0 && !matches!(b[j - 1], b'\n' | b'\r' | b'{' | b',' | b';') {
+            continue;
+        }
+        while e < b.len() && matches!(b[e], b' ' | b'\t') {
+            e += 1;
+        }
+        match (b.get(e), b.get(e + 1)) {
+            (Some(b':'), n) if n != Some(&b':') => return true,
+            (Some(b'='), n) if !matches!(n, Some(b'=' | b'>')) => return true,
+            _ => {}
+        }
+    }
+    false
+}
+
 /// Whether `name` names a member of the qualified name `ns`, or something under one (`pytest.mark.parametrize`,
 /// `@pytest.mark.xfail(strict=True)` under `pytest.mark`): `ns.` then an identifier that is not a file extension
 /// (`next.config.js` is a file, not a member of `next.config`).
@@ -1406,6 +1456,20 @@ pub fn sample_counts(repos: &[Repo], terms: &[String]) -> BTreeMap<String, u32> 
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn sets_key_needs_a_key_with_a_value() {
+        for t in ["{ fsModuleCache: true }", "test: {\n    fsModuleCache: true,", r#"{"fsModuleCache": true}"#, "a: 1, 'fsModuleCache' : 1", "fsModuleCache = true\n"] {
+            assert!(sets_key(t, "fsModuleCache"), "{t}");
+        }
+        for t in ["config.fsModuleCache", "const fsModuleCache = 1", "x ? fsModuleCache : y", "'fsModuleCache: true'", "fsModuleCacheDir: 1", "fsModuleCache == 1", "{ fsModuleCache }"] {
+            assert!(!sets_key(t, "fsModuleCache"), "{t}");
+        }
+        assert_eq!(option_leaf("experimental.fsModuleCache"), Some("fsModuleCache"));
+        assert_eq!(option_leaf("browser.isolate"), None);
+        assert_eq!(option_leaf("fsModuleCache"), None);
+        assert_eq!(option_leaf("next.config.js"), None);
+    }
     use super::*;
 
     fn repo(files: &[(&str, &str)]) -> Repo {

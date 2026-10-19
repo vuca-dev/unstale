@@ -461,6 +461,11 @@ pub fn replacement_lits(r: &Rec, lits: &[String], deprecated: &[String]) -> Vec<
 /// handling (knip detecting custom elements, a Vite 8 peer range, TypeScript 6 support) or a stability change to it:
 /// every user of that version gets it, with nothing to write. Of 60 such records sampled from the catalog (17 October
 /// 2026), 58 were support, compatibility or detection the tool applies itself.
+///
+/// Nor is a tooling change that names nothing to write or remove (no `introduces`, no `replaces`) on any surface: a
+/// type checker's or editor's fix (vue-tsc "hints for destructured props respect variable hoisting"), a CLI's clearer
+/// output, a linter's new detection. Of 40 such records sampled from the catalog (19 October 2026, 563 off build
+/// tooling, configuration and runtime-internal surfaces), 36 were behaviour the tool applies itself.
 pub fn is_opt_in(r: &Rec) -> bool {
     !is_obligation(r)
         && matches!(r.r.change_type, ChangeType::NewApi | ChangeType::NewOption | ChangeType::StabilityChange | ChangeType::Tooling | ChangeType::Other)
@@ -468,12 +473,13 @@ pub fn is_opt_in(r: &Rec) -> bool {
         && !tool_behaviour(r)
 }
 
-/// A tooling change to the tool's build or configuration handling, or a stability change to its build (`is_opt_in`).
+/// A tooling change to the tool's build or configuration handling, a tooling change with nothing named to adopt, or a
+/// stability change to its build (`is_opt_in`).
 fn tool_behaviour(r: &Rec) -> bool {
     matches!(
         (r.r.change_type, r.r.surface),
         (ChangeType::Tooling, Surface::BuildTooling | Surface::Configuration) | (ChangeType::StabilityChange, Surface::BuildTooling)
-    )
+    ) || (r.r.change_type == ChangeType::Tooling && r.r.introduces.is_empty() && r.r.replaces.is_empty())
 }
 
 /// A version's release line by SemVer: its major, or `0.minor` below 1.0.
@@ -664,6 +670,8 @@ fn tech_lits(tech: &str, td: &TechData) -> TechLits {
     for r in &td.records {
         usage.extend(r.r.requires.iter().filter_map(|x| clean_lit(x)));
         whole.extend(r.r.introduces.iter().filter_map(|x| clean_lit(x)).filter(|x| x.chars().count() >= 6));
+        // An option's last segment, for the option set under another parent (`applied_of`).
+        whole.extend(r.r.introduces.iter().filter_map(|x| clean_lit(x)).filter_map(|x| usage::option_leaf(&x).map(str::to_string)));
     }
     // A relative literal is the technology's package subpath when its record says so: it also names the manifest's
     // `exports` field, or `<package>/<subpath>` itself (knip's `./config` next to `knip/config`). Otherwise it is a
@@ -991,7 +999,18 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             if let Some(a) = applied.borrow().get(&key) {
                 return *a;
             }
-            let a = hits_of(v).whole.get(x).into_iter().flatten().any(|p| scopes[v].counts(x, p) && usage::counts_as_applied(role(p), p));
+            let counts = |p: &String| usage::counts_as_applied(role(p), p);
+            // An option introduced under a parent (`experimental.fsModuleCache`) and later renamed or promoted
+            // (Vitest 5's top-level `fsModuleCache`) is applied when its last segment is set as a key, under any
+            // parent, in a file that configures the technology.
+            let leaf = || {
+                usage::option_leaf(x).is_some_and(|k| {
+                    hits_of(v).whole.get(k).into_iter().flatten().any(|p| {
+                        scopes[v].configures(p) && counts(p) && inp.repo.text(p).is_some_and(|t| usage::sets_key(t, k))
+                    })
+                })
+            };
+            let a = hits_of(v).whole.get(x).into_iter().flatten().any(|p| scopes[v].counts(x, p) && counts(p)) || leaf();
             applied.borrow_mut().insert(key, a);
             a
         };
@@ -2083,6 +2102,21 @@ mod tests {
     }
 
     #[test]
+    fn an_option_renamed_under_another_parent_is_applied_where_its_leaf_is_set() {
+        // faker-js/faker: vitest 4.0.11's `experimental.fsModuleCache` is Vitest 5's top-level `fsModuleCache`.
+        let o = |id: &str, x: &str| with(rec(id, "pkg:npm/vitest", "5.0.0"), json!({"change_type":"new_option","surface":"configuration","introduces":[x]}));
+        let c = catalog("vitest", 0, vec![o("vitest:fsmc", "experimental.fsModuleCache"), o("vitest:iso", "browser.isolate"), o("vitest:read", "experimental.printImportBreakdown")]);
+        let s = stack(&[("vitest", "5.0.1")], None);
+        let cfg = "import { defineConfig } from 'vitest/config';\nexport default defineConfig({\n  test: {\n    fsModuleCache: true,\n    isolate: false,\n  },\n});\nconsole.log(config.printImportBreakdown);\n";
+        let r = repo(&[("package.json", r#"{"devDependencies":{"vitest":"5.0.1"}}"#), ("vitest.config.ts", cfg), ("src/a.ts", "export const x = { printImportBreakdown: 1 };")]);
+        let l = Ledger::default();
+        let out = run_with(&c, &s, &r, &l);
+        assert_eq!(route_of(&out, "vitest:fsmc"), &Route::Applied);
+        assert_eq!(route_of(&out, "vitest:iso"), &Route::ImprovementsPass, "a plain-word leaf is another option");
+        assert_eq!(route_of(&out, "vitest:read"), &Route::ImprovementsPass, "read, not set, in the config; set only in a file that does not configure vitest");
+    }
+
+    #[test]
     fn applied_check_whole_tokens_and_never_drops_breaking() {
         let c = catalog(
             "next",
@@ -2687,13 +2721,19 @@ mod tests {
                 t("knip:rust-builds", "stability_change", "build_tooling", "6.15.0"),
                 t("knip:vite8", "tooling", "build_tooling", "6.40.0"),
                 // A new command or flag is still adopted by whoever runs it.
-                t("knip:new-command", "tooling", "command_line", "6.16.0"),
+                with(t("knip:new-command", "tooling", "command_line", "6.16.0"), json!({"introduces": ["knip --trace"]})),
+                // A tooling change naming nothing to write is the tool's own behaviour on any surface (faker-js/faker:
+                // vue-tsc's "hints for destructured props respect variable hoisting", `types_only`).
+                t("knip:editor-fix", "tooling", "types_only", "6.16.0"),
+                t("knip:clearer-output", "tooling", "command_line", "6.16.0"),
+                with(t("knip:drop-flag", "tooling", "command_line", "6.16.0"), json!({"replaces": ["--legacy-flag"]})),
                 rec("knip:newest", "pkg:npm/knip", "6.40.0"),
             ],
         );
         let (s, r, l) = (stack(&[("knip", "6.35.1")], None), repo(&[]), Ledger::default());
         let out = run_with(&c, &s, &r, &l);
-        for id in ["knip:custom-elements", "knip:orval", "knip:rust-builds"] {
+        assert_eq!(route_of(&out, "knip:drop-flag"), &Route::ImprovementsPass, "something to remove");
+        for id in ["knip:custom-elements", "knip:orval", "knip:rust-builds", "knip:editor-fix", "knip:clearer-output"] {
             assert_eq!(route_of(&out, id), &Route::AlreadyIncluded, "{id}");
         }
         assert_eq!(route_of(&out, "knip:vite8"), &Route::BumpDigest, "arrives with the bump, nothing to adopt");
