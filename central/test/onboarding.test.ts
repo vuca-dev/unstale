@@ -16,7 +16,8 @@ import {
   discoverTechnology,
 } from "../src/onboarding/discovery.ts";
 import { HttpClient } from "../src/collector/http.ts";
-import { writeAtomic } from "../src/pipeline/util.ts";
+import { logUsage, writeAtomic } from "../src/pipeline/util.ts";
+import { usageLog } from "../src/pipeline/paths.ts";
 let dir: string;
 const previous = process.env.UNSTALE_STORE;
 beforeEach(() => {
@@ -189,6 +190,7 @@ test("cold jobs publish early, interleave history with the docs module's pass an
   const synth = vi.spyOn(synthesis, "synthesize").mockResolvedValue(7);
   // The docs module's pass: a baseline of 130 pages (no events), so nothing is planned for extraction.
   const pass = vi.spyOn(docs, "dailyPass").mockImplementation(async (_t, o) => {
+    logUsage({ api: "test", call: "docs" });
     for (let i = 1; i <= 130; i++) o.progress?.(i, 130);
     writeAtomic(join(dir, "central", "docs", t.id, "state.json"), JSON.stringify({ at: new Date().toISOString() }));
     return { technology: t.id, sites: [{ site: t.homepage, prefix: "", method: "sitemap", pages: 130, copyRule: "html", dropped: {} as never, namespaces: [] }], checked: 130, outcomes: { first_seen: 130 }, events: {}, sections: { publishable: 0, held: {} }, baseline: true };
@@ -219,6 +221,11 @@ test("cold jobs publish early, interleave history with the docs module's pass an
     await vi.waitFor(() => expect(pass).toHaveBeenCalledTimes(2), { timeout: 3000 });
     await vi.waitFor(() => expect(job.state).toBe("monitoring"), { timeout: 3000 });
     expect(synth).toHaveBeenCalledTimes(4);
+    // Usage phases: the first coverage's calls are onboarding, finished once (the milestone); the later run's are
+    // monitoring.
+    const usage = readFileSync(usageLog(), "utf8").trim().split("\n").map((l) => JSON.parse(l) as Record<string, unknown>);
+    const seen = usage.filter((l) => l.call === "docs" || l.milestone).map((l) => `${l.phase} ${l.tech} ${l.call ?? l.milestone}`);
+    expect(seen.join("\n")).toMatch(/^(onboarding example docs\n)+onboarding example onboarded\n(monitoring example docs\n?)+$/);
   } finally {
     service.stop();
   }

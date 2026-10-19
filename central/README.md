@@ -21,7 +21,7 @@ npm run catalog -- correct <id> change_type=removal replaces=a,b [--claim] [--no
 npm run catalog -- merge <from-id> <into-id>
 npm run catalog -- retract <id> [--note text]
 npm run catalog -- publish [--tech next]
-npm run catalog -- usage                 # model calls and tokens from the usage log
+npm run catalog -- usage                 # model calls and tokens from the usage log; by_phase: onboarding vs monitoring
 npm run catalog -- prune [--dry-run]     # delete shards no index has referenced for 7 days (history in catalog/history/)
 npm run catalog -- export <dir>          # prune, then a static copy of v1/ (with components, .nojekyll) for GitHub Pages
 ```
@@ -35,6 +35,7 @@ ingested extraction is recorded, so a rerun makes no uncached calls and writes b
 | `src/pipeline/fetch.ts` | Stable GitHub releases since 2025-10-15 (`GITHUB_TOKEN`, else `gh auth token`), stored raw with a `sha256:` snapshot; a body that only links its notes is read through the link once; a package with no GitHub release is read from its changelog file |
 | `src/pipeline/changelog.ts` | Changelog sections per version (ATX and setext headings), pointer-body detection, publisher-site pages |
 | `src/pipeline/extract.ts`, `llm.ts` | Extraction and free-text labels (subject, summary, terms, replaces, requires, prerequisites, conditions) |
+| `src/pipeline/usage.ts` | The usage log by phase: each line carries `phase` (onboarding, monitoring, other; set per job in util.ts `withUsagePhase`), totals and dollars (reported, else estimated from `eval/select/prices.json`) per phase and provider, onboarded and monitored technologies, monitoring per technology-year |
 | `src/pipeline/classify/adapter.ts` | Classifier adapter: Jev first, the extraction model answering choices as the per-request fallback, cache, usage log |
 | `src/pipeline/packs.ts` | The content-hash caches (classifier, model, registry, the day's docs pages) as append-only pack files, a few thousand instead of one file per entry |
 | `src/pipeline/classify/labels.ts`, `vocab.ts`, `thresholds.ts` | change_type, surface, breaking and benefit questions; thresholds |

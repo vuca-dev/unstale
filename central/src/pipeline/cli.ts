@@ -13,6 +13,7 @@
 //   npm run catalog -- advisories [--tech next] [--offline] [--no-publish]   (the advisories stage: OSV, resolve, attach)
 //   npm run catalog -- prune [--dry-run]   (delete shards unreferenced for more than 7 days; prune.ts)
 //   npm run catalog -- export <dir>   (prune, then the static tree for GitHub Pages or any static host; export.ts)
+//   npm run catalog -- usage   (model calls and tokens by provider, then by phase: onboarding, monitoring; usage.ts)
 //
 // Corrections: revision fields (change_type, breaking, releases, prerequisites, requires, replaces, or --claim for a
 // meaningful correction of the claim) bump `revision`; label fields bump `label_version`.
@@ -36,7 +37,8 @@ import { registryStats } from "./registry.ts";
 import { ShardLine } from "../schema/catalog.ts";
 import { applyChange, LABEL_FIELDS, loadStore, mergeInto, retract, REVISION_FIELDS, saveStore, type EditableField, type StoredRecord } from "./store.ts";
 import { TECHNOLOGIES } from "./technologies.ts";
-import { readJson } from "./util.ts";
+import { loadPrices, monitoredTechnologies, usageByPhase } from "./usage.ts";
+import { readJson, withUsagePhase } from "./util.ts";
 import { techLocal } from "../state/client.ts";
 
 const ARRAY_FIELDS = new Set(["releases", "prerequisites", "requires", "replaces", "benefit", "introduces", "terms", "related", "conditions"]);
@@ -92,12 +94,19 @@ async function pipeline(args: string[]): Promise<void> {
     ...(values["no-budget"] ? {} : { budget: new PipelineBudget() }),
   };
   const list = technologies(values.tech);
-  const reports: TechReport[] = await Promise.all(list.map((t) => runTechnology(t, opts, cls)));
+  // A catalog technology never ingested is being onboarded; every other run monitors it (util.ts, usage phases).
+  // Decided before the run, so a second pass of a technology's first ingest is still onboarding.
+  const phases = new Map(list.map((t) => {
+    const s = loadStore(t.id);
+    return [t.id, Object.keys(s.ingested).length || Object.keys(s.records).length ? ("monitoring" as const) : ("onboarding" as const)];
+  }));
+  const run = (t: (typeof list)[number], o: Parameters<typeof runTechnology>[1]) => withUsagePhase(phases.get(t.id)!, t.id, () => runTechnology(t, o, cls));
+  const reports: TechReport[] = await Promise.all(list.map((t) => run(t, opts)));
   // Technologies past their quarterly cap go last: a second pass with the cap lifted, while the period budget lasts.
   const over = list.filter((_, i) => reports[i]!.deferred?.cap);
   if (over.length && opts.budget && opts.budget.tokensLeft() > 0) {
     console.log(`second pass, quarterly cap lifted: ${over.map((t) => t.id).join(", ")}`);
-    const again = await Promise.all(over.map((t) => runTechnology(t, { ...opts, liftCap: true }, cls)));
+    const again = await Promise.all(over.map((t) => run(t, { ...opts, liftCap: true })));
     for (const r of again) reports[reports.findIndex((x) => x.technology === r.technology)] = r;
   }
   for (const r of reports) console.log(JSON.stringify(r));
@@ -256,7 +265,9 @@ async function main(): Promise<void> {
         b.input_tokens += Number(l.input_tokens ?? 0);
         b.output_tokens += Number(l.output_tokens ?? 0);
       }
-      console.log(JSON.stringify({ ...by, events: lines.filter((l) => l.event).map((l) => l.event) }, null, 1));
+      // `by_phase` last: the per-phase totals, onboarded and monitored technologies, and the per-technology figures
+      // (usage.ts), so the ongoing cost per technology-year is read apart from first coverage.
+      console.log(JSON.stringify({ ...by, events: lines.filter((l) => l.event).map((l) => l.event), by_phase: usageByPhase(lines, monitoredTechnologies(), loadPrices()) }, null, 1));
       return;
     }
     default:
