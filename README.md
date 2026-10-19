@@ -118,6 +118,14 @@ The client also reads the public npm and PyPI registries for your direct package
 package manager does, to check that a name is the public package and whether its publisher deprecated (npm) or
 yanked (PyPI) that version. It sends the package names and versions its lockfiles resolve to OSV (`api.osv.dev`) for
 advisories, as `npm audit` would.
+- **Private packages stay private.** A package your lockfile installed from anywhere but the public registry, or one
+your registry configuration points elsewhere, is never named to npm, PyPI, OSV or the coverage service. The client
+reads `.npmrc` (the repository's, nested ones and `~/.npmrc`), `NPM_CONFIG_*` variables, `.yarnrc.yml` `npmScopes`
+and `npmRegistryServer`, `bunfig.toml`, `pip.conf`, `PIP_INDEX_URL` and `PIP_EXTRA_INDEX_URL`, requirements index
+options, uv indexes and sources, and Poetry, PDM and Pipfile sources. A scoped private registry keeps that scope's
+packages to themselves; a registry that replaces the public one (an Artifactory or Nexus proxy) keeps every package
+of that ecosystem local. `UNSTALE_NO_REGISTRY=1` turns off every third-party lookup: no npm, PyPI or OSV request, and
+so no coverage request either, since no name can be verified as public.
 - **A signed catalog.** Catalog indexes carry an Ed25519 signature and name each shard's sha256; the client discards
 anything that does not verify.
 - **Upstream text is data.** Release notes and docs reach your agent as quoted, untrusted data, never as

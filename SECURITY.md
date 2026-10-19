@@ -20,8 +20,12 @@ gateway in `gateway/`. Only the latest release receives fixes.
   also reads the public npm and PyPI registries for the direct packages it found, at their installed versions, as a
   package manager does: to verify a name is the public package, and to read a version's deprecation (npm) or yank
   (PyPI). It sends every package name and version its lockfiles resolve, transitive ones included, to OSV
-  (`api.osv.dev`) for advisories, as `npm audit` or `pip-audit` would; no source. `UNSTALE_NO_REGISTRY=1` turns the
-  deprecation and advisory reads off.
+  (`api.osv.dev`) for advisories, as `npm audit` or `pip-audit` would; no source. A package installed from, or
+  configured for, any registry but the public one (lockfile URLs; `.npmrc` including `~/.npmrc` and nested ones,
+  `NPM_CONFIG_*`, `.yarnrc.yml`, `bunfig.toml`, pip, uv, Poetry, PDM and Pipfile indexes) is never named to npm, PyPI,
+  OSV, the coverage service or, when the catalog publishes no list of its technologies, the catalog host
+  (`local/cli/src/privacy.rs`). `UNSTALE_NO_REGISTRY=1` turns off every third-party lookup (registry identity,
+  deprecation and download reads, OSV); with no name verified as public, no coverage request is sent either.
 - **Catalog integrity.** Catalog indexes carry an Ed25519 signature and name each shard's sha256. Anything that does
   not verify is discarded, not used.
 - **Upstream text.** Release notes, migration guides and docs are passed to your agent as quoted, untrusted data,

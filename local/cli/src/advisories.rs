@@ -26,6 +26,7 @@ use semver::Version;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::privacy::Seen;
 use crate::stack::Stack;
 use crate::util;
 
@@ -59,6 +60,8 @@ struct Node {
     /// Installed from somewhere other than the public registry (a private registry, git, a tarball or a path): its
     /// name is never sent.
     private: bool,
+    /// Where the lockfile says it came from (`privacy`).
+    seen: Seen,
     edges: Vec<Edge>,
 }
 
@@ -96,8 +99,10 @@ impl Graph {
             self.nodes[from].edges.push(Edge { to, range: range.map(String::from), dev });
         }
     }
-    fn private(&mut self, i: usize) {
-        self.nodes[i].private = true;
+    fn saw(&mut self, i: usize, seen: Seen) {
+        let n = &mut self.nodes[i];
+        n.seen = n.seen.and(seen);
+        n.private |= seen == Seen::Elsewhere;
     }
     /// The package versions to query: every public package version (not a project of the repository, not one
     /// installed from elsewhere than the public registry, not a name a project of the repository has).
@@ -139,8 +144,8 @@ pub fn npm_lock(text: &str, lock_dir: &str, file: &str) -> Graph {
             let name = meta.get("name").and_then(Value::as_str).unwrap_or_else(|| key.rsplit_once("node_modules/").map(|(_, n)| n).unwrap_or(key));
             let ver = meta.get("version").and_then(Value::as_str).unwrap_or("");
             let i = g.node(&format!("npm:{key}"), name, ver);
-            if meta.get("resolved").and_then(Value::as_str).is_some_and(|u| !public_npm(u)) {
-                g.private(i);
+            if let Some(u) = meta.get("resolved").and_then(Value::as_str) {
+                g.saw(i, Seen::npm_url(u));
             }
             i
         };
@@ -243,10 +248,17 @@ pub fn pnpm_lock(text: &str, lock_dir: &str, file: &str) -> Graph {
             (["snapshots" | "packages"], _) => {
                 pkg(&mut g, &k);
             }
-            // `resolution: {tarball: …}`, `{type: git, …}` or `{type: directory, …}`: not the registry.
+            // `resolution: {tarball: …}` (a registry other than the default one names its URL), `{type: git, …}` or
+            // `{type: directory, …}`: not the default registry.
             (["packages", key], Some(v)) if k == "resolution" && (v.contains("tarball:") || v.contains("type:")) => {
+                let tarball = v.split_once("tarball:").map(|(_, r)| r.trim().trim_end_matches('}').split(',').next().unwrap_or("").trim().trim_matches(['\'', '"']).to_string());
                 if let Some(i) = pkg(&mut g, key) {
-                    g.private(i);
+                    g.saw(i, tarball.map_or(Seen::Elsewhere, |u| Seen::npm_url(&u)));
+                }
+            }
+            (["packages", key, "resolution"], Some(v)) if k == "tarball" || k == "type" => {
+                if let Some(i) = pkg(&mut g, key) {
+                    g.saw(i, if k == "tarball" { Seen::npm_url(v.trim_matches(['\'', '"'])) } else { Seen::Elsewhere });
                 }
             }
             (["snapshots" | "packages", key, "dependencies" | "optionalDependencies"], Some(v)) => {
@@ -310,9 +322,7 @@ pub fn yarn_lock(text: &str, file: &str, manifests: &[(String, Value)]) -> Graph
                 cur = Some(i);
             }
         } else if let (Some(u), Some(i)) = (t.strip_prefix("resolved "), cur) {
-            if !public_npm(u.trim_matches('"')) {
-                g.private(i);
-            }
+            g.saw(i, Seen::npm_url(u.trim_matches('"')));
         } else if in_deps && let Some(i) = cur {
             let (n, r) = t.split_once(": ").or_else(|| t.split_once(' ')).unwrap_or((t, ""));
             deps.push((i, n.trim_matches('"').to_string(), bare(r)));
@@ -358,9 +368,8 @@ pub fn uv_lock(text: &str, lock_dir: &str, file: &str) -> Graph {
             Some(d) => g.local(&join_dir(lock_dir, d)),
             None => {
                 let i = g.node(&format!("uv:{name}@{ver}"), &name, &ver);
-                if src.and_then(|s| s.get("registry")).and_then(|r| r.as_str()).is_none_or(|r| !r.starts_with("https://pypi.org/")) {
-                    g.private(i); // git, a URL, a path, or another index
-                }
+                // An index's URL, else git, a URL or a path.
+                g.saw(i, src.and_then(|s| s.get("registry")).and_then(|r| r.as_str()).map_or(Seen::Elsewhere, Seen::pypi_url));
                 i
             }
         };
@@ -457,9 +466,11 @@ pub fn poetry_lock(text: &str, pyproject: &str, lock_dir: &str, file: &str) -> G
         let name = crate::pypi::normalize(p.get("name").and_then(|x| x.as_str()).unwrap_or(""));
         let ver = p.get("version").and_then(|x| x.as_str()).unwrap_or("");
         let i = g.node(&format!("poetry:{name}@{ver}"), &name, ver);
-        if p.get("source").is_some_and(|s| s.get("url").and_then(|u| u.as_str()).is_none_or(|u| !u.starts_with("https://pypi.org/"))) {
-            g.private(i); // `[package.source]`: git, a file, a directory or another index
-        }
+        // No `[package.source]` is PyPI; one is git, a file, a directory or another index.
+        g.saw(i, match p.get("source") {
+            None => Seen::Public,
+            Some(s) => s.get("url").and_then(|u| u.as_str()).filter(|_| s.get("type").and_then(|t| t.as_str()).is_none_or(|t| t == "legacy")).map_or(Seen::Elsewhere, Seen::pypi_url),
+        });
         by_name.entry(name).or_insert(i);
         ids.push(i);
     }
@@ -486,14 +497,16 @@ pub fn poetry_lock(text: &str, pyproject: &str, lock_dir: &str, file: &str) -> G
 pub fn pipfile_lock(text: &str, lock_dir: &str, file: &str) -> Graph {
     let mut g = Graph::new(file, "PyPI");
     let Ok(v) = serde_json::from_str::<Value>(text) else { return g };
+    let sources: BTreeMap<&str, &str> =
+        v.pointer("/_meta/sources").and_then(Value::as_array).into_iter().flatten().filter_map(|s| Some((s.get("name")?.as_str()?, s.get("url")?.as_str()?))).collect();
     let from = g.local(lock_dir);
     for (sec, dev) in [("default", false), ("develop", true)] {
         for (n, m) in v.get(sec).and_then(Value::as_object).into_iter().flatten() {
             let Some(ver) = m.get("version").and_then(Value::as_str) else { continue };
             let (name, ver) = (crate::pypi::normalize(n), ver.trim_start_matches("==").to_string());
             let to = g.node(&format!("pipfile:{name}@{ver}"), &name, &ver);
-            if m.get("index").and_then(Value::as_str).is_some_and(|i| i != "pypi") {
-                g.private(to);
+            if let Some(i) = m.get("index").and_then(Value::as_str) {
+                g.saw(to, sources.get(i).map_or(if i == "pypi" { Seen::Public } else { Seen::Elsewhere }, |u| Seen::pypi_url(u)));
             }
             g.edge(from, to, m.get("version").and_then(Value::as_str), dev);
         }
@@ -552,30 +565,19 @@ pub fn graphs(root: &Path, st: &Stack) -> Vec<Graph> {
         };
         out.push(g);
     }
-    // Names of the repository's own packages, and npm scopes `.npmrc` maps to another registry, are never sent.
+    // Names of the repository's own packages, direct dependencies kept private, and packages the registry
+    // configuration places on a private registry (`privacy`: a lockfile entry from the public registry is public
+    // whatever the configuration says) are never sent.
     let own: BTreeSet<String> = st.packages.iter().filter_map(|p| p.own.as_deref()).filter_map(util::purl_name).collect();
-    let scopes: Vec<String> = std::fs::read_to_string(root.join(".npmrc"))
-        .unwrap_or_default()
-        .lines()
-        .filter_map(|l| {
-            let (k, v) = l.trim().split_once('=')?;
-            let scope = k.trim().strip_suffix(":registry")?;
-            (!public_npm(v.trim())).then(|| format!("{scope}/"))
-        })
-        .collect();
     for g in &mut out {
         for n in &mut g.nodes {
-            if own.contains(&n.name) || (g.eco == "npm" && scopes.iter().any(|s| n.name.starts_with(s.as_str()))) {
+            let purl = if g.eco == "PyPI" { crate::pypi::purl(&n.name) } else { util::npm_purl(&n.name) };
+            if own.contains(&n.name) || st.deps.get(&purl).is_some_and(|d| !d.public_candidate) || !st.registries.may_name(&purl, n.seen) {
                 n.private = true;
             }
         }
     }
     out
-}
-
-/// The public npm registry (and Yarn's mirror of it).
-fn public_npm(url: &str) -> bool {
-    url.starts_with("https://registry.npmjs.org/") || url.starts_with("https://registry.yarnpkg.com/") || url == "https://registry.npmjs.org"
 }
 
 // ------------------------------------------------------------------------------------------------------ advisories
@@ -894,10 +896,6 @@ struct Batch {
     results: BTreeMap<String, (u64, Vec<(String, String)>)>,
 }
 
-fn off() -> bool {
-    std::env::var("UNSTALE_NO_REGISTRY").is_ok_and(|v| v == "1")
-}
-
 fn now() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
@@ -921,7 +919,7 @@ fn read_json<T: for<'de> Deserialize<'de>>(p: &Path) -> Option<T> {
 
 /// Checks the lockfiles against OSV and keeps the report for the outputs. Returns the requests made.
 pub fn refresh(cache: &Path, root: &Path, st: &Stack) -> usize {
-    if off() {
+    if crate::privacy::registry_off() {
         return 0;
     }
     let agent: ureq::Agent = ureq::Agent::config_builder().http_status_as_error(false).timeout_global(Some(Duration::from_secs(20))).build().into();

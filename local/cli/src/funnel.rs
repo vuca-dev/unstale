@@ -1472,6 +1472,7 @@ pub(crate) mod fixtures {
             notes: vec![],
             spread: 0,
             standalone: vec![],
+            registries: Default::default(),
         }
     }
 

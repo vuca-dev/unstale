@@ -7,6 +7,7 @@ use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
+use crate::privacy::{Registries, Seen};
 use crate::util::{npm_purl, npm_satisfies, parse_version, range_floor};
 
 /// Directories never read, on top of `.gitignore`.
@@ -63,7 +64,8 @@ pub struct Package {
 #[derive(Debug, Clone)]
 pub struct Dep {
     pub name: String,
-    /// False for workspace/file/link/git dependencies; never submit these identities centrally.
+    /// False for workspace/file/link/git dependencies, and for any package the registry configuration or a lockfile
+    /// places on a private registry (`privacy`): never named to a third party (registries, OSV, the coverage service).
     pub public_candidate: bool,
     /// The version the funnel compares against: the root manifest's, else the shallowest manifest's that a
     /// lockfile covers, else the shallowest standalone one's (on a tie, the version most of them run, then the lowest);
@@ -78,6 +80,9 @@ pub struct Dep {
     /// identity to be submitted (`onboarding::public_package`), so a private package whose name someone published
     /// publicly is not mistaken for the public one. Empty without a lockfile hash.
     pub pins: Vec<Pin>,
+    /// Where the lockfiles say it came from (`privacy`): a package from anywhere but the public registry is never named
+    /// to a third party.
+    pub seen: Seen,
 }
 
 /// One manifest's version of a dependency.
@@ -116,7 +121,7 @@ impl Range {
 
 impl Dep {
     pub fn new(name: &str, public_candidate: bool) -> Dep {
-        Dep { name: name.to_string(), public_candidate, version: None, source: String::new(), readings: vec![], pins: vec![] }
+        Dep { name: name.to_string(), public_candidate, version: None, source: String::new(), readings: vec![], pins: vec![], seen: Seen::Unknown }
     }
 
     /// One manifest's version (`None` when it cannot be read: a tag, a workspace link). The headline is set by
@@ -233,6 +238,8 @@ pub struct Stack {
     /// Per lockfile, the npm manifests below it that it does not cover (separate, unlocked projects), as a report
     /// note. Not a lockfile problem, so kept apart from `notes`.
     pub standalone: Vec<String>,
+    /// The registry configuration that applies to the repository (`privacy`): which lockfile packages OSV may see.
+    pub registries: Registries,
 }
 
 impl Stack {
@@ -252,6 +259,13 @@ impl Stack {
     /// a technology is in the stack when its records name one of these package URLs.
     pub fn candidates(&self) -> BTreeSet<String> {
         self.deps.values().flat_map(dep_candidates).collect()
+    }
+
+    /// Candidates that only private dependencies give (`Dep::public_candidate`): a catalog without a list of its
+    /// technologies is never asked for these by name (`sync`).
+    pub fn withheld(&self) -> BTreeSet<String> {
+        let public: BTreeSet<String> = self.deps.values().filter(|d| d.public_candidate).flat_map(dep_candidates).collect();
+        self.deps.values().filter(|d| !d.public_candidate).flat_map(dep_candidates).filter(|c| !public.contains(c)).collect()
     }
 
     /// A version the project declares for a prerequisite name in the npm ecosystem: `node` from engines or
@@ -359,9 +373,30 @@ pub fn uncovered_manifests(repo: &crate::usage::Repo) -> BTreeMap<&'static str, 
 }
 
 pub fn detect(root: &Path) -> Result<Stack> {
-    let local_names: BTreeSet<String> = walker(root).flatten().filter(|e|e.file_name()=="package.json")
-        .filter_map(|e| std::fs::read(e.path()).ok()).filter_map(|b|serde_json::from_slice::<Value>(&b).ok())
-        .filter_map(|v|v.get("name").and_then(Value::as_str).map(String::from)).collect();
+    // Unit tests read no developer's own configuration (`~/.npmrc`, `PIP_INDEX_URL`): they give theirs to `detect_in`.
+    let env = if cfg!(test) { crate::privacy::Env::default() } else { crate::privacy::Env::process() };
+    detect_in(root, &env)
+}
+
+/// `detect` with the environment the package managers' configuration is read from (tests set their own).
+pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
+    let mut local_names: BTreeSet<String> = BTreeSet::new();
+    // Registry and index configuration files, and the directories of manifests (whose own `.npmrc` may be gitignored).
+    let (mut configs, mut manifest_dirs) = (vec![], BTreeSet::new());
+    for e in walker(root).flatten() {
+        let name = e.file_name().to_string_lossy();
+        if crate::privacy::is_config(&name) {
+            configs.push(e.path().to_path_buf());
+        }
+        if name == "package.json" || name == "pyproject.toml" || name == "Pipfile" {
+            manifest_dirs.extend(e.path().parent().map(Path::to_path_buf));
+        }
+        if name == "package.json"
+            && let Some(n) = std::fs::read(e.path()).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()).and_then(|v| v.get("name").and_then(Value::as_str).map(String::from))
+        {
+            local_names.insert(n);
+        }
+    }
     let mut packages = vec![];
     let mut deps: BTreeMap<String, Dep> = BTreeMap::new();
     // The lowest engines.node floor among manifests a lockfile covers, and among standalone ones (used only when no
@@ -497,6 +532,11 @@ pub fn detect(root: &Path) -> Result<Stack> {
                 let entry = deps.entry(purl).or_insert_with(|| Dep::new(public_name, public_candidate));
                 entry.public_candidate &= public_candidate;
                 if let Some((_, l)) = &lock
+                    && let Some(seen) = l.seen.get(name).or_else(|| l.seen.get(public_name))
+                {
+                    entry.seen = entry.seen.and(*seen);
+                }
+                if let Some((_, l)) = &lock
                     && let Some(v) = l.version(&importer, name, range)
                     && let Some(pin) = l.pin(name, &v).or_else(|| l.pin(public_name, &v))
                     && !entry.pins.contains(&pin)
@@ -567,7 +607,12 @@ pub fn detect(root: &Path) -> Result<Stack> {
         ));
     }
     crate::pypi::detect(root, &mut packages, &mut deps, &mut notes);
-    let mut st = Stack { packages, deps, node, notes, spread: 0, standalone };
+    // No name a private registry serves is ever named to a third party (`privacy`).
+    let registries = Registries::read(root, &manifest_dirs, &configs, env);
+    for (purl, d) in deps.iter_mut() {
+        d.public_candidate &= registries.may_name(purl, d.seen);
+    }
+    let mut st = Stack { packages, deps, node, notes, spread: 0, standalone, registries };
     st.settle();
     Ok(st)
 }
@@ -713,6 +758,8 @@ pub struct Lock {
     listed: BTreeSet<String>,
     /// The workspace globs its package manager reads (`Members::read`).
     members: Members,
+    /// Where it says each package came from, by name (`resolved`, a pnpm `tarball`), when it says.
+    seen: BTreeMap<String, Seen>,
 }
 
 /// Workspace members by the package manager's own globs: `pnpm-workspace.yaml` `packages` for pnpm, the
@@ -960,6 +1007,11 @@ impl Lock {
         self.overrides.get(name).into_iter().flatten().map(|o| (o.value.clone(), o.set)).collect()
     }
 
+    fn saw(&mut self, name: &str, seen: Seen) {
+        let e = self.seen.entry(name.to_string()).or_default();
+        *e = e.and(seen);
+    }
+
     fn add_integrity(&mut self, name: &str, version: &Version, integrity: &str) {
         // Only sha512: what the public registry states as `dist.integrity` for every current package.
         let hashes: Vec<String> = integrity.split_whitespace().filter(|h| h.starts_with("sha512-")).map(String::from).collect();
@@ -1072,6 +1124,9 @@ pub fn parse_npm(text: &str) -> Lock {
             }
             let importer = prefix.trim_end_matches('/');
             let importer = if importer.is_empty() { "." } else { importer };
+            if let Some(u) = meta.get("resolved").and_then(Value::as_str) {
+                l.saw(name, Seen::npm_url(u));
+            }
             if let Some(ver) = meta.get("version").and_then(Value::as_str).and_then(parse_version) {
                 if let Some(i) = meta.get("integrity").and_then(Value::as_str) {
                     l.add_integrity(name, &ver, i);
@@ -1081,6 +1136,9 @@ pub fn parse_npm(text: &str) -> Lock {
         }
     } else if let Some(deps) = v.get("dependencies").and_then(Value::as_object) {
         for (name, meta) in deps {
+            if let Some(u) = meta.get("resolved").and_then(Value::as_str) {
+                l.saw(name, Seen::npm_url(u));
+            }
             if let Some(ver) = meta.get("version").and_then(Value::as_str).and_then(parse_version) {
                 if let Some(i) = meta.get("integrity").and_then(Value::as_str) {
                     l.add_integrity(name, &ver, i);
@@ -1138,6 +1196,27 @@ pub fn parse_pnpm(text: &str) -> Lock {
             (["packages", key, "resolution"], Some(v)) if k == "integrity" => Some((*key, v.to_string())),
             _ => None,
         };
+        // `resolution: {integrity: …, tarball: …}` (a registry other than the default one names its URL), or
+        // `{type: git, …}` / `{type: directory, …}`: where the package came from.
+        let source = match (path.as_slice(), val) {
+            (["packages", key], Some(v)) if k == "resolution" => {
+                let url = v.split_once("tarball:").map(|(_, r)| r.trim().trim_end_matches('}').split(',').next().unwrap_or("").trim().trim_matches(['\'', '"']).to_string());
+                match url {
+                    Some(u) => Some((*key, Seen::npm_url(&u))),
+                    None => v.contains("type:").then_some((*key, Seen::Elsewhere)),
+                }
+            }
+            (["packages", key, "resolution"], Some(v)) if k == "tarball" => Some((*key, Seen::npm_url(v.trim_matches(['\'', '"'])))),
+            (["packages", key, "resolution"], Some(_)) if k == "type" => Some((*key, Seen::Elsewhere)),
+            _ => None,
+        };
+        if let Some((key, seen)) = source {
+            let key = key.trim_start_matches('/');
+            let key = key.split('(').next().unwrap_or(key);
+            if let Some((name, _)) = key.get(1..).and_then(|r| r.rfind('@')).map(|at| (&key[..at + 1], ())).or_else(|| key.rsplit_once('/').map(|(n, _)| (n, ()))) {
+                l.saw(name, seen);
+            }
+        }
         if let Some((key, i)) = integrity {
             let key = key.trim_start_matches('/');
             let key = key.split('(').next().unwrap_or(key);
@@ -1214,6 +1293,13 @@ pub fn parse_yarn(text: &str) -> Lock {
                 l.by_name.entry(name.clone()).or_default().push(v.clone());
             }
             version = Some(v);
+        }
+        // yarn v1 `resolved "<url>"` (Berry names no URL for the default registry).
+        if let Some(u) = t.strip_prefix("resolved ") {
+            let names: BTreeSet<String> = specs.iter().map(|(n, _)| n.clone()).collect();
+            for name in names {
+                l.saw(&name, Seen::npm_url(u.trim_matches('"')));
+            }
         }
         // yarn v1 `integrity sha512-...` (berry's `checksum` is its own format: no pin, the name check applies).
         if let (Some(i), Some(v)) = (t.strip_prefix("integrity "), &version) {
