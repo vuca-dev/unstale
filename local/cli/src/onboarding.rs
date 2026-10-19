@@ -1668,6 +1668,8 @@ struct Ranked<'a, 'o> {
     fixes: &'a [review::AdvisoryFix],
     /// Lockfile advisories on its own package (`advisories`) no record names.
     lock: Vec<&'a crate::advisories::Item>,
+    /// Those of `lock` its target fixes.
+    lock_fixed: Vec<&'a crate::advisories::Item>,
     notes: Vec<&'a funnel::Opp<'o>>,
     joins: Vec<Join>,
     /// What keeps update PRs from applying a runtime security fix, when security leads.
@@ -1865,8 +1867,6 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
         let indices = out.digest.get(technology).map(Vec::as_slice).unwrap_or(&[]);
         let tech_fixes = fixes.get(technology).map(Vec::as_slice).unwrap_or(&[]);
         let lock = lock_items(technology, tech_fixes);
-        // Those this upgrade fixes (a fixed version exists); one with none is shown, not counted.
-        let lock_fixed: Vec<&crate::advisories::Item> = lock.iter().copied().filter(|it| it.fix.is_some()).collect();
         // Release-note security fixes: security records the digest lists as records (no advisory, or one the index
         // cannot decide), not those whose advisories it counts.
         let notes: Vec<&funnel::Opp> = indices
@@ -1885,6 +1885,14 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
             .chain(unlocks.get(technology).into_iter().flatten().copied()).chain(tech_fixes.iter().map(|f| f.opp)).collect();
         members.sort_unstable();
         members.dedup();
+        // The lockfile advisories this upgrade fixes: a fixed version at or below its target. One with no fix, or
+        // fixed only past the target, is shown, not counted.
+        let target = members.iter().map(|&i| &out.opps[i].target).max();
+        let lock_fixed: Vec<&crate::advisories::Item> = lock
+            .iter()
+            .copied()
+            .filter(|it| it.fix.as_deref().is_some_and(|f| util::parse_version(f).is_none_or(|f| target.is_none_or(|t| f <= *t))))
+            .collect();
         let packages = out.packages.get(technology).cloned().unwrap_or_default();
         let joins = workaround_joins(&found, &members, &out, &packages, w);
         let mut classes: BTreeMap<Class, (usize, usize)> = BTreeMap::new();
@@ -1969,7 +1977,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
             classes.len(),
             (obligations.len() + in_effect.len()).min(50),
         );
-        ranked.push(Ranked { key, class, technology, lines, fixes: tech_fixes, lock, notes, joins, leads, value });
+        ranked.push(Ranked { key, class, technology, lines, fixes: tech_fixes, lock, lock_fixed, notes, joins, leads, value });
     }
     ranked.sort_by(|a, b| b.key.cmp(&a.key).then_with(|| a.technology.cmp(b.technology)));
     let ranked = diversified(ranked, 8, 3);
@@ -2005,10 +2013,10 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
         }
         // Lockfile advisories are not in the digest's head line: named on it, so a bump past the detailed ones still
         // says it fixes one (n8n's @langchain/mongodb read "1 fix").
-        let lock_note = match r.lock.iter().filter(|it| it.fix.is_some()).max_by_key(|it| lock_severity(it)) {
+        let lock_note = match r.lock_fixed.iter().max_by_key(|it| lock_severity(it)) {
             None => String::new(),
             Some(w) => {
-                let k = r.lock.iter().filter(|it| it.fix.is_some()).count();
+                let k = r.lock_fixed.len();
                 format!("; fixes {k} lockfile advisor{} (worst {}, {})", if k == 1 { "y" } else { "ies" }, w.severity.word(), w.id)
             }
         };
@@ -2088,7 +2096,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
         start.push(format!("Security fixes update PRs cannot apply: {} for packages runtime code uses, held by an exact pin, an override or a declared range that refuses the fix.", technology_count(leading)));
     }
     // Record advisories and lockfile ones an upgrade fixes count alike.
-    let lock_fixed: Vec<&crate::advisories::Item> = ranked.iter().flat_map(|r| r.lock.iter().copied()).filter(|it| it.fix.is_some()).collect();
+    let lock_fixed: Vec<&crate::advisories::Item> = ranked.iter().flat_map(|r| r.lock_fixed.iter().copied()).collect();
     let advisories: usize = fixes.values().map(Vec::len).sum::<usize>() + lock_fixed.len();
     if advisories > 0 {
         let mut by = [0usize; 5];
@@ -2103,7 +2111,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
             .filter(|(i, _)| by[*i] > 0)
             .map(|(i, name)| format!("{} {name}", by[*i]))
             .collect();
-        let fixing = |r: &&Ranked| !r.fixes.is_empty() || r.lock.iter().any(|it| it.fix.is_some());
+        let fixing = |r: &&Ranked| !r.fixes.is_empty() || !r.lock_fixed.is_empty();
         let techs: Vec<String> = ranked.iter().filter(fixing).take(5).map(|r| display_text(&friendly(r.technology, pending))).collect();
         let all: BTreeSet<&str> = fixes.keys().map(String::as_str).chain(ranked.iter().filter(fixing).map(|r| r.technology.as_str())).collect();
         let more = all.len().saturating_sub(techs.len());
@@ -2940,7 +2948,7 @@ mod tests {
     fn the_first_slots_spread_across_value_classes() {
         let names: Vec<String> = (0..6).map(|i| format!("t{i}")).collect();
         let lines = vec![String::new()];
-        let make = |i: usize, class: Class| Ranked { key: (0, false, false, false, false, false, 0, 0, 0, 0), class, technology: &names[i], lines: &lines, fixes: &[], lock: vec![], notes: vec![], joins: vec![], leads: None, value: String::new() };
+        let make = |i: usize, class: Class| Ranked { key: (0, false, false, false, false, false, 0, 0, 0, 0), class, technology: &names[i], lines: &lines, fixes: &[], lock: vec![], lock_fixed: vec![], notes: vec![], joins: vec![], leads: None, value: String::new() };
         let order = |v: Vec<Ranked>| v.iter().map(|r| r.technology.as_str()).collect::<Vec<_>>().join(" ");
         let ranked = vec![make(0, Class::Compatibility), make(1, Class::Compatibility), make(2, Class::Compatibility), make(3, Class::Security), make(4, Class::Feature)];
         assert_eq!(order(diversified(ranked, 3, 1)), "t0 t3 t4 t1 t2", "one compatibility bump, then the next classes");
