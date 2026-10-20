@@ -166,11 +166,36 @@ struct Choice<'d> {
 }
 
 /// Whether `path` is a dependency manifest (`package.json`, `pyproject.toml`, a requirements file, …): it declares the
-/// package for its reading, which is no code using it. A tool only run through scripts or its config file names no
-/// importing code either, so it never moves the version off the manifest a lockfile covers (`choose`).
+/// package for its reading, which is no code using it. A tool run through its config files (`tsconfig.json`,
+/// `vite.config.ts`: `usage::Scope::runs_from`) is used by the package holding them, as code importing it is (`choose`).
 fn manifest_file(path: &str) -> bool {
     let base = path.rsplit('/').next().unwrap_or(path);
     matches!(base, "package.json" | "pyproject.toml" | "setup.py" | "setup.cfg" | "Pipfile") || (base.starts_with("requirements") && base.ends_with(".txt"))
+}
+
+/// Packages of one technology installed side by side (`run`): pairs of `present` that one manifest both installs, at
+/// least one of them through an npm alias, with that manifest's directory; and every package in such a pair.
+struct SideBySide<'p> {
+    pairs: Vec<(String, &'p String, &'p String)>,
+    members: BTreeSet<String>,
+}
+
+fn side_by_side<'p>(stack: &Stack, present: &[&'p String]) -> SideBySide<'p> {
+    let mut out = SideBySide { pairs: vec![], members: BTreeSet::new() };
+    for (i, a) in present.iter().enumerate() {
+        for b in &present[i + 1..] {
+            let (Some(da), Some(db)) = (stack.deps.get(*a), stack.deps.get(*b)) else { continue };
+            let dir = da.readings.iter().map(|r| &r.dir).find(|d| {
+                db.readings.iter().any(|r| r.dir == **d) && (da.alias_dirs.contains(*d) || db.alias_dirs.contains(*d))
+            });
+            if let Some(dir) = dir {
+                out.pairs.push((dir.clone(), *a, *b));
+                out.members.insert(normalize_purl(a));
+                out.members.insert(normalize_purl(b));
+            }
+        }
+    }
+    out
 }
 
 /// The reading whose manifest a file's import resolves to: the deepest one containing it.
@@ -879,6 +904,20 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             ));
         }
         let present: Vec<&String> = present.into_iter().filter(|c| !parallel.contains(c)).collect();
+        // Copies of the technology installed side by side: one manifest installs two of its packages, at least one through
+        // an npm alias (mui: `typescript: npm:@typescript/typescript6@6.0.2` beside `@typescript/native:
+        // npm:typescript@7.0.2`). Both run there, so a record released for both is read against the newer copy
+        // (`side_by_side`), which the repository already runs.
+        let side = side_by_side(inp.stack, &present);
+        for (dir, a, b) in &side.pairs {
+            let (da, db) = (&inp.stack.deps[*a], &inp.stack.deps[*b]);
+            let (Some(ra), Some(rb)) = (da.readings.iter().find(|r| r.dir == *dir), db.readings.iter().find(|r| r.dir == *dir)) else { continue };
+            let ((new, rn), (old, ro)) = if ra.version >= rb.version { ((da, ra), (db, rb)) } else { ((db, rb), (da, ra)) };
+            out.version_notes.push(format!(
+                "{}: {} ({}) is installed beside {} {} ({}) in {}, through npm aliases; records released for both are read against {}, which the repository already runs, not as a bump to it.",
+                new.name, rn.version, rn.source, old.name, ro.version, ro.source, place(dir), rn.version
+            ));
+        }
         // Packages that declare this technology: a file's role is judged inside the deepest one containing it.
         let owners: Vec<&str> = inp.stack.packages.iter().filter(|p| p.declared.iter().any(|d| comps.contains(&normalize_purl(d)))).map(|p| p.dir.as_str()).collect();
         let reach = reaching(&inp.stack.packages, &dependents, comps);
@@ -915,6 +954,9 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                         .filter(|p| all.file(p) == Some(true) && !manifest_file(p))
                         .cloned()
                         .collect();
+                    // A compiler or build tool is used where its config files are, not only where its API is imported
+                    // (mikro-orm: the root compiles with typescript 7.0.2 through its tsconfigs; only docs/ imports it).
+                    v.extend(inp.repo.paths.iter().filter(|p| !manifest_file(p) && all.file(p).is_some() && all.runs_from(p)).cloned());
                     v.sort();
                     v.dedup();
                     v
@@ -1097,7 +1139,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             if let Some(m) = ch.moved {
                 out.versions.insert(normalize_purl(c), h.version.clone());
                 out.version_notes.push(format!(
-                    "{}: the reviews use {} in {} ({}), where the code that imports it is; no file importing it runs {} ({} in {}).",
+                    "{}: the reviews use {} in {} ({}), where the code that imports it or runs it from its config files is; no such file runs {} ({} in {}).",
                     d.name, h.version, place(&h.dir), h.source, m.version, m.source, place(&m.dir)
                 ));
             }
@@ -1199,6 +1241,14 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             // none of them that one, numbers the upstream repository's releases (a monorepo tag `v100.0.0`), not the
             // packages: MetaMask's `@metamask/account-api` 2.1.0 and `keyring-utils` 5.0.0 are not on "100.0.0". Their
             // versions cannot be placed against what is installed.
+            // Released for several copies installed side by side: read against the newest of them (`side_by_side`).
+            let copies: BTreeSet<String> = candidates.iter().map(|x| normalize_purl(&x.component)).filter(|c| side.members.contains(c)).collect();
+            if copies.len() > 1
+                && let Some(newest_copy) = copies.iter().max_by_key(|c| version_of(c))
+            {
+                let keep = newest_copy.clone();
+                candidates.retain(|x| normalize_purl(&x.component) == keep);
+            }
             if repository_numbered(&candidates, |c| version_of(c)) {
                 out.opps.push(blank(rec, candidates[0].clone(), Route::VersionUnknown));
                 continue;
@@ -2448,6 +2498,79 @@ mod tests {
                 json!({"change_type":"removal","breaking":true,"terms":[["z.properties",0]]}),
             )],
         )
+    }
+
+    #[test]
+    fn a_tool_run_from_its_config_files_keeps_the_headline_where_they_are() {
+        // mikro-orm: the root compiles everything with typescript 7.0.2 through its tsconfigs; docs pins 6.0.3 and holds
+        // the only `require('typescript')`. The reviews stay on 7.0.2 and the docs code is the one left out.
+        let c = catalog(
+            "typescript",
+            0,
+            vec![with(
+                rec("typescript:baseurl", "pkg:npm/typescript", "7.0.2"),
+                json!({"change_type":"removal","breaking":true,"terms":[["baseUrl",0],["tsconfig.json",0]]}),
+            )],
+        );
+        let mut s = stack(&[], None);
+        let mut d = crate::stack::Dep::new("typescript", true);
+        d.read(".", parse_version("7.0.2"), "yarn.lock".into());
+        d.read("docs", parse_version("6.0.3"), "docs/yarn.lock".into());
+        s.deps.insert(crate::util::npm_purl("typescript"), d);
+        s.settle();
+        let r = repo(&[
+            ("packages/core/tsconfig.json", r#"{"compilerOptions": {"strict": true}}"#),
+            ("docs/plugins/types/index.js", "const ts = require('typescript'); module.exports = { baseUrl: ts.version }"),
+        ]);
+        let l = Ledger::default();
+        let out = run_with(&c, &s, &r, &l);
+        assert_eq!(out.headline["pkg:npm/typescript"], (".".to_string(), "yarn.lock".to_string()));
+        let o = out.opps.iter().find(|o| o.id() == "typescript:baseurl").unwrap();
+        assert_eq!(o.installed.to_string(), "7.0.2");
+        assert_eq!(o.files, vec!["packages/core/tsconfig.json".to_string()], "docs runs 6.0.3");
+        assert!(!out.version_notes.iter().any(|n| n.contains("the reviews use 6.0.3")), "{:?}", out.version_notes);
+        assert!(out.version_notes.iter().any(|n| n.contains("under docs (6.0.3) runs another release line than the reviews' 7.0.2")), "{:?}", out.version_notes);
+    }
+
+    #[test]
+    fn copies_installed_side_by_side_read_a_record_against_the_newer() {
+        // mui: the root installs `typescript: npm:@typescript/typescript6@6.0.2` and `@typescript/native:
+        // npm:typescript@7.0.2`; packages-internal declares the 6.x package by its own name. A TS7 record released for
+        // both packages is no pending bump: the root already runs 7.0.2.
+        let both = |id: &str, v: &str| {
+            with(
+                rec(id, "pkg:npm/typescript", v),
+                json!({"change_type":"removal","breaking":true,"releases":[
+                    {"component":"pkg:npm/@typescript/typescript6","version":v,"date":"2026-01-01","line":v.split('.').next().unwrap()},
+                    {"component":"pkg:npm/typescript","version":v,"date":"2026-01-01","line":v.split('.').next().unwrap()}]}),
+            )
+        };
+        let c = catalog("typescript", 0, vec![both("typescript:seven", "7.0.2")]);
+        let mut s = stack(&[], None);
+        let mut ts = crate::stack::Dep::new("typescript", true);
+        ts.aliases = ["@typescript/native".to_string()].into();
+        ts.alias_dirs = [".".to_string()].into();
+        ts.unaliased = true;
+        ts.read(".", parse_version("7.0.2"), "pnpm-lock.yaml".into());
+        let mut six = crate::stack::Dep::new("@typescript/typescript6", true);
+        six.aliases = ["typescript".to_string()].into();
+        six.alias_dirs = [".".to_string()].into();
+        six.unaliased = true;
+        six.read(".", parse_version("6.0.2"), "pnpm-lock.yaml".into());
+        six.read("packages-internal/scripts", parse_version("6.0.2"), "pnpm-lock.yaml".into());
+        s.deps.insert(crate::util::npm_purl("typescript"), ts);
+        s.deps.insert(crate::util::npm_purl("@typescript/typescript6"), six);
+        s.settle();
+        let (r, l) = (repo(&[]), Ledger::default());
+        let out = run_with(&c, &s, &r, &l);
+        let o = out.opps.iter().find(|o| o.id() == "typescript:seven").unwrap();
+        assert_eq!(o.installed.to_string(), "7.0.2");
+        assert!(out.upgrade.is_empty(), "no TS7 obligation for a repository on 7.0.2");
+        assert!(
+            out.version_notes.iter().any(|n| n.starts_with("typescript: 7.0.2 (pnpm-lock.yaml) is installed beside @typescript/typescript6 6.0.2 (pnpm-lock.yaml) in the root")),
+            "{:?}",
+            out.version_notes
+        );
     }
 
     #[test]

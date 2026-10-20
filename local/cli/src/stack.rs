@@ -89,6 +89,8 @@ pub struct Dep {
     pub aliases: BTreeSet<String>,
     /// Some manifest declares it under its own name.
     pub unaliased: bool,
+    /// The manifests (directories) that install it through an npm alias (`@typescript/native: npm:typescript@7.0.2`).
+    pub alias_dirs: BTreeSet<String>,
 }
 
 /// One manifest's version of a dependency.
@@ -134,7 +136,7 @@ impl Dep {
     }
 
     pub fn new(name: &str, public_candidate: bool) -> Dep {
-        Dep { name: name.to_string(), public_candidate, version: None, source: String::new(), readings: vec![], pins: vec![], seen: Seen::Unknown, aliases: BTreeSet::new(), unaliased: false }
+        Dep { name: name.to_string(), public_candidate, version: None, source: String::new(), readings: vec![], pins: vec![], seen: Seen::Unknown, aliases: BTreeSet::new(), unaliased: false, alias_dirs: BTreeSet::new() }
     }
 
     /// One manifest's version (`None` when it cannot be read: a tag, a workspace link). The headline is set by
@@ -622,6 +624,7 @@ pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
                     entry.unaliased = true;
                 } else {
                     entry.aliases.insert(name.clone());
+                    entry.alias_dirs.insert(rel.clone());
                 }
                 if let Some((_, l)) = &lock
                     && let Some(seen) = l.seen.get(name).or_else(|| l.seen.get(public_name))
@@ -1286,6 +1289,11 @@ pub(crate) fn clean_pnpm_version(v: &str) -> Option<Version> {
     // The peer suffix first: it can name scoped packages (`16.4.1(@babel/core@7.29.7)`), whose `/` is not the
     // old format's.
     let v = v.split('(').next().unwrap_or(v); // `16.0.3(react@19.0.0)`
+    // An npm alias's entry names the package it installs (`typescript@7.0.2`, `'@typescript/typescript6@6.0.2'`).
+    let v = match v.starts_with(|c: char| c.is_ascii_alphabetic() || c == '@') {
+        true => v.get(1..).and_then(|r| r.find('@')).map_or(v, |i| &v[i + 2..]),
+        false => v,
+    };
     let v = v.rsplit('/').next().unwrap_or(v); // `/next/13.0.0` (old format)
     let v = v.split('_').next().unwrap_or(v); // `13.0.0_react@18.2.0` (lockfile v5)
     parse_version(v)
@@ -1939,6 +1947,23 @@ mod tests {
         assert_eq!(six.version, Some(Version::new(6, 0, 2)), "{six:?}");
         assert_eq!(six.aliases, ["typescript".to_string(), "typescript6".to_string()].into());
         assert!(six.parallel_copy());
+    }
+
+    #[test]
+    fn a_pnpm_alias_entry_is_read_from_the_lockfile() {
+        // mui: `@typescript/native: npm:typescript@7.0.2` beside `typescript: npm:@typescript/typescript6@6.0.2`; the
+        // importer's `version: typescript@7.0.2` is the locked version, not a floor of an unlocked range.
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "package.json", r#"{"name":"root","private":true,"devDependencies":{"@typescript/native":"npm:typescript@7.0.2","typescript":"npm:@typescript/typescript6@6.0.2"}}"#);
+        write(d.path(), "pnpm-lock.yaml", "lockfileVersion: '9.0'\n\nimporters:\n\n  .:\n    devDependencies:\n      '@typescript/native':\n        specifier: npm:typescript@7.0.2\n        version: typescript@7.0.2\n      typescript:\n        specifier: npm:@typescript/typescript6@6.0.2\n        version: '@typescript/typescript6@6.0.2'\n");
+        let s = detect(d.path()).unwrap();
+        let ts = &s.deps["pkg:npm/typescript"];
+        assert_eq!((ts.version.clone(), ts.source.as_str()), (Some(Version::new(7, 0, 2)), "pnpm-lock.yaml"), "{ts:?}");
+        assert_eq!(ts.alias_dirs, [".".to_string()].into());
+        let six = &s.deps[&npm_purl("@typescript/typescript6")];
+        assert_eq!((six.version.clone(), six.source.as_str()), (Some(Version::new(6, 0, 2)), "pnpm-lock.yaml"), "{six:?}");
+        assert_eq!(clean_pnpm_version("13.0.0_react@18.2.0"), parse_version("13.0.0"));
+        assert_eq!(clean_pnpm_version("/next/13.0.0"), parse_version("13.0.0"));
     }
 
     #[test]
