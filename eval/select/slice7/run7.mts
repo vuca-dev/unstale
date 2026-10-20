@@ -153,25 +153,29 @@ if (ARM === "shared-all") {
   }
   const rev = REV as (typeof R.REVISIONS)[number];
   if (!R.REVISIONS.includes(rev)) throw new Error(`unknown revision ${rev}`);
-  const questions = R.relevanceQuestions(rev), T = R.THRESHOLD[rev];
+  const T = R.THRESHOLD[rev];
+  const ask = (state: Record<string, unknown>, q: Parameters<typeof cls.classify>[1]) => cls.classify(state, q);
+  // r2's per-guide judgments, asked once per unit (on the unit's first package's records: the shared extraction gives
+  // every package the same records).
+  const unitMemo = new Map<string, Promise<Set<string>>>();
+  const backendParts = (p: Pair) => () => {
+    if (!unitMemo.has(p.unit)) {
+      const first = pairs.find((q) => q.unit === p.unit)!;
+      const recs = src.get(`${first.unit}\t${first.tech.id}`)!.incoming;
+      unitMemo.set(p.unit, withUsagePhase("other", `${p.unit}|*`, () => R.unitParts(ask, first.note.url, first.note.version, first.note.notes, recs, pool)));
+    }
+    return unitMemo.get(p.unit)!;
+  };
   await pool(pairs, Number(a.concurrency), async (p) => {
     if (done.has(`${p.unit}\t${p.tech.id}`)) return;
     const row = src.get(`${p.unit}\t${p.tech.id}`);
     if (!row) throw new Error(`no shared-all row for ${p.unit} | ${p.tech.id}`);
     const res = await withUsagePhase("other", `${p.unit}|${p.tech.id}`, () =>
-      pool(row.incoming, 4, async (inc) => {
-        const state = R.relevanceState(p.tech, p.note.url, p.note.version, R.headingPath(p.note.notes, inc), inc);
-        try {
-          const c = await cls.classify(state, questions);
-          return { inc, p: c.answers.relevant!.probabilities.yes!, classifier: c.classifier };
-        } catch (e) {
-          return { inc, p: NaN, err: (e as Error).message };
-        }
-      }),
+      R.scorePair(rev, ask, p.tech, p.note.url, p.note.version, p.note.notes, row.incoming, backendParts(p), pool),
     );
     const kept = res.filter((x) => x.p >= T).map((x) => x.inc);
     const failed = row.failed + (res.some((x) => Number.isNaN(x.p)) ? 1 : 0);
-    appendFileSync(join(ARM_DIR, "probs.jsonl"), JSON.stringify({ unit: p.unit, tech: p.tech.id, probs: res.map((x) => [x.inc.key.split("#")[1], x.p, x.classifier ?? "error"]) }) + "\n");
+    appendFileSync(join(ARM_DIR, "probs.jsonl"), JSON.stringify({ unit: p.unit, tech: p.tech.id, probs: res.map((x) => [x.inc.key.split("#")[1], x.p, x.err ?? "ok"]) }) + "\n");
     appendFileSync(outFile, JSON.stringify({ unit: p.unit, tech: p.tech.id, name: p.tech.name, failed, incoming: kept }) + "\n");
     console.log(`${p.unit} | ${p.tech.id}: kept ${kept.length} of ${row.incoming.length}${failed ? `, failed` : ""}`);
   });
