@@ -44,12 +44,31 @@ describe("contentFree", () => {
     expect(contentFree("- Updated dependencies [abc]\n  - @x/y@1.0.0\n- Fix `parse` on empty input")).toBe(false);
     expect(contentFree("Please refer to [CHANGELOG.md](https://example.test) for details.")).toBe(false);
     expect(contentFree("Please see this [changelog](https://example.test/cve) for more information about this security patch.")).toBe(false);
-    expect(contentFree("- chore(deps): bump webpack-sources to v3")).toBe(false);
     expect(contentFree("### Bug Fixes\n\n* fix CITGM [#1154](https://example.test/1154)")).toBe(false);
     expect(contentFree("## 2.0.0\n- 移除旧接口")).toBe(false);
     expect(contentFree("## Node.js 20 is now required\n\n**Full Changelog**: https://example.test/compare/v1...v2")).toBe(false);
     expect(contentFree("- Updated dependencies can now be configured per client")).toBe(false);
     expect(contentFree("* Updated dependencies, notably `tough-cookie`, which no longer prints a deprecation warning.")).toBe(false);
+  });
+  test("release boilerplate only: version bumps, section labels, credits, dependency moves (slice 8)", () => {
+    expect(contentFree("# [3.981.0](https://github.com/o/r/compare/v3.980.0...v3.981.0) (2026-02-02)\n\n**Note:** Version bump only for package @x/y")).toBe(true);
+    expect(contentFree("- chore(deps): bump webpack-sources to v3")).toBe(true);
+    expect(contentFree("### Bug Fixes\n\n* **deps:** update dependency @x/y to v2.1.0 ([#12](https://example.test/12)) ([abc1234](https://example.test/c))")).toBe(true);
+    expect(contentFree("## What's Changed\n* build(deps-dev): bump sass from 1.2.3 to 1.3.0 by @dependabot[bot] in https://example.test/pull/9\n\n**Full Changelog**: https://example.test/compare/v1...v2")).toBe(true);
+    expect(contentFree("#### 🐛 Bug Fix\n\n#### Authors: 1\n\n- Jane Doe ([@jane](https://example.test/jane))")).toBe(true);
+    expect(contentFree("### ❤️ Thank You\n\n- James Henry @JamesHenry")).toBe(true);
+    expect(contentFree("## @x/core\n\n- Updated dependencies: `@x/util@1.2.0`\n\n<!-- generated -->")).toBe(true);
+    expect(contentFree("Release v1.2.3")).toBe(true);
+    expect(contentFree("### Patch Changes\n\nNo changes in this release.")).toBe(true);
+  });
+  test("pointers, chores, deps-scoped items with more to say, and credits outside a credits section are content", () => {
+    expect(contentFree("Please see this [changelog](https://example.test/cve) for more information about this security patch.")).toBe(false);
+    expect(contentFree("### Patch Changes\n\n-   f607a12: chore(google): drop support for Imagen models following API shutdown")).toBe(false);
+    expect(contentFree("### Features\n\n* **deps:** update dependencies and require Node.js 22.19+ ([b867143](https://example.test/c))")).toBe(false);
+    expect(contentFree("### Bug Fixes\n\n* **deps:** remove typescript peer dependencies ([#6180](https://example.test/6180))")).toBe(false);
+    expect(contentFree("### Bug Fixes\n\n- bump minimum supported Node.js to 20")).toBe(false);
+    expect(contentFree("**Note:** Version bump only for package @x/y\n\n### Breaking Changes\n\n- drop support for eslint v8")).toBe(false);
+    expect(contentFree("```bash\nnpm i @x/y@4\n```")).toBe(false);
   });
   test("a content-free note makes no call and counts as cached", async () => {
     const f = vi.fn(async () => reply("[]"));

@@ -430,9 +430,14 @@ const STRUCTURAL_HEADING = /^(?:(?:patch|minor|major) changes|what'?s changed|ch
 
 /** Notes with nothing a change record could come from, so no model call is made: once structural headings, links,
  * bare URLs, "Full Changelog" and "View changes on GitHub" lines, "No (significant) changes" and a changesets "Updated
- * dependencies" list (its header and `pkg@version` lines) are set aside, no letter or digit is left. On the production
- * store (17 October 2026) 224 of 4,814 cached extract answers were for such notes, and every one was `[]`. */
+ * dependencies" list (its header and `pkg@version` lines) are set aside, no letter or digit is left (on the production
+ * store, 17 October 2026, 224 of 4,814 cached extract answers were for such notes, and every one was `[]`); or every
+ * line is release boilerplate (`releaseBoilerplate`). */
 export function contentFree(notes: string): boolean {
+  return noText(notes) || releaseBoilerplate(notes);
+}
+
+function noText(notes: string): boolean {
   let deps = false;
   for (const raw of notes.split("\n")) {
     const line = raw.trim();
@@ -455,6 +460,87 @@ export function contentFree(notes: string): boolean {
     if (/^[#\s]*View changes on GitHub\s*$/i.test(text)) continue;
     if (/^[*_\s]*No (significant )?changes[.!]?[*_\s]*$/i.test(text)) continue;
     if (/[\p{L}\p{N}]/u.test(text)) return false;
+  }
+  return true;
+}
+
+/** Section labels changelog generators write, once emoji, `:shortcodes:`, counts and versions are removed. */
+const SECTION_LABEL = /^(?:(?:patch|minor|major) changes|what'?s changed|changelog|release notes|bug ?fix(?:es)?|fix(?:es)?|features?|new features|enhancements?|improvements?|chores?|miscellaneous(?: chores)?|misc|other changes|others?|internal|maintenance|refactor(?:ing)?|documentation|docs|dependencies|dependency updates|deps|build(?: system)?|ci|tests?|performance(?: improvements)?|thank you|thanks|authors?|committers?|contributors|new contributors|credits|install(?:ation)?|reverts?)$/i;
+/** Section labels whose list items are people, not changes. */
+const CREDITS_LABEL = /^(?:thank you|thanks|authors?|committers?|contributors|new contributors|credits)$/i;
+const VERSION_TOKEN = /@?[\w./-]*@\d[\w.+-]*|\bv?\d[\w.+-]*/g;
+const unlink = (s: string): string => s.replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1");
+const sectionLabel = (heading: string): string =>
+  unlink(heading)
+    .replace(/:[a-z_+-]+:/g, " ")
+    .replace(VERSION_TOKEN, " ")
+    .replace(/[^\p{L}' ]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+/** Notes whose every line is release boilerplate, the shapes changelog generators write around no change of the
+ * technology itself: section labels (Bug Fixes, Patch Changes, Thank You, …) and the credits under them; "version bump
+ * only" lines; dependency-update lists; items that only move a dependency to a version ("bump x from 1 to 2", "update
+ * dependency x to v3"); "Release v1.2.3", "Initial release", "No changes in this release"; a heading that is one token
+ * (a package name or version); fences, HTML comments, anchors and table rules. Any other line is content, including
+ * pointers elsewhere ("see the changelog for details") and `chore:` items, which do carry changes. Slice 8
+ * (eval/select/slice8): on the production state of 20 October 2026 these chunks were answered `[]` on every one, a
+ * quarter of the step-A spend on `[]` answers, with no record lost on held-out technologies or gold-labelled notes. */
+export function releaseBoilerplate(notes: string): boolean {
+  let credits = false;
+  let fence = false;
+  for (const raw of notes.split("\n")) {
+    const line = raw.trim();
+    if (!line) continue;
+    const text = unlink(line).replace(/https?:\/\/\S+/g, "").replace(/&nbsp;/g, "").trim();
+    // Fence lines carry nothing; the lines between them are judged like any other.
+    if (/^(`{3,}|~{3,})[\w-]*$/.test(line)) {
+      fence = !fence;
+      continue;
+    }
+    const bold = /^\*\*([^*]+)\*\*:?$/.exec(text);
+    if (bold && SECTION_LABEL.test(sectionLabel(bold[1]!))) {
+      credits = CREDITS_LABEL.test(sectionLabel(bold[1]!));
+      continue;
+    }
+    const heading = /^#{1,6}\s+(.*)$/.exec(text);
+    if (heading && !fence) {
+      const label = sectionLabel(heading[1]!);
+      if (!label || SECTION_LABEL.test(label)) {
+        credits = CREDITS_LABEL.test(label);
+        continue;
+      }
+      if (!/\s/.test(unlink(heading[1]!).trim())) continue;
+      return false;
+    }
+    if (credits && /^[-*+]\s/.test(line)) continue;
+    credits = false;
+    if (!/[\p{L}\p{N}]/u.test(text)) continue;
+    if (/^\**\s*Full Changelog\**:?\s*\S*\s*$/i.test(text)) continue;
+    if (/^[*_\s]*No (significant )?changes[.!]?[*_\s]*$/i.test(text)) continue;
+    if (/\bversion bump only\b/i.test(text)) continue;
+    if (/^<!--.*-->$/.test(line) || /^<a\s+(name|id)=[^>]*>\s*<\/a>$/i.test(line) || /^[-|:\s]+$/.test(line)) continue;
+    // The changesets header with its hashes or PR numbers, or with the packages inline; never a sentence.
+    if (/^[-*+]?\s*(?:[0-9a-f]{7,40}:?\s*)?Updated dependencies(?:[\s.,:;()#`\\[\]0-9a-f]*|:?\s*(?:`?@?[\w./-]+@[\w.^~+-]+`?,?\s*)+)$/i.test(text)) continue;
+    if (/^[-*+]\s*`?@?[\w./-]+@[\w.^~+-]+`?,?\s*$/.test(text)) continue;
+    if (/^[-*+]?\s*The following workspace dependencies were updated\s*$/i.test(text)) continue;
+    if (/^[-*+]?\s*(?:dev|peer)?[Dd]ependencies\s*$/.test(text)) continue;
+    // The item itself: no list marker, commit hash, changesets "#123 `abc1234` Thanks @user! -" lead, or trailing
+    // "by @user in <url>", "(#123)", "(abc1234)" references.
+    const item = text
+      .replace(/^[-*+]\s*/, "")
+      .replace(/^(?:#\d+\s+)?`?[0-9a-f]{7,40}`?:?\s*(?:Thanks\s+@[\w-]+!?\s*-\s*)?/, "")
+      .replace(/\s+by\s+@[\w[\]-]+(?:\s+in\s*#?\d*)?\s*$/, "")
+      .replace(/(?:\s*\((?:#\d+|[0-9a-f]{7,40})\))+\s*$/g, "")
+      .replace(/\s*#\d+\s*$/, "")
+      .trim();
+    // A dependency moved to a version and nothing else said, optionally under a deps scope ("**deps:**",
+    // "chore(deps):", "build(deps-dev):").
+    const bare = item.replace(/^(?:\*\*)?(?:(?:chore|build|fix)\()?deps(?:-dev)?\)?:?(?:\*\*)?:?\s*/i, "").replace(/^(?:chore|build)(?:\([^)]*\))?:\s*/i, "");
+    if (/^bump(?:ed|s)?\s+`?[@\w./-]+`?\s+(?:from\s+`?v?\d[\w.+-]*`?\s+)?to\s+`?v?\d[\w.+-]*`?$/i.test(bare)) continue;
+    if (/^update(?:d|s)?\s+(?:dependency\s+)?`?[@\w./-]+`?\s+(?:from\s+`?v?\d[\w.+-]*`?\s+)?to\s+`?v?\d[\w.+-]*`?$/i.test(bare)) continue;
+    if (/^(?:(?:release|version|v)\s*:?\s*v?\d[\w.+-]*|(?:initial|first) release|no updates|nothing to (?:see|report)|no (?:significant |notable |user[- ]facing )?changes(?: in this (?:release|version))?)[.!]?$/i.test(item)) continue;
+    return false;
   }
   return true;
 }
