@@ -112,3 +112,31 @@ merged here.
 ## Budget
 
 Jev ≤ $1 for the slice (`run9.mts` refuses past $0.90, from `out/slice9/usage.jsonl`); no gateway spend.
+
+## Addendum before the held-out look: dev results and the frozen arm
+
+Written 20 October 2026 after the dev runs, before any held-out run (B, Br or arm) on H1 or H2. One dev revision was
+used (g2i, g4i); the other two were not.
+
+| Arm (dev, 411 units) | Jev input / record | vs B | Breaking R / P | Benefit-vs-none R / P | Flip vs B: change_type / surface / breaking / correctness (replicate) | Failed dev conditions |
+|---|---|---|---|---|---|---|
+| B | 2,098 | — | 85.3 / 96.1 | 79.5 / 91.7 | — (2.9 / 2.2 / 0.2 / 1.2) | — |
+| g2 | 1,692 | −19.3% | 84.6 / 94.5 (P fails rule 1) | 85.5 / 91.0 | 15.6 / 15.1 / 3.4 / 4.9 | 5 |
+| **g4** | **1,636** | **−22.0%** | 90.9 / 95.6 | 85.5 / 92.2 | 13.1 / 15.8 / 3.9 / 5.6 | **4** |
+| g2i (rev. 1) | 1,894 | −9.7% | 86.0 / 96.1 | 85.5 / 91.0 | 10.0 / 10.9 / 3.4 / 4.6 | 4 |
+| g4i (rev. 1) | 1,998 | −4.8% | 90.2 / 95.6 | 83.1 / 92.0 | 8.3 / 11.4 / 3.9 / 4.9 | 4 |
+
+- Every arm holds or improves the dev reference metrics; every arm fails the flip-rate condition (Jev answers today's
+  request almost identically twice, so the replicate's flip rates are 0–3%).
+- `diag.mts` (64 dev units, the {change_type, surface} request only): with empty criteria, change_type drifts from
+  today's answers by the same amount with one record per request as with four (`tooling` is the type most often
+  dropped), so the drift comes from the descriptions leaving the criteria, not from grouping. Pointer criteria ("As
+  rubric.change_type.types.x describes.") did not help. Revision 1 asked change_type and surface with today's described
+  options: drift roughly halves and most of the saving goes.
+- Dev has no change_type or surface reference, so whether the drift is a loss is for the held-out look to say
+  (change_type agreement, removal/deprecation recall and precision, actionable recall and precision are in the rule).
+
+**Frozen for the held-out look, by the selection rule above (no arm passes dev; g4, g2i and g4i tie at 4 failed
+conditions; fewest tokens): g4** (`grouped.ts` `VARIANTS.g4`: N = 4, empty criteria, field groups {change_type,
+surface}, {breaking, security}, {correctness, performance}, {cost, maintainability}). Held-out runs: B, Br and g4 on
+H1 and H2, then `score9.py heldout g4`, once.

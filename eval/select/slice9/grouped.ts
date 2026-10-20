@@ -16,6 +16,12 @@ export interface Variant {
   n: number;
   /** Fields of each request, in order; their sizes times n must be at most 8. Default: FIELDS cut into n equal runs. */
   fieldGroups?: string[][];
+  /** Fields asked per record with today's full question text (instructions and described options), not in the rubric. */
+  inline?: string[];
+  /** change_type / surface instructions that point at the descriptions ("…whose description in rubric.… fits best"). */
+  pointer?: boolean;
+  /** change_type / surface criteria: empty (default) or a pointer to the option's rubric entry. */
+  criteria?: "empty" | "ref";
 }
 
 export function fieldGroups(v: Variant): string[][] {
@@ -25,7 +31,8 @@ export function fieldGroups(v: Variant): string[][] {
 }
 
 /** The rule text of the given fields, stated once: the pipeline's own wording (labels.ts / vocab.ts). */
-export function rubric(fields: string[]): Record<string, unknown> {
+export function rubric(fields: string[], v: Variant = { n: 1 }): Record<string, unknown> {
+  fields = fields.filter((f) => !v.inline?.includes(f));
   const r: Record<string, unknown> = {};
   if (fields.includes("change_type")) r.change_type = { question: "What kind of change is this? Pick the one type that fits best.", types: { ...CHANGE_TYPES } };
   if (fields.includes("surface"))
@@ -42,14 +49,19 @@ const SHORT: Record<string, (rid: string) => string> = {
   surface: (r) => `Record ${r}: which surface? Use rubric.surface.`,
   breaking: (r) => `Record ${r}: breaking? Use rubric.breaking.`,
 };
-const shortQ = (field: string, rid: string): string =>
-  SHORT[field]?.(rid) ?? `Record ${rid}: a ${field.slice("benefit_".length)} benefit? Use rubric.benefit.`;
+const POINTER: Record<string, (rid: string) => string> = {
+  change_type: (r) => `Record ${r}: which type's description in rubric.change_type.types fits its change best?`,
+  surface: (r) => `Record ${r}: which surface's description in rubric.surface.surfaces fits best?`,
+};
+const shortQ = (field: string, rid: string, v: Variant): string =>
+  (v.pointer ? POINTER[field]?.(rid) : undefined) ?? SHORT[field]?.(rid) ?? `Record ${rid}: a ${field.slice("benefit_".length)} benefit? Use rubric.benefit.`;
 
 /** Option keys of a field; the descriptions are in the rubric, so the criteria are empty (Jev accepts "": each
  * described option costs about 10 Jev tokens more per question). */
-function shortOptions(field: string): Record<string, string> {
-  if (field === "change_type") return Object.fromEntries(Object.keys(CHANGE_TYPES).map((k) => [k, ""]));
-  if (field === "surface") return Object.fromEntries(Object.keys(SURFACES).map((k) => [k, ""]));
+function shortOptions(field: string, v: Variant): Record<string, string> {
+  const crit = (path: string, k: string) => (v.criteria === "ref" ? `As ${path}.${k} describes.` : "");
+  if (field === "change_type") return Object.fromEntries(Object.keys(CHANGE_TYPES).map((k) => [k, crit("rubric.change_type.types", k)]));
+  if (field === "surface") return Object.fromEntries(Object.keys(SURFACES).map((k) => [k, crit("rubric.surface.surfaces", k)]));
   return { yes: "Yes.", no: "No." };
 }
 
@@ -76,11 +88,14 @@ export function requests(states: Record<string, unknown>[], v: Variant): Request
     for (let i = 0; i < states.length; i++)
       for (const f of fields) {
         const id = `r${i + 1}_${f}`;
-        questions[id] = { instructions: shortQ(f, `r${i + 1}`), options: shortOptions(f) };
+        const full = labelQuestions()[f]!;
+        questions[id] = v.inline?.includes(f)
+          ? { instructions: `Record r${i + 1}: ${full.instructions}`, options: full.options }
+          : { instructions: shortQ(f, `r${i + 1}`, v), options: shortOptions(f, v) };
         map[id] = [i, f];
       }
     if (Object.keys(questions).length > 8) throw new Error("more than 8 questions");
-    return { state: { technology: tech, rubric: rubric(fields), records }, questions, map };
+    return { state: { technology: tech, rubric: rubric(fields, v), records }, questions, map };
   });
 }
 
@@ -115,4 +130,9 @@ export function groupUnits<T>(units: T[], tech: (u: T) => string, n: number): T[
 export const VARIANTS: Record<string, Variant> = {
   g2: { n: 2 },
   g4: { n: 4 },
+  // Dev revision 1 (diag.mts: with empty criteria, change_type and surface drift from today's answers even for one
+  // record per request, so the drift is the descriptions' placement, not grouping): change_type and surface asked with
+  // today's described options; only breaking's and the benefits' rule text is shared.
+  g2i: { n: 2, inline: ["change_type", "surface"] },
+  g4i: { n: 4, inline: ["change_type", "surface"] },
 };
