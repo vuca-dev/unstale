@@ -575,6 +575,22 @@ fn repository_numbered(candidates: &[&Release], version_of: impl Fn(&str) -> Opt
     lines.len() >= 2 && !lines.contains(&line_of(&shared))
 }
 
+/// Keep, of a record's `candidates`, the releases on the line their package is installed on, dropping one that shares
+/// its version with such a release while its own package is installed on another line: the version numbers the release
+/// line of the packages installed on it, not theirs. A record whose candidates all sit off their packages' lines (a
+/// genuine upgrade, or a repository-numbered tag) is left as it is.
+fn own_line(candidates: &mut Vec<&Release>, version_of: impl Fn(&str) -> Option<Version>) {
+    if candidates.len() < 2 {
+        return;
+    }
+    let on_line = |r: &Release| {
+        let (Some(v), Some(i)) = (parse_version(&r.version), version_of(&normalize_purl(&r.component))) else { return false };
+        line_of(&v) == line_of(&i)
+    };
+    let on: BTreeSet<String> = candidates.iter().filter(|r| on_line(r)).map(|r| r.version.clone()).collect();
+    candidates.retain(|r| on_line(r) || !on.contains(&r.version));
+}
+
 /// Whether `v` is on a release line older than `installed`'s (major, or minor on 0.x).
 fn older_line(v: &Version, installed: &Version) -> bool {
     v.major < installed.major || (v.major == 0 && installed.major == 0 && v.minor < installed.minor)
@@ -1203,6 +1219,24 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                 }
             }
         }
+        // A package installed on another release line than the newest release, beside a package of the technology
+        // installed on that release's line, is on its own version line (`own_line`): its target is the newest release
+        // on its own line, the installed version when none is known.
+        for c in &present {
+            let (Some(iv), Some(n)) = (version_of(c), newest.get(*c).cloned()) else { continue };
+            if line_of(&iv) == line_of(&n) || !present.iter().any(|o| o != c && version_of(o).is_some_and(|v| line_of(&v) == line_of(&n))) {
+                continue;
+            }
+            let own = td
+                .records
+                .iter()
+                .flat_map(|r| r.r.releases.iter())
+                .filter(|x| normalize_purl(&x.component) == **c)
+                .filter_map(|x| parse_version(&x.version))
+                .filter(|v| line_of(v) == line_of(&iv))
+                .max();
+            newest.insert((*c).clone(), own.map_or(iv.clone(), |v| v.max(iv)));
+        }
         // Term weights: the central sample when there is one, else rarity among the catalog's own terms.
         let n_records = td.records.len() as f64;
         let mut df: BTreeMap<String, f64> = BTreeMap::new();
@@ -1276,6 +1310,10 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                 let keep = newest_copy.clone();
                 candidates.retain(|x| normalize_purl(&x.component) == keep);
             }
+            // A release central gave to every package of the repository while they are installed on separate release
+            // lines (opentelemetry-js: api 1.9.1, semantic-conventions 1.43.0, the SDK 2.12.0) is the release of the
+            // packages on its line: an SDK 2.10.0 change is not one semantic-conventions 1.43.0 lacks (`own_line`).
+            own_line(&mut candidates, |c| version_of(c));
             if repository_numbered(&candidates, |c| version_of(c)) {
                 out.opps.push(blank(rec, candidates[0].clone(), Route::VersionUnknown));
                 continue;
@@ -2753,6 +2791,34 @@ mod tests {
         let out = run_with(&c, &s, &r, &l);
         assert!(out.version_notes.iter().all(|n| !n.starts_with("zod: the reviews use")), "{:?}", out.version_notes);
         assert_eq!(out.headline["pkg:npm/zod"], (".".to_string(), "package-lock.json".to_string()));
+    }
+
+    #[test]
+    fn a_release_shared_by_packages_on_separate_lines_is_read_against_its_own_line() {
+        // opentelemetry-js: central gives an SDK 2.10.0 release to every package; semantic-conventions is on 1.x and
+        // the SDK on 2.12.0, so the change is already installed and semantic-conventions is not bumped to 2.11.0.
+        let rels = |v: &str| json!({"releases": [
+            {"component": crate::util::npm_purl("@o/semconv"), "version": v, "date": "2026-04-01", "line": "2"},
+            {"component": crate::util::npm_purl("@o/sdk"), "version": v, "date": "2026-04-01", "line": "2"}]});
+        let ob = |id: &str, v: &str| with(with(rec(id, "pkg:npm/%40o/semconv", v), json!({"change_type": "behavior_change", "breaking": true, "benefit": ["correctness"]})), rels(v));
+        let mut c = catalog("otel", 0, vec![ob("otel:flush", "2.10.0"), ob("otel:newest", "2.11.0")]);
+        c.techs.get_mut("otel").unwrap().index.components = vec![crate::util::npm_purl("@o/semconv"), crate::util::npm_purl("@o/sdk")];
+        let s = stack(&[("@o/semconv", "1.43.0"), ("@o/sdk", "2.12.0")], None);
+        let (r, l) = (repo(&[]), Ledger::default());
+        let out = run_with(&c, &s, &r, &l);
+        for o in out.opps.iter() {
+            assert_ne!(o.route, Route::UpgradeReview, "{}", o.id());
+            assert_eq!(o.component(), crate::util::npm_purl("@o/sdk"), "{}", o.id());
+        }
+        let line = |c: &str, v: &str| Release { component: crate::util::npm_purl(c), version: v.into(), date: String::new(), line: String::new(), no_later_than: None };
+        let (a, b) = (line("@o/semconv", "2.10.0"), line("@o/sdk", "2.10.0"));
+        let installed = |c: &str| if c.contains("semconv") { parse_version("1.43.0") } else { parse_version("2.9.0") };
+        let mut cands = vec![&a, &b];
+        own_line(&mut cands, installed);
+        assert_eq!(cands.len(), 1, "the release is the SDK's");
+        let mut cands = vec![&a, &b];
+        own_line(&mut cands, |_| parse_version("1.0.0"));
+        assert_eq!(cands.len(), 2, "a genuine upgrade of both is left as it is");
     }
 
     #[test]

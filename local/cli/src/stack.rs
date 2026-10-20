@@ -758,6 +758,16 @@ pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
         let fixture_only = !d.readings.is_empty() && d.readings.iter().all(|r| !local(&root.join(&r.dir).join("x")));
         d.public_candidate &= registries.may_name(purl, d.seen) && (!fixture_only || fixture_registries.may_name(purl, d.seen));
     }
+    // Packages a lockfile installs from git, a URL, a path or another registry: not the public package of that name, so
+    // they are not registered for coverage (a git-sourced `uWebSockets.js` is no `pkg:npm/uWebSockets.js`). Said once.
+    let elsewhere: Vec<&str> = deps.values().filter(|d| d.seen == Seen::Elsewhere && !d.readings.is_empty()).map(|d| d.name.as_str()).collect();
+    if !elsewhere.is_empty() {
+        let more = if elsewhere.len() > 5 { format!(" and {} more", elsewhere.len() - 5) } else { String::new() };
+        notes.push(format!(
+            "{}{more}: installed from git, a URL, a path or a registry other than the public one (lockfile), not from the public registry; not covered.",
+            elsewhere.iter().take(5).copied().collect::<Vec<_>>().join(", ")
+        ));
+    }
     let mut st = Stack { packages, deps, node, notes, unreadable, stub_runtimes, spread: 0, standalone, registries, fixture_registries, peers };
     st.settle();
     Ok(st)
@@ -1542,6 +1552,18 @@ pub fn parse_yarn(text: &str) -> Lock {
                 l.saw(&name, Seen::npm_url(u.trim_matches('"')));
             }
         }
+        // Yarn 2+ `resolution: "<name>@<source>"`: a git, URL or path source is not the registry's package of that
+        // name (`uWebSockets.js@https://github.com/uNetworking/uWebSockets.js.git#commit=…`).
+        if let Some(r) = t.strip_prefix("resolution: ").or_else(|| t.strip_prefix("resolution ")) {
+            let r = r.trim_matches('"');
+            let source = r.get(1..).and_then(|x| x.find('@')).map(|i| &r[i + 2..]).unwrap_or("");
+            if source.contains("://") || ["git", "github:", "file:", "link:", "portal:"].iter().any(|p| source.starts_with(p)) {
+                let names: BTreeSet<String> = specs.iter().map(|(n, _)| n.clone()).collect();
+                for name in names {
+                    l.saw(&name, Seen::Elsewhere);
+                }
+            }
+        }
         // yarn v1 `integrity sha512-...` (berry's `checksum` is its own format: no pin, the name check applies).
         if let (Some(i), Some(v)) = (t.strip_prefix("integrity "), &version) {
             let names: BTreeSet<&String> = specs.iter().map(|(n, _)| n).collect();
@@ -2159,6 +2181,14 @@ mod tests {
         assert_eq!(l.version(".", "@prisma/client", "^6.1.0"), Some(Version::new(6, 19, 0)));
         let berry = "__metadata:\n  version: 8\n\n\"next@npm:^16.0.0\":\n  version: 16.1.2\n  resolution: \"next@npm:16.1.2\"\n";
         assert_eq!(parse_yarn(berry).version(".", "next", "^16.0.0"), Some(Version::new(16, 1, 2)));
+    }
+
+    #[test]
+    fn a_yarn_berry_git_resolution_is_not_the_registrys_package() {
+        let berry = "__metadata:\n  version: 8\n\n\"uWebSockets.js@uNetworking/uWebSockets.js#semver:^20.68.0\":\n  version: 20.68.0\n  resolution: \"uWebSockets.js@https://github.com/uNetworking/uWebSockets.js.git#commit=6249877\"\n\n\"next@npm:^16.0.0\":\n  version: 16.1.2\n  resolution: \"next@npm:16.1.2\"\n";
+        let l = parse_yarn(berry);
+        assert_eq!(l.seen.get("uWebSockets.js"), Some(&Seen::Elsewhere));
+        assert_ne!(l.seen.get("next"), Some(&Seen::Elsewhere));
     }
 
     #[test]
