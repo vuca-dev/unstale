@@ -118,7 +118,7 @@ mod tests {
         rows.iter().map(|(v, d, l, s)| IndexRelease { version: v.to_string(), date: d.to_string(), line: l.to_string(), line_start: *s }).collect()
     }
     fn rel(v: &str) -> Release {
-        Release { component: "pkg:npm/next".into(), version: v.into(), date: String::new(), line: v.split('.').next().unwrap().into() }
+        Release { component: "pkg:npm/next".into(), version: v.into(), date: String::new(), line: v.split('.').next().unwrap().into(), no_later_than: None }
     }
 
     /// next-like: 15.0 gets a backport after 15.1 shipped; 15.2 began in the window.

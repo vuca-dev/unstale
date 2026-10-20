@@ -476,6 +476,13 @@
           "description": "The old release line, major (or 0.minor below 1.0): what edges before 16 October 2026 compare and what shards\nare named by. A record may hold several releases on one such line (one per line of the tech index's\n`releases`, which is the line to use).",
           "type": "string"
         },
+        "no_later_than": {
+          "description": "Present when the exact release is not known: the change shipped in a release from `version` up to this one.\nSet for what central reads from a moving page (an upgrade guide served from a `latest` or unversioned URL, first\nread or edited after its major line had later releases): the page's text then may describe any release of the\nline up to the newest one at the time. The edge places such a release only outside that range: an installed or\ntarget version inside it can neither have nor lack the change for certain.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "version": {
           "type": "string"
         }

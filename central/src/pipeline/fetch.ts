@@ -5,9 +5,10 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { centralDir } from "./paths.ts";
 import { SINCE, type Technology } from "./technologies.ts";
-import { compareVersions, isRepoSlug, readJson, sha256, writeAtomic } from "./util.ts";
+import { compareVersions, isRepoSlug, readJson, releaseLine, sha256, writeAtomic } from "./util.ts";
 import { DEFAULT_HTTP, HttpClient } from "../collector/http.ts";
 import { currentGuides, guideFilter } from "../docs/guides.ts";
+import { lineBound } from "../docs/attribute.ts";
 import { githubToken } from "../docs/fetcher.ts";
 import { ecosystemOf } from "./ecosystems.ts";
 import { isStable } from "./lines.ts";
@@ -36,6 +37,9 @@ export interface ReleaseNote {
   /** Extraction-key tag of a note read through its link (`+linked.<first 8 hex of the linked snapshot>`): its records
    * never take the keys of those extracted from the bare pointer before. */
   keyTag?: string;
+  /** Set for a note read from a moving page (an upgrade guide first read, or edited, after its major line moved past
+   * x.0): the change shipped in a release from `version` up to this one (docs/attribute.ts `lineBound`). */
+  noLaterThan?: string;
 }
 
 /** A release as the stored index keeps it: `date` is the GitHub release's day, `published` the registry's. */
@@ -312,7 +316,14 @@ export async function fetchReleases(t: Technology, opts: { refresh?: boolean; of
   // A document several releases link (TypeScript 6.0.2 and 6.0.3 both link the 6.0 announcement) goes with the first
   // of them only: the later ones are their own bodies, so it is never extracted twice.
   const taken = new Set<string>();
-  const notes = index.releases.map((r) => {
+  // A repository's tag on a release line none of the technology's packages ever published, while the registry went on
+  // publishing them on that day or later, is another package line's (the MCP TypeScript SDK's `v2.3.0` covers its
+  // split v2 packages; `@modelcontextprotocol/sdk` is published on 1.x only, 1.32.1 after it): not this technology's
+  // release, so its notes are not dated to one of its versions. A new line the registry has not caught up with yet
+  // (tagged after its newest publish) is kept.
+  const reg = publishedLines(t);
+  const own = index.releases.filter((r) => !reg || reg.lines.has(releaseLine(r.version)) || reg.newest < day(r));
+  const notes = own.map((r) => {
     const raw = readBody(t, r);
     const { published, linked, ...rest } = r;
     let notes = t.clean(raw);
@@ -329,6 +340,29 @@ export async function fetchReleases(t: Technology, opts: { refresh?: boolean; of
     return { ...rest, snapshot, ...(keyTag ? { keyTag } : {}), ...(published && published !== r.date ? { date: published, noteDate: r.date } : {}), notes };
   });
   return { notes, checked: index.checked, stats };
+}
+
+/**
+ * The release lines (major, or 0.minor) the technology's packages published and the day of the newest publish, from
+ * the registry publish times `publishDates` caches; undefined when any component's cannot be told (no registry hook, nothing cached, unreadable):
+ * then no release is left out (fails open).
+ */
+export function publishedLines(t: Pick<Technology, "components">): { lines: Set<string>; newest: string } | undefined {
+  const lines = new Set<string>();
+  let newest = "";
+  for (const component of t.components) {
+    if (!ecosystemOf(component).publishTimes) return undefined;
+    const kept = registryCache().get(timesName(component));
+    const times = kept && (JSON.parse(kept.toString("utf8")) as { times: Record<string, string> | null }).times;
+    if (!times || !Object.keys(times).length) return undefined;
+    for (const [v, iso] of Object.entries(times)) {
+      if (Number.isNaN(Date.parse(iso))) continue;
+      lines.add(releaseLine(v));
+      const d = new Date(iso).toISOString().slice(0, 10);
+      if (d > newest) newest = d;
+    }
+  }
+  return { lines, newest };
 }
 
 function readBody(t: Technology, r: StoredRelease): string {
@@ -521,7 +555,34 @@ export interface GuideNote extends ReleaseNote {
 
 interface GuideIndex {
   checked: string;
-  guides: Array<Omit<GuideNote, "notes">>;
+  /** `read`: the day the guide was first read (absent in entries written before 20 October 2026). */
+  guides: Array<Omit<GuideNote, "notes" | "noLaterThan"> & { read?: string }>;
+}
+
+/**
+ * The bound of a guide ingested whole (`ReleaseNote.noLaterThan`): a guide is a moving page, so one first read after
+ * its major line moved past x.0 may carry sections added for any later release of the line read by then (TanStack's
+ * `latest` v5 guide, first read at 5.104, describes `queryClient.query` of a later 5.x minor as if 5.0.0's). An entry
+ * from before the read day was kept is dated its first read day unless that is its x.0.0 release's day.
+ */
+function guideBound(g: GuideIndex["guides"][number], releases: ReadonlyArray<{ version: string; date: string }>): string | undefined {
+  const read = g.read ?? (releases.some((r) => r.version === g.version && r.date === g.date) ? undefined : g.date);
+  if (!read) return undefined;
+  return lineBound(g.version.split(".")[0]!, releases.filter((r) => r.date <= read).map((r) => r.version));
+}
+
+/**
+ * Every ingested guide's bound by snapshot (other variants' guides too: records already cite them), for records the
+ * store holds from before bounds were kept (`boundGuideRecords`).
+ */
+export function guideBounds(t: Technology, releases: ReadonlyArray<{ version: string; date: string }>): Map<string, { version: string; noLaterThan: string }> {
+  const index = readJson<GuideIndex>(join(guideDir(t), "index.json"));
+  const out = new Map<string, { version: string; noLaterThan: string }>();
+  for (const g of index?.guides ?? []) {
+    const b = guideBound(g, releases);
+    if (b) out.set(g.snapshot, { version: g.version, noLaterThan: b });
+  }
+  return out;
 }
 
 const guideDir = (t: Technology) => join(centralDir(), "guides", techLocal(t.id));
@@ -542,7 +603,8 @@ export async function fetchGuides(
       // Dated to the x.0.0 release it describes; today when that release is outside the window.
       const date = releases.find((r) => r.version === version)?.date ?? new Date().toISOString().slice(0, 10);
       writeAtomic(join(guideDir(t), `${g.major}.${g.snapshot.slice(7, 15)}.md`), g.text);
-      index.guides.push({ technology: t.id, kind: "upgrade_guide", tag: `guide-${g.major}`, version, date, url: g.url, snapshot: g.snapshot, keyTag: `+guide.${g.snapshot.slice(7, 15)}` });
+      const read = new Date().toISOString().slice(0, 10);
+      index.guides.push({ technology: t.id, kind: "upgrade_guide", tag: `guide-${g.major}`, version, date, url: g.url, snapshot: g.snapshot, keyTag: `+guide.${g.snapshot.slice(7, 15)}`, read });
     }
     index.checked = new Date().toISOString().replace(/\.\d+Z$/, "Z");
     writeAtomic(ip, JSON.stringify(index, null, 1) + "\n");
@@ -555,6 +617,8 @@ export async function fetchGuides(
     .filter((g) => !("repo" in g) && own(g.url))
     .map((g) => {
       const p = join(guideDir(t), `${g.version.split(".")[0]}.${g.snapshot.slice(7, 15)}.md`);
-      return { ...g, notes: readFileSync(p, "utf8") };
+      const { read: _, ...note } = g;
+      const bound = guideBound(g, releases);
+      return { ...note, ...(bound ? { noLaterThan: bound } : {}), notes: readFileSync(p, "utf8") };
     });
 }

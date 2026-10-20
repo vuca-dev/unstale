@@ -196,14 +196,23 @@ export async function plan(tech: string, options: PlanOptions = {}): Promise<Pla
         out.trivial[kind] = (out.trivial[kind] ?? 0) + 1;
         continue;
       }
-      const k = `${s.attribution.version} ${s.attribution.by}`;
+      const bound = s.attribution.by === "guide" ? s.attribution.noLaterThan : undefined;
+      const k = `${s.attribution.version} ${s.attribution.by}${bound ? ` ${bound}` : ""}`;
       byVersion.set(k, [...(byVersion.get(k) ?? []), c]);
     }
     const url = e.to ?? e.url;
     if (!byVersion.size) out.settled.push(e.key);
     for (const [k, group] of byVersion) {
-      const [version, by] = k.split(" ") as [string, string];
-      const base = { technology: tech, version, date: e.at.slice(0, 10), url, snapshot: `sha256:${e.snapshot ?? e.previous ?? ""}`, notes: renderChange(url, e.kind, group, { words: o.words }) };
+      const [version, by, bound] = k.split(" ") as [string, string, string | undefined];
+      const base = {
+        technology: tech,
+        version,
+        date: e.at.slice(0, 10),
+        url,
+        snapshot: `sha256:${e.snapshot ?? e.previous ?? ""}`,
+        notes: renderChange(url, e.kind, group, { words: o.words }),
+        ...(bound ? { noLaterThan: bound } : {}),
+      };
       const guide = by === "guide" && o.guideKind === "upgrade_guide";
       out.notes.push({
         event: e.key,

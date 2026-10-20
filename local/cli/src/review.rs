@@ -200,6 +200,29 @@ fn pkg_name(o: &Opp) -> String {
     purl_name(&o.release.component).unwrap_or_else(|| o.release.component.clone())
 }
 
+/// The shown release's version, with its bound when central knows only a range (`Release::no_later_than`).
+fn release_version(r: &unstale_schema::catalog::Release) -> String {
+    match &r.no_later_than {
+        Some(hi) if *hi != r.version => format!("{} to {hi} (exact release not known)", r.version),
+        _ => r.version.clone(),
+    }
+}
+
+/// The evidence to cite for the shown release: a record that merged one change's releases on several lines keeps a
+/// source per line (`1.32.0` and `v2.3.0` of one repository), so the first source whose URL names the shown version
+/// (as a whole version: not `11.32.0` for `1.32.0`) is cited; otherwise the record's first source.
+pub(crate) fn shown_evidence<'a>(r: &'a unstale_schema::catalog::CapabilityRecord, version: &str) -> Option<&'a unstale_schema::catalog::Evidence> {
+    let names = |url: &str| {
+        let url = url.replace("%40", "@");
+        url.match_indices(version).any(|(i, m)| {
+            let before = url[..i].chars().next_back();
+            let after = url[i + m.len()..].chars().next();
+            !before.is_some_and(|c| c.is_ascii_digit() || c == '.') && !after.is_some_and(|c| c.is_ascii_digit() || c == '.' && url[i + m.len() + 1..].starts_with(|d: char| d.is_ascii_digit()))
+        })
+    };
+    r.evidence.iter().find(|e| names(&e.url)).or_else(|| r.evidence.first())
+}
+
 #[cfg(test)]
 pub(crate) fn render_record_for_test(out: &Outcome, id: &str) -> String {
     render_record(Pass::UpgradeReview, out.opps.iter().find(|o| o.id() == id).unwrap())
@@ -219,12 +242,12 @@ fn render_record(pass: Pass, o: &Opp) -> String {
     let pkg = pkg_name(o);
     match pass {
         Pass::UpgradeReview if o.route == Route::InEffect => {
-            s += &format!("- Release: {pkg} {} (installed {}; in effect now)\n", o.release.version, o.installed)
+            s += &format!("- Release: {pkg} {} (installed {}; in effect now)\n", release_version(&o.release), o.installed)
         }
         Pass::UpgradeReview => {
-            s += &format!("- Release: {pkg} {} (installed {}, target {})\n", o.release.version, o.installed, o.target)
+            s += &format!("- Release: {pkg} {} (installed {}, target {})\n", release_version(&o.release), o.installed, o.target)
         }
-        Pass::ImprovementsPass => s += &format!("- Release: {pkg} {} (installed {})\n", o.release.version, o.installed),
+        Pass::ImprovementsPass => s += &format!("- Release: {pkg} {} (installed {})\n", release_version(&o.release), o.installed),
     }
     s += &format!("- Change: {}; breaking: {}\n", change_type(r.change_type), if r.breaking { "yes" } else { "no" });
     if !o.benefits.is_empty() || pass == Pass::ImprovementsPass {
@@ -246,7 +269,7 @@ fn render_record(pass: Pass, o: &Opp) -> String {
         })
         .collect();
     s += &format!("- Prerequisites: {}\n", if pre.is_empty() { "none".to_string() } else { pre.join("; ") });
-    if let Some(e) = r.evidence.first() {
+    if let Some(e) = shown_evidence(r, &o.release.version) {
         s += &format!("- Evidence: {}\n", one_line(&e.url, URL_MAX));
     }
     if o.matched.is_empty() {
@@ -728,7 +751,7 @@ pub fn bump_lines(out: &Outcome, pkg: &str) -> Option<Vec<String>> {
         lines.push(format!("  {}", one_line(&r.r.summary, SUMMARY_MAX)));
         // What each advisory means at the installed version: the record's release does not say it was ever affected.
         lines.extend(notes.into_iter().map(|n| format!("  {n}")));
-        if let Some(e) = r.r.evidence.first() {
+        if let Some(e) = shown_evidence(&r.r, version) {
             lines.push(format!("  {}", one_line(&e.url, URL_MAX)));
         }
     };
@@ -908,6 +931,25 @@ mod tests {
     use crate::testcat::{rec, with};
     use serde_json::json;
     use unstale_schema::ledger::Ledger;
+
+    #[test]
+    fn cites_the_source_of_the_shown_release_line() {
+        let ev = |url: &str| json!({"kind":"release_notes","url":url,"quote":"q","snapshot":"sha256:00"});
+        let r: unstale_schema::catalog::CapabilityRecord = serde_json::from_value(with(
+            rec("sdk:x", "pkg:npm/sdk", "1.32.0"),
+            json!({"evidence":[ev("https://github.com/o/sdk/releases/tag/v2.3.0"), ev("https://github.com/o/sdk/releases/tag/1.32.0")]}),
+        ))
+        .unwrap();
+        assert!(shown_evidence(&r, "1.32.0").unwrap().url.ends_with("/tag/1.32.0"));
+        assert!(shown_evidence(&r, "2.3.0").unwrap().url.ends_with("/tag/v2.3.0"));
+        assert!(shown_evidence(&r, "11.32.0").unwrap().url.ends_with("/tag/v2.3.0"), "no source names it: the first");
+        assert!(shown_evidence(&r, "2.3").unwrap().url.ends_with("/tag/v2.3.0"), "a prefix of a longer version is not it: the first");
+        let scoped: unstale_schema::catalog::CapabilityRecord =
+            serde_json::from_value(with(rec("sdk:y", "pkg:npm/sdk", "5.1.0"), json!({"evidence":[ev("https://x.dev/a"), ev("https://github.com/o/r/releases/tag/%40o%2Fsdk%405.1.0")]}))).unwrap();
+        assert!(shown_evidence(&scoped, "5.1.0").unwrap().url.contains("5.1.0"));
+        let b = unstale_schema::catalog::Release { component: "pkg:npm/q".into(), version: "5.0.0".into(), date: String::new(), line: "5".into(), no_later_than: Some("5.104.5".into()) };
+        assert_eq!(release_version(&b), "5.0.0 to 5.104.5 (exact release not known)");
+    }
 
     fn deprecations(n: usize) -> crate::cache::Catalog {
         let recs = (0..n)

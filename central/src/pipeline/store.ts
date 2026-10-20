@@ -3,7 +3,7 @@
 import { join } from "node:path";
 import type { CapabilityRecord } from "../schema/catalog.ts";
 import { centralDir } from "./paths.ts";
-import { combineByLine, lineFn, type ReleaseIndex } from "./lines.ts";
+import { combineByLine, combineRelease, lineFn, type ReleaseIndex } from "./lines.ts";
 import { compareVersions, readJson, writeAtomic } from "./util.ts";
 import { techLocal } from "../state/client.ts";
 
@@ -148,7 +148,7 @@ export function combineReleases(a: Release[], b: Release[], lineOf?: (version: s
   for (const r of [...a, ...b]) {
     const k = `${r.component}\u0000${r.line}`;
     const prev = by.get(k);
-    if (!prev || compareVersions(r.version, prev.version) < 0) by.set(k, r);
+    by.set(k, prev ? combineRelease(prev, r) : r);
   }
   return [...by.values()].sort((x, y) => x.component.localeCompare(y.component) || compareVersions(x.line, y.line));
 }
@@ -194,6 +194,28 @@ export function mergeInto(s: TechStore, fromId: string, intoId: string, detail =
       applyChange(r, { related: union(r.related.filter((x) => x !== fromId), r.id === intoId ? [] : [intoId]) }, "relink");
     }
   }
+}
+
+/**
+ * Records ingested from a whole upgrade guide before guide bounds were kept (fetch.ts `guideBounds`, by snapshot): a
+ * record whose every source is a bounded guide gets the bound on its release at the guide's version, so a later 5.x
+ * API the `latest` v5 guide describes is no longer dated 5.0.0 outright. A record with any other source (release
+ * notes, an advisory, a docs edit) keeps its releases. Returns how many records changed.
+ */
+export function boundGuideRecords(s: TechStore, bounds: ReadonlyMap<string, { version: string; noLaterThan: string }>): number {
+  let n = 0;
+  for (const r of Object.values(s.records)) {
+    if (r.status !== "active" || !r.evidence.length) continue;
+    const bs = r.evidence.map((e) => bounds.get(e.snapshot));
+    if (bs.some((b) => !b)) continue;
+    const releases = r.releases.map((x) => {
+      const his = bs.filter((b) => b!.version === x.version).map((b) => b!.noLaterThan);
+      if (x.no_later_than || !his.length) return x;
+      return { ...x, no_later_than: his.sort(compareVersions)[0]! };
+    });
+    if (applyChange(r, { releases }, "guide-bound", { detail: "read from a moving upgrade guide: release bounded" }).revision) n++;
+  }
+  return n;
 }
 
 export function retract(s: TechStore, id: string, reason = "manual retraction"): void {

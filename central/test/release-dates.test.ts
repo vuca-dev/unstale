@@ -116,6 +116,21 @@ describe("release dates", () => {
     expect(calls.filter((u) => u.includes("/releases?")).length).toBe(59);
   });
 
+  test("a tag on a line the packages never published, while the registry kept publishing, is not the technology's", async () => {
+    // modelcontextprotocol/typescript-sdk tags its split v2 packages `v2.3.0`; `@modelcontextprotocol/sdk` is published
+    // on 1.x only (1.32.1 on 5 October 2026). A 3.x tagged after the registry's newest publish may be one npm has not
+    // caught up with: kept.
+    const MCP: Technology = { id: "modelcontextprotocol-sdk-d59cf9c0", name: "MCP SDK", repo: "modelcontextprotocol/typescript-sdk", components: ["pkg:npm/%40modelcontextprotocol/sdk"], tag: /^v?(\d+\.\d+\.\d+)$/, clean: (b) => b };
+    const rel = (tag: string, day: string) => ({ ...gh(tag, day), html_url: `https://github.com/modelcontextprotocol/typescript-sdk/releases/tag/${tag}` });
+    stub({
+      "https://api.github.com/repos/modelcontextprotocol/typescript-sdk/releases": [rel("v3.0.0", "2026-10-07"), rel("v2.3.1", "2026-10-05"), rel("1.32.1", "2026-10-05"), rel("v2.3.0", "2026-10-02"), rel("1.32.0", "2026-10-02")],
+      "https://registry.npmjs.org/@modelcontextprotocol%2fsdk": { name: "@modelcontextprotocol/sdk", time: { "1.32.0": "2026-10-02T17:32:51.427Z", "1.32.1": "2026-10-05T11:47:50.208Z" } },
+    });
+    const { notes } = await fetchReleases(MCP);
+    expect(notes.map((n) => n.version)).toEqual(["1.32.0", "1.32.1", "3.0.0"]);
+    expect(notes[0]!.url).toBe("https://github.com/modelcontextprotocol/typescript-sdk/releases/tag/1.32.0");
+  });
+
   test("a listing that reaches the window's start asks for no tag", async () => {
     stub({ "https://api.github.com/repos/jsdom/jsdom/releases": [gh("v30.0.5", "2026-07-28")], "https://registry.npmjs.org/jsdom": { name: "jsdom", time: NPM_TIME } });
     await fetchReleases(JSDOM);
