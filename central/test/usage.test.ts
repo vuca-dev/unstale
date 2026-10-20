@@ -80,7 +80,8 @@ describe("usage summary", () => {
     // Jev reports no charge: priced from the list (its only entry, whatever the model version).
     const s = usageByPhase(log, 4, [{ provider: "jev", model: "jev-latest", input: 0.042, output: 0 }]);
     expect(s).toEqual({
-      window: { from: at(0), to: at(5), days: 5 },
+      // Lines without a phase are summed (unattributed) but are outside the window: it starts at the first phase.
+      window: { from: at(1), to: at(5), days: 4 },
       phases: {
         unattributed: {
           providers: { vercel: { calls: 1, input_tokens: 100, output_tokens: 10, dollars: 0, estimated_calls: 0, unpriced_calls: 1 } },
@@ -107,11 +108,24 @@ describe("usage summary", () => {
       onboarded: 1,
       monitored: 4,
       per_onboarded_technology: { dollars: 0.008021, input_tokens: 4500, output_tokens: 405 },
-      // 250 tokens over 4 technologies in 5 days, scaled to 365.
-      monitoring_per_technology_year: { dollars: 0.007337, input_tokens: 4563, output_tokens: 383 },
+      // 250 tokens over 4 technologies in 4 days, scaled to 365.
+      monitoring_per_technology_year: { dollars: 0.009171, input_tokens: 5703, output_tokens: 479 },
     });
     // Machine-readable as it is printed.
     expect(JSON.parse(JSON.stringify(s))).toEqual(s);
+    // A month of untagged lines and a day of tagged ones: the year is scaled from the day, not the month.
+    const day = usageByPhase(
+      [
+        { api: "vercel", input_tokens: 1, output_tokens: 1, at: at(0) },
+        { phase: "monitoring", tech: "next", api: "vercel", input_tokens: 10, output_tokens: 0, dollars: 0.01, at: at(29) },
+        { phase: "monitoring", tech: "next", api: "vercel", input_tokens: 10, output_tokens: 0, dollars: 0.01, at: at(30) },
+      ],
+      1,
+    );
+    expect(day.window).toEqual({ from: at(29), to: at(30), days: 1 });
+    expect(day.monitoring_per_technology_year?.dollars).toBe(7.3);
+    // No line with a phase: no window, no per-year figure.
+    expect(usageByPhase([{ api: "vercel", input_tokens: 1, output_tokens: 1, at: at(0) }], 1)).toMatchObject({ window: { from: null, to: null, days: 0 }, monitoring_per_technology_year: null });
   });
 
   test("estimates: cached input at its own price, an unknown model or price is no estimate; the repository's list loads", () => {

@@ -187,7 +187,10 @@ test("cold jobs publish early, interleave history with the docs module's pass an
       notes: "Source content",
     })),
   });
-  const synth = vi.spyOn(synthesis, "synthesize").mockResolvedValue(7);
+  const synth = vi.spyOn(synthesis, "synthesize").mockImplementation(async (_t, note) => {
+    logUsage({ api: "test", call: "synth", version: note.version });
+    return 7;
+  });
   // The docs module's pass: a baseline of 130 pages (no events), so nothing is planned for extraction.
   const pass = vi.spyOn(docs, "dailyPass").mockImplementation(async (_t, o) => {
     logUsage({ api: "test", call: "docs" });
@@ -226,6 +229,33 @@ test("cold jobs publish early, interleave history with the docs module's pass an
     const usage = readFileSync(usageLog(), "utf8").trim().split("\n").map((l) => JSON.parse(l) as Record<string, unknown>);
     const seen = usage.filter((l) => l.call === "docs" || l.milestone).map((l) => `${l.phase} ${l.tech} ${l.call ?? l.milestone}`);
     expect(seen.join("\n")).toMatch(/^(onboarding example docs\n)+onboarding example onboarded\n(monitoring example docs\n?)+$/);
+    // Four new releases: the refresh reads three and yields (queued), the next slice reads the fourth. Both slices
+    // are monitoring, and the second one's end is no second first coverage.
+    vi.mocked(fetching.fetchReleases).mockResolvedValue({
+      checked: "2026-10-20T00:00:00Z",
+      stats: { requests: 1, newReleases: 4 },
+      notes: Array.from({ length: 8 }, (_, i) => ({
+        technology: t.id,
+        tag: `v1.${i + 1}.0`,
+        version: `1.${i + 1}.0`,
+        date: i < 4 ? "2026-10-15" : "2026-10-20",
+        url: `https://github.com/example/example/releases/tag/v1.${i + 1}.0`,
+        snapshot: "sha256:" + String(i).repeat(64),
+        notes: "Source content",
+      })),
+    });
+    job.retry_at = "2020-01-01T00:00:00Z";
+    (service as unknown as { pump: () => void }).pump();
+    await vi.waitFor(() => expect(synth).toHaveBeenCalledTimes(8), { timeout: 3000 });
+    await vi.waitFor(() => expect(job.state).toBe("monitoring"), { timeout: 3000 });
+    const states = readFileSync(join(dir, "central", "onboarding", "timeline.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l).state as string);
+    expect(states.lastIndexOf("queued")).toBeGreaterThan(states.indexOf("monitoring"));
+    const after = readFileSync(usageLog(), "utf8").trim().split("\n").map((l) => JSON.parse(l) as Record<string, unknown>);
+    expect(after.filter((l) => l.call === "synth" && Number(String(l.version).split(".")[1]) > 4).map((l) => `${l.phase} ${l.version}`)).toEqual(
+      ["1.8.0", "1.7.0", "1.6.0", "1.5.0"].map((v) => `monitoring ${v}`),
+    );
+    expect(after.filter((l) => l.milestone)).toHaveLength(1);
+    expect(service.statuses().find((s) => s.purl === t.purl)).not.toHaveProperty("monitored");
   } finally {
     service.stop();
   }
