@@ -430,7 +430,7 @@ limits and count each address once per package, and never writes it to storage. 
 <a href="https://osv.dev">OSV</a>, as <code>npm audit</code> would, and it reads the public npm and PyPI registries.</p>
 </details>
 <h2>Recent catches</h2>
-<p>unstale flagged critical <a href="https://github.com/vercel/next.js/security/advisories/GHSA-2464-fhr4-w9xw">Next.js security fixes</a> before the GitHub advisory database had them, and caught <a href="https://github.com/supabase/supabase/pull/51869">Supabase&#8217;s Next.js auth blocks</a> breaking on Next.js 16.</p>
+<p>unstale flagged critical <a href="https://github.com/vercel/next.js/security/advisories/GHSA-2464-fhr4-w9xw">Next.js security fixes</a> before the GitHub advisory database had them, and caught <a href="https://github.com/supabase/supabase/pull/51869">Supabase&#8217;s Next.js auth blocks</a> breaking on Next.js 16. Its fix for a deprecated AI SDK call in fumadocs was merged within a day.</p>
 <p class="license">AGPL-3.0 · <a href="${REPO}">GitHub</a></p>
 </section>
 <section id="packages" class="packages prose">
@@ -488,7 +488,7 @@ No telemetry. To check advisories, the CLI sends the package names and versions 
 
 ## Recent catches
 
-unstale flagged critical [Next.js security fixes](https://github.com/vercel/next.js/security/advisories/GHSA-2464-fhr4-w9xw) before the GitHub advisory database had them, and caught [Supabase's Next.js auth blocks](https://github.com/supabase/supabase/pull/51869) breaking on Next.js 16.
+unstale flagged critical [Next.js security fixes](https://github.com/vercel/next.js/security/advisories/GHSA-2464-fhr4-w9xw) before the GitHub advisory database had them, and caught [Supabase's Next.js auth blocks](https://github.com/supabase/supabase/pull/51869) breaking on Next.js 16. Its fix for a deprecated AI SDK call in fumadocs was merged within a day.
 
 AGPL-3.0, free and open source: ${REPO}
 
