@@ -158,7 +158,75 @@ describe("guide ownership", () => {
     // A target named by the technology or its site is its own major.
     expect(own("https://www.prisma.io/docs/orm/more/upgrade-guides/upgrading-to-prisma-7", ["pkg:npm/prisma"], [])).toBe(true);
     expect(own("https://tanstack.com/query/latest/docs/framework/react/guides/migrating-to-react-query-4", ["pkg:npm/%40tanstack/react-query"], [])).toBe(true);
-    expect(own("https://docs.slack.dev/tools/node-slack-sdk/migration/migrating-socket-mode-package-to-v2", ["pkg:npm/%40slack/types"], [])).toBe(true);
+    expect(own("https://docs.slack.dev/tools/node-slack-sdk/migration/migrating-socket-mode-package-to-v2", ["pkg:npm/%40slack/socket-mode"], [])).toBe(true);
+    // `<words>[-vN]-to-vM` names the thing too: the socket-mode package's v2 is not `@slack/types`'s, MUI's v6 not Refine's.
+    expect(own("https://docs.slack.dev/tools/node-slack-sdk/migration/migrating-socket-mode-package-to-v2", ["pkg:npm/%40slack/types"], [])).toBe(false);
+    expect(own("https://refine.dev/core/docs/ui-integrations/material-ui/migration-guide/material-ui-v5-to-v6", ["pkg:npm/%40refinedev/inferencer"], [])).toBe(false);
+    expect(own("https://langfuse.com/docs/observability/sdk/upgrade-path/js-v4-to-v5", ["pkg:pypi/langfuse"], [])).toBe(false);
+    expect(own("https://langfuse.com/docs/observability/sdk/upgrade-path/python-v4-to-v5", ["pkg:pypi/langfuse"], [])).toBe(true);
+    expect(own("https://developers.cloudflare.com/workers/wrangler/migration/update-v3-to-v4", ["pkg:npm/wrangler"], [])).toBe(true);
+  });
+
+  test("another language's section on a site split by language is not the package's (connectrpc's Go, Algolia's Django)", () => {
+    const c = "https://connectrpc.com/docs";
+    const pages = ["go/migrating-to-v2", "go/getting-started", "node/getting-started", "python/getting-started", "introduction"].map((p) => `${c}/${p}`);
+    expect(own(`${c}/go/migrating-to-v2`, ["pkg:npm/%40connectrpc/connect"], pages, [`${c}/introduction/`])).toBe(false);
+    expect(own(`${c}/go/migrating-to-v2`, ["pkg:golang/connectrpc.com/connect"], pages, [`${c}/introduction/`])).toBe(true);
+    const a = "https://www.algolia.com/doc/framework-integration";
+    const algolia = [`${a}/django/upgrade-guide`, `${a}/laravel/getting-started/upgrade-guide`, `${a}/rails/getting-started/setup`];
+    for (const u of algolia.slice(0, 2)) expect(own(u, ["pkg:npm/algoliasearch"], algolia)).toBe(false);
+    expect(own(algolia[0]!, ["pkg:pypi/algoliasearch-django"], algolia)).toBe(true);
+    // A language word alone, with no other language beside it, is no language-split site.
+    expect(own("https://example.dev/docs/go/migration", ["pkg:npm/example"], ["https://example.dev/docs/go/migration", "https://example.dev/docs/intro"])).toBe(true);
+  });
+
+  test("a docs generator's own site is not a package built with it (Docusaurus)", () => {
+    const d = "https://docusaurus.io/docs/migration/v3";
+    expect(own(d, ["pkg:npm/npm-to-yarn"], [d], ["https://docusaurus.io/docs"])).toBe(false);
+    expect(own(d, ["pkg:npm/%40rjsf/utils"], [d], ["https://docusaurus.io/docs"])).toBe(false);
+    expect(own(d, ["pkg:npm/%40docusaurus/core"], [d], ["https://docusaurus.io/docs"])).toBe(true);
+  });
+
+  test("another product's docs on a multi-product site are not the technology's (Hocuspocus, gesture handler, Pydantic AI, Bolt)", () => {
+    const t = "https://tiptap.dev/docs";
+    const tiptap = ["hocuspocus/getting-started/overview", "hocuspocus/getting-started/upgrade", "guides/upgrade-tiptap-v2", "guides/output-json-html", "editor/getting-started/install", "resources/changelog", "resources/contributing"].map((p) => `${t}/${p}`);
+    const ext = ["pkg:npm/%40tiptap/extension-link"];
+    expect(own(`${t}/hocuspocus/getting-started/upgrade`, ext, tiptap, [`${t}/resources/changelog`])).toBe(false);
+    expect(own(`${t}/guides/upgrade-tiptap-v2`, ext, tiptap, [`${t}/resources/changelog`])).toBe(true);
+    expect(own(`${t}/hocuspocus/getting-started/upgrade`, ["pkg:npm/%40hocuspocus/server"], tiptap, [`${t}/hocuspocus/getting-started/overview`])).toBe(true);
+    const s = "https://docs.swmansion.com";
+    const sw = ["react-native-gesture-handler/docs/guides/upgrading-to-3", "react-native-gesture-handler/docs/fundamentals/installation", "react-native-reanimated/docs/fundamentals/getting-started", "react-native-reanimated/docs/guides/migration-from-3.x"].map((p) => `${s}/${p}`);
+    expect(own(sw[0]!, ["pkg:npm/react-native-reanimated"], sw, [`${s}/react-native-reanimated/`])).toBe(false);
+    expect(own(sw[0]!, ["pkg:npm/react-native-gesture-handler"], sw, [`${s}/react-native-gesture-handler/`])).toBe(true);
+    const p = "https://pydantic.dev/docs";
+    const pyd = ["ai/overview/install", "ai/overview/migration", "validation/latest/get-started/install", "validation/2.12/get-started/migration"].map((x) => `${p}/${x}`);
+    const entry = [`${p}/validation/latest/get-started/`];
+    expect(own(`${p}/ai/overview/migration`, ["pkg:pypi/pydantic"], pyd, entry)).toBe(false);
+    // `2.12` and `latest` are releases of one section.
+    expect(own(`${p}/validation/2.12/get-started/migration`, ["pkg:pypi/pydantic"], pyd, entry)).toBe(true);
+    const k = "https://docs.slack.dev/tools";
+    const slack = ["bolt-js/migration/migration-v4", "bolt-js/reference", "node-slack-sdk/migration/legacy/migrating-to-v6", "node-slack-sdk/reference/types", "node-slack-sdk/oauth"].map((x) => `${k}/${x}`);
+    expect(own(`${k}/bolt-js/migration/migration-v4`, ["pkg:npm/%40slack/types"], slack, [`${k}/node-slack-sdk/reference/types/`])).toBe(false);
+    expect(own(`${k}/bolt-js/migration/migration-v4`, ["pkg:npm/%40slack/bolt"], slack, [`${k}/bolt-js/`])).toBe(true);
+  });
+
+  test("one product's docs in two halves, and an entry that is no docs section, drop nothing (Next.js, Bootstrap)", () => {
+    const n = "https://nextjs.org/docs";
+    const next = ["app/getting-started/installation", "app/guides/upgrading/version-16", "app/api-reference/config/eslint", "pages/getting-started/installation", "pages/guides/upgrading/version-13", "pages/guides/upgrading/version-16"].map((x) => `${n}/${x}`);
+    for (const u of next.filter((x) => x.includes("/pages/guides/"))) expect(own(u, ["pkg:npm/eslint-config-next"], next, [`${n}/app/api-reference/config/eslint`])).toBe(true);
+    const b = "https://getbootstrap.com/docs/6.0";
+    const boot = [`${b}/guides/migration`, `${b}/guides/quickstart`, `${b}/dist/css/bootstrap.min.css`];
+    expect(own(boot[0]!, ["pkg:npm/bootstrap"], boot, [boot[2]!])).toBe(true);
+  });
+
+  test("one service's page in a catalogue of integrations is not an SDK's (RudderStack's Intercom destination)", () => {
+    const r = "https://www.rudderstack.com/docs/destinations/streaming-destinations";
+    const services = Array.from({ length: 25 }, (_, i) => `${r}/service-${String.fromCharCode(97 + i)}x`);
+    const pages = [...services, `${r}/intercom`, `${r}/intercom/migration-guide`, "https://www.rudderstack.com/docs/user-guides/migration-guides/migrate-sdk"];
+    const sdk = ["pkg:npm/%40rudderstack/rudder-sdk-node"];
+    expect(own(`${r}/intercom/migration-guide`, sdk, pages, ["https://www.rudderstack.com/docs/"])).toBe(false);
+    expect(own(`${r}/intercom/migration-guide`, ["pkg:npm/intercom-client"], pages, ["https://www.rudderstack.com/docs/"])).toBe(true);
+    expect(own("https://www.rudderstack.com/docs/user-guides/migration-guides/migrate-sdk", sdk, pages, ["https://www.rudderstack.com/docs/"])).toBe(true);
   });
 
   test("sections that are topics, not variants, drop nothing (Next.js, MUI, NestJS)", () => {
