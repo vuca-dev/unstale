@@ -165,6 +165,14 @@ struct Choice<'d> {
     off_sites: Vec<&'d Reading>,
 }
 
+/// Whether `path` is a dependency manifest (`package.json`, `pyproject.toml`, a requirements file, …): it declares the
+/// package for its reading, which is no code using it. A tool only run through scripts or its config file names no
+/// importing code either, so it never moves the version off the manifest a lockfile covers (`choose`).
+fn manifest_file(path: &str) -> bool {
+    let base = path.rsplit('/').next().unwrap_or(path);
+    matches!(base, "package.json" | "pyproject.toml" | "setup.py" | "setup.cfg" | "Pipfile") || (base.starts_with("requirements") && base.ends_with(".txt"))
+}
+
 /// The reading whose manifest a file's import resolves to: the deepest one containing it.
 fn owner<'d>(d: &'d Dep, path: &str) -> Option<&'d Reading> {
     d.readings.iter().filter(|r| r.contains(path)).max_by_key(|r| if r.dir == "." { 0 } else { r.dir.len() })
@@ -183,7 +191,12 @@ fn choose<'d>(d: &'d Dep, sites: impl FnOnce() -> Vec<String>) -> Option<Choice<
     };
     let (head, moved) = match held.iter().any(|r| r.runs(&h.version)) || held.is_empty() {
         true => (h, None),
-        false => (d.headline_among(|r| held.iter().any(|x| x.dir == r.dir)).unwrap_or(h), Some(h)),
+        // An unlocked standalone manifest never sets the version while a covered one declares the package (`Reading::
+        // standalone`): its code is left uncited instead (`off_sites`).
+        false => match d.headline_among(|r| (h.standalone || !r.standalone) && held.iter().any(|x| x.dir == r.dir)) {
+            Some(r) => (r, Some(h)),
+            None => (h, None),
+        },
     };
     let off: Vec<&Reading> = d.readings.iter().filter(|r| !r.fits(&head.version)).collect();
     let off_sites = off.iter().copied().filter(|r| held.iter().any(|x| x.dir == r.dir)).collect();
@@ -609,6 +622,33 @@ fn base_route(rec: &Rec, avail: Avail) -> Route {
     }
 }
 
+/// Whether `rec`, released only under packages of its technology this repository does not use (`rels`; the repository
+/// is covered through a sibling package of the same release stream), is about the surface of a package other than the
+/// ones used here (`purls`): a command-line change is the command of the package it was released under, and a summary or
+/// subject naming an unused component by its unscoped name (`The CLI no longer …` for `@babel/cli`) and no used one is
+/// about that package. Such a record is not something bumping the sibling picks up (`Route::OtherPackage`).
+fn about_releaser(rec: &Rec, rels: &[&Release], purls: &BTreeSet<String>) -> bool {
+    if rels.is_empty() {
+        return false;
+    }
+    if rec.r.surface == unstale_schema::catalog::Surface::CommandLine {
+        return true;
+    }
+    let text = format!("{} {}", rec.r.subject, rec.r.summary).to_ascii_lowercase();
+    let names = |c: &str| -> bool {
+        let Some(n) = purl_name(c) else { return false };
+        let n = n.rsplit('/').next().unwrap_or(&n).to_ascii_lowercase();
+        n.len() >= 3
+            && text.match_indices(&n).any(|(at, _)| {
+                let b = text.as_bytes();
+                let word = |c: Option<&u8>| c.is_some_and(|c| c.is_ascii_alphanumeric() || *c == b'-' || *c == b'_');
+                !word(at.checked_sub(1).and_then(|i| b.get(i))) && !word(b.get(at + n.len()))
+            })
+    };
+    let used = purls.iter().any(|c| names(c));
+    !used && rels.iter().any(|r| names(&normalize_purl(&r.component)))
+}
+
 /// The release that decides availability for a project at `installed`: the one on the installed line; otherwise
 /// the newest on an older line (it carried forward); otherwise the oldest on a newer line.
 pub fn pick_release<'r>(releases: &[&'r Release], installed: &Version) -> Option<(&'r Release, Version)> {
@@ -872,7 +912,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                     let mut v: Vec<String> = usage::naming_lits(c)
                         .iter()
                         .flat_map(|l| hits.usage.get(l).into_iter().flatten())
-                        .filter(|p| all.file(p) == Some(true))
+                        .filter(|p| all.file(p) == Some(true) && !manifest_file(p))
                         .cloned()
                         .collect();
                     v.sort();
@@ -1141,7 +1181,9 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                     comps.contains(&c) && !parallel.contains(&c)
                 })
                 .collect();
-            if own.is_empty() && rels.is_empty() {
+            // Covered through a sibling package's index (no release of a package used here): a record about the surface
+            // of the package it was released under is that package's, not value for the one installed (`about_releaser`).
+            if own.is_empty() && rels.is_empty() || own.is_empty() && about_releaser(rec, &rels, &purls) {
                 if let Some(release) = rec.r.releases.first() {
                     out.opps.push(blank(rec, release.clone(), Route::OtherPackage));
                 }
@@ -2439,6 +2481,58 @@ mod tests {
         assert!(lines.iter().any(|l| l.starts_with("  4.1.12 in the root (pnpm-lock.yaml): bumping to 4.6.3")), "{lines:?}");
         assert!(lines.iter().any(|l| l.starts_with("  3.25.61 in packages/udecode/lib")), "{lines:?}");
         assert!(!lines.iter().any(|l| l.starts_with("  3.25.76")), "the headline is not also a workspace line: {lines:?}");
+    }
+
+    #[test]
+    fn an_unlocked_standalone_manifest_never_moves_the_version() {
+        // i18next: the root locks 6.x and runs it through scripts and config only (no file imports it); an example
+        // outside the workspace, with no lockfile, declares and imports an older release. The root's version heads.
+        let c = zod_removal();
+        let mut s = stack(&[], None);
+        let mut d = crate::stack::Dep::new("zod", true);
+        d.read(".", parse_version("4.1.12"), "package-lock.json".into());
+        d.read_in("examples/ts", parse_version("3.25.76"), "floor of 3.25.76".into(), true, Some(crate::stack::Range::Npm("^3.25.76".into())));
+        s.deps.insert(crate::util::npm_purl("zod"), d);
+        s.settle();
+        let r = repo(&[
+            ("package.json", "{\"devDependencies\": {\"zod\": \"^4.1.12\"}}"),
+            ("examples/ts/package.json", "{\"dependencies\": {\"zod\": \"^3.25.76\"}}"),
+            ("examples/ts/index.ts", "import { z } from 'zod'; export const A = z.properties({})"),
+        ]);
+        let l = Ledger::default();
+        let out = run_with(&c, &s, &r, &l);
+        assert!(out.version_notes.iter().all(|n| !n.starts_with("zod: the reviews use")), "{:?}", out.version_notes);
+        assert_eq!(out.headline["pkg:npm/zod"], (".".to_string(), "package-lock.json".to_string()));
+    }
+
+    #[test]
+    fn a_record_about_the_releasing_package_is_not_value_for_a_sibling() {
+        // i18next: `@babel/register` is covered through `@babel/cli`'s index; records released under `@babel/cli` about
+        // its command line, or naming it, are not what bumping `@babel/register` picks up. A stream-wide change is.
+        let fix = |id: &str, surface: &str, summary: &str| {
+            with(rec(id, "pkg:npm/zod-cli", "4.6.3"), json!({"change_type": "fix", "benefit": ["correctness"], "surface": surface, "subject": "s", "summary": summary}))
+        };
+        let mut c = catalog(
+            "zod",
+            0,
+            vec![
+                fix("zod:cli-flag", "command_line", "A flag now parses."),
+                fix("zod:cli-named", "runtime_internal", "The zod-cli watcher no longer leaks."),
+                fix("zod:shared", "runtime_internal", "Parsing is faster."),
+            ],
+        );
+        c.techs.get_mut("zod").unwrap().index.components = vec![crate::util::npm_purl("zod-cli"), crate::util::npm_purl("zod")];
+        let mut s = stack(&[], None);
+        let mut d = crate::stack::Dep::new("zod", true);
+        d.read(".", parse_version("3.0.0"), "package-lock.json".into());
+        s.deps.insert(crate::util::npm_purl("zod"), d);
+        s.settle();
+        let (r, l) = (repo(&[]), Ledger::default());
+        let out = run_with(&c, &s, &r, &l);
+        let route = |id: &str| out.opps.iter().find(|o| o.id() == id).map(|o| o.route.clone());
+        assert_eq!(route("zod:cli-flag"), Some(Route::OtherPackage));
+        assert_eq!(route("zod:cli-named"), Some(Route::OtherPackage));
+        assert_ne!(route("zod:shared"), Some(Route::OtherPackage), "a stream-wide change still counts");
     }
 
     #[test]

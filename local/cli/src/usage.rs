@@ -644,13 +644,145 @@ pub fn live_site_under(path: &str, text: &str, lit: &str, replacements: &[String
     let near: Vec<usize> = replacements.iter().flat_map(|r| sites(r)).map(line_of).collect();
     let beside: Option<Vec<usize>> = context.map(|c| c.iter().flat_map(|x| sites(x)).map(line_of).collect());
     let keyed = keyed && js_code(path);
+    let prefix = name_prefix(lit) && !style_file(path);
     sites(lit)
         .into_iter()
         .filter(|at| !keyed || key_or_member(b, *at, lit.len()))
+        .filter(|at| !prefix || class_site(b, *at))
         .filter(|at| parent.is_none_or(|k| under_key(b, *at, k, !js_code(path))))
         .map(line_of)
         .filter(|l| beside.as_ref().is_none_or(|b| b.iter().any(|x| x.abs_diff(*l) <= SITE_LINES)))
         .any(|l| !near.iter().any(|r| r.abs_diff(l) <= SITE_LINES))
+}
+
+/// Whether `lit` names a family of names by their common prefix (`start-` of a record's `start-*`): class, utility or
+/// attribute names, which are written in markup and stylesheets, so in other code only a class context is its use
+/// (`class_site`). A word or hyphenated word ending in `-`; not a flag or custom property (`--x`).
+pub fn name_prefix(lit: &str) -> bool {
+    lit.len() >= 3
+        && lit.ends_with('-')
+        && lit.starts_with(|c: char| c.is_ascii_alphabetic())
+        && lit.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_')
+}
+
+/// Whether `path` is a stylesheet (`STYLE_EXT`).
+fn style_file(path: &str) -> bool {
+    path.rsplit_once('.').is_some_and(|(_, x)| STYLE_EXT.contains(&x.to_ascii_lowercase().as_str()))
+}
+
+/// Whether `s` (a string literal's content) reads as a class list: two or more space-separated tokens of class
+/// characters, at least two of them compound (`-` or `:`: `flex start-0 md:px-2`), not prose or one name (`start-1`).
+fn class_list(s: &str) -> bool {
+    let toks: Vec<&str> = s.split_ascii_whitespace().collect();
+    let classy = |t: &str| t.bytes().all(|c| c.is_ascii_alphanumeric() || b"-_:/.[]!#%(),${}".contains(&c));
+    toks.len() >= 2 && toks.iter().all(|t| classy(t)) && toks.iter().filter(|t| t.contains(['-', ':'])).count() >= 2
+}
+
+/// The string literals in `b[from..to]` (quotes on one line), contents only.
+fn strings_in(b: &[u8], from: usize, to: usize) -> Vec<&str> {
+    let (mut out, mut i) = (vec![], from);
+    while i < to {
+        let q = b[i];
+        if matches!(q, b'\'' | b'"' | b'`')
+            && let Some(k) = b[i + 1..to].iter().position(|x| *x == q || *x == b'\n')
+                && b[i + 1 + k] == q
+            {
+                out.push(std::str::from_utf8(&b[i + 1..i + 1 + k]).unwrap_or(""));
+                i += k + 2;
+                continue;
+            }
+        i += 1;
+    }
+    out
+}
+
+/// Whether the occurrence at `at` is in a class context of markup or code: its string is a class list (`class_list`);
+/// it is the value of an attribute or key named for classes (`class="…"`, `className={…}`, `:class`, `classes: {…}`),
+/// directly or inside an expression there (`className={cn('a', x && 'start-0')}`); an argument of a call named for
+/// classes (`clsx(…)`, `classList.add(…)`) or of one whose other arguments are class lists (`cn('flex px-2', …)`); or
+/// on an `@apply` line. Within the enclosing statement, tag or 600 bytes; a lexer's view, like `under_key`. A test
+/// recording `'start-1'` or `` `end-${id}` `` in an array is none of these.
+fn class_site(b: &[u8], at: usize) -> bool {
+    let line_start = b[..at].iter().rposition(|c| *c == b'\n').map_or(0, |i| i + 1);
+    if b[line_start..at].windows(6).any(|w| w == b"@apply") {
+        return true;
+    }
+    // Named for classes: `class` or its common abbreviation `cls` in the name (`className`, `clsx`, `btnCls`).
+    let classy_name = |s: &[u8]| {
+        let s = s.to_ascii_lowercase();
+        s.windows(5).any(|w| w == b"class") || s.windows(3).any(|w| w == b"cls")
+    };
+    let ident_before = |end: usize| -> &[u8] {
+        let mut e = end;
+        while e > 0 && matches!(b[e - 1], b' ' | b'\t') {
+            e -= 1;
+        }
+        if e > 0 && matches!(b[e - 1], b'\'' | b'"') {
+            e -= 1;
+        }
+        let mut s = e;
+        while s > 0 && (b[s - 1].is_ascii_alphanumeric() || matches!(b[s - 1], b'_' | b'-' | b'$' | b':' | b'.')) {
+            s -= 1;
+        }
+        &b[s..e]
+    };
+    // The site's own string literal (quotes on its line).
+    let mut j = at;
+    if let Some(k) = b[line_start..at].iter().rposition(|c| matches!(c, b'\'' | b'"' | b'`')) {
+        let q = b[line_start + k];
+        let open = line_start + k;
+        if let Some(e) = b[at..].iter().position(|c| *c == q || *c == b'\n')
+            && b[at + e] == q
+        {
+            if class_list(std::str::from_utf8(&b[open + 1..at + e]).unwrap_or("")) {
+                return true;
+            }
+            j = open;
+        }
+    }
+    let lo = at.saturating_sub(600);
+    let mut depth = 0usize;
+    while j > lo {
+        j -= 1;
+        let c = b[j];
+        match c {
+            b'\'' | b'"' | b'`' => {
+                if let Some(k) = b[lo..j].iter().rposition(|x| *x == c || *x == b'\n')
+                    && b[lo + k] == c
+                {
+                    j = lo + k;
+                }
+            }
+            b')' | b']' | b'}' => depth += 1,
+            b'(' | b'[' | b'{' if depth > 0 => depth -= 1,
+            b'(' => {
+                if classy_name(ident_before(j)) {
+                    return true;
+                }
+                let end = (j + 2000).min(b.len());
+                let mut d = 0usize;
+                let close = b[j..end].iter().position(|x| {
+                    match x {
+                        b'(' => d += 1,
+                        b')' => d -= 1,
+                        _ => {}
+                    }
+                    d == 0
+                });
+                if strings_in(b, j, close.map_or(end, |k| j + k)).into_iter().any(class_list) {
+                    return true;
+                }
+            }
+            b';' | b'<' if depth == 0 => return false,
+            b'>' if depth == 0 && (j == 0 || b[j - 1] != b'=') => return false,
+            b'=' | b':' if depth == 0 && !matches!(b.get(j + 1), Some(b'=' | b'>' | b':')) && (j == 0 || !matches!(b[j - 1], b'=' | b'!' | b'<' | b'>' | b':'))
+                && classy_name(ident_before(j)) => {
+                    return true;
+                }
+            _ => {}
+        }
+    }
+    false
 }
 
 /// Whether `path` is JavaScript-family code (TypeScript, JSX, Vue, Svelte, Astro).
@@ -1805,6 +1937,24 @@ mod tests {
         let far = format!("def pytest_addoption(parser): ...\n{}@pytest.mark.skip\ndef test_b(): ...\n", "x = 1\n".repeat(SITE_LINES + 1));
         assert!(!live_site_near("p.py", &far, "pytest.mark", &[], Some(&ctx), false), "the hook elsewhere in the file");
         assert!(!live_site_near("p.py", "# pytest_addoption\n@pytest.mark.skip\n", "pytest.mark", &[], Some(&ctx), false), "a comment is not context");
+    }
+
+    #[test]
+    fn a_name_prefix_counts_only_in_class_contexts() {
+        let live = |p: &str, t: &str| live_site(p, t, "start-", &[]);
+        assert!(name_prefix("start-") && name_prefix("bg-opacity-") && !name_prefix("--tw-") && !name_prefix("start"));
+        let test = "it('runs', async () => {\n  const run = async (id) => {\n    executionOrder.push(`start-${id}`);\n  };\n  expect(order).toEqual(['start-[1]', `end-${2}`]);\n});\n";
+        assert!(!live("src/__tests__/project.test.ts", test), "string literals in a test are not class names");
+        assert!(!live("src/log.ts", "log(`start-${id}`, 'started');"));
+        assert!(live("src/a.tsx", "<div className={`start-${n}`} />"));
+        assert!(live("src/b.tsx", "<div\n  className={cn(\n    'flex',\n    open && `start-${n}`,\n  )}\n/>"));
+        assert!(live("src/c.ts", "const v = clsx(`start-${n}`);"));
+        assert!(live("src/d.ts", "const v = cva('flex items-center px-2', { variants: { s: { a: `start-${n}` } } });"));
+        assert!(live("src/e.ts", "const base = `flex items-center start-${n}`;"));
+        assert!(live("src/f.vue", "<div :class=\"{ 'start-[2px]': x }\"></div>"));
+        assert!(live("src/g.vue", "<style>\n.a { @apply start-[2px]; }\n</style>"));
+        assert!(live("src/h.css", ".a { --x: start-[2px]; }"), "a stylesheet is its context");
+        assert!(live("index.html", "<div class=\"start-[2px]\"></div>"));
     }
 
     #[test]
