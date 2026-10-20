@@ -1321,12 +1321,32 @@ fn walled_off(o: &funnel::Opp) -> bool {
     o.requires_miss
 }
 fn friendly(id: &str, pending: &Pending) -> String {
-    pending
-        .jobs
-        .values()
-        .find(|j| j.technology == id)
-        .map(|j| j.name.clone())
-        .unwrap_or_else(|| id.to_string())
+    let jobs: Vec<&Job> = pending.jobs.values().filter(|j| j.technology == id).collect();
+    let Some(first) = jobs.first() else { return id.to_string() };
+    // Covered through a sibling package's index (`@babel/register` by `@babel/cli`'s): the packages installed here.
+    if jobs.iter().any(|j| installed_name(j) == j.name) {
+        return first.name.clone();
+    }
+    let names: BTreeSet<String> = jobs.iter().map(|j| installed_name(j)).collect();
+    names.into_iter().collect::<Vec<_>>().join(", ")
+}
+
+/// The package a job is for (its purl's name), which differs from the job's index name when the package is covered
+/// through a sibling package's index of the same repository and release stream.
+fn installed_name(job: &Job) -> String {
+    util::purl_name(&job.purl).filter(|n| !n.eq_ignore_ascii_case(&job.name)).unwrap_or_else(|| job.name.clone())
+}
+
+/// The index name of `tech` when its packages here are covered through a sibling package's index (`@babel/cli`).
+fn shared_index(id: &str, pending: &Pending) -> Option<String> {
+    let jobs: Vec<&Job> = pending.jobs.values().filter(|j| j.technology == id).collect();
+    let j = jobs.first()?;
+    (!jobs.iter().any(|j| installed_name(j) == j.name)).then(|| display_text(&j.name))
+}
+
+/// ` · records from the shared <index> index` when `tech`'s packages here are covered through a sibling's index.
+fn shared_index_note(id: &str, pending: &Pending) -> String {
+    shared_index(id, pending).map(|i| format!(" · records from the shared {i} index (same repository and release stream)")).unwrap_or_default()
 }
 // Flatten upstream text before writing it to a terminal: no escape sequences or forged lines.
 fn display_text(value: &str) -> String {
@@ -1368,7 +1388,7 @@ fn coverage_line(job: &Job) -> String {
     };
     let mut line = format!(
         "{} · {} · {} published records",
-        display_text(&job.name),
+        display_text(&installed_name(job)),
         status,
         job.records
     );
@@ -1755,7 +1775,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
             .filter(|o| o.rec.r.technology == *tech)
             .collect();
         // A record routed as version-unknown carries no installed version (its `installed` is a placeholder).
-        let mut versions: BTreeSet<_> = relevant.iter().filter(|o| o.route != funnel::Route::VersionUnknown).map(|o| o.installed.to_string()).collect();
+        let mut versions: BTreeSet<_> = relevant.iter().filter(|o| !matches!(o.route, funnel::Route::VersionUnknown | funnel::Route::OtherPackage)).map(|o| o.installed.to_string()).collect();
         if versions.is_empty() {
             for job in pending.jobs.values().filter(|j| j.technology == *tech) {
                 if let Some(version) = w.stack.deps.get(&job.purl).and_then(|d| d.version.as_ref())
@@ -1773,10 +1793,11 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
         // Zero documented changes from a technology whose sources yielded nothing is a gap, not an all-clear.
         let gap = if pending.jobs.values().any(|j| j.technology == *tech && empty_monitoring(j).is_some()) { " · source gap: its official sources gave no records (see coverage details)" } else { "" };
         catalog_scope += &format!(
-            "  {} {} · {} documented changes in the synced catalog{gap}\n",
+            "  {} {} · {} documented changes in the synced catalog{}{gap}\n",
             friendly(tech, pending),
             versions,
-            relevant.len()
+            relevant.len(),
+            shared_index_note(tech, pending)
         );
         let in_effect = relevant.iter().filter(|o| o.route == funnel::Route::InEffect).count();
         catalog_scope += &format!(
@@ -1991,6 +2012,10 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
     // A head line names the technology by its catalog id; the report shows the friendly name.
     let short = |line: &str, tech: &str| -> String {
         let name = friendly(tech, pending);
+        let name = match shared_index(tech, pending) {
+            Some(i) => format!("{name} (records from the shared {i} index)"),
+            None => name,
+        };
         let packages = out.packages.get(tech).cloned().unwrap_or_default();
         let line = if packages.is_empty() { line.to_string() } else { line.replace(&format!("{tech} ({})", packages.join(", ")), &name) };
         line.replacen(&format!("bumping {tech} "), &format!("bumping {name} "), 1)
