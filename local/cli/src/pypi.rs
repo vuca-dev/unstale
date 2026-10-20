@@ -432,7 +432,8 @@ pub fn detect(root: &Path, packages: &mut Vec<Package>, deps: &mut BTreeMap<Stri
             {
                 entry.pins.push(pin.clone());
             }
-            entry.read_in(&rel, version, source, false, floor.then(|| crate::stack::Range::Pypi(spec.clone())));
+            let lock_file = lock.as_ref().map(|l| if lock_dir == "." { l.file.clone() } else { format!("{lock_dir}/{}", l.file) });
+            entry.read_under(&rel, version, source, false, floor.then(|| crate::stack::Range::Pypi(spec.clone())), lock_file);
         }
     }
     for (file, (n, examples)) in stale {

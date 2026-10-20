@@ -159,6 +159,9 @@ struct Choice<'d> {
     head: &'d Reading,
     /// The headline it replaced, when the code moved it.
     moved: Option<&'d Reading>,
+    /// When `moved` is another independent project's headline: the files importing the package in `head`'s project
+    /// and in `moved`'s (`Dep::project_head`).
+    used_most: Option<(usize, usize)>,
     /// Readings that do not fit `head`: their files are left out of the evidence.
     off: Vec<&'d Reading>,
     /// Of `off`, those whose directory holds code importing the package.
@@ -198,24 +201,25 @@ fn side_by_side<'p>(stack: &Stack, present: &[&'p String]) -> SideBySide<'p> {
     out
 }
 
-/// The reading whose manifest a file's import resolves to: the deepest one containing it.
-fn owner<'d>(d: &'d Dep, path: &str) -> Option<&'d Reading> {
-    d.readings.iter().filter(|r| r.contains(path)).max_by_key(|r| if r.dir == "." { 0 } else { r.dir.len() })
-}
-
 fn choose<'d>(d: &'d Dep, sites: impl FnOnce() -> Vec<String>) -> Option<Choice<'d>> {
     let h = d.headline()?;
     if d.readings.iter().all(|r| r.fits(&h.version)) {
-        return Some(Choice { head: h, moved: None, off: vec![], off_sites: vec![] });
+        return Some(Choice { head: h, moved: None, used_most: None, off: vec![], off_sites: vec![] });
     }
+    let sites = sites();
+    // Independent projects: the one whose code imports the package most sets the version (`Dep::project_head`).
+    let (h, first, used_most) = match d.project_head(h, &sites) {
+        Some((r, n, m)) => (r, Some(h), Some((n, m))),
+        None => (h, None, None),
+    };
     let held: Vec<&Reading> = {
-        let mut v: Vec<&Reading> = sites().iter().filter_map(|p| owner(d, p)).collect();
+        let mut v: Vec<&Reading> = sites.iter().filter_map(|p| d.owner(p)).collect();
         v.sort_by(|a, b| a.dir.cmp(&b.dir));
         v.dedup_by(|a, b| a.dir == b.dir);
         v
     };
     let (head, moved) = match held.iter().any(|r| r.runs(&h.version)) || held.is_empty() {
-        true => (h, None),
+        true => (h, first),
         // An unlocked standalone manifest never sets the version while a covered one declares the package (`Reading::
         // standalone`): its code is left uncited instead (`off_sites`).
         false => match d.headline_among(|r| (h.standalone || !r.standalone) && held.iter().any(|x| x.dir == r.dir)) {
@@ -225,7 +229,8 @@ fn choose<'d>(d: &'d Dep, sites: impl FnOnce() -> Vec<String>) -> Option<Choice<
     };
     let off: Vec<&Reading> = d.readings.iter().filter(|r| !r.fits(&head.version)).collect();
     let off_sites = off.iter().copied().filter(|r| held.iter().any(|x| x.dir == r.dir)).collect();
-    Some(Choice { head, moved, off, off_sites })
+    let used_most = used_most.filter(|_| moved == first && first.is_some());
+    Some(Choice { head, moved, used_most, off, off_sites })
 }
 
 /// `hits` for `lits` without the files `off` marks (indices into `Repo::paths`).
@@ -974,7 +979,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             let d = &inp.stack.deps[*c];
             let mut mask = vec![None; inp.repo.paths.len()];
             for (i, p) in inp.repo.paths.iter().enumerate() {
-                let Some(r) = owner(d, p).filter(|r| ch.off.iter().any(|o| o.dir == r.dir)) else { continue };
+                let Some(r) = d.owner(p).filter(|r| ch.off.iter().any(|o| o.dir == r.dir)) else { continue };
                 let label = format!("{} ({} {})", place(&r.dir), d.name, r.version);
                 let k = off_labels.iter().position(|l| *l == label).unwrap_or_else(|| {
                     off_labels.push(label);
@@ -1136,7 +1141,13 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             if !others.is_empty() {
                 out.headline.insert((*c).clone(), (h.dir.clone(), h.source.clone()));
             }
-            if let Some(m) = ch.moved {
+            if let (Some(m), Some((n, k))) = (ch.moved, ch.used_most) {
+                out.versions.insert(normalize_purl(c), h.version.clone());
+                out.version_notes.push(format!(
+                    "{}: the reviews use {} in {} ({}), the independent project whose code imports it most ({n} file{}); {} in {} ({}) is another project's ({k} file{}).",
+                    d.name, h.version, place(&h.dir), h.source, if n == 1 { "" } else { "s" }, m.version, place(&m.dir), m.source, if k == 1 { "" } else { "s" }
+                ));
+            } else if let Some(m) = ch.moved {
                 out.versions.insert(normalize_purl(c), h.version.clone());
                 out.version_notes.push(format!(
                     "{}: the reviews use {} in {} ({}), where the code that imports it or runs it from its config files is; no such file runs {} ({} in {}).",
@@ -1531,7 +1542,7 @@ fn published_floor(stack: &Stack, comp: &str, introduced: &Version, files: &[Str
     let lib = |dir: &str| stack.packages.iter().any(|p| p.dir == dir && p.kind == crate::stack::Kind::Library);
     let mut low: Vec<String> = files
         .iter()
-        .filter_map(|f| owner(d, f))
+        .filter_map(|f| d.owner(f))
         .filter(|r| lib(&r.dir))
         .filter_map(|r| {
             let (shown, floor) = match r.range.as_ref()? {
@@ -2099,7 +2110,7 @@ mod tests {
             ("packages/webpack/src/config.ts", "import TerserPlugin from 'terser-webpack-plugin';\nnew TerserPlugin({ terserOptions: {} });"),
             ("apps/web/webpack.config.ts", "import TerserPlugin from 'terser-webpack-plugin';\nnew TerserPlugin({ terserOptions: {} });"),
         ]);
-        let reading = |dir: &str, range: Option<&str>| Reading { dir: dir.into(), version: parse_version("5.6.1").unwrap(), source: "lock".into(), standalone: false, range: range.map(|x| Range::Npm(x.into())) };
+        let reading = |dir: &str, range: Option<&str>| Reading { dir: dir.into(), version: parse_version("5.6.1").unwrap(), source: "lock".into(), standalone: false, range: range.map(|x| Range::Npm(x.into())), lock: None };
         let at = |lib_range: &str| {
             let mut s = stack(&[("terser-webpack-plugin", "5.6.1")], None);
             s.packages = vec![
@@ -2571,6 +2582,54 @@ mod tests {
             "{:?}",
             out.version_notes
         );
+    }
+
+    #[test]
+    fn independent_projects_take_the_version_of_the_one_whose_code_uses_it_most() {
+        // AutoGPT: the legacy classic/ project (its own lockfile, depth 1) runs an older line than the active
+        // platform/backend (its own lockfile, depth 2), and both import the package. Depth says nothing between
+        // independent projects; the one with more importing files sets the version, and the other's files are not
+        // cited.
+        let c = zod_removal();
+        let mut s = stack(&[], None);
+        let mut d = crate::stack::Dep::new("zod", true);
+        d.read_under("classic", parse_version("3.25.76"), "classic/package-lock.json".into(), false, None, Some("classic/package-lock.json".into()));
+        d.read_under("platform/backend", parse_version("4.1.12"), "platform/backend/package-lock.json".into(), false, None, Some("platform/backend/package-lock.json".into()));
+        let indep = d.clone();
+        s.deps.insert(crate::util::npm_purl("zod"), d);
+        s.settle();
+        let r = repo(&[
+            ("classic/src/a.ts", "import { z } from 'zod'; export const A = z.properties({})"),
+            ("platform/backend/src/b.ts", "import { z } from 'zod'; export const B = z.properties({})"),
+            ("platform/backend/src/c.ts", "import { z } from 'zod'; export const C = z.properties({})"),
+        ]);
+        let l = Ledger::default();
+        let out = run_with(&c, &s, &r, &l);
+        let o = out.opps.iter().find(|o| o.id() == "zod:properties").unwrap();
+        assert_eq!(o.installed.to_string(), "4.1.12");
+        assert_eq!(o.files, vec!["platform/backend/src/b.ts".to_string(), "platform/backend/src/c.ts".to_string()], "classic runs 3.x");
+        assert_eq!(out.headline["pkg:npm/zod"].0, "platform/backend");
+        assert!(out.version_notes.iter().any(|n| n.starts_with("zod: the reviews use 4.1.12 in platform/backend") && n.contains("imports it most (2 files); 3.25.76 in classic")), "{:?}", out.version_notes);
+
+        // One workspace (a single lockfile): the headline rule stands, whichever workspace imports it more.
+        let mut s = stack(&[], None);
+        let mut d = crate::stack::Dep::new("zod", true);
+        d.read_under("classic", parse_version("4.1.12"), "pnpm-lock.yaml".into(), false, None, Some("pnpm-lock.yaml".into()));
+        d.read_under("platform/backend", parse_version("4.6.0"), "pnpm-lock.yaml".into(), false, None, Some("pnpm-lock.yaml".into()));
+        s.deps.insert(crate::util::npm_purl("zod"), d);
+        s.settle();
+        let out = run_with(&c, &s, &r, &l);
+        assert_eq!(out.opps.iter().find(|o| o.id() == "zod:properties").unwrap().installed.to_string(), "4.1.12");
+
+        // The root declares it: the root's version stands.
+        let mut s = stack(&[], None);
+        let mut d2 = indep;
+        d2.read_under(".", parse_version("3.25.76"), "package-lock.json".into(), false, None, Some("package-lock.json".into()));
+        s.deps.insert(crate::util::npm_purl("zod"), d2);
+        s.settle();
+        let r = repo(&[("src/a.ts", "import { z } from 'zod'; export const A = z.properties({})"), ("platform/backend/src/b.ts", "import { z } from 'zod'; export const B = z.properties({})"), ("platform/backend/src/c.ts", "import { z } from 'zod'; export const C = z.properties({})")]);
+        let out = run_with(&c, &s, &r, &l);
+        assert_eq!(out.opps.iter().find(|o| o.id() == "zod:properties").unwrap().installed.to_string(), "3.25.76");
     }
 
     #[test]

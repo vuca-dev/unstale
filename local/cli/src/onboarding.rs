@@ -1757,6 +1757,13 @@ struct Ranked<'a, 'o> {
     copies: Option<String>,
 }
 
+/// Whether the file at `path` is in a manifest whose copy of the upgrade's packages (`copies`: package URL, installed
+/// version) runs another release line than every copy the upgrade moves (`stack::Dep::owner`, `Reading::fits`).
+fn other_project(stack: &stack::Stack, copies: &BTreeSet<(String, &semver::Version)>, path: &str) -> bool {
+    let fit: Vec<bool> = copies.iter().filter_map(|(c, v)| stack.deps.get(c).and_then(|d| d.owner(path)).map(|r| r.fits(v))).collect();
+    !fit.is_empty() && !fit.contains(&true)
+}
+
 /// The workarounds an upgrade's records join (`workarounds::joins`), record-level joins first.
 fn workaround_joins(found: &[workarounds::Workaround], members: &[usize], out: &Outcome, packages: &[String], w: &World) -> Vec<Join> {
     if found.is_empty() || members.is_empty() {
@@ -1782,9 +1789,16 @@ fn workaround_joins(found: &[workarounds::Workaround], members: &[usize], out: &
             })
         })
     };
+    // A workaround joins only the upgrade of the project its file is in: code whose manifest runs another release line
+    // than the copy this upgrade moves (`stack::Reading::fits`, an independent project with its own lockfile) would not
+    // cross this upgrade's range (AutoGPT: a uvicorn hack in `autogpt_platform/backend`, on 0.53.0, under the bump of
+    // `classic`'s 0.40.0).
+    let copies: BTreeSet<(String, &semver::Version)> = members.iter().map(|&i| (out.opps[i].component(), &out.opps[i].installed)).collect();
+    let elsewhere = |path: &str| other_project(&w.stack, &copies, path);
     let mut joins: Vec<Join> = found
         .iter()
         .enumerate()
+        .filter(|(_, wa)| !elsewhere(&wa.path))
         .filter_map(|(k, wa)| {
             let strength = workarounds::joins(wa, packages, &repos, &cited, upgrade, imports)?;
             let at = (strength == 3)
@@ -2295,6 +2309,8 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
             (None, true) => "; advisory present, affected path not found".to_string(),
             (None, false) => String::new(),
         };
+        // A digest head line that introduces its manifest lines ends in a colon: the notes follow it, not the colon.
+        let head = if lock_note.is_empty() && lead.is_empty() { head.as_str() } else { head.trim_end_matches(':') };
         upgrade_text += &format!("{}. {}{lock_note}{lead}\n", n + 1, head.trim_start_matches("bumping "));
         // Past the first twenty, the head line is enough to place a bump; its detail is one command away.
         if n >= DETAILED_UPGRADES {
@@ -3263,6 +3279,24 @@ fn refresh(ctx: &Ctx, st: &stack::Stack, pending: &Pending, scan: &mut Option<Wo
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_workaround_joins_only_the_upgrade_of_the_project_its_file_is_in() {
+        // AutoGPT: classic/poetry.lock runs uvicorn 0.40.0, autogpt_platform/backend/poetry.lock 0.53.0. A hack in
+        // the backend is not retired by classic's bump; it is by the backend's.
+        let mut st = stack::Stack::default();
+        let mut d = stack::Dep::new("uvicorn", true);
+        d.read_under("classic", util::parse_version("0.40.0"), "poetry.lock".into(), false, None, Some("classic/poetry.lock".into()));
+        d.read_under("autogpt_platform/backend", util::parse_version("0.53.0"), "poetry.lock".into(), false, None, Some("autogpt_platform/backend/poetry.lock".into()));
+        st.deps.insert("pkg:pypi/uvicorn".into(), d);
+        let (old, new) = (semver::Version::new(0, 40, 0), semver::Version::new(0, 53, 0));
+        let site = "autogpt_platform/backend/backend/util/service.py";
+        let of = |v| BTreeSet::from([("pkg:pypi/uvicorn".to_string(), v)]);
+        assert!(other_project(&st, &of(&old), site), "classic's bump");
+        assert!(!other_project(&st, &of(&new), site), "the backend's bump");
+        assert!(!other_project(&st, &of(&old), "scripts/run.py"), "no manifest declares it there: joins as before");
+        assert!(!other_project(&st, &of(&old), "classic/forge/app.py"));
+    }
 
     #[test]
     fn a_published_peer_range_without_the_current_release_and_an_older_declared_copy_are_named() {

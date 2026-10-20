@@ -107,6 +107,9 @@ pub struct Reading {
     /// unlocked manifest, a stale lockfile entry), and a library's range for what its users install, locked or not.
     /// `None` for an application's locked version.
     pub range: Option<Range>,
+    /// The lockfile covering the manifest (path from the repository root), `None` when none does. Manifests under
+    /// different lockfiles are independent projects: each installs its own copy (`Dep::project_head`).
+    pub lock: Option<String>,
 }
 
 /// A declared range, in its ecosystem's grammar.
@@ -147,14 +150,20 @@ impl Dep {
     }
 
     /// `read`, for a manifest that may be `standalone` (no lockfile covers it); `range` when `version` is its floor.
+    #[cfg(test)]
     pub fn read_in(&mut self, dir: &str, version: Option<Version>, source: String, standalone: bool, range: Option<Range>) {
+        self.read_under(dir, version, source, standalone, range, None)
+    }
+
+    /// `read_in`, for a manifest the lockfile `lock` covers.
+    pub fn read_under(&mut self, dir: &str, version: Option<Version>, source: String, standalone: bool, range: Option<Range>, lock: Option<String>) {
         let Some(version) = version else {
             if self.source.is_empty() {
                 self.source = source;
             }
             return;
         };
-        let reading = Reading { dir: dir.to_string(), version, source, standalone, range };
+        let reading = Reading { dir: dir.to_string(), version, source, standalone, range, lock };
         match self.readings.iter_mut().find(|r| r.dir == dir) {
             Some(r) if reading.version < r.version => *r = reading,
             Some(_) => {}
@@ -184,6 +193,36 @@ impl Dep {
         let peers: Vec<&Reading> = kept.into_iter().filter(|r| tier(r) == top).collect();
         let held = |v: &Version| peers.iter().filter(|r| r.version == *v).count();
         peers.iter().copied().min_by_key(|r| (std::cmp::Reverse(held(&r.version)), &r.version, &r.dir))
+    }
+
+    /// The reading whose manifest a file's import resolves to: the deepest one containing it (Node's lookup; a Python
+    /// file runs the environment of the project holding it).
+    pub fn owner(&self, path: &str) -> Option<&Reading> {
+        self.readings.iter().filter(|r| r.contains(path)).max_by_key(|r| if r.dir == "." { 0 } else { r.dir.len() })
+    }
+
+    /// The headline of the independent project whose code imports the package most, when that is not `h`'s: with
+    /// `sites` the files importing it, and the number of them in that project and in `h`'s. Manifests under different
+    /// lockfiles are independent projects (a manifest no lockfile covers is one of its own), and depth says nothing
+    /// between them: AutoGPT's legacy `classic/poetry.lock` (uvicorn 0.40.0, 2 importing files) is shallower than the
+    /// active `autogpt_platform/backend/poetry.lock` (0.53.0, 4 files). `None` when that project runs `h`'s version, when `h` is the root's (the root is what
+    /// the application resolves), when no file in `h`'s project imports it (the version then follows the code:
+    /// `funnel::choose`), or when no other project has more importing files. Standalone manifests never weigh in.
+    pub fn project_head(&self, h: &Reading, sites: &[String]) -> Option<(&Reading, usize, usize)> {
+        if h.dir == "." || h.standalone {
+            return None;
+        }
+        let project = |r: &Reading| r.lock.clone().unwrap_or_else(|| r.dir.clone());
+        let mut weight: BTreeMap<String, usize> = BTreeMap::new();
+        for r in sites.iter().filter_map(|p| self.owner(p)).filter(|r| !r.standalone) {
+            *weight.entry(project(r)).or_default() += 1;
+        }
+        let own = weight.get(&project(h)).copied().unwrap_or(0);
+        let (top, n) = weight.iter().max_by(|a, b| a.1.cmp(b.1).then_with(|| b.0.cmp(a.0)))?;
+        if own == 0 || *n <= own {
+            return None;
+        }
+        self.headline_among(|r| !r.standalone && project(r) == *top).filter(|r| r.version != h.version).map(|r| (r, *n, own))
     }
 
     /// Readings on another version than the headline, grouped by version (ascending), each with its directories.
@@ -638,7 +677,8 @@ pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
                 {
                     entry.pins.push(pin);
                 }
-                entry.read_in(&rel, version, source, standalone, floor.map(|r| Range::Npm(r.to_string())));
+                let lock_file = lock.as_ref().map(|(ld, l)| join(&rel_dir(root, ld), &l.file));
+                entry.read_under(&rel, version, source, standalone, floor.map(|r| Range::Npm(r.to_string())), lock_file);
             }
         }
         let floor = if standalone { &mut node_standalone } else { &mut node };
@@ -2107,7 +2147,7 @@ mod tests {
         assert!(!root.fits(&Version::new(18, 3, 1)));
         assert!(ui.contains("packages/ui/src/a.ts") && !ui.contains("packages/uikit/a.ts") && root.contains("anything.ts"));
         // A PyPI floor reads its specifier with PEP 440 rules.
-        let py = Reading { dir: "lib".into(), version: Version::new(1, 0, 0), source: "library floor of >=1".into(), standalone: false, range: Some(Range::Pypi(">=1".into())) };
+        let py = Reading { dir: "lib".into(), version: Version::new(1, 0, 0), source: "library floor of >=1".into(), standalone: false, range: Some(Range::Pypi(">=1".into())), lock: None };
         assert!(py.runs(&Version::new(2, 3, 0)) && py.fits(&Version::new(2, 3, 0)));
     }
 
