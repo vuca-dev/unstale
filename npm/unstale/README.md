@@ -1,6 +1,6 @@
 # @unstale/cli
 
-**Everything that changed past your coding agent's knowledge cutoff.**
+**You don't know what you don't know. Neither does your agent.**
 
 unstale reads the official release notes, migration guides, docs and security advisories of the packages you use,
 distills each change once, and matches it against your code. Your coding agent (Claude Code, Codex or Cursor) then
