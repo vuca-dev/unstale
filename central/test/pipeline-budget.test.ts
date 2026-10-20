@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import type { Limits } from "../src/onboarding/limits.ts";
 import { PipelineBudget } from "../src/pipeline/budget.ts";
-import { fallbackModel, putExtractCache } from "../src/pipeline/llm.ts";
+import { putExtractCache } from "../src/pipeline/llm.ts";
 import { EXTRACT_PROMPT, fill, releaseCached } from "../src/pipeline/extract.ts";
 import type { Technology } from "../src/pipeline/technologies.ts";
 
@@ -64,11 +64,11 @@ describe("PipelineBudget", () => {
 });
 
 describe("releaseCached", () => {
-  test("true only when every chunk's first call is in some extraction model's cache (gpt-6-luna's answers from before the switch count)", () => {
+  test("true only when every chunk's first call is in the configured model's cache", () => {
     const t = { id: "zod", name: "zod", components: ["pkg:npm/zod"] } as unknown as Technology;
     const rel = { version: "4.1.0", date: "2026-08-20", notes: "## Breaking\n- `z.string().email()` is removed." } as Parameters<typeof releaseCached>[1];
     expect(releaseCached(t, rel)).toBe(false);
-    putExtractCache(fill(EXTRACT_PROMPT, { TECH: t.name, VERSION: rel.version, DATE: rel.date, PART: "", NOTES: rel.notes }), "[]", { models: [fallbackModel()!] });
+    putExtractCache(fill(EXTRACT_PROMPT, { TECH: t.name, VERSION: rel.version, DATE: rel.date, PART: "", NOTES: rel.notes }), "[]");
     expect(releaseCached(t, rel)).toBe(true);
   });
 });

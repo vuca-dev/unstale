@@ -4,7 +4,7 @@
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { classifierModel, extractLlm } from "../llm.ts";
+import { extractLlm, extractModel } from "../llm.ts";
 import { hashedPacks, type Packs } from "../packs.ts";
 import { canonical, logUsage, sha256, sleep } from "../util.ts";
 
@@ -211,10 +211,10 @@ Questions:
 `;
 
 /** The extraction model's client (llm.ts: gateway, cache, retries, usage log). */
-const extractionModel: ChatRunner = (prompt, parse) => extractLlm(prompt, parse, { models: [classifierModel()] });
+const extractionModel: ChatRunner = (prompt, parse) => extractLlm(prompt, parse);
 
 /**
- * The fallback classifier: the extraction fallback model (llm.ts classifierModel, `gpt-6-luna` through the gateway by default) asked for one
+ * The fallback classifier: the extraction model (llm.ts, `gpt-6-luna` through the gateway by default) asked for one
  * option per question, nothing else. A text generator's stated probabilities are not scores: re-scored on choices
  * alone, every chat model's "p >= 0.5" equalled its choice, and thresholds fitted on its numbers only traded precision
  * away (eval/select/slice4/RESULTS-choice.md). So the answer is the choice, given as probability 1 (0 for the other
@@ -228,7 +228,7 @@ export class ChatClassifier implements Classifier {
   readonly model: string;
   private readonly run: ChatRunner;
   constructor(o: { model?: string; run?: ChatRunner } = {}) {
-    this.model = o.model ?? classifierModel().model;
+    this.model = o.model ?? extractModel().model;
     this.run = o.run ?? extractionModel;
   }
 

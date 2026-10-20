@@ -1,6 +1,7 @@
 // Slice 11 primary held-out arm (PREREG.md, "P"): slice 6's held-out AI SDK units, each guide read by every package that
 // ingested it, through this branch's production code (extractRelease: MiniMax primary on its frozen prompt, gpt-6-luna
-// low flex fallback), with empty caches. Steps A and B only (no classifier: step D is unchanged).
+// low flex fallback), with empty caches. Steps A and B only (no classifier: step D is unchanged). The design was rejected
+// (RESULTS.md), so central is unchanged: `git apply eval/select/slice11/design.patch` first.
 //
 //   cd central && npx tsx ../eval/select/slice11/run11.mts --state <central dir: guides/, onboarding/jobs/> [--cap 2]
 //
