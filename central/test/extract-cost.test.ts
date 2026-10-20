@@ -9,15 +9,13 @@ import { contentFree, extractRelease, MIN_SPLIT, releaseCached, splitChunk } fro
 import { TECHNOLOGIES } from "../src/pipeline/technologies.ts";
 
 const prev = { ...process.env };
-// The default extraction modes (two calls, quoted evidence, no diet), whatever the environment sets, on one model (the
-// release model's fallback chain is tested in llm-fallback.test.ts).
-const OWN = ["UNSTALE_CENTRAL_DIR", "AI_GATEWAY_API_KEY", "UNSTALE_EXTRACT_MODEL", "UNSTALE_RELEASE_MODEL", "UNSTALE_EXTRACT_STRUCTURE", "UNSTALE_EXTRACT_EVIDENCE", "UNSTALE_EXTRACT_DIET"];
+// The default extraction modes (two calls, quoted evidence, no diet), whatever the environment sets.
+const OWN = ["UNSTALE_CENTRAL_DIR", "AI_GATEWAY_API_KEY", "UNSTALE_EXTRACT_MODEL", "UNSTALE_EXTRACT_STRUCTURE", "UNSTALE_EXTRACT_EVIDENCE", "UNSTALE_EXTRACT_DIET"];
 beforeAll(() => {
   for (const k of OWN) delete process.env[k];
   process.env.UNSTALE_CENTRAL_DIR = mkdtempSync(join(tmpdir(), "unstale-extract-cost-"));
   process.env.AI_GATEWAY_API_KEY = "test-key";
   process.env.UNSTALE_EXTRACT_MODEL = "vercel:openai/gpt-6-luna";
-  process.env.UNSTALE_RELEASE_MODEL = "none";
 });
 afterAll(() => {
   for (const k of OWN) {

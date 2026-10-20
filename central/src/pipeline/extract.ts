@@ -3,8 +3,7 @@
 // is not asked: it is set by the classifier.
 // The extraction model's output schemas are hand-written Zod.
 import { z } from "zod";
-import { extractCached, extractLlm, extractTruncated, parseJson, releaseModels } from "./llm.ts";
-import type { CallOptions } from "./llm.ts";
+import { extractCached, extractLlm, extractTruncated, parseJson } from "./llm.ts";
 import type { GuideNote, ReleaseNote } from "./fetch.ts";
 import type { Technology } from "./technologies.ts";
 import { CHANGE_TYPES, SURFACES } from "./vocab.ts";
@@ -116,30 +115,6 @@ function between(s: string, from: string, to: string): string {
   return s.slice(a, b);
 }
 const RECORD_END = '\n "evidence": a sentence or phrase copied verbatim from the notes that supports the record\n}\n';
-
-// Per-model extract prompts (eval/select/slice11, revision r3 frozen on DEV). minimax/minimax-m3.1-flash understood
-// changes but quoted a heading, a sentence introducing several changes, or the remedy, instead of the line stating the
-// change, and copied markdown link URLs into quotes; its evidence field asks for the stating sentence, list item or table
-// row, and a rule after the task (with a neutral example) asks for links as their text. Every other model gets
-// EXTRACT_PROMPT unchanged, so their requests and cache keys do not move.
-export const EVIDENCE_FIELD = ' "evidence": a sentence or phrase copied verbatim from the notes that supports the record';
-export const STATEMENT_EVIDENCE = ` "evidence": copied verbatim from the notes: the sentence, list item or table row that states this change itself
-             (what is new, removed, renamed, required or now fails). Not a heading, and not a sentence that only
-             introduces several changes; when the notes follow the statement with what to do about it, copy both.
-             Copy a markdown link as its text alone, without the URL`;
-export const LINK_RULE = `In "evidence", write every markdown link as its text only and change nothing else: the notes' line
-"The [\`timeout\`](/docs/api/options#timeout) option now defaults to [30 seconds](/docs/limits)." is copied as
-"The \`timeout\` option now defaults to 30 seconds."`;
-const NOTHING = "If nothing qualifies, output [].";
-const PROMPT_BY_MODEL: Record<string, { evidence: string; rule: string }> = { "minimax/minimax-m3.1-flash": { evidence: STATEMENT_EVIDENCE, rule: LINK_RULE } };
-if (!EXTRACT_PROMPT.includes(EVIDENCE_FIELD) || !EXTRACT_PROMPT.includes(NOTHING)) throw new Error("extract.ts: EXTRACT_PROMPT's evidence field or empty-answer line changed");
-/** The extract prompt (filled) as a given model is asked it: for the models in PROMPT_BY_MODEL, EXTRACT_PROMPT's evidence
- * field replaced and their rule added after the empty-answer line (both precede the notes, so the first occurrence is
- * the template's). */
-export function extractPromptFor(model: string, prompt: string): string {
-  const v = PROMPT_BY_MODEL[model];
-  return v && prompt.startsWith(EXTRACT_HEAD) ? prompt.replace(EVIDENCE_FIELD, v.evidence).replace(NOTHING, `${NOTHING}\n${v.rule}`) : prompt;
-}
 if (!EXTRACT_PROMPT.includes(RECORD_END)) throw new Error("extract.ts: EXTRACT_PROMPT's record schema changed");
 export const ONE_CALL_PROMPT = EXTRACT_PROMPT.replace(
   RECORD_END,
@@ -570,11 +545,9 @@ export function releaseBoilerplate(notes: string): boolean {
   return true;
 }
 
-/** Markdown links and images as their text alone (`[text](url)` → `text`): a quote copied as a reader sees the page grounds. */
-const delink = (s: string): string => s.replace(/!?\[([^\]\n]*)\]\([^)\s]*(?:\s+"[^"]*")?\)/g, "$1");
-const norm = (s: string): string => delink(s).replace(/[`*_\\]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+const norm = (s: string): string => s.replace(/[`*_\\]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
 
-/** Where a quote sits in the notes: whether it is verbatim (after whitespace, markup and link folding) and its heading. */
+/** Where a quote sits in the notes: whether it is verbatim (after whitespace and markup folding) and its heading. */
 export function locate(notes: string, quote: string): { grounded: boolean; section?: string } {
   const q = norm(quote);
   if (!q) return { grounded: false };
@@ -633,19 +606,8 @@ function firstCall(t: Technology, rel: ReleaseNote | GuideNote | DocsNote, notes
   const numbered = extractEvidence() === "ids" ? numberUnits(notes) : undefined;
   const d = extractDiet();
   const template = numbered ? EXTRACT_PROMPT_IDS : EXTRACT_PROMPT;
-  const prompt = fill(d ? dietPrompt(template, d) : template, { ...base, NOTES: numbered ? numbered.text : notes });
-  // A release note's default two-call prompt (quotes, no diet) goes to the release model first, with its own evidence
-  // field, then to the extraction model; guides, docs notes and the other prompt variants go to the extraction model.
-  const opts: CallOptions = numbered || d || !isReleaseNote(rel) ? {} : { models: releaseModels(), promptFor: (m) => extractPromptFor(m.model, prompt) };
-  return { prompt, opts, numbered };
+  return { prompt: fill(d ? dietPrompt(template, d) : template, { ...base, NOTES: numbered ? numbered.text : notes }), opts: {}, numbered };
 }
-
-/** A release note (GitHub release, changelog section, or a linked document read for one); not an upgrade guide or a
- * docs note, which carry `kind`. Only release notes go to the release model (llm.ts releaseModels). */
-/** Step B's call options: a release note's models (step A's chain), nothing else of step A's. */
-const labelOpts = (o: CallOptions): CallOptions => (o.models ? { models: o.models } : {});
-
-export const isReleaseNote = (rel: ReleaseNote | GuideNote | DocsNote): boolean => !("kind" in rel);
 
 const partLine = (parts: string[], ci: number) => (parts.length > 1 ? `\nPart ${ci + 1} of ${parts.length} of these release notes.` : "");
 
@@ -722,7 +684,7 @@ async function twoCall(
         return p.success ? [p.data] : [];
       });
     },
-    { ...first.opts, onLength: () => (truncated = true) },
+    { onLength: () => (truncated = true) },
   );
   if (!recs) {
     if (!truncated || notes.length < MIN_SPLIT) return { recs: [], failed: 1 };
@@ -747,8 +709,6 @@ async function twoCall(
       if (!v || typeof v !== "object" || Array.isArray(v)) return undefined;
       return v as Record<string, unknown>;
     },
-    // Step B goes to the same models as step A (a release note's chain), with LABEL_PROMPT unchanged.
-    labelOpts(first.opts as CallOptions),
   );
   return { recs: recs.map((record, i) => ({ record, labels: labels?.[`r${i + 1}`], notes })), failed: labels ? 0 : 1 };
 }

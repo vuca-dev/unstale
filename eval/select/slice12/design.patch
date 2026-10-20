@@ -1,0 +1,699 @@
+diff --git a/central/README.md b/central/README.md
+index 334f076..f967836 100644
+--- a/central/README.md
++++ b/central/README.md
+@@ -57,7 +57,9 @@ Every variable is optional; the defaults suit a developer machine.
+ | `UNSTALE_HOST` | `127.0.0.1` | `serve`: listen address (`0.0.0.0` in a container) |
+ | `UNSTALE_PORT` | `47831` | `serve`: listen port |
+ | `GITHUB_TOKEN` | output of `gh auth token` | GitHub API token for release lists, docs resolution, admission signals and the sample |
+-| `UNSTALE_EXTRACT_MODEL` | `vercel:openai/gpt-6-luna` | Extraction and the classifier's fallback, `provider:model` (`vercel` is the AI gateway, flex tier; `openai` the OpenAI API) |
++| `UNSTALE_EXTRACT_MODEL` | `vercel:openai/gpt-6-luna` | Extraction of upgrade guides and docs notes, the release notes' fallback, and the classifier's fallback, `provider:model` (`vercel` is the AI gateway, flex tier; `openai` the OpenAI API) |
++| `UNSTALE_RELEASE_MODEL` | `vercel:minimax/minimax-m3.1-flash` | Release notes' extraction (steps A and B) first, falling back to `UNSTALE_EXTRACT_MODEL` on an error, exhausted 429s, truncation or an unparseable answer; `none` sends release notes to `UNSTALE_EXTRACT_MODEL` alone (eval/select/slice12) |
++| `UNSTALE_RELEASE_CONCURRENCY` | `40` | Calls in flight to `UNSTALE_RELEASE_MODEL` (other models: 5) |
+ | `AI_GATEWAY_API_KEY` | read from `~/.config/ati/vercel.env` | AI gateway key |
+ | `JEV_API_KEY` | read from `UNSTALE_JEV_ENV_FILE` | Jev classifier key |
+ | `UNSTALE_JEV_ENV_FILE` | `~/.config/ati/jev.env` | Env file holding `JEV_API_KEY=` when the variable itself is unset |
+diff --git a/central/src/pipeline/cli.ts b/central/src/pipeline/cli.ts
+index 554eee7..33bfae4 100644
+--- a/central/src/pipeline/cli.ts
++++ b/central/src/pipeline/cli.ts
+@@ -21,7 +21,7 @@ import { readFileSync } from "node:fs";
+ import { join } from "node:path";
+ import { parseArgs } from "node:util";
+ import { advisoryStage, advisoryStats } from "./advisories.ts";
+-import { extractModel, llmStats } from "./llm.ts";
++import { extractModel, llmStats, releaseModel } from "./llm.ts";
+ import { PipelineBudget } from "./budget.ts";
+ import { fetchReleases } from "./fetch.ts";
+ import { usageStats } from "./classify/adapter.ts";
+@@ -113,6 +113,7 @@ async function pipeline(args: string[]): Promise<void> {
+   const summary = {
+     wall_s: Math.round((Date.now() - t0) / 1000),
+     extract_model: extractModel(),
++    release_model: releaseModel() ?? null,
+     llm: llmStats,
+     classifier_answers: cls.counts,
+     classifier_cache_hits: cls.cacheHits(),
+diff --git a/central/src/pipeline/extract.ts b/central/src/pipeline/extract.ts
+index c6eafa4..00a9288 100644
+--- a/central/src/pipeline/extract.ts
++++ b/central/src/pipeline/extract.ts
+@@ -3,7 +3,8 @@
+ // is not asked: it is set by the classifier.
+ // The extraction model's output schemas are hand-written Zod.
+ import { z } from "zod";
+-import { extractCached, extractLlm, extractTruncated, parseJson } from "./llm.ts";
++import { extractCached, extractLlm, extractTruncated, parseJson, releaseModels } from "./llm.ts";
++import type { CallOptions } from "./llm.ts";
+ import type { GuideNote, ReleaseNote } from "./fetch.ts";
+ import type { Technology } from "./technologies.ts";
+ import { CHANGE_TYPES, SURFACES } from "./vocab.ts";
+@@ -115,6 +116,30 @@ function between(s: string, from: string, to: string): string {
+   return s.slice(a, b);
+ }
+ const RECORD_END = '\n "evidence": a sentence or phrase copied verbatim from the notes that supports the record\n}\n';
++
++// Per-model extract prompts (eval/select/slice11, revision r3 frozen on DEV). minimax/minimax-m3.1-flash understood
++// changes but quoted a heading, a sentence introducing several changes, or the remedy, instead of the line stating the
++// change, and copied markdown link URLs into quotes; its evidence field asks for the stating sentence, list item or table
++// row, and a rule after the task (with a neutral example) asks for links as their text. Every other model gets
++// EXTRACT_PROMPT unchanged, so their requests and cache keys do not move.
++export const EVIDENCE_FIELD = ' "evidence": a sentence or phrase copied verbatim from the notes that supports the record';
++export const STATEMENT_EVIDENCE = ` "evidence": copied verbatim from the notes: the sentence, list item or table row that states this change itself
++             (what is new, removed, renamed, required or now fails). Not a heading, and not a sentence that only
++             introduces several changes; when the notes follow the statement with what to do about it, copy both.
++             Copy a markdown link as its text alone, without the URL`;
++export const LINK_RULE = `In "evidence", write every markdown link as its text only and change nothing else: the notes' line
++"The [\`timeout\`](/docs/api/options#timeout) option now defaults to [30 seconds](/docs/limits)." is copied as
++"The \`timeout\` option now defaults to 30 seconds."`;
++const NOTHING = "If nothing qualifies, output [].";
++const PROMPT_BY_MODEL: Record<string, { evidence: string; rule: string }> = { "minimax/minimax-m3.1-flash": { evidence: STATEMENT_EVIDENCE, rule: LINK_RULE } };
++if (!EXTRACT_PROMPT.includes(EVIDENCE_FIELD) || !EXTRACT_PROMPT.includes(NOTHING)) throw new Error("extract.ts: EXTRACT_PROMPT's evidence field or empty-answer line changed");
++/** The extract prompt (filled) as a given model is asked it: for the models in PROMPT_BY_MODEL, EXTRACT_PROMPT's evidence
++ * field replaced and their rule added after the empty-answer line (both precede the notes, so the first occurrence is
++ * the template's). */
++export function extractPromptFor(model: string, prompt: string): string {
++  const v = PROMPT_BY_MODEL[model];
++  return v && prompt.startsWith(EXTRACT_HEAD) ? prompt.replace(EVIDENCE_FIELD, v.evidence).replace(NOTHING, `${NOTHING}\n${v.rule}`) : prompt;
++}
+ if (!EXTRACT_PROMPT.includes(RECORD_END)) throw new Error("extract.ts: EXTRACT_PROMPT's record schema changed");
+ export const ONE_CALL_PROMPT = EXTRACT_PROMPT.replace(
+   RECORD_END,
+@@ -545,9 +570,11 @@ export function releaseBoilerplate(notes: string): boolean {
+   return true;
+ }
+ 
+-const norm = (s: string): string => s.replace(/[`*_\\]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
++/** Markdown links and images as their text alone (`[text](url)` → `text`): a quote copied as a reader sees the page grounds. */
++const delink = (s: string): string => s.replace(/!?\[([^\]\n]*)\]\([^)\s]*(?:\s+"[^"]*")?\)/g, "$1");
++const norm = (s: string): string => delink(s).replace(/[`*_\\]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+ 
+-/** Where a quote sits in the notes: whether it is verbatim (after whitespace and markup folding) and its heading. */
++/** Where a quote sits in the notes: whether it is verbatim (after whitespace, markup and link folding) and its heading. */
+ export function locate(notes: string, quote: string): { grounded: boolean; section?: string } {
+   const q = norm(quote);
+   if (!q) return { grounded: false };
+@@ -606,9 +633,20 @@ function firstCall(t: Technology, rel: ReleaseNote | GuideNote | DocsNote, notes
+   const numbered = extractEvidence() === "ids" ? numberUnits(notes) : undefined;
+   const d = extractDiet();
+   const template = numbered ? EXTRACT_PROMPT_IDS : EXTRACT_PROMPT;
+-  return { prompt: fill(d ? dietPrompt(template, d) : template, { ...base, NOTES: numbered ? numbered.text : notes }), opts: {}, numbered };
++  const prompt = fill(d ? dietPrompt(template, d) : template, { ...base, NOTES: numbered ? numbered.text : notes });
++  // A release note's default two-call prompt (quotes, no diet) goes to the release model first, with its own evidence
++  // field, then to the extraction model; guides, docs notes and the other prompt variants go to the extraction model.
++  const opts: CallOptions = numbered || d || !isReleaseNote(rel) ? {} : { models: releaseModels(), promptFor: (m) => extractPromptFor(m.model, prompt) };
++  return { prompt, opts, numbered };
+ }
+ 
++/** A release note (GitHub release, changelog section, or a linked document read for one); not an upgrade guide or a
++ * docs note, which carry `kind`. Only release notes go to the release model (llm.ts releaseModels). */
++/** Step B's call options: a release note's models (step A's chain), nothing else of step A's. */
++const labelOpts = (o: CallOptions): CallOptions => (o.models ? { models: o.models } : {});
++
++export const isReleaseNote = (rel: ReleaseNote | GuideNote | DocsNote): boolean => !("kind" in rel);
++
+ const partLine = (parts: string[], ci: number) => (parts.length > 1 ? `\nPart ${ci + 1} of ${parts.length} of these release notes.` : "");
+ 
+ /** Whether every chunk's first call is answered from the cache, so extracting the note again costs no model tokens
+@@ -684,7 +722,7 @@ async function twoCall(
+         return p.success ? [p.data] : [];
+       });
+     },
+-    { onLength: () => (truncated = true) },
++    { ...first.opts, onLength: () => (truncated = true) },
+   );
+   if (!recs) {
+     if (!truncated || notes.length < MIN_SPLIT) return { recs: [], failed: 1 };
+@@ -709,6 +747,8 @@ async function twoCall(
+       if (!v || typeof v !== "object" || Array.isArray(v)) return undefined;
+       return v as Record<string, unknown>;
+     },
++    // Step B goes to the same models as step A (a release note's chain), with LABEL_PROMPT unchanged.
++    labelOpts(first.opts as CallOptions),
+   );
+   return { recs: recs.map((record, i) => ({ record, labels: labels?.[`r${i + 1}`], notes })), failed: labels ? 0 : 1 };
+ }
+diff --git a/central/src/pipeline/llm.ts b/central/src/pipeline/llm.ts
+index 7e82006..11a5396 100644
+--- a/central/src/pipeline/llm.ts
++++ b/central/src/pipeline/llm.ts
+@@ -1,14 +1,22 @@
+-// OpenAI-compatible chat-completions calls, and the extraction model switch (steps A+B). UNSTALE_EXTRACT_MODEL is
+-// `provider:model`, default `vercel:openai/gpt-6-luna` through the AI gateway (slice 3b's pick, reasoning `low`);
+-// `openai:<model>` calls the OpenAI API directly. The same model answers the classifier's fallback
+-// (classify/adapter.ts, ChatClassifier). No step calls the Codex CLI. UNSTALE_EXTRACT_EFFORT sets reasoning_effort
+-// (default low). UNSTALE_EXTRACT_SERVICE_TIER (default flex on the gateway) asks for the provider's flex tier: the same
+-// model at 50% of list price, slower (verified 16 October 2026 on openai/gpt-6-luna: billed at 0.50×); a flex call the
+-// provider refuses for capacity is retried once at the default tier, and the tier is not part of the cache key (same
+-// model, same answer distribution). Answers are cached by sha256(provider + request body), only when they parse, so a
+-// failed or unparseable call is retried on the next run. A truncated answer (finish_reason `length`) is not retried:
+-// the same request would run out of room again. It is recorded beside the answers (`<key>.length`), so a later run
+-// does not pay for it again, and the caller is told (`onLength`): extraction splits the chunk (extract.ts).
++// OpenAI-compatible chat-completions calls, and the extraction models (steps A+B). UNSTALE_EXTRACT_MODEL is
++// `provider:model`, default `vercel:openai/gpt-6-luna` through the AI gateway (slice 3b's pick, reasoning `low`); it
++// extracts upgrade guides and docs notes, answers the classifier's chat fallback (classify/adapter.ts, ChatClassifier),
++// and is the fallback for release notes. Release notes go first to UNSTALE_RELEASE_MODEL, default
++// `vercel:minimax/minimax-m3.1-flash` (free on the gateway; eval/select/slice12, with its own extract prompt,
++// extract.ts extractPromptFor; `none` sends release notes to UNSTALE_EXTRACT_MODEL alone). The extraction model answers
++// a release note when the release model fails: an HTTP error or exhausted 429s, a truncated answer, or no parseable
++// answer. `openai:<model>` calls the OpenAI API directly. No step calls the Codex CLI. UNSTALE_EXTRACT_EFFORT sets
++// reasoning_effort (default low). UNSTALE_EXTRACT_SERVICE_TIER (default flex on the gateway) asks for the provider's
++// flex tier: the same model at 50% of list price, slower (verified 16 October 2026 on openai/gpt-6-luna: billed at
++// 0.50x; a model without a flex tier ignores it). A flex call the provider refuses for capacity is retried once at the
++// default tier, and the tier is not part of the cache key (same model, same answer distribution). Answers are cached by
++// sha256(provider + request body). The body names the model, so each model's answers keep their own keys, and a lookup
++// reads every model's key before any call: a release note gpt-6-luna extracted before the switch is answered from its
++// cache. Answers are cached only when they parse, so a failed or unparseable call is retried on the next run. A
++// truncated answer (finish_reason `length`) is not retried: the same request would run out of room again. It is
++// recorded beside the answers (`<key>.length`), so a later run does not pay for it again, and the caller is told
++// (`onLength`): extraction splits the chunk (extract.ts). The cache entry and the usage log name the model that
++// answered, with its role (primary or fallback).
+ import { homedir } from "node:os";
+ import { join } from "node:path";
+ import { keyFromEnvFile } from "./classify/adapter.ts";
+@@ -189,25 +197,78 @@ export interface ExtractModel {
+   tier: string;
+ }
+ 
+-export function extractModel(env: NodeJS.ProcessEnv = process.env): ExtractModel {
+-  const spec = env.UNSTALE_EXTRACT_MODEL ?? "vercel:openai/gpt-6-luna";
++export const DEFAULT_EXTRACT_MODEL = "vercel:openai/gpt-6-luna";
++export const DEFAULT_RELEASE_MODEL = "vercel:minimax/minimax-m3.1-flash";
++
++function parseSpec(spec: string, name: string, env: NodeJS.ProcessEnv): ExtractModel {
+   const i = spec.indexOf(":");
+-  if (i <= 0) throw new Error(`UNSTALE_EXTRACT_MODEL must be provider:model, got ${spec}`);
++  if (i <= 0) throw new Error(`${name} must be provider:model, got ${spec}`);
+   const provider = spec.slice(0, i);
+-  if (!PROVIDERS[provider]) throw new Error(`UNSTALE_EXTRACT_MODEL: unknown provider ${provider}`);
++  if (!PROVIDERS[provider]) throw new Error(`${name}: unknown provider ${provider}`);
+   return { provider, model: spec.slice(i + 1), effort: env.UNSTALE_EXTRACT_EFFORT ?? "low", tier: env.UNSTALE_EXTRACT_SERVICE_TIER ?? (provider === "vercel" ? "flex" : "default") };
+ }
+ 
+-export const llmStats = { calls: 0, cached: 0, failed: 0, truncated: 0, input_tokens: 0, cached_input_tokens: 0, output_tokens: 0, reasoning_tokens: 0, dollars: 0 };
++/** The extraction model (UNSTALE_EXTRACT_MODEL): guides, docs notes, the classifier's chat fallback, and the release
++ * notes' fallback. */
++export function extractModel(env: NodeJS.ProcessEnv = process.env): ExtractModel {
++  return parseSpec(env.UNSTALE_EXTRACT_MODEL ?? DEFAULT_EXTRACT_MODEL, "UNSTALE_EXTRACT_MODEL", env);
++}
++
++/** The release notes' primary model (UNSTALE_RELEASE_MODEL; `none`, or the extraction model itself, means none). */
++export function releaseModel(env: NodeJS.ProcessEnv = process.env): ExtractModel | undefined {
++  const spec = env.UNSTALE_RELEASE_MODEL ?? DEFAULT_RELEASE_MODEL;
++  if (spec === "none") return undefined;
++  const m = parseSpec(spec, "UNSTALE_RELEASE_MODEL", env);
++  const e = extractModel(env);
++  return m.provider === e.provider && m.model === e.model ? undefined : m;
++}
++
++/** The models a release note's calls (steps A and B) try, in order: the release model, then the extraction model. */
++export function releaseModels(env: NodeJS.ProcessEnv = process.env): ExtractModel[] {
++  const r = releaseModel(env);
++  return r ? [r, extractModel(env)] : [extractModel(env)];
++}
++
++export const llmStats = {
++  calls: 0,
++  cached: 0,
++  failed: 0,
++  truncated: 0,
++  /** Calls handed to the next model after the previous one failed (HTTP error, exhausted 429s, truncation, unparseable). */
++  fallbacks: 0,
++  input_tokens: 0,
++  cached_input_tokens: 0,
++  output_tokens: 0,
++  reasoning_tokens: 0,
++  dollars: 0,
++  /** Answers per model (`provider:model`), called or cached. */
++  answered_by: {} as Record<string, number>,
++};
+ 
+ const MAX_TOKENS = 16_000;
+-const chatLimit = new Limiter(5);
++const limiters = new Map<string, Limiter>();
++/** Calls in flight per model: UNSTALE_RELEASE_CONCURRENCY (default 40) for the release model, 5 for any other. At 40
++ * the free MiniMax endpoint sustained about 53 calls a minute with no 429 (eval/select/slice11, load). */
++function limiterOf(m: ExtractModel): Limiter {
++  const id = `${m.provider}:${m.model}`;
++  let l = limiters.get(id);
++  if (!l) {
++    const r = releaseModel();
++    const release = !!r && r.provider === m.provider && r.model === m.model;
++    l = new Limiter(release ? Math.max(1, Number(process.env.UNSTALE_RELEASE_CONCURRENCY) || 40) : 5);
++    limiters.set(id, l);
++  }
++  return l;
++}
+ 
+-/** Runs an extraction or label prompt on the configured model; the parsed answer, or undefined after three failed attempts. */
+ /** `responseFormat` is a chat-completions `response_format`. */
+ export interface CallOptions {
+   responseFormat?: unknown;
+   maxTokens?: number;
++  /** The prompt a given model is asked (extract.ts extractPromptFor); default: the prompt as given, for every model. */
++  promptFor?: (m: ExtractModel) => string;
++  /** The models to try, in order (default: the extraction model alone; a release note passes releaseModels()). */
++  models?: ExtractModel[];
+ }
+ 
+ /** The model cache: an answer under its request's key, a truncated answer's usage under `<key>.length` (packs.ts). */
+@@ -215,101 +276,151 @@ const llmCache = () => hashedPacks(join(centralDir(), "cache", "llm"), 3);
+ 
+ function chatRequest(m: ExtractModel, prompt: string, o: CallOptions): { body: ChatBody; key: string } {
+   const p = PROVIDERS[m.provider]!;
+-  const body: ChatBody = { model: m.model, messages: [{ role: "user", content: prompt }], max_tokens: o.maxTokens ?? MAX_TOKENS, reasoning_effort: m.effort };
++  const body: ChatBody = { model: m.model, messages: [{ role: "user", content: o.promptFor ? o.promptFor(m) : prompt }], max_tokens: o.maxTokens ?? MAX_TOKENS, reasoning_effort: m.effort };
+   if (o.responseFormat) body.response_format = o.responseFormat;
+   const key = sha256(`${p.name}\n${canonical(body)}`);
+   return { body, key };
+ }
+ 
+-/** The key the configured model's answer to this prompt is cached under. */
++/** Each model's request and cache key for this prompt, in the order they are tried. Every model keeps its own keys, so
++ * answers cached under one model stay valid when the release model changes. */
++function requests(prompt: string, o: CallOptions): Array<{ m: ExtractModel; body: ChatBody; key: string }> {
++  return (o.models ?? [extractModel()]).map((m) => ({ m, ...chatRequest(m, prompt, o) }));
++}
++
++/** The key the first model's answer to this prompt is cached under (the extraction model, or `o.models[0]`). */
+ export function extractCacheKey(prompt: string, o: CallOptions = {}): string {
+-  return chatRequest(extractModel(), prompt, o).key;
++  return requests(prompt, o)[0]!.key;
+ }
+ 
+-/** Caches an answer for the configured model (tests). */
++/** Caches an answer for the extraction model, or for `o.models[0]` (tests). */
+ export function putExtractCache(prompt: string, text: string, o: CallOptions = {}): void {
+   llmCache().put(extractCacheKey(prompt, o), JSON.stringify({ text }));
+ }
+ 
+-/** Whether the configured model already has a parsed answer to this prompt cached (a call would be free). */
++/** Whether any model of the chain already has a parsed answer to this prompt cached (a call would be free). */
+ export function extractCached(prompt: string, o: CallOptions = {}): boolean {
+-  return llmCache().has(extractCacheKey(prompt, o));
++  const cache = llmCache();
++  return requests(prompt, o).some((r) => cache.has(r.key));
+ }
+ 
+-/** Whether the configured model's answer to this prompt was truncated (finish_reason `length`): extractLlm will not ask again. */
++/** Whether an answer to this prompt was truncated (finish_reason `length`) and none is cached: extractLlm will not ask again. */
+ export function extractTruncated(prompt: string, o: CallOptions = {}): boolean {
+-  return llmCache().has(`${extractCacheKey(prompt, o)}.length`);
++  const cache = llmCache();
++  const rs = requests(prompt, o);
++  return !rs.some((r) => cache.has(r.key)) && rs.some((r) => cache.has(`${r.key}.length`));
+ }
+ 
++type Outcome<T> = { value: T } | { why: "http" | "truncated" | "unparseable"; detail?: string };
++
++/**
++ * Asks the models in order (`o.models`, default the extraction model alone; a release note's chain is the release
++ * model, then the extraction model) and returns the first parsed answer. Before any
++ * call, every model's cache is read (the primary's first), so a prompt some model already answered is never asked
++ * again. A recorded truncation of any model means the request ran out of room: no model is asked, the caller is told
++ * (`onLength`) and splits the chunk. Otherwise each model is called in turn: one that fails (HTTP error or exhausted
++ * 429s, a truncated answer, no parseable answer within its attempts) hands the request to the next. Only the last
++ * model's truncation reaches `onLength`. The primary gets 1 retry on 429/5xx and 2 attempts at a parseable answer
++ * when a fallback follows, and no retry at the default tier after a flex refusal (so a rate-limited free model gives
++ * way quickly); the last model gets 4 and 3.
++ */
+ export async function extractLlm<T>(
+   prompt: string,
+   parse: (text: string) => T | undefined,
+   o: { fetch?: typeof fetch; backoffMs?: number; onLength?: () => void } & CallOptions = {},
+ ): Promise<T | undefined> {
+-  const m = extractModel();
+-  const p = PROVIDERS[m.provider]!;
+-  const { body, key } = chatRequest(m, prompt, o);
++  const rs = requests(prompt, o);
+   const cache = llmCache();
+-  const cached = cache.get(key);
+-  const hit = cached && (JSON.parse(cached.toString("utf8")) as { text: string });
+-  if (hit) {
++  for (const r of rs) {
++    const cached = cache.get(r.key);
++    const hit = cached && (JSON.parse(cached.toString("utf8")) as { text: string });
++    if (!hit) continue;
+     const v = parse(hit.text);
+     if (v !== undefined) {
+       llmStats.cached++;
++      const id = `${r.m.provider}:${r.m.model}`;
++      llmStats.answered_by[id] = (llmStats.answered_by[id] ?? 0) + 1;
+       return v;
+     }
+   }
+-  if (cache.has(`${key}.length`)) {
++  if (rs.some((r) => cache.has(`${r.key}.length`))) {
+     llmStats.truncated++;
+     o.onLength?.();
+     return undefined;
+   }
+   const backoffMs = o.backoffMs ?? 2000;
+-  return chatLimit.run(async () => {
+-    for (let attempt = 0; attempt < 3; attempt++) {
+-      let r: Answer;
+-      try {
+-        const post = (b: ChatBody) => postChat(p, b, { apiKey: keyFromEnvFile(p.keyFile, p.keyVar), backoffMs, timeoutMs: 10 * 60 * 1000, retries: 4, ...(o.fetch ? { fetch: o.fetch } : {}) });
+-        if (m.tier === "default") r = await post(body);
+-        else {
+-          try {
+-            r = await post({ ...body, providerOptions: { gateway: { serviceTier: m.tier } } });
+-          } catch (e) {
+-            if (!(e instanceof HttpError) || (e.status !== 429 && e.status < 500)) throw e;
+-            console.error(`${p.name}/${m.model}: ${m.tier} tier unavailable (${e.message}); retrying at the default tier`);
+-            r = await post(body);
+-          }
++  for (const [i, r] of rs.entries()) {
++    const last = i === rs.length - 1;
++    const role = i === 0 ? "primary" : "fallback";
++    const out: Outcome<T> = await limiterOf(r.m).run(() => callModel(r, parse, { ...o, backoffMs }, role, last ? { retries: 4, attempts: 3, last } : { retries: 1, attempts: 2, last }));
++    if ("value" in out) return out.value;
++    if (last) {
++      llmStats.failed++;
++      if (out.why === "truncated") o.onLength?.();
++      return undefined;
++    }
++    llmStats.fallbacks++;
++    const next = rs[i + 1]!.m;
++    console.error(`${r.m.provider}/${r.m.model}: ${out.why}${out.detail ? ` (${out.detail})` : ""}; falling back to ${next.provider}/${next.model}`);
++    logUsage({ event: "extract-fallback", api: r.m.provider, model: r.m.model, to: `${next.provider}:${next.model}`, reason: out.why });
++  }
++  return undefined;
++}
++
++async function callModel<T>(
++  r: { m: ExtractModel; body: ChatBody; key: string },
++  parse: (text: string) => T | undefined,
++  o: { fetch?: typeof fetch; backoffMs: number },
++  role: "primary" | "fallback",
++  limits: { retries: number; attempts: number; last: boolean },
++): Promise<Outcome<T>> {
++  const { m, body, key } = r;
++  const p = PROVIDERS[m.provider]!;
++  const cache = llmCache();
++  const id = `${m.provider}:${m.model}`;
++  for (let attempt = 0; attempt < limits.attempts; attempt++) {
++    let a: Answer;
++    try {
++      const post = (b: ChatBody) => postChat(p, b, { apiKey: keyFromEnvFile(p.keyFile, p.keyVar), backoffMs: o.backoffMs, timeoutMs: 10 * 60 * 1000, retries: limits.retries, ...(o.fetch ? { fetch: o.fetch } : {}) });
++      if (m.tier === "default") a = await post(body);
++      else {
++        try {
++          a = await post({ ...body, providerOptions: { gateway: { serviceTier: m.tier } } });
++        } catch (e) {
++          // A model with a fallback after it gives way instead of retrying at the default tier.
++          if (!(e instanceof HttpError) || (e.status !== 429 && e.status < 500) || !limits.last) throw e;
++          console.error(`${p.name}/${m.model}: ${m.tier} tier unavailable (${e.message}); retrying at the default tier`);
++          a = await post(body);
+         }
+-      } catch (e) {
+-        console.error(`${p.name}/${m.model}: ${e instanceof Error ? e.message : String(e)}`);
+-        break;
+-      }
+-      if (r.usage) {
+-        llmStats.calls++;
+-        llmStats.input_tokens += r.usage.input_tokens;
+-        llmStats.cached_input_tokens += r.usage.cached_input_tokens;
+-        llmStats.output_tokens += r.usage.output_tokens;
+-        llmStats.reasoning_tokens += r.usage.reasoning_tokens ?? 0;
+-        llmStats.dollars += r.cost ?? 0;
+-        logUsage({ api: p.name, model: m.model, effort: m.effort, tier: m.tier, ...r.usage, ...(r.cost !== undefined ? { dollars: r.cost } : {}), finish: r.finish });
+       }
+-      if (r.finish === "length") {
+-        console.error(`${p.name}/${m.model}: attempt ${attempt + 1} truncated; not retried`);
+-        cache.put(`${key}.length`, JSON.stringify({ provider: p.name, model: m.model, finish: r.finish, usage: r.usage }) + "\n");
+-        llmStats.truncated++;
+-        llmStats.failed++;
+-        o.onLength?.();
+-        return undefined;
+-      }
+-      const v = parse(r.text);
+-      if (v !== undefined) {
+-        cache.put(key, JSON.stringify({ provider: p.name, model: m.model, text: r.text, usage: r.usage }) + "\n");
+-        return v;
+-      }
+-      console.error(`${p.name}/${m.model}: attempt ${attempt + 1} unparseable`);
+-      await sleep(backoffMs * (attempt + 1));
++    } catch (e) {
++      const detail = e instanceof Error ? e.message : String(e);
++      console.error(`${p.name}/${m.model}: ${detail}`);
++      return { why: "http", detail };
+     }
+-    llmStats.failed++;
+-    return undefined;
+-  });
++    if (a.usage) {
++      llmStats.calls++;
++      llmStats.input_tokens += a.usage.input_tokens;
++      llmStats.cached_input_tokens += a.usage.cached_input_tokens;
++      llmStats.output_tokens += a.usage.output_tokens;
++      llmStats.reasoning_tokens += a.usage.reasoning_tokens ?? 0;
++      llmStats.dollars += a.cost ?? 0;
++      logUsage({ api: p.name, model: m.model, role, effort: m.effort, tier: m.tier, ...a.usage, ...(a.cost !== undefined ? { dollars: a.cost } : {}), finish: a.finish });
++    }
++    if (a.finish === "length") {
++      console.error(`${p.name}/${m.model}: attempt ${attempt + 1} truncated; not retried`);
++      cache.put(`${key}.length`, JSON.stringify({ provider: p.name, model: m.model, finish: a.finish, usage: a.usage }) + "\n");
++      llmStats.truncated++;
++      return { why: "truncated" };
++    }
++    const v = parse(a.text);
++    if (v !== undefined) {
++      cache.put(key, JSON.stringify({ provider: p.name, model: m.model, text: a.text, usage: a.usage }) + "\n");
++      llmStats.answered_by[id] = (llmStats.answered_by[id] ?? 0) + 1;
++      return { value: v };
++    }
++    console.error(`${p.name}/${m.model}: attempt ${attempt + 1} unparseable`);
++    if (attempt + 1 < limits.attempts) await sleep(o.backoffMs * (attempt + 1));
++  }
++  return { why: "unparseable" };
+ }
+diff --git a/central/test/extract-cost.test.ts b/central/test/extract-cost.test.ts
+index 06c9844..54b22a0 100644
+--- a/central/test/extract-cost.test.ts
++++ b/central/test/extract-cost.test.ts
+@@ -9,13 +9,15 @@ import { contentFree, extractRelease, MIN_SPLIT, releaseCached, splitChunk } fro
+ import { TECHNOLOGIES } from "../src/pipeline/technologies.ts";
+ 
+ const prev = { ...process.env };
+-// The default extraction modes (two calls, quoted evidence, no diet), whatever the environment sets.
+-const OWN = ["UNSTALE_CENTRAL_DIR", "AI_GATEWAY_API_KEY", "UNSTALE_EXTRACT_MODEL", "UNSTALE_EXTRACT_STRUCTURE", "UNSTALE_EXTRACT_EVIDENCE", "UNSTALE_EXTRACT_DIET"];
++// The default extraction modes (two calls, quoted evidence, no diet), whatever the environment sets, on one model (the
++// release model's fallback chain is tested in llm-fallback.test.ts).
++const OWN = ["UNSTALE_CENTRAL_DIR", "AI_GATEWAY_API_KEY", "UNSTALE_EXTRACT_MODEL", "UNSTALE_RELEASE_MODEL", "UNSTALE_EXTRACT_STRUCTURE", "UNSTALE_EXTRACT_EVIDENCE", "UNSTALE_EXTRACT_DIET"];
+ beforeAll(() => {
+   for (const k of OWN) delete process.env[k];
+   process.env.UNSTALE_CENTRAL_DIR = mkdtempSync(join(tmpdir(), "unstale-extract-cost-"));
+   process.env.AI_GATEWAY_API_KEY = "test-key";
+   process.env.UNSTALE_EXTRACT_MODEL = "vercel:openai/gpt-6-luna";
++  process.env.UNSTALE_RELEASE_MODEL = "none";
+ });
+ afterAll(() => {
+   for (const k of OWN) {
+diff --git a/central/test/llm-fallback.test.ts b/central/test/llm-fallback.test.ts
+new file mode 100644
+index 0000000..3c73754
+--- /dev/null
++++ b/central/test/llm-fallback.test.ts
+@@ -0,0 +1,201 @@
++// The release notes' chain (llm.ts releaseModels, extract.ts): MiniMax first with its own extract prompt, gpt-6-luna
++// after it on an HTTP error, exhausted 429s, a truncated or an unparseable answer; upgrade guides and docs notes on
++// gpt-6-luna alone; every model's cache read before any call, so answers cached under gpt-6-luna before the switch are
++// not asked again; the answering model and its role in the cache entry and the usage log.
++import { mkdtempSync, readFileSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from "vitest";
++import { extractCached, extractLlm, extractModel, extractTruncated, llmStats, putExtractCache, releaseModel, releaseModels } from "../src/pipeline/llm.ts";
++import { EVIDENCE_FIELD, EXTRACT_PROMPT, extractPromptFor, extractRelease, fill, LINK_RULE, releaseCached, STATEMENT_EVIDENCE } from "../src/pipeline/extract.ts";
++import type { GuideNote, ReleaseNote } from "../src/pipeline/fetch.ts";
++import type { Technology } from "../src/pipeline/technologies.ts";
++import { sha256 } from "../src/pipeline/util.ts";
++
++const OWN = ["UNSTALE_CENTRAL_DIR", "AI_GATEWAY_API_KEY", "UNSTALE_EXTRACT_MODEL", "UNSTALE_RELEASE_MODEL"];
++const prev = Object.fromEntries(OWN.map((k) => [k, process.env[k]]));
++beforeAll(() => {
++  process.env.UNSTALE_CENTRAL_DIR = mkdtempSync(join(tmpdir(), "unstale-llm-chain-"));
++  process.env.AI_GATEWAY_API_KEY = "test-key";
++  delete process.env.UNSTALE_EXTRACT_MODEL;
++  delete process.env.UNSTALE_RELEASE_MODEL;
++});
++afterEach(() => vi.unstubAllGlobals());
++afterAll(() => {
++  for (const k of OWN) {
++    if (prev[k] === undefined) delete process.env[k];
++    else process.env[k] = prev[k];
++  }
++});
++
++const MM = "minimax/minimax-m3.1-flash";
++const LUNA = "openai/gpt-6-luna";
++const answer = (content: string, finish = "stop") =>
++  new Response(JSON.stringify({ choices: [{ message: { content }, finish_reason: finish }], usage: { prompt_tokens: 100, completion_tokens: 20, cost: 0 } }), { status: 200 });
++/** A gateway stub: `by[model]` answers each call to that model in turn (the last one repeats). */
++function gateway(by: Record<string, Array<() => Response>>) {
++  const calls: Array<{ model: string; prompt: string }> = [];
++  const n: Record<string, number> = {};
++  const f = (async (_url: string, init: RequestInit) => {
++    const b = JSON.parse(String(init.body)) as { model: string; messages: Array<{ content: string }> };
++    calls.push({ model: b.model, prompt: b.messages[0]!.content });
++    const xs = by[b.model]!;
++    const i = Math.min((n[b.model] = (n[b.model] ?? 0) + 1) - 1, xs.length - 1);
++    return xs[i]!();
++  }) as unknown as typeof fetch;
++  return { f, calls };
++}
++const nums = (t: string) => {
++  try {
++    const v = JSON.parse(t) as unknown;
++    return Array.isArray(v) ? (v as number[]) : undefined;
++  } catch {
++    return undefined;
++  }
++};
++const usage = () => readFileSync(join(process.env.UNSTALE_CENTRAL_DIR!, "usage.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l) as Record<string, unknown>);
++
++describe("the extraction models", () => {
++  test("gpt-6-luna extracts; release notes go to MiniMax first; `none` or the extraction model itself means no release model", () => {
++    expect(extractModel({}).model).toBe(LUNA);
++    expect(releaseModels({}).map((m) => m.model)).toEqual([MM, LUNA]);
++    expect(releaseModel({ UNSTALE_RELEASE_MODEL: "none" })).toBeUndefined();
++    expect(releaseModels({ UNSTALE_RELEASE_MODEL: "none" }).map((m) => m.model)).toEqual([LUNA]);
++    expect(releaseModel({ UNSTALE_RELEASE_MODEL: `vercel:${LUNA}` })).toBeUndefined();
++    expect(releaseModels({ UNSTALE_EXTRACT_MODEL: `vercel:${MM}` }).map((m) => m.model)).toEqual([MM]);
++    expect(() => releaseModel({ UNSTALE_RELEASE_MODEL: "x" })).toThrow(/UNSTALE_RELEASE_MODEL must be provider:model/);
++  });
++});
++
++describe("extractLlm with a fallback", () => {
++  test("the primary answers when it can; the answer is cached under its own key with its model", async () => {
++    const g = gateway({ [MM]: [() => answer("[1]")], [LUNA]: [() => answer("[9]")] });
++    expect(await extractLlm("chain one", nums, { fetch: g.f, backoffMs: 1, models: releaseModels() })).toEqual([1]);
++    expect(g.calls.map((c) => c.model)).toEqual([MM]);
++    expect(usage().at(-1)).toMatchObject({ api: "vercel", model: MM, role: "primary" });
++  });
++
++  test.each([
++    ["an HTTP error", () => new Response("bad gateway", { status: 502 }), "http"],
++    ["exhausted 429s", () => new Response("slow down", { status: 429 }), "http"],
++    ["a truncated answer", () => answer("[1", "length"), "truncated"],
++    ["an unparseable answer", () => answer("no json here"), "unparseable"],
++  ])("falls back to gpt-6-luna on %s, and logs why", async (_, bad, reason) => {
++    const prompt = `chain ${reason} ${Math.random()}`;
++    const g = gateway({ [MM]: [bad], [LUNA]: [() => answer("[2]")] });
++    const before = llmStats.fallbacks;
++    let lengths = 0;
++    expect(await extractLlm(prompt, nums, { fetch: g.f, backoffMs: 1, models: releaseModels(), onLength: () => lengths++ })).toEqual([2]);
++    expect(g.calls.at(-1)!.model).toBe(LUNA);
++    // The primary gives way quickly: 1 retry on 429/5xx, 2 attempts at a parseable answer, none after truncation.
++    expect(g.calls.filter((c) => c.model === MM)).toHaveLength(reason === "truncated" ? 1 : 2);
++    expect(lengths).toBe(0);
++    expect(llmStats.fallbacks).toBe(before + 1);
++    expect(usage().some((u) => u.event === "extract-fallback" && u.model === MM && u.reason === reason && u.to === `vercel:${LUNA}`)).toBe(true);
++    expect(usage().at(-1)).toMatchObject({ model: LUNA, role: "fallback" });
++    // Cached under gpt-6-luna's key: asked again, nobody is called.
++    const n = g.calls.length;
++    expect(await extractLlm(prompt, nums, { fetch: g.f, backoffMs: 1, models: releaseModels() })).toEqual([2]);
++    expect(g.calls).toHaveLength(n);
++  });
++
++  test("undefined when both fail; only the last model's truncation asks the caller to split", async () => {
++    const g = gateway({ [MM]: [() => answer("[1", "length")], [LUNA]: [() => answer("[1", "length")] });
++    let lengths = 0;
++    expect(await extractLlm("chain both truncated", nums, { fetch: g.f, backoffMs: 1, models: releaseModels(), onLength: () => lengths++ })).toBeUndefined();
++    expect(lengths).toBe(1);
++    expect(extractTruncated("chain both truncated", { models: releaseModels() })).toBe(true);
++    const h = gateway({ [MM]: [() => new Response("x", { status: 500 })], [LUNA]: [() => answer("nope")] });
++    lengths = 0;
++    expect(await extractLlm("chain both fail", nums, { fetch: h.f, backoffMs: 1, models: releaseModels(), onLength: () => lengths++ })).toBeUndefined();
++    expect(lengths).toBe(0);
++    expect(h.calls.filter((c) => c.model === LUNA)).toHaveLength(3);
++  });
++
++  test("an answer gpt-6-luna cached before the switch is used as is: no call, no re-extraction", async () => {
++    const prompt = "chain cached by luna";
++    putExtractCache(prompt, "[5]");
++    expect(extractCached(prompt, { models: releaseModels() })).toBe(true);
++    const g = gateway({ [MM]: [() => answer("[1]")], [LUNA]: [() => answer("[9]")] });
++    expect(await extractLlm(prompt, nums, { fetch: g.f, backoffMs: 1, models: releaseModels() })).toEqual([5]);
++    expect(g.calls).toHaveLength(0);
++    expect(llmStats.answered_by[`vercel:${LUNA}`]).toBeGreaterThan(0);
++  });
++
++  test("a truncation gpt-6-luna recorded before the switch still sends the chunk to splitting, without a call", async () => {
++    const prompt = "chain luna truncated earlier";
++    const g = gateway({ [MM]: [() => answer("[1", "length")], [LUNA]: [() => answer("[1", "length")] });
++    await extractLlm(prompt, nums, { fetch: g.f, backoffMs: 1 });
++    let lengths = 0;
++    const n = g.calls.length;
++    expect(await extractLlm(prompt, nums, { fetch: g.f, backoffMs: 1, models: releaseModels(), onLength: () => lengths++ })).toBeUndefined();
++    expect(g.calls).toHaveLength(n);
++    expect(lengths).toBe(1);
++  });
++
++  test("each model is asked its own prompt: MiniMax the statement evidence field, gpt-6-luna production's prompt unchanged", async () => {
++    const prompt = fill(EXTRACT_PROMPT, { TECH: "zod", VERSION: "4.0.0", DATE: "2026-01-01", PART: "", NOTES: "- `z.email()` is new." });
++    const promptFor = (m: { model: string }) => extractPromptFor(m.model, prompt);
++    const g = gateway({ [MM]: [() => new Response("x", { status: 503 })], [LUNA]: [() => answer("[]")] });
++    expect(await extractLlm(prompt, nums, { fetch: g.f, backoffMs: 1, models: releaseModels(), promptFor })).toEqual([]);
++    const mm = g.calls.find((c) => c.model === MM)!.prompt, luna = g.calls.find((c) => c.model === LUNA)!.prompt;
++    expect(luna).toBe(prompt);
++    expect(mm).toBe(prompt.replace(EVIDENCE_FIELD, STATEMENT_EVIDENCE).replace("If nothing qualifies, output [].", `If nothing qualifies, output [].\n${LINK_RULE}`));
++    expect(mm).not.toContain(EVIDENCE_FIELD);
++  });
++});
++
++describe("extractRelease routes by note kind", () => {
++  const t = { id: "zod", name: "zod", repo: "colinhacks/zod", components: ["pkg:npm/zod"] } as unknown as Technology;
++  const record = JSON.stringify([{ subject: "z.email()", summary: "z.email() is new.", change_type: "feature", evidence: "`z.email()` is new." }]);
++  const stub = (by: Record<string, () => Response>) => {
++    const calls: Array<{ model: string; prompt: string }> = [];
++    vi.stubGlobal("fetch", (async (_url: string, init: RequestInit) => {
++      const b = JSON.parse(String(init.body)) as { model: string; messages: Array<{ content: string }> };
++      calls.push({ model: b.model, prompt: b.messages[0]!.content });
++      return by[b.model]!();
++    }) as unknown as typeof fetch);
++    return calls;
++  };
++  const label = () => answer(JSON.stringify({ r1: { terms: ["z.email"] } }));
++  test("a release note: steps A and B go to MiniMax, A with its own prompt, B with LABEL_PROMPT unchanged", async () => {
++    const rel = { technology: "zod", tag: "v4.0.1", version: "4.0.1", date: "2026-01-01", url: "u", snapshot: "s1", notes: "- `z.email()` is new." } as ReleaseNote;
++    const calls = stub({ [MM]: () => (calls.length > 1 ? label() : answer(record)), [LUNA]: () => answer("[]") });
++    const r = await extractRelease(t, rel);
++    expect(r.failed).toBe(0);
++    expect(r.incoming).toHaveLength(1);
++    expect(calls.map((c) => c.model)).toEqual([MM, MM]);
++    expect(calls[0]!.prompt).toContain(STATEMENT_EVIDENCE);
++    expect(calls[1]!.prompt.startsWith("You write search terms")).toBe(true);
++    // Cached under MiniMax's keys: extracting again is free.
++    expect(releaseCached(t, rel)).toBe(true);
++  });
++  test("a release note MiniMax cannot answer goes to gpt-6-luna with production's prompt", async () => {
++    const rel = { technology: "zod", tag: "v4.0.2", version: "4.0.2", date: "2026-01-02", url: "u", snapshot: "s2", notes: "- `z.url()` is new." } as ReleaseNote;
++    const calls = stub({ [MM]: () => new Response("x", { status: 500 }), [LUNA]: () => (calls.filter((c) => c.model === LUNA).length > 1 ? label() : answer(record)) });
++    const r = await extractRelease(t, rel);
++    expect(r.incoming).toHaveLength(1);
++    const luna = calls.filter((c) => c.model === LUNA);
++    expect(luna).toHaveLength(2);
++    expect(luna[0]!.prompt).toBe(fill(EXTRACT_PROMPT, { TECH: "zod", VERSION: "4.0.2", DATE: "2026-01-02", PART: "", NOTES: rel.notes }));
++  });
++  test("an upgrade guide goes to gpt-6-luna alone", async () => {
++    const g = { technology: "zod", kind: "upgrade_guide", keyTag: "+guide.x", tag: "guide-4", version: "4.0.0", date: "2026-01-03", url: "g", snapshot: "s3", notes: "- `z.ip()` is removed." } as GuideNote;
++    const calls = stub({ [MM]: () => answer(record), [LUNA]: () => (calls.length > 1 ? label() : answer(record)) });
++    await extractRelease(t, g);
++    expect(calls.map((c) => c.model)).toEqual([LUNA, LUNA]);
++    expect(calls[0]!.prompt).not.toContain(STATEMENT_EVIDENCE);
++  });
++});
++
++describe("extractPromptFor", () => {
++  test("only MiniMax's extract prompt changes: its evidence field and the link rule (r3, frozen in eval/select/slice11)", () => {
++    expect(extractPromptFor(LUNA, EXTRACT_PROMPT)).toBe(EXTRACT_PROMPT);
++    expect(extractPromptFor(MM, "You write search terms… " + EVIDENCE_FIELD)).toContain(EVIDENCE_FIELD);
++    const mm = extractPromptFor(MM, EXTRACT_PROMPT);
++    expect(mm.replace(STATEMENT_EVIDENCE, EVIDENCE_FIELD).replace(`\n${LINK_RULE}`, "")).toBe(EXTRACT_PROMPT);
++    expect(sha256(mm)).toBe(FROZEN_SHA);
++  });
++});
++// The template slice 11 froze on DEV (run3.mts --addendum mm-r3, meta.json prompt_sha.extract), unchanged in slice 12.
++const FROZEN_SHA = "2f578d1beb5902437372ff550f5a181de3461c4125cb5fdc8c4d8ef2732f4370";
