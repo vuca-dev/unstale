@@ -85,6 +85,12 @@ const EXTRA: Record<string, Record<string, unknown>> = {
   "gpt-5.4-nano": { reasoning_effort: "low" },
   // Slice 3f: gpt-5.6-luna on the OpenAI API directly (slice 3's Luna baseline ran it through codex exec).
   "gpt-5.6-luna": { reasoning_effort: "low" },
+  // Slice 10 (eval/select/slice10/PREREG.md): free models at production's effort, cheap paid models as listed there.
+  "minimax/minimax-m3.1-flash": { reasoning_effort: "low" },
+  "reflection/beam-free": { reasoning_effort: "low" },
+  "inception/mercury-2.5": { reasoning_effort: "low" },
+  "inclusionai/ling-3.0-flash": {},
+  "mistral/mistral-nemo": {},
 };
 if (a.effort) EXTRA[model] = { reasoning_effort: a.effort };
 const ATTEMPTS = 3;
@@ -157,7 +163,7 @@ function sliceSpend(): number {
   for (const l of readFileSync(USAGE, "utf8").split("\n")) if (l.trim()) { const e = JSON.parse(l); if (e.provider === (kind === "openai" ? "openai" : "vercel") && typeof e.dollars === "number") d += e.dollars; }
   return d;
 }
-const meter = { calls: 0, input: 0, cached_input: 0, output: 0, reasoning: 0, dollars: 0, unparseable: 0, truncated: 0, http_failed: 0, refused: 0, store_hits: 0, own_cache_hits: 0, prompt_tokens_est: 0, repaired: 0 };
+const meter = { rate_limited: 0, calls: 0, input: 0, cached_input: 0, output: 0, reasoning: 0, dollars: 0, unparseable: 0, truncated: 0, http_failed: 0, refused: 0, store_hits: 0, own_cache_hits: 0, prompt_tokens_est: 0, repaired: 0 };
 function log(step: string, u: { input_tokens: number; cached_input_tokens: number; output_tokens: number; reasoning_tokens: number | null }, d: number | null, extra: Record<string, unknown>) {
   meter.calls++;
   meter.input += u.input_tokens;
@@ -201,6 +207,7 @@ async function post(body: Record<string, unknown>): Promise<{ text: string; fini
     }
     clearTimeout(timer);
     if (res.status === 429 || res.status >= 500) {
+      if (res.status === 429) meter.rate_limited++;
       if (attempt < 4) { const after = Number(res.headers.get("retry-after")); await sleep(Number.isFinite(after) && after > 0 ? after * 1000 : 2000 * 2 ** attempt); continue; }
       console.error(`HTTP ${res.status} after retries`);
       return undefined;
