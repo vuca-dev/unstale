@@ -2,7 +2,7 @@
 // every ingested extraction is recorded, so a rerun makes no uncached calls and leaves the catalog byte-identical.
 import { join } from "node:path";
 import { ChatClassifier, ClassifierCache, FallbackClassifier, Jev } from "./classify/adapter.ts";
-import { extractModel } from "./llm.ts";
+import { classifierModel } from "./llm.ts";
 import { interpret, labelQuestions, recordState, type Labels } from "./classify/labels.ts";
 import { type DocsNote, extractRelease, releaseCached, type Incoming } from "./extract.ts";
 import type { PipelineBudget } from "./budget.ts";
@@ -27,7 +27,7 @@ export function makeClassifier(): FallbackClassifier {
   return new FallbackClassifier(new Jev(), new ChatClassifier(), new ClassifierCache(join(centralDir(), "cache", "classifier")), {
     fallback: (e) => {
       const msg = `${e.kind}: ${e.message}`;
-      if (msg !== lastLogged) console.error(`classifier: Jev → ${extractModel().model} fallback (${msg})`);
+      if (msg !== lastLogged) console.error(`classifier: Jev → ${classifierModel().model} fallback (${msg})`);
       lastLogged = msg;
     },
   });

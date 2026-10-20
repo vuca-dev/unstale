@@ -16,6 +16,25 @@ export const REVISIONS: Record<string, { evidence: string; add?: string }> = {
              (what is new, removed, renamed, required or now fails). Not a heading, and not a sentence that only
              introduces several changes; when the notes follow the statement with what to do about it, copy both`,
   },
+  // r2 (after r1's DEV run): r1's statement quotes carried markdown link URLs ("[custom `webpack`](/docs/…) configuration"),
+  // which made four statements no longer read as the page reads. r2 = r1 + copy a link as its text.
+  "mm-r2": {
+    evidence: ` "evidence": copied verbatim from the notes: the sentence, list item or table row that states this change itself
+             (what is new, removed, renamed, required or now fails). Not a heading, and not a sentence that only
+             introduces several changes; when the notes follow the statement with what to do about it, copy both.
+             Copy a markdown link as its text alone, without the URL`,
+  },
+  // r3 (after r2's DEV run): r2 still copied link URLs into four statement quotes (the field's last sentence was not
+  // followed). r3 = r2 + the rule restated after the task, with an example.
+  "mm-r3": {
+    evidence: ` "evidence": copied verbatim from the notes: the sentence, list item or table row that states this change itself
+             (what is new, removed, renamed, required or now fails). Not a heading, and not a sentence that only
+             introduces several changes; when the notes follow the statement with what to do about it, copy both.
+             Copy a markdown link as its text alone, without the URL`,
+    add: `In "evidence", write every markdown link as its text only and change nothing else: the notes' line
+"The [\`timeout\`](/docs/api/options#timeout) option now defaults to [30 seconds](/docs/limits)." is copied as
+"The \`timeout\` option now defaults to 30 seconds."`,
+  },
 };
 export const withAddendum = (prompt: string, name: string | undefined): string => {
   if (!name) return prompt;
