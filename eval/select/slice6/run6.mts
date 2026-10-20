@@ -1,4 +1,5 @@
 // Slice 6 runner (PREREG.md): one arm on one split, through the pipeline's own extractRelease and classifier.
+// The `shared` arms need the design's code: `git apply eval/select/slice6/design.patch` (it was rejected, RESULTS.md).
 //
 //   cd central && npx tsx ../eval/select/slice6/run6.mts --state <central dir: guides/, onboarding/jobs/, cache/>
 //       --split dev|heldout|gold --arm base|rep|shared [--cap 3] [--jev-cap 0.5] [--concurrency 4]
@@ -9,6 +10,8 @@
 //   rep     a fresh per-package replicate (UNSTALE_GUIDE_SHARED=0) with its own empty caches: the noise reference.
 //   shared  the design under test (UNSTALE_GUIDE_SHARED=1) with its own empty caches. A unit's packages run one after
 //           another, as production meets them, so the first pays for the guide and the rest hit the cache.
+//   shared-all  post hoc, descriptive only (RESULTS.md): `shared` without the selection (every package keeps the whole
+//           guide's records), with its own empty caches; the selection call is answered locally with every id.
 //
 // Every record is then labelled by the pipeline's classifier (Jev, chat fallback, its cache under the arm's directory).
 // Output: out/slice6/<split>/<arm>/pairs.jsonl, one line per (unit, package): incoming records with their labels and
@@ -30,7 +33,7 @@ const { values: a } = parseArgs({
   },
 });
 const ARM = a.arm!, SPLIT = a.split!;
-if (!["base", "rep", "shared"].includes(ARM)) throw new Error("--arm base|rep|shared");
+if (!["base", "rep", "shared", "shared-all"].includes(ARM)) throw new Error("--arm base|rep|shared|shared-all");
 if (!["dev", "heldout", "gold"].includes(SPLIT)) throw new Error("--split dev|heldout|gold");
 const OUT = join(SELECT, "out", "slice6");
 const ARM_DIR = join(OUT, SPLIT, ARM);
@@ -39,7 +42,7 @@ process.env.UNSTALE_CENTRAL_DIR = ARM === "base" ? a.state! : join(ARM_DIR, "cen
 process.env.UNSTALE_EXTRACT_MODEL = "vercel:openai/gpt-6-luna";
 process.env.UNSTALE_EXTRACT_EFFORT = "low";
 process.env.UNSTALE_EXTRACT_SERVICE_TIER = "flex";
-process.env.UNSTALE_GUIDE_SHARED = ARM === "shared" ? "1" : "0";
+process.env.UNSTALE_GUIDE_SHARED = ARM.startsWith("shared") ? "1" : "0";
 for (const k of ["UNSTALE_EXTRACT_STRUCTURE", "UNSTALE_EXTRACT_EVIDENCE", "UNSTALE_EXTRACT_DIET"]) delete process.env[k];
 
 const { loadTechnologies, sharedUnits, noNetwork } = await import("./common.mts");
@@ -86,6 +89,13 @@ else
     const body = typeof init?.body === "string" ? init.body : "";
     const kind = url.includes("ai-gateway.vercel.sh") ? "gateway" : url.includes("typesafe.ai") ? "jev" : undefined;
     if (!kind) throw new Error(`slice 6: unexpected request to ${url}`);
+    if (ARM === "shared-all" && kind === "gateway") {
+      const prompt = (JSON.parse(body) as { messages: Array<{ content: string }> }).messages[0]!.content;
+      if (prompt.startsWith("You decide which change records")) {
+        const ids = [...prompt.matchAll(/"id": "(r\d+)"/g)].map((m) => m[1]);
+        return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(ids) }, finish_reason: "stop" }] }), { status: 200 });
+      }
+    }
     // Worst case: gateway input one token per character at the default tier's $0.10/M, 16k output at $0.50/M; Jev chars/3.
     const worst = kind === "gateway" ? (body.length * 0.1 + 16_000 * 0.5) / 1e6 : (body.length / 3) * JEV_IN;
     const s = spent();

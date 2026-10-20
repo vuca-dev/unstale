@@ -1,7 +1,7 @@
 // Slice 6 scorer (PREREG.md): agreement of the shared design (`shared`) and of a fresh per-package replicate (`rep`)
 // with production's per-package records (`base`), pair by pair (one pair = one guide unit × one package). No model calls.
 //
-//   cd central && npx tsx ../eval/select/slice6/score6.mts --state <central dir> --split dev|heldout
+//   cd central && npx tsx ../eval/select/slice6/score6.mts --state <central dir> --split dev|heldout [--cand shared|shared-all]
 //
 // Records are matched one to one as slice 3d matched them (run3d.mts): grounded quotes whose spans overlap in the folded
 // guide text, else the same subject after case folding. Labels are compared on matched records. Bootstrap: 2,000
@@ -10,7 +10,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 const SELECT = join(import.meta.dirname, "..");
-const { values: a } = parseArgs({ options: { state: { type: "string" }, split: { type: "string" } } });
+const { values: a } = parseArgs({ options: { state: { type: "string" }, split: { type: "string" }, cand: { type: "string", default: "shared" } } });
 process.env.UNSTALE_CENTRAL_DIR = a.state!;
 const { loadTechnologies, sharedUnits } = await import("./common.mts");
 import type { Incoming } from "../../../central/src/pipeline/extract.ts";
@@ -32,7 +32,7 @@ const SPLITS = JSON.parse(readFileSync(join(import.meta.dirname, "splits.json"),
 const techs = loadTechnologies(join(a.state!, "onboarding", "jobs"));
 const units = sharedUnits(join(a.state!, "guides"), techs).filter((u) => SPLITS[a.split!]!.some((p) => u.url.startsWith(p)));
 const notesOf = new Map(units.map((u) => [u.id, u.members[0]!.note.notes]));
-const base = load("base"), rep = load("rep"), shared = load("shared");
+const base = load("base"), rep = load("rep"), shared = load(a.cand!);
 
 const norm = (s: string): string => s.replace(/[`*_\\]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
 function match(notes: string, xs: Rec[], ys: Rec[]): Array<[Rec, Rec]> {
@@ -159,6 +159,6 @@ lines.push("", `rule: ${Object.entries(rule).map(([k, v]) => `${k} ${v ? "pass" 
 // Per pair, for reading.
 lines.push("", "| Pair | base | rep (F1) | shared (F1) |", "|---|---|---|---|");
 keys.forEach((k, i) => lines.push(`| ${k.replace("\t", " · ")} | ${R[i]!.nb} | ${R[i]!.nx} (${pct(R[i]!.f1)}) | ${S[i]!.nx} (${pct(S[i]!.f1)}) |`));
-writeFileSync(join(OUT, "score.json"), JSON.stringify(out, null, 1) + "\n");
-writeFileSync(join(OUT, "score.md"), lines.join("\n") + "\n");
+writeFileSync(join(OUT, a.cand === "shared" ? "score.json" : `score-${a.cand}.json`), JSON.stringify(out, null, 1) + "\n");
+writeFileSync(join(OUT, a.cand === "shared" ? "score.md" : `score-${a.cand}.md`), lines.join("\n") + "\n");
 console.log(lines.join("\n"));

@@ -1,0 +1,380 @@
+diff --git a/central/src/pipeline/classify/adapter.ts b/central/src/pipeline/classify/adapter.ts
+index 4d4136b..076f547 100644
+--- a/central/src/pipeline/classify/adapter.ts
++++ b/central/src/pipeline/classify/adapter.ts
+@@ -326,7 +326,23 @@ export class FallbackClassifier {
+     return this.cache.hits;
+   }
+ 
++  /** Requests on their way, by the primary's cache key: the same state asked twice at once is asked once. */
++  private readonly inFlight = new Map<string, Promise<Classification>>();
++
+   async classify(state: Record<string, unknown>, questions: Questions): Promise<Classification> {
++    const k = this.cache.key(this.primary, state, questions);
++    const pending = this.inFlight.get(k);
++    if (pending) return pending;
++    const run = this.answer(state, questions);
++    this.inFlight.set(k, run);
++    try {
++      return await run;
++    } finally {
++      this.inFlight.delete(k);
++    }
++  }
++
++  private async answer(state: Record<string, unknown>, questions: Questions): Promise<Classification> {
+     const hit = this.cache.get(this.primary, state, questions) ?? this.cache.get(this.fallback, state, questions);
+     if (hit) {
+       this.cache.hits++;
+diff --git a/central/src/pipeline/classify/labels.ts b/central/src/pipeline/classify/labels.ts
+index d6054b8..ece34f0 100644
+--- a/central/src/pipeline/classify/labels.ts
++++ b/central/src/pipeline/classify/labels.ts
+@@ -3,14 +3,16 @@
+ // (eval/select/slice4/RESULTS-compress.md, RESULTS-confirm.md): restated options removed, −7.5% Jev input, answers held
+ // on both held-out sets; shorter blocks lost removal/deprecation or benefit recall.
+ import type { Classification as PublishedClassification, CapabilityRecord } from "../../schema/catalog.ts";
+-import type { Incoming } from "../extract.ts";
++import { guideShared, guideSubject, type Incoming } from "../extract.ts";
+ import { BENEFIT_P, BREAKING_P, CHOICE_CONFIDENCE, isBorderline } from "../thresholds.ts";
+ import { BENEFIT_DEFS, BENEFIT_RULE, BENEFITS, BREAKING_RUBRIC, CHANGE_TYPES, SURFACES, type ChangeType, type Surface } from "../vocab.ts";
+ import type { Classification, Questions } from "./adapter.ts";
+ 
++/** The classifier's state for a record. A shared upgrade guide's record names the guide, not the package (extract.ts
++ * guideShared), so every package of the family asks the same request and the cache answers all but the first. */
+ export function recordState(name: string, r: Incoming): Record<string, unknown> {
+   return {
+-    technology: name,
++    technology: r.kind === "upgrade_guide" && guideShared() ? guideSubject(r.url) : name,
+     source: r.kind === "upgrade_guide" ? "upgrade guide" : r.kind === "docs" ? "official documentation change" : "release notes",
+     release: r.version,
+     subject: r.subject,
+diff --git a/central/src/pipeline/extract.ts b/central/src/pipeline/extract.ts
+index 034f40f..6907e3d 100644
+--- a/central/src/pipeline/extract.ts
++++ b/central/src/pipeline/extract.ts
+@@ -509,10 +509,76 @@ export function impactOf(notes: string, section: string | undefined): string | u
+ 
+ export interface DocsNote extends ReleaseNote { kind: "docs"; keyTag: string }
+ 
++// ---- Shared upgrade guides (eval/select/slice6). A family of packages released together (a core library and its
++// providers, a framework and its plugins) shares one upgrade guide page, and every package of the family ingests it.
++// The extract and label prompts name no package for a guide: they name the guide's page, and the date is the guide's,
++// so the prompts are byte-identical for every package that reads the same page at the same snapshot and the model
++// cache answers all but the first. The records are the whole guide's; one short call per package then keeps those
++// that concern it (GUIDE_SELECT_PROMPT, answered by record id). The classifier's state names the guide the same way
++// (classify/labels.ts recordState), so its labels are shared too. Step E (match.ts) stays per package: it judges
++// against that package's own records. UNSTALE_GUIDE_SHARED=0 restores the per-package prompts.
++export const guideShared = (): boolean => process.env.UNSTALE_GUIDE_SHARED !== "0";
++
++/** What a guide's prompts and classifier states call the technology: the guide itself, the same for every package. */
++export const guideSubject = (url: string): string => `the technology covered by the upgrade guide at ${url}`;
++
++const isGuide = (rel: ReleaseNote | GuideNote | DocsNote): rel is GuideNote => "kind" in rel && rel.kind === "upgrade_guide";
++const sharedGuide = (rel: ReleaseNote | GuideNote | DocsNote): rel is GuideNote => isGuide(rel) && guideShared();
++
++export const GUIDE_SELECT_PROMPT = `You decide which change records from an upgrade guide concern one package. The guide may cover several packages
++released together (a core library and its providers or adapters, a framework and its plugins or tools). Output only a
++JSON array of the ids to keep, no prose.
++
++Package: %TECH% (%PURLS%)
++Upgrade guide: %URL% (version %VERSION%)
++
++Keep a record only when the change is to this package itself: its API, options, commands, files, defaults,
++requirements or behaviour, or something a project must change in how it installs, imports or configures this package.
++Drop a record about another package of the family (the core library, the framework, another provider, plugin, adapter
++or tool) even when projects that use this package also use that one: that package's own records cover it. When unsure
++whether a change reaches this package, drop it. If no record concerns this package, output [].
++
++Records:
++%RECORDS%
++`;
++
++/** The prompt that selects a package's records from a shared guide's records. */
++export function selectPrompt(t: Technology, rel: GuideNote, recs: Incoming[]): string {
++  const brief = recs.map((r, i) => ({
++    id: `r${i + 1}`,
++    ...(r.section ? { section: r.section } : {}),
++    subject: r.subject,
++    ...(r.facet ? { facet: r.facet } : {}),
++    summary: r.summary,
++    ...(r.requires.length ? { requires: r.requires } : {}),
++  }));
++  return fill(GUIDE_SELECT_PROMPT, {
++    TECH: t.name,
++    PURLS: t.components.map((p) => p.replace("%40", "@")).join(", "),
++    URL: rel.url,
++    VERSION: rel.version,
++    RECORDS: JSON.stringify(brief, null, 1),
++  });
++}
++
++/** The ids a selection answer names (`["r1", "r4"]`); undefined when it is not a JSON array. */
++export function parseSelection(text: string): Set<string> | undefined {
++  const v = parseJson(text, "array");
++  return Array.isArray(v) ? new Set(v.map((x) => String(x).trim())) : undefined;
++}
++
++/** The per-package selection over a shared guide's records; undefined when the call failed. */
++async function selectForPackage(t: Technology, rel: GuideNote, recs: Incoming[]): Promise<Incoming[] | undefined> {
++  if (!recs.length) return [];
++  const ids = await extractLlm(selectPrompt(t, rel, recs), parseSelection);
++  return ids && recs.filter((_, i) => ids.has(`r${i + 1}`));
++}
++
+ /** The first model call for one chunk of a note under the configured structure (what the cache is keyed on). */
+ function firstCall(t: Technology, rel: ReleaseNote | GuideNote | DocsNote, notes: string, part: string) {
+   const structure = extractStructure();
+-  const base = { TECH: t.name, VERSION: rel.version, DATE: rel.noteDate ?? rel.date, PART: part };
++  const shared = sharedGuide(rel);
++  const base = { TECH: shared ? guideSubject(rel.url) : t.name, VERSION: rel.version, DATE: shared ? "upgrade guide" : (rel.noteDate ?? rel.date), PART: part };
+   if (structure === "one-call-schema") return { prompt: fill(SCHEMA_PROMPT, { ...base, NOTES: notes }), opts: { responseFormat: SCHEMA_RESPONSE_FORMAT, maxTokens: 24_000 } };
+   if (structure === "one-call") return { prompt: fill(ONE_CALL_PROMPT, { ...base, NOTES: notes }), opts: {} };
+   const numbered = extractEvidence() === "ids" ? numberUnits(notes) : undefined;
+@@ -524,7 +590,8 @@ function firstCall(t: Technology, rel: ReleaseNote | GuideNote | DocsNote, notes
+ const partLine = (parts: string[], ci: number) => (parts.length > 1 ? `\nPart ${ci + 1} of ${parts.length} of these release notes.` : "");
+ 
+ /** Whether every chunk's first call is answered from the cache, so extracting the note again costs no model tokens
+- * (budget.ts). A cached first call implies its label call was made with it. */
++ * (budget.ts). A cached first call implies its label call was made with it. A shared guide another package already
++ * extracted counts as cached: only its per-package selection call is left, which reads record briefs, not the guide. */
+ export function releaseCached(t: Technology, rel: ReleaseNote | GuideNote | DocsNote): boolean {
+   const parts = chunk(rel.notes);
+   return parts.every((notes, ci) => chunkCached(t, rel, notes, partLine(parts, ci)));
+@@ -544,6 +611,15 @@ function chunkCached(t: Technology, rel: ReleaseNote | GuideNote | DocsNote, not
+ const piecePart = (part: string, j: number, n: number): string => `${part}\nPiece ${j + 1} of ${n} of this text.`;
+ 
+ export async function extractRelease(t: Technology, rel: ReleaseNote | GuideNote | DocsNote): Promise<{ incoming: Incoming[]; failed: number }> {
++  const all = await extractAll(t, rel);
++  if (!sharedGuide(rel)) return all;
++  // A shared guide: the whole guide's records, then this package's selection. A failed selection keeps nothing and
++  // counts as a failed call, so the next run asks again (the extraction itself is cached).
++  const kept = await selectForPackage(t, rel, all.incoming);
++  return { incoming: kept ?? [], failed: all.failed + (kept ? 0 : 1) };
++}
++
++async function extractAll(t: Technology, rel: ReleaseNote | GuideNote | DocsNote): Promise<{ incoming: Incoming[]; failed: number }> {
+   const parts = chunk(rel.notes);
+   const structure = extractStructure();
+   const out: Incoming[] = [];
+@@ -615,7 +691,7 @@ async function twoCall(
+     evidence: r.evidence ?? "",
+   }));
+   const labels = await extractLlm(
+-    fill(LABEL_PROMPT, { TECH: t.name, VERSION: rel.version, RECORDS: JSON.stringify(brief, null, 1), NOTES: notes }),
++    fill(LABEL_PROMPT, { TECH: sharedGuide(rel) ? guideSubject(rel.url) : t.name, VERSION: rel.version, RECORDS: JSON.stringify(brief, null, 1), NOTES: notes }),
+     (text) => {
+       const v = parseJson(text, "object");
+       if (!v || typeof v !== "object" || Array.isArray(v)) return undefined;
+@@ -646,7 +722,7 @@ export function toIncoming(t: Technology, rel: ReleaseNote | GuideNote | DocsNot
+     if (q.data.max != null && String(q.data.max).trim()) pr.max = oneLine(String(q.data.max), 40);
+     if (!prerequisites.some((x) => x.ecosystem === pr.ecosystem && x.name === pr.name)) prerequisites.push(pr);
+   }
+-  const guide = "kind" in rel && rel.kind === "upgrade_guide" ? rel : undefined;
++  const guide = isGuide(rel) ? rel : undefined;
+   const inc: Incoming = {
+     key: `${t.id}@${rel.version}${"keyTag" in rel ? rel.keyTag : ""}#${ci}.${i}`,
+     technology: t.id,
+diff --git a/central/src/pipeline/llm.ts b/central/src/pipeline/llm.ts
+index 7e82006..6f7e0a7 100644
+--- a/central/src/pipeline/llm.ts
++++ b/central/src/pipeline/llm.ts
+@@ -201,6 +201,8 @@ export function extractModel(env: NodeJS.ProcessEnv = process.env): ExtractModel
+ export const llmStats = { calls: 0, cached: 0, failed: 0, truncated: 0, input_tokens: 0, cached_input_tokens: 0, output_tokens: 0, reasoning_tokens: 0, dollars: 0 };
+ 
+ const MAX_TOKENS = 16_000;
++/** Requests on their way, by cache key. */
++const inFlight = new Map<string, Promise<unknown>>();
+ const chatLimit = new Limiter(5);
+ 
+ /** Runs an extraction or label prompt on the configured model; the parsed answer, or undefined after three failed attempts. */
+@@ -264,8 +266,15 @@ export async function extractLlm<T>(
+     o.onLength?.();
+     return undefined;
+   }
++  // The same request already on its way (two packages of a family reading one shared guide at once): wait for it, then
++  // read its answer from the cache instead of paying again.
++  const pending = inFlight.get(key);
++  if (pending) {
++    await pending.catch(() => undefined);
++    return extractLlm(prompt, parse, o);
++  }
+   const backoffMs = o.backoffMs ?? 2000;
+-  return chatLimit.run(async () => {
++  const run = chatLimit.run(async () => {
+     for (let attempt = 0; attempt < 3; attempt++) {
+       let r: Answer;
+       try {
+@@ -312,4 +321,10 @@ export async function extractLlm<T>(
+     llmStats.failed++;
+     return undefined;
+   });
++  inFlight.set(key, run);
++  try {
++    return await run;
++  } finally {
++    inFlight.delete(key);
++  }
+ }
+diff --git a/central/test/extract-shared-guide.test.ts b/central/test/extract-shared-guide.test.ts
+new file mode 100644
+index 0000000..a391e2f
+--- /dev/null
++++ b/central/test/extract-shared-guide.test.ts
+@@ -0,0 +1,156 @@
++// A shared upgrade guide (eval/select/slice6): the packages of a family read one guide page; the extract and label
++// prompts name the guide, not the package, so the second package's extraction is a cache hit, and one selection call
++// per package keeps the records that concern it. The model is a stubbed chat-completions endpoint; llm.ts is real.
++import { mkdtempSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { afterAll, afterEach, beforeEach, describe, expect, test, vi } from "vitest";
++import { extractLlm } from "../src/pipeline/llm.ts";
++import { extractRelease, guideSubject, releaseCached } from "../src/pipeline/extract.ts";
++import { recordState } from "../src/pipeline/classify/labels.ts";
++import { ClassifierCache, FallbackClassifier, type Classifier } from "../src/pipeline/classify/adapter.ts";
++import type { GuideNote } from "../src/pipeline/fetch.ts";
++import type { Technology } from "../src/pipeline/technologies.ts";
++
++const prev = { ...process.env };
++const OWN = ["UNSTALE_CENTRAL_DIR", "AI_GATEWAY_API_KEY", "UNSTALE_EXTRACT_MODEL", "UNSTALE_EXTRACT_STRUCTURE", "UNSTALE_EXTRACT_EVIDENCE", "UNSTALE_EXTRACT_DIET", "UNSTALE_GUIDE_SHARED"];
++beforeEach(() => {
++  for (const k of OWN) delete process.env[k];
++  process.env.UNSTALE_CENTRAL_DIR = mkdtempSync(join(tmpdir(), "unstale-shared-guide-"));
++  process.env.AI_GATEWAY_API_KEY = "test-key";
++  process.env.UNSTALE_EXTRACT_MODEL = "vercel:openai/gpt-6-luna";
++});
++afterAll(() => {
++  for (const k of OWN) {
++    if (prev[k] === undefined) delete process.env[k];
++    else process.env[k] = prev[k];
++  }
++});
++afterEach(() => vi.unstubAllGlobals());
++
++const reply = (content: string) =>
++  new Response(JSON.stringify({ choices: [{ message: { content }, finish_reason: "stop" }], usage: { prompt_tokens: 10, completion_tokens: 5 } }), { status: 200 });
++
++const tech = (id: string, name: string): Technology => ({ id, name, repo: "vercel/ai", components: [`pkg:npm/${name.replace("@", "%40")}`], tag: /^$/, clean: (b) => b });
++const core = tech("ai", "ai");
++const openai = tech("ai-sdk-openai", "@ai-sdk/openai");
++const guide = (date: string): GuideNote => ({
++  technology: "x",
++  kind: "upgrade_guide",
++  tag: "guide-7",
++  version: "7.0.0",
++  date,
++  url: "https://ai-sdk.dev/docs/migration-guides/migration-guide-7-0",
++  snapshot: "sha256:ed1b1648",
++  keyTag: "+guide.ed1b1648",
++  notes: "## Core\n- `generateText` now returns `output`.\n## OpenAI provider\n- `openai.chat` is removed; use `openai`.",
++});
++const RECORDS = JSON.stringify([
++  { subject: "generateText", summary: "generateText now returns output.", evidence: "`generateText` now returns `output`." },
++  { subject: "openai.chat", summary: "openai.chat is removed.", evidence: "`openai.chat` is removed; use `openai`." },
++]);
++
++/** The stub model: extraction, labels, and a selection that keeps r1 for `ai` and both records for the provider. */
++function model() {
++  const prompts: string[] = [];
++  const f = vi.fn(async (_url: string, init: RequestInit) => {
++    const prompt = (JSON.parse(String(init.body)) as { messages: Array<{ content: string }> }).messages[0]!.content;
++    prompts.push(prompt);
++    if (prompt.startsWith("You decide which change records")) return reply(prompt.includes("Package: ai (") ? '["r1"]' : '["r1", "r2"]');
++    if (prompt.startsWith("You write search terms")) return reply('{"r1": {"terms": ["generateText"]}, "r2": {"terms": ["openai.chat"]}}');
++    return reply(RECORDS);
++  });
++  vi.stubGlobal("fetch", f);
++  return { f, prompts };
++}
++
++describe("shared upgrade guides", () => {
++  test("the guide is extracted and labelled once for the family; each package keeps its own selection", async () => {
++    const { prompts } = model();
++    const a = await extractRelease(core, guide("2026-06-25"));
++    expect(releaseCached(openai, guide("2026-10-20"))).toBe(true);
++    const b = await extractRelease(openai, guide("2026-10-20"));
++    const kinds = prompts.map((p) => p.split("\n")[0]!.slice(0, 30));
++    expect(kinds.filter((k) => k.startsWith("You extract"))).toHaveLength(1);
++    expect(kinds.filter((k) => k.startsWith("You write"))).toHaveLength(1);
++    expect(kinds.filter((k) => k.startsWith("You decide"))).toHaveLength(2);
++    // The shared prompts name the guide, not a package, and carry no package's date.
++    const extract = prompts.find((p) => p.startsWith("You extract"))!;
++    expect(extract).toContain(`Technology: ${guideSubject(guide("x").url)}`);
++    expect(extract).toContain("Release: 7.0.0 (upgrade guide)");
++    expect(a.failed + b.failed).toBe(0);
++    expect(a.incoming.map((i) => [i.key, i.subject])).toEqual([["ai@7.0.0+guide.ed1b1648#0.0", "generateText"]]);
++    expect(b.incoming.map((i) => i.key)).toEqual(["ai-sdk-openai@7.0.0+guide.ed1b1648#0.0", "ai-sdk-openai@7.0.0+guide.ed1b1648#0.1"]);
++    expect(b.incoming[1]!.terms).toEqual(["openai.chat"]);
++    expect(b.incoming.every((i) => i.kind === "upgrade_guide" && i.date === "2026-10-20")).toBe(true);
++    // The selection names the package and lists the guide's records by id.
++    const sel = prompts.filter((p) => p.startsWith("You decide")).at(-1)!;
++    expect(sel).toContain("Package: @ai-sdk/openai (pkg:npm/@ai-sdk/openai)");
++    expect(sel).toContain('"id": "r2"');
++  });
++
++  test("UNSTALE_GUIDE_SHARED=0 restores the per-package prompts: no selection, one extraction per package", async () => {
++    process.env.UNSTALE_GUIDE_SHARED = "0";
++    const { prompts } = model();
++    await extractRelease(core, guide("2026-06-25"));
++    const b = await extractRelease(openai, guide("2026-10-20"));
++    expect(prompts.filter((p) => p.startsWith("You extract"))).toHaveLength(2);
++    expect(prompts.some((p) => p.startsWith("You decide"))).toBe(false);
++    expect(prompts.find((p) => p.startsWith("You extract"))).toContain("Technology: ai\nRelease: 7.0.0 (2026-06-25)");
++    expect(b.incoming).toHaveLength(2);
++  });
++
++  test("a failed selection keeps nothing and counts as a failed call", async () => {
++    const f = vi.fn(async (_url: string, init: RequestInit) => {
++      const prompt = (JSON.parse(String(init.body)) as { messages: Array<{ content: string }> }).messages[0]!.content;
++      if (prompt.startsWith("You decide")) return reply("no idea");
++      if (prompt.startsWith("You write")) return reply("{}");
++      return reply(RECORDS);
++    });
++    vi.stubGlobal("fetch", f);
++    vi.useFakeTimers({ toFake: ["setTimeout"] });
++    try {
++      const p = extractRelease(openai, guide("2026-10-20"));
++      await vi.runAllTimersAsync();
++      expect(await p).toEqual({ incoming: [], failed: 1 });
++    } finally {
++      vi.useRealTimers();
++    }
++  });
++
++  test("the classifier's state names the guide for guide records and the package otherwise", async () => {
++    model();
++    const [inc] = (await extractRelease(openai, guide("2026-10-20"))).incoming;
++    expect(recordState("@ai-sdk/openai", inc!).technology).toBe(guideSubject(inc!.url));
++    expect(recordState("@ai-sdk/openai", { ...inc!, kind: "release_notes" }).technology).toBe("@ai-sdk/openai");
++    process.env.UNSTALE_GUIDE_SHARED = "0";
++    expect(recordState("@ai-sdk/openai", inc!).technology).toBe("@ai-sdk/openai");
++  });
++});
++
++describe("requests already in flight", () => {
++  test("the same model request made twice at once is sent once", async () => {
++    const { f } = model();
++    const [x, y] = await Promise.all([extractLlm("Say [] please", (t) => JSON.parse(t) as unknown), extractLlm("Say [] please", (t) => JSON.parse(t) as unknown)]);
++    expect(x).toEqual(y);
++    expect(f).toHaveBeenCalledTimes(1);
++  });
++
++  test("the same classifier request made twice at once is asked once", async () => {
++    let calls = 0;
++    const primary: Classifier = {
++      name: "jev",
++      model: "jev-test",
++      classify: async () => {
++        calls++;
++        await new Promise((r) => setTimeout(r, 5));
++        return { classifier: "jev", model: "jev-test", answers: {} } as never;
++      },
++    };
++    const fallback: Classifier = { name: "chat", model: "chat-test", classify: async () => ({}) as never };
++    const cls = new FallbackClassifier(primary, fallback, new ClassifierCache(join(process.env.UNSTALE_CENTRAL_DIR!, "cls")));
++    const state = { technology: "x" };
++    await Promise.all([cls.classify(state, {}), cls.classify(state, {})]);
++    expect(calls).toBe(1);
++  });
++});
