@@ -422,6 +422,15 @@ impl<'a> Scope<'a> {
         self.importing.contains(path) || config_tool(path).is_some_and(|t| self.path_names(&t))
     }
 
+    /// Whether the file at `path` is one the technology runs from rather than imports: a config file named for it
+    /// (`vite.config.ts`, `.eslintrc.json`), or a configuration-format file its records name (`tsconfig.json`). A
+    /// compiler or build tool used only through such files is still used by the package holding them.
+    pub fn runs_from(&self, path: &str) -> bool {
+        const CONFIG_EXT: &[&str] = &["json", "jsonc", "json5", "yaml", "yml", "toml", "ini", "cfg"];
+        let ext = path.rsplit_once('.').map_or("", |(_, x)| x).to_ascii_lowercase();
+        config_tool(path).is_some_and(|t| self.path_names(&t)) || (self.record_named(path) && CONFIG_EXT.contains(&ext.as_str()))
+    }
+
     /// Whether the technology's records name the file at `path` (`tsconfig.json`): a config file it reads.
     fn record_named(&self, path: &str) -> bool {
         self.config_names.contains(&path.rsplit('/').next().unwrap_or(path).to_ascii_lowercase())
