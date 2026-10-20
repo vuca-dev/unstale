@@ -223,7 +223,7 @@ mod tests {
         let cache = tempfile::tempdir().unwrap();
         let mut st = stack(&[("pkg:npm/lodash.isequal", "lodash.isequal", Some("4.5.0")), ("pkg:npm/react", "react", Some("19.2.0")), ("pkg:pypi/requests", "requests", Some("2.32.0")), ("pkg:npm/unpinned", "unpinned", None)]);
         // A manifest range alone installs no known version: not asked.
-        st.deps.get_mut("pkg:npm/unpinned").unwrap().readings.push(Reading { dir: ".".into(), version: semver::Version::new(1, 0, 0), source: "package.json".into(), standalone: false, range: Some(crate::stack::Range::Npm("^1".into())) });
+        st.deps.get_mut("pkg:npm/unpinned").unwrap().readings.push(Reading { dir: ".".into(), version: semver::Version::new(1, 0, 0), source: "package.json".into(), standalone: false, range: Some(crate::stack::Range::Npm("^1".into())), lock: None });
         let asked = std::sync::Mutex::new(vec![]);
         let fetch = |url: &str| {
             asked.lock().unwrap().push(url.to_string());
