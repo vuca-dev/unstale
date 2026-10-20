@@ -449,6 +449,18 @@ fn option_leaf(r: &unstale_schema::catalog::CapabilityRecord, lit: &str) -> Opti
     (keylike && leaf.chars().count() >= 6 && !usage::plain_word(leaf)).then(|| leaf.to_string())
 }
 
+/// The option key a configuration record about a changed default names as its subject (`baseBranch`; the leaf of a
+/// dotted path): a specific key, not a plain word.
+fn default_option(r: &unstale_schema::catalog::CapabilityRecord) -> Option<String> {
+    if r.change_type != ChangeType::DefaultChange || r.surface != Surface::Configuration || r.subject_kind != unstale_schema::catalog::SubjectKind::Literal {
+        return None;
+    }
+    let l = clean_lit(&r.subject)?;
+    let leaf = l.rsplit('.').next().unwrap_or(&l);
+    let keylike = !leaf.is_empty() && leaf.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-'));
+    (keylike && !usage::plain_word(leaf)).then(|| leaf.to_string())
+}
+
 /// The nearest project boundary containing `path` (`.` when none does).
 fn boundary_of<'b>(bounds: &[&'b str], path: &str) -> &'b str {
     bounds.iter().copied().find(|d| *d == "." || path.strip_prefix(*d).is_some_and(|r| r.starts_with('/'))).unwrap_or(".")
@@ -1037,7 +1049,8 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             if let Some(e) = evidence.borrow().get(&key) {
                 return e.clone();
             }
-            let e = Rc::new(scopes[v].evidence(l, role, !nested));
+            // Cited only where written outside comments: `with:` in a JSDoc sentence is not a workflow step's key.
+            let e = Rc::new(scopes[v].evidence_where(l, role, !nested, |p| inp.repo.text(p).is_none_or(|t| usage::written_outside_comments(p, t, l))));
             evidence.borrow_mut().insert(key, e.clone());
             e
         };
@@ -1378,6 +1391,17 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                     || rec.r.introduces.iter().filter_map(|x| option_leaf(&rec.r, x)).any(|f| leaf_applied(v, &f))
             };
             let applied = || applied_in(view);
+            // The option a configuration default-change record is about, written as a key outside comments in a file
+            // that can configure the technology (not documentation, examples, generated or vendored text).
+            let option_set = |v: usize| {
+                let Some(key) = default_option(&rec.r) else { return false };
+                hits_of(v).usage.get(&key).into_iter().flatten().any(|p| {
+                    !matches!(role(p), usage::Role::Docs | usage::Role::Example | usage::Role::Generated | usage::Role::Vendored)
+                        && scopes[v].counts(&key, p)
+                        && (!usage::own_code(p, &ecosystem) || scopes[v].configures(p))
+                        && inp.repo.text(p).is_some_and(|t| usage::written_outside_comments(p, t, &key))
+                })
+            };
             opp.route = base_route(rec, avail);
             // A deprecation already in the installed version is still owed while the code uses what it deprecates: its
             // `replaces` literals, whole, under the shown evidence rule (files that can use the technology). A plain word
@@ -1439,6 +1463,12 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             }
             // Applied: an introduced literal as a whole token; never for a breaking change.
             if matches!(opp.route, Route::UpgradeReview | Route::ImprovementsPass) && !rec.r.breaking && applied() {
+                opp.route = Route::Applied;
+            }
+            // A changed default does not reach a project that sets the option itself (Changesets 3's `baseBranch`
+            // default, with `"baseBranch": "master"` in `.changeset/config.json`): the explicit setting already handles
+            // it, breaking or not.
+            if matches!(opp.route, Route::UpgradeReview | Route::ImprovementsPass) && rec.r.change_type == ChangeType::DefaultChange && option_set(view) {
                 opp.route = Route::Applied;
             }
             // The same record for each manifest on another version of its package: only what reaches the bump digest
@@ -3121,6 +3151,21 @@ mod tests {
         }
         assert_eq!(route_of(&out, "knip:vite8"), &Route::BumpDigest, "arrives with the bump, nothing to adopt");
         assert_eq!(route_of(&out, "knip:new-command"), &Route::ImprovementsPass);
+    }
+
+    #[test]
+    fn a_changed_default_is_handled_where_the_option_is_set() {
+        // enisdenjo/graphql-ws: Changesets 3 defaults `baseBranch` to main; `.changeset/config.json` sets "master".
+        let def = |id: &str, key: &str| {
+            with(rec(id, "pkg:npm/@changesets/cli", "3.0.0"), json!({"change_type":"default_change","surface":"configuration","breaking":true,"subject":key,"subject_kind":"literal","terms":[[key,0]]}))
+        };
+        let c = catalog("changesets", 0, vec![def("cs:base", "baseBranch"), def("cs:other", "privatePackages")]);
+        let s = stack(&[("@changesets/cli", "2.27.11")], None);
+        let r = repo(&[(".changeset/config.json", "{\n  \"baseBranch\": \"master\"\n}\n"), ("docs/guide.md", "Set privatePackages in config.")]);
+        let l = Ledger::default();
+        let out = run_with(&c, &s, &r, &l);
+        assert_eq!(route_of(&out, "cs:base"), &Route::Applied, "set explicitly: the new default does not apply");
+        assert_ne!(route_of(&out, "cs:other"), &Route::Applied, "named only in documentation");
     }
 
     #[test]
