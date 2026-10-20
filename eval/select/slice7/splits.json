@@ -1,0 +1,7 @@
+{
+ "_note": "Slice 7 units by guide URL prefix. dev includes a provider family (AI SDK 6.0, 7.0); heldout is family-disjoint from dev; heldout-aisdk is the provider family's other units (unit-disjoint, same family), checked by the same rule; gold = the held-out majors set's three upgrade guides.",
+ "dev": ["https://ai-sdk.dev/docs/migration-guides/migration-guide-6-0", "https://ai-sdk.dev/docs/migration-guides/migration-guide-7-0", "https://tiptap.dev/", "https://reactrouter.com/"],
+ "heldout": ["https://nextjs.org/", "https://docs.nestjs.com/", "https://docs.aws.amazon.com/"],
+ "heldout-aisdk": ["https://ai-sdk.dev/docs/migration-guides/migration-guide-4-0", "https://ai-sdk.dev/docs/migration-guides/migration-guide-5-0"],
+ "gold": []
+}
