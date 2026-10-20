@@ -101,6 +101,9 @@ export interface Job {
   interrupted?: { ms: number; cycles: number; stage: string; refresh?: boolean };
   /** Rate-limited (HTTP 429): not started again before this time. Never public. */
   paused_until?: string;
+  /** When the technology was first seen monitored (its first coverage done). Every later slice is monitoring in the
+   * usage log, also one that continues a refresh which yielded (queued) partway. Never public. */
+  monitored?: string;
 }
 
 /** Work time after which an interrupted slice is not resumed: two full cycles (20 minutes each), about 12 times the
@@ -324,6 +327,7 @@ export class CoverageService {
     job.state = state;
     job.stage = stage;
     job.updated = now();
+    if (state === "monitoring" && !job.merged_into) job.monitored ??= job.updated;
     writeAtomic(jobPath(job.purl), JSON.stringify(job, null, 1));
     timeline(job);
   }
@@ -761,11 +765,16 @@ export class CoverageService {
     delete job.paused_until;
     // Every model call of the slice is the technology's first coverage or its monitoring (util.ts, usage phases); the
     // context goes with the slice's own call chain, so slices running at once never take each other's calls.
-    void withUsagePhase(refresh ? "monitoring" : "onboarding", job.technology, () => this.work(job))
+    // A refresh that yields (three notes a slice, or the budget) leaves the job queued, so its next slice is no
+    // refresh; it is still monitoring, and its end is no second first coverage. A job saved by code before `monitored`
+    // existed is marked by its first refresh.
+    if (refresh && !job.merged_into) job.monitored ??= now();
+    const monitored = refresh || !!job.monitored;
+    void withUsagePhase(monitored ? "monitoring" : "onboarding", job.technology, () => this.work(job))
       .then(() => {
         kind[job.state === "queued" ? "yielded" : job.state === "failed" ? "failed" : "finished"]++;
         // First coverage done: counted, so onboarding's cost divides by the technologies it covered.
-        if (!refresh && job.state === "monitoring" && !job.merged_into) logUsage({ phase: "onboarding", tech: job.technology, milestone: "onboarded" });
+        if (!monitored && job.state === "monitoring" && !job.merged_into) logUsage({ phase: "onboarding", tech: job.technology, milestone: "onboarded" });
         if (Date.now() >= this.pausedUntil) this.pauseMs = 0;
       })
       .catch((error) => {
@@ -1229,6 +1238,7 @@ function publicJob(j: Job) {
     downloads: _downloads,
     interrupted: _interrupted,
     paused_until: _paused,
+    monitored: _monitored,
     demand: _demand,
     ...fields
   } = j;

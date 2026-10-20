@@ -51,7 +51,9 @@ export interface PhaseSummary {
   technologies: number;
 }
 export interface UsageByPhase {
-  /** The first and last line's time, and the days between them (the log holds the current UTC month). */
+  /** The first and last time of the lines that carry a phase, and the days between them: lines written before phases
+   * were recorded (`unattributed`) are outside it, so a per-year figure scales by the time phases were measured over,
+   * not by the whole log (the log holds the current UTC month). */
   window: { from: string | null; to: string | null; days: number };
   /** Lines written before phases were recorded are `unattributed`. */
   phases: Record<string, PhaseSummary>;
@@ -84,7 +86,7 @@ export function usageByPhase(lines: Record<string, unknown>[], monitored: number
   const phases: Record<string, PhaseSummary> = {};
   const techs: Record<string, Set<string>> = {};
   const onboarded = new Set<string>();
-  const times = lines.map((l) => l.at).filter((t): t is string => typeof t === "string").sort();
+  const times = lines.filter((l) => typeof l.phase === "string").map((l) => l.at).filter((t): t is string => typeof t === "string").sort();
   for (const l of lines) {
     const phase = typeof l.phase === "string" ? l.phase : "unattributed";
     if (l.milestone === "onboarded" && typeof l.tech === "string") onboarded.add(l.tech);
