@@ -1858,6 +1858,21 @@ fn affected_identifiers(text: &str) -> Vec<String> {
 }
 
 /// `word` in `text` with no identifier character on either side.
+/// Whether a file can meet the condition a security record states: the identifiers among its terms that its summary
+/// names and that are not its subject (`TypedArray`, `Float32Array` in "when an unsupported TypedArray is passed as the
+/// reason argument" for `websocket.close`) are the precondition, so a site counts only where the file writes one of
+/// them. A record naming none is unchanged: the subject's use is the affected path.
+fn precondition_plausible(r: &unstale_schema::catalog::CapabilityRecord, text: &str) -> bool {
+    let subject = r.subject.to_ascii_lowercase();
+    let conds: Vec<&str> = r
+        .terms
+        .iter()
+        .map(|t| t.0.as_str())
+        .filter(|t| usage::identifier(t) && !subject.contains(&t.to_ascii_lowercase()) && has_identifier(&r.summary, t))
+        .collect();
+    conds.is_empty() || conds.iter().any(|t| has_identifier(text, t))
+}
+
 fn has_identifier(text: &str, word: &str) -> bool {
     let ident = |c: Option<char>| c.is_some_and(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$');
     text.match_indices(word).any(|(i, _)| !ident(text[..i].chars().next_back()) && !ident(text[i + word.len()..].chars().next()))
@@ -2145,7 +2160,10 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
         let advisory = !sec_opps.is_empty() || !lock.is_empty();
         let reached: Option<String> = (advisory && runtime && !standalone).then(|| {
             let by_terms = sec_opps.iter().find_map(|o| {
-                o.matched.iter().filter(|(t, _)| specific_reference(t, &w.stack)).find_map(|(t, fs)| fs.iter().find(|f| prod(f)).map(|f| (display_text(&o.rec.r.summary), f.clone(), t.clone())))
+                o.matched
+                    .iter()
+                    .filter(|(t, _)| specific_reference(t, &w.stack))
+                    .find_map(|(t, fs)| fs.iter().find(|f| prod(f) && w.repo.text(f).is_none_or(|x| precondition_plausible(&o.rec.r, x))).map(|f| (display_text(&o.rec.r.summary), f.clone(), t.clone())))
             });
             by_terms.or_else(|| {
                 let texts: Vec<String> = tech_fixes

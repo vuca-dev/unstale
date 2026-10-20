@@ -243,6 +243,9 @@ pub struct Scope<'a> {
     /// Per path index: whether the file names the technology's packages, and whether at a module position; and its
     /// `file`, once (0 not yet; else 1 + `None`/`Some(false)`/`Some(true)`): the same files come up for every literal.
     named_at: Vec<(bool, bool)>,
+    /// Some of the repository's own code imports one of the technology's packages: it is a library code reaches by
+    /// importing it, so its API in code that does not import it is another module's (`classify`).
+    imported: bool,
     memo: RefCell<Vec<u8>>,
 }
 
@@ -291,7 +294,8 @@ impl<'a> Scope<'a> {
             .map(|l| l.to_ascii_lowercase())
             .collect();
         let memo = RefCell::new(vec![0; paths.len()]);
-        Scope { ecosystem, owners, reach: owners, stems, naming, importing, config_names, hits, paths, named_at, memo }
+        let imported = importing.iter().any(|p| own_code(p, ecosystem));
+        Scope { ecosystem, owners, reach: owners, stems, naming, importing, config_names, hits, paths, named_at, imported, memo }
     }
 
     /// `reach`: the packages that declare the technology or depend, through the repository's own packages, on one that
@@ -372,6 +376,21 @@ impl<'a> Scope<'a> {
         (code && imports) || (code && under(path, self.owners))
     }
 
+    /// Whether code at `path` that does not import the technology (`imports`) is barred from evidencing it: a library
+    /// the repository's code imports is used only where code imports it, so the same name in code that does not is
+    /// that code's own or another module's (Effect's own `Random.next` beside fast-check's, a `method:` field in a
+    /// uWebSockets adapter beside fastify's, `specifier.local` on another parser's AST). Naming the package only in a
+    /// comment or string does not make a file an importer. A file the path or records name (`vite.config.ts`,
+    /// `middleware.ts`) still counts, and technologies no code imports (globals, compilers, CLIs) keep the package
+    /// rule. Such a file still orders the queue (`Evidence::used`).
+    fn borrowed(&self, path: &str, imports: bool) -> bool {
+        self.imported
+            && !imports
+            && own_code(path, self.ecosystem)
+            && !self.path_names(path)
+            && !self.config_names.contains(&path.rsplit('/').next().unwrap_or(path).to_ascii_lowercase())
+    }
+
     /// `named`: the file names a package (`naming_lits`), and whether at a module position (`module_naming`).
     fn classify(&self, path: &str, (named, imports): (bool, bool)) -> Option<bool> {
         if foreign_code(path, self.ecosystem) {
@@ -391,11 +410,12 @@ impl<'a> Scope<'a> {
     /// Whether a whole-token hit of `lit` in `path` (one of its `Hits::whole` files) shows the technology in use, by the
     /// rule evidence is shown with: the applied check.
     pub fn counts(&self, lit: &str, path: &str) -> bool {
-        self.file(path).is_some_and(|about| about || !plain_word(lit))
+        !self.borrowed(path, self.importing.contains(path)) && self.file(path).is_some_and(|about| about || !plain_word(lit))
     }
 
     /// A literal's evidence in one pass over its hits (`by_path`: `role` is the path's own role, which `find`'s order
     /// already follows, so only the first file is asked).
+    #[cfg(test)]
     pub fn evidence(&self, lit: &str, role: impl Fn(&str) -> Role, by_path: bool) -> Evidence {
         self.evidence_with(lit, role, by_path, false, |_| true)
     }
@@ -403,6 +423,11 @@ impl<'a> Scope<'a> {
     /// `evidence` from files holding the whole literal: a dotted literal matched only by its tail (a plain word or
     /// not) is left out everywhere. For a deprecated key that word is often the successor's name (`browser.isolate`, replaced by
     /// `isolate`), so a tail match would cite the code that already moved.
+    /// `evidence` from the files `keep` accepts; a file left out still orders the queue (`Evidence::used`).
+    pub fn evidence_where(&self, lit: &str, role: impl Fn(&str) -> Role, by_path: bool, keep: impl Fn(&str) -> bool) -> Evidence {
+        self.evidence_with(lit, role, by_path, false, keep)
+    }
+
     #[cfg(test)]
     pub fn exact_evidence(&self, lit: &str, role: impl Fn(&str) -> Role, by_path: bool) -> Evidence {
         self.evidence_with(lit, role, by_path, true, |_| true)
@@ -462,6 +487,9 @@ impl<'a> Scope<'a> {
                 r
             };
             e.used = true;
+            if self.borrowed(p, self.named_at[*x as usize].1) {
+                continue;
+            }
             if tails.is_some_and(|t| t.contains(x)) || (!about && (plain || ((ident || tail_hit) && !self.record_named(p)))) {
                 continue;
             }
@@ -662,6 +690,20 @@ pub fn live_site_under(path: &str, text: &str, lit: &str, replacements: &[String
         .map(line_of)
         .filter(|l| beside.as_ref().is_none_or(|b| b.iter().any(|x| x.abs_diff(*l) <= SITE_LINES)))
         .any(|l| !near.iter().any(|r| r.abs_diff(l) <= SITE_LINES))
+}
+
+/// Whether `text` holds `lit` (or, for a qualified literal, its tail) outside comments: a file that writes a literal
+/// only in comments (JSDoc prose, a commented-out example) is not using it. A key literal (`with:`) in
+/// JavaScript-family code counts only as an object key (`key_or_member`), not inside a string (`"secret:with:colons"`).
+pub fn written_outside_comments(path: &str, text: &str, lit: &str) -> bool {
+    if let Some(key) = lit.strip_suffix(':').filter(|k| is_word(k) && js_code(path)) {
+        return live_site_under(path, text, key, &[], None, true, None);
+    }
+    let live = |l: &str| live_site_under(path, text, l, &[], None, false, None);
+    let tail = tail_of(lit);
+    // A literal matched through another form (a subpath `./src/*` as `'vitest/src/`) is not judged here.
+    let written = text.contains(lit) || tail.as_ref().is_some_and(|t| text.contains(t.as_str()));
+    !written || live(lit) || tail.is_some_and(|t| live(&t))
 }
 
 /// Whether `lit` names a family of names by their common prefix (`start-` of a record's `start-*`): class, utility or
@@ -1347,6 +1389,18 @@ pub struct Hits {
     pub flag_lines: HashMap<String, HashMap<u32, BTreeSet<String>>>,
 }
 
+/// Whether the JavaScript-family text at `at` is inside a line comment, a block-comment line (`* …`) or a string opened
+/// earlier on the same line (an odd number of unescaped quotes of one kind before it).
+fn quoted_or_commented(text: &str, at: usize) -> bool {
+    let line = &text[text[..at].rfind('\n').map_or(0, |i| i + 1)..at];
+    let lead = line.trim_start();
+    if lead.starts_with("//") || lead.starts_with('*') || lead.starts_with("/*") || line.contains("//") && !line.contains("://") {
+        return true;
+    }
+    let b = line.as_bytes();
+    b"\"'`".iter().any(|q| (0..b.len()).filter(|&i| b[i] == *q && (i == 0 || b[i - 1] != b'\\')).count() % 2 == 1)
+}
+
 /// Mark in `Hits::flag_lines` for an occurrence that is a CSS custom property.
 pub const CSS_PROPERTY: &str = "*";
 
@@ -1411,8 +1465,10 @@ pub fn find_with_commands(repo: &Repo, usage_lits: &BTreeSet<String>, whole_lits
     // Per file, the usage and whole literals it holds; files are matched on every core and merged in file order.
     let is_flag: Vec<bool> = patterns.iter().map(|p| cli_flag(p)).collect();
     let flag_pat: Vec<bool> = is_flag.iter().map(|f| *f && !commands.is_empty()).collect();
+    let module_pat: Vec<bool> = patterns.iter().map(|p| module_naming(p)).collect();
     let per_file = par_map(&repo.files, |(path, text)| {
         let b = text.as_bytes();
+        let js = js_code(path);
         let mut bits: HashMap<usize, u8> = HashMap::new();
         let style = path.rsplit_once('.').is_some_and(|(_, x)| STYLE_EXT.contains(&x.to_ascii_lowercase().as_str()));
         let mut flags: Vec<(usize, BTreeSet<String>)> = vec![];
@@ -1433,6 +1489,11 @@ pub fn find_with_commands(repo: &Repo, usage_lits: &BTreeSet<String>, whole_lits
                     Some((_, ws)) => ws.extend(words),
                     None => flags.push((p, words)),
                 }
+            }
+            // An import written in a comment or a string (an error message telling the user to `import WebSocket from
+            // 'ws'`) does not import the package: such a file is not about it (`Scope`).
+            if js && module_pat[p] && quoted_or_commented(text, m.start()) {
+                continue;
             }
             let before = if m.start() == 0 { None } else { Some(b[m.start() - 1]) };
             let after = b.get(m.end()).copied();
@@ -1824,6 +1885,7 @@ mod tests {
         let root = ["."];
         let s = Scope::new("npm", &root, &purls, &lits, &h, &r.paths);
         assert_eq!(s.file("src/app.ts"), Some(false), "the ecosystem's code in a package declaring it");
+        assert!(!s.counts("defaultOptions", "src/app.ts"), "but it does not import a library the repository's code imports");
         assert_eq!(s.file("src/client.test.ts"), Some(true), "imports it");
         assert_eq!(s.file("vitest.config.ts"), Some(true), "its path names it");
         assert_eq!(s.file("package.json"), Some(false), "a manifest listing it: can use it, but is not about it");
@@ -1834,6 +1896,39 @@ mod tests {
         let owners = ["frontend"];
         let s = Scope::new("npm", &owners, &purls, &lits, &h, &r.paths);
         assert_eq!(s.file("backend/server.ts"), None, "no package declaring it encloses the file");
+        // No code imports it (globals, a CLI): the ecosystem's code in a package declaring it can still use it.
+        let r = repo(&[("src/app.ts", "const x = 1"), ("package.json", "{\"devDependencies\": {\"vitest\": \"4\"}}")]);
+        let h = scoped(&r, &[], &["pkg:npm/vitest"]);
+        let s = Scope::new("npm", &root, &purls, &lits, &h, &r.paths);
+        assert_eq!(s.file("src/app.ts"), Some(false), "the ecosystem's code in a package declaring it");
+    }
+
+    #[test]
+    fn a_same_named_module_or_an_import_in_a_string_is_not_the_library() {
+        // Effect-TS/effect: fast-check's `Random.next` matched where Effect's own `Random` module is imported; and
+        // graphql-ws: an error message telling the user to `import WebSocket from 'ws'` made the client about ws.
+        let r = repo(&[
+            ("src/IdGenerator.ts", "import * as Random from \"../Random.ts\"\nRandom.next(1)\n// see fast-check's Random"),
+            ("test/arb.test.ts", "import * as fc from \"fast-check\"\nfc.Random.next(1)"),
+            ("src/client.ts", "throw new Error(\"on Node you can `import WebSocket from 'ws';` and pass it\")"),
+            ("src/use/ws.ts", "import type WebSocket from 'ws';"),
+            ("package.json", "{\"devDependencies\": {\"fast-check\": \"4\", \"ws\": \"8\"}}"),
+        ]);
+        let fc = vec!["pkg:npm/fast-check".to_string()];
+        let h = scoped(&r, &["Random.next"], &["pkg:npm/fast-check"]);
+        let s = Scope::new("npm", &["."], &fc, &[], &h, &r.paths);
+        assert!(!s.counts("Random.next", "src/IdGenerator.ts"));
+        let files: Vec<String> = s.evidence("Random.next", |p: &str| path_role(p), true).files.into_iter().map(|(p, _)| p).collect();
+        assert_eq!(files, vec!["test/arb.test.ts"]);
+        let ws = vec!["pkg:npm/ws".to_string()];
+        let h = scoped(&r, &[], &["pkg:npm/ws"]);
+        let s = Scope::new("npm", &["."], &ws, &[], &h, &r.paths);
+        assert!(!s.counts("WebSocket", "src/client.ts"), "an import written in a string is no import");
+        assert_eq!(s.file("src/use/ws.ts"), Some(true));
+        assert!(!written_outside_comments("src/Data.ts", "/**\n * Returns an object with:\n */", "with:"));
+        assert!(!written_outside_comments("t.test.ts", "encode(\"alice:secret:with:colons\")", "with:"), "inside a string");
+        assert!(written_outside_comments("a.ts", "call({ with: 1 })", "with:"));
+        assert!(written_outside_comments("w.yml", "    with:\n      x: 1", "with:"));
     }
 
     #[test]
@@ -2031,7 +2126,7 @@ mod tests {
         assert!(e.used && e.app, "the helper still orders the queue");
         let e = s.evidence("test.describe", role, true);
         let files: Vec<&str> = e.files.iter().map(|(p, _)| p.as_str()).collect();
-        assert_eq!(files, vec!["tests/d/spec.test.ts", "src/a/cache.ts"], "the whole literal; files importing it first");
+        assert_eq!(files, vec!["tests/d/spec.test.ts"], "the whole literal, where vitest is imported; other code imports its own `test`");
         let r = repo(&[("src/a.ts", "describe('x')"), ("src/b.test.ts", "import 'vitest'; describe('y')")]);
         let h = scoped(&r, &["test.describe"], &["pkg:npm/vitest"]);
         let s = Scope::new("npm", &[], &purls, &[], &h, &r.paths);
