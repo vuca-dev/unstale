@@ -10,6 +10,7 @@ import { extract, nextGate, passDue, plan, DOCS_PASS } from "../src/docs/extract
 import type { Technology } from "../src/pipeline/technologies.ts";
 import { docsDir, readEvents, refresh } from "../src/docs/monitor.ts";
 import { fetchGuides } from "../src/pipeline/fetch.ts";
+import { ownGuide } from "../src/docs/guides.ts";
 import { compact, fenceFor, markViews, renderChange, unmarkQuote } from "../src/docs/render.ts";
 import { editKind } from "../src/docs/materiality.ts";
 import { parseRobots, RobotsCache } from "../src/docs/robots.ts";
@@ -120,6 +121,54 @@ describe("attribution", () => {
     expect(attribute({ ...s, hunks: "+text" }, { guideMajor: "1", maxMajor: "0" })).toEqual({ by: "unreleased-guide", version: "1.0.0" });
     expect(attribute({ ...s, hunks: "+text" }, { namespaceMajor: "7" })).toEqual({ by: "namespace", line: "7" });
     expect(attribute({ ...s, hunks: "+text" }, {})).toEqual({ by: "unknown" });
+  });
+});
+
+describe("guide ownership", () => {
+  const own = (url: string, purls: string[], pages: string[], entries: string[] = []) => ownGuide(url, { purls, pages, guides: new Set<string>(), entries });
+
+  test("another platform's guides on a per-platform site are not the Python SDK's (Sentry); its own are", () => {
+    const sentry = "https://docs.sentry.io/platforms";
+    const pages = [`${sentry}/android/migration/v1-to-v2`, `${sentry}/android/migration/timber-v5-6-2`, `${sentry}/javascript/guides/capacitor/migration/v1-to-v2`, `${sentry}/apple/migration/v8-to-v9`];
+    const purls = ["pkg:pypi/sentry-sdk"];
+    // The Python section is known from the technology's docs entry, even when the listing names none of its pages.
+    for (const u of pages) expect(own(u, purls, pages, [`${sentry}/python/`])).toBe(false);
+    const python = `${sentry}/python/migration/1.x-to-2.x`;
+    expect(own(python, purls, [...pages, python], [`${sentry}/python/`])).toBe(true);
+    // Without anything marking a section as the technology's, nothing is dropped.
+    expect(own(pages[0]!, purls, pages)).toBe(true);
+  });
+
+  test("the Vue guide is not React Query's; the React guides are, and the Vue package keeps its own", () => {
+    const q = "https://tanstack.com/query/latest/docs/framework";
+    const pages = ["react", "vue", "solid", "svelte"].flatMap((f) => [`${q}/${f}/overview`, `${q}/${f}/guides/migrating-to-v5`]).concat(`${q}/react/guides/migrating-to-react-query-4`, `${q}/react/react-native`);
+    const entries = ["https://tanstack.com/query/latest"];
+    const react = ["pkg:npm/%40tanstack/react-query"];
+    expect(own(`${q}/vue/guides/migrating-to-v5`, react, pages, entries)).toBe(false);
+    expect(own(`${q}/react/guides/migrating-to-v5`, react, pages, entries)).toBe(true);
+    expect(own(`${q}/react/guides/migrating-to-react-query-4`, react, pages, entries)).toBe(true);
+    expect(own(`${q}/vue/guides/migrating-to-v5`, ["pkg:npm/%40tanstack/vue-query"], pages, entries)).toBe(true);
+    expect(own(`${q}/react/guides/migrating-to-v5`, ["pkg:npm/%40tanstack/vue-query"], pages, entries)).toBe(false);
+  });
+
+  test("a guide to another named thing's version is not the technology's (OpenTelemetry's OBI config v2)", () => {
+    const otel = ["pkg:npm/%40opentelemetry/semantic-conventions", "pkg:npm/%40opentelemetry/api"];
+    expect(own("https://opentelemetry.io/docs/zero-code/obi/configure/migrate-to-config-v2", otel, [])).toBe(false);
+    expect(own("https://mui.com/material-ui/migration/upgrade-to-grid-v2", ["pkg:npm/%40mui/material"], [])).toBe(false);
+    // A target named by the technology or its site is its own major.
+    expect(own("https://www.prisma.io/docs/orm/more/upgrade-guides/upgrading-to-prisma-7", ["pkg:npm/prisma"], [])).toBe(true);
+    expect(own("https://tanstack.com/query/latest/docs/framework/react/guides/migrating-to-react-query-4", ["pkg:npm/%40tanstack/react-query"], [])).toBe(true);
+    expect(own("https://docs.slack.dev/tools/node-slack-sdk/migration/migrating-socket-mode-package-to-v2", ["pkg:npm/%40slack/types"], [])).toBe(true);
+  });
+
+  test("sections that are topics, not variants, drop nothing (Next.js, MUI, NestJS)", () => {
+    const next = ["https://nextjs.org/docs/app/guides/upgrading/version-16", "https://nextjs.org/docs/pages/guides/upgrading/version-16", "https://nextjs.org/docs/app/guides/css-in-js", "https://nextjs.org/docs/app/api-reference/config/eslint"];
+    for (const u of next.slice(0, 2)) expect(own(u, ["pkg:npm/eslint-config-next"], next, ["https://nextjs.org/docs/app/api-reference/config/eslint"])).toBe(true);
+    // The icons package's docs entry is one page, not a section of its own.
+    const mui = ["https://mui.com/material-ui/migration/upgrade-to-v9", "https://mui.com/material-ui/material-icons", "https://mui.com/material-ui/getting-started/installation"];
+    expect(own(mui[0]!, ["pkg:npm/%40mui/icons-material", "pkg:npm/%40mui/material"], mui, ["https://mui.com/material-ui/material-icons/"])).toBe(true);
+    const nest = ["https://docs.nestjs.com/migration-guide", "https://docs.nestjs.com/cli/overview", "https://docs.nestjs.com/cli/usages"];
+    expect(own(nest[0]!, ["pkg:npm/%40nestjs/cli"], nest, ["https://docs.nestjs.com/cli/overview"])).toBe(true);
   });
 });
 
@@ -299,6 +348,21 @@ describe("monitor", () => {
     index.guides.push({ ...index.guides[0], url: "https://github.com/o/r/blob/abc/docs/upgrading/version-3.md", repo: "o/r", path: "docs/upgrading/version-3.md", commit: "abc" });
     writeAtomic(ip, JSON.stringify(index));
     expect((await fetchGuides(tech, [], { offline: true })).map((g) => new URL(g.url).hostname)).toEqual(["127.0.0.1", "127.0.0.1"]);
+  });
+
+  test("a guide ingested before guides were told apart by variant stays in the index but is no source", async () => {
+    const q = "https://tanstack.com/query/latest/docs/framework";
+    const page = { site: "https://tanstack.com/", watch: { id: "w" } };
+    writeAtomic(join(docsDir("rq"), "state.json"), JSON.stringify({
+      technology: "rq", at: "x", sites: [{ site: "https://tanstack.com/query/latest", prefix: "/query" }],
+      pages: { [`${q}/react/guides/migrating-to-v5`]: { ...page, guideMajor: "5" }, [`${q}/vue/guides/migrating-to-v5`]: { ...page, guideMajor: "5" }, [`${q}/vue/overview`]: page },
+    }));
+    const entry = (f: string, h: string) => ({ technology: "rq", kind: "upgrade_guide", tag: "guide-5", version: "5.0.0", date: "2026-01-01", url: `${q}/${f}/guides/migrating-to-v5`, snapshot: `sha256:${h}`, keyTag: `+guide.${h.slice(0, 8)}` });
+    const guides = [entry("react", "a".repeat(64)), entry("vue", "b".repeat(64))];
+    for (const g of guides) writeAtomic(join(dir, "guides", "rq", `5.${g.snapshot.slice(7, 15)}.md`), `# ${g.url}`);
+    writeAtomic(join(dir, "guides", "rq", "index.json"), JSON.stringify({ checked: new Date().toISOString(), guides }));
+    const tech = { id: "rq", name: "React Query", repo: "", components: ["pkg:npm/%40tanstack/react-query"], tag: /^v(.*)$/, clean: (b: string) => b };
+    expect((await fetchGuides(tech, [], { offline: true })).map((g) => g.url)).toEqual([`${q}/react/guides/migrating-to-v5`]);
   });
 
   test("a site whose llms-full.txt is unchanged since every page was checked is not checked page by page", async () => {
