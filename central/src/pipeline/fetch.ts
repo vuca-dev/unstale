@@ -7,7 +7,7 @@ import { centralDir } from "./paths.ts";
 import { SINCE, type Technology } from "./technologies.ts";
 import { compareVersions, isRepoSlug, readJson, sha256, writeAtomic } from "./util.ts";
 import { DEFAULT_HTTP, HttpClient } from "../collector/http.ts";
-import { currentGuides } from "../docs/guides.ts";
+import { currentGuides, guideFilter } from "../docs/guides.ts";
 import { githubToken } from "../docs/fetcher.ts";
 import { ecosystemOf } from "./ecosystems.ts";
 import { isStable } from "./lines.ts";
@@ -548,9 +548,11 @@ export async function fetchGuides(
     writeAtomic(ip, JSON.stringify(index, null, 1) + "\n");
   }
   // Entries from the old table-driven path (a repository file at a commit) stay in the index as history but are no
-  // longer sources: a newer repository snapshot there would re-extract the whole guide.
+  // longer sources: a newer repository snapshot there would re-extract the whole guide. A guide ingested before the
+  // technology's own were told from other variants' (docs/guides.ts `ownGuide`) stays in the index but is no source.
+  const own = guideFilter({ technology: t.id, purls: t.components.map((p) => p.replace("%40", "@")) });
   return index.guides
-    .filter((g) => !("repo" in g))
+    .filter((g) => !("repo" in g) && own(g.url))
     .map((g) => {
       const p = join(guideDir(t), `${g.version.split(".")[0]}.${g.snapshot.slice(7, 15)}.md`);
       return { ...g, notes: readFileSync(p, "utf8") };
