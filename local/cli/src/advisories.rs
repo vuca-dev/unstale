@@ -111,6 +111,14 @@ impl Graph {
         n.seen = n.seen.and(seen);
         n.private |= seen == Seen::Elsewhere;
     }
+    /// Every version the lockfile installs, by package name (projects of the repository left out).
+    pub fn installed(&self) -> BTreeMap<String, BTreeSet<String>> {
+        let mut out: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+        for n in self.nodes.iter().filter(|n| n.local.is_none() && !n.name.is_empty() && !n.version.is_empty()) {
+            out.entry(n.name.clone()).or_default().insert(n.version.clone());
+        }
+        out
+    }
     /// The package versions to query: every public package version (not a project of the repository, not one
     /// installed from elsewhere than the public registry, not a name a project of the repository has).
     pub fn packages(&self) -> BTreeSet<(String, String)> {

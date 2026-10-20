@@ -300,6 +300,10 @@ fn first(seen: &mut BTreeSet<(String, Option<String>)>, pkg: &str, version: Opti
 pub fn detect(repo: &usage::Repo) -> Vec<Workaround> {
     let mut out = vec![];
     let mut patched = BTreeSet::new();
+    // Packages a published manifest of this repository installs through an alias for its users (`prettier:
+    // npm:wp-prettier@^3` in gutenberg's `@wordpress/scripts`): the repository ships that fork on purpose, so no upgrade
+    // of the aliased package retires it, here or in its other manifests.
+    let mut shipped: BTreeSet<String> = BTreeSet::new();
     for path in &repo.paths {
         let in_patches = path.rsplit('/').nth(1).is_some_and(|d| d == "patches");
         if in_patches && let Some(pkg) = patch_package(base(path)) && first(&mut patched, &pkg, patch_version(base(path))) {
@@ -314,6 +318,15 @@ pub fn detect(repo: &usage::Repo) -> Vec<Workaround> {
         match base(path) {
             "package.json" => {
                 let Ok(v) = serde_json::from_str::<serde_json::Value>(text) else { continue };
+                if crate::stack::is_library(&v, false) {
+                    for field in ["/dependencies", "/optionalDependencies", "/peerDependencies"] {
+                        for (k, spec) in v.pointer(field).and_then(|m| m.as_object()).into_iter().flatten() {
+                            if spec.as_str().and_then(|s| s.strip_prefix("npm:")).is_some_and(|t| strip_version(t) != k) {
+                                shipped.insert(k.clone());
+                            }
+                        }
+                    }
+                }
                 if let Some(m) = v.pointer("/pnpm/patchedDependencies").and_then(|m| m.as_object()) {
                     for k in m.keys() {
                         let pkg = strip_version(k).to_string();
@@ -391,6 +404,7 @@ pub fn detect(repo: &usage::Repo) -> Vec<Workaround> {
             }
         }
     }
+    out.retain(|w| !(w.kind == Kind::Alias && w.package.as_ref().is_some_and(|p| shipped.contains(p))));
     out
 }
 
@@ -579,6 +593,14 @@ pub fn declarations(repo: &usage::Repo) -> Vec<Decl> {
     out
 }
 
+/// Whether an application of this repository (an application-role manifest that is not published) declares one of
+/// `packages` for runtime: what it installs is what runs, unlike a published package's declaration, which its users'
+/// installs resolve on their own.
+pub fn app_runtime(decls: &[Decl], packages: &[String]) -> bool {
+    let names: BTreeSet<String> = packages.iter().flat_map(|p| [p.clone(), pep_name(p)]).collect();
+    decls.iter().any(|d| names.contains(&d.name) && d.app && !d.published && d.dev == Some(false))
+}
+
 pub fn facts(decls: &[Decl], packages: &[String]) -> Facts {
     let names: BTreeSet<String> = packages.iter().flat_map(|p| [p.clone(), pep_name(p)]).collect();
     let mine: Vec<&Decl> = decls.iter().filter(|d| names.contains(&d.name)).collect();
@@ -607,6 +629,22 @@ mod tests {
         }
         let f = facts(&declarations(&repo), &["x".into()]);
         assert_eq!(f.blocker.as_deref(), Some("an exact pin in packages/excalidraw/package.json"));
+    }
+
+    #[test]
+    fn an_alias_a_published_package_ships_is_a_fork_kept_on_purpose() {
+        // gutenberg: `prettier: npm:wp-prettier@^3.9.6` in the private root and in the published `@wordpress/scripts`.
+        let fork = r#"{"name":"@wordpress/scripts","version":"1.0.0","bin":{},"dependencies":{"prettier":"npm:wp-prettier@^3.9.6"}}"#;
+        let repo = crate::funnel::fixtures::repo(&[
+            ("package.json", r#"{"private":true,"devDependencies":{"prettier":"npm:wp-prettier@^3.9.6","lodash":"npm:lodash-fixed@4.17.22"}}"#),
+            ("packages/scripts/package.json", fork),
+        ]);
+        let aliased: Vec<_> = detect(&repo).into_iter().filter(|w| w.kind == Kind::Alias).map(|w| w.package.unwrap()).collect();
+        assert_eq!(aliased, vec!["lodash".to_string()], "only the alias no published package ships");
+        let mut decls = declarations(&repo);
+        assert!(!app_runtime(&decls, &["prettier".into()]), "a published package's or a dev declaration is not an application's runtime");
+        decls = declarations(&crate::funnel::fixtures::repo(&[("package.json", r#"{"private":true,"dependencies":{"bignumber.js":"^4.1.0"}}"#)]));
+        assert!(app_runtime(&decls, &["bignumber.js".into()]));
     }
 
     #[test]

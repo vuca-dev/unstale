@@ -847,6 +847,26 @@ pub fn imported_names(text: &str, modules: &[String]) -> Vec<String> {
     out
 }
 
+/// Whether `text` calls `lit` somewhere: the whole identifier followed by `(` (spaces allowed), not where it is
+/// declared (`def`, `function`, `fn`, `func`). A record that writes its deprecated API as a call (`json_schema()`) is
+/// about calls: the same word as a parameter, a keyword argument or a module path (`json_schema=…`,
+/// `utils.json_schema`) is the code's own name.
+pub fn called(text: &str, lit: &str) -> bool {
+    let word = |c: char| c.is_ascii_alphanumeric() || c == '_' || c == '$';
+    text.match_indices(lit).any(|(i, _)| {
+        let before = &text[..i];
+        if before.chars().next_back().is_some_and(word) {
+            return false;
+        }
+        let after = &text[i + lit.len()..];
+        if after.chars().next().is_some_and(word) || !after.trim_start_matches([' ', '\t']).starts_with('(') {
+            return false;
+        }
+        let prev = before.trim_end_matches([' ', '\t']).rsplit(|c: char| !word(c)).next().unwrap_or("");
+        !matches!(prev, "def" | "function" | "fn" | "func")
+    })
+}
+
 /// Whether `text` (JavaScript-family code) writes `lit` as a key of an object literal passed straight to a function it
 /// imports from one of `modules`: `streamText({ model, system: prompt })` with `streamText` from `ai`. A plain-word
 /// option (`system`) is too common to show its API anywhere else; here the call names whose option it is.
@@ -1407,6 +1427,16 @@ pub fn sample_counts(repos: &[Repo], terms: &[String]) -> BTreeMap<String, u32> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_call_is_the_identifier_then_a_parenthesis_not_a_declaration_or_a_name() {
+        assert!(called("schema = Model.json_schema()", "json_schema"));
+        assert!(called("x = json_schema (m)", "json_schema"));
+        assert!(!called("args_schema=json_schema_to_model(json_schema=params)", "json_schema"), "a keyword and a longer helper");
+        assert!(!called("from composio.utils.json_schema import dereference_json_schema\ndereference_json_schema(s)", "json_schema"));
+        assert!(!called("def json_schema(self):", "json_schema"), "its own definition");
+        assert!(!called("function json_schema() {}", "json_schema"));
+    }
 
     fn repo(files: &[(&str, &str)]) -> Repo {
         let mut r = Repo::default();

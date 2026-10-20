@@ -11,6 +11,7 @@ mod pypi;
 mod uninstall;
 mod funnel;
 mod lines;
+mod maintenance;
 mod ledgerops;
 mod review;
 mod stack;

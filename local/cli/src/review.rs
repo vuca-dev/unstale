@@ -700,9 +700,13 @@ pub fn advisory_fixes(out: &Outcome) -> BTreeMap<String, Vec<AdvisoryFix>> {
 /// What to type after `unstale bump` for a technology: the package its digest head names (`express`, not the
 /// catalog id `express-8b04a3ca`), else one of its packages here, else the id.
 pub fn bump_name(out: &Outcome, tech: &str) -> String {
+    // The head record's package when this repository installs it; else one it installs (the record may name another
+    // package of the technology: `@sentry/nextjs` for a repository on `@sentry/browser`).
+    let pkgs = out.packages.get(tech).filter(|p| !p.is_empty());
     let head = out.digest.get(tech).and_then(|v| v.first()).map(|&i| out.opps[i].component());
     head.and_then(|c| purl_name(&c))
-        .or_else(|| out.packages.get(tech).and_then(|p| p.first().cloned()))
+        .filter(|n| pkgs.is_none_or(|p| p.contains(n)))
+        .or_else(|| pkgs.and_then(|p| p.first().cloned()))
         .unwrap_or_else(|| tech.to_string())
 }
 

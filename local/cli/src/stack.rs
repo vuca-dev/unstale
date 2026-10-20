@@ -260,6 +260,21 @@ pub struct Stack {
     pub registries: Registries,
     /// The configuration of its test, example and fixture directories, for what only they install.
     pub fixture_registries: Registries,
+    /// The peer ranges of the repository's published packages (`is_library`): what their users must install beside
+    /// them. A range that leaves out the current release of its package fails their install (`onboarding`).
+    pub peers: Vec<Peer>,
+}
+
+/// A published package's peer range on another package.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Peer {
+    /// The manifest's directory, `.` for the root.
+    pub dir: String,
+    /// The published package's own name.
+    pub package: String,
+    /// The peer's npm name (an alias's target).
+    pub name: String,
+    pub range: String,
 }
 
 impl Stack {
@@ -459,6 +474,7 @@ pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
     let mut notes = vec![];
     let mut unreadable = 0;
     let mut stub_runtimes: BTreeMap<String, Version> = BTreeMap::new();
+    let mut peers: Vec<Peer> = vec![];
     // Per lockfile path: locked versions outside the declared range, with a few examples.
     let mut stale: BTreeMap<String, (usize, Vec<String>)> = BTreeMap::new();
     for e in walker(root).flatten() {
@@ -515,6 +531,14 @@ pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
         for field in DEP_FIELDS {
             let Some(map) = pj.get(*field).and_then(Value::as_object) else { continue };
             for (name, range) in map {
+                if kind == Kind::Library
+                    && *field == "peerDependencies"
+                    && let (Some(r), Some(own)) = (range.as_str(), pj.get("name").and_then(Value::as_str))
+                    && !is_local(&local_names, name, r)
+                {
+                    let r = cat.resolve(name, r).unwrap_or(r);
+                    peers.push(Peer { dir: rel.clone(), package: own.to_string(), name: alias_target(r).unwrap_or(name).to_string(), range: r.to_string() });
+                }
                 // A library's peer range is what it supports; a devDependency on the same package is what the
                 // repository itself installs, develops and tests against, so that one is its reading.
                 if kind == Kind::Library && *field == "peerDependencies" && dev.is_some_and(|d| d.contains_key(name)) {
@@ -691,7 +715,7 @@ pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
         let fixture_only = !d.readings.is_empty() && d.readings.iter().all(|r| !local(&root.join(&r.dir).join("x")));
         d.public_candidate &= registries.may_name(purl, d.seen) && (!fixture_only || fixture_registries.may_name(purl, d.seen));
     }
-    let mut st = Stack { packages, deps, node, notes, unreadable, stub_runtimes, spread: 0, standalone, registries, fixture_registries };
+    let mut st = Stack { packages, deps, node, notes, unreadable, stub_runtimes, spread: 0, standalone, registries, fixture_registries, peers };
     st.settle();
     Ok(st)
 }
