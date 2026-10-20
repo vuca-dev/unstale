@@ -1,0 +1,6 @@
+{
+ "_note": "Slice 6 units by guide URL prefix, split by family (technology-disjoint). gold = the held-out majors set's three upgrade guides (run6.mts reads them from holdout-majors).",
+ "dev": ["https://nextjs.org/", "https://docs.aws.amazon.com/", "https://tiptap.dev/", "https://reactrouter.com/"],
+ "heldout": ["https://ai-sdk.dev/", "https://docs.nestjs.com/"],
+ "gold": []
+}
