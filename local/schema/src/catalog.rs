@@ -96,6 +96,13 @@ pub struct Release {
     /// are named by. A record may hold several releases on one such line (one per line of the tech index's
     /// `releases`, which is the line to use).
     pub line: String,
+    /// Present when the exact release is not known: the change shipped in a release from `version` up to this one.
+    /// Set for what central reads from a moving page (an upgrade guide served from a `latest` or unversioned URL, first
+    /// read or edited after its major line had later releases): the page's text then may describe any release of the
+    /// line up to the newest one at the time. The edge places such a release only outside that range: an installed or
+    /// target version inside it can neither have nor lack the change for certain.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub no_later_than: Option<String>,
 }
 
 /// A machine-comparable requirement, named as a project's manifest declares it in that ecosystem,

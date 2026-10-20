@@ -90,7 +90,7 @@ fn writes_a_fixture_for_the_typescript_side() {
         facet: Some("options".into()),
         summary: "Adds util.diff.".into(),
         benefit: vec![Benefit::Correctness, Benefit::None],
-        releases: vec![Release { component: "pkg:generic/node".into(), version: "24.11.0".into(), date: "2025-10-28".into(), line: "24".into() }],
+        releases: vec![Release { component: "pkg:generic/node".into(), version: "24.11.0".into(), date: "2025-10-28".into(), no_later_than: None, line: "24".into() }],
         prerequisites: vec![Prerequisite { ecosystem: "npm".into(), name: "node".into(), min: Some("24.11".into()), max: Some("26".into()) }],
         conditions: vec!["PostgreSQL 14 or later".into()],
         requires: vec!["oracledb".into()],

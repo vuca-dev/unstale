@@ -342,6 +342,8 @@ export interface Incoming {
   impact?: string;
   technology: string;
   version: string;
+  /** The release's bound when the source is a moving page (`ReleaseNote.noLaterThan`). */
+  noLaterThan?: string;
   date: string;
   line: string;
   url: string;
@@ -667,6 +669,7 @@ export function toIncoming(t: Technology, rel: ReleaseNote | GuideNote | DocsNot
     prerequisites,
     conditions: strings(lab.conditions, 6),
   };
+  if (rel.noLaterThan) inc.noLaterThan = rel.noLaterThan;
   if (r.audience === "extension_author") inc.conditions.push("Audience: authors of custom providers, plugins, adapters or integrations.");
   if (r.audience === "maintainer") inc.conditions.push("Audience: technology maintainers; ordinary applications may not benefit.");
   if (facet) inc.facet = facet;

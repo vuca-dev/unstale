@@ -2,15 +2,20 @@
 //   marker     the added lines name the version ("Added in v15.2", `versionadded:: 5.1`, Node's `added: v22.3.0`)
 //   guide      the page is the upgrade guide to major N: version N.0.0, as the pipeline dates guides. Only the
 //              current or previous major: an edit to an older guide is upkeep, and a guide to a major not yet released
-//              (Drizzle's v1, Hono's v5) has no version a record can carry yet; both are held
+//              (Drizzle's v1, Hono's v5) has no version a record can carry yet; both are held. An edit made after the
+//              line moved past N.0 (a minor release of N exists) may describe any release of the line up to its newest
+//              (TanStack's v5 guide gaining `queryClient.query`, a later 5.x API): it carries that newest release as its
+//              bound (`noLaterThan`), so no record from it claims the change at a version inside the range
 //   namespace  the page sits in a version namespace (`/docs/orm/v7/`): the release line only
 //   unknown    observed on a date, version unknown
 // Only `marker` and `guide` give a version a record can carry; the rest are held centrally until the schema decision.
 import type { SectionChange } from "../collector/sections.ts";
+import { isStable } from "../pipeline/lines.ts";
+import { compareVersions } from "../pipeline/util.ts";
 
 export type Attribution =
   | { by: "marker"; version: string; marker: string }
-  | { by: "guide"; version: string }
+  | { by: "guide"; version: string; noLaterThan?: string }
   | { by: "old-guide"; version: string }
   | { by: "unreleased-guide"; version: string }
   | { by: "namespace"; line: string }
@@ -64,6 +69,17 @@ export function markerIn(hunks: string, versions?: ReadonlySet<string>, maxMajor
   return undefined;
 }
 
+/**
+ * What a moving page (served from `latest` or an unversioned URL) can describe of major `major`: up to the newest stable
+ * release of that major, once the line has a minor release past `major`.0; undefined while it is still at `major`.0.x,
+ * where the page's text is the x.0 release's.
+ */
+export function lineBound(major: string, versions: Iterable<string>): string | undefined {
+  const own = [...versions].filter((v) => isStable(v) && v.split(".")[0] === major).sort(compareVersions);
+  const newest = own.at(-1);
+  return newest && Number(newest.split(".")[1] ?? 0) > 0 ? newest : undefined;
+}
+
 export function attribute(s: SectionChange, ctx: AttributionContext): Attribution {
   const m = s.status === "removed" ? undefined : markerIn(s.hunks, ctx.versions, ctx.maxMajor);
   if (m) return { by: "marker", ...m };
@@ -72,7 +88,8 @@ export function attribute(s: SectionChange, ctx: AttributionContext): Attributio
     const [g, max] = [Number(ctx.guideMajor), Number(ctx.maxMajor)];
     if (ctx.maxMajor && g > max) return { by: "unreleased-guide", version };
     if (ctx.maxMajor && g < max - 1) return { by: "old-guide", version };
-    return { by: "guide", version };
+    const bound = ctx.versions ? lineBound(ctx.guideMajor, ctx.versions) : undefined;
+    return bound ? { by: "guide", version, noLaterThan: bound } : { by: "guide", version };
   }
   if (ctx.namespaceMajor) return { by: "namespace", line: ctx.namespaceMajor };
   return { by: "unknown" };

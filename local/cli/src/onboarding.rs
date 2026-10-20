@@ -1208,6 +1208,7 @@ fn highlight_indices(out: &Outcome, w: &World) -> Vec<usize> {
                     | funnel::Route::AlreadyIncluded
                     | funnel::Route::InEffect
                     | funnel::Route::VersionUnknown
+                    | funnel::Route::ReleaseUnknown
                     | funnel::Route::BeyondTarget
                     | funnel::Route::OlderLine
                     | funnel::Route::OtherPackage

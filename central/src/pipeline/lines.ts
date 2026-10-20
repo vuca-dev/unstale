@@ -124,10 +124,36 @@ export function recomputeReleases(r: StoredRecord, s: Pick<TechStore, "releaseIn
   // A release the index holds takes the index's day (the version's publish day), so a corrected date reaches the
   // records; one outside the index keeps its own.
   const cand: Release[] = r.releases.filter((x) => !drop.has(x.version) || supported.has(x.version)).map((x) => (dates.has(x.version) && dates.get(x.version) !== x.date ? { ...x, date: dates.get(x.version)! } : x));
+  // A version only page sources name (`+guide.`, `+docs.` keys) keeps the bound its release has (a moving page's,
+  // `no_later_than`); a release-notes source of it makes it exact.
+  const exactly = new Set(r.sources.filter((k) => !/@[^#]*\+/.test(k)).map(sourceVersion));
   for (const v of supported) {
-    for (const component of useComps) cand.push({ component, version: v, date: dates.get(v)!, line: releaseLine(v) });
+    for (const component of useComps) {
+      const bound = exactly.has(v) ? undefined : cand.find((x) => x.component === component && x.version === v && x.no_later_than)?.no_later_than;
+      cand.push({ component, version: v, date: dates.get(v)!, line: releaseLine(v), ...(bound ? { no_later_than: bound } : {}) });
+    }
   }
   return combineByLine([], cand, lineFn(s));
+}
+
+const earlier = (x: Release, y: Release) => compareVersions(x.version, y.version) < 0 || (compareVersions(x.version, y.version) === 0 && x.date < y.date);
+const upper = (r: Release) => r.no_later_than ?? r.version;
+
+/**
+ * Two releases of one change on one component and line, as one. Exact releases: the earlier. A bounded release (read
+ * from a moving page: shipped from `version` up to `no_later_than`) gives way to an exact one inside its bound, the
+ * release that introduced it; otherwise the bound narrows to the lower of the two upper ends, from the lower start.
+ */
+export function combineRelease(a: Release, b: Release): Release {
+  if (!a.no_later_than && !b.no_later_than) return earlier(b, a) ? b : a;
+  const exact = [a, b].filter((r) => !r.no_later_than);
+  const bounded = [a, b].filter((r) => r.no_later_than);
+  const hi = [a, b].map(upper).sort(compareVersions)[0]!;
+  const inside = exact.filter((e) => bounded.every((x) => compareVersions(e.version, upper(x)) <= 0));
+  if (inside.length) return inside[0]!;
+  const lo = earlier(b, a) ? b : a;
+  const { no_later_than: _, ...base } = lo;
+  return compareVersions(hi, lo.version) > 0 ? { ...base, no_later_than: hi } : base;
 }
 
 /**
@@ -140,7 +166,7 @@ export function combineByLine(a: Release[], b: Release[], lineOf: (version: stri
   for (const r of [...a, ...b]) {
     const k = `${r.component}\u0000${lineOf(r.version)}`;
     const prev = by.get(k);
-    if (!prev || compareVersions(r.version, prev.version) < 0 || (compareVersions(r.version, prev.version) === 0 && r.date < prev.date)) by.set(k, r);
+    by.set(k, prev ? combineRelease(prev, r) : r);
   }
   return [...by.values()].sort((x, y) => x.component.localeCompare(y.component) || compareVersions(x.version, y.version));
 }

@@ -367,7 +367,7 @@ export function finerOrBroader(a: { subject: string; facet?: string | undefined 
 }
 
 export function releasesOf(inc: Incoming, components: string[]) {
-  return components.map((component) => ({ component, version: inc.version, date: inc.date, line: inc.line }));
+  return components.map((component) => ({ component, version: inc.version, date: inc.date, line: inc.line, ...(inc.noLaterThan ? { no_later_than: inc.noLaterThan } : {}) }));
 }
 
 export function evidenceOf(inc: Incoming): Evidence {

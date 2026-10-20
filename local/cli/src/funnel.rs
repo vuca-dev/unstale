@@ -71,6 +71,9 @@ pub enum Route {
     OlderLine,
     /// The project's version for the component cannot be read (a tag, a workspace link).
     VersionUnknown,
+    /// The record's release is only bounded (`Release::no_later_than`) and the installed or target version lies inside
+    /// the bound: whether that version has the change is not known.
+    ReleaseUnknown,
     /// About other packages published from the technology's repository (`TechIndex::components` names the
     /// technology's own), none of which the repository uses: React Server Components items for a client-only app.
     OtherPackage,
@@ -1266,6 +1269,18 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             let target_for = |c: &str, installed: &Version| inp.targets.get(c).cloned().or_else(|| newest.get(c).cloned()).unwrap_or_else(|| installed.clone());
             let target = target_for(&comp, &installed);
             let (release, avail) = availability(&lines, &candidates, &installed, &target, (picked, &rv));
+            // A release central could only bound (`no_later_than`: read from a moving page) is placed only when the
+            // installed version, and for an upgrade the target, lie outside the bound: inside it the change may or may
+            // not be there, so it is neither in effect, nor available, nor what the upgrade brings.
+            if let Some(hi) = release.no_later_than.as_deref().and_then(parse_version)
+                && let Some(lo) = parse_version(&release.version)
+            {
+                let inside = |v: &Version| *v >= lo && *v < hi;
+                if inside(&installed) || (avail == Avail::Upgrade && inside(&target)) {
+                    out.opps.push(blank(rec, release.clone(), Route::ReleaseUnknown));
+                    continue;
+                }
+            }
             // A deprecation that names what it deprecates cites only that, as whole literals: a match on its other
             // terms is not usage of the deprecated API. The score (the queue's order) still counts every literal.
             let mut deprecated = deprecated_lits(rec, ls);
@@ -1696,6 +1711,7 @@ fn why_scoped(out: &Outcome, techs: Option<&[String]>, routes: &[&str]) -> Strin
             Route::OlderLine => "released only on older release lines than the installed version",
             Route::OtherPackage => "about another package of the technology's repository that this repository does not use",
             Route::VersionUnknown => "not applicable: the installed version could not be read",
+            Route::ReleaseUnknown => "not placed: read from a page that changes, so the exact release is not known (the installed or target version is inside its range)",
         };
         *c.entry(k.to_string()).or_default() += 1;
     }
@@ -1809,7 +1825,7 @@ mod tests {
 
     #[test]
     fn one_version_for_packages_installed_on_other_lines_numbers_the_repository() {
-        let rel = |c: &str, v: &str| Release { component: c.into(), version: v.into(), date: "2026-04-13".into(), line: String::new() };
+        let rel = |c: &str, v: &str| Release { component: c.into(), version: v.into(), date: "2026-04-13".into(), line: String::new(), no_later_than: None };
         let installed = |c: &str| match c {
             "pkg:npm/%40metamask/account-api" => parse_version("2.1.0"),
             "pkg:npm/%40metamask/keyring-utils" => parse_version("5.0.0"),
@@ -2084,6 +2100,28 @@ mod tests {
         let r = repo(&[("middleware.ts", "export function middleware() {}")]);
         let out = run_with(&c, &s1, &r, &l);
         assert_eq!(ids(&out, &out.in_effect), vec!["next:middleware"]);
+    }
+
+    #[test]
+    fn a_bounded_release_is_not_placed_inside_its_bound() {
+        // Read from a moving upgrade guide: shipped somewhere from 5.0.0 to 5.104.5. At 5.90.6 the deprecation is not
+        // known to be in effect (its replacement may not exist yet); at 5.104.5 it is.
+        let l = Ledger::default();
+        let rel = json!([{"component":"pkg:npm/q","version":"5.0.0","date":"2026-10-19","line":"5","no_later_than":"5.104.5"}]);
+        let c = catalog("q", 0, vec![with(rec("q:query", "pkg:npm/q", "5.0.0"), json!({"change_type":"deprecation","replaces":["fetchQuery"],"releases":rel}))]);
+        let r = repo(&[("src/a.ts", "import { QueryClient } from 'q';\nnew QueryClient().fetchQuery({});")]);
+        let at = |v: &str| {
+            let mut s = stack(&[("q", v)], None);
+            s.packages = vec![package(".", crate::stack::Kind::Application, &["q"])];
+            s
+        };
+        let s = at("5.90.6");
+        let out = run_with(&c, &s, &r, &l);
+        assert!(out.in_effect.is_empty());
+        assert_eq!(out.opps.iter().find(|o| o.id() == "q:query").unwrap().route, Route::ReleaseUnknown);
+        let s = at("5.104.5");
+        let out = run_with(&c, &s, &r, &l);
+        assert_eq!(ids(&out, &out.in_effect), vec!["q:query"], "at or above the bound it is in effect");
     }
 
     #[test]

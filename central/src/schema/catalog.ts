@@ -83,6 +83,7 @@ export const Release = z.strictObject({
   "component": z.string(),
   "date": z.string(),
   "line": z.string(),
+  "no_later_than": z.string().nullable().optional(),
   "version": z.string(),
 });
 export type Release = z.infer<typeof Release>;
