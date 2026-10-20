@@ -477,21 +477,37 @@ fn security_and_breaking_catalog() -> FixtureCatalog {
 }
 
 #[test]
-fn upgrades_rank_by_value_with_security_as_a_line_on_its_upgrade() {
-    // next's bump brings a security fix and a capability on its own major; prisma's three obligations need a major
-    // upgrade. next leads on version fit, its security fix shown as a line, and the report puts Start here and the
-    // upgrades before capabilities.
+fn upgrades_rank_by_their_most_consequential_named_change() {
+    // next's security fix names no API this code uses: an advisory whose affected path was not found, still listed
+    // with the upgrades. prisma's obligations match nothing this code does with prisma itself (src/db.ts imports
+    // @prisma/client): counts only, in their own section after the named changes. Start here and the upgrades come
+    // before capabilities.
     let cat = security_and_breaking_catalog();
     let env = Env { repo: fixture_repo(), cache: tempfile::tempdir().unwrap() };
     let output = env.ok(&["init", "--service", cat.loc(), "--mode", "local", "--yes", "--wait", "0", "--no-animation"]);
     let flat = output.split_whitespace().collect::<Vec<_>>().join(" ");
-    assert!(flat.contains("1. next 16.0.1 → 16.0.3 picks up 1 security") && flat.contains("2. prisma"), "{output}");
     let report = env.read(".unstale/onboarding-report.md");
+    assert!(flat.contains("1. next 16.0.1 → 16.0.3 picks up 1 advisory (affected path not found)") && flat.contains("2. prisma"), "{output}");
     let at = |s: &str| report.find(s).unwrap_or_else(|| panic!("{s} missing:\n{report}"));
-    assert!(at("## Start here") < at("## Upgrades, by value") && at("## Upgrades, by value") < at("## Capabilities to explore"));
-    assert!(at("1. next 16.0.1") < at("2. prisma 6.19.0"), "{report}");
-    assert!(report.contains("security: Server actions check the Origin header. [next:csrf, 16.0.3]"), "{report}");
-    assert!(!report.contains("security leads"), "no pin or override holds next: update PRs can apply the fix\n{report}");
+    assert!(at("## Start here") < at("## Upgrades, by value") && at("## Upgrades, by value") < at("## Other bumps") && at("## Other bumps") < at("## Capabilities to explore"));
+    assert!(at("1. next 16.0.1") < at("- prisma 6.19.0 → 7.0.0") && !report.contains("2. prisma"), "{report}");
+    assert!(report.contains("; advisory present, affected path not found\n"), "{report}");
+    assert!(report.contains("advisory, affected path not found: Server actions check the Origin header. [next:csrf, 16.0.3]"), "{report}");
+    assert!(!report.contains("security leads"), "no reachable advisory: nothing leads as security\n{report}");
+}
+
+#[test]
+fn an_advisory_whose_affected_api_production_code_uses_is_security() {
+    // The advisory names `NextResponse`, which src/middleware.ts (application code importing next) calls.
+    let cat = FixtureCatalog::new();
+    cat.tech("next", &[("16", vec![
+        with(rec("next:redirect", "pkg:npm/next", "16.0.3"), json!({"change_type":"security","benefit":["security"],"summary":"`NextResponse` redirects no longer follow protocol-relative URLs."})),
+    ])]);
+    let env = Env { repo: fixture_repo(), cache: tempfile::tempdir().unwrap() };
+    env.ok(&["init", "--service", cat.loc(), "--mode", "local", "--yes", "--wait", "0", "--no-animation"]);
+    let report = env.read(".unstale/onboarding-report.md");
+    assert!(report.contains("1. next 16.0.1 → 16.0.3 picks up 1 security") && report.contains("; leads with security, affected `NextResponse` used at src/middleware.ts"), "{report}");
+    assert!(!report.contains("(affected path not found)") && !report.contains("advisory, affected path not found"), "{report}");
 }
 
 #[test]
