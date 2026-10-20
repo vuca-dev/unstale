@@ -1,0 +1,1036 @@
+{
+ "seed": 20261020,
+ "summary": {
+  "major": {
+   "pool": 129,
+   "releases": 24,
+   "base_records": 316
+  },
+  "large": {
+   "pool": 83,
+   "releases": 12,
+   "base_records": 256
+  },
+  "npm": {
+   "pool": 3228,
+   "releases": 54,
+   "base_records": 133
+  },
+  "pypi": {
+   "pool": 970,
+   "releases": 36,
+   "base_records": 233
+  }
+ },
+ "technologies": 116,
+ "releases": [
+  {
+   "tech": "storybook-addon-tag-badges-5871982c",
+   "version": "3.0.0",
+   "repo": "Sidnioulz/storybook-addon-tag-badges",
+   "stratum": "major",
+   "chars": 1301,
+   "base_records": 3
+  },
+  {
+   "tech": "ultracite-44f4bacc",
+   "version": "8.0.0",
+   "repo": "haydenbleasel/ultracite",
+   "stratum": "major",
+   "chars": 30045,
+   "base_records": 63
+  },
+  {
+   "tech": "sitemap-493e8b90",
+   "version": "10.0.0",
+   "repo": "ekalinin/sitemap.js",
+   "stratum": "major",
+   "chars": 20180,
+   "base_records": 43
+  },
+  {
+   "tech": "ag2-c6d5ec0e",
+   "version": "1.0.0",
+   "repo": "ag2ai/ag2",
+   "stratum": "major",
+   "chars": 13591,
+   "base_records": 32
+  },
+  {
+   "tech": "actions-github-08f359a3",
+   "version": "9.0.0",
+   "repo": "actions/toolkit",
+   "stratum": "major",
+   "chars": 312,
+   "base_records": 2
+  },
+  {
+   "tech": "cpy-cli-1ee8d373",
+   "version": "7.0.0",
+   "repo": "sindresorhus/cpy-cli",
+   "stratum": "major",
+   "chars": 1127,
+   "base_records": 6
+  },
+  {
+   "tech": "js-yaml-a823b9b6",
+   "version": "5.0.0",
+   "repo": "nodeca/js-yaml",
+   "stratum": "major",
+   "chars": 2840,
+   "base_records": 40
+  },
+  {
+   "tech": "anthropic-7df24220",
+   "version": "1.0.0",
+   "repo": "anthropics/anthropic-sdk-python",
+   "stratum": "major",
+   "chars": 1090,
+   "base_records": 2
+  },
+  {
+   "tech": "slack-webhook-d32c70a4",
+   "version": "8.0.0",
+   "repo": "slackapi/node-slack-sdk",
+   "stratum": "major",
+   "chars": 2781,
+   "base_records": 15
+  },
+  {
+   "tech": "openvino-502d9770",
+   "version": "2026.0.0",
+   "repo": "openvinotoolkit/openvino",
+   "stratum": "major",
+   "chars": 7894,
+   "base_records": 39
+  },
+  {
+   "tech": "kafkajs-confluent-schema-registry-0275bdc3",
+   "version": "4.0.0",
+   "repo": "kafkajs/confluent-schema-registry",
+   "stratum": "major",
+   "chars": 355,
+   "base_records": 0
+  },
+  {
+   "tech": "mui-x-data-grid-13ab67ad",
+   "version": "9.0.0",
+   "repo": "mui/mui-x",
+   "stratum": "major",
+   "chars": 4286,
+   "base_records": 6
+  },
+  {
+   "tech": "puppeteer-836ab106",
+   "version": "25.0.0",
+   "repo": "puppeteer/puppeteer",
+   "stratum": "major",
+   "chars": 1625,
+   "base_records": 5
+  },
+  {
+   "tech": "effect-vitest-aee60558",
+   "version": "4.0.0",
+   "repo": "Effect-TS/effect",
+   "stratum": "major",
+   "chars": 8483,
+   "base_records": 4
+  },
+  {
+   "tech": "storybook-addon-webpack5-compiler-babel-51ef3a0f",
+   "version": "4.0.0",
+   "repo": "storybookjs/addon-webpack5-compiler-babel",
+   "stratum": "major",
+   "chars": 259,
+   "base_records": 2
+  },
+  {
+   "tech": "effect-platform-bun-80481307",
+   "version": "4.0.0",
+   "repo": "Effect-TS/effect",
+   "stratum": "major",
+   "chars": 8921,
+   "base_records": 3
+  },
+  {
+   "tech": "wdio-spec-reporter-463a84c6",
+   "version": "10.0.0",
+   "repo": "webdriverio/webdriverio",
+   "stratum": "major",
+   "chars": 40542,
+   "base_records": 3
+  },
+  {
+   "tech": "pinecone-database-pinecone-c83d25ed",
+   "version": "8.0.0",
+   "repo": "pinecone-io/pinecone-ts-client",
+   "stratum": "major",
+   "chars": 8324,
+   "base_records": 13
+  },
+  {
+   "tech": "inquirer-prompts-3ff59821",
+   "version": "8.0.0",
+   "repo": "SBoudrias/Inquirer.js",
+   "stratum": "major",
+   "chars": 3016,
+   "base_records": 5
+  },
+  {
+   "tech": "antfu-ni-bc5a6898",
+   "version": "30.0.0",
+   "repo": "antfu-collective/ni",
+   "stratum": "major",
+   "chars": 753,
+   "base_records": 2
+  },
+  {
+   "tech": "zilliz-milvus2-sdk-node-973c806d",
+   "version": "3.0.0",
+   "repo": "milvus-io/milvus-sdk-node",
+   "stratum": "major",
+   "chars": 2182,
+   "base_records": 12
+  },
+  {
+   "tech": "changesets-types-9ee0fc72",
+   "version": "7.0.0",
+   "repo": "changesets/changesets",
+   "stratum": "major",
+   "chars": 4498,
+   "base_records": 10
+  },
+  {
+   "tech": "eslint-plugin-cypress-20f750a7",
+   "version": "6.0.0",
+   "repo": "cypress-io/eslint-plugin-cypress",
+   "stratum": "major",
+   "chars": 535,
+   "base_records": 2
+  },
+  {
+   "tech": "motion-5a2d9452",
+   "version": "13.0.0",
+   "repo": "motiondivision/motion",
+   "stratum": "major",
+   "chars": 380,
+   "base_records": 4
+  },
+  {
+   "tech": "streamlit-0392eb2d",
+   "version": "1.53.0",
+   "repo": "streamlit/streamlit",
+   "stratum": "large",
+   "chars": 10386,
+   "base_records": 54
+  },
+  {
+   "tech": "mui-system-adc580e8",
+   "version": "9.0.1",
+   "repo": "mui/material-ui",
+   "stratum": "large",
+   "chars": 8126,
+   "base_records": 1
+  },
+  {
+   "tech": "ag2-c6d5ec0e",
+   "version": "0.14.0",
+   "repo": "ag2ai/ag2",
+   "stratum": "large",
+   "chars": 8431,
+   "base_records": 20
+  },
+  {
+   "tech": "mastra-loggers-61c8482c",
+   "version": "1.3.6",
+   "repo": "mastra-ai/mastra",
+   "stratum": "large",
+   "chars": 13646,
+   "base_records": 11
+  },
+  {
+   "tech": "rolldown-7506f9ba",
+   "version": "1.1.0",
+   "repo": "rolldown/rolldown",
+   "stratum": "large",
+   "chars": 8551,
+   "base_records": 11
+  },
+  {
+   "tech": "rjsf-utils-0afee184",
+   "version": "6.7.0",
+   "repo": "rjsf-team/react-jsonschema-form",
+   "stratum": "large",
+   "chars": 10172,
+   "base_records": 15
+  },
+  {
+   "tech": "mui-x-data-grid-13ab67ad",
+   "version": "9.4.0",
+   "repo": "mui/mui-x",
+   "stratum": "large",
+   "chars": 9331,
+   "base_records": 6
+  },
+  {
+   "tech": "mastra-23b5676a",
+   "version": "1.1.0",
+   "repo": "mastra-ai/mastra",
+   "stratum": "large",
+   "chars": 100650,
+   "base_records": 90
+  },
+  {
+   "tech": "shadcn-2b00340a",
+   "version": "4.10.0",
+   "repo": "shadcn-ui/ui",
+   "stratum": "large",
+   "chars": 19290,
+   "base_records": 1
+  },
+  {
+   "tech": "openai-agents-7543b605",
+   "version": "0.19.0",
+   "repo": "openai/openai-agents-python",
+   "stratum": "large",
+   "chars": 10253,
+   "base_records": 17
+  },
+  {
+   "tech": "executorch-162bc284",
+   "version": "1.3.1",
+   "repo": "pytorch/executorch",
+   "stratum": "large",
+   "chars": 8037,
+   "base_records": 27
+  },
+  {
+   "tech": "react-native-jest-preset-47933f1c",
+   "version": "0.85.0",
+   "repo": "react/react-native",
+   "stratum": "large",
+   "chars": 35776,
+   "base_records": 3
+  },
+  {
+   "tech": "prettier-04e6ad50",
+   "version": "3.7.3",
+   "repo": "prettier/prettier",
+   "stratum": "npm",
+   "chars": 678,
+   "base_records": 1
+  },
+  {
+   "tech": "modelcontextprotocol-ext-apps-9dbb8efd",
+   "version": "0.0.5",
+   "repo": "modelcontextprotocol/ext-apps",
+   "stratum": "npm",
+   "chars": 925,
+   "base_records": 1
+  },
+  {
+   "tech": "tanstack-react-router-8d42bc71",
+   "version": "1.170.36",
+   "repo": "TanStack/router",
+   "stratum": "npm",
+   "chars": 6833,
+   "base_records": 8
+  },
+  {
+   "tech": "redocly-cli-4cf674ac",
+   "version": "2.53.2",
+   "repo": "Redocly/redocly-cli",
+   "stratum": "npm",
+   "chars": 180,
+   "base_records": 1
+  },
+  {
+   "tech": "babel-generator-cdc86f84",
+   "version": "8.0.5",
+   "repo": "babel/babel",
+   "stratum": "npm",
+   "chars": 4107,
+   "base_records": 1
+  },
+  {
+   "tech": "anthropic-ai-claude-agent-sdk-bf671424",
+   "version": "0.3.247",
+   "repo": "anthropics/claude-agent-sdk-typescript",
+   "stratum": "npm",
+   "chars": 624,
+   "base_records": 2
+  },
+  {
+   "tech": "arraypress-waveform-player-5e995f93",
+   "version": "1.4.1",
+   "repo": "arraypress/waveform-player",
+   "stratum": "npm",
+   "chars": 329,
+   "base_records": 1
+  },
+  {
+   "tech": "motion-5a2d9452",
+   "version": "12.40.0",
+   "repo": "motiondivision/motion",
+   "stratum": "npm",
+   "chars": 108,
+   "base_records": 2
+  },
+  {
+   "tech": "radix-ui-react-slider-ef28d6de",
+   "version": "1.4.4",
+   "repo": "radix-ui/primitives",
+   "stratum": "npm",
+   "chars": 801,
+   "base_records": 2
+  },
+  {
+   "tech": "hono-node-server-0dbf678c",
+   "version": "2.0.4",
+   "repo": "honojs/node-server",
+   "stratum": "npm",
+   "chars": 234,
+   "base_records": 1
+  },
+  {
+   "tech": "magic-regexp-2a22ec82",
+   "version": "0.11.1",
+   "repo": "unjs/magic-regexp",
+   "stratum": "npm",
+   "chars": 1734,
+   "base_records": 4
+  },
+  {
+   "tech": "effect-language-service-2da0f2e5",
+   "version": "0.76.0",
+   "repo": "Effect-TS/language-service",
+   "stratum": "npm",
+   "chars": 1524,
+   "base_records": 1
+  },
+  {
+   "tech": "astrojs-starlight-504f7179",
+   "version": "0.38.3",
+   "repo": "withastro/starlight",
+   "stratum": "npm",
+   "chars": 861,
+   "base_records": 1
+  },
+  {
+   "tech": "langchain-langgraph-checkpoint-8e08c094",
+   "version": "1.0.3",
+   "repo": "langchain-ai/langgraphjs",
+   "stratum": "npm",
+   "chars": 1403,
+   "base_records": 1
+  },
+  {
+   "tech": "mailparser-ec807979",
+   "version": "3.9.7",
+   "repo": "nodemailer/mailparser",
+   "stratum": "npm",
+   "chars": 222,
+   "base_records": 0
+  },
+  {
+   "tech": "algoliasearch-2f4fae9a",
+   "version": "5.50.0",
+   "repo": "algolia/algoliasearch-client-javascript",
+   "stratum": "npm",
+   "chars": 1609,
+   "base_records": 3
+  },
+  {
+   "tech": "vitejs-plugin-react-swc-78bde399",
+   "version": "4.3.1",
+   "repo": "vitejs/vite-plugin-react",
+   "stratum": "npm",
+   "chars": 176,
+   "base_records": 1
+  },
+  {
+   "tech": "anthropic-ai-sdk-cf2ba269",
+   "version": "0.87.0",
+   "repo": "anthropics/anthropic-sdk-typescript",
+   "stratum": "npm",
+   "chars": 321,
+   "base_records": 1
+  },
+  {
+   "tech": "comctx-65013ddf",
+   "version": "1.7.4",
+   "repo": "molvqingtai/comctx",
+   "stratum": "npm",
+   "chars": 231,
+   "base_records": 1
+  },
+  {
+   "tech": "sentry-cli-c0962a8f",
+   "version": "2.58.6",
+   "repo": "getsentry/sentry-cli",
+   "stratum": "npm",
+   "chars": 959,
+   "base_records": 6
+  },
+  {
+   "tech": "verdaccio-7d50a881",
+   "version": "6.2.5",
+   "repo": "verdaccio/verdaccio",
+   "stratum": "npm",
+   "chars": 576,
+   "base_records": 1
+  },
+  {
+   "tech": "conventional-changelog-angular-2828078a",
+   "version": "8.1.0",
+   "repo": "conventional-changelog/conventional-changelog",
+   "stratum": "npm",
+   "chars": 258,
+   "base_records": 1
+  },
+  {
+   "tech": "radix-ui-react-toggle-5a0da432",
+   "version": "1.2.0",
+   "repo": "radix-ui/primitives",
+   "stratum": "npm",
+   "chars": 268,
+   "base_records": 1
+  },
+  {
+   "tech": "angular-localize-51b6a35f",
+   "version": "21.2.16",
+   "repo": "angular/angular",
+   "stratum": "npm",
+   "chars": 1489,
+   "base_records": 0
+  },
+  {
+   "tech": "lavamoat-lavapack-ded98276",
+   "version": "9.0.2",
+   "repo": "LavaMoat/lavamoat",
+   "stratum": "npm",
+   "chars": 243,
+   "base_records": 0
+  },
+  {
+   "tech": "ultracite-44f4bacc",
+   "version": "7.2.4",
+   "repo": "haydenbleasel/ultracite",
+   "stratum": "npm",
+   "chars": 214,
+   "base_records": 3
+  },
+  {
+   "tech": "workerd-8b41ab33",
+   "version": "1.20260306.1",
+   "repo": "cloudflare/workerd",
+   "stratum": "npm",
+   "chars": 1547,
+   "base_records": 5
+  },
+  {
+   "tech": "react-native-jest-preset-47933f1c",
+   "version": "0.87.1",
+   "repo": "react/react-native",
+   "stratum": "npm",
+   "chars": 3507,
+   "base_records": 0
+  },
+  {
+   "tech": "radix-ui-react-accordion-809abe81",
+   "version": "1.2.20",
+   "repo": "radix-ui/primitives",
+   "stratum": "npm",
+   "chars": 418,
+   "base_records": 1
+  },
+  {
+   "tech": "netlify-plugin-nextjs-c154abe2",
+   "version": "5.15.12",
+   "repo": "opennextjs/opennextjs-netlify",
+   "stratum": "npm",
+   "chars": 414,
+   "base_records": 1
+  },
+  {
+   "tech": "npm-package-json-lint-183cc327",
+   "version": "10.2.1",
+   "repo": "tclindner/npm-package-json-lint",
+   "stratum": "npm",
+   "chars": 3059,
+   "base_records": 0
+  },
+  {
+   "tech": "typedoc-plugin-markdown-e7937d34",
+   "version": "4.11.0",
+   "repo": "typedoc2md/typedoc-plugin-markdown",
+   "stratum": "npm",
+   "chars": 1051,
+   "base_records": 7
+  },
+  {
+   "tech": "angular-eslint-350ab7f2",
+   "version": "21.4.0",
+   "repo": "angular-eslint/angular-eslint",
+   "stratum": "npm",
+   "chars": 2366,
+   "base_records": 7
+  },
+  {
+   "tech": "microsandbox-0518384f",
+   "version": "0.7.7",
+   "repo": "superradcompany/microsandbox",
+   "stratum": "npm",
+   "chars": 4840,
+   "base_records": 23
+  },
+  {
+   "tech": "docsearch-react-6ad0cec8",
+   "version": "5.0.1",
+   "repo": "algolia/docsearch",
+   "stratum": "npm",
+   "chars": 220,
+   "base_records": 1
+  },
+  {
+   "tech": "zilliz-milvus2-sdk-node-973c806d",
+   "version": "2.6.8",
+   "repo": "milvus-io/milvus-sdk-node",
+   "stratum": "npm",
+   "chars": 255,
+   "base_records": 1
+  },
+  {
+   "tech": "qs-a0a4cdbf",
+   "version": "6.15.1",
+   "repo": "ljharb/qs",
+   "stratum": "npm",
+   "chars": 248,
+   "base_records": 1
+  },
+  {
+   "tech": "lerna-7ba6e1c5",
+   "version": "10.1.0",
+   "repo": "lerna/lerna",
+   "stratum": "npm",
+   "chars": 6833,
+   "base_records": 3
+  },
+  {
+   "tech": "fastify-etag-384b7086",
+   "version": "6.2.1",
+   "repo": "fastify/fastify-etag",
+   "stratum": "npm",
+   "chars": 1053,
+   "base_records": 1
+  },
+  {
+   "tech": "typescript-eslint-b63d4986",
+   "version": "8.47.0",
+   "repo": "typescript-eslint/typescript-eslint",
+   "stratum": "npm",
+   "chars": 3885,
+   "base_records": 1
+  },
+  {
+   "tech": "storybook-71c460ec",
+   "version": "10.5.3",
+   "repo": "storybookjs/storybook",
+   "stratum": "npm",
+   "chars": 146,
+   "base_records": 0
+  },
+  {
+   "tech": "langchain-ollama-bcdad4f5",
+   "version": "1.2.2",
+   "repo": "langchain-ai/langchainjs",
+   "stratum": "npm",
+   "chars": 1858,
+   "base_records": 2
+  },
+  {
+   "tech": "effect-platform-bun-80481307",
+   "version": "0.91.1",
+   "repo": "Effect-TS/effect",
+   "stratum": "npm",
+   "chars": 2131,
+   "base_records": 1
+  },
+  {
+   "tech": "serve-handler-35373b6a",
+   "version": "6.1.7",
+   "repo": "vercel/serve-handler",
+   "stratum": "npm",
+   "chars": 92,
+   "base_records": 0
+  },
+  {
+   "tech": "playwright-cli-1e846451",
+   "version": "0.1.14",
+   "repo": "microsoft/playwright-cli",
+   "stratum": "npm",
+   "chars": 3981,
+   "base_records": 18
+  },
+  {
+   "tech": "postprocessing-da7f5ef2",
+   "version": "6.39.5",
+   "repo": "pmndrs/postprocessing",
+   "stratum": "npm",
+   "chars": 856,
+   "base_records": 4
+  },
+  {
+   "tech": "typescript-eslint-rule-tester-ed41746a",
+   "version": "8.70.0",
+   "repo": "typescript-eslint/typescript-eslint",
+   "stratum": "npm",
+   "chars": 421,
+   "base_records": 0
+  },
+  {
+   "tech": "y-websocket-a09f30d9",
+   "version": "3.1.0",
+   "repo": "yjs/y-websocket",
+   "stratum": "npm",
+   "chars": 191,
+   "base_records": 1
+  },
+  {
+   "tech": "openai-agents-e35cbd98",
+   "version": "0.8.4",
+   "repo": "openai/openai-agents-js",
+   "stratum": "npm",
+   "chars": 3203,
+   "base_records": 5
+  },
+  {
+   "tech": "rive-app-react-canvas-0e4ea8d2",
+   "version": "4.33.1",
+   "repo": "rive-app/rive-react",
+   "stratum": "npm",
+   "chars": 134,
+   "base_records": 0
+  },
+  {
+   "tech": "fastify-request-context-f0ffe1af",
+   "version": "7.0.4",
+   "repo": "fastify/fastify-request-context",
+   "stratum": "npm",
+   "chars": 226,
+   "base_records": 0
+  },
+  {
+   "tech": "langchain-google-vertexai-76bd0b55",
+   "version": "2.1.14",
+   "repo": "langchain-ai/langchainjs",
+   "stratum": "npm",
+   "chars": 957,
+   "base_records": 2
+  },
+  {
+   "tech": "chat-adapter-linear-737377b4",
+   "version": "4.19.0",
+   "repo": "vercel/chat",
+   "stratum": "npm",
+   "chars": 417,
+   "base_records": 2
+  },
+  {
+   "tech": "langchain-classic-add54e7b",
+   "version": "1.0.15",
+   "repo": "langchain-ai/langchainjs",
+   "stratum": "npm",
+   "chars": 1154,
+   "base_records": 1
+  },
+  {
+   "tech": "anthropic-7df24220",
+   "version": "0.85.0",
+   "repo": "anthropics/anthropic-sdk-python",
+   "stratum": "pypi",
+   "chars": 2081,
+   "base_records": 4
+  },
+  {
+   "tech": "ai-edge-quantizer-011b0297",
+   "version": "0.4.1",
+   "repo": "google-ai-edge/ai-edge-quantizer",
+   "stratum": "pypi",
+   "chars": 796,
+   "base_records": 5
+  },
+  {
+   "tech": "crewai-f2948b0d",
+   "version": "1.14.2",
+   "repo": "crewAIInc/crewAI",
+   "stratum": "pypi",
+   "chars": 1500,
+   "base_records": 21
+  },
+  {
+   "tech": "claude-agent-sdk-85773507",
+   "version": "0.2.152",
+   "repo": "anthropics/claude-agent-sdk-python",
+   "stratum": "pypi",
+   "chars": 196,
+   "base_records": 0
+  },
+  {
+   "tech": "langchain-f9035ff2",
+   "version": "0.3.29",
+   "repo": "langchain-ai/langchain",
+   "stratum": "pypi",
+   "chars": 226,
+   "base_records": 2
+  },
+  {
+   "tech": "langchain-openai-7a7ea5f8",
+   "version": "1.6.6",
+   "repo": "langchain-ai/langchain",
+   "stratum": "pypi",
+   "chars": 129,
+   "base_records": 1
+  },
+  {
+   "tech": "onnxslim-8ffc3f48",
+   "version": "0.1.89",
+   "repo": "inisis/OnnxSlim",
+   "stratum": "pypi",
+   "chars": 285,
+   "base_records": 1
+  },
+  {
+   "tech": "langfuse-968fc2f9",
+   "version": "4.13.2",
+   "repo": "langfuse/langfuse-python",
+   "stratum": "pypi",
+   "chars": 243,
+   "base_records": 1
+  },
+  {
+   "tech": "google-cloud-aiplatform-099979e1",
+   "version": "1.135.0",
+   "repo": "googleapis/python-aiplatform",
+   "stratum": "pypi",
+   "chars": 1722,
+   "base_records": 10
+  },
+  {
+   "tech": "ultralytics-thop-4dc713f3",
+   "version": "2.1.2",
+   "repo": "ultralytics/thop",
+   "stratum": "pypi",
+   "chars": 4409,
+   "base_records": 10
+  },
+  {
+   "tech": "zensical-5ee29eff",
+   "version": "0.0.63",
+   "repo": "zensical/zensical",
+   "stratum": "pypi",
+   "chars": 1026,
+   "base_records": 7
+  },
+  {
+   "tech": "pre-commit-519c701b",
+   "version": "4.5.1",
+   "repo": "pre-commit/pre-commit",
+   "stratum": "pypi",
+   "chars": 121,
+   "base_records": 1
+  },
+  {
+   "tech": "starlette-f6596b46",
+   "version": "1.7.0",
+   "repo": "Kludex/starlette",
+   "stratum": "pypi",
+   "chars": 4021,
+   "base_records": 23
+  },
+  {
+   "tech": "langchain-mcp-adapters-f3202a41",
+   "version": "0.3.2",
+   "repo": "langchain-ai/langchain-mcp-adapters",
+   "stratum": "pypi",
+   "chars": 856,
+   "base_records": 1
+  },
+  {
+   "tech": "hypothesis-a11d80c4",
+   "version": "6.161.2",
+   "repo": "HypothesisWorks/hypothesis",
+   "stratum": "pypi",
+   "chars": 236,
+   "base_records": 1
+  },
+  {
+   "tech": "openai-agents-7543b605",
+   "version": "0.22.2",
+   "repo": "openai/openai-agents-python",
+   "stratum": "pypi",
+   "chars": 754,
+   "base_records": 3
+  },
+  {
+   "tech": "ultralytics-platform-5d588ce4",
+   "version": "0.1.79",
+   "repo": "ultralytics/sdk",
+   "stratum": "pypi",
+   "chars": 1522,
+   "base_records": 3
+  },
+  {
+   "tech": "langgraph-1869414f",
+   "version": "1.2.3",
+   "repo": "langchain-ai/langgraph",
+   "stratum": "pypi",
+   "chars": 822,
+   "base_records": 9
+  },
+  {
+   "tech": "wandb-011a5dde",
+   "version": "0.24.1",
+   "repo": "wandb/wandb",
+   "stratum": "pypi",
+   "chars": 1253,
+   "base_records": 5
+  },
+  {
+   "tech": "sphinx-autodoc-typehints-b5566231",
+   "version": "3.17.2",
+   "repo": "tox-dev/sphinx-autodoc-typehints",
+   "stratum": "pypi",
+   "chars": 315,
+   "base_records": 1
+  },
+  {
+   "tech": "playwright-182aced8",
+   "version": "1.63.0",
+   "repo": "microsoft/playwright-python",
+   "stratum": "pypi",
+   "chars": 3357,
+   "base_records": 12
+  },
+  {
+   "tech": "langgraph-checkpoint-4c18c452",
+   "version": "1.2.15",
+   "repo": "langchain-ai/langgraph",
+   "stratum": "pypi",
+   "chars": 1426,
+   "base_records": 15
+  },
+  {
+   "tech": "pydantic-settings-8867df28",
+   "version": "2.14.2",
+   "repo": "pydantic/pydantic-settings",
+   "stratum": "pypi",
+   "chars": 802,
+   "base_records": 1
+  },
+  {
+   "tech": "python-multipart-45f11e4b",
+   "version": "0.0.29",
+   "repo": "Kludex/python-multipart",
+   "stratum": "pypi",
+   "chars": 245,
+   "base_records": 1
+  },
+  {
+   "tech": "executorch-162bc284",
+   "version": "1.4.0",
+   "repo": "pytorch/executorch",
+   "stratum": "pypi",
+   "chars": 5127,
+   "base_records": 29
+  },
+  {
+   "tech": "minijinja-8a4db5c6",
+   "version": "2.15.1",
+   "repo": "mitsuhiko/minijinja",
+   "stratum": "pypi",
+   "chars": 3637,
+   "base_records": 0
+  },
+  {
+   "tech": "google-genai-f343cddd",
+   "version": "2.30.0",
+   "repo": "googleapis/python-genai",
+   "stratum": "pypi",
+   "chars": 3639,
+   "base_records": 17
+  },
+  {
+   "tech": "torchvision-0f8e03d2",
+   "version": "0.27.0",
+   "repo": "pytorch/vision",
+   "stratum": "pypi",
+   "chars": 2311,
+   "base_records": 12
+  },
+  {
+   "tech": "coreai-torch-0836ef38",
+   "version": "0.4.3",
+   "repo": "apple/coreai-torch",
+   "stratum": "pypi",
+   "chars": 2272,
+   "base_records": 20
+  },
+  {
+   "tech": "websockets-af5a5289",
+   "version": "17.0.1",
+   "repo": "python-websockets/websockets",
+   "stratum": "pypi",
+   "chars": 513,
+   "base_records": 2
+  },
+  {
+   "tech": "graphiti-core-c7fe9017",
+   "version": "0.31.1",
+   "repo": "getzep/graphiti",
+   "stratum": "pypi",
+   "chars": 375,
+   "base_records": 0
+  },
+  {
+   "tech": "sphinx-argparse-cli-ffc7b684",
+   "version": "1.22.1",
+   "repo": "tox-dev/sphinx-argparse-cli",
+   "stratum": "pypi",
+   "chars": 203,
+   "base_records": 1
+  },
+  {
+   "tech": "pydantic-fa2f0af0",
+   "version": "2.12.3",
+   "repo": "pydantic/pydantic",
+   "stratum": "pypi",
+   "chars": 1424,
+   "base_records": 3
+  },
+  {
+   "tech": "google-auth-oauthlib-5f38d0c8",
+   "version": "1.5.0",
+   "repo": "googleapis/google-cloud-python",
+   "stratum": "pypi",
+   "chars": 554,
+   "base_records": 2
+  },
+  {
+   "tech": "tzdata-af5c25d1",
+   "version": "2026.4",
+   "repo": "python/tzdata",
+   "stratum": "pypi",
+   "chars": 2305,
+   "base_records": 7
+  },
+  {
+   "tech": "langchain-anthropic-fd19a656",
+   "version": "1.7.5",
+   "repo": "langchain-ai/langchain",
+   "stratum": "pypi",
+   "chars": 217,
+   "base_records": 2
+  }
+ ]
+}
