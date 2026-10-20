@@ -1,13 +1,16 @@
 // Slice 8 scorer (PREREG.md): the frozen candidate on one split against production (records lost) and against a
 // fresh replicate's noise, plus the step-A dollars it saves at the production mix. No model calls.
 //
-//   cd central && npx tsx ../eval/select/slice8/score8.mts --split heldout [--noise heldout] [--days]
+//   cd central && npx tsx ../eval/select/slice8/score8.mts --split heldout [--noise heldout] [--days] [--impl frozen|central]
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { boilerplate } from "./skip.ts";
 import { FROZEN } from "./frozen.ts";
-const { values: a } = parseArgs({ options: { split: { type: "string" }, noise: { type: "string" }, days: { type: "boolean" } } });
+const { values: a } = parseArgs({ options: { split: { type: "string" }, noise: { type: "string" }, days: { type: "boolean" }, impl: { type: "string", default: "frozen" } } });
+// --impl frozen: skip.ts with FROZEN (as registered); --impl central: the shipped contentFree (a strict subset, RESULTS.md).
+const { contentFree } = await import("../../../central/src/pipeline/extract.ts");
+const skips = (t: string): boolean => (a.impl === "central" ? !t.trim() || contentFree(t) : boilerplate(t, FROZEN));
 const OUT = join(import.meta.dirname, "..", "out", "slice8");
 type Row = { id: number; tech: string; split: string; status: string; records?: number; dollars: number; phase: string; at: string; text: string };
 const all = readFileSync(join(OUT, "rows.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l) as Row);
@@ -36,10 +39,10 @@ function ratio(items: Array<[number, number]>): [number, number, number] {
 }
 const pct = (x: number) => (100 * x).toFixed(2);
 
-const skipped = rows.filter((r) => boilerplate(r.text, FROZEN));
+const skipped = rows.filter((r) => skips(r.text));
 const records = rows.reduce((p, r) => p + (r.records ?? 0), 0);
 // 1. Records lost against production, with a CI over chunks.
-const lost = ratio(rows.map((r) => [boilerplate(r.text, FROZEN) ? (r.records ?? 0) : 0, r.records ?? 0]));
+const lost = ratio(rows.map((r) => [skips(r.text) ? (r.records ?? 0) : 0, r.records ?? 0]));
 // 2. Noise: production records in chunks a fresh replicate answered [] (whole-chunk loss), over the replicate's chunks.
 const noiseSplit = a.noise ?? a.split!;
 const ra = rep("aplus", noiseSplit);
@@ -74,7 +77,7 @@ for (const r of all) {
   if (!r.at) continue;
   const d = r.at.slice(0, 10);
   const e = byDay.get(d) ?? { all: 0, skip: 0, mon: 0, monSkip: 0, monA0: 0 };
-  const sk = boilerplate(r.text, FROZEN);
+  const sk = skips(r.text);
   e.all += r.dollars;
   if (sk) e.skip += r.dollars;
   if (r.phase === "monitoring") {
