@@ -21,7 +21,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { advisoryStage, advisoryStats } from "./advisories.ts";
-import { extractModel, llmStats } from "./llm.ts";
+import { extractModel, llmStats, releaseModel } from "./llm.ts";
 import { PipelineBudget } from "./budget.ts";
 import { fetchReleases } from "./fetch.ts";
 import { usageStats } from "./classify/adapter.ts";
@@ -113,6 +113,7 @@ async function pipeline(args: string[]): Promise<void> {
   const summary = {
     wall_s: Math.round((Date.now() - t0) / 1000),
     extract_model: extractModel(),
+    release_model: releaseModel() ?? null,
     llm: llmStats,
     classifier_answers: cls.counts,
     classifier_cache_hits: cls.cacheHits(),

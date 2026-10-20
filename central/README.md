@@ -57,7 +57,9 @@ Every variable is optional; the defaults suit a developer machine.
 | `UNSTALE_HOST` | `127.0.0.1` | `serve`: listen address (`0.0.0.0` in a container) |
 | `UNSTALE_PORT` | `47831` | `serve`: listen port |
 | `GITHUB_TOKEN` | output of `gh auth token` | GitHub API token for release lists, docs resolution, admission signals and the sample |
-| `UNSTALE_EXTRACT_MODEL` | `vercel:openai/gpt-6-luna` | Extraction and the classifier's fallback, `provider:model` (`vercel` is the AI gateway, flex tier; `openai` the OpenAI API) |
+| `UNSTALE_EXTRACT_MODEL` | `vercel:openai/gpt-6-luna` | Extraction of upgrade guides and docs notes, the release notes' fallback, and the classifier's fallback, `provider:model` (`vercel` is the AI gateway, flex tier; `openai` the OpenAI API) |
+| `UNSTALE_RELEASE_MODEL` | `vercel:minimax/minimax-m3.1-flash` | Release notes' extraction (steps A and B) first, falling back to `UNSTALE_EXTRACT_MODEL` on an error, exhausted 429s, truncation or an unparseable answer; `none` sends release notes to `UNSTALE_EXTRACT_MODEL` alone (eval/select/slice12) |
+| `UNSTALE_RELEASE_CONCURRENCY` | `40` | Calls in flight to `UNSTALE_RELEASE_MODEL` (other models: 5) |
 | `AI_GATEWAY_API_KEY` | read from `~/.config/ati/vercel.env` | AI gateway key |
 | `JEV_API_KEY` | read from `UNSTALE_JEV_ENV_FILE` | Jev classifier key |
 | `UNSTALE_JEV_ENV_FILE` | `~/.config/ati/jev.env` | Env file holding `JEV_API_KEY=` when the variable itself is unset |
