@@ -90,6 +90,13 @@ def cli_queue(ev, binary, catalog):
         p = run(*args)
         if p.returncode != 0:
             sys.exit("%s: unstale %s failed: %s" % (ev, args[0], p.stderr[-500:]))
+    # `init` hands out a first upgrade-review batch without the event's target: drop it, so the first batch is the
+    # targeted queue's (otherwise records beyond the target stay in the batch's ids but are never rendered).
+    rj = os.path.join(repo, ".unstale", "state", "review.json")
+    if os.path.exists(rj):
+        st = json.load(open(rj))
+        st.get("batches", {}).pop("upgrade-review", None)
+        json.dump(st, open(rj, "w"))
     targets = [x for p in TARGET_PKGS[e["tech"]] for x in ("--target", "%s@%s" % (p, e["new"]))]
     order, recs, first = [], {}, True
     skill = os.path.join(repo, ".unstale", "skills", "upgrade-review", "SKILL.md")
