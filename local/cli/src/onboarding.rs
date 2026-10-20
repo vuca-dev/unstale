@@ -1730,8 +1730,11 @@ fn older_copy(st: &stack::Stack, locked: &BTreeMap<String, BTreeSet<String>>, pa
     })
 }
 
+/// `Ranked::key`: lead tier, lead weight within the consequential tier, then the tie-breaks.
+type RankKey = (u8, u8, (bool, bool, u8, bool, bool, bool, bool, bool, usize, usize, usize, usize));
+
 struct Ranked<'a, 'o> {
-    key: (u8, (bool, bool, u8, bool, bool, bool, bool, bool, usize, usize, usize, usize)),
+    key: RankKey,
     /// `LEAD_*`: what the upgrade's most consequential named change is worth (the key's first field).
     tier: u8,
     /// That change, named for the head line.
@@ -2198,6 +2201,18 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
         };
         let deprecated_here = deprecated.iter().find(|n| packages.iter().any(|p| p.eq_ignore_ascii_case(&n.name)));
         let breaking = |o: &funnel::Opp| o.rec.r.breaking || o.rec.r.change_type == ChangeType::Removal;
+        // How strongly the lead says something is wrong or will break here, within the consequential tier: what fails
+        // now or an end-of-life install, then a reached advisory or a removal this code uses, then a runtime lockfile
+        // advisory whose fix the install refuses, then a breaking change named at a site.
+        let removal_named = || {
+            members.iter().copied().find(|&i| out.opps[i].rec.r.change_type == ChangeType::Removal && out.opps[i].route != funnel::Route::InEffect && site(&out.opps[i]).is_some())
+        };
+        // A direct dependency's lockfile advisory, critical or high at runtime, whose fix a declared range or pin refuses:
+        // the install cannot take the fix until the upgrade.
+        let lock_runtime = lock_fixed
+            .iter()
+            .find(|it| it.via.is_empty() && it.why.iter().any(|w| w.ends_with(" at runtime")) && it.why.iter().any(|w| w.starts_with("fix blocked: ")));
+        let mut weight = 4u8;
         let consequential = if peer.is_some() {
             Some("a published peer range leaves out the current release".to_string())
         } else if copies.is_some() {
@@ -2214,9 +2229,19 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
         } else if let Some(n) = deprecated_here {
             Some(format!("end of support: the installed {} {} is {} by its publisher", display_text(&n.name), n.version, if n.yanked { "yanked" } else { "deprecated" }))
         } else if let Some(r) = &reached {
+            weight = 3;
             Some(r.clone())
+        } else if let Some(i) = removal_named() {
+            weight = 3;
+            named("breaking", i)
+        } else if let Some(it) = lock_runtime {
+            weight = 2;
+            Some(format!("security: the installed {} {} has a lockfile advisory ({}) the upgrade fixes", display_text(&it.name), display_text(&it.version), it.why.join(", ")))
+        } else if let Some(l) = members.iter().copied().filter(|&i| breaking(&out.opps[i]) && out.opps[i].route != funnel::Route::InEffect).find_map(|i| named("breaking", i)) {
+            weight = 1;
+            Some(l)
         } else {
-            members.iter().copied().filter(|&i| breaking(&out.opps[i]) && out.opps[i].route != funnel::Route::InEffect).find_map(|i| named("breaking", i))
+            None
         };
         let (tier, lead) = match consequential {
             Some(l) => (LEAD_CONSEQUENTIAL, Some(l)),
@@ -2226,7 +2251,8 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
                 None => (0, None),
             },
         };
-        let key = (tier, (
+        let weight = if tier == LEAD_CONSEQUENTIAL { weight } else { 0 };
+        let key = (tier, weight, (
             peer.is_some(),
             copies.is_some() || in_app,
             strength,
@@ -3335,7 +3361,7 @@ mod tests {
     fn the_first_slots_spread_across_value_classes() {
         let names: Vec<String> = (0..6).map(|i| format!("t{i}")).collect();
         let lines = vec![String::new()];
-        let make = |i: usize, class: Class| Ranked { key: (0, (false, false, 0, false, false, false, false, false, 0, 0, 0, 0)), tier: 0, lead: None, unreached: false, class, technology: &names[i], lines: &lines, fixes: &[], lock: vec![], lock_fixed: vec![], notes: vec![], joins: vec![], leads: None, value: String::new(), peer: None, copies: None };
+        let make = |i: usize, class: Class| Ranked { key: (0, 0, (false, false, 0, false, false, false, false, false, 0, 0, 0, 0)), tier: 0, lead: None, unreached: false, class, technology: &names[i], lines: &lines, fixes: &[], lock: vec![], lock_fixed: vec![], notes: vec![], joins: vec![], leads: None, value: String::new(), peer: None, copies: None };
         let order = |v: Vec<Ranked>| v.iter().map(|r| r.technology.as_str()).collect::<Vec<_>>().join(" ");
         let ranked = vec![make(0, Class::Compatibility), make(1, Class::Compatibility), make(2, Class::Compatibility), make(3, Class::Security), make(4, Class::Feature)];
         assert_eq!(order(diversified(ranked, 3, 1)), "t0 t3 t4 t1 t2", "one compatibility bump, then the next classes");

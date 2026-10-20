@@ -661,6 +661,13 @@ fn advisory_notes(a: &unstale_schema::catalog::Advisory, installed: impl Fn(&str
         AdvisoryStatus::NotAffected => {
             let ranges: Vec<String> = a.affected.iter().map(|r| one_line(&r.range, 80)).filter(|r| !r.is_empty()).collect();
             let ranges = if ranges.is_empty() { String::new() } else { format!(" (affected: {})", ranges.join("; ")) };
+            // The installed version of the package the advisory affects, which can be on another release line than the
+            // technology's headline (opentelemetry-js: semantic-conventions 1.9.1 beside an SDK 2.12.0 advisory).
+            let mut comps: Vec<String> = a.affected.iter().map(|r| crate::util::normalize_purl(&r.component)).collect();
+            comps.sort();
+            comps.dedup();
+            let own: Vec<String> = comps.iter().filter_map(|c| installed(c).map(|v| (c, v))).filter(|(_, v)| v.to_string() != shown).map(|(c, v)| format!("{} {v}", crate::util::purl_name(c).unwrap_or_default())).collect();
+            let shown = if own.is_empty() { shown.to_string() } else { own.join(", ") };
             format!("advisory {id}: installed {shown} not affected{ranges}; not a security reason to upgrade")
         }
         AdvisoryStatus::StillAffected => format!("advisory {id}: affects installed {shown} and target {target} alike"),
