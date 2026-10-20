@@ -516,6 +516,20 @@ pub(crate) fn line_of(v: &Version) -> String {
     if v.major > 0 { v.major.to_string() } else { format!("0.{}", v.minor) }
 }
 
+/// Whether a record's `candidates` number the upstream repository's releases rather than its packages: two or more
+/// of them share one version, the repository installs those packages on two or more release lines, and none of
+/// them on the shared version's line. A fixed-version monorepo (`@sentry/*`, `@angular/*`) installs its packages on
+/// the release's line, so it never reads as one.
+fn repository_numbered(candidates: &[&Release], version_of: impl Fn(&str) -> Option<Version>) -> bool {
+    let [first, rest @ ..] = candidates else { return false };
+    if rest.is_empty() || rest.iter().any(|r| r.version != first.version) {
+        return false;
+    }
+    let Some(shared) = parse_version(&first.version) else { return false };
+    let lines: BTreeSet<String> = candidates.iter().filter_map(|r| version_of(&normalize_purl(&r.component))).map(|v| line_of(&v)).collect();
+    lines.len() >= 2 && !lines.contains(&line_of(&shared))
+}
+
 /// Whether `v` is on a release line older than `installed`'s (major, or minor on 0.x).
 fn older_line(v: &Version, installed: &Version) -> bool {
     v.major < installed.major || (v.major == 0 && installed.major == 0 && v.minor < installed.minor)
@@ -984,9 +998,9 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
         // replacements.
         let exact: Memo<Rc<usage::Evidence>> = RefCell::default();
         let modules: Vec<String> = comps.iter().filter_map(|c| purl_name(c)).collect();
-        let exact_of = |v: usize, l: &str, repl: &[String], context: Option<&[String]>, keyed: bool, config: bool, succ: &[String], call: bool, parent: Option<&str>| -> Rc<usage::Evidence> {
+        let exact_of = |v: usize, l: &str, repl: &[String], context: Option<&[String]>, keyed: bool, config: bool, succ: &[String], call: bool, parent: Option<&str>, invoked: bool| -> Rc<usage::Evidence> {
             let ctx = context.map_or("-".to_string(), |c| c.join("\0"));
-            let key = (v, format!("{l}\0{}\u{1}{ctx}\u{2}{keyed}\u{3}{config}\u{4}{}\u{5}{call}\u{6}{parent:?}", repl.join("\0"), succ.join("\0")));
+            let key = (v, format!("{l}\0{}\u{1}{ctx}\u{2}{keyed}\u{3}{config}\u{4}{}\u{5}{call}\u{6}{parent:?}\u{7}{invoked}", repl.join("\0"), succ.join("\0")));
             if let Some(e) = exact.borrow().get(&key) {
                 return e.clone();
             }
@@ -1026,6 +1040,12 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                 }
                 // A plain word in effect (`call`): only as a key of an object passed to a function the file imports from
                 // the technology (`streamText({ system })`, `usage::call_key`).
+                // A deprecated API the record writes as a call (`json_schema()`) counts where the code calls it, not
+                // where the same word names a parameter, keyword argument or module of its own (composio's
+                // `json_schema=…` and `composio.utils.json_schema` for pydantic's `json_schema()`).
+                if invoked && usage::identifier(l) && !inp.repo.text(p).is_some_and(|t| usage::called(t, l)) {
+                    return false;
+                }
                 if call && !(usage::own_code(p, &ecosystem) && scopes[v].file(p) == Some(true) && inp.repo.text(p).is_some_and(|t| usage::call_key(t, l, &modules))) {
                     return false;
                 }
@@ -1175,6 +1195,14 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             if candidates.iter().any(|x| !crate::util::stub_package(&x.component)) {
                 candidates.retain(|x| !crate::util::stub_package(&x.component));
             }
+            // A release that gives one version to several packages this repository installs on different release lines,
+            // none of them that one, numbers the upstream repository's releases (a monorepo tag `v100.0.0`), not the
+            // packages: MetaMask's `@metamask/account-api` 2.1.0 and `keyring-utils` 5.0.0 are not on "100.0.0". Their
+            // versions cannot be placed against what is installed.
+            if repository_numbered(&candidates, |c| version_of(c)) {
+                out.opps.push(blank(rec, candidates[0].clone(), Route::VersionUnknown));
+                continue;
+            }
             let installed_for = |c: &str| version_of(c).or_else(|| tech_version.clone());
             let Some(installed) = candidates.first().and_then(|r| installed_for(&normalize_purl(&r.component))) else {
                 let release = candidates.first().map(|r| (*r).clone());
@@ -1216,7 +1244,8 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             let ev = |l: &str| evidence_of(view, l);
             let succ = successor_words(&rec.r);
             let config = rec.r.surface == Surface::Configuration;
-            let ex_with = |l: &str, call: bool| exact_of(view, l, &replacement, broad.iter().any(|b| *b == l).then_some(&context[..]), keyed_api(&rec.r, ls, l), config, &succ, call, option_of(&rec.r, l));
+            let invoked = |l: &str| rec.r.replaces.iter().any(|x| x.replace('`', "").trim().ends_with("()") && clean_lit(x).as_deref() == Some(l));
+            let ex_with = |l: &str, call: bool| exact_of(view, l, &replacement, broad.iter().any(|b| *b == l).then_some(&context[..]), keyed_api(&rec.r, ls, l), config, &succ, call, option_of(&rec.r, l), invoked(l));
             let ex = |l: &str| ex_with(l, false);
             let (cited, cite): (&[String], Cite) = if deprecated.is_empty() { (ls, &ev) } else { (&deprecated, &ex) };
             let found: Vec<(String, Rc<usage::Evidence>)> = cited.iter().map(|l| (l.clone(), cite(l))).filter(|(_, e)| !e.files.is_empty()).collect();
@@ -1702,7 +1731,7 @@ pub(crate) mod fixtures {
                 .collect(),
             node: node.map(|v| (parse_version(v).unwrap(), "engines".into())),
             notes: vec![],
-            unreadable: 0, stub_runtimes: Default::default(), spread: 0,
+            unreadable: 0, stub_runtimes: Default::default(), spread: 0, peers: vec![],
             standalone: vec![],
             registries: Default::default(),
             fixture_registries: Default::default(),
@@ -1727,6 +1756,25 @@ pub(crate) mod fixtures {
 mod tests {
     use super::fixtures::{catalog, repo, stack};
     use super::*;
+
+    #[test]
+    fn one_version_for_packages_installed_on_other_lines_numbers_the_repository() {
+        let rel = |c: &str, v: &str| Release { component: c.into(), version: v.into(), date: "2026-04-13".into(), line: String::new() };
+        let installed = |c: &str| match c {
+            "pkg:npm/%40metamask/account-api" => parse_version("2.1.0"),
+            "pkg:npm/%40metamask/keyring-utils" => parse_version("5.0.0"),
+            "pkg:npm/%40sentry/browser" | "pkg:npm/%40sentry/core" => parse_version("10.38.0"),
+            _ => None,
+        };
+        let (a, k) = (rel("pkg:npm/%40metamask/account-api", "100.0.0"), rel("pkg:npm/%40metamask/keyring-utils", "100.0.0"));
+        assert!(repository_numbered(&[&a, &k], installed), "MetaMask's accounts monorepo tag v100.0.0");
+        let (b, c) = (rel("pkg:npm/%40sentry/browser", "11.0.0"), rel("pkg:npm/%40sentry/core", "11.0.0"));
+        assert!(!repository_numbered(&[&b, &c], installed), "a fixed-version monorepo installed on one line");
+        assert!(!repository_numbered(&[&a], installed), "one package says nothing");
+        let a2 = rel("pkg:npm/%40metamask/account-api", "5.0.0");
+        let k2 = rel("pkg:npm/%40metamask/keyring-utils", "5.0.0");
+        assert!(!repository_numbered(&[&a2, &k2], installed), "a package installed on the shared version's line");
+    }
     use crate::testcat::{rec, with};
     use serde_json::json;
 
