@@ -83,20 +83,6 @@ Then, in your agent, inside that repository:
 - **Ecosystems:** npm (TypeScript, JavaScript) and PyPI (Python). Lockfile-accurate versions from npm, pnpm, Yarn, uv,
 Poetry, PDM and Pipenv. Any package in a supported ecosystem works with no per-package setup.
 
-## Proven on real upgrades
-
-We replay 15 real major upgrades in open-source projects (Next.js 16, Prisma 7, NestJS 12), starting from the commit
-before the maintainers upgraded, and compare what unstale gives the agent with the changes the maintainers had to make.
-
-- **92% of what upstream documents.** Of the required changes that release notes, guides or advisories describe, the
-  catalog had 60 of 65. (The maintainers made 94 required changes in all; the other 29 appear in no upstream source:
-  follow-on edits to their own tests, CI and Docker files, workarounds for open bugs, undocumented internal types.)
-- **Most of it up front.** A major upgrade's review runs to dozens of items. More than half of those 60 changes are in
-  the first 16 items your agent reviews: breaking changes first, then by how your code uses each one.
-
-Every ranking change is pre-registered and must hold on upgrades never used for tuning.
-Method and results: [`eval/`](eval/gate/MISSES.md).
-
 ## How it works
 
 ```
