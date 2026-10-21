@@ -28,6 +28,10 @@ export interface Signals {
   lastCommit?: string | undefined;
   repo?: string | undefined;
   archived?: boolean | undefined;
+  /** GitHub repositories (`owner/name`, lowercase, as the registry names them) that versions of the package other
+   * than its current one name and that GitHub reports archived: a release line kept in a repository of its own ends
+   * there while the package goes on elsewhere (`lineRepos`). */
+  archivedLines?: string[] | undefined;
   /** The registry's deprecation: npm's message on the latest version, or why PyPI or crates.io marks it inactive. */
   deprecated?: string | undefined;
   /** This package's downloads as a share of the most-downloaded package of its registry that declares the same
@@ -58,7 +62,7 @@ export const MAIN_PACKAGE_SHARE = 0.01;
 /** Why a package was or was not admitted, for code (the `why` text is for people). */
 export type Rule = "used" | "fails-open" | "no-thresholds" | "types" | "deprecated" | "archived" | "stale" | "unused";
 
-export type Verdict =
+export type Verdict = (
   | { admit: true; why: string; rule?: Rule }
   | {
       admit: false;
@@ -68,7 +72,14 @@ export type Verdict =
       notice?: { kind: "deprecated"; message?: string };
       /** Set on `types`: the package these type stubs belong to. */
       typesFor?: string;
-    };
+    }
+) & {
+  /** Archived repositories that end a line of this package (`owner/name`, lowercase): its own repository when the
+   * package does not qualify on its registry either (a project that moved off GitHub and keeps releasing is not
+   * ended), and any other repository an older line named (`Signals.archivedLines`). A lifecycle fact, published on
+   * the job status for clients to match against the repository their installed version names. */
+  archived?: string[];
+};
 
 const ecosystemOf = (purl: string): string => /^pkg:(\w+)\//.exec(purl)?.[1] ?? "";
 const nameOf = (purl: string): string => decodeURIComponent(/^pkg:\w+\/(.+)$/.exec(purl)?.[1] ?? "").replace(/(?<=.)@[^/@]+$/, "");
@@ -87,9 +98,18 @@ export function typedPackage(purl: string): string | undefined {
 }
 
 export function admit(s: Signals, t: Thresholds | undefined, now = Date.now()): Verdict {
+  const v = verdictOf(s, t, now);
+  const ended = [...(s.archived && !v.admit && s.repo ? [s.repo.toLowerCase()] : []), ...(s.archivedLines ?? [])];
+  return ended.length ? { ...v, archived: [...new Set(ended)] } : v;
+}
+
+function verdictOf(s: Signals, t: Thresholds | undefined, now: number): Verdict {
   if (s.archived) {
     const v = judge({ ...s, stars: undefined, lastCommit: undefined }, t, now);
-    if (v.admit || judge({ ...s, archived: false }, t, now).admit === false) return v;
+    if (v.admit) return v;
+    // Parked either way, the archive is said: it is the maintainers' own statement that the package is over, which a
+    // release gap alone is not.
+    if (judge({ ...s, archived: false }, t, now).admit === false) return { ...v, why: `repository ${s.repo ?? ""} is archived; ${v.why}`.replace("  ", " ") };
     return { ...v, why: `repository ${s.repo ?? ""} is archived and the package does not qualify on its registry: ${v.why}`.replace("  ", " "), rule: "archived" };
   }
   return judge(s, t, now);
@@ -187,6 +207,33 @@ export function fromNpm(doc: any): Pick<Signals, "lastRelease" | "deprecated"> {
   };
 }
 
+/** At most this many other repositories of one package are asked about (newest line first). */
+export const MAX_LINE_REPOS = 3;
+
+/** The GitHub repositories (`owner/name`, lowercase) that npm versions of a package name other than `current`, the
+ * newest release's first: where older release lines were kept (codemirror 5 in its own repository, 6 in another). */
+export function lineRepos(doc: any, current: string | undefined): string[] {
+  const versions = doc?.versions ?? {};
+  const time = doc?.time ?? {};
+  const slug = (r: any): string | undefined => {
+    const url = typeof r === "string" ? r : r?.url;
+    const m = typeof url === "string" ? /github\.com[/:]([\w.-]+\/[\w.-]+?)(?:\.git)?(?:[#/?].*)?$/.exec(url) : null;
+    return m && isRepoSlug(m[1]!) ? m[1]!.toLowerCase() : undefined;
+  };
+  const seen = new Set([current?.toLowerCase()]);
+  const out: string[] = [];
+  const order = Object.keys(versions).sort((a, b) => (Date.parse(time[b] ?? "") || 0) - (Date.parse(time[a] ?? "") || 0));
+  for (const v of order) {
+    const r = slug(versions[v]?.repository);
+    if (r && !seen.has(r)) {
+      seen.add(r);
+      out.push(r);
+      if (out.length >= MAX_LINE_REPOS) break;
+    }
+  }
+  return out;
+}
+
 /** Release and inactivity signals from PyPI's JSON: the newest unyanked upload; inactive or every release yanked. */
 export function fromPypi(doc: any): Pick<Signals, "lastRelease" | "deprecated"> {
   if (!doc) return {};
@@ -235,10 +282,12 @@ export async function signals(purl: string, repo?: string, known: { downloads?: 
   const type = ecosystemOf(purl);
   const name = nameOf(purl);
   const out: Signals = { purl, repo };
+  let lines: string[] = [];
   if (type === "npm") {
     // The full document: the abbreviated one's `modified` also moves on deprecations and metadata edits.
     const [doc, dl] = await Promise.all([json(`https://registry.npmjs.org/${name.replace("/", "%2f")}`), known.downloads ?? npmDownloads([name]).then((m) => m.get(name))]);
     Object.assign(out, fromNpm(doc));
+    lines = lineRepos(doc, repo);
     out.downloads = dl;
     out.downloadsWindow = "week";
   } else if (type === "pypi") {
@@ -255,6 +304,12 @@ export async function signals(purl: string, repo?: string, known: { downloads?: 
     Object.assign(out, fromGithub(await json(`https://api.github.com/repos/${repo}`, token ? { authorization: `Bearer ${token}` } : {})));
     const starsOnly = t && out.stars !== undefined && out.stars >= t.minStars && !(out.downloads !== undefined && out.downloads >= t.minDownloads);
     if (starsOnly) Object.assign(out, repoShare(await json(`https://packages.ecosyste.ms/api/v1/packages/lookup?repository_url=${encodeURIComponent(`https://github.com/${repo}`)}`), name, type));
+  }
+  if (lines.length) {
+    const token = githubToken();
+    const docs = await Promise.all(lines.map((r) => json(`https://api.github.com/repos/${r}`, token ? { authorization: `Bearer ${token}` } : {})));
+    const ended = lines.filter((_, i) => docs[i]?.archived === true);
+    if (ended.length) out.archivedLines = ended;
   }
   return out;
 }

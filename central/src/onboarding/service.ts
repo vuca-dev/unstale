@@ -92,6 +92,12 @@ export interface Job {
   siblings?: string[];
   /** When the registry's deprecation was published as a record (once). */
   deprecation_notice?: string;
+  /** Archived repositories that end a line of this package (`owner/name`, lowercase; admission.ts `Verdict.archived`).
+   * Public: a client matches it against the repository its installed version names. */
+  archived?: string[];
+  /** When `archived` was last read for an admitted package (weekly; a parked one reads it at each admission check).
+   * Never public. */
+  lifecycle_checked?: string;
   /** When the token-free first pass ran (advisories published ahead of the release history): the job keeps its place
    * among new technologies until its first slice, which clears it. Never public. */
   advisories_first?: string;
@@ -887,9 +893,17 @@ export class CoverageService {
       );
       return;
     }
-    if (!job.admitted) {
+    if (job.admitted) {
+      // Admission is decided once, but a repository can be archived later: its lifecycle is read again weekly.
+      if (!job.lifecycle_checked || Date.now() - Date.parse(job.lifecycle_checked) >= LIFECYCLE_MS) {
+        setArchived(job, (await this.admission(job.purl, t.repo)).archived);
+        job.lifecycle_checked = now();
+      }
+    } else {
       // Signals that cannot be read admit the package (admission.ts); a refusal parks it and checks again in a week.
       const verdict = await this.admission(job.purl, t.repo);
+      setArchived(job, verdict.archived);
+      job.lifecycle_checked = now();
       // A deprecated package is parked, but the deprecation is published first: a change the user's agent needs.
       const deprecated = deprecationOf(verdict);
       if (deprecated !== undefined && !job.deprecation_notice) {
@@ -1226,6 +1240,12 @@ export function docsCoverage(j: Pick<Job, "enumeration" | "docs_done" | "docs_to
 export function logName(j: Pick<Job, "purl" | "admitted">): string {
   return j.admitted ? j.purl : `requested package ${sha256(j.purl).slice(0, 12)}`;
 }
+/** How often an admitted package's repositories are checked for an archive (a parked one is at each admission check). */
+const LIFECYCLE_MS = 7 * 86_400_000;
+function setArchived(job: Job, archived: string[] | undefined) {
+  if (archived?.length) job.archived = archived;
+  else delete job.archived;
+}
 function publicJob(j: Job) {
   const {
     completed: _completed,
@@ -1240,6 +1260,7 @@ function publicJob(j: Job) {
     siblings: _siblings,
     merged_into: _merged,
     deprecation_notice: _notice,
+    lifecycle_checked: _lifecycle,
     advisories_first: _first,
     downloads: _downloads,
     interrupted: _interrupted,

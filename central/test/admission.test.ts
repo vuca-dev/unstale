@@ -1,7 +1,7 @@
 // Admission rules (eval/scope/RESULTS.md): release-based freshness, stars for the repository's main package only,
 // archived repositories, deprecated packages with a notice, type stubs parked; unreadable signals fail open.
 import { describe, expect, test } from "vitest";
-import { admit, fromCargo, fromGithub, fromNpm, fromPypi, repoShare, THRESHOLDS, typedPackage, type Signals } from "../src/pipeline/admission.ts";
+import { admit, fromCargo, lineRepos, fromGithub, fromNpm, fromPypi, repoShare, THRESHOLDS, typedPackage, type Signals } from "../src/pipeline/admission.ts";
 
 const NOW = Date.parse("2026-10-16T00:00:00Z");
 const daysAgo = (d: number) => new Date(NOW - d * 86_400_000).toISOString();
@@ -46,6 +46,24 @@ describe("archived, deprecated and type stubs", () => {
     expect(v.why).toContain("repository o/r is archived");
     // Without a release date, an archived repository's push does not count as maintenance: usage alone decides.
     expect(verdict(npm({ archived: true, repo: "o/r", lastRelease: undefined, lastCommit: daysAgo(2), downloads: 50, stars: 0 })).rule).toBe("unused");
+  });
+  test("an archive is said and exported whenever it ends the package or one of its lines, never for one still releasing", () => {
+    // Archived and stale (doctrine, prisma-client-py): parked as stale, and the archive is in the reason and the list.
+    const stale = verdict(npm({ archived: true, repo: "Eslint/Doctrine", lastRelease: daysAgo(2000) }));
+    expect(stale).toMatchObject({ admit: false, rule: "stale", why: "repository Eslint/Doctrine is archived; no release in 365 days", archived: ["eslint/doctrine"] });
+    // Moved off GitHub and still releasing: the archive ends nothing.
+    expect(verdict(npm({ archived: true, repo: "o/r", downloads: 5_000_000 })).archived).toBeUndefined();
+    // An older line's own repository archived (codemirror 5): exported on an admitted package too.
+    expect(verdict(npm({ repo: "codemirror/dev", archivedLines: ["codemirror/codemirror"] }))).toMatchObject({ admit: true, archived: ["codemirror/codemirror"] });
+    expect(verdict(npm()).archived).toBeUndefined();
+  });
+  test("the repositories older npm versions name, newest line first, the current one left out", () => {
+    const doc = {
+      versions: { "5.0.0": { repository: { url: "git+https://github.com/codemirror/CodeMirror.git" } }, "6.0.0": { repository: "github:codemirror/basic-setup" }, "6.1.0": { repository: { url: "https://github.com/codemirror/basic-setup" } }, "4.0.0": { repository: "https://github.com/marijnh/CodeMirror/tree/master" }, "0.1.0": {} },
+      time: { "4.0.0": "2014-01-01T00:00:00Z", "5.0.0": "2015-01-01T00:00:00Z", "6.0.0": "2022-01-01T00:00:00Z", "6.1.0": "2023-01-01T00:00:00Z", "0.1.0": "2011-01-01T00:00:00Z" },
+    };
+    expect(lineRepos(doc, "codemirror/basic-setup")).toEqual(["codemirror/codemirror", "marijnh/codemirror"]);
+    expect(lineRepos(undefined, "o/r")).toEqual([]);
   });
   test("a deprecated package carries a notice with the message", () => {
     expect(verdict(npm({ deprecated: "use foo instead" }))).toEqual({
