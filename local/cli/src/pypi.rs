@@ -221,7 +221,12 @@ fn read_locks(dir: &Path) -> Vec<Lock> {
         let mut pin = |name: &str, version: &str, hashes: Vec<String>| {
             let hashes: Vec<String> = hashes.into_iter().filter(|h| h.starts_with("sha256:")).collect();
             if !hashes.is_empty() {
-                pins.entry(normalize(name)).or_insert(Pin { version: version.to_string(), hashes });
+                // The newest copy's, as for `versions`.
+                let newer = |p: &Pin| parse_version(version).zip(parse_version(&p.version)).is_some_and(|(a, b)| a > b);
+                let e = pins.entry(normalize(name)).or_insert_with(|| Pin { version: version.to_string(), hashes: hashes.clone() });
+                if newer(e) {
+                    *e = Pin { version: version.to_string(), hashes };
+                }
             }
         };
         if *f == "Pipfile.lock" {
@@ -261,8 +266,16 @@ fn read_locks(dir: &Path) -> Vec<Lock> {
                     ("poetry.lock", None) => saw(name, Seen::Public),
                     _ => {}
                 }
+                // A lock that holds several versions of one package forked it by environment marker (uv: an older
+                // release kept for an interpreter the newer one dropped). The newest is the one the project is on
+                // wherever it can be, so the funnel compares against it: the older copy cannot be upgraded where it
+                // runs, and records up to the newest are already in the lock (Sphinx 9.1 dropping Python 3.11 in a
+                // lock holding 9.0.4 for 3.11 and 9.1.0 for the rest).
                 if let Some(v) = parse_version(ver) {
-                    versions.entry(normalize(name)).or_insert(v);
+                    let e = versions.entry(normalize(name)).or_insert_with(|| v.clone());
+                    if v > *e {
+                        *e = v;
+                    }
                 }
                 // uv: `sdist` and `wheels`; Poetry and PDM: `files`. Each entry's `hash` is `sha256:<hex>`.
                 let files = p.get("sdist").into_iter().chain(["wheels", "files"].iter().filter_map(|k| p.get(*k)).filter_map(Value::as_array).flatten());
@@ -692,6 +705,21 @@ mod tests {
         crate::stack::settle(&mut deps);
         assert_eq!(deps["pkg:pypi/httpx"].version, Some(v("0.28.1")));
         assert_eq!(pk.iter().find(|p| p.dir == "sandbox/runtime").unwrap().lockfile, None);
+    }
+
+    #[test]
+    fn a_lock_forked_by_marker_is_read_at_its_newest_copy() {
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "pyproject.toml", "[project]\nname = \"app\"\nrequires-python = \">=3.11\"\ndependencies = [\"sphinx>=7.4.7,<10\"]\n");
+        write(
+            d.path(),
+            "uv.lock",
+            "version = 1\n[[package]]\nname = \"sphinx\"\nversion = \"9.0.4\"\nsource = { registry = \"https://pypi.org/simple\" }\nresolution-markers = [\"python_full_version < '3.12'\"]\n[[package]]\nname = \"sphinx\"\nversion = \"9.1.0\"\nsource = { registry = \"https://pypi.org/simple\" }\nresolution-markers = [\"python_full_version >= '3.12'\"]\n",
+        );
+        let (mut pk, mut deps) = (vec![], BTreeMap::new());
+        detect(d.path(), &mut pk, &mut deps, &mut vec![]);
+        crate::stack::settle(&mut deps);
+        assert_eq!(deps["pkg:pypi/sphinx"].version, Some(v("9.1.0")), "9.0.4 is kept only for the interpreter 9.1 dropped");
     }
 
     #[test]
