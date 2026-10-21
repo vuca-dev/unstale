@@ -550,9 +550,83 @@ fn import_bindings(text: &str, pkg: &str) -> Vec<String> {
 /// about one facet of it (ESLint's `radix` rule, facet `as-needed`) and `lit` is not the subject itself. Such a value
 /// counts only where written under that key (`usage::under_key`): `as-needed` is an option of many rules.
 fn option_of<'r>(r: &'r unstale_schema::catalog::CapabilityRecord, lit: &str) -> Option<&'r str> {
+    // A dotted option path (`compilerOptions.moduleResolution`) is written nested: its value sits under the leaf key.
     let s = r.subject.as_str();
-    let keylike = !s.is_empty() && !s.contains(|c: char| c.is_whitespace() || matches!(c, '(' | ')' | '\'' | '"' | ':' | '=' | '.'));
-    (r.surface == Surface::Configuration && r.subject_kind == SubjectKind::Literal && r.facet.is_some() && keylike && !lit.contains(s) && !s.contains(lit)).then_some(s)
+    let leaf = s.rsplit('.').next().unwrap_or(s);
+    let keylike = !leaf.is_empty() && !s.contains(|c: char| c.is_whitespace() || matches!(c, '(' | ')' | '\'' | '"' | ':' | '='));
+    (r.surface == Surface::Configuration && r.subject_kind == SubjectKind::Literal && r.facet.is_some() && keylike && !lit.contains(s) && !s.contains(lit)).then_some(leaf)
+}
+
+/// The option key and values of a configuration record about some values of one option (TypeScript 7's
+/// `compilerOptions.moduleResolution`, facet `node/node10`, replacing `node` and `node10`): the key is the subject's
+/// leaf, one of the record's literals; the values are what it replaces other than the key. Such a change applies only
+/// where a file sets that key to one of the values (`option_set`): the key set to another value, the values as words
+/// elsewhere (`node`, `false`) and the config file's name are not sites.
+fn option_values(r: &unstale_schema::catalog::CapabilityRecord, lits: &[String]) -> Option<(String, Vec<String>)> {
+    if r.surface != Surface::Configuration || r.subject_kind != SubjectKind::Literal || r.facet.is_none() {
+        return None;
+    }
+    let subject = clean_lit(&r.subject)?;
+    let key = subject.rsplit('.').next().unwrap_or(&subject).to_string();
+    let keylike = !key.is_empty() && key.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-'));
+    if !keylike || !lits.contains(&key) {
+        return None;
+    }
+    let values: Vec<String> = r
+        .replaces
+        .iter()
+        // Values may be short (`es5`), under `clean_lit`'s four characters.
+        .map(|x| x.replace('`', "").trim().trim_matches(['\'', '"']).to_string())
+        .filter(|v| !v.is_empty() && !v.contains(&key) && !subject.contains(v.as_str()) && !v.contains(char::is_whitespace))
+        .collect();
+    (!values.is_empty()).then_some((key, values))
+}
+
+/// The option key of a configuration record about one option that is removed, deprecated or otherwise changed in a
+/// way its presence decides (TypeScript 7's `compilerOptions.baseUrl`; not a changed default, which bites where the key
+/// is absent, nor a record about some of its values, `option_values`): the subject's leaf, one of the record's literals.
+/// Such a record cites only its literals that name the key, where a file writes it as a key (`key_written`): the
+/// config file's name and the record's other words (`false`, `module`, `target` in a source file) are not sites.
+fn option_key(r: &unstale_schema::catalog::CapabilityRecord, lits: &[String]) -> Option<String> {
+    if r.surface != Surface::Configuration || r.subject_kind != SubjectKind::Literal || r.facet.is_some() || r.change_type == ChangeType::DefaultChange {
+        return None;
+    }
+    let subject = clean_lit(&r.subject)?;
+    let key = subject.rsplit('.').next().unwrap_or(&subject).to_string();
+    let keylike = key.chars().count() >= 4
+        && key.starts_with(|c: char| c.is_ascii_alphabetic())
+        && key.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-'));
+    (keylike && lits.contains(&key)).then_some(key)
+}
+
+/// Whether `text` writes `key` as a key: followed, past a closing quote and spaces, by `:` (JSON, YAML, an object
+/// literal) or `=` (TOML, INI), with no identifier character before it.
+fn key_written(text: &str, key: &str) -> bool {
+    let b = text.as_bytes();
+    let ident = |c: u8| c.is_ascii_alphanumeric() || matches!(c, b'_' | b'$' | b'-');
+    text.match_indices(key).any(|(at, _)| {
+        if at > 0 && ident(b[at - 1]) {
+            return false;
+        }
+        let mut j = at + key.len();
+        if b.get(j).is_some_and(|c| ident(*c)) {
+            return false;
+        }
+        if matches!(b.get(j), Some(b'"' | b'\'')) {
+            j += 1;
+        }
+        while b.get(j).is_some_and(|c| *c == b' ' || *c == b'\t') {
+            j += 1;
+        }
+        matches!(b.get(j), Some(b':' | b'=')) && b.get(j + 1) != Some(&b':')
+    })
+}
+
+/// Whether `text` sets the option `key` to one of `values` (`option_values`), case-insensitively: config formats
+/// spell values in either case (`"moduleResolution": "Node"`).
+fn option_set(path: &str, text: &str, key: &str, values: &[String]) -> bool {
+    let (t, k) = (text.to_ascii_lowercase(), key.to_ascii_lowercase());
+    values.iter().any(|v| usage::live_site_under(path, &t, &v.to_ascii_lowercase(), &[], None, false, Some(&k)))
 }
 
 /// The key a configuration record's dotted option path `lit` ends in (`fsModuleCache` of `experimental.fsModuleCache`),
@@ -1533,7 +1607,29 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             let invoked = |l: &str| rec.r.replaces.iter().any(|x| x.replace('`', "").trim().ends_with("()") && clean_lit(x).as_deref() == Some(l));
             let ex_with = |l: &str, call: bool| exact_of(view, l, &replacement, broad.iter().any(|b| *b == l).then_some(&context[..]), keyed_api(&rec.r, ls, l), config, &succ, call, option_of(&rec.r, l), invoked(l), &named);
             let ex = |l: &str| ex_with(l, false);
-            let (cited, cite): (&[String], Cite) = if deprecated.is_empty() { (ls, &ev) } else { (&deprecated, &ex) };
+            // A record about some values of one option cites the option's key only, where a file sets it to one of them.
+            // A deprecation citing its replaced literals keeps that path (`option_of` puts a value under its key).
+            let valued = if deprecated.is_empty() { option_values(&rec.r, ls) } else { None };
+            let valued_key: Vec<String> = valued.iter().map(|(k, _)| k.clone()).collect();
+            let set_ev = |l: &str| -> Rc<usage::Evidence> {
+                let (k, vs) = valued.as_ref().expect("option_values");
+                Rc::new(scopes[view].evidence_where(l, role, !nested, |p| inp.repo.text(p).is_some_and(|t| option_set(p, t, k, vs))))
+            };
+            let keyed = if valued.is_none() && deprecated.is_empty() { option_key(&rec.r, ls) } else { None };
+            let key_lits: Vec<String> = keyed.iter().flat_map(|k| ls.iter().filter(move |l| l.contains(k.as_str())).cloned()).collect();
+            let key_ev = |l: &str| -> Rc<usage::Evidence> {
+                let k = keyed.as_deref().expect("option_key");
+                Rc::new(scopes[view].evidence_where(l, role, !nested, |p| inp.repo.text(p).is_some_and(|t| key_written(t, k))))
+            };
+            let (cited, cite): (&[String], Cite) = if valued.is_some() {
+                (&valued_key, &set_ev)
+            } else if !deprecated.is_empty() {
+                (&deprecated, &ex)
+            } else if keyed.is_some() {
+                (&key_lits, &key_ev)
+            } else {
+                (ls, &ev)
+            };
             // A lint rule this repository never turns on: none of the record's terms is a site (`rule_not_enabled`).
             let rule_off = !lint_ns.is_empty()
                 && rec.r.terms.iter().map(|t| &t.0).chain(&rec.r.replaces).any(|t| lint_ns.iter().any(|n| t.contains(n.as_str())))
@@ -1542,10 +1638,16 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             let found: Vec<(String, Rc<usage::Evidence>)> = cited.iter().map(|l| (l.clone(), cite(l))).filter(|(_, e)| !e.files.is_empty()).collect();
             let more: BTreeMap<String, usize> = found.iter().filter(|(_, e)| e.more > 0).map(|(l, e)| (l.clone(), e.more)).collect();
             let matched: Vec<(String, Vec<String>)> = found.into_iter().map(|(l, e)| (l, e.files.iter().map(|(p, _)| p.clone()).collect())).collect();
-            let score = ls
+            // A record about option values or one option's key scores by the files citing it (its evidence's `used` counts
+            // the literal anywhere).
+            let narrowed = valued.is_some() || keyed.is_some();
+            let score = (if narrowed { cited } else { ls })
                 .iter()
                 .filter(|_| !rule_off)
-                .filter_map(|l| Some(ev(l)).filter(|e| e.used).map(|e| weight(l) * if e.app { 1.0 } else { NON_APP_WEIGHT }))
+                .filter_map(|l| {
+                    let e = if narrowed { Some(cite(l)).filter(|e| !e.files.is_empty()) } else { Some(ev(l)).filter(|e| e.used) };
+                    e.map(|e| weight(l) * if e.app { 1.0 } else { NON_APP_WEIGHT })
+                })
                 .sum::<f64>();
             let files = files_of(cited, cite);
             let elsewhere: Vec<String> = {
@@ -1838,14 +1940,15 @@ fn cmp_score(a: f64, b: f64) -> std::cmp::Ordering {
 
 fn order(out: &mut Outcome) {
     let opps = &out.opps;
-    // Upgrade review: records whose `requires` match nothing last, then type tier, then rarity-weighted usage.
+    // Upgrade review: records whose `requires` match nothing last, then records citing no site ("Matched terms:
+    // none": their score may come from words they do not cite), then type tier, then rarity-weighted usage.
     // Applicability variants inside tier 1 were measured and not adopted (eval/rank/RESULTS.md); `requires` values
     // the record introduces are not preconditions (set in `run`).
     let mut up: Vec<usize> = (0..opps.len()).filter(|&i| opps[i].route == Route::UpgradeReview).collect();
     up.sort_by(|&a, &b| {
         let (x, y) = (&opps[a], &opps[b]);
-        (x.requires_miss, x.tier)
-            .cmp(&(y.requires_miss, y.tier))
+        (x.requires_miss, x.matched.is_empty(), x.tier)
+            .cmp(&(y.requires_miss, y.matched.is_empty(), y.tier))
             .then(cmp_score(x.score, y.score))
             .then_with(|| x.id().cmp(y.id()))
     });
@@ -1906,7 +2009,7 @@ fn siblings_together(opps: &[Opp], order: Vec<usize>) -> Vec<usize> {
         let ta = terms(a);
         for j in i + 1..order.len() {
             let b = &opps[order[j]];
-            if placed[j] || (b.requires_miss, b.tier) != (a.requires_miss, a.tier) {
+            if placed[j] || (b.requires_miss, b.matched.is_empty(), b.tier) != (a.requires_miss, a.matched.is_empty(), a.tier) {
                 continue;
             }
             let same_release = a.component() == b.component() && a.release.version == b.release.version;

@@ -142,7 +142,10 @@ fn init_sync_digest_review_decide_run() {
     // Tier 1 (breaking, removals) before tier 2; inside tier 1, the record matching this repository first.
     let pos = |id: &str| up.find(&format!("### [{id}]")).unwrap_or_else(|| panic!("{id} missing:\n{up}"));
     assert!(pos("next:lint-removed") < pos("prisma:datasource-url-removed"), "rarer match first within tier 1");
-    assert!(pos("prisma:datasource-url-removed") < pos("next:middleware-to-proxy"));
+    // prisma's removal cites no site here (`datasourceUrl` is in code importing `@prisma/client`, not `prisma`): a
+    // record matching nothing comes after those that do, whatever its tier.
+    assert!(up[pos("prisma:datasource-url-removed")..].contains("- Matched terms: none"), "{up}");
+    assert!(pos("next:middleware-to-proxy") < pos("prisma:datasource-url-removed"), "unmatched last:\n{up}");
     assert!(pos("next:lint-removed") < pos("next:middleware-to-proxy"));
     assert!(up.contains("- Matched terms: `next lint` (package.json)"), "scripts count as usage:\n{up}");
     assert!(up.contains("`middleware.ts` (src/middleware.ts)"), "{up}");
