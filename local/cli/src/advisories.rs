@@ -391,7 +391,9 @@ pub fn yarn_lock(text: &str, file: &str, manifests: &[(String, Value)]) -> Graph
 }
 
 /// `uv.lock`: workspace members (`editable`, `virtual`, `directory` sources) are the projects; their
-/// `dev-dependencies` are dev, and `package.metadata.requires-dist` gives the declared specifiers.
+/// `dev-dependencies` and their own extras (`optional-dependencies`) are dev, as the upgrade classifier reads a
+/// `pyproject.toml` (`workarounds::declarations`), and `package.metadata.requires-dist` gives the declared specifiers.
+/// A registry package's extras stay as its other dependencies: something already asked for them.
 pub fn uv_lock(text: &str, lock_dir: &str, file: &str) -> Graph {
     let mut g = Graph::new(file, "PyPI");
     let Ok(doc) = text.parse::<toml::Table>() else { return g };
@@ -399,6 +401,7 @@ pub fn uv_lock(text: &str, lock_dir: &str, file: &str) -> Graph {
     let s = |v: &toml::Value, k: &str| v.get(k).and_then(|x| x.as_str()).unwrap_or("").to_string();
     let mut by_name: BTreeMap<String, Vec<(String, usize)>> = BTreeMap::new();
     let mut ids = vec![];
+    let mut own = vec![];
     for p in &pkgs {
         let (name, ver) = (crate::pypi::normalize(&s(p, "name")), s(p, "version"));
         let src = p.get("source");
@@ -414,8 +417,9 @@ pub fn uv_lock(text: &str, lock_dir: &str, file: &str) -> Graph {
         };
         by_name.entry(name).or_default().push((ver, i));
         ids.push(i);
+        own.push(local.is_some());
     }
-    for (p, &from) in pkgs.iter().zip(&ids) {
+    for ((p, &from), &own) in pkgs.iter().zip(&ids).zip(&own) {
         let mut specs: BTreeMap<String, String> = BTreeMap::new();
         let meta = p.get("metadata");
         for r in meta.and_then(|m| m.get("requires-dist")).and_then(|r| r.as_array()).into_iter().flatten().chain(
@@ -429,7 +433,7 @@ pub fn uv_lock(text: &str, lock_dir: &str, file: &str) -> Graph {
             .get("dependencies")
             .into_iter()
             .map(|d| (d, false))
-            .chain(p.get("optional-dependencies").and_then(|t| t.as_table()).into_iter().flat_map(|t| t.values()).map(|d| (d, false)))
+            .chain(p.get("optional-dependencies").and_then(|t| t.as_table()).into_iter().flat_map(|t| t.values()).map(|d| (d, own)))
             .chain(p.get("dev-dependencies").and_then(|t| t.as_table()).into_iter().flat_map(|t| t.values()).map(|d| (d, true)))
             .collect();
         for (list, dev) in lists {
@@ -456,8 +460,8 @@ fn pep508(req: &str) -> (String, String) {
     (crate::pypi::normalize(&req[..end]), rest.trim().trim_matches(['(', ')']).to_string())
 }
 
-/// A `pyproject.toml`'s direct requirements, `(name, specifier, dev)`: PEP 621 dependencies and extras, PEP 735
-/// groups (dev), Poetry's main dependencies and groups (dev).
+/// A `pyproject.toml`'s direct requirements, `(name, specifier, dev)`: PEP 621 dependencies, extras (dev, as the
+/// upgrade classifier reads them), PEP 735 groups (dev), Poetry's main dependencies and groups (dev).
 fn pyproject_roots(doc: &toml::Table) -> Vec<(String, String, bool)> {
     let mut out = vec![];
     let project = doc.get("project");
@@ -468,7 +472,7 @@ fn pyproject_roots(doc: &toml::Table) -> Vec<(String, String, bool)> {
     for list in project.and_then(|p| p.get("optional-dependencies")).and_then(|d| d.as_table()).into_iter().flat_map(|t| t.values()) {
         for r in list.as_array().into_iter().flatten() {
             let (n, s) = pep508(r.as_str().unwrap_or(""));
-            out.push((n, s, false));
+            out.push((n, s, true));
         }
     }
     for list in doc.get("dependency-groups").and_then(|d| d.as_table()).into_iter().flat_map(|t| t.values()) {
@@ -1692,6 +1696,17 @@ mod tests {
         let (raw, items) = run(g, &docs, &[("urllib3", "2.2.1", &["PYSEC-1", "GHSA-u3"])], "2026-10-18");
         assert_eq!(raw, 1);
         assert_eq!((items[0].id.as_str(), items[0].via.clone(), items[0].why.clone()), ("GHSA-u3", vec!["requests 2.32.0".to_string()], vec!["high at runtime".to_string()]));
+
+        // The project's own extra (`docs`) is development, as the upgrade classifier reads it; an extra of a registry
+        // package the runtime asks for (`requests[socks]`) stays runtime.
+        let uv = "version = 1\n\n[[package]]\nname = \"app\"\nversion = \"1.0\"\nsource = { editable = \".\" }\ndependencies = [{ name = \"requests\" }]\n\n[package.optional-dependencies]\ndocs = [{ name = \"sphinx\" }]\n\n[[package]]\nname = \"requests\"\nversion = \"2.32.0\"\nsource = { registry = \"https://pypi.org/simple\" }\n\n[package.optional-dependencies]\nsocks = [{ name = \"pysocks\" }]\n\n[[package]]\nname = \"sphinx\"\nversion = \"9.0.4\"\nsource = { registry = \"https://pypi.org/simple\" }\ndependencies = [{ name = \"certifi\" }]\n\n[[package]]\nname = \"certifi\"\nversion = \"2026.7.22\"\nsource = { registry = \"https://pypi.org/simple\" }\n\n[[package]]\nname = \"pysocks\"\nversion = \"1.7.0\"\nsource = { registry = \"https://pypi.org/simple\" }\n";
+        let docs = [
+            ("GHSA-c", doc(Some(Severity::High), "2026-10-20T00:00:00Z", &[("PyPI", "certifi", &["2026.10.19"])], &[])),
+            ("GHSA-s", doc(Some(Severity::High), "2026-10-20T00:00:00Z", &[("PyPI", "pysocks", &["1.7.1"])], &[])),
+        ];
+        let (raw, items) = run(uv_lock(uv, ".", "uv.lock"), &docs, &[("certifi", "2026.7.22", &["GHSA-c"]), ("pysocks", "1.7.0", &["GHSA-s"])], "2026-10-21");
+        assert_eq!(raw, 2);
+        assert_eq!(items.iter().map(|i| (i.id.as_str(), i.why.iter().any(|w| w.ends_with(" at runtime")))).collect::<Vec<_>>(), vec![("GHSA-s", true)], "{items:?}");
 
         let yarn = "# yarn lockfile v1\n\n\"left-pad@^1.0.0\", left-pad@^1.1.0:\n  version \"1.1.0\"\n  dependencies:\n    tiny \"~1.0.0\"\n\ntiny@~1.0.0:\n  version \"1.0.0\"\n";
         let m = vec![(".".to_string(), serde_json::json!({"name": "app", "dependencies": {"left-pad": "^1.0.0"}}))];
