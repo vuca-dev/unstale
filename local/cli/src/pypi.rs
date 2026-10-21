@@ -275,6 +275,53 @@ fn read_locks(dir: &Path) -> Vec<Lock> {
     out
 }
 
+/// The top-level modules each project's own Python code imports (application, tooling and test files), keyed by the
+/// deepest project directory holding the file; and the repository's own module names (every `.py` stem and package
+/// directory), which no import of a distribution is taken for.
+fn imported_modules(root: &Path, projects: &BTreeSet<PathBuf>) -> (BTreeMap<PathBuf, BTreeSet<String>>, BTreeSet<String>) {
+    let (mut out, mut own): (BTreeMap<PathBuf, BTreeSet<String>>, BTreeSet<String>) = (BTreeMap::new(), BTreeSet::new());
+    for e in walker(root).flatten() {
+        let path = e.path();
+        if !e.file_type().is_some_and(|t| t.is_file()) || path.extension().is_none_or(|x| x != "py") {
+            continue;
+        }
+        let stem = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+        if stem == "__init__" {
+            own.extend(path.parent().and_then(Path::file_name).map(|n| n.to_string_lossy().to_string()));
+        } else {
+            own.insert(stem);
+        }
+        let rel = path.strip_prefix(root).unwrap_or(path).to_string_lossy().replace('\\', "/");
+        if !matches!(path_role(&rel), Role::App | Role::Tooling | Role::Test) {
+            continue;
+        }
+        let Some(project) = path.ancestors().skip(1).find(|a| projects.contains(*a)) else { continue };
+        let Ok(text) = std::fs::read_to_string(path) else { continue };
+        out.entry(project.to_path_buf()).or_default().extend(import_roots(&text));
+    }
+    (out, own)
+}
+
+/// The top-level module of each absolute `import a.b, c as d` and `from a.b import x` statement at a line start.
+fn import_roots(text: &str) -> Vec<String> {
+    let mut out = vec![];
+    let ident = |s: &str| s.split('.').next().map(str::trim).filter(|m| !m.is_empty() && m.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') && !m.starts_with(|c: char| c.is_ascii_digit())).map(String::from);
+    for line in text.lines() {
+        let t = line.trim_start();
+        if let Some(rest) = t.strip_prefix("from ") {
+            if let Some((m, _)) = rest.split_once(" import") {
+                out.extend(ident(m.trim()));
+            }
+        } else if let Some(rest) = t.strip_prefix("import ") {
+            let rest = rest.split('#').next().unwrap_or("");
+            for part in rest.split(',') {
+                out.extend(ident(part.split_whitespace().next().unwrap_or("")));
+            }
+        }
+    }
+    out
+}
+
 /// Whether `v` meets a requirement specifier: PEP 440 (`>=1.2,<2`, `~=1.4`, `==1.*`, `!=1.3`) or Poetry's npm-like
 /// `^` / `~`. `None` when a part can't be read, so a caller keeps what it had.
 pub fn spec_satisfies(v: &Version, spec: &str) -> Option<bool> {
@@ -355,6 +402,7 @@ pub fn detect(root: &Path, packages: &mut Vec<Package>, deps: &mut BTreeMap<Stri
     let mut seen_dirs = BTreeSet::new();
     let mut noted = BTreeSet::new();
     let mut stale: BTreeMap<String, (usize, Vec<String>)> = BTreeMap::new();
+    let (imported, own_modules) = imported_modules(root, &by_dir.keys().cloned().collect());
     for (dir, files) in by_dir {
         let mut reqs = vec![];
         let mut named = false;
@@ -400,7 +448,7 @@ pub fn detect(root: &Path, packages: &mut Vec<Package>, deps: &mut BTreeMap<Stri
         let rel = dir.strip_prefix(root).ok().map(|p| p.to_string_lossy().replace('\\', "/")).filter(|p| !p.is_empty()).unwrap_or_else(|| ".".into());
         let declared: BTreeSet<String> = reqs.iter().map(|(n, _, _)| purl(n)).collect();
         if seen_dirs.insert(rel.clone()) {
-            packages.push(Package { dir: rel.clone(), kind, lockfile: lock.as_ref().map(|l| l.file.clone()), declared, own: None });
+            packages.push(Package { dir: rel.clone(), kind, lockfile: lock.as_ref().map(|l| l.file.clone()), declared: declared.clone(), own: None });
         }
         for (name, spec, public) in reqs {
             let n = normalize(&name);
@@ -434,6 +482,29 @@ pub fn detect(root: &Path, packages: &mut Vec<Package>, deps: &mut BTreeMap<Stri
             }
             let lock_file = lock.as_ref().map(|l| if lock_dir == "." { l.file.clone() } else { format!("{lock_dir}/{}", l.file) });
             entry.read_under(&rel, version, source, false, floor.then(|| crate::stack::Range::Pypi(spec.clone())), lock_file);
+        }
+        // A package this project's own code imports that only its lockfile installs (through another dependency:
+        // `starlette` under `fastapi`) is a dependency in practice: what changes in it reaches this code. Matched by
+        // the import's top-level name as a distribution name, never a module of the repository's own.
+        if let (Some(l), Kind::Application) = (&lock, kind) {
+            let lock_file = if lock_dir == "." { l.file.clone() } else { format!("{lock_dir}/{}", l.file) };
+            for m in imported.get(&dir).into_iter().flatten() {
+                let n = normalize(m);
+                if own_modules.contains(m) || declared.contains(&purl(&n)) {
+                    continue;
+                }
+                let Some(v) = l.versions.get(&n) else { continue };
+                let entry = deps.entry(purl(&n)).or_insert_with(|| Dep::new(&n, true));
+                if let Some(s) = l.seen.get(&n) {
+                    entry.seen = entry.seen.and(*s);
+                }
+                if let Some(pin) = l.pins.get(&n)
+                    && !entry.pins.contains(pin)
+                {
+                    entry.pins.push(pin.clone());
+                }
+                entry.read_under(&rel, Some(v.clone()), format!("{} (imported here, installed through another dependency)", l.file), false, None, Some(lock_file.clone()));
+            }
         }
     }
     for (file, (n, examples)) in stale {
@@ -513,6 +584,32 @@ mod tests {
         crate::stack::settle(&mut deps);
         assert_eq!(deps["pkg:pypi/acme-tools"].pins, vec![Pin { version: "2.0".into(), hashes: vec!["sha256:aa".into(), "sha256:bb".into()] }]);
         assert!(deps["pkg:pypi/httpx"].pins.is_empty(), "no hashes in the lockfile");
+    }
+
+    #[test]
+    fn a_locked_package_the_code_imports_is_a_dependency_even_when_only_another_installs_it() {
+        // Significant-Gravitas/AutoGPT: `from starlette.types import ASGIApp` with only `fastapi` declared; poetry.lock
+        // installs starlette through it.
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "backend/pyproject.toml", "[tool.poetry]\nname = \"app\"\n[tool.poetry.dependencies]\nfastapi = \"^0.115\"\n");
+        let lock = ["fastapi", "starlette", "anyio", "helpers"].map(|n| format!("[[package]]\nname = \"{n}\"\nversion = \"1.0.0\"\n")).concat();
+        write(d.path(), "backend/poetry.lock", &lock);
+        write(d.path(), "backend/app/main.py", "import os, json\nfrom starlette.types import ASGIApp\nfrom . import helpers\nimport helpers\n");
+        write(d.path(), "backend/helpers.py", "x = 1\n");
+        write(d.path(), "tools/other.py", "import anyio\n");
+        let (mut pk, mut deps) = (vec![], BTreeMap::new());
+        detect(d.path(), &mut pk, &mut deps, &mut vec![]);
+        crate::stack::settle(&mut deps);
+        assert_eq!(deps["pkg:pypi/starlette"].version, Some(v("1.0.0")));
+        assert!(deps["pkg:pypi/starlette"].public_candidate);
+        assert!(!pk[0].declared.contains("pkg:pypi/starlette"), "used, not declared");
+        assert!(!deps.contains_key("pkg:pypi/helpers"), "a module of the repository's own");
+        assert!(!deps.contains_key("pkg:pypi/anyio"), "imported outside the project the lockfile installs");
+    }
+
+    #[test]
+    fn import_roots_are_top_level_absolute_modules() {
+        assert_eq!(import_roots("import a.b, c as d\nfrom e.f import g\nfrom . import h\nfrom .i import j\n  import k  # x\nimportant = 1\n"), vec!["a", "c", "e", "k"]);
     }
 
     #[test]
