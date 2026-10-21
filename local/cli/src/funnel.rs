@@ -347,13 +347,14 @@ pub fn is_obligation(r: &Rec) -> bool {
     r.r.breaking || matches!(r.r.change_type, ChangeType::Removal | ChangeType::Deprecation)
 }
 
-/// The literals that name what a deprecation deprecates: its `replaces` among the record's literals (the
-/// technology's own package names excluded, as in `record_lits`). `terms` cannot say this: they may name the
-/// replacement (a record describing `toHaveBeenCalled` as the successor of `toBeCalled`) or a sibling that is not
-/// deprecated (`vitest/node` beside deprecated entry points). Empty for any other record, and for a deprecation
-/// without `replaces`.
+/// The literals that name what a deprecation deprecates or a removal removes: its `replaces` among the record's
+/// literals (the technology's own package names excluded, as in `record_lits`). `terms` cannot say this: they may name
+/// the replacement (a record describing `toHaveBeenCalled` as the successor of `toBeCalled`), a sibling that is not
+/// deprecated (`vitest/node` beside deprecated entry points), or the API the removed one was used with (Vitest 4's
+/// removed `UserConfig` type, whose terms name `defineConfig`: every Vitest config calls it, and none needs the type).
+/// Empty for any other record, and for one without `replaces`.
 pub fn deprecated_lits(r: &Rec, lits: &[String]) -> Vec<String> {
-    if r.r.change_type != ChangeType::Deprecation {
+    if !matches!(r.r.change_type, ChangeType::Deprecation | ChangeType::Removal) {
         return vec![];
     }
     let replaces: BTreeSet<String> = r.r.replaces.iter().filter_map(|x| clean_lit(x)).collect();
@@ -1483,8 +1484,8 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                     continue;
                 }
             }
-            // A deprecation that names what it deprecates cites only that, as whole literals: a match on its other
-            // terms is not usage of the deprecated API. The score (the queue's order) still counts every literal.
+            // A deprecation or removal that names what it takes away cites only that, as whole literals: a match on its
+            // other terms is not usage of the deprecated or removed API. The score (the queue's order) still counts every literal.
             let mut deprecated = deprecated_lits(rec, ls);
             deprecated.retain(|l| !usage::loads_only(l, &own_names));
             let replacement = replacement_lits(rec, ls, &deprecated);
@@ -1533,7 +1534,15 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             let invoked = |l: &str| rec.r.replaces.iter().any(|x| x.replace('`', "").trim().ends_with("()") && clean_lit(x).as_deref() == Some(l));
             let ex_with = |l: &str, call: bool| exact_of(view, l, &replacement, broad.iter().any(|b| *b == l).then_some(&context[..]), keyed_api(&rec.r, ls, l), config, &succ, call, option_of(&rec.r, l), invoked(l), &named);
             let ex = |l: &str| ex_with(l, false);
-            let (cited, cite): (&[String], Cite) = if deprecated.is_empty() { (ls, &ev) } else { (&deprecated, &ex) };
+            // A removal cites what it removes under the usual evidence rule (`ev`): the deprecation rules of `exact_of`
+            // (replacement, namespace context, call keys) are about an API that still resolves.
+            let (cited, cite): (&[String], Cite) = if deprecated.is_empty() {
+                (ls, &ev)
+            } else if rec.r.change_type == ChangeType::Removal {
+                (&deprecated, &ev)
+            } else {
+                (&deprecated, &ex)
+            };
             // A lint rule this repository never turns on: none of the record's terms is a site (`rule_not_enabled`).
             let rule_off = !lint_ns.is_empty()
                 && rec.r.terms.iter().map(|t| &t.0).chain(&rec.r.replaces).any(|t| lint_ns.iter().any(|n| t.contains(n.as_str())))
@@ -1627,7 +1636,10 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             // no manifest or lockfile names reads no version of its own here (`version_of`), whatever its siblings run.
             let registry = comp.starts_with("pkg:npm/") || comp.starts_with("pkg:pypi/");
             let installed_here = !registry || version_of(&comp).is_some();
-            if opp.route == Route::AlreadyIncluded && installed_here && !deprecated.is_empty() && (opp.matched.iter().any(|(l, _)| !usage::plain_word(l)) || !calls.is_empty()) {
+            // A removal already installed is not owed this way: what it removed no longer resolves, so a match is
+            // another API of that name, not a use the code must still retire.
+            let deprecation = rec.r.change_type == ChangeType::Deprecation;
+            if opp.route == Route::AlreadyIncluded && installed_here && deprecation && !deprecated.is_empty() && (opp.matched.iter().any(|(l, _)| !usage::plain_word(l)) || !calls.is_empty()) {
                 opp.matched.retain(|(l, _)| !usage::plain_word(l));
                 opp.matched.extend(calls.iter().cloned());
                 opp.matched.sort();
@@ -3581,5 +3593,25 @@ mod tests {
         let cfg = m("vitest:config").into_iter().find(|(t, _)| t == "./config").map(|(_, f)| f).unwrap_or_default();
         assert_eq!(cfg, vec!["vitest.config.ts".to_string()]);
         assert_eq!(m("vitest:dir"), vec![("./tests".to_string(), vec!["package.json".to_string()])]);
+    }
+
+    #[test]
+    fn a_removal_that_names_what_it_removes_cites_only_that() {
+        let c = catalog(
+            "vitest",
+            0,
+            vec![with(
+                rec("vitest:userconfig", "pkg:npm/vitest", "5.0.0"),
+                json!({"change_type":"removal","breaking":true,"replaces":["UserConfig"],"terms":[["UserConfig",0],["ViteUserConfig",0],["defineConfig",0]]}),
+            )],
+        );
+        let s = stack(&[("vitest", "4.1.0")], None);
+        let l = Ledger::default();
+        let r = repo(&[("vitest.config.ts", "import { defineConfig } from 'vitest/config';\nexport default defineConfig({})\n")]);
+        let out = run_with(&c, &s, &r, &l);
+        assert!(out.opps[0].matched.is_empty(), "every config calls defineConfig: {:?}", out.opps[0].matched);
+        let r = repo(&[("vitest.config.ts", "import type { UserConfig } from 'vitest/config';\nexport const c: UserConfig = {};\n")]);
+        let out = run_with(&c, &s, &r, &l);
+        assert_eq!(out.opps[0].matched, vec![("UserConfig".to_string(), vec!["vitest.config.ts".to_string()])]);
     }
 }

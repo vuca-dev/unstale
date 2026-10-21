@@ -2421,11 +2421,23 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
         };
         let deprecated_here = deprecated.iter().find(|n| packages.iter().any(|p| p.eq_ignore_ascii_case(&n.name)));
         let breaking = |o: &funnel::Opp| o.rec.r.breaking || o.rec.r.change_type == ChangeType::Removal;
+        // A deprecation released on a newer major than the installed one, named at a site here: the upgrade crosses
+        // into the line that deprecates it, as with a breaking change (the major after often removes it).
+        let used_deprecation = |o: &funnel::Opp| {
+            o.rec.r.change_type == ChangeType::Deprecation && util::parse_version(&o.release.version).is_some_and(|v| major_step(&o.installed, &v))
+        };
         // How strongly the lead says something is wrong or will break here, within the consequential tier: what fails
         // now or an end-of-life install, then a reached advisory or a removal this code uses, then a runtime lockfile
         // advisory whose fix the install refuses, then a breaking change named at a site.
         let removal_named = || {
-            members.iter().copied().find(|&i| out.opps[i].rec.r.change_type == ChangeType::Removal && out.opps[i].route != funnel::Route::InEffect && site(&out.opps[i]).is_some())
+            // Uses it: a site of what it removes (`funnel::deprecated_lits`), not of a term the record names beside it.
+            members.iter().copied().find(|&i| {
+                let o = &out.opps[i];
+                o.rec.r.change_type == ChangeType::Removal
+                    && o.route != funnel::Route::InEffect
+                    && site(o).is_some()
+                    && !funnel::deprecated_lits(o.rec, &o.matched.iter().map(|(t, _)| t.clone()).collect::<Vec<_>>()).is_empty()
+            })
         };
         // A direct dependency's lockfile advisory, critical or high at runtime, whose fix a declared range or pin refuses:
         // the install cannot take the fix until the upgrade.
@@ -2457,7 +2469,16 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
         } else if let Some(it) = lock_runtime {
             weight = 2;
             Some(format!("security: the installed {} {} has a lockfile advisory ({}) the upgrade fixes", display_text(&it.name), display_text(&it.version), it.why.join(", ")))
-        } else if let Some(l) = members.iter().copied().filter(|&i| breaking(&out.opps[i]) && out.opps[i].route != funnel::Route::InEffect).find_map(|i| named("breaking", i)) {
+        } else if let Some(l) = members
+            .iter()
+            .copied()
+            .filter(|&i| (breaking(&out.opps[i]) || used_deprecation(&out.opps[i])) && out.opps[i].route != funnel::Route::InEffect && site(&out.opps[i]).is_some())
+            // The strongest evidence here names it (the record's rarity-weighted usage): a breaking change matched only
+            // by a term every user of the package writes (`defineConfig`) yields to the deprecated option this config
+            // sets (`test.poolOptions`).
+            .max_by(|&a, &b| out.opps[a].score.total_cmp(&out.opps[b].score).then(b.cmp(&a)))
+            .and_then(|i| named(if breaking(&out.opps[i]) { "breaking" } else { "deprecated by the upgrade" }, i))
+        {
             weight = 1;
             Some(l)
         } else {

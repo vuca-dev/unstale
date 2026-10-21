@@ -283,8 +283,14 @@ fn render_record(pass: Pass, o: &Opp) -> String {
                 format!("`{}` ({}{more})", one_line(&t.replace('`', ""), FIELD_MAX), f.join(", "))
             })
             .collect();
-        // A deprecation that names what it deprecates cites only that (`funnel::deprecated_lits`).
-        let what = if crate::funnel::deprecated_lits(o.rec, &o.matched.iter().map(|(t, _)| t.clone()).collect::<Vec<_>>()).is_empty() { "Matched terms" } else { "Deprecated API used here" };
+        // A deprecation or removal that names what it takes away cites only that (`funnel::deprecated_lits`).
+        let what = if crate::funnel::deprecated_lits(o.rec, &o.matched.iter().map(|(t, _)| t.clone()).collect::<Vec<_>>()).is_empty() {
+            "Matched terms"
+        } else if o.rec.r.change_type == unstale_schema::catalog::ChangeType::Removal {
+            "Removed API used here"
+        } else {
+            "Deprecated API used here"
+        };
         s += &format!("- {what}: {}\n", m.join("; "));
     }
     if !o.elsewhere.is_empty() {
