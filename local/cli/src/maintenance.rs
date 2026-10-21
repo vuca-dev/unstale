@@ -6,7 +6,10 @@
 //! repository (`central/src/pipeline/admission.ts`): a package with no release within its freshness window, or with
 //! an archived repository and no registry case, is not admitted, and its status says so. Only those packages are read
 //! here, once a week: the registry's newest release date (npm's packument `time`, PyPI's simple index upload times)
-//! decides the two years, and PyPI's project status (PEP 792) can say archived. Outputs read the cache only.
+//! decides the two years, and PyPI's project status (PEP 792) can say archived. The service also lists, for any
+//! package covered or not, the archived repositories that end it or one of its release lines (`Job::archived`): a
+//! direct dependency whose installed version names one of them is archived too, whatever its admission (codemirror
+//! 5's own repository is archived while the package goes on from another). Outputs read the cache only.
 //! `UNSTALE_NO_REGISTRY=1` turns the reads off. A package marked deprecated or yanked is under "Deprecated by the
 //! publisher", never here.
 
@@ -70,17 +73,40 @@ fn verdict(job: &Job) -> Option<bool> {
     }
 }
 
+/// `owner/name` (lowercase) of a GitHub repository URL as `deprecations::repository` writes it.
+fn github_slug(url: &str) -> Option<String> {
+    let rest = url.strip_prefix("https://github.com/")?;
+    let mut parts = rest.split('/');
+    Some(format!("{}/{}", parts.next()?, parts.next()?).to_ascii_lowercase())
+}
+
+/// The archived repository that ends the installed version's line: the one its own registry document names, when the
+/// coverage service lists it as archived (`Job::archived`: the package's repository, or an older line's own).
+fn archived_line(cache: &Path, job: &Job, purl: &str, version: &str) -> Option<String> {
+    if job.archived.is_empty() {
+        return None;
+    }
+    let slug = github_slug(&crate::deprecations::cached_repository(cache, purl, version)?)?;
+    job.archived.iter().any(|a| a.eq_ignore_ascii_case(&slug)).then_some(slug)
+}
+
 /// The public direct dependencies (as `deprecations::installed` reads them) the coverage service found stale or
-/// archived: `(purl, name, installed version, archived)`, one per package (its lowest installed version).
-fn candidates(st: &Stack, jobs: &BTreeMap<String, Job>) -> Vec<(String, String, String, bool)> {
+/// archived, or whose installed line's repository it found archived (covered or not):
+/// `(purl, name, installed version, archived, archived repository)`, one per package (its lowest installed version).
+fn candidates(cache: &Path, st: &Stack, jobs: &BTreeMap<String, Job>) -> Vec<(String, String, String, bool, Option<String>)> {
     let mut seen = BTreeSet::new();
     let mut out = vec![];
     for (purl, name, version) in crate::deprecations::installed(st) {
         if util::stub_package(&purl) || !seen.insert(purl.clone()) {
             continue;
         }
-        let Some(archived) = jobs.get(&purl).and_then(verdict) else { continue };
-        out.push((purl, name, version, archived));
+        let Some(job) = jobs.get(&purl) else { continue };
+        let line = archived_line(cache, job, &purl, &version);
+        let archived = match (verdict(job), &line) {
+            (None, None) => continue,
+            (v, line) => v == Some(true) || line.is_some(),
+        };
+        out.push((purl, name, version, archived, line));
     }
     out
 }
@@ -134,7 +160,7 @@ pub fn refresh(cache: &Path, st: &Stack, jobs: &BTreeMap<String, Job>) -> usize 
 
 /// `refresh` with the clock and the reader given (tests).
 pub fn refresh_with(cache: &Path, st: &Stack, jobs: &BTreeMap<String, Job>, at: u64, fetch: impl Fn(&str) -> Option<serde_json::Value> + Sync) -> usize {
-    let due: Vec<String> = candidates(st, jobs)
+    let due: Vec<String> = candidates(cache, st, jobs)
         .into_iter()
         .map(|c| c.0)
         .filter(|purl| cached(cache, purl).is_none_or(|c| at.saturating_sub(c.checked) >= FRESH_SECS))
@@ -156,17 +182,18 @@ pub fn refresh_with(cache: &Path, st: &Stack, jobs: &BTreeMap<String, Job>, at: 
 /// The unmaintained direct dependencies, from the statuses and the cache alone, by name. `today` is `YYYY-MM-DD`.
 pub fn notices(cache: &Path, st: &Stack, jobs: &BTreeMap<String, Job>, today: &str) -> Vec<Notice> {
     let Some(cutoff) = days_before(today, STALE_DAYS) else { return vec![] };
-    let mut out: Vec<Notice> = candidates(st, jobs)
+    let mut out: Vec<Notice> = candidates(cache, st, jobs)
         .into_iter()
-        .filter_map(|(purl, name, version, archived)| {
+        .filter_map(|(purl, name, version, archived, line)| {
             let c = cached(cache, &purl);
             let last = c.as_ref().and_then(|c| c.last_release.clone());
             let since = last.as_deref().map(|d| d.get(..10).unwrap_or(d).to_string());
             let old = since.as_deref().is_some_and(|d| d < cutoff.as_str());
             let archived = archived || c.as_ref().is_some_and(|c| c.archived);
+            let repo = line.map(|r| format!(" {r}")).unwrap_or_default();
             let why = match (archived, old) {
-                (true, true) => format!("upstream repository archived; no release since {}", since.unwrap_or_default()),
-                (true, false) => "upstream repository archived".to_string(),
+                (true, true) => format!("upstream repository{repo} archived; no release since {}", since.unwrap_or_default()),
+                (true, false) => format!("upstream repository{repo} archived"),
                 (false, true) => format!("no release since {}", since.unwrap_or_default()),
                 (false, false) => return None,
             };
@@ -261,5 +288,43 @@ mod tests {
             "pysher 1.0.8: upstream repository archived; no release since 2021-03-01",
         ], "a release within two years is not unmaintained (`modified` is no release)");
         assert_eq!(refresh_with(dir.path(), &st, &jobs, 2_000, |_| None), 0, "cached a week");
+    }
+
+    #[test]
+    fn an_installed_line_whose_own_repository_the_service_lists_archived_is_archived_covered_or_parked() {
+        let mut st = Stack::default();
+        for (purl, name, v) in [("pkg:npm/codemirror", "codemirror", "5.65.19"), ("pkg:npm/modern", "modern", "6.0.0"), ("pkg:npm/doctrine", "doctrine", "3.0.0")] {
+            let mut d = Dep::new(name, true);
+            d.pins.push(Pin { version: v.into(), hashes: vec!["sha512-x".into()] });
+            st.deps.insert(purl.into(), d);
+        }
+        let dir = tempfile::tempdir().unwrap();
+        // The repositories the installed versions' registry documents name (cached by the deprecation check).
+        for (purl, v, repo) in [("pkg:npm/codemirror", "5.65.19", "git+https://github.com/codemirror/CodeMirror.git"), ("pkg:npm/modern", "6.0.0", "https://github.com/codemirror/basic-setup"), ("pkg:npm/doctrine", "3.0.0", "https://github.com/eslint/doctrine")] {
+            crate::deprecations::note(dir.path(), purl, v, &serde_json::json!({"repository": {"url": repo}}));
+        }
+        let archived = |purl: &str, state: &str, stage: &str, repos: &[&str]| Job { archived: repos.iter().map(|r| r.to_string()).collect(), ..job(purl, state, stage) };
+        let jobs: BTreeMap<String, Job> = [
+            archived("pkg:npm/codemirror", "monitoring", "0 verified records", &["codemirror/codemirror"]),
+            // The same list, but the installed version is of the live line.
+            archived("pkg:npm/modern", "monitoring", "3 verified records", &["codemirror/codemirror"]),
+            archived("pkg:npm/doctrine", "blocked", "Not admitted for monitoring: no release in 365 days", &["eslint/doctrine"]),
+        ]
+        .into_iter()
+        .map(|j| (j.purl.clone(), j))
+        .collect();
+        let n = refresh_with(dir.path(), &st, &jobs, 1_000, |u| {
+            Some(match u {
+                "https://registry.npmjs.org/codemirror" => serde_json::json!({"versions": {"5.65.19": {}}, "time": {"5.65.19": "2026-01-01T00:00:00Z"}}),
+                "https://registry.npmjs.org/doctrine" => serde_json::json!({"versions": {"3.0.0": {}}, "time": {"3.0.0": "2018-11-10T00:00:00Z"}}),
+                _ => serde_json::json!({}),
+            })
+        });
+        assert_eq!(n, 2);
+        let lines: Vec<String> = notices(dir.path(), &st, &jobs, "2026-10-19").iter().map(|n| format!("{} {}: {} ({})", n.name, n.version, n.why, n.archived)).collect();
+        assert_eq!(lines, vec![
+            "codemirror 5.65.19: upstream repository codemirror/codemirror archived (true)",
+            "doctrine 3.0.0: upstream repository eslint/doctrine archived; no release since 2018-11-10 (true)",
+        ]);
     }
 }
