@@ -607,7 +607,9 @@ pub fn graphs(root: &Path, st: &Stack) -> Vec<Graph> {
         let fixture = !matches!(crate::usage::path_role(&g.file), crate::usage::Role::App | crate::usage::Role::Tooling);
         for n in &mut g.nodes {
             let purl = if g.eco == "PyPI" { crate::pypi::purl(&n.name) } else { util::npm_purl(&n.name) };
-            if own.contains(&n.name)
+            // A dependency the stack read as public (a lockfile fetched it from a registry) is no package of this
+            // repository's own, even when a manifest here shares its name.
+            if (own.contains(&n.name) && !st.deps.get(&purl).is_some_and(|d| d.public_candidate))
                 || st.deps.get(&purl).is_some_and(|d| !d.public_candidate)
                 || !st.registries.may_name(&purl, n.seen)
                 || (fixture && !st.fixture_registries.may_name(&purl, n.seen))

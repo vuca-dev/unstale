@@ -426,6 +426,119 @@ fn successor_words(r: &unstale_schema::catalog::CapabilityRecord) -> Vec<String>
     out
 }
 
+/// The lint tool and rule namespace a plugin package gives its rules, by the plugin naming convention every linter
+/// shares (ESLint, Stylelint, oxlint): `eslint-plugin-jsdoc` → (`eslint`, `jsdoc`), `@scope/eslint-plugin` →
+/// (`eslint`, `@scope`), `@scope/eslint-plugin-x` → (`eslint`, `@scope/x`).
+fn lint_namespace(package: &str) -> Option<(String, String)> {
+    let (scope, base) = match package.strip_prefix('@').and_then(|p| p.split_once('/')) {
+        Some((s, b)) => (Some(s), b),
+        None => (None, package),
+    };
+    let (tool, rest) = base.split_once("-plugin").filter(|(t, _)| !t.is_empty() && t.chars().all(|c| c.is_ascii_alphanumeric()))?;
+    let ns = match (scope, rest.strip_prefix('-')) {
+        (Some(s), None) if rest.is_empty() => format!("@{s}"),
+        (Some(s), Some(x)) if !x.is_empty() => format!("@{s}/{x}"),
+        (None, Some(x)) if !x.is_empty() => x.to_string(),
+        _ => return None,
+    };
+    Some((tool.to_string(), ns))
+}
+
+/// A lint plugin among a technology's packages, with the tool config files that refer to it (`lint_plugins`).
+struct LintPlugin<'r> {
+    /// The rule namespace with its slash (`jsdoc/`).
+    prefix: String,
+    configs: Vec<&'r str>,
+    /// A config uses one of the plugin's presets (`plugin:<ns>/…`, or `<binding>.configs` of the plugin's import).
+    preset: bool,
+}
+
+/// The technology's lint plugins (`lint_namespace`), each with the texts of the tool's config files
+/// (`usage::config_tool`) that refer to it by namespace or package name.
+fn lint_plugins<'r>(comps: &BTreeSet<String>, repo: &'r Repo) -> Vec<LintPlugin<'r>> {
+    let mut out = vec![];
+    for (tool, ns, pkg) in comps.iter().filter_map(|c| purl_name(c)).filter_map(|p| lint_namespace(&p).map(|(t, n)| (t, n, p))) {
+        let prefix = format!("{ns}/");
+        let configs: Vec<&str> = repo
+            .paths
+            .iter()
+            .filter(|p| usage::config_tool(p).as_deref() == Some(tool.as_str()))
+            .filter_map(|p| repo.text(p))
+            .filter(|t| t.contains(&prefix) || t.contains(pkg.as_str()))
+            .collect();
+        let preset = configs.iter().any(|t| t.contains(&format!("plugin:{prefix}")) || import_bindings(t, &pkg).iter().any(|b| t.contains(&format!("{b}.configs"))));
+        out.push(LintPlugin { prefix, configs, preset });
+    }
+    out
+}
+
+/// Whether a lint plugin's record is about rules this repository's lint configuration never turns on, so it has no
+/// site here (dolanmiu/docx: a `jsdoc/prefer-import-tag` change where `eslint.config.ts` enables only
+/// `jsdoc/check-alignment`; its other terms, `@param` and `@property`, are in every documented file). A record is
+/// rule-scoped when a term names a rule under the plugin's namespace. It is judged only where the tool's config files
+/// refer to the plugin: a rule is on when written with a value other than `off` / `0`, and every rule counts as on once
+/// a config uses one of the plugin's presets, whose rules are not visible here. A plugin loaded only through a shared
+/// config package is not judged (false).
+fn rule_not_enabled(r: &unstale_schema::catalog::CapabilityRecord, plugins: &[LintPlugin]) -> bool {
+    let rule = |c: char| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-';
+    for pl in plugins {
+        let ids: Vec<String> = r
+            .terms
+            .iter()
+            .map(|t| &t.0)
+            .chain(&r.replaces)
+            .filter_map(|t| clean_lit(t))
+            .filter(|l| l.strip_prefix(&pl.prefix).is_some_and(|x| !x.is_empty() && x.chars().all(rule)))
+            .collect();
+        if ids.is_empty() {
+            continue;
+        }
+        return !(pl.configs.is_empty() || pl.preset || ids.iter().any(|id| pl.configs.iter().any(|t| rule_on(t, id))));
+    }
+    false
+}
+
+/// Whether a config text sets rule `id` (quoted, as a key) to a value other than `off` or `0`.
+fn rule_on(text: &str, id: &str) -> bool {
+    for q in ['"', '\'', '`'] {
+        let key = format!("{q}{id}{q}");
+        for (i, _) in text.match_indices(&key) {
+            let rest = text[i + key.len()..].trim_start();
+            let Some(rest) = rest.strip_prefix(':') else { continue };
+            let v = rest.trim_start().trim_start_matches('[').trim_start().trim_start_matches(['"', '\'', '`']);
+            let off = v.starts_with("off") || (v.starts_with('0') && !v[1..].starts_with(|c: char| c.is_ascii_digit()));
+            if !off {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// The names a JavaScript config binds a package's import to (`import jsdoc from 'eslint-plugin-jsdoc'`,
+/// `import * as jsdoc from …`, `const jsdoc = require('eslint-plugin-jsdoc')`).
+fn import_bindings(text: &str, pkg: &str) -> Vec<String> {
+    let mut out = vec![];
+    for line in text.lines() {
+        let t = line.trim();
+        if ![format!("'{pkg}'"), format!("\"{pkg}\"")].iter().any(|q| t.contains(q.as_str())) {
+            continue;
+        }
+        let head = if let Some(r) = t.strip_prefix("import ") {
+            r.split(" from").next().unwrap_or("").trim_start_matches("* as ").trim()
+        } else if let Some(r) = t.strip_prefix("const ").or_else(|| t.strip_prefix("let ")).or_else(|| t.strip_prefix("var ")) {
+            r.split('=').next().unwrap_or("").trim()
+        } else {
+            continue;
+        };
+        let name: String = head.chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '$').collect();
+        if !name.is_empty() {
+            out.push(name);
+        }
+    }
+    out
+}
+
 /// The key a configuration record's deprecated option value `lit` belongs to: the record's subject, when the record is
 /// about one facet of it (ESLint's `radix` rule, facet `as-needed`) and `lit` is not the subject itself. Such a value
 /// counts only where written under that key (`usage::under_key`): `as-needed` is an option of many rules.
@@ -1262,6 +1375,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             }
         };
         let lines = Lines::new(&td.index.releases);
+        let plugins = lint_plugins(comps, inp.repo);
         for (ri, (rec, ls)) in td.records.iter().zip(lits).enumerate() {
             // The releases of the packages this repository uses; else of the technology's own packages (a record names
             // every component, and the repository uses at least one). A record about other packages of the technology's
@@ -1375,11 +1489,15 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             let ex_with = |l: &str, call: bool| exact_of(view, l, &replacement, broad.iter().any(|b| *b == l).then_some(&context[..]), keyed_api(&rec.r, ls, l), config, &succ, call, option_of(&rec.r, l), invoked(l));
             let ex = |l: &str| ex_with(l, false);
             let (cited, cite): (&[String], Cite) = if deprecated.is_empty() { (ls, &ev) } else { (&deprecated, &ex) };
+            // A lint rule this repository never turns on: none of the record's terms is a site (`rule_not_enabled`).
+            let rule_off = rule_not_enabled(&rec.r, &plugins);
+            let cited: &[String] = if rule_off { &[] } else { cited };
             let found: Vec<(String, Rc<usage::Evidence>)> = cited.iter().map(|l| (l.clone(), cite(l))).filter(|(_, e)| !e.files.is_empty()).collect();
             let more: BTreeMap<String, usize> = found.iter().filter(|(_, e)| e.more > 0).map(|(l, e)| (l.clone(), e.more)).collect();
             let matched: Vec<(String, Vec<String>)> = found.into_iter().map(|(l, e)| (l, e.files.iter().map(|(p, _)| p.clone()).collect())).collect();
             let score = ls
                 .iter()
+                .filter(|_| !rule_off)
                 .filter_map(|l| Some(ev(l)).filter(|e| e.used).map(|e| weight(l) * if e.app { 1.0 } else { NON_APP_WEIGHT }))
                 .sum::<f64>();
             let files = files_of(cited, cite);
@@ -2068,6 +2186,48 @@ mod tests {
         let out = run_with(&c, &s, &r, &l);
         let o = out.opps.iter().find(|o| o.id() == "pytest:hook-markers").unwrap();
         assert_eq!((&o.route, &o.matched), (&Route::InEffect, &vec![("pytest.mark".to_string(), vec!["plugin/plugin.py".to_string()])]));
+    }
+
+    #[test]
+    fn a_lint_rule_record_has_no_site_where_the_config_never_turns_the_rule_on() {
+        // dolanmiu/docx: `jsdoc/prefer-import-tag` changed; eslint.config.ts turns on only `jsdoc/check-alignment`, and
+        // `@param` is in every documented file.
+        let r = with(
+            rec("jsdoc:prefer-import-tag", "pkg:npm/eslint-plugin-jsdoc", "65.3.15"),
+            json!({"change_type":"fix","breaking":true,"surface":"configuration","terms":[["jsdoc/prefer-import-tag",0],["prefer-import-tag",0],["@param",0]]}),
+        );
+        let (l, c) = (Ledger::default(), catalog("eslint-plugin-jsdoc", 0, vec![r]));
+        let s = stack(&[("eslint-plugin-jsdoc", "65.3.8")], None);
+        let code = ("src/a.ts", "/**\n * @param x the value\n */\nexport const f = (x: number) => x;\n");
+        let matched = |config: &str| {
+            let r = repo(&[("eslint.config.ts", config), code]);
+            let out = run_with(&c, &s, &r, &l);
+            out.opps.iter().find(|o| o.id() == "jsdoc:prefer-import-tag").map(|o| o.matched.clone()).unwrap_or_default()
+        };
+        let head = "import jsdoc from 'eslint-plugin-jsdoc';\nexport default [{ plugins: { jsdoc }, rules: { ";
+        assert!(matched(&format!("{head}'jsdoc/check-alignment': 'error', 'jsdoc/check-indentation': 'off' }} }}];")).is_empty(), "rule never on: no site");
+        assert!(matched(&format!("{head}'jsdoc/prefer-import-tag': 'off' }} }}];")).is_empty(), "turned off: no site");
+        assert!(!matched(&format!("{head}'jsdoc/prefer-import-tag': ['error', {{}}] }} }}];")).is_empty(), "turned on: sites");
+        // A preset may turn it on: judged as usual, not ruled out.
+        let comps: BTreeSet<String> = ["pkg:npm/eslint-plugin-jsdoc".to_string()].into();
+        let off = |config: &str| {
+            let r = repo(&[("eslint.config.ts", config), code]);
+            rule_not_enabled(&c.techs["eslint-plugin-jsdoc"].records[0].r, &lint_plugins(&comps, &r))
+        };
+        assert!(!off("import jsdoc from 'eslint-plugin-jsdoc';\nexport default [jsdoc.configs['flat/recommended']];"));
+        assert!(!off("module.exports = { extends: ['plugin:jsdoc/recommended'] };"));
+        assert!(off(&format!("{head}'jsdoc/check-alignment': 'error' }} }}];")));
+        assert!(!off("export default [];"), "a plugin the config never names (a shared config's) is not judged");
+    }
+
+    #[test]
+    fn lint_namespaces_follow_the_plugin_naming_convention() {
+        assert_eq!(lint_namespace("eslint-plugin-jsdoc"), Some(("eslint".into(), "jsdoc".into())));
+        assert_eq!(lint_namespace("@typescript-eslint/eslint-plugin"), Some(("eslint".into(), "@typescript-eslint".into())));
+        assert_eq!(lint_namespace("@scope/eslint-plugin-x"), Some(("eslint".into(), "@scope/x".into())));
+        assert_eq!(lint_namespace("stylelint-plugin-foo"), Some(("stylelint".into(), "foo".into())));
+        assert_eq!(lint_namespace("eslint"), None);
+        assert_eq!(lint_namespace("@vitejs/plugin-react"), None);
     }
 
     #[test]

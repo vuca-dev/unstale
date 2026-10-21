@@ -595,7 +595,9 @@ pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
                 };
                 // A package of this repository (a workspace, a path): never public, and its locked version is a
                 // placeholder (Yarn 2+ `0.0.0-use.local`), not a pin the range could say is out of date.
-                let local = is_local(&local_names, name, range);
+                // A manifest of the same name in this repository (a stub or fixture named `electron`) does not make
+                // a dependency local when its lockfile fetched it from a registry: that one is the public package.
+                let local = is_local(&local_names, name, range) && (local_protocol(range) || !lock.as_ref().is_some_and(|(_, l)| l.fetched(name)));
                 // What a library's users install (its dependencies and peers) may resolve anywhere in the declared
                 // range, the peer range when it declares one: the reading keeps that range, so code written for
                 // the range is cited for any version in it. Its version is still what this repository's own code
@@ -784,8 +786,12 @@ fn alias_target(range: &str) -> Option<&str> {
 /// A dependency on a package of this repository (by name or by a local protocol): never public, and never compared
 /// with what a lockfile records for it.
 fn is_local(local_names: &BTreeSet<String>, name: &str, range: &str) -> bool {
-    local_names.contains(name)
-        || ["workspace:", "file:", "link:", "git:", "git+", "github:", "https:", "http:", "../", "./"].iter().any(|p| range.starts_with(p))
+    local_names.contains(name) || local_protocol(range)
+}
+
+/// A range naming a workspace, a path, git or a URL rather than a registry version.
+fn local_protocol(range: &str) -> bool {
+    ["workspace:", "file:", "link:", "git:", "git+", "github:", "https:", "http:", "../", "./"].iter().any(|p| range.starts_with(p))
 }
 
 fn rel_dir(base: &Path, dir: &Path) -> String {
@@ -1188,6 +1194,12 @@ impl Lock {
     fn saw(&mut self, name: &str, seen: Seen) {
         let e = self.seen.entry(name.to_string()).or_default();
         *e = e.and(seen);
+    }
+
+    /// Whether the lockfile installs `name` from a registry (a public `resolved` URL, or a tarball's integrity hash),
+    /// not as a link to a directory of this repository.
+    pub fn fetched(&self, name: &str) -> bool {
+        self.seen.get(name) == Some(&Seen::Public) || self.integrity.keys().any(|(n, _)| n == name)
     }
 
     fn add_integrity(&mut self, name: &str, version: &Version, integrity: &str) {
@@ -1675,6 +1687,26 @@ mod tests {
         let p = dir.join(rel);
         std::fs::create_dir_all(p.parent().unwrap()).unwrap();
         std::fs::write(p, text).unwrap();
+    }
+
+    #[test]
+    fn a_registry_package_is_public_beside_a_local_manifest_of_the_same_name() {
+        // Kong/insomnia: `send-request/electron/package.json` is a local stub named `electron`; the app declares
+        // `electron: 43.2.0`, which package-lock.json fetches from the registry.
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "package.json", r#"{"name":"root","private":true,"workspaces":["packages/*"]}"#);
+        write(d.path(), "packages/app/package.json", r#"{"name":"app","private":true,"devDependencies":{"electron":"43.2.0","shared":"1.0.0"}}"#);
+        write(d.path(), "packages/app/stub/electron/package.json", r#"{"name":"electron","main":"index.js"}"#);
+        write(d.path(), "packages/shared/package.json", r#"{"name":"shared","version":"1.0.0"}"#);
+        write(d.path(), "package-lock.json", r#"{"lockfileVersion":3,"packages":{"":{"name":"root"},
+            "packages/app":{"name":"app"},"packages/shared":{"name":"shared","version":"1.0.0"},
+            "node_modules/shared":{"resolved":"packages/shared","link":true},
+            "node_modules/electron":{"version":"43.2.0","resolved":"https://registry.npmjs.org/electron/-/electron-43.2.0.tgz","integrity":"sha512-abc"}}}"#);
+        let s = detect(d.path()).unwrap();
+        let e = &s.deps["pkg:npm/electron"];
+        assert!(e.public_candidate, "fetched from the registry");
+        assert_eq!(e.version.as_ref().map(ToString::to_string).as_deref(), Some("43.2.0"));
+        assert!(!s.deps["pkg:npm/shared"].public_candidate, "a workspace link stays local");
     }
 
     #[test]
