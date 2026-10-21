@@ -679,6 +679,42 @@ pub struct Doc {
     pub fixed: Vec<(String, String, Vec<String>)>,
     #[serde(default)]
     pub withdrawn: bool,
+    /// The versions the record's prose says patch or fix it ("This is patched in version 0.2.118 and 1.0.0-rc.33"):
+    /// a range that spans release lines (`introduced 0`, `last_affected 1.0.0-rc.32`) can name no fix for the
+    /// installed line in its events while the text does (`stated_fixes`).
+    #[serde(default)]
+    pub stated_fixed: Vec<String>,
+    /// `DOC_SCHEMA` when read: a cached record read before a field was added is fetched again.
+    #[serde(default)]
+    pub schema: u8,
+}
+
+/// The `Doc` fields' version: bumped when a field is added, so cached records are read again once.
+const DOC_SCHEMA: u8 = 2;
+
+/// The versions a record's details text names in a sentence saying the issue is patched or fixed, in order.
+fn stated_fixed(details: &str) -> Vec<String> {
+    let mut out: Vec<String> = vec![];
+    // Sentences end at a period followed by a space or newline; versions keep their own periods.
+    let mut rest = details;
+    while !rest.is_empty() {
+        let end = rest.find(". ").or_else(|| rest.find(".\n")).or_else(|| rest.find('\n')).map_or(rest.len(), |i| i + 1);
+        let sentence = &rest[..end];
+        rest = &rest[end..];
+        let lower = sentence.to_ascii_lowercase();
+        let fix_sentence = lower.contains("patched") || lower.contains("fixed in") || lower.contains("fixed version") || lower.contains("upgrade to");
+        let words: Vec<&str> = sentence.split(|c: char| c.is_whitespace() || matches!(c, ',' | ';' | '(' | ')' | '`' | '\'' | '"')).filter(|w| !w.is_empty()).collect();
+        for (k, word) in words.iter().enumerate() {
+            let w = word.trim_end_matches('.').trim_start_matches(['v', 'V']);
+            let numeric = w.split('.').count() >= 2 && w.starts_with(|c: char| c.is_ascii_digit());
+            // "lib0 before 0.2.119", "versions prior to 2.1.0": the CVE list's phrasing for the first fixed release.
+            let before = k >= 1 && words[k - 1].eq_ignore_ascii_case("before") || k >= 2 && words[k - 2].eq_ignore_ascii_case("prior") && words[k - 1].eq_ignore_ascii_case("to");
+            if numeric && (fix_sentence || before) && !out.iter().any(|x| x == w) {
+                out.push(w.to_string());
+            }
+        }
+    }
+    out
 }
 
 /// The parts of an OSV record used here.
@@ -732,6 +768,8 @@ pub fn read_osv(v: &Value) -> Doc {
         aliases: v.get("aliases").and_then(Value::as_array).into_iter().flatten().filter_map(|a| a.as_str().map(String::from)).collect(),
         fixed,
         withdrawn: v.get("withdrawn").is_some(),
+        stated_fixed: stated_fixed(&s("/details")),
+        schema: DOC_SCHEMA,
     }
 }
 
@@ -893,6 +931,12 @@ pub fn evaluate(
                     .flat_map(|(_, _, f)| f.iter().filter_map(|v| parse_ver(g.eco, v)))
                     .filter(|v| *v > installed)
                     .collect();
+                // No fix in the ranges' events: the versions the record's text states as patched, on the installed
+                // version's release line only (same major; same minor below 1.0), as an upgrade within it clears it.
+                if fixes.is_empty() {
+                    let line = |v: &Version| if v.major == 0 { (0, v.minor) } else { (v.major, 0) };
+                    fixes = d.stated_fixed.iter().filter_map(|v| parse_ver(g.eco, v)).filter(|v| *v > installed && line(v) == line(&installed) && v.pre.is_empty()).collect();
+                }
                 fixes.sort();
                 fixes.dedup();
                 let mut why = vec![];
@@ -1195,7 +1239,7 @@ pub fn refresh_with(
     for (id, m) in &need {
         match read_json::<Doc>(&doc_path(cache, id)) {
             // The batch states `modified` to the microsecond, the record to the nanosecond.
-            Some(d) if d.modified.trim_end_matches('Z').starts_with(m.trim_end_matches('Z')) => {
+            Some(d) if d.schema == DOC_SCHEMA && d.modified.trim_end_matches('Z').starts_with(m.trim_end_matches('Z')) => {
                 docs.insert(id.clone(), d);
             }
             _ => fetch.push(id.clone()),
@@ -1437,6 +1481,8 @@ mod tests {
             aliases: aliases.iter().map(|a| a.to_string()).collect(),
             fixed: fixed.iter().map(|(e, n, f)| (e.to_string(), n.to_string(), f.iter().map(|x| x.to_string()).collect())).collect(),
             withdrawn: false,
+            stated_fixed: vec![],
+            schema: DOC_SCHEMA,
         }
     }
 
@@ -1708,6 +1754,27 @@ mod tests {
         let g = npm_lock(NPM_LOCK, ".buildkite", ".buildkite/package-lock.json");
         let docs = [("GHSA-proxy", doc(Some(Severity::High), "2025-01-01T00:00:00Z", &[("npm", "proxy-addr", &["2.0.8"])], &[]))];
         assert_eq!(run(g, &docs, &[("proxy-addr", "2.0.7", &["GHSA-proxy"])], "2026-10-18").1, vec![], "high, fix admitted, old, and only a CI script runs it");
+    }
+
+    /// ueberdosis/tiptap: lib0's CVE-2026-102360 has one range `introduced 0`, `last_affected 1.0.0-rc.32` over two
+    /// release lines, and its text says "patched in version 0.2.118 and 1.0.0-rc.33": 0.2.117 has a fix on its line.
+    #[test]
+    fn a_fix_stated_in_the_text_counts_on_the_installed_line() {
+        assert_eq!(stated_fixed("Unbounded read.\n\nThis is patched in version 0.2.118 and 1.0.0-rc.33. Upgrade soon."), vec!["0.2.118", "1.0.0-rc.33"]);
+        assert!(stated_fixed("Affects 1.2.3 and later. No patch is available.").is_empty());
+        assert_eq!(stated_fixed("The decoder in `readFromDataView` in lib0 before 0.2.119 can read past its view."), vec!["0.2.119"]);
+        let g = npm_lock(NPM_LOCK, ".", "package-lock.json");
+        let mut d = doc(Some(Severity::High), "2025-01-01T00:00:00Z", &[], &[]);
+        d.stated_fixed = vec!["2.0.8".into(), "3.0.0-rc.1".into()];
+        let (_, items) = run(g, &[("GHSA-proxy", d.clone())], &[("proxy-addr", "2.0.7", &["GHSA-proxy"])], "2026-10-18");
+        assert_eq!(items.len(), 1);
+        assert!(!items[0].why.iter().any(|w| w.starts_with("no fixed version")), "{:?}", items[0].why);
+        assert_eq!(items[0].fix.as_ref().map(|v| v.to_string()), Some("2.0.8".to_string()));
+        // Only another line's release stated: still no fix for this one.
+        d.stated_fixed = vec!["3.0.1".into()];
+        let g = npm_lock(NPM_LOCK, ".", "package-lock.json");
+        let (_, items) = run(g, &[("GHSA-proxy", d)], &[("proxy-addr", "2.0.7", &["GHSA-proxy"])], "2026-10-18");
+        assert!(items[0].why.iter().any(|w| w.starts_with("no fixed version")), "{:?}", items[0].why);
     }
 
     #[test]

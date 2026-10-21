@@ -1198,6 +1198,34 @@ fn unlocked(out: &Outcome) -> BTreeMap<String, Vec<usize>> {
     }
     by
 }
+/// Whether `term` is an import of one of `packages` (`from fastapi import FastAPI`, `import yaml`, `require('x')`):
+/// any use of the package, not of a change in it. An import of another package (`from typing_extensions import`,
+/// which aiosqlite stopped depending on) stays a site.
+fn imports_own(term: &str, packages: &[String]) -> bool {
+    let squash = |s: &str| s.chars().filter(char::is_ascii_alphanumeric).collect::<String>().to_ascii_lowercase();
+    let t = term.trim();
+    let module = if let Some(r) = t.strip_prefix("from ") {
+        r.split_whitespace().next()
+    } else if let Some(r) = t.strip_prefix("import ") {
+        r.split_whitespace().last().filter(|m| !m.contains(['{', '}', '*']))
+    } else if let Some(r) = t.strip_prefix("require(") {
+        Some(r)
+    } else {
+        None
+    };
+    let Some(m) = module else { return false };
+    let m = m.trim_matches(|c: char| matches!(c, '\'' | '"' | '`' | '(' | ')' | ';'));
+    let root = m.split('.').next().unwrap_or(m);
+    let root = if m.starts_with('@') { m.splitn(3, '/').take(2).collect::<Vec<_>>().join("/") } else { root.split('/').next().unwrap_or(root).to_string() };
+    !root.is_empty() && packages.iter().any(|p| squash(p) == squash(&root) || squash(p.rsplit('/').next().unwrap_or(p)) == squash(&root))
+}
+
+/// A type declaration file (`.d.ts`, `.pyi`): it describes an API and never runs, so an advisory's affected API
+/// written there is not reached, and a package used only there is not used at runtime.
+fn declaration_file(name: &str) -> bool {
+    let n = name.to_ascii_lowercase();
+    [".d.ts", ".d.mts", ".d.cts", ".pyi"].iter().any(|x| n.ends_with(x))
+}
 fn specific_reference(term: &str, stack: &stack::Stack) -> bool {
     let plain_tag = term
         .strip_prefix('<')
@@ -1216,17 +1244,26 @@ fn specific_reference(term: &str, stack: &stack::Stack) -> bool {
     if term.chars().all(|c| c.is_ascii_lowercase()) || usage::plain_word(term) {
         return false;
     }
+    // A plain word with trailing punctuation (`https://`, `config:`) is that word.
+    let bare = term.trim_end_matches(|c: char| !c.is_ascii_alphanumeric());
+    if bare.len() < term.len() && (bare.is_empty() || bare.chars().all(|c| c.is_ascii_lowercase())) {
+        return false;
+    }
     let ext = Path::new(term)
         .extension()
         .and_then(|s| s.to_str())
         .unwrap_or("");
+    // A file name (`pyproject.toml`, `tsconfig.json`) is where a change may apply, not a use of it; the package's own
+    // name, however written (`sanitizeHtml` for `sanitize-html`), is any use of the package, not of the change.
+    let squash = |s: &str| s.chars().filter(char::is_ascii_alphanumeric).collect::<String>().to_ascii_lowercase();
     !matches!(
         ext,
         "json" | "js" | "mjs" | "cjs" | "ts" | "tsx" | "jsx" | "astro" | "css" | "yaml" | "yml"
-    ) && !stack
-        .deps
-        .values()
-        .any(|d| d.name.eq_ignore_ascii_case(term))
+    ) && !usage::file_name(term)
+        && !stack
+            .deps
+            .values()
+            .any(|d| d.name.eq_ignore_ascii_case(term) || squash(d.name.rsplit('/').next().unwrap_or(&d.name)) == squash(term))
 }
 fn highlight_indices(out: &Outcome, w: &World) -> Vec<usize> {
     let mut ranked: Vec<(usize, i64)> = out
@@ -2044,6 +2081,7 @@ fn signals<'r>(
             && !name.contains(".config.")
             && !name.starts_with('.')
             && !matches!(name, "conf.py" | "setup.py" | "noxfile.py" | "conftest.py")
+            && !declaration_file(name)
             && w.repo.role(f) == usage::Role::App
     };
     for (key, items) in own {
@@ -2349,6 +2387,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
             let name = f.rsplit('/').next().unwrap_or(f);
             (usage::own_code(f, "npm") || usage::own_code(f, "pypi"))
                 && !name.contains(".config.") && !name.starts_with('.') && !matches!(name, "conf.py" | "setup.py" | "noxfile.py" | "conftest.py")
+                && !declaration_file(name)
         };
         let runtime = facts.runtime || (!facts.dev_only && members.iter().any(|&i| out.opps[i].files.iter().any(|f| code(f) && w.repo.role(f) == usage::Role::App)));
         // What holds the fix back: a pin or override in an application manifest, else the range the lockfile
@@ -2411,7 +2450,12 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
         // The upgrade takes the label and rank of its most consequential named change (the impact table the A/B judge
         // shares): counts alone name nothing this code hits.
         let site = |o: &funnel::Opp| -> Option<(String, String)> {
-            let mut hits: Vec<(&String, &String)> = o.matched.iter().filter(|(t, _)| specific_reference(t, &w.stack)).flat_map(|(t, fs)| fs.iter().map(move |f| (t, f))).collect();
+            let mut hits: Vec<(&String, &String)> = o
+                .matched
+                .iter()
+                .filter(|(t, _)| specific_reference(t, &w.stack) && !imports_own(t, &packages))
+                .flat_map(|(t, fs)| fs.iter().map(move |f| (t, f)))
+                .collect();
             hits.sort_by_key(|(_, f)| w.repo.role(f));
             hits.first().map(|(t, f)| (t.to_string(), f.to_string()))
         };
@@ -2914,7 +2958,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
             .map_err(|_| anyhow!("could not prepare review context"))?;
         review::write_skill(
             &pass.skill_path(&ctx.tool),
-            &review::render(&view, &out, &w.catalog),
+            &review::render(&view, &out, &w.catalog, &deprecated),
         )?;
     }
     state.save(&ctx.tool)?;
@@ -4479,6 +4523,18 @@ mod tests {
         assert!(!specific_reference("connection", &st));
         assert!(specific_reference("cacheLife", &st));
         assert!(specific_reference("client.beta.agents.environments", &st));
+        // A config file's name, a word with trailing punctuation, and the package's own name are not the change.
+        assert!(!specific_reference("pyproject.toml", &st));
+        assert!(!specific_reference("https://", &st) && !specific_reference("config:", &st));
+        assert!(specific_reference("next lint", &st) && specific_reference("<Legend", &st));
+        let mut st = st;
+        st.deps.insert("pkg:npm/sanitize-html".into(), crate::stack::Dep::new("sanitize-html", true));
+        assert!(!specific_reference("sanitizeHtml", &st));
+        // An import of the technology's own package is any use of it; another package's import is a site.
+        let own = vec!["fastapi".to_string()];
+        assert!(imports_own("from fastapi import FastAPI", &own) && imports_own("import fastapi", &own) && imports_own("require('fastapi')", &own));
+        assert!(!imports_own("from typing_extensions import", &own) && !imports_own("FastAPI", &own));
+        assert!(declaration_file("auth.pyi") && declaration_file("index.d.ts") && !declaration_file("auth.py"));
     }
     #[test]
     fn coverage_explains_ownership_and_issue_draft_omits_context() {
