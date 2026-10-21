@@ -793,45 +793,70 @@ fn service_available(service: &str) -> bool {
 /// hashes, it serves those same bytes at each locked version. A private registry's package whose name someone
 /// published publicly fails the hash check and is never submitted (its catalog would be the other package's notes).
 fn fetch(url: String) -> Option<serde_json::Value> {
-    let mut r = agent().get(url).call().ok().filter(|r| r.status().is_success())?;
-    let bytes = r.body_mut().with_config().limit(4 * 1024 * 1024).read_to_vec().ok()?;
-    serde_json::from_slice(&bytes).ok()
+    read_doc(url).ok().flatten()
 }
-fn public_package(cache: &Path, purl: &str, pins: &[stack::Pin]) -> bool {
+/// A registry document: `Ok(None)` when the registry answers that it has none (a 4xx other than a limit or a
+/// timeout), `Err` when it gave no answer (no connection, a limit, a server failure, an unreadable body).
+struct Unanswered;
+fn read_doc(url: String) -> std::result::Result<Option<serde_json::Value>, Unanswered> {
+    let mut r = agent().get(url).call().map_err(|_| Unanswered)?;
+    let status = r.status().as_u16();
+    if !r.status().is_success() {
+        return if (400..500).contains(&status) && !matches!(status, 408 | 425 | 429) { Ok(None) } else { Err(Unanswered) };
+    }
+    let bytes = r.body_mut().with_config().limit(4 * 1024 * 1024).read_to_vec().map_err(|_| Unanswered)?;
+    serde_json::from_slice(&bytes).map(Some).map_err(|_| Unanswered)
+}
+/// Whether every document `check` reads says yes: `None` when none says no but some went unanswered, so the
+/// identity is asked again rather than taken as not public.
+fn all_answered<T>(items: &[T], mut check: impl FnMut(&T) -> std::result::Result<bool, Unanswered>) -> Option<bool> {
+    let mut unanswered = false;
+    for it in items {
+        match check(it) {
+            Ok(false) => return Some(false),
+            Ok(true) => {}
+            Err(Unanswered) => unanswered = true,
+        }
+    }
+    (!unanswered).then_some(true)
+}
+/// Whether a package is the public one (see `fetch`): `None` when the registry did not answer (a rate limit, the
+/// network), which is no answer about the package; such a package is checked again, never dropped as private.
+fn public_package(cache: &Path, purl: &str, pins: &[stack::Pin]) -> Option<bool> {
     // No third-party lookup (`UNSTALE_NO_REGISTRY=1`): nothing is verified, so nothing is submitted.
     if crate::privacy::registry_off() {
-        return false;
+        return Some(false);
     }
     // PyPI has no private packages: a project page for the normalised name is the public identity.
     if let Some(name) = purl.strip_prefix("pkg:pypi/") {
         if pins.is_empty() {
-            return fetch(format!("https://pypi.org/pypi/{}/json", encode(name))).is_some();
+            return read_doc(format!("https://pypi.org/pypi/{}/json", encode(name))).ok().map(|v| v.is_some());
         }
-        return pins.iter().all(|pin| {
-            fetch(format!("https://pypi.org/pypi/{}/{}/json", encode(name), encode(&pin.version))).is_some_and(|v| {
+        return all_answered(pins, |pin| {
+            Ok(read_doc(format!("https://pypi.org/pypi/{}/{}/json", encode(name), encode(&pin.version)))?.is_some_and(|v| {
                 // The same document says whether the version is yanked: kept, so the deprecation check does not ask.
                 crate::deprecations::note(cache, purl, &pin.version, &v);
                 v.get("urls").and_then(|u| u.as_array()).into_iter().flatten().filter_map(|f| f.pointer("/digests/sha256").and_then(|d| d.as_str())).any(|d| pin.hashes.contains(&format!("sha256:{d}")))
-            })
+            }))
         });
     }
     let Some(name) = util::npm_name(purl) else {
-        return false;
+        return Some(false);
     };
     let public = |v: &serde_json::Value| v.get("name").and_then(|n| n.as_str()) == Some(&name) && v.get("private").and_then(|p| p.as_bool()) != Some(true);
     let verified = if pins.is_empty() {
-        fetch(format!("https://registry.npmjs.org/{}/latest", encode(&name))).is_some_and(|v| public(&v))
+        read_doc(format!("https://registry.npmjs.org/{}/latest", encode(&name))).ok().map(|v| v.is_some_and(|v| public(&v)))
     } else {
-        pins.iter().all(|pin| {
-            fetch(format!("https://registry.npmjs.org/{}/{}", encode(&name), encode(&pin.version))).is_some_and(|v| {
+        all_answered(pins, |pin| {
+            Ok(read_doc(format!("https://registry.npmjs.org/{}/{}", encode(&name), encode(&pin.version)))?.is_some_and(|v| {
                 // The same document carries the version's `deprecated` message: kept for the deprecation check.
                 crate::deprecations::note(cache, purl, &pin.version, &v);
                 public(&v) && v.pointer("/dist/integrity").and_then(|i| i.as_str()).is_some_and(|i| i.split_whitespace().any(|h| pin.hashes.iter().any(|x| x == h)))
-            })
+            }))
         })
     };
     // An anonymous read served it: the advisory check need not ask again (`privacy::confirm_public`).
-    if verified {
+    if verified == Some(true) {
         crate::privacy::note_public(cache, purl, unix_now());
     }
     verified
@@ -1367,15 +1392,36 @@ fn highlight_indices(out: &Outcome, w: &World) -> Vec<usize> {
 fn walled_off(o: &funnel::Opp) -> bool {
     o.requires_miss
 }
-fn friendly(id: &str, pending: &Pending) -> String {
+fn friendly(id: &str, pending: &Pending, out: &funnel::Outcome) -> String {
     let jobs: Vec<&Job> = pending.jobs.values().filter(|j| j.technology == id).collect();
     let Some(first) = jobs.first() else { return id.to_string() };
     // Covered through a sibling package's index (`@babel/register` by `@babel/cli`'s): the packages installed here.
-    if jobs.iter().any(|j| installed_name(j) == j.name) {
+    if own_index_installed(&jobs, id, out) {
         return first.name.clone();
     }
     let names: BTreeSet<String> = jobs.iter().map(|j| installed_name(j)).collect();
+    // A type stub names its technology only when nothing else of it is installed (`@types/eslint` beside `eslint`).
+    let runtime: BTreeSet<String> = names.iter().filter(|n| !stub_name(n)).cloned().collect();
+    let runtime = if runtime.is_empty() {
+        installed_of(id, out).iter().filter(|n| !stub_name(n)).cloned().collect()
+    } else {
+        runtime
+    };
+    let names = if runtime.is_empty() { names } else { runtime };
     names.into_iter().collect::<Vec<_>>().join(", ")
+}
+fn stub_name(n: &str) -> bool {
+    n.starts_with("@types/") || n.starts_with("types-") || n.ends_with("-stubs")
+}
+/// The technology's packages this repository installs (`funnel::Outcome::packages`), whether or not a coverage job
+/// was registered for each.
+fn installed_of<'a>(id: &str, out: &'a funnel::Outcome) -> &'a [String] {
+    out.packages.get(id).map_or(&[], |p| p.as_slice())
+}
+/// Whether the package a technology's index is named after is installed here: a job for it, or the package itself
+/// installed beside a type stub whose job alone was registered (eslint beside `@types/eslint`).
+fn own_index_installed(jobs: &[&Job], id: &str, out: &funnel::Outcome) -> bool {
+    jobs.iter().any(|j| installed_name(j) == j.name || installed_of(id, out).iter().any(|p| p.eq_ignore_ascii_case(&j.name)))
 }
 
 /// The package a job is for (its purl's name), which differs from the job's index name when the package is covered
@@ -1385,29 +1431,29 @@ fn installed_name(job: &Job) -> String {
 }
 
 /// The index name of `tech` when its packages here are covered through a sibling package's index (`@babel/cli`).
-fn shared_index(id: &str, pending: &Pending) -> Option<String> {
+fn shared_index(id: &str, pending: &Pending, out: &funnel::Outcome) -> Option<String> {
     let jobs: Vec<&Job> = pending.jobs.values().filter(|j| j.technology == id).collect();
     let j = jobs.first()?;
-    (!jobs.iter().any(|j| installed_name(j) == j.name)).then(|| display_text(&j.name))
+    (!own_index_installed(&jobs, id, out)).then(|| display_text(&j.name))
 }
 
 /// ` · records from the shared <index> index` when `tech`'s packages here are covered through a sibling's index.
-fn shared_index_note(id: &str, pending: &Pending) -> String {
-    shared_index(id, pending).map(|i| format!(" · records from the shared {i} index (same repository and release stream)")).unwrap_or_default()
+fn shared_index_note(id: &str, pending: &Pending, out: &funnel::Outcome) -> String {
+    shared_index(id, pending, out).map(|i| format!(" · records from the shared {i} index (same repository and release stream)")).unwrap_or_default()
 }
 /// The name an upgrade is shown under: the technology's name, unless that names another package of the technology
 /// than those this repository installs (MetaMask installs `@sentry/browser`; the technology is named for
 /// `@sentry/nextjs`). Then the repository's own package, type stubs last. A display name (`Next.js`) is no package name
 /// and stays.
 fn label(id: &str, pending: &Pending, out: &funnel::Outcome) -> String {
-    let name = friendly(id, pending);
+    let name = friendly(id, pending, out);
     let package_like = |n: &str| !n.is_empty() && n.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || "@/-_.".contains(c));
     let Some(pkgs) = out.packages.get(id).filter(|p| !p.is_empty()) else { return name };
-    if pkgs.contains(&name) || !package_like(&name) {
+    let runtime = pkgs.iter().find(|p| !stub_name(p));
+    if (pkgs.contains(&name) && (!stub_name(&name) || runtime.is_none())) || !package_like(&name) {
         return name;
     }
-    let stub = |p: &String| p.starts_with("@types/") || p.starts_with("types-");
-    pkgs.iter().find(|p| !stub(p)).unwrap_or(&pkgs[0]).clone()
+    runtime.unwrap_or(&pkgs[0]).clone()
 }
 // Flatten upstream text before writing it to a terminal: no escape sequences or forged lines.
 fn display_text(value: &str) -> String {
@@ -2124,17 +2170,17 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
         // Records for a technology whose version could not be read are applied to nothing: an exception, never "0
         // upgrade obligations" that reads as a clean result.
         if versions.is_empty() && !relevant.is_empty() {
-            unread.push(display_text(&friendly(tech, pending)));
+            unread.push(display_text(&friendly(tech, pending, &out)));
         }
         let versions = if versions.is_empty() { "version unknown".to_string() } else { versions.into_iter().collect::<Vec<_>>().join(", ") };
         // Zero documented changes from a technology whose sources yielded nothing is a gap, not an all-clear.
         let gap = if pending.jobs.values().any(|j| j.technology == *tech && empty_monitoring(j).is_some()) { " · source gap: its official sources gave no records (see coverage details)" } else { "" };
         catalog_scope += &format!(
             "  {} {} · {} documented changes in the synced catalog{}{gap}\n",
-            friendly(tech, pending),
+            friendly(tech, pending, &out),
             versions,
             relevant.len(),
-            shared_index_note(tech, pending)
+            shared_index_note(tech, pending, &out)
         );
         let in_effect = relevant.iter().filter(|o| o.route == funnel::Route::InEffect).count();
         catalog_scope += &format!(
@@ -2507,7 +2553,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
     // A head line names the technology by its catalog id; the report shows the friendly name.
     let short = |line: &str, tech: &str| -> String {
         let name = label(tech, pending, &out);
-        let name = match shared_index(tech, pending) {
+        let name = match shared_index(tech, pending, &out) {
             Some(i) => format!("{name} (records from the shared {i} index)"),
             None => name,
         };
@@ -3092,16 +3138,35 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
         "Public names only · no repository identity shared",
     );
     let mut verified = vec![];
-    let unchecked: Vec<_> = st.deps.iter().filter(|(p, d)| !pending.jobs.contains_key(*p) && d.public_candidate).collect();
+    let mut unchecked: Vec<_> = st.deps.iter().filter(|(p, d)| !pending.jobs.contains_key(*p) && d.public_candidate).collect();
     let (total, mut done) = (unchecked.len(), 0);
-    util::concurrent(&unchecked, util::REQUESTS_AT_ONCE, |(p, d)| public_package(&ctx.cache, p, &d.pins), |i, public| {
-        if public {
-            verified.push(unchecked[i].0.clone());
+    // A registry that did not answer (a burst limit, the network) says nothing about the package: those are asked
+    // again, fewer at a time and after a pause, rather than left out of this run as if private.
+    for (round, (width, pause)) in [(util::REQUESTS_AT_ONCE, 0), (4, 5), (2, 20)].into_iter().enumerate() {
+        if unchecked.is_empty() {
+            break;
         }
-        done += 1;
-        ui.update("Verifying public packages · step 3/5", &format!("Checked {done}/{total} registry identities"), "Only verified public package names are submitted");
-        true
-    });
+        std::thread::sleep(Duration::from_secs(pause));
+        let mut unanswered = vec![];
+        util::concurrent(&unchecked, width, |(p, d)| public_package(&ctx.cache, p, &d.pins), |i, public| {
+            match public {
+                Some(true) => verified.push(unchecked[i].0.clone()),
+                Some(false) => {}
+                None => unanswered.push(unchecked[i]),
+            }
+            if round == 0 {
+                done += 1;
+            }
+            ui.update("Verifying public packages · step 3/5", &format!("Checked {done}/{total} registry identities"), "Only verified public package names are submitted");
+            true
+        });
+        unchecked = unanswered;
+    }
+    if !unchecked.is_empty() {
+        let n = unchecked.len();
+        diagnostics.push(format!("Public registry identity: no answer for {n} package(s), checked again on the next run: {}", unchecked.iter().take(5).map(|(p, _)| p.as_str()).collect::<Vec<_>>().join(", ")));
+        issue.get_or_insert(format!("Registry unavailable for {n} package{} · checked again next run", if n == 1 { "" } else { "s" }));
+    }
     for p in verified {
         pending.unsubmitted.insert(p);
     }
@@ -3768,6 +3833,35 @@ mod tests {
         ] {
             assert!(!transient(Path::new(p)), "{p}");
         }
+    }
+    #[test]
+    fn a_runtime_package_is_named_over_its_type_stub() {
+        let stub = Job { purl: "pkg:npm/%40types/eslint".into(), technology: "eslint-1".into(), name: "eslint".into(), ..job("monitoring") };
+        let mut pending = Pending::default();
+        pending.jobs.insert(stub.purl.clone(), stub.clone());
+        // Only the stub's job was registered, but eslint itself is installed: no shared index, eslint named.
+        let mut out = funnel::Outcome::default();
+        out.packages.insert("eslint-1".into(), vec!["@types/eslint".into(), "eslint".into()]);
+        assert_eq!(friendly("eslint-1", &pending, &out), "eslint");
+        assert_eq!(label("eslint-1", &pending, &out), "eslint");
+        assert_eq!(shared_index("eslint-1", &pending, &out), None);
+        // The stub alone is installed: it is named, with the shared index.
+        out.packages.insert("eslint-1".into(), vec!["@types/eslint".into()]);
+        assert_eq!(label("eslint-1", &pending, &out), "@types/eslint");
+        assert_eq!(shared_index("eslint-1", &pending, &out).as_deref(), Some("eslint"));
+        // A sibling package under another index stays named as installed (`@babel/register` by `@babel/cli`'s).
+        let sib = Job { purl: "pkg:npm/%40babel/register".into(), technology: "babel".into(), name: "@babel/cli".into(), ..job("monitoring") };
+        pending.jobs.insert(sib.purl.clone(), sib);
+        out.packages.insert("babel".into(), vec!["@babel/register".into()]);
+        assert_eq!(label("babel", &pending, &out), "@babel/register");
+        assert_eq!(shared_index("babel", &pending, &out).as_deref(), Some("@babel/cli"));
+    }
+    #[test]
+    fn an_unanswered_registry_lookup_is_no_answer() {
+        let answers = [0, 1, 2];
+        assert_eq!(all_answered(&answers, |&i| if i == 1 { Err(Unanswered) } else { Ok(true) }), None);
+        assert_eq!(all_answered(&answers, |&i| match i { 0 => Err(Unanswered), 1 => Ok(false), _ => Ok(true) }), Some(false));
+        assert_eq!(all_answered(&answers, |_| Ok(true)), Some(true));
     }
     fn job(state: &str) -> Job {
         Job {
