@@ -3,7 +3,7 @@
 
 use semver::Version;
 use std::cell::RefCell;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::rc::Rc;
 use unstale_schema::catalog::{Benefit, ChangeType, IndexRelease, Release, SubjectKind, Surface};
 use unstale_schema::ledger::Ledger;
@@ -1004,6 +1004,14 @@ fn subpath_filtered(
 
 pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
     let purls = inp.stack.purls();
+    // The packages the project installs, by squashed name: a module the code imports from one of them is an installed
+    // library's (`usage::scoped_site`).
+    let squash = |s: &str| s.chars().filter(char::is_ascii_alphanumeric).collect::<String>().to_ascii_lowercase();
+    let dep_names: HashSet<String> = inp.stack.deps.values().map(|d| squash(&d.name)).collect();
+    let installed_module = |m: &str| {
+        let root = if m.starts_with('@') { m.splitn(3, '/').take(2).collect::<Vec<_>>().join("/") } else { m.split(['/', '.']).next().unwrap_or(m).to_string() };
+        !root.is_empty() && dep_names.contains(&squash(&root))
+    };
     let mut out = Outcome { versions: inp.stack.deps.iter().filter_map(|(p, d)| d.version.clone().map(|v| (normalize_purl(p), v))).collect(), ..Default::default() };
     // In the stack when a record names one of the repository's package URLs.
     let in_stack: Vec<(&String, &TechData, TechLits)> = inp
@@ -1197,9 +1205,9 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
         // replacements.
         let exact: Memo<Rc<usage::Evidence>> = RefCell::default();
         let modules: Vec<String> = comps.iter().filter_map(|c| purl_name(c)).collect();
-        let exact_of = |v: usize, l: &str, repl: &[String], context: Option<&[String]>, keyed: bool, config: bool, succ: &[String], call: bool, parent: Option<&str>, invoked: bool| -> Rc<usage::Evidence> {
+        let exact_of = |v: usize, l: &str, repl: &[String], context: Option<&[String]>, keyed: bool, config: bool, succ: &[String], call: bool, parent: Option<&str>, invoked: bool, named: &[String]| -> Rc<usage::Evidence> {
             let ctx = context.map_or("-".to_string(), |c| c.join("\0"));
-            let key = (v, format!("{l}\0{}\u{1}{ctx}\u{2}{keyed}\u{3}{config}\u{4}{}\u{5}{call}\u{6}{parent:?}\u{7}{invoked}", repl.join("\0"), succ.join("\0")));
+            let key = (v, format!("{l}\0{}\u{1}{ctx}\u{2}{keyed}\u{3}{config}\u{4}{}\u{5}{call}\u{6}{parent:?}\u{7}{invoked}\u{8}{}", repl.join("\0"), succ.join("\0"), named.join("\0")));
             if let Some(e) = exact.borrow().get(&key) {
                 return e.clone();
             }
@@ -1243,6 +1251,15 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                 // where the same word names a parameter, keyword argument or module of its own (composio's
                 // `json_schema=…` and `composio.utils.json_schema` for pydantic's `json_schema()`).
                 if invoked && usage::identifier(l) && !inp.repo.text(p).is_some_and(|t| usage::called(t, l)) {
+                    return false;
+                }
+                // An API name the file defines itself (`def from_orm`) is the file's own; where the record names the
+                // classes or calls it applies to, a site owned by another class the file imports from an installed
+                // package (`new Chat({ onFinish })`, `TypeAdapter(X).json_schema()`) is not the record's API.
+                if (usage::identifier(l) || invoked)
+                    && usage::own_code(p, &ecosystem)
+                    && inp.repo.text(p).is_some_and(|t| usage::defines(t, l) || (!named.is_empty() && !usage::scoped_site(t, l, named, &installed_module)))
+                {
                     return false;
                 }
                 if call && !(usage::own_code(p, &ecosystem) && scopes[v].file(p) == Some(true) && inp.repo.text(p).is_some_and(|t| usage::call_key(t, l, &modules))) {
@@ -1494,8 +1511,27 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             let ev = |l: &str| evidence_of(view, l);
             let succ = successor_words(&rec.r);
             let config = rec.r.surface == Surface::Configuration;
+            // The classes and calls the record names beside what it deprecates (`BaseModel`; `generateText`, `Agent`):
+            // the API its deprecated names belong to.
+            let named: Vec<String> = if deprecated.is_empty() {
+                vec![]
+            } else {
+                let mut n: Vec<String> = rec
+                    .r
+                    .terms
+                    .iter()
+                    .map(|t| &t.0)
+                    .chain(std::iter::once(&rec.r.subject))
+                    .flat_map(|t| t.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '$')).map(str::to_string).collect::<Vec<_>>())
+                    .filter(|w| usage::identifier(w) || w.starts_with(|c: char| c.is_ascii_uppercase()))
+                    .filter(|w| !deprecated.iter().any(|d| d.trim_start_matches('.') == w) && !rec.r.introduces.iter().any(|x| x.contains(w.as_str())))
+                    .collect();
+                n.sort();
+                n.dedup();
+                n
+            };
             let invoked = |l: &str| rec.r.replaces.iter().any(|x| x.replace('`', "").trim().ends_with("()") && clean_lit(x).as_deref() == Some(l));
-            let ex_with = |l: &str, call: bool| exact_of(view, l, &replacement, broad.iter().any(|b| *b == l).then_some(&context[..]), keyed_api(&rec.r, ls, l), config, &succ, call, option_of(&rec.r, l), invoked(l));
+            let ex_with = |l: &str, call: bool| exact_of(view, l, &replacement, broad.iter().any(|b| *b == l).then_some(&context[..]), keyed_api(&rec.r, ls, l), config, &succ, call, option_of(&rec.r, l), invoked(l), &named);
             let ex = |l: &str| ex_with(l, false);
             let (cited, cite): (&[String], Cite) = if deprecated.is_empty() { (ls, &ev) } else { (&deprecated, &ex) };
             // A lint rule this repository never turns on: none of the record's terms is a site (`rule_not_enabled`).
@@ -1587,7 +1623,11 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             } else {
                 vec![]
             };
-            if opp.route == Route::AlreadyIncluded && !deprecated.is_empty() && (opp.matched.iter().any(|(l, _)| !usage::plain_word(l)) || !calls.is_empty()) {
+            // Only a package the project installs has a deprecation in effect: a registry package of the technology that
+            // no manifest or lockfile names reads no version of its own here (`version_of`), whatever its siblings run.
+            let registry = comp.starts_with("pkg:npm/") || comp.starts_with("pkg:pypi/");
+            let installed_here = !registry || version_of(&comp).is_some();
+            if opp.route == Route::AlreadyIncluded && installed_here && !deprecated.is_empty() && (opp.matched.iter().any(|(l, _)| !usage::plain_word(l)) || !calls.is_empty()) {
                 opp.matched.retain(|(l, _)| !usage::plain_word(l));
                 opp.matched.extend(calls.iter().cloned());
                 opp.matched.sort();
@@ -2263,6 +2303,34 @@ mod tests {
         let new = stack(&[("typescript-eslint", "8.70.0"), ("eslint", "9.39.1")], None);
         let out = run_with(&c, &new, &r, &l);
         assert_eq!(ids(&out, &out.in_effect), vec!["typescript-eslint:no-restricted-imports"], "met: in effect now");
+    }
+
+    #[test]
+    fn in_effect_needs_an_installed_package_and_the_records_own_api() {
+        let dep = |id: &str, comp: &str, extra: serde_json::Value| with(with(rec(id, comp, "2.0.0"), json!({"change_type":"deprecation"})), extra);
+        let c = catalog(
+            "pydantic",
+            0,
+            vec![
+                dep("pydantic:json-schema", "pkg:pypi/pydantic", json!({"replaces":["json_schema()"],"terms":[["json_schema()",0],["BaseModel",0]]})),
+                dep("pydantic:from-orm", "pkg:pypi/pydantic", json!({"replaces":["from_orm()"],"terms":[["from_orm()",0],["BaseModel",0]]})),
+                // A package of the technology that the project does not install.
+                dep("pydantic:extra", "pkg:pypi/pydantic-extra", json!({"replaces":["parse_raw_as"]})),
+            ],
+        );
+        let mut s = stack(&[], None);
+        s.deps.insert("pkg:pypi/pydantic".into(), crate::stack::Dep { version: parse_version("2.14.1"), source: "test".into(), ..crate::stack::Dep::new("pydantic", true) });
+        let r = repo(&[
+            ("app/tools.py", "from pydantic import TypeAdapter\nfrom pydantic_extra import parse_raw_as\nschema = TypeAdapter(list[int]).json_schema()\nx = parse_raw_as(int, b)\n"),
+            ("app/types.py", "from pydantic import ValidationError\nclass P:\n    @classmethod\n    def from_orm(cls, x):\n        return cls()\n\ny = P.from_orm(z)\n"),
+        ]);
+        let l = Ledger::default();
+        let out = run_with(&c, &s, &r, &l);
+        assert!(out.in_effect.is_empty(), "{:?}", ids(&out, &out.in_effect));
+        // A model the code cannot place (the repository's own, imported relatively) keeps its sites.
+        let r = repo(&[("app/tools.py", "import pydantic\nfrom .models import M\nM.json_schema()\nM(a=1).from_orm(row)\n")]);
+        let out = run_with(&c, &s, &r, &l);
+        assert_eq!(ids(&out, &out.in_effect), vec!["pydantic:from-orm", "pydantic:json-schema"]);
     }
 
     #[test]

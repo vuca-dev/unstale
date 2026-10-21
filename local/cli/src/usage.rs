@@ -1050,6 +1050,209 @@ pub fn called(text: &str, lit: &str) -> bool {
     })
 }
 
+/// Whether `text` defines `lit` itself (`def from_orm`, `function onFinish`, `class Foo`): a name the file declares is
+/// the repository's own API, so its uses there are not uses of a library's API of the same name (phoenix's strawberry
+/// `@classmethod def from_orm` for pydantic's deprecated `BaseModel.from_orm`).
+pub fn defines(text: &str, lit: &str) -> bool {
+    let lit = lit.strip_prefix('.').unwrap_or(lit);
+    let word = |c: char| c.is_ascii_alphanumeric() || c == '_' || c == '$';
+    !lit.is_empty()
+        && text.match_indices(lit).any(|(i, _)| {
+            let before = &text[..i];
+            let after = &text[i + lit.len()..];
+            if before.chars().next_back().is_some_and(word) || after.chars().next().is_some_and(word) {
+                return false;
+            }
+            if !before.ends_with([' ', '\t']) {
+                return false;
+            }
+            let prev = before.trim_end_matches([' ', '\t']).rsplit(|c: char| !word(c)).next().unwrap_or("");
+            matches!(prev, "def" | "function" | "fn" | "func" | "class")
+        })
+}
+
+/// The callee of the call whose argument list holds byte `at` directly or inside an object literal passed to it:
+/// `new Chat<T>({ onFinish })` gives `Chat`, `streamText({ system })` gives `streamText`, `f(x, key=1)` gives `f`.
+/// A dotted callee gives its last name (`pydantic.TypeAdapter(...)`: `TypeAdapter`).
+fn enclosing_call(text: &str, at: usize) -> Option<String> {
+    let b = text.as_bytes();
+    let mut depth = 0usize;
+    let mut braces = 0usize;
+    let mut open = None;
+    for j in (at.saturating_sub(30000)..at).rev() {
+        match b[j] {
+            b'}' | b')' | b']' => depth += 1,
+            b'{' | b'(' | b'[' if depth > 0 => depth -= 1,
+            b'{' if braces == 0 => braces += 1,
+            b'(' => {
+                open = Some(j);
+                break;
+            }
+            _ if depth == 0 && matches!(b[j], b'{' | b'[' | b';') => return None,
+            _ => {}
+        }
+    }
+    callee_before(&text[..open?])
+}
+
+/// The name called just before `head`'s end (`new Chat<T>`, `TypeAdapter[list[int]]`, `x.f`): its last word.
+fn callee_before(head: &str) -> Option<String> {
+    let mut call = head.trim_end();
+    if call.ends_with('>') {
+        call = call.rsplit_once('<').map_or(call, |(h, _)| h).trim_end();
+    }
+    if call.ends_with(']') {
+        let mut depth = 0usize;
+        let mut cut = None;
+        for (j, c) in call.char_indices().rev() {
+            match c {
+                ']' => depth += 1,
+                '[' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        cut = Some(j);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        call = call[..cut?].trim_end();
+    }
+    let name: String = call.chars().rev().take_while(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '$').collect::<Vec<_>>().into_iter().rev().collect();
+    (!name.is_empty() && !name.starts_with(|c: char| c.is_ascii_digit())).then_some(name)
+}
+
+/// The class a site of `lit` at byte `i` belongs to, when the code says so: the constructor whose arguments carry it
+/// (`new Chat({ onFinish })`), or for a member access the receiver's constructor or declared type
+/// (`TypeAdapter(X).json_schema()`, `a = TypeAdapter(X)` / `a: TypeAdapter` then `a.json_schema()`). Only a class
+/// name (capitalised) is an owner: a plain function call (`expect(x).toBeCalled()`) says nothing about the receiver.
+fn site_owner(text: &str, i: usize) -> Option<String> {
+    let before = text[..i].trim_end_matches([' ', '\t']);
+    let owner = if let Some(recv) = before.strip_suffix('.') {
+        let recv = recv.trim_end();
+        if recv.ends_with(')') {
+            let b = recv.as_bytes();
+            let mut depth = 0usize;
+            let mut open = None;
+            for j in (recv.len().saturating_sub(4000)..recv.len()).rev() {
+                match b[j] {
+                    b')' | b']' | b'}' => depth += 1,
+                    b'(' | b'[' | b'{' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            open = Some(j);
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            callee_before(&recv[..open?])?
+        } else {
+            let var: String = recv.chars().rev().take_while(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '$').collect::<Vec<_>>().into_iter().rev().collect();
+            if var.is_empty() || var.starts_with(|c: char| c.is_ascii_uppercase()) {
+                return None;
+            }
+            declared_type(text, &var)?
+        }
+    } else {
+        enclosing_call(text, i)?
+    };
+    owner.starts_with(|c: char| c.is_ascii_uppercase()).then_some(owner)
+}
+
+/// The class a variable is built from or annotated with: `v = Name(`, `v = new Name<T>(`, `v: Name`.
+fn declared_type(text: &str, var: &str) -> Option<String> {
+    let word = |c: char| c.is_ascii_alphanumeric() || c == '_' || c == '$';
+    text.match_indices(var).find_map(|(i, _)| {
+        if text[..i].chars().next_back().is_some_and(|c| word(c) || c == '.' || c == '"' || c == '\'') {
+            return None;
+        }
+        let after = &text[i + var.len()..];
+        if after.chars().next().is_some_and(word) {
+            return None;
+        }
+        let after = after.trim_start_matches([' ', '\t']);
+        let rhs = if let Some(r) = after.strip_prefix(':') {
+            r
+        } else {
+            let r = after.strip_prefix('=').filter(|r| !r.starts_with(['=', '>']))?.trim_start_matches([' ', '\t']);
+            r.strip_prefix("new ").unwrap_or(r)
+        };
+        let rhs = rhs.trim_start_matches([' ', '\t']);
+        let name: String = rhs.chars().take_while(|c| word(*c) || *c == '.').collect();
+        let name = name.rsplit('.').next().unwrap_or("").to_string();
+        let next = rhs[name.len().min(rhs.len())..].chars().next();
+        (!name.is_empty() && (after.starts_with(':') || matches!(next, Some('(' | '[' | '<')) || rhs.contains(&format!("{name}(")))).then_some(name)
+    })
+}
+
+/// The module `text` imports `name` from (`import { Chat } from "@ai-sdk/react"`, `from pydantic import TypeAdapter`,
+/// `from x import (\n  A,\n  B,\n)`), when it does.
+pub fn import_source(text: &str, name: &str) -> Option<String> {
+    let word = |c: char| c.is_ascii_alphanumeric() || c == '_' || c == '$';
+    let names_has = |s: &str| s.split(|c: char| !word(c)).any(|w| w == name);
+    let mut rest = text;
+    while let Some(i) = rest.find("from") {
+        let head = &rest[..i];
+        let after = &rest[i + 4..];
+        rest = after;
+        if head.chars().next_back().is_some_and(word) || after.chars().next().is_some_and(word) {
+            continue;
+        }
+        let after = after.trim_start();
+        if let Some(q) = after.chars().next().filter(|c| *c == '\'' || *c == '"') {
+            // JavaScript: `import … from 'm'`.
+            let Some(start) = head.rfind("import") else { continue };
+            let names = &head[start + 6..];
+            if !names.contains(';') && names_has(names) {
+                return after[1..].split(q).next().map(str::to_string);
+            }
+        } else if head.is_empty() || head.ends_with('\n') || head.trim_end_matches([' ', '\t']).ends_with('\n') {
+            // Python: `from m import a, b` or `from m import (a,\n b)`.
+            let module: String = after.chars().take_while(|c| word(*c) || *c == '.').collect();
+            let tail = after[module.len()..].trim_start_matches([' ', '\t']);
+            let Some(names) = tail.strip_prefix("import") else { continue };
+            let names = names.trim_start_matches([' ', '\t']);
+            let names = if let Some(p) = names.strip_prefix('(') { p.split(')').next().unwrap_or("") } else { names.lines().next().unwrap_or("") };
+            if names.split(',').any(|n| n.split_whitespace().last() == Some(name)) && !module.is_empty() {
+                return Some(module);
+            }
+        }
+    }
+    None
+}
+
+/// Whether some whole-word site of `lit` in `text` can be the record's API: not one that belongs to a class `text`
+/// imports from an installed package (`installed(module)`) other than the classes and calls the record names
+/// (`context`). `new Chat({ onFinish })` with `Chat` from `@ai-sdk/react` is not the AI SDK's `streamText` option, and
+/// `TypeAdapter(X).json_schema()` is not `BaseModel.json_schema()`. An owner the code cannot place (a local class, a
+/// parameter, a plain call) keeps the site. Import lines are module paths, not sites.
+pub fn scoped_site(text: &str, lit: &str, context: &[String], installed: &dyn Fn(&str) -> bool) -> bool {
+    let lit = lit.strip_prefix('.').unwrap_or(lit);
+    let word = |c: char| c.is_ascii_alphanumeric() || c == '_' || c == '$';
+    let mut any = false;
+    for (i, _) in text.match_indices(lit) {
+        if text[..i].chars().next_back().is_some_and(word) || text[i + lit.len()..].chars().next().is_some_and(word) {
+            continue;
+        }
+        // A module path in an import (`from pydantic.json_schema import …`) names a module, not the API.
+        let line = text[..i].rsplit('\n').next().unwrap_or("").trim_start();
+        if line.starts_with("from ") || line.starts_with("import ") {
+            continue;
+        }
+        any = true;
+        let foreign = site_owner(text, i).is_some_and(|o| {
+            !context.contains(&o) && import_source(text, &o).is_some_and(|m| !m.starts_with('.') && installed(&m))
+        });
+        if !foreign {
+            return true;
+        }
+    }
+    !any
+}
+
 /// Whether `text` (JavaScript-family code) writes `lit` as a key of an object literal passed straight to a function it
 /// imports from one of `modules`: `streamText({ model, system: prompt })` with `streamText` from `ai`. A plain-word
 /// option (`system`) is too common to show its API anywhere else; here the call names whose option it is.
@@ -1630,6 +1833,38 @@ pub fn sample_counts(repos: &[Repo], terms: &[String]) -> BTreeMap<String, u32> 
 mod tests {
     use super::*;
 
+
+    #[test]
+    fn a_site_needs_the_records_api_not_a_same_named_one() {
+        let installed = |m: &str| ["pydantic", "@ai-sdk/react", "ai"].iter().any(|x| m == *x || m.starts_with(&format!("{x}/")));
+        // The file's own classmethod is not pydantic's.
+        let own = "from pydantic import ValidationError\n@strawberry.type\nclass P:\n    @classmethod\n    def from_orm(cls, x):\n        return cls()\n\ny = P.from_orm(z)\n";
+        assert!(defines(own, "from_orm") && !defines("m = Model.from_orm(z)\n", "from_orm") && !defines("define from_orm", "from_orm"));
+        // TypeAdapter is not BaseModel, built inline or held in a variable.
+        let base = vec!["BaseModel".to_string()];
+        let ta = "from pydantic import TypeAdapter\nschema = TypeAdapter(list[int]).json_schema()\n";
+        assert!(!scoped_site(ta, "json_schema", &base, &installed));
+        let held = "from pydantic import (\n    BaseModel,\n    TypeAdapter,\n)\nadapter = TypeAdapter(X)\ns = adapter.json_schema(mode=m)\n";
+        assert!(!scoped_site(held, "json_schema", &base, &installed));
+        let typed = "from pydantic import TypeAdapter\nfrom pydantic.json_schema import Mode\ndef f(adapter: TypeAdapter[X]):\n    return adapter.json_schema()\n";
+        assert!(!scoped_site(typed, "json_schema", &base, &installed));
+        // A model of the repository's own, or a receiver the code cannot place, keeps the site.
+        assert!(scoped_site("from .models import User\nUser.json_schema()\n", "json_schema", &base, &installed));
+        assert!(scoped_site("from .models import User\nUser(a=1).json_schema()\n", "json_schema", &base, &installed));
+        assert!(scoped_site("def f(m):\n    return m.json_schema()\n", "json_schema", &base, &installed));
+        // An option of another package's constructor is not the AI SDK's call option; the named call's is.
+        let ctx: Vec<String> = ["generateText", "streamText", "Agent", "ToolLoopAgent"].iter().map(|s| s.to_string()).collect();
+        let chat = "import { Chat } from \"@ai-sdk/react\";\nimport { DefaultChatTransport } from \"ai\";\nconst chat = new Chat<M>({\n  transport,\n  onFinish: ({ messages }) => {\n    done(messages);\n  },\n});\n";
+        assert!(!scoped_site(chat, "onFinish", &ctx, &installed));
+        let st = "import { streamText } from 'ai';\nconst r = streamText({ model, onFinish: () => {} });\n";
+        assert!(scoped_site(st, "onFinish", &ctx, &installed));
+        assert!(scoped_site(&format!("{chat}\n{st}"), "onFinish", &ctx, &installed), "one site of the record's API is enough");
+        // A plain call says nothing about its receiver.
+        assert!(scoped_site("import { expect } from 'vitest';\nexpect(f).toBeCalled();\n", "toBeCalled", &ctx, &installed));
+        assert_eq!(import_source("from pydantic import BaseModel, TypeAdapter as TA\n", "TA").as_deref(), Some("pydantic"));
+        assert_eq!(import_source("import { a, Chat } from '@ai-sdk/react';", "Chat").as_deref(), Some("@ai-sdk/react"));
+        assert_eq!(import_source("import { Chat } from './chat';", "Chat").as_deref(), Some("./chat"));
+    }
     #[test]
     fn a_call_is_the_identifier_then_a_parenthesis_not_a_declaration_or_a_name() {
         assert!(called("schema = Model.json_schema()", "json_schema"));
