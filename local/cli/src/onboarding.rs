@@ -1922,7 +1922,9 @@ fn signals<'r>(
     let runtime = |name: &str| workarounds::facts(declared, &[name.to_string()]).runtime;
     let value = |what: &str, name: &str| format!("  value: {what} · package signal, no catalog record needed · {}", if runtime(name) { "runtime code" } else { "tests, tooling or docs only" });
     let mut by: BTreeMap<String, Signal> = BTreeMap::new();
-    for n in deprecated {
+    // A type-stub package retired because its runtime package now ships its own types is a cleanup, not an end of
+    // support: it stays under Deprecated by the publisher.
+    for n in deprecated.iter().filter(|n| !util::stub_package(&n.purl)) {
         if shown.contains(&norm(&n.name)) || by.contains_key(&norm(&n.name)) {
             continue;
         }
