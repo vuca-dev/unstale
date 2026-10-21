@@ -999,7 +999,7 @@ mod tests {
             asked.lock().unwrap().push(p.to_string());
             identity(p)
         };
-        crate::advisories::refresh_with(cache, root, &st, now, post, |_| None, ask);
+        crate::advisories::refresh_with(cache, root, &st, now, post, |_| None, ask, |_, _, _| None);
         let mut osv = osv.into_inner().unwrap();
         osv.sort();
         let mut asked = asked.into_inner().unwrap();

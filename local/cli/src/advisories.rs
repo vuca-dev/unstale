@@ -119,6 +119,16 @@ impl Graph {
         }
         out
     }
+    /// The public package versions a project of the repository depends on directly.
+    pub fn direct(&self) -> BTreeSet<(String, String)> {
+        self.nodes
+            .iter()
+            .filter(|n| n.local.is_some())
+            .flat_map(|n| n.edges.iter().map(|e| &self.nodes[e.to]))
+            .filter(|n| n.local.is_none() && !n.private && !n.name.is_empty() && !n.version.is_empty())
+            .map(|n| (n.name.clone(), n.version.clone()))
+            .collect()
+    }
     /// The package versions to query: every public package version (not a project of the repository, not one
     /// installed from elsewhere than the public registry, not a name a project of the repository has).
     pub fn packages(&self) -> BTreeSet<(String, String)> {
@@ -673,7 +683,11 @@ pub struct Doc {
 pub fn read_osv(v: &Value) -> Doc {
     let s = |p: &str| v.pointer(p).and_then(Value::as_str).unwrap_or("").to_string();
     let id = s("/id");
-    let mut sev = v.pointer("/database_specific/severity").and_then(Value::as_str).map(Severity::parse);
+    // The rating the database gives, else the CVSS base score of the record's vector (a CVE record OSV converted from
+    // the CVE list rates nothing else).
+    let mut sev = v.pointer("/database_specific/severity").and_then(Value::as_str).map(Severity::parse).filter(|s| *s != Severity::Unrated).or_else(|| {
+        v.get("severity").and_then(Value::as_array).into_iter().flatten().filter_map(|s| s.get("score")?.as_str()).find_map(cvss_severity)
+    });
     if id.starts_with("MAL-") {
         sev = Some(Severity::Critical); // malicious code in the installed version
     }
@@ -683,6 +697,19 @@ pub fn read_osv(v: &Value) -> Doc {
         .into_iter()
         .flatten()
         .map(|a| {
+            // An entry with no package (a CVE record's `GIT` ranges): the versions the record's extracted events name
+            // as fixed, not commits. It is the repository's own release numbering.
+            if a.get("package").is_none() {
+                let f: Vec<String> = a
+                    .get("ranges")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .flat_map(|r| r.pointer("/database_specific/extracted_events").and_then(Value::as_array).into_iter().flatten())
+                    .filter_map(|e| e.get("fixed").and_then(Value::as_str).map(String::from))
+                    .collect();
+                return (String::new(), String::new(), f);
+            }
             let f: Vec<String> = a
                 .get("ranges")
                 .and_then(Value::as_array)
@@ -704,6 +731,40 @@ pub fn read_osv(v: &Value) -> Doc {
         fixed,
         withdrawn: v.get("withdrawn").is_some(),
     }
+}
+
+/// The qualitative rating of a CVSS v3.x base vector (FIRST's base-score formula: none, low < 4, medium < 7, high < 9,
+/// critical). A v4.0 vector is read through its v3 counterparts (`AT` and the subsequent-system impacts aside, scope
+/// changed when a subsequent system takes a high impact): an approximation that only places the advisory in a rating.
+pub fn cvss_severity(vector: &str) -> Option<Severity> {
+    let m: BTreeMap<&str, &str> = vector.split('/').filter_map(|p| p.split_once(':')).collect();
+    let v4 = vector.starts_with("CVSS:4");
+    if !v4 && !vector.starts_with("CVSS:3") {
+        return None;
+    }
+    let cia = |k3: &str, k4: &str| -> Option<f64> {
+        Some(match *m.get(if v4 { k4 } else { k3 })? {
+            "H" => 0.56,
+            "L" => 0.22,
+            "N" => 0.0,
+            _ => return None,
+        })
+    };
+    let (c, i, a) = (cia("C", "VC")?, cia("I", "VI")?, cia("A", "VA")?);
+    let changed = if v4 { ["SC", "SI", "SA"].iter().any(|k| m.get(k) == Some(&"H")) } else { m.get("S") == Some(&"C") };
+    let av = match *m.get("AV")? { "N" => 0.85, "A" => 0.62, "L" => 0.55, "P" => 0.2, _ => return None };
+    let ac = match *m.get("AC")? { "L" => 0.77, "H" => 0.44, _ => return None };
+    let pr = match (*m.get("PR")?, changed) { ("N", _) => 0.85, ("L", false) => 0.62, ("L", true) => 0.68, ("H", false) => 0.27, ("H", true) => 0.5, _ => return None };
+    let ui = match *m.get("UI")? { "N" => 0.85, "R" | "P" | "A" => 0.62, _ => return None };
+    let iss = 1.0 - (1.0 - c) * (1.0 - i) * (1.0 - a);
+    let impact = if changed { 7.52 * (iss - 0.029) - 3.25 * (iss - 0.02).powi(15) } else { 6.42 * iss };
+    if impact <= 0.0 {
+        return Some(Severity::Low);
+    }
+    let exploit = 8.22 * av * ac * pr * ui;
+    let raw = if changed { (1.08 * (impact + exploit)).min(10.0) } else { (impact + exploit).min(10.0) };
+    let score = (raw * 10.0 - 1e-9).ceil() / 10.0;
+    Some(if score >= 9.0 { Severity::Critical } else if score >= 7.0 { Severity::High } else if score >= 4.0 { Severity::Moderate } else { Severity::Low })
 }
 
 fn parse_ver(eco: &str, v: &str) -> Option<Version> {
@@ -819,10 +880,14 @@ pub fn evaluate(
                 if sev < Severity::Moderate || (!runtime[i] && sev < Severity::Critical) {
                     continue;
                 }
+                // The record's entry for this package, else (a record with no package entry, matched on the
+                // package's source repository) the repository's own versions.
+                let own = |e: &String, name: &String| e == g.eco && (if g.eco == "PyPI" { crate::pypi::normalize(name) } else { name.clone() }) == nd.name;
+                let git_only = !d.fixed.is_empty() && d.fixed.iter().all(|(e, _, _)| e.is_empty());
                 let mut fixes: Vec<Version> = d
                     .fixed
                     .iter()
-                    .filter(|(e, name, _)| e == g.eco && (if g.eco == "PyPI" { crate::pypi::normalize(name) } else { name.clone() }) == nd.name)
+                    .filter(|(e, name, _)| own(e, name) || (git_only && e.is_empty()))
                     .flat_map(|(_, _, f)| f.iter().filter_map(|v| parse_ver(g.eco, v)))
                     .filter(|v| *v > installed)
                     .collect();
@@ -1043,7 +1108,11 @@ pub fn refresh(cache: &Path, root: &Path, st: &Stack) -> usize {
     let post = |body: &Value| read(agent.post(format!("{OSV}/querybatch")).header("Content-Type", "application/json").send(serde_json::to_vec(body).unwrap_or_default().as_slice()));
     let get = |id: &str| read(agent.get(format!("{OSV}/vulns/{id}")).call());
     let npm: ureq::Agent = ureq::Agent::config_builder().http_status_as_error(false).timeout_global(Some(Duration::from_secs(8))).build().into();
-    refresh_with(cache, root, st, now(), post, get, |purl| crate::privacy::npm_identity(&npm, purl))
+    let repos = |eco: &str, name: &str, version: &str| {
+        let purl = if eco == "PyPI" { format!("pkg:pypi/{}", crate::pypi::normalize(name)) } else { util::npm_purl(name) };
+        crate::deprecations::cached_repository(cache, &purl, version)
+    };
+    refresh_with(cache, root, st, now(), post, get, |purl| crate::privacy::npm_identity(&npm, purl), repos)
 }
 
 /// `refresh` with the clock and the readers given (tests): `identity` is the public npm registry's anonymous answer
@@ -1056,6 +1125,7 @@ pub fn refresh_with(
     post: impl Fn(&Value) -> Option<Value>,
     get: impl Fn(&str) -> Option<Value> + Sync,
     identity: impl Fn(&str) -> Option<bool> + Sync,
+    repos: impl Fn(&str, &str, &str) -> Option<String>,
 ) -> usize {
     let gs = graphs(root, st);
     let mut wanted: BTreeSet<(String, String, String)> = gs.iter().flat_map(|g| g.packages().into_iter().map(|(n, v)| (g.eco.to_string(), n, v))).collect();
@@ -1070,6 +1140,26 @@ pub fn refresh_with(
     if wanted.is_empty() {
         let _ = std::fs::remove_file(report_path(cache, root));
         return 0;
+    }
+    // A direct dependency is also asked by its source repository (`deprecations::cached_repository`), the version as
+    // the repository's tag (OSV's `GIT` ecosystem): a CVE record OSV converts from the CVE list names the repository
+    // and no package, so an advisory GitHub has not reviewed reaches no package query (isomorphic-git, multiparty and
+    // undici on Insomnia). Only a record with no package entry is taken from that answer, and only when the repository
+    // is the package's own (named alike) or the record's summary names the package (a monorepo's tags are every
+    // package's).
+    let mut by_repo: BTreeSet<((String, String, String), String)> = BTreeSet::new();
+    for g in &gs {
+        for (n, v) in g.direct() {
+            let w = (g.eco.to_string(), n.clone(), v.clone());
+            if wanted.contains(&w)
+                && let Some(r) = repos(g.eco, &n, &v)
+            {
+                by_repo.insert((w, r));
+            }
+        }
+    }
+    for ((_, _, v), r) in &by_repo {
+        wanted.insert(("GIT".to_string(), r.clone(), v.clone()));
     }
     let bp = dir(cache).join("batch.json");
     let mut batch: Batch = read_json(&bp).unwrap_or_default();
@@ -1119,8 +1209,25 @@ pub fn refresh_with(
         }
         true
     });
-    let matches: BTreeMap<(String, String, String), Vec<String>> =
+    let mut matches: BTreeMap<(String, String, String), Vec<String>> =
         wanted.iter().filter_map(|w| Some((w.clone(), batch.results.get(&key(w))?.1.iter().map(|(id, _)| id.clone()).collect::<Vec<_>>()))).filter(|(_, v)| !v.is_empty()).collect();
+    let simple = |s: &str| s.to_ascii_lowercase().replace(['_', '.'], "-");
+    for ((eco, n, v), r) in &by_repo {
+        let Some(ids) = matches.get(&("GIT".to_string(), r.clone(), v.clone())).cloned() else { continue };
+        let own_repo = r.rsplit('/').next().is_some_and(|seg| simple(seg) == simple(n.rsplit('/').next().unwrap_or(n)));
+        let took: Vec<String> = ids
+            .into_iter()
+            .filter(|id| docs.get(id).is_some_and(|d| !d.fixed.is_empty() && d.fixed.iter().all(|(e, _, _)| e.is_empty()) && (own_repo || simple(&d.summary).contains(&simple(n)))))
+            .collect();
+        if !took.is_empty() {
+            let e = matches.entry((eco.clone(), n.clone(), v.clone())).or_default();
+            for id in took {
+                if !e.contains(&id) {
+                    e.push(id);
+                }
+            }
+        }
+    }
     let locks: BTreeMap<String, Vec<crate::stack::Lock>> = gs
         .iter()
         .filter(|g| g.eco == "npm")
@@ -1133,7 +1240,7 @@ pub fn refresh_with(
     let today = (at / 86400) as i64;
     let (raw, items) = evaluate(&gs, &matches, &docs, overrides, today);
     let unused = removable(&gs, &items, |names| named_in(root, names));
-    let rep = Report { checked: at, queried: wanted.len(), raw, items, unused };
+    let rep = Report { checked: at, queried: wanted.iter().filter(|w| w.0 != "GIT").count(), raw, items, unused };
     if let Ok(b) = serde_json::to_vec(&rep) {
         let _ = util::write_atomic(&report_path(cache, root), &b);
     }
@@ -1630,13 +1737,54 @@ mod tests {
         };
         let get = |id: &str| Some(serde_json::json!({"id": id, "modified": "m1", "published": "2020-01-01T00:00:00Z", "summary": "proxy", "database_specific": {"severity": "HIGH"}, "affected": [{"package": {"ecosystem": "npm", "name": "proxy-addr"}, "ranges": [{"events": [{"introduced": "0"}, {"fixed": "2.0.8"}]}]}]}));
         assert_eq!(report(cache.path(), d.path()), None);
-        assert_eq!(refresh_with(cache.path(), d.path(), &st, 1_000_000, post, get, |_| None), 2, "one batch, one record");
+        assert_eq!(refresh_with(cache.path(), d.path(), &st, 1_000_000, post, get, |_| None, |_, _, _| None), 2, "one batch, one record");
         let r = report(cache.path(), d.path()).unwrap();
         assert_eq!((r.queried, r.raw, r.items.len()), (8, 1, 1), "the private and the .npmrc-scoped packages are not queried");
-        assert_eq!(refresh_with(cache.path(), d.path(), &st, 1_000_000 + 3600, post, get, |_| None), 0, "fresh: nothing asked");
-        assert_eq!(refresh_with(cache.path(), d.path(), &st, 1_000_000 + FRESH_SECS, post, |_| None, |_| None), 1, "the batch again; the record is cached at its revision");
+        assert_eq!(refresh_with(cache.path(), d.path(), &st, 1_000_000 + 3600, post, get, |_| None, |_, _, _| None), 0, "fresh: nothing asked");
+        assert_eq!(refresh_with(cache.path(), d.path(), &st, 1_000_000 + FRESH_SECS, post, |_| None, |_| None, |_, _, _| None), 1, "the batch again; the record is cached at its revision");
         assert_eq!(*posts.lock().unwrap(), 2);
         assert_eq!(report(cache.path(), d.path()).unwrap().items.len(), 1);
+    }
+
+    #[test]
+    fn a_cve_record_on_a_direct_dependencys_repository_is_matched_when_it_names_the_package() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("package.json"), r#"{"name": "app", "dependencies": {"@react-router/serve": "7.18.2"}}"#).unwrap();
+        std::fs::write(d.path().join("package-lock.json"), NPM_LOCK).unwrap();
+        let st = crate::stack::detect(d.path()).unwrap();
+        let cache = tempfile::tempdir().unwrap();
+        let repo = "https://github.com/remix-run/react-router";
+        let post = |b: &Value| {
+            let qs = b["queries"].as_array().unwrap();
+            Some(serde_json::json!({"results": qs.iter().map(|q| if q["package"]["ecosystem"] == "GIT" && q["package"]["name"] == repo && q["version"] == "7.18.2" {
+                serde_json::json!({"vulns": [{"id": "CVE-g", "modified": "m"}, {"id": "CVE-o", "modified": "m"}, {"id": "GHSA-n", "modified": "m"}]})
+            } else { serde_json::json!({}) }).collect::<Vec<_>>()}))
+        };
+        let git = |summary: &str| serde_json::json!([{"ranges": [{"type": "GIT", "repo": repo, "events": [{"introduced": "abc"}, {"fixed": "def"}], "database_specific": {"extracted_events": [{"introduced": "7.0.0"}, {"fixed": "7.19.0"}]}}]}]).as_array().cloned().map(|a| (summary.to_string(), a)).unwrap();
+        let get = |id: &str| {
+            let (summary, affected) = match id {
+                "CVE-g" => git("@react-router/serve: path traversal in static serving"),
+                "CVE-o" => git("@react-router/dev: dev server origin check"),
+                // A reviewed record of another package in the same repository: its package query decides it.
+                _ => ("react-router: x".to_string(), vec![serde_json::json!({"package": {"ecosystem": "npm", "name": "react-router"}, "ranges": [{"type": "SEMVER", "events": [{"introduced": "0"}, {"fixed": "7.20.0"}]}]})]),
+            };
+            Some(serde_json::json!({"id": id, "modified": "m", "published": "2020-01-01T00:00:00Z", "summary": summary, "affected": affected,
+                "severity": [{"type": "CVSS_V3", "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"}]}))
+        };
+        refresh_with(cache.path(), d.path(), &st, 1_000_000, post, get, |_| None, |eco, name, _| (eco == "npm" && name == "@react-router/serve").then(|| repo.to_string()));
+        let r = report(cache.path(), d.path()).unwrap();
+        assert_eq!(r.items.iter().map(|it| (it.id.as_str(), it.name.as_str(), it.severity, it.fix.as_deref())).collect::<Vec<_>>(), vec![("CVE-g", "@react-router/serve", Severity::High, Some("7.19.0"))]);
+        assert_eq!(r.queried, 9, "the repository query is not a locked package version");
+    }
+
+    #[test]
+    fn a_cvss_vector_places_an_unrated_record() {
+        assert_eq!(cvss_severity("CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"), Some(Severity::High), "7.5");
+        assert_eq!(cvss_severity("CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"), Some(Severity::Critical), "9.8");
+        assert_eq!(cvss_severity("CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N"), Some(Severity::Moderate), "6.1");
+        assert_eq!(cvss_severity("CVSS:3.1/AV:L/AC:H/PR:H/UI:R/S:U/C:L/I:N/A:N"), Some(Severity::Low), "1.8");
+        assert_eq!(cvss_severity("CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:P/VC:H/VI:L/VA:N/SC:N/SI:N/SA:N"), Some(Severity::High));
+        assert_eq!(cvss_severity("AV:N/AC:L/Au:N/C:P/I:P/A:P"), None, "CVSS v2 is not read");
     }
 }
 
