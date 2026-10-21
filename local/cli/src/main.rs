@@ -648,6 +648,7 @@ fn cmd_bump(ctx: &Ctx, pkg: &str) -> Result<u8> {
 
 fn regenerate(ctx: &Ctx, w: &World, out: &Outcome, state: &mut State, passes: &[Pass], next: bool, only_existing: bool) -> Result<u8> {
     let mut code = 0;
+    let deprecated = if passes.contains(&Pass::UpgradeReview) { deprecations::notices(&ctx.cache, &w.stack) } else { vec![] };
     for &p in passes {
         let path = p.skill_path(&ctx.tool);
         if only_existing && !path.exists() {
@@ -661,7 +662,7 @@ fn regenerate(ctx: &Ctx, w: &World, out: &Outcome, state: &mut State, passes: &[
                 review::batch_for(p, out, state, false).map_err(|_| anyhow!("internal: batch view"))?
             }
         };
-        let text = review::render(&view, out, &w.catalog);
+        let text = review::render(&view, out, &w.catalog, &deprecated);
         let written = review::write_skill(&path, &text)?;
         let mut what = if view.batch.is_empty() {
             if view.complete {
