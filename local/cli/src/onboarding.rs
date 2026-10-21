@@ -37,6 +37,11 @@ pub struct Job {
     pub note: Option<String>,
     #[serde(default)]
     pub retry_at: Option<String>,
+    /// Archived GitHub repositories that end this package or one of its release lines (`owner/name`, lowercase; the
+    /// coverage service's repository check). Matched against the repository the installed version names
+    /// (`maintenance`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub archived: Vec<String>,
     #[serde(default)]
     pub releases_done: usize,
     #[serde(default)]
@@ -76,6 +81,10 @@ fn is_zero(n: &usize) -> bool { *n == 0 }
 /// by `updated`; a published status replaces live progress whatever its time.
 fn merged(prev: Option<&Job>, mut new: Job) -> Job {
     let Some(prev) = prev.filter(|p| p.technology == new.technology && p.live.is_some()) else { return new };
+    // Live progress carries no repository check: the published one stands until the next is published.
+    if new.live == Some(true) && new.archived.is_empty() {
+        new.archived = prev.archived.clone();
+    }
     if prev.live == new.live && new.updated < prev.updated {
         let mut kept = prev.clone();
         // What says when the service may change next is the newest answer's.
@@ -1938,6 +1947,14 @@ struct Signal<'r> {
     lock: Vec<&'r crate::advisories::Item>,
 }
 
+/// A type-stub package whose runtime package (`@types/uuid` → uuid, `types-requests` → requests) is itself a
+/// dependency of the stack.
+fn stub_beside_runtime(purl: &str, name: &str, st: &crate::stack::Stack) -> bool {
+    let typed = crate::stack::stub_runtime(name)
+        .or_else(|| purl.starts_with("pkg:pypi/").then(|| name.strip_prefix("types-").or_else(|| name.strip_suffix("-stubs")).map(String::from)).flatten());
+    typed.is_some_and(|t| st.deps.values().any(|d| d.name.eq_ignore_ascii_case(&t)))
+}
+
 /// The package-level signals of direct dependencies no shown upgrade (`ranked`, tier at least an unreached advisory)
 /// carries: publisher deprecations and yanks, unmaintained packages, and lockfile advisories on the package itself.
 fn signals<'r>(
@@ -1960,8 +1977,9 @@ fn signals<'r>(
     let value = |what: &str, name: &str| format!("  value: {what} · package signal, no catalog record needed · {}", if runtime(name) { "runtime code" } else { "tests, tooling or docs only" });
     let mut by: BTreeMap<String, Signal> = BTreeMap::new();
     // A type-stub package retired because its runtime package now ships its own types is a cleanup, not an end of
-    // support: it stays under Deprecated by the publisher.
-    for n in deprecated.iter().filter(|n| !util::stub_package(&n.purl)) {
+    // support, and stays under Deprecated by the publisher, unless that runtime package is declared too: then two
+    // sets of types describe one package, and the stub's are the ones no longer kept.
+    for n in deprecated.iter().filter(|n| !util::stub_package(&n.purl) || stub_beside_runtime(&n.purl, &n.name, &w.stack)) {
         if shown.contains(&norm(&n.name)) || by.contains_key(&norm(&n.name)) {
             continue;
         }
@@ -3664,6 +3682,17 @@ mod tests {
         pending.jobs.remove("pkg:pypi/a");
         assert_eq!(pending_line(&pending, now), None);
     }
+    #[test]
+    fn a_retired_stub_ranks_only_beside_its_declared_runtime_package() {
+        let mut st = crate::stack::Stack::default();
+        st.deps.insert("pkg:npm/uuid".into(), crate::stack::Dep::new("uuid", true));
+        st.deps.insert("pkg:pypi/requests".into(), crate::stack::Dep::new("requests", true));
+        assert!(stub_beside_runtime("pkg:npm/%40types/uuid", "@types/uuid", &st));
+        assert!(stub_beside_runtime("pkg:pypi/types-requests", "types-requests", &st));
+        assert!(!stub_beside_runtime("pkg:npm/%40types/node", "@types/node", &st), "a runtime the stack does not declare");
+        assert!(!stub_beside_runtime("pkg:npm/uuid", "uuid", &st), "not a stub");
+    }
+
     fn answer(json: &str) -> Job { job_of(serde_json::from_str(json).unwrap(), "pkg:pypi/g").unwrap() }
     #[test]
     fn a_runs_records_are_pending_until_its_cycle_publishes_and_an_older_answer_never_replaces_a_newer_one() {

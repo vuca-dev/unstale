@@ -165,6 +165,52 @@ test("admission runs before any crawl: a refusal parks the job for a week; unrea
   }
 });
 
+test("archived repositories that end a package or a line are public on its status, parked or admitted, read again weekly", async () => {
+  const discovery = await import("../src/onboarding/discovery.ts");
+  const fetching = await import("../src/pipeline/fetch.ts");
+  vi.spyOn(discovery, "discoverTechnology").mockImplementation(async (purl) => ({
+    discovery_version: discovery.DISCOVERY_VERSION,
+    purl,
+    id: purl.slice(8),
+    name: purl.slice(8),
+    latest: "1.0.0",
+    repo: "example/" + purl.slice(8),
+    tag: "^v(\\d+\\.\\d+\\.\\d+)$",
+    components: [purl],
+  }));
+  vi.spyOn(fetching, "fetchReleases").mockRejectedValue(new Error("stop after admission"));
+  let lines = ["example/old-line"];
+  const admission = vi.fn(async (purl: string, repo: string | undefined) =>
+    purl.endsWith("dormant")
+      ? admit({ purl, repo, archived: true, lastRelease: "2020-01-01T00:00:00Z", downloads: 5 }, THRESHOLDS.npm)
+      : admit({ purl, repo, archivedLines: lines }, THRESHOLDS.npm),
+  );
+  const service = new CoverageService(1, { limits: limits({}), admission });
+  try {
+    service.submit("pkg:npm/dormant");
+    await vi.waitFor(() => expect(service.status("pkg:npm/dormant")?.state).toBe("blocked"), { timeout: 3000 });
+    expect(service.status("pkg:npm/dormant")!.stage).toBe("Not admitted for monitoring: repository example/dormant is archived; no release in 365 days");
+    const parked = service.statuses().find((j) => j.purl === "pkg:npm/dormant")!;
+    expect(parked.archived).toEqual(["example/dormant"]);
+    expect(parked).not.toHaveProperty("lifecycle_checked");
+    service.submit("pkg:npm/moved");
+    await vi.waitFor(() => expect(service.status("pkg:npm/moved")?.state).toBe("failed"), { timeout: 3000 });
+    const job = service.jobs.get("pkg:npm/moved")!;
+    expect(job.archived).toEqual(["example/old-line"]);
+    const calls = admission.mock.calls.length;
+    // Admitted: not asked again within the week; asked again after it, and an answer with no archive clears it.
+    await (service as unknown as { identify(j: unknown, r: boolean, q: boolean): Promise<unknown> }).identify(job, false, true);
+    expect(admission.mock.calls.length).toBe(calls);
+    job.lifecycle_checked = new Date(Date.now() - 8 * 86_400_000).toISOString();
+    lines = [];
+    await (service as unknown as { identify(j: unknown, r: boolean, q: boolean): Promise<unknown> }).identify(job, false, true);
+    expect(admission.mock.calls.length).toBe(calls + 1);
+    expect(job.archived).toBeUndefined();
+  } finally {
+    service.stop();
+  }
+});
+
 test("job runs beyond the daily budget wait queued, with the reason in the stage", async () => {
   const service = new CoverageService(1, { limits: limits({ runsPerDay: 0 }), admission: async () => ({ admit: true, why: "test" }) });
   try {
