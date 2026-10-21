@@ -453,18 +453,25 @@ struct LintPlugin<'r> {
     preset: bool,
 }
 
-/// The technology's lint plugins (`lint_namespace`), each with the texts of the tool's config files
-/// (`usage::config_tool`) that refer to it by namespace or package name.
+/// The technology's lint plugins (`lint_namespace`), each with the texts that configure it: the tool's config files
+/// (`usage::config_tool`) that refer to it, and other files writing its rules under `rules`.
 fn lint_plugins<'r>(comps: &BTreeSet<String>, repo: &'r Repo) -> Vec<LintPlugin<'r>> {
     let mut out = vec![];
     for (tool, ns, pkg) in comps.iter().filter_map(|c| purl_name(c)).filter_map(|p| lint_namespace(&p).map(|(t, n)| (t, n, p))) {
         let prefix = format!("{ns}/");
+        // The tool's own config files, and any other file (a shared config module, `eslint/base.mjs`) that writes
+        // one of the plugin's rules as a quoted key or loads the plugin; documentation never configures it.
+        let quoted = [format!("'{prefix}"), format!("\"{prefix}")];
         let configs: Vec<&str> = repo
             .paths
             .iter()
-            .filter(|p| usage::config_tool(p).as_deref() == Some(tool.as_str()))
-            .filter_map(|p| repo.text(p))
-            .filter(|t| t.contains(&prefix) || t.contains(pkg.as_str()))
+            .filter(|p| !matches!(repo.role(p), usage::Role::Docs | usage::Role::Generated | usage::Role::Vendored))
+            .filter_map(|p| repo.text(p).map(|t| (p, t)))
+            .filter(|(p, t)| {
+                let tool_config = usage::config_tool(p).as_deref() == Some(tool.as_str());
+                (tool_config && (t.contains(&prefix) || t.contains(pkg.as_str()))) || quoted.iter().any(|q| t.contains(q.as_str())) && (tool_config || t.contains(pkg.as_str()) || t.contains("rules"))
+            })
+            .map(|(_, t)| t)
             .collect();
         let preset = configs.iter().any(|t| t.contains(&format!("plugin:{prefix}")) || import_bindings(t, &pkg).iter().any(|b| t.contains(&format!("{b}.configs"))));
         out.push(LintPlugin { prefix, configs, preset });
@@ -1375,7 +1382,9 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             }
         };
         let lines = Lines::new(&td.index.releases);
-        let plugins = lint_plugins(comps, inp.repo);
+        // Read only once a record names one of a lint plugin's rules (`rule_not_enabled`).
+        let plugins: std::cell::OnceCell<Vec<LintPlugin>> = std::cell::OnceCell::new();
+        let lint_ns: Vec<String> = comps.iter().filter_map(|c| purl_name(c)).filter_map(|p| lint_namespace(&p)).map(|(_, n)| format!("{n}/")).collect();
         for (ri, (rec, ls)) in td.records.iter().zip(lits).enumerate() {
             // The releases of the packages this repository uses; else of the technology's own packages (a record names
             // every component, and the repository uses at least one). A record about other packages of the technology's
@@ -1490,7 +1499,9 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             let ex = |l: &str| ex_with(l, false);
             let (cited, cite): (&[String], Cite) = if deprecated.is_empty() { (ls, &ev) } else { (&deprecated, &ex) };
             // A lint rule this repository never turns on: none of the record's terms is a site (`rule_not_enabled`).
-            let rule_off = rule_not_enabled(&rec.r, &plugins);
+            let rule_off = !lint_ns.is_empty()
+                && rec.r.terms.iter().map(|t| &t.0).chain(&rec.r.replaces).any(|t| lint_ns.iter().any(|n| t.contains(n.as_str())))
+                && rule_not_enabled(&rec.r, plugins.get_or_init(|| lint_plugins(comps, inp.repo)));
             let cited: &[String] = if rule_off { &[] } else { cited };
             let found: Vec<(String, Rc<usage::Evidence>)> = cited.iter().map(|l| (l.clone(), cite(l))).filter(|(_, e)| !e.files.is_empty()).collect();
             let more: BTreeMap<String, usize> = found.iter().filter(|(_, e)| e.more > 0).map(|(l, e)| (l.clone(), e.more)).collect();
@@ -2218,6 +2229,8 @@ mod tests {
         assert!(!off("module.exports = { extends: ['plugin:jsdoc/recommended'] };"));
         assert!(off(&format!("{head}'jsdoc/check-alignment': 'error' }} }}];")));
         assert!(!off("export default [];"), "a plugin the config never names (a shared config's) is not judged");
+        let shared = repo(&[("eslint.config.ts", "import jsdoc from 'eslint-plugin-jsdoc';\nimport base from './eslint/base.mjs';\nexport default [base];"), ("eslint/base.mjs", "export default { rules: { 'jsdoc/prefer-import-tag': 'warn' } };"), code]);
+        assert!(!rule_not_enabled(&c.techs["eslint-plugin-jsdoc"].records[0].r, &lint_plugins(&comps, &shared)), "turned on in a config module the config imports");
     }
 
     #[test]
