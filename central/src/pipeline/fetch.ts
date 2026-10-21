@@ -587,6 +587,20 @@ export function guideBounds(t: Technology, releases: ReadonlyArray<{ version: st
 
 const guideDir = (t: Technology) => join(centralDir(), "guides", techLocal(t.id));
 
+/** The technology's guide filter (docs/guides.ts `guideFilter` over its package URLs and stored docs state). */
+const ownFilter = (t: Technology) => guideFilter({ technology: t.id, purls: t.components.map((p) => p.replace("%40", "@")) });
+
+/**
+ * The guides in the technology's index that `ownGuide` finds another thing's: no longer sources (`fetchGuides`), so
+ * the records read only from them are retracted (store.ts `retractForeignGuideRecords`).
+ */
+export function foreignGuides(t: Technology): Set<string> {
+  const index = readJson<GuideIndex>(join(guideDir(t), "index.json"));
+  if (!index?.guides.length) return new Set();
+  const own = ownFilter(t);
+  return new Set(index.guides.filter((g) => !("repo" in g) && !own(g.url)).map((g) => g.url));
+}
+
 export async function fetchGuides(
   t: Technology,
   releases: Array<{ version: string; date: string }>,
@@ -612,7 +626,7 @@ export async function fetchGuides(
   // Entries from the old table-driven path (a repository file at a commit) stay in the index as history but are no
   // longer sources: a newer repository snapshot there would re-extract the whole guide. A guide ingested before the
   // technology's own were told from other variants' (docs/guides.ts `ownGuide`) stays in the index but is no source.
-  const own = guideFilter({ technology: t.id, purls: t.components.map((p) => p.replace("%40", "@")) });
+  const own = ownFilter(t);
   return index.guides
     .filter((g) => !("repo" in g) && own(g.url))
     .map((g) => {
