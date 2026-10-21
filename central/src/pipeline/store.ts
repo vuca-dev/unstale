@@ -218,6 +218,23 @@ export function boundGuideRecords(s: TechStore, bounds: ReadonlyMap<string, { ve
   return n;
 }
 
+/**
+ * Records read only from upgrade guides that are another technology's (fetch.ts `foreignGuides`: a guide ingested
+ * before `ownGuide` told the technology's own from other variants', products' or languages') are retracted, so the
+ * next publish drops them from the catalog. A record with any other source keeps its place. Returns the ids retracted.
+ */
+export function retractForeignGuideRecords(s: TechStore, foreign: ReadonlySet<string>): string[] {
+  if (!foreign.size) return [];
+  const out: string[] = [];
+  for (const r of Object.values(s.records).sort((a, b) => a.id.localeCompare(b.id))) {
+    if (r.status !== "active" || !r.evidence.length || !r.evidence.every((e) => foreign.has(e.url))) continue;
+    const urls = [...new Set(r.evidence.map((e) => e.url))].sort();
+    retract(s, r.id, `read only from another technology's upgrade guide: ${urls.join(", ")}`);
+    out.push(r.id);
+  }
+  return out;
+}
+
 export function retract(s: TechStore, id: string, reason = "manual retraction"): void {
   const r = s.records[id];
   if (!r) throw new Error(`unknown record: ${id}`);

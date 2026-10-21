@@ -7,7 +7,7 @@ import { interpret, labelQuestions, recordState, type Labels } from "./classify/
 import { type DocsNote, extractRelease, releaseCached, type Incoming } from "./extract.ts";
 import type { PipelineBudget } from "./budget.ts";
 import { advisoryStage, type AttachReport } from "./advisories.ts";
-import { fetchGuides, fetchReleases, guideBounds, type GuideNote, type ReleaseNote } from "./fetch.ts";
+import { fetchGuides, fetchReleases, foreignGuides, guideBounds, type GuideNote, type ReleaseNote } from "./fetch.ts";
 import { withTechLock } from "./lock.ts";
 import { buildIndex } from "./lines.ts";
 import { ingest } from "./match.ts";
@@ -15,7 +15,7 @@ import { catalogDir, centralDir } from "./paths.ts";
 import { activeTerms, publishTechnology } from "./publish.ts";
 import { drawSample, sampleCounts } from "./sample.ts";
 import { checkIncoming } from "./prereqs.ts";
-import { boundGuideRecords, loadStore, saveStore } from "./store.ts";
+import { boundGuideRecords, loadStore, retractForeignGuideRecords, saveStore } from "./store.ts";
 import { TECHNOLOGIES, type Technology } from "./technologies.ts";
 import { compareVersions, pool, writeAtomic } from "./util.ts";
 import { DEFAULT_HTTP, HttpClient } from "../collector/http.ts";
@@ -151,6 +151,8 @@ export async function runTechnology(
     if (!opts.limit) {
       const bounded = boundGuideRecords(store, guideBounds(t, fetched.notes));
       if (bounded) console.log(`${t.id}: ${bounded} records from a moving upgrade guide given a release bound`);
+      const foreign = retractForeignGuideRecords(store, foreignGuides(t));
+      if (foreign.length) console.log(`${t.id}: ${foreign.length} records read only from another technology's upgrade guide retracted`);
     }
     saveStore(store);
     // Docs events whose notes all extracted are done; one with a failed call is planned again next run.

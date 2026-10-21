@@ -14,13 +14,13 @@ import {
   type PublicTechnology,
 } from "./discovery.ts";
 import { catalogDir, centralDir } from "../pipeline/paths.ts";
-import { advisoryReleases, fetchGuides, fetchReleases, type GuideNote } from "../pipeline/fetch.ts";
+import { advisoryReleases, fetchGuides, fetchReleases, foreignGuides, type GuideNote } from "../pipeline/fetch.ts";
 import { logUsage, readJson, sha256, withUsagePhase, writeAtomic } from "../pipeline/util.ts";
 import { reconcileSources } from "./source-quality.ts";
 import { synthesize } from "./synthesis.ts";
 import { publishTechnology } from "../pipeline/publish.ts";
 import { JOB_FILE, servedIndex } from "../pipeline/export.ts";
-import { loadStore, saveStore } from "../pipeline/store.ts";
+import { loadStore, retractForeignGuideRecords, saveStore } from "../pipeline/store.ts";
 import { advisoryStage } from "../pipeline/advisories.ts";
 import { withTechLock, withTechLockSync } from "../pipeline/lock.ts";
 import { makeClassifier } from "../pipeline/pipeline.ts";
@@ -1103,6 +1103,12 @@ export class CoverageService {
     const index = this.advisories ? await advisoryReleases(tech, releases.notes) : [];
     await withTechLock(tech.id, "onboarding", async () => {
       const store = loadStore(tech.id);
+      // Records read only from another technology's upgrade guide (ingested before `ownGuide`) leave the catalog.
+      const foreign = retractForeignGuideRecords(store, foreignGuides(tech));
+      if (foreign.length) {
+        console.error(`coverage: ${logName(job)}: ${foreign.length} records read only from another technology's upgrade guide retracted`);
+        saveStore(store);
+      }
       if (index.length) {
         this.save(job, "partial", "Checking security advisories");
         const read = new Set(job.completed ?? []);
