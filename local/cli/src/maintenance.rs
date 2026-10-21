@@ -29,6 +29,8 @@ pub struct Notice {
     pub version: String,
     /// Why: "upstream repository archived", "no release since 2020-06-10".
     pub why: String,
+    /// The upstream repository is archived (central's admission or the registry's project status says so).
+    pub archived: bool,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -161,13 +163,14 @@ pub fn notices(cache: &Path, st: &Stack, jobs: &BTreeMap<String, Job>, today: &s
             let last = c.as_ref().and_then(|c| c.last_release.clone());
             let since = last.as_deref().map(|d| d.get(..10).unwrap_or(d).to_string());
             let old = since.as_deref().is_some_and(|d| d < cutoff.as_str());
-            let why = match (archived || c.as_ref().is_some_and(|c| c.archived), old) {
+            let archived = archived || c.as_ref().is_some_and(|c| c.archived);
+            let why = match (archived, old) {
                 (true, true) => format!("upstream repository archived; no release since {}", since.unwrap_or_default()),
                 (true, false) => "upstream repository archived".to_string(),
                 (false, true) => format!("no release since {}", since.unwrap_or_default()),
                 (false, false) => return None,
             };
-            Some(Notice { name, version, why })
+            Some(Notice { name, version, why, archived })
         })
         .collect();
     out.sort_by(|a, b| a.name.cmp(&b.name));

@@ -1886,6 +1886,142 @@ const LEAD_CONSEQUENTIAL: u8 = 3;
 const LEAD_ADVISORY_UNREACHED: u8 = 2;
 const LEAD_NAMED: u8 = 1;
 
+/// One direct dependency's package-level signals, ranked as an upgrade (`report_from`).
+struct Signal<'r> {
+    name: String,
+    /// `name installed → target picks up …`, the upgrade head-line form.
+    head: String,
+    tier: u8,
+    weight: u8,
+    lead: Option<String>,
+    unreached: bool,
+    class: Class,
+    runtime: bool,
+    value: String,
+    lock: Vec<&'r crate::advisories::Item>,
+}
+
+/// The package-level signals of direct dependencies no shown upgrade (`ranked`, tier at least an unreached advisory)
+/// carries: publisher deprecations and yanks, unmaintained packages, and lockfile advisories on the package itself.
+fn signals<'r>(
+    ranked: &[Ranked],
+    out: &Outcome,
+    deprecated: &[crate::deprecations::Notice],
+    unmaintained: &[crate::maintenance::Notice],
+    lock: &'r crate::advisories::Report,
+    w: &World,
+    declared: &[workarounds::Decl],
+) -> Vec<Signal<'r>> {
+    let norm = |s: &str| s.to_ascii_lowercase().replace(['_', '.'], "-");
+    let shown: BTreeSet<String> = ranked
+        .iter()
+        .filter(|r| r.tier >= LEAD_ADVISORY_UNREACHED)
+        .flat_map(|r| out.packages.get(r.technology).into_iter().flatten().chain(std::iter::once(r.technology)).map(|p| norm(p)).collect::<Vec<_>>())
+        .collect();
+    let words = |t: &str| display_text(&util::one_line(t, 160));
+    let runtime = |name: &str| workarounds::facts(declared, &[name.to_string()]).runtime;
+    let value = |what: &str, name: &str| format!("  value: {what} · package signal, no catalog record needed · {}", if runtime(name) { "runtime code" } else { "tests, tooling or docs only" });
+    let mut by: BTreeMap<String, Signal> = BTreeMap::new();
+    // A type-stub package retired because its runtime package now ships its own types is a cleanup, not an end of
+    // support: it stays under Deprecated by the publisher.
+    for n in deprecated.iter().filter(|n| !util::stub_package(&n.purl)) {
+        if shown.contains(&norm(&n.name)) || by.contains_key(&norm(&n.name)) {
+            continue;
+        }
+        // The line to move to: the newest release when its publisher has not retired it too, else (a renamed or
+        // retired package) the replacement the message names.
+        let target = match &n.latest {
+            Some((l, false)) if *l != n.version => l.clone(),
+            _ => "replacement".to_string(),
+        };
+        let how = if n.yanked { "yanked" } else { "deprecated" };
+        let said = if n.message.trim().is_empty() { String::new() } else { format!(": \"{}\"", words(&n.message)) };
+        by.insert(norm(&n.name), Signal {
+            head: format!("{} {} → {target} picks up 1 publisher {} (`unstale bump {}`)", n.name, n.version, if n.yanked { "yank" } else { "deprecation" }, n.name),
+            name: n.name.clone(),
+            tier: LEAD_CONSEQUENTIAL,
+            weight: 4,
+            lead: Some(format!("end of support: the installed {} {} is {how} by its publisher{said}", display_text(&n.name), n.version)),
+            unreached: false,
+            class: Class::Compatibility,
+            runtime: runtime(&n.name),
+            value: value("end of support", &n.name),
+            lock: vec![],
+        });
+    }
+    // An archived repository is a statement of the maintainers; a release gap alone is not (a finished small library
+    // releases nothing either), so it stays under its own section.
+    for n in unmaintained.iter().filter(|n| n.archived) {
+        if shown.contains(&norm(&n.name)) || by.contains_key(&norm(&n.name)) {
+            continue;
+        }
+        by.insert(norm(&n.name), Signal {
+            head: format!("{} {} → replacement picks up 1 maintenance notice (`unstale bump {}`)", n.name, n.version, n.name),
+            name: n.name.clone(),
+            tier: LEAD_CONSEQUENTIAL,
+            weight: 2,
+            lead: Some(format!("unmaintained: {}", n.why)),
+            unreached: false,
+            class: Class::Compatibility,
+            runtime: true,
+            value: value("unmaintained", &n.name),
+            lock: vec![],
+        });
+    }
+    // Lockfile advisories on a direct dependency itself (`via` empty), the worst first.
+    let mut own: BTreeMap<String, Vec<&crate::advisories::Item>> = BTreeMap::new();
+    for it in lock.items.iter().filter(|it| it.via.is_empty() && !shown.contains(&norm(&it.name))) {
+        own.entry(norm(&it.name)).or_default().push(it);
+    }
+    // Production code: an application file of the repository's own code, not configuration written as code.
+    let prod = |f: &str| {
+        let name = f.rsplit('/').next().unwrap_or(f);
+        (usage::own_code(f, "npm") || usage::own_code(f, "pypi"))
+            && !name.contains(".config.")
+            && !name.starts_with('.')
+            && !matches!(name, "conf.py" | "setup.py" | "noxfile.py" | "conftest.py")
+            && w.repo.role(f) == usage::Role::App
+    };
+    for (key, items) in own {
+        let name = items[0].name.clone();
+        // Reachability as for an upgrade's advisories: an identifier the advisory names, in a production file that
+        // imports the package.
+        let quoted = |t: &str| ['\'', '"', '`'].iter().any(|q| t.contains(&format!("{q}{name}")));
+        let importers: Vec<(&str, &str)> = w.repo.paths.iter().filter(|f| prod(f)).filter_map(|f| w.repo.text(f).map(|t| (f.as_str(), t))).filter(|(_, t)| quoted(t)).collect();
+        let reached = items.iter().find_map(|it| {
+            let ids: Vec<String> = affected_identifiers(&it.summary).into_iter().filter(|id| !id.eq_ignore_ascii_case(&name)).collect();
+            importers.iter().find_map(|(f, t)| ids.iter().find(|id| has_identifier(t, id)).map(|id| format!("security, affected `{id}` used at {f}: {}", words(&it.summary))))
+        });
+        if let Some(s) = by.get_mut(&key) {
+            s.lock = items;
+            if s.lead.is_none() {
+                s.lead = reached;
+            }
+            continue;
+        }
+        // The release that fixes every one, when each has a fix.
+        let target = if items.iter().all(|it| it.fix.is_some()) {
+            items.iter().filter_map(|it| it.fix.as_deref()).max_by(|a, b| util::parse_version(a).cmp(&util::parse_version(b))).unwrap_or("replacement").to_string()
+        } else {
+            "replacement".to_string()
+        };
+        let (tier, weight) = if reached.is_some() { (LEAD_CONSEQUENTIAL, 3) } else { (LEAD_ADVISORY_UNREACHED, 0) };
+        by.insert(key, Signal {
+            head: format!("{name} {} → {target} picks up {} security (`unstale bump {name}`)", items[0].version, items.len()),
+            tier,
+            weight,
+            unreached: reached.is_none(),
+            lead: reached,
+            class: Class::Security,
+            runtime: runtime(&name),
+            value: value("security", &name),
+            name,
+            lock: items,
+        });
+    }
+    by.into_values().collect()
+}
+
 fn diversified<'a, 'o>(mut rest: Vec<Ranked<'a, 'o>>, slots: usize, cap: usize) -> Vec<Ranked<'a, 'o>> {
     let mut out: Vec<Ranked> = vec![];
     while out.len() < slots && !rest.is_empty() {
@@ -2052,6 +2188,8 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
         let n = norm(name);
         locked.keys().any(|k| norm(k) == n) || w.stack.deps.keys().any(|c| util::purl_name(c).is_some_and(|p| norm(&p) == n))
     };
+    // Package-level signals (`signals`): their head lines, owned here so the ranked list can borrow them.
+    let mut signal_store: Vec<(String, Vec<String>)> = vec![];
     let mut ranked: Vec<Ranked> = vec![];
     let mut quiet = 0;
     for (technology, lines) in &groups {
@@ -2285,6 +2423,22 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
             (obligations.len() + in_effect.len()).min(50),
         ));
         ranked.push(Ranked { key, tier, lead, unreached: advisory && reached.is_none(), class, technology, lines, fixes: tech_fixes, lock, lock_fixed, notes, joins, leads, value, peer, copies });
+    }
+    // Package-level signals: what the public registry and OSV say about a direct dependency's installed version, with
+    // no catalog record needed (a technology queued, blocked, never attached, or covered with no record). A publisher's
+    // deprecation or yank of the installed version (a retired major, a renamed or retired package), an unmaintained
+    // package (`maintenance`), and a lockfile advisory on the package itself. Each ranks by the same impact table as
+    // the upgrades: end of support is consequential; an advisory is security only when its affected API or option is
+    // in production code, else it is marked advisory present, affected path not found. A package an upgrade above
+    // already shows carries its own signals; one listed only under Other bumps moves here.
+    let signals = signals(&ranked, &out, &deprecated, &unmaintained, &lock_report, w, &declared);
+    let signalled: BTreeSet<String> = signals.iter().map(|s| norm(&s.name)).collect();
+    ranked.retain(|r| r.tier >= LEAD_ADVISORY_UNREACHED || !out.packages.get(r.technology).into_iter().flatten().chain(std::iter::once(r.technology)).any(|p| signalled.contains(&norm(p))));
+    signal_store.extend(signals.iter().map(|s| (s.name.clone(), vec![s.head.clone()])));
+    for (s, (name, lines)) in signals.into_iter().zip(signal_store.iter()) {
+        let lock_fixed: Vec<&crate::advisories::Item> = s.lock.iter().copied().filter(|it| it.fix.is_some()).collect();
+        let key = (s.tier, s.weight, (false, false, 0, false, true, s.runtime, true, false, 1, 1, 1, 0));
+        ranked.push(Ranked { key, tier: s.tier, lead: s.lead, unreached: s.unreached, class: s.class, technology: name, lines, fixes: &[], lock: s.lock, lock_fixed, notes: vec![], joins: vec![], leads: None, value: s.value, peer: None, copies: None });
     }
     ranked.sort_by(|a, b| b.key.cmp(&a.key).then_with(|| a.technology.cmp(b.technology)));
     let ranked = diversified(ranked, 8, 3);
