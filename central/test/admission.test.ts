@@ -65,6 +65,7 @@ describe("archived, deprecated and type stubs", () => {
     // One line ended, the package going on; or a statement about something else, or below the head.
     expect(endedIn("# lib\n\nVersion 1.x is no longer maintained; upgrade to 2.")).toBe(false);
     expect(endedIn("# lib\n\nThe v3 branch is no longer supported.")).toBe(false);
+    expect(endedIn("# lib\n\nIE11 is no longer supported.")).toBe(false);
     expect(endedIn("# lib\n\nA fast, maintained parser. Supports Node 20+.")).toBe(false);
     expect(endedIn(`# lib\n\n${"x ".repeat(3000)}This project is no longer maintained.`)).toBe(false);
 

@@ -209,11 +209,11 @@ export function fromNpm(doc: any): Pick<Signals, "lastRelease" | "deprecated"> {
 
 /** How much of a README is read for an end-of-development statement: maintainers put it at the top. */
 export const README_HEAD = 4000;
-/** "… is no longer (being) (actively) maintained / developed / supported", "development has stopped", "this project is
+/** "… is no longer (being) (actively) maintained / developed" (not "supported": that is said of platforms), "development has stopped", "this project is
  * deprecated / discontinued / abandoned / unmaintained": a statement about the whole project. One whose subject is a
  * version, a branch or a release line (`v1 is no longer maintained`) is about that line, not the package. */
 const ENDED = [
-  /\b(?:is|are|has been|have been) no longer (?:being )?(?:actively )?(?:maintained|developed|supported|under (?:active )?development)\b/i,
+  /\b(?:is|are|has been|have been) no longer (?:being )?(?:actively )?(?:maintained|developed|under (?:active )?development)\b/i,
   /\b(?:this|the) (?:project|package|library|repository|repo|module|client|sdk|tool|plugin|crate) (?:is|has been) (?:now )?(?:deprecated|discontinued|abandoned|unmaintained|end[- ]of[- ]life)\b/i,
   /\b(?:active )?development (?:has|was) (?:stopped|ended|ceased|discontinued)\b/i,
 ];
