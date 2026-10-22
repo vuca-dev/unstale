@@ -197,8 +197,9 @@ export async function majorDocs(n: number, src: MajorSource, seen: ReadonlySet<s
       const page = await readPage(src.fetcher, u);
       if (page && !known(page.url)) out.push({ major, url: page.url, text: page.text, via: "linked" });
     }
-    // A pointer body (a line and a link) is no notes of its own.
-    if (notes.old && !pointerLinks(notes.text).length && notes.text.trim().length >= MIN_NOTES && !known(notes.url)) out.push({ major, url: notes.url, text: notes.text.trim() + "\n", via: "release" });
+    // A pointer body (a line and a link, no list of changes) is no notes of its own.
+    const listed = /^\s*[-*+]\s+\S/m.test(notes.text.replace(/\[[^\]]*\]\([^)]*\)/g, "").replace(/https?:\/\/\S+/g, ""));
+    if (notes.old && (listed || !pointerLinks(notes.text).length) && notes.text.trim().length >= MIN_NOTES && !known(notes.url)) out.push({ major, url: notes.url, text: notes.text.trim() + "\n", via: "release" });
   }
   if (out.length) return out;
   for (const [path, raw] of await src.upgradeFiles()) {

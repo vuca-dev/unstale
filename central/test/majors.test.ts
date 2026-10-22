@@ -70,6 +70,12 @@ function source(notes: Awaited<ReturnType<MajorSource["notes"]>>, pages: Record<
 const long = (s: string) => `${s}\n\n${"Breaking change text. ".repeat(40)}`;
 
 describe("a major's upgrade material", () => {
+  test("short old notes with a list of changes are notes; a pointer body is not", async () => {
+    const short = "### BREAKING CHANGES\n\n* deprecated options removed. See https://marked.js.org/using_advanced#options";
+    expect((await majorDocs(8, source({ url: "https://github.com/o/r/releases/tag/v8.0.0", text: short, old: true }, {}), new Set())).map((d) => d.via)).toEqual(["release"]);
+    const pointer = "Please refer to [CHANGELOG.md](https://github.com/x/y/blob/v7.0.0/CHANGELOG.md) for details.";
+    expect(await majorDocs(7, source({ url: "https://github.com/o/r/releases/tag/v7.0.0", text: pointer, old: true }, {}), new Set())).toEqual([]);
+  });
   test("the guide the x.0.0 notes link, by its Markdown copy first; old notes themselves too", async () => {
     const src = source(
       { url: "https://github.com/o/r/releases/tag/v19.0.0", text: long("See https://react.dev/blog/2024/04/25/react-19-upgrade-guide and https://github.com/o/r/pull/1"), old: true },
