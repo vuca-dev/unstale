@@ -103,7 +103,9 @@ export function attribute(s: SectionChange, ctx: AttributionContext): Attributio
  * tools (`migration-guides/migrate-from-miniflare-2`). A guide numbered by its release (`migration-guide-7-0`, the
  * AI SDK's) is a major's guide only at `<major>-0` or `<major>`: `migration-guide-5-1` is a minor's, and
  * `migration-guide-5-0-data` a part of one. */
-const GUIDE_SEGMENT = /^(upgrad(e|ing)|migration$|migration-guide(-v?\d{1,3}(-0)?)?$|migrating-to|migrate-to)/;
+const GUIDE_SEGMENT = /^(upgrad(e|ing)|migration$|migration-guide(-v?\d{1,3}(-0)?)?$|migrating-to|migrate-to)|^([a-z][a-z0-9]*-)*v?\d{1,3}(-x)?-(upgrade|migration)(-guide)?(-[a-z]+)?$/;
+/** A segment that names its major before the word (`v8-migration`, `react-19-upgrade-guide`, Babel's and React's). */
+const MAJOR_FIRST = /(?:^|-)v?(\d{1,3})(?:-x)?-(?:upgrade|migration)(?:-|$)/;
 
 /** The URL ends in a guide segment, so the page may be an unnumbered guide whose major only its text names. */
 export function guideCandidate(url: string): boolean {
@@ -115,11 +117,19 @@ export function guideMajor(url: string, text?: string): string | undefined {
   const at = segs.findIndex((s) => GUIDE_SEGMENT.test(s));
   if (at < 0) return undefined;
   const rest = segs.slice(at).join("/");
-  const numbered = /^migration-guide-v?(\d{1,3})(?:-0)?$/.exec(segs[at]!)?.[1];
+  const numbered = /^migration-guide-v?(\d{1,3})(?:-0)?$/.exec(segs[at]!)?.[1] ?? MAJOR_FIRST.exec(segs[at]!)?.[1];
   if (numbered) return numbered;
   const n = /(?:version-|to-(?:[a-z-]+-)?v?|\bv|-)(\d{1,3})(?:\.x)?$/.exec(rest)?.[1] ?? /(?:version-|\bv)(\d{1,3})(?:\D|$)/.exec(rest)?.[1];
   if (n) return n;
   if (at !== segs.length - 1) return undefined; // a page under a guide section (codemods), not the guide itself
   const head = (text ?? "").slice(0, 3000);
-  return /\bto\s+(?:[\w.]+\s+)?(?:version\s+|v)(\d{1,3})\b/i.exec(head)?.[1];
+  const to = /\bto\s+(?:[\w.]+\s+)?(?:version\s+|v)(\d{1,3})\b/i.exec(head)?.[1];
+  if (to) return to;
+  // The page's title alone may name the target without `version` or `v` ("Upgrade to Babel 8"), or only the major it
+  // leaves ("Migration from v7": the guide to the next major).
+  const title = /^\s*#\s+(.+)$/m.exec(head)?.[1] ?? head.split("\n").find((l) => l.trim())?.trim() ?? "";
+  const named = /\b(?:to|for)\s+(?:[\w.@/-]+\s+)?v?(\d{1,3})(?:\.x|\.0)*\b/i.exec(title)?.[1];
+  if (named) return named;
+  const from = /\bfrom\s+(?:[\w.@/-]+\s+)?(?:version\s+|v)(\d{1,3})\b/i.exec(title)?.[1];
+  return from ? String(Number(from) + 1) : undefined;
 }

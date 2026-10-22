@@ -15,6 +15,9 @@
 //   - repositoryPackages: packages published from the technology's repository, with their descriptions, from registry
 //     metadata (npm: the packages of a maintainer of the components). Without it no heading is read as naming another package
 //     (advisories.ts step 11): the record keeps its components.
+//   - versionDownloads: last week's downloads of each version (npm's public downloads API): how many installs are on
+//     each release line, the public stand-in for "someone is behind this major" (clients send no installed versions).
+//     Without it a technology's upgrade material is read for its current and previous major only (fetch.ts, majors.ts);
 //   - versionPage: the registry page of one version. With publishTimes, a technology with no GitHub release notes gets
 //     the registry's versions as its release index (fetch.ts `registryReleases`), so its advisories resolve; without
 //     it such a technology gets no advisories (as before).
@@ -38,6 +41,8 @@ export interface Ecosystem {
   repositoryPackages?: (t: Technology) => Promise<RegistryPackage[] | undefined>;
   /** The registry page of one version of `component` (where a release with no notes points, fetch.ts). */
   versionPage?: (component: string, version: string) => string;
+  /** Version → last week's downloads of `component`; undefined when the registry does not report them. */
+  versionDownloads?: (component: string) => Promise<Record<string, number> | undefined>;
 }
 
 /** A package as the registry describes it (`repositoryPackages`). */
@@ -232,6 +237,13 @@ async function npmPublishTimes(component: string): Promise<Record<string, string
   return Object.fromEntries(Object.entries(doc.time ?? {}).filter((e): e is [string, string] => e[0] !== "created" && e[0] !== "modified" && typeof e[1] === "string"));
 }
 
+/** npm: last week's downloads per version (`api.npmjs.org/versions/<name>/last-week`). */
+async function npmVersionDownloads(component: string): Promise<Record<string, number> | undefined> {
+  const doc = (await getJson(`https://api.npmjs.org/versions/${encodeURIComponent(npmName(component))}/last-week`)) as { downloads?: Record<string, unknown> } | undefined;
+  if (!doc?.downloads) return undefined;
+  return Object.fromEntries(Object.entries(doc.downloads).filter((e): e is [string, number] => typeof e[1] === "number"));
+}
+
 /** PyPI: per version, the earliest upload among its files (`pypi.org/pypi/<name>/json`); a version with no files has
  * no time. */
 async function pypiPublishTimes(component: string): Promise<Record<string, string> | undefined> {
@@ -299,6 +311,7 @@ export const ECOSYSTEMS: Record<string, Ecosystem> = {
     publishTimes: npmPublishTimes,
     repositoryPackages: npmRepositoryPackages,
     versionPage: (component, version) => `https://www.npmjs.com/package/${npmName(component)}/v/${encodeURIComponent(version)}`,
+    versionDownloads: npmVersionDownloads,
   },
   // PyPI versions are PEP 440. No siblings hook: PyPI has no organisation listing to find a repository's packages.
   pypi: {

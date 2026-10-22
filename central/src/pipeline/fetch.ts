@@ -18,6 +18,7 @@ import { capped, pageText, pickChangelog, pointerLinks, repoFileLink, sectionFor
 import { httpFetcher } from "../docs/fetcher.ts";
 import { RobotsCache } from "../docs/robots.ts";
 import type { Fetcher } from "../docs/resolve.ts";
+import { changelogSection, majorDocs, treeDirectory, upgradeFileNames, wanted, type MajorDoc, type MajorSource } from "./majors.ts";
 
 export interface ReleaseNote {
   technology: string;
@@ -171,24 +172,32 @@ export async function publishDates(t: Technology, versions: readonly string[], o
  * The first component whose ecosystem has the `publishTimes` and `versionPage` hooks answers; its publish times are
  * the cache `publishDates` keeps. Empty when none can be read (fails open: no advisories, as before).
  */
+/** A component's registry publish times (the cache `publishDates` keeps), read again when stale unless offline. */
+async function componentTimes(t: Technology, component: string, opts: { refresh?: boolean; offline?: boolean }): Promise<Record<string, string> | undefined> {
+  const hook = ecosystemOf(component).publishTimes;
+  if (!hook) return undefined;
+  const p = timesName(component);
+  const kept = registryCache().get(p);
+  let cached = kept && (JSON.parse(kept.toString("utf8")) as { checked: string; times: Record<string, string> | null });
+  const stale = !cached || opts.refresh || Date.now() - Date.parse(cached.checked) >= FRESH_MS;
+  if (!opts.offline && stale) {
+    try {
+      cached = { checked: new Date().toISOString().replace(/\.\d+Z$/, "Z"), times: (await hook(component)) ?? null };
+      registryCache().put(p, JSON.stringify(cached) + "\n");
+    } catch (e) {
+      console.error(`releases: ${t.id}: publish times of ${component} unreadable (${e instanceof Error ? e.message : e})`);
+    }
+  }
+  return cached?.times ?? undefined;
+}
+
 export async function registryReleases(t: Technology, opts: { refresh?: boolean; offline?: boolean } = {}): Promise<Array<{ version: string; date: string; url: string }>> {
   for (const component of t.components) {
     const eco = ecosystemOf(component);
     if (!eco.publishTimes || !eco.versionPage) continue;
-    const p = timesName(component);
-    const kept = registryCache().get(p);
-    let cached = kept && (JSON.parse(kept.toString("utf8")) as { checked: string; times: Record<string, string> | null });
-    const stale = !cached || opts.refresh || Date.now() - Date.parse(cached.checked) >= FRESH_MS;
-    if (!opts.offline && stale) {
-      try {
-        cached = { checked: new Date().toISOString().replace(/\.\d+Z$/, "Z"), times: (await eco.publishTimes(component)) ?? null };
-        registryCache().put(p, JSON.stringify(cached) + "\n");
-      } catch (e) {
-        console.error(`releases: ${t.id}: publish times of ${component} unreadable (${e instanceof Error ? e.message : e})`);
-      }
-    }
+    const times = await componentTimes(t, component, opts);
     const out: Array<{ version: string; date: string; url: string }> = [];
-    for (const [version, iso] of Object.entries(cached?.times ?? {})) {
+    for (const [version, iso] of Object.entries(times ?? {})) {
       if (!isStable(version) || Number.isNaN(Date.parse(iso))) continue;
       const date = new Date(iso).toISOString().slice(0, 10);
       if (date >= SINCE) out.push({ version, date, url: eco.versionPage(component, version) });
@@ -548,15 +557,114 @@ async function changelogNotes(t: Technology, opts: { refresh?: boolean; offline?
 // so a guide is never re-extracted whole. The stored index keeps, per page, that first snapshot and its text.
 
 export interface GuideNote extends ReleaseNote {
-  kind: "upgrade_guide";
+  /** `release_notes`: a major's x.0.0 notes older than the window, read as its upgrade material (majors.ts). */
+  kind: "upgrade_guide" | "release_notes";
   /** Extraction-key tag: `+guide.<first 8 hex of the snapshot>`. */
   keyTag: string;
+  /** How a guide outside the docs listing was found (majors.ts); absent for one the docs module listed. */
+  via?: MajorDoc["via"];
 }
 
 interface GuideIndex {
   checked: string;
   /** `read`: the day the guide was first read (absent in entries written before 20 October 2026). */
   guides: Array<Omit<GuideNote, "notes" | "noLaterThan"> & { read?: string }>;
+  /** Per wanted major, when its upgrade material outside the docs listing was last looked for and how many documents
+   * were found (majors.ts): a major with any is not looked for again; one with none, after MAJOR_RECHECK_MS. */
+  majors?: Record<string, { checked: string; found: number }>;
+}
+
+const MAJOR_RECHECK_MS = 30 * 24 * 3600 * 1000;
+
+/** Every stable version the registry published, with its day, over the technology's components. */
+async function registryVersions(t: Technology, opts: { refresh?: boolean; offline?: boolean }): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  for (const c of t.components)
+    for (const [v, iso] of Object.entries((await componentTimes(t, c, opts)) ?? {}))
+      if (isStable(v) && !out.has(v) && !Number.isNaN(Date.parse(iso))) out.set(v, new Date(iso).toISOString().slice(0, 10));
+  return out;
+}
+
+/** Where majors.ts reads a technology's x.0.0 notes and upgrade files from. */
+function majorSource(t: Technology, releases: ReadonlyArray<{ version: string; date: string; tag?: string; url?: string; notes?: string }>, f: Fetcher): MajorSource {
+  const changelogs = new Map<string, string | null>();
+  let files: Promise<Array<[string, string]>> | undefined;
+  const tags = [...new Set(releases.flatMap((r) => (r.tag ? [[r.tag, r.version] as const] : [])).map(([tag, v]) => (n: string) => tag.split(v).join(n)))];
+  return {
+    fetcher: f,
+    repo: t.repo,
+    async notes(n) {
+      const start = `${n}.0.0`;
+      const inWindow = releases.find((r) => r.version === start && r.notes !== undefined);
+      if (inWindow) return { url: inWindow.url ?? "", text: inWindow.notes!, old: false };
+      if (!t.repo) return undefined;
+      const name = t.components[0] ? decodeURIComponent(t.components[0].replace(/^pkg:[a-z]+\//, "")) : "";
+      const candidates = [...new Set([...tags.map((g) => g(start)), `v${start}`, start, ...(name ? [`${name}@${start}`] : [])])].filter((tag) => t.tag.exec(tag)?.[1] === start);
+      for (const tag of candidates) {
+        const r = await releaseByTag(t.repo, tag);
+        if (r && !r.draft && !r.prerelease && (r.body ?? "").trim()) return { url: r.html_url, text: t.clean(r.body ?? ""), old: true };
+      }
+      const section = await changelogSection(f, t.repo, t.directory ?? treeDirectory(t.repo, t.homepage), start, changelogs);
+      return section ? { ...section, text: t.clean(section.text), old: true } : undefined;
+    },
+    upgradeFiles() {
+      files ??= (async () => {
+        if (!t.repo) return [];
+        const r = await f.get(`https://api.github.com/repos/${t.repo}/git/trees/HEAD?recursive=0`, "application/vnd.github+json", true);
+        const root = r.status === 200 ? ((JSON.parse(r.text) as { tree?: Array<{ path: string; type: string }> }).tree ?? []) : [];
+        const docs = root.find((e) => e.type === "tree" && /^docs?$/i.test(e.path));
+        let inDocs: Array<{ path: string; type: string }> = [];
+        if (docs) {
+          const d = await f.get(`https://api.github.com/repos/${t.repo}/contents/${encodeURIComponent(docs.path)}`, "application/vnd.github+json", true);
+          const list = d.status === 200 ? (JSON.parse(d.text) as Array<{ path: string; type: string }>) : [];
+          inDocs = Array.isArray(list) ? list.map((e) => ({ path: e.path, type: e.type === "file" ? "file" : e.type })) : [];
+        }
+        const entries = [...root.map((e) => ({ path: e.path, type: e.type === "blob" ? "file" : e.type })), ...inDocs];
+        return upgradeFileNames(entries).map((p): [string, string] => [p, `https://raw.githubusercontent.com/${t.repo}/HEAD/${p.split("/").map(encodeURIComponent).join("/")}`]);
+      })();
+      return files;
+    },
+  };
+}
+
+/**
+ * Upgrade material outside the docs listing for each wanted major not yet covered (majors.ts), added to the index:
+ * each document whole, once. The registry's versions and downloads decide which majors are wanted.
+ */
+async function discoverMajors(t: Technology, index: GuideIndex, releases: Parameters<typeof majorSource>[1], opts: { refresh?: boolean }): Promise<number> {
+  const versions = await registryVersions(t, opts);
+  const want = await wanted(t, [...versions.keys()]);
+  const due = want.majors.filter((n) => {
+    const m = index.majors?.[String(n)];
+    return !m || (!m.found && Date.now() - Date.parse(m.checked) >= MAJOR_RECHECK_MS);
+  });
+  if (!due.length) return 0;
+  const src = majorSource(t, releases, linkFetcher());
+  const seen = new Set(index.guides.map((g) => g.url));
+  let added = 0;
+  for (const n of due) {
+    let docs: MajorDoc[] = [];
+    try {
+      docs = await majorDocs(n, src, seen);
+    } catch (e) {
+      console.error(`guides: ${t.id}: major ${n} upgrade material unreadable (${e instanceof Error ? e.message : e})`);
+      continue; // looked for again on the next run
+    }
+    const version = `${n}.0.0`;
+    const date = versions.get(version) ?? new Date().toISOString().slice(0, 10);
+    const read = new Date().toISOString().slice(0, 10);
+    for (const d of docs) {
+      const snapshot = `sha256:${sha256(d.text)}`;
+      writeAtomic(join(guideDir(t), `${n}.${snapshot.slice(7, 15)}.md`), d.text);
+      const kind = d.via === "release" ? "release_notes" : "upgrade_guide";
+      index.guides.push({ technology: t.id, kind, tag: `guide-${n}`, version, date, url: d.url, snapshot, keyTag: `+guide.${snapshot.slice(7, 15)}`, via: d.via, read });
+      seen.add(d.url);
+      added++;
+    }
+    (index.majors ??= {})[String(n)] = { checked: new Date().toISOString().replace(/\.\d+Z$/, "Z"), found: docs.length };
+    console.error(`guides: ${t.id}: major ${n} (${want.basis}): ${docs.length ? docs.map((d) => `${d.via} ${d.url}`).join(", ") : "no upgrade material found"}`);
+  }
+  return added;
 }
 
 /**
@@ -598,13 +706,13 @@ export function foreignGuides(t: Technology): Set<string> {
   const index = readJson<GuideIndex>(join(guideDir(t), "index.json"));
   if (!index?.guides.length) return new Set();
   const own = ownFilter(t);
-  return new Set(index.guides.filter((g) => !("repo" in g) && !own(g.url)).map((g) => g.url));
+  return new Set(index.guides.filter((g) => !("repo" in g) && g.via === undefined && !own(g.url)).map((g) => g.url));
 }
 
 export async function fetchGuides(
   t: Technology,
-  releases: Array<{ version: string; date: string }>,
-  opts: { refresh?: boolean; offline?: boolean; http?: HttpClient; checked?: boolean } = {},
+  releases: Array<{ version: string; date: string; tag?: string; url?: string; notes?: string }>,
+  opts: { refresh?: boolean; offline?: boolean; http?: HttpClient; checked?: boolean; majors?: boolean } = {},
 ): Promise<GuideNote[]> {
   const ip = join(guideDir(t), "index.json");
   const index = readJson<GuideIndex>(ip) ?? { checked: "", guides: [] };
@@ -620,19 +728,29 @@ export async function fetchGuides(
       const read = new Date().toISOString().slice(0, 10);
       index.guides.push({ technology: t.id, kind: "upgrade_guide", tag: `guide-${g.major}`, version, date, url: g.url, snapshot: g.snapshot, keyTag: `+guide.${g.snapshot.slice(7, 15)}`, read });
     }
+    // A major's upgrade material outside the docs listing, for majors someone is behind (majors.ts); fails open.
+    if (opts.majors !== false && t.repo) {
+      try {
+        await discoverMajors(t, index, releases, opts);
+      } catch (e) {
+        console.error(`guides: ${t.id}: majors unreadable (${e instanceof Error ? e.message : e}); docs guides only`);
+      }
+    }
     index.checked = new Date().toISOString().replace(/\.\d+Z$/, "Z");
     writeAtomic(ip, JSON.stringify(index, null, 1) + "\n");
   }
   // Entries from the old table-driven path (a repository file at a commit) stay in the index as history but are no
   // longer sources: a newer repository snapshot there would re-extract the whole guide. A guide ingested before the
   // technology's own were told from other variants' (docs/guides.ts `ownGuide`) stays in the index but is no source.
+  // A guide majors.ts found is the technology's by where it was found (its own notes, its repository), not by the
+  // docs listing's sections.
   const own = ownFilter(t);
   return index.guides
-    .filter((g) => !("repo" in g) && own(g.url))
+    .filter((g) => !("repo" in g) && (g.via !== undefined || own(g.url)))
     .map((g) => {
       const p = join(guideDir(t), `${g.version.split(".")[0]}.${g.snapshot.slice(7, 15)}.md`);
       const { read: _, ...note } = g;
-      const bound = guideBound(g, releases);
+      const bound = g.kind === "release_notes" ? undefined : guideBound(g, releases);
       return { ...note, ...(bound ? { noLaterThan: bound } : {}), notes: readFileSync(p, "utf8") };
     });
 }
