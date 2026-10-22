@@ -220,7 +220,14 @@ pub(crate) fn shown_evidence<'a>(r: &'a unstale_schema::catalog::CapabilityRecor
             !before.is_some_and(|c| c.is_ascii_digit() || c == '.') && !after.is_some_and(|c| c.is_ascii_digit() || c == '.' && url[i + m.len() + 1..].starts_with(|d: char| d.is_ascii_digit()))
         })
     };
-    r.evidence.iter().find(|e| names(&e.url)).or_else(|| r.evidence.first())
+    // A changelog section's anchor writes the version without its dots (`#430-3150---2026-06-27` for the heading
+    // `4.3.0, 3.15.0 - 2026-06-27`): a whole `-`-separated token of the fragment, before the date's `---`.
+    let slug: String = version.chars().filter(|c| *c != '.').collect();
+    let anchors = |url: &str| {
+        let Some((_, frag)) = url.split_once('#') else { return false };
+        version.contains('.') && frag.split("---").next().unwrap_or("").split('-').any(|t| t.trim_start_matches(['v', 'V']) == slug)
+    };
+    r.evidence.iter().find(|e| names(&e.url)).or_else(|| r.evidence.iter().find(|e| anchors(&e.url))).or_else(|| r.evidence.first())
 }
 
 #[cfg(test)]
@@ -536,19 +543,54 @@ pub fn advisory_lines_grouped(out: &Outcome, adv: &[AdvisoryFix], tech: &str) ->
 }
 
 /// Whether an advisory affects version `v` of `component`, from the versions central resolved (`Advisory::index`,
-/// `AffectedRange::versions`): the edge compares version strings and parses no ranges. `None` (unknown) when the
-/// catalog predates resolution, central could not resolve one of the component's ranges, or `v` is not in the release
-/// index the ranges were resolved against; the caller then says nothing about the advisory (fail open, never guess).
+/// `AffectedRange::versions`): the edge compares version strings. `None` (unknown) when the catalog predates
+/// resolution or central could not resolve one of the component's ranges; the caller then says nothing about the
+/// advisory (fail open, never guess). A version the release index does not hold (it holds releases with notes, so a
+/// patch without them, js-yaml 4.3.1, is missing) is read from central's own range strings (`>= 4.0.0, < 4.3.0`), only
+/// when every range of the component is such a list of comparators over versions this edge can read: otherwise `None`.
 pub fn advisory_affects(a: &unstale_schema::catalog::Advisory, component: &str, v: &semver::Version) -> Option<bool> {
+    let ranges = || a.affected.iter().filter(|r| crate::util::normalize_purl(&r.component) == component);
+    let raw = v;
     let v = v.to_string();
     if !a.index.as_ref()?.contains(&v) {
-        return None;
+        let mut hit = false;
+        for r in ranges() {
+            r.versions.as_ref()?;
+            hit |= in_range(raw, &r.range)?;
+        }
+        return Some(hit);
     }
     let mut hit = false;
-    for r in a.affected.iter().filter(|r| crate::util::normalize_purl(&r.component) == component) {
+    for r in ranges() {
         hit |= r.versions.as_ref()?.contains(&v);
     }
     Some(hit)
+}
+
+/// Whether `v` satisfies a range string as central writes it (`>= 4.0.0, < 4.3.0`, comparators joined by commas).
+/// `None` for an empty range (a list- or commit-only one) or a comparator or version this edge cannot read.
+fn in_range(v: &semver::Version, range: &str) -> Option<bool> {
+    let parts: Vec<&str> = range.split(',').map(str::trim).filter(|p| !p.is_empty()).collect();
+    if parts.is_empty() {
+        return None;
+    }
+    let mut all = true;
+    for p in parts {
+        let (op, rest) = [">=", "<=", ">", "<", "="].iter().find_map(|op| p.strip_prefix(op).map(|r| (*op, r))).unwrap_or(("=", p));
+        let rest = rest.trim();
+        if !rest.starts_with(|c: char| c.is_ascii_digit()) || rest.split('.').count() != 3 {
+            return None;
+        }
+        let bound = semver::Version::parse(rest).ok()?;
+        all &= match op {
+            ">=" => *v >= bound,
+            "<=" => *v <= bound,
+            ">" => *v > bound,
+            "<" => *v < bound,
+            _ => *v == bound,
+        };
+    }
+    Some(all)
 }
 
 /// What a bump does to one advisory of a record, for the repository's installed versions and the record's target.
@@ -963,6 +1005,17 @@ mod tests {
         assert!(shown_evidence(&r, "2.3.0").unwrap().url.ends_with("/tag/v2.3.0"));
         assert!(shown_evidence(&r, "11.32.0").unwrap().url.ends_with("/tag/v2.3.0"), "no source names it: the first");
         assert!(shown_evidence(&r, "2.3").unwrap().url.ends_with("/tag/v2.3.0"), "a prefix of a longer version is not it: the first");
+        // A merged record's changelog sections, cited by their anchors: the shown line's section.
+        let log = "https://github.com/o/r/blob/abc/CHANGELOG.md";
+        let merged: unstale_schema::catalog::CapabilityRecord = serde_json::from_value(with(
+            rec("r:x", "pkg:npm/r", "4.3.0"),
+            json!({"evidence":[ev(&format!("{log}#520---2026-06-26")), ev(&format!("{log}#430-3150---2026-06-27"))]}),
+        ))
+        .unwrap();
+        assert!(shown_evidence(&merged, "4.3.0").unwrap().url.ends_with("#430-3150---2026-06-27"));
+        assert!(shown_evidence(&merged, "3.15.0").unwrap().url.ends_with("#430-3150---2026-06-27"));
+        assert!(shown_evidence(&merged, "5.2.0").unwrap().url.ends_with("#520---2026-06-26"));
+        assert!(shown_evidence(&merged, "2.6.0").unwrap().url.ends_with("#520---2026-06-26"), "a date is not a version: the first");
         let scoped: unstale_schema::catalog::CapabilityRecord =
             serde_json::from_value(with(rec("sdk:y", "pkg:npm/sdk", "5.1.0"), json!({"evidence":[ev("https://x.dev/a"), ev("https://github.com/o/r/releases/tag/%40o%2Fsdk%405.1.0")]}))).unwrap();
         assert!(shown_evidence(&scoped, "5.1.0").unwrap().url.contains("5.1.0"));
@@ -1380,11 +1433,22 @@ mod tests {
         for absent in ["GHSA-cccc", "GHSA-dddd", "GHSA-eeee", "GHSA-ffff", "GHSA-gggg", "Summary of next:a"] {
             assert!(!text.contains(absent), "{absent}: {text}");
         }
-        // An installed version outside the index is unknown: nothing said about the advisory.
+        // An installed version outside the index is read from the range strings; one that cannot be read is unknown.
         let adv_a = &out.opps.iter().find(|o| o.id() == "next:a").unwrap().rec.r.advisories[0];
-        assert_eq!(advisory_affects(adv_a, "pkg:npm/next", &semver::Version::parse("16.2.1").unwrap()), Some(true));
-        assert_eq!(advisory_affects(adv_a, "pkg:npm/next", &semver::Version::parse("16.2.5").unwrap()), Some(false));
-        assert_eq!(advisory_affects(adv_a, "pkg:npm/next", &semver::Version::parse("16.2.2").unwrap()), None);
+        let at = |a: &unstale_schema::catalog::Advisory, v: &str| advisory_affects(a, "pkg:npm/next", &semver::Version::parse(v).unwrap());
+        assert_eq!(at(adv_a, "16.2.1"), Some(true));
+        assert_eq!(at(adv_a, "16.2.5"), Some(false));
+        assert_eq!(at(adv_a, "16.2.2"), Some(true), "outside the index, inside `>= 16.0.0, < 16.2.5`");
+        assert_eq!(at(adv_a, "16.2.7"), Some(false), "outside the index and the range");
+        assert_eq!(at(adv_a, "15.9.0"), Some(false), "another line, below the range");
+        let mut odd = adv_a.clone();
+        odd.affected[0].range = ">= 16.0.0, < 16.2".into();
+        assert_eq!(at(&odd, "16.2.2"), None, "a partial version is not read");
+        odd.affected[0].range = String::new();
+        assert_eq!(at(&odd, "16.2.2"), None, "a list-only range is not read");
+        odd.affected[0].versions = None;
+        odd.affected[0].range = ">= 16.0.0, < 16.2.5".into();
+        assert_eq!(at(&odd, "16.2.2"), None, "an unresolved range stays unknown");
     }
 
     #[test]
