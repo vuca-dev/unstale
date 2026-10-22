@@ -24,7 +24,7 @@ import { loadStore, retractForeignGuideRecords, saveStore } from "../pipeline/st
 import { advisoryStage } from "../pipeline/advisories.ts";
 import { withTechLock, withTechLockSync } from "../pipeline/lock.ts";
 import { makeClassifier } from "../pipeline/pipeline.ts";
-import { admit, signals, THRESHOLDS, weeklyDownloads, type Verdict } from "../pipeline/admission.ts";
+import { admit, signals, THRESHOLDS, weeklyDownloads, withLifecycle, type Verdict } from "../pipeline/admission.ts";
 import { AddressLimiter, DailyBudget, Voters, clientAddress, limitsFromEnv, nextPeriod, noteTokens, quarterKey, type Hold, type Limits, type Refusal } from "./limits.ts";
 import { deprecationOf, publishDeprecation } from "./notices.ts";
 import { npmPurl } from "../pipeline/ecosystems.ts";
@@ -98,6 +98,9 @@ export interface Job {
   /** When `archived` was last read for an admitted package (weekly; a parked one reads it at each admission check).
    * Never public. */
   lifecycle_checked?: string;
+  /** The `LIFECYCLE_RULES` that `lifecycle_checked` read with. A parked package checked under older rules is checked
+   * again at once, not at its weekly retry. Never public. */
+  lifecycle_rules?: number;
   /** When the token-free first pass ran (advisories published ahead of the release history): the job keeps its place
    * among new technologies until its first slice, which clears it. Never public. */
   advisories_first?: string;
@@ -256,7 +259,7 @@ export class CoverageService {
     this.admission =
       opts.admission ??
       (async (purl, repo) =>
-        admit(await signals(purl, repo), THRESHOLDS[/^pkg:(\w+)\//.exec(purl)?.[1] ?? ""]));
+        withLifecycle(admit(await signals(purl, repo), THRESHOLDS[/^pkg:(\w+)\//.exec(purl)?.[1] ?? ""]), repo));
     this.adoption = opts.adoption ?? weeklyDownloads;
     const folder = join(centralDir(), "onboarding", "jobs");
     if (existsSync(folder))
@@ -306,6 +309,12 @@ export class CoverageService {
               job.retry_at = now();
               this.persist(job);
             }
+          }
+          // A package parked by admission under older lifecycle rules is checked again now: what the rules added (an
+          // archived repository, an announced end of development) reaches clients without waiting a week.
+          if (job.state === "blocked" && !job.admitted && job.retry_at && (job.lifecycle_rules ?? 0) < LIFECYCLE_RULES && job.stage.startsWith("Not admitted for monitoring:")) {
+            job.retry_at = now();
+            this.persist(job);
           }
           this.jobs.set(job.purl, job);
         }
@@ -895,15 +904,17 @@ export class CoverageService {
     }
     if (job.admitted) {
       // Admission is decided once, but a repository can be archived later: its lifecycle is read again weekly.
-      if (!job.lifecycle_checked || Date.now() - Date.parse(job.lifecycle_checked) >= LIFECYCLE_MS) {
+      if (!job.lifecycle_checked || (job.lifecycle_rules ?? 0) < LIFECYCLE_RULES || Date.now() - Date.parse(job.lifecycle_checked) >= LIFECYCLE_MS) {
         setArchived(job, (await this.admission(job.purl, t.repo)).archived);
         job.lifecycle_checked = now();
+        job.lifecycle_rules = LIFECYCLE_RULES;
       }
     } else {
       // Signals that cannot be read admit the package (admission.ts); a refusal parks it and checks again in a week.
       const verdict = await this.admission(job.purl, t.repo);
       setArchived(job, verdict.archived);
       job.lifecycle_checked = now();
+      job.lifecycle_rules = LIFECYCLE_RULES;
       // A deprecated package is parked, but the deprecation is published first: a change the user's agent needs.
       const deprecated = deprecationOf(verdict);
       if (deprecated !== undefined && !job.deprecation_notice) {
@@ -1242,6 +1253,9 @@ export function logName(j: Pick<Job, "purl" | "admitted">): string {
 }
 /** How often an admitted package's repositories are checked for an archive (a parked one is at each admission check). */
 const LIFECYCLE_MS = 7 * 86_400_000;
+/** The lifecycle rules' version: 1, archived repositories listed (`archived`); 2, an end of development the README
+ * announces said in a parked package's reason (admission.ts `withLifecycle`). Raise it when the rules change. */
+export const LIFECYCLE_RULES = 2;
 function setArchived(job: Job, archived: string[] | undefined) {
   if (archived?.length) job.archived = archived;
   else delete job.archived;
@@ -1261,6 +1275,7 @@ function publicJob(j: Job) {
     merged_into: _merged,
     deprecation_notice: _notice,
     lifecycle_checked: _lifecycle,
+    lifecycle_rules: _rules,
     advisories_first: _first,
     downloads: _downloads,
     interrupted: _interrupted,

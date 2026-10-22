@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { mkdtempSync, readFileSync, readdirSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CoverageService, createCoverageServer, timelinePath } from "../src/onboarding/service.ts";
+import { CoverageService, createCoverageServer, LIFECYCLE_RULES, timelinePath } from "../src/onboarding/service.ts";
 import { AddressLimiter, DailyBudget, limitsFromEnv, type Limits } from "../src/onboarding/limits.ts";
 import { admit, THRESHOLDS } from "../src/pipeline/admission.ts";
 
@@ -206,8 +206,22 @@ test("archived repositories that end a package or a line are public on its statu
     await (service as unknown as { identify(j: unknown, r: boolean, q: boolean): Promise<unknown> }).identify(job, false, true);
     expect(admission.mock.calls.length).toBe(calls + 1);
     expect(job.archived).toBeUndefined();
+    // Checked under older lifecycle rules: admitted, asked again within the week; parked, due again at load.
+    delete job.lifecycle_rules;
+    await (service as unknown as { identify(j: unknown, r: boolean, q: boolean): Promise<unknown> }).identify(job, false, true);
+    expect(admission.mock.calls.length).toBe(calls + 2);
+    const dormant = service.jobs.get("pkg:npm/dormant")!;
+    expect(dormant.lifecycle_rules).toBe(LIFECYCLE_RULES);
+    delete dormant.lifecycle_rules;
+    (service as unknown as { persist(j: unknown): void }).persist(dormant);
   } finally {
     service.stop();
+  }
+  const later = new CoverageService(1, { limits: limits({ runsPerDay: 0 }), admission });
+  try {
+    expect(Date.parse(later.jobs.get("pkg:npm/dormant")!.retry_at!)).toBeLessThanOrEqual(Date.now());
+  } finally {
+    later.stop();
   }
 });
 

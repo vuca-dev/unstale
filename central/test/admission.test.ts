@@ -1,7 +1,7 @@
 // Admission rules (eval/scope/RESULTS.md): release-based freshness, stars for the repository's main package only,
 // archived repositories, deprecated packages with a notice, type stubs parked; unreadable signals fail open.
 import { describe, expect, test } from "vitest";
-import { admit, fromCargo, lineRepos, fromGithub, fromNpm, fromPypi, repoShare, THRESHOLDS, typedPackage, type Signals } from "../src/pipeline/admission.ts";
+import { admit, endedIn, fromCargo, lineRepos, withLifecycle, fromGithub, fromNpm, fromPypi, repoShare, THRESHOLDS, typedPackage, type Signals } from "../src/pipeline/admission.ts";
 
 const NOW = Date.parse("2026-10-16T00:00:00Z");
 const daysAgo = (d: number) => new Date(NOW - d * 86_400_000).toISOString();
@@ -56,6 +56,28 @@ describe("archived, deprecated and type stubs", () => {
     // An older line's own repository archived (codemirror 5): exported on an admitted package too.
     expect(verdict(npm({ repo: "codemirror/dev", archivedLines: ["codemirror/codemirror"] }))).toMatchObject({ admit: true, archived: ["codemirror/codemirror"] });
     expect(verdict(npm()).archived).toBeUndefined();
+  });
+  test("a parked package's README is read once for the maintainers' end of development, about the whole project", async () => {
+    expect(endedIn("# doctrine\n\n## Deprecation notice\n\n__This project is no longer maintained.__ See the ESLint website.")).toBe(true);
+    expect(endedIn("<h1>Prisma Client Python</h1>\n\n> Prisma Client Python is no longer being maintained. See this issue")).toBe(true);
+    expect(endedIn("# lib\n\nThis library has been deprecated in favour of lib2.")).toBe(true);
+    expect(endedIn("# lib\n\nActive development has stopped; security fixes only.")).toBe(true);
+    // One line ended, the package going on; or a statement about something else, or below the head.
+    expect(endedIn("# lib\n\nVersion 1.x is no longer maintained; upgrade to 2.")).toBe(false);
+    expect(endedIn("# lib\n\nThe v3 branch is no longer supported.")).toBe(false);
+    expect(endedIn("# lib\n\nA fast, maintained parser. Supports Node 20+.")).toBe(false);
+    expect(endedIn(`# lib\n\n${"x ".repeat(3000)}This project is no longer maintained.`)).toBe(false);
+
+    const asked: string[] = [];
+    const ended = async (r: string) => (asked.push(r), true);
+    const stale = verdict(npm({ repo: "o/r", lastRelease: daysAgo(2000) }));
+    expect(await withLifecycle(stale, "o/r", ended)).toMatchObject({ admit: false, rule: "stale", why: "the maintainers announced the end of development in the README of o/r; no release in 365 days" });
+    // Admitted, deprecated, or already archived: no request, the verdict as is.
+    const archived = verdict(npm({ archived: true, repo: "o/r", lastRelease: daysAgo(2000) }));
+    for (const v of [verdict(npm({ repo: "o/r" })), verdict(npm({ repo: "o/r", deprecated: "gone" })), archived]) expect(await withLifecycle(v, "o/r", ended)).toBe(v);
+    expect(await withLifecycle(stale, undefined, ended)).toBe(stale);
+    expect(asked).toEqual(["o/r"]);
+    expect(await withLifecycle(stale, "o/r", async () => false)).toBe(stale);
   });
   test("the repositories older npm versions name, newest line first, the current one left out", () => {
     const doc = {

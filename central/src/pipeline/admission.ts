@@ -207,6 +207,50 @@ export function fromNpm(doc: any): Pick<Signals, "lastRelease" | "deprecated"> {
   };
 }
 
+/** How much of a README is read for an end-of-development statement: maintainers put it at the top. */
+export const README_HEAD = 4000;
+/** "… is no longer (being) (actively) maintained / developed / supported", "development has stopped", "this project is
+ * deprecated / discontinued / abandoned / unmaintained": a statement about the whole project. One whose subject is a
+ * version, a branch or a release line (`v1 is no longer maintained`) is about that line, not the package. */
+const ENDED = [
+  /\b(?:is|are|has been|have been) no longer (?:being )?(?:actively )?(?:maintained|developed|supported|under (?:active )?development)\b/i,
+  /\b(?:this|the) (?:project|package|library|repository|repo|module|client|sdk|tool|plugin|crate) (?:is|has been) (?:now )?(?:deprecated|discontinued|abandoned|unmaintained|end[- ]of[- ]life)\b/i,
+  /\b(?:active )?development (?:has|was) (?:stopped|ended|ceased|discontinued)\b/i,
+];
+const LINE_SUBJECT = /(?:\bv?\d+(?:\.[\dx*]+)*|\bversions?|\bbranch(?:es)?|\breleases?|\bline)\W{0,4}(?:\w+\W+){0,2}$/i;
+
+/** Whether the head of a README states that the project's development ended (`ENDED`), its subject not one line. */
+export function endedIn(readme: string): boolean {
+  const head = readme.slice(0, README_HEAD).replace(/[*_`>]+/g, " ").replace(/\s+/g, " ");
+  return ENDED.some((re) => {
+    const m = re.exec(head);
+    return m !== null && !LINE_SUBJECT.test(head.slice(Math.max(0, m.index - 40), m.index));
+  });
+}
+
+/** Whether the GitHub repository's README announces the end of development (one request, raw README). */
+export async function announcedEnd(repo: string): Promise<boolean> {
+  if (!isRepoSlug(repo)) return false;
+  const token = githubToken();
+  try {
+    const r = await fetch(`https://api.github.com/repos/${repo}/readme`, {
+      headers: { "user-agent": "unstale-central", accept: "application/vnd.github.raw", ...(token ? { authorization: `Bearer ${token}` } : {}) },
+      signal: AbortSignal.timeout(20_000),
+    });
+    return r.ok && endedIn((await r.text()).slice(0, README_HEAD * 2));
+  } catch {
+    return false;
+  }
+}
+
+/** A package parked on its usage or its release gap (`stale`, `unused`) whose repository is not archived: its README is
+ * read once for the maintainers' own end-of-development statement, which a release gap alone is not, and the reason
+ * says so in fixed text (no README text is published). Any other verdict is returned as is. */
+export async function withLifecycle(v: Verdict, repo: string | undefined, ended: (repo: string) => Promise<boolean> = announcedEnd): Promise<Verdict> {
+  if (v.admit || !repo || (v.rule !== "stale" && v.rule !== "unused") || v.archived?.includes(repo.toLowerCase())) return v;
+  return (await ended(repo)) ? { ...v, why: `the maintainers announced the end of development in the README of ${repo}; ${v.why}` } : v;
+}
+
 /** At most this many other repositories of one package are asked about (newest line first). */
 export const MAX_LINE_REPOS = 3;
 
