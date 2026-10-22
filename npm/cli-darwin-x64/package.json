@@ -1,6 +1,6 @@
 {
   "name": "@unstale/cli-darwin-x64",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "The unstale CLI binary for macOS on Intel. Install `@unstale/cli` instead.",
   "license": "AGPL-3.0-only",
   "author": "Jason Draper (https://vuca.dev)",
