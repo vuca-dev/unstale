@@ -1799,6 +1799,13 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                 w.target.get_or_insert(target);
                 w.records.push((rec, route, decides.version.clone()));
             }
+            // An opt-in that is its advisories' fix (each one patched at the record's release) and that the installed
+            // version has: the fix is what installing that release does, so the option's protective default is already
+            // in force (js-yaml 4.3.0's `maxTotalMergeKeys`, default 10000, for GHSA-52CP-R559-CP3M at 4.3.1). Nothing
+            // is left to adopt, whatever else it is labelled with.
+            if opp.route == Route::ImprovementsPass && fixed_by_install(rec, installed_for) && is_the_fix(rec, &opp.release) {
+                opp.route = Route::AlreadyIncluded;
+            }
             if opp.route == Route::ImprovementsPass {
                 let replaces_here = rec.r.replaces.iter().filter_map(|x| clean_lit(x)).any(|x| ev(&x).used);
                 let mut b: Vec<Benefit> = rec
@@ -1863,6 +1870,14 @@ fn fixed_by_install(rec: &Rec, installed_for: impl Fn(&str) -> Option<Version>) 
             let comps: BTreeSet<String> = a.affected.iter().map(|r| normalize_purl(&r.component)).collect();
             !comps.is_empty() && comps.iter().all(|c| installed_for(c).is_some_and(|v| crate::review::advisory_affects(a, c, &v) == Some(false)))
         })
+}
+
+/// Whether the record is its advisories' fix: every advisory has a range of the shown release's package whose patched
+/// version is that release (an option added as the fix, not tuning beside a fix shipped elsewhere).
+fn is_the_fix(rec: &Rec, release: &Release) -> bool {
+    let comp = normalize_purl(&release.component);
+    !rec.r.advisories.is_empty()
+        && rec.r.advisories.iter().all(|a| a.affected.iter().any(|r| normalize_purl(&r.component) == comp && r.patched.as_deref() == Some(release.version.as_str())))
 }
 
 fn blank<'a>(rec: &'a Rec, release: Release, route: Route) -> Opp<'a> {
@@ -3459,13 +3474,19 @@ mod tests {
         let adv = |id: &str, versions: serde_json::Value| json!({"id": id, "aliases": [], "severity": "medium", "summary": "s", "url": "u", "index": index,
             "affected": [{"component": "pkg:npm/next", "range": "< 16.1.7", "patched": "16.1.7", "versions": versions}]});
         let opt = |id: &str, benefit: serde_json::Value, advisories: serde_json::Value| with(rec(id, "pkg:npm/next", "16.1.7"), json!({"change_type": "new_option", "benefit": benefit, "advisories": advisories}));
+        let rel = |v: &str| json!({"component": "pkg:npm/next", "version": v, "date": "2026-01-01", "line": "16"});
         let c = catalog(
             "next",
             0,
             vec![
-                opt("next:fixed-by-install", json!(["security"]), json!([adv("GHSA-a", json!(["16.0.0", "16.1.6"]))])),
+                // An option released beside the fix (here a release later): tuning, so its security benefit is in force.
+                with(opt("next:fixed-by-install", json!(["security"]), json!([adv("GHSA-a", json!(["16.0.0", "16.1.6"]))])), json!({"releases": [rel("16.2.0")]})),
                 // Its other benefit stays, and leads the batch by it.
-                opt("next:also-perf", json!(["security", "performance"]), json!([adv("GHSA-b", json!(["16.0.0", "16.1.6"]))])),
+                with(opt("next:also-perf", json!(["security", "performance"]), json!([adv("GHSA-b", json!(["16.0.0", "16.1.6"]))])), json!({"releases": [rel("16.2.0")]})),
+                // The option is the fix itself (added in the patched release, js-yaml 4.3.0's `maxTotalMergeKeys`, default
+                // 10000): its default is what installing that release does, so nothing is left to adopt, whatever else
+                // it is labelled with.
+                opt("next:the-fix", json!(["security", "correctness"]), json!([adv("GHSA-e", json!(["16.0.0", "16.1.6"]))])),
                 // The installed version is still affected: adopting the option is the mitigation.
                 opt("next:still-affected", json!(["security"]), json!([adv("GHSA-c", json!(["16.0.0", "16.1.6", "16.3.8"]))])),
                 // No advisory, or one the index cannot decide: the benefit stands (fail open).
@@ -3477,6 +3498,7 @@ mod tests {
         let r = repo(&[]);
         let out = run_with(&c, &s, &r, &l);
         assert_eq!(route_of(&out, "next:fixed-by-install"), &Route::NoBenefit);
+        assert_eq!(route_of(&out, "next:the-fix"), &Route::AlreadyIncluded);
         let benefits = |id: &str| out.opps.iter().find(|o| o.rec.r.id == id).unwrap().benefits.clone();
         assert_eq!(benefits("next:also-perf"), vec![Benefit::Performance]);
         assert_eq!(benefits("next:still-affected"), vec![Benefit::Security]);
