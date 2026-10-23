@@ -32,7 +32,8 @@ pub struct Notice {
     pub version: String,
     /// Why: "upstream repository archived", "no release since 2020-06-10".
     pub why: String,
-    /// The upstream repository is archived (central's admission or the registry's project status says so).
+    /// The upstream repository is archived (central's admission or the registry's project status says so), or its
+    /// maintainers announced the end of development (central's admission read the README): their own statement.
     pub archived: bool,
 }
 
@@ -58,16 +59,28 @@ fn cached(cache: &Path, purl: &str) -> Option<Cached> {
     serde_json::from_slice(&std::fs::read(path(cache, purl)).ok()?).ok()
 }
 
-/// What the coverage service's admission said about a package: its repository is archived, or it has no release in
-/// its freshness window (`admission.ts` `admit`). The phrases are central's own fixed text.
-fn verdict(job: &Job) -> Option<bool> {
+/// What the coverage service's admission said about a parked package (`admission.ts` `admit`, `withLifecycle`).
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Verdict {
+    /// Its repository is archived.
+    Archived,
+    /// Its README announces the end of development (the repository is not archived).
+    Ended,
+    /// No release in its freshness window, nothing more.
+    Stale,
+}
+
+/// The coverage service's admission verdict on a package, from central's own fixed phrases.
+fn verdict(job: &Job) -> Option<Verdict> {
     if job.state != "blocked" || !job.stage.starts_with("Not admitted for monitoring:") {
         return None;
     }
     if job.stage.contains(" is archived") {
-        Some(true)
+        Some(Verdict::Archived)
+    } else if job.stage.contains("announced the end of development") {
+        Some(Verdict::Ended)
     } else if job.stage.contains(": no release") {
-        Some(false)
+        Some(Verdict::Stale)
     } else {
         None
     }
@@ -92,8 +105,9 @@ fn archived_line(cache: &Path, job: &Job, purl: &str, version: &str) -> Option<S
 
 /// The public direct dependencies (as `deprecations::installed` reads them) the coverage service found stale or
 /// archived, or whose installed line's repository it found archived (covered or not):
-/// `(purl, name, installed version, archived, archived repository)`, one per package (its lowest installed version).
-fn candidates(cache: &Path, st: &Stack, jobs: &BTreeMap<String, Job>) -> Vec<(String, String, String, bool, Option<String>)> {
+/// `(purl, name, installed version, verdict, archived repository)`, one per package (its lowest installed version);
+/// the verdict is `Archived` also when only the installed line's repository is.
+fn candidates(cache: &Path, st: &Stack, jobs: &BTreeMap<String, Job>) -> Vec<(String, String, String, Verdict, Option<String>)> {
     let mut seen = BTreeSet::new();
     let mut out = vec![];
     for (purl, name, version) in crate::deprecations::installed(st) {
@@ -102,11 +116,12 @@ fn candidates(cache: &Path, st: &Stack, jobs: &BTreeMap<String, Job>) -> Vec<(St
         }
         let Some(job) = jobs.get(&purl) else { continue };
         let line = archived_line(cache, job, &purl, &version);
-        let archived = match (verdict(job), &line) {
+        let v = match (verdict(job), &line) {
             (None, None) => continue,
-            (v, line) => v == Some(true) || line.is_some(),
+            (_, Some(_)) => Verdict::Archived,
+            (Some(v), None) => v,
         };
-        out.push((purl, name, version, archived, line));
+        out.push((purl, name, version, v, line));
     }
     out
 }
@@ -184,20 +199,22 @@ pub fn notices(cache: &Path, st: &Stack, jobs: &BTreeMap<String, Job>, today: &s
     let Some(cutoff) = days_before(today, STALE_DAYS) else { return vec![] };
     let mut out: Vec<Notice> = candidates(cache, st, jobs)
         .into_iter()
-        .filter_map(|(purl, name, version, archived, line)| {
+        .filter_map(|(purl, name, version, v, line)| {
             let c = cached(cache, &purl);
             let last = c.as_ref().and_then(|c| c.last_release.clone());
             let since = last.as_deref().map(|d| d.get(..10).unwrap_or(d).to_string());
             let old = since.as_deref().is_some_and(|d| d < cutoff.as_str());
-            let archived = archived || c.as_ref().is_some_and(|c| c.archived);
+            let archived = v == Verdict::Archived || c.as_ref().is_some_and(|c| c.archived);
             let repo = line.map(|r| format!(" {r}")).unwrap_or_default();
-            let why = match (archived, old) {
-                (true, true) => format!("upstream repository{repo} archived; no release since {}", since.unwrap_or_default()),
-                (true, false) => format!("upstream repository{repo} archived"),
-                (false, true) => format!("no release since {}", since.unwrap_or_default()),
-                (false, false) => return None,
+            // An announced end of development is the maintainers' statement as an archive is, and ranks the same.
+            let said = if archived { format!("upstream repository{repo} archived") } else if v == Verdict::Ended { "maintainers announced the end of development".to_string() } else { String::new() };
+            let why = match (said.is_empty(), old) {
+                (false, true) => format!("{said}; no release since {}", since.unwrap_or_default()),
+                (false, false) => said,
+                (true, true) => format!("no release since {}", since.unwrap_or_default()),
+                (true, false) => return None,
             };
-            Some(Notice { name, version, why, archived })
+            Some(Notice { name, version, why, archived: archived || v == Verdict::Ended })
         })
         .collect();
     out.sort_by(|a, b| a.name.cmp(&b.name));
@@ -253,7 +270,7 @@ mod tests {
     #[test]
     fn stale_or_archived_direct_dependencies_the_service_declined_are_named_after_the_registry_dates() {
         let mut st = Stack::default();
-        for (purl, name, v) in [("pkg:npm/extract-zip", "extract-zip", "2.0.1"), ("pkg:npm/fresh", "fresh", "1.0.0"), ("pkg:npm/gone", "gone", "3.0.0"), ("pkg:pypi/pysher", "pysher", "1.0.8"), ("pkg:npm/watched", "watched", "1.0.0")] {
+        for (purl, name, v) in [("pkg:npm/extract-zip", "extract-zip", "2.0.1"), ("pkg:npm/fresh", "fresh", "1.0.0"), ("pkg:npm/gone", "gone", "3.0.0"), ("pkg:pypi/pysher", "pysher", "1.0.8"), ("pkg:pypi/said", "said", "0.15.0"), ("pkg:npm/watched", "watched", "1.0.0")] {
             let mut d = Dep::new(name, true);
             d.pins.push(Pin { version: v.into(), hashes: vec!["sha512-x".into()] });
             st.deps.insert(purl.into(), d);
@@ -263,6 +280,7 @@ mod tests {
             job("pkg:npm/fresh", "blocked", "Not admitted for monitoring: no release in 365 days"),
             job("pkg:npm/gone", "blocked", "Not admitted for monitoring: repository a/gone is archived and the package does not qualify on its registry: under 1000 downloads and 100 stars"),
             job("pkg:pypi/pysher", "blocked", "Not admitted for monitoring: no release in 365 days"),
+            job("pkg:pypi/said", "blocked", "Not admitted for monitoring: the maintainers announced the end of development in the README of a/said; no release in 365 days"),
             job("pkg:npm/watched", "monitoring", "3 verified records"),
         ]
         .into_iter()
@@ -276,17 +294,20 @@ mod tests {
                 "https://registry.npmjs.org/extract-zip" => serde_json::json!({"versions": {"2.0.1": {}}, "time": {"created": "2014-01-01T00:00:00Z", "modified": "2026-01-01T00:00:00Z", "2.0.1": "2020-06-10T07:10:04.849Z"}}),
                 "https://registry.npmjs.org/fresh" => serde_json::json!({"versions": {"1.0.0": {}}, "time": {"1.0.0": "2025-06-01T00:00:00Z"}}),
                 "https://pypi.org/simple/pysher/" => serde_json::json!({"files": [{"upload-time": "2021-03-01T00:00:00Z"}], "project-status": {"status": "archived"}}),
+                "https://pypi.org/simple/said/" => serde_json::json!({"files": [{"upload-time": "2025-03-01T00:00:00Z"}]}),
                 _ => serde_json::json!({}),
             })
         });
-        assert_eq!(n, 4, "only what the service declined as stale or archived is read: {:?}", asked.lock().unwrap());
+        assert_eq!(n, 5, "only what the service declined as stale or archived is read: {:?}", asked.lock().unwrap());
         let got = notices(dir.path(), &st, &jobs, "2026-10-19");
         let lines: Vec<String> = got.iter().map(|n| format!("{} {}: {}", n.name, n.version, n.why)).collect();
         assert_eq!(lines, vec![
             "extract-zip 2.0.1: no release since 2020-06-10",
             "gone 3.0.0: upstream repository archived",
             "pysher 1.0.8: upstream repository archived; no release since 2021-03-01",
-        ], "a release within two years is not unmaintained (`modified` is no release)");
+            "said 0.15.0: maintainers announced the end of development",
+        ], "a release within two years is not unmaintained (`modified` is no release); an announced end is, at any age");
+        assert!(got.iter().find(|n| n.name == "said").is_some_and(|n| n.archived), "the maintainers' statement ranks as an archive does");
         assert_eq!(refresh_with(dir.path(), &st, &jobs, 2_000, |_| None), 0, "cached a week");
     }
 
