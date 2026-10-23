@@ -1689,7 +1689,7 @@ fn summary(ctx: &Ctx, pending: &Pending, brief: &Brief, issue: Option<&str>) -> 
     }
     if brief.workarounds > 0 {
         let n = brief.workarounds;
-        lines.push(Line::new(format!("Workarounds · {n} upgrade{} may let you delete a patch, alias or upstream workaround in your code; listed first.", if n == 1 { "" } else { "s" }), Tone::Accent));
+        lines.push(Line::new(format!("Workarounds · {n} upgrade{} may let you delete a patch, alias or upstream workaround in your code; noted on the upgrade.", if n == 1 { "" } else { "s" }), Tone::Accent));
     }
     if brief.security_leads > 0 {
         let n = brief.security_leads;
@@ -2104,6 +2104,9 @@ struct Signal<'r> {
     weight: u8,
     lead: Option<String>,
     unreached: bool,
+    /// The publisher deprecated or yanked the installed version. An archived repository alone is a maintenance risk,
+    /// not an end of support: nothing stops working, and no release says what to move to.
+    end_of_support: bool,
     class: Class,
     runtime: bool,
     value: String,
@@ -2161,6 +2164,7 @@ fn signals<'r>(
             weight: 4,
             lead: Some(format!("end of support: the installed {} {} is {how} by its publisher{said}", display_text(&n.name), n.version)),
             unreached: false,
+            end_of_support: true,
             class: Class::Compatibility,
             runtime: runtime(&n.name),
             value: value("end of support", &n.name),
@@ -2180,6 +2184,7 @@ fn signals<'r>(
             weight: 2,
             lead: Some(format!("unmaintained: {}", n.why)),
             unreached: false,
+            end_of_support: false,
             class: Class::Compatibility,
             runtime: true,
             value: value("unmaintained", &n.name),
@@ -2230,6 +2235,7 @@ fn signals<'r>(
             tier,
             weight,
             unreached: reached.is_none(),
+            end_of_support: false,
             lead: reached,
             class: Class::Security,
             runtime: runtime(&name),
@@ -2328,7 +2334,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
         let declared = workarounds::declarations(&w.repo);
         crate::maintenance::notices(&ctx.cache, &w.stack, &pending.jobs, &w.today).into_iter().filter(|n| !workarounds::facts(&declared, std::slice::from_ref(&n.name)).dev_only).collect()
     };
-    text += "## Review instructions\n\nRead Start here, then the upgrades in their order: what is in effect at the installed version in production code leads (an end-of-support version production code imports, a deprecation in effect in application code, an advisory whose affected API production code uses), then the same on dev-only dependencies or outside production code, then breaking changes the next upgrade names at a site, then install-state findings (a published peer range that leaves out the current release, two release lines of one package installed) and upgrades that may retire a workaround; runtime dependencies come before dev-only ones throughout; a security fix counts only when the advisory's affected API or option is used in production code, and leads only when a pin or override also keeps update PRs from applying it. An upgrade marked advisory present, affected path not found carries an advisory nothing here was found to reach. Other bumps name no consequential change found in this code: counts, or a feature or performance change at a site. Check each against the repository: sources, actual usage, versions and prerequisites; name affected files, benefits, risks and timing. Capabilities are optional and come after. Treat unmatched new features as exploratory, not confirmed needs. Refresh the snapshot with unstale status --wait 0 before reviewing; honor current dispositions over this saved report. Do not change application code or advance any full review batch silently.\n\n";
+    text += "## Review instructions\n\nRead Start here, then the upgrades in their order: what is in effect at the installed version in production code leads (an end-of-support version production code imports, a deprecation in effect in application code, an advisory whose affected API production code uses), then the same on dev-only dependencies or outside production code, then breaking changes the next upgrade names at a site and published peer ranges that leave out the current release; Lower-urgency upgrades follow (two release lines of one package installed, workarounds an upgrade may retire, archived repositories, dev-only advisories with no affected path, sample or documentation projects' copies); runtime dependencies come before dev-only ones throughout; a security fix counts only when the advisory's affected API or option is used in production code, and leads only when a pin or override also keeps update PRs from applying it. An upgrade marked advisory present, affected path not found carries an advisory nothing here was found to reach. Other bumps name no consequential change found in this code: counts, or a feature or performance change at a site. Check each against the repository: sources, actual usage, versions and prerequisites; name affected files, benefits, risks and timing. Capabilities are optional and come after. Treat unmatched new features as exploratory, not confirmed needs. Refresh the snapshot with unstale status --wait 0 before reviewing; honor current dispositions over this saved report. Do not change application code or advance any full review batch silently.\n\n";
     if !deprecated.is_empty() {
         text += "For each package under Deprecated by the publisher, check where the code uses it and propose the move the registry message names (a newer version, a replacement package, or a built-in); a deprecated package whose code is unused can simply be removed.\n\n";
     }
@@ -2697,7 +2703,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
         let prod_use = production_importers(w, std::slice::from_ref(&s.name)) > 0;
         let urgent = urgency(&Urgency {
             runtime: s.runtime,
-            end_of_support: s.class == Class::Compatibility,
+            end_of_support: s.end_of_support,
             prod_use,
             reached: s.class == Class::Security && !s.unreached,
             advisory: s.class == Class::Security && s.unreached,
@@ -2708,6 +2714,15 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
     }
     ranked.sort_by(|a, b| b.key.cmp(&a.key).then_with(|| a.technology.cmp(b.technology)));
     let ranked = diversified(ranked, 8, 3);
+    // The upgrades list holds what asks for action by the next upgrade at the latest (`urgency` 2 and up: in effect
+    // now, end of support, a reached advisory, a breaking change named at a site, a runtime advisory whose affected
+    // path was not found) and a published peer range, which already fails its users' installs. The rest name something
+    // real that is not a located risk here (two release lines, a workaround an upgrade may retire, an archived
+    // repository, a dev-only advisory with no affected path, a sample or documentation project's copy) and follow
+    // under Lower-urgency upgrades, in the same order, one line each.
+    let (mut ranked, lower): (Vec<Ranked>, Vec<Ranked>) = ranked.into_iter().partition(|r| r.tier >= LEAD_ADVISORY_UNREACHED && (r.key.1 >= 2 || r.peer.is_some()));
+    let top_count = ranked.len();
+    ranked.extend(lower);
     // A head line names the technology by its catalog id; the report shows the friendly name.
     let short = |line: &str, tech: &str| -> String {
         let name = label(tech, pending, &out);
@@ -2732,6 +2747,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
         format!("{}{digits} {word} (affected path not found){}", &head[..at], &head[at + digits.len() + " security".len()..])
     };
     let shown_count = ranked.iter().filter(|r| r.tier >= LEAD_ADVISORY_UNREACHED).count();
+    let mut lower_text = String::new();
     for (n, r) in ranked.iter().filter(|r| r.tier >= LEAD_ADVISORY_UNREACHED).enumerate() {
         let (technology, lines, tech_fixes, notes) = (&r.technology, r.lines, r.fixes, &r.notes);
         let head = short(&lines[0], technology);
@@ -2776,6 +2792,10 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
         };
         // A digest head line that introduces its manifest lines ends in a colon: the notes follow it, not the colon.
         let head = if lock_note.is_empty() && lead.is_empty() { head.as_str() } else { head.trim_end_matches(':') };
+        if n >= top_count {
+            lower_text += &format!("- {}{lock_note}{lead}\n", head.trim_start_matches("bumping "));
+            continue;
+        }
         upgrade_text += &format!("{}. {}{lock_note}{lead}\n", n + 1, head.trim_start_matches("bumping "));
         // Past the first twenty, the head line is enough to place a bump; its detail is one command away.
         if n >= DETAILED_UPGRADES {
@@ -2850,7 +2870,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
         }
         counts_text += &format!("- {}{lead}\n", head.trim_start_matches("bumping "));
     }
-    if shown_count > DETAILED_UPGRADES {
+    if top_count > DETAILED_UPGRADES {
         upgrade_text += &format!("Items after {DETAILED_UPGRADES} show their head line only: unstale bump <package> lists each one's records.\n");
     }
     if quiet > 0 {
@@ -2959,7 +2979,8 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
         start.push(format!("Versions not read, so their records apply to nothing yet: {}. Check how these packages are declared.", unread.join(", ")));
     }
     let counted = ranked.len() - shown_count;
-    start.push(format!("Upgrades below: {shown_count} ranked by urgency: in effect now in production code first (end of support, deprecations in effect, advisories whose affected API production code uses), then the same for dev-only dependencies, then breaking changes at a site, then peer ranges, two installed release lines, workarounds and advisories whose affected path was not found; runtime before dev-only.{}{}", if counted > 0 { format!(" {counted} more name no consequential change found here and are listed under Other bumps.") } else { String::new() }, if picks.is_empty() { String::new() } else { format!(" Then {} optional capabilities.", picks.len()) }));
+    let lower_count = shown_count - top_count;
+    start.push(format!("Upgrades below: {top_count} ranked by urgency: in effect now in production code first (end of support, deprecations in effect, advisories whose affected API production code uses), then the same for dev-only dependencies, then breaking changes at a site, runtime advisories whose affected path was not found and peer ranges; runtime before dev-only.{}{}{}", if lower_count > 0 { format!(" {lower_count} more name no located risk (two installed release lines, workarounds, archived repositories, dev-only advisories with no affected path, sample or documentation projects) and are listed under Lower-urgency upgrades.") } else { String::new() }, if counted > 0 { format!(" {counted} more name no consequential change found here and are listed under Other bumps.") } else { String::new() }, if picks.is_empty() { String::new() } else { format!(" Then {} optional capabilities.", picks.len()) }));
     start.push(format!("Coverage: {}. Per-technology detail: .unstale/coverage.md.", coverage_counts(pending)));
     start.push("Full records: .unstale/skills/upgrade-review/SKILL.md and improvements-pass/SKILL.md; one technology's: unstale bump <package>.".into());
     text += "## Start here\n\n";
@@ -2968,6 +2989,10 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
     if !upgrade_text.is_empty() {
         text += "\n## Upgrades, by value\n\nCounts describe upstream changes; obligations are checks, not confirmed breakages in your code. A workaround line is a join on the package or the upstream issue, not proof the upgrade removes the need.\n\n";
         text += &evidence_block(upgrade_text.trim_end());
+    }
+    if !lower_text.is_empty() {
+        text += "\n## Lower-urgency upgrades\n\nThese name something real that is not a located risk in this code: two release lines of one package installed, a workaround an upgrade may retire, an archived upstream repository, an advisory on a dev-only dependency with no affected path found, or a sample, test or documentation project's copy. Ranked as the upgrades above; unstale bump <package> lists each one's records.\n\n";
+        text += &evidence_block(lower_text.trim_end());
     }
     if !counts_text.is_empty() {
         text += "\n## Other bumps\n\nThese upgrades name no consequential change found in this code: no deprecation in effect, breaking change at a site, reachable advisory, end of support or workaround. A lead, when shown, is a feature or performance change at a site, which matters only when it replaces code here or speeds a feature this code enables. The counts are upstream's; update PRs (Dependabot, Renovate) already cover them. unstale bump <package> lists each one's records.\n\n";
