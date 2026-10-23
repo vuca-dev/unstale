@@ -622,7 +622,10 @@ fn option_key(r: &unstale_schema::catalog::CapabilityRecord, lits: &[String]) ->
     let keylike = key.chars().count() >= 4
         && key.starts_with(|c: char| c.is_ascii_alphabetic())
         && key.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-'));
-    (keylike && lits.contains(&key)).then_some(key)
+    // A record replacing something other than the key (a value of `ESLINT_FLAGS`, `v10_config_lookup_from_file`, also
+    // passed as `--flag`) is about that value wherever it is written, not about the key.
+    let other = !r.replaces.is_empty() && r.replaces.iter().all(|x| !x.to_ascii_lowercase().contains(&key.to_ascii_lowercase()));
+    (keylike && !other && lits.contains(&key)).then_some(key)
 }
 
 /// Whether `text` writes `key` as a key: followed, past a closing quote and spaces, by `:` (JSON, YAML, an object
@@ -1501,6 +1504,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
         let lines = Lines::new(&td.index.releases);
         // Read only once a record names one of a lint plugin's rules (`rule_not_enabled`).
         let plugins: std::cell::OnceCell<Vec<LintPlugin>> = std::cell::OnceCell::new();
+        let cmd_words: Vec<String> = comps.iter().flat_map(|c| usage::command_words(c)).collect();
         let lint_ns: Vec<String> = comps.iter().filter_map(|c| purl_name(c)).filter_map(|p| lint_namespace(&p)).map(|(_, n)| format!("{n}/")).collect();
         for (ri, (rec, ls)) in td.records.iter().zip(lits).enumerate() {
             // The releases of the packages this repository uses; else of the technology's own packages (a record names
@@ -1613,7 +1617,25 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             };
             // The record reads the view of its package (code on the outputs' release line only).
             let view = candidates.first().and_then(|r| view_of.get(&normalize_purl(&r.component))).copied().unwrap_or(0);
-            let ev = |l: &str| evidence_of(view, l);
+            // An identifier of several words that no file citable by the rules above writes, used on a command line that
+            // runs the technology (a flag's value in a `package.json` script), is cited there.
+            let ev = |l: &str| -> Rc<usage::Evidence> {
+                let e = evidence_of(view, l);
+                if !e.files.is_empty() || !e.used || !usage::identifier(l) || !l.contains(|c: char| c == '_' || c.is_ascii_uppercase()) {
+                    return e;
+                }
+                let files: Vec<(String, bool)> = hits_of(view)
+                    .ix
+                    .get(l)
+                    .into_iter()
+                    .flatten()
+                    .map(|x| &inp.repo.paths[*x as usize])
+                    .filter(|p| scopes[view].file(p).is_some() && inp.repo.text(p).is_some_and(|t| usage::on_command_line(t, l, &cmd_words)))
+                    .take(3)
+                    .map(|p| (p.clone(), true))
+                    .collect();
+                if files.is_empty() { e } else { Rc::new(usage::Evidence { files, ..(*e).clone() }) }
+            };
             let succ = successor_words(&rec.r);
             let config = rec.r.surface == Surface::Configuration;
             // The classes and calls the record names beside what it deprecates (`BaseModel`; `generateText`, `Agent`):
