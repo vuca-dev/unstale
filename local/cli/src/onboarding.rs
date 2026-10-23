@@ -2117,7 +2117,7 @@ fn signals<'r>(
             } else {
                 format!("; {} still require {}, so the lockfile keeps it until they move", r.held_by.join(", "), n.version)
             };
-            format!("; no code, script or configuration here names {}, so its declaration can be removed instead of bumped{held}", display_text(&n.name))
+            format!("; no code, script or configuration here names {}, so its declaration can likely be removed instead of bumped (unless a command it installs runs under another name){held}", display_text(&n.name))
         });
         by.insert(norm(&n.name), Signal {
             head: format!("{} {} → {target} picks up 1 publisher {} (`unstale bump {}`)", n.name, n.version, if n.yanked { "yank" } else { "deprecation" }, n.name),
