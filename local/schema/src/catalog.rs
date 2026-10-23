@@ -62,6 +62,31 @@ pub enum Benefit {
     Other,
 }
 
+/// How big a new capability is, as the classifier reads its record (`label_version` field). Read for new features only.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum Magnitude {
+    /// An option or flag in a point release.
+    Minor,
+    /// A notable addition below a headline.
+    Moderate,
+    /// A major release's lead item, a launch, a new model or model family, a new API surface or product feature.
+    Headline,
+    #[serde(other)]
+    Other,
+}
+
+/// How the source labels a change's stability (GA when released as stable without a label).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum Maturity {
+    Ga,
+    Beta,
+    Experimental,
+    #[serde(other)]
+    Other,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SubjectKind {
@@ -152,6 +177,12 @@ pub struct CapabilityRecord {
     /// At most 40 words.
     pub summary: String,
     pub benefit: Vec<Benefit>,
+    /// The classifier's size of the change (records labelled before 23 October 2026 have none).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub magnitude: Option<Magnitude>,
+    /// The classifier's reading of the source's stability label (records labelled before 23 October 2026 have none).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub maturity: Option<Maturity>,
     pub releases: Vec<Release>,
     #[serde(default)]
     pub prerequisites: Vec<Prerequisite>,
@@ -263,6 +294,11 @@ pub struct Classification {
     /// Labels whose call is near the threshold (`breaking`, `benefit:security`, `change_type`, ...): flagged, never dropped.
     #[serde(default)]
     pub borderline: Vec<String>,
+    /// Confidence of the chosen magnitude and maturity, when they were asked.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub magnitude: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub maturity: Option<f64>,
 }
 
 /// One line of a shard. A merged or retracted record stays in its shard as a stub.

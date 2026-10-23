@@ -337,7 +337,7 @@ const TERMINAL: [string, string][] = [
   ["body", "1. next 16.2.1 → 16.4.2 picks up 37 security fixes, 90 bug fixes, 5 performance changes, 20 behaviour changes"],
   ["body", "2. prisma 6.19.3 → 7.10.0 picks up 8 security fixes, 82 bug fixes, 8 performance changes · unlocks 52 optional capabilities"],
   ["", ""],
-  ["accent", "Capabilities to explore · 8 shortlisted"],
+  ["accent", "Opportunities · 5 shortlisted"],
   ["body", "1. next · available on 16.2.1 — updateTag provides Server Actions with read-your-writes cache expiration and immediate refresh semantics."],
   ["muted", "   Reference (unverified): `next/cache` in src/entities/user/model/update-user.action.ts"],
   ["", ""],

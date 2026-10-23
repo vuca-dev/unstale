@@ -383,6 +383,8 @@ export function evidenceOf(inc: Incoming): Evidence {
 const literal = (inc: Incoming): string[] =>
   inc.subject_kind === "literal" ? [inc.subject, ...(inc.facet ? [inc.facet] : [])] : inc.facet ? [inc.facet] : [];
 
+const MAGNITUDE_ORDER = ["other", "minor", "moderate", "headline"];
+
 /** Combine rule: evidence and releases added, `breaking` if either, the incoming subject and facet join the terms. */
 export function combine(r: StoredRecord, inc: Incoming, labels: Labels, components: string[], p?: number, judged: Judged[] = [], lineOf?: (version: string) => string): void {
   // A later version of a document the record cites, stating the fact more specifically, gives the record its summary:
@@ -404,6 +406,9 @@ export function combine(r: StoredRecord, inc: Incoming, labels: Labels, componen
       prerequisites: [...r.prerequisites, ...inc.prerequisites.filter((p) => !r.prerequisites.some((q) => q.ecosystem === p.ecosystem && q.name === p.name))],
       conditions: union(r.conditions, inc.conditions),
       benefit,
+      // The larger reading of the change's size; a record without one takes the incoming reading.
+      ...(labels.magnitude && (!r.magnitude || MAGNITUDE_ORDER.indexOf(labels.magnitude) > MAGNITUDE_ORDER.indexOf(r.magnitude)) ? { magnitude: labels.magnitude } : {}),
+      ...(labels.maturity && !r.maturity ? { maturity: labels.maturity } : {}),
       ...(restated ? { summary: inc.summary } : {}),
     },
     "match",
@@ -432,6 +437,8 @@ export function create(s: TechStore, inc: Incoming, labels: Labels, components: 
     ...(inc.facet ? { facet: inc.facet } : {}),
     summary: inc.summary,
     benefit: labels.benefit,
+    ...(labels.magnitude ? { magnitude: labels.magnitude } : {}),
+    ...(labels.maturity ? { maturity: labels.maturity } : {}),
     releases: combineReleases([], releasesOf(inc, components), lineFn(s)),
     prerequisites: inc.prerequisites,
     conditions: inc.conditions,

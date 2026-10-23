@@ -201,6 +201,28 @@
           "minimum": 0,
           "type": "integer"
         },
+        "magnitude": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Magnitude"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The classifier's size of the change (records labelled before 23 October 2026 have none)."
+        },
+        "maturity": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Maturity"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The classifier's reading of the source's stability label (records labelled before 23 October 2026 have none)."
+        },
         "prerequisites": {
           "default": [],
           "items": {
@@ -337,6 +359,21 @@
           "$ref": "#/$defs/Classifier",
           "description": "Which classifier answered: `jev`, `chat`, or (older records) `codex` or `openai-decisions`."
         },
+        "magnitude": {
+          "description": "Confidence of the chosen magnitude and maturity, when they were asked.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "maturity": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
         "model": {
           "description": "The model the API reported, e.g. `jev-1.13.0` or `gpt-6-luna`.",
           "type": "string"
@@ -431,6 +468,42 @@
           "type": "string"
         }
       ]
+    },
+    "Magnitude": {
+      "description": "How big a new capability is, as the classifier reads its record (`label_version` field). Read for new features only.",
+      "oneOf": [
+        {
+          "enum": [
+            "other"
+          ],
+          "type": "string"
+        },
+        {
+          "const": "minor",
+          "description": "An option or flag in a point release.",
+          "type": "string"
+        },
+        {
+          "const": "moderate",
+          "description": "A notable addition below a headline.",
+          "type": "string"
+        },
+        {
+          "const": "headline",
+          "description": "A major release's lead item, a launch, a new model or model family, a new API surface or product feature.",
+          "type": "string"
+        }
+      ]
+    },
+    "Maturity": {
+      "description": "How the source labels a change's stability (GA when released as stable without a label).",
+      "enum": [
+        "ga",
+        "beta",
+        "experimental",
+        "other"
+      ],
+      "type": "string"
     },
     "Prerequisite": {
       "description": "A machine-comparable requirement, named as a project's manifest declares it in that ecosystem,\ne.g. `{\"ecosystem\": \"npm\", \"name\": \"node\", \"min\": \"24.0\"}` (`engines.node`) or\n`{\"ecosystem\": \"composer\", \"name\": \"php\", \"min\": \"8.2\"}`. No alias table: the stack map reads the same keys.",

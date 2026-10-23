@@ -13,6 +13,8 @@
 //   npm run catalog -- advisories [--tech next] [--offline] [--no-publish]   (the advisories stage: OSV, resolve, attach)
 //   npm run catalog -- prune [--dry-run]   (delete shards unreferenced for more than 7 days; prune.ts)
 //   npm run catalog -- export <dir>   (prune, then the static tree for GitHub Pages or any static host; export.ts)
+//   npm run catalog -- label-size [--tech id]... [--ids file] [--no-publish]   (magnitude and maturity for feature records
+//     labelled before they were asked: one request of two questions each, usage phase `other`; classify/size.ts)
 //   npm run catalog -- usage   (model calls and tokens by provider, then by phase: onboarding, monitoring; usage.ts)
 //
 // Corrections: revision fields (change_type, breaking, releases, prerequisites, requires, replaces, or --claim for a
@@ -25,6 +27,7 @@ import { extractModel, llmStats } from "./llm.ts";
 import { PipelineBudget } from "./budget.ts";
 import { fetchReleases } from "./fetch.ts";
 import { usageStats } from "./classify/adapter.ts";
+import { labelSize } from "./classify/size.ts";
 import { withTechLock, withTechLockSync } from "./lock.ts";
 import { catalogDir, centralDir } from "./paths.ts";
 import { makeClassifier, runTechnology, technologies, type TechReport } from "./pipeline.ts";
@@ -39,6 +42,7 @@ import { applyChange, LABEL_FIELDS, loadStore, mergeInto, retract, REVISION_FIEL
 import { TECHNOLOGIES } from "./technologies.ts";
 import { loadPrices, monitoredTechnologies, usageByPhase } from "./usage.ts";
 import { readJson, withUsagePhase } from "./util.ts";
+import { readdirSync } from "node:fs";
 import { techLocal } from "../state/client.ts";
 
 const ARRAY_FIELDS = new Set(["releases", "prerequisites", "requires", "replaces", "benefit", "introduces", "terms", "related", "conditions"]);
@@ -233,6 +237,30 @@ async function main(): Promise<void> {
       console.log(JSON.stringify({ classifier: cls.counts, uncached_calls: usageStats, network: advisoryStats }));
       return;
     }
+    case "label-size": {
+      const { values } = parseArgs({ args: rest, options: { tech: { type: "string", multiple: true }, ids: { type: "string" }, "no-publish": { type: "boolean" } } });
+      const ids = values.ids ? new Set(readFileSync(values.ids, "utf8").split("\n").map((l) => l.trim()).filter(Boolean)) : undefined;
+      const techs = values.tech?.length
+        ? values.tech
+        : ids
+          ? [...new Set([...ids].map((i) => i.split(":")[0]!))]
+          : readdirSync(join(centralDir(), "records")).filter((f) => f.endsWith(".json")).map((f) => loadStore(f.slice(0, -5)).technology);
+      const cls = makeClassifier();
+      let total = 0;
+      for (const tech of techs) {
+        await withTechLock(tech, "label-size", async () => {
+          const s = loadStore(tech);
+          const r = await withUsagePhase("other", tech, () => labelSize(s, (st, q) => cls.classify(st, q), ids));
+          total += r.labelled;
+          if (!r.labelled) return;
+          saveStore(s);
+          console.log(JSON.stringify({ technology: tech, ...r }));
+          if (!values["no-publish"]) republish(tech);
+        });
+      }
+      console.log(JSON.stringify({ labelled: total, classifier: cls.counts, uncached_calls: usageStats }));
+      return;
+    }
     case "publish": {
       const { values } = parseArgs({ args: rest, options: { tech: { type: "string" } } });
       for (const t of technologies(values.tech)) withTechLockSync(t.id, "publish", () => republish(t.id));
@@ -271,7 +299,7 @@ async function main(): Promise<void> {
       return;
     }
     default:
-      console.error("commands: pipeline, show, correct, merge, retract, publish, check-prerequisites, advisories, prune, export, usage");
+      console.error("commands: pipeline, show, correct, merge, retract, label-size, publish, check-prerequisites, advisories, prune, export, usage");
       process.exitCode = 2;
   }
 }

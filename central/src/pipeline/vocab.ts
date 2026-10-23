@@ -60,3 +60,21 @@ export const BREAKING_RUBRIC =
   "projects need not adopt); a fix that restores documented behaviour; documentation changes.\n" +
   "Judge what the change does to existing code, not where it is listed. If the source does not show that existing code stops " +
   "working or changes behaviour, answer no.";
+
+export type Magnitude = Exclude<NonNullable<CapabilityRecord["magnitude"]>, "other">;
+export type Maturity = Exclude<NonNullable<CapabilityRecord["maturity"]>, "other">;
+
+/** How big a change is for a project that uses the technology (read for new capabilities: the report's opportunities). */
+export const MAGNITUDES: Record<Magnitude, string> = {
+  headline:
+    "A major release's lead item, a launch or announcement post, a new model or model family, or a new API surface or product feature.",
+  moderate: "A notable addition below a headline: a new function, component or mode worth knowing about, not a release's lead.",
+  minor: "An option, flag, parameter or small tweak, or a fix or change in a point release.",
+};
+
+/** The stability the source gives the change. */
+export const MATURITIES: Record<Maturity, string> = {
+  ga: "Released as stable: the source labels it stable or GA, or gives it no stability label.",
+  beta: "The source labels it beta, preview, release candidate or unstable, or ships it only in a prerelease.",
+  experimental: "The source labels it experimental, alpha, canary or behind an experimental flag or prefix.",
+};

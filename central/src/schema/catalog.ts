@@ -51,6 +51,8 @@ export const Classification = z.strictObject({
   "breaking": z.number(),
   "change_type": z.number(),
   "classifier": Classifier,
+  "magnitude": z.number().nullable().optional(),
+  "maturity": z.number().nullable().optional(),
   "model": z.string(),
   "surface": z.number(),
 });
@@ -70,6 +72,17 @@ export const Evidence = z.strictObject({
   "url": z.string(),
 });
 export type Evidence = z.infer<typeof Evidence>;
+
+export const Magnitude = z.union([
+z.enum(["other"]),
+z.literal("minor"),
+z.literal("moderate"),
+z.literal("headline"),
+]);
+export type Magnitude = z.infer<typeof Magnitude>;
+
+export const Maturity = z.enum(["ga","beta","experimental","other"]);
+export type Maturity = z.infer<typeof Maturity>;
 
 export const Prerequisite = z.strictObject({
   "ecosystem": z.string(),
@@ -112,6 +125,8 @@ export const CapabilityRecord = z.strictObject({
   "id": z.string(),
   "introduces": z.array(z.string()).default([]),
   "label_version": z.number().int().min(0).max(4294967295),
+  "magnitude": Magnitude.nullable().optional(),
+  "maturity": Maturity.nullable().optional(),
   "prerequisites": z.array(Prerequisite).default([]),
   "related": z.array(z.string()).default([]),
   "releases": z.array(Release),

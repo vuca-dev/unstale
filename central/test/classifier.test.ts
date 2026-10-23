@@ -181,12 +181,12 @@ describe("classifier adapter", () => {
     expect(again.m.calls.length).toBe(0);
   });
 
-  test("Jev requests carry at most 8 questions; usage is logged per real call", async () => {
-    const many: Questions = Object.fromEntries(Array.from({ length: 11 }, (_, i) => [`q${i}`, Q.breaking!]));
+  test("Jev requests carry at most 16 questions (a record's ten labels are one request); usage is logged per real call", async () => {
+    const many: Questions = Object.fromEntries(Array.from({ length: 19 }, (_, i) => [`q${i}`, Q.breaking!]));
     const { m, fb } = make((b) => Response.json(jevOk(b)));
     const r = await fb.classify(STATE, many);
-    expect(Object.keys(r.answers)).toHaveLength(11);
-    expect(m.calls.map((c) => Object.keys(c.body.questions as object).length)).toEqual([8, 3]);
+    expect(Object.keys(r.answers)).toHaveLength(19);
+    expect(m.calls.map((c) => Object.keys(c.body.questions as object).length)).toEqual([16, 3]);
     const log = readFileSync(join(dir, "central", "usage.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
     expect(log).toHaveLength(2);
     expect(log[0]).toMatchObject({ api: "jev", model: "jev-1.13.0", input_tokens: 100, output_tokens: 10 });

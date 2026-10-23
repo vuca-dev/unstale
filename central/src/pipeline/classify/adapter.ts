@@ -127,7 +127,10 @@ function checkAnswer(id: string, q: ChoiceQuestion, a: unknown): Answer {
   return { choice: x.choice, confidence: x.confidence, probabilities };
 }
 
-const JEV_MAX_QUESTIONS = 8;
+// Jev limits a request by context only (docs.typesafe.ai/models: 64k per request, 32k per question; no limit on the
+// number of questions). The byte bound keeps a request well inside both; the question bound only splits a request of
+// more questions than any caller asks (10 per record since 23 October 2026, 8 before).
+const JEV_MAX_QUESTIONS = 16;
 const JEV_MAX_BYTES = 32 * 1024;
 
 export class Jev implements Classifier {
@@ -141,7 +144,7 @@ export class Jev implements Classifier {
     this.opts = { fetch: o.fetch ?? fetch, backoffMs: o.backoffMs ?? 1000, timeoutMs: o.timeoutMs ?? 30_000, retries: o.retries ?? 3 };
   }
 
-  /** Splits the questions into requests of at most 8 questions and 32 KiB of JSON. */
+  /** Splits the questions into requests of at most 16 questions and 32 KiB of JSON. */
   batches(state: Record<string, unknown>, questions: Questions): Questions[] {
     const out: Questions[] = [];
     let cur: Questions = {};

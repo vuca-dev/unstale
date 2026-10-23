@@ -90,6 +90,8 @@ fn writes_a_fixture_for_the_typescript_side() {
         facet: Some("options".into()),
         summary: "Adds util.diff.".into(),
         benefit: vec![Benefit::Correctness, Benefit::None],
+        magnitude: Some(Magnitude::Moderate),
+        maturity: Some(Maturity::Ga),
         releases: vec![Release { component: "pkg:generic/node".into(), version: "24.11.0".into(), date: "2025-10-28".into(), no_later_than: None, line: "24".into() }],
         prerequisites: vec![Prerequisite { ecosystem: "npm".into(), name: "node".into(), min: Some("24.11".into()), max: Some("26".into()) }],
         conditions: vec!["PostgreSQL 14 or later".into()],
@@ -111,6 +113,8 @@ fn writes_a_fixture_for_the_typescript_side() {
             breaking: 0.12,
             benefit: vec![BenefitScore { benefit: Benefit::Correctness, p: 0.81 }, BenefitScore { benefit: Benefit::Security, p: 0.4 }],
             borderline: vec!["surface".into(), "benefit:security".into()],
+            magnitude: Some(0.7),
+            maturity: Some(0.95),
         }),
         advisories: vec![Advisory {
             id: "GHSA-aaaa-bbbb-cccc".into(),

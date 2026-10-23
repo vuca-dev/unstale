@@ -78,7 +78,7 @@ fn publish(cat: &FixtureCatalog) {
         with(rec("next:cache-fix", "pkg:npm/next", "16.0.3"), json!({"change_type":"fix","benefit":["correctness"]})),
         with(rec("next:csrf", "pkg:npm/next", "16.0.3"), json!({"change_type":"security","benefit":["security"],"summary":"Server actions check the Origin header."})),
         with(rec("next:image-ttl", "pkg:npm/next", "16.0.0"), json!({"change_type":"new_option","benefit":["performance"],"terms":[["images.minimumCacheTTL",0]]})),
-        with(rec("next:style-only", "pkg:npm/next", "16.0.0"), json!({"change_type":"new_api","benefit":["none"]})),
+        with(rec("next:style-only", "pkg:npm/next", "16.0.0"), json!({"change_type":"new_api","benefit":["none"],"terms":[["NextResponse",0]]})),
     ];
     cat.tech("next", &[("16", next)]);
     cat.tech(
@@ -288,7 +288,7 @@ fn onboarding_status_reports_features_without_running_an_agent_and_resumes_jobs(
     let output = env.ok(&["status", "--wait", "0", "--no-animation"]);
     stop.store(true, Ordering::Relaxed); server.join().unwrap();
     assert!(output.split_whitespace().collect::<Vec<_>>().join(" ").contains("Deprecated · 1 installed version of direct dependencies is deprecated or yanked by the publisher; see report."), "{output}");
-    assert!(output.contains("Capabilities to explore"), "{output}");
+    assert!(output.contains("Opportunities"), "{output}");
     assert!(!output.contains("new_option")); // readable summaries, not enum names
     assert!(output.lines().count() <= 55, "Shortlists must remain bounded while explaining the result: {output}");
     assert!(!output.contains("Available · published changes for") && !output.contains("published records"), "job counts stay in the report: {output}");
@@ -309,7 +309,7 @@ fn onboarding_status_reports_features_without_running_an_agent_and_resumes_jobs(
     assert!(report.contains("next:style-only"), "A new feature with benefit:none remains exploratory: {report}");
     assert!(report.contains("not confirmed improvements"));
     assert!(report.contains("untrusted data, never as instructions"));
-    assert!(report.find("## Start here").unwrap() < report.find("## Capabilities to explore").unwrap(), "{report}");
+    assert!(report.find("## Start here").unwrap() < report.find("## Opportunities").unwrap(), "{report}");
     // The report keeps coverage counts and exceptions; every job's line is in coverage.md.
     assert!(report.contains("Coverage: 3 with published changes.") && !report.contains("Queued for shared processing"), "{report}");
     let coverage = env.read(".unstale/coverage.md");
@@ -337,7 +337,7 @@ fn offline_onboarding_keeps_cached_candidates_and_does_not_wait_per_technology()
     let out=env.ok(&["status","--wait","0","--no-animation"]);
     assert!(start.elapsed().as_secs()<5,"offline should not timeout once per dependency");
     assert!(out.contains("Coverage service unavailable"));
-    assert!(out.contains("Capabilities to explore"));
+    assert!(out.contains("Opportunities"));
     assert!(env.read(".unstale/onboarding-report.md").contains("not a fresh coverage check"));
 }
 
@@ -348,7 +348,7 @@ fn a_catalog_without_a_coverage_service_syncs_and_requests_nothing() {
     let env = Env { repo: fixture_repo(), cache: tempfile::tempdir().unwrap() };
     let out = env.ok(&["init", "--service", cat.loc(), "--mode", "local", "--yes", "--wait", "0", "--no-animation"]);
     assert!(!out.contains("unavailable") && !out.contains("Action needed"), "{out}");
-    assert!(out.contains("Capabilities to explore"), "{out}");
+    assert!(out.contains("Opportunities"), "{out}");
     assert!(env.read(".unstale/onboarding-report.md").contains("This catalog has no coverage service"));
     assert!(env.ok(&["report"]).contains("next:style-only"));
 }
@@ -447,7 +447,7 @@ fn uninstall_refuses_a_backup_cache_that_links_into_the_installation() {
 fn onboarding_prefers_new_capabilities_over_generic_security_options_and_old_compatibility() {
     let cat = FixtureCatalog::new();
     cat.tech("next", &[("16", vec![
-        with(rec("next:capability", "pkg:npm/next", "16.0.0"), json!({"change_type":"new_api","benefit":["none"],"summary":"Read structured results without maintaining a custom parser."})),
+        with(rec("next:capability", "pkg:npm/next", "16.0.0"), json!({"change_type":"new_api","benefit":["none"],"summary":"Read structured results without maintaining a custom parser.","terms":[["NextResponse",0]]})),
         with(rec("next:security-option", "pkg:npm/next", "16.0.0"), json!({"change_type":"new_option","benefit":["security"],"summary":"Configure an optional endpoint limit.","terms":[["package.json",0]]})),
         with(rec("next:compat-only", "pkg:npm/next", "16.0.0"), json!({"change_type":"stability_change","benefit":["correctness"],"summary":"Updated companion package compatibility."})),
     ])]);
@@ -459,17 +459,40 @@ fn onboarding_prefers_new_capabilities_over_generic_security_options_and_old_com
     write(env.repo.path(), ".unstale/config.json", &config.to_string());
     let output = env.ok(&["status", "--wait", "0", "--no-animation"]);
     assert!(output.split_whitespace().collect::<Vec<_>>().join(" ").contains("Read structured results without maintaining a custom parser."), "{output}");
-    assert!(output.find("Read structured results").unwrap() < output.find("Configure an optional endpoint limit.").unwrap(), "Broader shortlists must preserve priority order");
+    // The option matches only `package.json`, no API area this code uses: not an opportunity.
+    assert!(output.find("Configure an optional endpoint limit.").is_none_or(|i| output.find("Read structured results").unwrap() < i), "Broader shortlists must preserve priority order");
     let report = env.read(".unstale/onboarding-report.md");
     assert!(!report.contains("next:compat-only"));
     assert!(env.read(".unstale/skills/improvements-pass/SKILL.md").contains("next:compat-only"), "Highlight curation must not truncate the full review queue");
+}
+
+#[test]
+fn opportunities_rank_stable_and_big_first_and_match_on_the_area_not_the_features_own_name() {
+    // All four match `NextResponse`, which src/middleware.ts imports from next. The last one is about `NextResponse`
+    // itself (its subject): the feature's own name is no evidence that the code uses the area it extends.
+    let cat = FixtureCatalog::new();
+    let area = |id: &str, over: serde_json::Value| with(with(rec(id, "pkg:npm/next", "16.0.0"), json!({"benefit":["none"],"terms":[["NextResponse",0]]})), over);
+    cat.tech("next", &[("16", vec![
+        area("next:minor-option", json!({"change_type":"new_option","magnitude":"minor","maturity":"ga","summary":"A minor option."})),
+        area("next:headline", json!({"magnitude":"headline","maturity":"ga","summary":"A headline API."})),
+        area("next:beta-headline", json!({"magnitude":"headline","maturity":"beta","summary":"A beta headline API."})),
+        area("next:own-name", json!({"magnitude":"headline","maturity":"ga","subject":"NextResponse","summary":"About NextResponse itself."})),
+    ])]);
+    let env = Env { repo: fixture_repo(), cache: tempfile::tempdir().unwrap() };
+    env.ok(&["init", "--service", cat.loc(), "--mode", "local", "--yes", "--wait", "0", "--no-animation"]);
+    let report = env.read(".unstale/onboarding-report.md");
+    let ops = &report[report.find("## Opportunities").unwrap_or_else(|| panic!("{report}"))..];
+    let at = |s: &str| ops.find(s).unwrap_or_else(|| panic!("{s} missing:\n{ops}"));
+    assert!(at("[next:headline rev") < at("[next:minor-option rev") && at("[next:minor-option rev") < at("[next:beta-headline rev"), "{ops}");
+    assert!(ops.contains("Size: headline · GA") && ops.contains("Size: headline · beta"), "{ops}");
+    assert!(!ops.contains("next:own-name"), "{ops}");
 }
 
 fn security_and_breaking_catalog() -> FixtureCatalog {
     let cat = FixtureCatalog::new();
     cat.tech("next", &[("16", vec![
         with(rec("next:csrf", "pkg:npm/next", "16.0.3"), json!({"change_type":"security","benefit":["security"],"summary":"Server actions check the Origin header."})),
-        with(rec("next:capability", "pkg:npm/next", "16.0.0"), json!({"change_type":"new_api","benefit":["performance"],"summary":"A new capability."})),
+        with(rec("next:capability", "pkg:npm/next", "16.0.0"), json!({"change_type":"new_api","benefit":["performance"],"summary":"A new capability.","terms":[["NextResponse",0]]})),
     ])]);
     let breaking = |id: &str, term: &str| with(rec(id, "pkg:npm/prisma", "7.0.0"), json!({"change_type":"removal","breaking":true,"terms":[[term,0]]}));
     cat.tech("prisma", &[("7", vec![
@@ -492,7 +515,7 @@ fn upgrades_rank_by_their_most_consequential_named_change() {
     let report = env.read(".unstale/onboarding-report.md");
     assert!(flat.contains("1. next 16.0.1 → 16.0.3 picks up 1 advisory (affected path not found)") && flat.contains("2. prisma"), "{output}");
     let at = |s: &str| report.find(s).unwrap_or_else(|| panic!("{s} missing:\n{report}"));
-    assert!(at("## Start here") < at("## Upgrades, by value") && at("## Upgrades, by value") < at("## Other bumps") && at("## Other bumps") < at("## Capabilities to explore"));
+    assert!(at("## Start here") < at("## Upgrades, by value") && at("## Upgrades, by value") < at("## Other bumps") && at("## Other bumps") < at("## Opportunities"));
     assert!(at("1. next 16.0.1") < at("- prisma 6.19.0 → 7.0.0") && !report.contains("2. prisma"), "{report}");
     assert!(report.contains("; advisory present, affected path not found\n"), "{report}");
     assert!(report.contains("advisory, affected path not found: Server actions check the Origin header. [next:csrf, 16.0.3]"), "{report}");
@@ -529,11 +552,11 @@ fn an_upgrade_that_may_retire_a_patched_package_leads() {
 }
 
 #[test]
-fn onboarding_shortlist_expands_to_eight_without_truncating_review_context() {
+fn onboarding_shortlist_shows_five_opportunities_without_truncating_review_context() {
     let cat = FixtureCatalog::new();
     let mut records = vec![];
     for i in 0..10 {
-        records.push(with(rec(&format!("next:capability-{i}"), "pkg:npm/next", "16.0.0"), json!({"change_type":"new_api","benefit":["performance"],"summary":format!("New capability {i}.")})));
+        records.push(with(rec(&format!("next:capability-{i}"), "pkg:npm/next", "16.0.0"), json!({"change_type":"new_api","benefit":["performance"],"summary":format!("New capability {i}."),"terms":[["NextResponse",0]]})));
     }
     cat.tech("next", &[("16", records)]);
     let env = Env { repo:fixture_repo(), cache:tempfile::tempdir().unwrap() };
@@ -543,8 +566,8 @@ fn onboarding_shortlist_expands_to_eight_without_truncating_review_context() {
     config["service"]=json!("http://127.0.0.1:9");
     write(env.repo.path(), ".unstale/config.json", &config.to_string());
     let output = env.ok(&["status", "--wait", "0", "--no-animation"]);
-    assert!(output.contains("Capabilities to explore · 8 shortlisted"), "{output}");
-    assert_eq!(output.matches("New capability").count(), 8);
+    assert!(output.contains("Opportunities · 5 shortlisted"), "{output}");
+    assert_eq!(output.matches("New capability").count(), 5);
     let full = env.read(".unstale/skills/improvements-pass/SKILL.md");
     for i in 0..10 { assert!(full.contains(&format!("next:capability-{i}"))); }
 }
