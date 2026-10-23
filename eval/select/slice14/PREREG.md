@@ -63,3 +63,21 @@ arm is adopted only if it passes the same floor and merge rule, and it is report
 
 SubQ ≤ $1.00 in all (runner caps: `run4.mts --subq-cap`, `judge2.mts` SUBQ_CAP $0.40 including the preview's $0.034).
 Jev ≤ $0.10 (repeat and Q8 baselines). No gateway, no Cloudflare.
+
+## Round 1 (written 22 October 2026, after round 0's held-out look and before any round 1 fit or call)
+
+Round 0 (RESULTS.md) failed both floors. Seen on dev only, for the levers below: Snap's dev actionable share (surface
+≠ runtime_internal) is 72.5% against Jev's 75.7%; on step E dev, Snap's guide-vs-notes DIFFERENT pairs sit at median
+p 0.985 (Jev 0.67), while its within-source DIFFERENT pairs sit at 0.48.
+
+- **D1 (no new calls, round 0's answers re-mapped):**
+  - `BREAKING_P`: maximise dev F2 subject to dev breaking precision ≥ Jev v1's dev precision at the live 0.5; ties to
+    0.5. `BENEFIT_P`: unchanged (dev F2).
+  - Actionable: not actionable only when p(runtime_internal) ≥ τ (instead of the argmax choice). Dev has no surface
+    labels, so τ is matched to the incumbent: the smallest τ on the 0.05 grid (0.50–0.95) at which Snap's dev
+    actionable share is ≥ Jev v1's dev argmax share. Production would publish the next-best surface when the argmax is
+    runtime_internal below τ.
+  - Floor and merge rule as above, on H1 and H2 (second look at both).
+- **E1:** Q8 with the cross-kind sentence removed from the guide-vs-notes questions (`--no-cross`; every question then
+  reads as the within-source one). Dev fit by the slice 5 objective, then one held-out run; floor and merge rule as
+  above against Jev Q8 (second look).

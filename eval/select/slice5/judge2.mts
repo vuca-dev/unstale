@@ -31,6 +31,8 @@ const { values: a } = parseArgs({
     // SubQ Snap model (subq.ts); a model other than the preview names its runs ...-subq-<version>.
     "subq-model": { type: "string", default: "subq-snap-preview" },
     tag: { type: "string" },
+    // slice14 PREREG "Round 1" (E1): drop the cross-kind sentence from guide-vs-notes questions.
+    "no-cross": { type: "boolean", default: false },
   },
 });
 const USAGE = join(OUT5, "judge2-usage.jsonl");
@@ -45,11 +47,11 @@ export interface Req { key: string; set: string; state: Record<string, unknown>;
 
 const PREFIX = /^Does the incoming record describe the same change as candidate c1\?\n/;
 /** The request as the arm asks it. */
-export function rewrite(r: Req, arm: string, scores?: number[], floor?: number): { state: Record<string, unknown>; questions: Questions } {
+export function rewrite(r: Req, arm: string, scores?: number[], floor?: number, noCross = false): { state: Record<string, unknown>; questions: Questions } {
   const form = arm[0]!;
   if (form === "Q") {
     if (!scores || floor === undefined) throw new Error("Q arms need --floor and floor-scores.json");
-    const m = compressed(r, "M", 8);
+    const m = compressed(r, "M", 8, noCross);
     return { state: m.state, questions: Object.fromEntries(Object.entries(m.questions).filter(([q]) => scores[Number(q.slice("same_c".length)) - 1]! >= floor)) };
   }
   const K = Number(arm.slice(1));
@@ -105,11 +107,11 @@ Unsure: answer no (a wrong match hides a change).`,
     cross: " Notes and guides word the same change differently.",
   },
 };
-function compressed(r: Req, form: "M" | "T", K: number): { state: Record<string, unknown>; questions: Questions } {
+function compressed(r: Req, form: "M" | "T", K: number, noCross = false): { state: Record<string, unknown>; questions: Questions } {
   const ids = Object.keys(r.questions).map((q) => q.replace("same_", "")).slice(0, K);
   const first = r.questions.same_c1!.instructions;
   if (!PREFIX.test(first)) throw new Error(`${r.key}: unexpected question text`);
-  const cross = first.endsWith(CROSS_LINE.slice(1));
+  const cross = !noCross && first.endsWith(CROSS_LINE.slice(1));
   return {
     state: r.state,
     questions: Object.fromEntries(ids.map((c) => [`same_${c}`, { instructions: RULES[form].q(c) + (cross ? RULES[form].cross : ""), options: r.questions[`same_${c}`]!.options }])),
@@ -123,7 +125,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const prices = loadPrices();
   const subqModel = a["subq-model"]!;
   const subqTag = subqModel === "subq-snap-preview" ? [] : [subqModel.replace(/^subq-snap-/, "")];
-  const runId = ["j2", arm, split, ...(cand !== "jev" ? [cand] : []), ...(cand === "subq" ? subqTag : []), ...(a.tag ? [a.tag] : [])].join("-");
+  const runId = ["j2", arm, split, ...(cand !== "jev" ? [cand] : []), ...(cand === "subq" ? subqTag : []), ...(a["no-cross"] ? ["nocross"] : []), ...(a.tag ? [a.tag] : [])].join("-");
   const floor = a.floor === undefined ? undefined : Number(a.floor);
   if (floor !== undefined && !Number.isFinite(floor)) throw new Error(`--floor must be a number, got ${a.floor}`);
   const runDir = join(OUT5, "runs", runId);
@@ -136,7 +138,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   let reqs = Object.values(all.reqs).filter((r) => (split === "heldout" ? r.split === "heldout" : r.split === "dev"));
   if (split === "smoke") reqs = [...reqs].sort((x, y) => sha256(`slice5:${x.key}`).localeCompare(sha256(`slice5:${y.key}`))).slice(0, 5);
 
-  const built = reqs.map((r) => ({ r, ...rewrite(r, arm, scores[r.key], floor) }));
+  const built = reqs.map((r) => ({ r, ...rewrite(r, arm, scores[r.key], floor, a["no-cross"]) }));
   const tok = (s: string) => Math.ceil(s.length / 3.5);
   const planIn = built.reduce((s, b) => s + (Object.keys(b.questions).length ? tok(JSON.stringify({ state: b.state, questions: b.questions })) : 0), 0);
   const worst = cand === "jev" ? (planIn * 0.042) / 1e6 : cand === "subq" ? dollars(priceOf(prices, "subq", subqModel), { input_tokens: planIn, cached_input_tokens: 0, output_tokens: 0, reasoning_tokens: null })! : 0;
