@@ -467,22 +467,23 @@ fn onboarding_prefers_new_capabilities_over_generic_security_options_and_old_com
 }
 
 #[test]
-fn opportunities_put_stable_headline_and_moderate_features_first() {
-    // All match `NextResponse`, which src/middleware.ts imports from next: main's shortlist order, with GA headline and
-    // moderate features moved first.
+fn opportunities_rank_the_used_extended_area_first_then_stable_headline_features() {
+    // All match `NextResponse`, which src/middleware.ts imports from next. Central's `extends` names the API a feature
+    // extends: used here first, then not labelled, then none; GA headline features first within each; nothing dropped.
     let cat = FixtureCatalog::new();
-    let area = |id: &str, over: serde_json::Value| with(with(rec(id, "pkg:npm/next", "16.0.0"), json!({"benefit":["none"],"terms":[["NextResponse",0]],"extends":"NextResponse"})), over);
+    let area = |id: &str, over: serde_json::Value| with(with(rec(id, "pkg:npm/next", "16.0.0"), json!({"benefit":["none"],"terms":[["NextResponse",0]]})), over);
     cat.tech("next", &[("16", vec![
-        area("next:a-minor", json!({"magnitude":"minor","maturity":"ga","summary":"A minor API."})),
+        area("next:a-minor-used", json!({"magnitude":"minor","maturity":"ga","extends":"NextResponse","summary":"A minor API."})),
         area("next:b-beta-headline", json!({"magnitude":"headline","maturity":"beta","summary":"A beta headline API."})),
         area("next:c-headline", json!({"magnitude":"headline","maturity":"ga","summary":"A headline API."})),
+        area("next:d-new-area", json!({"magnitude":"headline","maturity":"ga","extends":"","summary":"A new area."})),
     ])]);
     let env = Env { repo: fixture_repo(), cache: tempfile::tempdir().unwrap() };
     env.ok(&["init", "--service", cat.loc(), "--mode", "local", "--yes", "--wait", "0", "--no-animation"]);
     let report = env.read(".unstale/onboarding-report.md");
     let ops = &report[report.find("## Opportunities").unwrap_or_else(|| panic!("{report}"))..];
     let at = |s: &str| ops.find(s).unwrap_or_else(|| panic!("{s} missing:\n{ops}"));
-    assert!(at("[next:c-headline rev") < at("[next:a-minor rev") && at("[next:c-headline rev") < at("[next:b-beta-headline rev"), "{ops}");
+    assert!(at("[next:a-minor-used rev") < at("[next:c-headline rev") && at("[next:c-headline rev") < at("[next:b-beta-headline rev") && at("[next:b-beta-headline rev") < at("[next:d-new-area rev"), "{ops}");
     assert!(ops.contains("Size: headline · GA") && ops.contains("Size: headline · beta"), "{ops}");
 }
 

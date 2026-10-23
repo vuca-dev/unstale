@@ -1313,15 +1313,22 @@ fn magnitude_weight(o: &funnel::Opp) -> u32 {
 
 /// The report's opportunities: main's shortlist (`highlight_indices`: change type, specific references, available now,
 /// a security or correctness benefit, one technology at a time), with magnitude and maturity as the tie-breakers on top:
-/// GA features labelled headline or moderate first, then the rest, each in the shortlist's order, headline before
-/// moderate within the first group.
+/// first the capabilities whose `extends` (the API they extend) is used at this code's call sites, then those not
+/// labelled, then the rest; within each, GA features labelled headline or moderate first (headline before moderate),
+/// each in the shortlist's order. Nothing is dropped.
 fn opportunity_indices(out: &Outcome, w: &World) -> Vec<usize> {
     let mut picks = highlight_indices(out, w);
     let key = |i: &usize| {
         let o = &out.opps[*i];
         let m = magnitude_weight(o);
         let big_ga = maturity_rank(o) == 0 && m >= 2;
-        (!big_ga, if big_ga { 3 - m } else { 0 })
+        // The API it extends used at this code's call sites first, then not labelled, then none or not used.
+        let area = match &o.rec.r.extends {
+            Some(e) if extends_used(o, e) => 0,
+            None => 1,
+            Some(_) => 2,
+        };
+        (area, !big_ga, if big_ga { 3 - m } else { 0 })
     };
     // Stable: the shortlist's order stands within each group.
     picks.sort_by_key(key);
@@ -1451,6 +1458,11 @@ fn highlight_indices(out: &Outcome, w: &World) -> Vec<usize> {
         chosen.push(index);
     }
     chosen
+}
+/// Whether the code uses the API a capability extends: `extends` is one of the record's matched terms here.
+fn extends_used(o: &funnel::Opp, extends: &str) -> bool {
+    let Some(e) = usage::clean_lit(extends) else { return false };
+    o.matched.iter().any(|(t, files)| !files.is_empty() && t.eq_ignore_ascii_case(&e))
 }
 fn walled_off(o: &funnel::Opp) -> bool {
     o.requires_miss
