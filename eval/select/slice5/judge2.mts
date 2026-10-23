@@ -3,7 +3,7 @@
 // written keyed by the ORIGINAL request key, so score5.mts --judge2 scores them with the unchanged guards.
 //
 //   cd central && npx tsx ../eval/select/slice5/judge2.mts --arm F8|F4|O8|O4|O2|O1|I8|I4|M8|T8|Q8 --split smoke|dev|heldout
-//     [--cand jev|clef|subq] [--floor F] [--dry-run] [--concurrency 4]
+//     [--cand jev|clef|subq] [--subq-model subq-snap-1.1] [--floor F] [--dry-run] [--concurrency 4]
 // Q8 ("Question floor"): M8's questions, asked only for candidates retrieved at or above --floor (floor.mts --scores);
 // a request left with none is not sent and has no answers (no merge).
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -28,12 +28,17 @@ const { values: a } = parseArgs({
     "dry-run": { type: "boolean", default: false },
     concurrency: { type: "string", default: "4" },
     floor: { type: "string" },
+    // SubQ Snap model (subq.ts); a model other than the preview names its runs ...-subq-<version>.
+    "subq-model": { type: "string", default: "subq-snap-preview" },
+    tag: { type: "string" },
+    // slice14 PREREG "Round 1" (E1): drop the cross-kind sentence from guide-vs-notes questions.
+    "no-cross": { type: "boolean", default: false },
   },
 });
 const USAGE = join(OUT5, "judge2-usage.jsonl");
 const JEV_CAP = 0.55;
-/** PREREG.md "SubQ Snap on the judge". */
-const SUBQ_CAP = 0.15;
+/** PREREG.md "SubQ Snap on the judge" ($0.15), raised by slice14/PREREG.md (Snap 1.1) to $0.40 in all. */
+const SUBQ_CAP = 0.4;
 /** PREREG.md "Question floor": its own usage log and cap. */
 const FLOOR_USAGE = join(OUT5, "floor-usage.jsonl");
 const FLOOR_CAP = 0.3;
@@ -42,11 +47,11 @@ export interface Req { key: string; set: string; state: Record<string, unknown>;
 
 const PREFIX = /^Does the incoming record describe the same change as candidate c1\?\n/;
 /** The request as the arm asks it. */
-export function rewrite(r: Req, arm: string, scores?: number[], floor?: number): { state: Record<string, unknown>; questions: Questions } {
+export function rewrite(r: Req, arm: string, scores?: number[], floor?: number, noCross = false): { state: Record<string, unknown>; questions: Questions } {
   const form = arm[0]!;
   if (form === "Q") {
     if (!scores || floor === undefined) throw new Error("Q arms need --floor and floor-scores.json");
-    const m = compressed(r, "M", 8);
+    const m = compressed(r, "M", 8, noCross);
     return { state: m.state, questions: Object.fromEntries(Object.entries(m.questions).filter(([q]) => scores[Number(q.slice("same_c".length)) - 1]! >= floor)) };
   }
   const K = Number(arm.slice(1));
@@ -102,11 +107,11 @@ Unsure: answer no (a wrong match hides a change).`,
     cross: " Notes and guides word the same change differently.",
   },
 };
-function compressed(r: Req, form: "M" | "T", K: number): { state: Record<string, unknown>; questions: Questions } {
+function compressed(r: Req, form: "M" | "T", K: number, noCross = false): { state: Record<string, unknown>; questions: Questions } {
   const ids = Object.keys(r.questions).map((q) => q.replace("same_", "")).slice(0, K);
   const first = r.questions.same_c1!.instructions;
   if (!PREFIX.test(first)) throw new Error(`${r.key}: unexpected question text`);
-  const cross = first.endsWith(CROSS_LINE.slice(1));
+  const cross = !noCross && first.endsWith(CROSS_LINE.slice(1));
   return {
     state: r.state,
     questions: Object.fromEntries(ids.map((c) => [`same_${c}`, { instructions: RULES[form].q(c) + (cross ? RULES[form].cross : ""), options: r.questions[`same_${c}`]!.options }])),
@@ -118,7 +123,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const split = a.split as "smoke" | "dev" | "heldout";
   const cand = a.cand as "jev" | "clef" | "subq";
   const prices = loadPrices();
-  const runId = ["j2", arm, split, ...(cand !== "jev" ? [cand] : [])].join("-");
+  const subqModel = a["subq-model"]!;
+  const subqTag = subqModel === "subq-snap-preview" ? [] : [subqModel.replace(/^subq-snap-/, "")];
+  const runId = ["j2", arm, split, ...(cand !== "jev" ? [cand] : []), ...(cand === "subq" ? subqTag : []), ...(a["no-cross"] ? ["nocross"] : []), ...(a.tag ? [a.tag] : [])].join("-");
   const floor = a.floor === undefined ? undefined : Number(a.floor);
   if (floor !== undefined && !Number.isFinite(floor)) throw new Error(`--floor must be a number, got ${a.floor}`);
   const runDir = join(OUT5, "runs", runId);
@@ -131,10 +138,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   let reqs = Object.values(all.reqs).filter((r) => (split === "heldout" ? r.split === "heldout" : r.split === "dev"));
   if (split === "smoke") reqs = [...reqs].sort((x, y) => sha256(`slice5:${x.key}`).localeCompare(sha256(`slice5:${y.key}`))).slice(0, 5);
 
-  const built = reqs.map((r) => ({ r, ...rewrite(r, arm, scores[r.key], floor) }));
+  const built = reqs.map((r) => ({ r, ...rewrite(r, arm, scores[r.key], floor, a["no-cross"]) }));
   const tok = (s: string) => Math.ceil(s.length / 3.5);
   const planIn = built.reduce((s, b) => s + (Object.keys(b.questions).length ? tok(JSON.stringify({ state: b.state, questions: b.questions })) : 0), 0);
-  const worst = cand === "jev" ? (planIn * 0.042) / 1e6 : cand === "subq" ? (planIn * 0.05) / 1e6 : 0;
+  const worst = cand === "jev" ? (planIn * 0.042) / 1e6 : cand === "subq" ? dollars(priceOf(prices, "subq", subqModel), { input_tokens: planIn, cached_input_tokens: 0, output_tokens: 0, reasoning_tokens: null })! : 0;
   console.log(`${runId}: ${reqs.length} requests, ~${planIn} input tokens (chars/3.5) ≈ $${worst.toFixed(4)} on ${cand === "subq" ? "SubQ Snap" : "Jev"}; ${(planIn / reqs.length).toFixed(0)} per request`);
   if (a["dry-run"]) process.exit(0);
   const spent = spendByProvider(USAGE).jev?.dollars ?? 0;
@@ -176,9 +183,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     meter.input += u.input_tokens;
     meter.output += u.output_tokens;
     meter.dollars += d ?? 0;
-    logUsageLine(USAGE, { step: `judge2:${runId}`, provider: "subq", model: "subq-snap-preview", ...u, dollars: d });
+    logUsageLine(USAGE, { step: `judge2:${runId}`, provider: "subq", model: subqModel, ...u, dollars: d });
   };
-  const cls: Classifier = cand === "subq" ? new SubqClassifier({ step: `judge2:${runId}`, onUsage }) : new Jev({ model: cand === "jev" ? "jev-latest" : "clef-flash", fetch: f, ...(cand === "clef" ? { apiKey: () => "unused" } : {}) });
+  const cls: Classifier = cand === "subq" ? new SubqClassifier({ model: subqModel, step: `judge2:${runId}`, onUsage }) : new Jev({ model: cand === "jev" ? "jev-latest" : "clef-flash", fetch: f, ...(cand === "clef" ? { apiKey: () => "unused" } : {}) });
   // F8 reproduces J1 from J1's own caches (dev: the fresh dev run; held-out: run 1).
   const cacheDir = arm === "F8" && cand === "jev" ? join(OUT5, "cache", split === "heldout" ? "jev-heldout-r1" : split === "dev" ? "jev-dev" : "jev-smoke", "cls") : join(OUT5, "cache", runId, "cls");
   const cache = new ClassifierCache(cacheDir);
