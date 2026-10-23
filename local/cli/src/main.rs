@@ -645,6 +645,25 @@ fn cmd_bump(ctx: &Ctx, pkg: &str) -> Result<u8> {
             if techs.is_empty() && !purls.iter().any(|p| w.stack.deps.contains_key(p)) {
                 bail!("{pkg} is not a package or technology this repository uses");
             }
+            // Lockfile (OSV) advisories on the package itself need no catalog record: the report names them on its
+            // upgrade line and points here, so this shows them rather than "picks up nothing".
+            let norm = |s: &str| s.to_ascii_lowercase().replace(['_', '.'], "-");
+            let lock_report = advisories::report(&ctx.cache, &ctx.root).unwrap_or_default();
+            let lock: Vec<&advisories::Item> = lock_report.items.iter().filter(|it| it.via.is_empty() && norm(&it.name) == norm(pkg)).collect();
+            if !lock.is_empty() {
+                let target = if lock.iter().all(|it| it.fix.is_some()) {
+                    lock.iter().filter_map(|it| it.fix.as_deref()).max_by(|a, b| util::parse_version(a).cmp(&util::parse_version(b))).unwrap_or("replacement")
+                } else {
+                    "replacement"
+                };
+                let k = lock.len();
+                println!("Bumping {pkg} {} → {target} fixes {k} lockfile advisor{} (no catalog record needed):", lock[0].version, if k == 1 { "y" } else { "ies" });
+                for it in &lock {
+                    let fix = it.fix.as_deref().map(|f| format!(" → {f}")).unwrap_or_else(|| ", no fixed version: replace or mitigate".to_string());
+                    println!("  security: {} ({}): {} [lockfile {} {}{fix}] (https://osv.dev/vulnerability/{})", it.id, it.severity.word(), util::one_line(&it.summary, 160), it.name, it.version, it.id);
+                }
+                return Ok(0);
+            }
             if techs.is_empty() {
                 println!("Bumping {pkg} picks up nothing in the catalog: no catalog technology covers {pkg}.");
             } else {

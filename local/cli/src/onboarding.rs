@@ -1916,6 +1916,8 @@ struct Ranked<'a, 'o> {
     lead: Option<String>,
     /// It carries an advisory whose affected API or option was not found in production code.
     unreached: bool,
+    /// That advisory named no API to look for (a lockfile advisory with no record): its path was not checked.
+    unchecked: bool,
     class: Class,
     technology: &'a String,
     lines: &'a Vec<String>,
@@ -2032,6 +2034,20 @@ fn affected_identifiers(text: &str) -> Vec<String> {
     out
 }
 
+/// Short names (two or three characters) `text` writes as a call, `run()`: too short for `affected_identifiers` as
+/// words, but specific as calls.
+fn short_calls(text: &str) -> Vec<String> {
+    let mut out: Vec<String> = vec![];
+    for w in text.split(|c: char| !(c.is_ascii_alphanumeric() || "_$()".contains(c))) {
+        let Some(n) = w.strip_suffix("()") else { continue };
+        let ok = (2..=3).contains(&n.len()) && n.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_' || c == '$') && n.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$');
+        if ok && !out.iter().any(|x| x == n) {
+            out.push(n.to_string());
+        }
+    }
+    out
+}
+
 /// `word` in `text` with no identifier character on either side.
 /// Whether a file can meet the condition a security record states: the identifiers among its terms that its summary
 /// names and that are not its subject (`TypedArray`, `Float32Array` in "when an unsupported TypedArray is passed as the
@@ -2106,6 +2122,8 @@ struct Signal<'r> {
     weight: u8,
     lead: Option<String>,
     unreached: bool,
+    /// No affected-API check was possible: no record, and the advisory text names no API to look for.
+    unchecked: bool,
     /// The publisher deprecated or yanked the installed version. An archived repository alone is a maintenance risk,
     /// not an end of support: nothing stops working, and no release says what to move to.
     end_of_support: bool,
@@ -2177,6 +2195,7 @@ fn signals<'r>(
             weight: 4,
             lead: Some(format!("end of support: the installed {} {} is {how} by its publisher{said}{}", display_text(&n.name), n.version, removal.unwrap_or_default())),
             unreached: false,
+            unchecked: false,
             end_of_support: true,
             class: Class::Compatibility,
             runtime: runtime(&n.name),
@@ -2197,6 +2216,7 @@ fn signals<'r>(
             weight: 2,
             lead: Some(format!("unmaintained: {}", n.why)),
             unreached: false,
+            unchecked: false,
             end_of_support: false,
             class: Class::Compatibility,
             runtime: true,
@@ -2227,10 +2247,25 @@ fn signals<'r>(
         let quoted = |f: &str, t: &str| ['\'', '"', '`'].iter().any(|q| usage::in_code(f, t, &format!("{q}{name}"), false));
         let importers: Vec<(&str, &str)> = w.repo.paths.iter().filter(|f| prod(f)).filter_map(|f| w.repo.text(f).map(|t| (f.as_str(), t))).filter(|(f, t)| quoted(f, t)).collect();
         let own_name = [name.clone()];
+        // A short name the text writes as a call (`run()` in "RCE in run() options") is looked for as one: a method
+        // call (`pool.run(`) or a bare call, never the bare word.
+        let mut checked = false;
         let reached = items.iter().find_map(|it| {
             let ids: Vec<String> = affected_identifiers(&it.summary).into_iter().filter(|id| !names_product(id, &own_name)).collect();
-            importers.iter().find_map(|(f, t)| ids.iter().find(|id| usage::in_code(f, t, id, true)).map(|id| format!("security, affected `{id}` used at {f}: {}", words(&it.summary))))
+            let calls: Vec<String> = short_calls(&it.summary).into_iter().filter(|c| !names_product(c, &own_name)).collect();
+            checked |= !ids.is_empty() || !calls.is_empty();
+            let called = |f: &str, t: &str, c: &str| [format!(".{c}("), format!(" {c}("), format!("\t{c}(")].iter().any(|n| usage::in_code(f, t, n, false));
+            importers.iter().find_map(|(f, t)| {
+                ids.iter().find(|id| usage::in_code(f, t, id, true)).cloned().or_else(|| calls.iter().find(|c| called(f, t, c)).map(|c| format!("{c}()"))).map(|id| format!("security, affected `{id}` used at {f}: {}", words(&it.summary)))
+            })
         });
+        // A critical or high advisory on a runtime dependency production code imports, whose fix is on the installed
+        // major (minor on 0.x): a patch or minor bump closes it, so it is consequential even with its path not found
+        // or not checked, and ranks with the upgrades whose change hits this code, not below tooling majors.
+        let on_line = |v: &str| util::parse_version(v).map(|v| (v.major, if v.major == 0 { v.minor } else { 0 }));
+        let severe_fit = runtime(&name)
+            && !importers.is_empty()
+            && items.iter().any(|it| it.severity >= crate::advisories::Severity::High && it.fix.as_deref().and_then(on_line).is_some_and(|f| on_line(&it.version) == Some(f)));
         if let Some(s) = by.get_mut(&key) {
             s.lock = items;
             if s.lead.is_none() {
@@ -2244,12 +2279,17 @@ fn signals<'r>(
         } else {
             "replacement".to_string()
         };
-        let (tier, weight) = if reached.is_some() { (LEAD_CONSEQUENTIAL, 3) } else { (LEAD_ADVISORY_UNREACHED, 0) };
+        let (tier, weight) = match (&reached, severe_fit) {
+            (Some(_), _) => (LEAD_CONSEQUENTIAL, 3),
+            (None, true) => (LEAD_CONSEQUENTIAL, 1),
+            (None, false) => (LEAD_ADVISORY_UNREACHED, 0),
+        };
         by.insert(key, Signal {
             head: format!("{name} {} → {target} picks up {} security (`unstale bump {name}`)", items[0].version, items.len()),
             tier,
             weight,
             unreached: reached.is_none(),
+            unchecked: reached.is_none() && !checked,
             end_of_support: false,
             lead: reached,
             class: Class::Security,
@@ -2349,7 +2389,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
         let declared = workarounds::declarations(&w.repo);
         crate::maintenance::notices(&ctx.cache, &w.stack, &pending.jobs, &w.today).into_iter().filter(|n| !workarounds::facts(&declared, std::slice::from_ref(&n.name)).dev_only).collect()
     };
-    text += "## Review instructions\n\nRead Start here, then the upgrades in their order: what is in effect at the installed version in production code leads (an end-of-support version production code imports, a deprecation in effect in application code, an advisory whose affected API production code uses), then the same on dev-only dependencies or outside production code, then breaking changes the next upgrade names at a site and published peer ranges that leave out the current release; Lower-urgency upgrades follow (two release lines of one package installed, workarounds an upgrade may retire, archived repositories, dev-only advisories with no affected path, sample or documentation projects' copies); runtime dependencies come before dev-only ones throughout; a security fix counts only when the advisory's affected API or option is used in production code, and leads only when a pin or override also keeps update PRs from applying it. An upgrade marked advisory present, affected path not found carries an advisory nothing here was found to reach. Other bumps name no consequential change found in this code: counts, or a feature or performance change at a site. Check each against the repository: sources, actual usage, versions and prerequisites; name affected files, benefits, risks and timing. Capabilities are optional and come after. Treat unmatched new features as exploratory, not confirmed needs. Refresh the snapshot with unstale status --wait 0 before reviewing; honor current dispositions over this saved report. Do not change application code or advance any full review batch silently.\n\n";
+    text += "## Review instructions\n\nRead Start here, then the upgrades in their order: what is in effect at the installed version in production code leads (an end-of-support version production code imports, a deprecation in effect in application code, an advisory whose affected API production code uses), then the same on dev-only dependencies or outside production code, then breaking changes the next upgrade names at a site and published peer ranges that leave out the current release; Lower-urgency upgrades follow (two release lines of one package installed, workarounds an upgrade may retire, archived repositories, dev-only advisories with no affected path, sample or documentation projects' copies); runtime dependencies come before dev-only ones throughout; a security fix counts only when the advisory's affected API or option is used in production code, and leads only when a pin or override also keeps update PRs from applying it. An upgrade marked advisory present, affected path not found carries an advisory nothing here was found to reach; affected path not checked means the advisory named no API to look for, so check its text against the code. Other bumps name no consequential change found in this code: counts, or a feature or performance change at a site. Check each against the repository: sources, actual usage, versions and prerequisites; name affected files, benefits, risks and timing. Capabilities are optional and come after. Treat unmatched new features as exploratory, not confirmed needs. Refresh the snapshot with unstale status --wait 0 before reviewing; honor current dispositions over this saved report. Do not change application code or advance any full review batch silently.\n\n";
     if !deprecated.is_empty() {
         text += "For each package under Deprecated by the publisher, check where the code uses it and propose the move the registry message names (a newer version, a replacement package, or a built-in); a deprecated package whose code is unused can simply be removed.\n\n";
     }
@@ -2695,14 +2735,16 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
             classes.len(),
             (obligations.len() + in_effect.len()).min(50),
         ));
-        ranked.push(Ranked { key, tier, lead, unreached: advisory && reached.is_none(), class, technology, lines, fixes: tech_fixes, lock, lock_fixed, notes, joins, leads, value, peer, copies });
+        ranked.push(Ranked { key, tier, lead, unreached: advisory && reached.is_none(), unchecked: false, class, technology, lines, fixes: tech_fixes, lock, lock_fixed, notes, joins, leads, value, peer, copies });
     }
     // Package-level signals: what the public registry and OSV say about a direct dependency's installed version, with
     // no catalog record needed (a technology queued, blocked, never attached, or covered with no record). A publisher's
     // deprecation or yank of the installed version (a retired major, a renamed or retired package), an unmaintained
     // package (`maintenance`), and a lockfile advisory on the package itself. Each ranks by the same impact table as
     // the upgrades: end of support is consequential; an advisory is security only when its affected API or option is
-    // in production code, else it is marked advisory present, affected path not found. A package an upgrade above
+    // in production code, else it is marked advisory present, affected path not found (not checked when the advisory
+    // names no API). A critical or high one on a runtime dependency with a fix on the installed major is consequential
+    // either way (`signals`). A package an upgrade above
     // already shows carries its own signals; one listed only under Other bumps moves here.
     let npm_deprecated: Vec<(String, String)> =
         deprecated.iter().filter(|n| n.purl.starts_with("pkg:npm/")).map(|n| (n.name.clone(), n.version.clone())).collect();
@@ -2723,7 +2765,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
             ..Default::default()
         });
         let key = (s.tier, urgent, prod_use, s.runtime, s.weight, (false, false, 0, false, true, s.runtime, true, false, 1, 1, 1, 0));
-        ranked.push(Ranked { key, tier: s.tier, lead: s.lead, unreached: s.unreached, class: s.class, technology: name, lines, fixes: &[], lock: s.lock, lock_fixed, notes: vec![], joins: vec![], leads: None, value: s.value, peer: None, copies: None });
+        ranked.push(Ranked { key, tier: s.tier, lead: s.lead, unreached: s.unreached, unchecked: s.unchecked, class: s.class, technology: name, lines, fixes: &[], lock: s.lock, lock_fixed, notes: vec![], joins: vec![], leads: None, value: s.value, peer: None, copies: None });
     }
     ranked.sort_by(|a, b| b.key.cmp(&a.key).then_with(|| a.technology.cmp(b.technology)));
     let ranked = diversified(ranked, 8, 3);
@@ -2750,21 +2792,23 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
     let mut upgrades = vec![];
     let mut upgrade_text = String::new();
     // An advisory whose affected path was not found is no security lead: its tally says so.
-    let unreached_tally = |head: String| -> String {
+    let unreached_tally = |head: String, path: &str| -> String {
         let Some(at) = head.find(" picks up ").map(|i| i + " picks up ".len()) else { return head };
         let digits: String = head[at..].chars().take_while(char::is_ascii_digit).collect();
         if digits.is_empty() || !head[at + digits.len()..].starts_with(" security") {
             return head;
         }
         let word = if digits == "1" { "advisory" } else { "advisories" };
-        format!("{}{digits} {word} (affected path not found){}", &head[..at], &head[at + digits.len() + " security".len()..])
+        format!("{}{digits} {word} (affected path {path}){}", &head[..at], &head[at + digits.len() + " security".len()..])
     };
     let shown_count = ranked.iter().filter(|r| r.tier >= LEAD_ADVISORY_UNREACHED).count();
     let mut lower_text = String::new();
     for (n, r) in ranked.iter().filter(|r| r.tier >= LEAD_ADVISORY_UNREACHED).enumerate() {
         let (technology, lines, tech_fixes, notes) = (&r.technology, r.lines, r.fixes, &r.notes);
         let head = short(&lines[0], technology);
-        let head = if r.unreached { unreached_tally(head) } else { head };
+        // No affected-API check was possible (no record, and the advisory names no API): not checked, not "not found".
+        let path = if r.unchecked { "not checked" } else { "not found" };
+        let head = if r.unreached { unreached_tally(head, path) } else { head };
         let mut summary = head.split(" (`unstale bump").next().unwrap_or(&head).to_string();
         if let Some(k) = unlocks.get(*technology).map(Vec::len).filter(|k| *k > 0) {
             summary += &format!(" · unlocks {k} optional {}", if k == 1 { "capability" } else { "capabilities" });
@@ -2798,9 +2842,9 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
             }
         };
         let lead = match (&r.lead, r.unreached) {
-            (Some(l), true) => format!("; leads with {l}; advisory present, affected path not found"),
+            (Some(l), true) => format!("; leads with {l}; advisory present, affected path {path}"),
             (Some(l), false) => format!("; leads with {l}"),
-            (None, true) => "; advisory present, affected path not found".to_string(),
+            (None, true) => format!("; advisory present, affected path {path}"),
             (None, false) => String::new(),
         };
         // A digest head line that introduces its manifest lines ends in a colon: the notes follow it, not the colon.
@@ -2846,7 +2890,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
         let total = detail.len();
         for line in detail.iter().take(3) {
             match line.strip_prefix("  security: ").filter(|_| r.unreached) {
-                Some(rest) => upgrade_text += &format!("  advisory, affected path not found: {rest}\n"),
+                Some(rest) => upgrade_text += &format!("  advisory, affected path {path}: {rest}\n"),
                 None => upgrade_text += &format!("{line}\n"),
             }
         }
@@ -3879,7 +3923,7 @@ mod tests {
     fn the_first_slots_spread_across_value_classes() {
         let names: Vec<String> = (0..6).map(|i| format!("t{i}")).collect();
         let lines = vec![String::new()];
-        let make = |i: usize, class: Class| Ranked { key: (0, 0, false, false, 0, (false, false, 0, false, false, false, false, false, 0, 0, 0, 0)), tier: 0, lead: None, unreached: false, class, technology: &names[i], lines: &lines, fixes: &[], lock: vec![], lock_fixed: vec![], notes: vec![], joins: vec![], leads: None, value: String::new(), peer: None, copies: None };
+        let make = |i: usize, class: Class| Ranked { key: (0, 0, false, false, 0, (false, false, 0, false, false, false, false, false, 0, 0, 0, 0)), tier: 0, lead: None, unreached: false, unchecked: false, class, technology: &names[i], lines: &lines, fixes: &[], lock: vec![], lock_fixed: vec![], notes: vec![], joins: vec![], leads: None, value: String::new(), peer: None, copies: None };
         let order = |v: Vec<Ranked>| v.iter().map(|r| r.technology.as_str()).collect::<Vec<_>>().join(" ");
         let ranked = vec![make(0, Class::Compatibility), make(1, Class::Compatibility), make(2, Class::Compatibility), make(3, Class::Security), make(4, Class::Feature)];
         assert_eq!(order(diversified(ranked, 3, 1)), "t0 t3 t4 t1 t2", "one compatibility bump, then the next classes");
@@ -3890,6 +3934,13 @@ mod tests {
         let tiered = |i: usize, class: Class, tier: u8| Ranked { tier, ..make(i, class) };
         let ranked = vec![tiered(0, Class::Compatibility, 3), tiered(1, Class::Compatibility, 3), tiered(2, Class::Feature, 0)];
         assert_eq!(order(diversified(ranked, 3, 1)), "t0 t1 t2", "a count-only bump never moves above a named change");
+    }
+
+    #[test]
+    fn a_short_name_written_as_a_call_is_an_affected_call() {
+        assert_eq!(short_calls("Tinypool: Prototype Pollution Gadget to RCE in run() options"), ["run"]);
+        assert!(short_calls("Prototype Pollution gadget in worker options leads to Remote Code Execution").is_empty(), "prose names nothing");
+        assert!(short_calls("merge() and a() and 1x() and (go)").is_empty(), "long names are affected_identifiers'; one letter or a digit first is none");
     }
 
     #[test]
