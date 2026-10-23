@@ -1885,17 +1885,19 @@ fn names_package(text: &str, packages: &[String]) -> bool {
 /// - A term the change introduces is the form the code moves to: code writing it has already moved.
 /// - A default change bites code that leaves the setting unset; a match is code that sets or does it explicitly
 ///   (`vi.clearAllMocks` beside "mocks are cleared by default"), which the new default does not change.
-/// - A record that names no API (its subject is a concept, "deprecated functions and polyfills") or that is for a
-///   stated audience ("Audience: plugin authors") is located only by a term its summary or subject writes: its other
+/// - An API change that names no API (its subject is a concept, "deprecated functions and polyfills") or a record for
+///   a stated audience ("Audience: plugin authors") is located only by a term its summary or subject writes: its other
 ///   terms are the package's exports or generic syntax (`decodeHTML`, `export default`), which any user writes.
-/// - A change inside the tool's runtime (what it does to the scripts it runs) is at a file that imports the package or
-///   is its config file, not at any script with the same shebang.
+/// - A change inside the tool's runtime (what it does to the scripts it runs) is at code that imports the package or
+///   is its config file, not at any script with the same shebang; manifests stay sites (`requires-python`).
 fn change_site(r: &unstale_schema::catalog::CapabilityRecord, term: &str, file: &str, packages: &[String], w: &World) -> bool {
     if !names_change(r, term) {
         return false;
     }
-    // Inside the tool's runtime: a file that imports the package or is its config file.
-    r.surface != unstale_schema::catalog::Surface::RuntimeInternal || {
+    // Inside the tool's runtime: code that imports the package or is its config file. A manifest or config-format
+    // file (`requires-python` in pyproject.toml for a dropped Python) states what the tool runs on and stays a site.
+    let code = usage::own_code(file, "npm") || usage::own_code(file, "pypi");
+    r.surface != unstale_schema::catalog::Surface::RuntimeInternal || !code || {
         let squash = |s: &str| s.chars().filter(char::is_ascii_alphanumeric).collect::<String>().to_ascii_lowercase();
         usage::config_tool(file).is_some_and(|tool| packages.iter().any(|p| squash(p.rsplit('/').next().unwrap_or(p)) == squash(&tool)))
             || w.repo.text(file).is_some_and(|x| names_package(x, packages))
@@ -1910,7 +1912,10 @@ fn names_change(r: &unstale_schema::catalog::CapabilityRecord, term: &str) -> bo
         return false;
     }
     let audience = r.conditions.iter().any(|c| c.trim_start().starts_with("Audience:"));
-    if r.subject_kind != unstale_schema::catalog::SubjectKind::Concept && !audience {
+    // An API change that names no API: its terms are the package's exports. A concept about configuration or the
+    // platform (`requires-python` for "Python 3.10 support") is located by its keys.
+    let unnamed_api = r.subject_kind == unstale_schema::catalog::SubjectKind::Concept && r.surface == unstale_schema::catalog::Surface::CodeApi;
+    if !unnamed_api && !audience {
         return true;
     }
     let says = format!("{} {}", r.summary.replace('`', ""), r.subject).to_ascii_lowercase();
@@ -3774,6 +3779,10 @@ mod tests {
             "summary":"Plugins can no longer expose fields as named exports; use a default export of a plugin object or factory function."}));
         assert!(!names_change(&audience, "export default"));
         assert!(!names_change(&audience, "export const visitor"));
+        // A platform drop is located by its manifest key whatever its summary says.
+        let platform = r(json!({"change_type":"removal","breaking":true,"subject":"Python 3.10 support","subject_kind":"concept","surface":"configuration",
+            "summary":"Python 3.10 is no longer supported."}));
+        assert!(names_change(&platform, "requires-python"));
         // A concept record still sites a term its summary writes (`#!/usr/bin/env node`, `resolveRequest`).
         let named = r(json!({"change_type":"behavior_change","breaking":true,"subject":"task Node.js version","subject_kind":"concept",
             "summary":"Scripts with the `#!/usr/bin/env node` shebang now run with lint-staged's Node.js; resolveRequest is gone."}));
