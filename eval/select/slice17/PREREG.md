@@ -81,3 +81,21 @@ One look: each set is scored once, after its labels are complete.
 
 ≤ $10 in all: Jev 1.14 (DOCS replays, ADV requests), the gateway (J2, the uncached effect extractions); Codex on the
 plan.
+
+## Amendment (23 October 2026, after the DOCS replays and before any LIN label or score)
+
+**LIN.** The DOCS replays held no lineage request. A lineage pair needs a later snapshot of a guide or page the
+candidate cites, for the same release, and the stored state keeps one snapshot per guide and page, so a replay cannot
+produce one. LIN is taken from the whole production history instead (`lineage.mts`):
+- the judged (incoming, candidate) pairs where the incoming item is a docs page or upgrade guide, and the candidate
+  held earlier evidence of the same document at another snapshot for the item's release;
+- that gives 2,551 pairs in 24 technologies;
+- a seeded sample of **150 requests** (sha256("slice17-lin:" + tech|key) order), all of their lineage pairs labelled
+  by the two judges.
+
+Deviations, stated:
+- **The answers are production's recorded p** (Jev 1.13 or 1.14 at the time), not a fresh Jev 1.14 run, because the
+  incoming items cannot be rebuilt.
+- **A merged item's subject and summary are not stored.** The judges see its quote only, as for QG.
+- **Every arm decides lineage alike** (LINEAGE_SAME_P 0.80 in all three). LIN is scored at production's settings only,
+  as production decided it, and it does not bear on the quote guard.
