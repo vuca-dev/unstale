@@ -692,6 +692,23 @@ pub fn live_site_under(path: &str, text: &str, lit: &str, replacements: &[String
         .any(|l| !near.iter().any(|r| r.abs_diff(l) <= SITE_LINES))
 }
 
+/// Whether `text` (the file at `path`) writes `needle` in code: an occurrence outside comments, and with `whole` one
+/// with no identifier character on either side. A name in JSDoc prose or a commented-out example (`import handler
+/// from '@tanstack/react-start/server-entry'` in a usage note) is not code that imports or calls it.
+pub fn in_code(path: &str, text: &str, needle: &str, whole: bool) -> bool {
+    if needle.is_empty() || !text.contains(needle) {
+        return false;
+    }
+    let comments = comment_spans(path, text);
+    let in_comment = |at: usize| {
+        let k = comments.partition_point(|(s, _)| *s <= at);
+        k > 0 && at < comments[k - 1].1
+    };
+    let ident = |c: Option<char>| c.is_some_and(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$');
+    text.match_indices(needle)
+        .any(|(i, _)| !in_comment(i) && (!whole || (!ident(text[..i].chars().next_back()) && !ident(text[i + needle.len()..].chars().next()))))
+}
+
 /// Whether `text` holds `lit` (or, for a qualified literal, its tail) outside comments: a file that writes a literal
 /// only in comments (JSDoc prose, a commented-out example) is not using it. A key literal (`with:`) in
 /// JavaScript-family code counts only as an object key (`key_or_member`), not inside a string (`"secret:with:colons"`).

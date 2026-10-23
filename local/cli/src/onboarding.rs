@@ -1244,6 +1244,18 @@ fn specific_reference(term: &str, stack: &stack::Stack) -> bool {
     if term.chars().all(|c| c.is_ascii_lowercase()) || usage::plain_word(term) {
         return false;
     }
+    // A phrase of the language's own syntax or plain words (`export default`, `export const name`, `#!/usr/bin/env
+    // node`) is written by any code in the language, whoever the change is for. A phrase stays specific when it writes
+    // a flag (`--user`), a name with capitals (`moduleResolution: node`) or one of the stack's packages as a command
+    // (`next lint`).
+    if term.contains(char::is_whitespace) {
+        let flag = term.split_whitespace().any(|t| t.starts_with('-'));
+        let words: Vec<&str> = term.split(|c: char| !c.is_ascii_alphanumeric()).filter(|w| !w.is_empty()).collect();
+        let package = |w: &str| stack.deps.values().any(|d| d.name.eq_ignore_ascii_case(w));
+        if !flag && !words.is_empty() && words.iter().all(|w| w.chars().all(|c| c.is_ascii_lowercase()) && !package(w)) {
+            return false;
+        }
+    }
     // A plain word with trailing punctuation (`https://`, `config:`) is that word.
     let bare = term.trim_end_matches(|c: char| !c.is_ascii_alphanumeric());
     if bare.len() < term.len() && (bare.is_empty() || bare.chars().all(|c| c.is_ascii_lowercase())) {
@@ -2036,6 +2048,42 @@ fn precondition_plausible(r: &unstale_schema::catalog::CapabilityRecord, text: &
     conds.is_empty() || conds.iter().any(|t| has_identifier(text, t))
 }
 
+/// Whether an identifier an advisory's text names is the product's own name, however written (`TanStack` for
+/// `@tanstack/react-start`, `sanitizeHtml` for `sanitize-html`): an advisory title names the product, not an API of it,
+/// and the name is in every file that uses the package.
+fn names_product(id: &str, packages: &[String]) -> bool {
+    let squash = |s: &str| s.chars().filter(char::is_ascii_alphanumeric).collect::<String>().to_ascii_lowercase();
+    let i = squash(id);
+    !i.is_empty() && packages.iter().any(|p| squash(p).contains(&i))
+}
+
+/// Whether `term` can locate record `r`'s change at a site. A record about one API (subject `ulid`) whose terms write it
+/// (`v.ulid(`) is located only by those: its other terms are the calls it sits beside (`v.string()`), which every user
+/// of the package writes. A removal or deprecation whose subject and summary name no API and none of its terms
+/// ("Deprecated functions and polyfills have been removed") is not located by any: its terms are the package's API in
+/// general (`decodeHTML`), not what was removed.
+fn locates(r: &unstale_schema::catalog::CapabilityRecord, term: &str) -> bool {
+    let subject = r.subject.trim().trim_matches('`').to_ascii_lowercase();
+    let one_api = !subject.is_empty() && subject.chars().all(|c| c.is_ascii_alphanumeric() || "_$.".contains(c)) && subject.chars().any(|c| c.is_ascii_alphabetic());
+    if one_api {
+        let names = |t: &str| has_identifier(&t.to_ascii_lowercase(), &subject);
+        return !r.terms.iter().any(|t| names(&t.0)) || names(term);
+    }
+    if matches!(r.change_type, ChangeType::Removal | ChangeType::Deprecation) && r.replaces.is_empty() && r.surface == unstale_schema::catalog::Surface::CodeApi {
+        let text = format!("{} {}", r.subject, r.summary);
+        let lower = text.to_ascii_lowercase();
+        let written = |t: &str| {
+            let core = t.trim_matches(|c: char| !c.is_ascii_alphanumeric()).to_ascii_lowercase();
+            core.len() >= 3 && has_identifier(&lower, &core)
+        };
+        let code_shaped = text.contains('`') || text.split_whitespace().any(|w| w.as_bytes().windows(2).any(|p| p[0].is_ascii_lowercase() && p[1].is_ascii_uppercase()));
+        if !code_shaped && !r.terms.iter().any(|t| written(&t.0)) {
+            return false;
+        }
+    }
+    true
+}
+
 fn has_identifier(text: &str, word: &str) -> bool {
     let ident = |c: Option<char>| c.is_some_and(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$');
     text.match_indices(word).any(|(i, _)| !ident(text[..i].chars().next_back()) && !ident(text[i + word.len()..].chars().next()))
@@ -2164,11 +2212,13 @@ fn signals<'r>(
         let name = items[0].name.clone();
         // Reachability as for an upgrade's advisories: an identifier the advisory names, in a production file that
         // imports the package.
-        let quoted = |t: &str| ['\'', '"', '`'].iter().any(|q| t.contains(&format!("{q}{name}")));
-        let importers: Vec<(&str, &str)> = w.repo.paths.iter().filter(|f| prod(f)).filter_map(|f| w.repo.text(f).map(|t| (f.as_str(), t))).filter(|(_, t)| quoted(t)).collect();
+        // Both in code: a package or API named only in comments (JSDoc prose, a usage example) is not used there.
+        let quoted = |f: &str, t: &str| ['\'', '"', '`'].iter().any(|q| usage::in_code(f, t, &format!("{q}{name}"), false));
+        let importers: Vec<(&str, &str)> = w.repo.paths.iter().filter(|f| prod(f)).filter_map(|f| w.repo.text(f).map(|t| (f.as_str(), t))).filter(|(f, t)| quoted(f, t)).collect();
+        let own_name = [name.clone()];
         let reached = items.iter().find_map(|it| {
-            let ids: Vec<String> = affected_identifiers(&it.summary).into_iter().filter(|id| !id.eq_ignore_ascii_case(&name)).collect();
-            importers.iter().find_map(|(f, t)| ids.iter().find(|id| has_identifier(t, id)).map(|id| format!("security, affected `{id}` used at {f}: {}", words(&it.summary))))
+            let ids: Vec<String> = affected_identifiers(&it.summary).into_iter().filter(|id| !names_product(id, &own_name)).collect();
+            importers.iter().find_map(|(f, t)| ids.iter().find(|id| usage::in_code(f, t, id, true)).map(|id| format!("security, affected `{id}` used at {f}: {}", words(&it.summary))))
         });
         if let Some(s) = by.get_mut(&key) {
             s.lock = items;
@@ -2490,7 +2540,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
             let by_terms = sec_opps.iter().find_map(|o| {
                 o.matched
                     .iter()
-                    .filter(|(t, _)| specific_reference(t, &w.stack))
+                    .filter(|(t, _)| specific_reference(t, &w.stack) && locates(&o.rec.r, t))
                     .find_map(|(t, fs)| fs.iter().find(|f| prod(f) && w.repo.text(f).is_none_or(|x| precondition_plausible(&o.rec.r, x))).map(|f| (display_text(&o.rec.r.summary), f.clone(), t.clone())))
             });
             by_terms.or_else(|| {
@@ -2505,11 +2555,11 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
                     .chain(lock.iter().map(|it| it.summary.clone()))
                     .collect();
                 let names: Vec<String> = packages.iter().map(|p| p.to_ascii_lowercase()).collect();
-                let quoted = |t: &str| names.iter().any(|p| ['\'', '"', '`'].iter().any(|q| t.contains(&format!("{q}{p}")) ));
-                let importers: Vec<(&str, &str)> = w.repo.paths.iter().filter(|f| prod(f)).filter_map(|f| w.repo.text(f).map(|t| (f.as_str(), t))).filter(|(_, t)| quoted(t)).collect();
+                let quoted = |f: &str, t: &str| names.iter().any(|p| ['\'', '"', '`'].iter().any(|q| usage::in_code(f, t, &format!("{q}{p}"), false)));
+                let importers: Vec<(&str, &str)> = w.repo.paths.iter().filter(|f| prod(f)).filter_map(|f| w.repo.text(f).map(|t| (f.as_str(), t))).filter(|(f, t)| quoted(f, t)).collect();
                 texts.iter().find_map(|text| {
-                    let ids: Vec<String> = affected_identifiers(text).into_iter().filter(|id| !names.contains(&id.to_ascii_lowercase())).collect();
-                    importers.iter().find_map(|(f, t)| ids.iter().find(|id| has_identifier(t, id)).map(|id| (display_text(&util::one_line(text, 160)), f.to_string(), id.clone())))
+                    let ids: Vec<String> = affected_identifiers(text).into_iter().filter(|id| !names_product(id, &names)).collect();
+                    importers.iter().find_map(|(f, t)| ids.iter().find(|id| usage::in_code(f, t, id, true)).map(|id| (display_text(&util::one_line(text, 160)), f.to_string(), id.clone())))
                 })
             })
         }).flatten().map(|(what, f, t)| format!("security, affected `{t}` used at {f}: {what}"));
@@ -2540,7 +2590,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
             let mut hits: Vec<(&String, &String)> = o
                 .matched
                 .iter()
-                .filter(|(t, _)| specific_reference(t, &w.stack) && !imports_own(t, &packages))
+                .filter(|(t, _)| specific_reference(t, &w.stack) && !imports_own(t, &packages) && locates(&o.rec.r, t))
                 .flat_map(|(t, fs)| fs.iter().map(move |f| (t, f)))
                 .collect();
             hits.sort_by_key(|(_, f)| w.repo.role(f));
@@ -3835,6 +3885,31 @@ mod tests {
         assert!(affected_identifiers("Improved handling of untrusted Vue files.").is_empty(), "prose names nothing");
         assert!(has_identifier("backend.init({ loadPath: '/x' })", "loadPath"));
         assert!(!has_identifier("const loadPathname = 1", "loadPath"));
+        // An advisory title's product name is not an API, and a name in JSDoc is not code using it.
+        assert!(names_product("TanStack", &["@tanstack/react-start".to_string()]) && !names_product("RouterLink", &["@angular/router".to_string()]));
+        let js = "/**\n * import handler from '@tanstack/react-start/server-entry'\n * TanStack Router's `rewrite`\n */\nexport const x = 1;\n";
+        assert!(!usage::in_code("m.js", js, "'@tanstack/react-start", false) && !usage::in_code("m.js", js, "TanStack", true));
+        assert!(usage::in_code("m.js", "import { a } from '@tanstack/react-start'", "'@tanstack/react-start", false));
+    }
+
+    #[test]
+    fn a_record_about_one_api_or_naming_none_is_located_only_by_what_it_names() {
+        let rec = |subject: &str, summary: &str, terms: &[&str], ct: ChangeType| {
+            let mut v = crate::testcat::rec("x:y", "pkg:npm/x", "1.0.0");
+            v.as_object_mut().map(|o| o.remove("status"));
+            let mut r: unstale_schema::catalog::CapabilityRecord = serde_json::from_value(v).unwrap_or_else(|e| panic!("{e}"));
+            r.subject = subject.into();
+            r.summary = summary.into();
+            r.terms = terms.iter().map(|t| unstale_schema::catalog::Term(t.to_string(), 0)).collect();
+            r.change_type = ct;
+            r
+        };
+        let ulid = rec("ulid", "Rejects ULIDs that exceed the maximum 128-bit value.", &["ulid(", "v.ulid(", "string()", "v.string()"], ChangeType::Fix);
+        assert!(locates(&ulid, "v.ulid(") && !locates(&ulid, "v.string()"));
+        let unnamed = rec("deprecated functions and polyfills", "Deprecated functions and polyfills have been removed, so code relying on them must be updated.", &["entities", "decodeHTML"], ChangeType::Removal);
+        assert!(!locates(&unnamed, "decodeHTML"));
+        let named = rec("decodeStrict", "`decodeStrict` was removed; use `decodeHTML` with a mode.", &["decodeStrict", "decodeHTML"], ChangeType::Removal);
+        assert!(locates(&named, "decodeStrict"));
     }
     /// `register` with a sender of one package at a time, as a service without batches is asked.
     fn register1(pending: &mut Pending, order: Vec<String>, mut send: impl FnMut(&str) -> Result<Job>, progress: impl FnMut(usize), diagnostics: &mut Vec<String>, save: impl FnMut(&Pending) -> Result<()>) -> Result<()> {
@@ -4660,8 +4735,12 @@ mod tests {
         // A config file's name, a word with trailing punctuation, and the package's own name are not the change.
         assert!(!specific_reference("pyproject.toml", &st));
         assert!(!specific_reference("https://", &st) && !specific_reference("config:", &st));
-        assert!(specific_reference("next lint", &st) && specific_reference("<Legend", &st));
         let mut st = st;
+        // Language syntax and plain words are any code's (`export default`, a shebang); a stack package's command is not.
+        assert!(!specific_reference("export default", &st) && !specific_reference("#!/usr/bin/env node", &st) && !specific_reference("export const name", &st));
+        assert!(specific_reference("pip install --user", &st) && specific_reference("moduleResolution: node", &st));
+        st.deps.insert("pkg:npm/next".into(), crate::stack::Dep::new("next", true));
+        assert!(specific_reference("next lint", &st) && specific_reference("<Legend", &st));
         st.deps.insert("pkg:npm/sanitize-html".into(), crate::stack::Dep::new("sanitize-html", true));
         assert!(!specific_reference("sanitizeHtml", &st));
         // An import of the technology's own package is any use of it; another package's import is a site.
