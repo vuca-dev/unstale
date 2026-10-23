@@ -351,12 +351,38 @@ pub fn is_obligation(r: &Rec) -> bool {
 /// technology's own package names excluded, as in `record_lits`). `terms` cannot say this: they may name the
 /// replacement (a record describing `toHaveBeenCalled` as the successor of `toBeCalled`) or a sibling that is not
 /// deprecated (`vitest/node` beside deprecated entry points). Empty for any other record, and for a deprecation
-/// without `replaces`.
+/// without `replaces`, except one whose summary says its subject is deprecated (`The headerIds option is
+/// deprecated; use marked-gfm-heading-id instead`): that subject is what it deprecates.
 pub fn deprecated_lits(r: &Rec, lits: &[String]) -> Vec<String> {
     if r.r.change_type != ChangeType::Deprecation {
         return vec![];
     }
-    let replaces: BTreeSet<String> = r.r.replaces.iter().filter_map(|x| clean_lit(x)).collect();
+    let mut replaces: BTreeSet<String> = r.r.replaces.iter().filter_map(|x| clean_lit(x)).collect();
+    if replaces.is_empty()
+        && let Some(subject) = clean_lit(&r.r.subject)
+    {
+        // `<subject> [option|method|…] is deprecated`: the subject, as a whole word, then only a kind noun and a form
+        // of "to be" before the summary's first `deprecat…`. Anything else between (`X replaces the deprecated Y`)
+        // makes the subject something other than the deprecated thing.
+        const BETWEEN: &[&str] = &[
+            "is", "are", "was", "were", "has", "have", "been", "now", "also", "option", "options", "flag", "method", "property",
+            "function", "api", "setting", "parameter", "argument", "field", "export", "module", "hook", "prop", "component",
+            "class", "type", "config", "configuration", "key", "attribute", "command", "rule",
+        ];
+        let head = r.r.summary.to_ascii_lowercase();
+        let head = &head[..head.find("deprecat").unwrap_or(0)];
+        let s = subject.to_ascii_lowercase();
+        let whole = head.match_indices(s.as_str()).any(|(i, _)| {
+            let ok = |c: Option<char>| c.is_none_or(|c| !(c.is_ascii_alphanumeric() || c == '_'));
+            let rest = &head[i + s.len()..];
+            ok(head[..i].chars().next_back())
+                && ok(rest.chars().next())
+                && rest.split(|c: char| !c.is_ascii_alphanumeric()).filter(|w| !w.is_empty()).all(|w| BETWEEN.contains(&w))
+        });
+        if whole {
+            replaces.insert(subject);
+        }
+    }
     lits.iter().filter(|l| replaces.contains(*l)).cloned().collect()
 }
 
@@ -2257,6 +2283,25 @@ mod tests {
         // listed apart from the obligations a bump brings; already included once the code shows none of it.
         assert_eq!(route_of(&out, "next:old-dep"), &Route::AlreadyIncluded, "deprecated API not used here");
         assert_eq!(ids(&out, &out.in_effect), vec!["next:old-dep-used"], "deprecated API still used: in effect now");
+    }
+
+    #[test]
+    fn a_deprecation_without_replaces_deprecates_its_subject_when_the_summary_says_so() {
+        // marked 5: `replaces` was not extracted, the subject and summary name the deprecated option.
+        let c = catalog(
+            "marked",
+            0,
+            vec![
+                with(rec("marked:headerids", "pkg:npm/marked", "5.0.0"), json!({"change_type":"deprecation","subject":"headerIds","terms":[["headerIds",0],["marked.use",0]],"summary":"The headerIds option is deprecated; use marked-gfm-heading-id instead."})),
+                // The subject is the successor here, not what is deprecated: not in effect.
+                with(rec("marked:use", "pkg:npm/marked", "5.0.0"), json!({"change_type":"deprecation","subject":"marked.use","terms":[["marked.use",0],["setOptions",0]],"summary":"marked.use replaces the deprecated setOptions."})),
+            ],
+        );
+        let s = stack(&[("marked", "5.1.2")], None);
+        let r = repo(&[("src/md.ts", "import { marked } from 'marked';\nmarked.setOptions({ headerIds: false });\nmarked.use({});")]);
+        let l = Ledger::default();
+        let out = run_with(&c, &s, &r, &l);
+        assert_eq!(ids(&out, &out.in_effect), vec!["marked:headerids"]);
     }
 
     #[test]

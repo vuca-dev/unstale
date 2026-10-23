@@ -5,7 +5,8 @@ has_change(record_releases, v, index) -> bool | None
   v in the index: line L = its line. Available iff
     (a) a release of the record on L at or before v (index position), or
     (b) L's first release is marked line_start and was published on or after the day of a release of the record on an
-        older line (a same-day pair reads in version order).
+        older line (a same-day pair reads in version order), or
+    (c) a release of the record the index does not hold that is its line's first (8.0.0), on a line before L.
   v not in the index, numeric dotted: L = v's first d components (d = the index lines' depth); (a) by numeric order.
   otherwise (no index, or a version the index cannot place): None (the caller uses the old rule).
 """
@@ -66,6 +67,14 @@ def has_change(versions, v, idx):
             lr = idx.line(r)
             if lr and lr != L and idx.line_before(lr, L) and r in idx.pos and idx.rel[idx.pos[r]]["date"] <= start:
                 return True
+    # (c) a release the index does not hold that is its line's first (8.0.0) on an older line: in every later line.
+    for r in versions:
+        if r in idx.pos or not NUM.match(r) or not idx.depth:
+            continue
+        rest = [int(x) for x in r.split(".")[idx.depth:]]
+        lr = idx.line(r)
+        if rest and not any(rest) and lr and lr != L and idx.line_before(lr, L):
+            return True
     return False
 
 

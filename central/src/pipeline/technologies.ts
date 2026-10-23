@@ -5,6 +5,9 @@ export interface Technology {
   repo: string;
   /** The package's directory in a monorepository (registry metadata), where its own changelog is looked for. */
   directory?: string;
+  /** The registry's homepage: a link into the repository's tree (`/tree/main/libs/langchain`) names the package's
+   * directory where the registry gives none (majors.ts: the x.0.0 section of the package's own changelog). */
+  homepage?: string;
   components: string[];
   /** Stable release tags; group 1 is the version. Canary and prerelease tags do not match. */
   tag: RegExp;

@@ -9,6 +9,8 @@
 //!       record on an older line (the line branched after the fix shipped). Dates are days, so a same-day pair cannot
 //!       be ordered by date; it reads in version order, as central's line derivation reads same-day releases (and as
 //!       a catalog whose old releases all carry one import date needs: jsdom 3.0.0 is in 20.0.0).
+//!   (c) a release the index does not hold that is its line's first (`8.0.0`: an old major's notes or upgrade guide)
+//!       is on an older line than `v`'s: every later line branched after it.
 //! A version the index does not hold is placed by its first `depth` numeric components (the depth of the index's
 //! lines) and compared numerically; a version that is not numeric dotted, or a technology without an index (older
 //! catalogs), is not decided here and the caller keeps the old rule (`funnel::pick_release`).
@@ -105,6 +107,17 @@ impl<'a> Lines<'a> {
             if let Some((r, _)) = best {
                 return Some(Some(r));
             }
+        }
+        // (c) a release older than the index that began its own line (`8.0.0`, an old major's upgrade guide or
+        // notes) on a line numerically older than v's: every later line branched after a line's first release.
+        let first_of_line = |x: &str| numeric(x).is_some_and(|n| self.depth > 0 && n.len() > self.depth && n[self.depth..].iter().all(|&c| c == 0));
+        let older = releases.iter().copied().filter(|r| {
+            !self.pos.contains_key(r.version.as_str())
+                && first_of_line(&r.version)
+                && self.line(&r.version).is_some_and(|rl| rl != line && num_le(&rl, &line) == Some(true))
+        });
+        if let Some(r) = older.reduce(|a, b| if num_le(&a.version, &b.version) == Some(true) { b } else { a }) {
+            return Some(Some(r));
         }
         Some(None)
     }
@@ -205,5 +218,19 @@ mod tests {
         // A 6.x patch published after 7.0.0 is not in 7 (the old rule carried it forward).
         assert_eq!(l.has(&[&b], "7.1.0").map(|x| x.is_some()), Some(false));
         assert_eq!(l.has(&[&b], "6.19.1").map(|x| x.is_some()), Some(true));
+    }
+
+    #[test]
+    fn an_old_majors_first_release_is_in_every_later_line() {
+        // marked: the index holds 16.4 to 18; the 8.0.0 removal (from the 8.0.0 notes, outside the window) is in 18.
+        let i = idx(&[("16.4.1", "2025-10-17", "16", false), ("17.0.0", "2025-11-07", "17", true), ("18.0.0", "2026-04-01", "18", true), ("18.1.1", "2026-09-01", "18", false)]);
+        let l = Lines::new(&i);
+        let (r8, p8) = (rel("8.0.0"), rel("8.0.2"));
+        assert_eq!(l.has(&[&r8], "18.1.1").map(|x| x.is_some()), Some(true));
+        assert_eq!(l.has(&[&r8], "16.4.1").map(|x| x.is_some()), Some(true));
+        // Not in a version on an older line, and a patch of an old line is not carried forward (a backport may follow
+        // later lines).
+        assert_eq!(l.has(&[&r8], "5.1.2").map(|x| x.is_some()), Some(false));
+        assert_eq!(l.has(&[&p8], "18.1.1").map(|x| x.is_some()), Some(false));
     }
 }

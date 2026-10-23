@@ -362,6 +362,14 @@ export async function refresh(src: Source, opts: RefreshOptions): Promise<Refres
     const sig = signals.get(st.site);
     if (sig && !quiet[st.site] && Object.values(pages).every((p) => p.site !== st.site || p.checked === at)) st.llmsFull = sig;
   }
+  // A quiet site's pages are as stored: an unnumbered guide there whose major was never read (a rule added since) is
+  // read from its stored snapshot, with no request.
+  for (const [u, p] of Object.entries(pages)) {
+    if (!quiet[p.site] || p.guideMajor || !guideCandidate(u) || Object.keys(pages).some((x) => x.startsWith(u + "/"))) continue;
+    const snapshot = (await store.getState(p.watch.id))?.snapshot;
+    const gm = snapshot ? guideMajor(u, await store.getBlob(snapshot)) : undefined;
+    if (gm) p.guideMajor = gm;
+  }
   const byId = new Map(Object.entries(pages).map(([u, p]) => [p.watch.id, { url: u, page: p }]));
   // Pages fetched for another technology today are served from the shared page cache (pages.ts).
   const collector = new Collector(sharedPages(opts.http, src.technology), store);

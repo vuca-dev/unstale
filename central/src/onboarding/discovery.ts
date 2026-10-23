@@ -142,6 +142,7 @@ export function pipelineTechnology(t: PublicTechnology): Technology {
     name: t.name,
     repo: t.repo ?? "",
     ...(t.directory ? { directory: t.directory } : {}),
+    ...(t.homepage ? { homepage: t.homepage } : {}),
     components: t.components,
     tag: new RegExp(t.tag),
     clean: (body) => body.replace(/\n#+\s*Credits[\s\S]*$/, ""),

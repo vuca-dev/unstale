@@ -95,6 +95,15 @@ describe("attribution", () => {
     expect(guideMajor("https://ai-sdk.dev/docs/migration-guides/migration-guide-5-0-data")).toBeUndefined();
     expect(guideMajor("https://ai-sdk.dev/docs/migration-guides/versioning")).toBeUndefined();
     expect(guideMajor("https://ai-sdk.dev/docs/migration-guides")).toBeUndefined();
+    // The major before the word (Babel's `v8-migration`, React's `react-19-upgrade-guide`), and its API part.
+    expect(guideMajor("https://babeljs.io/docs/v8-migration")).toBe("8");
+    expect(guideMajor("https://babeljs.io/docs/v8-migration-api")).toBe("8");
+    expect(guideMajor("https://react.dev/blog/2024/04/25/react-19-upgrade-guide")).toBe("19");
+    expect(guideMajor("https://react.dev/blog/2024/04/25/react-19")).toBeUndefined();
+    // An unnumbered guide's title: the target without `version` ("Upgrade to Babel 8"), or the major it leaves.
+    expect(guideMajor("https://babeljs.io/docs/upgrade", "# Upgrade to Babel 8\n\nThis document lists the breaking changes")).toBe("8");
+    expect(guideMajor("https://vite.dev/guide/migration", "# Migration from v7\n\nIf you are migrating from `rolldown-vite`")).toBe("8");
+    expect(guideMajor("https://vite.dev/guide/migration", "# Migration\n\nSee the changelog.")).toBeUndefined();
   });
 
   test("markers on added lines name the version; runtime versions above the current major are ignored", () => {
@@ -456,6 +465,32 @@ describe("monitor", () => {
     full += "A new section.";
     const changed = await on(3);
     expect([changed.checked, changed.quiet]).toEqual([2, undefined]);
+  });
+
+  test("on a quiet site an unnumbered guide whose major was never read is read from its stored snapshot, with no request", async () => {
+    const html = (body: string) => `<!doctype html><html><body><main>${body}</main></body></html>`;
+    const paths = ["/docs/a", "/docs/migration"];
+    const hits = new Map<string, number>();
+    e.route("/sitemap.xml", (_q, r) => void r.writeHead(200, { "content-type": "application/xml" }).end(`<?xml version="1.0"?><urlset>${paths.map((p) => `<url><loc>${e.base}${p}</loc></url>`).join("")}</urlset>`));
+    e.route("/docs/llms-full.txt", (_q, r) => void r.writeHead(200, { "content-type": "text/plain" }).end("# Docs\n\n" + "The whole documentation in one file. ".repeat(10)));
+    const body: Record<string, string> = { "/docs/a": "<h1>A</h1><p>Text.</p>", "/docs/migration": "<h1>Migration from v2</h1><p>Breaking changes.</p>" };
+    for (const p of paths) e.route(p, (_q, r) => { hits.set(p, (hits.get(p) ?? 0) + 1); r.writeHead(200, { "content-type": "text/html" }).end(html(body[p]!)); });
+    writeAtomic(join(docsDir("m"), "sources.json"), JSON.stringify({
+      at: "x", purls: ["pkg:generic/m"],
+      resolutions: [{ purl: "pkg:generic/m", answer: { kind: "site-only", site: `${e.base}/docs`, sites: [{ site: `${e.base}/docs`, pages: 2, prefix: "/docs" }] }, pairs: [], evidence: {}, requests: 0 }],
+    }));
+    const http = new HttpClient({ ...DEFAULT_HTTP, allowHosts: ["127.0.0.1"], retryBaseMs: 10, timeoutMs: 2_000 });
+    const on = (day: number) => refresh({ technology: "m", purls: ["pkg:generic/m"] }, { http, now: () => new Date(Date.UTC(2026, 9, day)) });
+    await on(1);
+    const sp = join(docsDir("m"), "state.json");
+    const state = JSON.parse(readFileSync(sp, "utf8"));
+    expect(state.pages[`${e.base}/docs/migration`].guideMajor).toBe("3");
+    delete state.pages[`${e.base}/docs/migration`].guideMajor; // as kept before the title rule
+    writeAtomic(sp, JSON.stringify(state));
+    const seen = hits.get("/docs/migration");
+    expect((await on(2)).quiet).toEqual({ [`${e.base}/docs`]: "llms-full" });
+    expect(hits.get("/docs/migration")).toBe(seen);
+    expect(JSON.parse(readFileSync(sp, "utf8")).pages[`${e.base}/docs/migration`].guideMajor).toBe("3");
   });
 
   test("a site built from a repository is quiet when no commit touched its docs directories; GitHub unreadable is no signal", async () => {
