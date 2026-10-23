@@ -6,7 +6,7 @@ import type { Labels } from "./classify/labels.ts";
 import type { Incoming } from "./extract.ts";
 import { lineFn } from "./lines.ts";
 import { applyChange, combineReleases, mintId, union, type Evidence, type Judged, type StoredRecord, type TechStore } from "./store.ts";
-import { CROSS_SAME_P, CROSS_SAME_P_SHORT, LINEAGE_SAME_P, QUESTION_FLOOR, SAME_P, SAME_P_SHORT } from "./thresholds.ts";
+import { CROSS_SAME_P, CROSS_SAME_P_SHORT, LINEAGE_SAME_P, QUESTION_FLOOR, QUOTE_GUARD_BELOW_SHORT, SAME_P, SAME_P_SHORT } from "./thresholds.ts";
 import { FLIPS, technical } from "../docs/materiality.ts";
 
 export const K = 8;
@@ -157,7 +157,8 @@ export function matchRequest(techName: string, inc: Incoming, breaking: boolean,
 // ---- Deterministic guards (can only block a merge; the judge at p >= SAME_P is the first gate). ----
 // Tuned on the 83 ingest matches of the first full run, so not an independent measurement.
 
-/** At or above this p the quote guard is skipped (the advisory and breaking guards still apply). */
+/** At or above this p the quote guard is skipped (the advisory and breaking guards still apply); requests under the
+ * shorter rules use QUOTE_GUARD_BELOW_SHORT (thresholds.ts). */
 export const QUOTE_GUARD_BELOW = 0.95;
 /** Ratcliff/Obershelp similarity (as Python's difflib.SequenceMatcher.ratio, without its junk heuristic). */
 export const QUOTE_SIMILARITY = 0.9;
@@ -316,7 +317,7 @@ export function moreSpecific(a: string, b: string): boolean {
  * Across kinds (a guide item against a record built from release notes) quotes are not expected to agree, so instead
  * the judge must reach CROSS_SAME_P (match audit: docs/match-audit-guides.md).
  */
-export function guard(inc: IncomingForGuard, c: StoredRecord, p: number, crossP = CROSS_SAME_P): Judged["outcome"] | undefined {
+export function guard(inc: IncomingForGuard, c: StoredRecord, p: number, crossP = CROSS_SAME_P, quoteBelow = QUOTE_GUARD_BELOW): Judged["outcome"] | undefined {
   // A breaking record never merges into a non-breaking one.
   if (inc.breaking && !c.breaking) return "guard:breaking";
   // Disjoint advisory ids on both sides: two different advisories.
@@ -330,7 +331,7 @@ export function guard(inc: IncomingForGuard, c: StoredRecord, p: number, crossP 
   const same = c.evidence.filter((e) => (e.kind ?? "release_notes") === kind);
   if (!same.length) return p < crossP ? "guard:cross" : undefined;
   // Below QUOTE_GUARD_BELOW the evidence must be near-identical to one of the target's quotes of the same kind.
-  if (p < QUOTE_GUARD_BELOW && !same.some((e) => nearIdenticalQuote(inc.quote, e.quote))) return "guard:quote";
+  if (p < quoteBelow && !same.some((e) => nearIdenticalQuote(inc.quote, e.quote))) return "guard:quote";
   return undefined;
 }
 
@@ -342,6 +343,7 @@ export function pick(cands: StoredRecord[], answers: Classification["answers"], 
   const short = shortRulesApply(inc, cands);
   const sameP = short ? SAME_P_SHORT : SAME_P;
   const crossP = short ? CROSS_SAME_P_SHORT : CROSS_SAME_P;
+  const quoteBelow = short ? QUOTE_GUARD_BELOW_SHORT : QUOTE_GUARD_BELOW;
   const judged: Judged[] = cands.map((c, i) => {
     const a = answers[`same_c${i + 1}`];
     if (!a) return { id: c.id, p: 0, outcome: "unasked" };
@@ -350,7 +352,7 @@ export function pick(cands: StoredRecord[], answers: Classification["answers"], 
     // An uncalibrated "yes" (a text generator's choice, adapter.ts) is no evidence of how sure the judge is: every
     // probability-gated guard applies as if p were 0, so it merges only on a near-identical quote of the same kind,
     // never across kinds or by lineage.
-    return { id: c.id, p, outcome: guard(inc, c, calibrated ? p : 0, crossP) ?? "same" };
+    return { id: c.id, p, outcome: guard(inc, c, calibrated ? p : 0, crossP, quoteBelow) ?? "same" };
   });
   let best: Judged | undefined;
   for (const j of judged) if (j.outcome === "same" && (!best || j.p > best.p)) best = j;
