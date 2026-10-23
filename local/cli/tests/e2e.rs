@@ -514,18 +514,20 @@ fn an_advisory_whose_affected_api_production_code_uses_is_security() {
 }
 
 #[test]
-fn an_upgrade_that_may_retire_a_patched_package_leads() {
-    // The repository patches prisma: its upgrade leads, ahead of next's security fix, with the patch named.
+fn an_upgrade_that_may_retire_a_patched_package_is_named_below_the_risks() {
+    // The repository patches prisma: its upgrade names the patch, but a workaround is an improvement, not a located
+    // risk, so it follows next's runtime advisory under Lower-urgency upgrades.
     let cat = security_and_breaking_catalog();
     let repo = fixture_repo();
     write(repo.path(), "patches/prisma@6.19.0.patch", "--- a/index.js\n+++ b/index.js\n");
     let env = Env { repo, cache: tempfile::tempdir().unwrap() };
     let output = env.ok(&["init", "--service", cat.loc(), "--mode", "local", "--yes", "--wait", "0", "--no-animation"]);
     let flat = output.split_whitespace().collect::<Vec<_>>().join(" ");
-    assert!(flat.contains("Workarounds · 1 upgrade may let you delete") && flat.contains("1. prisma") && flat.contains("may retire your workaround (patches/prisma@6.19.0.patch)"), "{output}");
+    assert!(flat.contains("Workarounds · 1 upgrade may let you delete") && flat.contains("may retire your workaround (patches/prisma@6.19.0.patch)"), "{output}");
     let report = env.read(".unstale/onboarding-report.md");
-    assert!(report.contains("  workaround: patched package at patches/prisma@6.19.0.patch; this upgrade may let you delete it"), "{report}");
-    assert!(report.find("1. prisma 6.19.0").unwrap() < report.find("2. next 16.0.1").unwrap(), "{report}");
+    let lower = report.find("## Lower-urgency upgrades").expect("lower-urgency section");
+    assert!(report.find("1. next 16.0.1").unwrap() < lower, "{report}");
+    assert!(report[lower..].contains("- prisma 6.19.0") && report[lower..].contains("may retire your workaround (patches/prisma@6.19.0.patch)"), "{report}");
 }
 
 #[test]
