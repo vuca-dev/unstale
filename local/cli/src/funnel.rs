@@ -1591,7 +1591,12 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             // A deprecated namespace (`pytest.mark`, for markers on hook implementations) counts only beside a specific
             // literal of the record: not the namespace or a part of it, not a member other records are about (another
             // API: `pytest.mark.parametrize`), not the replacement, not a plain word.
-            let broad: Vec<&String> = deprecated.iter().filter(|l| namespace_of(tl, ri, l)).collect();
+            // So does an entry point of the technology's own package (`next/server`) when the record names a specific
+            // API beside it (subject `ImageResponse`, "its export from next/server is deprecated"): every file using
+            // the entry point's other exports names it too.
+            let entry = |l: &str| own_names.iter().any(|n| l.strip_prefix(n.as_str()).is_some_and(|r| r.starts_with('/') && r.len() > 1));
+            let names_api = ls.iter().any(|l| !entry(l) && !deprecated.contains(l) && usage::identifier(l) && !usage::plain_word(l) && !replacement.contains(l) && rec.r.subject.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '$')).any(|w| w == l.as_str()));
+            let broad: Vec<&String> = deprecated.iter().filter(|l| namespace_of(tl, ri, l) || (names_api && entry(l))).collect();
             let sibling = |l: &str| tl.named.get(l.strip_prefix('@').unwrap_or(l)).is_some_and(|rs| rs.iter().any(|&j| j != ri));
             let context: Vec<String> = if broad.is_empty() {
                 vec![]

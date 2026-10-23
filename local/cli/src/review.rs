@@ -711,6 +711,12 @@ fn advisory_notes(a: &unstale_schema::catalog::Advisory, installed: impl Fn(&str
             comps.sort();
             comps.dedup();
             let own: Vec<String> = comps.iter().filter_map(|c| installed(c).map(|v| (c, v))).filter(|(_, v)| v.to_string() != shown).map(|(c, v)| format!("{} {v}", crate::util::purl_name(c).unwrap_or_default())).collect();
+            // No package the advisory names is installed (a record shared across an index, filed against a sibling):
+            // say which it affects, since its ranges may well hold the version of the package being bumped.
+            if !comps.is_empty() && comps.iter().all(|c| installed(c).is_none()) {
+                let names: Vec<String> = comps.iter().filter_map(|c| crate::util::purl_name(c)).map(|n| one_line(&n, 80)).collect();
+                return Some(format!("advisory {id}: affects {} (not installed){ranges}; not a security reason to upgrade", names.join(", ")));
+            }
             let shown = if own.is_empty() { shown.to_string() } else { own.join(", ") };
             format!("advisory {id}: installed {shown} not affected{ranges}; not a security reason to upgrade")
         }
@@ -1550,5 +1556,9 @@ mod tests {
         let note = |installed: &str| advisory_notes(&wide, |_| Some(v(installed)), &v("8.3.4"), installed).unwrap();
         assert_eq!(note("6.4.3"), "advisory GHSA-wide: affects installed 6.4.3; fixed in 7.3.2");
         assert_eq!(note("7.3.0"), "advisory GHSA-wide: affects installed 7.3.0; fixed in 7.3.2 on the installed line");
+        // No package the advisory names is installed: it says which one it affects, not "installed X not affected"
+        // beside a range holding X.
+        let absent = advisory_notes(&wide, |_| None, &v("8.3.4"), "7.3.0").unwrap();
+        assert_eq!(absent, "advisory GHSA-wide: affects vite (not installed) (affected: >= 6.0.0, < 7.3.2; >= 8.0.0, < 8.0.5); not a security reason to upgrade");
     }
 }
