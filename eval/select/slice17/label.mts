@@ -112,7 +112,8 @@ if (mode === "judge") {
   const path = join(OUT, `${set}-units.json`);
   const units = rj<Array<PairUnit | SurfUnit>>(path);
   const byTech = new Map<string, typeof units>();
-  for (const u of units) byTech.set(u.tech, [...(byTech.get(u.tech) ?? []), u]);
+  // Units already judged by both (carried over from an earlier set) are not asked again.
+  for (const u of units) if (!(u.j1 && u.j2)) byTech.set(u.tech, [...(byTech.get(u.tech) ?? []), u]);
   const batches: Array<{ tech: string; b: typeof units }> = [];
   for (const [tech, us] of byTech) for (let i = 0; i < us.length; i += 12) batches.push({ tech, b: us.slice(i, i + 12) });
   const valid = (v: Record<string, unknown>, n: number) => Array.from({ length: n }, (_, i) => v[String(i + 1)]).every((x) => (set === "surf" ? typeof x === "string" && x in SURFACES : x === "same" || x === "different"));
