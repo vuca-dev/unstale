@@ -236,7 +236,7 @@ const JR: Cand[] = [J2[0]!, ...["M8", "T8"].map((arm) => ({ id: arm, name: arm, 
 // --floor: "Question floor" (PREREG.md).
 const QF: Cand[] = a.floor ? [
   { id: "M8", name: "M8 (production)", dev: "j2-M8-dev", held: ["j2-M8-heldout"], K: 8 },
-  { id: "Q8", name: `Q8: M8 questions at retrieval score >= ${a.floor}`, dev: "j2-Q8-dev", held: ["j2-Q8-heldout"], K: 8 },
+  { id: "Q8", name: `Q8: M8 questions at retrieval score >= ${a.floor}`, dev: "j2-Q8-dev", held: ["j2-Q8-heldout", "j2-Q8-heldout-r3"], K: 8 }, // r3: slice 15's decision run (compared last)
   { id: "M8floor", name: `M8's own answers below ${a.floor} removed (no calls)`, dev: `j2-M8-dev#floor=${a.floor}`, held: [`j2-M8-heldout#floor=${a.floor}`], K: 8 },
 ] : [];
 const ST = a["subq-tag"] ? `-${a["subq-tag"]}` : "";
