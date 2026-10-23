@@ -105,12 +105,25 @@ describe("same or new", () => {
     Object.fromEntries(ps.map((p, i) => [`same_c${i + 1}`, { choice: "x", confidence: 1, probabilities: { yes: p, no: 1 - p } }]));
   const incoming = (breaking: boolean, quote = Q) => ({ breaking, quote, summary: "s" });
 
-  test("release notes: same only at p >= SAME_P_SHORT (0.87); the highest wins; every candidate's p is kept", () => {
-    expect(pick([cand("a", false)], answers([0.86]), incoming(false))).toEqual({ judged: [{ id: "a", p: 0.86, outcome: "below" }] });
-    expect(pick([cand("a", false)], answers([0.87]), incoming(false)).id).toBe("a");
+  test("release notes: same only at p >= SAME_P_SHORT (0.82); the highest wins; every candidate's p is kept", () => {
+    expect(pick([cand("a", false)], answers([0.81]), incoming(false))).toEqual({ judged: [{ id: "a", p: 0.81, outcome: "below" }] });
+    expect(pick([cand("a", false)], answers([0.82]), incoming(false)).id).toBe("a");
     const r = pick([cand("a", false), cand("b", false)], answers([0.88, 0.9]), incoming(false));
     expect(r.id).toBe("b");
     expect(r.judged.map((j) => j.outcome)).toEqual(["not-best", "same"]);
+  });
+
+  test("quote guard: below 0.99 under the shorter rules, below 0.95 for every other request (slice 17, C′)", () => {
+    const other = { ...incoming(false), quote: "A different sentence about some other part of the API entirely" };
+    // Release notes against a release-notes record: the shorter rules.
+    expect(pick([cand("a", false)], answers([0.98]), other).judged[0]!.outcome).toBe("guard:quote");
+    expect(pick([cand("a", false)], answers([0.99]), other).id).toBe("a");
+    // A near-identical quote merges at SAME_P_SHORT whatever p.
+    expect(pick([cand("a", false)], answers([0.83]), incoming(false)).id).toBe("a");
+    // A docs page against a docs record keeps the full rules and the 0.95 bar.
+    const docs = (id: string) => ({ id, breaking: false, summary: "s", evidence: [{ kind: "docs", quote: Q }] }) as StoredRecord;
+    expect(pick([docs("d")], answers([0.96]), { ...other, kind: "docs" }).id).toBe("d");
+    expect(pick([docs("d")], answers([0.94]), { ...other, kind: "docs" }).judged[0]!.outcome).toBe("guard:quote");
   });
 
   test("an uncalibrated yes (a text generator's choice) merges only on a near-identical same-kind quote", () => {
@@ -389,13 +402,13 @@ describe("cross-source matching: upgrade guide items against release-notes recor
     expect(evidenceOf(inc({ key: "c" })).kind).toBe("release_notes");
   });
 
-  test("a guide item merges into a release-notes record at p >= CROSS_SAME_P_SHORT (0.87) and is kept apart below", async () => {
+  test("a guide item merges into a release-notes record at p >= CROSS_SAME_P_SHORT (0.91) and is kept apart below", async () => {
     const s = store();
     await ingest(s, "Next.js", COMPONENTS, inc({ key: "a", quote: "BREAKING CHANGE!: bump default images.minimumCacheTTL" }), labels(), judge(() => 0).fn);
     const lo = await ingest(s, "Next.js", COMPONENTS, inc({ key: "g1", snapshot: "sha256:g", kind: "upgrade_guide", quote: "The default value has changed from 60 seconds to 4 hours" }), labels(), judge(() => 0.86).fn);
     expect(lo.matched).toBe(false);
-    expect(lo.judged[0]!.outcome).toBe("below");
-    const hi = await ingest(s, "Next.js", COMPONENTS, inc({ key: "g2", snapshot: "sha256:g2", kind: "upgrade_guide", quote: "The default value has changed from 60 seconds to 4 hours" }), labels(), judge((subj) => (subj === "images.minimumCacheTTL" ? 0.9 : 0)).fn);
+    expect(lo.judged[0]!.outcome).toBe("guard:cross");
+    const hi = await ingest(s, "Next.js", COMPONENTS, inc({ key: "g2", snapshot: "sha256:g2", kind: "upgrade_guide", quote: "The default value has changed from 60 seconds to 4 hours" }), labels(), judge((subj) => (subj === "images.minimumCacheTTL" ? 0.92 : 0)).fn);
     expect(hi.matched).toBe(true);
     expect(s.records[hi.id]!.evidence.map((e) => e.kind)).toEqual(["release_notes", "upgrade_guide"]);
   });

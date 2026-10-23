@@ -10,10 +10,14 @@ export const SAME_P = 0.7;
 /** Same-or-new across evidence kinds (a guide item against a release-notes record), where the quote guard does not
  * apply: "same" only at or above this. Set from docs/match-audit-guides.md (tuned in-sample). */
 export const CROSS_SAME_P = 0.85;
-/** The same two bars for requests asked with the shorter rule text (match.ts shortRules), fitted on dev for it
- * (eval/select/slice5/RESULTS-judge2.md, "M8"): at the old bars it let one wrong merge through on held-out. */
-export const SAME_P_SHORT = 0.87;
-export const CROSS_SAME_P_SHORT = 0.87;
+/** The same two bars, and the quote guard's, for requests asked with the shorter rule text (match.ts shortRules).
+ * Refitted for Jev 1.14 (eval/select/slice17/RESULTS.md, "C′"): at 0.87 / 0.87 / 0.95, Jev 1.14 made 2.3 false merges
+ * per 100 on a fresh held-out set (slice 16); these make 0.66 at a recall 2 points lower (n.s.). The quote guard is
+ * raised for these requests only: raised for every request, it would have blocked 33 true production merges of
+ * other kinds (slice 17, QG). */
+export const SAME_P_SHORT = 0.82;
+export const CROSS_SAME_P_SHORT = 0.91;
+export const QUOTE_GUARD_BELOW_SHORT = 0.99;
 /** Under the shorter rule text, a candidate gets a same-or-new question only at or above this retrieval score
  * (match.ts retrieve); the state still shows every candidate, and a request left with no question is not sent. Fitted
  * on dev, where the lowest-scoring true match scored 0.63 (eval/select/slice5/RESULTS-judge2.md, "Question floor"). */

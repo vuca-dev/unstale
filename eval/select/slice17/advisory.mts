@@ -17,7 +17,7 @@ import { K, matchRequest, retrieve } from "../../../central/src/pipeline/match.t
 import { centralDir } from "../../../central/src/pipeline/paths.ts";
 import type { StoredRecord, TechStore } from "../../../central/src/pipeline/store.ts";
 import { techLocal } from "../../../central/src/state/client.ts";
-import { pool } from "../../../central/src/pipeline/util.ts";
+import { pool, sha256 } from "../../../central/src/pipeline/util.ts";
 
 const OUT = join(import.meta.dirname, "..", "out", "slice17");
 mkdirSync(OUT, { recursive: true });
@@ -29,6 +29,7 @@ const advisoryOnly = (r: StoredRecord) => r.evidence.length > 0 && r.evidence.ev
 const jev = new Jev();
 const usage = { calls: 0, input: 0 };
 const out: Record<string, unknown> = {};
+const all: Array<{ key: string; state: Record<string, unknown>; questions: Record<string, unknown>; rec: Record<string, unknown> }> = [];
 const dry = process.argv.includes("--dry");
 for (const id of process.argv.slice(2).filter((x) => !x.startsWith("--"))) {
   const t = pipelineTechnology(descriptors.get(id)!);
@@ -59,14 +60,18 @@ for (const id of process.argv.slice(2).filter((x) => !x.startsWith("--"))) {
       work.push({ key: inc.key, state: req.state, questions: req.questions, rec: { key: inc.key, tech: id, kind: "advisory", advisory: a.id, fix, cands, incoming: inc, guardInc: { breaking: false, quote: inc.quote, summary: inc.summary, kind: "advisory" }, holders: holders.map((r) => ({ id: r.id, basis: basisOf(r, a.id) })) } });
     }
   }
-  if (!dry) await pool(work, 4, async (w) => {
-    let ans: Classification | undefined;
-    for (let i = 0; i < 3 && !ans; i++) ans = await jev.classify(w.state, w.questions as never).catch((e) => (console.error(`${w.key}: ${e}`), undefined));
-    usage.calls++;
-    usage.input += Math.ceil(JSON.stringify({ state: w.state, questions: w.questions }).length / 4);
-    out[w.key] = { ...w.rec, state: w.state, questions: w.questions, answer: ans ?? null };
-  });
+  all.push(...work);
   console.log(`${id}: ${advisories.length} advisories, ${inWindow} in window, ${named} named by id (not judged), ${work.length} judge requests`);
 }
+// PREREG: 130 requests, sha256("slice17-adv:" + key) order.
+const sample = [...all].sort((x, y) => sha256(`slice17-adv:${x.key}`).localeCompare(sha256(`slice17-adv:${y.key}`))).slice(0, 130);
+console.log(`${all.length} requests, ${sample.length} sampled`);
+if (!dry) await pool(sample, 4, async (w) => {
+  let ans: Classification | undefined;
+  for (let i = 0; i < 3 && !ans; i++) ans = await jev.classify(w.state, w.questions as never).catch((e) => (console.error(`${w.key}: ${e}`), undefined));
+  usage.calls++;
+  usage.input += Math.ceil(JSON.stringify({ state: w.state, questions: w.questions }).length / 4);
+  out[w.key] = { ...w.rec, state: w.state, questions: w.questions, answer: ans ?? null };
+});
 if (!dry) writeFileSync(join(OUT, "advisory-requests.json"), JSON.stringify(out) + "\n");
-console.log(JSON.stringify({ requests: Object.keys(out), usage }).slice(0, 300));
+console.log(JSON.stringify({ requests: Object.keys(out).length, answered: Object.values(out).filter((x) => (x as { answer: unknown }).answer).length, usage }));
