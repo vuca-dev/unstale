@@ -153,6 +153,8 @@ run was aborted.
 
 ## SubQ Snap (17 October 2026)
 
+**Snap 1.1 (22 October 2026): also rejected for both steps.** See `../slice14/RESULTS.md`.
+
 **Verdict: Jev stays.** Snap (`subq-snap-preview`, Subquadratic's decision model: Jev's systemone request and answer
 shape, $0.05 per M input, output free in public preview) passes step D on H1 but fails at its own fitted threshold on
 H2, and fails step E (slice 5, `RESULTS-judge2.md` § "SubQ Snap"). Together it is about 2% cheaper than Jev, so the

@@ -81,3 +81,11 @@ p 0.985 (Jev 0.67), while its within-source DIFFERENT pairs sit at 0.48.
 - **E1:** Q8 with the cross-kind sentence removed from the guide-vs-notes questions (`--no-cross`; every question then
   reads as the within-source one). Dev fit by the slice 5 objective, then one held-out run; floor and merge rule as
   above against Jev Q8 (second look).
+
+## Round 2: not run
+
+Both round 1 arms failed (RESULTS.md). No lever left can be fitted on dev with a credible path to the floor:
+- D's binding failure is actionable recall, and dev has no surface labels. D1 already matched the incumbent's dev rate.
+- E's gap is about 62 recall points. The levers left are the longer rules or a larger K, which cost more than Jev Q8.
+
+A third held-out look would only spend power.

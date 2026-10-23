@@ -157,6 +157,8 @@ Constants: SAME_P 0.87, CROSS_SAME_P 0.87, QUOTE_GUARD_BELOW 0.95.
 
 ## SubQ Snap on the judge (17 October 2026)
 
+**Snap 1.1 (22 October 2026): also rejected for both steps.** See `../slice14/RESULTS.md`.
+
 Pre-registration: `PREREG.md` § "SubQ Snap on the judge", written before any judge run of Snap. Runner
 `judge2.mts --arm M8 --cand subq`; scorer `score5.mts --rules --subq M8 --base M8` → `out/slice5/summary-rules-subq-M8-vs-M8.json` (against J1, without `--base`: `summary-rules-subq-M8.json`).
 All 365 requests answered.
