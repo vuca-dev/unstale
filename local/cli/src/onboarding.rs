@@ -2081,6 +2081,7 @@ fn signals<'r>(
     ranked: &[Ranked],
     out: &Outcome,
     deprecated: &[crate::deprecations::Notice],
+    unused: &BTreeMap<String, crate::advisories::Removal>,
     unmaintained: &[crate::maintenance::Notice],
     lock: &'r crate::advisories::Report,
     w: &World,
@@ -2111,12 +2112,22 @@ fn signals<'r>(
         };
         let how = if n.yanked { "yanked" } else { "deprecated" };
         let said = if n.message.trim().is_empty() { String::new() } else { format!(": \"{}\"", words(&n.message)) };
+        // Declared but named nowhere: removing the declaration is the cheaper move, though packages that require the
+        // same version keep it locked.
+        let removal = unused.get(&n.name).map(|r| {
+            let held = if r.held_by.is_empty() {
+                String::new()
+            } else {
+                format!("; {} still require {}, so the lockfile keeps it until they move", r.held_by.join(", "), n.version)
+            };
+            format!("; no code, script or configuration here names {}, so its declaration can likely be removed instead of bumped (unless a command it installs runs under another name){held}", display_text(&n.name))
+        });
         by.insert(norm(&n.name), Signal {
             head: format!("{} {} → {target} picks up 1 publisher {} (`unstale bump {}`)", n.name, n.version, if n.yanked { "yank" } else { "deprecation" }, n.name),
             name: n.name.clone(),
             tier: LEAD_CONSEQUENTIAL,
             weight: 4,
-            lead: Some(format!("end of support: the installed {} {} is {how} by its publisher{said}", display_text(&n.name), n.version)),
+            lead: Some(format!("end of support: the installed {} {} is {how} by its publisher{said}{}", display_text(&n.name), n.version, removal.unwrap_or_default())),
             unreached: false,
             end_of_support: true,
             class: Class::Compatibility,
@@ -2226,7 +2237,7 @@ fn report(ctx: &Ctx, pending: &Pending, scan: &mut Option<World>) -> Result<Brie
 const DETAILED_UPGRADES: usize = 20;
 
 fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
-    let out = outcome(w, BTreeMap::new());
+    let out = outcome(ctx, w, BTreeMap::new());
     let mut catalog_scope = String::new();
     let mut unread = vec![];
     for (tech, td) in &w.catalog.techs {
@@ -2643,7 +2654,10 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
     // the upgrades: end of support is consequential; an advisory is security only when its affected API or option is
     // in production code, else it is marked advisory present, affected path not found. A package an upgrade above
     // already shows carries its own signals; one listed only under Other bumps moves here.
-    let signals = signals(&ranked, &out, &deprecated, &unmaintained, &lock_report, w, &declared);
+    let npm_deprecated: Vec<(String, String)> =
+        deprecated.iter().filter(|n| n.purl.starts_with("pkg:npm/")).map(|n| (n.name.clone(), n.version.clone())).collect();
+    let unused = crate::advisories::unused_direct(&ctx.root, &w.repo, &w.stack, &npm_deprecated);
+    let signals = signals(&ranked, &out, &deprecated, &unused, &unmaintained, &lock_report, w, &declared);
     let signalled: BTreeSet<String> = signals.iter().map(|s| norm(&s.name)).collect();
     ranked.retain(|r| r.tier >= LEAD_ADVISORY_UNREACHED || !out.packages.get(r.technology).into_iter().flatten().chain(std::iter::once(r.technology)).any(|p| signalled.contains(&norm(p))));
     signal_store.extend(signals.iter().map(|s| (s.name.clone(), vec![s.head.clone()])));

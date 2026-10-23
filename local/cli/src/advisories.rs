@@ -1087,7 +1087,13 @@ const DECLARES: &[&str] = &["dependencies", "devDependencies", "peerDependencies
 /// (`usage::Repo`, lockfiles left out), scripts, container and make files, and a `package.json` outside its dependency
 /// maps (its scripts and config count). A substring, so a longer name containing it counts too (fail safe).
 fn named_in(root: &Path, names: &[&str]) -> BTreeSet<String> {
-    let repo = crate::usage::Repo::collect(root);
+    let texts = usage_texts(root, &crate::usage::Repo::collect(root));
+    names.iter().filter(|n| texts.iter().any(|t| t.contains(**n))).map(|n| n.to_string()).collect()
+}
+
+/// The texts `named_in` searches: code and configuration, a `package.json` without its dependency maps, and shell,
+/// container and make files.
+fn usage_texts(root: &Path, repo: &crate::usage::Repo) -> Vec<String> {
     let mut texts: Vec<String> = vec![];
     for (path, text) in &repo.files {
         if path == "package.json" || path.ends_with("/package.json") {
@@ -1112,7 +1118,48 @@ fn named_in(root: &Path, names: &[&str]) -> BTreeSet<String> {
             texts.push(t);
         }
     }
-    names.iter().filter(|n| texts.iter().any(|t| t.contains(**n))).map(|n| n.to_string()).collect()
+    texts
+}
+
+/// Whether `name` appears in `text` as a whole word: not inside a longer name (`fast-glob`, `globalThis`).
+fn names_word(text: &str, name: &str) -> bool {
+    let word = |c: Option<char>| c.is_some_and(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '$'));
+    text.match_indices(name).any(|(i, _)| !word(text[..i].chars().next_back()) && !word(text[i + name.len()..].chars().next()))
+}
+
+/// What removing a declared npm direct dependency would do.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Removal {
+    /// Packages of the lockfiles (`name version`, not the repository's own projects) that require the same installed
+    /// version: it stays locked after the declaration goes.
+    pub held_by: Vec<String>,
+}
+
+/// For each npm direct dependency `(name, version)` that no file names as a whole word (`usage_texts`; declaring it is
+/// not using it), what removing its declaration leaves. PyPI is never judged: an import name need not be the
+/// distribution's (`yaml` for `pyyaml`). Used packages are left out.
+pub fn unused_direct(root: &Path, repo: &crate::usage::Repo, st: &Stack, deps: &[(String, String)]) -> BTreeMap<String, Removal> {
+    let mut out = BTreeMap::new();
+    if deps.is_empty() {
+        return out;
+    }
+    let texts = usage_texts(root, repo);
+    let gs = graphs(root, st);
+    for (name, version) in deps {
+        if texts.iter().any(|t| names_word(t, name)) {
+            continue;
+        }
+        let mut held: BTreeSet<String> = BTreeSet::new();
+        for g in gs.iter().filter(|g| g.eco == "npm") {
+            for nd in g.nodes.iter().filter(|nd| nd.local.is_none()) {
+                if nd.edges.iter().any(|e| g.nodes[e.to].name == *name && g.nodes[e.to].version == *version) {
+                    held.insert(format!("{} {}", nd.name, nd.version));
+                }
+            }
+        }
+        out.insert(name.clone(), Removal { held_by: held.into_iter().collect() });
+    }
+    out
 }
 
 // ----------------------------------------------------------------------------------------------------------- cache
@@ -1475,6 +1522,14 @@ pub fn summary(r: &Report) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_package_is_named_as_a_whole_word_only() {
+        // happy-dom: glob is declared, and only `globalThis` and `fast-glob` say "glob".
+        assert!(!names_word("globalThis.x; import fg from 'fast-glob'; const glob_x = 1;", "glob"));
+        assert!(names_word("import { sync } from 'glob';", "glob"));
+        assert!(names_word("\"clean\": \"glob src/**\"", "glob"));
+    }
 
     fn doc(sev: Option<Severity>, published: &str, fixed: &[(&str, &str, &[&str])], aliases: &[&str]) -> Doc {
         Doc {
