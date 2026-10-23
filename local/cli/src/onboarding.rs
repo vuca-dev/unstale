@@ -1843,7 +1843,7 @@ struct Urgency {
     reached: bool,
     /// An advisory the installed version is affected by, its affected path not found.
     advisory: bool,
-    /// A breaking change or removal a major step of the upgrade brings, named at a site in this code.
+    /// A breaking change or removal in the upgrade, named at a site in this code.
     breaking_site: bool,
 }
 
@@ -1851,7 +1851,7 @@ struct Urgency {
 /// - `4`, act now: in effect at the installed version in production: an end-of-support version production code
 ///   imports, a deprecation or removal application code uses, an advisory whose affected API production code uses.
 /// - `3`, plan: the same in effect only on a dev-only dependency or outside production code (tooling breaks a build,
-///   not production). A runtime dependency at end of support that no production file imports is not used here: `1`.
+///   not production).
 /// - `2`, the next upgrade: a breaking change named at a site, or a runtime advisory whose affected path was not found.
 /// - `1`, everything else that names something: install-state findings (a peer range, two release lines, a blocked
 ///   lockfile fix) and workarounds an upgrade may retire, which are improvements more than risks.
@@ -1860,7 +1860,7 @@ fn urgency(u: &Urgency) -> u8 {
     let in_production = (u.end_of_support && u.prod_use) || u.in_effect_app || u.reached;
     if in_production && u.runtime {
         4
-    } else if in_production || (u.end_of_support && !u.runtime) || u.in_effect {
+    } else if in_production || u.end_of_support || u.in_effect {
         3
     } else if u.breaking_site || (u.advisory && u.runtime) {
         2
@@ -2599,12 +2599,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
             },
         };
         let weight = if tier == LEAD_CONSEQUENTIAL { weight } else { 0 };
-        // A breaking change counts toward urgency when a major step brings it (minor on 0.x): within a major, upstream's
-        // "breaking" is a minor adjustment more often than not.
-        let breaking_site = members.iter().any(|&i| {
-            let o = &out.opps[i];
-            breaking(o) && o.route != funnel::Route::InEffect && across_major(o) && site(o).is_some()
-        });
+        let breaking_site = removal_named().is_some() || members.iter().any(|&i| breaking(&out.opps[i]) && out.opps[i].route != funnel::Route::InEffect && site(&out.opps[i]).is_some());
         let prod_use = production_importers(w, &packages) > 0;
         // A project read from a manifest no lockfile covers (a sample app outside the workspace), or a sample, test or
         // documentation project's copy, is not what runs here: whatever it names ranks after the repository's own.
@@ -3778,7 +3773,6 @@ mod tests {
         let eol_prod = u(&|x| { x.end_of_support = true; x.prod_use = true; x.runtime = true; });
         let eol_dev = u(&|x| { x.end_of_support = true; });
         let eol_unimported = u(&|x| { x.end_of_support = true; x.runtime = true; });
-        let eol_unimported_in_tests = u(&|x| { x.end_of_support = true; x.runtime = true; x.in_effect = true; });
         let reached = u(&|x| { x.reached = true; x.runtime = true; });
         let in_app = u(&|x| { x.in_effect_app = true; x.in_effect = true; x.runtime = true; });
         let in_tests = u(&|x| { x.in_effect = true; x.runtime = true; });
@@ -3787,8 +3781,7 @@ mod tests {
         let unreached_dev = u(&|x| { x.advisory = true; });
         let named = u(&|_| {});
         assert_eq!([eol_prod, reached, in_app], [4, 4, 4], "in effect now in production code");
-        assert_eq!([eol_dev, eol_unimported_in_tests, in_tests], [3, 3, 3], "in effect now outside production code: a plan");
-        assert_eq!(eol_unimported, 1, "a runtime dependency nothing in production imports is not in use here");
+        assert_eq!([eol_dev, eol_unimported, in_tests], [3, 3, 3], "in effect now outside production code: a plan");
         assert!(breaking == 2 && unreached == 2, "the next upgrade's changes come after what is in effect");
         assert!(named > unreached_dev, "an unreached advisory on a dev-only dependency is last");
     }
