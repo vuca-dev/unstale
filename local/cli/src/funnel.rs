@@ -1997,17 +1997,33 @@ fn order(out: &mut Outcome) {
     let mut now: Vec<usize> = (0..opps.len()).filter(|&i| opps[i].route == Route::InEffect).collect();
     now.sort_by(|&a, &b| cmp_score(opps[a].score, opps[b].score).then_with(|| opps[a].id().cmp(opps[b].id())));
     out.in_effect = now;
-    // Improvements pass: borderline last, then best benefit, then usage.
+    // Improvements pass: borderline last, then records citing no site ("Matched terms: none"), then best benefit, then
+    // usage. Among the borderline and the unmatched, technologies take turns (each one's best first, then each one's
+    // second, ...): one package's many unmatched options do not fill a batch.
     let mut imp: Vec<usize> = (0..opps.len()).filter(|&i| opps[i].route == Route::ImprovementsPass).collect();
     let best = |o: &Opp| o.benefits.first().map(benefit_rank).unwrap_or(9);
+    let group = |o: &Opp| (o.borderline_benefit, o.matched.is_empty());
     imp.sort_by(|&a, &b| {
         let (x, y) = (&opps[a], &opps[b]);
-        (x.borderline_benefit, best(x))
-            .cmp(&(y.borderline_benefit, best(y)))
+        (group(x), best(x))
+            .cmp(&(group(y), best(y)))
             .then(cmp_score(x.score, y.score))
             .then_with(|| x.id().cmp(y.id()))
     });
-    out.improvements = imp;
+    let mut turn: BTreeMap<(bool, bool, &str), usize> = BTreeMap::new();
+    let mut keyed: Vec<((bool, bool), usize, usize, usize)> = imp
+        .iter()
+        .enumerate()
+        .map(|(pos, &i)| {
+            let o = &opps[i];
+            let (borderline, unmatched) = group(o);
+            let n = turn.entry((borderline, unmatched, o.rec.r.technology.as_str())).or_insert(0);
+            *n += 1;
+            ((borderline, unmatched), if borderline || unmatched { *n } else { 0 }, pos, i)
+        })
+        .collect();
+    keyed.sort();
+    out.improvements = keyed.into_iter().map(|k| k.3).collect();
     // Bump digest: per technology, security first, then by benefit, then version.
     let mut dg: BTreeMap<String, Vec<usize>> = BTreeMap::new();
     for (i, o) in opps.iter().enumerate() {
@@ -2834,6 +2850,18 @@ mod tests {
         );
         assert_eq!(route_of(&out, "next:maint-absent"), &Route::NoBenefit);
         assert!(out.opps.iter().find(|o| o.id() == "next:borderline").unwrap().borderline_benefit);
+    }
+
+    #[test]
+    fn improvements_cite_a_site_first_and_unmatched_technologies_take_turns() {
+        // hls.js attempt 47: one package's unmatched options filled batch 1.
+        let sec = |id: &str, term: &str| with(rec(id, &format!("pkg:npm/{}", id.split(':').next().unwrap()), "16.0.0"), json!({"benefit":["security"],"terms":[[term,0]]}));
+        let mut c = catalog("n", 0, vec![with(rec("n:hit", "pkg:npm/n", "16.0.0"), json!({"terms":[["useThing",0]]})), sec("n:x1", "absentOne"), sec("n:x2", "absentTwo")]);
+        c.techs.extend(catalog("w", 0, vec![sec("w:a", "absentThree"), sec("w:b", "absentFour")]).techs);
+        let s = stack(&[("n", "16.0.1"), ("w", "16.0.1")], None);
+        let (r, l) = (repo(&[("a.ts", "import 'n'; import 'w'; useThing();")]), Ledger::default());
+        let out = run_with(&c, &s, &r, &l);
+        assert_eq!(ids(&out, &out.improvements), vec!["n:hit", "n:x1", "w:a", "n:x2", "w:b"]);
     }
 
     #[test]

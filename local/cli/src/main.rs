@@ -463,7 +463,18 @@ fn parse_targets(t: &[String]) -> Result<BTreeMap<String, semver::Version>> {
     Ok(out)
 }
 
-fn outcome<'a>(w: &'a World, targets: BTreeMap<String, semver::Version>) -> Outcome<'a> {
+fn outcome<'a>(ctx: &Ctx, w: &'a World, mut targets: BTreeMap<String, semver::Version>) -> Outcome<'a> {
+    // An installed version its publisher retired moves to the registry's newest release, when that is newer and not
+    // retired too: the target the report's deprecation line names (`deprecations::Notice::latest`), not the newest
+    // release the catalog covers. A `--target` stands.
+    for n in deprecations::notices(&ctx.cache, &w.stack) {
+        if let Some((latest, false)) = &n.latest
+            && let (Some(v), Some(have)) = (util::parse_version(latest), util::parse_version(&n.version))
+            && v > have
+        {
+            targets.entry(util::normalize_purl(&n.purl)).or_insert(v);
+        }
+    }
     let mut out = funnel::run(&Input { catalog: &w.catalog, stack: &w.stack, repo: &w.repo, ledger: &w.ledger, today: &w.today, targets });
     out.uncovered = w.deferral.clone();
     out.unread = stack::unread_note(&w.repo, &w.stack);
@@ -551,7 +562,7 @@ fn cmd_sync(ctx: &Ctx) -> Result<u8> {
 
 fn cmd_digest(ctx: &Ctx) -> Result<u8> {
     let w = world(ctx)?;
-    print_digest(ctx, &w, &outcome(&w, BTreeMap::new()));
+    print_digest(ctx, &w, &outcome(ctx, &w, BTreeMap::new()));
     Ok(0)
 }
 
@@ -601,7 +612,7 @@ fn cmd_advisories(ctx: &Ctx) -> Result<u8> {
 
 fn cmd_bump(ctx: &Ctx, pkg: &str) -> Result<u8> {
     let w = world(ctx)?;
-    let out = outcome(&w, BTreeMap::new());
+    let out = outcome(ctx, &w, BTreeMap::new());
     // What the user typed: a package name (`express`, `@nestjs/core`, a PyPI name), a technology's name as the
     // report shows it (`Next.js`), or its catalog id. Each resolves to the technologies it names.
     let purls = [util::npm_purl(pkg), pypi::purl(pkg)];
@@ -693,7 +704,7 @@ fn regenerate(ctx: &Ctx, w: &World, out: &Outcome, state: &mut State, passes: &[
 fn cmd_review(ctx: &Ctx, next: bool, target: &[String], pass: Option<Pass>) -> Result<u8> {
     let targets = parse_targets(target)?;
     let w = world(ctx)?;
-    review_with(ctx, &w, &outcome(&w, targets), next, pass)
+    review_with(ctx, &w, &outcome(ctx, &w, targets), next, pass)
 }
 
 fn review_with(ctx: &Ctx, w: &World, out: &Outcome, next: bool, pass: Option<Pass>) -> Result<u8> {
@@ -755,7 +766,7 @@ fn write_disposition(ctx: &Ctx, w: &World, id: &str, rev: u32, d: Disposition, n
 fn after_disposition(ctx: &Ctx, id: &str, clear_do_now: bool) -> Result<()> {
     // The skill files are regenerated when the ledger changes, without advancing a batch.
     let w = world(ctx)?;
-    let out = outcome(&w, BTreeMap::new());
+    let out = outcome(ctx, &w, BTreeMap::new());
     let mut state = State::load(&ctx.tool);
     if clear_do_now {
         state.do_now.remove(id);
@@ -822,9 +833,9 @@ fn cmd_run(ctx: &Ctx, target: &[String]) -> Result<u8> {
     };
     // One reading of the repository for both: digest and review see the same code, stack and catalog.
     let w = world(ctx)?;
-    let out = outcome(&w, BTreeMap::new());
+    let out = outcome(ctx, &w, BTreeMap::new());
     print_digest(ctx, &w, &out);
     let targets = parse_targets(target)?;
-    let r = if targets.is_empty() { review_with(ctx, &w, &out, false, None)? } else { review_with(ctx, &w, &outcome(&w, targets), false, None)? };
+    let r = if targets.is_empty() { review_with(ctx, &w, &out, false, None)? } else { review_with(ctx, &w, &outcome(ctx, &w, targets), false, None)? };
     Ok([s, r].into_iter().find(|c| *c != 0).unwrap_or(0))
 }
