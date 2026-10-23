@@ -98,6 +98,16 @@ fn line_words(text: &str, at: usize) -> impl Iterator<Item = String> + '_ {
     text[start..end].split(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '-')).filter(|w| !w.is_empty()).map(str::to_ascii_lowercase)
 }
 
+/// Whether `text` writes the identifier `lit` on a command line that runs the technology: a line (with its `\\`
+/// continuations) holding one of `words` (`command_words`), as a script passing its value runs it (`eslint ./packages
+/// --flag v10_config_lookup_from_file` in `package.json`). A file that neither imports the technology nor is named by
+/// its records still uses it there.
+pub fn on_command_line(text: &str, lit: &str, words: &[String]) -> bool {
+    let ident = |c: Option<char>| c.is_some_and(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$');
+    text.match_indices(lit)
+        .any(|(i, _)| !ident(text[..i].chars().next_back()) && !ident(text[i + lit.len()..].chars().next()) && line_words(text, i).any(|w| words.contains(&w)))
+}
+
 /// Stylesheets, where `--name` is a custom property (`--spacing`), never a flag.
 const STYLE_EXT: &[&str] = &["css", "scss", "sass", "less"];
 
@@ -517,7 +527,7 @@ fn under(path: &str, dirs: &[&str]) -> bool {
 }
 
 /// A literal's evidence for one technology (`Scope::evidence`).
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Evidence {
     /// Up to three files that show it is used, files about the technology first, then by role, then in `find`'s
     /// order; each with whether it is about the technology.
@@ -1080,12 +1090,50 @@ pub fn defines(text: &str, lit: &str) -> bool {
             if before.chars().next_back().is_some_and(word) || after.chars().next().is_some_and(word) {
                 return false;
             }
+            let line = &before[before.rfind('\n').map_or(0, |n| n + 1)..];
+            if method_head(line) && method_body(after) {
+                return true;
+            }
             if !before.ends_with([' ', '\t']) {
                 return false;
             }
             let prev = before.trim_end_matches([' ', '\t']).rsplit(|c: char| !word(c)).next().unwrap_or("");
             matches!(prev, "def" | "function" | "fn" | "func" | "class")
         })
+}
+
+/// Whether a line up to a name holds only what may open a method or object-key definition there: indentation and
+/// modifiers (`async`, `static`, `get`, a generator's `*`).
+fn method_head(line: &str) -> bool {
+    line.split_whitespace().all(|w| matches!(w, "async" | "static" | "get" | "set" | "public" | "private" | "protected" | "override" | "*"))
+}
+
+/// Whether the text after a name defines it as a method or an object key holding a function: `(params) {`,
+/// `(params): T {`, `: function`, `: (params) =>`. An object of handlers keyed by a library's names (a Babel visitor's
+/// `CallExpression(path) {`) is the file's own code: it reads none of the API a record names under the same word.
+fn method_body(after: &str) -> bool {
+    let opens = |tail: &str| tail.starts_with('{') || (tail.starts_with(':') && tail.ends_with('{') && !tail.contains(['=', ';']));
+    let line = after.split('\n').next().unwrap_or("");
+    if let Some(rest) = line.strip_prefix('(') {
+        let mut depth = 1usize;
+        for (i, c) in rest.char_indices() {
+            match c {
+                '(' => depth += 1,
+                ')' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return opens(rest[i + 1..].trim());
+                    }
+                }
+                _ => {}
+            }
+        }
+        // Parameters over several lines: a definition when the line holding the closing `)` opens a body.
+        return after.split('\n').skip(1).take(12).find(|l| l.trim_start().starts_with(')')).is_some_and(|l| opens(l.trim().trim_start_matches(')').trim()));
+    }
+    let Some(rest) = line.trim_start().strip_prefix(':') else { return false };
+    let rest = rest.trim_start();
+    rest.starts_with("function") || rest.starts_with("async ") || (rest.starts_with('(') && rest.contains("=>"))
 }
 
 /// The callee of the call whose argument list holds byte `at` directly or inside an object literal passed to it:
@@ -1857,6 +1905,15 @@ mod tests {
         // The file's own classmethod is not pydantic's.
         let own = "from pydantic import ValidationError\n@strawberry.type\nclass P:\n    @classmethod\n    def from_orm(cls, x):\n        return cls()\n\ny = P.from_orm(z)\n";
         assert!(defines(own, "from_orm") && !defines("m = Model.from_orm(z)\n", "from_orm") && !defines("define from_orm", "from_orm"));
+        // A method or handler the file keys by the name (a Babel visitor) is its own; a call or type use is not a definition.
+        let visitor = "export default {\n  visitor: {\n    CallExpression(path, ctx) {\n      f(path)\n    },\n    async Program(\n      path,\n    ): void {\n    },\n    Identifier: (p) => p,\n  },\n}\n";
+        assert!(defines(visitor, "CallExpression") && defines(visitor, "Program") && defines(visitor, "Identifier"));
+        assert!(!defines("  addImport(macroImports, state, \"Trans\")\n", "addImport") && !defines("const x = node as CallExpression\n", "CallExpression"));
+        assert!(defines("  function addImport(\n    a,\n  ) {\n", "addImport") && !defines("  if (ok) {\n", "ok"));
+        // A flag's value counts on a command line that runs the technology, not elsewhere.
+        let words = vec!["eslint".to_string()];
+        assert!(on_command_line("\"lint\": \"eslint ./packages --flag v10_config_lookup_from_file\",\n", "v10_config_lookup_from_file", &words));
+        assert!(!on_command_line("const v10_config_lookup_from_file = 1\n", "v10_config_lookup_from_file", &words));
         // TypeAdapter is not BaseModel, built inline or held in a variable.
         let base = vec!["BaseModel".to_string()];
         let ta = "from pydantic import TypeAdapter\nschema = TypeAdapter(list[int]).json_schema()\n";

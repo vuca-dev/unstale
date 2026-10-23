@@ -2063,6 +2063,17 @@ fn names_product(id: &str, packages: &[String]) -> bool {
 /// ("Deprecated functions and polyfills have been removed") is not located by any: its terms are the package's API in
 /// general (`decodeHTML`), not what was removed.
 fn locates(r: &unstale_schema::catalog::CapabilityRecord, term: &str) -> bool {
+    // A record that names what it replaces, and whose terms write it, is located by that alone: its other terms are
+    // the successor (`addNamed` for a removed `addImport`), the API the replaced one sits in (`CallExpression` for its
+    // renamed `typeParameters` field) or the package's API in general (`setupServer` beside a removed `msw/native`).
+    let replaced = replaced_names(r);
+    let writes = |t: &str| {
+        let t = t.trim().trim_matches('`').to_ascii_lowercase();
+        !t.is_empty() && replaced.iter().any(|x| has_identifier(&t, x) || has_identifier(x, &t))
+    };
+    if r.terms.iter().any(|t| writes(&t.0)) {
+        return writes(term);
+    }
     let subject = r.subject.trim().trim_matches('`').to_ascii_lowercase();
     let one_api = !subject.is_empty() && subject.chars().all(|c| c.is_ascii_alphanumeric() || "_$.".contains(c)) && subject.chars().any(|c| c.is_ascii_alphabetic());
     if one_api {
@@ -2082,6 +2093,29 @@ fn locates(r: &unstale_schema::catalog::CapabilityRecord, term: &str) -> bool {
         }
     }
     true
+}
+
+/// A record's `replaces`, lowercased, without code quotes or a call's empty parentheses.
+fn replaced_names(r: &unstale_schema::catalog::CapabilityRecord) -> Vec<String> {
+    r.replaces.iter().map(|x| x.replace('`', "").trim().trim_end_matches("()").to_ascii_lowercase()).filter(|x| x.len() >= 3).collect()
+}
+
+/// Whether a file can hold the old shape a record replaces when it qualifies it by a property (`CallExpression` with
+/// `callee: Import`): the qualifying value written in code (`Import`, `"Import"`). Code handling the unqualified shape
+/// (every call) is not code handling the changed case. A record with no such qualifier is unchanged.
+fn shape_met(r: &unstale_schema::catalog::CapabilityRecord, path: &str, text: &str) -> bool {
+    let ident = |s: &str| !s.is_empty() && s.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_') && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$');
+    let values: Vec<String> = r
+        .replaces
+        .iter()
+        .filter_map(|x| {
+            let x = x.replace('`', "");
+            let (k, v) = x.split_once(':')?;
+            let v = v.trim().trim_matches(['"', '\'']);
+            (ident(k.trim()) && ident(v)).then(|| v.to_string())
+        })
+        .collect();
+    values.is_empty() || values.iter().any(|v| usage::in_code(path, text, v, true))
 }
 
 fn has_identifier(text: &str, word: &str) -> bool {
@@ -2602,7 +2636,9 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
                 .matched
                 .iter()
                 .filter(|(t, _)| specific_reference(t, &w.stack) && !imports_own(t, &packages) && locates(&o.rec.r, t))
-                .flat_map(|(t, fs)| fs.iter().map(move |f| (t, f)))
+                // A file that defines the term itself (`function addImport`, a visitor's `CallExpression(path) {`) uses
+                // its own name, not the library's API.
+                .flat_map(|(t, fs)| fs.iter().filter(move |f| w.repo.text(f).is_none_or(|x| !usage::defines(x, t) && shape_met(&o.rec.r, f, x))).map(move |f| (t, f)))
                 .collect();
             hits.sort_by_key(|(_, f)| w.repo.role(f));
             hits.first().map(|(t, f)| (t.to_string(), f.to_string()))
@@ -2635,7 +2671,18 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
                 format!("deprecated in effect now: {} [{}]{at}", display_text(&util::one_line(&o.rec.r.summary, 160)), o.id())
             }))
         } else if let Some(n) = deprecated_here {
-            Some(format!("end of support: the installed {} {} is {} by its publisher", display_text(&n.name), n.version, if n.yanked { "yanked" } else { "deprecated" }))
+            // End of support names no change the code hits: the upgrade's first removal or breaking change whose site
+            // writes the record's term whole (not a qualified name's tail, `parserOptions:` for `context.parserOptions`)
+            // follows it.
+            let written = |i: usize| site(&out.opps[i]).is_some_and(|(t, f)| w.repo.text(&f).is_some_and(|x| usage::in_code(&f, x, &t, true)));
+            let then = members
+                .iter()
+                .copied()
+                .find(|&i| breaking(&out.opps[i]) && out.opps[i].route != funnel::Route::InEffect && written(i))
+                .and_then(|i| named("breaking", i))
+                .map(|l| format!("; then {l}"))
+                .unwrap_or_default();
+            Some(format!("end of support: the installed {} {} is {} by its publisher{then}", display_text(&n.name), n.version, if n.yanked { "yanked" } else { "deprecated" }))
         } else if let Some(r) = &reached {
             weight = 3;
             Some(r.clone())
@@ -3924,6 +3971,18 @@ mod tests {
         assert!(!locates(&unnamed, "decodeHTML"));
         let named = rec("decodeStrict", "`decodeStrict` was removed; use `decodeHTML` with a mode.", &["decodeStrict", "decodeHTML"], ChangeType::Removal);
         assert!(locates(&named, "decodeStrict"));
+        // A record naming what it replaces is located by that alone, not by the API it sits in or the package's API.
+        let mut renamed = rec("CallExpression", "The typeParameters field is renamed to typeArguments.", &["CallExpression", "typeParameters"], ChangeType::Removal);
+        renamed.replaces = vec!["typeParameters".into()];
+        assert!(locates(&renamed, "typeParameters") && !locates(&renamed, "CallExpression"));
+        let mut entry = rec("msw/native", "The msw/native entrypoint is removed.", &["msw/native", "setupServer"], ChangeType::Removal);
+        entry.replaces = vec!["msw/native".into()];
+        assert!(!locates(&entry, "setupServer"));
+        // A shape qualified by a property is met only where the code writes the qualifying value.
+        let mut shape = rec("ImportExpression", "Dynamic import() is an ImportExpression instead of a CallExpression with an Import callee.", &["CallExpression"], ChangeType::BehaviorChange);
+        shape.replaces = vec!["CallExpression".into(), "callee: Import".into()];
+        assert!(!shape_met(&shape, "a.ts", "visitor: { CallExpression(path) { path.node.callee } }"));
+        assert!(shape_met(&shape, "a.ts", "if (path.node.callee.type === \"Import\") {}"));
     }
     /// `register` with a sender of one package at a time, as a service without batches is asked.
     fn register1(pending: &mut Pending, order: Vec<String>, mut send: impl FnMut(&str) -> Result<Job>, progress: impl FnMut(usize), diagnostics: &mut Vec<String>, save: impl FnMut(&Pending) -> Result<()>) -> Result<()> {
