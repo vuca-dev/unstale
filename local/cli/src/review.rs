@@ -1512,5 +1512,9 @@ mod tests {
         let note = |installed: &str| advisory_notes(&wide, |_| Some(v(installed)), &v("8.3.4"), installed).unwrap();
         assert_eq!(note("6.4.3"), "advisory GHSA-wide: affects installed 6.4.3; fixed in 7.3.2");
         assert_eq!(note("7.3.0"), "advisory GHSA-wide: affects installed 7.3.0; fixed in 7.3.2 on the installed line");
+        // No package the advisory names is installed: it says which one it affects, not "installed X not affected"
+        // beside a range holding X.
+        let absent = advisory_notes(&wide, |_| None, &v("8.3.4"), "7.3.0").unwrap();
+        assert_eq!(absent, "advisory GHSA-wide: affects vite (not installed) (affected: >= 6.0.0, < 7.3.2; >= 8.0.0, < 8.0.5); not a security reason to upgrade");
     }
 }
