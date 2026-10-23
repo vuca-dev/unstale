@@ -1873,9 +1873,54 @@ fn urgency(u: &Urgency) -> u8 {
 
 /// Production files that import one of `packages` at a module position: quoted (JavaScript) or after `import`/`from`
 /// (Python, with the import name's underscores), in application code that is not configuration written as code.
-fn production_importers(w: &World, packages: &[String]) -> usize {
+/// Whether `text` imports or requires one of `packages` (`'vitest'`, `"lint-staged/bin"`, `from yaml`, `import yaml`).
+fn names_package(text: &str, packages: &[String]) -> bool {
     let names: Vec<String> = packages.iter().flat_map(|p| [p.to_ascii_lowercase(), p.to_ascii_lowercase().replace(['-', '.'], "_")]).collect();
     let needles: Vec<String> = names.iter().flat_map(|p| [format!("'{p}"), format!("\"{p}"), format!("`{p}"), format!("import {p}"), format!("from {p}")]).collect();
+    needles.iter().any(|n| text.match_indices(n.as_str()).any(|(at, m)| text[at + m.len()..].starts_with(['\'', '"', '`', '/', '.', ' ', '\n', ',', ';'])))
+}
+
+/// Whether a match of `term` in `file` is a site of the change `r` describes, so an upgrade may lead with it as a
+/// change "at a site" and count it "in your code". Each rule is about what the record says, never which technology:
+/// - A term the change introduces is the form the code moves to: code writing it has already moved.
+/// - A default change bites code that leaves the setting unset; a match is code that sets or does it explicitly
+///   (`vi.clearAllMocks` beside "mocks are cleared by default"), which the new default does not change.
+/// - A record that names no API (its subject is a concept, "deprecated functions and polyfills") or that is for a
+///   stated audience ("Audience: plugin authors") is located only by a term its summary or subject writes: its other
+///   terms are the package's exports or generic syntax (`decodeHTML`, `export default`), which any user writes.
+/// - A change inside the tool's runtime (what it does to the scripts it runs) is at a file that imports the package or
+///   is its config file, not at any script with the same shebang.
+fn change_site(r: &unstale_schema::catalog::CapabilityRecord, term: &str, file: &str, packages: &[String], w: &World) -> bool {
+    if !names_change(r, term) {
+        return false;
+    }
+    // Inside the tool's runtime: a file that imports the package or is its config file.
+    r.surface != unstale_schema::catalog::Surface::RuntimeInternal || {
+        let squash = |s: &str| s.chars().filter(char::is_ascii_alphanumeric).collect::<String>().to_ascii_lowercase();
+        usage::config_tool(file).is_some_and(|tool| packages.iter().any(|p| squash(p.rsplit('/').next().unwrap_or(p)) == squash(&tool)))
+            || w.repo.text(file).is_some_and(|x| names_package(x, packages))
+    }
+}
+
+/// The file-independent part of `change_site`: whether a match of `term` can be use of what `r` changes.
+fn names_change(r: &unstale_schema::catalog::CapabilityRecord, term: &str) -> bool {
+    let bare = |s: &str| s.replace('`', "").trim().to_ascii_lowercase();
+    let t = bare(term);
+    if r.change_type == ChangeType::DefaultChange || r.introduces.iter().any(|x| bare(x) == t) {
+        return false;
+    }
+    let audience = r.conditions.iter().any(|c| c.trim_start().starts_with("Audience:"));
+    if r.subject_kind != unstale_schema::catalog::SubjectKind::Concept && !audience {
+        return true;
+    }
+    let says = format!("{} {}", r.summary.replace('`', ""), r.subject).to_ascii_lowercase();
+    says.contains(&t)
+        || term
+            .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '$'))
+            .any(|x| x.len() > 2 && !usage::plain_word(x) && has_identifier(&says, &x.to_ascii_lowercase()))
+}
+
+fn production_importers(w: &World, packages: &[String]) -> usize {
     w.repo
         .paths
         .iter()
@@ -1888,11 +1933,7 @@ fn production_importers(w: &World, packages: &[String]) -> usize {
                 && !declaration_file(name)
                 && w.repo.role(f) == usage::Role::App
         })
-        .filter(|f| {
-            w.repo.text(f).is_some_and(|t| {
-                needles.iter().any(|n| t.match_indices(n.as_str()).any(|(at, m)| t[at + m.len()..].starts_with(['\'', '"', '`', '/', '.', ' ', '\n', ',', ';'])))
-            })
-        })
+        .filter(|f| w.repo.text(f).is_some_and(|t| names_package(t, packages)))
         .count()
 }
 
@@ -2404,6 +2445,10 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
             continue;
         }
         let joins = workaround_joins(&found, &members, &out, &packages, w);
+        // Local evidence by a term: a specific reference at a file the change can reach (`change_site`).
+        let sited = |o: &funnel::Opp| {
+            o.matched.iter().any(|(t, fs)| specific_reference(t, &w.stack) && fs.iter().any(|f| change_site(&o.rec.r, t, f, &packages, w)))
+        };
         let mut classes: BTreeMap<Class, (usize, usize)> = BTreeMap::new();
         // Version fit: value this code shows evidence for that arrives without a major upgrade (an advisory fixed on
         // the installed line, a feature in a minor), whatever the latest target is.
@@ -2415,7 +2460,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
             e.1 += 1;
             // Local evidence: a specific reference in this code, a deprecation in effect, or an advisory the
             // lockfile's version is affected by.
-            if specific(o) || o.route == funnel::Route::InEffect || tech_fixes.iter().any(|f| f.opp == i) {
+            if sited(o) || o.route == funnel::Route::InEffect || tech_fixes.iter().any(|f| f.opp == i) {
                 e.0 += 1;
                 fit |= !across_major(o);
             }
@@ -2536,6 +2581,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
                 .iter()
                 .filter(|(t, _)| specific_reference(t, &w.stack) && !imports_own(t, &packages))
                 .flat_map(|(t, fs)| fs.iter().map(move |f| (t, f)))
+                .filter(|(t, f)| change_site(&o.rec.r, t, f, &packages, w))
                 .collect();
             hits.sort_by_key(|(_, f)| w.repo.role(f));
             hits.first().map(|(t, f)| (t.to_string(), f.to_string()))
@@ -3712,6 +3758,35 @@ fn refresh(ctx: &Ctx, st: &stack::Stack, pending: &Pending, scan: &mut Option<Wo
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_change_site_needs_a_term_the_record_names_and_never_its_replacement_or_a_default() {
+        use crate::testcat::{rec, with};
+        use serde_json::json;
+        let r = |over: serde_json::Value| -> unstale_schema::catalog::CapabilityRecord { serde_json::from_value(with(rec("t:x", "pkg:npm/t", "8.0.0"), over)).unwrap() };
+        // entities 8: "deprecated functions removed" names no function; its terms are the package's exports.
+        let unnamed = r(json!({"change_type":"removal","breaking":true,"subject":"deprecated functions and polyfills","subject_kind":"concept",
+            "summary":"Deprecated functions and polyfills have been removed, so code relying on them must be updated."}));
+        assert!(!names_change(&unnamed, "decodeHTML"));
+        // Babel 8: an audience record's generic syntax, and the form it moves code to, are not sites.
+        let audience = r(json!({"change_type":"removal","breaking":true,"subject":"plugin fields as named exports","subject_kind":"concept",
+            "conditions":["Audience: authors of custom providers, plugins, adapters or integrations."],
+            "summary":"Plugins can no longer expose fields as named exports; use a default export of a plugin object or factory function."}));
+        assert!(!names_change(&audience, "export default"));
+        assert!(!names_change(&audience, "export const visitor"));
+        // A concept record still sites a term its summary writes (`#!/usr/bin/env node`, `resolveRequest`).
+        let named = r(json!({"change_type":"behavior_change","breaking":true,"subject":"task Node.js version","subject_kind":"concept",
+            "summary":"Scripts with the `#!/usr/bin/env node` shebang now run with lint-staged's Node.js; resolveRequest is gone."}));
+        assert!(names_change(&named, "#!/usr/bin/env node"));
+        assert!(names_change(&named, "config.resolveRequest"));
+        // vitest 5: an explicit `vi.clearAllMocks` is what the new default does; a default change has no site.
+        let default = r(json!({"change_type":"default_change","breaking":true,"subject":"clearMocks","surface":"runtime_internal"}));
+        assert!(!names_change(&default, "vi.clearAllMocks"));
+        // A literal record's term counts unless it is what the change introduces.
+        let literal = r(json!({"change_type":"removal","breaking":true,"subject":"oldCall","introduces":["newCall"]}));
+        assert!(names_change(&literal, "oldCall"));
+        assert!(!names_change(&literal, "`newCall`"));
+    }
 
     #[test]
     fn a_workaround_joins_only_the_upgrade_of_the_project_its_file_is_in() {
