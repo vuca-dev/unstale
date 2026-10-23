@@ -2,7 +2,7 @@
 // classifier set (eval/select/holdout/classify/records.json). See PREREG.md.
 //
 //   cd central && npx tsx ../eval/select/slice4/run4.mts --cand jev|clef|subq|codex|vercel:<model>|batch:<model>
-//     --split smoke|dev|heldout [--tag T] [--batch 10] [--dry-run] [--concurrency 4] [--budget USD]
+//     --split smoke|dev|heldout [--tag T] [--subq-model subq-snap-1.1] [--batch 10] [--dry-run] [--concurrency 4] [--budget USD]
 //
 // Every candidate is asked the pipeline's labelQuestions() over the pipeline's recordState. Output:
 // out/slice4/runs/<cand>-<split>[-tag]/answers.json ({unit: Classification}) and meta.json (counts, tokens, dollars,
@@ -39,14 +39,19 @@ const { values: a } = parseArgs({
     qv: { type: "string", default: "base" },
     sv: { type: "string", default: "base" },
     "jev-cap": { type: "string", default: "0.5" },
+    // SubQ Snap model (subq.ts); a model other than the preview names its runs subq-<version>.
+    "subq-model": { type: "string", default: "subq-snap-preview" },
+    "subq-cap": { type: "string", default: "1.0" },
   },
 });
 const cand = a.cand ?? "";
+const SUBQ_MODEL = a["subq-model"]!;
+const candTag = cand === "subq" && SUBQ_MODEL !== "subq-snap-preview" ? `subq-${SUBQ_MODEL.replace(/^subq-snap-/, "")}` : cand;
 const split = a.split as "smoke" | "dev" | "heldout" | "heldout2" | "smoke2";
 const USAGE = join(OUT4, "usage.jsonl");
 const prices = loadPrices();
 const GATEWAY_CAP = 3.0;
-const runId = [cand.replace(/[^\w.-]+/g, "_"), split, ...(a.qv !== "base" ? [`q${a.qv}`] : []), ...(a.sv !== "base" ? [`s${a.sv}`] : []), ...(a.tag ? [a.tag] : [])].join("-");
+const runId = [candTag.replace(/[^\w.-]+/g, "_"), split, ...(a.qv !== "base" ? [`q${a.qv}`] : []), ...(a.sv !== "base" ? [`s${a.sv}`] : []), ...(a.tag ? [a.tag] : [])].join("-");
 const runDir = join(OUT4, "runs", runId);
 const QV = await import("./questions.ts");
 const q = a.qv === "base" ? labelQuestions() : QV.VARIANTS[a.qv!]!();
@@ -261,7 +266,7 @@ let planOut = 0;
 if (isBatch) for (let i = 0; i < units.length; i += B) (planIn += tok3(batchPrompt(units.slice(i, i + B)))), (planOut += MAX_TOKENS * 2);
 else for (const u of units) (planIn += tok3(sysOne ? JSON.stringify({ state: u.state, questions: q }) : chatPrompt(u.state, q))), (planOut += sysOne ? 0 : MAX_TOKENS);
 const modelOf = cand.replace(/^(vercel|batch):/, "");
-const price = cand === "jev" ? priceOf(prices, "jev", "jev-latest") : cand === "subq" ? priceOf(prices, "subq", "subq-snap-preview") : cand === "codex" ? priceOf(prices, "codex", "gpt-5.6-luna") : cand === "clef" ? { input: 0.038, output: 0, cached_input: null } as never : priceOf(prices, "vercel", modelOf);
+const price = cand === "jev" ? priceOf(prices, "jev", "jev-latest") : cand === "subq" ? priceOf(prices, "subq", SUBQ_MODEL) : cand === "codex" ? priceOf(prices, "codex", "gpt-5.6-luna") : cand === "clef" ? { input: 0.038, output: 0, cached_input: null } as never : priceOf(prices, "vercel", modelOf);
 const worst = price ? dollars(price, { input_tokens: planIn, cached_input_tokens: 0, output_tokens: planOut, reasoning_tokens: null }) : null;
 console.log(`${runId}: ${units.length} units, worst case ${planIn} input + ${planOut} output tokens = ${worst === null ? "unknown" : `$${worst.toFixed(4)}`} (input chars/3, output = max_tokens per call)`);
 if (a["dry-run"]) process.exit(0);
@@ -270,6 +275,10 @@ if (cand.startsWith("vercel:") || isBatch) {
   const bal = await gatewayBalance();
   console.log(`gateway: this slice spent $${mine.toFixed(4)} of its $${GATEWAY_CAP}; live balance $${bal.toFixed(4)}`);
   if (mine >= GATEWAY_CAP || bal < 1.5) throw new Error("gateway budget exhausted");
+}
+if (cand === "subq") {
+  const subqSpent = spendByProvider(USAGE).subq?.dollars ?? 0;
+  if (worst === null || subqSpent + worst > Number(a["subq-cap"])) throw new Error(`subq: spent $${subqSpent.toFixed(4)}, this run worst $${worst}, cap $${a["subq-cap"]}`);
 }
 if (cand === "jev") {
   const jevSpent = spendByProvider(USAGE).jev?.dollars ?? 0;
@@ -287,7 +296,7 @@ const tick = () => {
 const conc = Number(a.concurrency);
 if (sysOne) {
   // SubQ Snap (eval/select/subq.ts) takes Jev's request and answer shape at its own endpoint.
-  const cls = cand === "subq" ? new SubqClassifier({ step: `classify:${runId}`, onUsage: (u, d) => log("subq", "subq-snap-preview", u, d) }) : systemOne(cand as "jev" | "clef");
+  const cls = cand === "subq" ? new SubqClassifier({ model: SUBQ_MODEL, step: `classify:${runId}`, onUsage: (u, d) => log("subq", SUBQ_MODEL, u, d) }) : systemOne(cand as "jev" | "clef");
   await pool(units, conc, async (u) => {
     const s = Date.now();
     const hit = cache.get(cls, u.state, q);

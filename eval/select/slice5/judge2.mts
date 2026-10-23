@@ -3,7 +3,7 @@
 // written keyed by the ORIGINAL request key, so score5.mts --judge2 scores them with the unchanged guards.
 //
 //   cd central && npx tsx ../eval/select/slice5/judge2.mts --arm F8|F4|O8|O4|O2|O1|I8|I4|M8|T8|Q8 --split smoke|dev|heldout
-//     [--cand jev|clef|subq] [--floor F] [--dry-run] [--concurrency 4]
+//     [--cand jev|clef|subq] [--subq-model subq-snap-1.1] [--floor F] [--dry-run] [--concurrency 4]
 // Q8 ("Question floor"): M8's questions, asked only for candidates retrieved at or above --floor (floor.mts --scores);
 // a request left with none is not sent and has no answers (no merge).
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -28,12 +28,15 @@ const { values: a } = parseArgs({
     "dry-run": { type: "boolean", default: false },
     concurrency: { type: "string", default: "4" },
     floor: { type: "string" },
+    // SubQ Snap model (subq.ts); a model other than the preview names its runs ...-subq-<version>.
+    "subq-model": { type: "string", default: "subq-snap-preview" },
+    tag: { type: "string" },
   },
 });
 const USAGE = join(OUT5, "judge2-usage.jsonl");
 const JEV_CAP = 0.55;
-/** PREREG.md "SubQ Snap on the judge". */
-const SUBQ_CAP = 0.15;
+/** PREREG.md "SubQ Snap on the judge" ($0.15), raised by slice14/PREREG.md (Snap 1.1) to $0.40 in all. */
+const SUBQ_CAP = 0.4;
 /** PREREG.md "Question floor": its own usage log and cap. */
 const FLOOR_USAGE = join(OUT5, "floor-usage.jsonl");
 const FLOOR_CAP = 0.3;
@@ -118,7 +121,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const split = a.split as "smoke" | "dev" | "heldout";
   const cand = a.cand as "jev" | "clef" | "subq";
   const prices = loadPrices();
-  const runId = ["j2", arm, split, ...(cand !== "jev" ? [cand] : [])].join("-");
+  const subqModel = a["subq-model"]!;
+  const subqTag = subqModel === "subq-snap-preview" ? [] : [subqModel.replace(/^subq-snap-/, "")];
+  const runId = ["j2", arm, split, ...(cand !== "jev" ? [cand] : []), ...(cand === "subq" ? subqTag : []), ...(a.tag ? [a.tag] : [])].join("-");
   const floor = a.floor === undefined ? undefined : Number(a.floor);
   if (floor !== undefined && !Number.isFinite(floor)) throw new Error(`--floor must be a number, got ${a.floor}`);
   const runDir = join(OUT5, "runs", runId);
@@ -134,7 +139,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const built = reqs.map((r) => ({ r, ...rewrite(r, arm, scores[r.key], floor) }));
   const tok = (s: string) => Math.ceil(s.length / 3.5);
   const planIn = built.reduce((s, b) => s + (Object.keys(b.questions).length ? tok(JSON.stringify({ state: b.state, questions: b.questions })) : 0), 0);
-  const worst = cand === "jev" ? (planIn * 0.042) / 1e6 : cand === "subq" ? (planIn * 0.05) / 1e6 : 0;
+  const worst = cand === "jev" ? (planIn * 0.042) / 1e6 : cand === "subq" ? dollars(priceOf(prices, "subq", subqModel), { input_tokens: planIn, cached_input_tokens: 0, output_tokens: 0, reasoning_tokens: null })! : 0;
   console.log(`${runId}: ${reqs.length} requests, ~${planIn} input tokens (chars/3.5) ≈ $${worst.toFixed(4)} on ${cand === "subq" ? "SubQ Snap" : "Jev"}; ${(planIn / reqs.length).toFixed(0)} per request`);
   if (a["dry-run"]) process.exit(0);
   const spent = spendByProvider(USAGE).jev?.dollars ?? 0;
@@ -176,9 +181,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     meter.input += u.input_tokens;
     meter.output += u.output_tokens;
     meter.dollars += d ?? 0;
-    logUsageLine(USAGE, { step: `judge2:${runId}`, provider: "subq", model: "subq-snap-preview", ...u, dollars: d });
+    logUsageLine(USAGE, { step: `judge2:${runId}`, provider: "subq", model: subqModel, ...u, dollars: d });
   };
-  const cls: Classifier = cand === "subq" ? new SubqClassifier({ step: `judge2:${runId}`, onUsage }) : new Jev({ model: cand === "jev" ? "jev-latest" : "clef-flash", fetch: f, ...(cand === "clef" ? { apiKey: () => "unused" } : {}) });
+  const cls: Classifier = cand === "subq" ? new SubqClassifier({ model: subqModel, step: `judge2:${runId}`, onUsage }) : new Jev({ model: cand === "jev" ? "jev-latest" : "clef-flash", fetch: f, ...(cand === "clef" ? { apiKey: () => "unused" } : {}) });
   // F8 reproduces J1 from J1's own caches (dev: the fresh dev run; held-out: run 1).
   const cacheDir = arm === "F8" && cand === "jev" ? join(OUT5, "cache", split === "heldout" ? "jev-heldout-r1" : split === "dev" ? "jev-dev" : "jev-smoke", "cls") : join(OUT5, "cache", runId, "cls");
   const cache = new ClassifierCache(cacheDir);
