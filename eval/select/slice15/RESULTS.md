@@ -30,7 +30,8 @@ stays at SAME_P_SHORT / CROSS_SAME_P_SHORT 0.87 and QUOTE_GUARD_BELOW 0.95. The 
   pre-registration. Shipping it needs a set covering those request kinds, or a short-rules-only quote constant with
   its own held-out look.
 - **Rows other than the first are descriptive.** They are post-hoc on these items; at most one look was pre-registered.
-- **Jev 1.14 repeats itself across r1 and r3.** Every decision above is the same on both runs.
+- **r1 against r3:** identical at 0.97 / 0.97. At 0.87 they differ (2.7 against 2.4 per 100), so run-to-run noise
+  is about one merge.
 
 ## Step D under Jev 1.14 (report only, production 0.5)
 
