@@ -10,6 +10,7 @@
 //   --subq <arm>: adds that arm answered by SubQ Snap (judge2.mts --cand subq), e.g. --rules --subq M8 --base M8:
 //     Snap against Jev on the pipeline's own wording.
 //   --subq-tag T: the SubQ runs of judge2.mts --subq-model subq-snap-T (with a second held-out run, -r2, if present).
+//   --quote Q: fit with QUOTE_GUARD_BELOW fixed at Q (slice 15).
 //   --floor F: the "Question floor" arm (PREREG.md): M8, Q8 (judge2.mts --arm Q8 --floor F) and M8 with the floor
 //     applied to its own answers (no calls); use with --base M8 --fixed 0.87,0.87,0.95. Writes *-floor.json.
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -21,7 +22,7 @@ import type { Classification } from "../../../central/src/pipeline/classify/adap
 import type { IncomingForGuard } from "../../../central/src/pipeline/match.ts";
 import type { StoredRecord } from "../../../central/src/pipeline/store.ts";
 
-const { values: a } = parseArgs({ options: { adjudicated: { type: "string" }, unaudited: { type: "string" }, judge2: { type: "boolean", default: false }, rules: { type: "boolean", default: false }, clef: { type: "string" }, subq: { type: "string" }, "subq-tag": { type: "string" }, floor: { type: "string" }, base: { type: "string", default: "J1" }, fixed: { type: "string" } } });
+const { values: a } = parseArgs({ options: { adjudicated: { type: "string" }, unaudited: { type: "string" }, judge2: { type: "boolean", default: false }, rules: { type: "boolean", default: false }, clef: { type: "string" }, subq: { type: "string" }, "subq-tag": { type: "string" }, floor: { type: "string" }, base: { type: "string", default: "J1" }, fixed: { type: "string" }, quote: { type: "string" } } });
 const OUT5 = join(import.meta.dirname, "..", "out", "slice5");
 const D = JSON.parse(readFileSync(join(OUT5, "units.json"), "utf8")) as {
   units: Array<{ set: string; n: number; tech: string; key: string; candidate: string; index: number; p_audit: number; verdict: V; cross: boolean; split: "dev" | "heldout"; req: string; cands: StoredRecord[]; guardInc: IncomingForGuard }>;
@@ -192,7 +193,8 @@ function bootstrapDiff(x: boolean[], y: boolean[], B = 10000): [number, number] 
 
 // ---- Fitting on DEV ----
 function fit(dev: Item[], ans: Answers, grid: number[]): { P: Params; m: Metrics } {
-  const quotes = [0.9, 0.95, 0.99, 1.01];
+  // --quote q: QUOTE_GUARD_BELOW held at q during the fit (it is shared with request kinds these sets do not cover).
+  const quotes = a.quote ? [Number(a.quote)] : [0.9, 0.95, 0.99, 1.01];
   let best: { P: Params; m: Metrics; ok: boolean } | undefined;
   const better = (x: { m: Metrics; ok: boolean; P: Params }, y: typeof best) => {
     if (!y) return true;
@@ -240,7 +242,7 @@ const QF: Cand[] = a.floor ? [
 const ST = a["subq-tag"] ? `-${a["subq-tag"]}` : "";
 const SUBQ: Cand[] = a.subq ? [{ id: `${a.subq}-subq${ST}`, name: `${a.subq} on SubQ Snap${ST}`, dev: `j2-${a.subq}-dev-subq${ST}`, held: [`j2-${a.subq}-heldout-subq${ST}`, ...(ST ? [`j2-${a.subq}-heldout-subq${ST}-r2`] : [])], K: Number(a.subq.slice(1)), ...(a.subq.startsWith("I") ? { readings: ["A", "B"] } : {}) }] : [];
 const C = [...(a.floor ? QF : a.rules ? JR : a.judge2 ? J2 : C5), ...SUBQ];
-const SUFFIX = (a.floor ? "-floor" : a.rules ? "-rules" : a.judge2 ? "-judge2" : "") + (a.subq ? `-subq-${a.subq}${ST}` : "") + (a.base !== "J1" ? `-vs-${a.base}` : "") + (a.fixed ? "-fixed" : "");
+const SUFFIX = (a.floor ? "-floor" : a.rules ? "-rules" : a.judge2 ? "-judge2" : "") + (a.subq ? `-subq-${a.subq}${ST}` : "") + (a.base !== "J1" ? `-vs-${a.base}` : "") + (a.fixed ? "-fixed" : "") + (a.quote ? `-quote${a.quote}` : "");
 /** Descriptive only (not the pre-registered fit): every candidate scored at these constants, "same,cross,quote". */
 const FIXED: Params | undefined = a.fixed ? (([same, cross, quote]) => ({ same: same!, cross: cross!, quote: quote!, guards: true }))(a.fixed.split(",").map(Number)) : undefined;
 const exists = (r: string) => existsSync(join(OUT5, "runs", r.split("#")[0]!, "answers.json"));
