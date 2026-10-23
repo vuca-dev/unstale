@@ -179,6 +179,13 @@
           },
           "type": "array"
         },
+        "extends": {
+          "description": "The existing entry point or API family a new capability extends, one of the record's own terms or `replaces`\nchosen by the classifier; empty when it extends none of them (a new area). Absent when not asked.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "facet": {
           "type": [
             "string",

@@ -1,5 +1,6 @@
 import {
   interpret,
+  extendsCandidates,
   labelQuestions,
   recordState,
 } from "../pipeline/classify/labels.ts";
@@ -47,8 +48,10 @@ export async function synthesize(
     );
     await checkIncoming(incoming);
     for (const inc of incoming) {
+      const cands = extendsCandidates(inc);
       const labels = interpret(
-        await classifier.classify(recordState(t.name, inc), labelQuestions()),
+        await classifier.classify(recordState(t.name, inc), labelQuestions(cands)),
+        cands,
       );
       await ingest(store, t.name, t.components, inc, labels, (state, questions) =>
         classifier.classify(state, questions),

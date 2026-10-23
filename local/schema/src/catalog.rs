@@ -183,6 +183,10 @@ pub struct CapabilityRecord {
     /// The classifier's reading of the source's stability label (records labelled before 23 October 2026 have none).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub maturity: Option<Maturity>,
+    /// The existing entry point or API family a new capability extends, one of the record's own terms or `replaces`
+    /// chosen by the classifier; empty when it extends none of them (a new area). Absent when not asked.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extends: Option<String>,
     pub releases: Vec<Release>,
     #[serde(default)]
     pub prerequisites: Vec<Prerequisite>,

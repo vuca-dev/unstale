@@ -1278,9 +1278,6 @@ fn size_line(o: &funnel::Opp) -> String {
     format!("{m} · {t}")
 }
 
-/// How many opportunities the report shows.
-const OPPORTUNITIES: usize = 5;
-
 /// Stability of a new capability: the classifier's reading of the source, made stricter by a stability label the source
 /// writes into the release or the API's name (`5.0.0-beta.1`, `unstable_`, `experimental_`, "(experimental)"): 0 GA,
 /// 1 beta or preview, 2 experimental. A record labelled before maturity was asked reads GA unless the text says otherwise.
@@ -1314,100 +1311,147 @@ fn magnitude_weight(o: &funnel::Opp) -> u32 {
     }
 }
 
-/// Whether the code uses the API area a new capability extends, from the record's matched terms: 2 when a specific term
-/// that is not the capability's own new name (what it introduces, or the subject it names) is used in production code,
-/// or a `replaces` term is (hand-written code it would replace); 1 when such a term is used only outside production code
-/// (tests, examples, docs, configuration), or when the only match is an import of the package; 0 when nothing matched.
-/// The feature's own name is not evidence: it is not in the code until the feature is adopted.
-fn area_used(o: &funnel::Opp, w: &World) -> u8 {
-    let r = &o.rec.r;
-    let own: BTreeSet<String> = r.introduces.iter().chain(std::iter::once(&r.subject)).filter_map(|x| usage::clean_lit(x)).map(|x| x.to_ascii_lowercase()).collect();
-    let replaces: BTreeSet<String> = r.replaces.iter().filter_map(|x| usage::clean_lit(x)).collect();
-    let packages: Vec<String> = o.component().strip_prefix("pkg:").and_then(|x| x.split_once('/')).map(|(_, n)| vec![n.replace("%40", "@")]).unwrap_or_default();
-    let mut level = 0;
-    for (term, files) in &o.matched {
-        if own.contains(&term.to_ascii_lowercase()) {
-            continue;
-        }
-        if imports_own(term, &packages) {
-            level = level.max(1);
-            continue;
-        }
-        if !replaces.contains(term) && !specific_reference(term, &w.stack) {
-            continue;
-        }
-        if files.iter().any(|f| w.repo.role(f) == usage::Role::App) {
-            return 2;
-        }
-        level = level.max(1);
-    }
-    level
+/// The report's opportunities: main's shortlist (`highlight_indices`: change type, specific references, available now,
+/// a security or correctness benefit, one technology at a time), with magnitude and maturity as the tie-breakers on top:
+/// GA features labelled headline or moderate first, then the rest, each in the shortlist's order, headline before
+/// moderate within the first group.
+fn opportunity_indices(out: &Outcome, w: &World) -> Vec<usize> {
+    let mut picks = highlight_indices(out, w);
+    let key = |i: &usize| {
+        let o = &out.opps[*i];
+        let m = magnitude_weight(o);
+        let big_ga = maturity_rank(o) == 0 && m >= 2;
+        (!big_ga, if big_ga { 3 - m } else { 0 })
+    };
+    // Stable: the shortlist's order stands within each group.
+    picks.sort_by_key(key);
+    picks
 }
 
-/// An opportunity's rank, lowest first: maturity (GA first), magnitude × area used (largest first), needs an upgrade,
-/// specific matched terms (most first), kind (new API, declared stable, new option).
-type OpportunityKey = (u8, std::cmp::Reverse<u32>, bool, std::cmp::Reverse<usize>, u8);
-
-/// The report's opportunities: new capabilities (new APIs and options, and features declared stable) of packages the
-/// code uses, available now or with an upgrade (across a major too), in an API area the code uses. Ranked GA first,
-/// then by magnitude × area used, then by what is available without an upgrade; at most one per technology until every
-/// technology with a candidate has one. The benefit gate of the improvements pass does not apply: a new capability's
-/// value is what it enables, which no benefit label states.
-fn opportunity_indices(out: &Outcome, w: &World) -> Vec<usize> {
-    let mut ranked: Vec<(usize, OpportunityKey)> = out
+fn highlight_indices(out: &Outcome, w: &World) -> Vec<usize> {
+    let mut ranked: Vec<(usize, i64)> = out
         .opps
         .iter()
         .enumerate()
         .filter_map(|(i, o)| {
-            if !matches!(o.route, funnel::Route::ImprovementsPass | funnel::Route::NoBenefit | funnel::Route::OptInAfterBump) || predates_major(o) {
+            if matches!(
+                o.route,
+                funnel::Route::Blocked(_)
+                    | funnel::Route::Withheld(_)
+                    | funnel::Route::Applied
+                    | funnel::Route::AlreadyIncluded
+                    | funnel::Route::InEffect
+                    | funnel::Route::VersionUnknown
+                    | funnel::Route::ReleaseUnknown
+                    | funnel::Route::BeyondTarget
+                    | funnel::Route::OlderLine
+                    | funnel::Route::OtherPackage
+                    | funnel::Route::Baseline
+                    | funnel::Route::RequiresAbsent
+                    | funnel::Route::NoSite
+            ) {
+                return None;
+            }
+            if across_major(o) || predates_major(o) {
                 return None;
             }
             let r = &o.rec.r;
-            if !matches!(r.change_type, ChangeType::NewApi | ChangeType::NewOption | ChangeType::StabilityChange) {
+            let feature = matches!(
+                r.change_type,
+                ChangeType::NewApi | ChangeType::NewOption | ChangeType::StabilityChange
+            );
+            if !feature && !matches!(o.route, funnel::Route::ImprovementsPass) {
                 return None;
             }
             if r.evidence.is_empty() || r.evidence.iter().any(|e| e.quote.trim().is_empty()) {
                 return None;
             }
+            // After-bump feature candidates still honor prerequisites and ledger exclusions.
             if walled_off(o)
                 || funnel::blocked(o.rec, &w.stack, &o.component()).is_some()
-                || w.ledger.entries.iter().any(|e| e.id() == o.id() && ledgerops::withholds(e, o.rec.r.revision, &w.today))
+                || w.ledger.entries.iter().any(|e| {
+                    e.id() == o.id() && ledgerops::withholds(e, o.rec.r.revision, &w.today)
+                })
             {
                 return None;
             }
-            let area = area_used(o, w);
-            if area == 0 {
+            let specific = o
+                .matched
+                .iter()
+                .filter(|(term, _)| specific_reference(term, &w.stack))
+                .count();
+            // A broad security benefit or config-file hit is not proof this repo uses a feature.
+            let impact = match r.change_type {
+                ChangeType::NewApi => 700,
+                ChangeType::NewOption => 600,
+                ChangeType::StabilityChange if r.introduces.is_empty() && r.replaces.is_empty() => {
+                    250
+                }
+                _ => 500,
+            };
+            let specialized = r.conditions.iter().any(|c| c.starts_with("Audience:"));
+            let score = impact
+                - if specialized
+                    && w.stack
+                        .packages
+                        .iter()
+                        .all(|p| p.kind == stack::Kind::Application)
+                {
+                    700
+                } else {
+                    0
+                }
+                + if util::parse_version(&o.release.version).is_some_and(|v| v <= o.installed) {
+                    100
+                } else {
+                    0
+                }
+                + (specific.min(3) * 100) as i64
+                + if specific > 0
+                    && o.benefits
+                        .iter()
+                        .any(|b| matches!(b, Benefit::Security | Benefit::Correctness))
+                {
+                    100
+                } else {
+                    0
+                };
+            if score < 450 {
                 return None;
             }
-            let available = util::parse_version(&o.release.version).is_some_and(|v| v <= o.installed);
-            let specific = o.matched.iter().filter(|(t, _)| specific_reference(t, &w.stack)).count();
-            let kind = match r.change_type {
-                ChangeType::NewApi => 0,
-                ChangeType::StabilityChange => 1,
-                _ => 2,
-            };
-            Some((i, (maturity_rank(o), std::cmp::Reverse(magnitude_weight(o) * area as u32), !available, std::cmp::Reverse(specific), kind)))
+            Some((i, score))
         })
         .collect();
-    ranked.sort_by(|a, b| a.1.cmp(&b.1).then_with(|| out.opps[a.0].id().cmp(out.opps[b.0].id())));
-    let mut chosen: Vec<usize> = vec![];
+    ranked.sort_by(|a, b| {
+        b.1.cmp(&a.1)
+            .then_with(|| out.opps[a.0].id().cmp(out.opps[b.0].id()))
+    });
+    // Diversity breaks close calls; it must not force a weak framework into the report.
+    let mut chosen = vec![];
     let mut technologies = BTreeSet::new();
-    for (i, _) in &ranked {
-        if chosen.len() < OPPORTUNITIES && technologies.insert(out.opps[*i].rec.r.technology.clone()) {
-            chosen.push(*i);
-        }
+    while !ranked.is_empty() && chosen.len() < 8 {
+        let best = ranked
+            .iter()
+            .enumerate()
+            .max_by_key(|(position, (i, score))| {
+                (
+                    *score
+                        + if technologies.contains(&out.opps[*i].rec.r.technology) {
+                            0
+                        } else {
+                            80
+                        },
+                    std::cmp::Reverse(*position),
+                )
+            })
+            .map(|(index, _)| index)
+            .unwrap();
+        let (index, _) = ranked.remove(best);
+        technologies.insert(out.opps[index].rec.r.technology.clone());
+        chosen.push(index);
     }
-    for (i, _) in &ranked {
-        if chosen.len() < OPPORTUNITIES && !chosen.contains(i) {
-            chosen.push(*i);
-        }
-    }
-    // Back in rank order (the second pass appends).
-    let pos = |i: &usize| ranked.iter().position(|(j, _)| j == i);
-    chosen.sort_by_key(pos);
     chosen
 }
-
 fn walled_off(o: &funnel::Opp) -> bool {
     o.requires_miss
 }

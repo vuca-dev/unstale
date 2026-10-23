@@ -24,7 +24,33 @@ export function recordState(name: string, r: Incoming): Record<string, unknown> 
   };
 }
 
-export function labelQuestions(): Questions {
+/**
+ * The existing API a new capability extends, chosen from the record's own names (select, not generate): its terms and
+ * `replaces`, without what it introduces or its subject (a new feature's own name is not in a project's code yet).
+ * Option keys are `t0`… in candidate order, plus `none`; empty when the record names nothing else.
+ */
+export function extendsCandidates(r: { subject: string; introduces: string[]; terms: string[]; replaces: string[] }): string[] {
+  const own = new Set([r.subject, ...r.introduces].map((x) => x.replace(/`/g, "").trim().toLowerCase()));
+  const out: string[] = [];
+  for (const t of [...r.terms, ...r.replaces]) {
+    const x = t.replace(/`/g, "").trim();
+    if (x && !own.has(x.toLowerCase()) && !out.includes(x)) out.push(x);
+  }
+  return out.slice(0, 12);
+}
+
+export function extendsQuestion(candidates: string[]): Questions {
+  if (!candidates.length) return {};
+  return {
+    extends: {
+      instructions:
+        "If this change adds a capability, which existing entry point or API family of the technology does it extend: the call, object, option block or configuration a project already writes that the new capability plugs into? Pick none when it opens a new area, when the names only load or construct the package, or when the change adds no capability.",
+      options: { ...Object.fromEntries(candidates.map((c, i) => [`t${i}`, `\`${c}\``])), none: "None of these." },
+    },
+  };
+}
+
+export function labelQuestions(candidates: string[] = []): Questions {
   const q: Questions = {
     change_type: {
       instructions: "What kind of change is this? Pick the one type that fits best.",
@@ -45,7 +71,7 @@ export function labelQuestions(): Questions {
       options: { yes: "Yes.", no: "No." },
     };
   }
-  return { ...q, ...sizeQuestions() };
+  return { ...q, ...sizeQuestions(), ...extendsQuestion(candidates) };
 }
 
 /** Magnitude and maturity: asked in the same request as the labels (and alone by `label-size` for older records). */
@@ -54,6 +80,13 @@ export function sizeQuestions(): Questions {
     magnitude: { instructions: "How big is this change for a project that uses this technology? Pick one.", options: { ...MAGNITUDES } },
     maturity: { instructions: "How does the source label this change's stability? Pick one.", options: { ...MATURITIES } },
   };
+}
+
+/** The chosen `extends` candidate ("" for none), undefined when the question was not asked. */
+export function extendsOf(c: Classification, candidates: string[]): string | undefined {
+  const a = c.answers.extends;
+  if (!a) return undefined;
+  return a.choice === "none" ? "" : (candidates[Number(a.choice.slice(1))] ?? "");
 }
 
 /** Magnitude and maturity from an answer that asked `sizeQuestions` (undefined when it did not). */
@@ -71,10 +104,12 @@ export interface Labels {
   benefit: CapabilityRecord["benefit"];
   magnitude?: Magnitude;
   maturity?: Maturity;
+  /** The existing API the capability extends ("" when none of the record's names), when asked. */
+  extends?: string;
   classifier: PublishedClassification;
 }
 
-export function interpret(c: Classification): Labels {
+export function interpret(c: Classification, candidates: string[] = []): Labels {
   const a = c.answers;
   const borderline: string[] = [];
   const ct = a.change_type!;
@@ -87,12 +122,14 @@ export function interpret(c: Classification): Labels {
   for (const s of scores) if (isBorderline(s.p)) borderline.push(`benefit:${s.benefit}`);
   const present = scores.filter((s) => s.p >= BENEFIT_P).map((s) => s.benefit);
   const size = sizeOf(c);
+  const ext = extendsOf(c, candidates);
   return {
     change_type: ct.choice as ChangeType,
     surface: sf.choice as Surface,
     breaking: pBreaking >= BREAKING_P,
     benefit: present.length ? present : ["none"],
     ...(size ? { magnitude: size.magnitude, maturity: size.maturity } : {}),
+    ...(ext !== undefined ? { extends: ext } : {}),
     classifier: {
       classifier: c.classifier,
       model: c.model,

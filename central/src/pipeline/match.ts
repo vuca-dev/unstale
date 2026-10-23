@@ -409,6 +409,7 @@ export function combine(r: StoredRecord, inc: Incoming, labels: Labels, componen
       // The larger reading of the change's size; a record without one takes the incoming reading.
       ...(labels.magnitude && (!r.magnitude || MAGNITUDE_ORDER.indexOf(labels.magnitude) > MAGNITUDE_ORDER.indexOf(r.magnitude)) ? { magnitude: labels.magnitude } : {}),
       ...(labels.maturity && !r.maturity ? { maturity: labels.maturity } : {}),
+      ...(labels.extends && !r.extends ? { extends: labels.extends } : {}),
       ...(restated ? { summary: inc.summary } : {}),
     },
     "match",
@@ -439,6 +440,7 @@ export function create(s: TechStore, inc: Incoming, labels: Labels, components: 
     benefit: labels.benefit,
     ...(labels.magnitude ? { magnitude: labels.magnitude } : {}),
     ...(labels.maturity ? { maturity: labels.maturity } : {}),
+    ...(labels.extends !== undefined ? { extends: labels.extends } : {}),
     releases: combineReleases([], releasesOf(inc, components), lineFn(s)),
     prerequisites: inc.prerequisites,
     conditions: inc.conditions,

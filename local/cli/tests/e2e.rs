@@ -467,25 +467,23 @@ fn onboarding_prefers_new_capabilities_over_generic_security_options_and_old_com
 }
 
 #[test]
-fn opportunities_rank_stable_and_big_first_and_match_on_the_area_not_the_features_own_name() {
-    // All four match `NextResponse`, which src/middleware.ts imports from next. The last one is about `NextResponse`
-    // itself (its subject): the feature's own name is no evidence that the code uses the area it extends.
+fn opportunities_put_stable_headline_and_moderate_features_first() {
+    // All match `NextResponse`, which src/middleware.ts imports from next: main's shortlist order, with GA headline and
+    // moderate features moved first.
     let cat = FixtureCatalog::new();
-    let area = |id: &str, over: serde_json::Value| with(with(rec(id, "pkg:npm/next", "16.0.0"), json!({"benefit":["none"],"terms":[["NextResponse",0]]})), over);
+    let area = |id: &str, over: serde_json::Value| with(with(rec(id, "pkg:npm/next", "16.0.0"), json!({"benefit":["none"],"terms":[["NextResponse",0]],"extends":"NextResponse"})), over);
     cat.tech("next", &[("16", vec![
-        area("next:minor-option", json!({"change_type":"new_option","magnitude":"minor","maturity":"ga","summary":"A minor option."})),
-        area("next:headline", json!({"magnitude":"headline","maturity":"ga","summary":"A headline API."})),
-        area("next:beta-headline", json!({"magnitude":"headline","maturity":"beta","summary":"A beta headline API."})),
-        area("next:own-name", json!({"magnitude":"headline","maturity":"ga","subject":"NextResponse","summary":"About NextResponse itself."})),
+        area("next:a-minor", json!({"magnitude":"minor","maturity":"ga","summary":"A minor API."})),
+        area("next:b-beta-headline", json!({"magnitude":"headline","maturity":"beta","summary":"A beta headline API."})),
+        area("next:c-headline", json!({"magnitude":"headline","maturity":"ga","summary":"A headline API."})),
     ])]);
     let env = Env { repo: fixture_repo(), cache: tempfile::tempdir().unwrap() };
     env.ok(&["init", "--service", cat.loc(), "--mode", "local", "--yes", "--wait", "0", "--no-animation"]);
     let report = env.read(".unstale/onboarding-report.md");
     let ops = &report[report.find("## Opportunities").unwrap_or_else(|| panic!("{report}"))..];
     let at = |s: &str| ops.find(s).unwrap_or_else(|| panic!("{s} missing:\n{ops}"));
-    assert!(at("[next:headline rev") < at("[next:minor-option rev") && at("[next:minor-option rev") < at("[next:beta-headline rev"), "{ops}");
+    assert!(at("[next:c-headline rev") < at("[next:a-minor rev") && at("[next:c-headline rev") < at("[next:b-beta-headline rev"), "{ops}");
     assert!(ops.contains("Size: headline · GA") && ops.contains("Size: headline · beta"), "{ops}");
-    assert!(!ops.contains("next:own-name"), "{ops}");
 }
 
 fn security_and_breaking_catalog() -> FixtureCatalog {
@@ -552,7 +550,7 @@ fn an_upgrade_that_may_retire_a_patched_package_leads() {
 }
 
 #[test]
-fn onboarding_shortlist_shows_five_opportunities_without_truncating_review_context() {
+fn onboarding_shortlist_expands_to_eight_without_truncating_review_context() {
     let cat = FixtureCatalog::new();
     let mut records = vec![];
     for i in 0..10 {
@@ -566,8 +564,8 @@ fn onboarding_shortlist_shows_five_opportunities_without_truncating_review_conte
     config["service"]=json!("http://127.0.0.1:9");
     write(env.repo.path(), ".unstale/config.json", &config.to_string());
     let output = env.ok(&["status", "--wait", "0", "--no-animation"]);
-    assert!(output.contains("Opportunities · 5 shortlisted"), "{output}");
-    assert_eq!(output.matches("New capability").count(), 5);
+    assert!(output.contains("Opportunities · 8 shortlisted"), "{output}");
+    assert_eq!(output.matches("New capability").count(), 8);
     let full = env.read(".unstale/skills/improvements-pass/SKILL.md");
     for i in 0..10 { assert!(full.contains(&format!("next:capability-{i}"))); }
 }

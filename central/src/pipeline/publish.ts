@@ -33,6 +33,7 @@ export function shardLine(r: StoredRecord, validate = true, counts?: Record<stri
     benefit: r.benefit,
     ...(r.magnitude ? { magnitude: r.magnitude } : {}),
     ...(r.maturity ? { maturity: r.maturity } : {}),
+    ...(r.extends !== undefined ? { extends: r.extends } : {}),
     releases: r.releases,
     prerequisites: r.prerequisites,
     conditions: r.conditions,

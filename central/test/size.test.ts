@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { interpret, labelQuestions, sizeQuestions } from "../src/pipeline/classify/labels.ts";
+import { extendsCandidates, interpret, labelQuestions, sizeQuestions } from "../src/pipeline/classify/labels.ts";
 import { labelSize } from "../src/pipeline/classify/size.ts";
 import { Jev, type Classification, type Questions } from "../src/pipeline/classify/adapter.ts";
 import type { StoredRecord, TechStore } from "../src/pipeline/store.ts";
@@ -52,5 +52,17 @@ describe("magnitude and maturity", () => {
     expect(asked).toEqual([Object.keys(sizeQuestions())]);
     expect([s.records.a!.magnitude, s.records.a!.maturity, s.records.a!.label_version]).toEqual(["moderate", "ga", 2]);
     expect(s.records.b!.magnitude).toBeUndefined();
+  });
+
+  test("extends is picked from the record's own names other than the feature's, in the same request", () => {
+    const r = { subject: "tool_search", introduces: ["tool_search"], terms: ["tool_search", "responses.create", "tools"], replaces: [] };
+    const cands = extendsCandidates(r);
+    expect(cands).toEqual(["responses.create", "tools"]);
+    const q = labelQuestions(cands);
+    expect(Object.keys(q)).toHaveLength(11);
+    expect(new Jev({ apiKey: () => "k" }).batches({ technology: "x", summary: "s" }, q)).toHaveLength(1);
+    expect(interpret(answer(q, { change_type: "new_api", surface: "code_api", breaking: "no", extends: "t0" }), cands).extends).toBe("responses.create");
+    expect(interpret(answer(q, { change_type: "new_api", surface: "code_api", breaking: "no", extends: "none" }), cands).extends).toBe("");
+    expect(Object.keys(labelQuestions([]))).toHaveLength(10);
   });
 });

@@ -3,7 +3,7 @@
 import { join } from "node:path";
 import { ChatClassifier, ClassifierCache, FallbackClassifier, Jev } from "./classify/adapter.ts";
 import { extractModel } from "./llm.ts";
-import { interpret, labelQuestions, recordState, type Labels } from "./classify/labels.ts";
+import { extendsCandidates, interpret, labelQuestions, recordState, type Labels } from "./classify/labels.ts";
 import { type DocsNote, extractRelease, releaseCached, type Incoming } from "./extract.ts";
 import type { PipelineBudget } from "./budget.ts";
 import { advisoryStage, type AttachReport } from "./advisories.ts";
@@ -109,7 +109,10 @@ export async function runTechnology(
   const order = [...incoming].sort(
     (a, b) => a.date.localeCompare(b.date) || compareVersions(a.version, b.version) || a.key.localeCompare(b.key, "en", { numeric: true }),
   );
-  const label = (inc: Incoming) => cls.classify(recordState(t.name, inc), labelQuestions()).then(interpret);
+  const label = (inc: Incoming) => {
+    const cands = extendsCandidates(inc);
+    return cls.classify(recordState(t.name, inc), labelQuestions(cands)).then((c) => interpret(c, cands));
+  };
   // Only records the ingest loop will take are labelled: an ingested key is skipped there and its labels discarded. The
   // store read here (outside the lock) is a guess; the loop labels any record it takes that was not labelled here.
   const labels = await labelPending(order, loadStore(t.id).ingested, label);

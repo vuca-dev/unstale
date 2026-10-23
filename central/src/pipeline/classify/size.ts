@@ -1,10 +1,10 @@
-// Magnitude and maturity for records labelled before they were asked (23 October 2026): records ingested since get
-// them in their one labelling request (labels.ts); `catalog -- label-size` asks only these two questions of older
+// Magnitude, maturity and `extends` for records labelled before they were asked (23 October 2026): records ingested
+// since get them in their one labelling request (labels.ts); `catalog -- label-size` asks only these questions of older
 // feature records, once each (the classifier cache keeps the answer). Usage is tagged `other`, apart from coverage.
 import type { StoredRecord, TechStore } from "../store.ts";
 import { applyChange } from "../store.ts";
 import { pool } from "../util.ts";
-import { sizeOf, sizeQuestions } from "./labels.ts";
+import { extendsCandidates, extendsOf, extendsQuestion, sizeOf, sizeQuestions } from "./labels.ts";
 import type { Classification, Questions } from "./adapter.ts";
 
 /** The change types the report's opportunities read magnitude and maturity for. */
@@ -42,9 +42,12 @@ export async function labelSize(
   let failed = 0;
   await pool(todo, 8, async (r) => {
     try {
-      const size = sizeOf(await classify(storedState(nameOf(s.technology), r), sizeQuestions()));
+      const cands = extendsCandidates(r);
+      const c = await classify(storedState(nameOf(s.technology), r), { ...sizeQuestions(), ...extendsQuestion(cands) });
+      const size = sizeOf(c);
       if (!size) return void failed++;
-      applyChange(r, { magnitude: size.magnitude, maturity: size.maturity }, "label-size");
+      const ext = extendsOf(c, cands);
+      applyChange(r, { magnitude: size.magnitude, maturity: size.maturity, ...(ext !== undefined ? { extends: ext } : {}) }, "label-size");
       labelled++;
     } catch {
       failed++;

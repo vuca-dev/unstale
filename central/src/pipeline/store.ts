@@ -30,6 +30,8 @@ export interface StoredRecord {
   /** The classifier's size and stability reading (records labelled before 23 October 2026 have none until `label-size`). */
   magnitude?: NonNullable<CapabilityRecord["magnitude"]>;
   maturity?: NonNullable<CapabilityRecord["maturity"]>;
+  /** The existing API a new capability extends, one of the record's own names ("" when none); classifier output. */
+  extends?: string;
   releases: Release[];
   prerequisites: CapabilityRecord["prerequisites"];
   conditions: string[];
@@ -84,7 +86,7 @@ export function saveStore(s: TechStore): void {
 /** Fields whose change bumps `revision` (re-opens declines); the rest of the record's fields bump `label_version`. */
 export const REVISION_FIELDS = ["change_type", "breaking", "releases", "prerequisites", "requires", "replaces"] as const;
 export const LABEL_FIELDS = [
-  "surface", "subject", "subject_kind", "facet", "summary", "benefit", "magnitude", "maturity", "introduces", "terms", "related", "supersedes", "conditions",
+  "surface", "subject", "subject_kind", "facet", "summary", "benefit", "magnitude", "maturity", "extends", "introduces", "terms", "related", "supersedes", "conditions",
   // Advisory ids and ranges annotate the same change; the releases they add bump `revision` on their own.
   "advisories",
 ] as const;

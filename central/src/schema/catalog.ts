@@ -121,6 +121,7 @@ export const CapabilityRecord = z.strictObject({
   "classifier": Classification.nullable().optional(),
   "conditions": z.array(z.string()).default([]),
   "evidence": z.array(Evidence),
+  "extends": z.string().nullable().optional(),
   "facet": z.string().nullable().optional(),
   "id": z.string(),
   "introduces": z.array(z.string()).default([]),
