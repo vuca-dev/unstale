@@ -1822,8 +1822,79 @@ fn older_copy(st: &stack::Stack, locked: &BTreeMap<String, BTreeSet<String>>, pa
     })
 }
 
-/// `Ranked::key`: lead tier, lead weight within the consequential tier, then the tie-breaks.
-type RankKey = (u8, u8, (bool, bool, u8, bool, bool, bool, bool, bool, usize, usize, usize, usize));
+/// `Ranked::key`: lead tier, urgency (`urgency`), production code imports it, runtime before dev-only, lead weight
+/// within the consequential tier, then the tie-breaks.
+type RankKey = (u8, u8, bool, bool, u8, (bool, bool, u8, bool, bool, bool, bool, bool, usize, usize, usize, usize));
+
+/// The signals an upgrade's urgency is read from, all deterministic: registry, lockfile and code facts.
+#[derive(Default)]
+struct Urgency {
+    /// A runtime dependency (`workarounds::facts`), or application code uses it; else tests, tooling or docs only.
+    runtime: bool,
+    /// The installed version is end of support: deprecated or yanked by its publisher, or its repository archived.
+    end_of_support: bool,
+    /// A production file (application code, not tests, tooling or configuration) imports the package.
+    prod_use: bool,
+    /// A deprecation or removal in effect at the installed version, used in application code.
+    in_effect_app: bool,
+    /// One in effect at the installed version, used only outside application code (tests, tooling).
+    in_effect: bool,
+    /// An advisory the installed version is affected by, its affected API or option in production code.
+    reached: bool,
+    /// An advisory the installed version is affected by, its affected path not found.
+    advisory: bool,
+    /// A breaking change or removal a major step of the upgrade brings, named at a site in this code.
+    breaking_site: bool,
+}
+
+/// How soon an upgrade asks for action, from the signals that predict it; higher first.
+/// - `4`, act now: in effect at the installed version in production: an end-of-support version production code
+///   imports, a deprecation or removal application code uses, an advisory whose affected API production code uses.
+/// - `3`, plan: the same in effect only on a dev-only dependency or outside production code (tooling breaks a build,
+///   not production). A runtime dependency at end of support that no production file imports is not used here: `1`.
+/// - `2`, the next upgrade: a breaking change named at a site, or a runtime advisory whose affected path was not found.
+/// - `1`, everything else that names something: install-state findings (a peer range, two release lines, a blocked
+///   lockfile fix) and workarounds an upgrade may retire, which are improvements more than risks.
+/// - `0`: an advisory on a dev-only dependency with no affected path found.
+fn urgency(u: &Urgency) -> u8 {
+    let in_production = (u.end_of_support && u.prod_use) || u.in_effect_app || u.reached;
+    if in_production && u.runtime {
+        4
+    } else if in_production || (u.end_of_support && !u.runtime) || u.in_effect {
+        3
+    } else if u.breaking_site || (u.advisory && u.runtime) {
+        2
+    } else if u.advisory {
+        0
+    } else {
+        1
+    }
+}
+
+/// Production files that import one of `packages` at a module position: quoted (JavaScript) or after `import`/`from`
+/// (Python, with the import name's underscores), in application code that is not configuration written as code.
+fn production_importers(w: &World, packages: &[String]) -> usize {
+    let names: Vec<String> = packages.iter().flat_map(|p| [p.to_ascii_lowercase(), p.to_ascii_lowercase().replace(['-', '.'], "_")]).collect();
+    let needles: Vec<String> = names.iter().flat_map(|p| [format!("'{p}"), format!("\"{p}"), format!("`{p}"), format!("import {p}"), format!("from {p}")]).collect();
+    w.repo
+        .paths
+        .iter()
+        .filter(|f| {
+            let name = f.rsplit('/').next().unwrap_or(f);
+            (usage::own_code(f, "npm") || usage::own_code(f, "pypi"))
+                && !name.contains(".config.")
+                && !name.starts_with('.')
+                && !matches!(name, "conf.py" | "setup.py" | "noxfile.py" | "conftest.py")
+                && !declaration_file(name)
+                && w.repo.role(f) == usage::Role::App
+        })
+        .filter(|f| {
+            w.repo.text(f).is_some_and(|t| {
+                needles.iter().any(|n| t.match_indices(n.as_str()).any(|(at, m)| t[at + m.len()..].starts_with(['\'', '"', '`', '/', '.', ' ', '\n', ',', ';'])))
+            })
+        })
+        .count()
+}
 
 struct Ranked<'a, 'o> {
     key: RankKey,
@@ -2128,9 +2199,10 @@ fn diversified<'a, 'o>(mut rest: Vec<Ranked<'a, 'o>>, slots: usize, cap: usize) 
     let mut out: Vec<Ranked> = vec![];
     while out.len() < slots && !rest.is_empty() {
         let used = |c: Class| out.iter().filter(|r| r.class == c).count();
-        // Spread classes within a lead tier only: a count-only bump never moves above a named change.
-        let tier = rest[0].tier;
-        let pick = rest.iter().take_while(|r| r.tier == tier).position(|r| matches!(r.class, Class::Workaround) || (r.class == Class::Security && r.leads.is_some()) || used(r.class) < cap).unwrap_or(0);
+        // Spread classes within a lead tier and urgency only: a count-only bump never moves above a named change, nor a
+        // later upgrade above one in effect now.
+        let band = (rest[0].tier, rest[0].key.1);
+        let pick = rest.iter().take_while(|r| (r.tier, r.key.1) == band).position(|r| matches!(r.class, Class::Workaround) || (r.class == Class::Security && r.leads.is_some()) || used(r.class) < cap).unwrap_or(0);
         out.push(rest.remove(pick));
     }
     out.extend(rest);
@@ -2210,7 +2282,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
         let declared = workarounds::declarations(&w.repo);
         crate::maintenance::notices(&ctx.cache, &w.stack, &pending.jobs, &w.today).into_iter().filter(|n| !workarounds::facts(&declared, std::slice::from_ref(&n.name)).dev_only).collect()
     };
-    text += "## Review instructions\n\nRead Start here, then the upgrades in their order: those that fix something wrong now lead (a published peer range that leaves out the current release, two release lines of one package installed, a deprecation in effect in application code), then those that may retire a workaround in this code, then the rest by the most consequential change each names in this code (its lead); a security fix counts only when the advisory's affected API or option is used in production code, and leads only when a pin or override also keeps update PRs from applying it. An upgrade marked advisory present, affected path not found carries an advisory nothing here was found to reach. Other bumps name no consequential change found in this code: counts, or a feature or performance change at a site. Check each against the repository: sources, actual usage, versions and prerequisites; name affected files, benefits, risks and timing. Capabilities are optional and come after. Treat unmatched new features as exploratory, not confirmed needs. Refresh the snapshot with unstale status --wait 0 before reviewing; honor current dispositions over this saved report. Do not change application code or advance any full review batch silently.\n\n";
+    text += "## Review instructions\n\nRead Start here, then the upgrades in their order: what is in effect at the installed version in production code leads (an end-of-support version production code imports, a deprecation in effect in application code, an advisory whose affected API production code uses), then the same on dev-only dependencies or outside production code, then breaking changes the next upgrade names at a site, then install-state findings (a published peer range that leaves out the current release, two release lines of one package installed) and upgrades that may retire a workaround; runtime dependencies come before dev-only ones throughout; a security fix counts only when the advisory's affected API or option is used in production code, and leads only when a pin or override also keeps update PRs from applying it. An upgrade marked advisory present, affected path not found carries an advisory nothing here was found to reach. Other bumps name no consequential change found in this code: counts, or a feature or performance change at a site. Check each against the repository: sources, actual usage, versions and prerequisites; name affected files, benefits, risks and timing. Capabilities are optional and come after. Treat unmatched new features as exploratory, not confirmed needs. Refresh the snapshot with unstale status --wait 0 before reviewing; honor current dispositions over this saved report. Do not change application code or advance any full review batch silently.\n\n";
     if !deprecated.is_empty() {
         text += "For each package under Deprecated by the publisher, check where the code uses it and propose the move the registry message names (a newer version, a replacement package, or a built-in); a deprecated package whose code is unused can simply be removed.\n\n";
     }
@@ -2380,6 +2452,15 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
             }
             .is_some_and(|r| r.standalone)
         });
+        // A bump of a sample, test or documentation project's copy (`examples/app`) is not what production runs.
+        let side_project = head.is_some_and(|i| {
+            let component = out.opps[i].component();
+            let dir = match out.headline.get(&component) {
+                Some((dir, _)) => Some(dir.clone()),
+                None => w.stack.deps.get(&component).and_then(|d| d.headline()).map(|r| r.dir.clone()),
+            };
+            dir.is_some_and(|d| d != "." && !d.is_empty() && usage::path_role(&format!("{d}/package.json")) != usage::Role::App)
+        });
         let facts = workarounds::facts(&declared, &packages);
         // Runtime: a runtime dependency of an application manifest, or application source code (not config) using it.
         // Configuration written as code (`vite.config.ts`, `.eslintrc.js`, `conf.py`, `setup.py`) is tooling.
@@ -2476,20 +2557,16 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
         let lock_runtime = lock_fixed
             .iter()
             .find(|it| it.via.is_empty() && it.why.iter().any(|w| w.ends_with(" at runtime")) && it.why.iter().any(|w| w.starts_with("fix blocked: ")));
+        // The lead follows urgency (`urgency`): what is in effect at the installed version first, then what the next
+        // upgrade breaks, then install-state findings and workarounds.
         let mut weight = 4u8;
-        let consequential = if peer.is_some() {
-            Some("a published peer range leaves out the current release".to_string())
-        } else if copies.is_some() {
-            Some("two release lines installed".to_string())
-        } else if let Some(&i) = in_effect.first() {
+        let consequential = if let Some(&i) = in_effect.first() {
             // In effect at the installed version with a site (test code counts: it breaks on the next major).
             let o = &out.opps[i];
             Some(named("deprecated in effect now", i).unwrap_or_else(|| {
                 let at = o.files.first().map(|f| format!(" (at {f})")).unwrap_or_default();
                 format!("deprecated in effect now: {} [{}]{at}", display_text(&util::one_line(&o.rec.r.summary, 160)), o.id())
             }))
-        } else if let Some((k, _, _)) = joins.first() {
-            Some(format!("may retire your workaround ({})", found[*k].place()))
         } else if let Some(n) = deprecated_here {
             Some(format!("end of support: the installed {} {} is {} by its publisher", display_text(&n.name), n.version, if n.yanked { "yanked" } else { "deprecated" }))
         } else if let Some(r) = &reached {
@@ -2504,6 +2581,12 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
         } else if let Some(l) = members.iter().copied().filter(|&i| breaking(&out.opps[i]) && out.opps[i].route != funnel::Route::InEffect).find_map(|i| named("breaking", i)) {
             weight = 1;
             Some(l)
+        } else if peer.is_some() {
+            Some("a published peer range leaves out the current release".to_string())
+        } else if copies.is_some() {
+            Some("two release lines installed".to_string())
+        } else if let Some((k, _, _)) = joins.first() {
+            Some(format!("may retire your workaround ({})", found[*k].place()))
         } else {
             None
         };
@@ -2516,7 +2599,27 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
             },
         };
         let weight = if tier == LEAD_CONSEQUENTIAL { weight } else { 0 };
-        let key = (tier, weight, (
+        // A breaking change counts toward urgency when a major step brings it (minor on 0.x): within a major, upstream's
+        // "breaking" is a minor adjustment more often than not.
+        let breaking_site = members.iter().any(|&i| {
+            let o = &out.opps[i];
+            breaking(o) && o.route != funnel::Route::InEffect && across_major(o) && site(o).is_some()
+        });
+        let prod_use = production_importers(w, &packages) > 0;
+        // A project read from a manifest no lockfile covers (a sample app outside the workspace), or a sample, test or
+        // documentation project's copy, is not what runs here: whatever it names ranks after the repository's own.
+        let urgent = urgency(&Urgency {
+            runtime,
+            end_of_support: deprecated_here.is_some(),
+            prod_use,
+            in_effect_app: in_app,
+            in_effect: !in_effect.is_empty(),
+            reached: reached.is_some(),
+            advisory,
+            breaking_site,
+        });
+        let urgent = if standalone || side_project { urgent.min(1) } else { urgent };
+        let key = (tier, urgent, prod_use && !standalone && !side_project, runtime && !standalone && !side_project, weight, (
             peer.is_some(),
             copies.is_some() || in_app,
             strength,
@@ -2545,7 +2648,16 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
     signal_store.extend(signals.iter().map(|s| (s.name.clone(), vec![s.head.clone()])));
     for (s, (name, lines)) in signals.into_iter().zip(signal_store.iter()) {
         let lock_fixed: Vec<&crate::advisories::Item> = s.lock.iter().copied().filter(|it| it.fix.is_some()).collect();
-        let key = (s.tier, s.weight, (false, false, 0, false, true, s.runtime, true, false, 1, 1, 1, 0));
+        let prod_use = production_importers(w, std::slice::from_ref(&s.name)) > 0;
+        let urgent = urgency(&Urgency {
+            runtime: s.runtime,
+            end_of_support: s.class == Class::Compatibility,
+            prod_use,
+            reached: s.class == Class::Security && !s.unreached,
+            advisory: s.class == Class::Security && s.unreached,
+            ..Default::default()
+        });
+        let key = (s.tier, urgent, prod_use, s.runtime, s.weight, (false, false, 0, false, true, s.runtime, true, false, 1, 1, 1, 0));
         ranked.push(Ranked { key, tier: s.tier, lead: s.lead, unreached: s.unreached, class: s.class, technology: name, lines, fixes: &[], lock: s.lock, lock_fixed, notes: vec![], joins: vec![], leads: None, value: s.value, peer: None, copies: None });
     }
     ranked.sort_by(|a, b| b.key.cmp(&a.key).then_with(|| a.technology.cmp(b.technology)));
@@ -2703,17 +2815,17 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
     let mut start = vec![];
     let broken: Vec<String> = ranked.iter().filter(|r| r.peer.is_some()).map(|r| display_text(&label(r.technology, pending, &out))).collect();
     if !broken.is_empty() {
-        start.push(format!("Published peer ranges that leave out the current release (installs beside it fail): {}. They lead the upgrades.", broken.join(", ")));
+        start.push(format!("Published peer ranges that leave out the current release (installs beside it fail): {}. Noted on their upgrades.", broken.join(", ")));
     }
     let doubled: Vec<String> = ranked.iter().filter(|r| r.copies.is_some()).map(|r| display_text(&label(r.technology, pending, &out))).collect();
     if !doubled.is_empty() {
-        start.push(format!("Two release lines installed of a package runtime code uses (the declared one is the older): {}. They come next.", doubled.join(", ")));
+        start.push(format!("Two release lines installed of a package runtime code uses (the declared one is the older): {}. Noted on their upgrades.", doubled.join(", ")));
     }
     let retiring: Vec<&Ranked> = ranked.iter().filter(|r| !r.joins.is_empty()).collect();
     if !retiring.is_empty() {
         let names: Vec<String> = retiring.iter().take(5).map(|r| display_text(&label(r.technology, pending, &out))).collect();
         start.push(format!(
-            "Workarounds an upgrade may retire: {} in {}{} (patched, aliased or forked packages, and comments that wait on upstream). They lead the upgrades.",
+            "Workarounds an upgrade may retire: {} in {}{} (patched, aliased or forked packages, and comments that wait on upstream). Noted on their upgrades.",
             retiring.iter().map(|r| r.joins.len()).sum::<usize>(),
             names.join(", "),
             if retiring.len() > 5 { format!(" and {} more", retiring.len() - 5) } else { String::new() }
@@ -2801,7 +2913,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
         start.push(format!("Versions not read, so their records apply to nothing yet: {}. Check how these packages are declared.", unread.join(", ")));
     }
     let counted = ranked.len() - shown_count;
-    start.push(format!("Upgrades below: {shown_count} ranked by the most consequential change each names in this code: broken peer ranges, two installed release lines, workarounds, deprecations in effect, publisher end of support, advisories whose affected API is in production code and breaking changes at a site first, then advisories whose affected path was not found.{}{}", if counted > 0 { format!(" {counted} more name no consequential change found here and are listed under Other bumps.") } else { String::new() }, if picks.is_empty() { String::new() } else { format!(" Then {} optional capabilities.", picks.len()) }));
+    start.push(format!("Upgrades below: {shown_count} ranked by urgency: in effect now in production code first (end of support, deprecations in effect, advisories whose affected API production code uses), then the same for dev-only dependencies, then breaking changes at a site, then peer ranges, two installed release lines, workarounds and advisories whose affected path was not found; runtime before dev-only.{}{}", if counted > 0 { format!(" {counted} more name no consequential change found here and are listed under Other bumps.") } else { String::new() }, if picks.is_empty() { String::new() } else { format!(" Then {} optional capabilities.", picks.len()) }));
     start.push(format!("Coverage: {}. Per-technology detail: .unstale/coverage.md.", coverage_counts(pending)));
     start.push("Full records: .unstale/skills/upgrade-review/SKILL.md and improvements-pass/SKILL.md; one technology's: unstale bump <package>.".into());
     text += "## Start here\n\n";
@@ -3657,10 +3769,35 @@ mod tests {
     }
 
     #[test]
+    fn urgency_puts_what_is_in_effect_in_production_first_and_dev_only_after_runtime() {
+        let u = |f: &dyn Fn(&mut Urgency)| {
+            let mut x = Urgency::default();
+            f(&mut x);
+            urgency(&x)
+        };
+        let eol_prod = u(&|x| { x.end_of_support = true; x.prod_use = true; x.runtime = true; });
+        let eol_dev = u(&|x| { x.end_of_support = true; });
+        let eol_unimported = u(&|x| { x.end_of_support = true; x.runtime = true; });
+        let eol_unimported_in_tests = u(&|x| { x.end_of_support = true; x.runtime = true; x.in_effect = true; });
+        let reached = u(&|x| { x.reached = true; x.runtime = true; });
+        let in_app = u(&|x| { x.in_effect_app = true; x.in_effect = true; x.runtime = true; });
+        let in_tests = u(&|x| { x.in_effect = true; x.runtime = true; });
+        let breaking = u(&|x| { x.breaking_site = true; x.runtime = true; });
+        let unreached = u(&|x| { x.advisory = true; x.runtime = true; });
+        let unreached_dev = u(&|x| { x.advisory = true; });
+        let named = u(&|_| {});
+        assert_eq!([eol_prod, reached, in_app], [4, 4, 4], "in effect now in production code");
+        assert_eq!([eol_dev, eol_unimported_in_tests, in_tests], [3, 3, 3], "in effect now outside production code: a plan");
+        assert_eq!(eol_unimported, 1, "a runtime dependency nothing in production imports is not in use here");
+        assert!(breaking == 2 && unreached == 2, "the next upgrade's changes come after what is in effect");
+        assert!(named > unreached_dev, "an unreached advisory on a dev-only dependency is last");
+    }
+
+    #[test]
     fn the_first_slots_spread_across_value_classes() {
         let names: Vec<String> = (0..6).map(|i| format!("t{i}")).collect();
         let lines = vec![String::new()];
-        let make = |i: usize, class: Class| Ranked { key: (0, 0, (false, false, 0, false, false, false, false, false, 0, 0, 0, 0)), tier: 0, lead: None, unreached: false, class, technology: &names[i], lines: &lines, fixes: &[], lock: vec![], lock_fixed: vec![], notes: vec![], joins: vec![], leads: None, value: String::new(), peer: None, copies: None };
+        let make = |i: usize, class: Class| Ranked { key: (0, 0, false, false, 0, (false, false, 0, false, false, false, false, false, 0, 0, 0, 0)), tier: 0, lead: None, unreached: false, class, technology: &names[i], lines: &lines, fixes: &[], lock: vec![], lock_fixed: vec![], notes: vec![], joins: vec![], leads: None, value: String::new(), peer: None, copies: None };
         let order = |v: Vec<Ranked>| v.iter().map(|r| r.technology.as_str()).collect::<Vec<_>>().join(" ");
         let ranked = vec![make(0, Class::Compatibility), make(1, Class::Compatibility), make(2, Class::Compatibility), make(3, Class::Security), make(4, Class::Feature)];
         assert_eq!(order(diversified(ranked, 3, 1)), "t0 t3 t4 t1 t2", "one compatibility bump, then the next classes");
