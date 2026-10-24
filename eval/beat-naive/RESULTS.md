@@ -1,8 +1,11 @@
 # Beat-naive: unstale against an unaided coding agent
 
 **Question.** Does unstale beat an unaided coding agent at finding the dependency changes a repository should act on,
-once client cost is counted? Method decisions and open questions live in the vault note "Beat-Naive Eval" (not in git).
-The latest result (24 October, pool v3) comes first; the 22 October results on pool v1 follow unchanged.
+once client cost is counted? Standing target: across 10 or more repos, pooled client tokens per tier-A (act-now) find
+at least 10x below naive's, with p@8 (A+B) at least naive's, both with bootstrap intervals over repos. **On pool v3
+the token side is met and the precision side is not, so the target is not met.** Method decisions and open questions
+live in the vault note "Beat-Naive Eval" (not in git). The latest result (24 October, pool v3) comes first; the
+22 October results on pool v1 follow unchanged.
 
 ## Latest: the full report against the plain ask (24 October 2026, build 0.2.5, pool v3)
 
@@ -19,21 +22,24 @@ Glob, WebSearch and WebFetch on a blind copy of the repo.
 | Arm | Real finds (A+B) | Tier-A | Lines listed | Client tokens / repo | Client tokens / tier-A find |
 |---|---|---|---|---|---|
 | unstale's report alone | **154** | **73** | 1,055 | 25.3K | **6.6K** |
-| Claude Code, plain ask ("What dependency updates have I missed for this repo?") | 40 | 18 | 94 | 409K | 432K |
+| Claude Code, plain ask ("What dependency updates have I missed for this repo?", plus a JSON answer format for scoring) | 40 | 18 | 94 | 409K | 432K |
 | Claude Code, coached exhaustive search at 3x budget | 69 | 34 | 169 | 3.8M | 2.12M |
 
 - **Against the plain ask:** 3.9x the real finds, using about 1/16 the client tokens (65.7x per tier-A find,
-  90% CI [42.8, 132.2] over repo resamples). unstale finds more on 17 of 19 repos (1 tie, 1 fewer). Of the A+B changes
-  either list found, unstale's held about 89% and the plain ask's about 22%.
+  90% CI [42.8, 132.2] over repo resamples). unstale finds more on 17 of 19 repos (1 tie, 1 fewer). In the per-repo recount,
+  173 A+B changes were found by either list: unstale's held 154 (89%) and the plain ask's 38 (22%).
 - **Against the coached agent at 3x budget:** 2.2x the real finds; 323x per tier-A find
-  [228.9, 432.4]. No naive budget reached unstale's recall.
+  [228.9, 432.4]. naive@3x is the highest budget run on every repo, and it did not reach unstale's recall
+  (naive@10x ran on only 5 of the 19).
 - **Not met: top-8 precision.** p@8 (A+B) 0.33 for unstale against 0.44 for naive@3x (diff −0.11 [−0.18, −0.03]). The
   full report is long (about 55 risk lines a repo, 15% A+B), so the claim is "found", not "precise".
 - **Caveats.** Labels come from a model judge (test-retest about 86%); recall is pooled (no answer key); n = 19, and
   the 10 comparison repos were tuned on. The per-repo recount (pool items credited by key) agrees with the harness totals
   within 2 items per arm.
 
-**Reproduce.** `scout.py ab-report --line --pool v3` in the scout harness.
+**Reproduce.** The harness (`scout.py ab-report --line --pool v3`), the frozen pool and its labels live in the scout
+harness outside this repository, so these numbers cannot be regenerated from the repo alone. The arm prompts and pinned
+commits are stated above.
 
 ## Earlier: pool v1 (22 October 2026, build 0.2.2)
 

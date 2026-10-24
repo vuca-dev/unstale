@@ -389,8 +389,8 @@ export function homePage(pkgs: Package[], version?: string): string {
 <h1>What changed in your dependencies, and where your code needs it.</h1>
 <p class="lede">unstale reads the release notes, migration guides and advisories for your installed versions, and hands
 Claude Code, Codex or Cursor a cited list located in your code.</p>
-<p class="lede">On 19 open-source repos, Claude Code asked &#8220;What dependency updates have I missed?&#8221; found 40
-changes worth acting on. unstale found 154, using 1/16 of the tokens. <a href="${BEAT_NAIVE}">Method</a></p>
+<p class="lede">On 19 open-source repos, Claude Code was asked &#8220;What dependency updates have I missed for this
+repo?&#8221; and found 40 changes worth acting on. unstale found 154, using 1/16 of the client tokens. <a href="${BEAT_NAIVE}">Method</a></p>
 <p class="hero-facts">Runs locally · Free · Open source</p>
 <div class="get-started" aria-labelledby="get-started">
 <h2 id="get-started">Get started</h2>
@@ -433,7 +433,7 @@ limits and count each address once per package, and never writes it to storage. 
 <a href="https://osv.dev">OSV</a>, as <code>npm audit</code> would, and it reads the public npm and PyPI registries.</p>
 </details>
 <h2>Fixed upstream</h2>
-<p><a href="https://github.com/mui/material-ui/pull/49522">MUI</a>, <a href="https://github.com/bytedance/deer-flow/pull/7108">deer-flow</a>, <a href="https://github.com/ueberdosis/tiptap/pull/8557">Tiptap</a> and <a href="https://github.com/Arize-ai/phoenix/pull/17150">Phoenix</a> fixed deprecations unstale found at their installed versions, where update bots stay silent. It had <a href="https://github.com/vercel/next.js/security/advisories/GHSA-2464-fhr4-w9xw">Next.js 16.4.1&#8217;s critical security fixes</a> before the GitHub advisory database did.</p>
+<p><a href="https://github.com/mui/material-ui/pull/49522">MUI</a>, <a href="https://github.com/bytedance/deer-flow/pull/7108">deer-flow</a>, <a href="https://github.com/ueberdosis/tiptap/pull/8557">Tiptap</a> and <a href="https://github.com/Arize-ai/phoenix/pull/17150">Phoenix</a> fixed deprecations unstale found at their installed versions, with no version bump for an update bot to raise. It had <a href="https://github.com/vercel/next.js/security/advisories/GHSA-2464-fhr4-w9xw">Next.js 16.4.1&#8217;s critical security fixes</a> before the GitHub advisory database did.</p>
 <p class="license">AGPL-3.0 · <a href="${REPO}">GitHub</a></p>
 </section>
 <section id="packages" class="packages prose">
@@ -462,8 +462,8 @@ Install: \`${INSTALL_NPX}\` in a repository${version ? ` (\`@unstale/cli\` ${ver
 guides and advisories for your installed versions, and hands Claude Code, Codex or Cursor a cited list located in your
 code. Runs locally, free and open source.
 
-On 19 open-source repos, Claude Code asked "What dependency updates have I missed?" found 40 changes worth acting on.
-unstale found 154, using 1/16 of the tokens ([method](${BEAT_NAIVE})).
+On 19 open-source repos, Claude Code was asked "What dependency updates have I missed for this repo?" and found 40
+changes worth acting on. unstale found 154, using 1/16 of the client tokens ([method](${BEAT_NAIVE})).
 
 ## What you get
 
@@ -492,7 +492,7 @@ No telemetry. To check advisories, the CLI sends the package names and versions 
 
 ## Fixed upstream
 
-[MUI](https://github.com/mui/material-ui/pull/49522), [deer-flow](https://github.com/bytedance/deer-flow/pull/7108), [Tiptap](https://github.com/ueberdosis/tiptap/pull/8557) and [Phoenix](https://github.com/Arize-ai/phoenix/pull/17150) fixed deprecations unstale found at their installed versions, where update bots stay silent. It had [Next.js 16.4.1's critical security fixes](https://github.com/vercel/next.js/security/advisories/GHSA-2464-fhr4-w9xw) before the GitHub advisory database did.
+[MUI](https://github.com/mui/material-ui/pull/49522), [deer-flow](https://github.com/bytedance/deer-flow/pull/7108), [Tiptap](https://github.com/ueberdosis/tiptap/pull/8557) and [Phoenix](https://github.com/Arize-ai/phoenix/pull/17150) fixed deprecations unstale found at their installed versions, with no version bump for an update bot to raise. It had [Next.js 16.4.1's critical security fixes](https://github.com/vercel/next.js/security/advisories/GHSA-2464-fhr4-w9xw) before the GitHub advisory database did.
 
 AGPL-3.0, free and open source: ${REPO}
 

@@ -5,8 +5,8 @@ distills each change once, and matches it against your code. Your coding agent (
 knows what applies here: new APIs worth adopting, breaking changes for your next major upgrade, deprecations, and the
 security and performance fixes in each version bump. Every item links to its source.
 
-On 19 open-source repos it found 154 changes worth acting on, where Claude Code asked "What dependency updates have I
-missed?" found 40, using 1/16 of the tokens ([method](https://github.com/vuca-dev/unstale/blob/main/eval/beat-naive/RESULTS.md)).
+On 19 open-source repos it found 154 changes worth acting on. Claude Code, asked "What dependency updates have I
+missed for this repo?", found 40. unstale used 1/16 of the client tokens ([method](https://github.com/vuca-dev/unstale/blob/main/eval/beat-naive/RESULTS.md)).
 
 ```sh
 npx @unstale/cli init
