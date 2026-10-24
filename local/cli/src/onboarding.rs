@@ -2149,8 +2149,84 @@ fn value_met(r: &unstale_schema::catalog::CapabilityRecord, text: &str) -> bool 
     if !matches!(r.change_type, ChangeType::Removal | ChangeType::Deprecation) {
         return true;
     }
-    let pins = usage::pinned_values(&r.terms.iter().map(|t| t.0.clone()).collect::<Vec<_>>());
+    let mut pins = usage::pinned_values(&r.terms.iter().map(|t| t.0.clone()).collect::<Vec<_>>());
+    // A record whose summary pins the value its terms leave out ("alwaysStrict … can no longer be set to false"): the
+    // subject's key at that value.
+    let key = r.subject.trim().trim_matches('`').rsplit('.').next().unwrap_or("").to_string();
+    if pins.is_empty()
+        && !key.is_empty()
+        && key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+        && let Some(v) = refused_value(&r.summary)
+    {
+        pins.push((key, v));
+    }
     pins.is_empty() || pins.iter().any(|(k, v)| usage::sets_value(text, k, v))
+}
+
+/// Whether a file meets the condition a summary opens with ("When both middleware and enhancers are provided, …"): the
+/// record's terms that clause names, other than its subject, written in the file, every one of them (any one for an
+/// "or" clause). A summary with no such clause, or a clause naming no term, is unchanged.
+fn clause_met(r: &unstale_schema::catalog::CapabilityRecord, text: &str) -> bool {
+    let lower = r.summary.trim().to_ascii_lowercase();
+    let Some(rest) = lower.strip_prefix("when ").or_else(|| lower.strip_prefix("if ")) else { return true };
+    let Some((clause, _)) = rest.split_once(',') else { return true };
+    let subject = r.subject.trim().trim_matches('`').to_ascii_lowercase();
+    let mut named: Vec<&str> = r
+        .terms
+        .iter()
+        .map(|t| t.0.trim().trim_matches(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '$')))
+        .filter(|t| t.len() >= 3 && t.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$'))
+        .filter(|t| { let l = t.to_ascii_lowercase(); l != subject && has_identifier(clause, &l) })
+        .collect();
+    named.dedup();
+    if named.is_empty() {
+        return true;
+    }
+    let lower_text = text.to_ascii_lowercase();
+    let has = |t: &&str| has_identifier(&lower_text, &t.to_ascii_lowercase());
+    if has_identifier(clause, "or") { named.iter().any(has) } else { named.iter().all(has) }
+}
+
+/// The plain value a summary says can no longer be set ("can no longer be set to false", "cannot be set to `0`").
+fn refused_value(summary: &str) -> Option<String> {
+    let lower = summary.to_ascii_lowercase();
+    lower.match_indices("set to ").find_map(|(i, _)| {
+        let clause = lower[..i].rsplit(['.', ';']).next().unwrap_or("");
+        if !["no longer", "cannot", "can't", "not be", "not allowed"].iter().any(|n| clause.contains(n)) {
+            return None;
+        }
+        let v: String = lower[i + 7..].trim_start_matches(['`', '"', '\'']).chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '.').collect();
+        let v = v.trim_end_matches('.').to_string();
+        (matches!(v.as_str(), "true" | "false" | "null" | "none") || (!v.is_empty() && v.chars().all(|c| c.is_ascii_digit() || c == '.'))).then_some(v)
+    })
+}
+
+/// Whether the cited term is, in this code file, not the record's package's binding: a member of `this`/`self` in a
+/// file that never names the package (a vendored library's own `this.parse`, not a bundler plugin's), or a bare name
+/// a file imports other names from the package but not this one, nor reads off a namespace (a callback's parameter
+/// `getDefaultMiddleware` beside `import { configureStore } from '@reduxjs/toolkit'`, not the removed export).
+fn unbound_here(term: &str, path: &str, text: &str, packages: &[String]) -> bool {
+    let code = path.rsplit('.').next().is_some_and(|e| matches!(e, "js" | "jsx" | "mjs" | "cjs" | "ts" | "tsx" | "mts" | "cts" | "py" | "vue" | "svelte"));
+    if !code || packages.is_empty() {
+        return false;
+    }
+    let word = |c: char| c.is_ascii_alphanumeric() || c == '_' || c == '$';
+    let t = term.trim().trim_matches('`').trim_end_matches("()").trim_end_matches('(');
+    if let Some(member) = t.strip_prefix("this.").or_else(|| t.strip_prefix("self.")) {
+        let name = member.split('(').next().unwrap_or("");
+        if name.is_empty() || !name.chars().all(word) {
+            return false;
+        }
+        let lower = text.to_ascii_lowercase();
+        return !packages.iter().any(|p| {
+            let p = p.to_ascii_lowercase();
+            has_identifier(&lower, &p) || has_identifier(&lower, p.rsplit('/').next().unwrap_or(&p))
+        });
+    }
+    if !usage::identifier(t) || t.contains('.') || usage::import_source(text, t).is_some() || usage::imported_names(text, packages).is_empty() {
+        return false;
+    }
+    !text.match_indices(t).any(|(i, _)| text[..i].ends_with('.') && !text[i + t.len()..].starts_with(word))
 }
 
 /// Whether the cited term is, in this file, bound to another installed package than the record's: `httpx.AsyncClient`
@@ -2799,7 +2875,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
                 // its own name, not the library's API.
                 .flat_map(|(t, fs)| {
                     fs.iter()
-                        .filter(move |f| w.repo.text(f).is_none_or(|x| !usage::defines(x, t) && shape_met(&o.rec.r, f, x) && value_met(&o.rec.r, x) && !bound_elsewhere(&o.rec.r, t, x, pk, deps_sq)))
+                        .filter(move |f| w.repo.text(f).is_none_or(|x| !usage::defines(x, t) && shape_met(&o.rec.r, f, x) && value_met(&o.rec.r, x) && !bound_elsewhere(&o.rec.r, t, x, pk, deps_sq) && !unbound_here(t, f, x, pk) && clause_met(&o.rec.r, x) && usage::written_outside_comments(f, x, t)))
                         .map(move |f| (t, f))
                 })
                 // A site in an example, sample or documentation project is not this code's unless the upgrade is that
@@ -4198,6 +4274,26 @@ mod tests {
         assert!(value_met(&pinned, "{ \"compilerOptions\": { \"esModuleInterop\":false } }") && value_met(&pinned, "tsc --esModuleInterop false"));
         assert!(value_met(&named, "anything"), "a record pinning no value");
         assert!(!value_met(&pinned, "tsc --no-esModuleInterop false") && !value_met(&pinned, "\"myesModuleInterop\": false"));
+        // A value only the summary pins: the subject's key at it.
+        let strict = rec("compilerOptions.alwaysStrict", "alwaysStrict is assumed to be true and can no longer be set to false.", &["compilerOptions.alwaysStrict", "alwaysStrict", "tsconfig.json"], ChangeType::Removal);
+        assert!(!value_met(&strict, "{ \"strict\": true,\n // \"alwaysStrict\": true,\n}") && value_met(&strict, "{ \"alwaysStrict\": false }"));
+        assert_eq!(refused_value("X is now set to true by default."), None);
+        // A summary's opening condition: every term it names, in the file.
+        let both = rec("configureStore", "When both middleware and enhancers are provided, middleware must appear first.", &["configureStore(", "middleware:", "enhancers:"], ChangeType::BehaviorChange);
+        assert!(!clause_met(&both, "configureStore({ reducer, middleware: (g) => g() })"));
+        assert!(clause_met(&both, "configureStore({ reducer, middleware: (g) => g(), enhancers: (e) => e() })"));
+        assert!(clause_met(&strict, "anything"), "no opening condition");
+        // A bare name the file imports others from the package but not this one is its own; `this.x` needs the package.
+        let rtk = vec!["@reduxjs/toolkit".to_string()];
+        let store = "import { configureStore } from '@reduxjs/toolkit';\nconfigureStore({ middleware(getDefaultMiddleware) { return getDefaultMiddleware(); } });\n";
+        assert!(unbound_here("getDefaultMiddleware", "store.ts", store, &rtk) && unbound_here("getDefaultMiddleware(", "store.ts", store, &rtk));
+        assert!(!unbound_here("getDefaultMiddleware", "store.ts", "import { configureStore, getDefaultMiddleware } from '@reduxjs/toolkit';\n", &rtk));
+        assert!(!unbound_here("getDefaultMiddleware", "store.ts", "import * as RTK from '@reduxjs/toolkit';\nRTK.getDefaultMiddleware();\n", &rtk));
+        assert!(!unbound_here("getDefaultMiddleware", "store.ts", "getDefaultMiddleware();\n", &rtk), "no import from the package: unknown");
+        assert!(!unbound_here("getDefaultMiddleware", "notes.md", store, &rtk), "not a code file");
+        let rollup = vec!["rollup".to_string()];
+        assert!(unbound_here("this.parse", "lib/jquery.color.js", "return this.parse( red );\n", &rollup));
+        assert!(!unbound_here("this.parse", "plugin.js", "/** @type {import('rollup').Plugin} */\nexport default { transform(code) { this.parse(code); } };\n", &rollup));
         // A flag's record is located only by the flag.
         let flag = rec("--doctest-modules", "Autouse fixtures may execute twice when doctest modules are enabled.", &["--doctest-modules", "@pytest.fixture", "scope=\"module\""], ChangeType::BehaviorChange);
         assert!(locates(&flag, "--doctest-modules") && !locates(&flag, "@pytest.fixture") && !locates(&flag, "scope=\"module\""));
