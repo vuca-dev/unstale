@@ -2079,6 +2079,9 @@ fn names_product(id: &str, packages: &[String]) -> bool {
 /// ("Deprecated functions and polyfills have been removed") is not located by any: its terms are the package's API in
 /// general (`decodeHTML`), not what was removed.
 fn locates(r: &unstale_schema::catalog::CapabilityRecord, term: &str) -> bool {
+    if env_name_unnamed(r, term) {
+        return false;
+    }
     // A record that names what it replaces, and whose terms write it, is located by that alone: its other terms are
     // the successor (`addNamed` for a removed `addImport`), the API the replaced one sits in (`CallExpression` for its
     // renamed `typeParameters` field) or the package's API in general (`setupServer` beside a removed `msw/native`).
@@ -2117,6 +2120,45 @@ fn locates(r: &unstale_schema::catalog::CapabilityRecord, term: &str) -> bool {
         }
     }
     true
+}
+
+/// Whether `term` is an environment-variable name (`ANTHROPIC_API_KEY`: capitals, digits and underscores) that the
+/// record's own text (subject, summary, advisory summaries) does not name. Such a term is how code configures the
+/// package in general, written as a string any user of it writes; it is no call site of the change unless the change
+/// is about that variable (`PINECONE_ADDITIONAL_HEADERS is no longer logged`).
+fn env_name_unnamed(r: &unstale_schema::catalog::CapabilityRecord, term: &str) -> bool {
+    let t = term.trim().trim_matches(|c: char| matches!(c, '`' | '\'' | '"' | '$' | '{' | '}'));
+    let env = t.len() >= 3
+        && t.contains('_')
+        && t.starts_with(|c: char| c.is_ascii_uppercase())
+        && t.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_');
+    env && !has_identifier(&r.subject, t) && !has_identifier(&r.summary, t) && !r.advisories.iter().any(|a| has_identifier(&a.summary, t))
+}
+
+/// Whether a file can hold what a record's subject is about, when its terms write the subject's API: a subject word
+/// that a term calls or indexes (`Form` in `Form(` for "boolean form fields"), or that a term writes alone as a code
+/// name where the subject writes it as prose (`Form` for "empty scalar form values"), is the API the change sits in,
+/// and its other terms (`default_factory`, `BaseModel`) are what any code writes beside it. A site counts only in a
+/// file that writes that API. A record whose terms write no subject word is unchanged.
+fn subject_met(r: &unstale_schema::catalog::CapabilityRecord, text: &str) -> bool {
+    let words: Vec<&str> = r.subject.split(|c: char| !c.is_ascii_alphanumeric() && c != '_').filter(|w| w.len() >= 3).collect();
+    let ident = |c: char| c.is_ascii_alphanumeric() || c == '_';
+    let mut apis: Vec<&str> = vec![];
+    for t in r.terms.iter().map(|t| t.0.trim()) {
+        // A prose subject word (`form`) written alone as a code name (`Form`).
+        if words.iter().any(|w| t.eq_ignore_ascii_case(w) && t != *w && w.chars().all(|c| c.is_ascii_lowercase())) && !apis.contains(&t) {
+            apis.push(t);
+        }
+        // Each identifier the term calls or indexes (`Form(`, `Annotated[`).
+        for (i, _) in t.char_indices().filter(|(_, c)| matches!(c, '(' | '[')) {
+            let start = t[..i].rfind(|c: char| !ident(c)).map_or(0, |j| j + 1);
+            let tok = &t[start..i];
+            if !tok.is_empty() && words.iter().any(|w| tok.eq_ignore_ascii_case(w)) && !apis.contains(&tok) {
+                apis.push(tok);
+            }
+        }
+    }
+    apis.is_empty() || apis.iter().any(|a| has_identifier(text, a))
 }
 
 /// A record's `replaces`, lowercased, without code quotes or a call's empty parentheses.
@@ -2599,7 +2641,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
             _ => 0,
         }
     };
-    let specific = |o: &funnel::Opp| o.matched.iter().any(|(term, _)| specific_reference(term, &w.stack));
+    let specific = |o: &funnel::Opp| o.matched.iter().any(|(term, _)| specific_reference(term, &w.stack) && !env_name_unnamed(&o.rec.r, term));
     let found = workarounds::detect(&w.repo);
     let declared = workarounds::declarations(&w.repo);
     let groups = review::digest_groups(&out);
@@ -2726,9 +2768,9 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
                 && !name.contains(".config.") && !name.starts_with('.') && !matches!(name, "conf.py" | "setup.py" | "noxfile.py" | "conftest.py")
                 && !declaration_file(name)
         };
-        // A package of one of the project's own extras (`kornia[onnx]`) ships to the users who ask for the extra: it is
-        // runtime where application code uses it, as an undeclared one is; a docs or test extra's packages are not used
-        // there.
+        // A package of one of the project's own extras (`kornia[onnx]`) or dependency groups (`uv sync --group
+        // similar-issue`) ships to whoever installs that set: it is runtime where application code uses it, as an
+        // undeclared one is; a docs or test set's packages are not used there.
         let runtime = facts.runtime || ((!facts.dev_only || facts.extra) && members.iter().any(|&i| out.opps[i].files.iter().any(|f| code(f) && w.repo.role(f) == usage::Role::App)));
         // What holds the fix back: a pin or override in an application manifest, else the range the lockfile
         // advisory names as refusing its fix.
@@ -2799,7 +2841,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
                 // its own name, not the library's API.
                 .flat_map(|(t, fs)| {
                     fs.iter()
-                        .filter(move |f| w.repo.text(f).is_none_or(|x| !usage::defines(x, t) && shape_met(&o.rec.r, f, x) && value_met(&o.rec.r, x) && !bound_elsewhere(&o.rec.r, t, x, pk, deps_sq)))
+                        .filter(move |f| w.repo.text(f).is_none_or(|x| !usage::defines(x, t) && shape_met(&o.rec.r, f, x) && value_met(&o.rec.r, x) && subject_met(&o.rec.r, x) && !bound_elsewhere(&o.rec.r, t, x, pk, deps_sq)))
                         .map(move |f| (t, f))
                 })
                 // A site in an example, sample or documentation project is not this code's unless the upgrade is that
@@ -4201,6 +4243,18 @@ mod tests {
         // A flag's record is located only by the flag.
         let flag = rec("--doctest-modules", "Autouse fixtures may execute twice when doctest modules are enabled.", &["--doctest-modules", "@pytest.fixture", "scope=\"module\""], ChangeType::BehaviorChange);
         assert!(locates(&flag, "--doctest-modules") && !locates(&flag, "@pytest.fixture") && !locates(&flag, "scope=\"module\""));
+        // An environment-variable name is a site only for a record about that variable.
+        let fed = rec("Anthropic federation credentials", "Federation credentials using a token file fail closed.", &["ANTHROPIC_API_KEY", "token_file"], ChangeType::Fix);
+        assert!(!locates(&fed, "ANTHROPIC_API_KEY") && !locates(&fed, "'ANTHROPIC_API_KEY'") && locates(&fed, "token_file"));
+        let logged = rec("PINECONE_ADDITIONAL_HEADERS", "PINECONE_ADDITIONAL_HEADERS is no longer logged.", &["PINECONE_ADDITIONAL_HEADERS"], ChangeType::Fix);
+        assert!(locates(&logged, "PINECONE_ADDITIONAL_HEADERS"));
+        // A subject word the terms call (`Form(`) is the API a site must write; a dataclass's `default_factory` is not.
+        let form = rec("boolean form fields", "Omitted boolean form fields now use declared defaults.", &["Annotated[bool, Form()]", "Form(...)", "default_factory", "bool | None"], ChangeType::Fix);
+        assert!(!subject_met(&form, "condition: asyncio.Condition = field(default_factory=asyncio.Condition)"));
+        assert!(subject_met(&form, "def f(flag: Annotated[bool, Form()] = True): ..."));
+        let empty = rec("empty scalar form values", "Empty scalar values in form models are treated as missing.", &["exclude_unset=True", "Form", "BaseModel"], ChangeType::BehaviorChange);
+        assert!(!subject_met(&empty, "class Item(BaseModel):\n    x: int = 0\n") && subject_met(&empty, "async def f(item: Annotated[Item, Form()]): ..."));
+        assert!(subject_met(&fed, "anything"), "terms that call no subject word");
         assert!(locates(&flag, "pytest --doctest-modules -q") && !locates(&flag, "--doctest-modules-extra"));
         // A term bound to another installed package is that package's API, unless the record names it.
         let installed: std::collections::HashSet<String> = ["httpx", "openai", "effect", "effectplatformbun"].iter().map(|s| s.to_string()).collect();
@@ -4233,7 +4287,7 @@ mod tests {
         let st = crate::stack::Stack {
             packages: vec![manifest(&["pkg:pypi/django", "pkg:pypi/aiohttp"]), manifest(&["pkg:pypi/django"])],
             deps: Default::default(),
-            node: None,
+            node: None, python: None,
             notes: vec![],
             unreadable: 0, stub_runtimes: Default::default(), spread: 0, peers: vec![],
             standalone: vec![],
@@ -4256,7 +4310,7 @@ mod tests {
         let v: serde_json::Value = serde_json::from_str(r#"{"data":{"last_day":1,"last_month":40,"last_week":12},"package":"django","type":"recent_downloads"}"#).unwrap();
         assert_eq!(pypistats_last_week(&v), Some(12));
         assert_eq!(pypistats_last_week(&serde_json::json!({"data": {}})), None);
-        let st = stack::Stack { packages: vec![], deps: Default::default(), node: None, notes: vec![], unreadable: 0, stub_runtimes: Default::default(), spread: 0, standalone: vec![], registries: Default::default(), fixture_registries: Default::default(), peers: vec![] };
+        let st = stack::Stack { packages: vec![], deps: Default::default(), node: None, python: None, notes: vec![], unreadable: 0, stub_runtimes: Default::default(), spread: 0, standalone: vec![], registries: Default::default(), fixture_registries: Default::default(), peers: vec![] };
         let purls: BTreeSet<String> = ["pkg:pypi/aiohttp", "pkg:pypi/django", "pkg:pypi/zstandard"].map(String::from).into();
         let downloads: BTreeMap<String, u64> = [("pkg:pypi/zstandard", 9_000_000), ("pkg:pypi/django", 3_000_000)].map(|(p, d)| (p.to_string(), d)).into();
         assert_eq!(registration_order(&purls, &st, &downloads), ["pkg:pypi/zstandard", "pkg:pypi/django", "pkg:pypi/aiohttp"]);
@@ -4336,7 +4390,7 @@ mod tests {
         let st = crate::stack::Stack {
             packages: vec![],
             deps: [("pkg:pypi/flask", dep("flask")), ("pkg:npm/%40babel/core", dep("@babel/core"))].map(|(p, d)| (p.to_string(), d)).into(),
-            node: None,
+            node: None, python: None,
             notes: vec![],
             unreadable: 0, stub_runtimes: Default::default(), spread: 0, peers: vec![],
             standalone: vec![],
@@ -5034,7 +5088,7 @@ mod tests {
         assert!(major_step(&v("0.27.10"), &v("0.28.0")), "a minor step on 0.x is a major one");
         assert!(!major_step(&v("0.27.1"), &v("0.27.10")));
         assert!(major_step(&v("0.2.1"), &v("20.0.1")), "read the other way: a 0.2.1 capability predates a project on 20");
-        let st = crate::stack::Stack { packages: vec![], deps: Default::default(), node: None, notes: vec![], unreadable: 0, stub_runtimes: Default::default(), spread: 0, standalone: vec![], registries: Default::default(), fixture_registries: Default::default(), peers: vec![] };
+        let st = crate::stack::Stack { packages: vec![], deps: Default::default(), node: None, python: None, notes: vec![], unreadable: 0, stub_runtimes: Default::default(), spread: 0, standalone: vec![], registries: Default::default(), fixture_registries: Default::default(), peers: vec![] };
         assert!(!specific_reference("connection", &st));
         assert!(specific_reference("cacheLife", &st));
         assert!(specific_reference("client.beta.agents.environments", &st));

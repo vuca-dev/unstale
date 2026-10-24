@@ -1823,6 +1823,11 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                     opp.unmet = b;
                 }
             }
+            // A record that drops a language runtime version (Python 3.8, Node 18) the project's own declared range
+            // already excludes (`requires-python = ">=3.12"`, `engines.node`): the repository has made that move.
+            if matches!(opp.route, Route::UpgradeReview | Route::ImprovementsPass | Route::BumpDigest | Route::InEffect) && runtime_drop_met(rec, inp.stack).is_some() {
+                opp.route = Route::Applied;
+            }
             // Applied: an introduced literal as a whole token; never for a breaking change.
             if matches!(opp.route, Route::UpgradeReview | Route::ImprovementsPass) && !rec.r.breaking && applied() {
                 opp.route = Route::Applied;
@@ -1977,6 +1982,35 @@ fn published_floor(stack: &Stack, comp: &str, introduced: &Version, files: &[Str
     low.sort();
     low.dedup();
     (!low.is_empty()).then(|| format!("{}, which admits versions before {introduced}, where the replacement is missing: raise the declared range to >={introduced}", low.join("; ")))
+}
+
+/// Whether a removal drops support for language runtime versions the project's declared range already excludes:
+/// the record is about the runtime (its subject starts with a runtime name the stack reads a floor for: `Python 3.9`,
+/// `Python version support`), and either its prerequisite on that runtime is at or below the project's floor, or,
+/// with none, the version its subject names ends at or below it (`Python 3.9` ends at 3.10). Returns the project's
+/// declaration.
+pub(crate) fn runtime_drop_met(rec: &Rec, stack: &Stack) -> Option<String> {
+    if rec.r.change_type != ChangeType::Removal {
+        return None;
+    }
+    let mut words = rec.r.subject.split_whitespace();
+    let runtime = words.next()?.trim_matches('`');
+    let (floor, source) = stack.runtime_floor(runtime)?;
+    let prereqs: Vec<&str> = rec.r.prerequisites.iter().filter(|p| p.name.eq_ignore_ascii_case(runtime)).filter_map(|p| p.min.as_deref()).collect();
+    let met = if !prereqs.is_empty() {
+        prereqs.iter().all(|m| parse_version(m).is_some_and(|m| *floor >= m))
+    } else {
+        let dropped = words.next().filter(|w| w.starts_with(|c: char| c.is_ascii_digit()))?;
+        let nums: Vec<u64> = dropped.trim_end_matches(|c: char| !c.is_ascii_digit()).split('.').map_while(|p| p.parse().ok()).collect();
+        let end = match nums.as_slice() {
+            [major] => Version::new(major + 1, 0, 0),
+            [major, minor] => Version::new(*major, minor + 1, 0),
+            [major, minor, patch, ..] => Version::new(*major, *minor, patch + 1),
+            [] => return None,
+        };
+        *floor >= end
+    };
+    met.then(|| source.clone())
 }
 
 /// A structured npm prerequisite above the project's floor, or below a declared maximum. Names the project cannot
@@ -2231,6 +2265,7 @@ pub(crate) mod fixtures {
                 })
                 .collect(),
             node: node.map(|v| (parse_version(v).unwrap(), "engines".into())),
+            python: None,
             notes: vec![],
             unreadable: 0, stub_runtimes: Default::default(), spread: 0, peers: vec![],
             standalone: vec![],
@@ -3437,6 +3472,31 @@ mod tests {
         let s = stack(&[("prisma", "6.19.0")], Some("22.0.0"));
         let out = run_with(&c, &s, &r, &l);
         assert!(out.opps.iter().find(|o| o.id() == "prisma:node.js").unwrap().unmet.is_none());
+    }
+
+    #[test]
+    fn a_dropped_runtime_version_the_declared_range_excludes_is_already_handled() {
+        let c = catalog(
+            "lib",
+            0,
+            vec![
+                with(rec("lib:py38", "pkg:npm/lib", "2.0.0"), json!({"change_type":"removal","breaking":true,"subject":"Python","prerequisites":[{"ecosystem":"pypi","name":"python","min":"3.9"}]})),
+                with(rec("lib:py39", "pkg:npm/lib", "2.0.0"), json!({"change_type":"removal","breaking":true,"subject":"Python 3.9"})),
+                with(rec("lib:py311", "pkg:npm/lib", "2.0.0"), json!({"change_type":"removal","breaking":true,"subject":"Python runtime requirement","prerequisites":[{"ecosystem":"pypi","name":"python","min":"3.13"}]})),
+                with(rec("lib:node18", "pkg:npm/lib", "2.0.0"), json!({"change_type":"removal","breaking":true,"subject":"Node.js 18"})),
+            ],
+        );
+        let mut s = stack(&[("lib", "1.0.0")], Some("18.0.0"));
+        s.python = Some((Version::new(3, 12, 0), "requires-python >=3.12 in pyproject.toml".into()));
+        let (r, l) = (repo(&[]), Ledger::default());
+        let out = run_with(&c, &s, &r, &l);
+        assert_eq!(route_of(&out, "lib:py38"), &Route::Applied);
+        assert_eq!(route_of(&out, "lib:py39"), &Route::Applied);
+        assert_ne!(route_of(&out, "lib:py311"), &Route::Applied, "3.12 does not meet a 3.13 floor");
+        assert_ne!(route_of(&out, "lib:node18"), &Route::Applied, "a range that admits 18 still runs it");
+        s.python = None;
+        let out = run_with(&c, &s, &r, &l);
+        assert_ne!(route_of(&out, "lib:py39"), &Route::Applied, "no declared range: nothing is known");
     }
 
     #[test]

@@ -394,7 +394,11 @@ fn is_requirements(base: &str) -> bool {
 
 /// Python packages and their direct dependencies, merged into `deps` (keyed by package URL; the lowest version
 /// wins, as for npm). Manifests in tests, examples, documentation, generated or vendored code are not the project's.
-pub fn detect(root: &Path, packages: &mut Vec<Package>, deps: &mut BTreeMap<String, Dep>, notes: &mut Vec<String>) {
+/// Reads the Python manifests below `root` into `packages` and `deps`. Returns the lowest Python version the
+/// project supports and where that came from: the lowest floor among the `requires-python` (PEP 621) or Poetry
+/// `python` ranges the read `pyproject.toml` files declare.
+pub fn detect(root: &Path, packages: &mut Vec<Package>, deps: &mut BTreeMap<String, Dep>, notes: &mut Vec<String>) -> Option<(Version, String)> {
+    let mut python: Option<(Version, String)> = None;
     let mut by_dir: BTreeMap<PathBuf, Vec<(String, String)>> = BTreeMap::new();
     for e in walker(root).flatten() {
         if !e.file_type().is_some_and(|t| t.is_file()) {
@@ -424,6 +428,12 @@ pub fn detect(root: &Path, packages: &mut Vec<Package>, deps: &mut BTreeMap<Stri
                 if let Some((r, n)) = pyproject(text) {
                     reqs.extend(r);
                     named |= n;
+                }
+                if let Some((spec, floor)) = requires_python(text)
+                    && python.as_ref().is_none_or(|(p, _)| floor < *p)
+                {
+                    let rel = dir.strip_prefix(root).ok().map(|p| p.to_string_lossy().replace('\\', "/")).filter(|p| !p.is_empty());
+                    python = Some((floor, format!("requires-python {spec} in {}", rel.map_or("pyproject.toml".into(), |r| format!("{r}/pyproject.toml")))));
                 }
             } else if base == "Pipfile" {
                 if let Ok(doc) = toml::from_str::<Value>(text) {
@@ -527,6 +537,22 @@ pub fn detect(root: &Path, packages: &mut Vec<Package>, deps: &mut BTreeMap<Stri
             examples.join(", ")
         ));
     }
+    python
+}
+
+/// A `pyproject.toml`'s declared Python range and its floor: PEP 621 `requires-python`, else Poetry's `python`
+/// dependency (`^3.11`).
+fn requires_python(text: &str) -> Option<(String, Version)> {
+    let doc: Value = toml::from_str(text).ok()?;
+    let spec = doc
+        .get("project")
+        .and_then(|p| p.get("requires-python"))
+        .or_else(|| doc.get("tool").and_then(|t| t.get("poetry")).and_then(|p| p.get("dependencies")).and_then(|d| d.get("python")))
+        .and_then(Value::as_str)?
+        .trim()
+        .to_string();
+    let floor = spec_floor(&spec)?;
+    Some((spec, floor))
 }
 
 #[cfg(test)]
@@ -535,6 +561,13 @@ mod tests {
 
     fn v(s: &str) -> Version {
         Version::parse(s).unwrap()
+    }
+
+    #[test]
+    fn the_declared_python_floor_is_read() {
+        assert_eq!(requires_python("[project]\nname = \"a\"\nrequires-python = \">=3.12\"\n").map(|x| x.1), Some(v("3.12.0")));
+        assert_eq!(requires_python("[tool.poetry.dependencies]\npython = \"^3.11\"\n").map(|x| x.1), Some(v("3.11.0")));
+        assert!(requires_python("[project]\nname = \"a\"\n").is_none());
     }
 
     #[test]
