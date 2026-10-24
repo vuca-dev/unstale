@@ -358,6 +358,7 @@ const SUMMARY =
   "unstale tells you and your coding agent what changed upstream for your package versions and your code. Cited, local, free and open source.";
 
 const EVAL = `${REPO}/blob/main/eval/gate/MISSES.md`;
+const BEAT_NAIVE = `${REPO}/blob/main/eval/beat-naive/RESULTS.md`;
 
 /** Distinct package identities, including related packages grouped on a single page. */
 function catalogStats(pkgs: Package[]) {
@@ -385,9 +386,11 @@ export function homePage(pkgs: Package[], version?: string): string {
     .join("");
   const body = `<section class="hero">
 <canvas id="wordmark" class="wordmark" width="768" height="240" aria-hidden="true"></canvas>
-<h1>You don't know what you don't know. Neither does your agent.</h1>
-<p class="lede">unstale keeps up with your dependencies for you. It finds the breaking changes, fixes and new APIs that
-touch your code, so your agent can use them. For Claude Code, Codex and Cursor.</p>
+<h1>What changed in your dependencies, and where your code needs it.</h1>
+<p class="lede">unstale reads the release notes, migration guides and advisories for your installed versions, and hands
+Claude Code, Codex or Cursor a cited list located in your code.</p>
+<p class="lede">On 19 open-source repos, Claude Code was asked &#8220;What dependency updates have I missed for this
+repo?&#8221; and found 40 changes worth acting on. unstale found 154, using 1/16 of the client tokens. <a href="${BEAT_NAIVE}">Method</a></p>
 <p class="hero-facts">Runs locally · Free · Open source</p>
 <div class="get-started" aria-labelledby="get-started">
 <h2 id="get-started">Get started</h2>
@@ -421,16 +424,16 @@ ${terminal()}
 <li><strong>Match changes locally.</strong> A signed upstream catalog, checked against your versions and code.</li>
 <li><strong>Review with your agent.</strong> A report and a ready-to-paste prompt. Claude Code also flags relevant changes at session start.</li>
 </ol>
-<h2>Safe for private repos: What leaves your machine</h2>
+<h2>What leaves your machine</h2>
 <p>Code stays local. unstale receives public package names; <a href="https://osv.dev">OSV</a> receives package names and versions for advisory checks. No telemetry.</p>
 <details class="privacy-details"><summary>Network details</summary>
 <p>Public package names (like <code>pkg:npm/next</code>) to fetch the changes that apply. Not your code, file paths,
 versions or any ID. The service, hosted on Cloudflare, sees your IP address. It keeps it in memory only, to apply rate
-limits and count each address once per package, and never writes it to storage. No telemetry. To check advisories, the CLI sends the package names and versions your lockfiles resolve to
+limits and count each address once per package, and never writes it to storage. To check advisories, the CLI sends the package names and versions your lockfiles resolve to
 <a href="https://osv.dev">OSV</a>, as <code>npm audit</code> would, and it reads the public npm and PyPI registries.</p>
 </details>
-<h2>Recent catches</h2>
-<p>unstale flagged critical <a href="https://github.com/vercel/next.js/security/advisories/GHSA-2464-fhr4-w9xw">Next.js security fixes</a> before the GitHub advisory database had them, and caught <a href="https://github.com/supabase/supabase/pull/51869">Supabase&#8217;s Next.js auth blocks</a> breaking on Next.js 16. Its fix for a deprecated AI SDK call in fumadocs was merged within a day.</p>
+<h2>Fixed upstream</h2>
+<p><a href="https://github.com/mui/material-ui/pull/49522">MUI</a>, <a href="https://github.com/bytedance/deer-flow/pull/7108">deer-flow</a>, <a href="https://github.com/ueberdosis/tiptap/pull/8557">Tiptap</a> and <a href="https://github.com/Arize-ai/phoenix/pull/17150">Phoenix</a> fixed deprecations unstale found at their installed versions, with no version bump for an update bot to raise. It had <a href="https://github.com/vercel/next.js/security/advisories/GHSA-2464-fhr4-w9xw">Next.js 16.4.1&#8217;s critical security fixes</a> before the GitHub advisory database did.</p>
 <p class="license">AGPL-3.0 · <a href="${REPO}">GitHub</a></p>
 </section>
 <section id="packages" class="packages prose">
@@ -455,11 +458,12 @@ export function homeMarkdown(pkgs: Package[], version?: string): string {
 
 Install: \`${INSTALL_NPX}\` in a repository${version ? ` (\`@unstale/cli\` ${version}, ${NPM_URL})` : ""}, or \`${INSTALL_BREW}\`.
 
-**You don't know what you don't know. Neither does your agent.**
+**What changed in your dependencies, and where your code needs it.** unstale reads the release notes, migration
+guides and advisories for your installed versions, and hands Claude Code, Codex or Cursor a cited list located in your
+code. Runs locally, free and open source.
 
-unstale keeps up with your dependencies for you. It finds the breaking changes, fixes and new APIs that touch your code,
-so your agent can use them. For Claude Code, Codex and Cursor. Every item cites its source. Runs locally, free and open
-source.
+On 19 open-source repos, Claude Code was asked "What dependency updates have I missed for this repo?" and found 40
+changes worth acting on. unstale found 154, using 1/16 of the client tokens ([method](${BEAT_NAIVE})).
 
 ## What you get
 
@@ -478,7 +482,7 @@ source.
    line at session start says when something new applies. If nothing upstream matters to your code, your agent hears
    nothing.
 
-## Safe for private repos: What leaves your machine
+## What leaves your machine
 
 Public package names (like \`pkg:npm/next\`) to fetch the changes that apply. Not your code, file paths, versions or
 any ID. The service, hosted on Cloudflare, sees your IP address. It keeps it in memory only, to apply rate limits and count
@@ -486,9 +490,9 @@ each address once per package, and never writes it to storage.
 No telemetry. To check advisories, the CLI sends the package names and versions your lockfiles resolve to OSV
 (https://osv.dev), as \`npm audit\` would, and it reads the public npm and PyPI registries.
 
-## Recent catches
+## Fixed upstream
 
-unstale flagged critical [Next.js security fixes](https://github.com/vercel/next.js/security/advisories/GHSA-2464-fhr4-w9xw) before the GitHub advisory database had them, and caught [Supabase's Next.js auth blocks](https://github.com/supabase/supabase/pull/51869) breaking on Next.js 16. Its fix for a deprecated AI SDK call in fumadocs was merged within a day.
+[MUI](https://github.com/mui/material-ui/pull/49522), [deer-flow](https://github.com/bytedance/deer-flow/pull/7108), [Tiptap](https://github.com/ueberdosis/tiptap/pull/8557) and [Phoenix](https://github.com/Arize-ai/phoenix/pull/17150) fixed deprecations unstale found at their installed versions, with no version bump for an update bot to raise. It had [Next.js 16.4.1's critical security fixes](https://github.com/vercel/next.js/security/advisories/GHSA-2464-fhr4-w9xw) before the GitHub advisory database did.
 
 AGPL-3.0, free and open source: ${REPO}
 
@@ -524,6 +528,7 @@ Notes for agents:
 - [README](${REPO}/blob/main/README.md): what it does, install, commands, how it works
 - [Full text for agents](${ORIGIN}/llms-full.txt): README and security model in one file
 - [Security and data handling](${REPO}/blob/main/SECURITY.md)
+- [Against an unaided agent](${BEAT_NAIVE}): unstale vs Claude Code on 19 repos
 - [Evaluation on real upgrades](${REPO}/blob/main/eval/gate/MISSES.md)
 - [Home page as Markdown](${ORIGIN}/index.md)
 
