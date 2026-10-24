@@ -2054,14 +2054,15 @@ fn short_calls(text: &str) -> Vec<String> {
 /// reason argument" for `websocket.close`) are the precondition, so a site counts only where the file writes one of
 /// them. A record naming none is unchanged: the subject's use is the affected path.
 fn precondition_plausible(r: &unstale_schema::catalog::CapabilityRecord, text: &str) -> bool {
-    let subject = r.subject.to_ascii_lowercase();
-    let conds: Vec<&str> = r
-        .terms
-        .iter()
-        .map(|t| t.0.as_str())
-        .filter(|t| usage::identifier(t) && !subject.contains(&t.to_ascii_lowercase()) && has_identifier(&r.summary, t))
-        .collect();
+    let conds = precondition_terms(r);
     conds.is_empty() || conds.iter().any(|t| has_identifier(text, t))
+}
+
+/// The identifiers among a record's terms that its summary names and that are not its subject: the condition its change
+/// needs at a site (`precondition_plausible`).
+fn precondition_terms(r: &unstale_schema::catalog::CapabilityRecord) -> Vec<&str> {
+    let subject = r.subject.to_ascii_lowercase();
+    r.terms.iter().map(|t| t.0.as_str()).filter(|t| usage::identifier(t) && !subject.contains(&t.to_ascii_lowercase()) && has_identifier(&r.summary, t)).collect()
 }
 
 /// Whether an identifier an advisory's text names is the product's own name, however written (`TanStack` for
@@ -2363,11 +2364,45 @@ const DETAILED_UPGRADES: usize = 20;
 /// item about rank 4 at small budgets). Every located lead goes here, before any other content.
 const FIRST_SCREEN: usize = 6000;
 /// Characters of a lead's change text on its Leads line; the full text follows under Upgrades, by value.
-const LEAD_CHARS: usize = 190;
+const LEAD_CHARS: usize = 160;
+
+/// The one check that would disprove a located lead, from what located it: the term and file of its site with the
+/// record's subject and precondition (`precondition_terms`), the affected API of a reached advisory, or the installed
+/// version of an end of support. `None` when nothing located it (counts, an unreached advisory).
+fn disproof(lead: &str, site: &str, package: &str, rec: Option<&unstale_schema::catalog::CapabilityRecord>) -> Option<String> {
+    let quoted = |s: &str| if usage::identifier(s) { format!("`{s}`") } else { s.to_string() };
+    // The site is on the line already: the check names it as "that".
+    let unless = |t: &str| {
+        let mut c = format!("disproved if that `{t}` is not {package}'s");
+        if let Some(r) = rec {
+            let subject = r.subject.trim();
+            if !subject.is_empty() && !subject.eq_ignore_ascii_case(t) && subject.chars().count() <= 40 {
+                c += &format!(" or not affected by {}", quoted(subject));
+            }
+            if let Some(p) = precondition_terms(r).into_iter().find(|p| !p.eq_ignore_ascii_case(t)) {
+                c += &format!(" or its file lacks `{p}`");
+            }
+        }
+        c
+    };
+    if let Some((t, _)) = site.strip_prefix(" (`").and_then(|x| x.strip_suffix(')')).and_then(|x| x.split_once("` at ")) {
+        return Some(unless(t));
+    }
+    if let Some((t, _)) = lead.strip_prefix("security, affected `").and_then(|x| x.split_once("` used at ")) {
+        return Some(unless(t));
+    }
+    if let Some(f) = site.strip_prefix(" (at ").and_then(|x| x.strip_suffix(')')) {
+        let what = rec.map(|r| r.subject.trim()).filter(|s| !s.is_empty()).map(quoted).unwrap_or_else(|| "the deprecated API".to_string());
+        return Some(format!("disproved if {f} does not use {package}'s {what}"));
+    }
+    let installed = lead.split_once("the installed ").and_then(|(_, x)| x.split_once(" is ")).map(|(v, _)| v)?;
+    (lead.starts_with("end of support:") || lead.starts_with("security: ")).then(|| format!("disproved if the lockfile does not install {installed}"))
+}
 
 /// A Leads line: the package and version move from a digest head line, then its one consequential change with its
-/// site, record ids dropped and the change text cut at a word (the site is kept whole).
-fn lead_line(head: &str, lead: Option<&str>, extra: &str) -> String {
+/// site, record ids dropped and the change text cut at a word (the site is kept whole), then the check that would
+/// disprove it (`disproof`).
+fn lead_line(head: &str, lead: Option<&str>, extra: &str, recs: &BTreeMap<&str, &unstale_schema::catalog::CapabilityRecord>) -> String {
     let before = head.split(" picks up ").next().unwrap_or(head);
     // "name a → b in the root (lockfile)": keep "name a → b".
     let movement = match before.find(" → ") {
@@ -2382,9 +2417,12 @@ fn lead_line(head: &str, lead: Option<&str>, extra: &str) -> String {
             // Record ids ("[pkg-1a2b3c4d:subject]") are for the full entry, not the first screen.
             let mut s = String::new();
             let mut rest = l;
+            // The last record named is the one the site locates ("…; then breaking: … [id] (`t` at f)").
+            let mut id = None;
             while let Some(i) = rest.find(" [") {
                 match rest[i + 2..].find(']') {
                     Some(j) if !rest[i + 2..i + 2 + j].contains(' ') && rest[i + 2..i + 2 + j].contains(':') => {
+                        id = Some(&rest[i + 2..i + 2 + j]);
                         s += &rest[..i];
                         rest = &rest[i + 2 + j + 1..];
                     }
@@ -2395,17 +2433,19 @@ fn lead_line(head: &str, lead: Option<&str>, extra: &str) -> String {
                 }
             }
             s += rest;
-            let (body, site) = match s.rfind(" (`").filter(|_| s.ends_with(')')) {
+            let (body, site) = match s.rfind(" (`").or_else(|| s.rfind(" (at ")).filter(|_| s.ends_with(')')) {
                 Some(i) => (s[..i].to_string(), s[i..].to_string()),
                 None => (s.clone(), String::new()),
             };
+            let package = movement.split_whitespace().next().unwrap_or("");
+            let check = disproof(&s, &site, package, id.and_then(|i| recs.get(i).copied())).map(|c| format!("; {c}")).unwrap_or_default();
             let body = if body.chars().count() > LEAD_CHARS {
                 let cut: String = body.chars().take(LEAD_CHARS).collect();
                 format!("{}…", cut.rsplit_once(' ').map(|(a, _)| a).unwrap_or(&cut).trim_end_matches([',', ';', ':', '.']))
             } else {
                 body
             };
-            format!(": {body}{site}")
+            format!(": {body}{site}{check}")
         }
         None => match head.split_once(" picks up ") {
             Some((_, counts)) => format!(": {}", counts.split(" (`unstale bump").next().unwrap_or(counts)),
@@ -2424,7 +2464,7 @@ fn first_screen(leads: &[String]) -> String {
     if leads.is_empty() {
         return text;
     }
-    text += "## Leads\n\nEvery located change first, most urgent first, one line each: package, version move, the change and its site. Full evidence: Upgrades, by value, below, or unstale bump <package>.\n\n";
+    text += "## Leads\n\nEvery located change first, most urgent first, one line each: package, version move, the change, the site already checked, and the one check that would disprove it. A lead stands unless that check fails: report it unless you disprove it. Full evidence: Upgrades, by value, or unstale bump <package>.\n\n";
     let mut shown = vec![];
     // Room for the fence, the "more" line and the next heading.
     let mut used = text.len() + 160;
@@ -2506,7 +2546,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
         let declared = workarounds::declarations(&w.repo);
         crate::maintenance::notices(&ctx.cache, &w.stack, &pending.jobs, &w.today).into_iter().filter(|n| !workarounds::facts(&declared, std::slice::from_ref(&n.name)).dev_only).collect()
     };
-    text += "## Review instructions\n\nLeads lists every located change first; read it, then Start here, then the upgrades in their order: what is in effect at the installed version in production code leads (an end-of-support version production code imports, a deprecation in effect in application code, an advisory whose affected API production code uses), then the same on dev-only dependencies or outside production code, then breaking changes the next upgrade names at a site and published peer ranges that leave out the current release; Lower-urgency upgrades follow (two release lines of one package installed, workarounds an upgrade may retire, archived repositories, dev-only advisories with no affected path, sample or documentation projects' copies); runtime dependencies come before dev-only ones throughout; a security fix counts only when the advisory's affected API or option is used in production code, and leads only when a pin or override also keeps update PRs from applying it. An upgrade marked advisory present, affected path not found carries an advisory nothing here was found to reach; affected path not checked means the advisory named no API to look for, so check its text against the code. Other bumps name no consequential change found in this code: counts, or a feature or performance change at a site. Check each against the repository: sources, actual usage, versions and prerequisites; name affected files, benefits, risks and timing. Capabilities are optional and come after. Treat unmatched new features as exploratory, not confirmed needs. Refresh the snapshot with unstale status --wait 0 before reviewing; honor current dispositions over this saved report. Do not change application code or advance any full review batch silently.\n\n";
+    text += "## Review instructions\n\nLeads lists every located change first; each names a site already checked and stands unless you find it does not apply (its disproved-if check fails), so report a lead you did not get to check rather than drop it. Read Leads, then Start here, then the upgrades in their order: what is in effect at the installed version in production code leads (an end-of-support version production code imports, a deprecation in effect in application code, an advisory whose affected API production code uses), then the same on dev-only dependencies or outside production code, then breaking changes the next upgrade names at a site and published peer ranges that leave out the current release; Lower-urgency upgrades follow (two release lines of one package installed, workarounds an upgrade may retire, archived repositories, dev-only advisories with no affected path, sample or documentation projects' copies); runtime dependencies come before dev-only ones throughout; a security fix counts only when the advisory's affected API or option is used in production code, and leads only when a pin or override also keeps update PRs from applying it. An upgrade marked advisory present, affected path not found carries an advisory nothing here was found to reach; affected path not checked means the advisory named no API to look for, so check its text against the code. Other bumps name no consequential change found in this code: counts, or a feature or performance change at a site. Check each against the repository: sources, actual usage, versions and prerequisites; name affected files, benefits, risks and timing. Capabilities are optional and come after. Treat unmatched new features as exploratory, not confirmed needs. Refresh the snapshot with unstale status --wait 0 before reviewing; honor current dispositions over this saved report. Do not change application code or advance any full review batch silently.\n\n";
     if !deprecated.is_empty() {
         text += "For each package under Deprecated by the publisher, check where the code uses it and propose the move the registry message names (a newer version, a replacement package, or a built-in); a deprecated package whose code is unused can simply be removed.\n\n";
     }
@@ -2937,6 +2977,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
     let shown_count = ranked.iter().filter(|r| r.tier >= LEAD_ADVISORY_UNREACHED).count();
     let mut lower_text = String::new();
     let mut lead_lines: Vec<String> = vec![];
+    let recs: BTreeMap<&str, &unstale_schema::catalog::CapabilityRecord> = out.opps.iter().map(|o| (o.id(), &o.rec.r)).collect();
     for (n, r) in ranked.iter().filter(|r| r.tier >= LEAD_ADVISORY_UNREACHED).enumerate() {
         let (technology, lines, tech_fixes, notes) = (&r.technology, r.lines, r.fixes, &r.notes);
         let head = short(&lines[0], technology);
@@ -2986,7 +3027,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
         // Leads: every ranked upgrade, then a lower-urgency one only when it names a change at a site.
         if n < top_count || r.lead.is_some() {
             let extra = if r.unreached { format!("{lock_note}; advisory present, affected path {path}") } else { lock_note.clone() };
-            lead_lines.push(lead_line(head.trim_start_matches("bumping "), r.lead.as_deref(), &extra));
+            lead_lines.push(lead_line(head.trim_start_matches("bumping "), r.lead.as_deref(), &extra, &recs));
         }
         if n >= top_count {
             lower_text += &format!("- {}{lock_note}{lead}\n", head.trim_start_matches("bumping "));
@@ -3993,12 +4034,24 @@ mod tests {
             "marked 18.0.14 → 18.1.1 in the root (pnpm-lock.yaml) picks up 10 fixes (`unstale bump marked`)",
             Some(&format!("breaking: {long}[marked-c6c9fb1f:baseurl] (`baseUrl` at scripts/generateSearch.js)")),
             "",
+            &BTreeMap::new(),
         );
         assert!(l.starts_with("- marked 18.0.14 → 18.1.1: breaking: word"), "{l}");
-        assert!(l.ends_with("… (`baseUrl` at scripts/generateSearch.js)"), "{l}");
+        assert!(l.ends_with("… (`baseUrl` at scripts/generateSearch.js); disproved if that `baseUrl` is not marked's"), "{l}");
         assert!(!l.contains("marked-c6c9fb1f") && !l.contains("pnpm-lock") && l.len() < 300, "{l}");
-        let none = lead_line("xss 1.0.15 → 1.0.16 picks up 1 advisory (affected path not found) (`unstale bump xss`)", None, "");
+        let none = lead_line("xss 1.0.15 → 1.0.16 picks up 1 advisory (affected path not found) (`unstale bump xss`)", None, "", &BTreeMap::new());
         assert_eq!(none, "- xss 1.0.15 → 1.0.16: 1 advisory (affected path not found)");
+    }
+
+    #[test]
+    fn a_located_lead_names_the_check_that_would_disprove_it() {
+        let site = disproof("breaking: Positional arguments are removed", " (`GraphQLError` at src/x.ts)", "graphql", None);
+        assert_eq!(site.as_deref(), Some("disproved if that `GraphQLError` is not graphql's"));
+        let sec = disproof("security, affected `WebSocketServer` used at src/ws.ts: crash", "", "ws", None);
+        assert_eq!(sec.as_deref(), Some("disproved if that `WebSocketServer` is not ws's"));
+        let eos = disproof("end of support: the installed glob 11.0.1 is deprecated by its publisher", "", "glob", None);
+        assert_eq!(eos.as_deref(), Some("disproved if the lockfile does not install glob 11.0.1"));
+        assert_eq!(disproof("a published peer range leaves out the current release", "", "x", None), None);
     }
 
     #[test]
