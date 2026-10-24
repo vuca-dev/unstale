@@ -363,7 +363,6 @@ const CATCHES: { lead: string; rest: string; url: string }[] = [
   { lead: "Next.js 16.4.1's critical security fixes", rest: "in the catalog before the GitHub advisory database had them.", url: "https://github.com/vercel/next.js/security/advisories/GHSA-2464-fhr4-w9xw" },
   { lead: "Phoenix's maintainer", rest: "handed our finding to Claude Code: fixed in one turn, merged the next day.", url: "https://github.com/Arize-ai/phoenix/pull/17150" },
   { lead: "i18next", rest: "had a broken test hidden behind a deprecated matcher; fixed and merged in four hours.", url: "https://github.com/i18next/i18next/pull/2453" },
-  { lead: "MUI's maintainer", rest: "invited the fix for a deprecated package it still installed, and merged it.", url: "https://github.com/mui/material-ui/pull/49522" },
 ];
 
 const SUMMARY =
