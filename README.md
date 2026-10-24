@@ -6,11 +6,9 @@ Tells Claude Code, Codex and Cursor what changed upstream since their training c
 APIs worth adopting, breaking changes for your next major upgrade, deprecations, and the security and performance
 fixes in each version bump.
 
-**Does it work?** On 19 open-source repos we asked Claude Code "What dependency updates have I missed for this repo?".
-It found 40 changes worth acting on. unstale's report found 154, using 1/16 of the client tokens
-([method and caveats](eval/beat-naive/RESULTS.md)). [MUI](https://github.com/mui/material-ui/pull/49522),
-[deer-flow](https://github.com/bytedance/deer-flow/pull/7108), [Tiptap](https://github.com/ueberdosis/tiptap/pull/8557)
-and [Phoenix](https://github.com/Arize-ai/phoenix/pull/17150) have fixed deprecations it found at their installed
+**Does it work?** It finds 4x the changes worth acting on that Claude Code finds when you ask it, using 1/16 of your
+agent's tokens ([how we measured](eval/beat-naive/RESULTS.md)). [Phoenix](https://github.com/Arize-ai/phoenix/pull/17150), [i18next](https://github.com/i18next/i18next/pull/2453)
+and [MUI](https://github.com/mui/material-ui/pull/49522) have merged fixes for what it found at their installed
 versions, with no version bump for an update bot to raise. And it had
 [Next.js 16.4.1's critical security fixes](https://github.com/vercel/next.js/security/advisories/GHSA-2464-fhr4-w9xw)
 before the GitHub advisory database did.

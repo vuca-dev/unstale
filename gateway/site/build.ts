@@ -331,7 +331,7 @@ const TERMINAL: [string, string][] = [
   ["cmd", "$ npx @unstale/cli init"],
   ["fresh", "✓ my-app · Personal setup ready"],
   ["body", "Mapped 119 direct dependencies from pnpm-lock.yaml and checked local references."],
-  ["amber", "Priority · 31 advisory fixes match installed versions. Review these first."],
+  ["muted", "Security · 31 advisory fixes match installed versions; each is noted on its upgrade."],
   ["", ""],
   ["accent", "Upgrades to review · 3 shortlisted"],
   ["body", "1. next 16.2.1 → 16.4.2 picks up 37 security fixes, 90 bug fixes, 5 performance changes, 20 behaviour changes"],
@@ -402,8 +402,8 @@ export function homePage(pkgs: Package[], version?: string): string {
 <p class="lede">unstale finds what changed in your dependencies and where your code needs it. It reads the release
 notes, migration guides and advisories for your installed versions, and hands Claude Code, Codex or Cursor a cited
 list.</p>
-<p class="lede">On 19 open-source repos, Claude Code was asked &#8220;What dependency updates have I missed for this
-repo?&#8221; and found 40 changes worth acting on. unstale found 154, using 1/16 of the client tokens. <a href="${BEAT_NAIVE}">Method</a></p>
+<p class="lede">It finds 4x the changes worth acting on that Claude Code finds when you ask it, using 1/16 of your
+agent&#8217;s tokens. <a href="${BEAT_NAIVE}">How we measured</a></p>
 <p class="hero-facts">Runs locally · Free · Open source</p>
 <div class="get-started" aria-labelledby="get-started">
 <h2 id="get-started">Get started</h2>
@@ -479,8 +479,8 @@ unstale finds what changed in your dependencies and where your code needs it. It
 guides and advisories for your installed versions, and hands Claude Code, Codex or Cursor a cited list. Runs locally,
 free and open source.
 
-On 19 open-source repos, Claude Code was asked "What dependency updates have I missed for this repo?" and found 40
-changes worth acting on. unstale found 154, using 1/16 of the client tokens ([method](${BEAT_NAIVE})).
+It finds 4x the changes worth acting on that Claude Code finds when you ask it, using 1/16 of your agent's tokens
+([how we measured](${BEAT_NAIVE})).
 
 ## What you get
 

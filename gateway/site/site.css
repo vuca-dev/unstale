@@ -63,14 +63,13 @@ footer a { color: var(--muted); } footer a:hover { color: var(--fg); }
 .hero h1 { font-size: clamp(1.45rem, 3.4vw, 1.9rem); margin: 4px 0 12px; }
 .lede { font-size: 1.06rem; color: var(--muted); margin: 0; }
 
-.term { margin: 48px 0 0; }
+.term { margin: 16px 0 0; }
 .term pre { margin: 0; padding: 18px 20px; background: #0a0f11; border: 1px solid var(--line); border-radius: 10px; font-size: 0.8rem; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
 .term pre span { display: block; }
 .term figcaption { color: var(--muted); font-size: 0.8rem; margin-top: 8px; }
 .t-cmd { color: #849a9e; } .t-body { color: #e0e8e8; } .t-muted { color: #849a9e; }
 .t-fresh { color: #67dc91; font-weight: 700; } .t-amber { color: #e8ac5e; } .t-accent { color: #2fd8c6; font-weight: 700; }
 .t-prompt { color: #e0e8e8; font-weight: 700; }
-.term a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
 .t-rule { height: 1px; background: #67dc91; opacity: 0.7; margin: 10px 0; }
 
 .prose h2 { font-size: 1.2rem; margin: 48px 0 10px; }
