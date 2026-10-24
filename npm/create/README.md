@@ -1,7 +1,5 @@
 # @unstale/create
 
-**You don't know what you don't know. Neither does your agent.**
-
 Sets up [unstale](https://github.com/vuca-dev/unstale) in the current repository:
 
 ```sh
