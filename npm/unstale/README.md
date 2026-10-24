@@ -5,7 +5,7 @@ distills each change once, and matches it against your code. Your coding agent (
 knows what applies here: new APIs worth adopting, breaking changes for your next major upgrade, deprecations, and the
 security and performance fixes in each version bump. Every item links to its source.
 
-It finds 4x the changes worth acting on that Claude Code finds when you ask it, using 1/16 of your agent's tokens
+It finds 4x more changes worth acting on than Claude Code alone, using 1/16 of the tokens
 ([how we measured](https://github.com/vuca-dev/unstale/blob/main/eval/beat-naive/RESULTS.md)).
 
 ```sh
