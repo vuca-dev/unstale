@@ -2379,12 +2379,21 @@ fn disproof(lead: &str, site: &str, package: &str, rec: Option<&unstale_schema::
             if !subject.is_empty() && !subject.eq_ignore_ascii_case(t) && subject.chars().count() <= 40 {
                 c += &format!(" or not affected by {}", quoted(subject));
             }
-            if let Some(p) = precondition_terms(r).into_iter().find(|p| !p.eq_ignore_ascii_case(t)) {
-                c += &format!(" or its file lacks `{p}`");
+            // A site counts where its file writes any one of them (`precondition_plausible`): disproved only by none.
+            let conds: Vec<String> = precondition_terms(r).into_iter().filter(|p| !p.eq_ignore_ascii_case(t)).map(|p| format!("`{p}`")).collect();
+            match conds.len() {
+                0 => {}
+                1 => c += &format!(" or its file lacks {}", conds[0]),
+                _ => c += &format!(" or its file writes none of {}", conds.join(", ")),
             }
         }
         c
     };
+    // An end of support stands on the installed version whatever change follows it ("…; then breaking: … (`t` at f)").
+    if lead.starts_with("end of support:") {
+        let installed = lead.split_once("the installed ").and_then(|(_, x)| x.split_once(" is ")).map(|(v, _)| v)?;
+        return Some(format!("disproved if the lockfile does not install {installed}"));
+    }
     if let Some((t, _)) = site.strip_prefix(" (`").and_then(|x| x.strip_suffix(')')).and_then(|x| x.split_once("` at ")) {
         return Some(unless(t));
     }
@@ -2396,7 +2405,7 @@ fn disproof(lead: &str, site: &str, package: &str, rec: Option<&unstale_schema::
         return Some(format!("disproved if {f} does not use {package}'s {what}"));
     }
     let installed = lead.split_once("the installed ").and_then(|(_, x)| x.split_once(" is ")).map(|(v, _)| v)?;
-    (lead.starts_with("end of support:") || lead.starts_with("security: ")).then(|| format!("disproved if the lockfile does not install {installed}"))
+    lead.starts_with("security: ").then(|| format!("disproved if the lockfile does not install {installed}"))
 }
 
 /// A Leads line: the package and version move from a digest head line, then its one consequential change with its
@@ -2437,7 +2446,8 @@ fn lead_line(head: &str, lead: Option<&str>, extra: &str, recs: &BTreeMap<&str, 
                 Some(i) => (s[..i].to_string(), s[i..].to_string()),
                 None => (s.clone(), String::new()),
             };
-            let package = movement.split_whitespace().next().unwrap_or("");
+            // A grouped upgrade's label lists its packages ("@scope/a, @scope/b 1.0 → 2.0"): the first names the owner.
+            let package = movement.split_whitespace().next().unwrap_or("").trim_end_matches(',');
             let check = disproof(&s, &site, package, id.and_then(|i| recs.get(i).copied())).map(|c| format!("; {c}")).unwrap_or_default();
             let body = if body.chars().count() > LEAD_CHARS {
                 let cut: String = body.chars().take(LEAD_CHARS).collect();
@@ -4051,6 +4061,8 @@ mod tests {
         assert_eq!(sec.as_deref(), Some("disproved if that `WebSocketServer` is not ws's"));
         let eos = disproof("end of support: the installed glob 11.0.1 is deprecated by its publisher", "", "glob", None);
         assert_eq!(eos.as_deref(), Some("disproved if the lockfile does not install glob 11.0.1"));
+        let then = disproof("end of support: the installed next 14.2.23 is deprecated by its publisher; then breaking: x", " (`<Link` at a.tsx)", "next", None);
+        assert_eq!(then.as_deref(), Some("disproved if the lockfile does not install next 14.2.23"));
         assert_eq!(disproof("a published peer range leaves out the current release", "", "x", None), None);
     }
 
