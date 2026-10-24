@@ -2082,6 +2082,12 @@ fn locates(r: &unstale_schema::catalog::CapabilityRecord, term: &str) -> bool {
     // A record that names what it replaces, and whose terms write it, is located by that alone: its other terms are
     // the successor (`addNamed` for a removed `addImport`), the API the replaced one sits in (`CallExpression` for its
     // renamed `typeParameters` field) or the package's API in general (`setupServer` beside a removed `msw/native`).
+    // A record about one command-line flag (`--doctest-modules`) changes only runs that pass it: its other terms
+    // (`@pytest.fixture`, `scope="module"`) are any code's, so only a term writing the flag locates it.
+    let flag = r.subject.trim().trim_matches('`');
+    if usage::cli_flag(flag) && !flag.contains(char::is_whitespace) && r.terms.iter().any(|t| t.0.contains(flag)) {
+        return term.contains(flag);
+    }
     let replaced = replaced_names(r);
     let writes = |t: &str| {
         let t = t.trim().trim_matches('`').to_ascii_lowercase();
@@ -2132,6 +2138,43 @@ fn shape_met(r: &unstale_schema::catalog::CapabilityRecord, path: &str, text: &s
         })
         .collect();
     values.is_empty() || values.iter().any(|v| usage::in_code(path, text, v, true))
+}
+
+/// Whether the record's change can show in `path`: a type declaration file (`.d.ts`, `.pyi`) never runs, so only a
+/// removal, deprecation or rename (a name the declaration writes stops existing) is there; a behaviour, default or fix
+/// change (`multidict`'s key identity, `fastapi`'s form fields, `openai`'s default HTTP client) is not.
+fn runs_there(r: &unstale_schema::catalog::CapabilityRecord, path: &str) -> bool {
+    !declaration_file(path.rsplit('/').next().unwrap_or(path)) || matches!(r.change_type, ChangeType::Removal | ChangeType::Deprecation) || !r.replaces.is_empty()
+}
+
+/// Whether a file can hold the value a removal or deprecation pins (`"esModuleInterop": false` for "can no longer be
+/// set to false"): it sets one of the pinned keys to its pinned value. A file setting the key to another value
+/// (`"esModuleInterop": true`) already has the form that keeps working. A record pinning no value is unchanged.
+fn value_met(r: &unstale_schema::catalog::CapabilityRecord, text: &str) -> bool {
+    if !matches!(r.change_type, ChangeType::Removal | ChangeType::Deprecation) {
+        return true;
+    }
+    let pins = usage::pinned_values(&r.terms.iter().map(|t| t.0.clone()).collect::<Vec<_>>());
+    pins.is_empty() || pins.iter().any(|(k, v)| usage::sets_value(text, k, v))
+}
+
+/// Whether the cited term is, in this file, bound to another installed package than the record's: `httpx.AsyncClient`
+/// with `import httpx`, or `HttpClientRequest` imported from `effect/http`, for a record of `@effect/platform-bun`. The
+/// change is to the record's package, so code of another package's API is not its site, unless the record itself names
+/// that package (an `openai` record about the `httpx` clients it accepts).
+fn bound_elsewhere(r: &unstale_schema::catalog::CapabilityRecord, term: &str, text: &str, packages: &[String], installed: &std::collections::HashSet<String>) -> bool {
+    let squash = |s: &str| s.chars().filter(char::is_ascii_alphanumeric).collect::<String>().to_ascii_lowercase();
+    let Some(m) = usage::binding_module(text, term) else { return false };
+    let root = if m.starts_with('@') { m.splitn(3, '/').take(2).collect::<Vec<_>>().join("/") } else { m.split(['/', '.']).next().unwrap_or(&m).to_string() };
+    let root_sq = squash(&root);
+    if root_sq.is_empty() || !installed.contains(&root_sq) {
+        return false;
+    }
+    if packages.iter().any(|p| squash(p) == root_sq || squash(p.rsplit('/').next().unwrap_or(p)) == root_sq) {
+        return false;
+    }
+    let named = format!("{} {} {}", r.subject, r.summary, r.terms.iter().map(|t| t.0.as_str()).collect::<Vec<_>>().join(" ")).to_ascii_lowercase();
+    !has_identifier(&named, &root.to_ascii_lowercase())
 }
 
 fn has_identifier(text: &str, word: &str) -> bool {
@@ -2587,6 +2630,8 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
         locked.keys().any(|k| norm(k) == n) || w.stack.deps.keys().any(|c| util::purl_name(c).is_some_and(|p| norm(&p) == n))
     };
     // Package-level signals (`signals`): their head lines, owned here so the ranked list can borrow them.
+    // Every package the project installs, squashed: a module the code imports from one of them is that package's API.
+    let dep_names: std::collections::HashSet<String> = w.stack.deps.values().map(|d| d.name.chars().filter(char::is_ascii_alphanumeric).collect::<String>().to_ascii_lowercase()).collect();
     let mut signal_store: Vec<(String, Vec<String>)> = vec![];
     let mut ranked: Vec<Ranked> = vec![];
     let mut quiet = 0;
@@ -2757,6 +2802,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
         let in_app = in_effect.iter().any(|&i| out.opps[i].files.iter().any(|f| w.repo.role(f) == usage::Role::App));
         // The upgrade takes the label and rank of its most consequential named change (the impact table the A/B judge
         // shares): counts alone name nothing this code hits.
+        let (pk, deps_sq) = (&packages, &dep_names);
         let site = |o: &funnel::Opp| -> Option<(String, String)> {
             let mut hits: Vec<(&String, &String)> = o
                 .matched
@@ -2764,7 +2810,12 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
                 .filter(|(t, _)| specific_reference(t, &w.stack) && !imports_own(t, &packages) && locates(&o.rec.r, t))
                 // A file that defines the term itself (`function addImport`, a visitor's `CallExpression(path) {`) uses
                 // its own name, not the library's API.
-                .flat_map(|(t, fs)| fs.iter().filter(move |f| w.repo.text(f).is_none_or(|x| !usage::defines(x, t) && shape_met(&o.rec.r, f, x))).map(move |f| (t, f)))
+                .flat_map(|(t, fs)| {
+                    fs.iter()
+                        .filter(move |f| runs_there(&o.rec.r, f))
+                        .filter(move |f| w.repo.text(f).is_none_or(|x| !usage::defines(x, t) && shape_met(&o.rec.r, f, x) && value_met(&o.rec.r, x) && !bound_elsewhere(&o.rec.r, t, x, pk, deps_sq)))
+                        .map(move |f| (t, f))
+                })
                 .collect();
             hits.sort_by_key(|(_, f)| w.repo.role(f));
             hits.first().map(|(t, f)| (t.to_string(), f.to_string()))
@@ -4153,6 +4204,30 @@ mod tests {
         shape.replaces = vec!["CallExpression".into(), "callee: Import".into()];
         assert!(!shape_met(&shape, "a.ts", "visitor: { CallExpression(path) { path.node.callee } }"));
         assert!(shape_met(&shape, "a.ts", "if (path.node.callee.type === \"Import\") {}"));
+        // A value the removal pins is met only where the file sets it; `true` already keeps working.
+        let pinned = rec("compilerOptions.esModuleInterop", "esModuleInterop can no longer be set to false.", &["compilerOptions.esModuleInterop", "esModuleInterop", "\"esModuleInterop\": false", "--esModuleInterop false"], ChangeType::Removal);
+        assert!(!value_met(&pinned, "{\n  \"compilerOptions\": {\n    \"esModuleInterop\": true,\n  }\n}"));
+        assert!(value_met(&pinned, "{ \"compilerOptions\": { \"esModuleInterop\":false } }") && value_met(&pinned, "tsc --esModuleInterop false"));
+        assert!(value_met(&named, "anything"), "a record pinning no value");
+        // A flag's record is located only by the flag.
+        let flag = rec("--doctest-modules", "Autouse fixtures may execute twice when doctest modules are enabled.", &["--doctest-modules", "@pytest.fixture", "scope=\"module\""], ChangeType::BehaviorChange);
+        assert!(locates(&flag, "--doctest-modules") && !locates(&flag, "@pytest.fixture") && !locates(&flag, "scope=\"module\""));
+        // A declaration file holds no behaviour, only names.
+        let behaviour = rec("boolean form fields", "Omitted bool form fields are interpreted as False.", &["bool | None"], ChangeType::BehaviorChange);
+        assert!(!runs_there(&behaviour, "pkg/_internal/main.pyi") && runs_there(&behaviour, "pkg/main.py") && runs_there(&named, "types/index.d.ts"));
+        // A term bound to another installed package is that package's API, unless the record names it.
+        let installed: std::collections::HashSet<String> = ["httpx", "openai", "effect", "effectplatformbun"].iter().map(|s| s.to_string()).collect();
+        let redact = rec("HTTP spans", "Sensitive query values are redacted in HTTP spans.", &["HttpClientRequest"], ChangeType::Security);
+        let bun = vec!["@effect/platform-bun".to_string()];
+        assert!(bound_elsewhere(&redact, "HttpClientRequest", "import { HttpClientRequest } from 'effect/http';\n", &bun, &installed));
+        assert!(!bound_elsewhere(&redact, "HttpClientRequest", "import { HttpClientRequest } from '@effect/platform-bun';\n", &bun, &installed));
+        assert!(!bound_elsewhere(&redact, "HttpClientRequest", "import { HttpClientRequest } from './http';\n", &bun, &installed), "a local re-export");
+        let client = rec("HTTPX2", "HTTPX2 is now the default HTTP client.", &["httpx.AsyncClient", "httpx"], ChangeType::DefaultChange);
+        let other = rec("transport", "The transport changed.", &["re.search"], ChangeType::BehaviorChange);
+        let oa = vec!["openai".to_string()];
+        assert!(!bound_elsewhere(&client, "httpx.AsyncClient", "import httpx\nhttpx.AsyncClient()\n", &oa, &installed), "the record names httpx");
+        assert!(bound_elsewhere(&other, "httpx.AsyncClient", "import httpx\nhttpx.AsyncClient()\n", &oa, &installed));
+        assert!(!bound_elsewhere(&other, "re.search", "import re\nre.search(a, b)\n", &oa, &installed), "not an installed package");
     }
     /// `register` with a sender of one package at a time, as a service without batches is asked.
     fn register1(pending: &mut Pending, order: Vec<String>, mut send: impl FnMut(&str) -> Result<Job>, progress: impl FnMut(usize), diagnostics: &mut Vec<String>, save: impl FnMut(&Pending) -> Result<()>) -> Result<()> {
