@@ -70,6 +70,7 @@ footer a { color: var(--muted); } footer a:hover { color: var(--fg); }
 .t-cmd { color: #849a9e; } .t-body { color: #e0e8e8; } .t-muted { color: #849a9e; }
 .t-fresh { color: #67dc91; font-weight: 700; } .t-amber { color: #e8ac5e; } .t-accent { color: #2fd8c6; font-weight: 700; }
 .t-prompt { color: #e0e8e8; font-weight: 700; }
+.term a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
 .t-rule { height: 1px; background: #67dc91; opacity: 0.7; margin: 10px 0; }
 
 .prose h2 { font-size: 1.2rem; margin: 48px 0 10px; }
