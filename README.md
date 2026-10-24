@@ -1,14 +1,18 @@
-# unstale
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/wordmark-dark.svg">
+    <img alt="unstale" src="docs/assets/wordmark-light.svg" width="400">
+  </picture>
+</h1>
+
+**You don't know what you don't know. Neither does your agent.**
 
 Tells Claude Code, Codex and Cursor what changed upstream since their training cutoff that applies to your code: new
 APIs worth adopting, breaking changes for your next major upgrade, deprecations, and the security and performance
 fixes in each version bump.
 
-**Does it work?** On 19 open-source repos we asked Claude Code "What dependency updates have I missed for this repo?".
-It found 40 changes worth acting on. unstale's report found 154, using 1/16 of the client tokens
-([method and caveats](eval/beat-naive/RESULTS.md)). [MUI](https://github.com/mui/material-ui/pull/49522),
-[deer-flow](https://github.com/bytedance/deer-flow/pull/7108), [Tiptap](https://github.com/ueberdosis/tiptap/pull/8557)
-and [Phoenix](https://github.com/Arize-ai/phoenix/pull/17150) have fixed deprecations it found at their installed
+**Does it work?** It finds 4x as many changes worth acting on as Claude Code alone, using 1/16 of the tokens ([how we measured](eval/beat-naive/RESULTS.md)). [Phoenix](https://github.com/Arize-ai/phoenix/pull/17150) and
+[i18next](https://github.com/i18next/i18next/pull/2453) have merged fixes for what it found at their installed
 versions, with no version bump for an update bot to raise. And it had
 [Next.js 16.4.1's critical security fixes](https://github.com/vercel/next.js/security/advisories/GHSA-2464-fhr4-w9xw)
 before the GitHub advisory database did.

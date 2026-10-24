@@ -331,7 +331,7 @@ const TERMINAL: [string, string][] = [
   ["cmd", "$ npx @unstale/cli init"],
   ["fresh", "✓ my-app · Personal setup ready"],
   ["body", "Mapped 119 direct dependencies from pnpm-lock.yaml and checked local references."],
-  ["amber", "Priority · 31 advisory fixes match installed versions. Review these first."],
+  ["muted", "Security · 31 advisory fixes match installed versions; each is noted on its upgrade."],
   ["", ""],
   ["accent", "Upgrades to review · 3 shortlisted"],
   ["body", "1. next 16.2.1 → 16.4.2 picks up 37 security fixes, 90 bug fixes, 5 performance changes, 20 behaviour changes"],
@@ -351,8 +351,19 @@ function terminal(): string {
   const rows = TERMINAL.map(([tone, text]) =>
     tone === "rule" ? `<span class="t-rule"></span>` : `<span class="t-${tone || "body"}">${esc(text) || "&nbsp;"}</span>`,
   ).join("");
-  return `<figure class="term"><pre>${rows}</pre><figcaption>Real <code>init</code> output on a Next.js and Prisma app, trimmed.</figcaption></figure>`;
+  return `<section class="prose example">
+<h2>What <code>unstale init</code> prints</h2>
+<p>Real output on a Next.js and Prisma app, trimmed.</p>
+<figure class="term"><pre>${rows}</pre></figure>
+</section>`;
 }
+
+/** Recent catches: the most consequential finds on public repositories, one line each. */
+const CATCHES: { lead: string; rest: string; url: string }[] = [
+  { lead: "Next.js 16.4.1's critical security fixes", rest: "in the catalog before the GitHub advisory database had them.", url: "https://github.com/vercel/next.js/security/advisories/GHSA-2464-fhr4-w9xw" },
+  { lead: "Phoenix's maintainer", rest: "handed our finding to Claude Code: fixed in one turn, merged the next day.", url: "https://github.com/Arize-ai/phoenix/pull/17150" },
+  { lead: "i18next", rest: "had a broken test hidden behind a deprecated matcher; fixed and merged in four hours.", url: "https://github.com/i18next/i18next/pull/2453" },
+];
 
 const SUMMARY =
   "unstale tells you and your coding agent what changed upstream for your package versions and your code. Cited, local, free and open source.";
@@ -386,11 +397,11 @@ export function homePage(pkgs: Package[], version?: string): string {
     .join("");
   const body = `<section class="hero">
 <canvas id="wordmark" class="wordmark" width="768" height="240" aria-hidden="true"></canvas>
-<h1>What changed in your dependencies, and where your code needs it.</h1>
-<p class="lede">unstale reads the release notes, migration guides and advisories for your installed versions, and hands
-Claude Code, Codex or Cursor a cited list located in your code.</p>
-<p class="lede">On 19 open-source repos, Claude Code was asked &#8220;What dependency updates have I missed for this
-repo?&#8221; and found 40 changes worth acting on. unstale found 154, using 1/16 of the client tokens. <a href="${BEAT_NAIVE}">Method</a></p>
+<h1>You don't know what you don't know. Neither does your agent.</h1>
+<p class="lede">unstale finds what changed in your dependencies and where your code needs it. It reads the release
+notes, migration guides and advisories for your installed versions, and hands Claude Code, Codex or Cursor a cited
+list.</p>
+<p class="lede">It finds 4x as many changes worth acting on as Claude Code alone, using 1/16 of the tokens. <a href="${BEAT_NAIVE}">How we measured</a></p>
 <p class="hero-facts">Runs locally · Free · Open source</p>
 <div class="get-started" aria-labelledby="get-started">
 <h2 id="get-started">Get started</h2>
@@ -432,8 +443,10 @@ versions or any ID. The service, hosted on Cloudflare, sees your IP address. It 
 limits and count each address once per package, and never writes it to storage. To check advisories, the CLI sends the package names and versions your lockfiles resolve to
 <a href="https://osv.dev">OSV</a>, as <code>npm audit</code> would, and it reads the public npm and PyPI registries.</p>
 </details>
-<h2>Fixed upstream</h2>
-<p><a href="https://github.com/mui/material-ui/pull/49522">MUI</a>, <a href="https://github.com/bytedance/deer-flow/pull/7108">deer-flow</a>, <a href="https://github.com/ueberdosis/tiptap/pull/8557">Tiptap</a> and <a href="https://github.com/Arize-ai/phoenix/pull/17150">Phoenix</a> fixed deprecations unstale found at their installed versions, with no version bump for an update bot to raise. It had <a href="https://github.com/vercel/next.js/security/advisories/GHSA-2464-fhr4-w9xw">Next.js 16.4.1&#8217;s critical security fixes</a> before the GitHub advisory database did.</p>
+<h2>Recent catches</h2>
+<ul>
+${CATCHES.map((c) => `<li><a href="${esc(c.url)}">${esc(c.lead)}</a> ${esc(c.rest)}</li>`).join("\n")}
+</ul>
 <p class="license">AGPL-3.0 · <a href="${REPO}">GitHub</a></p>
 </section>
 <section id="packages" class="packages prose">
@@ -458,12 +471,14 @@ export function homeMarkdown(pkgs: Package[], version?: string): string {
 
 Install: \`${INSTALL_NPX}\` in a repository${version ? ` (\`@unstale/cli\` ${version}, ${NPM_URL})` : ""}, or \`${INSTALL_BREW}\`.
 
-**What changed in your dependencies, and where your code needs it.** unstale reads the release notes, migration
-guides and advisories for your installed versions, and hands Claude Code, Codex or Cursor a cited list located in your
-code. Runs locally, free and open source.
+**You don't know what you don't know. Neither does your agent.**
 
-On 19 open-source repos, Claude Code was asked "What dependency updates have I missed for this repo?" and found 40
-changes worth acting on. unstale found 154, using 1/16 of the client tokens ([method](${BEAT_NAIVE})).
+unstale finds what changed in your dependencies and where your code needs it. It reads the release notes, migration
+guides and advisories for your installed versions, and hands Claude Code, Codex or Cursor a cited list. Runs locally,
+free and open source.
+
+It finds 4x as many changes worth acting on as Claude Code alone, using 1/16 of the tokens
+([how we measured](${BEAT_NAIVE})).
 
 ## What you get
 
@@ -490,9 +505,9 @@ each address once per package, and never writes it to storage.
 No telemetry. To check advisories, the CLI sends the package names and versions your lockfiles resolve to OSV
 (https://osv.dev), as \`npm audit\` would, and it reads the public npm and PyPI registries.
 
-## Fixed upstream
+## Recent catches
 
-[MUI](https://github.com/mui/material-ui/pull/49522), [deer-flow](https://github.com/bytedance/deer-flow/pull/7108), [Tiptap](https://github.com/ueberdosis/tiptap/pull/8557) and [Phoenix](https://github.com/Arize-ai/phoenix/pull/17150) fixed deprecations unstale found at their installed versions, with no version bump for an update bot to raise. It had [Next.js 16.4.1's critical security fixes](https://github.com/vercel/next.js/security/advisories/GHSA-2464-fhr4-w9xw) before the GitHub advisory database did.
+${CATCHES.map((c) => `- [${c.lead}](${c.url}) ${c.rest}`).join("\n")}
 
 AGPL-3.0, free and open source: ${REPO}
 
