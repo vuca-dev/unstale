@@ -386,9 +386,10 @@ export function homePage(pkgs: Package[], version?: string): string {
     .join("");
   const body = `<section class="hero">
 <canvas id="wordmark" class="wordmark" width="768" height="240" aria-hidden="true"></canvas>
-<h1>What changed in your dependencies, and where your code needs it.</h1>
-<p class="lede">unstale reads the release notes, migration guides and advisories for your installed versions, and hands
-Claude Code, Codex or Cursor a cited list located in your code.</p>
+<h1>You don't know what you don't know. Neither does your agent.</h1>
+<p class="lede">unstale finds what changed in your dependencies and where your code needs it. It reads the release
+notes, migration guides and advisories for your installed versions, and hands Claude Code, Codex or Cursor a cited
+list.</p>
 <p class="lede">On 19 open-source repos, Claude Code was asked &#8220;What dependency updates have I missed for this
 repo?&#8221; and found 40 changes worth acting on. unstale found 154, using 1/16 of the client tokens. <a href="${BEAT_NAIVE}">Method</a></p>
 <p class="hero-facts">Runs locally · Free · Open source</p>
@@ -458,9 +459,11 @@ export function homeMarkdown(pkgs: Package[], version?: string): string {
 
 Install: \`${INSTALL_NPX}\` in a repository${version ? ` (\`@unstale/cli\` ${version}, ${NPM_URL})` : ""}, or \`${INSTALL_BREW}\`.
 
-**What changed in your dependencies, and where your code needs it.** unstale reads the release notes, migration
-guides and advisories for your installed versions, and hands Claude Code, Codex or Cursor a cited list located in your
-code. Runs locally, free and open source.
+**You don't know what you don't know. Neither does your agent.**
+
+unstale finds what changed in your dependencies and where your code needs it. It reads the release notes, migration
+guides and advisories for your installed versions, and hands Claude Code, Codex or Cursor a cited list. Runs locally,
+free and open source.
 
 On 19 open-source repos, Claude Code was asked "What dependency updates have I missed for this repo?" and found 40
 changes worth acting on. unstale found 154, using 1/16 of the client tokens ([method](${BEAT_NAIVE})).

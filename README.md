@@ -1,5 +1,7 @@
 # unstale
 
+**You don't know what you don't know. Neither does your agent.**
+
 Tells Claude Code, Codex and Cursor what changed upstream since their training cutoff that applies to your code: new
 APIs worth adopting, breaking changes for your next major upgrade, deprecations, and the security and performance
 fixes in each version bump.
