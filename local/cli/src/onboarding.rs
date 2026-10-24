@@ -2611,7 +2611,10 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
                 && !name.contains(".config.") && !name.starts_with('.') && !matches!(name, "conf.py" | "setup.py" | "noxfile.py" | "conftest.py")
                 && !declaration_file(name)
         };
-        let runtime = facts.runtime || (!facts.dev_only && members.iter().any(|&i| out.opps[i].files.iter().any(|f| code(f) && w.repo.role(f) == usage::Role::App)));
+        // A package of one of the project's own extras (`kornia[onnx]`) ships to the users who ask for the extra: it is
+        // runtime where application code uses it, as an undeclared one is; a docs or test extra's packages are not used
+        // there.
+        let runtime = facts.runtime || ((!facts.dev_only || facts.extra) && members.iter().any(|&i| out.opps[i].files.iter().any(|f| code(f) && w.repo.role(f) == usage::Role::App)));
         // What holds the fix back: a pin or override in an application manifest, else the range the lockfile
         // advisory names as refusing its fix.
         let lock_blocker = lock_fixed.iter().find_map(|it| it.why.iter().find_map(|w| w.strip_prefix("fix blocked: ")).map(String::from));
