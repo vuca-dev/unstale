@@ -2202,10 +2202,11 @@ fn refused_value(summary: &str) -> Option<String> {
 }
 
 /// Whether the cited term is, in this code file, not the record's package's binding: a member of `this`/`self` in a
-/// file that never names the package (a vendored library's own `this.parse`, not a bundler plugin's), or a bare name
-/// a file imports other names from the package but not this one, nor reads off a namespace (a callback's parameter
-/// `getDefaultMiddleware` beside `import { configureStore } from '@reduxjs/toolkit'`, not the removed export).
-fn unbound_here(term: &str, path: &str, text: &str, packages: &[String]) -> bool {
+/// file that never names the package (a vendored library's own `this.parse`, not a bundler plugin's), or the bare name
+/// of what the record removes or replaces where the file imports other names from the package but not this one, nor
+/// reads it off a namespace (a callback's parameter `getDefaultMiddleware` beside `import { configureStore } from
+/// '@reduxjs/toolkit'`, not the removed export). Other bare names (a component's `onSelect` prop) are left alone.
+fn unbound_here(r: &unstale_schema::catalog::CapabilityRecord, term: &str, path: &str, text: &str, packages: &[String]) -> bool {
     let code = path.rsplit('.').next().is_some_and(|e| matches!(e, "js" | "jsx" | "mjs" | "cjs" | "ts" | "tsx" | "mts" | "cts" | "py" | "vue" | "svelte"));
     if !code || packages.is_empty() {
         return false;
@@ -2223,7 +2224,9 @@ fn unbound_here(term: &str, path: &str, text: &str, packages: &[String]) -> bool
             has_identifier(&lower, &p) || has_identifier(&lower, p.rsplit('/').next().unwrap_or(&p))
         });
     }
-    if !usage::identifier(t) || t.contains('.') || usage::import_source(text, t).is_some() || usage::imported_names(text, packages).is_empty() {
+    let lower = t.to_ascii_lowercase();
+    let removed = replaced_names(r).contains(&lower) || (r.change_type == ChangeType::Removal && r.subject.trim().trim_matches('`').eq_ignore_ascii_case(t));
+    if !removed || !usage::identifier(t) || t.contains('.') || usage::import_source(text, t).is_some() || usage::imported_names(text, packages).is_empty() {
         return false;
     }
     !text.match_indices(t).any(|(i, _)| text[..i].ends_with('.') && !text[i + t.len()..].starts_with(word))
@@ -2875,7 +2878,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
                 // its own name, not the library's API.
                 .flat_map(|(t, fs)| {
                     fs.iter()
-                        .filter(move |f| w.repo.text(f).is_none_or(|x| !usage::defines(x, t) && shape_met(&o.rec.r, f, x) && value_met(&o.rec.r, x) && !bound_elsewhere(&o.rec.r, t, x, pk, deps_sq) && !unbound_here(t, f, x, pk) && clause_met(&o.rec.r, x) && usage::written_outside_comments(f, x, t)))
+                        .filter(move |f| w.repo.text(f).is_none_or(|x| !usage::defines(x, t) && shape_met(&o.rec.r, f, x) && value_met(&o.rec.r, x) && !bound_elsewhere(&o.rec.r, t, x, pk, deps_sq) && !unbound_here(&o.rec.r, t, f, x, pk) && clause_met(&o.rec.r, x) && usage::written_outside_comments(f, x, t)))
                         .map(move |f| (t, f))
                 })
                 // A site in an example, sample or documentation project is not this code's unless the upgrade is that
@@ -4285,15 +4288,19 @@ mod tests {
         assert!(clause_met(&strict, "anything"), "no opening condition");
         // A bare name the file imports others from the package but not this one is its own; `this.x` needs the package.
         let rtk = vec!["@reduxjs/toolkit".to_string()];
+        let mut removed_rec = rec("getDefaultMiddleware", "The standalone export is removed.", &["getDefaultMiddleware(", "getDefaultMiddleware"], ChangeType::Removal);
+        removed_rec.replaces = vec!["getDefaultMiddleware".into()];
+        let prop = rec("tab focus", "Tabs are focused on click.", &["onSelect"], ChangeType::BehaviorChange);
+        assert!(!unbound_here(&prop, "onSelect", "h.tsx", "import { Tabs } from 'react-tabs';\n<Tabs onSelect={f} />\n", &["react-tabs".to_string()]), "not what the record removes");
         let store = "import { configureStore } from '@reduxjs/toolkit';\nconfigureStore({ middleware(getDefaultMiddleware) { return getDefaultMiddleware(); } });\n";
-        assert!(unbound_here("getDefaultMiddleware", "store.ts", store, &rtk) && unbound_here("getDefaultMiddleware(", "store.ts", store, &rtk));
-        assert!(!unbound_here("getDefaultMiddleware", "store.ts", "import { configureStore, getDefaultMiddleware } from '@reduxjs/toolkit';\n", &rtk));
-        assert!(!unbound_here("getDefaultMiddleware", "store.ts", "import * as RTK from '@reduxjs/toolkit';\nRTK.getDefaultMiddleware();\n", &rtk));
-        assert!(!unbound_here("getDefaultMiddleware", "store.ts", "getDefaultMiddleware();\n", &rtk), "no import from the package: unknown");
-        assert!(!unbound_here("getDefaultMiddleware", "notes.md", store, &rtk), "not a code file");
+        assert!(unbound_here(&removed_rec, "getDefaultMiddleware", "store.ts", store, &rtk) && unbound_here(&removed_rec, "getDefaultMiddleware(", "store.ts", store, &rtk));
+        assert!(!unbound_here(&removed_rec, "getDefaultMiddleware", "store.ts", "import { configureStore, getDefaultMiddleware } from '@reduxjs/toolkit';\n", &rtk));
+        assert!(!unbound_here(&removed_rec, "getDefaultMiddleware", "store.ts", "import * as RTK from '@reduxjs/toolkit';\nRTK.getDefaultMiddleware();\n", &rtk));
+        assert!(!unbound_here(&removed_rec, "getDefaultMiddleware", "store.ts", "getDefaultMiddleware();\n", &rtk), "no import from the package: unknown");
+        assert!(!unbound_here(&removed_rec, "getDefaultMiddleware", "notes.md", store, &rtk), "not a code file");
         let rollup = vec!["rollup".to_string()];
-        assert!(unbound_here("this.parse", "lib/jquery.color.js", "return this.parse( red );\n", &rollup));
-        assert!(!unbound_here("this.parse", "plugin.js", "/** @type {import('rollup').Plugin} */\nexport default { transform(code) { this.parse(code); } };\n", &rollup));
+        assert!(unbound_here(&removed_rec, "this.parse", "lib/jquery.color.js", "return this.parse( red );\n", &rollup));
+        assert!(!unbound_here(&removed_rec, "this.parse", "plugin.js", "/** @type {import('rollup').Plugin} */\nexport default { transform(code) { this.parse(code); } };\n", &rollup));
         // A flag's record is located only by the flag.
         let flag = rec("--doctest-modules", "Autouse fixtures may execute twice when doctest modules are enabled.", &["--doctest-modules", "@pytest.fixture", "scope=\"module\""], ChangeType::BehaviorChange);
         assert!(locates(&flag, "--doctest-modules") && !locates(&flag, "@pytest.fixture") && !locates(&flag, "scope=\"module\""));
