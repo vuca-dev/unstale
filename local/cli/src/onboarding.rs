@@ -2364,20 +2364,20 @@ const DETAILED_UPGRADES: usize = 20;
 /// item about rank 4 at small budgets). Every located lead goes here, before any other content.
 const FIRST_SCREEN: usize = 6000;
 /// Characters of a lead's change text on its Leads line; the full text follows under Upgrades, by value.
-const LEAD_CHARS: usize = 160;
+const LEAD_CHARS: usize = 120;
 
 /// The one check that would disprove a located lead, from what located it: the term and file of its site with the
 /// record's subject and precondition (`precondition_terms`), the affected API of a reached advisory, or the installed
 /// version of an end of support. `None` when nothing located it (counts, an unreached advisory).
 fn disproof(lead: &str, site: &str, package: &str, rec: Option<&unstale_schema::catalog::CapabilityRecord>) -> Option<String> {
     let quoted = |s: &str| if usage::identifier(s) { format!("`{s}`") } else { s.to_string() };
-    // The site is on the line already: the check names it as "that".
+    // The site is on the line already: the check names only its term.
     let unless = |t: &str| {
-        let mut c = format!("disproved if that `{t}` is not {package}'s");
+        let mut c = format!("disproved if `{t}` is not {package}'s");
         if let Some(r) = rec {
             let subject = r.subject.trim();
             if !subject.is_empty() && !subject.eq_ignore_ascii_case(t) && subject.chars().count() <= 40 {
-                c += &format!(" or not affected by {}", quoted(subject));
+                c += &format!(" or unaffected by {}", quoted(subject));
             }
             // A site counts where its file writes any one of them (`precondition_plausible`): disproved only by none.
             let conds: Vec<String> = precondition_terms(r).into_iter().filter(|p| !p.eq_ignore_ascii_case(t)).map(|p| format!("`{p}`")).collect();
@@ -2474,7 +2474,7 @@ fn first_screen(leads: &[String]) -> String {
     if leads.is_empty() {
         return text;
     }
-    text += "## Leads\n\nEvery located change first, most urgent first, one line each: package, version move, the change, the site already checked, and the one check that would disprove it. A lead stands unless that check fails: report it unless you disprove it. Full evidence: Upgrades, by value, or unstale bump <package>.\n\n";
+    text += "## Leads\n\nEvery located change first, most urgent first, one line each: package, version move, the change, the site already checked, the check that would disprove it. A lead stands unless that check fails. Evidence: Upgrades, by value.\n\n";
     let mut shown = vec![];
     // Room for the fence, the "more" line and the next heading.
     let mut used = text.len() + 160;
@@ -4047,7 +4047,7 @@ mod tests {
             &BTreeMap::new(),
         );
         assert!(l.starts_with("- marked 18.0.14 → 18.1.1: breaking: word"), "{l}");
-        assert!(l.ends_with("… (`baseUrl` at scripts/generateSearch.js); disproved if that `baseUrl` is not marked's"), "{l}");
+        assert!(l.ends_with("… (`baseUrl` at scripts/generateSearch.js); disproved if `baseUrl` is not marked's"), "{l}");
         assert!(!l.contains("marked-c6c9fb1f") && !l.contains("pnpm-lock") && l.len() < 300, "{l}");
         let none = lead_line("xss 1.0.15 → 1.0.16 picks up 1 advisory (affected path not found) (`unstale bump xss`)", None, "", &BTreeMap::new());
         assert_eq!(none, "- xss 1.0.15 → 1.0.16: 1 advisory (affected path not found)");
@@ -4056,9 +4056,9 @@ mod tests {
     #[test]
     fn a_located_lead_names_the_check_that_would_disprove_it() {
         let site = disproof("breaking: Positional arguments are removed", " (`GraphQLError` at src/x.ts)", "graphql", None);
-        assert_eq!(site.as_deref(), Some("disproved if that `GraphQLError` is not graphql's"));
+        assert_eq!(site.as_deref(), Some("disproved if `GraphQLError` is not graphql's"));
         let sec = disproof("security, affected `WebSocketServer` used at src/ws.ts: crash", "", "ws", None);
-        assert_eq!(sec.as_deref(), Some("disproved if that `WebSocketServer` is not ws's"));
+        assert_eq!(sec.as_deref(), Some("disproved if `WebSocketServer` is not ws's"));
         let eos = disproof("end of support: the installed glob 11.0.1 is deprecated by its publisher", "", "glob", None);
         assert_eq!(eos.as_deref(), Some("disproved if the lockfile does not install glob 11.0.1"));
         let then = disproof("end of support: the installed next 14.2.23 is deprecated by its publisher; then breaking: x", " (`<Link` at a.tsx)", "next", None);
