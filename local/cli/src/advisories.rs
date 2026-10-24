@@ -667,6 +667,9 @@ impl Severity {
     }
 }
 
+/// Release spans, each a list of (kind, version) events.
+pub type Spans = Vec<Vec<(String, String)>>;
+
 /// What one OSV record says, kept per id at its `modified` time.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct Doc {
@@ -692,7 +695,7 @@ pub struct Doc {
     /// names commits, not releases): the release events each range's extracted events name, as (kind, version). No
     /// version range says which releases it affects, so the installed one counts only inside one of these spans.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub git_only: Vec<(String, String, Vec<Vec<(String, String)>>)>,
+    pub git_only: Vec<(String, String, Spans)>,
     /// `DOC_SCHEMA` when read: a cached record read before a field was added is fetched again.
     #[serde(default)]
     pub schema: u8,
@@ -748,14 +751,15 @@ pub fn read_osv(v: &Value) -> Doc {
             // An entry with no package (a CVE record's `GIT` ranges): the versions the record's extracted events name
             // as fixed, not commits. It is the repository's own release numbering.
             if a.get("package").is_none() {
-                let f: Vec<String> = a
-                    .get("ranges")
-                    .and_then(Value::as_array)
-                    .into_iter()
-                    .flatten()
-                    .flat_map(|r| r.pointer("/database_specific/extracted_events").and_then(Value::as_array).into_iter().flatten())
-                    .filter_map(|e| e.get("fixed").and_then(Value::as_str).map(String::from))
-                    .collect();
+                let mut f: Vec<String> = vec![];
+                for r in a.get("ranges").and_then(Value::as_array).into_iter().flatten() {
+                    let spans = extracted_spans(r);
+                    f.extend(spans.iter().flatten().filter(|(k, _)| k == "fixed").map(|(_, v)| v.clone()));
+                    // Per repository: the record can name several (sirv's range beside vite's in a vite advisory).
+                    if let Some(repo) = r.get("repo").and_then(Value::as_str) {
+                        git_only.push((String::new(), repo_key(repo), spans));
+                    }
+                }
                 return (String::new(), String::new(), f);
             }
             let p = |k: &str| a.pointer(&format!("/package/{k}")).and_then(Value::as_str).unwrap_or("").to_string();
@@ -764,18 +768,7 @@ pub fn read_osv(v: &Value) -> Doc {
             // them, per range, are what says which versions it affects and which fix it.
             let versions = a.get("versions").and_then(Value::as_array).is_some_and(|v| !v.is_empty());
             if !ranges.is_empty() && !versions && ranges.iter().all(|r| r.get("type").and_then(Value::as_str) == Some("GIT")) {
-                let spans: Vec<Vec<(String, String)>> = ranges
-                    .iter()
-                    .map(|r| {
-                        r.pointer("/database_specific/extracted_events")
-                            .and_then(Value::as_array)
-                            .into_iter()
-                            .flatten()
-                            .filter_map(|e| e.as_object()?.iter().find_map(|(k, v)| Some((k.clone(), v.as_str()?.to_string()))))
-                            .collect()
-                    })
-                    .filter(|s: &Vec<(String, String)>| !s.is_empty())
-                    .collect();
+                let spans: Spans = ranges.iter().flat_map(|r| extracted_spans(r)).collect();
                 let f = spans.iter().flatten().filter(|(k, _)| k == "fixed").map(|(_, v)| v.clone()).collect();
                 git_only.push((p("ecosystem"), p("name"), spans));
                 return (p("ecosystem"), p("name"), f);
@@ -801,6 +794,35 @@ pub fn read_osv(v: &Value) -> Doc {
         git_only,
         schema: DOC_SCHEMA,
     }
+}
+
+/// The release spans a `GIT` range's extracted events give, as (kind, version) events: OSV writes them either as one
+/// flat list of events or as items each holding a `range` of events; commit hashes are left out.
+fn extracted_spans(r: &Value) -> Spans {
+    let event = |e: &Value| -> Option<(String, String)> {
+        let (k, v) = e.as_object()?.iter().find(|(k, _)| matches!(k.as_str(), "introduced" | "fixed" | "last_affected" | "limit"))?;
+        let v = v.as_str()?;
+        (v == "0" || v.starts_with(|c: char| c.is_ascii_digit()) || v.starts_with(['v', 'V'])).then(|| (k.clone(), v.trim_start_matches(['v', 'V']).to_string()))
+            .filter(|(_, v)| v == "0" || v.contains('.'))
+    };
+    let mut flat = vec![];
+    let mut out = vec![];
+    for e in r.pointer("/database_specific/extracted_events").and_then(Value::as_array).into_iter().flatten() {
+        match e.get("range").and_then(Value::as_array) {
+            Some(evs) => out.push(evs.iter().filter_map(event).collect::<Vec<_>>()),
+            None => flat.extend(event(e)),
+        }
+    }
+    out.push(flat);
+    out.retain(|s| s.iter().any(|(k, _)| k == "introduced" || k == "fixed"));
+    out
+}
+
+/// A repository URL's `owner/name`, lowercased: how a record's range and a package's source repository are compared.
+pub(crate) fn repo_key(url: &str) -> String {
+    let u = url.trim().trim_end_matches('/').trim_end_matches(".git").to_ascii_lowercase();
+    let segs: Vec<&str> = u.rsplit(['/', ':']).take(2).collect();
+    segs.iter().rev().copied().collect::<Vec<_>>().join("/")
 }
 
 /// Whether `v` falls inside one of a `GIT`-only entry's extracted release spans: per span, the events in version
@@ -971,7 +993,7 @@ pub fn evaluate(
                 // installed version counts only inside a span its extracted release events give, never as "every
                 // version, no fix" (a CVE record converted from the CVE list, beside the GHSA record with the
                 // package's ranges).
-                let own_git: Vec<&Vec<Vec<(String, String)>>> = d.git_only.iter().filter(|(e, name, _)| e == g.eco && (if g.eco == "PyPI" { crate::pypi::normalize(name) } else { name.clone() }) == nd.name).map(|(_, _, s)| s).collect();
+                let own_git: Vec<&Spans> = d.git_only.iter().filter(|(e, name, _)| e == g.eco && (if g.eco == "PyPI" { crate::pypi::normalize(name) } else { name.clone() }) == nd.name).map(|(_, _, s)| s).collect();
                 let own_any = d.fixed.iter().filter(|(e, name, _)| e == g.eco && (if g.eco == "PyPI" { crate::pypi::normalize(name) } else { name.clone() }) == nd.name).count();
                 if !own_git.is_empty() && own_git.len() == own_any && !own_git.iter().any(|s| in_git_spans(g.eco, &installed, s)) {
                     continue;
@@ -1371,9 +1393,16 @@ pub fn refresh_with(
     for ((eco, n, v), r) in &by_repo {
         let Some(ids) = matches.get(&("GIT".to_string(), r.clone(), v.clone())).cloned() else { continue };
         let own_repo = r.rsplit('/').next().is_some_and(|seg| simple(seg) == simple(n.rsplit('/').next().unwrap_or(n)));
+        // The record's range for this repository says which releases it affects (its extracted release spans): a
+        // version outside them, or a range naming no release at all, is not taken as affected.
+        let inside = |d: &Doc| {
+            let Some(installed) = parse_ver(eco, v) else { return false };
+            let spans: Vec<&Spans> = d.git_only.iter().filter(|(e, k, _)| e.is_empty() && *k == repo_key(r)).map(|(_, _, s)| s).collect();
+            spans.iter().any(|s| in_git_spans(eco, &installed, s))
+        };
         let took: Vec<String> = ids
             .into_iter()
-            .filter(|id| docs.get(id).is_some_and(|d| !d.fixed.is_empty() && d.fixed.iter().all(|(e, _, _)| e.is_empty()) && (own_repo || simple(&d.summary).contains(&simple(n)))))
+            .filter(|id| docs.get(id).is_some_and(|d| !d.fixed.is_empty() && d.fixed.iter().all(|(e, _, _)| e.is_empty()) && (own_repo || simple(&d.summary).contains(&simple(n))) && inside(d)))
             .collect();
         if !took.is_empty() {
             let e = matches.entry((eco.clone(), n.clone(), v.clone())).or_default();
@@ -1902,6 +1931,17 @@ mod tests {
         let inside = read_osv(&rec(serde_json::json!([{"introduced": "2.0.0"}, {"fixed": "2.0.8"}])));
         let (_, items) = run(g, &[("CVE-1", inside)], &[("proxy-addr", "2.0.7", &["CVE-1"])], "2026-10-18");
         assert_eq!(items[0].fix.as_deref(), Some("2.0.8"), "{items:?}");
+        // A package-less record, extracted events as `range` items, one range per repository.
+        let d = read_osv(&serde_json::json!({"id": "CVE-2", "modified": "m", "affected": [{"ranges": [
+            {"type": "GIT", "repo": "https://github.com/lukeed/sirv", "events": [], "database_specific": {"extracted_events": [{"source": "REFERENCES_COMMIT", "range": [{"fixed": "f0113f3f"}]}]}},
+            {"type": "GIT", "repo": "https://github.com/vitejs/vite.git", "events": [], "database_specific": {"extracted_events": [{"range": [{"introduced": "8.0.0"}, {"fixed": "8.0.5"}]}, {"range": [{"introduced": "7.0.0"}, {"fixed": "7.3.2"}]}]}}]}]}));
+        assert_eq!(d.fixed, vec![(String::new(), String::new(), vec!["8.0.5".to_string(), "7.3.2".to_string()])]);
+        let spans = |repo: &str| d.git_only.iter().filter(|(_, k, _)| *k == repo_key(repo)).flat_map(|(_, _, s)| s.clone()).collect::<Vec<_>>();
+        assert!(spans("git+https://github.com/lukeed/sirv").is_empty());
+        let vite = spans("https://github.com/vitejs/vite");
+        assert!(in_git_spans("npm", &util::parse_version("8.0.4").unwrap(), &vite));
+        assert!(!in_git_spans("npm", &util::parse_version("8.3.0").unwrap(), &vite));
+        assert!(!in_git_spans("npm", &util::parse_version("6.9.0").unwrap(), &vite));
     }
 
     /// ueberdosis/tiptap: lib0's CVE-2026-102360 has one range `introduced 0`, `last_affected 1.0.0-rc.32` over two
