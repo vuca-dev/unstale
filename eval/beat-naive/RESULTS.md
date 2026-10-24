@@ -1,9 +1,44 @@
-# Beat-naive: unstale against an unaided coding agent (22 October 2026)
+# Beat-naive: unstale against an unaided coding agent
 
 **Question.** Does unstale beat an unaided coding agent at finding the dependency changes a repository should act on,
-once client cost is counted? Standing target: at least 10x fewer client tokens per tier-A (act-now) find than naive, at
-equal or better precision, on 8 or more comparison repos. Method decisions and open questions live in the vault note
-"Beat-Naive Eval" (not in git).
+once client cost is counted? Method decisions and open questions live in the vault note "Beat-Naive Eval" (not in git).
+The latest result (24 October, pool v3) comes first; the 22 October results on pool v1 follow unchanged.
+
+## Latest: the full report against the plain ask (24 October 2026, build 0.2.5, pool v3)
+
+**What changed in method.** `ab-unstale.py` now scores every risk line of unstale's report, in report order. Before, it
+parsed about 7 lines per repo, so every earlier `unstale_raw` recall below is understated. Pool **v3** is frozen over 32
+attempts (302 items, 136 tier-A) with labels at freeze; capability items are excluded for every arm (risk track).
+
+**Repos.** 19: the 10 comparison repos below plus 9 later scout attempts, pinned at these commits: graphile/crystal
+`65f5704321`, BrianPugh/cyclopts `8a282d6d42`, prowler-cloud/prowler `9a89dc4a4e`, capricorn86/happy-dom `fd163520b7`,
+video-dev/hls.js `363359c511`, wevm/vocs `b46838126f`, bitwarden/clients `dd4d85816b`, opral/paraglide-js `9ad874394b`,
+Automattic/mongoose `2fb34de8f6`. The agent arms run Claude Code headless (`claude -p`, Opus) with Bash, Read, Grep,
+Glob, WebSearch and WebFetch on a blind copy of the repo.
+
+| Arm | Real finds (A+B) | Tier-A | Lines listed | Client tokens / repo | Client tokens / tier-A find |
+|---|---|---|---|---|---|
+| unstale's report alone | **154** | **73** | 1,055 | 25.3K | **6.6K** |
+| Claude Code, plain ask ("What dependency updates have I missed for this repo?") | 40 | 18 | 94 | 409K | 432K |
+| Claude Code, coached exhaustive search at 3x budget | 69 | 34 | 169 | 3.8M | 2.12M |
+
+- **Against the plain ask:** 3.9x the real finds, using about 1/16 the client tokens (65.7x per tier-A find,
+  90% CI [42.8, 132.2] over repo resamples). unstale finds more on 17 of 19 repos (1 tie, 1 fewer). Of the A+B changes
+  either list found, unstale's held about 89% and the plain ask's about 22%.
+- **Against the coached agent at 3x budget:** 2.2x the real finds; 323x per tier-A find
+  [228.9, 432.4]. No naive budget reached unstale's recall.
+- **Not met: top-8 precision.** p@8 (A+B) 0.33 for unstale against 0.44 for naive@3x (diff −0.11 [−0.18, −0.03]). The
+  full report is long (about 55 risk lines a repo, 15% A+B), so the claim is "found", not "precise".
+- **Caveats.** Labels come from a model judge (test-retest about 86%); recall is pooled (no answer key); n = 19, and
+  the 10 comparison repos were tuned on. The per-repo recount (pool items credited by key) agrees with the harness totals
+  within 2 items per arm.
+
+**Reproduce.** `scout.py ab-report --line --pool v3` in the scout harness.
+
+## Earlier: pool v1 (22 October 2026, build 0.2.2)
+
+Everything from here down is the 22 October run. Its `unstale_raw` recall counts only about 7 parsed report lines per
+repo.
 
 ## Data and arms
 
