@@ -1637,6 +1637,67 @@ fn is_word(s: &str) -> bool {
     !s.is_empty() && s.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '$')
 }
 
+/// The external module `text` binds the name a literal starts with to, when it does: the qualifier of `httpx.AsyncClient`
+/// (`import httpx`), or a bare or member name imported by name (`HttpClientRequest` from `effect/http`, `new Agent` with
+/// `Agent` from `undici`). Relative imports and names `text` does not import give `None`: a local re-export or a value
+/// the code cannot place keeps whatever it is.
+pub fn binding_module(text: &str, lit: &str) -> Option<String> {
+    let s = lit.trim().trim_start_matches("new ").trim_start_matches(['.', '<', '@']);
+    let head: String = s.chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '$').collect();
+    if head.is_empty() || head.len() == s.len() && !identifier(&head) && !head.starts_with(|c: char| c.is_ascii_uppercase()) {
+        // A bare plain word (`transport`) is any code's own name; only a qualifier, an identifier or a class is placed.
+        return None;
+    }
+    let qualified = s[head.len()..].starts_with('.');
+    let module = if qualified { module_aliases(text).get(&head.to_ascii_lowercase()).cloned() } else { None };
+    module.or_else(|| import_source(text, &head)).filter(|m| !m.starts_with('.') && !m.is_empty())
+}
+
+/// Whether `text` sets the configuration key `key` to `value` (`"esModuleInterop": false`, `esModuleInterop: false`,
+/// `esModuleInterop = false`, `--esModuleInterop false`), ignoring quotes and case of the value.
+pub fn sets_value(text: &str, key: &str, value: &str) -> bool {
+    let word = |c: char| c.is_ascii_alphanumeric() || c == '_' || c == '$' || c == '-';
+    let value = value.trim_matches(['"', '\'']);
+    text.match_indices(key).any(|(i, _)| {
+        if text[..i].chars().next_back().is_some_and(|c| word(c) && c != '-') {
+            return false;
+        }
+        let rest = text[i + key.len()..].trim_start_matches(['"', '\'']);
+        if rest.starts_with(word) {
+            return false;
+        }
+        let rest = rest.trim_start_matches([' ', '\t']);
+        let rest = rest.strip_prefix([':', '=']).unwrap_or(rest).trim_start_matches([' ', '\t', '"', '\'']);
+        rest.get(..value.len()).is_some_and(|v| v.eq_ignore_ascii_case(value)) && !rest[value.len()..].starts_with(|c: char| c.is_ascii_alphanumeric() || c == '_')
+    })
+}
+
+/// The configuration values a record's terms pin a key to (`"esModuleInterop": false`, `--esModuleInterop false`):
+/// key → values. A term of one key and one plain value only (no call, path or prose).
+pub fn pinned_values(terms: &[String]) -> Vec<(String, String)> {
+    let ident = |s: &str| !s.is_empty() && s.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_') && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
+    let mut out = vec![];
+    for t in terms {
+        let t = t.trim().trim_matches('`');
+        let (k, v) = if let Some(r) = t.strip_prefix("--") {
+            match r.split_once(' ') {
+                Some((k, v)) => (k, v),
+                None => continue,
+            }
+        } else if let Some((k, v)) = t.split_once([':', '=']) {
+            (k, v)
+        } else {
+            continue;
+        };
+        let (k, v) = (k.trim().trim_matches(['"', '\'']), v.trim().trim_matches(['"', '\'']));
+        let value_ok = matches!(v.to_ascii_lowercase().as_str(), "true" | "false" | "null" | "none") || (!v.is_empty() && v.chars().all(|c| c.is_ascii_digit() || c == '.'));
+        if ident(k) && value_ok {
+            out.push((k.to_string(), v.to_string()));
+        }
+    }
+    out
+}
+
 /// The last segment after `.`, `:` or `#`, used as a token when at least 6 characters (`fw_spike._hit`).
 fn tail_of(lit: &str) -> Option<String> {
     let t = lit.rsplit(['.', ':', '#']).next()?;
