@@ -688,13 +688,18 @@ pub struct Doc {
     /// installed line in its events while the text does (`stated_fixes`).
     #[serde(default)]
     pub stated_fixed: Vec<String>,
+    /// Per affected package (ecosystem, name) whose ranges are all `GIT` (a CVE record converted from the CVE list
+    /// names commits, not releases): the release events each range's extracted events name, as (kind, version). No
+    /// version range says which releases it affects, so the installed one counts only inside one of these spans.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub git_only: Vec<(String, String, Vec<Vec<(String, String)>>)>,
     /// `DOC_SCHEMA` when read: a cached record read before a field was added is fetched again.
     #[serde(default)]
     pub schema: u8,
 }
 
 /// The `Doc` fields' version: bumped when a field is added, so cached records are read again once.
-const DOC_SCHEMA: u8 = 2;
+const DOC_SCHEMA: u8 = 3;
 
 /// The versions a record's details text names in a sentence saying the issue is patched or fixed, in order.
 fn stated_fixed(details: &str) -> Vec<String> {
@@ -733,6 +738,7 @@ pub fn read_osv(v: &Value) -> Doc {
     if id.starts_with("MAL-") {
         sev = Some(Severity::Critical); // malicious code in the installed version
     }
+    let mut git_only = vec![];
     let fixed = v
         .get("affected")
         .and_then(Value::as_array)
@@ -752,15 +758,34 @@ pub fn read_osv(v: &Value) -> Doc {
                     .collect();
                 return (String::new(), String::new(), f);
             }
-            let f: Vec<String> = a
-                .get("ranges")
-                .and_then(Value::as_array)
-                .into_iter()
-                .flatten()
+            let p = |k: &str| a.pointer(&format!("/package/{k}")).and_then(Value::as_str).unwrap_or("").to_string();
+            let ranges: Vec<&Value> = a.get("ranges").and_then(Value::as_array).into_iter().flatten().collect();
+            // Only `GIT` ranges (and no version list): their events are commits. The release events extracted from
+            // them, per range, are what says which versions it affects and which fix it.
+            let versions = a.get("versions").and_then(Value::as_array).is_some_and(|v| !v.is_empty());
+            if !ranges.is_empty() && !versions && ranges.iter().all(|r| r.get("type").and_then(Value::as_str) == Some("GIT")) {
+                let spans: Vec<Vec<(String, String)>> = ranges
+                    .iter()
+                    .map(|r| {
+                        r.pointer("/database_specific/extracted_events")
+                            .and_then(Value::as_array)
+                            .into_iter()
+                            .flatten()
+                            .filter_map(|e| e.as_object()?.iter().find_map(|(k, v)| Some((k.clone(), v.as_str()?.to_string()))))
+                            .collect()
+                    })
+                    .filter(|s: &Vec<(String, String)>| !s.is_empty())
+                    .collect();
+                let f = spans.iter().flatten().filter(|(k, _)| k == "fixed").map(|(_, v)| v.clone()).collect();
+                git_only.push((p("ecosystem"), p("name"), spans));
+                return (p("ecosystem"), p("name"), f);
+            }
+            let f: Vec<String> = ranges
+                .iter()
+                .filter(|r| r.get("type").and_then(Value::as_str) != Some("GIT"))
                 .flat_map(|r| r.get("events").and_then(Value::as_array).into_iter().flatten())
                 .filter_map(|e| e.get("fixed").and_then(Value::as_str).map(String::from))
                 .collect();
-            let p = |k: &str| a.pointer(&format!("/package/{k}")).and_then(Value::as_str).unwrap_or("").to_string();
             (p("ecosystem"), p("name"), f)
         })
         .collect();
@@ -773,8 +798,33 @@ pub fn read_osv(v: &Value) -> Doc {
         fixed,
         withdrawn: v.get("withdrawn").is_some(),
         stated_fixed: stated_fixed(&s("/details")),
+        git_only,
         schema: DOC_SCHEMA,
     }
+}
+
+/// Whether `v` falls inside one of a `GIT`-only entry's extracted release spans: per span, the events in version
+/// order, the last one at or below `v` an `introduced` (or a `last_affected` at `v` itself).
+fn in_git_spans(eco: &str, v: &Version, spans: &[Vec<(String, String)>]) -> bool {
+    spans.iter().any(|span| {
+        let mut evs: Vec<(Version, &str)> = span
+            .iter()
+            .filter_map(|(k, x)| Some((if x == "0" { parse_ver(eco, "0.0.0")? } else { parse_ver(eco, x)? }, k.as_str())))
+            .collect();
+        evs.sort_by(|a, b| a.0.cmp(&b.0));
+        let mut affected = false;
+        for (at, kind) in &evs {
+            if at > v {
+                break;
+            }
+            affected = match *kind {
+                "introduced" => true,
+                "last_affected" => at == v,
+                _ => false,
+            };
+        }
+        affected
+    })
 }
 
 /// The qualitative rating of a CVSS v3.x base vector (FIRST's base-score formula: none, low < 4, medium < 7, high < 9,
@@ -917,6 +967,15 @@ pub fn evaluate(
                 }
             }
             for (id, d) in groups {
+                // A record whose every entry for this package has only `GIT` ranges names no release it affects: the
+                // installed version counts only inside a span its extracted release events give, never as "every
+                // version, no fix" (a CVE record converted from the CVE list, beside the GHSA record with the
+                // package's ranges).
+                let own_git: Vec<&Vec<Vec<(String, String)>>> = d.git_only.iter().filter(|(e, name, _)| e == g.eco && (if g.eco == "PyPI" { crate::pypi::normalize(name) } else { name.clone() }) == nd.name).map(|(_, _, s)| s).collect();
+                let own_any = d.fixed.iter().filter(|(e, name, _)| e == g.eco && (if g.eco == "PyPI" { crate::pypi::normalize(name) } else { name.clone() }) == nd.name).count();
+                if !own_git.is_empty() && own_git.len() == own_any && !own_git.iter().any(|s| in_git_spans(g.eco, &installed, s)) {
+                    continue;
+                }
                 raw += 1;
                 let sev = d.severity.unwrap_or(Severity::Unrated);
                 let high = sev >= Severity::High;
@@ -1541,6 +1600,7 @@ mod tests {
             fixed: fixed.iter().map(|(e, n, f)| (e.to_string(), n.to_string(), f.iter().map(|x| x.to_string()).collect())).collect(),
             withdrawn: false,
             stated_fixed: vec![],
+            git_only: vec![],
             schema: DOC_SCHEMA,
         }
     }
@@ -1824,6 +1884,24 @@ mod tests {
         let g = npm_lock(NPM_LOCK, ".buildkite", ".buildkite/package-lock.json");
         let docs = [("GHSA-proxy", doc(Some(Severity::High), "2025-01-01T00:00:00Z", &[("npm", "proxy-addr", &["2.0.8"])], &[]))];
         assert_eq!(run(g, &docs, &[("proxy-addr", "2.0.7", &["GHSA-proxy"])], "2026-10-18").1, vec![], "high, fix admitted, old, and only a CI script runs it");
+    }
+
+    /// sveltejs/kit: OSV's CVE-2026-39363 lists `vite` with only a `GIT` range (extracted releases 8.0.0 to 8.0.5),
+    /// and CVE-2025-58751 lists `sirv` with a `GIT` range and no releases at all. Neither affects every version.
+    #[test]
+    fn a_git_only_entry_affects_only_its_extracted_release_spans() {
+        let rec = |events: serde_json::Value| serde_json::json!({"id": "CVE-1", "modified": "m", "database_specific": {"severity": "HIGH"},
+            "affected": [{"package": {"ecosystem": "npm", "name": "proxy-addr"}, "ranges": [{"type": "GIT", "repo": "r", "events": [{"introduced": "0"}, {"fixed": "f0113f3f"}], "database_specific": {"extracted_events": events}}]}]});
+        let g = npm_lock(NPM_LOCK, ".", "package-lock.json");
+        let outside = read_osv(&rec(serde_json::json!([{"introduced": "1.0.0"}, {"fixed": "1.0.5"}, {"introduced": "2.1.0"}, {"fixed": "2.1.2"}])));
+        assert_eq!(outside.fixed, vec![("npm".to_string(), "proxy-addr".to_string(), vec!["1.0.5".to_string(), "2.1.2".to_string()])]);
+        assert_eq!(run(npm_lock(NPM_LOCK, ".", "package-lock.json"), &[("CVE-1", outside)], &[("proxy-addr", "2.0.7", &["CVE-1"])], "2026-10-18"), (0, vec![]));
+        let commits_only = read_osv(&rec(serde_json::json!([])));
+        assert_eq!(run(npm_lock(NPM_LOCK, ".", "package-lock.json"), &[("CVE-1", commits_only)], &[("proxy-addr", "2.0.7", &["CVE-1"])], "2026-10-18"), (0, vec![]));
+        // Inside a span: shown, with the span's fixed release, never "no fixed version".
+        let inside = read_osv(&rec(serde_json::json!([{"introduced": "2.0.0"}, {"fixed": "2.0.8"}])));
+        let (_, items) = run(g, &[("CVE-1", inside)], &[("proxy-addr", "2.0.7", &["CVE-1"])], "2026-10-18");
+        assert_eq!(items[0].fix.as_deref(), Some("2.0.8"), "{items:?}");
     }
 
     /// ueberdosis/tiptap: lib0's CVE-2026-102360 has one range `introduced 0`, `last_affected 1.0.0-rc.32` over two
