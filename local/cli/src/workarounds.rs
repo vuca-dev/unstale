@@ -491,6 +491,9 @@ pub struct Facts {
     /// Every manifest that declares it does so for development only (`devDependencies`, a dependency group, an
     /// optional extra, the build system): no code that ships runs it.
     pub dev_only: bool,
+    /// Some manifest declares it in one of the project's own extras (`[project.optional-dependencies]`): what users
+    /// install with `pkg[extra]`, so it ships when the project's application code imports it.
+    pub extra: bool,
     pub blocker: Option<String>,
 }
 
@@ -517,6 +520,8 @@ pub struct Decl {
     /// Declared for development only (`devDependencies`, a dev requirements file, a dependency group, an extra, the
     /// build system); `None` for an override, which neither ships nor develops it.
     dev: Option<bool>,
+    /// Declared in one of the project's own extras (`[project.optional-dependencies]`).
+    extra: bool,
     /// What holds its version: "an exact pin" or "an override".
     holds: Option<&'static str>,
 }
@@ -538,7 +543,7 @@ pub fn declarations(repo: &usage::Repo) -> Vec<Decl> {
                 .any(|l| repo.files.iter().any(|(f, _)| *f == if dir.is_empty() { l.to_string() } else { format!("{dir}/{l}") }));
             crate::stack::is_library(&v, own_lockfile)
         });
-        let mut push = |name: String, dev: Option<bool>, holds: Option<&'static str>| out.push(Decl { name, path: path.clone(), app, published, dev, holds });
+        let mut decl = |name: String, dev: Option<bool>, extra: bool, holds: Option<&'static str>| out.push(Decl { name, path: path.clone(), app, published, dev, extra, holds });
         let key = |k: &str| strip_version(k.rsplit('>').next().unwrap_or(k)).to_string();
         match base(path) {
             "package.json" => {
@@ -546,22 +551,22 @@ pub fn declarations(repo: &usage::Repo) -> Vec<Decl> {
                 for field in ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"] {
                     let Some(m) = v.get(field).and_then(|m| m.as_object()) else { continue };
                     for (k, spec) in m {
-                        push(k.clone(), Some(field == "devDependencies"), spec.as_str().is_some_and(exact).then_some("an exact pin"));
+                        decl(k.clone(), Some(field == "devDependencies"), false, spec.as_str().is_some_and(exact).then_some("an exact pin"));
                     }
                 }
                 for field in ["/overrides", "/resolutions", "/pnpm/overrides"] {
                     for k in v.pointer(field).and_then(|m| m.as_object()).into_iter().flat_map(|m| m.keys()) {
-                        push(key(k), None, Some("an override"));
+                        decl(key(k), None, false, Some("an override"));
                     }
                 }
             }
             "pnpm-workspace.yaml" => {
                 for (_, k, _) in yaml_block(text, "overrides") {
-                    push(key(k), None, Some("an override"));
+                    decl(key(k), None, false, Some("an override"));
                 }
                 for (_, k, v) in yaml_block(text, "catalog") {
                     if exact(v) {
-                        push(k.to_string(), None, Some("an exact pin"));
+                        decl(k.to_string(), None, false, Some("an exact pin"));
                     }
                 }
             }
@@ -569,13 +574,14 @@ pub fn declarations(repo: &usage::Repo) -> Vec<Decl> {
                 let Ok(t) = text.parse::<toml::Table>() else { continue };
                 let reqs = |v: Option<&toml::Value>| v.and_then(|d| d.as_array()).into_iter().flatten().filter_map(|r| r.as_str()).map(String::from).collect::<Vec<_>>();
                 for r in reqs(t.get("project").and_then(|p| p.get("dependencies"))) {
-                    push(req_name(&r), Some(false), r.contains("==").then_some("an exact pin"));
+                    decl(req_name(&r), Some(false), false, r.contains("==").then_some("an exact pin"));
                 }
-                let groups = [t.get("dependency-groups"), t.get("project").and_then(|p| p.get("optional-dependencies"))];
-                let mut dev: Vec<String> = groups.iter().flatten().filter_map(|g| g.as_table()).flat_map(|g| g.values()).flat_map(|v| reqs(Some(v))).collect();
-                dev.extend(reqs(t.get("build-system").and_then(|b| b.get("requires"))));
-                for r in dev {
-                    push(req_name(&r), Some(true), None);
+                let lists = |g: Option<&toml::Value>| g.and_then(|g| g.as_table()).into_iter().flat_map(|g| g.values()).flat_map(|v| reqs(Some(v))).collect::<Vec<_>>();
+                let mut dev: Vec<(String, bool)> = lists(t.get("dependency-groups")).into_iter().map(|r| (r, false)).collect();
+                dev.extend(lists(t.get("project").and_then(|p| p.get("optional-dependencies"))).into_iter().map(|r| (r, true)));
+                dev.extend(reqs(t.get("build-system").and_then(|b| b.get("requires"))).into_iter().map(|r| (r, false)));
+                for (r, extra) in dev {
+                    decl(req_name(&r), Some(true), extra, None);
                 }
             }
             name if name.starts_with("requirements") && name.ends_with(".txt") => {
@@ -583,7 +589,7 @@ pub fn declarations(repo: &usage::Repo) -> Vec<Decl> {
                 for line in text.lines().map(str::trim) {
                     let n = req_name(line);
                     if !n.is_empty() {
-                        push(n, Some(dev), line.contains("==").then_some("an exact pin"));
+                        decl(n, Some(dev), false, line.contains("==").then_some("an exact pin"));
                     }
                 }
             }
@@ -608,6 +614,7 @@ pub fn facts(decls: &[Decl], packages: &[String]) -> Facts {
     Facts {
         runtime: mine.iter().any(|d| d.app && d.dev == Some(false)),
         dev_only: !shipped && mine.iter().any(|d| d.dev == Some(true)),
+        extra: mine.iter().any(|d| d.extra),
         // Only application manifests hold back what ships: a pin in an example, a CI script or a test fixture does not.
         blocker: mine.iter().filter(|d| d.app && d.holds.is_some()).min_by_key(|d| !d.published).map(|d| format!("{} in {}", d.holds.unwrap_or_default(), d.path)),
     }
@@ -616,6 +623,18 @@ pub fn facts(decls: &[Decl], packages: &[String]) -> Facts {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_own_extra_is_marked_apart_from_groups() {
+        // kornia: `onnx = ["onnxruntime"]` is what `pip install kornia[onnx]` installs; `dev` reaches it only as `kornia[onnx]`.
+        let mut repo = usage::Repo::default();
+        repo.files.push(("pyproject.toml".into(), "[project]\nname = \"k\"\ndependencies = [\"torch\"]\n[project.optional-dependencies]\nonnx = [\"onnxruntime\"]\ndev = [\"k[onnx]\"]\n[dependency-groups]\nlint = [\"ruff\"]\n".into()));
+        let d = declarations(&repo);
+        let ort = facts(&d, &["onnxruntime".into()]);
+        assert!(ort.dev_only && ort.extra && !ort.runtime);
+        let ruff = facts(&d, &["ruff".into()]);
+        assert!(ruff.dev_only && !ruff.extra);
+    }
 
     #[test]
     fn a_pin_is_named_against_the_published_manifest() {

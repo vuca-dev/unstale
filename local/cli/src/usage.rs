@@ -411,6 +411,12 @@ impl<'a> Scope<'a> {
             return Some(true);
         }
         let base = path.rsplit('/').next().unwrap_or(path).to_ascii_lowercase();
+        // A data file under tests or fixtures (a recorded scanner report, an API response) that names a package
+        // describes it; it cannot call its API. Only a config file the technology reads (named for it, or by its
+        // records) is its use there.
+        if data_fixture(path) && !self.config_names.contains(&base) {
+            return None;
+        }
         if named || self.config_names.contains(&base) {
             return Some(false);
         }
@@ -543,6 +549,12 @@ pub struct Evidence {
 
 /// Text read as data rather than code (fixtures, corpora, recorded responses) when it sits in a test role.
 const DATA_EXT: &[&str] = &["json", "jsonc", "json5", "yml", "yaml", "toml", "sql", "graphql", "gql", "html"];
+
+/// Whether `path` is a data file (`DATA_EXT`) in a test or fixture role: text read as data, never code that calls an
+/// API.
+pub fn data_fixture(path: &str) -> bool {
+    path_role(path) == Role::Test && DATA_EXT.contains(&path.rsplit_once('.').map(|(_, x)| x.to_ascii_lowercase()).unwrap_or_default().as_str())
+}
 
 /// Whether a whole-token hit shows the project already applies a change: application files, or tests that are code
 /// (a fixture or data file holding a literal is not adoption; nor is tooling, documentation or vendored code).
@@ -1455,7 +1467,7 @@ pub fn path_role(path: &str) -> Role {
             "scripts" | "script" | "deploy" | "deployment" | "deployments" | "infra" | "infrastructure" | "k8s" | "kubernetes"
             | "helm" | "terraform" => Role::Tooling,
             "test" | "tests" | "__tests__" | "spec" | "specs" | "__mocks__" | "mocks" | "__fixtures__" | "fixtures" | "fixture"
-            | "testdata" | "test-data" | "test_data" | "e2e" | "cypress" | "playwright" | "eval" | "evals" | "bench" | "benches"
+            | "testdata" | "test-data" | "test_data" | "unittests" | "unittest" | "e2e" | "cypress" | "playwright" | "eval" | "evals" | "bench" | "benches"
             | "benchmark" | "benchmarks" => Role::Test,
             d if d.ends_with("-tests") || d.ends_with("_tests") || d.ends_with("-test") || d.ends_with("_test") => Role::Test,
             d if d.starts_with('.') => Role::Tooling,
@@ -1631,6 +1643,111 @@ fn tail_of(lit: &str) -> Option<String> {
     (t.chars().count() >= 6 && t != lit && is_word(t)).then(|| t.to_string())
 }
 
+/// The modules `text` binds to names, lowercase name → the module's root (`import numpy as np`: `np` → `numpy`;
+/// `import torch.nn`: `torch` → `torch`; `from m import numpy as _np`: `_np` → `numpy`; `import * as z from 'zod'`,
+/// `import R from 'react'`, `const x = require('m')`: the package).
+fn module_aliases(text: &str) -> HashMap<String, String> {
+    let ident = |s: &str| !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$');
+    let js_root = |m: &str| {
+        let mut parts = m.split('/');
+        let first = parts.next().unwrap_or("");
+        if first.starts_with('@') { format!("{first}/{}", parts.next().unwrap_or("")) } else { first.to_string() }.to_ascii_lowercase()
+    };
+    let mut out = HashMap::new();
+    for line in text.lines().map(str::trim) {
+        if let Some(rest) = line.strip_prefix("import ").filter(|r| !r.contains(['\'', '"', '{', '('])) {
+            // Python `import a.b as x, c`.
+            for part in rest.split(',') {
+                let mut w = part.split_whitespace();
+                let module = w.next().unwrap_or("");
+                let root = module.split('.').next().unwrap_or("").to_ascii_lowercase();
+                let name = match (w.next(), w.next()) {
+                    (Some("as"), Some(a)) => a.to_ascii_lowercase(),
+                    _ => root.clone(),
+                };
+                if ident(&root) && ident(&name) {
+                    out.insert(name, root);
+                }
+            }
+        } else if let Some(rest) = line.strip_prefix("from ").filter(|r| !r.starts_with(['\'', '"'])) {
+            // Python `from m import Y as Q`: `Q` is `Y` (often a module, `numpy as _np`).
+            let Some((_, names)) = rest.split_once(" import ") else { continue };
+            for part in names.trim_matches(['(', ')', ' ']).split(',') {
+                let mut w = part.split_whitespace();
+                if let (Some(y), Some("as"), Some(q)) = (w.next(), w.next(), w.next())
+                    && ident(y)
+                    && ident(q)
+                {
+                    out.insert(q.to_ascii_lowercase(), y.to_ascii_lowercase());
+                }
+            }
+        } else if line.starts_with("import ") || line.contains("require(") {
+            // JavaScript: a default or namespace import, or a required module bound to a name.
+            let Some(q) = line.find(['\'', '"']) else { continue };
+            let module = line[q + 1..].split(['\'', '"']).next().unwrap_or("");
+            if module.starts_with('.') || module.is_empty() {
+                continue;
+            }
+            let head = &line[..q];
+            let name = if let Some(h) = head.strip_prefix("import ") {
+                let h = h.trim().trim_end_matches("from").trim().trim_end_matches(',');
+                let h = h.strip_prefix("* as ").unwrap_or(h).split(',').next().unwrap_or("").trim();
+                h.to_string()
+            } else {
+                head.split('=').next().unwrap_or("").split_whitespace().last().unwrap_or("").to_string()
+            };
+            if ident(&name) {
+                out.insert(name.to_ascii_lowercase(), js_root(module));
+            }
+        }
+    }
+    out
+}
+
+/// Whether `q` (a module root, lowercase) is the module the qualifier `r` names: itself, what `r` is bound to, or a
+/// root `r` abbreviates (same first letter, then its letters in order: `np` for numpy, `pd` for pandas, `z` for zod).
+fn qualifier_is(r: &str, r_module: &str, q: &str) -> bool {
+    let q = q.trim_start_matches('@').split('/').next().unwrap_or(q);
+    if q == r || q == r_module || q.is_empty() {
+        return true;
+    }
+    let mut it = q.chars();
+    r.chars().next() == q.chars().next() && r.chars().all(|c| it.any(|d| d == c))
+}
+
+/// Whether every occurrence of the tail `tail` of the qualified literal `lit` in `text` belongs to another module than
+/// the literal's qualifier: `torch.from_dlpack(…)` for `numpy.from_dlpack` (`torch` imported as a module), or a bare
+/// `from_dlpack` that `text` imports from `torch.utils.dlpack`. An owner the code cannot place (a variable, a name
+/// imported from nowhere) keeps the occurrence.
+fn foreign_tail(text: &str, lit: &str, tail: &str, aliases: &mut Option<HashMap<String, String>>) -> bool {
+    let aliases = aliases.get_or_insert_with(|| module_aliases(text));
+    let r = lit.split('.').next().unwrap_or("").to_ascii_lowercase();
+    let r_module = aliases.get(&r).cloned().unwrap_or_else(|| r.clone());
+    let is = |q: &str| qualifier_is(&r, &r_module, q);
+    let word = |c: char| c.is_ascii_alphanumeric() || c == '_' || c == '$';
+    let imported = import_source(text, tail).filter(|m| !m.starts_with('.'));
+    let bare_foreign = imported.as_deref().is_some_and(|m| !is(&m.split(['.', '/']).next().unwrap_or(m).to_ascii_lowercase()) && !is(&m.to_ascii_lowercase()));
+    let mut any = false;
+    for (i, _) in text.match_indices(tail) {
+        if text[..i].chars().next_back().is_some_and(word) || text[i + tail.len()..].chars().next().is_some_and(word) {
+            continue;
+        }
+        any = true;
+        let before = &text[..i];
+        let foreign = if let Some(recv) = before.strip_suffix('.') {
+            let chain: String = recv.chars().rev().take_while(|c| word(*c) || *c == '.').collect::<Vec<_>>().into_iter().rev().collect();
+            let q0 = chain.split('.').next().unwrap_or("").to_ascii_lowercase();
+            aliases.get(&q0).is_some_and(|m| !is(m) && !is(&q0))
+        } else {
+            bare_foreign
+        };
+        if !foreign {
+            return false;
+        }
+    }
+    any
+}
+
 const ANY: u8 = 1;
 const TOKEN: u8 = 2; // bounded by characters outside [\w$]
 const WHOLE: u8 = 4; // bounded by characters outside [\w-] (the applied check)
@@ -1718,6 +1835,7 @@ pub fn find_with_commands(repo: &Repo, usage_lits: &BTreeSet<String>, whole_lits
         usage_lits.iter().map(|l| (l, idx[l], tail_of(l).and_then(|t| idx.get(&t).copied()), is_word(l))).collect();
     // Literals whose tail is a plain word: a hit by the tail alone is recorded as such.
     let plain_tail: Vec<bool> = usage_ix.iter().map(|(_, _, t, _)| t.is_some_and(|t| plain_word(&patterns[t]))).collect();
+    let qualified: Vec<bool> = usage_ix.iter().map(|(l, ..)| qualified_name(l)).collect();
     let whole_ix: Vec<(&String, usize)> = whole_lits.iter().map(|l| (l, idx[l])).collect();
     let mut usage_by_pat: Vec<Vec<usize>> = vec![vec![]; patterns.len()];
     for (i, (_, p, t, _)) in usage_ix.iter().enumerate() {
@@ -1795,6 +1913,7 @@ pub fn find_with_commands(repo: &Repo, usage_lits: &BTreeSet<String>, whole_lits
             return (usage, whole, tail, flags);
         }
         let has = |p: usize, bit: u8| bits.get(&p).is_some_and(|v| v & bit != 0);
+        let mut aliases: Option<HashMap<String, String>> = None;
         let mut cand: Vec<usize> = bits.keys().flat_map(|p| usage_by_pat[*p].iter().copied()).collect();
         cand.sort_unstable();
         cand.dedup();
@@ -1803,8 +1922,11 @@ pub fn find_with_commands(repo: &Repo, usage_lits: &BTreeSet<String>, whole_lits
             if own_layout.contains(&p) {
                 continue;
             }
-            let full = if word_lit { has(p, TOKEN) } else { has(p, ANY) };
-            let by_tail = !word_lit && !full && t.is_some_and(|t| has(t, TOKEN));
+            // A qualified name is whole too: `np.from_dlpack` is not in `jnp.from_dlpack`.
+            let full = if word_lit || qualified[i] { has(p, TOKEN) } else { has(p, ANY) };
+            let by_tail = !word_lit
+                && !full
+                && t.is_some_and(|t| has(t, TOKEN) && !(qualified[i] && foreign_tail(text, usage_ix[i].0, &patterns[t], &mut aliases)));
             if full || by_tail {
                 usage.push(i);
             }
@@ -1962,6 +2084,33 @@ mod tests {
     }
     fn set(x: &[&str]) -> BTreeSet<String> {
         x.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn a_qualified_tail_of_another_module_is_not_a_hit() {
+        // kornia: `numpy.from_dlpack` is not `torch.from_dlpack(...)` nor `from torch.utils.dlpack import from_dlpack`.
+        let r = repo(&[
+            ("a.py", "import torch\nfrom kornia.core.external import numpy as _np\nx = torch.from_dlpack(m)\n"),
+            ("b.py", "from torch.utils.dlpack import from_dlpack\ny = from_dlpack(c)\n"),
+            ("c.py", "from numpy import from_dlpack\ny = from_dlpack(c)\n"),
+            ("d.py", "import numpy as np\ny = np.from_dlpack(c)\n"),
+            ("e.py", "y = arr.from_dlpack(c)\n"),
+            ("f.py", "import jax.numpy as jnp\ny = jnp.from_dlpack(c)\n"),
+        ]);
+        let h = find(&r, &set(&["numpy.from_dlpack", "np.from_dlpack"]), &set(&[]));
+        let files = |l: &str| h.usage.get(l).cloned().unwrap_or_default();
+        assert_eq!(files("numpy.from_dlpack"), vec!["c.py", "d.py", "e.py"], "own module, its alias, an unplaced receiver");
+        assert_eq!(files("np.from_dlpack"), vec!["c.py", "d.py", "e.py"], "`np` abbreviates numpy");
+        assert!(foreign_tail("import { describe } from 'vitest'\ndescribe('x')", "test.describe", "describe", &mut None));
+        assert!(!foreign_tail("import * as z from 'zod'\nz.object({})", "z.object", "object", &mut None));
+    }
+
+    #[test]
+    fn a_data_file_under_tests_is_a_fixture() {
+        assert!(data_fixture("unittests/scans/api_blackduck/many_vulns.json"));
+        assert!(data_fixture("tests/fixtures/report.yaml"));
+        assert!(!data_fixture("unittests/test_x.py"), "test code");
+        assert!(!data_fixture("dojo/settings.json"), "application data");
     }
 
     #[test]
