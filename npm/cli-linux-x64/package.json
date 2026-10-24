@@ -1,6 +1,6 @@
 {
   "name": "@unstale/cli-linux-x64",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "description": "The unstale CLI binary for Linux on x86-64 (static musl build; runs on glibc and musl distributions). Install `@unstale/cli` instead.",
   "license": "AGPL-3.0-only",
   "author": "Jason Draper (https://vuca.dev)",
