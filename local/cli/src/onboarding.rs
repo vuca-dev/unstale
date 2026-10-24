@@ -2151,7 +2151,7 @@ fn subject_met(r: &unstale_schema::catalog::CapabilityRecord, text: &str) -> boo
         }
         // Each identifier the term calls or indexes (`Form(`, `Annotated[`).
         for (i, _) in t.char_indices().filter(|(_, c)| matches!(c, '(' | '[')) {
-            let start = t[..i].rfind(|c: char| !ident(c)).map_or(0, |j| j + 1);
+            let start = t[..i].char_indices().rev().find(|&(_, c)| !ident(c)).map_or(0, |(j, c)| j + c.len_utf8());
             let tok = &t[start..i];
             if !tok.is_empty() && words.iter().any(|w| tok.eq_ignore_ascii_case(w)) && !apis.contains(&tok) {
                 apis.push(tok);
@@ -2274,7 +2274,12 @@ fn signals<'r>(
         .flat_map(|r| out.packages.get(r.technology).into_iter().flatten().chain(std::iter::once(r.technology)).map(|p| norm(p)).collect::<Vec<_>>())
         .collect();
     let words = |t: &str| display_text(&util::one_line(t, 160));
-    let runtime = |name: &str| workarounds::facts(declared, &[name.to_string()]).runtime;
+    // As for a ranked upgrade: a runtime declaration, or an optional set's (an extra's, a dependency group's) or an
+    // undeclared package's import in production code.
+    let runtime = |name: &str| {
+        let f = workarounds::facts(declared, &[name.to_string()]);
+        f.runtime || ((!f.dev_only || f.extra) && production_importers(w, &[name.to_string()]) > 0)
+    };
     let value = |what: &str, name: &str| format!("  value: {what} · package signal, no catalog record needed · {}", if runtime(name) { "runtime code" } else { "tests, tooling or docs only" });
     let mut by: BTreeMap<String, Signal> = BTreeMap::new();
     // A type-stub package retired because its runtime package now ships its own types is a cleanup, not an end of
@@ -4255,6 +4260,8 @@ mod tests {
         let empty = rec("empty scalar form values", "Empty scalar values in form models are treated as missing.", &["exclude_unset=True", "Form", "BaseModel"], ChangeType::BehaviorChange);
         assert!(!subject_met(&empty, "class Item(BaseModel):\n    x: int = 0\n") && subject_met(&empty, "async def f(item: Annotated[Item, Form()]): ..."));
         assert!(subject_met(&fed, "anything"), "terms that call no subject word");
+        let accented = rec("café form", "x", &["café(", "→[", "Form("], ChangeType::Fix);
+        assert!(subject_met(&accented, "Form()") && !subject_met(&accented, "x = 1"), "a multi-byte character before a call");
         assert!(locates(&flag, "pytest --doctest-modules -q") && !locates(&flag, "--doctest-modules-extra"));
         // A term bound to another installed package is that package's API, unless the record names it.
         let installed: std::collections::HashSet<String> = ["httpx", "openai", "effect", "effectplatformbun"].iter().map(|s| s.to_string()).collect();

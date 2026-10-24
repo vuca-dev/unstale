@@ -1995,8 +1995,12 @@ pub(crate) fn runtime_drop_met(rec: &Rec, stack: &Stack) -> Option<String> {
     }
     let mut words = rec.r.subject.split_whitespace();
     let runtime = words.next()?.trim_matches('`');
-    let (floor, source) = stack.runtime_floor(runtime)?;
-    let prereqs: Vec<&str> = rec.r.prerequisites.iter().filter(|p| p.name.eq_ignore_ascii_case(runtime)).filter_map(|p| p.min.as_deref()).collect();
+    let found = stack.runtime_floor(runtime)?;
+    let (floor, source) = found;
+    // A prerequisite on the same runtime, however spelled (`node` for a `Node.js 18` subject), is the record's own
+    // statement of the new minimum and decides alone: a `Python 3.9` subject with `python >= 3.11` also drops 3.10.
+    let same = |name: &str| stack.runtime_floor(name).is_some_and(|f| std::ptr::eq(f, found));
+    let prereqs: Vec<&str> = rec.r.prerequisites.iter().filter(|p| same(&p.name)).filter_map(|p| p.min.as_deref()).collect();
     let met = if !prereqs.is_empty() {
         prereqs.iter().all(|m| parse_version(m).is_some_and(|m| *floor >= m))
     } else {
@@ -3484,6 +3488,7 @@ mod tests {
                 with(rec("lib:py39", "pkg:npm/lib", "2.0.0"), json!({"change_type":"removal","breaking":true,"subject":"Python 3.9"})),
                 with(rec("lib:py311", "pkg:npm/lib", "2.0.0"), json!({"change_type":"removal","breaking":true,"subject":"Python runtime requirement","prerequisites":[{"ecosystem":"pypi","name":"python","min":"3.13"}]})),
                 with(rec("lib:node18", "pkg:npm/lib", "2.0.0"), json!({"change_type":"removal","breaking":true,"subject":"Node.js 18"})),
+                with(rec("lib:node-min", "pkg:npm/lib", "2.0.0"), json!({"change_type":"removal","breaking":true,"subject":"Node.js support","prerequisites":[{"ecosystem":"npm","name":"node","min":"18.0.0"}]})),
             ],
         );
         let mut s = stack(&[("lib", "1.0.0")], Some("18.0.0"));
@@ -3494,6 +3499,7 @@ mod tests {
         assert_eq!(route_of(&out, "lib:py39"), &Route::Applied);
         assert_ne!(route_of(&out, "lib:py311"), &Route::Applied, "3.12 does not meet a 3.13 floor");
         assert_ne!(route_of(&out, "lib:node18"), &Route::Applied, "a range that admits 18 still runs it");
+        assert_eq!(route_of(&out, "lib:node-min"), &Route::Applied, "`node` is the `Node.js` runtime");
         s.python = None;
         let out = run_with(&c, &s, &r, &l);
         assert_ne!(route_of(&out, "lib:py39"), &Route::Applied, "no declared range: nothing is known");

@@ -628,7 +628,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn an_own_extra_is_marked_apart_from_groups() {
+    fn extras_and_dependency_groups_are_optional_sets() {
         // kornia: `onnx = ["onnxruntime"]` is what `pip install kornia[onnx]` installs; `dev` reaches it only as `kornia[onnx]`.
         let mut repo = usage::Repo::default();
         repo.files.push(("pyproject.toml".into(), "[project]\nname = \"k\"\ndependencies = [\"torch\"]\n[project.optional-dependencies]\nonnx = [\"onnxruntime\"]\ndev = [\"k[onnx]\"]\n[dependency-groups]\nlint = [\"ruff\"]\n".into()));
