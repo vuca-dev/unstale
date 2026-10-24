@@ -767,10 +767,13 @@ pub fn read_osv(v: &Value) -> Doc {
             // Only `GIT` ranges (and no version list): their events are commits. The release events extracted from
             // them, per range, are what says which versions it affects and which fix it.
             let versions = a.get("versions").and_then(Value::as_array).is_some_and(|v| !v.is_empty());
-            if !ranges.is_empty() && !versions && ranges.iter().all(|r| r.get("type").and_then(Value::as_str) == Some("GIT")) {
+            // An explicit version list says which releases it affects: the spans then only name the fixes.
+            if !ranges.is_empty() && ranges.iter().all(|r| r.get("type").and_then(Value::as_str) == Some("GIT")) {
                 let spans: Spans = ranges.iter().flat_map(|r| extracted_spans(r)).collect();
                 let f = spans.iter().flatten().filter(|(k, _)| k == "fixed").map(|(_, v)| v.clone()).collect();
-                git_only.push((p("ecosystem"), p("name"), spans));
+                if !versions {
+                    git_only.push((p("ecosystem"), p("name"), spans));
+                }
                 return (p("ecosystem"), p("name"), f);
             }
             let f: Vec<String> = ranges
@@ -1009,13 +1012,27 @@ pub fn evaluate(
                 // package's source repository) the repository's own versions.
                 let own = |e: &String, name: &String| e == g.eco && (if g.eco == "PyPI" { crate::pypi::normalize(name) } else { name.clone() }) == nd.name;
                 let git_only = !d.fixed.is_empty() && d.fixed.iter().all(|(e, _, _)| e.is_empty());
-                let mut fixes: Vec<Version> = d
-                    .fixed
+                // A package-less record's fixes come from the release spans holding the installed version (the matched
+                // repository's), not another repository's or release line's.
+                let span_fixes: Vec<Version> = d
+                    .git_only
                     .iter()
-                    .filter(|(e, name, _)| own(e, name) || (git_only && e.is_empty()))
-                    .flat_map(|(_, _, f)| f.iter().filter_map(|v| parse_ver(g.eco, v)))
+                    .filter(|(e, _, _)| e.is_empty())
+                    .flat_map(|(_, _, s)| s.iter())
+                    .filter(|span| in_git_spans(g.eco, &installed, std::slice::from_ref(*span)))
+                    .flat_map(|span| span.iter().filter(|(k, _)| k == "fixed").filter_map(|(_, v)| parse_ver(g.eco, v)))
                     .filter(|v| *v > installed)
                     .collect();
+                let mut fixes: Vec<Version> = if git_only && !span_fixes.is_empty() {
+                    span_fixes
+                } else {
+                    d.fixed
+                        .iter()
+                        .filter(|(e, name, _)| own(e, name) || (git_only && e.is_empty()))
+                        .flat_map(|(_, _, f)| f.iter().filter_map(|v| parse_ver(g.eco, v)))
+                        .filter(|v| *v > installed)
+                        .collect()
+                };
                 // No fix in the ranges' events: the versions the record's text states as patched, on the installed
                 // version's release line only (same major; same minor below 1.0), as an upgrade within it clears it.
                 if fixes.is_empty() {
