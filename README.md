@@ -11,7 +11,7 @@ Tells Claude Code, Codex and Cursor what changed upstream since their training c
 APIs worth adopting, breaking changes for your next major upgrade, deprecations, and the security and performance
 fixes in each version bump.
 
-**Does it work?** It finds 4x more changes worth acting on than Claude Code alone, using 1/16 of the tokens ([how we measured](eval/beat-naive/RESULTS.md)). [Phoenix](https://github.com/Arize-ai/phoenix/pull/17150) and
+**Does it work?** It finds 4x as many changes worth acting on as Claude Code alone, using 1/16 of the tokens ([how we measured](eval/beat-naive/RESULTS.md)). [Phoenix](https://github.com/Arize-ai/phoenix/pull/17150) and
 [i18next](https://github.com/i18next/i18next/pull/2453) have merged fixes for what it found at their installed
 versions, with no version bump for an update bot to raise. And it had
 [Next.js 16.4.1's critical security fixes](https://github.com/vercel/next.js/security/advisories/GHSA-2464-fhr4-w9xw)

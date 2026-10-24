@@ -401,7 +401,7 @@ export function homePage(pkgs: Package[], version?: string): string {
 <p class="lede">unstale finds what changed in your dependencies and where your code needs it. It reads the release
 notes, migration guides and advisories for your installed versions, and hands Claude Code, Codex or Cursor a cited
 list.</p>
-<p class="lede">It finds 4x more changes worth acting on than Claude Code alone, using 1/16 of the tokens. <a href="${BEAT_NAIVE}">How we measured</a></p>
+<p class="lede">It finds 4x as many changes worth acting on as Claude Code alone, using 1/16 of the tokens. <a href="${BEAT_NAIVE}">How we measured</a></p>
 <p class="hero-facts">Runs locally · Free · Open source</p>
 <div class="get-started" aria-labelledby="get-started">
 <h2 id="get-started">Get started</h2>
@@ -477,7 +477,7 @@ unstale finds what changed in your dependencies and where your code needs it. It
 guides and advisories for your installed versions, and hands Claude Code, Codex or Cursor a cited list. Runs locally,
 free and open source.
 
-It finds 4x more changes worth acting on than Claude Code alone, using 1/16 of the tokens
+It finds 4x as many changes worth acting on as Claude Code alone, using 1/16 of the tokens
 ([how we measured](${BEAT_NAIVE})).
 
 ## What you get
