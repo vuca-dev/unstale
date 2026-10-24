@@ -2086,7 +2086,9 @@ fn locates(r: &unstale_schema::catalog::CapabilityRecord, term: &str) -> bool {
     // (`@pytest.fixture`, `scope="module"`) are any code's, so only a term writing the flag locates it.
     let flag = r.subject.trim().trim_matches('`');
     if usage::cli_flag(flag) && !flag.contains(char::is_whitespace) && r.terms.iter().any(|t| t.0.contains(flag)) {
-        return term.contains(flag);
+        // The flag itself, not a longer one it prefixes (`--doctest-modules-extra`).
+        let flag_char = |c: char| c.is_ascii_alphanumeric() || c == '-' || c == '_';
+        return term.match_indices(flag).any(|(i, _)| !term[i + flag.len()..].starts_with(flag_char) && !term[..i].ends_with(flag_char));
     }
     let replaced = replaced_names(r);
     let writes = |t: &str| {
@@ -4201,9 +4203,11 @@ mod tests {
         assert!(!value_met(&pinned, "{\n  \"compilerOptions\": {\n    \"esModuleInterop\": true,\n  }\n}"));
         assert!(value_met(&pinned, "{ \"compilerOptions\": { \"esModuleInterop\":false } }") && value_met(&pinned, "tsc --esModuleInterop false"));
         assert!(value_met(&named, "anything"), "a record pinning no value");
+        assert!(!value_met(&pinned, "tsc --no-esModuleInterop false") && !value_met(&pinned, "\"myesModuleInterop\": false"));
         // A flag's record is located only by the flag.
         let flag = rec("--doctest-modules", "Autouse fixtures may execute twice when doctest modules are enabled.", &["--doctest-modules", "@pytest.fixture", "scope=\"module\""], ChangeType::BehaviorChange);
         assert!(locates(&flag, "--doctest-modules") && !locates(&flag, "@pytest.fixture") && !locates(&flag, "scope=\"module\""));
+        assert!(locates(&flag, "pytest --doctest-modules -q") && !locates(&flag, "--doctest-modules-extra"));
         // A term bound to another installed package is that package's API, unless the record names it.
         let installed: std::collections::HashSet<String> = ["httpx", "openai", "effect", "effectplatformbun"].iter().map(|s| s.to_string()).collect();
         let redact = rec("HTTP spans", "Sensitive query values are redacted in HTTP spans.", &["HttpClientRequest"], ChangeType::Security);
@@ -4216,6 +4220,7 @@ mod tests {
         let oa = vec!["openai".to_string()];
         assert!(!bound_elsewhere(&client, "httpx.AsyncClient", "import httpx\nhttpx.AsyncClient()\n", &oa, &installed), "the record names httpx");
         assert!(bound_elsewhere(&other, "httpx.AsyncClient", "import httpx\nhttpx.AsyncClient()\n", &oa, &installed));
+        assert!(!bound_elsewhere(&other, "hx.AsyncClient", "from . import httpx as hx\nhx.AsyncClient()\n", &oa, &installed), "a relative import");
         assert!(!bound_elsewhere(&other, "re.search", "import re\nre.search(a, b)\n", &oa, &installed), "not an installed package");
     }
     /// `register` with a sender of one package at a time, as a service without batches is asked.

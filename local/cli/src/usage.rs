@@ -1649,8 +1649,19 @@ pub fn binding_module(text: &str, lit: &str) -> Option<String> {
         return None;
     }
     let qualified = s[head.len()..].starts_with('.');
+    if qualified && relative_alias(text, &head) {
+        return None;
+    }
     let module = if qualified { module_aliases(text).get(&head.to_ascii_lowercase()).cloned() } else { None };
     module.or_else(|| import_source(text, &head)).filter(|m| !m.starts_with('.') && !m.is_empty())
+}
+
+/// Whether `text` binds `name` by a relative Python import (`from . import httpx as hx`, `from .client import hx`): the
+/// local module of that name, not the installed package.
+fn relative_alias(text: &str, name: &str) -> bool {
+    text.lines().map(str::trim).filter_map(|l| l.strip_prefix("from .")).filter_map(|r| r.split_once(" import ")).any(|(_, names)| {
+        names.trim_matches(['(', ')', ' ']).split(',').any(|p| p.split_whitespace().last().is_some_and(|q| q.eq_ignore_ascii_case(name)))
+    })
 }
 
 /// Whether `text` sets the configuration key `key` to `value` (`"esModuleInterop": false`, `esModuleInterop: false`,
@@ -1659,7 +1670,10 @@ pub fn sets_value(text: &str, key: &str, value: &str) -> bool {
     let word = |c: char| c.is_ascii_alphanumeric() || c == '_' || c == '$' || c == '-';
     let value = value.trim_matches(['"', '\'']);
     text.match_indices(key).any(|(i, _)| {
-        if text[..i].chars().next_back().is_some_and(|c| word(c) && c != '-') {
+        // A `-` before the key is only the `--` of a flag (`--esModuleInterop`), not part of another key (`--no-esModuleInterop`).
+        let before = &text[..i];
+        let flag = before.strip_suffix("--").filter(|b| !b.chars().next_back().is_some_and(word));
+        if flag.is_none() && before.chars().next_back().is_some_and(word) {
             return false;
         }
         let rest = text[i + key.len()..].trim_start_matches(['"', '\'']);
