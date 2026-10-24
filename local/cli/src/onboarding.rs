@@ -2331,13 +2331,6 @@ fn signals<'r>(
                 ids.iter().find(|id| usage::in_code(f, t, id, true)).cloned().or_else(|| calls.iter().find(|c| called(f, t, c)).map(|c| format!("{c}()"))).map(|id| format!("security, affected `{id}` used at {f}: {}", words(&it.summary)))
             })
         });
-        // A critical or high advisory on a runtime dependency production code imports, whose fix is on the installed
-        // major (minor on 0.x): a patch or minor bump closes it, so it is consequential even with its path not found
-        // or not checked, and ranks with the upgrades whose change hits this code, not below tooling majors.
-        let on_line = |v: &str| util::parse_version(v).map(|v| (v.major, if v.major == 0 { v.minor } else { 0 }));
-        let severe_fit = runtime(&name)
-            && !importers.is_empty()
-            && items.iter().any(|it| it.severity >= crate::advisories::Severity::High && it.fix.as_deref().and_then(on_line).is_some_and(|f| on_line(&it.version) == Some(f)));
         if let Some(s) = by.get_mut(&key) {
             s.lock = items;
             if s.lead.is_none() {
@@ -2351,11 +2344,10 @@ fn signals<'r>(
         } else {
             "replacement".to_string()
         };
-        let (tier, weight) = match (&reached, severe_fit) {
-            (Some(_), _) => (LEAD_CONSEQUENTIAL, 3),
-            (None, true) => (LEAD_CONSEQUENTIAL, 1),
-            (None, false) => (LEAD_ADVISORY_UNREACHED, 0),
-        };
+        // Severity alone ranks nothing up: an advisory leads only when its affected API is found in production code
+        // (application files outside examples, samples, docs and tests); found nowhere, or not checked, it keeps the
+        // advisory rank, however severe.
+        let (tier, weight) = if reached.is_some() { (LEAD_CONSEQUENTIAL, 3) } else { (LEAD_ADVISORY_UNREACHED, 0) };
         by.insert(key, Signal {
             head: format!("{name} {} → {target} picks up {} security (`unstale bump {name}`)", items[0].version, items.len()),
             tier,
@@ -2810,6 +2802,9 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
                         .filter(move |f| w.repo.text(f).is_none_or(|x| !usage::defines(x, t) && shape_met(&o.rec.r, f, x) && value_met(&o.rec.r, x) && !bound_elsewhere(&o.rec.r, t, x, pk, deps_sq)))
                         .map(move |f| (t, f))
                 })
+                // A site in an example, sample or documentation project is not this code's unless the upgrade is that
+                // project's own copy: it ranks nothing the repository runs.
+                .filter(|(_, f)| standalone || side_project || !matches!(w.repo.role(f), usage::Role::Example | usage::Role::Docs))
                 .collect();
             hits.sort_by_key(|(_, f)| w.repo.role(f));
             hits.first().map(|(t, f)| (t.to_string(), f.to_string()))
@@ -2921,8 +2916,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
     // package (`maintenance`), and a lockfile advisory on the package itself. Each ranks by the same impact table as
     // the upgrades: end of support is consequential; an advisory is security only when its affected API or option is
     // in production code, else it is marked advisory present, affected path not found (not checked when the advisory
-    // names no API). A critical or high one on a runtime dependency with a fix on the installed major is consequential
-    // either way (`signals`). A package an upgrade above
+    // names no API), whatever its severity. A package an upgrade above
     // already shows carries its own signals; one listed only under Other bumps moves here.
     let npm_deprecated: Vec<(String, String)> =
         deprecated.iter().filter(|n| n.purl.starts_with("pkg:npm/")).map(|n| (n.name.clone(), n.version.clone())).collect();
