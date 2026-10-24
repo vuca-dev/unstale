@@ -327,51 +327,44 @@ export function packageMarkdown(p: Package): string {
 
 // Real `unstale init` output on a Next.js and Prisma app (`@unstale/cli` 0.1.0, 17 October 2026), trimmed, in the
 // CLI's tones.
-/** Real report leads on public repositories, shortened, each with the fix its maintainers merged. */
-const FINDS: { repo: string; pkg: string; change: string; outcome: string; url: string }[] = [
-  {
-    repo: "dolanmiu/docx",
-    pkg: "vitest 5.0.5",
-    change: "toBe* spy assertions deprecated in favour of toHaveBeen*, at 14 call sites",
-    outcome: "merged 14 minutes after the PR opened",
-    url: "https://github.com/dolanmiu/docx/pull/3809",
-  },
-  {
-    repo: "mui/material-ui",
-    pkg: "@types/uuid 11.0.0",
-    change: "deprecated by its publisher: a stub, uuid ships its own types",
-    outcome: "maintainer asked for the PR, merged",
-    url: "https://github.com/mui/material-ui/pull/49522",
-  },
-  {
-    repo: "bytedance/deer-flow",
-    pkg: "hast 1.0.0",
-    change: "deprecated by its publisher: \"Renamed to rehype\"",
-    outcome: "merged after an independent review",
-    url: "https://github.com/bytedance/deer-flow/pull/7108",
-  },
-  {
-    repo: "Arize-ai/phoenix",
-    pkg: "ai 7.0.143",
-    change: "streamText fullStream and totalUsage deprecated at the installed version",
-    outcome: "the maintainer's agent fixed it in one turn",
-    url: "https://github.com/Arize-ai/phoenix/pull/17150",
-  },
+const TERMINAL: [string, string][] = [
+  ["cmd", "$ npx @unstale/cli init"],
+  ["fresh", "✓ my-app · Personal setup ready"],
+  ["body", "Mapped 119 direct dependencies from pnpm-lock.yaml and checked local references."],
+  ["amber", "Priority · 31 advisory fixes match installed versions. Review these first."],
+  ["", ""],
+  ["accent", "Upgrades to review · 3 shortlisted"],
+  ["body", "1. next 16.2.1 → 16.4.2 picks up 37 security fixes, 90 bug fixes, 5 performance changes, 20 behaviour changes"],
+  ["body", "2. prisma 6.19.3 → 7.10.0 picks up 8 security fixes, 82 bug fixes, 8 performance changes · unlocks 52 optional capabilities"],
+  ["", ""],
+  ["accent", "Capabilities to explore · 8 shortlisted"],
+  ["body", "1. next · available on 16.2.1 — updateTag provides Server Actions with read-your-writes cache expiration and immediate refresh semantics."],
+  ["muted", "   Reference (unverified): `next/cache` in src/entities/user/model/update-user.action.ts"],
+  ["", ""],
+  ["rule", ""],
+  ["fresh", "NEXT · Paste this prompt into your coding agent"],
+  ["prompt", "Use .unstale/skills/onboarding/SKILL.md to review .unstale/onboarding-report.md against this repository. Rank the upgrades and capabilities by likely impact, explain the trade-offs, and recommend what to do first. Return proposals only; do not edit files."],
+  ["rule", ""],
 ];
 
-function finds(): string {
-  const rows = FINDS.map(
-    (f) =>
-      `<span class="t-accent">${esc(f.repo)} · ${esc(f.pkg)}</span><span class="t-body">${esc(f.change)}</span>` +
-      `<span class="t-fresh">✓ <a href="${esc(f.url)}">${esc(f.outcome)}</a></span>`,
-  ).join(`<span>&nbsp;</span>`);
-  return `<section class="prose finds">
-<h2>Found by unstale, fixed upstream</h2>
-<p>Leads from unstale reports on public repositories, shortened. Each was in effect at the installed version, so no update bot raised it.</p>
+function terminal(): string {
+  const rows = TERMINAL.map(([tone, text]) =>
+    tone === "rule" ? `<span class="t-rule"></span>` : `<span class="t-${tone || "body"}">${esc(text) || "&nbsp;"}</span>`,
+  ).join("");
+  return `<section class="prose example">
+<h2>What <code>unstale init</code> prints</h2>
+<p>Real output on a Next.js and Prisma app, trimmed.</p>
 <figure class="term"><pre>${rows}</pre></figure>
-<p>It also had <a href="https://github.com/vercel/next.js/security/advisories/GHSA-2464-fhr4-w9xw">Next.js 16.4.1&#8217;s critical security fixes</a> before the GitHub advisory database did.</p>
 </section>`;
 }
+
+/** Recent catches: the most consequential finds on public repositories, one line each. */
+const CATCHES: { lead: string; rest: string; url: string }[] = [
+  { lead: "Next.js 16.4.1's critical security fixes", rest: "in the catalog before the GitHub advisory database had them.", url: "https://github.com/vercel/next.js/security/advisories/GHSA-2464-fhr4-w9xw" },
+  { lead: "Phoenix's maintainer", rest: "handed our finding to Claude Code: fixed in one turn, merged the next day.", url: "https://github.com/Arize-ai/phoenix/pull/17150" },
+  { lead: "i18next", rest: "had a broken test hidden behind a deprecated matcher; fixed and merged in four hours.", url: "https://github.com/i18next/i18next/pull/2453" },
+  { lead: "MUI's maintainer", rest: "invited the fix for a deprecated package it still installed, and merged it.", url: "https://github.com/mui/material-ui/pull/49522" },
+];
 
 const SUMMARY =
   "unstale tells you and your coding agent what changed upstream for your package versions and your code. Cited, local, free and open source.";
@@ -430,7 +423,7 @@ ${copyable("unstale init")}
 </dl>
 <a class="catalog-explore" href="#packages">Explore your stack <span aria-hidden="true">↓</span></a>
 </section>
-${finds()}
+${terminal()}
 <section class="prose">
 <h2>What you get</h2>
 <ul>
@@ -452,6 +445,10 @@ versions or any ID. The service, hosted on Cloudflare, sees your IP address. It 
 limits and count each address once per package, and never writes it to storage. To check advisories, the CLI sends the package names and versions your lockfiles resolve to
 <a href="https://osv.dev">OSV</a>, as <code>npm audit</code> would, and it reads the public npm and PyPI registries.</p>
 </details>
+<h2>Recent catches</h2>
+<ul>
+${CATCHES.map((c) => `<li><a href="${esc(c.url)}">${esc(c.lead)}</a> ${esc(c.rest)}</li>`).join("\n")}
+</ul>
 <p class="license">AGPL-3.0 · <a href="${REPO}">GitHub</a></p>
 </section>
 <section id="packages" class="packages prose">
@@ -510,14 +507,9 @@ each address once per package, and never writes it to storage.
 No telemetry. To check advisories, the CLI sends the package names and versions your lockfiles resolve to OSV
 (https://osv.dev), as \`npm audit\` would, and it reads the public npm and PyPI registries.
 
-## Found by unstale, fixed upstream
+## Recent catches
 
-Leads from unstale reports on public repositories, shortened. Each was in effect at the installed version, so no
-update bot raised it.
-
-${FINDS.map((f) => `- **${f.repo}** · ${f.pkg}: ${f.change}. [${f.outcome}](${f.url})`).join("\n")}
-
-It also had [Next.js 16.4.1's critical security fixes](https://github.com/vercel/next.js/security/advisories/GHSA-2464-fhr4-w9xw) before the GitHub advisory database did.
+${CATCHES.map((c) => `- [${c.lead}](${c.url}) ${c.rest}`).join("\n")}
 
 AGPL-3.0, free and open source: ${REPO}
 
