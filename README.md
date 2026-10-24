@@ -1,4 +1,9 @@
-# unstale
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/wordmark-dark.svg">
+    <img alt="unstale" src="docs/assets/wordmark-light.svg" width="400">
+  </picture>
+</h1>
 
 **You don't know what you don't know. Neither does your agent.**
 
