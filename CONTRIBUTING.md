@@ -136,3 +136,19 @@ commits nothing; re-enable it with `gh workflow enable ingest.yml`.
 - **Model calls run centrally, once per record or source**, never per repository on a user's machine.
 - **Ranking changes are pre-registered** and measured on the replay gate (`eval/gate/`), with a held-out split that is
   never used for tuning.
+
+## Wordmark
+
+The CLI, website, and README share the Menlo Bold geometry in `docs/assets/wordmark.json`.
+The CLI embeds its sampled points; the website uses those points for the animated hero and its outlines for the
+header and footer. The README uses the corresponding `wordmark-dark.svg` and `wordmark-light.svg`, with outlined
+letters so no installed font is needed. To regenerate all three assets on macOS, run
+`python3 scripts/wordmark.py` with Pillow and fontTools installed (or pass the path to `Menlo.ttc`).
+
+Preview the website with `npm --prefix gateway run preview:site`, then open `http://127.0.0.1:4174`.
+It builds from `.store/catalog` into a temporary directory; pass another catalog path after `--` if needed.
+Restart after editing the sources. `PORT` overrides the preview port.
+
+Both animations reserve repairs in proportion to amber intensity: one green particle carries one fully stale
+dot's worth of repair, with fractional loads at region edges. Repairs turn their reserved lettering green on
+arrival; passing particles remain green. The CLI uses its existing normal and compact terminal layouts.

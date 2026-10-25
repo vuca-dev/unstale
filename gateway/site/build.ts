@@ -16,8 +16,11 @@ export const INSTALL_NPX = "npx @unstale/cli init";
 export const INSTALL_BREW = "brew install vuca-dev/tap/unstale";
 export const THIN_RECORDS = 10;
 
-/** VS Code's default macOS editor font, with fallbacks for other platforms. */
-export const WORDMARK_FONT = 'Menlo, Monaco, Consolas, "Courier New", monospace';
+/** Shared Menlo Bold outlines and particle mask; no installed font is required. */
+export const WORDMARK = JSON.parse(readFileSync(new URL("../../docs/assets/wordmark.json", import.meta.url), "utf8")) as {
+  paths: string[];
+  points: [number, number][];
+};
 
 type Evidence = { kind: string; url: string; quote?: string };
 type Release = { component: string; version: string; line: string };
@@ -145,7 +148,7 @@ export function prose(s: string): string {
 
 /** Keep the same bold editor typography in the header, footer, and particle hero. */
 export function wordmarkSvg(className: string): string {
-  return `<svg class="${className}" viewBox="2 8 125 25" role="img" aria-label="unstale"><title>unstale</title><text x="5" y="30" fill="currentColor" font-family="${esc(WORDMARK_FONT)}" font-size="28" font-weight="700">unstale</text></svg>`;
+  return `<svg class="${className}" viewBox="4 14 248 50" role="img" aria-label="unstale"><title>unstale</title><g fill="currentColor">${WORDMARK.paths.map((d) => `<path d="${d}"/>`).join("")}</g></svg>`;
 }
 
 const FAVICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 7 9"><rect width="7" height="9" rx="1.4" fill="#0b1113"/>${
@@ -435,7 +438,7 @@ ${CATCHES.map((c) => `<li><a href="${esc(c.url)}">${esc(c.lead)}</a> ${esc(c.res
     description: SUMMARY,
     path: "/",
     body,
-    head: `<script type="application/ld+json">${JSON.stringify(ld)}</script>\n<script>window.UNSTALE_WORDMARK_FONT=${JSON.stringify(WORDMARK_FONT)}</script>\n`,
+    head: `<script type="application/ld+json">${JSON.stringify(ld)}</script>\n<script>window.UNSTALE_WORDMARK_POINTS=${JSON.stringify(WORDMARK.points)}</script>\n`,
   });
 }
 

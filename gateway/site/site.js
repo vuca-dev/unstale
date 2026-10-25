@@ -37,7 +37,7 @@ if (filter) {
 }
 
 const canvas = document.getElementById("wordmark");
-if (canvas && window.UNSTALE_WORDMARK_FONT) {
+if (canvas && window.UNSTALE_WORDMARK_POINTS) {
   const ctx = canvas.getContext("2d");
   const hash = (n) => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
   const smooth = (p) => { p = Math.min(1, Math.max(0, p)); return p * p * (3 - 2 * p); };
@@ -46,19 +46,8 @@ if (canvas && window.UNSTALE_WORDMARK_FONT) {
   const light = matchMedia("(prefers-color-scheme: light)").matches;
   const GW = 256, GH = 80;
 
-  // Sample real bold editor typography into the existing particle animation.
-  const mask = document.createElement("canvas");
-  mask.width = GW; mask.height = GH;
-  const ink = mask.getContext("2d");
-  ink.font = `700 56px ${window.UNSTALE_WORDMARK_FONT}`;
-  ink.fillText("unstale", 10, 60);
-  const pixels = ink.getImageData(0, 0, GW, GH).data;
-  const letters = [];
-  for (let x = 0; x < GW; x++) {
-    for (let y = 0; y < GH; y++) {
-      if (pixels[(y * GW + x) * 4 + 3] >= 128) letters.push([x, y]);
-    }
-  }
+  // The same sampled Menlo Bold geometry is embedded in the CLI and README.
+  const letters = window.UNSTALE_WORDMARK_POINTS;
 
   const repairs = planRepairs(letters, hash, smooth, GW, GH);
 
