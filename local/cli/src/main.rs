@@ -384,7 +384,7 @@ fn init(start: &Path, catalog: Option<String>, mode: Option<Mode>, _yes: bool, q
     );
     let locks: std::collections::BTreeSet<&str> = st.packages.iter().filter_map(|p| p.lockfile.as_deref()).collect();
     if !locks.is_empty() {
-        println!("Versions from: {} (applications); declared range floors for libraries.", locks.into_iter().collect::<Vec<_>>().join(", "));
+        println!("Versions from: {} (applications); declared range floors for npm libraries; the newest release the range admits for Python requirements nothing pins.", locks.into_iter().collect::<Vec<_>>().join(", "));
     }
     for n in st.notes.iter().chain(&st.standalone) {
         println!("Note: {n}");
