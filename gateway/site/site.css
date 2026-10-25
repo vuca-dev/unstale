@@ -119,7 +119,7 @@ ul.changes .meta { font-size: 0.78rem; margin-top: 2px; color: var(--muted); dis
 .catalog-stats dt { color: var(--muted); font-size: 0.85rem; }
 .catalog-stats dd { margin: 0; color: var(--fresh); font-size: clamp(2rem, 6vw, 2.75rem); font-weight: 650; letter-spacing: -0.045em; line-height: 1.2; font-variant-numeric: tabular-nums; }
 .catalog-explore { display: inline-block; margin-top: 14px; font-size: 0.85rem; }
-.hero-facts { margin: 12px 0 0; color: var(--muted); font-size: 0.85rem; }
+.install-facts { margin: 12px 0 0; color: var(--muted); font-size: 0.85rem; }
 .privacy-details { color: var(--muted); font-size: 0.9rem; }
 .privacy-details summary { width: fit-content; cursor: pointer; }
 .privacy-details[open] summary { margin-bottom: 10px; }

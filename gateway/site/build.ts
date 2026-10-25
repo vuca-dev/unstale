@@ -379,17 +379,6 @@ export function homePage(pkgs: Package[], version?: string): string {
 notes, migration guides and advisories for your installed versions, and hands Claude Code, Codex or Cursor a cited
 list.</p>
 <p class="lede">It finds 4x as many changes worth acting on as Claude Code alone, using 1/16 of the tokens. <a href="${BEAT_NAIVE}">How we measured</a></p>
-<p class="hero-facts">Runs locally · Free · Open source</p>
-<div class="get-started" aria-labelledby="get-started">
-<h2 id="get-started">Get started</h2>
-<p class="install-hint">Run in your project directory.</p>
-${copyable(INSTALL_NPX, " big")}
-<details class="brew-install"><summary>Install with Homebrew</summary>
-${copyable(INSTALL_BREW)}
-<p class="install-hint">Then run in your project:</p>
-${copyable("unstale init")}
-</details>
-</div>
 </section>
 <section class="catalog-proof" aria-label="Current catalog coverage">
 <dl class="catalog-stats">
@@ -398,8 +387,23 @@ ${copyable("unstale init")}
 </dl>
 <a class="catalog-explore" href="#packages">Explore your stack <span aria-hidden="true">↓</span></a>
 </section>
+<section class="get-started" aria-labelledby="get-started">
+<h2 id="get-started">Get started</h2>
+<p class="install-hint">Run in your project directory.</p>
+${copyable(INSTALL_NPX, " big")}
+<p class="install-facts">Free and open source.</p>
+<details class="brew-install"><summary>Install with Homebrew</summary>
+${copyable(INSTALL_BREW)}
+<p class="install-hint">Then run in your project:</p>
+${copyable("unstale init")}
+</details>
+</section>
 ${terminal()}
 <section class="prose">
+<h2>Fixes merged upstream</h2>
+<ul>
+${CONTRIBUTIONS.map((c) => `<li><a href="${esc(c.url)}">${esc(c.lead)}</a> ${esc(c.rest)}</li>`).join("\n")}
+</ul>
 <h2>What you get</h2>
 <ul>
 <li><strong>Upgrade plans.</strong> Breaking changes, deprecations and affected files.</li>
@@ -420,10 +424,7 @@ versions or any ID. The service, hosted on Cloudflare, sees your IP address. It 
 limits and count each address once per package, and never writes it to storage. To check advisories, the CLI sends the package names and versions your lockfiles resolve to
 <a href="https://osv.dev">OSV</a>, as <code>npm audit</code> would, and it reads the public npm and PyPI registries.</p>
 </details>
-<h2>Fixes merged upstream</h2>
-<ul>
-${CONTRIBUTIONS.map((c) => `<li><a href="${esc(c.url)}">${esc(c.lead)}</a> ${esc(c.rest)}</li>`).join("\n")}
-</ul>
+
 <p class="license">AGPL-3.0 · <a href="${REPO}">GitHub</a></p>
 </section>
 <section id="packages" class="packages prose">
@@ -457,6 +458,10 @@ free and open source.
 It finds 4x as many changes worth acting on as Claude Code alone, using 1/16 of the tokens
 ([how we measured](${BEAT_NAIVE})).
 
+## Fixes merged upstream
+
+${CONTRIBUTIONS.map((c) => `- [${c.lead}](${c.url}) ${c.rest}`).join("\n")}
+
 ## What you get
 
 - **Upgrade plans.** Breaking changes, deprecations and affected files.
@@ -477,9 +482,7 @@ each address once per package, and never writes it to storage.
 No telemetry. To check advisories, the CLI sends the package names and versions your lockfiles resolve to OSV
 (https://osv.dev), as \`npm audit\` would, and it reads the public npm and PyPI registries.
 
-## Fixes merged upstream
 
-${CONTRIBUTIONS.map((c) => `- [${c.lead}](${c.url}) ${c.rest}`).join("\n")}
 
 AGPL-3.0, free and open source: ${REPO}
 
