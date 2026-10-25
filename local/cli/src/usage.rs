@@ -580,10 +580,11 @@ enum CommentStyle {
     None,
 }
 
+/// A file's comment syntax; `.json` reads as JSONC (`tsconfig.json`, `.eslintrc.json` and editor settings allow `//`).
 fn comment_style(path: &str) -> CommentStyle {
     let ext = path.rsplit_once('.').map(|(_, x)| x.to_ascii_lowercase()).unwrap_or_default();
     match ext.as_str() {
-        "js" | "jsx" | "ts" | "tsx" | "mjs" | "cjs" | "mts" | "cts" | "vue" | "svelte" | "astro" | "jsonc" | "json5" | "prisma" | "graphql" | "gql" => {
+        "js" | "jsx" | "ts" | "tsx" | "mjs" | "cjs" | "mts" | "cts" | "vue" | "svelte" | "astro" | "json" | "jsonc" | "json5" | "prisma" | "graphql" | "gql" => {
             CommentStyle::CLike
         }
         "py" | "pyi" | "yml" | "yaml" | "toml" => CommentStyle::Hash,
