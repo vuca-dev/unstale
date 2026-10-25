@@ -185,7 +185,6 @@ async function drain(args: string[]): Promise<void> {
     await tick?.();
   };
   await take();
-  console.error(JSON.stringify({ event: "registry_poll", ...await service.pollChanges() }));
   let pulling: Promise<void> | undefined;
   const again = pullMs
     ? setInterval(() => {
@@ -212,8 +211,11 @@ async function drain(args: string[]): Promise<void> {
     earlyMinutes !== undefined && Number.isFinite(earlyMinutes)
       ? { due: () => Date.now() >= t0 + earlyMinutes * 60_000 && earlyDue(service, followed), graceMs: Math.max(0, Number(values["early-grace-minutes"] ?? 1) || 0) * 60_000 }
       : undefined;
-  const result = await service
-    .drain(t0 + minutes * 60_000, grace * 60_000, 500, early)
+  const result = await service.pollChanges()
+    .then((poll) => {
+      console.error(JSON.stringify({ event: "registry_poll", ...poll }));
+      return service.drain(t0 + minutes * 60_000, grace * 60_000, 500, early);
+    })
     .finally(() => (clearTimeout(first), clearInterval(every), clearInterval(again)));
   await pulling;
   // Ended early: this cycle publishes now, not at its deadline.

@@ -693,7 +693,8 @@ export class CoverageService {
     const read = opts.read ?? ((purl: string) => latestVersion(http, purl, { throwRateLimits: true }));
     let paused = false;
     const deadline = Date.now() + (opts.milliseconds ?? 60_000);
-    const jobs = [...this.jobs.values()].filter((j) => j.state === "monitoring" && !j.merged_into && j.descriptor)
+    const jobs = [...this.jobs.values()].filter((j) => j.state === "monitoring" && !j.merged_into && j.descriptor
+      && !(Date.parse(j.paused_until ?? "") > Date.now()))
       .sort((a, b) => (Date.parse(a.registry_polled ?? "") || 0) - (Date.parse(b.registry_polled ?? "") || 0))
       .slice(0, opts.limit ?? 200);
     let attempted = 0, checked = 0, changed = 0;

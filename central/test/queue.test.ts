@@ -441,9 +441,13 @@ test("bounded registry polling promotes changes, rotates attempts and leaves ful
     job.retry_at = new Date(Date.now() + 6 * 3600_000).toISOString();
     return job;
   };
+  const paused = add("paused");
+  paused.paused_until = new Date(Date.now() + 3600_000).toISOString();
   const changed = add("changed"), unchanged = add("unchanged"), failed = add("failed");
   const read = vi.fn(async (purl: string) => purl.endsWith("changed") && !purl.endsWith("unchanged") ? "2.0.0" : "1.0.0");
   expect(await service.pollChanges({ limit: 2, read })).toEqual({ attempted: 2, checked: 2, changed: 1 });
+  expect(read.mock.calls.map(([purl]) => purl)).toEqual([changed.purl, unchanged.purl]);
+  expect(paused.registry_polled).toBeUndefined();
   expect(changed.change_detected).toBeDefined();
   expect(service.queue()[0]?.purl).toBe(changed.purl);
   expect(unchanged.change_detected).toBeUndefined();
