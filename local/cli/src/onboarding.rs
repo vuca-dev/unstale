@@ -2276,9 +2276,16 @@ fn signals<'r>(
     let words = |t: &str| display_text(&util::one_line(t, 160));
     // As for a ranked upgrade: a runtime declaration, or an optional set's (an extra's, a dependency group's) or an
     // undeclared package's import in production code.
+    // Memoised per package: the import check scans the application tree, and each signal asks twice (runtime, value).
+    let seen: std::cell::RefCell<BTreeMap<String, bool>> = Default::default();
     let runtime = |name: &str| {
+        if let Some(&r) = seen.borrow().get(name) {
+            return r;
+        }
         let f = workarounds::facts(declared, &[name.to_string()]);
-        f.runtime || ((!f.dev_only || f.extra) && production_importers(w, &[name.to_string()]) > 0)
+        let r = f.runtime || ((!f.dev_only || f.extra) && production_importers(w, &[name.to_string()]) > 0);
+        seen.borrow_mut().insert(name.to_string(), r);
+        r
     };
     let value = |what: &str, name: &str| format!("  value: {what} · package signal, no catalog record needed · {}", if runtime(name) { "runtime code" } else { "tests, tooling or docs only" });
     let mut by: BTreeMap<String, Signal> = BTreeMap::new();
