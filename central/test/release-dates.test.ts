@@ -247,15 +247,15 @@ describe("conditional release listings", () => {
     expect(requests[0]?.etag).toBeNull();
   });
 
-  test("changing repository or tag rules discards the previous validator", async () => {
+  test.each(["repository", "tags"])("changing %s discards the previous validator", async (change) => {
     const path = join(dir, "releases", JSDOM.id, "index.json");
     writeAtomic(path, JSON.stringify({ checked: new Date().toISOString(), tagPattern: JSDOM.tag.source,
-      matched: true, releases: [stored("v30.0.0", "30.0.0", "2026-07-28")], listing: { repo: "previous/repo", etag: '"wrong"', reconciled: new Date().toISOString() } }));
+      matched: true, releases: [stored("v30.0.0", "30.0.0", "2026-07-28")], listing: { repo: change === "repository" ? "previous/repo" : JSDOM.repo, etag: '"wrong"', reconciled: new Date().toISOString() } }));
     vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
       expect(new Headers(init?.headers).has("If-None-Match")).toBe(false);
       return Response.json(url.includes("registry.npmjs.org") ? { name: "jsdom", time: NPM_TIME } : []);
     });
-    await fetchReleases(JSDOM, { refresh: true });
+    await fetchReleases(change === "tags" ? { ...JSDOM, tag: /^v(\d+\.\d+\.\d+)$/ } : JSDOM, { refresh: true });
     expect(JSON.parse(readFileSync(path, "utf8")).listing).toBeUndefined();
   });
 });
