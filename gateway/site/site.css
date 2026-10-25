@@ -126,10 +126,15 @@ ul.changes .meta { font-size: 0.78rem; margin-top: 2px; color: var(--muted); dis
 .prose .license { margin-top: 24px; color: var(--muted); font-size: 0.85rem; }
 .package-empty { color: var(--muted); font-size: 0.92rem; }
 
-.get-started { margin-top: 26px; }
-.get-started h2 { font-size: 1rem; margin: 0 0 4px; }
+.get-started { margin-top: 40px; }
+.get-started h2 { font-size: clamp(2.25rem, 6vw, 3rem); font-weight: 750; letter-spacing: -0.04em; line-height: 1.1; margin: 0 0 12px; }
 .install-hint { margin: 0 0 10px; font-size: 0.85rem; color: var(--muted); }
-.get-started .cmd.big { margin-top: 0; }
+.get-started > .install-hint { font-size: 1rem; margin-bottom: 16px; }
+.get-started > .cmd.big { width: 100%; min-height: 80px; margin-top: 0; padding: 14px 18px; gap: 14px; border-color: color-mix(in srgb, var(--fresh) 55%, var(--line)); border-radius: 12px; }
+.get-started > .cmd.big code { flex: 1; min-width: 0; font-size: clamp(1rem, 3.5vw, 1.4rem); }
+.get-started > .cmd.big .copy { flex: none; width: 48px; height: 48px; margin-left: auto; background: var(--fresh); color: var(--bg); border-color: var(--fresh); }
+.get-started > .cmd.big .copy:hover { background: color-mix(in srgb, var(--fresh) 85%, var(--fg)); }
+.get-started > .cmd.big .copy svg { width: 22px; height: 22px; }
 .copy { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; padding: 8px; }
 .copy svg { width: 18px; height: 18px; flex: none; }
 .copy .copied-icon, .copy.copied .copy-icon { display: none; }
