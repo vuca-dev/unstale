@@ -330,8 +330,7 @@ function terminal(): string {
     tone === "rule" ? `<span class="t-rule"></span>` : `<span class="t-${tone || "body"}">${esc(text) || "&nbsp;"}</span>`,
   ).join("");
   return `<section class="prose example">
-<h2>What <code>unstale init</code> prints</h2>
-<p>Real output on a Next.js and Prisma app, trimmed.</p>
+<p>Example output of <code>unstale init</code> on a Next.js and Prisma app</p>
 <figure class="term"><pre>${rows}</pre></figure>
 </section>`;
 }
