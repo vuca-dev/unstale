@@ -39,7 +39,7 @@ h1, h2, h3 { letter-spacing: -0.01em; line-height: 1.25; }
 /* Header and footer */
 .top { position: sticky; top: 0; z-index: 5; background: color-mix(in srgb, var(--bg) 90%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
 .top .wrap { display: flex; align-items: center; justify-content: space-between; height: 52px; }
-.mark { display: block; height: 18px; width: auto; fill: var(--fresh); }
+.mark { display: block; height: 18px; width: auto; color: var(--fresh); }
 .mark.small { display: inline-block; height: 11px; margin-right: 10px; vertical-align: -1px; }
 .top nav a { margin-left: 22px; color: var(--muted); font-size: 0.92rem; }
 .top nav a:hover { color: var(--fg); text-decoration: none; }

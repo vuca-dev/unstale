@@ -4,7 +4,7 @@
 // sitemap.xml, robots.txt, llms.txt, llms-full.txt, security.txt and _headers, and an index.md beside every page for
 // agents. Pages are generated from the catalog alone, with no per-package content. A package with fewer than
 // THIN_RECORDS changes gets a page but is not indexed by search engines.
-// The look follows the CLI's `init` screen: its dot-matrix wordmark (GLYPHS, local/cli/src/onboarding_ui.rs) and its
+// The look follows the CLI's `init` screen: its particle wordmark and its
 // tones (fresh green, stale amber, teal accent, muted).
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -16,16 +16,8 @@ export const INSTALL_NPX = "npx @unstale/cli init";
 export const INSTALL_BREW = "brew install vuca-dev/tap/unstale";
 export const THIN_RECORDS = 10;
 
-/** The CLI's wordmark, "unstale", one 5×7 glyph per letter (rows top to bottom; 1 = dot). */
-export const GLYPHS: string[][] = [
-  ["00000", "00000", "10001", "10001", "10001", "10011", "01101"],
-  ["00000", "00000", "11110", "10001", "10001", "10001", "10001"],
-  ["00000", "00000", "01111", "10000", "01110", "00001", "11110"],
-  ["00100", "00100", "11111", "00100", "00100", "00100", "00010"],
-  ["00000", "00000", "01110", "00001", "01111", "10001", "01111"],
-  ["01100", "00100", "00100", "00100", "00100", "00100", "01110"],
-  ["00000", "00000", "01110", "10001", "11111", "10000", "01111"],
-];
+/** VS Code's default macOS editor font, with fallbacks for other platforms. */
+export const WORDMARK_FONT = 'Menlo, Monaco, Consolas, "Courier New", monospace';
 
 type Evidence = { kind: string; url: string; quote?: string };
 type Release = { component: string; version: string; line: string };
@@ -151,26 +143,9 @@ export function prose(s: string): string {
   return esc(s).replace(/`([^`]+)`/g, "<code>$1</code>");
 }
 
-/** The wordmark as an SVG, drawn as the CLI draws it: each glyph pixel a 4×3 block of braille sub-dots (the CLI's
- * scale 3, at its grid offsets so dots group into the same braille cells), cells twice as tall as wide. */
+/** Keep the same bold editor typography in the header, footer, and particle hero. */
 export function wordmarkSvg(className: string): string {
-  const dots = new Set<string>();
-  GLYPHS.forEach((glyph, letter) =>
-    glyph.forEach((row, y) =>
-      [...row].forEach((c, x) => {
-        if (c !== "1") return;
-        for (let dy = 0; dy < 3; dy++)
-          for (let dx = 0; dx <= 3; dx++) {
-            const sx = 3 + (letter * 6 + x) * 3 + dx;
-            const sy = 7 + y * 3 + dy;
-            const cx = Math.floor(sx / 2) + (sx % 2 ? 0.68 : 0.32) - 1;
-            const cy = Math.floor(sy / 4) * 2 + ((sy % 4) + 0.5) * 0.5 - 2;
-            dots.add(`<circle cx="${cx.toFixed(2)}" cy="${cy.toFixed(2)}" r="0.15"/>`);
-          }
-      }),
-    ),
-  );
-  return `<svg class="${className}" viewBox="0.4 1.5 62.2 10.5" role="img" aria-label="unstale"><title>unstale</title>${[...dots].join("")}</svg>`;
+  return `<svg class="${className}" viewBox="2 8 125 25" role="img" aria-label="unstale"><title>unstale</title><text x="5" y="30" fill="currentColor" font-family="${esc(WORDMARK_FONT)}" font-size="28" font-weight="700">unstale</text></svg>`;
 }
 
 const FAVICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 7 9"><rect width="7" height="9" rx="1.4" fill="#0b1113"/>${
@@ -216,7 +191,7 @@ ${o.head ?? ""}</head>
 ${o.body}
 </main>
 <footer class="wrap"><p>${wordmarkSvg("mark small")}<span>AGPL-3.0 · <a href="${REPO}">GitHub</a> · <a href="${NPM_URL}">npm</a> · <a href="${REPO}/blob/main/SECURITY.md">Security</a> · <a href="/llms.txt">llms.txt</a> · by <a href="https://vuca.dev">Jason Draper</a></span></p></footer>
-<script src="/site.js" defer></script>
+<script src="/site.js" type="module"></script>
 </body>
 </html>
 `;
@@ -460,7 +435,7 @@ ${CATCHES.map((c) => `<li><a href="${esc(c.url)}">${esc(c.lead)}</a> ${esc(c.res
     description: SUMMARY,
     path: "/",
     body,
-    head: `<script type="application/ld+json">${JSON.stringify(ld)}</script>\n<script>window.UNSTALE_GLYPHS=${JSON.stringify(GLYPHS)}</script>\n`,
+    head: `<script type="application/ld+json">${JSON.stringify(ld)}</script>\n<script>window.UNSTALE_WORDMARK_FONT=${JSON.stringify(WORDMARK_FONT)}</script>\n`,
   });
 }
 
@@ -614,7 +589,7 @@ export function build(site: string, now = new Date().toISOString(), version?: st
     write(site, join(p.path, "index.html"), packagePage(p, version));
     write(site, join(p.path, "index.md"), packageMarkdown(p));
   }
-  for (const f of ["site.css", "site.js"]) write(site, f, readFileSync(new URL(`./${f}`, import.meta.url), "utf8"));
+  for (const f of ["site.css", "site.js", "wordmark-repairs.js"]) write(site, f, readFileSync(new URL(`./${f}`, import.meta.url), "utf8"));
   write(site, "favicon.svg", FAVICON);
   write(site, "sitemap.xml", sitemap(pkgs, now));
   write(site, "robots.txt", `User-agent: *\nAllow: /\n\nSitemap: ${ORIGIN}/sitemap.xml\n`);

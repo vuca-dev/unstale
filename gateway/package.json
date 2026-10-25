@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "dev": "wrangler dev",
+    "preview:site": "node site/preview.ts",
     "deploy": "wrangler deploy"
   },
   "devDependencies": {
