@@ -67,9 +67,9 @@ if (reservedPlan > CAP) throw Error(`planned reservation $${reservedPlan} exceed
 const plan = {
   arms, counts: { h1: h1.length, h2: h2.length }, seed: "compact-20261025", concurrency: CONCURRENCY,
   planned_reserved_dollars: reservedPlan, price_per_million_input: PRICE * 1e6, cap_dollars: CAP, retries: 0,
-  data_sha256: { h1: sha256(readFileSync(h1path)), h2: sha256(readFileSync(h2path)) },
+  data_sha256: { h1: sha256(readFileSync(h1path)), h2: sha256(readFileSync(h2path)), h1_labels: sha256(readFileSync(join(root, "eval/select/holdout/classify/labels/adjudicated.json"))) },
   unit_sha256: sha256(canonical(units)),
-  decision: "Exploratory on reused H1/H2. Keep live thresholds 0.5. No measured decline in breaking recall/precision, obligation recall, change_type accuracy, benefit recall/precision, actionable recall or benefit exact agreement. Examine section-cluster paired intervals and baseline repeat noise. No production adoption without fresh independent confirmation.",
+  acceptance_rule: "Exploratory on reused H1/H2. Keep live thresholds 0.5. Require no measured decline in breaking recall/precision, obligation recall, change_type accuracy, benefit recall/precision, actionable recall or benefit exact agreement. Examine section-cluster paired intervals and baseline repeat noise. No production adoption without fresh independent confirmation.",
 };
 mkdirSync(out, { recursive: true });
 const planText = JSON.stringify(plan, null, 2) + "\n";

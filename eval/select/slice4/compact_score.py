@@ -3,6 +3,8 @@ import argparse
 import collections
 import importlib.util
 import json
+import hashlib
+import subprocess
 import os
 import random
 
@@ -16,6 +18,40 @@ BENEFITS = ("security", "correctness", "performance", "cost", "maintainability")
 def read(path):
     with open(path) as f:
         return json.load(f)
+
+
+def validate_inputs(root, plan, reference_commit=None):
+    paths = {"h1": "eval/select/holdout/classify/records.json", "h2": "eval/select/out/slice4/h2-units.json",
+             "h1_labels": "eval/select/holdout/classify/labels/adjudicated.json"}
+    expected = dict(plan["data_sha256"])
+    # The original screen predates a separate label hash. Its labels are tracked in the pre-call protocol commit;
+    # require that immutable reference explicitly instead of silently trusting today's working tree.
+    if "h1_labels" not in expected:
+        if not reference_commit:
+            raise ValueError("legacy plan needs --reference-commit naming the pre-call commit")
+        saved = subprocess.check_output(["git", "show", reference_commit + ":" + paths["h1_labels"]], cwd=HERE)
+        expected["h1_labels"] = hashlib.sha256(saved).hexdigest()
+    for key, path in paths.items():
+        with open(os.path.join(root, path), "rb") as f:
+            actual = hashlib.sha256(f.read()).hexdigest()
+        if actual != expected[key]:
+            raise ValueError("frozen input changed: " + key)
+    if "unit_sha256" in plan:
+        h1 = read(os.path.join(root, paths["h1"]))["records"]
+        h2 = read(os.path.join(root, paths["h2"]))["units"]
+        units = [{"id": "h1:" + r["id"], "set": "h1", "state": r["state"]} for r in h1]
+        for r in h2:
+            incoming = r["incoming"]
+            state = {"technology": r["name"], "source": {"upgrade_guide": "upgrade guide", "docs": "official documentation change"}.get(incoming.get("kind"), "release notes"),
+                     "release": incoming["version"], "subject": incoming["subject"], "summary": incoming["summary"],
+                     "evidence": incoming["quote"], "introduces": incoming["introduces"], "replaces": incoming["replaces"]}
+            state.update({k: incoming[k] for k in ("facet", "section") if incoming.get(k)})
+            units.append({"id": r["id"], "set": "h2", "state": state})
+        units.sort(key=lambda u: hashlib.sha256((plan["seed"] + ":" + u["id"]).encode()).hexdigest())
+        digest = hashlib.sha256(json.dumps(units, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
+        if digest != plan["unit_sha256"]:
+            raise ValueError("frozen input changed: derived unit states")
+    return {"sha256": expected, "legacy_reference_commit": reference_commit}
 
 
 def prediction(c):
@@ -101,8 +137,10 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data-root", required=True)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--reference-commit")
     args = ap.parse_args()
     plan = read(os.path.join(args.out, "plan.json"))
+    provenance = validate_inputs(args.data_root, plan, args.reference_commit)
     base = os.path.join(args.data_root, "eval/select")
     h1 = read(os.path.join(base, "holdout/classify/records.json"))["records"]
     h1ref = sc.classify_ref(os.path.join(base, "holdout/classify/labels/adjudicated.json"))
@@ -110,7 +148,7 @@ def main():
     refs = {"h1": {"h1:" + r["id"]: h1ref[r["id"]] for r in h1}, "h2": {r["id"]: r for r in h2}}
     clusters = {"h1": {"h1:" + r["id"]: r["source_key"].split("#")[0] for r in h1}, "h2": {r["id"]: r["section"] for r in h2}}
     usage = read(os.path.join(args.out, "usage.json"))
-    report = {"plan_sha256": __import__("hashlib").sha256(open(os.path.join(args.out, "plan.json"), "rb").read()).hexdigest(), "screen_only": True, "arms": {}, "comparisons": {}}
+    report = {"plan_sha256": __import__("hashlib").sha256(open(os.path.join(args.out, "plan.json"), "rb").read()).hexdigest(), "screen_only": True, "reference_provenance": provenance, "arms": {}, "comparisons": {}}
     all_vectors = {}
     for arm in plan["arms"]:
         answers = read(os.path.join(args.out, arm + ".json"))

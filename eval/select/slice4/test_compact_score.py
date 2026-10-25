@@ -1,4 +1,7 @@
 import unittest
+import hashlib
+import os
+import tempfile
 import compact_score as c
 
 
@@ -11,6 +14,27 @@ def answer(change_type="removal", breaking=True):
 
 
 class Scoring(unittest.TestCase):
+    def test_changed_input_or_reference_is_rejected_before_scoring(self):
+        paths = {"h1": "eval/select/holdout/classify/records.json", "h2": "eval/select/out/slice4/h2-units.json",
+                 "h1_labels": "eval/select/holdout/classify/labels/adjudicated.json"}
+        with tempfile.TemporaryDirectory() as root:
+            for path in paths.values():
+                os.makedirs(os.path.dirname(os.path.join(root, path)), exist_ok=True)
+                with open(os.path.join(root, path), "wb") as f:
+                    f.write(b"{}")
+            plan = {"data_sha256": {k: hashlib.sha256(b"{}").hexdigest() for k in paths}}
+            c.validate_inputs(root, plan)
+            for path in paths.values():
+                with open(os.path.join(root, path), "wb") as f:
+                    f.write(b"changed")
+                with self.assertRaisesRegex(ValueError, "frozen input changed"):
+                    c.validate_inputs(root, plan)
+                with open(os.path.join(root, path), "wb") as f:
+                    f.write(b"{}")
+            del plan["data_sha256"]["h1_labels"]
+            with self.assertRaisesRegex(ValueError, "legacy plan needs"):
+                c.validate_inputs(root, plan)
+
     def test_missing_answers_are_wrong_and_do_not_reduce_denominators(self):
         refs = {"a": {"breaking": True, "obligation": True, "change_types": ["removal"]},
                 "b": {"breaking": False, "obligation": False, "change_types": ["fix"]}}

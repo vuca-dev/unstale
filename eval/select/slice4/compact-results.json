@@ -684,7 +684,7 @@
       "h2": "52c97719a1d58184c7fcc7cf45abc4516c46f2c1b999e45003f8e7bea69cbd97"
     },
     "unit_sha256": "4280e3f4da214f86f349457ff480cb3a701f5ce9471b2fc845c9009aa5708cc8",
-    "decision": "Exploratory on reused H1/H2. Keep live thresholds 0.5. No measured decline in breaking recall/precision, obligation recall, change_type accuracy, benefit recall/precision, actionable recall or benefit exact agreement. Examine section-cluster paired intervals and baseline repeat noise. No production adoption without fresh independent confirmation."
+    "acceptance_rule": "Exploratory on reused H1/H2. Keep live thresholds 0.5. Require no measured decline in breaking recall/precision, obligation recall, change_type accuracy, benefit recall/precision, actionable recall or benefit exact agreement. Examine section-cluster paired intervals and baseline repeat noise. No production adoption without fresh independent confirmation."
   },
   "pricing_source": "https://typesafe.ai/ ($42/billion input tokens, verified 2026-10-25); estimates from reported token usage, not invoice charges",
   "total": {
@@ -722,5 +722,14 @@
     "baseline": "configuration",
     "surface_arm": "runtime_internal",
     "impact": "would cease to count as actionable in the tool"
-  }
+  },
+  "reference_provenance": {
+    "sha256": {
+      "h1": "fc5ab1984da3e854fdda593f40837ee01291ca464c6e7114f01f0de06e59648a",
+      "h2": "52c97719a1d58184c7fcc7cf45abc4516c46f2c1b999e45003f8e7bea69cbd97",
+      "h1_labels": "aa6a92b8566acc25888f76482129ba838954ad00522b453bcab3dec2d28c5669"
+    },
+    "legacy_reference_commit": "3755faa"
+  },
+  "protocol_schema_note": "The protocol field is the predeclared acceptance criterion, not the outcome. The original plan hash is retained. H1 labels were verified against the tracked reference in the pre-call protocol commit; their separate hash was not in the original plan."
 }
