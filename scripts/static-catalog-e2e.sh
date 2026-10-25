@@ -91,7 +91,7 @@ check "records arrived in the cache" '[ -n "$(find "$UNSTALE_CACHE_DIR/v1/shards
 
 step unstale run
 "$UNSTALE" run >"$WORK/run.out" 2>&1; rc=$?; head -12 "$WORK/run.out"
-check "run exits 0 and writes the skill file" '[ $rc = 0 ] && [ -f .unstale/skills/upgrade-review/SKILL.md ]'
+check "run exits 0 and writes the review context" '[ $rc = 0 ] && [ -f .unstale/review/upgrades.md ]'
 check "no error lines in run" '! grep -qi "error" "$WORK/run.out"'
 check "no coverage request reached the static host" '[ "$(coverage_requests)" = 0 ]'
 

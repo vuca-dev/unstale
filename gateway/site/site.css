@@ -131,7 +131,7 @@ ul.changes .meta { font-size: 0.78rem; margin-top: 2px; color: var(--muted); dis
 .install-hint { margin: 0 0 10px; font-size: 0.85rem; color: var(--muted); }
 .get-started > .install-hint { font-size: 1rem; margin-bottom: 16px; }
 .get-started > .cmd.big { width: 100%; min-height: 80px; margin-top: 0; padding: 14px 18px; gap: 14px; border-color: color-mix(in srgb, var(--fresh) 55%, var(--line)); border-radius: 12px; }
-.get-started > .cmd.big code { flex: 1; min-width: 0; font-size: clamp(1rem, 3.5vw, 1.4rem); }
+.get-started > .cmd.big code { flex: 1; min-width: 0; font-size: 1.02rem; }
 .get-started > .cmd.big .copy { flex: none; width: 48px; height: 48px; margin-left: auto; background: var(--fresh); color: var(--bg); border-color: var(--fresh); }
 .get-started > .cmd.big .copy:hover { background: color-mix(in srgb, var(--fresh) 85%, var(--fg)); }
 .get-started > .cmd.big .copy svg { width: 22px; height: 22px; }

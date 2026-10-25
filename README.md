@@ -11,7 +11,8 @@ Tells Claude Code, Codex, Cursor and opencode what changed upstream since their 
 code: new APIs worth adopting, breaking changes for your next major upgrade, deprecations, and the security and
 performance fixes in each version bump.
 
-**Does it work?** It finds 4x as many changes worth acting on as Claude Code alone, using 1/16 of the tokens ([how we measured](eval/beat-naive/RESULTS.md)). [Phoenix](https://github.com/Arize-ai/phoenix/pull/17150) and
+**Does it work?** It finds 4x as many upstream changes that apply to your code as Claude Code alone, using 1/16 of the
+tokens ([how we measured](eval/beat-naive/RESULTS.md)). [Phoenix](https://github.com/Arize-ai/phoenix/pull/17150) and
 [i18next](https://github.com/i18next/i18next/pull/2453) have merged fixes for what it found at their installed
 versions, with no version bump for an update bot to raise. And it had
 [Next.js 16.4.1's critical security fixes](https://github.com/vercel/next.js/security/advisories/GHSA-2464-fhr4-w9xw)
@@ -37,8 +38,11 @@ Then, in your agent, inside that repository:
 
 | Agent | Run |
 |---|---|
-| Claude Code, Cursor, opencode | `/unstale-onboarding`, `/unstale-upgrade-review`, `/unstale-improvements-pass` |
-| Codex | `$unstale-onboarding`, `$unstale-upgrade-review`, `$unstale-improvements-pass` |
+| Claude Code, Cursor, opencode | `/unstale-review` |
+| Codex | `$unstale-review` |
+
+Use the same skill for your first review and later check-ins. It recommends where to start, respects prior decisions,
+and can focus on a package, upgrade target, or capability you name.
 
 | Command | |
 |---|---|
@@ -85,7 +89,7 @@ Poetry, PDM and Pipenv. Any package in a supported ecosystem works with no per-p
 - **What** `init` **writes.** `.unstale/` (configuration, decision ledger, reports), agent skills in `.claude/skills`
 (Claude Code) and `.agents/skills` (Codex and Cursor; opencode reads both), whether or not each agent is installed,
 and a Claude Code session-start hook in `.claude/settings.local.json` that prints one line. Personal mode, the
-default, keeps all of it out of Git; shared mode (`unstale init --mode shared`) commits the ledger and skill files
+default, keeps all of it out of Git; shared mode (`unstale init --mode shared`) commits the ledger and generated review context
 and adds one line to `.gitattributes`. `unstale uninstall` removes all of it and backs up your decisions.
 - **What leaves your machine.** Requests for catalog files, named by public package identity (`pkg:npm/next`), and
 coverage requests for packages the catalog does not have yet. Your code, paths and versions do not. No telemetry.
@@ -114,7 +118,7 @@ your registry configuration points elsewhere, is never named to npm, PyPI, OSV o
 - **A signed catalog.** Catalog indexes carry an Ed25519 signature and name each shard's sha256; the client discards
 anything that does not verify.
 - **Upstream text is data.** Release notes and docs reach your agent as quoted, untrusted data, never as
-instructions, and the review skills do not change code without your go-ahead.
+instructions, and the review skill does not change code without your go-ahead.
 
 Report vulnerabilities privately: [SECURITY.md](SECURITY.md).
 

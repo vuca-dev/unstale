@@ -304,8 +304,7 @@ export function packageMarkdown(p: Package): string {
   return out.join("\n") + "\n";
 }
 
-// Real `unstale init` output on a Next.js and Prisma app (`@unstale/cli` 0.1.0, 17 October 2026), trimmed, in the
-// CLI's tones.
+// Example `unstale init` output on a Next.js and Prisma app, trimmed, in the CLI's tones.
 const TERMINAL: [string, string][] = [
   ["cmd", "$ npx @unstale/cli init"],
   ["fresh", "✓ my-app · Personal setup ready"],
@@ -322,7 +321,7 @@ const TERMINAL: [string, string][] = [
   ["", ""],
   ["rule", ""],
   ["fresh", "NEXT · Paste this prompt into your coding agent"],
-  ["prompt", "Use .unstale/skills/onboarding/SKILL.md to review .unstale/onboarding-report.md against this repository. Rank the upgrades and capabilities by likely impact, explain the trade-offs, and recommend what to do first. Return proposals only; do not edit files."],
+  ["prompt", "Use .unstale/skills/review/SKILL.md to review this repository. Recommend what to act on next, with affected files and trade-offs. Return proposals only; do not edit files."],
   ["rule", ""],
 ];
 
@@ -333,6 +332,7 @@ function terminal(): string {
   return `<section class="prose example">
 <p>Example output of <code>unstale init</code> on a Next.js and Prisma app</p>
 <figure class="term"><pre>${rows}</pre></figure>
+<p class="review-invocation"><code>/unstale-review</code> in Claude Code, Cursor or opencode · <code>$unstale-review</code> in Codex.</p>
 </section>`;
 }
 
@@ -378,7 +378,7 @@ export function homePage(pkgs: Package[], version?: string): string {
 <p class="lede">unstale finds what changed in your dependencies and where your code needs it. It reads the release
 notes, migration guides and advisories for your installed versions, and hands Claude Code, Codex or Cursor a cited
 list.</p>
-<p class="lede">It finds 4x as many changes worth acting on as Claude Code alone, using 1/16 of the tokens. <a href="${BEAT_NAIVE}">How we measured</a></p>
+<p class="lede">It finds 4x as many upstream changes that apply to your code as Claude Code alone, using 1/16 of the tokens. <a href="${BEAT_NAIVE}">How we measured</a></p>
 </section>
 <section class="catalog-proof" aria-label="Current catalog coverage">
 <dl class="catalog-stats">
@@ -413,8 +413,8 @@ ${CONTRIBUTIONS.map((c) => `<li><a href="${esc(c.url)}">${esc(c.lead)}</a> ${esc
 <h2>How it works</h2>
 <ol>
 <li><strong>Read your lockfile.</strong> JavaScript, TypeScript and Python projects.</li>
-<li><strong>Find what applies.</strong> Match a central catalog of upstream changes to your repo locally.</li>
-<li><strong>Review with your agent.</strong> A report and a ready-to-paste prompt.</li>
+<li><strong>Find what applies.</strong> Track your dependencies for upstream changes that matter to your code.</li>
+<li><strong>Review with your agent.</strong> Run <code>unstale-review</code> to see what changed, where it matters, and what to do next.</li>
 </ol>
 <h2>Your code stays on your machine</h2>
 <p>unstale receives public package names; <a href="https://osv.dev">OSV</a> receives package names and versions for advisory checks. No telemetry.</p>
@@ -455,7 +455,7 @@ unstale finds what changed in your dependencies and where your code needs it. It
 guides and advisories for your installed versions, and hands Claude Code, Codex or Cursor a cited list. Runs locally,
 free and open source.
 
-It finds 4x as many changes worth acting on as Claude Code alone, using 1/16 of the tokens
+It finds 4x as many upstream changes that apply to your code as Claude Code alone, using 1/16 of the tokens
 ([how we measured](${BEAT_NAIVE})).
 
 ## Fixes merged upstream
@@ -471,8 +471,8 @@ ${CONTRIBUTIONS.map((c) => `- [${c.lead}](${c.url}) ${c.rest}`).join("\n")}
 ## How it works
 
 1. **Read your lockfile.** JavaScript, TypeScript and Python projects.
-2. **Find what applies.** Match a central catalog of upstream changes to your repo locally.
-3. **Review with your agent.** A report and a ready-to-paste prompt.
+2. **Find what applies.** Track your dependencies for upstream changes that matter to your code.
+3. **Review with your agent.** Run \`unstale-review\` to see what changed, where it matters, and what to do next.
 
 ## Your code stays on your machine
 
@@ -501,8 +501,8 @@ export function llmsTxt(pkgs: Package[], version?: string): string {
 > ${SUMMARY}
 
 unstale is a CLI (\`@unstale/cli\` on npm${version ? `, ${version}` : ""}) plus a public, signed catalog of upstream changes.
-\`${INSTALL_NPX}\` in a repository maps its dependencies, matches the catalog against the code locally, and writes agent
-skills (\`/unstale-onboarding\`, \`/unstale-upgrade-review\`, \`/unstale-improvements-pass\`; \`$\`-prefixed in Codex).
+\`${INSTALL_NPX}\` in a repository maps its dependencies, matches the catalog against the code locally, and installs the review
+skill (\`/unstale-review\`; \`$unstale-review\` in Codex).
 
 Notes for agents:
 

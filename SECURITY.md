@@ -35,4 +35,4 @@ gateway in `gateway/`. Only the latest release receives fixes.
 - **Catalog integrity.** Catalog indexes carry an Ed25519 signature and name each shard's sha256. Anything that does
   not verify is discarded, not used.
 - **Upstream text.** Release notes, migration guides and docs are passed to your agent as quoted, untrusted data,
-  never as instructions. The review skills tell the agent not to change code without your go-ahead.
+  never as instructions. The review skill tells the agent not to change code without your go-ahead.

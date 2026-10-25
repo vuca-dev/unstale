@@ -5,7 +5,7 @@ distills each change once, and matches it against your code. Your coding agent (
 opencode) then knows what applies here: new APIs worth adopting, breaking changes for your next major upgrade,
 deprecations, and the security and performance fixes in each version bump. Every item links to its source.
 
-It finds 4x as many changes worth acting on as Claude Code alone, using 1/16 of the tokens
+It finds 4x as many upstream changes that apply to your code as Claude Code alone, using 1/16 of the tokens
 ([how we measured](https://github.com/vuca-dev/unstale/blob/main/eval/beat-naive/RESULTS.md)).
 
 ```sh
@@ -16,8 +16,11 @@ Then, in your agent, inside that repository:
 
 | Agent | Run |
 |---|---|
-| Claude Code, Cursor, opencode | `/unstale-onboarding`, `/unstale-upgrade-review`, `/unstale-improvements-pass` |
-| Codex | `$unstale-onboarding`, `$unstale-upgrade-review`, `$unstale-improvements-pass` |
+| Claude Code, Cursor, opencode | `/unstale-review` |
+| Codex | `$unstale-review` |
+
+Use the same skill for your first review and later check-ins. It recommends where to start, respects prior decisions,
+and can focus on a package, upgrade target, or capability you name.
 
 `unstale uninstall` removes everything `init` wrote and backs up your decisions.
 

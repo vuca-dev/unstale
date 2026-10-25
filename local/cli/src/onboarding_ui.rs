@@ -636,7 +636,7 @@ mod tests {
     use super::*;
     #[test]
     fn action_panel_has_plain_copyable_prompt_and_width_bounded_rules() {
-        let prompt = "Use .unstale/skills/onboarding/SKILL.md to review this repository.";
+        let prompt = "Use .unstale/skills/review/SKILL.md to review this repository.";
         let lines = vec![Line::new("", Tone::Rule), Line::new(prompt, Tone::Prompt), Line::new("", Tone::Rule)];
         for width in [24, 80, 160] {
             let plain = render(&lines, width, false);

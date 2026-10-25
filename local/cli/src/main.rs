@@ -63,7 +63,7 @@ enum Cmd {
         /// Catalog location: a directory or file:// URL (default: $UNSTALE_CATALOG).
         #[arg(long)]
         catalog: Option<String>,
-        /// Personal (decisions and skill files stay out of Git; the default) or shared (ledger and skill files committed).
+        /// Personal (decisions and generated review context stay out of Git; the default) or shared (ledger and generated review context committed).
         #[arg(long, value_enum)]
         mode: Option<Mode>,
         /// Accept defaults (setup is noninteractive by default).
@@ -96,7 +96,7 @@ enum Cmd {
     Sync,
     /// Print the bump digest: what each package bump picks up (deterministic; no model, no network).
     Digest,
-    /// Write the upgrade-review and improvements-pass skill files for the current batch.
+    /// Prepare unstale-review and its current upgrade and opportunity batches.
     Review {
         /// Hand out the next batch (only when every record of the current one has a disposition).
         #[arg(long)]
@@ -332,7 +332,7 @@ fn init(start: &Path, catalog: Option<String>, mode: Option<Mode>, _yes: bool, q
     std::fs::create_dir_all(&tool)?;
     let config = Config { schema: 1, catalog, mode, service: existing.as_ref().and_then(|e| e.service.clone()) };
     util::write_atomic(&tool.join("config.json"), format!("{}\n", serde_json::to_string_pretty(&config)?).as_bytes())?;
-    // Local: the tool directory ignores itself, so nothing tracked changes. Collaborative: ledger and skill files
+    // Local: the tool directory ignores itself, so nothing tracked changes. Collaborative: ledger and generated review context
     // are committed; review progress is personal.
     let ignore = match mode {
         Mode::Local => "*\n",
@@ -680,7 +680,7 @@ fn regenerate(ctx: &Ctx, w: &World, out: &Outcome, state: &mut State, passes: &[
     let mut code = 0;
     let deprecated = if passes.contains(&Pass::UpgradeReview) { deprecations::notices(&ctx.cache, &w.stack) } else { vec![] };
     for &p in passes {
-        let path = p.skill_path(&ctx.tool);
+        let path = p.context_path(&ctx.tool);
         if only_existing && !path.exists() {
             continue;
         }
@@ -693,7 +693,7 @@ fn regenerate(ctx: &Ctx, w: &World, out: &Outcome, state: &mut State, passes: &[
             }
         };
         let text = review::render(&view, out, &w.catalog, &deprecated);
-        let written = review::write_skill(&path, &text)?;
+        let written = review::write_context(&path, &text)?;
         let mut what = if view.batch.is_empty() {
             if view.complete {
                 format!("batch {} complete; run `unstale review --next --pass {}`", view.number, p.name())
@@ -716,7 +716,8 @@ fn regenerate(ctx: &Ctx, w: &World, out: &Outcome, state: &mut State, passes: &[
         }
     }
     state.save(&ctx.tool)?;
-    if ctx.config.service.is_some() { onboarding::integrate(ctx)?; }
+    review::write_entrypoint(&ctx.tool)?;
+    onboarding::integrate(ctx)?;
     Ok(code)
 }
 
@@ -783,7 +784,7 @@ fn write_disposition(ctx: &Ctx, w: &World, id: &str, rev: u32, d: Disposition, n
 }
 
 fn after_disposition(ctx: &Ctx, id: &str, clear_do_now: bool) -> Result<()> {
-    // The skill files are regenerated when the ledger changes, without advancing a batch.
+    // The review contexts are regenerated when the ledger changes, without advancing a batch.
     let w = world(ctx)?;
     let out = outcome(ctx, &w, BTreeMap::new());
     let mut state = State::load(&ctx.tool);

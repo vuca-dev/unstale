@@ -57,7 +57,7 @@ check "second sync got 304 Not Modified for the indexes" '[ "$(requests /v1/tech
 
 step unstale run
 "$UNSTALE" run >"$WORK/run.out" 2>&1; rc=$?; head -12 "$WORK/run.out"
-check "run over the http catalog (exit 0, skill file written)" '[ $rc = 0 ] && [ -f .unstale/skills/upgrade-review/SKILL.md ]'
+check "run over the http catalog (exit 0, review context written)" '[ $rc = 0 ] && [ -f .unstale/review/upgrades.md ]'
 
 echo; echo "# corrupt one next shard on the server and drop it from the cache"
 shard="$(ls "$WORK/site/v1/shards/next" | head -1)"

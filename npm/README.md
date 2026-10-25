@@ -62,8 +62,8 @@ synced next: 470 records (sources checked 2026-10-15T06:57:24Z); 3 shard(s) down
 synced prisma: 247 records (sources checked 2026-10-15T06:57:25Z); 2 shard(s) downloaded, 0 reused
 bumping next 16.2.1 → 16.4.1 picks up 30 security, 70 fixes, ... (`unstale bump next`); 34 obligations in the upgrade review
 bumping prisma (@prisma/client, prisma) 6.19.3 → 7.10.0 picks up 6 security, 73 fixes, ... ; 65 obligations in the upgrade review
-upgrade-review: batch 1 with 16 of 99 open records → .unstale/skills/upgrade-review/SKILL.md (written)
-improvements-pass: batch 1 with 1 of 1 open records → .unstale/skills/improvements-pass/SKILL.md (written)
+upgrade-review: batch 1 with 16 of 99 open records → .unstale/review/upgrades.md (written)
+improvements-pass: batch 1 with 1 of 1 open records → .unstale/review/opportunities.md (written)
 ```
 
 Also checked: `unstale bogus` through the wrapper exits 2 (the binary's usage code); installing the wrapper

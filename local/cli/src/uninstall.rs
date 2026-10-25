@@ -79,7 +79,7 @@ pub fn run(start: &Path) -> Result<u8> {
         {
             continue;
         }
-        for skill in ["upgrade-review", "improvements-pass", "onboarding"] {
+        for skill in ["review", "upgrade-review", "improvements-pass", "onboarding"] {
             let parent = root.join(dir).join(format!("unstale-{skill}"));
             if std::fs::symlink_metadata(&parent).is_ok_and(|m| m.file_type().is_symlink()) {
                 continue;
@@ -143,7 +143,7 @@ pub fn run(start: &Path) -> Result<u8> {
         };
         remove_lines(&path, |line| {
             line == onboarding::SESSION_HOOK_EXCLUDE_LINE || dirs.iter().any(|dir| {
-                ["upgrade-review", "improvements-pass", "onboarding"]
+                ["review", "upgrade-review", "improvements-pass", "onboarding"]
                     .iter()
                     .any(|skill| line == format!("/{dir}/unstale-{skill}/"))
             })

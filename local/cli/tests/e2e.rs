@@ -136,9 +136,9 @@ fn init_sync_digest_review_decide_run() {
     assert!(out.starts_with("[next:csrf] next 16.0.3 · security · benefit: security\n"), "{out}");
 
     let out = env.ok(&["review"]);
-    assert!(out.contains("upgrade-review: batch 1 with 3 of 3 open records → .unstale/skills/upgrade-review/SKILL.md (written)"), "{out}");
+    assert!(out.contains("upgrade-review: batch 1 with 3 of 3 open records → .unstale/review/upgrades.md (written)"), "{out}");
     assert!(out.contains("improvements-pass: batch 1 with 2 of 2 open records"), "{out}");
-    let up = env.read(".unstale/skills/upgrade-review/SKILL.md");
+    let up = env.read(".unstale/review/upgrades.md");
     // Tier 1 (breaking, removals) before tier 2; inside tier 1, the record matching this repository first.
     let pos = |id: &str| up.find(&format!("### [{id}]")).unwrap_or_else(|| panic!("{id} missing:\n{up}"));
     assert!(pos("next:lint-removed") < pos("prisma:datasource-url-removed"), "rarer match first within tier 1");
@@ -149,14 +149,14 @@ fn init_sync_digest_review_decide_run() {
     assert!(pos("next:lint-removed") < pos("next:middleware-to-proxy"));
     assert!(up.contains("- Matched terms: `next lint` (package.json)"), "scripts count as usage:\n{up}");
     assert!(up.contains("`middleware.ts` (src/middleware.ts)"), "{up}");
-    let imp = env.read(".unstale/skills/improvements-pass/SKILL.md");
+    let imp = env.read(".unstale/review/opportunities.md");
     assert!(imp.contains("### [prisma:typed-sql]") && imp.contains("### [next:image-ttl]"), "{imp}");
     assert!(imp.find("### [prisma:typed-sql]").unwrap() < imp.find("### [next:image-ttl]").unwrap(), "correctness before performance");
     assert!(!imp.contains("next:style-only"), "benefit none is left out");
     // Byte-identical on rerun.
     let out = env.ok(&["review"]);
     assert!(out.contains("(unchanged)"), "{out}");
-    assert_eq!(env.read(".unstale/skills/upgrade-review/SKILL.md"), up);
+    assert_eq!(env.read(".unstale/review/upgrades.md"), up);
 
     // --next refuses while the batch is incomplete.
     let (code, _, err) = env.run(&["review", "--next", "--pass", "upgrade-review"]);
@@ -173,7 +173,7 @@ fn init_sync_digest_review_decide_run() {
     assert_eq!(code, 3);
     assert!(err.contains("prisma:datasource-url-removed"), "{err}");
     env.ok(&["record", "prisma:datasource-url-removed", "no-site"]);
-    let up2 = env.read(".unstale/skills/upgrade-review/SKILL.md");
+    let up2 = env.read(".unstale/review/upgrades.md");
     assert!(up2.contains("## Batch 1 is complete"), "regenerated after the ledger changed:\n{up2}");
     assert!(up2.contains("## Marked do now\n\nApply these, then run `unstale record <id> done`"), "{up2}");
     let out = env.ok(&["review", "--next", "--pass", "upgrade-review"]);
@@ -297,7 +297,7 @@ fn onboarding_status_reports_features_without_running_an_agent_and_resumes_jobs(
     assert!(output.split_whitespace().collect::<Vec<_>>().join(" ").contains("do not edit files"));
     assert!(output.contains("available on") || output.contains("upgrade 16"));
     let flat = output.split_whitespace().collect::<Vec<_>>().join(" ");
-    assert!(flat.contains("Use .unstale/skills/onboarding/SKILL.md to review .unstale/onboarding-report.md"));
+    assert!(flat.contains("Use .unstale/skills/review/SKILL.md to review this repository"));
     assert!(flat.contains("still gaining history") && flat.contains("unstale status later adds to this brief"), "{output}");
     assert!(!output.contains("Installed Codex review skills"));
     assert!(!output.contains("Keep decisions personal or shared?"));
@@ -317,19 +317,19 @@ fn onboarding_status_reports_features_without_running_an_agent_and_resumes_jobs(
     assert!(coverage.contains("6 published records"), "{coverage}");
     assert!(report.contains("## Deprecated by the publisher\n") && report.contains("react 19.2.0 deprecated by its publisher: \"This version is no longer supported.\""), "{report}");
     assert!(env.ok(&["report"]).contains("next:style-only"));
-    let skill = env.read(".agents/skills/unstale-improvements-pass/SKILL.md");
-    assert!(skill.starts_with("---\nname: unstale-improvements-pass"));
-    assert!(skill.contains("Do not change any code"));
+    let skill = env.read(".agents/skills/unstale-review/SKILL.md");
+    assert!(skill.starts_with("---\nname: unstale-review"));
+    assert!(skill.contains("Review without changing application code"));
     // opencode ignores `disable-model-invocation` and lists every skill to its model by description.
     for dir in [".agents/skills", ".claude/skills"] {
-        for skill in ["upgrade-review", "improvements-pass"] {
+        for skill in ["review"] {
             let text = env.read(&format!("{dir}/unstale-{skill}/SKILL.md"));
             let description = text.lines().find(|l| l.starts_with("description: ")).unwrap();
             assert!(description.contains("Use only when the user explicitly asks") && description.contains("never unprompted"), "{dir}: {description}");
         }
     }
     env.ok(&["decide", "next:image-ttl", "decline"]);
-    assert!(!env.read(".agents/skills/unstale-improvements-pass/SKILL.md").contains("### [next:image-ttl]"));
+    assert!(!env.read(".unstale/review/opportunities.md").contains("### [next:image-ttl]"));
 }
 
 #[test]
@@ -398,17 +398,17 @@ fn uninstall_backs_up_decisions_and_keeps_unmanaged_agent_files() {
     env.ok(&["init", "--catalog", cat.loc(), "--mode", "collaborative", "--yes"]);
     write(env.repo.path(), ".gitattributes", "*.png binary\n.unstale/ledger.jsonl merge=union\n");
     write(env.repo.path(), ".unstale/my-notes.md", "keep this too");
-    let managed = ".agents/skills/unstale-onboarding";
+    let managed = ".agents/skills/unstale-review";
     write(env.repo.path(), &format!("{managed}/SKILL.md"), "generated\n<!-- Managed by unstale; regenerated from .unstale. -->\n");
     write(env.repo.path(), &format!("{managed}/notes.md"), "user-added context");
     write(env.repo.path(), &format!("{managed}/agents/openai.yaml"), "# Managed by unstale\npolicy:\n  allow_implicit_invocation: false\n");
-    write(env.repo.path(), ".claude/skills/unstale-onboarding/SKILL.md", "a user-owned skill");
+    write(env.repo.path(), ".claude/skills/unstale-review/SKILL.md", "a user-owned skill");
     let ledger = env.read(".unstale/ledger.jsonl");
     let output = env.ok(&["uninstall"]);
     assert!(!env.repo.path().join(".unstale").exists());
     assert!(!env.repo.path().join(format!("{managed}/SKILL.md")).exists());
     assert_eq!(env.read(&format!("{managed}/notes.md")), "user-added context");
-    assert_eq!(env.read(".claude/skills/unstale-onboarding/SKILL.md"), "a user-owned skill");
+    assert_eq!(env.read(".claude/skills/unstale-review/SKILL.md"), "a user-owned skill");
     assert_eq!(env.read(".gitattributes"), "*.png binary\n");
     let backup = std::path::PathBuf::from(output.lines().find_map(|l| l.strip_prefix("Local backup: ")).unwrap());
     assert_eq!(std::fs::read_to_string(backup.join(".unstale/ledger.jsonl")).unwrap(), ledger);
@@ -425,14 +425,14 @@ fn uninstall_preserves_symlinked_agent_directories_and_stops_at_nested_git_roots
     let env = Env { repo: fixture_repo(), cache: tempfile::tempdir().unwrap() };
     env.ok(&["init", "--catalog", cat.loc(), "--mode", "local", "--yes"]);
     let external = tempfile::tempdir().unwrap();
-    write(external.path(), "skills/unstale-onboarding/SKILL.md", "<!-- Managed by unstale; regenerated from .unstale. -->");
+    write(external.path(), "skills/unstale-review/SKILL.md", "<!-- Managed by unstale; regenerated from .unstale. -->");
     std::os::unix::fs::symlink(external.path(), env.repo.path().join(".agents")).unwrap();
     std::fs::create_dir_all(env.repo.path().join("nested/.git")).unwrap();
     let out = env.ok(&["-C", env.repo.path().join("nested").to_str().unwrap(), "uninstall"]);
     assert!(out.contains("No unstale repository installation"));
     assert!(env.repo.path().join(".unstale/config.json").exists());
     env.ok(&["uninstall"]);
-    assert!(external.path().join("skills/unstale-onboarding/SKILL.md").exists());
+    assert!(external.path().join("skills/unstale-review/SKILL.md").exists());
     assert!(std::fs::symlink_metadata(env.repo.path().join(".agents")).unwrap().file_type().is_symlink());
 }
 
@@ -470,7 +470,7 @@ fn onboarding_prefers_new_capabilities_over_generic_security_options_and_old_com
     assert!(output.find("Read structured results").unwrap() < output.find("Configure an optional endpoint limit.").unwrap(), "Broader shortlists must preserve priority order");
     let report = env.read(".unstale/onboarding-report.md");
     assert!(!report.contains("next:compat-only"));
-    assert!(env.read(".unstale/skills/improvements-pass/SKILL.md").contains("next:compat-only"), "Highlight curation must not truncate the full review queue");
+    assert!(env.read(".unstale/review/opportunities.md").contains("next:compat-only"), "Highlight curation must not truncate the full review queue");
 }
 
 fn security_and_breaking_catalog() -> FixtureCatalog {
@@ -555,7 +555,7 @@ fn onboarding_shortlist_expands_to_eight_without_truncating_review_context() {
     let output = env.ok(&["status", "--wait", "0", "--no-animation"]);
     assert!(output.contains("Capabilities to explore · 8 shortlisted"), "{output}");
     assert_eq!(output.matches("New capability").count(), 8);
-    let full = env.read(".unstale/skills/improvements-pass/SKILL.md");
+    let full = env.read(".unstale/review/opportunities.md");
     for i in 0..10 { assert!(full.contains(&format!("next:capability-{i}"))); }
 }
 
@@ -651,4 +651,86 @@ fn seed_deprecated(env: &Env, key: &str, message: &str) {
     use sha2::Digest;
     let hex: String = sha2::Sha256::digest(key.as_bytes()).iter().map(|b| format!("{b:02x}")).collect();
     write(env.cache.path(), &format!("registry/deprecated/{}.json", &hex[..32]), &json!({"checked": 4102444800u64, "message": message}).to_string());
+}
+
+#[test]
+fn one_review_skill_replaces_managed_legacy_skills_without_losing_decisions() {
+    let cat = FixtureCatalog::new(); publish(&cat);
+    let env = Env { repo: fixture_repo(), cache: tempfile::tempdir().unwrap() };
+    env.ok(&["init", "--catalog", cat.loc(), "--mode", "local", "--yes"]);
+    env.ok(&["sync"]);
+    env.ok(&["decide", "next:image-ttl", "decline"]);
+    env.ok(&["review"]);
+    let ledger = env.read(".unstale/ledger.jsonl");
+    let state = env.read(".unstale/state/review.json");
+    let marker = "<!-- Managed by unstale; regenerated from .unstale. -->";
+    for dir in [".agents/skills", ".claude/skills", ".cursor/skills"] {
+        for legacy in ["onboarding", "upgrade-review", "improvements-pass"] {
+            write(env.repo.path(), &format!("{dir}/unstale-{legacy}/SKILL.md"), marker);
+            write(env.repo.path(), &format!("{dir}/unstale-{legacy}/agents/openai.yaml"), "# Managed by unstale\npolicy:\n  allow_implicit_invocation: false\n");
+        }
+    }
+    write(env.repo.path(), ".agents/skills/unstale-onboarding/notes.md", "personal context");
+    // A user-owned file with an old name must survive migration.
+    write(env.repo.path(), ".claude/skills/unstale-improvements-pass/SKILL.md", "my custom skill");
+    env.ok(&["review"]);
+    assert_eq!(env.read(".unstale/ledger.jsonl"), ledger);
+    assert_eq!(env.read(".unstale/state/review.json"), state);
+    for dir in [".agents/skills", ".claude/skills"] {
+        let skill = env.read(&format!("{dir}/unstale-review/SKILL.md"));
+        assert!(skill.starts_with("---\nname: unstale-review\n"));
+        assert!(skill.contains(".unstale/review/upgrades.md") && skill.contains(".unstale/review/opportunities.md"));
+        assert_eq!(env.read(&format!("{dir}/unstale-review/agents/openai.yaml")), "# Managed by unstale\npolicy:\n  allow_implicit_invocation: false\n");
+    }
+    for dir in [".agents/skills", ".claude/skills", ".cursor/skills"] {
+        for legacy in ["onboarding", "upgrade-review", "improvements-pass"] {
+            let path = format!("{dir}/unstale-{legacy}/SKILL.md");
+            if path == ".claude/skills/unstale-improvements-pass/SKILL.md" { continue; }
+            assert!(!env.repo.path().join(&path).exists(), "obsolete managed entry remains: {path}");
+            assert!(env.repo.path().join(format!(".unstale/state/retired-skills/{path}")).exists());
+        }
+    }
+    assert_eq!(env.read(".agents/skills/unstale-onboarding/notes.md"), "personal context");
+    assert_eq!(env.read(".claude/skills/unstale-improvements-pass/SKILL.md"), "my custom skill");
+    assert!(!env.read(".unstale/review/opportunities.md").contains("### [next:image-ttl]"));
+    env.ok(&["review"]); // Migration is idempotent.
+    assert_eq!(env.read(".unstale/ledger.jsonl"), ledger);
+}
+
+#[test]
+fn a_conflicting_review_skill_preserves_the_existing_integration() {
+    let cat = FixtureCatalog::new(); publish(&cat);
+    let env = Env { repo: fixture_repo(), cache: tempfile::tempdir().unwrap() };
+    env.ok(&["init", "--catalog", cat.loc(), "--mode", "local", "--yes"]);
+    write(env.repo.path(), ".agents/skills/unstale-review/SKILL.md", "a user-owned review skill");
+    let marker = "<!-- Managed by unstale; regenerated from .unstale. -->";
+    write(env.repo.path(), ".agents/skills/unstale-onboarding/SKILL.md", marker);
+    env.ok(&["review"]);
+    assert_eq!(env.read(".agents/skills/unstale-review/SKILL.md"), "a user-owned review skill");
+    assert_eq!(env.read(".agents/skills/unstale-onboarding/SKILL.md"), marker);
+    assert!(env.read(".unstale/state/integration-conflicts.json").contains(".agents/skills/unstale-review/SKILL.md"));
+    // The direct local entry point is still usable when discovery conflicts.
+    assert!(env.repo.path().join(".unstale/skills/review/SKILL.md").is_file());
+}
+
+#[test]
+#[cfg(unix)]
+fn skill_migration_does_not_follow_user_symlinks() {
+    use std::os::unix::fs::symlink;
+    let cat = FixtureCatalog::new(); publish(&cat);
+    let env = Env { repo: fixture_repo(), cache: tempfile::tempdir().unwrap() };
+    env.ok(&["init", "--catalog", cat.loc(), "--mode", "local", "--yes"]);
+    env.ok(&["review"]);
+    let external = tempfile::tempdir().unwrap();
+    let marker = "<!-- Managed by unstale; regenerated from .unstale. -->";
+    write(external.path(), "legacy/SKILL.md", marker);
+    symlink(external.path().join("legacy"), env.repo.path().join(".agents/skills/unstale-onboarding")).unwrap();
+    // The new entrypoint's policy directory can also be user-controlled.
+    std::fs::remove_dir_all(env.repo.path().join(".claude/skills/unstale-review/agents")).unwrap();
+    write(external.path(), "policy/openai.yaml", "user policy");
+    symlink(external.path().join("policy"), env.repo.path().join(".claude/skills/unstale-review/agents")).unwrap();
+    env.ok(&["review"]);
+    assert_eq!(std::fs::read_to_string(external.path().join("legacy/SKILL.md")).unwrap(), marker);
+    assert_eq!(std::fs::read_to_string(external.path().join("policy/openai.yaml")).unwrap(), "user policy");
+    assert!(env.read(".unstale/state/integration-conflicts.json").contains(".claude/skills/unstale-review/SKILL.md"));
 }

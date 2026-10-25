@@ -264,7 +264,7 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
     Ok(())
 }
 
-/// Catalog text as one line of at most `max` characters, for the skill files and the terminal: control characters,
+/// Catalog text as one line of at most `max` characters, for the review contexts and the terminal: control characters,
 /// line and paragraph separators and bidirectional overrides become spaces, so upstream text cannot forge headings,
 /// instructions or terminal sequences around itself.
 pub fn one_line(s: &str, max: usize) -> String {
