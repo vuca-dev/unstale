@@ -320,6 +320,14 @@ fn onboarding_status_reports_features_without_running_an_agent_and_resumes_jobs(
     let skill = env.read(".agents/skills/unstale-improvements-pass/SKILL.md");
     assert!(skill.starts_with("---\nname: unstale-improvements-pass"));
     assert!(skill.contains("Do not change any code"));
+    // opencode ignores `disable-model-invocation` and lists every skill to its model by description.
+    for dir in [".agents/skills", ".claude/skills"] {
+        for skill in ["upgrade-review", "improvements-pass"] {
+            let text = env.read(&format!("{dir}/unstale-{skill}/SKILL.md"));
+            let description = text.lines().find(|l| l.starts_with("description: ")).unwrap();
+            assert!(description.contains("Use only when the user explicitly asks") && description.contains("never unprompted"), "{dir}: {description}");
+        }
+    }
     env.ok(&["decide", "next:image-ttl", "decline"]);
     assert!(!env.read(".agents/skills/unstale-improvements-pass/SKILL.md").contains("### [next:image-ttl]"));
 }
