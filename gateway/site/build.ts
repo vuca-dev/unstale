@@ -331,7 +331,7 @@ const TERMINAL: [string, string][] = [
   ["cmd", "$ npx @unstale/cli init"],
   ["fresh", "✓ my-app · Personal setup ready"],
   ["body", "Mapped 119 direct dependencies from pnpm-lock.yaml and checked local references."],
-  ["amber", "Priority · 31 advisory fixes match installed versions. Review these first."],
+  ["muted", "Security · 31 advisory fixes match installed versions; each is noted on its upgrade."],
   ["", ""],
   ["accent", "Upgrades to review · 3 shortlisted"],
   ["body", "1. next 16.2.1 → 16.4.2 picks up 37 security fixes, 90 bug fixes, 5 performance changes, 20 behaviour changes"],
@@ -351,13 +351,25 @@ function terminal(): string {
   const rows = TERMINAL.map(([tone, text]) =>
     tone === "rule" ? `<span class="t-rule"></span>` : `<span class="t-${tone || "body"}">${esc(text) || "&nbsp;"}</span>`,
   ).join("");
-  return `<figure class="term"><pre>${rows}</pre><figcaption>Real <code>init</code> output on a Next.js and Prisma app, trimmed.</figcaption></figure>`;
+  return `<section class="prose example">
+<h2>What <code>unstale init</code> prints</h2>
+<p>Real output on a Next.js and Prisma app, trimmed.</p>
+<figure class="term"><pre>${rows}</pre></figure>
+</section>`;
 }
+
+/** Recent catches: the most consequential finds on public repositories, one line each. */
+const CATCHES: { lead: string; rest: string; url: string }[] = [
+  { lead: "Next.js 16.4.1's critical security fixes", rest: "in the catalog before the GitHub advisory database had them.", url: "https://github.com/vercel/next.js/security/advisories/GHSA-2464-fhr4-w9xw" },
+  { lead: "Phoenix's maintainer", rest: "handed our finding to Claude Code: fixed in one turn, merged the next day.", url: "https://github.com/Arize-ai/phoenix/pull/17150" },
+  { lead: "i18next", rest: "had a broken test hidden behind a deprecated matcher; fixed and merged in four hours.", url: "https://github.com/i18next/i18next/pull/2453" },
+];
 
 const SUMMARY =
   "unstale tells you and your coding agent what changed upstream for your package versions and your code. Cited, local, free and open source.";
 
 const EVAL = `${REPO}/blob/main/eval/gate/MISSES.md`;
+const BEAT_NAIVE = `${REPO}/blob/main/eval/beat-naive/RESULTS.md`;
 
 /** Distinct package identities, including related packages grouped on a single page. */
 function catalogStats(pkgs: Package[]) {
@@ -386,8 +398,10 @@ export function homePage(pkgs: Package[], version?: string): string {
   const body = `<section class="hero">
 <canvas id="wordmark" class="wordmark" width="768" height="240" aria-hidden="true"></canvas>
 <h1>You don't know what you don't know. Neither does your agent.</h1>
-<p class="lede">unstale keeps up with your dependencies for you. It finds the breaking changes, fixes and new APIs that
-touch your code, so your agent can use them. For Claude Code, Codex and Cursor.</p>
+<p class="lede">unstale finds what changed in your dependencies and where your code needs it. It reads the release
+notes, migration guides and advisories for your installed versions, and hands Claude Code, Codex or Cursor a cited
+list.</p>
+<p class="lede">It finds 4x as many changes worth acting on as Claude Code alone, using 1/16 of the tokens. <a href="${BEAT_NAIVE}">How we measured</a></p>
 <p class="hero-facts">Runs locally · Free · Open source</p>
 <div class="get-started" aria-labelledby="get-started">
 <h2 id="get-started">Get started</h2>
@@ -421,16 +435,18 @@ ${terminal()}
 <li><strong>Match changes locally.</strong> A signed upstream catalog, checked against your versions and code.</li>
 <li><strong>Review with your agent.</strong> A report and a ready-to-paste prompt. Claude Code also flags relevant changes at session start.</li>
 </ol>
-<h2>Safe for private repos: What leaves your machine</h2>
+<h2>What leaves your machine</h2>
 <p>Code stays local. unstale receives public package names; <a href="https://osv.dev">OSV</a> receives package names and versions for advisory checks. No telemetry.</p>
 <details class="privacy-details"><summary>Network details</summary>
 <p>Public package names (like <code>pkg:npm/next</code>) to fetch the changes that apply. Not your code, file paths,
 versions or any ID. The service, hosted on Cloudflare, sees your IP address. It keeps it in memory only, to apply rate
-limits and count each address once per package, and never writes it to storage. No telemetry. To check advisories, the CLI sends the package names and versions your lockfiles resolve to
+limits and count each address once per package, and never writes it to storage. To check advisories, the CLI sends the package names and versions your lockfiles resolve to
 <a href="https://osv.dev">OSV</a>, as <code>npm audit</code> would, and it reads the public npm and PyPI registries.</p>
 </details>
 <h2>Recent catches</h2>
-<p>unstale flagged critical <a href="https://github.com/vercel/next.js/security/advisories/GHSA-2464-fhr4-w9xw">Next.js security fixes</a> before the GitHub advisory database had them, and caught <a href="https://github.com/supabase/supabase/pull/51869">Supabase&#8217;s Next.js auth blocks</a> breaking on Next.js 16. Its fix for a deprecated AI SDK call in fumadocs was merged within a day.</p>
+<ul>
+${CATCHES.map((c) => `<li><a href="${esc(c.url)}">${esc(c.lead)}</a> ${esc(c.rest)}</li>`).join("\n")}
+</ul>
 <p class="license">AGPL-3.0 · <a href="${REPO}">GitHub</a></p>
 </section>
 <section id="packages" class="packages prose">
@@ -457,9 +473,12 @@ Install: \`${INSTALL_NPX}\` in a repository${version ? ` (\`@unstale/cli\` ${ver
 
 **You don't know what you don't know. Neither does your agent.**
 
-unstale keeps up with your dependencies for you. It finds the breaking changes, fixes and new APIs that touch your code,
-so your agent can use them. For Claude Code, Codex and Cursor. Every item cites its source. Runs locally, free and open
-source.
+unstale finds what changed in your dependencies and where your code needs it. It reads the release notes, migration
+guides and advisories for your installed versions, and hands Claude Code, Codex or Cursor a cited list. Runs locally,
+free and open source.
+
+It finds 4x as many changes worth acting on as Claude Code alone, using 1/16 of the tokens
+([how we measured](${BEAT_NAIVE})).
 
 ## What you get
 
@@ -478,7 +497,7 @@ source.
    line at session start says when something new applies. If nothing upstream matters to your code, your agent hears
    nothing.
 
-## Safe for private repos: What leaves your machine
+## What leaves your machine
 
 Public package names (like \`pkg:npm/next\`) to fetch the changes that apply. Not your code, file paths, versions or
 any ID. The service, hosted on Cloudflare, sees your IP address. It keeps it in memory only, to apply rate limits and count
@@ -488,7 +507,7 @@ No telemetry. To check advisories, the CLI sends the package names and versions 
 
 ## Recent catches
 
-unstale flagged critical [Next.js security fixes](https://github.com/vercel/next.js/security/advisories/GHSA-2464-fhr4-w9xw) before the GitHub advisory database had them, and caught [Supabase's Next.js auth blocks](https://github.com/supabase/supabase/pull/51869) breaking on Next.js 16. Its fix for a deprecated AI SDK call in fumadocs was merged within a day.
+${CATCHES.map((c) => `- [${c.lead}](${c.url}) ${c.rest}`).join("\n")}
 
 AGPL-3.0, free and open source: ${REPO}
 
@@ -524,6 +543,7 @@ Notes for agents:
 - [README](${REPO}/blob/main/README.md): what it does, install, commands, how it works
 - [Full text for agents](${ORIGIN}/llms-full.txt): README and security model in one file
 - [Security and data handling](${REPO}/blob/main/SECURITY.md)
+- [Against an unaided agent](${BEAT_NAIVE}): unstale vs Claude Code on 19 repos
 - [Evaluation on real upgrades](${REPO}/blob/main/eval/gate/MISSES.md)
 - [Home page as Markdown](${ORIGIN}/index.md)
 

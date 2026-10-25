@@ -491,8 +491,9 @@ pub struct Facts {
     /// Every manifest that declares it does so for development only (`devDependencies`, a dependency group, an
     /// optional extra, the build system): no code that ships runs it.
     pub dev_only: bool,
-    /// Some manifest declares it in one of the project's own extras (`[project.optional-dependencies]`): what users
-    /// install with `pkg[extra]`, so it ships when the project's application code imports it.
+    /// Some manifest declares it in one of the project's own optional sets: an extra (`[project.optional-dependencies]`,
+    /// what users install with `pkg[extra]`) or a PEP 735 dependency group (`uv sync --group x`, which a deployment
+    /// may install as well as a developer). Its scope follows the code: it ships when application code imports it.
     pub extra: bool,
     pub blocker: Option<String>,
 }
@@ -520,7 +521,7 @@ pub struct Decl {
     /// Declared for development only (`devDependencies`, a dev requirements file, a dependency group, an extra, the
     /// build system); `None` for an override, which neither ships nor develops it.
     dev: Option<bool>,
-    /// Declared in one of the project's own extras (`[project.optional-dependencies]`).
+    /// Declared in one of the project's own optional sets: an extra or a dependency group.
     extra: bool,
     /// What holds its version: "an exact pin" or "an override".
     holds: Option<&'static str>,
@@ -577,7 +578,9 @@ pub fn declarations(repo: &usage::Repo) -> Vec<Decl> {
                     decl(req_name(&r), Some(false), false, r.contains("==").then_some("an exact pin"));
                 }
                 let lists = |g: Option<&toml::Value>| g.and_then(|g| g.as_table()).into_iter().flat_map(|g| g.values()).flat_map(|v| reqs(Some(v))).collect::<Vec<_>>();
-                let mut dev: Vec<(String, bool)> = lists(t.get("dependency-groups")).into_iter().map(|r| (r, false)).collect();
+                // A dependency group's name says nothing reliable about where it runs (`similar-issue` for a deployed
+                // tool, `dev` for tests): like an extra, its packages are runtime where application code imports them.
+                let mut dev: Vec<(String, bool)> = lists(t.get("dependency-groups")).into_iter().map(|r| (r, true)).collect();
                 dev.extend(lists(t.get("project").and_then(|p| p.get("optional-dependencies"))).into_iter().map(|r| (r, true)));
                 dev.extend(reqs(t.get("build-system").and_then(|b| b.get("requires"))).into_iter().map(|r| (r, false)));
                 for (r, extra) in dev {
@@ -625,7 +628,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn an_own_extra_is_marked_apart_from_groups() {
+    fn extras_and_dependency_groups_are_optional_sets() {
         // kornia: `onnx = ["onnxruntime"]` is what `pip install kornia[onnx]` installs; `dev` reaches it only as `kornia[onnx]`.
         let mut repo = usage::Repo::default();
         repo.files.push(("pyproject.toml".into(), "[project]\nname = \"k\"\ndependencies = [\"torch\"]\n[project.optional-dependencies]\nonnx = [\"onnxruntime\"]\ndev = [\"k[onnx]\"]\n[dependency-groups]\nlint = [\"ruff\"]\n".into()));
@@ -633,7 +636,7 @@ mod tests {
         let ort = facts(&d, &["onnxruntime".into()]);
         assert!(ort.dev_only && ort.extra && !ort.runtime);
         let ruff = facts(&d, &["ruff".into()]);
-        assert!(ruff.dev_only && !ruff.extra);
+        assert!(ruff.dev_only && ruff.extra && !ruff.runtime, "a group's scope follows the code that imports it");
     }
 
     #[test]
