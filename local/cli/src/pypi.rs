@@ -221,6 +221,8 @@ struct Requirements {
     reqs: Vec<Req>,
     /// Normalised name → (version as written, `sha256:` hashes, the pinning file relative to the project directory).
     pins: BTreeMap<String, (String, Vec<String>, String)>,
+    /// The files read as a `-c` constraints file somewhere: they declare nothing, even where found on their own.
+    constrained: BTreeSet<PathBuf>,
 }
 
 impl Requirements {
@@ -228,6 +230,9 @@ impl Requirements {
         let Ok(canon) = file.canonicalize() else { return };
         if !root.canonicalize().is_ok_and(|r| canon.starts_with(r)) || !seen.insert((canon.clone(), constraint)) {
             return;
+        }
+        if constraint {
+            self.constrained.insert(canon.clone());
         }
         let Ok(text) = std::fs::read_to_string(&canon) else { return };
         let shown = file.strip_prefix(project).unwrap_or(file).to_string_lossy().replace('\\', "/");
@@ -527,7 +532,7 @@ fn choose_lock(rel: &str, mut cands: Vec<Lock>, reqs: &[Req], noted: &mut BTreeS
 /// A requirements file: `requirements*.txt` or `.in`, or any `.txt` or `.in` in a `requirements*` directory
 /// (`requirements/base.txt`, pontoon's `requirements/1-prod.txt`). Returns the project directory it belongs to: its
 /// own, or for one in a `requirements*` directory, that directory's parent.
-fn requirements_project(path: &Path) -> Option<&Path> {
+pub(crate) fn requirements_project(path: &Path) -> Option<&Path> {
     let base = path.file_name()?.to_string_lossy();
     if !(base.ends_with(".txt") || base.ends_with(".in")) {
         return None;
@@ -603,10 +608,18 @@ pub fn detect(root: &Path, packages: &mut Vec<Package>, deps: &mut BTreeMap<Stri
         // lock of the packages they pin, beside a lockfile in this directory or in place of one above it.
         let mut requirements = Requirements::default();
         let mut read = BTreeSet::new();
+        let mut spans = vec![];
         for f in req_files.get(&dir).into_iter().flatten() {
+            let start = requirements.reqs.len();
             requirements.read(root, &dir, f, false, &mut read);
+            spans.push((f.canonicalize().ok(), start..requirements.reqs.len()));
         }
-        reqs.append(&mut requirements.reqs);
+        // A file another one includes with `-c` constrains versions only, though found on its own too.
+        for (f, span) in spans {
+            if !f.is_some_and(|f| requirements.constrained.contains(&f)) {
+                reqs.extend(requirements.reqs[span].iter().cloned());
+            }
+        }
         let pinned = requirements.lock();
         let has_requirements = req_files.contains_key(&dir);
         // A lockfile belongs to the project beside it; only a `pyproject.toml` member looks further up (a uv or
@@ -1184,6 +1197,26 @@ mod tests {
         assert_eq!(deps["pkg:pypi/semconv"].version, parse_version("0.60b0"), "only pre-releases: the newest of them");
         assert!(notes.iter().any(|n| n.starts_with("4 Python requirements no lockfile")), "{notes:?}");
         assert!(notes.iter().any(|n| n.contains("(gone)") && n.contains("declared floor")), "{notes:?}");
+    }
+
+    #[test]
+    fn a_constraints_file_found_on_its_own_declares_nothing() {
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "requirements/dev.txt", "-c base-constraint.txt\npytest==8.0.0\n");
+        write(d.path(), "requirements/base-constraint.txt", "urllib3==2.2.0\n");
+        let (mut pk, mut deps) = (vec![], BTreeMap::new());
+        detect(d.path(), &mut pk, &mut deps, &mut vec![]);
+        assert!(deps.contains_key("pkg:pypi/pytest"));
+        assert!(!deps.contains_key("pkg:pypi/urllib3"), "constrained, not declared");
+    }
+
+    #[test]
+    fn a_private_index_in_a_nested_requirements_file_keeps_names_private() {
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "pyproject.toml", "[project]\nname = \"app\"\ndependencies = [\"corp-sdk>=1\"]\n");
+        write(d.path(), "requirements/base.txt", "--index-url https://pypi.corp.example/simple\ncorp-sdk==1.0.0\n");
+        let st = crate::stack::detect_in(d.path(), &crate::privacy::Env::default()).unwrap();
+        assert!(!st.deps["pkg:pypi/corp-sdk"].public_candidate);
     }
 }
 

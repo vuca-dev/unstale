@@ -505,7 +505,7 @@ pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
     let (mut configs, mut manifest_dirs) = (vec![], BTreeSet::new());
     for e in walker(root).flatten() {
         let name = e.file_name().to_string_lossy();
-        if crate::privacy::is_config(&name) {
+        if crate::privacy::is_config(&name) || crate::pypi::requirements_project(e.path()).is_some() {
             configs.push(e.path().to_path_buf());
         }
         if name == "package.json" || name == "pyproject.toml" || name == "Pipfile" {

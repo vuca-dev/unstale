@@ -263,7 +263,9 @@ const DIR_FILES: &[&str] = &[".npmrc", ".yarnrc.yml", ".yarnrc", "bunfig.toml", 
 /// The configuration files of these directories (fixed names, and the requirements files among their entries,
 /// gitignored or not) and `files`, with how each is read.
 fn project_files(dirs: &BTreeSet<PathBuf>, files: &[PathBuf]) -> BTreeSet<(PathBuf, Kind)> {
-    let mut all: BTreeSet<(PathBuf, Kind)> = files.iter().filter_map(|f| Some((f.clone(), Kind::of(&f.file_name()?.to_string_lossy())?))).collect();
+    // A requirements file under a `requirements*` directory (`requirements/base.txt`) is read like one at the top.
+    let kind = |f: &Path| Kind::of(&f.file_name()?.to_string_lossy()).or_else(|| crate::pypi::requirements_project(f).map(|_| Kind::Requirements));
+    let mut all: BTreeSet<(PathBuf, Kind)> = files.iter().filter_map(|f| Some((f.clone(), kind(f)?))).collect();
     for d in dirs {
         for f in DIR_FILES {
             all.extend(Kind::of(f).map(|k| (d.join(f), k)));
