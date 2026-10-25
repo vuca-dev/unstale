@@ -57,6 +57,9 @@ pub enum Route {
     /// technology. What every user of the version has had for a year is part of it, not an opt-in left to apply
     /// (jsdom 16.0.0's working `Comment` constructor at 16.7.0, matched only by `Node`) (`settled`).
     NoSite,
+    /// Opt-in and installed, but a later release at or below the installed version removed or deprecated every API it
+    /// introduces (open 7.0.0's `url` option, removed in 8.0.0, at 9.1.0): nothing left to adopt (`retire_opt_ins`).
+    Retired,
     /// A deprecation released at or below the installed version whose deprecated API (`replaces`) the code still
     /// uses, by the usage rules: outstanding now, with no upgrade (`in_effect_evidence`).
     InEffect,
@@ -1922,6 +1925,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             out.opps.push(opp);
         }
         supersede_by_removal(&mut out.opps[first..], inp);
+        retire_opt_ins(&mut out.opps[first..]);
         workspaces.retain(|w| !w.records.is_empty());
         if !workspaces.is_empty() {
             out.workspaces.insert(tech.clone(), workspaces);
@@ -1973,6 +1977,43 @@ fn blank<'a>(rec: &'a Rec, release: Release, route: Route) -> Opp<'a> {
     }
 }
 
+/// The records of `comp` of the given kinds released after `since` and at or below `installed` (exact releases only),
+/// that the installed version therefore has: a later removal or deprecation that retires an earlier record's API.
+fn later_records<'o>(opps: &'o [Opp], comp: &'o str, since: &'o Version, installed: &'o Version, kinds: &'o [ChangeType]) -> impl Iterator<Item = usize> + 'o {
+    (0..opps.len()).filter(move |&j| {
+        let r = &opps[j];
+        kinds.contains(&r.rec.r.change_type)
+            && matches!(r.route, Route::AlreadyIncluded | Route::InEffect)
+            && r.component() == comp
+            && r.release.no_later_than.is_none()
+            && parse_version(&r.release.version).is_some_and(|v| v > *since && v <= *installed)
+    })
+}
+
+/// An opt-in in the improvements pass whose every introduced API (`introduces`) a later removal or deprecation of the
+/// same package, at or below the installed version, names in its `replaces` (open 7.0.0's `url` option, removed in
+/// 8.0.0; installed 9.1.0): at the installed version the API is gone or on its way out, so there is nothing to adopt.
+fn retire_opt_ins(opps: &mut [Opp]) {
+    for i in 0..opps.len() {
+        if opps[i].route != Route::ImprovementsPass {
+            continue;
+        }
+        let intro: BTreeSet<String> = opps[i].rec.r.introduces.iter().filter_map(|x| usage::api_name(x)).collect();
+        let Some(since) = parse_version(&opps[i].release.version) else { continue };
+        if intro.is_empty() {
+            continue;
+        }
+        let comp = opps[i].component();
+        let installed = opps[i].installed.clone();
+        let gone: BTreeSet<String> = later_records(opps, &comp, &since, &installed, &[ChangeType::Removal, ChangeType::Deprecation])
+            .flat_map(|j| opps[j].rec.r.replaces.iter().filter_map(|x| usage::api_name(x)))
+            .collect();
+        if intro.is_subset(&gone) {
+            opps[i].route = Route::Retired;
+        }
+    }
+}
+
 /// A deprecation in effect whose API a removal record of the same package has since removed, at or below the installed
 /// version and after the deprecation's release (React 18.0.0 deprecates `ReactDOM.render`, 19.0.0 removes it; installed
 /// 19.2.3): at the installed version
@@ -1993,15 +2034,7 @@ fn supersede_by_removal(opps: &mut [Opp], inp: &Input) {
         let installed = opps[i].installed.clone();
         let Some(since) = parse_version(&opps[i].release.version) else { continue };
         let cited: BTreeSet<&str> = opps[i].matched.iter().map(|(l, _)| l.as_str()).collect();
-        let best = (0..opps.len())
-            .filter(|&j| {
-                let r = &opps[j];
-                r.rec.r.change_type == ChangeType::Removal
-                    && matches!(r.route, Route::AlreadyIncluded | Route::InEffect)
-                    && r.component() == comp
-                    && r.release.no_later_than.is_none()
-                    && parse_version(&r.release.version).is_some_and(|v| v > since && v <= installed)
-            })
+        let best = later_records(opps, &comp, &since, &installed, &[ChangeType::Removal])
             .filter_map(|j| {
                 let shared: Vec<String> = lits(&opps[j]).into_iter().filter(|l| cited.contains(l.as_str())).collect();
                 (!shared.is_empty()).then_some((j, shared))
@@ -2270,6 +2303,7 @@ fn why_scoped(out: &Outcome, techs: Option<&[String]>, routes: &[&str]) -> Strin
             Route::Baseline => "opt-in from an older release line, a year or more before the installed version (part of it, nothing new to adopt)",
             Route::RequiresAbsent => "opt-in for a package or setting this repository does not have (its `requires` is not found)",
             Route::NoSite => "opt-in on the installed line for a year or more with no site in this code (part of the installed version)",
+            Route::Retired => "opt-in whose API a later release at or below the installed version removed or deprecated",
             Route::InEffect => IN_EFFECT,
             Route::AlreadyIncluded => "already in the installed version with nothing to adopt",
             Route::BeyondTarget => "released after the target version",
@@ -3816,6 +3850,42 @@ mod tests {
         assert_eq!(benefits("next:also-perf"), vec![Benefit::Performance]);
         assert_eq!(benefits("next:still-affected"), vec![Benefit::Security]);
         assert_eq!(ids(&out, &out.improvements), vec!["next:no-advisory", "next:still-affected", "next:undecided", "next:also-perf"]);
+    }
+
+    #[test]
+    fn the_improvements_pass_leaves_out_an_opt_in_whose_api_a_later_release_at_or_below_the_installed_version_retired() {
+        // stenciljs/core: open 9.1.0 was offered 7.0.0's `url` option, which 8.0.0 removed.
+        let opt = |id: &str, intro: serde_json::Value| {
+            with(rec(id, "pkg:npm/open", "7.0.0"), json!({"change_type":"new_option","benefit":["correctness"],"introduces":intro,"terms":[["from 'open", 0]]}))
+        };
+        let later = |id: &str, kind: &str, v: &str, replaces: serde_json::Value| {
+            with(rec(id, "pkg:npm/open", v), json!({"change_type":kind,"breaking":kind == "removal","benefit":["none"],"replaces":replaces}))
+        };
+        let c = catalog(
+            "open",
+            0,
+            vec![
+                opt("open:url", json!(["url"])),
+                opt("open:wait", json!(["wait"])),
+                // Only one of its APIs retired: the other is still there to adopt.
+                opt("open:both", json!(["app", "newWindow"])),
+                later("open:url-removed", "removal", "8.0.0", json!(["url"])),
+                later("open:wait-deprecated", "deprecation", "8.1.0", json!(["wait"])),
+                later("open:app-removed", "removal", "8.0.0", json!(["app"])),
+            ],
+        );
+        let r = repo(&[("src/open-in-browser.ts", "import open from 'open';\nawait open(url);\n")]);
+        let l = Ledger::default();
+        let s9 = stack(&[("open", "9.1.0")], None);
+        let out = run_with(&c, &s9, &r, &l);
+        assert_eq!(route_of(&out, "open:url"), &Route::Retired, "removed at 8.0.0");
+        assert_eq!(route_of(&out, "open:wait"), &Route::Retired, "deprecated at 8.1.0");
+        assert_eq!(route_of(&out, "open:both"), &Route::ImprovementsPass);
+        // Before the removal, the option is still there to adopt.
+        let s7 = stack(&[("open", "7.4.2")], None);
+        let out = run_with(&c, &s7, &r, &l);
+        assert_eq!(route_of(&out, "open:url"), &Route::ImprovementsPass);
+        assert_eq!(route_of(&out, "open:wait"), &Route::ImprovementsPass);
     }
 
     #[test]
