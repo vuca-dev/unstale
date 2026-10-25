@@ -203,7 +203,7 @@ describe("fetchReleases through changelogs and links", () => {
   test("cached rolling pages are narrowed offline, with new snapshot keys and the old evidence snapshot identified", async () => {
     const { fetchReleases } = await import("../src/pipeline/fetch.ts");
     const t: Technology = { id: "rolling", name: "rolling", repo: "owner/rolling", components: [], tag: /^v?(\d+\.\d+\.\d+)$/, clean: (b) => b };
-    const page = "# What's New\n## rolling v9.4\n" + "Future change. ".repeat(40) + "\n## rolling v9.3\n" + "Correct change. ".repeat(40) + "\n## rolling v9.2\n" + "Old change. ".repeat(40);
+    const page = "# What's New\n## rolling v9.4\n" + "Future change. ".repeat(40) + "\n## rolling v9.3\n" + "Correct change. ".repeat(3) + "\n## rolling v9.2\n" + "Old change. ".repeat(40);
     const body = "See [What's New](https://rolling.dev/whats-new) for details.";
     serve([gh(t.repo, "v9.3.0", "2026-04-13", body), gh(t.repo, "v9.4.0", "2026-09-05", body)], {
       "https://api.github.com/repos/owner/rolling": { homepage: "https://rolling.dev" },
