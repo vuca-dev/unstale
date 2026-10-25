@@ -11,6 +11,9 @@ changes; reviews are needed only for claims about what an agent finds.
 
 - `gate.py`: the stages (`cliqueue`, `agree`, `match`, `review`, `score`). It imports the replay
   (`eval/replay/run_replay.py` over `~/ati-slice0/harness`) read-only.
+- `rendered.py`: reads the batch the CLI renders (`.unstale/review/upgrades.md`). A record whose exact release is
+  not known renders its release as a span (`jest 30.0.0 to 30.5.2 (exact release not known)`). If a batch id cannot
+  be read, the gate stops and names the record and the reason. Tests: `python3 -m unittest -v test_rendered`.
 - `score.py`: tables per split and required/optional, with run-to-run spread and deltas against a baseline.
 - `match/<event>.json`: the replay's two Codex match runs per event. The gate reuses them when the event's window
   catalog is identical, so the same catalog costs no match calls.

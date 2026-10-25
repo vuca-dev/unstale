@@ -39,6 +39,9 @@ from e2e_queue import package_of, vtuple  # noqa: E402
 from e2e_run import _codex, _id, render, verdicts  # noqa: E402
 from config import MODEL  # noqa: E402
 
+sys.path.insert(0, HERE)
+import rendered as rendered_batch  # noqa: E402
+
 TARGET_PKGS = {"next": ["next"], "prisma": ["prisma", "@prisma/client"], "nestjs": ["@nestjs/core", "@nestjs/common"]}
 TODAY = "2026-10-15"
 CACHE = os.path.expanduser(os.environ.get("GATE_CACHE", "~/.cache/unstale-gate"))
@@ -63,12 +66,6 @@ def set_window(ev):
 
 
 # ---------------------------------------------------------------------------------------------------- CLI queue
-
-# The summary sits in a fenced block (with any conditions on the next line), so upstream text cannot pose as instructions.
-# No part crosses into the next entry: an "In effect now" entry has another release line and must not swallow it.
-REC = re.compile(r"^### \[([^\]]+)\] rev (\d+)\n\n`{3,}text\n((?:(?!\n### ).)*?)\n(?:Conditions [^\n]*\n)?`{3,}\n\n- Release: (\S+) (\S+) \(installed (\S+), target (\S+)\)\n- Change: ([^;]+); breaking: (yes|no)\n"
-                 r"(?:(?!### )[^\n]*\n)*?- (?:Matched terms|Deprecated API used here): (.*?)\n", re.M | re.S)
-
 
 def cli_queue(ev, binary, catalog):
     e = replay.info(ev)
@@ -99,7 +96,8 @@ def cli_queue(ev, binary, catalog):
         json.dump(st, open(rj, "w"))
     targets = [x for p in TARGET_PKGS[e["tech"]] for x in ("--target", "%s@%s" % (p, e["new"]))]
     order, recs, first = [], {}, True
-    skill = os.path.join(repo, ".unstale", "skills", "upgrade-review", "SKILL.md")
+    # Where the CLI renders the batch: `.unstale/review/upgrades.md` since #143, the upgrade-review skill before it.
+    rendered = [os.path.join(repo, ".unstale", "review", "upgrades.md"), os.path.join(repo, ".unstale", "skills", "upgrade-review", "SKILL.md")]
     while True:
         p = run("review", "--pass", "upgrade-review", *targets, *([] if first else ["--next"]))
         if p.returncode != 0:
@@ -109,11 +107,15 @@ def cli_queue(ev, binary, catalog):
         ids = state["batches"]["upgrade-review"]["ids"]
         if not ids:
             break
+        skill = next((x for x in rendered if os.path.exists(x)), None)
+        if skill is None:
+            sys.exit("%s: the CLI rendered no upgrade-review batch (looked for %s)" % (ev, ", ".join(rendered)))
         text = open(skill).read()
-        for m in REC.finditer(text):
-            recs[m.group(1)] = dict(rev=int(m.group(2)), pkg=m.group(4), release=m.group(5), installed=m.group(6), target=m.group(7),
-                                    change=m.group(8), breaking=m.group(9) == "yes", matched=m.group(10) != "none")
-        assert all(i in recs for i in ids), (ev, [i for i in ids if i not in recs])
+        read, unread = rendered_batch.parse(text)
+        recs.update(read)
+        err = rendered_batch.missing(ids, recs, unread)
+        if err:
+            sys.exit("%s: %s (%s)" % (ev, err, skill))
         order += ids
         for i in ids:
             q = run("decide", i, "do-now")
