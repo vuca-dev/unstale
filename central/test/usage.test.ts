@@ -169,17 +169,25 @@ test("Jev attribution isolates a run and attempt, ranks sources, and does not co
   process.env.GITHUB_RUN_ATTEMPT = "2";
   try {
     const prices = [{ provider: "jev", model: "jev-latest", input: 0.042, output: 0 }];
-    const call = { api: "jev", run: "123", run_attempt: "2", phase: "onboarding", technology: "React", stage: "labelling", source: "release notes", input_tokens: 1000 };
+    const call = { api: "jev", run: "123", run_attempt: "2", phase: "onboarding", technology: "React", stage: "labelling", source: "release notes", input_tokens: 1000, output_tokens: 10 };
     const result = jevAttribution([
       { ...call, run: "122", input_tokens: 900000 },
       { ...call, run_attempt: "1", input_tokens: 800000 },
       call, { ...call, stage: "matching", input_tokens: 2000 },
+      { ...call, source: "official documentation change", input_tokens: 500 },
       { event: "jev-disabled", run: "123", run_attempt: "2" },
     ], prices, "123");
-    expect(result).toMatchObject({ scope: "actions_run", calls: 2, input_tokens: 3000,
-      top: [{ stage: "matching", calls: 1, dollars: 0.000084 }, { stage: "labelling", calls: 1, dollars: 0.000042 }] });
+    expect(result).toMatchObject({ scope: "actions_run", run_attempt: "2", calls: 3, input_tokens: 3500, output_tokens: 30,
+      top: [{ stage: "matching", calls: 1, dollars: 0.000084, output_tokens: 10 }, { stage: "labelling", source: "release notes", calls: 1, dollars: 0.000042 }, { stage: "labelling", source: "official documentation change", input_tokens: 500 }] });
   } finally {
     if (oldAttempt === undefined) delete process.env.GITHUB_RUN_ATTEMPT;
     else process.env.GITHUB_RUN_ATTEMPT = oldAttempt;
   }
+});
+
+test("sample retries move to the end and retained-log scope does not invent an Actions attempt", () => {
+  const calls = Array.from({ length: 10 }, (_, i) => ({ api: "jev", request: String(i), sample: { subject: String(i) } }));
+  const result = jevAttribution([...calls, calls[0]!], [], "") as { samples: { subject: string }[]; run_attempt: unknown };
+  expect(result.samples.map((s) => s.subject)).toEqual(["3", "4", "5", "6", "7", "8", "9", "0"]);
+  expect(result.run_attempt).toBeNull();
 });

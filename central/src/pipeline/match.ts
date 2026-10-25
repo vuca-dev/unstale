@@ -1,7 +1,7 @@
 // Matching at ingest (identity rules v3 from ~/ati-slice2/harness/dm_match.py): up to 8 candidates of the same
 // technology, a yes/no same-or-new judgement per candidate through the classifier adapter, "same" only at p >= SAME_P,
 // the breaking guard, and the combine rule. The id never changes on a match.
-import type { Classification, Questions } from "./classify/adapter.ts";
+import { attributeEvidence, type Classification, type Questions } from "./classify/adapter.ts";
 import type { Labels } from "./classify/labels.ts";
 import type { Incoming } from "./extract.ts";
 import { lineFn } from "./lines.ts";
@@ -151,6 +151,7 @@ export function matchRequest(techName: string, inc: Incoming, breaking: boolean,
         },
       ]),
   );
+  attributeEvidence(state, inc.quote);
   return { state, questions };
 }
 

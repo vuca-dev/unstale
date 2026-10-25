@@ -127,6 +127,12 @@ function checkAnswer(id: string, q: ChoiceQuestion, a: unknown): Answer {
   return { choice: x.choice, confidence: x.confidence, probabilities };
 }
 
+const evidenceByState = new WeakMap<object, string>();
+/** Keep matching evidence out of serialized prompts and cache keys. */
+export function attributeEvidence(state: object, quote: string): void {
+  evidenceByState.set(state, quote);
+}
+
 /** Metadata only: never enters the prompt or cache key. Samples are stable across retries and bounded in size. */
 export function classifierAttribution(state: Record<string, unknown>, questions: Questions): Record<string, unknown> {
   const incoming = state.incoming as Record<string, unknown> | undefined;
@@ -144,7 +150,7 @@ export function classifierAttribution(state: Record<string, unknown>, questions:
     ...(parseInt(request.slice(0, 8), 16) % 64 === 0 ? { sample: {
       subject: oneLine(String(record.subject ?? ""), 120),
       summary: oneLine(String(record.summary ?? ""), 320),
-      evidence: oneLine(String(record.evidence ?? ""), 320),
+      evidence: oneLine(String(evidenceByState.get(state) ?? record.evidence ?? ""), 320),
       release: oneLine(String(record.release ?? ""), 80),
     } } : {}),
   };

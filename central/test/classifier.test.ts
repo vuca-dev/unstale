@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, test } from "vitest";
-import { classifierAttribution, ChatClassifier, ClassifierCache, FallbackClassifier, Jev, type ChatRunner, type Questions } from "../src/pipeline/classify/adapter.ts";
+import { attributeEvidence, classifierAttribution, ChatClassifier, ClassifierCache, FallbackClassifier, Jev, type ChatRunner, type Questions } from "../src/pipeline/classify/adapter.ts";
 
 const Q: Questions = {
   breaking: { instructions: "Breaking?", options: { yes: "Breaking.", no: "Not breaking." } },
@@ -235,17 +235,36 @@ test("attribution distinguishes labels, cross-source matching and bounded determ
   expect(classifierAttribution(state, questions)).toMatchObject({ stage: "labelling", source: "official documentation change", technology: "React", candidates: 0 });
   expect(classifierAttribution({ technology: "React", incoming: { source: "security advisory" }, candidates: { c1: {}, c2: {} } }, Q)).toMatchObject({ stage: "matching", source: "security advisory", candidates: 2 });
   let sample: Record<string, unknown> | undefined;
+  let sampled = 0;
   for (let i = 0; i < 10000; i++) {
     const request = { ...state, release: String(i) };
     const a = classifierAttribution(request, questions);
     if (a.sample) {
       expect(classifierAttribution(request, questions)).toEqual(a);
       sample = a.sample as Record<string, unknown>;
-      break;
+      sampled++;
     }
   }
+  expect(sampled).toBeGreaterThan(100);
+  expect(sampled).toBeLessThan(220);
   expect(sample).toBeDefined();
   expect(String(sample!.subject).length).toBeLessThanOrEqual(120);
   expect(String(sample!.summary).length).toBeLessThanOrEqual(320);
+  expect(String(sample!.evidence).length).toBeLessThanOrEqual(320);
+  expect(String(sample!.release).length).toBeLessThanOrEqual(80);
   expect(JSON.stringify(state)).toBe(original);
+});
+
+test("matching evidence is attribution-only and never serialized or included in its request hash", () => {
+  for (let i = 0; i < 10000; i++) {
+    const state = { technology: "React", incoming: { subject: "api", release: String(i) }, candidates: {} };
+    const before = classifierAttribution(state, Q);
+    if (!before.sample) continue;
+    const json = JSON.stringify(state);
+    attributeEvidence(state, "source quote");
+    expect(classifierAttribution(state, Q)).toMatchObject({ request: before.request, sample: { evidence: "source quote" } });
+    expect(JSON.stringify(state)).toBe(json);
+    return;
+  }
+  throw new Error("no sampled matching request");
 });
