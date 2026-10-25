@@ -254,9 +254,14 @@ async function main(): Promise<void> {
       console.log(JSON.stringify({ signed: r.signed, technologies: r.technologies, shards: r.shards, linked: r.linked, bytes: r.bytes, coverage: r.coverage, pruned: deleted, clock_started: started.length, in_grace: kept.length, unreadable }));
       return;
     }
+    case "jev-usage":
     case "usage": {
       // The current UTC month: the state save moves earlier months to central/archive (state/snapshot.ts).
       const lines = readFileSync(join(centralDir(), "usage.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l) as Record<string, unknown>);
+      if (cmd === "jev-usage") {
+        console.log(JSON.stringify(jevAttribution(lines, loadPrices()), null, 1));
+        return;
+      }
       const by: Record<string, { calls: number; input_tokens: number; output_tokens: number }> = {};
       for (const l of lines) {
         if (typeof l.api !== "string") continue;
@@ -267,7 +272,7 @@ async function main(): Promise<void> {
       }
       // `by_phase` last: the per-phase totals, onboarded and monitored technologies, and the per-technology figures
       // (usage.ts), so the ongoing cost per technology-year is read apart from first coverage.
-      console.log(JSON.stringify({ ...by, events: lines.filter((l) => l.event).map((l) => l.event), by_phase: usageByPhase(lines, monitoredTechnologies(), loadPrices()), jev_attribution: jevAttribution(lines, loadPrices()) }, null, 1));
+      console.log(JSON.stringify({ ...by, events: lines.filter((l) => l.event).map((l) => l.event), by_phase: usageByPhase(lines, monitoredTechnologies(), loadPrices()) }, null, 1));
       return;
     }
     default:
