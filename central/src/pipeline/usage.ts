@@ -129,3 +129,42 @@ export function usageByPhase(lines: Record<string, unknown>[], monitored: number
     monitoring_per_technology_year: days > 0 && monitored ? per(monitoring, monitored, 365 / days) : null,
   };
 }
+
+/** Current Actions run only, so a monthly cumulative total cannot masquerade as this run's spend. */
+export function jevAttribution(lines: Record<string, unknown>[], prices: Price[], run = process.env.GITHUB_RUN_ID): object {
+  const calls = lines.filter((l) => l.api === "jev" && (!run || l.run === run)
+    && (!run || l.run_attempt === (process.env.GITHUB_RUN_ATTEMPT ?? "1")));
+  const groups = new Map<string, { phase: string; technology: string; stage: string; source: string; calls: number; input_tokens: number; output_tokens: number; dollars: number; unpriced_calls: number }>();
+  for (const l of calls) {
+    const dims = { phase: String(l.phase ?? "unknown"), technology: String(l.technology ?? l.tech ?? "unknown"), stage: String(l.stage ?? "unknown"), source: String(l.source ?? "unknown") };
+    const key = JSON.stringify(dims);
+    const g = groups.get(key) ?? { ...dims, calls: 0, input_tokens: 0, output_tokens: 0, dollars: 0, unpriced_calls: 0 };
+    g.calls++;
+    g.input_tokens += Number(l.input_tokens ?? 0);
+    g.output_tokens += Number(l.output_tokens ?? 0);
+    const dollars = typeof l.dollars === "number" ? l.dollars : estimate(prices, l);
+    if (dollars === undefined) g.unpriced_calls++;
+    else g.dollars += dollars;
+    groups.set(key, g);
+  }
+  const ranked = [...groups.values()].sort((a, b) => b.input_tokens - a.input_tokens);
+  const samples = new Map<unknown, object>();
+  for (const l of calls.filter((l) => l.sample)) {
+    samples.delete(l.request);
+    samples.set(l.request, { technology: l.technology, stage: l.stage, source: l.source, ...l.sample as object });
+  }
+  return {
+    scope: run ? "actions_run" : "retained_log", run: run ?? null, run_attempt: run ? process.env.GITHUB_RUN_ATTEMPT ?? "1" : null,
+    dollars: round(ranked.reduce((n, g) => n + g.dollars, 0), 6),
+    unpriced_calls: ranked.reduce((n, g) => n + g.unpriced_calls, 0),
+    stages: Object.fromEntries([...new Set(ranked.map((g) => g.stage))].map((stage) => {
+      const rows = ranked.filter((g) => g.stage === stage);
+      return [stage, { calls: rows.reduce((n, g) => n + g.calls, 0), input_tokens: rows.reduce((n, g) => n + g.input_tokens, 0), output_tokens: rows.reduce((n, g) => n + g.output_tokens, 0) }];
+    })),
+    calls: calls.length, input_tokens: calls.reduce((n, l) => n + Number(l.input_tokens ?? 0), 0),
+    output_tokens: calls.reduce((n, l) => n + Number(l.output_tokens ?? 0), 0),
+    top: ranked.slice(0, 10).map((g) => ({ ...g, dollars: round(g.dollars, 6) })),
+    // At most one sample per request, including when the same batch was retried.
+    samples: [...samples.values()].slice(-8),
+  };
+}

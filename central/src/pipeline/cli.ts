@@ -37,7 +37,7 @@ import { registryStats } from "./registry.ts";
 import { ShardLine } from "../schema/catalog.ts";
 import { applyChange, LABEL_FIELDS, loadStore, mergeInto, retract, REVISION_FIELDS, saveStore, type EditableField, type StoredRecord } from "./store.ts";
 import { TECHNOLOGIES } from "./technologies.ts";
-import { loadPrices, monitoredTechnologies, usageByPhase } from "./usage.ts";
+import { jevAttribution, loadPrices, monitoredTechnologies, usageByPhase } from "./usage.ts";
 import { readJson, withUsagePhase } from "./util.ts";
 import { techLocal } from "../state/client.ts";
 
@@ -254,9 +254,14 @@ async function main(): Promise<void> {
       console.log(JSON.stringify({ signed: r.signed, technologies: r.technologies, shards: r.shards, linked: r.linked, bytes: r.bytes, coverage: r.coverage, pruned: deleted, clock_started: started.length, in_grace: kept.length, unreadable }));
       return;
     }
+    case "jev-usage":
     case "usage": {
       // The current UTC month: the state save moves earlier months to central/archive (state/snapshot.ts).
       const lines = readFileSync(join(centralDir(), "usage.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l) as Record<string, unknown>);
+      if (cmd === "jev-usage") {
+        console.log(JSON.stringify(jevAttribution(lines, loadPrices()), null, 1));
+        return;
+      }
       const by: Record<string, { calls: number; input_tokens: number; output_tokens: number }> = {};
       for (const l of lines) {
         if (typeof l.api !== "string") continue;

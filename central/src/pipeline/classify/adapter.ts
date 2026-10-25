@@ -6,7 +6,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { extractLlm, extractModel } from "../llm.ts";
 import { hashedPacks, type Packs } from "../packs.ts";
-import { canonical, logUsage, sha256, sleep } from "../util.ts";
+import { canonical, logUsage, sha256, sleep, oneLine } from "../util.ts";
 
 /** `openai-decisions` and `codex` stay known names: records labelled by them (before 16 October 2026) keep them. */
 export type ClassifierName = "jev" | "openai-decisions" | "codex" | "chat";
@@ -127,6 +127,35 @@ function checkAnswer(id: string, q: ChoiceQuestion, a: unknown): Answer {
   return { choice: x.choice, confidence: x.confidence, probabilities };
 }
 
+const evidenceByState = new WeakMap<object, string>();
+/** Keep matching evidence out of serialized prompts and cache keys. */
+export function attributeEvidence(state: object, quote: string): void {
+  evidenceByState.set(state, quote);
+}
+
+/** Metadata only: never enters the prompt or cache key. Samples are stable across retries and bounded in size. */
+export function classifierAttribution(state: Record<string, unknown>, questions: Questions): Record<string, unknown> {
+  const incoming = state.incoming as Record<string, unknown> | undefined;
+  const record = incoming ?? state;
+  const stage = incoming ? "matching" : "change_type" in questions ? "labelling" : "other";
+  const source = typeof record.source === "string" ? record.source : incoming ? "release notes" : "unknown";
+  const request = sha256(canonical({ state, questions }));
+  return {
+    stage, source, technology: state.technology,
+    questions: Object.keys(questions).length,
+    candidates: state.candidates && typeof state.candidates === "object" ? Object.keys(state.candidates).length : 0,
+    state_bytes: Buffer.byteLength(JSON.stringify(state)),
+    question_bytes: Buffer.byteLength(JSON.stringify(questions)),
+    request,
+    ...(parseInt(request.slice(0, 8), 16) % 64 === 0 ? { sample: {
+      subject: oneLine(String(record.subject ?? ""), 120),
+      summary: oneLine(String(record.summary ?? ""), 320),
+      evidence: oneLine(String(evidenceByState.get(state) ?? record.evidence ?? ""), 320),
+      release: oneLine(String(record.release ?? ""), 80),
+    } } : {}),
+  };
+}
+
 const JEV_MAX_QUESTIONS = 8;
 const JEV_MAX_BYTES = 32 * 1024;
 
@@ -176,7 +205,8 @@ export class Jev implements Classifier {
     }
     const answers: Record<string, Answer> = {};
     let model = this.model;
-    for (const qs of this.batches(state, questions)) {
+    const batches = this.batches(state, questions);
+    for (const [batch, qs] of batches.entries()) {
       const res = (await post("https://api.typesafe.ai/v1/systemone", this.body(state, qs), { ...this.opts, key })) as {
         model?: string;
         answers?: Record<string, unknown>;
@@ -186,7 +216,7 @@ export class Jev implements Classifier {
       usageStats.jev.calls++;
       usageStats.jev.input_tokens += usage.input_tokens;
       usageStats.jev.output_tokens += usage.output_tokens;
-      logUsage({ api: "jev", model: res?.model ?? this.model, ...usage });
+      logUsage({ api: "jev", model: res?.model ?? this.model, ...usage, ...classifierAttribution(state, qs), batch: batch + 1, batches: batches.length });
       if (!res || typeof res.answers !== "object" || res.answers === null) throw new ClassifierError("malformed", "no answers");
       for (const [id, q] of Object.entries(qs)) answers[id] = checkAnswer(id, q, res.answers[id]);
       if (typeof res.model === "string") model = res.model;
