@@ -29,7 +29,7 @@ def validate_inputs(root, plan, reference_commit=None):
     if "h1_labels" not in expected:
         if not reference_commit:
             raise ValueError("legacy plan needs --reference-commit naming the pre-call commit")
-        saved = subprocess.check_output(["git", "show", reference_commit + ":" + paths["h1_labels"]], cwd=HERE)
+        saved = subprocess.check_output(["git", "show", reference_commit + ":" + paths["h1_labels"]], cwd=root)
         expected["h1_labels"] = hashlib.sha256(saved).hexdigest()
     for key, path in paths.items():
         with open(os.path.join(root, path), "rb") as f:

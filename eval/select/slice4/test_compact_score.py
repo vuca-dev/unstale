@@ -2,6 +2,7 @@ import unittest
 import hashlib
 import os
 import tempfile
+import subprocess
 import compact_score as c
 
 
@@ -34,6 +35,22 @@ class Scoring(unittest.TestCase):
             del plan["data_sha256"]["h1_labels"]
             with self.assertRaisesRegex(ValueError, "legacy plan needs"):
                 c.validate_inputs(root, plan)
+
+    def test_legacy_reference_comes_from_the_alternate_data_checkout(self):
+        paths = {"h1": "eval/select/holdout/classify/records.json", "h2": "eval/select/out/slice4/h2-units.json",
+                 "h1_labels": "eval/select/holdout/classify/labels/adjudicated.json"}
+        with tempfile.TemporaryDirectory() as root:
+            for path in paths.values():
+                os.makedirs(os.path.dirname(os.path.join(root, path)), exist_ok=True)
+                with open(os.path.join(root, path), "wb") as f:
+                    f.write(b"{}")
+            run = lambda *args: subprocess.check_output(["git", *args], cwd=root, stderr=subprocess.DEVNULL)
+            run("init", "-q")
+            run("add", ".")
+            run("-c", "user.name=Eval Test", "-c", "user.email=eval@example.test", "commit", "-qm", "reference")
+            commit = run("rev-parse", "HEAD").decode().strip()
+            plan = {"data_sha256": {k: hashlib.sha256(b"{}").hexdigest() for k in ("h1", "h2")}}
+            self.assertEqual(c.validate_inputs(root, plan, commit)["legacy_reference_commit"], commit)
 
     def test_missing_answers_are_wrong_and_do_not_reduce_denominators(self):
         refs = {"a": {"breaking": True, "obligation": True, "change_types": ["removal"]},
