@@ -261,7 +261,9 @@ fn render_record(pass: Pass, o: &Opp) -> String {
         }
         Pass::ImprovementsPass => s += &format!("- Release: {pkg} {} (installed {})\n", release_version(&o.release), o.installed),
     }
-    s += &format!("- Change: {}; breaking: {}\n", change_type(r.change_type), if r.breaking { "yes" } else { "no" });
+    // A removal in effect (`funnel::supersede_by_removal`) breaks the code using it, whatever the record says.
+    let breaking = r.breaking || (o.route == Route::InEffect && r.change_type == ChangeType::Removal);
+    s += &format!("- Change: {}; breaking: {}\n", change_type(r.change_type), if breaking { "yes" } else { "no" });
     if !o.benefits.is_empty() || pass == Pass::ImprovementsPass {
         let b: Vec<&str> = if o.benefits.is_empty() { r.benefit.iter().map(benefit).collect() } else { o.benefits.iter().map(benefit).collect() };
         s += &format!("- Benefit: {}\n", b.join(", "));

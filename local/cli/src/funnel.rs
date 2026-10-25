@@ -1977,7 +1977,8 @@ fn blank<'a>(rec: &'a Rec, release: Release, route: Route) -> Opp<'a> {
 /// version and after the deprecation's release (React 18.0.0 deprecates `ReactDOM.render`, 19.0.0 removes it; installed
 /// 19.2.3): at the installed version
 /// the API is gone, so the site breaks rather than warns. The removal takes the deprecation's place in effect, citing
-/// the sites the deprecation's usage rules found for the literals both name (the removal's own `replaces`), and the
+/// the sites the deprecation's usage rules found for the literals both name (the removal's own `replaces`; the
+/// manifests on another release line it names, `Opp::elsewhere`, stay the removal's own, which are per record), and the
 /// deprecation counts as already included. Code using an API that no longer exists fails, so the removal carries a
 /// correctness benefit whatever its record says. Among several removals naming the literal, the one about it (its
 /// subject is the literal) and naming the most of the cited literals wins, then the earliest release, then the id.
@@ -2021,7 +2022,6 @@ fn supersede_by_removal(opps: &mut [Opp], inp: &Input) {
             r.matched.clear();
             r.more.clear();
             r.files.clear();
-            r.elsewhere.clear();
             r.score = 0.0;
         }
         r.route = Route::InEffect;
@@ -2038,11 +2038,6 @@ fn supersede_by_removal(opps: &mut [Opp], inp: &Input) {
         for f in dep.files.iter().filter(|f| files.contains(f)) {
             if !r.files.contains(f) && r.files.len() < 3 {
                 r.files.push(f.clone());
-            }
-        }
-        for e in &dep.elsewhere {
-            if !r.elsewhere.contains(e) {
-                r.elsewhere.push(e.clone());
             }
         }
         r.score = r.score.max(dep.score);
