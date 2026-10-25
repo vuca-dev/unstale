@@ -719,15 +719,16 @@ pub fn detect(root: &Path, packages: &mut Vec<Package>, deps: &mut BTreeMap<Stri
     python.or(python_standalone)
 }
 
-/// Whether `v` is a release a fresh install of `spec` may resolve to: admitted by it (any alternative of Poetry's
-/// `||` form), and no pre-release.
+/// Whether `spec` admits `v` (any alternative of Poetry's `||` form).
 fn admits(v: &Version, spec: &str) -> bool {
-    v.pre.is_empty() && spec.split("||").any(|alt| spec_satisfies(v, alt.trim()) == Some(true))
+    spec.split("||").any(|alt| spec_satisfies(v, alt.trim()) == Some(true))
 }
 
-/// The newest of `releases` that `spec` admits: what `pip install` or `uv pip install` resolves for it today.
+/// The newest of `releases` that `spec` admits: what `pip install` or `uv pip install` resolves for it today. A
+/// pre-release only when no final release is admitted (PEP 440: a package published only as `0.60b0`).
 pub fn newest_admitted(releases: &[Version], spec: &str) -> Option<Version> {
-    releases.iter().filter(|v| admits(v, spec)).max().cloned()
+    let ok: Vec<&Version> = releases.iter().filter(|v| admits(v, spec)).collect();
+    ok.iter().filter(|v| v.pre.is_empty()).max().or_else(|| ok.iter().max()).map(|v| (*v).clone())
 }
 
 /// Reads each declaration no lockfile or pinned requirements file pins (`Dep::unpinned`) at the newest release on
@@ -779,7 +780,10 @@ pub fn assume_newest(deps: &mut BTreeMap<String, Dep>, notes: &mut Vec<String>, 
                 None => d.readings.push(crate::stack::Reading { dir, version: v, source, standalone: false, range: Some(crate::stack::Range::Pypi(spec)), lock: None }),
             }
         }
-        newest.push(d.name.clone());
+        // Named when no manifest pins it: a workspace member's unpinned declaration beside a pinned one sets nothing.
+        if !d.readings.iter().any(|r| r.range.is_none()) {
+            newest.push(d.name.clone());
+        }
     }
     let list = |names: &[String]| {
         let more = if names.len() > 8 { format!(" and {} more", names.len() - 8) } else { String::new() };
@@ -1150,7 +1154,7 @@ mod tests {
     fn unpinned_requirements_read_at_the_newest_release_their_range_admits() {
         // agentscope: a pyproject-only library. Floors and unpinned names read as a fresh install resolves them.
         let d = tempfile::tempdir().unwrap();
-        write(d.path(), "pyproject.toml", "[project]\nname = \"lib\"\ndependencies = [\"mcp>=2.0.0\", \"fastapi\", \"textual>=8.2,<9\", \"gone>=1\"]\n");
+        write(d.path(), "pyproject.toml", "[project]\nname = \"lib\"\ndependencies = [\"mcp>=2.0.0\", \"fastapi\", \"textual>=8.2,<9\", \"gone>=1\", \"semconv\"]\n");
         let (mut pk, mut deps) = (vec![], BTreeMap::new());
         let mut notes = vec![];
         detect(d.path(), &mut pk, &mut deps, &mut notes);
@@ -1162,6 +1166,7 @@ mod tests {
                     "pkg:pypi/mcp" => &["1.9.0", "2.0.0", "2.3.0", "3.0.0rc1"],
                     "pkg:pypi/fastapi" => &["0.110.0", "0.162.0"],
                     "pkg:pypi/textual" => &["8.2.0", "8.9.1", "9.0.0"],
+                    "pkg:pypi/semconv" => &["0.59b0", "0.60b0"],
                     _ => continue,
                 };
                 m.insert(p.clone(), vs.iter().filter_map(|s| parse_version(s)).collect());
@@ -1176,7 +1181,8 @@ mod tests {
         assert!(deps["pkg:pypi/fastapi"].source.contains("what a fresh install resolves"), "{}", deps["pkg:pypi/fastapi"].source);
         assert_eq!(deps["pkg:pypi/mcp"].readings[0].range, Some(crate::stack::Range::Pypi(">=2.0.0".into())), "the range stays for the library's users");
         assert_eq!(deps["pkg:pypi/gone"].version, Some(v("1.0.0")), "no releases read: the floor, labelled");
-        assert!(notes.iter().any(|n| n.starts_with("3 Python requirements no lockfile")), "{notes:?}");
+        assert_eq!(deps["pkg:pypi/semconv"].version, parse_version("0.60b0"), "only pre-releases: the newest of them");
+        assert!(notes.iter().any(|n| n.starts_with("4 Python requirements no lockfile")), "{notes:?}");
         assert!(notes.iter().any(|n| n.contains("(gone)") && n.contains("declared floor")), "{notes:?}");
     }
 }
