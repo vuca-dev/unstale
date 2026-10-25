@@ -185,6 +185,7 @@ async function drain(args: string[]): Promise<void> {
     await tick?.();
   };
   await take();
+  console.error(JSON.stringify({ event: "registry_poll", ...await service.pollChanges() }));
   let pulling: Promise<void> | undefined;
   const again = pullMs
     ? setInterval(() => {
@@ -223,7 +224,7 @@ async function drain(args: string[]): Promise<void> {
   const statuses = writeStatuses(service);
   const states: Record<string, number> = {};
   for (const j of service.jobs.values()) states[j.state] = (states[j.state] ?? 0) + 1;
-  console.log(JSON.stringify({ wall_s: Math.round((Date.now() - t0) / 1000), pulled: taken.size, taken: accepted, ...result, statuses, states, gateway: gatewayUsage, metrics: service.metrics() }));
+  console.log(JSON.stringify({ wall_s: Math.round((Date.now() - t0) / 1000), pulled: taken.size, taken: accepted, ...result, statuses, states, gateway: gatewayUsage, metrics: service.metrics(), freshness: service.freshness() }));
 }
 
 /** Tells the gateway what a deployed run took (with the demand it counted), so it stops holding them. */

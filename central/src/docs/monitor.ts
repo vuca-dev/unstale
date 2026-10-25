@@ -91,7 +91,7 @@ export const docsDir = (tech: string) => join(centralDir(), "docs", techLocal(te
 /** A technology's page snapshots and watch states, restored from the saved state on first use (state/client.ts). */
 export const docsStore = (tech: string): FsStore => new FsStore(join(docsDir(tech), "store"), () => ensureLocal(`docs:${tech}`));
 
-export async function latestVersion(http: HttpClient, purl: string): Promise<string | undefined> {
+export async function latestVersion(http: HttpClient, purl: string, opts: { throwRateLimits?: boolean } = {}): Promise<string | undefined> {
   const [, type, rest] = /^pkg:(\w+)\/(.+)$/.exec(purl) ?? [];
   const name = decodeURIComponent(rest ?? "");
   const url =
@@ -101,6 +101,7 @@ export async function latestVersion(http: HttpClient, purl: string): Promise<str
     const j = JSON.parse(Buffer.from((await http.get(url, { ...DEFAULT_HEADERS, accept: "application/json" })).body).toString("utf8"));
     return type === "npm" ? j.version : type === "pypi" ? j.info?.version : j.crate?.max_stable_version;
   } catch (e) {
+    if (opts.throwRateLimits && e instanceof FetchFailure && e.httpStatus === 429) throw e;
     if (e instanceof FetchFailure || e instanceof SyntaxError) return undefined;
     throw e;
   }
