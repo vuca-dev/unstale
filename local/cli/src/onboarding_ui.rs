@@ -6,6 +6,9 @@ use std::sync::{
 };
 use std::time::{Duration, Instant};
 
+#[path = "wordmark.rs"]
+mod wordmark;
+
 #[derive(Clone, Copy, Default)]
 pub enum Tone {
     #[default]
@@ -108,18 +111,15 @@ fn dimensions() -> Option<(usize, usize)> {
 }
 #[derive(Clone, Copy)]
 struct Layout {
-    scale: usize,
     width: usize,
     height: usize,
 }
 impl Layout {
     const NORMAL: Self = Self {
-        scale: 3,
         width: 128,
         height: 40,
     };
     const COMPACT: Self = Self {
-        scale: 2,
         width: 88,
         height: 28,
     };
@@ -492,39 +492,12 @@ fn smooth(p: f64) -> f64 {
     let p = p.clamp(0., 1.);
     p * p * (3. - 2. * p)
 }
-const GLYPHS: [[&str; 7]; 7] = [
-    [
-        "00000", "00000", "10001", "10001", "10001", "10011", "01101",
-    ],
-    [
-        "00000", "00000", "11110", "10001", "10001", "10001", "10001",
-    ],
-    [
-        "00000", "00000", "01111", "10000", "01110", "00001", "11110",
-    ],
-    [
-        "00100", "00100", "11111", "00100", "00100", "00100", "00010",
-    ],
-    [
-        "00000", "00000", "01110", "00001", "01111", "10001", "01111",
-    ],
-    [
-        "01100", "00100", "00100", "00100", "00100", "00100", "01110",
-    ],
-    [
-        "00000", "00000", "01110", "10001", "11111", "10000", "01111",
-    ],
-];
 #[cfg(test)]
 fn cloud(t: f64) -> Vec<String> {
     cloud_with(t, Layout::NORMAL, true)
 }
 fn cloud_with(t: f64, layout: Layout, ambient: bool) -> Vec<String> {
-    let Layout {
-        scale,
-        width,
-        height,
-    } = layout;
+    let Layout { width, height, .. } = layout;
     let w = width as f64;
     let h = height as f64;
     let phase = t % 32.;
@@ -536,10 +509,10 @@ fn cloud_with(t: f64, layout: Layout, ambient: bool) -> Vec<String> {
         }
     };
     let green = [103, 220, 145];
-    let mut flurries = std::collections::BTreeMap::new();
+    let mut flurries = vec![];
     let amber = [232, 172, 94];
     for side in (0..2).filter(|_| ambient) {
-        for i in 0..180 {
+        for i in 0..360 {
             let seed = i + side * 701;
             let x =
                 (hash(seed + 50) * (w + 16.) + t * (7. + hash(seed + 90) * 4.)) % (w + 16.) - 8.;
@@ -550,7 +523,7 @@ fn cloud_with(t: f64, layout: Layout, ambient: bool) -> Vec<String> {
                 h * 0.85 + arc * h * 0.045
             };
             let spread = hash(seed + 200) + hash(seed + 400) + hash(seed + 600) - 1.5;
-            let y = core + spread * 3. + (x / w * 9. - t * 0.35 + side as f64 * 2.).sin() * 0.7;
+            let y = core + spread * 6. + (x / w * 9. - t * 0.35 + side as f64 * 2.).sin() * 0.7;
             let c = if spread.abs() < 0.24 && i % 7 == 0 {
                 [23, 150, 145]
             } else {
@@ -559,60 +532,34 @@ fn cloud_with(t: f64, layout: Layout, ambient: bool) -> Vec<String> {
             dot(x, y, c);
         }
     }
-    let mut letters = std::collections::BTreeSet::new();
-    for (letter, glyph) in GLYPHS.iter().enumerate() {
-        for (y, row) in glyph.iter().enumerate() {
-            for (x, c) in row.bytes().enumerate() {
-                if c == b'1' {
-                    for dy in 0..scale {
-                        for dx in 0..=scale {
-                            letters.insert((3 + (letter * 6 + x) * scale + dx, 7 + y * scale + dy));
-                        }
-                    }
-                }
-            }
+    let plan = wordmark::plan(width, height);
+    let mut staleness = vec![0f64; plan.letters.len()];
+    for repair in &plan.repairs {
+        if phase < repair.birth || phase >= repair.landing {
+            continue;
         }
+        let growth = smooth((phase - repair.birth) / 0.65);
+        for &(index, amount) in &repair.claims {
+            staleness[index] += amount * growth;
+        }
+        let flight = (phase - (repair.landing - repair.duration)) / repair.duration;
+        if flight < 0. {
+            continue;
+        }
+        let (tx, ty) = (repair.destination.0 as f64, repair.destination.1 as f64);
+        let seed = repair.seed;
+        let p = smooth(flight);
+        let sx = tx - 7. - hash(seed + 3201) * 12.;
+        let sy = if ty > h * 0.5 { h * 0.87 } else { h * 0.08 } + (hash(seed + 3401) - 0.5) * 3.;
+        let curl = (std::f64::consts::PI * flight).sin();
+        flurries.push((
+            sx + (tx - sx) * p + curl * (hash(seed + 3501) - 0.5) * 3.,
+            sy + (ty - sy) * p + curl * (hash(seed + 3601) - 0.5) * 3.,
+        ));
     }
-    let letters: Vec<_> = letters.into_iter().collect();
     let assembled = smooth(t / 5.5);
-    for (i, &(tx, ty)) in letters.iter().enumerate() {
-        let mut stale = 0f64;
-        for event in 0..9 {
-            let birth = 6.2 + event as f64 * 2.2 + hash(event + 701) * 0.5;
-            if phase < birth {
-                continue;
-            }
-            let target = letters[(hash(event + 101) * letters.len() as f64) as usize];
-            let radius = ((tx as f64 - target.0 as f64) / (w * (0.05 + hash(event + 201) * 0.1)))
-                .powi(2)
-                + ((ty as f64 - target.1 as f64) / (h * (0.11 + hash(event + 301) * 0.22))).powi(2);
-            if hash(i + event * 911) > 0.78 + hash(event + 401) * 0.22 {
-                continue;
-            }
-            let area = 1. - smooth((radius - 0.3) / 1.1);
-            // One quiet repair particle serves a small tile of the current amber patch.
-            // Nearby pixels share its arrival instead of each spawning a particle.
-            let seed = tx / 3 + (ty / 3) * width.div_ceil(3) + event * 1999;
-            let landing = birth + 2.5 + hash(seed + 3001) * 2.4;
-            let duration = 1.2 + hash(seed + 3101) * 0.8;
-            let flight = (phase - (landing - duration)) / duration;
-            let healed = smooth((phase - landing) / 0.25);
-            stale = stale.max(area * smooth((phase - birth) / 0.65) * (1. - healed));
-            if area > 0.25 && (0.0..1.0).contains(&flight) {
-                let p = smooth(flight);
-                let sx = tx as f64 - 7. - hash(seed + 3201) * 12.;
-                let side = ty as f64 + (hash(seed + 3301) - 0.5) * 5. > h * 0.5;
-                let sy = if side { h * 0.87 } else { h * 0.08 } + (hash(seed + 3401) - 0.5) * 3.;
-                let curl = (std::f64::consts::PI * flight).sin();
-                let fx = sx + (tx as f64 - sx) * p + curl * (hash(seed + 3501) - 0.5) * 3.;
-                let fy = sy + (ty as f64 - sy) * p + curl * (hash(seed + 3601) - 0.5) * 3.;
-                flurries.entry(seed).or_insert((
-                    fx,
-                    fy,
-                    if flight > 0.65 { green } else { [45, 151, 123] },
-                ));
-            }
-        }
+    for (i, &(tx, ty)) in plan.letters.iter().enumerate() {
+        let stale = staleness[i].min(1.);
         let mut rgb = [0; 3];
         for ch in 0..3 {
             rgb[ch] = (green[ch] as f64 + (amber[ch] as f64 - green[ch] as f64) * stale) as u8;
@@ -621,8 +568,15 @@ fn cloud_with(t: f64, layout: Layout, ambient: bool) -> Vec<String> {
         let y = (0.04 + hash(i + 1601) * 0.92) * h * (1. - assembled) + ty as f64 * assembled;
         dot(x, y, rgb);
     }
-    for (x, y, color) in flurries.into_values() {
-        dot(x, y, color);
+    // A terminal has one color per braille cell. Prioritize incoming green
+    // particles so nearby amber lettering can never turn a delivery yellow.
+    let mut repairing = vec![vec![false; width / 2]; height / 4];
+    for (x, y) in flurries {
+        dot(x, y, green);
+        let (x, y) = (x.round() as isize, y.round() as isize);
+        if (0..width as isize).contains(&x) && (0..height as isize).contains(&y) {
+            repairing[y as usize / 4][x as usize / 2] = true;
+        }
     }
     let bits = [[1u32, 8], [2, 16], [4, 32], [64, 128]];
     let mut lines = vec![];
@@ -642,6 +596,9 @@ fn cloud_with(t: f64, layout: Layout, ambient: bool) -> Vec<String> {
                         }
                     }
                 }
+            }
+            if repairing[row][col] {
+                rgb = green;
             }
             if mask == 0 {
                 line.push(' ')
@@ -679,7 +636,7 @@ mod tests {
     use super::*;
     #[test]
     fn action_panel_has_plain_copyable_prompt_and_width_bounded_rules() {
-        let prompt = "Use .unstale/skills/onboarding/SKILL.md to review this repository.";
+        let prompt = "Use .unstale/skills/review/SKILL.md to review this repository.";
         let lines = vec![Line::new("", Tone::Rule), Line::new(prompt, Tone::Prompt), Line::new("", Tone::Rule)];
         for width in [24, 80, 160] {
             let plain = render(&lines, width, false);
@@ -708,8 +665,8 @@ mod tests {
     }
     #[test]
     fn layout_reserves_space_for_the_actual_result_in_short_and_narrow_terminals() {
-        assert_eq!(Layout::fit(26, 120, 15).unwrap().scale, 2);
-        assert_eq!(Layout::fit(36, 100, 15).unwrap().scale, 3);
+        assert_eq!(Layout::fit(26, 120, 15).unwrap().width, 88);
+        assert_eq!(Layout::fit(36, 100, 15).unwrap().width, 128);
         assert!(Layout::fit(20, 40, 15).is_none());
     }
     #[test]
@@ -765,9 +722,9 @@ mod tests {
         }
     }
     #[test]
-    fn cloud_has_visible_pending_swarm_recovery_and_a_green_rest() {
+    fn cloud_has_visible_pending_patches_and_a_green_rest() {
         let mut amber = false;
-        let mut green_particles = false;
+        let mut green_lettering = false;
         for frame in 144..696 {
             let t = frame as f64 / 24.;
             let image = cloud(t).join("\n");
@@ -782,13 +739,13 @@ mod tests {
                         !(rgb[0] > 220 && rgb[1] > 230 && rgb[2] > 220),
                         "No white surge"
                     );
-                    green_particles |= rgb == [45, 151, 123];
+                    green_lettering |= rgb == [103, 220, 145];
                 }
             }
         }
         assert!(
-            amber && green_particles,
-            "Both pending patches and renewal must be visibly rendered"
+            amber && green_lettering,
+            "Both stale and fresh lettering must be visibly rendered"
         );
         let rest = cloud(31.).join("\n");
         assert!(rest.contains("103;220;145m"));

@@ -4,7 +4,7 @@
 // sitemap.xml, robots.txt, llms.txt, llms-full.txt, security.txt and _headers, and an index.md beside every page for
 // agents. Pages are generated from the catalog alone, with no per-package content. A package with fewer than
 // THIN_RECORDS changes gets a page but is not indexed by search engines.
-// The look follows the CLI's `init` screen: its dot-matrix wordmark (GLYPHS, local/cli/src/onboarding_ui.rs) and its
+// The look follows the CLI's `init` screen: its particle wordmark and its
 // tones (fresh green, stale amber, teal accent, muted).
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -16,16 +16,11 @@ export const INSTALL_NPX = "npx @unstale/cli init";
 export const INSTALL_BREW = "brew install vuca-dev/tap/unstale";
 export const THIN_RECORDS = 10;
 
-/** The CLI's wordmark, "unstale", one 5×7 glyph per letter (rows top to bottom; 1 = dot). */
-export const GLYPHS: string[][] = [
-  ["00000", "00000", "10001", "10001", "10001", "10011", "01101"],
-  ["00000", "00000", "11110", "10001", "10001", "10001", "10001"],
-  ["00000", "00000", "01111", "10000", "01110", "00001", "11110"],
-  ["00100", "00100", "11111", "00100", "00100", "00100", "00010"],
-  ["00000", "00000", "01110", "00001", "01111", "10001", "01111"],
-  ["01100", "00100", "00100", "00100", "00100", "00100", "01110"],
-  ["00000", "00000", "01110", "10001", "11111", "10000", "01111"],
-];
+/** Shared Menlo Bold outlines and particle mask; no installed font is required. */
+export const WORDMARK = JSON.parse(readFileSync(new URL("../../docs/assets/wordmark.json", import.meta.url), "utf8")) as {
+  paths: string[];
+  points: [number, number][];
+};
 
 type Evidence = { kind: string; url: string; quote?: string };
 type Release = { component: string; version: string; line: string };
@@ -151,26 +146,9 @@ export function prose(s: string): string {
   return esc(s).replace(/`([^`]+)`/g, "<code>$1</code>");
 }
 
-/** The wordmark as an SVG, drawn as the CLI draws it: each glyph pixel a 4×3 block of braille sub-dots (the CLI's
- * scale 3, at its grid offsets so dots group into the same braille cells), cells twice as tall as wide. */
+/** Keep the same bold editor typography in the header, footer, and particle hero. */
 export function wordmarkSvg(className: string): string {
-  const dots = new Set<string>();
-  GLYPHS.forEach((glyph, letter) =>
-    glyph.forEach((row, y) =>
-      [...row].forEach((c, x) => {
-        if (c !== "1") return;
-        for (let dy = 0; dy < 3; dy++)
-          for (let dx = 0; dx <= 3; dx++) {
-            const sx = 3 + (letter * 6 + x) * 3 + dx;
-            const sy = 7 + y * 3 + dy;
-            const cx = Math.floor(sx / 2) + (sx % 2 ? 0.68 : 0.32) - 1;
-            const cy = Math.floor(sy / 4) * 2 + ((sy % 4) + 0.5) * 0.5 - 2;
-            dots.add(`<circle cx="${cx.toFixed(2)}" cy="${cy.toFixed(2)}" r="0.15"/>`);
-          }
-      }),
-    ),
-  );
-  return `<svg class="${className}" viewBox="0.4 1.5 62.2 10.5" role="img" aria-label="unstale"><title>unstale</title>${[...dots].join("")}</svg>`;
+  return `<svg class="${className}" viewBox="4 14 248 50" role="img" aria-label="unstale"><title>unstale</title><g fill="currentColor">${WORDMARK.paths.map((d) => `<path d="${d}"/>`).join("")}</g></svg>`;
 }
 
 const FAVICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 7 9"><rect width="7" height="9" rx="1.4" fill="#0b1113"/>${
@@ -200,6 +178,7 @@ function layout(o: { title: string; description: string; path: string; body: str
 <meta name="description" content="${esc(o.description)}">
 <link rel="canonical" href="${ORIGIN}${o.path}">
 <link rel="alternate" type="text/markdown" href="${ORIGIN}${o.path}index.md">
+<link rel="describedby" href="${ORIGIN}/llms.txt">
 ${o.noindex ? '<meta name="robots" content="noindex">\n' : ""}<meta name="theme-color" content="#0b1113" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#f6f8f7" media="(prefers-color-scheme: light)">
 <meta property="og:type" content="website">
@@ -215,8 +194,8 @@ ${o.head ?? ""}</head>
 <main class="wrap">
 ${o.body}
 </main>
-<footer class="wrap"><p>${wordmarkSvg("mark small")}<span>AGPL-3.0 · <a href="${REPO}">GitHub</a> · <a href="${NPM_URL}">npm</a> · <a href="${REPO}/blob/main/SECURITY.md">Security</a> · <a href="/llms.txt">llms.txt</a> · by <a href="https://vuca.dev">Jason Draper</a></span></p></footer>
-<script src="/site.js" defer></script>
+<footer class="wrap"><p>${wordmarkSvg("mark small")}<span>AGPL-3.0 · <a href="${REPO}">GitHub</a> · <a href="${NPM_URL}">npm</a> · <a href="${REPO}/blob/main/SECURITY.md">Security</a> · by <a href="https://vuca.dev">Jason Draper</a></span></p></footer>
+<script src="/site.js" type="module"></script>
 </body>
 </html>
 `;
@@ -325,8 +304,7 @@ export function packageMarkdown(p: Package): string {
   return out.join("\n") + "\n";
 }
 
-// Real `unstale init` output on a Next.js and Prisma app (`@unstale/cli` 0.1.0, 17 October 2026), trimmed, in the
-// CLI's tones.
+// Example `unstale init` output on a Next.js and Prisma app, trimmed, in the CLI's tones.
 const TERMINAL: [string, string][] = [
   ["cmd", "$ npx @unstale/cli init"],
   ["fresh", "✓ my-app · Personal setup ready"],
@@ -343,7 +321,7 @@ const TERMINAL: [string, string][] = [
   ["", ""],
   ["rule", ""],
   ["fresh", "NEXT · Paste this prompt into your coding agent"],
-  ["prompt", "Use .unstale/skills/onboarding/SKILL.md to review .unstale/onboarding-report.md against this repository. Rank the upgrades and capabilities by likely impact, explain the trade-offs, and recommend what to do first. Return proposals only; do not edit files."],
+  ["prompt", "Use .unstale/skills/review/SKILL.md to review this repository. Recommend what to act on next, with affected files and trade-offs. Return proposals only; do not edit files."],
   ["rule", ""],
 ];
 
@@ -352,17 +330,15 @@ function terminal(): string {
     tone === "rule" ? `<span class="t-rule"></span>` : `<span class="t-${tone || "body"}">${esc(text) || "&nbsp;"}</span>`,
   ).join("");
   return `<section class="prose example">
-<h2>What <code>unstale init</code> prints</h2>
-<p>Real output on a Next.js and Prisma app, trimmed.</p>
+<p>Example output of <code>unstale init</code> on a Next.js and Prisma app</p>
 <figure class="term"><pre>${rows}</pre></figure>
 </section>`;
 }
 
-/** Recent catches: the most consequential finds on public repositories, one line each. */
-const CATCHES: { lead: string; rest: string; url: string }[] = [
-  { lead: "Next.js 16.4.1's critical security fixes", rest: "in the catalog before the GitHub advisory database had them.", url: "https://github.com/vercel/next.js/security/advisories/GHSA-2464-fhr4-w9xw" },
-  { lead: "Phoenix's maintainer", rest: "handed our finding to Claude Code: fixed in one turn, merged the next day.", url: "https://github.com/Arize-ai/phoenix/pull/17150" },
-  { lead: "i18next", rest: "had a broken test hidden behind a deprecated matcher; fixed and merged in four hours.", url: "https://github.com/i18next/i18next/pull/2453" },
+/** Concrete merged fixes prompted by unstale findings. */
+const CONTRIBUTIONS: { lead: string; rest: string; url: string }[] = [
+  { lead: "Phoenix", rest: "Replaced deprecated AI SDK calls.", url: "https://github.com/Arize-ai/phoenix/pull/17150" },
+  { lead: "i18next", rest: "Fixed a test that wasn't checking its call count.", url: "https://github.com/i18next/i18next/pull/2453" },
 ];
 
 const SUMMARY =
@@ -397,22 +373,11 @@ export function homePage(pkgs: Package[], version?: string): string {
     .join("");
   const body = `<section class="hero">
 <canvas id="wordmark" class="wordmark" width="768" height="240" aria-hidden="true"></canvas>
-<h1>You don't know what you don't know. Neither does your agent.</h1>
+<h1>You don't know what you don't know. Neither do your agents.</h1>
 <p class="lede">unstale finds what changed in your dependencies and where your code needs it. It reads the release
 notes, migration guides and advisories for your installed versions, and hands Claude Code, Codex or Cursor a cited
 list.</p>
-<p class="lede">It finds 4x as many changes worth acting on as Claude Code alone, using 1/16 of the tokens. <a href="${BEAT_NAIVE}">How we measured</a></p>
-<p class="hero-facts">Runs locally · Free · Open source</p>
-<div class="get-started" aria-labelledby="get-started">
-<h2 id="get-started">Get started</h2>
-<p class="install-hint">Run in your project directory.</p>
-${copyable(INSTALL_NPX, " big")}
-<details class="brew-install"><summary>Install with Homebrew</summary>
-${copyable(INSTALL_BREW)}
-<p class="install-hint">Then run in your project:</p>
-${copyable("unstale init")}
-</details>
-</div>
+<p class="lede">It finds 4x as many upstream changes that apply to your code as Claude Code alone, using 1/16 of the tokens. <a href="${BEAT_NAIVE}">How we measured</a></p>
 </section>
 <section class="catalog-proof" aria-label="Current catalog coverage">
 <dl class="catalog-stats">
@@ -421,32 +386,44 @@ ${copyable("unstale init")}
 </dl>
 <a class="catalog-explore" href="#packages">Explore your stack <span aria-hidden="true">↓</span></a>
 </section>
+<section class="get-started" aria-labelledby="get-started">
+<h2 id="get-started">Get started</h2>
+<p class="install-hint">Run in your project directory.</p>
+${copyable(INSTALL_NPX, " big")}
+<p class="install-facts">Free and open source.</p>
+<details class="brew-install"><summary>Install with Homebrew</summary>
+${copyable(INSTALL_BREW)}
+<p class="install-hint">Then run in your project:</p>
+${copyable("unstale init")}
+</details>
+</section>
 ${terminal()}
 <section class="prose">
+<h2>Fixes merged upstream</h2>
+<ul>
+${CONTRIBUTIONS.map((c) => `<li><a href="${esc(c.url)}">${esc(c.lead)}</a> ${esc(c.rest)}</li>`).join("\n")}
+</ul>
 <h2>What you get</h2>
 <ul>
-<li><strong>Upgrade plans.</strong> Breaking changes, deprecations and affected files. Required work first.</li>
+<li><strong>Upgrade plans.</strong> Breaking changes, deprecations and affected files.</li>
 <li><strong>Fixes worth upgrading for.</strong> Security, bug fixes and behaviour changes between versions.</li>
-<li><strong>APIs you could use.</strong> New capabilities that could replace code you maintain.</li>
+<li><strong>New opportunities.</strong> Net new capabilities, performance improvements, and more.</li>
 </ul>
 <h2>How it works</h2>
 <ol>
-<li><strong>Read your lockfile.</strong> npm and PyPI. Coverage is deepest for npm.</li>
-<li><strong>Match changes locally.</strong> A signed upstream catalog, checked against your versions and code.</li>
-<li><strong>Review with your agent.</strong> A report and a ready-to-paste prompt. Claude Code also flags relevant changes at session start.</li>
+<li><strong>Read your lockfile.</strong> JavaScript, TypeScript and Python projects.</li>
+<li><strong>Find what applies.</strong> Track your dependencies for upstream changes that matter to your code.</li>
+<li><strong>Review with your agent.</strong> Run the <code>unstale-review</code> skill to see what changed, where it matters, and what to do next.</li>
 </ol>
-<h2>What leaves your machine</h2>
-<p>Code stays local. unstale receives public package names; <a href="https://osv.dev">OSV</a> receives package names and versions for advisory checks. No telemetry.</p>
+<h2>Your code stays on your machine</h2>
+<p>unstale receives public package names; <a href="https://osv.dev">OSV</a> receives package names and versions for advisory checks. No telemetry.</p>
 <details class="privacy-details"><summary>Network details</summary>
 <p>Public package names (like <code>pkg:npm/next</code>) to fetch the changes that apply. Not your code, file paths,
 versions or any ID. The service, hosted on Cloudflare, sees your IP address. It keeps it in memory only, to apply rate
 limits and count each address once per package, and never writes it to storage. To check advisories, the CLI sends the package names and versions your lockfiles resolve to
 <a href="https://osv.dev">OSV</a>, as <code>npm audit</code> would, and it reads the public npm and PyPI registries.</p>
 </details>
-<h2>Recent catches</h2>
-<ul>
-${CATCHES.map((c) => `<li><a href="${esc(c.url)}">${esc(c.lead)}</a> ${esc(c.rest)}</li>`).join("\n")}
-</ul>
+
 <p class="license">AGPL-3.0 · <a href="${REPO}">GitHub</a></p>
 </section>
 <section id="packages" class="packages prose">
@@ -460,7 +437,7 @@ ${CATCHES.map((c) => `<li><a href="${esc(c.url)}">${esc(c.lead)}</a> ${esc(c.res
     description: SUMMARY,
     path: "/",
     body,
-    head: `<script type="application/ld+json">${JSON.stringify(ld)}</script>\n<script>window.UNSTALE_GLYPHS=${JSON.stringify(GLYPHS)}</script>\n`,
+    head: `<script type="application/ld+json">${JSON.stringify(ld)}</script>\n<script>window.UNSTALE_WORDMARK_POINTS=${JSON.stringify(WORDMARK.points)}</script>\n`,
   });
 }
 
@@ -471,33 +448,32 @@ export function homeMarkdown(pkgs: Package[], version?: string): string {
 
 Install: \`${INSTALL_NPX}\` in a repository${version ? ` (\`@unstale/cli\` ${version}, ${NPM_URL})` : ""}, or \`${INSTALL_BREW}\`.
 
-**You don't know what you don't know. Neither does your agent.**
+**You don't know what you don't know. Neither do your agents.**
 
 unstale finds what changed in your dependencies and where your code needs it. It reads the release notes, migration
 guides and advisories for your installed versions, and hands Claude Code, Codex or Cursor a cited list. Runs locally,
 free and open source.
 
-It finds 4x as many changes worth acting on as Claude Code alone, using 1/16 of the tokens
+It finds 4x as many upstream changes that apply to your code as Claude Code alone, using 1/16 of the tokens
 ([how we measured](${BEAT_NAIVE})).
+
+## Fixes merged upstream
+
+${CONTRIBUTIONS.map((c) => `- [${c.lead}](${c.url}) ${c.rest}`).join("\n")}
 
 ## What you get
 
-- Your next major upgrade, mapped to your code: the breaking changes and deprecations you'll hit, with the files that
-  hit them, required work first.
-- What each version bump fixes: security advisories, bug fixes and behaviour changes between your installed version
-  and the next one.
-- Features you could be using: APIs released since you wrote the code that could replace something you built by hand.
+- **Upgrade plans.** Breaking changes, deprecations and affected files.
+- **Fixes worth upgrading for.** Security, bug fixes and behaviour changes between versions.
+- **New opportunities.** Net new capabilities, performance improvements, and more.
 
 ## How it works
 
-1. It reads your lockfile. npm and PyPI projects; npm has the deepest catalog today.
-2. It matches upstream changes to your code locally. Release notes, migration guides and advisories are summarised
-   once, centrally, into a signed catalog; the matching against your code happens on your machine.
-3. Your agent reviews it: a short report and a prompt to paste into Claude Code, Codex or Cursor. In Claude Code, a
-   line at session start says when something new applies. If nothing upstream matters to your code, your agent hears
-   nothing.
+1. **Read your lockfile.** JavaScript, TypeScript and Python projects.
+2. **Find what applies.** Track your dependencies for upstream changes that matter to your code.
+3. **Review with your agent.** Run the \`unstale-review\` skill to see what changed, where it matters, and what to do next.
 
-## What leaves your machine
+## Your code stays on your machine
 
 Public package names (like \`pkg:npm/next\`) to fetch the changes that apply. Not your code, file paths, versions or
 any ID. The service, hosted on Cloudflare, sees your IP address. It keeps it in memory only, to apply rate limits and count
@@ -505,9 +481,7 @@ each address once per package, and never writes it to storage.
 No telemetry. To check advisories, the CLI sends the package names and versions your lockfiles resolve to OSV
 (https://osv.dev), as \`npm audit\` would, and it reads the public npm and PyPI registries.
 
-## Recent catches
 
-${CATCHES.map((c) => `- [${c.lead}](${c.url}) ${c.rest}`).join("\n")}
 
 AGPL-3.0, free and open source: ${REPO}
 
@@ -526,8 +500,8 @@ export function llmsTxt(pkgs: Package[], version?: string): string {
 > ${SUMMARY}
 
 unstale is a CLI (\`@unstale/cli\` on npm${version ? `, ${version}` : ""}) plus a public, signed catalog of upstream changes.
-\`${INSTALL_NPX}\` in a repository maps its dependencies, matches the catalog against the code locally, and writes agent
-skills (\`/unstale-onboarding\`, \`/unstale-upgrade-review\`, \`/unstale-improvements-pass\`; \`$\`-prefixed in Codex).
+\`${INSTALL_NPX}\` in a repository maps its dependencies, matches the catalog against the code locally, and installs the review
+skill (\`/unstale-review\`; \`$unstale-review\` in Codex).
 
 Notes for agents:
 
@@ -614,7 +588,7 @@ export function build(site: string, now = new Date().toISOString(), version?: st
     write(site, join(p.path, "index.html"), packagePage(p, version));
     write(site, join(p.path, "index.md"), packageMarkdown(p));
   }
-  for (const f of ["site.css", "site.js"]) write(site, f, readFileSync(new URL(`./${f}`, import.meta.url), "utf8"));
+  for (const f of ["site.css", "site.js", "wordmark-repairs.js"]) write(site, f, readFileSync(new URL(`./${f}`, import.meta.url), "utf8"));
   write(site, "favicon.svg", FAVICON);
   write(site, "sitemap.xml", sitemap(pkgs, now));
   write(site, "robots.txt", `User-agent: *\nAllow: /\n\nSitemap: ${ORIGIN}/sitemap.xml\n`);

@@ -83,19 +83,19 @@ revision_of() {
   echo "    $(jq -c '{id, status, revision, label_version}' <<<"$j")"
 }
 
-UP=".unstale/skills/upgrade-review/SKILL.md"
-IM=".unstale/skills/improvements-pass/SKILL.md"
+UP=".unstale/review/upgrades.md"
+IM=".unstale/review/opportunities.md"
 LEDGER=".unstale/ledger.jsonl"
 skill() { cat "$REPO/$1" 2>/dev/null || true; }
-# Ids in a skill file's current batch (`### [id] rev n`) and its "Marked do now" list (`- [id] …`).
+# Ids in a review context's current batch (`### [id] rev n`) and its "Marked do now" list (`- [id] …`).
 batch_ids() { skill "$1" | sed -n 's/^### \[\([^]]*\)\] rev .*/\1/p'; }
 donow_ids() { skill "$1" | sed -n '/^## Marked do now/,/^## /s/^- \[\([^]]*\)\] .*/\1/p'; }
 open_ids() { { batch_ids "$UP"; batch_ids "$IM"; } | sort -u; }
 ledger_status() { jq -r --arg id "$1" 'select(.id == $id) | .status' "$REPO/$LEDGER" 2>/dev/null | sed -n 1p; }
 ledger_ids() { jq -r 'select(.id) | select(.status == "'"$1"'") | .id' "$REPO/$LEDGER"; }
-# Does id appear as an id (bracketed in skill files: `[id]`, `[id, version]`) in the given text?
+# Does id appear as an id (bracketed in review contexts: `[id]`, `[id, version]`) in the given text?
 has_id() { grep -qF -- "[$1]" <<<"$2" || grep -qF -- "[$1," <<<"$2"; }
-# The text a user and the agent see: both skill files, the digest, and every package's `bump` listing.
+# The text a user and the agent see: both review contexts, the digest, and every package's `bump` listing.
 visible_text() {
   local t pkgs
   t="$(skill "$UP")"$'\n'"$(skill "$IM")"$'\n'"$(cd "$REPO" && "$UNSTALE" digest 2>&1)"
@@ -149,7 +149,7 @@ for NAME in $REPOS; do
   run_quiet "$UNSTALE" run
   printf '%s\n' "$OUT" | grep -v '^  security:' | sed 's/^/    /'
   problems < <([ "$RC" -eq 0 ] || echo "run exited $RC"; [ -f "$REPO/$UP" ] || echo "no $UP"; [ -f "$REPO/$IM" ] || echo "no $IM")
-  check "$NAME: run writes both skill files and exits 0" "${P[@]+"${P[@]}"}"
+  check "$NAME: run writes both review contexts and exits 0" "${P[@]+"${P[@]}"}"
 
   section "$NAME: 2. decline, defer, do-now on the current batch"
   readarr B < <(batch_ids "$UP")
@@ -181,7 +181,7 @@ for NAME in $REPOS; do
   RUN_OUT="$OUT"
   V="$(visible_text)"$'\n'"$RUN_OUT"
   problems < <(absent "$V" "${DECLINED[@]}" "${DEFERRED[@]}")
-  check "$NAME: declined (${#DECLINED[@]}) and deferred (1) ids absent from skill files, run/digest and bump output" "${P[@]+"${P[@]}"}"
+  check "$NAME: declined (${#DECLINED[@]}) and deferred (1) ids absent from review contexts, run/digest and bump output" "${P[@]+"${P[@]}"}"
   problems < <(present "$(skill "$PRIMARY")" "${REMAIN[@]}" "$DONOW")
   check "$NAME: the other ${#REMAIN[@]} records of the batch and the do-now record are still in $PRIMARY" "${P[@]+"${P[@]}"}"
   problems < <(donow_ids "$PRIMARY" | grep -qxF -- "$DONOW" || echo "$DONOW not under 'Marked do now'")
@@ -299,8 +299,8 @@ for NAME in $REPOS; do
   jq -c --arg a "$A_REV" 'select(.id == $a)' "$REPO/$LEDGER" | sed 's/^/    /'
   problems < <(present "$V" "$A_REV"
                r="$(jq -r --arg id "$A_REV" 'select(.id == $id) | .rev' "$REPO/$LEDGER")"; [ "$r" -lt "$RREV" ] || echo "ledger line has rev $r, not below $RREV"
-               has_id "$A_REV" "$(skill "$UP")$(skill "$IM")" || echo "$A_REV not in a skill file"
-               grep -qF "### [$A_REV] rev $RREV" <<<"$V" || echo "skill file does not show $A_REV at rev $RREV")
+               has_id "$A_REV" "$(skill "$UP")$(skill "$IM")" || echo "$A_REV not in a review context"
+               grep -qF "### [$A_REV] rev $RREV" <<<"$V" || echo "review context does not show $A_REV at rev $RREV")
   check "$NAME: 4c revision bump of $A_REV (rev $RREV): re-opened, back in the review" "${P[@]+"${P[@]}"}"
 
   # (d) retraction: the stub deletes the ledger line.

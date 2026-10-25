@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
 import { expect, test } from "vitest";
-import { build, compareVersions, prose, THIN_RECORDS, type CatalogRecord } from "../site/build.ts";
+import { build, compareVersions, prose, THIN_RECORDS, type CatalogRecord, WORDMARK, wordmarkSvg } from "../site/build.ts";
 import { page, prefersMarkdown, type Env } from "../src/index.ts";
 
 const rec = (id: string, version: string, r: Partial<CatalogRecord> = {}, component = "pkg:npm/next"): CatalogRecord => ({
@@ -130,4 +130,17 @@ test("pages: www and http go to the https apex; agents asking for Markdown get t
   const html = await get("https://unstale.sh/npm/next/", "text/html,*/*;q=0.8");
   expect(await html.text()).toBe("<html>next</html>");
   expect(html.headers.get("Vary")).toContain("Accept");
+});
+
+test("website and README use the shared Menlo Bold outlines", () => {
+  const svg = wordmarkSvg("mark");
+  expect(WORDMARK.points.length).toBeGreaterThan(3000);
+  for (const theme of ["dark", "light"]) {
+    const readme = readFileSync(new URL(`../../docs/assets/wordmark-${theme}.svg`, import.meta.url), "utf8");
+    for (const path of WORDMARK.paths) {
+      expect(svg).toContain(`<path d="${path}"/>`);
+      expect(readme).toContain(`<path d="${path}"/>`);
+    }
+    expect(readme).not.toContain("<text");
+  }
 });

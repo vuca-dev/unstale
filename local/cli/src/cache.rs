@@ -87,7 +87,7 @@ pub struct TechData {
 pub type Shard = (Vec<Rec>, BTreeMap<String, String>, Vec<String>, usize);
 
 /// Parse a gzipped JSON-lines shard.
-/// A record id is printed in skill files and typed back as a command argument (`unstale record <id> …`), so a line
+/// A record id is printed in review contexts and typed back as a command argument (`unstale record <id> …`), so a line
 /// whose id could carry anything else (spaces, backticks, brackets, line breaks) is skipped like an unreadable one.
 fn safe_id(id: &str) -> bool {
     !id.is_empty() && id.len() <= 200 && id.bytes().all(|b| b.is_ascii_alphanumeric() || b"-_.:~@+".contains(&b))
