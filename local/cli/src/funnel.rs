@@ -1847,7 +1847,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             }
             // Already handled: the code writes what the record names as the replacement (`model_json_schema` beside a
             // remaining `json_schema()`), in a file about the technology. Lead order only (`adopted`).
-            if matches!(opp.route, Route::UpgradeReview | Route::InEffect) && !opp.matched.is_empty() {
+            if matches!(opp.route, Route::UpgradeReview | Route::InEffect) && opp.matched.iter().any(|(l, _)| deprecated.contains(l)) {
                 // Only what the record introduces, matched whole (`model_json_schema` contains `json_schema` and still
                 // counts): other literals of the replacement's shape (`BaseModel` beside `json_schema()`) name the
                 // general API, which every user writes.
