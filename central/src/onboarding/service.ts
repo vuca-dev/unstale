@@ -3,6 +3,7 @@ import { readFileSync, readdirSync, existsSync, appendFileSync, mkdirSync } from
 import { join } from "node:path";
 import { z } from "zod";
 import { HttpClient, DEFAULT_HTTP, FetchFailure } from "../collector/http.ts";
+import { latestVersion } from "../docs/monitor.ts";
 import { dailyPass, DOCS_PASS, extract, lastPass } from "../docs/extract.ts";
 import {
   discoverTechnology,
@@ -113,6 +114,14 @@ export interface Job {
   /** When the technology was first seen monitored (its first coverage done). Every later slice is monitoring in the
    * usage log, also one that continues a refresh which yielded (queued) partway. Never public. */
   monitored?: string;
+  /** Last successful upstream release-list check (not a read from its freshness cache). Operator-only. */
+  release_checked?: string;
+  /** Last completed refresh, independently of votes or intermediate state writes. Operator-only. */
+  refresh_completed?: string;
+  registry_polled?: string;
+  registry_version?: string;
+  registry_checked?: string;
+  change_detected?: string;
 }
 
 /** Work time after which an interrupted slice is not resumed: two full cycles (20 minutes each), about 12 times the
@@ -412,7 +421,7 @@ export class CoverageService {
     const adoption = (j: Job) => (this.tier(j) === 1 ? (j.downloads ?? 0) : 0);
     return [...this.jobs.values()]
       .filter((j) => this.due(j))
-      .sort((a, b) => this.tier(a) - this.tier(b) || (b.demand ?? 0) - (a.demand ?? 0) || adoption(b) - adoption(a));
+      .sort((a, b) => this.tier(a) - this.tier(b) || Number(!!b.change_detected) - Number(!!a.change_detected) || (b.demand ?? 0) - (a.demand ?? 0) || adoption(b) - adoption(a));
   }
   /** The line a waiting job is in (eta.ts): new technologies wait only behind new ones (`newSlots`), the rest behind
    * the rest. */
@@ -653,6 +662,75 @@ export class CoverageService {
   metrics(): DrainMetrics | undefined {
     return this.measuredDrain;
   }
+  /** Unique monitored jobs, independent of slice counts. Unknown ages stay explicit during migration. */
+  freshness(at = Date.now()) {
+    const jobs = [...this.jobs.values()].filter((j) => !j.merged_into && (j.monitored || j.state === "monitoring"));
+    const ages = jobs.flatMap((j) => {
+      const checked = Date.parse(j.release_checked ?? "");
+      return Number.isFinite(checked) ? [Math.max(0, at - checked) / 1000] : [];
+    }).sort((a, b) => a - b);
+    const percentile = (p: number) => ages.length ? Math.round(ages[Math.ceil(ages.length * p) - 1]!) : null;
+    return { monitored: jobs.length, release_check_unknown: jobs.length - ages.length,
+      release_check_age_s: { p50: percentile(0.5), p95: percentile(0.95), max: ages.length ? Math.round(ages[ages.length - 1]!) : null },
+      release_checks_over_6h: ages.filter((s) => s > 6 * 3600).length,
+      registry_check_unknown: jobs.filter((j) => !j.registry_checked).length,
+      registry_check_oldest: jobs.filter((j) => j.registry_checked).map((j) => j.registry_checked!).sort()[0] ?? null,
+      detected_waiting: jobs.filter((j) => j.change_detected).length,
+      refresh_due: jobs.filter((j) => this.due(j)).length };
+  }
+  /** Cheap detection before the drain starts: no model, GitHub, docs crawl or gateway write. At most
+   * two registry requests in flight, 200 primary packages and 60 seconds per cycle, oldest polled first.
+   * Full refreshes remain due independently, so advisories, sibling packages and delayed GitHub notes still run.
+   */
+  async pollChanges(opts: { limit?: number; milliseconds?: number; read?: (purl: string) => Promise<string | undefined> } = {}) {
+    if (this.running.size || this.passing.size) throw new Error("registry polling must precede worker startup");
+    const pausePath = join(centralDir(), "onboarding", "registry-poll.json");
+    const pause = readJson<{ retry_at: string }>(pausePath);
+    if (Date.parse(pause?.retry_at ?? "") > Date.now())
+      return { attempted: 0, checked: 0, changed: 0, paused_until: pause!.retry_at };
+    const http = new HttpClient({ ...DEFAULT_HTTP, concurrency: 2, perHost: 2, timeoutMs: 5000, retries: 0,
+      maxRetryAfterMs: 0, maxBytes: 4 * 1024 * 1024 });
+    const read = opts.read ?? ((purl: string) => latestVersion(http, purl, { throwRateLimits: true }));
+    let paused = false;
+    const deadline = Date.now() + (opts.milliseconds ?? 60_000);
+    const jobs = [...this.jobs.values()].filter((j) => j.state === "monitoring" && !j.merged_into && j.descriptor
+      && !(Date.parse(j.paused_until ?? "") > Date.now()))
+      .sort((a, b) => (Date.parse(a.registry_polled ?? "") || 0) - (Date.parse(b.registry_polled ?? "") || 0))
+      .slice(0, opts.limit ?? 200);
+    let attempted = 0, checked = 0, changed = 0;
+    const worker = async () => {
+      while (!paused && Date.now() < deadline) {
+        const job = jobs.shift();
+        if (!job) return;
+        attempted++;
+        job.registry_polled = now();
+        let version: string | undefined;
+        try { version = await read(job.purl); } catch (e) {
+          // A provider refusal stops the polling lane, including across cycles, without blocking other work.
+          if (e instanceof FetchFailure && e.httpStatus === 429) {
+            paused = true;
+            const existing = Date.parse(readJson<{ retry_at: string }>(pausePath)?.retry_at ?? "") || 0;
+            writeAtomic(pausePath, JSON.stringify({ retry_at: new Date(Math.max(existing, Date.now() + Math.max(60_000, e.retryAfterMs ?? 0))).toISOString() }));
+          }
+        }
+        if (typeof version === "string" && /^\d+(?:\.\d+)+(?:[-+][\w.-]+)?$/.test(version)) {
+          checked++;
+          job.registry_checked = now();
+          const previous = job.registry_version ?? job.descriptor!.latest;
+          if (previous !== version) {
+            changed++;
+            job.change_detected ??= now();
+            // Respect server-directed rate pauses; due() still enforces paused_until.
+            job.retry_at = now();
+          }
+          job.registry_version = version;
+        }
+        this.persist(job);
+      }
+    };
+    await Promise.all([worker(), worker()]);
+    return { attempted, checked, changed };
+  }
   /** This drain's measured rates, for the next drain's first minutes; a line it measured nothing for keeps the last. */
   private keepRates(): void {
     const own = this.measured(Date.now());
@@ -713,6 +791,16 @@ export class CoverageService {
   private pumpJobs(): number {
     if (this.held || (this.draining && (this.endedEarly || Date.now() >= this.draining)) || Date.now() < this.pausedUntil) return 0;
     const queue = this.queue();
+    // Keep one slot moving through overdue monitored jobs, oldest due first. Other slots retain demand order
+    // and the existing new-package reservation, so historical backfill and onboarding continue to progress.
+    if (![...this.slices.values()].some((slice) => slice.refresh)) {
+      const oldest = queue.filter((j) => j.state === "monitoring" && this.tier(j) === 0 && !this.running.has(j.purl))
+        .sort((a, b) => Date.parse(a.retry_at!) - Date.parse(b.retry_at!))[0];
+      if (oldest) {
+        queue.splice(queue.indexOf(oldest), 1);
+        queue.unshift(oldest);
+      }
+    }
     let waitingNew = queue.filter((j) => this.tier(j) === 1 && !this.running.has(j.purl)).length;
     let started = 0;
     for (const capped of [true, false])
@@ -1039,15 +1127,23 @@ export class CoverageService {
   }
   private async work(job: Job) {
     const refresh = job.state === "monitoring";
+    const timings: Record<string, number> = {};
+    let at = Date.now();
+    const stage = (name: string) => { timings[name] = Date.now() - at; at = Date.now(); };
     const t = await this.identify(job, refresh);
+    stage("identity_ms");
     if (!t) return;
+    job.registry_version = t.latest;
     // The first pass's place in the line is over: from here the job is worked as any admitted one.
     delete job.advisories_first;
     const tech = pipelineTechnology(t);
     this.save(job, "analyzing", "Reading official release history");
     const releases = t.repo
-      ? await fetchReleases(tech)
+      ? await fetchReleases(tech, job.change_detected ? { refresh: true } : {})
       : { notes: [], checked: now(), stats: { requests: 0, newReleases: 0 } };
+    stage("releases_ms");
+    if (t.repo) job.release_checked = releases.checked;
+    this.persist(job);
     // The technology unit: before any extraction, a package whose recent release tags are another admitted package's
     // (same repository) joins that technology instead of extracting the same notes again.
     job.stream = releases.notes.map((n) => n.tag).slice(0, STREAM_TAGS);
@@ -1121,6 +1217,7 @@ export class CoverageService {
           return;
         }
       }
+    stage("extraction_ms");
     // The advisories stage (OSV, resolved against the release index, attached to the records of their fix), like any
     // other stage: a new technology gets advisories with no manual step. Fails open (advisories.ts). Notes not read yet
     // are named, so an advisory fixed only there is not judged before they are; a technology with no release notes
@@ -1145,6 +1242,7 @@ export class CoverageService {
       }
       publishTechnology(store, releases.checked, catalogDir());
     });
+    stage("advisories_ms");
     // The docs module: the daily pass over the technology's official docs, then extraction of the changes that name
     // their version. A first pass is a baseline: nothing is extracted from it. The crawl makes no model call; each
     // planned docs note is charged its measured volume before extraction, like a release note, and counts toward the
@@ -1183,6 +1281,7 @@ export class CoverageService {
       return true;
     });
     if (extracted.records !== undefined) job.records = extracted.records;
+    stage("docs_ms");
     // Upgrade guides (the current and previous major's, as the docs pass found them): with release notes they carry
     // the history; a removal stated only in a migration guide (MUI v9) is in no release body. Charged like a note.
     if (!docsRefused) {
@@ -1219,12 +1318,18 @@ export class CoverageService {
       );
       return;
     }
+    stage("guides_ms");
+    console.error(JSON.stringify({ event: "coverage_stages", technology: tech.id, refresh: refresh || !!job.monitored,
+      ...timings, release_requests: releases.stats.requests, new_releases: releases.stats.newReleases,
+      detection_to_refresh_s: job.change_detected ? Math.round((Date.now() - Date.parse(job.change_detected)) / 1000) : null }));
     job.next_task = "history";
     job.retry_at = new Date(Date.now() + 6 * 3600000).toISOString();
     job.failures = 0;
     await withTechLock(tech.id, "onboarding", () =>
       publishTechnology(loadStore(tech.id), now(), catalogDir()),
     );
+    job.refresh_completed = now();
+    delete job.change_detected;
     this.save(job, "monitoring", monitoringStage(job));
   }
 }
@@ -1281,6 +1386,12 @@ function publicJob(j: Job) {
     interrupted: _interrupted,
     paused_until: _paused,
     monitored: _monitored,
+    release_checked: _release_checked,
+    refresh_completed: _refresh_completed,
+    registry_polled: _registry_polled,
+    registry_version: _registry_version,
+    registry_checked: _registry_checked,
+    change_detected: _change_detected,
     demand: _demand,
     ...fields
   } = j;

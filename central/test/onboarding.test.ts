@@ -244,10 +244,14 @@ test("cold jobs publish early, interleave history with the docs module's pass an
         notes: "Source content",
       })),
     });
+    job.change_detected = new Date().toISOString();
     job.retry_at = "2020-01-01T00:00:00Z";
     (service as unknown as { pump: () => void }).pump();
     await vi.waitFor(() => expect(synth).toHaveBeenCalledTimes(8), { timeout: 3000 });
     await vi.waitFor(() => expect(job.state).toBe("monitoring"), { timeout: 3000 });
+    expect(fetching.fetchReleases).toHaveBeenLastCalledWith(expect.objectContaining({ id: t.id }), { refresh: true });
+    expect(job.change_detected).toBeUndefined();
+    expect(job.release_checked).toBe("2026-10-20T00:00:00Z");
     const states = readFileSync(join(dir, "central", "onboarding", "timeline.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l).state as string);
     expect(states.lastIndexOf("queued")).toBeGreaterThan(states.indexOf("monitoring"));
     const after = readFileSync(usageLog(), "utf8").trim().split("\n").map((l) => JSON.parse(l) as Record<string, unknown>);

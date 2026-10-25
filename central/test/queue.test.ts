@@ -5,6 +5,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { FetchFailure } from "../src/collector/http.ts";
 import { CoverageService, logName, sameStream, type Job } from "../src/onboarding/service.ts";
 import { DailyBudget, nextPeriod, periodKey, quarterKey, Voters, type Limits } from "../src/onboarding/limits.ts";
 import { deprecationOf } from "../src/onboarding/notices.ts";
@@ -248,6 +249,7 @@ async function mockWork(techs: Record<string, { repo: string; tags: string[]; si
       })),
     };
   });
+  vi.spyOn(fetching, "fetchGuides").mockResolvedValue([]);
   const synth = vi.spyOn(synthesis, "synthesize").mockResolvedValue(1);
   vi.spyOn(docs, "dailyPass").mockResolvedValue(undefined as never);
   vi.spyOn(docs, "extract").mockResolvedValue({} as never);
@@ -427,4 +429,89 @@ test("a monitored technology's upgrade guide is extracted once, charged like a n
   } finally {
     service.stop();
   }
+});
+
+test("bounded registry polling promotes changes, rotates attempts and leaves full security refreshes due", async () => {
+  const service = new CoverageService(0, { limits: limits() }).hold();
+  const add = (name: string) => {
+    const job = service.submit(`pkg:npm/${name}`);
+    job.state = "monitoring";
+    job.monitored = "2026-01-01T00:00:00Z";
+    job.descriptor = { purl: job.purl, id: job.technology, name, latest: "1.0.0", tag: "", components: [job.purl] };
+    job.retry_at = new Date(Date.now() + 6 * 3600_000).toISOString();
+    return job;
+  };
+  const paused = add("paused");
+  paused.paused_until = new Date(Date.now() + 3600_000).toISOString();
+  const changed = add("changed"), unchanged = add("unchanged"), failed = add("failed");
+  const read = vi.fn(async (purl: string) => purl.endsWith("changed") && !purl.endsWith("unchanged") ? "2.0.0" : "1.0.0");
+  expect(await service.pollChanges({ limit: 2, read })).toEqual({ attempted: 2, checked: 2, changed: 1 });
+  expect(read.mock.calls.map(([purl]) => purl)).toEqual([changed.purl, unchanged.purl]);
+  expect(paused.registry_polled).toBeUndefined();
+  expect(changed.change_detected).toBeDefined();
+  expect(service.queue()[0]?.purl).toBe(changed.purl);
+  expect(unchanged.change_detected).toBeUndefined();
+  const refreshAt = unchanged.retry_at;
+  expect(await service.pollChanges({ limit: 1, read: async (purl) => { expect(purl).toBe(failed.purl); throw new Error("429"); } }))
+    .toEqual({ attempted: 1, checked: 0, changed: 0 });
+  expect(unchanged.retry_at).toBe(refreshAt);
+  expect(failed.registry_version).toBeUndefined();
+  expect(failed.change_detected).toBeUndefined();
+  const restored = new CoverageService(0, { limits: limits() });
+  expect(restored.jobs.get(changed.purl)?.change_detected).toBe(changed.change_detected);
+  const publicStatus = restored.publicStatus(restored.jobs.get(changed.purl)!);
+  expect(publicStatus).not.toHaveProperty("registry_version");
+  expect(publicStatus).not.toHaveProperty("change_detected");
+});
+
+test("one worker starts the oldest overdue refresh ahead of popular historical backfill", async () => {
+  const service = new CoverageService(1, { limits: limits() }).hold();
+  const backlog = service.submit("pkg:npm/backlog");
+  backlog.admitted = "used";
+  backlog.demand = 1000;
+  const refresh = service.submit("pkg:npm/refresh");
+  refresh.state = "monitoring";
+  refresh.admitted = "used";
+  refresh.retry_at = "2020-01-01T00:00:00Z";
+  const started: string[] = [];
+  vi.spyOn(service as unknown as { work(job: Job): Promise<void> }, "work").mockImplementation(async (job) => {
+    started.push(job.purl);
+    job.state = "monitoring";
+    job.retry_at = new Date(Date.now() + 6 * 3600_000).toISOString();
+  });
+  await service.drain(Date.now() + 1000, 0, 1);
+  expect(started).toEqual([refresh.purl, backlog.purl]);
+});
+
+test("freshness counts unique monitored jobs and reports missing upstream evidence explicitly", () => {
+  const service = new CoverageService(0, { limits: limits() });
+  const at = Date.now();
+  for (const [name, hours] of [["fresh", 1], ["stale", 10], ["unknown", undefined]] as const) {
+    const job = service.submit(`pkg:npm/${name}`);
+    job.state = "monitoring";
+    if (hours !== undefined) job.release_checked = new Date(at - hours * 3600_000).toISOString();
+  }
+  expect(service.freshness(at)).toMatchObject({ monitored: 3, release_check_unknown: 1,
+    release_check_age_s: { p50: 3600, p95: 36000, max: 36000 }, release_checks_over_6h: 1 });
+});
+
+
+test("a registry rate limit stops polling across cycles without pausing the indexing queue", async () => {
+  const service = new CoverageService(0, { limits: limits() }).hold();
+  for (const name of ["a", "b", "c", "d"]) {
+    const job = service.submit(`pkg:npm/${name}`);
+    job.state = "monitoring";
+    job.descriptor = { purl: job.purl, id: job.technology, name, latest: "1.0.0", tag: "", components: [job.purl] };
+    job.retry_at = "2020-01-01T00:00:00Z";
+  }
+  const read = vi.fn(async () => { throw new FetchFailure("http_status", "HTTP 429", 429, 3600_000); });
+  const result = await service.pollChanges({ read });
+  expect(result.attempted).toBeLessThanOrEqual(2);
+  expect(result.checked).toBe(0);
+  expect(service.queue()).toHaveLength(4);
+  const restarted = new CoverageService(0, { limits: limits() }).hold();
+  const paused = await restarted.pollChanges({ read });
+  expect(paused.attempted).toBe(0);
+  expect(Date.parse(paused.paused_until!)).toBeGreaterThan(Date.now() + 3500_000);
+  expect(read.mock.calls.length).toBeLessThanOrEqual(2);
 });

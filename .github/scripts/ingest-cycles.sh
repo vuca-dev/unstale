@@ -139,7 +139,7 @@ while :; do
     exit 1
   fi
   line="$(tail -n 1 "$RUNNER_TEMP/drain.log")"
-  log "cycle $cycle drained: $(jq -c '{wall_s, pulled, taken, started, unfinished, drained, early, held, rate_limited, metrics}' <<< "$line")"
+  log "cycle $cycle drained: $(jq -c '{wall_s, pulled, taken, started, unfinished, drained, early, held, rate_limited, metrics, freshness}' <<< "$line")"
   echo "::group::Cycle $cycle: publish"
   ok=true
   publish_tree || ok=false
