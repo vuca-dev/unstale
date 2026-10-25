@@ -147,5 +147,5 @@ export function linkedReleaseText(page: string, version: string): string {
   const sections = versionSections(page, true);
   const own = sections.find((s) => s.version === version)
     ?? sections.find((s) => s.version === version.split(".").slice(0, 2).join("."));
-  return own ? own.text : sections.length >= 2 ? "" : capped(page);
+  return own ? own.text : sections.length ? "" : capped(page);
 }

@@ -51,6 +51,8 @@ test("rolling release pages select minor-version headings without changing stric
   expect(linkedReleaseText(page, "9.3.1")).toContain("Correct change");
   expect(linkedReleaseText(page, "9.1.0")).toBe("");
   expect(versionSections(page)).toEqual([]);
+  expect(linkedReleaseText("## deck.gl v9.4\n" + "Future change. ".repeat(60), "9.3.0")).toBe("");
+  expect(linkedReleaseText("## v9.3.1\nPatch-only change", "9.3.2")).toBe("");
   const exact = page + "\n## 9.3.1\nPatch-only change";
   expect(linkedReleaseText(exact, "9.3.1")).toBe("## 9.3.1\nPatch-only change");
   expect(linkedReleaseText("# Announcing TypeScript 6.0\nOne announcement", "6.0.2")).toContain("One announcement");
