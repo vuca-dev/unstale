@@ -14,7 +14,7 @@ import { ecosystemOf } from "./ecosystems.ts";
 import { isStable } from "./lines.ts";
 import { registryCache } from "./registry.ts";
 import { techLocal } from "../state/client.ts";
-import { capped, pageText, pickChangelog, pointerLinks, repoFileLink, sectionFor, siteOf, versionSections } from "./changelog.ts";
+import { capped, linkedReleaseText, pageText, pickChangelog, pointerLinks, repoFileLink, sectionFor, siteOf, versionSections } from "./changelog.ts";
 import { httpFetcher } from "../docs/fetcher.ts";
 import { RobotsCache } from "../docs/robots.ts";
 import type { Fetcher } from "../docs/resolve.ts";
@@ -41,6 +41,8 @@ export interface ReleaseNote {
   /** Set for a note read from a moving page (an upgrade guide first read, or edited, after its major line moved past
    * x.0): the change shipped in a release from `version` up to this one (docs/attribute.ts `lineBound`). */
   noLaterThan?: string;
+  /** Old whole-page snapshot, only when a cached linked page is now narrowed to its release section. */
+  supersededSnapshot?: string;
 }
 
 /** A release as the stored index keeps it: `date` is the GitHub release's day, `published` the registry's. */
@@ -355,15 +357,23 @@ export async function fetchReleases(t: Technology, opts: { refresh?: boolean; of
     let notes = t.clean(raw);
     let snapshot = r.snapshot;
     let keyTag: string | undefined;
-    if (linked && !taken.has(linked.snapshot) && existsSync(linkedPath(t, r.version))) {
+    let supersededSnapshot: string | undefined;
+    if (linked && existsSync(linkedPath(t, r.version))) {
       const doc = readFileSync(linkedPath(t, r.version), "utf8");
       if (`sha256:${sha256(doc)}` !== linked.snapshot) throw new Error(`linked notes changed on disk: ${linkedPath(t, r.version)}`);
-      taken.add(linked.snapshot);
-      notes = `${notes.trim()}\n\n---\n\nRelease notes linked from this release (${linked.url}):\n\n${doc}`;
-      snapshot = `sha256:${sha256(`${r.snapshot}\n${linked.snapshot}`)}`;
-      keyTag = `+linked.${linked.snapshot.slice(7, 15)}`;
+      const scoped = linkedReleaseText(doc, r.version);
+      const selected = scoped.trim() === doc.trim() ? doc : scoped.trim() + "\n";
+      const linkedSnapshot = `sha256:${sha256(selected)}`;
+      if (selected.trim() !== doc.trim()) supersededSnapshot = `sha256:${sha256(`${r.snapshot}\n${linked.snapshot}`)}`;
+      // Deduplicate the selected section, not the whole rolling page shared by different releases.
+      if (selected.trim() && !taken.has(linkedSnapshot)) {
+        taken.add(linkedSnapshot);
+        notes = `${notes.trim()}\n\n---\n\nRelease notes linked from this release (${linked.url}):\n\n${selected}`;
+        snapshot = `sha256:${sha256(`${r.snapshot}\n${linkedSnapshot}`)}`;
+        keyTag = `+linked.${linkedSnapshot.slice(7, 15)}`;
+      }
     }
-    return { ...rest, snapshot, ...(keyTag ? { keyTag } : {}), ...(published && published !== r.date ? { date: published, noteDate: r.date } : {}), notes };
+    return { ...rest, snapshot, ...(keyTag ? { keyTag } : {}), ...(supersededSnapshot ? { supersededSnapshot } : {}), ...(published && published !== r.date ? { date: published, noteDate: r.date } : {}), notes };
   });
   return { notes, checked: index.checked, stats };
 }
@@ -472,9 +482,9 @@ async function linkedDocument(t: Technology, urls: string[], version: string, f:
     }
     // A changelog page (Cypress's docs changelog, one heading per version) gives the version's section, or nothing
     // when it has none for it; a page that names no version in its headings (an announcement post) is read whole.
-    const sections = versionSections(page);
-    const own = sections.find((x) => x.version === version);
-    const text = own ? own.text : sections.length >= 2 ? "" : capped(page);
+    const sections = versionSections(page, true);
+    const own = sections.find((x) => x.version === version) ?? sections.find((x) => x.version === version.split(".").slice(0, 2).join("."));
+    const text = linkedReleaseText(page, version);
     if (text.trim().length >= (own ? 40 : 500)) return { url, text: text.trim() + "\n" };
   }
   return transient ? "retry" : undefined;

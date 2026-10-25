@@ -1,6 +1,6 @@
 {
   "name": "@unstale/cli",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "description": "Finds the breaking changes, security fixes, deprecations and new APIs in your dependencies that touch your code, and hands them to Claude Code, Codex or Cursor. Local, cited, open source.",
   "license": "AGPL-3.0-only",
   "author": "Jason Draper (https://vuca.dev)",
@@ -36,10 +36,10 @@
     "node": ">=18"
   },
   "optionalDependencies": {
-    "@unstale/cli-darwin-arm64": "0.2.6",
-    "@unstale/cli-darwin-x64": "0.2.6",
-    "@unstale/cli-linux-arm64": "0.2.6",
-    "@unstale/cli-linux-x64": "0.2.6",
-    "@unstale/cli-win32-x64": "0.2.6"
+    "@unstale/cli-darwin-arm64": "0.2.7",
+    "@unstale/cli-darwin-x64": "0.2.7",
+    "@unstale/cli-linux-arm64": "0.2.7",
+    "@unstale/cli-linux-x64": "0.2.7",
+    "@unstale/cli-win32-x64": "0.2.7"
   }
 }
