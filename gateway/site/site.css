@@ -62,8 +62,10 @@ footer a { color: var(--muted); } footer a:hover { color: var(--fg); }
 .wordmark { display: block; width: calc(100% + 24px); aspect-ratio: 64 / 20; height: auto; margin: 0 0 0 -12px; }
 .hero h1 { font-size: clamp(1.45rem, 3.4vw, 1.9rem); margin: 4px 0 12px; }
 .lede { font-size: 1.06rem; color: var(--muted); margin: 0; }
+.lede + .lede { margin-top: 16px; }
+.example { margin-top: 48px; }
 
-.term { margin: 16px 0 0; }
+.term { margin: 0; }
 .term pre { margin: 0; padding: 18px 20px; background: #0a0f11; border: 1px solid var(--line); border-radius: 10px; font-size: 0.8rem; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
 .term pre span { display: block; }
 .term figcaption { color: var(--muted); font-size: 0.8rem; margin-top: 8px; }
@@ -73,9 +75,10 @@ footer a { color: var(--muted); } footer a:hover { color: var(--fg); }
 .t-rule { height: 1px; background: #67dc91; opacity: 0.7; margin: 10px 0; }
 
 .prose h2 { font-size: 1.2rem; margin: 48px 0 10px; }
-.prose ul { padding-left: 20px; margin: 0 0 12px; }
+.prose ul, .prose ol { padding-left: 20px; margin: 0 0 12px; }
 .prose li { margin-bottom: 4px; }
 .prose p { margin: 0 0 12px; }
+.example > p { margin-bottom: 16px; }
 .prose li::marker { color: var(--fresh); }
 
 #filter { width: 100%; max-width: 300px; padding: 7px 11px; font: inherit; font-size: 0.92rem; color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 7px; margin: 4px 0 14px; }
@@ -113,12 +116,12 @@ ul.changes .meta { font-size: 0.78rem; margin-top: 2px; color: var(--muted); dis
 .v { color: var(--muted); }
 
 /* Current catalog coverage, beside the decision to try the CLI. */
-.catalog-proof { margin-top: 32px; padding: 22px 0 18px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.catalog-proof { margin-top: 32px; padding: 24px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .catalog-stats { display: flex; flex-wrap: wrap; gap: 20px 56px; margin: 0; }
 .catalog-stats > div { display: flex; flex-direction: column-reverse; }
 .catalog-stats dt { color: var(--muted); font-size: 0.85rem; }
 .catalog-stats dd { margin: 0; color: var(--fresh); font-size: clamp(2rem, 6vw, 2.75rem); font-weight: 650; letter-spacing: -0.045em; line-height: 1.2; font-variant-numeric: tabular-nums; }
-.catalog-explore { display: inline-block; margin-top: 14px; font-size: 0.85rem; }
+.catalog-explore { display: inline-block; margin-top: 16px; font-size: 0.85rem; }
 .install-facts { margin: 12px 0 0; color: var(--muted); font-size: 0.85rem; }
 .privacy-details { color: var(--muted); font-size: 0.9rem; }
 .privacy-details summary { width: fit-content; cursor: pointer; }
@@ -126,7 +129,7 @@ ul.changes .meta { font-size: 0.78rem; margin-top: 2px; color: var(--muted); dis
 .prose .license { margin-top: 24px; color: var(--muted); font-size: 0.85rem; }
 .package-empty { color: var(--muted); font-size: 0.92rem; }
 
-.get-started { margin-top: 40px; }
+.get-started { margin-top: 48px; }
 .get-started h2 { font-size: clamp(2.25rem, 6vw, 3rem); font-weight: 750; letter-spacing: -0.04em; line-height: 1.1; margin: 0 0 12px; }
 .install-hint { margin: 0 0 10px; font-size: 0.85rem; color: var(--muted); }
 .get-started > .install-hint { font-size: 1rem; margin-bottom: 16px; }
@@ -141,7 +144,7 @@ ul.changes .meta { font-size: 0.78rem; margin-top: 2px; color: var(--muted); dis
 .copy.copied .copied-icon { display: block; }
 .copy.copied { color: var(--fresh); }
 .copy:focus-visible, .brew-install summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-.brew-install { margin-top: 14px; font-size: 0.85rem; color: var(--muted); }
-.brew-install summary { cursor: pointer; width: fit-content; }
+.brew-install { margin-top: 12px; font-size: 0.85rem; color: var(--muted); }
+.brew-install summary { cursor: pointer; width: fit-content; padding: 4px 0; }
 .brew-install[open] summary { margin-bottom: 12px; }
 .brew-install .install-hint { margin: 12px 0 8px; }
