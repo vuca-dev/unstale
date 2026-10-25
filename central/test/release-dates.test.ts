@@ -209,3 +209,53 @@ describe("a technology with no GitHub release notes", () => {
     expect(await registryReleases({ ...MD, components: ["pkg:cargo/serde"] })).toEqual([]);
   });
 });
+
+
+describe("conditional release listings", () => {
+  test("an unchanged head skips pagination but a daily reconciliation reads deeper pages", async () => {
+    const rows = Array.from({ length: 100 }, () => gh("v30.0.0", "2026-07-28"));
+    const requests: Array<{ url: string; etag: string | null }> = [];
+    let unchanged = false;
+    let backdated = false;
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (url.includes("registry.npmjs.org")) return Response.json({ name: "jsdom", time: NPM_TIME });
+      const etag = new Headers(init?.headers).get("If-None-Match");
+      requests.push({ url, etag });
+      if (url.endsWith("page=1")) {
+        if (unchanged && etag) return new Response(null, { status: 304 });
+        return Response.json(rows, { headers: { etag: '"head-1"' } });
+      }
+      return Response.json(backdated ? [gh("v31.0.0", "2026-08-01")] : []);
+    });
+    await fetchReleases(JSDOM);
+    expect(requests).toHaveLength(2);
+    requests.length = 0;
+    unchanged = true;
+    const result = await fetchReleases(JSDOM, { refresh: true });
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.etag).toBe('"head-1"');
+    expect(result.notes).toHaveLength(1);
+    expect(result.stats.newReleases).toBe(0);
+    const path = join(dir, "releases", JSDOM.id, "index.json");
+    const index = JSON.parse(readFileSync(path, "utf8"));
+    index.listing.reconciled = new Date(Date.now() - 25 * 3600_000).toISOString();
+    writeAtomic(path, JSON.stringify(index));
+    requests.length = 0;
+    backdated = true;
+    expect((await fetchReleases(JSDOM, { refresh: true })).notes).toHaveLength(2);
+    expect(requests).toHaveLength(2);
+    expect(requests[0]?.etag).toBeNull();
+  });
+
+  test.each(["repository", "tags"])("changing %s discards the previous validator", async (change) => {
+    const path = join(dir, "releases", JSDOM.id, "index.json");
+    writeAtomic(path, JSON.stringify({ checked: new Date().toISOString(), tagPattern: JSDOM.tag.source,
+      matched: true, releases: [stored("v30.0.0", "30.0.0", "2026-07-28")], listing: { repo: change === "repository" ? "previous/repo" : JSDOM.repo, etag: '"wrong"', reconciled: new Date().toISOString() } }));
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      expect(new Headers(init?.headers).has("If-None-Match")).toBe(false);
+      return Response.json(url.includes("registry.npmjs.org") ? { name: "jsdom", time: NPM_TIME } : []);
+    });
+    await fetchReleases(change === "tags" ? { ...JSDOM, tag: /^v(\d+\.\d+\.\d+)$/ } : JSDOM, { refresh: true });
+    expect(JSON.parse(readFileSync(path, "utf8")).listing).toBeUndefined();
+  });
+});

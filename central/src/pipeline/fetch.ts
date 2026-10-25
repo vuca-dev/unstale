@@ -64,6 +64,8 @@ interface ReleaseIndex {
    * did: the project ships no GitHub releases for the package, and its changelog file is read instead. */
   matched?: boolean;
   releases: StoredRelease[];
+  /** First-page validator, committed only with a successful listing. Scoped to repository and tag rules. */
+  listing?: { repo: string; etag: string; reconciled: string };
 }
 
 const FRESH_MS = 12 * 3600 * 1000;
@@ -92,13 +94,14 @@ interface GhRelease {
   html_url: string;
 }
 
-async function listPage(repo: string, page: number): Promise<GhRelease[]> {
+async function listPage(repo: string, page: number, etag?: string): Promise<{ rows?: GhRelease[]; etag?: string }> {
   if (!isRepoSlug(repo)) throw new Error(`not a GitHub repository: ${repo}`);
   for (let attempt = 0; ; attempt++) {
     const res = await fetch(`https://api.github.com/repos/${repo}/releases?per_page=100&page=${page}`, {
-      headers: { Authorization: `Bearer ${ghToken()}`, Accept: "application/vnd.github+json", "User-Agent": "unstale-central" },
+      headers: { Authorization: `Bearer ${ghToken()}`, Accept: "application/vnd.github+json", "User-Agent": "unstale-central", ...(etag ? { "If-None-Match": etag } : {}) },
     });
-    if (res.ok) return (await res.json()) as GhRelease[];
+    if (res.status === 304 && etag) return {};
+    if (res.ok) return { rows: (await res.json()) as GhRelease[], ...(res.headers.get("etag") ? { etag: res.headers.get("etag")! } : {}) };
     if (attempt >= 2 || (res.status < 500 && res.status !== 429)) throw new Error(`GitHub ${repo} page ${page}: ${res.status}`);
     await new Promise((r) => setTimeout(r, 2000 * 2 ** attempt));
   }
@@ -228,10 +231,24 @@ export async function fetchReleases(t: Technology, opts: { refresh?: boolean; of
   const found = new Map<string, { r: GhRelease; release: StoredRelease }>();
   let matched = false;
   let truncated = true;
+  let listing: ReleaseIndex["listing"];
+  // A stable head avoids walking the same history on every poll. Reconcile unconditionally daily: GitHub
+  // can publish a backdated release beyond page one without changing its validator. No version-only gate.
+  const validator = index?.tagPattern === t.tag.source && index.listing?.repo === t.repo
+    && Date.now() - Date.parse(index.listing.reconciled) < 24 * 3600_000 ? index.listing : undefined;
   if (listed) {
     for (let page = 1; page < 60; page++) {
-      const rows = await listPage(t.repo, page);
+      const response = await listPage(t.repo, page, page === 1 ? validator?.etag : undefined);
       stats.requests++;
+      if (!response.rows) {
+        matched = index?.matched ?? false;
+        listing = validator;
+        truncated = false;
+        break;
+      }
+      const rows = response.rows;
+      if (page === 1 && response.etag)
+        listing = { repo: t.repo, etag: response.etag, reconciled: new Date().toISOString() };
       for (const r of rows) {
         const m = t.tag.exec(r.tag_name);
         if (m && !r.draft) matched = true;
@@ -292,7 +309,7 @@ export async function fetchReleases(t: Technology, opts: { refresh?: boolean; of
   if (listed || changed || !prev) {
     // Only a listing renews the check time and tag pattern; filling in registry days alone keeps them.
     const releases = [...known.values()].sort((a, b) => day(a).localeCompare(day(b)) || compareVersions(a.version, b.version));
-    index = prev && !listed ? { ...prev, releases } : { tagPattern: t.tag.source, checked: new Date().toISOString().replace(/\.\d+Z$/, "Z"), matched, releases };
+    index = prev && !listed ? { ...prev, releases } : { tagPattern: t.tag.source, checked: new Date().toISOString().replace(/\.\d+Z$/, "Z"), matched, releases, ...(listing ? { listing } : {}) };
     writeAtomic(indexPath(t), JSON.stringify(index, null, 1) + "\n");
   }
   if (!index) throw new Error(`release index unreadable: ${indexPath(t)}`);
