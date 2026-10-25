@@ -332,7 +332,6 @@ function terminal(): string {
   return `<section class="prose example">
 <p>Example output of <code>unstale init</code> on a Next.js and Prisma app</p>
 <figure class="term"><pre>${rows}</pre></figure>
-<p class="review-invocation"><code>/unstale-review</code> in Claude Code, Cursor or opencode · <code>$unstale-review</code> in Codex.</p>
 </section>`;
 }
 
@@ -414,7 +413,7 @@ ${CONTRIBUTIONS.map((c) => `<li><a href="${esc(c.url)}">${esc(c.lead)}</a> ${esc
 <ol>
 <li><strong>Read your lockfile.</strong> JavaScript, TypeScript and Python projects.</li>
 <li><strong>Find what applies.</strong> Track your dependencies for upstream changes that matter to your code.</li>
-<li><strong>Review with your agent.</strong> Run <code>unstale-review</code> to see what changed, where it matters, and what to do next.</li>
+<li><strong>Review with your agent.</strong> Run the <code>unstale-review</code> skill to see what changed, where it matters, and what to do next.</li>
 </ol>
 <h2>Your code stays on your machine</h2>
 <p>unstale receives public package names; <a href="https://osv.dev">OSV</a> receives package names and versions for advisory checks. No telemetry.</p>
@@ -472,7 +471,7 @@ ${CONTRIBUTIONS.map((c) => `- [${c.lead}](${c.url}) ${c.rest}`).join("\n")}
 
 1. **Read your lockfile.** JavaScript, TypeScript and Python projects.
 2. **Find what applies.** Track your dependencies for upstream changes that matter to your code.
-3. **Review with your agent.** Run \`unstale-review\` to see what changed, where it matters, and what to do next.
+3. **Review with your agent.** Run the \`unstale-review\` skill to see what changed, where it matters, and what to do next.
 
 ## Your code stays on your machine
 
