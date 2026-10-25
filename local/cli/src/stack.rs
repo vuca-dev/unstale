@@ -283,6 +283,9 @@ pub struct Stack {
     /// The lowest Node version the project supports, and where that came from: the lowest `engines.node` floor of
     /// the manifests a lockfile covers (standalone ones only when none is covered), else `.nvmrc`/`.node-version`.
     pub node: Option<(Version, String)>,
+    /// The lowest Python version the project supports, and where that came from: the lowest `requires-python` (or
+    /// Poetry `python`) floor among the read `pyproject.toml` files (`pypi::detect`).
+    pub python: Option<(Version, String)>,
     /// Where versions came from when that needed a choice: competing lockfiles in one directory, or a lockfile
     /// that disagrees with the manifest beside it; and the packages on different versions across manifests. For the
     /// report.
@@ -345,6 +348,16 @@ impl Stack {
         let named = |(p, d): &(&String, &Dep)| d.public_candidate && (!self.registries.needs_identity(p) || crate::privacy::known_public(cache, p, at));
         let public: BTreeSet<String> = self.deps.iter().filter(named).flat_map(|(_, d)| dep_candidates(d)).collect();
         self.deps.iter().filter(|e| !named(e)).flat_map(|(_, d)| dep_candidates(d)).filter(|c| !public.contains(c)).collect()
+    }
+
+    /// The lowest version of a language runtime the project declares it supports, and where that came from: Node
+    /// (`engines.node`, `.nvmrc`) or Python (`requires-python`), by the runtime's name in any ecosystem's spelling.
+    pub fn runtime_floor(&self, name: &str) -> Option<&(Version, String)> {
+        match name.trim().to_ascii_lowercase().as_str() {
+            "node" | "nodejs" | "node.js" => self.node.as_ref(),
+            "python" | "cpython" => self.python.as_ref(),
+            _ => None,
+        }
     }
 
     /// A version the project declares for a prerequisite name in the npm ecosystem: `node` from engines or
@@ -743,7 +756,7 @@ pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
             if one { "s" } else { "" },
         ));
     }
-    crate::pypi::detect(root, &mut packages, &mut deps, &mut notes);
+    let python = crate::pypi::detect(root, &mut packages, &mut deps, &mut notes);
     // No name a private registry serves is ever named to a third party (`privacy`).
     // A test, example or fixture directory's configuration is its own (a local Verdaccio a test publishes to): it keeps
     // private the packages only such directories declare, and, for the rest, only the scopes and names it lists.
@@ -770,7 +783,7 @@ pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
             elsewhere.iter().take(5).copied().collect::<Vec<_>>().join(", ")
         ));
     }
-    let mut st = Stack { packages, deps, node, notes, unreadable, stub_runtimes, spread: 0, standalone, registries, fixture_registries, peers };
+    let mut st = Stack { packages, deps, node, python, notes, unreadable, stub_runtimes, spread: 0, standalone, registries, fixture_registries, peers };
     st.settle();
     Ok(st)
 }

@@ -394,7 +394,14 @@ fn is_requirements(base: &str) -> bool {
 
 /// Python packages and their direct dependencies, merged into `deps` (keyed by package URL; the lowest version
 /// wins, as for npm). Manifests in tests, examples, documentation, generated or vendored code are not the project's.
-pub fn detect(root: &Path, packages: &mut Vec<Package>, deps: &mut BTreeMap<String, Dep>, notes: &mut Vec<String>) {
+/// Reads the Python manifests below `root` into `packages` and `deps`. Returns the lowest Python version the
+/// project supports and where that came from: the lowest floor among the `requires-python` (PEP 621) or Poetry
+/// `python` ranges of the read `pyproject.toml` files a lockfile covers, else of all of them (as for Node's
+/// `engines.node`: a standalone script project's range never sets a locked project's).
+pub fn detect(root: &Path, packages: &mut Vec<Package>, deps: &mut BTreeMap<String, Dep>, notes: &mut Vec<String>) -> Option<(Version, String)> {
+    // The lowest floor among locked projects, and among the others.
+    let mut python: Option<(Version, String)> = None;
+    let mut python_standalone: Option<(Version, String)> = None;
     let mut by_dir: BTreeMap<PathBuf, Vec<(String, String)>> = BTreeMap::new();
     for e in walker(root).flatten() {
         if !e.file_type().is_some_and(|t| t.is_file()) {
@@ -419,11 +426,16 @@ pub fn detect(root: &Path, packages: &mut Vec<Package>, deps: &mut BTreeMap<Stri
     for (dir, files) in by_dir {
         let mut reqs = vec![];
         let mut named = false;
+        let mut declared_python: Option<(Version, String)> = None;
         for (base, text) in &files {
             if base == "pyproject.toml" {
                 if let Some((r, n)) = pyproject(text) {
                     reqs.extend(r);
                     named |= n;
+                }
+                if let Some((key, floor)) = requires_python(text) {
+                    let rel = dir.strip_prefix(root).ok().map(|p| p.to_string_lossy().replace('\\', "/")).filter(|p| !p.is_empty());
+                    declared_python = Some((floor, format!("{key} in {}", rel.map_or("pyproject.toml".into(), |r| format!("{r}/pyproject.toml")))));
                 }
             } else if base == "Pipfile" {
                 if let Ok(doc) = toml::from_str::<Value>(text) {
@@ -455,6 +467,12 @@ pub fn detect(root: &Path, packages: &mut Vec<Package>, deps: &mut BTreeMap<Stri
                 break;
             }
             d = cur.parent();
+        }
+        if let Some((floor, source)) = declared_python {
+            let slot = if lock.is_some() { &mut python } else { &mut python_standalone };
+            if slot.as_ref().is_none_or(|(p, _)| floor < *p) {
+                *slot = Some((floor, source));
+            }
         }
         // A distribution without a lockfile is published for others: read at its floor, like an npm library.
         let kind = if named && lock.is_none() && !files.iter().any(|(b, _)| is_requirements(b)) { Kind::Library } else { Kind::Application };
@@ -527,6 +545,18 @@ pub fn detect(root: &Path, packages: &mut Vec<Package>, deps: &mut BTreeMap<Stri
             examples.join(", ")
         ));
     }
+    python.or(python_standalone)
+}
+
+/// A `pyproject.toml`'s declared Python range, as `<key> <range>`, and its floor: PEP 621 `requires-python`, else
+/// Poetry's `python` dependency (`^3.11`).
+fn requires_python(text: &str) -> Option<(String, Version)> {
+    let doc: Value = toml::from_str(text).ok()?;
+    let pep621 = doc.get("project").and_then(|p| p.get("requires-python")).and_then(Value::as_str).map(|s| ("requires-python", s));
+    let poetry = || doc.get("tool").and_then(|t| t.get("poetry")).and_then(|p| p.get("dependencies")).and_then(|d| d.get("python")).and_then(Value::as_str).map(|s| ("Poetry python", s));
+    let (key, spec) = pep621.or_else(poetry)?;
+    let floor = spec_floor(spec.trim())?;
+    Some((format!("{key} {}", spec.trim()), floor))
 }
 
 #[cfg(test)]
@@ -535,6 +565,25 @@ mod tests {
 
     fn v(s: &str) -> Version {
         Version::parse(s).unwrap()
+    }
+
+    #[test]
+    fn the_declared_python_floor_is_read() {
+        assert_eq!(requires_python("[project]\nname = \"a\"\nrequires-python = \">=3.12\"\n"), Some(("requires-python >=3.12".into(), v("3.12.0"))));
+        assert_eq!(requires_python("[tool.poetry.dependencies]\npython = \"^3.11\"\n"), Some(("Poetry python ^3.11".into(), v("3.11.0"))));
+        assert!(requires_python("[project]\nname = \"a\"\n").is_none());
+        // A locked project's range wins over a standalone script project's lower one.
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "app/pyproject.toml", "[project]\nname = \"app\"\nrequires-python = \">=3.12\"\ndependencies = [\"httpx\"]\n");
+        write(d.path(), "app/uv.lock", "version = 1\n\n[[package]]\nname = \"httpx\"\nversion = \"0.28.1\"\nsource = { registry = \"https://pypi.org/simple\" }\n");
+        write(d.path(), "scripts/tool/pyproject.toml", "[project]\nname = \"tool\"\nrequires-python = \">=3.9\"\ndependencies = [\"rich\"]\n");
+        let (mut pk, mut deps) = (vec![], BTreeMap::new());
+        assert_eq!(detect(d.path(), &mut pk, &mut deps, &mut vec![]), Some((v("3.12.0"), "requires-python >=3.12 in app/pyproject.toml".into())));
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "pyproject.toml", "[project]\nname = \"a\"\nrequires-python = \">=3.12\"\n");
+        write(d.path(), "tools/pyproject.toml", "[project]\nname = \"b\"\nrequires-python = \">=3.10\"\n");
+        let (mut pk, mut deps) = (vec![], BTreeMap::new());
+        assert_eq!(detect(d.path(), &mut pk, &mut deps, &mut vec![]), Some((v("3.10.0"), "requires-python >=3.10 in tools/pyproject.toml".into())), "no lock: the lowest");
     }
 
     #[test]
