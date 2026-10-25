@@ -1084,6 +1084,10 @@ pub(crate) fn integrate(ctx: &Ctx) -> Result<Vec<String>> {
     // Every supported agent's skill directory, whether or not its command is on PATH: desktop apps and editor
     // extensions (Cursor, Claude Code in an IDE) install none, and the README's slash commands must exist either
     // way. Codex and Cursor both read `.agents/skills`; in local mode the files are excluded from Git.
+    // opencode needs no directory or command files of its own (checked against opencode 1.2.0, 1.15.0 and 1.19.4): it
+    // reads both `.claude/skills` and `.agents/skills`, keeps one skill per name (which copy varies between runs; it
+    // logs "duplicate skill name", and ours are identical), and offers every skill as `/<name>` unless a command file
+    // of that name exists. It ignores `disable-model-invocation`, so each description must say explicit-request only.
     let runtimes: [(&[&str], &str); 2] = [(&["Codex", "Cursor"], ".agents/skills"), (&["Claude Code"], ".claude/skills")];
     for (names, dir) in runtimes {
         let mut onboarding_installed = false;

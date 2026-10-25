@@ -7,9 +7,9 @@
 
 **You don't know what you don't know. Neither does your agent.**
 
-Tells Claude Code, Codex and Cursor what changed upstream since their training cutoff that applies to your code: new
-APIs worth adopting, breaking changes for your next major upgrade, deprecations, and the security and performance
-fixes in each version bump.
+Tells Claude Code, Codex, Cursor and opencode what changed upstream since their training cutoff that applies to your
+code: new APIs worth adopting, breaking changes for your next major upgrade, deprecations, and the security and
+performance fixes in each version bump.
 
 **Does it work?** It finds 4x as many changes worth acting on as Claude Code alone, using 1/16 of the tokens ([how we measured](eval/beat-naive/RESULTS.md)). [Phoenix](https://github.com/Arize-ai/phoenix/pull/17150) and
 [i18next](https://github.com/i18next/i18next/pull/2453) have merged fixes for what it found at their installed
@@ -37,7 +37,7 @@ Then, in your agent, inside that repository:
 
 | Agent | Run |
 |---|---|
-| Claude Code, Cursor | `/unstale-onboarding`, `/unstale-upgrade-review`, `/unstale-improvements-pass` |
+| Claude Code, Cursor, opencode | `/unstale-onboarding`, `/unstale-upgrade-review`, `/unstale-improvements-pass` |
 | Codex | `$unstale-onboarding`, `$unstale-upgrade-review`, `$unstale-improvements-pass` |
 
 | Command | |
@@ -65,7 +65,7 @@ code.
 
 ## Works with
 
-- **Agents:** Claude Code, Codex, Cursor
+- **Agents:** Claude Code, Codex, Cursor, opencode
 - **Ecosystems:** npm (TypeScript, JavaScript) and PyPI (Python). Lockfile-accurate versions from npm, pnpm, Yarn, uv,
 Poetry, PDM and Pipenv. Any package in a supported ecosystem works with no per-package setup.
 
@@ -83,10 +83,10 @@ Poetry, PDM and Pipenv. Any package in a supported ecosystem works with no per-p
 ## Trust and privacy
 
 - **What** `init` **writes.** `.unstale/` (configuration, decision ledger, reports), agent skills in `.claude/skills`
-(Claude Code) and `.agents/skills` (Codex and Cursor), whether or not each agent is installed, and a Claude Code
-session-start hook in `.claude/settings.local.json` that prints one line. Personal mode, the default, keeps all of it
-out of Git; shared mode (`unstale init --mode shared`) commits the ledger and skill files and adds one line to
-`.gitattributes`. `unstale uninstall` removes all of it and backs up your decisions.
+(Claude Code) and `.agents/skills` (Codex and Cursor; opencode reads both), whether or not each agent is installed,
+and a Claude Code session-start hook in `.claude/settings.local.json` that prints one line. Personal mode, the
+default, keeps all of it out of Git; shared mode (`unstale init --mode shared`) commits the ledger and skill files
+and adds one line to `.gitattributes`. `unstale uninstall` removes all of it and backs up your decisions.
 - **What leaves your machine.** Requests for catalog files, named by public package identity (`pkg:npm/next`), and
 coverage requests for packages the catalog does not have yet. Your code, paths and versions do not. No telemetry.
 The service, hosted on Cloudflare, sees your IP address. It keeps it in memory only, to apply rate limits and count
