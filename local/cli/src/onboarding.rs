@@ -2843,7 +2843,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
             let e = classes.entry(c).or_default();
             e.1 += 1;
             // Local evidence: a specific reference in this code, a deprecation in effect, or an advisory the
-            // lockfile's version is affected by.
+            // installed version is affected by.
             if specific(o) || o.route == funnel::Route::InEffect || tech_fixes.iter().any(|f| f.opp == i) {
                 e.0 += 1;
                 fit |= !across_major(o);
@@ -3330,7 +3330,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
         let all: BTreeSet<&str> = fixes.keys().map(String::as_str).chain(ranked.iter().filter(fixing).map(|r| r.technology.as_str())).collect();
         let more = all.len().saturating_sub(techs.len());
         start.push(format!(
-            "Security fixes for the installed versions, noted on their upgrades: {advisories} {} the lockfile's version is affected by and the target is not ({}), in {}{}.",
+            "Security fixes for the installed versions, noted on their upgrades: {advisories} {} the installed version is affected by and the target is not ({}), in {}{}.",
             if advisories == 1 { "advisory" } else { "advisories" },
             parts.join(", "),
             techs.join(", "),

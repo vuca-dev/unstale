@@ -91,6 +91,9 @@ pub struct Dep {
     pub unaliased: bool,
     /// The manifests (directories) that install it through an npm alias (`@typescript/native: npm:typescript@7.0.2`).
     pub alias_dirs: BTreeSet<String>,
+    /// PyPI: (directory, specifier) of each declaration no lockfile or pinned requirements file pins, which
+    /// `pypi::assume_newest` reads at the newest release the specifier admits.
+    pub unpinned: Vec<(String, String)>,
 }
 
 /// One manifest's version of a dependency.
@@ -139,7 +142,7 @@ impl Dep {
     }
 
     pub fn new(name: &str, public_candidate: bool) -> Dep {
-        Dep { name: name.to_string(), public_candidate, version: None, source: String::new(), readings: vec![], pins: vec![], seen: Seen::Unknown, aliases: BTreeSet::new(), unaliased: false, alias_dirs: BTreeSet::new() }
+        Dep { name: name.to_string(), public_candidate, version: None, source: String::new(), readings: vec![], pins: vec![], seen: Seen::Unknown, aliases: BTreeSet::new(), unaliased: false, alias_dirs: BTreeSet::new(), unpinned: vec![] }
     }
 
     /// One manifest's version (`None` when it cannot be read: a tag, a workspace link). The headline is set by
@@ -502,7 +505,7 @@ pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
     let (mut configs, mut manifest_dirs) = (vec![], BTreeSet::new());
     for e in walker(root).flatten() {
         let name = e.file_name().to_string_lossy();
-        if crate::privacy::is_config(&name) {
+        if crate::privacy::is_config(&name) || crate::pypi::requirements_project(e.path()).is_some() {
             configs.push(e.path().to_path_buf());
         }
         if name == "package.json" || name == "pyproject.toml" || name == "Pipfile" {
@@ -773,6 +776,8 @@ pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
         let fixture_only = !d.readings.is_empty() && d.readings.iter().all(|r| !local(&root.join(&r.dir).join("x")));
         d.public_candidate &= registries.may_name(purl, d.seen) && (!fixture_only || fixture_registries.may_name(purl, d.seen));
     }
+    // A Python requirement nothing pins is read at the newest release its range admits; public names only.
+    crate::pypi::assume_newest(&mut deps, &mut notes, crate::pypi::registry_releases);
     // Packages a lockfile installs from git, a URL, a path or another registry: not the public package of that name, so
     // they are not registered for coverage (a git-sourced `uWebSockets.js` is no `pkg:npm/uWebSockets.js`). Said once.
     let elsewhere: Vec<&str> = deps.values().filter(|d| d.seen == Seen::Elsewhere && !d.readings.is_empty()).map(|d| d.name.as_str()).collect();

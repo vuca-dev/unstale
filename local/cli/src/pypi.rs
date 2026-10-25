@@ -117,25 +117,157 @@ fn requirement(line: &str) -> Option<Req> {
     Some((name.to_string(), if public { spec.to_string() } else { String::new() }, public))
 }
 
-/// `requirements*.txt` lines: requirements only (no `-r`/`-e`/`-c` options, URLs or local paths).
-fn requirements_txt(text: &str) -> Vec<Req> {
+/// One logical line of a requirements file.
+#[derive(Debug, Clone, PartialEq)]
+enum ReqLine {
+    /// `-r <file>` (`constraint` false) or `-c <file>`: another requirements file, relative to this one.
+    Include { file: String, constraint: bool },
+    /// A requirement, its `==` pin (version as written) and `--hash` values, and whether it is declared here: false
+    /// for a compiled entry whose `# via` annotation (pip-compile, `uv pip compile`) names only the packages that pull
+    /// it in, and no `-r` input or `(<file>)` source declaring it.
+    Req { req: Req, pin: Option<String>, hashes: Vec<String>, declared: bool },
+}
+
+/// A requirements file's lines: options other than `-r`/`-c` (`-e`, `--index-url`), URLs and local paths dropped.
+fn requirement_lines(text: &str) -> Vec<ReqLine> {
     let mut out = vec![];
     let mut joined = String::new();
+    // The entry a following `# via` annotation belongs to, and whether one is being read.
+    let (mut last, mut via): (Option<usize>, bool) = (None, false);
     for raw in text.lines() {
         let l = raw.trim_end();
         if let Some(head) = l.strip_suffix('\\') {
             joined.push_str(head);
+            joined.push(' ');
             continue;
         }
         joined.push_str(l);
         let line = std::mem::take(&mut joined);
-        let line = line.split(" --hash").next().unwrap_or("").trim();
-        if line.is_empty() || line.starts_with('#') || line.starts_with('-') || line.split_whitespace().next().is_some_and(|w| w.contains("://")) || line.starts_with('.') || line.starts_with('/') {
+        let line = line.trim();
+        if let Some(c) = line.strip_prefix('#') {
+            let c = c.trim();
+            let item = match c.strip_prefix("via") {
+                Some(rest) if rest.is_empty() || rest.starts_with(char::is_whitespace) => {
+                    via = true;
+                    if let Some(ReqLine::Req { declared, .. }) = last.and_then(|i| out.get_mut(i)) {
+                        *declared = false;
+                    }
+                    rest.trim()
+                }
+                _ if via => c,
+                _ => continue,
+            };
+            // `-r requirements/base.in` or `apache-superset (pyproject.toml)`: an input declares it.
+            if (item.starts_with("-r ") || item.ends_with(')'))
+                && let Some(ReqLine::Req { declared, .. }) = last.and_then(|i| out.get_mut(i))
+            {
+                *declared = true;
+            }
             continue;
         }
-        out.extend(requirement(line));
+        via = false;
+        last = None;
+        if line.is_empty() {
+            continue;
+        }
+        let mut words = line.split_whitespace();
+        let first = words.next().unwrap_or("");
+        let include = |opt: &str| -> Option<String> {
+            let rest = line.strip_prefix(opt)?;
+            let arg = rest.strip_prefix('=').unwrap_or(rest).trim();
+            (!arg.is_empty() && (rest.starts_with([' ', '\t', '=']) || opt.len() == 2)).then(|| arg.split_whitespace().next().unwrap_or("").to_string())
+        };
+        if let Some(file) = include("--requirement").or_else(|| include("-r")) {
+            out.push(ReqLine::Include { file, constraint: false });
+            continue;
+        }
+        if let Some(file) = include("--constraint").or_else(|| include("-c")) {
+            out.push(ReqLine::Include { file, constraint: true });
+            continue;
+        }
+        if line.starts_with('-') || first.contains("://") || line.starts_with('.') || line.starts_with('/') {
+            continue;
+        }
+        let mut hashes = vec![];
+        let mut it = line.split_whitespace().peekable();
+        while let Some(w) = it.next() {
+            if let Some(h) = w.strip_prefix("--hash=") {
+                hashes.push(h.to_string());
+            } else if w == "--hash"
+                && let Some(h) = it.next()
+            {
+                hashes.push(h.to_string());
+            }
+        }
+        let Some(req) = requirement(line.split(" --").next().unwrap_or("")) else { continue };
+        let pin = req.1.strip_prefix("==").map(str::trim).filter(|v| !v.contains([',', '*', ' '])).filter(|v| parse_version(v).is_some()).map(String::from);
+        last = Some(out.len());
+        out.push(ReqLine::Req { req, pin, hashes, declared: true });
     }
     out
+}
+
+/// `requirements*.txt` lines: requirements only (no `-r`/`-e`/`-c` options, URLs or local paths).
+#[cfg(test)]
+fn requirements_txt(text: &str) -> Vec<Req> {
+    requirement_lines(text).into_iter().filter_map(|l| if let ReqLine::Req { req, .. } = l { Some(req) } else { None }).collect()
+}
+
+/// What a set of requirements files says, `-r` and `-c` includes followed: the requirements they declare (an
+/// included constraints file declares none), and their `==` pins, which install exactly that version: the
+/// project's lock for the packages they pin (`pip install -r`, a `uv pip compile` output).
+#[derive(Default)]
+struct Requirements {
+    reqs: Vec<Req>,
+    /// Normalised name → (version as written, `sha256:` hashes, the pinning file relative to the project directory).
+    pins: BTreeMap<String, (String, Vec<String>, String)>,
+    /// The files read as a `-c` constraints file somewhere: they declare nothing, even where found on their own.
+    constrained: BTreeSet<PathBuf>,
+}
+
+impl Requirements {
+    fn read(&mut self, root: &Path, project: &Path, file: &Path, constraint: bool, seen: &mut BTreeSet<(PathBuf, bool)>) {
+        let Ok(canon) = file.canonicalize() else { return };
+        if !root.canonicalize().is_ok_and(|r| canon.starts_with(r)) || !seen.insert((canon.clone(), constraint)) {
+            return;
+        }
+        if constraint {
+            self.constrained.insert(canon.clone());
+        }
+        let Ok(text) = std::fs::read_to_string(&canon) else { return };
+        let shown = file.strip_prefix(project).unwrap_or(file).to_string_lossy().replace('\\', "/");
+        for l in requirement_lines(&text) {
+            match l {
+                ReqLine::Include { file: f, constraint: c } => self.read(root, project, &file.parent().unwrap_or(root).join(f), constraint || c, seen),
+                ReqLine::Req { req, pin, hashes, declared } => {
+                    if let Some(p) = pin {
+                        // Two files pinning one package differently (a production and a development set): the newer, as
+                        // for a lock forked by marker.
+                        let n = normalize(&req.0);
+                        let newer = |old: &(String, Vec<String>, String)| parse_version(&p).zip(parse_version(&old.0)).is_some_and(|(a, b)| a > b);
+                        match self.pins.get(&n) {
+                            Some(old) if !newer(old) => {}
+                            _ => {
+                                self.pins.insert(n, (p, hashes.into_iter().filter(|h| h.starts_with("sha256:")).collect(), shown.clone()));
+                            }
+                        }
+                    }
+                    if declared && !constraint {
+                        self.reqs.push(req);
+                    }
+                }
+            }
+        }
+    }
+
+    /// The pins as a [`Lock`] named after the first pinning file.
+    fn lock(&self) -> Option<Lock> {
+        let file = self.pins.values().map(|p| p.2.clone()).min()?;
+        let versions = self.pins.iter().filter_map(|(n, p)| Some((n.clone(), parse_version(&p.0)?))).collect();
+        let pins = self.pins.iter().filter(|(_, p)| !p.1.is_empty()).map(|(n, p)| (n.clone(), Pin { version: p.0.clone(), hashes: p.1.clone() })).collect();
+        let files = self.pins.iter().map(|(n, p)| (n.clone(), p.2.clone())).collect();
+        Some(Lock { file, versions, pins, seen: BTreeMap::new(), files })
+    }
 }
 
 /// Poetry and Pipfile tables: `name = "spec"` or `name = { version = "spec", ... }`; a `path`, `git`, `url` or
@@ -202,6 +334,15 @@ struct Lock {
     pins: BTreeMap<String, Pin>,
     /// Where it says each package came from, by normalised name (`privacy`), when it says.
     seen: BTreeMap<String, Seen>,
+    /// For a set of pinned requirements files, the file pinning each package (relative to the project directory).
+    files: BTreeMap<String, String>,
+}
+
+impl Lock {
+    /// The file `n`'s version comes from, relative to the lock's directory.
+    fn file_of(&self, n: &str) -> &str {
+        self.files.get(n).unwrap_or(&self.file)
+    }
 }
 
 const LOCKFILES: &[&str] = &["uv.lock", "poetry.lock", "pdm.lock", "Pipfile.lock"];
@@ -283,7 +424,7 @@ fn read_locks(dir: &Path) -> Vec<Lock> {
                 pin(name, ver, hashes);
             }
         }
-        out.push(Lock { file: f.to_string(), versions, pins, seen });
+        out.push(Lock { file: f.to_string(), versions, pins, seen, files: BTreeMap::new() });
     }
     out
 }
@@ -388,8 +529,19 @@ fn choose_lock(rel: &str, mut cands: Vec<Lock>, reqs: &[Req], noted: &mut BTreeS
     Some(cands.swap_remove(best))
 }
 
-fn is_requirements(base: &str) -> bool {
-    base.starts_with("requirements") && base.ends_with(".txt")
+/// A requirements file: `requirements*.txt` or `.in`, or any `.txt` or `.in` in a `requirements*` directory
+/// (`requirements/base.txt`, pontoon's `requirements/1-prod.txt`). Returns the project directory it belongs to: its
+/// own, or for one in a `requirements*` directory, that directory's parent.
+pub(crate) fn requirements_project(path: &Path) -> Option<&Path> {
+    let base = path.file_name()?.to_string_lossy();
+    if !(base.ends_with(".txt") || base.ends_with(".in")) {
+        return None;
+    }
+    let dir = path.parent()?;
+    if base.starts_with("requirements") {
+        return Some(dir);
+    }
+    dir.file_name().is_some_and(|d| d.to_string_lossy().starts_with("requirements")).then(|| dir.parent()).flatten()
 }
 
 /// Python packages and their direct dependencies, merged into `deps` (keyed by package URL; the lowest version
@@ -402,17 +554,25 @@ pub fn detect(root: &Path, packages: &mut Vec<Package>, deps: &mut BTreeMap<Stri
     // The lowest floor among locked projects, and among the others.
     let mut python: Option<(Version, String)> = None;
     let mut python_standalone: Option<(Version, String)> = None;
+    // Per project directory: its manifests (file name, text), and its requirements files.
     let mut by_dir: BTreeMap<PathBuf, Vec<(String, String)>> = BTreeMap::new();
+    let mut req_files: BTreeMap<PathBuf, Vec<PathBuf>> = BTreeMap::new();
     for e in walker(root).flatten() {
         if !e.file_type().is_some_and(|t| t.is_file()) {
             continue;
         }
         let base = e.file_name().to_string_lossy().to_string();
-        if !(base == "pyproject.toml" || base == "Pipfile" || is_requirements(&base)) {
+        let req_project = requirements_project(e.path());
+        if !(base == "pyproject.toml" || base == "Pipfile" || req_project.is_some()) {
             continue;
         }
         let rel = e.path().strip_prefix(root).unwrap_or(e.path()).to_string_lossy().replace('\\', "/");
         if rel.contains("{{") || !matches!(path_role(&rel), Role::App | Role::Tooling) {
+            continue;
+        }
+        if let Some(project) = req_project {
+            req_files.entry(project.to_path_buf()).or_default().push(e.path().to_path_buf());
+            by_dir.entry(project.to_path_buf()).or_default();
             continue;
         }
         let Ok(text) = std::fs::read_to_string(e.path()) else { continue };
@@ -437,15 +597,31 @@ pub fn detect(root: &Path, packages: &mut Vec<Package>, deps: &mut BTreeMap<Stri
                     let rel = dir.strip_prefix(root).ok().map(|p| p.to_string_lossy().replace('\\', "/")).filter(|p| !p.is_empty());
                     declared_python = Some((floor, format!("{key} in {}", rel.map_or("pyproject.toml".into(), |r| format!("{r}/pyproject.toml")))));
                 }
-            } else if base == "Pipfile" {
-                if let Ok(doc) = toml::from_str::<Value>(text) {
-                    table_deps(doc.get("packages"), &mut reqs);
-                    table_deps(doc.get("dev-packages"), &mut reqs);
-                }
-            } else {
-                reqs.extend(requirements_txt(text));
+            } else if base == "Pipfile"
+                && let Ok(doc) = toml::from_str::<Value>(text)
+            {
+                table_deps(doc.get("packages"), &mut reqs);
+                table_deps(doc.get("dev-packages"), &mut reqs);
             }
         }
+        // Requirements files, includes followed: their requirements are declared here, and their `==` pins are the
+        // lock of the packages they pin, beside a lockfile in this directory or in place of one above it.
+        let mut requirements = Requirements::default();
+        let mut read = BTreeSet::new();
+        let mut spans = vec![];
+        for f in req_files.get(&dir).into_iter().flatten() {
+            let start = requirements.reqs.len();
+            requirements.read(root, &dir, f, false, &mut read);
+            spans.push((f.canonicalize().ok(), start..requirements.reqs.len()));
+        }
+        // A file another one includes with `-c` constrains versions only, though found on its own too.
+        for (f, span) in spans {
+            if !f.is_some_and(|f| requirements.constrained.contains(&f)) {
+                reqs.extend(requirements.reqs[span].iter().cloned());
+            }
+        }
+        let pinned = requirements.lock();
+        let has_requirements = req_files.contains_key(&dir);
         // A lockfile belongs to the project beside it; only a `pyproject.toml` member looks further up (a uv or
         // Poetry workspace keeps one lock at its root). Requirements alone use their own pins.
         let member = files.iter().any(|(b, _)| b == "pyproject.toml" || b == "Pipfile");
@@ -456,11 +632,14 @@ pub fn detect(root: &Path, packages: &mut Vec<Package>, deps: &mut BTreeMap<Stri
             if !member && cur != dir {
                 break;
             }
-            let cands = locks.entry(cur.to_path_buf()).or_insert_with(|| read_locks(cur));
+            let mut cands = locks.entry(cur.to_path_buf()).or_insert_with(|| read_locks(cur)).clone();
+            if cur == dir {
+                cands.extend(pinned.clone());
+            }
             if !cands.is_empty() {
                 let lrel = cur.strip_prefix(root).ok().map(|p| p.to_string_lossy().replace('\\', "/")).filter(|p| !p.is_empty()).unwrap_or_else(|| ".".into());
                 lock_dir = lrel.clone();
-                lock = choose_lock(&lrel, cands.clone(), &reqs, &mut noted, notes);
+                lock = choose_lock(&lrel, cands, &reqs, &mut noted, notes);
                 break;
             }
             if cur == root {
@@ -475,7 +654,7 @@ pub fn detect(root: &Path, packages: &mut Vec<Package>, deps: &mut BTreeMap<Stri
             }
         }
         // A distribution without a lockfile is published for others: read at its floor, like an npm library.
-        let kind = if named && lock.is_none() && !files.iter().any(|(b, _)| is_requirements(b)) { Kind::Library } else { Kind::Application };
+        let kind = if named && lock.is_none() && !has_requirements { Kind::Library } else { Kind::Application };
         let rel = dir.strip_prefix(root).ok().map(|p| p.to_string_lossy().replace('\\', "/")).filter(|p| !p.is_empty()).unwrap_or_else(|| ".".into());
         let declared: BTreeSet<String> = reqs.iter().map(|(n, _, _)| purl(n)).collect();
         if seen_dirs.insert(rel.clone()) {
@@ -495,13 +674,18 @@ pub fn detect(root: &Path, packages: &mut Vec<Package>, deps: &mut BTreeMap<Stri
                         }
                         (spec_floor(&spec), format!("floor of {spec} ({} has {v}, outside the specifier)", l.file), true)
                     } else {
-                        (Some(v.clone()), l.file.clone(), false)
+                        (Some(v.clone()), l.file_of(&n).to_string(), false)
                     }
                 }
                 (_, Kind::Library) => (spec_floor(&spec), format!("library floor of {spec}"), true),
                 _ => (spec_floor(&spec), format!("floor of {spec} (not in a lockfile)"), true),
             };
             let entry = deps.entry(purl(&n)).or_insert_with(|| Dep::new(&n, public));
+            // Nothing pins it here: `assume_newest` reads it at the newest release the range admits.
+            let unpinned = public && !(lock.is_some() && kind == Kind::Application && lock.as_ref().is_some_and(|l| l.versions.contains_key(&n)));
+            if unpinned && !entry.unpinned.contains(&(rel.clone(), spec.clone())) {
+                entry.unpinned.push((rel.clone(), spec.clone()));
+            }
             entry.public_candidate &= public;
             if let Some(s) = lock.as_ref().and_then(|l| l.seen.get(&n)) {
                 entry.seen = entry.seen.and(*s);
@@ -534,7 +718,7 @@ pub fn detect(root: &Path, packages: &mut Vec<Package>, deps: &mut BTreeMap<Stri
                 {
                     entry.pins.push(pin.clone());
                 }
-                entry.read_under(&rel, Some(v.clone()), format!("{} (imported here, installed through another dependency)", l.file), false, None, Some(lock_file.clone()));
+                entry.read_under(&rel, Some(v.clone()), format!("{} (imported here, installed through another dependency)", l.file_of(&n)), false, None, Some(lock_file.clone()));
             }
         }
     }
@@ -546,6 +730,149 @@ pub fn detect(root: &Path, packages: &mut Vec<Package>, deps: &mut BTreeMap<Stri
         ));
     }
     python.or(python_standalone)
+}
+
+/// Whether `spec` admits `v` (any alternative of Poetry's `||` form).
+fn admits(v: &Version, spec: &str) -> bool {
+    spec.split("||").any(|alt| spec_satisfies(v, alt.trim()) == Some(true))
+}
+
+/// The newest of `releases` that `spec` admits: what `pip install` or `uv pip install` resolves for it today. A
+/// pre-release only when no final release is admitted (PEP 440: a package published only as `0.60b0`).
+pub fn newest_admitted(releases: &[Version], spec: &str) -> Option<Version> {
+    let ok: Vec<&Version> = releases.iter().filter(|v| admits(v, spec)).collect();
+    ok.iter().filter(|v| v.pre.is_empty()).max().or_else(|| ok.iter().max()).map(|v| (*v).clone())
+}
+
+/// Reads each declaration no lockfile or pinned requirements file pins (`Dep::unpinned`) at the newest release on
+/// PyPI its specifier admits, the version a fresh install gets (CI's `pip install -e .`), in place of its declared
+/// floor, which is only the oldest version allowed: a floor is not what anyone installs, and an unpinned
+/// requirement has no floor at all. The declared range stays on the reading (`Reading::range`), so what a published
+/// library's users may install is still judged at its floor (`funnel::published_floor`). `releases` gives the
+/// public releases of the asked package URLs; a package it has none for keeps its floor (unpinned: no version).
+/// Said once in `notes`, with the floors kept.
+pub fn assume_newest(deps: &mut BTreeMap<String, Dep>, notes: &mut Vec<String>, releases: impl FnOnce(&[String]) -> BTreeMap<String, Vec<Version>>) {
+    let want: Vec<String> = deps.iter().filter(|(p, d)| p.starts_with("pkg:pypi/") && d.public_candidate && !d.unpinned.is_empty()).map(|(p, _)| p.clone()).collect();
+    if want.is_empty() {
+        return;
+    }
+    let got = releases(&want);
+    let (mut newest, mut floors) = (vec![], vec![]);
+    for p in &want {
+        let Some(d) = deps.get_mut(p) else { continue };
+        // Per directory, the lowest of its declarations' newest admitted releases (as `read_under` keeps the lowest).
+        let mut by_dir: BTreeMap<String, (Version, String)> = BTreeMap::new();
+        for (dir, spec) in &d.unpinned {
+            let Some(v) = got.get(p).and_then(|r| newest_admitted(r, spec)) else { continue };
+            match by_dir.get(dir) {
+                Some((old, _)) if *old <= v => {}
+                _ => {
+                    by_dir.insert(dir.clone(), (v, spec.clone()));
+                }
+            }
+        }
+        if by_dir.is_empty() {
+            if d.readings.iter().any(|r| r.range.is_some() && r.lock.is_none()) {
+                floors.push(d.name.clone());
+            }
+            continue;
+        }
+        for (dir, (v, spec)) in by_dir {
+            let source = if spec.trim().is_empty() {
+                format!("newest release {v} on PyPI (unpinned, nothing pins it: what a fresh install resolves)")
+            } else {
+                format!("newest release {v} on PyPI that {spec} admits (nothing pins it: what a fresh install resolves)")
+            };
+            match d.readings.iter_mut().find(|r| r.dir == dir) {
+                // A floor reading; a pinned reading of the same directory stays.
+                Some(r) if r.range.is_some() && r.lock.is_none() => {
+                    r.version = v;
+                    r.source = source;
+                }
+                Some(_) => {}
+                None => d.readings.push(crate::stack::Reading { dir, version: v, source, standalone: false, range: Some(crate::stack::Range::Pypi(spec)), lock: None }),
+            }
+        }
+        // Named when no manifest pins it: a workspace member's unpinned declaration beside a pinned one sets nothing.
+        if !d.readings.iter().any(|r| r.range.is_none()) {
+            newest.push(d.name.clone());
+        }
+    }
+    let list = |names: &[String]| {
+        let more = if names.len() > 8 { format!(" and {} more", names.len() - 8) } else { String::new() };
+        format!("{}{more}", names.iter().take(8).cloned().collect::<Vec<_>>().join(", "))
+    };
+    if !newest.is_empty() {
+        notes.push(format!(
+            "{} Python requirement{} no lockfile or pinned requirements file pins ({}): read at the newest release on PyPI {} declared range admits, what a fresh install resolves, not an installed version. A published library's floor is still checked for what its users may install.",
+            newest.len(),
+            if newest.len() == 1 { "" } else { "s" },
+            list(&newest),
+            if newest.len() == 1 { "its" } else { "each one's" },
+        ));
+    }
+    if !floors.is_empty() {
+        notes.push(format!(
+            "{} Python requirement{} no lockfile pins and whose releases were not read ({}): read at {} declared floor, the oldest version allowed, not an installed version.",
+            floors.len(),
+            if floors.len() == 1 { "" } else { "s" },
+            list(&floors),
+            if floors.len() == 1 { "its" } else { "their" },
+        ));
+    }
+}
+
+/// How long a package's release list is reused (`assume_newest`).
+const RELEASES_FRESH_SECS: u64 = 24 * 3600;
+
+/// The public releases of PyPI packages (versions with at least one file not yanked), from `pypi.org/pypi/<name>/json`,
+/// cached for a day under the cache directory. None with `UNSTALE_NO_REGISTRY=1`, and none in tests.
+pub fn registry_releases(purls: &[String]) -> BTreeMap<String, Vec<Version>> {
+    let mut out = BTreeMap::new();
+    if cfg!(test) || crate::privacy::registry_off() {
+        return out;
+    }
+    let dir = crate::cache::cache_dir().join("pypi-releases");
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    let path = |purl: &str| dir.join(format!("{}.json", normalize(purl.trim_start_matches("pkg:pypi/"))));
+    let parse = |vs: &[String]| vs.iter().filter_map(|v| parse_version(v)).collect::<Vec<_>>();
+    let mut due = vec![];
+    for p in purls {
+        let cached = std::fs::read(path(p)).ok().and_then(|b| serde_json::from_slice::<Json>(&b).ok());
+        match cached {
+            Some(c) if now.saturating_sub(c.get("checked").and_then(Json::as_u64).unwrap_or(0)) < RELEASES_FRESH_SECS => {
+                let vs: Vec<String> = c.get("versions").and_then(Json::as_array).into_iter().flatten().filter_map(Json::as_str).map(String::from).collect();
+                out.insert(p.clone(), parse(&vs));
+            }
+            _ => due.push(p.clone()),
+        }
+    }
+    let agent: ureq::Agent = ureq::Agent::config_builder().http_status_as_error(false).timeout_global(Some(std::time::Duration::from_secs(15))).build().into();
+    let fetch = |purl: &String| -> Option<Vec<String>> {
+        let name = purl.trim_start_matches("pkg:pypi/");
+        let mut r = agent.get(format!("https://pypi.org/pypi/{name}/json")).call().ok().filter(|r| r.status().is_success())?;
+        let bytes = r.body_mut().with_config().limit(64 * 1024 * 1024).read_to_vec().ok()?;
+        let doc: Json = serde_json::from_slice(&bytes).ok()?;
+        let releases = doc.get("releases")?.as_object()?;
+        Some(
+            releases
+                .iter()
+                .filter(|(_, files)| files.as_array().is_some_and(|f| f.iter().any(|x| x.get("yanked") != Some(&Json::Bool(true)))))
+                .map(|(v, _)| v.clone())
+                .collect(),
+        )
+    };
+    crate::util::concurrent(&due, crate::util::REQUESTS_AT_ONCE, fetch, |i, got| {
+        if let Some(vs) = got {
+            let _ = std::fs::create_dir_all(&dir);
+            if let Ok(b) = serde_json::to_vec(&serde_json::json!({ "checked": now, "versions": vs })) {
+                let _ = crate::util::write_atomic(&path(&due[i]), &b);
+            }
+            out.insert(due[i].clone(), parse(&vs));
+        }
+        true
+    });
+    out
 }
 
 /// A `pyproject.toml`'s declared Python range, as `<key> <range>`, and its floor: PEP 621 `requires-python`, else
@@ -753,7 +1080,7 @@ mod tests {
         detect(d.path(), &mut pk, &mut deps, &mut vec![]);
         crate::stack::settle(&mut deps);
         assert_eq!(deps["pkg:pypi/httpx"].version, Some(v("0.28.1")));
-        assert_eq!(pk.iter().find(|p| p.dir == "sandbox/runtime").unwrap().lockfile, None);
+        assert_eq!(pk.iter().find(|p| p.dir == "sandbox/runtime").unwrap().lockfile.as_deref(), Some("requirements.txt"), "its own pins, not the parent poetry.lock");
     }
 
     #[test]
@@ -790,6 +1117,106 @@ mod tests {
         assert_eq!(deps["pkg:pypi/pydantic"].version, Some(v("2.7.0")));
         assert_eq!(deps["pkg:pypi/rich"].version, Some(v("13.0.0")));
         assert_eq!(deps["pkg:pypi/ruff"].version, Some(v("0.6.0")));
+    }
+
+    #[test]
+    fn compiled_requirements_under_a_requirements_dir_pin_the_pyproject() {
+        // apache/superset: pyproject ranges, `uv pip compile` output under requirements/ (what CI installs).
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "pyproject.toml", "[project]\nname = \"app\"\ndependencies = [\"flask>=2.2.5,<4\", \"mcp>=1.29\", \"fastapi\"]\n");
+        write(d.path(), "requirements/base.in", "-e .\n");
+        write(
+            d.path(),
+            "requirements/base.txt",
+            "# autogenerated by uv via: uv pip compile requirements/base.in\n-e .\n    # via -r requirements/base.in\nflask==3.1.3 \\\n    --hash=sha256:aa\n    # via\n    #   app (pyproject.toml)\nwerkzeug==3.1.0\n    # via flask\n",
+        );
+        write(d.path(), "requirements/development.txt", "-c base.txt\nmcp==2.3.0\n    # via\n    #   -c requirements/base.txt\n    #   app (pyproject.toml)\n");
+        let (mut pk, mut deps) = (vec![], BTreeMap::new());
+        let mut notes = vec![];
+        detect(d.path(), &mut pk, &mut deps, &mut notes);
+        crate::stack::settle(&mut deps);
+        assert_eq!(pk.iter().map(|p| (p.dir.as_str(), p.kind)).collect::<Vec<_>>(), vec![(".", Kind::Application)]);
+        assert_eq!(deps["pkg:pypi/flask"].version, Some(v("3.1.3")), "the pin, not the 2.2.5 floor");
+        assert_eq!(deps["pkg:pypi/flask"].source, "requirements/base.txt");
+        assert_eq!(deps["pkg:pypi/flask"].pins[0].hashes, vec!["sha256:aa".to_string()]);
+        assert_eq!(deps["pkg:pypi/mcp"].version, Some(v("2.3.0")));
+        assert!(!deps.contains_key("pkg:pypi/werkzeug"), "a compiled entry another package pulls in is not declared");
+        assert!(deps["pkg:pypi/fastapi"].unpinned == vec![(".".to_string(), String::new())] && deps["pkg:pypi/fastapi"].version.is_none());
+        assert!(deps["pkg:pypi/flask"].unpinned.is_empty());
+    }
+
+    #[test]
+    fn requirements_includes_are_followed() {
+        // mozilla/pontoon: requirements.txt is `-r requirements/1-prod.txt`; the inputs are `.in` files.
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "requirements.txt", "# Heroku\n-r requirements/1-prod.txt\n");
+        write(d.path(), "requirements/0-base.in", "Django==5.2.18\n");
+        write(d.path(), "requirements/1-prod.in", "-r 0-base.in\ngunicorn==23.0.0\n");
+        write(d.path(), "requirements/1-prod.txt", "django==5.2.18 \\\n    --hash=sha256:bb\n    # via -r requirements/0-base.in\ngunicorn==23.0.0\n    # via -r requirements/1-prod.in\nasgiref==3.11.1\n    # via django\n");
+        let (mut pk, mut deps) = (vec![], BTreeMap::new());
+        detect(d.path(), &mut pk, &mut deps, &mut vec![]);
+        crate::stack::settle(&mut deps);
+        assert_eq!(deps["pkg:pypi/django"].version, Some(v("5.2.18")));
+        assert_eq!(deps["pkg:pypi/gunicorn"].version, Some(v("23.0.0")));
+        assert!(deps["pkg:pypi/django"].readings.iter().all(|r| r.range.is_none()), "a pin is installed, not a floor");
+        assert!(!deps.contains_key("pkg:pypi/asgiref"));
+        assert_eq!(pk[0].lockfile.as_deref(), Some("requirements/0-base.in"));
+    }
+
+    #[test]
+    fn unpinned_requirements_read_at_the_newest_release_their_range_admits() {
+        // agentscope: a pyproject-only library. Floors and unpinned names read as a fresh install resolves them.
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "pyproject.toml", "[project]\nname = \"lib\"\ndependencies = [\"mcp>=2.0.0\", \"fastapi\", \"textual>=8.2,<9\", \"gone>=1\", \"semconv\"]\n");
+        let (mut pk, mut deps) = (vec![], BTreeMap::new());
+        let mut notes = vec![];
+        detect(d.path(), &mut pk, &mut deps, &mut notes);
+        assert_eq!(pk[0].kind, Kind::Library);
+        let releases = |purls: &[String]| {
+            let mut m = BTreeMap::new();
+            for p in purls {
+                let vs: &[&str] = match p.as_str() {
+                    "pkg:pypi/mcp" => &["1.9.0", "2.0.0", "2.3.0", "3.0.0rc1"],
+                    "pkg:pypi/fastapi" => &["0.110.0", "0.162.0"],
+                    "pkg:pypi/textual" => &["8.2.0", "8.9.1", "9.0.0"],
+                    "pkg:pypi/semconv" => &["0.59b0", "0.60b0"],
+                    _ => continue,
+                };
+                m.insert(p.clone(), vs.iter().filter_map(|s| parse_version(s)).collect());
+            }
+            m
+        };
+        assume_newest(&mut deps, &mut notes, releases);
+        crate::stack::settle(&mut deps);
+        assert_eq!(deps["pkg:pypi/mcp"].version, Some(v("2.3.0")), "not the 2.0.0 floor, and no pre-release");
+        assert_eq!(deps["pkg:pypi/fastapi"].version, Some(v("0.162.0")), "an unpinned requirement still gets a version");
+        assert_eq!(deps["pkg:pypi/textual"].version, Some(v("8.9.1")));
+        assert!(deps["pkg:pypi/fastapi"].source.contains("what a fresh install resolves"), "{}", deps["pkg:pypi/fastapi"].source);
+        assert_eq!(deps["pkg:pypi/mcp"].readings[0].range, Some(crate::stack::Range::Pypi(">=2.0.0".into())), "the range stays for the library's users");
+        assert_eq!(deps["pkg:pypi/gone"].version, Some(v("1.0.0")), "no releases read: the floor, labelled");
+        assert_eq!(deps["pkg:pypi/semconv"].version, parse_version("0.60b0"), "only pre-releases: the newest of them");
+        assert!(notes.iter().any(|n| n.starts_with("4 Python requirements no lockfile")), "{notes:?}");
+        assert!(notes.iter().any(|n| n.contains("(gone)") && n.contains("declared floor")), "{notes:?}");
+    }
+
+    #[test]
+    fn a_constraints_file_found_on_its_own_declares_nothing() {
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "requirements/dev.txt", "-c base-constraint.txt\npytest==8.0.0\n");
+        write(d.path(), "requirements/base-constraint.txt", "urllib3==2.2.0\n");
+        let (mut pk, mut deps) = (vec![], BTreeMap::new());
+        detect(d.path(), &mut pk, &mut deps, &mut vec![]);
+        assert!(deps.contains_key("pkg:pypi/pytest"));
+        assert!(!deps.contains_key("pkg:pypi/urllib3"), "constrained, not declared");
+    }
+
+    #[test]
+    fn a_private_index_in_a_nested_requirements_file_keeps_names_private() {
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "pyproject.toml", "[project]\nname = \"app\"\ndependencies = [\"corp-sdk>=1\"]\n");
+        write(d.path(), "requirements/base.txt", "--index-url https://pypi.corp.example/simple\ncorp-sdk==1.0.0\n");
+        let st = crate::stack::detect_in(d.path(), &crate::privacy::Env::default()).unwrap();
+        assert!(!st.deps["pkg:pypi/corp-sdk"].public_candidate);
     }
 }
 
