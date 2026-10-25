@@ -299,6 +299,9 @@ fn render_record(pass: Pass, o: &Opp) -> String {
         let what = if crate::funnel::deprecated_lits(o.rec, &o.matched.iter().map(|(t, _)| t.clone()).collect::<Vec<_>>()).is_empty() { "Matched terms" } else { "Deprecated API used here" };
         s += &format!("- {what}: {}\n", m.join("; "));
     }
+    if let Some((l, f)) = &o.adopted {
+        s += &format!("- Replacement already used: `{}` ({f}); check whether the sites above are a kept path or the rest of a migration\n", one_line(l, FIELD_MAX));
+    }
     if !o.elsewhere.is_empty() {
         s += &format!("- Not cited: code importing it under {}, which runs another release line than installed {}\n", o.elsewhere.join(", "), o.installed);
     }
