@@ -178,6 +178,7 @@ function layout(o: { title: string; description: string; path: string; body: str
 <meta name="description" content="${esc(o.description)}">
 <link rel="canonical" href="${ORIGIN}${o.path}">
 <link rel="alternate" type="text/markdown" href="${ORIGIN}${o.path}index.md">
+<link rel="describedby" href="${ORIGIN}/llms.txt">
 ${o.noindex ? '<meta name="robots" content="noindex">\n' : ""}<meta name="theme-color" content="#0b1113" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#f6f8f7" media="(prefers-color-scheme: light)">
 <meta property="og:type" content="website">
@@ -193,7 +194,7 @@ ${o.head ?? ""}</head>
 <main class="wrap">
 ${o.body}
 </main>
-<footer class="wrap"><p>${wordmarkSvg("mark small")}<span>AGPL-3.0 · <a href="${REPO}">GitHub</a> · <a href="${NPM_URL}">npm</a> · <a href="${REPO}/blob/main/SECURITY.md">Security</a> · <a href="/llms.txt">llms.txt</a> · by <a href="https://vuca.dev">Jason Draper</a></span></p></footer>
+<footer class="wrap"><p>${wordmarkSvg("mark small")}<span>AGPL-3.0 · <a href="${REPO}">GitHub</a> · <a href="${NPM_URL}">npm</a> · <a href="${REPO}/blob/main/SECURITY.md">Security</a> · by <a href="https://vuca.dev">Jason Draper</a></span></p></footer>
 <script src="/site.js" type="module"></script>
 </body>
 </html>
@@ -335,11 +336,10 @@ function terminal(): string {
 </section>`;
 }
 
-/** Recent catches: the most consequential finds on public repositories, one line each. */
-const CATCHES: { lead: string; rest: string; url: string }[] = [
-  { lead: "Next.js 16.4.1's critical security fixes", rest: "in the catalog before the GitHub advisory database had them.", url: "https://github.com/vercel/next.js/security/advisories/GHSA-2464-fhr4-w9xw" },
-  { lead: "Phoenix's maintainer", rest: "handed our finding to Claude Code: fixed in one turn, merged the next day.", url: "https://github.com/Arize-ai/phoenix/pull/17150" },
-  { lead: "i18next", rest: "had a broken test hidden behind a deprecated matcher; fixed and merged in four hours.", url: "https://github.com/i18next/i18next/pull/2453" },
+/** Concrete merged fixes prompted by unstale findings. */
+const CONTRIBUTIONS: { lead: string; rest: string; url: string }[] = [
+  { lead: "Phoenix", rest: "Replaced deprecated AI SDK calls.", url: "https://github.com/Arize-ai/phoenix/pull/17150" },
+  { lead: "i18next", rest: "Fixed a test that wasn't checking its call count.", url: "https://github.com/i18next/i18next/pull/2453" },
 ];
 
 const SUMMARY =
@@ -374,7 +374,7 @@ export function homePage(pkgs: Package[], version?: string): string {
     .join("");
   const body = `<section class="hero">
 <canvas id="wordmark" class="wordmark" width="768" height="240" aria-hidden="true"></canvas>
-<h1>You don't know what you don't know. Neither does your agent.</h1>
+<h1>You don't know what you don't know. Neither do your agents.</h1>
 <p class="lede">unstale finds what changed in your dependencies and where your code needs it. It reads the release
 notes, migration guides and advisories for your installed versions, and hands Claude Code, Codex or Cursor a cited
 list.</p>
@@ -402,27 +402,27 @@ ${terminal()}
 <section class="prose">
 <h2>What you get</h2>
 <ul>
-<li><strong>Upgrade plans.</strong> Breaking changes, deprecations and affected files. Required work first.</li>
+<li><strong>Upgrade plans.</strong> Breaking changes, deprecations and affected files.</li>
 <li><strong>Fixes worth upgrading for.</strong> Security, bug fixes and behaviour changes between versions.</li>
-<li><strong>APIs you could use.</strong> New capabilities that could replace code you maintain.</li>
+<li><strong>New opportunities.</strong> Net new capabilities, performance improvements, and more.</li>
 </ul>
 <h2>How it works</h2>
 <ol>
-<li><strong>Read your lockfile.</strong> npm and PyPI. Coverage is deepest for npm.</li>
-<li><strong>Match changes locally.</strong> A signed upstream catalog, checked against your versions and code.</li>
-<li><strong>Review with your agent.</strong> A report and a ready-to-paste prompt. Claude Code also flags relevant changes at session start.</li>
+<li><strong>Read your lockfile.</strong> JavaScript, TypeScript and Python projects.</li>
+<li><strong>Find what applies.</strong> Match a central catalog of upstream changes to your repo locally.</li>
+<li><strong>Review with your agent.</strong> A report and a ready-to-paste prompt.</li>
 </ol>
-<h2>What leaves your machine</h2>
-<p>Code stays local. unstale receives public package names; <a href="https://osv.dev">OSV</a> receives package names and versions for advisory checks. No telemetry.</p>
+<h2>Your code stays on your machine</h2>
+<p>unstale receives public package names; <a href="https://osv.dev">OSV</a> receives package names and versions for advisory checks. No telemetry.</p>
 <details class="privacy-details"><summary>Network details</summary>
 <p>Public package names (like <code>pkg:npm/next</code>) to fetch the changes that apply. Not your code, file paths,
 versions or any ID. The service, hosted on Cloudflare, sees your IP address. It keeps it in memory only, to apply rate
 limits and count each address once per package, and never writes it to storage. To check advisories, the CLI sends the package names and versions your lockfiles resolve to
 <a href="https://osv.dev">OSV</a>, as <code>npm audit</code> would, and it reads the public npm and PyPI registries.</p>
 </details>
-<h2>Recent catches</h2>
+<h2>Fixes merged upstream</h2>
 <ul>
-${CATCHES.map((c) => `<li><a href="${esc(c.url)}">${esc(c.lead)}</a> ${esc(c.rest)}</li>`).join("\n")}
+${CONTRIBUTIONS.map((c) => `<li><a href="${esc(c.url)}">${esc(c.lead)}</a> ${esc(c.rest)}</li>`).join("\n")}
 </ul>
 <p class="license">AGPL-3.0 · <a href="${REPO}">GitHub</a></p>
 </section>
@@ -448,7 +448,7 @@ export function homeMarkdown(pkgs: Package[], version?: string): string {
 
 Install: \`${INSTALL_NPX}\` in a repository${version ? ` (\`@unstale/cli\` ${version}, ${NPM_URL})` : ""}, or \`${INSTALL_BREW}\`.
 
-**You don't know what you don't know. Neither does your agent.**
+**You don't know what you don't know. Neither do your agents.**
 
 unstale finds what changed in your dependencies and where your code needs it. It reads the release notes, migration
 guides and advisories for your installed versions, and hands Claude Code, Codex or Cursor a cited list. Runs locally,
@@ -459,22 +459,17 @@ It finds 4x as many changes worth acting on as Claude Code alone, using 1/16 of 
 
 ## What you get
 
-- Your next major upgrade, mapped to your code: the breaking changes and deprecations you'll hit, with the files that
-  hit them, required work first.
-- What each version bump fixes: security advisories, bug fixes and behaviour changes between your installed version
-  and the next one.
-- Features you could be using: APIs released since you wrote the code that could replace something you built by hand.
+- **Upgrade plans.** Breaking changes, deprecations and affected files.
+- **Fixes worth upgrading for.** Security, bug fixes and behaviour changes between versions.
+- **New opportunities.** Net new capabilities, performance improvements, and more.
 
 ## How it works
 
-1. It reads your lockfile. npm and PyPI projects; npm has the deepest catalog today.
-2. It matches upstream changes to your code locally. Release notes, migration guides and advisories are summarised
-   once, centrally, into a signed catalog; the matching against your code happens on your machine.
-3. Your agent reviews it: a short report and a prompt to paste into Claude Code, Codex or Cursor. In Claude Code, a
-   line at session start says when something new applies. If nothing upstream matters to your code, your agent hears
-   nothing.
+1. **Read your lockfile.** JavaScript, TypeScript and Python projects.
+2. **Find what applies.** Match a central catalog of upstream changes to your repo locally.
+3. **Review with your agent.** A report and a ready-to-paste prompt.
 
-## What leaves your machine
+## Your code stays on your machine
 
 Public package names (like \`pkg:npm/next\`) to fetch the changes that apply. Not your code, file paths, versions or
 any ID. The service, hosted on Cloudflare, sees your IP address. It keeps it in memory only, to apply rate limits and count
@@ -482,9 +477,9 @@ each address once per package, and never writes it to storage.
 No telemetry. To check advisories, the CLI sends the package names and versions your lockfiles resolve to OSV
 (https://osv.dev), as \`npm audit\` would, and it reads the public npm and PyPI registries.
 
-## Recent catches
+## Fixes merged upstream
 
-${CATCHES.map((c) => `- [${c.lead}](${c.url}) ${c.rest}`).join("\n")}
+${CONTRIBUTIONS.map((c) => `- [${c.lead}](${c.url}) ${c.rest}`).join("\n")}
 
 AGPL-3.0, free and open source: ${REPO}
 
