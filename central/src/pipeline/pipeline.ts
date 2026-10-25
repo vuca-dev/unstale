@@ -1,3 +1,4 @@
+import { reconcileLinkedEvidence } from "../onboarding/source-quality.ts";
 // fetch → extract → label → classify → match → publish, per technology. Idempotent: every model call is cached and
 // every ingested extraction is recorded, so a rerun makes no uncached calls and leaves the catalog byte-identical.
 import { join } from "node:path";
@@ -118,6 +119,7 @@ export async function runTechnology(
   // From loading the store to publishing it, this process is the technology's only writer (lock.ts).
   return withTechLock(t.id, "pipeline", async () => {
     const store = loadStore(t.id);
+    reconcileLinkedEvidence(t, fetched.notes, store);
     // Release lines derived from the release index (lines.ts), before anything combines releases.
     if (!opts.limit) store.releaseIndex = buildIndex(fetched.notes);
     // Prerequisite names of records not yet ingested are checked against the npm registry (one cached GET per name).
