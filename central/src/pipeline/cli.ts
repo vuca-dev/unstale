@@ -37,7 +37,7 @@ import { registryStats } from "./registry.ts";
 import { ShardLine } from "../schema/catalog.ts";
 import { applyChange, LABEL_FIELDS, loadStore, mergeInto, retract, REVISION_FIELDS, saveStore, type EditableField, type StoredRecord } from "./store.ts";
 import { TECHNOLOGIES } from "./technologies.ts";
-import { loadPrices, monitoredTechnologies, usageByPhase } from "./usage.ts";
+import { jevAttribution, loadPrices, monitoredTechnologies, usageByPhase } from "./usage.ts";
 import { readJson, withUsagePhase } from "./util.ts";
 import { techLocal } from "../state/client.ts";
 
@@ -267,7 +267,7 @@ async function main(): Promise<void> {
       }
       // `by_phase` last: the per-phase totals, onboarded and monitored technologies, and the per-technology figures
       // (usage.ts), so the ongoing cost per technology-year is read apart from first coverage.
-      console.log(JSON.stringify({ ...by, events: lines.filter((l) => l.event).map((l) => l.event), by_phase: usageByPhase(lines, monitoredTechnologies(), loadPrices()) }, null, 1));
+      console.log(JSON.stringify({ ...by, events: lines.filter((l) => l.event).map((l) => l.event), by_phase: usageByPhase(lines, monitoredTechnologies(), loadPrices()), jev_attribution: jevAttribution(lines, loadPrices()) }, null, 1));
       return;
     }
     default:

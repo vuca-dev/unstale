@@ -53,7 +53,7 @@ export function withUsagePhase<T>(phase: UsagePhase, tech: string | undefined, f
 export function logUsage(entry: Record<string, unknown>): void {
   const ctx = usagePhase.getStore();
   mkdirSync(dirname(usageLog()), { recursive: true });
-  appendFileSync(usageLog(), JSON.stringify({ phase: ctx?.phase ?? "other", ...(ctx?.tech ? { tech: ctx.tech } : {}), ...entry, at: new Date().toISOString() }) + "\n");
+  appendFileSync(usageLog(), JSON.stringify({ phase: ctx?.phase ?? "other", ...(ctx?.tech ? { tech: ctx.tech } : {}), ...entry, ...(process.env.GITHUB_RUN_ID ? { run: process.env.GITHUB_RUN_ID, run_attempt: process.env.GITHUB_RUN_ATTEMPT ?? "1" } : {}), at: new Date().toISOString() }) + "\n");
 }
 
 /** Runs `fn` over `items` with at most `n` in flight; results keep the input order. */

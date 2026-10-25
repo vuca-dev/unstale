@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, test } from "vitest";
-import { ChatClassifier, ClassifierCache, FallbackClassifier, Jev, type ChatRunner, type Questions } from "../src/pipeline/classify/adapter.ts";
+import { classifierAttribution, ChatClassifier, ClassifierCache, FallbackClassifier, Jev, type ChatRunner, type Questions } from "../src/pipeline/classify/adapter.ts";
 
 const Q: Questions = {
   breaking: { instructions: "Breaking?", options: { yes: "Breaking.", no: "Not breaking." } },
@@ -189,7 +189,9 @@ describe("classifier adapter", () => {
     expect(m.calls.map((c) => Object.keys(c.body.questions as object).length)).toEqual([8, 3]);
     const log = readFileSync(join(dir, "central", "usage.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
     expect(log).toHaveLength(2);
-    expect(log[0]).toMatchObject({ api: "jev", model: "jev-1.13.0", input_tokens: 100, output_tokens: 10 });
+    expect(log[0]).toMatchObject({ api: "jev", model: "jev-1.13.0", input_tokens: 100, output_tokens: 10, batch: 1, batches: 2, questions: 8 });
+    expect(log[1]).toMatchObject({ batch: 2, batches: 2, questions: 3 });
+    expect(log[0].request).not.toBe(log[1].request);
   });
 
   test("chat fallback: an answer naming an unknown option or skipping a question is retried, then unanswerable and recorded", async () => {
@@ -224,4 +226,26 @@ describe("classifier adapter", () => {
     const down = new ChatClassifier({ model: MODEL, run: async () => { throw new Error("fetch failed"); } });
     await expect(down.classify(STATE, Q)).rejects.toMatchObject({ kind: "network" });
   });
+});
+
+test("attribution distinguishes labels, cross-source matching and bounded deterministic samples without mutating requests", () => {
+  const questions = { change_type: Q.breaking! };
+  const state = { technology: "React", source: "official documentation change", subject: "a".repeat(500), summary: "b".repeat(1000), evidence: "c".repeat(1000) };
+  const original = JSON.stringify(state);
+  expect(classifierAttribution(state, questions)).toMatchObject({ stage: "labelling", source: "official documentation change", technology: "React", candidates: 0 });
+  expect(classifierAttribution({ technology: "React", incoming: { source: "security advisory" }, candidates: { c1: {}, c2: {} } }, Q)).toMatchObject({ stage: "matching", source: "security advisory", candidates: 2 });
+  let sample: Record<string, unknown> | undefined;
+  for (let i = 0; i < 10000; i++) {
+    const request = { ...state, release: String(i) };
+    const a = classifierAttribution(request, questions);
+    if (a.sample) {
+      expect(classifierAttribution(request, questions)).toEqual(a);
+      sample = a.sample as Record<string, unknown>;
+      break;
+    }
+  }
+  expect(sample).toBeDefined();
+  expect(String(sample!.subject).length).toBeLessThanOrEqual(120);
+  expect(String(sample!.summary).length).toBeLessThanOrEqual(320);
+  expect(JSON.stringify(state)).toBe(original);
 });
