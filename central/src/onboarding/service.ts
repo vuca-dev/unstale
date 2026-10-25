@@ -17,7 +17,7 @@ import {
 import { catalogDir, centralDir } from "../pipeline/paths.ts";
 import { advisoryReleases, fetchGuides, fetchReleases, foreignGuides, type GuideNote } from "../pipeline/fetch.ts";
 import { logUsage, readJson, sha256, withUsagePhase, writeAtomic } from "../pipeline/util.ts";
-import { reconcileSources } from "./source-quality.ts";
+import { reconcileLinkedEvidence, reconcileSources } from "./source-quality.ts";
 import { synthesize } from "./synthesis.ts";
 import { publishTechnology } from "../pipeline/publish.ts";
 import { JOB_FILE, servedIndex } from "../pipeline/export.ts";
@@ -1155,7 +1155,8 @@ export class CoverageService {
       }
     }
     await withTechLock(tech.id, "onboarding", () => {
-      if (reconcileSources(tech))
+      const corrected = reconcileSources(tech) + reconcileLinkedEvidence(tech, releases.notes);
+      if (corrected)
         publishTechnology(loadStore(tech.id), releases.checked, catalogDir());
     });
     const notes = [...releases.notes].reverse();

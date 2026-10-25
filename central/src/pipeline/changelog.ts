@@ -68,13 +68,15 @@ export interface Section {
 
 /** One section per version a heading names (the first heading for a version wins). Sections nest: the version's
  * heading level decides where it ends. */
-export function versionSections(markdown: string): Section[] {
+export function versionSections(markdown: string, minorHeadings = false): Section[] {
   const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
   const hs = headings(lines);
   const out: Section[] = [];
   const seen = new Set<string>();
   hs.forEach((h, i) => {
-    const version = headingVersion(h.text);
+    const plain = h.text.replace(/\]\([^)]*\)/g, "]").replace(/<[^>]+>/g, " ");
+    const minor = minorHeadings ? /(?:^|[^\w.])v?(\d+\.\d+)(?![\w.+-])/.exec(plain)?.[1] : undefined;
+    const version = headingVersion(h.text) ?? minor;
     if (!version || seen.has(version)) return;
     const end = hs.slice(i + 1).find((x) => x.level <= h.level)?.line ?? lines.length;
     seen.add(version);
@@ -137,4 +139,13 @@ export function capped(text: string): string {
   if (text.length <= LINKED_MAX) return text;
   const cut = text.lastIndexOf("\n#", LINKED_MAX);
   return text.slice(0, cut > LINKED_MAX / 2 ? cut : LINKED_MAX);
+}
+
+/** A rolling release page must contribute only its matching version section, including headings like `v9.3`.
+ * Minor headings also describe patch releases on that line; exact patch headings take precedence. */
+export function linkedReleaseText(page: string, version: string): string {
+  const sections = versionSections(page, true);
+  const own = sections.find((s) => s.version === version)
+    ?? sections.find((s) => s.version === version.split(".").slice(0, 2).join("."));
+  return own ? own.text : sections.length ? "" : capped(page);
 }
