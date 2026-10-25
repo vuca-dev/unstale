@@ -1,14 +1,16 @@
 // Release notes outside GitHub release bodies (changelog.ts, fetch.ts): changelog files read per version, pointer
 // bodies read through their link, and release-please monorepo tags. Fixtures are trimmed copies of the live sources
 // (18 October 2026): qs, markdown-it, Express-style setext, vite, react-router, TypeScript, Cypress.
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { headingVersion, pickChangelog, pointerLinks, repoFileLink, sectionFor, versionSections } from "../src/pipeline/changelog.ts";
+import { linkedReleaseText, headingVersion, pickChangelog, pointerLinks, repoFileLink, sectionFor, versionSections } from "../src/pipeline/changelog.ts";
 import { articleToMarkdown } from "../src/collector/extract.ts";
 import { releasePattern } from "../src/onboarding/discovery.ts";
-import { reconcileSources } from "../src/onboarding/source-quality.ts";
+import { reconcileLinkedEvidence, reconcileSources } from "../src/onboarding/source-quality.ts";
+import { sha256 } from "../src/pipeline/util.ts";
+import type { ReleaseNote } from "../src/pipeline/fetch.ts";
 import type { Technology } from "../src/pipeline/technologies.ts";
 import type { TechStore } from "../src/pipeline/store.ts";
 import { HttpClient } from "../src/collector/http.ts";
@@ -41,6 +43,20 @@ describe("changelog sections", () => {
     expect(pickChangelog(["README.md", "History.md"])).toBe("History.md");
     expect(pickChangelog(["CHANGELOG.old.md", "src"])).toBeUndefined();
   });
+});
+
+test("rolling release pages select minor-version headings without changing strict changelog parsing", () => {
+  const page = "# What's New\n\n## deck.gl v9.4\u200b\nFuture change\n\n## deck.gl v9.3\u200b\nCorrect change\n### Layers\nLayer change\n\n## deck.gl v9.2\nOld change";
+  expect(linkedReleaseText(page, "9.3.0")).toBe("## deck.gl v9.3\u200b\nCorrect change\n### Layers\nLayer change");
+  expect(linkedReleaseText(page, "9.3.1")).toContain("Correct change");
+  expect(linkedReleaseText(page, "9.1.0")).toBe("");
+  expect(versionSections(page)).toEqual([]);
+  expect(linkedReleaseText("## deck.gl v9.4\n" + "Future change. ".repeat(60), "9.3.0")).toBe("");
+  expect(linkedReleaseText("## v9.3.1\nPatch-only change", "9.3.2")).toBe("");
+  const exact = page + "\n## 9.3.1\nPatch-only change";
+  expect(linkedReleaseText(exact, "9.3.1")).toBe("## 9.3.1\nPatch-only change");
+  expect(linkedReleaseText("# Announcing TypeScript 6.0\nOne announcement", "6.0.2")).toContain("One announcement");
+  expect(versionSections("## 9.3.0-beta.1\nx\n## 9.3.1-rc.1\ny", true)).toEqual([]);
 });
 
 describe("pointer release bodies", () => {
@@ -186,6 +202,38 @@ describe("fetchReleases through changelogs and links", () => {
     expect(calls).toEqual([]);
   });
 
+  test("cached rolling pages are narrowed offline, with new snapshot keys and the old evidence snapshot identified", async () => {
+    const { fetchReleases } = await import("../src/pipeline/fetch.ts");
+    const t: Technology = { id: "rolling", name: "rolling", repo: "owner/rolling", components: [], tag: /^v?(\d+\.\d+\.\d+)$/, clean: (b) => b };
+    const page = "# What's New\n## rolling v9.4\n" + "Future change. ".repeat(40) + "\n## rolling v9.3\n" + "Correct change. ".repeat(3) + "\n## rolling v9.2\n" + "Old change. ".repeat(40);
+    const body = "See [What's New](https://rolling.dev/whats-new) for details.";
+    serve([gh(t.repo, "v9.3.0", "2026-04-13", body), gh(t.repo, "v9.4.0", "2026-09-05", body)], {
+      "https://api.github.com/repos/owner/rolling": { homepage: "https://rolling.dev" },
+      "https://api.github.com/users/owner": { blog: "https://rolling.dev" },
+      "https://rolling.dev/whats-new": page,
+    });
+    const initial = await fetchReleases(t);
+    expect(initial.notes.find((n) => n.version === "9.3.0")!.notes).toContain("Correct change");
+    expect(initial.notes.find((n) => n.version === "9.3.0")!.notes).not.toContain("Future change");
+    expect(initial.notes.find((n) => n.version === "9.4.0")!.notes).toContain("Future change");
+    // Simulate the saved format before minor headings were understood.
+    const idx = join(dir, "releases", t.id, "index.json");
+    const stored = JSON.parse(readFileSync(idx, "utf8"));
+    const old = stored.releases.find((r: { version: string }) => r.version === "9.3.0");
+    old.linked.snapshot = `sha256:${sha256(page)}`;
+    writeFileSync(join(dir, "releases", t.id, "9.3.0.linked.md"), page);
+    writeFileSync(idx, JSON.stringify(stored));
+    const fetched = await fetchReleases(t, { offline: true });
+    const note = fetched.notes.find((n) => n.version === "9.3.0")!;
+    expect(fetched.stats.requests).toBe(0);
+    expect(note.notes).toContain("Correct change");
+    expect(note.notes).not.toContain("Future change");
+    expect(note.notes).not.toContain("Old change");
+    expect(note.supersededSnapshot).toBe(`sha256:${sha256(`${old.snapshot}\n${old.linked.snapshot}`)}`);
+    expect(note.snapshot).not.toBe(note.supersededSnapshot);
+    expect(note.keyTag).not.toContain(old.linked.snapshot.slice(7, 15));
+  });
+
   test("a pointer body is read through its link: the version's section of the repository's changelog", async () => {
     const { fetchReleases } = await import("../src/pipeline/fetch.ts");
     const rr: Technology = { id: "react-router", name: "react-router", repo: "remix-run/react-router", components: ["pkg:npm/react-router"], tag: /^(?:react-router@|v?)(\d+\.\d+\.\d+)$/, clean: (b) => b };
@@ -232,4 +280,35 @@ describe("fetchReleases through changelogs and links", () => {
     expect(by["6.0.3"]).not.toContain("deprecated");
     expect(by["6.0.1"]).not.toContain("deprecated");
   });
+});
+
+test("linked-page repair retracts only unsupported old-snapshot records and preserves independent evidence", () => {
+  const t = { id: "rolling", components: [] } as unknown as Technology;
+  const note = { url: "https://github.com/owner/rolling/releases/tag/v9.3.0", supersededSnapshot: "old", notes: "Correct change" } as ReleaseNote;
+  const evidence = (quote: string, snapshot = "old") => ({ kind: "release_notes", url: note.url, quote, snapshot });
+  const rec = (id: string, ev: object[]) => ({ id, status: "active", releases: [{ version: "9.3.0", line: "9" }], evidence: ev, related: [], revision: 1, label_version: 1, history: [] });
+  const store = { technology: t.id, records: {
+    wrong: rec("wrong", [evidence("Old change")]),
+    valid: rec("valid", [evidence("Correct change")]),
+    other: rec("other", [evidence("Old change", "independent-snapshot")]),
+    mixed: rec("mixed", [evidence("Old change"), { ...evidence("independent"), kind: "upgrade_guide" }]),
+    related: { ...rec("related", [evidence("Correct change")]), related: ["wrong"] },
+  }, ingested: { oldKey: "wrong", validKey: "valid" } } as unknown as TechStore;
+  const oldDir = process.env.UNSTALE_CENTRAL_DIR;
+  process.env.UNSTALE_CENTRAL_DIR = mkdtempSync(join(tmpdir(), "unstale-linked-repair-"));
+  try {
+    expect(reconcileLinkedEvidence(t, [note], store)).toBe(2);
+    expect(store.records.wrong!.status).toBe("retracted");
+    expect(store.records.valid!.status).toBe("active");
+    expect(store.records.other!.status).toBe("active");
+    expect(store.records.mixed!.evidence).toHaveLength(1);
+    expect(store.records.mixed!.status).toBe("active");
+    expect(store.records.related!.related).toEqual([]);
+    expect(store.ingested.oldKey).toBeUndefined();
+    expect(store.ingested.validKey).toBe("valid");
+    expect(reconcileLinkedEvidence(t, [note], store)).toBe(0);
+  } finally {
+    if (oldDir === undefined) delete process.env.UNSTALE_CENTRAL_DIR;
+    else process.env.UNSTALE_CENTRAL_DIR = oldDir;
+  }
 });
