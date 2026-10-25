@@ -261,7 +261,9 @@ fn render_record(pass: Pass, o: &Opp) -> String {
         }
         Pass::ImprovementsPass => s += &format!("- Release: {pkg} {} (installed {})\n", release_version(&o.release), o.installed),
     }
-    s += &format!("- Change: {}; breaking: {}\n", change_type(r.change_type), if r.breaking { "yes" } else { "no" });
+    // A removal in effect (`funnel::supersede_by_removal`) breaks the code using it, whatever the record says.
+    let breaking = r.breaking || (o.route == Route::InEffect && r.change_type == ChangeType::Removal);
+    s += &format!("- Change: {}; breaking: {}\n", change_type(r.change_type), if breaking { "yes" } else { "no" });
     if !o.benefits.is_empty() || pass == Pass::ImprovementsPass {
         let b: Vec<&str> = if o.benefits.is_empty() { r.benefit.iter().map(benefit).collect() } else { o.benefits.iter().map(benefit).collect() };
         s += &format!("- Benefit: {}\n", b.join(", "));
@@ -296,7 +298,14 @@ fn render_record(pass: Pass, o: &Opp) -> String {
             })
             .collect();
         // A deprecation that names what it deprecates cites only that (`funnel::deprecated_lits`).
-        let what = if crate::funnel::deprecated_lits(o.rec, &o.matched.iter().map(|(t, _)| t.clone()).collect::<Vec<_>>()).is_empty() { "Matched terms" } else { "Deprecated API used here" };
+        // A removal in effect (`funnel::supersede_by_removal`) cites the removed API the same way.
+        let what = if o.route == Route::InEffect && o.rec.r.change_type == ChangeType::Removal {
+            "Removed API used here (it no longer exists at the installed version)"
+        } else if crate::funnel::deprecated_lits(o.rec, &o.matched.iter().map(|(t, _)| t.clone()).collect::<Vec<_>>()).is_empty() {
+            "Matched terms"
+        } else {
+            "Deprecated API used here"
+        };
         s += &format!("- {what}: {}\n", m.join("; "));
     }
     if !o.elsewhere.is_empty() {
@@ -912,7 +921,7 @@ pub fn render(view: &View, out: &Outcome, catalog: &Catalog, deprecated: &[crate
     }
     if !view.in_effect.is_empty() {
         s += &format!(
-            "## In effect now ({})\n\nDeprecated at or below the installed version, and the deprecated API is still used here (matched outside comments in code that can use the technology, in a package that has it; an identifier only in a file that imports or configures it, or that its records name; a configuration option in code only where that code imports it or is its config file; an option value only under the key its record names; a file convention only in an application, not in a published library or a file importing the replacement; a plain word only as a key of an object passed to a function imported from the technology; a namespace that other APIs of the technology live under only beside the entry's specific terms; a site that also names the replacement is a kept fallback and is not listed). They need no upgrade of the technology itself; a record whose stated prerequisite the project does not meet is left out, and one cited in a published package whose declared range still admits versions without the replacement says so under \"Prerequisite not met here\". Before moving code off a deprecated API, check that what replaces it works at the versions installed here: an old API is often kept because its replacement needs a newer version of another package (a peer, the runtime, a plugin host), and an entry may not say so. They are not part of the batches below and do not hold up `--next`.\n\n",
+            "## In effect now ({})\n\nDeprecated at or below the installed version, and the deprecated API is still used here; where a later release at or below the installed version removed that API, the removal is listed instead, since the code breaks rather than warns (matched outside comments in code that can use the technology, in a package that has it; an identifier only in a file that imports or configures it, or that its records name; a configuration option in code only where that code imports it or is its config file; an option value only under the key its record names; a file convention only in an application, not in a published library or a file importing the replacement; a plain word only as a key of an object passed to a function imported from the technology; a namespace that other APIs of the technology live under only beside the entry's specific terms; a site that also names the replacement is a kept fallback and is not listed). They need no upgrade of the technology itself; a record whose stated prerequisite the project does not meet is left out, and one cited in a published package whose declared range still admits versions without the replacement says so under \"Prerequisite not met here\". Before moving code off a deprecated API, check that what replaces it works at the versions installed here: an old API is often kept because its replacement needs a newer version of another package (a peer, the runtime, a plugin host), and an entry may not say so. They are not part of the batches below and do not hold up `--next`.\n\n",
             plural(view.in_effect.len(), "record", "records")
         );
         for &i in &view.in_effect {

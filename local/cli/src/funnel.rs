@@ -1144,6 +1144,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
     let libraries: std::collections::HashSet<&str> = inp.stack.packages.iter().filter(|p| p.kind == crate::stack::Kind::Library).map(|p| p.dir.as_str()).collect();
     for (tech, td, tl) in &in_stack {
         let (tech, comps, lits) = (*tech, &tl.comps, &tl.per_record);
+        let first = out.opps.len();
         // A CLI flag counts only on a command line that runs this technology: `--scope` in another CLI's help text or
         // a `claude mcp add --scope` string is not turbo's flag.
         let flagged = flag_filtered(&all_hits, comps, tl.usage.iter().chain(&tl.whole), &inp.repo.paths);
@@ -1308,6 +1309,15 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
         // replacements.
         let exact: Memo<Rc<usage::Evidence>> = RefCell::default();
         let modules: Vec<String> = comps.iter().filter_map(|c| purl_name(c)).collect();
+        // Node resolves a package from the importing file's directory upward, so npm code in no directory an installed
+        // copy of the technology was read from (projen's root `src/web/react.ts`, beside `docusaurus/` with its own
+        // lockfile and react; the root declares none) runs none of it: no site of the installed version.
+        let copies: Vec<&Reading> = if ecosystem == "npm" {
+            inp.stack.deps.iter().filter(|(k, _)| comps.contains(&normalize_purl(k))).flat_map(|(_, d)| d.readings.iter()).collect()
+        } else {
+            vec![]
+        };
+        let runs_a_copy = |p: &str| copies.is_empty() || !usage::own_code(p, &ecosystem) || copies.iter().any(|r| r.contains(p));
         let exact_of = |v: usize, l: &str, repl: &[String], context: Option<&[String]>, keyed: bool, config: bool, succ: &[String], call: bool, parent: Option<&str>, invoked: bool, named: &[String]| -> Rc<usage::Evidence> {
             let ctx = context.map_or("-".to_string(), |c| c.join("\0"));
             let key = (v, format!("{l}\0{}\u{1}{ctx}\u{2}{keyed}\u{3}{config}\u{4}{}\u{5}{call}\u{6}{parent:?}\u{7}{invoked}\u{8}{}", repl.join("\0"), succ.join("\0"), named.join("\0")));
@@ -1333,6 +1343,9 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                     return convention.contains(at)
                         && !libraries.contains(at)
                         && inp.repo.text(p).is_none_or(|t| !usage::imports_successor(t, &modules, succ));
+                }
+                if !runs_a_copy(p) {
+                    return false;
                 }
                 // An option or API name other tools share (`noExternal`: Vite's `ssr.noExternal`) counts in a file
                 // that neither imports the technology nor is named for it only when that file is not another
@@ -1908,6 +1921,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             }
             out.opps.push(opp);
         }
+        supersede_by_removal(&mut out.opps[first..], inp);
         workspaces.retain(|w| !w.records.is_empty());
         if !workspaces.is_empty() {
             out.workspaces.insert(tech.clone(), workspaces);
@@ -1956,6 +1970,84 @@ fn blank<'a>(rec: &'a Rec, release: Release, route: Route) -> Opp<'a> {
         withheld_from: None,
         unmet: None,
         elsewhere: vec![],
+    }
+}
+
+/// A deprecation in effect whose API a removal record of the same package has since removed, at or below the installed
+/// version and after the deprecation's release (React 18.0.0 deprecates `ReactDOM.render`, 19.0.0 removes it; installed
+/// 19.2.3): at the installed version
+/// the API is gone, so the site breaks rather than warns. The removal takes the deprecation's place in effect, citing
+/// the sites the deprecation's usage rules found for the literals both name (the removal's own `replaces`; the
+/// manifests on another release line it names, `Opp::elsewhere`, stay the removal's own, which are per record), and the
+/// deprecation counts as already included. Code using an API that no longer exists fails, so the removal carries a
+/// correctness benefit whatever its record says. Among several removals naming the literal, the one about it (its
+/// subject is the literal) and naming the most of the cited literals wins, then the earliest release, then the id.
+/// A removal the ledger withholds stays withheld, and the deprecation stays in effect.
+fn supersede_by_removal(opps: &mut [Opp], inp: &Input) {
+    let lits = |o: &Opp| -> BTreeSet<String> { o.rec.r.replaces.iter().filter_map(|x| clean_lit(x)).collect() };
+    for i in 0..opps.len() {
+        if opps[i].route != Route::InEffect || opps[i].rec.r.change_type != ChangeType::Deprecation {
+            continue;
+        }
+        let comp = opps[i].component();
+        let installed = opps[i].installed.clone();
+        let Some(since) = parse_version(&opps[i].release.version) else { continue };
+        let cited: BTreeSet<&str> = opps[i].matched.iter().map(|(l, _)| l.as_str()).collect();
+        let best = (0..opps.len())
+            .filter(|&j| {
+                let r = &opps[j];
+                r.rec.r.change_type == ChangeType::Removal
+                    && matches!(r.route, Route::AlreadyIncluded | Route::InEffect)
+                    && r.component() == comp
+                    && r.release.no_later_than.is_none()
+                    && parse_version(&r.release.version).is_some_and(|v| v > since && v <= installed)
+            })
+            .filter_map(|j| {
+                let shared: Vec<String> = lits(&opps[j]).into_iter().filter(|l| cited.contains(l.as_str())).collect();
+                (!shared.is_empty()).then_some((j, shared))
+            })
+            .min_by(|(a, x), (b, y)| {
+                let about = |j: usize, s: &[String]| clean_lit(&opps[j].rec.r.subject).is_some_and(|t| s.contains(&t));
+                (!about(*a, x), std::cmp::Reverse(x.len()), parse_version(&opps[*a].release.version), opps[*a].id())
+                    .cmp(&(!about(*b, y), std::cmp::Reverse(y.len()), parse_version(&opps[*b].release.version), opps[*b].id()))
+            });
+        let Some((j, shared)) = best else { continue };
+        let rid = &opps[j].rec.r;
+        if inp.ledger.entries.iter().any(|e| e.id() == rid.id && withholds(e, rid.revision, inp.today)) {
+            continue;
+        }
+        let dep = opps[i].clone();
+        let r = &mut opps[j];
+        if r.route != Route::InEffect {
+            r.matched.clear();
+            r.more.clear();
+            r.files.clear();
+            r.score = 0.0;
+        }
+        r.route = Route::InEffect;
+        for (l, f) in dep.matched.iter().filter(|(l, _)| shared.contains(l)) {
+            if !r.matched.iter().any(|(m, _)| m == l) {
+                r.matched.push((l.clone(), f.clone()));
+            }
+            if let Some(n) = dep.more.get(l) {
+                r.more.insert(l.clone(), *n);
+            }
+        }
+        r.matched.sort();
+        let files: BTreeSet<&String> = r.matched.iter().flat_map(|(_, f)| f.iter()).collect();
+        for f in dep.files.iter().filter(|f| files.contains(f)) {
+            if !r.files.contains(f) && r.files.len() < 3 {
+                r.files.push(f.clone());
+            }
+        }
+        r.score = r.score.max(dep.score);
+        r.unmet = r.unmet.take().or(dep.unmet);
+        r.benefits.retain(|b| !matches!(b, Benefit::None | Benefit::Other));
+        if !r.benefits.contains(&Benefit::Correctness) {
+            r.benefits.push(Benefit::Correctness);
+            r.benefits.sort_by_key(benefit_rank);
+        }
+        opps[i].route = Route::AlreadyIncluded;
     }
 }
 
@@ -2365,6 +2457,61 @@ mod tests {
         // listed apart from the obligations a bump brings; already included once the code shows none of it.
         assert_eq!(route_of(&out, "next:old-dep"), &Route::AlreadyIncluded, "deprecated API not used here");
         assert_eq!(ids(&out, &out.in_effect), vec!["next:old-dep-used"], "deprecated API still used: in effect now");
+    }
+
+    #[test]
+    fn a_removal_at_or_below_the_installed_version_supersedes_the_deprecation_in_effect() {
+        // React 18.0.0 deprecates `ReactDOM.render`, 19.0.0 removes it; at 19.2.3 the call breaks, not warns.
+        let dep = with(rec("react:render", "pkg:npm/react", "18.0.0"), json!({"change_type":"deprecation","replaces":["ReactDOM.render"]}));
+        let gone = |id: &str, subject: &str, replaces: serde_json::Value| {
+            with(rec(id, "pkg:npm/react", "19.0.0"), json!({"change_type":"removal","breaking":true,"benefit":["none"],"subject":subject,"replaces":replaces}))
+        };
+        let c = catalog(
+            "react",
+            0,
+            vec![
+                dep.clone(),
+                gone("react:render~2", "ReactDOM.render", json!(["ReactDOM.render"])),
+                gone("react:legacy-mode", "legacy mode", json!(["ReactDOM.render", "ReactDOM.hydrate"])),
+                gone("react:other", "findDOMNode", json!(["findDOMNode"])),
+            ],
+        );
+        let r = repo(&[("src/main.tsx", "import ReactDOM from 'react-dom';\nimport App from './App';\nReactDOM.render(<App />, root);\n")]);
+        let l = Ledger::default();
+        let s19 = stack(&[("react", "19.2.3")], None);
+        let out = run_with(&c, &s19, &r, &l);
+        assert_eq!(ids(&out, &out.in_effect), vec!["react:render~2"], "the removal about the API, not the deprecation or a broader removal");
+        let o = out.opps.iter().find(|o| o.id() == "react:render~2").unwrap();
+        assert_eq!(o.matched, vec![("ReactDOM.render".to_string(), vec!["src/main.tsx".to_string()])]);
+        assert_eq!(o.benefits, vec![Benefit::Correctness], "code using a removed API fails");
+        assert_eq!(route_of(&out, "react:render"), &Route::AlreadyIncluded);
+        assert_eq!(route_of(&out, "react:legacy-mode"), &Route::AlreadyIncluded);
+        // Between the deprecation and the removal, the deprecation is what is in effect.
+        let s18 = stack(&[("react", "18.3.1")], None);
+        let out = run_with(&c, &s18, &r, &l);
+        assert_eq!(ids(&out, &out.in_effect), vec!["react:render"]);
+    }
+
+    #[test]
+    fn in_effect_npm_sites_need_a_directory_an_installed_copy_was_read_from() {
+        // projen: react 19.2.3 is read from `docusaurus/`'s own lockfile; the root declares no react, so the root's
+        // `src/web/react.ts` (named for react, writing `ReactDOM.render` into generated code) runs no copy of it.
+        let c = catalog("react", 0, vec![with(rec("react:render", "pkg:npm/react", "18.0.0"), json!({"change_type":"deprecation","replaces":["ReactDOM.render"]}))]);
+        let mut s = stack(&[("react", "19.2.3")], None);
+        s.packages = vec![package(".", crate::stack::Kind::Library, &[]), package("docusaurus", crate::stack::Kind::Application, &["react"])];
+        s.deps.get_mut(&crate::util::npm_purl("react")).unwrap().readings = vec![Reading {
+            dir: "docusaurus".into(),
+            version: parse_version("19.2.3").unwrap(),
+            source: "docusaurus/package-lock.json".into(),
+            standalone: false,
+            range: None,
+            lock: Some("docusaurus/package-lock.json".into()),
+        }];
+        let l = Ledger::default();
+        let root = repo(&[("src/web/react.ts", "export const index = `import ReactDOM from 'react-dom';\nReactDOM.render(<App />, root);`;\n")]);
+        assert!(run_with(&c, &s, &root, &l).in_effect.is_empty(), "no installed copy at the root");
+        let site = repo(&[("docusaurus/src/main.tsx", "import ReactDOM from 'react-dom';\nReactDOM.render(<App />, root);\n")]);
+        assert_eq!(ids(&run_with(&c, &s, &site, &l), &run_with(&c, &s, &site, &l).in_effect), vec!["react:render"]);
     }
 
     #[test]
