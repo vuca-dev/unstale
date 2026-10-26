@@ -1338,6 +1338,7 @@ fn highlight_indices(out: &Outcome, w: &World) -> Vec<usize> {
                     | funnel::Route::Baseline
                     | funnel::Route::RequiresAbsent
                     | funnel::Route::NoSite
+                    | funnel::Route::Retired
             ) {
                 return None;
             }

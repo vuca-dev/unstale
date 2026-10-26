@@ -1621,6 +1621,12 @@ pub fn loads_only(lit: &str, names: &[String]) -> bool {
 }
 
 pub fn clean_lit(s: &str) -> Option<String> {
+    api_name(s).filter(|x| x.chars().count() >= 4)
+}
+
+/// A record's literal as an API name, the way `clean_lit` reads it but of any length: for comparing what two records
+/// name (open's `url` option), not for searching code.
+pub fn api_name(s: &str) -> Option<String> {
     let mut x = s.replace('`', "");
     if let Some(i) = x.find('(')
         && (x.ends_with(')') || x.ends_with('(')) {
@@ -1631,7 +1637,7 @@ pub fn clean_lit(s: &str) -> Option<String> {
             x = head.to_string();
         }
     let x = x.trim().trim_matches(['\'', '"']).to_string();
-    (x.chars().count() >= 4).then_some(x)
+    (!x.is_empty()).then_some(x)
 }
 
 fn is_word(s: &str) -> bool {

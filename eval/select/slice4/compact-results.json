@@ -1,0 +1,735 @@
+{
+  "plan_sha256": "f5715a8da79aaf1028d45631dd97ee3acd36a702a461449e3e6f478d06d5e3a7",
+  "screen_only": true,
+  "arms": {
+    "baseline": {
+      "input_tokens": 1226092,
+      "dollars": 0.051495863999999995,
+      "models": [
+        "jev-1.14.0"
+      ],
+      "failures": 0,
+      "metrics": {
+        "h1": {
+          "change_type_accuracy": 0.8154506437768241,
+          "benefit_exact": 0.8068669527896996,
+          "breaking_recall": 0.896551724137931,
+          "breaking_precision": 0.7647058823529411,
+          "benefit_recall": 0.8677685950413223,
+          "benefit_precision": 0.875,
+          "actionable_recall": 0.863013698630137,
+          "obligation_recall": 0.9166666666666666,
+          "security_recall": 0.8571428571428571,
+          "correctness_recall": 0.8490566037735849,
+          "performance_recall": 0.8888888888888888,
+          "cost_recall": null,
+          "maintainability_recall": null
+        },
+        "h2": {
+          "breaking_recall": 0.9521739130434783,
+          "breaking_precision": 0.9240506329113924,
+          "obligation_recall": 0.9005524861878453,
+          "change_type_accuracy": 0.8357348703170029
+        }
+      }
+    },
+    "repeat": {
+      "input_tokens": 1226092,
+      "dollars": 0.051495863999999995,
+      "models": [
+        "jev-1.14.0"
+      ],
+      "failures": 0,
+      "metrics": {
+        "h1": {
+          "change_type_accuracy": 0.8197424892703863,
+          "benefit_exact": 0.8111587982832618,
+          "breaking_recall": 0.896551724137931,
+          "breaking_precision": 0.7647058823529411,
+          "benefit_recall": 0.8760330578512396,
+          "benefit_precision": 0.8760330578512396,
+          "actionable_recall": 0.8493150684931506,
+          "obligation_recall": 0.9166666666666666,
+          "security_recall": 0.8571428571428571,
+          "correctness_recall": 0.8584905660377359,
+          "performance_recall": 0.8888888888888888,
+          "cost_recall": null,
+          "maintainability_recall": null
+        },
+        "h2": {
+          "breaking_recall": 0.9565217391304348,
+          "breaking_precision": 0.9243697478991597,
+          "obligation_recall": 0.8839779005524862,
+          "change_type_accuracy": 0.8270893371757925
+        }
+      },
+      "measured_drops": [
+        "h1:actionable_recall",
+        "h2:obligation_recall",
+        "h2:change_type_accuracy"
+      ],
+      "screen_pass": false,
+      "input_saving": 0.0
+    },
+    "surface": {
+      "input_tokens": 1191872,
+      "dollars": 0.050058623999999975,
+      "models": [
+        "jev-1.14.0"
+      ],
+      "failures": 0,
+      "metrics": {
+        "h1": {
+          "change_type_accuracy": 0.8111587982832618,
+          "benefit_exact": 0.8111587982832618,
+          "breaking_recall": 0.896551724137931,
+          "breaking_precision": 0.7647058823529411,
+          "benefit_recall": 0.8512396694214877,
+          "benefit_precision": 0.8879310344827587,
+          "actionable_recall": 0.7671232876712328,
+          "obligation_recall": 0.9166666666666666,
+          "security_recall": 0.8571428571428571,
+          "correctness_recall": 0.8490566037735849,
+          "performance_recall": 0.7777777777777778,
+          "cost_recall": null,
+          "maintainability_recall": null
+        },
+        "h2": {
+          "breaking_recall": 0.9565217391304348,
+          "breaking_precision": 0.9282700421940928,
+          "obligation_recall": 0.8950276243093923,
+          "change_type_accuracy": 0.8414985590778098
+        }
+      },
+      "measured_drops": [
+        "h1:change_type_accuracy",
+        "h1:benefit_recall",
+        "h1:actionable_recall",
+        "h1:performance_recall",
+        "h2:obligation_recall"
+      ],
+      "screen_pass": false,
+      "input_saving": 0.02790981427168593
+    },
+    "breaking": {
+      "input_tokens": 1173892,
+      "dollars": 0.049303463999999984,
+      "models": [
+        "jev-1.14.0"
+      ],
+      "failures": 0,
+      "metrics": {
+        "h1": {
+          "change_type_accuracy": 0.8154506437768241,
+          "benefit_exact": 0.8197424892703863,
+          "breaking_recall": 0.896551724137931,
+          "breaking_precision": 0.7647058823529411,
+          "benefit_recall": 0.8760330578512396,
+          "benefit_precision": 0.8907563025210085,
+          "actionable_recall": 0.8904109589041096,
+          "obligation_recall": 0.9166666666666666,
+          "security_recall": 0.7142857142857143,
+          "correctness_recall": 0.8584905660377359,
+          "performance_recall": 0.8888888888888888,
+          "cost_recall": null,
+          "maintainability_recall": null
+        },
+        "h2": {
+          "breaking_recall": 0.9565217391304348,
+          "breaking_precision": 0.9166666666666666,
+          "obligation_recall": 0.8950276243093923,
+          "change_type_accuracy": 0.829971181556196
+        }
+      },
+      "measured_drops": [
+        "h1:security_recall",
+        "h2:breaking_precision",
+        "h2:obligation_recall",
+        "h2:change_type_accuracy"
+      ],
+      "screen_pass": false,
+      "input_saving": 0.042574292956809145
+    },
+    "combined": {
+      "input_tokens": 1139672,
+      "dollars": 0.047866224000000034,
+      "models": [
+        "jev-1.14.0"
+      ],
+      "failures": 0,
+      "metrics": {
+        "h1": {
+          "change_type_accuracy": 0.8197424892703863,
+          "benefit_exact": 0.8111587982832618,
+          "breaking_recall": 0.896551724137931,
+          "breaking_precision": 0.7222222222222222,
+          "benefit_recall": 0.8677685950413223,
+          "benefit_precision": 0.8823529411764706,
+          "actionable_recall": 0.7671232876712328,
+          "obligation_recall": 0.9166666666666666,
+          "security_recall": 0.8571428571428571,
+          "correctness_recall": 0.8584905660377359,
+          "performance_recall": 0.8888888888888888,
+          "cost_recall": null,
+          "maintainability_recall": null
+        },
+        "h2": {
+          "breaking_recall": 0.9652173913043478,
+          "breaking_precision": 0.9288702928870293,
+          "obligation_recall": 0.8895027624309392,
+          "change_type_accuracy": 0.8242074927953891
+        }
+      },
+      "measured_drops": [
+        "h1:breaking_precision",
+        "h1:actionable_recall",
+        "h2:obligation_recall",
+        "h2:change_type_accuracy"
+      ],
+      "screen_pass": false,
+      "input_saving": 0.07048410722849507
+    }
+  },
+  "comparisons": {
+    "repeat": {
+      "h1": {
+        "change_type_accuracy": {
+          "diff": 0.0042918454935622075,
+          "ci": [
+            0.0,
+            0.015228426395939132
+          ]
+        },
+        "benefit_exact": {
+          "diff": 0.0042918454935622075,
+          "ci": [
+            0.0,
+            0.014705882352941235
+          ]
+        },
+        "breaking_recall": {
+          "diff": 0.0,
+          "ci": [
+            0.0,
+            0.0
+          ]
+        },
+        "breaking_precision": {
+          "diff": 0.0,
+          "ci": [
+            0.0,
+            0.0
+          ]
+        },
+        "benefit_recall": {
+          "diff": 0.008264462809917328,
+          "ci": [
+            0.0,
+            0.028037383177570097
+          ]
+        },
+        "benefit_precision": {
+          "diff": 0.0010330578512396382,
+          "ci": [
+            0.0,
+            0.003798986936816906
+          ]
+        },
+        "actionable_recall": {
+          "diff": -0.013698630136986356,
+          "ci": [
+            -0.04615384615384621,
+            0.0
+          ]
+        },
+        "obligation_recall": {
+          "diff": 0.0,
+          "ci": [
+            0.0,
+            0.0
+          ]
+        },
+        "security_recall": {
+          "diff": 0.0,
+          "ci": [
+            0.0,
+            0.0
+          ]
+        },
+        "correctness_recall": {
+          "diff": 0.009433962264150941,
+          "ci": [
+            0.0,
+            0.03125
+          ]
+        },
+        "performance_recall": {
+          "diff": 0.0,
+          "ci": [
+            0.0,
+            0.0
+          ]
+        },
+        "cost_recall": {
+          "diff": null,
+          "ci": null
+        },
+        "maintainability_recall": {
+          "diff": null,
+          "ci": null
+        }
+      },
+      "h2": {
+        "breaking_recall": {
+          "diff": 0.004347826086956497,
+          "ci": [
+            -0.011904761904761973,
+            0.018181818181818188
+          ]
+        },
+        "breaking_precision": {
+          "diff": 0.0003191149877672661,
+          "ci": [
+            -0.0011655011655011815,
+            0.0014492753623188692
+          ]
+        },
+        "obligation_recall": {
+          "diff": -0.016574585635359185,
+          "ci": [
+            -0.03472222222222221,
+            0.0
+          ]
+        },
+        "change_type_accuracy": {
+          "diff": -0.008645533141210415,
+          "ci": [
+            -0.0219780219780219,
+            0.0034129692832763903
+          ]
+        }
+      }
+    },
+    "surface": {
+      "h1": {
+        "change_type_accuracy": {
+          "diff": -0.0042918454935623185,
+          "ci": [
+            -0.011111111111111072,
+            0.0
+          ]
+        },
+        "benefit_exact": {
+          "diff": 0.0042918454935622075,
+          "ci": [
+            -0.018404907975460127,
+            0.026905829596412523
+          ]
+        },
+        "breaking_recall": {
+          "diff": 0.0,
+          "ci": [
+            0.0,
+            0.0
+          ]
+        },
+        "breaking_precision": {
+          "diff": 0.0,
+          "ci": [
+            0.0,
+            0.0
+          ]
+        },
+        "benefit_recall": {
+          "diff": -0.016528925619834656,
+          "ci": [
+            -0.053097345132743334,
+            0.01680672268907568
+          ]
+        },
+        "benefit_precision": {
+          "diff": 0.012931034482758674,
+          "ci": [
+            -0.0031702898550725056,
+            0.03589324618736389
+          ]
+        },
+        "actionable_recall": {
+          "diff": -0.09589041095890416,
+          "ci": [
+            -0.18644067796610164,
+            -0.02298850574712641
+          ]
+        },
+        "obligation_recall": {
+          "diff": 0.0,
+          "ci": [
+            0.0,
+            0.0
+          ]
+        },
+        "security_recall": {
+          "diff": 0.0,
+          "ci": [
+            0.0,
+            0.0
+          ]
+        },
+        "correctness_recall": {
+          "diff": 0.0,
+          "ci": [
+            -0.03883495145631066,
+            0.03703703703703709
+          ]
+        },
+        "performance_recall": {
+          "diff": -0.11111111111111105,
+          "ci": [
+            -0.4,
+            0.0
+          ]
+        },
+        "cost_recall": {
+          "diff": null,
+          "ci": null
+        },
+        "maintainability_recall": {
+          "diff": null,
+          "ci": null
+        }
+      },
+      "h2": {
+        "breaking_recall": {
+          "diff": 0.004347826086956497,
+          "ci": [
+            0.0,
+            0.01492537313432829
+          ]
+        },
+        "breaking_precision": {
+          "diff": 0.00421940928270037,
+          "ci": [
+            0.0,
+            0.01449275362318847
+          ]
+        },
+        "obligation_recall": {
+          "diff": -0.0055248618784530246,
+          "ci": [
+            -0.013953488372093092,
+            0.0
+          ]
+        },
+        "change_type_accuracy": {
+          "diff": 0.0057636887608069065,
+          "ci": [
+            -0.007075471698113178,
+            0.021428571428571463
+          ]
+        }
+      }
+    },
+    "breaking": {
+      "h1": {
+        "change_type_accuracy": {
+          "diff": 0.0,
+          "ci": [
+            0.0,
+            0.0
+          ]
+        },
+        "benefit_exact": {
+          "diff": 0.012875536480686733,
+          "ci": [
+            -0.005813953488372103,
+            0.03816793893129766
+          ]
+        },
+        "breaking_recall": {
+          "diff": 0.0,
+          "ci": [
+            0.0,
+            0.0
+          ]
+        },
+        "breaking_precision": {
+          "diff": 0.0,
+          "ci": [
+            -0.08627450980392148,
+            0.082815734989648
+          ]
+        },
+        "benefit_recall": {
+          "diff": 0.008264462809917328,
+          "ci": [
+            -0.01851851851851849,
+            0.03968253968253965
+          ]
+        },
+        "benefit_precision": {
+          "diff": 0.01575630252100846,
+          "ci": [
+            -0.0009315323707499434,
+            0.04119674185463662
+          ]
+        },
+        "actionable_recall": {
+          "diff": 0.0273972602739726,
+          "ci": [
+            0.0,
+            0.05128205128205132
+          ]
+        },
+        "obligation_recall": {
+          "diff": 0.0,
+          "ci": [
+            0.0,
+            0.0
+          ]
+        },
+        "security_recall": {
+          "diff": -0.1428571428571428,
+          "ci": [
+            -1.0,
+            0.0
+          ]
+        },
+        "correctness_recall": {
+          "diff": 0.009433962264150941,
+          "ci": [
+            -0.02083333333333337,
+            0.04424778761061943
+          ]
+        },
+        "performance_recall": {
+          "diff": 0.0,
+          "ci": [
+            0.0,
+            0.0
+          ]
+        },
+        "cost_recall": {
+          "diff": null,
+          "ci": null
+        },
+        "maintainability_recall": {
+          "diff": null,
+          "ci": null
+        }
+      },
+      "h2": {
+        "breaking_recall": {
+          "diff": 0.004347826086956497,
+          "ci": [
+            -0.01176470588235301,
+            0.021186440677966045
+          ]
+        },
+        "breaking_precision": {
+          "diff": -0.007383966244725815,
+          "ci": [
+            -0.023800764114900286,
+            0.00592522029054543
+          ]
+        },
+        "obligation_recall": {
+          "diff": -0.0055248618784530246,
+          "ci": [
+            -0.013953488372093092,
+            0.0
+          ]
+        },
+        "change_type_accuracy": {
+          "diff": -0.0057636887608069065,
+          "ci": [
+            -0.01822916666666674,
+            0.0050000000000000044
+          ]
+        }
+      }
+    },
+    "combined": {
+      "h1": {
+        "change_type_accuracy": {
+          "diff": 0.0042918454935622075,
+          "ci": [
+            0.0,
+            0.015228426395939132
+          ]
+        },
+        "benefit_exact": {
+          "diff": 0.0042918454935622075,
+          "ci": [
+            -0.01744186046511631,
+            0.026923076923076827
+          ]
+        },
+        "breaking_recall": {
+          "diff": 0.0,
+          "ci": [
+            0.0,
+            0.0
+          ]
+        },
+        "breaking_precision": {
+          "diff": -0.042483660130718914,
+          "ci": [
+            -0.15126050420168058,
+            0.0
+          ]
+        },
+        "benefit_recall": {
+          "diff": 0.0,
+          "ci": [
+            -0.02352941176470591,
+            0.025000000000000022
+          ]
+        },
+        "benefit_precision": {
+          "diff": 0.007352941176470562,
+          "ci": [
+            -0.017958097771865633,
+            0.03245341614906827
+          ]
+        },
+        "actionable_recall": {
+          "diff": -0.09589041095890416,
+          "ci": [
+            -0.17204301075268824,
+            -0.037735849056603765
+          ]
+        },
+        "obligation_recall": {
+          "diff": 0.0,
+          "ci": [
+            0.0,
+            0.0
+          ]
+        },
+        "security_recall": {
+          "diff": 0.0,
+          "ci": [
+            0.0,
+            0.0
+          ]
+        },
+        "correctness_recall": {
+          "diff": 0.009433962264150941,
+          "ci": [
+            -0.021739130434782594,
+            0.04065040650406504
+          ]
+        },
+        "performance_recall": {
+          "diff": 0.0,
+          "ci": [
+            0.0,
+            0.0
+          ]
+        },
+        "cost_recall": {
+          "diff": null,
+          "ci": null
+        },
+        "maintainability_recall": {
+          "diff": null,
+          "ci": null
+        }
+      },
+      "h2": {
+        "breaking_recall": {
+          "diff": 0.01304347826086949,
+          "ci": [
+            -0.007751937984496138,
+            0.04166666666666663
+          ]
+        },
+        "breaking_precision": {
+          "diff": 0.004819659975636825,
+          "ci": [
+            -0.009512421947655114,
+            0.02065439672801639
+          ]
+        },
+        "obligation_recall": {
+          "diff": -0.01104972375690616,
+          "ci": [
+            -0.02608695652173909,
+            0.0
+          ]
+        },
+        "change_type_accuracy": {
+          "diff": -0.011527377521613813,
+          "ci": [
+            -0.02657807308970106,
+            0.002421307506053183
+          ]
+        }
+      }
+    }
+  },
+  "protocol": {
+    "counts": {
+      "h1": 233,
+      "h2": 347
+    },
+    "seed": "compact-20261025",
+    "concurrency": 2,
+    "planned_reserved_dollars": 0.9429447300000001,
+    "price_per_million_input": 0.042,
+    "cap_dollars": 1.25,
+    "retries": 0,
+    "data_sha256": {
+      "h1": "fc5ab1984da3e854fdda593f40837ee01291ca464c6e7114f01f0de06e59648a",
+      "h2": "52c97719a1d58184c7fcc7cf45abc4516c46f2c1b999e45003f8e7bea69cbd97"
+    },
+    "unit_sha256": "4280e3f4da214f86f349457ff480cb3a701f5ce9471b2fc845c9009aa5708cc8",
+    "acceptance_rule": "Exploratory on reused H1/H2. Keep live thresholds 0.5. Require no measured decline in breaking recall/precision, obligation recall, change_type accuracy, benefit recall/precision, actionable recall or benefit exact agreement. Examine section-cluster paired intervals and baseline repeat noise. No production adoption without fresh independent confirmation."
+  },
+  "pricing_source": "https://typesafe.ai/ ($42/billion input tokens, verified 2026-10-25); estimates from reported token usage, not invoice charges",
+  "total": {
+    "calls": 2900,
+    "input_tokens": 5957620,
+    "estimated_dollars": 0.2502200400000004
+  },
+  "decision": "Do not change production prompts. Reject surface and combined for significant actionable recall loss. Breaking-only is a possible direction, not a validated win: small precision/obligation shifts plus one missed security label. All arms fail the frozen no-measured-decline rule. H1/H2 are reused screens, not fresh confirmation.",
+  "matching_screen": {
+    "screen_only": true,
+    "limitations": "Existing audited candidate sets, not full-store replay. No subject guard (incoming subject absent). Zero observed false merges is not a safety guarantee; no production rule recommended from this screen.",
+    "rules": {
+      "exact_quote": {
+        "requests": 236,
+        "true_match_requests": 197,
+        "selected": {
+          "SAME": 113
+        },
+        "audited_true_match_recall": 0.5736040609137056
+      },
+      "exact_quote_and_summary": {
+        "requests": 236,
+        "true_match_requests": 197,
+        "selected": {
+          "SAME": 30
+        },
+        "audited_true_match_recall": 0.15228426395939088
+      }
+    }
+  },
+  "surface_regression_example": {
+    "technology": "posthog-js",
+    "subject": "logs.resourceAttributes",
+    "summary": "Browser SDK logs now include the os.name resource attribute, overridable via logs.resourceAttributes.",
+    "baseline": "configuration",
+    "surface_arm": "runtime_internal",
+    "impact": "would cease to count as actionable in the tool"
+  },
+  "reference_provenance": {
+    "sha256": {
+      "h1": "fc5ab1984da3e854fdda593f40837ee01291ca464c6e7114f01f0de06e59648a",
+      "h2": "52c97719a1d58184c7fcc7cf45abc4516c46f2c1b999e45003f8e7bea69cbd97",
+      "h1_labels": "aa6a92b8566acc25888f76482129ba838954ad00522b453bcab3dec2d28c5669"
+    },
+    "legacy_reference_commit": "3755faa"
+  },
+  "protocol_schema_note": "The protocol field is the predeclared acceptance criterion, not the outcome. The original plan hash is retained. H1 labels were verified against the tracked reference in the pre-call protocol commit; their separate hash was not in the original plan."
+}
