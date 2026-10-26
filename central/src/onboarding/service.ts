@@ -19,6 +19,7 @@ import { advisoryReleases, fetchGuides, fetchReleases, foreignGuides, type Guide
 import { logUsage, readJson, sha256, withUsagePhase, writeAtomic } from "../pipeline/util.ts";
 import { reconcileLinkedEvidence, reconcileSources } from "./source-quality.ts";
 import { synthesize } from "./synthesis.ts";
+import { mergeChunkDuplicates, mergeSplitRecords } from "../pipeline/match.ts";
 import { publishTechnology } from "../pipeline/publish.ts";
 import { JOB_FILE, servedIndex } from "../pipeline/export.ts";
 import { loadStore, retractForeignGuideRecords, saveStore } from "../pipeline/store.ts";
@@ -1232,6 +1233,13 @@ export class CoverageService {
         console.error(`coverage: ${logName(job)}: ${foreign.length} records read only from another technology's upgrade guide retracted`);
         saveStore(store);
       }
+      // Records cut from one release-note item (one per API it names, same quote, summary and labels) become one.
+      const split = mergeSplitRecords(store);
+      // The same change in two parts of one release body, ingested before retrieval compared them: judged once each.
+      const judged = await mergeChunkDuplicates(store, tech.name, (st, q) => advisoryClassifier().classify(st, q));
+      const chunks = judged.filter((j) => j.outcome === "same").length;
+      if (split.length || chunks) console.error(`coverage: ${logName(job)}: ${split.length} records cut from the same release-note item and ${chunks} from another part of the same release notes merged`);
+      if (split.length || judged.length) saveStore(store);
       if (index.length) {
         this.save(job, "partial", "Checking security advisories");
         const read = new Set(job.completed ?? []);

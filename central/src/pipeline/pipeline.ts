@@ -11,7 +11,7 @@ import { advisoryStage, type AttachReport } from "./advisories.ts";
 import { fetchGuides, fetchReleases, foreignGuides, guideBounds, type GuideNote, type ReleaseNote } from "./fetch.ts";
 import { withTechLock } from "./lock.ts";
 import { buildIndex } from "./lines.ts";
-import { ingest } from "./match.ts";
+import { ingest, mergeChunkDuplicates, mergeSplitRecords } from "./match.ts";
 import { catalogDir, centralDir } from "./paths.ts";
 import { activeTerms, publishTechnology } from "./publish.ts";
 import { drawSample, sampleCounts } from "./sample.ts";
@@ -150,6 +150,12 @@ export async function runTechnology(
       relatedLinks += o.related.length;
       if (ingestedNow % 25 === 0) saveStore(store);
     }
+    // Records cut from one release-note item (one per API it names, same quote, summary and labels) become one.
+    const split = mergeSplitRecords(store);
+    if (split.length) console.log(`${t.id}: ${split.length} records cut from the same release-note item merged`);
+    // The same change in two parts of one release body, ingested before retrieval compared them: judged once each.
+    const chunks = (await mergeChunkDuplicates(store, t.name, (s, q) => cls.classify(s, q))).filter((j) => j.outcome === "same");
+    if (chunks.length) console.log(`${t.id}: ${chunks.length} records from another part of the same release notes merged`);
     if (!opts.limit) {
       const bounded = boundGuideRecords(store, guideBounds(t, fetched.notes));
       if (bounded) console.log(`${t.id}: ${bounded} records from a moving upgrade guide given a release bound`);
