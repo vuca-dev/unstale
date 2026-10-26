@@ -16,7 +16,7 @@
   "pooled_recall": 0.45384615384615384,
   "client_tokens_per_tierA_find": 3106.2830188679245
  },
- "unstale_raw@frozen-combined": {
+ "unstale_raw@frozen-reviewed": {
   "attempts": 19,
   "tierA_finds": 53,
   "pool_A": 117,
@@ -26,11 +26,11 @@
   "top8": 140,
   "finds": 118,
   "pool": 260,
-  "client_tokens": 164730,
+  "client_tokens": 164670,
   "tierA_recall": 0.452991452991453,
   "weighted_recall": 0.4534412955465587,
   "p8_ab": 0.2714285714285714,
   "pooled_recall": 0.45384615384615384,
-  "client_tokens_per_tierA_find": 3108.1132075471696
+  "client_tokens_per_tierA_find": 3106.9811320754716
  }
 }

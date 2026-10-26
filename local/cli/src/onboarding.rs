@@ -2072,8 +2072,7 @@ fn affected_identifiers(text: &str) -> Vec<String> {
     out
 }
 
-/// The affected APIs central extracted from advisory `id`'s text (`TechIndex::advisory_apis`, any technology's index:
-/// advisory ids are global), matched on the advisory's id or an alias; empty when no index names it.
+/// The APIs central extracted from advisory `id`, limited to technologies publishing `package` and matched by id or alias.
 fn advisory_apis(catalog: &crate::cache::Catalog, id: &str, package: &str) -> Vec<String> {
     catalog
         .techs

@@ -29,7 +29,18 @@ def relink(c,reference,arms,attempts):
                 r=dict(row);key=lead_identity(r);matches=refs.get(key,[]) if key else []
                 if len(matches)!=1 or matches[0]['item_key']==r['item_key']:continue
                 ref=matches[0]
-                changes.append({'attempt':at,'arm':arm,'rank':r['rank'],'from':r['item_key'],'to':ref['item_key'],'lead':key[-1]})
-                c.execute('update ab_items set item_key=?,claim=? where rowid=?',(ref['item_key'],ref['claim'],r['rowid']))
+                changes.append({'attempt':at,'arm':arm,'rank':r['rank'],'from':r['item_key'],'to':ref['item_key'],'installed':r['installed'],'target':r['target'],'reference_installed':ref['installed'],'reference_target':ref['target'],'lead':key[-1]})
+                c.execute('update ab_items set item_key=? where rowid=?',(ref['item_key'],r['rowid']))
     c.commit()
     return changes
+
+if __name__ == '__main__':
+    import argparse,json,sqlite3
+    p=argparse.ArgumentParser(description=__doc__)
+    p.add_argument('--db',required=True);p.add_argument('--reference',required=True)
+    p.add_argument('--arms',nargs='+',required=True);p.add_argument('--attempts',type=int,nargs='+',required=True)
+    p.add_argument('--out',required=True);a=p.parse_args()
+    c=sqlite3.connect(a.db);c.row_factory=sqlite3.Row
+    changes=relink(c,a.reference,a.arms,a.attempts)
+    with open(a.out,'w') as f:json.dump(changes,f,indent=1);f.write('\n')
+    print(f'{len(changes)} item keys linked; labels and claims unchanged')

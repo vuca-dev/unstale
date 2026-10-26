@@ -14,7 +14,9 @@ for (const name of readdirSync(join(out, 'central/records')).filter((f) => f.end
   const original = JSON.parse(readFileSync(join(base, 'central/records', name), 'utf8')) as TechStore;
   const before = JSON.stringify(s);
   for (const r of Object.values(original.records).filter((r) => r.status === 'active' && s.records[r.id]?.status === 'merged')) {
-    let into = s.records[r.id]!;
+    const stub = s.records[r.id]!;
+    if (!stub.history.some((h) => h.action === 'merged' && (h.detail?.startsWith('cut from the same release-note item into ') || h.detail?.startsWith('the same change in another part of the same release notes (p=')))) continue;
+    let into = stub;
     const seen = new Set<string>();
     while (into.status === 'merged') {
       if (seen.has(into.id)) throw new Error(`merge cycle ${into.id}`);

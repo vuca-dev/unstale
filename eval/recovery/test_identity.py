@@ -1,5 +1,5 @@
-import unittest
-from identity import lead_identity
+import unittest,sqlite3,json
+from identity import lead_identity,relink
 
 class IdentityTests(unittest.TestCase):
     def item(self,counts='7 advisories, 79 fixes'):
@@ -14,6 +14,21 @@ class IdentityTests(unittest.TestCase):
     def test_other_records_related_files_are_not_the_cited_site(self):
         original=self.item();other={**original,'sites':['other-record.ts']}
         self.assertEqual(lead_identity(original),lead_identity(other))
+    def test_relink_changes_only_keys_and_checks_the_actual_version_fields(self):
+        c=sqlite3.connect(':memory:');c.row_factory=sqlite3.Row
+        c.executescript('CREATE TABLE ab_runs(attempt INTEGER,arm TEXT,commit_sha TEXT); CREATE TABLE ab_items(attempt INTEGER,arm TEXT,rank INTEGER,package TEXT,installed TEXT,target TEXT,evidence_url TEXT,sites TEXT,summary TEXT,item_key TEXT,claim TEXT);')
+        for arm in ['base','candidate']:c.execute('INSERT INTO ab_runs VALUES(1,?,?)',(arm,'same-commit'))
+        for arm,key,claim in [('base','opaque-historical-key-0.9','reference claim'),('candidate','new-key','candidate claim')]:
+            r=self.item('5 fixes' if arm=='candidate' else '7 fixes')
+            c.execute('INSERT INTO ab_items VALUES(?,?,?,?,?,?,?,?,?,?,?)',(1,arm,1,r['package'],r['installed'],r['target'],r['evidence_url'],json.dumps(r['sites']),r['summary'],key,claim))
+        c.execute("UPDATE ab_items SET target='3.0.0' WHERE arm='candidate'")
+        self.assertEqual(relink(c,'base',['candidate'],[1]),[])
+        c.execute("UPDATE ab_items SET target='2.0.0' WHERE arm='candidate'")
+        links=relink(c,'base',['candidate'],[1]);self.assertEqual(len(links),1)
+        self.assertEqual(links[0]['target'],links[0]['reference_target'])
+        row=c.execute("SELECT item_key,claim FROM ab_items WHERE arm='candidate'").fetchone()
+        self.assertEqual(tuple(row),('opaque-historical-key-0.9','candidate claim'))
+        self.assertEqual(relink(c,'base',['candidate'],[1]),[])
     def test_a_count_without_a_record_is_never_enough(self):
         item=self.item();item['summary']=item['summary'].replace('[pkg:oldCall]','')
         self.assertIsNone(lead_identity(item))

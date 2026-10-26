@@ -1,3 +1,5 @@
+Deterministic ranking-only release check (`GATE_K=0`). Agent-review arms were not run.
+
 | Split | Class | Key | Covered | In CLI queue | CLI first 16 | First 16 as invoked | tier: found mean [min-max] | tier: do now (found) | tier: unstable | all: found mean [min-max] | all: do now (found) | all: unstable |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | DEV (9) | all | 115 | 72 (-2) | 65 (+1) | 43 (-2) | 42 (-2) | - | - | - | - | - | - |
