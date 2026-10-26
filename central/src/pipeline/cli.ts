@@ -19,7 +19,7 @@
 //
 // Corrections: revision fields (change_type, breaking, releases, prerequisites, requires, replaces, or --claim for a
 // meaningful correction of the claim) bump `revision`; label fields bump `label_version`.
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { advisoryStage, advisoryStats } from "./advisories.ts";
@@ -240,13 +240,18 @@ async function main(): Promise<void> {
       // The pipeline and the onboarding service run both passes after ingest; this runs them alone, on every stored
       // technology with --all (records/*.json, onboarded ones included).
       const { values } = parseArgs({ args: rest, options: { tech: { type: "string" }, all: { type: "boolean" }, "no-chunks": { type: "boolean" }, "no-publish": { type: "boolean" } } });
-      const ids = values.all ? readdirSync(join(centralDir(), "records")).filter((f) => f.endsWith(".json")).map((f) => readJson<{ technology: string }>(join(centralDir(), "records", f))!.technology) : technologies(values.tech).map((t) => t.id);
+      const dir = join(centralDir(), "records");
+      // --all: the stores on disk (a restored state hydrates a technology's store on first use; hydrate it first).
+      const ids = values.all ? (existsSync(dir) ? readdirSync(dir) : []).filter((f) => f.endsWith(".json")).map((f) => readJson<{ technology: string }>(join(centralDir(), "records", f))!.technology) : technologies(values.tech).map((t) => t.id);
       const cls = makeClassifier();
       const total = { split: 0, chunks: 0 };
       for (const id of ids) await withTechLock(id, "dedupe", async () => {
         const s = loadStore(id);
         const split = mergeSplitRecords(s).length;
-        const chunks = values["no-chunks"] ? 0 : (await mergeChunkDuplicates(s, TECHNOLOGIES[id]?.name ?? id.replace(/-[0-9a-f]{8}$/, ""), (st, q) => cls.classify(st, q))).filter((j) => j.outcome === "same").length;
+        const judged = values["no-chunks"] ? [] : await mergeChunkDuplicates(s, TECHNOLOGIES[id]?.name ?? id.replace(/-[0-9a-f]{8}$/, ""), (st, q) => cls.classify(st, q));
+        const chunks = judged.filter((j) => j.outcome === "same").length;
+        // Judgements are kept (history) even when nothing merged, so a rerun does not ask them again.
+        if (judged.length && !split && !chunks) saveStore(s);
         if (!split && !chunks) return;
         total.split += split;
         total.chunks += chunks;

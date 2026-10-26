@@ -1240,6 +1240,8 @@ export class CoverageService {
       const chunks = judged.filter((j) => j.outcome === "same").length;
       if (split.length || chunks) console.error(`coverage: ${logName(job)}: ${split.length} records cut from the same release-note item and ${chunks} from another part of the same release notes merged`);
       if (split.length || judged.length) saveStore(store);
+      // Merged records are stubs now: the job counts active ones.
+      if (split.length || chunks) job.records = Object.values(store.records).filter((r) => r.status === "active").length;
       if (index.length) {
         this.save(job, "partial", "Checking security advisories");
         const read = new Set(job.completed ?? []);

@@ -627,7 +627,12 @@ export async function mergeChunkDuplicates(
       groups.set(k, [...(groups.get(k) ?? []), r]);
     }
   }
-  const asked = (r: StoredRecord, c: StoredRecord) => r.history.some((h) => (h.action === "chunk-match" && h.detail === c.id) || h.judged?.some((j) => j.id === c.id));
+  // A pair is asked once: judged at ingest or by this pass (either record's history), or earlier in this call.
+  const done = new Set<string>();
+  const asked = (r: StoredRecord, c: StoredRecord) =>
+    done.has(`${r.id}\u0000${c.id}`) ||
+    r.history.some((h) => (h.action === "chunk-match" && h.detail === c.id) || h.judged?.some((j) => j.id === c.id)) ||
+    c.history.some((h) => (h.action === "chunk-match" && h.detail === r.id) || h.judged?.some((j) => j.id === r.id));
   const out: Array<{ from: string; into: string; p: number; outcome: Judged["outcome"] }> = [];
   for (const g of [...groups.values()].filter((x) => x.length > 1)) {
     for (const [i, r] of g.entries()) {
@@ -640,6 +645,7 @@ export async function mergeChunkDuplicates(
         const v = await judge(req.state, req.questions);
         const got = pick([c], v.answers, { breaking: r.breaking, quote: inc.quote, summary: inc.summary, kind: kindOf(inc), url: inc.url, snapshot: inc.snapshot, version: inc.version }, v.calibrated !== false);
         const j = got.judged[0]!;
+        done.add(`${r.id}\u0000${c.id}`);
         out.push({ from: r.id, into: c.id, p: j.p, outcome: j.outcome });
         if (dryRun) continue;
         r.history.push({ action: "chunk-match", detail: c.id, revision: r.revision, label_version: r.label_version, judged: got.judged });
