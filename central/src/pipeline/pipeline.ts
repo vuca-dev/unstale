@@ -17,6 +17,7 @@ import { activeTerms, publishTechnology } from "./publish.ts";
 import { drawSample, sampleCounts } from "./sample.ts";
 import { checkIncoming } from "./prereqs.ts";
 import { boundGuideRecords, loadStore, retractForeignGuideRecords, saveStore } from "./store.ts";
+import { typeStubDeprecations } from "./type-stubs.ts";
 import { TECHNOLOGIES, type Technology } from "./technologies.ts";
 import { compareVersions, pool, writeAtomic } from "./util.ts";
 import { DEFAULT_HTTP, HttpClient } from "../collector/http.ts";
@@ -159,85 +160,6 @@ export async function runTechnology(
       if (chunks.length) console.log(`${t.id}: ${chunks.length} records from another part of the same release notes merged`);
     }
     if (!opts.limit) {
-      const bounded = boundGuideRecords(store, guideBounds(t, fetched.notes));
-      if (bounded) console.log(`${t.id}: ${bounded} records from a moving upgrade guide given a release bound`);
-      const foreign = retractForeignGuideRecords(store, foreignGuides(t));
-      if (foreign.length) console.log(`${t.id}: ${foreign.length} records read only from another technology's upgrade guide retracted`);
-    }
-    saveStore(store);
-    // Docs events whose notes all extracted are done; one with a failed call is planned again next run.
-    if (docsPlan) {
-      const base = notesToRun.length;
-      const failed = new Set(docsNotes.filter((_, i) => extracted[base + i]!.failed > 0).map((n) => n.event));
-      markExtracted(t.id, [...completeEvents(docsNotes, failed, docsPlan.notes), ...docsPlan.settled]);
-    }
-    // Security advisories (OSV) attached to the records of their fix (advisories.ts).
-    let advisoryReport: AttachReport | undefined;
-    if (opts.advisories !== false && !opts.limit) {
-      advisoryReport = await advisoryStage(t, store, fetched.notes, (s, q) => cls.classify(s, q), { refresh: !!opts.refresh, offline: !!opts.offline, unread });
-      saveStore(store);
-    }
-    const recs = Object.values(store.records);
-    const report: TechReport = {
-      technology: t.id,
-      releases: releases.length,
-      fetchRequests: fetched.stats.requests,
-      extracted: incoming.length,
-      failedCalls,
-      ungrounded: incoming.filter((i) => !i.grounded).length,
-      ingestedNow,
-      matched,
-      guardBlocked,
-      relatedLinks,
-      active: recs.filter((r) => r.status === "active").length,
-      stubs: recs.filter((r) => r.status !== "active").length,
-      shards: 0,
-      catalogBytes: 0,
-      shardsWritten: 0,
-      sampleN: 0,
-      prerequisitesToConditions: movedToConditions,
-      ...(advisoryReport ? { advisories: advisoryReport } : {}),
-      ...(deferred.budget || deferred.cap ? { deferred } : {}),
-      ...(docsPlan
-        ? {
-            docs: {
-              ...(pass ? { checked: pass.checked, events: pass.events } : {}),
-              notes: docsNotes.length,
-              pending: docsPlan.notes.length - docsNotes.length,
-              held: Object.values(docsPlan.held).reduce((a, b) => a + b, 0),
-            },
-          }
-        : {}),
-    };
-    // The rarity sample is drawn only on request (the catalog ships with the edge's fallback rarity, since no selection
-    // rule beat it); a sample in the store (`sample.json`) is still counted and published.
-    if (opts.sample === true) await drawSample(t, store);
-    if (opts.publish !== false) {
-      const sample = sampleCounts(t.id, activeTerms(store));
-      report.sampleN = sample?.n ?? 0;
-      const p = publishTechnology(store, fetched.checked, catalogDir(), sample);
-      report.shards = p.index.shards.length;
-      report.catalogBytes = p.bytes;
-      report.shardsWritten = p.written;
-    }
-    return report;
-  });
-}
-
-/**
- * Labels the records an ingest in this order will take: the first of each key not in `ingested` (ingest records every
- * key it takes, so a later record with the same key is skipped too). Labels of any other record would be discarded.
- */
-export async function labelPending(order: Incoming[], ingested: Record<string, string>, label: (inc: Incoming) => Promise<Labels>): Promise<Map<Incoming, Labels>> {
-  const seen = new Set(Object.keys(ingested));
-  const todo = order.filter((inc) => !seen.has(inc.key) && !!seen.add(inc.key));
-  const out = await pool(todo, 4, label);
-  return new Map(todo.map((inc, i) => [inc, out[i]!]));
-}
-
-export function technologies(filter?: string): Technology[] {
-  if (!filter) return Object.values(TECHNOLOGIES);
-  const t = TECHNOLOGIES[filter];
-  if (!t) throw new Error(`unknown technology ${filter}; known: ${Object.keys(TECHNOLOGIES).join(", ")}`);
-  return [t];
-}
+      // Deprecations the technology's type stubs state in their declarations (no release notes say them).
+      const typed = await typeStubDeprecations(t, store, { refresh: !!opts.refresh, offline: !!opts.offline });
+      if (typed.length) console.log(`${t.id}: ${typed.length} deprecations from its type stubs' declarations`);
