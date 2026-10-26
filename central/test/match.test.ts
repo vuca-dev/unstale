@@ -582,6 +582,9 @@ describe("duplicates from one release body", () => {
     await ingest(s, "Next.js", COMPONENTS, split("next@16.3.2#0.1", "maxCodePoints"), labels({ change_type: "new_option" }), j.fn);
     await ingest(s, "Next.js", COMPONENTS, split("next@16.3.2#0.2", "minCodePoints"), labels({ change_type: "new_api", breaking: true }), j.fn);
     await ingest(s, "Next.js", COMPONENTS, split("next@16.4.0#0.0", "notCodePoints", { snapshot: "sha256:other", version: "16.4.0" }), labels({ change_type: "new_api" }), judge(() => 0).fn);
+    // A generic quote that names neither subject: two extractor fixes under "Fix extractor" are two changes.
+    for (const [i, sub] of ["tele5", "aenetworks"].entries())
+      await ingest(s, "Next.js", COMPONENTS, split(`next@16.3.2#2.${i}`, sub, { quote: "Fix extractor", summary: "The extractor is fixed." }), labels({ change_type: "fix" }), judge(() => 0).fn);
     expect(mergeSplitRecords(s)).toEqual([]);
   });
 

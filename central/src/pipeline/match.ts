@@ -533,7 +533,8 @@ const keyOrder = (a: string, b: string): number => a.localeCompare(b, "en", { nu
  * `codePoints`, `maxCodePoints`, `minCodePoints` and `notCodePoints` validation actions" became four records), each with
  * the item's quote and the same summary and labels. Ingest never compares them (`retrieve` skips records of the same
  * snapshot), and to a reader they are one change shown several times. Active records that share an evidence entry
- * (snapshot and normalised quote) and have the same summary, change_type and breaking flag are merged into the first
+ * (snapshot and normalised quote) naming each one's subject, and have the same summary, change_type and breaking flag,
+ * are merged into the first
  * extracted one: the others' subjects join its terms and their replaces, requires, introduces, conditions,
  * prerequisites and benefits are kept. No model call. Returns the merges made, in order.
  */
@@ -549,11 +550,18 @@ export function mergeSplitRecords(s: TechStore): Array<{ from: string; into: str
     while (parent.get(x) !== x) x = parent.get(x)!;
     return x;
   };
+  // The item names the record's subject (or its last segment: `LSODA` of `scipy.integrate.LSODA`): two records that
+  // share only a generic quote ("Fix extractor" for two extractors) are two changes.
+  const names = (q: string, subject: string): boolean => {
+    const sub = subject.toLowerCase().replace(/[`*_\\]/g, "").trim();
+    const tail = sub.split(/[./:#]/).filter(Boolean).at(-1) ?? "";
+    return !!sub && (q.includes(sub) || (tail.length >= 3 && q.includes(tail)));
+  };
   for (const r of active) {
     parent.set(r.id, r.id);
     for (const e of r.evidence) {
       const q = normQuote(e.quote);
-      if (!q || !e.snapshot) continue;
+      if (!q || !e.snapshot || !names(q, r.subject)) continue;
       const k = [e.snapshot, q, norm(r.summary), r.change_type, r.breaking].join("\u0000");
       const seen = first.get(k);
       if (seen === undefined) first.set(k, r.id);
