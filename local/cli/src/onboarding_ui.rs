@@ -356,17 +356,6 @@ impl Display {
             });
         echoes.then(|| self.echoed_lines.clone())
     }
-    /// Whether `lines` fit under the moving artwork in this terminal.
-    pub fn can_show(&self, lines: &[Line]) -> bool {
-        let size = dimensions().unwrap_or(self.size);
-        self.animated && self.thread.is_some() && Layout::fit(size.0, size.1, render(lines, size.1.saturating_sub(1), false).len()).is_some()
-    }
-    /// Shows `lines` under the artwork, which keeps moving: work goes on, and `present` ends it.
-    pub fn show(&self, lines: Vec<Line>) {
-        let mut state = self.state.lock().unwrap();
-        state.result = Some(lines);
-        state.footer = None;
-    }
     pub fn present(mut self, lines: Vec<Line>, linger: bool, leave: &AtomicBool) {
         self.flush_plain();
         let size = if self.thread.is_some() {
@@ -435,45 +424,6 @@ impl Display {
         for line in render(&lines, size.1.saturating_sub(1), color) {
             println!("{line}");
         }
-    }
-}
-/// A few lines redrawn in place below output that stays (the printed report and its prompt), on stderr.
-pub struct Live {
-    rows: usize,
-    color: bool,
-    /// Lines the terminal echoed from input (Enter) since the last draw, which sit below the drawn rows.
-    echoed: Option<Arc<AtomicUsize>>,
-}
-impl Live {
-    /// None when stderr is not an interactive terminal.
-    pub fn start(echoed: Option<Arc<AtomicUsize>>) -> Option<Self> {
-        let terminal = std::io::stderr().is_terminal() && std::env::var("TERM").unwrap_or_default() != "dumb";
-        terminal.then(|| Self { rows: 0, color: std::env::var_os("NO_COLOR").is_none(), echoed })
-    }
-    pub fn draw(&mut self, lines: &[Line]) {
-        let width = dimensions().map_or(80, |d| d.1);
-        let body = render(lines, width.saturating_sub(1), self.color);
-        let echoed = self.echoed.as_ref().map_or(0, |e| e.swap(0, Ordering::AcqRel));
-        let mut err = std::io::stderr().lock();
-        if self.rows + echoed > 0 {
-            let _ = write!(err, "\x1b[{}A", self.rows + echoed);
-        }
-        for line in &body {
-            let _ = writeln!(err, "\r\x1b[2K{line}");
-        }
-        // Only rows this region drew before are erased, never the report above it.
-        for _ in body.len()..self.rows + echoed {
-            let _ = writeln!(err, "\r\x1b[2K");
-        }
-        if self.rows + echoed > body.len() {
-            let _ = write!(err, "\x1b[{}A", self.rows + echoed - body.len());
-        }
-        let _ = err.flush();
-        self.rows = body.len();
-    }
-    /// The final lines replace the region and stay.
-    pub fn settle(mut self, lines: &[Line]) {
-        self.draw(lines);
     }
 }
 impl Drop for Display {

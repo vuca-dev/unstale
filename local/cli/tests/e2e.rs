@@ -302,6 +302,8 @@ fn onboarding_status_reports_features_without_running_an_agent_and_resumes_jobs(
     assert!(!output.contains("Installed Codex review skills"));
     assert!(!output.contains("Keep decisions personal or shared?"));
     assert!(output.contains("NEXT · Review with unstale-review"));
+    assert!(flat.contains("Rank upgrades and capabilities by likely impact."));
+    assert!(flat.find("Details:").unwrap() < flat.find("NEXT · Review").unwrap());
     assert!(flat.find("Next: run unstale-review").unwrap() < flat.find("Upgrades to review").unwrap());
     assert!(!output.contains("\n  \n  2."), "Blank lines belong between sections, not numbered items");
     assert!(output.contains("━"));
@@ -385,6 +387,7 @@ fn first_install_offline_finishes_with_an_honest_empty_report() {
     let output = env.ok(&["init", "--service", "http://127.0.0.1:9", "--mode", "local", "--yes", "--wait", "0", "--no-animation"]);
     assert!(started.elapsed().as_secs() < 5);
     assert!(output.contains("Coverage service unavailable"));
+    assert!(env.read(".unstale/state/onboarding-log.txt").contains("Service availability:"));
     assert!(output.contains("No strong capability candidates"));
     assert!(!output.contains("Feature and impact opportunities to explore"));
     let report = env.read(".unstale/onboarding-report.md");
