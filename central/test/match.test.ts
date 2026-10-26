@@ -4,7 +4,7 @@ import { describe, expect, test } from "vitest";
 import type { Classification } from "../src/pipeline/classify/adapter.ts";
 import type { Labels } from "../src/pipeline/classify/labels.ts";
 import type { Incoming } from "../src/pipeline/extract.ts";
-import { advisoryIds, documentKey, finerOrBroader, guard, ingest, nearIdenticalQuote, normQuote, pick, retrieve, sameLineage, similarity } from "../src/pipeline/match.ts";
+import { advisoryIds, documentKey, finerOrBroader, guard, ingest, mergeChunkDuplicates, mergeSplitRecords, nearIdenticalQuote, normQuote, pick, retrieve, sameLineage, similarity } from "../src/pipeline/match.ts";
 import { applyChange, combineReleases, mergeInto, mintId, retract, type StoredRecord, type TechStore } from "../src/pipeline/store.ts";
 import { QUESTION_FLOOR } from "../src/pipeline/thresholds.ts";
 
@@ -540,5 +540,100 @@ describe("lineage matching (a later version of the same document)", () => {
   test("the breaking guard still applies within a lineage", async () => {
     const r = await rec();
     expect(guard({ ...later, breaking: true }, r, 0.9)).toBe("guard:breaking");
+  });
+});
+
+// Known bugs 2.5 (QA 2026-10-19 duplicate records per feature; sveltejs/kit attempt 57).
+describe("duplicates from one release body", () => {
+  const LINE = "Add `codePoints`, `maxCodePoints`, `minCodePoints` and `notCodePoints` validation actions to validate the number of Unicode code points.";
+  const split = (key: string, subject: string, over: Partial<Incoming> = {}) =>
+    inc({ key, technology: "next", subject, quote: LINE, summary: "Adds a validation action to validate the number of Unicode code points.", terms: ["v.string()"], ...over });
+
+  test("records cut from one release-note item (same quote, summary and labels) merge into the first; their subjects join its terms", async () => {
+    const s = store();
+    const j = judge(() => 0);
+    // One extraction call: retrieve skips same-snapshot records, so ingest never compares them.
+    for (const [i, sub] of ["codePoints", "maxCodePoints", "minCodePoints", "notCodePoints"].entries())
+      await ingest(s, "Next.js", COMPONENTS, split(`next@16.3.2#0.${i}`, sub, i === 3 ? { replaces: ["v.custom"] } : {}), labels({ change_type: "new_api" }), j.fn);
+    // Same item, a different change: another summary stays its own record.
+    await ingest(s, "Next.js", COMPONENTS, split("next@16.3.2#0.4", "graphemes", { summary: "Adds grapheme validation." }), labels({ change_type: "new_api" }), j.fn);
+    expect(j.calls).toHaveLength(0);
+    expect(mergeSplitRecords(s)).toEqual([
+      { from: "next:maxcodepoints", into: "next:codepoints" },
+      { from: "next:mincodepoints", into: "next:codepoints" },
+      { from: "next:notcodepoints", into: "next:codepoints" },
+    ]);
+    const r = s.records["next:codepoints"]!;
+    expect(r.status).toBe("active");
+    expect(r.terms).toEqual(expect.arrayContaining(["maxCodePoints", "minCodePoints", "notCodePoints"]));
+    expect(r.replaces).toEqual(["v.custom"]);
+    expect(r.evidence).toHaveLength(1);
+    expect(s.records["next:notcodepoints"]).toMatchObject({ status: "merged", merged_into: "next:codepoints" });
+    expect(s.records["next:graphemes"]!.status).toBe("active");
+    expect(s.ingested["next@16.3.2#0.2"]).toBe("next:codepoints");
+    // Idempotent.
+    expect(mergeSplitRecords(s)).toEqual([]);
+  });
+
+  test("the same quote with another change_type or breaking flag, or from another snapshot, is not merged", async () => {
+    const s = store();
+    const j = judge(() => 0);
+    await ingest(s, "Next.js", COMPONENTS, split("next@16.3.2#0.0", "codePoints"), labels({ change_type: "new_api" }), j.fn);
+    await ingest(s, "Next.js", COMPONENTS, split("next@16.3.2#0.1", "maxCodePoints"), labels({ change_type: "new_option" }), j.fn);
+    await ingest(s, "Next.js", COMPONENTS, split("next@16.3.2#0.2", "minCodePoints"), labels({ change_type: "new_api", breaking: true }), j.fn);
+    await ingest(s, "Next.js", COMPONENTS, split("next@16.4.0#0.0", "notCodePoints", { snapshot: "sha256:other", version: "16.4.0" }), labels({ change_type: "new_api" }), judge(() => 0).fn);
+    // A generic quote that names neither subject: two extractor fixes under "Fix extractor" are two changes.
+    for (const [i, sub] of ["tele5", "aenetworks"].entries())
+      await ingest(s, "Next.js", COMPONENTS, split(`next@16.3.2#2.${i}`, sub, { quote: "Fix extractor", summary: "The extractor is fixed." }), labels({ change_type: "fix" }), judge(() => 0).fn);
+    expect(mergeSplitRecords(s)).toEqual([]);
+  });
+
+  // zod 4.5.0: `z.compile` in the highlights (chunk 0) and again in the commit list (chunk 1) of one release body.
+  const compile = (key: string, summary: string, quote: string) =>
+    inc({ key, technology: "next", subject: "z.compile", summary, quote, terms: ["z.compile"] });
+  const A = compile("next@16.3.2#0.0", "Pre-compiles any schema for substantially faster parsing.", "You can now pre-compile any Zod schema using `z.compile(schema)`.");
+  const B = compile("next@16.3.2#1.5", "Adds ahead-of-time schema compilation.", "feat(v4): z.compile — ahead-of-time schema compilation");
+
+  test("another chunk of the same release body is retrieved for the same subject, and matches at the cross-source bar", async () => {
+    const s = store();
+    await ingest(s, "Next.js", COMPONENTS, A, labels({ change_type: "new_api" }), judge(() => 0).fn);
+    // The same chunk (the extractor saw both) or another subject stays excluded.
+    expect(retrieve({ ...B, key: "next@16.3.2#0.7" }, Object.values(s.records))).toEqual([]);
+    expect(retrieve({ ...B, subject: "zod/compile" }, Object.values(s.records))).toEqual([]);
+    expect(retrieve(B, Object.values(s.records)).map((c) => c.id)).toEqual(["next:z.compile"]);
+    // Quotes of one document differ by construction: no quote guard, the judge must reach the cross-source bar.
+    const s2 = store();
+    await ingest(s2, "Next.js", COMPONENTS, A, labels({ change_type: "new_api" }), judge(() => 0).fn);
+    const blocked = await ingest(s2, "Next.js", COMPONENTS, B, labels({ change_type: "new_api" }), judge(() => 0.88).fn);
+    expect(blocked).toMatchObject({ matched: false, judged: [{ id: "next:z.compile", p: 0.88, outcome: "guard:cross" }] });
+    const m = await ingest(s, "Next.js", COMPONENTS, B, labels({ change_type: "new_api" }), judge(() => 0.99).fn);
+    expect(m).toMatchObject({ id: "next:z.compile", matched: true });
+  });
+
+  test("records ingested before that are judged once each and merged when the same", async () => {
+    // Ingested the old way: B got no same-snapshot candidate, so a second record was minted.
+    const old = async () => {
+      const s = store();
+      await ingest(s, "Next.js", COMPONENTS, A, labels({ change_type: "new_api" }), judge(() => 0).fn);
+      const other = store();
+      await ingest(other, "Next.js", COMPONENTS, B, labels({ change_type: "new_api" }), judge(() => 0).fn);
+      s.records["next:z.compile~2"] = { ...structuredClone(Object.values(other.records)[0]!), id: "next:z.compile~2" };
+      s.ingested[B.key] = "next:z.compile~2";
+      return s;
+    };
+    const s = await old();
+    const j = judge(() => 0.97);
+    expect(await mergeChunkDuplicates(s, "Next.js", j.fn)).toEqual([{ from: "next:z.compile~2", into: "next:z.compile", p: 0.97, outcome: "same" }]);
+    expect(j.calls).toHaveLength(1);
+    expect(s.records["next:z.compile~2"]).toMatchObject({ status: "merged", merged_into: "next:z.compile" });
+    expect(s.ingested[B.key]).toBe("next:z.compile");
+    expect(await mergeChunkDuplicates(s, "Next.js", j.fn)).toEqual([]);
+    // A pair judged different stays two records and is not asked again.
+    const t = await old();
+    const no = judge(() => 0.1);
+    expect((await mergeChunkDuplicates(t, "Next.js", no.fn)).map((x) => x.outcome)).toEqual(["below"]);
+    expect(await mergeChunkDuplicates(t, "Next.js", no.fn)).toEqual([]);
+    expect(no.calls).toHaveLength(1);
+    expect(t.records["next:z.compile~2"]!.status).toBe("active");
   });
 });

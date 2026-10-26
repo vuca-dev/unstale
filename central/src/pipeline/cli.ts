@@ -9,6 +9,8 @@
 //   npm run catalog -- merge <from-id> <into-id> [--note text] [--no-publish]
 //   npm run catalog -- retract <id> [--note text] [--no-publish]
 //   npm run catalog -- publish [--tech next]
+//   npm run catalog -- dedupe [--tech next | --all] [--no-chunks] [--no-publish]   (records cut from one release-note item, and
+//     the same change in two parts of one release body, merged; match.ts mergeSplitRecords, mergeChunkDuplicates)
 //   npm run catalog -- check-prerequisites [--tech next] [--no-publish]   (npm registry check of a store built before it)
 //   npm run catalog -- advisories [--tech next] [--offline] [--no-publish]   (the advisories stage: OSV, resolve, attach)
 //   npm run catalog -- prune [--dry-run]   (delete shards unreferenced for more than 7 days; prune.ts)
@@ -17,7 +19,7 @@
 //
 // Corrections: revision fields (change_type, breaking, releases, prerequisites, requires, replaces, or --claim for a
 // meaningful correction of the claim) bump `revision`; label fields bump `label_version`.
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { advisoryStage, advisoryStats } from "./advisories.ts";
@@ -28,6 +30,7 @@ import { usageStats } from "./classify/adapter.ts";
 import { withTechLock, withTechLockSync } from "./lock.ts";
 import { catalogDir, centralDir } from "./paths.ts";
 import { makeClassifier, runTechnology, technologies, type TechReport } from "./pipeline.ts";
+import { mergeChunkDuplicates, mergeSplitRecords } from "./match.ts";
 import { exportCatalog } from "./export.ts";
 import { pruneCatalog } from "./prune.ts";
 import { activeTerms, publishTechnology, shardLine } from "./publish.ts";
@@ -231,6 +234,32 @@ async function main(): Promise<void> {
         if (!values["no-publish"]) republish(t.id);
       });
       console.log(JSON.stringify({ classifier: cls.counts, uncached_calls: usageStats, network: advisoryStats }));
+      return;
+    }
+    case "dedupe": {
+      // The pipeline and the onboarding service run both passes after ingest; this runs them alone, on every stored
+      // technology with --all (records/*.json, onboarded ones included).
+      const { values } = parseArgs({ args: rest, options: { tech: { type: "string" }, all: { type: "boolean" }, "no-chunks": { type: "boolean" }, "no-publish": { type: "boolean" } } });
+      const dir = join(centralDir(), "records");
+      // --all: the stores on disk (a restored state hydrates a technology's store on first use; hydrate it first).
+      const ids = values.all ? (existsSync(dir) ? readdirSync(dir) : []).filter((f) => f.endsWith(".json")).map((f) => readJson<{ technology: string }>(join(centralDir(), "records", f))!.technology) : technologies(values.tech).map((t) => t.id);
+      const cls = makeClassifier();
+      const total = { split: 0, chunks: 0 };
+      for (const id of ids) await withTechLock(id, "dedupe", async () => {
+        const s = loadStore(id);
+        const split = mergeSplitRecords(s).length;
+        const judged = values["no-chunks"] ? [] : await mergeChunkDuplicates(s, TECHNOLOGIES[id]?.name ?? id.replace(/-[0-9a-f]{8}$/, ""), (st, q) => cls.classify(st, q));
+        const chunks = judged.filter((j) => j.outcome === "same").length;
+        // Judgements are kept (history) even when nothing merged, so a rerun does not ask them again.
+        if (judged.length && !split && !chunks) saveStore(s);
+        if (!split && !chunks) return;
+        total.split += split;
+        total.chunks += chunks;
+        saveStore(s);
+        console.log(JSON.stringify({ technology: id, split, chunks }));
+        if (!values["no-publish"]) republish(id);
+      });
+      console.log(JSON.stringify({ technologies: ids.length, merged: total, classifier: cls.counts, uncached_calls: usageStats }));
       return;
     }
     case "publish": {

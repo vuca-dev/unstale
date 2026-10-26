@@ -21,6 +21,7 @@ npm run catalog -- correct <id> change_type=removal replaces=a,b [--claim] [--no
 npm run catalog -- merge <from-id> <into-id>
 npm run catalog -- retract <id> [--note text]
 npm run catalog -- publish [--tech next]
+npm run catalog -- dedupe [--tech next | --all]   # merge records cut from one release-note item, and one change named in two parts of a release body
 npm run catalog -- usage                 # model calls and tokens from the usage log; by_phase: onboarding vs monitoring
 npm run catalog -- prune [--dry-run]     # delete shards no index has referenced for 7 days (history in catalog/history/)
 npm run catalog -- export <dir>          # prune, then a static copy of v1/ (with components, .nojekyll) for GitHub Pages
