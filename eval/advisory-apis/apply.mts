@@ -12,7 +12,8 @@ import { catalogDir, centralDir } from "../../central/src/pipeline/paths.ts";
 import { activeTerms, publishTechnology } from "../../central/src/pipeline/publish.ts";
 import { sampleCounts } from "../../central/src/pipeline/sample.ts";
 import { loadStore, saveStore } from "../../central/src/pipeline/store.ts";
-import type { Technology } from "../../central/src/pipeline/technologies.ts";
+import { TECHNOLOGIES, type Technology } from "../../central/src/pipeline/technologies.ts";
+import { withTechLock } from "../../central/src/pipeline/lock.ts";
 import { pool, readJson } from "../../central/src/pipeline/util.ts";
 import { techLocal } from "../../central/src/state/client.ts";
 
@@ -20,15 +21,15 @@ if (!process.env.UNSTALE_STORE) throw new Error("set UNSTALE_STORE to the store 
 const want = new Set(readFileSync(process.argv[2]!, "utf8").split("\n").map((x) => x.trim().toUpperCase()).filter(Boolean));
 const ids = readdirSync(join(centralDir(), "records")).filter((f) => f.endsWith(".json")).map((f) => readJson<{ technology: string }>(join(centralDir(), "records", f))!.technology);
 const total = { technologies: 0, advisories: 0, named: 0, records: 0 };
-await pool(ids, 4, async (id) => {
+await pool(ids, 4, (id) => withTechLock(id, "advisory-apis", async () => {
   const purls = readJson<{ purls?: string[] }>(join(centralDir(), "advisories", techLocal(id), "packages.json"))?.purls;
   if (!purls?.length) return;
-  const t = { id, name: id, repo: "", components: purls, tag: /^$/, clean: (b: string) => b } as Technology;
+  const t = TECHNOLOGIES[id] ?? ({ id, name: id, repo: "", components: purls, tag: /^$/, clean: (b: string) => b } as Technology);
   const advisories = (await fetchAdvisories(t, { offline: true })).filter((a) => [a.id, ...a.aliases].some((x) => want.has(x.toUpperCase())));
   if (!advisories.length) return;
   const s = loadStore(id);
   const before = s.advisoryApis ?? [];
-  const r = await attachAdvisoryApis(s, advisories, packageNamesOf(purls), await osvTexts(t), (x) => aliasDetails(t, x));
+  const r = await attachAdvisoryApis(s, advisories, packageNamesOf([...t.components, ...purls]), await osvTexts(t), (x) => aliasDetails(t, x));
   // A partial run keeps the entries of advisories outside this id set.
   const now = new Set((s.advisoryApis ?? []).map((e) => e.ids[0]));
   const asked = new Set(advisories.map((a) => a.id));
@@ -40,5 +41,5 @@ await pool(ids, 4, async (id) => {
   saveStore(s);
   const checked = readJson<{ checked: string }>(join(centralDir(), "releases", techLocal(id), "index.json"))?.checked ?? new Date(0).toISOString();
   publishTechnology(s, checked, catalogDir(), sampleCounts(id, activeTerms(s)));
-});
+}));
 console.log(JSON.stringify({ ...total, model: llmStats }));

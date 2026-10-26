@@ -317,7 +317,7 @@ export async function aliasDetails(t: Technology, id: string, opts: { refresh?: 
   const cached = readJson<{ checked: string; details: string | null }>(file);
   if (cached && (opts.offline || !opts.refresh)) return cached.details ?? undefined;
   if (opts.offline) return undefined;
-  const v = await osvVuln(id).catch(() => undefined);
+  const v = await osvVuln(id).catch((e) => { console.error(`advisory alias ${id}: ${e instanceof Error ? e.message : e}`); return undefined; });
   if (v === undefined) return undefined;
   const details = v?.withdrawn ? null : (v?.details?.trim() || null);
   writeAtomic(file, JSON.stringify({ checked: stamp(), details }, null, 1) + "\n");

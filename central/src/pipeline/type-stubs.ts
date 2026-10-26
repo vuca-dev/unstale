@@ -165,6 +165,7 @@ export async function typeStubDeprecations(t: Pick<Technology, "id" | "component
     if (!versions?.length) continue;
     // Per line: the in-window releases, each against the line's release before it.
     const found = new Map<string, { name: string; message: string; file: string; snapshot: string; releases: Map<string, { version: string; date: string }> }>();
+    let incomplete = false;
     for (const line of [...new Set(versions.map((v) => releaseLine(v.version)))]) {
       const ofLine = versions.filter((v) => releaseLine(v.version) === line);
       const first = ofLine.findIndex((v) => v.date >= SINCE);
@@ -174,9 +175,9 @@ export async function typeStubDeprecations(t: Pick<Technology, "id" | "component
         prev = await versionDeprecations(t, stub, ofLine[first - 1]!, opts);
         for (const v of ofLine.slice(first)) {
           const cur = await versionDeprecations(t, stub, v, opts);
-          if (!cur || !prev) break;
+          if (!cur || !prev) { incomplete = true; break; }
           for (const [name, d] of Object.entries(cur.deprecated)) {
-            if (prev.deprecated[name]) continue;
+            if (Object.hasOwn(prev.deprecated, name)) continue;
             const key = `${name}\u0000${d.message}`;
             const f = found.get(key) ?? { name, message: d.message, file: d.file, snapshot: cur.snapshot, releases: new Map() };
             if (!f.releases.has(line)) f.releases.set(line, { version: v.version, date: v.date });
@@ -185,9 +186,11 @@ export async function typeStubDeprecations(t: Pick<Technology, "id" | "component
           prev = cur;
         }
       } catch (e) {
+        incomplete = true;
         console.error(`type stubs: ${t.id}: ${stub} line ${line} unreadable (${e instanceof Error ? e.message : e})`);
       }
     }
+    if (incomplete) continue;
     const component = npmPurl(stub);
     for (const f of [...found.values()].sort((a, b) => a.name.localeCompare(b.name))) {
       const rels = [...f.releases.entries()].sort(([a], [b]) => compareVersions(a, b));

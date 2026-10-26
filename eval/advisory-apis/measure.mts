@@ -5,15 +5,15 @@
 //   cd central && UNSTALE_STORE=<store> node ../eval/advisory-apis/measure.mts <out.json> [--n 200] [--ids GHSA-..,CVE-..]
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
-import { advisoryText, attachAdvisoryApis, packageNamesOf } from "../../central/src/pipeline/advisory-apis.ts";
+import { attachAdvisoryApis, packageNamesOf } from "../../central/src/pipeline/advisory-apis.ts";
 import { aliasDetails, fromOsv, osvTexts, type Advisory, type OsvVuln } from "../../central/src/pipeline/advisories.ts";
-import type { Technology } from "../../central/src/pipeline/technologies.ts";
+import { TECHNOLOGIES, type Technology } from "../../central/src/pipeline/technologies.ts";
 import { extractModel, llmStats } from "../../central/src/pipeline/llm.ts";
 import { centralDir } from "../../central/src/pipeline/paths.ts";
 import { pool, readJson, sha256, writeAtomic } from "../../central/src/pipeline/util.ts";
 
 const args = process.argv.slice(2);
-const out = args.find((a) => !a.startsWith("--"));
+const out = args.find((a, i) => !a.startsWith("--") && !(i && ["--n", "--ids"].includes(args[i - 1]!)));
 if (!out) throw new Error("usage: measure.mts <out.json> [--n 200] [--ids a,b]");
 const opt = (k: string) => (args.indexOf(k) >= 0 ? args[args.indexOf(k) + 1] : undefined);
 const n = Number(opt("--n") ?? 200);
@@ -42,11 +42,11 @@ const before = { ...llmStats };
 // its aliases' entries (cached OSV GETs) when it names none at first.
 const rows = await pool(picked, 6, async ({ a, packages, tech }) => {
   const names = packageNamesOf(packages.filter((p) => a.affected.some((r) => r.component === p)));  // reported only
-  const t = { id: tech, name: tech, repo: "", components: packages, tag: /^$/, clean: (b: string) => b } as Technology;
+  const t = TECHNOLOGIES[tech] ?? ({ id: tech, name: tech, repo: "", components: packages, tag: /^$/, clean: (b: string) => b } as Technology);
   const s = { technology: tech, records: {}, ingested: {} } as never as Parameters<typeof attachAdvisoryApis>[0];
-  await attachAdvisoryApis(s, [a], packageNamesOf(packages), await osvTexts(t), (id) => aliasDetails(t, id));
+  await attachAdvisoryApis(s, [a], packageNamesOf([...t.components, ...packages]), await osvTexts(t), (id) => aliasDetails(t, id));
   const apis = s.advisoryApis?.[0]?.apis ?? [];
-  return { id: a.id, aliases: a.aliases, package: names[0], chars: advisoryText(a).length, apis, summary: a.summary };
+  return { id: a.id, aliases: a.aliases, package: names[0], apis, summary: a.summary };
 });
 const used = Object.fromEntries(Object.entries(llmStats).map(([k, v]) => [k, (v as number) - ((before as Record<string, number>)[k] ?? 0)]));
 const named = rows.filter((r) => r.apis.length).length;

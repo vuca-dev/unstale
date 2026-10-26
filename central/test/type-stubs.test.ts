@@ -104,6 +104,26 @@ describe("type-stub deprecations", () => {
     expect(got.length).toBe(n);
   });
 
+  test("a partial tarball failure is retried without losing releases or prototype-named declarations", async () => {
+    const versions = ["19.0.0", "19.1.0", "19.2.0"];
+    const packument = { versions: Object.fromEntries(versions.map((v) => [v, { dist: { tarball: `https://retry/${v}.tgz` } }])), time: { "19.0.0": "2025-01-01", "19.1.0": "2026-01-01", "19.2.0": "2026-02-01" } };
+    let failed = true;
+    const get = async (url: string) => {
+      const v = /\/([\d.]+)\.tgz$/.exec(url)?.[1];
+      if (v === "19.2.0" && failed) throw new Error("temporary tarball failure");
+      const body = v === "19.0.0" ? "export function toString(): string;" : "/** @deprecated Use format instead. */\nexport function toString(): string;";
+      const bytes = tgz({ "index.d.ts": body });
+      return { ok: true, status: 200, json: async () => packument, arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer };
+    };
+    const s: TechStore = { technology: "retry", records: {}, ingested: {} };
+    const t = { id: "retry", components: ["pkg:npm/react"] };
+    expect(await typeStubDeprecations(t, s, { get })).toEqual([]);
+    expect(s.ingested).toEqual({});
+    failed = false;
+    expect(await typeStubDeprecations(t, s, { get })).toEqual(["retry:tostring"]);
+    expect(s.records["retry:tostring"]?.releases[0]?.version).toBe("19.1.0");
+  });
+
   test("no stub, a stub its publisher deprecated, or an unreadable registry adds nothing", async () => {
     const s: TechStore = { technology: "uuid", records: {}, ingested: {} };
     const missing = async () => ({ ok: false, status: 404, json: async () => ({}), arrayBuffer: async () => new ArrayBuffer(0) });

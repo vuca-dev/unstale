@@ -103,7 +103,8 @@ fn line_words(text: &str, at: usize) -> impl Iterator<Item = String> + '_ {
 /// --flag v10_config_lookup_from_file` in `package.json`). A file that neither imports the technology nor is named by
 /// its records still uses it there.
 pub fn on_command_line(text: &str, lit: &str, words: &[String]) -> bool {
-    let ident = |c: Option<char>| c.is_some_and(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$');
+    let flag = cli_flag(lit);
+    let ident = |c: Option<char>| c.is_some_and(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$' || (flag && c == '-'));
     text.match_indices(lit)
         .any(|(i, _)| !ident(text[..i].chars().next_back()) && !ident(text[i + lit.len()..].chars().next()) && line_words(text, i).any(|w| words.contains(&w)))
 }
@@ -1131,6 +1132,7 @@ pub fn call_arity(lit: &str) -> Option<(usize, Option<usize>)> {
                 continue;
             }
             ']' if depth == 0 => {
+                opt_after = false;
                 if i > 0 && chars[i - 1] == '[' {
                     cur.push(c);
                 }
@@ -2300,7 +2302,7 @@ mod tests {
     fn a_signature_with_parameters_has_an_arity_and_only_calls_of_it_match() {
         assert_eq!(call_arity("cy.stub(object, name, fn)"), Some((3, Some(3))));
         assert_eq!(call_arity("`useQuery(key, fn, options?)`"), Some((2, Some(3))));
-        assert_eq!(call_arity("fs.rmdir(path[, options], callback)"), Some((1, Some(3))));
+        assert_eq!(call_arity("fs.rmdir(path[, options], callback)"), Some((2, Some(3))));
         assert_eq!(call_arity("app.listen([port])"), Some((0, Some(1))));
         assert_eq!(call_arity("f(a: string[], b?: number)"), Some((1, Some(2))));
         assert_eq!(call_arity("on(evt, (e) => e)"), Some((2, Some(2))));

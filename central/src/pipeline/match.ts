@@ -528,6 +528,17 @@ export async function ingest(
 /** Numeric-aware order of extraction keys (`tech@1.2.0#0.10` after `#0.9`): which record of a group came first. */
 const keyOrder = (a: string, b: string): number => a.localeCompare(b, "en", { numeric: true });
 
+/** Retain each duplicate's adoption constraints and benefits before it becomes a stub. */
+export function mergeDuplicateMetadata(t: StoredRecord, r: StoredRecord): void {
+  const benefit = r.benefit.includes("none") ? t.benefit : union(t.benefit.filter((b) => b !== "none"), r.benefit);
+  applyChange(t, {
+    replaces: union(t.replaces, r.replaces), requires: union(t.requires, r.requires),
+    introduces: union(t.introduces, r.introduces), conditions: union(t.conditions, r.conditions),
+    prerequisites: [...t.prerequisites, ...r.prerequisites.filter((p) => !t.prerequisites.some((q) => JSON.stringify(p) === JSON.stringify(q)))],
+    benefit,
+  }, "duplicate-metadata");
+}
+
 /**
  * Records cut from one release-note item: the extractor sometimes makes one record per API an item names ("Add
  * `codePoints`, `maxCodePoints`, `minCodePoints` and `notCodePoints` validation actions" became four records), each with
@@ -577,15 +588,7 @@ export function mergeSplitRecords(s: TechStore): Array<{ from: string; into: str
     const into = root(r.id);
     if (into === r.id) continue;
     const t = s.records[into]!;
-    const benefit = r.benefit.includes("none") ? t.benefit : union(t.benefit.filter((b) => b !== "none"), r.benefit);
-    applyChange(t, {
-      replaces: union(t.replaces, r.replaces),
-      requires: union(t.requires, r.requires),
-      introduces: union(t.introduces, r.introduces),
-      conditions: union(t.conditions, r.conditions),
-      prerequisites: [...t.prerequisites, ...r.prerequisites.filter((p) => !t.prerequisites.some((q) => q.ecosystem === p.ecosystem && q.name === p.name))],
-      benefit,
-    }, "split-merge");
+    mergeDuplicateMetadata(t, r);
     mergeInto(s, r.id, into, "cut from the same release-note item");
     out.push({ from: r.id, into });
   }
@@ -593,8 +596,8 @@ export function mergeSplitRecords(s: TechStore): Array<{ from: string; into: str
 }
 
 /** A stored record as the incoming item it was created from (its first source and evidence). */
-function asIncoming(r: StoredRecord): Incoming {
-  const e = r.evidence[0]!;
+function asIncoming(r: StoredRecord, snapshot: string): Incoming {
+  const e = r.evidence.find((e) => e.snapshot === snapshot)!;
   const rel = r.releases[0]!;
   const kind = e.kind === "upgrade_guide" || e.kind === "docs" ? e.kind : undefined;
   return {
@@ -621,10 +624,12 @@ export async function mergeChunkDuplicates(
   const order = (a: StoredRecord, b: StoredRecord) => keyOrder(a.sources[0] ?? "", b.sources[0] ?? "") || a.id.localeCompare(b.id);
   // Groups by snapshot, subject and facet: only records sharing all three can be such a pair.
   const groups = new Map<string, StoredRecord[]>();
+  const snapshots = new Map<string, string>();
   for (const r of Object.values(s.records).filter((x) => x.status === "active" && x.sources.length && x.evidence.length).sort(order)) {
     for (const snap of new Set(r.evidence.map((e) => e.snapshot))) {
       const k = [snap, r.subject.toLowerCase(), (r.facet ?? "").toLowerCase()].join("\u0000");
       groups.set(k, [...(groups.get(k) ?? []), r]);
+      snapshots.set(k, snap);
     }
   }
   // A pair is asked once: judged at ingest or by this pass (either record's history), or earlier in this call.
@@ -634,9 +639,9 @@ export async function mergeChunkDuplicates(
     r.history.some((h) => (h.action === "chunk-match" && h.detail === c.id) || h.judged?.some((j) => j.id === c.id)) ||
     c.history.some((h) => (h.action === "chunk-match" && h.detail === r.id) || h.judged?.some((j) => j.id === r.id));
   const out: Array<{ from: string; into: string; p: number; outcome: Judged["outcome"] }> = [];
-  for (const g of [...groups.values()].filter((x) => x.length > 1)) {
+  for (const [key, g] of [...groups].filter(([, x]) => x.length > 1)) {
     for (const [i, r] of g.entries()) {
-      const inc = asIncoming(r);
+      const inc = asIncoming(r, snapshots.get(key)!);
       for (const c of g.slice(0, i)) {
         if (r.status !== "active") break;
         if (c.status !== "active" || !c.evidence.some((e) => e.snapshot === inc.snapshot)) continue;
@@ -649,7 +654,10 @@ export async function mergeChunkDuplicates(
         out.push({ from: r.id, into: c.id, p: j.p, outcome: j.outcome });
         if (dryRun) continue;
         r.history.push({ action: "chunk-match", detail: c.id, revision: r.revision, label_version: r.label_version, judged: got.judged });
-        if (j.outcome === "same") mergeInto(s, r.id, c.id, `the same change in another part of the same release notes (p=${j.p})`);
+        if (j.outcome === "same") {
+          mergeDuplicateMetadata(c, r);
+          mergeInto(s, r.id, c.id, `the same change in another part of the same release notes (p=${j.p})`);
+        }
       }
     }
   }

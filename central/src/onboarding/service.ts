@@ -1246,6 +1246,7 @@ export class CoverageService {
       // Deprecations the technology's type stubs state in their declarations (registry and tarball reads, no model).
       const typed = await typeStubDeprecations(tech, store);
       if (typed.length) {
+        job.records = Object.values(store.records).filter((r) => r.status === "active").length;
         console.error(`coverage: ${logName(job)}: ${typed.length} deprecations from its type stubs' declarations`);
         saveStore(store);
       }

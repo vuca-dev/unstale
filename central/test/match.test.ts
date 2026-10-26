@@ -622,9 +622,15 @@ describe("duplicates from one release body", () => {
       return s;
     };
     const s = await old();
+    const extra = s.records["next:z.compile~2"]!;
+    extra.replaces = ["oldCompile"]; extra.requires = ["compiler"]; extra.introduces = ["newCompile"];
+    extra.conditions = ["when precompiled"]; extra.prerequisites = [{ ecosystem: "npm", name: "node", min: "20.9.0" }];
+    extra.benefit = ["performance"];
+    extra.evidence.unshift({ ...extra.evidence[0]!, snapshot: "sha256:unrelated", quote: "Unrelated earlier source" });
     const j = judge(() => 0.97);
     expect(await mergeChunkDuplicates(s, "Next.js", j.fn)).toEqual([{ from: "next:z.compile~2", into: "next:z.compile", p: 0.97, outcome: "same" }]);
     expect(j.calls).toHaveLength(1);
+    expect(s.records["next:z.compile"]).toMatchObject({ replaces: ["oldCompile"], requires: ["compiler"], introduces: ["newCompile"], conditions: ["when precompiled"], prerequisites: [{ ecosystem: "npm", name: "node", min: "20.9.0" }], benefit: ["performance"] });
     expect(s.records["next:z.compile~2"]).toMatchObject({ status: "merged", merged_into: "next:z.compile" });
     expect(s.ingested[B.key]).toBe("next:z.compile");
     expect(await mergeChunkDuplicates(s, "Next.js", j.fn)).toEqual([]);

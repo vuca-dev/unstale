@@ -374,8 +374,10 @@ pub fn digest_groups(out: &Outcome) -> Vec<(String, Vec<String>)> {
                 if is_security(o) && !o.rec.r.advisories.is_empty() && !listed_as_record(out, o) {
                     continue;
                 }
-                if restates_advisory(out, o) {
-                    kinds.add_as(o.rec, false);
+                if let Some(status) = restated_advisory(out, o)
+                    && !matches!(status, AdvisoryStatus::Unknown)
+                {
+                    if !matches!(status, AdvisoryStatus::Fixed(_)) { kinds.add_as(o.rec, false); }
                     continue;
                 }
                 kinds.add(o.rec);
@@ -733,7 +735,7 @@ fn restated_advisory(out: &Outcome, o: &Opp) -> Option<AdvisoryStatus> {
         return None;
     }
     let comp = o.component();
-    out.opps.iter().filter(|x| x.rec.r.technology == o.rec.r.technology && !std::ptr::eq(x.rec, o.rec)).find_map(|x| {
+    out.opps.iter().filter(|x| x.rec.r.technology == o.rec.r.technology && !std::ptr::eq(x.rec, o.rec) && !matches!(x.route, Route::Withheld(_) | Route::Blocked(_) | Route::VersionUnknown)).find_map(|x| {
         x.rec
             .r
             .advisories
@@ -1595,7 +1597,15 @@ mod tests {
         let at = |recs: Vec<serde_json::Value>, installed: &str| {
             let cat = catalog("vite", 0, recs);
             let s = stack(&[("vite", installed)], None);
-            let out = run(&Input { catalog: &cat, stack: &s, repo: &r, ledger: &l, today: "2026-10-15", targets: Default::default() });
+            let mut out = run(&Input { catalog: &cat, stack: &s, repo: &r, ledger: &l, today: "2026-10-15", targets: Default::default() });
+            if let Some(i) = out.opps.iter().position(|o| o.id() == "vite:vfpm") {
+                let saved = out.opps[i].route.clone();
+                for route in [Route::Withheld("test"), Route::Blocked("test".into()), Route::VersionUnknown] {
+                    out.opps[i].route = route;
+                    assert!(security_reason(&out, out.opps.iter().find(|o| o.id() == "vite:wasm").unwrap()));
+                }
+                out.opps[i].route = saved;
+            }
             let reason = |id: &str| security_reason(&out, out.opps.iter().find(|o| o.id() == id).unwrap());
             (digest_lines(&out).join("\n"), reason("vite:wasm"), out.opps.iter().any(|o| o.id() == "vite:other").then(|| reason("vite:other")))
         };
@@ -1605,7 +1615,7 @@ mod tests {
         // Affected: the advisory is listed once, the restating fix is not a second security record.
         let (digest, wasm, _) = at(vec![sec.clone(), restated.clone(), fix.clone()], "8.3.0");
         assert!(!wasm);
-        assert!(digest.contains("picks up 1 security, 2 fixes") && digest.contains("security: GHSA-vfpm") && !digest.contains("[vite:wasm"), "{digest}");
+        assert!(digest.contains("picks up 1 security, 1 fix") && digest.contains("security: GHSA-vfpm") && !digest.contains("[vite:wasm"), "{digest}");
         // Without the advisory record, or not named by it, a security fix stands as before.
         let (digest, wasm, _) = at(vec![restated.clone(), fix.clone()], "8.1.6");
         assert!(wasm && digest.contains("picks up 1 security, 1 fix"), "{digest}");

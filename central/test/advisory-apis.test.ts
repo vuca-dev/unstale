@@ -52,7 +52,7 @@ describe("advisory affected APIs", () => {
     expect(await advisoryApis({ ...ZOD, summary: "Prototype pollution", details: "x".repeat(3 * MAX_TEXT) }, ["zod"], m.ask)).toEqual([]);
     expect(m.prompts[1]!.length).toBeLessThan(APIS_PROMPT.length + MAX_TEXT + 20);
     // A failed call names nothing.
-    expect(await advisoryApis({ ...ZOD, summary: "other", details: "" }, ["zod"], model({}).ask)).toEqual([]);
+    expect(await advisoryApis({ ...ZOD, summary: "other", details: "" }, ["zod"], model({}).ask)).toBeUndefined();
   });
 
   test("the store keeps them per advisory (id and aliases), a record made from the advisory alone gets them as terms, and the index publishes them", async () => {
@@ -109,6 +109,18 @@ describe("advisory affected APIs", () => {
     const again = model({ "z.array()": '["z.array"]' });
     await attachAdvisoryApis({ technology: "zod", records: {}, ingested: {} }, [ZOD], ["zod"], new Map(), async () => { throw new Error("not read"); }, again.ask);
     expect(again.prompts).toHaveLength(1);
+  });
+
+  test("failed extraction preserves published APIs, successful empty clears them, and prompt text stays literal", async () => {
+    const s: TechStore = { technology: "zod", records: {}, ingested: {}, advisoryApis: [{ ids: [ZOD.id, ...ZOD.aliases], apis: ["z.array"] }] };
+    await attachAdvisoryApis(s, [ZOD], ["zod"], undefined, undefined, model({}).ask);
+    expect(s.advisoryApis?.[0]?.apis).toEqual(["z.array"]);
+    await attachAdvisoryApis(s, [ZOD], ["zod"], undefined, undefined, model({ "z.array()": "[]" }).ask);
+    expect(s.advisoryApis).toEqual([]);
+    const details = "Literal $$ $& $` $' with z.array()";
+    const m = model({ Literal: '["z.array"]' });
+    expect(await advisoryApis({ ...ZOD, details }, ["zod"], m.ask)).toEqual(["z.array"]);
+    expect(m.prompts[0]).toContain(details);
   });
 
   test("package names from package URLs", () => {

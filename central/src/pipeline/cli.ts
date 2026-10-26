@@ -270,7 +270,7 @@ async function main(): Promise<void> {
     }
     case "type-stubs": {
       const { values } = parseArgs({ args: rest, options: { tech: { type: "string" }, all: { type: "boolean" }, offline: { type: "boolean" }, "no-publish": { type: "boolean" } } });
-      const ids = values.all ? readdirSync(join(centralDir(), "records")).filter((f) => f.endsWith(".json")).map((f) => readJson<{ technology: string }>(join(centralDir(), "records", f))!.technology) : technologies(values.tech).map((t) => t.id);
+      const ids = values.all ? (existsSync(join(centralDir(), "records")) ? readdirSync(join(centralDir(), "records")) : []).filter((f) => f.endsWith(".json")).map((f) => readJson<{ technology: string }>(join(centralDir(), "records", f))!.technology) : technologies(values.tech).map((t) => t.id);
       let total = 0;
       await pool(ids, 4, (id) =>
         withTechLock(id, "type-stubs", async () => {
@@ -290,7 +290,7 @@ async function main(): Promise<void> {
     }
     case "advisory-apis": {
       const { values } = parseArgs({ args: rest, options: { tech: { type: "string" }, all: { type: "boolean" }, "no-publish": { type: "boolean" } } });
-      const ids = values.all ? readdirSync(join(centralDir(), "records")).filter((f) => f.endsWith(".json")).map((f) => readJson<{ technology: string }>(join(centralDir(), "records", f))!.technology) : technologies(values.tech).map((t) => t.id);
+      const ids = values.all ? (existsSync(join(centralDir(), "records")) ? readdirSync(join(centralDir(), "records")) : []).filter((f) => f.endsWith(".json")).map((f) => readJson<{ technology: string }>(join(centralDir(), "records", f))!.technology) : technologies(values.tech).map((t) => t.id);
       const total = { advisories: 0, named: 0, records: 0 };
       await pool(ids, 4, (id) =>
         withTechLock(id, "advisory-apis", async () => {

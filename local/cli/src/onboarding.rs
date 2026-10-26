@@ -2074,10 +2074,12 @@ fn affected_identifiers(text: &str) -> Vec<String> {
 
 /// The affected APIs central extracted from advisory `id`'s text (`TechIndex::advisory_apis`, any technology's index:
 /// advisory ids are global), matched on the advisory's id or an alias; empty when no index names it.
-fn advisory_apis(catalog: &crate::cache::Catalog, id: &str) -> Vec<String> {
+fn advisory_apis(catalog: &crate::cache::Catalog, id: &str, package: &str) -> Vec<String> {
     catalog
         .techs
         .values()
+        .filter(|t| t.index.components.iter().chain(t.records.iter().flat_map(|r| r.r.releases.iter().map(|r| &r.component)))
+            .any(|p| util::purl_name(p).is_some_and(|n| n.eq_ignore_ascii_case(package))))
         .flat_map(|t| t.index.advisory_apis.iter())
         .find(|e| e.ids.iter().any(|x| x.eq_ignore_ascii_case(id)))
         .map(|e| e.apis.clone())
@@ -2091,15 +2093,25 @@ fn affected_names(summary: &str, named: &[String]) -> (Vec<String>, Vec<String>)
     if named.is_empty() {
         return (affected_identifiers(summary), short_calls(summary));
     }
-    let text: String = named.iter().map(|a| format!("`{a}` ")).collect();
+    let text: String = named.iter().filter(|a| !usage::cli_flag(a)).map(|a| format!("`{a}` ")).collect();
     // A short bare name (`run`) is looked for as a call; a dotted one (`z.set`) is an identifier as a whole.
     let calls: String = named
         .iter()
+        .filter(|a| !usage::cli_flag(a))
         .map(|a| a.trim_matches(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '$')))
         .filter(|a| !a.contains('.'))
         .map(|a| format!("{a}() "))
         .collect();
-    (affected_identifiers(&text), short_calls(&calls))
+    let mut ids = affected_identifiers(&text);
+    ids.extend(named.iter().filter(|a| usage::cli_flag(a)).cloned());
+    (ids, short_calls(&calls))
+}
+
+/// Central flags remain whole flags on a command line running the package, never bare identifiers.
+fn affected_api_written(path: &str, text: &str, id: &str, package: &str) -> bool {
+    if usage::cli_flag(id) {
+        usage::on_command_line(text, id, &usage::command_words(&format!("pkg:npm/{package}"))) && usage::in_code(path, text, id, false)
+    } else { usage::in_code(path, text, id, true) }
 }
 
 /// Short names (two or three characters) `text` writes as a call, `run()`: too short for `affected_identifiers` as
@@ -2527,13 +2539,13 @@ fn signals<'r>(
             // The affected APIs central read from the advisory's whole text (`TechIndex::advisory_apis`), when it
             // names any, replace what the one-line summary names: zod's CVE-2023-54404 names `z.array()` only in its
             // details.
-            let (ids, calls) = affected_names(&it.summary, &advisory_apis(&w.catalog, &it.id));
+            let (ids, calls) = affected_names(&it.summary, &advisory_apis(&w.catalog, &it.id, &it.name));
             let ids: Vec<String> = ids.into_iter().filter(|id| !names_product(id, &own_name)).collect();
             let calls: Vec<String> = calls.into_iter().filter(|c| !names_product(c, &own_name)).collect();
             checked |= !ids.is_empty() || !calls.is_empty();
             let called = |f: &str, t: &str, c: &str| [format!(".{c}("), format!(" {c}("), format!("\t{c}(")].iter().any(|n| usage::in_code(f, t, n, false));
             importers.iter().find_map(|(f, t)| {
-                ids.iter().find(|id| usage::in_code(f, t, id, true)).cloned().or_else(|| calls.iter().find(|c| called(f, t, c)).map(|c| format!("{c}()"))).map(|id| format!("security, affected `{id}` used at {f}: {}", words(&it.summary)))
+                ids.iter().find(|id| affected_api_written(f, t, id, &name)).cloned().or_else(|| calls.iter().find(|c| called(f, t, c)).map(|c| format!("{c}()"))).map(|id| format!("security, affected `{id}` used at {f}: {}", words(&it.summary)))
             })
         });
         if let Some(s) = by.get_mut(&key) {
@@ -4155,12 +4167,21 @@ mod tests {
         assert_eq!(affected_names(summary, &named), (vec!["z.array".to_string(), "z.set".to_string(), "z.map".to_string()], vec![]));
         assert_eq!(affected_names("x", &["run".to_string(), "serveStatic()".to_string()]), (vec!["serveStatic".to_string()], vec!["run".to_string()]));
         // The index entry is found by the advisory's id or any alias, whichever the lockfile check reported.
-        let index: unstale_schema::catalog::TechIndex = serde_json::from_value(serde_json::json!({"schema":1,"technology":"zod","sample_n":0,"checked":"2026-10-26T00:00:00Z","shards":[],
+        let index: unstale_schema::catalog::TechIndex = serde_json::from_value(serde_json::json!({"schema":1,"technology":"zod","components":["pkg:npm/zod"],"sample_n":0,"checked":"2026-10-26T00:00:00Z","shards":[],
             "advisory_apis":[{"ids":["GHSA-xxxx-yyyy-zzzz","CVE-2023-54404"],"apis":["z.array","z.set","z.map"]}]})).unwrap();
         let mut c = crate::cache::Catalog::default();
         c.techs.insert("zod".into(), crate::cache::TechData { index, index_sha: "00".into(), records: vec![], merged: Default::default(), retracted: vec![], skipped: 0 });
-        assert_eq!(advisory_apis(&c, "cve-2023-54404"), named);
-        assert!(advisory_apis(&c, "GHSA-aaaa-bbbb-cccc").is_empty());
+        let mut other = c.techs["zod"].clone();
+        other.index.technology = "aaa-other".into(); other.index.components = vec!["pkg:npm/other".into()];
+        other.index.advisory_apis[0].apis = vec!["unrelatedAPI".into()]; c.techs.insert("aaa-other".into(), other);
+        assert_eq!(advisory_apis(&c, "cve-2023-54404", "zod"), named);
+        assert!(advisory_apis(&c, "cve-2023-54404", "absent").is_empty());
+        assert_eq!(affected_names("x", &["--inspect".into()]), (vec!["--inspect".into()], vec![]));
+        assert!(affected_api_written("src/a.js", "node --inspect", "--inspect", "node"));
+        assert!(!affected_api_written("src/a.js", "const inspect = 1", "--inspect", "node"));
+        assert!(!affected_api_written("src/a.js", "node --inspect-other", "--inspect", "node"));
+        assert!(!affected_api_written("src/a.js", "other --inspect", "--inspect", "node"));
+        assert!(advisory_apis(&c, "GHSA-aaaa-bbbb-cccc", "zod").is_empty());
         assert!(short_calls("Prototype Pollution gadget in worker options leads to Remote Code Execution").is_empty(), "prose names nothing");
         assert!(short_calls("merge() and a() and 1x() and (go)").is_empty(), "long names are affected_identifiers'; one letter or a digit first is none");
     }

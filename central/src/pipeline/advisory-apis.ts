@@ -71,16 +71,16 @@ export function groundedApis(answer: unknown, text: string, packageNames: readon
   return out;
 }
 
-/** One advisory's affected APIs: one cached extraction-model call; [] when the advisory names none or the call fails. */
-export async function advisoryApis(a: Advisory, packageNames: readonly string[], ask: typeof extractLlm = extractLlm, others: readonly string[] = []): Promise<string[]> {
+/** One advisory's affected APIs: one cached extraction-model call; [] when the advisory names none; undefined when extraction fails. */
+export async function advisoryApis(a: Advisory, packageNames: readonly string[], ask: typeof extractLlm = extractLlm, others: readonly string[] = []): Promise<string[] | undefined> {
   const text = advisoryText(a, others);
   if (!text.trim()) return [];
-  const prompt = APIS_PROMPT.replace("%PACKAGE%", packageNames[0] ?? "").replace("%TEXT%", text);
+  const prompt = APIS_PROMPT.replace("%PACKAGE%", () => packageNames[0] ?? "").replace("%TEXT%", () => text);
   const answer = await ask(prompt, (t) => {
     const v = parseJson(t, "array");
     return Array.isArray(v) ? v : undefined;
   });
-  return groundedApis(answer, text, packageNames);
+  return answer === undefined ? undefined : groundedApis(answer, text, packageNames);
 }
 
 /** The npm/PyPI-style names of package URLs (`pkg:npm/%40hono/node-server` → `@hono/node-server`). */
@@ -107,7 +107,7 @@ export async function attachAdvisoryApis(
   const found = await pool([...advisories], 6, async (a) => {
     const others = othersOf(a, texts);
     const first = await advisoryApis(a, packageNames, ask, others);
-    if (first.length || !alias) return first;
+    if (first === undefined || first.length || !alias) return first;
     // Naming none, it is read once more with its aliases' own entries (the CVE record OSV converted from the CVE list
     // can name the API its GHSA entry leaves out), when the package query did not return them.
     const unseen = a.aliases.filter((id) => !texts?.has(id.toUpperCase()));
@@ -115,7 +115,7 @@ export async function attachAdvisoryApis(
     return more.length ? advisoryApis(a, packageNames, ask, [...others, ...more]) : first;
   });
   const entries: NonNullable<TechStore["advisoryApis"]> = advisories
-    .map((a, i) => ({ ids: [a.id, ...a.aliases.filter((x) => x !== a.id)], apis: found[i]! }))
+    .map((a, i) => ({ ids: [a.id, ...a.aliases.filter((x) => x !== a.id)], apis: found[i] ?? s.advisoryApis?.find((e) => e.ids.some((id) => [a.id, ...a.aliases].includes(id)))?.apis ?? [] }))
     .filter((e) => e.apis.length);
   s.advisoryApis = entries.sort((x, y) => x.ids[0]!.localeCompare(y.ids[0]!));
   const by = new Map(entries.flatMap((e) => e.ids.map((id) => [id.toUpperCase(), e.apis] as const)));
