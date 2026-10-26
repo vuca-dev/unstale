@@ -374,6 +374,10 @@ pub fn digest_groups(out: &Outcome) -> Vec<(String, Vec<String>)> {
                 if is_security(o) && !o.rec.r.advisories.is_empty() && !listed_as_record(out, o) {
                     continue;
                 }
+                if restates_advisory(out, o) {
+                    kinds.add_as(o.rec, false);
+                    continue;
+                }
                 kinds.add(o.rec);
             }
             kinds.add_security(adv.len());
@@ -392,7 +396,7 @@ pub fn digest_groups(out: &Outcome) -> Vec<(String, Vec<String>)> {
             lines.extend(advisory_lines_grouped(out, adv, &name));
             for &i in idx {
                 let o = &out.opps[i];
-                if is_security(o) && (o.rec.r.advisories.is_empty() || listed_as_record(out, o)) {
+                if is_security(o) && (o.rec.r.advisories.is_empty() || listed_as_record(out, o)) && !restates_advisory(out, o) {
                     lines.push(format!("  security: {} [{}, {}]", one_line(&o.rec.r.summary, SUMMARY_MAX), o.id(), o.release.version));
                 }
             }
@@ -475,7 +479,11 @@ struct Kinds(BTreeMap<u8, (usize, &'static str, &'static str)>);
 
 impl Kinds {
     fn add(&mut self, r: &crate::cache::Rec) {
-        let k = if crate::funnel::is_security_rec(r) {
+        self.add_as(r, crate::funnel::is_security_rec(r));
+    }
+    /// By change type, unless `security`: a record restating an advisory (`restates_advisory`) is its change type.
+    fn add_as(&mut self, r: &crate::cache::Rec, security: bool) {
+        let k = if security {
             (0, "security", "security")
         } else {
             match r.r.change_type {
@@ -697,11 +705,52 @@ fn listed_as_record(out: &Outcome, o: &Opp) -> bool {
 /// record, and the onboarding report leaves it out of a technology's upgrade detail. Records without advisories, and
 /// ones with an advisory the index cannot decide, are security reasons as before (fail open).
 pub fn security_reason(out: &Outcome, o: &Opp) -> bool {
+    if restates_advisory(out, o) {
+        return false;
+    }
     if !is_security(o) || o.rec.r.advisories.is_empty() {
         return true;
     }
     let st: Vec<AdvisoryStatus> = o.rec.r.advisories.iter().map(|a| advisory_status(out, o, a)).collect();
     st.iter().any(|s| matches!(s, AdvisoryStatus::Fixed(_) | AdvisoryStatus::Unknown))
+}
+
+/// The status of the advisory a security record without advisories of its own restates: another record of its
+/// technology carries an advisory patched in this record's release whose summary names one of this record's literals
+/// (vite 8.3.3's `?vite-wasm-instance` fix and GHSA-VFPM-58RQ-9QCG, "exposed by `?vite-wasm-instance`"). The two are
+/// one change, so the advisory decides it: the installed version may never have been affected.
+fn restated_advisory(out: &Outcome, o: &Opp) -> Option<AdvisoryStatus> {
+    if !is_security(o) || !o.rec.r.advisories.is_empty() {
+        return None;
+    }
+    let lits: Vec<String> = std::iter::once(&o.rec.r.subject)
+        .chain(o.rec.r.terms.iter().map(|t| &t.0))
+        .filter_map(|x| crate::usage::clean_lit(x))
+        .filter(|l| l.chars().count() >= 6 && !crate::usage::plain_word(l))
+        .map(|l| l.to_ascii_lowercase())
+        .collect();
+    if lits.is_empty() {
+        return None;
+    }
+    let comp = o.component();
+    out.opps.iter().filter(|x| x.rec.r.technology == o.rec.r.technology && !std::ptr::eq(x.rec, o.rec)).find_map(|x| {
+        x.rec
+            .r
+            .advisories
+            .iter()
+            .find(|a| {
+                let summary = a.summary.to_ascii_lowercase();
+                a.affected.iter().any(|r| r.patched.as_deref() == Some(o.release.version.as_str()) && crate::util::normalize_purl(&r.component) == comp)
+                    && lits.iter().any(|l| summary.contains(l.as_str()))
+            })
+            .map(|a| advisory_status(out, x, a))
+    })
+}
+
+/// Whether a security record restates an advisory the index decides (`restated_advisory`): it is that advisory, counted
+/// and listed with it (or not at all, when the bump does not fix it), never as a security record of its own.
+pub fn restates_advisory(out: &Outcome, o: &Opp) -> bool {
+    restated_advisory(out, o).is_some_and(|s| !matches!(s, AdvisoryStatus::Unknown))
 }
 
 /// A line saying what the bump from the installed version does to one advisory of a record, for `unstale bump` and the
@@ -1524,6 +1573,45 @@ mod tests {
         let digest = digest_lines(&out).join("\n");
         assert!(digest.contains("(`unstale bump express`)"), "{digest}");
         assert_eq!(bump_name(&out, "express-8b04a3ca"), "express");
+    }
+
+    #[test]
+    fn a_security_fix_restating_an_advisory_is_decided_by_it() {
+        // vite 8.3.3: GHSA-vfpm ("exposed by `?vite-wasm-instance`", affects 8.2.0–8.2.3 and 8.3.0–8.3.2) and a release-note
+        // fix with benefit security for `?vite-wasm-instance` are one change; 8.1.6 was never affected.
+        let index = ["8.1.6", "8.2.0", "8.2.4", "8.3.0", "8.3.3", "8.3.5"];
+        let adv = json!({"id": "GHSA-vfpm", "aliases": [], "severity": "medium", "url": "u", "index": index,
+            "summary": "First 4 bytes of files outside of `server.fs` are exposed by `?vite-wasm-instance`",
+            "affected": [
+                {"component": "pkg:npm/vite", "range": ">= 8.3.0, < 8.3.3", "patched": "8.3.3", "versions": ["8.3.0"]},
+                {"component": "pkg:npm/vite", "range": ">= 8.2.0, < 8.2.4", "patched": "8.2.4", "versions": ["8.2.0"]}]});
+        let sec = with(with(rec("vite:vfpm", "pkg:npm/vite", "8.3.3"), json!({"change_type": "security", "benefit": ["security"]})), json!({"advisories": [adv]}));
+        let restated = with(rec("vite:wasm", "pkg:npm/vite", "8.3.3"),
+            json!({"change_type": "fix", "benefit": ["security", "correctness"], "subject": "?vite-wasm-instance", "terms": [["?vite-wasm-instance", 0], ["fs.serve", 0]]}));
+        // Another security fix of the same release that the advisory does not name stays a security record.
+        let other = with(rec("vite:other", "pkg:npm/vite", "8.3.3"), json!({"change_type": "fix", "benefit": ["security"], "subject": "launchEditor", "terms": [["launchEditor", 0]]}));
+        let fix = with(rec("vite:fix", "pkg:npm/vite", "8.3.5"), json!({"change_type": "fix", "benefit": ["correctness"]}));
+        let (r, l) = (repo(&[]), Ledger::default());
+        let at = |recs: Vec<serde_json::Value>, installed: &str| {
+            let cat = catalog("vite", 0, recs);
+            let s = stack(&[("vite", installed)], None);
+            let out = run(&Input { catalog: &cat, stack: &s, repo: &r, ledger: &l, today: "2026-10-15", targets: Default::default() });
+            let reason = |id: &str| security_reason(&out, out.opps.iter().find(|o| o.id() == id).unwrap());
+            (digest_lines(&out).join("\n"), reason("vite:wasm"), out.opps.iter().any(|o| o.id() == "vite:other").then(|| reason("vite:other")))
+        };
+        let (digest, wasm, _) = at(vec![sec.clone(), restated.clone(), fix.clone()], "8.1.6");
+        assert!(!wasm);
+        assert!(digest.starts_with("bumping vite 8.1.6 → 8.3.5 picks up 2 fixes (`unstale bump vite`)") && !digest.contains("security"), "{digest}");
+        // Affected: the advisory is listed once, the restating fix is not a second security record.
+        let (digest, wasm, _) = at(vec![sec.clone(), restated.clone(), fix.clone()], "8.3.0");
+        assert!(!wasm);
+        assert!(digest.contains("picks up 1 security, 2 fixes") && digest.contains("security: GHSA-vfpm") && !digest.contains("[vite:wasm"), "{digest}");
+        // Without the advisory record, or not named by it, a security fix stands as before.
+        let (digest, wasm, _) = at(vec![restated.clone(), fix.clone()], "8.1.6");
+        assert!(wasm && digest.contains("picks up 1 security, 1 fix"), "{digest}");
+        let (digest, _, other) = at(vec![sec, restated, other, fix], "8.1.6");
+        assert_eq!(other, Some(true));
+        assert!(digest.contains("picks up 1 security, 2 fixes") && digest.contains("[vite:other, 8.3.3]"), "{digest}");
     }
 
     #[test]
