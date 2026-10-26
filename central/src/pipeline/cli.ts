@@ -9,6 +9,8 @@
 //   npm run catalog -- merge <from-id> <into-id> [--note text] [--no-publish]
 //   npm run catalog -- retract <id> [--note text] [--no-publish]
 //   npm run catalog -- publish [--tech next]
+//   npm run catalog -- type-stubs [--tech next | --all] [--offline] [--no-publish]   (deprecations from the technology's
+//     type stubs' declarations; type-stubs.ts. The pipeline and the onboarding service run it after ingest)
 //   npm run catalog -- check-prerequisites [--tech next] [--no-publish]   (npm registry check of a store built before it)
 //   npm run catalog -- advisories [--tech next] [--offline] [--no-publish]   (the advisories stage: OSV, resolve, attach)
 //   npm run catalog -- prune [--dry-run]   (delete shards unreferenced for more than 7 days; prune.ts)
@@ -17,7 +19,7 @@
 //
 // Corrections: revision fields (change_type, breaking, releases, prerequisites, requires, replaces, or --claim for a
 // meaningful correction of the claim) bump `revision`; label fields bump `label_version`.
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { advisoryStage, advisoryStats } from "./advisories.ts";
@@ -28,6 +30,7 @@ import { usageStats } from "./classify/adapter.ts";
 import { withTechLock, withTechLockSync } from "./lock.ts";
 import { catalogDir, centralDir } from "./paths.ts";
 import { makeClassifier, runTechnology, technologies, type TechReport } from "./pipeline.ts";
+import { typeStubDeprecations } from "./type-stubs.ts";
 import { exportCatalog } from "./export.ts";
 import { pruneCatalog } from "./prune.ts";
 import { activeTerms, publishTechnology, shardLine } from "./publish.ts";
@@ -38,7 +41,7 @@ import { ShardLine } from "../schema/catalog.ts";
 import { applyChange, LABEL_FIELDS, loadStore, mergeInto, retract, REVISION_FIELDS, saveStore, type EditableField, type StoredRecord } from "./store.ts";
 import { TECHNOLOGIES } from "./technologies.ts";
 import { jevAttribution, loadPrices, monitoredTechnologies, usageByPhase } from "./usage.ts";
-import { readJson, withUsagePhase } from "./util.ts";
+import { pool, readJson, withUsagePhase } from "./util.ts";
 import { techLocal } from "../state/client.ts";
 
 const ARRAY_FIELDS = new Set(["releases", "prerequisites", "requires", "replaces", "benefit", "introduces", "terms", "related", "conditions"]);
@@ -231,6 +234,26 @@ async function main(): Promise<void> {
         if (!values["no-publish"]) republish(t.id);
       });
       console.log(JSON.stringify({ classifier: cls.counts, uncached_calls: usageStats, network: advisoryStats }));
+      return;
+    }
+    case "type-stubs": {
+      const { values } = parseArgs({ args: rest, options: { tech: { type: "string" }, all: { type: "boolean" }, offline: { type: "boolean" }, "no-publish": { type: "boolean" } } });
+      const ids = values.all ? readdirSync(join(centralDir(), "records")).filter((f) => f.endsWith(".json")).map((f) => readJson<{ technology: string }>(join(centralDir(), "records", f))!.technology) : technologies(values.tech).map((t) => t.id);
+      let total = 0;
+      await pool(ids, 4, (id) =>
+        withTechLock(id, "type-stubs", async () => {
+          const s = loadStore(id);
+          // The technology's packages: its descriptor's, else every npm package its records name.
+          const components = TECHNOLOGIES[id]?.components ?? [...new Set(Object.values(s.records).flatMap((r) => r.releases.map((x) => x.component)))];
+          const added = await typeStubDeprecations({ id, components }, s, { offline: !!values.offline });
+          if (!added.length) return;
+          total += added.length;
+          saveStore(s);
+          console.log(JSON.stringify({ technology: id, added }));
+          if (!values["no-publish"]) republish(id);
+        }),
+      );
+      console.log(JSON.stringify({ technologies: ids.length, added: total }));
       return;
     }
     case "publish": {

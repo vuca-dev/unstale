@@ -20,6 +20,7 @@ import { logUsage, readJson, sha256, withUsagePhase, writeAtomic } from "../pipe
 import { reconcileLinkedEvidence, reconcileSources } from "./source-quality.ts";
 import { synthesize } from "./synthesis.ts";
 import { publishTechnology } from "../pipeline/publish.ts";
+import { typeStubDeprecations } from "../pipeline/type-stubs.ts";
 import { JOB_FILE, servedIndex } from "../pipeline/export.ts";
 import { loadStore, retractForeignGuideRecords, saveStore } from "../pipeline/store.ts";
 import { advisoryStage } from "../pipeline/advisories.ts";
@@ -1230,6 +1231,12 @@ export class CoverageService {
       const foreign = retractForeignGuideRecords(store, foreignGuides(tech));
       if (foreign.length) {
         console.error(`coverage: ${logName(job)}: ${foreign.length} records read only from another technology's upgrade guide retracted`);
+        saveStore(store);
+      }
+      // Deprecations the technology's type stubs state in their declarations (registry and tarball reads, no model).
+      const typed = await typeStubDeprecations(tech, store);
+      if (typed.length) {
+        console.error(`coverage: ${logName(job)}: ${typed.length} deprecations from its type stubs' declarations`);
         saveStore(store);
       }
       if (index.length) {

@@ -17,6 +17,7 @@ import { activeTerms, publishTechnology } from "./publish.ts";
 import { drawSample, sampleCounts } from "./sample.ts";
 import { checkIncoming } from "./prereqs.ts";
 import { boundGuideRecords, loadStore, retractForeignGuideRecords, saveStore } from "./store.ts";
+import { typeStubDeprecations } from "./type-stubs.ts";
 import { TECHNOLOGIES, type Technology } from "./technologies.ts";
 import { compareVersions, pool, writeAtomic } from "./util.ts";
 import { DEFAULT_HTTP, HttpClient } from "../collector/http.ts";
@@ -151,6 +152,9 @@ export async function runTechnology(
       if (ingestedNow % 25 === 0) saveStore(store);
     }
     if (!opts.limit) {
+      // Deprecations the technology's type stubs state in their declarations (no release notes say them).
+      const typed = await typeStubDeprecations(t, store, { refresh: !!opts.refresh, offline: !!opts.offline });
+      if (typed.length) console.log(`${t.id}: ${typed.length} deprecations from its type stubs' declarations`);
       const bounded = boundGuideRecords(store, guideBounds(t, fetched.notes));
       if (bounded) console.log(`${t.id}: ${bounded} records from a moving upgrade guide given a release bound`);
       const foreign = retractForeignGuideRecords(store, foreignGuides(t));

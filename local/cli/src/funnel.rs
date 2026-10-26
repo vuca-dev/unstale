@@ -2732,6 +2732,29 @@ mod tests {
     }
 
     #[test]
+    fn a_type_stubs_deprecation_is_in_effect_at_the_installed_stub_version() {
+        // mui/material-ui (QA 2026-10-19): central reads `@deprecated` tags from the stub's declarations
+        // (type-stubs.ts) into records of the typed technology, released in the stub package. The edge places them by
+        // the stub's installed version, not the runtime package's.
+        let dep = json!({"change_type":"deprecation","replaces":["FormEvent"],"terms":[["FormEvent",0]],
+            "releases":[{"component":"pkg:npm/%40types/react","version":"19.2.10","date":"2026-08-01","line":"19"}]});
+        let mut c = catalog("react", 0, vec![with(rec("react:formevent", "pkg:npm/%40types/react", "19.2.10"), dep), rec("react:other", "pkg:npm/react", "19.1.0")]);
+        c.techs.get_mut("react").unwrap().index.releases =
+            serde_json::from_value(json!([{"version":"19.1.0","date":"2025-06-01","line":"19"},{"version":"19.2.3","date":"2025-12-01","line":"19"}])).unwrap();
+        let r = repo(&[("src/a.tsx", "import * as React from 'react';\nexport const f = (e: React.FormEvent<HTMLFormElement>) => e.preventDefault();\n")]);
+        let l = Ledger::default();
+        let s = stack(&[("react", "19.2.3"), ("@types/react", "19.3.0")], None);
+        let out = run_with(&c, &s, &r, &l);
+        assert_eq!(ids(&out, &out.in_effect), vec!["react:formevent"]);
+        let o = out.opps.iter().find(|o| o.id() == "react:formevent").unwrap();
+        assert_eq!((o.installed.to_string(), o.matched.clone()), ("19.3.0".to_string(), vec![("FormEvent".to_string(), vec!["src/a.tsx".to_string()])]));
+        // Below the stub release that deprecates it: not in effect yet.
+        let s = stack(&[("react", "19.2.3"), ("@types/react", "19.2.2")], None);
+        let out = run_with(&c, &s, &r, &l);
+        assert!(out.in_effect.is_empty(), "{:?}", ids(&out, &out.in_effect));
+    }
+
+    #[test]
     fn in_effect_needs_an_installed_package_and_the_records_own_api() {
         let dep = |id: &str, comp: &str, extra: serde_json::Value| with(with(rec(id, comp, "2.0.0"), json!({"change_type":"deprecation"})), extra);
         let c = catalog(
