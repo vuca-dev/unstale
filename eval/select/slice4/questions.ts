@@ -114,7 +114,33 @@ function h(): Questions {
   return { change_type: a.change_type!, surface: a.surface!, breaking: a.breaking!, ...Object.fromEntries(BENEFITS.map((x) => [`benefit_${x}`, b[`benefit_${x}`]!])) };
 }
 
-export const VARIANTS: Record<string, () => Questions> = { base: labelQuestions, v1, v2, v3, h };
+/** Slice 14 round 2 (slice14/PREREG.md addendum). X1: the pipeline's questions with only runtime_internal reworded. */
+function x1(): Questions {
+  const q = labelQuestions();
+  q.surface = {
+    ...q.surface!,
+    options: {
+      ...q.surface!.options,
+      runtime_internal:
+        "Running code behaves differently and a project has nothing to write, configure, run or change for it. Not this surface when existing code, configuration or tooling must adapt, pin or opt back because the change breaks it or changes what it receives.",
+    },
+  };
+  return q;
+}
+
+/** X2: the pipeline's questions plus actionable asked directly. */
+function x2(): Questions {
+  return {
+    ...labelQuestions(),
+    actionable: {
+      instructions:
+        "Is there anything for a project that uses this technology to write, configure, run or change for this record? Yes also when the change breaks existing code or changes what it receives without opt-in, since the project must adapt, pin or opt back. No only when running code behaves differently and the project has nothing to do.",
+      options: yn("Yes.", "No."),
+    },
+  };
+}
+
+export const VARIANTS: Record<string, () => Questions> = { base: labelQuestions, v1, v2, v3, h, x1, x2 };
 
 /** Record-state variants: "base" is recordState() unchanged; "lean" drops fields the questions do not use. */
 export function stateVariant(name: string, s: Record<string, unknown>): Record<string, unknown> {
