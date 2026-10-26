@@ -133,3 +133,103 @@ is reported with that multiplicity.
 **Merge rule** unchanged. If an arm passes, the production switch is a separate draft PR that is not merged.
 
 **Budget.** About $1 for SubQ and Jev together (estimate $0.5); stop at $2.
+
+## Addendum, 25 October 2026: round 3 for step D (written before any round 3 fit, sample, label or call)
+
+An additional round is approved beyond the 2-round cap above. The motivation is unchanged: Snap's step-D advantages
+are cost (−27%) and determinism. The guiding rule for this round: **Snap is rejected only if users' reports get
+worse by more than a pre-registered margin.** A label metric that is significantly lower but leaves the reports
+within the margin does not block it. H1 has been looked at four times and is not used to decide.
+
+### X4 (the arm)
+
+- Request: `labelQuestions()` (v1, unchanged). Snap 1.1's round 0 answers on dev, H1 and H2 are reused.
+- `BREAKING_P`: the dev F2 maximum subject to Snap's dev breaking precision ≥ Jev v1's dev precision at the live 0.5
+  (round 1's D1 rule), ties to 0.5. `BENEFIT_P`: dev F2 (slice 4 `analyze.fit`).
+- Actionable: X3's mapping (surface argmax ≠ `runtime_internal`, or breaking at `BREAKING_P`). In a catalog, a breaking
+  record whose argmax is `runtime_internal` publishes its highest-probability other surface.
+- H1 and H2 numbers are reported for completeness only.
+
+### H3: a fresh confirmation set (the label-level result)
+
+- **Source.** A frozen copy of the published catalog as the CLI cache held it at 22:34 MDT, 25 October 2026
+  (2,472 technology indexes, 110,757 records). Labels in it are never read before H3's gold labels are frozen.
+- **Technologies.** Eligible if all of the following hold:
+  - an index with a `pkg:npm/` or `pkg:pypi/` component;
+  - at least 150 active records whose first evidence kind is `release_notes`, and at least 10 releases in the index;
+  - not excluded by H1's rule (any name, id or repository in a file under `eval/` other than `eval/select`,
+    `eval/repos`, `eval/rarity-sample*`);
+  - not in any H1, H2 or dev set;
+  - not in the stack of any of the 19 scout attempts used below.
+  
+  Pick: the first 3 npm and first 3 PyPI eligible technologies in ascending `sha256("unstale-holdout-v3:tech:" + id)`.
+- **Records.** 70 per technology (420), active and `release_notes` only, in hash order (kind `rec`, id = record id),
+  duplicates of an earlier state skipped. Stratum O is the first evidence section matching
+  `/break|deprecat|remov|migrat|upgrad/i` (a Jev-independent proxy: catalog records keep no extraction hint);
+  n_O = max(round(0.15·n), natural), capped at what O holds. 0.15 is set so the gold breaking share lands near H1's
+  12%.
+- **State.** `recordState` is rebuilt from the record:
+  - technology name;
+  - source from the evidence kind;
+  - release = the record's first release;
+  - subject, facet and summary;
+  - evidence = the first quote, and its section;
+  - introduces and replaces.
+  
+  The UX test below uses the same rebuild.
+- **Gold.** Same procedure as H1:
+  - Two independent labelers (fresh agents, given only `classify/PACKET.md`'s instructions and the id and state of
+    each record, shuffled) produce two files.
+  - A third agent adjudicates only the disagreements, from the state and the two files, with rules R1–R12
+    (`holdout/classify/labels/adjudication.json`). Any new rule is written down with its reason.
+  - The set is **frozen**: labels committed, with their sha in RESULTS, before any model scores H3.
+- **Size check (on gold, before scoring).** H3 must hold at least as many gold-actionable records (73) and gold-breaking
+  records (29) as H1. If not, the next technologies in hash order are added, 70 records each, until it does.
+- **Scoring, once.**
+  - Candidates: Jev (fresh `jev-latest`, v1) and Snap 1.1 X4.
+  - Jev at production 0.5/0.5, scored with production's mapping and, separately, with X4's mapping.
+  - The same floor metrics as round 0 (breaking, benefit-vs-none and actionable recall, breaking precision,
+    change_type), with paired CIs.
+
+### UX-impact test (the deciding criterion)
+
+- **Catalogs.**
+  - *Jev:* the frozen copy as published.
+  - *Snap:* the same copy with every non-advisory record's step-D labels (breaking, benefit, change_type, surface,
+    classifier scores) replaced by Snap X4's answer on the rebuilt state. Everything else is byte-identical: ids,
+    record set, merges, evidence, terms, releases and advisory records. Step E stays Jev's: merges are not redone,
+    so the breaking flag's effect on the de-dup request and guards is not replayed.
+  - Indexes are re-hashed.
+- **Rebuild check.** Jev is asked on 600 snapshot records, drawn in hash order, from their rebuilt states. Agreement
+  with the published labels is reported as the noise floor of the rebuild.
+- **Runs.**
+  - Each of the 19 scout attempts (27 28 31 33–38 40 42 44–51) at its pinned commit, through `ab-rescore`'s steps:
+    blind copy, then `init --catalog <dir> --mode local`, then `run`, then `ab-unstale.py`, then `ab-judge.py` for
+    items without labels.
+  - Arms: `unstale_raw@<build>-djev` and `-dsnap`.
+  - Both arms use the same CLI build (origin/main, built without a default service, so nothing contacts the
+    service and no ingest is triggered), the same `UNSTALE_TODAY`, an isolated cache seeded from the frozen copy,
+    and a scratch copy of `scout.db`.
+  - Pool v3 throughout.
+- **Measures (pooled over 19 reports, Snap minus Jev):**
+  - top-8 A+B;
+  - top-8 items that are not A+B;
+  - false or nit items that enter the top 8;
+  - full-list A+B and tier-A;
+  - leads lost and gained (A+B item keys in one arm's full list and not the other's).
+- **Margin (non-inferiority).** Judge test-retest is 163/184 = 88.6% (`ab_labels` retest samples), so a newly judged
+  item's label is wrong about 11.4% of the time. Snap **passes** if all three hold:
+  - **(a)** extra non-A+B items in the top 8 are at most 6 (1 per 3 reports);
+  - **(b)** the tier-A loss is at most max(1, ⌈0.114 × newly judged tier-A items in either arm⌉);
+  - **(c)** the full-list A+B loss is at most max(1, ⌈0.114 × newly judged A+B items in either arm⌉).
+
+  Label metrics do not override this.
+
+### If Snap passes
+
+A separate draft production PR switches step D to Snap 1.1, with X4's `BREAKING_P` and mapping. It is not merged.
+
+### Budget
+
+About $5 in all (SubQ relabel of about 79K records ≈ $5.0; H3 and the rebuild check ≈ $0.1). Stop at $10.
+Judge calls are Codex, reported at list price.
