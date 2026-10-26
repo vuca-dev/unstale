@@ -1305,6 +1305,19 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             evidence.borrow_mut().insert(key, e.clone());
             e
         };
+        // A literal's evidence where the record names one signature of it (`usage::call_arity`): only files calling it
+        // with that many arguments are sites. Files left out still order the queue (`Evidence::used`).
+        let shaped: Memo<Rc<usage::Evidence>> = RefCell::default();
+        let shaped_of = |v: usize, l: &str, a: (usize, Option<usize>)| -> Rc<usage::Evidence> {
+            let key = (v, format!("{l}\0{a:?}"));
+            if let Some(e) = shaped.borrow().get(&key) {
+                return e.clone();
+            }
+            let keep = |p: &str| inp.repo.text(p).is_some_and(|t| usage::written_outside_comments(p, t, l) && usage::called_with(t, l, a));
+            let e = Rc::new(scopes[v].evidence_where(l, role, !nested, keep));
+            shaped.borrow_mut().insert(key, e.clone());
+            e
+        };
         // Where the technology's file conventions apply (`conventions`); no manifest declaring it: everywhere, as before.
         let convention = conventions(&bounds, &reach, scopes[0].importers().filter(|p| usage::own_code(p, &ecosystem)));
         // A deprecated literal's evidence: whole-literal hits only (`usage::Scope::exact_evidence`), at a live site
@@ -1321,9 +1334,9 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             vec![]
         };
         let runs_a_copy = |p: &str| copies.is_empty() || !usage::own_code(p, &ecosystem) || copies.iter().any(|r| r.contains(p));
-        let exact_of = |v: usize, l: &str, repl: &[String], context: Option<&[String]>, keyed: bool, config: bool, succ: &[String], call: bool, parent: Option<&str>, invoked: bool, named: &[String]| -> Rc<usage::Evidence> {
+        let exact_of = |v: usize, l: &str, repl: &[String], context: Option<&[String]>, keyed: bool, config: bool, succ: &[String], call: bool, parent: Option<&str>, invoked: bool, shape: Option<(usize, Option<usize>)>, named: &[String]| -> Rc<usage::Evidence> {
             let ctx = context.map_or("-".to_string(), |c| c.join("\0"));
-            let key = (v, format!("{l}\0{}\u{1}{ctx}\u{2}{keyed}\u{3}{config}\u{4}{}\u{5}{call}\u{6}{parent:?}\u{7}{invoked}\u{8}{}", repl.join("\0"), succ.join("\0"), named.join("\0")));
+            let key = (v, format!("{l}\0{}\u{1}{ctx}\u{2}{keyed}\u{3}{config}\u{4}{}\u{5}{call}\u{6}{parent:?}\u{7}{invoked}\u{8}{}\u{9}{shape:?}", repl.join("\0"), succ.join("\0"), named.join("\0")));
             if let Some(e) = exact.borrow().get(&key) {
                 return e.clone();
             }
@@ -1370,6 +1383,12 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                 // where the same word names a parameter, keyword argument or module of its own (composio's
                 // `json_schema=…` and `composio.utils.json_schema` for pydantic's `json_schema()`).
                 if invoked && usage::identifier(l) && !inp.repo.text(p).is_some_and(|t| usage::called(t, l)) {
+                    return false;
+                }
+                // A record naming one signature (`cy.stub(object, name, fn)`) is about calls of that arity only.
+                if let Some(a) = shape
+                    && !inp.repo.text(p).is_some_and(|t| usage::called_with(t, l, a))
+                {
                     return false;
                 }
                 // An API name the file defines itself (`def from_orm`) is the file's own; where the record names the
@@ -1674,7 +1693,15 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                 n
             };
             let invoked = |l: &str| rec.r.replaces.iter().any(|x| x.replace('`', "").trim().ends_with("()") && clean_lit(x).as_deref() == Some(l));
-            let ex_with = |l: &str, call: bool| exact_of(view, l, &replacement, broad.iter().any(|b| *b == l).then_some(&context[..]), keyed_api(&rec.r, ls, l), config, &succ, call, option_of(&rec.r, l), invoked(l), &named);
+            // The signature the record replaces, when every `replaces` entry for the literal writes one with parameters
+            // (`cy.stub(object, name, fn)`): its calls of another arity (`cy.stub()`) are not sites.
+            let shape = |l: &str| -> Option<(usize, Option<usize>)> {
+                let mut of = rec.r.replaces.iter().filter(|x| clean_lit(x).as_deref() == Some(l)).map(|x| usage::call_arity(x)).peekable();
+                of.peek()?;
+                of.try_fold((usize::MAX, Some(0usize)), |(lo, hi), a| a.map(|(m, x)| (lo.min(m), hi.zip(x).map(|(h, x)| h.max(x)))))
+            };
+            let ev_cite = |l: &str| -> Rc<usage::Evidence> { if let Some(a) = shape(l) { shaped_of(view, l, a) } else { ev(l) } };
+            let ex_with = |l: &str, call: bool| exact_of(view, l, &replacement, broad.iter().any(|b| *b == l).then_some(&context[..]), keyed_api(&rec.r, ls, l), config, &succ, call, option_of(&rec.r, l), invoked(l), shape(l), &named);
             let ex = |l: &str| ex_with(l, false);
             // A record about some values of one option cites the option's key only, where a file sets it to one of them.
             // A deprecation citing its replaced literals keeps that path (`option_of` puts a value under its key).
@@ -1697,7 +1724,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             } else if keyed.is_some() {
                 (&key_lits, &key_ev)
             } else {
-                (ls, &ev)
+                (ls, &ev_cite)
             };
             // A lint rule this repository never turns on: none of the record's terms is a site (`rule_not_enabled`).
             let rule_off = !lint_ns.is_empty()
@@ -3528,6 +3555,42 @@ mod tests {
         assert_eq!(route("zod:cli-flag"), Some(Route::OtherPackage));
         assert_eq!(route("zod:cli-named"), Some(Route::OtherPackage));
         assert_ne!(route("zod:shared"), Some(Route::OtherPackage), "a stream-wide change still counts");
+    }
+
+    #[test]
+    fn a_removed_signature_is_not_cited_at_calls_of_another_arity() {
+        // cypress 16 removes `cy.stub(object, name, fn)`; wavesurfer.js only calls `cy.stub()` with no arguments.
+        let c = catalog(
+            "cypress",
+            0,
+            vec![
+                with(
+                    rec("cypress:cy.stub", "pkg:npm/cypress", "16.0.0"),
+                    json!({"change_type":"removal","breaking":true,"replaces":["cy.stub(object, name, fn)"],
+                           "terms":[["cy.stub(object, name, fn)",0],["cy.stub(",0],[".callsFake(",0]]}),
+                ),
+                // A deprecation written the same way takes the exact-literal path.
+                with(
+                    rec("cypress:cy.spy", "pkg:npm/cypress", "12.0.0"),
+                    json!({"change_type":"deprecation","replaces":["cy.spy(object, name, fn)"],"terms":[["cy.spy(object, name, fn)",0]]}),
+                ),
+            ],
+        );
+        let s = stack(&[("cypress", "13.17.0")], None);
+        let l = Ledger::default();
+        let files = |out: &Outcome, id: &str| out.opps.iter().find(|o| o.id() == id).unwrap().files.clone();
+        let r = repo(&[("cypress/e2e/webaudio.cy.js", "describe('a', () => {\n  const ctx = { connect: cy.stub(), gain: cy.stub().returns(g), s: cy.spy(win, 'x') };\n});\n")]);
+        let out = run_with(&c, &s, &r, &l);
+        assert!(files(&out, "cypress:cy.stub").is_empty());
+        assert!(files(&out, "cypress:cy.spy").is_empty());
+        assert!(out.in_effect.is_empty());
+        let r = repo(&[
+            ("cypress/e2e/a.cy.js", "cy.stub()\n"),
+            ("cypress/e2e/b.cy.js", "cy.stub(win, 'open', () => null)\ncy.spy(win, 'x', f)\n"),
+        ]);
+        let out = run_with(&c, &s, &r, &l);
+        assert_eq!(files(&out, "cypress:cy.stub"), vec!["cypress/e2e/b.cy.js".to_string()]);
+        assert_eq!(files(&out, "cypress:cy.spy"), vec!["cypress/e2e/b.cy.js".to_string()]);
     }
 
     #[test]
