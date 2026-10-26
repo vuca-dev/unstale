@@ -2,7 +2,7 @@
 // reserved amber regions on arrival. Reduced motion shows a healed still frame.
 import { planRepairs } from "./wordmark-repairs.js";
 
-for (const button of document.querySelectorAll("button.copy")) {
+for (const button of document.querySelectorAll("button.copy[data-copy]")) {
   let reset;
   button.addEventListener("click", async () => {
     try {
@@ -152,5 +152,91 @@ if (canvas && window.UNSTALE_WORDMARK_POINTS) {
     new IntersectionObserver(([e]) => { visible = e.isIntersecting; wake(); }).observe(canvas);
     document.addEventListener("visibilitychange", wake);
     wake();
+  }
+}
+
+
+// A short illustrative init session. The server-rendered result is the fallback.
+const demo = document.getElementById("terminal-demo");
+if (demo) {
+  const motion = matchMedia("(prefers-reduced-motion: reduce)");
+  const controls = demo.querySelector(".term-controls");
+  const progress = demo.querySelector(".term-progress");
+  const result = demo.querySelector(".term-result");
+  const toggle = demo.querySelector("[data-demo-toggle]");
+  const finishButton = demo.querySelector("[data-demo-finish]");
+  const status = demo.querySelector("[data-demo-status]");
+  const stage = demo.querySelector("[data-demo-stage]");
+  const detail = demo.querySelector("[data-demo-detail]");
+  const stages = [
+    ["Mapping your stack · step 1/5", "my-app · 119 direct packages across 3 manifests"],
+    ["Matching upstream changes · step 2/5", "Checking published changes for your stack"],
+    ["Connecting public coverage · step 3/5", "Public packages registered · coverage continues centrally"],
+    ["Refreshing shared results · step 4/5", "Fetching the latest results for your stack"],
+    ["Preparing your review · step 5/5", "Checking versions, local usage and prior decisions"],
+  ];
+  let elapsed = 0, previous = null, frame = null, visible = false;
+  let started = false, done = true, paused = false;
+  function finish() {
+    cancelAnimationFrame(frame);
+    frame = null;
+    done = true;
+    progress.hidden = true;
+    demo.classList.remove("term-running");
+    result.removeAttribute("aria-hidden");
+    toggle.textContent = "Replay";
+    finishButton.hidden = true;
+    status.textContent = "Review ready.";
+  }
+  function tick(now) {
+    frame = null;
+    if (done || paused || !visible || document.hidden) { previous = null; return; }
+    if (previous !== null) elapsed += now - previous;
+    previous = now;
+    if (elapsed >= 7500) { finish(); return; }
+    const index = Math.min(4, Math.floor(elapsed / 1500));
+    const spinner = ["◐", "◓", "◑", "◒"][Math.floor(elapsed / 250) % 4];
+    const text = `${spinner} ${stages[index][0]}`;
+    if (stage.textContent !== text) stage.textContent = text;
+    if (index === 1) detail.textContent = `Checked ${Math.min(119, Math.floor((elapsed - 1500) / 1500 * 119))}/119 direct packages`;
+    else if (detail.textContent !== stages[index][1]) detail.textContent = stages[index][1];
+    frame = requestAnimationFrame(tick);
+  }
+  function schedule() {
+    previous = null;
+    if (frame === null && !done && !paused && visible && !document.hidden) frame = requestAnimationFrame(tick);
+  }
+  function start() {
+    if (motion.matches) { finish(); return; }
+    started = true;
+    done = false;
+    paused = false;
+    elapsed = 0;
+    progress.hidden = false;
+    demo.classList.add("term-running");
+    result.setAttribute("aria-hidden", "true");
+    toggle.textContent = "Pause";
+    finishButton.hidden = false;
+    status.textContent = "Playing setup example.";
+    schedule();
+  }
+  toggle.addEventListener("click", () => {
+    if (done) { start(); return; }
+    paused = !paused;
+    toggle.textContent = paused ? "Resume" : "Pause";
+    status.textContent = paused ? "Replay paused." : "Playing setup example.";
+    schedule();
+  });
+  finishButton.addEventListener("click", finish);
+  motion.addEventListener("change", () => { if (motion.matches) { finish(); controls.hidden = true; } });
+  document.addEventListener("visibilitychange", schedule);
+  if ("IntersectionObserver" in window && !motion.matches) {
+    controls.hidden = false;
+    const observer = new IntersectionObserver(([entry]) => {
+      visible = entry.isIntersecting;
+      if (visible && !started) start();
+      else schedule();
+    }, { threshold: 0.25 });
+    observer.observe(demo);
   }
 }
