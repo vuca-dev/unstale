@@ -2960,11 +2960,17 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
         // What is wrong in the code or install now leads, ahead of workarounds: a published peer range that refuses
         // the current release (its users' installs fail), then two release lines of a package runtime code uses, or a
         // deprecation or removal in effect in application code.
-        let in_app = in_effect.iter().any(|&i| out.opps[i].files.iter().any(|f| w.repo.role(f) == usage::Role::App));
+        // A deprecation whose replacement the code already writes (`funnel::Opp::adopted`) is owed with less urgency: it
+        // stays in the review, but neither leads nor makes the upgrade urgent.
+        let pressing: Vec<usize> = in_effect.iter().copied().filter(|&i| out.opps[i].adopted.is_none()).collect();
+        let in_app = pressing.iter().any(|&i| out.opps[i].files.iter().any(|f| w.repo.role(f) == usage::Role::App));
         // The upgrade takes the label and rank of its most consequential named change (the impact table the A/B judge
         // shares): counts alone name nothing this code hits.
         let (pk, deps_sq) = (&packages, &dep_names);
         let site = |o: &funnel::Opp| -> Option<(String, String)> {
+            if o.adopted.is_some() {
+                return None;
+            }
             let mut hits: Vec<(&String, &String)> = o
                 .matched
                 .iter()
@@ -3003,7 +3009,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
         // The lead follows urgency (`urgency`): what is in effect at the installed version first, then what the next
         // upgrade breaks, then install-state findings and workarounds.
         let mut weight = 4u8;
-        let consequential = if let Some(&i) = in_effect.first() {
+        let consequential = if let Some(&i) = pressing.first() {
             // In effect at the installed version with a site (test code counts: it breaks on the next major).
             let o = &out.opps[i];
             Some(named("deprecated in effect now", i).unwrap_or_else(|| {
@@ -3062,7 +3068,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
             end_of_support: deprecated_here.is_some(),
             prod_use,
             in_effect_app: in_app,
-            in_effect: !in_effect.is_empty(),
+            in_effect: !pressing.is_empty(),
             reached: reached.is_some(),
             advisory,
             breaking_site,

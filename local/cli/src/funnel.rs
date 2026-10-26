@@ -114,6 +114,12 @@ pub struct Opp<'a> {
     /// record's terms: those files run another version than `installed`, so they are left out of `matched` and
     /// `files`, and named here instead.
     pub elsewhere: Vec<String>,
+    /// A deprecation or removal cited at its `replaces` literals whose named replacement (an `introduces` literal, not
+    /// a plain word) the repository
+    /// already writes, whole and outside comments, in a file about the technology (not documentation, generated or
+    /// vendored text): (replacement, file). The project has the new form; the old sites left are a kept path or the
+    /// last of a migration, so the record never leads an upgrade (lower urgency), and stays in its review.
+    pub adopted: Option<(String, String)>,
 }
 
 impl Opp<'_> {
@@ -1748,6 +1754,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                 withheld_from: None,
                 unmet: None,
                 elsewhere,
+                adopted: None,
             };
             // The ledger, prerequisite and applied checks do not depend on the version: shared with `workspaces`.
             let ledger_status = || {
@@ -1853,6 +1860,22 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             // it, breaking or not.
             if matches!(opp.route, Route::UpgradeReview | Route::ImprovementsPass) && rec.r.change_type == ChangeType::DefaultChange && option_set(view) {
                 opp.route = Route::Applied;
+            }
+            // Already handled: the code writes what the record names as the replacement (`model_json_schema` beside a
+            // remaining `json_schema()`), in a file about the technology. Lead order only (`adopted`).
+            if matches!(opp.route, Route::UpgradeReview | Route::InEffect) && opp.matched.iter().any(|(l, _)| deprecated.contains(l)) {
+                // Only what the record introduces, matched whole (`model_json_schema` contains `json_schema` and still
+                // counts): other literals of the replacement's shape (`BaseModel` beside `json_schema()`) name the
+                // general API, which every user writes.
+                let intro: Vec<String> = rec.r.introduces.iter().filter_map(|x| clean_lit(x)).filter(|l| !deprecated.contains(l) && !usage::plain_word(l) && !l.contains(char::is_whitespace)).collect();
+                opp.adopted = intro.iter().find_map(|l| {
+                    hits_of(view).whole.get(l.as_str()).into_iter().flatten().find(|p| {
+                        !matches!(role(p), usage::Role::Docs | usage::Role::Generated | usage::Role::Vendored)
+                            && scopes[view].counts(l, p)
+                            && scopes[view].file(p) == Some(true)
+                            && inp.repo.text(p).is_some_and(|t| usage::written_outside_comments(p, t, l) && !usage::defines(t, l))
+                    }).map(|p| (l.clone(), p.to_string()))
+                });
             }
             // The same record for each manifest on another version of its package: only what reaches the bump digest
             // or the upgrade review is kept, for the digest's per-workspace lines.
@@ -1974,6 +1997,7 @@ fn blank<'a>(rec: &'a Rec, release: Release, route: Route) -> Opp<'a> {
         withheld_from: None,
         unmet: None,
         elsewhere: vec![],
+        adopted: None,
     }
 }
 
@@ -2585,6 +2609,31 @@ mod tests {
         ];
         let comps: BTreeSet<String> = [crate::util::npm_purl("typescript-eslint")].into();
         assert_eq!(reaching(&ps, &dependents(&ps), &comps), vec!["packages/eslint-config", "packages/cli", "packages/editor"]);
+    }
+
+    #[test]
+    fn a_deprecation_whose_replacement_the_code_already_writes_is_adopted() {
+        // pydantic/logfire (attempt 40): `json_schema()` remains at one site while the code already calls the record's
+        // replacement, `model_json_schema`, in a file importing pydantic. Still in effect, but already handled: it no
+        // longer leads (`Opp::adopted`). Docs and comments naming the replacement are not adoption.
+        let dep = with(
+            rec("pydantic:model-json-schema", "pkg:pypi/pydantic", "2.0.0"),
+            json!({"change_type":"deprecation","replaces":["json_schema()"],"introduces":["model_json_schema"],"terms":[["json_schema()",0],["BaseModel",0]]}),
+        );
+        let c = catalog("pydantic", 0, vec![dep]);
+        let mut s = stack(&[], None);
+        s.deps.insert("pkg:pypi/pydantic".into(), crate::stack::Dep { version: parse_version("2.14.0"), source: "test".into(), ..crate::stack::Dep::new("pydantic", true) });
+        let old = ("src/vars.py", "import pydantic\nfrom .models import M\n\nschema = M.json_schema()\n");
+        let l = Ledger::default();
+        let r = repo(&[old, ("docs/guide.py", "from pydantic import BaseModel\nM.model_json_schema()\n"), ("src/note.py", "from pydantic import BaseModel\n# use model_json_schema\n")]);
+        let out = run_with(&c, &s, &r, &l);
+        let o = out.opps.iter().find(|o| o.id() == "pydantic:model-json-schema").unwrap();
+        assert_eq!((&o.route, &o.adopted), (&Route::InEffect, &None), "only documentation and a comment name the replacement");
+        let r = repo(&[old, ("src/models.py", "from pydantic import BaseModel\n\nschema = Inputs.model_json_schema()\n")]);
+        let out = run_with(&c, &s, &r, &l);
+        let o = out.opps.iter().find(|o| o.id() == "pydantic:model-json-schema").unwrap();
+        assert_eq!(o.route, Route::InEffect, "still cited in its review");
+        assert_eq!(o.adopted, Some(("model_json_schema".to_string(), "src/models.py".to_string())));
     }
 
     #[test]

@@ -308,6 +308,9 @@ fn render_record(pass: Pass, o: &Opp) -> String {
         };
         s += &format!("- {what}: {}\n", m.join("; "));
     }
+    if let Some((l, f)) = &o.adopted {
+        s += &format!("- Replacement already used: `{}` ({f}); check whether the sites above are a kept path or the rest of a migration\n", one_line(l, FIELD_MAX));
+    }
     if !o.elsewhere.is_empty() {
         s += &format!("- Not cited: code importing it under {}, which runs another release line than installed {}\n", o.elsewhere.join(", "), o.installed);
     }
