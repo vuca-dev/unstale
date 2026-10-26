@@ -77,3 +77,81 @@ npx tsx ../eval/select/slice5/judge2.mts --arm Q8 --floor 0.6 --cand subq --subq
 npx tsx ../eval/select/slice5/score5.mts --floor 0.6 --base Q8 --subq Q8 --subq-tag 1.1[-nocross] [--fixed 0.87,0.87,0.95]
 ../eval/select/out/venv/bin/python ../eval/select/slice14/analyze_d.py [--d1]
 ```
+
+## Round 2 and hill-climb (25 October 2026, step D only; PREREG.md addendum of the same date)
+
+**Decision: keep Jev for step D. No arm passes the floor; no production change, no switch PR.**
+
+### Evalism check (before any model change)
+
+- **Not a scorer, mapping or input bias.** Both candidates get the same request (`labelQuestions()`, byte-equal to
+  v1) and the same mapping (`actionable` = surface argmax ≠ `runtime_internal`); 233/233 answered by each, so no
+  parsing default applies. The gold `actionable` uses the same `runtime_internal` definition. Scorer unchanged.
+- **Round 0 reproduced exactly.** The Snap 1.1 runs were no longer on disk; re-run with the same command, every
+  round 0 metric is identical (Snap is deterministic).
+- **The gap is the gold rule R1.** On the 73 gold-actionable H1 records: both hit 53, both miss 10, Jev only 9, Snap
+  only 1. All 9 Jev-only hits are gold-breaking records that are actionable through adjudication rule R1 ("breaking
+  implies actionable"), which no candidate's question states. Breakdown:
+  - 4 behaviour_change (zod record keys, E.164 regex, z.base64 whitespace; typer-slim now requires rich);
+  - 3 removal (typer-cli and typer-slim dropped, Python 3.9 dropped);
+  - 1 security (base64 whitespace), 1 default_change (`FORWARDED_ALLOW_IPS` now trusts ::1).
+  - Snap's argmax was `runtime_internal` on all 9 (p 0.48 to 0.87), the runner-up being code_api 6 times,
+    configuration once and other once. Jev chose code_api 5, configuration 2, command_line 1 and types_only 1.
+- On the 160 gold-not-actionable records, Jev false positives 43 and Snap 36 (aP 59.0 and 60.0).
+
+### Arms (Snap at its dev-fitted thresholds; Jev under the same request at its own; Jev X1/X2 are fresh 1.14 runs)
+
+| Arm | Fit B/N (Jev; Snap) | H1 actionable R, Jev → Snap (diff, CI) | H1 actionable P, Jev / Snap | H2 breaking P, Jev @0.5 → Snap (diff, CI) | Floor |
+|---|---|---|---|---|---|
+| Round 0 (v1) | 0.05/0.10; 0.05/0.10 | 84.9 → 74.0 (−11.0 [−19.2, −2.7]) | 59.0 / 60.0 | 94.5 → 85.5 (−9.0 [−13.9, −5.2]) | fail |
+| X1: runtime_internal reworded | 0.10/0.10; 0.15/0.10 | 89.0 → 72.6 (**−16.4 [−26.0, −6.8]**) | 59.1 / 63.1 | 92.5 → 90.1 (**−2.4 [−4.6, −0.6]**) | fail (H1 actionable, H2 P) |
+| X2: actionable asked directly | 0.10/0.10; 0.05/0.10 | 93.2 → 53.4 (**−39.7 [−50.7, −28.8]**) | 46.3 / 97.5 | 92.5 → 85.5 (**−7.0 [−11.7, −3.5]**) | fail (H1 actionable, H2 P) |
+| X3: R1 mapping (no calls) | 0.05/0.10; 0.05/0.10 | 97.3 → 100.0 (+2.7 [0, +6.8]) | 50.0 / 54.1 | 94.5 → 85.5 (**−9.0 [−13.9, −5.2]**) | fail (H2 P only) |
+
+- **Other floor metrics passed in every arm.** H1 breaking recall: Snap ≥ Jev in every arm. H1 benefit-vs-none
+  recall: within 1 point. change_type: within 1 point, CI spanning 0. H2 breaking recall: Snap ahead.
+- **X1:** Snap's actionable R moves −1.4 (same model, wording only). Jev 1.14 under X1 is +4.1 against its 1.13 v1 baseline, with version and wording confounded. Snap's fitted `BREAKING_P` moves to 0.15
+  and H2 precision almost passes (upper CI −0.6).
+- **X2:** the direct question makes Snap conservative (aR 53.4, aP 97.5) and Jev liberal (aR 93.2, aP 46.3). The
+  ninth question is a second request per record: Jev +21% input, Snap +15%.
+- **X3:** this mapping closes the actionable gap. The remaining failure is H2 breaking precision at Snap's dev-fitted
+  `BREAKING_P` 0.05. That is a threshold failure, not an actionable one. At 0.5 (descriptive, not a floor arm):
+  - Snap H2 P 93.1 against 94.5, CI spanning 0;
+  - H1 actionable R 95.9 against Jev's 97.3 at its fit.
+  
+  Round 1's precision-capped fit (D1) lost H1 breaking recall, so no dev-fitted `BREAKING_P` passes both H1 and H2.
+- **Cost (input as billed, $/tech-year mean):**
+
+  | | Jev | Snap | Snap vs Jev |
+  |---|---|---|---|
+  | X1 | 0.0103 | 0.0074 | −28% |
+  | X2 | 0.0125 | 0.0083 | −33% |
+  | X3 | as round 0 | as round 0 | −27% |
+
+- **Held-out looks for Snap:** H1 3 (round 0, D1, round 2), and H2 the same. There are 3 arms in round 2, and the
+  levers were chosen after the H1 miss inspection (PREREG addendum).
+- **Found on the way:** Jev 1.14 under X1 has H2 breaking R 96.1 at 0.5, against 90.0 for its v1 1.13 baseline.
+
+### Rejected
+
+- **Changing the scorer:** R1 predates both runs and applies to both candidates. It is a definitional gap in the
+  request, not a bias in the scorer.
+- **Adopting X3 at 0.5:** not dev-fitted, and the floor is at fitted thresholds.
+- **A third round:** the 2-round cap is reached.
+
+### Spend (round 2)
+
+| | Cost | Runs |
+|---|---|---|
+| SubQ | $0.199 | round 0 re-run $0.063, X1 $0.064, X2 $0.072 |
+| Jev | $0.197 | X1 $0.089, X2 $0.108 |
+| **Total** | **$0.40** | |
+
+Usage: `out/slice4/usage.jsonl`.
+
+```
+cd central
+npx tsx ../eval/select/slice4/run4.mts --cand subq --subq-model subq-snap-1.1 --split dev|heldout|heldout2 [--qv x1|x2]
+npx tsx ../eval/select/slice4/run4.mts --cand jev --split dev|heldout|heldout2 --qv x1|x2
+../eval/select/out/venv/bin/python ../eval/select/slice14/analyze_d.py [--suffix=-qx1 | --suffix=-qx2 --act x2 | --act x3]
+```
