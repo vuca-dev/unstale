@@ -1358,7 +1358,7 @@ export async function advisoryStage(
   // Each advisory's affected APIs (one cached extraction-model call per advisory; `apis: false`, the token-free first
   // pass, makes none and leaves the stored ones).
   if (opts.apis !== false) {
-    const a = await attachAdvisoryApis(s, advisories, packageNamesOf(packages), await osvTexts(t), (id) => aliasDetails(t, id, opts));
+    const a = await attachAdvisoryApis(s, advisories, packageNamesOf([...t.components, ...packages]), await osvTexts(t), (id) => aliasDetails(t, id, opts));
     report.apis = { named: a.named, records: a.records };
   }
   return report;

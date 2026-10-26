@@ -294,14 +294,14 @@ async function main(): Promise<void> {
       const total = { advisories: 0, named: 0, records: 0 };
       await pool(ids, 4, (id) =>
         withTechLock(id, "advisory-apis", async () => {
-          // The technology's packages and advisories as the last advisories stage cached them (no OSV request).
+          // Cached packages and advisories; missing alias entries are fetched once.
           const purls = readJson<{ purls?: string[] }>(join(centralDir(), "advisories", techLocal(id), "packages.json"))?.purls;
           if (!purls?.length) return;
           const t = TECHNOLOGIES[id] ?? ({ id, name: id, repo: "", components: purls, tag: /^$/, clean: (b: string) => b } as Technology);
           const advisories = await fetchAdvisories(t, { offline: true });
           if (!advisories.length) return;
           const s = loadStore(id);
-          const r = await attachAdvisoryApis(s, advisories, packageNamesOf(purls), await osvTexts(t), (x) => aliasDetails(t, x));
+          const r = await attachAdvisoryApis(s, advisories, packageNamesOf([...t.components, ...purls]), await osvTexts(t), (x) => aliasDetails(t, x));
           for (const k of Object.keys(total) as Array<keyof typeof total>) total[k] += r[k];
           saveStore(s);
           if (!values["no-publish"]) republish(id);

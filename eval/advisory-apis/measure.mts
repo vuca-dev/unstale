@@ -41,15 +41,15 @@ const before = { ...llmStats };
 // Each advisory as the stage reads it (advisory-apis.ts attachAdvisoryApis): its text, its other entries' texts, and
 // its aliases' entries (cached OSV GETs) when it names none at first.
 const rows = await pool(picked, 6, async ({ a, packages, tech }) => {
-  const names = packageNamesOf(packages.filter((p) => a.affected.some((r) => r.component === p)));
+  const names = packageNamesOf(packages.filter((p) => a.affected.some((r) => r.component === p)));  // reported only
   const t = { id: tech, name: tech, repo: "", components: packages, tag: /^$/, clean: (b: string) => b } as Technology;
   const s = { technology: tech, records: {}, ingested: {} } as never as Parameters<typeof attachAdvisoryApis>[0];
-  await attachAdvisoryApis(s, [a], names.length ? names : packageNamesOf(packages), await osvTexts(t), (id) => aliasDetails(t, id));
+  await attachAdvisoryApis(s, [a], packageNamesOf(packages), await osvTexts(t), (id) => aliasDetails(t, id));
   const apis = s.advisoryApis?.[0]?.apis ?? [];
   return { id: a.id, aliases: a.aliases, package: names[0], chars: advisoryText(a).length, apis, summary: a.summary };
 });
 const used = Object.fromEntries(Object.entries(llmStats).map(([k, v]) => [k, (v as number) - ((before as Record<string, number>)[k] ?? 0)]));
 const named = rows.filter((r) => r.apis.length).length;
-const report = { model: extractModel(), advisories_in_store: all.size, sample: rows.length, named, calls: used, per_advisory: { input_tokens: (used.input_tokens ?? 0) / Math.max(1, used.calls ?? 0), output_tokens: (used.output_tokens ?? 0) / Math.max(1, used.calls ?? 0), dollars: (used.dollars ?? 0) / Math.max(1, used.calls ?? 0) }, rows };
+const report = { model: extractModel(), advisories_in_store: all.size, sample: rows.length, named, calls: used, per_call: { input_tokens: (used.input_tokens ?? 0) / Math.max(1, used.calls ?? 0), output_tokens: (used.output_tokens ?? 0) / Math.max(1, used.calls ?? 0), dollars: (used.dollars ?? 0) / Math.max(1, used.calls ?? 0) }, per_advisory: { calls: (used.calls ?? 0) / Math.max(1, rows.length), dollars: (used.dollars ?? 0) / Math.max(1, rows.length) }, rows };
 writeAtomic(out, JSON.stringify(report, null, 1) + "\n");
 console.log(JSON.stringify({ ...report, rows: undefined }));

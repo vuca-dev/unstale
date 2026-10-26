@@ -16,6 +16,7 @@ import type { Technology } from "../../central/src/pipeline/technologies.ts";
 import { pool, readJson } from "../../central/src/pipeline/util.ts";
 import { techLocal } from "../../central/src/state/client.ts";
 
+if (!process.env.UNSTALE_STORE) throw new Error("set UNSTALE_STORE to the store copy: this script rewrites and republishes it");
 const want = new Set(readFileSync(process.argv[2]!, "utf8").split("\n").map((x) => x.trim().toUpperCase()).filter(Boolean));
 const ids = readdirSync(join(centralDir(), "records")).filter((f) => f.endsWith(".json")).map((f) => readJson<{ technology: string }>(join(centralDir(), "records", f))!.technology);
 const total = { technologies: 0, advisories: 0, named: 0, records: 0 };
@@ -26,7 +27,12 @@ await pool(ids, 4, async (id) => {
   const advisories = (await fetchAdvisories(t, { offline: true })).filter((a) => [a.id, ...a.aliases].some((x) => want.has(x.toUpperCase())));
   if (!advisories.length) return;
   const s = loadStore(id);
+  const before = s.advisoryApis ?? [];
   const r = await attachAdvisoryApis(s, advisories, packageNamesOf(purls), await osvTexts(t), (x) => aliasDetails(t, x));
+  // A partial run keeps the entries of advisories outside this id set.
+  const now = new Set((s.advisoryApis ?? []).map((e) => e.ids[0]));
+  const asked = new Set(advisories.map((a) => a.id));
+  s.advisoryApis = [...before.filter((e) => !now.has(e.ids[0]) && !asked.has(e.ids[0]!)), ...(s.advisoryApis ?? [])].sort((x, y) => x.ids[0]!.localeCompare(y.ids[0]!));
   total.technologies++;
   total.advisories += r.advisories;
   total.named += r.named;
