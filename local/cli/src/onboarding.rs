@@ -1720,6 +1720,7 @@ fn summary(ctx: &Ctx, pending: &Pending, brief: &Brief, issue: Option<&str>) -> 
     let name = ctx.root.file_name().unwrap_or_default().to_string_lossy();
     let mut lines = vec![
         Line::new(format!("✓ {} · {} setup ready", display_text(&name), if ctx.config.mode == Mode::Local { "Personal" } else { "Shared" }), Tone::Fresh),
+        Line::new("Next: run unstale-review in your coding agent · copyable prompt below.", Tone::Accent),
         Line::new(format!("Mapped {} direct dependencies from {} and checked local references.", brief.direct, if brief.versions_from.contains(", ") { "workspace lockfiles" } else { &brief.versions_from }), Tone::Body),
     ];
     if let Some(issue) = issue { lines.push(Line::new(issue, Tone::Amber)); }
@@ -1728,17 +1729,17 @@ fn summary(ctx: &Ctx, pending: &Pending, brief: &Brief, issue: Option<&str>) -> 
     if let Some(why) = &brief.unread {
         lines.push(Line::new(format!("Scope · nothing was checked: {why}."), Tone::Amber));
     } else if !brief.limits.is_empty() {
-        lines.push(Line::new("Scope · other dependency ecosystems are not covered; see report.", Tone::Amber));
+        lines.push(Line::new("Scope · other dependency ecosystems are not covered; see .unstale/onboarding-report.md.", Tone::Amber));
     }
     if brief.unreadable > 0 {
         let n = brief.unreadable;
-        lines.push(Line::new(format!("Lockfile · {n} lockfile{} could not be read in full; versions may be missing. See report.", if n == 1 { "" } else { "s" }), Tone::Amber));
+        lines.push(Line::new(format!("Lockfile · {n} lockfile{} could not be read in full; versions may be missing. See .unstale/onboarding-report.md.", if n == 1 { "" } else { "s" }), Tone::Amber));
     }
     if brief.lock_notes > brief.unreadable {
-        lines.push(Line::new("Versions · competing or out-of-date lockfiles; see report for which was read.", Tone::Amber));
+        lines.push(Line::new("Versions · competing or out-of-date lockfiles; see .unstale/onboarding-report.md for the lockfile used.", Tone::Amber));
     } else if brief.spread > 0 {
         let n = brief.spread;
-        lines.push(Line::new(format!("Versions · {n} package{} on other versions in some workspaces; reviews use the root's version, else the one most of the shallowest manifests a lockfile covers run, unless no code importing it runs that version. See report.", if n == 1 { " is" } else { "s are" }), Tone::Muted));
+        lines.push(Line::new(format!("Versions · {n} package{} on other versions in some workspaces; see .unstale/onboarding-report.md for the versions used.", if n == 1 { " is" } else { "s are" }), Tone::Muted));
     }
     if brief.workarounds > 0 {
         let n = brief.workarounds;
@@ -1752,7 +1753,7 @@ fn summary(ctx: &Ctx, pending: &Pending, brief: &Brief, issue: Option<&str>) -> 
     }
     if brief.deprecated > 0 {
         let n = brief.deprecated;
-        lines.push(Line::new(format!("Deprecated · {n} installed version{} of direct dependencies {} deprecated or yanked by the publisher; see report.", if n == 1 { "" } else { "s" }, if n == 1 { "is" } else { "are" }), Tone::Amber));
+        lines.push(Line::new(format!("Deprecated · {n} installed version{} of direct dependencies {} deprecated or yanked by the publisher; see .unstale/onboarding-report.md.", if n == 1 { "" } else { "s" }, if n == 1 { "is" } else { "are" }), Tone::Amber));
     }
     lines.push(Line::new("", Tone::Body));
     lines.push(Line::new(format!("Upgrades to review · {} shortlisted", brief.upgrades.len()), Tone::Accent));
@@ -1784,13 +1785,13 @@ fn summary(ctx: &Ctx, pending: &Pending, brief: &Brief, issue: Option<&str>) -> 
     lines.push(Line::new("", Tone::Body));
     lines.push(Line::new("", Tone::Body));
     lines.push(Line::new("", Tone::Rule));
-    lines.push(Line::new("NEXT · Paste this prompt into your coding agent", Tone::Fresh));
+    lines.push(Line::new("NEXT · Review with unstale-review · paste into your coding agent", Tone::Fresh));
     lines.push(Line::new("", Tone::Body));
     lines.push(Line::new("Use .unstale/skills/review/SKILL.md to review this repository. Recommend what to act on next, with affected files and trade-offs. Return proposals only; do not edit files.", Tone::Prompt));
     lines.push(Line::new("", Tone::Body));
     lines.push(Line::new("", Tone::Rule));
-    lines.push(Line::new(if ctx.config.mode == Mode::Local { "Decisions stay personal. Share later: unstale init --mode shared --wait 0" } else { "Decisions are shared through Git. Keep personal instead: unstale init --mode personal --wait 0" }, Tone::Muted));
-    lines.push(Line::new("Full breakdown and evidence: .unstale/onboarding-report.md", Tone::Muted));
+    lines.push(Line::new(if ctx.config.mode == Mode::Local { ".unstale/ is Git-ignored. Share reviews and decisions: unstale init --mode shared --wait 0" } else { "Reviews and decisions can be committed to Git. Keep personal: unstale init --mode personal --wait 0" }, Tone::Muted));
+    lines.push(Line::new("Details: .unstale/onboarding-report.md", Tone::Muted));
     lines
 }
 
@@ -3648,7 +3649,7 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
             "{} direct packages · matching official changes to this stack",
             st.deps.len()
         ),
-        "No repository agent review runs during setup",
+        "Downloading upstream changes · cached files reused",
     );
     // Every catalog refresh says how far it has got: on a large stack it is a few hundred requests. It returns the
     // technologies it checked when every one of them settled, so one that failed is tried again in step 4.
@@ -3672,7 +3673,12 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
         // Release dates of the direct packages the coverage service found stale or archived (maintenance.rs).
         crate::maintenance::refresh(&ctx.cache, &st, &read(ctx).jobs);
     };
-    if !service_available(service) {
+    ui.update("Connecting to the catalog · step 2/5", "Checking service availability", "");
+    let mut timings = vec![];
+    let connection_started = Instant::now();
+    let available = service_available(service);
+    timings.push(format!("Service availability: {}ms", connection_started.elapsed().as_millis()));
+    if !available {
         // A static catalog host (GitHub Pages) at the service address has no coverage service: the catalog still
         // syncs, nothing is requested, and that is not a failure. A separate catalog with its service down is.
         let place = |loc: &str| match sync::resolve_source(loc) {
@@ -3681,7 +3687,7 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
             Err(_) => None,
         };
         if place(service).is_some_and(|p| Some(p) == place(&ctx.config.catalog))
-            && catalog_sync("Matching published intelligence · step 2/5", "No repository agent review runs during setup").is_ok()
+            && catalog_sync("Matching published intelligence · step 2/5", "Downloading upstream changes · cached files reused").is_ok()
         {
             util::write_atomic(&log, b"No coverage service at this address; catalog synced, no coverage requested\n")?;
             check_deprecations();
@@ -3717,13 +3723,15 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
     }
     // When the catalog last synced, and for which technologies; step 4 syncs again only when that may be stale.
     let mut synced = None;
-    match catalog_sync("Matching published intelligence · step 2/5", "No repository agent review runs during setup") {
+    let catalog_started = Instant::now();
+    match catalog_sync("Matching published intelligence · step 2/5", "Downloading upstream changes · cached files reused") {
         Ok(cands) => synced = cands.map(|c| (Instant::now(), c)),
         Err(e) => {
             diagnostics.push(format!("Initial catalog refresh: {e:#}"));
             issue = Some("Catalog refresh unavailable · cached intelligence kept".into());
         }
     }
+    timings.push(format!("Initial catalog refresh: {}ms · {} direct packages", catalog_started.elapsed().as_millis(), st.deps.len()));
     ui.update(
         "Connecting public coverage · step 3/5",
         &format!(
@@ -3741,7 +3749,12 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
         if unchecked.is_empty() {
             break;
         }
+        if round > 0 {
+            ui.update("Retrying public packages · step 3/5", &format!("{} registry identities unanswered · retrying in {pause}s", unchecked.len()), "");
+        }
         std::thread::sleep(Duration::from_secs(pause));
+        let retry_total = unchecked.len();
+        let mut retry_done = 0;
         let mut unanswered = vec![];
         util::concurrent(&unchecked, width, |(p, d)| public_package(&ctx.cache, p, &d.pins), |i, public| {
             match public {
@@ -3752,7 +3765,12 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
             if round == 0 {
                 done += 1;
             }
-            ui.update("Verifying public packages · step 3/5", &format!("Checked {done}/{total} registry identities"), "Only verified public package names are submitted");
+            if round == 0 {
+                ui.update("Verifying public packages · step 3/5", &format!("Checked {done}/{total} registry identities"), "");
+            } else {
+                retry_done += 1;
+                ui.update("Retrying public packages · step 3/5", &format!("Retried {retry_done}/{retry_total} registry identities · {} still unanswered", unanswered.len()), "");
+            }
             true
         });
         unchecked = unanswered;
@@ -3898,10 +3916,10 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
     ui.update(
         "Preparing your review · step 5/5",
         "Checking versions, local usage and prior decisions",
-        "Final step · no application files changed",
+        "Preparing unstale-review",
     );
     let brief = report(ctx, &pending, &mut scan)?;
-    util::write_atomic(&log, diagnostics.join("\n").as_bytes())?;
+    util::write_atomic(&log, timings.iter().chain(diagnostics.iter()).cloned().collect::<Vec<_>>().join("\n").as_bytes())?;
     if !diagnostics.is_empty() {
         let path = ctx.tool.join("onboarding-report.md");
         let mut text = std::fs::read_to_string(&path)?;
