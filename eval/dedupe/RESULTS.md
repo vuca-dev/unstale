@@ -24,7 +24,7 @@ extractor separated those changes itself". That assumption fails in two ways.
   (snapshot and normalised quote) with the same summary, change_type and breaking flag merge into the first one
   extracted, when the quote names each one's subject (or its last segment). The other subjects join its terms, and
   replaces, requires, introduces, conditions, prerequisites and benefits are unioned. Without the subject rule, two
-  yt-dlp extractor fixes quoted only as "Fix extractor" merged; 327 such groups are now left apart.
+  yt-dlp extractor fixes quoted only as "Fix extractor" merged; the rule leaves 327 records apart.
 - **Other chunks** (`otherChunkSameSubject`). At ingest, a same-snapshot record from another chunk with the same
   subject and facet is now a candidate. Within one document the quote guard does not apply (two sections word a change
   differently), so the judge must reach the cross-source bar (`CROSS_SAME_P`, `CROSS_SAME_P_SHORT`).
@@ -56,7 +56,7 @@ alone.
 | full store (#147 reference) | 27/72 | 6/22 |
 | this change | **27/72** | **6/22** |
 
-No required key changes rank. The catalog window changed for most events, so their Codex matches ran again. On a first
+No required key change moves. The catalog window changed for most events, so their Codex matches ran again. On a first
 run, before the subject rule, one fresh match run left `prisma:driver-adapters` out of cedar-prisma7 K10's map: DEV
 26/72. That record was unchanged and still 4th in the CLI's queue, and scoring with the full store's match maps gave
 27/72.
