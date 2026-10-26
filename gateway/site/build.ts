@@ -334,8 +334,8 @@ function terminal(): string {
 <p>Example output of <code>unstale init</code> on a Next.js and Prisma app</p>
 <figure class="term" id="terminal-demo" aria-label="Example unstale init session">
 <div class="term-toolbar"><span>my-app — unstale init</span><div class="term-controls" hidden><button type="button" class="copy" data-demo-toggle>Pause</button> <button type="button" class="copy" data-demo-finish>Show results</button></div></div>
-<div class="term-screen"><pre class="term-result">${rows}</pre><div class="term-progress" hidden><pre><span class="t-cmd">$ npx @unstale/cli init</span></pre>${wordmarkSvg("demo-mark")}<pre><span class="t-accent" data-demo-stage></span><span class="t-body" data-demo-detail></span></pre></div></div>
-<figcaption>Illustrative replay · timing shortened. <span data-demo-status role="status"></span></figcaption>
+<div class="term-screen"><pre class="term-result">${rows}</pre><div class="term-progress" hidden><pre><span class="t-cmd">$ npx @unstale/cli init</span></pre><canvas id="demo-wordmark" aria-label="unstale"></canvas><pre><span class="t-accent" data-demo-stage></span><span class="t-body" data-demo-detail></span></pre></div></div>
+
 </figure>
 </section>`;
 }
@@ -404,7 +404,7 @@ ${copyable("unstale init")}
 </section>
 ${terminal()}
 <section class="prose">
-<h2>Fixes merged upstream</h2>
+<h2>Found with unstale</h2>
 <ul>
 ${CONTRIBUTIONS.map((c) => `<li><a href="${esc(c.url)}">${esc(c.lead)}</a> ${esc(c.rest)}</li>`).join("\n")}
 </ul>
@@ -462,7 +462,7 @@ free and open source.
 It finds 4x as many upstream changes that apply to your code as Claude Code alone, using 1/16 of the tokens
 ([how we measured](${BEAT_NAIVE})).
 
-## Fixes merged upstream
+## Found with unstale
 
 ${CONTRIBUTIONS.map((c) => `- [${c.lead}](${c.url}) ${c.rest}`).join("\n")}
 
