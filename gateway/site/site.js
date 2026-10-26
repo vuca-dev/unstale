@@ -114,7 +114,7 @@ function wordmark(canvas, manual = false) {
     ox = (W - (GW / 2) * cw) / 2; oy = (H - (GH / 4) * ch) / 2;
     r = Math.max(0.35, cw * 0.20);
   }
-  const shade = (c) => (light && (c === STREAM || c === STREAM_HI) ? [190, 214, 210] : c);
+  const shade = (c) => (light && !manual && (c === STREAM || c === STREAM_HI) ? [190, 214, 210] : c);
   function draw(t, ambient = true) {
     const px = cloud(t, ambient);
     ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
