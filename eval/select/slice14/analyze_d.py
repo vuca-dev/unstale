@@ -88,8 +88,8 @@ def fit_d1(jev_dev, snap_dev, f):
     return dict(f, BREAKING_P=bt, tau=tau, jev_dev_precision_05=floor_p, snap_dev_precision=pr(snap_dev, bt)[0], jev_dev_actionable=target, snap_dev_actionable=actionable_share(snap_dev, tau))
 
 
-def flips(a, b, bt, nt, tau=None):
-    pa, pb = to_pred(a, bt, nt, tau), to_pred(b, bt, nt, tau)
+def flips(a, b, bt, nt, tau=None, act=None):
+    pa, pb = to_pred(a, bt, nt, tau, act), to_pred(b, bt, nt, tau, act)
     return sum(1 for k in set(pa) | set(pb) if pa.get(k) != pb.get(k))
 
 
@@ -106,6 +106,7 @@ def main():
     S = runs(o.arm, o.suffix)
     JR = jev_runs(o.suffix if o.jev_suffix is None else o.jev_suffix)
     act = o.act
+    round2 = bool(act) or o.suffix.startswith("-qx")
     labels_path = os.path.join(A.OUT, "adjudicated-records.json")
     labels = A.rj(labels_path)
     rep = {"arm": o.arm}
@@ -135,12 +136,13 @@ def main():
             why.append("H1 %s > 5 pts below" % key)
         if res[cname]["ci"][1] < 0:
             why.append("H1 %s significantly worse" % key)
-    # Round 2 guards (PREREG addendum): change_type accuracy as the recalls; actionable precision <= 5 pts below.
-    if rep["h1"]["snap_fit"]["change_type_acc"] < rep["h1"]["jev_fit"]["change_type_acc"] - 0.05:
+    # Round 2 guards (PREREG addendum, round 2 arms only): change_type accuracy as the recalls; actionable precision
+    # <= 5 pts below.
+    if round2 and rep["h1"]["snap_fit"]["change_type_acc"] < rep["h1"]["jev_fit"]["change_type_acc"] - 0.05:
         why.append("H1 change_type_acc > 5 pts below")
-    if res["change_type accuracy"]["ci"][1] < 0:
+    if round2 and res["change_type accuracy"]["ci"][1] < 0:
         why.append("H1 change_type_acc significantly worse")
-    if rep["h1"]["snap_fit"]["actionable_precision"] < rep["h1"]["jev_fit"]["actionable_precision"] - 0.05:
+    if round2 and rep["h1"]["snap_fit"]["actionable_precision"] < rep["h1"]["jev_fit"]["actionable_precision"] - 0.05:
         why.append("H1 actionable_precision > 5 pts below")
 
     # H2: breaking at Snap's fitted threshold against Jev at 0.5 (H2's rule), section-cluster bootstrap.
@@ -181,7 +183,7 @@ def main():
         a1 = ans(R["h1"])
         if b:
             same = sum(1 for k in a1 if a1[k] and b.get(k) and a1[k]["answers"] == b[k]["answers"])
-            rep["repeat"][name] = {"flips_fit": flips(a1, b, f["BREAKING_P"], f["BENEFIT_P"], f.get("tau")), "flips_05": flips(a1, b, 0.5, 0.5), "identical_answers": same, "n": len(a1)}
+            rep["repeat"][name] = {"flips_fit": flips(a1, b, f["BREAKING_P"], f["BENEFIT_P"], f.get("tau"), act), "flips_05": flips(a1, b, 0.5, 0.5, act=act), "identical_answers": same, "n": len(a1)}
     rep["cost"] = {}
     for name, R in (("jev", JR), ("snap", S)):
         m = A.rj(os.path.join(A.RUNS, R["h1"], "meta.json"))
