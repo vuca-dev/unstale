@@ -308,6 +308,7 @@ export function packageMarkdown(p: Package): string {
 const TERMINAL: [string, string][] = [
   ["cmd", "$ npx @unstale/cli init"],
   ["fresh", "✓ my-app · Personal setup ready"],
+  ["accent", "Next: run unstale-review in your coding agent · copyable prompt below."],
   ["body", "Mapped 119 direct dependencies from pnpm-lock.yaml and checked local references."],
   ["muted", "Security · 31 advisory fixes match installed versions; each is noted on its upgrade."],
   ["", ""],
@@ -321,7 +322,7 @@ const TERMINAL: [string, string][] = [
   ["", ""],
   ["rule", ""],
   ["fresh", "NEXT · Paste this prompt into your coding agent"],
-  ["prompt", "Use .unstale/skills/review/SKILL.md to review this repository. Recommend what to act on next, with affected files and trade-offs. Return proposals only; do not edit files."],
+  ["prompt", "Use .unstale/skills/review/SKILL.md to review this repository. Rank upgrades and capabilities by likely impact. Recommend what to do first, with affected files and trade-offs. Return proposals only; do not edit files."],
   ["rule", ""],
 ];
 
@@ -331,7 +332,11 @@ function terminal(): string {
   ).join("");
   return `<section class="prose example">
 <p>Example output of <code>unstale init</code> on a Next.js and Prisma app</p>
-<figure class="term"><pre>${rows}</pre></figure>
+<figure class="term" id="terminal-demo" aria-label="Example unstale init session">
+<div class="term-toolbar"><span>my-app — unstale init</span><div class="term-controls" hidden><button type="button" class="copy" data-demo-toggle>Pause</button> <button type="button" class="copy" data-demo-finish>Show results</button></div></div>
+<div class="term-screen"><pre class="term-result">${rows}</pre><div class="term-progress" hidden><pre><span class="t-cmd">$ npx @unstale/cli init</span></pre>${wordmarkSvg("demo-mark")}<pre><span class="t-accent" data-demo-stage></span><span class="t-body" data-demo-detail></span></pre></div></div>
+<figcaption>Illustrative replay · timing shortened. <span data-demo-status role="status"></span></figcaption>
+</figure>
 </section>`;
 }
 
