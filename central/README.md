@@ -21,6 +21,7 @@ npm run catalog -- correct <id> change_type=removal replaces=a,b [--claim] [--no
 npm run catalog -- merge <from-id> <into-id>
 npm run catalog -- retract <id> [--note text]
 npm run catalog -- publish [--tech next]
+npm run catalog -- advisory-apis [--tech next | --all]   # backfill each advisory's affected APIs from the OSV cache
 npm run catalog -- usage                 # model calls and tokens from the usage log; by_phase: onboarding vs monitoring
 npm run catalog -- prune [--dry-run]     # delete shards no index has referenced for 7 days (history in catalog/history/)
 npm run catalog -- export <dir>          # prune, then a static copy of v1/ (with components, .nojekyll) for GitHub Pages
@@ -39,6 +40,7 @@ ingested extraction is recorded, so a rerun makes no uncached calls and writes b
 | `src/pipeline/classify/adapter.ts` | Classifier adapter: Jev first, the extraction model answering choices as the per-request fallback, cache, usage log |
 | `src/pipeline/packs.ts` | The content-hash caches (classifier, model, registry, the day's docs pages) as append-only pack files, a few thousand instead of one file per entry |
 | `src/pipeline/classify/labels.ts`, `vocab.ts`, `thresholds.ts` | change_type, surface, breaking and benefit questions; thresholds |
+| `src/pipeline/advisory-apis.ts` | Each advisory's affected APIs from its text (one cached extraction-model call per advisory, about $0.0001), published in the tech index for advisories no record locates |
 | `src/pipeline/match.ts`, `store.ts` | Matching at ingest, id minting, revision and label counters, merge and retraction |
 | `src/pipeline/publish.ts` | Shards per technology and release line, index, root; every line validated by the generated Zod |
 | `src/pipeline/prune.ts` | Shard history (`catalog/history/<tech>.json`, outside `v1/`) and the 7-day grace-period prune |

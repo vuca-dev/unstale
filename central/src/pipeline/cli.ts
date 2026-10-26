@@ -9,6 +9,8 @@
 //   npm run catalog -- merge <from-id> <into-id> [--note text] [--no-publish]
 //   npm run catalog -- retract <id> [--note text] [--no-publish]
 //   npm run catalog -- publish [--tech next]
+//   npm run catalog -- advisory-apis [--tech next | --all] [--no-publish]   (each advisory's affected APIs from the OSV cache,
+//     one cached extraction-model call per advisory; advisory-apis.ts. The advisories stage runs it after attaching)
 //   npm run catalog -- check-prerequisites [--tech next] [--no-publish]   (npm registry check of a store built before it)
 //   npm run catalog -- advisories [--tech next] [--offline] [--no-publish]   (the advisories stage: OSV, resolve, attach)
 //   npm run catalog -- prune [--dry-run]   (delete shards unreferenced for more than 7 days; prune.ts)
@@ -17,10 +19,11 @@
 //
 // Corrections: revision fields (change_type, breaking, releases, prerequisites, requires, replaces, or --claim for a
 // meaningful correction of the claim) bump `revision`; label fields bump `label_version`.
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
-import { advisoryStage, advisoryStats } from "./advisories.ts";
+import { advisoryStage, advisoryStats, aliasDetails, fetchAdvisories, osvTexts } from "./advisories.ts";
+import { attachAdvisoryApis, packageNamesOf } from "./advisory-apis.ts";
 import { extractModel, llmStats } from "./llm.ts";
 import { PipelineBudget } from "./budget.ts";
 import { fetchReleases } from "./fetch.ts";
@@ -36,9 +39,9 @@ import { checkStore } from "./prereqs.ts";
 import { registryStats } from "./registry.ts";
 import { ShardLine } from "../schema/catalog.ts";
 import { applyChange, LABEL_FIELDS, loadStore, mergeInto, retract, REVISION_FIELDS, saveStore, type EditableField, type StoredRecord } from "./store.ts";
-import { TECHNOLOGIES } from "./technologies.ts";
+import { TECHNOLOGIES, type Technology } from "./technologies.ts";
 import { jevAttribution, loadPrices, monitoredTechnologies, usageByPhase } from "./usage.ts";
-import { readJson, withUsagePhase } from "./util.ts";
+import { pool, readJson, withUsagePhase } from "./util.ts";
 import { techLocal } from "../state/client.ts";
 
 const ARRAY_FIELDS = new Set(["releases", "prerequisites", "requires", "replaces", "benefit", "introduces", "terms", "related", "conditions"]);
@@ -231,6 +234,28 @@ async function main(): Promise<void> {
         if (!values["no-publish"]) republish(t.id);
       });
       console.log(JSON.stringify({ classifier: cls.counts, uncached_calls: usageStats, network: advisoryStats }));
+      return;
+    }
+    case "advisory-apis": {
+      const { values } = parseArgs({ args: rest, options: { tech: { type: "string" }, all: { type: "boolean" }, "no-publish": { type: "boolean" } } });
+      const ids = values.all ? readdirSync(join(centralDir(), "records")).filter((f) => f.endsWith(".json")).map((f) => readJson<{ technology: string }>(join(centralDir(), "records", f))!.technology) : technologies(values.tech).map((t) => t.id);
+      const total = { advisories: 0, named: 0, records: 0 };
+      await pool(ids, 4, (id) =>
+        withTechLock(id, "advisory-apis", async () => {
+          // The technology's packages and advisories as the last advisories stage cached them (no OSV request).
+          const purls = readJson<{ purls?: string[] }>(join(centralDir(), "advisories", techLocal(id), "packages.json"))?.purls;
+          if (!purls?.length) return;
+          const t = TECHNOLOGIES[id] ?? ({ id, name: id, repo: "", components: purls, tag: /^$/, clean: (b: string) => b } as Technology);
+          const advisories = await fetchAdvisories(t, { offline: true });
+          if (!advisories.length) return;
+          const s = loadStore(id);
+          const r = await attachAdvisoryApis(s, advisories, packageNamesOf(purls), await osvTexts(t), (x) => aliasDetails(t, x));
+          for (const k of Object.keys(total) as Array<keyof typeof total>) total[k] += r[k];
+          saveStore(s);
+          if (!values["no-publish"]) republish(id);
+        }),
+      );
+      console.log(JSON.stringify({ technologies: ids.length, ...total, model: llmStats }));
       return;
     }
     case "publish": {

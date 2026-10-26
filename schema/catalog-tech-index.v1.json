@@ -1,5 +1,29 @@
 {
   "$defs": {
+    "AdvisoryApis": {
+      "description": "One advisory's affected APIs (`TechIndex::advisory_apis`).",
+      "properties": {
+        "apis": {
+          "description": "Functions, methods, classes, options, flags or configuration keys as code writes them (`z.array`,\n`serveStatic`, `--inspect`), each found verbatim in the advisory's text.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "ids": {
+          "description": "The advisory's id and its aliases (GHSA, CVE, other databases), any of which a lockfile check may report.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "ids",
+        "apis"
+      ],
+      "type": "object"
+    },
     "IndexRelease": {
       "description": "One release of a technology's release index (`TechIndex::releases`).",
       "properties": {
@@ -79,6 +103,13 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "`v1/tech/{technology}.json`: stable URL, polled with ETags.",
   "properties": {
+    "advisory_apis": {
+      "description": "The affected APIs of the security advisories of the technology's packages, as central extracted them from each\nadvisory's text (one model call per advisory): what code must use to reach the vulnerability. The edge looks\nfor them where an advisory has no record to locate it (a lockfile advisory whose fix is outside the window or\nnot released). Advisories naming none are left out. Absent in catalogs before 26 October 2026: the edge then\nreads identifiers from the advisory's one-line summary only.",
+      "items": {
+        "$ref": "#/$defs/AdvisoryApis"
+      },
+      "type": "array"
+    },
     "checked": {
       "description": "When the technology's sources were last checked (ISO timestamp).",
       "type": "string"

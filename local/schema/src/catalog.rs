@@ -317,6 +317,23 @@ pub struct TechIndex {
     /// descriptor): every package a record names counts as the technology's.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub components: Vec<String>,
+    /// The affected APIs of the security advisories of the technology's packages, as central extracted them from each
+    /// advisory's text (one model call per advisory): what code must use to reach the vulnerability. The edge looks
+    /// for them where an advisory has no record to locate it (a lockfile advisory whose fix is outside the window or
+    /// not released). Advisories naming none are left out. Absent in catalogs before 26 October 2026: the edge then
+    /// reads identifiers from the advisory's one-line summary only.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub advisory_apis: Vec<AdvisoryApis>,
+}
+
+/// One advisory's affected APIs (`TechIndex::advisory_apis`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct AdvisoryApis {
+    /// The advisory's id and its aliases (GHSA, CVE, other databases), any of which a lockfile check may report.
+    pub ids: Vec<String>,
+    /// Functions, methods, classes, options, flags or configuration keys as code writes them (`z.array`,
+    /// `serveStatic`, `--inspect`), each found verbatim in the advisory's text.
+    pub apis: Vec<String>,
 }
 
 /// One release of a technology's release index (`TechIndex::releases`).

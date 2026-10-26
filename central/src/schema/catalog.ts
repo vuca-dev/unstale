@@ -21,6 +21,12 @@ export const Advisory = z.strictObject({
 });
 export type Advisory = z.infer<typeof Advisory>;
 
+export const AdvisoryApis = z.strictObject({
+  "apis": z.array(z.string()),
+  "ids": z.array(z.string()),
+});
+export type AdvisoryApis = z.infer<typeof AdvisoryApis>;
+
 export const Benefit = z.union([
 z.enum(["security","correctness","performance","cost","other"]),
 z.literal("maintainability"),
@@ -168,6 +174,7 @@ z.strictObject({
 export type ShardLine = z.infer<typeof ShardLine>;
 
 export const TechIndex = z.strictObject({
+  "advisory_apis": z.array(AdvisoryApis).optional(),
   "checked": z.string(),
   "components": z.array(z.string()).optional(),
   "releases": z.array(IndexRelease).optional(),

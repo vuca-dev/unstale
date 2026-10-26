@@ -1057,7 +1057,7 @@ export class CoverageService {
         // No release's notes are read yet (a first pass precedes every slice), whatever the store holds: nothing is
         // judged, so no model call is possible.
         const unread = new Set(index.map((n) => n.version));
-        const r = await advisoryStage(tech, store, index, noModel, { unread });
+        const r = await advisoryStage(tech, store, index, noModel, { unread, apis: false });
         if (!r) return;
         checked = true;
         saveStore(store);
