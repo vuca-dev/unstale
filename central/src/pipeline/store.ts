@@ -62,6 +62,9 @@ export interface TechStore {
   /** The technology's release index and derived line depth (lines.ts), recomputed on every run; published in the tech
    * index. Absent in stores written before 16 October 2026 (lines then follow the old rule). */
   releaseIndex?: ReleaseIndex;
+  /** Per advisory of the technology's packages that names one: its affected APIs (advisory-apis.ts), published in the
+   * tech index. Absent before 26 October 2026 and on a store whose advisories stage has not run since. */
+  advisoryApis?: Array<{ ids: string[]; apis: string[] }>;
 }
 
 const path = (tech: string) => join(centralDir(), "records", `${techLocal(tech)}.json`);
@@ -75,7 +78,10 @@ export function loadStore(tech: string): TechStore {
 export function saveStore(s: TechStore): void {
   const records = Object.fromEntries(Object.keys(s.records).sort().map((k) => [k, s.records[k]!]));
   const ingested = Object.fromEntries(Object.keys(s.ingested).sort().map((k) => [k, s.ingested[k]!]));
-  writeAtomic(path(s.technology), JSON.stringify({ technology: s.technology, records, ingested, ...(s.releaseIndex ? { releaseIndex: s.releaseIndex } : {}) }) + "\n");
+  writeAtomic(
+    path(s.technology),
+    JSON.stringify({ technology: s.technology, records, ingested, ...(s.releaseIndex ? { releaseIndex: s.releaseIndex } : {}), ...(s.advisoryApis?.length ? { advisoryApis: s.advisoryApis } : {}) }) + "\n",
+  );
 }
 
 /** Fields whose change bumps `revision` (re-opens declines); the rest of the record's fields bump `label_version`. */

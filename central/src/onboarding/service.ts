@@ -1059,7 +1059,7 @@ export class CoverageService {
         // No release's notes are read yet (a first pass precedes every slice), whatever the store holds: nothing is
         // judged, so no model call is possible.
         const unread = new Set(index.map((n) => n.version));
-        const r = await advisoryStage(tech, store, index, noModel, { unread });
+        const r = await advisoryStage(tech, store, index, noModel, { unread, apis: false });
         if (!r) return;
         checked = true;
         saveStore(store);
@@ -1249,3 +1249,289 @@ export class CoverageService {
         console.error(`coverage: ${logName(job)}: ${typed.length} deprecations from its type stubs' declarations`);
         saveStore(store);
       }
+      if (index.length) {
+        this.save(job, "partial", "Checking security advisories");
+        const read = new Set(job.completed ?? []);
+        const unread = new Set(releases.notes.filter((n) => !read.has(`${n.tag}:${n.snapshot}:audience-v1`)).map((n) => n.version));
+        const r = await advisoryStage(tech, store, index, (st, q) =>
+          advisoryClassifier().classify(st, q),
+        { unread });
+        if (r) saveStore(store);
+      }
+      publishTechnology(store, releases.checked, catalogDir());
+    });
+    stage("advisories_ms");
+    // The docs module: the daily pass over the technology's official docs, then extraction of the changes that name
+    // their version. A first pass is a baseline: nothing is extracted from it. The crawl makes no model call; each
+    // planned docs note is charged its measured volume before extraction, like a release note, and counts toward the
+    // technology's quarterly tokens.
+    this.save(job, "partial", "Checking the official documentation");
+    let saved = 0;
+    const pass = await dailyPass(tech, {
+      http: docsHttp,
+      progress: (done, total) => {
+        job.docs_done = done;
+        job.docs_total = total;
+        if (done - saved >= 25 || done === total) {
+          saved = done;
+          this.save(job, "partial", `Monitoring official docs: ${done}/${total} pages`);
+        }
+      },
+    });
+    if (pass) {
+      const listed = pass.sites.reduce((n, x) => n + x.pages, 0);
+      job.docs_total = pass.checked;
+      job.docs_done = pass.checked;
+      job.docs_failed = Object.entries(pass.outcomes).filter(([k]) => k.startsWith("failed")).reduce((n, [, v]) => n + v, 0);
+      // Every site passed here had pages when resolved, so a site whose listing named none is a failed listing, not
+      // a complete one: "failed" when no page is known at all, else "partial".
+      const unlisted = pass.sites.filter((x) => x.listingFailed).length;
+      job.enumeration = !pass.sites.length ? "unavailable" : !listed ? "failed" : unlisted || pass.checked < listed ? "partial" : "complete";
+    }
+    // Not due: another worker (the pipeline, for a catalog technology) checked them less than a day ago.
+    job.docs_checked = lastPass(tech.id) ?? now();
+    let docsRefused: Refusal | undefined;
+    const extracted = await extract(tech, DOCS_PASS.notes, undefined, (text) => {
+      const cost = noteTokens(text);
+      docsRefused = this.budget.spend(cost);
+      if (docsRefused) return false;
+      job.quarter!.tokens += cost;
+      return true;
+    });
+    if (extracted.records !== undefined) job.records = extracted.records;
+    stage("docs_ms");
+    // Upgrade guides (the current and previous major's, as the docs pass found them): with release notes they carry
+    // the history; a removal stated only in a migration guide (MUI v9) is in no release body. Charged like a note.
+    if (!docsRefused) {
+      let guides: GuideNote[] = [];
+      try {
+        guides = await fetchGuides(tech, releases.notes, { http: docsHttp, checked: true });
+      } catch (e) {
+        console.error(`coverage: ${logName(job)}: upgrade guides unreadable (${e instanceof Error ? e.message : e}); release notes and docs only`);
+      }
+      for (const g of guides) {
+        const key = `${g.keyTag}:audience-v1`;
+        if (job.guides_done?.includes(key)) continue;
+        const cost = noteTokens(g.notes);
+        docsRefused = this.budget.spend(cost);
+        if (docsRefused) break;
+        job.quarter.tokens += cost;
+        this.save(job, "partial", `Analyzing the upgrade guide for ${g.version.split(".")[0]}.x`);
+        job.records = await synthesize(tech, g);
+        job.guides_done = [...(job.guides_done ?? []), key];
+      }
+    }
+    if (docsRefused) {
+      this.heldBack("tokens");
+      this.requeue(job, `${job.records} records so far; coverage budget for this ${this.limits.period} spent; continues after ${day(Date.now() + docsRefused.retryAfter * 1000)}`);
+      return;
+    }
+    if (job.releases_done < job.releases_total) {
+      job.next_task = "history";
+      this.requeue(
+        job,
+        job.overflow === quarter
+          ? `${job.records} records so far; ${job.releases_done}/${job.releases_total} releases; this technology's release-note budget for ${quarter} is used (${job.quarter.tokens} of ${cap} tokens), the rest waits behind other technologies by demand`
+          : `${job.records} records so far; ${job.releases_done}/${job.releases_total} releases, ${job.docs_done}/${job.docs_total} docs; continuing centrally`,
+      );
+      return;
+    }
+    stage("guides_ms");
+    console.error(JSON.stringify({ event: "coverage_stages", technology: tech.id, refresh: refresh || !!job.monitored,
+      ...timings, release_requests: releases.stats.requests, new_releases: releases.stats.newReleases,
+      detection_to_refresh_s: job.change_detected ? Math.round((Date.now() - Date.parse(job.change_detected)) / 1000) : null }));
+    job.next_task = "history";
+    job.retry_at = new Date(Date.now() + 6 * 3600000).toISOString();
+    job.failures = 0;
+    await withTechLock(tech.id, "onboarding", () =>
+      publishTechnology(loadStore(tech.id), now(), catalogDir()),
+    );
+    job.refresh_completed = now();
+    delete job.change_detected;
+    this.save(job, "monitoring", monitoringStage(job));
+  }
+}
+/** A monitored job's stage. One whose official sources yielded no release or no record says so first: it is a source
+ * gap (the client reports it as one), not coverage that found nothing to report. */
+export function monitoringStage(j: Pick<Job, "records" | "releases_total" | "enumeration" | "docs_done" | "docs_total" | "docs_failed">): string {
+  const gap = !j.releases_total
+    ? "source gap: no release notes found in its official sources (GitHub releases or changelog); "
+    : !j.records
+      ? `source gap: no records extracted from ${j.releases_total} release ${j.releases_total === 1 ? "note" : "notes"}; `
+      : "";
+  return `${gap}${j.records} verified records; ${docsCoverage(j)}`;
+}
+/** The documentation part of a job's coverage line. "Monitored" only when pages were listed and every one checked: a
+ * docs site whose listing failed (`failed`; `empty` in older jobs) is not monitored, and its records come from release
+ * notes alone. */
+export function docsCoverage(j: Pick<Job, "enumeration" | "docs_done" | "docs_total" | "docs_failed">): string {
+  if (j.enumeration === "failed" || j.enumeration === "empty") return "documentation not monitored: a docs site was found but listed no pages";
+  const label = j.enumeration === "complete" && !j.docs_failed && j.docs_total > 0 ? "monitored" : j.enumeration === "unavailable" ? "not found" : "coverage partial";
+  return `documentation ${label} (${j.docs_done - j.docs_failed}/${j.docs_total} pages)`;
+}
+/** A job's name in the run logs, which are public: a package clients asked for is named only once admitted (a public
+ * technology); before, a hash prefix of its purl (that of its job and coverage files) stands for it. */
+export function logName(j: Pick<Job, "purl" | "admitted">): string {
+  return j.admitted ? j.purl : `requested package ${sha256(j.purl).slice(0, 12)}`;
+}
+/** How often an admitted package's repositories are checked for an archive (a parked one is at each admission check). */
+const LIFECYCLE_MS = 7 * 86_400_000;
+/** The lifecycle rules' version: 1, archived repositories listed (`archived`); 2, an end of development the README
+ * announces said in a parked package's reason (admission.ts `withLifecycle`). Raise it when the rules change. */
+export const LIFECYCLE_RULES = 2;
+function setArchived(job: Job, archived: string[] | undefined) {
+  if (archived?.length) job.archived = archived;
+  else delete job.archived;
+}
+function publicJob(j: Job) {
+  const {
+    completed: _completed,
+    guides_done: _guides,
+    docs_completed: _docs,
+    descriptor: _descriptor,
+    next_task: _task,
+    admitted: _admitted,
+    stream: _stream,
+    quarter: _quarter,
+    overflow: _overflow,
+    siblings: _siblings,
+    merged_into: _merged,
+    deprecation_notice: _notice,
+    lifecycle_checked: _lifecycle,
+    lifecycle_rules: _rules,
+    advisories_first: _first,
+    downloads: _downloads,
+    interrupted: _interrupted,
+    paused_until: _paused,
+    monitored: _monitored,
+    release_checked: _release_checked,
+    refresh_completed: _refresh_completed,
+    registry_polled: _registry_polled,
+    registry_version: _registry_version,
+    registry_checked: _registry_checked,
+    change_detected: _change_detected,
+    demand: _demand,
+    ...fields
+  } = j;
+  return fields;
+}
+export function createCoverageServer(service = new CoverageService()) {
+  return createServer(async (req, res) => {
+    const send = (status: number, value: unknown) => {
+      res.writeHead(status, {
+        "Content-Type": "application/json",
+        "Cache-Control": "no-store",
+      });
+      res.end(JSON.stringify(value));
+    };
+    try {
+      const url = new URL(req.url ?? "/", "http://localhost");
+      if (req.method === "GET" && url.pathname === "/health") {
+        send(200, { schema: 1, service: "unstale-coverage" });
+        return;
+      }
+      if (req.method === "POST" && url.pathname === "/coverage") {
+        if (!req.headers["content-type"]?.startsWith("application/json")) {
+          send(415, { error: "application/json required" });
+          return;
+        }
+        if (req.headers.origin) {
+          send(403, { error: "Browser registration is not supported" });
+          return;
+        }
+        let body = "";
+        for await (const part of req) {
+          body += String(part);
+          if (body.length > 512) {
+            send(413, { error: "One public identity only" });
+            return;
+          }
+        }
+        const { purl } = requestSchema.parse(JSON.parse(body));
+        const outcome = service.register(
+          purl,
+          clientAddress(req, service.limits.trustProxy),
+        );
+        if ("limit" in outcome) {
+          res.setHeader("Retry-After", String(outcome.retryAfter));
+          send(429, {
+            error: "Too many new technologies from this address; retry later",
+            limit: outcome.limit,
+            retry_after: outcome.retryAfter,
+          });
+          return;
+        }
+        send(202, service.publicStatus(outcome));
+        return;
+      }
+      if (req.method === "GET" && url.pathname === "/coverage") {
+        const job = service.status(url.searchParams.get("purl") ?? "");
+        send(
+          job ? 200 : 404,
+          job ? service.publicStatus(job) : { error: "No shared job for this identity" },
+        );
+        return;
+      }
+      if (
+        req.method === "GET" &&
+        /^\/v1\/(root\.json|tech\/[a-z0-9._-]+\.json|shards\/[a-z0-9._-]+\/[a-zA-Z0-9._-]+\.jsonl\.gz)$/.test(
+          url.pathname,
+        )
+      ) {
+        const path = join(catalogDir(), url.pathname.slice(1));
+        if (!existsSync(path)) {
+          send(404, { error: "Catalog not yet available" });
+          return;
+        }
+        let body = readFileSync(path);
+        if (url.pathname.startsWith("/v1/tech/")) {
+          const id = url.pathname
+            .split("/")
+            .at(-1)!
+            .replace(/\.json$/, "");
+          // Shared with the static export (export.ts), so both serve the same index bytes.
+          body = servedIndex(body, id, service.jobs.values());
+        }
+        const etag = `"${sha256(body)}"`;
+        if (req.headers["if-none-match"] === etag) {
+          res.writeHead(304, { ETag: etag });
+          res.end();
+          return;
+        }
+        res.writeHead(200, {
+          "Content-Type": path.endsWith(".gz")
+            ? "application/gzip"
+            : "application/json",
+          ETag: etag,
+        });
+        res.end(body);
+        return;
+      }
+      send(404, { error: "Not found" });
+    } catch (error) {
+      send(400, {
+        error:
+          error instanceof Error
+            ? error.message.slice(0, 200)
+            : "Invalid request",
+      });
+    }
+  });
+}
+
+type SliceTally = { started: number; finished: number; yielded: number; failed: number; rate_limited: number };
+/** A drain's own measurements, on its final line: what parallelism buys (ingest.yml's CONCURRENCY) and costs. */
+export interface DrainMetrics {
+  slices: Record<"new" | "refresh" | "other", SliceTally>;
+  pauses: number;
+  /** Coverage-budget tokens this drain spent; null without a cap. */
+  tokens: number | null;
+  /** The docs crawl's shared pool: requests that queued for a slot and their total wait. */
+  docs_pool: { waits: number; waited_ms: number };
+  cpu_s: number;
+  max_rss_mb: number;
+}
+function blankTally(): DrainMetrics["slices"] {
+  const t = (): SliceTally => ({ started: 0, finished: 0, yielded: 0, failed: 0, rate_limited: 0 });
+  return { new: t(), refresh: t(), other: t() };
+}

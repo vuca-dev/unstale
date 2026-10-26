@@ -52,6 +52,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Classification, Questions } from "./classify/adapter.ts";
 import type { Labels } from "./classify/labels.ts";
+import { attachAdvisoryApis, packageNamesOf } from "./advisory-apis.ts";
 import { mergeBackports } from "./backports.ts";
 import { canonicalPurl, ecosystemOf, npmName as npmNameOf, npmPurl, pypiPurl, semverOrder, type RegistryPackage } from "./ecosystems.ts";
 import type { Incoming } from "./extract.ts";
@@ -286,6 +287,41 @@ export async function fetchAdvisories(t: Technology, opts: { refresh?: boolean; 
     }
   }
   return [...byId.values()].sort((a, b) => a.id.localeCompare(b.id));
+}
+
+/**
+ * The details text of every cached OSV entry of the technology's packages, by the entry's upper-cased id: one advisory
+ * under two database ids (a GHSA and the CVE record OSV converted) can describe it in different words, and only one
+ * of them may name the affected API (advisory-apis.ts). Reads the cache `fetchAdvisories` wrote; no request.
+ */
+export async function osvTexts(t: Technology): Promise<Map<string, string[]>> {
+  const out = new Map<string, string[]>();
+  for (const p of await techPackages(t, { offline: true })) {
+    for (const v of readJson<{ vulns: OsvVuln[] }>(join(dir(t), "osv", `${safe(p)}.json`))?.vulns ?? []) {
+      const id = v.id.toUpperCase();
+      const have = out.get(id) ?? [];
+      const text = v.details?.trim();
+      out.set(id, text && !have.includes(text) ? [...have, text] : have);
+    }
+  }
+  return out;
+}
+
+/**
+ * The details text of OSV entry `id` (`GET /v1/vulns/<id>`, cached under the technology without expiry: an alias's
+ * description seldom changes, and `refresh` reads it again); undefined when OSV does not know it or offline with no
+ * cache. advisory-apis.ts reads an advisory's aliases this way when the package query returned only its GHSA entry.
+ */
+export async function aliasDetails(t: Technology, id: string, opts: { refresh?: boolean; offline?: boolean } = {}): Promise<string | undefined> {
+  const file = join(dir(t), "alias-details", `${id.toUpperCase().replace(/[^A-Z0-9._-]+/g, "_")}.json`);
+  const cached = readJson<{ checked: string; details: string | null }>(file);
+  if (cached && (opts.offline || !opts.refresh)) return cached.details ?? undefined;
+  if (opts.offline) return undefined;
+  const v = await osvVuln(id).catch(() => undefined);
+  if (v === undefined) return undefined;
+  const details = v?.withdrawn ? null : (v?.details?.trim() || null);
+  writeAtomic(file, JSON.stringify({ checked: stamp(), details }, null, 1) + "\n");
+  return details ?? undefined;
 }
 
 /** One OSV vulnerability by id (`GET /v1/vulns/<id>`, retried like the queries); null when OSV does not know it. */
@@ -602,6 +638,9 @@ const advisoryOnly = (r: StoredRecord): boolean => r.evidence.length > 0 && r.ev
 
 export interface AttachReport {
   advisories: number;
+  /** Advisories whose text names an affected API, and records made from an advisory alone given them as terms
+   * (advisory-apis.ts); absent when the stage made no model call. */
+  apis?: { named: number; records: number };
   inWindow: number;
   byId: number;
   judged: number;
@@ -1282,7 +1321,7 @@ export async function advisoryStage(
   s: TechStore,
   releases: ReadonlyArray<{ version: string; date: string; url: string }>,
   judge: (state: Record<string, unknown>, questions: Questions) => Promise<Classification>,
-  opts: { refresh?: boolean; offline?: boolean; unread?: ReadonlySet<string> } = {},
+  opts: { refresh?: boolean; offline?: boolean; unread?: ReadonlySet<string>; apis?: boolean } = {},
 ): Promise<AttachReport | undefined> {
   // The release index and its derived lines first (lines.ts): the attachment and the releases below use them.
   s.releaseIndex = buildIndex(releases);
@@ -1301,7 +1340,7 @@ export async function advisoryStage(
   // package's, so the step is skipped (labels as they are).
   const { purls: packages, complete } = await packageList(t, opts);
   if (!complete) console.error(`advisories: ${t.id}: package list incomplete; another package's advisories not checked this run`);
-  return attachAdvisories(
+  const report = await attachAdvisories(
     t,
     s,
     advisories,
@@ -1316,4 +1355,11 @@ export async function advisoryStage(
     })(),
     opts.unread,
   );
+  // Each advisory's affected APIs (one cached extraction-model call per advisory; `apis: false`, the token-free first
+  // pass, makes none and leaves the stored ones).
+  if (opts.apis !== false) {
+    const a = await attachAdvisoryApis(s, advisories, packageNamesOf(packages), await osvTexts(t), (id) => aliasDetails(t, id, opts));
+    report.apis = { named: a.named, records: a.records };
+  }
+  return report;
 }
