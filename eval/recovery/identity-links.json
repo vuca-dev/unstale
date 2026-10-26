@@ -1,0 +1,50 @@
+[
+ {
+  "attempt": 31,
+  "arm": "unstale_raw@frozen-reviewed",
+  "rank": 20,
+  "from": "electron|security|electron-43.2.0-44.9.0-picks-up-12",
+  "to": "electron|security|electron-43.2.0-44.9.0-picks-up-13",
+  "installed": "43.2.0",
+  "target": "44.9.0",
+  "reference_installed": "43.2.0",
+  "reference_target": "44.9.0",
+  "lead": "breaking: The module aligns with the W3C Clipboard API and is no longer exposed to renderer processes. [electron-e4ea0767:clipboard] (`clipboard.readText` at packages/insomnia/src/entry.plugin-window-preload.ts); advisory present, affected path not found"
+ },
+ {
+  "attempt": 33,
+  "arm": "unstale_raw@frozen-reviewed",
+  "rank": 3,
+  "from": "nx|breaking|nx-22.7.6-23.3.0-picks-up-5",
+  "to": "nx|breaking|nx-22.7.6-23.3.0-picks-up-7",
+  "installed": "22.7.6",
+  "target": "23.3.0",
+  "reference_installed": "22.7.6",
+  "reference_target": "23.3.0",
+  "lead": "breaking: Support for filtered array-shape targetDefaults was reverted pending redesign and reapplication. [nx-808e5281:array-shape-targetdefaults] (`targetDefaults` at nx.json); advisory present, affected path not found"
+ },
+ {
+  "attempt": 45,
+  "arm": "unstale_raw@frozen-reviewed",
+  "rank": 36,
+  "from": "ruff|security|ruff-0.15.11-0.17.1-picks-up-4",
+  "to": "ruff|security|ruff-0.15.11-0.17.1-picks-up-6",
+  "installed": "0.15.11",
+  "target": "0.17.1",
+  "reference_installed": "0.15.11",
+  "reference_target": "0.17.1",
+  "lead": "breaking: Ruff enables 413 rules by default, up from 59, while removing 18 more opinionated E and F rules from the default set. [ruff-aedf7afe:default-rules] (`[tool.ruff.lint]` at api/pyproject.toml); advisory present, affected path not found"
+ },
+ {
+  "attempt": 50,
+  "arm": "unstale_raw@frozen-reviewed",
+  "rank": 22,
+  "from": "i18next|security|i18next-24.2.3-26.5.4-picks-up-3",
+  "to": "i18next|security|i18next-24.2.3-26.5.4-picks-up-4",
+  "installed": "24.2.3",
+  "target": "26.5.4",
+  "reference_installed": "24.2.3",
+  "reference_target": "26.5.4",
+  "lead": "breaking: Custom formatters can be registered through the formatter service as part of the new formatting approach. [i18next-9198e5f5:i18next.services.formatter.add] (`i18next.use` at benchmark/src/i18n/i18next.ts); advisory present, affected path not found"
+ }
+]

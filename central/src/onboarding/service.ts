@@ -19,7 +19,9 @@ import { advisoryReleases, fetchGuides, fetchReleases, foreignGuides, type Guide
 import { logUsage, readJson, sha256, withUsagePhase, writeAtomic } from "../pipeline/util.ts";
 import { reconcileLinkedEvidence, reconcileSources } from "./source-quality.ts";
 import { synthesize } from "./synthesis.ts";
+import { mergeChunkDuplicates, mergeSplitRecords } from "../pipeline/match.ts";
 import { publishTechnology } from "../pipeline/publish.ts";
+import { typeStubDeprecations } from "../pipeline/type-stubs.ts";
 import { JOB_FILE, servedIndex } from "../pipeline/export.ts";
 import { loadStore, retractForeignGuideRecords, saveStore } from "../pipeline/store.ts";
 import { advisoryStage } from "../pipeline/advisories.ts";
@@ -1057,7 +1059,7 @@ export class CoverageService {
         // No release's notes are read yet (a first pass precedes every slice), whatever the store holds: nothing is
         // judged, so no model call is possible.
         const unread = new Set(index.map((n) => n.version));
-        const r = await advisoryStage(tech, store, index, noModel, { unread });
+        const r = await advisoryStage(tech, store, index, noModel, { unread, apis: false });
         if (!r) return;
         checked = true;
         saveStore(store);
@@ -1230,6 +1232,22 @@ export class CoverageService {
       const foreign = retractForeignGuideRecords(store, foreignGuides(tech));
       if (foreign.length) {
         console.error(`coverage: ${logName(job)}: ${foreign.length} records read only from another technology's upgrade guide retracted`);
+        saveStore(store);
+      }
+      // Records cut from one release-note item (one per API it names, same quote, summary and labels) become one.
+      const split = mergeSplitRecords(store);
+      // The same change in two parts of one release body, ingested before retrieval compared them: judged once each.
+      const judged = await mergeChunkDuplicates(store, tech.name, (st, q) => advisoryClassifier().classify(st, q));
+      const chunks = judged.filter((j) => j.outcome === "same").length;
+      if (split.length || chunks) console.error(`coverage: ${logName(job)}: ${split.length} records cut from the same release-note item and ${chunks} from another part of the same release notes merged`);
+      if (split.length || judged.length) saveStore(store);
+      // Merged records are stubs now: the job counts active ones.
+      if (split.length || chunks) job.records = Object.values(store.records).filter((r) => r.status === "active").length;
+      // Deprecations the technology's type stubs state in their declarations (registry and tarball reads, no model).
+      const typed = await typeStubDeprecations(tech, store);
+      if (typed.length) {
+        job.records = Object.values(store.records).filter((r) => r.status === "active").length;
+        console.error(`coverage: ${logName(job)}: ${typed.length} deprecations from its type stubs' declarations`);
         saveStore(store);
       }
       if (index.length) {

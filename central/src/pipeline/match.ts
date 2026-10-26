@@ -5,7 +5,7 @@ import { attributeEvidence, type Classification, type Questions } from "./classi
 import type { Labels } from "./classify/labels.ts";
 import type { Incoming } from "./extract.ts";
 import { lineFn } from "./lines.ts";
-import { applyChange, combineReleases, mintId, union, type Evidence, type Judged, type StoredRecord, type TechStore } from "./store.ts";
+import { applyChange, combineReleases, mergeInto, mintId, union, type Evidence, type Judged, type StoredRecord, type TechStore } from "./store.ts";
 import { CROSS_SAME_P, CROSS_SAME_P_SHORT, LINEAGE_SAME_P, QUESTION_FLOOR, QUOTE_GUARD_BELOW_SHORT, SAME_P, SAME_P_SHORT } from "./thresholds.ts";
 import { FLIPS, technical } from "../docs/materiality.ts";
 
@@ -31,10 +31,27 @@ export interface Candidate {
   score: number;
 }
 
+/** The extraction call an incoming key came from: `{technology}@{version}[tag]#{chunk}` of `…#{chunk}.{index}`;
+ * undefined for a key of another form. */
+export const chunkOf = (key: string): string | undefined => /^(.+#\d+)\.\d+$/.exec(key)?.[1];
+
+/**
+ * A record of the same document snapshot that the extractor did not see beside the incoming item: no source of it is
+ * from the incoming item's chunk (a release body over MAX_CHUNK is extracted in parts), and it has the same subject
+ * and facet. One release that names a change in its highlights and again in its commit list gives two records the
+ * extractor never compared (zod 4.5.0's `z.compile`).
+ */
+export function otherChunkSameSubject(inc: Pick<Incoming, "key" | "subject" | "facet">, r: Pick<StoredRecord, "sources" | "subject" | "facet">): boolean {
+  const c = chunkOf(inc.key);
+  if (!c || r.sources.some((k) => chunkOf(k) === c || !chunkOf(k))) return false;
+  return r.subject.toLowerCase() === inc.subject.toLowerCase() && (r.facet ?? "").toLowerCase() === (inc.facet ?? "").toLowerCase();
+}
+
 /**
  * Candidates for an incoming record: active records of the same technology scored by subject (twice the weight),
  * summary and term overlap and a shared evidence document; the same release line breaks ties. Records that already
- * hold evidence from the same document snapshot are excluded: the extractor separated those changes itself.
+ * hold evidence from the same document snapshot are excluded, since the extractor separated those changes itself,
+ * unless it never saw them together (`otherChunkSameSubject`).
  */
 export function retrieve(inc: Incoming, records: StoredRecord[], k = K): Candidate[] {
   const st = tokens(`${inc.subject} ${inc.facet ?? ""}`);
@@ -43,7 +60,7 @@ export function retrieve(inc: Incoming, records: StoredRecord[], k = K): Candida
   const out: Candidate[] = [];
   for (const r of records) {
     if (r.status !== "active" || r.technology !== inc.technology) continue;
-    if (r.evidence.some((e) => e.snapshot === inc.snapshot)) continue;
+    if (r.evidence.some((e) => e.snapshot === inc.snapshot) && !otherChunkSameSubject(inc, r)) continue;
     let score = 2 * jaccard(st, tokens(`${r.subject} ${r.facet ?? ""}`)) + jaccard(su, tokens(r.summary));
     const rt = new Set(r.terms);
     score += jaccard(terms, rt);
@@ -328,6 +345,9 @@ export function guard(inc: IncomingForGuard, c: StoredRecord, p: number, crossP 
   // A later version of a document the candidate cites: the quote and cross-source guards do not apply, the bar is
   // LINEAGE_SAME_P.
   if (sameLineage(inc, c)) return p < LINEAGE_SAME_P ? "guard:lineage" : undefined;
+  // The same document (another part of one release body, `otherChunkSameSubject`): a change it names twice is worded
+  // differently each time, so quotes are not expected to agree; as across kinds, the judge must reach crossP.
+  if (inc.snapshot && c.evidence.some((e) => e.snapshot === inc.snapshot)) return p < crossP ? "guard:cross" : undefined;
   const kind = inc.kind ?? "release_notes";
   const same = c.evidence.filter((e) => (e.kind ?? "release_notes") === kind);
   if (!same.length) return p < crossP ? "guard:cross" : undefined;
@@ -503,4 +523,143 @@ export async function ingest(
   }
   s.ingested[inc.key] = r.id;
   return { key: inc.key, id: r.id, matched: false, candidates: cands.length, judged: chosen.judged, related };
+}
+
+/** Numeric-aware order of extraction keys (`tech@1.2.0#0.10` after `#0.9`): which record of a group came first. */
+const keyOrder = (a: string, b: string): number => a.localeCompare(b, "en", { numeric: true });
+
+/** Retain each duplicate's adoption constraints and benefits before it becomes a stub. */
+export function mergeDuplicateMetadata(t: StoredRecord, r: StoredRecord): void {
+  const benefit = r.benefit.includes("none") ? t.benefit : union(t.benefit.filter((b) => b !== "none"), r.benefit);
+  applyChange(t, {
+    replaces: union(t.replaces, r.replaces), requires: union(t.requires, r.requires),
+    introduces: union(t.introduces, r.introduces), conditions: union(t.conditions, r.conditions),
+    prerequisites: [...t.prerequisites, ...r.prerequisites.filter((p) => !t.prerequisites.some((q) => JSON.stringify(p) === JSON.stringify(q)))],
+    benefit,
+  }, "duplicate-metadata");
+}
+
+/**
+ * Records cut from one release-note item: the extractor sometimes makes one record per API an item names ("Add
+ * `codePoints`, `maxCodePoints`, `minCodePoints` and `notCodePoints` validation actions" became four records), each with
+ * the item's quote and the same summary and labels. Ingest never compares them (`retrieve` skips records of the same
+ * snapshot), and to a reader they are one change shown several times. Active records that share an evidence entry
+ * (snapshot and normalised quote) naming each one's subject, and have the same summary, change_type and breaking flag,
+ * are merged into the first
+ * extracted one: the others' subjects join its terms and their replaces, requires, introduces, conditions,
+ * prerequisites and benefits are kept. No model call. Returns the merges made, in order.
+ */
+export function mergeSplitRecords(s: TechStore): Array<{ from: string; into: string }> {
+  const active = Object.values(s.records)
+    .filter((r) => r.status === "active")
+    .sort((a, b) => keyOrder(a.sources[0] ?? "", b.sources[0] ?? "") || a.id.localeCompare(b.id));
+  const norm = (x: string) => x.toLowerCase().replace(/\s+/g, " ").trim();
+  const first = new Map<string, string>();
+  const parent = new Map<string, string>();
+  const root = (id: string): string => {
+    let x = id;
+    while (parent.get(x) !== x) x = parent.get(x)!;
+    return x;
+  };
+  // The item names the record's subject (or its last segment: `LSODA` of `scipy.integrate.LSODA`): two records that
+  // share only a generic quote ("Fix extractor" for two extractors) are two changes.
+  const names = (q: string, subject: string): boolean => {
+    const sub = subject.toLowerCase().replace(/[`*_\\]/g, "").trim();
+    const tail = sub.split(/[./:#]/).filter(Boolean).at(-1) ?? "";
+    return !!sub && (q.includes(sub) || (tail.length >= 3 && q.includes(tail)));
+  };
+  for (const r of active) {
+    parent.set(r.id, r.id);
+    for (const e of r.evidence) {
+      const q = normQuote(e.quote);
+      if (!q || !e.snapshot || !names(q, r.subject)) continue;
+      const k = [e.snapshot, q, norm(r.summary), r.change_type, r.breaking].join("\u0000");
+      const seen = first.get(k);
+      if (seen === undefined) first.set(k, r.id);
+      else {
+        // The earlier record (in extraction order) stays the root.
+        const [a, b] = [root(seen), root(r.id)];
+        if (a !== b) parent.set(b, a);
+      }
+    }
+  }
+  const out: Array<{ from: string; into: string }> = [];
+  for (const r of active) {
+    const into = root(r.id);
+    if (into === r.id) continue;
+    const t = s.records[into]!;
+    mergeDuplicateMetadata(t, r);
+    mergeInto(s, r.id, into, "cut from the same release-note item");
+    out.push({ from: r.id, into });
+  }
+  return out;
+}
+
+/** A stored record as the incoming item it was created from (its first source and evidence). */
+function asIncoming(r: StoredRecord, snapshot: string): Incoming {
+  const e = r.evidence.find((e) => e.snapshot === snapshot)!;
+  const rel = r.releases[0]!;
+  const kind = e.kind === "upgrade_guide" || e.kind === "docs" ? e.kind : undefined;
+  return {
+    key: r.sources[0]!, technology: r.technology, version: rel.version, date: rel.date, line: rel.line, url: e.url, snapshot: e.snapshot,
+    subject: r.subject, subject_kind: r.subject_kind === "literal" ? "literal" : "concept", ...(r.facet ? { facet: r.facet } : {}), summary: r.summary, introduces: r.introduces,
+    quote: e.quote, grounded: true, terms: r.terms, replaces: r.replaces, requires: r.requires, prerequisites: [],
+    conditions: r.conditions, ...(kind ? { kind } : {}),
+  };
+}
+
+/**
+ * Records ingested before `retrieve` asked about other chunks of the same document (`otherChunkSameSubject`): each
+ * later record is asked against each earlier one of the same snapshot, subject and facet, one candidate per request,
+ * with ingest's rules, threshold and guards, and merged into it when judged the same. A pair already judged (in either
+ * record's history) is not asked again. Returns every judgement, merged or not. eval/dedupe/RESULTS.md: 541 pairs on
+ * the full store, 182 merged, one Jev request each (about 1.5K input tokens).
+ */
+export async function mergeChunkDuplicates(
+  s: TechStore,
+  techName: string,
+  judge: (state: Record<string, unknown>, questions: Questions) => Promise<Classification>,
+  { dryRun = false }: { dryRun?: boolean } = {},
+): Promise<Array<{ from: string; into: string; p: number; outcome: Judged["outcome"] }>> {
+  const order = (a: StoredRecord, b: StoredRecord) => keyOrder(a.sources[0] ?? "", b.sources[0] ?? "") || a.id.localeCompare(b.id);
+  // Groups by snapshot, subject and facet: only records sharing all three can be such a pair.
+  const groups = new Map<string, StoredRecord[]>();
+  const snapshots = new Map<string, string>();
+  for (const r of Object.values(s.records).filter((x) => x.status === "active" && x.sources.length && x.evidence.length).sort(order)) {
+    for (const snap of new Set(r.evidence.map((e) => e.snapshot))) {
+      const k = [snap, r.subject.toLowerCase(), (r.facet ?? "").toLowerCase()].join("\u0000");
+      groups.set(k, [...(groups.get(k) ?? []), r]);
+      snapshots.set(k, snap);
+    }
+  }
+  // A pair is asked once: judged at ingest or by this pass (either record's history), or earlier in this call.
+  const done = new Set<string>();
+  const asked = (r: StoredRecord, c: StoredRecord) =>
+    done.has(`${r.id}\u0000${c.id}`) ||
+    r.history.some((h) => (h.action === "chunk-match" && h.detail === c.id) || h.judged?.some((j) => j.id === c.id)) ||
+    c.history.some((h) => (h.action === "chunk-match" && h.detail === r.id) || h.judged?.some((j) => j.id === r.id));
+  const out: Array<{ from: string; into: string; p: number; outcome: Judged["outcome"] }> = [];
+  for (const [key, g] of [...groups].filter(([, x]) => x.length > 1)) {
+    for (const [i, r] of g.entries()) {
+      const inc = asIncoming(r, snapshots.get(key)!);
+      for (const c of g.slice(0, i)) {
+        if (r.status !== "active") break;
+        if (c.status !== "active" || !c.evidence.some((e) => e.snapshot === inc.snapshot)) continue;
+        if (!otherChunkSameSubject(inc, c) || asked(r, c)) continue;
+        const req = matchRequest(techName, inc, r.breaking, [c], [1]);
+        const v = await judge(req.state, req.questions);
+        const got = pick([c], v.answers, { breaking: r.breaking, quote: inc.quote, summary: inc.summary, kind: kindOf(inc), url: inc.url, snapshot: inc.snapshot, version: inc.version }, v.calibrated !== false);
+        const j = got.judged[0]!;
+        done.add(`${r.id}\u0000${c.id}`);
+        out.push({ from: r.id, into: c.id, p: j.p, outcome: j.outcome });
+        if (dryRun) continue;
+        r.history.push({ action: "chunk-match", detail: c.id, revision: r.revision, label_version: r.label_version, judged: got.judged });
+        if (j.outcome === "same") {
+          mergeDuplicateMetadata(c, r);
+          mergeInto(s, r.id, c.id, `the same change in another part of the same release notes (p=${j.p})`);
+        }
+      }
+    }
+  }
+  return out;
 }

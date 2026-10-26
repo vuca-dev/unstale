@@ -100,6 +100,8 @@ export function publishTechnology(store: TechStore, checked: string, outDir: str
     ...(sample?.n ? { sample: sample.repos.map((r) => ({ repo: r.repo, commit: r.commit })) } : {}),
     // The release index with its derived lines (lines.ts), when the store has one.
     ...(store.releaseIndex?.releases.length ? { releases: store.releaseIndex.releases } : {}),
+    // The affected APIs of the technology's advisories (advisory-apis.ts), for advisories no record locates.
+    ...(store.advisoryApis?.length ? { advisory_apis: store.advisoryApis } : {}),
   });
   recordReplacedIndex(outDir, store.technology, shards.map((s) => s.path), now);
   writeIfChanged(join(outDir, "v1", "tech", `${store.technology}.json`), JSON.stringify(JSON.parse(canonical(index)), null, 1) + "\n");

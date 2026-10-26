@@ -103,7 +103,8 @@ fn line_words(text: &str, at: usize) -> impl Iterator<Item = String> + '_ {
 /// --flag v10_config_lookup_from_file` in `package.json`). A file that neither imports the technology nor is named by
 /// its records still uses it there.
 pub fn on_command_line(text: &str, lit: &str, words: &[String]) -> bool {
-    let ident = |c: Option<char>| c.is_some_and(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$');
+    let flag = cli_flag(lit);
+    let ident = |c: Option<char>| c.is_some_and(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$' || (flag && c == '-'));
     text.match_indices(lit)
         .any(|(i, _)| !ident(text[..i].chars().next_back()) && !ident(text[i + lit.len()..].chars().next()) && line_words(text, i).any(|w| words.contains(&w)))
 }
@@ -1087,6 +1088,150 @@ pub fn called(text: &str, lit: &str) -> bool {
         }
         let prev = before.trim_end_matches([' ', '\t']).rsplit(|c: char| !word(c)).next().unwrap_or("");
         !matches!(prev, "def" | "function" | "fn" | "func")
+    })
+}
+
+/// The number of arguments a record's literal written as a call with parameters (`cy.stub(object, name, fn)`) takes:
+/// (required, at most; `None` for a rest parameter). Optional parameters are `name?` and the bracket notation
+/// (`f(a[, b])`, `f([options])`). No arity: a call without parameters (`json_schema()`), an elided list (`f(...)`),
+/// a keyword argument (`update_trace(public=True)`: about that argument, in a call of any length), a callee that is not
+/// a (dotted) name, unbalanced parentheses (`require("url").parse()`) or anything that is not a call. These name the
+/// API or one argument, not one of its signatures.
+pub fn call_arity(lit: &str) -> Option<(usize, Option<usize>)> {
+    let s = lit.replace('`', "");
+    let s = s.trim().trim_end_matches(';');
+    let open = s.find('(')?;
+    let inner = s.strip_suffix(')')?[open + 1..].trim();
+    let head = s[..open].trim().trim_start_matches("new ");
+    let name = |c: char| c.is_ascii_alphanumeric() || c == '_' || c == '$' || c == '.';
+    if inner.is_empty() || head.is_empty() || !head.chars().all(name) || head.starts_with(|c: char| c == '.' || c.is_ascii_digit()) {
+        return None;
+    }
+    let (mut params, mut cur, mut depth) = (Vec::<(String, bool)>::new(), String::new(), 0i32);
+    let (mut cur_opt, mut opt_after) = (false, false);
+    let chars: Vec<char> = inner.chars().collect();
+    for (i, &c) in chars.iter().enumerate() {
+        match c {
+            '(' | '{' | '<' => depth += 1,
+            ')' | '}' | '>' if chars.get(i.wrapping_sub(1)) != Some(&'=') => {
+                depth -= 1;
+                if depth < 0 {
+                    return None;
+                }
+            }
+            '[' if depth == 0 => {
+                // `string[]` is a type; any other bracket at the top opens the optional parameters.
+                if chars.get(i + 1) == Some(&']') {
+                    cur.push(c);
+                } else if cur.trim().is_empty() {
+                    cur_opt = true;
+                    opt_after = true;
+                } else {
+                    opt_after = true;
+                }
+                continue;
+            }
+            ']' if depth == 0 => {
+                opt_after = false;
+                if i > 0 && chars[i - 1] == '[' {
+                    cur.push(c);
+                }
+                continue;
+            }
+            ',' if depth == 0 => {
+                params.push((std::mem::take(&mut cur), cur_opt));
+                cur_opt = opt_after;
+                continue;
+            }
+            _ => {}
+        }
+        cur.push(c);
+    }
+    params.push((cur, cur_opt));
+    if depth != 0 {
+        return None;
+    }
+    let (mut min, mut max) = (0usize, Some(0usize));
+    for (p, opt) in &params {
+        let p = p.trim();
+        if p.is_empty() || p == "..." || p == "…" {
+            return None;
+        }
+        if p.starts_with("...") || p.starts_with('*') {
+            max = None;
+            continue;
+        }
+        if p.replace("=>", "").replace("==", "").contains('=') {
+            return None;
+        }
+        max = max.map(|m| m + 1);
+        let name = p.split(':').next().unwrap_or(p).trim();
+        if !(*opt || name.ends_with('?')) {
+            min += 1;
+        }
+    }
+    Some((min, max))
+}
+
+/// Whether `text` calls `lit` with a number of arguments in `arity` (`call_arity`) somewhere: a removed signature
+/// (`cy.stub(object, name, fn)`) is not used by calls of another arity (`cy.stub()`). A call whose arguments cannot be
+/// counted (a spread, an unclosed list) counts.
+pub fn called_with(text: &str, lit: &str, arity: (usize, Option<usize>)) -> bool {
+    let word = |c: char| c.is_ascii_alphanumeric() || c == '_' || c == '$';
+    let b = text.as_bytes();
+    text.match_indices(lit).any(|(i, _)| {
+        let before = &text[..i];
+        if before.chars().next_back().is_some_and(word) {
+            return false;
+        }
+        let after = &text[i + lit.len()..];
+        if after.chars().next().is_some_and(word) {
+            return false;
+        }
+        let gap = after.len() - after.trim_start_matches([' ', '\t']).len();
+        if !after[gap..].starts_with('(') {
+            return false;
+        }
+        let prev = before.trim_end_matches([' ', '\t']).rsplit(|c: char| !word(c)).next().unwrap_or("");
+        if matches!(prev, "def" | "function" | "fn" | "func") {
+            return false;
+        }
+        let (mut j, mut depth, mut commas, mut any, mut last) = (i + lit.len() + gap + 1, 0i32, 0usize, false, b' ');
+        let mut quote: Option<u8> = None;
+        while j < b.len() {
+            let c = b[j];
+            if let Some(q) = quote {
+                if c == b'\\' {
+                    j += 2;
+                    continue;
+                }
+                if c == q {
+                    quote = None;
+                }
+                j += 1;
+                continue;
+            }
+            match c {
+                b'\'' | b'"' | b'`' => quote = Some(c),
+                b'(' | b'[' | b'{' => depth += 1,
+                b')' | b']' | b'}' if depth > 0 => depth -= 1,
+                b')' => break,
+                b',' if depth == 0 => commas += 1,
+                // A spread (`...args`, `*args`) passes an unknown number of arguments.
+                b'.' | b'*' if depth == 0 && (!any || last == b',') && (c == b'*' || text[j..].starts_with("...")) => return true,
+                _ => {}
+            }
+            if !c.is_ascii_whitespace() {
+                any = true;
+                last = c;
+            }
+            j += 1;
+        }
+        if j >= b.len() {
+            return true;
+        }
+        let n = if !any { 0 } else if last == b',' { commas } else { commas + 1 };
+        n >= arity.0 && arity.1.is_none_or(|m| n <= m)
     })
 }
 
@@ -2151,6 +2296,31 @@ mod tests {
         assert!(!called("from composio.utils.json_schema import dereference_json_schema\ndereference_json_schema(s)", "json_schema"));
         assert!(!called("def json_schema(self):", "json_schema"), "its own definition");
         assert!(!called("function json_schema() {}", "json_schema"));
+    }
+
+    #[test]
+    fn a_signature_with_parameters_has_an_arity_and_only_calls_of_it_match() {
+        assert_eq!(call_arity("cy.stub(object, name, fn)"), Some((3, Some(3))));
+        assert_eq!(call_arity("`useQuery(key, fn, options?)`"), Some((2, Some(3))));
+        assert_eq!(call_arity("fs.rmdir(path[, options], callback)"), Some((2, Some(3))));
+        assert_eq!(call_arity("app.listen([port])"), Some((0, Some(1))));
+        assert_eq!(call_arity("f(a: string[], b?: number)"), Some((1, Some(2))));
+        assert_eq!(call_arity("on(evt, (e) => e)"), Some((2, Some(2))));
+        assert_eq!(call_arity("require('stylelint')"), Some((1, Some(1))));
+        assert_eq!(call_arity("update_current_trace(public=True)"), None, "a keyword argument");
+        assert_eq!(call_arity("require(\"url\").parse()"), None);
+        assert_eq!(call_arity(":has(.survey-question:empty)"), None);
+        assert_eq!(call_arity("log(fmt, ...args)"), Some((1, None)));
+        assert_eq!(call_arity("json_schema()"), None, "a call without parameters names the API");
+        assert_eq!(call_arity("f(...)"), None);
+        assert_eq!(call_arity("cy.stub"), None);
+        let three = (3, Some(3));
+        assert!(!called_with("connect: cy.stub(),\nx: cy.stub().returns(n)", "cy.stub", three), "no arguments");
+        assert!(!called_with("cy.stub(win, 'open')", "cy.stub", three), "two arguments");
+        assert!(called_with("cy.stub(win, 'open', () => { f(a, b) })", "cy.stub", three));
+        assert!(called_with("cy.stub(\n  win,\n  'a,b',\n  fn,\n)", "cy.stub", three), "a trailing comma and a comma in a string");
+        assert!(called_with("cy.stub(...args)", "cy.stub", three), "a spread cannot be counted");
+        assert!(!called_with("function cy.stub(a, b, c) {}", "cy.stub", three));
     }
 
     fn repo(files: &[(&str, &str)]) -> Repo {

@@ -9,6 +9,12 @@
 //   npm run catalog -- merge <from-id> <into-id> [--note text] [--no-publish]
 //   npm run catalog -- retract <id> [--note text] [--no-publish]
 //   npm run catalog -- publish [--tech next]
+//   npm run catalog -- dedupe [--tech next | --all] [--no-chunks] [--no-publish]   (records cut from one release-note item, and
+//     the same change in two parts of one release body, merged; match.ts mergeSplitRecords, mergeChunkDuplicates)
+//   npm run catalog -- type-stubs [--tech next | --all] [--offline] [--no-publish]   (deprecations from the technology's
+//     type stubs' declarations; type-stubs.ts. The pipeline and the onboarding service run it after ingest)
+//   npm run catalog -- advisory-apis [--tech next | --all] [--no-publish]   (each advisory's affected APIs from the OSV cache,
+//     one cached extraction-model call per advisory; advisory-apis.ts. The advisories stage runs it after attaching)
 //   npm run catalog -- check-prerequisites [--tech next] [--no-publish]   (npm registry check of a store built before it)
 //   npm run catalog -- advisories [--tech next] [--offline] [--no-publish]   (the advisories stage: OSV, resolve, attach)
 //   npm run catalog -- prune [--dry-run]   (delete shards unreferenced for more than 7 days; prune.ts)
@@ -17,10 +23,11 @@
 //
 // Corrections: revision fields (change_type, breaking, releases, prerequisites, requires, replaces, or --claim for a
 // meaningful correction of the claim) bump `revision`; label fields bump `label_version`.
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
-import { advisoryStage, advisoryStats } from "./advisories.ts";
+import { advisoryStage, advisoryStats, aliasDetails, fetchAdvisories, osvTexts } from "./advisories.ts";
+import { attachAdvisoryApis, packageNamesOf } from "./advisory-apis.ts";
 import { extractModel, llmStats } from "./llm.ts";
 import { PipelineBudget } from "./budget.ts";
 import { fetchReleases } from "./fetch.ts";
@@ -28,6 +35,8 @@ import { usageStats } from "./classify/adapter.ts";
 import { withTechLock, withTechLockSync } from "./lock.ts";
 import { catalogDir, centralDir } from "./paths.ts";
 import { makeClassifier, runTechnology, technologies, type TechReport } from "./pipeline.ts";
+import { mergeChunkDuplicates, mergeSplitRecords } from "./match.ts";
+import { typeStubDeprecations } from "./type-stubs.ts";
 import { exportCatalog } from "./export.ts";
 import { pruneCatalog } from "./prune.ts";
 import { activeTerms, publishTechnology, shardLine } from "./publish.ts";
@@ -36,9 +45,9 @@ import { checkStore } from "./prereqs.ts";
 import { registryStats } from "./registry.ts";
 import { ShardLine } from "../schema/catalog.ts";
 import { applyChange, LABEL_FIELDS, loadStore, mergeInto, retract, REVISION_FIELDS, saveStore, type EditableField, type StoredRecord } from "./store.ts";
-import { TECHNOLOGIES } from "./technologies.ts";
+import { TECHNOLOGIES, type Technology } from "./technologies.ts";
 import { jevAttribution, loadPrices, monitoredTechnologies, usageByPhase } from "./usage.ts";
-import { readJson, withUsagePhase } from "./util.ts";
+import { pool, readJson, withUsagePhase } from "./util.ts";
 import { techLocal } from "../state/client.ts";
 
 const ARRAY_FIELDS = new Set(["releases", "prerequisites", "requires", "replaces", "benefit", "introduces", "terms", "related", "conditions"]);
@@ -231,6 +240,74 @@ async function main(): Promise<void> {
         if (!values["no-publish"]) republish(t.id);
       });
       console.log(JSON.stringify({ classifier: cls.counts, uncached_calls: usageStats, network: advisoryStats }));
+      return;
+    }
+    case "dedupe": {
+      // The pipeline and the onboarding service run both passes after ingest; this runs them alone, on every stored
+      // technology with --all (records/*.json, onboarded ones included).
+      const { values } = parseArgs({ args: rest, options: { tech: { type: "string" }, all: { type: "boolean" }, "no-chunks": { type: "boolean" }, "no-publish": { type: "boolean" } } });
+      const dir = join(centralDir(), "records");
+      // --all: the stores on disk (a restored state hydrates a technology's store on first use; hydrate it first).
+      const ids = values.all ? (existsSync(dir) ? readdirSync(dir) : []).filter((f) => f.endsWith(".json")).map((f) => readJson<{ technology: string }>(join(centralDir(), "records", f))!.technology) : technologies(values.tech).map((t) => t.id);
+      const cls = makeClassifier();
+      const total = { split: 0, chunks: 0 };
+      for (const id of ids) await withTechLock(id, "dedupe", async () => {
+        const s = loadStore(id);
+        const split = mergeSplitRecords(s).length;
+        const judged = values["no-chunks"] ? [] : await mergeChunkDuplicates(s, TECHNOLOGIES[id]?.name ?? id.replace(/-[0-9a-f]{8}$/, ""), (st, q) => cls.classify(st, q));
+        const chunks = judged.filter((j) => j.outcome === "same").length;
+        // Judgements are kept (history) even when nothing merged, so a rerun does not ask them again.
+        if (judged.length && !split && !chunks) saveStore(s);
+        if (!split && !chunks) return;
+        total.split += split;
+        total.chunks += chunks;
+        saveStore(s);
+        console.log(JSON.stringify({ technology: id, split, chunks }));
+        if (!values["no-publish"]) republish(id);
+      });
+      console.log(JSON.stringify({ technologies: ids.length, merged: total, classifier: cls.counts, uncached_calls: usageStats }));
+      return;
+    }
+    case "type-stubs": {
+      const { values } = parseArgs({ args: rest, options: { tech: { type: "string" }, all: { type: "boolean" }, offline: { type: "boolean" }, "no-publish": { type: "boolean" } } });
+      const ids = values.all ? (existsSync(join(centralDir(), "records")) ? readdirSync(join(centralDir(), "records")) : []).filter((f) => f.endsWith(".json")).map((f) => readJson<{ technology: string }>(join(centralDir(), "records", f))!.technology) : technologies(values.tech).map((t) => t.id);
+      let total = 0;
+      await pool(ids, 4, (id) =>
+        withTechLock(id, "type-stubs", async () => {
+          const s = loadStore(id);
+          // The technology's packages: its descriptor's, else every npm package its records name.
+          const components = TECHNOLOGIES[id]?.components ?? [...new Set(Object.values(s.records).flatMap((r) => r.releases.map((x) => x.component)))];
+          const added = await typeStubDeprecations({ id, components }, s, { offline: !!values.offline });
+          if (!added.length) return;
+          total += added.length;
+          saveStore(s);
+          console.log(JSON.stringify({ technology: id, added }));
+          if (!values["no-publish"]) republish(id);
+        }),
+      );
+      console.log(JSON.stringify({ technologies: ids.length, added: total }));
+      return;
+    }
+    case "advisory-apis": {
+      const { values } = parseArgs({ args: rest, options: { tech: { type: "string" }, all: { type: "boolean" }, "no-publish": { type: "boolean" } } });
+      const ids = values.all ? (existsSync(join(centralDir(), "records")) ? readdirSync(join(centralDir(), "records")) : []).filter((f) => f.endsWith(".json")).map((f) => readJson<{ technology: string }>(join(centralDir(), "records", f))!.technology) : technologies(values.tech).map((t) => t.id);
+      const total = { advisories: 0, named: 0, records: 0 };
+      await pool(ids, 4, (id) =>
+        withTechLock(id, "advisory-apis", async () => {
+          // Cached packages and advisories; missing alias entries are fetched once.
+          const purls = readJson<{ purls?: string[] }>(join(centralDir(), "advisories", techLocal(id), "packages.json"))?.purls;
+          if (!purls?.length) return;
+          const t = TECHNOLOGIES[id] ?? ({ id, name: id, repo: "", components: purls, tag: /^$/, clean: (b: string) => b } as Technology);
+          const advisories = await fetchAdvisories(t, { offline: true });
+          if (!advisories.length) return;
+          const s = loadStore(id);
+          const r = await attachAdvisoryApis(s, advisories, packageNamesOf([...t.components, ...purls]), await osvTexts(t), (x) => aliasDetails(t, x));
+          for (const k of Object.keys(total) as Array<keyof typeof total>) total[k] += r[k];
+          saveStore(s);
+          if (!values["no-publish"]) republish(id);
+        }),
+      );
+      console.log(JSON.stringify({ technologies: ids.length, ...total, model: llmStats }));
       return;
     }
     case "publish": {

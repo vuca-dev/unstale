@@ -11,12 +11,13 @@ import { advisoryStage, type AttachReport } from "./advisories.ts";
 import { fetchGuides, fetchReleases, foreignGuides, guideBounds, type GuideNote, type ReleaseNote } from "./fetch.ts";
 import { withTechLock } from "./lock.ts";
 import { buildIndex } from "./lines.ts";
-import { ingest } from "./match.ts";
+import { ingest, mergeChunkDuplicates, mergeSplitRecords } from "./match.ts";
 import { catalogDir, centralDir } from "./paths.ts";
 import { activeTerms, publishTechnology } from "./publish.ts";
 import { drawSample, sampleCounts } from "./sample.ts";
 import { checkIncoming } from "./prereqs.ts";
 import { boundGuideRecords, loadStore, retractForeignGuideRecords, saveStore } from "./store.ts";
+import { typeStubDeprecations } from "./type-stubs.ts";
 import { TECHNOLOGIES, type Technology } from "./technologies.ts";
 import { compareVersions, pool, writeAtomic } from "./util.ts";
 import { DEFAULT_HTTP, HttpClient } from "../collector/http.ts";
@@ -151,6 +152,17 @@ export async function runTechnology(
       if (ingestedNow % 25 === 0) saveStore(store);
     }
     if (!opts.limit) {
+      // Records cut from one release-note item (one per API it names, same quote, summary and labels) become one.
+      const split = mergeSplitRecords(store);
+      if (split.length) console.log(`${t.id}: ${split.length} records cut from the same release-note item merged`);
+      // The same change in two parts of one release body, ingested before retrieval compared them: judged once each.
+      const chunks = (await mergeChunkDuplicates(store, t.name, (s, q) => cls.classify(s, q))).filter((j) => j.outcome === "same");
+      if (chunks.length) console.log(`${t.id}: ${chunks.length} records from another part of the same release notes merged`);
+    }
+    if (!opts.limit) {
+      // Deprecations the technology's type stubs state in their declarations (no release notes say them).
+      const typed = await typeStubDeprecations(t, store, { refresh: !!opts.refresh, offline: !!opts.offline });
+      if (typed.length) console.log(`${t.id}: ${typed.length} deprecations from its type stubs' declarations`);
       const bounded = boundGuideRecords(store, guideBounds(t, fetched.notes));
       if (bounded) console.log(`${t.id}: ${bounded} records from a moving upgrade guide given a release bound`);
       const foreign = retractForeignGuideRecords(store, foreignGuides(t));
