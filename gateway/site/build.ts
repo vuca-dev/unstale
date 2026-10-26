@@ -334,7 +334,7 @@ function terminal(): string {
 <p>Example output of <code>unstale init</code> on a Next.js and Prisma app</p>
 <figure class="term" id="terminal-demo" aria-label="Example unstale init session">
 <div class="term-toolbar"><span>my-app — unstale init</span><div class="term-controls" hidden><button type="button" class="copy" data-demo-toggle>Pause</button> <button type="button" class="copy" data-demo-finish>Show results</button></div></div>
-<div class="term-screen"><pre class="term-result">${rows}</pre><div class="term-progress" hidden aria-hidden="true"><pre><span class="t-cmd">$ npx @unstale/cli init</span></pre>${wordmarkSvg("demo-mark")}<pre><span class="t-accent" data-demo-stage></span><span class="t-body" data-demo-detail></span></pre></div></div>
+<div class="term-screen"><pre class="term-result">${rows}</pre><div class="term-progress" hidden><pre><span class="t-cmd">$ npx @unstale/cli init</span></pre>${wordmarkSvg("demo-mark")}<pre><span class="t-accent" data-demo-stage></span><span class="t-body" data-demo-detail></span></pre></div></div>
 <figcaption>Illustrative replay · timing shortened. <span data-demo-status role="status"></span></figcaption>
 </figure>
 </section>`;
