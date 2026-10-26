@@ -1,0 +1,36 @@
+{
+ "unstale_raw@frozen-baseline": {
+  "attempts": 19,
+  "tierA_finds": 53,
+  "pool_A": 117,
+  "weighted_finds": 224,
+  "pool_weight": 494,
+  "top8_ab": 40,
+  "top8": 140,
+  "finds": 118,
+  "pool": 260,
+  "client_tokens": 164633,
+  "tierA_recall": 0.452991452991453,
+  "weighted_recall": 0.4534412955465587,
+  "p8_ab": 0.2857142857142857,
+  "pooled_recall": 0.45384615384615384,
+  "client_tokens_per_tierA_find": 3106.2830188679245
+ },
+ "unstale_raw@frozen-combined": {
+  "attempts": 19,
+  "tierA_finds": 53,
+  "pool_A": 117,
+  "weighted_finds": 224,
+  "pool_weight": 494,
+  "top8_ab": 38,
+  "top8": 140,
+  "finds": 118,
+  "pool": 260,
+  "client_tokens": 164730,
+  "tierA_recall": 0.452991452991453,
+  "weighted_recall": 0.4534412955465587,
+  "p8_ab": 0.2714285714285714,
+  "pooled_recall": 0.45384615384615384,
+  "client_tokens_per_tierA_find": 3108.1132075471696
+ }
+}

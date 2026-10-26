@@ -1,0 +1,114 @@
+[
+ {
+  "attempt": 27,
+  "arm": "unstale_raw@frozen-combined",
+  "rank": 16,
+  "from": "ruff|security|ruff-0.16.8-0.17.1-picks-up-2",
+  "to": "ruff|security|ruff-0.16.8-0.17.2-picks-up-2",
+  "lead": "breaking: When neither target-version nor requires-python configures a Python version, Ruff now defaults to Python 3.11 instead of Python 3.10. [ruff-aedf7afe:target-version] (`requires-python` at python/providers/anthropic/pyproject.toml); advisory present, affected path not found"
+ },
+ {
+  "attempt": 28,
+  "arm": "unstale_raw@frozen-combined",
+  "rank": 4,
+  "from": "eslint-plugin-jsdoc|breaking|eslint-plugin-jsdoc-64.3.2-65.4.1-picks",
+  "to": "eslint-plugin-jsdoc|breaking|eslint-plugin-jsdoc-64.3.2-65.4.0-picks",
+  "lead": "breaking: With publicOnly, the rule now checks members of anonymous default exports and exported object literals. [eslint-plugin-jsdoc-5094b735:require-jsdoc] (`require-jsdoc` at oxlint.config.ts)"
+ },
+ {
+  "attempt": 31,
+  "arm": "unstale_raw@frozen-combined",
+  "rank": 12,
+  "from": "eslint|security|eslint-9.39.4-10.13.0-picks-up-1",
+  "to": "eslint|deprecation|eslint-9.39.4-deprecated-its-publisher-this",
+  "lead": "end of support: the installed eslint 9.39.4 is deprecated by its publisher; then breaking: JSX identifiers are now tracked as references to variables in scope, improving scope analysis and potentially changing rule reports. [eslint-e33533ff:jsx-references] (`no-unused-vars` at eslint.config.mjs); advisory present, affected path not found"
+ },
+ {
+  "attempt": 31,
+  "arm": "unstale_raw@frozen-combined",
+  "rank": 17,
+  "from": "@modelcontextprotocol/sdk|breaking|modelcontextprotocol-sdk-1.32.1-2.3.1-picks-up",
+  "to": "@modelcontextprotocol/sdk|security|modelcontextprotocol-sdk-1.32.1-2.4.0-picks-up",
+  "lead": "breaking: The Zod-specific type alias is removed; replace it with StandardSchemaV1. [modelcontextprotocol-sdk-d59cf9c0:anyschema] (`AnySchema` at packages/insomnia/src/main/network/mcp.ts)"
+ },
+ {
+  "attempt": 31,
+  "arm": "unstale_raw@frozen-combined",
+  "rank": 50,
+  "from": "@tanstack/react-query|upgrade|tanstack-react-query-5.101.4-5.104.5-picks",
+  "to": "@tanstack/react-query|upgrade|tanstack-react-query-5.101.4-5.104.4-picks",
+  "lead": "performance: Type-only exports no longer emit a runtime import. [tanstack-react-query-ce10f09c:tanstack-react-query] (`useQuery` at packages/insomnia/src/ui/hooks/use-query.ts)"
+ },
+ {
+  "attempt": 33,
+  "arm": "unstale_raw@frozen-combined",
+  "rank": 3,
+  "from": "nx|breaking|nx-22.7.6-23.3.0-picks-up-5",
+  "to": "nx|breaking|nx-22.7.6-23.3.0-picks-up-7",
+  "lead": "breaking: Support for filtered array-shape targetDefaults was reverted pending redesign and reapplication. [nx-808e5281:array-shape-targetdefaults] (`targetDefaults` at nx.json); advisory present, affected path not found"
+ },
+ {
+  "attempt": 35,
+  "arm": "unstale_raw@frozen-combined",
+  "rank": 1,
+  "from": "@tanstack/react-query|upgrade|tanstack-react-query-5.90.6-5.104.5-picks",
+  "to": "@tanstack/react-query|breaking|CVE-2026-94484",
+  "lead": "deprecated in effect now: Introduced as the replacement for queryClient.fetchQuery; the imperative fetch methods are deprecated and will be removed in v6. [tanstack-react-query-ce10f09c:queryclient.query] (`queryClient.fetchQuery` at autogpt_platform/frontend/src/components/contextual/GoogleDrivePicker/useGoogleDrivePicker.ts)"
+ },
+ {
+  "attempt": 35,
+  "arm": "unstale_raw@frozen-combined",
+  "rank": 33,
+  "from": "motion|breaking|motion-13.3.0-14.6.0-picks-up-54",
+  "to": "motion|breaking|motion-13.3.0-14.4.0-picks-up-42",
+  "lead": "breaking: onExitComplete now fires after exiting children unmount. [motion-5a2d9452:animatepresence-onexitcomplete~2] (`AnimatePresence` at autogpt_platform/frontend/src/app/(no-navbar)/onboarding/steps/BrainDumpStep/components/ElapsedTime.tsx)"
+ },
+ {
+  "attempt": 36,
+  "arm": "unstale_raw@frozen-combined",
+  "rank": 1,
+  "from": "next|security|CVE-2026-75604",
+  "to": "next|security|docs-website-pins-next-14.2.2-locked",
+  "lead": "end of support: the installed next 14.2.23 is deprecated by its publisher; then breaking: Page segments are no longer reused during Link or useRouter navigation, but remain reused for back-forward navigation and shared layouts. [next:client-cache] (`<Link` at website/src/index.tsx) \u00b7 security: GHSA-2464-FHR4-W9XW (critical): Next.js: Unauthenticated Remote Code Execution in Image Optimization API when SVG files are used [next:image-optimization-api~6, 16.4.1] \u00b7 security: GHSA-2XP9-VWFH-VXW4 (critical): Next.js: Unauthenticated Remote Code Execution in Image Optimization API when AVIF files are used [next:image-optimization-api~4, 16.3.3] \u00b7 security: GHSA-P293-QW3H-JR36 (CVE-2026-75604, critical): Next.js: Unauthenticated Remote Code Execution on windows-hosted servers [next:windows-hosted-servers, 16.3.3]"
+ },
+ {
+  "attempt": 45,
+  "arm": "unstale_raw@frozen-combined",
+  "rank": 17,
+  "from": "markdown|security|markdown-3.10.2-3.11.2-picks-up-1",
+  "to": "markdown|security|markdown-3.10.2-3.11.2-picks-up-2",
+  "lead": "breaking: Python 3.15 is officially supported, and Python 3.10 support is dropped. [markdown-4d4ecf91:python] (`Programming Language :: Python :: 3.10` at pyproject.toml); advisory present, affected path not found"
+ },
+ {
+  "attempt": 45,
+  "arm": "unstale_raw@frozen-combined",
+  "rank": 36,
+  "from": "ruff|security|ruff-0.15.11-0.17.1-picks-up-4",
+  "to": "ruff|security|ruff-0.15.11-0.17.1-picks-up-6",
+  "lead": "breaking: Ruff enables 413 rules by default, up from 59, while removing 18 more opinionated E and F rules from the default set. [ruff-aedf7afe:default-rules] (`[tool.ruff.lint]` at api/pyproject.toml); advisory present, affected path not found"
+ },
+ {
+  "attempt": 46,
+  "arm": "unstale_raw@frozen-combined",
+  "rank": 5,
+  "from": "eslint-plugin-jsdoc|breaking|eslint-plugin-jsdoc-48.11.0-65.4.1-picks",
+  "to": "eslint-plugin-jsdoc|breaking|eslint-plugin-jsdoc-48.11.0-65.4.0-picks",
+  "lead": "breaking: Forbids a missing space between the asterisk prefix and content; set allowNoSpaceAfterAsterisk: true to restore the old behavior. [eslint-plugin-jsdoc-5094b735:check-indentation~3] (`jsdoc/check-indentation` at .eslintrc.cjs)"
+ },
+ {
+  "attempt": 50,
+  "arm": "unstale_raw@frozen-combined",
+  "rank": 22,
+  "from": "i18next|security|i18next-24.2.3-26.5.4-picks-up-3",
+  "to": "i18next|security|i18next-24.2.3-26.5.4-picks-up-4",
+  "lead": "breaking: Custom formatters can be registered through the formatter service as part of the new formatting approach. [i18next-9198e5f5:i18next.services.formatter.add] (`i18next.use` at benchmark/src/i18n/i18next.ts); advisory present, affected path not found"
+ },
+ {
+  "attempt": 31,
+  "arm": "unstale_raw@frozen-combined",
+  "rank": 20,
+  "from": "electron|security|electron-43.2.0-44.9.0-picks-up-12",
+  "to": "electron|security|electron-43.2.0-44.9.0-picks-up-13",
+  "lead": "breaking: The module aligns with the W3C Clipboard API and is no longer exposed to renderer processes. [electron-e4ea0767:clipboard] (`clipboard.readText` at packages/insomnia/src/entry.plugin-window-preload.ts); advisory present, affected path not found"
+ }
+]
