@@ -1091,15 +1091,19 @@ pub fn called(text: &str, lit: &str) -> bool {
 }
 
 /// The number of arguments a record's literal written as a call with parameters (`cy.stub(object, name, fn)`) takes:
-/// (required, at most; `None` for a rest parameter). Optional parameters are `name?`, `name = x` and the bracket
-/// notation (`f(a[, b])`, `f([options])`). A call without parameters (`json_schema()`), an elided list (`f(...)`) or
-/// anything that is not a call has no arity: it names the API, not one of its signatures.
+/// (required, at most; `None` for a rest parameter). Optional parameters are `name?` and the bracket notation
+/// (`f(a[, b])`, `f([options])`). No arity: a call without parameters (`json_schema()`), an elided list (`f(...)`),
+/// a keyword argument (`update_trace(public=True)`: about that argument, in a call of any length), a callee that is not
+/// a (dotted) name, unbalanced parentheses (`require("url").parse()`) or anything that is not a call. These name the
+/// API or one argument, not one of its signatures.
 pub fn call_arity(lit: &str) -> Option<(usize, Option<usize>)> {
     let s = lit.replace('`', "");
     let s = s.trim().trim_end_matches(';');
     let open = s.find('(')?;
     let inner = s.strip_suffix(')')?[open + 1..].trim();
-    if inner.is_empty() || s[..open].trim().is_empty() {
+    let head = s[..open].trim().trim_start_matches("new ");
+    let name = |c: char| c.is_ascii_alphanumeric() || c == '_' || c == '$' || c == '.';
+    if inner.is_empty() || head.is_empty() || !head.chars().all(name) || head.starts_with(|c: char| c == '.' || c.is_ascii_digit()) {
         return None;
     }
     let (mut params, mut cur, mut depth) = (Vec::<(String, bool)>::new(), String::new(), 0i32);
@@ -1108,7 +1112,12 @@ pub fn call_arity(lit: &str) -> Option<(usize, Option<usize>)> {
     for (i, &c) in chars.iter().enumerate() {
         match c {
             '(' | '{' | '<' => depth += 1,
-            ')' | '}' | '>' => depth -= 1,
+            ')' | '}' | '>' if chars.get(i.wrapping_sub(1)) != Some(&'=') => {
+                depth -= 1;
+                if depth < 0 {
+                    return None;
+                }
+            }
             '[' if depth == 0 => {
                 // `string[]` is a type; any other bracket at the top opens the optional parameters.
                 if chars.get(i + 1) == Some(&']') {
@@ -1137,6 +1146,9 @@ pub fn call_arity(lit: &str) -> Option<(usize, Option<usize>)> {
         cur.push(c);
     }
     params.push((cur, cur_opt));
+    if depth != 0 {
+        return None;
+    }
     let (mut min, mut max) = (0usize, Some(0usize));
     for (p, opt) in &params {
         let p = p.trim();
@@ -1147,9 +1159,12 @@ pub fn call_arity(lit: &str) -> Option<(usize, Option<usize>)> {
             max = None;
             continue;
         }
+        if p.replace("=>", "").replace("==", "").contains('=') {
+            return None;
+        }
         max = max.map(|m| m + 1);
         let name = p.split(':').next().unwrap_or(p).trim();
-        if !(*opt || name.ends_with('?') || p.contains('=')) {
+        if !(*opt || name.ends_with('?')) {
             min += 1;
         }
     }
@@ -2287,7 +2302,12 @@ mod tests {
         assert_eq!(call_arity("`useQuery(key, fn, options?)`"), Some((2, Some(3))));
         assert_eq!(call_arity("fs.rmdir(path[, options], callback)"), Some((1, Some(3))));
         assert_eq!(call_arity("app.listen([port])"), Some((0, Some(1))));
-        assert_eq!(call_arity("f(a: string[], b = 1)"), Some((1, Some(2))));
+        assert_eq!(call_arity("f(a: string[], b?: number)"), Some((1, Some(2))));
+        assert_eq!(call_arity("on(evt, (e) => e)"), Some((2, Some(2))));
+        assert_eq!(call_arity("require('stylelint')"), Some((1, Some(1))));
+        assert_eq!(call_arity("update_current_trace(public=True)"), None, "a keyword argument");
+        assert_eq!(call_arity("require(\"url\").parse()"), None);
+        assert_eq!(call_arity(":has(.survey-question:empty)"), None);
         assert_eq!(call_arity("log(fmt, ...args)"), Some((1, None)));
         assert_eq!(call_arity("json_schema()"), None, "a call without parameters names the API");
         assert_eq!(call_arity("f(...)"), None);
