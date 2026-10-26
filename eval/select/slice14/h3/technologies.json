@@ -1,0 +1,66 @@
+{
+ "_rule": "PREREG.md addendum 25 October 2026, H3",
+ "picks": [
+  {
+   "technology": "react-native-reanimated-e7eaf154",
+   "ecosystem": "npm",
+   "name": "react-native-reanimated",
+   "records": 187,
+   "releases": 30,
+   "repos": [
+    "software-mansion/react-native-reanimated"
+   ]
+  },
+  {
+   "technology": "react-i18next-bfc8d6e4",
+   "ecosystem": "npm",
+   "name": "react-i18next",
+   "records": 194,
+   "releases": 67,
+   "repos": [
+    "i18next/react-i18next"
+   ]
+  },
+  {
+   "technology": "lexical-ce1e1e32",
+   "ecosystem": "npm",
+   "name": "lexical",
+   "records": 422,
+   "releases": 16,
+   "repos": [
+    "facebook/lexical"
+   ]
+  },
+  {
+   "technology": "ty-4cedef31",
+   "ecosystem": "pypi",
+   "name": "ty",
+   "records": 1519,
+   "releases": 88,
+   "repos": [
+    "astral-sh/ty"
+   ]
+  },
+  {
+   "technology": "react-native-gesture-handler-d9813ba2",
+   "ecosystem": "npm",
+   "name": "react-native-gesture-handler",
+   "records": 208,
+   "releases": 18,
+   "repos": [
+    "software-mansion/react-native-gesture-handler"
+   ]
+  },
+  {
+   "technology": "maplibre-gl-c2ff95ef",
+   "ecosystem": "npm",
+   "name": "maplibre-gl",
+   "records": 344,
+   "releases": 37,
+   "repos": [
+    "maplibre/maplibre-gl-js"
+   ]
+  }
+ ],
+ "eligible": 15
+}

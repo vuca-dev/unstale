@@ -1,0 +1,3363 @@
+{
+ "ty-4cedef31:private-attributes-on-frozen-models": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-i18next-bfc8d6e4:bindi18nstore~2": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_option",
+  "actionable": true
+ },
+ "react-native-gesture-handler-d9813ba2:changeeventcalculator": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_option",
+  "actionable": true
+ },
+ "react-i18next-bfc8d6e4:usetranslation~3": {
+  "breaking": false,
+  "benefit": [
+   "performance"
+  ],
+  "change_type": "performance",
+  "actionable": false
+ },
+ "lexical-ce1e1e32:keyboardshortcutmatch": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "lexical-ce1e1e32:select-all-delete-and-cut": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-i18next-bfc8d6e4:usetranslation-usesuspense": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "lexical-ce1e1e32:codenode": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "deprecation",
+  "actionable": true
+ },
+ "maplibre-gl-c2ff95ef:upright-numbers-and-uppercase-codes-in-vertical-line-labels": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-reanimated-e7eaf154:synchronous-event-animation-cancel": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "lexical-ce1e1e32:handlerichtextdrop": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "maplibre-gl-c2ff95ef:flyto": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-reanimated-e7eaf154:exiting-animations": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "lexical-ce1e1e32:offsetview": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "deprecation",
+  "actionable": true
+ },
+ "react-native-gesture-handler-d9813ba2:react-native~3": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "other",
+  "actionable": true
+ },
+ "maplibre-gl-c2ff95ef:map-zoomsnap": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_option",
+  "actionable": true
+ },
+ "react-i18next-bfc8d6e4:customtypeoptions-nsseparator": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_option",
+  "actionable": true
+ },
+ "react-i18next-bfc8d6e4:options.react.exposenamespace": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_option",
+  "actionable": true
+ },
+ "react-i18next-bfc8d6e4:trans~10": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-reanimated-e7eaf154:css-transitions-on-ios-core-animation": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "react-i18next-bfc8d6e4:original": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:swipeable-action-panels": {
+  "breaking": true,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "maplibre-gl-c2ff95ef:updatedata~2": {
+  "breaking": false,
+  "benefit": [
+   "performance"
+  ],
+  "change_type": "performance",
+  "actionable": false
+ },
+ "maplibre-gl-c2ff95ef:color-relief~2": {
+  "breaking": false,
+  "benefit": [
+   "performance"
+  ],
+  "change_type": "performance",
+  "actionable": false
+ },
+ "lexical-ce1e1e32:update-listeners": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "react-native-reanimated-e7eaf154:animationdelay": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:touch-event-serialization": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "ty-4cedef31:assert-type-unspellable-subtype": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "react-i18next-bfc8d6e4:usessr-ns": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "react-native-reanimated-e7eaf154:transparent-color-interpolation": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "ty-4cedef31:typeddict-extra-items": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-reanimated-e7eaf154:animated-styles": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "ty-4cedef31:recursive-collection-use-constraints": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:press-events": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "ty-4cedef31:non-literal-metaclasses": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "lexical-ce1e1e32:yjs-xmltext": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_option",
+  "actionable": true
+ },
+ "react-native-reanimated-e7eaf154:synchronously-updated-props": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-i18next-bfc8d6e4:cimode": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "lexical-ce1e1e32:autolinkextension-punctuation": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_option",
+  "actionable": true
+ },
+ "lexical-ce1e1e32:tabnode.settextcontent": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "maplibre-gl-c2ff95ef:map.addsource": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "lexical-ce1e1e32:react": {
+  "breaking": true,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "removal",
+  "actionable": true
+ },
+ "ty-4cedef31:typevartuple~6": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "other",
+  "actionable": false
+ },
+ "ty-4cedef31:constructor-overloads": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "lexical-ce1e1e32:paste-tag": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:sharedvalue": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "lexical-ce1e1e32:textnode-state": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "maplibre-gl-c2ff95ef:seturl-settiles": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-reanimated-e7eaf154:borderblockendcolor": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:ios-hit-testing": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-reanimated-e7eaf154:layout-animation-configs": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "maplibre-gl-c2ff95ef:styleimagemissing": {
+  "breaking": true,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "removal",
+  "actionable": true
+ },
+ "react-native-reanimated-e7eaf154:shadowcolor": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "maplibre-gl-c2ff95ef:intersects": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "lexical-ce1e1e32:lexicaltableselectionhelpers-priority": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "react-i18next-bfc8d6e4:trans-ns": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_option",
+  "actionable": true
+ },
+ "lexical-ce1e1e32:hard-line-breaks": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-i18next-bfc8d6e4:i18ncontext": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "lexical-ce1e1e32:empty-inline-elements": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:pressablewithtouchable": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "tooling",
+  "actionable": true
+ },
+ "react-native-reanimated-e7eaf154:layout-animations~3": {
+  "breaking": false,
+  "benefit": [
+   "performance"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "ty-4cedef31:type~4": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-i18next-bfc8d6e4:translation": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "maplibre-gl-c2ff95ef:dashed-lines": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "maplibre-gl-c2ff95ef:globe-zoom-at-minimum-zoom": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-reanimated-e7eaf154:animatedprops": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-i18next-bfc8d6e4:missing-i18next-instance-handling": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "ty-4cedef31:reveal-type": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:reanimatedswipeable~2": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-i18next-bfc8d6e4:usessr~2": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "lexical-ce1e1e32:multi-cell-selection": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "maplibre-gl-c2ff95ef:raster-tiles~2": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "ty-4cedef31:short-circuit-bindings": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-i18next-bfc8d6e4:trans~17": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-i18next-bfc8d6e4:i18nextprovider-defaultns~2": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "lexical-ce1e1e32:lexicalcomposer": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "deprecation",
+  "actionable": true
+ },
+ "react-native-reanimated-e7eaf154:worklets-support": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "other",
+  "actionable": true
+ },
+ "ty-4cedef31:notebook-cell-lookups": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:wheel-listener": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "lexical-ce1e1e32:mdastexportextensionoutput": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "deprecation",
+  "actionable": true
+ },
+ "maplibre-gl-c2ff95ef:geojsonsource-setclusteroptions": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "maplibre-gl-c2ff95ef:geojsonsource-setdata": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-i18next-bfc8d6e4:withnamespaces": {
+  "breaking": true,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "removal",
+  "actionable": true
+ },
+ "ty-4cedef31:mixed-typeddict-unions": {
+  "breaking": false,
+  "benefit": [
+   "performance"
+  ],
+  "change_type": "performance",
+  "actionable": false
+ },
+ "ty-4cedef31:typeddict~9": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-reanimated-e7eaf154:layout-animations~5": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-reanimated-e7eaf154:uimanageranimationdelegate": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "react-native-reanimated-e7eaf154:css-animation-pseudo-selectors": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "react-native-gesture-handler-d9813ba2:fling": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:touchable-onactivestatechange": {
+  "breaking": true,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "removal",
+  "actionable": true
+ },
+ "ty-4cedef31:setitem": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:onpress": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:react-native": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "other",
+  "actionable": true
+ },
+ "react-native-gesture-handler-d9813ba2:exactoptionalpropertytypes": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-i18next-bfc8d6e4:usesuspense": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_option",
+  "actionable": true
+ },
+ "maplibre-gl-c2ff95ef:word-boundary-label-wrapping": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "react-i18next-bfc8d6e4:t~2": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "react-native-reanimated-e7eaf154:getdynamicfeatureflag": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "maplibre-gl-c2ff95ef:terrain-gesture-view-positioning": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-i18next-bfc8d6e4:trans-components~3": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_option",
+  "actionable": true
+ },
+ "react-i18next-bfc8d6e4:nsmode~2": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_option",
+  "actionable": true
+ },
+ "ty-4cedef31:typevartuple~5": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "maplibre-gl-c2ff95ef:symbol-rendering": {
+  "breaking": false,
+  "benefit": [
+   "performance"
+  ],
+  "change_type": "performance",
+  "actionable": false
+ },
+ "maplibre-gl-c2ff95ef:mercatortransform": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:child-transform-handling": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "lexical-ce1e1e32:editordomrenderconfig": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "react-i18next-bfc8d6e4:keep-tags": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:manual-activation": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-i18next-bfc8d6e4:trans-components~7": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "react-i18next-bfc8d6e4:trans~9": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "lexical-ce1e1e32:autolinkplugin": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:onfinalize~4": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-i18next-bfc8d6e4:trans-components~4": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_option",
+  "actionable": true
+ },
+ "ty-4cedef31:type~2": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "lexical-ce1e1e32:typeahead-menu-during-ime-composition": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "lexical-ce1e1e32:createlistitemnode": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "react-i18next-bfc8d6e4:namespace-loading": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "ty-4cedef31:combined-abstract-and-final-decorators": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "lexical-ce1e1e32:lexical-markdown": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:mindistance": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "lexical-ce1e1e32:getshape": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "deprecation",
+  "actionable": true
+ },
+ "react-native-reanimated-e7eaf154:borderblockcolor": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "react-i18next-bfc8d6e4:hashtranskey": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "react-native-gesture-handler-d9813ba2:trackpad-pan-events": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "maplibre-gl-c2ff95ef:getrtltextpluginstatus": {
+  "breaking": false,
+  "benefit": [
+   "maintainability"
+  ],
+  "change_type": "deprecation",
+  "actionable": true
+ },
+ "react-i18next-bfc8d6e4:trans-components~9": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-i18next-bfc8d6e4:nodestostring": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "ty-4cedef31:converter": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "other",
+  "actionable": false
+ },
+ "maplibre-gl-c2ff95ef:map.setterrain": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "maplibre-gl-c2ff95ef:terrain-gesture-camera-positioning": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "maplibre-gl-c2ff95ef:setlayoutproperty~2": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "other",
+  "actionable": false
+ },
+ "react-native-reanimated-e7eaf154:sharedvalue.modify": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "ty-4cedef31:caller-type-variables": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "lexical-ce1e1e32:table-row-pasting": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "lexical-ce1e1e32:normalizemarkdown-shouldmergeadjacentlines": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "ty-4cedef31:generic-metaclasses": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "ty-4cedef31:receiver-attribute-declarations": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "ty-4cedef31:generic-callable-typevars": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-i18next-bfc8d6e4:bindi18nstore": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_option",
+  "actionable": true
+ },
+ "ty-4cedef31:protocol~2": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "lexical-ce1e1e32:insertbefore": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "ty-4cedef31:ty-version-output-format": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_option",
+  "actionable": true
+ },
+ "react-native-gesture-handler-d9813ba2:gestureref": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "lexical-ce1e1e32:nestededitorextension": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "react-native-reanimated-e7eaf154:react-native-compatibility~3": {
+  "breaking": true,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "removal",
+  "actionable": true
+ },
+ "ty-4cedef31:typeddict-constructors": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-i18next-bfc8d6e4:usetranslation-keyprefix~2": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-i18next-bfc8d6e4:resources~2": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-i18next-bfc8d6e4:trans~3": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-i18next-bfc8d6e4:unknown-prop-warning": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "lexical-ce1e1e32:insertafter": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-reanimated-e7eaf154:exiting-layout-animations~3": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:touchable-hover-callbacks": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_option",
+  "actionable": true
+ },
+ "lexical-ce1e1e32:usecharacterlimit": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "ty-4cedef31:argument-inlay-hints": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "tooling",
+  "actionable": false
+ },
+ "react-native-reanimated-e7eaf154:createanimatedcomponent": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:reanimateddrawerlayout~3": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-i18next-bfc8d6e4:raw-html-interpolation": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_option",
+  "actionable": true
+ },
+ "maplibre-gl-c2ff95ef:3d-terrain-dem-sampling": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-i18next-bfc8d6e4:usetranslation-keyprefix~4": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_option",
+  "actionable": true
+ },
+ "ty-4cedef31:or-pattern-reachability": {
+  "breaking": false,
+  "benefit": [
+   "performance"
+  ],
+  "change_type": "performance",
+  "actionable": false
+ },
+ "react-native-reanimated-e7eaf154:sharedtransitiontag": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "ty-4cedef31:folding-ranges": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "tooling",
+  "actionable": false
+ },
+ "react-native-reanimated-e7eaf154:use-synchronizable-for-mutables": {
+  "breaking": true,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "removal",
+  "actionable": true
+ },
+ "ty-4cedef31:typing.typeddict": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "lexical-ce1e1e32:set-text-format-command": {
+  "breaking": true,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": true
+ },
+ "lexical-ce1e1e32:autolink": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "maplibre-gl-c2ff95ef:geojson-bounds-calculation": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "ty-4cedef31:not-subscriptable": {
+  "breaking": true,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "removal",
+  "actionable": true
+ },
+ "react-native-gesture-handler-d9813ba2:wheeleventmanager": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-reanimated-e7eaf154:layout-animations": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-reanimated-e7eaf154:strokedasharray": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-i18next-bfc8d6e4:trans-components~12": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "maplibre-gl-c2ff95ef:fill-pattern": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_option",
+  "actionable": true
+ },
+ "lexical-ce1e1e32:getserversnapshot": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": false
+ },
+ "react-i18next-bfc8d6e4:bindi18nstore~3": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "maplibre-gl-c2ff95ef:setsky-transition": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "ty-4cedef31:generic-class-types": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "maplibre-gl-c2ff95ef:grab-cursor": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "maplibre-gl-c2ff95ef:maplibregl-marker-covered": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "react-i18next-bfc8d6e4:ns": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "ty-4cedef31:get": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "ty-4cedef31:relation-queries-during-cycle-recovery": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:pan-gestures": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-reanimated-e7eaf154:css-animations": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:react-native-0.84": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "other",
+  "actionable": true
+ },
+ "lexical-ce1e1e32:config~2": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "react-native-reanimated-e7eaf154:animationname": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "maplibre-gl-c2ff95ef:webgl-context-loss": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "lexical-ce1e1e32:shadow-root": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "ty-4cedef31:string-annotation-tokens": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-reanimated-e7eaf154:spring-jitter": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-i18next-bfc8d6e4:react": {
+  "breaking": true,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "removal",
+  "actionable": true
+ },
+ "react-i18next-bfc8d6e4:unmatched-variable-warning": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "ty-4cedef31:bounded-typevars-in-union-inference": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-reanimated-e7eaf154:entering-animations": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "maplibre-gl-c2ff95ef:text-field": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-i18next-bfc8d6e4:i18nextprovider~2": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "maplibre-gl-c2ff95ef:marker-click": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-reanimated-e7eaf154:oncsstransitionend": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "maplibre-gl-c2ff95ef:style-image-resolver": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-reanimated-e7eaf154:force-react-render-for-settled-animations": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:touchable-cancelonleave": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_option",
+  "actionable": true
+ },
+ "ty-4cedef31:pep-613-type-aliases": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "ty-4cedef31:generics-solver": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "lexical-ce1e1e32:linkextension": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "react-i18next-bfc8d6e4:values": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-i18next-bfc8d6e4:transkeepbasichtmlnodesfor": {
+  "breaking": true,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": true
+ },
+ "ty-4cedef31:namedtuple~3": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "maplibre-gl-c2ff95ef:camera-settings": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "maplibre-gl-c2ff95ef:mapoptions-pitchspeed": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_option",
+  "actionable": true
+ },
+ "react-native-gesture-handler-d9813ba2:onfinalize~3": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:native-handlers": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "ty-4cedef31:sparse-reachability-checkpoints": {
+  "breaking": false,
+  "benefit": [
+   "performance"
+  ],
+  "change_type": "performance",
+  "actionable": false
+ },
+ "react-i18next-bfc8d6e4:hyphened-component-break": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-reanimated-e7eaf154:layout-animations-engine": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "default_change",
+  "actionable": false
+ },
+ "maplibre-gl-c2ff95ef:raster-resampling": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-reanimated-e7eaf154:web-entering-animations": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:composed-gestures": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "maplibre-gl-c2ff95ef:fill-extrusion-vertical-gradient~2": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "ty-4cedef31:file-check-eligibility": {
+  "breaking": false,
+  "benefit": [
+   "performance"
+  ],
+  "change_type": "performance",
+  "actionable": false
+ },
+ "maplibre-gl-c2ff95ef:markers-and-popups": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-i18next-bfc8d6e4:transemptynodevalue": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_option",
+  "actionable": true
+ },
+ "react-native-reanimated-e7eaf154:use-synchronizable-in-mutable": {
+  "breaking": false,
+  "benefit": [
+   "performance"
+  ],
+  "change_type": "default_change",
+  "actionable": false
+ },
+ "react-i18next-bfc8d6e4:i18n~2": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "ty-4cedef31:callable-identity": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:runonjs": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "react-native-reanimated-e7eaf154:react-native-svg": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:minvelocity": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "ty-4cedef31:names-bound-in-match-patterns": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:tap-maxdelay": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "default_change",
+  "actionable": false
+ },
+ "lexical-ce1e1e32:editor-updates": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "maplibre-gl-c2ff95ef:raster-tiles": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "lexical-ce1e1e32:arrowup-down": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "maplibre-gl-c2ff95ef:reducemotion": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_option",
+  "actionable": true
+ },
+ "react-native-reanimated-e7eaf154:shared-element-transition": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "react-native-reanimated-e7eaf154:sticky-headers": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "ty-4cedef31:bound-typevar-default-cycle-recovery": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "lexical-ce1e1e32:setformatfromdom": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "maplibre-gl-c2ff95ef:videosource": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-reanimated-e7eaf154:contrastcolor": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "maplibre-gl-c2ff95ef:queryterrainelevation": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-i18next-bfc8d6e4:icutrans~3": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "react-i18next-bfc8d6e4:translation-ready": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_option",
+  "actionable": true
+ },
+ "maplibre-gl-c2ff95ef:settiles": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:ondeactivate-end": {
+  "breaking": true,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": true
+ },
+ "react-i18next-bfc8d6e4:withtranslation-keyprefix": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_option",
+  "actionable": true
+ },
+ "react-i18next-bfc8d6e4:trans~14": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:kotlin-2.3": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:blocking-relations": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "ty-4cedef31:submodule-references-in-init-.py": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:pinch": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:uipointerinteraction": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "ty-4cedef31:dictionary-key-narrowing": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:native-onupdate": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-reanimated-e7eaf154:css-animation-pseudo-selectors-default-prop-value": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_option",
+  "actionable": true
+ },
+ "react-i18next-bfc8d6e4:usetranslation-keyprefix~3": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:rct-dynamic-frameworks": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-i18next-bfc8d6e4:react.createcontext": {
+  "breaking": true,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "removal",
+  "actionable": true
+ },
+ "react-native-reanimated-e7eaf154:oncssanimationcancel": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "ty-4cedef31:enum": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "maplibre-gl-c2ff95ef:elevation-stop-lookups": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "react-native-reanimated-e7eaf154:mapperrun": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-i18next-bfc8d6e4:transselector": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:touchable-underlay": {
+  "breaking": true,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "default_change",
+  "actionable": false
+ },
+ "lexical-ce1e1e32:menurenderfn~2": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "deprecation",
+  "actionable": true
+ },
+ "react-native-reanimated-e7eaf154:usetimestamp": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "lexical-ce1e1e32:registerplaintext": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "react-i18next-bfc8d6e4:trans~12": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "maplibre-gl-c2ff95ef:load": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:hook-based-api": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "lexical-ce1e1e32:codehighlightershikiextension~2": {
+  "breaking": true,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "removal",
+  "actionable": true
+ },
+ "react-native-gesture-handler-d9813ba2:android-pressable": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "ty-4cedef31:workspace-settings": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "ty-4cedef31:protocol-intersections": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "ty-4cedef31:type-ignore-ty-code": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "react-native-gesture-handler-d9813ba2:pressable-pointerevents": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "maplibre-gl-c2ff95ef:geojsonsource-updatedata": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "lexical-ce1e1e32:generatenodesfrommarkdownstring": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "lexical-ce1e1e32:exportjson": {
+  "breaking": true,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": true
+ },
+ "react-i18next-bfc8d6e4:withtranslation-withref": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "lexical-ce1e1e32:whitespace-only-list-items": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-i18next-bfc8d6e4:usetranslation-ready": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-i18next-bfc8d6e4:icutrans-values": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_option",
+  "actionable": true
+ },
+ "maplibre-gl-c2ff95ef:terrain-drape-textures": {
+  "breaking": false,
+  "benefit": [
+   "performance"
+  ],
+  "change_type": "performance",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:scrollview": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "react-native-reanimated-e7eaf154:scheduleonui": {
+  "breaking": false,
+  "benefit": [
+   "performance"
+  ],
+  "change_type": "performance",
+  "actionable": false
+ },
+ "lexical-ce1e1e32:wordlistimportextension": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "lexical-ce1e1e32:delete-line-command": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "maplibre-gl-c2ff95ef:custom-layer-rendering": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "lexical-ce1e1e32:removetextfromcaretrange": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-reanimated-e7eaf154:layout-animations~6": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "maplibre-gl-c2ff95ef:queryrenderedfeatures~2": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "maplibre-gl-c2ff95ef:setnow": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "maplibre-gl-c2ff95ef:fill-outline-color": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "lexical-ce1e1e32:createchildrenarray": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "react-native-reanimated-e7eaf154:borderblockstartcolor": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "ty-4cedef31:variadic-partial-signatures": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-i18next-bfc8d6e4:i18n~4": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "maplibre-gl-c2ff95ef:geojsonsource-remove": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:gesture-activation": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "lexical-ce1e1e32:getclipboarddataextension~2": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "react-native-reanimated-e7eaf154:keyframe": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:paper-architecture": {
+  "breaking": true,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "removal",
+  "actionable": true
+ },
+ "react-native-gesture-handler-d9813ba2:gesturedetector": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "lexical-ce1e1e32:shift-tab-in-code-blocks": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-i18next-bfc8d6e4:trans-components~2": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_option",
+  "actionable": true
+ },
+ "react-i18next-bfc8d6e4:suspended-while-loading": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "lexical-ce1e1e32:command-priority-before-editor": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "ty-4cedef31:lsp-server": {
+  "breaking": false,
+  "benefit": [
+   "performance"
+  ],
+  "change_type": "performance",
+  "actionable": false
+ },
+ "react-i18next-bfc8d6e4:tready": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_option",
+  "actionable": true
+ },
+ "maplibre-gl-c2ff95ef:symbol-placement": {
+  "breaking": false,
+  "benefit": [
+   "performance"
+  ],
+  "change_type": "performance",
+  "actionable": false
+ },
+ "ty-4cedef31:type-t~4": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-i18next-bfc8d6e4:withi18n": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "maplibre-gl-c2ff95ef:terrain-draping": {
+  "breaking": false,
+  "benefit": [
+   "performance"
+  ],
+  "change_type": "performance",
+  "actionable": false
+ },
+ "react-i18next-bfc8d6e4:react.defaulttransparent~2": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_option",
+  "actionable": true
+ },
+ "maplibre-gl-c2ff95ef:transformrequest": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "ty-4cedef31:inferred-types": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "lexical-ce1e1e32:autolinkannounceextension": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:keyboard-tap-persistence": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "ty-4cedef31:auto-completion": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:js-responder": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "ty-4cedef31:typeis~3": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "maplibre-gl-c2ff95ef:lnglatbounds-intersects": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:react-native-0.86": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "other",
+  "actionable": true
+ },
+ "maplibre-gl-c2ff95ef:fill-extrusion-rounded-corner-distance~2": {
+  "breaking": false,
+  "benefit": [
+   "performance"
+  ],
+  "change_type": "performance",
+  "actionable": false
+ },
+ "ty-4cedef31:debug-mode-server-panic": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:swipeableprops": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "lexical-ce1e1e32:islexicalnode": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "lexical-ce1e1e32:named-slots": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "react-native-reanimated-e7eaf154:transform-origin-processing": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "maplibre-gl-c2ff95ef:firefox-panning-and-zooming": {
+  "breaking": false,
+  "benefit": [
+   "performance"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-reanimated-e7eaf154:react-native-0.87-support": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "other",
+  "actionable": true
+ },
+ "lexical-ce1e1e32:unmergecellnode": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "lexical-ce1e1e32:lexical-code-prism": {
+  "breaking": true,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "removal",
+  "actionable": true
+ },
+ "lexical-ce1e1e32:pasted-tsv-text": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:gesturehandlerroothoc": {
+  "breaking": true,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "removal",
+  "actionable": true
+ },
+ "maplibre-gl-c2ff95ef:source-id-in-error-messages": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "other",
+  "actionable": false
+ },
+ "react-native-reanimated-e7eaf154:layout-animations~4": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "ty-4cedef31:enum-class-container-assignability": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-reanimated-e7eaf154:inline-props-processing": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-reanimated-e7eaf154:next.js-hydration": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "maplibre-gl-c2ff95ef:imagesource.updateimage": {
+  "breaking": false,
+  "benefit": [
+   "performance"
+  ],
+  "change_type": "new_option",
+  "actionable": true
+ },
+ "react-i18next-bfc8d6e4:keyprefix~2": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-reanimated-e7eaf154:originx": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "ty-4cedef31:bounded-type-variables": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-i18next-bfc8d6e4:trans-values~3": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "ty-4cedef31:dataclass": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "lexical-ce1e1e32:dom-shadow-roots": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:swipeable-opacity": {
+  "breaking": true,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "lexical-ce1e1e32:setrootelement": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "lexical-ce1e1e32:codeshikiextension": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "lexical-ce1e1e32:ime-composition": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "ty-4cedef31:comprehension-walruses": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-reanimated-e7eaf154:css-prop-reversion": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "ty-4cedef31:overload-argument-expansion": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-reanimated-e7eaf154:oncssanimationstart": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "lexical-ce1e1e32:listnode": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "ty-4cedef31:empty-collection-constructors": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:dispatchesreanimatedevent": {
+  "breaking": true,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "removal",
+  "actionable": true
+ },
+ "lexical-ce1e1e32:css-parsing": {
+  "breaking": false,
+  "benefit": [
+   "security",
+   "performance"
+  ],
+  "change_type": "security",
+  "actionable": false
+ },
+ "maplibre-gl-c2ff95ef:validate-validate": {
+  "breaking": false,
+  "benefit": [
+   "performance"
+  ],
+  "change_type": "performance",
+  "actionable": false
+ },
+ "react-i18next-bfc8d6e4:process.env.node-env": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "maplibre-gl-c2ff95ef:terrain-coordinate-picking": {
+  "breaking": false,
+  "benefit": [
+   "performance"
+  ],
+  "change_type": "performance",
+  "actionable": false
+ },
+ "ty-4cedef31:frozen": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-reanimated-e7eaf154:useanimatedkeyboard": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "ty-4cedef31:typeddict~3": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:rngesturehandlerenabledrootview": {
+  "breaking": true,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "removal",
+  "actionable": true
+ },
+ "react-native-reanimated-e7eaf154:active": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "maplibre-gl-c2ff95ef:text-size": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-reanimated-e7eaf154:strokedasharray~2": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-reanimated-e7eaf154:multiple-surfaces": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:touchable-disabled": {
+  "breaking": true,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "removal",
+  "actionable": true
+ },
+ "maplibre-gl-c2ff95ef:color-relief": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "ty-4cedef31:path-assignment-implication-checks": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "other",
+  "actionable": false
+ },
+ "maplibre-gl-c2ff95ef:globe-projection": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-i18next-bfc8d6e4:icutrans~4": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-reanimated-e7eaf154:layoutanimationconfig": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "maplibre-gl-c2ff95ef:popup-location": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:pressable~3": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-reanimated-e7eaf154:react-native-compatibility~2": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "other",
+  "actionable": true
+ },
+ "lexical-ce1e1e32:single-cell-table-selection": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:js-responder-cancelation": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "lexical-ce1e1e32:inserttext~2": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:numberofpointers~2": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_option",
+  "actionable": true
+ },
+ "maplibre-gl-c2ff95ef:geojson-nested-objects": {
+  "breaking": true,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": true
+ },
+ "ty-4cedef31:liskov-violations": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-reanimated-e7eaf154:nativeeventsmanager": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "react-native-reanimated-e7eaf154:animated-view-values": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "maplibre-gl-c2ff95ef:terrain-gestures": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "ty-4cedef31:pydantic-dict-model-configurations": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:swipedirection": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:gesturedetector-zindex": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "ty-4cedef31:subscript-inference": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-reanimated-e7eaf154:css-transitions~2": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:react-native~2": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "other",
+  "actionable": true
+ },
+ "react-native-gesture-handler-d9813ba2:talkback-support": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:touch-cancel-callback": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "ty-4cedef31:redundant-condition-diagnostics": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "other",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:manualactivation": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-i18next-bfc8d6e4:typescript": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "other",
+  "actionable": true
+ },
+ "react-native-reanimated-e7eaf154:sticky-headers~2": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:touch-events~2": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "lexical-ce1e1e32:lexical-extension": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_api",
+  "actionable": true
+ },
+ "react-native-gesture-handler-d9813ba2:tap-cancelation": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:detector-gestures": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ },
+ "react-native-gesture-handler-d9813ba2:pan-activation-criteria": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-reanimated-e7eaf154:originy": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-reanimated-e7eaf154:exiting-layout-animations~2": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "maplibre-gl-c2ff95ef:worker-src-blob": {
+  "breaking": false,
+  "benefit": [
+   "security"
+  ],
+  "change_type": "behavior_change",
+  "actionable": true
+ },
+ "maplibre-gl-c2ff95ef:terrain-dragging": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "lexical-ce1e1e32:splice": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-reanimated-e7eaf154:logger-config": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "ty-4cedef31:boolean-operands": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-i18next-bfc8d6e4:icu-imports": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-reanimated-e7eaf154:cellrenderercomponentstyle": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "new_option",
+  "actionable": true
+ },
+ "maplibre-gl-c2ff95ef:map-panning-and-zooming": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "react-native-reanimated-e7eaf154:animatedrefonrn": {
+  "breaking": true,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "removal",
+  "actionable": true
+ },
+ "lexical-ce1e1e32:markdown-shortcuts": {
+  "breaking": false,
+  "benefit": [
+   "correctness"
+  ],
+  "change_type": "fix",
+  "actionable": false
+ },
+ "lexical-ce1e1e32:cut-tag": {
+  "breaking": false,
+  "benefit": [
+   "none"
+  ],
+  "change_type": "behavior_change",
+  "actionable": false
+ }
+}

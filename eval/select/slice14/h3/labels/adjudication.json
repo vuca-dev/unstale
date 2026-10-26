@@ -1,0 +1,833 @@
+{
+ "new_rules": [
+  "R13: Support for a newly released version of a runtime, platform or peer dependency (\"Support X n\", a widened peer range, a compatibility bump) is actionable: the project can now upgrade that dependency. It is a capability, so benefit none (R6), and change_type other unless labelled a fix.",
+  "R14: A new or stricter type-checker or linter diagnostic or rule is actionable (code to fix, or a rule to configure or suppress). When it newly rejects or flags code the previous version accepted (reject, ban, diagnose, check, emit diagnostics), it is breaking, because the type check of unchanged code now fails. Benefit is none unless the record states it catches a bug (R6).",
+  "R15: In a type checker, support for or inference of a language or library construct it did not handle before changes the check results on existing code, so it is behavior_change: not fix unless labelled a fix, and not other. A change confined to IDE or LSP features is tooling. Benefit is none unless stated.",
+  "R16: A fix for a performance defect (memory leak, memory growth, slowness, low frame rate) gets correctness (R4) and performance (the memory or speed gain is the stated subject).",
+  "R17: A run-time change with no fix label (new handler wiring, gesture cancellation, callbacks now firing, changed ordering, implementing a protocol method, no longer taking over a delegate) is behavior_change with benefit none (R4 and R6). \"By default\" without a named existing option is behavior_change, not default_change.",
+  "R18: A change that is agreed breaking, or listed under breaking changes and needing project action, is not change_type fix even when it is described as a correction. It is behavior_change (this generalises R7).",
+  "R19: An API moved to a new location is removal and breaking when the source says to migrate and does not say the old location still works (\"now lives in\", \"migrate\"). It is deprecation when the move is advisory (\"going forward\", \"rather than\") and nothing says the old path fails.",
+  "R20: Type definitions added or corrected for an existing runtime option or feature (an option missing from an interface, exactOptionalPropertyTypes support, deep keyPrefix typing) are change_type fix (R5), benefit none, and not actionable. Typing enabled by a new opt-in option is new_option and actionable.",
+  "R21: Failing earlier or more clearly on input that was already invalid (an invariant instead of a later failure) is a diagnostic improvement, so benefit none (R3 and R6).",
+  "R22: Relaxing a requirement on the project (a CSP directive or permission no longer needed) is not breaking, because existing setups keep working. It is behavior_change, not removal.",
+  "R23: Something the project could previously do through an existing API that it can no longer do (an event callback that could supply a value and is now notify-only) is removal (R10)."
+ ],
+ "lexical-ce1e1e32:keyboardshortcutmatch": {
+  "benefit": {
+   "A": [
+    "none"
+   ],
+   "B": [
+    "correctness"
+   ],
+   "final": [
+    "none"
+   ],
+   "reason": "[R21] earlier invariant for already-invalid input; no wrong result prevented"
+  }
+ },
+ "react-i18next-bfc8d6e4:usetranslation-usesuspense": {
+  "change_type": {
+   "A": "new_option",
+   "B": "fix",
+   "final": "fix",
+   "reason": "[R20][R5] typing for an existing runtime option added to the interface"
+  },
+  "actionable": {
+   "A": true,
+   "B": false,
+   "final": false,
+   "reason": "[R20] type-only completion of an existing option; nothing to write"
+  }
+ },
+ "react-native-gesture-handler-d9813ba2:react-native~3": {
+  "actionable": {
+   "A": false,
+   "B": true,
+   "final": true,
+   "reason": "[R13] new react-native version support; project can upgrade"
+  }
+ },
+ "react-native-reanimated-e7eaf154:css-transitions-on-ios-core-animation": {
+  "actionable": {
+   "A": true,
+   "B": false,
+   "final": true,
+   "reason": "[def] takes effect only when the project enables the IOS_CSS_CORE_ANIMATION flag"
+  }
+ },
+ "ty-4cedef31:assert-type-unspellable-subtype": {
+  "actionable": {
+   "A": false,
+   "B": true,
+   "final": true,
+   "reason": "[R14] new diagnostic code the project can configure or must address"
+  }
+ },
+ "ty-4cedef31:typevartuple~6": {
+  "change_type": {
+   "A": "behavior_change",
+   "B": "other",
+   "final": "behavior_change",
+   "reason": "[R15] checker now handles TypeVarTuple/Unpack; check results change"
+  }
+ },
+ "lexical-ce1e1e32:paste-tag": {
+  "breaking": {
+   "A": true,
+   "B": false,
+   "final": true,
+   "reason": "[R3] undo history granularity changes for users without opt-in"
+  }
+ },
+ "maplibre-gl-c2ff95ef:styleimagemissing": {
+  "change_type": {
+   "A": "behavior_change",
+   "B": "removal",
+   "final": "removal",
+   "reason": "[R23] ability to supply an image through the callback no longer exists"
+  }
+ },
+ "react-native-gesture-handler-d9813ba2:pressablewithtouchable": {
+  "actionable": {
+   "A": false,
+   "B": true,
+   "final": true,
+   "reason": "[def] exposes testOnly_* handlers that project test code can call"
+  }
+ },
+ "react-native-reanimated-e7eaf154:layout-animations~3": {
+  "benefit": {
+   "A": [
+    "correctness",
+    "performance"
+   ],
+   "B": [
+    "performance"
+   ],
+   "final": [
+    "correctness",
+    "performance"
+   ],
+   "reason": "[R16][R4] labelled fix of a frame-rate defect"
+  }
+ },
+ "react-native-gesture-handler-d9813ba2:reanimatedswipeable~2": {
+  "benefit": {
+   "A": [
+    "correctness",
+    "performance"
+   ],
+   "B": [
+    "correctness"
+   ],
+   "final": [
+    "correctness",
+    "performance"
+   ],
+   "reason": "[R16] memory leak fix: bug fixed and less memory"
+  }
+ },
+ "react-native-reanimated-e7eaf154:worklets-support": {
+  "actionable": {
+   "A": false,
+   "B": true,
+   "final": true,
+   "reason": "[R13] new Worklets version support; project can upgrade"
+  }
+ },
+ "react-native-gesture-handler-d9813ba2:wheel-listener": {
+  "benefit": {
+   "A": [
+    "performance"
+   ],
+   "B": [
+    "none"
+   ],
+   "final": [
+    "none"
+   ],
+   "reason": "[R6] no speed gain claimed"
+  },
+  "change_type": {
+   "A": "performance",
+   "B": "behavior_change",
+   "final": "behavior_change",
+   "reason": "[R17][R6] listener registration changes; performance not claimed"
+  }
+ },
+ "maplibre-gl-c2ff95ef:geojsonsource-setdata": {
+  "benefit": {
+   "A": [
+    "correctness",
+    "performance"
+   ],
+   "B": [
+    "correctness"
+   ],
+   "final": [
+    "correctness",
+    "performance"
+   ],
+   "reason": "[R16] memory growth to crash fixed"
+  }
+ },
+ "react-native-reanimated-e7eaf154:uimanageranimationdelegate": {
+  "benefit": {
+   "A": [
+    "correctness"
+   ],
+   "B": [
+    "none"
+   ],
+   "final": [
+    "none"
+   ],
+   "reason": "[R17] no fix label or stated wrong result"
+  },
+  "change_type": {
+   "A": "fix",
+   "B": "behavior_change",
+   "final": "behavior_change",
+   "reason": "[R17] no longer takes over the delegate; not labelled a fix"
+  }
+ },
+ "react-native-gesture-handler-d9813ba2:react-native": {
+  "actionable": {
+   "A": false,
+   "B": true,
+   "final": true,
+   "reason": "[R13] new React Native version support"
+  }
+ },
+ "react-native-gesture-handler-d9813ba2:exactoptionalpropertytypes": {
+  "change_type": {
+   "A": "other",
+   "B": "fix",
+   "final": "fix",
+   "reason": "[R20][R5] type definitions corrected for a compiler option"
+  }
+ },
+ "react-i18next-bfc8d6e4:trans-components~7": {
+  "benefit": {
+   "A": [
+    "correctness"
+   ],
+   "B": [
+    "none"
+   ],
+   "final": [
+    "none"
+   ],
+   "reason": "[R17] ordering change; no stated wrong result"
+  },
+  "change_type": {
+   "A": "fix",
+   "B": "behavior_change",
+   "final": "behavior_change",
+   "reason": "[R17] parse/interpolate order changed; not labelled a fix"
+  }
+ },
+ "react-i18next-bfc8d6e4:trans-components~4": {
+  "change_type": {
+   "A": "behavior_change",
+   "B": "new_option",
+   "final": "new_option",
+   "reason": "[R9] existing components prop accepts self-closing tags"
+  },
+  "actionable": {
+   "A": false,
+   "B": true,
+   "final": true,
+   "reason": "[R9] broadened prop values can be used"
+  }
+ },
+ "ty-4cedef31:combined-abstract-and-final-decorators": {
+  "actionable": {
+   "A": false,
+   "B": true,
+   "final": true,
+   "reason": "[R14] new lint rule to address or configure"
+  }
+ },
+ "react-i18next-bfc8d6e4:hashtranskey": {
+  "change_type": {
+   "A": "new_option",
+   "B": "new_api",
+   "final": "new_option",
+   "reason": "[def] a user-supplied function setting for custom key generation in existing Trans configuration"
+  }
+ },
+ "ty-4cedef31:converter": {
+  "change_type": {
+   "A": "behavior_change",
+   "B": "other",
+   "final": "behavior_change",
+   "reason": "[R15] checker now understands dataclass converters"
+  }
+ },
+ "ty-4cedef31:generic-metaclasses": {
+  "breaking": {
+   "A": true,
+   "B": false,
+   "final": true,
+   "reason": "[R14] newly rejects code; type check fails"
+  },
+  "benefit": {
+   "A": [
+    "none"
+   ],
+   "B": [
+    "correctness"
+   ],
+   "final": [
+    "none"
+   ],
+   "reason": "[R14][R6] no stated bug caught"
+  }
+ },
+ "ty-4cedef31:receiver-attribute-declarations": {
+  "breaking": {
+   "A": true,
+   "B": false,
+   "final": true,
+   "reason": "[R14] new override check flags previously accepted code"
+  },
+  "benefit": {
+   "A": [
+    "none"
+   ],
+   "B": [
+    "correctness"
+   ],
+   "final": [
+    "none"
+   ],
+   "reason": "[R14][R6] not stated"
+  }
+ },
+ "lexical-ce1e1e32:usecharacterlimit": {
+  "benefit": {
+   "A": [
+    "correctness"
+   ],
+   "B": [
+    "none"
+   ],
+   "final": [
+    "none"
+   ],
+   "reason": "[R17] not stated"
+  },
+  "change_type": {
+   "A": "fix",
+   "B": "behavior_change",
+   "final": "behavior_change",
+   "reason": "[R17] node merging changes; not labelled a fix"
+  }
+ },
+ "lexical-ce1e1e32:getserversnapshot": {
+  "benefit": {
+   "A": [
+    "correctness"
+   ],
+   "B": [
+    "none"
+   ],
+   "final": [
+    "none"
+   ],
+   "reason": "[R6] compatibility capability; no wrong result stated"
+  },
+  "change_type": {
+   "A": "fix",
+   "B": "new_api",
+   "final": "new_api",
+   "reason": "[def] introduces getServerSnapshot; not labelled a fix"
+  }
+ },
+ "react-i18next-bfc8d6e4:ns": {
+  "benefit": {
+   "A": [
+    "correctness"
+   ],
+   "B": [
+    "none"
+   ],
+   "final": [
+    "none"
+   ],
+   "reason": "[R17][R6] not labelled a fix; wrong result not stated"
+  },
+  "change_type": {
+   "A": "fix",
+   "B": "behavior_change",
+   "final": "behavior_change",
+   "reason": "[R17] now loads namespaces on ns update; not labelled a fix"
+  }
+ },
+ "ty-4cedef31:get": {
+  "breaking": {
+   "A": true,
+   "B": false,
+   "final": true,
+   "reason": "[R14] new diagnostic on previously accepted calls"
+  },
+  "benefit": {
+   "A": [
+    "none"
+   ],
+   "B": [
+    "correctness"
+   ],
+   "final": [
+    "none"
+   ],
+   "reason": "[R14][R6] not stated"
+  }
+ },
+ "react-native-gesture-handler-d9813ba2:react-native-0.84": {
+  "actionable": {
+   "A": false,
+   "B": true,
+   "final": true,
+   "reason": "[R13] new React Native version support"
+  }
+ },
+ "lexical-ce1e1e32:config~2": {
+  "change_type": {
+   "A": "new_option",
+   "B": "new_api",
+   "final": "new_option",
+   "reason": "[def] new shared-configuration key on the existing $config protocol"
+  }
+ },
+ "maplibre-gl-c2ff95ef:marker-click": {
+  "benefit": {
+   "A": [
+    "correctness",
+    "performance"
+   ],
+   "B": [
+    "correctness"
+   ],
+   "final": [
+    "correctness",
+    "performance"
+   ],
+   "reason": "[R16] leaked handler fix"
+  }
+ },
+ "react-native-reanimated-e7eaf154:oncsstransitionend": {
+  "benefit": {
+   "A": [
+    "none"
+   ],
+   "B": [
+    "correctness"
+   ],
+   "final": [
+    "none"
+   ],
+   "reason": "[R17] not labelled a fix"
+  },
+  "change_type": {
+   "A": "behavior_change",
+   "B": "fix",
+   "final": "behavior_change",
+   "reason": "[R17] callbacks now fire on native; not labelled a fix"
+  }
+ },
+ "ty-4cedef31:pep-613-type-aliases": {
+  "breaking": {
+   "A": true,
+   "B": false,
+   "final": true,
+   "reason": "[R14] bans previously accepted alias values"
+  },
+  "benefit": {
+   "A": [
+    "none"
+   ],
+   "B": [
+    "correctness"
+   ],
+   "final": [
+    "none"
+   ],
+   "reason": "[R14][R6] not stated"
+  }
+ },
+ "lexical-ce1e1e32:linkextension": {
+  "benefit": {
+   "A": [
+    "correctness"
+   ],
+   "B": [
+    "none"
+   ],
+   "final": [
+    "none"
+   ],
+   "reason": "[R17] not labelled a fix; nothing stated"
+  },
+  "change_type": {
+   "A": "fix",
+   "B": "new_api",
+   "final": "behavior_change",
+   "reason": "[R17] implementing mergeConfig changes how existing LinkExtension config merges; no new project-facing API"
+  },
+  "actionable": {
+   "A": false,
+   "B": true,
+   "final": false,
+   "reason": "[R17] config merging behaves differently; nothing new to write"
+  }
+ },
+ "react-i18next-bfc8d6e4:transkeepbasichtmlnodesfor": {
+  "change_type": {
+   "A": "behavior_change",
+   "B": "fix",
+   "final": "behavior_change",
+   "reason": "[R18] listed under potentially breaking changes and needs translation updates"
+  }
+ },
+ "ty-4cedef31:names-bound-in-match-patterns": {
+  "benefit": {
+   "A": [
+    "none"
+   ],
+   "B": [
+    "correctness"
+   ],
+   "final": [
+    "none"
+   ],
+   "reason": "[R15][R6] inference capability; not stated"
+  }
+ },
+ "maplibre-gl-c2ff95ef:videosource": {
+  "benefit": {
+   "A": [
+    "correctness",
+    "performance"
+   ],
+   "B": [
+    "correctness"
+   ],
+   "final": [
+    "correctness",
+    "performance"
+   ],
+   "reason": "[R16] memory leak fix"
+  }
+ },
+ "react-native-reanimated-e7eaf154:oncssanimationcancel": {
+  "benefit": {
+   "A": [
+    "none"
+   ],
+   "B": [
+    "correctness"
+   ],
+   "final": [
+    "none"
+   ],
+   "reason": "[R17] not labelled a fix"
+  },
+  "change_type": {
+   "A": "behavior_change",
+   "B": "fix",
+   "final": "behavior_change",
+   "reason": "[R17] callbacks now fire on native"
+  }
+ },
+ "lexical-ce1e1e32:registerplaintext": {
+  "change_type": {
+   "A": "default_change",
+   "B": "behavior_change",
+   "final": "behavior_change",
+   "reason": "[R17] new wiring; no named existing option"
+  }
+ },
+ "react-i18next-bfc8d6e4:trans~12": {
+  "benefit": {
+   "A": [
+    "correctness"
+   ],
+   "B": [
+    "none"
+   ],
+   "final": [
+    "correctness"
+   ],
+   "reason": "[R4] labelled fix of a spurious warning"
+  }
+ },
+ "react-i18next-bfc8d6e4:icutrans-values": {
+  "change_type": {
+   "A": "behavior_change",
+   "B": "new_option",
+   "final": "new_option",
+   "reason": "[R20] typing enabled by a new opt-in parseInterpolation type option"
+  },
+  "actionable": {
+   "A": false,
+   "B": true,
+   "final": true,
+   "reason": "[R20] project sets the option to get it"
+  }
+ },
+ "lexical-ce1e1e32:createchildrenarray": {
+  "change_type": {
+   "A": "deprecation",
+   "B": "new_api",
+   "final": "deprecation",
+   "reason": "[R19] advisory move ('going forward'); old package being phased out"
+  }
+ },
+ "react-native-gesture-handler-d9813ba2:react-native-0.86": {
+  "actionable": {
+   "A": false,
+   "B": true,
+   "final": true,
+   "reason": "[R13] new React Native version support"
+  }
+ },
+ "maplibre-gl-c2ff95ef:firefox-panning-and-zooming": {
+  "benefit": {
+   "A": [
+    "correctness",
+    "performance"
+   ],
+   "B": [
+    "performance"
+   ],
+   "final": [
+    "correctness",
+    "performance"
+   ],
+   "reason": "[R16][R4] labelled fix of slowness"
+  }
+ },
+ "lexical-ce1e1e32:lexical-code-prism": {
+  "breaking": {
+   "A": false,
+   "B": true,
+   "final": true,
+   "reason": "[R19] 'now lives in' plus migrate; old imports not said to work"
+  },
+  "change_type": {
+   "A": "new_api",
+   "B": "removal",
+   "final": "removal",
+   "reason": "[R19] Prism highlighting moved out of @lexical/code"
+  }
+ },
+ "react-i18next-bfc8d6e4:keyprefix~2": {
+  "change_type": {
+   "A": "behavior_change",
+   "B": "fix",
+   "final": "fix",
+   "reason": "[R20][R5] typing completed for an existing option"
+  }
+ },
+ "ty-4cedef31:dataclass": {
+  "breaking": {
+   "A": true,
+   "B": false,
+   "final": true,
+   "reason": "[R14] new diagnostics on previously accepted classes"
+  },
+  "benefit": {
+   "A": [
+    "none"
+   ],
+   "B": [
+    "correctness"
+   ],
+   "final": [
+    "none"
+   ],
+   "reason": "[R14][R6] not stated"
+  }
+ },
+ "ty-4cedef31:comprehension-walruses": {
+  "benefit": {
+   "A": [
+    "none"
+   ],
+   "B": [
+    "correctness"
+   ],
+   "final": [
+    "none"
+   ],
+   "reason": "[R15] IDE capability; not stated"
+  },
+  "change_type": {
+   "A": "tooling",
+   "B": "fix",
+   "final": "tooling",
+   "reason": "[R15] confined to IDE features"
+  }
+ },
+ "react-native-reanimated-e7eaf154:oncssanimationstart": {
+  "benefit": {
+   "A": [
+    "none"
+   ],
+   "B": [
+    "correctness"
+   ],
+   "final": [
+    "none"
+   ],
+   "reason": "[R17] not labelled a fix"
+  },
+  "change_type": {
+   "A": "behavior_change",
+   "B": "fix",
+   "final": "behavior_change",
+   "reason": "[R17] callbacks now fire on native"
+  }
+ },
+ "ty-4cedef31:empty-collection-constructors": {
+  "benefit": {
+   "A": [
+    "none"
+   ],
+   "B": [
+    "correctness"
+   ],
+   "final": [
+    "none"
+   ],
+   "reason": "[R15][R6] inference capability; not stated"
+  }
+ },
+ "react-native-gesture-handler-d9813ba2:dispatchesreanimatedevent": {
+  "breaking": {
+   "A": false,
+   "B": true,
+   "final": true,
+   "reason": "[R10] removal of a listed config key; rubric: a removal is breaking"
+  },
+  "change_type": {
+   "A": "fix",
+   "B": "removal",
+   "final": "removal",
+   "reason": "[R10] dispatchesReanimatedEvent dropped"
+  },
+  "actionable": {
+   "A": false,
+   "B": true,
+   "final": true,
+   "reason": "[R1] breaking implies actionable"
+  }
+ },
+ "react-native-reanimated-e7eaf154:react-native-compatibility~2": {
+  "actionable": {
+   "A": false,
+   "B": true,
+   "final": true,
+   "reason": "[R13] compatibility bump to a new React Native version"
+  }
+ },
+ "ty-4cedef31:pydantic-dict-model-configurations": {
+  "benefit": {
+   "A": [
+    "none"
+   ],
+   "B": [
+    "correctness"
+   ],
+   "final": [
+    "none"
+   ],
+   "reason": "[R15] not stated"
+  },
+  "change_type": {
+   "A": "behavior_change",
+   "B": "fix",
+   "final": "behavior_change",
+   "reason": "[R15] checker now understands dict model configs"
+  }
+ },
+ "react-native-gesture-handler-d9813ba2:react-native~2": {
+  "actionable": {
+   "A": false,
+   "B": true,
+   "final": true,
+   "reason": "[R13] new react-native version support"
+  }
+ },
+ "react-i18next-bfc8d6e4:typescript": {
+  "benefit": {
+   "A": [
+    "correctness"
+   ],
+   "B": [
+    "none"
+   ],
+   "final": [
+    "none"
+   ],
+   "reason": "[R6][R13] reducing dependency conflicts is a capability"
+  },
+  "change_type": {
+   "A": "fix",
+   "B": "other",
+   "final": "other",
+   "reason": "[R13] peer range widening; not labelled a fix"
+  },
+  "actionable": {
+   "A": false,
+   "B": true,
+   "final": true,
+   "reason": "[R13] project can now install TypeScript 7"
+  }
+ },
+ "react-native-gesture-handler-d9813ba2:detector-gestures": {
+  "benefit": {
+   "A": [
+    "correctness"
+   ],
+   "B": [
+    "none"
+   ],
+   "final": [
+    "none"
+   ],
+   "reason": "[R17] not labelled a fix"
+  },
+  "change_type": {
+   "A": "fix",
+   "B": "behavior_change",
+   "final": "behavior_change",
+   "reason": "[R17] gesture cancellation changes"
+  }
+ },
+ "maplibre-gl-c2ff95ef:worker-src-blob": {
+  "breaking": {
+   "A": true,
+   "B": false,
+   "final": false,
+   "reason": "[R22] requirement relaxed; existing CSP still works"
+  },
+  "change_type": {
+   "A": "removal",
+   "B": "behavior_change",
+   "final": "behavior_change",
+   "reason": "[R22] worker loading changes; requirement relaxed"
+  }
+ },
+ "lexical-ce1e1e32:cut-tag": {
+  "breaking": {
+   "A": true,
+   "B": false,
+   "final": true,
+   "reason": "[R3] undo history granularity changes for users without opt-in"
+  }
+ }
+}
