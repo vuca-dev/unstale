@@ -152,12 +152,12 @@ ul.changes .meta { font-size: 0.78rem; margin-top: 2px; color: var(--muted); dis
 /* Keep the result's height reserved throughout the replay. */
 .term-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 8px 14px; background: #0a0f11; color: #849a9e; border: 1px solid var(--line); border-bottom: 0; border-radius: 10px 10px 0 0; font-size: .78rem; }
 .term-controls { display: flex; gap: 6px; }
-.term-controls[hidden], .term-progress[hidden] { display: none; }
+.term-controls[hidden], .term-controls button[hidden], .term-progress[hidden] { display: none; }
 .term-screen { position: relative; }
 .term-screen > pre { border-radius: 0 0 10px 10px; }
 .term-running .term-result { visibility: hidden; }
 .term-progress { position: absolute; inset: 0; background: #0a0f11; border: 1px solid var(--line); border-radius: 0 0 10px 10px; padding: 18px 20px; overflow: hidden; }
 .term-progress pre { border: 0; padding: 0; border-radius: 0; }
-.term-progress svg { color: #67dc91; display: block; width: min(100%, 420px); height: auto; margin: 20px 0; }
+.term-progress canvas { display: block; width: min(100%, 520px); aspect-ratio: 3.2; margin: 20px 0; }
 .term-controls button { color: #e0e8e8; width: auto; height: auto; min-height: 36px; padding: 6px 10px; white-space: nowrap; }
 .term-controls button:focus-visible { outline: 2px solid #67dc91; outline-offset: 3px; }

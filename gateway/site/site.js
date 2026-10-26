@@ -36,18 +36,20 @@ if (filter) {
   });
 }
 
-const canvas = document.getElementById("wordmark");
-if (canvas && window.UNSTALE_WORDMARK_POINTS) {
+function wordmark(canvas, manual = false) {
+  if (!canvas || !window.UNSTALE_WORDMARK_POINTS) return;
   const ctx = canvas.getContext("2d");
   const hash = (n) => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
   const smooth = (p) => { p = Math.min(1, Math.max(0, p)); return p * p * (3 - 2 * p); };
   const GREEN = [103, 220, 145], AMBER = [232, 172, 94];
   const STREAM = [37, 80, 80], STREAM_HI = [23, 150, 145];
   const light = matchMedia("(prefers-color-scheme: light)").matches;
-  const GW = 256, GH = 80;
+  const GW = manual ? 128 : 256, GH = manual ? 40 : 80;
 
   // The same sampled Menlo Bold geometry is embedded in the CLI and README.
-  const letters = window.UNSTALE_WORDMARK_POINTS;
+  const letters = manual
+    ? [...new Map(window.UNSTALE_WORDMARK_POINTS.map(([x, y]) => { const point = [Math.floor(x / 2), Math.floor(y / 2)]; return [point.join(","), point]; })).values()]
+    : window.UNSTALE_WORDMARK_POINTS;
 
   const repairs = planRepairs(letters, hash, smooth, GW, GH);
 
@@ -138,6 +140,7 @@ if (canvas && window.UNSTALE_WORDMARK_POINTS) {
   const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
   resize();
   window.addEventListener("resize", () => { resize(); if (still) draw(31, false); });
+  if (manual) return { draw, resize };
   if (still) draw(31, false);
   else {
     // The CLI starts its clock at 5.5 s: the word is assembled from the first frame.
@@ -156,6 +159,8 @@ if (canvas && window.UNSTALE_WORDMARK_POINTS) {
 }
 
 
+wordmark(document.getElementById("wordmark"));
+
 // A short illustrative init session. The server-rendered result is the fallback.
 const demo = document.getElementById("terminal-demo");
 if (demo) {
@@ -165,7 +170,7 @@ if (demo) {
   const result = demo.querySelector(".term-result");
   const toggle = demo.querySelector("[data-demo-toggle]");
   const finishButton = demo.querySelector("[data-demo-finish]");
-  const status = demo.querySelector("[data-demo-status]");
+  const mark = wordmark(document.getElementById("demo-wordmark"), true);
   const stage = demo.querySelector("[data-demo-stage]");
   const detail = demo.querySelector("[data-demo-detail]");
   const stages = [
@@ -186,7 +191,6 @@ if (demo) {
     result.removeAttribute("aria-hidden");
     toggle.textContent = "Replay";
     finishButton.hidden = true;
-    status.textContent = "Review ready.";
   }
   function tick(now) {
     frame = null;
@@ -194,6 +198,7 @@ if (demo) {
     if (previous !== null) elapsed += now - previous;
     previous = now;
     if (elapsed >= 7500) { finish(); return; }
+    mark?.draw(5.5 + elapsed / 1000 * 3);
     const index = Math.min(4, Math.floor(elapsed / 1500));
     const spinner = ["◐", "◓", "◑", "◒"][Math.floor(elapsed / 250) % 4];
     const text = `${spinner} ${stages[index][0]}`;
@@ -214,17 +219,16 @@ if (demo) {
     elapsed = 0;
     progress.hidden = false;
     demo.classList.add("term-running");
+    mark?.resize();
     result.setAttribute("aria-hidden", "true");
     toggle.textContent = "Pause";
     finishButton.hidden = false;
-    status.textContent = "Playing setup example.";
     schedule();
   }
   toggle.addEventListener("click", () => {
     if (done) { start(); return; }
     paused = !paused;
     toggle.textContent = paused ? "Resume" : "Pause";
-    status.textContent = paused ? "Replay paused." : "Playing setup example.";
     schedule();
   });
   finishButton.addEventListener("click", finish);
