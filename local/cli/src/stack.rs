@@ -809,14 +809,45 @@ fn is_local(local_names: &BTreeSet<String>, name: &str, range: &str) -> bool {
 
 /// A range naming a workspace, a path, git, a URL or another registry rather than a version of the public registry's
 /// package. A registry range or tag never holds a `/` (npm-package-arg), so one that does is a path or a git shorthand
-/// (`owner/repo#ref`), unless it is an alias, a catalog reference or a patch of a registry package.
+/// (`owner/repo#ref`), unless it is an alias or a catalog reference. A leading `.` or drive letter (`C:foo`) is a path
+/// too. A patch is local when the descriptor it wraps is.
 fn local_protocol(range: &str) -> bool {
     const SOURCES: [&str; 16] =
         ["workspace:", "file:", "link:", "portal:", "exec:", "git:", "git+", "git@", "ssh:", "github:", "gitlab:", "bitbucket:", "gist:", "jsr:", "https:", "http:"];
     let r = range.trim();
+    if let Some(p) = r.strip_prefix("patch:") {
+        return local_protocol(&patched_range(p));
+    }
     let tarball = [".tgz", ".tar.gz", ".tar"].iter().any(|e| r.to_ascii_lowercase().ends_with(e));
+    let b = r.as_bytes();
+    let drive = b.len() >= 2 && b[0].is_ascii_alphabetic() && b[1] == b':';
     SOURCES.iter().any(|p| r.starts_with(p))
-        || (!["npm:", "catalog:", "patch:"].iter().any(|p| r.starts_with(p)) && (r.contains('/') || r.contains('\\') || tarball))
+        || r.starts_with('.')
+        || drive
+        || (!["npm:", "catalog:"].iter().any(|p| r.starts_with(p)) && (r.contains('/') || r.contains('\\') || tarball))
+}
+
+/// The range a Yarn patch wraps (`lodash@npm%3A4.17.21#./x.patch` → `npm:4.17.21`): the percent-decoded descriptor
+/// before the patch's `#`, without its name.
+fn patched_range(p: &str) -> String {
+    let desc = p.split('#').next().unwrap_or("");
+    let mut out = Vec::with_capacity(desc.len());
+    let b = desc.as_bytes();
+    let mut i = 0;
+    while i < b.len() {
+        match (b[i], desc.get(i + 1..i + 3).and_then(|h| u8::from_str_radix(h, 16).ok())) {
+            (b'%', Some(c)) => {
+                out.push(c);
+                i += 3;
+            }
+            (c, _) => {
+                out.push(c);
+                i += 1;
+            }
+        }
+    }
+    let d = String::from_utf8_lossy(&out).into_owned();
+    d.get(1..).and_then(|t| t.find('@')).map_or(String::new(), |i| d[i + 2..].to_string())
 }
 
 fn rel_dir(base: &Path, dir: &Path) -> String {
@@ -1741,10 +1772,12 @@ mod tests {
         let sources = [
             "corp/billing#v2", "corp/billing", "git@git.corp.example:team/a.git", "ssh://git@git.corp.example/team/b.git",
             "gitlab:corp/c", "bitbucket:corp/d", "gist:11081aaa", "portal:../e", "exec:./gen.js", "/srv/pkgs/f",
-            "~/pkgs/g", "vendor\\h", "corp-i-1.0.0.tgz", "jsr:^1.0.0", "file:../j", "github:corp/k#main",
+            "~/pkgs/g", "vendor\\h", "corp-i-1.0.0.tgz", "jsr:^1.0.0", "file:../j", "github:corp/k#main", ".", "..",
+            "C:pkgs", "patch:corp-l@git+ssh%3A//git.corp.example/l.git#./l.patch", "patch:corp-m@file%3A../m#./m.patch",
+            "patch:@corp/n@https%3A//pkgs.corp.example/n.tgz%23sha#~/.yarn/patches/n.patch",
         ];
         let deps: Vec<String> = sources.iter().enumerate().map(|(i, s)| format!("\"corp-{i}\":{}", serde_json::to_string(s).unwrap())).collect();
-        write(d.path(), "package.json", &format!(r#"{{"name":"lib","version":"1.0.0","dependencies":{{"left-pad":"^1.3.0","bar":"npm:@scope/bar@^2","next":"canary",{}}}}}"#, deps.join(",")));
+        write(d.path(), "package.json", &format!(r#"{{"name":"lib","version":"1.0.0","dependencies":{{"left-pad":"^1.3.0","bar":"npm:@scope/bar@^2","next":"canary","react":"latest","qux":"npm:qux@1","lodash":"patch:lodash@npm%3A4.17.21#./x.patch",{}}}}}"#, deps.join(",")));
         let s = detect(d.path()).unwrap();
         for (i, src) in sources.iter().enumerate() {
             assert!(!s.deps[&format!("pkg:npm/corp-{i}")].public_candidate, "{src}");
@@ -1752,6 +1785,9 @@ mod tests {
         assert!(s.deps["pkg:npm/left-pad"].public_candidate);
         assert!(s.deps["pkg:npm/%40scope/bar"].public_candidate, "an alias names a registry package");
         assert!(s.deps["pkg:npm/next"].public_candidate, "a dist-tag is a registry version");
+        assert!(s.deps["pkg:npm/react"].public_candidate);
+        assert!(s.deps["pkg:npm/qux"].public_candidate);
+        assert!(s.deps["pkg:npm/lodash"].public_candidate, "a patch of a registry version names the public package");
     }
 
     #[test]
