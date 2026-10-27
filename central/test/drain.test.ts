@@ -75,6 +75,19 @@ test("drain works the queue until nothing more can start, then returns", async (
   expect(service.metrics()).toMatchObject({ slices: { new: { started: 3, finished: 3, failed: 0, rate_limited: 0 }, refresh: { started: 0 } }, pauses: 0 });
 });
 
+test("a failed slice is logged with its technology, kind, failure count and reason, as its status says", async () => {
+  vi.spyOn(discovery, "discoverTechnology").mockRejectedValue(new Error("registry answered HTTP 500"));
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
+  const service = new CoverageService(1, { limits: limits() }).hold();
+  service.enqueue([{ purl: "pkg:npm/broken", demand: 1 }]);
+  await service.drain(Date.now() + 60_000, 5_000, 10);
+  expect(service.metrics()).toMatchObject({ slices: { new: { started: 1, failed: 1 } } });
+  const events = log.mock.calls.map(([line]) => (typeof line === "string" && line.startsWith("{") ? JSON.parse(line) : undefined)).filter((e) => e?.event === "slice_failed");
+  const job = service.jobs.get("pkg:npm/broken")!;
+  expect(events).toEqual([{ event: "slice_failed", technology: job.technology, kind: "new", failures: 1, why: "registry answered HTTP 500" }]);
+  expect(job).toMatchObject({ state: "failed", stage: "registry answered HTTP 500" });
+});
+
 test("no count of new technologies: a large repository's 400 packages all start in one drain while tokens last", async () => {
   noSources();
   const service = new CoverageService(50, { limits: limits({ runsPerDay: Infinity }) }).hold();

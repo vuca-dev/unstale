@@ -341,6 +341,7 @@ export class CoverageService {
     const at = Date.now() + STOPPED_RETRY_MS;
     job.retry_at = new Date(at).toISOString();
     const why = `"${stage}" did not finish in ${Math.round(ms / 60_000)} minutes over ${cycles} cycles; retried after ${clock(at)} UTC`;
+    sliceFailed(job, this.tier(job) === 1, !!refresh, `Stopped: ${why}`);
     if (refresh) this.save(job, "monitoring", `${job.records} verified records; refresh stopped: ${why}`);
     else this.save(job, "failed", `Stopped: ${why}`);
     this.stopped++;
@@ -901,6 +902,7 @@ export class CoverageService {
           Date.now() +
             Math.min(6 * 3600000, 60000 * 2 ** Math.min(job.failures - 1, 8)),
         ).toISOString();
+        sliceFailed(job, isNew, refresh, why);
         if (refresh) this.save(job, "monitoring", `${job.records} verified records; refresh failed (${why}), retried after ${clock(Date.parse(job.retry_at))} UTC`);
         else this.save(job, "failed", why);
       })
@@ -1535,4 +1537,10 @@ export interface DrainMetrics {
 function blankTally(): DrainMetrics["slices"] {
   const t = (): SliceTally => ({ started: 0, finished: 0, yielded: 0, failed: 0, rate_limited: 0 });
   return { new: t(), refresh: t(), other: t() };
+}
+/** A failed or stopped slice on the drain's log, beside its count in `slices`: the reason is the stage its status
+ * publishes, so the run's log says why without the saved state (run 40562343126 counted 46 failed new slices, none
+ * explained). */
+function sliceFailed(job: Job, isNew: boolean, refresh: boolean, why: string) {
+  console.error(JSON.stringify({ event: "slice_failed", technology: job.technology, kind: isNew ? "new" : refresh ? "refresh" : "other", failures: job.failures, why }));
 }
