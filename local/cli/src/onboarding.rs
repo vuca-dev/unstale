@@ -1925,7 +1925,9 @@ fn urgency(u: &Urgency) -> u8 {
 /// (Python, with the import name's underscores), in application code that is not configuration written as code.
 fn production_importers(w: &World, packages: &[String]) -> usize {
     let names: Vec<String> = packages.iter().flat_map(|p| [p.to_ascii_lowercase(), p.to_ascii_lowercase().replace(['-', '.'], "_")]).collect();
-    let needles: Vec<String> = names.iter().flat_map(|p| [format!("'{p}"), format!("\"{p}"), format!("`{p}"), format!("import {p}"), format!("from {p}")]).collect();
+    // A Python file imports only by statement: a quoted name there is a string or a docstring, not an import.
+    let statements: Vec<String> = names.iter().flat_map(|p| [format!("import {p}"), format!("from {p}")]).collect();
+    let quoted: Vec<String> = names.iter().flat_map(|p| [format!("'{p}"), format!("\"{p}"), format!("`{p}")]).collect();
     w.repo
         .paths
         .iter()
@@ -1939,8 +1941,14 @@ fn production_importers(w: &World, packages: &[String]) -> usize {
                 && w.repo.role(f) == usage::Role::App
         })
         .filter(|f| {
+            let python = usage::own_code(f, "pypi");
             w.repo.text(f).is_some_and(|t| {
-                needles.iter().any(|n| t.match_indices(n.as_str()).any(|(at, m)| t[at + m.len()..].starts_with(['\'', '"', '`', '/', '.', ' ', '\n', ',', ';'])))
+                statements.iter().chain(quoted.iter().filter(|_| !python)).any(|n| {
+                    t.match_indices(n.as_str()).any(|(at, m)| {
+                        let rest = &t[at + m.len()..];
+                        rest.is_empty() || rest.starts_with(['\'', '"', '`', '/', '.', ' ', '\t', '\r', '\n', ',', ';'])
+                    })
+                })
             })
         })
         .count()

@@ -742,12 +742,12 @@ fn skill_migration_does_not_follow_user_symlinks() {
 #[test]
 fn a_dependency_group_member_application_code_does_not_import_is_dev_only() {
     // fast-agent: zensical (docs) and a group member the application imports share `[dependency-groups] dev`. Both
-    // records' terms occur in application code; only the imported one is runtime code.
+    // records' terms occur in application code, which names zensical only in a string; only the imported one is runtime code.
     let d = tempfile::tempdir().unwrap();
     let p = d.path();
     write(p, "pyproject.toml", "[project]\nname = \"app\"\nversion = \"1.0\"\ndependencies = []\n[dependency-groups]\ndev = [\"zensical==0.0.71\", \"tracer==1.0.0\"]\n");
     write(p, "docs/zensical.toml", "[project]\nsite_name = \"app\"\n");
-    write(p, "src/app/main.py", "import tracer\nfrom app.ui import mermaid\n\ndef serve(text):\n    custom_fences = mermaid.render(text, action=\"draw\")\n    rustls_patched = custom_fences\n    tracer.start()\n    return rustls_patched\n");
+    write(p, "src/app/main.py", "import tracer\nfrom app.ui import mermaid\n\nDOCS_TOOL = \"zensical\"\n\ndef serve(text):\n    custom_fences = mermaid.render(text, action=\"draw\")\n    rustls_patched = custom_fences\n    tracer.start()\n    return rustls_patched\n");
     let cat = FixtureCatalog::new();
     let security = |id: &str, purl: &str, v: &str, term: &str| with(rec(id, purl, v), json!({"change_type":"security","benefit":["security"],"summary":format!("{term} was patched."),"terms":[[term,0]]}));
     let mermaid = with(rec("zensical:mermaid", "pkg:pypi/zensical", "0.0.72"), json!({"change_type":"behavior_change","benefit":["none"],"terms":[["action=",0]]}));

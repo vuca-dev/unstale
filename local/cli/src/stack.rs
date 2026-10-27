@@ -467,7 +467,7 @@ pub fn uncovered_manifests(repo: &crate::usage::Repo, stack: &Stack) -> BTreeMap
         let other = OTHER_MANIFESTS.iter().find(|(m, _)| if m.starts_with('.') { base.ends_with(m) } else { base == *m }).map(|(_, eco)| *eco);
         let unread = || {
             let (_, eco, prefix) = UNREAD_MANIFESTS.iter().find(|(m, _, _)| base == *m)?;
-            if base == "setup.py" && !setuptools_script(repo.text(p)) {
+            if base == "setup.py" && !setuptools_script(p, repo.text(p)) {
                 return None;
             }
             let dir = p.rsplit_once('/').map_or(".", |(d, _)| d);
@@ -483,9 +483,10 @@ pub fn uncovered_manifests(repo: &crate::usage::Repo, stack: &Stack) -> BTreeMap
 }
 
 /// Whether a `setup.py` (its text, when read) is a setuptools or distutils script: it names one of them or calls
-/// `setup(`. A module of that name that does neither (a CLI's `setup` command) declares nothing.
-fn setuptools_script(text: Option<&str>) -> bool {
-    text.is_none_or(|t| t.contains("setuptools") || t.contains("distutils") || t.contains("setup("))
+/// `setup(` in code (not in a comment). A module of that name that does neither (a CLI's `setup` command) declares
+/// nothing.
+fn setuptools_script(path: &str, text: Option<&str>) -> bool {
+    text.is_none_or(|t| ["setuptools", "distutils", "setup("].iter().any(|n| crate::usage::in_code(path, t, n, false)))
 }
 
 /// Why nothing was checked, when no dependency was read at all: the manifests that declare them are ones this client
@@ -1671,6 +1672,7 @@ mod tests {
         let mut r = crate::usage::Repo::default();
         for (p, t) in [
             ("src/app/cli/setup.py", "import typer\napp = typer.Typer()\n"),
+            ("src/app/cmd/setup.py", "# like setuptools' setup(), but for config\nimport typer\n"),
             ("svc/setup.py", "from setuptools import setup\nsetup(name=\"svc\")\n"),
         ] {
             r.paths.push(p.to_string());
