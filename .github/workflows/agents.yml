@@ -221,6 +221,11 @@ jobs:
           workspaces: local
       - name: Install
         run: |
+          # The sandbox Claude Code runs commands in when it scrubs credentials from them (bubblewrap, with socat for its
+          # network bridge); Ubuntu 24.04 restricts the unprivileged user namespaces bubblewrap needs.
+          sudo apt-get install -y -qq bubblewrap socat >/dev/null
+          sudo sysctl -q -w kernel.apparmor_restrict_unprivileged_userns=0
+          bwrap --ro-bind / / --dev /dev --unshare-user true && echo "sandbox ok"
           npm ci --prefix central --no-audit --no-fund >/dev/null
           npm ci --prefix gateway --no-audit --no-fund >/dev/null
           npm install -g "@anthropic-ai/claude-code@$CLAUDE_CODE_VERSION" --no-audit --no-fund >/dev/null
