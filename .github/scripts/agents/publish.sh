@@ -44,14 +44,14 @@ changed=$([ "$(git rev-parse HEAD)" != "$start" ] && echo true || echo false)
 if [ "$MODE" = "new" ] && [ "$changed" = "true" ] && [ ! -f "$OUT/pr.json" ]; then
   echo "refused: the agent committed changes but wrote no pr.json" >&2; exit 1
 fi
-# Capped in the shell: `jq ... | head -c` would fail the step under pipefail once jq is cut off.
-clip() { local v="$1"; printf '%s' "${v:0:$2}"; }
+# Capped inside jq or by reading a bounded prefix: `jq ... | head -c` would fail the step under pipefail once jq is cut
+# off, and the outputs are model-written, so none is held whole.
 
 pr_number=""
 if [ "$MODE" = "new" ] && [ "$changed" = "true" ] && [ -f "$OUT/pr.json" ]; then
-  title=$(clip "$(jq -r '.title // empty' "$OUT/pr.json")" 120)
+  title=$(jq -r '.title // "" | .[0:120]' "$OUT/pr.json")
   [ -n "$title" ] || { echo "refused: pr.json has no title" >&2; exit 1; }
-  body=$(clip "$(jq -r '.body // ""' "$OUT/pr.json")" 60000)
+  body=$(jq -r '.body // "" | .[0:60000]' "$OUT/pr.json")
   gate=$(jq -r '.needs_local_gate // false' "$OUT/pr.json")
   branch="agent/$LANE/$today-$GITHUB_RUN_ID"
   git_ push -q "$remote" "HEAD:refs/heads/$branch"
@@ -76,7 +76,7 @@ elif [ "$MODE" = "round" ]; then
     jq -c '.[]' "$OUT/replies.json" | while read -r reply; do
       id=$(jq -r '.id' <<<"$reply")
       kind=$(jq -r --argjson id "$id" '.[] | select(.id == $id) | .kind' "$REVIEW_FILE" 2>/dev/null || true)
-      text="$(clip "$(jq -r '.body' <<<"$reply")" 20000)"$'\n\n'"$marker"
+      text="$(jq -r '.body // "" | .[0:20000]' <<<"$reply")"$'\n\n'"$marker"
       case "$kind" in
         inline) gh api -X POST "repos/$repo/pulls/$PR/comments/$id/replies" -f body="$text" >/dev/null ;;
         issue) gh api -X POST "repos/$repo/issues/$PR/comments" -f body="Re: comment $id"$'\n\n'"$text" >/dev/null ;;
@@ -86,7 +86,7 @@ elif [ "$MODE" = "round" ]; then
   fi
 fi
 if [ -n "$pr_number" ] && [ -f "$OUT/comment.md" ]; then
-  gh api -X POST "repos/$repo/issues/$pr_number/comments" -f body="$(clip "$(cat "$OUT/comment.md")" 20000)"$'\n\n'"$marker" >/dev/null
+  gh api -X POST "repos/$repo/issues/$pr_number/comments" -f body="$(head -c 20000 "$OUT/comment.md")"$'\n\n'"$marker" >/dev/null
 fi
 
 # The lane's log, retried on a concurrent push to the memory branch.
