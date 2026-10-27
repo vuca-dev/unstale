@@ -738,3 +738,24 @@ fn skill_migration_does_not_follow_user_symlinks() {
     assert_eq!(std::fs::read_to_string(external.path().join("policy/openai.yaml")).unwrap(), "user policy");
     assert!(env.read(".unstale/state/integration-conflicts.json").contains(".claude/skills/unstale-review/SKILL.md"));
 }
+
+#[test]
+fn a_dependency_group_member_application_code_does_not_import_is_dev_only() {
+    // fast-agent: zensical (docs) and a group member the application imports share `[dependency-groups] dev`. Both
+    // records' terms occur in application code, which names zensical only in a string; only the imported one is runtime code.
+    let d = tempfile::tempdir().unwrap();
+    let p = d.path();
+    write(p, "pyproject.toml", "[project]\nname = \"app\"\nversion = \"1.0\"\ndependencies = []\n[dependency-groups]\ndev = [\"zensical==0.0.71\", \"tracer==1.0.0\"]\n");
+    write(p, "docs/zensical.toml", "[project]\nsite_name = \"app\"\n");
+    write(p, "src/app/main.py", "import tracer\nfrom app.ui import mermaid\n\nDOCS_TOOL = \"zensical\"\n\ndef serve(text):\n    custom_fences = mermaid.render(text, action=\"draw\")\n    rustls_patched = custom_fences\n    tracer.start()\n    return rustls_patched\n");
+    let cat = FixtureCatalog::new();
+    let security = |id: &str, purl: &str, v: &str, term: &str| with(rec(id, purl, v), json!({"change_type":"security","benefit":["security"],"summary":format!("{term} was patched."),"terms":[[term,0]]}));
+    let mermaid = with(rec("zensical:mermaid", "pkg:pypi/zensical", "0.0.72"), json!({"change_type":"behavior_change","benefit":["none"],"terms":[["action=",0]]}));
+    cat.tech("zensical", &[("0", vec![security("zensical:rustls", "pkg:pypi/zensical", "0.0.72", "rustls_patched"), mermaid])]);
+    cat.tech("tracer", &[("1", vec![security("tracer:start", "pkg:pypi/tracer", "1.0.1", "start")])]);
+    let env = Env { repo: d, cache: tempfile::tempdir().unwrap() };
+    env.ok(&["init", "--service", cat.loc(), "--mode", "local", "--yes", "--wait", "0", "--no-animation"]);
+    let report = env.read(".unstale/onboarding-report.md");
+    assert!(report.contains("1. tracer 1.0.0 → 1.0.1") && report.contains("value: security 1 · same major · runtime code"), "{report}");
+    assert!(!report.contains(". zensical 0.0.71") && report.contains("- zensical 0.0.71 → 0.0.72"), "a docs tool's advisory is not a ranked runtime upgrade\n{report}");
+}

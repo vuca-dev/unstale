@@ -1934,7 +1934,9 @@ fn urgency(u: &Urgency) -> u8 {
 /// (Python, with the import name's underscores), in application code that is not configuration written as code.
 fn production_importers(w: &World, packages: &[String]) -> usize {
     let names: Vec<String> = packages.iter().flat_map(|p| [p.to_ascii_lowercase(), p.to_ascii_lowercase().replace(['-', '.'], "_")]).collect();
-    let needles: Vec<String> = names.iter().flat_map(|p| [format!("'{p}"), format!("\"{p}"), format!("`{p}"), format!("import {p}"), format!("from {p}")]).collect();
+    // A Python file imports only by statement: a quoted name there is a string or a docstring, not an import.
+    let statements: Vec<String> = names.iter().flat_map(|p| [format!("import {p}"), format!("from {p}")]).collect();
+    let quoted: Vec<String> = names.iter().flat_map(|p| [format!("'{p}"), format!("\"{p}"), format!("`{p}")]).collect();
     w.repo
         .paths
         .iter()
@@ -1948,8 +1950,14 @@ fn production_importers(w: &World, packages: &[String]) -> usize {
                 && w.repo.role(f) == usage::Role::App
         })
         .filter(|f| {
+            let python = usage::own_code(f, "pypi");
             w.repo.text(f).is_some_and(|t| {
-                needles.iter().any(|n| t.match_indices(n.as_str()).any(|(at, m)| t[at + m.len()..].starts_with(['\'', '"', '`', '/', '.', ' ', '\n', ',', ';'])))
+                statements.iter().chain(quoted.iter().filter(|_| !python)).any(|n| {
+                    t.match_indices(n.as_str()).any(|(at, m)| {
+                        let rest = &t[at + m.len()..];
+                        rest.is_empty() || rest.starts_with(['\'', '"', '`', '/', '.', ' ', '\t', '\r', '\n', ',', ';'])
+                    })
+                })
             })
         })
         .count()
@@ -2952,9 +2960,13 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
                 && !declaration_file(name)
         };
         // A package of one of the project's own extras (`kornia[onnx]`) or dependency groups (`uv sync --group
-        // similar-issue`) ships to whoever installs that set: it is runtime where application code uses it, as an
-        // undeclared one is; a docs or test set's packages are not used there.
-        let runtime = facts.runtime || ((!facts.dev_only || facts.extra) && members.iter().any(|&i| out.opps[i].files.iter().any(|f| code(f) && w.repo.role(f) == usage::Role::App)));
+        // similar-issue`) ships to whoever installs that set: it is runtime where application code imports it, as an
+        // undeclared one is used; a docs or test set's packages are not imported there (zensical in a `dev` group,
+        // whose record terms merely occur in application files).
+        let runtime = facts.runtime
+            || ((!facts.dev_only || facts.extra)
+                && members.iter().any(|&i| out.opps[i].files.iter().any(|f| code(f) && w.repo.role(f) == usage::Role::App))
+                && (!facts.dev_only || production_importers(w, &packages) > 0));
         // What holds the fix back: a pin or override in an application manifest, else the range the lockfile
         // advisory names as refusing its fix.
         let lock_blocker = lock_fixed.iter().find_map(|it| it.why.iter().find_map(|w| w.strip_prefix("fix blocked: ")).map(String::from));
