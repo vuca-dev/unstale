@@ -333,7 +333,7 @@ function terminal(): string {
   return `<section class="prose example">
 <p>Example output of <code>unstale init</code> on a Next.js and Prisma app</p>
 <figure class="term" id="terminal-demo" aria-label="Example unstale init session">
-<div class="term-toolbar"><span>my-app — unstale init</span><div class="term-controls" hidden><button type="button" class="copy" data-demo-toggle>Pause</button> <button type="button" class="copy" data-demo-finish>Show results</button></div></div>
+<div class="term-toolbar"><span>my-app — unstale init</span><div class="term-controls" hidden><button type="button" class="copy" data-demo-toggle data-state="pause" aria-label="Pause demo" title="Pause demo"><svg class="demo-play" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 11 7-11 7Z"/></svg><svg class="demo-pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14"/></svg></button><button type="button" class="copy" data-demo-replay aria-label="Replay demo" title="Replay demo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10a8 8 0 1 1 1 8M4 4v6h6"/></svg></button><label class="term-speed" title="Playback speed"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 6 7 6-7 6m9-12 7 6-7 6"/></svg><select data-demo-speed aria-label="Playback speed"><option value="2" selected>2×</option><option value="1">1×</option><option value="0.5">0.5×</option></select></label></div></div>
 <div class="term-screen"><pre class="term-result">${rows}</pre><div class="term-progress" hidden><pre><span class="t-cmd">$ npx @unstale/cli init</span></pre><canvas id="demo-wordmark" aria-label="unstale"></canvas><pre><span class="t-accent" data-demo-stage></span><span class="t-body" data-demo-detail></span></pre></div></div>
 
 </figure>

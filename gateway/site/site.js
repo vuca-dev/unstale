@@ -169,7 +169,16 @@ if (demo) {
   const progress = demo.querySelector(".term-progress");
   const result = demo.querySelector(".term-result");
   const toggle = demo.querySelector("[data-demo-toggle]");
-  const finishButton = demo.querySelector("[data-demo-finish]");
+  const replayButton = demo.querySelector("[data-demo-replay]");
+  const speedControl = demo.querySelector("[data-demo-speed]");
+  let speed = Number(speedControl.value);
+  function setToggle(playing) {
+    toggle.dataset.state = playing ? "pause" : "play";
+    const label = playing ? "Pause demo" : "Play demo";
+    toggle.setAttribute("aria-label", label);
+    toggle.title = label;
+  }
+  setToggle(false);
   const mark = wordmark(document.getElementById("demo-wordmark"), true);
   const stage = demo.querySelector("[data-demo-stage]");
   const detail = demo.querySelector("[data-demo-detail]");
@@ -180,6 +189,7 @@ if (demo) {
     ["Refreshing shared results · step 4/5", "Fetching the latest results for your stack"],
     ["Preparing your review · step 5/5", "Checking versions, local usage and prior decisions"],
   ];
+  // A 15-second session at 1×; 2× preserves the original 7.5-second default.
   let elapsed = 0, previous = null, frame = null, visible = false;
   let started = false, done = true, paused = false;
   function finish() {
@@ -189,21 +199,20 @@ if (demo) {
     progress.hidden = true;
     demo.classList.remove("term-running");
     result.removeAttribute("aria-hidden");
-    toggle.textContent = "Replay";
-    finishButton.hidden = true;
+    setToggle(false);
   }
   function tick(now) {
     frame = null;
     if (done || paused || !visible || document.hidden) { previous = null; return; }
-    if (previous !== null) elapsed += now - previous;
+    if (previous !== null) elapsed += (now - previous) * speed;
     previous = now;
-    if (elapsed >= 7500) { finish(); return; }
-    mark?.draw(5.5 + elapsed / 1000 * 3);
-    const index = Math.min(4, Math.floor(elapsed / 1500));
-    const spinner = ["◐", "◓", "◑", "◒"][Math.floor(elapsed / 250) % 4];
+    if (elapsed >= 15000) { finish(); return; }
+    mark?.draw(5.5 + elapsed / 1000 * 1.5);
+    const index = Math.min(4, Math.floor(elapsed / 3000));
+    const spinner = ["◐", "◓", "◑", "◒"][Math.floor(elapsed / 500) % 4];
     const text = `${spinner} ${stages[index][0]}`;
     if (stage.textContent !== text) stage.textContent = text;
-    if (index === 1) detail.textContent = `Checked ${Math.min(119, Math.floor((elapsed - 1500) / 1500 * 119))}/119 direct packages`;
+    if (index === 1) detail.textContent = `Checked ${Math.min(119, Math.floor((elapsed - 3000) / 3000 * 119))}/119 direct packages`;
     else if (detail.textContent !== stages[index][1]) detail.textContent = stages[index][1];
     frame = requestAnimationFrame(tick);
   }
@@ -221,17 +230,20 @@ if (demo) {
     demo.classList.add("term-running");
     mark?.resize();
     result.setAttribute("aria-hidden", "true");
-    toggle.textContent = "Pause";
-    finishButton.hidden = false;
+    setToggle(true);
     schedule();
   }
   toggle.addEventListener("click", () => {
     if (done) { start(); return; }
     paused = !paused;
-    toggle.textContent = paused ? "Resume" : "Pause";
+    setToggle(!paused);
     schedule();
   });
-  finishButton.addEventListener("click", finish);
+  replayButton.addEventListener("click", start);
+  speedControl.addEventListener("change", () => {
+    speed = Number(speedControl.value);
+    schedule();
+  });
   motion.addEventListener("change", () => { if (motion.matches) { finish(); controls.hidden = true; } });
   document.addEventListener("visibilitychange", schedule);
   if ("IntersectionObserver" in window && !motion.matches) {
