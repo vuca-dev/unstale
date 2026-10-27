@@ -23,9 +23,10 @@ const PROBE_ONLY = new Set(["etag", "content-length", "content-range", "content-
 
 type File = { bytes: Uint8Array<ArrayBuffer>; etag: string };
 
-/** Whether a path is packed, from its bucket's header (kept, so a miss in a known bucket reads nothing). A bucket read
- * for its header is read on to the file when it holds it, into `read`, so a hit reads its bucket once. */
-async function header(env: Assets, base: string, file: string, read: Map<string, File>): Promise<BucketHeader> {
+/** Whether a path is packed, from its bucket's header (kept, so a miss in a known bucket reads nothing). Given `read`
+ * (the file would be served), a bucket read for its header is read on to the file when it holds it, so a hit reads its
+ * bucket once; a lookup that can only lead to a redirect reads the header alone. */
+async function header(env: Assets, base: string, file: string, read?: Map<string, File>): Promise<BucketHeader> {
   const bucket = bucketOf(file);
   const known = headers.get(bucket);
   if (known) return known;
@@ -37,16 +38,16 @@ async function header(env: Assets, base: string, file: string, read: Map<string,
   }
   let h = EMPTY;
   if (res.ok && res.body) {
-    const found = await readPacked(res.body, file);
+    const found = await readPacked(res.body, read ? file : "");
     h = found.header;
-    if (found.file) read.set(file, found.file);
+    if (found.file) read?.set(file, found.file);
   } else await res.body?.cancel();
   if (headers.size >= HEADERS_KEPT) headers.delete(headers.keys().next().value!);
   headers.set(bucket, h);
   return h;
 }
 
-async function packed(env: Assets, base: string, file: string, read: Map<string, File>): Promise<boolean> {
+async function packed(env: Assets, base: string, file: string, read?: Map<string, File>): Promise<boolean> {
   return packable(file) && Object.hasOwn((await header(env, base, file, read)).files, file);
 }
 
@@ -93,13 +94,14 @@ const decodePath = (pathname: string): string =>
 const encodePath = (pathname: string): string => pathname.split("/").map(encodeURIComponent).join("/");
 
 /** What the asset layer would do with a decoded path, as far as packed files go: serve one, redirect, or neither. */
-async function intent(env: Assets, base: string, path: string, read: Map<string, File>): Promise<{ file: string } | { redirect: string; kind: RedirectKind } | undefined> {
-  const has = (p: string) => packed(env, base, p.slice(1), read);
-  if (path.endsWith("/")) return (await has(`${path}index.html`)) ? { file: `${path}index.html` } : undefined;
+/** Files found by a lookup that would serve them are kept in `read`, when given. */
+async function intent(env: Assets, base: string, path: string, read?: Map<string, File>): Promise<{ file: string } | { redirect: string; kind: RedirectKind } | undefined> {
+  const has = (p: string, serves = false) => packed(env, base, p.slice(1), serves ? read : undefined);
+  if (path.endsWith("/")) return (await has(`${path}index.html`, true)) ? { file: `${path}index.html` } : undefined;
   if (path.endsWith("/index.html")) return (await has(path)) ? { redirect: path.slice(0, -10), kind: "index.html" } : undefined;
-  if (path.endsWith("/index") && !(await has(path))) return (await has(`${path}.html`)) ? { redirect: path.slice(0, -5), kind: "index" } : undefined;
+  if (path.endsWith("/index") && !(await has(path, true))) return (await has(`${path}.html`)) ? { redirect: path.slice(0, -5), kind: "index" } : undefined;
   if (path.endsWith(".html")) return (await has(`${path.slice(0, -5)}/index.html`)) ? { redirect: `${path.slice(0, -5)}/`, kind: "html" } : undefined;
-  if (await has(path)) return { file: path };
+  if (await has(path, true)) return { file: path };
   return (await has(`${path}/index.html`)) ? { redirect: `${path}/`, kind: "directory" } : undefined;
 }
 
@@ -113,9 +115,11 @@ export async function packedAsset(env: Assets, request: Request): Promise<Respon
   if (request.method !== "GET" && request.method !== "HEAD") return undefined;
   const url = new URL(request.url);
   const path = decodePath(url.pathname);
-  // Files read out of their bucket along with its header, while finding what the path names.
+  // Files read out of their bucket along with its header, while finding what the path names; none for a path that
+  // redirects to its canonical encoding.
+  const canonical = encodePath(path) === url.pathname;
   const read = new Map<string, File>();
-  const found = await intent(env, url.href, path, read);
+  const found = await intent(env, url.href, path, canonical ? read : undefined);
   if (!found) return undefined;
   // A request that follows redirects (the Worker's own reads, as ASSETS.fetch would) gets the file it ends at.
   const redirect = (to: string, h: Headers) => {
@@ -126,7 +130,7 @@ export async function packedAsset(env: Assets, request: Request): Promise<Respon
   };
   if ("redirect" in found) return redirect(found.redirect, await probe(env, url.href, redirectProbeUrl(found.kind, "html")));
   const ext = extensionOf(found.file);
-  if (encodePath(path) !== url.pathname) return redirect(path, await probe(env, url.href, redirectProbeUrl("encoding", ext)));
+  if (!canonical) return redirect(path, await probe(env, url.href, redirectProbeUrl("encoding", ext)));
   const [h, { bytes, etag }] = await Promise.all([probe(env, url.href, probeUrl(ext)), bytesOf(env, url.href, found.file.slice(1), read)]);
   const strong = `"${etag}"`;
   h.set("ETag", strong);
