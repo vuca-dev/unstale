@@ -1,0 +1,315 @@
+# Weekly coding agents (Claude Code, on the owner's subscription): four lanes, each choosing its highest-ROI change
+# and opening one PR, then answering the review bots' findings on it until they pass.
+#
+#   security (Mon)  private-repo data leaks, prompt injection, dependencies       .github/agents/security.md
+#   performance (Tue)  onboarding and CLI latency, crawl and API efficiency       .github/agents/performance.md
+#   cost (Wed)  tokens, models, crawl spend, free-tier headroom                   .github/agents/cost.md
+#   qa (Thu)  the top 1-3 bugs the week's runs and Worker logs show               .github/agents/qa.md
+# Shared rules (untrusted input, evals and their budget, outputs, the log): .github/agents/common.md.
+#
+#   weekly run:    gate -> work -> publish
+#   review round:  a review bot's review on an agent PR -> gate (its unanswered findings) -> work -> publish
+#
+# gate (no model): skips the lane when nothing it watches changed since its last run or its previous PR is still open
+# (.github/scripts/agents/gate.sh), and collects the week's observations with the Cloudflare token
+# (observe.sh), or a round's findings from the review bots and the owner only (review-input.sh).
+# work (the model): read-only token, no write credential, no Cloudflare or signing secrets, and a tool allowlist
+# (ALLOWED_TOOLS: files, builds, tests, git without push, read-only gh; no web fetch, no curl); commits locally and
+# leaves patches, PR text, replies and its log as an artifact. Evals may call models through AGENT_AI_GATEWAY_API_KEY
+# (a separate key, revocable on its own) within AGENT_EVAL_BUDGET_USD a run.
+# publish (no model, no code from the agent's branch): the only job with AGENT_GH_TOKEN; refuses changes to .github/
+# and outputs that contain a secret, then pushes, opens the PR or posts the replies, and saves the log to the
+# agent-memory branch (publish.sh). The agent never holds a token that could push to main or create a release tag.
+#
+# Who can start it: the schedule; workflow_dispatch by the owner only; review rounds only for a review by a bot in
+# REVIEW_BOTS on an open PR from an agent/ branch of this repository authored by the owner. Fork PRs and other users'
+# reviews or comments never start a job or reach the agent. Rounds stop after ROUND_MAX pushes. Nothing is merged.
+#
+# Secrets: CLAUDE_CODE_OAUTH_TOKEN (`claude setup-token`), AGENT_GH_TOKEN (fine-grained, this repository only:
+# contents and pull requests read/write), AGENT_AI_GATEWAY_API_KEY (optional), CLOUDFLARE_API_TOKEN and
+# CLOUDFLARE_ACCOUNT_ID (read for analytics). Variable: AGENT_EVAL_BUDGET_USD (default 5).
+# Branches agent-memory and agent/** are limited to admins by repository rulesets.
+name: agents
+
+on:
+  schedule:
+    - cron: "17 7 * * 1"
+    - cron: "17 7 * * 2"
+    - cron: "17 7 * * 3"
+    - cron: "17 7 * * 4"
+  workflow_dispatch:
+    inputs:
+      lane:
+        description: "Lane to run"
+        required: true
+        type: choice
+        options: [security, performance, cost, qa]
+      force:
+        description: "Run even when nothing changed since the last run"
+        required: false
+        type: boolean
+        default: false
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.event_name == 'pull_request_review' && format('agents-pr-{0}', github.event.pull_request.number) || 'agents-weekly' }}
+  cancel-in-progress: false
+
+env:
+  AGENT_OWNER: jasontd92
+  REVIEW_BOTS: "cubic-dev-ai[bot] chatgpt-codex-connector[bot] codex[bot] openai-codex[bot]"
+  MODEL: claude-opus-5-5
+  CLAUDE_CODE_VERSION: 2.1.296
+  ROUND_MAX: "8"
+  # What the agent may run. Package managers and test runners execute repository code, so this narrows the agent's
+  # reach (no web, no curl, no push) rather than sandboxing it; the job's lack of write credentials is the boundary.
+  ALLOWED_TOOLS: >-
+    Read Edit Write Glob Grep TodoWrite Task
+    Bash(cargo:*) Bash(rustc:*) Bash(npm:*) Bash(npx:*) Bash(node:*) Bash(python3:*) Bash(pip:*)
+    Bash(git status:*) Bash(git diff:*) Bash(git log:*) Bash(git show:*) Bash(git add:*) Bash(git commit:*)
+    Bash(git reset:*) Bash(git restore:*) Bash(git stash:*) Bash(git rev-parse:*) Bash(git grep:*) Bash(git blame:*)
+    Bash(gh run:*) Bash(gh pr view:*) Bash(gh pr diff:*) Bash(gh api:*)
+    Bash(ls:*) Bash(cat:*) Bash(head:*) Bash(tail:*) Bash(wc:*) Bash(grep:*) Bash(rg:*) Bash(find:*) Bash(jq:*)
+    Bash(sort:*) Bash(uniq:*) Bash(cut:*) Bash(diff:*) Bash(mkdir:*) Bash(cp:*) Bash(mv:*) Bash(rm:*) Bash(time:*)
+    Bash(hyperfine:*) Bash(du:*) Bash(echo:*) Bash(date:*)
+
+jobs:
+  gate:
+    # The owner and bot logins are repeated here: `env` is not available in a job's `if`.
+    if: >-
+      github.repository == 'vuca-dev/unstale' && (
+        github.event_name == 'schedule' ||
+        (github.event_name == 'workflow_dispatch' && github.actor == 'jasontd92') ||
+        (github.event_name == 'pull_request_review' &&
+          contains(fromJSON('["cubic-dev-ai[bot]","chatgpt-codex-connector[bot]","codex[bot]","openai-codex[bot]"]'), github.event.review.user.login) &&
+          github.event.pull_request.state == 'open' &&
+          github.event.pull_request.user.login == 'jasontd92' &&
+          github.event.pull_request.head.repo.full_name == github.repository &&
+          startsWith(github.event.pull_request.head.ref, 'agent/')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    outputs:
+      lane: ${{ steps.lane.outputs.lane }}
+      mode: ${{ steps.lane.outputs.mode }}
+      run: ${{ steps.gate.outputs.run || steps.review.outputs.run }}
+      base: ${{ steps.gate.outputs.base }}
+      head: ${{ steps.gate.outputs.head }}
+      round: ${{ steps.review.outputs.round }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Lane
+        id: lane
+        env:
+          EVENT: ${{ github.event_name }}
+          SCHEDULE: ${{ github.event.schedule }}
+          INPUT_LANE: ${{ inputs.lane }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          case "$EVENT" in
+            schedule)
+              case "$SCHEDULE" in
+                "17 7 * * 1") lane=security ;; "17 7 * * 2") lane=performance ;;
+                "17 7 * * 3") lane=cost ;; "17 7 * * 4") lane=qa ;;
+                *) echo "no lane for schedule '$SCHEDULE'" >&2; exit 1 ;;
+              esac; mode=new ;;
+            workflow_dispatch) lane="$INPUT_LANE"; mode=new ;;
+            pull_request_review) lane=$(cut -d/ -f2 <<<"$HEAD_REF"); mode=round ;;
+          esac
+          [[ "$lane" =~ ^(security|performance|cost|qa)$ ]] || { echo "unknown lane '$lane'" >&2; exit 1; }
+          echo "lane=$lane" >> "$GITHUB_OUTPUT"; echo "mode=$mode" >> "$GITHUB_OUTPUT"
+          echo "$lane ($mode)"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: steps.lane.outputs.mode == 'new'
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: gateway/package-lock.json
+      - name: Observations
+        if: steps.lane.outputs.mode == 'new'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: "false"
+        run: |
+          npm ci --prefix gateway --no-audit --no-fund >/dev/null
+          bash .github/scripts/agents/observe.sh "$RUNNER_TEMP/in/observations"
+      - name: Gate
+        id: gate
+        if: steps.lane.outputs.mode == 'new'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FORCE: ${{ inputs.force }}
+          LANE: ${{ steps.lane.outputs.lane }}
+        run: bash .github/scripts/agents/gate.sh "$LANE" "$RUNNER_TEMP/in/observations"
+      - name: Review findings
+        id: review
+        if: steps.lane.outputs.mode == 'round'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/in"
+          bash .github/scripts/agents/review-input.sh "$PR" "$RUNNER_TEMP/in/review.json"
+          count=$(jq length "$RUNNER_TEMP/in/review.json")
+          round=$(grep '^round=' "$GITHUB_OUTPUT" | tail -1 | cut -d= -f2)
+          run=false
+          if [ "$count" -gt 0 ] && [ "$round" -le "$ROUND_MAX" ]; then run=true; fi
+          [ "$round" -le "$ROUND_MAX" ] || echo "round limit ($ROUND_MAX) reached: left to the owner"
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: steps.gate.outputs.run == 'true' || steps.review.outputs.run == 'true'
+        with:
+          name: agent-in
+          path: ${{ runner.temp }}/in
+          retention-days: 1
+
+  work:
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    env:
+      LANE: ${{ needs.gate.outputs.lane }}
+      MODE: ${{ needs.gate.outputs.mode }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.gate.outputs.mode == 'new' && needs.gate.outputs.head || github.event.pull_request.head.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: agent-in
+          path: ${{ runner.temp }}/in
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            central/package-lock.json
+            gateway/package-lock.json
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable branch
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: local
+      - name: Install
+        run: |
+          npm ci --prefix central --no-audit --no-fund >/dev/null
+          npm ci --prefix gateway --no-audit --no-fund >/dev/null
+          npm install -g "@anthropic-ai/claude-code@$CLAUDE_CODE_VERSION" --no-audit --no-fund >/dev/null
+          git config --global user.name "unstale $LANE agent"
+          git config --global user.email "agents@users.noreply.github.com"
+          git clone -q --depth 1 -b agent-memory "https://github.com/$GITHUB_REPOSITORY.git" "$RUNNER_TEMP/memory" 2>/dev/null \
+            || mkdir -p "$RUNNER_TEMP/memory"
+          [ -f "$RUNNER_TEMP/memory/$LANE.md" ] || printf '# %s agent log\n\n## Revisit\n\n## Entries\n' "$LANE" > "$RUNNER_TEMP/memory/$LANE.md"
+          mkdir -p "$RUNNER_TEMP/out"
+          echo "START=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+      - name: Agent
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          AI_GATEWAY_API_KEY: ${{ secrets.AGENT_AI_GATEWAY_API_KEY }}
+          EVAL_BUDGET_USD: ${{ vars.AGENT_EVAL_BUDGET_USD || '5' }}
+          BASE_SHA: ${{ needs.gate.outputs.base }}
+          ROUND: ${{ needs.gate.outputs.round }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          OUT="$RUNNER_TEMP/out" MEMORY_DIR="$RUNNER_TEMP/memory" OBS_DIR="$RUNNER_TEMP/in/observations" REVIEW_FILE="$RUNNER_TEMP/in/review.json"
+          export OUT MEMORY_DIR OBS_DIR REVIEW_FILE
+          prompt="$RUNNER_TEMP/prompt.md"
+          {
+            cat .github/agents/common.md; echo; cat ".github/agents/$LANE.md"; echo
+            echo "## This run"
+            echo "- LANE=$LANE MODE=$MODE today=$(date -u +%Y-%m-%d)"
+            echo "- Repository checkout: $PWD (HEAD $START). BASE_SHA (last run reviewed): ${BASE_SHA:-none}"
+            echo "- OUT=$OUT MEMORY_DIR=$MEMORY_DIR OBS_DIR=$OBS_DIR"
+            echo "- Eval model budget: \$${EVAL_BUDGET_USD} this run; AI_GATEWAY_API_KEY is $([ -n "$AI_GATEWAY_API_KEY" ] && echo set || echo 'not set: no model calls for evals')."
+            echo "- Tools outside the allowlist are denied; work within it rather than retrying."
+            if [ "$MODE" = round ]; then
+              echo "- Review round $ROUND of at most $ROUND_MAX on PR #$PR. Findings to answer: REVIEW_FILE=$REVIEW_FILE"
+              echo "- Read the PR (gh pr view $PR, its commits and earlier replies) to keep its original intent. From round 5 on,"
+              echo "  first judge whether the loop has inverted (your fixes spawning the next findings, contradictory findings,"
+              echo "  ever-smaller edge cases): if so, stop fixing, reply with the accepted-by-design rationale and write"
+              echo "  the close-out position to \$OUT/comment.md."
+            fi
+          } > "$prompt"
+          set +e
+          claude -p "$(cat "$prompt")" --model "$MODEL" --allowedTools "$ALLOWED_TOOLS" \
+            --add-dir "$RUNNER_TEMP" --output-format json > "$RUNNER_TEMP/claude.json" 2> "$RUNNER_TEMP/claude.err"
+          status=$?
+          set -e
+          # Only counters: the transcript stays off this public log.
+          jq '{subtype, is_error, num_turns, duration_ms, total_cost_usd}' "$RUNNER_TEMP/claude.json" 2>/dev/null || echo "no result (exit $status)"
+          exit $status
+      - name: Collect
+        run: |
+          git format-patch -q "$START..HEAD" -o "$RUNNER_TEMP/out/patches" || true
+          mkdir -p "$RUNNER_TEMP/out/memory"
+          cp "$RUNNER_TEMP/memory/$LANE.md" "$RUNNER_TEMP/out/memory/"
+          ls -R "$RUNNER_TEMP/out"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: agent-out
+          path: ${{ runner.temp }}/out
+          retention-days: 1
+
+  publish:
+    needs: [gate, work]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          path: trusted
+          sparse-checkout: .github/scripts/agents
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.gate.outputs.mode == 'new' && needs.gate.outputs.head || github.event.pull_request.head.ref }}
+          path: work
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: agent-out
+          path: ${{ runner.temp }}/out
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: agent-in
+          path: ${{ runner.temp }}/in
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ secrets.AGENT_GH_TOKEN }}
+          MODE: ${{ needs.gate.outputs.mode }}
+          LANE: ${{ needs.gate.outputs.lane }}
+          HEAD_SHA: ${{ needs.gate.outputs.head }}
+          ROUND: ${{ needs.gate.outputs.round }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          SCAN_CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          SCAN_AGENT_AI_GATEWAY_API_KEY: ${{ secrets.AGENT_AI_GATEWAY_API_KEY }}
+        run: |
+          OUT="$RUNNER_TEMP/out" WORK="$GITHUB_WORKSPACE/work" TRUSTED="$GITHUB_WORKSPACE/trusted/.github/scripts/agents" \
+            REVIEW_FILE="$RUNNER_TEMP/in/review.json" bash "$GITHUB_WORKSPACE/trusted/.github/scripts/agents/publish.sh"
