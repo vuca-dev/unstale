@@ -133,7 +133,8 @@ export function usageByPhase(lines: Record<string, unknown>[], monitored: number
 /** One provider's calls (`api`, as llm.ts and jev.ts log it) by phase, technology, model, stage and source, ranked by
  * dollars, so one technology or step taking most of the spend shows at the top. Current Actions run only, so a monthly
  * cumulative total cannot masquerade as this run's spend. */
-export function providerAttribution(lines: Record<string, unknown>[], prices: Price[], api: string, run = process.env.GITHUB_RUN_ID): object {
+export function providerAttribution(lines: Record<string, unknown>[], prices: Price[], api: string, run = process.env.GITHUB_RUN_ID,
+  rank: "dollars" | "input" = "dollars"): object {
   const calls = lines.filter((l) => l.api === api && (!run || l.run === run)
     && (!run || l.run_attempt === (process.env.GITHUB_RUN_ATTEMPT ?? "1")));
   const groups = new Map<string, { phase: string; technology: string; model: string; stage: string; source: string; calls: number; input_tokens: number; output_tokens: number; dollars: number; unpriced_calls: number }>();
@@ -149,7 +150,8 @@ export function providerAttribution(lines: Record<string, unknown>[], prices: Pr
     else g.dollars += dollars;
     groups.set(key, g);
   }
-  const ranked = [...groups.values()].sort((a, b) => b.dollars - a.dollars || b.input_tokens - a.input_tokens);
+  const ranked = [...groups.values()].sort((a, b) => rank === "input"
+    ? b.input_tokens - a.input_tokens : b.dollars - a.dollars || b.input_tokens - a.input_tokens);
   const samples = new Map<unknown, object>();
   for (const l of calls.filter((l) => l.sample)) {
     samples.delete(l.request);
@@ -171,6 +173,7 @@ export function providerAttribution(lines: Record<string, unknown>[], prices: Pr
   };
 }
 
-/** Jev's calls (`jev-usage`): Jev bills input tokens only, so its ranking is by input as well. */
+/** Jev's calls (`jev-usage`), ranked by input tokens as before: Jev bills input only, and a partly priced log would
+ * otherwise sink its unpriced groups. */
 export const jevAttribution = (lines: Record<string, unknown>[], prices: Price[], run = process.env.GITHUB_RUN_ID): object =>
-  providerAttribution(lines, prices, "jev", run);
+  providerAttribution(lines, prices, "jev", run, "input");
