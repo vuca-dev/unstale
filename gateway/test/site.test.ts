@@ -55,6 +55,11 @@ test("a package page lists majors newest first, breaking changes before fixes, w
   const home = readFileSync(join(site, "index.html"), "utf8");
   expect(home).toContain('href="/npm/next/"');
   expect(home).toContain("npx @unstale/cli init");
+  for (const page of [home, readFileSync(join(site, "index.md"), "utf8")]) {
+    expect(page).toContain("No client telemetry.");
+    expect(page).toContain("Daily aggregate coverage-request outcome counts");
+    expect(page).not.toContain("No telemetry.");
+  }
   expect(readFileSync(join(site, "npm", "next", "index.md"), "utf8")).toMatch(/^# What changed in next\n[\s\S]*## next 16[\s\S]*### Breaking changes\n\n- cache changed \(16\.1\.0\) — \[release notes\]\(https:\/\/example\.com\/cache\)/);
   expect(readFileSync(join(site, "llms.txt"), "utf8")).toContain("https://unstale.sh/npm/next/index.md");
   expect(readFileSync(join(site, "_headers"), "utf8")).toContain("Strict-Transport-Security");

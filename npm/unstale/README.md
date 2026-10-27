@@ -26,7 +26,8 @@ and can focus on a package, upgrade target, or capability you name.
 
 Matching runs on your machine: only public package identities (for example `pkg:npm/next`) are sent, to fetch the
 signed catalog. Your code and paths never leave it; OSV receives package names and versions for advisory checks.
-No telemetry.
+No client telemetry. The coverage service keeps daily aggregate request-outcome counts for up to 90 UTC days,
+without addresses, package lists, client IDs, or individual request histories.
 
 This package is a small launcher; npm installs the native binary for your platform from one of the
 `@unstale/cli-<platform>` packages. Supported ecosystems: npm and PyPI.

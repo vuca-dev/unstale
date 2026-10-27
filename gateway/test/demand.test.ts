@@ -48,3 +48,11 @@ test("daily report labels incomplete history and separates marked traffic withou
   expect(output).toContain("Unmarked traffic can include bots");
   expect(output).toContain("missing history is not evidence of zero demand");
 });
+
+test("a metrics storage read failure is best effort, including registry-only batch counts", () => {
+  const sql = memorySql();
+  const q = new PendingQueue(sql, settingsFrom({}));
+  sql.exec = () => { throw new Error("storage unavailable"); };
+  expect(() => q.recordDemand("package_not_found", "unmarked", T)).not.toThrow();
+  sql.db.close();
+});

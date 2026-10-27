@@ -92,7 +92,7 @@ and a Claude Code session-start hook in `.claude/settings.local.json` that print
 default, keeps all of it out of Git; shared mode (`unstale init --mode shared`) commits the ledger and generated review context
 and adds one line to `.gitattributes`. `unstale uninstall` removes all of it and backs up your decisions.
 - **What leaves your machine.** Requests for catalog files, named by public package identity (`pkg:npm/next`), and
-coverage requests for packages the catalog does not have yet. Your code, paths and versions do not. No telemetry.
+coverage requests for packages the catalog does not have yet. Your code, paths and versions do not. No client telemetry.
 The service, hosted on Cloudflare, sees your IP address. It keeps it in memory only, to apply rate limits and count
 each address once per package, and never writes it to storage; there is no account or client ID. The service keeps daily aggregate coverage-request outcome counts for up to 90 UTC days,
 without addresses, package lists, or individual request histories. These measure service demand, not people or installs.

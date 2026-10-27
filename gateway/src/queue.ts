@@ -534,11 +534,16 @@ export class PendingQueue {
 
   /** Aggregate outcomes use the existing bounded usage flush; no per-request database writes. */
   recordDemand(outcome: DemandOutcome, traffic: Traffic = "unmarked", now = Date.now(), n = 1): void {
-    this.rollDay(now);
-    this.state();
-    this.demand.count(outcome, traffic, now, n);
-    this.unkept = true;
-    this.keepUsage(now);
+    try {
+      this.rollDay(now);
+      this.state();
+      this.demand.count(outcome, traffic, now, n);
+      this.unkept = true;
+      this.keepUsage(now);
+    } catch {
+      // Only a fixed message: errors may contain request data. Metrics cannot change admission or responses.
+      console.log("Registration outcome metrics unavailable");
+    }
   }
 
   /** A client's request; `known` when central already has a job for the package (its status is published). */

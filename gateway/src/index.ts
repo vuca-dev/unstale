@@ -444,12 +444,11 @@ export async function handle(request: Request, env: Env): Promise<Response> {
       const address = request.headers.get("CF-Connecting-IP") ?? "unknown";
       const known = await published(env, url, purl);
       const exists = !!known || (await queue().held(purl)) || (await registered(purl));
-      if (exists === false) {
-        await queue().registrationFailure(false, traffic);
-        return json(404, { error: "No public package with this identity" });
-      }
-      if (exists === undefined) {
-        await queue().registrationFailure(true, traffic);
+      if (exists !== true) {
+        // At most one additional RPC, best effort: metrics must not replace the registry's answer.
+        try { await queue().registrationFailure(exists === undefined, traffic); }
+        catch { console.log("Registration outcome metrics unavailable"); }
+        if (exists === false) return json(404, { error: "No public package with this identity" });
         const body = unconfirmed();
         return json(503, body, { "Retry-After": String(body.retry_after) });
       }
@@ -468,10 +467,17 @@ export async function handle(request: Request, env: Env): Promise<Response> {
       const held = new Set(unknown.length ? await queue().heldMany(unknown) : []);
       const exists = await Promise.all(purls.map((purl, i) => !!known[i] || held.has(purl) || registered(purl)));
       const asked = purls.flatMap((purl, i) => (exists[i] ? [{ purl, known: !!known[i] }] : []));
-      const answers = await queue().requestMany(asked, address, traffic, {
-        notFound: exists.filter((value) => value === false).length,
-        unavailable: exists.filter((value) => value === undefined).length,
-      });
+      let answers: { outcome: Outcome; view?: View }[] = [];
+      try {
+        answers = await queue().requestMany(asked, address, traffic, {
+          notFound: exists.filter((value) => value === false).length,
+          unavailable: exists.filter((value) => value === undefined).length,
+        });
+      } catch (error) {
+        // With no valid packages this RPC records only metrics; preserve each registry result on failure.
+        if (asked.length) throw error;
+        console.log("Registration outcome metrics unavailable");
+      }
       const by = new Map(asked.map(({ purl }, i) => [purl, answers[i]!]));
       return json(200, {
         results: purls.map((purl, i) => {
