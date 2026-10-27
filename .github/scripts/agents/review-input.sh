@@ -3,7 +3,8 @@
 #   - the review bots' top-level inline comments on the PR that have no reply from the owner carrying the handled
 #     marker (every reply the publish job posts, as the owner, carries it, so a comment is answered once; anyone else's
 #     reply with the marker counts for nothing);
-#   - the owner's comments (inline or on the PR) without the marker, newer than the branch's last commit.
+#   - the owner's comments (inline or on the PR) without the marker, newer than the branch's last commit and not
+#     answered yet (a PR comment is answered by the owner's marked `Re: comment <id>`).
 # Anyone else's comments never reach the agent. Also counts the rounds already pushed (commits with an `Agent-Round:`
 # trailer) so the loop stops at ROUND_MAX.
 #
@@ -22,11 +23,15 @@ last_commit=$(gh api "repos/$repo/pulls/$pr/commits" --paginate --jq '.[-1].comm
 jq -n --argjson inline "$inline" --argjson issue "$issue" --argjson bots "$bots" \
   --arg owner "$AGENT_OWNER" --arg marker "$marker" --arg since "$last_commit" '
   ($inline | map(select(.in_reply_to_id != null and .user.login == $owner and (.body | contains($marker))) | .in_reply_to_id)) as $handled
+  | ($issue | map(select(.user.login == $owner and (.body | contains($marker)))
+      | (.body | capture("^Re: comment (?<id>[0-9]+)")? | .id | tonumber))) as $answered
   | [ ($inline[] | select(.in_reply_to_id == null and (.user.login as $u | $bots | index($u)) and ((.id as $i | $handled | index($i)) | not))
         | {id, kind: "inline", author: .user.login, path, line: (.line // .original_line), body}),
-      ($inline[] | select(.user.login == $owner and (.body | contains($marker) | not) and .created_at > $since)
+      ($inline[] | select(.user.login == $owner and .in_reply_to_id == null and (.body | contains($marker) | not) and .created_at > $since
+          and ((.id as $i | $handled | index($i)) | not))
         | {id, kind: "inline", author: .user.login, path, line: (.line // .original_line), body}),
-      ($issue[] | select(.user.login == $owner and (.body | contains($marker) | not) and .created_at > $since)
+      ($issue[] | select(.user.login == $owner and (.body | contains($marker) | not) and .created_at > $since
+          and ((.id as $i | $answered | index($i)) | not))
         | {id, kind: "issue", author: .user.login, body}) ]' > "$file"
 
 count=$(jq length "$file")
