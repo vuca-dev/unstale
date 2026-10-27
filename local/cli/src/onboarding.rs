@@ -563,10 +563,19 @@ fn encode(s: &str) -> String {
         })
         .collect()
 }
+// Operator-only attribution for Scout/evaluation registrations. No generated ID or extra request.
+// Apply only to the configured coverage service, never registry or advisory requests.
+fn coverage_post(a: &ureq::Agent, url: &str) -> ureq::RequestBuilder<ureq::typestate::WithBody> {
+    let request = a.post(url).header("Content-Type", "application/json");
+    if std::env::var("UNSTALE_INTERNAL_TRAFFIC").as_deref() == Ok("1") {
+        request.header("X-Unstale-Internal-Traffic", "1")
+    } else {
+        request
+    }
+}
 fn request_via(a: &ureq::Agent, service: &str, purl: &str, post: bool) -> Result<Job> {
     let mut r = if post {
-        a.post(format!("{}/coverage", service.trim_end_matches('/')))
-            .header("Content-Type", "application/json")
+        coverage_post(a, &format!("{}/coverage", service.trim_end_matches('/')))
             .send(serde_json::to_vec(&serde_json::json!({"purl":purl}))?)
     } else {
         a.get(format!(
@@ -656,7 +665,7 @@ struct BatchResult {
 fn batch_via(a: &ureq::Agent, service: &str, route: &str, purls: &[String]) -> Option<Vec<Result<Job>>> {
     let url = format!("{}/coverage/{route}", service.trim_end_matches('/'));
     let sent = serde_json::to_vec(&serde_json::json!({ "purls": purls })).ok()?;
-    let mut r = match a.post(&url).header("Content-Type", "application/json").send(&sent[..]) {
+    let mut r = match coverage_post(a, &url).send(&sent[..]) {
         Ok(r) => r,
         Err(e) => return Some(vec![Err(anyhow!("POST {url}: {e}"))]),
     };

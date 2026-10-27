@@ -804,3 +804,24 @@ test("a run's reports carry central's save time and when the cycle publishes; an
   expect(answer.publish_by).toBeUndefined();
   expect(answer.updated).toMatch(/^\d{4}-\d{2}-\d{2}T/);
 });
+
+test("aggregate demand counts single and batched outcomes, retaining only the internal marker category", async () => {
+  vi.stubGlobal("fetch", async (url: string) => new Response("{}", { status: url.includes("missing") ? 404 : url.includes("unavailable") ? 503 : 200 }));
+  const { env: e } = env({}, { RATE_PER_HOUR: "1" });
+  const marker = { "X-Unstale-Internal-Traffic": "1" };
+  await handle(post({ purl: "pkg:npm/a" }, marker), e);
+  await handle(post({ purl: "pkg:npm/a" }, marker), e);
+  await handle(batch("/coverage/register", { purls: ["pkg:npm/b", "pkg:npm/missing", "pkg:npm/unavailable"] }), e);
+  await handle(post({ purl: "pkg:npm/missing" }), e);
+  await handle(post({ purl: "pkg:npm/unavailable" }), e);
+  expect((await handle(get("/internal/demand"), e)).status).toBe(401);
+  const response = await handle(get("/internal/demand", { Authorization: "Bearer drain-secret" }), e);
+  expect(response.status).toBe(200);
+  const text = await response.text();
+  const snapshot = JSON.parse(text);
+  expect(snapshot.days.at(-1)).toMatchObject({
+    marked_internal: { accepted: 1, duplicate: 1 },
+    unmarked: { refused_address: 1, package_not_found: 2, registry_unavailable: 2 },
+  });
+  expect(text).not.toMatch(/198\.51|pkg:npm|X-Unstale|drain-secret/);
+});
