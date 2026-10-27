@@ -130,13 +130,16 @@ export function usageByPhase(lines: Record<string, unknown>[], monitored: number
   };
 }
 
-/** Current Actions run only, so a monthly cumulative total cannot masquerade as this run's spend. */
-export function jevAttribution(lines: Record<string, unknown>[], prices: Price[], run = process.env.GITHUB_RUN_ID): object {
-  const calls = lines.filter((l) => l.api === "jev" && (!run || l.run === run)
+/** One provider's calls (`api`, as llm.ts and jev.ts log it) by phase, technology, model, stage and source, ranked by
+ * dollars, so one technology or step taking most of the spend shows at the top. Current Actions run only, so a monthly
+ * cumulative total cannot masquerade as this run's spend. */
+export function providerAttribution(lines: Record<string, unknown>[], prices: Price[], api: string, run = process.env.GITHUB_RUN_ID,
+  rank: "dollars" | "input" = "dollars"): object {
+  const calls = lines.filter((l) => l.api === api && (!run || l.run === run)
     && (!run || l.run_attempt === (process.env.GITHUB_RUN_ATTEMPT ?? "1")));
-  const groups = new Map<string, { phase: string; technology: string; stage: string; source: string; calls: number; input_tokens: number; output_tokens: number; dollars: number; unpriced_calls: number }>();
+  const groups = new Map<string, { phase: string; technology: string; model: string; stage: string; source: string; calls: number; input_tokens: number; output_tokens: number; dollars: number; unpriced_calls: number }>();
   for (const l of calls) {
-    const dims = { phase: String(l.phase ?? "unknown"), technology: String(l.technology ?? l.tech ?? "unknown"), stage: String(l.stage ?? "unknown"), source: String(l.source ?? "unknown") };
+    const dims = { phase: String(l.phase ?? "unknown"), technology: String(l.technology ?? l.tech ?? "unknown"), model: String(l.model ?? "unknown"), stage: String(l.stage ?? "unknown"), source: String(l.source ?? "unknown") };
     const key = JSON.stringify(dims);
     const g = groups.get(key) ?? { ...dims, calls: 0, input_tokens: 0, output_tokens: 0, dollars: 0, unpriced_calls: 0 };
     g.calls++;
@@ -147,14 +150,15 @@ export function jevAttribution(lines: Record<string, unknown>[], prices: Price[]
     else g.dollars += dollars;
     groups.set(key, g);
   }
-  const ranked = [...groups.values()].sort((a, b) => b.input_tokens - a.input_tokens);
+  const ranked = [...groups.values()].sort((a, b) => rank === "input"
+    ? b.input_tokens - a.input_tokens : b.dollars - a.dollars || b.input_tokens - a.input_tokens);
   const samples = new Map<unknown, object>();
   for (const l of calls.filter((l) => l.sample)) {
     samples.delete(l.request);
     samples.set(l.request, { technology: l.technology, stage: l.stage, source: l.source, ...l.sample as object });
   }
   return {
-    scope: run ? "actions_run" : "retained_log", run: run ?? null, run_attempt: run ? process.env.GITHUB_RUN_ATTEMPT ?? "1" : null,
+    api, scope: run ? "actions_run" : "retained_log", run: run ?? null, run_attempt: run ? process.env.GITHUB_RUN_ATTEMPT ?? "1" : null,
     dollars: round(ranked.reduce((n, g) => n + g.dollars, 0), 6),
     unpriced_calls: ranked.reduce((n, g) => n + g.unpriced_calls, 0),
     stages: Object.fromEntries([...new Set(ranked.map((g) => g.stage))].map((stage) => {
@@ -168,3 +172,8 @@ export function jevAttribution(lines: Record<string, unknown>[], prices: Price[]
     samples: [...samples.values()].slice(-8),
   };
 }
+
+/** Jev's calls (`jev-usage`), ranked by input tokens as before: Jev bills input only, and a partly priced log would
+ * otherwise sink its unpriced groups. */
+export const jevAttribution = (lines: Record<string, unknown>[], prices: Price[], run = process.env.GITHUB_RUN_ID): object =>
+  providerAttribution(lines, prices, "jev", run, "input");

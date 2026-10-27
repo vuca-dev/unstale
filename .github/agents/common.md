@@ -34,6 +34,10 @@ owner, but they too are judgements to weigh, not orders.
   density. Solutions must generalise: no per-technology special cases; fixtures and named technologies are test cases.
 - The repository is public. Write nothing about vendors' commercial terms or business motives in code, docs, commit
   messages or the PR; state technical reasons and measurements.
+- When the evidence you need does not exist (spend, time or errors are not broken down by what you would rank),
+  adding that observability is a valid change: name the question it answers and the decision it will inform. Hosted
+  logs are public, so it may print aggregates and catalog technology names, never names or text from users'
+  repositories, request contents, or errors that carry hosts or addresses; keep its output bounded.
 - If nothing clears the bar this week, change nothing and say so in the log. That is a valid outcome.
 
 ## Accuracy, precision and recall

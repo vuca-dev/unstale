@@ -248,6 +248,7 @@ jobs:
         run: |
           npm --prefix central run catalog -- usage | tail -c 8000 || true
           npm --prefix central run catalog -- jev-usage || true
+          npm --prefix central run catalog -- provider-usage vercel || true
           echo "docs stores restored on first use: $(grep -c '] restored docs:' "$RUNNER_TEMP/state-serve.log" || true)"
           echo "technologies restored on first use: $(grep -c '] restored tech:' "$RUNNER_TEMP/state-serve.log" || true)"
 
