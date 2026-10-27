@@ -474,8 +474,10 @@ export async function handle(request: Request, env: Env): Promise<Response> {
           unavailable: exists.filter((value) => value === undefined).length,
         });
       } catch (error) {
-        // With no valid packages this RPC records only metrics; preserve each registry result on failure.
+        // When valid packages require admission this is the existing service RPC, not a metrics-only call:
+        // preserve its whole-batch 503 behavior instead of inventing per-package admission results.
         if (asked.length) throw error;
+        // An all-rejected batch needs only metrics; preserve the already-known registry responses.
         console.log("Registration outcome metrics unavailable");
       }
       const by = new Map(asked.map(({ purl }, i) => [purl, answers[i]!]));

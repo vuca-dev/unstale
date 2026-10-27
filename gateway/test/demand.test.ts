@@ -49,7 +49,7 @@ test("daily report labels incomplete history and separates marked traffic withou
   expect(output).toContain("missing history is not evidence of zero demand");
 });
 
-test("a metrics storage read failure is best effort, including registry-only batch counts", () => {
+test("a direct outcome counter storage read failure is best effort", () => {
   const sql = memorySql();
   const q = new PendingQueue(sql, settingsFrom({}));
   sql.exec = () => { throw new Error("storage unavailable"); };

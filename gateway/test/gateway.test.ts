@@ -874,3 +874,17 @@ test("an all-rejected batch preserves per-package registry answers when the metr
   const body = await response.json() as { results: { status: number }[] };
   expect(body.results.map((result) => result.status)).toEqual([404, 503]);
 });
+
+test("a mixed batch retains the existing whole-batch 503 when the admission RPC fails", async () => {
+  vi.stubGlobal("fetch", async (url: string) => new Response("{}", { status: url.includes("missing") ? 404 : 200 }));
+  const { env: e } = env();
+  const object = e.COVERAGE.get(e.COVERAGE.idFromName("global"));
+  e.COVERAGE = { idFromName: () => "global", get: () => new Proxy(object, {
+    get: (target, key) => key === "requestMany" ? () => Promise.reject(new Error("admission unavailable")) :
+      typeof (target as any)[key] === "function" ? (target as any)[key].bind(target) : (target as any)[key],
+  }) } as unknown as Env["COVERAGE"];
+  const response = await handle(batch("/coverage/register", { purls: ["pkg:npm/missing", "pkg:npm/valid"] }), e);
+  expect(response.status).toBe(503);
+  expect(response.headers.get("Retry-After")).not.toBeNull();
+  expect(await response.json()).not.toHaveProperty("results");
+});
