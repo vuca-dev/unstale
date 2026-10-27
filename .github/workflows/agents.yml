@@ -9,7 +9,8 @@
 # Shared rules (untrusted input, evals and their budget, outputs, the log): .github/agents/common.md.
 #
 #   weekly run:    gate -> work -> publish
-#   review round:  a review bot's review on an agent PR -> gate (its unanswered findings) -> work -> publish
+#   review round:  a review bot's review on an agent PR -> relay -> (dispatch on main) gate (its unanswered findings)
+#                  -> work -> publish
 #
 # gate (no model): skips the lane when nothing it watches changed since its last run or its previous PR is still open
 # (.github/scripts/agents/gate.sh), and collects the week's observations with the Cloudflare token
@@ -24,7 +25,9 @@
 # agent-memory branch (publish.sh). The agent never holds a token that could push to main or create a release tag.
 #
 # Who can start it: the schedule; workflow_dispatch by the owner only; review rounds only for a review by a bot in
-# REVIEW_BOTS on an open PR from an agent/ branch of this repository authored by the owner. Fork PRs and other users'
+# REVIEW_BOTS on an open PR from an agent/ branch of this repository authored by the owner. A review event runs only
+# the relay job, which dispatches the round on main: a review event runs the workflow file of the PR's merge ref, so
+# a round always runs main's version (current, and never one an agent branch carries). The gate checks the PR again. Fork PRs and other users'
 # reviews or comments never start a job or reach the agent. Rounds stop after ROUND_MAX pushes. Nothing is merged.
 #
 # Secrets: CLAUDE_CODE_OAUTH_TOKEN (`claude setup-token`), AGENT_GH_TOKEN (fine-grained, this repository only:
@@ -51,6 +54,11 @@ on:
         required: false
         type: boolean
         default: false
+      pr:
+        description: "Review round on this agent PR (set by the relay job; the owner may also start one)"
+        required: false
+        type: string
+        default: ""
   pull_request_review:
     types: [submitted]
 
@@ -58,7 +66,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.event_name == 'pull_request_review' && format('agents-pr-{0}', github.event.pull_request.number) || 'agents-weekly' }}
+  group: ${{ github.event_name == 'pull_request_review' && format('agents-relay-{0}', github.event.review.id) || inputs.pr != '' && format('agents-pr-{0}', inputs.pr) || 'agents-weekly' }}
   cancel-in-progress: false
 
 env:
@@ -83,18 +91,40 @@ env:
     Bash(rm:*),Bash(time:*),Bash(hyperfine:*),Bash(du:*),Bash(echo:*),Bash(date:*)
 
 jobs:
-  gate:
+  relay:
     # The owner and bot logins are repeated here: `env` is not available in a job's `if`.
+    if: >-
+      github.repository == 'vuca-dev/unstale' &&
+      github.event_name == 'pull_request_review' &&
+      contains(fromJSON('["cubic-dev-ai[bot]","chatgpt-codex-connector[bot]","codex[bot]","openai-codex[bot]"]'), github.event.review.user.login) &&
+      github.event.pull_request.state == 'open' &&
+      github.event.pull_request.user.login == 'jasontd92' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      startsWith(github.event.pull_request.head.ref, 'agent/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      - name: Dispatch the round on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          lane=$(cut -d/ -f2 <<<"$HEAD_REF")
+          [[ "$lane" =~ ^(security|performance|cost|qa)$ ]] || { echo "unknown lane '$lane'" >&2; exit 1; }
+          gh workflow run agents.yml --repo "$GITHUB_REPOSITORY" --ref main -f lane="$lane" -f pr="$PR"
+          echo "dispatched a $lane round for PR #$PR"
+
+  gate:
+    # A dispatch with `pr` from the relay runs as github-actions[bot]; only this repository's workflows hold a token
+    # that can dispatch, and the Lane step checks the PR itself before any round.
     if: >-
       github.repository == 'vuca-dev/unstale' && (
         github.event_name == 'schedule' ||
-        (github.event_name == 'workflow_dispatch' && github.actor == 'jasontd92') ||
-        (github.event_name == 'pull_request_review' &&
-          contains(fromJSON('["cubic-dev-ai[bot]","chatgpt-codex-connector[bot]","codex[bot]","openai-codex[bot]"]'), github.event.review.user.login) &&
-          github.event.pull_request.state == 'open' &&
-          github.event.pull_request.user.login == 'jasontd92' &&
-          github.event.pull_request.head.repo.full_name == github.repository &&
-          startsWith(github.event.pull_request.head.ref, 'agent/')))
+        (github.event_name == 'workflow_dispatch' &&
+          (github.actor == 'jasontd92' || (github.actor == 'github-actions[bot]' && inputs.pr != ''))))
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -108,6 +138,8 @@ jobs:
       base: ${{ steps.gate.outputs.base }}
       head: ${{ steps.gate.outputs.head }}
       round: ${{ steps.review.outputs.round }}
+      pr: ${{ steps.lane.outputs.pr }}
+      head_ref: ${{ steps.lane.outputs.head_ref }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -120,7 +152,8 @@ jobs:
           EVENT: ${{ github.event_name }}
           SCHEDULE: ${{ github.event.schedule }}
           INPUT_LANE: ${{ inputs.lane }}
-          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          INPUT_PR: ${{ inputs.pr }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           case "$EVENT" in
             schedule)
@@ -130,9 +163,19 @@ jobs:
                 *) echo "no lane for schedule '$SCHEDULE'" >&2; exit 1 ;;
               esac; mode=new ;;
             workflow_dispatch) lane="$INPUT_LANE"; mode=new ;;
-            pull_request_review) lane=$(cut -d/ -f2 <<<"$HEAD_REF"); mode=round ;;
           esac
           [[ "$lane" =~ ^(security|performance|cost|qa)$ ]] || { echo "unknown lane '$lane'" >&2; exit 1; }
+          if [ -n "${INPUT_PR:-}" ]; then
+            # A round only for an open PR of this repository by the owner, from this lane's agent/ branch.
+            [[ "$INPUT_PR" =~ ^[0-9]+$ ]] || { echo "pr must be a number" >&2; exit 1; }
+            pr_json=$(gh pr view "$INPUT_PR" --repo "$GITHUB_REPOSITORY" --json state,author,headRefName,isCrossRepository)
+            jq -e --arg o "$AGENT_OWNER" --arg l "$lane" '.state == "OPEN" and .author.login == $o
+              and (.isCrossRepository | not) and (.headRefName | startswith("agent/" + $l + "/"))' <<<"$pr_json" >/dev/null \
+              || { echo "PR #$INPUT_PR is not an open $lane agent PR by $AGENT_OWNER" >&2; exit 1; }
+            mode=round
+            echo "pr=$INPUT_PR" >> "$GITHUB_OUTPUT"
+            echo "head_ref=$(jq -r .headRefName <<<"$pr_json")" >> "$GITHUB_OUTPUT"
+          fi
           if [ "$EVENT" = schedule ] && [[ "$(date -u +%F)" < "$AGENTS_FROM" ]]; then
             echo "scheduled runs start on $AGENTS_FROM"; mode=none
           fi
@@ -167,7 +210,7 @@ jobs:
         if: steps.lane.outputs.mode == 'round'
         env:
           GH_TOKEN: ${{ github.token }}
-          PR: ${{ github.event.pull_request.number }}
+          PR: ${{ steps.lane.outputs.pr }}
         run: |
           mkdir -p "$RUNNER_TEMP/in"
           bash .github/scripts/agents/review-input.sh "$PR" "$RUNNER_TEMP/in/review.json"
@@ -199,7 +242,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.gate.outputs.mode == 'new' && needs.gate.outputs.head || github.event.pull_request.head.ref }}
+          ref: ${{ needs.gate.outputs.mode == 'new' && needs.gate.outputs.head || needs.gate.outputs.head_ref }}
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -247,7 +290,7 @@ jobs:
           EVAL_BUDGET_USD: ${{ vars.AGENT_EVAL_BUDGET_USD || '5' }}
           BASE_SHA: ${{ needs.gate.outputs.base }}
           ROUND: ${{ needs.gate.outputs.round }}
-          PR: ${{ github.event.pull_request.number }}
+          PR: ${{ needs.gate.outputs.pr }}
         run: |
           OUT="$RUNNER_TEMP/out" MEMORY_DIR="$RUNNER_TEMP/memory" OBS_DIR="$RUNNER_TEMP/in/observations" REVIEW_FILE="$RUNNER_TEMP/in/review.json"
           export OUT MEMORY_DIR OBS_DIR REVIEW_FILE
@@ -305,7 +348,7 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.gate.outputs.mode == 'new' && needs.gate.outputs.head || github.event.pull_request.head.ref }}
+          ref: ${{ needs.gate.outputs.mode == 'new' && needs.gate.outputs.head || needs.gate.outputs.head_ref }}
           path: work
           fetch-depth: 0
           persist-credentials: false
@@ -324,8 +367,8 @@ jobs:
           LANE: ${{ needs.gate.outputs.lane }}
           HEAD_SHA: ${{ needs.gate.outputs.head }}
           ROUND: ${{ needs.gate.outputs.round }}
-          PR: ${{ github.event.pull_request.number }}
-          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR: ${{ needs.gate.outputs.pr }}
+          HEAD_REF: ${{ needs.gate.outputs.head_ref }}
           SCAN_CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           SCAN_AGENT_AI_GATEWAY_API_KEY: ${{ secrets.AGENT_AI_GATEWAY_API_KEY }}
         run: |
