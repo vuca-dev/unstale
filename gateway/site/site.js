@@ -188,6 +188,7 @@ if (demo) {
     ["Refreshing shared results · step 4/5", "Fetching the latest results for your stack"],
     ["Preparing your review · step 5/5", "Checking versions, local usage and prior decisions"],
   ];
+  // A 15-second session at 1×; 2× preserves the original 7.5-second default.
   let elapsed = 0, previous = null, frame = null, visible = false;
   let started = false, done = true, paused = false;
   function finish() {
@@ -202,15 +203,15 @@ if (demo) {
   function tick(now) {
     frame = null;
     if (done || paused || !visible || document.hidden) { previous = null; return; }
-    if (previous !== null) elapsed += (now - previous) * speed / 2;
+    if (previous !== null) elapsed += (now - previous) * speed;
     previous = now;
-    if (elapsed >= 7500) { finish(); return; }
-    mark?.draw(5.5 + elapsed / 1000 * 3);
-    const index = Math.min(4, Math.floor(elapsed / 1500));
-    const spinner = ["◐", "◓", "◑", "◒"][Math.floor(elapsed / 250) % 4];
+    if (elapsed >= 15000) { finish(); return; }
+    mark?.draw(5.5 + elapsed / 1000 * 1.5);
+    const index = Math.min(4, Math.floor(elapsed / 3000));
+    const spinner = ["◐", "◓", "◑", "◒"][Math.floor(elapsed / 500) % 4];
     const text = `${spinner} ${stages[index][0]}`;
     if (stage.textContent !== text) stage.textContent = text;
-    if (index === 1) detail.textContent = `Checked ${Math.min(119, Math.floor((elapsed - 1500) / 1500 * 119))}/119 direct packages`;
+    if (index === 1) detail.textContent = `Checked ${Math.min(119, Math.floor((elapsed - 3000) / 3000 * 119))}/119 direct packages`;
     else if (detail.textContent !== stages[index][1]) detail.textContent = stages[index][1];
     frame = requestAnimationFrame(tick);
   }
