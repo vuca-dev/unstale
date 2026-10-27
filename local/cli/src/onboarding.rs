@@ -2943,9 +2943,13 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
                 && !declaration_file(name)
         };
         // A package of one of the project's own extras (`kornia[onnx]`) or dependency groups (`uv sync --group
-        // similar-issue`) ships to whoever installs that set: it is runtime where application code uses it, as an
-        // undeclared one is; a docs or test set's packages are not used there.
-        let runtime = facts.runtime || ((!facts.dev_only || facts.extra) && members.iter().any(|&i| out.opps[i].files.iter().any(|f| code(f) && w.repo.role(f) == usage::Role::App)));
+        // similar-issue`) ships to whoever installs that set: it is runtime where application code imports it, as an
+        // undeclared one is used; a docs or test set's packages are not imported there (zensical in a `dev` group,
+        // whose record terms merely occur in application files).
+        let runtime = facts.runtime
+            || ((!facts.dev_only || facts.extra)
+                && members.iter().any(|&i| out.opps[i].files.iter().any(|f| code(f) && w.repo.role(f) == usage::Role::App))
+                && (!facts.dev_only || production_importers(w, &packages) > 0));
         // What holds the fix back: a pin or override in an application manifest, else the range the lockfile
         // advisory names as refusing its fix.
         let lock_blocker = lock_fixed.iter().find_map(|it| it.why.iter().find_map(|w| w.strip_prefix("fix blocked: ")).map(String::from));

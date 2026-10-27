@@ -467,6 +467,9 @@ pub fn uncovered_manifests(repo: &crate::usage::Repo, stack: &Stack) -> BTreeMap
         let other = OTHER_MANIFESTS.iter().find(|(m, _)| if m.starts_with('.') { base.ends_with(m) } else { base == *m }).map(|(_, eco)| *eco);
         let unread = || {
             let (_, eco, prefix) = UNREAD_MANIFESTS.iter().find(|(m, _, _)| base == *m)?;
+            if base == "setup.py" && !setuptools_script(repo.text(p)) {
+                return None;
+            }
             let dir = p.rsplit_once('/').map_or(".", |(d, _)| d);
             let read = stack.packages.iter().any(|k| k.dir == dir && k.declared.iter().any(|u| u.starts_with(prefix)));
             (!read).then_some(*eco)
@@ -477,6 +480,12 @@ pub fn uncovered_manifests(repo: &crate::usage::Repo, stack: &Stack) -> BTreeMap
         }
     }
     out
+}
+
+/// Whether a `setup.py` (its text, when read) is a setuptools or distutils script: it names one of them or calls
+/// `setup(`. A module of that name that does neither (a CLI's `setup` command) declares nothing.
+fn setuptools_script(text: Option<&str>) -> bool {
+    text.is_none_or(|t| t.contains("setuptools") || t.contains("distutils") || t.contains("setup("))
 }
 
 /// Why nothing was checked, when no dependency was read at all: the manifests that declare them are ones this client
@@ -1654,6 +1663,21 @@ mod tests {
         st.packages[0].declared.insert("pkg:pypi/numpy".into());
         assert!(uncovered_manifests(&r, &st).is_empty(), "a read pyproject.toml beside it declares the packages");
         assert!(unread_note(&crate::usage::Repo::default(), &Stack::default()).unwrap().contains("declares any packages"));
+    }
+
+    #[test]
+    fn a_setup_py_module_that_is_no_setuptools_script_is_not_a_manifest() {
+        // fast-agent: `src/fast_agent/cli/commands/setup.py` is the Typer `setup` command, beside a read root pyproject.toml.
+        let mut r = crate::usage::Repo::default();
+        for (p, t) in [
+            ("src/app/cli/setup.py", "import typer\napp = typer.Typer()\n"),
+            ("svc/setup.py", "from setuptools import setup\nsetup(name=\"svc\")\n"),
+        ] {
+            r.paths.push(p.to_string());
+            r.files.push((p.to_string(), t.to_string()));
+        }
+        let m = uncovered_manifests(&r, &Stack::default());
+        assert_eq!(m["Python (setuptools)"], vec!["svc/setup.py"], "{m:?}");
     }
 
     use super::*;
