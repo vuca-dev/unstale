@@ -222,9 +222,12 @@ jobs:
       - name: Install
         run: |
           # The sandbox Claude Code runs commands in when it scrubs credentials from them (bubblewrap, with socat for its
-          # network bridge); Ubuntu 24.04 restricts the unprivileged user namespaces bubblewrap needs.
+          # network bridge). Ubuntu 24.04 restricts unprivileged user namespaces; an AppArmor profile allows them for
+          # bwrap alone, leaving the restriction on for everything else.
           sudo apt-get install -y -qq bubblewrap socat >/dev/null
-          sudo sysctl -q -w kernel.apparmor_restrict_unprivileged_userns=0
+          printf '%s\n' 'abi <abi/4.0>,' 'include <tunables/global>' \
+            'profile bwrap /usr/bin/bwrap flags=(unconfined) {' '  userns,' '}' | sudo tee /etc/apparmor.d/bwrap >/dev/null
+          sudo apparmor_parser -r /etc/apparmor.d/bwrap
           bwrap --ro-bind / / --dev /dev --unshare-user true && echo "sandbox ok"
           npm ci --prefix central --no-audit --no-fund >/dev/null
           npm ci --prefix gateway --no-audit --no-fund >/dev/null
