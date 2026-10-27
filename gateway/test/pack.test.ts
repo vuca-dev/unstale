@@ -212,6 +212,22 @@ test("a lookup of a technology the catalog lacks reads its bucket's header once,
   expect(env.fetches.slice(first)).toEqual(["/v1/coverage/missing.json"]);
 });
 
+test("cold reads cost one bucket read a hit and one probe between them; a miss reads one bucket and the static file", async () => {
+  const site = tree(8);
+  await pack(site, 20_000);
+  const env = layer(site);
+  const status = (i: number) => `/v1/coverage/${String(i).padStart(64, "0")}.json`;
+  const read = (path: string) => asset(env, new Request(`https://unstale.example${path}`)).then((r) => r.status);
+  // A batch of status reads, as POST /coverage/status makes them, on an isolate that has read nothing.
+  expect(await Promise.all([0, 1, 2, 3, 4, 5, 6, 7].map((i) => read(status(i))))).toEqual(Array(8).fill(200));
+  expect(env.fetches.filter((p) => p.startsWith("/_pack/type/"))).toHaveLength(1);
+  expect(env.fetches.filter((p) => !p.startsWith("/_pack/type/"))).toHaveLength(8);
+  // A path that is no packed file reads the one bucket its file and its directory's index share, then the static file.
+  const first = env.fetches.length;
+  expect(await read(status(99))).toBe(404);
+  expect(env.fetches.slice(first)).toEqual([expect.stringMatching(/^\/_pack\/[0-9a-f]{3}\.bin$/), status(99)]);
+});
+
 test("a bucket is read up to its header on a miss, and up to the file on a hit", async () => {
   const header = JSON.stringify({ files: { "v1/a.json": [0, 2, "e1"], "v1/b.json": [2, 3, "e2"] } });
   let pulled = 0;
