@@ -60,7 +60,9 @@ crawl scope) must carry evidence that it does not regress it:
   No `pr.json` and no commits when there is nothing to propose.
 - Review round (`MODE=round`): your fix commits, and `$OUT/replies.json`:
   `[{"id": <comment id>, "body": "..."}]`, one reply for every comment in `$REVIEW_FILE`: what you fixed, or why you
-  did not (already handled, not applicable, conflicts with the PR's intent). Optionally `$OUT/comment.md`, a PR
+  did not (already handled, not applicable, conflicts with the PR's intent). Do not cite commit hashes: publishing
+  re-applies your commits, so their hashes change. A finding you reply to is not raised again, so a valid one you
+  cannot fix this round needs its reason stated, not a promise of a later round. Optionally `$OUT/comment.md`, a PR
   comment (for a close-out position).
 - Always: update your lane's log, `$MEMORY_DIR/$LANE.md` (format below). In a new run, write `{{PR}}` where the PR
   number belongs; it is filled in when the PR is opened.
