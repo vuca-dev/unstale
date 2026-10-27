@@ -804,3 +804,87 @@ test("a run's reports carry central's save time and when the cycle publishes; an
   expect(answer.publish_by).toBeUndefined();
   expect(answer.updated).toMatch(/^\d{4}-\d{2}-\d{2}T/);
 });
+
+test("aggregate demand counts single and batched outcomes, retaining only the internal marker category", async () => {
+  vi.stubGlobal("fetch", async (url: string) => new Response("{}", { status: url.includes("missing") ? 404 : url.includes("unavailable") ? 503 : 200 }));
+  const { env: e } = env({}, { RATE_PER_HOUR: "1" });
+  const marker = { "X-Unstale-Internal-Traffic": "1" };
+  await handle(post({ purl: "pkg:npm/a" }, marker), e);
+  await handle(post({ purl: "pkg:npm/a" }, marker), e);
+  await handle(batch("/coverage/register", { purls: ["pkg:npm/b", "pkg:npm/missing", "pkg:npm/unavailable"] }), e);
+  await handle(post({ purl: "pkg:npm/missing" }), e);
+  await handle(post({ purl: "pkg:npm/unavailable" }), e);
+  expect((await handle(get("/internal/demand"), e)).status).toBe(401);
+  const response = await handle(get("/internal/demand", { Authorization: "Bearer drain-secret" }), e);
+  expect(response.status).toBe(200);
+  const text = await response.text();
+  const snapshot = JSON.parse(text);
+  expect(snapshot.days.at(-1)).toMatchObject({
+    marked_internal: { accepted: 1, duplicate: 1 },
+    unmarked: { refused_address: 1, package_not_found: 2, registry_unavailable: 2 },
+  });
+  expect(text).not.toMatch(/198\.51|pkg:npm|X-Unstale|drain-secret/);
+});
+
+test("single-package registry failures use at most two object calls, and metric RPC failures preserve their responses", async () => {
+  const logged = vi.spyOn(console, "log").mockImplementation(() => {});
+  try {
+    for (const registryStatus of [404, 503]) {
+      for (const failMetrics of [false, true]) {
+        vi.stubGlobal("fetch", async () => new Response("{}", { status: registryStatus }));
+        const { env: e } = env();
+        const object = e.COVERAGE.get(e.COVERAGE.idFromName("global"));
+        const calls: string[] = [];
+        e.COVERAGE = { idFromName: () => "global", get: () => new Proxy(object, {
+          get: (target, key) => {
+            const value = (target as unknown as Record<string | symbol, unknown>)[key];
+            if (typeof value !== "function") return value;
+            return (...args: unknown[]) => {
+              calls.push(String(key));
+              if (failMetrics && key === "registrationFailure") return Promise.reject(new Error("private RPC details"));
+              return value.apply(target, args);
+            };
+          },
+        }) } as unknown as Env["COVERAGE"];
+        const response = await handle(post({ purl: "pkg:npm/invalid" }), e);
+        expect(response.status).toBe(registryStatus);
+        expect(calls).toEqual(["held", "registrationFailure"]);
+        const body = await response.json();
+        if (registryStatus === 404) expect(body).toEqual({ error: "No public package with this identity" });
+        else {
+          expect(response.headers.get("Retry-After")).not.toBeNull();
+          expect(body).toMatchObject({ error: "The public registry could not confirm this identity; retry later" });
+        }
+      }
+    }
+    expect(JSON.stringify(logged.mock.calls)).not.toContain("private RPC details");
+  } finally { logged.mockRestore(); }
+});
+
+test("an all-rejected batch preserves per-package registry answers when the metrics RPC fails", async () => {
+  vi.stubGlobal("fetch", async (url: string) => new Response("{}", { status: url.includes("missing") ? 404 : 503 }));
+  const { env: e } = env();
+  const object = e.COVERAGE.get(e.COVERAGE.idFromName("global"));
+  e.COVERAGE = { idFromName: () => "global", get: () => new Proxy(object, {
+    get: (target, key) => key === "requestMany" ? () => Promise.reject(new Error("metrics RPC unavailable")) :
+      typeof (target as any)[key] === "function" ? (target as any)[key].bind(target) : (target as any)[key],
+  }) } as unknown as Env["COVERAGE"];
+  const response = await handle(batch("/coverage/register", { purls: ["pkg:npm/missing", "pkg:npm/unavailable"] }), e);
+  expect(response.status).toBe(200);
+  const body = await response.json() as { results: { status: number }[] };
+  expect(body.results.map((result) => result.status)).toEqual([404, 503]);
+});
+
+test("a mixed batch retains the existing whole-batch 503 when the admission RPC fails", async () => {
+  vi.stubGlobal("fetch", async (url: string) => new Response("{}", { status: url.includes("missing") ? 404 : 200 }));
+  const { env: e } = env();
+  const object = e.COVERAGE.get(e.COVERAGE.idFromName("global"));
+  e.COVERAGE = { idFromName: () => "global", get: () => new Proxy(object, {
+    get: (target, key) => key === "requestMany" ? () => Promise.reject(new Error("admission unavailable")) :
+      typeof (target as any)[key] === "function" ? (target as any)[key].bind(target) : (target as any)[key],
+  }) } as unknown as Env["COVERAGE"];
+  const response = await handle(batch("/coverage/register", { purls: ["pkg:npm/missing", "pkg:npm/valid"] }), e);
+  expect(response.status).toBe(503);
+  expect(response.headers.get("Retry-After")).not.toBeNull();
+  expect(await response.json()).not.toHaveProperty("results");
+});

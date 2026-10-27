@@ -27,6 +27,7 @@
 //                               with `pulls.next`, when the run reads the queue again (no early run while it does;
 //                               null: it is done, and an early run held back meanwhile starts)
 // Only the public identity of a package is accepted; no repository context, and no client address is stored.
+import type { Traffic } from "./demand.ts";
 import { DurableObject } from "cloudflare:workers";
 import { asset, packedAsset } from "./assets.ts";
 import { packageIdentity, technologyId } from "../../central/src/onboarding/identity.ts";
@@ -67,8 +68,8 @@ export class Coverage extends DurableObject<Env> {
   }
   /** A request and, when the package is queued, what its client is shown: one call to the object, not two (the free
    * tier counts requests to the object too). */
-  request(purl: string, address: string, known: boolean): { outcome: Outcome; view?: View } {
-    const outcome = this.queue.request(purl, address, known);
+  request(purl: string, address: string, known: boolean, traffic: Traffic = "unmarked"): { outcome: Outcome; view?: View } {
+    const outcome = this.queue.request(purl, address, known, Date.now(), traffic);
     if (outcome.type === "queued" && outcome.fastTrack)
       this.ctx.waitUntil(
         dispatch(this.env)
@@ -77,12 +78,17 @@ export class Coverage extends DurableObject<Env> {
       );
     return { outcome, view: outcome.type === "queued" ? this.queue.view(purl) : undefined };
   }
+  registrationFailure(unavailable: boolean, traffic: Traffic): void {
+    this.queue.recordDemand(unavailable ? "registry_unavailable" : "package_not_found", traffic);
+  }
   held(purl: string): boolean {
     return this.queue.held(purl);
   }
   /** `request` for several packages in order, in one call to the object. */
-  requestMany(items: { purl: string; known: boolean }[], address: string): { outcome: Outcome; view?: View }[] {
-    return items.map(({ purl, known }) => this.request(purl, address, known));
+  requestMany(items: { purl: string; known: boolean }[], address: string, traffic: Traffic = "unmarked", failures: { notFound: number; unavailable: number } = { notFound: 0, unavailable: 0 }): { outcome: Outcome; view?: View }[] {
+    if (failures.notFound) this.queue.recordDemand("package_not_found", traffic, Date.now(), failures.notFound);
+    if (failures.unavailable) this.queue.recordDemand("registry_unavailable", traffic, Date.now(), failures.unavailable);
+    return items.map(({ purl, known }) => this.request(purl, address, known, traffic));
   }
   /** Which of these packages are held, in one call to the object. */
   heldMany(purls: string[]): string[] {
@@ -119,6 +125,9 @@ export class Coverage extends DurableObject<Env> {
   }
   ack(taken: Taken[]): number {
     return this.queue.ack(taken);
+  }
+  demand(): ReturnType<PendingQueue["demandReport"]> {
+    return this.queue.demandReport();
   }
   usage(): ReturnType<PendingQueue["usageToday"]> {
     return this.queue.usageToday();
@@ -423,6 +432,8 @@ function registration(purl: string, outcome: Outcome, view: View | undefined, kn
 
 export async function handle(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
+  // Self-declared operational marker: affects reporting only, never limits or service. Never retain its value.
+  const traffic: Traffic = request.headers.get("X-Unstale-Internal-Traffic") === "1" ? "marked_internal" : "unmarked";
   const queue = () => env.COVERAGE.get(env.COVERAGE.idFromName("global"));
   try {
     if (request.method === "GET" && url.pathname === "/health") return json(200, { schema: 1, service: "unstale-coverage" });
@@ -433,12 +444,15 @@ export async function handle(request: Request, env: Env): Promise<Response> {
       const address = request.headers.get("CF-Connecting-IP") ?? "unknown";
       const known = await published(env, url, purl);
       const exists = !!known || (await queue().held(purl)) || (await registered(purl));
-      if (exists === false) return json(404, { error: "No public package with this identity" });
-      if (exists === undefined) {
+      if (exists !== true) {
+        // At most one additional RPC, best effort: metrics must not replace the registry's answer.
+        try { await queue().registrationFailure(exists === undefined, traffic); }
+        catch { console.log("Registration outcome metrics unavailable"); }
+        if (exists === false) return json(404, { error: "No public package with this identity" });
         const body = unconfirmed();
         return json(503, body, { "Retry-After": String(body.retry_after) });
       }
-      const { outcome, view } = await queue().request(purl, address, !!known);
+      const { outcome, view } = await queue().request(purl, address, !!known, traffic);
       const { status, body } = registration(purl, outcome, view, known);
       return json(status, body, outcome.type === "refused" ? { "Retry-After": String(outcome.retryAfter) } : {});
     }
@@ -453,7 +467,19 @@ export async function handle(request: Request, env: Env): Promise<Response> {
       const held = new Set(unknown.length ? await queue().heldMany(unknown) : []);
       const exists = await Promise.all(purls.map((purl, i) => !!known[i] || held.has(purl) || registered(purl)));
       const asked = purls.flatMap((purl, i) => (exists[i] ? [{ purl, known: !!known[i] }] : []));
-      const answers = asked.length ? await queue().requestMany(asked, address) : [];
+      let answers: { outcome: Outcome; view?: View }[] = [];
+      try {
+        answers = await queue().requestMany(asked, address, traffic, {
+          notFound: exists.filter((value) => value === false).length,
+          unavailable: exists.filter((value) => value === undefined).length,
+        });
+      } catch (error) {
+        // When valid packages require admission this is the existing service RPC, not a metrics-only call:
+        // preserve its whole-batch 503 behavior instead of inventing per-package admission results.
+        if (asked.length) throw error;
+        // An all-rejected batch needs only metrics; preserve the already-known registry responses.
+        console.log("Registration outcome metrics unavailable");
+      }
       const by = new Map(asked.map(({ purl }, i) => [purl, answers[i]!]));
       return json(200, {
         results: purls.map((purl, i) => {
@@ -488,6 +514,7 @@ export async function handle(request: Request, env: Env): Promise<Response> {
     }
     if (url.pathname.startsWith("/internal/")) {
       if (!authorized(request, env.DRAIN_TOKEN)) return json(401, { error: "Unauthorized" });
+      if (request.method === "GET" && url.pathname === "/internal/demand") return json(200, await queue().demand());
       if (request.method === "GET" && url.pathname === "/internal/usage") return json(200, await queue().usage());
       if (request.method === "GET" && url.pathname === "/internal/queue") return json(200, { requests: await queue().list(), usage: await queue().usage() });
       if (request.method === "POST" && url.pathname === "/internal/ack") {

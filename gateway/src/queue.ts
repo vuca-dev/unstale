@@ -48,6 +48,7 @@
 // So NEW_PER_HOUR (500) and COUNTED_VOTES_PER_HOUR (1,500) bound the day: rows written ≈ 3 × NEW_PER_HOUR × 24 +
 // COUNTED_VOTES_PER_HOUR × 24 + ~6,000. Only deliberate abuse beyond those (it cannot pass them) or raised settings
 // can spend the allowance. MAX_PENDING bounds memory and bucket size, not rows.
+import { Demand, type DemandSnapshot, type DemandOutcome, type Traffic } from "./demand.ts";
 import { AddressLimiter, Voters, type Refusal } from "../../central/src/onboarding/requesters.ts";
 
 /** One statement's result: a Durable Object's cursor counts the rows it read and wrote (node:sqlite in tests
@@ -304,6 +305,7 @@ export interface Usage {
 /** What `meta` keeps of the usage between wakes: the day's counts, when they were kept, and this hour's counted
  * votes. */
 interface KeptUsage extends Usage {
+  demand?: DemandSnapshot;
   kept: number;
   votes?: [hour: string, count: number];
 }
@@ -319,6 +321,7 @@ export class PendingQueue {
   private readonly addresses: AddressLimiter;
   private readonly votes: AddressLimiter;
   private readonly voters = new Voters();
+  private readonly demand = new Demand();
   /** Read once per wake; dropped when a write fails, so the next request reads what storage has. */
   private meta?: Map<string, string | undefined>;
   private line?: Line;
@@ -503,12 +506,12 @@ export class PendingQueue {
 
   /** One vote per requester and package, inside the address's and the hour's vote limits; over them the answer is
    * the same, uncounted. */
-  private vote(purl: string, address: string, known: boolean, now: number): void {
-    if (this.voters.has(purl, address)) return;
+  private vote(purl: string, address: string, known: boolean, now: number): DemandOutcome {
+    if (this.voters.has(purl, address)) return "duplicate";
     const hour = utcHour(now);
     if (this.votesHour[0] !== hour) this.votesHour = [hour, 0];
-    if (this.settings.votesPerHour && this.votesHour[1] >= this.settings.votesPerHour) return;
-    if (this.votes.take(address, now)) return;
+    if (this.settings.votesPerHour && this.votesHour[1] >= this.settings.votesPerHour) return "vote_global_limited";
+    if (this.votes.take(address, now)) return "vote_address_limited";
     this.operate(
       "vote",
       now,
@@ -526,22 +529,37 @@ export class PendingQueue {
     this.unkept = true;
     // The operation above may have kept the counts just before this one: keep or schedule it too.
     this.keepUsage(now);
+    return "vote_counted";
+  }
+
+  /** Aggregate outcomes use the existing bounded usage flush; no per-request database writes. */
+  recordDemand(outcome: DemandOutcome, traffic: Traffic = "unmarked", now = Date.now(), n = 1): void {
+    try {
+      this.rollDay(now);
+      this.state();
+      this.demand.count(outcome, traffic, now, n);
+      this.unkept = true;
+      this.keepUsage(now);
+    } catch {
+      // Only a fixed message: errors may contain request data. Metrics cannot change admission or responses.
+      console.log("Registration outcome metrics unavailable");
+    }
   }
 
   /** A client's request; `known` when central already has a job for the package (its status is published). */
-  request(purl: string, address: string, known: boolean, now = Date.now()): Outcome {
+  request(purl: string, address: string, known: boolean, now = Date.now(), traffic: Traffic = "unmarked"): Outcome {
     this.rollDay(now);
     // Read first (once per wake), so the hour's counted votes kept before are known.
     this.state();
     if (known) {
-      this.vote(purl, address, true, now);
+      this.recordDemand(this.vote(purl, address, true, now), traffic, now);
       return { type: "voted" };
     }
     if (this.held(purl)) {
-      this.vote(purl, address, false, now);
+      this.recordDemand(this.vote(purl, address, false, now), traffic, now);
       return { type: "queued", ...this.position(purl)!, fastTrack: false };
     }
-    return this.operate(
+    const outcome = this.operate<Outcome>(
       "register",
       now,
       (): Outcome => {
@@ -562,6 +580,8 @@ export class PendingQueue {
       },
       true,
     );
+    this.recordDemand(outcome.type === "refused" ? (outcome.limit === "address" ? "refused_address" : "refused_budget") : "accepted", traffic, now);
+    return outcome;
   }
 
   private count(): number {
@@ -808,6 +828,7 @@ export class PendingQueue {
       kept = undefined;
     }
     if (!kept) return;
+    this.demand.restore(kept.demand);
     this.kept = Number(kept.kept) || 0;
     if (Array.isArray(kept.votes)) this.votesHour = [String(kept.votes[0]), Number(kept.votes[1]) || 0];
     if (kept.day !== this.usage.day) return;
@@ -840,7 +861,7 @@ export class PendingQueue {
       // the cursor says otherwise, the difference is kept next time.
       const own = (this.usage.ops.usage ??= { n: 0, read: 0, written: 0 });
       const ahead = (u: Usage, d: number): Usage => ({ ...u, rows_written: u.rows_written + d, ops: { ...u.ops, usage: { ...own, written: own.written + d } } });
-      const kept: KeptUsage = { ...ahead(this.usage, 1), kept: now, votes: this.votesHour };
+      const kept: KeptUsage = { ...ahead(this.usage, 1), kept: now, votes: this.votesHour, demand: this.demand.read(now) };
       const before = this.usage.rows_read + this.usage.rows_written;
       this.exec("INSERT INTO meta (k, v) VALUES ('usage', ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v", JSON.stringify(kept));
       this.kept = now;
@@ -864,6 +885,14 @@ export class PendingQueue {
     }
   }
 
+  /** Operator-only aggregate history; kept in the existing usage row. */
+  demandReport(now = Date.now()): DemandSnapshot {
+    this.rollDay(now);
+    this.state();
+    this.keepUsage(now, true);
+    return this.demand.read(now);
+  }
+
   /** Today's rows, the allowance and what is left of it, kept now; for the operator (`/internal/usage`). */
   usageToday(now = Date.now()) {
     this.rollDay(now);
@@ -871,8 +900,11 @@ export class PendingQueue {
     this.keepUsage(now, true);
     const hour = utcHour(now);
     const [h, c] = (this.getMeta("new") ?? "").split(" ");
+    const demand = this.demand.read(now);
     return {
       ...this.usage,
+      // Keep ingestion snapshots small: the dedicated endpoint serves retained history.
+      demand: { since: demand.since, days: demand.days.filter((row) => row.day === this.usage.day) },
       allowance: ALLOWANCE,
       left: { rows_read: ALLOWANCE.rows_read - this.usage.rows_read, rows_written: ALLOWANCE.rows_written - this.usage.rows_written },
       held: this.count(),
