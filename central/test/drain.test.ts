@@ -11,6 +11,7 @@ import { CoverageService, failureClass, SLICE_LIMIT_CYCLES, SLICE_LIMIT_MS } fro
 import { Taken } from "../src/onboarding/taken.ts";
 import type { Limits } from "../src/onboarding/limits.ts";
 import { exportCatalog } from "../src/pipeline/export.ts";
+import { HttpError } from "../src/pipeline/llm.ts";
 import { catalogDir, centralDir, usageLog } from "../src/pipeline/paths.ts";
 import { publishTechnology } from "../src/pipeline/publish.ts";
 import { logUsage, sha256 } from "../src/pipeline/util.ts";
@@ -97,6 +98,9 @@ test("an error's class is bounded: a status, a failure kind or a type name, neve
   expect(failureClass(new FetchFailure("blocked_url", "x.example resolves to blocked address 10.0.0.1"))).toBe("blocked_url");
   expect(failureClass(new FetchFailure("http_status", "https://x.example/a: HTTP 503", 503))).toBe("HTTP 503");
   expect(failureClass(new Error("https://registry.npmjs.org/x: 404"))).toBe("HTTP 404");
+  expect(failureClass(new HttpError(502, "bad gateway"))).toBe("HTTP 502");
+  expect(failureClass(new HttpError(0, "no answer within 60000 ms"))).toBe("timeout");
+  expect(failureClass(new HttpError(0, "TypeError: fetch failed (connect ECONNREFUSED 10.0.0.1:443)"))).toBe("network");
   expect(failureClass(new Error("request to https://x.example timed out after 30s"))).toBe("timeout");
   expect(failureClass(new TypeError("Cannot read properties of undefined (reading 'x.example')"))).toBe("TypeError");
   expect(failureClass("a string thrown")).toBe("unknown");

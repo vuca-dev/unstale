@@ -1553,7 +1553,8 @@ function sliceFailed(job: Job, isNew: boolean, refresh: boolean, error: string) 
  * which can carry hosts, redirect targets or addresses. A status in a message is read as `rateLimit` reads 429. */
 export function failureClass(error: unknown): string {
   if (error instanceof FetchFailure) return error.httpStatus !== undefined ? `HTTP ${error.httpStatus}` : error.kind;
-  if (error instanceof HttpError) return `HTTP ${error.status}`;
+  // Status 0 is the model call's own: no response at all, either its deadline ("no answer within N ms") or the network.
+  if (error instanceof HttpError) return error.status > 0 ? `HTTP ${error.status}` : /^no answer within \d+ ms$/.test(error.message) ? "timeout" : "network";
   if (error instanceof ClassifierError || error instanceof ExtractFailure) return error.kind;
   if (error instanceof LockTimeout) return "lock timeout";
   const message = String(error instanceof Error ? error.message : error);
