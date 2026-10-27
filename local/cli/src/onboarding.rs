@@ -4547,6 +4547,60 @@ mod tests {
         });
         (base, log)
     }
+    #[test]
+    fn coverage_marker_is_explicit_and_limited_to_coverage_posts() {
+        // Child processes isolate environment changes from parallel tests (no global env mutation).
+        if std::env::var_os("UNSTALE_DEMAND_HEADER_TEST").is_none() {
+            for value in [None, Some("0"), Some("1")] {
+                let mut command = std::process::Command::new(std::env::current_exe().unwrap());
+                command.args(["--exact", "onboarding::tests::coverage_marker_is_explicit_and_limited_to_coverage_posts"])
+                    .env("UNSTALE_DEMAND_HEADER_TEST", "1").env_remove("UNSTALE_INTERNAL_TRAFFIC");
+                if let Some(value) = value { command.env("UNSTALE_INTERNAL_TRAFFIC", value); }
+                let output = command.output().unwrap();
+                assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stdout));
+            }
+            return;
+        }
+        use std::io::{BufRead, BufReader, Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            let mut headers = Vec::new();
+            for _ in 0..3 {
+                let (mut stream, _) = listener.accept().unwrap();
+                stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+                let mut reader = BufReader::new(stream.try_clone().unwrap());
+                let mut target = String::new();
+                reader.read_line(&mut target).unwrap();
+                let mut length = 0;
+                let mut marked = false;
+                loop {
+                    let mut line = String::new();
+                    reader.read_line(&mut line).unwrap();
+                    if line.trim().is_empty() { break; }
+                    if let Some((key, value)) = line.split_once(':') {
+                        if key.eq_ignore_ascii_case("content-length") { length = value.trim().parse().unwrap(); }
+                        if key.eq_ignore_ascii_case("x-unstale-internal-traffic") { assert_eq!(value.trim(), "1"); marked = true; }
+                    }
+                }
+                reader.read_exact(&mut vec![0; length]).unwrap();
+                headers.push(marked);
+                let job = job_json("pkg:npm/a");
+                let body = if target.starts_with("POST /coverage/register ") {
+                    serde_json::json!({"results": [{"purl": "pkg:npm/a", "status": 202, "job": job}]}).to_string()
+                } else { job.to_string() };
+                write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
+            }
+            headers
+        });
+        let a = agent();
+        request_via(&a, &base, "pkg:npm/a", true).unwrap();
+        let results = batch_via(&a, &base, "register", &["pkg:npm/a".into()]).unwrap();
+        assert!(results[0].is_ok());
+        request_via(&a, &base, "pkg:npm/a", false).unwrap();
+        let marked = std::env::var("UNSTALE_INTERNAL_TRAFFIC").as_deref() == Ok("1");
+        assert_eq!(server.join().unwrap(), vec![marked, marked, false]);
+    }
     fn job_json(purl: &str) -> serde_json::Value {
         serde_json::json!({"purl": purl, "technology": "t", "name": "n", "state": "queued", "stage": ""})
     }
