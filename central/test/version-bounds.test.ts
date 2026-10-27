@@ -123,6 +123,35 @@ describe("a moving page's release bound", () => {
     expect(boundGuideRecords(s, bounds)).toBe(0);
   });
 
+  test("a guide that is one version's changelog section is exact however late it was read", () => {
+    const t = { id: "ts-jest-214893a1" } as Technology;
+    const section = "# [29.0.0](https://github.com/kulshekhar/ts-jest/compare/v29.0.0-next.1...v29.0.0) (2022-09-08)\n\n## DEPRECATIONS\n\n* Define `ts-jest` config under `globals` is now deprecated.\n";
+    const whole = "# Changelog\n\n## [29.4.15] (2026-10-01)\n\n* later fix\n\n" + section;
+    const entry = (snapshot: string) => ({ technology: t.id, kind: "upgrade_guide", tag: "guide-29", version: "29.0.0", date: "2022-09-09", url: "https://github.com/kulshekhar/ts-jest/blob/main/CHANGELOG.md", snapshot, keyTag: `+guide.${snapshot.slice(7, 15)}`, via: "linked", read: "2026-10-23" });
+    const g = join(dir, "guides", techLocal(t.id));
+    writeAtomic(join(g, "29.sectionx.md"), section);
+    writeAtomic(join(g, "29.wholexxx.md"), whole);
+    writeAtomic(join(g, "index.json"), JSON.stringify({ checked: "2026-10-23T00:00:00Z", guides: [entry("sha256:sectionxx"), entry("sha256:wholexxxx")] }));
+    const releases = [{ version: "29.0.0", date: "2022-09-09" }, { version: "29.4.15", date: "2026-10-01" }];
+    // The section alone: exact. The whole changelog (more than the 29.0.0 section): bounded as a moving page.
+    expect(Object.fromEntries(guideBounds(t, releases))).toEqual({ "sha256:sectionxx": { version: "29.0.0" }, "sha256:wholexxxx": { version: "29.0.0", noLaterThan: "29.4.15" } });
+  });
+
+  test("a record read only from an exact changelog section loses the bound it was given; a bounded one keeps it", () => {
+    const ev = (snapshot: string) => [{ kind: "upgrade_guide" as const, url: "https://github.com/kulshekhar/ts-jest/blob/main/CHANGELOG.md", quote: "q", snapshot }];
+    const bounds = new Map<string, { version: string; noLaterThan?: string }>([["sha256:exact", { version: "5.0.0" }], ["sha256:read", { version: "5.0.0", noLaterThan: "5.104.5" }]]);
+    const fromSection = record({ id: "a:b", releases: [rel("5.0.0", "5.104.5")], evidence: ev("sha256:exact") });
+    const both = record({ id: "a:c", releases: [rel("5.0.0", "5.104.5")], evidence: [...ev("sha256:exact"), ...ev("sha256:read")] });
+    const moving = record({ id: "a:d", releases: [rel("5.0.0", "5.104.5")], evidence: ev("sha256:read") });
+    const s: TechStore = { technology: "t", records: { [fromSection.id]: fromSection, [both.id]: both, [moving.id]: moving }, ingested: {} };
+    expect(boundGuideRecords(s, bounds)).toBe(2);
+    expect(fromSection.releases).toEqual([rel("5.0.0")]);
+    expect(both.releases).toEqual([rel("5.0.0")]);
+    expect(moving.releases).toEqual([rel("5.0.0", "5.104.5")]);
+    expect(fromSection.history.at(-1)?.detail).toMatch(/exact/);
+    expect(boundGuideRecords(s, bounds)).toBe(0);
+  });
+
   test("recomputing releases keeps a bound that only page sources support", () => {
     const store = { releaseIndex: { depth: 1, releases: [{ version: "5.0.0", date: "2023-10-17", line: "5" }] } } as Pick<TechStore, "releaseIndex">;
     const r = record({ releases: [rel("5.0.0", "5.104.5")] });

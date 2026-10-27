@@ -205,21 +205,33 @@ export function mergeInto(s: TechStore, fromId: string, intoId: string, detail =
 /**
  * Records ingested from a whole upgrade guide before guide bounds were kept (fetch.ts `guideBounds`, by snapshot): a
  * record whose every source is a bounded guide gets the bound on its release at the guide's version, so a later 5.x
- * API the `latest` v5 guide describes is no longer dated 5.0.0 outright. A record with any other source (release
- * notes, an advisory, a docs edit) keeps its releases. Returns how many records changed.
+ * API the `latest` v5 guide describes is no longer dated 5.0.0 outright. A record any of whose sources at that version
+ * is an exact one (a guide that is the version's own changelog section) loses a bound it was given, since an exact
+ * release inside the bound is the introducing one. A record with any other source (release notes, an advisory, a docs
+ * edit) keeps its releases. Returns how many records changed.
  */
-export function boundGuideRecords(s: TechStore, bounds: ReadonlyMap<string, { version: string; noLaterThan: string }>): number {
+export function boundGuideRecords(s: TechStore, bounds: ReadonlyMap<string, { version: string; noLaterThan?: string }>): number {
   let n = 0;
   for (const r of Object.values(s.records)) {
     if (r.status !== "active" || !r.evidence.length) continue;
     const bs = r.evidence.map((e) => bounds.get(e.snapshot));
     if (bs.some((b) => !b)) continue;
     const releases = r.releases.map((x) => {
-      const his = bs.filter((b) => b!.version === x.version).map((b) => b!.noLaterThan);
-      if (x.no_later_than || !his.length) return x;
-      return { ...x, no_later_than: his.sort(compareVersions)[0]! };
+      const at = bs.filter((b) => b!.version === x.version);
+      if (!at.length) return x;
+      if (at.some((b) => !b!.noLaterThan)) {
+        const { no_later_than: _, ...exact } = x;
+        return exact;
+      }
+      if (x.no_later_than) return x;
+      return { ...x, no_later_than: at.map((b) => b!.noLaterThan!).sort(compareVersions)[0]! };
     });
-    if (applyChange(r, { releases }, "guide-bound", { detail: "read from a moving upgrade guide: release bounded" }).revision) n++;
+    if (JSON.stringify(releases) === JSON.stringify(r.releases)) continue;
+    const detail = releases.some((x, i) => !("no_later_than" in x) && r.releases[i]!.no_later_than)
+      ? "read from one release's changelog section: release exact"
+      : "read from a moving upgrade guide: release bounded";
+    applyChange(r, { releases }, "guide-bound", { detail });
+    n++;
   }
   return n;
 }

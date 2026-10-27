@@ -700,25 +700,48 @@ async function discoverMajors(t: Technology, index: GuideIndex, releases: Parame
  * `latest` v5 guide, first read at 5.104, describes `queryClient.query` of a later 5.x minor as if 5.0.0's). An entry
  * from before the read day was kept is dated its first read day unless that is its x.0.0 release's day.
  */
-function guideBound(g: GuideIndex["guides"][number], releases: ReadonlyArray<{ version: string; date: string }>): string | undefined {
+function guideBound(g: GuideIndex["guides"][number], releases: ReadonlyArray<{ version: string; date: string }>, text: string | undefined): string | undefined {
+  if (text !== undefined && versionSection(g, text)) return undefined;
   const read = g.read ?? (releases.some((r) => r.version === g.version && r.date === g.date) ? undefined : g.date);
   if (!read) return undefined;
   return lineBound(g.version.split(".")[0]!, releases.filter((r) => r.date <= read).map((r) => r.version));
 }
 
 /**
- * Every ingested guide's bound by snapshot (other variants' guides too: records already cite them), for records the
- * store holds from before bounds were kept (`boundGuideRecords`).
+ * A guide whose whole text is its own version's section of a repository Markdown file (majors.ts keeps only the x.0.0
+ * section of a changelog it links or finds): what a released version's heading lists does not move, so it carries no
+ * bound however late it was read (ts-jest's CHANGELOG.md `# [29.0.0]` section, read at 29.4.15).
  */
-export function guideBounds(t: Technology, releases: ReadonlyArray<{ version: string; date: string }>): Map<string, { version: string; noLaterThan: string }> {
+function versionSection(g: { url: string; version: string }, text: string): boolean {
+  if (!repoFileLink(g.url)) return false;
+  const s = sectionFor(text, g.version);
+  return !!s && s.text === text.trim();
+}
+
+/**
+ * Every ingested guide's bound by snapshot (other variants' guides too: records already cite them), for records the
+ * store holds from before bounds were kept (`boundGuideRecords`). A guide that is one version's changelog section is
+ * listed without a bound: records read only from it are exact.
+ */
+export function guideBounds(t: Technology, releases: ReadonlyArray<{ version: string; date: string }>): Map<string, { version: string; noLaterThan?: string }> {
   const index = readJson<GuideIndex>(join(guideDir(t), "index.json"));
-  const out = new Map<string, { version: string; noLaterThan: string }>();
+  const out = new Map<string, { version: string; noLaterThan?: string }>();
   for (const g of index?.guides ?? []) {
-    const b = guideBound(g, releases);
+    const text = guideText(t, g);
+    if (text !== undefined && versionSection(g, text)) {
+      out.set(g.snapshot, { version: g.version });
+      continue;
+    }
+    const b = guideBound(g, releases, text);
     if (b) out.set(g.snapshot, { version: g.version, noLaterThan: b });
   }
   return out;
 }
+
+const guideText = (t: Technology, g: { version: string; snapshot: string }): string | undefined => {
+  const p = join(guideDir(t), `${g.version.split(".")[0]}.${g.snapshot.slice(7, 15)}.md`);
+  return existsSync(p) ? readFileSync(p, "utf8") : undefined;
+};
 
 const guideDir = (t: Technology) => join(centralDir(), "guides", techLocal(t.id));
 
@@ -777,7 +800,8 @@ export async function fetchGuides(
     .map((g) => {
       const p = join(guideDir(t), `${g.version.split(".")[0]}.${g.snapshot.slice(7, 15)}.md`);
       const { read: _, ...note } = g;
-      const bound = g.kind === "release_notes" ? undefined : guideBound(g, releases);
-      return { ...note, ...(bound ? { noLaterThan: bound } : {}), notes: readFileSync(p, "utf8") };
+      const notes = readFileSync(p, "utf8");
+      const bound = g.kind === "release_notes" ? undefined : guideBound(g, releases, notes);
+      return { ...note, ...(bound ? { noLaterThan: bound } : {}), notes };
     });
 }
