@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "vitest";
 import { usageLog } from "../src/pipeline/paths.ts";
 import { TECHNOLOGIES } from "../src/pipeline/technologies.ts";
-import { jevAttribution, estimate, loadPrices, monitoredTechnologies, usageByPhase } from "../src/pipeline/usage.ts";
+import { jevAttribution, estimate, loadPrices, monitoredTechnologies, providerAttribution, usageByPhase } from "../src/pipeline/usage.ts";
 import { logUsage, withUsagePhase } from "../src/pipeline/util.ts";
 
 const prev = process.env.UNSTALE_CENTRAL_DIR;
@@ -183,6 +183,20 @@ test("Jev attribution isolates a run and attempt, ranks sources, and does not co
     if (oldAttempt === undefined) delete process.env.GITHUB_RUN_ATTEMPT;
     else process.env.GITHUB_RUN_ATTEMPT = oldAttempt;
   }
+});
+
+test("provider attribution ranks one provider's technologies by dollars, output-heavy calls included", () => {
+  const prices = [{ provider: "vercel", model: "openai/gpt-6-luna", input: 0.1, output: 1 }];
+  const call = { api: "vercel", model: "openai/gpt-6-luna", run: "7", run_attempt: "1", phase: "monitoring" };
+  const result = providerAttribution([
+    { ...call, tech: "electron", input_tokens: 1000, output_tokens: 100000 },
+    { ...call, tech: "electron", input_tokens: 1000, output_tokens: 100000 },
+    { ...call, tech: "react", input_tokens: 500000, output_tokens: 1000 },
+    { ...call, tech: "next", input_tokens: 1000, output_tokens: 1000, dollars: 0.5 },
+    { ...call, api: "jev", tech: "electron", input_tokens: 9000000 },
+  ], prices, "vercel", "7");
+  expect(result).toMatchObject({ api: "vercel", calls: 4, input_tokens: 503000, output_tokens: 202000,
+    top: [{ technology: "next", dollars: 0.5 }, { technology: "electron", calls: 2, dollars: 0.2002 }, { technology: "react", model: "openai/gpt-6-luna", dollars: 0.051 }] });
 });
 
 test("sample retries move to the end and retained-log scope does not invent an Actions attempt", () => {

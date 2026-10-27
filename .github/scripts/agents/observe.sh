@@ -32,7 +32,7 @@ for id in $(jq -r '[.[] | select(.workflowName == "ingest" and (.conclusion == "
     > "$out/steps-$id.txt" 2>/dev/null
   job=$(gh api "repos/$repo/actions/runs/$id/jobs" --jq '.jobs[] | select(.name == "ingest") | .id' 2>/dev/null | head -1)
   [ -n "$job" ] && gh run view "$id" --repo "$repo" --job "$job" --log 2>/dev/null \
-    | awk -F'\t' '$2 == "Usage" { sub(/^[0-9T:.Z-]+ /, "", $3); print $3 }' | cap 10000 > "$out/usage-$id.txt"
+    | awk -F'\t' '$2 == "Usage" { sub(/^[0-9T:.Z-]+ /, "", $3); print $3 }' | cap 24000 > "$out/usage-$id.txt"
 done
 
 if [ -n "${CLOUDFLARE_API_TOKEN:-}" ]; then

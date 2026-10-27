@@ -46,7 +46,7 @@ import { registryStats } from "./registry.ts";
 import { ShardLine } from "../schema/catalog.ts";
 import { applyChange, LABEL_FIELDS, loadStore, mergeInto, retract, REVISION_FIELDS, saveStore, type EditableField, type StoredRecord } from "./store.ts";
 import { TECHNOLOGIES, type Technology } from "./technologies.ts";
-import { jevAttribution, loadPrices, monitoredTechnologies, usageByPhase } from "./usage.ts";
+import { jevAttribution, loadPrices, monitoredTechnologies, providerAttribution, usageByPhase } from "./usage.ts";
 import { pool, readJson, withUsagePhase } from "./util.ts";
 import { techLocal } from "../state/client.ts";
 
@@ -332,11 +332,19 @@ async function main(): Promise<void> {
       return;
     }
     case "jev-usage":
+    case "provider-usage":
     case "usage": {
       // The current UTC month: the state save moves earlier months to central/archive (state/snapshot.ts).
       const lines = readFileSync(join(centralDir(), "usage.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l) as Record<string, unknown>);
       if (cmd === "jev-usage") {
         console.log(JSON.stringify(jevAttribution(lines, loadPrices()), null, 1));
+        return;
+      }
+      // `provider-usage <api>`: the same ranking for any provider, e.g. `vercel` for extraction.
+      if (cmd === "provider-usage") {
+        const [api] = parseArgs({ args: rest, allowPositionals: true }).positionals;
+        if (!api) throw new Error("provider-usage <api> (as usage.jsonl names it, e.g. vercel)");
+        console.log(JSON.stringify(providerAttribution(lines, loadPrices(), api), null, 1));
         return;
       }
       const by: Record<string, { calls: number; input_tokens: number; output_tokens: number }> = {};
