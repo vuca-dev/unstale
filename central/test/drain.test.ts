@@ -5,8 +5,9 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { FetchFailure } from "../src/collector/http.ts";
 import * as discovery from "../src/onboarding/discovery.ts";
-import { CoverageService, SLICE_LIMIT_CYCLES, SLICE_LIMIT_MS } from "../src/onboarding/service.ts";
+import { CoverageService, failureClass, SLICE_LIMIT_CYCLES, SLICE_LIMIT_MS } from "../src/onboarding/service.ts";
 import { Taken } from "../src/onboarding/taken.ts";
 import type { Limits } from "../src/onboarding/limits.ts";
 import { exportCatalog } from "../src/pipeline/export.ts";
@@ -75,17 +76,30 @@ test("drain works the queue until nothing more can start, then returns", async (
   expect(service.metrics()).toMatchObject({ slices: { new: { started: 3, finished: 3, failed: 0, rate_limited: 0 }, refresh: { started: 0 } }, pauses: 0 });
 });
 
-test("a failed slice is logged with its technology, kind, failure count and reason, as its status says", async () => {
-  vi.spyOn(discovery, "discoverTechnology").mockRejectedValue(new Error("registry answered HTTP 500"));
+const sliceFailures = (log: { mock: { calls: unknown[][] } }) =>
+  log.mock.calls.map(([line]) => (typeof line === "string" && line.startsWith("{") ? JSON.parse(line) : undefined)).filter((e) => e?.event === "slice_failed");
+
+test("a failed slice is logged with its log name, kind, failure count and error class; its status keeps the reason", async () => {
+  const reason = "https://registry.example/broken redirected to http://10.0.0.1/x: HTTP 500";
+  vi.spyOn(discovery, "discoverTechnology").mockRejectedValue(new Error(reason));
   const log = vi.spyOn(console, "error").mockImplementation(() => {});
   const service = new CoverageService(1, { limits: limits() }).hold();
   service.enqueue([{ purl: "pkg:npm/broken", demand: 1 }]);
   await service.drain(Date.now() + 60_000, 5_000, 10);
   expect(service.metrics()).toMatchObject({ slices: { new: { started: 1, failed: 1 } } });
-  const events = log.mock.calls.map(([line]) => (typeof line === "string" && line.startsWith("{") ? JSON.parse(line) : undefined)).filter((e) => e?.event === "slice_failed");
-  const job = service.jobs.get("pkg:npm/broken")!;
-  expect(events).toEqual([{ event: "slice_failed", technology: job.technology, kind: "new", failures: 1, why: "registry answered HTTP 500" }]);
-  expect(job).toMatchObject({ state: "failed", stage: "registry answered HTTP 500" });
+  // Not admitted: named by its hash, never its purl; the message's hosts and addresses stay out of the log.
+  expect(sliceFailures(log)).toEqual([{ event: "slice_failed", job: `requested package ${sha256("pkg:npm/broken").slice(0, 12)}`, kind: "new", failures: 1, error: "HTTP 500" }]);
+  expect(JSON.stringify(sliceFailures(log))).not.toMatch(/pkg:npm\/broken|registry\.example|10\.0\.0\.1/);
+  expect(service.jobs.get("pkg:npm/broken")).toMatchObject({ state: "failed", stage: reason });
+});
+
+test("an error's class is bounded: a status, a failure kind or a type name, never its message", () => {
+  expect(failureClass(new FetchFailure("blocked_url", "x.example resolves to blocked address 10.0.0.1"))).toBe("blocked_url");
+  expect(failureClass(new FetchFailure("http_status", "https://x.example/a: HTTP 503", 503))).toBe("HTTP 503");
+  expect(failureClass(new Error("https://registry.npmjs.org/x: 404"))).toBe("HTTP 404");
+  expect(failureClass(new Error("request to https://x.example timed out after 30s"))).toBe("timeout");
+  expect(failureClass(new TypeError("Cannot read properties of undefined (reading 'x.example')"))).toBe("TypeError");
+  expect(failureClass("a string thrown")).toBe("unknown");
 });
 
 test("no count of new technologies: a large repository's 400 packages all start in one drain while tokens last", async () => {
@@ -288,9 +302,16 @@ test("a slice killed with its cycle keeps its work time; past the limit it is st
     job.interrupted.ms = SLICE_LIMIT_MS;
     job.interrupted.stage = "Checking security advisories";
     job.interrupted.cycles = 2;
+    // Admitted meanwhile: the new technology's stopped slice is still logged in the line it started in.
+    if (purl === "pkg:npm/new") job.admitted = "t";
     writeFileSync(file, JSON.stringify(job));
   }
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
   const third = new CoverageService(2, { limits: limits() }).hold();
+  expect(sliceFailures(log).sort((a, b) => a.job.localeCompare(b.job))).toEqual([
+    { event: "slice_failed", job: "pkg:npm/new", kind: "new", failures: 1, error: "stopped" },
+    { event: "slice_failed", job: "pkg:npm/refresh", kind: "refresh", failures: 1, error: "stopped" },
+  ]);
   const stopped = /"Checking security advisories" did not finish in 40 minutes over 2 cycles; retried after /;
   expect(third.jobs.get("pkg:npm/refresh")).toMatchObject({ state: "monitoring", failures: 1, stage: expect.stringMatching(stopped) });
   expect(third.jobs.get("pkg:npm/new")).toMatchObject({ state: "failed", failures: 1, stage: expect.stringMatching(/^Stopped: /) });
