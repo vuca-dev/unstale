@@ -4,10 +4,10 @@ import { expect, test } from "vitest";
 
 function replay(reduced = false) {
   const elements = new Map<string, any>();
-  const element = () => ({ hidden: true, textContent: "", attributes: new Set(), handlers: {} as Record<string, () => void>,
+  const element = () => ({ hidden: true, dataset: {}, value: "2", textContent: "", attributes: new Set(), handlers: {} as Record<string, () => void>,
     addEventListener(event: string, fn: () => void) { this.handlers[event] = fn; },
     setAttribute(name: string) { this.attributes.add(name); }, removeAttribute(name: string) { this.attributes.delete(name); } });
-  for (const name of [".term-controls", ".term-progress", ".term-result", "[data-demo-toggle]", "[data-demo-finish]", "[data-demo-status]", "[data-demo-stage]", "[data-demo-detail]"]) elements.set(name, element());
+  for (const name of [".term-controls", ".term-progress", ".term-result", "[data-demo-toggle]", "[data-demo-replay]", "[data-demo-speed]", "[data-demo-status]", "[data-demo-stage]", "[data-demo-detail]"]) elements.set(name, element());
   elements.get(".term-result").hidden = false;
   const classes = new Set();
   const demo = { querySelector: (name: string) => elements.get(name), classList: { add: (n: string) => classes.add(n), remove: (n: string) => classes.delete(n) } };
@@ -40,7 +40,7 @@ test("plays once on visibility, then keeps results readable until replay is requ
   expect(r.classes.has("term-running")).toBe(true);
 });
 
-test("pause and hidden tabs exclude elapsed time; show results ends the animation", () => {
+test("pause and hidden tabs exclude elapsed time; replay restarts the animation", () => {
   const r = replay(); r.visible(true); r.tick(0); r.tick(1000);
   r.elements.get("[data-demo-toggle]").handlers.click(); r.tick(10000);
   expect(r.frames.size).toBe(0);
@@ -49,9 +49,10 @@ test("pause and hidden tabs exclude elapsed time; show results ends the animatio
   r.document.hidden = true; r.events.visibilitychange!(); r.tick(20000);
   r.document.hidden = false; r.events.visibilitychange!(); r.tick(30000);
   expect(r.elements.get("[data-demo-stage]").textContent).toContain("step 1/5");
-  r.elements.get("[data-demo-finish]").handlers.click();
-  expect(r.frames.size).toBe(0);
-  expect(r.elements.get(".term-progress").hidden).toBe(true);
+  r.elements.get("[data-demo-replay]").handlers.click();
+  r.tick(31000);
+  expect(r.elements.get("[data-demo-stage]").textContent).toContain("step 1/5");
+  expect(r.elements.get(".term-progress").hidden).toBe(false);
 });
 
 test("reduced motion keeps the server-rendered final output and starts no animation", () => {
@@ -60,3 +61,18 @@ test("reduced motion keeps the server-rendered final output and starts no animat
   expect(r.classes.has("term-running")).toBe(false);
   expect(r.elements.get(".term-controls").hidden).toBe(true);
 });
+
+for (const speed of ["1", "0.5"]) {
+  test(`speed ${speed} slows playback and survives replay`, () => {
+    const r = replay(); r.visible(true); r.tick(0);
+    const select = r.elements.get("[data-demo-speed]");
+    select.value = speed; select.handlers.change();
+    r.tick(0); r.tick(7600);
+    expect(r.classes.has("term-running")).toBe(true);
+    r.tick(15000 / Number(speed) + 100);
+    expect(r.classes.has("term-running")).toBe(false);
+    r.elements.get("[data-demo-replay]").handlers.click();
+    r.tick(40000); r.tick(47600);
+    expect(r.classes.has("term-running")).toBe(true);
+  });
+}

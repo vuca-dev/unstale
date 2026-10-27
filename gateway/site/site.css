@@ -150,8 +150,9 @@ ul.changes .meta { font-size: 0.78rem; margin-top: 2px; color: var(--muted); dis
 .brew-install .install-hint { margin: 12px 0 8px; }
 
 /* Keep the result's height reserved throughout the replay. */
-.term-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 8px 14px; background: #0a0f11; color: #849a9e; border: 1px solid var(--line); border-bottom: 0; border-radius: 10px 10px 0 0; font-size: .78rem; }
-.term-controls { display: flex; gap: 6px; }
+.term-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 8px 14px; background: #0a0f11; color: #849a9e; border: 1px solid var(--line); border-bottom: 0; border-radius: 10px 10px 0 0; font-size: .78rem; }
+.term-toolbar > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.term-controls { display: flex; flex: none; align-items: center; gap: 4px; }
 .term-controls[hidden], .term-controls button[hidden], .term-progress[hidden] { display: none; }
 .term-screen { position: relative; }
 .term-screen > pre { border-radius: 0 0 10px 10px; }
@@ -159,5 +160,12 @@ ul.changes .meta { font-size: 0.78rem; margin-top: 2px; color: var(--muted); dis
 .term-progress { position: absolute; inset: 0; background: #0a0f11; border: 1px solid var(--line); border-radius: 0 0 10px 10px; padding: 18px 20px; overflow: hidden; }
 .term-progress pre { border: 0; padding: 0; border-radius: 0; }
 .term-progress canvas { display: block; width: min(100%, 520px); aspect-ratio: 3.2; margin: 20px 0; }
-.term-controls button { color: #e0e8e8; width: auto; height: auto; min-height: 36px; padding: 6px 10px; white-space: nowrap; }
+.term-controls button { color: #e0e8e8; width: 36px; height: 36px; min-height: 36px; padding: 8px; white-space: nowrap; }
 .term-controls button:focus-visible { outline: 2px solid #67dc91; outline-offset: 3px; }
+
+.term-controls svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.term-controls .demo-play { fill: currentColor; stroke: none; }
+[data-state="pause"] .demo-play, [data-state="play"] .demo-pause { display: none; }
+.term-speed { display: flex; align-items: center; gap: 2px; margin-left: 4px; padding-left: 8px; border-left: 1px solid #304044; }
+.term-speed select { min-height: 36px; padding: 0 2px; border: 0; background: #0a0f11; color: #e0e8e8; font: inherit; cursor: pointer; }
+.term-speed select:focus-visible { outline: 2px solid #67dc91; outline-offset: 3px; }

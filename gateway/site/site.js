@@ -169,7 +169,15 @@ if (demo) {
   const progress = demo.querySelector(".term-progress");
   const result = demo.querySelector(".term-result");
   const toggle = demo.querySelector("[data-demo-toggle]");
-  const finishButton = demo.querySelector("[data-demo-finish]");
+  const replayButton = demo.querySelector("[data-demo-replay]");
+  const speedControl = demo.querySelector("[data-demo-speed]");
+  let speed = Number(speedControl.value);
+  function setToggle(playing) {
+    toggle.dataset.state = playing ? "pause" : "play";
+    const label = playing ? "Pause demo" : "Play demo";
+    toggle.setAttribute("aria-label", label);
+    toggle.title = label;
+  }
   const mark = wordmark(document.getElementById("demo-wordmark"), true);
   const stage = demo.querySelector("[data-demo-stage]");
   const detail = demo.querySelector("[data-demo-detail]");
@@ -189,13 +197,12 @@ if (demo) {
     progress.hidden = true;
     demo.classList.remove("term-running");
     result.removeAttribute("aria-hidden");
-    toggle.textContent = "Replay";
-    finishButton.hidden = true;
+    setToggle(false);
   }
   function tick(now) {
     frame = null;
     if (done || paused || !visible || document.hidden) { previous = null; return; }
-    if (previous !== null) elapsed += now - previous;
+    if (previous !== null) elapsed += (now - previous) * speed / 2;
     previous = now;
     if (elapsed >= 7500) { finish(); return; }
     mark?.draw(5.5 + elapsed / 1000 * 3);
@@ -221,17 +228,20 @@ if (demo) {
     demo.classList.add("term-running");
     mark?.resize();
     result.setAttribute("aria-hidden", "true");
-    toggle.textContent = "Pause";
-    finishButton.hidden = false;
+    setToggle(true);
     schedule();
   }
   toggle.addEventListener("click", () => {
     if (done) { start(); return; }
     paused = !paused;
-    toggle.textContent = paused ? "Resume" : "Pause";
+    setToggle(!paused);
     schedule();
   });
-  finishButton.addEventListener("click", finish);
+  replayButton.addEventListener("click", start);
+  speedControl.addEventListener("change", () => {
+    speed = Number(speedControl.value);
+    schedule();
+  });
   motion.addEventListener("change", () => { if (motion.matches) { finish(); controls.hidden = true; } });
   document.addEventListener("visibilitychange", schedule);
   if ("IntersectionObserver" in window && !motion.matches) {
