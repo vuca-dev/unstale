@@ -178,6 +178,7 @@ if (demo) {
     toggle.setAttribute("aria-label", label);
     toggle.title = label;
   }
+  setToggle(false);
   const mark = wordmark(document.getElementById("demo-wordmark"), true);
   const stage = demo.querySelector("[data-demo-stage]");
   const detail = demo.querySelector("[data-demo-detail]");
