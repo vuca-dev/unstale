@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # The publish job of agents.yml: the only step that holds the owner's token (AGENT_GH_TOKEN), and it runs no model and
 # no code from the agent's branch. It takes the agent job's outputs ($OUT) as data:
-#   patches/*.patch  applied with `git am` (hooks off); refused if any touches .github/, .gitattributes, .gitmodules or
-#                    adds a symlink, or if any output contains a secret the agent job held;
+#   patches/*.patch  applied with `git am` (hooks off); refused if any touches .github/, .claude/, CLAUDE.md,
+#                    .gitattributes, .gitmodules or adds a symlink, or if any output contains a secret the agent job held;
 #   pr.json          new run: the branch agent/<lane>/<date> is pushed and the PR opened (labels agent:<lane>, and
 #                    needs-gate when the agent says the release gate must be run locally);
 #   replies.json     review round: the fix commits are pushed (the last one gets `Agent-Round: <n>`), and each reply
@@ -35,17 +35,23 @@ shopt -s nullglob
 patches=("$OUT"/patches/*.patch)
 if [ ${#patches[@]} -gt 0 ]; then
   git_ am --keep-cr "${patches[@]}"
-  bad=$(git diff --name-only "$start" HEAD | grep -E '^\.github/|(^|/)\.git(attributes|modules)$' || true)
+  bad=$(git diff --name-only "$start" HEAD | grep -E '^\.github/|(^|/)\.claude/|(^|/)CLAUDE\.md$|(^|/)\.git(attributes|modules)$' || true)
   [ -z "$bad" ] || { echo "refused: the agent changed protected paths:"; echo "$bad"; exit 1; } >&2
   ! git diff --summary "$start" HEAD | grep -q 'mode 120000' || { echo "refused: the agent added a symlink" >&2; exit 1; }
 fi
 changed=$([ "$(git rev-parse HEAD)" != "$start" ] && echo true || echo false)
+# Commits without PR text are a failed run, not a decision: recording it as reviewed would skip the lane next week.
+if [ "$MODE" = "new" ] && [ "$changed" = "true" ] && [ ! -f "$OUT/pr.json" ]; then
+  echo "refused: the agent committed changes but wrote no pr.json" >&2; exit 1
+fi
+# Capped in the shell: `jq ... | head -c` would fail the step under pipefail once jq is cut off.
+clip() { local v="$1"; printf '%s' "${v:0:$2}"; }
 
 pr_number=""
 if [ "$MODE" = "new" ] && [ "$changed" = "true" ] && [ -f "$OUT/pr.json" ]; then
-  title=$(jq -r '.title // empty' "$OUT/pr.json" | head -c 120)
+  title=$(clip "$(jq -r '.title // empty' "$OUT/pr.json")" 120)
   [ -n "$title" ] || { echo "refused: pr.json has no title" >&2; exit 1; }
-  body=$(jq -r '.body // ""' "$OUT/pr.json" | head -c 60000)
+  body=$(clip "$(jq -r '.body // ""' "$OUT/pr.json")" 60000)
   gate=$(jq -r '.needs_local_gate // false' "$OUT/pr.json")
   branch="agent/$LANE/$today-$GITHUB_RUN_ID"
   git_ push -q "$remote" "HEAD:refs/heads/$branch"
@@ -70,7 +76,7 @@ elif [ "$MODE" = "round" ]; then
     jq -c '.[]' "$OUT/replies.json" | while read -r reply; do
       id=$(jq -r '.id' <<<"$reply")
       kind=$(jq -r --argjson id "$id" '.[] | select(.id == $id) | .kind' "$REVIEW_FILE" 2>/dev/null || true)
-      text="$(jq -r '.body' <<<"$reply" | head -c 20000)"$'\n\n'"$marker"
+      text="$(clip "$(jq -r '.body' <<<"$reply")" 20000)"$'\n\n'"$marker"
       case "$kind" in
         inline) gh api -X POST "repos/$repo/pulls/$PR/comments/$id/replies" -f body="$text" >/dev/null ;;
         issue) gh api -X POST "repos/$repo/issues/$PR/comments" -f body="Re: comment $id"$'\n\n'"$text" >/dev/null ;;
@@ -80,7 +86,7 @@ elif [ "$MODE" = "round" ]; then
   fi
 fi
 if [ -n "$pr_number" ] && [ -f "$OUT/comment.md" ]; then
-  gh api -X POST "repos/$repo/issues/$pr_number/comments" -f body="$(head -c 20000 "$OUT/comment.md")"$'\n\n'"$marker" >/dev/null
+  gh api -X POST "repos/$repo/issues/$pr_number/comments" -f body="$(clip "$(cat "$OUT/comment.md")" 20000)"$'\n\n'"$marker" >/dev/null
 fi
 
 # The lane's log, retried on a concurrent push to the memory branch.

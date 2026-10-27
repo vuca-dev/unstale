@@ -40,7 +40,8 @@ changed=$(git diff --name-only "$base" "$head_sha" -- "${paths[@]}" | wc -l | tr
 [ "$changed" = "0" ] || decide true "$changed files changed under ${paths[*]} since ${base:0:7}"
 
 if [ "$lane" = "qa" ]; then
-  failed=$(ls "$obs"/failed-*.log 2>/dev/null | wc -l | tr -d ' ')
+  # Failures counted from the runs themselves, not from the logs observe.sh managed to fetch.
+  failed=$(jq '[.[] | select(.conclusion == "failure")] | length' "$obs/runs.json" 2>/dev/null || echo 0)
   [ "$failed" = "0" ] || decide true "$failed failed runs this week"
   # Invocation statuses other than success and client disconnects (diagnostics.ts prints one row per hour and status).
   if grep -q -E ' (scriptThrewException|exceededResources|exceededCpu|exceededMemory|internalError|responseStreamDisconnected)\b' "$obs/gateway-analytics.txt" 2>/dev/null; then

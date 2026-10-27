@@ -15,5 +15,9 @@ week, in this order of concern:
    them.
 4. Everything else: injection, SSRF in crawling, auth on gateway endpoints, signature checks on the catalog.
 
+Changes under `.github/` (workflows, these briefs) cannot be published by this lane: the publish job refuses them so
+an agent can never widen its own permissions. When such a fix is the best finding, record it under `Revisit` with the
+exact change, for the owner, and ship the best change outside `.github/`.
+
 Start from what changed since the last run (`git log $BASE_SHA..HEAD` when `BASE_SHA` is set), then widen to the
 whole repository. A fix ships with a test that fails without it.

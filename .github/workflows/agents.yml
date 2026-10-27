@@ -14,7 +14,8 @@
 # (.github/scripts/agents/gate.sh), and collects the week's observations with the Cloudflare token
 # (observe.sh), or a round's findings from the review bots and the owner only (review-input.sh).
 # work (the model): read-only token, no write credential, no Cloudflare or signing secrets, and a tool allowlist
-# (ALLOWED_TOOLS: files, builds, tests, git without push, read-only gh; no web fetch, no curl); commits locally and
+# (ALLOWED_TOOLS: files, builds, tests, git without push, read-only gh; no web fetch, no curl), with the OAuth token
+# scrubbed from the commands it runs and no project settings or hooks loaded; commits locally and
 # leaves patches, PR text, replies and its log as an artifact. Evals may call models through AGENT_AI_GATEWAY_API_KEY
 # (a separate key, revocable on its own) within AGENT_EVAL_BUDGET_USD a run.
 # publish (no model, no code from the agent's branch): the only job with AGENT_GH_TOKEN; refuses changes to .github/
@@ -65,17 +66,19 @@ env:
   MODEL: claude-opus-5-5
   CLAUDE_CODE_VERSION: 2.1.296
   ROUND_MAX: "8"
-  # What the agent may run. Package managers and test runners execute repository code, so this narrows the agent's
-  # reach (no web, no curl, no push) rather than sandboxing it; the job's lack of write credentials is the boundary.
+  # What the agent may run: TOOLS is the built-in set (no WebFetch or WebSearch), ALLOWED_TOOLS what runs without a
+  # prompt (anything else is denied in print mode). Package managers and test runners execute repository code, so this
+  # narrows the agent's reach (no web, no curl, no push) rather than sandboxing it; the job's lack of write
+  # credentials is the boundary, and CLAUDE_CODE_SUBPROCESS_ENV_SCRUB keeps the OAuth token out of what it runs.
+  TOOLS: Read,Edit,Write,Glob,Grep,Bash,TodoWrite,Task
   ALLOWED_TOOLS: >-
-    Read Edit Write Glob Grep TodoWrite Task
-    Bash(cargo:*) Bash(rustc:*) Bash(npm:*) Bash(npx:*) Bash(node:*) Bash(python3:*) Bash(pip:*)
-    Bash(git status:*) Bash(git diff:*) Bash(git log:*) Bash(git show:*) Bash(git add:*) Bash(git commit:*)
-    Bash(git reset:*) Bash(git restore:*) Bash(git stash:*) Bash(git rev-parse:*) Bash(git grep:*) Bash(git blame:*)
-    Bash(gh run:*) Bash(gh pr view:*) Bash(gh pr diff:*) Bash(gh api:*)
-    Bash(ls:*) Bash(cat:*) Bash(head:*) Bash(tail:*) Bash(wc:*) Bash(grep:*) Bash(rg:*) Bash(find:*) Bash(jq:*)
-    Bash(sort:*) Bash(uniq:*) Bash(cut:*) Bash(diff:*) Bash(mkdir:*) Bash(cp:*) Bash(mv:*) Bash(rm:*) Bash(time:*)
-    Bash(hyperfine:*) Bash(du:*) Bash(echo:*) Bash(date:*)
+    Read,Edit,Write,Glob,Grep,TodoWrite,Task,Bash(cargo:*),Bash(rustc:*),Bash(npm:*),Bash(npx:*),
+    Bash(node:*),Bash(python3:*),Bash(pip:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),
+    Bash(git add:*),Bash(git commit:*),Bash(git reset:*),Bash(git restore:*),Bash(git stash:*),Bash(git rev-parse:*),
+    Bash(git grep:*),Bash(git blame:*),Bash(gh run:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh api:*),
+    Bash(ls:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(wc:*),Bash(grep:*),Bash(rg:*),Bash(find:*),
+    Bash(jq:*),Bash(sort:*),Bash(uniq:*),Bash(cut:*),Bash(diff:*),Bash(mkdir:*),Bash(cp:*),Bash(mv:*),
+    Bash(rm:*),Bash(time:*),Bash(hyperfine:*),Bash(du:*),Bash(echo:*),Bash(date:*)
 
 jobs:
   gate:
@@ -253,8 +256,10 @@ jobs:
             fi
           } > "$prompt"
           set +e
-          claude -p "$(cat "$prompt")" --model "$MODEL" --allowedTools "$ALLOWED_TOOLS" \
-            --add-dir "$RUNNER_TEMP" --output-format json > "$RUNNER_TEMP/claude.json" 2> "$RUNNER_TEMP/claude.err"
+          # Project and local settings (hooks a previous round could have planted) are not loaded; .claude/ and
+          # CLAUDE.md changes are refused by publish.sh, so the checkout carries none from an agent.
+          CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 claude -p "$(cat "$prompt")" --model "$MODEL" --setting-sources user \
+            --tools "$TOOLS" --allowedTools "$ALLOWED_TOOLS" --add-dir "$RUNNER_TEMP" --output-format json > "$RUNNER_TEMP/claude.json" 2> "$RUNNER_TEMP/claude.err"
           status=$?
           set -e
           # Only counters: the transcript stays off this public log.

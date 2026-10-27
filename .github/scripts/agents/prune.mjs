@@ -3,7 +3,8 @@
 //            line up to KEEP_DAYS, then dropped;
 //   revisit  `- YYYY-MM-DD: idea` bullets under `## Revisit`: dropped after KEEP_DAYS;
 //   size     past MAX_CHARS (about 6k tokens), the oldest entries are shortened, then dropped, until it fits.
-// An undated entry or bullet is kept (it is dated by the agent; a malformed one is visible, not lost).
+// An undated entry or bullet, or one whose date does not parse, is kept (dated by the agent; a malformed one is
+// visible, not lost). The newest entry is never dropped, but is shortened when it alone is over the size.
 //
 //   node prune.mjs <file> [today YYYY-MM-DD]
 import { readFileSync, writeFileSync } from "node:fs";
@@ -17,7 +18,8 @@ if (!file) throw new Error("usage: prune.mjs <file> [today]");
 const today = Date.parse(todayArg ?? new Date().toISOString().slice(0, 10));
 const age = (line) => {
   const m = /(\d{4}-\d{2}-\d{2})/.exec(line);
-  return m ? (today - Date.parse(m[1])) / 86_400_000 : 0;
+  const t = m ? Date.parse(m[1]) : NaN;
+  return Number.isNaN(t) ? 0 : (today - t) / 86_400_000;
 };
 
 // Sections by `## ` heading; entries by `### ` heading inside `## Entries`.
@@ -54,11 +56,12 @@ if (entriesSection) {
     ];
     return sections.map((s) => [s.head, ...s.body].join("\n")).join("\n").replace(/\n{3,}/g, "\n\n");
   };
-  // Over the size limit: shorten the oldest full entry, else drop the oldest entry; the newest is always kept.
-  while (render().length > MAX_CHARS && entries.length > 1) {
+  // Over the size limit: shorten the oldest full entry (the newest last), then drop the oldest entry.
+  while (render().length > MAX_CHARS && entries.length) {
     const i = entries.findLastIndex((e) => !e.short);
-    if (i > 0) entries[i] = short(entries[i]);
-    else entries.pop();
+    if (i > 0 || (i === 0 && entries.length === 1)) entries[i] = short(entries[i]);
+    else if (entries.length > 1) entries.pop();
+    else break;
   }
   writeFileSync(file, render().trimEnd() + "\n");
 } else {

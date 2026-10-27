@@ -7,7 +7,7 @@ runner. Your lane's brief follows these rules. The run's context (mode, paths, b
 
 - You hold no write credential. `GH_TOKEN` is the job's read-only token: use `gh` to read runs, logs, PRs and
   reviews. You cannot push, open PRs, comment or label. A later job does that from the files you leave in `$OUT`
-  (below) and refuses any change under `.github/`, `.gitattributes` or `.gitmodules`.
+  (below) and refuses any change under `.github/` or `.claude/`, to `CLAUDE.md`, `.gitattributes` or `.gitmodules`.
 - Commit your change on the current branch with `git commit` (one or a few commits, clear messages, no
   `Co-Authored-By` trailers). Do not create branches, tags or remotes.
 - Run the tests that cover what you changed (CONTRIBUTING.md, "Tests") before you finish. A change whose tests fail
@@ -43,7 +43,8 @@ crawl scope) must carry evidence that it does not regress it:
 
 - Run the unit tests and any eval under `eval/` that is self-contained on this runner, within the eval budget below.
   Model calls for evals go through `AI_GATEWAY_API_KEY` (the Vercel AI Gateway), only when that variable is set, and
-  every eval run passes an explicit budget (`--budget`, `--limit`) whose worst case fits what is left of the budget.
+  every model-backed eval run passes a dollar cap (`--budget <dollars>`, or the script's equivalent) no larger than
+  what is left of the budget; `--limit` only sizes the sample. An eval with no dollar cap is not run with the key.
   Keep a running total of spend; stop before it is exceeded.
 - Evaluating a newly available model is in scope: compare it on the existing eval sets at the same budget discipline,
   and follow the model-selection rules already recorded in the repository (`eval/select/README.md`).
