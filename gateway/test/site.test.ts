@@ -63,6 +63,7 @@ test("a package page lists majors newest first, breaking changes before fixes, w
   expect(readFileSync(join(site, "npm", "next", "index.md"), "utf8")).toMatch(/^# What changed in next\n[\s\S]*## next 16[\s\S]*### Breaking changes\n\n- cache changed \(16\.1\.0\) — \[release notes\]\(https:\/\/example\.com\/cache\)/);
   expect(readFileSync(join(site, "llms.txt"), "utf8")).toContain("https://unstale.sh/npm/next/index.md");
   expect(readFileSync(join(site, "_headers"), "utf8")).toContain("Strict-Transport-Security");
+  expect(JSON.parse(readFileSync(join(site, "stats.json"), "utf8"))).toEqual({ changes: `${THIN_RECORDS + 2}+`, packages: "1+" });
   expect(readFileSync(join(site, ".well-known", "security.txt"), "utf8")).toMatch(/^Contact: https:\/\/github\.com\/vuca-dev\/unstale\/security/);
 });
 

@@ -5,6 +5,11 @@
   </picture>
 </h1>
 
+[![packages covered](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Funstale.sh%2Fstats.json&query=%24.packages&label=packages%20covered&color=blue)](https://unstale.sh/#packages)
+[![changes indexed](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Funstale.sh%2Fstats.json&query=%24.changes&label=changes%20indexed&color=blue)](https://unstale.sh/#packages)
+[![npm](https://img.shields.io/npm/v/@unstale/cli)](https://www.npmjs.com/package/@unstale/cli)
+[![npm downloads](https://img.shields.io/npm/dm/@unstale/cli)](https://www.npmjs.com/package/@unstale/cli)
+
 **You don't know what you don't know. Neither does your agent.**
 
 unstale monitors release notes, migration guides and security advisories for the packages you use. It tells Claude

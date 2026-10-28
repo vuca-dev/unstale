@@ -599,6 +599,9 @@ export function build(site: string, now = new Date().toISOString(), version?: st
   write(site, "robots.txt", `User-agent: *\nAllow: /\n\nSitemap: ${ORIGIN}/sitemap.xml\n`);
   write(site, "llms.txt", llmsTxt(pkgs, version));
   write(site, "llms-full.txt", llmsFull());
+  // Read by the README's shields.io badges.
+  const stats = catalogStats(pkgs);
+  write(site, "stats.json", JSON.stringify({ changes: `${stats.changes}+`, packages: `${stats.packages}+` }) + "\n");
   write(site, ".well-known/security.txt", securityTxt(now));
   write(site, "_headers", HEADERS);
   // Files that must sit at the root verbatim (search-engine ownership checks); see `page` in src/index.ts.
