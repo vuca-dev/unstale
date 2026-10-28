@@ -1613,6 +1613,8 @@ struct Highlight {
 struct Brief {
     direct: usize,
     versions_from: String,
+    /// Workspace files that install with no lockfile (`Stack::unlocked`): their versions are read, not installed.
+    unlocked: Vec<String>,
     advisory_fixes: usize,
     /// Upgrades whose security fix leads: runtime use, and a pin or override update PRs cannot move.
     security_leads: usize,
@@ -1718,6 +1720,18 @@ fn finish(
 ) {
     ui.present(summary(ctx, pending, brief, issue), false, leave);
 }
+/// Where the summary says versions came from: the lockfiles, and, said once, the workspaces that install with none.
+fn mapped_from(brief: &Brief) -> String {
+    let locks = if brief.versions_from.contains(", ") { "workspace lockfiles".to_string() } else { brief.versions_from.clone() };
+    match brief.unlocked.as_slice() {
+        [] => locks,
+        ws => {
+            let unlocked = format!("{} (lockfile: false, so read as a fresh install resolves them, not as installed versions)", ws.join(", "));
+            if brief.versions_from == "declared package ranges" { unlocked } else { format!("{locks} and {unlocked}") }
+        }
+    }
+}
+
 /// The setup summary and the prompt to paste, as presented at the end of setup.
 fn summary(ctx: &Ctx, pending: &Pending, brief: &Brief, issue: Option<&str>) -> Vec<crate::onboarding_ui::Line> {
     use crate::onboarding_ui::{Line, Tone};
@@ -1725,7 +1739,7 @@ fn summary(ctx: &Ctx, pending: &Pending, brief: &Brief, issue: Option<&str>) -> 
     let mut lines = vec![
         Line::new(format!("✓ {} · {} setup ready", display_text(&name), if ctx.config.mode == Mode::Local { "Personal" } else { "Shared" }), Tone::Fresh),
         Line::new("Next: run unstale-review in your coding agent · copyable prompt below.", Tone::Accent),
-        Line::new(format!("Mapped {} direct dependencies from {} and checked local references.", brief.direct, if brief.versions_from.contains(", ") { "workspace lockfiles" } else { &brief.versions_from }), Tone::Body),
+        Line::new(format!("Mapped {} direct dependencies from {} and checked local references.", brief.direct, mapped_from(brief)), Tone::Body),
     ];
     if let Some(issue) = issue { lines.push(Line::new(issue, Tone::Amber)); }
     if let Some(line) = pending_line(pending, unix_now()) { lines.push(Line::new(line, Tone::Muted)); }
@@ -3672,6 +3686,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
                 locks.into_iter().collect::<Vec<_>>().join(", ")
             }
         },
+        unlocked: w.stack.unlocked.clone(),
         advisory_fixes: advisories,
         security_leads: leading,
         workarounds: retiring.len(),
@@ -3681,7 +3696,8 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
         upgrades,
         limits,
         unread: stack::unread_note(&w.repo, &w.stack),
-        lock_notes: w.stack.notes.len() - usize::from(w.stack.spread > 0),
+        // A workspace with no lockfile is said on its own line (`mapped_from`), not as a lockfile problem.
+        lock_notes: w.stack.notes.iter().filter(|n| !n.contains(stack::UNLOCKED_NPM)).count() - usize::from(w.stack.spread > 0),
         unreadable: w.stack.unreadable,
         spread: w.stack.spread,
     })
@@ -4382,7 +4398,7 @@ mod tests {
             deps: Default::default(),
             node: None, node_by_lock: Default::default(), python: None,
             notes: vec![],
-            unreadable: 0, stub_runtimes: Default::default(), spread: 0, peers: vec![],
+            unreadable: 0, stub_runtimes: Default::default(), spread: 0, peers: vec![], unlocked: vec![],
             standalone: vec![],
             registries: Default::default(),
             fixture_registries: Default::default(),
@@ -4403,7 +4419,7 @@ mod tests {
         let v: serde_json::Value = serde_json::from_str(r#"{"data":{"last_day":1,"last_month":40,"last_week":12},"package":"django","type":"recent_downloads"}"#).unwrap();
         assert_eq!(pypistats_last_week(&v), Some(12));
         assert_eq!(pypistats_last_week(&serde_json::json!({"data": {}})), None);
-        let st = stack::Stack { packages: vec![], deps: Default::default(), node: None, node_by_lock: Default::default(), python: None, notes: vec![], unreadable: 0, stub_runtimes: Default::default(), spread: 0, standalone: vec![], registries: Default::default(), fixture_registries: Default::default(), peers: vec![] };
+        let st = stack::Stack { packages: vec![], deps: Default::default(), node: None, node_by_lock: Default::default(), python: None, notes: vec![], unreadable: 0, stub_runtimes: Default::default(), spread: 0, standalone: vec![], registries: Default::default(), fixture_registries: Default::default(), peers: vec![], unlocked: vec![] };
         let purls: BTreeSet<String> = ["pkg:pypi/aiohttp", "pkg:pypi/django", "pkg:pypi/zstandard"].map(String::from).into();
         let downloads: BTreeMap<String, u64> = [("pkg:pypi/zstandard", 9_000_000), ("pkg:pypi/django", 3_000_000)].map(|(p, d)| (p.to_string(), d)).into();
         assert_eq!(registration_order(&purls, &st, &downloads), ["pkg:pypi/zstandard", "pkg:pypi/django", "pkg:pypi/aiohttp"]);
@@ -4472,7 +4488,7 @@ mod tests {
             deps: [("pkg:pypi/flask", dep("flask")), ("pkg:npm/%40babel/core", dep("@babel/core"))].map(|(p, d)| (p.to_string(), d)).into(),
             node: None, node_by_lock: Default::default(), python: None,
             notes: vec![],
-            unreadable: 0, stub_runtimes: Default::default(), spread: 0, peers: vec![],
+            unreadable: 0, stub_runtimes: Default::default(), spread: 0, peers: vec![], unlocked: vec![],
             standalone: vec![],
             registries: Default::default(),
             fixture_registries: Default::default(),
@@ -5216,7 +5232,7 @@ mod tests {
         assert!(major_step(&v("0.27.10"), &v("0.28.0")), "a minor step on 0.x is a major one");
         assert!(!major_step(&v("0.27.1"), &v("0.27.10")));
         assert!(major_step(&v("0.2.1"), &v("20.0.1")), "read the other way: a 0.2.1 capability predates a project on 20");
-        let st = crate::stack::Stack { packages: vec![], deps: Default::default(), node: None, node_by_lock: Default::default(), python: None, notes: vec![], unreadable: 0, stub_runtimes: Default::default(), spread: 0, standalone: vec![], registries: Default::default(), fixture_registries: Default::default(), peers: vec![] };
+        let st = crate::stack::Stack { packages: vec![], deps: Default::default(), node: None, node_by_lock: Default::default(), python: None, notes: vec![], unreadable: 0, stub_runtimes: Default::default(), spread: 0, standalone: vec![], registries: Default::default(), fixture_registries: Default::default(), peers: vec![], unlocked: vec![] };
         assert!(!specific_reference("connection", &st));
         assert!(specific_reference("cacheLife", &st));
         assert!(specific_reference("client.beta.agents.environments", &st));
