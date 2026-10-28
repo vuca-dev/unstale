@@ -1262,14 +1262,21 @@ pub fn defines(text: &str, lit: &str) -> bool {
 
 /// Python: byte ranges of `text` that are parameter lists, a `def`'s parenthesised list (`def f(errors, **extra)`, over
 /// several lines too) and a `lambda`'s names up to its colon. A name written there is the function's own parameter.
-fn py_param_spans(text: &str) -> Vec<(usize, usize)> {
+/// `def`/`lambda` in a comment or string opens none, and brackets inside a quoted default (`sep=")"`) are text.
+fn py_param_spans(text: &str, comments: &[(usize, usize)]) -> Vec<(usize, usize)> {
     let b = text.as_bytes();
     let word = |c: u8| c.is_ascii_alphanumeric() || c == b'_';
+    let in_comment = |at: usize| comments.iter().any(|&(s, e)| s <= at && at < e);
+    // Whether `at` is inside a one-line string: an odd number of unescaped quotes of one kind before it on its line.
+    let quoted = |at: usize| {
+        let line = &b[text[..at].rfind('\n').map_or(0, |n| n + 1)..at];
+        [b'\'', b'"'].iter().any(|q| line.iter().enumerate().filter(|&(k, c)| c == q && (k == 0 || line[k - 1] != b'\\')).count() % 2 == 1)
+    };
     let mut out = vec![];
     for kw in ["def", "lambda"] {
         for (i, _) in text.match_indices(kw) {
             let end = i + kw.len();
-            if (i > 0 && word(b[i - 1])) || b.get(end).is_none_or(|c| word(*c)) {
+            if (i > 0 && word(b[i - 1])) || b.get(end).is_none_or(|c| word(*c)) || in_comment(i) || quoted(i) {
                 continue;
             }
             if kw == "lambda" {
@@ -1280,15 +1287,30 @@ fn py_param_spans(text: &str) -> Vec<(usize, usize)> {
             }
             let Some(open) = text[end..].find(['(', ':', '\n']).map(|n| end + n).filter(|&o| b[o] == b'(') else { continue };
             let mut depth = 0usize;
-            let close = (open..b.len()).find(|&k| {
-                match b[k] {
-                    b'(' | b'[' | b'{' => depth += 1,
-                    b')' | b']' | b'}' => depth = depth.saturating_sub(1),
-                    _ => {}
+            let mut quote: Option<u8> = None;
+            let mut k = open;
+            let mut close = b.len();
+            while k < b.len() {
+                let c = b[k];
+                match quote {
+                    Some(_) if c == b'\\' => k += 1,
+                    Some(q) if c == q || c == b'\n' => quote = None,
+                    Some(_) => {}
+                    None if c == b'\'' || c == b'"' => quote = Some(c),
+                    None if c == b'#' => k = text[k..].find('\n').map_or(b.len(), |n| k + n).saturating_sub(1),
+                    None if matches!(c, b'(' | b'[' | b'{') => depth += 1,
+                    None if matches!(c, b')' | b']' | b'}') => {
+                        depth = depth.saturating_sub(1);
+                        if depth == 0 {
+                            close = k;
+                            break;
+                        }
+                    }
+                    None => {}
                 }
-                depth == 0
-            });
-            out.push((open, close.unwrap_or(b.len())));
+                k += 1;
+            }
+            out.push((open, close));
         }
     }
     out
@@ -1308,7 +1330,7 @@ pub fn py_keyword_site(path: &str, text: &str, lit: &str, subject: &str) -> bool
         return true;
     }
     let comments = comment_spans(path, text);
-    let params = py_param_spans(text);
+    let params = py_param_spans(text, &comments);
     let within = |spans: &[(usize, usize)], at: usize| spans.iter().any(|&(s, e)| s <= at && at < e);
     let word = |c: Option<char>| c.is_some_and(|c| c.is_ascii_alphanumeric() || c == '_');
     let sites = |w: &str| -> Vec<usize> {
@@ -1325,7 +1347,7 @@ pub fn py_keyword_site(path: &str, text: &str, lit: &str, subject: &str) -> bool
     if s.len() < 3 || !is_word(s) || !s.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_') || s.eq_ignore_ascii_case(name) {
         return true;
     }
-    sites(s).into_iter().any(|i| {
+    sites(s).into_iter().filter(|&i| !within(&params, i)).any(|i| {
         let prev = text[..i].trim_end_matches([' ', '\t']);
         let kw = prev.rsplit(|c: char| !(c.is_ascii_alphanumeric() || c == '_')).next().unwrap_or("");
         !(prev.len() < i && matches!(kw, "def" | "class"))
@@ -1361,21 +1383,33 @@ pub fn only_as_namespace(path: &str, text: &str, lit: &str) -> bool {
 /// where one occurs within `SITE_LINES` lines.
 pub fn namespace_beside(path: &str, text: &str, lit: &str, context: &[String]) -> bool {
     let comments = comment_spans(path, text);
+    let in_comment = |at: usize| comments.iter().any(|&(s, e)| s <= at && at < e);
+    let ident = |c: char| c.is_ascii_alphanumeric() || c == '_';
+    let mut starts = vec![0];
+    starts.extend(text.match_indices('\n').map(|(i, _)| i + 1));
     let lines: Vec<&str> = text.lines().collect();
-    let has = |line: &str| context.iter().any(|c| line.match_indices(c.as_str()).any(|(i, _)| !line[..i].ends_with(|ch: char| ch.is_ascii_alphanumeric() || ch == '_') && !line[i + c.len()..].starts_with(|ch: char| ch.is_ascii_alphanumeric() || ch == '_')));
-    let mut start = 0;
+    // Whether line `n` writes one of `context` in code.
+    let has = |n: usize| {
+        let line = lines[n];
+        context.iter().any(|c| {
+            line.match_indices(c.as_str()).any(|(i, _)| !line[..i].ends_with(ident) && !line[i + c.len()..].starts_with(ident) && !in_comment(starts[n] + i))
+        })
+    };
     for (n, line) in lines.iter().enumerate() {
-        let at = start;
-        start += line.len() + 1;
         let Some(k) = line.find(lit) else { continue };
-        if comments.iter().any(|&(s, e)| s <= at + k && at + k < e) {
+        if in_comment(starts[n] + k) {
             continue;
         }
         if line.trim_start().starts_with('@') {
-            if lines[n + 1..].iter().map(|l| l.trim_start()).find(|l| !l.starts_with('@') && !l.is_empty()).is_some_and(has) {
+            // The definition it decorates: the next line that is not another decorator, blank or a comment.
+            let def = (n + 1..lines.len()).find(|&m| {
+                let l = lines[m].trim_start();
+                !l.is_empty() && !l.starts_with('@') && !l.starts_with('#')
+            });
+            if def.is_some_and(has) {
                 return true;
             }
-        } else if lines[n.saturating_sub(SITE_LINES)..(n + SITE_LINES + 1).min(lines.len())].iter().any(|l| has(l)) {
+        } else if (n.saturating_sub(SITE_LINES)..(n + SITE_LINES + 1).min(lines.len())).any(has) {
             return true;
         }
     }
@@ -2393,6 +2427,12 @@ mod tests {
         assert!(py_keyword_site("a.py", "x(model_name=1)", "model_name", "hook markers"));
         assert!(py_keyword_site("a.py", "def f(): pass", "pytest.mark", "hook markers"));
         assert!(py_keyword_site("a.py", "app = FastAPI()", "FastAPI", "FastAPI"));
+        // The subject only as another definition's parameter is no use of it; brackets in a quoted default and a `def`
+        // in a comment or string are text.
+        assert!(!py_keyword_site("p.py", "def f(list_models, model_name):\n    return model_name\n", "model_name", "list_models"));
+        assert!(!py_keyword_site("p.py", "def f(sep=\")\", model_name=None):\n    pass\nlist_models()\n", "model_name", "list_models"));
+        assert!(py_keyword_site("p.py", "# def g(\nlist_models(model_name='x')\n", "model_name", "list_models"));
+        assert!(py_keyword_site("p.py", "s = 'def g('\nlist_models(model_name='x')\n", "model_name", "list_models"));
     }
 
     #[test]
@@ -2406,6 +2446,9 @@ mod tests {
         let above = "import pytest\n\npytest_plugins = ['x']\n\n\n@pytest.mark.asyncio\nasync def test_a():\n    pass\n";
         assert!(!namespace_beside("t.py", above, "pytest.mark", &ctx), "context above a decorator is not what it decorates");
         assert!(namespace_beside("t.py", "pytest_plugins = ['x']\nm = pytest.mark.foo\n", "pytest.mark", &ctx), "a non-decorator site keeps the line window");
+        let commented = "import pytest\n\n@pytest.mark.tryfirst\n# runs first\ndef pytest_addoption(parser):\n    pass\n";
+        assert!(namespace_beside("p.py", commented, "pytest.mark", &ctx), "a comment between a decorator and its definition");
+        assert!(!namespace_beside("t.py", "# pytest_plugins\nm = pytest.mark.foo\n", "pytest.mark", &ctx), "context only in a comment");
     }
 
 
