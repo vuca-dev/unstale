@@ -48,9 +48,9 @@ function mockFetch(jev: (body: never, n: number) => Response | Promise<Response>
     calls.push({ url, body });
     return jev(body, n++);
   }) as unknown as typeof fetch;
-  const run: ChatRunner = async (prompt, parse) => {
+  const run: ChatRunner = async (prompt, parse, attribution) => {
     for (let attempt = 0; attempt < 3; attempt++) {
-      calls.push({ url: "chat:", body: { prompt } });
+      calls.push({ url: "chat:", body: { prompt, attribution } });
       const v = parse(chatText(prompt, k++));
       if (v) return v;
     }
@@ -92,6 +92,8 @@ describe("classifier adapter", () => {
     expect(r.calibrated).toBe(false);
     expect(r.model).toBe(MODEL);
     expect([m.jevCalls(), m.chatCalls()]).toEqual([1, 1]);
+    // The fallback's usage line is attributed as Jev's would be (llm.ts writes it).
+    expect((m.calls.at(-1)!.body as { attribution?: unknown }).attribution).toEqual(classifierAttribution(STATE, Q));
   });
 
   test("retries 5xx three times, then falls back", async () => {
