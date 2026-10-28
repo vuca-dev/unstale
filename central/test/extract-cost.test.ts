@@ -1,11 +1,12 @@
 // Calls extraction does not make: notes with nothing to extract (contentFree), and a truncated extract answer, which
 // is split into pieces instead of being asked again. The model is a stubbed chat-completions endpoint; llm.ts is real.
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from "vitest";
 import { PREAMBLE_MARKED, renderChange } from "../src/docs/render.ts";
 import { contentFree, extractRelease, MIN_SPLIT, releaseCached, splitChunk } from "../src/pipeline/extract.ts";
+import { usageLog } from "../src/pipeline/paths.ts";
 import { TECHNOLOGIES } from "../src/pipeline/technologies.ts";
 
 const prev = { ...process.env };
@@ -132,6 +133,23 @@ describe("a truncated extract answer", () => {
     expect(releaseCached(TECHNOLOGIES.prisma!, r)).toBe(true);
     expect(await extractRelease(TECHNOLOGIES.prisma!, r)).toEqual({ incoming: [], failed: 1 });
     expect(calls).toBe(1);
+  });
+});
+
+describe("usage attribution", () => {
+  test("each call's usage line names its stage, the note's source and the technology", async () => {
+    vi.stubGlobal("fetch", async (_url: string, init: RequestInit) => {
+      const prompt = (JSON.parse(String(init.body)) as { messages: Array<{ content: string }> }).messages[0]!.content;
+      return reply(prompt.startsWith("You write search terms") ? '{"r1": {"terms": ["connect"]}}'
+        : JSON.stringify([{ subject: "connect", summary: "connect times out sooner.", evidence: "Fixed `connect` timeouts", change_type: "fix" }]));
+    });
+    const r = { ...rel("8.0.2", "## Fixes\n- Fixed `connect` timeouts sooner"), kind: "upgrade_guide" as const, keyTag: "+guide.0" };
+    expect((await extractRelease(TECHNOLOGIES.prisma!, r)).incoming).toHaveLength(1);
+    const lines = readFileSync(usageLog(), "utf8").trim().split("\n").map((l) => JSON.parse(l) as Record<string, unknown>).filter((l) => l.api === "vercel");
+    expect(lines.slice(-2).map((l) => [l.stage, l.source, l.technology])).toEqual([
+      ["extraction", "upgrade guide", TECHNOLOGIES.prisma!.name],
+      ["terms", "upgrade guide", TECHNOLOGIES.prisma!.name],
+    ]);
   });
 });
 

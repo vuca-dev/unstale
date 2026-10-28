@@ -597,16 +597,23 @@ export function impactOf(notes: string, section: string | undefined): string | u
 
 export interface DocsNote extends ReleaseNote { kind: "docs"; keyTag: string }
 
+/** A model call's usage-line attribution (llm.ts), named as the classifier's lines name theirs (classify/labels.ts). */
+function attribution(t: Technology, rel: ReleaseNote | GuideNote | DocsNote, stage: "extraction" | "terms") {
+  const kind = "kind" in rel ? rel.kind : undefined;
+  return { stage, source: kind === "upgrade_guide" ? "upgrade guide" : kind === "docs" ? "official documentation change" : "release notes", technology: t.name };
+}
+
 /** The first model call for one chunk of a note under the configured structure (what the cache is keyed on). */
 function firstCall(t: Technology, rel: ReleaseNote | GuideNote | DocsNote, notes: string, part: string) {
   const structure = extractStructure();
   const base = { TECH: t.name, VERSION: rel.version, DATE: rel.noteDate ?? rel.date, PART: part };
-  if (structure === "one-call-schema") return { prompt: fill(SCHEMA_PROMPT, { ...base, NOTES: notes }), opts: { responseFormat: SCHEMA_RESPONSE_FORMAT, maxTokens: 24_000 } };
-  if (structure === "one-call") return { prompt: fill(ONE_CALL_PROMPT, { ...base, NOTES: notes }), opts: {} };
+  const a = { attribution: attribution(t, rel, "extraction") };
+  if (structure === "one-call-schema") return { prompt: fill(SCHEMA_PROMPT, { ...base, NOTES: notes }), opts: { responseFormat: SCHEMA_RESPONSE_FORMAT, maxTokens: 24_000, ...a } };
+  if (structure === "one-call") return { prompt: fill(ONE_CALL_PROMPT, { ...base, NOTES: notes }), opts: a };
   const numbered = extractEvidence() === "ids" ? numberUnits(notes) : undefined;
   const d = extractDiet();
   const template = numbered ? EXTRACT_PROMPT_IDS : EXTRACT_PROMPT;
-  return { prompt: fill(d ? dietPrompt(template, d) : template, { ...base, NOTES: numbered ? numbered.text : notes }), opts: {}, numbered };
+  return { prompt: fill(d ? dietPrompt(template, d) : template, { ...base, NOTES: numbered ? numbered.text : notes }), opts: a, numbered };
 }
 
 const partLine = (parts: string[], ci: number) => (parts.length > 1 ? `\nPart ${ci + 1} of ${parts.length} of these release notes.` : "");
@@ -652,7 +659,7 @@ export async function extractRelease(t: Technology, rel: ReleaseNote | GuideNote
         recs?.forEach((r, i) => out.push(toIncoming(t, rel, ci, i, r.record, r.labels, notes)));
         return;
       }
-      const recs = await extractLlm(first.prompt, parseOneCall);
+      const recs = await extractLlm(first.prompt, parseOneCall, first.opts);
       if (!recs) failed++;
       recs?.forEach((r, i) => out.push(toIncoming(t, rel, ci, i, r.record, r.labels, notes)));
     }),
@@ -684,7 +691,7 @@ async function twoCall(
         return p.success ? [p.data] : [];
       });
     },
-    { onLength: () => (truncated = true) },
+    { onLength: () => (truncated = true), ...first.opts },
   );
   if (!recs) {
     if (!truncated || notes.length < MIN_SPLIT) return { recs: [], failed: 1 };
@@ -709,6 +716,7 @@ async function twoCall(
       if (!v || typeof v !== "object" || Array.isArray(v)) return undefined;
       return v as Record<string, unknown>;
     },
+    { attribution: attribution(t, rel, "terms") },
   );
   return { recs: recs.map((record, i) => ({ record, labels: labels?.[`r${i + 1}`], notes })), failed: labels ? 0 : 1 };
 }

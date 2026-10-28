@@ -225,8 +225,10 @@ export class Jev implements Classifier {
   }
 }
 
-/** Answers one choice prompt with the configured chat model: the parsed choices, or undefined when no answer parsed. */
-export type ChatRunner = (prompt: string, parse: (text: string) => Record<string, string> | undefined) => Promise<Record<string, string> | undefined>;
+/** Answers one choice prompt with the configured chat model: the parsed choices, or undefined when no answer parsed.
+ * `attribution` goes to the call's usage line only (llm.ts). */
+export type ChatRunner = (prompt: string, parse: (text: string) => Record<string, string> | undefined,
+  attribution?: Record<string, unknown>) => Promise<Record<string, string> | undefined>;
 
 const CHOICE_PROMPT = `You answer closed-choice questions about a record. Read the state and answer every question by picking
 exactly one of its options.
@@ -241,7 +243,7 @@ Questions:
 `;
 
 /** The extraction model's client (llm.ts: gateway, cache, retries, usage log). */
-const extractionModel: ChatRunner = (prompt, parse) => extractLlm(prompt, parse);
+const extractionModel: ChatRunner = (prompt, parse, attribution) => extractLlm(prompt, parse, attribution ? { attribution } : {});
 
 /**
  * The fallback classifier: the extraction model (llm.ts, `gpt-6-luna` through the gateway by default) asked for one
@@ -287,7 +289,7 @@ export class ChatClassifier implements Classifier {
     };
     let chosen: Record<string, string> | undefined;
     try {
-      chosen = await this.run(this.prompt(state, questions), parse);
+      chosen = await this.run(this.prompt(state, questions), parse, classifierAttribution(state, questions));
     } catch (e) {
       throw e instanceof ClassifierError ? e : new ClassifierError("network", `chat classifier: ${e instanceof Error ? e.message : String(e)}`);
     }
