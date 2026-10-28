@@ -339,10 +339,37 @@ struct Lock {
 }
 
 impl Lock {
+    fn empty() -> Lock {
+        Lock { file: String::new(), versions: BTreeMap::new(), pins: BTreeMap::new(), seen: BTreeMap::new(), files: BTreeMap::new() }
+    }
+
     /// The file `n`'s version comes from, relative to the lock's directory.
     fn file_of(&self, n: &str) -> &str {
         self.files.get(n).unwrap_or(&self.file)
     }
+}
+
+/// A project directory as `detect` read it: its lockfile (empty unless it is a locked application) and what it declares.
+struct Project {
+    rel: String,
+    lock: Lock,
+    lock_file: String,
+    declared: BTreeSet<String>,
+}
+
+/// Read `n` under `p` at its lockfile's version, which installs it without `p` declaring it (`why` says how).
+fn attach(deps: &mut BTreeMap<String, Dep>, p: &Project, n: &str, why: &str) {
+    let Some(v) = p.lock.versions.get(n) else { return };
+    let entry = deps.entry(purl(n)).or_insert_with(|| Dep::new(n, true));
+    if let Some(s) = p.lock.seen.get(n) {
+        entry.seen = entry.seen.and(*s);
+    }
+    if let Some(pin) = p.lock.pins.get(n)
+        && !entry.pins.contains(pin)
+    {
+        entry.pins.push(pin.clone());
+    }
+    entry.read_under(&p.rel, Some(v.clone()), format!("{} ({why})", p.lock.file_of(n)), false, None, Some(p.lock_file.clone()));
 }
 
 const LOCKFILES: &[&str] = &["uv.lock", "poetry.lock", "pdm.lock", "Pipfile.lock"];
@@ -582,6 +609,7 @@ pub fn detect(root: &Path, packages: &mut Vec<Package>, deps: &mut BTreeMap<Stri
     let mut seen_dirs = BTreeSet::new();
     let mut noted = BTreeSet::new();
     let mut stale: BTreeMap<String, (usize, Vec<String>)> = BTreeMap::new();
+    let mut projects: BTreeMap<PathBuf, Project> = BTreeMap::new();
     let (imported, own_modules) = imported_modules(root, &by_dir.keys().cloned().collect());
     for (dir, files) in by_dir {
         let mut reqs = vec![];
@@ -698,28 +726,52 @@ pub fn detect(root: &Path, packages: &mut Vec<Package>, deps: &mut BTreeMap<Stri
             let lock_file = lock.as_ref().map(|l| if lock_dir == "." { l.file.clone() } else { format!("{lock_dir}/{}", l.file) });
             entry.read_under(&rel, version, source, false, floor.then(|| crate::stack::Range::Pypi(spec.clone())), lock_file);
         }
-        // A package this project's own code imports that only its lockfile installs (through another dependency:
-        // `starlette` under `fastapi`) is a dependency in practice: what changes in it reaches this code. Matched by
-        // the import's top-level name as a distribution name, never a module of the repository's own.
-        if let (Some(l), Kind::Application) = (&lock, kind) {
+        if let (Some(l), Kind::Application) = (lock, kind) {
             let lock_file = if lock_dir == "." { l.file.clone() } else { format!("{lock_dir}/{}", l.file) };
-            for m in imported.get(&dir).into_iter().flatten() {
-                let n = normalize(m);
-                if own_modules.contains(m) || declared.contains(&purl(&n)) {
-                    continue;
-                }
-                let Some(v) = l.versions.get(&n) else { continue };
-                let entry = deps.entry(purl(&n)).or_insert_with(|| Dep::new(&n, true));
-                if let Some(s) = l.seen.get(&n) {
-                    entry.seen = entry.seen.and(*s);
-                }
-                if let Some(pin) = l.pins.get(&n)
-                    && !entry.pins.contains(pin)
-                {
-                    entry.pins.push(pin.clone());
-                }
-                entry.read_under(&rel, Some(v.clone()), format!("{} (imported here, installed through another dependency)", l.file_of(&n)), false, None, Some(lock_file.clone()));
+            projects.insert(dir.clone(), Project { rel: rel.clone(), lock: l, lock_file, declared: declared.clone() });
+        } else {
+            projects.insert(dir.clone(), Project { rel: rel.clone(), lock: Lock::empty(), lock_file: String::new(), declared: declared.clone() });
+        }
+    }
+    // A package a project's own code imports that only a lockfile installs (through another dependency: `starlette`
+    // under `fastapi`) is a dependency in practice: what changes in it reaches this code. Matched by the import's
+    // top-level name as a distribution name, never a module of the repository's own. The file's deepest project
+    // decides when it declares or locks the name; otherwise the enclosing project whose lockfile installs it does
+    // (open-webui: `import certifi` under `backend/`, whose requirements files pin no certifi, while the root
+    // `uv.lock` installs it for the same code).
+    for (dir, mods) in &imported {
+        for m in mods {
+            let n = normalize(m);
+            if own_modules.contains(m) {
+                continue;
             }
+            for p in dir.ancestors().filter_map(|a| projects.get(a)) {
+                if p.declared.contains(&purl(&n)) {
+                    break;
+                }
+                if p.lock.versions.contains_key(&n) {
+                    attach(deps, p, &n, "imported here, installed through another dependency");
+                    break;
+                }
+            }
+        }
+    }
+    // A package a nested manifest declares that an enclosing project's lockfile installs only through another
+    // dependency runs in that project at the lockfile's version: read there too, so the enclosing project (the root)
+    // keeps its own version and the nested manifest is named beside it, as when both declare it (VoiceStudio: an
+    // engine's `requirements.txt` pins rich 13.7.1, the root `uv.lock` installs rich 15.0.0 under another package).
+    let names: Vec<(String, Vec<String>)> = deps
+        .iter()
+        .filter(|(k, _)| k.starts_with("pkg:pypi/"))
+        .map(|(_, d)| (normalize(&d.name), d.readings.iter().map(|r| r.dir.clone()).collect()))
+        .collect();
+    for (n, dirs) in names {
+        for p in projects.values() {
+            let encloses = |d: &String| p.rel == "." || d.strip_prefix(p.rel.as_str()).is_some_and(|rest| rest.starts_with('/'));
+            if dirs.contains(&p.rel) || !dirs.iter().any(encloses) || !p.lock.versions.contains_key(&n) {
+                continue;
+            }
+            attach(deps, p, &n, "installed through another dependency");
         }
     }
     for (file, (n, examples)) in stale {
@@ -997,6 +1049,44 @@ mod tests {
     }
 
     #[test]
+    fn an_import_falls_back_to_the_enclosing_lockfile_when_its_own_project_pins_nothing_for_it() {
+        // open-webui: `backend/requirements.txt` pins no certifi; the root `uv.lock` installs it and the code under
+        // `backend/` imports it.
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "pyproject.toml", "[project]\nname = \"app\"\ndependencies = [\"requests\"]\n");
+        write(d.path(), "uv.lock", "version = 1\n\n[[package]]\nname = \"requests\"\nversion = \"2.32.0\"\n\n[[package]]\nname = \"certifi\"\nversion = \"2026.6.17\"\n");
+        write(d.path(), "backend/requirements.txt", "requests==2.32.0\n");
+        write(d.path(), "backend/app/tls.py", "import certifi\n");
+        let (mut pk, mut deps) = (vec![], BTreeMap::new());
+        detect(d.path(), &mut pk, &mut deps, &mut vec![]);
+        crate::stack::settle(&mut deps);
+        let c = &deps["pkg:pypi/certifi"];
+        assert_eq!(c.version, Some(v("2026.6.17")));
+        assert_eq!(c.readings.iter().map(|r| r.dir.as_str()).collect::<Vec<_>>(), vec!["."]);
+    }
+
+    #[test]
+    fn a_nested_pin_of_a_package_the_root_lockfile_installs_transitively_keeps_the_root_version() {
+        // VoiceStudio: an engine's `requirements.txt` pins rich 13.7.1; the root `uv.lock` installs rich 15.0.0 under
+        // another package. The root reads its own version and the engine is named beside it.
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "pyproject.toml", "[project]\nname = \"app\"\ndependencies = [\"typer\"]\n");
+        write(d.path(), "uv.lock", "version = 1\n\n[[package]]\nname = \"typer\"\nversion = \"0.12.0\"\n\n[[package]]\nname = \"rich\"\nversion = \"15.0.0\"\n");
+        write(d.path(), "engines/x/requirements.txt", "rich==13.7.1\nonly-here==1.0\n");
+        write(d.path(), "tools/y/requirements.txt", "rich==12.0.0\n");
+        let (mut pk, mut deps) = (vec![], BTreeMap::new());
+        detect(d.path(), &mut pk, &mut deps, &mut vec![]);
+        crate::stack::settle(&mut deps);
+        let r = &deps["pkg:pypi/rich"];
+        assert_eq!(r.version, Some(v("15.0.0")), "the root's lockfile");
+        let mut dirs: Vec<(&str, String)> = r.readings.iter().map(|x| (x.dir.as_str(), x.version.to_string())).collect();
+        dirs.sort();
+        assert_eq!(dirs, vec![(".", "15.0.0".into()), ("engines/x", "13.7.1".into()), ("tools/y", "12.0.0".into())]);
+        assert_eq!(deps["pkg:pypi/only-here"].readings.len(), 1, "the root lockfile does not install it");
+        assert!(!pk.iter().find(|p| p.dir == ".").unwrap().declared.contains("pkg:pypi/rich"), "installed, not declared");
+    }
+
+    #[test]
     fn import_roots_are_top_level_absolute_modules() {
         assert_eq!(import_roots("import a.b, c as d\nfrom e.f import g\nfrom . import h\nfrom .i import j\n  import k  # x\nimportant = 1\n"), vec!["a", "c", "e", "k"]);
     }
@@ -1079,7 +1169,11 @@ mod tests {
         let (mut pk, mut deps) = (vec![], BTreeMap::new());
         detect(d.path(), &mut pk, &mut deps, &mut vec![]);
         crate::stack::settle(&mut deps);
-        assert_eq!(deps["pkg:pypi/httpx"].version, Some(v("0.28.1")));
+        // The sandbox reads its own pin; the root's poetry.lock installs httpx too (through openai), so the root keeps
+        // its version and the sandbox is named beside it.
+        let h = &deps["pkg:pypi/httpx"];
+        assert_eq!(h.version, Some(v("0.24.0")));
+        assert!(h.readings.iter().any(|r| r.dir == "sandbox/runtime" && r.version == v("0.28.1")));
         assert_eq!(pk.iter().find(|p| p.dir == "sandbox/runtime").unwrap().lockfile.as_deref(), Some("requirements.txt"), "its own pins, not the parent poetry.lock");
     }
 

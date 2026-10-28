@@ -1214,6 +1214,15 @@ mod tests {
         assert_eq!(a, render_once(), "byte-identical on rerun");
         assert!(a.contains("# Upgrade requirements"));
         assert!(a.contains("Catalog: next sha256:00"), "header names the index hashes");
+        // The digest header: a count and one combined hash, whatever the number of technologies.
+        let id = c.snapshot_id();
+        assert!(id.starts_with("1 technology, snapshot sha256:") && id.len() < 60, "{id}");
+        let mut more = c.clone();
+        for i in 0..150 {
+            let t = more.techs["next"].clone();
+            more.techs.insert(format!("tech{i}"), t);
+        }
+        assert!(more.snapshot_id().len() < 60 && more.snapshot_id() != id, "short and still changes with the snapshot");
         assert!(a.contains("### [next:d00] rev 1"));
         assert!(a.contains("- Release: next 16.1.0 (installed 16.0.0, target 16.1.0)"));
         assert!(a.contains("- Evidence: https://example.org/next:d00"));
