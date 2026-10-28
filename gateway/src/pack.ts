@@ -18,13 +18,15 @@ export const BUCKETS = 4096;
 
 /** What files that change together have in common, so they share a bucket: a technology's index and its signature, a
  * page and its Markdown twin. Anything else (a shard, a status) is its own group: a technology's shards together
- * would make one bucket of a technology with hundreds of shard generations, read whole for each of them. */
+ * would make one bucket of a technology with hundreds of shard generations, read whole for each of them. A directory's
+ * index files are grouped under the directory's path, the group of a file at that path, so the Worker's lookup of a
+ * path that is not a file (is it a directory to redirect to?) reads no second bucket. */
 export function groupOf(path: string): string {
   const p = path.replace(/^\/+/, "");
   const tech = /^v1\/tech\/([^/]+?)\.json(?:\.sig)?$/.exec(p);
   if (tech) return `tech:${tech[1]}`;
   const slash = p.lastIndexOf("/");
-  if (slash > 0 && p.slice(slash + 1).startsWith("index.")) return p.slice(0, slash + 1);
+  if (slash > 0 && p.slice(slash + 1).startsWith("index.")) return p.slice(0, slash);
   return p;
 }
 
