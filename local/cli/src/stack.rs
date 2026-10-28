@@ -286,6 +286,10 @@ pub struct Stack {
     /// The lowest Node version the project supports, and where that came from: the lowest `engines.node` floor of
     /// the manifests a lockfile covers (standalone ones only when none is covered), else `.nvmrc`/`.node-version`.
     pub node: Option<(Version, String)>,
+    /// The same per lockfile (path relative to the repository root): the lowest `engines.node` floor of the manifests
+    /// that lockfile covers, else the nearest `.nvmrc`/`.node-version` from its directory up to the repository root.
+    /// A lockfile root is its own install: another root's (a published library's) engines never set its floor.
+    pub node_by_lock: BTreeMap<String, (Version, String)>,
     /// The lowest Python version the project supports, and where that came from: the lowest `requires-python` (or
     /// Poetry `python`) floor among the read `pyproject.toml` files (`pypi::detect`).
     pub python: Option<(Version, String)>,
@@ -365,9 +369,11 @@ impl Stack {
 
     /// A version the project declares for a prerequisite name in the npm ecosystem: `node` from engines or
     /// `.nvmrc`, anything else from the dependency list.
-    pub fn npm_version(&self, name: &str) -> Option<&Version> {
+    /// For a version read from `lock` (a lockfile path, `Reading::lock`), `node` is that lockfile root's own floor
+    /// (`node_by_lock`), the repository's when it has none.
+    pub fn npm_version_in(&self, name: &str, lock: Option<&str>) -> Option<&Version> {
         if name.eq_ignore_ascii_case("node") {
-            return self.node.as_ref().map(|(v, _)| v);
+            return lock.and_then(|l| self.node_by_lock.get(l)).or(self.node.as_ref()).map(|(v, _)| v);
         }
         self.deps.get(&npm_purl(&name.to_lowercase())).and_then(|d| d.version.as_ref())
     }
@@ -533,6 +539,7 @@ pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
     // manifest is covered: a standalone project's engines never set a locked project's range).
     let mut node: Option<(Version, String)> = None;
     let mut node_standalone: Option<(Version, String)> = None;
+    let mut node_by_lock: BTreeMap<String, (Version, String)> = BTreeMap::new();
     // Directories of covered manifests (`.nvmrc` fallback), and per lockfile the standalone manifests below it.
     let mut covered: Vec<String> = vec![];
     let mut outside: BTreeMap<String, Vec<String>> = BTreeMap::new();
@@ -712,9 +719,17 @@ pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
         let floor = if standalone { &mut node_standalone } else { &mut node };
         if let Some(r) = pj.pointer("/engines/node").and_then(Value::as_str)
             && let Some(v) = range_floor(r)
-            && floor.as_ref().is_none_or(|(n, _)| &v < n)
         {
-            *floor = Some((v, format!("engines.node {r} in {}", join(&rel, "package.json"))));
+            let found = (v, format!("engines.node {r} in {}", join(&rel, "package.json")));
+            if let Some((ld, l)) = &lock {
+                let own = node_by_lock.entry(join(&rel_dir(root, ld), &l.file)).or_insert_with(|| found.clone());
+                if found.0 < own.0 {
+                    *own = found.clone();
+                }
+            }
+            if floor.as_ref().is_none_or(|(n, _)| &found.0 < n) {
+                *floor = Some(found);
+            }
         }
         packages.push(Package {
             dir: rel,
@@ -740,6 +755,25 @@ pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
                         node = Some((v, join(&p.dir, f)));
                     }
             }
+        }
+    }
+    // A lockfile root none of whose manifests declares engines takes the nearest toolchain file at or above it.
+    for lf in packages.iter().filter_map(|p| p.lockfile.clone()).collect::<BTreeSet<String>>() {
+        if node_by_lock.contains_key(&lf) {
+            continue;
+        }
+        let mut d = Some(root.join(&lf).parent().map(Path::to_path_buf).unwrap_or_else(|| root.to_path_buf()));
+        'up: while let Some(cur) = d {
+            for f in [".nvmrc", ".node-version"] {
+                if let Some(v) = std::fs::read_to_string(cur.join(f)).ok().and_then(|t| parse_version(t.trim())) {
+                    node_by_lock.insert(lf.clone(), (v, join(&rel_dir(root, &cur), f)));
+                    break 'up;
+                }
+            }
+            if cur == root {
+                break;
+            }
+            d = cur.parent().map(Path::to_path_buf);
         }
     }
     for (file, (n, examples)) in stale {
@@ -798,7 +832,7 @@ pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
             elsewhere.iter().take(5).copied().collect::<Vec<_>>().join(", ")
         ));
     }
-    let mut st = Stack { packages, deps, node, python, notes, unreadable, stub_runtimes, spread: 0, standalone, registries, fixture_registries, peers };
+    let mut st = Stack { packages, deps, node, node_by_lock, python, notes, unreadable, stub_runtimes, spread: 0, standalone, registries, fixture_registries, peers };
     st.settle();
     Ok(st)
 }
@@ -1831,6 +1865,27 @@ mod tests {
         assert_eq!(s.deps["pkg:npm/prisma"].source, "pnpm-lock.yaml");
         assert_eq!(s.node.as_ref().unwrap().0, Version::new(20, 9, 0));
         assert!(s.candidates().contains("prisma") && s.candidates().contains("next") && s.candidates().contains("client"));
+    }
+
+    /// react/react: `compiler/apps/playground` (its own yarn.lock, no engines) was checked against the root's floor,
+    /// `packages/react`'s published `engines >=0.10.0`, though `.nvmrc` says v20.19.0. Each lockfile root has its
+    /// own floor: its manifests' engines, else the nearest toolchain file.
+    #[test]
+    fn a_lockfile_root_has_its_own_node_floor() {
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), ".nvmrc", "v20.19.0\n");
+        write(d.path(), "package.json", r#"{"name":"root","private":true,"workspaces":["packages/*"],"devDependencies":{"left-pad":"^1.0.0"}}"#);
+        write(d.path(), "packages/react/package.json", r#"{"name":"react","version":"19.0.0","engines":{"node":">=0.10.0"},"dependencies":{"left-pad":"^1.0.0"}}"#);
+        write(d.path(), "yarn.lock", "# yarn lockfile v1\n\nleft-pad@^1.0.0:\n  version \"1.3.0\"\n");
+        write(d.path(), "apps/play/package.json", r#"{"name":"play","private":true,"dependencies":{"next":"^15.0.0"}}"#);
+        write(d.path(), "apps/play/yarn.lock", "# yarn lockfile v1\n\nnext@^15.0.0:\n  version \"15.5.9\"\n");
+        let s = detect(d.path()).unwrap();
+        assert_eq!(s.node.as_ref().unwrap().0, Version::new(0, 10, 0));
+        assert_eq!(s.node_by_lock["yarn.lock"].0, Version::new(0, 10, 0));
+        assert_eq!(s.node_by_lock["apps/play/yarn.lock"], (Version::new(20, 19, 0), ".nvmrc".to_string()));
+        let lock = s.deps["pkg:npm/next"].headline().and_then(|r| r.lock.clone());
+        assert_eq!(lock.as_deref(), Some("apps/play/yarn.lock"));
+        assert_eq!(s.npm_version_in("node", lock.as_deref()), Some(&Version::new(20, 19, 0)));
     }
 
     #[test]

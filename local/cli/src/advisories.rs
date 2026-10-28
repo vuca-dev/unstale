@@ -326,6 +326,8 @@ pub fn yarn_lock(text: &str, file: &str, manifests: &[(String, Value)]) -> Graph
     let mut deps: Vec<(usize, String, String)> = vec![];
     let mut cur: Option<usize> = None;
     let mut specs: Vec<(String, String)> = vec![];
+    // The package an alias entry installs (`alias@npm:real@range`).
+    let mut real: Option<String> = None;
     let mut in_deps = false;
     for line in text.lines() {
         if line.trim().is_empty() || line.starts_with('#') {
@@ -341,6 +343,11 @@ pub fn yarn_lock(text: &str, file: &str, manifests: &[(String, Value)]) -> Graph
                     Some((s[..at].to_string(), bare(&s[at + 1..])))
                 })
                 .collect();
+            real = line.split(", ").next().and_then(|s| {
+                let s = s.trim().trim_end_matches(':').trim_matches('"');
+                let r = s.get(1..)?.split_once('@')?.1.strip_prefix("npm:")?;
+                yarn_alias_target(r).map(String::from)
+            });
             cur = None;
             in_deps = false;
             continue;
@@ -350,10 +357,13 @@ pub fn yarn_lock(text: &str, file: &str, manifests: &[(String, Value)]) -> Graph
         if indent <= 2 {
             in_deps = t == "dependencies:" || t == "optionalDependencies:";
             let v = t.strip_prefix("version ").or_else(|| t.strip_prefix("version: "));
-            if let (Some(v), Some((name, _))) = (v, specs.first())
+            if let (Some(v), Some((key, _))) = (v, specs.first())
                 && !specs.iter().any(|(_, r)| r.starts_with("workspace:"))
             {
                 let v = v.trim_matches('"');
+                // An alias entry (`alias@npm:real@range`, read here as `real@range`) installs `real`: the alias is
+                // only the install name, and is often a squatted package of its own on the registry.
+                let name = real.as_deref().unwrap_or(key);
                 let i = g.node(&format!("yarn:{name}@{v}"), name, v);
                 for s in &specs {
                     by_spec.insert(s.clone(), i);
@@ -388,6 +398,13 @@ pub fn yarn_lock(text: &str, file: &str, manifests: &[(String, Value)]) -> Graph
         }
     }
     g
+}
+
+/// The package a Yarn alias range installs, `npm:` already stripped (`real@^1`, `@scope/real@1`); `None` for a plain
+/// range (`^1`).
+fn yarn_alias_target(range: &str) -> Option<&str> {
+    let at = range.get(1..)?.find('@')? + 1;
+    Some(&range[..at]).filter(|n| !n.is_empty())
 }
 
 /// `uv.lock`: workspace members (`editable`, `virtual`, `directory` sources) are the projects; their
@@ -1923,6 +1940,19 @@ mod tests {
         let (_, items) = run(g, &docs, &[("tiny", "1.0.0", &["GHSA-t"])], "2026-10-18");
         assert_eq!(items[0].why, vec!["fix blocked: left-pad 1.1.0 requires ~1.0.0"]);
         assert_eq!(items[0].via, vec!["left-pad 1.1.0"]);
+    }
+
+    /// react/react: Yarn v1 `alias@npm:real@range` entries install `real`; the alias names (squatted malware on npm)
+    /// were looked up in OSV. The real package is queried and is the direct dependency.
+    #[test]
+    fn a_yarn_alias_entry_is_the_package_it_installs() {
+        let yarn = "# yarn lockfile v1\n\n\"eslint-plugin-react-hooks-published@npm:eslint-plugin-react-hooks@^5.2.0\":\n  version \"5.2.0\"\n  resolved \"https://registry.yarnpkg.com/eslint-plugin-react-hooks/-/eslint-plugin-react-hooks-5.2.0.tgz\"\n\n\"eslint-v7@npm:eslint@^7.7.0\", eslint@^7.7.0:\n  version \"7.32.0\"\n\n\"@scope/old@npm:@scope/pkg@1.0.0\":\n  version \"1.0.0\"\n\ngit-dep@git+ssh://git@github.com/o/r.git:\n  version \"0.1.0\"\n";
+        let m = vec![(".".to_string(), serde_json::json!({"name": "app", "devDependencies": {"eslint-plugin-react-hooks-published": "npm:eslint-plugin-react-hooks@^5.2.0", "eslint": "^7.7.0", "@scope/old": "npm:@scope/pkg@1.0.0"}}))];
+        let g = yarn_lock(yarn, "yarn.lock", &m);
+        let names: BTreeSet<String> = g.packages().into_iter().map(|(n, _)| n).collect();
+        assert_eq!(names, ["@scope/pkg", "eslint", "eslint-plugin-react-hooks", "git-dep"].map(String::from).into(), "{names:?}");
+        let direct: BTreeSet<String> = g.direct().into_iter().map(|(n, _)| n).collect();
+        assert_eq!(direct, ["@scope/pkg", "eslint", "eslint-plugin-react-hooks"].map(String::from).into());
     }
 
     #[test]

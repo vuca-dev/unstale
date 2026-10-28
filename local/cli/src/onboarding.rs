@@ -1362,7 +1362,7 @@ fn highlight_indices(out: &Outcome, w: &World) -> Vec<usize> {
             }
             // After-bump feature candidates still honor prerequisites and ledger exclusions.
             if walled_off(o)
-                || funnel::blocked(o.rec, &w.stack, &o.component()).is_some()
+                || funnel::blocked(o.rec, &w.stack, &o.component(), funnel::headline_lock(&w.stack, out, &o.component())).is_some()
                 || w.ledger.entries.iter().any(|e| {
                     e.id() == o.id() && ledgerops::withholds(e, o.rec.r.revision, &w.today)
                 })
@@ -2430,6 +2430,14 @@ fn stub_beside_runtime(purl: &str, name: &str, st: &crate::stack::Stack) -> bool
     typed.is_some_and(|t| st.deps.values().any(|d| d.name.eq_ignore_ascii_case(&t)))
 }
 
+/// Whether an upgrade line whose headline manifest is `line_dir` installs the deprecated version `n`: that manifest's
+/// reading of the package, else the package's headline reading. A package the stack does not read is not decided here.
+fn line_installs(n: &crate::deprecations::Notice, dep: Option<&crate::stack::Dep>, line_dir: Option<&str>) -> bool {
+    let Some(d) = dep else { return true };
+    let here = line_dir.and_then(|dir| d.readings.iter().find(|r| r.dir == dir)).or_else(|| d.headline());
+    here.is_none_or(|r| r.version.to_string() == n.version)
+}
+
 /// The package-level signals of direct dependencies no shown upgrade (`ranked`, tier at least an unreached advisory)
 /// carries: publisher deprecations and yanks, unmaintained packages, and lockfile advisories on the package itself.
 fn signals<'r>(
@@ -3056,7 +3064,18 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
             let o = &out.opps[i];
             site(o).map(|(t, f)| format!("{kind}: {} [{}] (`{t}` at {f})", display_text(&util::one_line(&o.rec.r.summary, 160)), o.id()))
         };
-        let deprecated_here = deprecated.iter().find(|n| packages.iter().any(|p| p.eq_ignore_ascii_case(&n.name)));
+        // The deprecated version this line's own manifest installs: another manifest's copy (a fixture pinning an old
+        // major, a release script's own lockfile) is its own sub-line, not this headline's end of support.
+        let line_dir = head.and_then(|i| {
+            let component = out.opps[i].component();
+            match out.headline.get(&component) {
+                Some((dir, _)) => Some(dir.clone()),
+                None => w.stack.deps.get(&component).and_then(|d| d.headline()).map(|r| r.dir.clone()),
+            }
+        });
+        let deprecated_here = deprecated
+            .iter()
+            .find(|n| packages.iter().any(|p| p.eq_ignore_ascii_case(&n.name)) && line_installs(n, w.stack.deps.get(&util::normalize_purl(&n.purl)), line_dir.as_deref()));
         let breaking = |o: &funnel::Opp| o.rec.r.breaking || o.rec.r.change_type == ChangeType::Removal;
         // How strongly the lead says something is wrong or will break here, within the consequential tier: what fails
         // now or an end-of-life install, then a reached advisory or a removal this code uses, then a runtime lockfile
@@ -4086,6 +4105,21 @@ mod tests {
         assert!(!first_screen(&[]).contains("## Leads"));
     }
 
+    /// react/react: the root's eslint 7.32.0 line led with "the installed eslint 6.8.0 is deprecated", the version
+    /// `fixtures/eslint-v6` (its own lockfile) pins. The lead names only the version the line's own manifest installs.
+    #[test]
+    fn an_end_of_support_lead_is_the_version_its_own_manifest_installs() {
+        let mut d = stack::Dep::new("eslint", true);
+        let reading = |dir: &str, v: &str| stack::Reading { dir: dir.into(), version: util::parse_version(v).unwrap(), source: "yarn.lock".into(), standalone: false, range: None, lock: None };
+        d.readings = vec![reading(".", "7.32.0"), reading("fixtures/eslint-v6", "6.8.0")];
+        let notice = |v: &str| crate::deprecations::Notice { purl: "pkg:npm/eslint".into(), name: "eslint".into(), version: v.into(), message: String::new(), yanked: false, url: String::new(), latest: None };
+        assert!(!line_installs(&notice("6.8.0"), Some(&d), Some(".")), "another manifest's copy");
+        assert!(line_installs(&notice("7.32.0"), Some(&d), Some(".")));
+        assert!(line_installs(&notice("6.8.0"), Some(&d), Some("fixtures/eslint-v6")));
+        // No headline directory: the package's headline reading (the root) decides.
+        assert!(!line_installs(&notice("6.8.0"), Some(&d), None));
+    }
+
     #[test]
     fn a_workaround_joins_only_the_upgrade_of_the_project_its_file_is_in() {
         // AutoGPT: classic/poetry.lock runs uvicorn 0.40.0, autogpt_platform/backend/poetry.lock 0.53.0. A hack in
@@ -4329,7 +4363,7 @@ mod tests {
         let st = crate::stack::Stack {
             packages: vec![manifest(&["pkg:pypi/django", "pkg:pypi/aiohttp"]), manifest(&["pkg:pypi/django"])],
             deps: Default::default(),
-            node: None, python: None,
+            node: None, node_by_lock: Default::default(), python: None,
             notes: vec![],
             unreadable: 0, stub_runtimes: Default::default(), spread: 0, peers: vec![],
             standalone: vec![],
@@ -4352,7 +4386,7 @@ mod tests {
         let v: serde_json::Value = serde_json::from_str(r#"{"data":{"last_day":1,"last_month":40,"last_week":12},"package":"django","type":"recent_downloads"}"#).unwrap();
         assert_eq!(pypistats_last_week(&v), Some(12));
         assert_eq!(pypistats_last_week(&serde_json::json!({"data": {}})), None);
-        let st = stack::Stack { packages: vec![], deps: Default::default(), node: None, python: None, notes: vec![], unreadable: 0, stub_runtimes: Default::default(), spread: 0, standalone: vec![], registries: Default::default(), fixture_registries: Default::default(), peers: vec![] };
+        let st = stack::Stack { packages: vec![], deps: Default::default(), node: None, node_by_lock: Default::default(), python: None, notes: vec![], unreadable: 0, stub_runtimes: Default::default(), spread: 0, standalone: vec![], registries: Default::default(), fixture_registries: Default::default(), peers: vec![] };
         let purls: BTreeSet<String> = ["pkg:pypi/aiohttp", "pkg:pypi/django", "pkg:pypi/zstandard"].map(String::from).into();
         let downloads: BTreeMap<String, u64> = [("pkg:pypi/zstandard", 9_000_000), ("pkg:pypi/django", 3_000_000)].map(|(p, d)| (p.to_string(), d)).into();
         assert_eq!(registration_order(&purls, &st, &downloads), ["pkg:pypi/zstandard", "pkg:pypi/django", "pkg:pypi/aiohttp"]);
@@ -4419,7 +4453,7 @@ mod tests {
         let st = crate::stack::Stack {
             packages: vec![],
             deps: [("pkg:pypi/flask", dep("flask")), ("pkg:npm/%40babel/core", dep("@babel/core"))].map(|(p, d)| (p.to_string(), d)).into(),
-            node: None, python: None,
+            node: None, node_by_lock: Default::default(), python: None,
             notes: vec![],
             unreadable: 0, stub_runtimes: Default::default(), spread: 0, peers: vec![],
             standalone: vec![],
@@ -5165,7 +5199,7 @@ mod tests {
         assert!(major_step(&v("0.27.10"), &v("0.28.0")), "a minor step on 0.x is a major one");
         assert!(!major_step(&v("0.27.1"), &v("0.27.10")));
         assert!(major_step(&v("0.2.1"), &v("20.0.1")), "read the other way: a 0.2.1 capability predates a project on 20");
-        let st = crate::stack::Stack { packages: vec![], deps: Default::default(), node: None, python: None, notes: vec![], unreadable: 0, stub_runtimes: Default::default(), spread: 0, standalone: vec![], registries: Default::default(), fixture_registries: Default::default(), peers: vec![] };
+        let st = crate::stack::Stack { packages: vec![], deps: Default::default(), node: None, node_by_lock: Default::default(), python: None, notes: vec![], unreadable: 0, stub_runtimes: Default::default(), spread: 0, standalone: vec![], registries: Default::default(), fixture_registries: Default::default(), peers: vec![] };
         assert!(!specific_reference("connection", &st));
         assert!(specific_reference("cacheLife", &st));
         assert!(specific_reference("client.beta.agents.environments", &st));

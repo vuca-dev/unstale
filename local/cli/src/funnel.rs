@@ -1462,6 +1462,8 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
         };
         out.technologies.push(tech.clone());
         out.packages.insert(tech.clone(), present.iter().filter_map(|c| purl_name(c)).collect());
+        // The lockfile each package's headline version is read from: a prerequisite is checked against its root.
+        let head_lock = |c: &str| choices.get(&c.to_string()).and_then(|ch| ch.head.lock.clone());
         let version_of = |c: &str| -> Option<Version> {
             choices.get(&c.to_string()).map(|ch| ch.head.version.clone()).or_else(|| inp.stack.deps.get(c).and_then(|d| d.version.clone()))
                 .or_else(|| inp.stack.stub_runtimes.get(c).cloned())
@@ -1879,7 +1881,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                 // A known prerequisite of acting on it (the replacement needs a newer peer: ESLint's core rule handles
                 // TypeScript imports from 9.37) that the project's version does not meet: the deprecated API is still
                 // the right one here, so it is not owed now.
-                if let Some(b) = blocked(rec, inp.stack, &comp) {
+                if let Some(b) = blocked(rec, inp.stack, &comp, head_lock(&comp).as_deref()) {
                     opp.route = Route::Blocked(b);
                 } else if let Some(s) = ledger_status() {
                     opp.withheld_from = Some(Route::InEffect);
@@ -1891,7 +1893,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             if shown {
                 // An obligation is never blocked: the upgrade brings it whatever the project's floor, and a record that
                 // raises a minimum (Node, TypeScript) is exactly the one a floor below it must see.
-                let b = blocked(rec, inp.stack, &comp);
+                let b = blocked(rec, inp.stack, &comp, head_lock(&comp).as_deref());
                 if let Some(b) = b.clone().filter(|_| !(opp.route == Route::UpgradeReview && is_obligation(rec))) {
                     opp.route = Route::Blocked(b);
                 } else if let Some(s) = ledger_status() {
@@ -1945,7 +1947,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                 if !matches!(route, Route::UpgradeReview | Route::BumpDigest) {
                     continue;
                 }
-                let blocks = blocked(rec, inp.stack, &comp).is_some() && !(route == Route::UpgradeReview && is_obligation(rec));
+                let blocks = blocked(rec, inp.stack, &comp, head_lock(&comp).as_deref()).is_some() && !(route == Route::UpgradeReview && is_obligation(rec));
                 if blocks || ledger_status().is_some() || (route == Route::UpgradeReview && !rec.r.breaking && applied_in(0)) {
                     continue;
                 }
@@ -2222,9 +2224,17 @@ pub(crate) fn runtime_drop_met(rec: &Rec, stack: &Stack) -> Option<String> {
     met.then(|| source.clone())
 }
 
+/// The lockfile a package's headline version is read from (`Outcome::headline`, else `Dep::headline`).
+pub(crate) fn headline_lock<'s>(stack: &'s Stack, out: &Outcome, component: &str) -> Option<&'s str> {
+    let d = stack.deps.get(component)?;
+    let here = out.headline.get(component).and_then(|(dir, _)| d.readings.iter().find(|r| r.dir == *dir));
+    here.or_else(|| d.headline())?.lock.as_deref()
+}
+
 /// A structured npm prerequisite above the project's floor, or below a declared maximum. Names the project cannot
-/// answer (another ecosystem, a package it does not declare) fail open: never block the record.
-pub(crate) fn blocked(rec: &Rec, stack: &Stack, component: &str) -> Option<String> {
+/// answer (another ecosystem, a package it does not declare) fail open: never block the record. `lock` is the
+/// lockfile the upgrade's version is read from: a Node prerequisite is checked against that root's own floor.
+pub(crate) fn blocked(rec: &Rec, stack: &Stack, component: &str, lock: Option<&str>) -> Option<String> {
     for p in &rec.r.prerequisites {
         if !p.ecosystem.eq_ignore_ascii_case("npm") {
             continue;
@@ -2232,7 +2242,7 @@ pub(crate) fn blocked(rec: &Rec, stack: &Stack, component: &str) -> Option<Strin
         if normalize_purl(&crate::util::npm_purl(&p.name.to_lowercase())) == component {
             continue; // the upgrade itself satisfies it
         }
-        let Some(have) = stack.npm_version(&p.name) else { continue };
+        let Some(have) = stack.npm_version_in(&p.name, lock) else { continue };
         if let Some(min) = p.min.as_deref().and_then(parse_version)
             && *have < min {
                 return Some(format!("needs {} >= {}, project supports {}", p.name, p.min.as_deref().unwrap_or(""), have));
@@ -2475,6 +2485,7 @@ pub(crate) mod fixtures {
                 })
                 .collect(),
             node: node.map(|v| (parse_version(v).unwrap(), "engines".into())),
+            node_by_lock: Default::default(),
             python: None,
             notes: vec![],
             unreadable: 0, stub_runtimes: Default::default(), spread: 0, peers: vec![],
