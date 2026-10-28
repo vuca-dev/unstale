@@ -751,10 +751,22 @@ pub fn replacement_lits(r: &Rec, lits: &[String], deprecated: &[String]) -> Vec<
     };
     let shapes: BTreeSet<u8> = deprecated.iter().map(|d| shape(d)).collect();
     let intro: BTreeSet<String> = r.r.introduces.iter().filter_map(|x| clean_lit(x)).collect();
+    // A summary that names its successor in code (`use encode_basic_auth` for aiohttp's `BasicAuth`) says which literal
+    // replaces the deprecated one: another term it does not write is an API used with it (`ClientSession`), not the
+    // successor, so a site beside it is no fallback.
+    let summary = &r.r.summary;
+    let code_words: Vec<&str> = summary
+        .split(|c: char| !(c.is_ascii_alphanumeric() || "_$./-".contains(c)))
+        .map(|w| w.trim_end_matches(['.', '-']))
+        .filter(|w| (usage::identifier(w) || usage::qualified_name(w)) && !deprecated.iter().any(|d| d == w))
+        .collect();
+    let id_char = |c: Option<char>| c.is_some_and(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$');
+    let writes = |l: &str| summary.match_indices(l).any(|(i, _)| !id_char(summary[..i].chars().next_back()) && !id_char(summary[i + l.len()..].chars().next()));
+    let unwritten = |l: &str| !code_words.is_empty() && !writes(l);
     let mut out: Vec<String> = vec![];
     for l in intro.iter().chain(lits) {
         let related = deprecated.iter().any(|d| d.contains(l.as_str()) || l.contains(d.as_str()));
-        let fits = intro.contains(l) || shapes.contains(&shape(l));
+        let fits = intro.contains(l) || (shapes.contains(&shape(l)) && !unwritten(l));
         if fits && !related && !usage::plain_word(l) && !l.contains(char::is_whitespace) && !out.contains(l) {
             out.push(l.clone());
         }
@@ -2817,6 +2829,35 @@ mod tests {
         let out = run_with(&c, &s, &r, &l);
         let o = out.opps.iter().find(|o| o.id() == "hf:model-name").unwrap();
         assert_eq!((&o.route, &o.matched), (&Route::InEffect, &vec![("model_name".to_string(), vec!["app/hub.py".to_string()])]));
+    }
+
+    #[test]
+    fn a_term_the_summary_does_not_name_as_successor_is_no_fallback() {
+        // open-webui/open-webui: aiohttp deprecates `BasicAuth` ("use encode_basic_auth with an Authorization header");
+        // its terms also name `ClientSession`, which the deprecated call is written inside. `from aiohttp import
+        // BasicAuth, ClientSession` and `auth=BasicAuth(...)` under `async with ClientSession()` are a live site.
+        let purl = "pkg:pypi/aiohttp";
+        let summary = "BasicAuth is deprecated; use encode_basic_auth with an Authorization header.";
+        let r0 = with(
+            rec("aiohttp:basicauth", purl, "3.14.0"),
+            json!({"change_type":"deprecation","subject":"BasicAuth","summary":summary,"replaces":["BasicAuth"],"terms":[["BasicAuth",0],["auth",0],["Authorization",0],["headers",0],["ClientSession",0]]}),
+        );
+        let mut s = stack(&[], None);
+        s.deps.insert(purl.into(), crate::stack::Dep { version: parse_version("3.14.5"), source: "test".into(), ..crate::stack::Dep::new("aiohttp", true) });
+        let bare = "from aiohttp import BasicAuth, ClientSession\n\nasync def f(c):\n    async with ClientSession() as s:\n        await s.post('x', auth=BasicAuth(c.id, c.secret or ''))\n";
+        let (l, r) = (Ledger::default(), repo(&[("app/auths.py", bare)]));
+        let c = c_of(r0.clone());
+        let out = run_with(&c, &s, &r, &l);
+        let o = out.opps.iter().find(|o| o.id() == "aiohttp:basicauth").unwrap();
+        assert_eq!((&o.route, &o.matched), (&Route::InEffect, &vec![("BasicAuth".to_string(), vec!["app/auths.py".to_string()])]));
+        // A summary naming the term as what to use keeps it the successor: beside it, the old name is a fallback.
+        let r1 = with(r0, json!({"summary":"BasicAuth is deprecated; use ClientSession(auth_header=...) instead."}));
+        let c = c_of(r1);
+        let out = run_with(&c, &s, &r, &l);
+        assert_eq!(route_of(&out, "aiohttp:basicauth"), &Route::AlreadyIncluded);
+        fn c_of(r: serde_json::Value) -> Catalog {
+            catalog("aiohttp", 0, vec![r])
+        }
     }
 
     #[test]
