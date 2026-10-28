@@ -8,7 +8,7 @@ import { interpret, labelQuestions, recordState, type Labels } from "./classify/
 import { type DocsNote, extractRelease, releaseCached, type Incoming } from "./extract.ts";
 import type { PipelineBudget } from "./budget.ts";
 import { advisoryStage, type AttachReport } from "./advisories.ts";
-import { fetchGuides, fetchReleases, foreignGuides, guideBounds, type GuideNote, type ReleaseNote } from "./fetch.ts";
+import { fetchGuides, fetchReleases, foreignGuides, guideBounds, indexGuideVersions, type GuideNote, type ReleaseNote } from "./fetch.ts";
 import { withTechLock } from "./lock.ts";
 import { buildIndex } from "./lines.ts";
 import { ingest, mergeChunkDuplicates, mergeSplitRecords } from "./match.ts";
@@ -16,7 +16,7 @@ import { catalogDir, centralDir } from "./paths.ts";
 import { activeTerms, publishTechnology } from "./publish.ts";
 import { drawSample, sampleCounts } from "./sample.ts";
 import { checkIncoming } from "./prereqs.ts";
-import { boundGuideRecords, loadStore, retractForeignGuideRecords, saveStore } from "./store.ts";
+import { boundGuideRecords, loadStore, relineGuideRecords, retractForeignGuideRecords, saveStore } from "./store.ts";
 import { typeStubDeprecations } from "./type-stubs.ts";
 import { TECHNOLOGIES, type Technology } from "./technologies.ts";
 import { compareVersions, pool, writeAtomic } from "./util.ts";
@@ -163,7 +163,13 @@ export async function runTechnology(
       // Deprecations the technology's type stubs state in their declarations (no release notes say them).
       const typed = await typeStubDeprecations(t, store, { refresh: !!opts.refresh, offline: !!opts.offline });
       if (typed.length) console.log(`${t.id}: ${typed.length} deprecations from its type stubs' declarations`);
-      const bounded = boundGuideRecords(store, guideBounds(t, fetched.notes));
+      // Guides for a version the technology never published (a sibling's line): their records move to the release that
+      // shipped with it, or lose that release, before bounds are given (the registry was read by fetchGuides: cached).
+      const moved = opts.guides === false ? new Map() : await indexGuideVersions(t, { offline: !!opts.offline });
+      const relined = relineGuideRecords(store, moved);
+      if (relined.moved || relined.dropped || relined.retracted.length)
+        console.log(`${t.id}: records read from a guide for a version it never published: ${relined.moved} moved to the release that shipped with it, ${relined.dropped} lost that release, ${relined.retracted.length} retracted`);
+      const bounded = boundGuideRecords(store, guideBounds(t, fetched.notes, moved));
       if (bounded) console.log(`${t.id}: ${bounded} records from a moving upgrade guide given a release bound`);
       const foreign = retractForeignGuideRecords(store, foreignGuides(t));
       if (foreign.length) console.log(`${t.id}: ${foreign.length} records read only from another technology's upgrade guide retracted`);

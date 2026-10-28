@@ -13,6 +13,7 @@ import { githubToken } from "../docs/fetcher.ts";
 import { ecosystemOf } from "./ecosystems.ts";
 import { isStable } from "./lines.ts";
 import { registryCache } from "./registry.ts";
+import { repositoryPackages } from "./section-packages.ts";
 import { techLocal } from "../state/client.ts";
 import { capped, linkedReleaseText, pageText, pickChangelog, pointerLinks, repoFileLink, sectionFor, siteOf, versionSections } from "./changelog.ts";
 import { httpFetcher } from "../docs/fetcher.ts";
@@ -700,8 +701,8 @@ async function discoverMajors(t: Technology, index: GuideIndex, releases: Parame
  * `latest` v5 guide, first read at 5.104, describes `queryClient.query` of a later 5.x minor as if 5.0.0's). An entry
  * from before the read day was kept is dated its first read day unless that is its x.0.0 release's day.
  */
-function guideBound(g: GuideIndex["guides"][number], releases: ReadonlyArray<{ version: string; date: string }>, text: string | undefined): string | undefined {
-  if (text !== undefined && versionSection(g, text)) return undefined;
+function guideBound(g: GuideIndex["guides"][number], releases: ReadonlyArray<{ version: string; date: string }>, text: string | undefined, listed = g.version): string | undefined {
+  if (text !== undefined && versionSection({ url: g.url, version: listed }, text)) return undefined;
   const read = g.read ?? (releases.some((r) => r.version === g.version && r.date === g.date) ? undefined : g.date);
   if (!read) return undefined;
   return lineBound(g.version.split(".")[0]!, releases.filter((r) => r.date <= read).map((r) => r.version));
@@ -723,16 +724,20 @@ function versionSection(g: { url: string; version: string }, text: string): bool
  * store holds from before bounds were kept (`boundGuideRecords`). A guide that is one version's changelog section is
  * listed without a bound: records read only from it are exact.
  */
-export function guideBounds(t: Technology, releases: ReadonlyArray<{ version: string; date: string }>): Map<string, { version: string; noLaterThan?: string }> {
+export function guideBounds(t: Technology, releases: ReadonlyArray<{ version: string; date: string }>, moved: ReadonlyMap<string, GuideVersion> = new Map()): Map<string, { version: string; noLaterThan?: string }> {
   const index = readJson<GuideIndex>(join(guideDir(t), "index.json"));
   const out = new Map<string, { version: string; noLaterThan?: string }>();
-  for (const g of index?.guides ?? []) {
-    const text = guideText(t, g);
-    if (text !== undefined && versionSection(g, text)) {
+  for (const listed of index?.guides ?? []) {
+    // A guide read at the technology's release that shipped with it (`guideVersions`) is bounded at that release.
+    const fix = moved.get(listed.snapshot);
+    if (fix && !fix.to) continue;
+    const g = fix ? { ...listed, version: fix.to!, date: fix.date! } : listed;
+    const text = guideText(t, listed);
+    if (text !== undefined && versionSection(listed, text)) {
       out.set(g.snapshot, { version: g.version });
       continue;
     }
-    const b = guideBound(g, releases, text);
+    const b = guideBound(g, releases, text, listed.version);
     if (b) out.set(g.snapshot, { version: g.version, noLaterThan: b });
   }
   return out;
@@ -794,14 +799,77 @@ export async function fetchGuides(
   // technology's own were told from other variants' (docs/guides.ts `ownGuide`) stays in the index but is no source.
   // A guide majors.ts found is the technology's by where it was found (its own notes, its repository), not by the
   // docs listing's sections.
+  // A guide for a version the technology never published (a sibling's in a monorepo that versions its packages
+  // independently) is read at the technology's release that shipped with it, or held back (`guideVersions`).
   const own = ownFilter(t);
-  return index.guides
-    .filter((g) => !("repo" in g) && (g.via !== undefined || own(g.url)))
-    .map((g) => {
-      const p = join(guideDir(t), `${g.version.split(".")[0]}.${g.snapshot.slice(7, 15)}.md`);
-      const { read: _, ...note } = g;
-      const notes = readFileSync(p, "utf8");
-      const bound = g.kind === "release_notes" ? undefined : guideBound(g, releases, notes);
-      return { ...note, ...(bound ? { noLaterThan: bound } : {}), notes };
-    });
+  const sources = index.guides.filter((g) => !("repo" in g) && (g.via !== undefined || own(g.url)));
+  const moved = await guideVersions(t, sources, opts);
+  return sources.flatMap((g) => {
+    const fix = moved.get(g.snapshot);
+    if (fix && !fix.to) return [];
+    const p = join(guideDir(t), `${g.version.split(".")[0]}.${g.snapshot.slice(7, 15)}.md`);
+    const { read: _, ...rest } = g;
+    const note = fix ? { ...rest, version: fix.to!, date: fix.date! } : rest;
+    const notes = readFileSync(p, "utf8");
+    const bound = g.kind === "release_notes" ? undefined : guideBound({ ...g, version: note.version, date: note.date }, releases, notes, g.version);
+    return [{ ...note, ...(bound ? { noLaterThan: bound } : {}), notes }];
+  });
+}
+
+/** A guide's version the technology never published: `to` is the technology's release that shipped with it (dated
+ * `date`), absent when none is known (the guide is then no source and its records lose that release). */
+export interface GuideVersion {
+  from: string;
+  to?: string;
+  date?: string;
+}
+
+/**
+ * The technology's release that shipped with a sibling's `version`: its own major start (`x.0.0`) published the same
+ * UTC day as the sibling's `version` (`siblingDays`, one per sibling that published it), the lowest if several. A
+ * monorepo publishing its packages together on independent version lines (electron-builder 27 with electron-updater 7)
+ * releases them the same day; a guide is a major's, so only a major start is its counterpart. Undefined otherwise.
+ */
+export function shippedWith(published: ReadonlyMap<string, string>, siblingDays: readonly string[]): string | undefined {
+  const days = new Set(siblingDays);
+  return [...published].filter(([v, d]) => days.has(d) && /^\d+\.0\.0$/.test(v)).map(([v]) => v).sort(compareVersions)[0];
+}
+
+/**
+ * The guides (by snapshot) whose version the technology's registry never published: a guide listed on a monorepo's
+ * shared docs site is the version line of the package the site is named after (electron-builder's "What's new in v27"
+ * for electron-updater, whose latest is 6.x). Each maps to `shippedWith` over the repository's other packages
+ * (section-packages.ts `repositoryPackages`), else to nothing. A registry that cannot be read (offline with nothing
+ * cached, an ecosystem without publish times) checks nothing: the guides stay as they were.
+ */
+export async function guideVersions(t: Technology, guides: ReadonlyArray<{ version: string; snapshot: string }>, opts: { refresh?: boolean; offline?: boolean } = {}): Promise<Map<string, GuideVersion>> {
+  const out = new Map<string, GuideVersion>();
+  if (!guides.length) return out;
+  const published = await registryVersions(t, opts);
+  const off = published.size ? guides.filter((g) => !published.has(g.version)) : [];
+  if (!off.length) return out;
+  // The repository's packages: none without the ecosystem hook; a hook whose read failed checks nothing this run (a
+  // guide that may map is not dropped for want of a lookup).
+  const packages = await repositoryPackages(t, opts);
+  if (!packages && ecosystemOf(t.components[0] ?? "").repositoryPackages) return out;
+  const siblings = (packages ?? []).map((p) => p.purl).filter((p) => !t.components.includes(p));
+  const siblingTimes: Array<Record<string, string>> = [];
+  for (const p of siblings) {
+    const times = await componentTimes(t, p, opts);
+    if (!times) return out; // a sibling's times unreadable: checked again next run
+    siblingTimes.push(times);
+  }
+  for (const g of off) {
+    const days = siblingTimes.flatMap((x) => (x[g.version] && !Number.isNaN(Date.parse(x[g.version]!)) ? [new Date(x[g.version]!).toISOString().slice(0, 10)] : []));
+    const to = shippedWith(published, days);
+    out.set(g.snapshot, to ? { from: g.version, to, date: published.get(to)! } : { from: g.version });
+  }
+  return out;
+}
+
+/** `guideVersions` over every guide in the technology's index, for the records already read from them (store.ts
+ * `relineGuideRecords`). */
+export async function indexGuideVersions(t: Technology, opts: { refresh?: boolean; offline?: boolean } = {}): Promise<Map<string, GuideVersion>> {
+  const index = readJson<GuideIndex>(join(guideDir(t), "index.json"));
+  return guideVersions(t, index?.guides ?? [], opts);
 }
