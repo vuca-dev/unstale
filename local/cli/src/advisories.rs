@@ -1038,12 +1038,13 @@ pub struct Report {
 
 /// Applies the conditions to the matches: `matches` per (ecosystem, name, version) the advisory ids OSV returned,
 /// `docs` per id. `overrides` gives the root override
-/// values a lockfile applies to a package name. `today` in days since the epoch.
+/// values a lockfile applies to a package name at the installed version (a range-scoped one, `zod@^4`, only to
+/// versions its range admits). `today` in days since the epoch.
 pub fn evaluate(
     gs: &[Graph],
     matches: &BTreeMap<(String, String, String), Vec<String>>,
     docs: &BTreeMap<String, Doc>,
-    overrides: impl Fn(&Graph, &str) -> Vec<(String, &'static str)>,
+    overrides: impl Fn(&Graph, &str, &Version) -> Vec<(String, &'static str)>,
     today: i64,
 ) -> (usize, Vec<Item>) {
     let mut raw = 0;
@@ -1162,7 +1163,7 @@ pub fn evaluate(
                     why.push("no fixed version: replace or mitigate".into());
                 } else {
                     // The first range or override refusing the lowest fix, when every fix is refused.
-                    let ovs = overrides(g, &nd.name);
+                    let ovs = overrides(g, &nd.name, &installed);
                     // Published projects first: their range is the one every installer meets.
                     let mut ps: Vec<&(usize, Option<&str>)> = parents[i].iter().collect();
                     ps.sort_by_key(|(p, _)| !g.nodes[*p].published);
@@ -1546,9 +1547,9 @@ pub fn refresh_with(
         .filter(|g| g.eco == "npm")
         .map(|g| (g.file.clone(), crate::stack::Lock::read_all(&root.join(g.file.rsplit_once('/').map(|(d, _)| d).unwrap_or(".")))))
         .collect();
-    let overrides = |g: &Graph, name: &str| -> Vec<(String, &'static str)> {
+    let overrides = |g: &Graph, name: &str, installed: &Version| -> Vec<(String, &'static str)> {
         let base = g.file.rsplit('/').next().unwrap_or("");
-        locks.get(&g.file).into_iter().flatten().filter(|l| l.file == base).flat_map(|l| l.override_values(name)).collect()
+        locks.get(&g.file).into_iter().flatten().filter(|l| l.file == base).flat_map(|l| l.override_values(name, installed)).collect()
     };
     let today = (at / 86400) as i64;
     let (raw, items) = evaluate(&gs, &matches, &docs, overrides, today);
@@ -1779,7 +1780,7 @@ mod tests {
     fn run(g: Graph, docs: &[(&str, Doc)], m: &[(&str, &str, &[&str])], today: &str) -> (usize, Vec<Item>) {
         let matches = m.iter().map(|(n, v, ids)| ((g.eco.to_string(), n.to_string(), v.to_string()), ids.iter().map(|i| i.to_string()).collect())).collect();
         let docs = docs.iter().map(|(i, d)| (i.to_string(), d.clone())).collect();
-        evaluate(&[g], &matches, &docs, |_, _| vec![], util::parse_date(today).unwrap())
+        evaluate(&[g], &matches, &docs, |_, _, _| vec![], util::parse_date(today).unwrap())
     }
 
     #[test]
@@ -2085,6 +2086,31 @@ mod tests {
         let (_, items) = run(g, &docs, &[("tiny", "1.0.0", &["GHSA-t"])], "2026-10-18");
         assert_eq!(items[0].why, vec!["fix blocked: left-pad 1.1.0 requires ~1.0.0"]);
         assert_eq!(items[0].via, vec!["left-pad 1.1.0"]);
+    }
+
+    #[test]
+    fn a_range_scoped_override_blocks_no_fix_outside_its_range() {
+        // lobehub: `'zod@^4': 4.6.5` beside a zod 3.25.76 its parents declare. The override says nothing about zod 3;
+        // the parent's range is what refuses a 4.x fix. A fix on the installed major comes first when there is one.
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("pnpm-workspace.yaml"), "overrides:\n  'zod@^4': 4.6.5\n").unwrap();
+        std::fs::write(d.path().join("pnpm-lock.yaml"), "lockfileVersion: '9.0'\n").unwrap();
+        let lock = crate::stack::Lock::read_all(d.path()).pop().unwrap();
+        let yarn = "# yarn lockfile v1\n\nsdk@^1.0.0:\n  version \"1.0.0\"\n  dependencies:\n    zod \"^3.25.0\"\n\nzod@^3.25.0:\n  version \"3.25.76\"\n";
+        let m = vec![(".".to_string(), serde_json::json!({"name": "app", "dependencies": {"sdk": "^1.0.0"}}))];
+        let eval = |fixes: &[&str]| {
+            let g = yarn_lock(yarn, "yarn.lock", &m);
+            let matches = [(("npm".to_string(), "zod".to_string(), "3.25.76".to_string()), vec!["GHSA-z".to_string()])].into_iter().collect();
+            let docs = [("GHSA-z".to_string(), doc(Some(Severity::High), "2026-10-01T00:00:00Z", &[("npm", "zod", fixes)], &[]))].into_iter().collect();
+            evaluate(&[g], &matches, &docs, |_, n, v| lock.override_values(n, v), util::parse_date("2026-10-28").unwrap()).1
+        };
+        let items = eval(&["4.6.6"]);
+        assert_eq!(items[0].fix.as_deref(), Some("4.6.6"));
+        assert!(items[0].why.contains(&"fix blocked: sdk 1.0.0 requires ^3.25.0".to_string()), "{:?}", items[0].why);
+        assert!(!items[0].why.iter().any(|w| w.contains("overrides")), "{:?}", items[0].why);
+        let items = eval(&["3.25.80", "4.6.6"]);
+        assert_eq!(items[0].fix.as_deref(), Some("3.25.80"), "the fix within the installed major");
+        assert!(!items[0].why.iter().any(|w| w.starts_with("fix blocked")), "{:?}", items[0].why);
     }
 
     /// react/react: Yarn v1 `alias@npm:real@range` entries install `real`; the alias names (squatted malware on npm)

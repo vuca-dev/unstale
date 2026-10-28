@@ -2494,7 +2494,7 @@ pub(crate) mod fixtures {
             node_by_lock: Default::default(),
             python: None,
             notes: vec![],
-            unreadable: 0, stub_runtimes: Default::default(), spread: 0, peers: vec![],
+            unreadable: 0, stub_runtimes: Default::default(), spread: 0, peers: vec![], unlocked: vec![],
             standalone: vec![],
             registries: Default::default(),
             fixture_registries: Default::default(),

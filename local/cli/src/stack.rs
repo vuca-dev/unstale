@@ -314,6 +314,9 @@ pub struct Stack {
     /// The peer ranges of the repository's published packages (`is_library`): what their users must install beside
     /// them. A range that leaves out the current release of its package fails their install (`onboarding`).
     pub peers: Vec<Peer>,
+    /// Workspace files that install with no lockfile (pnpm `lockfile: false`), from the repository root: each
+    /// install resolves its manifests' ranges afresh, so their versions are read, not installed (`Unlocked`).
+    pub unlocked: Vec<String>,
 }
 
 /// A published package's peer range on another package.
@@ -556,6 +559,7 @@ pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
     let mut peers: Vec<Peer> = vec![];
     // Per lockfile path: locked versions outside the declared range, with a few examples.
     let mut stale: BTreeMap<String, (usize, Vec<String>)> = BTreeMap::new();
+    let mut unlocked_ws: BTreeMap<PathBuf, Option<Unlocked>> = BTreeMap::new();
     for e in walker(root).flatten() {
         if e.file_name() != "package.json" || !e.file_type().is_some_and(|t| t.is_file()) {
             continue;
@@ -608,9 +612,30 @@ pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
             }
             d = cur.parent();
         }
+        // No lockfile covers it, but a pnpm workspace that installs with none (`lockfile: false`) does: its ranges
+        // resolve afresh on each install, and its overrides still set what they name.
+        let unlocked = match &lock {
+            Some(_) => None,
+            None => {
+                let mut found = None;
+                let mut d = Some(dir.as_path());
+                while let Some(cur) = d {
+                    let u = unlocked_ws.entry(cur.to_path_buf()).or_insert_with(|| Unlocked::read(cur));
+                    if let Some(u) = u.as_ref().filter(|u| u.covers(&rel_dir(cur, &dir))) {
+                        found = Some((join(&rel_dir(root, cur), "pnpm-workspace.yaml"), u.clone()));
+                        break;
+                    }
+                    if cur == root {
+                        break;
+                    }
+                    d = cur.parent();
+                }
+                found
+            }
+        };
         let importer = lock.as_ref().map(|(ld, _)| rel_dir(ld, &dir)).unwrap_or_else(|| ".".into());
         let kind = if is_library(&pj, lock.as_ref().is_some_and(|(ld, _)| *ld == dir)) { Kind::Library } else { Kind::Application };
-        let standalone = lock.is_none();
+        let standalone = lock.is_none() && unlocked.is_none();
         // A manifest that declares nothing (a directory's `main` entry) is no project of its own to name.
         let declares = DEP_FIELDS.iter().any(|f| pj.get(*f).and_then(Value::as_object).is_some_and(|m| !m.is_empty()));
         match (&passed, standalone) {
@@ -660,6 +685,7 @@ pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
                         range
                     }
                 });
+                let mut fresh: Option<String> = None;
                 let (version, source, floor) = if let Some((ld, l)) = &lock
                     && let Some(v) = l.version(&importer, name, range)
                     // A locked copy outside a library's own range is some other workspace's (a peer the importer
@@ -690,6 +716,28 @@ pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
                             s.1.push(format!("{name} {v} vs {range}"));
                         }
                         (range_floor(range), format!("floor of {shown} ({file} has {v}, outside the range)"), Some(range))
+                    }
+                } else if let Some((file, u)) = unlocked.as_ref().filter(|_| !local) {
+                    // An override is a declaration: an exact version is what every install gets; a range is what
+                    // it resolves in. Otherwise the declared range (a library's, for what its users install).
+                    let set = u.overrides.get(name).and_then(|os| os.iter().find(|o| o.applies(range) && range_floor(&o.value).is_some()));
+                    let spec = set.map_or(lib_range.unwrap_or(range), |o| o.value.as_str());
+                    // Only a full version is exact: `5` or `1.x` is a range.
+                    let exact = Version::parse(spec.trim().trim_start_matches(['=', 'v'])).ok();
+                    match (set, exact) {
+                        (Some(o), Some(v)) => (Some(v), format!("{} sets {spec}; {file} sets lockfile: false", o.set), lib_range),
+                        _ => {
+                            if u.newest {
+                                fresh = Some(spec.to_string());
+                            }
+                            let how = if u.newest { "each install resolves the newest release it admits" } else { "resolutionMode lowest-direct installs it" };
+                            let what = match set {
+                                Some(o) => format!("{} sets {spec}", o.set),
+                                None if spec == range => shown.clone(),
+                                None => spec.to_string(),
+                            };
+                            (range_floor(spec), format!("floor of {what} ({file} sets lockfile: false; {how})"), Some(spec))
+                        }
                     }
                 } else if let Some(r) = lib_range {
                     let r_shown = if r == range { shown.clone() } else { r.to_string() };
@@ -730,6 +778,11 @@ pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
                     && !entry.pins.contains(&pin)
                 {
                     entry.pins.push(pin);
+                }
+                if let Some(spec) = fresh
+                    && !entry.unpinned.contains(&(rel.clone(), spec.clone()))
+                {
+                    entry.unpinned.push((rel.clone(), spec));
                 }
                 let lock_file = lock.as_ref().map(|(ld, l)| join(&rel_dir(root, ld), &l.file));
                 entry.read_under(&rel, version, source, standalone, floor.map(|r| Range::Npm(r.to_string())), lock_file);
@@ -841,6 +894,8 @@ pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
     }
     // A Python requirement nothing pins is read at the newest release its range admits; public names only.
     crate::pypi::assume_newest(&mut deps, &mut notes, crate::pypi::registry_releases);
+    // So is an npm range a workspace with no lockfile resolves afresh on every install (`Unlocked`).
+    crate::pypi::assume_newest_in(&NPM_FRESH, &mut deps, &mut notes, crate::pypi::npm_registry_releases);
     // Packages a lockfile installs from git, a URL, a path or another registry: not the public package of that name, so
     // they are not registered for coverage (a git-sourced `uWebSockets.js` is no `pkg:npm/uWebSockets.js`). Said once.
     let elsewhere: Vec<&str> = deps.values().filter(|d| d.seen == Seen::Elsewhere && !d.readings.is_empty()).map(|d| d.name.as_str()).collect();
@@ -851,7 +906,8 @@ pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
             elsewhere.iter().take(5).copied().collect::<Vec<_>>().join(", ")
         ));
     }
-    let mut st = Stack { packages, deps, node, node_by_lock, python, notes, unreadable, stub_runtimes, spread: 0, standalone, registries, fixture_registries, peers };
+    let unlocked = unlocked_ws.iter().filter_map(|(d, u)| u.as_ref().map(|_| join(&rel_dir(root, d), "pnpm-workspace.yaml"))).collect();
+    let mut st = Stack { packages, deps, node, node_by_lock, python, notes, unreadable, stub_runtimes, spread: 0, standalone, registries, fixture_registries, peers, unlocked };
     st.settle();
     Ok(st)
 }
@@ -1200,7 +1256,59 @@ impl Override {
         let bare = |r: &str| r.trim().strip_prefix("npm:").unwrap_or(r.trim()).to_string();
         self.when.as_deref().is_none_or(|w| bare(w) == bare(range) || range_floor(range).is_some_and(|f| npm_satisfies(&f, &bare(w)) == Some(true)))
     }
+
+    /// Whether it sets an installed `v`: no selector version, or one that admits `v` (one it cannot read, too).
+    fn covers(&self, v: &Version) -> bool {
+        self.when.as_deref().is_none_or(|w| npm_satisfies(v, w.trim().strip_prefix("npm:").unwrap_or(w.trim())) != Some(false))
+    }
 }
+
+/// A pnpm workspace that installs with no lockfile (`lockfile: false` in `pnpm-workspace.yaml`, no `pnpm-lock.yaml`
+/// beside it): every install resolves its manifests' ranges afresh, the newest release each admits unless
+/// `resolutionMode: lowest-direct` takes direct dependencies at their floor. Its root overrides still set the
+/// versions they name.
+#[derive(Debug, Clone)]
+struct Unlocked {
+    overrides: BTreeMap<String, Vec<Override>>,
+    members: Members,
+    newest: bool,
+}
+
+impl Unlocked {
+    fn read(dir: &Path) -> Option<Unlocked> {
+        if dir.join("pnpm-lock.yaml").is_file() {
+            return None;
+        }
+        let text = std::fs::read_to_string(dir.join("pnpm-workspace.yaml")).ok()?;
+        let top = |key: &str| {
+            text.lines()
+                .filter(|l| !l.starts_with([' ', '\t', '#']))
+                .find_map(|l| split_key(l.find(" #").map_or(l, |i| &l[..i]).trim_end()).filter(|(k, _)| k == key).and_then(|(_, v)| v.map(|v| v.trim_matches(['\'', '"']).to_string())))
+        };
+        (top("lockfile").as_deref() == Some("false")).then(|| Unlocked {
+            overrides: read_overrides(dir, "pnpm-lock.yaml"),
+            members: Members::read(dir, "pnpm-lock.yaml"),
+            newest: top("resolutionMode").as_deref() != Some("lowest-direct"),
+        })
+    }
+
+    fn covers(&self, rel: &str) -> bool {
+        rel == "." || self.members.contains(rel)
+    }
+}
+
+/// What the notes on an unlocked workspace's npm ranges say of them.
+pub const UNLOCKED_NPM: &str = "in a pnpm workspace with lockfile: false";
+
+/// The npm registry, for ranges an unlocked workspace resolves afresh (`pypi::assume_newest_in`).
+const NPM_FRESH: crate::pypi::Fresh = crate::pypi::Fresh {
+    prefix: "pkg:npm/",
+    registry: "npm",
+    what: ("npm dependency", "npm dependencies"),
+    unpinned_by: UNLOCKED_NPM,
+    admits: |v, r| npm_satisfies(v, r) == Some(true),
+    range: Range::Npm,
+};
 
 /// npm lockfiles in the order used when nothing else decides between them, with the package manager that writes
 /// each (the `packageManager` field names it).
@@ -1346,9 +1454,11 @@ impl Lock {
         Some(Pin { version: v.to_string(), hashes: hashes.clone() })
     }
 
-    /// The values root overrides set `name` to (`overrides`, `resolutions`, `pnpm.overrides`), with where each is set.
-    pub fn override_values(&self, name: &str) -> Vec<(String, &'static str)> {
-        self.overrides.get(name).into_iter().flatten().map(|o| (o.value.clone(), o.set)).collect()
+    /// The values root overrides set `name` at `installed` to (`overrides`, `resolutions`, `pnpm.overrides`), with
+    /// where each is set. A range-scoped selector (`zod@^4`) sets only the versions its range admits: it says
+    /// nothing about a zod 3 the install also holds.
+    pub fn override_values(&self, name: &str, installed: &Version) -> Vec<(String, &'static str)> {
+        self.overrides.get(name).into_iter().flatten().filter(|o| o.covers(installed)).map(|o| (o.value.clone(), o.set)).collect()
     }
 
     fn saw(&mut self, name: &str, seen: Seen) {
@@ -2331,6 +2441,60 @@ mod tests {
         assert_eq!(react.readings.iter().find(|r| r.dir == "b").unwrap().version, Version::new(16, 0, 0), "`react@^18` does not set ^16");
         assert!(s.notes.iter().any(|n| n.contains("react 19.2.7 vs ^16.0.0")), "{:?}", s.notes);
         assert_eq!(s.deps["pkg:npm/foo"].source, "replaced by bar (resolutions)", "an in-range pin of another package");
+    }
+
+    #[test]
+    fn a_pnpm_workspace_with_no_lockfile_reads_overrides_and_fresh_ranges_not_installed_floors() {
+        // lobehub: `lockfile: false`, `resolutionMode: highest`, `'zod@^4': 4.6.5`; the root looks published.
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "pnpm-workspace.yaml", "lockfile: false\nresolutionMode: highest\npackages:\n  - packages/*\noverrides:\n  'zod@^4': 4.6.5\n  drizzle-orm: ^0.45.2\n");
+        write(d.path(), "package.json", r#"{"name":"@acme/app","version":"2.2.20","publishConfig":{"access":"public"},
+            "dependencies":{"zod":"^4.4.3","next":"~16.3.8","drizzle-orm":"^0.45.0","@acme/a":"workspace:*"}}"#);
+        write(d.path(), "packages/a/package.json", r#"{"name":"@acme/a","private":true,"dependencies":{"zod":"^3.25.0"}}"#);
+        let mut s = detect(d.path()).unwrap();
+        assert_eq!(s.unlocked, vec!["pnpm-workspace.yaml".to_string()]);
+        let zod = &s.deps["pkg:npm/zod"];
+        let root = zod.readings.iter().find(|r| r.dir == ".").unwrap();
+        assert_eq!(root.version, Version::new(4, 6, 5), "the override sets every zod 4: {zod:?}");
+        assert!(root.source.starts_with("pnpm-workspace.yaml overrides sets 4.6.5"), "{}", root.source);
+        let a = zod.readings.iter().find(|r| r.dir == "packages/a").unwrap();
+        assert_eq!(a.version, Version::new(3, 25, 0), "`zod@^4` does not set zod 3");
+        assert!(!root.standalone && !a.standalone, "a workspace member, not a separate project");
+        assert!(s.deps.values().flat_map(|d| &d.readings).all(|r| !r.source.contains("library floor")), "{:?}", s.deps);
+        assert!(s.deps["pkg:npm/next"].unpinned.contains(&(".".into(), "~16.3.8".into())));
+        assert!(s.deps["pkg:npm/drizzle-orm"].unpinned.contains(&(".".into(), "^0.45.2".into())), "a range override is what it resolves in");
+        assert!(!s.deps["pkg:npm/zod"].unpinned.contains(&(".".into(), "4.6.5".into())), "an exact override is no fresh range");
+        // `detect` reads no registry in tests; the releases a fresh install chooses from:
+        let releases = |purls: &[String]| {
+            let vs = |p: &str| -> Vec<Version> {
+                let l: &[&str] = match p {
+                    "pkg:npm/next" => &["16.3.8", "16.3.12", "16.4.3"],
+                    "pkg:npm/drizzle-orm" => &["0.45.0", "0.45.2", "0.45.9"],
+                    "pkg:npm/zod" => &["3.25.0", "3.25.76", "4.6.5", "4.6.6"],
+                    _ => &[],
+                };
+                l.iter().filter_map(|v| parse_version(v)).collect()
+            };
+            purls.iter().map(|p| (p.clone(), vs(p))).collect()
+        };
+        crate::pypi::assume_newest_in(&NPM_FRESH, &mut s.deps, &mut s.notes, releases);
+        let at = |purl: &str, dir: &str| s.deps[purl].readings.iter().find(|r| r.dir == dir).unwrap().version.clone();
+        assert_eq!(at("pkg:npm/next", "."), Version::new(16, 3, 12), "the newest release `~16.3.8` admits");
+        assert_eq!(at("pkg:npm/drizzle-orm", "."), Version::new(0, 45, 9));
+        assert_eq!(at("pkg:npm/zod", "."), Version::new(4, 6, 5), "the override stays");
+        assert_eq!(at("pkg:npm/zod", "packages/a"), Version::new(3, 25, 76));
+        assert!(s.notes.iter().any(|n| n.contains(UNLOCKED_NPM) && n.contains("newest release on npm")), "{:?}", s.notes);
+    }
+
+    #[test]
+    fn a_range_scoped_override_sets_only_the_versions_its_range_admits() {
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "pnpm-workspace.yaml", "overrides:\n  'zod@^4': 4.6.5\n  vitest: 5.0.0\n");
+        write(d.path(), "pnpm-lock.yaml", "lockfileVersion: '9.0'\n");
+        let l = Lock::read_all(d.path()).pop().unwrap();
+        assert!(l.override_values("zod", &Version::new(3, 25, 76)).is_empty(), "zod 3 is not what `zod@^4` sets");
+        assert_eq!(l.override_values("zod", &Version::new(4, 4, 3)), vec![("4.6.5".into(), "pnpm-workspace.yaml overrides")]);
+        assert_eq!(l.override_values("vitest", &Version::new(4, 0, 0)).len(), 1, "an unscoped override sets every version");
     }
 
     #[test]
