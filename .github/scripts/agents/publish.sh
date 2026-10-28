@@ -20,7 +20,7 @@ repo="$GITHUB_REPOSITORY"
 marker='<!-- agent:handled -->'
 today=$(date -u +%Y-%m-%d)
 remote="https://x-access-token:${GH_TOKEN}@github.com/${repo}.git"
-git_() { git -c core.hooksPath=/dev/null -c user.name="unstale agents" -c user.email="agents@users.noreply.github.com" "$@"; }
+git_() { git -c core.hooksPath=/dev/null -c user.name="unstale agents" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" "$@"; }
 
 # Secrets the agent job held must not leave in any output.
 for var in $(compgen -e | grep '^SCAN_' || true); do
