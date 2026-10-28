@@ -181,4 +181,15 @@ impl Catalog {
         }
         self.techs.iter().map(|(t, d)| format!("{t} sha256:{}", d.index_sha)).collect::<Vec<_>>().join(", ")
     }
+
+    /// The snapshot in a few words: the technology count and one hash over `snapshot_line` (its first 16 hex digits),
+    /// which changes whenever any technology's index does. The per-technology hashes stay in `.unstale/coverage.md`
+    /// and the review context headers.
+    pub fn snapshot_id(&self) -> String {
+        if self.techs.is_empty() {
+            return "none".into();
+        }
+        let n = self.techs.len();
+        format!("{n} technolog{}, snapshot sha256:{}", if n == 1 { "y" } else { "ies" }, &sha256_hex(self.snapshot_line().as_bytes())[..16])
+    }
 }

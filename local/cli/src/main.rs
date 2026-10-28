@@ -571,7 +571,7 @@ fn print_digest(ctx: &Ctx, w: &World, out: &Outcome) {
     if lines.is_empty() {
         println!("Bump digest: nothing arrives with a bump. {}.", funnel::why(out, &["bump digest"]));
     } else {
-        println!("Bump digest (catalog: {}):", w.catalog.snapshot_line());
+        println!("Bump digest (catalog: {}):", w.catalog.snapshot_id());
         for l in lines {
             println!("{l}");
         }
