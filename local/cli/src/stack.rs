@@ -370,10 +370,15 @@ impl Stack {
     /// A version the project declares for a prerequisite name in the npm ecosystem: `node` from engines or
     /// `.nvmrc`, anything else from the dependency list.
     /// For a version read from `lock` (a lockfile path, `Reading::lock`), `node` is that lockfile root's own floor
-    /// (`node_by_lock`), the repository's when it has none.
+    /// (`node_by_lock`); the repository's floor only for a version no lockfile holds.
     pub fn npm_version_in(&self, name: &str, lock: Option<&str>) -> Option<&Version> {
         if name.eq_ignore_ascii_case("node") {
-            return lock.and_then(|l| self.node_by_lock.get(l)).or(self.node.as_ref()).map(|(v, _)| v);
+            // A lockfile root with no floor of its own (no engines, no toolchain file) is not answered: fail open.
+            return match lock {
+                Some(l) => self.node_by_lock.get(l),
+                None => self.node.as_ref(),
+            }
+            .map(|(v, _)| v);
         }
         self.deps.get(&npm_purl(&name.to_lowercase())).and_then(|d| d.version.as_ref())
     }

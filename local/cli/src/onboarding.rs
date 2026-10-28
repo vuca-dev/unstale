@@ -2430,12 +2430,20 @@ fn stub_beside_runtime(purl: &str, name: &str, st: &crate::stack::Stack) -> bool
     typed.is_some_and(|t| st.deps.values().any(|d| d.name.eq_ignore_ascii_case(&t)))
 }
 
-/// Whether an upgrade line whose headline manifest is `line_dir` installs the deprecated version `n`: that manifest's
-/// reading of the package, else the package's headline reading. A package the stack does not read is not decided here.
-fn line_installs(n: &crate::deprecations::Notice, dep: Option<&crate::stack::Dep>, line_dir: Option<&str>) -> bool {
+/// Whether an upgrade line whose headline manifest is `line` (directory, lockfile) installs the deprecated version
+/// `n`: that manifest's reading of the package, else a reading under the same lockfile (a sibling package another
+/// workspace declares); with no headline manifest known, the package's headline reading. A package the stack does not
+/// read is not decided here.
+fn line_installs(n: &crate::deprecations::Notice, dep: Option<&crate::stack::Dep>, line: Option<(&str, Option<&str>)>) -> bool {
     let Some(d) = dep else { return true };
-    let here = line_dir.and_then(|dir| d.readings.iter().find(|r| r.dir == dir)).or_else(|| d.headline());
-    here.is_none_or(|r| r.version.to_string() == n.version)
+    let is = |r: &crate::stack::Reading| r.version.to_string() == n.version;
+    match line {
+        None => d.headline().is_none_or(is),
+        Some((dir, lock)) => match d.readings.iter().find(|r| r.dir == dir) {
+            Some(r) => is(r),
+            None => lock.is_some() && d.readings.iter().any(|r| r.lock.as_deref() == lock && is(r)),
+        },
+    }
 }
 
 /// The package-level signals of direct dependencies no shown upgrade (`ranked`, tier at least an unreached advisory)
@@ -3066,16 +3074,18 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
         };
         // The deprecated version this line's own manifest installs: another manifest's copy (a fixture pinning an old
         // major, a release script's own lockfile) is its own sub-line, not this headline's end of support.
-        let line_dir = head.and_then(|i| {
+        let line_reading = head.and_then(|i| {
             let component = out.opps[i].component();
+            let d = w.stack.deps.get(&component)?;
             match out.headline.get(&component) {
-                Some((dir, _)) => Some(dir.clone()),
-                None => w.stack.deps.get(&component).and_then(|d| d.headline()).map(|r| r.dir.clone()),
+                Some((dir, _)) => d.readings.iter().find(|r| r.dir == *dir),
+                None => d.headline(),
             }
         });
+        let line = line_reading.map(|r| (r.dir.as_str(), r.lock.as_deref()));
         let deprecated_here = deprecated
             .iter()
-            .find(|n| packages.iter().any(|p| p.eq_ignore_ascii_case(&n.name)) && line_installs(n, w.stack.deps.get(&util::normalize_purl(&n.purl)), line_dir.as_deref()));
+            .find(|n| packages.iter().any(|p| p.eq_ignore_ascii_case(&n.name)) && line_installs(n, w.stack.deps.get(&util::normalize_purl(&n.purl)), line));
         let breaking = |o: &funnel::Opp| o.rec.r.breaking || o.rec.r.change_type == ChangeType::Removal;
         // How strongly the lead says something is wrong or will break here, within the consequential tier: what fails
         // now or an end-of-life install, then a reached advisory or a removal this code uses, then a runtime lockfile
@@ -4113,11 +4123,18 @@ mod tests {
         let reading = |dir: &str, v: &str| stack::Reading { dir: dir.into(), version: util::parse_version(v).unwrap(), source: "yarn.lock".into(), standalone: false, range: None, lock: None };
         d.readings = vec![reading(".", "7.32.0"), reading("fixtures/eslint-v6", "6.8.0")];
         let notice = |v: &str| crate::deprecations::Notice { purl: "pkg:npm/eslint".into(), name: "eslint".into(), version: v.into(), message: String::new(), yanked: false, url: String::new(), latest: None };
-        assert!(!line_installs(&notice("6.8.0"), Some(&d), Some(".")), "another manifest's copy");
-        assert!(line_installs(&notice("7.32.0"), Some(&d), Some(".")));
-        assert!(line_installs(&notice("6.8.0"), Some(&d), Some("fixtures/eslint-v6")));
+        let root = Some((".", Some("yarn.lock")));
+        assert!(!line_installs(&notice("6.8.0"), Some(&d), root), "another manifest's copy");
+        assert!(line_installs(&notice("7.32.0"), Some(&d), root));
+        assert!(line_installs(&notice("6.8.0"), Some(&d), Some(("fixtures/eslint-v6", Some("fixtures/eslint-v6/yarn.lock")))));
         // No headline directory: the package's headline reading (the root) decides.
         assert!(!line_installs(&notice("6.8.0"), Some(&d), None));
+        // A sibling package the line's manifest does not declare: a reading under the same lockfile, else none.
+        let mut sib = stack::Dep::new("eslint-plugin-x", true);
+        sib.readings = vec![stack::Reading { lock: Some("yarn.lock".into()), ..reading("packages/a", "1.0.0") }, stack::Reading { lock: Some("other/yarn.lock".into()), ..reading("other", "0.9.0") }];
+        let n = |v: &str| crate::deprecations::Notice { purl: "pkg:npm/eslint-plugin-x".into(), name: "eslint-plugin-x".into(), ..notice(v) };
+        assert!(line_installs(&n("1.0.0"), Some(&sib), root));
+        assert!(!line_installs(&n("0.9.0"), Some(&sib), root));
     }
 
     #[test]

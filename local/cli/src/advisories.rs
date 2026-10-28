@@ -328,6 +328,7 @@ pub fn yarn_lock(text: &str, file: &str, manifests: &[(String, Value)]) -> Graph
     let mut specs: Vec<(String, String)> = vec![];
     // The package an alias entry installs (`alias@npm:real@range`).
     let mut real: Option<String> = None;
+    let mut unnamed = false;
     let mut in_deps = false;
     for line in text.lines() {
         if line.trim().is_empty() || line.starts_with('#') {
@@ -343,11 +344,13 @@ pub fn yarn_lock(text: &str, file: &str, manifests: &[(String, Value)]) -> Graph
                     Some((s[..at].to_string(), bare(&s[at + 1..])))
                 })
                 .collect();
-            real = line.split(", ").next().and_then(|s| {
+            let npm_range = line.split(", ").next().and_then(|s| {
                 let s = s.trim().trim_end_matches(':').trim_matches('"');
-                let r = s.get(1..)?.split_once('@')?.1.strip_prefix("npm:")?;
-                yarn_alias_target(r).map(String::from)
+                s.get(1..)?.split_once('@')?.1.strip_prefix("npm:").map(String::from)
             });
+            real = npm_range.as_deref().and_then(yarn_alias_target).map(String::from);
+            // `alias@npm:real` names no version, so it reads like a range: the entry's resolution says which package.
+            unnamed = npm_range.is_some() && real.is_none();
             cur = None;
             in_deps = false;
             continue;
@@ -369,6 +372,15 @@ pub fn yarn_lock(text: &str, file: &str, manifests: &[(String, Value)]) -> Graph
                     by_spec.insert(s.clone(), i);
                 }
                 cur = Some(i);
+            }
+            // The installed package by its resolution (Berry `resolution: "real@npm:1.0.0"`, v1 registry tarball
+            // `…/real/-/real-1.0.0.tgz`), for an `npm:` entry whose spec names no target.
+            if unnamed && let Some(i) = cur {
+                let resolved = t.strip_prefix("resolution: ").map(|r| r.trim_matches('"')).and_then(|r| r.get(1..)?.find("@npm:").map(|at| r[..at + 1].to_string()));
+                let resolved = resolved.or_else(|| t.strip_prefix("resolved ").and_then(|u| tarball_package(u.trim_matches('"'))));
+                if let Some(name) = resolved {
+                    g.nodes[i].name = name;
+                }
             }
         } else if let (Some(u), Some(i)) = (t.strip_prefix("resolved "), cur) {
             g.saw(i, Seen::npm_url(u.trim_matches('"')));
@@ -405,6 +417,18 @@ pub fn yarn_lock(text: &str, file: &str, manifests: &[(String, Value)]) -> Graph
 fn yarn_alias_target(range: &str) -> Option<&str> {
     let at = range.get(1..)?.find('@')? + 1;
     Some(&range[..at]).filter(|n| !n.is_empty())
+}
+
+/// The package a registry tarball URL serves (`https://registry.yarnpkg.com/@scope/pkg/-/pkg-1.0.0.tgz` →
+/// `@scope/pkg`); `None` for a URL of another shape.
+fn tarball_package(url: &str) -> Option<String> {
+    let path = url.split(['#', '?']).next()?.split_once("/-/")?.0;
+    let mut segs = path.rsplit('/');
+    let name = segs.next().filter(|n| !n.is_empty() && !n.contains(':'))?;
+    match segs.next().map(|s| s.replace("%40", "@")) {
+        Some(scope) if scope.starts_with('@') => Some(format!("{scope}/{name}")),
+        _ => Some(name.to_string()),
+    }
 }
 
 /// `uv.lock`: workspace members (`editable`, `virtual`, `directory` sources) are the projects; their
@@ -1946,11 +1970,16 @@ mod tests {
     /// were looked up in OSV. The real package is queried and is the direct dependency.
     #[test]
     fn a_yarn_alias_entry_is_the_package_it_installs() {
-        let yarn = "# yarn lockfile v1\n\n\"eslint-plugin-react-hooks-published@npm:eslint-plugin-react-hooks@^5.2.0\":\n  version \"5.2.0\"\n  resolved \"https://registry.yarnpkg.com/eslint-plugin-react-hooks/-/eslint-plugin-react-hooks-5.2.0.tgz\"\n\n\"eslint-v7@npm:eslint@^7.7.0\", eslint@^7.7.0:\n  version \"7.32.0\"\n\n\"@scope/old@npm:@scope/pkg@1.0.0\":\n  version \"1.0.0\"\n\ngit-dep@git+ssh://git@github.com/o/r.git:\n  version \"0.1.0\"\n";
+        let yarn = "# yarn lockfile v1\n\n\"eslint-plugin-react-hooks-published@npm:eslint-plugin-react-hooks@^5.2.0\":\n  version \"5.2.0\"\n  resolved \"https://registry.yarnpkg.com/eslint-plugin-react-hooks/-/eslint-plugin-react-hooks-5.2.0.tgz\"\n\n\"eslint-v7@npm:eslint@^7.7.0\", eslint@^7.7.0:\n  version \"7.32.0\"\n\n\"@scope/old@npm:@scope/pkg@1.0.0\":\n  version \"1.0.0\"\n\ngit-dep@git+ssh://git@github.com/o/r.git:\n  version \"0.1.0\"\n\nbare@npm:noop:\n  version \"1.0.0\"\n  resolved \"https://registry.yarnpkg.com/noop/-/noop-1.0.0.tgz#abc\"\n";
         let m = vec![(".".to_string(), serde_json::json!({"name": "app", "devDependencies": {"eslint-plugin-react-hooks-published": "npm:eslint-plugin-react-hooks@^5.2.0", "eslint": "^7.7.0", "@scope/old": "npm:@scope/pkg@1.0.0"}}))];
         let g = yarn_lock(yarn, "yarn.lock", &m);
         let names: BTreeSet<String> = g.packages().into_iter().map(|(n, _)| n).collect();
-        assert_eq!(names, ["@scope/pkg", "eslint", "eslint-plugin-react-hooks", "git-dep"].map(String::from).into(), "{names:?}");
+        assert_eq!(names, ["@scope/pkg", "eslint", "eslint-plugin-react-hooks", "git-dep", "noop"].map(String::from).into(), "{names:?}");
+        assert_eq!(tarball_package("https://r.example/api/npm/%40corp/ui/-/ui-1.0.0.tgz").as_deref(), Some("@corp/ui"));
+        // Berry: the resolution names the package an `npm:` alias with no version installs.
+        let berry = "__metadata:\n  version: 8\n\n\"@types/wordpress__block-editor@npm:noop-package\":\n  version: 1.0.0\n  resolution: \"noop-package@npm:1.0.0\"\n\n\"lodash@npm:^4.17.23\":\n  version: 4.18.1\n  resolution: \"lodash@npm:4.18.1\"\n";
+        let names: BTreeSet<String> = yarn_lock(berry, "yarn.lock", &[]).packages().into_iter().map(|(n, _)| n).collect();
+        assert_eq!(names, ["lodash", "noop-package"].map(String::from).into());
         let direct: BTreeSet<String> = g.direct().into_iter().map(|(n, _)| n).collect();
         assert_eq!(direct, ["@scope/pkg", "eslint", "eslint-plugin-react-hooks"].map(String::from).into());
     }

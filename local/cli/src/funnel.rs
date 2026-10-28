@@ -322,6 +322,8 @@ pub struct Workspace<'a> {
     pub version: Version,
     /// (directory, source), by directory.
     pub dirs: Vec<(String, String)>,
+    /// The lockfiles those manifests read (`Reading::lock`): a prerequisite is checked against each root's floor.
+    pub locks: Vec<Option<String>>,
     pub target: Option<Version>,
     /// Records that reach the bump digest or the upgrade review at this version (after the same ledger, prerequisite
     /// and applied checks as the outputs).
@@ -1503,7 +1505,10 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             }
             for (version, rs) in others {
                 let dirs = rs.iter().map(|r| (r.dir.clone(), r.source.clone())).collect();
-                workspaces.push(Workspace { component: (*c).clone(), version, dirs, target: None, records: vec![] });
+                let mut locks: Vec<Option<String>> = rs.iter().map(|r| r.lock.clone()).collect();
+                locks.sort();
+                locks.dedup();
+                workspaces.push(Workspace { component: (*c).clone(), version, dirs, locks, target: None, records: vec![] });
             }
         }
         // Newest release per component: the default target. The technology's own packages take the newest release any
@@ -1947,7 +1952,8 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                 if !matches!(route, Route::UpgradeReview | Route::BumpDigest) {
                     continue;
                 }
-                let blocks = blocked(rec, inp.stack, &comp, head_lock(&comp).as_deref()).is_some() && !(route == Route::UpgradeReview && is_obligation(rec));
+                // Blocked only where every lockfile root holding this version fails the prerequisite.
+                let blocks = w.locks.iter().all(|l| blocked(rec, inp.stack, &comp, l.as_deref()).is_some()) && !(route == Route::UpgradeReview && is_obligation(rec));
                 if blocks || ledger_status().is_some() || (route == Route::UpgradeReview && !rec.r.breaking && applied_in(0)) {
                     continue;
                 }
