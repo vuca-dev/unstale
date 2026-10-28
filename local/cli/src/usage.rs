@@ -1260,6 +1260,163 @@ pub fn defines(text: &str, lit: &str) -> bool {
         })
 }
 
+/// Python: byte ranges of `text` that are parameter lists, a `def`'s parenthesised list (`def f(errors, **extra)`, over
+/// several lines too) and a `lambda`'s names up to its colon. A name written there is the function's own parameter.
+/// `def`/`lambda` in a comment or string opens none, and brackets inside a quoted default (`sep=")"`) are text.
+fn py_param_spans(text: &str, comments: &[(usize, usize)]) -> Vec<(usize, usize)> {
+    let b = text.as_bytes();
+    let word = |c: u8| c.is_ascii_alphanumeric() || c == b'_';
+    let in_comment = |at: usize| comments.iter().any(|&(s, e)| s <= at && at < e);
+    // Whether `at` is inside a one-line string: an odd number of unescaped quotes of one kind before it on its line.
+    let quoted = |at: usize| {
+        let line = &b[text[..at].rfind('\n').map_or(0, |n| n + 1)..at];
+        [b'\'', b'"'].iter().any(|q| line.iter().enumerate().filter(|&(k, c)| c == q && (k == 0 || line[k - 1] != b'\\')).count() % 2 == 1)
+    };
+    let mut out = vec![];
+    for kw in ["def", "lambda"] {
+        for (i, _) in text.match_indices(kw) {
+            let end = i + kw.len();
+            if (i > 0 && word(b[i - 1])) || b.get(end).is_none_or(|c| word(*c)) || in_comment(i) || quoted(i) {
+                continue;
+            }
+            if kw == "lambda" {
+                if let Some(n) = text[end..].find([':', '\n']) {
+                    out.push((end, end + n));
+                }
+                continue;
+            }
+            let Some(open) = text[end..].find(['(', ':', '\n']).map(|n| end + n).filter(|&o| b[o] == b'(') else { continue };
+            let mut depth = 0usize;
+            let mut quote: Option<u8> = None;
+            let mut k = open;
+            let mut close = b.len();
+            while k < b.len() {
+                let c = b[k];
+                match quote {
+                    Some(_) if c == b'\\' => k += 1,
+                    Some(q) if c == q || c == b'\n' => quote = None,
+                    Some(_) => {}
+                    None if c == b'\'' || c == b'"' => quote = Some(c),
+                    None if c == b'#' => k = text[k..].find('\n').map_or(b.len(), |n| k + n).saturating_sub(1),
+                    None if matches!(c, b'(' | b'[' | b'{') => depth += 1,
+                    None if matches!(c, b')' | b']' | b'}') => {
+                        depth = depth.saturating_sub(1);
+                        if depth == 0 {
+                            close = k;
+                            break;
+                        }
+                    }
+                    None => {}
+                }
+                k += 1;
+            }
+            out.push((open, close));
+        }
+    }
+    out
+}
+
+/// Whether a bare name a record cites can be its site in Python code at `path`. A keyword or parameter name
+/// (`model_name`, `**extra`) is the record's only where the file uses the API the record's subject names (`list_models`,
+/// `FastAPI`), not where it only defines a name of that spelling; and only as a call's argument or another use, not as
+/// a parameter the file declares (`def _failed_load_slice(errors, **extra)`, `def _normalize(model_name)`). Other
+/// files, other literals (qualified names, calls of the subject itself) and a subject that is prose are unchanged.
+pub fn py_keyword_site(path: &str, text: &str, lit: &str, subject: &str) -> bool {
+    if !path.ends_with(".py") {
+        return true;
+    }
+    let name = lit.trim().trim_matches('`').trim_start_matches('*').trim_end_matches('=').trim();
+    if !is_word(name) || !name.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_') {
+        return true;
+    }
+    let comments = comment_spans(path, text);
+    let params = py_param_spans(text, &comments);
+    let within = |spans: &[(usize, usize)], at: usize| spans.iter().any(|&(s, e)| s <= at && at < e);
+    let word = |c: Option<char>| c.is_some_and(|c| c.is_ascii_alphanumeric() || c == '_');
+    let sites = |w: &str| -> Vec<usize> {
+        text.match_indices(w)
+            .map(|(i, _)| i)
+            .filter(|&i| !word(text[..i].chars().next_back()) && !word(text[i + w.len()..].chars().next()) && !within(&comments, i))
+            .collect()
+    };
+    if !sites(name).into_iter().any(|i| !within(&params, i)) {
+        return false;
+    }
+    let s = subject.trim().trim_matches('`').trim_end_matches("()");
+    let s = s.rsplit('.').next().unwrap_or(s);
+    if s.len() < 3 || !is_word(s) || !s.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_') || s.eq_ignore_ascii_case(name) {
+        return true;
+    }
+    sites(s).into_iter().filter(|&i| !within(&params, i)).any(|i| {
+        let prev = text[..i].trim_end_matches([' ', '\t']);
+        let kw = prev.rsplit(|c: char| !(c.is_ascii_alphanumeric() || c == '_')).next().unwrap_or("");
+        !(prev.len() < i && matches!(kw, "def" | "class"))
+    })
+}
+
+/// Whether every whole-token site of qualified literal `lit` in `text` (outside comments) is the qualifier of a longer
+/// member (`pytest.mark` in `@pytest.mark.asyncio`): the file uses the namespace for one of its members, never the
+/// literal itself. A file with no site is not.
+pub fn only_as_namespace(path: &str, text: &str, lit: &str) -> bool {
+    if !qualified_name(lit) {
+        return false;
+    }
+    let comments = comment_spans(path, text);
+    let word = |c: Option<char>| c.is_some_and(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$');
+    let mut any = false;
+    for (i, _) in text.match_indices(lit) {
+        let after = &text[i + lit.len()..];
+        if word(text[..i].chars().next_back()) || text[..i].ends_with('.') || word(after.chars().next()) || comments.iter().any(|&(s, e)| s <= i && i < e) {
+            continue;
+        }
+        if !after.strip_prefix('.').is_some_and(|m| m.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_')) {
+            return false;
+        }
+        any = true;
+    }
+    any
+}
+
+/// Whether `text` writes namespace `lit` (`only_as_namespace`) beside one of the record's specific literals `context`:
+/// a decorator (`@pytest.mark.tryfirst`) where the definition it decorates names one (`def pytest_addoption`), since
+/// that is what the decorator applies to (a `pytest_plugins` line above `@pytest.mark.asyncio` is not); any other site
+/// where one occurs within `SITE_LINES` lines.
+pub fn namespace_beside(path: &str, text: &str, lit: &str, context: &[String]) -> bool {
+    let comments = comment_spans(path, text);
+    let in_comment = |at: usize| comments.iter().any(|&(s, e)| s <= at && at < e);
+    let ident = |c: char| c.is_ascii_alphanumeric() || c == '_';
+    let mut starts = vec![0];
+    starts.extend(text.match_indices('\n').map(|(i, _)| i + 1));
+    let lines: Vec<&str> = text.lines().collect();
+    // Whether line `n` writes one of `context` in code.
+    let has = |n: usize| {
+        let line = lines[n];
+        context.iter().any(|c| {
+            line.match_indices(c.as_str()).any(|(i, _)| !line[..i].ends_with(ident) && !line[i + c.len()..].starts_with(ident) && !in_comment(starts[n] + i))
+        })
+    };
+    for (n, line) in lines.iter().enumerate() {
+        let Some(k) = line.find(lit) else { continue };
+        if in_comment(starts[n] + k) {
+            continue;
+        }
+        if line.trim_start().starts_with('@') {
+            // The definition it decorates: the next `def`/`class` line, past other decorators, a multi-line
+            // decorator's arguments, blank lines and comments.
+            let def = (n + 1..lines.len()).find(|&m| {
+                let l = lines[m].trim_start();
+                ["def ", "async def ", "class "].iter().any(|k| l.starts_with(k))
+            });
+            if def.is_some_and(has) {
+                return true;
+            }
+        } else if (n.saturating_sub(SITE_LINES)..(n + SITE_LINES + 1).min(lines.len())).any(has) {
+            return true;
+        }
+    }
+    false
+}
+
 /// Whether a line up to a name holds only what may open a method or object-key definition there: indentation and
 /// modifiers (`async`, `static`, `get`, a generator's `*`).
 fn method_head(line: &str) -> bool {
@@ -2246,6 +2403,58 @@ pub fn sample_counts(repos: &[Repo], terms: &[String]) -> BTreeMap<String, u32> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_python_keyword_site_needs_its_subject_api_and_a_use_not_a_parameter() {
+        // NousResearch/hermes-agent: huggingface_hub's `list_models(model_name=…)` is deprecated; tools/transcription_local.py
+        // imports `huggingface_hub.errors` lazily and takes its own `model_name` parameter, but never lists models.
+        let local = "def _normalize_local_model(model_name: Optional[str]) -> str:\n    if not model_name:\n        return D\n    return model_name\n\ndef _load():\n    from huggingface_hub.errors import LocalEntryNotFoundError\n";
+        assert!(!py_keyword_site("tools/transcription_local.py", local, "model_name", "list_models"));
+        let call = "from huggingface_hub import HfApi\nHfApi().list_models(model_name='bert')\n";
+        assert!(py_keyword_site("hub.py", call, "model_name", "list_models"));
+        // A file that only defines a same-named method is not the API's user.
+        let own = "class P:\n    def list_models(self, model_name=None):\n        return model_name\n";
+        assert!(!py_keyword_site("p.py", own, "model_name", "list_models"));
+        // fastapi removes `FastAPI(**extra)`: a local helper's `**extra` parameter and its dict splat are not it.
+        let helper = "from fastapi import APIRouter\n\ndef _failed_load_slice(errors, **extra) -> dict:\n    return {\"failed\": True, **extra}\n";
+        assert!(!py_keyword_site("routers/profiles.py", helper, "**extra", "FastAPI"));
+        let app = "from fastapi import FastAPI\napp = FastAPI(title='x', **extra)\n";
+        assert!(py_keyword_site("app.py", app, "**extra", "FastAPI"));
+        // Declared only as a parameter (over several lines, or a lambda's): no use at all.
+        let declared = "from fastapi import FastAPI\napp = FastAPI()\ndef f(\n    a,\n    **extra,\n):\n    pass\ng = lambda **extra: 1\n";
+        assert!(!py_keyword_site("app.py", declared, "**extra", "FastAPI"));
+        // Unchanged: another language, a prose subject, a qualified literal, the subject itself.
+        assert!(py_keyword_site("a.ts", "function f(model_name) {}", "model_name", "list_models"));
+        assert!(py_keyword_site("a.py", "x(model_name=1)", "model_name", "hook markers"));
+        assert!(py_keyword_site("a.py", "def f(): pass", "pytest.mark", "hook markers"));
+        assert!(py_keyword_site("a.py", "app = FastAPI()", "FastAPI", "FastAPI"));
+        // The subject only as another definition's parameter is no use of it; brackets in a quoted default and a `def`
+        // in a comment or string are text.
+        assert!(!py_keyword_site("p.py", "def f(list_models, model_name):\n    return model_name\n", "model_name", "list_models"));
+        assert!(!py_keyword_site("p.py", "def f(sep=\")\", model_name=None):\n    pass\nlist_models()\n", "model_name", "list_models"));
+        assert!(py_keyword_site("p.py", "# def g(\nlist_models(model_name='x')\n", "model_name", "list_models"));
+        assert!(py_keyword_site("p.py", "s = 'def g('\nlist_models(model_name='x')\n", "model_name", "list_models"));
+    }
+
+    #[test]
+    fn a_namespace_written_only_as_a_qualifier_is_beside_what_its_decorator_decorates() {
+        assert!(only_as_namespace("t.py", "import pytest\n@pytest.mark.asyncio\nasync def t(): pass\n", "pytest.mark"));
+        assert!(!only_as_namespace("t.py", "import pytest\nm = pytest.mark\n", "pytest.mark"), "the namespace itself");
+        assert!(!only_as_namespace("t.py", "import pytest\n", "pytest.mark"), "no site");
+        assert!(!only_as_namespace("t.py", "x = 1\n# pytest.mark.skip\n", "pytest.mark"), "only in a comment");
+        let ctx = ["pytest_addoption".to_string(), "pytest_plugins".to_string()];
+        assert!(namespace_beside("p.py", "import pytest\n\n@pytest.mark.tryfirst\ndef pytest_addoption(parser):\n    pass\n", "pytest.mark", &ctx));
+        let above = "import pytest\n\npytest_plugins = ['x']\n\n\n@pytest.mark.asyncio\nasync def test_a():\n    pass\n";
+        assert!(!namespace_beside("t.py", above, "pytest.mark", &ctx), "context above a decorator is not what it decorates");
+        assert!(namespace_beside("t.py", "pytest_plugins = ['x']\nm = pytest.mark.foo\n", "pytest.mark", &ctx), "a non-decorator site keeps the line window");
+        let commented = "import pytest\n\n@pytest.mark.tryfirst\n# runs first\ndef pytest_addoption(parser):\n    pass\n";
+        assert!(namespace_beside("p.py", commented, "pytest.mark", &ctx), "a comment between a decorator and its definition");
+        let multi = "@pytest.mark.parametrize(\n    'x',\n    [1],\n)\ndef pytest_addoption(x):\n    pass\n";
+        assert!(namespace_beside("p.py", multi, "pytest.mark", &ctx), "a multi-line decorator's arguments");
+        let arg = "@pytest.mark.parametrize(\n    pytest_plugins,\n)\ndef test_a(x):\n    pass\n";
+        assert!(!namespace_beside("t.py", arg, "pytest.mark", &ctx), "a decorator argument is not the definition");
+        assert!(!namespace_beside("t.py", "# pytest_plugins\nm = pytest.mark.foo\n", "pytest.mark", &ctx), "context only in a comment");
+    }
 
 
     #[test]
