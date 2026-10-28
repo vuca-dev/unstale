@@ -900,19 +900,28 @@ impl Catalogs {
             if let Some(c) = cache.get(cur) {
                 return c.clone();
             }
-            if let Ok(text) = std::fs::read_to_string(cur.join("pnpm-workspace.yaml")) {
-                let c = parse_pnpm_workspace(&text);
-                cache.insert(cur.to_path_buf(), c.clone());
-                return c;
-            }
+            let pnpm = std::fs::read_to_string(cur.join("pnpm-workspace.yaml")).ok().map(|t| parse_pnpm_workspace(&t));
             // Bun and Yarn 4.10+: the workspace root's `package.json` holds them (`workspaces.catalog`,
-            // `workspaces.catalogs`). A manifest that declares `workspaces` is a workspace root: the search stops there.
-            if let Some(ws) = std::fs::read_to_string(cur.join("package.json"))
-                .ok()
-                .and_then(|t| serde_json::from_str::<Value>(&t).ok())
-                .and_then(|v| v.get("workspaces").cloned())
-            {
-                let c = Catalogs::from_json(&ws);
+            // `workspaces.catalogs`; Bun also reads a top-level `catalog` / `catalogs`). A manifest that declares
+            // `workspaces` or catalogs is a workspace root: the search stops there, as at a `pnpm-workspace.yaml`.
+            let manifest = || {
+                let pj = std::fs::read_to_string(cur.join("package.json")).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok())?;
+                let root = pj.get("workspaces").is_some() || pj.get("catalog").is_some() || pj.get("catalogs").is_some();
+                root.then(|| {
+                    let mut c = Catalogs::from_json(&pj);
+                    for (name, m) in Catalogs::from_json(pj.get("workspaces").unwrap_or(&Value::Null)).0 {
+                        c.0.entry(name).or_default().extend(m);
+                    }
+                    c
+                })
+            };
+            // A `pnpm-workspace.yaml` with no catalogs leaves them to the manifest beside it.
+            let found = match pnpm {
+                Some(c) if !c.0.is_empty() => Some(c),
+                Some(c) => Some(manifest().unwrap_or(c)),
+                None => manifest(),
+            };
+            if let Some(c) = found {
                 cache.insert(cur.to_path_buf(), c.clone());
                 return c;
             }
@@ -2393,6 +2402,13 @@ mod tests {
         let s = detect(d.path()).unwrap();
         assert_eq!(s.deps["pkg:npm/hono"].source, "floor of 4.10.7 from catalog: (not in a lockfile)");
         assert_eq!(s.deps["pkg:npm/vite"].readings.iter().find(|r| r.dir == "packages/app").map(|r| r.version.to_string()), Some("7.3.0".into()));
+
+        // Bun's top-level `catalog`, beside a `pnpm-workspace.yaml` that lists packages but no catalogs.
+        write(d.path(), "package.json", r#"{"name":"root","private":true,"workspaces":["packages/*"],"catalog":{"hono":"4.11.0"},"devDependencies":{"semver":"^7.6.0"}}"#);
+        write(d.path(), "pnpm-workspace.yaml", "packages:\n  - packages/*\n");
+        let s = detect(d.path()).unwrap();
+        assert_eq!(s.deps["pkg:npm/hono"].version, Some(Version::new(4, 11, 0)));
+        std::fs::remove_file(d.path().join("pnpm-workspace.yaml")).unwrap();
 
         // Bun's binary lockfile is named, not passed over in silence.
         write(d.path(), "bun.lockb", "\u{0}bun-lockfile-format-v0\n");
