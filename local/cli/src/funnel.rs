@@ -463,13 +463,14 @@ pub fn deprecated_part(r: &unstale_schema::catalog::CapabilityRecord, siblings: 
 /// Whether another record of the technology, released at or after `r`, adds to `subject` (a new API or option, or a
 /// behaviour change of it): the name lives on past `r`'s deprecation.
 fn lives_on(r: &unstale_schema::catalog::CapabilityRecord, subject: &str, siblings: &[Rec]) -> bool {
-    let first = |x: &unstale_schema::catalog::CapabilityRecord| x.releases.iter().filter_map(|v| parse_version(&v.version)).min();
-    let Some(since) = first(r) else { return false };
+    let versions = |x: &unstale_schema::catalog::CapabilityRecord| x.releases.iter().filter_map(|v| parse_version(&v.version)).collect::<Vec<_>>();
+    // The deprecation's earliest release; a sibling counts when any of its releases is at or after it.
+    let Some(since) = versions(r).into_iter().min() else { return false };
     siblings.iter().map(|s| &s.r).any(|s| {
         s.id != r.id
             && matches!(s.change_type, ChangeType::NewApi | ChangeType::NewOption | ChangeType::BehaviorChange)
             && (clean_lit(&s.subject).as_deref() == Some(subject) || s.introduces.iter().any(|x| clean_lit(x).as_deref() == Some(subject)))
-            && first(s).is_some_and(|v| v >= since)
+            && versions(s).iter().any(|v| *v >= since)
     })
 }
 

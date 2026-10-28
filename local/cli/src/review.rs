@@ -1423,7 +1423,9 @@ mod tests {
         let added = with(
             rec("google-genai:response-format-parameters~2", "pkg:npm/@google/genai", "2.1.0"),
             json!({"change_type":"new_option","surface":"code_api","subject":"response_format","subject_kind":"literal","facet":"parameters","replaces":[],
-                   "terms":[["response_format",0],["video",0]],"summary":"Added parameters to video response_format."}),
+                   "terms":[["response_format",0],["video",0]],"summary":"Added parameters to video response_format.",
+                   // Also on the 1.x line, before the deprecation: its 2.x release is what counts.
+                   "releases":[{"component":"pkg:npm/@google/genai","date":"2026-02-12","version":"1.40.0","line":"1"},{"component":"pkg:npm/@google/genai","date":"2026-05-20","version":"2.1.0","line":"2"}]}),
         );
         let app = [(".", crate::stack::Kind::Application)];
         let text = in_effect_of("@google/genai", vec![r, added], &[("@google/genai", "2.13.0")], &app, &files);
