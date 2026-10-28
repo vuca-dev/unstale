@@ -597,27 +597,60 @@ fn comment_style(path: &str) -> CommentStyle {
 /// Byte ranges of `text` that are comments, skipping string literals (`'…'`, `"…"`, `` `…` ``, with escapes) so a URL
 /// in a string is not a `//` comment. A lexer, not a parser: regular-expression literals are read as code.
 fn comment_spans(path: &str, text: &str) -> Vec<(usize, usize)> {
+    lex_spans(path, text).0
+}
+
+/// A string literal's content bytes and whether it interpolates code (`lex_spans`).
+type StringSpan = (usize, usize, bool);
+
+/// Comment spans (`comment_spans`) and string-literal spans of `text`: the bytes between the quotes of each literal that
+/// closes (a stray apostrophe running to the line's end is none), and whether it interpolates code in `{…}` (a Python
+/// f-string, a template literal). A Python triple quote (`"""…"""`, `'''…'''`) is one string across lines, so a
+/// docstring's prose (`isn't`, `# not a comment`) neither opens another string nor a comment.
+fn lex_spans(path: &str, text: &str) -> (Vec<(usize, usize)>, Vec<StringSpan>) {
     let style = comment_style(path);
     let mut out = vec![];
+    let mut strings = vec![];
     if style == CommentStyle::None {
-        return out;
+        return (out, strings);
     }
+    let python = path.ends_with(".py") || path.ends_with(".pyi");
     let b = text.as_bytes();
     let mut i = 0;
     let line_end = |from: usize| text[from..].find('\n').map_or(b.len(), |n| from + n);
+    // A Python string prefix holding `f` (`f"…"`, `rf'…'`) makes an f-string.
+    let f_string = |at: usize| python && b[..at].iter().rev().take_while(|c| c.is_ascii_alphabetic()).any(|c| matches!(c, b'f' | b'F'));
     while i < b.len() {
         let c = b[i];
         let next = b.get(i + 1).copied();
         match c {
+            b'\'' | b'"' if python && b.get(i + 1) == Some(&c) && b.get(i + 2) == Some(&c) => {
+                let close = [c, c, c];
+                let from = i + 3;
+                let mut j = from;
+                while j < b.len() && !b[j..].starts_with(&close) {
+                    j += if b[j] == b'\\' { 2 } else { 1 };
+                }
+                let end = j.min(b.len());
+                if end < b.len() {
+                    strings.push((from, end, f_string(i)));
+                }
+                i = (end + 3).min(b.len());
+            }
             b'\'' | b'"' | b'`' if style != CommentStyle::Block || c != b'`' => {
                 let q = c;
+                let interp = q == b'`' || f_string(i);
                 i += 1;
+                let from = i;
                 while i < b.len() && b[i] != q {
                     // A quote's string ends at the line's end, except a template literal or a Python triple quote.
                     if b[i] == b'\n' && q != b'`' {
                         break;
                     }
                     i += if b[i] == b'\\' { 2 } else { 1 };
+                }
+                if b.get(i) == Some(&q) {
+                    strings.push((from, i, interp));
                 }
                 i += 1;
             }
@@ -639,7 +672,7 @@ fn comment_spans(path: &str, text: &str) -> Vec<(usize, usize)> {
             _ => i += 1,
         }
     }
-    out
+    (out, strings)
 }
 
 /// Whether `text` (the file at `path`) uses deprecated literal `lit` live at some site: an occurrence as a whole token
@@ -723,14 +756,34 @@ pub fn in_code(path: &str, text: &str, needle: &str, whole: bool) -> bool {
     if needle.is_empty() || !text.contains(needle) {
         return false;
     }
-    let comments = comment_spans(path, text);
+    let (comments, mut strings) = lex_spans(path, text);
+    // A component file's markup is text, where an apostrophe (`Don't`) opens no string: no prose test there.
+    let ext = path.rsplit_once('.').map(|(_, x)| x.to_ascii_lowercase()).unwrap_or_default();
+    if matches!(ext.as_str(), "vue" | "svelte" | "astro") {
+        strings.clear();
+    }
     let in_comment = |at: usize| {
         let k = comments.partition_point(|(s, _)| *s <= at);
         k > 0 && at < comments[k - 1].1
     };
     let ident = |c: Option<char>| c.is_some_and(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$');
-    text.match_indices(needle)
-        .any(|(i, _)| !in_comment(i) && (!whole || (!ident(text[..i].chars().next_back()) && !ident(text[i + needle.len()..].chars().next()))))
+    text.match_indices(needle).any(|(i, _)| {
+        !in_comment(i)
+            && (!whole || (!ident(text[..i].chars().next_back()) && !ident(text[i + needle.len()..].chars().next()) && !in_prose(text, &strings, i)))
+    })
+}
+
+/// Whether byte `at` of `text` lies in a string literal (`strings`, from `lex_spans`) that reads as prose: one holding
+/// whitespace (a message, a docstring), outside any `{…}` interpolation in it (an f-string's or template literal's
+/// code). A key or path in quotes (`'loadPath'`, `"server.fs.deny"`) has no whitespace and stays code.
+fn in_prose(text: &str, strings: &[StringSpan], at: usize) -> bool {
+    let k = strings.partition_point(|(s, _, _)| *s <= at);
+    let Some(&(s, e, interp)) = k.checked_sub(1).map(|k| &strings[k]) else { return false };
+    if at >= e || !text[s..e].contains(char::is_whitespace) {
+        return false;
+    }
+    let before = &text[s..at];
+    !interp || before.matches('{').count() <= before.matches('}').count()
 }
 
 /// Whether `text` holds `lit` (or, for a qualified literal, its tail) outside comments: a file that writes a literal
@@ -911,8 +964,12 @@ fn key_or_member(b: &[u8], at: usize, len: usize) -> bool {
     {
         (start, end) = (at - 1, end + 1);
     }
-    let Some((_, before)) = prev_at(start) else { return false };
+    let Some((j, before)) = prev_at(start) else { return false };
     if !matches!(before, b'{' | b',' | b';') {
+        return false;
+    }
+    // `${name}` in a template literal interpolates a value; it is no object.
+    if before == b'{' && j > 0 && b[j - 1] == b'$' {
         return false;
     }
     match next_at(end) {
@@ -1380,7 +1437,7 @@ pub fn only_as_namespace(path: &str, text: &str, lit: &str) -> bool {
 /// Whether `text` writes namespace `lit` (`only_as_namespace`) beside one of the record's specific literals `context`:
 /// a decorator (`@pytest.mark.tryfirst`) where the definition it decorates names one (`def pytest_addoption`), since
 /// that is what the decorator applies to (a `pytest_plugins` line above `@pytest.mark.asyncio` is not); any other site
-/// where one occurs within `SITE_LINES` lines.
+/// where one occurs on the same line (the statement the qualified member belongs to).
 pub fn namespace_beside(path: &str, text: &str, lit: &str, context: &[String]) -> bool {
     let comments = comment_spans(path, text);
     let in_comment = |at: usize| comments.iter().any(|&(s, e)| s <= at && at < e);
@@ -1410,7 +1467,9 @@ pub fn namespace_beside(path: &str, text: &str, lit: &str, context: &[String]) -
             if def.is_some_and(has) {
                 return true;
             }
-        } else if (n.saturating_sub(SITE_LINES)..(n + SITE_LINES + 1).min(lines.len())).any(has) {
+        } else if has(n) {
+            // Any other site (`pytestmark = pytest.mark.usefixtures(…)`) applies to its own statement only: a record
+            // literal on a nearby line (`pytest_plugins = [...]`) is another statement.
             return true;
         }
     }
@@ -2446,7 +2505,11 @@ mod tests {
         assert!(namespace_beside("p.py", "import pytest\n\n@pytest.mark.tryfirst\ndef pytest_addoption(parser):\n    pass\n", "pytest.mark", &ctx));
         let above = "import pytest\n\npytest_plugins = ['x']\n\n\n@pytest.mark.asyncio\nasync def test_a():\n    pass\n";
         assert!(!namespace_beside("t.py", above, "pytest.mark", &ctx), "context above a decorator is not what it decorates");
-        assert!(namespace_beside("t.py", "pytest_plugins = ['x']\nm = pytest.mark.foo\n", "pytest.mark", &ctx), "a non-decorator site keeps the line window");
+        // debpalash/VoiceStudio: `pytest_plugins` two lines above `pytestmark = pytest.mark.usefixtures(...)` is another
+        // statement; a non-decorator site takes a record literal on its own line.
+        let marks = "import pytest\n\npytest_plugins = ['x']\n\npytestmark = pytest.mark.usefixtures('m')\n";
+        assert!(!namespace_beside("t.py", marks, "pytest.mark", &ctx), "a nearby statement is not beside a non-decorator site");
+        assert!(namespace_beside("t.py", "pytest_addoption = pytest.mark.tryfirst(pytest_addoption)\n", "pytest.mark", &ctx), "the same statement");
         let commented = "import pytest\n\n@pytest.mark.tryfirst\n# runs first\ndef pytest_addoption(parser):\n    pass\n";
         assert!(namespace_beside("p.py", commented, "pytest.mark", &ctx), "a comment between a decorator and its definition");
         let multi = "@pytest.mark.parametrize(\n    'x',\n    [1],\n)\ndef pytest_addoption(x):\n    pass\n";
@@ -2454,6 +2517,33 @@ mod tests {
         let arg = "@pytest.mark.parametrize(\n    pytest_plugins,\n)\ndef test_a(x):\n    pass\n";
         assert!(!namespace_beside("t.py", arg, "pytest.mark", &ctx), "a decorator argument is not the definition");
         assert!(!namespace_beside("t.py", "# pytest_plugins\nm = pytest.mark.foo\n", "pytest.mark", &ctx), "context only in a comment");
+    }
+
+    #[test]
+    fn a_name_in_a_prose_string_is_not_code() {
+        // debpalash/VoiceStudio: setuptools' and torch's advisories name `macOS` and `PyTorch`; an error message or user
+        // message writing them is no use of an affected API.
+        let msg = "M = {\n    'Q': \"Clear the macOS quarantine flag (xattr -cr the app), then reopen.\",\n}\n";
+        assert!(!in_code("backend/core/failure.py", msg, "macOS", true));
+        let doc = "def f():\n    \"\"\"Isn't supported by this PyTorch build.\n\n    # not a comment\n    \"\"\"\n    return 1\n";
+        assert!(!in_code("a.py", doc, "PyTorch", true), "a docstring across lines");
+        assert!(in_code("a.py", "x = macOS.check()\n", "macOS", true), "code");
+        assert!(in_code("a.py", "cfg['loadPath'] = 1\n", "loadPath", true), "a key in quotes is code");
+        assert!(in_code("a.py", "msg = f\"got {PyTorch.version} here\"\n", "PyTorch", true), "an f-string's interpolation is code");
+        assert!(in_code("a.ts", "const s = `v ${getLastOfPath(x)} y`", "getLastOfPath", true), "a template literal's interpolation is code");
+        assert!(in_code("a.py", "s = 'see PyTorch docs'\n", "PyTorch", false), "a substring search is unchanged");
+        assert!(!in_code("a.py", "s = \"prose {PyTorch} text\"\n", "PyTorch", true), "braces in a plain string are prose");
+        assert!(in_code("a.svelte", "<p>Don't stop</p>\n<script>x = 'a b'; getLastOfPath(y)</script>", "getLastOfPath", true), "markup apostrophes");
+        assert!(in_code("a.py", "x = \"it's\"; y = 'a b' + getLastOfPath(z)\n", "getLastOfPath", true), "code after closed strings");
+    }
+
+    #[test]
+    fn a_template_interpolation_is_not_an_object_key() {
+        // open-webui/open-webui: `const baseUrl = window.location.origin;` and `${baseUrl}/?model=…` are a local
+        // variable, not marked's `baseUrl` option.
+        let t = "const baseUrl = window.location.origin;\nconst res = await copyToClipboard(`${baseUrl}/?model=${id}`);\n";
+        assert!(!live_site_near("a.svelte", t, "baseUrl", &[], None, true));
+        assert!(live_site_near("a.ts", "marked.use({ baseUrl })", "baseUrl", &[], None, true), "shorthand in an object");
     }
 
 
