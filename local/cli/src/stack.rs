@@ -560,6 +560,8 @@ pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
     // Per lockfile path: locked versions outside the declared range, with a few examples.
     let mut stale: BTreeMap<String, (usize, Vec<String>)> = BTreeMap::new();
     let mut unlocked_ws: BTreeMap<PathBuf, Option<Unlocked>> = BTreeMap::new();
+    // The unlocked workspaces some manifest belongs to: only these are named.
+    let mut unlocked_used: BTreeSet<String> = BTreeSet::new();
     for e in walker(root).flatten() {
         if e.file_name() != "package.json" || !e.file_type().is_some_and(|t| t.is_file()) {
             continue;
@@ -629,6 +631,9 @@ pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
                         break;
                     }
                     d = cur.parent();
+                }
+                if let Some((file, _)) = &found {
+                    unlocked_used.insert(file.clone());
                 }
                 found
             }
@@ -906,7 +911,7 @@ pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
             elsewhere.iter().take(5).copied().collect::<Vec<_>>().join(", ")
         ));
     }
-    let unlocked = unlocked_ws.iter().filter_map(|(d, u)| u.as_ref().map(|_| join(&rel_dir(root, d), "pnpm-workspace.yaml"))).collect();
+    let unlocked = unlocked_used.into_iter().collect();
     let mut st = Stack { packages, deps, node, node_by_lock, python, notes, unreadable, stub_runtimes, spread: 0, standalone, registries, fixture_registries, peers, unlocked };
     st.settle();
     Ok(st)
@@ -2451,6 +2456,9 @@ mod tests {
         write(d.path(), "package.json", r#"{"name":"@acme/app","version":"2.2.20","publishConfig":{"access":"public"},
             "dependencies":{"zod":"^4.4.3","next":"~16.3.8","drizzle-orm":"^0.45.0","@acme/a":"workspace:*"}}"#);
         write(d.path(), "packages/a/package.json", r#"{"name":"@acme/a","private":true,"dependencies":{"zod":"^3.25.0"}}"#);
+        // An unlocked workspace no manifest belongs to is not named.
+        write(d.path(), "tools/x/pnpm-workspace.yaml", "lockfile: false\npackages:\n  - pkgs/*\n");
+        write(d.path(), "tools/x/other/package.json", r#"{"name":"other","private":true,"dependencies":{"left-pad":"^1.0.0"}}"#);
         let mut s = detect(d.path()).unwrap();
         assert_eq!(s.unlocked, vec!["pnpm-workspace.yaml".to_string()]);
         let zod = &s.deps["pkg:npm/zod"];

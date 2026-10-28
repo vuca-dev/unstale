@@ -1726,7 +1726,7 @@ fn mapped_from(brief: &Brief) -> String {
     match brief.unlocked.as_slice() {
         [] => locks,
         ws => {
-            let unlocked = format!("{} (lockfile: false, so read at the newest release each range admits, not an installed version)", ws.join(", "));
+            let unlocked = format!("{} (lockfile: false, so read as a fresh install resolves them, not as installed versions)", ws.join(", "));
             if brief.versions_from == "declared package ranges" { unlocked } else { format!("{locks} and {unlocked}") }
         }
     }
