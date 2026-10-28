@@ -256,11 +256,12 @@ export function retractForeignGuideRecords(s: TechStore, foreign: ReadonlySet<st
 /**
  * Records read from an upgrade guide whose version the technology never published (fetch.ts `guideVersions`: another
  * package's version line in the same monorepo): the release at that version moves to the technology's release that
- * shipped with it, or is dropped when none is known; a record left with no release is retracted, so no client is
- * offered a version that does not exist. Releases from other sources stay. Returns the records moved and retracted.
+ * shipped with it (unbounded here: `boundGuideRecords`, run after, bounds it at that release), or is dropped when none is
+ * known; a record left with no release is retracted, so no client is offered a version that does not exist. Releases
+ * from other sources stay. Returns the records moved (any release mapped), only dropped, and retracted.
  */
-export function relineGuideRecords(s: TechStore, moved: ReadonlyMap<string, { from: string; to?: string; date?: string }>): { moved: number; retracted: string[] } {
-  const out = { moved: 0, retracted: [] as string[] };
+export function relineGuideRecords(s: TechStore, moved: ReadonlyMap<string, { from: string; to?: string; date?: string }>): { moved: number; dropped: number; retracted: string[] } {
+  const out = { moved: 0, dropped: 0, retracted: [] as string[] };
   if (!moved.size) return out;
   for (const r of Object.values(s.records).sort((a, b) => a.id.localeCompare(b.id))) {
     if (r.status !== "active") continue;
@@ -281,8 +282,9 @@ export function relineGuideRecords(s: TechStore, moved: ReadonlyMap<string, { fr
       continue;
     }
     const to = [...fixes.values()].flatMap((f) => (f.to ? [f.to] : []));
+    if (to.length) out.moved++;
+    else out.dropped++;
     applyChange(r, { releases: combineByLine([], releases, lineFn(s)) }, "guide-version", { detail: `${from} never published by the technology: ${to.length ? `read at ${to.join(", ")}, the release that shipped with it` : "release dropped"}` });
-    out.moved++;
   }
   return out;
 }

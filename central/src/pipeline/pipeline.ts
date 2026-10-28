@@ -163,12 +163,16 @@ export async function runTechnology(
       // Deprecations the technology's type stubs state in their declarations (no release notes say them).
       const typed = await typeStubDeprecations(t, store, { refresh: !!opts.refresh, offline: !!opts.offline });
       if (typed.length) console.log(`${t.id}: ${typed.length} deprecations from its type stubs' declarations`);
-      const bounded = boundGuideRecords(store, guideBounds(t, fetched.notes));
+      // Guides for a version the technology never published (a sibling's line): their records move to the release that
+      // shipped with it, or lose that release, before bounds are given (the registry was read by fetchGuides: cached).
+      const moved = opts.guides === false ? new Map() : await indexGuideVersions(t, { offline: !!opts.offline });
+      const relined = relineGuideRecords(store, moved);
+      if (relined.moved || relined.dropped || relined.retracted.length)
+        console.log(`${t.id}: records read from a guide for a version it never published: ${relined.moved} moved to the release that shipped with it, ${relined.dropped} lost that release, ${relined.retracted.length} retracted`);
+      const bounded = boundGuideRecords(store, guideBounds(t, fetched.notes, moved));
       if (bounded) console.log(`${t.id}: ${bounded} records from a moving upgrade guide given a release bound`);
       const foreign = retractForeignGuideRecords(store, foreignGuides(t));
       if (foreign.length) console.log(`${t.id}: ${foreign.length} records read only from another technology's upgrade guide retracted`);
-      const relined = relineGuideRecords(store, await indexGuideVersions(t, { refresh: !!opts.refresh, offline: !!opts.offline }));
-      if (relined.moved || relined.retracted.length) console.log(`${t.id}: records read from a guide for a version it never published: ${relined.moved} moved to the release that shipped with it, ${relined.retracted.length} retracted`);
     }
     saveStore(store);
     // Docs events whose notes all extracted are done; one with a failed call is planned again next run.

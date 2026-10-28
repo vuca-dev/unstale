@@ -701,8 +701,8 @@ async function discoverMajors(t: Technology, index: GuideIndex, releases: Parame
  * `latest` v5 guide, first read at 5.104, describes `queryClient.query` of a later 5.x minor as if 5.0.0's). An entry
  * from before the read day was kept is dated its first read day unless that is its x.0.0 release's day.
  */
-function guideBound(g: GuideIndex["guides"][number], releases: ReadonlyArray<{ version: string; date: string }>, text: string | undefined): string | undefined {
-  if (text !== undefined && versionSection(g, text)) return undefined;
+function guideBound(g: GuideIndex["guides"][number], releases: ReadonlyArray<{ version: string; date: string }>, text: string | undefined, listed = g.version): string | undefined {
+  if (text !== undefined && versionSection({ url: g.url, version: listed }, text)) return undefined;
   const read = g.read ?? (releases.some((r) => r.version === g.version && r.date === g.date) ? undefined : g.date);
   if (!read) return undefined;
   return lineBound(g.version.split(".")[0]!, releases.filter((r) => r.date <= read).map((r) => r.version));
@@ -724,16 +724,20 @@ function versionSection(g: { url: string; version: string }, text: string): bool
  * store holds from before bounds were kept (`boundGuideRecords`). A guide that is one version's changelog section is
  * listed without a bound: records read only from it are exact.
  */
-export function guideBounds(t: Technology, releases: ReadonlyArray<{ version: string; date: string }>): Map<string, { version: string; noLaterThan?: string }> {
+export function guideBounds(t: Technology, releases: ReadonlyArray<{ version: string; date: string }>, moved: ReadonlyMap<string, GuideVersion> = new Map()): Map<string, { version: string; noLaterThan?: string }> {
   const index = readJson<GuideIndex>(join(guideDir(t), "index.json"));
   const out = new Map<string, { version: string; noLaterThan?: string }>();
-  for (const g of index?.guides ?? []) {
-    const text = guideText(t, g);
-    if (text !== undefined && versionSection(g, text)) {
+  for (const listed of index?.guides ?? []) {
+    // A guide read at the technology's release that shipped with it (`guideVersions`) is bounded at that release.
+    const fix = moved.get(listed.snapshot);
+    if (fix && !fix.to) continue;
+    const g = fix ? { ...listed, version: fix.to!, date: fix.date! } : listed;
+    const text = guideText(t, listed);
+    if (text !== undefined && versionSection(listed, text)) {
       out.set(g.snapshot, { version: g.version });
       continue;
     }
-    const b = guideBound(g, releases, text);
+    const b = guideBound(g, releases, text, listed.version);
     if (b) out.set(g.snapshot, { version: g.version, noLaterThan: b });
   }
   return out;
@@ -807,7 +811,7 @@ export async function fetchGuides(
     const { read: _, ...rest } = g;
     const note = fix ? { ...rest, version: fix.to!, date: fix.date! } : rest;
     const notes = readFileSync(p, "utf8");
-    const bound = g.kind === "release_notes" ? undefined : guideBound({ ...g, version: note.version, date: note.date }, releases, notes);
+    const bound = g.kind === "release_notes" ? undefined : guideBound({ ...g, version: note.version, date: note.date }, releases, notes, g.version);
     return [{ ...note, ...(bound ? { noLaterThan: bound } : {}), notes }];
   });
 }
@@ -844,18 +848,16 @@ export async function guideVersions(t: Technology, guides: ReadonlyArray<{ versi
   const published = await registryVersions(t, opts);
   const off = published.size ? guides.filter((g) => !published.has(g.version)) : [];
   if (!off.length) return out;
-  const siblings = ((await repositoryPackages(t, opts)) ?? []).map((p) => p.purl).filter((p) => !t.components.includes(p));
-  const days = new Map<string, string[]>();
+  // The repository's packages: none without the ecosystem hook; a hook whose read failed checks nothing this run (a
+  // guide that may map is not dropped for want of a lookup).
+  const packages = await repositoryPackages(t, opts);
+  if (!packages && ecosystemOf(t.components[0] ?? "").repositoryPackages) return out;
+  const siblings = (packages ?? []).map((p) => p.purl).filter((p) => !t.components.includes(p));
+  const siblingTimes: Array<Record<string, string>> = [];
+  for (const p of siblings) siblingTimes.push((await componentTimes(t, p, opts)) ?? {});
   for (const g of off) {
-    if (!days.has(g.version)) {
-      const found: string[] = [];
-      for (const p of siblings) {
-        const iso = (await componentTimes(t, p, opts))?.[g.version];
-        if (iso && !Number.isNaN(Date.parse(iso))) found.push(new Date(iso).toISOString().slice(0, 10));
-      }
-      days.set(g.version, found);
-    }
-    const to = shippedWith(published, days.get(g.version)!);
+    const days = siblingTimes.flatMap((x) => (x[g.version] && !Number.isNaN(Date.parse(x[g.version]!)) ? [new Date(x[g.version]!).toISOString().slice(0, 10)] : []));
+    const to = shippedWith(published, days);
     out.set(g.snapshot, to ? { from: g.version, to, date: published.get(to)! } : { from: g.version });
   }
   return out;

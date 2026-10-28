@@ -7,7 +7,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
-import { fetchGuides, guideVersions, indexGuideVersions, shippedWith } from "../src/pipeline/fetch.ts";
+import { fetchGuides, guideBounds, guideVersions, indexGuideVersions, shippedWith } from "../src/pipeline/fetch.ts";
 import { registryCache } from "../src/pipeline/registry.ts";
 import { relineGuideRecords, type StoredRecord, type TechStore } from "../src/pipeline/store.ts";
 import type { Technology } from "../src/pipeline/technologies.ts";
@@ -97,20 +97,28 @@ describe("a guide for a version the technology never published", () => {
     const from26 = record(T, `${T.id}:from26`, ["sha256:bbbbbbbb22"], ["26.0.0"]);
     const own = record(T, `${T.id}:own`, ["sha256:cccccccc33"], ["6.0.0"]);
     const s: TechStore = { technology: T.id, records: Object.fromEntries([only27, mixed, from26, own].map((r) => [r.id, r])), ingested: {} };
-    expect(relineGuideRecords(s, moved)).toEqual({ moved: 2, retracted: [only27.id] });
+    expect(relineGuideRecords(s, moved)).toEqual({ moved: 1, dropped: 1, retracted: [only27.id] });
     expect(s.records[only27.id]!.status).toBe("retracted");
     expect(mixed.releases.map((x) => x.version)).toEqual(["6.8.11"]);
     expect(from26.releases).toEqual([{ component: "pkg:npm/electron-updater", version: "7.0.0", date: "2026-09-15", line: "7" }]);
     expect(own.releases.map((x) => x.version)).toEqual(["6.0.0"]);
     expect(own.history).toEqual([]);
+    // Bounds are given at the mapped release (a moving guide read after 7.1.0 shipped), none for a dropped guide.
+    const bounds = guideBounds(T, [{ version: "7.0.0", date: "2026-09-15" }, { version: "7.1.0", date: "2026-10-01" }], moved);
+    expect(bounds.get("sha256:bbbbbbbb22")).toEqual({ version: "7.0.0", noLaterThan: "7.1.0" });
+    expect(bounds.has("sha256:aaaaaaaa11")).toBe(false);
     // Idempotent.
     const before = JSON.stringify(s);
-    expect(relineGuideRecords(s, moved)).toEqual({ moved: 0, retracted: [] });
+    expect(relineGuideRecords(s, moved)).toEqual({ moved: 0, dropped: 0, retracted: [] });
     expect(JSON.stringify(s)).toBe(before);
   });
 
   test("a registry that cannot be read checks nothing", async () => {
     const T: Technology = { id: "unread-00000000", name: "unread", repo: "o/unread", components: ["pkg:npm/unread"], tag: /^v(\d+\.\d+\.\d+)$/, clean: (b) => b };
     expect(await guideVersions(T, [{ version: "27.0.0", snapshot: "sha256:x" }], { offline: true })).toEqual(new Map());
+    // Nor does a repository-packages lookup that failed (npm has the hook): the guide may yet map.
+    const U: Technology = { ...T, id: "nosiblings-00000000", components: ["pkg:npm/nosiblings"] };
+    times("pkg:npm/nosiblings", { "1.0.0": "2026-01-01T00:00:00Z" });
+    expect(await guideVersions(U, [{ version: "27.0.0", snapshot: "sha256:x" }], { offline: true })).toEqual(new Map());
   });
 });
