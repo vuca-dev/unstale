@@ -1401,10 +1401,11 @@ pub fn namespace_beside(path: &str, text: &str, lit: &str, context: &[String]) -
             continue;
         }
         if line.trim_start().starts_with('@') {
-            // The definition it decorates: the next line that is not another decorator, blank or a comment.
+            // The definition it decorates: the next `def`/`class` line, past other decorators, a multi-line
+            // decorator's arguments, blank lines and comments.
             let def = (n + 1..lines.len()).find(|&m| {
                 let l = lines[m].trim_start();
-                !l.is_empty() && !l.starts_with('@') && !l.starts_with('#')
+                ["def ", "async def ", "class "].iter().any(|k| l.starts_with(k))
             });
             if def.is_some_and(has) {
                 return true;
@@ -2448,6 +2449,10 @@ mod tests {
         assert!(namespace_beside("t.py", "pytest_plugins = ['x']\nm = pytest.mark.foo\n", "pytest.mark", &ctx), "a non-decorator site keeps the line window");
         let commented = "import pytest\n\n@pytest.mark.tryfirst\n# runs first\ndef pytest_addoption(parser):\n    pass\n";
         assert!(namespace_beside("p.py", commented, "pytest.mark", &ctx), "a comment between a decorator and its definition");
+        let multi = "@pytest.mark.parametrize(\n    'x',\n    [1],\n)\ndef pytest_addoption(x):\n    pass\n";
+        assert!(namespace_beside("p.py", multi, "pytest.mark", &ctx), "a multi-line decorator's arguments");
+        let arg = "@pytest.mark.parametrize(\n    pytest_plugins,\n)\ndef test_a(x):\n    pass\n";
+        assert!(!namespace_beside("t.py", arg, "pytest.mark", &ctx), "a decorator argument is not the definition");
         assert!(!namespace_beside("t.py", "# pytest_plugins\nm = pytest.mark.foo\n", "pytest.mark", &ctx), "context only in a comment");
     }
 
