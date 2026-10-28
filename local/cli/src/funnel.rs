@@ -1009,6 +1009,12 @@ fn namespace_of(tl: &TechLits, i: usize, lit: &str) -> bool {
     tl.named.range(head.clone()..).take_while(|(k, _)| k.starts_with(&head)).any(|(k, rs)| usage::member_of(k, lit) && rs.iter().any(|&j| j != i))
 }
 
+/// A stable version newer than every release of the technology's index (the releases it published in the window):
+/// one it never published. False without an index (older catalogs) and for a prerelease (the index lists none).
+fn beyond_index(v: &Version, index: &[IndexRelease]) -> bool {
+    v.pre.is_empty() && index.iter().filter_map(|x| parse_version(&x.version)).max().is_some_and(|top| *v > top)
+}
+
 fn tech_lits(tech: &str, td: &TechData) -> TechLits {
     // The technology's own packages: the index's, else every package its records name (older catalogs). A technology
     // with no records is not in the stack either way.
@@ -1484,15 +1490,18 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
         }
         // Newest release per component: the default target. The technology's own packages take the newest release any
         // of its records names, also one central gave to another package of the repository (they share the release).
+        // A stable version past the newest release of the technology's index was never published by it (a sibling's
+        // version line in a monorepo: electron-updater records at electron-builder's 27.0.0): never a default target.
+        let published = |v: &Version| !beyond_index(v, &td.index.releases);
         let mut newest: BTreeMap<String, Version> = BTreeMap::new();
-        if let Some(v) = td.records.iter().flat_map(|r| r.r.releases.iter()).filter_map(|x| parse_version(&x.version)).max() {
+        if let Some(v) = td.records.iter().flat_map(|r| r.r.releases.iter()).filter_map(|x| parse_version(&x.version)).filter(published).max() {
             for c in comps.iter() {
                 newest.insert(c.clone(), v.clone());
             }
         }
         for r in &td.records {
             for rel in &r.r.releases {
-                if let Some(v) = parse_version(&rel.version) {
+                if let Some(v) = parse_version(&rel.version).filter(|v| !comps.contains(&normalize_purl(&rel.component)) || published(v)) {
                     let e = newest.entry(normalize_purl(&rel.component)).or_insert_with(|| v.clone());
                     if v > *e {
                         *e = v;
@@ -3229,6 +3238,28 @@ mod tests {
         let out = run_with(&c, &s, &r, &l);
         assert_eq!(route_of(&out, "next:backport"), &Route::BumpDigest, "on 16.0.1 it arrives with 16.0.2");
         assert_eq!(out.opps.iter().find(|o| o.id() == "next:backport").unwrap().target, Version::new(16, 2, 0), "default target: newest release");
+    }
+
+    #[test]
+    fn a_version_past_the_release_index_is_never_the_default_target() {
+        // NousResearch/hermes-agent: electron-updater records at electron-builder's 27.0.0 ("What's new in v27") were
+        // offered as "electron-updater 6.8.10 → 27.0.0"; electron-updater's newest release is 6.8.11.
+        let mut c = catalog(
+            "electron-updater",
+            0,
+            vec![rec("electron-updater:fix", "pkg:npm/electron-updater", "6.8.11"), rec("electron-updater:sibling", "pkg:npm/electron-updater", "27.0.0")],
+        );
+        let idx = |v: &str, d: &str| unstale_schema::catalog::IndexRelease { version: v.into(), date: d.into(), line: "6".into(), line_start: false };
+        c.techs.get_mut("electron-updater").unwrap().index.releases = vec![idx("6.8.10", "2026-09-01"), idx("6.8.11", "2026-10-01")];
+        let (r, l) = (repo(&[]), Ledger::default());
+        let s = stack(&[("electron-updater", "6.8.10")], None);
+        let out = run_with(&c, &s, &r, &l);
+        assert!(out.opps.iter().all(|o| o.target == Version::new(6, 8, 11)), "target: the newest published release");
+        assert!(!out.upgrade.iter().chain(&out.improvements).any(|&i| out.opps[i].id() == "electron-updater:sibling"));
+        // Without an index (older catalogs) the newest record release stays the target.
+        c.techs.get_mut("electron-updater").unwrap().index.releases = vec![];
+        let out = run_with(&c, &s, &r, &l);
+        assert!(out.opps.iter().any(|o| o.target == Version::new(27, 0, 0)));
     }
 
     #[test]

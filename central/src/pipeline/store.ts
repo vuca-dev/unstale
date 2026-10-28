@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { CapabilityRecord } from "../schema/catalog.ts";
 import { centralDir } from "./paths.ts";
 import { combineByLine, combineRelease, lineFn, type ReleaseIndex } from "./lines.ts";
-import { compareVersions, readJson, writeAtomic } from "./util.ts";
+import { compareVersions, readJson, releaseLine, writeAtomic } from "./util.ts";
 import { techLocal } from "../state/client.ts";
 
 export type Release = CapabilityRecord["releases"][number];
@@ -249,6 +249,40 @@ export function retractForeignGuideRecords(s: TechStore, foreign: ReadonlySet<st
     const urls = [...new Set(r.evidence.map((e) => e.url))].sort();
     retract(s, r.id, `read only from another technology's upgrade guide: ${urls.join(", ")}`);
     out.push(r.id);
+  }
+  return out;
+}
+
+/**
+ * Records read from an upgrade guide whose version the technology never published (fetch.ts `guideVersions`: another
+ * package's version line in the same monorepo): the release at that version moves to the technology's release that
+ * shipped with it, or is dropped when none is known; a record left with no release is retracted, so no client is
+ * offered a version that does not exist. Releases from other sources stay. Returns the records moved and retracted.
+ */
+export function relineGuideRecords(s: TechStore, moved: ReadonlyMap<string, { from: string; to?: string; date?: string }>): { moved: number; retracted: string[] } {
+  const out = { moved: 0, retracted: [] as string[] };
+  if (!moved.size) return out;
+  for (const r of Object.values(s.records).sort((a, b) => a.id.localeCompare(b.id))) {
+    if (r.status !== "active") continue;
+    const fixes = new Map(r.evidence.flatMap((e) => (moved.has(e.snapshot) ? [[moved.get(e.snapshot)!.from, moved.get(e.snapshot)!] as const] : [])));
+    if (!fixes.size) continue;
+    const releases = r.releases.flatMap((x): Release[] => {
+      const f = fixes.get(x.version);
+      if (!f) return [x];
+      if (!f.to) return [];
+      const { no_later_than: _, ...base } = x;
+      return [{ ...base, version: f.to, date: f.date!, line: releaseLine(f.to) }];
+    });
+    if (JSON.stringify(releases) === JSON.stringify(r.releases)) continue;
+    const from = [...fixes.keys()].sort(compareVersions).join(", ");
+    if (!releases.length) {
+      retract(s, r.id, `read only from an upgrade guide for ${from}, a version the technology never published (another package's version line)`);
+      out.retracted.push(r.id);
+      continue;
+    }
+    const to = [...fixes.values()].flatMap((f) => (f.to ? [f.to] : []));
+    applyChange(r, { releases: combineByLine([], releases, lineFn(s)) }, "guide-version", { detail: `${from} never published by the technology: ${to.length ? `read at ${to.join(", ")}, the release that shipped with it` : "release dropped"}` });
+    out.moved++;
   }
   return out;
 }
