@@ -3468,7 +3468,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
     if !out.in_effect.is_empty() {
         let techs: BTreeSet<String> = out.in_effect.iter().map(|&i| display_text(&label(&out.opps[i].rec.r.technology, pending, &out))).collect();
         // A deprecation about a part of a surviving name (`funnel::deprecated_part`) is cited on the name alone.
-        let unchecked = out.in_effect.iter().filter(|&&i| crate::funnel::deprecated_part(&out.opps[i].rec.r).is_some()).count();
+        let unchecked = out.in_effect.iter().filter(|&&i| out.opps[i].part.is_some()).count();
         let unchecked = if unchecked == 0 { String::new() } else { format!(" ({unchecked} on a name match only: the deprecated argument or form is not checked)") };
         start.push(format!("Deprecations in effect now (the code uses them at the installed version): {} in {}{unchecked}.", out.in_effect.len(), techs.into_iter().collect::<Vec<_>>().join(", ")));
     }

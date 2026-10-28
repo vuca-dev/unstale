@@ -305,7 +305,7 @@ fn render_record(pass: Pass, o: &Opp) -> String {
             "Matched terms"
         } else {
             // A deprecation about a part of a name that survives (`funnel::deprecated_part`) matched the name only.
-            match crate::funnel::deprecated_part(r) {
+            match o.part {
                 Some(crate::funnel::Part::Argument) => "Name match, called with arguments, shape not checked (the deprecation concerns an argument, not the name)",
                 Some(crate::funnel::Part::Form) => "Name match, shape not checked (the deprecation concerns a legacy form; the current form keeps the name)",
                 None => "Deprecated API used here",
@@ -1270,7 +1270,12 @@ mod tests {
 
     /// `in_effect_text` with these packages (directory, kind), each declaring every one of `declared`.
     fn in_effect_in(tech: &str, r: serde_json::Value, declared: &[(&str, &str)], packages: &[(&str, crate::stack::Kind)], files: &[(&str, &str)]) -> String {
-        let c = catalog(tech, 0, vec![r]);
+        in_effect_of(tech, vec![r], declared, packages, files)
+    }
+
+    /// `in_effect_in` with several records of the technology.
+    fn in_effect_of(tech: &str, recs: Vec<serde_json::Value>, declared: &[(&str, &str)], packages: &[(&str, crate::stack::Kind)], files: &[(&str, &str)]) -> String {
+        let c = catalog(tech, 0, recs);
         let mut s = stack(declared, None);
         s.packages = packages
             .iter()
@@ -1402,7 +1407,8 @@ mod tests {
     }
 
     /// lobehub/lobehub: @google/genai 2 deprecates the legacy `response_format` of interactions; its new polymorphic form
-    /// keeps the name, so `response_format: { type: 'video', … }` is a name match only, not a deprecated API.
+    /// keeps the name (2.1.0 adds parameters to it), so `response_format: { type: 'video', … }` is a name match only, not a
+    /// deprecated API. Without a later record adding to the name, "legacy" describes the deprecated thing itself.
     #[test]
     fn a_deprecated_legacy_form_of_a_surviving_name_is_a_name_match_only() {
         let r = with(
@@ -1411,7 +1417,16 @@ mod tests {
                    "terms":[["response_format",0],["interactions.create",0]],"summary":"The legacy response_format is deprecated for interactions."}),
         );
         let video = "import { GoogleGenAI } from '@google/genai';\nconst client = new GoogleGenAI({});\nawait client.interactions.create({\n  response_format: { type: 'video', delivery: 'uri' },\n});\n";
-        let text = in_effect_text("@google/genai", r, &[("@google/genai", "2.13.0")], &[("src/createVideo.ts", video)]);
+        let files = [("src/createVideo.ts", video)];
+        let text = in_effect_text("@google/genai", r.clone(), &[("@google/genai", "2.13.0")], &files);
+        assert!(text.contains("- Deprecated API used here: `response_format` (src/createVideo.ts)\n"), "{text}");
+        let added = with(
+            rec("google-genai:response-format-parameters~2", "pkg:npm/@google/genai", "2.1.0"),
+            json!({"change_type":"new_option","surface":"code_api","subject":"response_format","subject_kind":"literal","facet":"parameters","replaces":[],
+                   "terms":[["response_format",0],["video",0]],"summary":"Added parameters to video response_format."}),
+        );
+        let app = [(".", crate::stack::Kind::Application)];
+        let text = in_effect_of("@google/genai", vec![r, added], &[("@google/genai", "2.13.0")], &app, &files);
         assert!(
             text.contains("- Name match, shape not checked (the deprecation concerns a legacy form; the current form keeps the name): `response_format` (src/createVideo.ts)\n"),
             "{text}"
@@ -1422,17 +1437,18 @@ mod tests {
     #[test]
     fn a_deprecation_of_its_subject_itself_is_no_part_of_it() {
         use crate::funnel::{Part, deprecated_part};
-        let part = |v: serde_json::Value| deprecated_part(&serde_json::from_value(with(rec("x:y", "pkg:npm/x", "1.0.0"), v)).unwrap());
+        let part = |v: serde_json::Value| deprecated_part(&serde_json::from_value(with(rec("x:y", "pkg:npm/x", "1.0.0"), v)).unwrap(), &[]);
         let base = |summary: &str, facet: Option<&str>| json!({"change_type":"deprecation","surface":"code_api","subject":"headerIds","subject_kind":"literal","facet":facet,"replaces":[],"terms":[["headerIds",0]],"summary":summary});
         assert_eq!(part(base("The headerIds option is deprecated; use marked-gfm-heading-id instead.", None)), None, "a kind noun after the subject");
         assert_eq!(part(base("The headerIds parameter is deprecated.", None)), None);
         assert_eq!(part(base("Passing a callback to headerIds is deprecated.", None)), Some(Part::Argument));
         assert_eq!(part(base("Some calls to headerIds are deprecated.", Some("positional arguments"))), Some(Part::Argument), "from the facet");
         assert_eq!(part(base("The old headerIds signature is deprecated.", None)), Some(Part::Form));
+        assert_eq!(part(base("The older headerIds provider is deprecated.", None)), None, "an adjective of the deprecated thing itself");
         let mut v = base("The legacy headerIds is deprecated in favour of headingIds.", None);
         v["introduces"] = json!(["headingIds"]);
         assert_eq!(part(v), None, "a successor of another name: the name does not survive");
-        let mut v = base("The legacy headerIds is deprecated.", None);
+        let mut v = base("The old headerIds signature is deprecated.", None);
         v["surface"] = json!("configuration");
         assert_eq!(part(v), None, "configuration facets are read as option values");
     }
