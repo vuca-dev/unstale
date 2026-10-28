@@ -559,6 +559,8 @@ pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
         // lockfile further up covers it.
         let mut lock: Option<(PathBuf, Lock)> = None;
         let mut passed: Option<String> = None;
+        // A `bun.lockb` with no text `bun.lock` beside it, on the way up: what the floors below are for.
+        let mut binary: Option<String> = None;
         let mut d = Some(dir.as_path());
         while let Some(cur) = d {
             if !locks.contains_key(cur) {
@@ -570,7 +572,17 @@ pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
                         unreadable += 1;
                     }
                 }
+                if cur.join(BINARY_LOCKFILE).is_file() && !read.iter().any(|l| l.file == "bun.lock") {
+                    notes.push(format!(
+                        "{}: Bun's binary lockfile is not read, so the manifests it installs show their range floors, not the versions it holds. Bun 1.2+ writes the text bun.lock (`bun install --save-text-lockfile`), which is read.",
+                        join(&rel_dir(root, cur), BINARY_LOCKFILE)
+                    ));
+                    unreadable += 1;
+                }
                 locks.insert(cur.to_path_buf(), choose_lock(root, cur, read, &local_names, &cur_cat, &mut notes));
+            }
+            if binary.is_none() && cur.join(BINARY_LOCKFILE).is_file() && !cur.join("bun.lock").is_file() {
+                binary = Some(join(&rel_dir(root, cur), BINARY_LOCKFILE));
             }
             if let Some(Some(l)) = locks.get(cur) {
                 if l.covers(&rel_dir(cur, &dir)) {
@@ -672,6 +684,8 @@ pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
                     (range_floor(r), format!("library floor of {r_shown}"), Some(r))
                 } else if let Some(file) = passed.as_ref().filter(|_| standalone) {
                     (range_floor(range), format!("floor of {shown} (outside the {file} workspace)"), Some(range))
+                } else if let Some(file) = &binary {
+                    (range_floor(range), format!("floor of {shown} ({file} is not read)"), Some(range))
                 } else {
                     (range_floor(range), format!("floor of {shown} (not in a lockfile)"), Some(range))
                 };
@@ -872,8 +886,9 @@ fn join(dir: &str, f: &str) -> String {
     if dir == "." { f.to_string() } else { format!("{dir}/{f}") }
 }
 
-/// pnpm catalogs from `pnpm-workspace.yaml`: catalog name → package → range. `catalog:` at the top level is the
-/// `default` catalog, `catalogs: <name>:` the named ones. A manifest uses the nearest workspace file at or above it.
+/// Catalogs: catalog name → package → range, from `pnpm-workspace.yaml` or, without one, the workspace root's
+/// `package.json` (Bun, Yarn 4.10+). `catalog` is the `default` catalog, `catalogs.<name>` the named ones. A manifest
+/// uses the nearest workspace file at or above it.
 #[derive(Debug, Clone, Default)]
 pub struct Catalogs(BTreeMap<String, BTreeMap<String, String>>);
 
@@ -885,8 +900,28 @@ impl Catalogs {
             if let Some(c) = cache.get(cur) {
                 return c.clone();
             }
-            if let Ok(text) = std::fs::read_to_string(cur.join("pnpm-workspace.yaml")) {
-                let c = parse_pnpm_workspace(&text);
+            let pnpm = std::fs::read_to_string(cur.join("pnpm-workspace.yaml")).ok().map(|t| parse_pnpm_workspace(&t));
+            // Bun and Yarn 4.10+: the workspace root's `package.json` holds them (`workspaces.catalog`,
+            // `workspaces.catalogs`; Bun also reads a top-level `catalog` / `catalogs`). A manifest that declares
+            // `workspaces` or catalogs is a workspace root: the search stops there, as at a `pnpm-workspace.yaml`.
+            let manifest = || {
+                let pj = std::fs::read_to_string(cur.join("package.json")).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok())?;
+                let root = pj.get("workspaces").is_some() || pj.get("catalog").is_some() || pj.get("catalogs").is_some();
+                root.then(|| {
+                    let mut c = Catalogs::from_json(&pj);
+                    for (name, m) in Catalogs::from_json(pj.get("workspaces").unwrap_or(&Value::Null)).0 {
+                        c.0.entry(name).or_default().extend(m);
+                    }
+                    c
+                })
+            };
+            // A `pnpm-workspace.yaml` with no catalogs leaves them to the manifest beside it.
+            let found = match pnpm {
+                Some(c) if !c.0.is_empty() => Some(c),
+                Some(c) => Some(manifest().unwrap_or(c)),
+                None => manifest(),
+            };
+            if let Some(c) = found {
                 cache.insert(cur.to_path_buf(), c.clone());
                 return c;
             }
@@ -896,6 +931,22 @@ impl Catalogs {
             d = cur.parent();
         }
         Catalogs::default()
+    }
+
+    /// `catalog` (the default catalog) and `catalogs.<name>` of a JSON object: a `package.json` `workspaces` field,
+    /// or the copy Bun writes at the top of `bun.lock`.
+    pub fn from_json(v: &Value) -> Catalogs {
+        let mut c = Catalogs::default();
+        let entries = |m: &Value| -> BTreeMap<String, String> {
+            m.as_object().into_iter().flatten().filter_map(|(n, r)| Some((n.clone(), r.as_str()?.to_string()))).collect()
+        };
+        if let Some(m) = v.get("catalog").filter(|m| m.is_object()) {
+            c.0.entry("default".into()).or_default().extend(entries(m));
+        }
+        for (name, m) in v.get("catalogs").and_then(Value::as_object).into_iter().flatten() {
+            c.0.entry(name.clone()).or_default().extend(entries(m));
+        }
+        c
     }
 
     /// The range a `catalog:` / `catalog:<name>` specifier stands for; `None` for any other range, or a catalog
@@ -1115,7 +1166,10 @@ impl Override {
 /// npm lockfiles in the order used when nothing else decides between them, with the package manager that writes
 /// each (the `packageManager` field names it).
 const LOCKFILES: &[(&str, &str)] =
-    &[("package-lock.json", "npm"), ("npm-shrinkwrap.json", "npm"), ("pnpm-lock.yaml", "pnpm"), ("yarn.lock", "yarn")];
+    &[("package-lock.json", "npm"), ("npm-shrinkwrap.json", "npm"), ("pnpm-lock.yaml", "pnpm"), ("yarn.lock", "yarn"), ("bun.lock", "bun")];
+
+/// Bun's binary lockfile (before Bun 1.2's text `bun.lock`): its format is Bun's internal one and is not read.
+pub const BINARY_LOCKFILE: &str = "bun.lockb";
 
 /// One lockfile for a directory that holds several (a switch of package manager that left the old file behind):
 /// the one whose versions the manifest beside it admits, then the one `packageManager` names, then the fixed
@@ -1177,6 +1231,7 @@ impl Lock {
             let mut l = match *f {
                 "pnpm-lock.yaml" => parse_pnpm(&text),
                 "yarn.lock" => parse_yarn(&text),
+                "bun.lock" => parse_bun(&text),
                 _ => parse_npm(&text),
             };
             l.file = f.to_string();
@@ -1286,6 +1341,7 @@ fn read_overrides(dir: &Path, lockfile: &str) -> BTreeMap<String, Vec<Override>>
     let pj: Value = std::fs::read_to_string(dir.join("package.json")).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or(Value::Null);
     let fields: &[(&str, &str)] = match lockfile {
         "yarn.lock" => &[("/resolutions", "resolutions")],
+        "bun.lock" => &[("/overrides", "overrides"), ("/resolutions", "resolutions")],
         "pnpm-lock.yaml" => &[("/pnpm/overrides", "pnpm.overrides"), ("/resolutions", "resolutions")],
         _ => &[("/overrides", "overrides")],
     };
@@ -1589,6 +1645,135 @@ pub(crate) fn split_key(body: &str) -> Option<(String, Option<&str>)> {
     };
     let v = rest.trim();
     Some((k.to_string(), if v.is_empty() { None } else { Some(v) }))
+}
+
+/// JSON with comments and trailing commas (JSONC, as Bun writes `bun.lock`), read as JSON: both are dropped outside
+/// strings before parsing.
+pub(crate) fn jsonc(text: &str) -> Option<Value> {
+    let (b, mut out) = (text.as_bytes(), Vec::with_capacity(text.len()));
+    let (mut i, mut in_str) = (0, false);
+    while i < b.len() {
+        let c = b[i];
+        if in_str {
+            out.push(c);
+            if c == b'\\' && i + 1 < b.len() {
+                out.push(b[i + 1]);
+                i += 1;
+            } else if c == b'"' {
+                in_str = false;
+            }
+        } else if c == b'"' {
+            in_str = true;
+            out.push(c);
+        } else if c == b'/' && b.get(i + 1) == Some(&b'/') {
+            while i < b.len() && b[i] != b'\n' {
+                i += 1;
+            }
+            continue;
+        } else if c == b'/' && b.get(i + 1) == Some(&b'*') {
+            i += 2;
+            while i + 1 < b.len() && !(b[i] == b'*' && b[i + 1] == b'/') {
+                i += 1;
+            }
+            i += 2;
+            continue;
+        } else if c == b',' && b[i + 1..].iter().find(|x| !x.is_ascii_whitespace()).is_some_and(|x| *x == b'}' || *x == b']') {
+            // A trailing comma (comments between it and the bracket are not expected in a lockfile).
+        } else {
+            out.push(c);
+        }
+        i += 1;
+    }
+    serde_json::from_slice(&out).ok()
+}
+
+/// A `bun.lock` package identity (`name@1.2.3`, `name@workspace:packages/a`, `name@github:o/r#sha`) split into the
+/// package name and what follows the `@`. An npm alias's entry names the package it installs.
+pub(crate) fn bun_ident(ident: &str) -> Option<(&str, &str)> {
+    let at = ident.get(1..)?.find('@')? + 1;
+    Some((&ident[..at], &ident[at + 1..]))
+}
+
+/// The package names along a `bun.lock` `packages` key: `a/@s/b/c` → `[a, @s/b, c]` (the package at `c` is
+/// installed under `a/@s/b`; a key with one name is hoisted to the root, under a workspace's name it is that
+/// workspace's own copy).
+pub(crate) fn bun_path(key: &str) -> Vec<&str> {
+    let (mut out, mut start, mut scoped) = (vec![], 0, false);
+    for (i, c) in key.char_indices() {
+        if c == '/' {
+            if scoped {
+                scoped = false;
+                continue;
+            }
+            out.push(&key[start..i]);
+            start = i + 1;
+        } else if i == start && c == '@' {
+            scoped = true;
+        }
+    }
+    out.push(&key[start..]);
+    out
+}
+
+/// Bun's text lockfile (`bun.lock`, Bun 1.2+): `workspaces` lists each project by directory with its declared
+/// ranges, `packages` maps an install path (`bun_path`) to `[identity, registry URL, metadata, integrity]`. A
+/// package installed directly under a workspace's name is that workspace's version; one at the root is hoisted.
+pub fn parse_bun(text: &str) -> Lock {
+    let mut l = Lock::default();
+    let Some(v) = jsonc(text) else {
+        l.unread = Some("not valid JSON".into());
+        return l;
+    };
+    for dir in v.get("workspaces").and_then(Value::as_object).into_iter().flatten().map(|(d, _)| d) {
+        if !dir.is_empty() {
+            l.listed.insert(dir.trim_start_matches("./").to_string());
+        }
+    }
+    let Some(pk) = v.get("packages").and_then(Value::as_object) else { return l };
+    // Workspace members by package name: a key under one (`@acme/app/vite`) is that workspace's own copy.
+    let mut ws: BTreeMap<&str, String> = BTreeMap::new();
+    for (key, e) in pk {
+        if let Some(path) = e.get(0).and_then(Value::as_str).and_then(bun_ident).and_then(|(_, s)| s.strip_prefix("workspace:")) {
+            let path = path.trim_start_matches("./").to_string();
+            l.listed.insert(path.clone());
+            ws.insert(key.as_str(), path);
+        }
+    }
+    let mut unreadable = 0;
+    for (key, e) in pk {
+        let path = bun_path(key);
+        let Some(name) = path.last().copied() else { continue };
+        let Some((_, spec)) = e.get(0).and_then(Value::as_str).and_then(bun_ident) else {
+            unreadable += 1;
+            continue;
+        };
+        if spec.starts_with("workspace:") {
+            continue;
+        }
+        let Some(ver) = parse_version(spec) else {
+            // A git, tarball or path source: not the registry's package of that name.
+            l.saw(name, Seen::Elsewhere);
+            continue;
+        };
+        if let Some(u) = e.get(1).and_then(Value::as_str).filter(|u| !u.is_empty()) {
+            l.saw(name, Seen::npm_url(u));
+        }
+        if let Some(i) = e.get(3).and_then(Value::as_str) {
+            l.add_integrity(name, &ver, i);
+        }
+        let importer = match path.as_slice() {
+            [_] => Some(".".to_string()),
+            [parent, _] => ws.get(parent).cloned(),
+            _ => None,
+        };
+        if let Some(imp) = importer {
+            l.importers.entry(imp).or_default().insert(name.to_string(), ver);
+        }
+    }
+    if unreadable > 0 {
+        l.unread = Some(format!("{unreadable} package entries with no readable identity"));
+    }
+    l
 }
 
 pub fn parse_yarn(text: &str) -> Lock {
@@ -2165,6 +2350,72 @@ mod tests {
         assert_eq!((six.version.clone(), six.source.as_str()), (Some(Version::new(6, 0, 2)), "pnpm-lock.yaml"), "{six:?}");
         assert_eq!(clean_pnpm_version("13.0.0_react@18.2.0"), parse_version("13.0.0"));
         assert_eq!(clean_pnpm_version("/next/13.0.0"), parse_version("13.0.0"));
+    }
+
+    #[test]
+    fn bun_lock_versions_aliases_and_package_json_catalogs() {
+        // anomalyco/opencode: a Bun workspace, catalogs in the root package.json, bun.lock (JSONC) resolving a
+        // caret range above its floor, a workspace's own nested copy and an npm alias from the catalog.
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "package.json", r#"{"name":"root","private":true,"packageManager":"bun@1.4.4","workspaces":{"packages":["packages/*"],"catalog":{"hono":"4.10.7","typescript":"npm:@typescript/typescript6@6.0.2"},"catalogs":{"ui":{"vite":"^7.3.0"}}},"devDependencies":{"semver":"^7.6.0","typescript":"catalog:"}}"#);
+        write(d.path(), "packages/app/package.json", r#"{"name":"@acme/app","private":true,"dependencies":{"hono":"catalog:","vite":"catalog:ui"}}"#);
+        write(d.path(), "packages/web/package.json", r#"{"name":"@acme/web","private":true,"dependencies":{"vite":"^8.0.0"}}"#);
+        write(
+            d.path(),
+            "bun.lock",
+            r#"{
+  "lockfileVersion": 1,
+  // comments are JSONC too
+  "workspaces": {
+    "": { "name": "root", "devDependencies": { "semver": "^7.6.0", "typescript": "catalog:", }, },
+    "packages/app": { "name": "@acme/app", "dependencies": { "hono": "catalog:", "vite": "catalog:ui", }, },
+    "packages/web": { "name": "@acme/web", "dependencies": { "vite": "^8.0.0", }, },
+  },
+  "packages": {
+    "@acme/app": ["@acme/app@workspace:packages/app"],
+    "@acme/web": ["@acme/web@workspace:packages/web"],
+    "hono": ["hono@4.10.7", "", {}, "sha512-H"],
+    "semver": ["semver@7.8.5", "", {}, "sha512-S"],
+    "typescript": ["@typescript/typescript6@6.0.2", "", {}, "sha512-T"],
+    "vite": ["vite@8.2.2", "", {}, "sha512-V8"],
+    "@acme/app/vite": ["vite@7.3.6", "", {}, "sha512-V7"],
+  },
+}
+"#,
+        );
+        let s = detect(d.path()).unwrap();
+        assert!(s.unreadable == 0 && s.notes.iter().all(|n| n.contains("different versions across manifests")), "{:?}", s.notes);
+        let semver = &s.deps["pkg:npm/semver"];
+        assert_eq!((semver.version.clone(), semver.source.as_str()), (Some(Version::new(7, 8, 5)), "bun.lock"), "{semver:?}");
+        assert_eq!(semver.pins, vec![Pin { version: "7.8.5".into(), hashes: vec!["sha512-S".into()] }]);
+        let hono = &s.deps["pkg:npm/hono"];
+        assert_eq!(hono.version, Some(Version::new(4, 10, 7)), "a package.json catalog entry is read: {hono:?}");
+        let vite = &s.deps["pkg:npm/vite"];
+        let by_dir: BTreeMap<&str, String> = vite.readings.iter().map(|r| (r.dir.as_str(), r.version.to_string())).collect();
+        assert_eq!(by_dir, BTreeMap::from([("packages/app", "7.3.6".to_string()), ("packages/web", "8.2.2".to_string())]), "{vite:?}");
+        let six = &s.deps[&npm_purl("@typescript/typescript6")];
+        assert_eq!(six.version, Some(Version::new(6, 0, 2)), "an alias from the catalog counts as its target: {six:?}");
+        assert!(s.packages.iter().all(|p| p.lockfile.as_deref() == Some("bun.lock")), "{:?}", s.packages);
+
+        // Without the lockfile, the catalogs still give the ranges.
+        std::fs::remove_file(d.path().join("bun.lock")).unwrap();
+        let s = detect(d.path()).unwrap();
+        assert_eq!(s.deps["pkg:npm/hono"].source, "floor of 4.10.7 from catalog: (not in a lockfile)");
+        assert_eq!(s.deps["pkg:npm/vite"].readings.iter().find(|r| r.dir == "packages/app").map(|r| r.version.to_string()), Some("7.3.0".into()));
+
+        // Bun's top-level `catalog`, beside a `pnpm-workspace.yaml` that lists packages but no catalogs.
+        write(d.path(), "package.json", r#"{"name":"root","private":true,"workspaces":["packages/*"],"catalog":{"hono":"4.11.0"},"devDependencies":{"semver":"^7.6.0"}}"#);
+        write(d.path(), "pnpm-workspace.yaml", "packages:\n  - packages/*\n");
+        let s = detect(d.path()).unwrap();
+        assert_eq!(s.deps["pkg:npm/hono"].version, Some(Version::new(4, 11, 0)));
+        std::fs::remove_file(d.path().join("pnpm-workspace.yaml")).unwrap();
+
+        // Bun's binary lockfile is named, not passed over in silence.
+        write(d.path(), "bun.lockb", "\u{0}bun-lockfile-format-v0\n");
+        let s = detect(d.path()).unwrap();
+        assert_eq!(s.unreadable, 1);
+        assert!(s.notes[0].starts_with("bun.lockb: Bun's binary lockfile is not read"), "{:?}", s.notes);
+        assert_eq!(s.deps["pkg:npm/semver"].source, "floor of ^7.6.0 (bun.lockb is not read)");
     }
 
     #[test]

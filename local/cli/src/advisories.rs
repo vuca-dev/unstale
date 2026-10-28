@@ -390,6 +390,73 @@ pub fn yarn_lock(text: &str, file: &str, manifests: &[(String, Value)]) -> Graph
     g
 }
 
+/// `bun.lock` (Bun 1.2+ text lockfile): `workspaces` holds each project's declared ranges (`catalog:` resolved
+/// through the lockfile's own `catalog` / `catalogs` copy), `packages` maps install paths (`stack::bun_path`) to
+/// `[identity, registry URL, metadata, integrity]`. A dependency resolves as Node does: from the requiring
+/// package's install path up to the root; a workspace's own copies sit under its package name.
+pub fn bun_lock(text: &str, lock_dir: &str, file: &str) -> Graph {
+    use crate::stack::{bun_ident, bun_path};
+    let mut g = Graph::new(file, "npm");
+    let Some(v) = crate::stack::jsonc(text) else { return g };
+    let empty = serde_json::Map::new();
+    let pk = v.get("packages").and_then(Value::as_object).unwrap_or(&empty);
+    let catalogs = crate::stack::Catalogs::from_json(&v);
+    let mut idx: BTreeMap<&str, usize> = BTreeMap::new();
+    for (key, e) in pk {
+        let Some((name, spec)) = e.get(0).and_then(Value::as_str).and_then(bun_ident) else { continue };
+        let i = if let Some(path) = spec.strip_prefix("workspace:") {
+            g.local(&join_dir(lock_dir, path))
+        } else if let Some(ver) = crate::util::parse_version(spec) {
+            let i = g.node(&format!("bun:{key}"), name, &ver.to_string());
+            if let Some(u) = e.get(1).and_then(Value::as_str).filter(|u| !u.is_empty()) {
+                g.saw(i, Seen::npm_url(u));
+            }
+            i
+        } else {
+            // A git, tarball or path source.
+            let i = g.node(&format!("bun:{key}"), name, "");
+            g.saw(i, Seen::Elsewhere);
+            i
+        };
+        idx.insert(key.as_str(), i);
+    }
+    // The package `dep` resolves to from the install path `from` (names, `bun_path`).
+    let resolve = |from: &[&str], dep: &str| -> Option<usize> {
+        (0..=from.len()).rev().find_map(|n| {
+            let key = from[..n].iter().chain([&dep]).copied().collect::<Vec<_>>().join("/");
+            idx.get(key.as_str()).copied()
+        })
+    };
+    let mut edges = vec![];
+    for (dir, w) in v.get("workspaces").and_then(Value::as_object).into_iter().flatten() {
+        let from = g.local(&join_dir(lock_dir, dir));
+        let base: Vec<&str> = w.get("name").and_then(Value::as_str).filter(|_| !dir.is_empty()).into_iter().collect();
+        for (sec, dev) in [("dependencies", false), ("optionalDependencies", false), ("peerDependencies", false), ("devDependencies", true)] {
+            for (dep, range) in w.get(sec).and_then(Value::as_object).into_iter().flatten() {
+                let range = range.as_str().map(|r| catalogs.resolve(dep, r).unwrap_or(r).to_string());
+                if let Some(to) = resolve(&base, dep) {
+                    edges.push((from, to, range, dev));
+                }
+            }
+        }
+    }
+    for (key, e) in pk {
+        let (Some(&from), Some(meta)) = (idx.get(key.as_str()), e.as_array().and_then(|a| a.iter().find(|x| x.is_object()))) else { continue };
+        let path = bun_path(key);
+        for sec in ["dependencies", "optionalDependencies", "peerDependencies"] {
+            for (dep, range) in meta.get(sec).and_then(Value::as_object).into_iter().flatten() {
+                if let Some(to) = resolve(&path, dep) {
+                    edges.push((from, to, range.as_str().map(String::from), false));
+                }
+            }
+        }
+    }
+    for (f, t, r, d) in edges {
+        g.edge(f, t, r.as_deref(), d);
+    }
+    g
+}
+
 /// `uv.lock`: workspace members (`editable`, `virtual`, `directory` sources) are the projects; their
 /// `dev-dependencies` and their own extras (`optional-dependencies`) are dev, as the upgrade classifier reads a
 /// `pyproject.toml` (`workarounds::declarations`), and `package.metadata.requires-dist` gives the declared specifiers.
@@ -592,6 +659,7 @@ pub fn graphs(root: &Path, st: &Stack) -> Vec<Graph> {
         let g = match base {
             "package-lock.json" | "npm-shrinkwrap.json" => npm_lock(&text, &dir, &f),
             "pnpm-lock.yaml" => pnpm_lock(&text, &dir, &f),
+            "bun.lock" => bun_lock(&text, &dir, &f),
             "yarn.lock" => {
                 let manifests: Vec<(String, Value)> = st
                     .packages
@@ -1881,6 +1949,57 @@ mod tests {
                 ("GHSA-li", vec!["high at runtime".into()], vec!["markdown-it 14.2.0".into()]),
             ],
             "a workspace member's dependency is direct and runtime through the link; dev-only low is dropped"
+        );
+    }
+
+    #[test]
+    fn bun_lock_graph_with_workspaces_nested_copies_aliases_and_catalogs() {
+        // opencode's shape: JSONC with trailing commas; `packages/ui` has its own markdown-it under its package name,
+        // the root's is hoisted; `catalog:` resolves through the lockfile's catalog copy; an npm alias installs its
+        // target; a git dependency is never sent.
+        let text = r#"{
+  "lockfileVersion": 1,
+  "workspaces": {
+    "": { "name": "root", "devDependencies": { "jest": "^29", }, },
+    "packages/ui": {
+      "name": "@acme/ui",
+      "dependencies": { "markdown-it": "catalog:", "sw": "npm:string-width@4.2.3", "gh": "github:o/gh", },
+    },
+  },
+  "catalog": { "markdown-it": "^13.0.2", },
+  "packages": {
+    "@acme/ui": ["@acme/ui@workspace:packages/ui"],
+    "gh": ["gh@github:o/gh#abc", {}, "o-gh-abc"],
+    "jest": ["jest@29.0.0", "", { "dependencies": { "markdown-it": "^14.0.0", "braces": "^3.0.0" } }, "sha512-j"],
+    "markdown-it": ["markdown-it@14.2.0", "", { "dependencies": { "linkify-it": "^5.0.0" } }, "sha512-m"],
+    "linkify-it": ["linkify-it@5.0.2", "", {}, "sha512-l"],
+    "braces": ["braces@3.0.2", "https://npm.acme.internal/braces-3.0.2.tgz", {}, "sha512-b"],
+    "sw": ["string-width@4.2.3", "", {}, "sha512-s"],
+    "@acme/ui/markdown-it": ["markdown-it@13.0.2", "", { "dependencies": { "linkify-it": "^4.0.0" } }, "sha512-m13"],
+    "@acme/ui/markdown-it/linkify-it": ["linkify-it@4.0.1", "", {}, "sha512-l4"],
+  }
+}
+"#;
+        let g = bun_lock(text, ".", "bun.lock");
+        let p = g.packages();
+        for (n, v) in [("markdown-it", "14.2.0"), ("markdown-it", "13.0.2"), ("linkify-it", "5.0.2"), ("linkify-it", "4.0.1"), ("string-width", "4.2.3"), ("jest", "29.0.0")] {
+            assert!(p.contains(&(n.into(), v.into())), "{n} {v} {p:?}");
+        }
+        assert!(!p.iter().any(|(n, _)| n == "braces" || n == "gh" || n == "sw"), "a private registry's or git package is never sent; an alias is its target: {p:?}");
+        assert!(g.direct().contains(&("markdown-it".into(), "13.0.2".into())), "the workspace's own copy is its direct dependency");
+        let docs = [
+            ("GHSA-md", doc(Some(Severity::Moderate), "2024-01-01T00:00:00Z", &[("npm", "markdown-it", &["14.3.1"])], &[])),
+            ("GHSA-li", doc(Some(Severity::High), "2025-01-01T00:00:00Z", &[("npm", "linkify-it", &["4.0.2"])], &[])),
+        ];
+        let items = run(g, &docs, &[("markdown-it", "13.0.2", &["GHSA-md"]), ("linkify-it", "4.0.1", &["GHSA-li"])], "2026-10-18").1;
+        let got: Vec<(&str, Vec<String>, Vec<String>)> = items.iter().map(|i| (i.id.as_str(), i.why.clone(), i.via.clone())).collect();
+        assert_eq!(
+            got,
+            vec![
+                ("GHSA-li", vec!["high at runtime".into()], vec!["markdown-it 13.0.2".into()]),
+                ("GHSA-md", vec!["fix blocked: packages/ui declares ^13.0.2".into()], vec![]),
+            ],
+            "the transitive copy under the workspace's markdown-it, and the catalog range refusing the direct fix"
         );
     }
 

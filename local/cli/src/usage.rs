@@ -1718,7 +1718,7 @@ pub fn member_of(name: &str, ns: &str) -> bool {
     !member.is_empty() && !member.starts_with(|c: char| c.is_ascii_digit()) && !TEXT_EXT.contains(&member.to_ascii_lowercase().as_str())
 }
 
-const LOCKFILES: &[&str] = &["package-lock.json", "npm-shrinkwrap.json", "pnpm-lock.yaml", "yarn.lock"];
+const LOCKFILES: &[&str] = &["package-lock.json", "npm-shrinkwrap.json", "pnpm-lock.yaml", "yarn.lock", "bun.lock"];
 const MAX_BYTES: u64 = 400_000;
 
 /// The repository's text, file by file (paths relative to the root, `/`-separated, sorted), and every file name.
