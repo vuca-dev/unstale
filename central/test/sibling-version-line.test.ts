@@ -120,5 +120,8 @@ describe("a guide for a version the technology never published", () => {
     const U: Technology = { ...T, id: "nosiblings-00000000", components: ["pkg:npm/nosiblings"] };
     times("pkg:npm/nosiblings", { "1.0.0": "2026-01-01T00:00:00Z" });
     expect(await guideVersions(U, [{ version: "27.0.0", snapshot: "sha256:x" }], { offline: true })).toEqual(new Map());
+    // Nor does a sibling whose publish times cannot be read.
+    siblings(U, ["pkg:npm/nosiblings", "pkg:npm/unread-sibling"]);
+    expect(await guideVersions(U, [{ version: "27.0.0", snapshot: "sha256:x" }], { offline: true })).toEqual(new Map());
   });
 });

@@ -854,7 +854,11 @@ export async function guideVersions(t: Technology, guides: ReadonlyArray<{ versi
   if (!packages && ecosystemOf(t.components[0] ?? "").repositoryPackages) return out;
   const siblings = (packages ?? []).map((p) => p.purl).filter((p) => !t.components.includes(p));
   const siblingTimes: Array<Record<string, string>> = [];
-  for (const p of siblings) siblingTimes.push((await componentTimes(t, p, opts)) ?? {});
+  for (const p of siblings) {
+    const times = await componentTimes(t, p, opts);
+    if (!times) return out; // a sibling's times unreadable: checked again next run
+    siblingTimes.push(times);
+  }
   for (const g of off) {
     const days = siblingTimes.flatMap((x) => (x[g.version] && !Number.isNaN(Date.parse(x[g.version]!)) ? [new Date(x[g.version]!).toISOString().slice(0, 10)] : []));
     const to = shippedWith(published, days);
