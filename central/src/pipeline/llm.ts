@@ -208,6 +208,9 @@ const chatLimit = new Limiter(5);
 export interface CallOptions {
   responseFormat?: unknown;
   maxTokens?: number;
+  /** What the call is spent on (stage, source, technology), written to its usage line only: never part of the request
+   * or the cache key, so `provider-usage` ranks extraction's spend by step as `jev-usage` does Jev's. */
+  attribution?: Record<string, unknown>;
 }
 
 /** The model cache: an answer under its request's key, a truncated answer's usage under `<key>.length` (packs.ts). */
@@ -291,7 +294,7 @@ export async function extractLlm<T>(
         llmStats.output_tokens += r.usage.output_tokens;
         llmStats.reasoning_tokens += r.usage.reasoning_tokens ?? 0;
         llmStats.dollars += r.cost ?? 0;
-        logUsage({ api: p.name, model: m.model, effort: m.effort, tier: m.tier, ...r.usage, ...(r.cost !== undefined ? { dollars: r.cost } : {}), finish: r.finish });
+        logUsage({ api: p.name, model: m.model, effort: m.effort, tier: m.tier, ...o.attribution, ...r.usage, ...(r.cost !== undefined ? { dollars: r.cost } : {}), finish: r.finish });
       }
       if (r.finish === "length") {
         console.error(`${p.name}/${m.model}: attempt ${attempt + 1} truncated; not retried`);

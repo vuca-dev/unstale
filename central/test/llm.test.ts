@@ -86,6 +86,21 @@ describe("extractLlm on chat completions", () => {
     expect(seen).toEqual([]);
     expect(extractTruncated("prompt other")).toBe(false);
   });
+  test("attribution goes to the usage line, never to the request or the cache key", async () => {
+    const bodies: string[] = [];
+    const f = (async (_url: string, init: RequestInit) => {
+      bodies.push(String(init.body));
+      return answer("[5]");
+    }) as unknown as typeof fetch;
+    const parse = (t: string) => JSON.parse(t) as number[];
+    const attribution = { stage: "extraction", source: "upgrade guide", technology: "Next.js" };
+    expect(await extractLlm("prompt attributed", parse, { fetch: f, backoffMs: 1, attribution })).toEqual([5]);
+    expect(bodies[0]).not.toContain("upgrade guide");
+    const log = readFileSync(join(process.env.UNSTALE_CENTRAL_DIR!, "usage.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l) as Record<string, unknown>);
+    expect(log.at(-1)).toMatchObject({ api: "vercel", ...attribution, input_tokens: 100 });
+    expect(await extractLlm("prompt attributed", parse, { fetch: f, backoffMs: 1, attribution: { stage: "terms" } })).toEqual([5]);
+    expect(bodies).toHaveLength(1);
+  });
   test("undefined after three unparseable answers", async () => {
     const f = (async () => answer("not json")) as unknown as typeof fetch;
     const before = llmStats.failed;
