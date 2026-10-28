@@ -762,7 +762,9 @@ pub fn replacement_lits(r: &Rec, lits: &[String], deprecated: &[String]) -> Vec<
         .collect();
     let id_char = |c: Option<char>| c.is_some_and(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$');
     let writes = |l: &str| summary.match_indices(l).any(|(i, _)| !id_char(summary[..i].chars().next_back()) && !id_char(summary[i + l.len()..].chars().next()));
-    let unwritten = |l: &str| !code_words.is_empty() && !writes(l);
+    // Written in another case or separator style counts (`encodeAuth` in the summary for an `encode_auth` term).
+    let norm = |x: &str| x.chars().filter(|c| c.is_ascii_alphanumeric()).collect::<String>().to_ascii_lowercase();
+    let unwritten = |l: &str| !code_words.is_empty() && !writes(l) && !code_words.iter().any(|w| norm(w) == norm(l));
     let mut out: Vec<String> = vec![];
     for l in intro.iter().chain(lits) {
         let related = deprecated.iter().any(|d| d.contains(l.as_str()) || l.contains(d.as_str()));
@@ -2851,10 +2853,14 @@ mod tests {
         let o = out.opps.iter().find(|o| o.id() == "aiohttp:basicauth").unwrap();
         assert_eq!((&o.route, &o.matched), (&Route::InEffect, &vec![("BasicAuth".to_string(), vec!["app/auths.py".to_string()])]));
         // A summary naming the term as what to use keeps it the successor: beside it, the old name is a fallback.
-        let r1 = with(r0, json!({"summary":"BasicAuth is deprecated; use ClientSession(auth_header=...) instead."}));
+        let r1 = with(r0.clone(), json!({"summary":"BasicAuth is deprecated; use ClientSession(auth_header=...) instead."}));
         let c = c_of(r1);
         let out = run_with(&c, &s, &r, &l);
         assert_eq!(route_of(&out, "aiohttp:basicauth"), &Route::AlreadyIncluded);
+        // So does one naming it in another case style (`clientSession` for the `ClientSession` term).
+        let r2 = with(r0, json!({"summary":"BasicAuth is deprecated; use clientSession instead."}));
+        let c = c_of(r2);
+        assert_eq!(route_of(&run_with(&c, &s, &r, &l), "aiohttp:basicauth"), &Route::AlreadyIncluded);
         fn c_of(r: serde_json::Value) -> Catalog {
             catalog("aiohttp", 0, vec![r])
         }

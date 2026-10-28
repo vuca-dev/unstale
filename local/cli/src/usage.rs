@@ -600,10 +600,14 @@ fn comment_spans(path: &str, text: &str) -> Vec<(usize, usize)> {
     lex_spans(path, text).0
 }
 
-/// Comment spans (`comment_spans`) and string-literal spans (the bytes between the quotes) of `text`. A Python triple
-/// quote (`"""…"""`, `'''…'''`) is one string across lines, so a docstring's prose (`isn't`, `# not a comment`) neither
-/// opens another string nor a comment.
-fn lex_spans(path: &str, text: &str) -> (Vec<(usize, usize)>, Vec<(usize, usize)>) {
+/// A string literal's content bytes and whether it interpolates code (`lex_spans`).
+type StringSpan = (usize, usize, bool);
+
+/// Comment spans (`comment_spans`) and string-literal spans of `text`: the bytes between the quotes of each literal that
+/// closes (a stray apostrophe running to the line's end is none), and whether it interpolates code in `{…}` (a Python
+/// f-string, a template literal). A Python triple quote (`"""…"""`, `'''…'''`) is one string across lines, so a
+/// docstring's prose (`isn't`, `# not a comment`) neither opens another string nor a comment.
+fn lex_spans(path: &str, text: &str) -> (Vec<(usize, usize)>, Vec<StringSpan>) {
     let style = comment_style(path);
     let mut out = vec![];
     let mut strings = vec![];
@@ -614,6 +618,8 @@ fn lex_spans(path: &str, text: &str) -> (Vec<(usize, usize)>, Vec<(usize, usize)
     let b = text.as_bytes();
     let mut i = 0;
     let line_end = |from: usize| text[from..].find('\n').map_or(b.len(), |n| from + n);
+    // A Python string prefix holding `f` (`f"…"`, `rf'…'`) makes an f-string.
+    let f_string = |at: usize| python && b[..at].iter().rev().take_while(|c| c.is_ascii_alphabetic()).any(|c| matches!(c, b'f' | b'F'));
     while i < b.len() {
         let c = b[i];
         let next = b.get(i + 1).copied();
@@ -626,11 +632,14 @@ fn lex_spans(path: &str, text: &str) -> (Vec<(usize, usize)>, Vec<(usize, usize)
                     j += if b[j] == b'\\' { 2 } else { 1 };
                 }
                 let end = j.min(b.len());
-                strings.push((from, end));
+                if end < b.len() {
+                    strings.push((from, end, f_string(i)));
+                }
                 i = (end + 3).min(b.len());
             }
             b'\'' | b'"' | b'`' if style != CommentStyle::Block || c != b'`' => {
                 let q = c;
+                let interp = q == b'`' || f_string(i);
                 i += 1;
                 let from = i;
                 while i < b.len() && b[i] != q {
@@ -640,7 +649,9 @@ fn lex_spans(path: &str, text: &str) -> (Vec<(usize, usize)>, Vec<(usize, usize)
                     }
                     i += if b[i] == b'\\' { 2 } else { 1 };
                 }
-                strings.push((from, i.min(b.len())));
+                if b.get(i) == Some(&q) {
+                    strings.push((from, i, interp));
+                }
                 i += 1;
             }
             b'/' if style != CommentStyle::Hash && next == Some(b'*') => {
@@ -745,7 +756,12 @@ pub fn in_code(path: &str, text: &str, needle: &str, whole: bool) -> bool {
     if needle.is_empty() || !text.contains(needle) {
         return false;
     }
-    let (comments, strings) = lex_spans(path, text);
+    let (comments, mut strings) = lex_spans(path, text);
+    // A component file's markup is text, where an apostrophe (`Don't`) opens no string: no prose test there.
+    let ext = path.rsplit_once('.').map(|(_, x)| x.to_ascii_lowercase()).unwrap_or_default();
+    if matches!(ext.as_str(), "vue" | "svelte" | "astro") {
+        strings.clear();
+    }
     let in_comment = |at: usize| {
         let k = comments.partition_point(|(s, _)| *s <= at);
         k > 0 && at < comments[k - 1].1
@@ -760,14 +776,14 @@ pub fn in_code(path: &str, text: &str, needle: &str, whole: bool) -> bool {
 /// Whether byte `at` of `text` lies in a string literal (`strings`, from `lex_spans`) that reads as prose: one holding
 /// whitespace (a message, a docstring), outside any `{…}` interpolation in it (an f-string's or template literal's
 /// code). A key or path in quotes (`'loadPath'`, `"server.fs.deny"`) has no whitespace and stays code.
-fn in_prose(text: &str, strings: &[(usize, usize)], at: usize) -> bool {
-    let k = strings.partition_point(|(s, _)| *s <= at);
-    let Some(&(s, e)) = k.checked_sub(1).map(|k| &strings[k]) else { return false };
+fn in_prose(text: &str, strings: &[StringSpan], at: usize) -> bool {
+    let k = strings.partition_point(|(s, _, _)| *s <= at);
+    let Some(&(s, e, interp)) = k.checked_sub(1).map(|k| &strings[k]) else { return false };
     if at >= e || !text[s..e].contains(char::is_whitespace) {
         return false;
     }
     let before = &text[s..at];
-    before.matches('{').count() <= before.matches('}').count()
+    !interp || before.matches('{').count() <= before.matches('}').count()
 }
 
 /// Whether `text` holds `lit` (or, for a qualified literal, its tail) outside comments: a file that writes a literal
@@ -2516,6 +2532,9 @@ mod tests {
         assert!(in_code("a.py", "msg = f\"got {PyTorch.version} here\"\n", "PyTorch", true), "an f-string's interpolation is code");
         assert!(in_code("a.ts", "const s = `v ${getLastOfPath(x)} y`", "getLastOfPath", true), "a template literal's interpolation is code");
         assert!(in_code("a.py", "s = 'see PyTorch docs'\n", "PyTorch", false), "a substring search is unchanged");
+        assert!(!in_code("a.py", "s = \"prose {PyTorch} text\"\n", "PyTorch", true), "braces in a plain string are prose");
+        assert!(in_code("a.svelte", "<p>Don't stop</p>\n<script>x = 'a b'; getLastOfPath(y)</script>", "getLastOfPath", true), "markup apostrophes");
+        assert!(in_code("a.py", "x = \"it's\"; y = 'a b' + getLastOfPath(z)\n", "getLastOfPath", true), "code after closed strings");
     }
 
     #[test]
