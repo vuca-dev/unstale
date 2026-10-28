@@ -373,6 +373,10 @@ pub fn yarn_lock(text: &str, file: &str, manifests: &[(String, Value)]) -> Graph
                 }
                 cur = Some(i);
             }
+            // v1 fields sit at two spaces, beside `version`: where the tarball came from (`privacy`).
+            if let (Some(u), Some(i)) = (t.strip_prefix("resolved "), cur) {
+                g.saw(i, Seen::npm_url(u.trim_matches('"')));
+            }
             // The installed package by its resolution (Berry `resolution: "real@npm:1.0.0"`, v1 registry tarball
             // `…/real/-/real-1.0.0.tgz`), for an `npm:` entry whose spec names no target.
             if unnamed && let Some(i) = cur {
@@ -382,8 +386,6 @@ pub fn yarn_lock(text: &str, file: &str, manifests: &[(String, Value)]) -> Graph
                     g.nodes[i].name = name;
                 }
             }
-        } else if let (Some(u), Some(i)) = (t.strip_prefix("resolved "), cur) {
-            g.saw(i, Seen::npm_url(u.trim_matches('"')));
         } else if in_deps && let Some(i) = cur {
             let (n, r) = t.split_once(": ").or_else(|| t.split_once(' ')).unwrap_or((t, ""));
             deps.push((i, n.trim_matches('"').to_string(), bare(r)));
@@ -1975,6 +1977,8 @@ mod tests {
         let g = yarn_lock(yarn, "yarn.lock", &m);
         let names: BTreeSet<String> = g.packages().into_iter().map(|(n, _)| n).collect();
         assert_eq!(names, ["@scope/pkg", "eslint", "eslint-plugin-react-hooks", "git-dep", "noop"].map(String::from).into(), "{names:?}");
+        let private = "# yarn lockfile v1\n\nown@npm:corp-own:\n  version \"1.0.0\"\n  resolved \"https://npm.corp.internal/corp-own/-/corp-own-1.0.0.tgz\"\n";
+        assert!(yarn_lock(private, "yarn.lock", &[]).packages().is_empty(), "a private tarball's package is never queried");
         assert_eq!(tarball_package("https://r.example/api/npm/%40corp/ui/-/ui-1.0.0.tgz").as_deref(), Some("@corp/ui"));
         // Berry: the resolution names the package an `npm:` alias with no version installs.
         let berry = "__metadata:\n  version: 8\n\n\"@types/wordpress__block-editor@npm:noop-package\":\n  version: 1.0.0\n  resolution: \"noop-package@npm:1.0.0\"\n\n\"lodash@npm:^4.17.23\":\n  version: 4.18.1\n  resolution: \"lodash@npm:4.18.1\"\n";
