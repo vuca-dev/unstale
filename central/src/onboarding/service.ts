@@ -3,6 +3,9 @@ import { readFileSync, readdirSync, existsSync, appendFileSync, mkdirSync } from
 import { join } from "node:path";
 import { z } from "zod";
 import { HttpClient, DEFAULT_HTTP, FetchFailure } from "../collector/http.ts";
+import { ExtractFailure } from "../collector/extract.ts";
+import { ClassifierError } from "../pipeline/classify/adapter.ts";
+import { HttpError } from "../pipeline/llm.ts";
 import { latestVersion } from "../docs/monitor.ts";
 import { dailyPass, DOCS_PASS, extract, lastPass } from "../docs/extract.ts";
 import {
@@ -25,7 +28,7 @@ import { typeStubDeprecations } from "../pipeline/type-stubs.ts";
 import { JOB_FILE, servedIndex } from "../pipeline/export.ts";
 import { loadStore, retractForeignGuideRecords, saveStore } from "../pipeline/store.ts";
 import { advisoryStage } from "../pipeline/advisories.ts";
-import { withTechLock, withTechLockSync } from "../pipeline/lock.ts";
+import { LockTimeout, withTechLock, withTechLockSync } from "../pipeline/lock.ts";
 import { makeClassifier } from "../pipeline/pipeline.ts";
 import { admit, signals, THRESHOLDS, weeklyDownloads, withLifecycle, type Verdict } from "../pipeline/admission.ts";
 import { AddressLimiter, DailyBudget, Voters, clientAddress, limitsFromEnv, nextPeriod, noteTokens, quarterKey, type Hold, type Limits, type Refusal } from "./limits.ts";
@@ -108,9 +111,10 @@ export interface Job {
    * among new technologies until its first slice, which clears it. Never public. */
   advisories_first?: string;
   /** A slice still running when its drain ended (killed with the cycle, resumed by the next): its work time so far,
-   * the cycles it spanned, its stage then, and whether it is a monitored technology's refresh. Cleared when a slice
-   * settles. Never public. */
-  interrupted?: { ms: number; cycles: number; stage: string; refresh?: boolean };
+   * the cycles it spanned, its stage then, whether it is a monitored technology's refresh, and whether it started as
+   * a new technology's (admission during the slice moves the job out of that line). Cleared when a slice settles.
+   * Never public. */
+  interrupted?: { ms: number; cycles: number; stage: string; refresh?: boolean; first?: boolean };
   /** Rate-limited (HTTP 429): not started again before this time. Never public. */
   paused_until?: string;
   /** When the technology was first seen monitored (its first coverage done). Every later slice is monitoring in the
@@ -210,8 +214,9 @@ export class CoverageService {
   private holds = new Map<Hold["limit"], Hold>();
   /** Running jobs that started as new technologies (tier 1): what the slots kept for them hold. */
   private runningNew = new Set<string>();
-  /** Running slices: when each started, and whether it is a refresh (for the jobs a drain's end interrupts). */
-  private slices = new Map<string, { at: number; refresh: boolean }>();
+  /** Running slices: when each started, whether it is a refresh, and whether it started as a new technology's (for the
+   * jobs a drain's end interrupts). */
+  private slices = new Map<string, { at: number; refresh: boolean; first: boolean }>();
   /** Running slices resumed after an interruption: they never hold the slots kept for new technologies. */
   private runningCarried = new Set<string>();
   /** Interrupted slices stopped when this process loaded the jobs (stopSlice). */
@@ -335,12 +340,13 @@ export class CoverageService {
    * counted as a failure, its stage named, and retried after STOPPED_RETRY_MS. A monitored technology keeps its
    * coverage and stays `monitoring`. */
   private stopSlice(job: Job) {
-    const { ms, cycles, stage, refresh } = job.interrupted!;
+    const { ms, cycles, stage, refresh, first } = job.interrupted!;
     delete job.interrupted;
     job.failures = (job.failures ?? 0) + 1;
     const at = Date.now() + STOPPED_RETRY_MS;
     job.retry_at = new Date(at).toISOString();
     const why = `"${stage}" did not finish in ${Math.round(ms / 60_000)} minutes over ${cycles} cycles; retried after ${clock(at)} UTC`;
+    sliceFailed(job, first ?? this.tier(job) === 1, !!refresh, "stopped");
     if (refresh) this.save(job, "monitoring", `${job.records} verified records; refresh stopped: ${why}`);
     else this.save(job, "failed", `Stopped: ${why}`);
     this.stopped++;
@@ -634,7 +640,7 @@ export class CoverageService {
       const job = this.jobs.get(purl)!;
       const slice = this.slices.get(purl)!;
       const prev = job.interrupted;
-      job.interrupted = { ms: (prev?.ms ?? 0) + Date.now() - slice.at, cycles: (prev?.cycles ?? 0) + 1, stage: job.stage, refresh: prev?.refresh ?? slice.refresh };
+      job.interrupted = { ms: (prev?.ms ?? 0) + Date.now() - slice.at, cycles: (prev?.cycles ?? 0) + 1, stage: job.stage, refresh: prev?.refresh ?? slice.refresh, first: prev?.first ?? slice.first };
       this.persist(job);
     }
     this.keepRates();
@@ -863,7 +869,7 @@ export class CoverageService {
     this.lineStarts[isNew ? "new" : "admitted"]++;
     if (isNew) this.runningNew.add(job.purl);
     if (job.interrupted) this.runningCarried.add(job.purl);
-    this.slices.set(job.purl, { at: Date.now(), refresh });
+    this.slices.set(job.purl, { at: Date.now(), refresh, first: isNew });
     this.launched++;
     const kind = this.tally[isNew ? "new" : refresh ? "refresh" : "other"];
     kind.started++;
@@ -901,6 +907,7 @@ export class CoverageService {
           Date.now() +
             Math.min(6 * 3600000, 60000 * 2 ** Math.min(job.failures - 1, 8)),
         ).toISOString();
+        sliceFailed(job, isNew, refresh, failureClass(error));
         if (refresh) this.save(job, "monitoring", `${job.records} verified records; refresh failed (${why}), retried after ${clock(Date.parse(job.retry_at))} UTC`);
         else this.save(job, "failed", why);
       })
@@ -1535,4 +1542,24 @@ export interface DrainMetrics {
 function blankTally(): DrainMetrics["slices"] {
   const t = (): SliceTally => ({ started: 0, finished: 0, yielded: 0, failed: 0, rate_limited: 0 });
   return { new: t(), refresh: t(), other: t() };
+}
+/** A failed or stopped slice on the drain's log, beside its count in `slices`, so the run's log says what failed
+ * without the saved state (run 40562343126 counted 46 failed new slices, none explained). The log is public: the job
+ * is named by `logName` and the error by its class only; the full reason stays in the job's status. */
+function sliceFailed(job: Job, isNew: boolean, refresh: boolean, error: string) {
+  console.error(JSON.stringify({ event: "slice_failed", job: logName(job), kind: isNew ? "new" : refresh ? "refresh" : "other", failures: job.failures, error }));
+}
+/** An error's class from a bounded set (`HTTP 500`, `timeout`, `blocked_url`, an error type's name): never its message,
+ * which can carry hosts, redirect targets or addresses. A status in a message is read as `rateLimit` reads 429. */
+export function failureClass(error: unknown): string {
+  if (error instanceof FetchFailure) return error.httpStatus !== undefined ? `HTTP ${error.httpStatus}` : error.kind;
+  // Status 0 is the model call's own: no response at all, either its deadline ("no answer within N ms") or the network.
+  if (error instanceof HttpError) return error.status > 0 ? `HTTP ${error.status}` : /^no answer within \d+ ms$/.test(error.message) ? "timeout" : "network";
+  if (error instanceof ClassifierError || error instanceof ExtractFailure) return error.kind;
+  if (error instanceof LockTimeout) return "lock timeout";
+  const message = String(error instanceof Error ? error.message : error);
+  const status = /(?:HTTP |: )([1-5]\d\d)\b/.exec(message);
+  if (status) return `HTTP ${status[1]}`;
+  if (/\btime(?:d out|out)\b/i.test(message) || (error instanceof Error && error.name === "TimeoutError")) return "timeout";
+  return error instanceof Error && /^\w{1,40}$/.test(error.name) ? error.name : "unknown";
 }
