@@ -1340,9 +1340,10 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             vec![]
         };
         let runs_a_copy = |p: &str| copies.is_empty() || !usage::own_code(p, &ecosystem) || copies.iter().any(|r| r.contains(p));
-        let exact_of = |v: usize, l: &str, repl: &[String], context: Option<&[String]>, keyed: bool, config: bool, succ: &[String], call: bool, parent: Option<&str>, invoked: bool, shape: Option<(usize, Option<usize>)>, named: &[String]| -> Rc<usage::Evidence> {
+        let exact_of = |v: usize, l: &str, repl: &[String], context: Option<&[String]>, keyed: bool, config: bool, succ: &[String], call: bool, parent: Option<&str>, invoked: bool, shape: Option<(usize, Option<usize>)>, named: &[String], subject: &str, ns_context: Option<&[String]>| -> Rc<usage::Evidence> {
             let ctx = context.map_or("-".to_string(), |c| c.join("\0"));
-            let key = (v, format!("{l}\0{}\u{1}{ctx}\u{2}{keyed}\u{3}{config}\u{4}{}\u{5}{call}\u{6}{parent:?}\u{7}{invoked}\u{8}{}\u{9}{shape:?}", repl.join("\0"), succ.join("\0"), named.join("\0")));
+            let ns_ctx = ns_context.map_or("-".to_string(), |c| c.join("\0"));
+            let key = (v, format!("{l}\0{}\u{1}{ctx}\u{2}{keyed}\u{3}{config}\u{4}{}\u{5}{call}\u{6}{parent:?}\u{7}{invoked}\u{8}{}\u{9}{shape:?}\u{a}{subject}\u{b}{ns_ctx}", repl.join("\0"), succ.join("\0"), named.join("\0")));
             if let Some(e) = exact.borrow().get(&key) {
                 return e.clone();
             }
@@ -1407,6 +1408,21 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                     return false;
                 }
                 if call && !(usage::own_code(p, &ecosystem) && scopes[v].file(p) == Some(true) && inp.repo.text(p).is_some_and(|t| usage::call_key(t, l, &modules))) {
+                    return false;
+                }
+                // A bare keyword or parameter name of the subject API (`model_name` of `list_models`) in Python code:
+                // only where the file uses that API, and not as a parameter the file declares (`usage::py_keyword_site`).
+                if inp.repo.text(p).is_some_and(|t| !usage::py_keyword_site(p, t, l, subject)) {
+                    return false;
+                }
+                // A namespace the record's subject is narrower than (`pytest.mark` for hook markers), written only as
+                // the qualifier of another member (`@pytest.mark.asyncio`), takes the record's specific literals beside
+                // it, as a namespace other records name members of does.
+                // Beside them means on the definition a decorator applies to (`usage::namespace_beside`), for a namespace
+                // other records name members of too.
+                if let Some(c) = context.or(ns_context)
+                    && inp.repo.text(p).is_some_and(|t| usage::only_as_namespace(p, t, l) && !usage::namespace_beside(p, t, l, c))
+                {
                     return false;
                 }
                 inp.repo.text(p).is_none_or(|t| usage::live_site_under(p, t, l, repl, context, keyed, parent))
@@ -1642,13 +1658,17 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             let entry = |l: &str| own_names.iter().any(|n| l.strip_prefix(n.as_str()).is_some_and(|r| r.starts_with('/') && r.len() > 1));
             let names_api = ls.iter().any(|l| !entry(l) && !deprecated.contains(l) && usage::identifier(l) && !usage::plain_word(l) && !replacement.contains(l) && rec.r.subject.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '$')).any(|w| w == l.as_str()));
             let broad: Vec<&String> = deprecated.iter().filter(|l| namespace_of(tl, ri, l) || (names_api && entry(l))).collect();
+            // A deprecated namespace the record's subject does not write (`pytest.mark` for "hook markers": a narrower
+            // use of it) is read as one only in a file that writes it as the qualifier of another member (`exact_of`).
+            let subject_lc = rec.r.subject.to_ascii_lowercase();
+            let narrow: Vec<&String> = deprecated.iter().filter(|l| !broad.contains(l) && usage::qualified_name(l) && !subject_lc.contains(&l.to_ascii_lowercase())).collect();
             let sibling = |l: &str| tl.named.get(l.strip_prefix('@').unwrap_or(l)).is_some_and(|rs| rs.iter().any(|&j| j != ri));
-            let context: Vec<String> = if broad.is_empty() {
+            let context: Vec<String> = if broad.is_empty() && narrow.is_empty() {
                 vec![]
             } else {
                 ls.iter()
                     .filter(|l| {
-                        !broad.iter().any(|b| b.contains(l.as_str()) || (usage::member_of(l, b) && sibling(l)))
+                        !broad.iter().chain(&narrow).any(|b| b.contains(l.as_str()) || (usage::member_of(l, b) && sibling(l)))
                             && !replacement.contains(l)
                             && !usage::plain_word(l)
                             && !namespace_of(tl, ri, l)
@@ -1707,7 +1727,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                 of.try_fold((usize::MAX, Some(0usize)), |(lo, hi), a| a.map(|(m, x)| (lo.min(m), hi.zip(x).map(|(h, x)| h.max(x)))))
             };
             let ev_cite = |l: &str| -> Rc<usage::Evidence> { if let Some(a) = shape(l) { shaped_of(view, l, a) } else { ev(l) } };
-            let ex_with = |l: &str, call: bool| exact_of(view, l, &replacement, broad.iter().any(|b| *b == l).then_some(&context[..]), keyed_api(&rec.r, ls, l), config, &succ, call, option_of(&rec.r, l), invoked(l), shape(l), &named);
+            let ex_with = |l: &str, call: bool| exact_of(view, l, &replacement, broad.iter().any(|b| *b == l).then_some(&context[..]), keyed_api(&rec.r, ls, l), config, &succ, call, option_of(&rec.r, l), invoked(l), shape(l), &named, &rec.r.subject, narrow.iter().any(|b| *b == l).then_some(&context[..]));
             let ex = |l: &str| ex_with(l, false);
             // A record about some values of one option cites the option's key only, where a file sets it to one of them.
             // A deprecation citing its replaced literals keeps that path (`option_of` puts a value under its key).
@@ -2722,10 +2742,23 @@ mod tests {
         let c = catalog("pytest", 0, records(true));
         let out = run_with(&c, &s, &r, &l);
         assert!(out.in_effect.is_empty(), "markers on tests are not hook markers");
-        // Nothing else of the technology lives under it: `pytest.mark` reads as one API, as before.
+        // Nothing else of the technology lives under it, but the record's subject ("hook markers") is narrower than the
+        // namespace: test markers are still not hook markers (NousResearch/hermes-agent's `@pytest.mark.asyncio`).
         let c = catalog("pytest", 0, records(false));
+        assert!(run_with(&c, &s, &r, &l).in_effect.is_empty(), "a namespace narrower than its record's subject");
+        // A record about the namespace itself reads it as one API, as before.
+        let whole = with(dep("pytest:hook-markers", markers.clone()), json!({"subject":"pytest.mark"}));
+        let c = catalog("pytest", 0, vec![whole]);
         let out = run_with(&c, &s, &r, &l);
         assert_eq!(ids(&out, &out.in_effect), vec!["pytest:hook-markers"]);
+        // A specific literal of the record within a few lines of a test marker, but not on the definition it decorates
+        // (`pytest_plugins = [...]` above `@pytest.mark.asyncio`), is not beside it.
+        let plugins = "import pytest\n\npytest_plugins = ['tests.x']\n\n\n@pytest.mark.asyncio\nasync def test_a():\n    pass\n";
+        for others in [false, true] {
+            let r = repo(&[("tests/test_a.py", plugins)]);
+            let c = catalog("pytest", 0, records(others));
+            assert!(run_with(&c, &s, &r, &l).in_effect.is_empty(), "others: {others}");
+        }
         // A member another record is about is another API, not context: `pytest.mark.parametrize` named by this record
         // too does not make test markers count.
         let mut v = records(true);
@@ -2739,6 +2772,25 @@ mod tests {
         let out = run_with(&c, &s, &r, &l);
         let o = out.opps.iter().find(|o| o.id() == "pytest:hook-markers").unwrap();
         assert_eq!((&o.route, &o.matched), (&Route::InEffect, &vec![("pytest.mark".to_string(), vec!["plugin/plugin.py".to_string()])]));
+    }
+
+    #[test]
+    fn a_python_keyword_deprecation_is_in_effect_only_where_its_api_is_called() {
+        // NousResearch/hermes-agent: `list_models(model_name=…)` is deprecated; a file that imports huggingface_hub for an
+        // error class and has its own `model_name` parameter does not use it.
+        let purl = "pkg:pypi/huggingface-hub";
+        let r0 = with(rec("hf:model-name", purl, "1.11.0"), json!({"change_type":"deprecation","subject":"list_models","replaces":["model_name"],"terms":[["model_name",0]]}));
+        let mut s = stack(&[], None);
+        s.deps.insert(purl.into(), crate::stack::Dep { version: parse_version("1.33.0"), source: "test".into(), ..crate::stack::Dep::new("huggingface-hub", true) });
+        let local = "def _norm(model_name):\n    return model_name\n\ndef _load(model_name):\n    from huggingface_hub.errors import LocalEntryNotFoundError\n    return WhisperModel(model_name)\n";
+        let call = "from huggingface_hub import list_models\n\nmodels = list_models(model_name='bert')\n";
+        let l = Ledger::default();
+        let c = catalog("hf", 0, vec![r0]);
+        assert!(run_with(&c, &s, &repo(&[("tools/transcription_local.py", local)]), &l).in_effect.is_empty());
+        let r = repo(&[("tools/transcription_local.py", local), ("app/hub.py", call)]);
+        let out = run_with(&c, &s, &r, &l);
+        let o = out.opps.iter().find(|o| o.id() == "hf:model-name").unwrap();
+        assert_eq!((&o.route, &o.matched), (&Route::InEffect, &vec![("model_name".to_string(), vec!["app/hub.py".to_string()])]));
     }
 
     #[test]

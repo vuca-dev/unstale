@@ -3042,7 +3042,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
                 // its own name, not the library's API.
                 .flat_map(|(t, fs)| {
                     fs.iter()
-                        .filter(move |f| w.repo.text(f).is_none_or(|x| !usage::defines(x, t) && shape_met(&o.rec.r, f, x) && value_met(&o.rec.r, x) && subject_met(&o.rec.r, x) && !bound_elsewhere(&o.rec.r, t, x, pk, deps_sq) && !unbound_here(&o.rec.r, t, f, x, pk) && clause_met(&o.rec.r, x) && usage::written_outside_comments(f, x, t)))
+                        .filter(move |f| w.repo.text(f).is_none_or(|x| !usage::defines(x, t) && shape_met(&o.rec.r, f, x) && value_met(&o.rec.r, x) && subject_met(&o.rec.r, x) && !bound_elsewhere(&o.rec.r, t, x, pk, deps_sq) && !unbound_here(&o.rec.r, t, f, x, pk) && clause_met(&o.rec.r, x) && usage::py_keyword_site(f, x, t, &o.rec.r.subject) && usage::written_outside_comments(f, x, t)))
                         .map(move |f| (t, f))
                 })
                 // A site in an example, sample or documentation project is not this code's unless the upgrade is that
