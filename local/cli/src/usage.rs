@@ -257,6 +257,8 @@ pub struct Scope<'a> {
     /// Some of the repository's own code imports one of the technology's packages: it is a library code reaches by
     /// importing it, so its API in code that does not import it is another module's (`classify`).
     imported: bool,
+    /// The files' texts (`with_repo`), for `platform_global`.
+    repo: Option<&'a Repo>,
     memo: RefCell<Vec<u8>>,
 }
 
@@ -306,7 +308,13 @@ impl<'a> Scope<'a> {
             .collect();
         let memo = RefCell::new(vec![0; paths.len()]);
         let imported = importing.iter().any(|p| own_code(p, ecosystem));
-        Scope { ecosystem, owners, reach: owners, stems, naming, importing, config_names, hits, paths, named_at, imported, memo }
+        Scope { ecosystem, owners, reach: owners, stems, naming, importing, config_names, hits, paths, named_at, imported, repo: None, memo }
+    }
+
+    /// The repository whose texts `platform_global` reads.
+    pub fn with_repo(mut self, repo: &'a Repo) -> Self {
+        self.repo = Some(repo);
+        self
     }
 
     /// `reach`: the packages that declare the technology or depend, through the repository's own packages, on one that
@@ -400,6 +408,27 @@ impl<'a> Scope<'a> {
             && own_code(path, self.ecosystem)
             && !self.path_names(path)
             && !self.config_names.contains(&path.rsplit('/').next().unwrap_or(path).to_ascii_lowercase())
+    }
+
+    /// Whether a qualified literal in application code that does not import the technology names the runtime's own
+    /// global rather than the technology's API: its head (`document` in `document.cookie`) is bound nowhere in the
+    /// file (`binds`), so the browser, Node or Python provides it there. A package implementing that platform API
+    /// itself (a DOM emulator, a polyfill, a runtime shim) is reached only by code that imports or constructs it, or by
+    /// tests and configuration that select it; a production file using the platform's own object is not its use.
+    /// Tests, tooling and a file named for the technology keep the package rule (they may run inside it). Such a
+    /// file still orders the queue (`Evidence::used`).
+    fn platform_global(&self, path: &str, lit: &str, imports: bool, app: bool) -> bool {
+        let Some(text) = self.repo.and_then(|r| r.text(path)) else { return false };
+        let Some((head, _)) = lit.trim_start_matches('.').split_once('.') else { return false };
+        app && !imports
+            && own_code(path, self.ecosystem)
+            && is_word(head)
+            && head.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_' || c == '$')
+            && !matches!(head, "this" | "self" | "cls" | "super" | "import" | "new")
+            && !self.stems.iter().any(|s| s.eq_ignore_ascii_case(head))
+            && !self.path_names(path)
+            && !self.config_names.contains(&path.rsplit('/').next().unwrap_or(path).to_ascii_lowercase())
+            && !binds(text, head)
     }
 
     /// `named`: the file names a package (`naming_lits`), and whether at a module position (`module_naming`).
@@ -507,6 +536,9 @@ impl<'a> Scope<'a> {
             if self.borrowed(p, self.named_at[*x as usize].1) {
                 continue;
             }
+            if self.repo.is_some() && self.platform_global(p, lit, self.named_at[*x as usize].1, role(p) == Role::App) {
+                continue;
+            }
             if tails.is_some_and(|t| t.contains(x)) || (!about && (plain || ((ident || tail_hit) && !self.record_named(p)))) {
                 continue;
             }
@@ -526,6 +558,42 @@ impl<'a> Scope<'a> {
         e.files = best.into_iter().map(|(not_about, _, _, p)| (p.to_string(), !not_about)).collect();
         e
     }
+}
+
+/// Whether `text` binds the identifier `id` itself: imports it (`import { id }`, `import * as id`, `from m import id`),
+/// declares it (`const`, `let`, `var`, `function`, `class`, `def`, a destructuring pattern), or takes it as an arrow
+/// function's parameter. An unbound name is a global the runtime provides (`platform_global`).
+pub fn binds(text: &str, id: &str) -> bool {
+    let b = text.as_bytes();
+    let word = |c: u8| c.is_ascii_alphanumeric() || c == b'_' || c == b'$';
+    let decl = ["import", "const", "let", "var", "function", "class", "def", "as", "global"];
+    text.match_indices(id).any(|(at, _)| {
+        let end = at + id.len();
+        if (at > 0 && word(b[at - 1])) || b.get(end).is_some_and(|c| word(*c)) {
+            return false;
+        }
+        let before = &text[..at];
+        let prev = before.trim_end().rsplit(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '$')).next().unwrap_or("");
+        if decl.contains(&prev) || text[end..].trim_start().starts_with("=>") {
+            return true;
+        }
+        // Inside an import clause or a destructuring declaration, before its source or `=`.
+        let mut from = before.len().saturating_sub(400);
+        while !before.is_char_boundary(from) {
+            from += 1;
+        }
+        let window = &before[from..];
+        decl[..3].iter().filter_map(|k| {
+            window.match_indices(k).filter(|(i, _)| {
+                let wb = window.as_bytes();
+                (*i == 0 || !word(wb[*i - 1])) && wb.get(i + k.len()).is_some_and(|c| !word(*c))
+            }).last().map(|(i, _)| (i, *k))
+        }).max_by_key(|(i, _)| *i).is_some_and(|(i, k)| {
+            let seg = &window[i + k.len()..];
+            let allowed = |c: char| c.is_ascii_alphanumeric() || c.is_whitespace() || "_$,{}[]:*(".contains(c);
+            seg.chars().all(allowed) && (k == "import" || seg.contains(['{', '[']))
+        })
+    })
 }
 
 /// Whether `path` is inside one of the package directories `dirs` (`.` is the root; none known: every file).
@@ -2872,6 +2940,43 @@ mod tests {
         let mut usage = set(lits);
         usage.extend(purls.iter().flat_map(|p| naming_lits(p)));
         find(r, &usage, &set(&[]))
+    }
+
+    #[test]
+    fn a_platform_global_in_production_code_is_not_an_emulators_api() {
+        // gradio: happy-dom (a test DOM, imported by no code) and browser code reading `document.cookie`.
+        let r = repo(&[
+            ("src/auth.ts", "export function token() { return document.cookie.split(';'); }"),
+            ("src/own.ts", "import { document } from './doc';\nexport const c = document.cookie;"),
+            ("src/local.ts", "const document = load();\nexport const c = document.cookie;"),
+            ("src/auth.test.ts", "it('reads', () => { document.cookie = 'a=1'; });"),
+            ("vitest.config.ts", "export default { test: { environment: 'happy-dom' } }"),
+            ("package.json", "{\"devDependencies\": {\"happy-dom\": \"20\"}}"),
+        ]);
+        let purls = vec!["pkg:npm/happy-dom".to_string()];
+        let h = scoped(&r, &["document.cookie"], &["pkg:npm/happy-dom"]);
+        let root = ["."];
+        let s = Scope::new("npm", &root, &purls, &[], &h, &r.paths).with_repo(&r);
+        let e = s.evidence("document.cookie", |p| path_role(p), false);
+        let files: Vec<&str> = e.files.iter().map(|(p, _)| p.as_str()).collect();
+        assert!(e.used, "the hits still order the queue");
+        assert!(!files.contains(&"src/auth.ts"), "the browser's own document: {files:?}");
+        assert!(files.contains(&"src/auth.test.ts"), "a test may run inside it: {files:?}");
+        assert!(files.contains(&"src/own.ts") || files.contains(&"src/local.ts"), "a bound name is the file's own: {files:?}");
+    }
+
+    #[test]
+    fn binds_finds_imports_declarations_and_parameters() {
+        assert!(binds("import { a, document } from 'x'", "document"));
+        assert!(binds("import {\n  a,\n  document,\n} from 'x'", "document"));
+        assert!(binds("import * as document from 'x'", "document"));
+        assert!(binds("from m import (a, document)", "document"));
+        assert!(binds("const { document } = require('x')", "document"));
+        assert!(binds("let document = 1", "document"));
+        assert!(binds("xs.map(document => document.cookie)", "document"));
+        assert!(!binds("const c = document.cookie;", "document"));
+        assert!(!binds("import x from 'y';\nwindow.document.cookie", "document"));
+        assert!(!binds("const mydocument = 1; document.cookie", "document"));
     }
 
     #[test]

@@ -1317,7 +1317,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
         };
         // Only files that can use this technology evidence it, and a plain word only where it is named (`usage::Scope`).
         let scope_lits = || tl.usage.iter().chain(&tl.whole);
-        let all = usage::Scope::new(&ecosystem, &owners, comps, scope_lits(), hits, &inp.repo.paths).with_reach(&reach);
+        let all = usage::Scope::new(&ecosystem, &owners, comps, scope_lits(), hits, &inp.repo.paths).with_reach(&reach).with_repo(inp.repo);
         // Per package: the version the outputs use, from the code that imports it (`Choice`).
         let choices: BTreeMap<&String, Choice> = present
             .iter()
@@ -1371,7 +1371,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             masks.iter().map(|m| hits_without(hits, lits.iter().copied(), &m.iter().map(Option::is_some).collect::<Vec<_>>(), &inp.repo.paths)).collect()
         };
         let mut scopes = vec![all];
-        scopes.extend(filtered.iter().map(|f| usage::Scope::new(&ecosystem, &owners, comps, scope_lits(), f, &inp.repo.paths).with_reach(&reach)));
+        scopes.extend(filtered.iter().map(|f| usage::Scope::new(&ecosystem, &owners, comps, scope_lits(), f, &inp.repo.paths).with_reach(&reach).with_repo(inp.repo)));
         let hits_of = |v: usize| if v == 0 { hits } else { &filtered[v - 1] };
         // Per view and literal, the manifests left out whose code importing the technology it matches (`Opp::elsewhere`).
         let elsewhere: Memo<Rc<BTreeSet<u16>>> = RefCell::default();
