@@ -1473,7 +1473,7 @@ fn keyword_passed_to(text: &str, callee: &str, kw: &str, skip: &[(usize, usize)]
                 j += 1;
                 continue;
             }
-            if start && depth == 0 && !c.is_ascii_whitespace() {
+            if start && depth == 0 && !c.is_ascii_whitespace() && c != b'#' {
                 start = false;
                 let rest = &text[j..];
                 if let Some(r) = rest.strip_prefix(kw)
@@ -2617,6 +2617,8 @@ mod tests {
             "DataFrame.filter",
             Some("regex")
         ));
+        // A comment line before the keyword argument.
+        assert!(py_keyword_site("c.py", "df.query(\n    \"a\",\n    # why\n    inplace=True,\n)\n", "inplace=", "DataFrame.query", Some("inplace")));
         // A docstring's example is no call; an f-string's interpolated call is.
         let doc = "def f(df):\n    \"\"\"Like df.query(\"a\", inplace=True).\"\"\"\n    return df.query(\"a\")\n";
         assert!(!py_keyword_site("d.py", doc, "inplace=", "DataFrame.query", Some("inplace")));
