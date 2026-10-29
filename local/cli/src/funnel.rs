@@ -1836,6 +1836,12 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             // API beside it (subject `ImageResponse`, "its export from next/server is deprecated"): every file using
             // the entry point's other exports names it too.
             let entry = |l: &str| own_names.iter().any(|n| l.strip_prefix(n.as_str()).is_some_and(|r| r.starts_with('/') && r.len() > 1));
+            // An entry point deprecated beside a specific API of it (`atomFamily` in `jotai/utils`) says where that API
+            // comes from: the API's own sites are cited, never the entry point alone.
+            let subject_word = |l: &str| rec.r.subject.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '$')).any(|w| w == l);
+            if deprecated.iter().any(|l| !entry(l) && usage::identifier(l) && subject_word(l)) {
+                deprecated.retain(|l| !entry(l));
+            }
             let names_api = ls.iter().any(|l| !entry(l) && !deprecated.contains(l) && usage::identifier(l) && !usage::plain_word(l) && !replacement.contains(l) && rec.r.subject.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '$')).any(|w| w == l.as_str()));
             let broad: Vec<&String> = deprecated.iter().filter(|l| namespace_of(tl, ri, l) || (names_api && entry(l))).collect();
             // A deprecated namespace the record's subject does not write (`pytest.mark` for "hook markers": a narrower
@@ -1943,6 +1949,79 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                 && rec.r.terms.iter().map(|t| &t.0).chain(&rec.r.replaces).any(|t| lint_ns.iter().any(|n| t.contains(n.as_str())))
                 && rule_not_enabled(&rec.r, plugins.get_or_init(|| lint_plugins(comps, inp.repo)));
             let cited: &[String] = if rule_off { &[] } else { cited };
+            // A record about a language runtime (`Node.js version support`) is about the project's declaration of it
+            // (a manifest, a toolchain file, a CI matrix): code reading a property of that name (`packageJson.engines?.node`
+            // of the projects it inspects) is no site.
+            let runtime_rec = rec.r.subject.split_whitespace().next().and_then(crate::stack::runtime_name).is_some();
+            // A deprecated identifier is the technology's API only where it comes from there. Where the record names
+            // the module (`atomFamily` in `jotai/utils`), an import must bind it from that module; else from the
+            // technology's own package. A file that imports it from another installed package (`atomFamily` from
+            // `jotai-family`) is no site, and one importing it from a package the record names (its replacement) has
+            // made the move (`moved`). A file with no import of it, or a local one, keeps it.
+            let named_modules: Vec<&String> = ls.iter().filter(|l| entry(l)).collect();
+            let record_text = format!("{} {}", rec.r.subject, rec.r.summary).to_ascii_lowercase();
+            let moved = std::cell::Cell::new(false);
+            // The specific API a deprecated entry point is cited beside (`atomFamily` for "moved from jotai/utils to
+            // jotai-family"): the entry point's site stands on it, so not where every use of it is bound elsewhere.
+            let subject_api: Vec<&str> = ls.iter().map(String::as_str).filter(|l| !entry(l) && usage::identifier(l) && subject_word(l)).collect();
+            let bound_off = |p: &str, l: &str| -> bool {
+                if !(deprecated.iter().any(|d| d == l) || subject_api.contains(&l)) || !usage::identifier(l) {
+                    return false;
+                }
+                let Some(t) = inp.repo.text(p) else { return false };
+                let root_of = |m: &str| if m.starts_with('@') { m.splitn(3, '/').take(2).collect::<Vec<_>>().join("/") } else { m.split(['/', '.']).next().unwrap_or(m).to_string() };
+                // Imported by name (`import { atomFamily } from 'jotai-family'`), else used as a member of a namespace
+                // import (`import * as jf from 'jotai-family'; jf.atomFamily`), whose module is known by its root only.
+                let (m, whole) = match usage::binding_module(t, l) {
+                    Some(m) => (m, true),
+                    None => {
+                        let word = |c: char| c.is_ascii_alphanumeric() || c == '_' || c == '$';
+                        let qualified = t.match_indices(&format!(".{l}")).filter(|(i, _)| !t[i + l.len() + 1..].starts_with(word)).find_map(|(i, _)| {
+                            let q: String = t[..i].chars().rev().take_while(|c| word(*c)).collect::<Vec<_>>().into_iter().rev().collect();
+                            (!q.is_empty()).then(|| usage::binding_module(t, &format!("{q}.{l}"))).flatten()
+                        });
+                        let Some(m) = qualified else { return false };
+                        (m, false)
+                    }
+                };
+                let root = root_of(&m);
+                let installed = inp.stack.deps.contains_key(&crate::util::npm_purl(&root.to_lowercase())) || inp.stack.deps.contains_key(&crate::pypi::purl(&root));
+                let ours = if named_modules.is_empty() {
+                    own_names.iter().any(|n| n.eq_ignore_ascii_case(&root))
+                } else if whole {
+                    named_modules.iter().any(|n| m == **n || m.starts_with(&format!("{n}/")))
+                } else {
+                    named_modules.iter().any(|n| root_of(n).eq_ignore_ascii_case(&root))
+                };
+                if !installed || ours {
+                    return false;
+                }
+                let lc = root.to_ascii_lowercase();
+                if record_text.match_indices(&lc).any(|(i, _)| {
+                    let edge = |c: Option<char>| !c.is_some_and(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '/' | '@'));
+                    edge(record_text[..i].chars().next_back()) && edge(record_text[i + lc.len()..].chars().next())
+                }) {
+                    moved.set(true);
+                }
+                true
+            };
+            let sited = |l: &str, e: Rc<usage::Evidence>| -> Rc<usage::Evidence> {
+                // An entry point of a record about a specific API of it counts only beside a use of that API that
+                // is not bound elsewhere: not for its other exports (`atomWithStorage` from `jotai/utils`).
+                let beside_moved = |p: &str| {
+                    entry(l) && !subject_api.is_empty() && {
+                        let t = inp.repo.text(p).unwrap_or("");
+                        !subject_api.iter().any(|a| t.contains(*a) && usage::written_outside_comments(p, t, a) && !bound_off(p, a))
+                    }
+                };
+                let keep = |p: &str| !(runtime_rec && (usage::own_code(p, &ecosystem) || usage::foreign_code(p, &ecosystem))) && !bound_off(p, l) && !beside_moved(p);
+                if e.files.iter().all(|(p, _)| keep(p)) {
+                    return e;
+                }
+                Rc::new(usage::Evidence { files: e.files.iter().filter(|(p, _)| keep(p)).cloned().collect(), ..(*e).clone() })
+            };
+            let site = |l: &str| sited(l, cite(l));
+            let cite: Cite = &site;
             let found: Vec<(String, Rc<usage::Evidence>)> = cited.iter().map(|l| (l.clone(), cite(l))).filter(|(_, e)| !e.files.is_empty()).collect();
             let more: BTreeMap<String, usize> = found.iter().filter(|(_, e)| e.more > 0).map(|(l, e)| (l.clone(), e.more)).collect();
             let matched: Vec<(String, Vec<String>)> = found.into_iter().map(|(l, e)| (l, e.files.iter().map(|(p, _)| p.clone()).collect())).collect();
@@ -2029,7 +2108,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                 deprecated
                     .iter()
                     .filter(|l| usage::plain_word(l))
-                    .map(|l| (l.clone(), ex_with(l, true).files.iter().map(|(p, _)| p.clone()).collect::<Vec<_>>()))
+                    .map(|l| (l.clone(), sited(l, ex_with(l, true)).files.iter().map(|(p, _)| p.clone()).collect::<Vec<_>>()))
                     .filter(|(_, f)| !f.is_empty())
                     .collect()
             } else {
@@ -2051,7 +2130,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                         opp.more.remove(l);
                     }
                 }
-                let strict = |l: &str| if usage::plain_word(l) { ex_with(l, true) } else { ex(l) };
+                let strict = |l: &str| sited(l, if usage::plain_word(l) { ex_with(l, true) } else { ex(l) });
                 opp.files = files_of(&opp.matched.iter().map(|(l, _)| l.clone()).collect::<Vec<_>>(), &strict);
                 opp.route = Route::InEffect;
                 // A known prerequisite of acting on it (the replacement needs a newer peer: ESLint's core rule handles
@@ -2083,6 +2162,10 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             // A record that drops a language runtime version (Python 3.8, Node 18) the project's own declared range
             // already excludes (`requires-python = ">=3.12"`, `engines.node`): the repository has made that move.
             if matches!(opp.route, Route::UpgradeReview | Route::ImprovementsPass | Route::BumpDigest | Route::InEffect) && runtime_drop_met(rec, inp.stack).is_some() {
+                opp.route = Route::Applied;
+            }
+            // Moved: every site of the deprecated API imports it from the package the record names (its replacement).
+            if matches!(opp.route, Route::UpgradeReview | Route::ImprovementsPass | Route::InEffect | Route::AlreadyIncluded) && moved.get() && opp.matched.is_empty() {
                 opp.route = Route::Applied;
             }
             // Applied: an introduced literal as a whole token; never for a breaking change.
@@ -2370,11 +2453,11 @@ fn published_floor(stack: &Stack, comp: &str, introduced: &Version, files: &[Str
 }
 
 /// Whether a removal drops support for language runtime versions the project's declared range already excludes:
-/// the record is about the runtime (its subject starts with a runtime name the stack reads a floor for: `Python 3.9`,
-/// `Python version support`), and either its prerequisite on that runtime is at or below the project's floor, or,
-/// with none, the version its subject (else its summary) names ends at or below it (`Python 3.9` ends at 3.10; a
-/// stated minimum, `Python 3.10+`, at 3.10: `runtime_bounds`). Returns the project's
-/// declaration.
+/// the record is about the runtime (its subject starts with a runtime name the stack reads a range for: `Python 3.9`,
+/// `Node.js version support`), and either its prerequisite on that runtime is at or below the project's floor, or,
+/// with none, every version its subject (else its summary) drops is outside the declared range (`Python 3.9` at
+/// `>=3.10`; Node 21 at `20.x || 22.x`, above the floor but in no alternative) and every minimum it states is at or
+/// below the floor (`Python 3.10+`: `runtime_bounds`). Returns the project's declaration.
 pub(crate) fn runtime_drop_met(rec: &Rec, stack: &Stack) -> Option<String> {
     if rec.r.change_type != ChangeType::Removal {
         return None;
@@ -2393,45 +2476,74 @@ pub(crate) fn runtime_drop_met(rec: &Rec, stack: &Stack) -> Option<String> {
         // The versions the subject names, else the summary's (`Python support`: "Support for Python 3.9 was removed").
         let bounds = runtime_bounds(&rec.r.subject, runtime);
         let bounds = if bounds.is_empty() { runtime_bounds(&rec.r.summary, runtime) } else { bounds };
-        !bounds.is_empty() && bounds.iter().all(|b| *floor >= *b)
+        !bounds.is_empty()
+            && bounds.iter().all(|(lo, hi)| *floor >= *hi || (lo.is_some() && stack.runtime_admits(runtime, lo.as_ref().unwrap(), hi) == Some(false)))
     };
     met.then(|| source.clone())
 }
 
-/// The lowest runtime version `text` leaves the project needing, per mention of `runtime` followed by a version: the
-/// version itself when it is stated as the new minimum (`Python 3.10+`, `Python >= 3.10`, `Python 3.10 or newer is
-/// required`), else the first version after the one named, which the record drops (`Python 3.9` ends at 3.10).
-fn runtime_bounds(text: &str, runtime: &str) -> Vec<Version> {
+/// The runtime versions `text` leaves the project unable to use, per version written after a mention of `runtime`:
+/// below a version stated as the new minimum (`Python 3.10+`, `Python >= 3.10`, `Python 3.10 or newer is required`:
+/// `(None, 3.10)`), else the line it names, which the record drops (`Python 3.9`: `(3.9, 3.10)`). A list continues
+/// the mention (`Node.js 16 and 21`, `Python 3.8, 3.9`). Versions in a clause that adds support (`adds support for
+/// Node.js 22 and 24, and drops ...`) are not dropped and are skipped.
+fn runtime_bounds(text: &str, runtime: &str) -> Vec<(Option<Version>, Version)> {
     let words: Vec<&str> = text.split_whitespace().collect();
     let bare = |w: &str| w.trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '.').trim_end_matches('.').to_string();
+    let lower = |w: &str| w.trim_matches(|c: char| !c.is_ascii_alphanumeric()).to_ascii_lowercase();
+    let adds = |w: &str| ["add", "introduc"].iter().any(|p| lower(w).starts_with(p));
+    let drops = |w: &str| ["drop", "remov", "deprecat", "end", "require", "minimum", "unsupported"].iter().any(|p| lower(w).starts_with(p)) || lower(w) == "longer";
     let mut out = vec![];
-    for i in 0..words.len() {
+    let mut adding = false;
+    let mut i = 0;
+    while i < words.len() {
+        if adds(words[i]) {
+            adding = true;
+        } else if drops(words[i]) {
+            adding = false;
+        }
         if !bare(words[i]).eq_ignore_ascii_case(runtime) {
+            i += 1;
             continue;
         }
         let mut j = i + 1;
-        let mut min = false;
-        if words.get(j).is_some_and(|w| matches!(w.trim_matches('`'), ">=" | "≥")) {
-            min = true;
-            j += 1;
+        loop {
+            let mut min = false;
+            if words.get(j).is_some_and(|w| matches!(w.trim_matches('`'), ">=" | "≥")) {
+                min = true;
+                j += 1;
+            }
+            let Some(w) = words.get(j).map(|w| w.trim_matches('`').trim_start_matches(">=").trim_start_matches('≥')) else { break };
+            if !w.starts_with(|c: char| c.is_ascii_digit()) {
+                break;
+            }
+            let digits = w.trim_end_matches(|c: char| !c.is_ascii_digit());
+            min |= w[digits.len()..].starts_with('+') || words[j - 1].starts_with(">=") || words[j - 1].starts_with('≥') || words[j].starts_with(">=") || words[j].starts_with('≥');
+            let next: Vec<String> = words.iter().skip(j + 1).take(3).map(|w| lower(w)).collect();
+            let next: Vec<&str> = next.iter().map(String::as_str).collect();
+            min |= matches!(next.as_slice(), ["or", "newer" | "later" | "higher" | "above" | "greater", ..] | ["is", "required", ..] | ["required", ..] | ["is", "now", "required", ..] | ["minimum", ..]);
+            let nums: Vec<u64> = digits.split('.').map_while(|p| p.parse().ok()).collect();
+            let (lo, hi) = match nums.as_slice() {
+                [major] => (Version::new(*major, 0, 0), Version::new(major + 1, 0, 0)),
+                [major, minor] => (Version::new(*major, *minor, 0), Version::new(*major, minor + 1, 0)),
+                [major, minor, patch, ..] => (Version::new(*major, *minor, *patch), Version::new(*major, *minor, patch + 1)),
+                [] => break,
+            };
+            if !adding {
+                out.push(if min { (None, lo) } else { (Some(lo), hi) });
+            }
+            // A list goes on: `16 and 21`, `3.8, 3.9`, `3.8 or 3.9`.
+            let listed = w.ends_with(',') && !w.ends_with(".,");
+            let joined = words.get(j + 1).is_some_and(|n| matches!(lower(n).as_str(), "and" | "or" | "&"));
+            if joined && words.get(j + 2).is_some_and(|n| n.trim_matches('`').starts_with(|c: char| c.is_ascii_digit())) {
+                j += 2;
+            } else if listed {
+                j += 1;
+            } else {
+                break;
+            }
         }
-        let Some(w) = words.get(j).map(|w| w.trim_matches('`').trim_start_matches(">=").trim_start_matches('≥')) else { continue };
-        if !w.starts_with(|c: char| c.is_ascii_digit()) {
-            continue;
-        }
-        let digits = w.trim_end_matches(|c: char| !c.is_ascii_digit());
-        min |= w[digits.len()..].starts_with('+') || words[i + 1].starts_with(">=") || words[i + 1].starts_with('≥');
-        let next: Vec<String> = words.iter().skip(j + 1).take(3).map(|w| w.trim_matches(|c: char| !c.is_ascii_alphanumeric()).to_ascii_lowercase()).collect();
-        let next: Vec<&str> = next.iter().map(String::as_str).collect();
-        min |= matches!(next.as_slice(), ["or", "newer" | "later" | "higher" | "above" | "greater", ..] | ["is", "required", ..] | ["required", ..] | ["is", "now", "required", ..] | ["minimum", ..]);
-        let nums: Vec<u64> = digits.split('.').map_while(|p| p.parse().ok()).collect();
-        let v = match nums.as_slice() {
-            [major] => if min { Version::new(*major, 0, 0) } else { Version::new(major + 1, 0, 0) },
-            [major, minor] => Version::new(*major, if min { *minor } else { minor + 1 }, 0),
-            [major, minor, patch, ..] => Version::new(*major, *minor, if min { *patch } else { patch + 1 }),
-            [] => continue,
-        };
-        out.push(v);
+        i = j.max(i + 1);
     }
     out
 }
@@ -2947,6 +3059,90 @@ mod tests {
         let out = run_with(&c, &s, &r, &l);
         let o = out.opps.iter().find(|o| o.id() == "react-native:initializecore").unwrap();
         assert_eq!((&o.route, &o.matched), (&Route::InEffect, &vec![(old.to_string(), vec!["src/app.ts".to_string()])]), "cites the live site only");
+    }
+
+    #[test]
+    fn a_deprecated_identifier_counts_only_where_imported_from_the_module_its_record_names() {
+        // erpnext banking/: "atomFamily in jotai/utils is deprecated; migrate to jotai-family", with `atomFamily`
+        // imported from `jotai-family` and `jotai/utils` used only for its other exports.
+        let summary = "atomFamily in jotai/utils is deprecated; migrate to jotai-family.";
+        let c = catalog(
+            "jotai",
+            0,
+            vec![with(
+                rec("jotai:atomfamily", "pkg:npm/jotai", "2.16.0"),
+                json!({"change_type":"deprecation","subject":"atomFamily","summary":summary,"replaces":["atomFamily","jotai/utils"],
+                       "terms":[["atomFamily",0],["jotai/utils",0],["from 'jotai/utils'",0]]}),
+            )],
+        );
+        let s = stack(&[("jotai", "2.20.2"), ("jotai-family", "1.1.0")], None);
+        let moved = "import { atomWithStorage } from \"jotai/utils\";\nimport { atomFamily } from 'jotai-family'\nexport const a = atomFamily((id: string) => atomWithStorage(id, 0));\n";
+        let other = "import { atomWithStorage } from 'jotai/utils';\nexport const b = atomWithStorage('k', 1);\n";
+        let l = Ledger::default();
+        let r = repo(&[("src/atoms.ts", moved), ("src/hooks.ts", other)]);
+        let out = run_with(&c, &s, &r, &l);
+        let o = out.opps.iter().find(|o| o.id() == "jotai:atomfamily").unwrap();
+        assert_eq!((&o.route, &o.matched), (&Route::Applied, &vec![]), "imported from the replacement: moved; the entry point alone is no site");
+        // Still imported from the module the record names: in effect, cited at the identifier only.
+        let old = "import { atomFamily } from 'jotai/utils';\nexport const a = atomFamily((id: string) => id);\n";
+        let r = repo(&[("src/old.ts", old), ("src/hooks.ts", other)]);
+        let out = run_with(&c, &s, &r, &l);
+        let o = out.opps.iter().find(|o| o.id() == "jotai:atomfamily").unwrap();
+        assert_eq!((&o.route, &o.matched), (&Route::InEffect, &vec![("atomFamily".to_string(), vec!["src/old.ts".to_string()])]));
+        // jotai 3: "The util moved from jotai/utils to the jotai-family package", deprecating only the entry point: its
+        // site stands on `atomFamily`, here imported from the replacement.
+        let c3 = catalog(
+            "jotai",
+            0,
+            vec![with(
+                rec("jotai:moved", "pkg:npm/jotai", "3.0.0"),
+                json!({"change_type":"removal","breaking":true,"subject":"atomFamily","summary":"The util moved from jotai/utils to the jotai-family package, so imports must use the new package.",
+                       "replaces":["jotai/utils"],"introduces":["jotai-family"],"terms":[["atomFamily",0],["jotai/utils",0]]}),
+            )],
+        );
+        let r = repo(&[("src/atoms.ts", moved), ("src/hooks.ts", other)]);
+        let out = run_with(&c3, &s, &r, &l);
+        assert_eq!(route_of(&out, "jotai:moved"), &Route::Applied);
+        // Named only in a comment beside the entry point's other exports: no use of the API.
+        let noted = "// atomFamily moved to jotai-family\nimport { atomWithStorage } from 'jotai/utils';\nexport const b = atomWithStorage('k', 1);\n";
+        let r = repo(&[("src/atoms.ts", moved), ("src/noted.ts", noted)]);
+        let out = run_with(&c3, &s, &r, &l);
+        assert_eq!(route_of(&out, "jotai:moved"), &Route::Applied);
+        let r = repo(&[("src/old.ts", old), ("src/hooks.ts", other)]);
+        let out = run_with(&c3, &s, &r, &l);
+        assert_eq!(route_of(&out, "jotai:moved"), &Route::UpgradeReview);
+        // Through a namespace import: of the replacement, moved; of the named module, still in effect.
+        let r = repo(&[("src/ns.ts", "import { atomWithStorage } from 'jotai/utils';\nimport * as jf from 'jotai-family';\nexport const a = jf.atomFamily((id: string) => id);\n"), ("src/hooks.ts", other)]);
+        let out = run_with(&c, &s, &r, &l);
+        assert_eq!(route_of(&out, "jotai:atomfamily"), &Route::Applied);
+        let r = repo(&[("src/ns.ts", "import * as u from 'jotai/utils';\nexport const a = u.atomFamily((id: string) => id);\n")]);
+        let out = run_with(&c, &s, &r, &l);
+        assert_eq!(route_of(&out, "jotai:atomfamily"), &Route::InEffect);
+        // No import binds it (a global, a re-export it cannot place): kept, as before.
+        let bare = "import { atom } from 'jotai';\nexport const a = atomFamily((id: string) => atom(id));\n";
+        let r = repo(&[("src/bare.ts", bare)]);
+        let out = run_with(&c, &s, &r, &l);
+        assert_eq!(route_of(&out, "jotai:atomfamily"), &Route::InEffect);
+    }
+
+    #[test]
+    fn a_runtime_record_is_sited_at_declarations_not_code_reading_a_property_of_that_name() {
+        // oh-my-claudecode: `packageJson.engines?.node` reads the projects it inspects, not this repository's engines.
+        let c = catalog(
+            "ajv",
+            0,
+            vec![with(
+                rec("ajv:node", "pkg:npm/ajv", "8.20.0"),
+                json!({"change_type":"removal","breaking":true,"subject":"Node.js version support","summary":"Ajv drops support for Node.js 18.",
+                       "terms":[["engines.node",0]]}),
+            )],
+        );
+        let s = stack(&[("ajv", "8.18.0")], None);
+        let r = repo(&[("src/detector.ts", "import Ajv from 'ajv';\nconst v = packageJson.engines.node;\n"), ("package.json", "{\"engines\": {\"node\": \">=18\"}, \"dependencies\": {\"ajv\": \"^8\"}}"), (".github/workflows/ci.yml", "env:\n  NODE: engines.node\n")]);
+        let l = Ledger::default();
+        let out = run_with(&c, &s, &r, &l);
+        let o = out.opps.iter().find(|o| o.id() == "ajv:node").unwrap();
+        assert!(!o.matched.iter().any(|(_, f)| f.iter().any(|p| p.ends_with(".ts"))), "code is no runtime declaration: {:?}", o.matched);
     }
 
     #[test]
@@ -4253,6 +4449,38 @@ mod tests {
         s.python = None;
         let out = run_with(&c, &s, &r, &l);
         assert_ne!(route_of(&out, "lib:py39"), &Route::Applied, "no declared range: nothing is known");
+    }
+
+    #[test]
+    fn a_runtime_drop_outside_a_declared_range_with_gaps_is_met() {
+        // oh-my-claudecode: ajv "adds support for Node.js 22 and 24, and drops support for Node.js 16 and 21" at
+        // `engines.node 20.x || 22.x || ...`: 21 is above the floor, but in no alternative.
+        let drop = |id: &str, subject: &str, summary: &str| with(rec(id, "pkg:npm/lib", "2.0.0"), json!({"change_type":"removal","breaking":true,"subject":subject,"summary":summary}));
+        let c = catalog(
+            "lib",
+            0,
+            vec![
+                drop("lib:ajv", "Node.js version support", "Ajv adds support for Node.js 22 and 24, and drops support for Node.js 16 and 21."),
+                drop("lib:node21", "Node.js 21", "Node 21 is no longer supported."),
+                drop("lib:node22", "Node.js support", "Drops support for Node.js 16 and 22."),
+                drop("lib:py", "Python support", "Drops Python 3.8, 3.9 and 3.11."),
+            ],
+        );
+        let mut s = stack(&[("lib", "1.0.0")], None);
+        s.node = Some((Version::new(20, 0, 0), "engines.node 20.x || 22.x || 23.x in package.json".into()));
+        s.python = Some((Version::new(3, 10, 0), "requires-python >=3.10,<3.11 || >=3.12 in pyproject.toml".into()));
+        let (r, l) = (repo(&[]), Ledger::default());
+        let out = run_with(&c, &s, &r, &l);
+        assert_eq!(route_of(&out, "lib:ajv"), &Route::Applied, "16 and 21 are outside the range; 22 and 24 are added");
+        assert_eq!(route_of(&out, "lib:node21"), &Route::Applied);
+        assert_ne!(route_of(&out, "lib:node22"), &Route::Applied, "22.x is still declared");
+        s.python = Some((Version::new(3, 10, 0), "requires-python >=3.10,!=3.11.* in pyproject.toml".into()));
+        let out = run_with(&c, &s, &r, &l);
+        assert_ne!(route_of(&out, "lib:py"), &Route::Applied, "an exclusion it cannot read keeps to the floor");
+        // A floor alone (a toolchain file) still decides by the floor.
+        s.node = Some((Version::new(20, 0, 0), ".nvmrc".into()));
+        let out = run_with(&c, &s, &r, &l);
+        assert_ne!(route_of(&out, "lib:node21"), &Route::Applied, "a 20 floor with no range admits 21");
     }
 
     #[test]

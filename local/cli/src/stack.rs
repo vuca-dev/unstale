@@ -369,11 +369,38 @@ impl Stack {
     /// The lowest version of a language runtime the project declares it supports, and where that came from: Node
     /// (`engines.node`, `.nvmrc`) or Python (`requires-python`), by the runtime's name in any ecosystem's spelling.
     pub fn runtime_floor(&self, name: &str) -> Option<&(Version, String)> {
-        match name.trim().to_ascii_lowercase().as_str() {
-            "node" | "nodejs" | "node.js" => self.node.as_ref(),
-            "python" | "cpython" => self.python.as_ref(),
-            _ => None,
+        match runtime_name(name)? {
+            "node" => self.node.as_ref(),
+            _ => self.python.as_ref(),
         }
+    }
+
+    /// Whether the range the project declares for a language runtime (`engines.node 20.x || 22.x`,
+    /// `requires-python >=3.10`) admits any version in `[lo, hi)`: a range with a gap (`20.x || 22.x`) excludes a
+    /// version above its floor (21). `None` when the declaration is not a range this can read (a toolchain file's
+    /// single version, `!=` exclusions): a caller keeps to the floor.
+    pub fn runtime_admits(&self, name: &str, lo: &Version, hi: &Version) -> Option<bool> {
+        let (_, source) = self.runtime_floor(name)?;
+        // The declaration as `runtime_floor`'s source writes it: `<key> <range> in <file>`.
+        let decl = source.split_once(" in ")?.0;
+        let (npm, range) = [("engines.node ", true), ("requires-python ", false), ("Poetry python ", false)]
+            .iter()
+            .find_map(|(k, npm)| decl.strip_prefix(k).map(|r| (*npm, r.trim())))?;
+        if range.contains("!=") {
+            return None;
+        }
+        let mut any = false;
+        for alt in range.split("||").map(str::trim) {
+            let (floor, sat) = if npm {
+                (range_floor(alt), Box::new(|v: &Version| npm_satisfies(v, alt)) as Box<dyn Fn(&Version) -> Option<bool>>)
+            } else {
+                (crate::pypi::spec_floor(alt).or(Some(Version::new(0, 0, 0))), Box::new(|v: &Version| crate::pypi::spec_satisfies(v, alt)) as Box<dyn Fn(&Version) -> Option<bool>>)
+            };
+            let floor = floor?;
+            // Each alternative is one interval: one starting below `lo` reaches into `[lo, hi)` only through `lo`.
+            any |= if floor < *lo { sat(lo)? } else { floor < *hi };
+        }
+        Some(any)
     }
 
     /// A version the project declares for a prerequisite name in the npm ecosystem: `node` from engines or
@@ -390,6 +417,16 @@ impl Stack {
             .map(|(v, _)| v);
         }
         self.deps.get(&npm_purl(&name.to_lowercase())).and_then(|d| d.version.as_ref())
+    }
+}
+
+/// A language runtime the stack reads a declared range for, by its name in any ecosystem's spelling (`Node.js`,
+/// `nodejs`, `CPython`): `node` or `python`.
+pub fn runtime_name(name: &str) -> Option<&'static str> {
+    match name.trim().trim_matches('`').to_ascii_lowercase().as_str() {
+        "node" | "nodejs" | "node.js" => Some("node"),
+        "python" | "cpython" => Some("python"),
+        _ => None,
     }
 }
 
