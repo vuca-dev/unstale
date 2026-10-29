@@ -1634,6 +1634,8 @@ struct Brief {
     /// Lockfiles that could not be read in full (`Stack::unreadable`).
     unreadable: usize,
     spread: usize,
+    /// Per technology, the record its upgrade line leads with (`unstale bump` lists it first).
+    lead_ids: BTreeMap<String, String>,
 }
 fn coverage_counts(pending: &Pending) -> String {
     let jobs: BTreeMap<_, _> = pending.jobs.values().map(|j| (&j.technology, j)).collect();
@@ -2645,7 +2647,7 @@ fn diversified<'a, 'o>(mut rest: Vec<Ranked<'a, 'o>>, slots: usize, cap: usize) 
 
 fn report(ctx: &Ctx, pending: &Pending, scan: &mut Option<World>) -> Result<Brief> {
     let w = world_reusing(ctx, scan.as_ref())?;
-    let brief = report_from(ctx, pending, &w);
+    let brief = report_from(ctx, pending, &w, true);
     *scan = Some(w);
     brief
 }
@@ -2736,7 +2738,7 @@ fn first_screen(leads: &[String]) -> String {
     text + "\n"
 }
 
-fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
+fn report_from(ctx: &Ctx, pending: &Pending, w: &World, write: bool) -> Result<Brief> {
     let out = outcome(ctx, w, BTreeMap::new());
     let mut catalog_scope = String::new();
     let mut unread = vec![];
@@ -2884,6 +2886,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
     let dep_names: std::collections::HashSet<String> = w.stack.deps.values().map(|d| d.name.chars().filter(char::is_ascii_alphanumeric).collect::<String>().to_ascii_lowercase()).collect();
     let mut signal_store: Vec<(String, Vec<String>)> = vec![];
     let mut ranked: Vec<Ranked> = vec![];
+    let mut lead_ids: BTreeMap<String, String> = BTreeMap::new();
     let mut quiet = 0;
     for (technology, lines) in &groups {
         let indices = out.digest.get(technology).map(Vec::as_slice).unwrap_or(&[]);
@@ -3194,6 +3197,10 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
             classes.len(),
             (obligations.len() + in_effect.len()).min(50),
         ));
+        // The record the lead names (`[id]`), for `unstale bump` to list first.
+        if let Some(i) = lead.as_deref().and_then(|l| members.iter().copied().find(|&i| l.contains(&format!("[{}]", out.opps[i].id())))) {
+            lead_ids.insert(technology.clone(), out.opps[i].id().to_string());
+        }
         ranked.push(Ranked { key, tier, lead, unreached: advisory && reached.is_none(), unchecked: false, class, technology, lines, fixes: tech_fixes, lock, lock_fixed, notes, joins, leads, value, peer, copies });
     }
     // Package-level signals: what the public registry and OSV say about a direct dependency's installed version, with
@@ -3210,6 +3217,8 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
     let signals = signals(&ranked, &out, &deprecated, &unused, &unmaintained, &lock_report, w, &declared);
     let signalled: BTreeSet<String> = signals.iter().map(|s| norm(&s.name)).collect();
     ranked.retain(|r| r.tier >= LEAD_ADVISORY_UNREACHED || !out.packages.get(r.technology).into_iter().flatten().chain(std::iter::once(r.technology)).any(|p| signalled.contains(&norm(p))));
+    // A line a package signal replaces is not in the report: neither is its lead.
+    lead_ids.retain(|t, _| ranked.iter().any(|r| r.technology == t));
     signal_store.extend(signals.iter().map(|s| (s.name.clone(), vec![s.head.clone()])));
     for (s, (name, lines)) in signals.into_iter().zip(signal_store.iter()) {
         let lock_fixed: Vec<&crate::advisories::Item> = s.lock.iter().copied().filter(|it| it.fix.is_some()).collect();
@@ -3637,18 +3646,17 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
         evidence_block(&catalog_scope),
         w.catalog.snapshot_line()
     );
-    util::write_atomic(&ctx.tool.join("coverage.md"), detail.as_bytes())?;
-    // The review skill reads these internal queues on demand; generating them does not run an agent.
-    let mut state = State::load(&ctx.tool);
-    for pass in Pass::ALL {
-        let view = review::batch_for(pass, &out, &mut state, false)
-            .map_err(|_| anyhow!("could not prepare review context"))?;
-        review::write_context(
-            &pass.context_path(&ctx.tool),
-            &review::render(&view, &out, &w.catalog, &deprecated),
-        )?;
+    // `write` false: the report's choices only (`lead_ids`), no file touched.
+    if write {
+        util::write_atomic(&ctx.tool.join("coverage.md"), detail.as_bytes())?;
+        // The review skill reads these internal queues on demand; generating them does not run an agent.
+        let mut state = State::load(&ctx.tool);
+        for pass in Pass::ALL {
+            let view = review::batch_for(pass, &out, &mut state, false).map_err(|_| anyhow!("could not prepare review context"))?;
+            review::write_context(&pass.context_path(&ctx.tool), &review::render(&view, &out, &w.catalog, &deprecated))?;
+        }
+        state.save(&ctx.tool)?;
     }
-    state.save(&ctx.tool)?;
     text += &format!("\nCatalog snapshot: {} (indexes and hashes in .unstale/coverage.md).\n", technology_count(w.catalog.techs.len()));
     if ctx.config.mode == Mode::Local {
         text += &format!(
@@ -3656,23 +3664,23 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
             invocation()
         );
     }
-    let gap_path = ctx.tool.join("source-gaps.md");
-    if let Some(draft) = source_gap_draft(pending) { util::write_atomic(&gap_path, draft.as_bytes())?; }
-    else if gap_path.is_file() { std::fs::remove_file(&gap_path)?; }
-    let brief = ctx.tool.join("onboarding-report.md");
-    util::write_atomic(&brief, text.as_bytes())?;
-    review::write_entrypoint(&ctx.tool)?;
-    integrate(ctx)?;
-    let conflicts = std::fs::read(ctx.tool.join("state/integration-conflicts.json"))
-        .ok()
-        .and_then(|b| serde_json::from_slice::<Vec<String>>(&b).ok())
-        .unwrap_or_default();
-    if !conflicts.is_empty() {
-        text += &format!(
-            "\n## Existing integrations preserved\n\n{}",
-            evidence_block(&conflicts.join("\n"))
-        );
+    let mut conflicts: Vec<String> = vec![];
+    if write {
+        let gap_path = ctx.tool.join("source-gaps.md");
+        if let Some(draft) = source_gap_draft(pending) { util::write_atomic(&gap_path, draft.as_bytes())?; }
+        else if gap_path.is_file() { std::fs::remove_file(&gap_path)?; }
+        let brief = ctx.tool.join("onboarding-report.md");
         util::write_atomic(&brief, text.as_bytes())?;
+        review::write_entrypoint(&ctx.tool)?;
+        integrate(ctx)?;
+        conflicts = std::fs::read(ctx.tool.join("state/integration-conflicts.json"))
+            .ok()
+            .and_then(|b| serde_json::from_slice::<Vec<String>>(&b).ok())
+            .unwrap_or_default();
+        if !conflicts.is_empty() {
+            text += &format!("\n## Existing integrations preserved\n\n{}", evidence_block(&conflicts.join("\n")));
+            util::write_atomic(&brief, text.as_bytes())?;
+        }
     }
     Ok(Brief {
         direct: w.stack.deps.len(),
@@ -3703,7 +3711,13 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World) -> Result<Brief> {
         lock_notes: w.stack.notes.iter().filter(|n| !n.contains(stack::UNLOCKED_NPM)).count() - usize::from(w.stack.spread > 0),
         unreadable: w.stack.unreadable,
         spread: w.stack.spread,
+        lead_ids,
     })
+}
+
+/// Per technology, the record id its upgrade line in the report leads with: the report's own choice, no file written.
+pub fn lead_ids(ctx: &Ctx, w: &World) -> BTreeMap<String, String> {
+    report_from(ctx, &read(ctx), w, false).map(|b| b.lead_ids).unwrap_or_default()
 }
 
 pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
