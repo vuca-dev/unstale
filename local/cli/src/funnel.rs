@@ -388,18 +388,77 @@ pub fn deprecated_lits(r: &Rec, lits: &[String]) -> Vec<String> {
         let head = r.r.summary.to_ascii_lowercase();
         let head = &head[..head.find("deprecat").unwrap_or(0)];
         let s = subject.to_ascii_lowercase();
-        let whole = head.match_indices(s.as_str()).any(|(i, _)| {
-            let ok = |c: Option<char>| c.is_none_or(|c| !(c.is_ascii_alphanumeric() || c == '_'));
-            let rest = &head[i + s.len()..];
-            ok(head[..i].chars().next_back())
-                && ok(rest.chars().next())
-                && rest.split(|c: char| !c.is_ascii_alphanumeric()).filter(|w| !w.is_empty()).all(|w| BETWEEN.contains(&w))
+        // A qualified subject may be written by its member alone (`env.app`: "The public app attribute is deprecated").
+        let leaf = usage::qualified_name(&subject).then(|| s.rsplit('.').next().unwrap_or(&s).to_string());
+        let whole = std::iter::once(s.as_str()).chain(leaf.as_deref()).any(|s| {
+            head.match_indices(s).any(|(i, _)| {
+                let ok = |c: Option<char>| c.is_none_or(|c| !(c.is_ascii_alphanumeric() || c == '_' || c == '.'));
+                let rest = &head[i + s.len()..];
+                ok(head[..i].chars().next_back())
+                    && ok(rest.chars().next())
+                    && rest.split(|c: char| !c.is_ascii_alphanumeric()).filter(|w| !w.is_empty()).all(|w| BETWEEN.contains(&w))
+            })
         });
         if whole {
             replaces.insert(subject);
         }
     }
     lits.iter().filter(|l| replaces.contains(*l)).cloned().collect()
+}
+
+/// The literals a deprecation that names no deprecated literal (`deprecated_lits`) is cited at: those naming its
+/// subject, when any does, else all of them. A literal names the subject when each of its words is a word of the
+/// subject, up to a plural (`source_encoding` for "non-UTF 8 source encodings"); the record's other terms are its
+/// context (`source_suffix`, `.rst`: every project of the technology writes them). A literal that writes a qualified
+/// subject's parts in another order (`app.env` for `env.app`) is another attribute path and never a site.
+pub fn subject_sites(r: &unstale_schema::catalog::CapabilityRecord, lits: &[String]) -> Vec<String> {
+    let parts = |s: &str| -> Vec<String> { s.split('.').map(str::to_ascii_lowercase).collect() };
+    let subject_parts = parts(&r.subject);
+    let reordered = |l: &str| {
+        let p = parts(l);
+        if subject_parts.len() < 2 || p.len() != subject_parts.len() || p == subject_parts {
+            return false;
+        }
+        let (mut a, mut b) = (p, subject_parts.clone());
+        a.sort();
+        b.sort();
+        a == b
+    };
+    let lits: Vec<String> = lits.iter().filter(|l| !reordered(l)).cloned().collect();
+    if r.change_type != ChangeType::Deprecation {
+        return lits;
+    }
+    let words = |s: &str| -> Vec<String> {
+        let mut out = vec![];
+        let mut cur = String::new();
+        let mut prev_lower = false;
+        for c in s.chars() {
+            if !c.is_ascii_alphanumeric() {
+                prev_lower = false;
+                if !cur.is_empty() {
+                    out.push(std::mem::take(&mut cur));
+                }
+                continue;
+            }
+            if c.is_ascii_uppercase() && prev_lower && !cur.is_empty() {
+                out.push(std::mem::take(&mut cur));
+            }
+            prev_lower = c.is_ascii_lowercase() || c.is_ascii_digit();
+            cur.push(c.to_ascii_lowercase());
+        }
+        if !cur.is_empty() {
+            out.push(cur);
+        }
+        out
+    };
+    let subject = words(&r.subject);
+    let plural = |a: &str, b: &str| a == b || [a, b].iter().any(|x| [a, b].iter().any(|y| *x == format!("{y}s") || *x == format!("{y}es")));
+    let names = |l: &str| {
+        let ws = words(l);
+        !ws.is_empty() && ws.iter().all(|w| subject.iter().any(|s| plural(w, s)))
+    };
+    let naming: Vec<String> = lits.iter().filter(|l| names(l)).cloned().collect();
+    if naming.is_empty() { lits } else { naming }
 }
 
 /// What part of a surviving API a deprecation is about (`deprecated_part`).
@@ -1829,6 +1888,9 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             // Without the replacement its summary names (`np.inf` for a removed `np.infty`): code on it is no site.
             let successors = successor_lits(rec, ls);
             let own: Vec<String> = ls.iter().filter(|l| !successors.contains(l)).cloned().collect();
+            // The sites of a deprecation that names no deprecated literal: the literals naming its subject, when it has
+            // any (`subject_sites`). The score still counts every literal.
+            let own_sites: Vec<String> = subject_sites(&rec.r, &own);
             // A deprecated namespace (`pytest.mark`, for markers on hook implementations) counts only beside a specific
             // literal of the record: not the namespace or a part of it, not a member other records are about (another
             // API: `pytest.mark.parametrize`), not the replacement, not a plain word.
@@ -1942,7 +2004,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             } else if keyed.is_some() {
                 (&key_lits, &key_ev)
             } else {
-                (&own[..], &ev_cite)
+                (&own_sites[..], &ev_cite)
             };
             // A lint rule this repository never turns on: none of the record's terms is a site (`rule_not_enabled`).
             let rule_off = !lint_ns.is_empty()
@@ -3200,6 +3262,31 @@ mod tests {
         let out = run_with(&c, &s, &r, &l);
         let o = out.opps.iter().find(|o| o.id() == "pytest:hook-markers").unwrap();
         assert_eq!((&o.route, &o.matched), (&Route::InEffect, &vec![("pytest.mark".to_string(), vec!["plugin/plugin.py".to_string()])]));
+    }
+
+    #[test]
+    fn a_qualified_subject_is_cited_in_its_own_order_and_a_concept_at_the_terms_naming_it() {
+        // searxng (sphinx 9): "The public app attribute is deprecated" (`BuildEnvironment.app`, subject `env.app`) was
+        // cited at `app.env.domains`, which is `Sphinx.env`; "non-UTF 8 source encodings" at `source_suffix = '.rst'`.
+        let purl = "pkg:pypi/sphinx";
+        let app = with(rec("sphinx:env.app", purl, "9.0.0"), json!({"change_type":"deprecation","subject":"env.app","summary":"The public app attribute is deprecated.","terms":[["env.app",0],["app.env",0],["BuildEnvironment",0]]}));
+        let enc = with(rec("sphinx:encodings", purl, "9.0.0"), json!({"change_type":"deprecation","subject":"non-UTF 8 source encodings","subject_kind":"concept","surface":"runtime_internal","summary":"Support for non-UTF 8 source encodings is deprecated.","terms":[["source_encoding",0],["source_suffix",0],[".rst",0]]}));
+        let c = catalog("sphinx", 0, vec![app, enc]);
+        let mut s = stack(&[], None);
+        s.deps.insert(purl.into(), crate::stack::Dep { version: parse_version("9.1.0"), source: "test".into(), ..crate::stack::Dep::new("sphinx", true) });
+        let conf = "import sphinx\nsource_suffix = '.rst'\n\ndef setup(app):\n    mods = app.env.domains['py'].modules\n";
+        let l = Ledger::default();
+        let r = repo(&[("docs/conf.py", conf)]);
+        let out = run_with(&c, &s, &r, &l);
+        assert!(out.opps.iter().all(|o| o.matched.is_empty()), "{:?}", out.opps.iter().map(|o| (o.id(), &o.matched)).collect::<Vec<_>>());
+        // The deprecated attribute, and the encoding option, are still sites.
+        let ext = "from sphinx.util.docutils import SphinxDirective\n\nclass D(SphinxDirective):\n    def run(self):\n        return self.env.app.config\n";
+        let conf2 = "import sphinx\nsource_encoding = 'latin-1'\nsource_suffix = '.rst'\n";
+        let r = repo(&[("docs/conf.py", conf2), ("ext/d.py", ext)]);
+        let out = run_with(&c, &s, &r, &l);
+        let m = |id: &str| out.opps.iter().find(|o| o.id() == id).unwrap().matched.clone();
+        assert_eq!(m("sphinx:env.app"), vec![("env.app".to_string(), vec!["ext/d.py".to_string()])]);
+        assert_eq!(m("sphinx:encodings"), vec![("source_encoding".to_string(), vec!["docs/conf.py".to_string()])]);
     }
 
     #[test]
