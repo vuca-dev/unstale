@@ -592,7 +592,7 @@ pub fn binds(text: &str, id: &str) -> bool {
         }
         let before = &text[..at];
         let prev = before.trim_end().rsplit(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '$')).next().unwrap_or("");
-        if decl.contains(&prev) || text[end..].trim_start().starts_with("=>") {
+        if decl.contains(&prev) || text[end..].trim_start().starts_with("=>") || parameter(before, &text[end..]) {
             return true;
         }
         // Inside an import clause or a destructuring declaration, before its source or `=`.
@@ -612,6 +612,25 @@ pub fn binds(text: &str, id: &str) -> bool {
             seg.chars().all(allowed) && (k == "import" || seg.contains(['{', '[']))
         })
     })
+}
+
+/// Whether an occurrence between `before` and `after` sits in a parameter list: of `function f(…)`, `def f(…)`, an
+/// arrow function `(…) =>`, or a method `f(…) {` (not `if (…) {` and the like).
+fn parameter(before: &str, after: &str) -> bool {
+    let Some(open) = before.rfind('(') else { return false };
+    let Some(close) = after.find(')') else { return false };
+    if before[open..].contains([')', ';']) || after[..close].contains(['(', ';']) {
+        return false;
+    }
+    let ident = |c: char| c.is_ascii_alphanumeric() || c == '_' || c == '$';
+    let head = before[..open].trim_end();
+    let name = head.rsplit(|c: char| !ident(c)).next().unwrap_or("");
+    let keyword = head[..head.len() - name.len()].trim_end().rsplit(|c: char| !ident(c)).next().unwrap_or("");
+    let rest = after[close + 1..].trim_start();
+    name == "function"
+        || matches!(keyword, "function" | "def")
+        || rest.starts_with("=>")
+        || (!name.is_empty() && !matches!(name, "if" | "while" | "for" | "switch" | "catch" | "with" | "return") && rest.starts_with('{'))
 }
 
 /// Whether `path` is inside one of the package directories `dirs` (`.` is the root; none known: every file).
@@ -3184,6 +3203,13 @@ mod tests {
         assert!(binds("const { document } = require('x')", "document"));
         assert!(binds("let document = 1", "document"));
         assert!(binds("xs.map(document => document.cookie)", "document"));
+        assert!(binds("function read(a, document) { return document.cookie; }", "document"));
+        assert!(binds("const f = function (document) { return document.cookie; }", "document"));
+        assert!(binds("const f = (a, document) => document.cookie", "document"));
+        assert!(binds("def read(self, document):\n    return document.cookie", "document"));
+        assert!(binds("class A { read(document) { return document.cookie; } }", "document"));
+        assert!(!binds("if (document) { document.cookie = 'a'; }", "document"));
+        assert!(!binds("set(document.cookie)", "document"));
         assert!(!binds("const c = document.cookie;", "document"));
         assert!(!binds("import x from 'y';\nwindow.document.cookie", "document"));
         assert!(!binds("const mydocument = 1; document.cookie", "document"));
