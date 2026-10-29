@@ -390,9 +390,10 @@ pub fn deprecated_lits(r: &Rec, lits: &[String]) -> Vec<String> {
         let s = subject.to_ascii_lowercase();
         // A qualified subject may be written by its member alone (`env.app`: "The public app attribute is deprecated").
         let leaf = usage::qualified_name(&subject).then(|| s.rsplit('.').next().unwrap_or(&s).to_string());
-        let whole = std::iter::once(s.as_str()).chain(leaf.as_deref()).any(|s| {
+        // The member alone must not be another qualified name's member (`other.app`).
+        let whole = std::iter::once((s.as_str(), false)).chain(leaf.as_deref().map(|l| (l, true))).any(|(s, member)| {
             head.match_indices(s).any(|(i, _)| {
-                let ok = |c: Option<char>| c.is_none_or(|c| !(c.is_ascii_alphanumeric() || c == '_' || c == '.'));
+                let ok = |c: Option<char>| c.is_none_or(|c| !(c.is_ascii_alphanumeric() || c == '_' || (member && c == '.')));
                 let rest = &head[i + s.len()..];
                 ok(head[..i].chars().next_back())
                     && ok(rest.chars().next())
@@ -408,7 +409,7 @@ pub fn deprecated_lits(r: &Rec, lits: &[String]) -> Vec<String> {
 
 /// The literals a deprecation that names no deprecated literal (`deprecated_lits`) is cited at: those naming its
 /// subject, when any does, else all of them. A literal names the subject when each of its words is a word of the
-/// subject, up to a plural (`source_encoding` for "non-UTF 8 source encodings"); the record's other terms are its
+/// subject, up to a plural (`-s`, `-es`, `-ies`: `source_encoding` for "non-UTF 8 source encodings"); the record's other terms are its
 /// context (`source_suffix`, `.rst`: every project of the technology writes them). A literal that writes a qualified
 /// subject's parts in another order (`app.env` for `env.app`) is another attribute path and never a site.
 pub fn subject_sites(r: &unstale_schema::catalog::CapabilityRecord, lits: &[String]) -> Vec<String> {
@@ -452,7 +453,10 @@ pub fn subject_sites(r: &unstale_schema::catalog::CapabilityRecord, lits: &[Stri
         out
     };
     let subject = words(&r.subject);
-    let plural = |a: &str, b: &str| a == b || [a, b].iter().any(|x| [a, b].iter().any(|y| *x == format!("{y}s") || *x == format!("{y}es")));
+    let plural = |a: &str, b: &str| {
+        let of = |x: &str, y: &str| x == format!("{y}s") || x == format!("{y}es") || y.strip_suffix('y').is_some_and(|stem| x == format!("{stem}ies"));
+        a == b || of(a, b) || of(b, a)
+    };
     let names = |l: &str| {
         let ws = words(l);
         !ws.is_empty() && ws.iter().all(|w| subject.iter().any(|s| plural(w, s)))
@@ -3287,6 +3291,18 @@ mod tests {
         let m = |id: &str| out.opps.iter().find(|o| o.id() == id).unwrap().matched.clone();
         assert_eq!(m("sphinx:env.app"), vec![("env.app".to_string(), vec!["ext/d.py".to_string()])]);
         assert_eq!(m("sphinx:encodings"), vec![("source_encoding".to_string(), vec!["docs/conf.py".to_string()])]);
+    }
+
+    #[test]
+    fn a_member_names_its_qualified_subject_but_a_plain_subject_keeps_its_qualifier_and_plurals_name_a_subject() {
+        let r = |subject: &str, summary: &str| Rec { r: serde_json::from_value(with(rec("t:x", "pkg:npm/t", "1.0.0"), json!({"change_type":"deprecation","subject":subject,"summary":summary}))).unwrap(), borderline: vec![] };
+        let lits = |xs: &[&str]| xs.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+        assert_eq!(deprecated_lits(&r("env.app", "The public app attribute is deprecated."), &lits(&["env.app"])), lits(&["env.app"]));
+        assert!(deprecated_lits(&r("env.app", "The other.app attribute is deprecated."), &lits(&["env.app"])).is_empty());
+        // A plain subject written as another name's member is still that subject.
+        assert_eq!(deprecated_lits(&r("setup", "Sphinx.setup is deprecated."), &lits(&["setup"])), lits(&["setup"]));
+        let concept = r("legacy categories", "Legacy categories are deprecated.").r;
+        assert_eq!(subject_sites(&concept, &lits(&["category", "config_path"])), lits(&["category"]));
     }
 
     #[test]
