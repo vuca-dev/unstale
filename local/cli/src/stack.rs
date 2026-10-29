@@ -91,6 +91,9 @@ pub struct Dep {
     pub unaliased: bool,
     /// The manifests (directories) that install it through an npm alias (`@typescript/native: npm:typescript@7.0.2`).
     pub alias_dirs: BTreeSet<String>,
+    /// The manifests (directories) that declare it under its own name. There an alias is a side-by-side copy (moment's
+    /// `typescript1: npm:typescript@^1.8.10` beside `typescript: ^7.0.2`), never the manifest's version.
+    pub own_dirs: BTreeSet<String>,
     /// PyPI: (directory, specifier) of each declaration no lockfile or pinned requirements file pins, which
     /// `pypi::assume_newest` reads at the newest release the specifier admits.
     pub unpinned: Vec<(String, String)>,
@@ -145,7 +148,7 @@ impl Dep {
     }
 
     pub fn new(name: &str, public_candidate: bool) -> Dep {
-        Dep { name: name.to_string(), public_candidate, version: None, source: String::new(), readings: vec![], pins: vec![], seen: Seen::Unknown, aliases: BTreeSet::new(), unaliased: false, alias_dirs: BTreeSet::new(), unpinned: vec![], optional_dirs: BTreeSet::new() }
+        Dep { name: name.to_string(), public_candidate, version: None, source: String::new(), readings: vec![], pins: vec![], seen: Seen::Unknown, aliases: BTreeSet::new(), unaliased: false, alias_dirs: BTreeSet::new(), own_dirs: BTreeSet::new(), unpinned: vec![], optional_dirs: BTreeSet::new() }
     }
 
     /// One manifest's version (`None` when it cannot be read: a tag, a workspace link). The headline is set by
@@ -787,6 +790,16 @@ pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
                 {
                     entry.pins.push(pin);
                 }
+                // A manifest's version of a package is what it declares under the package's own name; an alias of it
+                // there installs another copy beside it and never lowers that reading, read or resolved afresh.
+                if public_name == name {
+                    if entry.own_dirs.insert(rel.clone()) {
+                        entry.readings.retain(|r| r.dir != rel);
+                        entry.unpinned.retain(|(d, _)| *d != rel);
+                    }
+                } else if entry.own_dirs.contains(&rel) {
+                    continue;
+                }
                 if let Some(spec) = fresh
                     && !entry.unpinned.contains(&(rel.clone(), spec.clone()))
                 {
@@ -899,6 +912,18 @@ pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
     for (purl, d) in deps.iter_mut() {
         let fixture_only = !d.readings.is_empty() && d.readings.iter().all(|r| !local(&root.join(&r.dir).join("x")));
         d.public_candidate &= registries.may_name(purl, d.seen) && (!fixture_only || fixture_registries.may_name(purl, d.seen));
+    }
+    // Aliases beside the package's own declaration: deliberate side-by-side installs, named once.
+    let side: Vec<String> = deps
+        .values()
+        .filter(|d| d.alias_dirs.iter().any(|a| d.own_dirs.contains(a)))
+        .map(|d| format!("{} ({})", d.name, d.aliases.iter().map(|a| format!("`{a}`")).collect::<Vec<_>>().join(", ")))
+        .collect();
+    if !side.is_empty() {
+        notes.push(format!(
+            "npm aliases installed side by side with the package of the same manifest: {}. The version is the one declared under the package's own name; the aliased copies are deliberate parallel installs, not the installed version.",
+            side.join("; ")
+        ));
     }
     // A Python requirement nothing pins is read at the newest release its range admits; public names only.
     crate::pypi::assume_newest(&mut deps, &mut notes, crate::pypi::registry_releases, crate::pypi::registry_requires);
@@ -2585,6 +2610,19 @@ mod tests {
         assert_eq!((six.version.clone(), six.source.as_str()), (Some(Version::new(6, 0, 2)), "pnpm-lock.yaml"), "{six:?}");
         assert_eq!(clean_pnpm_version("13.0.0_react@18.2.0"), parse_version("13.0.0"));
         assert_eq!(clean_pnpm_version("/next/13.0.0"), parse_version("13.0.0"));
+    }
+
+    #[test]
+    fn an_alias_beside_the_package_s_own_declaration_never_sets_its_version() {
+        // moment: `typescript: ^7.0.2` and `typescript1: npm:typescript@^1.8.10`; the lowest alias was the baseline.
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "package.json", r#"{"name":"root","private":true,"devDependencies":{"typescript1":"npm:typescript@^1.8.10","typescript":"^7.0.2"}}"#);
+        write(d.path(), "pnpm-lock.yaml", "lockfileVersion: '9.0'\n\nimporters:\n\n  .:\n    devDependencies:\n      typescript:\n        specifier: ^7.0.2\n        version: 7.0.2\n      typescript1:\n        specifier: npm:typescript@^1.8.10\n        version: typescript@1.8.10\n");
+        let s = detect(d.path()).unwrap();
+        let ts = &s.deps["pkg:npm/typescript"];
+        assert_eq!((ts.version.clone(), ts.readings.len(), ts.parallel_copy()), (Some(Version::new(7, 0, 2)), 1, false), "{ts:?}");
+        assert!(s.notes.iter().any(|n| n.contains("side by side") && n.contains("`typescript1`")), "{:?}", s.notes);
+        assert!(ts.unpinned.is_empty());
     }
 
     #[test]

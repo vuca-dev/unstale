@@ -154,6 +154,9 @@ pub struct Outcome<'a> {
     pub workspaces: BTreeMap<String, Vec<Workspace<'a>>>,
     /// Package URLs whose version differs across manifests: where the outputs' version comes from (directory, source).
     pub headline: BTreeMap<String, (String, String)>,
+    /// Package URLs whose headline reading keeps a declared range (an unlocked or fresh-install reading, a library's
+    /// range): a target it does not admit needs the range changed, not just an install.
+    pub ranges: BTreeMap<String, crate::stack::Range>,
     /// Why no technology is covered yet, when the client knows (a deferred registration); set by the caller.
     pub uncovered: Option<String>,
     /// Why nothing was checked, when no dependency was read at all (`stack::unread_note`); set by the caller.
@@ -1630,6 +1633,9 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
         for c in &present {
             let (Some(d), Some(ch)) = (inp.stack.deps.get(*c), choices.get(*c)) else { continue };
             let h = ch.head;
+            if let Some(r) = &h.range {
+                out.ranges.insert(normalize_purl(c), r.clone());
+            }
             let others = d.others_than(h);
             if !others.is_empty() {
                 out.headline.insert((*c).clone(), (h.dir.clone(), h.source.clone()));
@@ -1810,7 +1816,8 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             {
                 let inside = |v: &Version| *v >= lo && *v < hi;
                 if inside(&installed) || (avail == Avail::Upgrade && inside(&target)) {
-                    out.opps.push(blank(rec, release.clone(), Route::ReleaseUnknown));
+                    // Not placed, but the versions are known: never the placeholder, which reads as installed 0.0.0.
+                    out.opps.push(Opp { installed: installed.clone(), target: target.clone(), ..blank(rec, release.clone(), Route::ReleaseUnknown) });
                     continue;
                 }
             }
