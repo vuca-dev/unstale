@@ -1958,13 +1958,30 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                 if !deprecated.iter().any(|d| d == l) || !usage::identifier(l) {
                     return false;
                 }
-                let Some(m) = inp.repo.text(p).and_then(|t| usage::binding_module(t, l)) else { return false };
-                let root = if m.starts_with('@') { m.splitn(3, '/').take(2).collect::<Vec<_>>().join("/") } else { m.split(['/', '.']).next().unwrap_or(&m).to_string() };
+                let Some(t) = inp.repo.text(p) else { return false };
+                let root_of = |m: &str| if m.starts_with('@') { m.splitn(3, '/').take(2).collect::<Vec<_>>().join("/") } else { m.split(['/', '.']).next().unwrap_or(m).to_string() };
+                // Imported by name (`import { atomFamily } from 'jotai-family'`), else used as a member of a namespace
+                // import (`import * as jf from 'jotai-family'; jf.atomFamily`), whose module is known by its root only.
+                let (m, whole) = match usage::binding_module(t, l) {
+                    Some(m) => (m, true),
+                    None => {
+                        let word = |c: char| c.is_ascii_alphanumeric() || c == '_' || c == '$';
+                        let qualified = t.match_indices(&format!(".{l}")).filter(|(i, _)| !t[i + l.len() + 1..].starts_with(word)).find_map(|(i, _)| {
+                            let q: String = t[..i].chars().rev().take_while(|c| word(*c)).collect::<Vec<_>>().into_iter().rev().collect();
+                            (!q.is_empty()).then(|| usage::binding_module(t, &format!("{q}.{l}"))).flatten()
+                        });
+                        let Some(m) = qualified else { return false };
+                        (m, false)
+                    }
+                };
+                let root = root_of(&m);
                 let installed = inp.stack.deps.contains_key(&crate::util::npm_purl(&root.to_lowercase())) || inp.stack.deps.contains_key(&crate::pypi::purl(&root));
                 let ours = if named_modules.is_empty() {
                     own_names.iter().any(|n| n.eq_ignore_ascii_case(&root))
-                } else {
+                } else if whole {
                     named_modules.iter().any(|n| m == **n || m.starts_with(&format!("{n}/")))
+                } else {
+                    named_modules.iter().any(|n| root_of(n).eq_ignore_ascii_case(&root))
                 };
                 if !installed || ours {
                     return false;
@@ -3054,6 +3071,13 @@ mod tests {
         let out = run_with(&c, &s, &r, &l);
         let o = out.opps.iter().find(|o| o.id() == "jotai:atomfamily").unwrap();
         assert_eq!((&o.route, &o.matched), (&Route::InEffect, &vec![("atomFamily".to_string(), vec!["src/old.ts".to_string()])]));
+        // Through a namespace import: of the replacement, moved; of the named module, still in effect.
+        let r = repo(&[("src/ns.ts", "import { atomWithStorage } from 'jotai/utils';\nimport * as jf from 'jotai-family';\nexport const a = jf.atomFamily((id: string) => id);\n"), ("src/hooks.ts", other)]);
+        let out = run_with(&c, &s, &r, &l);
+        assert_eq!(route_of(&out, "jotai:atomfamily"), &Route::Applied);
+        let r = repo(&[("src/ns.ts", "import * as u from 'jotai/utils';\nexport const a = u.atomFamily((id: string) => id);\n")]);
+        let out = run_with(&c, &s, &r, &l);
+        assert_eq!(route_of(&out, "jotai:atomfamily"), &Route::InEffect);
         // No import binds it (a global, a re-export it cannot place): kept, as before.
         let bare = "import { atom } from 'jotai';\nexport const a = atomFamily((id: string) => atom(id));\n";
         let r = repo(&[("src/bare.ts", bare)]);
