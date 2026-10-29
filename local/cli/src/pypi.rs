@@ -789,22 +789,49 @@ fn admits(v: &Version, spec: &str) -> bool {
     spec.split("||").any(|alt| spec_satisfies(v, alt.trim()) == Some(true))
 }
 
-/// The newest of `releases` that `spec` admits: what `pip install` or `uv pip install` resolves for it today. A
-/// pre-release only when no final release is admitted (PEP 440: a package published only as `0.60b0`).
-pub fn newest_admitted(releases: &[Version], spec: &str) -> Option<Version> {
+/// The newest of `releases` that `spec` admits: what `pip install`, `uv pip install` or a fresh pnpm install resolves
+/// for it today. A pre-release only when no final release is admitted (PEP 440: a package published only as `0.60b0`).
+fn newest_by(releases: &[Version], spec: &str, admits: fn(&Version, &str) -> bool) -> Option<Version> {
     let ok: Vec<&Version> = releases.iter().filter(|v| admits(v, spec)).collect();
     ok.iter().filter(|v| v.pre.is_empty()).max().or_else(|| ok.iter().max()).map(|v| (*v).clone())
 }
 
+/// One registry `assume_newest_in` reads releases from: the package URLs it serves, how its ranges admit a version,
+/// and how a note names what nothing pins.
+pub struct Fresh {
+    pub prefix: &'static str,
+    pub registry: &'static str,
+    /// A declaration nothing pins, singular and plural (`Python requirement`), and what does not pin it.
+    pub what: (&'static str, &'static str),
+    pub unpinned_by: &'static str,
+    pub admits: fn(&Version, &str) -> bool,
+    pub range: fn(String) -> crate::stack::Range,
+}
+
+pub const PYPI_FRESH: Fresh = Fresh {
+    prefix: "pkg:pypi/",
+    registry: "PyPI",
+    what: ("Python requirement", "Python requirements"),
+    unpinned_by: "no lockfile or pinned requirements file pins",
+    admits,
+    range: crate::stack::Range::Pypi,
+};
+
 /// Reads each declaration no lockfile or pinned requirements file pins (`Dep::unpinned`) at the newest release on
-/// PyPI its specifier admits, the version a fresh install gets (CI's `pip install -e .`), in place of its declared
-/// floor, which is only the oldest version allowed: a floor is not what anyone installs, and an unpinned
-/// requirement has no floor at all. The declared range stays on the reading (`Reading::range`), so what a published
-/// library's users may install is still judged at its floor (`funnel::published_floor`). `releases` gives the
-/// public releases of the asked package URLs; a package it has none for keeps its floor (unpinned: no version).
-/// Said once in `notes`, with the floors kept.
+/// PyPI its specifier admits (`assume_newest_in`).
 pub fn assume_newest(deps: &mut BTreeMap<String, Dep>, notes: &mut Vec<String>, releases: impl FnOnce(&[String]) -> BTreeMap<String, Vec<Version>>) {
-    let want: Vec<String> = deps.iter().filter(|(p, d)| p.starts_with("pkg:pypi/") && d.public_candidate && !d.unpinned.is_empty()).map(|(p, _)| p.clone()).collect();
+    assume_newest_in(&PYPI_FRESH, deps, notes, releases)
+}
+
+/// Reads each declaration nothing pins (`Dep::unpinned`) at the newest release on its registry its range admits,
+/// the version a fresh install gets (CI's `pip install -e .`, a pnpm workspace with `lockfile: false`), in place of
+/// its declared floor, which is only the oldest version allowed: a floor is not what anyone installs, and an
+/// unpinned requirement has no floor at all. The declared range stays on the reading (`Reading::range`), so what a
+/// published library's users may install is still judged at its floor (`funnel::published_floor`). `releases` gives
+/// the public releases of the asked package URLs; a package it has none for keeps its floor (unpinned: no version).
+/// Said once in `notes`, with the floors kept.
+pub fn assume_newest_in(eco: &Fresh, deps: &mut BTreeMap<String, Dep>, notes: &mut Vec<String>, releases: impl FnOnce(&[String]) -> BTreeMap<String, Vec<Version>>) {
+    let want: Vec<String> = deps.iter().filter(|(p, d)| p.starts_with(eco.prefix) && d.public_candidate && !d.unpinned.is_empty()).map(|(p, _)| p.clone()).collect();
     if want.is_empty() {
         return;
     }
@@ -815,7 +842,7 @@ pub fn assume_newest(deps: &mut BTreeMap<String, Dep>, notes: &mut Vec<String>, 
         // Per directory, the lowest of its declarations' newest admitted releases (as `read_under` keeps the lowest).
         let mut by_dir: BTreeMap<String, (Version, String)> = BTreeMap::new();
         for (dir, spec) in &d.unpinned {
-            let Some(v) = got.get(p).and_then(|r| newest_admitted(r, spec)) else { continue };
+            let Some(v) = got.get(p).and_then(|r| newest_by(r, spec, eco.admits)) else { continue };
             match by_dir.get(dir) {
                 Some((old, _)) if *old <= v => {}
                 _ => {
@@ -829,11 +856,12 @@ pub fn assume_newest(deps: &mut BTreeMap<String, Dep>, notes: &mut Vec<String>, 
             }
             continue;
         }
+        let reg = eco.registry;
         for (dir, (v, spec)) in by_dir {
             let source = if spec.trim().is_empty() {
-                format!("newest release {v} on PyPI (unpinned, nothing pins it: what a fresh install resolves)")
+                format!("newest release {v} on {reg} (unpinned, nothing pins it: what a fresh install resolves)")
             } else {
-                format!("newest release {v} on PyPI that {spec} admits (nothing pins it: what a fresh install resolves)")
+                format!("newest release {v} on {reg} that {spec} admits (nothing pins it: what a fresh install resolves)")
             };
             match d.readings.iter_mut().find(|r| r.dir == dir) {
                 // A floor reading; a pinned reading of the same directory stays.
@@ -842,7 +870,7 @@ pub fn assume_newest(deps: &mut BTreeMap<String, Dep>, notes: &mut Vec<String>, 
                     r.source = source;
                 }
                 Some(_) => {}
-                None => d.readings.push(crate::stack::Reading { dir, version: v, source, standalone: false, range: Some(crate::stack::Range::Pypi(spec)), lock: None }),
+                None => d.readings.push(crate::stack::Reading { dir, version: v, source, standalone: false, range: Some((eco.range)(spec)), lock: None }),
             }
         }
         // Named when no manifest pins it: a workspace member's unpinned declaration beside a pinned one sets nothing.
@@ -854,20 +882,24 @@ pub fn assume_newest(deps: &mut BTreeMap<String, Dep>, notes: &mut Vec<String>, 
         let more = if names.len() > 8 { format!(" and {} more", names.len() - 8) } else { String::new() };
         format!("{}{more}", names.iter().take(8).cloned().collect::<Vec<_>>().join(", "))
     };
+    let what = |n: usize| if n == 1 { eco.what.0 } else { eco.what.1 };
     if !newest.is_empty() {
         notes.push(format!(
-            "{} Python requirement{} no lockfile or pinned requirements file pins ({}): read at the newest release on PyPI {} declared range admits, what a fresh install resolves, not an installed version. A published library's floor is still checked for what its users may install.",
+            "{} {} {} ({}): read at the newest release on {} {} declared range admits, what a fresh install resolves, not an installed version. A published library's floor is still checked for what its users may install.",
             newest.len(),
-            if newest.len() == 1 { "" } else { "s" },
+            what(newest.len()),
+            eco.unpinned_by,
             list(&newest),
+            eco.registry,
             if newest.len() == 1 { "its" } else { "each one's" },
         ));
     }
     if !floors.is_empty() {
         notes.push(format!(
-            "{} Python requirement{} no lockfile pins and whose releases were not read ({}): read at {} declared floor, the oldest version allowed, not an installed version.",
+            "{} {} {} and whose releases were not read ({}): read at {} declared floor, the oldest version allowed, not an installed version.",
             floors.len(),
-            if floors.len() == 1 { "" } else { "s" },
+            what(floors.len()),
+            eco.unpinned_by,
             list(&floors),
             if floors.len() == 1 { "its" } else { "their" },
         ));
@@ -880,27 +912,7 @@ const RELEASES_FRESH_SECS: u64 = 24 * 3600;
 /// The public releases of PyPI packages (versions with at least one file not yanked), from `pypi.org/pypi/<name>/json`,
 /// cached for a day under the cache directory. None with `UNSTALE_NO_REGISTRY=1`, and none in tests.
 pub fn registry_releases(purls: &[String]) -> BTreeMap<String, Vec<Version>> {
-    let mut out = BTreeMap::new();
-    if cfg!(test) || crate::privacy::registry_off() {
-        return out;
-    }
-    let dir = crate::cache::cache_dir().join("pypi-releases");
-    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-    let path = |purl: &str| dir.join(format!("{}.json", normalize(purl.trim_start_matches("pkg:pypi/"))));
-    let parse = |vs: &[String]| vs.iter().filter_map(|v| parse_version(v)).collect::<Vec<_>>();
-    let mut due = vec![];
-    for p in purls {
-        let cached = std::fs::read(path(p)).ok().and_then(|b| serde_json::from_slice::<Json>(&b).ok());
-        match cached {
-            Some(c) if now.saturating_sub(c.get("checked").and_then(Json::as_u64).unwrap_or(0)) < RELEASES_FRESH_SECS => {
-                let vs: Vec<String> = c.get("versions").and_then(Json::as_array).into_iter().flatten().filter_map(Json::as_str).map(String::from).collect();
-                out.insert(p.clone(), parse(&vs));
-            }
-            _ => due.push(p.clone()),
-        }
-    }
-    let agent: ureq::Agent = ureq::Agent::config_builder().http_status_as_error(false).timeout_global(Some(std::time::Duration::from_secs(15))).build().into();
-    let fetch = |purl: &String| -> Option<Vec<String>> {
+    cached_releases(purls, "pypi-releases", parse_version, |agent, purl| {
         let name = purl.trim_start_matches("pkg:pypi/");
         let mut r = agent.get(format!("https://pypi.org/pypi/{name}/json")).call().ok().filter(|r| r.status().is_success())?;
         let bytes = r.body_mut().with_config().limit(64 * 1024 * 1024).read_to_vec().ok()?;
@@ -913,8 +925,60 @@ pub fn registry_releases(purls: &[String]) -> BTreeMap<String, Vec<Version>> {
                 .map(|(v, _)| v.clone())
                 .collect(),
         )
+    })
+}
+
+/// The published versions of public npm packages, from the registry's abbreviated document
+/// (`application/vnd.npm.install-v1+json`, what package managers resolve from), cached for a day like
+/// `registry_releases`. None with `UNSTALE_NO_REGISTRY=1`, and none in tests.
+pub fn npm_registry_releases(purls: &[String]) -> BTreeMap<String, Vec<Version>> {
+    cached_releases(purls, "npm-releases", crate::util::parse_version, |agent, purl| {
+        let name = crate::util::npm_name(purl)?;
+        let enc: String = name.bytes().map(|b| if b.is_ascii_alphanumeric() || b"-._~@".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") }).collect();
+        let mut r = agent
+            .get(format!("https://registry.npmjs.org/{enc}"))
+            .header("Accept", "application/vnd.npm.install-v1+json")
+            .call()
+            .ok()
+            .filter(|r| r.status().is_success())?;
+        let bytes = r.body_mut().with_config().limit(64 * 1024 * 1024).read_to_vec().ok()?;
+        let doc: Json = serde_json::from_slice(&bytes).ok()?;
+        Some(doc.get("versions")?.as_object()?.keys().cloned().collect())
+    })
+}
+
+/// Release lists per package URL, each fetched by `fetch` at most once a day (cached under `sub` in the cache
+/// directory).
+fn cached_releases(
+    purls: &[String],
+    sub: &str,
+    parse_one: fn(&str) -> Option<Version>,
+    fetch: impl Fn(&ureq::Agent, &str) -> Option<Vec<String>> + Sync,
+) -> BTreeMap<String, Vec<Version>> {
+    let mut out = BTreeMap::new();
+    if cfg!(test) || crate::privacy::registry_off() {
+        return out;
+    }
+    let dir = crate::cache::cache_dir().join(sub);
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    let path = |purl: &str| {
+        let key: String = purl.split_once('/').map_or(purl, |(_, n)| n).bytes().map(|b| if b.is_ascii_alphanumeric() || b"-._".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") }).collect();
+        dir.join(format!("{}.json", key.to_lowercase()))
     };
-    crate::util::concurrent(&due, crate::util::REQUESTS_AT_ONCE, fetch, |i, got| {
+    let parse = |vs: &[String]| vs.iter().filter_map(|v| parse_one(v)).collect::<Vec<_>>();
+    let mut due = vec![];
+    for p in purls {
+        let cached = std::fs::read(path(p)).ok().and_then(|b| serde_json::from_slice::<Json>(&b).ok());
+        match cached {
+            Some(c) if now.saturating_sub(c.get("checked").and_then(Json::as_u64).unwrap_or(0)) < RELEASES_FRESH_SECS => {
+                let vs: Vec<String> = c.get("versions").and_then(Json::as_array).into_iter().flatten().filter_map(Json::as_str).map(String::from).collect();
+                out.insert(p.clone(), parse(&vs));
+            }
+            _ => due.push(p.clone()),
+        }
+    }
+    let agent: ureq::Agent = ureq::Agent::config_builder().http_status_as_error(false).timeout_global(Some(std::time::Duration::from_secs(15))).build().into();
+    crate::util::concurrent(&due, crate::util::REQUESTS_AT_ONCE, |p: &String| fetch(&agent, p), |i, got| {
         if let Some(vs) = got {
             let _ = std::fs::create_dir_all(&dir);
             if let Ok(b) = serde_json::to_vec(&serde_json::json!({ "checked": now, "versions": vs })) {

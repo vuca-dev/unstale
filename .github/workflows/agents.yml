@@ -276,7 +276,7 @@ jobs:
           npm ci --prefix gateway --no-audit --no-fund >/dev/null
           npm install -g "@anthropic-ai/claude-code@$CLAUDE_CODE_VERSION" --no-audit --no-fund >/dev/null
           git config --global user.name "unstale $LANE agent"
-          git config --global user.email "agents@users.noreply.github.com"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git clone -q --depth 1 -b agent-memory "https://github.com/$GITHUB_REPOSITORY.git" "$RUNNER_TEMP/memory" 2>/dev/null \
             || mkdir -p "$RUNNER_TEMP/memory"
           [ -f "$RUNNER_TEMP/memory/$LANE.md" ] || printf '# %s agent log\n\n## Revisit\n\n## Entries\n' "$LANE" > "$RUNNER_TEMP/memory/$LANE.md"
