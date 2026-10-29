@@ -727,6 +727,64 @@ fn reaching<'p>(packages: &'p [crate::stack::Package], dependents: &[Vec<usize>]
     packages.iter().zip(has).filter(|(_, h)| *h).map(|(p, _)| p.dir.as_str()).collect()
 }
 
+/// The record's literals that its summary names as what to use instead of the API it is about ("Removed; use `np.inf`
+/// instead" for `np.infty`, written after "use", "in favor of", "replaced by", "migrate to" or "switch to"), when the
+/// record names that API in `replaces` and the literal is not one of them: a site of the replacement is code already on
+/// it, not a use of what was removed or deprecated.
+pub fn successor_lits(r: &Rec, lits: &[String]) -> Vec<String> {
+    let replaces: BTreeSet<String> = r.r.replaces.iter().filter_map(|x| clean_lit(x)).collect();
+    if replaces.is_empty() {
+        return vec![];
+    }
+    let summary = &r.r.summary;
+    let lower = summary.to_ascii_lowercase();
+    let word = |c: Option<char>| c.is_some_and(|c| c.is_ascii_alphanumeric() || c == '_');
+    let mut named: BTreeSet<String> = BTreeSet::new();
+    for m in [
+        "use ",
+        "in favor of ",
+        "in favour of ",
+        "replaced by ",
+        "replaced with ",
+        "migrate to ",
+        "switch to ",
+    ] {
+        for (i, _) in lower
+            .match_indices(m)
+            .filter(|(i, _)| !word(lower[..*i].chars().next_back()))
+        {
+            let rest = &summary[i + m.len()..];
+            // "Use of `x` is deprecated" names the old API, not a successor.
+            if m == "use " && rest.to_ascii_lowercase().starts_with("of ") {
+                continue;
+            }
+            // The clause ends at a sentence end: a `;`, a line break, or a dot not inside a qualified name (`np.inf`).
+            let end = rest
+                .char_indices()
+                .find(|&(k, c)| {
+                    c == ';'
+                        || c == '\n'
+                        || (c == '.'
+                            && !rest[k + 1..]
+                                .starts_with(|c: char| c.is_ascii_alphanumeric() || c == '_'))
+                })
+                .map_or(rest.len(), |(k, _)| k);
+            let clause = &rest[..end];
+            let clause = clause.split(" instead of ").next().unwrap_or(clause);
+            for w in clause.split(|c: char| !(c.is_ascii_alphanumeric() || "_$./".contains(c))) {
+                let w = w.trim_end_matches(['.', '/']);
+                if usage::identifier(w) || usage::qualified_name(w) {
+                    named.insert(w.to_string());
+                }
+            }
+        }
+    }
+    lits.iter()
+        .filter(|l| !replaces.contains(*l) && named.contains(l.trim_end_matches(['(', ')'])))
+        .cloned()
+        .collect()
+}
+
 /// The literals that name what replaces a deprecation's deprecated API (`deprecated`): its `introduces`, and its
 /// other literals of the same shape as a deprecated one (a module path for a module path, a flag for a flag, a file
 /// name for a file name, an identifier for an identifier), neither part of nor containing it, and not plain words or
@@ -1362,10 +1420,10 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             vec![]
         };
         let runs_a_copy = |p: &str| copies.is_empty() || !usage::own_code(p, &ecosystem) || copies.iter().any(|r| r.contains(p));
-        let exact_of = |v: usize, l: &str, repl: &[String], context: Option<&[String]>, keyed: bool, config: bool, succ: &[String], call: bool, parent: Option<&str>, invoked: bool, shape: Option<(usize, Option<usize>)>, named: &[String], subject: &str, ns_context: Option<&[String]>| -> Rc<usage::Evidence> {
+        let exact_of = |v: usize, l: &str, repl: &[String], context: Option<&[String]>, keyed: bool, config: bool, succ: &[String], call: bool, parent: Option<&str>, invoked: bool, shape: Option<(usize, Option<usize>)>, named: &[String], subject: &str, ns_context: Option<&[String]>, facet: Option<&str>| -> Rc<usage::Evidence> {
             let ctx = context.map_or("-".to_string(), |c| c.join("\0"));
             let ns_ctx = ns_context.map_or("-".to_string(), |c| c.join("\0"));
-            let key = (v, format!("{l}\0{}\u{1}{ctx}\u{2}{keyed}\u{3}{config}\u{4}{}\u{5}{call}\u{6}{parent:?}\u{7}{invoked}\u{8}{}\u{9}{shape:?}\u{a}{subject}\u{b}{ns_ctx}", repl.join("\0"), succ.join("\0"), named.join("\0")));
+            let key = (v, format!("{l}\0{}\u{1}{ctx}\u{2}{keyed}\u{3}{config}\u{4}{}\u{5}{call}\u{6}{parent:?}\u{7}{invoked}\u{8}{}\u{9}{shape:?}\u{a}{subject}\u{b}{ns_ctx}\u{c}{facet:?}", repl.join("\0"), succ.join("\0"), named.join("\0")));
             if let Some(e) = exact.borrow().get(&key) {
                 return e.clone();
             }
@@ -1434,7 +1492,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                 }
                 // A bare keyword or parameter name of the subject API (`model_name` of `list_models`) in Python code:
                 // only where the file uses that API, and not as a parameter the file declares (`usage::py_keyword_site`).
-                if inp.repo.text(p).is_some_and(|t| !usage::py_keyword_site(p, t, l, subject)) {
+                if inp.repo.text(p).is_some_and(|t| !usage::py_keyword_site(p, t, l, subject, facet)) {
                     return false;
                 }
                 // A namespace the record's subject is narrower than (`pytest.mark` for hook markers), written only as
@@ -1679,6 +1737,9 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             let mut deprecated = deprecated_lits(rec, ls);
             deprecated.retain(|l| !usage::loads_only(l, &own_names));
             let replacement = replacement_lits(rec, ls, &deprecated);
+            // Without the replacement its summary names (`np.inf` for a removed `np.infty`): code on it is no site.
+            let successors = successor_lits(rec, ls);
+            let own: Vec<String> = ls.iter().filter(|l| !successors.contains(l)).cloned().collect();
             // A deprecated namespace (`pytest.mark`, for markers on hook implementations) counts only beside a specific
             // literal of the record: not the namespace or a part of it, not a member other records are about (another
             // API: `pytest.mark.parametrize`), not the replacement, not a plain word.
@@ -1757,7 +1818,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                 of.try_fold((usize::MAX, Some(0usize)), |(lo, hi), a| a.map(|(m, x)| (lo.min(m), hi.zip(x).map(|(h, x)| h.max(x)))))
             };
             let ev_cite = |l: &str| -> Rc<usage::Evidence> { if let Some(a) = shape(l) { shaped_of(view, l, a) } else { ev(l) } };
-            let ex_with = |l: &str, call: bool| exact_of(view, l, &replacement, broad.iter().any(|b| *b == l).then_some(&context[..]), keyed_api(&rec.r, ls, l), config, &succ, call, option_of(&rec.r, l), invoked(l), shape(l), &named, &rec.r.subject, narrow.iter().any(|b| *b == l).then_some(&context[..]));
+            let ex_with = |l: &str, call: bool| exact_of(view, l, &replacement, broad.iter().any(|b| *b == l).then_some(&context[..]), keyed_api(&rec.r, ls, l), config, &succ, call, option_of(&rec.r, l), invoked(l), shape(l), &named, &rec.r.subject, narrow.iter().any(|b| *b == l).then_some(&context[..]), rec.r.facet.as_deref());
             let ex = |l: &str| ex_with(l, false);
             // A record about some values of one option cites the option's key only, where a file sets it to one of them.
             // A deprecation citing its replaced literals keeps that path (`option_of` puts a value under its key).
@@ -1780,7 +1841,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             } else if keyed.is_some() {
                 (&key_lits, &key_ev)
             } else {
-                (ls, &ev_cite)
+                (&own[..], &ev_cite)
             };
             // A lint rule this repository never turns on: none of the record's terms is a site (`rule_not_enabled`).
             let rule_off = !lint_ns.is_empty()
@@ -1793,7 +1854,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             // A record about option values or one option's key scores by the files citing it (its evidence's `used` counts
             // the literal anywhere).
             let narrowed = valued.is_some() || keyed.is_some();
-            let score = (if narrowed { cited } else { ls })
+            let score = (if narrowed { cited } else { &own[..] })
                 .iter()
                 .filter(|_| !rule_off)
                 .filter_map(|l| {
@@ -2831,6 +2892,81 @@ mod tests {
         let out = run_with(&c, &s, &r, &l);
         let o = out.opps.iter().find(|o| o.id() == "hf:model-name").unwrap();
         assert_eq!((&o.route, &o.matched), (&Route::InEffect, &vec![("model_name".to_string(), vec!["app/hub.py".to_string()])]));
+    }
+
+    #[test]
+    fn a_removal_does_not_match_the_replacement_its_summary_names() {
+        // microsoft/qlib: numpy 2.0 removes `np.infty` ("Removed; use `np.inf` instead") and the record's terms include
+        // `np.inf`; code writing `np.inf` is already on the replacement.
+        let r = |id: &str,
+                 subject: &str,
+                 summary: &str,
+                 terms: serde_json::Value|
+         -> crate::cache::Rec {
+            let v = with(
+                rec(id, "pkg:pypi/numpy", "2.0.0"),
+                json!({"change_type":"removal","subject":subject,"summary":summary,"replaces":[subject],"terms":terms}),
+            );
+            crate::cache::Rec {
+                r: serde_json::from_value(v).unwrap(),
+                borderline: vec![],
+            }
+        };
+        let lits = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+        let infty = r(
+            "numpy:np.infty",
+            "np.infty",
+            "Removed; use `np.inf` instead.",
+            json!([["np.infty", 0], ["numpy.infty", 0], ["np.inf", 0]]),
+        );
+        assert_eq!(
+            successor_lits(&infty, &lits(&["np.infty", "numpy.infty", "np.inf"])),
+            lits(&["np.inf"])
+        );
+        // The removed name itself stays even where it differs from the replacement only in case.
+        let inf = r(
+            "numpy:np.inf",
+            "np.Inf",
+            "Removed; use `np.inf` instead.",
+            json!([["np.Inf", 0], ["np.inf", 0]]),
+        );
+        assert_eq!(
+            successor_lits(&inf, &lits(&["np.Inf", "np.inf"])),
+            lits(&["np.inf"])
+        );
+        // "Use of X" names the old API; a summary naming no successor drops nothing; nor does a record without `replaces`.
+        let of = r(
+            "x:a",
+            "foo",
+            "Use of `bar` with foo is deprecated.",
+            json!([["foo", 0], ["bar", 0]]),
+        );
+        assert!(successor_lits(&of, &lits(&["foo", "bar"])).is_empty());
+        let none = r(
+            "x:b",
+            "foo",
+            "Removed without a replacement.",
+            json!([["foo", 0]]),
+        );
+        assert!(successor_lits(&none, &lits(&["foo"])).is_empty());
+        let mut bare = r(
+            "x:c",
+            "foo",
+            "Removed; use bar instead.",
+            json!([["foo", 0], ["bar", 0]]),
+        );
+        bare.r.replaces.clear();
+        assert!(successor_lits(&bare, &lits(&["foo", "bar"])).is_empty());
+        let multi = r(
+            "x:d",
+            "old_fn",
+            "old_fn is removed; it was replaced by new_fn. Calls of helper keep working.",
+            json!([["old_fn", 0], ["new_fn", 0], ["helper", 0]]),
+        );
+        assert_eq!(
+            successor_lits(&multi, &lits(&["old_fn", "new_fn", "helper"])),
+            lits(&["new_fn"])
+        );
     }
 
     #[test]
