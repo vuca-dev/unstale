@@ -409,8 +409,8 @@ pub fn deprecated_lits(r: &Rec, lits: &[String]) -> Vec<String> {
 
 /// The literals a deprecation that names no deprecated literal (`deprecated_lits`) is cited at: those naming its
 /// subject, when any does, else all of them. A literal names the subject when each of its words is a word of the
-/// subject, up to a plural (`-s`, `-es`, `-ies`: `source_encoding` for "non-UTF 8 source encodings"); the record's other terms are its
-/// context (`source_suffix`, `.rst`: every project of the technology writes them). A literal that writes a qualified
+/// subject, up to a plural (`-s`, `-es`, `-ies`: `source_encoding` for "non-UTF 8 source encodings"), or is a member of
+/// one that does; the record's other terms are its context (`source_suffix`, `.rst`: every project of the technology writes them). A literal that writes a qualified
 /// subject's parts in another order (`app.env` for `env.app`) is another attribute path and never a site.
 pub fn subject_sites(r: &unstale_schema::catalog::CapabilityRecord, lits: &[String]) -> Vec<String> {
     let parts = |s: &str| -> Vec<String> { s.split('.').map(str::to_ascii_lowercase).collect() };
@@ -461,8 +461,12 @@ pub fn subject_sites(r: &unstale_schema::catalog::CapabilityRecord, lits: &[Stri
         let ws = words(l);
         !ws.is_empty() && ws.iter().all(|w| subject.iter().any(|s| plural(w, s)))
     };
-    let naming: Vec<String> = lits.iter().filter(|l| names(l)).cloned().collect();
-    if naming.is_empty() { lits } else { naming }
+    let naming: Vec<&String> = lits.iter().filter(|l| names(l)).collect();
+    if naming.is_empty() {
+        return lits;
+    }
+    // A member of a literal naming the subject uses it (`clipboard.readText` for "Clipboard API access").
+    lits.iter().filter(|l| names(l) || naming.iter().any(|n| l.starts_with(&format!("{n}.")))).cloned().collect()
 }
 
 /// What part of a surviving API a deprecation is about (`deprecated_part`).
@@ -3303,6 +3307,8 @@ mod tests {
         assert_eq!(deprecated_lits(&r("setup", "Sphinx.setup is deprecated."), &lits(&["setup"])), lits(&["setup"]));
         let concept = r("legacy categories", "Legacy categories are deprecated.").r;
         assert_eq!(subject_sites(&concept, &lits(&["category", "config_path"])), lits(&["category"]));
+        let api = r("clipboard", "Clipboard access from renderer processes is deprecated.").r;
+        assert_eq!(subject_sites(&api, &lits(&["clipboard.readText", "clipboard", "BrowserWindow"])), lits(&["clipboard.readText", "clipboard"]));
     }
 
     #[test]
