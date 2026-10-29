@@ -1397,7 +1397,11 @@ pub fn py_keyword_site(path: &str, text: &str, lit: &str, subject: &str, facet: 
         let s = subject.trim().trim_matches('`').trim_end_matches("()");
         let s = s.rsplit('.').next().unwrap_or(s);
         if s.len() >= 3 && is_word(s) && s.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_') && !s.eq_ignore_ascii_case(name) {
-            return keyword_passed_to(text, s, name, &comment_spans(path, text));
+            // Comments and plain strings (a docstring's `df.query(inplace=True)` example) are no call; an f-string's
+            // interpolated code is.
+            let (mut skip, strings) = lex_spans(path, text);
+            skip.extend(strings.into_iter().filter(|&(_, _, interp)| !interp).map(|(s, e, _)| (s, e)));
+            return keyword_passed_to(text, s, name, &skip);
         }
     }
     let comments = comment_spans(path, text);
@@ -1426,14 +1430,15 @@ pub fn py_keyword_site(path: &str, text: &str, lit: &str, subject: &str, facet: 
 }
 
 /// Whether `text` calls `callee` (a whole word, not where it is defined) passing keyword argument `kw` at the call's own
-/// level (`callee(a, kw=1)`; not `callee(f(kw=1))`, not `kw == 1`). Strings and `comments` are skipped.
-fn keyword_passed_to(text: &str, callee: &str, kw: &str, comments: &[(usize, usize)]) -> bool {
+/// level (`callee(a, kw=1)`; not `callee(f(kw=1))`, not `kw == 1`). A callee inside `skip` (comments, plain strings)
+/// is no call; strings inside the argument list are skipped.
+fn keyword_passed_to(text: &str, callee: &str, kw: &str, skip: &[(usize, usize)]) -> bool {
     let word = |c: char| c.is_ascii_alphanumeric() || c == '_';
     let b = text.as_bytes();
     text.match_indices(callee).any(|(i, _)| {
         let before = &text[..i];
         if before.chars().next_back().is_some_and(word)
-            || comments.iter().any(|&(s, e)| s <= i && i < e)
+            || skip.iter().any(|&(s, e)| s <= i && i < e)
         {
             return false;
         }
@@ -2612,6 +2617,10 @@ mod tests {
             "DataFrame.filter",
             Some("regex")
         ));
+        // A docstring's example is no call; an f-string's interpolated call is.
+        let doc = "def f(df):\n    \"\"\"Like df.query(\"a\", inplace=True).\"\"\"\n    return df.query(\"a\")\n";
+        assert!(!py_keyword_site("d.py", doc, "inplace=", "DataFrame.query", Some("inplace")));
+        assert!(py_keyword_site("d.py", "x = f\"{df.query('a', inplace=True)}\"\n", "inplace=", "DataFrame.query", Some("inplace")));
         // Only inside a nested call, or compared: not passed to the subject.
         assert!(!py_keyword_site(
             "q.py",

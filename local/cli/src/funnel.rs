@@ -732,6 +732,10 @@ fn reaching<'p>(packages: &'p [crate::stack::Package], dependents: &[Vec<usize>]
 /// record names that API in `replaces` and the literal is not one of them: a site of the replacement is code already on
 /// it, not a use of what was removed or deprecated.
 pub fn successor_lits(r: &Rec, lits: &[String]) -> Vec<String> {
+    // A deprecation's score counts every literal (its sites are its deprecated ones, `deprecated_lits`).
+    if r.r.change_type == ChangeType::Deprecation {
+        return vec![];
+    }
     let replaces: BTreeSet<String> = r.r.replaces.iter().filter_map(|x| clean_lit(x)).collect();
     if replaces.is_empty() {
         return vec![];
@@ -771,9 +775,10 @@ pub fn successor_lits(r: &Rec, lits: &[String]) -> Vec<String> {
                 .map_or(rest.len(), |(k, _)| k);
             let clause = &rest[..end];
             let clause = clause.split(" instead of ").next().unwrap_or(clause);
-            for w in clause.split(|c: char| !(c.is_ascii_alphanumeric() || "_$./".contains(c))) {
-                let w = w.trim_end_matches(['.', '/']);
-                if usage::identifier(w) || usage::qualified_name(w) {
+            // Package paths, scoped and hyphenated names and flags too (`next/image`, `graphql-ws`, `--flag`).
+            for w in clause.split(|c: char| !(c.is_ascii_alphanumeric() || "_$./-@:".contains(c))) {
+                let w = w.trim_end_matches(['.', '/', ':', '-']);
+                if w.chars().any(|c| c.is_ascii_alphanumeric()) {
                     named.insert(w.to_string());
                 }
             }
@@ -2967,6 +2972,12 @@ mod tests {
             successor_lits(&multi, &lits(&["old_fn", "new_fn", "helper"])),
             lits(&["new_fn"])
         );
+        let path = r("x:e", "subscriptions-transport-ws", "Removed; migrate to `graphql-ws` or `@apollo/client/link/subscriptions`.", json!([["subscriptions-transport-ws",0],["graphql-ws",0],["@apollo/client/link/subscriptions",0]]));
+        assert_eq!(successor_lits(&path, &lits(&["subscriptions-transport-ws", "graphql-ws", "@apollo/client/link/subscriptions"])), lits(&["graphql-ws", "@apollo/client/link/subscriptions"]));
+        // A deprecation keeps every literal for its score.
+        let mut dep = r("x:f", "np.infty", "Deprecated; use `np.inf` instead.", json!([["np.infty",0],["np.inf",0]]));
+        dep.r.change_type = ChangeType::Deprecation;
+        assert!(successor_lits(&dep, &lits(&["np.infty", "np.inf"])).is_empty());
     }
 
     #[test]
