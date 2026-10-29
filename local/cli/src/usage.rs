@@ -257,6 +257,8 @@ pub struct Scope<'a> {
     /// Some of the repository's own code imports one of the technology's packages: it is a library code reaches by
     /// importing it, so its API in code that does not import it is another module's (`classify`).
     imported: bool,
+    /// The files' texts (`with_repo`), for `platform_global`.
+    repo: Option<&'a Repo>,
     memo: RefCell<Vec<u8>>,
 }
 
@@ -306,7 +308,13 @@ impl<'a> Scope<'a> {
             .collect();
         let memo = RefCell::new(vec![0; paths.len()]);
         let imported = importing.iter().any(|p| own_code(p, ecosystem));
-        Scope { ecosystem, owners, reach: owners, stems, naming, importing, config_names, hits, paths, named_at, imported, memo }
+        Scope { ecosystem, owners, reach: owners, stems, naming, importing, config_names, hits, paths, named_at, imported, repo: None, memo }
+    }
+
+    /// The repository whose texts `platform_global` reads.
+    pub fn with_repo(mut self, repo: &'a Repo) -> Self {
+        self.repo = Some(repo);
+        self
     }
 
     /// `reach`: the packages that declare the technology or depend, through the repository's own packages, on one that
@@ -400,6 +408,45 @@ impl<'a> Scope<'a> {
             && own_code(path, self.ecosystem)
             && !self.path_names(path)
             && !self.config_names.contains(&path.rsplit('/').next().unwrap_or(path).to_ascii_lowercase())
+    }
+
+    /// Whether a qualified literal in application code that does not import the technology names the runtime's own
+    /// global rather than the technology's API: its head (`document` in `document.cookie`) is bound nowhere in the
+    /// file (`binds`), so the browser, Node or Python provides it there. A package implementing that platform API
+    /// itself (a DOM emulator, a polyfill, a runtime shim) is reached only by code that imports or constructs it, or by
+    /// tests and configuration that select it; a production file using the platform's own object is not its use.
+    /// Tests, tooling and a file named for the technology keep the package rule (they may run inside it). Such a
+    /// file still orders the queue (`Evidence::used`).
+    fn platform_global(&self, path: &str, lit: &str, imports: bool, app: bool) -> bool {
+        let lit = lit.trim_start_matches('.');
+        if !app || imports || !lit.contains('.') || !own_code(path, self.ecosystem) || self.path_names(path) {
+            return false;
+        }
+        if self.config_names.contains(&path.rsplit('/').next().unwrap_or(path).to_ascii_lowercase()) {
+            return false;
+        }
+        let Some(text) = self.repo.and_then(|r| r.text(path)) else { return false };
+        // Each occurrence's root: `document` in `document.cookie`, `window` in `window.document.cookie`, `PIL` in
+        // `PIL.Image.open` (a module the file imports, so not a global).
+        let mut roots = text.match_indices(lit).filter(|(at, _)| !text[..*at].ends_with(|c: char| c.is_ascii_alphanumeric() || c == '_' || c == '$')).map(|(at, _)| {
+            let mut start = at;
+            while text[..start].ends_with('.') {
+                let before = &text[..start - 1];
+                let w = before.len() - before.chars().rev().take_while(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '$').count();
+                if w == before.len() {
+                    break;
+                }
+                start = w;
+            }
+            text[start..].split(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '$')).next().unwrap_or("")
+        }).peekable();
+        roots.peek().is_some()
+            && roots.all(|root| {
+                root.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_' || c == '$')
+                    && !matches!(root, "this" | "self" | "cls" | "super" | "import" | "new")
+                    && !self.stems.iter().any(|s| s.eq_ignore_ascii_case(root))
+                    && !binds(text, root)
+            })
     }
 
     /// `named`: the file names a package (`naming_lits`), and whether at a module position (`module_naming`).
@@ -507,6 +554,9 @@ impl<'a> Scope<'a> {
             if self.borrowed(p, self.named_at[*x as usize].1) {
                 continue;
             }
+            if self.repo.is_some() && self.platform_global(p, lit, self.named_at[*x as usize].1, role(p) == Role::App) {
+                continue;
+            }
             if tails.is_some_and(|t| t.contains(x)) || (!about && (plain || ((ident || tail_hit) && !self.record_named(p)))) {
                 continue;
             }
@@ -526,6 +576,61 @@ impl<'a> Scope<'a> {
         e.files = best.into_iter().map(|(not_about, _, _, p)| (p.to_string(), !not_about)).collect();
         e
     }
+}
+
+/// Whether `text` binds the identifier `id` itself: imports it (`import { id }`, `import * as id`, `from m import id`),
+/// declares it (`const`, `let`, `var`, `function`, `class`, `def`, a destructuring pattern), or takes it as an arrow
+/// function's parameter. An unbound name is a global the runtime provides (`platform_global`).
+pub fn binds(text: &str, id: &str) -> bool {
+    let b = text.as_bytes();
+    let word = |c: u8| c.is_ascii_alphanumeric() || c == b'_' || c == b'$';
+    let decl = ["import", "const", "let", "var", "function", "class", "def", "as", "global"];
+    text.match_indices(id).any(|(at, _)| {
+        let end = at + id.len();
+        if (at > 0 && word(b[at - 1])) || b.get(end).is_some_and(|c| word(*c)) {
+            return false;
+        }
+        let before = &text[..at];
+        let prev = before.trim_end().rsplit(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '$')).next().unwrap_or("");
+        if decl.contains(&prev) || text[end..].trim_start().starts_with("=>") || parameter(before, &text[end..]) {
+            return true;
+        }
+        // Inside an import clause or a destructuring declaration, before its source or `=`.
+        let mut from = before.len().saturating_sub(400);
+        while !before.is_char_boundary(from) {
+            from += 1;
+        }
+        let window = &before[from..];
+        decl[..3].iter().filter_map(|k| {
+            window.match_indices(k).filter(|(i, _)| {
+                let wb = window.as_bytes();
+                (*i == 0 || !word(wb[*i - 1])) && wb.get(i + k.len()).is_some_and(|c| !word(*c))
+            }).last().map(|(i, _)| (i, *k))
+        }).max_by_key(|(i, _)| *i).is_some_and(|(i, k)| {
+            let seg = &window[i + k.len()..];
+            let allowed = |c: char| c.is_ascii_alphanumeric() || c.is_whitespace() || "_$,{}[]:*(".contains(c);
+            seg.chars().all(allowed) && (k == "import" || seg.contains(['{', '[']))
+        })
+    })
+}
+
+/// Whether an occurrence between `before` and `after` sits in a parameter list: of `function f(…)`, `def f(…)`, an
+/// arrow function `(…) =>`, or a method `f(…) {` (not `if (…) {` and the like).
+fn parameter(before: &str, after: &str) -> bool {
+    let Some(open) = before.rfind('(') else { return false };
+    let Some(close) = after.find(')') else { return false };
+    if before[open..].contains([')', ';']) || after[..close].contains(['(', ';']) {
+        return false;
+    }
+    let ident = |c: char| c.is_ascii_alphanumeric() || c == '_' || c == '$';
+    let head = before[..open].trim_end();
+    let name = head.rsplit(|c: char| !ident(c)).next().unwrap_or("");
+    let keyword = head[..head.len() - name.len()].trim_end().rsplit(|c: char| !ident(c)).next().unwrap_or("");
+    let rest = after[close + 1..].trim_start();
+    name == "function"
+        || matches!(keyword, "function" | "def")
+        || rest.starts_with("=>")
+        || (!name.is_empty() && !matches!(name, "if" | "while" | "for" | "switch" | "catch" | "with" | "return") && rest.starts_with('{'))
 }
 
 /// Whether `path` is inside one of the package directories `dirs` (`.` is the root; none known: every file).
@@ -1378,13 +1483,31 @@ fn py_param_spans(text: &str, comments: &[(usize, usize)]) -> Vec<(usize, usize)
 /// `FastAPI`), not where it only defines a name of that spelling; and only as a call's argument or another use, not as
 /// a parameter the file declares (`def _failed_load_slice(errors, **extra)`, `def _normalize(model_name)`). Other
 /// files, other literals (qualified names, calls of the subject itself) and a subject that is prose are unchanged.
-pub fn py_keyword_site(path: &str, text: &str, lit: &str, subject: &str) -> bool {
+///
+/// A keyword argument the record is about (its literal written `regex=`, or its `facet` naming the keyword: `inplace` of
+/// `DataFrame.query`, `api_key` of `options`) is its site only as a keyword argument of a call of the subject's own
+/// member (`df.query(…, inplace=True)`): the same keyword passed to another call (`df.drop(inplace=True)`,
+/// `s.str.replace(…, regex=False)`, the constructor `Elasticsearch(api_key=…)`) or declared as a parameter is not.
+pub fn py_keyword_site(path: &str, text: &str, lit: &str, subject: &str, facet: Option<&str>) -> bool {
     if !path.ends_with(".py") {
         return true;
     }
     let name = lit.trim().trim_matches('`').trim_start_matches('*').trim_end_matches('=').trim();
     if !is_word(name) || !name.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_') {
         return true;
+    }
+    let keyword = !lit.trim().starts_with('*')
+        && (lit.trim().trim_matches('`').ends_with('=') || facet.is_some_and(|f| f.trim().trim_matches('`').trim_end_matches('=') == name));
+    if keyword {
+        let s = subject.trim().trim_matches('`').trim_end_matches("()");
+        let s = s.rsplit('.').next().unwrap_or(s);
+        if s.len() >= 3 && is_word(s) && s.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_') && !s.eq_ignore_ascii_case(name) {
+            // Comments and plain strings (a docstring's `df.query(inplace=True)` example) are no call; an f-string's
+            // interpolated code is.
+            let (mut skip, strings) = lex_spans(path, text);
+            skip.extend(strings.into_iter().filter(|&(_, _, interp)| !interp).map(|(s, e, _)| (s, e)));
+            return keyword_passed_to(text, s, name, &skip);
+        }
     }
     let comments = comment_spans(path, text);
     let params = py_param_spans(text, &comments);
@@ -1408,6 +1531,82 @@ pub fn py_keyword_site(path: &str, text: &str, lit: &str, subject: &str) -> bool
         let prev = text[..i].trim_end_matches([' ', '\t']);
         let kw = prev.rsplit(|c: char| !(c.is_ascii_alphanumeric() || c == '_')).next().unwrap_or("");
         !(prev.len() < i && matches!(kw, "def" | "class"))
+    })
+}
+
+/// Whether `text` calls `callee` (a whole word, not where it is defined) passing keyword argument `kw` at the call's own
+/// level (`callee(a, kw=1)`; not `callee(f(kw=1))`, not `kw == 1`). A callee inside `skip` (comments, plain strings)
+/// is no call; strings inside the argument list are skipped.
+fn keyword_passed_to(text: &str, callee: &str, kw: &str, skip: &[(usize, usize)]) -> bool {
+    let word = |c: char| c.is_ascii_alphanumeric() || c == '_';
+    let b = text.as_bytes();
+    text.match_indices(callee).any(|(i, _)| {
+        let before = &text[..i];
+        if before.chars().next_back().is_some_and(word)
+            || skip.iter().any(|&(s, e)| s <= i && i < e)
+        {
+            return false;
+        }
+        let after = &text[i + callee.len()..];
+        if after.chars().next().is_some_and(word) {
+            return false;
+        }
+        let gap = after.len() - after.trim_start_matches([' ', '\t']).len();
+        if !after[gap..].starts_with('(') {
+            return false;
+        }
+        let prev = before
+            .trim_end_matches([' ', '\t'])
+            .rsplit(|c: char| !word(c))
+            .next()
+            .unwrap_or("");
+        if matches!(prev, "def" | "class") {
+            return false;
+        }
+        let (mut j, mut depth, mut start) = (i + callee.len() + gap + 1, 0i32, true);
+        let mut quote: Option<u8> = None;
+        while j < b.len() {
+            let c = b[j];
+            if let Some(q) = quote {
+                if c == b'\\' {
+                    j += 2;
+                    continue;
+                }
+                if c == q {
+                    quote = None;
+                }
+                j += 1;
+                continue;
+            }
+            if start && depth == 0 && !c.is_ascii_whitespace() && c != b'#' {
+                start = false;
+                let rest = &text[j..];
+                if let Some(r) = rest.strip_prefix(kw)
+                    && !r.chars().next().is_some_and(word)
+                {
+                    let r = r.trim_start_matches([' ', '\t']);
+                    if r.starts_with('=') && !r.starts_with("==") {
+                        return true;
+                    }
+                }
+            }
+            match c {
+                b'\'' | b'"' => quote = Some(c),
+                b'#' => {
+                    while j < b.len() && b[j] != b'\n' {
+                        j += 1;
+                    }
+                    continue;
+                }
+                b'(' | b'[' | b'{' => depth += 1,
+                b')' | b']' | b'}' if depth > 0 => depth -= 1,
+                b')' => return false,
+                b',' if depth == 0 => start = true,
+                _ => {}
+            }
+            j += 1;
+        }
+        false
     })
 }
 
@@ -2464,35 +2663,126 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_keyword_record_needs_the_keyword_passed_to_a_call_of_its_subject() {
+        // microsoft/qlib: pandas deprecates `inplace` of `DataFrame.query` and `regex` of `DataFrame.filter`; the repo
+        // passes `inplace=True` to `drop`, defines its own `sort_index(self, axis=0, inplace=True)`, and passes
+        // `regex=False` to `Series.str.replace`.
+        let drop = "import pandas as pd\ndf = pd.DataFrame()\nq = df.query\ndf.drop(df.columns, axis=1, inplace=True)\n";
+        assert!(!py_keyword_site(
+            "d.py",
+            drop,
+            "inplace=",
+            "DataFrame.query",
+            Some("inplace")
+        ));
+        assert!(
+            !py_keyword_site("d.py", drop, "inplace", "DataFrame.query", Some("inplace")),
+            "the facet names the keyword"
+        );
+        let own =
+            "class IndexData:\n    def sort_index(self, axis=0, inplace=True):\n        pass\n";
+        assert!(!py_keyword_site(
+            "i.py",
+            own,
+            "inplace=",
+            "DataFrame.sort_index",
+            Some("inplace")
+        ));
+        let replace = "s = s.str.replace(\"$\", \"-P\", regex=False)\nx = list(filter(None, s))\n";
+        assert!(!py_keyword_site(
+            "u.py",
+            replace,
+            "regex=",
+            "DataFrame.filter",
+            Some("regex")
+        ));
+        // mem0: elasticsearch deprecates `api_key` as a per-request transport option (subject `options`); the
+        // constructor `Elasticsearch(api_key=...)` is not it, nor is reading `config.api_key`.
+        let es = "from elasticsearch import Elasticsearch\nclient = Elasticsearch(cloud_id=config.cloud_id, api_key=config.api_key)\nclient.options(request_timeout=3)\n";
+        assert!(!py_keyword_site(
+            "es.py",
+            es,
+            "api_key",
+            "options",
+            Some("api_key")
+        ));
+        // A call of the subject passing it is a site: over several lines, after a nested call, beside a string with a comma.
+        let q = "df = df.query(\n    \"a > 1, b\",  # why\n    engine=f(x, inplace=False),\n    inplace=True,\n)\n";
+        assert!(py_keyword_site(
+            "q.py",
+            q,
+            "inplace=",
+            "DataFrame.query",
+            Some("inplace")
+        ));
+        assert!(py_keyword_site(
+            "f.py",
+            "df.filter(regex='^a')\n",
+            "regex=",
+            "DataFrame.filter",
+            Some("regex")
+        ));
+        // A comment line before the keyword argument.
+        assert!(py_keyword_site("c.py", "df.query(\n    \"a\",\n    # why\n    inplace=True,\n)\n", "inplace=", "DataFrame.query", Some("inplace")));
+        // A docstring's example is no call; an f-string's interpolated call is.
+        let doc = "def f(df):\n    \"\"\"Like df.query(\"a\", inplace=True).\"\"\"\n    return df.query(\"a\")\n";
+        assert!(!py_keyword_site("d.py", doc, "inplace=", "DataFrame.query", Some("inplace")));
+        assert!(py_keyword_site("d.py", "x = f\"{df.query('a', inplace=True)}\"\n", "inplace=", "DataFrame.query", Some("inplace")));
+        // Only inside a nested call, or compared: not passed to the subject.
+        assert!(!py_keyword_site(
+            "q.py",
+            "df.query(f(inplace=True))\n",
+            "inplace=",
+            "DataFrame.query",
+            Some("inplace")
+        ));
+        assert!(!py_keyword_site(
+            "q.py",
+            "df.query(inplace == 1)\n",
+            "inplace=",
+            "DataFrame.query",
+            None
+        ));
+        // Without a keyword facet or a `kw=` literal, a bare name keeps the file-level rule.
+        assert!(py_keyword_site(
+            "hub.py",
+            "from huggingface_hub import HfApi\nHfApi().list_models()\nx.model_name\n",
+            "model_name",
+            "list_models",
+            None
+        ));
+    }
+
+    #[test]
     fn a_python_keyword_site_needs_its_subject_api_and_a_use_not_a_parameter() {
         // NousResearch/hermes-agent: huggingface_hub's `list_models(model_name=…)` is deprecated; tools/transcription_local.py
         // imports `huggingface_hub.errors` lazily and takes its own `model_name` parameter, but never lists models.
         let local = "def _normalize_local_model(model_name: Optional[str]) -> str:\n    if not model_name:\n        return D\n    return model_name\n\ndef _load():\n    from huggingface_hub.errors import LocalEntryNotFoundError\n";
-        assert!(!py_keyword_site("tools/transcription_local.py", local, "model_name", "list_models"));
+        assert!(!py_keyword_site("tools/transcription_local.py", local, "model_name", "list_models", None));
         let call = "from huggingface_hub import HfApi\nHfApi().list_models(model_name='bert')\n";
-        assert!(py_keyword_site("hub.py", call, "model_name", "list_models"));
+        assert!(py_keyword_site("hub.py", call, "model_name", "list_models", None));
         // A file that only defines a same-named method is not the API's user.
         let own = "class P:\n    def list_models(self, model_name=None):\n        return model_name\n";
-        assert!(!py_keyword_site("p.py", own, "model_name", "list_models"));
+        assert!(!py_keyword_site("p.py", own, "model_name", "list_models", None));
         // fastapi removes `FastAPI(**extra)`: a local helper's `**extra` parameter and its dict splat are not it.
         let helper = "from fastapi import APIRouter\n\ndef _failed_load_slice(errors, **extra) -> dict:\n    return {\"failed\": True, **extra}\n";
-        assert!(!py_keyword_site("routers/profiles.py", helper, "**extra", "FastAPI"));
+        assert!(!py_keyword_site("routers/profiles.py", helper, "**extra", "FastAPI", None));
         let app = "from fastapi import FastAPI\napp = FastAPI(title='x', **extra)\n";
-        assert!(py_keyword_site("app.py", app, "**extra", "FastAPI"));
+        assert!(py_keyword_site("app.py", app, "**extra", "FastAPI", None));
         // Declared only as a parameter (over several lines, or a lambda's): no use at all.
         let declared = "from fastapi import FastAPI\napp = FastAPI()\ndef f(\n    a,\n    **extra,\n):\n    pass\ng = lambda **extra: 1\n";
-        assert!(!py_keyword_site("app.py", declared, "**extra", "FastAPI"));
+        assert!(!py_keyword_site("app.py", declared, "**extra", "FastAPI", None));
         // Unchanged: another language, a prose subject, a qualified literal, the subject itself.
-        assert!(py_keyword_site("a.ts", "function f(model_name) {}", "model_name", "list_models"));
-        assert!(py_keyword_site("a.py", "x(model_name=1)", "model_name", "hook markers"));
-        assert!(py_keyword_site("a.py", "def f(): pass", "pytest.mark", "hook markers"));
-        assert!(py_keyword_site("a.py", "app = FastAPI()", "FastAPI", "FastAPI"));
+        assert!(py_keyword_site("a.ts", "function f(model_name) {}", "model_name", "list_models", None));
+        assert!(py_keyword_site("a.py", "x(model_name=1)", "model_name", "hook markers", None));
+        assert!(py_keyword_site("a.py", "def f(): pass", "pytest.mark", "hook markers", None));
+        assert!(py_keyword_site("a.py", "app = FastAPI()", "FastAPI", "FastAPI", None));
         // The subject only as another definition's parameter is no use of it; brackets in a quoted default and a `def`
         // in a comment or string are text.
-        assert!(!py_keyword_site("p.py", "def f(list_models, model_name):\n    return model_name\n", "model_name", "list_models"));
-        assert!(!py_keyword_site("p.py", "def f(sep=\")\", model_name=None):\n    pass\nlist_models()\n", "model_name", "list_models"));
-        assert!(py_keyword_site("p.py", "# def g(\nlist_models(model_name='x')\n", "model_name", "list_models"));
-        assert!(py_keyword_site("p.py", "s = 'def g('\nlist_models(model_name='x')\n", "model_name", "list_models"));
+        assert!(!py_keyword_site("p.py", "def f(list_models, model_name):\n    return model_name\n", "model_name", "list_models", None));
+        assert!(!py_keyword_site("p.py", "def f(sep=\")\", model_name=None):\n    pass\nlist_models()\n", "model_name", "list_models", None));
+        assert!(py_keyword_site("p.py", "# def g(\nlist_models(model_name='x')\n", "model_name", "list_models", None));
+        assert!(py_keyword_site("p.py", "s = 'def g('\nlist_models(model_name='x')\n", "model_name", "list_models", None));
     }
 
     #[test]
@@ -2872,6 +3162,57 @@ mod tests {
         let mut usage = set(lits);
         usage.extend(purls.iter().flat_map(|p| naming_lits(p)));
         find(r, &usage, &set(&[]))
+    }
+
+    #[test]
+    fn a_platform_global_in_production_code_is_not_an_emulators_api() {
+        // gradio: happy-dom (a test DOM, imported by no code) and browser code reading `document.cookie`.
+        let r = repo(&[
+            ("src/auth.ts", "export function token() { return document.cookie.split(';'); }"),
+            ("src/own.ts", "import { document } from './doc';\nexport const c = document.cookie;"),
+            ("src/local.ts", "const document = load();\nexport const c = document.cookie;"),
+            ("src/auth.test.ts", "it('reads', () => { document.cookie = 'a=1'; });"),
+            ("vitest.config.ts", "export default { test: { environment: 'happy-dom' } }"),
+            ("package.json", "{\"devDependencies\": {\"happy-dom\": \"20\"}}"),
+        ]);
+        let purls = vec!["pkg:npm/happy-dom".to_string()];
+        let h = scoped(&r, &["document.cookie"], &["pkg:npm/happy-dom"]);
+        let root = ["."];
+        let s = Scope::new("npm", &root, &purls, &[], &h, &r.paths).with_repo(&r);
+        let e = s.evidence("document.cookie", |p| path_role(p), false);
+        let files: Vec<&str> = e.files.iter().map(|(p, _)| p.as_str()).collect();
+        assert!(e.used, "the hits still order the queue");
+        assert!(!files.contains(&"src/auth.ts"), "the browser's own document: {files:?}");
+        assert!(files.contains(&"src/auth.test.ts"), "a test may run inside it: {files:?}");
+        assert!(files.contains(&"src/own.ts") || files.contains(&"src/local.ts"), "a bound name is the file's own: {files:?}");
+        // A literal reached through a module the file imports (`PIL.Image.open` for `Image.open`) is not a global.
+        let r = repo(&[("app/img.py", "import PIL.Image\n\ndef load(p):\n    return PIL.Image.open(p)\n"), ("app/glob.py", "def f():\n    return window.Image.open(1)\n")]);
+        let purls = vec!["pkg:pypi/pillow".to_string()];
+        let h = scoped(&r, &["Image.open"], &["pkg:pypi/pillow"]);
+        let s = Scope::new("pypi", &root, &purls, &[], &h, &r.paths).with_repo(&r);
+        let files: Vec<String> = s.evidence("Image.open", |p| path_role(p), false).files.into_iter().map(|(p, _)| p).collect();
+        assert_eq!(files, vec!["app/img.py".to_string()]);
+    }
+
+    #[test]
+    fn binds_finds_imports_declarations_and_parameters() {
+        assert!(binds("import { a, document } from 'x'", "document"));
+        assert!(binds("import {\n  a,\n  document,\n} from 'x'", "document"));
+        assert!(binds("import * as document from 'x'", "document"));
+        assert!(binds("from m import (a, document)", "document"));
+        assert!(binds("const { document } = require('x')", "document"));
+        assert!(binds("let document = 1", "document"));
+        assert!(binds("xs.map(document => document.cookie)", "document"));
+        assert!(binds("function read(a, document) { return document.cookie; }", "document"));
+        assert!(binds("const f = function (document) { return document.cookie; }", "document"));
+        assert!(binds("const f = (a, document) => document.cookie", "document"));
+        assert!(binds("def read(self, document):\n    return document.cookie", "document"));
+        assert!(binds("class A { read(document) { return document.cookie; } }", "document"));
+        assert!(!binds("if (document) { document.cookie = 'a'; }", "document"));
+        assert!(!binds("set(document.cookie)", "document"));
+        assert!(!binds("const c = document.cookie;", "document"));
+        assert!(!binds("import x from 'y';\nwindow.document.cookie", "document"));
+        assert!(!binds("const mydocument = 1; document.cookie", "document"));
     }
 
     #[test]

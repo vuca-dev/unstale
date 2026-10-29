@@ -1177,7 +1177,7 @@ pub fn evaluate(
                             {
                                 let who = &g.nodes[*p];
                                 return Some(match &who.local {
-                                    Some(dir) => format!("{dir} declares {r}"),
+                                    Some(dir) => format!("{} declares {r}", crate::stack::place(dir)),
                                     None => format!("{} {} requires {r}", who.name, who.version),
                                 });
                             }
@@ -1822,7 +1822,7 @@ mod tests {
         assert_eq!(items[1].why, vec!["high at runtime"]);
         assert_eq!(items[1].via, vec!["@react-router/serve 7.18.2"]);
         assert_eq!(items[2].id, "GHSA-pin");
-        assert_eq!(items[2].why, vec!["fix blocked: . declares 1.0.0"]);
+        assert_eq!(items[2].why, vec!["fix blocked: the root declares 1.0.0"]);
         assert!(items[2].via.is_empty());
         let r = Report { checked: 0, queried: 7, raw, items, unused: vec![] };
         let l = lines(&r);
@@ -1921,7 +1921,7 @@ mod tests {
         };
         let items = vec![
             it("V-1", "vue", "3.5.0", &["og 5.1.0"], &["high at runtime", "published 2026-10-05"]),
-            it("O-1", "og", "5.1.0", &[], &["high at runtime", "fix blocked: . declares ^5.1.0"]),
+            it("O-1", "og", "5.1.0", &[], &["high at runtime", "fix blocked: the root declares ^5.1.0"]),
             it("U-1", "used", "1.0.0", &[], &["high at runtime"]),
             it("P-1", "peer", "1.0.0", &[], &["high at runtime"]),
             it("E-1", "eslint-plugin-x", "1.0.0", &[], &["no fixed version: replace or mitigate"]),
