@@ -897,12 +897,16 @@ pub fn assume_newest_in(
             }
         }
     }
-    // What the other declarations of each directory require of a package there, at the versions just read: by
-    // (directory, package URL), the requiring package and version, and its specifier.
-    // Pinned siblings never share a directory with a reading taken here: a directory with a lockfile or pinned
-    // requirements file keeps an unpinned declaration at its floor (`Reading::lock` set), so only the versions just
-    // read can cap one.
-    let at: BTreeMap<String, BTreeMap<String, Version>> = picked.iter().map(|(p, m)| (p.clone(), m.iter().map(|(d, (v, _))| (d.clone(), v.clone())).collect())).collect();
+    // What the other declarations of each directory require of a package there, at the versions just read and at the
+    // pinned versions of the same directories (gradio's `gradio_client==2.7.2` beside its ranges): by (directory,
+    // package URL), the requiring package and version, and its specifier.
+    let mut at: BTreeMap<String, BTreeMap<String, Version>> = picked.iter().map(|(p, m)| (p.clone(), m.iter().map(|(d, (v, _))| (d.clone(), v.clone())).collect())).collect();
+    let fresh_dirs: BTreeSet<String> = picked.values().flat_map(|m| m.keys().cloned()).collect();
+    for (p, d) in deps.iter().filter(|(p, d)| p.starts_with(eco.prefix) && d.public_candidate) {
+        for r in d.readings.iter().filter(|r| r.range.is_none() && fresh_dirs.contains(&r.dir)) {
+            at.entry(p.clone()).or_default().entry(r.dir.clone()).or_insert_with(|| r.version.clone());
+        }
+    }
     let keys: BTreeSet<String> = at.iter().flat_map(|(p, m)| m.values().map(move |v| format!("{p}@{v}"))).collect();
     let dist = if keys.is_empty() { BTreeMap::new() } else { requires(&keys.into_iter().collect::<Vec<_>>()) };
     let mut caps: BTreeMap<(String, String), Vec<(String, String)>> = BTreeMap::new();
@@ -952,8 +956,9 @@ pub fn assume_newest_in(
                 (false, Some(c)) => format!("newest release {v} on {reg} that {spec} admits and {c} (nothing pins it; another declared dependency's published requirement caps it: what a fresh install resolves)"),
             };
             match d.readings.iter_mut().find(|r| r.dir == dir) {
-                // A floor reading; a pinned reading of the same directory stays.
-                Some(r) if r.range.is_some() && r.lock.is_none() => {
+                // A floor reading, also beside a lockfile or a requirements file that pins other packages (pip
+                // resolves what nothing pins afresh); a pinned reading of the same directory stays.
+                Some(r) if r.range.is_some() => {
                     r.version = v;
                     r.source = source;
                 }
@@ -1460,6 +1465,26 @@ mod tests {
         assert_eq!(deps["pkg:pypi/semconv"].version, parse_version("0.60b0"), "only pre-releases: the newest of them");
         assert!(notes.iter().any(|n| n.starts_with("4 Python requirements no lockfile")), "{notes:?}");
         assert!(notes.iter().any(|n| n.contains("(gone)") && n.contains("declared floor")), "{notes:?}");
+    }
+
+    #[test]
+    fn a_pin_beside_ranges_leaves_the_ranges_read_at_the_newest_release() {
+        // gradio: requirements.txt pins only its own client (`gradio_client==2.7.2`); pip resolves the ranges afresh.
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "requirements.txt", "gradio_client==2.7.2\npillow>=8.0,<13.0\n");
+        let (mut pk, mut deps) = (vec![], BTreeMap::new());
+        let mut notes = vec![];
+        detect(d.path(), &mut pk, &mut deps, &mut notes);
+        let releases = |purls: &[String]| {
+            purls.iter().filter(|p| *p == "pkg:pypi/pillow").map(|p| (p.clone(), ["8.0.0", "12.2.0", "12.3.0", "13.0.0"].iter().filter_map(|s| parse_version(s)).collect())).collect()
+        };
+        // The pinned sibling's published requirements cap it too.
+        let requires = |keys: &[String]| keys.iter().filter(|k| *k == "pkg:pypi/gradio-client@2.7.2").map(|k| (k.clone(), vec!["pillow<12.3".to_string()])).collect();
+        assume_newest(&mut deps, &mut notes, releases, requires);
+        crate::stack::settle(&mut deps);
+        assert_eq!(deps["pkg:pypi/pillow"].version, Some(v("12.2.0")), "not the 8.0.0 floor, and within gradio-client's cap: {:?}", deps["pkg:pypi/pillow"]);
+        assert!(deps["pkg:pypi/pillow"].source.contains("gradio-client 2.7.2 requires pillow<12.3"), "{}", deps["pkg:pypi/pillow"].source);
+        assert_eq!(deps["pkg:pypi/gradio-client"].version, Some(v("2.7.2")), "the pin stays");
     }
 
     #[test]
