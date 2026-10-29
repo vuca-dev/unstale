@@ -2011,7 +2011,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                 let beside_moved = |p: &str| {
                     entry(l) && !subject_api.is_empty() && {
                         let t = inp.repo.text(p).unwrap_or("");
-                        !subject_api.iter().any(|a| t.contains(*a) && !bound_off(p, a))
+                        !subject_api.iter().any(|a| t.contains(*a) && usage::written_outside_comments(p, t, a) && !bound_off(p, a))
                     }
                 };
                 let keep = |p: &str| !(runtime_rec && (usage::own_code(p, &ecosystem) || usage::foreign_code(p, &ecosystem))) && !bound_off(p, l) && !beside_moved(p);
@@ -3101,6 +3101,11 @@ mod tests {
             )],
         );
         let r = repo(&[("src/atoms.ts", moved), ("src/hooks.ts", other)]);
+        let out = run_with(&c3, &s, &r, &l);
+        assert_eq!(route_of(&out, "jotai:moved"), &Route::Applied);
+        // Named only in a comment beside the entry point's other exports: no use of the API.
+        let noted = "// atomFamily moved to jotai-family\nimport { atomWithStorage } from 'jotai/utils';\nexport const b = atomWithStorage('k', 1);\n";
+        let r = repo(&[("src/atoms.ts", moved), ("src/noted.ts", noted)]);
         let out = run_with(&c3, &s, &r, &l);
         assert_eq!(route_of(&out, "jotai:moved"), &Route::Applied);
         let r = repo(&[("src/old.ts", old), ("src/hooks.ts", other)]);
