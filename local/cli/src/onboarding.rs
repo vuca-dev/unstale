@@ -2504,10 +2504,10 @@ fn signals<'r>(
             continue;
         }
         // The line to move to: the newest release when its publisher has not retired it too, else (a renamed or
-        // retired package) the replacement the message names.
+        // retired package) none: the message names the replacement, if any.
         let target = match &n.latest {
-            Some((l, false)) if *l != n.version => l.clone(),
-            _ => "replacement".to_string(),
+            Some((l, false)) if *l != n.version => format!(" → {l}"),
+            _ => " (no newer release)".to_string(),
         };
         let how = if n.yanked { "yanked" } else { "deprecated" };
         let said = if n.message.trim().is_empty() { String::new() } else { format!(": \"{}\"", words(&n.message)) };
@@ -2522,7 +2522,7 @@ fn signals<'r>(
             format!("; no code, script or configuration here names {}, so its declaration can likely be removed instead of bumped (unless a command it installs runs under another name){held}", display_text(&n.name))
         });
         by.insert(norm(&n.name), Signal {
-            head: format!("{} {} → {target} picks up 1 publisher {} (`unstale bump {}`)", n.name, n.version, if n.yanked { "yank" } else { "deprecation" }, n.name),
+            head: format!("{} {}{target} picks up 1 publisher {} (`unstale bump {}`)", n.name, n.version, if n.yanked { "yank" } else { "deprecation" }, n.name),
             name: n.name.clone(),
             tier: LEAD_CONSEQUENTIAL,
             weight: 4,
@@ -2543,7 +2543,7 @@ fn signals<'r>(
             continue;
         }
         by.insert(norm(&n.name), Signal {
-            head: format!("{} {} → replacement picks up 1 maintenance notice (`unstale bump {}`)", n.name, n.version, n.name),
+            head: unmaintained_head(&n.name, &n.version),
             name: n.name.clone(),
             tier: LEAD_CONSEQUENTIAL,
             weight: 2,
@@ -2604,17 +2604,16 @@ fn signals<'r>(
             continue;
         }
         // The release that fixes every one, when each has a fix.
-        let target = if items.iter().all(|it| it.fix.is_some()) {
-            items.iter().filter_map(|it| it.fix.as_deref()).max_by(|a, b| util::parse_version(a).cmp(&util::parse_version(b))).unwrap_or("replacement").to_string()
-        } else {
-            "replacement".to_string()
+        let target = match items.iter().map(|it| it.fix.as_deref()).collect::<Option<Vec<_>>>().and_then(|f| f.into_iter().max_by(|a, b| util::parse_version(a).cmp(&util::parse_version(b)))) {
+            Some(f) => format!(" → {f}"),
+            None => " (no fixed release)".to_string(),
         };
         // Severity alone ranks nothing up: an advisory leads only when its affected API is found in production code
         // (application files outside examples, samples, docs and tests); found nowhere, or not checked, it keeps the
         // advisory rank, however severe.
         let (tier, weight) = if reached.is_some() { (LEAD_CONSEQUENTIAL, 3) } else { (LEAD_ADVISORY_UNREACHED, 0) };
         by.insert(key, Signal {
-            head: format!("{name} {} → {target} picks up {} security (`unstale bump {name}`)", items[0].version, items.len()),
+            head: format!("{name} {}{target} picks up {} security (`unstale bump {name}`)", items[0].version, items.len()),
             tier,
             weight,
             unreached: reached.is_none(),
@@ -2659,6 +2658,12 @@ const DETAILED_UPGRADES: usize = 20;
 const FIRST_SCREEN: usize = 6000;
 /// Characters of a lead's change text on its Leads line; the full text follows under Upgrades, by value.
 const LEAD_CHARS: usize = 190;
+
+/// An archived dependency's digest head line. No release to move to is known, so it names none: the successor, if
+/// any, is the reader's to choose (not "→ replacement", which reads as a version move to a package of that name).
+fn unmaintained_head(name: &str, version: &str) -> String {
+    format!("{name} {version} (no successor named) picks up 1 maintenance notice (`unstale bump {name}`)")
+}
 
 /// A Leads line: the package and version move from a digest head line, then its one consequential change with its
 /// site, record ids dropped and the change text cut at a word (the site is kept whole).
@@ -4135,6 +4140,13 @@ mod tests {
         assert!(!l.contains("marked-c6c9fb1f") && !l.contains("pnpm-lock") && l.len() < 300, "{l}");
         let none = lead_line("xss 1.0.15 → 1.0.16 picks up 1 advisory (affected path not found) (`unstale bump xss`)", None, "");
         assert_eq!(none, "- xss 1.0.15 → 1.0.16: 1 advisory (affected path not found)");
+    }
+
+    #[test]
+    fn an_archived_dependency_names_no_move_to_a_replacement() {
+        // searxng: "cov-core 1.15.0 → replacement" read as a version move to a package named "replacement".
+        let l = lead_line(&unmaintained_head("cov-core", "1.15.0"), Some("unmaintained: upstream repository schlamar/cov-core archived"), "");
+        assert_eq!(l, "- cov-core 1.15.0 (no successor named): unmaintained: upstream repository schlamar/cov-core archived");
     }
 
     #[test]

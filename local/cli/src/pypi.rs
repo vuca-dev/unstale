@@ -698,13 +698,21 @@ pub fn detect(root: &Path, packages: &mut Vec<Package>, deps: &mut BTreeMap<Stri
         if seen_dirs.insert(rel.clone()) {
             packages.push(Package { dir: rel.clone(), kind, lockfile: lock.as_ref().map(|l| l.file.clone()), declared: declared.clone(), own: None });
         }
+        // Every specifier each package is declared with here. Declarations split by environment marker
+        // (`Sphinx==8.2.3; python_version <= "3.11"` beside `Sphinx==9.1.0; python_version > "3.11"`, or a uv.lock forked
+        // per marker) each admit only their own environment's version: the locked version is outside the declared
+        // requirements only when none of them admits it, whatever the marker says.
+        let mut specs: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        for (name, spec, _) in &reqs {
+            specs.entry(normalize(name)).or_default().push(spec.clone());
+        }
         for (name, spec, public) in reqs {
             let n = normalize(&name);
             let (version, source, floor) = match (&lock, kind) {
                 (Some(l), Kind::Application) if l.versions.contains_key(&n) => {
                     let v = &l.versions[&n];
-                    // A pin the declared specifier no longer admits: the lockfile is out of date for this one.
-                    if spec_satisfies(v, &spec) == Some(false) {
+                    // A pin no declaration of it admits: the lockfile is out of date for this one.
+                    if !specs[&n].iter().any(|s| spec_satisfies(v, s) != Some(false)) {
                         let s = stale.entry(if lock_dir == "." { l.file.clone() } else { format!("{lock_dir}/{}", l.file) }).or_default();
                         s.0 += 1;
                         if s.1.len() < 3 {
@@ -1364,6 +1372,28 @@ mod tests {
         detect(d.path(), &mut pk, &mut deps, &mut vec![]);
         crate::stack::settle(&mut deps);
         assert_eq!(deps["pkg:pypi/sphinx"].version, Some(v("9.1.0")), "9.0.4 is kept only for the interpreter 9.1 dropped");
+    }
+
+    #[test]
+    fn marker_split_pins_are_not_a_stale_lock() {
+        // searxng: one requirements file pins Sphinx per interpreter; docling: pyproject ranges per marker, uv.lock forked.
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "requirements-dev.txt", "Sphinx==8.2.3;python_version <= \"3.11\"\nSphinx==9.1.0; sys_platform != \"win32\" and python_version > \"3.11\"\n");
+        write(d.path(), "lib/pyproject.toml", "[project]\nname = \"lib\"\ndependencies = [\"pandas>=2.1,<3 ; python_version < '3.11'\", \"pandas>=2.1,<4 ; python_version >= '3.11'\"]\n");
+        write(
+            d.path(),
+            "lib/uv.lock",
+            "version = 1\n[[package]]\nname = \"pandas\"\nversion = \"2.3.3\"\nsource = { registry = \"https://pypi.org/simple\" }\n[[package]]\nname = \"pandas\"\nversion = \"3.1.0\"\nsource = { registry = \"https://pypi.org/simple\" }\n",
+        );
+        let (mut pk, mut deps, mut notes) = (vec![], BTreeMap::new(), vec![]);
+        detect(d.path(), &mut pk, &mut deps, &mut notes);
+        crate::stack::settle(&mut deps);
+        assert!(!notes.iter().any(|n| n.contains("out of date")), "{notes:?}");
+        for (p, ver) in [("pkg:pypi/sphinx", "9.1.0"), ("pkg:pypi/pandas", "3.1.0")] {
+            let dep = &deps[p];
+            assert_eq!(dep.version, Some(v(ver)), "{p}");
+            assert!(dep.readings.iter().all(|r| r.version == v(ver) && r.range.is_none()), "{p}: {:?}", dep.readings);
+        }
     }
 
     #[test]

@@ -655,13 +655,12 @@ fn cmd_bump(ctx: &Ctx, pkg: &str) -> Result<u8> {
             let lock_report = advisories::report(&ctx.cache, &ctx.root).unwrap_or_default();
             let lock: Vec<&advisories::Item> = lock_report.items.iter().filter(|it| it.via.is_empty() && norm(&it.name) == norm(pkg)).collect();
             if !lock.is_empty() {
-                let target = if lock.iter().all(|it| it.fix.is_some()) {
-                    lock.iter().filter_map(|it| it.fix.as_deref()).max_by(|a, b| util::parse_version(a).cmp(&util::parse_version(b))).unwrap_or("replacement")
-                } else {
-                    "replacement"
+                let target = match lock.iter().map(|it| it.fix.as_deref()).collect::<Option<Vec<_>>>().and_then(|f| f.into_iter().max_by(|a, b| util::parse_version(a).cmp(&util::parse_version(b)))) {
+                    Some(f) => format!(" → {f}"),
+                    None => " (no fixed release)".to_string(),
                 };
                 let k = lock.len();
-                println!("Bumping {pkg} {} → {target} fixes {k} lockfile advisor{} (no catalog record needed):", lock[0].version, if k == 1 { "y" } else { "ies" });
+                println!("Bumping {pkg} {}{target} fixes {k} lockfile advisor{} (no catalog record needed):", lock[0].version, if k == 1 { "y" } else { "ies" });
                 for it in &lock {
                     let fix = it.fix.as_deref().map(|f| format!(" → {f}")).unwrap_or_else(|| ", no fixed version: replace or mitigate".to_string());
                     println!("  security: {} ({}): {} [lockfile {} {}{fix}] (https://osv.dev/vulnerability/{})", it.id, it.severity.word(), util::one_line(&it.summary, 160), it.name, it.version, it.id);

@@ -4,7 +4,7 @@
 //! upstream issue or pull request). The report joins them to catalog records: an upgrade whose records cite the same
 //! upstream issue or pull request, or that moves the patched, aliased or named package, may let the code drop it.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::usage::{self, Role};
 
@@ -519,7 +519,8 @@ pub struct Decl {
     /// is the one named as holding the version before an application of the repository that pins the same.
     published: bool,
     /// Declared for development only (`devDependencies`, a dev requirements file, a dependency group, an extra, the
-    /// build system); `None` for an override, which neither ships nor develops it.
+    /// build system); `None` for an override, which neither ships nor develops it, and a requirements file no manifest
+    /// installs (`requirements_scope`).
     dev: Option<bool>,
     /// Declared in one of the project's own optional sets: an extra or a dependency group.
     extra: bool,
@@ -587,19 +588,169 @@ pub fn declarations(repo: &usage::Repo) -> Vec<Decl> {
                     decl(req_name(&r), Some(true), extra, None);
                 }
             }
-            name if name.starts_with("requirements") && name.ends_with(".txt") => {
-                let dev = ["dev", "test", "lint", "doc"].iter().any(|d| name.contains(d));
-                for line in text.lines().map(str::trim) {
-                    let n = req_name(line);
-                    if !n.is_empty() {
-                        decl(n, Some(dev), false, line.contains("==").then_some("an exact pin"));
+            _ => {}
+        }
+    }
+    // Requirements files: their scope is how the project's own manifest installs them (`requirements_scope`). A
+    // file no manifest reads says nothing either way, so the code that imports its packages decides, as before. Their
+    // `==` pins are the project's lock, not a pin holding back update PRs.
+    let scope = requirements_scope(repo);
+    for (path, text) in &repo.requirements {
+        let (dev, extra) = match scope.get(path) {
+            Some(true) => (Some(false), false),
+            Some(false) => (Some(true), true),
+            None => (None, false),
+        };
+        for line in text.lines().map(str::trim) {
+            let n = req_name(line);
+            if !n.is_empty() {
+                out.push(Decl { name: n, path: path.clone(), app: repo.role(path) == Role::App, published: false, dev, extra, holds: None });
+            }
+        }
+    }
+    out
+}
+
+/// `a/b/../c` → `a/c`.
+fn joined(dir: &str, rel: &str) -> String {
+    let mut parts: Vec<&str> = dir.split('/').filter(|p| !p.is_empty()).collect();
+    for p in rel.split('/') {
+        match p {
+            "" | "." => {}
+            ".." => {
+                parts.pop();
+            }
+            p => parts.push(p),
+        }
+    }
+    parts.join("/")
+}
+
+fn has_word(hay: &str, w: &str) -> bool {
+    let ident = |c: char| c.is_ascii_alphanumeric() || c == '_';
+    hay.match_indices(w).any(|(i, _)| !hay[..i].ends_with(ident) && !hay[i + w.len()..].starts_with(ident))
+}
+
+/// The values of a `setup()` keyword (`install_requires=reqs`) or dict key (`"extras_require": {...}`): the text up to
+/// the `,`, `)` or `}` that closes it.
+fn setup_args(text: &str, key: &str) -> Vec<String> {
+    let mut out = vec![];
+    for (i, _) in text.match_indices(key) {
+        let before = text[..i].trim_end_matches(['"', '\'']);
+        let rest = text[i + key.len()..].trim_start_matches(['"', '\'']).trim_start();
+        if before.ends_with(|c: char| c.is_ascii_alphanumeric() || c == '_') {
+            continue;
+        }
+        let Some(rest) = rest.strip_prefix('=').filter(|r| !r.starts_with('=')).or_else(|| rest.strip_prefix(':')) else { continue };
+        let mut depth = 0i32;
+        let end = rest
+            .char_indices()
+            .find(|&(_, c)| {
+                match c {
+                    '(' | '[' | '{' => depth += 1,
+                    ')' | ']' | '}' if depth == 0 => return true,
+                    ')' | ']' | '}' => depth -= 1,
+                    ',' if depth == 0 => return true,
+                    _ => {}
+                }
+                false
+            })
+            .map_or(rest.len(), |(j, _)| j);
+        out.push(rest[..end].to_string());
+    }
+    out
+}
+
+/// How the project's own manifest installs each requirements file (path from the root), from its structure, never
+/// the file's name: `true` when the default install reads it (setup.py `install_requires`, pyproject.toml
+/// `[tool.setuptools.dynamic] dependencies`), `false` when only an extra does (`extras_require`,
+/// `optional-dependencies`; searxng's `extras_require={'test': dev_requirements}` over `requirements-dev.txt`). setup.py
+/// is read as text: the file's literal, or the name the statement holding it (or the `with` block it opens) assigns,
+/// inside the keyword's value. Scope follows `-r` includes; the default install wins. A file no manifest reads is
+/// absent.
+fn requirements_scope(repo: &usage::Repo) -> BTreeMap<String, bool> {
+    let mut scope: BTreeMap<String, bool> = BTreeMap::new();
+    let set = |scope: &mut BTreeMap<String, bool>, path: String, default: bool| {
+        let e = scope.entry(path).or_insert(default);
+        *e |= default;
+    };
+    let known: BTreeSet<&str> = repo.requirements.iter().map(|(p, _)| p.as_str()).collect();
+    for (path, text) in &repo.files {
+        let dir = path.rsplit_once('/').map_or("", |(d, _)| d);
+        match base(path) {
+            "setup.py" => {
+                let install = setup_args(text, "install_requires");
+                let extras = setup_args(text, "extras_require");
+                for req in known.iter().filter(|r| dir.is_empty() || r.starts_with(&format!("{dir}/"))) {
+                    let rel = if dir.is_empty() { req.to_string() } else { req[dir.len() + 1..].to_string() };
+                    let lits: Vec<String> = [&rel, &format!("./{rel}")].iter().flat_map(|r| [format!("'{r}'"), format!("\"{r}\"")]).collect();
+                    let lines: Vec<&str> = text.lines().collect();
+                    // The literal itself, and the names assigned where it is opened.
+                    let mut names: Vec<String> = lits.clone();
+                    for (n, l) in lines.iter().enumerate().filter(|(_, l)| lits.iter().any(|x| l.contains(x.as_str()))) {
+                        let opens = l.trim_start().starts_with("with ");
+                        for t in lines[n..].iter().take(if opens { 4 } else { 1 }) {
+                            if let Some((lhs, rhs)) = t.split_once('=')
+                                && !rhs.starts_with('=')
+                                && let lhs = lhs.trim()
+                                && !lhs.is_empty()
+                                && lhs.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+                            {
+                                names.push(lhs.to_string());
+                                break;
+                            }
+                        }
+                    }
+                    let reads = |args: &[String]| args.iter().any(|a| names.iter().any(|w| if w.starts_with(['\'', '"']) { a.contains(w.as_str()) } else { has_word(a, w) }));
+                    if reads(&install) {
+                        set(&mut scope, req.to_string(), true);
+                    } else if reads(&extras) {
+                        set(&mut scope, req.to_string(), false);
+                    }
+                }
+            }
+            "pyproject.toml" => {
+                let Ok(t) = text.parse::<toml::Table>() else { continue };
+                let Some(dynamic) = t.get("tool").and_then(|t| t.get("setuptools")).and_then(|t| t.get("dynamic")) else { continue };
+                let files = |v: Option<&toml::Value>| -> Vec<String> {
+                    match v.and_then(|v| v.get("file")) {
+                        Some(toml::Value::String(f)) => vec![f.clone()],
+                        Some(toml::Value::Array(a)) => a.iter().filter_map(|f| f.as_str()).map(String::from).collect(),
+                        _ => vec![],
+                    }
+                };
+                for f in files(dynamic.get("dependencies")) {
+                    set(&mut scope, joined(dir, &f), true);
+                }
+                for v in dynamic.get("optional-dependencies").and_then(|o| o.as_table()).into_iter().flat_map(|o| o.values()) {
+                    for f in files(Some(v)) {
+                        set(&mut scope, joined(dir, &f), false);
                     }
                 }
             }
             _ => {}
         }
     }
-    out
+    // `-r` includes take the including file's scope.
+    let texts: BTreeMap<&str, &str> = repo.requirements.iter().map(|(p, t)| (p.as_str(), t.as_str())).collect();
+    loop {
+        let before = scope.clone();
+        for (path, default) in &before {
+            let Some(text) = texts.get(path.as_str()) else { continue };
+            let dir = path.rsplit_once('/').map_or("", |(d, _)| d);
+            for l in text.lines().map(str::trim) {
+                let Some(f) = l.strip_prefix("--requirement").or_else(|| l.strip_prefix("-r")) else { continue };
+                let f = f.trim_start_matches('=').split_whitespace().next().unwrap_or("");
+                if !f.is_empty() {
+                    set(&mut scope, joined(dir, f), *default);
+                }
+            }
+        }
+        if scope == before {
+            break;
+        }
+    }
+    scope
 }
 
 /// Whether an application of this repository (an application-role manifest that is not published) declares one of
@@ -637,6 +788,36 @@ mod tests {
         assert!(ort.dev_only && ort.extra && !ort.runtime);
         let ruff = facts(&d, &["ruff".into()]);
         assert!(ruff.dev_only && ruff.extra && !ruff.runtime, "a group's scope follows the code that imports it");
+    }
+
+    #[test]
+    fn a_requirements_file_takes_its_scope_from_how_the_manifest_installs_it() {
+        // searxng: setup.py reads requirements.txt into `install_requires` and requirements-dev.txt into the `test`
+        // extra; the dev file's name plays no part (a file nothing installs is unknown, `ops.txt`; `-r` passes scope on).
+        let setup = "with open('requirements.txt') as f:\n    requirements = [l.strip() for l in f.readlines()]\n\nwith open('requirements-dev.txt') as f:\n    dev_requirements = [l.strip() for l in f.readlines()]\n\nsetup(\n    install_requires=requirements,\n    extras_require={'test': dev_requirements},\n)\n";
+        let mut repo = usage::Repo::default();
+        repo.files.push(("setup.py".into(), setup.into()));
+        repo.files.push(("svc/pyproject.toml".into(), "[project]\nname = \"svc\"\ndynamic = [\"dependencies\"]\n[tool.setuptools.dynamic]\ndependencies = { file = [\"requirements/run.txt\"] }\noptional-dependencies.docs = { file = \"requirements/docs.txt\" }\n".into()));
+        for (p, t) in [
+            ("requirements.txt", "flask==3.1.0\n"),
+            ("requirements-dev.txt", "-r requirements-shared.txt\ncov-core==1.15.0\nparameterized==0.9.0\n"),
+            ("requirements-shared.txt", "pyyaml==6.0\n"),
+            ("ops.txt", "granian==2.8.5\n"),
+            ("svc/requirements/run.txt", "httpx==0.28.1\n"),
+            ("svc/requirements/docs.txt", "sphinx==9.1.0\n"),
+        ] {
+            repo.requirements.push((p.into(), t.into()));
+        }
+        let d = declarations(&repo);
+        let f = |n: &str| facts(&d, &[n.into()]);
+        for n in ["cov-core", "parameterized", "pyyaml", "sphinx"] {
+            assert!(f(n).dev_only && f(n).extra && !f(n).runtime, "{n}");
+        }
+        for n in ["flask", "httpx"] {
+            assert!(f(n).runtime && !f(n).dev_only, "{n}");
+        }
+        assert_eq!(f("granian"), Facts::default(), "no manifest installs ops.txt");
+        assert!(d.iter().all(|d| d.holds.is_none()), "a pinned requirements file is the lock, not a held pin");
     }
 
     #[test]
