@@ -3217,6 +3217,8 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World, write: bool) -> Result<B
     let signals = signals(&ranked, &out, &deprecated, &unused, &unmaintained, &lock_report, w, &declared);
     let signalled: BTreeSet<String> = signals.iter().map(|s| norm(&s.name)).collect();
     ranked.retain(|r| r.tier >= LEAD_ADVISORY_UNREACHED || !out.packages.get(r.technology).into_iter().flatten().chain(std::iter::once(r.technology)).any(|p| signalled.contains(&norm(p))));
+    // A line a package signal replaces is not in the report: neither is its lead.
+    lead_ids.retain(|t, _| ranked.iter().any(|r| r.technology == t));
     signal_store.extend(signals.iter().map(|s| (s.name.clone(), vec![s.head.clone()])));
     for (s, (name, lines)) in signals.into_iter().zip(signal_store.iter()) {
         let lock_fixed: Vec<&crate::advisories::Item> = s.lock.iter().copied().filter(|it| it.fix.is_some()).collect();

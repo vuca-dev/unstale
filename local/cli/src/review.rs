@@ -957,7 +957,13 @@ pub fn bump_lines(out: &Outcome, pkg: &str, leads: &BTreeMap<String, String>) ->
         if in_effect > 0 {
             counts.push(format!("{} in effect now", plural(in_effect, "deprecation", "deprecations")));
         }
-        lines.push(format!("{}{}:", counts.join(", "), if lead.is_some_and(|l| owed.contains(&l)) { ", the lead above among them" } else { "" }));
+        let among = lead.is_some_and(|l| owed.contains(&l));
+        let rest = owed.len() + workspace.len() - usize::from(among);
+        lines.push(match (among, rest) {
+            (true, 0) => format!("{}: the lead above.", counts.join(", ")),
+            (true, _) => format!("{}, the lead above among them:", counts.join(", ")),
+            (false, _) => format!("{}:", counts.join(", ")),
+        });
         for &i in owed.iter().filter(|&&i| Some(i) != lead) {
             let o = &out.opps[i];
             let when = if o.route == Route::InEffect { format!("in effect now at {}", o.installed) } else { format!("upgrade to {}", o.target) };
@@ -1651,6 +1657,11 @@ mod tests {
         // With no lead to order by, each obligation is still listed.
         let text = bump_lines(&out, "next", &BTreeMap::new()).unwrap().join("\n");
         assert!(text.contains("2 obligations in the upgrade review:") && text.contains("[next:d00]") && text.contains("[next:d01]"), "{text}");
+        // The lead as the only obligation: the count ends the section, with nothing listed after it.
+        let c = deprecations(1);
+        let out = run(&Input { catalog: &c, stack: &s, repo: &r, ledger: &l, today: "2026-10-15", targets: Default::default() });
+        let text = bump_lines(&out, "next", &BTreeMap::from([("next".to_string(), "next:d00".to_string())])).unwrap().join("\n");
+        assert!(text.ends_with("1 obligation in the upgrade review: the lead above."), "{text}");
     }
 
     #[test]
