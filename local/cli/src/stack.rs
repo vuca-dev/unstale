@@ -790,21 +790,22 @@ pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
                 {
                     entry.pins.push(pin);
                 }
+                // A manifest's version of a package is what it declares under the package's own name; an alias of it
+                // there installs another copy beside it and never lowers that reading, read or resolved afresh.
+                if public_name == name {
+                    if entry.own_dirs.insert(rel.clone()) {
+                        entry.readings.retain(|r| r.dir != rel);
+                        entry.unpinned.retain(|(d, _)| *d != rel);
+                    }
+                } else if entry.own_dirs.contains(&rel) {
+                    continue;
+                }
                 if let Some(spec) = fresh
                     && !entry.unpinned.contains(&(rel.clone(), spec.clone()))
                 {
                     entry.unpinned.push((rel.clone(), spec));
                 }
                 let lock_file = lock.as_ref().map(|(ld, l)| join(&rel_dir(root, ld), &l.file));
-                // A manifest's version of a package is what it declares under the package's own name; an alias of it
-                // there installs another copy beside it and never lowers that reading.
-                if public_name == name {
-                    if entry.own_dirs.insert(rel.clone()) {
-                        entry.readings.retain(|r| r.dir != rel);
-                    }
-                } else if entry.own_dirs.contains(&rel) {
-                    continue;
-                }
                 entry.read_under(&rel, version, source, standalone, floor.map(|r| Range::Npm(r.to_string())), lock_file);
             }
         }
@@ -2621,6 +2622,7 @@ mod tests {
         let ts = &s.deps["pkg:npm/typescript"];
         assert_eq!((ts.version.clone(), ts.readings.len(), ts.parallel_copy()), (Some(Version::new(7, 0, 2)), 1, false), "{ts:?}");
         assert!(s.notes.iter().any(|n| n.contains("side by side") && n.contains("`typescript1`")), "{:?}", s.notes);
+        assert!(ts.unpinned.is_empty());
     }
 
     #[test]

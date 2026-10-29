@@ -897,11 +897,16 @@ pub fn assume_newest_in(
             }
         }
     }
-    // What the other declarations of each directory require of a package there, at the versions just read: by
-    // (directory, package URL), the requiring package and version, and its specifier.
-    // Only the versions just read cap one: a pinned sibling of the same directory (gradio's `gradio_client==2.7.2`
-    // beside its ranges) is not asked for its published requirements yet.
-    let at: BTreeMap<String, BTreeMap<String, Version>> = picked.iter().map(|(p, m)| (p.clone(), m.iter().map(|(d, (v, _))| (d.clone(), v.clone())).collect())).collect();
+    // What the other declarations of each directory require of a package there, at the versions just read and at the
+    // pinned versions of the same directories (gradio's `gradio_client==2.7.2` beside its ranges): by (directory,
+    // package URL), the requiring package and version, and its specifier.
+    let mut at: BTreeMap<String, BTreeMap<String, Version>> = picked.iter().map(|(p, m)| (p.clone(), m.iter().map(|(d, (v, _))| (d.clone(), v.clone())).collect())).collect();
+    let fresh_dirs: BTreeSet<String> = picked.values().flat_map(|m| m.keys().cloned()).collect();
+    for (p, d) in deps.iter().filter(|(p, d)| p.starts_with(eco.prefix) && d.public_candidate) {
+        for r in d.readings.iter().filter(|r| r.range.is_none() && fresh_dirs.contains(&r.dir)) {
+            at.entry(p.clone()).or_default().entry(r.dir.clone()).or_insert_with(|| r.version.clone());
+        }
+    }
     let keys: BTreeSet<String> = at.iter().flat_map(|(p, m)| m.values().map(move |v| format!("{p}@{v}"))).collect();
     let dist = if keys.is_empty() { BTreeMap::new() } else { requires(&keys.into_iter().collect::<Vec<_>>()) };
     let mut caps: BTreeMap<(String, String), Vec<(String, String)>> = BTreeMap::new();
@@ -1471,11 +1476,14 @@ mod tests {
         let mut notes = vec![];
         detect(d.path(), &mut pk, &mut deps, &mut notes);
         let releases = |purls: &[String]| {
-            purls.iter().filter(|p| *p == "pkg:pypi/pillow").map(|p| (p.clone(), ["8.0.0", "12.2.0", "13.0.0"].iter().filter_map(|s| parse_version(s)).collect())).collect()
+            purls.iter().filter(|p| *p == "pkg:pypi/pillow").map(|p| (p.clone(), ["8.0.0", "12.2.0", "12.3.0", "13.0.0"].iter().filter_map(|s| parse_version(s)).collect())).collect()
         };
-        assume_newest(&mut deps, &mut notes, releases, no_requires);
+        // The pinned sibling's published requirements cap it too.
+        let requires = |keys: &[String]| keys.iter().filter(|k| *k == "pkg:pypi/gradio-client@2.7.2").map(|k| (k.clone(), vec!["pillow<12.3".to_string()])).collect();
+        assume_newest(&mut deps, &mut notes, releases, requires);
         crate::stack::settle(&mut deps);
-        assert_eq!(deps["pkg:pypi/pillow"].version, Some(v("12.2.0")), "not the 8.0.0 floor: {:?}", deps["pkg:pypi/pillow"]);
+        assert_eq!(deps["pkg:pypi/pillow"].version, Some(v("12.2.0")), "not the 8.0.0 floor, and within gradio-client's cap: {:?}", deps["pkg:pypi/pillow"]);
+        assert!(deps["pkg:pypi/pillow"].source.contains("gradio-client 2.7.2 requires pillow<12.3"), "{}", deps["pkg:pypi/pillow"].source);
         assert_eq!(deps["pkg:pypi/gradio-client"].version, Some(v("2.7.2")), "the pin stays");
     }
 

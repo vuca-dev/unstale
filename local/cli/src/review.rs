@@ -350,7 +350,6 @@ pub fn digest_lines(out: &Outcome) -> Vec<String> {
     digest_groups(out).into_iter().flat_map(|(_, lines)| lines).collect()
 }
 
-/// `digest_lines`, grouped by technology: its head line first, then its advisory, security and workspace lines.
 /// `; needs a range change: the declared <13.0 does not admit 13.0.0` when the target is outside the range the
 /// headline manifest declares (gradio's `pillow>=8.0,<13.0`): bumping means editing that range, not reinstalling.
 fn range_change_note(out: &Outcome, o: &crate::funnel::Opp) -> String {
@@ -363,6 +362,7 @@ fn range_change_note(out: &Outcome, o: &crate::funnel::Opp) -> String {
     }
 }
 
+/// `digest_lines`, grouped by technology: its head line first, then its advisory, security and workspace lines.
 pub fn digest_groups(out: &Outcome) -> Vec<(String, Vec<String>)> {
     let mut groups = vec![];
     // Security records that carry advisories are listed per advisory (`advisory_fixes`), not per record.
