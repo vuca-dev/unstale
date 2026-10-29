@@ -7,10 +7,11 @@ import re
 HEAD = re.compile(r"^### \[([^\]]+)\] rev (\d+)\n", re.M)
 # The summary sits in a fenced block (with any conditions on the next line), so upstream text cannot pose as instructions.
 # The release is one version, or a span when the exact release is not known (`review::release_version`).
+# A deprecation of a part of a surviving name cites its sites as "Name match, … shape not checked (…)" (`funnel::deprecated_part`).
 BODY = re.compile(r"\n`{3,}text\n(?:(?!\n### ).)*?\n(?:Conditions [^\n]*\n)?`{3,}\n\n"
                   r"- Release: (\S+) (\S+)(?: to (\S+) \(exact release not known\))? \(installed (\S+), target (\S+)\)\n"
                   r"- Change: ([^;]+); breaking: (yes|no)\n"
-                  r"(?:(?!### )[^\n]*\n)*?- (?:Matched terms|Deprecated API used here): (.*?)\n", re.S)
+                  r"(?:(?!### )[^\n]*\n)*?- (?:Matched terms|Deprecated API used here|Name match[^:\n]*): (.*?)\n", re.S)
 
 
 def parse(text):

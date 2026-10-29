@@ -114,6 +114,8 @@ pub struct Opp<'a> {
     /// record's terms: those files run another version than `installed`, so they are left out of `matched` and
     /// `files`, and named here instead.
     pub elsewhere: Vec<String>,
+    /// A deprecation about a part of a surviving name (`deprecated_part`): its sites match the name only.
+    pub part: Option<Part>,
     /// A deprecation or removal cited at its `replaces` literals whose named replacement (an `introduces` literal, not
     /// a plain word) the repository
     /// already writes, whole and outside comments, in a file about the technology (not documentation, generated or
@@ -395,6 +397,81 @@ pub fn deprecated_lits(r: &Rec, lits: &[String]) -> Vec<String> {
         }
     }
     lits.iter().filter(|l| replaces.contains(*l)).cloned().collect()
+}
+
+/// What part of a surviving API a deprecation is about (`deprecated_part`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Part {
+    /// An argument or parameter of a call (commander's "callback parameter to outputHelp"): only calls passing one can
+    /// use it.
+    Argument,
+    /// Another form of the same name (google-genai's "legacy response_format", whose new polymorphic form keeps the
+    /// name): no site can tell the two apart lexically.
+    Form,
+}
+
+/// A code deprecation about a part of its subject rather than the subject itself: an argument, or a legacy form whose
+/// name the current form keeps. The record says so in its `facet`, or in words its summary writes before the subject
+/// ("The callback parameter to outputHelp"), or a structural noun anywhere before "deprecat…" ("The old outputHelp
+/// signature"); a kind noun after the subject ("The
+/// `headerIds` option is deprecated") names what the subject is, not a part of it. An adjective alone ("The legacy
+/// response_format", "The older prisma-client-js provider") may describe the deprecated thing itself, so it reads as a
+/// form only where the name lives on: another record of the technology (`siblings`), at or after this one's release,
+/// adds to the same subject (google-genai's "Added parameters to video response_format", 2.1.0, after the 2.0.0
+/// deprecation). Only for a record that deprecates its subject by name (`replaces` empty or only the subject) and names
+/// no successor of another name (`introduces`). Configuration records have their own facet reading (`option_of`,
+/// `option_values`).
+pub fn deprecated_part(r: &unstale_schema::catalog::CapabilityRecord, siblings: &[Rec]) -> Option<Part> {
+    if r.change_type != ChangeType::Deprecation || r.surface == Surface::Configuration || r.subject_kind != SubjectKind::Literal {
+        return None;
+    }
+    let subject = clean_lit(&r.subject)?;
+    if r.replaces.iter().any(|x| clean_lit(x).as_deref() != Some(subject.as_str()) || usage::call_arity(x).is_some())
+        || r.introduces.iter().any(|x| clean_lit(x).is_some_and(|x| x != subject))
+    {
+        return None;
+    }
+    const ARGUMENT: &[&str] = &["parameter", "parameters", "param", "params", "argument", "arguments", "arg", "args", "callback", "positional", "kwarg", "kwargs"];
+    const FORM: &[&str] = &["form", "forms", "shape", "variant", "signature", "overload", "syntax"];
+    const OLD: &[&str] = &["legacy", "old", "older", "previous"];
+    let words = |s: &str| -> Vec<String> { s.to_ascii_lowercase().split(|c: char| !c.is_ascii_alphanumeric()).filter(|w| !w.is_empty()).map(str::to_string).collect() };
+    let summary = r.summary.to_ascii_lowercase();
+    let head = &summary[..summary.find("deprecat").unwrap_or(0)];
+    let s = subject.to_ascii_lowercase();
+    // The words before the subject's first whole-word occurrence in the summary's head.
+    let at = head.match_indices(s.as_str()).find(|(i, _)| {
+        let ok = |c: Option<char>| c.is_none_or(|c| !(c.is_ascii_alphanumeric() || c == '_'));
+        ok(head[..*i].chars().next_back()) && ok(head[i + s.len()..].chars().next())
+    });
+    let mut said = r.facet.as_deref().map(words).unwrap_or_default();
+    if let Some((i, _)) = at {
+        said.extend(words(&head[..i]));
+    }
+    let own = words(&subject);
+    let said: Vec<String> = said.into_iter().filter(|w| !own.contains(w)).collect();
+    // A structural noun is a part wherever the head writes it ("The old outputHelp signature").
+    let shaped = words(head).iter().chain(&said).any(|w| !own.contains(w) && FORM.contains(&w.as_str()));
+    if said.iter().any(|w| ARGUMENT.contains(&w.as_str())) {
+        Some(Part::Argument)
+    } else if shaped || (said.iter().any(|w| OLD.contains(&w.as_str())) && lives_on(r, &subject, siblings)) {
+        Some(Part::Form)
+    } else {
+        None
+    }
+}
+
+/// Whether another record of the technology, released at or after `r`, adds to `subject` (a new API or option, or a
+/// behaviour change of it): the name lives on past `r`'s deprecation.
+fn lives_on(r: &unstale_schema::catalog::CapabilityRecord, subject: &str, siblings: &[Rec]) -> bool {
+    let versions = |x: &unstale_schema::catalog::CapabilityRecord| x.releases.iter().filter_map(|v| parse_version(&v.version)).collect::<Vec<_>>();
+    // The deprecation's earliest release; a sibling counts when any of its releases is at or after it.
+    let Some(since) = versions(r).into_iter().min() else { return false };
+    siblings.iter().map(|s| &s.r).any(|s| {
+        s.id != r.id
+            && matches!(s.change_type, ChangeType::NewApi | ChangeType::NewOption | ChangeType::BehaviorChange)
+            && (clean_lit(&s.subject).as_deref() == Some(subject) || s.introduces.iter().any(|x| clean_lit(x).as_deref() == Some(subject)))
+            && versions(s).iter().any(|v| *v >= since)
+    })
 }
 
 /// Per package (index into `packages`), the packages of this repository that declare it as a dependency: their
@@ -1751,7 +1828,13 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             let invoked = |l: &str| rec.r.replaces.iter().any(|x| x.replace('`', "").trim().ends_with("()") && clean_lit(x).as_deref() == Some(l));
             // The signature the record replaces, when every `replaces` entry for the literal writes one with parameters
             // (`cy.stub(object, name, fn)`): its calls of another arity (`cy.stub()`) are not sites.
+            // A deprecated argument of a surviving call (`deprecated_part`): only calls passing at least one argument
+            // can use it (`runCmd.outputHelp()` cannot pass outputHelp's deprecated callback).
+            let part = deprecated_part(&rec.r, &td.records);
             let shape = |l: &str| -> Option<(usize, Option<usize>)> {
+                if part == Some(Part::Argument) && deprecated.iter().any(|d| d == l) && usage::identifier(l) {
+                    return Some((1, None));
+                }
                 let mut of = rec.r.replaces.iter().filter(|x| clean_lit(x).as_deref() == Some(l)).map(|x| usage::call_arity(x)).peekable();
                 of.peek()?;
                 of.try_fold((usize::MAX, Some(0usize)), |(lo, hi), a| a.map(|(m, x)| (lo.min(m), hi.zip(x).map(|(h, x)| h.max(x)))))
@@ -1832,6 +1915,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                 unmet: None,
                 elsewhere,
                 adopted: None,
+                part,
             };
             // The ledger, prerequisite and applied checks do not depend on the version: shared with `workspaces`.
             let ledger_status = || {
@@ -2076,6 +2160,7 @@ fn blank<'a>(rec: &'a Rec, release: Release, route: Route) -> Opp<'a> {
         unmet: None,
         elsewhere: vec![],
         adopted: None,
+        part: None,
     }
 }
 
