@@ -418,17 +418,35 @@ impl<'a> Scope<'a> {
     /// Tests, tooling and a file named for the technology keep the package rule (they may run inside it). Such a
     /// file still orders the queue (`Evidence::used`).
     fn platform_global(&self, path: &str, lit: &str, imports: bool, app: bool) -> bool {
+        let lit = lit.trim_start_matches('.');
+        if !app || imports || !lit.contains('.') || !own_code(path, self.ecosystem) || self.path_names(path) {
+            return false;
+        }
+        if self.config_names.contains(&path.rsplit('/').next().unwrap_or(path).to_ascii_lowercase()) {
+            return false;
+        }
         let Some(text) = self.repo.and_then(|r| r.text(path)) else { return false };
-        let Some((head, _)) = lit.trim_start_matches('.').split_once('.') else { return false };
-        app && !imports
-            && own_code(path, self.ecosystem)
-            && is_word(head)
-            && head.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_' || c == '$')
-            && !matches!(head, "this" | "self" | "cls" | "super" | "import" | "new")
-            && !self.stems.iter().any(|s| s.eq_ignore_ascii_case(head))
-            && !self.path_names(path)
-            && !self.config_names.contains(&path.rsplit('/').next().unwrap_or(path).to_ascii_lowercase())
-            && !binds(text, head)
+        // Each occurrence's root: `document` in `document.cookie`, `window` in `window.document.cookie`, `PIL` in
+        // `PIL.Image.open` (a module the file imports, so not a global).
+        let mut roots = text.match_indices(lit).filter(|(at, _)| !text[..*at].ends_with(|c: char| c.is_ascii_alphanumeric() || c == '_' || c == '$')).map(|(at, _)| {
+            let mut start = at;
+            while text[..start].ends_with('.') {
+                let before = &text[..start - 1];
+                let w = before.len() - before.chars().rev().take_while(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '$').count();
+                if w == before.len() {
+                    break;
+                }
+                start = w;
+            }
+            text[start..].split(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '$')).next().unwrap_or("")
+        }).peekable();
+        roots.peek().is_some()
+            && roots.all(|root| {
+                root.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_' || c == '$')
+                    && !matches!(root, "this" | "self" | "cls" | "super" | "import" | "new")
+                    && !self.stems.iter().any(|s| s.eq_ignore_ascii_case(root))
+                    && !binds(text, root)
+            })
     }
 
     /// `named`: the file names a package (`naming_lits`), and whether at a module position (`module_naming`).
@@ -3148,6 +3166,13 @@ mod tests {
         assert!(!files.contains(&"src/auth.ts"), "the browser's own document: {files:?}");
         assert!(files.contains(&"src/auth.test.ts"), "a test may run inside it: {files:?}");
         assert!(files.contains(&"src/own.ts") || files.contains(&"src/local.ts"), "a bound name is the file's own: {files:?}");
+        // A literal reached through a module the file imports (`PIL.Image.open` for `Image.open`) is not a global.
+        let r = repo(&[("app/img.py", "import PIL.Image\n\ndef load(p):\n    return PIL.Image.open(p)\n"), ("app/glob.py", "def f():\n    return window.Image.open(1)\n")]);
+        let purls = vec!["pkg:pypi/pillow".to_string()];
+        let h = scoped(&r, &["Image.open"], &["pkg:pypi/pillow"]);
+        let s = Scope::new("pypi", &root, &purls, &[], &h, &r.paths).with_repo(&r);
+        let files: Vec<String> = s.evidence("Image.open", |p| path_role(p), false).files.into_iter().map(|(p, _)| p).collect();
+        assert_eq!(files, vec!["app/img.py".to_string()]);
     }
 
     #[test]
