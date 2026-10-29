@@ -48,6 +48,17 @@ Conditions (not checked by the tool): uses findUnique
 - Deprecated API used here: `rejectOnNotFound` (src/db.ts)
 
 """
+PART = """### [commander:outputhelp-callback-parameter] rev 1
+
+```text
+The callback parameter to outputHelp is deprecated.
+```
+
+- Release: commander 7.0.0 (installed 6.2.1, target 14.0.0)
+- Change: deprecation; breaking: no
+- Name match, called with arguments, shape not checked (the deprecation concerns an argument, not the name): `outputHelp` (src/cli.ts)
+
+"""
 ODD = """### [prisma:future-format] rev 1
 
 ```text
@@ -66,6 +77,11 @@ class Parse(unittest.TestCase):
         r = recs["next:typescript"]
         self.assertEqual((r["pkg"], r["release"], r["release_hi"], r["installed"], r["target"]), ("next", "16.0.0", None, "15.2.6", "16.2.1"))
         self.assertTrue(r["breaking"] and r["matched"])
+
+    def test_name_match_of_a_part(self):
+        recs, unread = rendered.parse(PART)
+        self.assertEqual(unread, [])
+        self.assertTrue(recs["commander:outputhelp-callback-parameter"]["matched"])
 
     def test_release_span(self):
         recs, unread = rendered.parse(ONE + SPAN)

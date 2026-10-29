@@ -114,6 +114,8 @@ pub struct Opp<'a> {
     /// record's terms: those files run another version than `installed`, so they are left out of `matched` and
     /// `files`, and named here instead.
     pub elsewhere: Vec<String>,
+    /// A deprecation about a part of a surviving name (`deprecated_part`): its sites match the name only.
+    pub part: Option<Part>,
     /// A deprecation or removal cited at its `replaces` literals whose named replacement (an `introduces` literal, not
     /// a plain word) the repository
     /// already writes, whole and outside comments, in a file about the technology (not documentation, generated or
@@ -395,6 +397,81 @@ pub fn deprecated_lits(r: &Rec, lits: &[String]) -> Vec<String> {
         }
     }
     lits.iter().filter(|l| replaces.contains(*l)).cloned().collect()
+}
+
+/// What part of a surviving API a deprecation is about (`deprecated_part`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Part {
+    /// An argument or parameter of a call (commander's "callback parameter to outputHelp"): only calls passing one can
+    /// use it.
+    Argument,
+    /// Another form of the same name (google-genai's "legacy response_format", whose new polymorphic form keeps the
+    /// name): no site can tell the two apart lexically.
+    Form,
+}
+
+/// A code deprecation about a part of its subject rather than the subject itself: an argument, or a legacy form whose
+/// name the current form keeps. The record says so in its `facet`, or in words its summary writes before the subject
+/// ("The callback parameter to outputHelp"), or a structural noun anywhere before "deprecat…" ("The old outputHelp
+/// signature"); a kind noun after the subject ("The
+/// `headerIds` option is deprecated") names what the subject is, not a part of it. An adjective alone ("The legacy
+/// response_format", "The older prisma-client-js provider") may describe the deprecated thing itself, so it reads as a
+/// form only where the name lives on: another record of the technology (`siblings`), at or after this one's release,
+/// adds to the same subject (google-genai's "Added parameters to video response_format", 2.1.0, after the 2.0.0
+/// deprecation). Only for a record that deprecates its subject by name (`replaces` empty or only the subject) and names
+/// no successor of another name (`introduces`). Configuration records have their own facet reading (`option_of`,
+/// `option_values`).
+pub fn deprecated_part(r: &unstale_schema::catalog::CapabilityRecord, siblings: &[Rec]) -> Option<Part> {
+    if r.change_type != ChangeType::Deprecation || r.surface == Surface::Configuration || r.subject_kind != SubjectKind::Literal {
+        return None;
+    }
+    let subject = clean_lit(&r.subject)?;
+    if r.replaces.iter().any(|x| clean_lit(x).as_deref() != Some(subject.as_str()) || usage::call_arity(x).is_some())
+        || r.introduces.iter().any(|x| clean_lit(x).is_some_and(|x| x != subject))
+    {
+        return None;
+    }
+    const ARGUMENT: &[&str] = &["parameter", "parameters", "param", "params", "argument", "arguments", "arg", "args", "callback", "positional", "kwarg", "kwargs"];
+    const FORM: &[&str] = &["form", "forms", "shape", "variant", "signature", "overload", "syntax"];
+    const OLD: &[&str] = &["legacy", "old", "older", "previous"];
+    let words = |s: &str| -> Vec<String> { s.to_ascii_lowercase().split(|c: char| !c.is_ascii_alphanumeric()).filter(|w| !w.is_empty()).map(str::to_string).collect() };
+    let summary = r.summary.to_ascii_lowercase();
+    let head = &summary[..summary.find("deprecat").unwrap_or(0)];
+    let s = subject.to_ascii_lowercase();
+    // The words before the subject's first whole-word occurrence in the summary's head.
+    let at = head.match_indices(s.as_str()).find(|(i, _)| {
+        let ok = |c: Option<char>| c.is_none_or(|c| !(c.is_ascii_alphanumeric() || c == '_'));
+        ok(head[..*i].chars().next_back()) && ok(head[i + s.len()..].chars().next())
+    });
+    let mut said = r.facet.as_deref().map(words).unwrap_or_default();
+    if let Some((i, _)) = at {
+        said.extend(words(&head[..i]));
+    }
+    let own = words(&subject);
+    let said: Vec<String> = said.into_iter().filter(|w| !own.contains(w)).collect();
+    // A structural noun is a part wherever the head writes it ("The old outputHelp signature").
+    let shaped = words(head).iter().chain(&said).any(|w| !own.contains(w) && FORM.contains(&w.as_str()));
+    if said.iter().any(|w| ARGUMENT.contains(&w.as_str())) {
+        Some(Part::Argument)
+    } else if shaped || (said.iter().any(|w| OLD.contains(&w.as_str())) && lives_on(r, &subject, siblings)) {
+        Some(Part::Form)
+    } else {
+        None
+    }
+}
+
+/// Whether another record of the technology, released at or after `r`, adds to `subject` (a new API or option, or a
+/// behaviour change of it): the name lives on past `r`'s deprecation.
+fn lives_on(r: &unstale_schema::catalog::CapabilityRecord, subject: &str, siblings: &[Rec]) -> bool {
+    let versions = |x: &unstale_schema::catalog::CapabilityRecord| x.releases.iter().filter_map(|v| parse_version(&v.version)).collect::<Vec<_>>();
+    // The deprecation's earliest release; a sibling counts when any of its releases is at or after it.
+    let Some(since) = versions(r).into_iter().min() else { return false };
+    siblings.iter().map(|s| &s.r).any(|s| {
+        s.id != r.id
+            && matches!(s.change_type, ChangeType::NewApi | ChangeType::NewOption | ChangeType::BehaviorChange)
+            && (clean_lit(&s.subject).as_deref() == Some(subject) || s.introduces.iter().any(|x| clean_lit(x).as_deref() == Some(subject)))
+            && versions(s).iter().any(|v| *v >= since)
+    })
 }
 
 /// Per package (index into `packages`), the packages of this repository that declare it as a dependency: their
@@ -1817,7 +1894,13 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             let invoked = |l: &str| rec.r.replaces.iter().any(|x| x.replace('`', "").trim().ends_with("()") && clean_lit(x).as_deref() == Some(l));
             // The signature the record replaces, when every `replaces` entry for the literal writes one with parameters
             // (`cy.stub(object, name, fn)`): its calls of another arity (`cy.stub()`) are not sites.
+            // A deprecated argument of a surviving call (`deprecated_part`): only calls passing at least one argument
+            // can use it (`runCmd.outputHelp()` cannot pass outputHelp's deprecated callback).
+            let part = deprecated_part(&rec.r, &td.records);
             let shape = |l: &str| -> Option<(usize, Option<usize>)> {
+                if part == Some(Part::Argument) && deprecated.iter().any(|d| d == l) && usage::identifier(l) {
+                    return Some((1, None));
+                }
                 let mut of = rec.r.replaces.iter().filter(|x| clean_lit(x).as_deref() == Some(l)).map(|x| usage::call_arity(x)).peekable();
                 of.peek()?;
                 of.try_fold((usize::MAX, Some(0usize)), |(lo, hi), a| a.map(|(m, x)| (lo.min(m), hi.zip(x).map(|(h, x)| h.max(x)))))
@@ -1898,6 +1981,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                 unmet: None,
                 elsewhere,
                 adopted: None,
+                part,
             };
             // The ledger, prerequisite and applied checks do not depend on the version: shared with `workspaces`.
             let ledger_status = || {
@@ -2142,6 +2226,7 @@ fn blank<'a>(rec: &'a Rec, release: Release, route: Route) -> Opp<'a> {
         unmet: None,
         elsewhere: vec![],
         adopted: None,
+        part: None,
     }
 }
 
@@ -2280,7 +2365,8 @@ fn published_floor(stack: &Stack, comp: &str, introduced: &Version, files: &[Str
 /// Whether a removal drops support for language runtime versions the project's declared range already excludes:
 /// the record is about the runtime (its subject starts with a runtime name the stack reads a floor for: `Python 3.9`,
 /// `Python version support`), and either its prerequisite on that runtime is at or below the project's floor, or,
-/// with none, the version its subject names ends at or below it (`Python 3.9` ends at 3.10). Returns the project's
+/// with none, the version its subject (else its summary) names ends at or below it (`Python 3.9` ends at 3.10; a
+/// stated minimum, `Python 3.10+`, at 3.10: `runtime_bounds`). Returns the project's
 /// declaration.
 pub(crate) fn runtime_drop_met(rec: &Rec, stack: &Stack) -> Option<String> {
     if rec.r.change_type != ChangeType::Removal {
@@ -2297,17 +2383,50 @@ pub(crate) fn runtime_drop_met(rec: &Rec, stack: &Stack) -> Option<String> {
     let met = if !prereqs.is_empty() {
         prereqs.iter().all(|m| parse_version(m).is_some_and(|m| *floor >= m))
     } else {
-        let dropped = words.next().filter(|w| w.starts_with(|c: char| c.is_ascii_digit()))?;
-        let nums: Vec<u64> = dropped.trim_end_matches(|c: char| !c.is_ascii_digit()).split('.').map_while(|p| p.parse().ok()).collect();
-        let end = match nums.as_slice() {
-            [major] => Version::new(major + 1, 0, 0),
-            [major, minor] => Version::new(*major, minor + 1, 0),
-            [major, minor, patch, ..] => Version::new(*major, *minor, patch + 1),
-            [] => return None,
-        };
-        *floor >= end
+        // The versions the subject names, else the summary's (`Python support`: "Support for Python 3.9 was removed").
+        let bounds = runtime_bounds(&rec.r.subject, runtime);
+        let bounds = if bounds.is_empty() { runtime_bounds(&rec.r.summary, runtime) } else { bounds };
+        !bounds.is_empty() && bounds.iter().all(|b| *floor >= *b)
     };
     met.then(|| source.clone())
+}
+
+/// The lowest runtime version `text` leaves the project needing, per mention of `runtime` followed by a version: the
+/// version itself when it is stated as the new minimum (`Python 3.10+`, `Python >= 3.10`, `Python 3.10 or newer is
+/// required`), else the first version after the one named, which the record drops (`Python 3.9` ends at 3.10).
+fn runtime_bounds(text: &str, runtime: &str) -> Vec<Version> {
+    let words: Vec<&str> = text.split_whitespace().collect();
+    let bare = |w: &str| w.trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '.').trim_end_matches('.').to_string();
+    let mut out = vec![];
+    for i in 0..words.len() {
+        if !bare(words[i]).eq_ignore_ascii_case(runtime) {
+            continue;
+        }
+        let mut j = i + 1;
+        let mut min = false;
+        if words.get(j).is_some_and(|w| matches!(w.trim_matches('`'), ">=" | "≥")) {
+            min = true;
+            j += 1;
+        }
+        let Some(w) = words.get(j).map(|w| w.trim_matches('`').trim_start_matches(">=").trim_start_matches('≥')) else { continue };
+        if !w.starts_with(|c: char| c.is_ascii_digit()) {
+            continue;
+        }
+        let digits = w.trim_end_matches(|c: char| !c.is_ascii_digit());
+        min |= w[digits.len()..].starts_with('+') || words[i + 1].starts_with(">=") || words[i + 1].starts_with('≥');
+        let next: Vec<String> = words.iter().skip(j + 1).take(3).map(|w| w.trim_matches(|c: char| !c.is_ascii_alphanumeric()).to_ascii_lowercase()).collect();
+        let next: Vec<&str> = next.iter().map(String::as_str).collect();
+        min |= matches!(next.as_slice(), ["or", "newer" | "later" | "higher" | "above" | "greater", ..] | ["is", "required", ..] | ["required", ..] | ["is", "now", "required", ..] | ["minimum", ..]);
+        let nums: Vec<u64> = digits.split('.').map_while(|p| p.parse().ok()).collect();
+        let v = match nums.as_slice() {
+            [major] => if min { Version::new(*major, 0, 0) } else { Version::new(major + 1, 0, 0) },
+            [major, minor] => Version::new(*major, if min { *minor } else { minor + 1 }, 0),
+            [major, minor, patch, ..] => Version::new(*major, *minor, if min { *patch } else { patch + 1 }),
+            [] => continue,
+        };
+        out.push(v);
+    }
+    out
 }
 
 /// The lockfile a package's headline version is read from (`Outcome::headline`, else `Dep::headline`).
@@ -4098,6 +4217,11 @@ mod tests {
                 with(rec("lib:py39", "pkg:npm/lib", "2.0.0"), json!({"change_type":"removal","breaking":true,"subject":"Python 3.9"})),
                 with(rec("lib:py311", "pkg:npm/lib", "2.0.0"), json!({"change_type":"removal","breaking":true,"subject":"Python runtime requirement","prerequisites":[{"ecosystem":"pypi","name":"python","min":"3.13"}]})),
                 with(rec("lib:node18", "pkg:npm/lib", "2.0.0"), json!({"change_type":"removal","breaking":true,"subject":"Node.js 18"})),
+                // mem0: the new minimum as the subject, and a versionless subject whose summary names the dropped one.
+                with(rec("lib:py310plus", "pkg:npm/lib", "2.0.0"), json!({"change_type":"removal","breaking":true,"subject":"Python 3.10+","summary":"Python 3.10 or newer is required; Python 3.9 is no longer supported."})),
+                with(rec("lib:py-support", "pkg:npm/lib", "2.0.0"), json!({"change_type":"removal","breaking":true,"subject":"Python support","summary":"Support for Python 3.9 was removed."})),
+                with(rec("lib:py313plus", "pkg:npm/lib", "2.0.0"), json!({"change_type":"removal","breaking":true,"subject":"Python support","summary":"Python 3.13 or newer is required."})),
+                with(rec("lib:py312-drop", "pkg:npm/lib", "2.0.0"), json!({"change_type":"removal","breaking":true,"subject":"Python support","summary":"Drops support for Python 3.12."})),
                 with(rec("lib:node-min", "pkg:npm/lib", "2.0.0"), json!({"change_type":"removal","breaking":true,"subject":"Node.js support","prerequisites":[{"ecosystem":"npm","name":"node","min":"18.0.0"}]})),
             ],
         );
@@ -4110,6 +4234,15 @@ mod tests {
         assert_ne!(route_of(&out, "lib:py311"), &Route::Applied, "3.12 does not meet a 3.13 floor");
         assert_ne!(route_of(&out, "lib:node18"), &Route::Applied, "a range that admits 18 still runs it");
         assert_eq!(route_of(&out, "lib:node-min"), &Route::Applied, "`node` is the `Node.js` runtime");
+        assert_eq!(route_of(&out, "lib:py310plus"), &Route::Applied, "a 3.10 minimum is met at >=3.12");
+        assert_eq!(route_of(&out, "lib:py-support"), &Route::Applied, "the summary names the dropped version");
+        assert_ne!(route_of(&out, "lib:py313plus"), &Route::Applied, "3.12 does not meet a stated 3.13 minimum");
+        assert_ne!(route_of(&out, "lib:py312-drop"), &Route::Applied, ">=3.12 still admits the dropped 3.12");
+        // At exactly the stated minimum: met, where reading `3.10` as a dropped version (ends at 3.11) was not.
+        s.python = Some((Version::new(3, 10, 0), "requires-python >=3.10 in pyproject.toml".into()));
+        let out = run_with(&c, &s, &r, &l);
+        assert_eq!(route_of(&out, "lib:py310plus"), &Route::Applied, "a 3.10 minimum is met at >=3.10");
+        assert_eq!(route_of(&out, "lib:py-support"), &Route::Applied, "3.9 is dropped, >=3.10 excludes it");
         s.python = None;
         let out = run_with(&c, &s, &r, &l);
         assert_ne!(route_of(&out, "lib:py39"), &Route::Applied, "no declared range: nothing is known");
