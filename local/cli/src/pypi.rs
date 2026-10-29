@@ -303,14 +303,16 @@ fn pep508_list(v: Option<&Value>, out: &mut Vec<Req>) {
     }
 }
 
-/// Declared requirements of a `pyproject.toml`, and whether it names a distribution (a library candidate).
-fn pyproject(text: &str) -> Option<(Vec<Req>, bool)> {
+/// Declared requirements of a `pyproject.toml`, whether it names a distribution (a library candidate), and its PEP 621
+/// optional extras' requirements, kept apart: an extra installs only when asked for (`pip install pkg[rl]`).
+fn pyproject(text: &str) -> Option<(Vec<Req>, bool, Vec<Req>)> {
     let doc: Value = toml::from_str(text).ok()?;
     let mut out = vec![];
+    let mut extras = vec![];
     let project = doc.get("project");
     pep508_list(project.and_then(|p| p.get("dependencies")), &mut out);
     for v in project.and_then(|p| p.get("optional-dependencies")).and_then(Value::as_table).into_iter().flat_map(|t| t.values()) {
-        pep508_list(Some(v), &mut out);
+        pep508_list(Some(v), &mut extras);
     }
     for v in doc.get("dependency-groups").and_then(Value::as_table).into_iter().flat_map(|t| t.values()) {
         pep508_list(Some(v), &mut out);
@@ -322,7 +324,7 @@ fn pyproject(text: &str) -> Option<(Vec<Req>, bool)> {
         table_deps(g.get("dependencies"), &mut out);
     }
     let named = project.and_then(|p| p.get("name")).is_some() || poetry.and_then(|p| p.get("name")).is_some();
-    Some((out, named))
+    Some((out, named, extras))
 }
 
 /// A lockfile's pinned versions by normalised name.
@@ -615,11 +617,13 @@ pub fn detect(root: &Path, packages: &mut Vec<Package>, deps: &mut BTreeMap<Stri
         let mut reqs = vec![];
         let mut named = false;
         let mut declared_python: Option<(Version, String)> = None;
+        let mut extras = vec![];
         for (base, text) in &files {
             if base == "pyproject.toml" {
-                if let Some((r, n)) = pyproject(text) {
+                if let Some((r, n, x)) = pyproject(text) {
                     reqs.extend(r);
                     named |= n;
+                    extras.extend(x);
                 }
                 if let Some((key, floor)) = requires_python(text) {
                     let rel = dir.strip_prefix(root).ok().map(|p| p.to_string_lossy().replace('\\', "/")).filter(|p| !p.is_empty());
@@ -648,6 +652,12 @@ pub fn detect(root: &Path, packages: &mut Vec<Package>, deps: &mut BTreeMap<Stri
                 reqs.extend(requirements.reqs[span].iter().cloned());
             }
         }
+        // An optional extra's requirement counts only for a package nothing else here declares: its bound
+        // (`numpy<2.0.0` under qlib's `rl` extra) is not what the default install of an unbounded `numpy` resolves.
+        let default: BTreeSet<String> = reqs.iter().map(|(n, _, _)| normalize(n)).collect();
+        let extras: Vec<Req> = extras.into_iter().filter(|(n, _, _)| !default.contains(&normalize(n))).collect();
+        let optional: BTreeSet<String> = extras.iter().map(|(n, _, _)| normalize(n)).collect();
+        reqs.extend(extras);
         let pinned = requirements.lock();
         let has_requirements = req_files.contains_key(&dir);
         // A lockfile belongs to the project beside it; only a `pyproject.toml` member looks further up (a uv or
@@ -715,6 +725,9 @@ pub fn detect(root: &Path, packages: &mut Vec<Package>, deps: &mut BTreeMap<Stri
                 entry.unpinned.push((rel.clone(), spec.clone()));
             }
             entry.public_candidate &= public;
+            if optional.contains(&n) {
+                entry.optional_dirs.insert(rel.clone());
+            }
             if let Some(s) = lock.as_ref().and_then(|l| l.seen.get(&n)) {
                 entry.seen = entry.seen.and(*s);
             }
@@ -818,9 +831,30 @@ pub const PYPI_FRESH: Fresh = Fresh {
 };
 
 /// Reads each declaration no lockfile or pinned requirements file pins (`Dep::unpinned`) at the newest release on
-/// PyPI its specifier admits (`assume_newest_in`).
-pub fn assume_newest(deps: &mut BTreeMap<String, Dep>, notes: &mut Vec<String>, releases: impl FnOnce(&[String]) -> BTreeMap<String, Vec<Version>>) {
-    assume_newest_in(&PYPI_FRESH, deps, notes, releases)
+/// PyPI its specifier admits (`assume_newest_in`), within the published requirements of the directory's other
+/// declarations (`requires`: `registry_requires`).
+pub fn assume_newest(
+    deps: &mut BTreeMap<String, Dep>,
+    notes: &mut Vec<String>,
+    releases: impl FnOnce(&[String]) -> BTreeMap<String, Vec<Version>>,
+    requires: impl FnOnce(&[String]) -> BTreeMap<String, Vec<String>>,
+) {
+    assume_newest_in(&PYPI_FRESH, deps, notes, releases, requires)
+}
+
+/// No published requirements read (npm: its resolver installs conflicting ranges side by side).
+pub fn no_requires(_: &[String]) -> BTreeMap<String, Vec<String>> {
+    BTreeMap::new()
+}
+
+/// A published requirement (`Requires-Dist`) that applies to every install: no environment marker (an extra's, or a
+/// platform's, which a default install may not meet), a public name and a specifier. Name and specifier.
+fn unconditional(line: &str) -> Option<(String, String)> {
+    if line.contains(';') {
+        return None;
+    }
+    let (name, spec, public) = requirement(line)?;
+    (public && !spec.is_empty()).then(|| (normalize(&name), spec))
 }
 
 /// Reads each declaration nothing pins (`Dep::unpinned`) at the newest release on its registry its range admits,
@@ -830,17 +864,29 @@ pub fn assume_newest(deps: &mut BTreeMap<String, Dep>, notes: &mut Vec<String>, 
 /// published library's users may install is still judged at its floor (`funnel::published_floor`). `releases` gives
 /// the public releases of the asked package URLs; a package it has none for keeps its floor (unpinned: no version).
 /// Said once in `notes`, with the floors kept.
-pub fn assume_newest_in(eco: &Fresh, deps: &mut BTreeMap<String, Dep>, notes: &mut Vec<String>, releases: impl FnOnce(&[String]) -> BTreeMap<String, Vec<Version>>) {
+///
+/// The resolver also honours what the other declarations of the same directory require, one level down: `requires`
+/// gives the unconditional published requirements of `<purl>@<version>` keys, each other declaration asked at the
+/// version read for it here. A bound one of them sets on this package (qlib: `pandas>=1.1` beside `mlflow<3.13`,
+/// whose 3.12.0 requires `pandas<3`) lowers the reading to the newest release both admit, and its source says so.
+pub fn assume_newest_in(
+    eco: &Fresh,
+    deps: &mut BTreeMap<String, Dep>,
+    notes: &mut Vec<String>,
+    releases: impl FnOnce(&[String]) -> BTreeMap<String, Vec<Version>>,
+    requires: impl FnOnce(&[String]) -> BTreeMap<String, Vec<String>>,
+) {
     let want: Vec<String> = deps.iter().filter(|(p, d)| p.starts_with(eco.prefix) && d.public_candidate && !d.unpinned.is_empty()).map(|(p, _)| p.clone()).collect();
     if want.is_empty() {
         return;
     }
     let got = releases(&want);
-    let (mut newest, mut floors) = (vec![], vec![]);
+    // Per package and directory, the lowest of its declarations' newest admitted releases (as `read_under` keeps the
+    // lowest).
+    let mut picked: BTreeMap<String, BTreeMap<String, (Version, String)>> = BTreeMap::new();
     for p in &want {
-        let Some(d) = deps.get_mut(p) else { continue };
-        // Per directory, the lowest of its declarations' newest admitted releases (as `read_under` keeps the lowest).
-        let mut by_dir: BTreeMap<String, (Version, String)> = BTreeMap::new();
+        let Some(d) = deps.get(p) else { continue };
+        let by_dir = picked.entry(p.clone()).or_default();
         for (dir, spec) in &d.unpinned {
             let Some(v) = got.get(p).and_then(|r| newest_by(r, spec, eco.admits)) else { continue };
             match by_dir.get(dir) {
@@ -850,6 +896,43 @@ pub fn assume_newest_in(eco: &Fresh, deps: &mut BTreeMap<String, Dep>, notes: &m
                 }
             }
         }
+    }
+    // What the other declarations of each directory require of a package there, at the versions just read: by
+    // (directory, package URL), the requiring package and version, and its specifier.
+    let keys: BTreeSet<String> = picked.iter().flat_map(|(p, m)| m.values().map(move |(v, _)| format!("{p}@{v}"))).collect();
+    let dist = if keys.is_empty() { BTreeMap::new() } else { requires(&keys.into_iter().collect::<Vec<_>>()) };
+    let mut caps: BTreeMap<(String, String), Vec<(String, String)>> = BTreeMap::new();
+    for (q, m) in &picked {
+        // Only an extra declares it here (qlib's `docs = ["scipy<=1.15.3"]`): a default install does not have it.
+        for (dir, (v, _)) in m.iter().filter(|(dir, _)| !deps.get(q).is_some_and(|d| d.optional_dirs.contains(*dir))) {
+            for line in dist.get(&format!("{q}@{v}")).into_iter().flatten() {
+                let Some((name, spec)) = unconditional(line) else { continue };
+                let target = format!("{}{name}", eco.prefix);
+                if target == *q || !picked.get(&target).is_some_and(|t| t.contains_key(dir)) {
+                    continue;
+                }
+                let by = deps.get(q).map_or(q.as_str(), |d| d.name.as_str());
+                caps.entry((dir.clone(), target)).or_default().push((format!("{by} {v}"), spec));
+            }
+        }
+    }
+    let (mut newest, mut floors) = (vec![], vec![]);
+    for p in &want {
+        let Some(d) = deps.get_mut(p) else { continue };
+        let mut by_dir: BTreeMap<String, (Version, String, Option<String>)> = picked.remove(p).unwrap_or_default().into_iter().map(|(k, (v, s))| (k, (v, s, None))).collect();
+        for (dir, (v, spec, capped)) in by_dir.iter_mut() {
+            let Some(c) = caps.get(&(dir.clone(), p.clone())) else { continue };
+            let excluding: Vec<&(String, String)> = c.iter().filter(|(_, cs)| !(eco.admits)(v, cs)).collect();
+            if excluding.is_empty() {
+                continue;
+            }
+            let ok: Vec<&Version> = got.get(p).into_iter().flatten().filter(|r| (eco.admits)(r, spec) && c.iter().all(|(_, cs)| (eco.admits)(r, cs))).collect();
+            // No release both admit: the resolver would fail or backtrack the other package; keep the plain reading.
+            let Some(w) = ok.iter().filter(|r| r.pre.is_empty()).max().or_else(|| ok.iter().max()).map(|r| (*r).clone()) else { continue };
+            let why: Vec<String> = excluding.iter().map(|(by, cs)| format!("{by} requires {}{cs}", d.name)).collect();
+            *v = w;
+            *capped = Some(why.join(", "));
+        }
         if by_dir.is_empty() {
             if d.readings.iter().any(|r| r.range.is_some() && r.lock.is_none()) {
                 floors.push(d.name.clone());
@@ -857,11 +940,12 @@ pub fn assume_newest_in(eco: &Fresh, deps: &mut BTreeMap<String, Dep>, notes: &m
             continue;
         }
         let reg = eco.registry;
-        for (dir, (v, spec)) in by_dir {
-            let source = if spec.trim().is_empty() {
-                format!("newest release {v} on {reg} (unpinned, nothing pins it: what a fresh install resolves)")
-            } else {
-                format!("newest release {v} on {reg} that {spec} admits (nothing pins it: what a fresh install resolves)")
+        for (dir, (v, spec, capped)) in by_dir {
+            let source = match (spec.trim().is_empty(), capped) {
+                (true, None) => format!("newest release {v} on {reg} (unpinned, nothing pins it: what a fresh install resolves)"),
+                (false, None) => format!("newest release {v} on {reg} that {spec} admits (nothing pins it: what a fresh install resolves)"),
+                (true, Some(c)) => format!("newest release {v} on {reg} within what {c} (unpinned here; another declared dependency's published requirement caps it: what a fresh install resolves)"),
+                (false, Some(c)) => format!("newest release {v} on {reg} that {spec} admits and {c} (nothing pins it; another declared dependency's published requirement caps it: what a fresh install resolves)"),
             };
             match d.readings.iter_mut().find(|r| r.dir == dir) {
                 // A floor reading; a pinned reading of the same directory stays.
@@ -928,6 +1012,23 @@ pub fn registry_releases(purls: &[String]) -> BTreeMap<String, Vec<Version>> {
     })
 }
 
+/// The published requirements (`info.requires_dist`) of PyPI releases, asked as `pkg:pypi/<name>@<version>`, from
+/// `pypi.org/pypi/<name>/<version>/json` (`2.0.0` also as `2.0`, how many releases spell it), cached like
+/// `registry_releases`. None with `UNSTALE_NO_REGISTRY=1`, and none in tests.
+pub fn registry_requires(keys: &[String]) -> BTreeMap<String, Vec<String>> {
+    cached_releases(keys, "pypi-requires", |s| Some(s.to_string()), |agent, key| {
+        let (name, version) = key.trim_start_matches("pkg:pypi/").rsplit_once('@')?;
+        let short = version.strip_suffix(".0").filter(|s| s.contains('.'));
+        let doc = [Some(version), short].into_iter().flatten().find_map(|v| {
+            let mut r = agent.get(format!("https://pypi.org/pypi/{name}/{v}/json")).call().ok().filter(|r| r.status().is_success())?;
+            let bytes = r.body_mut().with_config().limit(16 * 1024 * 1024).read_to_vec().ok()?;
+            serde_json::from_slice::<Json>(&bytes).ok()
+        })?;
+        let info = doc.get("info")?;
+        Some(info.get("requires_dist").and_then(Json::as_array).into_iter().flatten().filter_map(Json::as_str).map(String::from).collect())
+    })
+}
+
 /// The published versions of public npm packages, from the registry's abbreviated document
 /// (`application/vnd.npm.install-v1+json`, what package managers resolve from), cached for a day like
 /// `registry_releases`. None with `UNSTALE_NO_REGISTRY=1`, and none in tests.
@@ -949,12 +1050,12 @@ pub fn npm_registry_releases(purls: &[String]) -> BTreeMap<String, Vec<Version>>
 
 /// Release lists per package URL, each fetched by `fetch` at most once a day (cached under `sub` in the cache
 /// directory).
-fn cached_releases(
+fn cached_releases<T>(
     purls: &[String],
     sub: &str,
-    parse_one: fn(&str) -> Option<Version>,
+    parse_one: fn(&str) -> Option<T>,
     fetch: impl Fn(&ureq::Agent, &str) -> Option<Vec<String>> + Sync,
-) -> BTreeMap<String, Vec<Version>> {
+) -> BTreeMap<String, Vec<T>> {
     let mut out = BTreeMap::new();
     if cfg!(test) || crate::privacy::registry_off() {
         return out;
@@ -1344,7 +1445,7 @@ mod tests {
             }
             m
         };
-        assume_newest(&mut deps, &mut notes, releases);
+        assume_newest(&mut deps, &mut notes, releases, no_requires);
         crate::stack::settle(&mut deps);
         assert_eq!(deps["pkg:pypi/mcp"].version, Some(v("2.3.0")), "not the 2.0.0 floor, and no pre-release");
         assert_eq!(deps["pkg:pypi/fastapi"].version, Some(v("0.162.0")), "an unpinned requirement still gets a version");
@@ -1355,6 +1456,56 @@ mod tests {
         assert_eq!(deps["pkg:pypi/semconv"].version, parse_version("0.60b0"), "only pre-releases: the newest of them");
         assert!(notes.iter().any(|n| n.starts_with("4 Python requirements no lockfile")), "{notes:?}");
         assert!(notes.iter().any(|n| n.contains("(gone)") && n.contains("declared floor")), "{notes:?}");
+    }
+
+    #[test]
+    fn another_declarations_published_requirement_caps_the_fresh_install() {
+        // qlib: `pandas>=1.1` beside `mlflow<3.13`, whose 3.12.0 requires `pandas<3`; an `rl` extra's `numpy<2.0.0`
+        // does not bound the unconditional `numpy`, and a marker-gated requirement applies to no default install.
+        let d = tempfile::tempdir().unwrap();
+        write(
+            d.path(),
+            "pyproject.toml",
+            "[build-system]\nrequires = [\"numpy>=1.24.0\"]\n[project]\nname = \"lib\"\ndependencies = [\"pandas>=1.1\", \"mlflow<3.13\", \"numpy\", \"scipy\"]\n[project.optional-dependencies]\nrl = [\"numpy<2.0.0\", \"tianshou<=0.4\"]\ndocs = [\"sphinx-old<=1.0\"]\n",
+        );
+        let (mut pk, mut deps) = (vec![], BTreeMap::new());
+        let mut notes = vec![];
+        detect(d.path(), &mut pk, &mut deps, &mut notes);
+        let releases = |purls: &[String]| {
+            let mut m = BTreeMap::new();
+            for p in purls {
+                let vs: &[&str] = match p.as_str() {
+                    "pkg:pypi/pandas" => &["1.1.0", "2.3.3", "3.0.0", "3.1.0"],
+                    "pkg:pypi/mlflow" => &["3.11.0", "3.12.0", "3.13.0"],
+                    "pkg:pypi/numpy" => &["1.26.4", "2.5.4"],
+                    "pkg:pypi/scipy" => &["1.15.3", "1.18.1"],
+                    "pkg:pypi/tianshou" => &["0.4.0", "1.0.0"],
+                    "pkg:pypi/sphinx-old" => &["1.0.0", "2.0.0"],
+                    _ => continue,
+                };
+                m.insert(p.clone(), vs.iter().filter_map(|s| parse_version(s)).collect());
+            }
+            m
+        };
+        let asked = std::cell::RefCell::new(vec![]);
+        let requires = |keys: &[String]| {
+            asked.borrow_mut().extend(keys.iter().cloned());
+            let mut m = BTreeMap::new();
+            m.insert("pkg:pypi/sphinx-old@1.0.0".to_string(), vec!["numpy<2.5".to_string()]);
+            m.insert("pkg:pypi/mlflow@3.12.0".to_string(), vec!["pandas<3".to_string(), "scipy<2".into(), "numpy<2; extra == \"old\"".into(), "numpy<1.27; python_version < \"3.9\"".into()]);
+            m
+        };
+        assume_newest(&mut deps, &mut notes, releases, requires);
+        crate::stack::settle(&mut deps);
+        assert!(asked.borrow().contains(&"pkg:pypi/mlflow@3.12.0".to_string()), "asked at the version read for it: {:?}", asked.borrow());
+        assert_eq!(deps["pkg:pypi/pandas"].version, Some(v("2.3.3")), "mlflow 3.12.0 requires pandas<3");
+        let src = &deps["pkg:pypi/pandas"].source;
+        assert!(src.contains("mlflow 3.12.0 requires pandas<3") && src.contains(">=1.1"), "{src}");
+        assert_eq!(deps["pkg:pypi/scipy"].version, Some(v("1.18.1")), "a bound the newest already meets changes nothing");
+        assert!(!deps["pkg:pypi/scipy"].source.contains("requires"), "{}", deps["pkg:pypi/scipy"].source);
+        assert_eq!(deps["pkg:pypi/numpy"].version, Some(v("2.5.4")), "neither the extra's, a marker-gated bound, nor what an extra-only package requires applies");
+        assert!(deps["pkg:pypi/numpy"].source.contains("unpinned"), "{}", deps["pkg:pypi/numpy"].source);
+        assert_eq!(deps["pkg:pypi/tianshou"].version, Some(v("0.4.0")), "a package only an extra declares keeps its bound");
     }
 
     #[test]
