@@ -100,6 +100,23 @@ pub fn spec_floor(spec: &str) -> Option<Version> {
 /// A declared requirement: name, specifier, and whether it is a public PyPI identity (no URL or path reference).
 type Req = (String, String, bool);
 
+/// Whether a PEP 508 requirement carries an environment marker (`; python_version > "3.11"`), a comment aside.
+fn has_marker(line: &str) -> bool {
+    line.split(" #").next().unwrap_or("").contains(';')
+}
+
+/// (normalised name, specifier) of a `pyproject.toml`'s PEP 508 requirements declared under an environment marker.
+fn pyproject_marked(text: &str) -> BTreeSet<(String, String)> {
+    let Ok(doc) = toml::from_str::<Value>(text) else { return BTreeSet::new() };
+    let project = doc.get("project");
+    let lists = project
+        .and_then(|p| p.get("dependencies"))
+        .into_iter()
+        .chain(project.and_then(|p| p.get("optional-dependencies")).and_then(Value::as_table).into_iter().flat_map(|t| t.values()))
+        .chain(doc.get("dependency-groups").and_then(Value::as_table).into_iter().flat_map(|t| t.values()));
+    lists.filter_map(Value::as_array).flatten().filter_map(Value::as_str).filter(|s| has_marker(s)).filter_map(requirement).map(|(n, s, _)| (normalize(&n), s)).collect()
+}
+
 /// A PEP 508 requirement as a [`Req`].
 fn requirement(line: &str) -> Option<Req> {
     let line = line.split(';').next()?.split(" #").next()?.trim();
@@ -125,7 +142,7 @@ enum ReqLine {
     /// A requirement, its `==` pin (version as written) and `--hash` values, and whether it is declared here: false
     /// for a compiled entry whose `# via` annotation (pip-compile, `uv pip compile`) names only the packages that pull
     /// it in, and no `-r` input or `(<file>)` source declaring it.
-    Req { req: Req, pin: Option<String>, hashes: Vec<String>, declared: bool },
+    Req { req: Req, pin: Option<String>, hashes: Vec<String>, declared: bool, marked: bool },
 }
 
 /// A requirements file's lines: options other than `-r`/`-c` (`-e`, `--index-url`), URLs and local paths dropped.
@@ -199,10 +216,12 @@ fn requirement_lines(text: &str) -> Vec<ReqLine> {
                 hashes.push(h.to_string());
             }
         }
-        let Some(req) = requirement(line.split(" --").next().unwrap_or("")) else { continue };
+        let text = line.split(" --").next().unwrap_or("");
+        let Some(req) = requirement(text) else { continue };
+        let marked = has_marker(text);
         let pin = req.1.strip_prefix("==").map(str::trim).filter(|v| !v.contains([',', '*', ' '])).filter(|v| parse_version(v).is_some()).map(String::from);
         last = Some(out.len());
-        out.push(ReqLine::Req { req, pin, hashes, declared: true });
+        out.push(ReqLine::Req { req, pin, hashes, declared: true, marked });
     }
     out
 }
@@ -223,6 +242,8 @@ struct Requirements {
     pins: BTreeMap<String, (String, Vec<String>, String)>,
     /// The files read as a `-c` constraints file somewhere: they declare nothing, even where found on their own.
     constrained: BTreeSet<PathBuf>,
+    /// (normalised name, specifier) of the requirements declared under an environment marker.
+    marked: BTreeSet<(String, String)>,
 }
 
 impl Requirements {
@@ -239,7 +260,10 @@ impl Requirements {
         for l in requirement_lines(&text) {
             match l {
                 ReqLine::Include { file: f, constraint: c } => self.read(root, project, &file.parent().unwrap_or(root).join(f), constraint || c, seen),
-                ReqLine::Req { req, pin, hashes, declared } => {
+                ReqLine::Req { req, pin, hashes, declared, marked } => {
+                    if marked && declared && !constraint {
+                        self.marked.insert((normalize(&req.0), req.1.clone()));
+                    }
                     if let Some(p) = pin {
                         // Two files pinning one package differently (a production and a development set): the newer, as
                         // for a lock forked by marker.
@@ -618,8 +642,10 @@ pub fn detect(root: &Path, packages: &mut Vec<Package>, deps: &mut BTreeMap<Stri
         let mut named = false;
         let mut declared_python: Option<(Version, String)> = None;
         let mut extras = vec![];
+        let mut marked: BTreeSet<(String, String)> = BTreeSet::new();
         for (base, text) in &files {
             if base == "pyproject.toml" {
+                marked.extend(pyproject_marked(text));
                 if let Some((r, n, x)) = pyproject(text) {
                     reqs.extend(r);
                     named |= n;
@@ -658,6 +684,7 @@ pub fn detect(root: &Path, packages: &mut Vec<Package>, deps: &mut BTreeMap<Stri
         let extras: Vec<Req> = extras.into_iter().filter(|(n, _, _)| !default.contains(&normalize(n))).collect();
         let optional: BTreeSet<String> = extras.iter().map(|(n, _, _)| normalize(n)).collect();
         reqs.extend(extras);
+        marked.extend(std::mem::take(&mut requirements.marked));
         let pinned = requirements.lock();
         let has_requirements = req_files.contains_key(&dir);
         // A lockfile belongs to the project beside it; only a `pyproject.toml` member looks further up (a uv or
@@ -698,21 +725,28 @@ pub fn detect(root: &Path, packages: &mut Vec<Package>, deps: &mut BTreeMap<Stri
         if seen_dirs.insert(rel.clone()) {
             packages.push(Package { dir: rel.clone(), kind, lockfile: lock.as_ref().map(|l| l.file.clone()), declared: declared.clone(), own: None });
         }
-        // Every specifier each package is declared with here. Declarations split by environment marker
-        // (`Sphinx==8.2.3; python_version <= "3.11"` beside `Sphinx==9.1.0; python_version > "3.11"`, or a uv.lock forked
-        // per marker) each admit only their own environment's version: the locked version is outside the declared
-        // requirements only when none of them admits it, whatever the marker says.
+        // The specifiers each package is declared with under an environment marker. Declarations split by marker
+        // (`Sphinx==8.2.3; python_version <= "3.11"` beside `Sphinx==9.1.0; python_version > "3.11"`, or ranges against a
+        // uv.lock forked per marker) each admit only their own environment's version: a marked declaration finds the
+        // locked version outside the declared requirements only when no marked one admits it, whatever the markers
+        // say. An unmarked declaration applies everywhere, so it must admit it itself (`Django>=4.2` and `Django<5`).
         let mut specs: BTreeMap<String, Vec<String>> = BTreeMap::new();
         for (name, spec, _) in &reqs {
-            specs.entry(normalize(name)).or_default().push(spec.clone());
+            let n = normalize(name);
+            if marked.contains(&(n.clone(), spec.clone())) {
+                specs.entry(n).or_default().push(spec.clone());
+            }
         }
         for (name, spec, public) in reqs {
             let n = normalize(&name);
             let (version, source, floor) = match (&lock, kind) {
                 (Some(l), Kind::Application) if l.versions.contains_key(&n) => {
                     let v = &l.versions[&n];
-                    // A pin no declaration of it admits: the lockfile is out of date for this one.
-                    if !specs[&n].iter().any(|s| spec_satisfies(v, s) != Some(false)) {
+                    // A pin the declaration (or, under a marker, no marked declaration) admits: the lockfile is out of
+                    // date for this one.
+                    let admits = |s: &String| spec_satisfies(v, s) != Some(false);
+                    let alternatives = if marked.contains(&(n.clone(), spec.clone())) { specs.get(&n) } else { None };
+                    if !admits(&spec) && !alternatives.is_some_and(|a| a.iter().any(admits)) {
                         let s = stale.entry(if lock_dir == "." { l.file.clone() } else { format!("{lock_dir}/{}", l.file) }).or_default();
                         s.0 += 1;
                         if s.1.len() < 3 {
@@ -1394,6 +1428,13 @@ mod tests {
             assert_eq!(dep.version, Some(v(ver)), "{p}");
             assert!(dep.readings.iter().all(|r| r.version == v(ver) && r.range.is_none()), "{p}: {:?}", dep.readings);
         }
+        // Unmarked declarations apply together: a pin one of them rejects is still stale.
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "requirements.txt", "django==5.0\n");
+        write(d.path(), "requirements-base.in", "django>=4.2\ndjango<5\n");
+        let (mut pk, mut deps, mut notes) = (vec![], BTreeMap::new(), vec![]);
+        detect(d.path(), &mut pk, &mut deps, &mut notes);
+        assert!(notes.iter().any(|n| n.contains("django 5.0.0 vs <5")), "{notes:?}");
     }
 
     #[test]

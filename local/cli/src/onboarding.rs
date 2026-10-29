@@ -2507,7 +2507,9 @@ fn signals<'r>(
         // retired package) none: the message names the replacement, if any.
         let target = match &n.latest {
             Some((l, false)) if *l != n.version => format!(" → {l}"),
-            _ => " (no newer release)".to_string(),
+            Some((l, _)) if *l == n.version => " (no newer release)".to_string(),
+            // A newer release retired too, or the registry not read: nothing known to move to, so none is named.
+            _ => String::new(),
         };
         let how = if n.yanked { "yanked" } else { "deprecated" };
         let said = if n.message.trim().is_empty() { String::new() } else { format!(": \"{}\"", words(&n.message)) };

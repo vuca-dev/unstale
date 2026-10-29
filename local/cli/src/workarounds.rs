@@ -602,6 +602,11 @@ pub fn declarations(repo: &usage::Repo) -> Vec<Decl> {
             None => (None, false),
         };
         for line in text.lines().map(str::trim) {
+            // Options, local paths and bare URL or VCS references (`git+https://…`) name no package.
+            let first = line.split_whitespace().next().unwrap_or("");
+            if first.starts_with(['-', '.', '#']) || first.contains(['/', ':']) {
+                continue;
+            }
             let n = req_name(line);
             if !n.is_empty() {
                 out.push(Decl { name: n, path: path.clone(), app: repo.role(path) == Role::App, published: false, dev, extra, holds: None });
@@ -802,7 +807,7 @@ mod tests {
             ("requirements.txt", "flask==3.1.0\n"),
             ("requirements-dev.txt", "-r requirements-shared.txt\ncov-core==1.15.0\nparameterized==0.9.0\n"),
             ("requirements-shared.txt", "pyyaml==6.0\n"),
-            ("ops.txt", "granian==2.8.5\n"),
+            ("ops.txt", "granian==2.8.5\ngit+https://example.com/x.git\n./vendor/y\n"),
             ("svc/requirements/run.txt", "httpx==0.28.1\n"),
             ("svc/requirements/docs.txt", "sphinx==9.1.0\n"),
         ] {
@@ -818,6 +823,7 @@ mod tests {
         }
         assert_eq!(f("granian"), Facts::default(), "no manifest installs ops.txt");
         assert!(d.iter().all(|d| d.holds.is_none()), "a pinned requirements file is the lock, not a held pin");
+        assert!(!d.iter().any(|d| matches!(d.name.as_str(), "git" | "https" | "-")), "a URL or path names no package");
     }
 
     #[test]
