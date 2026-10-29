@@ -1378,13 +1378,31 @@ fn py_param_spans(text: &str, comments: &[(usize, usize)]) -> Vec<(usize, usize)
 /// `FastAPI`), not where it only defines a name of that spelling; and only as a call's argument or another use, not as
 /// a parameter the file declares (`def _failed_load_slice(errors, **extra)`, `def _normalize(model_name)`). Other
 /// files, other literals (qualified names, calls of the subject itself) and a subject that is prose are unchanged.
-pub fn py_keyword_site(path: &str, text: &str, lit: &str, subject: &str) -> bool {
+///
+/// A keyword argument the record is about (its literal written `regex=`, or its `facet` naming the keyword: `inplace` of
+/// `DataFrame.query`, `api_key` of `options`) is its site only as a keyword argument of a call of the subject's own
+/// member (`df.query(…, inplace=True)`): the same keyword passed to another call (`df.drop(inplace=True)`,
+/// `s.str.replace(…, regex=False)`, the constructor `Elasticsearch(api_key=…)`) or declared as a parameter is not.
+pub fn py_keyword_site(path: &str, text: &str, lit: &str, subject: &str, facet: Option<&str>) -> bool {
     if !path.ends_with(".py") {
         return true;
     }
     let name = lit.trim().trim_matches('`').trim_start_matches('*').trim_end_matches('=').trim();
     if !is_word(name) || !name.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_') {
         return true;
+    }
+    let keyword = !lit.trim().starts_with('*')
+        && (lit.trim().trim_matches('`').ends_with('=') || facet.is_some_and(|f| f.trim().trim_matches('`').trim_end_matches('=') == name));
+    if keyword {
+        let s = subject.trim().trim_matches('`').trim_end_matches("()");
+        let s = s.rsplit('.').next().unwrap_or(s);
+        if s.len() >= 3 && is_word(s) && s.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_') && !s.eq_ignore_ascii_case(name) {
+            // Comments and plain strings (a docstring's `df.query(inplace=True)` example) are no call; an f-string's
+            // interpolated code is.
+            let (mut skip, strings) = lex_spans(path, text);
+            skip.extend(strings.into_iter().filter(|&(_, _, interp)| !interp).map(|(s, e, _)| (s, e)));
+            return keyword_passed_to(text, s, name, &skip);
+        }
     }
     let comments = comment_spans(path, text);
     let params = py_param_spans(text, &comments);
@@ -1408,6 +1426,82 @@ pub fn py_keyword_site(path: &str, text: &str, lit: &str, subject: &str) -> bool
         let prev = text[..i].trim_end_matches([' ', '\t']);
         let kw = prev.rsplit(|c: char| !(c.is_ascii_alphanumeric() || c == '_')).next().unwrap_or("");
         !(prev.len() < i && matches!(kw, "def" | "class"))
+    })
+}
+
+/// Whether `text` calls `callee` (a whole word, not where it is defined) passing keyword argument `kw` at the call's own
+/// level (`callee(a, kw=1)`; not `callee(f(kw=1))`, not `kw == 1`). A callee inside `skip` (comments, plain strings)
+/// is no call; strings inside the argument list are skipped.
+fn keyword_passed_to(text: &str, callee: &str, kw: &str, skip: &[(usize, usize)]) -> bool {
+    let word = |c: char| c.is_ascii_alphanumeric() || c == '_';
+    let b = text.as_bytes();
+    text.match_indices(callee).any(|(i, _)| {
+        let before = &text[..i];
+        if before.chars().next_back().is_some_and(word)
+            || skip.iter().any(|&(s, e)| s <= i && i < e)
+        {
+            return false;
+        }
+        let after = &text[i + callee.len()..];
+        if after.chars().next().is_some_and(word) {
+            return false;
+        }
+        let gap = after.len() - after.trim_start_matches([' ', '\t']).len();
+        if !after[gap..].starts_with('(') {
+            return false;
+        }
+        let prev = before
+            .trim_end_matches([' ', '\t'])
+            .rsplit(|c: char| !word(c))
+            .next()
+            .unwrap_or("");
+        if matches!(prev, "def" | "class") {
+            return false;
+        }
+        let (mut j, mut depth, mut start) = (i + callee.len() + gap + 1, 0i32, true);
+        let mut quote: Option<u8> = None;
+        while j < b.len() {
+            let c = b[j];
+            if let Some(q) = quote {
+                if c == b'\\' {
+                    j += 2;
+                    continue;
+                }
+                if c == q {
+                    quote = None;
+                }
+                j += 1;
+                continue;
+            }
+            if start && depth == 0 && !c.is_ascii_whitespace() && c != b'#' {
+                start = false;
+                let rest = &text[j..];
+                if let Some(r) = rest.strip_prefix(kw)
+                    && !r.chars().next().is_some_and(word)
+                {
+                    let r = r.trim_start_matches([' ', '\t']);
+                    if r.starts_with('=') && !r.starts_with("==") {
+                        return true;
+                    }
+                }
+            }
+            match c {
+                b'\'' | b'"' => quote = Some(c),
+                b'#' => {
+                    while j < b.len() && b[j] != b'\n' {
+                        j += 1;
+                    }
+                    continue;
+                }
+                b'(' | b'[' | b'{' => depth += 1,
+                b')' | b']' | b'}' if depth > 0 => depth -= 1,
+                b')' => return false,
+                b',' if depth == 0 => start = true,
+                _ => {}
+            }
+            j += 1;
+        }
+        false
     })
 }
 
@@ -2464,35 +2558,126 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_keyword_record_needs_the_keyword_passed_to_a_call_of_its_subject() {
+        // microsoft/qlib: pandas deprecates `inplace` of `DataFrame.query` and `regex` of `DataFrame.filter`; the repo
+        // passes `inplace=True` to `drop`, defines its own `sort_index(self, axis=0, inplace=True)`, and passes
+        // `regex=False` to `Series.str.replace`.
+        let drop = "import pandas as pd\ndf = pd.DataFrame()\nq = df.query\ndf.drop(df.columns, axis=1, inplace=True)\n";
+        assert!(!py_keyword_site(
+            "d.py",
+            drop,
+            "inplace=",
+            "DataFrame.query",
+            Some("inplace")
+        ));
+        assert!(
+            !py_keyword_site("d.py", drop, "inplace", "DataFrame.query", Some("inplace")),
+            "the facet names the keyword"
+        );
+        let own =
+            "class IndexData:\n    def sort_index(self, axis=0, inplace=True):\n        pass\n";
+        assert!(!py_keyword_site(
+            "i.py",
+            own,
+            "inplace=",
+            "DataFrame.sort_index",
+            Some("inplace")
+        ));
+        let replace = "s = s.str.replace(\"$\", \"-P\", regex=False)\nx = list(filter(None, s))\n";
+        assert!(!py_keyword_site(
+            "u.py",
+            replace,
+            "regex=",
+            "DataFrame.filter",
+            Some("regex")
+        ));
+        // mem0: elasticsearch deprecates `api_key` as a per-request transport option (subject `options`); the
+        // constructor `Elasticsearch(api_key=...)` is not it, nor is reading `config.api_key`.
+        let es = "from elasticsearch import Elasticsearch\nclient = Elasticsearch(cloud_id=config.cloud_id, api_key=config.api_key)\nclient.options(request_timeout=3)\n";
+        assert!(!py_keyword_site(
+            "es.py",
+            es,
+            "api_key",
+            "options",
+            Some("api_key")
+        ));
+        // A call of the subject passing it is a site: over several lines, after a nested call, beside a string with a comma.
+        let q = "df = df.query(\n    \"a > 1, b\",  # why\n    engine=f(x, inplace=False),\n    inplace=True,\n)\n";
+        assert!(py_keyword_site(
+            "q.py",
+            q,
+            "inplace=",
+            "DataFrame.query",
+            Some("inplace")
+        ));
+        assert!(py_keyword_site(
+            "f.py",
+            "df.filter(regex='^a')\n",
+            "regex=",
+            "DataFrame.filter",
+            Some("regex")
+        ));
+        // A comment line before the keyword argument.
+        assert!(py_keyword_site("c.py", "df.query(\n    \"a\",\n    # why\n    inplace=True,\n)\n", "inplace=", "DataFrame.query", Some("inplace")));
+        // A docstring's example is no call; an f-string's interpolated call is.
+        let doc = "def f(df):\n    \"\"\"Like df.query(\"a\", inplace=True).\"\"\"\n    return df.query(\"a\")\n";
+        assert!(!py_keyword_site("d.py", doc, "inplace=", "DataFrame.query", Some("inplace")));
+        assert!(py_keyword_site("d.py", "x = f\"{df.query('a', inplace=True)}\"\n", "inplace=", "DataFrame.query", Some("inplace")));
+        // Only inside a nested call, or compared: not passed to the subject.
+        assert!(!py_keyword_site(
+            "q.py",
+            "df.query(f(inplace=True))\n",
+            "inplace=",
+            "DataFrame.query",
+            Some("inplace")
+        ));
+        assert!(!py_keyword_site(
+            "q.py",
+            "df.query(inplace == 1)\n",
+            "inplace=",
+            "DataFrame.query",
+            None
+        ));
+        // Without a keyword facet or a `kw=` literal, a bare name keeps the file-level rule.
+        assert!(py_keyword_site(
+            "hub.py",
+            "from huggingface_hub import HfApi\nHfApi().list_models()\nx.model_name\n",
+            "model_name",
+            "list_models",
+            None
+        ));
+    }
+
+    #[test]
     fn a_python_keyword_site_needs_its_subject_api_and_a_use_not_a_parameter() {
         // NousResearch/hermes-agent: huggingface_hub's `list_models(model_name=…)` is deprecated; tools/transcription_local.py
         // imports `huggingface_hub.errors` lazily and takes its own `model_name` parameter, but never lists models.
         let local = "def _normalize_local_model(model_name: Optional[str]) -> str:\n    if not model_name:\n        return D\n    return model_name\n\ndef _load():\n    from huggingface_hub.errors import LocalEntryNotFoundError\n";
-        assert!(!py_keyword_site("tools/transcription_local.py", local, "model_name", "list_models"));
+        assert!(!py_keyword_site("tools/transcription_local.py", local, "model_name", "list_models", None));
         let call = "from huggingface_hub import HfApi\nHfApi().list_models(model_name='bert')\n";
-        assert!(py_keyword_site("hub.py", call, "model_name", "list_models"));
+        assert!(py_keyword_site("hub.py", call, "model_name", "list_models", None));
         // A file that only defines a same-named method is not the API's user.
         let own = "class P:\n    def list_models(self, model_name=None):\n        return model_name\n";
-        assert!(!py_keyword_site("p.py", own, "model_name", "list_models"));
+        assert!(!py_keyword_site("p.py", own, "model_name", "list_models", None));
         // fastapi removes `FastAPI(**extra)`: a local helper's `**extra` parameter and its dict splat are not it.
         let helper = "from fastapi import APIRouter\n\ndef _failed_load_slice(errors, **extra) -> dict:\n    return {\"failed\": True, **extra}\n";
-        assert!(!py_keyword_site("routers/profiles.py", helper, "**extra", "FastAPI"));
+        assert!(!py_keyword_site("routers/profiles.py", helper, "**extra", "FastAPI", None));
         let app = "from fastapi import FastAPI\napp = FastAPI(title='x', **extra)\n";
-        assert!(py_keyword_site("app.py", app, "**extra", "FastAPI"));
+        assert!(py_keyword_site("app.py", app, "**extra", "FastAPI", None));
         // Declared only as a parameter (over several lines, or a lambda's): no use at all.
         let declared = "from fastapi import FastAPI\napp = FastAPI()\ndef f(\n    a,\n    **extra,\n):\n    pass\ng = lambda **extra: 1\n";
-        assert!(!py_keyword_site("app.py", declared, "**extra", "FastAPI"));
+        assert!(!py_keyword_site("app.py", declared, "**extra", "FastAPI", None));
         // Unchanged: another language, a prose subject, a qualified literal, the subject itself.
-        assert!(py_keyword_site("a.ts", "function f(model_name) {}", "model_name", "list_models"));
-        assert!(py_keyword_site("a.py", "x(model_name=1)", "model_name", "hook markers"));
-        assert!(py_keyword_site("a.py", "def f(): pass", "pytest.mark", "hook markers"));
-        assert!(py_keyword_site("a.py", "app = FastAPI()", "FastAPI", "FastAPI"));
+        assert!(py_keyword_site("a.ts", "function f(model_name) {}", "model_name", "list_models", None));
+        assert!(py_keyword_site("a.py", "x(model_name=1)", "model_name", "hook markers", None));
+        assert!(py_keyword_site("a.py", "def f(): pass", "pytest.mark", "hook markers", None));
+        assert!(py_keyword_site("a.py", "app = FastAPI()", "FastAPI", "FastAPI", None));
         // The subject only as another definition's parameter is no use of it; brackets in a quoted default and a `def`
         // in a comment or string are text.
-        assert!(!py_keyword_site("p.py", "def f(list_models, model_name):\n    return model_name\n", "model_name", "list_models"));
-        assert!(!py_keyword_site("p.py", "def f(sep=\")\", model_name=None):\n    pass\nlist_models()\n", "model_name", "list_models"));
-        assert!(py_keyword_site("p.py", "# def g(\nlist_models(model_name='x')\n", "model_name", "list_models"));
-        assert!(py_keyword_site("p.py", "s = 'def g('\nlist_models(model_name='x')\n", "model_name", "list_models"));
+        assert!(!py_keyword_site("p.py", "def f(list_models, model_name):\n    return model_name\n", "model_name", "list_models", None));
+        assert!(!py_keyword_site("p.py", "def f(sep=\")\", model_name=None):\n    pass\nlist_models()\n", "model_name", "list_models", None));
+        assert!(py_keyword_site("p.py", "# def g(\nlist_models(model_name='x')\n", "model_name", "list_models", None));
+        assert!(py_keyword_site("p.py", "s = 'def g('\nlist_models(model_name='x')\n", "model_name", "list_models", None));
     }
 
     #[test]
