@@ -134,6 +134,8 @@ fn init_sync_digest_review_decide_run() {
 
     let out = env.ok(&["bump", "next"]);
     assert!(out.starts_with("[next:csrf] next 16.0.3 · security · benefit: security\n"), "{out}");
+    // The obligations the digest line counts follow the records the bump picks up.
+    assert!(out.contains("\n2 obligations in the upgrade review"), "{out}");
 
     let out = env.ok(&["review"]);
     assert!(out.contains("upgrade-review: batch 1 with 3 of 3 open records → .unstale/review/upgrades.md (written)"), "{out}");

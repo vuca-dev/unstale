@@ -875,11 +875,16 @@ pub fn bump_name(out: &Outcome, tech: &str) -> String {
 }
 
 /// The records behind one package's digest line, for `unstale bump <pkg>`.
-pub fn bump_lines(out: &Outcome, pkg: &str) -> Option<Vec<String>> {
+/// What `unstale bump <pkg>` prints: the records the bump picks up (the digest), then the upgrade review's obligations
+/// and the deprecations in effect that the report's upgrade line counts. `leads` names, per technology, the record that
+/// line leads with (`onboarding::lead_ids`): it comes first and in full, so the evidence the report cites is here.
+pub fn bump_lines(out: &Outcome, pkg: &str, leads: &BTreeMap<String, String>) -> Option<Vec<String>> {
+    let reviewed = out.upgrade.iter().chain(&out.in_effect).map(|&i| &out.opps[i].rec.r.technology);
     let comps: std::collections::BTreeSet<&String> = out
         .digest
         .keys()
         .chain(out.workspaces.keys())
+        .chain(reviewed)
         .filter(|t| *t == pkg || out.packages.get(*t).is_some_and(|p| p.iter().any(|x| x == pkg)))
         .collect();
     if comps.is_empty() {
@@ -917,6 +922,55 @@ pub fn bump_lines(out: &Outcome, pkg: &str) -> Option<Vec<String>> {
                 let notes = r.r.advisories.iter().filter_map(|a| advisory_notes(a, |c| (c == w.component).then(|| w.version.clone()), target, &shown)).collect();
                 entry(&mut lines, r, &name, version, &r.r.benefit, notes);
             }
+        }
+        // The record the report's line leads with, in full, unless the digest above already lists it: an obligation, a
+        // deprecation in effect, or a capability the upgrade unlocks.
+        let lead = leads
+            .get(c.as_str())
+            .filter(|id| !listed.iter().any(|(l, _)| l == *id))
+            .and_then(|id| out.opps.iter().position(|o| o.rec.r.technology == *c && o.id() == id));
+        if let Some(i) = lead {
+            let o = &out.opps[i];
+            let pass = if matches!(o.route, Route::UpgradeReview | Route::InEffect) { Pass::UpgradeReview } else { Pass::ImprovementsPass };
+            lines.push("The report's lead:".to_string());
+            lines.extend(render_record(pass, o).lines().map(String::from));
+        }
+        // The upgrade review's obligations and the deprecations in effect the line counts, one entry each in review order.
+        let owed: Vec<usize> = out.upgrade.iter().chain(&out.in_effect).copied().filter(|&i| out.opps[i].rec.r.technology == *c).collect();
+        let workspace: Vec<_> = out
+            .workspaces
+            .get(c)
+            .into_iter()
+            .flatten()
+            .flat_map(|w| w.records.iter().filter(|(_, route, _)| *route == Route::UpgradeReview).map(move |x| (w, x)))
+            .filter(|(_, (r, _, _))| !owed.iter().any(|&i| out.opps[i].id() == r.r.id))
+            .collect();
+        if owed.is_empty() && workspace.is_empty() {
+            continue;
+        }
+        let upgrade = owed.iter().filter(|&&i| out.opps[i].route == Route::UpgradeReview).count() + workspace.len();
+        let in_effect = owed.len() + workspace.len() - upgrade;
+        let mut counts = vec![];
+        if upgrade > 0 {
+            counts.push(format!("{} in the upgrade review", plural(upgrade, "obligation", "obligations")));
+        }
+        if in_effect > 0 {
+            counts.push(format!("{} in effect now", plural(in_effect, "deprecation", "deprecations")));
+        }
+        lines.push(format!("{}{}:", counts.join(", "), if lead.is_some_and(|l| owed.contains(&l)) { ", the lead above among them" } else { "" }));
+        for &i in owed.iter().filter(|&&i| Some(i) != lead) {
+            let o = &out.opps[i];
+            let when = if o.route == Route::InEffect { format!("in effect now at {}", o.installed) } else { format!("upgrade to {}", o.target) };
+            lines.push(format!("[{}] {} {} · {} · {when}", o.id(), pkg_name(o), o.release.version, change_type(o.rec.r.change_type)));
+            lines.push(format!("  {}", one_line(&o.rec.r.summary, SUMMARY_MAX)));
+            if let Some(e) = shown_evidence(&o.rec.r, &o.release.version) {
+                lines.push(format!("  {}", one_line(&e.url, URL_MAX)));
+            }
+        }
+        for (w, (r, _, version)) in workspace {
+            let name = purl_name(&w.component).unwrap_or_else(|| w.component.clone());
+            lines.push(format!("[{}] {name} {version} · {} · upgrade of {} on {}", r.r.id, change_type(r.r.change_type), crate::stack::place(&w.dirs[0].0), w.version));
+            lines.push(format!("  {}", one_line(&r.r.summary, SUMMARY_MAX)));
         }
     }
     Some(lines)
@@ -1573,9 +1627,30 @@ mod tests {
         let r = repo(&[]);
         let l = Ledger::default();
         let out = run(&Input { catalog: &c, stack: &s, repo: &r, ledger: &l, today: "2026-10-15", targets: Default::default() });
-        let lines = bump_lines(&out, "next").unwrap();
+        let lines = bump_lines(&out, "next", &BTreeMap::new()).unwrap();
         assert_eq!(lines[0], "[next:sec] next 16.1.0 · security · benefit: security");
-        assert!(bump_lines(&out, "react").is_none());
+        assert!(bump_lines(&out, "react", &BTreeMap::new()).is_none());
+    }
+
+    #[test]
+    fn bump_lists_the_upgrade_review_records_its_line_counts_with_the_lead_first() {
+        // oh-my-claudecode QA: the report's ajv line led with an obligation `unstale bump ajv` never printed.
+        let c = deprecations(2);
+        let s = stack(&[("next", "16.0.0")], None);
+        let (r, l) = (repo(&[]), Ledger::default());
+        let out = run(&Input { catalog: &c, stack: &s, repo: &r, ledger: &l, today: "2026-10-15", targets: Default::default() });
+        assert!(digest_lines(&out).join("\n").contains("2 obligations in the upgrade review"));
+        let leads = BTreeMap::from([("next".to_string(), "next:d01".to_string())]);
+        let text = bump_lines(&out, "next", &leads).unwrap().join("\n");
+        let (lead, count, other) = (text.find("The report's lead:\n### [next:d01] rev 1").expect("lead in full"), text.find("2 obligations in the upgrade review, the lead above among them:").expect("the count"), text.find("[next:d00] next").expect("the other obligation"));
+        assert!(text.find("[next:sec]").unwrap() < lead && lead < count && count < other, "{text}");
+        assert_eq!(text.matches("[next:d01]").count(), 1, "the lead once: {text}");
+        // A lead the digest already lists is not repeated.
+        let text = bump_lines(&out, "next", &BTreeMap::from([("next".to_string(), "next:sec".to_string())])).unwrap().join("\n");
+        assert!(!text.contains("The report's lead:") && text.matches("[next:sec]").count() == 1, "{text}");
+        // With no lead to order by, each obligation is still listed.
+        let text = bump_lines(&out, "next", &BTreeMap::new()).unwrap().join("\n");
+        assert!(text.contains("2 obligations in the upgrade review:") && text.contains("[next:d00]") && text.contains("[next:d01]"), "{text}");
     }
 
     #[test]
@@ -1603,7 +1678,7 @@ mod tests {
         assert!(text.contains("  security: 5 advisories fixed in 43.4.1 (1 critical, 3 high, 1 moderate; each in `unstale bump electron`): GHSA-0, GHSA-1, GHSA-2, GHSA-3, GHSA-4"), "{text}");
         assert!(text.contains("  security: GHSA-9 (high): Advisory GHSA-9. [electron:b, 43.5.0]"), "{text}");
         assert_eq!(lines.len(), 3, "{text}");
-        assert_eq!(bump_lines(&out, "electron").unwrap().iter().filter(|l| l.starts_with("[electron:")).count(), 6, "bump lists each");
+        assert_eq!(bump_lines(&out, "electron", &BTreeMap::new()).unwrap().iter().filter(|l| l.starts_with("[electron:")).count(), 6, "bump lists each");
     }
 
     #[test]
@@ -1744,7 +1819,7 @@ mod tests {
             let s = stack(&[("vite", installed)], None);
             let out = run(&Input { catalog: &cat, stack: &s, repo: &r, ledger: &l, today: "2026-10-15", targets: Default::default() });
             let opp = out.opps.iter().position(|o| o.id() == "vite:deny").unwrap();
-            (digest_lines(&out).join("\n"), bump_lines(&out, "vite").unwrap_or_default().join("\n"), security_reason(&out, &out.opps[opp]))
+            (digest_lines(&out).join("\n"), bump_lines(&out, "vite", &BTreeMap::new()).unwrap_or_default().join("\n"), security_reason(&out, &out.opps[opp]))
         };
         // Never affected: not counted, not listed, and `bump` says so.
         let (digest, bump, reason) = at("6.4.3");

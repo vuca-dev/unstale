@@ -631,7 +631,11 @@ fn cmd_bump(ctx: &Ctx, pkg: &str) -> Result<u8> {
         .map(|(t, _)| t.clone())
         .collect();
     techs.sort();
-    let found: Vec<String> = techs.iter().filter_map(|t| review::bump_lines(&out, t)).flatten().collect();
+    // The record each upgrade line in the report leads with, listed first so the evidence the report cites is here.
+    // Choosing it builds the report (a few seconds): only when a named technology has records outside the digest.
+    let beyond = |t: &String| out.opps.iter().any(|o| o.rec.r.technology == *t && matches!(o.route, funnel::Route::UpgradeReview | funnel::Route::InEffect | funnel::Route::ImprovementsPass | funnel::Route::NoBenefit));
+    let leads = if techs.iter().any(beyond) { onboarding::lead_ids(ctx, &w) } else { BTreeMap::new() };
+    let found: Vec<String> = techs.iter().filter_map(|t| review::bump_lines(&out, t, &leads)).flatten().collect();
     match (!found.is_empty()).then_some(found) {
         Some(lines) => {
             for l in lines {
