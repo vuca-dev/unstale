@@ -1961,8 +1961,11 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             let named_modules: Vec<&String> = ls.iter().filter(|l| entry(l)).collect();
             let record_text = format!("{} {}", rec.r.subject, rec.r.summary).to_ascii_lowercase();
             let moved = std::cell::Cell::new(false);
+            // The specific API a deprecated entry point is cited beside (`atomFamily` for "moved from jotai/utils to
+            // jotai-family"): the entry point's site stands on it, so not where every use of it is bound elsewhere.
+            let subject_api: Vec<&str> = ls.iter().map(String::as_str).filter(|l| !entry(l) && usage::identifier(l) && subject_word(l)).collect();
             let bound_off = |p: &str, l: &str| -> bool {
-                if !deprecated.iter().any(|d| d == l) || !usage::identifier(l) {
+                if !(deprecated.iter().any(|d| d == l) || subject_api.contains(&l)) || !usage::identifier(l) {
                     return false;
                 }
                 let Some(t) = inp.repo.text(p) else { return false };
@@ -2003,7 +2006,15 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                 true
             };
             let sited = |l: &str, e: Rc<usage::Evidence>| -> Rc<usage::Evidence> {
-                let keep = |p: &str| !(runtime_rec && (usage::own_code(p, &ecosystem) || usage::foreign_code(p, &ecosystem))) && !bound_off(p, l);
+                // An entry point of a record about a specific API of it counts only beside a use of that API that
+                // is not bound elsewhere: not for its other exports (`atomWithStorage` from `jotai/utils`).
+                let beside_moved = |p: &str| {
+                    entry(l) && !subject_api.is_empty() && {
+                        let t = inp.repo.text(p).unwrap_or("");
+                        !subject_api.iter().any(|a| t.contains(*a) && !bound_off(p, a))
+                    }
+                };
+                let keep = |p: &str| !(runtime_rec && (usage::own_code(p, &ecosystem) || usage::foreign_code(p, &ecosystem))) && !bound_off(p, l) && !beside_moved(p);
                 if e.files.iter().all(|(p, _)| keep(p)) {
                     return e;
                 }
@@ -3078,6 +3089,23 @@ mod tests {
         let out = run_with(&c, &s, &r, &l);
         let o = out.opps.iter().find(|o| o.id() == "jotai:atomfamily").unwrap();
         assert_eq!((&o.route, &o.matched), (&Route::InEffect, &vec![("atomFamily".to_string(), vec!["src/old.ts".to_string()])]));
+        // jotai 3: "The util moved from jotai/utils to the jotai-family package", deprecating only the entry point: its
+        // site stands on `atomFamily`, here imported from the replacement.
+        let c3 = catalog(
+            "jotai",
+            0,
+            vec![with(
+                rec("jotai:moved", "pkg:npm/jotai", "3.0.0"),
+                json!({"change_type":"removal","breaking":true,"subject":"atomFamily","summary":"The util moved from jotai/utils to the jotai-family package, so imports must use the new package.",
+                       "replaces":["jotai/utils"],"introduces":["jotai-family"],"terms":[["atomFamily",0],["jotai/utils",0]]}),
+            )],
+        );
+        let r = repo(&[("src/atoms.ts", moved), ("src/hooks.ts", other)]);
+        let out = run_with(&c3, &s, &r, &l);
+        assert_eq!(route_of(&out, "jotai:moved"), &Route::Applied);
+        let r = repo(&[("src/old.ts", old), ("src/hooks.ts", other)]);
+        let out = run_with(&c3, &s, &r, &l);
+        assert_eq!(route_of(&out, "jotai:moved"), &Route::UpgradeReview);
         // Through a namespace import: of the replacement, moved; of the named module, still in effect.
         let r = repo(&[("src/ns.ts", "import { atomWithStorage } from 'jotai/utils';\nimport * as jf from 'jotai-family';\nexport const a = jf.atomFamily((id: string) => id);\n"), ("src/hooks.ts", other)]);
         let out = run_with(&c, &s, &r, &l);
