@@ -94,6 +94,9 @@ pub struct Dep {
     /// PyPI: (directory, specifier) of each declaration no lockfile or pinned requirements file pins, which
     /// `pypi::assume_newest` reads at the newest release the specifier admits.
     pub unpinned: Vec<(String, String)>,
+    /// PyPI: the directories where only an optional extra declares it (`pip install pkg[docs]`): what it requires
+    /// does not bound the default install's versions there (`pypi::assume_newest_in`).
+    pub optional_dirs: BTreeSet<String>,
 }
 
 /// One manifest's version of a dependency.
@@ -142,7 +145,7 @@ impl Dep {
     }
 
     pub fn new(name: &str, public_candidate: bool) -> Dep {
-        Dep { name: name.to_string(), public_candidate, version: None, source: String::new(), readings: vec![], pins: vec![], seen: Seen::Unknown, aliases: BTreeSet::new(), unaliased: false, alias_dirs: BTreeSet::new(), unpinned: vec![] }
+        Dep { name: name.to_string(), public_candidate, version: None, source: String::new(), readings: vec![], pins: vec![], seen: Seen::Unknown, aliases: BTreeSet::new(), unaliased: false, alias_dirs: BTreeSet::new(), unpinned: vec![], optional_dirs: BTreeSet::new() }
     }
 
     /// One manifest's version (`None` when it cannot be read: a tag, a workspace link). The headline is set by
@@ -898,9 +901,9 @@ pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
         d.public_candidate &= registries.may_name(purl, d.seen) && (!fixture_only || fixture_registries.may_name(purl, d.seen));
     }
     // A Python requirement nothing pins is read at the newest release its range admits; public names only.
-    crate::pypi::assume_newest(&mut deps, &mut notes, crate::pypi::registry_releases);
+    crate::pypi::assume_newest(&mut deps, &mut notes, crate::pypi::registry_releases, crate::pypi::registry_requires);
     // So is an npm range a workspace with no lockfile resolves afresh on every install (`Unlocked`).
-    crate::pypi::assume_newest_in(&NPM_FRESH, &mut deps, &mut notes, crate::pypi::npm_registry_releases);
+    crate::pypi::assume_newest_in(&NPM_FRESH, &mut deps, &mut notes, crate::pypi::npm_registry_releases, crate::pypi::no_requires);
     // Packages a lockfile installs from git, a URL, a path or another registry: not the public package of that name, so
     // they are not registered for coverage (a git-sourced `uWebSockets.js` is no `pkg:npm/uWebSockets.js`). Said once.
     let elsewhere: Vec<&str> = deps.values().filter(|d| d.seen == Seen::Elsewhere && !d.readings.is_empty()).map(|d| d.name.as_str()).collect();
@@ -2485,7 +2488,7 @@ mod tests {
             };
             purls.iter().map(|p| (p.clone(), vs(p))).collect()
         };
-        crate::pypi::assume_newest_in(&NPM_FRESH, &mut s.deps, &mut s.notes, releases);
+        crate::pypi::assume_newest_in(&NPM_FRESH, &mut s.deps, &mut s.notes, releases, crate::pypi::no_requires);
         let at = |purl: &str, dir: &str| s.deps[purl].readings.iter().find(|r| r.dir == dir).unwrap().version.clone();
         assert_eq!(at("pkg:npm/next", "."), Version::new(16, 3, 12), "the newest release `~16.3.8` admits");
         assert_eq!(at("pkg:npm/drizzle-orm", "."), Version::new(0, 45, 9));

@@ -2214,7 +2214,8 @@ fn published_floor(stack: &Stack, comp: &str, introduced: &Version, files: &[Str
 /// Whether a removal drops support for language runtime versions the project's declared range already excludes:
 /// the record is about the runtime (its subject starts with a runtime name the stack reads a floor for: `Python 3.9`,
 /// `Python version support`), and either its prerequisite on that runtime is at or below the project's floor, or,
-/// with none, the version its subject names ends at or below it (`Python 3.9` ends at 3.10). Returns the project's
+/// with none, the version its subject (else its summary) names ends at or below it (`Python 3.9` ends at 3.10; a
+/// stated minimum, `Python 3.10+`, at 3.10: `runtime_bounds`). Returns the project's
 /// declaration.
 pub(crate) fn runtime_drop_met(rec: &Rec, stack: &Stack) -> Option<String> {
     if rec.r.change_type != ChangeType::Removal {
@@ -2231,17 +2232,50 @@ pub(crate) fn runtime_drop_met(rec: &Rec, stack: &Stack) -> Option<String> {
     let met = if !prereqs.is_empty() {
         prereqs.iter().all(|m| parse_version(m).is_some_and(|m| *floor >= m))
     } else {
-        let dropped = words.next().filter(|w| w.starts_with(|c: char| c.is_ascii_digit()))?;
-        let nums: Vec<u64> = dropped.trim_end_matches(|c: char| !c.is_ascii_digit()).split('.').map_while(|p| p.parse().ok()).collect();
-        let end = match nums.as_slice() {
-            [major] => Version::new(major + 1, 0, 0),
-            [major, minor] => Version::new(*major, minor + 1, 0),
-            [major, minor, patch, ..] => Version::new(*major, *minor, patch + 1),
-            [] => return None,
-        };
-        *floor >= end
+        // The versions the subject names, else the summary's (`Python support`: "Support for Python 3.9 was removed").
+        let bounds = runtime_bounds(&rec.r.subject, runtime);
+        let bounds = if bounds.is_empty() { runtime_bounds(&rec.r.summary, runtime) } else { bounds };
+        !bounds.is_empty() && bounds.iter().all(|b| *floor >= *b)
     };
     met.then(|| source.clone())
+}
+
+/// The lowest runtime version `text` leaves the project needing, per mention of `runtime` followed by a version: the
+/// version itself when it is stated as the new minimum (`Python 3.10+`, `Python >= 3.10`, `Python 3.10 or newer is
+/// required`), else the first version after the one named, which the record drops (`Python 3.9` ends at 3.10).
+fn runtime_bounds(text: &str, runtime: &str) -> Vec<Version> {
+    let words: Vec<&str> = text.split_whitespace().collect();
+    let bare = |w: &str| w.trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '.').trim_end_matches('.').to_string();
+    let mut out = vec![];
+    for i in 0..words.len() {
+        if !bare(words[i]).eq_ignore_ascii_case(runtime) {
+            continue;
+        }
+        let mut j = i + 1;
+        let mut min = false;
+        if words.get(j).is_some_and(|w| matches!(w.trim_matches('`'), ">=" | "≥")) {
+            min = true;
+            j += 1;
+        }
+        let Some(w) = words.get(j).map(|w| w.trim_matches('`').trim_start_matches(">=").trim_start_matches('≥')) else { continue };
+        if !w.starts_with(|c: char| c.is_ascii_digit()) {
+            continue;
+        }
+        let digits = w.trim_end_matches(|c: char| !c.is_ascii_digit());
+        min |= w[digits.len()..].starts_with('+') || words[i + 1].starts_with(">=") || words[i + 1].starts_with('≥');
+        let next: Vec<String> = words.iter().skip(j + 1).take(3).map(|w| w.trim_matches(|c: char| !c.is_ascii_alphanumeric()).to_ascii_lowercase()).collect();
+        let next: Vec<&str> = next.iter().map(String::as_str).collect();
+        min |= matches!(next.as_slice(), ["or", "newer" | "later" | "higher" | "above" | "greater", ..] | ["is", "required", ..] | ["required", ..] | ["is", "now", "required", ..] | ["minimum", ..]);
+        let nums: Vec<u64> = digits.split('.').map_while(|p| p.parse().ok()).collect();
+        let v = match nums.as_slice() {
+            [major] => if min { Version::new(*major, 0, 0) } else { Version::new(major + 1, 0, 0) },
+            [major, minor] => Version::new(*major, if min { *minor } else { minor + 1 }, 0),
+            [major, minor, patch, ..] => Version::new(*major, *minor, if min { *patch } else { patch + 1 }),
+            [] => continue,
+        };
+        out.push(v);
+    }
+    out
 }
 
 /// The lockfile a package's headline version is read from (`Outcome::headline`, else `Dep::headline`).
@@ -3951,6 +3985,11 @@ mod tests {
                 with(rec("lib:py39", "pkg:npm/lib", "2.0.0"), json!({"change_type":"removal","breaking":true,"subject":"Python 3.9"})),
                 with(rec("lib:py311", "pkg:npm/lib", "2.0.0"), json!({"change_type":"removal","breaking":true,"subject":"Python runtime requirement","prerequisites":[{"ecosystem":"pypi","name":"python","min":"3.13"}]})),
                 with(rec("lib:node18", "pkg:npm/lib", "2.0.0"), json!({"change_type":"removal","breaking":true,"subject":"Node.js 18"})),
+                // mem0: the new minimum as the subject, and a versionless subject whose summary names the dropped one.
+                with(rec("lib:py310plus", "pkg:npm/lib", "2.0.0"), json!({"change_type":"removal","breaking":true,"subject":"Python 3.10+","summary":"Python 3.10 or newer is required; Python 3.9 is no longer supported."})),
+                with(rec("lib:py-support", "pkg:npm/lib", "2.0.0"), json!({"change_type":"removal","breaking":true,"subject":"Python support","summary":"Support for Python 3.9 was removed."})),
+                with(rec("lib:py313plus", "pkg:npm/lib", "2.0.0"), json!({"change_type":"removal","breaking":true,"subject":"Python support","summary":"Python 3.13 or newer is required."})),
+                with(rec("lib:py312-drop", "pkg:npm/lib", "2.0.0"), json!({"change_type":"removal","breaking":true,"subject":"Python support","summary":"Drops support for Python 3.12."})),
                 with(rec("lib:node-min", "pkg:npm/lib", "2.0.0"), json!({"change_type":"removal","breaking":true,"subject":"Node.js support","prerequisites":[{"ecosystem":"npm","name":"node","min":"18.0.0"}]})),
             ],
         );
@@ -3963,6 +4002,15 @@ mod tests {
         assert_ne!(route_of(&out, "lib:py311"), &Route::Applied, "3.12 does not meet a 3.13 floor");
         assert_ne!(route_of(&out, "lib:node18"), &Route::Applied, "a range that admits 18 still runs it");
         assert_eq!(route_of(&out, "lib:node-min"), &Route::Applied, "`node` is the `Node.js` runtime");
+        assert_eq!(route_of(&out, "lib:py310plus"), &Route::Applied, "a 3.10 minimum is met at >=3.12");
+        assert_eq!(route_of(&out, "lib:py-support"), &Route::Applied, "the summary names the dropped version");
+        assert_ne!(route_of(&out, "lib:py313plus"), &Route::Applied, "3.12 does not meet a stated 3.13 minimum");
+        assert_ne!(route_of(&out, "lib:py312-drop"), &Route::Applied, ">=3.12 still admits the dropped 3.12");
+        // At exactly the stated minimum: met, where reading `3.10` as a dropped version (ends at 3.11) was not.
+        s.python = Some((Version::new(3, 10, 0), "requires-python >=3.10 in pyproject.toml".into()));
+        let out = run_with(&c, &s, &r, &l);
+        assert_eq!(route_of(&out, "lib:py310plus"), &Route::Applied, "a 3.10 minimum is met at >=3.10");
+        assert_eq!(route_of(&out, "lib:py-support"), &Route::Applied, "3.9 is dropped, >=3.10 excludes it");
         s.python = None;
         let out = run_with(&c, &s, &r, &l);
         assert_ne!(route_of(&out, "lib:py39"), &Route::Applied, "no declared range: nothing is known");
