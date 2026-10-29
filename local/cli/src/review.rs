@@ -351,6 +351,18 @@ pub fn digest_lines(out: &Outcome) -> Vec<String> {
 }
 
 /// `digest_lines`, grouped by technology: its head line first, then its advisory, security and workspace lines.
+/// `; needs a range change: the declared <13.0 does not admit 13.0.0` when the target is outside the range the
+/// headline manifest declares (gradio's `pillow>=8.0,<13.0`): bumping means editing that range, not reinstalling.
+fn range_change_note(out: &Outcome, o: &crate::funnel::Opp) -> String {
+    match out.ranges.get(&o.component()) {
+        Some(r) if o.target > o.installed && !r.admits(&o.target) => {
+            let (crate::stack::Range::Npm(s) | crate::stack::Range::Pypi(s)) = r;
+            format!("; needs a range change: the declared `{s}` does not admit {}", o.target)
+        }
+        _ => String::new(),
+    }
+}
+
 pub fn digest_groups(out: &Outcome) -> Vec<(String, Vec<String>)> {
     let mut groups = vec![];
     // Security records that carry advisories are listed per advisory (`advisory_fixes`), not per record.
@@ -392,13 +404,14 @@ pub fn digest_groups(out: &Outcome) -> Vec<(String, Vec<String>)> {
             // Every record left out (security records whose advisories the bump does not fix): nothing to count.
             let parts = kinds.parts();
             lines.push(format!(
-                "bumping {label} {} → {}{} picks up {} (`unstale bump {name}`){}{}",
+                "bumping {label} {} → {}{} picks up {} (`unstale bump {name}`){}{}{}",
                 first.installed,
                 first.target,
                 scope(&first.component()),
                 if parts.is_empty() { "nothing" } else { &parts },
                 obligations_note(obligations),
-                in_effect_note(out, tech, "; ")
+                in_effect_note(out, tech, "; "),
+                range_change_note(out, first)
             ));
             lines.extend(advisory_lines_grouped(out, adv, &name));
             for &i in idx {
