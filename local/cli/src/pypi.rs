@@ -899,12 +899,16 @@ pub fn assume_newest_in(
     }
     // What the other declarations of each directory require of a package there, at the versions just read: by
     // (directory, package URL), the requiring package and version, and its specifier.
-    let keys: BTreeSet<String> = picked.iter().flat_map(|(p, m)| m.values().map(move |(v, _)| format!("{p}@{v}"))).collect();
+    // Pinned siblings never share a directory with a reading taken here: a directory with a lockfile or pinned
+    // requirements file keeps an unpinned declaration at its floor (`Reading::lock` set), so only the versions just
+    // read can cap one.
+    let at: BTreeMap<String, BTreeMap<String, Version>> = picked.iter().map(|(p, m)| (p.clone(), m.iter().map(|(d, (v, _))| (d.clone(), v.clone())).collect())).collect();
+    let keys: BTreeSet<String> = at.iter().flat_map(|(p, m)| m.values().map(move |v| format!("{p}@{v}"))).collect();
     let dist = if keys.is_empty() { BTreeMap::new() } else { requires(&keys.into_iter().collect::<Vec<_>>()) };
     let mut caps: BTreeMap<(String, String), Vec<(String, String)>> = BTreeMap::new();
-    for (q, m) in &picked {
+    for (q, m) in &at {
         // Only an extra declares it here (qlib's `docs = ["scipy<=1.15.3"]`): a default install does not have it.
-        for (dir, (v, _)) in m.iter().filter(|(dir, _)| !deps.get(q).is_some_and(|d| d.optional_dirs.contains(*dir))) {
+        for (dir, v) in m.iter().filter(|(dir, _)| !deps.get(q).is_some_and(|d| d.optional_dirs.contains(*dir))) {
             for line in dist.get(&format!("{q}@{v}")).into_iter().flatten() {
                 let Some((name, spec)) = unconditional(line) else { continue };
                 let target = format!("{}{name}", eco.prefix);

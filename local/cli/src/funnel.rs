@@ -4006,6 +4006,11 @@ mod tests {
         assert_eq!(route_of(&out, "lib:py-support"), &Route::Applied, "the summary names the dropped version");
         assert_ne!(route_of(&out, "lib:py313plus"), &Route::Applied, "3.12 does not meet a stated 3.13 minimum");
         assert_ne!(route_of(&out, "lib:py312-drop"), &Route::Applied, ">=3.12 still admits the dropped 3.12");
+        // At exactly the stated minimum: met, where reading `3.10` as a dropped version (ends at 3.11) was not.
+        s.python = Some((Version::new(3, 10, 0), "requires-python >=3.10 in pyproject.toml".into()));
+        let out = run_with(&c, &s, &r, &l);
+        assert_eq!(route_of(&out, "lib:py310plus"), &Route::Applied, "a 3.10 minimum is met at >=3.10");
+        assert_eq!(route_of(&out, "lib:py-support"), &Route::Applied, "3.9 is dropped, >=3.10 excludes it");
         s.python = None;
         let out = run_with(&c, &s, &r, &l);
         assert_ne!(route_of(&out, "lib:py39"), &Route::Applied, "no declared range: nothing is known");
