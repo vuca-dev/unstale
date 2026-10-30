@@ -273,7 +273,7 @@ mod tests {
     use crate::stack::{Dep, Pin, Reading};
 
     fn stack(deps: &[(&str, &str, Option<&str>)]) -> Stack {
-        let mut st = Stack { packages: vec![], deps: Default::default(), node: None, node_by_lock: Default::default(), python: None, notes: vec![], unreadable: 0, stub_runtimes: Default::default(), spread: 0, standalone: vec![], registries: Default::default(), fixture_registries: Default::default(), peers: vec![], unlocked: vec![] };
+        let mut st = Stack { packages: vec![], deps: Default::default(), node: None, node_by_lock: Default::default(), python: None, runtime_pins: Default::default(), notes: vec![], unreadable: 0, stub_runtimes: Default::default(), spread: 0, standalone: vec![], registries: Default::default(), fixture_registries: Default::default(), peers: vec![], unlocked: vec![] };
         for (purl, name, pin) in deps {
             let mut d = Dep::new(name, true);
             if let Some(v) = pin {

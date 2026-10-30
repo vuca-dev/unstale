@@ -1987,8 +1987,11 @@ struct Ranked<'a, 'o> {
     lead: Option<String>,
     /// It carries an advisory whose affected API or option was not found in production code.
     unreached: bool,
-    /// That advisory named no API to look for (a lockfile advisory with no record): its path was not checked.
+    /// That advisory named no API to look for (a lockfile advisory with no record, a release note naming none): its
+    /// path was not checked.
     unchecked: bool,
+    /// Its security fixes are release notes only: no GHSA or OSV advisory stands behind any of them.
+    noted: bool,
     class: Class,
     technology: &'a String,
     lines: &'a Vec<String>,
@@ -2438,6 +2441,60 @@ struct Signal<'r> {
     lock: Vec<&'r crate::advisories::Item>,
 }
 
+/// When a record says support for its product ends, as written and as the last day (`YYYY-MM-DD`): a statement about
+/// the product as a whole (a deprecation, stability or other change introducing, replacing and requiring nothing,
+/// with no prerequisite) whose summary speaks of support or maintenance and names a date (`until November 2026`,
+/// `2026-11-30`). A month names its last day.
+fn support_end(r: &unstale_schema::catalog::CapabilityRecord) -> Option<(String, String)> {
+    if !matches!(r.change_type, ChangeType::Deprecation | ChangeType::StabilityChange | ChangeType::Other)
+        || !r.introduces.is_empty()
+        || !r.replaces.is_empty()
+        || !r.requires.is_empty()
+        || !r.prerequisites.is_empty()
+    {
+        return None;
+    }
+    let text = r.summary.to_ascii_lowercase();
+    if !["support", "maintenance", "end of life", "end-of-life"].iter().any(|w| text.contains(w)) {
+        return None;
+    }
+    support_date(&r.summary)
+}
+
+/// The first date a text names, as written and as its last day: `YYYY-MM-DD`, `Month YYYY`, `Month D, YYYY`,
+/// `D Month YYYY`.
+fn support_date(text: &str) -> Option<(String, String)> {
+    const MONTHS: [&str; 12] = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+    let words: Vec<&str> = text.split_whitespace().map(|w| w.trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '-')).collect();
+    let year = |w: &str| (w.len() == 4).then(|| w.parse::<i32>().ok()).flatten().filter(|y| (1990..2200).contains(y));
+    let day = |w: &str| w.trim_end_matches(|c: char| c.is_ascii_alphabetic()).parse::<u32>().ok().filter(|d| (1..=31).contains(d));
+    let last_day = |y: i32, m: u32| match m {
+        2 if (y % 4 == 0 && y % 100 != 0) || y % 400 == 0 => 29,
+        2 => 28,
+        4 | 6 | 9 | 11 => 30,
+        _ => 31,
+    };
+    for (i, w) in words.iter().enumerate() {
+        let b = w.as_bytes();
+        if w.len() == 10 && b[4] == b'-' && b[7] == b'-' && year(&w[..4]).is_some() && w[5..7].parse::<u32>().is_ok_and(|m| (1..=12).contains(&m)) {
+            return Some((w.to_string(), w.to_string()));
+        }
+        let Some(m) = MONTHS.iter().position(|m| w.eq_ignore_ascii_case(m)).map(|m| m as u32 + 1) else { continue };
+        let next = words.get(i + 1).copied().unwrap_or("");
+        let (d, y, said) = if let Some(y) = year(next) {
+            (None, y, format!("{} {y}", words[i]))
+        } else if let (Some(d), Some(y)) = (day(next), words.get(i + 2).and_then(|w| year(w))) {
+            (Some(d), y, format!("{} {d}, {y}", words[i]))
+        } else if let (Some(d), Some(y)) = (i.checked_sub(1).and_then(|j| day(words[j])), year(next)) {
+            (Some(d), y, format!("{d} {} {y}", words[i]))
+        } else {
+            continue;
+        };
+        return Some((said, format!("{y:04}-{m:02}-{:02}", d.unwrap_or_else(|| last_day(y, m)))));
+    }
+    None
+}
+
 /// A type-stub package whose runtime package (`@types/uuid` → uuid, `types-requests` → requests) is itself a
 /// dependency of the stack.
 fn stub_beside_runtime(purl: &str, name: &str, st: &crate::stack::Stack) -> bool {
@@ -2470,6 +2527,7 @@ fn signals<'r>(
     deprecated: &[crate::deprecations::Notice],
     unused: &BTreeMap<String, crate::advisories::Removal>,
     unmaintained: &[crate::maintenance::Notice],
+    runtimes: &[crate::runtimes::Notice],
     lock: &'r crate::advisories::Report,
     w: &World,
     declared: &[workarounds::Decl],
@@ -2533,6 +2591,53 @@ fn signals<'r>(
             class: Class::Compatibility,
             runtime: runtime(&n.name),
             value: value("end of support", &n.name),
+            lock: vec![],
+        });
+    }
+    // The publisher's own dated statement that support for the product ends (a maintenance-mode notice with the last
+    // date of fixes, an end-of-life date): a catalog record about the product as a whole (it introduces, replaces and
+    // requires nothing) that names when support ends. Past that date it is end of support; before it, a lead with the
+    // date, under Lower-urgency upgrades. Never an opt-in improvement: there is nothing to adopt.
+    for o in &out.opps {
+        let Some((when, last)) = support_end(&o.rec.r) else { continue };
+        let Some(name) = out.packages.get(&o.rec.r.technology).and_then(|p| p.first()).cloned() else { continue };
+        if shown.contains(&norm(&name)) || by.contains_key(&norm(&name)) {
+            continue;
+        }
+        let past = last.as_str() < w.today.as_str();
+        let state = if past { "ended" } else { "ends" };
+        by.insert(norm(&name), Signal {
+            head: format!("{name} {} → replacement picks up 1 publisher end-of-support notice (`unstale bump {name}`)", o.installed),
+            name: name.clone(),
+            tier: LEAD_CONSEQUENTIAL,
+            weight: if past { 4 } else { 2 },
+            lead: Some(format!("end of support: the publisher's support for {} {state} {when} (installed {}): \"{}\" [{}]", display_text(&name), o.installed, words(&o.rec.r.summary), o.id())),
+            unreached: false,
+            unchecked: false,
+            end_of_support: past,
+            class: Class::Compatibility,
+            runtime: runtime(&name),
+            value: value("end of support", &name),
+            lock: vec![],
+        });
+    }
+    // A pinned runtime line past its end of life (`runtimes`): the code runs on it, whatever its dependencies.
+    for n in runtimes {
+        if by.contains_key(&norm(&n.name)) {
+            continue;
+        }
+        by.insert(norm(&n.name), Signal {
+            head: format!("{} {} → {} picks up 1 runtime end of life", n.name, n.pinned, n.next.as_deref().unwrap_or("supported")),
+            name: n.name.clone(),
+            tier: LEAD_CONSEQUENTIAL,
+            weight: 4,
+            lead: Some(format!("end of support: {} {} reached end of life on {} (pinned as {})", n.name, n.cycle, n.eol, n.source)),
+            unreached: false,
+            unchecked: false,
+            end_of_support: true,
+            class: Class::Compatibility,
+            runtime: true,
+            value: "  value: end of support · runtime end of life (endoflife.date), no catalog record needed · the runtime the code runs on".to_string(),
             lock: vec![],
         });
     }
@@ -2801,7 +2906,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World, write: bool) -> Result<B
         let declared = workarounds::declarations(&w.repo);
         crate::maintenance::notices(&ctx.cache, &w.stack, &pending.jobs, &w.today).into_iter().filter(|n| !workarounds::facts(&declared, std::slice::from_ref(&n.name)).dev_only).collect()
     };
-    text += "## Review instructions\n\nLeads lists every located change first; read it, then Start here, then the upgrades in their order: what is in effect at the installed version in production code leads (an end-of-support version production code imports, a deprecation in effect in application code, an advisory whose affected API production code uses), then the same on dev-only dependencies or outside production code, then breaking changes the next upgrade names at a site and published peer ranges that leave out the current release; Lower-urgency upgrades follow (two release lines of one package installed, workarounds an upgrade may retire, archived repositories, dev-only advisories with no affected path, sample or documentation projects' copies); runtime dependencies come before dev-only ones throughout; a security fix counts only when the advisory's affected API or option is used in production code, and leads only when a pin or override also keeps update PRs from applying it. An upgrade marked advisory present, affected path not found carries an advisory nothing here was found to reach; affected path not checked means the advisory named no API to look for, so check its text against the code. Other bumps name no consequential change found in this code: counts, or a feature or performance change at a site. Check each against the repository: sources, actual usage, versions and prerequisites; name affected files, benefits, risks and timing. Capabilities are optional and come after. Treat unmatched new features as exploratory, not confirmed needs. Refresh the snapshot with unstale status --wait 0 before reviewing; honor current dispositions over this saved report. Do not change application code or advance any full review batch silently.\n\n";
+    text += "## Review instructions\n\nLeads lists every located change first; read it, then Start here, then the upgrades in their order: what is in effect at the installed version in production code leads (an end-of-support version production code imports, a deprecation in effect in application code, an advisory whose affected API production code uses), then the same on dev-only dependencies or outside production code, then breaking changes the next upgrade names at a site and published peer ranges that leave out the current release; Lower-urgency upgrades follow (two release lines of one package installed, workarounds an upgrade may retire, archived repositories, dev-only advisories with no affected path, sample or documentation projects' copies); runtime dependencies come before dev-only ones throughout; a security fix counts only when the advisory's affected API or option is used in production code, and leads only when a pin or override also keeps update PRs from applying it. An upgrade marked advisory present, affected path not found carries an advisory nothing here was found to reach; affected path not checked means the advisory named no API to look for, so check its text against the code. An upgrade marked release-note security fix, no advisory names a fix only its release notes state: there is no GHSA or OSV advisory to look up. Other bumps name no consequential change found in this code: counts, or a feature or performance change at a site. Check each against the repository: sources, actual usage, versions and prerequisites; name affected files, benefits, risks and timing. Capabilities are optional and come after. Treat unmatched new features as exploratory, not confirmed needs. Refresh the snapshot with unstale status --wait 0 before reviewing; honor current dispositions over this saved report. Do not change application code or advance any full review batch silently.\n\n";
     if !deprecated.is_empty() {
         text += "For each package under Deprecated by the publisher, check where the code uses it and propose the move the registry message names (a newer version, a replacement package, or a built-in); a deprecated package whose code is unused can simply be removed.\n\n";
     }
@@ -3009,6 +3114,13 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World, write: bool) -> Result<B
         let prod = |f: &str| code(f) && w.repo.role(f) == usage::Role::App;
         let sec_opps: Vec<&funnel::Opp> = tech_fixes.iter().map(|f| &out.opps[f.opp]).chain(notes.iter().copied()).collect();
         let advisory = !sec_opps.is_empty() || !lock.is_empty();
+        // Release notes alone, no advisory: named so, never "advisory present".
+        let noted = tech_fixes.is_empty() && lock.is_empty() && !notes.is_empty();
+        // A release note that names no API (no term a site check reads, no identifier in its text) was not checked.
+        let note_names_api = notes.iter().any(|o| {
+            o.matched.iter().any(|(t, _)| specific_reference(t, &w.stack) && locates(&o.rec.r, t))
+                || affected_identifiers(&o.rec.r.summary).iter().any(|id| !names_product(id, &packages.iter().map(|p| p.to_ascii_lowercase()).collect::<Vec<_>>()))
+        });
         let reached: Option<String> = (advisory && runtime && !standalone).then(|| {
             let by_terms = sec_opps.iter().find_map(|o| {
                 o.matched
@@ -3201,7 +3313,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World, write: bool) -> Result<B
         if let Some(i) = lead.as_deref().and_then(|l| members.iter().copied().find(|&i| l.contains(&format!("[{}]", out.opps[i].id())))) {
             lead_ids.insert(technology.clone(), out.opps[i].id().to_string());
         }
-        ranked.push(Ranked { key, tier, lead, unreached: advisory && reached.is_none(), unchecked: false, class, technology, lines, fixes: tech_fixes, lock, lock_fixed, notes, joins, leads, value, peer, copies });
+        ranked.push(Ranked { key, tier, lead, unreached: advisory && reached.is_none(), unchecked: noted && !note_names_api, noted, class, technology, lines, fixes: tech_fixes, lock, lock_fixed, notes, joins, leads, value, peer, copies });
     }
     // Package-level signals: what the public registry and OSV say about a direct dependency's installed version, with
     // no catalog record needed (a technology queued, blocked, never attached, or covered with no record). A publisher's
@@ -3214,7 +3326,8 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World, write: bool) -> Result<B
     let npm_deprecated: Vec<(String, String)> =
         deprecated.iter().filter(|n| n.purl.starts_with("pkg:npm/")).map(|n| (n.name.clone(), n.version.clone())).collect();
     let unused = crate::advisories::unused_direct(&ctx.root, &w.repo, &w.stack, &npm_deprecated);
-    let signals = signals(&ranked, &out, &deprecated, &unused, &unmaintained, &lock_report, w, &declared);
+    let runtime_ends = crate::runtimes::notices(&ctx.cache, &w.stack, &w.today);
+    let signals = signals(&ranked, &out, &deprecated, &unused, &unmaintained, &runtime_ends, &lock_report, w, &declared);
     let signalled: BTreeSet<String> = signals.iter().map(|s| norm(&s.name)).collect();
     ranked.retain(|r| r.tier >= LEAD_ADVISORY_UNREACHED || !out.packages.get(r.technology).into_iter().flatten().chain(std::iter::once(r.technology)).any(|p| signalled.contains(&norm(p))));
     // A line a package signal replaces is not in the report: neither is its lead.
@@ -3232,7 +3345,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World, write: bool) -> Result<B
             ..Default::default()
         });
         let key = (s.tier, urgent, prod_use, s.runtime, s.weight, (false, false, 0, false, true, s.runtime, true, false, 1, 1, 1, 0));
-        ranked.push(Ranked { key, tier: s.tier, lead: s.lead, unreached: s.unreached, unchecked: s.unchecked, class: s.class, technology: name, lines, fixes: &[], lock: s.lock, lock_fixed, notes: vec![], joins: vec![], leads: None, value: s.value, peer: None, copies: None });
+        ranked.push(Ranked { key, tier: s.tier, lead: s.lead, unreached: s.unreached, unchecked: s.unchecked, noted: false, class: s.class, technology: name, lines, fixes: &[], lock: s.lock, lock_fixed, notes: vec![], joins: vec![], leads: None, value: s.value, peer: None, copies: None });
     }
     ranked.sort_by(|a, b| b.key.cmp(&a.key).then_with(|| a.technology.cmp(b.technology)));
     let ranked = diversified(ranked, 8, 3);
@@ -3259,13 +3372,18 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World, write: bool) -> Result<B
     let mut upgrades = vec![];
     let mut upgrade_text = String::new();
     // An advisory whose affected path was not found is no security lead: its tally says so.
-    let unreached_tally = |head: String, path: &str| -> String {
+    let unreached_tally = |head: String, path: &str, noted: bool| -> String {
         let Some(at) = head.find(" picks up ").map(|i| i + " picks up ".len()) else { return head };
         let digits: String = head[at..].chars().take_while(char::is_ascii_digit).collect();
         if digits.is_empty() || !head[at + digits.len()..].starts_with(" security") {
             return head;
         }
-        let word = if digits == "1" { "advisory" } else { "advisories" };
+        let word = match (noted, digits == "1") {
+            (true, true) => "release-note security fix, no advisory",
+            (true, false) => "release-note security fixes, no advisory",
+            (false, true) => "advisory",
+            (false, false) => "advisories",
+        };
         format!("{}{digits} {word} (affected path {path}){}", &head[..at], &head[at + digits.len() + " security".len()..])
     };
     let shown_count = ranked.iter().filter(|r| r.tier >= LEAD_ADVISORY_UNREACHED).count();
@@ -3276,7 +3394,9 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World, write: bool) -> Result<B
         let head = short(&lines[0], technology);
         // No affected-API check was possible (no record, and the advisory names no API): not checked, not "not found".
         let path = if r.unchecked { "not checked" } else { "not found" };
-        let head = if r.unreached { unreached_tally(head, path) } else { head };
+        let head = if r.unreached { unreached_tally(head, path, r.noted) } else { head };
+        // What the line says it carries: an advisory, or release notes only.
+        let carried = if r.noted { "release-note security fix, no advisory" } else { "advisory present" };
         let mut summary = head.split(" (`unstale bump").next().unwrap_or(&head).to_string();
         if let Some(k) = unlocks.get(*technology).map(Vec::len).filter(|k| *k > 0) {
             summary += &format!(" · unlocks {k} optional {}", if k == 1 { "capability" } else { "capabilities" });
@@ -3310,16 +3430,16 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World, write: bool) -> Result<B
             }
         };
         let lead = match (&r.lead, r.unreached) {
-            (Some(l), true) => format!("; leads with {l}; advisory present, affected path {path}"),
+            (Some(l), true) => format!("; leads with {l}; {carried}, affected path {path}"),
             (Some(l), false) => format!("; leads with {l}"),
-            (None, true) => format!("; advisory present, affected path {path}"),
+            (None, true) => format!("; {carried}, affected path {path}"),
             (None, false) => String::new(),
         };
         // A digest head line that introduces its manifest lines ends in a colon: the notes follow it, not the colon.
         let head = if lock_note.is_empty() && lead.is_empty() { head.as_str() } else { head.trim_end_matches(':') };
         // Leads: every ranked upgrade, then a lower-urgency one only when it names a change at a site.
         if n < top_count || r.lead.is_some() {
-            let extra = if r.unreached { format!("{lock_note}; advisory present, affected path {path}") } else { lock_note.clone() };
+            let extra = if r.unreached { format!("{lock_note}; {carried}, affected path {path}") } else { lock_note.clone() };
             lead_lines.push(lead_line(head.trim_start_matches("bumping "), r.lead.as_deref(), &extra));
         }
         if n >= top_count {
@@ -3363,7 +3483,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World, write: bool) -> Result<B
         let total = detail.len();
         for line in detail.iter().take(3) {
             match line.strip_prefix("  security: ").filter(|_| r.unreached) {
-                Some(rest) => upgrade_text += &format!("  advisory, affected path {path}: {rest}\n"),
+                Some(rest) => upgrade_text += &format!("  {}, affected path {path}: {rest}\n", if r.noted { "release-note security fix, no advisory" } else { "advisory" }),
                 None => upgrade_text += &format!("{line}\n"),
             }
         }
@@ -3796,6 +3916,8 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
         crate::advisories::refresh(&ctx.cache, &ctx.root, &st);
         // Release dates of the direct packages the coverage service found stale or archived (maintenance.rs).
         crate::maintenance::refresh(&ctx.cache, &st, &read(ctx).jobs);
+        // The end of life of a pinned runtime line (runtimes.rs): the runtime's name only.
+        crate::runtimes::refresh(&ctx.cache, &st);
     };
     ui.update("Connecting to the catalog · step 2/5", "Checking service availability", "");
     let mut timings = vec![];
@@ -4151,6 +4273,24 @@ mod tests {
     /// react/react: the root's eslint 7.32.0 line led with "the installed eslint 6.8.0 is deprecated", the version
     /// `fixtures/eslint-v6` (its own lockfile) pins. The lead names only the version the line's own manifest installs.
     #[test]
+    fn a_dated_support_statement_about_the_product_is_its_end_of_support() {
+        assert_eq!(support_date("in maintenance mode, with security updates provided until November 2026."), Some(("November 2026".into(), "2026-11-30".into())));
+        assert_eq!(support_date("scheduled to reach end of life on November 5, 2026; after that"), Some(("November 5, 2026".into(), "2026-11-05".into())));
+        assert_eq!(support_date("support ends 2027-02-28"), Some(("2027-02-28".into(), "2027-02-28".into())));
+        assert_eq!(support_date("Released in 2026 with May changes"), None);
+        let rec = |v: serde_json::Value| -> unstale_schema::catalog::CapabilityRecord {
+            let mut base = serde_json::json!({"status":"active","id":"m:x","technology":"m","revision":1,"label_version":1,"change_type":"other","breaking":false,"surface":"other","subject":"maintenance mode","subject_kind":"concept","summary":"","benefit":["security"],"releases":[{"component":"pkg:pypi/m","version":"9.7.6","date":"2026-03-19","line":"9"}],"prerequisites":[],"conditions":[],"requires":[],"introduces":[],"terms":[],"replaces":[],"evidence":[],"related":[]});
+            base.as_object_mut().unwrap().extend(v.as_object().unwrap().clone());
+            serde_json::from_value(base).unwrap()
+        };
+        assert!(support_end(&rec(serde_json::json!({"summary":"M is in maintenance mode, with fixes until November 2026."}))).is_some());
+        // A capability it introduces, or a runtime it requires, is no statement about the product's own support.
+        assert!(support_end(&rec(serde_json::json!({"summary":"Support for the legacy API lasts until November 2026.","introduces":["newApi"]}))).is_none());
+        assert!(support_end(&rec(serde_json::json!({"summary":"Python 3.9 support ends October 2025.","prerequisites":[{"ecosystem":"pypi","name":"python","min":"3.10"}]}))).is_none());
+        assert!(support_end(&rec(serde_json::json!({"summary":"A new theme ships in November 2026.","change_type":"new_api"}))).is_none());
+    }
+
+    #[test]
     fn an_end_of_support_lead_is_the_version_its_own_manifest_installs() {
         let mut d = stack::Dep::new("eslint", true);
         let reading = |dir: &str, v: &str| stack::Reading { dir: dir.into(), version: util::parse_version(v).unwrap(), source: "yarn.lock".into(), standalone: false, range: None, lock: None };
@@ -4247,7 +4387,7 @@ mod tests {
     fn the_first_slots_spread_across_value_classes() {
         let names: Vec<String> = (0..6).map(|i| format!("t{i}")).collect();
         let lines = vec![String::new()];
-        let make = |i: usize, class: Class| Ranked { key: (0, 0, false, false, 0, (false, false, 0, false, false, false, false, false, 0, 0, 0, 0)), tier: 0, lead: None, unreached: false, unchecked: false, class, technology: &names[i], lines: &lines, fixes: &[], lock: vec![], lock_fixed: vec![], notes: vec![], joins: vec![], leads: None, value: String::new(), peer: None, copies: None };
+        let make = |i: usize, class: Class| Ranked { key: (0, 0, false, false, 0, (false, false, 0, false, false, false, false, false, 0, 0, 0, 0)), tier: 0, lead: None, unreached: false, unchecked: false, noted: false, class, technology: &names[i], lines: &lines, fixes: &[], lock: vec![], lock_fixed: vec![], notes: vec![], joins: vec![], leads: None, value: String::new(), peer: None, copies: None };
         let order = |v: Vec<Ranked>| v.iter().map(|r| r.technology.as_str()).collect::<Vec<_>>().join(" ");
         let ranked = vec![make(0, Class::Compatibility), make(1, Class::Compatibility), make(2, Class::Compatibility), make(3, Class::Security), make(4, Class::Feature)];
         assert_eq!(order(diversified(ranked, 3, 1)), "t0 t3 t4 t1 t2", "one compatibility bump, then the next classes");
@@ -4413,7 +4553,7 @@ mod tests {
         let st = crate::stack::Stack {
             packages: vec![manifest(&["pkg:pypi/django", "pkg:pypi/aiohttp"]), manifest(&["pkg:pypi/django"])],
             deps: Default::default(),
-            node: None, node_by_lock: Default::default(), python: None,
+            node: None, node_by_lock: Default::default(), python: None, runtime_pins: Default::default(),
             notes: vec![],
             unreadable: 0, stub_runtimes: Default::default(), spread: 0, peers: vec![], unlocked: vec![],
             standalone: vec![],
@@ -4436,7 +4576,7 @@ mod tests {
         let v: serde_json::Value = serde_json::from_str(r#"{"data":{"last_day":1,"last_month":40,"last_week":12},"package":"django","type":"recent_downloads"}"#).unwrap();
         assert_eq!(pypistats_last_week(&v), Some(12));
         assert_eq!(pypistats_last_week(&serde_json::json!({"data": {}})), None);
-        let st = stack::Stack { packages: vec![], deps: Default::default(), node: None, node_by_lock: Default::default(), python: None, notes: vec![], unreadable: 0, stub_runtimes: Default::default(), spread: 0, standalone: vec![], registries: Default::default(), fixture_registries: Default::default(), peers: vec![], unlocked: vec![] };
+        let st = stack::Stack { packages: vec![], deps: Default::default(), node: None, node_by_lock: Default::default(), python: None, runtime_pins: Default::default(), notes: vec![], unreadable: 0, stub_runtimes: Default::default(), spread: 0, standalone: vec![], registries: Default::default(), fixture_registries: Default::default(), peers: vec![], unlocked: vec![] };
         let purls: BTreeSet<String> = ["pkg:pypi/aiohttp", "pkg:pypi/django", "pkg:pypi/zstandard"].map(String::from).into();
         let downloads: BTreeMap<String, u64> = [("pkg:pypi/zstandard", 9_000_000), ("pkg:pypi/django", 3_000_000)].map(|(p, d)| (p.to_string(), d)).into();
         assert_eq!(registration_order(&purls, &st, &downloads), ["pkg:pypi/zstandard", "pkg:pypi/django", "pkg:pypi/aiohttp"]);
@@ -4503,7 +4643,7 @@ mod tests {
         let st = crate::stack::Stack {
             packages: vec![],
             deps: [("pkg:pypi/flask", dep("flask")), ("pkg:npm/%40babel/core", dep("@babel/core"))].map(|(p, d)| (p.to_string(), d)).into(),
-            node: None, node_by_lock: Default::default(), python: None,
+            node: None, node_by_lock: Default::default(), python: None, runtime_pins: Default::default(),
             notes: vec![],
             unreadable: 0, stub_runtimes: Default::default(), spread: 0, peers: vec![], unlocked: vec![],
             standalone: vec![],
@@ -5249,7 +5389,7 @@ mod tests {
         assert!(major_step(&v("0.27.10"), &v("0.28.0")), "a minor step on 0.x is a major one");
         assert!(!major_step(&v("0.27.1"), &v("0.27.10")));
         assert!(major_step(&v("0.2.1"), &v("20.0.1")), "read the other way: a 0.2.1 capability predates a project on 20");
-        let st = crate::stack::Stack { packages: vec![], deps: Default::default(), node: None, node_by_lock: Default::default(), python: None, notes: vec![], unreadable: 0, stub_runtimes: Default::default(), spread: 0, standalone: vec![], registries: Default::default(), fixture_registries: Default::default(), peers: vec![], unlocked: vec![] };
+        let st = crate::stack::Stack { packages: vec![], deps: Default::default(), node: None, node_by_lock: Default::default(), python: None, runtime_pins: Default::default(), notes: vec![], unreadable: 0, stub_runtimes: Default::default(), spread: 0, standalone: vec![], registries: Default::default(), fixture_registries: Default::default(), peers: vec![], unlocked: vec![] };
         assert!(!specific_reference("connection", &st));
         assert!(specific_reference("cacheLife", &st));
         assert!(specific_reference("client.beta.agents.environments", &st));

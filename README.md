@@ -116,6 +116,8 @@ histories. They measure service demand, not people or installs. The client also 
 registries for your direct packages at their installed versions, as a package manager does. It checks that each name
 is the public package, and whether its publisher deprecated (npm) or yanked (PyPI) that version. For advisories, the
 client sends the package names and versions that its lockfiles resolve to OSV (`api.osv.dev`), as `npm audit` would.
+For a pinned runtime (`.nvmrc`, a CI `node-version`), it reads that runtime's release lines from endoflife.date, by
+the runtime's name only.
 - **Private packages stay private.** unstale never names a private package to npm, PyPI, OSV or the coverage service.
 A package is private if your lockfile installed it from anywhere but the public registry, or if your registry
 configuration points elsewhere. `UNSTALE_NO_REGISTRY=1` turns off every third-party lookup.
