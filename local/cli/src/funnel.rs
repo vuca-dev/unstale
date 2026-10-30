@@ -2881,6 +2881,7 @@ pub(crate) mod fixtures {
             node: node.map(|v| (parse_version(v).unwrap(), "engines".into())),
             node_by_lock: Default::default(),
             python: None,
+            runtime_pins: Default::default(),
             notes: vec![],
             unreadable: 0, stub_runtimes: Default::default(), spread: 0, peers: vec![], unlocked: vec![],
             standalone: vec![],
