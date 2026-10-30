@@ -523,7 +523,7 @@ fn an_advisory_whose_affected_api_production_code_uses_is_security() {
     let env = Env { repo: fixture_repo(), cache: tempfile::tempdir().unwrap() };
     env.ok(&["init", "--service", cat.loc(), "--mode", "local", "--yes", "--wait", "0", "--no-animation"]);
     let report = env.read(".unstale/onboarding-report.md");
-    assert!(report.contains("1. next 16.0.1 → 16.0.3 picks up 1 security") && report.contains("; leads with security, affected `NextResponse` used at src/middleware.ts"), "{report}");
+    assert!(report.contains("1. next 16.0.1 → 16.0.3 picks up 1 security") && report.contains("; leads with security (release note, no advisory), affected `NextResponse` used at src/middleware.ts"), "{report}");
     assert!(!report.contains("(affected path not found)") && !report.contains("advisory, affected path not found"), "{report}");
 }
 

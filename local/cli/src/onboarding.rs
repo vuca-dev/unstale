@@ -2454,11 +2454,10 @@ fn support_end(r: &unstale_schema::catalog::CapabilityRecord) -> Option<(String,
     {
         return None;
     }
+    // The date the support wording leads to, never an earlier one (a release date before it).
     let text = r.summary.to_ascii_lowercase();
-    if !["support", "maintenance", "end of life", "end-of-life"].iter().any(|w| text.contains(w)) {
-        return None;
-    }
-    support_date(&r.summary)
+    let at = ["support", "maintenance", "end of life", "end-of-life"].iter().filter_map(|w| text.find(w)).min()?;
+    support_date(r.summary.get(at..)?)
 }
 
 /// The first date a text names, as written and as its last day: `YYYY-MM-DD`, `Month YYYY`, `Month D, YYYY`,
@@ -2481,12 +2480,12 @@ fn support_date(text: &str) -> Option<(String, String)> {
         }
         let Some(m) = MONTHS.iter().position(|m| w.eq_ignore_ascii_case(m)).map(|m| m as u32 + 1) else { continue };
         let next = words.get(i + 1).copied().unwrap_or("");
-        let (d, y, said) = if let Some(y) = year(next) {
+        let (d, y, said) = if let (Some(d), Some(y)) = (i.checked_sub(1).and_then(|j| day(words[j])), year(next)) {
+            (Some(d), y, format!("{d} {} {y}", words[i]))
+        } else if let Some(y) = year(next) {
             (None, y, format!("{} {y}", words[i]))
         } else if let (Some(d), Some(y)) = (day(next), words.get(i + 2).and_then(|w| year(w))) {
             (Some(d), y, format!("{} {d}, {y}", words[i]))
-        } else if let (Some(d), Some(y)) = (i.checked_sub(1).and_then(|j| day(words[j])), year(next)) {
-            (Some(d), y, format!("{d} {} {y}", words[i]))
         } else {
             continue;
         };
@@ -3116,8 +3115,9 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World, write: bool) -> Result<B
         let advisory = !sec_opps.is_empty() || !lock.is_empty();
         // Release notes alone, no advisory: named so, never "advisory present".
         let noted = tech_fixes.is_empty() && lock.is_empty() && !notes.is_empty();
-        // A release note that names no API (no term a site check reads, no identifier in its text) was not checked.
-        let note_names_api = notes.iter().any(|o| {
+        // A release note that names no API (no term a site check reads, no identifier in its text) is not checked.
+        // One note naming no API leaves the line not checked: that note's path was never looked for.
+        let note_names_api = notes.iter().all(|o| {
             o.matched.iter().any(|(t, _)| specific_reference(t, &w.stack) && locates(&o.rec.r, t))
                 || affected_identifiers(&o.rec.r.summary).iter().any(|id| !names_product(id, &packages.iter().map(|p| p.to_ascii_lowercase()).collect::<Vec<_>>()))
         });
@@ -3147,7 +3147,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World, write: bool) -> Result<B
                     importers.iter().find_map(|(f, t)| ids.iter().find(|id| usage::in_code(f, t, id, true)).map(|id| (display_text(&util::one_line(text, 160)), f.to_string(), id.clone())))
                 })
             })
-        }).flatten().map(|(what, f, t)| format!("security, affected `{t}` used at {f}: {what}"));
+        }).flatten().map(|(what, f, t)| format!("security{}, affected `{t}` used at {f}: {what}", if noted { " (release note, no advisory)" } else { "" }));
         let leads = (reached.is_some() && (!tech_fixes.is_empty() || !lock_fixed.is_empty())).then(|| facts.blocker.or(lock_blocker)).flatten();
         let evidenced = classes.values().map(|c| c.0).sum::<usize>();
         let class = if !joins.is_empty() {
@@ -4277,6 +4277,7 @@ mod tests {
         assert_eq!(support_date("in maintenance mode, with security updates provided until November 2026."), Some(("November 2026".into(), "2026-11-30".into())));
         assert_eq!(support_date("scheduled to reach end of life on November 5, 2026; after that"), Some(("November 5, 2026".into(), "2026-11-05".into())));
         assert_eq!(support_date("support ends 2027-02-28"), Some(("2027-02-28".into(), "2027-02-28".into())));
+        assert_eq!(support_date("support ends 5 November 2026"), Some(("5 November 2026".into(), "2026-11-05".into())));
         assert_eq!(support_date("Released in 2026 with May changes"), None);
         let rec = |v: serde_json::Value| -> unstale_schema::catalog::CapabilityRecord {
             let mut base = serde_json::json!({"status":"active","id":"m:x","technology":"m","revision":1,"label_version":1,"change_type":"other","breaking":false,"surface":"other","subject":"maintenance mode","subject_kind":"concept","summary":"","benefit":["security"],"releases":[{"component":"pkg:pypi/m","version":"9.7.6","date":"2026-03-19","line":"9"}],"prerequisites":[],"conditions":[],"requires":[],"introduces":[],"terms":[],"replaces":[],"evidence":[],"related":[]});
@@ -4284,6 +4285,8 @@ mod tests {
             serde_json::from_value(base).unwrap()
         };
         assert!(support_end(&rec(serde_json::json!({"summary":"M is in maintenance mode, with fixes until November 2026."}))).is_some());
+        // The date after the support wording, not a release date before it.
+        assert_eq!(support_end(&rec(serde_json::json!({"summary":"Released March 2026: support ends November 2026."}))).map(|d| d.1), Some("2026-11-30".into()));
         // A capability it introduces, or a runtime it requires, is no statement about the product's own support.
         assert!(support_end(&rec(serde_json::json!({"summary":"Support for the legacy API lasts until November 2026.","introduces":["newApi"]}))).is_none());
         assert!(support_end(&rec(serde_json::json!({"summary":"Python 3.9 support ends October 2025.","prerequisites":[{"ecosystem":"pypi","name":"python","min":"3.10"}]}))).is_none());

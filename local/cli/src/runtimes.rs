@@ -99,13 +99,12 @@ fn cycle_of<'d>(pinned: &str, doc: &'d serde_json::Value) -> Option<&'d serde_js
 /// The pinned runtimes past their end of life on `today` (`YYYY-MM-DD`), from the cache alone.
 pub fn notices(cache: &Path, st: &Stack, today: &str) -> Vec<Notice> {
     let mut out = vec![];
-    for (runtime, pinned) in &st.runtime_pins {
+    for (runtime, (pinned, source)) in &st.runtime_pins {
         let Some((p, name)) = product(runtime) else { continue };
         let Some(c) = std::fs::read(path(cache, p)).ok().and_then(|b| serde_json::from_slice::<Cached>(&b).ok()) else { continue };
         let Some(line) = cycle_of(pinned, &c.doc) else { continue };
         // `eol` is a date, or `true` with no date known (then not reported: the report names the date).
         let Some(eol) = line.get("eol").and_then(serde_json::Value::as_str).filter(|d| d.len() >= 10 && &d[..10] <= today) else { continue };
-        let Some((_, source)) = st.runtime_floor(runtime) else { continue };
         let key = |c: &serde_json::Value| -> Vec<u64> { c.get("cycle").and_then(serde_json::Value::as_str).unwrap_or_default().split('.').map(|p| p.parse().unwrap_or(0)).collect() };
         let next = c.doc.as_array().into_iter().flatten()
             .filter(|n| key(n) > key(line))
@@ -140,8 +139,10 @@ mod tests {
         )
         .unwrap();
         let st = crate::stack::detect(&root).unwrap();
-        assert_eq!(st.node, Some((semver::Version::new(20, 0, 0), "node-version 20.x in .github/workflows/lint.yml".into())));
-        assert_eq!(st.runtime_pins.get("python").map(String::as_str), Some("3.x"));
+        // A CI pin is no support floor.
+        assert_eq!(st.node, None);
+        assert_eq!(st.runtime_pins.get("node"), Some(&("20.x".to_string(), "node-version 20.x in .github/workflows/lint.yml".to_string())));
+        assert_eq!(st.runtime_pins.get("python").map(|p| p.0.as_str()), Some("3.x"));
         let cache = d.path().join("cache");
         let docs = |url: &str| -> Option<serde_json::Value> {
             match url {
