@@ -435,7 +435,7 @@ async function cargoDependencies(component: string, version: string): Promise<st
     const dep = row as { crate_id?: unknown; kind?: unknown };
     if (typeof dep.crate_id !== "string") throw new Error(`malformed crates.io dependency identity for ${name}@${version}`);
     if (dep.kind !== undefined && dep.kind !== null && typeof dep.kind !== "string") throw new Error(`malformed crates.io dependency kind for ${name}@${version}`);
-    if (dep.kind !== null) continue;
+    if (dep.kind !== null && dep.kind !== "normal") continue;
     out.add(cargoPurl(dep.crate_id));
   }
   return [...out].sort();
@@ -454,7 +454,7 @@ export const ECOSYSTEMS: Record<string, Ecosystem> = {
     versionPage: (component, version) => `https://www.npmjs.com/package/${npmName(component)}/v/${encodeURIComponent(version)}`,
     versionDownloads: npmVersionDownloads,
   },
-  // Cargo versions are SemVer; crates.io's dependency kind distinguishes ordinary from development/build entries.
+  // crates.io uses `normal` (and sometimes null) for ordinary dependencies; dev/build entries are not runtime edges.
   cargo: {
     osv: "crates.io",
     compare: semverOrder,

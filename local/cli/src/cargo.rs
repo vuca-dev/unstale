@@ -241,7 +241,6 @@ fn normalize_workspace_paths(
     (out, invalid)
 }
 
-/// Discover eligible Cargo manifests, compute real workspace membership, and parse only applicable lockfiles.
 pub fn detect(root: &Path, notes: &mut Vec<String>, unreadable: &mut usize) -> CargoInventory {
     let mut paths: Vec<PathBuf> = stack::walker(root)
         .flatten()

@@ -244,7 +244,6 @@ describe("a technology with no GitHub release notes", () => {
     ]);
     expect(calls.some((url) => url.includes("api.github.com"))).toBe(false);
 
-    // A later retry must start at page one: the complete set was not cached after page two failed.
     calls = [];
     vi.stubGlobal("fetch", async (url: string) => {
       calls.push(url);

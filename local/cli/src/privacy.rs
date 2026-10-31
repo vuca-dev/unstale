@@ -823,6 +823,11 @@ impl Registries {
                                 self.cargo_private = true;
                             }
                         }
+                        "protocol" => {
+                            if !matches!(value.as_str(), Some("sparse" | "git")) {
+                                self.cargo_private = true;
+                            }
+                        }
                         _ => self.cargo_private = true,
                     }
                 }
@@ -1164,6 +1169,7 @@ mod tests {
             "[registries.crates-io]\nindex = \"sparse+https://index.crates.io\"\n",
             "[source.crates-io]\ndirectory = \"vendor\"\n",
             "[registries.crates-io]\nindex = 1\n",
+            "[registries.crates-io]\nprotocol = \"unknown\"\n",
             "[source.crates-io]\nregistry = \"\"\n",
             "[source.crates-io]\nreplace-with = 4\n",
             "[source.crates-io]\nreplace-with = \"mirror\"\nregistry = \"https://github.com/rust-lang/crates.io-index\"\n",
@@ -1188,6 +1194,8 @@ mod tests {
         for config in [
             "[source.crates-io]\nregistry = \"https://github.com/rust-lang/crates.io-index\"\n",
             "[registries.crates-io]\nindex = \"sparse+https://index.crates.io/\"\n",
+            "[registries.crates-io]\nprotocol = \"sparse\"\n",
+            "[registries.crates-io]\nprotocol = \"git\"\n",
         ] {
             write(repo.path(), ".cargo/config.toml", config);
             assert!(

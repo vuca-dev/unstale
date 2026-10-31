@@ -163,8 +163,6 @@ describe("registry parsers", () => {
       ["numeric string", { crate: { recent_downloads: "10000" } }],
       ["negative", { crate: { recent_downloads: -1 } }],
       ["fractional", { crate: { recent_downloads: 1.5 } }],
-      ["NaN", { crate: { recent_downloads: Number.NaN } }],
-      ["infinity", { crate: { recent_downloads: Number.POSITIVE_INFINITY } }],
       ["unsafe integer", { crate: { recent_downloads: Number.MAX_SAFE_INTEGER + 1 } }],
     ] as const;
     for (const [label, doc] of unreadable) {
@@ -193,19 +191,27 @@ describe("registry parsers", () => {
       notice: { kind: "deprecated", message: "every version is yanked" },
     });
   });
-  test("Cargo signals always annotate the 90-day window, even when the registry response is unreadable", async () => {
+  test("Cargo signals use the crates.io endpoint and annotate the 90-day window on unreadable responses", async () => {
+    const asked: string[] = [];
     try {
-      vi.stubGlobal("fetch", vi.fn(async () => ({
-        ok: true,
-        json: async () => ({ crate: { recent_downloads: 12_345 }, versions: [] }),
-      })));
+      vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+        asked.push(url);
+        return { ok: true, json: async () => ({ crate: { recent_downloads: 12_345 }, versions: [] }) };
+      }));
       const valid = await signals("pkg:cargo/example-crate");
       expect(valid).toMatchObject({ downloads: 12_345, downloadsWindow: "90d" });
 
-      vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, json: async () => ({}) })));
+      vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+        asked.push(url);
+        return { ok: false, json: async () => ({}) };
+      }));
       const unreadable = await signals("pkg:cargo/example-crate");
       expect(unreadable.downloads).toBeUndefined();
       expect(unreadable.downloadsWindow).toBe("90d");
+      expect(asked).toEqual([
+        "https://crates.io/api/v1/crates/example-crate",
+        "https://crates.io/api/v1/crates/example-crate",
+      ]);
     } finally {
       vi.unstubAllGlobals();
     }

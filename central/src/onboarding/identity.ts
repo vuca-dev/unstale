@@ -20,7 +20,6 @@ export function pypiIdentity(purl: string): string {
     throw new Error("Expected a canonical public PyPI package URL (PEP 503 normalised), without version or qualifiers");
   return purl.slice(9);
 }
-/** The exact crate name from a canonical public `pkg:cargo/<name>` URL. */
 export function cargoIdentity(purl: string): string {
   const match = /^pkg:cargo\/([a-z0-9_-]{1,64})$/.exec(purl);
   const name = match?.[1];
@@ -28,7 +27,6 @@ export function cargoIdentity(purl: string): string {
     throw new Error("Expected a canonical public Cargo package URL, without version or qualifiers");
   return name;
 }
-/** Construct a Cargo PURL without changing the supplied registry name. */
 export function cargoPurl(name: string): string {
   const purl = `pkg:cargo/${name}`;
   cargoIdentity(purl);

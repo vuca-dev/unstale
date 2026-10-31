@@ -176,13 +176,13 @@ describe("Cargo OSV and registry adapter", () => {
     expect([...listedPackages("- [serde](https://crates.io/crates/serde/1.0.0)\n", [page])]).toEqual(["pkg:cargo/serde"]);
   });
 
-  test("crates.io runtime dependencies require an explicit null dependency kind", async () => {
+  test("crates.io ordinary dependencies include both normal and null kinds, excluding dev/build entries", async () => {
     const asked: string[] = [];
     vi.stubGlobal("fetch", async (url: string) => {
       asked.push(url);
       return Response.json({ dependencies: [
-        { crate_id: "serde_json", kind: null },
-        { crate_id: "optional-runtime", kind: null },
+        { crate_id: "serde_json", kind: "normal" },
+        { crate_id: "optional-runtime", kind: "normal", optional: true },
         { crate_id: "serde_json", kind: null },
         { crate_id: "dev-only", kind: "dev" },
         { crate_id: "build-only", kind: "build" },

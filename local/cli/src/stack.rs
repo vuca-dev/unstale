@@ -973,7 +973,18 @@ pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
         }
         if let (Some(resolved), Some(lockfile)) = (&declaration.resolved, cargo.manifests.get(&declaration.manifest_dir).and_then(|m| m.lockfile.clone())) {
             // This reading is covered by its Cargo.lock whether or not the manifest belongs to a workspace.
-            entry.read_under(&declaration.manifest_dir, Some(resolved.version.clone()), lockfile.clone(), false, None, Some(lockfile));
+            entry.read_under(&declaration.manifest_dir, Some(resolved.version.clone()), lockfile.clone(), false, None, Some(lockfile.clone()));
+            if source_seen == Seen::Public
+                && let Some(locked) = cargo.lockfiles.get(&lockfile).and_then(|l| l.packages.iter().find(|p| p.id == *resolved))
+                && let Some(checksum) = locked.checksum.as_deref()
+                && checksum.len() == 64
+                && checksum.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+            {
+                let pin = Pin { version: resolved.version.to_string(), hashes: vec![format!("sha256:{checksum}")] };
+                if !entry.pins.contains(&pin) {
+                    entry.pins.push(pin);
+                }
+            }
         }
     }
     // No name a private registry serves is ever named to a third party (`privacy`).

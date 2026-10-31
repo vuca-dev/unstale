@@ -271,6 +271,9 @@ pub fn installed(st: &Stack) -> Vec<(String, String, String)> {
             continue;
         }
         let mut versions: BTreeSet<String> = d.pins.iter().map(|p| p.version.clone()).collect();
+        if cargo {
+            versions.extend(d.readings.iter().filter(|r| r.lock.is_some() && !r.standalone).map(|r| r.version.to_string()));
+        }
         if versions.is_empty()
             && let Some(v) = &d.version
             && d.readings.iter().any(|r| if cargo { r.lock.is_some() && !r.standalone } else { r.range.is_none() && !r.standalone })
@@ -286,12 +289,15 @@ pub fn installed(st: &Stack) -> Vec<(String, String, String)> {
 
 /// Reads the registry for every installed version whose cached answer is missing or older than a day. Returns how
 /// many were asked.
-pub fn refresh(cache: &Path, st: &Stack) -> usize {
+pub fn refresh(cache: &Path, st: &Stack, stop: &(dyn Fn() -> bool + Sync)) -> usize {
     if crate::privacy::registry_off() {
         return 0;
     }
     let agent: ureq::Agent = ureq::Agent::config_builder().http_status_as_error(false).timeout_global(Some(Duration::from_secs(8))).build().into();
     let fetch = |url: &str| -> Option<serde_json::Value> {
+        if stop() {
+            return None;
+        }
         let request = agent.get(url);
         let mut r = if url.starts_with("https://crates.io/") {
             request.header("User-Agent", &format!("unstale/{} (https://unstale.dev)", env!("CARGO_PKG_VERSION"))).call().ok()
@@ -430,27 +436,89 @@ mod tests {
         assert_eq!(repository("pkg:pypi/starlette", &py).as_deref(), Some("https://github.com/encode/starlette"));
     }
 
+    fn write(root: &std::path::Path, path: &str, text: &str) {
+        let path = root.join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    }
+
+    const CRATES_IO: &str = "registry+https://github.com/rust-lang/crates.io-index";
+
     fn cargo_stack() -> (Stack, String) {
+        let root = tempfile::tempdir().unwrap();
         let checksum = "a".repeat(64);
-        let mut st = stack(&[("pkg:cargo/foo-bar", "foo-bar", Some("1.2.3"))]);
-        st.deps.get_mut("pkg:cargo/foo-bar").unwrap().pins[0].hashes = vec![format!("sha256:{checksum}")];
+        write(root.path(), "Cargo.toml", "[package]\nname = \"app\"\nversion = \"1.0.0\"\n[dependencies]\nfoo-bar = \"=1.2.3\"\n");
+        write(
+            root.path(),
+            "Cargo.lock",
+            &format!(
+                "version = 4\n[[package]]\nname = \"app\"\nversion = \"1.0.0\"\ndependencies = [\"foo-bar 1.2.3 ({CRATES_IO})\"]\n[[package]]\nname = \"foo-bar\"\nversion = \"1.2.3\"\nsource = \"{CRATES_IO}\"\nchecksum = \"{checksum}\"\n"
+            ),
+        );
+        let st = crate::stack::detect_in(root.path(), &crate::privacy::Env::default()).unwrap();
         (st, checksum)
     }
+
     #[test]
-    fn cargo_installed_versions_require_public_resolved_direct_dependencies() {
-        let mut st = stack(&[
-            ("pkg:cargo/pinned", "pinned", Some("1.0.0")),
-            ("pkg:cargo/manifest-only", "manifest-only", None),
-            ("pkg:cargo/private", "private", Some("1.0.0")),
-            ("pkg:cargo/locked", "locked", None),
-        ]);
-        st.deps.get_mut("pkg:cargo/manifest-only").unwrap().version = Some(semver::Version::new(1, 0, 0));
-        st.deps.get_mut("pkg:cargo/manifest-only").unwrap().readings.push(Reading { dir: ".".into(), version: semver::Version::new(1, 0, 0), source: "Cargo.toml".into(), standalone: false, range: None, lock: None });
-        st.deps.get_mut("pkg:cargo/private").unwrap().public_candidate = false;
-        st.deps.get_mut("pkg:cargo/locked").unwrap().version = Some(semver::Version::new(2, 0, 0));
-        st.deps.get_mut("pkg:cargo/locked").unwrap().readings.push(Reading { dir: ".".into(), version: semver::Version::new(2, 0, 0), source: "Cargo.lock".into(), standalone: false, range: None, lock: Some("Cargo.lock".into()) });
-        let found = installed(&st);
-        assert_eq!(found.iter().map(|x| (x.0.as_str(), x.2.as_str())).collect::<Vec<_>>(), [("pkg:cargo/locked", "2.0.0"), ("pkg:cargo/pinned", "1.0.0")]);
+    fn cargo_installed_versions_include_every_public_lockfile_resolution() {
+        let root = tempfile::tempdir().unwrap();
+        for (dir, package, version, checksum) in [
+            ("a", "app-a", "1.0.0", "a".repeat(64)),
+            ("b", "app-b", "2.0.0", "b".repeat(64)),
+        ] {
+            write(
+                root.path(),
+                &format!("{dir}/Cargo.toml"),
+                &format!("[package]\nname = \"{package}\"\nversion = \"0.1.0\"\n[dependencies]\nfoo-bar = \"={version}\"\n"),
+            );
+            write(
+                root.path(),
+                &format!("{dir}/Cargo.lock"),
+                &format!(
+                    "version = 4\n[[package]]\nname = \"{package}\"\nversion = \"0.1.0\"\ndependencies = [\"foo-bar {version} ({CRATES_IO})\"]\n[[package]]\nname = \"foo-bar\"\nversion = \"{version}\"\nsource = \"{CRATES_IO}\"\nchecksum = \"{checksum}\"\n"
+                ),
+            );
+        }
+        let st = crate::stack::detect_in(root.path(), &crate::privacy::Env::default()).unwrap();
+        let found: Vec<_> = installed(&st)
+            .into_iter()
+            .filter(|(purl, _, _)| purl == "pkg:cargo/foo-bar")
+            .map(|(_, _, version)| version)
+            .collect();
+        assert_eq!(found, vec!["1.0.0".to_string(), "2.0.0".to_string()]);
+        assert_eq!(
+            st.deps["pkg:cargo/foo-bar"].pins.iter().map(|pin| pin.version.as_str()).collect::<Vec<_>>(),
+            vec!["1.0.0", "2.0.0"],
+            "actual Cargo lockfile checksums feed the version-specific lifecycle checks",
+        );
+
+        let cache = tempfile::tempdir().unwrap();
+        let requested = std::sync::Mutex::new(vec![]);
+        assert_eq!(
+            refresh_with(cache.path(), &st, 1_000_000, |url| {
+                requested.lock().unwrap().push(url.to_string());
+                if url.ends_with("/versions") {
+                    Some(serde_json::json!({"versions": [{"crate": "foo-bar", "num": "2.1.0", "yanked": false}]}))
+                } else {
+                    let (version, checksum) = if url.ends_with("/1.0.0") { ("1.0.0", "a".repeat(64)) } else { ("2.0.0", "b".repeat(64)) };
+                    Some(serde_json::json!({"version": {"crate": "foo-bar", "num": version, "checksum": checksum, "yanked": version == "1.0.0", "yank_message": "withdrawn"}}))
+                }
+            }),
+            3,
+        );
+        let mut version_urls: Vec<_> = requested.lock().unwrap().iter().filter(|url| !url.ends_with("/versions")).cloned().collect();
+        version_urls.sort();
+        assert_eq!(
+            version_urls,
+            vec![
+                "https://crates.io/api/v1/crates/foo-bar/1.0.0".to_string(),
+                "https://crates.io/api/v1/crates/foo-bar/2.0.0".to_string(),
+            ]
+        );
+        assert_eq!(
+            notices(cache.path(), &st).iter().map(|notice| notice.version.as_str()).collect::<Vec<_>>(),
+            vec!["1.0.0"],
+        );
     }
     #[test]
     fn cargo_identity_checksum_and_malformed_reads_do_not_overwrite_known_lifecycle_answers() {
