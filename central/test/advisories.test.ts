@@ -6,8 +6,8 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
-import { attachAdvisories, basisOf, fixesInWindow, fromOsv, idsAtQuote, inRange, resolveRange, semverCmp, type Advisory, type AffectedRange } from "../src/pipeline/advisories.ts";
-import { ecosystemOf, githubRepo, pep440Order } from "../src/pipeline/ecosystems.ts";
+import { attachAdvisories, basisOf, fixesInWindow, fromOsv, idsAtQuote, inRange, listedPackages, resolveRange, semverCmp, toRecordAdvisory, type Advisory, type AffectedRange } from "../src/pipeline/advisories.ts";
+import { canonicalPurl, cargoName, cargoPurl, ecosystemOf, githubRepo, pep440Order, semverOrder } from "../src/pipeline/ecosystems.ts";
 import type { Classification } from "../src/pipeline/classify/adapter.ts";
 import type { StoredRecord, TechStore } from "../src/pipeline/store.ts";
 import { TECHNOLOGIES } from "../src/pipeline/technologies.ts";
@@ -77,6 +77,134 @@ function record(id: string, version: string, quote: string, over: Partial<Stored
     ...over,
   };
 }
+
+describe("Cargo OSV and registry adapter", () => {
+  const cargoRange = { type: "SEMVER", events: [{ introduced: "1.0.0" }, { fixed: "1.2.0" }] };
+
+  test("registers crates.io with strict SemVer precedence and preserves crate identity", () => {
+    const eco = ecosystemOf("pkg:cargo/serde");
+    expect(eco.osv).toBe("crates.io");
+    expect(eco.compare).toBe(semverOrder);
+    expect(semverOrder("1.10.0", "1.9.9")).toBeGreaterThan(0);
+    expect(semverOrder("1.0.0-rc.1", "1.0.0")).toBeLessThan(0);
+    expect(semverOrder("1.0.0+one", "1.0.0+two")).toBe(0);
+    for (const invalid of ["1.2", "1.0.0-01", "1.0.0-", "01.0.0", "1.0.0+bad..meta"]) {
+      expect(semverOrder(invalid, "1.0.0")).toBeUndefined();
+      expect(semverOrder("1.0.0", invalid)).toBeUndefined();
+    }
+    expect(cargoName("pkg:cargo/serde_json@1.0.0?registry=foo#subpath")).toBe("serde_json");
+    expect(cargoName("pkg:cargo/serde%2Fjson")).toBeUndefined();
+    expect(cargoName("pkg:cargo/serde/extra")).toBeUndefined();
+    expect(cargoName("pkg:cargo/%E0%A4%A")).toBeUndefined();
+    expect(cargoPurl("serde_json")).toBe("pkg:cargo/serde_json");
+    expect(() => cargoPurl("serde/json")).toThrow();
+    expect(canonicalPurl("pkg:cargo/serde_json@1.0.0?x=y#subpath")).toBe("pkg:cargo/serde_json");
+    expect(canonicalPurl("pkg:cargo/serde%2Fjson")).toBe("pkg:cargo/serde%2Fjson");
+  });
+
+  test("OSV affected entries use valid Cargo PURLs authoritatively or crates.io names without normalization", () => {
+    const ours = new Set(["pkg:cargo/serde", "pkg:cargo/serde_json", "pkg:cargo/other-crate"]);
+    const range = [{ type: "SEMVER", events: [{ introduced: "1.0.0" }, { fixed: "1.1.0" }] }];
+    const result = fromOsv({
+      id: "RUSTSEC-2025-0001",
+      affected: [
+        { package: { ecosystem: "crates.io", name: "serde", purl: "pkg:cargo/serde@1.0.0" }, ranges: range },
+        { package: { ecosystem: "crates.io", name: "serde", }, ranges: range },
+        { package: { ecosystem: "crates.io", name: "unrelated" }, ranges: range },
+        { package: { ecosystem: "crates.io" }, ranges: range },
+        { package: { ecosystem: "crates.io", name: "serde", purl: "pkg:cargo/%E0%A4%A" }, ranges: range },
+        { package: { ecosystem: "crates.io", name: "serde", purl: "pkg:npm/serde" }, ranges: range },
+        { package: { ecosystem: "crates.io", name: "serde", purl: "pkg:cargo/other-crate@9.0.0" }, ranges: range },
+        { package: { ecosystem: "crates.io", name: "serde_json" }, ranges: range },
+      ],
+    }, ours)!;
+    expect(result.affected.map((r) => r.component)).toEqual([
+      "pkg:cargo/serde", "pkg:cargo/serde", "pkg:cargo/other-crate", "pkg:cargo/serde_json",
+    ]);
+    expect(result.id).toBe("RUSTSEC-2025-0001");
+  });
+
+  test("GHSA preference, RustSec aliases and withdrawn records retain generic OSV behavior", () => {
+    const ours = new Set(["pkg:cargo/serde"]);
+    const affected = [{ package: { ecosystem: "crates.io", name: "serde" }, ranges: [cargoRange] }];
+    const withAlias = fromOsv({ id: "GHSA-AAAA-BBBB-CCCC", aliases: ["RUSTSEC-2025-0001"], affected }, ours)!;
+    expect(withAlias).toMatchObject({ id: "GHSA-AAAA-BBBB-CCCC", aliases: ["RUSTSEC-2025-0001"], url: "https://github.com/advisories/GHSA-AAAA-BBBB-CCCC" });
+    const rustsec = fromOsv({ id: "RUSTSEC-2025-0002", affected }, ours)!;
+    expect(rustsec).toMatchObject({ id: "RUSTSEC-2025-0002", url: "https://osv.dev/vulnerability/RUSTSEC-2025-0002" });
+    const rustsecWithGhsa = fromOsv({ id: "RUSTSEC-2025-0003", aliases: ["GHSA-DDDD-EEEE-FFFF"], affected }, ours)!;
+    expect(rustsecWithGhsa).toMatchObject({ id: "GHSA-DDDD-EEEE-FFFF", aliases: ["RUSTSEC-2025-0003"], url: "https://github.com/advisories/GHSA-DDDD-EEEE-FFFF" });
+    expect(fromOsv({ id: "RUSTSEC-2025-0004", withdrawn: "2025-01-01", affected }, ours)).toBeUndefined();
+  });
+
+  test("fixed events resolve only through comparable versions in the Cargo release index", () => {
+    const ours = new Set(["pkg:cargo/serde"]);
+    const advisory = fromOsv({ id: "RUSTSEC-2025-0005", affected: [{ package: { ecosystem: "crates.io", name: "serde" }, ranges: [cargoRange] }] }, ours)!;
+    expect(advisory.affected[0]).toMatchObject({ component: "pkg:cargo/serde", range: ">= 1.0.0, < 1.2.0", patched: "1.2.0", fixed: "1.2.0" });
+    const index = ["1.0.0", "1.0.1", "1.1.9", "1.2.0"];
+    expect(resolveRange(advisory.affected[0]!, index)).toEqual(["1.0.0", "1.0.1", "1.1.9"]);
+    expect(resolveRange(rng({ component: "pkg:cargo/serde", type: "ECOSYSTEM", introduced: "1.0.0", fixed: "1.2.0" }), index)).toEqual(["1.0.0", "1.0.1", "1.1.9"]);
+    expect(resolveRange(rng({ component: "pkg:cargo/serde", type: "ECOSYSTEM", introduced: "1.2", fixed: "2.0.0" }), index)).toBeUndefined();
+    expect(fixesInWindow(advisory, [{ version: "1.2.0", date: "2026-06-01" }])).toEqual([{ line: "1", version: "1.2.0", date: "2026-06-01" }]);
+    expect(fixesInWindow(advisory, [{ version: "1.1.9", date: "2026-06-01" }])).toEqual([]);
+
+    const invalidBoundary = rng({ component: "pkg:cargo/serde", introduced: "1.2", fixed: "2.0.0" });
+    expect(resolveRange(invalidBoundary, ["1.5.0"])).toBeUndefined();
+    expect(resolveRange(rng({ component: "pkg:cargo/serde", introduced: "0", fixed: "1.2" }), ["1.0.0"])).toBeUndefined();
+    const unresolved = toRecordAdvisory({ ...advisory, affected: [invalidBoundary] }, ["1.5.0"]);
+    expect(unresolved.affected[0]).not.toHaveProperty("versions");
+  });
+
+  test("recognizes only exact crates.io package pages through the generic listed-package resolver", () => {
+    const page = ecosystemOf("pkg:cargo/serde").registryPage!;
+    expect(page("https://crates.io/crates/serde")).toBe("pkg:cargo/serde");
+    expect(page("https://crates.io/crates/serde/1.0.0?tab=versions#readme")).toBe("pkg:cargo/serde");
+    expect(ecosystemOf("pkg:cargo/serde_json").versionPage!("pkg:cargo/serde_json", "1.0.0+build")).toBe("https://crates.io/crates/serde_json/1.0.0%2Bbuild");
+    expect(() => ecosystemOf("pkg:cargo/serde").versionPage!("pkg:cargo/serde/extra", "1.0.0")).toThrow();
+    for (const url of [
+      "https://docs.rs/serde",
+      "https://crates.io.evil.example/crates/serde",
+      "https://crates.io/api/v1/crates/serde",
+      "https://crates.io/crates/serde%ZZ",
+      "https://crates.io/crates/serde%2Fother",
+      "https://crates.io/crates/serde/1.0/extra",
+      "https://user@crates.io/crates/serde",
+      "https://@crates.io/crates/serde",
+      "https://:@crates.io/crates/serde",
+      "https://crates.io:444/crates/serde",
+      "http://crates.io/crates/serde",
+    ]) expect(page(url)).toBeUndefined();
+    expect([...listedPackages("- [serde](https://crates.io/crates/serde/1.0.0)\n", [page])]).toEqual(["pkg:cargo/serde"]);
+  });
+
+  test("crates.io runtime dependencies require an explicit null dependency kind", async () => {
+    const asked: string[] = [];
+    vi.stubGlobal("fetch", async (url: string) => {
+      asked.push(url);
+      return Response.json({ dependencies: [
+        { crate_id: "serde_json", kind: null },
+        { crate_id: "optional-runtime", kind: null },
+        { crate_id: "serde_json", kind: null },
+        { crate_id: "dev-only", kind: "dev" },
+        { crate_id: "build-only", kind: "build" },
+        { crate_id: "unknown", kind: "other" },
+        { crate_id: "omitted" },
+      ] });
+    });
+    try {
+      const deps = await ecosystemOf("pkg:cargo/app").dependencies!("pkg:cargo/app", "1.0.0");
+      expect(deps).toEqual(["pkg:cargo/optional-runtime", "pkg:cargo/serde_json"]);
+      expect(asked).toEqual(["https://crates.io/api/v1/crates/app/1.0.0/dependencies"]);
+      vi.stubGlobal("fetch", async () => Response.json({ dependencies: [{ crate_id: "dev-only", kind: "dev" }, { crate_id: "bad/name", kind: null }] }));
+      await expect(ecosystemOf("pkg:cargo/app").dependencies!("pkg:cargo/app", "1.0.0")).rejects.toThrow();
+      vi.stubGlobal("fetch", async () => Response.json({}));
+      await expect(ecosystemOf("pkg:cargo/app").dependencies!("pkg:cargo/app", "1.0.0")).rejects.toThrow(/malformed/);
+      vi.stubGlobal("fetch", async () => new Response("", { status: 404 }));
+      expect(await ecosystemOf("pkg:cargo/app").dependencies!("pkg:cargo/app", "1.0.0")).toBeUndefined();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
 
 describe("advisories", () => {
   test("ranges in the advisory database's syntax, prereleases included", () => {

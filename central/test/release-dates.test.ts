@@ -8,10 +8,11 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { fetchReleases, publishDates } from "../src/pipeline/fetch.ts";
 import { buildIndex, recomputeReleases } from "../src/pipeline/lines.ts";
 import type { StoredRecord } from "../src/pipeline/store.ts";
-import type { Technology } from "../src/pipeline/technologies.ts";
+import { SINCE, type Technology } from "../src/pipeline/technologies.ts";
 import { sha256, writeAtomic } from "../src/pipeline/util.ts";
 
 const JSDOM: Technology = { id: "jsdom-341360b0", name: "jsdom", repo: "jsdom/jsdom", components: ["pkg:npm/jsdom"], tag: /^v?(\d+\.\d+\.\d+)$/, clean: (b) => b };
+const CARGO: Technology = { id: "cargo-fixture", name: "Cargo fixture", repo: "fixture/cargo", components: ["pkg:cargo/fixture-crate"], tag: /^v?(\d+\.\d+\.\d+)$/, clean: (b) => b };
 const NPM_TIME = {
   created: "2011-11-21T03:09:04.421Z",
   modified: "2026-10-15T09:24:39.281Z",
@@ -189,6 +190,71 @@ describe("release dates", () => {
 });
 
 describe("a technology with no GitHub release notes", () => {
+  test("Cargo registry releases paginate serially, use created_at, and reuse the shared cache offline", async () => {
+    const firstPage = Array.from({ length: 100 }, (_, i) => ({
+      num: i === 0 ? "1.0.0" : `0.0.${i}`,
+      created_at: i === 0 ? `${SINCE}T12:00:00Z` : "2020-01-01T00:00:00Z",
+      yanked: i === 0,
+    }));
+    const secondPage = [
+      { num: "1.1.0", created_at: "2025-10-16T01:02:03Z", yanked: false },
+      { num: "2.0.0-beta.1", created_at: "2025-10-17T00:00:00Z", yanked: false },
+      { num: "1.0.1", created_at: "not-a-date", yanked: false },
+      { num: "not-a-version", created_at: "2025-10-18T00:00:00Z", yanked: false },
+      { num: "1.2.0", created_at: "2025-10-19T23:59:59Z", yanked: true },
+    ];
+    vi.stubGlobal("fetch", async (url: string) => {
+      calls.push(url);
+      if (url.endsWith("page=1&per_page=100")) return Response.json({ versions: firstPage });
+      if (url.endsWith("page=2&per_page=100")) return Response.json({ versions: secondPage });
+      return new Response("unexpected URL", { status: 400 });
+    });
+    const { registryReleases } = await import("../src/pipeline/fetch.ts");
+    const releases = await registryReleases(CARGO);
+    expect(releases).toEqual([
+      { version: "1.0.0", date: SINCE, url: "https://crates.io/crates/fixture-crate/1.0.0" },
+      { version: "1.1.0", date: "2025-10-16", url: "https://crates.io/crates/fixture-crate/1.1.0" },
+      { version: "1.2.0", date: "2025-10-19", url: "https://crates.io/crates/fixture-crate/1.2.0" },
+    ]);
+    expect(calls).toEqual([
+      "https://crates.io/api/v1/crates/fixture-crate/versions?page=1&per_page=100",
+      "https://crates.io/api/v1/crates/fixture-crate/versions?page=2&per_page=100",
+    ]);
+    expect(calls.some((url) => url.includes("api.github.com"))).toBe(false);
+    calls = [];
+    expect(await registryReleases(CARGO, { offline: true })).toEqual(releases);
+    expect(calls).toEqual([]);
+  });
+
+  test("missing crates and later-page failures fail open without caching a partial Cargo index", async () => {
+    const missing: Technology = { ...CARGO, id: "cargo-missing", components: ["pkg:cargo/missing-crate"] };
+    const failed: Technology = { ...CARGO, id: "cargo-later-failure", components: ["pkg:cargo/retry-crate"] };
+    const { registryReleases } = await import("../src/pipeline/fetch.ts");
+    vi.stubGlobal("fetch", async (url: string) => {
+      calls.push(url);
+      if (url.includes("/missing-crate/versions")) return new Response("", { status: 404 });
+      if (url.endsWith("page=1&per_page=100")) return Response.json({ versions: Array.from({ length: 100 }, (_, i) => ({ num: `1.0.${i}`, created_at: "2025-10-16T00:00:00Z" })) });
+      return new Response("unavailable", { status: 400 });
+    });
+    expect(await registryReleases(missing)).toEqual([]);
+    expect(await registryReleases(failed)).toEqual([]);
+    expect(calls.filter((url) => url.includes("retry-crate"))).toEqual([
+      "https://crates.io/api/v1/crates/retry-crate/versions?page=1&per_page=100",
+      "https://crates.io/api/v1/crates/retry-crate/versions?page=2&per_page=100",
+    ]);
+    expect(calls.some((url) => url.includes("api.github.com"))).toBe(false);
+
+    // A later retry must start at page one: the complete set was not cached after page two failed.
+    calls = [];
+    vi.stubGlobal("fetch", async (url: string) => {
+      calls.push(url);
+      return Response.json({ versions: [{ num: "2.0.0", created_at: "2025-10-20T00:00:00Z" }] });
+    });
+    expect(await registryReleases(failed)).toEqual([{ version: "2.0.0", date: "2025-10-20", url: "https://crates.io/crates/retry-crate/2.0.0" }]);
+    expect(calls).toEqual(["https://crates.io/api/v1/crates/retry-crate/versions?page=1&per_page=100"]);
+    expect(calls.some((url) => url.includes("api.github.com"))).toBe(false);
+  });
+
   test("its advisories resolve against the registry's versions in the window: stable, dated by the registry, linked to their page", async () => {
     const MD: Technology = { id: "markdown-it-1", name: "markdown-it", repo: "markdown-it/markdown-it", components: ["pkg:npm/markdown-it"], tag: /^v?(\d+\.\d+\.\d+)$/, clean: (b) => b };
     stub({ "https://registry.npmjs.org/markdown-it": { name: "markdown-it", time: { created: "2014-12-01T00:00:00Z", modified: "2026-10-01T00:00:00Z", "13.0.1": "2022-05-03T00:00:00Z", "14.2.0": "2026-06-01T08:00:00Z", "15.0.0-beta.1": "2026-08-01T00:00:00Z", "14.3.1": "2026-09-29T23:30:00Z", "15.0.1": "2026-09-30T01:00:00Z" } } });

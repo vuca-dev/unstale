@@ -289,6 +289,8 @@ pub struct Pin {
 pub struct Stack {
     pub packages: Vec<Package>,
     pub deps: BTreeMap<String, Dep>,
+    /// Source-aware Cargo workspace, declaration, and lockfile inventory.
+    pub cargo: crate::cargo::CargoInventory,
     /// The lowest Node version the project supports, and where that came from: the lowest `engines.node` floor of
     /// the manifests a lockfile covers (standalone ones only when none is covered), else `.nvmrc`/`.node-version`.
     pub node: Option<(Version, String)>,
@@ -498,7 +500,6 @@ const OTHER_MANIFESTS: &[(&str, &str)] = &[
     (".csproj", "C# (NuGet)"),
     ("composer.json", "PHP (Composer)"),
     ("Gemfile", "Ruby (RubyGems)"),
-    ("Cargo.toml", "Rust (crates.io)"),
     ("mix.exs", "Elixir (Hex)"),
     ("Package.swift", "Swift (SwiftPM)"),
     ("pubspec.yaml", "Dart (pub)"),
@@ -554,7 +555,7 @@ pub fn unread_note(repo: &crate::usage::Repo, stack: &Stack) -> Option<String> {
     }
     let m = uncovered_manifests(repo, stack);
     Some(if m.is_empty() {
-        "no dependency manifest this client reads (package.json, pyproject.toml, requirements*.txt, Pipfile) declares any packages".into()
+        "no dependency manifest this client reads (package.json, Cargo.toml, pyproject.toml, requirements*.txt, Pipfile) declares any packages".into()
     } else {
         let list: Vec<String> = m.iter().map(|(eco, paths)| format!("{eco}: {}", paths[..paths.len().min(3)].join(", "))).collect();
         format!("this repository declares its dependencies in manifests this client does not read ({})", list.join("; "))
@@ -572,10 +573,10 @@ pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
     let (mut configs, mut manifest_dirs) = (vec![], BTreeSet::new());
     for e in walker(root).flatten() {
         let name = e.file_name().to_string_lossy();
-        if crate::privacy::is_config(&name) || crate::pypi::requirements_project(e.path()).is_some() {
+        if crate::privacy::is_config(&name) || name == "Cargo.toml" || crate::pypi::requirements_project(e.path()).is_some() {
             configs.push(e.path().to_path_buf());
         }
-        if name == "package.json" || name == "pyproject.toml" || name == "Pipfile" {
+        if name == "package.json" || name == "Cargo.toml" || name == "pyproject.toml" || name == "Pipfile" {
             manifest_dirs.extend(e.path().parent().map(Path::to_path_buf));
         }
         if name == "package.json"
@@ -934,6 +935,47 @@ pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
         ));
     }
     let python = crate::pypi::detect(root, &mut packages, &mut deps, &mut notes);
+    let cargo = crate::cargo::detect(root, &mut notes, &mut unreadable);
+    for manifest in cargo.manifests.values() {
+        let Some(package) = &manifest.package else { continue };
+        let mut declared = BTreeSet::new();
+        for declaration in cargo.declarations.iter().filter(|d| d.manifest_dir == manifest.dir) {
+            let Some(name) = declaration.package.as_deref() else { continue };
+            declared.insert(crate::util::cargo_purl(name));
+        }
+        packages.push(Package {
+            dir: manifest.dir.clone(), kind: package.kind, lockfile: manifest.lockfile.clone(), declared,
+            own: Some(crate::util::cargo_purl(&package.name)),
+        });
+    }
+    for declaration in &cargo.declarations {
+        let Some(name) = declaration.package.as_deref() else { continue };
+        let purl = crate::util::cargo_purl(name);
+        let declaration_seen = Seen::cargo_manifest_source(declaration.privacy_declaration.as_ref());
+        let lock_seen = match declaration.resolved.as_ref() {
+            Some(id) => match id.source.as_deref() {
+                Some(source) => Seen::cargo_lockfile_source(Some(source)),
+                None => Seen::Elsewhere,
+            },
+            None => Seen::Unknown,
+        };
+        let source_seen = declaration_seen.and(lock_seen);
+        let public_candidate = source_seen != Seen::Elsewhere;
+        let entry = deps.entry(purl).or_insert_with(|| Dep::new(name, public_candidate));
+        entry.public_candidate &= public_candidate;
+        entry.seen = entry.seen.and(source_seen);
+        if declaration.alias == name {
+            entry.unaliased = true;
+            entry.own_dirs.insert(declaration.manifest_dir.clone());
+        } else {
+            entry.aliases.insert(declaration.alias.clone());
+            entry.alias_dirs.insert(declaration.manifest_dir.clone());
+        }
+        if let (Some(resolved), Some(lockfile)) = (&declaration.resolved, cargo.manifests.get(&declaration.manifest_dir).and_then(|m| m.lockfile.clone())) {
+            let standalone = cargo.manifests.get(&declaration.manifest_dir).is_some_and(|m| m.workspace_root.is_none());
+            entry.read_under(&declaration.manifest_dir, Some(resolved.version.clone()), lockfile.clone(), standalone, None, Some(lockfile));
+        }
+    }
     // No name a private registry serves is ever named to a third party (`privacy`).
     // A test, example or fixture directory's configuration is its own (a local Verdaccio a test publishes to): it keeps
     // private the packages only such directories declare, and, for the rest, only the scopes and names it lists.
@@ -947,8 +989,12 @@ pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
     let fixture_registries = Registries::read_local(&other_dirs, &other_configs);
     let registries = Registries::read(root, &app_dirs, &app_configs, env).union(&fixture_registries.narrow());
     for (purl, d) in deps.iter_mut() {
-        let fixture_only = !d.readings.is_empty() && d.readings.iter().all(|r| !local(&root.join(&r.dir).join("x")));
-        d.public_candidate &= registries.may_name(purl, d.seen) && (!fixture_only || fixture_registries.may_name(purl, d.seen));
+        if purl.starts_with("pkg:cargo/") {
+            d.public_candidate &= registries.may_name_cargo(purl, d.seen);
+        } else {
+            let fixture_only = !d.readings.is_empty() && d.readings.iter().all(|r| !local(&root.join(&r.dir).join("x")));
+            d.public_candidate &= registries.may_name(purl, d.seen) && (!fixture_only || fixture_registries.may_name(purl, d.seen));
+        }
     }
     // Aliases beside the package's own declaration: deliberate side-by-side installs, named once.
     let side: Vec<String> = deps
@@ -977,7 +1023,7 @@ pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
         ));
     }
     let unlocked = unlocked_used.into_iter().collect();
-    let mut st = Stack { packages, deps, node, node_by_lock, python, notes, unreadable, stub_runtimes, spread: 0, standalone, registries, fixture_registries, peers, unlocked };
+    let mut st = Stack { packages, deps, cargo, node, node_by_lock, python, notes, unreadable, stub_runtimes, spread: 0, standalone, registries, fixture_registries, peers, unlocked };
     st.settle();
     Ok(st)
 }
@@ -2077,11 +2123,11 @@ mod tests {
         }
         let m = uncovered_manifests(&r, &Stack::default());
         assert!(!m.contains_key("Python (PyPI)"), "read by the PyPI adapter");
-        assert_eq!(m["Rust (crates.io)"], vec!["native/agentive_nif/Cargo.toml"]);
+        assert!(!m.contains_key("Rust (crates.io)"), "Cargo.toml is processed by the Cargo adapter");
         assert_eq!(m["Elixir (Hex)"], vec!["mix.exs"]);
         assert_eq!(m["C# (NuGet)"], vec!["src/App/App.csproj"]);
         assert!(!m.contains_key("Go modules"), "a fixture's manifest is not the project's");
-        assert_eq!(m.len(), 3);
+        assert_eq!(m.len(), 2);
     }
 
     #[test]
@@ -2173,6 +2219,55 @@ mod tests {
         let p = dir.join(rel);
         std::fs::create_dir_all(p.parent().unwrap()).unwrap();
         std::fs::write(p, text).unwrap();
+    }
+
+    #[test]
+    fn cargo_inventory_uses_actual_lock_resolution_and_keeps_unlocked_requirements_unknown() {
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "Cargo.toml", "[package]\nname = \"app\"\nversion = \"1.0.0\"\n[dependencies]\nserde_alias = { package = \"serde\", version = \"^1\" }\n");
+        write(d.path(), "Cargo.lock", "version = 3\n[[package]]\nname = \"app\"\nversion = \"1.0.0\"\ndependencies = [\"serde 1.2.3 (registry+https://github.com/rust-lang/crates.io-index)\"]\n[[package]]\nname = \"serde\"\nversion = \"1.2.3\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\n");
+        let stack = detect_in(d.path(), &crate::privacy::Env::default()).unwrap();
+        assert_eq!(stack.cargo.declarations[0].alias, "serde_alias");
+        assert_eq!(stack.cargo.declarations[0].package.as_deref(), Some("serde"));
+        assert_eq!(stack.cargo.declarations[0].resolved.as_ref().unwrap().version.to_string(), "1.2.3");
+        let dep = &stack.deps["pkg:cargo/serde"];
+        assert_eq!(dep.name, "serde");
+        assert_eq!(dep.version.as_ref().unwrap().to_string(), "1.2.3");
+        assert!(dep.aliases.contains("serde_alias"));
+        assert!(dep.public_candidate);
+        assert!(stack.packages[0].declared.contains("pkg:cargo/serde"));
+
+        let no_lock = tempfile::tempdir().unwrap();
+        write(no_lock.path(), "Cargo.toml", "[package]\nname = \"library\"\nversion = \"1.0.0\"\n[dependencies]\nserde = \"^1.0\"\n");
+        let stack = detect_in(no_lock.path(), &crate::privacy::Env::default()).unwrap();
+        let dep = &stack.deps["pkg:cargo/serde"];
+        assert_eq!(dep.version, None);
+        assert!(dep.readings.is_empty());
+        assert_eq!(stack.cargo.declarations[0].requirement.as_deref(), Some("^1.0"));
+    }
+
+    #[test]
+    fn an_excluded_cargo_package_uses_its_own_lock_as_a_standalone_project() {
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "Cargo.toml", "[workspace]\nexclude=[\"standalone\"]\n");
+        write(d.path(), "standalone/Cargo.toml", "[package]\nname=\"standalone\"\nversion=\"1.0.0\"\n[dependencies]\nserde=\"1\"\n");
+        write(d.path(), "standalone/Cargo.lock", "[[package]]\nname=\"standalone\"\nversion=\"1.0.0\"\ndependencies=[\"serde 1.2.3 (registry+https://github.com/rust-lang/crates.io-index)\"]\n[[package]]\nname=\"serde\"\nversion=\"1.2.3\"\nsource=\"registry+https://github.com/rust-lang/crates.io-index\"\n");
+        let stack = detect_in(d.path(), &crate::privacy::Env::default()).unwrap();
+        let reading = &stack.deps["pkg:cargo/serde"].readings[0];
+        assert!(reading.standalone);
+        assert_eq!(reading.lock.as_deref(), Some("standalone/Cargo.lock"));
+    }
+
+    #[test]
+    fn cargo_source_replacement_overrides_public_lock_identity() {
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "Cargo.toml", "[package]\nname = \"app\"\nversion = \"1.0.0\"\n[dependencies]\nserde = \"1\"\n");
+        write(d.path(), ".cargo/config.toml", "[source.crates-io]\nreplace-with = \"mirror\"\n[source.mirror]\nregistry = \"https://mirror.invalid/index\"\n");
+        write(d.path(), "Cargo.lock", "[[package]]\nname = \"app\"\nversion = \"1.0.0\"\ndependencies = [\"serde 1.2.3 (registry+https://github.com/rust-lang/crates.io-index)\"]\n[[package]]\nname = \"serde\"\nversion = \"1.2.3\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\n");
+        let stack = detect_in(d.path(), &crate::privacy::Env::default()).unwrap();
+        assert!(!stack.deps["pkg:cargo/serde"].public_candidate);
+        let output = format!("{:?}", stack.cargo);
+        assert!(!output.contains("mirror.invalid"));
     }
 
     #[test]

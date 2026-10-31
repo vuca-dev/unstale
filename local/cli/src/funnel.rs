@@ -190,7 +190,7 @@ struct Choice<'d> {
 /// `vite.config.ts`: `usage::Scope::runs_from`) is used by the package holding them, as code importing it is (`choose`).
 fn manifest_file(path: &str) -> bool {
     let base = path.rsplit('/').next().unwrap_or(path);
-    matches!(base, "package.json" | "pyproject.toml" | "setup.py" | "setup.cfg" | "Pipfile") || (base.starts_with("requirements") && base.ends_with(".txt"))
+    matches!(base, "package.json" | "Cargo.toml" | "pyproject.toml" | "setup.py" | "setup.cfg" | "Pipfile") || (base.starts_with("requirements") && base.ends_with(".txt"))
 }
 
 /// Packages of one technology installed side by side (`run`): pairs of `present` that one manifest both installs, at
@@ -198,6 +198,25 @@ fn manifest_file(path: &str) -> bool {
 struct SideBySide<'p> {
     pairs: Vec<(String, &'p String, &'p String)>,
     members: BTreeSet<String>,
+}
+
+fn cargo_aliases(stack: &Stack, comps: &BTreeSet<String>) -> BTreeMap<String, BTreeSet<String>> {
+    let cargo: BTreeSet<String> = comps.iter().filter(|p| p.starts_with("pkg:cargo/")).map(|p| normalize_purl(p)).collect();
+    let mut out = BTreeMap::new();
+    for d in &stack.cargo.declarations {
+        let Some(name) = d.package.as_deref() else { continue };
+        let purl = crate::util::cargo_purl(name);
+        if cargo.contains(&purl) && d.alias != name { out.entry(purl).or_insert_with(BTreeSet::new).insert(d.alias.clone()); }
+    }
+    out
+}
+
+fn naming_for(stack: &Stack, purl: &str) -> Vec<String> {
+    if purl.starts_with("pkg:cargo/") {
+        let aliases = cargo_aliases(stack, &BTreeSet::from([purl.to_string()]));
+        let names: Vec<String> = aliases.get(&normalize_purl(purl)).into_iter().flatten().cloned().collect();
+        usage::cargo_naming_lits(purl, &names)
+    } else { usage::naming_lits(purl) }
 }
 
 fn side_by_side<'p>(stack: &Stack, present: &[&'p String]) -> SideBySide<'p> {
@@ -278,7 +297,7 @@ fn hits_without<'l>(hits: &Hits, lits: impl IntoIterator<Item = &'l String>, off
 /// `hits` for one technology when one of its CLI-flag literals (`usage::cli_flag`) occurs in a file only off a command
 /// line that runs it (no word of `usage::command_words` on the flag's line, and not a CSS custom property): those files
 /// are dropped from the flag's hits. `None` when every flag hit stands, so the shared hits serve as they are.
-fn flag_filtered<'l>(hits: &Hits, comps: &BTreeSet<String>, lits: impl IntoIterator<Item = &'l String>, paths: &[String]) -> Option<Hits> {
+fn flag_filtered<'l>(hits: &Hits, comps: &BTreeSet<String>, lits: impl IntoIterator<Item = &'l String>, naming_extra: impl IntoIterator<Item = String>, paths: &[String]) -> Option<Hits> {
     let words: BTreeSet<String> = comps.iter().flat_map(|c| usage::command_words(c)).collect();
     let lits: BTreeSet<&String> = lits.into_iter().collect();
     // `paths` is sorted (`Repo::collect`), so a whole-token hit's path finds its index.
@@ -300,7 +319,7 @@ fn flag_filtered<'l>(hits: &Hits, comps: &BTreeSet<String>, lits: impl IntoItera
         return None;
     }
     // Every literal the technology reads, and the ones naming its packages, copied; the flags without the dropped files.
-    let naming: BTreeSet<String> = comps.iter().flat_map(|c| usage::naming_lits(c)).collect();
+    let naming: BTreeSet<String> = naming_extra.into_iter().chain(comps.iter().flat_map(|c| usage::naming_lits(c))).collect();
     let mut out = hits_without(hits, lits.iter().copied().chain(&naming), &vec![false; paths.len()], paths);
     for (l, bad) in drop {
         if let Some(v) = out.usage.get_mut(l) {
@@ -1370,7 +1389,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
     let usage_lits: BTreeSet<String> = in_stack
         .iter()
         .flat_map(|(_, _, tl)| {
-            tl.usage.iter().cloned().chain(tl.comps.iter().flat_map(|c| usage::naming_lits(c))).chain(tl.subpaths.values().flatten().cloned())
+            tl.usage.iter().cloned().chain(tl.comps.iter().flat_map(|c| naming_for(inp.stack, c))).chain(tl.subpaths.values().flatten().cloned())
         })
         .collect();
     let whole_lits: BTreeSet<String> = in_stack.iter().flat_map(|(_, _, tl)| tl.whole.iter().cloned()).collect();
@@ -1388,7 +1407,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
         let first = out.opps.len();
         // A CLI flag counts only on a command line that runs this technology: `--scope` in another CLI's help text or
         // a `claude mcp add --scope` string is not turbo's flag.
-        let flagged = flag_filtered(&all_hits, comps, tl.usage.iter().chain(&tl.whole), &inp.repo.paths);
+        let flagged = flag_filtered(&all_hits, comps, tl.usage.iter().chain(&tl.whole), comps.iter().flat_map(|c| naming_for(inp.stack, c)), &inp.repo.paths);
         let hits: &Hits = flagged.as_ref().unwrap_or(&all_hits);
         let present: Vec<&String> = comps.iter().filter(|c| purls.contains(*c)).collect();
         // A package installed only through npm aliases beside one of the technology's packages installed under its own
@@ -1450,14 +1469,15 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
         };
         // Only files that can use this technology evidence it, and a plain word only where it is named (`usage::Scope`).
         let scope_lits = || tl.usage.iter().chain(&tl.whole);
-        let all = usage::Scope::new(&ecosystem, &owners, comps, scope_lits(), hits, &inp.repo.paths).with_reach(&reach).with_repo(inp.repo);
+        let alias_map = cargo_aliases(inp.stack, comps);
+        let all = usage::Scope::new(&ecosystem, &owners, comps, scope_lits(), hits, &inp.repo.paths).with_reach(&reach).with_repo(inp.repo).with_cargo_aliases(comps, &alias_map);
         // Per package: the version the outputs use, from the code that imports it (`Choice`).
         let choices: BTreeMap<&String, Choice> = present
             .iter()
             .filter_map(|c| {
                 let d = inp.stack.deps.get(*c)?;
                 let sites = || {
-                    let mut v: Vec<String> = usage::naming_lits(c)
+                    let mut v: Vec<String> = naming_for(inp.stack, c)
                         .iter()
                         .flat_map(|l| hits.usage.get(l).into_iter().flatten())
                         .filter(|p| all.file(p) == Some(true) && !manifest_file(p))
@@ -1499,12 +1519,12 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
         let filtered: Vec<Hits> = if masks.is_empty() {
             vec![]
         } else {
-            let naming: BTreeSet<String> = comps.iter().flat_map(|c| usage::naming_lits(c)).collect();
+            let naming: BTreeSet<String> = comps.iter().flat_map(|c| naming_for(inp.stack, c)).collect();
             let lits: BTreeSet<&String> = scope_lits().chain(&naming).collect();
             masks.iter().map(|m| hits_without(hits, lits.iter().copied(), &m.iter().map(Option::is_some).collect::<Vec<_>>(), &inp.repo.paths)).collect()
         };
         let mut scopes = vec![all];
-        scopes.extend(filtered.iter().map(|f| usage::Scope::new(&ecosystem, &owners, comps, scope_lits(), f, &inp.repo.paths).with_reach(&reach).with_repo(inp.repo)));
+        scopes.extend(filtered.iter().map(|f| usage::Scope::new(&ecosystem, &owners, comps, scope_lits(), f, &inp.repo.paths).with_reach(&reach).with_repo(inp.repo).with_cargo_aliases(comps, &alias_map)));
         let hits_of = |v: usize| if v == 0 { hits } else { &filtered[v - 1] };
         // Per view and literal, the manifests left out whose code importing the technology it matches (`Opp::elsewhere`).
         let elsewhere: Memo<Rc<BTreeSet<u16>>> = RefCell::default();
@@ -2186,7 +2206,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
             };
             // Only a package the project installs has a deprecation in effect: a registry package of the technology that
             // no manifest or lockfile names reads no version of its own here (`version_of`), whatever its siblings run.
-            let registry = comp.starts_with("pkg:npm/") || comp.starts_with("pkg:pypi/");
+            let registry = comp.starts_with("pkg:npm/") || comp.starts_with("pkg:pypi/") || comp.starts_with("pkg:cargo/");
             let installed_here = !registry || version_of(&comp).is_some();
             if opp.route == Route::AlreadyIncluded && installed_here && !deprecated.is_empty() && (opp.matched.iter().any(|(l, _)| !usage::plain_word(l)) || !calls.is_empty()) {
                 opp.matched.retain(|(l, _)| !usage::plain_word(l));
@@ -2878,6 +2898,7 @@ pub(crate) mod fixtures {
                     (p, Dep { version: parse_version(v), source: "test".into(), ..Dep::new(n, true) })
                 })
                 .collect(),
+            cargo: Default::default(),
             node: node.map(|v| (parse_version(v).unwrap(), "engines".into())),
             node_by_lock: Default::default(),
             python: None,
@@ -2928,6 +2949,38 @@ mod tests {
     }
     use crate::testcat::{rec, with};
     use serde_json::json;
+
+    #[test]
+    fn cargo_dependency_aliases_name_rust_imports_without_changing_the_purl() {
+        let stack = Stack {
+            cargo: crate::cargo::CargoInventory {
+                declarations: vec![crate::cargo::CargoDependency {
+                    manifest_dir: ".".into(),
+                    alias: "json_alias".into(),
+                    package: Some("serde-json".into()),
+                    kind: crate::cargo::CargoDependencyKind::Normal,
+                    target: None,
+                    requirement: Some("1".into()),
+                    source: crate::cargo::CargoDependencySource::DefaultRegistry,
+                    optional: false,
+                    features: vec![],
+                    default_features: None,
+                    resolved: None,
+                    privacy_declaration: None,
+                }],
+                ..Default::default()
+            },
+            ..Stack::default()
+        };
+        let purl = "pkg:cargo/serde-json".to_string();
+        let comps = BTreeSet::from([purl.clone()]);
+        let aliases = cargo_aliases(&stack, &comps);
+        assert_eq!(aliases[&purl], BTreeSet::from(["json_alias".to_string()]));
+        let names = naming_for(&stack, &purl);
+        assert!(names.contains(&"use serde_json::".to_string()));
+        assert!(names.contains(&"use json_alias::".to_string()));
+        assert_eq!(purl, "pkg:cargo/serde-json");
+    }
 
     fn run_with<'a>(c: &'a Catalog, s: &'a Stack, r: &'a Repo, l: &'a Ledger) -> Outcome<'a> {
         run(&Input { catalog: c, stack: s, repo: r, ledger: l, today: "2026-10-15", targets: BTreeMap::new() })

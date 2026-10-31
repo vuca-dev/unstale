@@ -9,11 +9,11 @@ use std::cell::RefCell;
 use std::sync::Mutex;
 
 use crate::stack::walker;
-use crate::util::{normalize_purl, purl_name};
+use crate::util::{cargo_import_name, normalize_purl, purl_name};
 
 const TEXT_EXT: &[&str] = &[
     "js", "jsx", "ts", "tsx", "mjs", "cjs", "mts", "cts", "json", "jsonc", "json5", "prisma", "graphql", "gql", "yml", "yaml", "toml",
-    "vue", "svelte", "astro", "css", "scss", "html", "sql", "py", "pyi",
+    "vue", "svelte", "astro", "css", "scss", "html", "sql", "py", "pyi", "rs",
 ];
 /// Source-code extensions of each ecosystem the client reads (package URL type). Config and data files are shared
 /// by every ecosystem; code of another ecosystem's language never evidences a technology (Next.js `connection` in a
@@ -21,6 +21,7 @@ const TEXT_EXT: &[&str] = &[
 const CODE_EXT: &[(&str, &[&str])] = &[
     ("npm", &["js", "jsx", "ts", "tsx", "mjs", "cjs", "mts", "cts", "vue", "svelte", "astro"]),
     ("pypi", &["py", "pyi"]),
+    ("cargo", &["rs"]),
 ];
 
 /// Whether `path` is source code of an ecosystem other than `ecosystem` (a package URL type).
@@ -118,6 +119,9 @@ const STYLE_EXT: &[&str] = &["css", "scss", "sass", "less"];
 /// `find`'s one pass.
 pub fn naming_lits(purl: &str) -> Vec<String> {
     let Some(name) = purl_name(purl) else { return vec![] };
+    if normalize_purl(purl).starts_with("pkg:cargo/") {
+        return cargo_naming_lits(purl, &[]);
+    }
     if normalize_purl(purl).starts_with("pkg:pypi/") {
         // A module boundary after the name, so `requests` is not named by `import requests_cache`.
         let module = name.to_ascii_lowercase().replace('-', "_");
@@ -136,6 +140,22 @@ pub fn naming_lits(purl: &str) -> Vec<String> {
     let quoted: Vec<String> = ["'", "\""].iter().flat_map(|q| [format!("{q}{name}{q}"), format!("{q}{name}/")]).collect();
     let module = NPM_MODULE_AT.iter().flat_map(|at| quoted.iter().map(move |q| format!("{at}{q}")));
     quoted.iter().cloned().chain(module).collect()
+}
+
+/// Rust import spellings for a Cargo package and any dependency-local aliases. This only changes import identifiers,
+/// never the Cargo PURL or package name.
+pub fn cargo_naming_lits(purl: &str, aliases: &[String]) -> Vec<String> {
+    if !normalize_purl(purl).starts_with("pkg:cargo/") { return vec![]; }
+    let mut names = vec![];
+    if let Some(name) = purl_name(purl) { names.push(cargo_import_name(&name)); }
+    names.extend(aliases.iter().map(|a| cargo_import_name(a)));
+    names.sort(); names.dedup();
+    names.into_iter().flat_map(|name| [
+        format!("use {name}::"),
+        format!("use {name};"),
+        format!("use {name} as "),
+        format!("extern crate {name};"),
+    ]).collect()
 }
 
 /// What precedes a quoted specifier where JavaScript code loads it as a module: `import … from`, a side-effect or
@@ -163,7 +183,7 @@ const NPM_MODULE_AT: &[&str] = &[
 /// it. A quoted name alone does not: `type Falloff = 'linear' | 'sharp'` is a string, not an import of sharp. In data
 /// and config files (manifests, `tsconfig.json` types, CSS `@import`) any quoted form names it.
 pub fn module_naming(lit: &str) -> bool {
-    lit.starts_with("import ") || lit.starts_with("from ") || NPM_MODULE_AT.iter().any(|at| lit.starts_with(at))
+    lit.starts_with("import ") || lit.starts_with("from ") || lit.starts_with("use ") || lit.starts_with("extern crate ") || NPM_MODULE_AT.iter().any(|at| lit.starts_with(at))
 }
 
 /// A literal that is a relative path (`./src/*`, `../`): in a dependency's record it is a subpath of the dependency's
@@ -314,6 +334,24 @@ impl<'a> Scope<'a> {
     /// The repository whose texts `platform_global` reads.
     pub fn with_repo(mut self, repo: &'a Repo) -> Self {
         self.repo = Some(repo);
+        self
+    }
+
+    /// Add package-specific Cargo aliases to module naming and import ownership. Aliases affect `.rs` source matching
+    /// only; the component identities remain their original Cargo PURLs.
+    pub fn with_cargo_aliases<'b>(mut self, purls: impl IntoIterator<Item = &'b String>, aliases: &BTreeMap<String, BTreeSet<String>>) -> Self {
+        for purl in purls.into_iter().filter(|p| normalize_purl(p).starts_with("pkg:cargo/")) {
+            let alias_list: Vec<String> = aliases.get(&normalize_purl(purl)).into_iter().flatten().cloned().collect();
+            for lit in cargo_naming_lits(purl, &alias_list) {
+                let files: Vec<&str> = self.hits.usage.get(&lit).into_iter().flatten().map(String::as_str).collect();
+                self.naming.extend(files.iter().copied());
+                self.importing.extend(files);
+                for x in self.hits.ix.get(&lit).into_iter().flatten() {
+                    if let Some(n) = self.named_at.get_mut(*x as usize) { n.0 = true; n.1 = true; }
+                }
+            }
+        }
+        self.imported = self.importing.iter().any(|p| own_code(p, self.ecosystem));
         self
     }
 
@@ -690,7 +728,7 @@ enum CommentStyle {
 fn comment_style(path: &str) -> CommentStyle {
     let ext = path.rsplit_once('.').map(|(_, x)| x.to_ascii_lowercase()).unwrap_or_default();
     match ext.as_str() {
-        "js" | "jsx" | "ts" | "tsx" | "mjs" | "cjs" | "mts" | "cts" | "vue" | "svelte" | "astro" | "json" | "jsonc" | "json5" | "prisma" | "graphql" | "gql" => {
+        "js" | "jsx" | "ts" | "tsx" | "mjs" | "cjs" | "mts" | "cts" | "vue" | "svelte" | "astro" | "json" | "jsonc" | "json5" | "prisma" | "graphql" | "gql" | "rs" => {
             CommentStyle::CLike
         }
         "py" | "pyi" | "yml" | "yaml" | "toml" => CommentStyle::Hash,
@@ -728,6 +766,37 @@ fn lex_spans(path: &str, text: &str) -> (Vec<(usize, usize)>, Vec<StringSpan>) {
     while i < b.len() {
         let c = b[i];
         let next = b.get(i + 1).copied();
+        if path.ends_with(".rs") {
+            let raw = if c == b'r' {
+                Some(i)
+            } else if c == b'b' && next == Some(b'r') {
+                Some(i + 1)
+            } else {
+                None
+            };
+            if let Some(r) = raw {
+                let mut quote = r + 1;
+                while b.get(quote) == Some(&b'#') { quote += 1; }
+                if b.get(quote) == Some(&b'\"') {
+                    let hashes = quote - r - 1;
+                    let from = quote + 1;
+                    let mut close = from;
+                    let found = loop {
+                        let Some(rel) = text[close..].find('\"') else { break None };
+                        let at = close + rel;
+                        if b.get(at + 1..at + 1 + hashes).is_some_and(|xs| xs.iter().all(|x| *x == b'#')) {
+                            break Some(at);
+                        }
+                        close = at + 1;
+                    };
+                    if let Some(end) = found {
+                        strings.push((from, end, false));
+                        i = end + 1 + hashes;
+                        continue;
+                    }
+                }
+            }
+        }
         match c {
             b'\'' | b'"' if python && b.get(i + 1) == Some(&c) && b.get(i + 2) == Some(&c) => {
                 let close = [c, c, c];
@@ -760,7 +829,27 @@ fn lex_spans(path: &str, text: &str) -> (Vec<(usize, usize)>, Vec<StringSpan>) {
                 i += 1;
             }
             b'/' if style != CommentStyle::Hash && next == Some(b'*') => {
-                let end = text[i + 2..].find("*/").map_or(b.len(), |n| i + 2 + n + 2);
+                let end = if path.ends_with(".rs") {
+                    // Rust block comments nest. Treat the entire outer comment as comment text so an import-like
+                    // sequence after an inner `*/` cannot become a false Cargo import hit.
+                    let mut depth = 1usize;
+                    let mut j = i + 2;
+                    while j < b.len() {
+                        if b.get(j..j + 2) == Some(b"/*") {
+                            depth += 1;
+                            j += 2;
+                        } else if b.get(j..j + 2) == Some(b"*/") {
+                            depth -= 1;
+                            j += 2;
+                            if depth == 0 { break; }
+                        } else {
+                            j += 1;
+                        }
+                    }
+                    j
+                } else {
+                    text[i + 2..].find("*/").map_or(b.len(), |n| i + 2 + n + 2)
+                };
                 out.push((i, end));
                 i = end;
             }
@@ -2416,6 +2505,23 @@ pub struct Hits {
     pub flag_lines: HashMap<String, HashMap<u32, BTreeSet<String>>>,
 }
 
+fn rust_module_literal(lit: &str) -> bool {
+    lit.starts_with("use ") || lit.starts_with("extern crate ")
+}
+
+/// A Cargo naming hit must begin a Rust use item, not merely occur in an unrelated string or comment.
+fn rust_import_hit(text: &str, at: usize) -> bool {
+    let (comments, strings) = lex_spans("source.rs", text);
+    if comments.iter().any(|(s, e)| *s <= at && at < *e) || strings.iter().any(|(s, e, _)| *s <= at && at < *e) {
+        return false;
+    }
+    let start = text[..at].rfind('\n').map_or(0, |i| i + 1);
+    let prefix = text[start..at].trim();
+    if prefix.is_empty() || prefix.ends_with('{') { return true; }
+    if prefix == "pub" || prefix.starts_with("pub(") && prefix.ends_with(')') { return true; }
+    false
+}
+
 /// Whether the JavaScript-family text at `at` is inside a line comment, a block-comment line (`* …`) or a string opened
 /// earlier on the same line (an odd number of unescaped quotes of one kind before it).
 fn quoted_or_commented(text: &str, at: usize) -> bool {
@@ -2521,6 +2627,9 @@ pub fn find_with_commands(repo: &Repo, usage_lits: &BTreeSet<String>, whole_lits
             // An import written in a comment or a string (an error message telling the user to `import WebSocket from
             // 'ws'`) does not import the package: such a file is not about it (`Scope`).
             if js && module_pat[p] && quoted_or_commented(text, m.start()) {
+                continue;
+            }
+            if path.ends_with(".rs") && rust_module_literal(&patterns[p]) && !rust_import_hit(text, m.start()) {
                 continue;
             }
             let before = if m.start() == 0 { None } else { Some(b[m.start() - 1]) };
@@ -2928,6 +3037,33 @@ mod tests {
     }
 
     #[test]
+    fn cargo_imports_are_rust_syntax_only_and_support_package_aliases() {
+        let r = repo(&[
+            ("src/conventional.rs", "use serde_json::Value;\n"),
+            ("src/root.rs", "use serde_json;\nuse serde_json as json;\n"),
+            ("src/alias.rs", "pub use local_json::Value;\n"),
+            ("src/extern.rs", "extern crate serde_json;\n"),
+            ("src/comment.rs", "// use serde_json::Value;\n/* extern crate serde_json; */\n/* outer /* nested */\nuse serde_json::Value; */\n"),
+            ("src/string.rs", r#"const MESSAGE: &str = "use serde_json::Value;";"#),
+            ("src/unrelated.rs", r#"let text = "serde_json";"#),
+            ("src/raw.rs", r###"let text = r##"docs:
+use serde_json::Value;
+"##;
+"###),
+        ]);
+        let purl = "pkg:cargo/serde-json".to_string();
+        let lits = cargo_naming_lits(&purl, &["local-json".into()]);
+        let h = find(&r, &lits.into_iter().collect(), &set(&[]));
+        assert_eq!(h.usage.get("use serde_json::").unwrap(), &["src/conventional.rs"]);
+        assert_eq!(h.usage.get("extern crate serde_json;").unwrap(), &["src/extern.rs"]);
+        assert_eq!(h.usage.get("use serde_json;").unwrap(), &["src/root.rs"]);
+        assert_eq!(h.usage.get("use serde_json as ").unwrap(), &["src/root.rs"]);
+        assert_eq!(h.usage.get("use local_json::").unwrap(), &["src/alias.rs"]);
+        assert!(own_code("src/lib.rs", "cargo"));
+        assert!(foreign_code("src/lib.rs", "npm"));
+    }
+
+    #[test]
     fn a_qualified_tail_of_another_module_is_not_a_hit() {
         // kornia: `numpy.from_dlpack` is not `torch.from_dlpack(...)` nor `from torch.utils.dlpack import from_dlpack`.
         let r = repo(&[
@@ -3154,7 +3290,7 @@ mod tests {
         for other in ["import requests_cache\n", "from requests_oauthlib import x", "\"requests-toolbelt>=1"] {
             assert!(!py.iter().any(|l| other.contains(l.as_str())), "{other}");
         }
-        assert!(naming_lits("pkg:cargo/serde").is_empty());
+        assert_eq!(naming_lits("pkg:cargo/serde"), ["use serde::", "use serde;", "use serde as ", "extern crate serde;"]);
     }
 
     /// `find` over `files` with the literals and each package's naming literals, then a scope for those packages.

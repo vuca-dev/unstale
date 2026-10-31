@@ -325,6 +325,92 @@ test("a name the public registry does not know is not queued", async () => {
   expect(await (await handle(get("/internal/queue", auth), e)).json()).toMatchObject({ requests: [{ purl: "pkg:npm/%40scope/real", demand: 1 }] });
 });
 
+test("Cargo registration verifies against crates.io and queues the original identity", async () => {
+  const asked: string[] = [];
+  vi.stubGlobal("fetch", async (url: string) => (asked.push(url), new Response("{}", { status: 200 })));
+  const { env: e } = env();
+  const purl = "pkg:cargo/foo_bar";
+  const res = await handle(post({ purl }), e);
+  expect(res.status).toBe(202);
+  expect(await res.json()).toMatchObject({ purl, name: "foo_bar", technology: technologyId(purl), state: "queued" });
+  expect(asked).toEqual(["https://crates.io/api/v1/crates/foo_bar"]);
+  const auth = { Authorization: "Bearer drain-secret" };
+  expect(await (await handle(get("/internal/queue", auth), e)).json()).toMatchObject({ requests: [{ purl, demand: 1 }] });
+});
+test("Cargo 404, server errors and network failures do not admit or queue a package", async () => {
+  const asked: string[] = [];
+  vi.stubGlobal("fetch", async (url: string) => {
+    asked.push(url);
+    if (url.endsWith("/missing")) return new Response("not found", { status: 404 });
+    if (url.endsWith("/busy")) return new Response("busy", { status: 502 });
+    if (url.endsWith("/offline")) throw new TypeError("network down");
+    return new Response("{}", { status: 200 });
+  });
+  const { env: e } = env();
+  expect((await handle(post({ purl: "pkg:cargo/missing" }), e)).status).toBe(404);
+  for (const name of ["busy", "offline"]) {
+    const res = await handle(post({ purl: `pkg:cargo/${name}` }), e);
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({ error: expect.stringContaining("could not confirm"), retry_after: expect.any(Number) });
+  }
+  expect(asked).toEqual(["https://crates.io/api/v1/crates/missing", "https://crates.io/api/v1/crates/busy", "https://crates.io/api/v1/crates/offline"]);
+  const auth = { Authorization: "Bearer drain-secret" };
+  expect(await (await handle(get("/internal/queue", auth), e)).json()).toMatchObject({ requests: [] });
+});
+test("invalid Cargo identity is rejected before registry fetch or queue interaction", async () => {
+  const fetcher = vi.fn(async () => new Response("{}", { status: 200 }));
+  vi.stubGlobal("fetch", fetcher);
+  const { env: e } = env();
+  const queueAccess = vi.spyOn(e.COVERAGE, "get");
+  const res = await handle(post({ purl: "pkg:cargo/Foo_bar" }), e);
+  expect(res.status).toBe(400);
+  expect(fetcher).not.toHaveBeenCalled();
+  expect(queueAccess).not.toHaveBeenCalled();
+});
+test("Cargo batch registration keeps per-identity outcomes and one queue RPC pair", async () => {
+  const asked: string[] = [];
+  vi.stubGlobal("fetch", async (url: string) => {
+    asked.push(url);
+    return new Response("{}", { status: url.endsWith("/absent") ? 404 : 200 });
+  });
+  const { env: e } = env();
+  const object = e.COVERAGE.get(e.COVERAGE.idFromName("global"));
+  const calls: string[] = [];
+  e.COVERAGE = { idFromName: () => "global", get: () => new Proxy(object, {
+    get: (target, key) => {
+      const value = (target as unknown as Record<string | symbol, unknown>)[key];
+      if (typeof value !== "function") return value;
+      calls.push(String(key));
+      return value.bind(target);
+    },
+  }) } as unknown as Env["COVERAGE"];
+  const purls = ["pkg:cargo/foo_bar", "pkg:cargo/absent", "pkg:npm/next", "pkg:pypi/requests"];
+  const response = await handle(batch("/coverage/register", { purls }), e);
+  expect(response.status).toBe(200);
+  const { results } = await response.json() as { results: Record<string, unknown>[] };
+  expect(results.map((r) => [r.purl, r.status])).toEqual([
+    ["pkg:cargo/foo_bar", 202],
+    ["pkg:cargo/absent", 404],
+    ["pkg:npm/next", 202],
+    ["pkg:pypi/requests", 202],
+  ]);
+  expect(results[0]!.job).toMatchObject({ purl: "pkg:cargo/foo_bar", name: "foo_bar", technology: technologyId("pkg:cargo/foo_bar") });
+  expect(asked).toEqual([
+    "https://crates.io/api/v1/crates/foo_bar",
+    "https://crates.io/api/v1/crates/absent",
+    "https://registry.npmjs.org/next/latest",
+    "https://pypi.org/pypi/requests/json",
+  ]);
+  expect(calls).toEqual(["heldMany", "requestMany"]);
+  const auth = { Authorization: "Bearer drain-secret" };
+  expect(await (await handle(get("/internal/queue", auth), e)).json()).toMatchObject({
+    requests: expect.arrayContaining([
+      expect.objectContaining({ purl: "pkg:cargo/foo_bar", demand: 1 }),
+      expect.objectContaining({ purl: "pkg:npm/next", demand: 1 }),
+      expect.objectContaining({ purl: "pkg:pypi/requests", demand: 1 }),
+    ]),
+  });
+});
 test("a registry that cannot confirm a name fails closed: a 503 with Retry-After, nothing queued", async () => {
   // Unreachable for one name, an error status for another; a third the registry serves.
   vi.stubGlobal("fetch", async (url: string) => {

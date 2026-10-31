@@ -57,7 +57,8 @@ pub fn registry_off() -> bool {
 /// Where a lockfile says a package came from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Seen {
-    /// No lockfile says (pnpm and Yarn 2+ name no URL for the default registry, or nothing locks it).
+    /// Absence of source evidence (for example, no lockfile source). A supplied but unrecognized source is
+    /// `Elsewhere`, not `Unknown`.
     #[default]
     Unknown,
     /// The public registry.
@@ -83,6 +84,54 @@ impl Seen {
     pub fn pypi_url(url: &str) -> Seen {
         if public_pypi(url) { Seen::Public } else { Seen::Elsewhere }
     }
+    /// A Cargo.lock package's source identity. Only Cargo's two canonical crates.io identities are public.
+    pub fn cargo_lockfile_source(source: Option<&str>) -> Seen {
+        match source {
+            None => Seen::Unknown,
+            Some("registry+https://github.com/rust-lang/crates.io-index")
+            | Some("registry+https://index.crates.io/") => Seen::Public,
+            Some(_) => Seen::Elsewhere,
+        }
+    }
+    /// A Cargo dependency declaration's effective source. Callers must resolve `[workspace.dependencies]`
+    /// inheritance before passing it here; an unresolved `{ workspace = true }` is not public evidence.
+    pub fn cargo_manifest_source(declaration: Option<&Value>) -> Seen {
+        let Some(declaration) = declaration else { return Seen::Unknown };
+        match declaration {
+            Value::String(requirement) if valid_cargo_requirement(requirement) => Seen::Public,
+            Value::Table(fields) => {
+                // Any source selector is private, even beside a valid version. The allowlist of ordinary fields
+                // intentionally stays small so newly introduced Cargo syntax cannot silently become public.
+                const METADATA: &[&str] = &["package", "features", "optional", "default-features"];
+                const SELECTORS: &[&str] = &["path", "git", "registry", "registry-index", "workspace", "branch", "tag", "rev"];
+                if SELECTORS.iter().any(|key| fields.contains_key(*key))
+                    || fields.keys().any(|key| key != "version" && !METADATA.contains(&key.as_str()))
+                {
+                    return Seen::Elsewhere;
+                }
+                let Some(Value::String(version)) = fields.get("version") else { return Seen::Elsewhere };
+                if !valid_cargo_requirement(version) {
+                    return Seen::Elsewhere;
+                }
+                for (key, value) in fields {
+                    let valid = match key.as_str() {
+                        "version" => matches!(value, Value::String(_)),
+                        "package" => value.as_str().is_some_and(|s| !s.is_empty()),
+                        "features" => value.as_array().is_some_and(|a| a.iter().all(Value::is_str)),
+                        "optional" | "default-features" => value.is_bool(),
+                        _ => false,
+                    };
+                    if !valid { return Seen::Elsewhere; }
+                }
+                Seen::Public
+            }
+            _ => Seen::Elsewhere,
+        }
+    }
+}
+
+fn valid_cargo_requirement(requirement: &str) -> bool {
+    !requirement.is_empty() && semver::VersionReq::parse(requirement).is_ok()
 }
 
 /// The host of a URL, lowercase, without credentials or port; None for anything that is not `http(s)://`.
@@ -134,8 +183,11 @@ impl Env {
         Env { home, vars: std::env::vars().collect() }
     }
     /// A variable by name, in any case when the exact one is not set (Windows names are case-insensitive).
+    fn raw_var(&self, k: &str) -> Option<&str> {
+        self.vars.get(k).or_else(|| self.vars.iter().find(|(n, _)| n.eq_ignore_ascii_case(k)).map(|(_, v)| v)).map(String::as_str)
+    }
     fn var(&self, k: &str) -> Option<&str> {
-        self.vars.get(k).or_else(|| self.vars.iter().find(|(n, _)| n.eq_ignore_ascii_case(k)).map(|(_, v)| v)).map(String::as_str).filter(|v| !v.trim().is_empty())
+        self.raw_var(k).filter(|v| !v.trim().is_empty())
     }
     /// `${NAME}` references expanded (npm and Yarn allow them in values); None when one is not set.
     fn expand(&self, v: &str) -> Option<String> {
@@ -237,6 +289,7 @@ enum Kind {
     Pyproject,
     Pipfile,
     Requirements,
+    CargoConfig,
 }
 
 impl Kind {
@@ -277,6 +330,49 @@ fn project_files(dirs: &BTreeSet<PathBuf>, files: &[PathBuf]) -> BTreeSet<(PathB
     all
 }
 
+/// A Cargo config is recognized by its path, not just its basename.
+fn cargo_config_path(path: &Path) -> bool {
+    matches!(path.file_name().and_then(|s| s.to_str()), Some("config" | "config.toml"))
+        && path.parent().and_then(Path::file_name).is_some_and(|s| s == ".cargo")
+}
+
+/// Cargo config candidates in project ancestors for repository-wide discovery.
+fn cargo_project_configs(root: &Path, dirs: &BTreeSet<PathBuf>) -> BTreeSet<(PathBuf, Kind)> {
+    let mut out = BTreeSet::new();
+    for directory in std::iter::once(root).chain(dirs.iter().map(PathBuf::as_path)) {
+        for ancestor in directory.ancestors() {
+            for name in ["config", "config.toml"] {
+                out.insert((ancestor.join(".cargo").join(name), Kind::CargoConfig));
+            }
+        }
+    }
+    out
+}
+
+/// Cargo config files supplied explicitly or directly inside a fixture directory. Does not inspect ancestors.
+fn cargo_local_configs(dirs: &BTreeSet<PathBuf>, files: &[PathBuf]) -> BTreeSet<(PathBuf, Kind)> {
+    let mut out: BTreeSet<(PathBuf, Kind)> = files.iter().filter(|p| cargo_config_path(p)).map(|p| (p.clone(), Kind::CargoConfig)).collect();
+    for directory in dirs {
+        for name in ["config", "config.toml"] {
+            out.insert((directory.join(".cargo").join(name), Kind::CargoConfig));
+        }
+    }
+    out
+}
+
+/// Cargo home configuration paths. An explicit CARGO_HOME replaces, rather than supplements, HOME/.cargo.
+fn cargo_home_configs(env: &Env) -> BTreeSet<(PathBuf, Kind)> {
+    let home = env.raw_var("CARGO_HOME").map(PathBuf::from)
+        .or_else(|| env.home.as_ref().map(|home| home.join(".cargo")));
+    let mut out = BTreeSet::new();
+    if let Some(home) = home {
+        for name in ["config", "config.toml"] {
+            out.insert((home.join(name), Kind::CargoConfig));
+        }
+    }
+    out
+}
+
 /// A file whose registry or index settings count (`Registries::read`).
 pub fn is_config(name: &str) -> bool {
     Kind::of(name).is_some()
@@ -297,6 +393,8 @@ pub struct Registries {
     /// npm: credentials for the public registry itself are configured, so paid private packages (always scoped) can
     /// be installed from it under a public URL (`needs_identity`).
     npm_token: bool,
+    /// Cargo: a crates.io source or index override is present or could not be safely interpreted.
+    cargo_private: bool,
 }
 
 impl Registries {
@@ -312,6 +410,9 @@ impl Registries {
         }
         all.extend(project_files(&BTreeSet::from([root.to_path_buf()]), &[]));
         all.extend(env.user_files());
+        all.extend(cargo_project_configs(root, dirs));
+        all.extend(cargo_home_configs(env));
+        all.extend(files.iter().filter(|p| cargo_config_path(p)).map(|p| (p.clone(), Kind::CargoConfig)));
         let mut r = Registries::from_files(all, env);
         r.env(env);
         r
@@ -320,7 +421,9 @@ impl Registries {
     /// Only the settings in these directories and files: no ancestor's, the user's or the environment's. For the test,
     /// example and fixture directories of a repository (`stack::detect_in`), whose settings are their own.
     pub fn read_local(dirs: &BTreeSet<PathBuf>, files: &[PathBuf]) -> Registries {
-        Registries::from_files(project_files(dirs, files), &Env::default())
+        let mut all = project_files(dirs, files);
+        all.extend(cargo_local_configs(dirs, files));
+        Registries::from_files(all, &Env::default())
     }
 
     /// What names packages one by one (scopes and pins), without the settings that keep a whole ecosystem private.
@@ -337,6 +440,7 @@ impl Registries {
         self.npm_token |= other.npm_token;
         self.npm_scopes.extend(other.npm_scopes.iter().cloned());
         self.pypi_pinned.extend(other.pypi_pinned.iter().cloned());
+        self.cargo_private |= other.cargo_private;
         self
     }
 
@@ -344,7 +448,21 @@ impl Registries {
         let mut r = Registries::default();
         for (p, kind) in all {
             // Bytes that are not UTF-8 are read as far as they are text, never skipped: a setting must not be lost.
-            let Ok(bytes) = std::fs::read(&p) else { continue };
+            let bytes = match std::fs::read(&p) {
+                Ok(bytes) => bytes,
+                Err(error) => {
+                    if kind == Kind::CargoConfig {
+                        let candidate_exists = match std::fs::symlink_metadata(&p) {
+                            Ok(_) => true,
+                            Err(metadata_error) => metadata_error.kind() != std::io::ErrorKind::NotFound,
+                        };
+                        if candidate_exists || error.kind() != std::io::ErrorKind::NotFound {
+                            r.cargo_private = true;
+                        }
+                    }
+                    continue;
+                }
+            };
             let text = String::from_utf8_lossy(&bytes);
             match kind {
                 Kind::Npmrc => r.npmrc(&text, env),
@@ -359,6 +477,12 @@ impl Registries {
                 Kind::Pyproject => r.pyproject(&text),
                 Kind::Pipfile => r.pipfile(&text),
                 Kind::Requirements => r.requirements(&text),
+                // TOML configuration must be valid UTF-8. Lossy conversion could turn malformed Cargo config
+                // into a parseable comment/value and accidentally permit disclosure.
+                Kind::CargoConfig => match std::str::from_utf8(&bytes) {
+                    Ok(text) => r.cargo_config(text),
+                    Err(_) => r.cargo_private = true,
+                },
             }
         }
         r
@@ -645,6 +769,78 @@ impl Registries {
         }
     }
 
+    fn cargo_index_public(index: &str) -> bool {
+        matches!(index,
+            "https://github.com/rust-lang/crates.io-index"
+                | "sparse+https://index.crates.io/")
+    }
+
+    /// Cargo's source/index settings affect only Cargo; ambiguous or unsupported relevant settings fail closed.
+    fn cargo_config(&mut self, text: &str) {
+        let Ok(doc) = toml::from_str::<Value>(text) else {
+            self.cargo_private = true;
+            return;
+        };
+        if let Some(source) = doc.get("source") {
+            let Some(source) = source.as_table() else {
+                self.cargo_private = true;
+                return;
+            };
+            if let Some(crates_io) = source.get("crates-io") {
+                let Some(settings) = crates_io.as_table() else {
+                    self.cargo_private = true;
+                    return;
+                };
+                for (key, value) in settings {
+                    match key.as_str() {
+                        // Never trust a replacement, including one that happens to name a familiar mirror.
+                        "replace-with" => self.cargo_private = true,
+                        "registry" => {
+                            if !value.as_str().is_some_and(Self::cargo_index_public) {
+                                self.cargo_private = true;
+                            }
+                        }
+                        // Unknown source selectors may redirect package resolution too.
+                        _ => self.cargo_private = true,
+                    }
+                }
+            }
+        }
+        if let Some(registries) = doc.get("registries") {
+            let Some(registries) = registries.as_table() else {
+                self.cargo_private = true;
+                return;
+            };
+            if let Some(crates_io) = registries.get("crates-io") {
+                let Some(settings) = crates_io.as_table() else {
+                    self.cargo_private = true;
+                    return;
+                };
+                for (key, value) in settings {
+                    match key.as_str() {
+                        "index" => {
+                            if !value.as_str().is_some_and(Self::cargo_index_public) {
+                                self.cargo_private = true;
+                            }
+                        }
+                        _ => self.cargo_private = true,
+                    }
+                }
+            }
+        }
+    }
+
+    fn cargo_env(&mut self, env: &Env) {
+        if let Some(index) = env.raw_var("CARGO_REGISTRIES_CRATES_IO_INDEX")
+            && !Self::cargo_index_public(index)
+        {
+            self.cargo_private = true;
+        }
+        if env.raw_var("CARGO_SOURCE_CRATES_IO_REPLACE_WITH").is_some_and(|value| !value.is_empty()) {
+            self.cargo_private = true;
+        }
+    }
+
     /// The environment's registry and index settings (npm's are case-insensitive).
     fn env(&mut self, env: &Env) {
         for (k, v) in &env.vars {
@@ -675,6 +871,7 @@ impl Registries {
                 v.split_whitespace().for_each(|u| self.pypi_index(u));
             }
         }
+        self.cargo_env(env);
     }
 
     /// Whether a configuration points this package anywhere but the public registry.
@@ -700,6 +897,16 @@ impl Registries {
             Seen::Elsewhere => false,
             Seen::Public | Seen::Unknown => !self.configured_private(purl),
         }
+    }
+
+    /// Cargo has no npm/PyPI identity fallback: only a structurally valid crate PURL with positive crates.io
+    /// provenance is nameable, and any applicable source replacement/index override denies all crates.
+    pub fn may_name_cargo(&self, purl: &str, seen: Seen) -> bool {
+        let Some(name) = purl.strip_prefix("pkg:cargo/") else { return false };
+        if name.is_empty() || !name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_') {
+            return false;
+        }
+        seen == Seen::Public && !self.cargo_private
     }
 
     /// Whether this package, though `may_name` allows it, needs the public registry to confirm it first: a scoped npm
@@ -804,6 +1011,438 @@ mod tests {
         std::fs::write(p, text).unwrap();
     }
     const U: Seen = Seen::Unknown;
+
+    fn manifest_decl(text: &str) -> Value {
+        toml::from_str::<Value>(&format!("declaration = {text}")).unwrap()["declaration"].clone()
+    }
+
+    #[test]
+    fn cargo_lockfile_sources_are_exact_and_conservative() {
+        for source in [
+            "registry+https://github.com/rust-lang/crates.io-index",
+            "registry+https://index.crates.io/",
+        ] {
+            assert_eq!(
+                Seen::cargo_lockfile_source(Some(source)),
+                Seen::Public,
+                "{source}"
+            );
+        }
+        assert_eq!(Seen::cargo_lockfile_source(None), Seen::Unknown);
+        for source in [
+            "",
+            "registry+https://index.crates.io",
+            "registry+https://index.crates.io/extra",
+            "registry+https://index.crates.io.evil/",
+            "registry+https://user:secret@index.crates.io/",
+            "registry+https://github.com/rust-lang/crates.io-index/",
+            "registry+https://github.com/rust-lang/crates.io-index?x=1",
+            "registry+https://github.com/rust-lang/crates.io-index/evil",
+            "registry+https://github.com/rust-lang/crates.io-index.git",
+            "registry+https://github.com/rust-lang/crates.io-index/../private",
+            "registry+https://github.com/rust-lang/crates.io-index ",
+            "registry+https://index.crates.io//",
+            "registry+https://registry.corp.example/index",
+            "registry+https://github.com/acme/registry",
+            "git+https://github.com/acme/crate#abc123",
+            "path+file:///workspace/crate",
+            "not a source",
+        ] {
+            assert_eq!(
+                Seen::cargo_lockfile_source(Some(source)),
+                Seen::Elsewhere,
+                "{source:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn cargo_manifest_sources_require_a_valid_effective_public_declaration() {
+        assert_eq!(Seen::cargo_manifest_source(None), Seen::Unknown);
+        assert_eq!(
+            Seen::cargo_manifest_source(Some(&Value::String("1.2.3".into()))),
+            Seen::Public
+        );
+        assert_eq!(
+            Seen::cargo_manifest_source(Some(&Value::String("^1.2, <2".into()))),
+            Seen::Public
+        );
+        for declaration in [
+            r#"{ version = "1.2.3" }"#,
+            r#"{ version = "~1.2", package = "real-name", features = ["derive"], optional = true, default-features = false }"#,
+        ] {
+            assert_eq!(
+                Seen::cargo_manifest_source(Some(&manifest_decl(declaration))),
+                Seen::Public,
+                "{declaration}"
+            );
+        }
+        for declaration in [
+            r#"{ path = "../local" }"#,
+            r#"{ version = "1", path = "../local" }"#,
+            r#"{ git = "https://git.example/repo" }"#,
+            r#"{ version = "1", git = "https://git.example/repo", branch = "main" }"#,
+            r#"{ version = "1", registry = "corp" }"#,
+            r#"{ version = "1", registry-index = "https://registry.example" }"#,
+            r#"{ version = "1", workspace = true }"#,
+            r#"{ version = "1", branch = "main" }"#,
+            r#"{ version = "1", tag = "v1" }"#,
+            r#"{ version = "1", rev = "abc" }"#,
+            r#"{ workspace = true }"#,
+            r#"{ version = "not a requirement" }"#,
+            r#"{ version = "1", unknown-cargo-setting = true }"#,
+            r#"{ version = 1 }"#,
+            r#"{ version = "1", features = "derive" }"#,
+            r#"{ version = "1", optional = "yes" }"#,
+        ] {
+            assert_eq!(
+                Seen::cargo_manifest_source(Some(&manifest_decl(declaration))),
+                Seen::Elsewhere,
+                "{declaration}"
+            );
+        }
+        for declaration in ["", "not a version", "1.2.3 || 2.0", "=", " "] {
+            assert_eq!(
+                Seen::cargo_manifest_source(Some(&Value::String(declaration.into()))),
+                Seen::Elsewhere,
+                "{declaration:?}"
+            );
+        }
+        assert_eq!(
+            Seen::cargo_manifest_source(Some(&Value::Integer(1))),
+            Seen::Elsewhere
+        );
+
+        let lock_missing_source = Seen::cargo_lockfile_source(None);
+        let effective_public_manifest =
+            Seen::cargo_manifest_source(Some(&manifest_decl(r#"{ version = "1" }"#)));
+        assert_eq!(
+            lock_missing_source.and(effective_public_manifest),
+            Seen::Public
+        );
+        let private_manifest = Seen::cargo_manifest_source(Some(&manifest_decl(
+            r#"{ version = "1", path = "../local" }"#,
+        )));
+        let public_lock = Seen::cargo_lockfile_source(Some("registry+https://index.crates.io/"));
+        assert_eq!(public_lock.and(private_manifest), Seen::Elsewhere);
+    }
+
+    #[test]
+    fn cargo_naming_requires_positive_source_and_a_valid_cargo_purl() {
+        let dir = tempfile::tempdir().unwrap();
+        let registries = read(dir.path(), &env(None, &[]));
+        assert!(registries.may_name_cargo("pkg:cargo/serde", Seen::Public));
+        for (purl, seen) in [
+            ("pkg:cargo/serde", Seen::Unknown),
+            ("pkg:cargo/serde", Seen::Elsewhere),
+            ("pkg:npm/serde", Seen::Public),
+            ("pkg:cargo/", Seen::Public),
+            ("pkg:cargo/serde/core", Seen::Public),
+            ("pkg:cargo/serde@1.0.0", Seen::Public),
+            ("pkg:cargo/serde?download_url=private", Seen::Public),
+            ("pkg:cargo/serde#fragment", Seen::Public),
+            ("pkg:cargo/serde name", Seen::Public),
+        ] {
+            assert!(!registries.may_name_cargo(purl, seen), "{purl} {seen:?}");
+        }
+        assert!(
+            !registries.may_name("pkg:cargo/serde", Seen::Public),
+            "Cargo does not use npm/PyPI policy"
+        );
+        assert!(!registries.needs_identity("pkg:cargo/serde"));
+    }
+
+    #[test]
+    fn cargo_configuration_is_fail_closed_but_isolated_to_cargo() {
+        let repo = tempfile::tempdir().unwrap();
+        for config in [
+            "[source.crates-io]\nreplace-with = \"mirror\"\n",
+            "[source.crates-io]\nregistry = \"https://registry.corp/index\"\n",
+            "[source.crates-io]\nregistry = \"https://github.com/rust-lang/crates.io-index/\"\n",
+            "[source.crates-io]\nregistry = \"https://user:secret@github.com/rust-lang/crates.io-index\"\n",
+            "[registries.crates-io]\nindex = \"sparse+https://registry.corp/index/\"\n",
+            "[registries.crates-io]\nindex = \"sparse+https://index.crates.io\"\n",
+            "[source.crates-io]\ndirectory = \"vendor\"\n",
+            "[registries.crates-io]\nindex = 1\n",
+            "[source.crates-io]\nregistry = \"\"\n",
+            "[source.crates-io]\nreplace-with = 4\n",
+            "[source.crates-io]\nreplace-with = \"mirror\"\nregistry = \"https://github.com/rust-lang/crates.io-index\"\n",
+            "[source.crates-io\nreplace-with = \"mirror\"\n",
+        ] {
+            write(repo.path(), ".cargo/config.toml", config);
+            let registries = read(repo.path(), &env(None, &[]));
+            assert!(
+                !registries.may_name_cargo("pkg:cargo/serde", Seen::Public),
+                "{config}"
+            );
+            assert!(
+                registries.may_name("pkg:npm/react", U),
+                "Cargo config must not change npm"
+            );
+            assert!(
+                registries.may_name("pkg:pypi/requests", U),
+                "Cargo config must not change PyPI"
+            );
+            assert!(!format!("{registries:?}").contains("registry.corp"));
+        }
+        for config in [
+            "[source.crates-io]\nregistry = \"https://github.com/rust-lang/crates.io-index\"\n",
+            "[registries.crates-io]\nindex = \"sparse+https://index.crates.io/\"\n",
+        ] {
+            write(repo.path(), ".cargo/config.toml", config);
+            assert!(
+                read(repo.path(), &env(None, &[])).may_name_cargo("pkg:cargo/serde", Seen::Public),
+                "{config}"
+            );
+        }
+        write(
+            repo.path(),
+            ".cargo/config.toml",
+            "[registries.corp]\nindex = \"https://registry.corp/index\"\n",
+        );
+        assert!(read(repo.path(), &env(None, &[])).may_name_cargo("pkg:cargo/serde", Seen::Public));
+    }
+
+    #[test]
+    fn cargo_environment_overrides_and_union_narrow_are_scoped_correctly() {
+        let repo = tempfile::tempdir().unwrap();
+        for (key, value) in [
+            (
+                "CARGO_REGISTRIES_CRATES_IO_INDEX",
+                "https://github.com/rust-lang/crates.io-index",
+            ),
+            (
+                "CARGO_REGISTRIES_CRATES_IO_INDEX",
+                "sparse+https://index.crates.io/",
+            ),
+        ] {
+            assert!(
+                read(repo.path(), &env(None, &[(key, value)]))
+                    .may_name_cargo("pkg:cargo/serde", Seen::Public)
+            );
+        }
+        for (key, value) in [
+            (
+                "CARGO_REGISTRIES_CRATES_IO_INDEX",
+                "https://index.crates.io/extra",
+            ),
+            ("CARGO_REGISTRIES_CRATES_IO_INDEX", ""),
+            ("CARGO_SOURCE_CRATES_IO_REPLACE_WITH", "mirror"),
+        ] {
+            assert!(
+                !read(repo.path(), &env(None, &[(key, value)]))
+                    .may_name_cargo("pkg:cargo/serde", Seen::Public)
+            );
+        }
+        assert!(read(repo.path(), &env(None, &[("CARGO_SOURCE_CRATES_IO_REPLACE_WITH", "")]))
+            .may_name_cargo("pkg:cargo/serde", Seen::Public));
+        for (key, value) in [
+            ("CARGO_TARGET_DIR", "/tmp/target"),
+            ("CARGO_REGISTRIES_CRATES_IO_PROTOCOL", "sparse"),
+        ] {
+            assert!(
+                read(repo.path(), &env(None, &[(key, value)]))
+                    .may_name_cargo("pkg:cargo/serde", Seen::Public)
+            );
+        }
+        let private = read(
+            repo.path(),
+            &env(None, &[("CARGO_SOURCE_CRATES_IO_REPLACE_WITH", "mirror")]),
+        );
+        let normal = read(repo.path(), &env(None, &[]));
+        assert!(
+            !normal
+                .clone()
+                .union(&private)
+                .may_name_cargo("pkg:cargo/serde", Seen::Public)
+        );
+        assert!(
+            private
+                .narrow()
+                .may_name_cargo("pkg:cargo/serde", Seen::Public),
+            "narrow omits fixture-only Cargo-wide privacy"
+        );
+        assert!(
+            Registries::default()
+                .narrow()
+                .may_name_cargo("pkg:cargo/serde", Seen::Public)
+        );
+    }
+
+    #[test]
+    fn cargo_config_locations_are_path_aware_and_deduplicated() {
+        let repo = tempfile::tempdir().unwrap();
+        let app = repo.path().join("workspace/member");
+        std::fs::create_dir_all(&app).unwrap();
+        write(
+            repo.path(),
+            ".cargo/config.toml",
+            "[source.crates-io]\nreplace-with = \"root-mirror\"\n",
+        );
+        let dirs: BTreeSet<PathBuf> = [app.clone()].into();
+        let root = Registries::read(
+            repo.path(),
+            &dirs,
+            &[repo.path().join(".cargo/config.toml")],
+            &env(None, &[]),
+        );
+        assert!(!root.may_name_cargo("pkg:cargo/serde", Seen::Public));
+
+        std::fs::remove_file(repo.path().join(".cargo/config.toml")).unwrap();
+        write(
+            repo.path(),
+            ".cargo/config",
+            "[source.crates-io]\nreplace-with = \"legacy-mirror\"\n",
+        );
+        assert!(
+            !Registries::read(repo.path(), &dirs, &[], &env(None, &[]))
+                .may_name_cargo("pkg:cargo/serde", Seen::Public)
+        );
+        std::fs::remove_file(repo.path().join(".cargo/config")).unwrap();
+
+        write(
+            repo.path(),
+            "workspace/.cargo/config.toml",
+            "[source.crates-io]\nreplace-with = \"ancestor-mirror\"\n",
+        );
+        assert!(
+            !Registries::read(repo.path(), &dirs, &[], &env(None, &[]))
+                .may_name_cargo("pkg:cargo/serde", Seen::Public)
+        );
+        std::fs::remove_file(repo.path().join("workspace/.cargo/config.toml")).unwrap();
+        write(
+            repo.path(),
+            "workspace/member/.cargo/config.toml",
+            "[source.crates-io]\nreplace-with = \"member-mirror\"\n",
+        );
+        assert!(
+            !Registries::read(repo.path(), &dirs, &[], &env(None, &[]))
+                .may_name_cargo("pkg:cargo/serde", Seen::Public)
+        );
+
+        // Basenames alone do not make an unrelated file a Cargo config.
+        std::fs::remove_file(repo.path().join("workspace/member/.cargo/config.toml")).unwrap();
+        write(
+            repo.path(),
+            "config.toml",
+            "[source.crates-io]\nreplace-with = \"unrelated\"\n",
+        );
+        write(
+            repo.path(),
+            "nested/config",
+            "[source.crates-io]\nreplace-with = \"unrelated\"\n",
+        );
+        assert!(
+            Registries::read(
+                repo.path(),
+                &BTreeSet::new(),
+                &[
+                    repo.path().join("config.toml"),
+                    repo.path().join("nested/config")
+                ],
+                &env(None, &[])
+            )
+            .may_name_cargo("pkg:cargo/serde", Seen::Public)
+        );
+    }
+
+    #[test]
+    fn cargo_home_and_local_fixture_boundaries_are_explicit() {
+        let repo = tempfile::tempdir().unwrap();
+        let home = tempfile::tempdir().unwrap();
+        let cargo_home = tempfile::tempdir().unwrap();
+        write(
+            home.path(),
+            ".cargo/config.toml",
+            "[source.crates-io]\nreplace-with = \"home-mirror\"\n",
+        );
+        assert!(
+            !read(repo.path(), &env(Some(home.path()), &[]))
+                .may_name_cargo("pkg:cargo/serde", Seen::Public)
+        );
+        // An explicit Cargo home selects its config; it also overrides the private HOME/.cargo setting.
+        let empty_cargo_home = tempfile::tempdir().unwrap();
+        assert!(
+            read(
+                repo.path(),
+                &env(
+                    Some(home.path()),
+                    &[("CARGO_HOME", empty_cargo_home.path().to_str().unwrap())]
+                )
+            )
+            .may_name_cargo("pkg:cargo/serde", Seen::Public)
+        );
+        write(
+            cargo_home.path(),
+            "config",
+            "[source.crates-io]\nreplace-with = \"cargo-home-mirror\"\n",
+        );
+        assert!(
+            !read(
+                repo.path(),
+                &env(
+                    Some(home.path()),
+                    &[("CARGO_HOME", cargo_home.path().to_str().unwrap())]
+                )
+            )
+            .may_name_cargo("pkg:cargo/serde", Seen::Public)
+        );
+
+        let fixture = repo.path().join("tests/fixture");
+        std::fs::create_dir_all(&fixture).unwrap();
+        write(
+            repo.path(),
+            ".cargo/config.toml",
+            "[source.crates-io]\nreplace-with = \"application-mirror\"\n",
+        );
+        write(
+            cargo_home.path(),
+            "config.toml",
+            "[source.crates-io]\nreplace-with = \"user-mirror\"\n",
+        );
+        let dirs: BTreeSet<PathBuf> = [fixture.clone()].into();
+        assert!(
+            Registries::read_local(&dirs, &[]).may_name_cargo("pkg:cargo/serde", Seen::Public),
+            "local fixtures do not inherit ancestor or user settings"
+        );
+        write(
+            fixture.as_path(),
+            ".cargo/config.toml",
+            "[source.crates-io]\nreplace-with = \"fixture-mirror\"\n",
+        );
+        assert!(
+            !Registries::read_local(&dirs, &[]).may_name_cargo("pkg:cargo/serde", Seen::Public)
+        );
+        let config = fixture.join(".cargo/config.toml");
+        assert!(
+            !Registries::read_local(&BTreeSet::new(), std::slice::from_ref(&config))
+                .may_name_cargo("pkg:cargo/serde", Seen::Public)
+        );
+    }
+
+    #[test]
+    fn cargo_missing_or_unreadable_configs_have_safe_results_without_disclosing_errors() {
+        let repo = tempfile::tempdir().unwrap();
+        assert!(
+            read(repo.path(), &env(None, &[])).may_name_cargo("pkg:cargo/serde", Seen::Public),
+            "absent files are normal"
+        );
+        std::fs::create_dir_all(repo.path().join(".cargo/config.toml")).unwrap();
+        let registries = read(repo.path(), &env(None, &[]));
+        assert!(!registries.may_name_cargo("pkg:cargo/serde", Seen::Public));
+        let debug = format!("{registries:?}");
+        assert!(!debug.contains("config.toml") && !debug.contains("Is a directory"));
+        assert!(registries.may_name("pkg:npm/react", U));
+
+        // Invalid UTF-8 is malformed TOML too; do not let lossy decoding turn it into a harmless comment.
+        std::fs::remove_dir_all(repo.path().join(".cargo/config.toml")).unwrap();
+        std::fs::write(repo.path().join(".cargo/config.toml"), b"# bad byte: \xff\n").unwrap();
+        let registries = read(repo.path(), &env(None, &[]));
+        assert!(!registries.may_name_cargo("pkg:cargo/serde", Seen::Public));
+        assert!(registries.may_name("pkg:npm/react", U));
+        let debug = format!("{registries:?}");
+        assert!(!debug.contains("bad byte") && !debug.contains("config.toml"));
+    }
 
     #[test]
     fn urls_are_public_only_on_the_public_registries() {
