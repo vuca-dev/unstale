@@ -1755,7 +1755,7 @@ fn summary(ctx: &Ctx, pending: &Pending, brief: &Brief, issue: Option<&str>) -> 
         let n = brief.unreadable;
         lines.push(Line::new(format!("Lockfile · {n} lockfile{} could not be read in full; versions may be missing. See .unstale/onboarding-report.md.", if n == 1 { "" } else { "s" }), Tone::Amber));
     }
-    if brief.lock_notes > brief.unreadable {
+    if brief.lock_notes > 0 {
         lines.push(Line::new("Versions · competing or out-of-date lockfiles; see .unstale/onboarding-report.md for the lockfile used.", Tone::Amber));
     } else if brief.spread > 0 {
         let n = brief.spread;
@@ -2137,6 +2137,15 @@ fn affected_names(summary: &str, named: &[String]) -> (Vec<String>, Vec<String>)
     let mut ids = affected_identifiers(&text);
     ids.extend(named.iter().filter(|a| usage::cli_flag(a)).cloned());
     (ids, short_calls(&calls))
+}
+
+/// Whether a file reaches package `name`: a JavaScript file by importing it, or a path inside it (a `WebSocket` in a file
+/// that only quotes `'ws-connection'` or `'wsUrl'` is the platform's); elsewhere by quoting a string that starts with it.
+fn importer(f: &str, t: &str, name: &str) -> bool {
+    if usage::own_code(f, "npm") {
+        return usage::imports_package(t, name) && usage::in_code(f, t, name, false);
+    }
+    ['\'', '"', '`'].iter().any(|q| usage::in_code(f, t, &format!("{q}{name}"), false))
 }
 
 /// Central flags remain whole flags on a command line running the package, never bare identifiers.
@@ -2577,7 +2586,7 @@ fn signals<'r>(
         // Reachability as for an upgrade's advisories: an identifier the advisory names, in a production file that
         // imports the package.
         // Both in code: a package or API named only in comments (JSDoc prose, a usage example) is not used there.
-        let quoted = |f: &str, t: &str| ['\'', '"', '`'].iter().any(|q| usage::in_code(f, t, &format!("{q}{name}"), false));
+        let quoted = |f: &str, t: &str| importer(f, t, &name);
         let importers: Vec<(&str, &str)> = w.repo.paths.iter().filter(|f| prod(f)).filter_map(|f| w.repo.text(f).map(|t| (f.as_str(), t))).filter(|(f, t)| quoted(f, t)).collect();
         let own_name = [name.clone()];
         // A short name the text writes as a call (`run()` in "RCE in run() options") is looked for as one: a method
@@ -3010,11 +3019,18 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World, write: bool) -> Result<B
         let sec_opps: Vec<&funnel::Opp> = tech_fixes.iter().map(|f| &out.opps[f.opp]).chain(notes.iter().copied()).collect();
         let advisory = !sec_opps.is_empty() || !lock.is_empty();
         let reached: Option<String> = (advisory && runtime && !standalone).then(|| {
+            // Where some file imports the package, a JavaScript file that does not is using a name of its own or the
+            // platform's (`WebSocket`, the DOM type, for `ws`). A package nothing imports (a framework's globals) keeps
+            // its record's matches.
+            let lowered: Vec<String> = packages.iter().map(|p| p.to_ascii_lowercase()).collect();
+            let imports = |f: &str, t: &str| lowered.iter().any(|p| importer(f, t, p));
+            let imported = w.repo.paths.iter().filter(|f| usage::own_code(f, "npm") && prod(f)).any(|f| w.repo.text(f).is_some_and(|t| imports(f, t)));
+            let reaches = |f: &str, t: &str| !imported || !usage::own_code(f, "npm") || imports(f, t);
             let by_terms = sec_opps.iter().find_map(|o| {
                 o.matched
                     .iter()
                     .filter(|(t, _)| specific_reference(t, &w.stack) && locates(&o.rec.r, t))
-                    .find_map(|(t, fs)| fs.iter().find(|f| prod(f) && w.repo.text(f).is_none_or(|x| precondition_plausible(&o.rec.r, x))).map(|f| (display_text(&o.rec.r.summary), f.clone(), t.clone())))
+                    .find_map(|(t, fs)| fs.iter().find(|f| prod(f) && w.repo.text(f).is_none_or(|x| precondition_plausible(&o.rec.r, x) && reaches(f, x))).map(|f| (display_text(&o.rec.r.summary), f.clone(), t.clone())))
             });
             by_terms.or_else(|| {
                 let texts: Vec<String> = tech_fixes
@@ -3028,7 +3044,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World, write: bool) -> Result<B
                     .chain(lock.iter().map(|it| it.summary.clone()))
                     .collect();
                 let names: Vec<String> = packages.iter().map(|p| p.to_ascii_lowercase()).collect();
-                let quoted = |f: &str, t: &str| names.iter().any(|p| ['\'', '"', '`'].iter().any(|q| usage::in_code(f, t, &format!("{q}{p}"), false)));
+                let quoted = |f: &str, t: &str| names.iter().any(|p| importer(f, t, p));
                 let importers: Vec<(&str, &str)> = w.repo.paths.iter().filter(|f| prod(f)).filter_map(|f| w.repo.text(f).map(|t| (f.as_str(), t))).filter(|(f, t)| quoted(f, t)).collect();
                 texts.iter().find_map(|text| {
                     let ids: Vec<String> = affected_identifiers(text).into_iter().filter(|id| !names_product(id, &names)).collect();
@@ -3708,7 +3724,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World, write: bool) -> Result<B
         limits,
         unread: stack::unread_note(&w.repo, &w.stack),
         // A workspace with no lockfile is said on its own line (`mapped_from`), not as a lockfile problem.
-        lock_notes: w.stack.notes.iter().filter(|n| !n.contains(stack::UNLOCKED_NPM)).count() - usize::from(w.stack.spread > 0),
+        lock_notes: w.stack.notes.iter().filter(|n| stack::lock_conflict(n)).count(),
         unreadable: w.stack.unreadable,
         spread: w.stack.spread,
         lead_ids,

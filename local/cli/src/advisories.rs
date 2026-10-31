@@ -1052,10 +1052,14 @@ pub fn evaluate(
     for g in gs {
         let n = g.nodes.len();
         let mut parents: Vec<Vec<(usize, Option<&str>)>> = vec![vec![]; n];
+        let mut dev_edges: BTreeSet<(usize, usize)> = BTreeSet::new();
         let mut direct = vec![false; n];
         for (i, nd) in g.nodes.iter().enumerate() {
             for e in &nd.edges {
                 parents[e.to].push((i, e.range.as_deref()));
+                if e.dev {
+                    dev_edges.insert((i, e.to));
+                }
                 if nd.local.is_some() && g.nodes[e.to].local.is_none() {
                     direct[e.to] = true;
                 }
@@ -1167,20 +1171,24 @@ pub fn evaluate(
                     // Published projects first: their range is the one every installer meets.
                     let mut ps: Vec<&(usize, Option<&str>)> = parents[i].iter().collect();
                     ps.sort_by_key(|(p, _)| !g.nodes[*p].published);
+                    // The requesters whose range holds this copy (a range the installed version is outside of is
+                    // superseded), those on the runtime path when the copy is at runtime. A lockfile merges every
+                    // requester into one entry and splits it again on an update, so one range refusing a fix blocks
+                    // nothing while another admits it (`"ws@npm:^8.11.0, ~8.17.1"`: the direct range moves, a build
+                    // tool's stays): the fix is blocked only when all of them refuse it.
+                    let holding = |p: usize, r: Option<&str>| r.is_some_and(|r| admits(g.eco, &installed, r) != Some(false)) && (!runtime[i] || (runtime[p] && !dev_edges.contains(&(p, i))));
+                    let mut requesters: Vec<(usize, &str)> = ps.iter().filter(|(p, r)| holding(*p, *r)).filter_map(|(p, r)| Some((*p, (*r)?))).collect();
+                    if requesters.is_empty() {
+                        requesters = ps.iter().filter(|(_, r)| r.is_some_and(|r| admits(g.eco, &installed, r) != Some(false))).filter_map(|(p, r)| Some((*p, (*r)?))).collect();
+                    }
                     let refuses = |f: &Version| -> Option<String> {
-                        for (p, r) in ps.iter().copied() {
-                            // A range the installed version is outside of is superseded (an override set it).
-                            if let Some(r) = r
-                                && ovs.is_empty()
-                                && admits(g.eco, &installed, r) != Some(false)
-                                && admits(g.eco, f, r) == Some(false)
-                            {
-                                let who = &g.nodes[*p];
-                                return Some(match &who.local {
-                                    Some(dir) => format!("{} declares {r}", crate::stack::place(dir)),
-                                    None => format!("{} {} requires {r}", who.name, who.version),
-                                });
-                            }
+                        if ovs.is_empty() && !requesters.is_empty() && requesters.iter().all(|(_, r)| admits(g.eco, f, r) == Some(false)) {
+                            let (p, r) = requesters[0];
+                            let who = &g.nodes[p];
+                            return Some(match &who.local {
+                                Some(dir) => format!("{} declares {r}", crate::stack::place(dir)),
+                                None => format!("{} {} requires {r}", who.name, who.version),
+                            });
                         }
                         ovs.iter().find(|(v, _)| admits(g.eco, f, v) == Some(false)).map(|(v, set)| format!("{set} sets {v}"))
                     };
@@ -2086,6 +2094,26 @@ mod tests {
         let (_, items) = run(g, &docs, &[("tiny", "1.0.0", &["GHSA-t"])], "2026-10-18");
         assert_eq!(items[0].why, vec!["fix blocked: left-pad 1.1.0 requires ~1.0.0"]);
         assert_eq!(items[0].via, vec!["left-pad 1.1.0"]);
+    }
+
+    /// jupyterlab: `"ws@npm:^8.11.0, ws@npm:~8.17.1"`, one entry for the direct range and a dev tool's. The entry splits on
+    /// an update: only when every requester on the runtime path refuses the fix is it blocked.
+    #[test]
+    fn a_merged_entry_blocks_a_fix_only_when_every_runtime_requester_refuses_it() {
+        let yarn = "# yarn lockfile v1\n\nws@^8.11.0, ws@~8.17.1:\n  version \"8.17.1\"\n\nengine@^6.0.0:\n  version \"6.6.4\"\n  dependencies:\n    ws \"~8.17.1\"\n";
+        let eval = |manifest: serde_json::Value| {
+            let g = yarn_lock(yarn, "yarn.lock", &[(".".to_string(), manifest)]);
+            let docs = [("GHSA-w", doc(Some(Severity::High), "2024-01-01T00:00:00Z", &[("npm", "ws", &["8.21.0"])], &[]))];
+            run(g, &docs, &[("ws", "8.17.1", &["GHSA-w"])], "2026-10-18").1
+        };
+        let items = eval(serde_json::json!({"name": "app", "dependencies": {"ws": "^8.11.0"}, "devDependencies": {"engine": "^6.0.0"}}));
+        assert!(!items[0].why.iter().any(|w| w.starts_with("fix blocked")), "{:?}", items[0].why);
+        // The direct range admits it even with the other requester on the runtime path too: the entry still splits.
+        let items = eval(serde_json::json!({"name": "app", "dependencies": {"ws": "^8.11.0", "engine": "^6.0.0"}}));
+        assert!(!items[0].why.iter().any(|w| w.starts_with("fix blocked")), "{:?}", items[0].why);
+        // The only runtime requester refuses it; a dev range admitting it does not move the runtime copy.
+        let items = eval(serde_json::json!({"name": "app", "dependencies": {"engine": "^6.0.0"}, "devDependencies": {"ws": "^8.11.0"}}));
+        assert!(items[0].why.contains(&"fix blocked: engine 6.6.4 requires ~8.17.1".to_string()), "{:?}", items[0].why);
     }
 
     #[test]

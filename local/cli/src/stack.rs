@@ -337,6 +337,12 @@ pub struct Peer {
     pub range: String,
 }
 
+/// Whether a version note says lockfiles compete or one is out of date. Most notes say neither: a Python range read at
+/// its newest release, a sample project outside the workspace, packages on different versions across manifests.
+pub fn lock_conflict(note: &str) -> bool {
+    note.contains(" lockfiles present; ") || note.contains("looks out of date")
+}
+
 impl Stack {
     /// Sets each dependency's version from its readings (`settle`).
     pub fn settle(&mut self) {
