@@ -453,7 +453,10 @@ pub fn settle(deps: &mut BTreeMap<String, Dep>) -> Option<(usize, String)> {
         d.version = Some(h.version.clone());
         d.source = if d.readings.len() > 1 { format!("{} in {}", h.source, place(&h.dir)) } else { h.source.clone() };
         let others = d.others();
-        if let Some((v, rs)) = others.first() {
+        // A package of this repository (Yarn's `0.0.0-use.local`, beside a fixture's copy) is not reviewed: no note.
+        if d.public_candidate
+            && let Some((v, rs)) = others.first()
+        {
             let more = others.iter().map(|(_, rs)| rs.len()).sum::<usize>() - 1;
             differ.push(format!(
                 "{} {} ({}) and {v} in {} ({}){}",
