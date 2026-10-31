@@ -1487,13 +1487,17 @@ pub fn own_binding(path: &str, text: &str, lit: &str) -> bool {
             if quote.is_some_and(|q| after.strip_prefix(q).is_some_and(|a| a.trim_start().starts_with(':'))) {
                 return false;
             }
+            // A member read in a template's `${…}`.
+            if before.ends_with('.') && !before.ends_with("...") {
+                return false;
+            }
             continue;
         }
         let prev = before.trim_end().chars().next_back();
         let next = after.trim_start().chars().next();
         let kw = before.trim_end().rsplit(|c: char| !word(c)).next().unwrap_or("");
         if let Some(&(open, _)) = spans.iter().find(|&&(s, e)| s <= i && i < e)
-            && matches!(prev, Some('(' | ','))
+            && (matches!(prev, Some('(' | ',')) || before.ends_with("..."))
             && matches!(next, Some(':' | ',' | ')' | '=' | '?'))
         {
             // Inside `{ … }` or `[ … ]` it is destructured; a default before it, closed again, is not.
@@ -2793,6 +2797,8 @@ mod tests {
         assert!(own_binding("a.ts", "function f(o = {}, lineNumber: number) { return lineNumber; }", "lineNumber"));
         assert!(own_binding("a.ts", "function f(s = '(', lineNumber: number) { return lineNumber; }", "lineNumber"));
         assert!(own_binding("a.ts", "const f = lineNumber => lineNumber + 1;", "lineNumber"));
+        assert!(own_binding("a.ts", "const f = (...lineNumber: number[]) => lineNumber;", "lineNumber"));
+        assert!(!own_binding("a.ts", "const lineNumber = 1;\nconst s = `at ${loc.lineNumber}`;", "lineNumber"));
         // A quoted key names the property; an imported name is the library's.
         assert!(!own_binding("a.ts", "const lineNumber = 1;\nf({ 'lineNumber': lineNumber });", "lineNumber"));
         assert!(!own_binding("a.ts", "import { lineNumber } from 'lib';\nfunction g(lineNumber: number) {}", "lineNumber"));
