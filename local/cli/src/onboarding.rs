@@ -1786,7 +1786,7 @@ fn summary(ctx: &Ctx, pending: &Pending, brief: &Brief, issue: Option<&str>) -> 
         let n = brief.unreadable;
         lines.push(Line::new(format!("Lockfile · {n} lockfile{} could not be read in full; versions may be missing. See .unstale/onboarding-report.md.", if n == 1 { "" } else { "s" }), Tone::Amber));
     }
-    if brief.lock_notes > brief.unreadable {
+    if brief.lock_notes > 0 {
         lines.push(Line::new("Versions · competing or out-of-date lockfiles; see .unstale/onboarding-report.md for the lockfile used.", Tone::Amber));
     } else if brief.spread > 0 {
         let n = brief.spread;
@@ -2168,6 +2168,15 @@ fn affected_names(summary: &str, named: &[String]) -> (Vec<String>, Vec<String>)
     let mut ids = affected_identifiers(&text);
     ids.extend(named.iter().filter(|a| usage::cli_flag(a)).cloned());
     (ids, short_calls(&calls))
+}
+
+/// Whether a file reaches package `name`: a JavaScript file by importing it, or a path inside it (a `WebSocket` in a file
+/// that only quotes `'ws-connection'` or `'wsUrl'` is the platform's); elsewhere by quoting a string that starts with it.
+fn importer(f: &str, t: &str, name: &str) -> bool {
+    if usage::own_code(f, "npm") {
+        return usage::imports_package(f, t, name);
+    }
+    ['\'', '"', '`'].iter().any(|q| usage::in_code(f, t, &format!("{q}{name}"), false))
 }
 
 /// Central flags remain whole flags on a command line running the package, never bare identifiers.
@@ -2608,7 +2617,7 @@ fn signals<'r>(
         // Reachability as for an upgrade's advisories: an identifier the advisory names, in a production file that
         // imports the package.
         // Both in code: a package or API named only in comments (JSDoc prose, a usage example) is not used there.
-        let quoted = |f: &str, t: &str| ['\'', '"', '`'].iter().any(|q| usage::in_code(f, t, &format!("{q}{name}"), false));
+        let quoted = |f: &str, t: &str| importer(f, t, &name);
         let importers: Vec<(&str, &str)> = w.repo.paths.iter().filter(|f| prod(f)).filter_map(|f| w.repo.text(f).map(|t| (f.as_str(), t))).filter(|(f, t)| quoted(f, t)).collect();
         let own_name = [name.clone()];
         // A short name the text writes as a call (`run()` in "RCE in run() options") is looked for as one: a method
@@ -3041,11 +3050,18 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World, write: bool) -> Result<B
         let sec_opps: Vec<&funnel::Opp> = tech_fixes.iter().map(|f| &out.opps[f.opp]).chain(notes.iter().copied()).collect();
         let advisory = !sec_opps.is_empty() || !lock.is_empty();
         let reached: Option<String> = (advisory && runtime && !standalone).then(|| {
+            // Where some file imports the package, a JavaScript file that does not is using a name of its own or the
+            // platform's (`WebSocket`, the DOM type, for `ws`). A package nothing imports (a framework's globals) keeps
+            // its record's matches.
+            let lowered: Vec<String> = packages.iter().map(|p| p.to_ascii_lowercase()).collect();
+            let imports = |f: &str, t: &str| lowered.iter().any(|p| importer(f, t, p));
+            let imported = w.repo.paths.iter().filter(|f| usage::own_code(f, "npm") && prod(f)).any(|f| w.repo.text(f).is_some_and(|t| imports(f, t)));
+            let reaches = |f: &str, t: &str| !imported || !usage::own_code(f, "npm") || imports(f, t);
             let by_terms = sec_opps.iter().find_map(|o| {
                 o.matched
                     .iter()
                     .filter(|(t, _)| specific_reference(t, &w.stack) && locates(&o.rec.r, t))
-                    .find_map(|(t, fs)| fs.iter().find(|f| prod(f) && w.repo.text(f).is_none_or(|x| precondition_plausible(&o.rec.r, x))).map(|f| (display_text(&o.rec.r.summary), f.clone(), t.clone())))
+                    .find_map(|(t, fs)| fs.iter().find(|f| prod(f) && w.repo.text(f).is_none_or(|x| precondition_plausible(&o.rec.r, x) && reaches(f, x))).map(|f| (display_text(&o.rec.r.summary), f.clone(), t.clone())))
             });
             by_terms.or_else(|| {
                 let texts: Vec<String> = tech_fixes
@@ -3059,7 +3075,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World, write: bool) -> Result<B
                     .chain(lock.iter().map(|it| it.summary.clone()))
                     .collect();
                 let names: Vec<String> = packages.iter().map(|p| p.to_ascii_lowercase()).collect();
-                let quoted = |f: &str, t: &str| names.iter().any(|p| ['\'', '"', '`'].iter().any(|q| usage::in_code(f, t, &format!("{q}{p}"), false)));
+                let quoted = |f: &str, t: &str| names.iter().any(|p| importer(f, t, p));
                 let importers: Vec<(&str, &str)> = w.repo.paths.iter().filter(|f| prod(f)).filter_map(|f| w.repo.text(f).map(|t| (f.as_str(), t))).filter(|(f, t)| quoted(f, t)).collect();
                 texts.iter().find_map(|text| {
                     let ids: Vec<String> = affected_identifiers(text).into_iter().filter(|id| !names_product(id, &names)).collect();
@@ -3740,7 +3756,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World, write: bool) -> Result<B
         limits,
         unread: stack::unread_note(&w.repo, &w.stack),
         // A workspace with no lockfile is said on its own line (`mapped_from`), not as a lockfile problem.
-        lock_notes: w.stack.notes.iter().filter(|n| !n.contains(stack::UNLOCKED_NPM)).count() - usize::from(w.stack.spread > 0),
+        lock_notes: w.stack.notes.iter().filter(|n| stack::lock_conflict(n)).count(),
         unreadable: w.stack.unreadable,
         spread: w.stack.spread,
         lead_ids,
@@ -3908,10 +3924,15 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
     let mut verified = vec![];
     let mut unchecked: Vec<_> = st.deps.iter().filter(|(p, d)| !pending.jobs.contains_key(*p) && d.public_candidate).collect();
     let (total, mut done) = (unchecked.len(), 0);
+    let mut short = false;
     // A registry that did not answer (a burst limit, the network) says nothing about the package: those are asked
     // again, fewer at a time and after a pause, rather than left out of this run as if private.
     for (round, (width, pause)) in [(util::REQUESTS_AT_ONCE, 0), (4, 5), (2, 20)].into_iter().enumerate() {
-        if unchecked.is_empty() || bound.left() <= Duration::from_secs(pause) {
+        if unchecked.is_empty() {
+            break;
+        }
+        if bound.left() <= Duration::from_secs(pause) {
+            short = true;
             break;
         }
         if round > 0 {
@@ -3944,7 +3965,7 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
         let n = unchecked.len();
         diagnostics.push(format!("Public registry identity: no answer for {n} package(s), checked again on the next run: {}", unchecked.iter().take(5).map(|(p, _)| p.as_str()).collect::<Vec<_>>().join(", ")));
         issue.get_or_insert(format!("Registry unavailable for {n} package{} · checked again next run", if n == 1 { "" } else { "s" }));
-        if bound.passed() {
+        if short || bound.passed() {
             pending.cut.push("public registry identities");
         }
     }

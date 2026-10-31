@@ -1630,12 +1630,13 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                 {
                     return false;
                 }
-                // An API name the file defines itself (`def from_orm`) is the file's own; where the record names the
+                // An API name the file defines itself (`def from_orm`), or holds only in a parameter or local of its
+                // own (`usage::own_binding`), is the file's own; where the record names the
                 // classes or calls it applies to, a site owned by another class the file imports from an installed
                 // package (`new Chat({ onFinish })`, `TypeAdapter(X).json_schema()`) is not the record's API.
                 if (usage::identifier(l) || invoked)
                     && usage::own_code(p, &ecosystem)
-                    && inp.repo.text(p).is_some_and(|t| usage::defines(t, l) || (!named.is_empty() && !usage::scoped_site(t, l, named, &installed_module)))
+                    && inp.repo.text(p).is_some_and(|t| usage::defines(t, l) || usage::own_binding(p, t, l) || (!named.is_empty() && !usage::scoped_site(t, l, named, &installed_module)))
                 {
                     return false;
                 }
