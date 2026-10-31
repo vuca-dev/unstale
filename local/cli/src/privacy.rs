@@ -777,7 +777,8 @@ pub fn confirm_public(cache: &Path, at: u64, purls: &[String], ask: impl Fn(&str
 pub fn npm_identity(agent: &ureq::Agent, purl: &str) -> Option<bool> {
     let name = crate::util::npm_name(purl)?;
     let enc: String = name.bytes().map(|b| if b.is_ascii_alphanumeric() || b"-._~".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") }).collect();
-    let mut r = agent.get(format!("https://registry.npmjs.org/{enc}/latest")).call().ok()?;
+    let url = format!("https://registry.npmjs.org/{enc}/latest");
+    let mut r = crate::onboarding::registry_call(&url, || agent.get(&url).call())?;
     match r.status().as_u16() {
         200 => {
             let v: serde_json::Value = serde_json::from_slice(&r.body_mut().with_config().limit(4 * 1024 * 1024).read_to_vec().ok()?).ok()?;
