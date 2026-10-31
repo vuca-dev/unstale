@@ -1423,65 +1423,91 @@ pub fn defines(text: &str, lit: &str) -> bool {
 }
 
 /// JavaScript: byte ranges of `text` inside the parentheses of a function's parameter list: `(…)` followed by a body or
-/// an arrow, with a return type between them or not, and not a statement's condition.
-fn js_param_spans(text: &str) -> Vec<(usize, usize)> {
+/// an arrow, with a return type between them or not, and not a statement's condition. Brackets in `skip` (comments and
+/// strings) are text.
+fn js_param_spans(text: &str, skip: &[(usize, usize)]) -> Vec<(usize, usize)> {
     let b = text.as_bytes();
     let word = |c: u8| c.is_ascii_alphanumeric() || c == b'_' || c == b'$';
     let mut stack: Vec<usize> = vec![];
     let mut out = vec![];
     for (i, c) in b.iter().enumerate() {
-        match c {
-            b'(' => stack.push(i),
-            b')' => {
-                let Some(open) = stack.pop() else { continue };
-                let head = text[..open].trim_end();
-                let kw = head.rsplit(|c: char| !word(c as u8)).next().unwrap_or("");
-                if matches!(kw, "if" | "for" | "while" | "switch" | "catch" | "with" | "return" | "await") {
-                    continue;
-                }
-                let after = text[i + 1..].trim_start();
-                let bodied = if let Some(ty) = after.strip_prefix(':') {
-                    // A return type runs to the body on its own line, or to the arrow.
-                    let line = ty.split('\n').next().unwrap_or("");
-                    !line.contains(';') && (line.trim_end().ends_with('{') || line.contains("=>"))
-                } else {
-                    after.starts_with('{') || after.starts_with("=>")
-                };
-                if bodied {
-                    out.push((open + 1, i));
-                }
-            }
-            _ => {}
+        if !matches!(c, b'(' | b')') || skip.iter().any(|&(s, e)| s <= i && i < e) {
+            continue;
+        }
+        if *c == b'(' {
+            stack.push(i);
+            continue;
+        }
+        let Some(open) = stack.pop() else { continue };
+        let head = text[..open].trim_end();
+        let kw = head.rsplit(|c: char| !c.is_ascii() || !word(c as u8)).next().unwrap_or("");
+        if matches!(kw, "if" | "for" | "while" | "switch" | "catch" | "with" | "return" | "await") {
+            continue;
+        }
+        let after = text[i + 1..].trim_start();
+        let bodied = if let Some(ty) = after.strip_prefix(':') {
+            // A return type runs to the body on its own line, or to the arrow.
+            let line = ty.split('\n').next().unwrap_or("");
+            !line.contains(';') && (line.trim_end().ends_with('{') || line.contains("=>"))
+        } else {
+            after.starts_with('{') || after.starts_with("=>")
+        };
+        if bodied {
+            out.push((open + 1, i));
         }
     }
     out
 }
 
-/// Whether a JavaScript file's `lit` is only a binding of its own: a function parameter (`lineNumber: number`) or a local
-/// (`const baseUrl = …`), written nowhere as a member (`loc.lineNumber`), a key (`{ lineNumber: 1 }`) or a shorthand key
-/// (`{ baseUrl }`), which are how a library's property or option is reached. A destructured parameter (`({ page }) =>`)
-/// binds the library's own object, so it is no declaration. Anything undecided stays a site.
+/// Whether a JavaScript file's `lit` is only a binding of its own: a function parameter (`lineNumber: number`,
+/// `lineNumber => …`) or a local (`const baseUrl = …`), not imported, and written nowhere as a member (`loc.lineNumber`),
+/// a key (`{ lineNumber: 1 }`, `{ 'lineNumber': 1 }`) or a shorthand key (`{ baseUrl }`), which are how a library's
+/// property or option is reached. A destructured parameter (`({ page }) =>`) binds the library's own object, so it is
+/// no declaration. A form it cannot read (`const a = 1, lineNumber = 2`) stays a site.
 pub fn own_binding(path: &str, text: &str, lit: &str) -> bool {
     let lit = lit.strip_prefix('.').unwrap_or(lit);
-    if lit.is_empty() || !own_code(path, "npm") {
+    if lit.is_empty() || !own_code(path, "npm") || import_source(text, lit).is_some() {
         return false;
     }
     let word = |c: char| c.is_ascii_alphanumeric() || c == '_' || c == '$';
-    let comments = comment_spans(path, text);
-    let spans = js_param_spans(text);
+    let (comments, strings) = lex_spans(path, text);
+    let strings: Vec<(usize, usize)> = strings.iter().map(|&(s, e, _)| (s, e)).collect();
+    let within = |spans: &[(usize, usize)], i: usize| spans.iter().any(|&(s, e)| s <= i && i < e);
+    let skip: Vec<(usize, usize)> = comments.iter().chain(strings.iter()).copied().collect();
+    let spans = js_param_spans(text, &skip);
     let mut declared = false;
     for (i, _) in text.match_indices(lit) {
         let (before, after) = (&text[..i], &text[i + lit.len()..]);
-        if before.chars().next_back().is_some_and(word) || after.chars().next().is_some_and(word) || comments.iter().any(|&(s, e)| s <= i && i < e) {
+        if before.chars().next_back().is_some_and(word) || after.chars().next().is_some_and(word) || within(&comments, i) {
+            continue;
+        }
+        let quote = before.chars().next_back().filter(|c| matches!(c, '\'' | '"'));
+        if within(&strings, i) {
+            // The whole string as a key names the property itself.
+            if quote.is_some_and(|q| after.strip_prefix(q).is_some_and(|a| a.trim_start().starts_with(':'))) {
+                return false;
+            }
             continue;
         }
         let prev = before.trim_end().chars().next_back();
         let next = after.trim_start().chars().next();
         let kw = before.trim_end().rsplit(|c: char| !word(c)).next().unwrap_or("");
         if let Some(&(open, _)) = spans.iter().find(|&&(s, e)| s <= i && i < e)
-            && matches!(prev, Some('(' | ',')) && matches!(next, Some(':' | ',' | ')' | '=' | '?'))
-            && !text[open..i].contains(['{', '['])
+            && matches!(prev, Some('(' | ','))
+            && matches!(next, Some(':' | ',' | ')' | '=' | '?'))
         {
+            // Inside `{ … }` or `[ … ]` it is destructured; a default before it, closed again, is not.
+            let depth = text[open..i].chars().fold(0i32, |d, c| match c {
+                '{' | '[' => d + 1,
+                '}' | ']' => d - 1,
+                _ => d,
+            });
+            if depth == 0 {
+                declared = true;
+                continue;
+            }
+        }
+        if prev != Some('.') && after.trim_start().starts_with("=>") {
             declared = true;
             continue;
         }
@@ -1499,13 +1525,14 @@ pub fn own_binding(path: &str, text: &str, lit: &str) -> bool {
 }
 
 /// Whether JavaScript `text` imports package `name` or a path inside it: `from 'm'`, `import 'm'`, `require('m')`,
-/// `import('m')`, as the whole module specifier.
-pub fn imports_package(text: &str, name: &str) -> bool {
+/// `import('m')`, as the whole module specifier, outside comments.
+pub fn imports_package(path: &str, text: &str, name: &str) -> bool {
+    let comments = comment_spans(path, text);
     ['\'', '"', '`'].iter().any(|q| {
         [format!("{q}{name}{q}"), format!("{q}{name}/")].iter().any(|needle| {
             text.match_indices(needle.as_str()).any(|(i, _)| {
                 let head = text[..i].trim_end();
-                head.ends_with("from") || head.ends_with("import") || head.ends_with("require(") || head.ends_with("import(") || head.ends_with("require.resolve(")
+                !comments.iter().any(|&(s, e)| s <= i && i < e) && (head.ends_with("from") || head.ends_with("import") || head.ends_with("require(") || head.ends_with("import(") || head.ends_with("require.resolve("))
             })
         })
     })
@@ -2762,16 +2789,24 @@ mod tests {
         // A destructured parameter binds the library's object; a condition or a call declares nothing.
         assert!(!own_binding("a.ts", "test(({ lineNumber }) => { use(lineNumber); });", "lineNumber"));
         assert!(!own_binding("a.ts", "if (lineNumber) { f(lineNumber); }", "lineNumber"));
+        // A default before it does not hide a parameter; a bracket in a string opens nothing.
+        assert!(own_binding("a.ts", "function f(o = {}, lineNumber: number) { return lineNumber; }", "lineNumber"));
+        assert!(own_binding("a.ts", "function f(s = '(', lineNumber: number) { return lineNumber; }", "lineNumber"));
+        assert!(own_binding("a.ts", "const f = lineNumber => lineNumber + 1;", "lineNumber"));
+        // A quoted key names the property; an imported name is the library's.
+        assert!(!own_binding("a.ts", "const lineNumber = 1;\nf({ 'lineNumber': lineNumber });", "lineNumber"));
+        assert!(!own_binding("a.ts", "import { lineNumber } from 'lib';\nfunction g(lineNumber: number) {}", "lineNumber"));
         // Not JavaScript: left to the language's own rules.
         assert!(!own_binding("a.py", "lineNumber = 1", "lineNumber"));
     }
 
     #[test]
     fn a_package_is_imported_as_a_whole_specifier() {
-        assert!(imports_package("WEBSOCKET = require('ws');", "ws"));
-        assert!(imports_package("import { WebSocket } from \"ws\";", "ws"));
-        assert!(imports_package("const x = await import('ws/lib/x');", "ws"));
-        assert!(!imports_package("import { a } from './ws-connection';\nconst u = 'wsUrl';\nf('ws');", "ws"));
+        assert!(imports_package("a.ts", "WEBSOCKET = require('ws');", "ws"));
+        assert!(imports_package("a.ts", "import { WebSocket } from \"ws\";", "ws"));
+        assert!(imports_package("a.ts", "const x = await import('ws/lib/x');", "ws"));
+        assert!(!imports_package("a.ts", "import { a } from './ws-connection';\nconst u = 'wsUrl';\nf('ws');", "ws"));
+        assert!(!imports_package("a.ts", "// const w = require('ws');\nconst w = 1;", "ws"));
     }
 
     use super::*;

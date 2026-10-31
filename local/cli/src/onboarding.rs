@@ -2174,7 +2174,7 @@ fn affected_names(summary: &str, named: &[String]) -> (Vec<String>, Vec<String>)
 /// that only quotes `'ws-connection'` or `'wsUrl'` is the platform's); elsewhere by quoting a string that starts with it.
 fn importer(f: &str, t: &str, name: &str) -> bool {
     if usage::own_code(f, "npm") {
-        return usage::imports_package(t, name) && usage::in_code(f, t, name, false);
+        return usage::imports_package(f, t, name);
     }
     ['\'', '"', '`'].iter().any(|q| usage::in_code(f, t, &format!("{q}{name}"), false))
 }

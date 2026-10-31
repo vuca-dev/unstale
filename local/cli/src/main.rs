@@ -475,29 +475,41 @@ fn outcome<'a>(ctx: &Ctx, w: &'a World, mut targets: BTreeMap<String, semver::Ve
             targets.entry(util::normalize_purl(&n.purl)).or_insert(v);
         }
     }
-    let chosen: BTreeSet<String> = targets.keys().cloned().collect();
-    let mut out = funnel::run(&Input { catalog: &w.catalog, stack: &w.stack, repo: &w.repo, ledger: &w.ledger, today: &w.today, targets });
-    published_targets(&mut out, &chosen, pypi::registry_releases, pypi::npm_registry_releases);
+    let input = |targets| Input { catalog: &w.catalog, stack: &w.stack, repo: &w.repo, ledger: &w.ledger, today: &w.today, targets };
+    let mut out = funnel::run(&input(targets.clone()));
+    // Records past a target the registry lacks are not this package's: they go when the funnel runs to the real target.
+    let fallback = published_targets(&out, &targets, pypi::registry_releases, pypi::npm_registry_releases);
+    if !fallback.is_empty() {
+        targets.extend(fallback);
+        out = funnel::run(&input(targets));
+    }
     out.uncovered = w.deferral.clone();
     out.unread = stack::unread_note(&w.repo, &w.stack);
     out
 }
 
-/// A bump target past everything the package's registry publishes is no release of that package: its records carry
-/// another stream's versions (PyPI's `starrocks` 1.x under the server's 4.x). The target falls back to the registry's
-/// newest, or to the installed version when that is newest. Only a new major is asked about: a registry document per
+/// The targets to use where a bump's target is past everything the package's registry publishes: no release of that
+/// package, its records carry another stream's versions (PyPI's `starrocks` 1.x under the server's 4.x). The registry's
+/// newest, or the installed version when that is newest. Only a new major is asked about: a registry document per
 /// package per day is too much to read for a move within the line the package is on. A `--target` stands.
-fn published_targets(out: &mut funnel::Outcome, chosen: &BTreeSet<String>, pypi: impl Fn(&[String]) -> BTreeMap<String, Vec<semver::Version>>, npm: impl Fn(&[String]) -> BTreeMap<String, Vec<semver::Version>>) {
-    let jumped: BTreeSet<String> = out.opps.iter().filter(|o| o.target.major > o.installed.major).map(|o| o.component()).filter(|c| !chosen.contains(c)).collect();
+fn published_targets(
+    out: &funnel::Outcome,
+    chosen: &BTreeMap<String, semver::Version>,
+    pypi: impl Fn(&[String]) -> BTreeMap<String, Vec<semver::Version>>,
+    npm: impl Fn(&[String]) -> BTreeMap<String, Vec<semver::Version>>,
+) -> BTreeMap<String, semver::Version> {
+    let jumped: BTreeSet<String> = out.opps.iter().filter(|o| o.target.major > o.installed.major).map(|o| o.component()).filter(|c| !chosen.contains_key(c)).collect();
     let (on_pypi, rest): (Vec<String>, Vec<String>) = jumped.into_iter().partition(|c| c.starts_with("pkg:pypi/"));
     let on_npm: Vec<String> = rest.into_iter().filter(|c| c.starts_with("pkg:npm/")).collect();
     let mut known = pypi(&on_pypi);
     known.extend(npm(&on_npm));
-    for o in &mut out.opps {
+    let mut fallback = BTreeMap::new();
+    for o in &out.opps {
         if let Some(target) = known.get(&o.component()).and_then(|v| published_target(&o.target, &o.installed, v)) {
-            o.target = target;
+            fallback.insert(o.component(), target);
         }
     }
+    fallback
 }
 
 /// The target to use instead of `target` when it is a new major past all of `releases`.

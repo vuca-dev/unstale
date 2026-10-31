@@ -453,8 +453,8 @@ pub fn settle(deps: &mut BTreeMap<String, Dep>) -> Option<(usize, String)> {
         d.version = Some(h.version.clone());
         d.source = if d.readings.len() > 1 { format!("{} in {}", h.source, place(&h.dir)) } else { h.source.clone() };
         let others = d.others();
-        // A package of this repository (Yarn's `0.0.0-use.local`, beside a fixture's copy) is not reviewed: no note.
-        if d.public_candidate
+        // A workspace package's headline is Yarn's `0.0.0-use.local` placeholder, not a version a fixture's copy differs from.
+        if h.version != Version::new(0, 0, 0)
             && let Some((v, rs)) = others.first()
         {
             let more = others.iter().map(|(_, rs)| rs.len()).sum::<usize>() - 1;

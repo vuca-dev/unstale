@@ -1052,13 +1052,13 @@ pub fn evaluate(
     for g in gs {
         let n = g.nodes.len();
         let mut parents: Vec<Vec<(usize, Option<&str>)>> = vec![vec![]; n];
-        let mut dev_edges: BTreeSet<(usize, usize)> = BTreeSet::new();
+        let mut dev_edges: BTreeSet<(usize, usize, Option<&str>)> = BTreeSet::new();
         let mut direct = vec![false; n];
         for (i, nd) in g.nodes.iter().enumerate() {
             for e in &nd.edges {
                 parents[e.to].push((i, e.range.as_deref()));
                 if e.dev {
-                    dev_edges.insert((i, e.to));
+                    dev_edges.insert((i, e.to, e.range.as_deref()));
                 }
                 if nd.local.is_some() && g.nodes[e.to].local.is_none() {
                     direct[e.to] = true;
@@ -1176,10 +1176,10 @@ pub fn evaluate(
                     // requester into one entry and splits it again on an update, so one range refusing a fix blocks
                     // nothing while another admits it (`"ws@npm:^8.11.0, ~8.17.1"`: the direct range moves, a build
                     // tool's stays): the fix is blocked only when all of them refuse it.
-                    let holding = |p: usize, r: Option<&str>| r.is_some_and(|r| admits(g.eco, &installed, r) != Some(false)) && (!runtime[i] || (runtime[p] && !dev_edges.contains(&(p, i))));
-                    let mut requesters: Vec<(usize, &str)> = ps.iter().filter(|(p, r)| holding(*p, *r)).filter_map(|(p, r)| Some((*p, (*r)?))).collect();
+                    let holds = |p: usize, r: Option<&str>| r.is_some_and(|r| admits(g.eco, &installed, r) != Some(false)) && (!runtime[i] || !dev_edges.contains(&(p, i, r)));
+                    let mut requesters: Vec<(usize, &str)> = ps.iter().filter(|(p, r)| holds(*p, *r) && (!runtime[i] || runtime[*p])).filter_map(|(p, r)| Some((*p, (*r)?))).collect();
                     if requesters.is_empty() {
-                        requesters = ps.iter().filter(|(_, r)| r.is_some_and(|r| admits(g.eco, &installed, r) != Some(false))).filter_map(|(p, r)| Some((*p, (*r)?))).collect();
+                        requesters = ps.iter().filter(|(p, r)| holds(*p, *r)).filter_map(|(p, r)| Some((*p, (*r)?))).collect();
                     }
                     let refuses = |f: &Version| -> Option<String> {
                         if ovs.is_empty() && !requesters.is_empty() && requesters.iter().all(|(_, r)| admits(g.eco, f, r) == Some(false)) {

@@ -403,11 +403,10 @@ pub fn digest_groups(out: &Outcome) -> Vec<(String, Vec<String>)> {
             let obligations = out.upgrade.iter().filter(|&&i| out.opps[i].rec.r.technology == *tech).count();
             // Every record left out (security records whose advisories the bump does not fix): nothing to count.
             let parts = kinds.parts();
-            // `main::published_targets`: nothing newer on the package's registry than what is installed.
-            let movement = if first.target > first.installed { format!("→ {}", first.target) } else { "(no newer release on its registry)".to_string() };
             lines.push(format!(
-                "bumping {label} {} {movement}{} picks up {} (`unstale bump {name}`){}{}{}",
+                "bumping {label} {} → {}{} picks up {} (`unstale bump {name}`){}{}{}",
                 first.installed,
+                first.target,
                 scope(&first.component()),
                 if parts.is_empty() { "nothing" } else { &parts },
                 obligations_note(obligations),
