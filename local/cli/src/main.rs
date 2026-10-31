@@ -72,7 +72,7 @@ enum Cmd {
         /// Shared public technology coverage service (or $UNSTALE_SERVICE).
         #[arg(long)]
         service: Option<String>,
-        /// Seconds this run may take: setup and following coverage share them, and the report is written in the time left (no value: a default bound, without following coverage).
+        /// Seconds this run may take: setup and following coverage share them, and the report is written in the time left. 0 or no value follows no coverage, and setup is bounded at 300; setup always gets at least 60.
         #[arg(long)]
         wait: Option<u64>,
         /// Print stable stage lines without decorative motion.

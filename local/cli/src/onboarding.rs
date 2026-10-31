@@ -4014,27 +4014,30 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
         let now = unix_now();
         let purls: Vec<String> = pending.jobs.keys().filter(|p| poll_at.get(*p).is_none_or(|t| *t <= now)).cloned().collect();
         let (total, mut done, a) = (purls.len(), 0, agent());
-        statuses(&a, service, &purls, |i, got| {
-            match got {
-                Ok(j) => {
-                    poll_at.insert(purls[i].clone(), next_poll(&j, now));
-                    let kept = merged(pending.jobs.get(&purls[i]), j);
-                    pending.jobs.insert(purls[i].clone(), kept);
+        // Past the bound nothing new is asked: the run goes straight to its report.
+        if !bound.passed() {
+            statuses(&a, service, &purls, |i, got| {
+                match got {
+                    Ok(j) => {
+                        poll_at.insert(purls[i].clone(), next_poll(&j, now));
+                        let kept = merged(pending.jobs.get(&purls[i]), j);
+                        pending.jobs.insert(purls[i].clone(), kept);
+                    }
+                    Err(e) => {
+                        diagnostics.push(format!("Coverage {}: {e:#}", purls[i]));
+                        issue = Some(match e.downcast_ref::<Limited>() {
+                            Some(l) => format!("Coverage results not refreshed · {} until {} UTC · cached results kept", l.by.reason(), clock(unix_now() + l.retry_after)),
+                            None => "Coverage connection interrupted · cached results kept".into(),
+                        });
+                        disconnected = true;
+                        return false;
+                    }
                 }
-                Err(e) => {
-                    diagnostics.push(format!("Coverage {}: {e:#}", purls[i]));
-                    issue = Some(match e.downcast_ref::<Limited>() {
-                        Some(l) => format!("Coverage results not refreshed · {} until {} UTC · cached results kept", l.by.reason(), clock(unix_now() + l.retry_after)),
-                        None => "Coverage connection interrupted · cached results kept".into(),
-                    });
-                    disconnected = true;
-                    return false;
-                }
-            }
-            done += 1;
-            ui.update("Refreshing shared results · step 4/5", &format!("Checked coverage for {done}/{total} packages"), &hint());
-            !leave.load(Ordering::Acquire) && !bound.passed()
-        });
+                done += 1;
+                ui.update("Refreshing shared results · step 4/5", &format!("Checked coverage for {done}/{total} packages"), &hint());
+                !leave.load(Ordering::Acquire) && !bound.passed()
+            });
+        }
         if done < total && bound.passed() && !pending.cut.contains(&"coverage results") {
             pending.cut.push("coverage results");
         }
