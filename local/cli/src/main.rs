@@ -72,7 +72,7 @@ enum Cmd {
         /// Shared public technology coverage service (or $UNSTALE_SERVICE).
         #[arg(long)]
         service: Option<String>,
-        /// Seconds to follow initial coverage before returning to the shell.
+        /// Seconds this run may take: setup and following coverage share them, and the report is written in the time left. 0 or no value follows no coverage, and setup is bounded at 300; setup always gets at least 60.
         #[arg(long)]
         wait: Option<u64>,
         /// Print stable stage lines without decorative motion.
@@ -533,9 +533,9 @@ fn cmd_sync(ctx: &Ctx) -> Result<u8> {
         code = EXIT_ERROR;
     }
     // Registry deprecations of the installed versions (cached a day; outputs read the cache).
-    deprecations::refresh(&ctx.cache, &st);
+    deprecations::refresh(&ctx.cache, &st, &|| false);
     // Lockfile advisories from OSV, transitive packages included (cached a day; outputs read the cache).
-    advisories::refresh(&ctx.cache, &ctx.root, &st);
+    advisories::refresh(&ctx.cache, &ctx.root, &st, &|| false);
     // Apply merge and retraction stubs to the ledger.
     let catalog = load_catalog(ctx, &st);
     let lp = ctx.tool.join(LEDGER_FILE);
