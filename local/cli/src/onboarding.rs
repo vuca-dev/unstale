@@ -182,8 +182,9 @@ pub struct Pending {
     /// What this run's bound left undone, in the report's words (never saved): the report says it is incomplete.
     #[serde(skip)]
     pub cut: Vec<&'static str>,
-    /// Packages whose registry never answered this run (never saved): the report names them, the next run asks again.
-    #[serde(skip)]
+    /// Packages whose registry never answered on the last run: the report names them, and a run that stalls finds them
+    /// here for its short report. Each run starts this afresh and asks again.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub unanswered: Vec<String>,
     /// Weekly npm and PyPI downloads of unsubmitted packages, read once for `registration_order` (0 when unreadable).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -3855,6 +3856,7 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
         "Repository code and installed versions stay local",
     );
     let mut pending = read(ctx);
+    pending.unanswered.clear();
     // The World of this run's first report; later reports reuse its stack and code (`report`).
     let mut scan: Option<World> = None;
     // Jobs of packages no longer in the stack, or now kept private (a registry configured since they were registered):
@@ -4237,8 +4239,9 @@ fn identity_host(purl: &str) -> &'static str {
     if purl.starts_with("pkg:pypi/") { "https://pypi.org/" } else { "https://registry.npmjs.org/" }
 }
 /// Asks `ask` about each item, then again about those it could not answer (a burst limit, the network), fewer at a time.
-/// A registry that named a time is waited out, when that fits the bound (`wait_fits`); otherwise the wait is a short
-/// pause. A wait that does not fit ends the rounds, and an Enter (`leave`) ends the wait. Returns those still unanswered;
+/// A registry that named a time is waited out when that fits the bound (`wait_fits`); those on a host whose hold does not
+/// fit stay unanswered, and the others go on without them. With no hold the wait is a short pause. A wait that does not
+/// fit ends the rounds, and an Enter (`leave`) ends the wait. Returns those still unanswered;
 /// `public` gets each item found public, `show` the title, detail and hint of the progress line.
 fn ask_rounds<T: Sync>(
     mut unasked: Vec<T>,
@@ -4250,7 +4253,14 @@ fn ask_rounds<T: Sync>(
     show: impl Fn(&str, &str, &str),
 ) -> Vec<T> {
     let (total, mut done) = (unasked.len(), 0);
+    let mut held_past = vec![];
     for (round, (width, pause)) in [(util::REQUESTS_AT_ONCE, 0), (4, 5), (2, 20)].into_iter().enumerate() {
+        let (past, rest): (Vec<T>, Vec<T>) = unasked.into_iter().partition(|u| {
+            let hold = hold_left(&host(u));
+            !hold.is_zero() && !wait_fits(hold, bound.left())
+        });
+        held_past.extend(past);
+        unasked = rest;
         let hold = unasked.iter().map(|u| hold_left(&host(u))).max().unwrap_or_default();
         let wait = if hold.is_zero() { Duration::from_secs(pause) } else { hold };
         if unasked.is_empty() || !wait_fits(wait, bound.left()) {
@@ -4288,7 +4298,8 @@ fn ask_rounds<T: Sync>(
         // Unanswered, or never asked because the bound passed.
         unasked = unasked.into_iter().zip(answered).filter(|(_, a)| !a).map(|(u, _)| u).collect();
     }
-    unasked
+    held_past.extend(unasked);
+    held_past
 }
 
 /// A run that outlives its hard limit (`at`) ends here, with a report: the one this run wrote while following coverage,
@@ -4313,8 +4324,9 @@ fn last_resort(ctx: &Ctx, at: Instant, finished: Arc<AtomicBool>) {
 }
 /// The report of a run that never reached matching: what it knows, and that the leads are missing.
 fn stopped_report(pending: &Pending) -> String {
+    let unanswered = if pending.unanswered.is_empty() { String::new() } else { format!(" {}.", capitalized(&unanswered_clause(&pending.unanswered))) };
     format!(
-        "# Onboarding report\n\nThis report is incomplete: the run reached its time limit before it finished matching the catalog against this repository, so it lists no upgrades or leads.\n\nCoverage: {}.\n\nRun unstale status --wait 300 for the full report.\n",
+        "# Onboarding report\n\nThis report is incomplete: the run reached its time limit before it finished matching the catalog against this repository, so it lists no upgrades or leads.\n\nCoverage: {}.{unanswered}\n\nRun unstale status --wait 300 for the full report.\n",
         coverage_counts(pending)
     )
 }
@@ -5147,6 +5159,9 @@ mod tests {
         assert!(line.contains("pkg:npm/p4 and 3 more), checked again on the next run") && !line.contains("p5"), "{line}");
         pending.unanswered.truncate(1);
         assert!(incomplete_line(&pending).unwrap().contains("1 registry identity went unanswered (pkg:npm/p0), checked"));
+        // A stalled run's short report reads them back from the saved state.
+        let saved: Pending = serde_json::from_slice(&serde_json::to_vec(&pending).unwrap()).unwrap();
+        assert!(stopped_report(&saved).contains("1 registry identity went unanswered (pkg:npm/p0)"));
     }
 
     /// A registry on a local port: each request gets what `answer` makes of the requests before it, and is counted.
@@ -5208,6 +5223,18 @@ mod tests {
         let sent = hits.load(Ordering::Acquire);
         assert!(registry_call(&base, || unreachable!()).is_none());
         assert_eq!(hits.load(Ordering::Acquire), sent);
+    }
+
+    #[test]
+    fn a_hold_past_the_bound_leaves_other_registries_asked() {
+        let (npm, _) = registry(|_| reply("429 Too Many Requests", "Retry-After: 590\r\n", ""));
+        // No answer the first time, then one: the case the short pause is for.
+        let (other, hits) = registry(|n| if n == 0 { reply("500 Internal Server Error", "", "") } else { reply("200 OK", "", "{}") });
+        assert!(ask(&npm).is_none());
+        let bound = Bound::new(Instant::now(), 300);
+        let left = ask_rounds(vec![npm.clone(), other], &bound, &AtomicBool::new(false), |u: &String| u.clone(), ask, |_| {}, |_, _, _| {});
+        assert_eq!(left, [npm]);
+        assert_eq!(hits.load(Ordering::Acquire), 2);
     }
 
     #[test]
