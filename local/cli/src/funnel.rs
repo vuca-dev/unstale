@@ -1947,6 +1947,7 @@ pub fn run<'a>(inp: &Input<'a>) -> Outcome<'a> {
                     .into_iter()
                     .flatten()
                     .map(|x| &inp.repo.paths[*x as usize])
+                    .filter(|p| role(p) != usage::Role::Vendored && !scopes[view].own_source(p, scopes[view].importers().any(|f| f == p.as_str())))
                     .filter(|p| scopes[view].file(p).is_some() && inp.repo.text(p).is_some_and(|t| usage::on_command_line(t, l, &cmd_words)))
                     .take(3)
                     .map(|p| (p.clone(), true))
