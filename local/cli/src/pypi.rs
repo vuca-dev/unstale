@@ -1049,7 +1049,8 @@ const RELEASES_FRESH_SECS: u64 = 24 * 3600;
 pub fn registry_releases(purls: &[String]) -> BTreeMap<String, Vec<Version>> {
     cached_releases(purls, "pypi-releases", parse_version, |agent, purl| {
         let name = purl.trim_start_matches("pkg:pypi/");
-        let mut r = agent.get(format!("https://pypi.org/pypi/{name}/json")).call().ok().filter(|r| r.status().is_success())?;
+        let url = format!("https://pypi.org/pypi/{name}/json");
+        let mut r = crate::onboarding::registry_call(&url, || agent.get(&url).call()).filter(|r| r.status().is_success())?;
         let bytes = r.body_mut().with_config().limit(64 * 1024 * 1024).read_to_vec().ok()?;
         let doc: Json = serde_json::from_slice(&bytes).ok()?;
         let releases = doc.get("releases")?.as_object()?;
@@ -1071,7 +1072,8 @@ pub fn registry_requires(keys: &[String]) -> BTreeMap<String, Vec<String>> {
         let (name, version) = key.trim_start_matches("pkg:pypi/").rsplit_once('@')?;
         let short = version.strip_suffix(".0").filter(|s| s.contains('.'));
         let doc = [Some(version), short].into_iter().flatten().find_map(|v| {
-            let mut r = agent.get(format!("https://pypi.org/pypi/{name}/{v}/json")).call().ok().filter(|r| r.status().is_success())?;
+            let url = format!("https://pypi.org/pypi/{name}/{v}/json");
+            let mut r = crate::onboarding::registry_call(&url, || agent.get(&url).call()).filter(|r| r.status().is_success())?;
             let bytes = r.body_mut().with_config().limit(16 * 1024 * 1024).read_to_vec().ok()?;
             serde_json::from_slice::<Json>(&bytes).ok()
         })?;
@@ -1087,12 +1089,8 @@ pub fn npm_registry_releases(purls: &[String]) -> BTreeMap<String, Vec<Version>>
     cached_releases(purls, "npm-releases", crate::util::parse_version, |agent, purl| {
         let name = crate::util::npm_name(purl)?;
         let enc: String = name.bytes().map(|b| if b.is_ascii_alphanumeric() || b"-._~@".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") }).collect();
-        let mut r = agent
-            .get(format!("https://registry.npmjs.org/{enc}"))
-            .header("Accept", "application/vnd.npm.install-v1+json")
-            .call()
-            .ok()
-            .filter(|r| r.status().is_success())?;
+        let url = format!("https://registry.npmjs.org/{enc}");
+        let mut r = crate::onboarding::registry_call(&url, || agent.get(&url).header("Accept", "application/vnd.npm.install-v1+json").call()).filter(|r| r.status().is_success())?;
         let bytes = r.body_mut().with_config().limit(64 * 1024 * 1024).read_to_vec().ok()?;
         let doc: Json = serde_json::from_slice(&bytes).ok()?;
         Some(doc.get("versions")?.as_object()?.keys().cloned().collect())

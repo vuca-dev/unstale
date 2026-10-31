@@ -2,7 +2,7 @@
 use super::*;
 use std::collections::BTreeSet;
 use std::sync::{
-    Arc,
+    Arc, Mutex,
     atomic::{AtomicBool, Ordering},
 };
 use std::time::{Duration, Instant};
@@ -182,6 +182,10 @@ pub struct Pending {
     /// What this run's bound left undone, in the report's words (never saved): the report says it is incomplete.
     #[serde(skip)]
     pub cut: Vec<&'static str>,
+    /// Packages whose registry never answered on the last run: the report names them, and a run that stalls finds them
+    /// here for its short report. Each run starts this afresh and asks again.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub unanswered: Vec<String>,
     /// Weekly npm and PyPI downloads of unsubmitted packages, read once for `registration_order` (0 when unreadable).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub downloads: BTreeMap<String, u64>,
@@ -459,7 +463,7 @@ fn sent(n: usize) -> String {
 }
 /// A `Retry-After` value in seconds from `now`: delay-seconds, or an HTTP-date (IMF-fixdate,
 /// `Sun, 06 Nov 1994 08:49:37 GMT`, the form senders must use).
-fn retry_after_secs(v: &str, now: u64) -> Option<u64> {
+pub fn retry_after_secs(v: &str, now: u64) -> Option<u64> {
     let v = v.trim();
     if let Ok(s) = v.parse() {
         return Some(s);
@@ -805,8 +809,49 @@ fn fetch(url: String) -> Option<serde_json::Value> {
 /// A registry document: `Ok(None)` when the registry answers that it has none (a 4xx other than a limit or a
 /// timeout), `Err` when it gave no answer (no connection, a limit, a server failure, an unreadable body).
 struct Unanswered;
+/// How long a host that refused without naming a time is left alone: the longest pause `ask_rounds` makes unprompted.
+const HOLD_UNNAMED_S: u64 = 20;
+/// The longest hold kept, whatever a host asks: past any bound, and it keeps `Instant` arithmetic from overflowing.
+const HOLD_MAX_S: u64 = 86_400;
+/// Hosts that told this process to back off, and until when: one refusal holds every request to that host.
+static HOLDS: Mutex<BTreeMap<String, Instant>> = Mutex::new(BTreeMap::new());
+fn holds() -> std::sync::MutexGuard<'static, BTreeMap<String, Instant>> {
+    HOLDS.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+/// The host and port of a URL: what a hold is kept under.
+fn origin(url: &str) -> &str {
+    let rest = url.split_once("://").map_or(url, |(_, r)| r);
+    rest.split('/').next().unwrap_or(rest)
+}
+/// How much longer requests to this URL's host are held: zero when it has not refused.
+fn hold_left(url: &str) -> Duration {
+    holds().get(origin(url)).map_or(Duration::ZERO, |until| until.saturating_duration_since(Instant::now()))
+}
+/// How long a registry's response says to stay away: `None` unless it is a refusal (429, or 503 with Retry-After).
+fn hold_asked(status: u16, retry_after: Option<&str>) -> Option<u64> {
+    if status != 429 && !(status == 503 && retry_after.is_some()) {
+        return None;
+    }
+    let named = retry_after.and_then(|v| retry_after_secs(v, unix_now()));
+    Some(named.unwrap_or(HOLD_UNNAMED_S).clamp(1, HOLD_MAX_S))
+}
+/// A request to a public registry, sent only when its host is not holding this run off. A refusal holds the host for
+/// the time it names, the longest of any answer, so a limited run stops sending there instead of each request
+/// spending its own retries. `None` when held or when no response came; every status is returned to the caller.
+pub fn registry_call(url: &str, call: impl FnOnce() -> std::result::Result<ureq::http::Response<ureq::Body>, ureq::Error>) -> Option<ureq::http::Response<ureq::Body>> {
+    if !hold_left(url).is_zero() {
+        return None;
+    }
+    let r = call().ok()?;
+    let asked = r.headers().get("retry-after").and_then(|v| v.to_str().ok());
+    if let Some(secs) = hold_asked(r.status().as_u16(), asked) {
+        let until = Instant::now() + Duration::from_secs(secs);
+        holds().entry(origin(url).to_string()).and_modify(|at| *at = (*at).max(until)).or_insert(until);
+    }
+    Some(r)
+}
 fn read_doc(url: String) -> std::result::Result<Option<serde_json::Value>, Unanswered> {
-    let mut r = agent().get(url).call().map_err(|_| Unanswered)?;
+    let mut r = registry_call(&url, || agent().get(&url).call()).ok_or(Unanswered)?;
     let status = r.status().as_u16();
     if !r.status().is_success() {
         return if (400..500).contains(&status) && !matches!(status, 408 | 425 | 429) { Ok(None) } else { Err(Unanswered) };
@@ -1649,16 +1694,21 @@ struct Brief {
     /// Per technology, the record its upgrade line leads with (`unstale bump` lists it first).
     lead_ids: BTreeMap<String, String>,
 }
+/// The most unanswered packages a report names; the count covers the rest.
+const UNANSWERED_NAMED: usize = 5;
 /// Says a report is incomplete, and why: a line for its first section and for the summary. None when nothing is
 /// outstanding; a package that never answered is named by `coverage_counts` and the diagnostics.
 fn incomplete_line(pending: &Pending) -> Option<String> {
     let jobs: BTreeMap<_, _> = pending.jobs.values().map(|j| (&j.technology, j)).collect();
     let waiting = jobs.values().filter(|j| j.records == 0 && !matches!(j.state.as_str(), "monitoring" | "blocked" | "failed")).count();
     let missing = waiting + pending.unsubmitted.len();
-    if missing == 0 && pending.cut.is_empty() {
+    if missing == 0 && pending.cut.is_empty() && pending.unanswered.is_empty() {
         return None;
     }
     let mut why = vec![];
+    if !pending.unanswered.is_empty() {
+        why.push(unanswered_clause(&pending.unanswered));
+    }
     if missing > 0 {
         why.push(format!("{missing} package{} no results yet", if missing == 1 { " has" } else { "s have" }));
     }
@@ -1666,6 +1716,13 @@ fn incomplete_line(pending: &Pending) -> Option<String> {
         why.push(format!("this run reached its time limit before finishing {}", pending.cut.join(", ")));
     }
     Some(format!("Coverage is incomplete: {}. This report covers what was published by then; unstale status --wait 300 fetches the rest.", why.join("; ")))
+}
+/// "3 registry identities went unanswered (a, b, c)": at most `UNANSWERED_NAMED` names, then how many more.
+fn unanswered_clause(purls: &[String]) -> String {
+    let n = purls.len();
+    let names: Vec<String> = purls.iter().take(UNANSWERED_NAMED).map(|p| display_text(p)).collect();
+    let more = if n > UNANSWERED_NAMED { format!(" and {} more", n - UNANSWERED_NAMED) } else { String::new() };
+    format!("{n} registry {} unanswered ({}{more}), checked again on the next run", if n == 1 { "identity went" } else { "identities went" }, names.join(", "))
 }
 fn coverage_counts(pending: &Pending) -> String {
     let jobs: BTreeMap<_, _> = pending.jobs.values().map(|j| (&j.technology, j)).collect();
@@ -1775,7 +1832,7 @@ fn summary(ctx: &Ctx, pending: &Pending, brief: &Brief, issue: Option<&str>) -> 
     ];
     if let Some(issue) = issue { lines.push(Line::new(issue, Tone::Amber)); }
     if let Some(line) = pending_line(pending, unix_now()) { lines.push(Line::new(line, Tone::Muted)); }
-    if !pending.cut.is_empty() && let Some(line) = incomplete_line(pending) { lines.push(Line::new(line, Tone::Amber)); }
+    if (!pending.cut.is_empty() || !pending.unanswered.is_empty()) && let Some(line) = incomplete_line(pending) { lines.push(Line::new(line, Tone::Amber)); }
     if let Some(line) = registration_line(pending) { lines.push(Line::new(line, if pending.deferred_until.is_some() { Tone::Muted } else { Tone::Amber })); }
     if let Some(why) = &brief.unread {
         lines.push(Line::new(format!("Scope · nothing was checked: {why}."), Tone::Amber));
@@ -3815,6 +3872,7 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
         "Repository code and installed versions stay local",
     );
     let mut pending = read(ctx);
+    pending.unanswered.clear();
     // The World of this run's first report; later reports reuse its stack and code (`report`).
     let mut scan: Option<World> = None;
     // Jobs of packages no longer in the stack, or now kept private (a registry configured since they were registered):
@@ -3929,50 +3987,24 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
         "Public names only · no repository identity shared",
     );
     let mut verified = vec![];
-    let mut unchecked: Vec<_> = st.deps.iter().filter(|(p, d)| !pending.jobs.contains_key(*p) && d.public_candidate).collect();
-    let (total, mut done) = (unchecked.len(), 0);
-    let mut short = false;
-    // A registry that did not answer (a burst limit, the network) says nothing about the package: those are asked
-    // again, fewer at a time and after a pause, rather than left out of this run as if private.
-    for (round, (width, pause)) in [(util::REQUESTS_AT_ONCE, 0), (4, 5), (2, 20)].into_iter().enumerate() {
-        if unchecked.is_empty() {
-            break;
-        }
-        if bound.left() <= Duration::from_secs(pause) {
-            short = true;
-            break;
-        }
-        if round > 0 {
-            ui.update("Retrying public packages · step 3/5", &format!("{} registry identities unanswered · retrying in {pause}s", unchecked.len()), "");
-        }
-        std::thread::sleep(Duration::from_secs(pause));
-        let retry_total = unchecked.len();
-        let mut retry_done = 0;
-        let mut answered = vec![false; retry_total];
-        util::concurrent(&unchecked, width, |(p, d)| public_package(&ctx.cache, p, &d.pins), |i, public| {
-            answered[i] = public.is_some();
-            if public == Some(true) {
-                verified.push(unchecked[i].0.clone());
-            }
-            if round == 0 {
-                done += 1;
-            }
-            if round == 0 {
-                ui.update("Verifying public packages · step 3/5", &format!("Checked {done}/{total} registry identities"), "Only verified public package names are submitted");
-            } else {
-                retry_done += 1;
-                ui.update("Retrying public packages · step 3/5", &format!("Retried {retry_done}/{retry_total} registry identities · {} still unanswered", retry_done - answered.iter().filter(|a| **a).count()), "");
-            }
-            !bound.passed()
-        });
-        // Unanswered, or never asked because the bound passed.
-        unchecked = unchecked.into_iter().zip(answered).filter(|(_, a)| !a).map(|(u, _)| u).collect();
-    }
+    let unchecked: Vec<_> = st.deps.iter().filter(|(p, d)| !pending.jobs.contains_key(*p) && d.public_candidate).collect();
+    let unchecked = ask_rounds(
+        unchecked,
+        &bound,
+        &leave,
+        |(p, _)| identity_host(p).to_string(),
+        |(p, d)| public_package(&ctx.cache, p, &d.pins),
+        |(p, _)| verified.push((*p).clone()),
+        |title, detail, hint| ui.update(title, detail, hint),
+    );
     if !unchecked.is_empty() {
         let n = unchecked.len();
-        diagnostics.push(format!("Public registry identity: no answer for {n} package(s), checked again on the next run: {}", unchecked.iter().take(5).map(|(p, _)| p.as_str()).collect::<Vec<_>>().join(", ")));
-        issue.get_or_insert(format!("Registry unavailable for {n} package{} · checked again next run", if n == 1 { "" } else { "s" }));
-        if short || bound.passed() {
+        pending.unanswered = unchecked.iter().map(|(p, _)| (*p).clone()).collect();
+        diagnostics.push(format!("Public registry identity: no answer for {n} package(s), checked again on the next run: {}", unchecked.iter().take(UNANSWERED_NAMED).map(|(p, _)| p.as_str()).collect::<Vec<_>>().join(", ")));
+        let hold = unchecked.iter().map(|(p, _)| hold_left(identity_host(p))).max().unwrap_or_default();
+        let until = if hold.is_zero() { String::new() } else { format!(" · limited until {} UTC", clock(unix_now() + hold.as_secs())) };
+        issue.get_or_insert(format!("Registry unavailable for {n} package{}{until} · checked again next run", if n == 1 { "" } else { "s" }));
+        if bound.passed() {
             pending.cut.push("public registry identities");
         }
     }
@@ -4213,6 +4245,79 @@ impl Bound {
     }
 }
 
+/// Whether a pause fits what is left of the bound and leaves a quarter of it: identities are worth a wait, but not at
+/// the cost of registering the packages already verified, which come after them.
+fn wait_fits(wait: Duration, left: Duration) -> bool {
+    !left.is_zero() && wait <= left * 3 / 4
+}
+/// The registry that answers for a package's public identity (`public_package`).
+fn identity_host(purl: &str) -> &'static str {
+    if purl.starts_with("pkg:pypi/") { "https://pypi.org/" } else { "https://registry.npmjs.org/" }
+}
+/// Asks `ask` about each item, then again about those it could not answer (a burst limit, the network), fewer at a time.
+/// A registry that named a time is waited out when that fits the bound (`wait_fits`); those on a host whose hold does not
+/// fit stay unanswered, and the others go on without them. With no hold the wait is a short pause. A wait that does not
+/// fit ends the rounds, and an Enter (`leave`) ends the wait. Returns those still unanswered;
+/// `public` gets each item found public, `show` the title, detail and hint of the progress line.
+fn ask_rounds<T: Sync>(
+    mut unasked: Vec<T>,
+    bound: &Bound,
+    leave: &AtomicBool,
+    host: impl Fn(&T) -> String,
+    ask: impl Fn(&T) -> Option<bool> + Sync,
+    mut public: impl FnMut(&T),
+    show: impl Fn(&str, &str, &str),
+) -> Vec<T> {
+    let (total, mut done) = (unasked.len(), 0);
+    let mut held_past = vec![];
+    for (round, (width, pause)) in [(util::REQUESTS_AT_ONCE, 0), (4, 5), (2, 20)].into_iter().enumerate() {
+        let (past, rest): (Vec<T>, Vec<T>) = unasked.into_iter().partition(|u| {
+            let hold = hold_left(&host(u));
+            !hold.is_zero() && !wait_fits(hold, bound.left())
+        });
+        held_past.extend(past);
+        unasked = rest;
+        let hold = unasked.iter().map(|u| hold_left(&host(u))).max().unwrap_or_default();
+        let wait = if hold.is_zero() { Duration::from_secs(pause) } else { hold };
+        if unasked.is_empty() || !wait_fits(wait, bound.left()) {
+            break;
+        }
+        let until = Instant::now() + wait;
+        while !leave.load(Ordering::Acquire) {
+            let remaining = until.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                break;
+            }
+            show("Retrying public packages · step 3/5", &format!("{} registry identities unanswered · retrying in {}", unasked.len(), span(remaining.as_secs().max(1))), "");
+            std::thread::sleep(remaining.min(Duration::from_millis(200)));
+        }
+        if !wait.is_zero() && leave.load(Ordering::Acquire) {
+            break;
+        }
+        let retry_total = unasked.len();
+        let mut retry_done = 0;
+        let mut answered = vec![false; retry_total];
+        util::concurrent(&unasked, width, &ask, |i, got| {
+            answered[i] = got.is_some();
+            if got == Some(true) {
+                public(&unasked[i]);
+            }
+            if round == 0 {
+                done += 1;
+                show("Verifying public packages · step 3/5", &format!("Checked {done}/{total} registry identities"), "Only verified public package names are submitted");
+            } else {
+                retry_done += 1;
+                show("Retrying public packages · step 3/5", &format!("Retried {retry_done}/{retry_total} registry identities · {} still unanswered", retry_done - answered.iter().filter(|a| **a).count()), "");
+            }
+            !bound.passed()
+        });
+        // Unanswered, or never asked because the bound passed.
+        unasked = unasked.into_iter().zip(answered).filter(|(_, a)| !a).map(|(u, _)| u).collect();
+    }
+    held_past.extend(unasked);
+    held_past
+}
+
 /// A run that outlives its hard limit (`at`) ends here, with a report: the one this run wrote while following coverage,
 /// else a short one saying what is missing. A caller that gave `--wait` never gets silence, whatever stalled.
 fn last_resort(ctx: &Ctx, at: Instant, finished: Arc<AtomicBool>) {
@@ -4235,8 +4340,9 @@ fn last_resort(ctx: &Ctx, at: Instant, finished: Arc<AtomicBool>) {
 }
 /// The report of a run that never reached matching: what it knows, and that the leads are missing.
 fn stopped_report(pending: &Pending) -> String {
+    let unanswered = if pending.unanswered.is_empty() { String::new() } else { format!(" {}.", capitalized(&unanswered_clause(&pending.unanswered))) };
     format!(
-        "# Onboarding report\n\nThis report is incomplete: the run reached its time limit before it finished matching the catalog against this repository, so it lists no upgrades or leads.\n\nCoverage: {}.\n\nRun unstale status --wait 300 for the full report.\n",
+        "# Onboarding report\n\nThis report is incomplete: the run reached its time limit before it finished matching the catalog against this repository, so it lists no upgrades or leads.\n\nCoverage: {}.{unanswered}\n\nRun unstale status --wait 300 for the full report.\n",
         coverage_counts(pending)
     )
 }
@@ -5058,6 +5164,132 @@ mod tests {
         pending.unsubmitted.clear();
         pending.cut.push("public registry identities");
         assert!(incomplete_line(&pending).unwrap().contains("reached its time limit before finishing public registry identities"));
+    }
+
+    #[test]
+    fn a_report_names_what_the_registry_left_unanswered() {
+        let mut pending = Pending::default();
+        pending.unanswered = (0..8).map(|i| format!("pkg:npm/p{i}")).collect();
+        let line = incomplete_line(&pending).unwrap();
+        assert!(line.starts_with("Coverage is incomplete: 8 registry identities went unanswered (pkg:npm/p0, "), "{line}");
+        assert!(line.contains("pkg:npm/p4 and 3 more), checked again on the next run") && !line.contains("p5"), "{line}");
+        pending.unanswered.truncate(1);
+        assert!(incomplete_line(&pending).unwrap().contains("1 registry identity went unanswered (pkg:npm/p0), checked"));
+        // A stalled run's short report reads them back from the saved state.
+        let saved: Pending = serde_json::from_slice(&serde_json::to_vec(&pending).unwrap()).unwrap();
+        assert!(stopped_report(&saved).contains("1 registry identity went unanswered (pkg:npm/p0)"));
+    }
+
+    /// A registry on a local port: each request gets what `answer` makes of the requests before it, and is counted.
+    fn registry(answer: impl Fn(usize) -> String + Send + 'static) -> (String, Arc<std::sync::atomic::AtomicUsize>) {
+        use std::io::{BufRead, BufReader, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}/", listener.local_addr().unwrap());
+        let hits = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counted = hits.clone();
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let mut stream = stream.unwrap();
+                let mut reader = BufReader::new(stream.try_clone().unwrap());
+                let mut line = String::new();
+                while reader.read_line(&mut line).is_ok_and(|n| n > 0) && !line.trim().is_empty() {
+                    line.clear();
+                }
+                let response = answer(counted.fetch_add(1, Ordering::AcqRel));
+                let _ = stream.write_all(response.as_bytes());
+            }
+        });
+        (base, hits)
+    }
+    fn reply(status: &str, headers: &str, body: &str) -> String {
+        format!("HTTP/1.1 {status}\r\n{headers}Content-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len())
+    }
+    fn ask(url: &String) -> Option<bool> {
+        read_doc(url.clone()).ok().map(|d| d.is_some())
+    }
+
+    #[test]
+    fn one_refusal_holds_the_whole_host_and_is_waited_out() {
+        let opened = Instant::now();
+        // Cloudflare's shape: refused until the time it named, whoever asks.
+        let (base, hits) = registry(move |_| {
+            if opened.elapsed() < Duration::from_secs(2) { reply("429 Too Many Requests", "Retry-After: 2\r\n", "error code: 1015") } else { reply("200 OK", "", "{}") }
+        });
+        let urls: Vec<String> = (0..40).map(|i| format!("{base}p{i}")).collect();
+        let bound = Bound::new(Instant::now(), 60);
+        let left = ask_rounds(urls, &bound, &AtomicBool::new(false), |u: &String| u.clone(), ask, |_| {}, |_, _, _| {});
+        assert!(left.is_empty(), "{left:?}");
+        assert!(opened.elapsed() >= Duration::from_secs(2));
+        // Round one sends at most what was in flight when the first refusal came back; the rest wait.
+        assert!(hits.load(Ordering::Acquire) <= util::REQUESTS_AT_ONCE + 40, "{hits:?}");
+    }
+
+    #[test]
+    fn a_hold_past_the_bound_is_not_waited_and_nothing_more_is_sent() {
+        let (base, hits) = registry(|_| reply("429 Too Many Requests", "Retry-After: 590\r\n", "error code: 1015"));
+        let urls: Vec<String> = (0..40).map(|i| format!("{base}p{i}")).collect();
+        let started = Instant::now();
+        let bound = Bound::new(started, 300);
+        let left = ask_rounds(urls, &bound, &AtomicBool::new(false), |u: &String| u.clone(), ask, |_| {}, |_, _, _| {});
+        assert_eq!(left.len(), 40);
+        assert!(started.elapsed() < Duration::from_secs(5), "{:?}", started.elapsed());
+        assert!(hits.load(Ordering::Acquire) <= util::REQUESTS_AT_ONCE, "{hits:?}");
+        assert!(hold_left(&base) > Duration::from_secs(500));
+        // A later phase sends nothing to the held host either.
+        let sent = hits.load(Ordering::Acquire);
+        assert!(registry_call(&base, || unreachable!()).is_none());
+        assert_eq!(hits.load(Ordering::Acquire), sent);
+    }
+
+    #[test]
+    fn a_hold_past_the_bound_leaves_other_registries_asked() {
+        let (npm, _) = registry(|_| reply("429 Too Many Requests", "Retry-After: 590\r\n", ""));
+        // No answer the first time, then one: the case the short pause is for.
+        let (other, hits) = registry(|n| if n == 0 { reply("500 Internal Server Error", "", "") } else { reply("200 OK", "", "{}") });
+        assert!(ask(&npm).is_none());
+        let bound = Bound::new(Instant::now(), 300);
+        let left = ask_rounds(vec![npm.clone(), other], &bound, &AtomicBool::new(false), |u: &String| u.clone(), ask, |_| {}, |_, _, _| {});
+        assert_eq!(left, [npm]);
+        assert_eq!(hits.load(Ordering::Acquire), 2);
+    }
+
+    #[test]
+    fn enter_ends_a_wait_for_the_registry() {
+        let (base, _) = registry(|_| reply("429 Too Many Requests", "Retry-After: 590\r\n", ""));
+        let started = Instant::now();
+        let leave = AtomicBool::new(false);
+        let waited = std::cell::Cell::new(false);
+        // Past the 590 s, so the run does wait; the progress line is where a test can press Enter.
+        let left = ask_rounds(vec![base], &Bound::new(started, 3000), &leave, |u: &String| u.clone(), ask, |_| {}, |title, _, _| {
+            if title.starts_with("Retrying") {
+                waited.set(true);
+                leave.store(true, Ordering::Release);
+            }
+        });
+        assert_eq!(left.len(), 1);
+        assert!(waited.get() && started.elapsed() < Duration::from_secs(5));
+    }
+
+    #[test]
+    fn a_wait_fits_when_it_leaves_a_quarter_of_the_bound() {
+        let s = Duration::from_secs;
+        assert!(wait_fits(s(300), s(800)));
+        assert!(!wait_fits(s(590), s(270)));
+        assert!(!wait_fits(s(203), s(270)));
+        assert!(wait_fits(s(0), s(1)));
+        assert!(!wait_fits(s(0), s(0)));
+    }
+
+    #[test]
+    fn what_holds_a_registry_off() {
+        assert_eq!(hold_asked(429, Some("590")), Some(590));
+        assert_eq!(hold_asked(429, None), Some(HOLD_UNNAMED_S));
+        assert_eq!(hold_asked(429, Some("0")), Some(1));
+        assert_eq!(hold_asked(429, Some("99999999999")), Some(HOLD_MAX_S));
+        assert_eq!(hold_asked(503, Some("30")), Some(30));
+        assert_eq!(hold_asked(503, None), None);
+        assert_eq!(hold_asked(200, Some("30")), None);
+        assert_eq!(hold_asked(404, None), None);
     }
 
     #[test]
