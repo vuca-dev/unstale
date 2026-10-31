@@ -3924,10 +3924,15 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
     let mut verified = vec![];
     let mut unchecked: Vec<_> = st.deps.iter().filter(|(p, d)| !pending.jobs.contains_key(*p) && d.public_candidate).collect();
     let (total, mut done) = (unchecked.len(), 0);
+    let mut short = false;
     // A registry that did not answer (a burst limit, the network) says nothing about the package: those are asked
     // again, fewer at a time and after a pause, rather than left out of this run as if private.
     for (round, (width, pause)) in [(util::REQUESTS_AT_ONCE, 0), (4, 5), (2, 20)].into_iter().enumerate() {
-        if unchecked.is_empty() || bound.left() <= Duration::from_secs(pause) {
+        if unchecked.is_empty() {
+            break;
+        }
+        if bound.left() <= Duration::from_secs(pause) {
+            short = true;
             break;
         }
         if round > 0 {
@@ -3960,7 +3965,7 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
         let n = unchecked.len();
         diagnostics.push(format!("Public registry identity: no answer for {n} package(s), checked again on the next run: {}", unchecked.iter().take(5).map(|(p, _)| p.as_str()).collect::<Vec<_>>().join(", ")));
         issue.get_or_insert(format!("Registry unavailable for {n} package{} · checked again next run", if n == 1 { "" } else { "s" }));
-        if bound.passed() {
+        if short || bound.passed() {
             pending.cut.push("public registry identities");
         }
     }

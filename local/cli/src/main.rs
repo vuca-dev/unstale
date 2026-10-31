@@ -25,7 +25,7 @@ mod util;
 use anyhow::{Context, Result, anyhow, bail};
 use clap::{Parser, Subcommand, ValueEnum};
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -475,47 +475,10 @@ fn outcome<'a>(ctx: &Ctx, w: &'a World, mut targets: BTreeMap<String, semver::Ve
             targets.entry(util::normalize_purl(&n.purl)).or_insert(v);
         }
     }
-    let input = |targets| Input { catalog: &w.catalog, stack: &w.stack, repo: &w.repo, ledger: &w.ledger, today: &w.today, targets };
-    let mut out = funnel::run(&input(targets.clone()));
-    // Records past a target the registry lacks are not this package's: they go when the funnel runs to the real target.
-    let fallback = published_targets(&out, &targets, pypi::registry_releases, pypi::npm_registry_releases);
-    if !fallback.is_empty() {
-        targets.extend(fallback);
-        out = funnel::run(&input(targets));
-    }
+    let mut out = funnel::run(&Input { catalog: &w.catalog, stack: &w.stack, repo: &w.repo, ledger: &w.ledger, today: &w.today, targets });
     out.uncovered = w.deferral.clone();
     out.unread = stack::unread_note(&w.repo, &w.stack);
     out
-}
-
-/// The targets to use where a bump's target is past everything the package's registry publishes: no release of that
-/// package, its records carry another stream's versions (PyPI's `starrocks` 1.x under the server's 4.x). The registry's
-/// newest, or the installed version when that is newest. Only a new major is asked about: a registry document per
-/// package per day is too much to read for a move within the line the package is on. A `--target` stands.
-fn published_targets(
-    out: &funnel::Outcome,
-    chosen: &BTreeMap<String, semver::Version>,
-    pypi: impl Fn(&[String]) -> BTreeMap<String, Vec<semver::Version>>,
-    npm: impl Fn(&[String]) -> BTreeMap<String, Vec<semver::Version>>,
-) -> BTreeMap<String, semver::Version> {
-    let jumped: BTreeSet<String> = out.opps.iter().filter(|o| o.target.major > o.installed.major).map(|o| o.component()).filter(|c| !chosen.contains_key(c)).collect();
-    let (on_pypi, rest): (Vec<String>, Vec<String>) = jumped.into_iter().partition(|c| c.starts_with("pkg:pypi/"));
-    let on_npm: Vec<String> = rest.into_iter().filter(|c| c.starts_with("pkg:npm/")).collect();
-    let mut known = pypi(&on_pypi);
-    known.extend(npm(&on_npm));
-    let mut fallback = BTreeMap::new();
-    for o in &out.opps {
-        if let Some(target) = known.get(&o.component()).and_then(|v| published_target(&o.target, &o.installed, v)) {
-            fallback.insert(o.component(), target);
-        }
-    }
-    fallback
-}
-
-/// The target to use instead of `target` when it is a new major past all of `releases`.
-fn published_target(target: &semver::Version, installed: &semver::Version, releases: &[semver::Version]) -> Option<semver::Version> {
-    let newest = releases.iter().max()?;
-    (target.major > installed.major && target > newest).then(|| newest.max(installed).clone())
 }
 
 fn rel(ctx: &Ctx, p: &Path) -> String {
@@ -899,22 +862,4 @@ fn cmd_run(ctx: &Ctx, target: &[String]) -> Result<u8> {
     let targets = parse_targets(target)?;
     let r = if targets.is_empty() { review_with(ctx, &w, &out, false, None)? } else { review_with(ctx, &w, &outcome(ctx, &w, targets), false, None)? };
     Ok([s, r].into_iter().find(|c| *c != 0).unwrap_or(0))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::published_target;
-    use semver::Version;
-
-    #[test]
-    fn a_target_past_the_registry_falls_back_to_what_it_publishes() {
-        let v = |s: &str| Version::parse(s).unwrap();
-        // PyPI's starrocks: the server's 4.1.3 under a client on 1.x.
-        assert_eq!(published_target(&v("4.1.3"), &v("1.3.4"), &[v("1.2.0"), v("1.3.8")]), Some(v("1.3.8")));
-        assert_eq!(published_target(&v("4.1.3"), &v("1.3.4"), &[v("1.3.4")]), Some(v("1.3.4")));
-        // A published target, a move within the major and a package with no list stand.
-        assert_eq!(published_target(&v("2.0.0"), &v("1.3.4"), &[v("1.3.4"), v("2.0.0")]), None);
-        assert_eq!(published_target(&v("1.9.0"), &v("1.3.4"), &[v("1.3.4")]), None);
-        assert_eq!(published_target(&v("4.1.3"), &v("1.3.4"), &[]), None);
-    }
 }
