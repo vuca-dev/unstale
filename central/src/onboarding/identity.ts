@@ -20,9 +20,23 @@ export function pypiIdentity(purl: string): string {
     throw new Error("Expected a canonical public PyPI package URL (PEP 503 normalised), without version or qualifiers");
   return purl.slice(9);
 }
-/** The package name of a public identity in an ecosystem this service registers (npm, PyPI). */
+export function cargoIdentity(purl: string): string {
+  const match = /^pkg:cargo\/([a-z0-9_-]{1,64})$/.exec(purl);
+  const name = match?.[1];
+  if (!name || !/[a-z0-9]/.test(name))
+    throw new Error("Expected a canonical public Cargo package URL, without version or qualifiers");
+  return name;
+}
+export function cargoPurl(name: string): string {
+  const purl = `pkg:cargo/${name}`;
+  cargoIdentity(purl);
+  return purl;
+}
+/** The package name of a public identity in an ecosystem this service registers (npm, PyPI, Cargo). */
 export function packageIdentity(purl: string): string {
-  return purl.startsWith("pkg:pypi/") ? pypiIdentity(purl) : npmIdentity(purl);
+  if (purl.startsWith("pkg:pypi/")) return pypiIdentity(purl);
+  if (purl.startsWith("pkg:cargo/")) return cargoIdentity(purl);
+  return npmIdentity(purl);
 }
 export function technologyId(purl: string): string {
   const name = packageIdentity(purl);

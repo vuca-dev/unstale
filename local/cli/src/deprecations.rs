@@ -1,6 +1,5 @@
-//! Deprecated by the publisher: the registry's own flag on an installed version of a direct dependency. npm's
-//! `deprecated` message on the version (`npm deprecate`, set on every version when a whole package is retired), and
-//! PyPI's yank of the release (PEP 592, with its reason). An official signal that costs no model call and needs no
+//! Deprecated or yanked by the publisher: the registry's own lifecycle flag on an installed version of a direct
+//! dependency. npm's `deprecated` message, PyPI's PEP 592 yank, and crates.io's Cargo version yank. An official signal that costs no model call and needs no
 //! catalog coverage, so it is known for every direct dependency at once, covered or still queued. Transitive
 //! dependencies are never read (a package the project does not declare is not part of its stack).
 //!
@@ -19,7 +18,7 @@ use crate::util;
 /// A cached answer is asked again after this long.
 const FRESH_SECS: u64 = 24 * 3600;
 
-/// One installed version its publisher deprecated (npm) or yanked (PyPI).
+/// One installed version its publisher deprecated (npm) or yanked (PyPI/Cargo).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Notice {
     pub purl: String,
@@ -65,11 +64,57 @@ fn path(cache: &Path, purl: &str, version: &str) -> PathBuf {
 fn pypi_name(purl: &str) -> Option<&str> {
     purl.strip_prefix("pkg:pypi/")
 }
+fn cargo_name(purl: &str) -> Option<String> {
+    let name = util::cargo_name(purl)?;
+    let canonical = format!("pkg:cargo/{name}");
+    (canonical == purl && name.as_bytes().first().is_some_and(|b| b.is_ascii_alphanumeric()) && name.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))).then_some(name)
+}
+fn encode_segment(s: &str) -> String {
+    s.bytes().map(|b| if b.is_ascii_alphanumeric() || b"-._~".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") }).collect()
+}
+fn cargo_pin_checksums(pin: &crate::stack::Pin) -> Vec<&str> {
+    pin.hashes.iter().filter_map(|hash| {
+        let hex = hash.strip_prefix("sha256:")?;
+        (hex.len() == 64 && hex.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))).then_some(hex)
+    }).collect()
+}
+/// A crates.io answer is only known when its exact canonical crate and version identity is present.
+fn cargo_lifecycle(name: &str, version: &str, doc: &serde_json::Value) -> Option<(bool, String)> {
+    let version_doc = doc.get("version")?;
+    if version_doc.get("crate")?.as_str()? != name || version_doc.get("num")?.as_str()? != version {
+        return None;
+    }
+    let yanked = version_doc.get("yanked")?.as_bool()?;
+    let reason = if yanked { version_doc.get("yank_message").and_then(|v| v.as_str()).unwrap_or("").trim().to_string() } else { String::new() };
+    Some((yanked, reason))
+}
+fn cargo_doc_valid(purl: &str, version: &str, doc: &serde_json::Value, pin: Option<&crate::stack::Pin>) -> bool {
+    let Some(name) = cargo_name(purl) else { return false };
+    let Some(version_doc) = doc.get("version") else { return false };
+    if version_doc.get("crate").and_then(|v| v.as_str()) != Some(name.as_str())
+        || version_doc.get("num").and_then(|v| v.as_str()) != Some(version) {
+        return false;
+    }
+    if let Some(pin) = pin {
+        if pin.version != version { return false; }
+        let expected = cargo_pin_checksums(pin);
+        if expected.is_empty() { return false; }
+        let Some(checksum) = version_doc.get("checksum").and_then(|v| v.as_str()) else { return false };
+        if checksum.len() != 64 || !checksum.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)) || !expected.contains(&checksum) {
+            return false;
+        }
+    }
+    true
+}
 
 /// The registry document of one version: npm `registry.npmjs.org/<name>/<version>`, PyPI
-/// `pypi.org/pypi/<name>/<version>/json`.
+/// `pypi.org/pypi/<name>/<version>/json`, or crates.io `/api/v1/crates/<crate>/<version>`.
 pub fn version_url(purl: &str, version: &str) -> Option<String> {
-    let enc = |s: &str| s.bytes().map(|b| if b.is_ascii_alphanumeric() || b"-._~".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") }).collect::<String>();
+    let enc = encode_segment;
+    if purl.starts_with("pkg:cargo/") {
+        let name = cargo_name(purl)?;
+        return Some(format!("https://crates.io/api/v1/crates/{}/{}", enc(&name), enc(version)));
+    }
     if let Some(name) = pypi_name(purl) {
         return Some(format!("https://pypi.org/pypi/{}/{}/json", enc(name), enc(version)));
     }
@@ -79,12 +124,21 @@ pub fn version_url(purl: &str, version: &str) -> Option<String> {
 
 /// Where a person reads it: the version's registry page.
 fn page(purl: &str, name: &str, version: &str) -> String {
+    if purl.starts_with("pkg:cargo/") {
+        return cargo_name(purl).map(|crate_name| format!("https://crates.io/crates/{}/{}", encode_segment(&crate_name), encode_segment(version))).unwrap_or_default();
+    }
     if pypi_name(purl).is_some() { format!("https://pypi.org/project/{name}/{version}/") } else { format!("https://www.npmjs.com/package/{name}/v/{version}") }
 }
 
 /// The deprecation or yank a version document states: `(message, yanked)`, or None. npm: a non-empty `deprecated`
 /// string (`true` reads as deprecated with no message). PyPI: `info.yanked` with `info.yanked_reason`.
 pub fn read_doc(purl: &str, doc: &serde_json::Value) -> Option<(String, bool)> {
+    if purl.starts_with("pkg:cargo/") {
+        let name = cargo_name(purl)?;
+        let number = doc.pointer("/version/num")?.as_str()?;
+        let (yanked, reason) = cargo_lifecycle(&name, number, doc)?;
+        return yanked.then_some((reason, true));
+    }
     if pypi_name(purl).is_some() {
         let info = doc.get("info")?;
         if info.get("yanked").and_then(|y| y.as_bool()) != Some(true) {
@@ -116,6 +170,10 @@ pub fn repository(purl: &str, doc: &serde_json::Value) -> Option<String> {
         let (owner, repo) = (parts.next()?, parts.next()?.trim_end_matches(".git"));
         Some(format!("https://{host}/{owner}/{repo}"))
     };
+    if purl.starts_with("pkg:cargo/") {
+        let repo = doc.pointer("/crate/repository")?.as_str()?;
+        return norm(repo).or_else(|| (repo.split('/').count() == 2 && !repo.contains(':')).then(|| format!("https://github.com/{}", repo.trim_matches('/'))));
+    }
     if pypi_name(purl).is_some() {
         let urls = doc.pointer("/info/project_urls").and_then(|u| u.as_object())?;
         let keyed = |k: &str| urls.iter().find(|(n, _)| n.eq_ignore_ascii_case(k)).and_then(|(_, v)| v.as_str()).and_then(norm);
@@ -132,17 +190,40 @@ pub fn cached_repository(cache: &Path, purl: &str, version: &str) -> Option<Stri
     cached(cache, purl, version)?.repo
 }
 
-/// The registry document of the newest release: npm `registry.npmjs.org/<name>/latest`, PyPI `pypi.org/pypi/<name>/json`.
+/// The registry document of the newest release: npm `registry.npmjs.org/<name>/latest`, PyPI `pypi.org/pypi/<name>/json`, or Cargo's crates.io versions list.
 fn latest_url(purl: &str) -> Option<String> {
-    let enc = |s: &str| s.bytes().map(|b| if b.is_ascii_alphanumeric() || b"-._~".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") }).collect::<String>();
-    if let Some(name) = pypi_name(purl) {
-        return Some(format!("https://pypi.org/pypi/{}/json", enc(name)));
+    if purl.starts_with("pkg:cargo/") {
+        let name = cargo_name(purl)?;
+        return Some(format!("https://crates.io/api/v1/crates/{}/versions", encode_segment(&name)));
     }
-    Some(format!("https://registry.npmjs.org/{}/latest", enc(&util::npm_name(purl)?)))
+    if let Some(name) = pypi_name(purl) {
+        return Some(format!("https://pypi.org/pypi/{}/json", encode_segment(name)));
+    }
+    Some(format!("https://registry.npmjs.org/{}/latest", encode_segment(&util::npm_name(purl)?)))
+}
+
+fn cargo_versions_latest(name: &str, doc: &serde_json::Value) -> Option<(String, bool)> {
+    let versions = doc.get("versions")?.as_array()?;
+    let parsed: Vec<(semver::Version, String, bool)> = versions.iter().filter_map(|entry| {
+        if entry.get("crate")?.as_str()? != name {
+            return None;
+        }
+        let number = entry.get("num")?.as_str()?;
+        let version = semver::Version::parse(number).ok()?;
+        let yanked = entry.get("yanked")?.as_bool()?;
+        Some((version, number.to_string(), yanked))
+    }).collect();
+    let choose = |items: Vec<(semver::Version, String, bool)>| items.into_iter().max_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+    choose(parsed.iter().filter(|(_, _, yanked)| !*yanked).cloned().collect())
+        .or_else(|| choose(parsed))
+        .map(|(_, version, yanked)| (version, yanked))
 }
 
 /// The newest release a `latest_url` document names, and whether it is deprecated or yanked too.
 fn read_latest(purl: &str, doc: &serde_json::Value) -> Option<(String, bool)> {
+    if purl.starts_with("pkg:cargo/") {
+        return cargo_versions_latest(&cargo_name(purl)?, doc);
+    }
     let v = if pypi_name(purl).is_some() { doc.pointer("/info/version") } else { doc.get("version") }?.as_str()?.to_string();
     Some((v, read_doc(purl, doc).is_some()))
 }
@@ -150,13 +231,27 @@ fn read_latest(purl: &str, doc: &serde_json::Value) -> Option<(String, bool)> {
 /// Keeps what a version document said (one already fetched, such as the public-identity check's), so the refresh
 /// does not ask again.
 pub fn note(cache: &Path, purl: &str, version: &str, doc: &serde_json::Value) {
-    note_at(cache, purl, version, doc, now());
+    if purl.starts_with("pkg:cargo/") { return; }
+    note_at(cache, purl, version, doc, now(), None);
+}
+/// The identity-check path passes the exact lockfile pin so lifecycle cache writes are checksum-bound too.
+pub fn note_cargo(cache: &Path, purl: &str, pin: &crate::stack::Pin, doc: &serde_json::Value) {
+    note_at(cache, purl, &pin.version, doc, now(), Some(pin));
 }
 
-fn note_at(cache: &Path, purl: &str, version: &str, doc: &serde_json::Value, at: u64) {
-    let found = read_doc(purl, doc);
+fn note_at(cache: &Path, purl: &str, version: &str, doc: &serde_json::Value, at: u64, pin: Option<&crate::stack::Pin>) {
+    let (found, yanked) = if purl.starts_with("pkg:cargo/") {
+        if !cargo_doc_valid(purl, version, doc, pin) { return; }
+        let Some(name) = cargo_name(purl) else { return };
+        let Some((yanked, message)) = cargo_lifecycle(&name, version, doc) else { return };
+        (yanked.then_some((message, true)), yanked)
+    } else {
+        let found = read_doc(purl, doc);
+        let yanked = found.as_ref().is_some_and(|f| f.1);
+        (found, yanked)
+    };
     let latest = cached(cache, purl, version).and_then(|c| c.latest).filter(|_| found.is_some());
-    let c = Cached { checked: at, yanked: found.as_ref().is_some_and(|f| f.1), message: found.map(|f| f.0), repo: repository(purl, doc), repo_read: true, latest };
+    let c = Cached { checked: at, yanked, message: found.map(|f| f.0), repo: repository(purl, doc), repo_read: true, latest };
     if let Ok(bytes) = serde_json::to_vec(&c) {
         let _ = util::write_atomic(&path(cache, purl, version), &bytes);
     }
@@ -171,13 +266,17 @@ fn cached(cache: &Path, purl: &str, version: &str) -> Option<Cached> {
 pub fn installed(st: &Stack) -> Vec<(String, String, String)> {
     let mut out = vec![];
     for (purl, d) in &st.deps {
-        if !d.public_candidate || !(purl.starts_with("pkg:npm/") || purl.starts_with("pkg:pypi/")) {
+        let cargo = purl.starts_with("pkg:cargo/") && cargo_name(purl).is_some();
+        if !d.public_candidate || !(purl.starts_with("pkg:npm/") || purl.starts_with("pkg:pypi/") || cargo) {
             continue;
         }
         let mut versions: BTreeSet<String> = d.pins.iter().map(|p| p.version.clone()).collect();
+        if cargo {
+            versions.extend(d.readings.iter().filter(|r| r.lock.is_some() && !r.standalone).map(|r| r.version.to_string()));
+        }
         if versions.is_empty()
             && let Some(v) = &d.version
-            && d.readings.iter().any(|r| r.range.is_none() && !r.standalone)
+            && d.readings.iter().any(|r| if cargo { r.lock.is_some() && !r.standalone } else { r.range.is_none() && !r.standalone })
         {
             versions.insert(v.to_string());
         }
@@ -199,7 +298,12 @@ pub fn refresh(cache: &Path, st: &Stack, stop: &(dyn Fn() -> bool + Sync)) -> us
         if stop() {
             return None;
         }
-        let mut r = agent.get(url).call().ok().filter(|r| r.status().is_success())?;
+        let request = agent.get(url);
+        let mut r = if url.starts_with("https://crates.io/") {
+            request.header("User-Agent", &format!("unstale/{} (https://unstale.dev)", env!("CARGO_PKG_VERSION"))).call().ok()
+        } else {
+            request.call().ok()
+        }.filter(|r| r.status().is_success())?;
         let bytes = r.body_mut().with_config().limit(4 * 1024 * 1024).read_to_vec().ok()?;
         serde_json::from_slice(&bytes).ok()
     };
@@ -208,17 +312,20 @@ pub fn refresh(cache: &Path, st: &Stack, stop: &(dyn Fn() -> bool + Sync)) -> us
 
 /// `refresh` with the clock and the reader given (tests).
 pub fn refresh_with(cache: &Path, st: &Stack, at: u64, fetch: impl Fn(&str) -> Option<serde_json::Value> + Sync) -> usize {
-    let due: Vec<(String, String)> = installed(st)
+    let due: Vec<(String, String, Option<crate::stack::Pin>)> = installed(st)
         .into_iter()
         .filter(|(purl, _, v)| cached(cache, purl, v).is_none_or(|c| !c.repo_read || at.saturating_sub(c.checked) >= FRESH_SECS))
-        .map(|(purl, _, v)| (purl, v))
+        .map(|(purl, _, v)| {
+            let pin = st.deps.get(&purl).and_then(|d| d.pins.iter().find(|p| p.version == v)).cloned();
+            (purl, v, pin)
+        })
         .collect();
     let mut asked = 0;
-    util::concurrent(&due, util::REQUESTS_AT_ONCE, |(purl, v)| version_url(purl, v).and_then(|u| fetch(&u)), |i, doc| {
+    util::concurrent(&due, util::REQUESTS_AT_ONCE, |(purl, v, _)| version_url(purl, v).and_then(|u| fetch(&u)), |i, doc| {
         asked += 1;
         if let Some(doc) = doc {
-            let (purl, v) = &due[i];
-            note_at(cache, purl, v, &doc, at);
+            let (purl, v, pin) = &due[i];
+            note_at(cache, purl, v, &doc, at, pin.as_ref());
         }
         true
     });
@@ -276,7 +383,7 @@ mod tests {
     use crate::stack::{Dep, Pin, Reading};
 
     fn stack(deps: &[(&str, &str, Option<&str>)]) -> Stack {
-        let mut st = Stack { packages: vec![], deps: Default::default(), node: None, node_by_lock: Default::default(), python: None, notes: vec![], unreadable: 0, stub_runtimes: Default::default(), spread: 0, standalone: vec![], registries: Default::default(), fixture_registries: Default::default(), peers: vec![], unlocked: vec![] };
+        let mut st = Stack { packages: vec![], deps: Default::default(), cargo: Default::default(), node: None, node_by_lock: Default::default(), python: None, notes: vec![], unreadable: 0, stub_runtimes: Default::default(), spread: 0, standalone: vec![], registries: Default::default(), fixture_registries: Default::default(), peers: vec![], unlocked: vec![] };
         for (purl, name, pin) in deps {
             let mut d = Dep::new(name, true);
             if let Some(v) = pin {
@@ -300,6 +407,25 @@ mod tests {
     }
 
     #[test]
+    fn cargo_urls_use_canonical_identity_and_encoded_segments() {
+        assert_eq!(version_url("pkg:cargo/foo-bar", "1.0+meta").as_deref(), Some("https://crates.io/api/v1/crates/foo-bar/1.0%2Bmeta"));
+        assert_eq!(page("pkg:cargo/foo-bar", "alias", "1.0+meta"), "https://crates.io/crates/foo-bar/1.0%2Bmeta");
+        assert_eq!(latest_url("pkg:cargo/foo-bar").as_deref(), Some("https://crates.io/api/v1/crates/foo-bar/versions"));
+        assert_eq!(version_url("pkg:cargo/foo-bar@1.0.0", "1.0.0"), None, "versioned/noncanonical identity is not accepted");
+    }
+    #[test]
+    fn cargo_lifecycle_parser_is_tristate_and_repository_uses_crates_io_shape() {
+        let yanked = serde_json::json!({"version": {"crate": "foo-bar", "num": "1.2.3", "yanked": true, "yank_message": ""}});
+        let not_yanked = serde_json::json!({"version": {"crate": "foo-bar", "num": "1.2.3", "yanked": false}});
+        assert_eq!(cargo_lifecycle("foo-bar", "1.2.3", &yanked), Some((true, String::new())));
+        assert_eq!(cargo_lifecycle("foo-bar", "1.2.3", &not_yanked), Some((false, String::new())));
+        assert_eq!(cargo_lifecycle("foo-bar", "1.2.3", &serde_json::json!({"version": {"crate": "foo-bar", "num": "1.2.3", "yanked": "false"}})), None);
+        assert_eq!(cargo_lifecycle("foo-bar", "1.2.3", &serde_json::json!({"version": {"crate": "wrong", "num": "1.2.3", "yanked": true}})), None);
+        let repo = serde_json::json!({"crate": {"repository": "git+https://github.com/example/foo-bar.git"}});
+        assert_eq!(repository("pkg:cargo/foo-bar", &repo).as_deref(), Some("https://github.com/example/foo-bar"));
+        assert_eq!(repository("pkg:cargo/foo-bar", &serde_json::json!({"crate": {"repository": "https://example.invalid/foo"}})), None);
+    }
+    #[test]
     fn the_source_repository_is_read_as_osv_names_it() {
         let npm = |r: serde_json::Value| repository("pkg:npm/x", &serde_json::json!({ "repository": r }));
         assert_eq!(npm(serde_json::json!({"type": "git", "url": "git+https://github.com/pillarjs/multiparty.git"})).as_deref(), Some("https://github.com/pillarjs/multiparty"));
@@ -310,6 +436,143 @@ mod tests {
         assert_eq!(repository("pkg:pypi/starlette", &py).as_deref(), Some("https://github.com/encode/starlette"));
     }
 
+    fn write(root: &std::path::Path, path: &str, text: &str) {
+        let path = root.join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    }
+
+    const CRATES_IO: &str = "registry+https://github.com/rust-lang/crates.io-index";
+
+    fn cargo_stack() -> (Stack, String) {
+        let root = tempfile::tempdir().unwrap();
+        let checksum = "a".repeat(64);
+        write(root.path(), "Cargo.toml", "[package]\nname = \"app\"\nversion = \"1.0.0\"\n[dependencies]\nfoo-bar = \"=1.2.3\"\n");
+        write(
+            root.path(),
+            "Cargo.lock",
+            &format!(
+                "version = 4\n[[package]]\nname = \"app\"\nversion = \"1.0.0\"\ndependencies = [\"foo-bar 1.2.3 ({CRATES_IO})\"]\n[[package]]\nname = \"foo-bar\"\nversion = \"1.2.3\"\nsource = \"{CRATES_IO}\"\nchecksum = \"{checksum}\"\n"
+            ),
+        );
+        let st = crate::stack::detect_in(root.path(), &crate::privacy::Env::default()).unwrap();
+        (st, checksum)
+    }
+
+    #[test]
+    fn cargo_installed_versions_include_every_public_lockfile_resolution() {
+        let root = tempfile::tempdir().unwrap();
+        for (dir, package, version, checksum) in [
+            ("a", "app-a", "1.0.0", "a".repeat(64)),
+            ("b", "app-b", "2.0.0", "b".repeat(64)),
+        ] {
+            write(
+                root.path(),
+                &format!("{dir}/Cargo.toml"),
+                &format!("[package]\nname = \"{package}\"\nversion = \"0.1.0\"\n[dependencies]\nfoo-bar = \"={version}\"\n"),
+            );
+            write(
+                root.path(),
+                &format!("{dir}/Cargo.lock"),
+                &format!(
+                    "version = 4\n[[package]]\nname = \"{package}\"\nversion = \"0.1.0\"\ndependencies = [\"foo-bar {version} ({CRATES_IO})\"]\n[[package]]\nname = \"foo-bar\"\nversion = \"{version}\"\nsource = \"{CRATES_IO}\"\nchecksum = \"{checksum}\"\n"
+                ),
+            );
+        }
+        let st = crate::stack::detect_in(root.path(), &crate::privacy::Env::default()).unwrap();
+        let found: Vec<_> = installed(&st)
+            .into_iter()
+            .filter(|(purl, _, _)| purl == "pkg:cargo/foo-bar")
+            .map(|(_, _, version)| version)
+            .collect();
+        assert_eq!(found, vec!["1.0.0".to_string(), "2.0.0".to_string()]);
+        assert_eq!(
+            st.deps["pkg:cargo/foo-bar"].pins.iter().map(|pin| pin.version.as_str()).collect::<Vec<_>>(),
+            vec!["1.0.0", "2.0.0"],
+            "actual Cargo lockfile checksums feed the version-specific lifecycle checks",
+        );
+
+        let cache = tempfile::tempdir().unwrap();
+        let requested = std::sync::Mutex::new(vec![]);
+        assert_eq!(
+            refresh_with(cache.path(), &st, 1_000_000, |url| {
+                requested.lock().unwrap().push(url.to_string());
+                if url.ends_with("/versions") {
+                    Some(serde_json::json!({"versions": [{"crate": "foo-bar", "num": "2.1.0", "yanked": false}]}))
+                } else {
+                    let (version, checksum) = if url.ends_with("/1.0.0") { ("1.0.0", "a".repeat(64)) } else { ("2.0.0", "b".repeat(64)) };
+                    Some(serde_json::json!({"version": {"crate": "foo-bar", "num": version, "checksum": checksum, "yanked": version == "1.0.0", "yank_message": "withdrawn"}}))
+                }
+            }),
+            3,
+        );
+        let mut version_urls: Vec<_> = requested.lock().unwrap().iter().filter(|url| !url.ends_with("/versions")).cloned().collect();
+        version_urls.sort();
+        assert_eq!(
+            version_urls,
+            vec![
+                "https://crates.io/api/v1/crates/foo-bar/1.0.0".to_string(),
+                "https://crates.io/api/v1/crates/foo-bar/2.0.0".to_string(),
+            ]
+        );
+        assert_eq!(
+            notices(cache.path(), &st).iter().map(|notice| notice.version.as_str()).collect::<Vec<_>>(),
+            vec!["1.0.0"],
+        );
+    }
+    #[test]
+    fn cargo_identity_checksum_and_malformed_reads_do_not_overwrite_known_lifecycle_answers() {
+        let cache = tempfile::tempdir().unwrap();
+        let (st, checksum) = cargo_stack();
+        let purl = "pkg:cargo/foo-bar";
+        let pin = &st.deps[purl].pins[0];
+        let good = serde_json::json!({"version": {"crate": "foo-bar", "num": "1.2.3", "checksum": checksum, "yanked": true, "yank_message": ""}, "crate": {"repository": "https://github.com/example/foo-bar"}});
+        note_cargo(cache.path(), purl, pin, &good);
+        assert!(cached(cache.path(), purl, "1.2.3").unwrap().yanked);
+        let bad_checksum = serde_json::json!({"version": {"crate": "foo-bar", "num": "1.2.3", "checksum": "b".repeat(64), "yanked": false}});
+        note_cargo(cache.path(), purl, pin, &bad_checksum);
+        let wrong_identity = serde_json::json!({"version": {"crate": "wrong", "num": "1.2.3", "checksum": checksum, "yanked": false}});
+        note_cargo(cache.path(), purl, pin, &wrong_identity);
+        let malformed = serde_json::json!({"version": {"crate": "foo-bar", "num": "1.2.3", "checksum": checksum}});
+        note_cargo(cache.path(), purl, pin, &malformed);
+        let kept = cached(cache.path(), purl, "1.2.3").unwrap();
+        assert!(kept.yanked && kept.message.as_deref() == Some(""), "mismatches and malformed answers do not erase a known answer");
+        assert_eq!(kept.repo.as_deref(), Some("https://github.com/example/foo-bar"));
+        assert_eq!(line(&notices(cache.path(), &st)[0]), "foo-bar 1.2.3 yanked by its publisher (https://crates.io/crates/foo-bar/1.2.3)");
+    }
+    #[test]
+    fn yanked_cargo_version_reads_choose_non_yanked_replacement_and_failed_lists_do_not_invent_one() {
+        let cache = tempfile::tempdir().unwrap();
+        let (st, checksum) = cargo_stack();
+        let version_doc = serde_json::json!({"version": {"crate": "foo-bar", "num": "1.2.3", "checksum": checksum, "yanked": true, "yank_message": "bad release"}, "crate": {"repository": "https://github.com/example/foo-bar"}});
+        let versions = serde_json::json!({"versions": [
+            {"crate": "foo-bar", "num": "1.2.3", "yanked": true},
+            {"crate": "foo-bar", "num": "1.5.0", "yanked": false},
+            {"crate": "foo-bar", "num": "2.0.0", "yanked": true},
+            {"crate": "foo-bar", "num": "2.bad", "yanked": false}
+        ]});
+        assert_eq!(refresh_with(cache.path(), &st, 1_000_000, |url| if url.ends_with("/versions") { Some(versions.clone()) } else { Some(version_doc.clone()) }), 2);
+        assert_eq!(notices(cache.path(), &st)[0].latest, Some(("1.5.0".into(), false)));
+        assert_eq!(read_latest("pkg:cargo/foo-bar", &versions), Some(("1.5.0".into(), false)));
+
+        let failed = tempfile::tempdir().unwrap();
+        assert_eq!(refresh_with(failed.path(), &st, 1_000_000, |url| if url.ends_with("/versions") { Some(serde_json::json!({"versions": "malformed"})) } else { Some(version_doc.clone()) }), 2);
+        assert!(notices(failed.path(), &st)[0].latest.is_none(), "an unavailable versions list does not invent a replacement");
+        assert_eq!(refresh_with(failed.path(), &st, 1_000_000 + FRESH_SECS, |_| None), 2);
+        assert!(notices(failed.path(), &st)[0].yanked, "failed refreshes preserve the cached notice");
+    }
+    #[test]
+    fn cargo_release_list_is_not_read_for_a_known_not_yanked_version() {
+        let cache = tempfile::tempdir().unwrap();
+        let (st, checksum) = cargo_stack();
+        let reads = std::sync::Mutex::new(vec![]);
+        let doc = serde_json::json!({"version": {"crate": "foo-bar", "num": "1.2.3", "checksum": checksum, "yanked": false}});
+        assert_eq!(refresh_with(cache.path(), &st, 1_000_000, |url| { reads.lock().unwrap().push(url.to_string()); Some(doc.clone()) }), 1);
+        assert_eq!(*reads.lock().unwrap(), ["https://crates.io/api/v1/crates/foo-bar/1.2.3"]);
+        assert!(notices(cache.path(), &st).is_empty());
+        let known_not_yanked = cached(cache.path(), "pkg:cargo/foo-bar", "1.2.3").unwrap();
+        assert!(!known_not_yanked.yanked && known_not_yanked.message.is_none(), "valid false is cached as a known answer");
+    }
     #[test]
     fn installed_versions_are_asked_once_a_day_and_only_the_cache_is_read_for_output() {
         let cache = tempfile::tempdir().unwrap();

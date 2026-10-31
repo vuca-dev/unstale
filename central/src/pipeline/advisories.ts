@@ -54,7 +54,7 @@ import type { Classification, Questions } from "./classify/adapter.ts";
 import type { Labels } from "./classify/labels.ts";
 import { attachAdvisoryApis, packageNamesOf } from "./advisory-apis.ts";
 import { mergeBackports } from "./backports.ts";
-import { canonicalPurl, ecosystemOf, npmName as npmNameOf, npmPurl, pypiPurl, semverOrder, type RegistryPackage } from "./ecosystems.ts";
+import { canonicalPurl, cargoName, cargoPurl, ecosystemOf, npmName as npmNameOf, npmPurl, pypiPurl, semverOrder, type RegistryPackage } from "./ecosystems.ts";
 import type { Incoming } from "./extract.ts";
 import { buildIndex, lineFn, recomputeReleases } from "./lines.ts";
 import { advisoryIds, create, evidenceOf, K, kindOf, matchRequest, nearIdenticalQuote, pick, retrieve } from "./match.ts";
@@ -190,8 +190,28 @@ async function osvQuery(purl: string): Promise<OsvVuln[]> {
 
 /** The package URL of an OSV `affected` entry, canonical (`%40scope`), without version or qualifiers. */
 function entryPurl(a: NonNullable<OsvVuln["affected"]>[number]): string | undefined {
-  const name = a.package?.name;
-  const p = a.package?.purl ?? (name && a.package?.ecosystem === "npm" ? npmPurl(name) : name && a.package?.ecosystem === "PyPI" ? pypiPurl(name) : undefined);
+  const pkg = a.package;
+  const name = pkg?.name;
+  if (pkg?.purl !== undefined) {
+    if (pkg.ecosystem === "crates.io" || /^pkg:cargo\//i.test(pkg.purl)) {
+      try {
+        const crate = cargoName(pkg.purl);
+        return crate ? cargoPurl(crate) : undefined;
+      } catch {
+        return undefined;
+      }
+    }
+    return pkg.purl.replace(/@[^/]*$/, "").replace(/[?#].*$/, "").replace(/^pkg:npm\/@/, "pkg:npm/%40");
+  }
+  if (pkg?.ecosystem === "crates.io") {
+    if (typeof name !== "string") return undefined;
+    try {
+      return cargoPurl(name);
+    } catch {
+      return undefined;
+    }
+  }
+  const p = name && pkg?.ecosystem === "npm" ? npmPurl(name) : name && pkg?.ecosystem === "PyPI" ? pypiPurl(name) : undefined;
   return p?.replace(/@[^/]*$/, "").replace(/[?#].*$/, "").replace(/^pkg:npm\/@/, "pkg:npm/%40");
 }
 

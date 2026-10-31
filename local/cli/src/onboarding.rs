@@ -182,9 +182,13 @@ pub struct Pending {
     /// What this run's bound left undone, in the report's words (never saved): the report says it is incomplete.
     #[serde(skip)]
     pub cut: Vec<&'static str>,
-    /// Weekly npm and PyPI downloads of unsubmitted packages, read once for `registration_order` (0 when unreadable).
+    /// Weekly npm and PyPI downloads of unsubmitted packages, read once for `registration_order` (legacy unreadable-to-zero fallback).
+    /// Cargo uses crates.io's distinct 90-day window below; these measurement windows are never compared.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub downloads: BTreeMap<String, u64>,
+    /// Crates.io downloads over 90 days. Missing means unattempted; `None` means attempted but unknown, not zero.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub cargo_recent_downloads_90d: BTreeMap<String, Option<u64>>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -804,6 +808,7 @@ fn fetch(url: String) -> Option<serde_json::Value> {
 }
 /// A registry document: `Ok(None)` when the registry answers that it has none (a 4xx other than a limit or a
 /// timeout), `Err` when it gave no answer (no connection, a limit, a server failure, an unreadable body).
+#[derive(Debug, PartialEq, Eq)]
 struct Unanswered;
 fn read_doc(url: String) -> std::result::Result<Option<serde_json::Value>, Unanswered> {
     let mut r = agent().get(url).call().map_err(|_| Unanswered)?;
@@ -813,6 +818,59 @@ fn read_doc(url: String) -> std::result::Result<Option<serde_json::Value>, Unans
     }
     let bytes = r.body_mut().with_config().limit(4 * 1024 * 1024).read_to_vec().map_err(|_| Unanswered)?;
     serde_json::from_slice(&bytes).map(Some).map_err(|_| Unanswered)
+}
+fn crates_agent() -> ureq::Agent {
+    agent()
+}
+fn read_crates_doc_with(a: &ureq::Agent, url: &str) -> std::result::Result<Option<serde_json::Value>, Unanswered> {
+    let user_agent = format!("unstale/{} (https://unstale.dev)", env!("CARGO_PKG_VERSION"));
+    let mut r = a.get(url).header("User-Agent", &user_agent).call().map_err(|_| Unanswered)?;
+    let status = r.status().as_u16();
+    if !r.status().is_success() {
+        return if (400..500).contains(&status) && !matches!(status, 408 | 425 | 429) { Ok(None) } else { Err(Unanswered) };
+    }
+    let bytes = r.body_mut().with_config().limit(4 * 1024 * 1024).read_to_vec().map_err(|_| Unanswered)?;
+    serde_json::from_slice(&bytes).map(Some).map_err(|_| Unanswered)
+}
+fn read_crates_doc(url: &str) -> std::result::Result<Option<serde_json::Value>, Unanswered> {
+    read_crates_doc_with(&crates_agent(), url)
+}
+fn canonical_crate_name(purl: &str) -> Option<String> {
+    let name = util::cargo_name(purl)?;
+    let canonical = format!("pkg:cargo/{name}");
+    (canonical == purl && name.as_bytes().first().is_some_and(|b| b.is_ascii_alphanumeric()) && name.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))).then_some(name)
+}
+fn crates_metadata_url(name: &str) -> String {
+    format!("https://crates.io/api/v1/crates/{}", encode(name))
+}
+fn crates_version_url(name: &str, version: &str) -> String {
+    format!("https://crates.io/api/v1/crates/{}/{}", encode(name), encode(version))
+}
+fn sha256_pins(pin: &stack::Pin) -> Vec<&str> {
+    pin.hashes.iter().filter_map(|hash| {
+        let hex = hash.strip_prefix("sha256:")?;
+        (hex.len() == 64 && hex.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))).then_some(hex)
+    }).collect()
+}
+/// `Ok(false)` is a definite registry mismatch/not-found; insufficient response shape or unusable local checksum is unknown.
+fn crates_pin_matches(name: &str, pin: &stack::Pin, doc: &serde_json::Value) -> std::result::Result<bool, Unanswered> {
+    let version = doc.get("version").ok_or(Unanswered)?;
+    let crate_name = version.get("crate").and_then(|v| v.as_str()).ok_or(Unanswered)?;
+    let number = version.get("num").and_then(|v| v.as_str()).ok_or(Unanswered)?;
+    if crate_name != name || number != pin.version {
+        return Ok(false);
+    }
+    let checksum = version.get("checksum").and_then(|v| v.as_str()).ok_or(Unanswered)?;
+    if checksum.len() != 64 || !checksum.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)) {
+        return Err(Unanswered);
+    }
+    let expected = sha256_pins(pin);
+    if expected.is_empty() { return Err(Unanswered); }
+    Ok(expected.contains(&checksum))
+}
+fn crates_crate_matches(name: &str, doc: &serde_json::Value) -> std::result::Result<bool, Unanswered> {
+    let id = doc.pointer("/crate/id").and_then(|v| v.as_str()).ok_or(Unanswered)?;
+    Ok(id == name)
 }
 /// Whether every document `check` reads says yes: `None` when none says no but some went unanswered, so the
 /// identity is asked again rather than taken as not public.
@@ -833,6 +891,26 @@ fn public_package(cache: &Path, purl: &str, pins: &[stack::Pin]) -> Option<bool>
     // No third-party lookup (`UNSTALE_NO_REGISTRY=1`): nothing is verified, so nothing is submitted.
     if crate::privacy::registry_off() {
         return Some(false);
+    }
+    if purl.starts_with("pkg:cargo/") {
+        let Some(name) = canonical_crate_name(purl) else { return Some(false) };
+        if pins.is_empty() {
+            return match read_crates_doc(&crates_metadata_url(&name)) {
+                Ok(Some(doc)) => crates_crate_matches(&name, &doc).ok(),
+                Ok(None) => Some(false),
+                Err(Unanswered) => None,
+            };
+        }
+        return all_answered(pins, |pin| {
+            let doc = read_crates_doc(&crates_version_url(&name, &pin.version))?;
+            let Some(doc) = doc else { return Ok(false) };
+            let matches = crates_pin_matches(&name, pin, &doc)?;
+            if matches {
+                // Seed lifecycle data only from the exact identity, version, and lockfile checksum that was verified.
+                crate::deprecations::note_cargo(cache, purl, pin, &doc);
+            }
+            Ok(matches)
+        });
     }
     // PyPI has no private packages: a project page for the normalised name is the public identity.
     if let Some(name) = purl.strip_prefix("pkg:pypi/") {
@@ -943,19 +1021,83 @@ fn pypi_project(purl: &str) -> String {
 fn pypistats_last_week(v: &serde_json::Value) -> Option<u64> {
     v.pointer("/data/last_week").and_then(|d| d.as_u64())
 }
+/// Crates.io's explicit 90-day adoption signal. Missing, malformed, and reported zero stay distinct.
+fn crates_recent_downloads(v: &serde_json::Value) -> Option<u64> {
+    v.pointer("/crate/recent_downloads").and_then(|d| d.as_u64())
+}
+fn crates_recent_downloads_with(
+    purls: &[String],
+    stop: impl Fn() -> bool + Sync,
+    read: impl Fn(&str) -> Option<serde_json::Value> + Sync,
+) -> BTreeMap<String, Option<u64>> {
+    let requested: Vec<(String, String)> = purls.iter().filter_map(|purl| {
+        Some((purl.clone(), crates_metadata_url(&canonical_crate_name(purl)?)))
+    }).collect();
+    let mut out = BTreeMap::new();
+    util::concurrent(
+        &requested,
+        util::REQUESTS_AT_ONCE,
+        |(_, url)| if stop() { None } else { Some(read(url)) },
+        |i, result| {
+            if let Some(doc) = result {
+                out.insert(requested[i].0.clone(), doc.as_ref().and_then(crates_recent_downloads));
+            }
+            !stop()
+        },
+    );
+    out
+}
+fn crates_recent_downloads_if_enabled(
+    purls: &[String],
+    registry_off: bool,
+    stop: impl Fn() -> bool + Sync,
+    read: impl Fn(&str) -> Option<serde_json::Value> + Sync,
+) -> BTreeMap<String, Option<u64>> {
+    if registry_off { return BTreeMap::new(); }
+    crates_recent_downloads_with(purls, stop, read)
+}
+fn crates_recent_downloads_for(purls: &[String], stop: impl Fn() -> bool + Sync) -> BTreeMap<String, Option<u64>> {
+    let registry_off = crate::privacy::registry_off();
+    if registry_off {
+        return BTreeMap::new();
+    }
+    let a = crates_agent();
+    crates_recent_downloads_if_enabled(purls, registry_off, stop, |url| read_crates_doc_with(&a, url).ok().flatten())
+}
+fn registration_candidates(unsubmitted: &BTreeSet<String>, registry_off: bool) -> BTreeSet<String> {
+    if registry_off { unsubmitted.iter().filter(|p| !p.starts_with("pkg:cargo/")).cloned().collect() }
+    else { unsubmitted.clone() }
+}
 
-/// The order new packages are sent in, so that what fits under the service's registration limit is what matters most:
-/// adoption as a proxy for impact. Within an ecosystem, weekly downloads (npm, PyPI), then how many of this repository's
-/// manifests declare the package, then the name. Ecosystems take turns, so one without download counts is not starved.
-fn registration_order(purls: &BTreeSet<String>, st: &stack::Stack, downloads: &BTreeMap<String, u64>) -> Vec<String> {
-    let mut by_ecosystem: BTreeMap<&str, Vec<(&String, u64, usize)>> = BTreeMap::new();
+/// The order new packages are sent in, so that what fits under the service's registration limit is what matters most.
+/// npm and PyPI use weekly downloads; Cargo uses crates.io's distinct 90-day count. Counts are sorted only within
+/// their ecosystem, then declarers and PURL; ecosystems take turns so one without counts is not starved.
+fn registration_order(
+    purls: &BTreeSet<String>,
+    st: &stack::Stack,
+    downloads: &BTreeMap<String, u64>,
+    cargo_recent_downloads_90d: &BTreeMap<String, Option<u64>>,
+) -> Vec<String> {
+    let mut by_ecosystem: BTreeMap<&str, Vec<(&String, Option<u64>, usize)>> = BTreeMap::new();
     for p in purls {
         let declarers = st.packages.iter().filter(|m| m.declared.contains(p)).count();
         let ecosystem = p.split('/').next().unwrap_or_default();
-        by_ecosystem.entry(ecosystem).or_default().push((p, downloads.get(p).copied().unwrap_or(0), declarers));
+        let count = if ecosystem == "pkg:cargo" {
+            cargo_recent_downloads_90d.get(p).copied().flatten()
+        } else {
+            Some(downloads.get(p).copied().unwrap_or(0))
+        };
+        by_ecosystem.entry(ecosystem).or_default().push((p, count, declarers));
     }
-    for list in by_ecosystem.values_mut() {
-        list.sort_by(|a, b| b.1.cmp(&a.1).then(b.2.cmp(&a.2)).then(a.0.cmp(b.0)));
+    for (ecosystem, list) in &mut by_ecosystem {
+        list.sort_by(|a, b| {
+            let counts = if *ecosystem == "pkg:cargo" {
+                b.1.is_some().cmp(&a.1.is_some()).then_with(|| b.1.cmp(&a.1))
+            } else {
+                b.1.cmp(&a.1)
+            };
+            counts.then(b.2.cmp(&a.2)).then(a.0.cmp(b.0))
+        });
     }
     let rounds = by_ecosystem.values().map(Vec::len).max().unwrap_or(0);
     (0..rounds).flat_map(|i| by_ecosystem.values().filter_map(move |l| l.get(i)).map(|e| e.0.clone()).collect::<Vec<_>>()).collect()
@@ -3977,19 +4119,32 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
         let registrations = pending.unsubmitted.len();
         let known = pending.jobs.len();
         pending.downloads.retain(|p, _| pending.unsubmitted.contains(p));
+        pending.cargo_recent_downloads_90d.retain(|p, _| pending.unsubmitted.contains(p));
         let unread: Vec<String> = pending.unsubmitted.iter().filter(|p| (p.starts_with("pkg:npm/") || p.starts_with("pkg:pypi/")) && !pending.downloads.contains_key(*p)).cloned().collect();
         if !unread.is_empty() {
             ui.update("Connecting public coverage · step 3/5", &format!("Ranking {registrations} public packages by adoption"), "Most-used packages are registered first");
-            // A count that cannot be read is kept as 0, so an npm outage costs one attempt, not one per run.
+            // Keep npm/PyPI's legacy unreadable-to-zero behavior unchanged.
             let read = weekly_downloads(&unread, || bound.passed());
             // Past the bound nothing more is registered in this run: an unread count is not an unreadable one.
             pending.downloads.extend(unread.into_iter().filter(|p| !bound.passed() || read.contains_key(p)).map(|p| {
                 let d = read.get(&p).copied().unwrap_or(0);
                 (p, d)
             }));
-            save(ctx, pending)?;
         }
-        let order = registration_order(&pending.unsubmitted, &st, &pending.downloads);
+        if !crate::privacy::registry_off() {
+            let unattempted: Vec<String> = pending.unsubmitted.iter()
+                .filter(|p| p.starts_with("pkg:cargo/") && !pending.cargo_recent_downloads_90d.contains_key(*p))
+                .cloned().collect();
+            if !unattempted.is_empty() {
+                ui.update("Connecting public coverage · step 3/5", &format!("Ranking {registrations} public packages by adoption"), "Cargo adoption uses crates.io's 90-day download signal");
+                let read = crates_recent_downloads_for(&unattempted, || bound.passed());
+                pending.cargo_recent_downloads_90d.extend(read);
+            }
+        }
+        // Persist all attempted signals (including unknown Cargo reads) before any coverage request.
+        save(ctx, pending)?;
+        let registrable = registration_candidates(&pending.unsubmitted, crate::privacy::registry_off());
+        let order = registration_order(&registrable, &st, &pending.downloads, &pending.cargo_recent_downloads_90d);
         let a = agent();
         register(pending, order, |batch| if bound.passed() { vec![] } else { register_batch(&a, service, batch) }, |accepted| {
             ui.update("Connecting public coverage · step 3/5", &registered_text(accepted, registrations, known), "Public names only · acknowledged jobs continue centrally");
@@ -4542,7 +4697,7 @@ mod tests {
         };
         let st = crate::stack::Stack {
             packages: vec![manifest(&["pkg:pypi/django", "pkg:pypi/aiohttp"]), manifest(&["pkg:pypi/django"])],
-            deps: Default::default(),
+            deps: Default::default(), cargo: Default::default(),
             node: None, node_by_lock: Default::default(), python: None,
             notes: vec![],
             unreadable: 0, stub_runtimes: Default::default(), spread: 0, peers: vec![], unlocked: vec![],
@@ -4555,10 +4710,95 @@ mod tests {
         let downloads: BTreeMap<String, u64> =
             [("pkg:npm/%40codemirror/view", 2_000_000), ("pkg:npm/express", 60_000_000), ("pkg:npm/undici", 30_000_000)].map(|(p, d)| (p.to_string(), d)).into();
         assert_eq!(
-            registration_order(&purls, &st, &downloads),
+            registration_order(&purls, &st, &downloads, &BTreeMap::new()),
             ["pkg:npm/express", "pkg:pypi/django", "pkg:npm/undici", "pkg:pypi/aiohttp", "pkg:npm/%40codemirror/view"]
         );
-        assert_eq!(registration_order(&purls, &st, &BTreeMap::new())[0], "pkg:npm/%40codemirror/view", "without counts: declarers, then name");
+        assert_eq!(registration_order(&purls, &st, &BTreeMap::new(), &BTreeMap::new())[0], "pkg:npm/%40codemirror/view", "without counts: declarers, then name");
+    }
+    #[test]
+    fn crates_io_identity_and_checksum_checks_keep_unknown_distinct_from_mismatch() {
+        let purl = "pkg:cargo/foo-bar";
+        assert_eq!(canonical_crate_name(purl).as_deref(), Some("foo-bar"));
+        assert_eq!(crates_metadata_url("foo-bar"), "https://crates.io/api/v1/crates/foo-bar");
+        assert_eq!(crates_version_url("foo-bar", "1.0+build"), "https://crates.io/api/v1/crates/foo-bar/1.0%2Bbuild");
+        assert_eq!(canonical_crate_name("pkg:cargo/foo_bar").as_deref(), Some("foo_bar"), "do not rewrite Cargo identity spellings");
+        assert_eq!(canonical_crate_name("pkg:cargo/foo%2Dbar"), None, "encoded spellings are not the discovered canonical PURL");
+        let checksum = "a".repeat(64);
+        let pin = stack::Pin { version: "1.2.3".into(), hashes: vec![format!("sha256:{checksum}")] };
+        let matching = serde_json::json!({"version": {"crate": "foo-bar", "num": "1.2.3", "checksum": checksum}});
+        assert_eq!(crates_pin_matches("foo-bar", &pin, &matching), Ok(true));
+        let wrong_name = serde_json::json!({"version": {"crate": "foo", "num": "1.2.3", "checksum": checksum}});
+        assert_eq!(crates_pin_matches("foo-bar", &pin, &wrong_name), Ok(false));
+        let wrong_version = serde_json::json!({"version": {"crate": "foo-bar", "num": "9.0.0", "checksum": checksum}});
+        assert_eq!(crates_pin_matches("foo-bar", &pin, &wrong_version), Ok(false));
+        let wrong_checksum = serde_json::json!({"version": {"crate": "foo-bar", "num": "1.2.3", "checksum": "b".repeat(64)}});
+        assert_eq!(crates_pin_matches("foo-bar", &pin, &wrong_checksum), Ok(false));
+        assert!(crates_pin_matches("foo-bar", &pin, &serde_json::json!({"version": {"crate": "foo-bar", "num": "1.2.3"}})).is_err());
+        let missing_hash = stack::Pin { version: "1.2.3".into(), hashes: vec!["sha512:unusable".into()] };
+        assert!(crates_pin_matches("foo-bar", &missing_hash, &matching).is_err());
+        assert!(crates_crate_matches("foo-bar", &serde_json::json!({"crate": {"id": "foo-bar"}})).unwrap());
+        assert_eq!(crates_crate_matches("foo-bar", &serde_json::json!({"crate": {"id": "foo"}})), Ok(false));
+        assert!(crates_crate_matches("foo-bar", &serde_json::json!({})).is_err());
+    }
+    #[test]
+    fn crates_io_90_day_counts_preserve_zero_unknown_and_order_only_inside_ecosystems() {
+        assert_eq!(crates_recent_downloads(&serde_json::json!({"crate": {"recent_downloads": 123}})), Some(123));
+        assert_eq!(crates_recent_downloads(&serde_json::json!({"crate": {"recent_downloads": 0}})), Some(0));
+        for value in [serde_json::json!({}), serde_json::json!({"crate": {"recent_downloads": null}}), serde_json::json!({"crate": {"recent_downloads": -1}}), serde_json::json!({"crate": {"recent_downloads": "5"}})] {
+            assert_eq!(crates_recent_downloads(&value), None);
+        }
+        let purls: BTreeSet<String> = ["pkg:cargo/a", "pkg:cargo/b", "pkg:cargo/c", "pkg:cargo/d", "pkg:cargo/unknown", "pkg:npm/npm", "pkg:pypi/py"].map(String::from).into();
+        let mut st = stack::Stack::default();
+        let manifest = |declared: &[&str]| stack::Package { dir: ".".into(), kind: stack::Kind::Application, lockfile: None, declared: declared.iter().map(|p| p.to_string()).collect(), own: None };
+        st.packages = vec![manifest(&["pkg:cargo/a", "pkg:cargo/b", "pkg:cargo/d", "pkg:cargo/unknown", "pkg:npm/npm", "pkg:pypi/py"]), manifest(&["pkg:cargo/a", "pkg:cargo/unknown"])];
+        let weekly: BTreeMap<String, u64> = [("pkg:npm/npm", 999), ("pkg:pypi/py", 1)].map(|(p, n)| (p.into(), n)).into();
+        let cargo: BTreeMap<String, Option<u64>> = [("pkg:cargo/a", Some(8)), ("pkg:cargo/b", Some(8)), ("pkg:cargo/d", Some(8)), ("pkg:cargo/c", Some(0)), ("pkg:cargo/unknown", None)].map(|(p, n)| (p.into(), n)).into();
+        assert_eq!(registration_order(&purls, &st, &weekly, &cargo), [
+            "pkg:cargo/a", "pkg:npm/npm", "pkg:pypi/py", "pkg:cargo/b", "pkg:cargo/d", "pkg:cargo/c", "pkg:cargo/unknown"
+        ], "known counts descend; declarers break Cargo ties; zero is known; measurement windows do not cross-sort");
+        let reads = crates_recent_downloads_with(&["pkg:cargo/foo-bar".into(), "pkg:cargo/unknown".into(), "pkg:cargo/failed".into()], || false, |url| {
+            assert!(url.starts_with("https://crates.io/api/v1/crates/"));
+            if url.ends_with("failed") { None }
+            else if url.ends_with("foo-bar") { Some(serde_json::json!({"crate": {"recent_downloads": 0}})) }
+            else { Some(serde_json::json!({})) }
+        });
+        assert_eq!(reads.get("pkg:cargo/foo-bar"), Some(&Some(0)));
+        assert_eq!(reads.get("pkg:cargo/unknown"), Some(&None), "a malformed answer is an attempted unknown");
+        assert_eq!(reads.get("pkg:cargo/failed"), Some(&None), "a failed request is also persisted as an attempted unknown");
+        let stopped_calls = std::sync::atomic::AtomicUsize::new(0);
+        let stopped = crates_recent_downloads_with(&["pkg:cargo/later".into()], || true, |_| {
+            stopped_calls.fetch_add(1, Ordering::Relaxed);
+            Some(serde_json::json!({"crate": {"recent_downloads": 50}}))
+        });
+        assert!(stopped.is_empty());
+        assert_eq!(stopped_calls.load(Ordering::Relaxed), 0, "the onboarding time bound prevents Cargo requests not yet started");
+        let skipped_calls = std::sync::atomic::AtomicUsize::new(0);
+        let skipped = crates_recent_downloads_if_enabled(&["pkg:cargo/later".into()], true, || false, |_| {
+            skipped_calls.fetch_add(1, Ordering::Relaxed);
+            Some(serde_json::json!({"crate": {"recent_downloads": 50}}))
+        });
+        assert!(skipped.is_empty());
+        assert_eq!(skipped_calls.load(Ordering::Relaxed), 0, "registry-off does not invoke Cargo readers");
+        let unsubmitted: BTreeSet<String> = ["pkg:cargo/later", "pkg:npm/queued"].map(String::from).into();
+        let expected: BTreeSet<String> = ["pkg:npm/queued"].map(String::from).into();
+        assert_eq!(registration_candidates(&unsubmitted, true), expected);
+        assert!(unsubmitted.contains("pkg:cargo/later"), "a queued Cargo package stays for a later run");
+        let mut pending = Pending::default();
+        pending.cargo_recent_downloads_90d = reads;
+        let saved = serde_json::to_value(&pending).unwrap();
+        assert_eq!(saved["cargo_recent_downloads_90d"]["pkg:cargo/foo-bar"], 0);
+        assert_eq!(saved["cargo_recent_downloads_90d"]["pkg:cargo/unknown"], serde_json::Value::Null);
+    }
+    #[test]
+    fn coverage_registration_posts_the_exact_canonical_cargo_purl() {
+        let purl = "pkg:cargo/foo-bar";
+        let (base, _) = service_stub(move |target, body| {
+            assert_eq!(target, "POST /coverage");
+            assert_eq!(body, r#"{"purl":"pkg:cargo/foo-bar"}"#);
+            (200, job_json(purl).to_string())
+        });
+        let registered = request_via(&agent(), &base, purl, true).unwrap();
+        assert_eq!(registered.purl, purl);
     }
     #[test]
     fn pypi_adoption_is_read_from_pypistats_and_orders_pypi_registration() {
@@ -4566,10 +4806,10 @@ mod tests {
         let v: serde_json::Value = serde_json::from_str(r#"{"data":{"last_day":1,"last_month":40,"last_week":12},"package":"django","type":"recent_downloads"}"#).unwrap();
         assert_eq!(pypistats_last_week(&v), Some(12));
         assert_eq!(pypistats_last_week(&serde_json::json!({"data": {}})), None);
-        let st = stack::Stack { packages: vec![], deps: Default::default(), node: None, node_by_lock: Default::default(), python: None, notes: vec![], unreadable: 0, stub_runtimes: Default::default(), spread: 0, standalone: vec![], registries: Default::default(), fixture_registries: Default::default(), peers: vec![], unlocked: vec![] };
+        let st = stack::Stack { packages: vec![], deps: Default::default(), cargo: Default::default(), node: None, node_by_lock: Default::default(), python: None, notes: vec![], unreadable: 0, stub_runtimes: Default::default(), spread: 0, standalone: vec![], registries: Default::default(), fixture_registries: Default::default(), peers: vec![], unlocked: vec![] };
         let purls: BTreeSet<String> = ["pkg:pypi/aiohttp", "pkg:pypi/django", "pkg:pypi/zstandard"].map(String::from).into();
         let downloads: BTreeMap<String, u64> = [("pkg:pypi/zstandard", 9_000_000), ("pkg:pypi/django", 3_000_000)].map(|(p, d)| (p.to_string(), d)).into();
-        assert_eq!(registration_order(&purls, &st, &downloads), ["pkg:pypi/zstandard", "pkg:pypi/django", "pkg:pypi/aiohttp"]);
+        assert_eq!(registration_order(&purls, &st, &downloads, &BTreeMap::new()), ["pkg:pypi/zstandard", "pkg:pypi/django", "pkg:pypi/aiohttp"]);
     }
     #[test]
     fn pending_coverage_points_to_a_later_status_check() {
@@ -4633,6 +4873,7 @@ mod tests {
         let st = crate::stack::Stack {
             packages: vec![],
             deps: [("pkg:pypi/flask", dep("flask")), ("pkg:npm/%40babel/core", dep("@babel/core"))].map(|(p, d)| (p.to_string(), d)).into(),
+            cargo: Default::default(),
             node: None, node_by_lock: Default::default(), python: None,
             notes: vec![],
             unreadable: 0, stub_runtimes: Default::default(), spread: 0, peers: vec![], unlocked: vec![],
@@ -5410,7 +5651,7 @@ mod tests {
         assert!(major_step(&v("0.27.10"), &v("0.28.0")), "a minor step on 0.x is a major one");
         assert!(!major_step(&v("0.27.1"), &v("0.27.10")));
         assert!(major_step(&v("0.2.1"), &v("20.0.1")), "read the other way: a 0.2.1 capability predates a project on 20");
-        let st = crate::stack::Stack { packages: vec![], deps: Default::default(), node: None, node_by_lock: Default::default(), python: None, notes: vec![], unreadable: 0, stub_runtimes: Default::default(), spread: 0, standalone: vec![], registries: Default::default(), fixture_registries: Default::default(), peers: vec![], unlocked: vec![] };
+        let st = crate::stack::Stack { packages: vec![], deps: Default::default(), cargo: Default::default(), node: None, node_by_lock: Default::default(), python: None, notes: vec![], unreadable: 0, stub_runtimes: Default::default(), spread: 0, standalone: vec![], registries: Default::default(), fixture_registries: Default::default(), peers: vec![], unlocked: vec![] };
         assert!(!specific_reference("connection", &st));
         assert!(specific_reference("cacheLife", &st));
         assert!(specific_reference("client.beta.agents.environments", &st));

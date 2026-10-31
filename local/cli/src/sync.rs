@@ -191,7 +191,15 @@ fn technologies_validators_path(cache_dir: &Path) -> PathBuf {
 /// The technologies the catalog has an index for, each with the first 16 hex digits of its index's sha256, or None when
 /// it publishes no list (or it cannot be read or does not verify): then every candidate is asked for. Conditional over
 /// HTTP, the cached copy reused on a 304.
-fn listed_technologies(src: &Source, cache_dir: &Path, key: Option<&[u8; 32]>) -> Option<BTreeMap<String, String>> {
+fn listed_technologies(
+    src: &Source,
+    cache_dir: &Path,
+    key: Option<&[u8; 32]>,
+    stop: &(dyn Fn() -> bool + Sync),
+) -> Option<BTreeMap<String, String>> {
+    if stop() {
+        return None;
+    }
     let cached_path = cache_dir.join(TECHNOLOGIES);
     let cached = std::fs::read(&cached_path).ok();
     let key_id = key.map(|k| sha256_hex(k));
@@ -201,8 +209,11 @@ fn listed_technologies(src: &Source, cache_dir: &Path, key: Option<&[u8; 32]>) -
         .filter(|v| cached.as_deref().is_some_and(|c| sha256_hex(c) == v.sha256) && (key_id.is_none() || v.key == key_id));
     let (bytes, fresh) = match src.get(TECHNOLOGIES, cond.as_ref()).ok()? {
         Got::Body(b, v) => {
+            if stop() {
+                return None;
+            }
             if let Some(key) = key {
-                verify_signed(src, TECHNOLOGIES, &b, key).ok()?;
+                verify_signed(src, TECHNOLOGIES, &b, key, stop).ok()?;
             }
             (b, Some(v))
         }
@@ -319,8 +330,17 @@ fn from_hex(s: &str) -> Option<Vec<u8>> {
 }
 
 /// `rel`'s bytes against the signature published beside it (`<rel>.sig`, hex).
-fn verify_signed(src: &Source, rel: &str, bytes: &[u8], key: &[u8; 32]) -> Result<()> {
+fn verify_signed(
+    src: &Source,
+    rel: &str,
+    bytes: &[u8],
+    key: &[u8; 32],
+    stop: &(dyn Fn() -> bool + Sync),
+) -> Result<()> {
     let sig_rel = format!("{rel}.sig");
+    if stop() {
+        bail!("catalog sync stopped at its time limit before fetching {}", src.describe(&sig_rel));
+    }
     let sig = match src.get(&sig_rel, None)? {
         Got::Body(b, _) => b,
         _ => bail!("{} is not signed ({} not found)", src.describe(rel), src.describe(&sig_rel)),
@@ -332,12 +352,18 @@ fn verify_signed(src: &Source, rel: &str, bytes: &[u8], key: &[u8; 32]) -> Resul
 }
 
 fn sync_with(src: &Source, cache_dir: &Path, candidates: &BTreeSet<String>, withheld: &BTreeSet<String>, purls: &BTreeSet<String>, key: Option<&[u8; 32]>, stop: &(dyn Fn() -> bool + Sync), mut progress: impl FnMut(&str)) -> Result<Report> {
+    if stop() {
+        bail!("catalog sync stopped at its time limit before fetching {}", src.describe("v1/root.json"));
+    }
     let root_bytes = match src.get("v1/root.json", None)? {
         Got::Body(b, _) => b,
         _ => bail!("no catalog at {} (v1/root.json not found)", src.describe("v1/root.json")),
     };
+    if stop() {
+        bail!("catalog sync stopped at its time limit after fetching {}", src.describe("v1/root.json"));
+    }
     if let Some(key) = key {
-        verify_signed(src, "v1/root.json", &root_bytes, key)?;
+        verify_signed(src, "v1/root.json", &root_bytes, key, stop)?;
     }
     let root: Root = serde_json::from_slice(&root_bytes).context("root.json does not parse")?;
     check_root(&root)?;
@@ -350,7 +376,7 @@ fn sync_with(src: &Source, cache_dir: &Path, candidates: &BTreeSet<String>, with
     }
     // Candidates the catalog's list does not name are not covered: settled without a request.
     let listed = match src {
-        Source::Http { .. } => listed_technologies(src, cache_dir, key),
+        Source::Http { .. } => listed_technologies(src, cache_dir, key, stop),
         Source::Dir(_) => None,
     };
     // No list over HTTP: a private dependency's name is not asked for (it would be named in the request).
@@ -379,7 +405,7 @@ fn sync_with(src: &Source, cache_dir: &Path, candidates: &BTreeSet<String>, with
             },
             None => None,
         };
-        sync_one(src, cache_dir, tech, purls, key, hash)
+        sync_one(src, cache_dir, tech, purls, key, hash, stop)
     }, |i, outcome| {
         outcomes[i] = Some(outcome);
         progress(techs[i]);
@@ -406,7 +432,15 @@ enum Outcome {
 
 /// One technology: its index (conditionally; not at all when `listed`, the hash the catalog's list gives it, is the
 /// cached index's), then its shards, swapped into the cache.
-fn sync_one(src: &Source, cache_dir: &Path, tech: &str, purls: &BTreeSet<String>, key: Option<&[u8; 32]>, listed: Option<&str>) -> Outcome {
+fn sync_one(
+    src: &Source,
+    cache_dir: &Path,
+    tech: &str,
+    purls: &BTreeSet<String>,
+    key: Option<&[u8; 32]>,
+    listed: Option<&str>,
+    stop: &(dyn Fn() -> bool + Sync),
+) -> Outcome {
     let rel = format!("v1/tech/{tech}.json");
     // A conditional request only when the cached index is the one the validators were stored with.
     let cached = std::fs::read(index_path(cache_dir, tech)).ok();
@@ -415,7 +449,7 @@ fn sync_one(src: &Source, cache_dir: &Path, tech: &str, purls: &BTreeSet<String>
         && h.len() == 16
         && sha256_hex(c).starts_with(h)
     {
-        return match sync_tech(src, cache_dir, tech, c, purls) {
+        return match sync_tech(src, cache_dir, tech, c, purls, stop) {
             Ok(Some(t)) => Outcome::Synced(t),
             Ok(None) => Outcome::NotInStack,
             Err(e) => Outcome::Failed(format!("{e:#}")),
@@ -425,11 +459,14 @@ fn sync_one(src: &Source, cache_dir: &Path, tech: &str, purls: &BTreeSet<String>
         .ok()
         .and_then(|b| serde_json::from_slice::<Validators>(&b).ok())
         .filter(|v| cached.as_deref().is_some_and(|c| sha256_hex(c) == v.sha256));
+    if stop() {
+        return Outcome::Failed("not checked".into());
+    }
     let (bytes, fresh_validators) = match src.get(&rel, cond.as_ref()) {
         Ok(Got::Body(b, v)) => {
             // A 304 reuses the cached index, verified when it arrived.
             if let Some(key) = key
-                && let Err(e) = verify_signed(src, &rel, &b, key)
+                && let Err(e) = verify_signed(src, &rel, &b, key, stop)
             {
                 return Outcome::Failed(format!("{e:#}"));
             }
@@ -442,7 +479,7 @@ fn sync_one(src: &Source, cache_dir: &Path, tech: &str, purls: &BTreeSet<String>
         Ok(Got::NotFound) => return Outcome::NotCovered,
         Err(e) => return Outcome::Failed(format!("{e:#}")),
     };
-    match sync_tech(src, cache_dir, tech, &bytes, purls) {
+    match sync_tech(src, cache_dir, tech, &bytes, purls, stop) {
         Ok(Some(t)) => {
             // Validators are stored after the swap, describing the index now in the cache.
             if let Some(mut v) = fresh_validators {
@@ -464,7 +501,14 @@ fn sync_one(src: &Source, cache_dir: &Path, tech: &str, purls: &BTreeSet<String>
     }
 }
 
-fn sync_tech(src: &Source, cache_dir: &Path, tech: &str, index_bytes: &[u8], purls: &BTreeSet<String>) -> Result<Option<TechSync>> {
+fn sync_tech(
+    src: &Source,
+    cache_dir: &Path,
+    tech: &str,
+    index_bytes: &[u8],
+    purls: &BTreeSet<String>,
+    stop: &(dyn Fn() -> bool + Sync),
+) -> Result<Option<TechSync>> {
     let index: TechIndex = serde_json::from_slice(index_bytes).context("index does not parse")?;
     if index.schema > CATALOG_SCHEMA {
         bail!("index schema {} is newer than this unstale reads ({CATALOG_SCHEMA}); upgrade unstale; cached copy kept", index.schema);
@@ -485,6 +529,9 @@ fn sync_tech(src: &Source, cache_dir: &Path, tech: &str, index_bytes: &[u8], pur
             }
             _ => {
                 let rel = published(&s.path)?;
+                if stop() {
+                    bail!("catalog sync stopped at its time limit before fetching shard {}", s.path);
+                }
                 let b = match src.get(&rel, None).with_context(|| format!("shard {}", s.path))? {
                     Got::Body(b, _) => b,
                     _ => bail!("shard {} missing ({} not found)", s.path, src.describe(&rel)),
@@ -735,6 +782,26 @@ mod tests {
         let rep = sync(&srv.base, cache.path(), &cands(&["next"]), &purls(&["pkg:npm/next"])).unwrap();
         assert_eq!((rep.synced[0].downloaded, rep.synced[0].reused, rep.synced[0].unchanged), (1, 1, false));
         assert!(srv.take_log().contains(&"/v1/tech/next.json 200".to_string()));
+    }
+
+    #[test]
+    fn catalog_sync_does_not_start_or_continue_root_reads_after_its_bound() {
+        let cat = FixtureCatalog::new();
+        let srv = TestServer::start(cat.dir.path().to_path_buf(), false);
+        let cache = tempfile::tempdir().unwrap();
+        let src = resolve_source(&srv.base).unwrap();
+        let candidates = cands(&["next"]);
+        let purls = purls(&[]);
+
+        let err = sync_with(&src, cache.path(), &candidates, &BTreeSet::new(), &purls, None, &|| true, |_| {}).unwrap_err();
+        assert!(format!("{err:#}").contains("time limit"), "{err:#}");
+        assert!(srv.take_log().is_empty(), "an already expired bound starts no catalog request");
+
+        let checks = std::sync::atomic::AtomicUsize::new(0);
+        let stop_after_root = || checks.fetch_add(1, std::sync::atomic::Ordering::Relaxed) >= 1;
+        let err = sync_with(&src, cache.path(), &candidates, &BTreeSet::new(), &purls, None, &stop_after_root, |_| {}).unwrap_err();
+        assert!(format!("{err:#}").contains("time limit"), "{err:#}");
+        assert_eq!(srv.take_log(), vec!["/v1/root.json 200"], "a bound reached during the root request prevents the list request");
     }
 
     #[test]

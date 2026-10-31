@@ -15,19 +15,24 @@ export interface PublicTechnology {
   tag: string;
   components: string[];
 }
-export { npmIdentity, pypiIdentity, packageIdentity, technologyId } from "./identity.ts";
-import { npmIdentity, packageIdentity, pypiIdentity, technologyId } from "./identity.ts";
-export const DISCOVERY_VERSION = 2;
+export { npmIdentity, pypiIdentity, cargoIdentity, cargoPurl, packageIdentity, technologyId } from "./identity.ts";
+import { npmIdentity, pypiIdentity, cargoIdentity, packageIdentity, technologyId } from "./identity.ts";
+export const DISCOVERY_VERSION = 3;
 export function releasePattern(
   purl: string,
   repo?: string,
   directory?: string,
 ): string {
+  const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  if (purl.startsWith("pkg:cargo/")) {
+    cargoIdentity(purl);
+    const numeric = "(?:0|[1-9]\\d*)";
+    return `^v?(${numeric}\\.${numeric}\\.${numeric})$`;
+  }
   const known = Object.values(TECHNOLOGIES).find((t) =>
     t.components.includes(purl),
   );
   if (known) return known.tag.source;
-  const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   if (purl.startsWith("pkg:pypi/")) {
     // Python projects tag `v1.2`, `1.2.3`, `name-1.2.3`, `name_1.2.3` (Azure) or `name==1.2.3` (LangChain); PyPI names may be written with `_` or `.`.
     const name = pypiIdentity(purl).split("-").map(escape).join("[-_.]");
@@ -79,9 +84,68 @@ async function discoverPypi(purl: string): Promise<PublicTechnology> {
   else if (m) t.homepage = `https://github.com/${m[1]}`;
   return t;
 }
+function githubRepoSlug(repository: unknown): string | undefined {
+  if (typeof repository !== "string" || !repository.trim()) return undefined;
+  const source = repository.trim();
+  const scp = /^git@github\.com:([^?#]+)$/i.exec(source);
+  let path: string | undefined;
+  if (scp) path = scp[1];
+  else {
+    let candidate = source.replace(/^git\+/, "");
+    if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(candidate)) candidate = `https://${candidate}`;
+    try {
+      const url = new URL(candidate);
+      if (url.hostname.toLowerCase() !== "github.com" || url.username && url.username !== "git") return undefined;
+      path = url.pathname;
+    } catch {
+      return undefined;
+    }
+  }
+  if (!path) return undefined;
+  const parts = path.replace(/^\/+/, "").split("/");
+  if (parts.length < 2) return undefined;
+  const slug = `${parts[0]}/${parts[1]!.replace(/\.git$/i, "")}`;
+  return isRepoSlug(slug) ? slug : undefined;
+}
+function absoluteHttps(value: unknown): value is string {
+  if (typeof value !== "string" || value !== value.trim() || !/^https:\/\//i.test(value)) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && !!url.hostname && !url.username && !url.password;
+  } catch {
+    return false;
+  }
+}
+const stableCargoVersion = (value: unknown): value is string =>
+  typeof value === "string" && /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/.test(value);
+/** Verify one exact crates.io crate identity and read its stable metadata. */
+async function discoverCargo(purl: string): Promise<PublicTechnology> {
+  const name = cargoIdentity(purl);
+  const data = await json(`https://crates.io/api/v1/crates/${encodeURIComponent(name)}`);
+  const crate = data?.crate;
+  if (!crate || typeof crate !== "object" || crate.id !== name)
+    throw new Error("Public registry identity could not be verified");
+  const latest: unknown = crate.max_stable_version;
+  if (!stableCargoVersion(latest)) throw new Error("No stable public version found");
+  const repo = githubRepoSlug(crate.repository);
+  const t: PublicTechnology = {
+    discovery_version: DISCOVERY_VERSION,
+    purl,
+    id: technologyId(purl),
+    name,
+    latest,
+    tag: releasePattern(purl),
+    components: [purl],
+  };
+  if (repo) t.repo = repo;
+  if (absoluteHttps(crate.homepage)) t.homepage = crate.homepage;
+  else if (repo) t.homepage = `https://github.com/${repo}`;
+  return t;
+}
 export async function discoverTechnology(
   purl: string,
 ): Promise<PublicTechnology> {
+  if (purl.startsWith("pkg:cargo/")) return discoverCargo(purl);
   if (purl.startsWith("pkg:pypi/")) return discoverPypi(purl);
   const name = npmIdentity(purl);
   const registryUrl = `https://registry.npmjs.org/${encodeURIComponent(name)}`;

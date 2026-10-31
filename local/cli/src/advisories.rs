@@ -69,7 +69,17 @@ struct Node {
     private: bool,
     /// Where the lockfile says it came from (`privacy`).
     seen: Seen,
+    /// Cargo member classification and usage-role result, used for runtime-root selection.
+    cargo_runtime_root: bool,
     edges: Vec<Edge>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DependencyKind {
+    Runtime,
+    Development,
+    Build,
+    Unknown,
 }
 
 #[derive(Debug)]
@@ -77,7 +87,18 @@ struct Edge {
     to: usize,
     /// The range the parent requires, when the lockfile records it.
     range: Option<String>,
+    /// Kept for the existing npm removable-dependency behavior.
     dev: bool,
+    kind: DependencyKind,
+    /// Optional dependencies and target-specific declarations are not unconditional evidence.
+    conditional: bool,
+    target: Option<String>,
+}
+
+impl AsRef<Graph> for Graph {
+    fn as_ref(&self) -> &Graph {
+        self
+    }
 }
 
 impl Graph {
@@ -101,9 +122,48 @@ impl Graph {
         self.nodes[i].local = Some(dir.into());
         i
     }
+    fn cargo_local(&mut self, dir: &str, kind: crate::stack::Kind, runtime_root: bool) -> usize {
+        let i = self.local(dir);
+        self.nodes[i].published = kind == crate::stack::Kind::Library;
+        self.nodes[i].cargo_runtime_root = runtime_root;
+        i
+    }
     fn edge(&mut self, from: usize, to: usize, range: Option<&str>, dev: bool) {
         if from != to {
-            self.nodes[from].edges.push(Edge { to, range: range.map(String::from), dev });
+            self.nodes[from].edges.push(Edge {
+                to,
+                range: range.map(String::from),
+                dev,
+                kind: if dev { DependencyKind::Development } else { DependencyKind::Runtime },
+                conditional: false,
+                target: None,
+            });
+        }
+    }
+    fn cargo_edge(
+        &mut self,
+        from: usize,
+        to: usize,
+        range: Option<&str>,
+        kind: DependencyKind,
+        conditional: bool,
+        target: Option<&str>,
+    ) {
+        if from == to {
+            return;
+        }
+        let edge = Edge {
+            to,
+            range: range.map(String::from),
+            dev: kind == DependencyKind::Development,
+            kind,
+            conditional,
+            target: target.map(String::from),
+        };
+        if let Some(existing) = self.nodes[from].edges.iter_mut().find(|e| e.to == to && e.kind == DependencyKind::Unknown) {
+            *existing = edge;
+        } else {
+            self.nodes[from].edges.push(edge);
         }
     }
     fn saw(&mut self, i: usize, seen: Seen) {
@@ -667,11 +727,147 @@ pub fn pipfile_lock(text: &str, lock_dir: &str, file: &str) -> Graph {
     g
 }
 
+fn cargo_id_key(id: &crate::cargo::CargoPackageId) -> String {
+    let source = id.source.as_deref().unwrap_or("");
+    format!("cargo:{}:{}:{}:{}:{}:{}", id.name.len(), id.name, id.version, source.len(), source, id.source.is_some())
+}
+
+fn cargo_manifest_is_fixture(manifest: &crate::cargo::CargoManifest) -> bool {
+    !matches!(crate::usage::path_role(&manifest.path), crate::usage::Role::App | crate::usage::Role::Tooling)
+}
+
+/// Build one source-aware advisory graph for the exact lockfile assigned by Cargo workspace detection.
+/// All Cargo parsing and membership decisions come from `cargo::CargoInventory`.
+fn cargo_graph(file: &str, inventory: &crate::cargo::CargoInventory, st: &Stack) -> Option<Graph> {
+    let lock = inventory.lockfiles.get(file)?;
+    let members: Vec<&crate::cargo::CargoManifest> = inventory.manifests.values()
+        .filter(|m| m.lockfile.as_deref() == Some(file) && m.package.is_some())
+        .collect();
+    let mut g = Graph::new(file, "crates.io");
+    let mut root_by_dir = BTreeMap::new();
+    for manifest in &members {
+        let package = manifest.package.as_ref().expect("filtered package member");
+        let runtime_root = matches!(package.kind, crate::stack::Kind::Application | crate::stack::Kind::Library)
+            && crate::usage::path_role(&manifest.path) == crate::usage::Role::App;
+        root_by_dir.insert(manifest.dir.clone(), g.cargo_local(&manifest.dir, package.kind, runtime_root));
+    }
+
+    // A lockfile's source-less workspace package records map to their own member roots only when identity is unique.
+    let mut local_ids: BTreeMap<String, usize> = BTreeMap::new();
+    let mut lock_record_by_member: BTreeMap<String, &crate::cargo::CargoLockPackage> = BTreeMap::new();
+    let mut local_ambiguous = BTreeSet::new();
+    for record in &lock.packages {
+        if record.id.source.is_some() { continue; }
+        let candidates: Vec<&crate::cargo::CargoManifest> = members.iter().copied().filter(|m| {
+            m.package.as_ref().is_some_and(|p| p.name == record.id.name && p.version.as_ref().is_none_or(|v| v == &record.id.version))
+        }).collect();
+        if candidates.len() == 1 {
+            let dir = &candidates[0].dir;
+            if let Some(&root) = root_by_dir.get(dir) {
+                local_ids.insert(cargo_id_key(&record.id), root);
+                lock_record_by_member.insert(dir.clone(), record);
+            }
+        } else if candidates.len() > 1 {
+            local_ambiguous.insert(cargo_id_key(&record.id));
+        }
+    }
+
+    let mut package_nodes: BTreeMap<String, usize> = BTreeMap::new();
+    for record in &lock.packages {
+        let key = cargo_id_key(&record.id);
+        if local_ambiguous.contains(&key) { continue; }
+        let i = if let Some(&root) = local_ids.get(&key) {
+            root
+        } else {
+            let i = g.node(&key, &record.id.name, &record.id.version.to_string());
+            // A source-less lock record that is not a discovered workspace member is a path/unknown source,
+            // not positive evidence that a versioned manifest requirement came from crates.io.
+            let seen = if record.id.source.is_none() {
+                crate::privacy::Seen::Elsewhere
+            } else {
+                crate::privacy::Seen::cargo_lockfile_source(record.id.source.as_deref())
+            };
+            g.saw(i, seen);
+            i
+        };
+        package_nodes.insert(key, i);
+    }
+
+    // Cargo.lock edges have no dependency-kind evidence. Local lock edges are not declarations: only effective
+    // member-manifest dependencies establish directness.
+    for record in &lock.packages {
+        let Some(&from) = package_nodes.get(&cargo_id_key(&record.id)) else { continue };
+        if g.nodes[from].local.is_some() { continue; }
+        for dependency in &record.dependencies {
+            let Some(version) = dependency.version.as_ref() else { continue };
+            let mut candidates = lock.packages.iter().filter(|candidate| {
+                candidate.id.name == dependency.name && &candidate.id.version == version && candidate.id.source == dependency.source
+            });
+            let Some(target_record) = candidates.next() else { continue };
+            if candidates.next().is_some() { continue; }
+            let Some(&to) = package_nodes.get(&cargo_id_key(&target_record.id)) else { continue; };
+            g.cargo_edge(from, to, None, DependencyKind::Unknown, false, None);
+        }
+    }
+
+    // Declarations retain actual package identity, directness, Cargo kind, requirement, optionality, and target.
+    // Resolutions are source-aware IDs from the shared parser; unresolved declarations add no guessed edge.
+    for declaration in inventory.declarations.iter().filter(|d| root_by_dir.contains_key(&d.manifest_dir)) {
+        let Some(resolved) = declaration.resolved.as_ref() else { continue; };
+        let Some(root_record) = lock_record_by_member.get(&declaration.manifest_dir) else { continue; };
+        // Do not accept a requirement-based fallback as a graph edge: the member lock record must establish this exact ID.
+        if !root_record.dependencies.iter().any(|edge| {
+            edge.name == resolved.name && edge.version.as_ref() == Some(&resolved.version) && edge.source == resolved.source
+        }) { continue; }
+        let Some(&from) = root_by_dir.get(&declaration.manifest_dir) else { continue; };
+        let Some(&to) = package_nodes.get(&cargo_id_key(resolved)) else { continue; };
+        g.saw(to, crate::privacy::Seen::cargo_manifest_source(declaration.privacy_declaration.as_ref()));
+        let kind = match declaration.kind {
+            crate::cargo::CargoDependencyKind::Normal => DependencyKind::Runtime,
+            crate::cargo::CargoDependencyKind::Development => DependencyKind::Development,
+            crate::cargo::CargoDependencyKind::Build => DependencyKind::Build,
+        };
+        g.cargo_edge(from, to, declaration.requirement.as_deref(), kind,
+            declaration.optional || declaration.target.is_some(), declaration.target.as_deref());
+    }
+
+    // Apply fixture-specific privacy only where a package is reachable exclusively from fixture members.
+    let mut from_app = vec![false; g.nodes.len()];
+    let mut from_fixture = vec![false; g.nodes.len()];
+    for manifest in &members {
+        let Some(&root) = root_by_dir.get(&manifest.dir) else { continue; };
+        let seen = if cargo_manifest_is_fixture(manifest) { &mut from_fixture } else { &mut from_app };
+        let mut queue = VecDeque::from([root]);
+        seen[root] = true;
+        while let Some(i) = queue.pop_front() {
+            for edge in &g.nodes[i].edges {
+                if !seen[edge.to] { seen[edge.to] = true; queue.push_back(edge.to); }
+            }
+        }
+    }
+    let has_app_member = members.iter().any(|m| !cargo_manifest_is_fixture(m));
+    for (i, node) in g.nodes.iter_mut().enumerate() {
+        if node.local.is_some() { continue; }
+        let fixture_only = (from_fixture[i] && !from_app[i]) || (!from_fixture[i] && !from_app[i] && !has_app_member);
+        let purl = util::cargo_purl(&node.name);
+        if !st.registries.may_name_cargo(&purl, node.seen)
+            || (fixture_only && !st.fixture_registries.may_name_cargo(&purl, node.seen))
+        { node.private = true; }
+    }
+    Some(g)
+}
+
 const PY_LOCKS: &[&str] = &["uv.lock", "poetry.lock", "Pipfile.lock"];
 
 /// Every lockfile the stack's manifests read their versions from, as a graph.
 pub fn graphs(root: &Path, st: &Stack) -> Vec<Graph> {
     let mut files: BTreeSet<String> = BTreeSet::new();
+    let mut cargo_graphs = Vec::new();
+    for file in st.cargo.lockfiles.keys() {
+        if let Some(graph) = cargo_graph(file, &st.cargo, st) {
+            cargo_graphs.push(graph);
+        }
+    }
     for p in &st.packages {
         let Some(l) = &p.lockfile else { continue };
         if l.contains('/') || !PY_LOCKS.contains(&l.as_str()) {
@@ -692,7 +888,7 @@ pub fn graphs(root: &Path, st: &Stack) -> Vec<Graph> {
             d = join_dir(&d, "..");
         }
     }
-    let mut out = vec![];
+    let mut out = cargo_graphs;
     for f in files {
         let Ok(text) = std::fs::read_to_string(root.join(&f)) else { continue };
         let (dir, base) = match f.rsplit_once('/') {
@@ -725,6 +921,10 @@ pub fn graphs(root: &Path, st: &Stack) -> Vec<Graph> {
     let own: BTreeSet<String> = st.packages.iter().filter_map(|p| p.own.as_deref()).filter_map(util::purl_name).collect();
     let libraries: BTreeSet<String> = st.packages.iter().filter(|p| p.kind == crate::stack::Kind::Library).map(|p| join_dir(&p.dir, "")).collect();
     for g in &mut out {
+        // Cargo has source-aware nodes and its own Cargo-specific privacy decision in `cargo_graph`.
+        if g.eco == "crates.io" {
+            continue;
+        }
         for n in &mut g.nodes {
             n.published = n.local.as_deref().is_some_and(|d| libraries.contains(&join_dir(d, "")));
         }
@@ -998,15 +1198,31 @@ pub fn cvss_severity(vector: &str) -> Option<Severity> {
 }
 
 fn parse_ver(eco: &str, v: &str) -> Option<Version> {
-    if eco == "PyPI" { crate::pypi::parse_version(v) } else { util::parse_version(v) }
+    if eco == "crates.io" {
+        Version::parse(v).ok()
+    } else if eco == "PyPI" {
+        crate::pypi::parse_version(v)
+    } else {
+        util::parse_version(v)
+    }
+}
+
+fn cargo_satisfies(version: &Version, requirement: &str) -> Option<bool> {
+    let req = semver::VersionReq::parse(requirement).ok()?;
+    Some(req.matches(version))
 }
 
 fn admits(eco: &str, v: &Version, range: &str) -> Option<bool> {
     let r = range.trim();
-    if r.is_empty() || r == "*" {
-        return Some(true);
+    if eco == "crates.io" {
+        cargo_satisfies(v, r)
+    } else if r.is_empty() || r == "*" {
+        Some(true)
+    } else if eco == "PyPI" {
+        crate::pypi::spec_satisfies(v, r)
+    } else {
+        util::npm_satisfies(v, r)
     }
-    if eco == "PyPI" { crate::pypi::spec_satisfies(v, r) } else { util::npm_satisfies(v, r) }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1047,41 +1263,83 @@ pub fn evaluate(
     overrides: impl Fn(&Graph, &str, &Version) -> Vec<(String, &'static str)>,
     today: i64,
 ) -> (usize, Vec<Item>) {
+    let refs: Vec<&Graph> = gs.iter().collect();
+    evaluate_refs(&refs, matches, docs, overrides, today)
+}
+
+fn evaluate_refs(
+    gs: &[&Graph],
+    matches: &BTreeMap<(String, String, String), Vec<String>>,
+    docs: &BTreeMap<String, Doc>,
+    overrides: impl Fn(&Graph, &str, &Version) -> Vec<(String, &'static str)>,
+    today: i64,
+) -> (usize, Vec<Item>) {
     let mut raw = 0;
-    let mut items: BTreeMap<(String, String, String), Item> = BTreeMap::new();
-    for g in gs {
+    let mut items: BTreeMap<(String, String, String, String), Item> = BTreeMap::new();
+    for &g in gs {
         let n = g.nodes.len();
-        let mut parents: Vec<Vec<(usize, Option<&str>)>> = vec![vec![]; n];
+        let cargo = g.eco == "crates.io";
+        let mut parents: Vec<Vec<(usize, &Edge)>> = vec![vec![]; n];
         let mut direct = vec![false; n];
+        let mut direct_runtime = vec![false; n];
+        let mut direct_possible_runtime = vec![false; n];
         for (i, nd) in g.nodes.iter().enumerate() {
             for e in &nd.edges {
-                parents[e.to].push((i, e.range.as_deref()));
+                parents[e.to].push((i, e));
                 if nd.local.is_some() && g.nodes[e.to].local.is_none() {
                     direct[e.to] = true;
+                    if cargo && nd.cargo_runtime_root && e.kind == DependencyKind::Runtime {
+                        direct_possible_runtime[e.to] = true;
+                        if !e.conditional && e.target.is_none() {
+                            direct_runtime[e.to] = true;
+                        }
+                    }
                 }
             }
         }
-        // The runtime closure: from every project of the application's own code (not a CI, test or example
-        // manifest: `usage::path_role`), along non-dev edges.
+        // Cargo runtime roots are actual package members in application-role paths. Proven runtime follows only
+        // unconditional normal manifest edges; possible runtime also follows conditional normal and unknown lockfile
+        // edges so serious advisories are surfaced without claiming those dependencies are definitely active. Other
+        // ecosystems retain their existing package.json-based root and non-dev-edge behavior.
         let runtime = {
             let mut seen = vec![false; n];
             let app = |d: &str| crate::usage::path_role(&if d == "." { "package.json".to_string() } else { format!("{d}/package.json") }) == crate::usage::Role::App;
-            let mut q: VecDeque<usize> = (0..n).filter(|&i| g.nodes[i].local.as_deref().is_some_and(app)).collect();
-            for &i in &q {
-                seen[i] = true;
-            }
+            let mut q: VecDeque<usize> = (0..n).filter(|&i| {
+                if cargo {
+                    g.nodes[i].local.is_some() && g.nodes[i].cargo_runtime_root
+                } else {
+                    g.nodes[i].local.as_deref().is_some_and(app)
+                }
+            }).collect();
+            for &i in &q { seen[i] = true; }
             while let Some(i) = q.pop_front() {
-                for e in g.nodes[i].edges.iter().filter(|e| !e.dev) {
-                    if !seen[e.to] {
-                        seen[e.to] = true;
-                        q.push_back(e.to);
-                    }
+                for e in g.nodes[i].edges.iter().filter(|e| {
+                    if cargo { e.kind == DependencyKind::Runtime && !e.conditional && e.target.is_none() } else { !e.dev }
+                }) {
+                    if !seen[e.to] { seen[e.to] = true; q.push_back(e.to); }
                 }
             }
             seen
         };
+        let possible_runtime = if cargo {
+            let mut seen = vec![false; n];
+            let mut q: VecDeque<usize> = (0..n)
+                .filter(|&i| g.nodes[i].local.is_some() && g.nodes[i].cargo_runtime_root)
+                .collect();
+            for &i in &q { seen[i] = true; }
+            while let Some(i) = q.pop_front() {
+                for e in g.nodes[i].edges.iter().filter(|e| {
+                    matches!(e.kind, DependencyKind::Runtime | DependencyKind::Unknown)
+                }) {
+                    if !seen[e.to] { seen[e.to] = true; q.push_back(e.to); }
+                }
+            }
+            seen
+        } else {
+            runtime.clone()
+        };
         for (i, nd) in g.nodes.iter().enumerate() {
-            if nd.local.is_some() {
+            if nd.local.is_some() || (cargo && nd.private) {
                 continue;
             }
             let Some(ids) = matches.get(&(g.eco.to_string(), nd.name.clone(), nd.version.clone())) else { continue };
@@ -1117,7 +1375,9 @@ pub fn evaluate(
                 let sev = d.severity.unwrap_or(Severity::Unrated);
                 let high = sev >= Severity::High;
                 // Low and unrated never call for action; dev-only below critical never does either.
-                if sev < Severity::Moderate || (!runtime[i] && sev < Severity::Critical) {
+                if sev < Severity::Moderate
+                    || (!runtime[i] && !possible_runtime[i] && sev < Severity::Critical)
+                {
                     continue;
                 }
                 // The record's entry for this package, else (a record with no package entry, matched on the
@@ -1156,6 +1416,8 @@ pub fn evaluate(
                 let mut why = vec![];
                 if high && runtime[i] {
                     why.push(format!("{} at runtime", sev.word()));
+                } else if high && cargo && possible_runtime[i] {
+                    why.push(format!("{} on a potentially active Cargo dependency", sev.word()));
                 }
                 let mut blocked = false;
                 if fixes.is_empty() {
@@ -1165,10 +1427,15 @@ pub fn evaluate(
                     // The first range or override refusing the lowest fix, when every fix is refused.
                     let ovs = overrides(g, &nd.name, &installed);
                     // Published projects first: their range is the one every installer meets.
-                    let mut ps: Vec<&(usize, Option<&str>)> = parents[i].iter().collect();
+                    let mut ps: Vec<&(usize, &Edge)> = parents[i].iter().collect();
                     ps.sort_by_key(|(p, _)| !g.nodes[*p].published);
                     let refuses = |f: &Version| -> Option<String> {
-                        for (p, r) in ps.iter().copied() {
+                        for (p, edge) in ps.iter().copied() {
+                            // Cargo optional/target-conditioned declarations cannot establish an unqualified blocker.
+                            if cargo && (edge.conditional || edge.target.is_some()) {
+                                continue;
+                            }
+                            let r = edge.range.as_deref();
                             // A range the installed version is outside of is superseded (an override set it).
                             if let Some(r) = r
                                 && ovs.is_empty()
@@ -1196,12 +1463,19 @@ pub fn evaluate(
                 // moderate at runtime when its fix is refused by a range, pin or override, when it is new on a
                 // direct dependency, or when no release fixes it on a direct dependency (replace or mitigate: the
                 // code calls it). A moderate with no fixed version on a transitive package, or new on one, is a nit.
+                let proven_runtime_direct = if cargo { direct_runtime[i] } else { direct[i] };
                 let shown = if !runtime[i] {
-                    blocked
+                    if cargo && possible_runtime[i] {
+                        high
+                            || (blocked && !fixes.is_empty())
+                            || (direct_possible_runtime[i] && (fresh || fixes.is_empty()))
+                    } else {
+                        blocked
+                    }
                 } else if high {
                     true
                 } else {
-                    (blocked && !fixes.is_empty()) || (direct[i] && (fresh || fixes.is_empty()))
+                    (blocked && !fixes.is_empty()) || (proven_runtime_direct && (fresh || fixes.is_empty()))
                 };
                 if !shown {
                     continue;
@@ -1229,7 +1503,7 @@ pub fn evaluate(
                         }
                     }
                 }
-                let key = (nd.name.clone(), nd.version.clone(), id.clone());
+                let key = (g.eco.to_string(), nd.name.clone(), nd.version.clone(), id.clone());
                 let it = items.entry(key).or_insert_with(|| Item {
                     id: id.clone(),
                     name: nd.name.clone(),
@@ -1263,9 +1537,10 @@ pub fn evaluate(
 /// of any lockfile requires (a peer or a parent keeps it installed: `react-dom` under `next`) and whose name `named`
 /// finds nowhere. Removing it removes everything only it pulls in. PyPI is never judged: an import name need not be
 /// the distribution's (`yaml` for `pyyaml`).
-pub fn removable(gs: &[Graph], items: &[Item], named: impl Fn(&[&str]) -> BTreeSet<String>) -> Vec<String> {
+pub fn removable<G: AsRef<Graph>>(gs: &[G], items: &[Item], named: impl Fn(&[&str]) -> BTreeSet<String>) -> Vec<String> {
     let mut cands: BTreeSet<String> = items.iter().flat_map(|i| if i.via.is_empty() { vec![format!("{} {}", i.name, i.version)] } else { i.via.clone() }).collect();
-    for g in gs {
+    for graph in gs {
+        let g = graph.as_ref();
         let mut kept: BTreeSet<String> = BTreeSet::new();
         for nd in &g.nodes {
             for e in &nd.edges {
@@ -1282,7 +1557,10 @@ pub fn removable(gs: &[Graph], items: &[Item], named: impl Fn(&[&str]) -> BTreeS
         cands.retain(|c| !kept.contains(c));
     }
     // Only names some graph declares as a runtime direct dependency of a project.
-    cands.retain(|c| gs.iter().any(|g| g.eco == "npm" && g.nodes.iter().any(|nd| nd.local.is_some() && nd.edges.iter().any(|e| !e.dev && format!("{} {}", g.nodes[e.to].name, g.nodes[e.to].version) == *c))));
+    cands.retain(|c| gs.iter().any(|graph| {
+        let g = graph.as_ref();
+        g.eco == "npm" && g.nodes.iter().any(|nd| nd.local.is_some() && nd.edges.iter().any(|e| !e.dev && format!("{} {}", g.nodes[e.to].name, g.nodes[e.to].version) == *c))
+    }));
     let names: BTreeSet<&str> = cands.iter().filter_map(|c| c.rsplit_once(' ').map(|(n, _)| n)).collect();
     let names: Vec<&str> = names.into_iter().collect();
     let found = if names.is_empty() { BTreeSet::new() } else { named(&names) };
@@ -1456,6 +1734,9 @@ pub fn refresh_with(
     // package's).
     let mut by_repo: BTreeSet<((String, String, String), String)> = BTreeSet::new();
     for g in &gs {
+        if g.eco == "crates.io" {
+            continue;
+        }
         for (n, v) in g.direct() {
             let w = (g.eco.to_string(), n.clone(), v.clone());
             if wanted.contains(&w)
@@ -1552,8 +1833,11 @@ pub fn refresh_with(
         locks.get(&g.file).into_iter().flatten().filter(|l| l.file == base).flat_map(|l| l.override_values(name, installed)).collect()
     };
     let today = (at / 86400) as i64;
-    let (raw, items) = evaluate(&gs, &matches, &docs, overrides, today);
-    let unused = removable(&gs, &items, |names| named_in(root, names));
+    let (raw, items) = evaluate(&gs, &matches, &docs, |g, n, v| overrides(g, n, v), today);
+    // `removable` is npm-specific; Cargo and PyPI findings must not alter npm's unused-dependency annotations.
+    let npm_refs: Vec<&Graph> = gs.iter().filter(|g| g.eco == "npm").collect();
+    let (_, npm_items) = evaluate_refs(&npm_refs, &matches, &docs, &overrides, today);
+    let unused = removable(&npm_refs, &npm_items, |names| named_in(root, names));
     let rep = Report { checked: at, queried: wanted.iter().filter(|w| w.0 != "GIT").count(), raw, items, unused };
     if let Ok(b) = serde_json::to_vec(&rep) {
         let _ = util::write_atomic(&report_path(cache, root), &b);
@@ -1728,7 +2012,7 @@ pub fn detail_lines(r: &Report) -> Vec<String> {
 /// One summary line: shown against matched.
 pub fn summary(r: &Report) -> String {
     format!(
-        "{} of {} advisor{} on {} locked package versions call for action (critical or high at runtime, moderate at runtime with a blocked fix, or on a direct dependency when new or when no release fixes it, critical in development with no fix the ranges admit); the rest are counted, not shown",
+        "{} of {} advisor{} on {} locked package versions call for action (critical or high at runtime or on a potentially active Cargo dependency, moderate at runtime with a blocked fix, or on a direct dependency when new or when no release fixes it, or critical outside proven runtime with no fix the ranges admit); the rest are counted, not shown",
         r.items.len(),
         r.raw,
         if r.raw == 1 { "y" } else { "ies" },
@@ -1739,6 +2023,518 @@ pub fn summary(r: &Report) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    fn write(root: &Path, path: &str, text: &str) {
+        let path = root.join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    }
+
+    fn cargo_stack(root: &Path) -> Stack {
+        crate::stack::detect_in(root, &crate::privacy::Env::default()).unwrap()
+    }
+
+    const CRATES_IO: &str = "registry+https://github.com/rust-lang/crates.io-index";
+
+    #[test]
+    fn cargo_graph_uses_source_identity_aliases_and_unknown_transitive_evidence() {
+        let root = tempfile::tempdir().unwrap();
+        write(
+            root.path(),
+            "Cargo.toml",
+            "[package]\nname = \"app\"\nversion = \"1.0.0\"\n[dependencies]\nlocal-serde = { package = \"serde\", version = \"^1.0\" }\n",
+        );
+        write(
+            root.path(),
+            "Cargo.lock",
+            &format!(
+                "version = 4\n\n[[package]]\nname = \"app\"\nversion = \"1.0.0\"\ndependencies = [\"serde 1.0.0 ({CRATES_IO})\"]\n\n[[package]]\nname = \"serde\"\nversion = \"1.0.0\"\nsource = \"{CRATES_IO}\"\ndependencies = [\"leaf-crate 2.0.0 ({CRATES_IO})\"]\n\n[[package]]\nname = \"serde\"\nversion = \"1.0.0\"\nsource = \"registry+https://private.example/index\"\n\n[[package]]\nname = \"serde\"\nversion = \"1.0.0\"\nsource = \"git+https://git.example/repo#revision\"\n\n[[package]]\nname = \"serde\"\nversion = \"1.0.0\"\nsource = \"path+file:///private/path\"\n\n[[package]]\nname = \"leaf-crate\"\nversion = \"2.0.0\"\nsource = \"{CRATES_IO}\"\n"
+            ),
+        );
+        let st = cargo_stack(root.path());
+        let gs = graphs(root.path(), &st);
+        assert_eq!(gs.len(), 1);
+        let g = &gs[0];
+        assert_eq!(g.eco, "crates.io");
+        assert_eq!(g.file, "Cargo.lock");
+        assert_eq!(
+            g.direct(),
+            BTreeSet::from([("serde".into(), "1.0.0".into())])
+        );
+        assert!(g.packages().contains(&("serde".into(), "1.0.0".into())));
+        assert!(
+            g.packages()
+                .contains(&("leaf-crate".into(), "2.0.0".into()))
+        );
+        assert_eq!(
+            g.nodes.iter().filter(|n| n.name == "serde").count(),
+            4,
+            "crates.io, alternate-registry, git, and path identities remain distinct"
+        );
+        assert_eq!(
+            g.nodes
+                .iter()
+                .filter(|n| n.name == "serde" && !n.private)
+                .count(),
+            1
+        );
+        assert_eq!(
+            g.nodes
+                .iter()
+                .find(|n| n.name == "leaf-crate")
+                .unwrap()
+                .edges
+                .len(),
+            0
+        );
+        let leaf = g.nodes.iter().position(|n| n.name == "leaf-crate").unwrap();
+        let serde = g
+            .nodes
+            .iter()
+            .position(|n| n.name == "serde" && !n.private)
+            .unwrap();
+        let edge = g.nodes[serde].edges.iter().find(|e| e.to == leaf).unwrap();
+        assert_eq!(edge.kind, DependencyKind::Unknown);
+        assert!(!edge.conditional);
+        let direct = g
+            .nodes
+            .iter()
+            .find(|n| n.local.as_deref() == Some("."))
+            .unwrap();
+        let declared = direct
+            .edges
+            .iter()
+            .find(|e| g.nodes[e.to].name == "serde")
+            .unwrap();
+        assert_eq!(declared.range.as_deref(), Some("^1.0"));
+        assert_eq!(declared.kind, DependencyKind::Runtime);
+        assert_eq!(
+            g.nodes[serde].name, "serde",
+            "the manifest alias is not package identity"
+        );
+
+        let mut matches = BTreeMap::from([
+            (
+                ("crates.io".into(), "serde".into(), "1.0.0".into()),
+                vec!["RUSTSEC-serde".into()],
+            ),
+            (
+                ("crates.io".into(), "leaf-crate".into(), "2.0.0".into()),
+                vec!["RUSTSEC-leaf".into()],
+            ),
+        ]);
+        let docs = BTreeMap::from([
+            (
+                "RUSTSEC-serde".into(),
+                doc(
+                    Some(Severity::High),
+                    "2025-01-01T00:00:00Z",
+                    &[("crates.io", "serde", &["1.1.0"])],
+                    &[],
+                ),
+            ),
+            (
+                "RUSTSEC-leaf".into(),
+                doc(
+                    Some(Severity::High),
+                    "2025-01-01T00:00:00Z",
+                    &[("crates.io", "leaf-crate", &["2.1.0"])],
+                    &[],
+                ),
+            ),
+        ]);
+        let (raw, items) = evaluate(
+            &gs,
+            &matches,
+            &docs,
+            |_, _, _| vec![],
+            util::parse_date("2026-10-18").unwrap(),
+        );
+        assert_eq!(
+            raw, 2,
+            "the private same-name/version node cannot inherit a public match"
+        );
+        let serde_item = items.iter().find(|i| i.name == "serde").unwrap();
+        assert_eq!(serde_item.why, vec!["high at runtime"]);
+        assert_eq!(serde_item.via, Vec::<String>::new());
+        let leaf_item = items.iter().find(|i| i.name == "leaf-crate").unwrap();
+        assert_eq!(leaf_item.via, vec!["serde 1.0.0"]);
+        assert_eq!(leaf_item.why, vec!["high on a potentially active Cargo dependency"]);
+        assert!(!leaf_item.why.iter().any(|w| w == "high at runtime"));
+
+        let mut mixed = gs;
+        mixed.push(npm_lock(
+            r#"{"packages":{"":{"dependencies":{"serde":"1.0.0"}},"node_modules/serde":{"version":"1.0.0"}}}"#,
+            ".",
+            "package-lock.json",
+        ));
+        matches.insert(("npm".into(), "serde".into(), "1.0.0".into()), vec!["RUSTSEC-serde".into()]);
+        let (_, mixed_items) = evaluate(&mixed, &matches, &docs, |_, _, _| vec![], util::parse_date("2026-10-18").unwrap());
+        assert_eq!(mixed_items.iter().filter(|i| i.name == "serde").count(), 2, "ecosystem identities do not coalesce in evaluation");
+
+        let cache = tempfile::tempdir().unwrap();
+        let bodies = Mutex::new(Vec::<Value>::new());
+        let post = |body: &Value| {
+            bodies.lock().unwrap().push(body.clone());
+            Some(
+                serde_json::json!({"results": vec![serde_json::json!({}); body["queries"].as_array().unwrap().len()]}),
+            )
+        };
+        refresh_with(
+            cache.path(),
+            root.path(),
+            &st,
+            1_800_000_000,
+            post,
+            |_| None,
+            |_| panic!("Cargo must not use npm identity checks"),
+            |_, _, _| panic!("Cargo must not use repository OSV queries"),
+        );
+        let bodies = bodies.into_inner().unwrap();
+        assert_eq!(bodies.len(), 1);
+        let queries = bodies[0]["queries"].as_array().unwrap();
+        assert_eq!(queries.len(), 2);
+        assert!(
+            queries
+                .iter()
+                .all(|q| q["package"]["ecosystem"] == "crates.io")
+        );
+        let requested: BTreeSet<(String, String)> = queries
+            .iter()
+            .map(|q| {
+                (
+                    q["package"]["name"].as_str().unwrap().into(),
+                    q["version"].as_str().unwrap().into(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            requested,
+            BTreeSet::from([
+                ("serde".into(), "1.0.0".into()),
+                ("leaf-crate".into(), "2.0.0".into())
+            ])
+        );
+        let body = bodies[0].to_string();
+        assert!(
+            !body.contains("private.example")
+                && !body.contains("crates.io-index")
+                && !body.contains("git.example")
+                && !body.contains("private/path")
+        );
+    }
+
+    #[test]
+    fn cargo_graphs_follow_explicit_workspace_and_standalone_lock_associations() {
+        let root = tempfile::tempdir().unwrap();
+        write(
+            root.path(),
+            "Cargo.toml",
+            "[workspace]\nmembers = [\"members/app\", \"members/lib\"]\nexclude = [\"nested\"]\n",
+        );
+        write(
+            root.path(),
+            "members/app/Cargo.toml",
+            "[package]\nname=\"app\"\nversion=\"1.0.0\"\n[dependencies]\nserde=\"1\"\n",
+        );
+        write(
+            root.path(),
+            "members/lib/Cargo.toml",
+            "[package]\nname=\"lib-member\"\nversion=\"1.0.0\"\n[lib]\npath=\"src/lib.rs\"\n[dev-dependencies]\nrand=\"1\"\n",
+        );
+        write(
+            root.path(),
+            "nested/Cargo.toml",
+            "[package]\nname=\"nested\"\nversion=\"1.0.0\"\n[dependencies]\nnested-only=\"1\"\n",
+        );
+        write(
+            root.path(),
+            "Cargo.lock",
+            &format!(
+                "[[package]]\nname=\"app\"\nversion=\"1.0.0\"\ndependencies=[\"serde 1.0.0 ({CRATES_IO})\"]\n[[package]]\nname=\"lib-member\"\nversion=\"1.0.0\"\ndependencies=[\"rand 1.0.0 ({CRATES_IO})\"]\n[[package]]\nname=\"serde\"\nversion=\"1.0.0\"\nsource=\"{CRATES_IO}\"\n[[package]]\nname=\"rand\"\nversion=\"1.0.0\"\nsource=\"{CRATES_IO}\"\n"
+            ),
+        );
+        write(
+            root.path(),
+            "nested/Cargo.lock",
+            &format!(
+                "[[package]]\nname=\"nested\"\nversion=\"1.0.0\"\ndependencies=[\"nested-only 1.0.0 ({CRATES_IO})\"]\n[[package]]\nname=\"nested-only\"\nversion=\"1.0.0\"\nsource=\"{CRATES_IO}\"\n"
+            ),
+        );
+        let st = cargo_stack(root.path());
+        let gs = graphs(root.path(), &st);
+        assert_eq!(gs.len(), 2);
+        let workspace = gs.iter().find(|g| g.file == "Cargo.lock").unwrap();
+        let standalone = gs.iter().find(|g| g.file == "nested/Cargo.lock").unwrap();
+        assert_eq!(
+            workspace.direct(),
+            BTreeSet::from([
+                ("rand".into(), "1.0.0".into()),
+                ("serde".into(), "1.0.0".into())
+            ])
+        );
+        assert!(
+            workspace
+                .nodes
+                .iter()
+                .any(|n| n.local.as_deref() == Some("members/app"))
+        );
+        assert!(
+            workspace
+                .nodes
+                .iter()
+                .any(|n| n.local.as_deref() == Some("members/lib"))
+        );
+        assert!(
+            !workspace
+                .nodes
+                .iter()
+                .any(|n| n.local.as_deref() == Some(".")),
+            "virtual workspaces have no root package"
+        );
+        assert_eq!(
+            standalone.direct(),
+            BTreeSet::from([("nested-only".into(), "1.0.0".into())])
+        );
+        assert!(
+            standalone
+                .nodes
+                .iter()
+                .any(|n| n.local.as_deref() == Some("nested"))
+        );
+        assert!(
+            !standalone
+                .packages()
+                .iter()
+                .any(|(n, _)| n == "serde" || n == "rand")
+        );
+    }
+
+    #[test]
+    fn cargo_privacy_blocks_source_replacement_and_all_private_packages_before_osv() {
+        let root = tempfile::tempdir().unwrap();
+        write(
+            root.path(),
+            "Cargo.toml",
+            "[package]\nname=\"app\"\nversion=\"1.0.0\"\n[dependencies]\nserde=\"1\"\n",
+        );
+        write(
+            root.path(),
+            "Cargo.lock",
+            &format!(
+                "[[package]]\nname=\"app\"\nversion=\"1.0.0\"\ndependencies=[\"serde 1.0.0 ({CRATES_IO})\"]\n[[package]]\nname=\"serde\"\nversion=\"1.0.0\"\nsource=\"{CRATES_IO}\"\n"
+            ),
+        );
+        write(
+            root.path(),
+            ".cargo/config.toml",
+            "[source.crates-io]\nreplace-with=\"mirror\"\n[source.mirror]\nregistry=\"https://mirror.example/index\"\n",
+        );
+        let st = cargo_stack(root.path());
+        let cache = tempfile::tempdir().unwrap();
+        let calls = Mutex::new(0usize);
+        let asked = refresh_with(
+            cache.path(),
+            root.path(),
+            &st,
+            1_800_000_000,
+            |_| {
+                *calls.lock().unwrap() += 1;
+                None
+            },
+            |_| None,
+            |_| None,
+            |_, _, _| None,
+        );
+        assert_eq!(asked, 0);
+        assert_eq!(
+            *calls.lock().unwrap(),
+            0,
+            "replacement must exclude even crates.io-looking lock sources"
+        );
+    }
+
+    #[test]
+    fn source_less_external_patch_packages_are_never_sent_to_osv() {
+        let root = tempfile::tempdir().unwrap();
+        write(
+            root.path(),
+            "Cargo.toml",
+            "[package]\nname=\"app\"\nversion=\"1.0.0\"\n[dependencies]\ncorp-secret=\"1.0\"\n[patch.crates-io]\ncorp-secret={path=\"../private/corp-secret\"}\n",
+        );
+        write(
+            root.path(),
+            "Cargo.lock",
+            "[[package]]\nname=\"app\"\nversion=\"1.0.0\"\ndependencies=[\"corp-secret 1.0.0\"]\n[[package]]\nname=\"corp-secret\"\nversion=\"1.0.0\"\n",
+        );
+        let st = cargo_stack(root.path());
+        let gs = graphs(root.path(), &st);
+        assert!(gs[0].packages().is_empty(), "a path-patched crate is not a public crates.io package");
+    }
+
+    #[test]
+    fn cargo_dependency_kinds_conditions_and_cargo_semver_are_conservative() {
+        let root = tempfile::tempdir().unwrap();
+        write(
+            root.path(),
+            "Cargo.toml",
+            "[package]\nname=\"app\"\nversion=\"1.0.0\"\n[dependencies]\nruntime-crate=\"1\"\noptional-crate={version=\"=1.0.0\", optional=true}\n[dev-dependencies]\ndev-crate=\"1\"\n[build-dependencies]\nbuild-crate=\"=1.0.0\"\n[target.'cfg(unix)'.dependencies]\ntarget-crate=\"=1.0.0\"\n",
+        );
+        let names = [
+            "runtime-crate",
+            "optional-crate",
+            "dev-crate",
+            "build-crate",
+            "target-crate",
+        ];
+        let root_edges = names
+            .iter()
+            .map(|name| format!("{:?}", format!("{name} 1.0.0 ({CRATES_IO})")))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let mut lock =
+            format!("[[package]]\nname=\"app\"\nversion=\"1.0.0\"\ndependencies=[{root_edges}]\n");
+        for name in names {
+            lock.push_str(&format!(
+                "\n[[package]]\nname={name:?}\nversion=\"1.0.0\"\nsource={CRATES_IO:?}\n"
+            ));
+        }
+        write(root.path(), "Cargo.lock", &lock);
+        let st = cargo_stack(root.path());
+        let gs = graphs(root.path(), &st);
+        let g = &gs[0];
+        let root_node = g
+            .nodes
+            .iter()
+            .find(|n| n.local.as_deref() == Some("."))
+            .unwrap();
+        let edge = |name: &str| {
+            root_node
+                .edges
+                .iter()
+                .find(|e| g.nodes[e.to].name == name)
+                .unwrap()
+        };
+        assert_eq!(edge("runtime-crate").kind, DependencyKind::Runtime);
+        assert_eq!(edge("dev-crate").kind, DependencyKind::Development);
+        assert_eq!(edge("build-crate").kind, DependencyKind::Build);
+        assert!(edge("optional-crate").conditional);
+        assert!(edge("target-crate").conditional);
+        assert_eq!(edge("target-crate").target.as_deref(), Some("cfg(unix)"));
+        assert_eq!(
+            g.direct().len(),
+            names.len(),
+            "directness is independent of dependency kind/condition"
+        );
+
+        let docs: BTreeMap<String, Doc> = BTreeMap::from([
+            (
+                "RUSTSEC-build".into(),
+                doc(
+                    Some(Severity::Critical),
+                    "2025-01-01T00:00:00Z",
+                    &[("crates.io", "build-crate", &["1.1.0"])],
+                    &[],
+                ),
+            ),
+            (
+                "RUSTSEC-optional".into(),
+                doc(
+                    Some(Severity::High),
+                    "2025-01-01T00:00:00Z",
+                    &[("crates.io", "optional-crate", &["1.1.0"])],
+                    &[],
+                ),
+            ),
+            (
+                "RUSTSEC-runtime".into(),
+                doc(
+                    Some(Severity::High),
+                    "2025-01-01T00:00:00Z",
+                    &[("crates.io", "runtime-crate", &["1.1.0"])],
+                    &[],
+                ),
+            ),
+            (
+                "RUSTSEC-target".into(),
+                doc(
+                    Some(Severity::High),
+                    "2025-01-01T00:00:00Z",
+                    &[("crates.io", "target-crate", &["1.1.0"])],
+                    &[],
+                ),
+            ),
+        ]);
+        let matches: BTreeMap<(String, String, String), Vec<String>> = docs
+            .keys()
+            .map(|id| {
+                let name = id.strip_prefix("RUSTSEC-").unwrap().to_string() + "-crate";
+                (("crates.io".into(), name, "1.0.0".into()), vec![id.clone()])
+            })
+            .collect();
+        let (_, items) = evaluate(
+            &gs,
+            &matches,
+            &docs,
+            |_, _, _| vec![],
+            util::parse_date("2026-10-18").unwrap(),
+        );
+        assert!(
+            items
+                .iter()
+                .any(|i| i.name == "runtime-crate" && i.why == ["high at runtime"])
+        );
+        let build = items.iter().find(|i| i.name == "build-crate").unwrap();
+        assert!(build.why.iter().any(|w| w.starts_with("fix blocked:")));
+        assert!(!build.why.iter().any(|w| w.contains("at runtime")));
+        assert!(items.iter().any(|i| {
+            i.name == "optional-crate"
+                && i.why == ["high on a potentially active Cargo dependency"]
+        }));
+        assert!(items.iter().any(|i| {
+            i.name == "target-crate"
+                && i.why == ["high on a potentially active Cargo dependency"]
+        }));
+        assert!(!items.iter().any(|i| i.name == "dev-crate"));
+
+        let version = Version::parse("1.2.3-alpha.1").unwrap();
+        assert_eq!(
+            cargo_satisfies(&Version::parse("1.2.3").unwrap(), "^1.2"),
+            Some(true)
+        );
+        assert_eq!(
+            cargo_satisfies(&Version::parse("1.2.9").unwrap(), "~1.2"),
+            Some(true)
+        );
+        assert_eq!(
+            cargo_satisfies(&Version::parse("2.0.0").unwrap(), "*"),
+            Some(true)
+        );
+        assert_eq!(
+            cargo_satisfies(&Version::parse("1.9.0").unwrap(), ">=1.2.3, <2"),
+            Some(true)
+        );
+        assert_eq!(cargo_satisfies(&version, "^1.2.3"), Some(false));
+        assert_eq!(
+            util::npm_satisfies(&version, "^1.2.3"),
+            Some(true),
+            "npm's prerelease handling must not be reused for Cargo"
+        );
+        assert_eq!(cargo_satisfies(&version, "=1.2.3-alpha.1"), Some(true));
+        assert_eq!(
+            cargo_satisfies(&Version::parse("1.2.3").unwrap(), "not a range"),
+            None
+        );
+        assert_eq!(
+            cargo_satisfies(&Version::parse("1.2.3").unwrap(), ">=1.2 <2"),
+            None
+        );
+        assert!(parse_ver("crates.io", "v1.2.3").is_none());
+        assert!(parse_ver("crates.io", "1.2").is_none());
+        assert!(parse_ver("crates.io", "1.2.3").is_some());
+    }
+
 
     #[test]
     fn a_package_is_named_as_a_whole_word_only() {

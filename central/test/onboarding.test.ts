@@ -7,15 +7,18 @@ import {
   createCoverageServer,
   docsCoverage,
   monitoringStage,
+  typedPurl,
 } from "../src/onboarding/service.ts";
 import {
   npmIdentity,
+  cargoIdentity,
+  cargoPurl,
   packageIdentity,
   releasePattern,
   technologyId,
   discoverTechnology,
 } from "../src/onboarding/discovery.ts";
-import { HttpClient } from "../src/collector/http.ts";
+import { FetchFailure, HttpClient } from "../src/collector/http.ts";
 import { logUsage, writeAtomic } from "../src/pipeline/util.ts";
 import { usageLog } from "../src/pipeline/paths.ts";
 let dir: string;
@@ -45,9 +48,63 @@ test("identity vocabulary rejects private URLs, versions, traversal and arbitrar
 test("PyPI identities are PEP 503 names; anything else is still refused", () => {
   expect(packageIdentity("pkg:pypi/typing-extensions")).toBe("typing-extensions");
   expect(packageIdentity("pkg:npm/next")).toBe("next");
-  for (const value of ["pkg:pypi/Typing_Extensions", "pkg:pypi/openai@1.0", "pkg:pypi/../x", "pkg:pypi/a?x=1", "pkg:cargo/serde"])
+  for (const value of ["pkg:pypi/Typing_Extensions", "pkg:pypi/openai@1.0", "pkg:pypi/../x", "pkg:pypi/a?x=1"])
     expect(() => packageIdentity(value)).toThrow();
+  expect(packageIdentity("pkg:cargo/serde")).toBe("serde");
   expect(technologyId("pkg:pypi/openai")).not.toBe(technologyId("pkg:npm/openai"));
+});
+test("Cargo identities preserve exact canonical crates.io names", () => {
+  expect(cargoIdentity("pkg:cargo/serde")).toBe("serde");
+  expect(cargoIdentity("pkg:cargo/foo_bar")).toBe("foo_bar");
+  expect(cargoIdentity("pkg:cargo/foo-bar")).toBe("foo-bar");
+  expect(packageIdentity("pkg:cargo/foo_bar")).toBe("foo_bar");
+  expect(packageIdentity("pkg:cargo/foo-bar")).toBe("foo-bar");
+  const max = "a".repeat(64);
+  expect(cargoIdentity(`pkg:cargo/${max}`)).toBe(max);
+  expect(() => cargoIdentity(`pkg:cargo/${max}a`)).toThrow();
+  for (const purl of [
+    "pkg:cargo/foo@1.0.0",
+    "pkg:cargo/foo?download=1",
+    "pkg:cargo/foo#fragment",
+    "pkg:cargo/foo?qualifier=value",
+    "pkg:cargo/foo/bar",
+    "https://crates.io/crates/foo",
+    "pkg:rubygems/foo",
+    "pkg:cargo/Foo",
+    "pkg:cargo/%66oo",
+    "pkg:cargo/foo.bar",
+    "pkg:cargo/foo+bar",
+    "pkg:cargo/___---",
+  ]) {
+    expect(() => cargoIdentity(purl)).toThrow();
+    expect(() => packageIdentity(purl)).toThrow();
+  }
+  expect(packageIdentity("pkg:cargo/foo_bar")).not.toBe(packageIdentity("pkg:cargo/foo-bar"));
+});
+test("Cargo technology ids are deterministic and distinguish exact PURLs", () => {
+  expect(technologyId("pkg:cargo/foo_bar")).toBe("foo-bar-bb7a9a70");
+  expect(technologyId("pkg:cargo/foo_bar")).toBe(technologyId("pkg:cargo/foo_bar"));
+  expect(technologyId("pkg:cargo/foo_bar")).not.toBe(technologyId("pkg:cargo/foo-bar"));
+  expect(technologyId("pkg:cargo/foo_bar")).not.toBe(technologyId("pkg:cargo/serde"));
+});
+test("Cargo release tags accept only optional-v canonical stable triplets", () => {
+  const tag = new RegExp(releasePattern("pkg:cargo/foo_bar"));
+  for (const [t, v] of [["1.2.3", "1.2.3"], ["v1.2.3", "1.2.3"], ["0.0.0", "0.0.0"]] as const)
+    expect(tag.exec(t)?.[1]).toBe(v);
+  for (const t of ["V1.2.3", "foo_bar-1.2.3", "foo_bar-v1.2.3", "1.2.3-alpha", "1.2.3+build", "01.2.3", "1.02.3", "1.2.03", "1.2", "release-1.2.3"])
+    expect(tag.test(t)).toBe(false);
+  expect(() => releasePattern("pkg:cargo/Foo")).toThrow();
+});
+test("Cargo typed PURLs preserve and validate the registry spelling", () => {
+  expect(cargoPurl("foo_bar")).toBe("pkg:cargo/foo_bar");
+  expect(typedPurl("pkg:cargo/source", "foo-bar")).toBe("pkg:cargo/foo-bar");
+  expect(() => typedPurl("pkg:cargo/source", "Foo_bar")).toThrow();
+  expect(() => typedPurl("pkg:cargo/source", "a/b")).toThrow();
+  const service = new CoverageService(0);
+  const job = service.submit("pkg:cargo/foo_bar");
+  expect(job).toMatchObject({ purl: "pkg:cargo/foo_bar", name: "foo_bar", technology: technologyId("pkg:cargo/foo_bar") });
+  expect(() => service.submit("pkg:cargo/Foo_bar")).toThrow();
+  service.stop();
 });
 test("PyPI release tags: v-prefixed, bare, name-prefixed; two- or three-part stable versions", () => {
   const tag = new RegExp(releasePattern("pkg:pypi/typing-extensions"));
@@ -82,6 +139,75 @@ test("public registry discovery handles monorepo tag prefixes without hand-curat
   expect(new RegExp(t.tag).exec("@example/ui@2.1.0")?.[1]).toBe("2.1.0");
   expect(new RegExp(t.tag).test("unrelated@2.1.0")).toBe(false);
   expect(new RegExp(t.tag).test("v2.1.0")).toBe(false);
+});
+test("crates.io discovery verifies exact identity and uses only the stable version", async () => {
+  const get = vi.spyOn(HttpClient.prototype, "get").mockResolvedValue({
+    status: 200,
+    headers: new Headers(),
+    body: Buffer.from(JSON.stringify({ crate: {
+      id: "foo_bar",
+      max_stable_version: "1.2.3",
+      max_version: "2.0.0-alpha.1",
+      repository: "https://github.com/example/foo_bar.git",
+      homepage: "https://example.com/foo_bar",
+    } })),
+    finalUrl: "https://crates.io/api/v1/crates/foo_bar",
+  });
+  const t = await discoverTechnology("pkg:cargo/foo_bar");
+  expect(get).toHaveBeenCalledTimes(1);
+  expect(get).toHaveBeenCalledWith("https://crates.io/api/v1/crates/foo_bar", {
+    accept: "application/json",
+    "user-agent": "unstale-central",
+  });
+  expect(t).toMatchObject({
+    discovery_version: 3,
+    purl: "pkg:cargo/foo_bar",
+    id: technologyId("pkg:cargo/foo_bar"),
+    name: "foo_bar",
+    latest: "1.2.3",
+    repo: "example/foo_bar",
+    homepage: "https://example.com/foo_bar",
+    components: ["pkg:cargo/foo_bar"],
+  });
+  expect(new RegExp(t.tag).exec("v1.2.3")?.[1]).toBe("1.2.3");
+  expect(new RegExp(t.tag).test("foo_bar-1.2.3")).toBe(false);
+});
+test("crates.io discovery rejects mismatches and malformed stable metadata", async () => {
+  const result = (crate: unknown) => ({ status: 200, headers: new Headers(), body: Buffer.from(JSON.stringify({ crate })), finalUrl: "https://crates.io/" });
+  const get = vi.spyOn(HttpClient.prototype, "get");
+  get.mockResolvedValueOnce(result({ id: "foo-bar", max_stable_version: "1.2.3" }));
+  await expect(discoverTechnology("pkg:cargo/foo_bar")).rejects.toThrow("identity could not be verified");
+  for (const version of [undefined, "", "1.2", "01.2.3", "1.2.3-alpha", "1.2.3+build"]) {
+    get.mockResolvedValueOnce(result({ id: "foo_bar", max_stable_version: version, max_version: "1.2.3" }));
+    await expect(discoverTechnology("pkg:cargo/foo_bar")).rejects.toThrow("stable public version");
+  }
+});
+test("crates.io discovery preserves registry failures and accepts only safe project metadata", async () => {
+  const get = vi.spyOn(HttpClient.prototype, "get");
+  const notFound = new FetchFailure("http_status", "HTTP 404", 404);
+  get.mockRejectedValueOnce(notFound);
+  await expect(discoverTechnology("pkg:cargo/missing")).rejects.toBe(notFound);
+  const unavailable = new FetchFailure("http_status", "HTTP 503", 503);
+  get.mockRejectedValueOnce(unavailable);
+  await expect(discoverTechnology("pkg:cargo/busy")).rejects.toBe(unavailable);
+  expect([notFound.httpStatus, unavailable.httpStatus]).toEqual([404, 503]);
+  get.mockResolvedValueOnce({ status: 200, headers: new Headers(), body: Buffer.from(JSON.stringify({ crate: {
+    id: "no-home",
+    max_stable_version: "0.4.0",
+    repository: "https://evil.example/path/github.com/wrong/repo",
+    homepage: "javascript:alert(1)",
+  } })), finalUrl: "https://crates.io/" });
+  const t = await discoverTechnology("pkg:cargo/no-home");
+  expect(t).not.toHaveProperty("repo");
+  expect(t).not.toHaveProperty("homepage");
+  get.mockResolvedValueOnce({ status: 200, headers: new Headers(), body: Buffer.from(JSON.stringify({ crate: {
+    id: "fallback-home",
+    max_stable_version: "1.0.0",
+    repository: "https://github.com/example/fallback-home",
+    homepage: "not a url",
+  } })), finalUrl: "https://crates.io/" });
+  const withFallback = await discoverTechnology("pkg:cargo/fallback-home");
+  expect(withFallback.homepage).toBe("https://github.com/example/fallback-home");
 });
 test("registration is strict, persisted, deduplicated and resumes interrupted jobs", async () => {
   const service = new CoverageService(0),

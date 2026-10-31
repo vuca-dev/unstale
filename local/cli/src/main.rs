@@ -3,6 +3,7 @@
 
 mod advisories;
 mod cache;
+mod cargo;
 mod deprecations;
 mod onboarding;
 mod onboarding_ui;
@@ -46,7 +47,7 @@ const EXIT_LEDGER: u8 = 5;
     name = "unstale",
     version,
     about = "Keeps a repository current with verified changes in the libraries and frameworks it uses.",
-    after_help = "Exit codes: 0 ok; 1 error; 2 usage; 3 a review batch is incomplete (--next); 4 the catalog needs a newer unstale (cache kept); 5 the ledger has invalid lines.\n\nUNSTALE_NO_REGISTRY=1 turns off every third-party lookup (npm and PyPI registries, OSV advisories), and with it new coverage registrations. Packages from a private registry are never named to anyone either way."
+    after_help = "Exit codes: 0 ok; 1 error; 2 usage; 3 a review batch is incomplete (--next); 4 the catalog needs a newer unstale (cache kept); 5 the ledger has invalid lines.\n\nUNSTALE_NO_REGISTRY=1 turns off every third-party lookup (npm, PyPI, and Cargo/crates.io registries; OSV advisories), and with it new coverage registrations. Packages from a private registry are never named to anyone either way."
 )]
 struct Cli {
     /// Run as if started in this directory.

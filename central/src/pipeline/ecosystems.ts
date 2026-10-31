@@ -55,19 +55,50 @@ export interface RegistryPackage {
 // ---- SemVer 2.0 precedence (OSV `SEMVER` ranges are SemVer by definition, whatever the ecosystem) ----
 
 interface V {
-  nums: number[];
+  nums: bigint[];
   pre: string[];
 }
 function parseV(v: string): V | undefined {
-  const m = /^v?(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:-([0-9A-Za-z.-]+))?(?:\+.*)?$/.exec(v.trim());
+  const m = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z.-]+))?(?:\+([0-9A-Za-z.-]+))?$/.exec(v);
   if (!m) return undefined;
-  return { nums: [Number(m[1]), Number(m[2] ?? 0), Number(m[3] ?? 0)], pre: m[4] ? m[4].split(".") : [] };
+  const pre = m[4] ? m[4].split(".") : [];
+  const build = m[5]?.split(".") ?? [];
+  if ([...pre, ...build].some((part) => !part || !/^[0-9A-Za-z-]+$/.test(part))) return undefined;
+  if (pre.some((part) => /^\d+$/.test(part) && part.length > 1 && part.startsWith("0"))) return undefined;
+  return { nums: [BigInt(m[1]!), BigInt(m[2]!), BigInt(m[3]!)], pre };
 }
 
 /** SemVer precedence (a prerelease sorts before its release); undefined when either side is not a version. */
 export function semverOrder(a: string, b: string): number | undefined {
   const x = parseV(a);
   const y = parseV(b);
+  if (!x || !y) return undefined;
+  for (let i = 0; i < 3; i++) if (x.nums[i] !== y.nums[i]) return x.nums[i]! < y.nums[i]! ? -1 : 1;
+  if (!x.pre.length || !y.pre.length) return (x.pre.length ? -1 : 0) - (y.pre.length ? -1 : 0);
+  for (let i = 0; i < Math.max(x.pre.length, y.pre.length); i++) {
+    const p = x.pre[i];
+    const q = y.pre[i];
+    if (p === undefined) return -1;
+    if (q === undefined) return 1;
+    const pn = /^\d+$/.test(p);
+    const qn = /^\d+$/.test(q);
+    if (pn && qn && p !== q) return BigInt(p) < BigInt(q) ? -1 : 1;
+    if (pn !== qn) return pn ? -1 : 1;
+    if (p !== q) return p < q ? -1 : 1;
+  }
+  return 0;
+}
+
+/** npm's historical OSV ECOSYSTEM boundaries include partial numeric versions; Cargo uses strict `semverOrder`. */
+function npmSemverOrder(a: string, b: string): number | undefined {
+  const strict = semverOrder(a, b);
+  if (strict !== undefined) return strict;
+  const parse = (v: string) => {
+    const m = /^v?(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:-([0-9A-Za-z.-]+))?(?:\+.*)?$/.exec(v.trim());
+    return m ? { nums: [Number(m[1]), Number(m[2] ?? 0), Number(m[3] ?? 0)], pre: m[4] ? m[4].split(".") : [] } : undefined;
+  };
+  const x = parse(a);
+  const y = parse(b);
   if (!x || !y) return undefined;
   for (let i = 0; i < 3; i++) if (x.nums[i] !== y.nums[i]) return x.nums[i]! - y.nums[i]!;
   if (!x.pre.length || !y.pre.length) return (x.pre.length ? -1 : 0) - (y.pre.length ? -1 : 0);
@@ -78,9 +109,8 @@ export function semverOrder(a: string, b: string): number | undefined {
     if (q === undefined) return 1;
     const pn = /^\d+$/.test(p);
     const qn = /^\d+$/.test(q);
-    if (pn && qn && Number(p) !== Number(q)) return Number(p) - Number(q);
     if (pn !== qn) return pn ? -1 : 1;
-    if (p !== q) return p < q ? -1 : 1;
+    if (p !== q) return pn ? Number(p) - Number(q) : p < q ? -1 : 1;
   }
   return 0;
 }
@@ -117,6 +147,33 @@ export function pep440Order(a: string, b: string): number | undefined {
 
 export const npmName = (purl: string): string => decodeURIComponent(purl.replace(/^pkg:npm\//, ""));
 export const npmPurl = (name: string): string => `pkg:npm/${name.replace(/^@/, "%40")}`;
+
+const CARGO_NAME = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
+
+/** The exact crates.io registry name in a package-level or versioned Cargo PURL. */
+export function cargoName(component: string): string | undefined {
+  const m = /^pkg:cargo\/(.*)$/i.exec(component);
+  if (!m) return undefined;
+  const path = m[1]!.split(/[?#]/, 1)[0]!;
+  if (path.split("/").length !== 1) return undefined;
+  const versioned = path.split("@");
+  if (versioned.length > 2) return undefined;
+  const segment = versioned[0]!;
+  if (!segment) return undefined;
+  let name: string;
+  try {
+    name = decodeURIComponent(segment);
+  } catch {
+    return undefined;
+  }
+  return CARGO_NAME.test(name) ? name : undefined;
+}
+
+/** Canonical Cargo package PURL; crate registry spelling is significant and is never separator-normalised. */
+export function cargoPurl(name: string): string {
+  if (!CARGO_NAME.test(name)) throw new TypeError(`invalid crates.io crate name: ${name}`);
+  return `pkg:cargo/${name}`;
+}
 
 /** `owner/name` of a GitHub repository from a registry `repository` field, lower-cased; undefined otherwise. */
 export function githubRepo(field: unknown): string | undefined {
@@ -300,11 +357,95 @@ async function pypiDependencies(component: string, version: string): Promise<str
   return [...out].sort();
 }
 
+async function cargoPublishTimes(component: string): Promise<Record<string, string> | undefined> {
+  const name = cargoName(component);
+  if (!name) throw new TypeError(`invalid Cargo component: ${component}`);
+  const out: Record<string, string> = {};
+  for (let page = 1; page <= 1000; page++) {
+    const doc = await getJson(`https://crates.io/api/v1/crates/${encodeURIComponent(name)}/versions?page=${page}&per_page=100`);
+    if (doc === undefined) {
+      if (page === 1) return undefined;
+      throw new Error(`crates.io returned no response for ${name} page ${page}`);
+    }
+    if (!doc || typeof doc !== "object" || !Array.isArray((doc as { versions?: unknown }).versions))
+      throw new Error(`malformed crates.io versions response for ${name} page ${page}`);
+    const versions = (doc as { versions: unknown[] }).versions;
+    for (const row of versions) {
+      if (!row || typeof row !== "object" || Array.isArray(row)) throw new Error(`malformed crates.io version row for ${name} page ${page}`);
+      const item = row as { num?: unknown; created_at?: unknown };
+      if (typeof item.num !== "string" || semverOrder(item.num, item.num) === undefined || typeof item.created_at !== "string") continue;
+      const time = Date.parse(item.created_at);
+      if (Number.isNaN(time)) continue;
+      out[item.num] = new Date(time).toISOString();
+    }
+    if (versions.length < 100) return Object.keys(out).length ? out : undefined;
+  }
+  throw new Error(`crates.io versions page limit reached for ${name}`);
+}
+
+function cargoVersionPage(component: string, version: string): string {
+  const name = cargoName(component);
+  if (!name) throw new TypeError(`invalid Cargo component: ${component}`);
+  return `https://crates.io/crates/${encodeURIComponent(name)}/${encodeURIComponent(version)}`;
+}
+
+function cargoRegistryPage(raw: string): string | undefined {
+  const input = raw.trim();
+  let url: URL;
+  try {
+    url = new URL(input);
+  } catch {
+    return undefined;
+  }
+  // URL.username/password are empty for explicit empty userinfo (`https://@crates.io/...`), so
+  // check the raw authority too; registry links with any credentials are not package pages.
+  const authority = /^[a-z][a-z\d+.-]*:\/\/([^/?#]*)/i.exec(input)?.[1];
+  if (!authority || authority.includes("@") || url.protocol !== "https:" || url.hostname !== "crates.io" || url.username || url.password || url.port) return undefined;
+  const parts = url.pathname.split("/");
+  if ((parts.length !== 3 && parts.length !== 4) || parts[0] !== "" || parts[1] !== "crates") return undefined;
+  const decodeSegment = (part: string): string | undefined => {
+    try {
+      const value = decodeURIComponent(part);
+      return value && !/[\\/]/.test(value) ? value : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+  const name = decodeSegment(parts[2]!);
+  if (!name) return undefined;
+  try {
+    const purl = cargoPurl(name);
+    if (parts.length === 4 && !decodeSegment(parts[3]!)) return undefined;
+    return purl;
+  } catch {
+    return undefined;
+  }
+}
+
+async function cargoDependencies(component: string, version: string): Promise<string[] | undefined> {
+  const name = cargoName(component);
+  if (!name) throw new TypeError(`invalid Cargo component: ${component}`);
+  const doc = await getJson(`https://crates.io/api/v1/crates/${encodeURIComponent(name)}/${encodeURIComponent(version)}/dependencies`);
+  if (doc === undefined) return undefined;
+  if (!doc || typeof doc !== "object" || !Array.isArray((doc as { dependencies?: unknown }).dependencies))
+    throw new Error(`malformed crates.io dependencies response for ${name}@${version}`);
+  const out = new Set<string>();
+  for (const row of (doc as { dependencies: unknown[] }).dependencies) {
+    if (!row || typeof row !== "object" || Array.isArray(row)) throw new Error(`malformed crates.io dependency row for ${name}@${version}`);
+    const dep = row as { crate_id?: unknown; kind?: unknown };
+    if (typeof dep.crate_id !== "string") throw new Error(`malformed crates.io dependency identity for ${name}@${version}`);
+    if (dep.kind !== undefined && dep.kind !== null && typeof dep.kind !== "string") throw new Error(`malformed crates.io dependency kind for ${name}@${version}`);
+    if (dep.kind !== null && dep.kind !== "normal") continue;
+    out.add(cargoPurl(dep.crate_id));
+  }
+  return [...out].sort();
+}
+
 export const ECOSYSTEMS: Record<string, Ecosystem> = {
   // npm versions are SemVer.
   npm: {
     osv: "npm",
-    compare: semverOrder,
+    compare: npmSemverOrder,
     siblings: npmSiblings,
     dependencies: npmDependencies,
     registryPage: npmRegistryPage,
@@ -312,6 +453,15 @@ export const ECOSYSTEMS: Record<string, Ecosystem> = {
     repositoryPackages: npmRepositoryPackages,
     versionPage: (component, version) => `https://www.npmjs.com/package/${npmName(component)}/v/${encodeURIComponent(version)}`,
     versionDownloads: npmVersionDownloads,
+  },
+  // crates.io uses `normal` (and sometimes null) for ordinary dependencies; dev/build entries are not runtime edges.
+  cargo: {
+    osv: "crates.io",
+    compare: semverOrder,
+    dependencies: cargoDependencies,
+    registryPage: cargoRegistryPage,
+    publishTimes: cargoPublishTimes,
+    versionPage: cargoVersionPage,
   },
   // PyPI versions are PEP 440. No siblings hook: PyPI has no organisation listing to find a repository's packages.
   pypi: {
@@ -326,6 +476,10 @@ export const ECOSYSTEMS: Record<string, Ecosystem> = {
 
 /** A package URL in one comparable form: PyPI names PEP 503-normalised, npm scopes as `%40`, lower-cased otherwise. */
 export function canonicalPurl(purl: string): string {
+  if (/^pkg:cargo\//i.test(purl)) {
+    const name = cargoName(purl);
+    return name ? cargoPurl(name) : purl;
+  }
   const p = purl.replace(/@[^/]*$/, "").replace(/[?#].*$/, "");
   if (/^pkg:pypi\//i.test(p)) return pypiPurl(decodeURIComponent(p.replace(/^pkg:pypi\//i, "")));
   if (/^pkg:npm\//i.test(p)) return npmPurl(decodeURIComponent(p.replace(/^pkg:npm\//i, "")));

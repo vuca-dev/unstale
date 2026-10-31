@@ -227,10 +227,26 @@ pub fn normalize_purl(p: &str) -> String {
     format!("pkg:{}/{}", ty.to_lowercase(), path)
 }
 
+/// Canonical Cargo identity: Cargo package names are not npm/PyPI-normalized and keep hyphens.
+pub fn cargo_purl(name: &str) -> String {
+    format!("pkg:cargo/{name}")
+}
+
+/// The package name in a Cargo PURL, without changing its registry identity.
+pub fn cargo_name(purl: &str) -> Option<String> {
+    let p = normalize_purl(purl);
+    p.strip_prefix("pkg:cargo/").map(String::from)
+}
+
+/// Rust's conventional crate identifier spelling. Use only for source import matching, never for package identity.
+pub fn cargo_import_name(name: &str) -> String {
+    name.replace('-', "_")
+}
+
 /// The package name in a package URL of an ecosystem the client reads (`pkg:npm/%40a/b` → `@a/b`, `pkg:pypi/x` → `x`).
 pub fn purl_name(purl: &str) -> Option<String> {
     let p = normalize_purl(purl);
-    p.strip_prefix("pkg:pypi/").map(String::from).or_else(|| npm_name(&p))
+    p.strip_prefix("pkg:pypi/").map(String::from).or_else(|| cargo_name(&p)).or_else(|| npm_name(&p))
 }
 
 /// The npm package name in a package URL, if it is one.
@@ -421,5 +437,9 @@ mod tests {
         assert_eq!(normalize_purl("pkg:npm/@prisma/client"), "pkg:npm/%40prisma/client");
         assert_eq!(normalize_purl("pkg:npm/next@16.0.0"), "pkg:npm/next");
         assert_eq!(npm_name("pkg:npm/%40nestjs/core").unwrap(), "@nestjs/core");
+        assert_eq!(cargo_purl("serde-json"), "pkg:cargo/serde-json");
+        assert_eq!(cargo_name("pkg:cargo/serde-json@1.0.0").as_deref(), Some("serde-json"));
+        assert_eq!(purl_name("pkg:cargo/serde-json"), Some("serde-json".into()));
+        assert_eq!(cargo_import_name("serde-json"), "serde_json");
     }
 }
