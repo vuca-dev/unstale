@@ -2103,6 +2103,8 @@ const MAX_BYTES: u64 = 400_000;
 #[derive(Debug, Default)]
 pub struct Repo {
     pub files: Vec<(String, String)>,
+    /// Python requirements files (`pypi::requirements_project`), apart from `files`: a manifest, not evidence of use.
+    pub requirements: Vec<(String, String)>,
     /// Every file's relative path and base name, including files whose text is not read.
     pub names: BTreeSet<String>,
     /// Every file's relative path, sorted.
@@ -2255,6 +2257,11 @@ impl Repo {
             let ext = base.rsplit_once('.').map(|(_, x)| x.to_ascii_lowercase()).unwrap_or_default();
             // Example env files only: a real `.env` may hold secrets (its text is never printed, but no need to read it).
             let dotenv = matches!(base.as_str(), ".env.example" | ".env.sample" | ".env.template" | ".env.dist");
+            if crate::pypi::requirements_project(e.path()).is_some() && e.metadata().is_ok_and(|m| m.len() <= MAX_BYTES)
+                && let Ok(t) = std::fs::read_to_string(e.path())
+            {
+                r.requirements.push((rel.clone(), t));
+            }
             if LOCKFILES.contains(&base.as_str()) || !(TEXT_EXT.contains(&ext.as_str()) || dotenv) {
                 continue;
             }
@@ -2266,6 +2273,7 @@ impl Repo {
         let texts = par_map(&to_read, |(_, p)| std::fs::read_to_string(p).ok());
         r.files = to_read.into_iter().zip(texts).filter_map(|((rel, _), t)| t.map(|t| (rel, t))).collect();
         r.files.sort_by(|a, b| a.0.cmp(&b.0));
+        r.requirements.sort_by(|a, b| a.0.cmp(&b.0));
         r.paths.sort();
         r
     }
