@@ -199,7 +199,7 @@ pub fn refresh(cache: &Path, st: &Stack, stop: &(dyn Fn() -> bool + Sync)) -> us
         if stop() {
             return None;
         }
-        let mut r = agent.get(url).call().ok().filter(|r| r.status().is_success())?;
+        let mut r = crate::onboarding::registry_call(url, || agent.get(url).call()).filter(|r| r.status().is_success())?;
         let bytes = r.body_mut().with_config().limit(4 * 1024 * 1024).read_to_vec().ok()?;
         serde_json::from_slice(&bytes).ok()
     };
