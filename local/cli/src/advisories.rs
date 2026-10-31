@@ -1403,7 +1403,7 @@ fn read_json<T: for<'de> Deserialize<'de>>(p: &Path) -> Option<T> {
 }
 
 /// Checks the lockfiles against OSV and keeps the report for the outputs. Returns the requests made.
-pub fn refresh(cache: &Path, root: &Path, st: &Stack) -> usize {
+pub fn refresh(cache: &Path, root: &Path, st: &Stack, stop: &(dyn Fn() -> bool + Sync)) -> usize {
     if crate::privacy::registry_off() {
         return 0;
     }
@@ -1412,8 +1412,8 @@ pub fn refresh(cache: &Path, root: &Path, st: &Stack) -> usize {
         let mut r = r.ok().filter(|r| r.status().is_success())?;
         serde_json::from_slice(&r.body_mut().with_config().limit(64 * 1024 * 1024).read_to_vec().ok()?).ok()
     };
-    let post = |body: &Value| read(agent.post(format!("{OSV}/querybatch")).header("Content-Type", "application/json").send(serde_json::to_vec(body).unwrap_or_default().as_slice()));
-    let get = |id: &str| read(agent.get(format!("{OSV}/vulns/{id}")).call());
+    let post = |body: &Value| if stop() { None } else { read(agent.post(format!("{OSV}/querybatch")).header("Content-Type", "application/json").send(serde_json::to_vec(body).unwrap_or_default().as_slice())) };
+    let get = |id: &str| if stop() { None } else { read(agent.get(format!("{OSV}/vulns/{id}")).call()) };
     let npm: ureq::Agent = ureq::Agent::config_builder().http_status_as_error(false).timeout_global(Some(Duration::from_secs(8))).build().into();
     let repos = |eco: &str, name: &str, version: &str| {
         let purl = if eco == "PyPI" { format!("pkg:pypi/{}", crate::pypi::normalize(name)) } else { util::npm_purl(name) };
@@ -2278,7 +2278,7 @@ fn live_osv() {
     let root = PathBuf::from(std::env::var("UNSTALE_OSV_LIVE").unwrap());
     let cache = PathBuf::from(std::env::var("UNSTALE_OSV_CACHE").unwrap());
     let st = crate::stack::detect(&root).unwrap();
-    let asked = refresh(&cache, &root, &st);
+    let asked = refresh(&cache, &root, &st, &|| false);
     let r = report(&cache, &root).unwrap();
     println!("requests {asked}\n{}", summary(&r));
     for l in lines(&r) {

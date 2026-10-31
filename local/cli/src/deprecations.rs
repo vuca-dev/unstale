@@ -190,12 +190,15 @@ pub fn installed(st: &Stack) -> Vec<(String, String, String)> {
 
 /// Reads the registry for every installed version whose cached answer is missing or older than a day. Returns how
 /// many were asked.
-pub fn refresh(cache: &Path, st: &Stack) -> usize {
+pub fn refresh(cache: &Path, st: &Stack, stop: &(dyn Fn() -> bool + Sync)) -> usize {
     if crate::privacy::registry_off() {
         return 0;
     }
     let agent: ureq::Agent = ureq::Agent::config_builder().http_status_as_error(false).timeout_global(Some(Duration::from_secs(8))).build().into();
     let fetch = |url: &str| -> Option<serde_json::Value> {
+        if stop() {
+            return None;
+        }
         let mut r = agent.get(url).call().ok().filter(|r| r.status().is_success())?;
         let bytes = r.body_mut().with_config().limit(4 * 1024 * 1024).read_to_vec().ok()?;
         serde_json::from_slice(&bytes).ok()

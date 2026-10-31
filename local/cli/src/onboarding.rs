@@ -179,6 +179,9 @@ pub struct Pending {
     /// This run's `--wait`, when the deferral ends after it: the summary says the run did not wait (never saved).
     #[serde(skip)]
     pub past_wait: Option<u64>,
+    /// What this run's bound left undone, in the report's words (never saved): the report says it is incomplete.
+    #[serde(skip)]
+    pub cut: Vec<&'static str>,
     /// Weekly npm and PyPI downloads of unsubmitted packages, read once for `registration_order` (0 when unreadable).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub downloads: BTreeMap<String, u64>,
@@ -868,12 +871,15 @@ fn public_package(cache: &Path, purl: &str, pins: &[stack::Pin]) -> Option<bool>
 
 /// Weekly downloads from npm's downloads API, by purl: unscoped names 128 per request, scoped ones one each, a few at
 /// a time (the API rate-limits bursts). The names were verified public. A count that cannot be read is absent.
-fn npm_downloads(purls: &[String]) -> BTreeMap<String, u64> {
+fn npm_downloads(purls: &[String], stop: impl Fn() -> bool) -> BTreeMap<String, u64> {
     let named: Vec<(String, String)> = purls.iter().filter_map(|p| Some((p.clone(), util::npm_name(p)?))).collect();
     let (scoped, plain): (Vec<_>, Vec<_>) = named.into_iter().partition(|(_, n)| n.starts_with('@'));
     let count = |v: &serde_json::Value| v.get("downloads").and_then(|d| d.as_u64());
     let mut out = BTreeMap::new();
     for batch in plain.chunks(128) {
+        if stop() {
+            break;
+        }
         let names: Vec<&str> = batch.iter().map(|(_, n)| n.as_str()).collect();
         let Some(v) = fetch(format!("https://api.npmjs.org/downloads/point/last-week/{}", names.join(","))) else { continue };
         for (purl, name) in batch {
@@ -883,6 +889,9 @@ fn npm_downloads(purls: &[String]) -> BTreeMap<String, u64> {
         }
     }
     for chunk in scoped.chunks(8) {
+        if stop() {
+            break;
+        }
         std::thread::scope(|scope| {
             let handles: Vec<_> = chunk
                 .iter()
@@ -900,13 +909,16 @@ fn npm_downloads(purls: &[String]) -> BTreeMap<String, u64> {
 
 /// Weekly downloads by purl: npm's downloads API, and PyPI's from pypistats (the endpoint central's admission reads),
 /// four at a time (it rate-limits bursts). A count that cannot be read is absent.
-fn weekly_downloads(purls: &[String]) -> BTreeMap<String, u64> {
+fn weekly_downloads(purls: &[String], stop: impl Fn() -> bool + Copy) -> BTreeMap<String, u64> {
     if crate::privacy::registry_off() {
         return BTreeMap::new();
     }
     let (pypi, npm): (Vec<String>, Vec<String>) = purls.iter().cloned().partition(|p| p.starts_with("pkg:pypi/"));
-    let mut out = npm_downloads(&npm);
+    let mut out = npm_downloads(&npm, stop);
     for chunk in pypi.chunks(4) {
+        if stop() {
+            break;
+        }
         std::thread::scope(|scope| {
             let handles: Vec<_> = chunk
                 .iter()
@@ -1637,6 +1649,24 @@ struct Brief {
     /// Per technology, the record its upgrade line leads with (`unstale bump` lists it first).
     lead_ids: BTreeMap<String, String>,
 }
+/// Says a report is incomplete, and why: a line for its first section and for the summary. None when nothing is
+/// outstanding; a package that never answered is named by `coverage_counts` and the diagnostics.
+fn incomplete_line(pending: &Pending) -> Option<String> {
+    let jobs: BTreeMap<_, _> = pending.jobs.values().map(|j| (&j.technology, j)).collect();
+    let waiting = jobs.values().filter(|j| j.records == 0 && !matches!(j.state.as_str(), "monitoring" | "blocked" | "failed")).count();
+    let missing = waiting + pending.unsubmitted.len();
+    if missing == 0 && pending.cut.is_empty() {
+        return None;
+    }
+    let mut why = vec![];
+    if missing > 0 {
+        why.push(format!("{missing} package{} no results yet", if missing == 1 { " has" } else { "s have" }));
+    }
+    if !pending.cut.is_empty() {
+        why.push(format!("this run reached its time limit before finishing {}", pending.cut.join(", ")));
+    }
+    Some(format!("Coverage is incomplete: {}. This report covers what was published by then; unstale status --wait 300 fetches the rest.", why.join("; ")))
+}
 fn coverage_counts(pending: &Pending) -> String {
     let jobs: BTreeMap<_, _> = pending.jobs.values().map(|j| (&j.technology, j)).collect();
     let usable = jobs.values().filter(|j| j.records > 0 && !is_source_gap(j)).count();
@@ -1745,6 +1775,7 @@ fn summary(ctx: &Ctx, pending: &Pending, brief: &Brief, issue: Option<&str>) -> 
     ];
     if let Some(issue) = issue { lines.push(Line::new(issue, Tone::Amber)); }
     if let Some(line) = pending_line(pending, unix_now()) { lines.push(Line::new(line, Tone::Muted)); }
+    if !pending.cut.is_empty() && let Some(line) = incomplete_line(pending) { lines.push(Line::new(line, Tone::Amber)); }
     if let Some(line) = registration_line(pending) { lines.push(Line::new(line, if pending.deferred_until.is_some() { Tone::Muted } else { Tone::Amber })); }
     if let Some(why) = &brief.unread {
         lines.push(Line::new(format!("Scope · nothing was checked: {why}."), Tone::Amber));
@@ -3522,6 +3553,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World, write: bool) -> Result<B
     let lower_count = shown_count - top_count;
     start.push(format!("Upgrades below: {top_count} ranked by urgency: in effect now in production code first (end of support, deprecations in effect, advisories whose affected API production code uses), then the same for dev-only dependencies, then breaking changes at a site, runtime advisories whose affected path was not found and peer ranges; runtime before dev-only.{}{}{}", if lower_count > 0 { format!(" {lower_count} more name no located risk (two installed release lines, workarounds, archived repositories, dev-only advisories with no affected path, sample or documentation projects) and are listed under Lower-urgency upgrades.") } else { String::new() }, if counted > 0 { format!(" {counted} more name no consequential change found here and are listed under Other bumps.") } else { String::new() }, if picks.is_empty() { String::new() } else { format!(" Then {} optional capabilities.", picks.len()) }));
     start.push(format!("Coverage: {}. Per-technology detail: .unstale/coverage.md.", coverage_counts(pending)));
+    start.extend(incomplete_line(pending));
     start.push("Full records: .unstale/review/upgrades.md and .unstale/review/opportunities.md; one technology's: unstale bump <package>.".into());
     text = first_screen(&lead_lines) + &text;
     text += "## Start here\n\n";
@@ -3728,6 +3760,11 @@ pub fn lead_ids(ctx: &Ctx, w: &World) -> BTreeMap<String, String> {
 }
 
 pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
+    // `--wait` counts from here: every phase below shares it, and the report is what is left at the end.
+    let start = Instant::now();
+    let bound = Bound::new(start, wait);
+    let finished = Arc::new(AtomicBool::new(false));
+    last_resort(ctx, start + bound.hard_limit(), finished.clone());
     let ui = crate::onboarding_ui::Display::start(animate);
     let leave = Arc::new(AtomicBool::new(false));
     if wait > 0 && std::io::stdin().is_terminal() {
@@ -3789,7 +3826,7 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
     let catalog_sync = |title: &str, hint: &str| {
         let cands = candidates(ctx, &st);
         let mut counter = PackageProgress::new(&st, &read(ctx));
-        sync::sync_reporting(&ctx.config.catalog, &ctx.cache, &cands, &st.withheld(&ctx.cache), &st.purls(), |settled| {
+        sync::sync_reporting(&ctx.config.catalog, &ctx.cache, &cands, &st.withheld(&ctx.cache), &st.purls(), &|| bound.passed(), |settled| {
             let (done, total) = counter.settle(settled);
             ui.update(title, &format!("Checked {done}/{total} direct packages against the published catalog"), hint)
         })
@@ -3799,10 +3836,11 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
     // registries only, cached a day; the identity check below already read most of them.
     let check_deprecations = || {
         ui.update("Checking publisher deprecations · step 3/5", "Installed versions of direct packages on their public registry", "Public package names and versions only");
-        crate::deprecations::refresh(&ctx.cache, &st);
-        crate::advisories::refresh(&ctx.cache, &ctx.root, &st);
+        let stop = || bound.passed();
+        crate::deprecations::refresh(&ctx.cache, &st, &stop);
+        crate::advisories::refresh(&ctx.cache, &ctx.root, &st, &stop);
         // Release dates of the direct packages the coverage service found stale or archived (maintenance.rs).
-        crate::maintenance::refresh(&ctx.cache, &st, &read(ctx).jobs);
+        crate::maintenance::refresh(&ctx.cache, &st, &read(ctx).jobs, &stop);
     };
     ui.update("Connecting to the catalog · step 2/5", "Checking service availability", "");
     let mut timings = vec![];
@@ -3880,7 +3918,7 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
     // A registry that did not answer (a burst limit, the network) says nothing about the package: those are asked
     // again, fewer at a time and after a pause, rather than left out of this run as if private.
     for (round, (width, pause)) in [(util::REQUESTS_AT_ONCE, 0), (4, 5), (2, 20)].into_iter().enumerate() {
-        if unchecked.is_empty() {
+        if unchecked.is_empty() || bound.left() <= Duration::from_secs(pause) {
             break;
         }
         if round > 0 {
@@ -3889,12 +3927,11 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
         std::thread::sleep(Duration::from_secs(pause));
         let retry_total = unchecked.len();
         let mut retry_done = 0;
-        let mut unanswered = vec![];
+        let mut answered = vec![false; retry_total];
         util::concurrent(&unchecked, width, |(p, d)| public_package(&ctx.cache, p, &d.pins), |i, public| {
-            match public {
-                Some(true) => verified.push(unchecked[i].0.clone()),
-                Some(false) => {}
-                None => unanswered.push(unchecked[i]),
+            answered[i] = public.is_some();
+            if public == Some(true) {
+                verified.push(unchecked[i].0.clone());
             }
             if round == 0 {
                 done += 1;
@@ -3903,25 +3940,30 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
                 ui.update("Verifying public packages · step 3/5", &format!("Checked {done}/{total} registry identities"), "Only verified public package names are submitted");
             } else {
                 retry_done += 1;
-                ui.update("Retrying public packages · step 3/5", &format!("Retried {retry_done}/{retry_total} registry identities · {} still unanswered", unanswered.len()), "");
+                ui.update("Retrying public packages · step 3/5", &format!("Retried {retry_done}/{retry_total} registry identities · {} still unanswered", retry_done - answered.iter().filter(|a| **a).count()), "");
             }
-            true
+            !bound.passed()
         });
-        unchecked = unanswered;
+        // Unanswered, or never asked because the bound passed.
+        unchecked = unchecked.into_iter().zip(answered).filter(|(_, a)| !a).map(|(u, _)| u).collect();
     }
     if !unchecked.is_empty() {
         let n = unchecked.len();
         diagnostics.push(format!("Public registry identity: no answer for {n} package(s), checked again on the next run: {}", unchecked.iter().take(5).map(|(p, _)| p.as_str()).collect::<Vec<_>>().join(", ")));
         issue.get_or_insert(format!("Registry unavailable for {n} package{} · checked again next run", if n == 1 { "" } else { "s" }));
+        if bound.passed() {
+            pending.cut.push("public registry identities");
+        }
     }
     for p in verified {
         pending.unsubmitted.insert(p);
     }
     check_deprecations();
+    if bound.passed() {
+        pending.cut.push("publisher deprecation and advisory checks");
+    }
     // Persist identities before the first request, even if the process is interrupted.
     save(ctx, &pending)?;
-    // `--wait` counts from here, so a registration deferred for less than what is left of it is sent again then.
-    let start = Instant::now();
     let hint = if std::io::stdin().is_terminal() { "Within --wait · Enter to finish" } else { "Within --wait" };
     register_waiting(&mut pending, wait, linger, start, |p, until| {
         let reason = p.deferred_by.map_or("the service is limiting new registrations", Deferral::reason);
@@ -3939,8 +3981,9 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
         if !unread.is_empty() {
             ui.update("Connecting public coverage · step 3/5", &format!("Ranking {registrations} public packages by adoption"), "Most-used packages are registered first");
             // A count that cannot be read is kept as 0, so an npm outage costs one attempt, not one per run.
-            let read = weekly_downloads(&unread);
-            pending.downloads.extend(unread.into_iter().map(|p| {
+            let read = weekly_downloads(&unread, || bound.passed());
+            // Past the bound nothing more is registered in this run: an unread count is not an unreadable one.
+            pending.downloads.extend(unread.into_iter().filter(|p| !bound.passed() || read.contains_key(p)).map(|p| {
                 let d = read.get(&p).copied().unwrap_or(0);
                 (p, d)
             }));
@@ -3948,7 +3991,7 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
         }
         let order = registration_order(&pending.unsubmitted, &st, &pending.downloads);
         let a = agent();
-        register(pending, order, |batch| register_batch(&a, service, batch), |accepted| {
+        register(pending, order, |batch| if bound.passed() { vec![] } else { register_batch(&a, service, batch) }, |accepted| {
             ui.update("Connecting public coverage · step 3/5", &registered_text(accepted, registrations, known), "Public names only · acknowledged jobs continue centrally");
         }, &mut diagnostics, |p| save(ctx, p))
     })?;
@@ -3958,6 +4001,7 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
         ui.update("Registration deferred · step 3/5", line, "Packages already registered are still followed while they may publish");
     }
     let mut saved_snapshot = String::new();
+    let mut report_took = Duration::ZERO;
     let mut ready_hint = String::from("Your report is next; shared analysis can continue in background");
     // When each package's status is next read (Unix seconds); absent: at the next pass.
     let mut poll_at: BTreeMap<String, u64> = BTreeMap::new();
@@ -3977,27 +4021,33 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
         let now = unix_now();
         let purls: Vec<String> = pending.jobs.keys().filter(|p| poll_at.get(*p).is_none_or(|t| *t <= now)).cloned().collect();
         let (total, mut done, a) = (purls.len(), 0, agent());
-        statuses(&a, service, &purls, |i, got| {
-            match got {
-                Ok(j) => {
-                    poll_at.insert(purls[i].clone(), next_poll(&j, now));
-                    let kept = merged(pending.jobs.get(&purls[i]), j);
-                    pending.jobs.insert(purls[i].clone(), kept);
+        // Past the bound nothing new is asked: the run goes straight to its report.
+        if !bound.passed() {
+            statuses(&a, service, &purls, |i, got| {
+                match got {
+                    Ok(j) => {
+                        poll_at.insert(purls[i].clone(), next_poll(&j, now));
+                        let kept = merged(pending.jobs.get(&purls[i]), j);
+                        pending.jobs.insert(purls[i].clone(), kept);
+                    }
+                    Err(e) => {
+                        diagnostics.push(format!("Coverage {}: {e:#}", purls[i]));
+                        issue = Some(match e.downcast_ref::<Limited>() {
+                            Some(l) => format!("Coverage results not refreshed · {} until {} UTC · cached results kept", l.by.reason(), clock(unix_now() + l.retry_after)),
+                            None => "Coverage connection interrupted · cached results kept".into(),
+                        });
+                        disconnected = true;
+                        return false;
+                    }
                 }
-                Err(e) => {
-                    diagnostics.push(format!("Coverage {}: {e:#}", purls[i]));
-                    issue = Some(match e.downcast_ref::<Limited>() {
-                        Some(l) => format!("Coverage results not refreshed · {} until {} UTC · cached results kept", l.by.reason(), clock(unix_now() + l.retry_after)),
-                        None => "Coverage connection interrupted · cached results kept".into(),
-                    });
-                    disconnected = true;
-                    return false;
-                }
-            }
-            done += 1;
-            ui.update("Refreshing shared results · step 4/5", &format!("Checked coverage for {done}/{total} packages"), &hint());
-            !leave.load(Ordering::Acquire)
-        });
+                done += 1;
+                ui.update("Refreshing shared results · step 4/5", &format!("Checked coverage for {done}/{total} packages"), &hint());
+                !leave.load(Ordering::Acquire) && !bound.passed()
+            });
+        }
+        if done < total && bound.passed() && !pending.cut.contains(&"coverage results") {
+            pending.cut.push("coverage results");
+        }
         save(ctx, &pending)?;
         if disconnected {
             break;
@@ -4008,20 +4058,28 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
         let stale = synced.as_ref().is_none_or(|(at, cands): &(Instant, BTreeSet<String>)| {
             at.elapsed() >= Duration::from_secs(IDLE_POLL_S) || *cands != candidates(ctx, &st)
         });
-        if moved || stale {
+        if (moved || stale) && !bound.passed() {
             match catalog_sync("Refreshing shared results · step 4/5", &hint()) {
-                Ok(cands) => synced = cands.map(|c| (Instant::now(), c)),
+                Ok(cands) => {
+                    if cands.is_none() && bound.passed() && !pending.cut.contains(&"catalog refresh") {
+                        pending.cut.push("catalog refresh");
+                    }
+                    synced = cands.map(|c| (Instant::now(), c));
+                }
                 Err(e) => {
                     diagnostics.push(format!("Catalog refresh: {e:#}"));
                     issue = Some("Catalog refresh unavailable · cached intelligence kept".into());
                 }
             }
         }
-        if !linger && wait > 0 {
+        // Past the bound the last report is the next thing to run: one written here would be written again at once.
+        if !linger && wait > 0 && !bound.passed() {
         let snapshot = crate::load_catalog(ctx, &st).snapshot_line();
         if snapshot != saved_snapshot {
             ui.update("Refreshing shared results · step 4/5", "Matching the catalog against repository code and versions", &hint());
+            let began = Instant::now();
             let ready = report(ctx, &pending, &mut scan)?;
+            report_took = began.elapsed();
             ready_hint = format!("Review ready · {} upgrades · {} capabilities · Enter to finish", ready.upgrades.len(), ready.highlights.len());
             saved_snapshot = snapshot;
             ui.update(
@@ -4034,6 +4092,8 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
         if leave.load(Ordering::Acquire)
             || linger // Default init prepares a first report; long-running coverage belongs to explicit status --wait.
             || start.elapsed().as_secs() >= wait
+            // The last report has to fit too: what is left is not worth starting another pass for.
+            || bound.left() <= report_took
             // Nothing can publish before the wait ends: waiting longer only delays the report.
             || !pending.jobs.values().any(|j| may_publish_by(j, unix_now() + wait.saturating_sub(start.elapsed().as_secs())))
         {
@@ -4063,6 +4123,7 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
         );
         util::write_atomic(&path, text.as_bytes())?;
     }
+    finished.store(true, Ordering::Release);
     finish(ctx, &pending, &brief, ui, issue.as_deref(), false, &leave);
     Ok(if interrupt::pressed() { 130 } else { 0 })
 }
@@ -4102,6 +4163,61 @@ mod interrupt {
     pub fn pressed() -> bool {
         HIT.load(Ordering::Acquire)
     }
+}
+
+/// The longest a run with no `--wait` spends on its network phases. `--wait 0` means not waiting for coverage, not
+/// waiting for ever: a first run still identifies and registers packages, and on a large stack that can run long.
+const DEFAULT_BOUND_S: u64 = 300;
+/// The least a short `--wait` leaves those phases, so a short wait still registers a typical stack.
+const MIN_BOUND_S: u64 = 60;
+/// When a run stops starting network work, so that the report (the one thing it must always write) still fits in the
+/// time it was given. Work in flight ends at its request's own timeout; what was not reached is left to the next run.
+struct Bound(Instant, u64);
+impl Bound {
+    fn new(start: Instant, wait: u64) -> Self {
+        let limit = if wait == 0 { DEFAULT_BOUND_S } else { wait.max(MIN_BOUND_S) };
+        // A tenth for the report: seconds on most stacks, and it reuses this run's scan.
+        Bound(start + Duration::from_secs(limit - limit / 10), limit)
+    }
+    /// How long after its start a run ends whatever it is doing (`last_resort`): matching a very large repository is
+    /// local work no bound above reaches, so it gets as long again as the network phases.
+    fn hard_limit(&self) -> Duration {
+        Duration::from_secs(self.1 * 2)
+    }
+    fn left(&self) -> Duration {
+        self.0.saturating_duration_since(Instant::now())
+    }
+    fn passed(&self) -> bool {
+        self.left().is_zero()
+    }
+}
+
+/// A run that outlives its hard limit (`at`) ends here, with a report: the one this run wrote while following coverage,
+/// else a short one saying what is missing. A caller that gave `--wait` never gets silence, whatever stalled.
+fn last_resort(ctx: &Ctx, at: Instant, finished: Arc<AtomicBool>) {
+    let (path, state, began) = (ctx.tool.join("onboarding-report.md"), state_path(ctx), std::time::SystemTime::now());
+    std::thread::spawn(move || {
+        while Instant::now() < at {
+            std::thread::sleep(Duration::from_millis(500));
+            if finished.load(Ordering::Acquire) {
+                return;
+            }
+        }
+        let written = std::fs::metadata(&path).and_then(|m| m.modified()).is_ok_and(|m| m >= began);
+        let pending: Pending = std::fs::read(&state).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+        if !written {
+            let _ = util::write_atomic(&path, stopped_report(&pending).as_bytes());
+        }
+        println!("Stopped at the time limit · {}. See .unstale/onboarding-report.md; unstale status --wait 300 continues.", if written { "the report is from coverage read so far" } else { "the report is incomplete" });
+        std::process::exit(0);
+    });
+}
+/// The report of a run that never reached matching: what it knows, and that the leads are missing.
+fn stopped_report(pending: &Pending) -> String {
+    format!(
+        "# Onboarding report\n\nThis report is incomplete: the run reached its time limit before it finished matching the catalog against this repository, so it lists no upgrades or leads.\n\nCoverage: {}.\n\nRun unstale status --wait 300 for the full report.\n",
+        coverage_counts(pending)
+    )
 }
 
 /// Whether a package is still on its way to its first published coverage: a run holds or works it, a run is due to take
@@ -4892,6 +5008,37 @@ mod tests {
         assert_eq!(seen, vec![0, 1, 2], "a rejected and a deferred package are not counted");
         assert_eq!((pending.jobs.len(), pending.unsubmitted.len()), (2, 2));
     }
+    #[test]
+    fn a_bound_leaves_a_tenth_for_the_report_and_no_wait_is_still_bounded() {
+        let now = Instant::now();
+        let left = |wait| Bound::new(now, wait).left().as_secs();
+        assert!((265..=270).contains(&left(300)));
+        // A short wait still gets a minute of setup; --wait 0 is the default bound.
+        assert!((49..=54).contains(&left(5)));
+        assert!((265..=270).contains(&left(0)));
+        assert!(Bound::new(now - Duration::from_secs(280), 300).passed());
+        assert_eq!(Bound::new(now, 300).hard_limit(), Duration::from_secs(600));
+    }
+
+    #[test]
+    fn a_run_stopped_before_matching_still_says_what_it_knows() {
+        let mut pending = Pending::default();
+        pending.unsubmitted.insert("pkg:npm/a".into());
+        let text = stopped_report(&pending);
+        assert!(text.contains("This report is incomplete") && text.contains("1 not yet registered"), "{text}");
+    }
+
+    #[test]
+    fn a_report_says_it_is_incomplete_and_a_complete_one_says_nothing() {
+        let mut pending = Pending::default();
+        assert_eq!(incomplete_line(&pending), None);
+        pending.unsubmitted.insert("pkg:npm/a".into());
+        assert!(incomplete_line(&pending).unwrap().starts_with("Coverage is incomplete: 1 package has no results yet."));
+        pending.unsubmitted.clear();
+        pending.cut.push("public registry identities");
+        assert!(incomplete_line(&pending).unwrap().contains("reached its time limit before finishing public registry identities"));
+    }
+
     #[test]
     fn a_wait_ends_when_nothing_can_publish_before_it() {
         let job = |json: &str| -> Job { serde_json::from_str(json).unwrap() };
