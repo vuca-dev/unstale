@@ -972,8 +972,8 @@ pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
             entry.alias_dirs.insert(declaration.manifest_dir.clone());
         }
         if let (Some(resolved), Some(lockfile)) = (&declaration.resolved, cargo.manifests.get(&declaration.manifest_dir).and_then(|m| m.lockfile.clone())) {
-            let standalone = cargo.manifests.get(&declaration.manifest_dir).is_some_and(|m| m.workspace_root.is_none());
-            entry.read_under(&declaration.manifest_dir, Some(resolved.version.clone()), lockfile.clone(), standalone, None, Some(lockfile));
+            // This reading is covered by its Cargo.lock whether or not the manifest belongs to a workspace.
+            entry.read_under(&declaration.manifest_dir, Some(resolved.version.clone()), lockfile.clone(), false, None, Some(lockfile));
         }
     }
     // No name a private registry serves is ever named to a third party (`privacy`).
@@ -2235,6 +2235,13 @@ mod tests {
         assert_eq!(dep.version.as_ref().unwrap().to_string(), "1.2.3");
         assert!(dep.aliases.contains("serde_alias"));
         assert!(dep.public_candidate);
+        assert!(!dep.readings[0].standalone);
+        assert!(
+            crate::deprecations::installed(&stack)
+                .iter()
+                .any(|(purl, _, version)| purl == "pkg:cargo/serde" && version == "1.2.3"),
+            "a single-package Cargo.lock still supplies an installed version for yanked checks"
+        );
         assert!(stack.packages[0].declared.contains("pkg:cargo/serde"));
 
         let no_lock = tempfile::tempdir().unwrap();
@@ -2247,14 +2254,14 @@ mod tests {
     }
 
     #[test]
-    fn an_excluded_cargo_package_uses_its_own_lock_as_a_standalone_project() {
+    fn an_excluded_cargo_package_with_its_own_lock_is_still_lockfile_covered() {
         let d = tempfile::tempdir().unwrap();
         write(d.path(), "Cargo.toml", "[workspace]\nexclude=[\"standalone\"]\n");
         write(d.path(), "standalone/Cargo.toml", "[package]\nname=\"standalone\"\nversion=\"1.0.0\"\n[dependencies]\nserde=\"1\"\n");
         write(d.path(), "standalone/Cargo.lock", "[[package]]\nname=\"standalone\"\nversion=\"1.0.0\"\ndependencies=[\"serde 1.2.3 (registry+https://github.com/rust-lang/crates.io-index)\"]\n[[package]]\nname=\"serde\"\nversion=\"1.2.3\"\nsource=\"registry+https://github.com/rust-lang/crates.io-index\"\n");
         let stack = detect_in(d.path(), &crate::privacy::Env::default()).unwrap();
         let reading = &stack.deps["pkg:cargo/serde"].readings[0];
-        assert!(reading.standalone);
+        assert!(!reading.standalone);
         assert_eq!(reading.lock.as_deref(), Some("standalone/Cargo.lock"));
     }
 

@@ -780,7 +780,14 @@ fn cargo_graph(file: &str, inventory: &crate::cargo::CargoInventory, st: &Stack)
             root
         } else {
             let i = g.node(&key, &record.id.name, &record.id.version.to_string());
-            g.saw(i, crate::privacy::Seen::cargo_lockfile_source(record.id.source.as_deref()));
+            // A source-less lock record that is not a discovered workspace member is a path/unknown source,
+            // not positive evidence that a versioned manifest requirement came from crates.io.
+            let seen = if record.id.source.is_none() {
+                crate::privacy::Seen::Elsewhere
+            } else {
+                crate::privacy::Seen::cargo_lockfile_source(record.id.source.as_deref())
+            };
+            g.saw(i, seen);
             i
         };
         package_nodes.insert(key, i);
@@ -1275,20 +1282,25 @@ fn evaluate_refs(
         let mut parents: Vec<Vec<(usize, &Edge)>> = vec![vec![]; n];
         let mut direct = vec![false; n];
         let mut direct_runtime = vec![false; n];
+        let mut direct_possible_runtime = vec![false; n];
         for (i, nd) in g.nodes.iter().enumerate() {
             for e in &nd.edges {
                 parents[e.to].push((i, e));
                 if nd.local.is_some() && g.nodes[e.to].local.is_none() {
                     direct[e.to] = true;
-                    if cargo && nd.cargo_runtime_root && e.kind == DependencyKind::Runtime && !e.conditional && e.target.is_none() {
-                        direct_runtime[e.to] = true;
+                    if cargo && nd.cargo_runtime_root && e.kind == DependencyKind::Runtime {
+                        direct_possible_runtime[e.to] = true;
+                        if !e.conditional && e.target.is_none() {
+                            direct_runtime[e.to] = true;
+                        }
                     }
                 }
             }
         }
-        // Cargo runtime roots are actual package members in application-role paths, and only unconditional normal
-        // manifest edges establish runtime reachability. Lockfile edges remain Unknown. Other ecosystems retain their
-        // existing package.json-based root and non-dev-edge behavior.
+        // Cargo runtime roots are actual package members in application-role paths. Proven runtime follows only
+        // unconditional normal manifest edges; possible runtime also follows conditional normal and unknown lockfile
+        // edges so serious advisories are surfaced without claiming those dependencies are definitely active. Other
+        // ecosystems retain their existing package.json-based root and non-dev-edge behavior.
         let runtime = {
             let mut seen = vec![false; n];
             let app = |d: &str| crate::usage::path_role(&if d == "." { "package.json".to_string() } else { format!("{d}/package.json") }) == crate::usage::Role::App;
@@ -1308,6 +1320,23 @@ fn evaluate_refs(
                 }
             }
             seen
+        };
+        let possible_runtime = if cargo {
+            let mut seen = vec![false; n];
+            let mut q: VecDeque<usize> = (0..n)
+                .filter(|&i| g.nodes[i].local.is_some() && g.nodes[i].cargo_runtime_root)
+                .collect();
+            for &i in &q { seen[i] = true; }
+            while let Some(i) = q.pop_front() {
+                for e in g.nodes[i].edges.iter().filter(|e| {
+                    matches!(e.kind, DependencyKind::Runtime | DependencyKind::Unknown)
+                }) {
+                    if !seen[e.to] { seen[e.to] = true; q.push_back(e.to); }
+                }
+            }
+            seen
+        } else {
+            runtime.clone()
         };
         for (i, nd) in g.nodes.iter().enumerate() {
             if nd.local.is_some() || (cargo && nd.private) {
@@ -1346,7 +1375,9 @@ fn evaluate_refs(
                 let sev = d.severity.unwrap_or(Severity::Unrated);
                 let high = sev >= Severity::High;
                 // Low and unrated never call for action; dev-only below critical never does either.
-                if sev < Severity::Moderate || (!runtime[i] && sev < Severity::Critical) {
+                if sev < Severity::Moderate
+                    || (!runtime[i] && !possible_runtime[i] && sev < Severity::Critical)
+                {
                     continue;
                 }
                 // The record's entry for this package, else (a record with no package entry, matched on the
@@ -1385,6 +1416,8 @@ fn evaluate_refs(
                 let mut why = vec![];
                 if high && runtime[i] {
                     why.push(format!("{} at runtime", sev.word()));
+                } else if high && cargo && possible_runtime[i] {
+                    why.push(format!("{} on a potentially active Cargo dependency", sev.word()));
                 }
                 let mut blocked = false;
                 if fixes.is_empty() {
@@ -1432,7 +1465,13 @@ fn evaluate_refs(
                 // code calls it). A moderate with no fixed version on a transitive package, or new on one, is a nit.
                 let proven_runtime_direct = if cargo { direct_runtime[i] } else { direct[i] };
                 let shown = if !runtime[i] {
-                    blocked
+                    if cargo && possible_runtime[i] {
+                        high
+                            || (blocked && !fixes.is_empty())
+                            || (direct_possible_runtime[i] && (fresh || fixes.is_empty()))
+                    } else {
+                        blocked
+                    }
                 } else if high {
                     true
                 } else {
@@ -1973,7 +2012,7 @@ pub fn detail_lines(r: &Report) -> Vec<String> {
 /// One summary line: shown against matched.
 pub fn summary(r: &Report) -> String {
     format!(
-        "{} of {} advisor{} on {} locked package versions call for action (critical or high at runtime, moderate at runtime with a blocked fix, or on a direct dependency when new or when no release fixes it, or critical outside proven runtime with no fix the ranges admit); the rest are counted, not shown",
+        "{} of {} advisor{} on {} locked package versions call for action (critical or high at runtime or on a potentially active Cargo dependency, moderate at runtime with a blocked fix, or on a direct dependency when new or when no release fixes it, or critical outside proven runtime with no fix the ranges admit); the rest are counted, not shown",
         r.items.len(),
         r.raw,
         if r.raw == 1 { "y" } else { "ies" },
@@ -2097,7 +2136,12 @@ mod tests {
             ),
             (
                 "RUSTSEC-leaf".into(),
-                doc(Some(Severity::Critical), "2025-01-01T00:00:00Z", &[], &[]),
+                doc(
+                    Some(Severity::High),
+                    "2025-01-01T00:00:00Z",
+                    &[("crates.io", "leaf-crate", &["2.1.0"])],
+                    &[],
+                ),
             ),
         ]);
         let (raw, items) = evaluate(
@@ -2116,8 +2160,8 @@ mod tests {
         assert_eq!(serde_item.via, Vec::<String>::new());
         let leaf_item = items.iter().find(|i| i.name == "leaf-crate").unwrap();
         assert_eq!(leaf_item.via, vec!["serde 1.0.0"]);
-        assert_eq!(leaf_item.why, vec!["no fixed version: replace or mitigate"]);
-        assert!(!leaf_item.why.iter().any(|w| w.contains("at runtime")));
+        assert_eq!(leaf_item.why, vec!["high on a potentially active Cargo dependency"]);
+        assert!(!leaf_item.why.iter().any(|w| w == "high at runtime"));
 
         let mut mixed = gs;
         mixed.push(npm_lock(
@@ -2312,6 +2356,24 @@ mod tests {
     }
 
     #[test]
+    fn source_less_external_patch_packages_are_never_sent_to_osv() {
+        let root = tempfile::tempdir().unwrap();
+        write(
+            root.path(),
+            "Cargo.toml",
+            "[package]\nname=\"app\"\nversion=\"1.0.0\"\n[dependencies]\ncorp-secret=\"1.0\"\n[patch.crates-io]\ncorp-secret={path=\"../private/corp-secret\"}\n",
+        );
+        write(
+            root.path(),
+            "Cargo.lock",
+            "[[package]]\nname=\"app\"\nversion=\"1.0.0\"\ndependencies=[\"corp-secret 1.0.0\"]\n[[package]]\nname=\"corp-secret\"\nversion=\"1.0.0\"\n",
+        );
+        let st = cargo_stack(root.path());
+        let gs = graphs(root.path(), &st);
+        assert!(gs[0].packages().is_empty(), "a path-patched crate is not a public crates.io package");
+    }
+
+    #[test]
     fn cargo_dependency_kinds_conditions_and_cargo_semver_are_conservative() {
         let root = tempfile::tempdir().unwrap();
         write(
@@ -2394,6 +2456,15 @@ mod tests {
                     &[],
                 ),
             ),
+            (
+                "RUSTSEC-target".into(),
+                doc(
+                    Some(Severity::High),
+                    "2025-01-01T00:00:00Z",
+                    &[("crates.io", "target-crate", &["1.1.0"])],
+                    &[],
+                ),
+            ),
         ]);
         let matches: BTreeMap<(String, String, String), Vec<String>> = docs
             .keys()
@@ -2417,15 +2488,15 @@ mod tests {
         let build = items.iter().find(|i| i.name == "build-crate").unwrap();
         assert!(build.why.iter().any(|w| w.starts_with("fix blocked:")));
         assert!(!build.why.iter().any(|w| w.contains("at runtime")));
-        assert!(
-            !items.iter().any(|i| i.name == "optional-crate"),
-            "a conditional range cannot be an unconditional blocker"
-        );
-        assert!(
-            !items
-                .iter()
-                .any(|i| i.name == "dev-crate" || i.name == "target-crate")
-        );
+        assert!(items.iter().any(|i| {
+            i.name == "optional-crate"
+                && i.why == ["high on a potentially active Cargo dependency"]
+        }));
+        assert!(items.iter().any(|i| {
+            i.name == "target-crate"
+                && i.why == ["high on a potentially active Cargo dependency"]
+        }));
+        assert!(!items.iter().any(|i| i.name == "dev-crate"));
 
         let version = Version::parse("1.2.3-alpha.1").unwrap();
         assert_eq!(

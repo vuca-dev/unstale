@@ -71,7 +71,6 @@ pub struct CargoManifest {
     pub path: String,
     pub dir: String,
     pub package: Option<CargoPackage>,
-    pub workspace_root: Option<String>,
     pub lockfile: Option<String>,
 }
 #[derive(Debug, Clone)]
@@ -83,7 +82,6 @@ pub struct CargoPackage {
 #[derive(Debug, Clone)]
 pub struct CargoWorkspace {
     pub root: String,
-    pub virtual_workspace: bool,
     pub members: BTreeSet<String>,
     pub excluded: BTreeSet<String>,
     pub lockfile: Option<String>,
@@ -421,7 +419,6 @@ pub fn detect(root: &Path, notes: &mut Vec<String>, unreadable: &mut usize) -> C
             .then(|| rel(root, &root.join(root_dir).join("Cargo.lock")));
         workspaces.push(CargoWorkspace {
             root: root_dir.clone(),
-            virtual_workspace: !p.has_package,
             members,
             excluded,
             lockfile: lock,
@@ -553,7 +550,6 @@ pub fn detect(root: &Path, notes: &mut Vec<String>, unreadable: &mut usize) -> C
                     path: p.path.clone(),
                     dir: dir.clone(),
                     package: cargo_package,
-                    workspace_root: owner.clone(),
                     lockfile: lock,
                 },
             );
@@ -609,7 +605,7 @@ pub fn detect(root: &Path, notes: &mut Vec<String>, unreadable: &mut usize) -> C
                 .push(parse_dependency(dir, alias, kind, target, &effective));
         }
     }
-    resolve_declarations(root, &mut inventory, notes);
+    resolve_declarations(&mut inventory);
     inventory
 }
 
@@ -978,7 +974,7 @@ fn read_lock(
     Some(lock)
 }
 
-fn resolve_declarations(root: &Path, inv: &mut CargoInventory, notes: &mut Vec<String>) {
+fn resolve_declarations(inv: &mut CargoInventory) {
     for dep in &mut inv.declarations {
         let Some(manifest) = inv.manifests.get(&dep.manifest_dir) else {
             continue;
@@ -1034,43 +1030,15 @@ fn resolve_declarations(root: &Path, inv: &mut CargoInventory, notes: &mut Vec<S
         edge_candidates.dedup_by(|a, b| {
             a.id.name == b.id.name && a.id.version == b.id.version && a.id.source == b.id.source
         });
-        let selected = if edge_candidates.len() == 1 {
-            edge_candidates.first().copied()
-        } else if edge_candidates.is_empty() {
-            fallback_candidate(dep, lock, name)
-        } else {
-            None
+        let selected = match edge_candidates.as_slice() {
+            [candidate] => Some(*candidate),
+            _ => None,
         };
         if let Some(candidate) = selected {
             dep.resolved = Some(candidate.id.clone());
         }
     }
-    let _ = (root, notes);
 }
-fn fallback_candidate<'a>(
-    dep: &CargoDependency,
-    lock: &'a CargoLock,
-    name: &str,
-) -> Option<&'a CargoLockPackage> {
-    if !matches!(dep.source, CargoDependencySource::DefaultRegistry) {
-        return None;
-    }
-    let req = VersionReq::parse(dep.requirement.as_deref()?).ok()?;
-    let mut candidates: Vec<&CargoLockPackage> = lock
-        .packages
-        .iter()
-        .filter(|p| {
-            p.id.name == name
-                && crate::privacy::Seen::cargo_lockfile_source(p.id.source.as_deref())
-                    == crate::privacy::Seen::Public
-                && req.matches(&p.id.version)
-        })
-        .collect();
-    candidates.sort_by(|a, b| (&a.id.version, &a.id.source).cmp(&(&b.id.version, &b.id.source)));
-    candidates.dedup_by(|a, b| a.id.version == b.id.version && a.id.source == b.id.source);
-    (candidates.len() == 1).then(|| candidates[0])
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1125,13 +1093,8 @@ mod tests {
         assert_eq!(unreadable, 0, "{notes:?}");
         assert!(inv.manifests["."].package.is_none(), "the root is virtual");
         let ws = inv.workspaces.iter().find(|w| w.root == ".").unwrap();
-        assert!(ws.virtual_workspace);
         assert_eq!(ws.members, BTreeSet::from(["crates/app".to_string()]));
         assert_eq!(ws.excluded, BTreeSet::from(["crates/skip".to_string()]));
-        assert_eq!(
-            inv.manifests["crates/app"].workspace_root.as_deref(),
-            Some(".")
-        );
         assert_eq!(
             inv.manifests["crates/app"].lockfile.as_deref(),
             Some("Cargo.lock")
@@ -1207,7 +1170,6 @@ mod tests {
         let (inventory, notes, unreadable) = detect_at(root);
         assert_eq!(unreadable, 0, "{notes:?}");
         let app = &inventory.manifests["detached/app"];
-        assert_eq!(app.workspace_root.as_deref(), Some("shared"));
         assert_eq!(app.lockfile.as_deref(), Some("shared/Cargo.lock"));
         assert!(
             inventory
@@ -1227,56 +1189,28 @@ mod tests {
                 .to_string(),
             "1.2.0"
         );
-        assert_eq!(
-            inventory.manifests["detached/not-member"].workspace_root,
-            None
-        );
         assert_eq!(inventory.manifests["detached/not-member"].lockfile, None);
     }
 
     #[test]
-    fn semver_fallback_requires_one_eligible_public_lock_candidate() {
-        let unique = tempfile::tempdir().unwrap();
+    fn a_manifest_requirement_does_not_resolve_without_a_matching_lock_edge() {
+        let root = tempfile::tempdir().unwrap();
         write(
-            unique.path(),
+            root.path(),
             "Cargo.toml",
             "[package]\nname=\"app\"\nversion=\"1.0.0\"\n[dependencies]\nserde=\"^1\"\n",
         );
         write(
-            unique.path(),
+            root.path(),
             "Cargo.lock",
             &format!(
-                "[[package]]\nname=\"app\"\nversion=\"1.0.0\"\ndependencies=[]\n[[package]]\nname=\"serde\"\nversion=\"1.2.3\"\nsource=\"{CRATES}\"\n[[package]]\nname=\"serde\"\nversion=\"1.3.0\"\nsource=\"registry+https://private.invalid/index\"\n"
+                "[[package]]\nname=\"app\"\nversion=\"1.0.0\"\ndependencies=[]\n[[package]]\nname=\"serde\"\nversion=\"1.2.3\"\nsource=\"{CRATES}\"\n"
             ),
         );
-        let (inventory, _, _) = detect_at(unique.path());
-        assert_eq!(
-            inventory.declarations[0]
-                .resolved
-                .as_ref()
-                .unwrap()
-                .version
-                .to_string(),
-            "1.2.3"
-        );
-
-        let ambiguous = tempfile::tempdir().unwrap();
-        write(
-            ambiguous.path(),
-            "Cargo.toml",
-            "[package]\nname=\"app\"\nversion=\"1.0.0\"\n[dependencies]\nserde=\"^1\"\n",
-        );
-        write(
-            ambiguous.path(),
-            "Cargo.lock",
-            &format!(
-                "[[package]]\nname=\"app\"\nversion=\"1.0.0\"\ndependencies=[]\n[[package]]\nname=\"serde\"\nversion=\"1.2.3\"\nsource=\"{CRATES}\"\n[[package]]\nname=\"serde\"\nversion=\"1.4.0\"\nsource=\"{CRATES}\"\n"
-            ),
-        );
-        let (inventory, _, _) = detect_at(ambiguous.path());
+        let (inventory, _, _) = detect_at(root.path());
         assert!(
             inventory.declarations[0].resolved.is_none(),
-            "a range matching multiple public lock records is ambiguous"
+            "a satisfying lockfile package without a root dependency edge is not a resolution"
         );
     }
 
@@ -1355,7 +1289,6 @@ mod tests {
             "the workspace root is a package"
         );
         let ws = inv.workspaces.iter().find(|w| w.root == ".").unwrap();
-        assert!(!ws.virtual_workspace);
         assert!(ws.members.contains("."));
         assert!(ws.members.contains("members/ordinary"));
         assert!(ws.members.contains("members/path-only"));
@@ -1391,10 +1324,6 @@ mod tests {
                 .lockfile
                 .as_deref(),
             Some("nested/Cargo.lock")
-        );
-        assert_eq!(
-            inv.manifests["nested/app"].workspace_root.as_deref(),
-            Some("nested")
         );
         assert_eq!(
             inv.manifests["nested/app"].lockfile.as_deref(),
