@@ -495,7 +495,7 @@ fn security_and_breaking_catalog() -> FixtureCatalog {
 
 #[test]
 fn upgrades_rank_by_their_most_consequential_named_change() {
-    // next's security fix names no API this code uses: an advisory whose affected path was not found, still listed
+    // next's security fix is a release note with no advisory, naming no API: not checked, still listed
     // with the upgrades. prisma's obligations match nothing this code does with prisma itself (src/db.ts imports
     // @prisma/client): counts only, in their own section after the named changes. Start here and the upgrades come
     // before capabilities.
@@ -504,12 +504,12 @@ fn upgrades_rank_by_their_most_consequential_named_change() {
     let output = env.ok(&["init", "--service", cat.loc(), "--mode", "local", "--yes", "--wait", "0", "--no-animation"]);
     let flat = output.split_whitespace().collect::<Vec<_>>().join(" ");
     let report = env.read(".unstale/onboarding-report.md");
-    assert!(flat.contains("1. next 16.0.1 → 16.0.3 picks up 1 advisory (affected path not found)") && flat.contains("2. prisma"), "{output}");
+    assert!(flat.contains("1. next 16.0.1 → 16.0.3 picks up 1 release-note vulnerability fix, no advisory (affected path not checked)") && flat.contains("2. prisma"), "{output}");
     let at = |s: &str| report.find(s).unwrap_or_else(|| panic!("{s} missing:\n{report}"));
     assert!(at("## Start here") < at("## Upgrades, by value") && at("## Upgrades, by value") < at("## Other bumps") && at("## Other bumps") < at("## Capabilities to explore"));
     assert!(at("1. next 16.0.1") < at("- prisma 6.19.0 → 7.0.0") && !report.contains("2. prisma"), "{report}");
-    assert!(report.contains("; advisory present, affected path not found\n"), "{report}");
-    assert!(report.contains("advisory, affected path not found: Server actions check the Origin header. [next:csrf, 16.0.3]"), "{report}");
+    assert!(report.contains("; release-note vulnerability fix, no advisory, affected path not checked\n"), "{report}");
+    assert!(report.contains("release-note vulnerability fix, no advisory, affected path not checked: Server actions check the Origin header. [next:csrf, 16.0.3]"), "{report}");
     assert!(!report.contains("security leads"), "no reachable advisory: nothing leads as security\n{report}");
 }
 
@@ -523,7 +523,7 @@ fn an_advisory_whose_affected_api_production_code_uses_is_security() {
     let env = Env { repo: fixture_repo(), cache: tempfile::tempdir().unwrap() };
     env.ok(&["init", "--service", cat.loc(), "--mode", "local", "--yes", "--wait", "0", "--no-animation"]);
     let report = env.read(".unstale/onboarding-report.md");
-    assert!(report.contains("1. next 16.0.1 → 16.0.3 picks up 1 security") && report.contains("; leads with security, affected `NextResponse` used at src/middleware.ts"), "{report}");
+    assert!(report.contains("1. next 16.0.1 → 16.0.3 picks up 1 security") && report.contains("; leads with security (release note, no advisory), affected `NextResponse` used at src/middleware.ts"), "{report}");
     assert!(!report.contains("(affected path not found)") && !report.contains("advisory, affected path not found"), "{report}");
 }
 
