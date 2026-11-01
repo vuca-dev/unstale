@@ -160,13 +160,16 @@ pub fn read_doc(purl: &str, doc: &serde_json::Value) -> (Option<String>, bool) {
 
 /// Reads the registry for each candidate whose cached answer is missing or older than a week. Returns how many were
 /// asked.
-pub fn refresh(cache: &Path, st: &Stack, jobs: &BTreeMap<String, Job>) -> usize {
+pub fn refresh(cache: &Path, st: &Stack, jobs: &BTreeMap<String, Job>, stop: &(dyn Fn() -> bool + Sync)) -> usize {
     if crate::privacy::registry_off() {
         return 0;
     }
     let agent: ureq::Agent = ureq::Agent::config_builder().http_status_as_error(false).timeout_global(Some(Duration::from_secs(15))).build().into();
     let fetch = |url: &str| -> Option<serde_json::Value> {
-        let mut r = agent.get(url).header("Accept", "application/vnd.pypi.simple.v1+json, application/json").call().ok().filter(|r| r.status().is_success())?;
+        if stop() {
+            return None;
+        }
+        let mut r = crate::onboarding::registry_call(url, || agent.get(url).header("Accept", "application/vnd.pypi.simple.v1+json, application/json").call()).filter(|r| r.status().is_success())?;
         let bytes = r.body_mut().with_config().limit(16 * 1024 * 1024).read_to_vec().ok()?;
         serde_json::from_slice(&bytes).ok()
     };
