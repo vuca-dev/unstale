@@ -244,6 +244,8 @@ pub struct Scope<'a> {
     reach: &'a [&'a str],
     /// Lowercase package names and npm scopes, for path names.
     stems: Vec<String>,
+    /// Lowercase package names (and a Python name's import spelling, `-` as `_`), for `own_source`.
+    names: Vec<String>,
     naming: HashSet<&'a str>,
     /// Of `naming`, the files that name a package at a module position (`module_naming`).
     importing: HashSet<&'a str>,
@@ -273,6 +275,7 @@ impl<'a> Scope<'a> {
         paths: &'a [String],
     ) -> Self {
         let mut stems = vec![];
+        let mut names: Vec<String> = vec![];
         let mut naming = HashSet::new();
         let mut importing = HashSet::new();
         let mut named_at = vec![(false, false); paths.len()];
@@ -295,6 +298,11 @@ impl<'a> Scope<'a> {
                 }
             }
             let name = purl_name(p).unwrap_or_default().to_ascii_lowercase();
+            for n in [name.clone(), name.replace(['-', '.'], "_")] {
+                if !n.is_empty() && !names.contains(&n) {
+                    names.push(n);
+                }
+            }
             // `@playwright/test` names `playwright`, not every `test/` directory; `vitest` names `vitest`.
             let stem = name.strip_prefix('@').map_or(name.as_str(), |scoped| scoped.split('/').next().unwrap_or(""));
             if stem.len() >= 3 && !stems.iter().any(|s| s == stem) {
@@ -308,7 +316,7 @@ impl<'a> Scope<'a> {
             .collect();
         let memo = RefCell::new(vec![0; paths.len()]);
         let imported = importing.iter().any(|p| own_code(p, ecosystem));
-        Scope { ecosystem, owners, reach: owners, stems, naming, importing, config_names, hits, paths, named_at, imported, repo: None, memo }
+        Scope { ecosystem, owners, reach: owners, stems, names, naming, importing, config_names, hits, paths, named_at, imported, repo: None, memo }
     }
 
     /// The repository whose texts `platform_global` reads.
@@ -402,6 +410,43 @@ impl<'a> Scope<'a> {
     /// comment or string does not make a file an importer. A file the path or records name (`vite.config.ts`,
     /// `middleware.ts`) still counts, and technologies no code imports (globals, compilers, CLIs) keep the package
     /// rule. Such a file still orders the queue (`Evidence::used`).
+    /// Whether `path` lies in the technology's own source: under a directory named for one of its packages that
+    /// defines that module (a Python package's `__init__.py`, or a `package.json` with that name, `@scope/pkg` under
+    /// `pkg/`), as a copied or patched library is (`_vendor/urllib3/` for urllib3). Code there defines the API, it does
+    /// not use it. A file importing the technology (`imports`) is its source only in a top-level Python package (a
+    /// library's absolute self-import); inside another package (`app/redis/` importing redis) it is a wrapper using it.
+    pub fn own_source(&self, path: &str, imports: bool) -> bool {
+        let lower = path.to_ascii_lowercase();
+        let mut end = 0;
+        while let Some(i) = lower[end..].find('/') {
+            let dir_end = end + i;
+            let start = lower[..dir_end].rfind('/').map_or(0, |s| s + 1);
+            let seg = &lower[start..dir_end];
+            end = dir_end + 1;
+            let last = |n: &String| n.rsplit('/').next().unwrap_or(n.as_str()) == seg;
+            if !self.names.iter().any(last) {
+                continue;
+            }
+            let dir = &path[..dir_end];
+            if self.names.iter().any(|n| n == seg) && self.paths.binary_search(&format!("{dir}/__init__.py")).is_ok() {
+                let parent = &path[..start.saturating_sub(1)];
+                if !imports || parent.is_empty() || self.paths.binary_search(&format!("{parent}/__init__.py")).is_err() {
+                    return true;
+                }
+            }
+            let manifest = format!("{dir}/package.json");
+            if let Some(t) = self.repo.and_then(|r| r.text(&manifest))
+                && serde_json::from_str::<serde_json::Value>(t)
+                    .ok()
+                    .and_then(|v| v.get("name").and_then(|n| n.as_str()).map(|n| n.to_ascii_lowercase()))
+                    .is_some_and(|n| self.names.contains(&n) && last(&n))
+            {
+                return true;
+            }
+        }
+        false
+    }
+
     fn borrowed(&self, path: &str, imports: bool) -> bool {
         self.imported
             && !imports
@@ -474,7 +519,9 @@ impl<'a> Scope<'a> {
     /// Whether a whole-token hit of `lit` in `path` (one of its `Hits::whole` files) shows the technology in use, by the
     /// rule evidence is shown with: the applied check.
     pub fn counts(&self, lit: &str, path: &str) -> bool {
-        !self.borrowed(path, self.importing.contains(path)) && self.file(path).is_some_and(|about| about || !plain_word(lit))
+        !self.borrowed(path, self.importing.contains(path))
+            && !self.own_source(path, self.importing.contains(path))
+            && self.file(path).is_some_and(|about| about || !plain_word(lit))
     }
 
     /// A literal's evidence in one pass over its hits (`by_path`: `role` is the path's own role, which `find`'s order
@@ -540,6 +587,10 @@ impl<'a> Scope<'a> {
                 continue;
             }
             let p = &self.paths[*x as usize];
+            // Vendored code, or the technology's own source checked into the repository, is not this repository using it.
+            if role(p) == Role::Vendored || self.own_source(p, self.named_at[*x as usize].1) {
+                continue;
+            }
             let r = if by_path {
                 if !e.used {
                     e.app = role(p) == Role::App;
@@ -2114,6 +2165,8 @@ pub struct Repo {
     /// Each path's `.gitattributes` role once: matching is a glob set per line, asked for every hit file of every
     /// technology.
     attr_roles: Mutex<HashMap<String, Option<Role>>>,
+    /// Directories holding a pinned copy of a published package (`pinned_copies`): vendored, wherever they are.
+    copies: Vec<String>,
 }
 
 /// What a file is for, from conventions every repository shares (no per-technology list): application code first,
@@ -2141,7 +2194,9 @@ pub fn path_role(path: &str) -> Role {
     let mut role = Role::App;
     for (i, d) in dirs.iter().enumerate() {
         let r = match *d {
-            "third_party" | "third-party" | "thirdparty" | "bower_components" | "vendors" => Role::Vendored,
+            // Linguist's `vendor/` and pip's `_vendor/` convention (pip, setuptools, poetry-core and their copies) at any
+            // depth: a third-party library's own source checked in, not application code.
+            "third_party" | "third-party" | "thirdparty" | "bower_components" | "vendor" | "vendors" | "_vendor" => Role::Vendored,
             "generated" | "__generated__" => Role::Generated,
             // Linguist anchors `docs/` at the root: `app/docs/page.tsx` is a route, not documentation.
             "docs" | "doc" if i == 0 => Role::Docs,
@@ -2231,6 +2286,11 @@ impl Repo {
                 return r;
             }
         }
+        // A manifest inside a vendored tree describes the copy (pip's `_vendor/vendor.txt`), not application code.
+        let full = path_role(path);
+        if full == Role::Vendored || self.copies.iter().any(|c| path.strip_prefix(c.as_str()).is_some_and(|rest| rest.starts_with('/'))) {
+            return Role::Vendored;
+        }
         let rel = owners
             .iter()
             .filter(|o| **o != "." && path.strip_prefix(**o).is_some_and(|rest| rest.starts_with('/')))
@@ -2243,6 +2303,7 @@ impl Repo {
         let mut r = Repo { attrs: read_attrs(root), ..Repo::default() };
         // The reads, most of the time on a large repository, run on every core once the walk has listed the files.
         let mut to_read: Vec<(String, std::path::PathBuf)> = vec![];
+        let mut pin_lists: Vec<(String, std::path::PathBuf)> = vec![];
         for e in walker(root).flatten() {
             if !e.file_type().is_some_and(|t| t.is_file()) {
                 continue;
@@ -2257,6 +2318,9 @@ impl Repo {
             let ext = base.rsplit_once('.').map(|(_, x)| x.to_ascii_lowercase()).unwrap_or_default();
             // Example env files only: a real `.env` may hold secrets (its text is never printed, but no need to read it).
             let dotenv = matches!(base.as_str(), ".env.example" | ".env.sample" | ".env.template" | ".env.dist");
+            if ext == "txt" && e.metadata().is_ok_and(|m| m.len() <= 16 * 1024) {
+                pin_lists.push((rel.clone(), e.path().to_path_buf()));
+            }
             if crate::pypi::requirements_project(e.path()).is_some() && e.metadata().is_ok_and(|m| m.len() <= MAX_BYTES)
                 && let Ok(t) = std::fs::read_to_string(e.path())
             {
@@ -2275,8 +2339,57 @@ impl Repo {
         r.files.sort_by(|a, b| a.0.cmp(&b.0));
         r.requirements.sort_by(|a, b| a.0.cmp(&b.0));
         r.paths.sort();
+        r.copies = pinned_copies(&r.paths, &pin_lists);
         r
     }
+}
+
+/// Directories that are pinned copies of published packages, the vendoring convention (pip's `_vendor/vendor.txt`,
+/// pipenv's `patched/patched.txt`): a text file listing only exact pins (`name==version`) beside a directory that
+/// defines the pinned module (`<name>/__init__.py`). A requirements file pinning its dependencies has no such
+/// directory beside it: a package of the same name would shadow the installed one.
+fn pinned_copies(paths: &[String], lists: &[(String, std::path::PathBuf)]) -> Vec<String> {
+    let mut out = vec![];
+    for (rel, file) in lists {
+        let parent = rel.rsplit_once('/').map_or("", |(d, _)| d);
+        let prefix = if parent.is_empty() { String::new() } else { format!("{parent}/") };
+        let has_package = |name: &str| paths.binary_search(&format!("{prefix}{name}/__init__.py")).is_ok();
+        // Read only a list whose directory holds a Python package at all.
+        let from = paths.partition_point(|p| p.as_str() < prefix.as_str());
+        if !paths[from..].iter().take_while(|p| p.starts_with(&prefix)).any(|p| p[prefix.len()..].matches('/').count() == 1 && p.ends_with("/__init__.py")) {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(file) else { continue };
+        let mut pins = vec![];
+        let mut only_pins = true;
+        for line in text.lines() {
+            let line = line.split('#').next().unwrap_or("").trim();
+            if line.is_empty() {
+                continue;
+            }
+            let Some((name, version)) = line.split_once("==") else {
+                only_pins = false;
+                break;
+            };
+            let name = name.split('[').next().unwrap_or("").trim();
+            if name.is_empty() || version.trim().is_empty() || !name.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.')) {
+                only_pins = false;
+                break;
+            }
+            pins.push(name.to_ascii_lowercase().replace(['-', '.'], "_"));
+        }
+        if !only_pins {
+            continue;
+        }
+        for name in pins {
+            if has_package(&name) {
+                out.push(format!("{prefix}{name}"));
+            }
+        }
+    }
+    out.sort();
+    out.dedup();
+    out
 }
 
 /// `f` over `items` on every core, results in order.
@@ -3224,9 +3337,54 @@ mod tests {
             ("src/__generated__/schema.ts", Role::Generated),
             ("public/lib.min.js", Role::Generated),
             ("third_party/x/index.js", Role::Vendored),
+            ("pipenv/patched/pip/_vendor/urllib3/connectionpool.py", Role::Vendored),
+            ("app/assets/vendor/x.js", Role::Vendored),
         ] {
             assert_eq!(path_role(p), r, "{p}");
         }
+    }
+
+    #[test]
+    fn a_technologys_own_source_and_vendored_code_are_not_its_use() {
+        // In path order, as `Repo::collect` lists them.
+        let r = repo(&[
+            ("app/client.py", "import urllib3\nurllib3.ssl_version = 1\n"),
+            ("app/third/_vendor/x.py", "import urllib3\nurllib3.ssl_version\n"),
+            ("lib/urllib3/__init__.py", "from .connectionpool import HTTPConnectionPool\n"),
+            ("lib/urllib3/connectionpool.py", "def f(ssl_version=None):\n    return ssl_version\n"),
+            ("lib/urllib3/util.py", "import urllib3\nurllib3.ssl_version\n"),
+            ("svc/__init__.py", ""),
+            ("svc/urllib3/__init__.py", "import urllib3\nurllib3.ssl_version = 2\n"),
+        ]);
+        let root = ["."];
+        let purls = vec!["pkg:pypi/urllib3".to_string()];
+        let h = scoped(&r, &["ssl_version"], &["pkg:pypi/urllib3"]);
+        let s = Scope::new("pypi", &root, &purls, &[], &h, &r.paths).with_repo(&r);
+        let files: Vec<String> = s.evidence("ssl_version", |p| r.role(p), false).files.into_iter().map(|(p, _)| p).collect();
+        assert_eq!(files, vec!["app/client.py".to_string(), "svc/urllib3/__init__.py".to_string()], "a wrapper package importing it uses it");
+        assert!(!s.counts("ssl_version", "lib/urllib3/connectionpool.py"), "its own source is not the change applied");
+    }
+
+    #[test]
+    fn pinned_copies_beside_their_pin_list_are_vendored() {
+        let d = tempfile::tempdir().unwrap();
+        let w = |p: &str, t: &str| {
+            let f = d.path().join(p);
+            std::fs::create_dir_all(f.parent().unwrap()).unwrap();
+            std::fs::write(f, t).unwrap();
+        };
+        w("tool/patched/patched.txt", "pip==26.2.2\n");
+        w("tool/patched/__init__.py", "");
+        w("tool/patched/pip/__init__.py", "");
+        w("tool/patched/pip/_internal/session.py", "import ssl\n");
+        // A requirements file beside the application's own package names no copy of it.
+        w("requirements.txt", "requests==2.32.0\nflask>=3\n");
+        w("requests/__init__.py", "");
+        w("tool/core.py", "");
+        let r = Repo::collect(d.path());
+        assert_eq!(r.role("tool/patched/pip/_internal/session.py"), Role::Vendored);
+        assert_eq!(r.role("requests/__init__.py"), Role::App, "not only pins");
+        assert_eq!(r.role("tool/core.py"), Role::App);
     }
 
     #[test]
