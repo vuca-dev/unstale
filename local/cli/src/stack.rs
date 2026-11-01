@@ -341,6 +341,12 @@ pub struct Peer {
     pub range: String,
 }
 
+/// Whether a version note says lockfiles compete or one is out of date. Most notes say neither: a Python range read at
+/// its newest release, a sample project outside the workspace, packages on different versions across manifests.
+pub fn lock_conflict(note: &str) -> bool {
+    note.contains(" lockfiles present; ") || note.contains("looks out of date")
+}
+
 impl Stack {
     /// Sets each dependency's version from its readings (`settle`).
     pub fn settle(&mut self) {
@@ -451,7 +457,10 @@ pub fn settle(deps: &mut BTreeMap<String, Dep>) -> Option<(usize, String)> {
         d.version = Some(h.version.clone());
         d.source = if d.readings.len() > 1 { format!("{} in {}", h.source, place(&h.dir)) } else { h.source.clone() };
         let others = d.others();
-        if let Some((v, rs)) = others.first() {
+        // A workspace package's headline is Yarn's `0.0.0-use.local` placeholder, not a version a fixture's copy differs from.
+        if (h.version.major, h.version.minor, h.version.patch) != (0, 0, 0)
+            && let Some((v, rs)) = others.first()
+        {
             let more = others.iter().map(|(_, rs)| rs.len()).sum::<usize>() - 1;
             differ.push(format!(
                 "{} {} ({}) and {v} in {} ({}){}",

@@ -73,7 +73,7 @@ enum Cmd {
         /// Shared public technology coverage service (or $UNSTALE_SERVICE).
         #[arg(long)]
         service: Option<String>,
-        /// Seconds to follow initial coverage before returning to the shell.
+        /// Seconds this run may take: setup and following coverage share them, and the report is written in the time left. 0 or no value follows no coverage, and setup is bounded at 300; setup always gets at least 60.
         #[arg(long)]
         wait: Option<u64>,
         /// Print stable stage lines without decorative motion.
@@ -534,9 +534,9 @@ fn cmd_sync(ctx: &Ctx) -> Result<u8> {
         code = EXIT_ERROR;
     }
     // Registry deprecations of the installed versions (cached a day; outputs read the cache).
-    deprecations::refresh(&ctx.cache, &st);
+    deprecations::refresh(&ctx.cache, &st, &|| false);
     // Lockfile advisories from OSV, transitive packages included (cached a day; outputs read the cache).
-    advisories::refresh(&ctx.cache, &ctx.root, &st);
+    advisories::refresh(&ctx.cache, &ctx.root, &st, &|| false);
     // Apply merge and retraction stubs to the ledger.
     let catalog = load_catalog(ctx, &st);
     let lp = ctx.tool.join(LEDGER_FILE);
@@ -656,13 +656,12 @@ fn cmd_bump(ctx: &Ctx, pkg: &str) -> Result<u8> {
             let lock_report = advisories::report(&ctx.cache, &ctx.root).unwrap_or_default();
             let lock: Vec<&advisories::Item> = lock_report.items.iter().filter(|it| it.via.is_empty() && norm(&it.name) == norm(pkg)).collect();
             if !lock.is_empty() {
-                let target = if lock.iter().all(|it| it.fix.is_some()) {
-                    lock.iter().filter_map(|it| it.fix.as_deref()).max_by(|a, b| util::parse_version(a).cmp(&util::parse_version(b))).unwrap_or("replacement")
-                } else {
-                    "replacement"
+                let target = match lock.iter().map(|it| it.fix.as_deref()).collect::<Option<Vec<_>>>().and_then(|f| f.into_iter().max_by(|a, b| util::parse_version(a).cmp(&util::parse_version(b)))) {
+                    Some(f) => format!(" → {f}"),
+                    None => " (no fixed release)".to_string(),
                 };
                 let k = lock.len();
-                println!("Bumping {pkg} {} → {target} fixes {k} lockfile advisor{} (no catalog record needed):", lock[0].version, if k == 1 { "y" } else { "ies" });
+                println!("Bumping {pkg} {}{target} fixes {k} lockfile advisor{} (no catalog record needed):", lock[0].version, if k == 1 { "y" } else { "ies" });
                 for it in &lock {
                     let fix = it.fix.as_deref().map(|f| format!(" → {f}")).unwrap_or_else(|| ", no fixed version: replace or mitigate".to_string());
                     println!("  security: {} ({}): {} [lockfile {} {}{fix}] (https://osv.dev/vulnerability/{})", it.id, it.severity.word(), util::one_line(&it.summary, 160), it.name, it.version, it.id);
