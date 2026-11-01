@@ -2613,21 +2613,35 @@ fn support_end(r: &unstale_schema::catalog::CapabilityRecord) -> Option<(String,
     support_date(r.summary.get(at..)?)
 }
 
-/// The first date a text names, as written and as its last day: `YYYY-MM-DD`, `Month YYYY`, `Month D, YYYY`,
-/// `D Month YYYY`.
-/// The major version a statement names, if any: "Commander 14 moves into maintenance" is about 14, not the installed 9.
-/// A year or the day of a date is not a version.
-fn named_major(text: &str) -> Option<u64> {
+/// The version a statement names, as major and minor when it gives one: "Commander 14 moves into maintenance" is about
+/// 14, not the installed 9; "support for 3.2 ends" is about that line, not an installed 3.4. A dotted or `v`-prefixed
+/// number is a version on its own. A bare integer needs a name or the word "version" before it, so a count ("for 24
+/// months", "within 2 weeks") is not one, and neither is any part of a date ("14 May 2027", but "14 may receive" is 14).
+fn named_version(text: &str) -> Option<(u64, Option<u64>)> {
     let words: Vec<&str> = text.split_whitespace().map(|w| w.trim_matches(|c: char| !c.is_ascii_alphanumeric())).collect();
-    let month = |w: Option<&&str>| w.is_some_and(|w| support_date(&format!("{w} 2000")).is_some());
+    let is_month = |w: &str| support_date(&format!("{w} 2000")).is_some();
+    let is_date = |at: &[&str]| support_date(&at.join(" ")).is_some();
+    let is_span = |w: &str| ["day", "week", "month", "quarter", "year"].contains(&w.to_ascii_lowercase().trim_end_matches('s'));
+    let is_version_word = |w: &str| ["version", "release", "major"].contains(&w.to_ascii_lowercase().trim_end_matches('s'));
     words.iter().enumerate().find_map(|(i, w)| {
-        let version = w.strip_prefix(['v', 'V']).unwrap_or(w);
-        let major = version.split('.').next()?.parse::<u64>().ok()?;
-        let dated = (1990..2200).contains(&major) || month(words.get(i + 1)) || i.checked_sub(1).is_some_and(|j| month(words.get(j)));
-        (!dated && version.split('.').skip(1).all(|p| p == "x" || p.chars().all(|c| c.is_ascii_digit()))).then_some(major)
+        let prefixed = w.strip_prefix(['v', 'V']);
+        let version = prefixed.unwrap_or(w);
+        let mut parts = version.split('.');
+        let major = parts.next()?.parse::<u64>().ok()?;
+        let minor = parts.next();
+        if !minor.into_iter().chain(parts).all(|p| p == "x" || p.chars().all(|c| c.is_ascii_digit())) {
+            return None;
+        }
+        // A day of a date has no dot or `v`, so only a bare integer can be one.
+        let in_date = is_date(&words[i..words.len().min(i + 3)]);
+        let named = i.checked_sub(1).is_some_and(|j| !is_month(words[j]) && (is_version_word(words[j]) || words[j].starts_with(|c: char| c.is_ascii_uppercase())));
+        let counted = words.get(i + 1).is_some_and(|w| is_span(w));
+        ((prefixed.is_some() || minor.is_some() || (named && !in_date)) && !counted && !(1990..2200).contains(&major)).then(|| (major, minor.and_then(|m| m.parse().ok())))
     })
 }
 
+/// The first date a text names, as written and as its last day: `YYYY-MM-DD`, `Month YYYY`, `Month D, YYYY`,
+/// `D Month YYYY`.
 fn support_date(text: &str) -> Option<(String, String)> {
     const MONTHS: [&str; 12] = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
     let words: Vec<&str> = text.split_whitespace().map(|w| w.trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '-')).collect();
@@ -2767,7 +2781,7 @@ fn signals<'r>(
     // date, under Lower-urgency upgrades. Never an opt-in improvement: there is nothing to adopt.
     for o in &out.opps {
         let Some((when, last)) = support_end(&o.rec.r) else { continue };
-        if named_major(&o.rec.r.summary).is_some_and(|major| major != o.installed.major) {
+        if named_version(&o.rec.r.summary).is_some_and(|(major, minor)| major != o.installed.major || minor.is_some_and(|m| m != o.installed.minor)) {
             continue;
         }
         let Some(name) = out.packages.get(&o.rec.r.technology).and_then(|p| p.first()).cloned() else { continue };
@@ -4618,11 +4632,24 @@ mod tests {
     /// react/react: the root's eslint 7.32.0 line led with "the installed eslint 6.8.0 is deprecated", the version
     /// `fixtures/eslint-v6` (its own lockfile) pins. The lead names only the version the line's own manifest installs.
     #[test]
-    fn a_support_statement_names_the_major_it_is_about() {
-        assert_eq!(named_major("Commander 14 moves into maintenance and will receive security updates through May 2027."), Some(14));
-        assert_eq!(named_major("Support for v3.x ends 5 November 2026."), Some(3));
-        assert_eq!(named_major("M is in maintenance mode, with fixes until November 2026."), None);
-        assert_eq!(named_major("Support ends November 5, 2026."), None);
+    fn a_support_statement_names_the_version_it_is_about() {
+        assert_eq!(named_version("Commander 14 moves into maintenance and will receive security updates through May 2027."), Some((14, None)));
+        assert_eq!(named_version("Support for v3.x ends 5 November 2026."), Some((3, None)));
+        assert_eq!(named_version("M is in maintenance mode, with fixes until November 2026."), None);
+        assert_eq!(named_version("Support ends November 5, 2026."), None);
+        // A minor line, when the statement names one.
+        assert_eq!(named_version("Support for 3.2 ends in June 2026."), Some((3, Some(2))));
+        assert_eq!(named_version("Support for 3.2.1 ends 5 November 2026."), Some((3, Some(2))));
+        // The modal "may" after a version is no month; the month in a date still is.
+        assert_eq!(named_version("Commander 14 may receive security updates until November 2026."), Some((14, None)));
+        assert_eq!(named_version("Commander v14 May 2027 is the last date of support."), Some((14, None)));
+        assert_eq!(named_version("Ends 14 May 2027, the last date of support."), None);
+        assert_eq!(named_version("Maintenance ends May 14 at the latest, or November 2026."), None);
+        // A count is not a version, whatever comes before it.
+        assert_eq!(named_version("Maintenance for 24 months, with fixes until November 2026."), None);
+        assert_eq!(named_version("After 24 months support ends, in November 2026."), None);
+        assert_eq!(named_version("Support continues for 1.5 years, until November 2026."), None);
+        assert_eq!(named_version("Support for version 14 ends in November 2026."), Some((14, None)));
     }
 
     #[test]
