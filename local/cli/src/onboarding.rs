@@ -2229,7 +2229,15 @@ fn affected_names(summary: &str, named: &[String]) -> (Vec<String>, Vec<String>)
 
 /// The top-level modules production Python code imports, lowercase.
 fn python_roots(w: &World) -> BTreeSet<String> {
-    let prod = |f: &&String| usage::own_code(f, "pypi") && !matches!(f.rsplit('/').next().unwrap_or(f), "conf.py" | "setup.py" | "noxfile.py" | "conftest.py") && w.repo.role(f) == usage::Role::App;
+    let prod = |f: &&String| {
+        let name = f.rsplit('/').next().unwrap_or(f);
+        usage::own_code(f, "pypi")
+            && !name.contains(".config.")
+            && !name.starts_with('.')
+            && !matches!(name, "conf.py" | "setup.py" | "noxfile.py" | "conftest.py")
+            && !declaration_file(name)
+            && w.repo.role(f) == usage::Role::App
+    };
     w.repo.paths.iter().filter(prod).filter_map(|f| w.repo.text(f)).flat_map(crate::pypi::import_roots).map(|m| m.to_ascii_lowercase()).collect()
 }
 
@@ -3172,7 +3180,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World, write: bool) -> Result<B
                 o.matched
                     .iter()
                     .filter(|(t, _)| specific_reference(t, &w.stack) && locates(&o.rec.r, t))
-                    .find_map(|(t, fs)| fs.iter().find(|f| prod(f) && w.repo.text(f).is_none_or(|x| precondition_plausible(&o.rec.r, x) && reaches(f, x))).map(|f| (display_text(&o.rec.r.summary), f.clone(), t.clone())))
+                    .find_map(|(t, fs)| fs.iter().find(|f| prod(f) && w.repo.text(f).is_none_or(|x| precondition_plausible(&o.rec.r, x) && reaches(f, x) && !(usage::own_code(f, "pypi") && bound_elsewhere(&o.rec.r, t, x, &packages, &dep_names)))).map(|f| (display_text(&o.rec.r.summary), f.clone(), t.clone())))
             });
             by_terms.or_else(|| {
                 let texts: Vec<String> = tech_fixes

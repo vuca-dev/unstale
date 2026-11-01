@@ -1586,8 +1586,11 @@ pub fn own_binding(path: &str, text: &str, lit: &str) -> bool {
 /// is the repository's own module of that name.
 pub fn imports_package(path: &str, text: &str, name: &str) -> bool {
     if own_code(path, "pypi") {
-        let loaded = |m: &str| ["import_module(", "__import__(", "find_spec("].iter().any(|at| ['\'', '"'].iter().any(|q| [format!("{at}{q}{m}{q}"), format!("{at}{q}{m}.")].iter().any(|n| in_code(path, text, n, false))));
-        return crate::pypi::import_roots(text).iter().any(|r| r.eq_ignore_ascii_case(name)) || loaded(name);
+        let comments = comment_spans(path, text);
+        let word = |c: char| c.is_ascii_alphanumeric() || c == '_';
+        let call = |n: &str| text.match_indices(n).any(|(i, _)| !text[..i].ends_with(word) && !comments.iter().any(|&(s, e)| s <= i && i < e));
+        let loaded = ["import_module(", "__import__(", "find_spec("].iter().any(|at| ['\'', '"'].iter().any(|q| call(&format!("{at}{q}{name}{q}")) || call(&format!("{at}{q}{name}."))));
+        return loaded || crate::pypi::import_roots(text).iter().any(|r| r.eq_ignore_ascii_case(name));
     }
     let comments = comment_spans(path, text);
     ['\'', '"', '`'].iter().any(|q| {
@@ -2948,7 +2951,7 @@ mod tests {
         for t in ["import ws\n", "import ws.sub\n", "import ws as w\n", "import os, ws.sub as w\n", "from ws import a\n", "from ws.sub import (\n    a,\n)\n", "def f():\n    import ws\n", "m = importlib.import_module(\"ws.sub\")\n", "try: import ws\nexcept ImportError: pass\n"] {
             assert!(imports_package("a.py", t, "ws"), "{t}");
         }
-        for t in ["from . import ws\n", "from .ws import a\n", "from ..ws.x import a\n", "import wsgi\n", "from wsgi.ws import a\n", "# import ws\n", "x = 'ws'\nws(1)\n", "from a import ws\n"] {
+        for t in ["from . import ws\n", "from .ws import a\n", "from ..ws.x import a\n", "import wsgi\n", "from wsgi.ws import a\n", "# import ws\n", "x = 'ws'\nws(1)\n", "from a import ws\n", "not_import_module(\"ws\")\n", "# import_module(\"ws\")\n"] {
             assert!(!imports_package("a.py", t, "ws"), "{t}");
         }
     }
