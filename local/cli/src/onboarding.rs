@@ -2227,11 +2227,52 @@ fn affected_names(summary: &str, named: &[String]) -> (Vec<String>, Vec<String>)
     (ids, short_calls(&calls))
 }
 
+/// The top-level modules production Python code imports, lowercase.
+fn python_roots(w: &World) -> BTreeSet<String> {
+    let prod = |f: &&String| usage::own_code(f, "pypi") && !matches!(f.rsplit('/').next().unwrap_or(f), "conf.py" | "setup.py" | "noxfile.py" | "conftest.py") && w.repo.role(f) == usage::Role::App;
+    w.repo.paths.iter().filter(prod).filter_map(|f| w.repo.text(f)).flat_map(crate::pypi::import_roots).map(|m| m.to_ascii_lowercase()).collect()
+}
+
+/// The modules `packages` are imported as here, among `roots` (`python_roots`): a package's own name (`-` and `.` as
+/// `_`), and a module its records write that abbreviates the name (`PIL` for pillow). No registry says what a
+/// distribution installs, so `None` when any package has neither: its import name is unknown, and a file not importing
+/// the others may still use it.
+fn python_modules(w: &World, packages: &[String], roots: &BTreeSet<String>) -> Option<Vec<String>> {
+    let mut out = vec![];
+    for p in packages {
+        let name = p.to_ascii_lowercase();
+        let own = name.replace(['-', '.'], "_");
+        let mut found: Vec<String> = roots.contains(&own).then(|| own.clone()).into_iter().collect();
+        let publishes = |t: &&crate::cache::TechData| t.index.components.iter().chain(t.records.iter().flat_map(|r| r.r.releases.iter().map(|r| &r.component))).any(|c| util::purl_name(c).is_some_and(|n| n.eq_ignore_ascii_case(&name)));
+        for t in w.catalog.techs.values().filter(publishes) {
+            for term in t.records.iter().flat_map(|r| r.r.terms.iter().map(|t| &t.0)) {
+                if let Some(m) = crate::pypi::term_module(term).map(str::to_ascii_lowercase).filter(|m| roots.contains(m) && crate::pypi::abbreviates(m, &name) && !found.contains(m)) {
+                    found.push(m);
+                }
+            }
+        }
+        if found.is_empty() {
+            return None;
+        }
+        out.extend(found);
+    }
+    (!out.is_empty()).then_some(out)
+}
+
+/// Whether Python file `f` reaches a package imported as `modules` (`python_modules`); any file while they are unknown.
+fn python_reaches(f: &str, t: &str, modules: Option<&[String]>) -> bool {
+    modules.is_none_or(|m| m.iter().any(|x| usage::imports_package(f, t, x)))
+}
+
 /// Whether a file reaches package `name`: a JavaScript file by importing it, or a path inside it (a `WebSocket` in a file
-/// that only quotes `'ws-connection'` or `'wsUrl'` is the platform's); elsewhere by quoting a string that starts with it.
-fn importer(f: &str, t: &str, name: &str) -> bool {
+/// that only quotes `'ws-connection'` or `'wsUrl'` is the platform's); a Python file by importing `modules`, when they
+/// are known; elsewhere by quoting a string that starts with it.
+fn importer(f: &str, t: &str, name: &str, modules: Option<&[String]>) -> bool {
     if usage::own_code(f, "npm") {
         return usage::imports_package(f, t, name);
+    }
+    if usage::own_code(f, "pypi") && modules.is_some() {
+        return python_reaches(f, t, modules);
     }
     ['\'', '"', '`'].iter().any(|q| usage::in_code(f, t, &format!("{q}{name}"), false))
 }
@@ -2656,6 +2697,7 @@ fn signals<'r>(
             lock: vec![],
         });
     }
+    let py_roots = python_roots(w);
     // Lockfile advisories on a direct dependency itself (`via` empty), the worst first.
     let mut own: BTreeMap<String, Vec<&crate::advisories::Item>> = BTreeMap::new();
     for it in lock.items.iter().filter(|it| it.via.is_empty() && !shown.contains(&norm(&it.name))) {
@@ -2676,7 +2718,8 @@ fn signals<'r>(
         // Reachability as for an upgrade's advisories: an identifier the advisory names, in a production file that
         // imports the package.
         // Both in code: a package or API named only in comments (JSDoc prose, a usage example) is not used there.
-        let quoted = |f: &str, t: &str| importer(f, t, &name);
+        let own_modules = python_modules(w, std::slice::from_ref(&name), &py_roots);
+        let quoted = |f: &str, t: &str| importer(f, t, &name, own_modules.as_deref());
         let importers: Vec<(&str, &str)> = w.repo.paths.iter().filter(|f| prod(f)).filter_map(|f| w.repo.text(f).map(|t| (f.as_str(), t))).filter(|(f, t)| quoted(f, t)).collect();
         let own_name = [name.clone()];
         // A short name the text writes as a call (`run()` in "RCE in run() options") is looked for as one: a method
@@ -2843,6 +2886,7 @@ fn first_screen(leads: &[String]) -> String {
 }
 
 fn report_from(ctx: &Ctx, pending: &Pending, w: &World, write: bool) -> Result<Brief> {
+    let py_roots = python_roots(w);
     let out = outcome(ctx, w, BTreeMap::new());
     let mut catalog_scope = String::new();
     let mut unread = vec![];
@@ -3111,16 +3155,19 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World, write: bool) -> Result<B
         // production code (application role, not tests, tooling or config written as code). The record's own matched
         // terms first, else the identifiers the advisory text names, in application files that import the package.
         let prod = |f: &str| code(f) && w.repo.role(f) == usage::Role::App;
+        // A Python site stands only in a file importing the package, once its import name is known.
+        let modules = python_modules(w, &packages, &py_roots);
+        let python_site = |f: &str, t: &str| !usage::own_code(f, "pypi") || python_reaches(f, t, modules.as_deref());
         let sec_opps: Vec<&funnel::Opp> = tech_fixes.iter().map(|f| &out.opps[f.opp]).chain(notes.iter().copied()).collect();
         let advisory = !sec_opps.is_empty() || !lock.is_empty();
         let reached: Option<String> = (advisory && runtime && !standalone).then(|| {
-            // Where some file imports the package, a JavaScript file that does not is using a name of its own or the
-            // platform's (`WebSocket`, the DOM type, for `ws`). A package nothing imports (a framework's globals) keeps
-            // its record's matches.
+            // Where some file imports the package, a file that does not is using a name of its own or the platform's
+            // (`WebSocket`, the DOM type, for `ws`). A package nothing imports (a framework's globals) keeps its record's
+            // matches, as does a Python package whose import name is unknown.
             let lowered: Vec<String> = packages.iter().map(|p| p.to_ascii_lowercase()).collect();
-            let imports = |f: &str, t: &str| lowered.iter().any(|p| importer(f, t, p));
+            let imports = |f: &str, t: &str| lowered.iter().any(|p| importer(f, t, p, modules.as_deref()));
             let imported = w.repo.paths.iter().filter(|f| usage::own_code(f, "npm") && prod(f)).any(|f| w.repo.text(f).is_some_and(|t| imports(f, t)));
-            let reaches = |f: &str, t: &str| !imported || !usage::own_code(f, "npm") || imports(f, t);
+            let reaches = |f: &str, t: &str| python_site(f, t) && (!imported || !usage::own_code(f, "npm") || imports(f, t));
             let by_terms = sec_opps.iter().find_map(|o| {
                 o.matched
                     .iter()
@@ -3139,7 +3186,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World, write: bool) -> Result<B
                     .chain(lock.iter().map(|it| it.summary.clone()))
                     .collect();
                 let names: Vec<String> = packages.iter().map(|p| p.to_ascii_lowercase()).collect();
-                let quoted = |f: &str, t: &str| names.iter().any(|p| importer(f, t, p));
+                let quoted = |f: &str, t: &str| names.iter().any(|p| importer(f, t, p, modules.as_deref()));
                 let importers: Vec<(&str, &str)> = w.repo.paths.iter().filter(|f| prod(f)).filter_map(|f| w.repo.text(f).map(|t| (f.as_str(), t))).filter(|(f, t)| quoted(f, t)).collect();
                 texts.iter().find_map(|text| {
                     let ids: Vec<String> = affected_identifiers(text).into_iter().filter(|id| !names_product(id, &names)).collect();
@@ -3186,7 +3233,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World, write: bool) -> Result<B
                 // its own name, not the library's API.
                 .flat_map(|(t, fs)| {
                     fs.iter()
-                        .filter(move |f| w.repo.text(f).is_none_or(|x| !usage::defines(x, t) && shape_met(&o.rec.r, f, x) && value_met(&o.rec.r, x) && subject_met(&o.rec.r, x) && !bound_elsewhere(&o.rec.r, t, x, pk, deps_sq) && !unbound_here(&o.rec.r, t, f, x, pk) && clause_met(&o.rec.r, x) && usage::py_keyword_site(f, x, t, &o.rec.r.subject, o.rec.r.facet.as_deref()) && usage::written_outside_comments(f, x, t)))
+                        .filter(move |f| w.repo.text(f).is_none_or(|x| python_site(f, x) && !usage::defines(x, t) && shape_met(&o.rec.r, f, x) && value_met(&o.rec.r, x) && subject_met(&o.rec.r, x) && !bound_elsewhere(&o.rec.r, t, x, pk, deps_sq) && !unbound_here(&o.rec.r, t, f, x, pk) && clause_met(&o.rec.r, x) && usage::py_keyword_site(f, x, t, &o.rec.r.subject, o.rec.r.facet.as_deref()) && usage::written_outside_comments(f, x, t)))
                         .map(move |f| (t, f))
                 })
                 // A site in an example, sample or documentation project is not this code's unless the upgrade is that
