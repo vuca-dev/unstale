@@ -3068,7 +3068,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World, write: bool) -> Result<B
         let declared = workarounds::declarations(&w.repo);
         crate::maintenance::notices(&ctx.cache, &w.stack, &pending.jobs, &w.today).into_iter().filter(|n| !workarounds::facts(&declared, std::slice::from_ref(&n.name)).dev_only).collect()
     };
-    text += "## Review instructions\n\nLeads lists every located change first; read it, then Start here, then the upgrades in their order: what is in effect at the installed version in production code leads (an end-of-support version production code imports, a deprecation in effect in application code, an advisory whose affected API production code uses), then the same on dev-only dependencies or outside production code, then breaking changes the next upgrade names at a site and published peer ranges that leave out the current release; Lower-urgency upgrades follow (two release lines of one package installed, workarounds an upgrade may retire, archived repositories, dev-only advisories with no affected path, sample or documentation projects' copies); runtime dependencies come before dev-only ones throughout; a security fix counts only when the advisory's affected API or option is used in production code, and leads only when a pin or override also keeps update PRs from applying it. An upgrade marked advisory present, affected path not found carries an advisory nothing here was found to reach; affected path not checked means the advisory named no API to look for, so check its text against the code. An upgrade marked release-note security fix, no advisory names a fix only its release notes state: there is no GHSA or OSV advisory to look up. Other bumps name no consequential change found in this code: counts, or a feature or performance change at a site. Check each against the repository: sources, actual usage, versions and prerequisites; name affected files, benefits, risks and timing. Capabilities are optional and come after. Treat unmatched new features as exploratory, not confirmed needs. Refresh the snapshot with unstale status --wait 0 before reviewing; honor current dispositions over this saved report. Do not change application code or advance any full review batch silently.\n\n";
+    text += "## Review instructions\n\nLeads lists every located change first; read it, then Start here, then the upgrades in their order: what is in effect at the installed version in production code leads (an end-of-support version production code imports, a deprecation in effect in application code, an advisory whose affected API production code uses), then the same on dev-only dependencies or outside production code, then breaking changes the next upgrade names at a site and published peer ranges that leave out the current release; Lower-urgency upgrades follow (two release lines of one package installed, workarounds an upgrade may retire, archived repositories, dev-only advisories with no affected path, sample or documentation projects' copies); runtime dependencies come before dev-only ones throughout; a security fix counts only when the advisory's affected API or option is used in production code, and leads only when a pin or override also keeps update PRs from applying it. An upgrade marked advisory present, affected path not found carries an advisory nothing here was found to reach; affected path not checked means the advisory named no API to look for, so check its text against the code. An upgrade marked release-note vulnerability fix, no advisory names a fix only its release notes state: there is no GHSA or OSV advisory to look up. Other bumps name no consequential change found in this code: counts, or a feature or performance change at a site. Check each against the repository: sources, actual usage, versions and prerequisites; name affected files, benefits, risks and timing. Capabilities are optional and come after. Treat unmatched new features as exploratory, not confirmed needs. Refresh the snapshot with unstale status --wait 0 before reviewing; honor current dispositions over this saved report. Do not change application code or advance any full review batch silently.\n\n";
     if !deprecated.is_empty() {
         text += "For each package under Deprecated by the publisher, check where the code uses it and propose the move the registry message names (a newer version, a replacement package, or a built-in); a deprecated package whose code is unused can simply be removed.\n\n";
     }
@@ -3552,8 +3552,8 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World, write: bool) -> Result<B
             return head;
         }
         let word = match (noted, digits == "1") {
-            (true, true) => "release-note security fix, no advisory",
-            (true, false) => "release-note security fixes, no advisory",
+            (true, true) => "release-note vulnerability fix, no advisory",
+            (true, false) => "release-note vulnerability fixes, no advisory",
             (false, true) => "advisory",
             (false, false) => "advisories",
         };
@@ -3569,7 +3569,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World, write: bool) -> Result<B
         let path = if r.unchecked { "not checked" } else { "not found" };
         let head = if r.unreached { unreached_tally(head, path, r.noted) } else { head };
         // What the line says it carries: an advisory, or release notes only.
-        let carried = if r.noted { "release-note security fix, no advisory" } else { "advisory present" };
+        let carried = if r.noted { "release-note vulnerability fix, no advisory" } else { "advisory present" };
         let mut summary = head.split(" (`unstale bump").next().unwrap_or(&head).to_string();
         if let Some(k) = unlocks.get(*technology).map(Vec::len).filter(|k| *k > 0) {
             summary += &format!(" · unlocks {k} optional {}", if k == 1 { "capability" } else { "capabilities" });
@@ -3656,7 +3656,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World, write: bool) -> Result<B
         let total = detail.len();
         for line in detail.iter().take(3) {
             match line.strip_prefix("  security: ").filter(|_| r.unreached) {
-                Some(rest) => upgrade_text += &format!("  {}, affected path {path}: {rest}\n", if r.noted { "release-note security fix, no advisory" } else { "advisory" }),
+                Some(rest) => upgrade_text += &format!("  {}, affected path {path}: {rest}\n", if r.noted { "release-note vulnerability fix, no advisory" } else { "advisory" }),
                 None => upgrade_text += &format!("{line}\n"),
             }
         }

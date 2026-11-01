@@ -504,12 +504,12 @@ fn upgrades_rank_by_their_most_consequential_named_change() {
     let output = env.ok(&["init", "--service", cat.loc(), "--mode", "local", "--yes", "--wait", "0", "--no-animation"]);
     let flat = output.split_whitespace().collect::<Vec<_>>().join(" ");
     let report = env.read(".unstale/onboarding-report.md");
-    assert!(flat.contains("1. next 16.0.1 → 16.0.3 picks up 1 release-note security fix, no advisory (affected path not checked)") && flat.contains("2. prisma"), "{output}");
+    assert!(flat.contains("1. next 16.0.1 → 16.0.3 picks up 1 release-note vulnerability fix, no advisory (affected path not checked)") && flat.contains("2. prisma"), "{output}");
     let at = |s: &str| report.find(s).unwrap_or_else(|| panic!("{s} missing:\n{report}"));
     assert!(at("## Start here") < at("## Upgrades, by value") && at("## Upgrades, by value") < at("## Other bumps") && at("## Other bumps") < at("## Capabilities to explore"));
     assert!(at("1. next 16.0.1") < at("- prisma 6.19.0 → 7.0.0") && !report.contains("2. prisma"), "{report}");
-    assert!(report.contains("; release-note security fix, no advisory, affected path not checked\n"), "{report}");
-    assert!(report.contains("release-note security fix, no advisory, affected path not checked: Server actions check the Origin header. [next:csrf, 16.0.3]"), "{report}");
+    assert!(report.contains("; release-note vulnerability fix, no advisory, affected path not checked\n"), "{report}");
+    assert!(report.contains("release-note vulnerability fix, no advisory, affected path not checked: Server actions check the Origin header. [next:csrf, 16.0.3]"), "{report}");
     assert!(!report.contains("security leads"), "no reachable advisory: nothing leads as security\n{report}");
 }
 
