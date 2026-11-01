@@ -413,9 +413,10 @@ impl<'a> Scope<'a> {
     /// Whether `path` lies in the technology's own source: under a directory named for one of its packages that
     /// defines that module (a Python package's `__init__.py`, or a `package.json` with that name, `@scope/pkg` under
     /// `pkg/`), as a copied or patched library is (`_vendor/urllib3/` for urllib3). Code there defines the API, it does
-    /// not use it. A file importing the technology (`imports`) is its source only in a top-level Python package (a
-    /// library's absolute self-import); inside another package (`app/redis/` importing redis) it is a wrapper using it.
-    pub fn own_source(&self, path: &str, imports: bool) -> bool {
+    /// not use it. A Python package counts only at the top level of its tree: inside another package (`app/redis/`,
+    /// `lfx_bundles/litellm/`) the directory is that package's module for the technology, an integration or a wrapper,
+    /// whether or not it imports the technology (it may reach a proxy over HTTP).
+    pub fn own_source(&self, path: &str) -> bool {
         let lower = path.to_ascii_lowercase();
         let mut end = 0;
         while let Some(i) = lower[end..].find('/') {
@@ -430,7 +431,7 @@ impl<'a> Scope<'a> {
             let dir = &path[..dir_end];
             if self.names.iter().any(|n| n == seg) && self.paths.binary_search(&format!("{dir}/__init__.py")).is_ok() {
                 let parent = &path[..start.saturating_sub(1)];
-                if !imports || parent.is_empty() || self.paths.binary_search(&format!("{parent}/__init__.py")).is_err() {
+                if parent.is_empty() || self.paths.binary_search(&format!("{parent}/__init__.py")).is_err() {
                     return true;
                 }
             }
@@ -520,7 +521,7 @@ impl<'a> Scope<'a> {
     /// rule evidence is shown with: the applied check.
     pub fn counts(&self, lit: &str, path: &str) -> bool {
         !self.borrowed(path, self.importing.contains(path))
-            && !self.own_source(path, self.importing.contains(path))
+            && !self.own_source(path)
             && self.file(path).is_some_and(|about| about || !plain_word(lit))
     }
 
@@ -588,7 +589,7 @@ impl<'a> Scope<'a> {
             }
             let p = &self.paths[*x as usize];
             // Vendored code, or the technology's own source checked into the repository, is not this repository using it.
-            if role(p) == Role::Vendored || self.own_source(p, self.named_at[*x as usize].1) {
+            if role(p) == Role::Vendored || self.own_source(p) {
                 continue;
             }
             let r = if by_path {
@@ -1580,8 +1581,17 @@ pub fn own_binding(path: &str, text: &str, lit: &str) -> bool {
 }
 
 /// Whether JavaScript `text` imports package `name` or a path inside it: `from 'm'`, `import 'm'`, `require('m')`,
-/// `import('m')`, as the whole module specifier, outside comments.
+/// `import('m')`, as the whole module specifier, outside comments. In Python `name` is the module: an absolute `import`
+/// or `from` statement of it or a submodule, aliased or not, or a load by name (`import_module("m")`); a relative import
+/// is the repository's own module of that name.
 pub fn imports_package(path: &str, text: &str, name: &str) -> bool {
+    if own_code(path, "pypi") {
+        let comments = comment_spans(path, text);
+        let word = |c: char| c.is_ascii_alphanumeric() || c == '_';
+        let call = |n: &str| text.match_indices(n).any(|(i, _)| !text[..i].ends_with(word) && !comments.iter().any(|&(s, e)| s <= i && i < e));
+        let loaded = ["import_module(", "__import__(", "find_spec("].iter().any(|at| ['\'', '"'].iter().any(|q| call(&format!("{at}{q}{name}{q}")) || call(&format!("{at}{q}{name}."))));
+        return loaded || crate::pypi::import_roots(text).iter().any(|r| r.eq_ignore_ascii_case(name));
+    }
     let comments = comment_spans(path, text);
     ['\'', '"', '`'].iter().any(|q| {
         [format!("{q}{name}{q}"), format!("{q}{name}/")].iter().any(|needle| {
@@ -2936,6 +2946,16 @@ mod tests {
         assert!(!imports_package("a.ts", "// const w = require('ws');\nconst w = 1;", "ws"));
     }
 
+    #[test]
+    fn a_python_module_is_imported_by_a_statement_or_by_name() {
+        for t in ["import ws\n", "import ws.sub\n", "import ws as w\n", "import os, ws.sub as w\n", "from ws import a\n", "from ws.sub import (\n    a,\n)\n", "def f():\n    import ws\n", "m = importlib.import_module(\"ws.sub\")\n", "try: import ws\nexcept ImportError: pass\n"] {
+            assert!(imports_package("a.py", t, "ws"), "{t}");
+        }
+        for t in ["from . import ws\n", "from .ws import a\n", "from ..ws.x import a\n", "import wsgi\n", "from wsgi.ws import a\n", "# import ws\n", "x = 'ws'\nws(1)\n", "from a import ws\n", "not_import_module(\"ws\")\n", "# import_module(\"ws\")\n"] {
+            assert!(!imports_package("a.py", t, "ws"), "{t}");
+        }
+    }
+
     use super::*;
 
     #[test]
@@ -3355,13 +3375,15 @@ mod tests {
             ("lib/urllib3/util.py", "import urllib3\nurllib3.ssl_version\n"),
             ("svc/__init__.py", ""),
             ("svc/urllib3/__init__.py", "import urllib3\nurllib3.ssl_version = 2\n"),
+            ("svc/urllib3/proxy.py", "ssl_version = 3\n"),
         ]);
         let root = ["."];
         let purls = vec!["pkg:pypi/urllib3".to_string()];
         let h = scoped(&r, &["ssl_version"], &["pkg:pypi/urllib3"]);
         let s = Scope::new("pypi", &root, &purls, &[], &h, &r.paths).with_repo(&r);
         let files: Vec<String> = s.evidence("ssl_version", |p| r.role(p), false).files.into_iter().map(|(p, _)| p).collect();
-        assert_eq!(files, vec!["app/client.py".to_string(), "svc/urllib3/__init__.py".to_string()], "a wrapper package importing it uses it");
+        assert_eq!(files, vec!["app/client.py".to_string(), "svc/urllib3/__init__.py".to_string(), "svc/urllib3/proxy.py".to_string()], "a package's module for the technology uses it");
+        assert!(s.own_source("lib/urllib3/util.py") && !s.own_source("svc/urllib3/proxy.py"), "a directory inside another package is that package's integration, importing or not");
         assert!(!s.counts("ssl_version", "lib/urllib3/connectionpool.py"), "its own source is not the change applied");
     }
 
