@@ -72,6 +72,8 @@ lists the rest.
 - **New capabilities.** Features released since you wrote the code that could replace code you maintain.
 - **A session-start line** in Claude Code when something new applies to your stack.
 
+See [what your agent reads](docs/example/sveltekit/) for SvelteKit.
+
 Every item cites its release note, migration guide, docs page or advisory. If nothing upstream matters to your code,
 your agent hears nothing. Your agent proposes changes and you decide. unstale remembers each decision, so it never
 suggests the same thing twice.
