@@ -2615,6 +2615,19 @@ fn support_end(r: &unstale_schema::catalog::CapabilityRecord) -> Option<(String,
 
 /// The first date a text names, as written and as its last day: `YYYY-MM-DD`, `Month YYYY`, `Month D, YYYY`,
 /// `D Month YYYY`.
+/// The major version a statement names, if any: "Commander 14 moves into maintenance" is about 14, not the installed 9.
+/// A year or the day of a date is not a version.
+fn named_major(text: &str) -> Option<u64> {
+    let words: Vec<&str> = text.split_whitespace().map(|w| w.trim_matches(|c: char| !c.is_ascii_alphanumeric())).collect();
+    let month = |w: Option<&&str>| w.is_some_and(|w| support_date(&format!("{w} 2000")).is_some());
+    words.iter().enumerate().find_map(|(i, w)| {
+        let version = w.strip_prefix(['v', 'V']).unwrap_or(w);
+        let major = version.split('.').next()?.parse::<u64>().ok()?;
+        let dated = (1990..2200).contains(&major) || month(words.get(i + 1)) || i.checked_sub(1).is_some_and(|j| month(words.get(j)));
+        (!dated && version.split('.').skip(1).all(|p| p == "x" || p.chars().all(|c| c.is_ascii_digit()))).then_some(major)
+    })
+}
+
 fn support_date(text: &str) -> Option<(String, String)> {
     const MONTHS: [&str; 12] = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
     let words: Vec<&str> = text.split_whitespace().map(|w| w.trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '-')).collect();
@@ -2754,6 +2767,9 @@ fn signals<'r>(
     // date, under Lower-urgency upgrades. Never an opt-in improvement: there is nothing to adopt.
     for o in &out.opps {
         let Some((when, last)) = support_end(&o.rec.r) else { continue };
+        if named_major(&o.rec.r.summary).is_some_and(|major| major != o.installed.major) {
+            continue;
+        }
         let Some(name) = out.packages.get(&o.rec.r.technology).and_then(|p| p.first()).cloned() else { continue };
         if shown.contains(&norm(&name)) || by.contains_key(&norm(&name)) {
             continue;
@@ -4601,6 +4617,14 @@ mod tests {
 
     /// react/react: the root's eslint 7.32.0 line led with "the installed eslint 6.8.0 is deprecated", the version
     /// `fixtures/eslint-v6` (its own lockfile) pins. The lead names only the version the line's own manifest installs.
+    #[test]
+    fn a_support_statement_names_the_major_it_is_about() {
+        assert_eq!(named_major("Commander 14 moves into maintenance and will receive security updates through May 2027."), Some(14));
+        assert_eq!(named_major("Support for v3.x ends 5 November 2026."), Some(3));
+        assert_eq!(named_major("M is in maintenance mode, with fixes until November 2026."), None);
+        assert_eq!(named_major("Support ends November 5, 2026."), None);
+    }
+
     #[test]
     fn a_dated_support_statement_about_the_product_is_its_end_of_support() {
         assert_eq!(support_date("in maintenance mode, with security updates provided until November 2026."), Some(("November 2026".into(), "2026-11-30".into())));
