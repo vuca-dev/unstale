@@ -2272,6 +2272,13 @@ fn python_reaches(f: &str, t: &str, modules: Option<&[String]>) -> bool {
     modules.is_none_or(|m| m.iter().any(|x| usage::imports_package(f, t, x)))
 }
 
+/// Whether Python file `f` imports `id` from a module other than the package's `modules`, when they are known:
+/// `WebSocket` from starlette in a file that also imports openai is starlette's.
+fn python_bound_elsewhere(f: &str, t: &str, id: &str, modules: Option<&[String]>) -> bool {
+    usage::own_code(f, "pypi")
+        && modules.is_some_and(|m| usage::binding_module(t, id).is_some_and(|b| !m.iter().any(|x| b.split('.').next().unwrap_or(&b).eq_ignore_ascii_case(x))))
+}
+
 /// Whether a file reaches package `name`: a JavaScript file by importing it, or a path inside it (a `WebSocket` in a file
 /// that only quotes `'ws-connection'` or `'wsUrl'` is the platform's); a Python file by importing `modules`, when they
 /// are known; elsewhere by quoting a string that starts with it.
@@ -3198,7 +3205,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World, write: bool) -> Result<B
                 let importers: Vec<(&str, &str)> = w.repo.paths.iter().filter(|f| prod(f)).filter_map(|f| w.repo.text(f).map(|t| (f.as_str(), t))).filter(|(f, t)| quoted(f, t)).collect();
                 texts.iter().find_map(|text| {
                     let ids: Vec<String> = affected_identifiers(text).into_iter().filter(|id| !names_product(id, &names)).collect();
-                    importers.iter().find_map(|(f, t)| ids.iter().find(|id| usage::in_code(f, t, id, true)).map(|id| (display_text(&util::one_line(text, 160)), f.to_string(), id.clone())))
+                    importers.iter().find_map(|(f, t)| ids.iter().find(|id| usage::in_code(f, t, id, true) && !python_bound_elsewhere(f, t, id, modules.as_deref())).map(|id| (display_text(&util::one_line(text, 160)), f.to_string(), id.clone())))
                 })
             })
         }).flatten().map(|(what, f, t)| format!("security, affected `{t}` used at {f}: {what}"));
@@ -4426,6 +4433,16 @@ fn registered_text(accepted: usize, registrations: usize, known: usize) -> Strin
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_python_name_imported_from_another_module_is_not_the_packages() {
+        let m = ["openai".to_string()];
+        let t = "from starlette.websockets import WebSocket\nfrom openai import OpenAI\n";
+        assert!(python_bound_elsewhere("a.py", t, "WebSocket", Some(&m)));
+        assert!(!python_bound_elsewhere("a.py", t, "OpenAI", Some(&m)));
+        assert!(!python_bound_elsewhere("a.py", t, "WebSocket", None), "an unknown import name keeps the site");
+        assert!(!python_bound_elsewhere("a.ts", t, "WebSocket", Some(&m)));
+    }
 
     #[test]
     fn a_lead_line_keeps_the_move_the_change_and_its_site_and_drops_the_record_id() {
