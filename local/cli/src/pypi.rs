@@ -509,24 +509,39 @@ fn imported_modules(root: &Path, projects: &BTreeSet<PathBuf>) -> (BTreeMap<Path
     (out, own)
 }
 
-/// The top-level module of each absolute `import a.b, c as d` and `from a.b import x` statement at a line start.
-fn import_roots(text: &str) -> Vec<String> {
+/// The top-level module of each absolute `import a.b, c as d` and `from a.b import x` statement, at a line start or
+/// after `;` or a one-line block's `:` (`try: import x`). A relative import (`from .a import b`) is the repository's own.
+pub fn import_roots(text: &str) -> Vec<String> {
     let mut out = vec![];
     let ident = |s: &str| s.split('.').next().map(str::trim).filter(|m| !m.is_empty() && m.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') && !m.starts_with(|c: char| c.is_ascii_digit())).map(String::from);
     for line in text.lines() {
-        let t = line.trim_start();
-        if let Some(rest) = t.strip_prefix("from ") {
-            if let Some((m, _)) = rest.split_once(" import") {
-                out.extend(ident(m.trim()));
-            }
-        } else if let Some(rest) = t.strip_prefix("import ") {
-            let rest = rest.split('#').next().unwrap_or("");
-            for part in rest.split(',') {
-                out.extend(ident(part.split_whitespace().next().unwrap_or("")));
+        for t in line.split('#').next().unwrap_or("").split([';', ':']).map(str::trim_start) {
+            if let Some(rest) = t.strip_prefix("from ") {
+                if let Some((m, _)) = rest.split_once(" import") {
+                    out.extend(ident(m.trim()));
+                }
+            } else if let Some(rest) = t.strip_prefix("import ") {
+                for part in rest.split(',') {
+                    out.extend(ident(part.split_whitespace().next().unwrap_or("")));
+                }
             }
         }
     }
     out
+}
+
+/// The module a record's term writes: `PIL` in `PIL.ImageGrab` or `from PIL import ImageGrab`.
+pub fn term_module(term: &str) -> Option<&str> {
+    let t = term.strip_prefix("from ").or_else(|| term.strip_prefix("import ")).unwrap_or(term);
+    let head = t.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_')).next().unwrap_or("");
+    (!head.is_empty() && t[head.len()..].chars().next().is_none_or(|c| c == '.' || c == ' ')).then_some(head)
+}
+
+/// Whether module `m` abbreviates package `name`: its letters, in order, in the name (`PIL` of `pillow`, `sklearn` of
+/// `scikit-learn`). Three letters at least: `os` is in many names.
+pub fn abbreviates(m: &str, name: &str) -> bool {
+    let mut letters = name.chars().map(|c| c.to_ascii_lowercase());
+    m.len() >= 3 && m.chars().all(|c| letters.any(|l| l == c.to_ascii_lowercase()))
 }
 
 /// Whether `v` meets a requirement specifier: PEP 440 (`>=1.2,<2`, `~=1.4`, `==1.*`, `!=1.3`) or Poetry's npm-like
@@ -1303,6 +1318,17 @@ mod tests {
     #[test]
     fn import_roots_are_top_level_absolute_modules() {
         assert_eq!(import_roots("import a.b, c as d\nfrom e.f import g\nfrom . import h\nfrom .i import j\n  import k  # x\nimportant = 1\n"), vec!["a", "c", "e", "k"]);
+        assert_eq!(import_roots("try: import a\nimport b; import c\n# import d\nf(x)  # note: import e\n"), vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn a_term_names_a_module_an_abbreviation_of_the_package() {
+        assert_eq!(term_module("PIL.ImageGrab"), Some("PIL"));
+        assert_eq!(term_module("from PIL import ImageGrab"), Some("PIL"));
+        assert_eq!(term_module("sklearn"), Some("sklearn"));
+        assert_eq!(term_module("foo()"), None);
+        assert!(abbreviates("PIL", "pillow") && abbreviates("sklearn", "scikit-learn") && abbreviates("yaml", "pyyaml"));
+        assert!(!abbreviates("os", "opensearch") && !abbreviates("cv2", "opencv-python") && !abbreviates("time", "pillow"));
     }
 
     #[test]
