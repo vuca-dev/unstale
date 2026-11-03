@@ -101,6 +101,19 @@ describe("redirects", () => {
     expect([r.outcome.status, r.finalUrl]).toEqual(["first_seen", `${e.base}/p`]);
   });
 
+  test("a redirect that declares a large body and stalls is followed without waiting for it", async () => {
+    e = await env({ timeoutMs: 5_000 });
+    e.route("/stall", (_q, res) => {
+      res.writeHead(302, { location: "/p", "content-length": "200000" });
+      res.write("x");
+    });
+    e.route("/p", versioned("text/markdown", "# here\n").handler);
+    const t0 = Date.now();
+    const r = await e.collector.check(e.spec("/stall", { format: "markdown" }));
+    expect([r.outcome.status, r.finalUrl]).toEqual(["first_seen", `${e.base}/p`]);
+    expect(Date.now() - t0).toBeLessThan(2_000);
+  });
+
   test("redirect without Location is http_status", async () => {
     e = await env();
     e.route("/a", (_q, res) => void res.writeHead(302).end());

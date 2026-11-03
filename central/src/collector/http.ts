@@ -248,9 +248,13 @@ function headersOf(res: IncomingMessage): Headers {
 /**
  * A 304's or a redirect's body, read to its end and dropped: the connection then goes back to the pool for the host's
  * next request. Destroying the unread response closes its socket, so every 304 of a docs pass cost a new TCP and TLS
- * handshake. A body over `max` is not worth the connection.
+ * handshake. A body over `max` (declared or read) is not worth the connection.
  */
 async function discard(res: IncomingMessage, max = 64 * 1024): Promise<Uint8Array> {
+  if (Number(res.headers["content-length"] ?? "NaN") > max) {
+    res.destroy();
+    return new Uint8Array();
+  }
   let total = 0;
   try {
     for await (const chunk of res as AsyncIterable<Buffer>) if ((total += chunk.byteLength) > max) break;
