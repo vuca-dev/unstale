@@ -11,7 +11,7 @@
 ### 2026-11-03 · HTTP client closed the connection on every 304 and redirect
 - Tried: summed `coverage_stages` over ingest run 41674492178 (293 events): docs 5,984 s of 9,242 s (65%), advisories 1,591 s, extraction 488 s; docs skewed to page-by-page crawls (expo 1,032 s, builder.io 941, oxlint-plugins 617, pinecone 592, django 555, posthog 468). Counted connections with a local server: 200 sequential 304s opened 200 connections, 200s opened 1, 100 redirects opened 101. A/B against real hosts on this runner, conditional re-checks: docs.pinecone.io 142/141 -> 86/91 ms per request, posthog.com 131 -> 70 ms; django, expo, builder.io answer 200 (no gain).
 - Found: `#once` called `res.destroy()` on every 3xx before reading it, which on Node destroys the socket, so each 304 (a re-check's normal answer) and each redirect hop cost a new TCP+TLS handshake. Gateway is no longer a lead (exceededResources 357 -> 56, subrequests 774k -> 363k a week).
-- Chosen: read 3xx bodies to the end (64 KiB cap) and drop them; 2 tests; 535 central tests pass; $0 model spend. PR #207
+- Chosen: read 3xx bodies to the end (64 KiB cap; a declared Content-Length over the cap is destroyed unread, review round 1) and drop them; 3 tests; 535 central tests pass; $0 model spend. PR #207
 - Outcome: 304s and redirects reuse connections (~40% less time per 304 on Mintlify/posthog-style hosts); fleet share of 304s still unmeasured
 
 ### 2026-10-27 · Gateway packed-asset reads: one bucket read per hit, shared probes
