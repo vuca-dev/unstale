@@ -162,26 +162,39 @@ export interface OsvVuln {
   }>;
 }
 
+/**
+ * One OSV request: its status, and its JSON when 2xx. A 429, a 5xx, a dropped connection or a timeout is tried again
+ * (three attempts, backing off); an ingest run's advisories stage lost OSV for 4–16% of the technologies it refreshed
+ * to a single `fetch failed`. A request still failing throws `OSV <what>: <reason>`.
+ */
+async function osvRequest(url: string, init: RequestInit, what: string): Promise<{ status: number; json?: unknown }> {
+  for (let attempt = 0; ; attempt++) {
+    advisoryStats.osvRequests++;
+    let failure: string;
+    try {
+      const res = await fetch(url, { ...init, headers: { ...(init.headers as Record<string, string>), "User-Agent": "unstale-central" }, signal: AbortSignal.timeout(30_000) });
+      if (res.ok) return { status: res.status, json: await res.json() };
+      await res.body?.cancel();
+      if (res.status < 500 && res.status !== 429) return { status: res.status };
+      failure = String(res.status);
+    } catch (e) {
+      if (e instanceof SyntaxError) throw new Error(`OSV ${what}: unreadable answer`);
+      // The cause's code only (ECONNRESET, UND_ERR_SOCKET): its message can carry an address.
+      const code = (e as { cause?: { code?: unknown } }).cause?.code;
+      failure = `${e instanceof Error ? e.message : e}${typeof code === "string" ? ` (${code})` : ""}`;
+    }
+    if (attempt >= 2) throw new Error(`OSV ${what}: ${failure}`);
+    await new Promise((r) => setTimeout(r, 2000 * 2 ** attempt));
+  }
+}
+
 async function osvQuery(purl: string): Promise<OsvVuln[]> {
   const out: OsvVuln[] = [];
   let token: string | undefined;
   do {
-    let body: { vulns?: OsvVuln[]; next_page_token?: string } | undefined;
-    for (let attempt = 0; ; attempt++) {
-      advisoryStats.osvRequests++;
-      const res = await fetch(OSV, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "User-Agent": "unstale-central" },
-        body: JSON.stringify({ package: { purl }, ...(token ? { page_token: token } : {}) }),
-        signal: AbortSignal.timeout(30_000),
-      });
-      if (res.ok) {
-        body = (await res.json()) as typeof body;
-        break;
-      }
-      if (attempt >= 2 || (res.status < 500 && res.status !== 429)) throw new Error(`OSV ${purl}: ${res.status}`);
-      await new Promise((r) => setTimeout(r, 2000 * 2 ** attempt));
-    }
+    const res = await osvRequest(OSV, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ package: { purl }, ...(token ? { page_token: token } : {}) }) }, purl);
+    if (res.json === undefined) throw new Error(`OSV ${purl}: ${res.status}`);
+    const body = res.json as { vulns?: OsvVuln[]; next_page_token?: string } | null;
     out.push(...(body?.vulns ?? []));
     token = body?.next_page_token || undefined;
   } while (token);
@@ -326,14 +339,10 @@ export async function aliasDetails(t: Technology, id: string, opts: { refresh?: 
 
 /** One OSV vulnerability by id (`GET /v1/vulns/<id>`, retried like the queries); null when OSV does not know it. */
 async function osvVuln(id: string): Promise<OsvVuln | null> {
-  for (let attempt = 0; ; attempt++) {
-    advisoryStats.osvRequests++;
-    const res = await fetch(OSV_VULN + encodeURIComponent(id), { headers: { "User-Agent": "unstale-central" }, signal: AbortSignal.timeout(30_000) });
-    if (res.ok) return (await res.json()) as OsvVuln;
-    if (res.status === 404) return null;
-    if (attempt >= 2 || (res.status < 500 && res.status !== 429)) throw new Error(`OSV ${id}: ${res.status}`);
-    await new Promise((r) => setTimeout(r, 2000 * 2 ** attempt));
-  }
+  const res = await osvRequest(OSV_VULN + encodeURIComponent(id), {}, id);
+  if (res.json !== undefined) return res.json as OsvVuln;
+  if (res.status === 404) return null;
+  throw new Error(`OSV ${id}: ${res.status}`);
 }
 
 /** What the attribution check keeps of a vulnerability: its ids, whether it was withdrawn, its packages. */
