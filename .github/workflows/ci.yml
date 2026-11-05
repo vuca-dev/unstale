@@ -55,6 +55,10 @@ jobs:
         run: npm ci --prefix central --no-audit --no-fund
       - name: typecheck
         run: npm --prefix central run typecheck
+      # Built before the tests, not inside them: compiling in test/seam-drift.test.ts takes every core for up to half a
+      # minute and starves the tests running beside it past their timeouts.
+      - name: build gen-schema
+        run: cargo build --manifest-path local/Cargo.toml --bin gen-schema --locked
       - name: test
         run: npm --prefix central test
       - name: check:schema
