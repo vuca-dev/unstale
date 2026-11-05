@@ -327,9 +327,9 @@ fn pep508_list(v: Option<&Value>, out: &mut Vec<Req>) {
     }
 }
 
-/// Declared requirements of a `pyproject.toml`, whether it names a distribution (a library candidate), and its PEP 621
+/// Declared requirements of a `pyproject.toml`, the distribution it names (a library candidate), and its PEP 621
 /// optional extras' requirements, kept apart: an extra installs only when asked for (`pip install pkg[rl]`).
-fn pyproject(text: &str) -> Option<(Vec<Req>, bool, Vec<Req>)> {
+fn pyproject(text: &str) -> Option<(Vec<Req>, Option<String>, Vec<Req>)> {
     let doc: Value = toml::from_str(text).ok()?;
     let mut out = vec![];
     let mut extras = vec![];
@@ -347,8 +347,8 @@ fn pyproject(text: &str) -> Option<(Vec<Req>, bool, Vec<Req>)> {
     for g in poetry.and_then(|p| p.get("group")).and_then(Value::as_table).into_iter().flat_map(|t| t.values()) {
         table_deps(g.get("dependencies"), &mut out);
     }
-    let named = project.and_then(|p| p.get("name")).is_some() || poetry.and_then(|p| p.get("name")).is_some();
-    Some((out, named, extras))
+    let name = [project, poetry].into_iter().flatten().find_map(|p| p.get("name")?.as_str()).map(normalize);
+    Some((out, name, extras))
 }
 
 /// A lockfile's pinned versions by normalised name.
@@ -652,6 +652,8 @@ pub fn detect(root: &Path, packages: &mut Vec<Package>, deps: &mut BTreeMap<Stri
     let mut stale: BTreeMap<String, (usize, Vec<String>)> = BTreeMap::new();
     let mut projects: BTreeMap<PathBuf, Project> = BTreeMap::new();
     let (imported, own_modules) = imported_modules(root, &by_dir.keys().cloned().collect());
+    // The distributions this repository's own `pyproject.toml` files name (normalised).
+    let mut own: BTreeSet<String> = BTreeSet::new();
     for (dir, files) in by_dir {
         let mut reqs = vec![];
         let mut named = false;
@@ -663,7 +665,8 @@ pub fn detect(root: &Path, packages: &mut Vec<Package>, deps: &mut BTreeMap<Stri
                 marked.extend(pyproject_marked(text));
                 if let Some((r, n, x)) = pyproject(text) {
                     reqs.extend(r);
-                    named |= n;
+                    named |= n.is_some();
+                    own.extend(n);
                     extras.extend(x);
                 }
                 if let Some((key, floor)) = requires_python(text) {
@@ -842,6 +845,16 @@ pub fn detect(root: &Path, packages: &mut Vec<Package>, deps: &mut BTreeMap<Stri
                 continue;
             }
             attach(deps, p, &n, "installed through another dependency");
+        }
+    }
+    // A sibling or the project itself declared by name (`corp-common` installed with `pip install -e libs/common`, an
+    // extra `all = ["app[extra]"]`) is this repository's own: never named to a third party, unless a lockfile fetched
+    // it from PyPI (a published package of that name).
+    for n in &own {
+        if let Some(d) = deps.get_mut(&purl(n))
+            && d.seen != Seen::Public
+        {
+            d.public_candidate = false;
         }
     }
     for (file, (n, examples)) in stale {
@@ -1650,6 +1663,26 @@ mod tests {
         write(d.path(), "requirements/base.txt", "--index-url https://pypi.corp.example/simple\ncorp-sdk==1.0.0\n");
         let st = crate::stack::detect_in(d.path(), &crate::privacy::Env::default()).unwrap();
         assert!(!st.deps["pkg:pypi/corp-sdk"].public_candidate);
+    }
+
+    #[test]
+    fn the_repositorys_own_distributions_are_not_public_names() {
+        let d = tempfile::tempdir().unwrap();
+        // A sibling declared by name (installed with `pip install -e libs/common`), the project's own extra, a Poetry
+        // sibling, and one a lockfile fetched from PyPI (a published package of the same name).
+        write(d.path(), "pyproject.toml", "[project]\nname = \"Corp_App\"\ndependencies = [\"corp-common>=1\", \"httpx\"]\n[project.optional-dependencies]\nall = [\"corp-app[extra]\"]\n");
+        write(d.path(), "libs/common/pyproject.toml", "[project]\nname = \"corp.common\"\ndependencies = [\"requests\"]\n");
+        write(d.path(), "libs/tools/pyproject.toml", "[tool.poetry]\nname = \"corp-tools\"\n[tool.poetry.dependencies]\ncorp-common = \"*\"\n");
+        write(d.path(), "services/api/requirements.txt", "corp-tools\ncorp-published==2.0\n");
+        write(d.path(), "libs/published/pyproject.toml", "[project]\nname = \"corp-published\"\n");
+        write(d.path(), "services/api/poetry.lock", "[[package]]\nname = \"corp-published\"\nversion = \"2.0\"\n");
+        let (mut pk, mut deps) = (vec![], BTreeMap::new());
+        detect(d.path(), &mut pk, &mut deps, &mut vec![]);
+        for own in ["corp-app", "corp-common", "corp-tools"] {
+            assert!(!deps[&format!("pkg:pypi/{own}")].public_candidate, "{own}");
+        }
+        assert!(deps["pkg:pypi/corp-published"].public_candidate, "a lockfile fetched it from PyPI");
+        assert!(deps["pkg:pypi/httpx"].public_candidate && deps["pkg:pypi/requests"].public_candidate);
     }
 }
 
