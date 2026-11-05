@@ -1,3 +1,4 @@
+import { createServer } from "node:http";
 import { setTimeout as sleep } from "node:timers/promises";
 import { afterEach, describe, expect, test } from "vitest";
 import { isBlockedAddress } from "../src/collector/url-safety.ts";
@@ -69,6 +70,48 @@ describe("redirects", () => {
     } finally {
       await other.close();
     }
+  });
+
+  test("a 304 or a redirect leaves its connection for the host's next request", async () => {
+    const server = createServer((req, res) => {
+      if (req.url === "/r") res.writeHead(301, { location: "/p", "content-length": "9" }).end("moved to\n");
+      else if (req.headers["if-none-match"] === '"1"') res.writeHead(304, { etag: '"1"' }).end();
+      else res.writeHead(200, { etag: '"1"' }).end("ok");
+    });
+    let connections = 0;
+    server.on("connection", () => connections++);
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    try {
+      const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+      const client = new HttpClient({ ...DEFAULT_HTTP, allowHosts: ["127.0.0.1"] });
+      for (let i = 0; i < 5; i++) expect((await client.get(`${base}/p`, { "if-none-match": '"1"' })).status).toBe(304);
+      for (let i = 0; i < 5; i++) expect((await client.get(`${base}/r`, {})).finalUrl).toBe(`${base}/p`);
+      expect(connections).toBe(1);
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((r) => server.close(() => r()));
+    }
+  });
+
+  test("a redirect with a large body is still followed", async () => {
+    e = await env();
+    e.route("/big", (_q, res) => void res.writeHead(302, { location: "/p" }).end("x".repeat(200_000)));
+    e.route("/p", versioned("text/markdown", "# here\n").handler);
+    const r = await e.collector.check(e.spec("/big", { format: "markdown" }));
+    expect([r.outcome.status, r.finalUrl]).toEqual(["first_seen", `${e.base}/p`]);
+  });
+
+  test("a redirect that declares a large body and stalls is followed without waiting for it", async () => {
+    e = await env({ timeoutMs: 5_000 });
+    e.route("/stall", (_q, res) => {
+      res.writeHead(302, { location: "/p", "content-length": "200000" });
+      res.write("x");
+    });
+    e.route("/p", versioned("text/markdown", "# here\n").handler);
+    const t0 = Date.now();
+    const r = await e.collector.check(e.spec("/stall", { format: "markdown" }));
+    expect([r.outcome.status, r.finalUrl]).toEqual(["first_seen", `${e.base}/p`]);
+    expect(Date.now() - t0).toBeLessThan(2_000);
   });
 
   test("redirect without Location is http_status", async () => {
