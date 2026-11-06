@@ -299,6 +299,10 @@ pub struct Stack {
     /// The lowest Python version the project supports, and where that came from: the lowest `requires-python` (or
     /// Poetry `python`) floor among the read `pyproject.toml` files (`pypi::detect`).
     pub python: Option<(Version, String)>,
+    /// Per runtime (`runtime_name`), the version the code runs on when no range declares one: as written (`20.x`,
+    /// `3.12`) and where (`.nvmrc`, `.python-version`, else a CI setup input, `ci_runtime`). Only for the runtime's
+    /// own end of life (`runtimes`): a CI pin is never a support floor (a Node 20 CI does not prove Node 18 dropped).
+    pub runtime_pins: BTreeMap<&'static str, (String, String)>,
     /// Where versions came from when that needed a choice: competing lockfiles in one directory, or a lockfile
     /// that disagrees with the manifest beside it; and the packages on different versions across manifests. For the
     /// report.
@@ -884,6 +888,7 @@ pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
     if !any_covered {
         node = node_standalone;
     }
+    let mut node_pin: Option<(String, String)> = None;
     if node.is_none() {
         for p in packages.iter().filter(|p| !any_covered || covered.contains(&p.dir)) {
             for f in [".nvmrc", ".node-version"] {
@@ -892,6 +897,7 @@ pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
                 if let Some(v) = parse_version(t.trim())
                     && node.as_ref().is_none_or(|(n, _)| &v < n) {
                         node = Some((v, join(&p.dir, f)));
+                        node_pin = Some((t.trim().to_string(), join(&p.dir, f)));
                     }
             }
         }
@@ -943,6 +949,26 @@ pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
         ));
     }
     let python = crate::pypi::detect(root, &mut packages, &mut deps, &mut notes);
+    // The version the code runs on when no range declares one: a toolchain file, else the version CI sets up.
+    let mut runtime_pins = BTreeMap::new();
+    if let Some(pin) = node_pin {
+        runtime_pins.insert("node", pin);
+    }
+    if python.is_none()
+        && let Some(t) = std::fs::read_to_string(root.join(".python-version")).ok()
+        && let Some(line) = t.lines().map(str::trim).find(|l| !l.is_empty() && !l.starts_with('#'))
+        && parse_version(line).is_some()
+    {
+        runtime_pins.insert("python", (line.to_string(), ".python-version".to_string()));
+    }
+    for (runtime, declared) in [("node", node.is_some()), ("python", python.is_some())] {
+        if !declared
+            && !runtime_pins.contains_key(runtime)
+            && let Some((_, stated, source)) = ci_runtime(root, runtime)
+        {
+            runtime_pins.insert(runtime, (stated, source));
+        }
+    }
     // No name a private registry serves is ever named to a third party (`privacy`).
     // A test, example or fixture directory's configuration is its own (a local Verdaccio a test publishes to): it keeps
     // private the packages only such directories declare, and, for the rest, only the scopes and names it lists.
@@ -986,9 +1012,41 @@ pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
         ));
     }
     let unlocked = unlocked_used.into_iter().collect();
-    let mut st = Stack { packages, deps, node, node_by_lock, python, notes, unreadable, stub_runtimes, spread: 0, standalone, registries, fixture_registries, peers, unlocked };
+    let mut st = Stack { packages, deps, node, node_by_lock, python, runtime_pins, notes, unreadable, stub_runtimes, spread: 0, standalone, registries, fixture_registries, peers, unlocked };
     st.settle();
     Ok(st)
+}
+
+/// The lowest version a CI workflow sets a runtime up with: the `<runtime>-version` input of its setup action
+/// (`actions/setup-node`'s `node-version: 20.x`, `actions/setup-python`'s `python-version: '3.12'`, or a matrix list
+/// of them), across `.github/workflows`. Expressions (`${{ matrix.node }}`), aliases (`lts/*`) and files
+/// (`node-version-file`) are not versions and are skipped. Returns the version, the value as written, and the source.
+pub fn ci_runtime(root: &Path, runtime: &str) -> Option<(Version, String, String)> {
+    let key = format!("{runtime}-version:");
+    let dir = root.join(".github/workflows");
+    let mut files: Vec<PathBuf> = std::fs::read_dir(&dir).ok()?.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|e| e == "yml" || e == "yaml")).collect();
+    files.sort();
+    let mut best: Option<(Version, String, String)> = None;
+    for f in files {
+        let Ok(text) = std::fs::read_to_string(&f) else { continue };
+        for line in text.lines() {
+            let line = line.split(" #").next().unwrap_or(line).trim().trim_start_matches("- ").trim();
+            let Some(value) = line.strip_prefix(&key) else { continue };
+            let value = value.trim().trim_start_matches('[').trim_end_matches(']');
+            for one in value.split(',') {
+                let one = one.trim().trim_matches(['"', '\'']).trim();
+                if one.contains("${{") {
+                    continue;
+                }
+                let Some(v) = parse_version(one) else { continue };
+                if best.as_ref().is_none_or(|(b, _, _)| &v < b) {
+                    let name = f.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                    best = Some((v, one.to_string(), format!("{key} {one} in .github/workflows/{name}").replacen(": ", " ", 1)));
+                }
+            }
+        }
+    }
+    best
 }
 
 /// The package an npm alias installs (`npm:@corp/bar@^1`, `npm:bar`, `npm:@corp/bar`): the name before the version's
