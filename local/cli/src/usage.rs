@@ -2811,7 +2811,15 @@ fn rust_naming_hit(text: &str, spans: &(Vec<(usize, usize)>, Vec<StringSpan>), a
         return false;
     }
     if !rust_use_literal(lit) {
-        return true;
+        // A path names the crate at its head (`serde::`, `::serde::`), not as another identifier's tail (`myserde::`)
+        // or a module further along one (`config::serde::`).
+        let ident = |c: u8| c.is_ascii_alphanumeric() || c == b'_';
+        let before = &text.as_bytes()[..at];
+        return match before.last() {
+            Some(&c) if ident(c) => false,
+            Some(b':') => before.ends_with(b"::") && !before[..before.len() - 2].last().is_some_and(|&c| ident(c) || c == b'>'),
+            _ => true,
+        };
     }
     let start = text[..at].rfind('\n').map_or(0, |i| i + 1);
     let prefix = text[start..at].trim();
@@ -3421,6 +3429,8 @@ mod tests {
             ("src/alias.rs", "pub use local_json::Value;\n"),
             ("src/extern.rs", "extern crate serde_json;\n"),
             ("src/extern_as.rs", "extern crate serde_json as json;\n"),
+            ("src/absolute.rs", "let v = ::serde_json::json!({});\n"),
+            ("src/tail.rs", "let v = myserde_json::from_str(x);\nlet w = config::serde_json::load();\n"),
             ("src/path.rs", "let value = serde_json::from_str(input)?;\n"),
             ("src/comment.rs", "// use serde_json::Value;\n/* extern crate serde_json; */\n/* outer /* nested */\nuse serde_json::Value; */\n"),
             ("src/string.rs", r#"const MESSAGE: &str = "use serde_json::Value;";"#),
@@ -3440,7 +3450,7 @@ use serde_json::Value;
         assert_eq!(h.usage.get("use serde_json;").unwrap(), &["src/root.rs"]);
         assert_eq!(h.usage.get("use serde_json as ").unwrap(), &["src/root.rs"]);
         assert_eq!(h.usage.get("use local_json::").unwrap(), &["src/alias.rs"]);
-        assert_eq!(h.usage.get("serde_json::").unwrap(), &["src/conventional.rs", "src/path.rs"]);
+        assert_eq!(h.usage.get("serde_json::").unwrap(), &["src/absolute.rs", "src/conventional.rs", "src/path.rs"], "a path's head, not another identifier's tail or a module along a path");
         assert!(own_code("src/lib.rs", "cargo"));
         assert!(foreign_code("src/lib.rs", "npm"));
     }
