@@ -197,8 +197,23 @@ fn reads_index_and_root_with_unknown_fields() {
     // Rust → TypeScript: an index with a sample, for the Zod to accept.
     let out = TechIndex { sample: vec![SampleRepo { repo: "a/b".into(), commit: "0".repeat(40) }], ..t };
     fs::write(fixtures().join("rust-index.v1.json"), serde_json::to_string_pretty(&out).unwrap() + "\n").unwrap();
-    let root: Root = serde_json::from_str(r#"{"schema":1,"min_client":"0.1.0","notice":"hi"}"#).unwrap();
+    let root: Root = serde_json::from_str(r#"{"schema":1,"min_client":"0.1.0","motd":"hi"}"#).unwrap();
     assert_eq!(root.schema, 1);
+    assert_eq!((root.latest_client, root.notice), (None, None), "an older root reads without the optional fields");
+    // A notice or latest_client of another shape reads as absent rather than refusing the root.
+    let odd: Root = serde_json::from_str(r#"{"schema":1,"min_client":"0.1.0","latest_client":3,"notice":"hi"}"#).unwrap();
+    assert_eq!((odd.latest_client, odd.notice), (None, None));
+}
+
+#[test]
+fn root_latest_client_and_notice_round_trip() {
+    let text = r#"{"schema":1,"min_client":"0.3.0","latest_client":"0.3.2","notice":{"id":"keys-2026-11","until":"2026-11-30","text":"Run `unstale setup`."}}"#;
+    let root: Root = serde_json::from_str(text).unwrap();
+    assert_eq!(root.latest_client.as_deref(), Some("0.3.2"));
+    assert_eq!(root.notice, Some(Notice { id: "keys-2026-11".into(), until: "2026-11-30".into(), text: "Run `unstale setup`.".into() }));
+    assert_eq!(serde_json::to_string(&root).unwrap(), text);
+    let bare = Root { latest_client: None, notice: None, ..root };
+    assert_eq!(serde_json::to_string(&bare).unwrap(), r#"{"schema":1,"min_client":"0.3.0"}"#);
 }
 
 // ---- ledger ----

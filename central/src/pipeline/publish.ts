@@ -4,13 +4,58 @@
 // a prune can delete them after the grace period.
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
-import { Root, ShardLine, TechIndex } from "../schema/catalog.ts";
+import { Notice, Root, ShardLine, TechIndex } from "../schema/catalog.ts";
 import { recordReplacedIndex } from "./prune.ts";
 import { highestLine, type StoredRecord, type TechStore } from "./store.ts";
 import { canonical, compareVersions, sha256, writeAtomic } from "./util.ts";
 
 export const MIN_CLIENT = "0.1.0";
+
+const CENTRAL = fileURLToPath(new URL("../..", import.meta.url));
+/** The client's version on this checkout (the release tags it; release.yml checks they match). */
+export const CLIENT_MANIFEST = join(CENTRAL, "..", "local", "cli", "Cargo.toml");
+/** An optional announcement for every client, `{id, until, text}`; `UNSTALE_NOTICE` names another file. */
+export const noticeFile = (): string => process.env.UNSTALE_NOTICE ?? join(CENTRAL, "notice.json");
+
+/** A Cargo manifest's first `version = "..."` line, as release.yml reads it; undefined when the file is absent (a
+ * container holds only src/). */
+export function manifestVersion(file: string): string | undefined {
+  if (!existsSync(file)) return undefined;
+  return /^version\s*=\s*"([^"]+)"/m.exec(readFileSync(file, "utf8"))?.[1];
+}
+
+/**
+ * `v1/root.json`: the schema, the oldest client that reads this catalog, the newest released client and the notice
+ * file's announcement when there is one. Validated, canonical, one line per key as published.
+ */
+export function rootText(opts: { manifest?: string; notice?: string } = {}): string {
+  const latest = manifestVersion(opts.manifest ?? CLIENT_MANIFEST);
+  const notice = opts.notice ?? noticeFile();
+  const root = Root.parse({
+    schema: 1,
+    min_client: MIN_CLIENT,
+    ...(latest ? { latest_client: latest } : {}),
+    ...(existsSync(notice) ? { notice: validNotice(Notice.parse(JSON.parse(readFileSync(notice, "utf8")))) } : {}),
+  });
+  return JSON.stringify(JSON.parse(canonical(root)), null, 1) + "\n";
+}
+
+/** A notice a client will show: a real `YYYY-MM-DD` last day (clients skip any other) and some text. */
+function validNotice(n: Notice): Notice {
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(n.until) ? new Date(`${n.until}T00:00:00Z`) : undefined;
+  if (!day || Number.isNaN(day.getTime()) || day.toISOString().slice(0, 10) !== n.until) throw new Error(`notice ${n.id}: until \`${n.until}\` is not a YYYY-MM-DD date`);
+  // Visible text as the client prints it: control, zero-width and bidirectional characters are blanked there.
+  const visible = n.text.replace(/[\p{Cc}\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/gu, "").trim();
+  if (!n.id.trim() || !visible) throw new Error("a notice needs an id and visible text");
+  return n;
+}
+
+/** Write the root into a catalog directory, leaving the file alone when it is unchanged. */
+export function writeRoot(catalog: string, opts: Parameters<typeof rootText>[0] = {}, text = rootText(opts)): void {
+  writeIfChanged(join(catalog, "v1", "root.json"), text);
+}
 
 /** The published line for a record; validated by the generated Zod unless `validate` is false (the caller checks). */
 export function shardLine(r: StoredRecord, validate = true, counts?: Record<string, number>): ShardLine {
@@ -67,6 +112,8 @@ export const activeTerms = (store: TechStore): string[] =>
   [...new Set(Object.values(store.records).filter((r) => r.status === "active").flatMap((r) => r.terms))].sort();
 
 export function publishTechnology(store: TechStore, checked: string, outDir: string, sample?: PublishedSample, now = new Date()): PublishResult {
+  // The root first: a notice that does not validate stops the publish before anything is written.
+  const root = rootText();
   const byLine = new Map<string, string[]>();
   for (const r of Object.values(store.records).sort((a, b) => a.id.localeCompare(b.id))) {
     const line = lineOf(r);
@@ -105,7 +152,7 @@ export function publishTechnology(store: TechStore, checked: string, outDir: str
   });
   recordReplacedIndex(outDir, store.technology, shards.map((s) => s.path), now);
   writeIfChanged(join(outDir, "v1", "tech", `${store.technology}.json`), JSON.stringify(JSON.parse(canonical(index)), null, 1) + "\n");
-  writeIfChanged(join(outDir, "v1", "root.json"), JSON.stringify(JSON.parse(canonical(Root.parse({ schema: 1, min_client: MIN_CLIENT }))), null, 1) + "\n");
+  writeRoot(outDir, {}, root);
   return { index, bytes, written };
 }
 

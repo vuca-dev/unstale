@@ -5,7 +5,7 @@ description: Review upstream dependency changes against this repository and reco
 
 # Review upstream changes
 
-Refresh with `unstale status --wait 0` using the CLI identified in `.unstale/onboarding-report.md` (or `unstale` on PATH), then read the refreshed report. This prepares the same review queues on first use and subsequent visits. Honor the current ledger: do not revive declined, deferred, already applied, or previously reviewed findings unless the user asks to reconsider them or their revision changed.
+Refresh with `unstale status --wait 0` using the CLI identified in `.unstale/onboarding-report.md` (or `unstale` on PATH), then read the refreshed report. Relay any `unstale notice:` or `unstale X available:` line a command prints to the user. This prepares the same review queues on first use and subsequent visits. Honor the current ledger: do not revive declined, deferred, already applied, or previously reviewed findings unless the user asks to reconsider them or their revision changed.
 
 Start with the report's strongest findings across upgrades and capabilities. Distinguish changes in effect now, requirements for a future upgrade, and optional opportunities. Check actual usage, supported versions and prerequisites; a matched reference is a lead, not proof of production use. Rank by likely impact and explain affected files, official evidence, trade-offs and timing. Do not invent savings.
 
