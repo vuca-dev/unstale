@@ -9,7 +9,7 @@ look per held-out set. Raw output is under `eval/select/out/` (gitignored): `pro
 | Key | A+B extraction | D record labels | E same-or-new judge |
 |---|---|---|---|
 | **Jev** | Jev cannot generate records: pair it with a generative key (OpenAI or gateway row) | **1. Jev** ($0.0100) | **1. Jev** ($0.0081, Q8 with C′ constants) |
-| **OpenAI** | **1. gpt-6-luna `low`**, direct ($0.0183 list) | Nothing passes. 1. gpt-6-luna chat, below floor (H2 breaking precision −6.2 at its fitted 0.05 only; $0.0430 list). 2. Decisions API, below floor (H1 benefit recall; $0.0239) | Nothing passes. 1. gpt-6-luna chat, below floor (holds 0.9 per 100, recall 80.2% against 88.8%; $0.0455 list). 2. Decisions API (2.0 per 100, recall 73.1%; $0.0170). 3. Never merge |
+| **OpenAI** | **1. gpt-6-luna `low`**, direct ($0.0183 list) | Nothing passes. 1. gpt-6-luna chat on choices, below floor (confirmatory run, addendum 1: H1 breaking −6.9 against Jev's fitted 0.05, H2 precision −2.3; $0.0261 list). 2. Decisions API, below floor (H1 benefit recall; $0.0239) | Nothing passes. 1. gpt-6-luna chat, below floor (holds 0.9 per 100, recall 80.2% against 88.8%; $0.0455 list). 2. Decisions API (2.0 per 100, recall 73.1%; $0.0170). 3. Never merge |
 | **Anthropic** | Nothing passes. Haiku 5.5 `none`, below floor ($0.0189; H2 required −9.0). `low` fails DEV (52/61) | Nothing passes. Haiku 5.5, below floor ($0.0564; breaking and benefit recall) | Nothing passes. Haiku 5.5, below floor (recall 38.6%; $0.0573). Never merge is the honest default |
 | **Gateway / OpenRouter** | **1. `openai/gpt-6-luna` `low`, flex** ($0.0096; $0.0192 list) | **1. DeepSeek V4 Flash** ($0.0410). **2. Qwen3.8 Flash** ($0.0630). Below floor: gpt-6-luna chat ($0.0249 at flex) | Nothing passes. 1. gpt-6-luna chat, below floor ($0.0269 at flex). 2. Never merge |
 
@@ -22,7 +22,7 @@ Costs are $ per mean technology-year, worst case (formulas in `PREREG.md`); × 1
   the threshold fitted on stated probabilities (0.05). At its choices (0.5), which is how production's fallback reads a
   chat answer, it is level with or above Jev at 0.5 on every metric: H1 breaking 86.2 / benefit 97.5 / actionable 87.7
   against 82.8 / 85.1 / 84.9; H2 breaking R 92.6 and P 93.0 against 90.0 and 94.5, both CIs spanning 0. That is
-  descriptive, not the rule. It is the one cell worth a pre-registered choice-only re-test.
+  descriptive, not the rule. A pre-registered choice-only re-test (addendum 1) failed: the H2 precision did not replicate.
 - **The gateway's D passers (DeepSeek, Qwen) are slice 4 results** on the older wording, also at fitted thresholds on
   stated probabilities, which `RESULTS-choice.md` says overstate recall. Treat their order over gpt-6-luna chat as weak.
 - **An Anthropic-only key has no passing cell on any step.** Haiku 5.5 is close on short notes (H1 −5.8 pooled) and
@@ -159,3 +159,48 @@ precision 93.0 (−1.5, CI −5.0…+0.9).
 - H1 has 29 breaking records in D and 35 breaking groups in A+B: one record is 3.4 and 2.9 points.
 - References are Claude-labelled; Haiku is a Claude model. Its scores could carry a shared-style bonus; none is visible
   (it is the arm furthest below the references on recall).
+
+## Addendum 1: gpt-6-luna chat on D, read on its choices (confirmatory, PREREG addendum 1)
+
+A fresh run (`choice:openai/gpt-6-luna`, production's chat-fallback prompt, choices only, empty caches; 991 records,
+100% answered) against Jev v1. **Verdict: fail** on the pre-registered rule, on two counts:
+
+| H1 (233) / H2 (347) | Jev v1 | **CH, fresh run** | CH − Jev, 95% CI | Descriptive: first run's answers read as choices |
+|---|---|---|---|---|
+| H1 breaking recall (Jev at fitted 0.05) | 93.1 | 86.2 | **−6.9 [−17.2, 0.0]: misses the 5-point margin** | 86.2 (−6.9 [−20.7, +6.9]) |
+| H1 benefit-vs-none recall (Jev fitted) | 99.2 | 96.7 | −2.5 [−5.8, 0.0] | 97.5 (−1.7) |
+| H1 actionable recall | 84.9 | 89.0 | +4.1 [−2.7, +11.0] | 87.7 (+2.7) |
+| H1 guard: change_type accuracy / removal+deprecation recall | 82.0 / — | 85.0 / — | [−1.7, +7.7] / [0, 0]: hold | 85.0 |
+| H1 secondary, against Jev at 0.5: breaking / benefit / actionable recall | 82.8 / 85.1 / 84.9 | 86.2 / 96.7 / 89.0 | [−6.9, +13.8] / **[+5.8, +18.2]** / [−2.7, +11.0]: **pass** | pass |
+| H2 breaking recall (Jev at 0.5) | 90.0 | 92.6 | [−1.4, +5.9] | 92.6 ([−1.8, +5.7]) |
+| H2 breaking precision (Jev at 0.5) | 94.5 | 92.2 | **−2.3 [−4.8, −0.3]: fails** | 93.0 (−1.5 [−5.0, +0.9]) |
+| Tokens per record in / out (reasoning) | 2,074 / 0 | 1,625 / 130 (75) | | 1,668 / 417 (100) |
+| $ / tech-year | $0.0100 | **$0.0261 list** ($0.0182 billed, mostly flex) | | |
+
+- **The descriptive reading did not replicate on H2.** The fresh draw loses breaking precision significantly. That
+  is the gap the first run's answers had suggested was absent (−1.5, CI spanning 0). On H1 the result is the same as
+  the descriptive reading: it beats Jev at production's 0.5, and it misses the margin against Jev's fitted 0.05, a
+  threshold slice 4 called unshippable.
+- **Choices-only is cheaper than the probability prompt:** output falls from 417 to 130 tokens per record, so the cost
+  falls from $0.043 to $0.026 per technology-year at list (2.6× Jev).
+- **Picker consequence: none.** For an OpenAI key, gpt-6-luna chat stays first for D and stays "below floor". Now that
+  is backed by a confirmatory run: two failures, against the fitted Jev and in H2 precision. Read as production reads
+  it, it is close to Jev: better benefit recall, slightly lower H2 breaking precision.
+- Spend: $0.157 on the gateway (smoke $0.0015, dev $0.062, H1 $0.037, H2 $0.057).
+
+## Addendum 2: what the E gap costs at the edge (no new calls)
+
+From the existing slice 5 held-out run (867 held-out records, 197 items with a true match, constants fitted on dev):
+
+| Arm | Missed true matches | **Duplicates per 100 records** | Paired difference |
+|---|---|---|---|
+| Jev J1 | 22 | **2.54** | — |
+| gpt-6-luna chat, fitted 0.82 / 0.97 / 1.01 | 39 | **4.50** | **+1.96 per 100 [95% CI +1.04, +3.00]** (bootstrap of the paired recall difference × 197 / 867) |
+| Never merge | 197 | 22.7 | |
+
+- **Per technology-year** (R = 114.6 records): about **2.2 more duplicate records** reach the agent (CI 1.2–3.4).
+- **Tokens:** a record averages about 187 tokens (747 characters of full extracted record JSON on H1, at 4 characters
+  per token). That is about **420 more tokens per technology-year** for an agent reading the report (CI about 220–640).
+  For a repo with 38 technologies that is about 16k tokens a year. Never merge would add about 4,900 per
+  technology-year.
+- The false-merge side does not change: 0.9 per 100 against Jev's 0.8 (McNemar p 1.0).

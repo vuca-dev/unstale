@@ -25,6 +25,8 @@ const S = await import("../states.ts");
 const { SubqClassifier } = await import("../subq.ts");
 // eval/provider-matrix: OpenAI's decision model (gpt-6-luna on /v1/decisions), Jev's answer shape.
 const { DecisionsClassifier } = await import("../../provider-matrix/decisions.ts");
+// eval/provider-matrix PREREG addendum 1: choice:<model> = production's chat fallback (ChatClassifier: choices only).
+const { chatClassifier } = await import("../jev.ts");
 import type { Answer, Classification, Classifier, ChoiceQuestion, Questions } from "../../../central/src/pipeline/classify/adapter.ts";
 
 const { values: a } = parseArgs({
@@ -266,17 +268,18 @@ function parseBatch(t: string, n: number): Map<number, Record<string, Answer>> {
 const tok3 = (s: string) => Math.ceil(s.length / 3);
 const isBatch = cand.startsWith("batch:");
 const B = Number(a.batch);
+const isChoice = cand.startsWith("choice:");
 const sysOne = cand === "jev" || cand === "clef" || cand === "subq" || cand === "decisions";
 let planIn = 0;
 let planOut = 0;
 if (isBatch) for (let i = 0; i < units.length; i += B) (planIn += tok3(batchPrompt(units.slice(i, i + B)))), (planOut += MAX_TOKENS * 2);
-else for (const u of units) (planIn += tok3(sysOne ? JSON.stringify({ state: u.state, questions: q }) : chatPrompt(u.state, q))), (planOut += sysOne ? 0 : MAX_TOKENS);
-const modelOf = cand.replace(/^(vercel|batch):/, "");
+else for (const u of units) (planIn += tok3(sysOne || isChoice ? JSON.stringify({ state: u.state, questions: q }) : chatPrompt(u.state, q))), (planOut += sysOne ? 0 : MAX_TOKENS);
+const modelOf = cand.replace(/^(vercel|batch|choice):/, "");
 const price = cand === "decisions" ? priceOf(prices, "openai-decisions", "gpt-6-luna") : cand === "jev" ? priceOf(prices, "jev", "jev-latest") : cand === "subq" ? priceOf(prices, "subq", SUBQ_MODEL) : cand === "codex" ? priceOf(prices, "codex", "gpt-5.6-luna") : cand === "clef" ? { input: 0.038, output: 0, cached_input: null } as never : priceOf(prices, "vercel", modelOf);
 const worst = price ? dollars(price, { input_tokens: planIn, cached_input_tokens: 0, output_tokens: planOut, reasoning_tokens: null }) : null;
 console.log(`${runId}: ${units.length} units, worst case ${planIn} input + ${planOut} output tokens = ${worst === null ? "unknown" : `$${worst.toFixed(4)}`} (input chars/3, output = max_tokens per call)`);
 if (a["dry-run"]) process.exit(0);
-if (cand.startsWith("vercel:") || isBatch) {
+if (cand.startsWith("vercel:") || isBatch || isChoice) {
   const mine = Object.values(spendByProvider(join(OUT4, "chat-usage.jsonl"))).reduce((s, x) => s + x.dollars, 0);
   const bal = await gatewayBalance();
   console.log(`gateway: this slice spent $${mine.toFixed(4)} of its $${GATEWAY_CAP}; live balance $${bal.toFixed(4)}`);
@@ -304,9 +307,9 @@ const tick = () => {
   if (++done % 25 === 0) console.log(`  ${done}/${units.length} (${((Date.now() - t0) / 1000).toFixed(0)} s)`);
 };
 const conc = Number(a.concurrency);
-if (sysOne) {
+if (sysOne || isChoice) {
   // SubQ Snap (eval/select/subq.ts) takes Jev's request and answer shape at its own endpoint.
-  const cls = cand === "decisions" ? new DecisionsClassifier({ onUsage: (u, d) => log("openai-decisions", "gpt-6-luna", u, d) }) : cand === "subq" ? new SubqClassifier({ model: SUBQ_MODEL, step: `classify:${runId}`, onUsage: (u, d) => log("subq", SUBQ_MODEL, u, d) }) : systemOne(cand as "jev" | "clef");
+  const cls = isChoice ? chatClassifier(chat, modelOf, `classify:${runId}`, { max_tokens: MAX_TOKENS, ...(EXTRA[modelOf] ?? {}) }) : cand === "decisions" ? new DecisionsClassifier({ onUsage: (u, d) => log("openai-decisions", "gpt-6-luna", u, d) }) : cand === "subq" ? new SubqClassifier({ model: SUBQ_MODEL, step: `classify:${runId}`, onUsage: (u, d) => log("subq", SUBQ_MODEL, u, d) }) : systemOne(cand as "jev" | "clef");
   await pool(units, conc, async (u) => {
     const s = Date.now();
     const hit = cache.get(cls, u.state, q);
