@@ -17,6 +17,8 @@ const { ClassifierCache, Jev, keyFromEnvFile } = await import("../../../central/
 const { pool, sha256 } = await import("../../../central/src/pipeline/util.ts");
 const { spendByProvider } = await import("../budget.ts");
 const { SubqClassifier } = await import("../subq.ts");
+// eval/provider-matrix: OpenAI's decision model (gpt-6-luna on /v1/decisions), Jev's answer shape.
+const { DecisionsClassifier } = await import("../../provider-matrix/decisions.ts");
 import type { Classification, Classifier, Questions } from "../../../central/src/pipeline/classify/adapter.ts";
 import type { Usage } from "../client.ts";
 
@@ -39,6 +41,8 @@ const USAGE = join(OUT5, "judge2-usage.jsonl");
 const JEV_CAP = 0.55;
 /** PREREG.md "SubQ Snap on the judge" ($0.15), raised by slice14/PREREG.md (Snap 1.1) to $0.40 in all. */
 const SUBQ_CAP = 0.4;
+/** eval/provider-matrix/PREREG.md: the decision model, every arm, in all. */
+const DECISIONS_CAP = 0.4;
 /** PREREG.md "Question floor": its own usage log and cap. */
 const FLOOR_USAGE = join(OUT5, "floor-usage.jsonl");
 const FLOOR_CAP = 0.3;
@@ -121,7 +125,7 @@ function compressed(r: Req, form: "M" | "T", K: number, noCross = false): { stat
 if (import.meta.url === `file://${process.argv[1]}`) {
   const arm = a.arm ?? "";
   const split = a.split as "smoke" | "dev" | "heldout";
-  const cand = a.cand as "jev" | "clef" | "subq";
+  const cand = a.cand as "jev" | "clef" | "subq" | "decisions";
   const prices = loadPrices();
   const subqModel = a["subq-model"]!;
   const subqTag = subqModel === "subq-snap-preview" ? [] : [subqModel.replace(/^subq-snap-/, "")];
@@ -141,13 +145,15 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const built = reqs.map((r) => ({ r, ...rewrite(r, arm, scores[r.key], floor, a["no-cross"]) }));
   const tok = (s: string) => Math.ceil(s.length / 3.5);
   const planIn = built.reduce((s, b) => s + (Object.keys(b.questions).length ? tok(JSON.stringify({ state: b.state, questions: b.questions })) : 0), 0);
-  const worst = cand === "jev" ? (planIn * 0.042) / 1e6 : cand === "subq" ? dollars(priceOf(prices, "subq", subqModel), { input_tokens: planIn, cached_input_tokens: 0, output_tokens: 0, reasoning_tokens: null })! : 0;
+  const worst = cand === "decisions" ? (planIn * 0.1) / 1e6 : cand === "jev" ? (planIn * 0.042) / 1e6 : cand === "subq" ? dollars(priceOf(prices, "subq", subqModel), { input_tokens: planIn, cached_input_tokens: 0, output_tokens: 0, reasoning_tokens: null })! : 0;
   console.log(`${runId}: ${reqs.length} requests, ~${planIn} input tokens (chars/3.5) ≈ $${worst.toFixed(4)} on ${cand === "subq" ? "SubQ Snap" : "Jev"}; ${(planIn / reqs.length).toFixed(0)} per request`);
   if (a["dry-run"]) process.exit(0);
   const spent = spendByProvider(USAGE).jev?.dollars ?? 0;
   if (cand === "jev" && spent + worst * 1.3 > JEV_CAP) throw new Error(`jev cap: spent $${spent.toFixed(4)}, this run ~$${worst.toFixed(4)}, cap $${JEV_CAP}`);
   const subqSpent = spendByProvider(USAGE).subq?.dollars ?? 0;
   if (cand === "subq" && subqSpent + worst * 1.3 > SUBQ_CAP) throw new Error(`subq cap: spent $${subqSpent.toFixed(4)}, this run ~$${worst.toFixed(4)}, cap $${SUBQ_CAP}`);
+  const decSpent = (spendByProvider(USAGE)["openai-decisions"]?.dollars ?? 0) + (spendByProvider(FLOOR_USAGE)["openai-decisions"]?.dollars ?? 0);
+  if (cand === "decisions" && decSpent + worst * 1.3 > DECISIONS_CAP) throw new Error(`decisions cap: spent $${decSpent.toFixed(4)}, this run ~$${worst.toFixed(4)}, cap $${DECISIONS_CAP}`);
   const floorSpent = spendByProvider(FLOOR_USAGE).jev?.dollars ?? 0;
   if (arm.startsWith("Q") && floorSpent + worst * 1.3 > FLOOR_CAP) throw new Error(`question floor cap: spent $${floorSpent.toFixed(4)}, this run ~$${worst.toFixed(4)}, cap $${FLOOR_CAP}`);
 
@@ -185,7 +191,14 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     meter.dollars += d ?? 0;
     logUsageLine(USAGE, { step: `judge2:${runId}`, provider: "subq", model: subqModel, ...u, dollars: d });
   };
-  const cls: Classifier = cand === "subq" ? new SubqClassifier({ model: subqModel, step: `judge2:${runId}`, onUsage }) : new Jev({ model: cand === "jev" ? "jev-latest" : "clef-flash", fetch: f, ...(cand === "clef" ? { apiKey: () => "unused" } : {}) });
+  const decUsage = (u: Usage, d: number | null) => {
+    meter.calls++;
+    meter.input += u.input_tokens;
+    meter.output += u.output_tokens;
+    meter.dollars += d ?? 0;
+    logUsageLine(usage, { step: `judge2:${runId}`, provider: "openai-decisions", model: "gpt-6-luna", ...u, dollars: d });
+  };
+  const cls: Classifier = cand === "decisions" ? new DecisionsClassifier({ onUsage: decUsage }) : cand === "subq" ? new SubqClassifier({ model: subqModel, step: `judge2:${runId}`, onUsage }) : new Jev({ model: cand === "jev" ? "jev-latest" : "clef-flash", fetch: f, ...(cand === "clef" ? { apiKey: () => "unused" } : {}) });
   // F8 reproduces J1 from J1's own caches (dev: the fresh dev run; held-out: run 1).
   const cacheDir = arm === "F8" && cand === "jev" ? join(OUT5, "cache", split === "heldout" ? "jev-heldout-r1" : split === "dev" ? "jev-dev" : "jev-smoke", "cls") : join(OUT5, "cache", runId, "cls");
   const cache = new ClassifierCache(cacheDir);
