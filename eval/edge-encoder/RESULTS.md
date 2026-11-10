@@ -1,7 +1,9 @@
 # Edge encoder: results (10 November 2026)
 
-**Verdict: stopped at stage 4. Jev stays for step D.** A ModernBERT-base encoder trained on Jev's cached answers
-matches Jev on H1, but fails H2 at its dev-fitted breaking threshold (precision). Rules: `PREREG.md`. No model calls.
+**Verdict: Jev stays for step D, and the encoder is not admissible as the no-key fallback.** A ModernBERT-base
+encoder trained on Jev's cached answers matches Jev on H1, but fails H2 at its dev-fitted breaking threshold
+(precision). At the thresholds fixed for stage 5 (0.4 / 0.05) it fails fresh held-out records on breaking precision
+and benefit-vs-none accuracy. Rules: `PREREG.md`. Stages 1–4 made no model calls; stage 5 cost $0.014 on the gateway.
 
 ## Stage 1: CPU and footprint (slice 4 checkpoint, M1 Pro)
 
@@ -78,13 +80,60 @@ Still rising at 100%: more labels would help. (M1 Pro MPS, 3 epochs, best epoch 
 
 A single threshold (0.4) passes both sets, unlike Snap, but it was found on the test sets.
 
+## Stage 5: fresh held-out, thresholds fixed in advance (breaking 0.4, benefit 0.05)
+
+**Fails the pre-registered rule.** On A ∪ B the encoder is significantly below Jev at 0.5 / 0.5 on breaking precision
+and benefit-vs-none accuracy. It is not admissible as the no-key fallback at these thresholds.
+
+- Units (`s5-units.py`): A 250 records / 99 validation technologies; B 150 / 45 (`x.0.0` releases); C 100 / 29
+  (training technologies, records outside the capped sample, dated 2026-10-01 or later).
+- Labels (`s5-label.mts`, `s5-adjudicate.py`, `s5-adjudicated.json`): J1 and J2 agreed on all four fields for 386 of
+  500 records (breaking 98.0%, benefit set 91.8%, change type 86.6%, actionable 96.2%). The 137 disputed fields on
+  114 records were adjudicated from the record state alone, each with a one-line reason, before any Jev or encoder
+  answer was read.
+- Scoring (`s5-predict.py`, `s5-score.py`): slice 4's `to_pred` / `metrics` / `compare`, paired record bootstrap
+  (2,000 resamples); breaking precision paired with `score.paired` over all units, as `analyze_h2.py`.
+
+**A ∪ B** (400 records; 80 breaking, 138 benefit, 225 actionable):
+
+| Metric | Encoder 0.4/0.05 | Jev 0.5/0.5 | Jev 0.05/0.10 | Encoder − Jev 0.5 (95% CI) | Encoder − Jev fitted (95% CI) |
+|---|---|---|---|---|---|
+| Breaking recall | 91.2 | 92.5 | 100.0 | −1.3 (−7.5..+5.0) | −8.8 (−15.0..−2.5) |
+| Benefit-vs-none recall | 99.3 | 84.8 | 97.8 | +14.5 (+8.7..+21.0) | +1.4 (−1.4..+4.3) |
+| Actionable recall | 94.7 | 94.2 | 94.2 | +0.4 (−2.7..+3.6) | +0.4 (−2.7..+3.6) |
+| Breaking precision | 80.2 | 92.5 | 64.5 | **−12.3 (−19.7..−5.6)** | +15.7 (+9.4..+22.4) |
+| Benefit-vs-none accuracy | 81.8 | 91.8 | 88.8 | **−10.0 (−14.0..−5.8)** | −7.0 (−10.0..−3.7) |
+| Change type (descriptive) | 77.8 | 81.5 | 81.5 | −3.7 (−7.0..−0.3) | −3.7 (−7.0..−0.3) |
+
+Encoder − Jev 0.5/0.5 by stratum (95% CI):
+
+| Stratum | Breaking R | Benefit R | Actionable R | Breaking P | Benefit acc |
+|---|---|---|---|---|---|
+| A (250; 36 breaking) | −8.3 (−19.4..+2.8) | +15.5 (+9.1..+22.7) | +3.5 (−0.9..+8.7) | −19.8 (−33.2..−7.0) | −10.4 (−16.4..−4.4) |
+| B (150; 44 breaking) | +4.5 (0..+11.4) | +10.7 (0..+25.0) | −2.7 (−6.4..0) | −5.7 (−13.1..+0.1) | −9.3 (−15.3..−3.3) |
+| C (100; 15 breaking) | +6.7 (−20.0..+40.0) | +25.5 (+13.7..+37.3) | 0 (0..0) | −29.8 (−52.9..−7.7) | +1.0 (−10.0..+11.0) |
+
+- The benefit threshold 0.05 buys recall with false positives: benefit precision 65.6 against Jev's 90.7 on A ∪ B.
+- Breaking 0.4 over-flags ordinary records (A: 42 flagged, 69.0% precise); on major releases (B) it holds up.
+- Jev at the slice 4 fitted thresholds (0.05 / 0.10) also loses precision and accuracy against Jev at 0.5 / 0.5;
+  the live thresholds are the stronger baseline here.
+- Seen technologies, unseen records (C) do not rescue the encoder: breaking precision is the worst of the three.
+
+Interpretations of the rule, fixed before scoring: B's per-technology cap of 5 counts within B; a major release is a
+`release` of exactly `x.0.0` (optional `v`, no pre-release suffix); C has no per-technology cap; "released" is the
+record's `date`. The labeler prompt is PACKET.md's questions verbatim.
+
+**Spend:** gateway (J2, flex tier) $0.014: 42 calls, 85,385 input, 34,570 output (22,728 reasoning) tokens. Codex
+(J1): 42 calls, 594,702 input (430,080 cached), 46,233 output tokens. No Jev calls.
+
 ## Next, if revisited
 
 1. Fit the breaking threshold on a dev set that includes guides and major notes, pre-registered.
-2. Stage 5: fresh technology-disjoint held-out and a time split (costs model calls).
+2. Stage 5 failed at fixed thresholds; a new threshold choice needs a fresh held-out set, not this one.
 3. Stage 6: smaller encoders for a lossless download under 150 MB.
 
 ## Files
 
 `PREREG.md` (rules), `build-data.mts` (stage 2), `train.py` (stage 3, predictions for stage 4), `score.py` (stage 4),
-`footprint.py` (stage 1). Outputs are not committed (checkpoints and data are local).
+`footprint.py` (stage 1), `s5-units.py`, `s5-label.mts`, `s5-adjudicate.py`, `s5-predict.py`, `s5-score.py` and
+`s5-adjudicated.json` (stage 5). Outputs are not committed (checkpoints and data are local).

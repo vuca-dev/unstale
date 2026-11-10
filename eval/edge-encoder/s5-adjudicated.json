@@ -1,0 +1,5698 @@
+{
+ "labels": {
+  "a2ui-web-core-c63b3a27:a2ui-web-core-v0-9-basic-catalog": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "removal",
+   "actionable": true
+  },
+  "a2ui-web-core-c63b3a27:catalog.withentries": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "a2ui-web-core-c63b3a27:catalogoptions-themelocation": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "a2ui-web-core-c63b3a27:genericbinder~3": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "ag2-c6d5ec0e:agent-tasks": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "deprecation",
+   "actionable": true
+  },
+  "ag2-c6d5ec0e:mistral-streaming": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "ag2-c6d5ec0e:mistralconfig-async-client": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": true
+  },
+  "ag2-c6d5ec0e:xai-reasoning-tokens": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "ai-sdk-alibaba-1505794b:provider-references": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "ai-sdk-alibaba-1505794b:reasoning-output-order": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "ai-sdk-alibaba-1505794b:streaming-tool-call-finalization": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "angular-eslint-schematics-812a6974:defineconfig": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "tooling",
+   "actionable": true
+  },
+  "angular-eslint-schematics-812a6974:eslint": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "removal",
+   "actionable": true
+  },
+  "angular-eslint-schematics-812a6974:eslintrc": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "removal",
+   "actionable": true
+  },
+  "angular-eslint-schematics-812a6974:tseslint-preset": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "animejs-7a3fc470:color-animations": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": false
+  },
+  "animejs-7a3fc470:id": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "animejs-7a3fc470:keeptime": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "animejs-7a3fc470:keyframes~3": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "animejs-7a3fc470:splittext-target": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "other",
+   "actionable": false
+  },
+  "ant-design-cssinjs-4c98c35a:extractstyle-once": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "ant-design-cssinjs-4c98c35a:removecss-container": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "anthropic-7df24220:v1-endpoints": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": false
+  },
+  "anthropic-ai-claude-agent-sdk-bf671424:background-subagent-final-report": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": false
+  },
+  "anthropic-ai-claude-agent-sdk-bf671424:pushnotificationinput-status": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "other",
+   "actionable": true
+  },
+  "anthropic-ai-claude-agent-sdk-bf671424:resumessestream": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "anyio-af5704cb:aclose-asyncio-tcp-socket-listeners": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "anyio-af5704cb:asyncfile": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "anyio-af5704cb:blockingportal~3": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "anyio-af5704cb:cancelscope-deadline": {
+   "breaking": true,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": true
+  },
+  "anyio-af5704cb:textsendstream.send": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "appium-xcuitest-driver-9e82bf93:asyncscripttimeout": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "removal",
+   "actionable": true
+  },
+  "appium-xcuitest-driver-9e82bf93:getsafaridevicesize": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "removal",
+   "actionable": true
+  },
+  "appium-xcuitest-driver-9e82bf93:mobile-killapp": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": false
+  },
+  "appium-xcuitest-driver-9e82bf93:nativewebtaptabbarvisibility": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "removal",
+   "actionable": true
+  },
+  "appium-xcuitest-driver-9e82bf93:prebuilt-wda-archive": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "appium-xcuitest-driver-9e82bf93:real-device-geolocation-below-ios-tvos-17": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "removal",
+   "actionable": true
+  },
+  "ark-ui-svelte-4a5d5212:api.togglechecked": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "ark-ui-svelte-4a5d5212:color-picker-controlled-mode": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "ark-ui-svelte-4a5d5212:date-input-focus-management": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "ark-ui-svelte-4a5d5212:defaultvalue": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "ark-ui-svelte-4a5d5212:drawer~6": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "ark-ui-svelte-4a5d5212:getcropdata": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": true
+  },
+  "ark-ui-svelte-4a5d5212:marquee": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "ark-ui-svelte-4a5d5212:slider~3": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "ark-ui-svelte-4a5d5212:startms": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "ark-ui-svelte-4a5d5212:tooltip-scrolling": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "assistant-ui-core-81a201c7:message-scoped-converter-metadata-invalidation": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "assistant-ui-core-81a201c7:propstatus": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "astrapy-b7681ea8:find-available-regions": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": false
+  },
+  "autoprefixer-dc6220f5:autoprefixer-ignore-next-warning": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "azure-functions-723152ec:http-proxy-header-handling": {
+   "breaking": false,
+   "benefit": [
+    "security"
+   ],
+   "change_type": "security",
+   "actionable": false
+  },
+  "azure-mgmt-postgresqlflexibleservers-7eb39d0e:backupslongtermretentionresponseproperties": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "azure-mgmt-postgresqlflexibleservers-7eb39d0e:database-properties": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": true
+  },
+  "azure-mgmt-postgresqlflexibleservers-7eb39d0e:majorversionupgradeprecheckoperations": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "azure-mgmt-postgresqlflexibleservers-7eb39d0e:migration-properties": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": true
+  },
+  "azure-mgmt-postgresqlflexibleservers-7eb39d0e:objectrecommendation-properties": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": true
+  },
+  "azure-mgmt-postgresqlflexibleservers-7eb39d0e:operationproperties": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "azure-mgmt-postgresqlflexibleservers-7eb39d0e:privateendpointconnectionsoperations.begin-delete": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "azure-mgmt-postgresqlflexibleservers-7eb39d0e:privatelinkresource-properties": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": true
+  },
+  "azure-mgmt-postgresqlflexibleservers-7eb39d0e:serversoperations.begin-create-or-update": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "azure-mgmt-postgresqlflexibleservers-7eb39d0e:virtualendpoint-properties": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": true
+  },
+  "babylonjs-core-37562f14:audio-engine-updates": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "other",
+   "actionable": false
+  },
+  "babylonjs-core-37562f14:babylon-lite-support": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "other",
+   "actionable": true
+  },
+  "babylonjs-core-37562f14:babylon.js-editor": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "tooling",
+   "actionable": true
+  },
+  "babylonjs-core-37562f14:geospatial-camera": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "babylonjs-core-37562f14:offscreen-rendering-suspension": {
+   "breaking": false,
+   "benefit": [
+    "performance"
+   ],
+   "change_type": "performance",
+   "actionable": false
+  },
+  "babylonjs-core-37562f14:openpbr-support": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "other",
+   "actionable": true
+  },
+  "babylonjs-core-37562f14:particle-flow-maps-and-attractors": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "babylonjs-core-37562f14:perfcounter-min-max": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "babylonjs-core-37562f14:skymaterial": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "babylonjs-core-37562f14:webgpu-3d-texture-mipmap-generation": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "base-ui-react-338a57b4:alert-dialog": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "base-ui-react-338a57b4:base-ui-react~2": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "removal",
+   "actionable": true
+  },
+  "base-ui-react-338a57b4:checkbox-group~3": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "base-ui-react-338a57b4:collapsible-panel": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "base-ui-react-338a57b4:positioner~2": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "base-ui-react-338a57b4:scrub-area-support": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "base-ui-react-338a57b4:select-autofill": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "base-ui-react-338a57b4:toast.close": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "base-ui-react-338a57b4:transform-origin": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "better-auth-0680e7e4:better-auth-core": {
+   "breaking": false,
+   "benefit": [
+    "performance"
+   ],
+   "change_type": "performance",
+   "actionable": false
+  },
+  "better-auth-0680e7e4:callbackurl": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "biomejs-js-api-03c80971:baseurl": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "biomejs-js-api-03c80971:embedded-json-parsing": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": false
+  },
+  "biomejs-js-api-03c80971:format-with-errors": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "biomejs-js-api-03c80971:rdjson": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "tooling",
+   "actionable": true
+  },
+  "biomejs-js-api-03c80971:react-19.2": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "other",
+   "actionable": false
+  },
+  "biomejs-js-api-03c80971:snippets": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": false
+  },
+  "bippy-d116f595:fiberupdatequeue-lasteffect": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "removal",
+   "actionable": true
+  },
+  "bippy-d116f595:source-map-hook-name-parsing": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "bippy-d116f595:traversecontexts": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "removal",
+   "actionable": true
+  },
+  "bippy-d116f595:traversestate": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "removal",
+   "actionable": true
+  },
+  "bippy-d116f595:usefiber": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "black-071c7e03:blackd": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "black-071c7e03:fmt-skip-in-one-liners": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "black-071c7e03:python-3.14-t-string-syntax": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "tooling",
+   "actionable": true
+  },
+  "black-071c7e03:request-body-limits": {
+   "breaking": false,
+   "benefit": [
+    "security"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "black-071c7e03:with-statements": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "browser-harness-a0cf9442:browser-harness": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "other",
+   "actionable": true
+  },
+  "browser-harness-a0cf9442:events.jsonl": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "builder-util-0e78e66f:toolsets.wine": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "cartography-5f2fd366:azure-databricks-service-principals": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "cartography-5f2fd366:installed-github-apps-and-webhooks": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "other",
+   "actionable": false
+  },
+  "clack-core-cbd3c921:autocomplete-multiselect": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "clack-core-cbd3c921:autocompleteprompt": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "clack-core-cbd3c921:clack-core": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "removal",
+   "actionable": true
+  },
+  "clack-core-cbd3c921:engines-node": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "removal",
+   "actionable": true
+  },
+  "clack-core-cbd3c921:list-like-prompts": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "clack-core-cbd3c921:select-and-multi-select-prompts": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "clack-core-cbd3c921:selectablegroups": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "clack-core-cbd3c921:spinner-errormessage": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "clack-core-cbd3c921:suggestion": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "removal",
+   "actionable": true
+  },
+  "click-b8f5b8dc:argument.get-help-record": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": true
+  },
+  "click-b8f5b8dc:envvar": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "colbymchenry-codegraph-640da3b3:angular-template-callers": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "tooling",
+   "actionable": false
+  },
+  "colbymchenry-codegraph-640da3b3:c-overload-resolution": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "colbymchenry-codegraph-640da3b3:pytest-fixture-parameters": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "commitlint-65cb7dcc:cwd": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "tooling",
+   "actionable": false
+  },
+  "commitlint-65cb7dcc:minimum-node.js-version~3": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "removal",
+   "actionable": true
+  },
+  "commitlint-65cb7dcc:note-keyword-parsing": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": true
+  },
+  "composio-core-57c14956:composio.toolkits.getmany": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "composio-core-57c14956:gettoolkitversion": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "composio-core-57c14956:jsonschematozoderror": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": false
+  },
+  "composio-core-57c14956:toolkit-versions": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": false
+  },
+  "composio-core-57c14956:trigger-subscriptions-authconfigid": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "coverage-c620a6b6:data-file-combining": {
+   "breaking": false,
+   "benefit": [
+    "performance"
+   ],
+   "change_type": "performance",
+   "actionable": false
+  },
+  "coverage-c620a6b6:dynamic-source-filename": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "coverage-c620a6b6:source": {
+   "breaking": true,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "behavior_change",
+   "actionable": true
+  },
+  "coverage-c620a6b6:sys.monitoring": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "cpy-cli-1ee8d373:dry-run": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "cpy-cli-1ee8d373:no-match-errors": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": true
+  },
+  "cpy-cli-1ee8d373:update": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "crewai-f2948b0d:gpt-6-stop-handling": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "cssnano-84987f1f:cssnano-utils": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "cssnano-84987f1f:declaration-sorter": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": true
+  },
+  "cssnano-84987f1f:node.js-20-support": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "removal",
+   "actionable": true
+  },
+  "cssnano-84987f1f:performance": {
+   "breaking": false,
+   "benefit": [
+    "performance"
+   ],
+   "change_type": "performance",
+   "actionable": false
+  },
+  "cssnano-84987f1f:physical-border-optimization": {
+   "breaking": false,
+   "benefit": [
+    "performance"
+   ],
+   "change_type": "performance",
+   "actionable": false
+  },
+  "cssnano-84987f1f:postcss-merge-longhand~4": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "cssnano-84987f1f:unknown-pseudo-class-folding": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "csv-parse-2228279b:csverror": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "csv-parse-2228279b:delimiter": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": false
+  },
+  "csv-parse-2228279b:delimiter-discovery": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "d3-cloud-3c327353:built-in-spirals": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": false
+  },
+  "d3-cloud-3c327353:nonestrategy": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "d3-cloud-3c327353:place": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "d3-cloud-3c327353:rendering-contract": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "other",
+   "actionable": false
+  },
+  "d3-cloud-3c327353:sparse-packed-block-placement": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "d3-cloud-3c327353:sprite-geometry": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "d3-cloud-3c327353:typescript-declarations": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "other",
+   "actionable": true
+  },
+  "devalue-017e20a2:float16array": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "other",
+   "actionable": false
+  },
+  "devalue-017e20a2:node.js-version-requirement~2": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "removal",
+   "actionable": true
+  },
+  "devalue-017e20a2:operations-operations": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "devalue-017e20a2:sparse-array-allocation": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "devalue-017e20a2:uneval-replacer": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "devalue-017e20a2:uneval~6": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "django-silk-5e051293:django-compatibility": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "other",
+   "actionable": false
+  },
+  "docsearch-js-647f25d0:agent-studio-integration": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "docsearch-js-647f25d0:ask-ai-transport-layer": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "removal",
+   "actionable": true
+  },
+  "docsearch-js-647f25d0:hit-breadcrumbs": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "docsearch-js-647f25d0:prompt-suggestions": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "other",
+   "actionable": false
+  },
+  "docsearch-js-647f25d0:result-badges": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "docsearch-js-647f25d0:split-js-bundles": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "other",
+   "actionable": true
+  },
+  "docsify-cli-b7cc7eb9:relative-path-detection": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "drizzle-kit-c1156d94:esm-and-cjs-modules": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "tooling",
+   "actionable": false
+  },
+  "duckdb-8a8e1b2f:arrow-exports": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": false
+  },
+  "earendil-works-pi-coding-agent-2d04da43:claude-sonnet-5~2": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "earendil-works-pi-coding-agent-2d04da43:codemode~4": {
+   "breaking": false,
+   "benefit": [
+    "performance"
+   ],
+   "change_type": "performance",
+   "actionable": false
+  },
+  "earendil-works-pi-coding-agent-2d04da43:login": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "earendil-works-pi-coding-agent-2d04da43:login~2": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "earendil-works-pi-coding-agent-2d04da43:models-store.json": {
+   "breaking": false,
+   "benefit": [
+    "correctness",
+    "security"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "earendil-works-pi-coding-agent-2d04da43:models.classify-images": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "earendil-works-pi-coding-agent-2d04da43:quietstartup": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "earendil-works-pi-coding-agent-2d04da43:toolcall-start": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "earendil-works-pi-coding-agent-2d04da43:tools~2": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": true
+  },
+  "earendil-works-pi-coding-agent-2d04da43:tuimode": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "default_change",
+   "actionable": true
+  },
+  "effect-tsgo-27dec5fd:flatmaptotap": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "tooling",
+   "actionable": true
+  },
+  "electron-e4ea0767:app.configurewebauthn~2": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "electron-e4ea0767:contextbridge~6": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "electron-e4ea0767:d-bus-method-calls-on-disconnected-buses": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "electron-e4ea0767:file-system-access-blocklist": {
+   "breaking": false,
+   "benefit": [
+    "security"
+   ],
+   "change_type": "security",
+   "actionable": false
+  },
+  "electron-e4ea0767:linux-support-policy": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "other",
+   "actionable": false
+  },
+  "electron-e4ea0767:protocol.registersource~2": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "electron-e4ea0767:require-module-.builtinmodules": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "removal",
+   "actionable": true
+  },
+  "electron-e4ea0767:safestorage~4": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "deprecation",
+   "actionable": true
+  },
+  "electron-e4ea0767:session.registerpreloadscript-matches": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "electron-e4ea0767:webframe": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "esbuild-plugin-replace-8fb4b275:typescript-support": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "other",
+   "actionable": true
+  },
+  "eslint-plugin-wdio-ba8536e6:typescript-mode": {
+   "breaking": true,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "removal",
+   "actionable": true
+  },
+  "eve-db99c287:bashtooloutput-status": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": true
+  },
+  "eve-db99c287:ctx.thread.postephemeral": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "eve-db99c287:defineinstrumentation": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "removal",
+   "actionable": true
+  },
+  "eve-db99c287:dynamic-schedules": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "eve-db99c287:eve-add-non-interactive": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "eve-db99c287:eve-build~5": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "eve-db99c287:invoketool-forwardedby": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "eve-db99c287:message-stream-version": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": true
+  },
+  "eve-db99c287:microsandbox": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "eve-db99c287:openapi-path-parameter-validation": {
+   "breaking": true,
+   "benefit": [
+    "security"
+   ],
+   "change_type": "security",
+   "actionable": true
+  },
+  "eve-db99c287:read-file": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "eve-db99c287:remote-evals": {
+   "breaking": false,
+   "benefit": [
+    "security"
+   ],
+   "change_type": "security",
+   "actionable": false
+  },
+  "eve-db99c287:toolcontext-messages~2": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "eve-db99c287:toolresultfrom~3": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "eve-db99c287:twilio~2": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "other",
+   "actionable": false
+  },
+  "executorch-162bc284:arm-backend-operators": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": false
+  },
+  "executorch-162bc284:buck": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "tooling",
+   "actionable": true
+  },
+  "executorch-162bc284:cmake-kernel-selective-build": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "tooling",
+   "actionable": true
+  },
+  "executorch-162bc284:custom-op-package": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "executorch-162bc284:etdump-generation": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "executorch-162bc284:executorchllm": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "executorch-162bc284:nothreadpoolguard": {
+   "breaking": false,
+   "benefit": [
+    "performance"
+   ],
+   "change_type": "performance",
+   "actionable": false
+  },
+  "executorch-162bc284:openvino-backend-delegate": {
+   "breaking": false,
+   "benefit": [
+    "performance"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "executorch-162bc284:qnn-model-preparation-dependencies": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "executorch-162bc284:torch.scan": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "expo-metro-config-c7d224da:experiments.noxcturnaltransformworker": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": true
+  },
+  "faiss-cpu-543c4299:distancecomputer": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": true
+  },
+  "faiss-cpu-543c4299:qt-8bit-eden": {
+   "breaking": false,
+   "benefit": [
+    "performance"
+   ],
+   "change_type": "performance",
+   "actionable": false
+  },
+  "faiss-cpu-543c4299:super-kmeans-assign-iteration": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "fast-average-color-9b061dcf:cross-window-html-elements": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": false
+  },
+  "fastmcp-e35079e0:client-tool-result-error-handling": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "fastmcp-e35079e0:jwtverifier": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": true
+  },
+  "fastmcp-e35079e0:openapi-request-bodies": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "fastmcp-e35079e0:path": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "deprecation",
+   "actionable": true
+  },
+  "fastmcp-e35079e0:private-jwt-headers": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "behavior_change",
+   "actionable": false
+  },
+  "fastmcp-e35079e0:server-initiated-roots": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "removal",
+   "actionable": true
+  },
+  "fastmcp-e35079e0:startup-retries": {
+   "breaking": false,
+   "benefit": [
+    "performance"
+   ],
+   "change_type": "performance",
+   "actionable": false
+  },
+  "fastmcp-e35079e0:toolerror": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "fastmcp-e35079e0:valid-scopes": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "fastmcp-e35079e0:well-known-openid-configuration": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": false
+  },
+  "fastmcp-slim-091d9792:field-title-...-title": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "genai-prices-f2337d2e:openrouter-model-pricing": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "other",
+   "actionable": true
+  },
+  "genai-prices-f2337d2e:provider-models": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "other",
+   "actionable": false
+  },
+  "geopandas-a2f5556e:geoseries.sample-points": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "geopandas-a2f5556e:index-parts": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "geopandas-a2f5556e:plot-vmin": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "getzep-zep-cloud-6a66ef7e:default-ontology": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "getzep-zep-cloud-6a66ef7e:project-info": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "google-genai-f343cddd:continuation-token": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "google-genai-f343cddd:httpx2-ssl-certificate-verification": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "default_change",
+   "actionable": false
+  },
+  "gradio-c7b3de67:gr.accordion-open": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "grafana-prometheus-daa13c0a:search-api": {
+   "breaking": false,
+   "benefit": [
+    "performance"
+   ],
+   "change_type": "performance",
+   "actionable": false
+  },
+  "graphiql-8829744d:collections-plugin": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "graphiql-8829744d:color": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": true
+  },
+  "graphiql-8829744d:creategraphiqlfetcher": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "deprecation",
+   "actionable": true
+  },
+  "graphiql-8829744d:graphiql.logo": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "removal",
+   "actionable": true
+  },
+  "graphiql-8829744d:graphiqlplugin.sessionactions": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "graphiql-8829744d:querybuilder": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "graphiql-8829744d:supportedmethods": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "graphql-codegen-typed-document-node-a090d91e:documentnodeimport": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "graphql-codegen-typed-document-node-a090d91e:documents-without-a-document-ast": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "hey-api-openapi-ts-0af946ba:enum-keys": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "hey-api-openapi-ts-0af946ba:enum-resolver~2": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "hey-api-openapi-ts-0af946ba:javascript-globals": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "tooling",
+   "actionable": false
+  },
+  "highlight-words-core-ba98fb95:autoescape": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "default_change",
+   "actionable": true
+  },
+  "highlight-words-core-ba98fb95:autoescape~2": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "behavior_change",
+   "actionable": false
+  },
+  "highlight-words-core-ba98fb95:chunk": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "other",
+   "actionable": true
+  },
+  "highlight-words-core-ba98fb95:findchunks-searchwords": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": true
+  },
+  "highlight-words-core-ba98fb95:highlightedchunk": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "highlight-words-core-ba98fb95:searchwords~4": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "highlight-words-core-ba98fb95:surrogate-pairs": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "ipaddr.js-941f10fe:isvalidcidrfourpartdecimal": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "jscpd-740d9216:history-every": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "jsonpath-ng-924fbce4:right-hand-side-filter-queries": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "kingfisher-bin-50b2e648:betterleaks-rule-format": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": true
+  },
+  "kingfisher-bin-50b2e648:exclude-rule~2": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "deprecation",
+   "actionable": true
+  },
+  "kingfisher-bin-50b2e648:git-clone-dir": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "kingfisher-bin-50b2e648:kingfisher-scan-git-url": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "deprecation",
+   "actionable": true
+  },
+  "kingfisher-bin-50b2e648:msvc-x64-arm64-embedding": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "removal",
+   "actionable": true
+  },
+  "kingfisher-bin-50b2e648:scannerconfig-enable-dedup~2": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "behavior_change",
+   "actionable": true
+  },
+  "kingfisher-bin-50b2e648:tag-selection": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "tooling",
+   "actionable": true
+  },
+  "kingfisher-bin-50b2e648:tls-mode": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "kingfisher-bin-50b2e648:veles-paystack-oauth-application-secret-adapter": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "removal",
+   "actionable": true
+  },
+  "koa-bodyparser-f8735a86:request-body": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "other",
+   "actionable": true
+  },
+  "langchain-core-a4216c71:batch-size": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "langchain-core-a4216c71:create-agent": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": false
+  },
+  "langchain-core-a4216c71:deprecated": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "langchain-core-a4216c71:ipv6-ssrf-checks": {
+   "breaking": false,
+   "benefit": [
+    "security"
+   ],
+   "change_type": "security",
+   "actionable": false
+  },
+  "langchain-core-a4216c71:runnable.-or": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "other",
+   "actionable": false
+  },
+  "langchain-f9035ff2:explicit-prompt-caching": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "langchain-f9035ff2:hub": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "deprecation",
+   "actionable": true
+  },
+  "langchain-f9035ff2:langchain-initialization": {
+   "breaking": false,
+   "benefit": [
+    "performance"
+   ],
+   "change_type": "performance",
+   "actionable": false
+  },
+  "langchain-f9035ff2:llm-selection-middleware": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "langchain-f9035ff2:modelfallbackmiddleware": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "langchain-f9035ff2:python-3.14": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "other",
+   "actionable": false
+  },
+  "langchain-f9035ff2:shelltoolmiddleware": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "langchain-f9035ff2:stream-transformers": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "langchain-f9035ff2:wrap-model-call": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "langchain-f9035ff2:wrap-tool-call": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "langchain-huggingface-f0107330:huggingfacehub-api-token": {
+   "breaking": false,
+   "benefit": [
+    "security"
+   ],
+   "change_type": "security",
+   "actionable": false
+  },
+  "langsmith-b11a6d6d:custom-avatars-for-agents": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "lobehub-editor-266495d3:antd": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "removal",
+   "actionable": true
+  },
+  "lobehub-editor-266495d3:lobe-table-bleed": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": false
+  },
+  "lobehub-editor-266495d3:page-document-nodes": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "lobehub-editor-266495d3:table-controller": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "removal",
+   "actionable": true
+  },
+  "lobehub-i18n-cli-95696e03:shared-concurrency-limiter": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "lobehub-icons-e2a0c729:dothoosh-icon": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "lobehub-icons-e2a0c729:grok-bot-and-muse-brand-icons": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "marked-terminal-6c8b9a7e:mt": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "tooling",
+   "actionable": true
+  },
+  "marked-terminal-6c8b9a7e:nested-lists": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "marked-terminal-6c8b9a7e:remote-images": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "marked-terminal-6c8b9a7e:styletext": {
+   "breaking": false,
+   "benefit": [
+    "maintainability"
+   ],
+   "change_type": "other",
+   "actionable": false
+  },
+  "marked-terminal-6c8b9a7e:terminalrenderer": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "removal",
+   "actionable": true
+  },
+  "mastra-loggers-61c8482c:upstashtransport": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "metamask-delegation-deployments-1d8c265b:hoodi-testnet": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "metamask-delegation-deployments-1d8c265b:katana-chain-deployments": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "metamask-delegation-deployments-1d8c265b:robinhood-chain-testnet-deployment": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "other",
+   "actionable": true
+  },
+  "metamask-delegation-deployments-1d8c265b:sei-testnet": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "metamask-delegation-deployments-1d8c265b:tempo-mainnet-and-tempo-moderato-testnet": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "other",
+   "actionable": true
+  },
+  "metamask-mobile-wallet-protocol-core-50e4a2b1:ikeymanager-validatepeerkey": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "metamask-mobile-wallet-protocol-core-50e4a2b1:isvalidconnectionmode": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "metamask-mobile-wallet-protocol-core-50e4a2b1:otp-verification": {
+   "breaking": false,
+   "benefit": [
+    "security"
+   ],
+   "change_type": "security",
+   "actionable": false
+  },
+  "microsandbox-0518384f:windows-bind-mounts": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "microsandbox-0518384f:windows-cleanup-and-usage-accounting": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "module-federation-runtime-1c0a8ed9:local-collector-mode": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "mongodb-memory-server-fc5246df:getsuseversionstring~2": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "monocart-reporter-e63874c0:report-interface": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": false
+  },
+  "monocart-reporter-e63874c0:search-tags": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": false
+  },
+  "monocart-reporter-e63874c0:title-tags~2": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "motion-5a2d9452:accelerated-animations~2": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "motion-5a2d9452:pinch~2": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "motion-5a2d9452:reorder~13": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": false
+  },
+  "motion-5a2d9452:skew": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "motion-5a2d9452:tree-shaking": {
+   "breaking": false,
+   "benefit": [
+    "performance"
+   ],
+   "change_type": "performance",
+   "actionable": false
+  },
+  "mppx-bed6058e:currencies~2": {
+   "breaking": true,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "behavior_change",
+   "actionable": false
+  },
+  "mppx-bed6058e:emailotp.client.prover": {
+   "breaking": true,
+   "benefit": [
+    "security"
+   ],
+   "change_type": "security",
+   "actionable": true
+  },
+  "mppx-bed6058e:emailotp.server.verifier": {
+   "breaking": true,
+   "benefit": [
+    "security"
+   ],
+   "change_type": "behavior_change",
+   "actionable": true
+  },
+  "mppx-bed6058e:mppx-validate~14": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "mppx-bed6058e:payment.failed~2": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "behavior_change",
+   "actionable": false
+  },
+  "mppx-bed6058e:session-management-posts": {
+   "breaking": true,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "behavior_change",
+   "actionable": false
+  },
+  "mppx-bed6058e:store.durableobjectstore-onwrite": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "mppx-bed6058e:validbefore~2": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "mppx-bed6058e:verifier.challenge": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "deprecation",
+   "actionable": true
+  },
+  "multiparty-794991dd:security-vulnerabilities": {
+   "breaking": false,
+   "benefit": [
+    "security"
+   ],
+   "change_type": "security",
+   "actionable": false
+  },
+  "officeparser-3c60c86c:pdfparserconfig.maximagepixels": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "officeparser-3c60c86c:section": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": false
+  },
+  "officeparser-3c60c86c:shapemetadata": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "officeparser-3c60c86c:textformatting.invisible~2": {
+   "breaking": true,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "behavior_change",
+   "actionable": false
+  },
+  "openai-agents-7543b605:branch-ids": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "openai-agents-7543b605:computer-safety-checks": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": false
+  },
+  "openai-agents-7543b605:handoff-calls": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": false
+  },
+  "openai-agents-7543b605:raw-usage-payloads": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": false
+  },
+  "openai-agents-7543b605:tool-identity": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "opentunnel-client-8dd0995f:isvalidroutename": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "opentunnel-client-8dd0995f:publicurl": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "orval-c8d5db12:es-module-import": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "tooling",
+   "actionable": true
+  },
+  "orval-c8d5db12:faker-regular-expressions": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "orval-c8d5db12:invalidate-function": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "orval-c8d5db12:mts": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "orval-c8d5db12:tanstack-query": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "orval-c8d5db12:usedatestransform~2": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "orval-c8d5db12:usedates~3": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": false
+  },
+  "orval-c8d5db12:watch": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "orval-c8d5db12:zod": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "default_change",
+   "actionable": true
+  },
+  "orval-c8d5db12:zod~2": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "pagefind-9bb1e8ba:empty-terms": {
+   "breaking": false,
+   "benefit": [
+    "performance"
+   ],
+   "change_type": "performance",
+   "actionable": false
+  },
+  "pagefind-9bb1e8ba:image-alt": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "pagefind-9bb1e8ba:metadata-coverage": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "pagefind-9bb1e8ba:subresult-urls": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "parallel-web-020acd36:eagerly-validating-pydantic-iterators": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "parallel-web-020acd36:file-type-error-message": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "parallel-web-020acd36:search~2": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "deprecation",
+   "actionable": true
+  },
+  "parallel-web-020acd36:task-groups": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "removal",
+   "actionable": true
+  },
+  "parallel-web-020acd36:v1beta-extract-beta-headers": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "fix",
+   "actionable": true
+  },
+  "parse-ms-b611f41a:minimum-node.js-version": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "removal",
+   "actionable": true
+  },
+  "parse5-htmlparser2-tree-adapter-10589af2:element-creation-context": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "payload-ea98919f:localized-polymorphic-join-filters": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "pinecone-database-pinecone-c83d25ed:index.listnamespaces": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": true
+  },
+  "pinecone-database-pinecone-c83d25ed:index.upsertrecords": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "removal",
+   "actionable": true
+  },
+  "pinecone-database-pinecone-c83d25ed:namespace-namespace": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "pinecone-database-pinecone-c83d25ed:node.js~2": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "removal",
+   "actionable": true
+  },
+  "pinecone-database-pinecone-c83d25ed:pc.evaluate": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "pinecone-database-pinecone-c83d25ed:uploadable": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "pinecone-database-pinecone-c83d25ed:upsertdocuments": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "playwright-ng-schematics-564959e5:component-testing-setup": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "tooling",
+   "actionable": true
+  },
+  "playwright-ng-schematics-564959e5:test-project": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "playwright-test-ea1473ac:accessible-names": {
+   "breaking": true,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "behavior_change",
+   "actionable": true
+  },
+  "playwright-test-ea1473ac:blob-reporter": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "playwright-test-ea1473ac:pass-with-no-tests": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "prek-872b395c:system-rust-toolchains": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "tooling",
+   "actionable": true
+  },
+  "promptfoo-b299b6bd:cloud-errors": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "promptfoo-b299b6bd:filter-metadata": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "pulumi-pulumi-006bf3cc:continue-on-error~4": {
+   "breaking": true,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "behavior_change",
+   "actionable": false
+  },
+  "pulumi-pulumi-006bf3cc:length~4": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "pulumi-pulumi-006bf3cc:pulumi-policy-exception-remove": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "pulumi-pulumi-006bf3cc:pulumi-policy-issue-get-output": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": true
+  },
+  "pulumi-pulumi-006bf3cc:pulumi-policy-publish-output": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "pyarrow-b880c39d:content-defined-chunking": {
+   "breaking": false,
+   "benefit": [
+    "performance"
+   ],
+   "change_type": "performance",
+   "actionable": false
+  },
+  "pyathena-4cb69308:s3file.commit": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": true
+  },
+  "pydantic-ai-slim-83e7bd12:cache": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "pydantic-ai-slim-83e7bd12:eval-metrics": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "pydantic-ai-slim-83e7bd12:fallbackmodel~3": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": false
+  },
+  "pydantic-ai-slim-83e7bd12:huggingfaceprovider": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "pydantic-ai-slim-83e7bd12:on-change-append": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "pydantic-ai-slim-83e7bd12:postgresmediastore": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "pydantic-ai-slim-83e7bd12:push-to-talk-turn-history": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "pydantic-ai-slim-83e7bd12:repocontext~3": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "default_change",
+   "actionable": true
+  },
+  "pydantic-ai-slim-83e7bd12:testmodel-oneof": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": false
+  },
+  "pydantic-monty-6dc8c89c:complex": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "pymdown-extensions-e5508ed2:commonmark-punctuation-rules": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "default_change",
+   "actionable": true
+  },
+  "pymdown-extensions-e5508ed2:commonmark-rule-of-3": {
+   "breaking": true,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "behavior_change",
+   "actionable": false
+  },
+  "pymdown-extensions-e5508ed2:html-extension-backtracking": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "pymdown-extensions-e5508ed2:keys-regex-pattern": {
+   "breaking": false,
+   "benefit": [
+    "performance"
+   ],
+   "change_type": "performance",
+   "actionable": false
+  },
+  "pymdown-extensions-e5508ed2:pymdownx.bracketspan": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "radix-ui-react-select-bc097b74:callback-props": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "radix-ui-react-slider-ef28d6de:thumb-responsiveness-with-very-small-step-values": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "rapidocr-dc331226:opencv": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "default_change",
+   "actionable": true
+  },
+  "rapidocr-dc331226:pp-ocrv6-paddle-model-key-names": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": false
+  },
+  "rapidocr-dc331226:pytorch": {
+   "breaking": true,
+   "benefit": [
+    "security"
+   ],
+   "change_type": "removal",
+   "actionable": true
+  },
+  "rapidocr-dc331226:use-preprocess-img": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "rc-component-slider-59b0fb57:aria-describedby": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "rc-component-tooltip-91866e31:disabled": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "react-currency-input-field-4d3b89c4:esm-build-loading": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "responses-a6e0c83b:default-headers": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "scalar-api-client-5dc48a70:streaming-completion-snapshots": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "scalar-api-client-5dc48a70:zh-tw": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "scalar-api-reference-2c98ccca:asyncapi-channel-badges": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": false
+  },
+  "scalar-api-reference-2c98ccca:asyncapi-navigation-cards": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": false
+  },
+  "scalar-api-reference-2c98ccca:asyncapi-reply-messages": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "scalar-api-reference-2c98ccca:scalar-blocks-shared": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "scalar-api-reference-2c98ccca:schema-property-copy-link-button": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "scalar-openapi-parser-52317890:examples": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "scalar-openapi-parser-52317890:json-parsing": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "scenedetect-0ea14c5b:opencv-position": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "sphinx-llm-cafe81a2:custom-llms.txt-override-source": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "sphinx-llm-cafe81a2:docref-summaries~2": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": false
+  },
+  "sphinx-llm-cafe81a2:markdown-sub-build~2": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": false
+  },
+  "sqlalchemy-utils-2576904d:choicetype": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "storybook-addon-designs-b18cfa36:storybook-peer-dependency-ranges": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "other",
+   "actionable": false
+  },
+  "streamlit-0392eb2d:st.plotly-chart~3": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "streamlit-0392eb2d:st.pydeck-chart~3": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "svix-9df9a019:configpatch": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "removal",
+   "actionable": true
+  },
+  "svix-9df9a019:endpointstatsout-canceled": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "svix-9df9a019:environment-api": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "svix-9df9a019:prune-helper-command": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "svix-9df9a019:requesttimeout": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "default_change",
+   "actionable": true
+  },
+  "svix-9df9a019:result": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "svix-9df9a019:sink-config-fields": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": true
+  },
+  "svix-9df9a019:with-content": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": false
+  },
+  "tabler-icons-f2b0f03e:outline-map-pins-off": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "tabler-icons-f2b0f03e:outline-sitemap-minus": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "tabler-icons-f2b0f03e:outline-square-dashed-top-solid": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "takumi-rs-image-response-3d4ba5c0:format": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "takumi-rs-image-response-3d4ba5c0:ready": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "tanstack-react-start-847c6666:script": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": true
+  },
+  "tenacity-f350243f:traceback-logging": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "timm-21fbe66c:classifier-reset~2": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "timm-21fbe66c:feature-info-channels": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "timm-21fbe66c:pickle-loading": {
+   "breaking": false,
+   "benefit": [
+    "security"
+   ],
+   "change_type": "security",
+   "actionable": false
+  },
+  "tiptap-pm-8f557997:pasting-content-copied-from-the-editor": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "typeorm-affd575c:connectionmanager~3": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "removal",
+   "actionable": true
+  },
+  "typeorm-affd575c:invalidwherevaluesbehavior": {
+   "breaking": true,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "default_change",
+   "actionable": true
+  },
+  "typeorm-affd575c:mssql-isolation-options": {
+   "breaking": true,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "removal",
+   "actionable": true
+  },
+  "typeorm-affd575c:pessimistic-partial-write~3": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "removal",
+   "actionable": true
+  },
+  "typeorm-affd575c:pessimistic-write-or-fail~3": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "removal",
+   "actionable": true
+  },
+  "typeorm-affd575c:querybuilder.update~2": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "other",
+   "actionable": false
+  },
+  "typeorm-affd575c:queryrunner.cleardatabase": {
+   "breaking": false,
+   "benefit": [
+    "security"
+   ],
+   "change_type": "security",
+   "actionable": false
+  },
+  "typeorm-affd575c:sql-server-domain": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "removal",
+   "actionable": true
+  },
+  "ultracite-44f4bacc:init": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "tooling",
+   "actionable": true
+  },
+  "ultralytics-cba4d902:distillation-runs": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "ultralytics-cba4d902:sam-predictors": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "ultralytics-cba4d902:sam-tracking": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "ultralytics-cba4d902:scale-coords": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "ultralytics-cba4d902:tensorrt-int8-exports-with-embedded-nms": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "unidiff-e49f19c9:bytes": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "unidiff-e49f19c9:from-filename-metadata-only": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "unidiff-e49f19c9:is-symlink": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "unidiff-e49f19c9:minimum-supported-python-version": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "removal",
+   "actionable": true
+  },
+  "unidiff-e49f19c9:patchedfile.path": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "unidiff-e49f19c9:source-mode": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "upstash-qstash-51942105:client.fromenv": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "viem-db57c658:account.serialize": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "viem-db57c658:feepayertransport": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "viem-db57c658:filltransaction~3": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "viem-db57c658:hashtypeddata": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "viem-db57c658:parseeventlogs-args": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "viem-db57c658:relay.autoswap-capabilities.autoswap": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "behavior_change",
+   "actionable": true
+  },
+  "viem-db57c658:replacement-detection": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "viem-db57c658:zoneinbox": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "visx-tooltip-e14f3214:react": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "removal",
+   "actionable": true
+  },
+  "visx-tooltip-e14f3214:types-react": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "other",
+   "actionable": false
+  },
+  "visx-xychart-63d3788a:react": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "removal",
+   "actionable": true
+  },
+  "visx-xychart-63d3788a:tickformat": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "vite-218ba235:bundled-dev-hmr": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "vite-218ba235:subpath-imports~2": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "wcwidth-c5ec838c:cut": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "wcwidth-c5ec838c:grapheme-boundary-before": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "wcwidth-c5ec838c:iter-graphemes": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "wcwidth-c5ec838c:py.typed": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": false
+  },
+  "web-vitals-1653bd60:cls": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "web-vitals-1653bd60:largestcontentfulpaint.id": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "web-vitals-1653bd60:requestidlecallback": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "xmlbuilder2-2d24e37c:minimum-node.js-version": {
+   "breaking": true,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "removal",
+   "actionable": true
+  },
+  "zilliz-milvus2-sdk-node-973c806d:array-of-vector-struct-payloads": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "zilliz-milvus2-sdk-node-973c806d:description-updates": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "zilliz-milvus2-sdk-node-973c806d:function-score-support-for-search-operations": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "zilliz-milvus2-sdk-node-973c806d:int64-precision": {
+   "breaking": false,
+   "benefit": [
+    "correctness"
+   ],
+   "change_type": "fix",
+   "actionable": false
+  },
+  "zilliz-milvus2-sdk-node-973c806d:order-by-params": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_option",
+   "actionable": true
+  },
+  "zilliz-milvus2-sdk-node-973c806d:request-tracing": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  },
+  "zilliz-milvus2-sdk-node-973c806d:volume-manager-api": {
+   "breaking": false,
+   "benefit": [
+    "none"
+   ],
+   "change_type": "new_api",
+   "actionable": true
+  }
+ },
+ "adjudications": {
+  "a2ui-web-core-c63b3a27:catalog.withentries": {
+   "j1": {
+    "benefit": [
+     "correctness"
+    ]
+   },
+   "j2": {
+    "benefit": [
+     "none"
+    ]
+   },
+   "decided": {
+    "benefit": [
+     "none"
+    ]
+   },
+   "reason": "new API; no bug or benefit stated"
+  },
+  "ag2-c6d5ec0e:mistralconfig-async-client": {
+   "j1": {
+    "change_type": "behavior_change"
+   },
+   "j2": {
+    "change_type": "other"
+   },
+   "decided": {
+    "change_type": "behavior_change"
+   },
+   "reason": "option type and dependency range changed"
+  },
+  "angular-eslint-schematics-812a6974:defineconfig": {
+   "j1": {
+    "change_type": "default_change",
+    "actionable": false
+   },
+   "j2": {
+    "change_type": "tooling",
+    "actionable": true
+   },
+   "decided": {
+    "change_type": "tooling",
+    "actionable": true
+   },
+   "reason": "schematic output for new projects is tooling; config a project may adopt, not runtime behaviour"
+  },
+  "animejs-7a3fc470:splittext-target": {
+   "j1": {
+    "change_type": "behavior_change"
+   },
+   "j2": {
+    "change_type": "other"
+   },
+   "decided": {
+    "change_type": "other"
+   },
+   "reason": "type annotation widened"
+  },
+  "anthropic-ai-claude-agent-sdk-bf671424:pushnotificationinput-status": {
+   "j1": {
+    "change_type": "behavior_change"
+   },
+   "j2": {
+    "change_type": "other"
+   },
+   "decided": {
+    "change_type": "other"
+   },
+   "reason": "type-level relaxation"
+  },
+  "anyio-af5704cb:cancelscope-deadline": {
+   "j1": {
+    "change_type": "fix"
+   },
+   "j2": {
+    "change_type": "behavior_change"
+   },
+   "decided": {
+    "change_type": "fix"
+   },
+   "reason": "NaN silently disabling timeouts was a bug"
+  },
+  "appium-xcuitest-driver-9e82bf93:prebuilt-wda-archive": {
+   "j1": {
+    "benefit": [
+     "none"
+    ]
+   },
+   "j2": {
+    "benefit": [
+     "correctness"
+    ]
+   },
+   "decided": {
+    "benefit": [
+     "correctness"
+    ]
+   },
+   "reason": "Bug Fixes: prevents failure when archive missing"
+  },
+  "ark-ui-svelte-4a5d5212:getcropdata": {
+   "j1": {
+    "benefit": [
+     "correctness"
+    ],
+    "actionable": true
+   },
+   "j2": {
+    "benefit": [
+     "none"
+    ],
+    "actionable": false
+   },
+   "decided": {
+    "benefit": [
+     "none"
+    ],
+    "actionable": true
+   },
+   "reason": "new returned fields a project can use; no bug stated"
+  },
+  "ark-ui-svelte-4a5d5212:startms": {
+   "j1": {
+    "actionable": true
+   },
+   "j2": {
+    "actionable": false
+   },
+   "decided": {
+    "actionable": false
+   },
+   "reason": "runtime validation only; nothing to write"
+  },
+  "assistant-ui-core-81a201c7:propstatus": {
+   "j1": {
+    "benefit": [
+     "none"
+    ],
+    "change_type": "behavior_change"
+   },
+   "j2": {
+    "benefit": [
+     "correctness"
+    ],
+    "change_type": "fix"
+   },
+   "decided": {
+    "benefit": [
+     "correctness"
+    ],
+    "change_type": "fix"
+   },
+   "reason": "settled input reported as streaming was wrong status"
+  },
+  "astrapy-b7681ea8:find-available-regions": {
+   "j1": {
+    "benefit": [
+     "none"
+    ],
+    "change_type": "behavior_change"
+   },
+   "j2": {
+    "benefit": [
+     "correctness"
+    ],
+    "change_type": "fix"
+   },
+   "decided": {
+    "benefit": [
+     "none"
+    ],
+    "change_type": "behavior_change"
+   },
+   "reason": "handles a new response field; no bug stated"
+  },
+  "azure-mgmt-postgresqlflexibleservers-7eb39d0e:database-properties": {
+   "j1": {
+    "change_type": "removal"
+   },
+   "j2": {
+    "change_type": "behavior_change"
+   },
+   "decided": {
+    "change_type": "behavior_change"
+   },
+   "reason": "properties moved, not removed"
+  },
+  "azure-mgmt-postgresqlflexibleservers-7eb39d0e:virtualendpoint-properties": {
+   "j1": {
+    "change_type": "behavior_change"
+   },
+   "j2": {
+    "change_type": "removal"
+   },
+   "decided": {
+    "change_type": "behavior_change"
+   },
+   "reason": "properties moved, not removed"
+  },
+  "babylonjs-core-37562f14:babylon-lite-support": {
+   "j1": {
+    "change_type": "new_api"
+   },
+   "j2": {
+    "change_type": "other"
+   },
+   "decided": {
+    "change_type": "other"
+   },
+   "reason": "inspector support for another product; no category fits"
+  },
+  "babylonjs-core-37562f14:babylon.js-editor": {
+   "j1": {
+    "change_type": "new_api"
+   },
+   "j2": {
+    "change_type": "tooling"
+   },
+   "decided": {
+    "change_type": "tooling"
+   },
+   "reason": "an editor is developer tooling"
+  },
+  "babylonjs-core-37562f14:skymaterial": {
+   "j1": {
+    "change_type": "new_api"
+   },
+   "j2": {
+    "change_type": "new_option"
+   },
+   "decided": {
+    "change_type": "new_option"
+   },
+   "reason": "new options on an existing material"
+  },
+  "base-ui-react-338a57b4:base-ui-react~2": {
+   "j1": {
+    "change_type": "removal"
+   },
+   "j2": {
+    "change_type": "other"
+   },
+   "decided": {
+    "change_type": "removal"
+   },
+   "reason": "old package name no longer used"
+  },
+  "biomejs-js-api-03c80971:embedded-json-parsing": {
+   "j1": {
+    "change_type": "behavior_change",
+    "actionable": false
+   },
+   "j2": {
+    "change_type": "new_api",
+    "actionable": true
+   },
+   "decided": {
+    "change_type": "behavior_change",
+    "actionable": false
+   },
+   "reason": "analyzer parses more; nothing to write"
+  },
+  "biomejs-js-api-03c80971:react-19.2": {
+   "j1": {
+    "change_type": "other"
+   },
+   "j2": {
+    "change_type": "behavior_change"
+   },
+   "decided": {
+    "change_type": "other"
+   },
+   "reason": "support for a newer React version; no category fits"
+  },
+  "bippy-d116f595:source-map-hook-name-parsing": {
+   "j1": {
+    "benefit": [
+     "correctness"
+    ],
+    "change_type": "fix"
+   },
+   "j2": {
+    "benefit": [
+     "none"
+    ],
+    "change_type": "behavior_change"
+   },
+   "decided": {
+    "benefit": [
+     "correctness"
+    ],
+    "change_type": "fix"
+   },
+   "reason": "patch: parsing failed on these source maps"
+  },
+  "black-071c7e03:blackd": {
+   "j1": {
+    "benefit": [
+     "none"
+    ]
+   },
+   "j2": {
+    "benefit": [
+     "correctness"
+    ]
+   },
+   "decided": {
+    "benefit": [
+     "correctness"
+    ]
+   },
+   "reason": "wrong HTTP status for parse failures corrected"
+  },
+  "black-071c7e03:request-body-limits": {
+   "j1": {
+    "benefit": [
+     "security"
+    ]
+   },
+   "j2": {
+    "benefit": [
+     "none"
+    ]
+   },
+   "decided": {
+    "benefit": [
+     "security"
+    ]
+   },
+   "reason": "body limits harden the server against abuse"
+  },
+  "browser-harness-a0cf9442:browser-harness": {
+   "j1": {
+    "breaking": true
+   },
+   "j2": {
+    "breaking": false
+   },
+   "decided": {
+    "breaking": false
+   },
+   "reason": "renamed back to the original name, restoring prior identity"
+  },
+  "builder-util-0e78e66f:toolsets.wine": {
+   "j1": {
+    "benefit": [
+     "maintainability"
+    ]
+   },
+   "j2": {
+    "benefit": [
+     "none"
+    ]
+   },
+   "decided": {
+    "benefit": [
+     "none"
+    ]
+   },
+   "reason": "replaces internal tooling, not project code"
+  },
+  "cartography-5f2fd366:azure-databricks-service-principals": {
+   "j1": {
+    "change_type": "new_option"
+   },
+   "j2": {
+    "change_type": "other"
+   },
+   "decided": {
+    "change_type": "new_option"
+   },
+   "reason": "new authentication option"
+  },
+  "cartography-5f2fd366:installed-github-apps-and-webhooks": {
+   "j1": {
+    "change_type": "other"
+   },
+   "j2": {
+    "change_type": "new_api"
+   },
+   "decided": {
+    "change_type": "other"
+   },
+   "reason": "new ingested data coverage"
+  },
+  "colbymchenry-codegraph-640da3b3:angular-template-callers": {
+   "j1": {
+    "change_type": "tooling"
+   },
+   "j2": {
+    "change_type": "behavior_change"
+   },
+   "decided": {
+    "change_type": "tooling"
+   },
+   "reason": "the technology is a developer analysis tool"
+  },
+  "commitlint-65cb7dcc:cwd": {
+   "j1": {
+    "actionable": true
+   },
+   "j2": {
+    "actionable": false
+   },
+   "decided": {
+    "actionable": false
+   },
+   "reason": "runtime validation only"
+  },
+  "composio-core-57c14956:jsonschematozoderror": {
+   "j1": {
+    "change_type": "fix"
+   },
+   "j2": {
+    "change_type": "behavior_change"
+   },
+   "decided": {
+    "change_type": "behavior_change"
+   },
+   "reason": "error message enhancement, no bug stated"
+  },
+  "cssnano-84987f1f:declaration-sorter": {
+   "j1": {
+    "change_type": "behavior_change"
+   },
+   "j2": {
+    "change_type": "removal"
+   },
+   "decided": {
+    "change_type": "behavior_change"
+   },
+   "reason": "feature moved between presets, still exists"
+  },
+  "csv-parse-2228279b:delimiter-discovery": {
+   "j1": {
+    "change_type": "new_option"
+   },
+   "j2": {
+    "change_type": "new_api"
+   },
+   "decided": {
+    "change_type": "new_option"
+   },
+   "reason": "parser feature, presumably an option"
+  },
+  "d3-cloud-3c327353:sparse-packed-block-placement": {
+   "j1": {
+    "change_type": "other"
+   },
+   "j2": {
+    "change_type": "new_api"
+   },
+   "decided": {
+    "change_type": "new_option"
+   },
+   "reason": "new placement mode"
+  },
+  "d3-cloud-3c327353:typescript-declarations": {
+   "j1": {
+    "change_type": "tooling",
+    "actionable": false
+   },
+   "j2": {
+    "change_type": "new_api",
+    "actionable": true
+   },
+   "decided": {
+    "change_type": "other",
+    "actionable": true
+   },
+   "reason": "types shipped (types_only surface, not runtime_internal)"
+  },
+  "devalue-017e20a2:float16array": {
+   "j1": {
+    "change_type": "other"
+   },
+   "j2": {
+    "change_type": "behavior_change"
+   },
+   "decided": {
+    "change_type": "other"
+   },
+   "reason": "type support added to whitelist; no category fits"
+  },
+  "docsearch-js-647f25d0:prompt-suggestions": {
+   "j1": {
+    "change_type": "new_api",
+    "actionable": true
+   },
+   "j2": {
+    "change_type": "other",
+    "actionable": false
+   },
+   "decided": {
+    "change_type": "other",
+    "actionable": false
+   },
+   "reason": "UI feature; record shows no API or option to use"
+  },
+  "docsearch-js-647f25d0:split-js-bundles": {
+   "j1": {
+    "change_type": "behavior_change"
+   },
+   "j2": {
+    "change_type": "other"
+   },
+   "decided": {
+    "change_type": "other"
+   },
+   "reason": "packaging change"
+  },
+  "duckdb-8a8e1b2f:arrow-exports": {
+   "j1": {
+    "actionable": false
+   },
+   "j2": {
+    "actionable": true
+   },
+   "decided": {
+    "actionable": false
+   },
+   "reason": "internal unification"
+  },
+  "earendil-works-pi-coding-agent-2d04da43:login": {
+   "j1": {
+    "change_type": "tooling"
+   },
+   "j2": {
+    "change_type": "new_option"
+   },
+   "decided": {
+    "change_type": "new_option"
+   },
+   "reason": "new choice on an existing command"
+  },
+  "earendil-works-pi-coding-agent-2d04da43:login~2": {
+   "j1": {
+    "change_type": "tooling"
+   },
+   "j2": {
+    "change_type": "new_option"
+   },
+   "decided": {
+    "change_type": "new_option"
+   },
+   "reason": "new method on an existing command"
+  },
+  "earendil-works-pi-coding-agent-2d04da43:models-store.json": {
+   "j1": {
+    "benefit": [
+     "security"
+    ],
+    "change_type": "security"
+   },
+   "j2": {
+    "benefit": [
+     "correctness"
+    ],
+    "change_type": "fix"
+   },
+   "decided": {
+    "benefit": [
+     "correctness",
+     "security"
+    ],
+    "change_type": "fix"
+   },
+   "reason": "listed under Fixed; overriding admin ACLs is both a bug and a permissions hardening"
+  },
+  "esbuild-plugin-replace-8fb4b275:typescript-support": {
+   "j1": {
+    "change_type": "tooling"
+   },
+   "j2": {
+    "change_type": "new_api"
+   },
+   "decided": {
+    "change_type": "other"
+   },
+   "reason": "type definitions shipped (as d3-cloud)"
+  },
+  "eve-db99c287:ctx.thread.postephemeral": {
+   "j1": {
+    "change_type": "fix"
+   },
+   "j2": {
+    "change_type": "behavior_change"
+   },
+   "decided": {
+    "change_type": "fix"
+   },
+   "reason": "posts were hidden by Slack: a bug"
+  },
+  "eve-db99c287:invoketool-forwardedby": {
+   "j1": {
+    "benefit": [
+     "none"
+    ],
+    "change_type": "behavior_change",
+    "actionable": false
+   },
+   "j2": {
+    "benefit": [
+     "correctness"
+    ],
+    "change_type": "new_option",
+    "actionable": true
+   },
+   "decided": {
+    "benefit": [
+     "none"
+    ],
+    "change_type": "new_option",
+    "actionable": true
+   },
+   "reason": "introduces forwardedBy parameter; no bug stated"
+  },
+  "eve-db99c287:message-stream-version": {
+   "j1": {
+    "change_type": "removal"
+   },
+   "j2": {
+    "change_type": "behavior_change"
+   },
+   "decided": {
+    "change_type": "behavior_change"
+   },
+   "reason": "protocol version bump; nothing removed"
+  },
+  "eve-db99c287:microsandbox": {
+   "j1": {
+    "benefit": [
+     "correctness"
+    ]
+   },
+   "j2": {
+    "benefit": [
+     "none"
+    ]
+   },
+   "decided": {
+    "benefit": [
+     "correctness"
+    ]
+   },
+   "reason": "prevents failure mid-operation"
+  },
+  "eve-db99c287:remote-evals": {
+   "j1": {
+    "breaking": true
+   },
+   "j2": {
+    "breaking": false
+   },
+   "decided": {
+    "breaking": false
+   },
+   "reason": "patch change; source does not show existing setups failing"
+  },
+  "eve-db99c287:toolcontext-messages~2": {
+   "j1": {
+    "change_type": "behavior_change"
+   },
+   "j2": {
+    "change_type": "new_api"
+   },
+   "decided": {
+    "change_type": "new_api"
+   },
+   "reason": "new property exposed on context"
+  },
+  "eve-db99c287:toolresultfrom~3": {
+   "j1": {
+    "benefit": [
+     "correctness"
+    ]
+   },
+   "j2": {
+    "benefit": [
+     "none"
+    ]
+   },
+   "decided": {
+    "benefit": [
+     "correctness"
+    ]
+   },
+   "reason": "spurious warnings from missed matches"
+  },
+  "executorch-162bc284:arm-backend-operators": {
+   "j1": {
+    "actionable": false
+   },
+   "j2": {
+    "actionable": true
+   },
+   "decided": {
+    "actionable": false
+   },
+   "reason": "wider operator support; nothing to write"
+  },
+  "executorch-162bc284:buck": {
+   "j1": {
+    "benefit": [
+     "maintainability"
+    ],
+    "change_type": "removal",
+    "actionable": false
+   },
+   "j2": {
+    "benefit": [
+     "none"
+    ],
+    "change_type": "tooling",
+    "actionable": true
+   },
+   "decided": {
+    "benefit": [
+     "none"
+    ],
+    "change_type": "tooling",
+    "actionable": true
+   },
+   "reason": "build dependency change (build_tooling surface)"
+  },
+  "executorch-162bc284:qnn-model-preparation-dependencies": {
+   "j1": {
+    "change_type": "behavior_change",
+    "actionable": false
+   },
+   "j2": {
+    "change_type": "new_option",
+    "actionable": true
+   },
+   "decided": {
+    "change_type": "new_option",
+    "actionable": true
+   },
+   "reason": "install option of the pip package"
+  },
+  "expo-metro-config-c7d224da:experiments.noxcturnaltransformworker": {
+   "j1": {
+    "change_type": "behavior_change"
+   },
+   "j2": {
+    "change_type": "new_option"
+   },
+   "decided": {
+    "change_type": "behavior_change"
+   },
+   "reason": "existing experiment flag does more"
+  },
+  "fastmcp-e35079e0:well-known-openid-configuration": {
+   "j1": {
+    "actionable": true
+   },
+   "j2": {
+    "actionable": false
+   },
+   "decided": {
+    "actionable": false
+   },
+   "reason": "server answers an extra alias automatically"
+  },
+  "genai-prices-f2337d2e:openrouter-model-pricing": {
+   "j1": {
+    "change_type": "new_api"
+   },
+   "j2": {
+    "change_type": "other"
+   },
+   "decided": {
+    "change_type": "other"
+   },
+   "reason": "pricing data coverage"
+  },
+  "google-genai-f343cddd:httpx2-ssl-certificate-verification": {
+   "j1": {
+    "benefit": [
+     "security"
+    ]
+   },
+   "j2": {
+    "benefit": [
+     "none"
+    ]
+   },
+   "decided": {
+    "benefit": [
+     "none"
+    ]
+   },
+   "reason": "trust store source changed; no security gain claimed"
+  },
+  "grafana-prometheus-daa13c0a:search-api": {
+   "j1": {
+    "benefit": [
+     "performance"
+    ]
+   },
+   "j2": {
+    "benefit": [
+     "correctness",
+     "performance"
+    ]
+   },
+   "decided": {
+    "benefit": [
+     "performance"
+    ]
+   },
+   "reason": "bounded memory stated; ranking is not a bug fix"
+  },
+  "hey-api-openapi-ts-0af946ba:javascript-globals": {
+   "j1": {
+    "change_type": "behavior_change"
+   },
+   "j2": {
+    "change_type": "tooling"
+   },
+   "decided": {
+    "change_type": "tooling"
+   },
+   "reason": "the technology is a code generator; its DSL change is tooling"
+  },
+  "highlight-words-core-ba98fb95:autoescape~2": {
+   "j1": {
+    "change_type": "behavior_change"
+   },
+   "j2": {
+    "change_type": "fix"
+   },
+   "decided": {
+    "change_type": "behavior_change"
+   },
+   "reason": "major-release design change from throwing to literal match"
+  },
+  "highlight-words-core-ba98fb95:searchwords~4": {
+   "j1": {
+    "benefit": [
+     "correctness"
+    ],
+    "change_type": "fix"
+   },
+   "j2": {
+    "benefit": [
+     "none"
+    ],
+    "change_type": "behavior_change"
+   },
+   "decided": {
+    "benefit": [
+     "correctness"
+    ],
+    "change_type": "fix"
+   },
+   "reason": "falsy words like 0 being skipped was wrong matching"
+  },
+  "jsonpath-ng-924fbce4:right-hand-side-filter-queries": {
+   "j1": {
+    "change_type": "new_api"
+   },
+   "j2": {
+    "change_type": "other"
+   },
+   "decided": {
+    "change_type": "new_api"
+   },
+   "reason": "new query syntax"
+  },
+  "kingfisher-bin-50b2e648:betterleaks-rule-format": {
+   "j1": {
+    "breaking": true
+   },
+   "j2": {
+    "breaking": false
+   },
+   "decided": {
+    "breaking": true
+   },
+   "reason": "major release replaces the detector catalog and kingfisher.* rule IDs"
+  },
+  "kingfisher-bin-50b2e648:exclude-rule~2": {
+   "j1": {
+    "change_type": "deprecation"
+   },
+   "j2": {
+    "change_type": "fix"
+   },
+   "decided": {
+    "change_type": "deprecation"
+   },
+   "reason": "old IDs still work with a deprecation warning"
+  },
+  "kingfisher-bin-50b2e648:scannerconfig-enable-dedup~2": {
+   "j1": {
+    "benefit": [
+     "none"
+    ],
+    "change_type": "behavior_change"
+   },
+   "j2": {
+    "benefit": [
+     "correctness"
+    ],
+    "change_type": "new_option"
+   },
+   "decided": {
+    "benefit": [
+     "correctness"
+    ],
+    "change_type": "behavior_change"
+   },
+   "reason": "dedup key changed; stated purpose is not dropping identical content at other paths"
+  },
+  "kingfisher-bin-50b2e648:tag-selection": {
+   "j1": {
+    "change_type": "new_option"
+   },
+   "j2": {
+    "change_type": "tooling"
+   },
+   "decided": {
+    "change_type": "tooling"
+   },
+   "reason": "install scripts"
+  },
+  "langchain-f9035ff2:wrap-model-call": {
+   "j1": {
+    "change_type": "other"
+   },
+   "j2": {
+    "change_type": "new_api"
+   },
+   "decided": {
+    "change_type": "new_option"
+   },
+   "reason": "existing hook gains a new accepted return (commands): new capability on existing API"
+  },
+  "langchain-huggingface-f0107330:huggingfacehub-api-token": {
+   "j1": {
+    "breaking": false
+   },
+   "j2": {
+    "breaking": true
+   },
+   "decided": {
+    "breaking": false
+   },
+   "reason": "repr hides a secret; nothing fails"
+  },
+  "lobehub-editor-266495d3:antd": {
+   "j1": {
+    "benefit": [
+     "maintainability"
+    ]
+   },
+   "j2": {
+    "benefit": [
+     "none"
+    ]
+   },
+   "decided": {
+    "benefit": [
+     "none"
+    ]
+   },
+   "reason": "dropping a dependency does not replace project code"
+  },
+  "marked-terminal-6c8b9a7e:nested-lists": {
+   "j1": {
+    "benefit": [
+     "correctness"
+    ]
+   },
+   "j2": {
+    "benefit": [
+     "none"
+    ]
+   },
+   "decided": {
+    "benefit": [
+     "correctness"
+    ]
+   },
+   "reason": "extra blank lines were wrong output"
+  },
+  "marked-terminal-6c8b9a7e:styletext": {
+   "j1": {
+    "change_type": "behavior_change"
+   },
+   "j2": {
+    "change_type": "other"
+   },
+   "decided": {
+    "change_type": "other"
+   },
+   "reason": "internal dependency swap; custom styles unchanged"
+  },
+  "metamask-delegation-deployments-1d8c265b:robinhood-chain-testnet-deployment": {
+   "j1": {
+    "change_type": "new_api"
+   },
+   "j2": {
+    "change_type": "other"
+   },
+   "decided": {
+    "change_type": "other"
+   },
+   "reason": "new deployment data"
+  },
+  "metamask-delegation-deployments-1d8c265b:tempo-mainnet-and-tempo-moderato-testnet": {
+   "j1": {
+    "change_type": "other"
+   },
+   "j2": {
+    "change_type": "new_api"
+   },
+   "decided": {
+    "change_type": "other"
+   },
+   "reason": "new deployment data"
+  },
+  "metamask-mobile-wallet-protocol-core-50e4a2b1:ikeymanager-validatepeerkey": {
+   "j1": {
+    "breaking": false
+   },
+   "j2": {
+    "breaking": true
+   },
+   "decided": {
+    "breaking": true
+   },
+   "reason": "new required interface method breaks existing implementers (major)"
+  },
+  "microsandbox-0518384f:windows-cleanup-and-usage-accounting": {
+   "j1": {
+    "benefit": [
+     "none"
+    ]
+   },
+   "j2": {
+    "benefit": [
+     "correctness"
+    ]
+   },
+   "decided": {
+    "benefit": [
+     "correctness"
+    ]
+   },
+   "reason": "listed under Fixes: incomplete cleanup/accounting corrected"
+  },
+  "module-federation-runtime-1c0a8ed9:local-collector-mode": {
+   "j1": {
+    "change_type": "new_option"
+   },
+   "j2": {
+    "change_type": "other"
+   },
+   "decided": {
+    "change_type": "new_option"
+   },
+   "reason": "a new mode of an existing runtime"
+  },
+  "monocart-reporter-e63874c0:title-tags~2": {
+   "j1": {
+    "benefit": [
+     "none"
+    ]
+   },
+   "j2": {
+    "benefit": [
+     "correctness"
+    ]
+   },
+   "decided": {
+    "benefit": [
+     "correctness"
+    ]
+   },
+   "reason": "fixed display bugs"
+  },
+  "mppx-bed6058e:currencies~2": {
+   "j1": {
+    "benefit": [
+     "none"
+    ]
+   },
+   "j2": {
+    "benefit": [
+     "correctness"
+    ]
+   },
+   "decided": {
+    "benefit": [
+     "correctness"
+    ]
+   },
+   "reason": "patch: options previously ignored"
+  },
+  "mppx-bed6058e:store.durableobjectstore-onwrite": {
+   "j1": {
+    "benefit": [
+     "correctness"
+    ]
+   },
+   "j2": {
+    "benefit": [
+     "none"
+    ]
+   },
+   "decided": {
+    "benefit": [
+     "none"
+    ]
+   },
+   "reason": "new hook; no benefit stated"
+  },
+  "officeparser-3c60c86c:textformatting.invisible~2": {
+   "j1": {
+    "benefit": [
+     "none"
+    ]
+   },
+   "j2": {
+    "benefit": [
+     "correctness"
+    ]
+   },
+   "decided": {
+    "benefit": [
+     "correctness"
+    ]
+   },
+   "reason": "invisible text now rendered unseen: corrects wrong output"
+  },
+  "openai-agents-7543b605:branch-ids": {
+   "j1": {
+    "breaking": false,
+    "actionable": false
+   },
+   "j2": {
+    "breaking": true,
+    "actionable": true
+   },
+   "decided": {
+    "breaking": false,
+    "actionable": false
+   },
+   "reason": "a fix adding validation"
+  },
+  "openai-agents-7543b605:handoff-calls": {
+   "j1": {
+    "actionable": true
+   },
+   "j2": {
+    "actionable": false
+   },
+   "decided": {
+    "actionable": false
+   },
+   "reason": "event stream behaviour change; nothing stated to write"
+  },
+  "orval-c8d5db12:tanstack-query": {
+   "j1": {
+    "benefit": [
+     "none"
+    ]
+   },
+   "j2": {
+    "benefit": [
+     "correctness"
+    ]
+   },
+   "decided": {
+    "benefit": [
+     "none"
+    ]
+   },
+   "reason": "compatibility kept, no bug stated"
+  },
+  "parallel-web-020acd36:eagerly-validating-pydantic-iterators": {
+   "j1": {
+    "change_type": "other"
+   },
+   "j2": {
+    "change_type": "new_option"
+   },
+   "decided": {
+    "change_type": "new_option"
+   },
+   "reason": "new validation option"
+  },
+  "parallel-web-020acd36:file-type-error-message": {
+   "j1": {
+    "benefit": [
+     "none"
+    ]
+   },
+   "j2": {
+    "benefit": [
+     "correctness"
+    ]
+   },
+   "decided": {
+    "benefit": [
+     "correctness"
+    ]
+   },
+   "reason": "Bug Fixes: wrong error text"
+  },
+  "payload-ea98919f:localized-polymorphic-join-filters": {
+   "j1": {
+    "change_type": "behavior_change"
+   },
+   "j2": {
+    "change_type": "new_api"
+   },
+   "decided": {
+    "change_type": "new_api"
+   },
+   "reason": "new query capability backported; nearest is new_api"
+  },
+  "pinecone-database-pinecone-c83d25ed:index.listnamespaces": {
+   "j1": {
+    "change_type": "removal"
+   },
+   "j2": {
+    "change_type": "behavior_change"
+   },
+   "decided": {
+    "change_type": "behavior_change"
+   },
+   "reason": "signature restructured, method remains (as the moved-property records)"
+  },
+  "playwright-test-ea1473ac:blob-reporter": {
+   "j1": {
+    "benefit": [
+     "correctness"
+    ]
+   },
+   "j2": {
+    "benefit": [
+     "none"
+    ]
+   },
+   "decided": {
+    "benefit": [
+     "correctness"
+    ]
+   },
+   "reason": "'again deletes' restores regressed behaviour"
+  },
+  "pulumi-pulumi-006bf3cc:continue-on-error~4": {
+   "j1": {
+    "benefit": [
+     "correctness"
+    ]
+   },
+   "j2": {
+    "benefit": [
+     "none"
+    ]
+   },
+   "decided": {
+    "benefit": [
+     "correctness"
+    ]
+   },
+   "reason": "known-empty values were wrong results"
+  },
+  "pulumi-pulumi-006bf3cc:length~4": {
+   "j1": {
+    "benefit": [
+     "none"
+    ]
+   },
+   "j2": {
+    "benefit": [
+     "correctness"
+    ]
+   },
+   "decided": {
+    "benefit": [
+     "correctness"
+    ]
+   },
+   "reason": "spurious error on valid expression removed"
+  },
+  "pulumi-pulumi-006bf3cc:pulumi-policy-exception-remove": {
+   "j1": {
+    "change_type": "new_api"
+   },
+   "j2": {
+    "change_type": "tooling"
+   },
+   "decided": {
+    "change_type": "new_api"
+   },
+   "reason": "a new command"
+  },
+  "pulumi-pulumi-006bf3cc:pulumi-policy-publish-output": {
+   "j1": {
+    "change_type": "new_option"
+   },
+   "j2": {
+    "change_type": "tooling"
+   },
+   "decided": {
+    "change_type": "new_option"
+   },
+   "reason": "new flag on existing commands"
+  },
+  "pydantic-ai-slim-83e7bd12:fallbackmodel~3": {
+   "j1": {
+    "benefit": [
+     "none"
+    ]
+   },
+   "j2": {
+    "benefit": [
+     "correctness"
+    ]
+   },
+   "decided": {
+    "benefit": [
+     "none"
+    ]
+   },
+   "reason": "added attempt records/usage counting; no bug stated"
+  },
+  "pymdown-extensions-e5508ed2:commonmark-punctuation-rules": {
+   "j1": {
+    "actionable": true
+   },
+   "j2": {
+    "actionable": false
+   },
+   "decided": {
+    "actionable": true
+   },
+   "reason": "default of an option a project may set"
+  },
+  "pymdown-extensions-e5508ed2:commonmark-rule-of-3": {
+   "j1": {
+    "benefit": [
+     "correctness"
+    ]
+   },
+   "j2": {
+    "benefit": [
+     "none"
+    ]
+   },
+   "decided": {
+    "benefit": [
+     "correctness"
+    ]
+   },
+   "reason": "spec-correct delimiter pairing"
+  },
+  "pymdown-extensions-e5508ed2:html-extension-backtracking": {
+   "j1": {
+    "benefit": [
+     "none"
+    ]
+   },
+   "j2": {
+    "benefit": [
+     "correctness"
+    ]
+   },
+   "decided": {
+    "benefit": [
+     "correctness"
+    ]
+   },
+   "reason": "bug fix for regex backtracking (hangs)"
+  },
+  "rapidocr-dc331226:opencv": {
+   "j1": {
+    "change_type": "default_change"
+   },
+   "j2": {
+    "change_type": "behavior_change"
+   },
+   "decided": {
+    "change_type": "default_change"
+   },
+   "reason": "headless becomes the default"
+  },
+  "rapidocr-dc331226:pp-ocrv6-paddle-model-key-names": {
+   "j1": {
+    "breaking": true,
+    "actionable": true
+   },
+   "j2": {
+    "breaking": false,
+    "actionable": false
+   },
+   "decided": {
+    "breaking": false,
+    "actionable": false
+   },
+   "reason": "patch adjusting bundled config keys; no user breakage shown"
+  },
+  "scalar-api-reference-2c98ccca:asyncapi-channel-badges": {
+   "j1": {
+    "change_type": "fix"
+   },
+   "j2": {
+    "change_type": "behavior_change"
+   },
+   "decided": {
+    "change_type": "behavior_change"
+   },
+   "reason": "visual alignment change, no bug stated"
+  },
+  "scalar-api-reference-2c98ccca:asyncapi-navigation-cards": {
+   "j1": {
+    "breaking": false
+   },
+   "j2": {
+    "breaking": true
+   },
+   "decided": {
+    "breaking": false
+   },
+   "reason": "layout change of rendered docs in a patch; nothing fails"
+  },
+  "scalar-api-reference-2c98ccca:asyncapi-reply-messages": {
+   "j1": {
+    "benefit": [
+     "none"
+    ],
+    "change_type": "fix"
+   },
+   "j2": {
+    "benefit": [
+     "correctness"
+    ],
+    "change_type": "behavior_change"
+   },
+   "decided": {
+    "benefit": [
+     "correctness"
+    ],
+    "change_type": "fix"
+   },
+   "reason": "duplicate listing was a display bug"
+  },
+  "scalar-api-reference-2c98ccca:schema-property-copy-link-button": {
+   "j1": {
+    "benefit": [
+     "none"
+    ]
+   },
+   "j2": {
+    "benefit": [
+     "correctness"
+    ]
+   },
+   "decided": {
+    "benefit": [
+     "correctness"
+    ]
+   },
+   "reason": "layout bug fixed"
+  },
+  "sphinx-llm-cafe81a2:docref-summaries~2": {
+   "j1": {
+    "change_type": "behavior_change"
+   },
+   "j2": {
+    "change_type": "other"
+   },
+   "decided": {
+    "change_type": "behavior_change"
+   },
+   "reason": "backend API used for summaries changed"
+  },
+  "svix-9df9a019:prune-helper-command": {
+   "j1": {
+    "change_type": "tooling"
+   },
+   "j2": {
+    "change_type": "new_api"
+   },
+   "decided": {
+    "change_type": "new_api"
+   },
+   "reason": "a new command"
+  },
+  "tanstack-react-start-847c6666:script": {
+   "j1": {
+    "benefit": [
+     "correctness"
+    ],
+    "change_type": "fix"
+   },
+   "j2": {
+    "benefit": [
+     "none"
+    ],
+    "change_type": "behavior_change"
+   },
+   "decided": {
+    "benefit": [
+     "correctness"
+    ],
+    "change_type": "fix"
+   },
+   "reason": "patch: config read from the right key"
+  },
+  "tenacity-f350243f:traceback-logging": {
+   "j1": {
+    "benefit": [
+     "correctness"
+    ]
+   },
+   "j2": {
+    "benefit": [
+     "none"
+    ]
+   },
+   "decided": {
+    "benefit": [
+     "correctness"
+    ]
+   },
+   "reason": "fix: compatibility bug with loguru"
+  },
+  "typeorm-affd575c:invalidwherevaluesbehavior": {
+   "j1": {
+    "benefit": [
+     "correctness"
+    ],
+    "actionable": false
+   },
+   "j2": {
+    "benefit": [
+     "none"
+    ],
+    "actionable": true
+   },
+   "decided": {
+    "benefit": [
+     "correctness"
+    ],
+    "actionable": true
+   },
+   "reason": "fix that prevents invalid writes; option default a project may set"
+  },
+  "typeorm-affd575c:mssql-isolation-options": {
+   "j1": {
+    "benefit": [
+     "correctness"
+    ]
+   },
+   "j2": {
+    "benefit": [
+     "none"
+    ]
+   },
+   "decided": {
+    "benefit": [
+     "correctness"
+    ]
+   },
+   "reason": "'assign proper values' states wrong values were set before"
+  },
+  "ultracite-44f4bacc:init": {
+   "j1": {
+    "breaking": true
+   },
+   "j2": {
+    "breaking": false
+   },
+   "decided": {
+    "breaking": true
+   },
+   "reason": "major change: init now prompts before writing; scripted runs behave differently"
+  },
+  "ultralytics-cba4d902:tensorrt-int8-exports-with-embedded-nms": {
+   "j1": {
+    "actionable": true
+   },
+   "j2": {
+    "actionable": false
+   },
+   "decided": {
+    "actionable": false
+   },
+   "reason": "error message only"
+  },
+  "unidiff-e49f19c9:bytes": {
+   "j1": {
+    "change_type": "new_option"
+   },
+   "j2": {
+    "change_type": "behavior_change"
+   },
+   "decided": {
+    "change_type": "new_option"
+   },
+   "reason": "new accepted input type for an existing argument"
+  },
+  "unidiff-e49f19c9:patchedfile.path": {
+   "j1": {
+    "breaking": true,
+    "benefit": [
+     "none"
+    ],
+    "change_type": "behavior_change"
+   },
+   "j2": {
+    "breaking": false,
+    "benefit": [
+     "correctness"
+    ],
+    "change_type": "fix"
+   },
+   "decided": {
+    "breaking": false,
+    "benefit": [
+     "correctness"
+    ],
+    "change_type": "fix"
+   },
+   "reason": "extends existing prefix stripping to mnemonic prefixes; wrong paths corrected"
+  },
+  "viem-db57c658:relay.autoswap-capabilities.autoswap": {
+   "j1": {
+    "change_type": "behavior_change"
+   },
+   "j2": {
+    "change_type": "default_change"
+   },
+   "decided": {
+    "change_type": "behavior_change"
+   },
+   "reason": "swaps now need opt-in: behaviour of existing call changed"
+  },
+  "visx-tooltip-e14f3214:types-react": {
+   "j1": {
+    "change_type": "behavior_change"
+   },
+   "j2": {
+    "change_type": "other"
+   },
+   "decided": {
+    "change_type": "other"
+   },
+   "reason": "packaging/peer dependency change"
+  },
+  "vite-218ba235:bundled-dev-hmr": {
+   "j1": {
+    "benefit": [
+     "correctness"
+    ]
+   },
+   "j2": {
+    "benefit": [
+     "none"
+    ]
+   },
+   "decided": {
+    "benefit": [
+     "correctness"
+    ]
+   },
+   "reason": "patch fix: reload instead of broken HMR state"
+  },
+  "vite-218ba235:subpath-imports~2": {
+   "j1": {
+    "change_type": "behavior_change"
+   },
+   "j2": {
+    "change_type": "fix"
+   },
+   "decided": {
+    "change_type": "fix"
+   },
+   "reason": "patch release; optimizer now resolves subpath imports correctly"
+  }
+ },
+ "agreement": {
+  "breaking": 0.98,
+  "benefit": 0.918,
+  "change_type": 0.866,
+  "actionable": 0.962
+ }
+}
