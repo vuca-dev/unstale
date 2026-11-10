@@ -25,4 +25,6 @@ No API spend. Agent runs bill the CEO's Claude plan: roughly 100–400K tokens p
 window has room, not alongside other heavy work.
 
 ## Owner
-One agent, after WS2 (events). It builds the no-key report path behind a flag (events and deterministic signals into the report), then runs the eval.
+One agent, after WS2 (events). It builds the no-key report path behind the README's one switch (events and
+deterministic signals into the report), then runs the eval. The run is resumable per repo. On a pass it flips WS5's
+constant and supplies the "≈ N× tokens" figure; on a fail it records the result and changes nothing.

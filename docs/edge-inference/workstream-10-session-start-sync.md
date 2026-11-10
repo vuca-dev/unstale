@@ -15,7 +15,8 @@ into each agent's session-start hook.
 2. **The hook never slows or breaks a session.** A quick check with a short timeout (the signed technology list,
    one conditional request; unchanged technologies cost nothing), then model work in a detached background process
    under the WS3 budget. It prints at most one line when new findings are ready, and nothing otherwise. Any failure
-   is silent at session start and shows in `unstale status`.
+   is silent at session start and shows in `unstale status`. One worker per machine (WS3's lock). Opt out with one
+   config line.
 3. **Freshness tracking.**
    - Central: per release, registry publish time → central first seen → events published (from WS2's timestamps).
      Published as a small summary with the catalog (median and 90th percentile gap, last 30 days), so the trend is
@@ -31,7 +32,8 @@ WS2 (timestamps) and WS3 (background work under the budget). Hook installation c
 ## Acceptance criteria
 - [ ] Each supported agent's session start triggers a sync on a fresh install, in WS6's environment matrix (a fake
       agent session for each).
-- [ ] Session start adds under 2 s in the worst case (catalog unreachable), measured.
+- [ ] Session start adds under 2 s in the worst case (catalog unreachable, provider down, cache corrupt), exits 0
+      and prints at most one line (hold-the-line 5), measured and tested.
 - [ ] `unstale status` shows the gap breakdown for this machine; central publishes its gap summary.
 - [ ] Catalog requests per session start measured and within the allowance at the projected user count.
 

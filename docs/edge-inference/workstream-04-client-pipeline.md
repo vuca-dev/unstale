@@ -12,6 +12,8 @@ WS1, WS2 and WS3 merged.
   - A+B: extraction on chunks, two calls, answering by chunk id.
   - D: labels on Jev when a Jev key is configured, otherwise `gpt-6-luna` read on its choices.
   - E: matching on Jev, otherwise `gpt-6-luna` at its fitted constants.
+  - Anthropic key only: A+B and D on Haiku 5.5; E off (every record is new, so more duplicates).
+  - Only for releases with change events and no catalog records (the README's "One switch").
   - Thresholds from `central/src/pipeline/thresholds.ts` and the eval results, as data.
 - [ ] **Local store:** records written where the client reads catalog records today; each carries provenance
       (provider, model, model version, prompt version).
@@ -40,5 +42,13 @@ WS1, WS2 and WS3 merged.
       `gpt-6-luna` and for Jev match central's published numbers within the run-to-run noise recorded in those
       RESULTS files. Results in `eval/edge-port/RESULTS.md`.
 
+- [ ] **Measured cost:** tokens and dollars per technology-year and for a first sync, per provider option, from the
+      parity runs. WS5's quotes and WS8's docs use these numbers.
+
+## Spend
+The parity runs call paid APIs. Estimate first and follow the README's spend rule; reuse central's cached answers
+wherever the request is byte-identical.
+
 ## Risks and rollback
-The largest chunk; it may split into A+B, D and E sub-PRs behind one flag. Default off until WS7.
+The largest chunk: it splits into sub-PRs (extraction; labels and matching; cache and disk bounds; parity) behind
+the one switch, each merged on its own.

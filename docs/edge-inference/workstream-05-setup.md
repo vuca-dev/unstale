@@ -8,7 +8,7 @@ WS3 merged.
 
 ## Acceptance criteria
 - [ ] **Detection by name only:**
-  - environment variable names for each supported provider;
+  - environment variable names for each supported provider, in the shell and in this repo's `.env` (names only);
   - `codex` on PATH and `codex login status`;
   - this repo's config.
   - Never reads a value before consent; never reads other repos' `.env` files or other tools' auth files (test with
@@ -16,13 +16,18 @@ WS3 merged.
 - [ ] **Picker:** one numbered list, recommended option preselected, Enter accepts.
   - Each option on one line with a cost quote that states units and scope, for example "$0.03 per technology-year ·
     this repo: 38 technologies ≈ $1.20/yr · first sync ≈ $0.40 once"; Codex as tokens plus "≈ $X at API prices".
-  - Options below Jev quality say so in a few words.
+  - Order: Jev + OpenAI-compatible key; Jev + Codex; OpenAI-compatible key alone; Codex alone; Anthropic key alone;
+    then no-key mode. Only options this machine can use are listed; if none can, one line says what to set.
+  - Options below the first say what is traded (see Copy).
+  - **No-key mode** appears only if WS9 passes. Until WS9 reports, and if it fails, that line reads that a key or
+    Codex is needed. Build the option behind a constant so WS9's result is a one-line change.
 - [ ] **Config:** `inference = { provider = "...", key_env = "..." }` in the repo config (shared by a team) or the user
       config. The key value is never written anywhere.
 - [ ] **No terminal:** `--inference <provider|env:NAME|codex|none>` for CI; with no terminal and no flag, no prompt
       and, with no provider configured, deterministic signals only.
 - [ ] **Agents:** the managed skill tells the agent to show the user the picker's options and ask, never to choose.
 - [ ] **Status:** `unstale status` shows the provider, this month's tokens and the budget.
+- [ ] **Changing your mind:** `unstale setup` reopens the picker; the choice is never asked again unprompted.
 
 ## Copy
 - Every option line, including each fallback (Anthropic key alone, Codex alone, no-key mode), states its trade the

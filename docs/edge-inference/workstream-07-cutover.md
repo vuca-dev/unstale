@@ -7,7 +7,7 @@ Homebrew only when a test needs a published build to validate work.
 Ship the client, run the 20-day grace period, then stop central's model steps.
 
 ## Pre-conditions
-WS1–WS6 merged and verified; open decisions resolved.
+WS1–WS6, WS9 and WS10 merged and verified; WS8 reviewed. The release turns the README's one switch on by default.
 
 ## Steps
 1. **Release:** bump the client version and tag in the same change, so `latest_client` never announces an unpublished

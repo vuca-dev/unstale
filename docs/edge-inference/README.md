@@ -22,12 +22,26 @@ records for old clients), and it runs last, after the client that replaces them 
 | 5 | [Setup: detection, picker, config](workstream-05-setup.md) | 3 | impl |
 | 6 | [Environment matrix and playback](workstream-06-environment-matrix.md) | harness: 3; full run: 4, 5 | impl, then runner |
 | 7 | [Release, grace period, cutover](workstream-07-cutover.md) | 1–6 | **CEO-run; out of scope for the agents** |
-| 8 | [Docs and site](workstream-08-docs.md) | 5 | impl; **held for CEO review, never admin-merged** |
-| 9 | [No-key mode eval](workstream-09-no-key-eval.md) | 2 | one agent: builds the no-key path, then evals; bounded |
+| 8 | [Docs and site](workstream-08-docs.md) | 4, 5, 6 | impl; **held for CEO review, never admin-merged** |
+| 9 | [No-key mode eval](workstream-09-no-key-eval.md) | 2 (its result sets one picker line in WS5) | one agent: builds the no-key path, then evals; bounded |
 | 10 | [Session-start sync and freshness tracking](workstream-10-session-start-sync.md) | 2, 3 (hook install earlier) | impl |
 
-Parallel lanes: WS1, WS2 and WS3 start together. WS5 and the WS6 harness start once WS3 merges. WS4 waits for 1, 2
-and 3.
+Parallel lanes: WS1, WS2 and WS3 start first. WS5 and the WS6 harness start once WS3 merges; WS9 once WS2 merges.
+WS4 waits for 1, 2 and 3. WS10's hook install can start any time; its sync and tracking wait for 2 and 3. WS8 is
+last.
+
+## One switch
+
+Everything the sprint adds to the client's behaviour sits behind one switch, **off by default until WS7**: with it
+off, the client behaves exactly as it does today (catalog records, no model calls, no picker). With it on:
+
+- **Catalog records win where they exist.** For a release whose records are in the catalog, the client uses them
+  and makes no model call. It runs its own steps only for releases that have change events and no catalog records.
+  During the grace period that is nothing, or close to it; after day 20 it is every new release. History is never
+  re-derived on the user's tokens.
+- The picker, the session-start sync and no-key mode are active.
+
+Tests and the environment matrix turn the switch on. WS7 flips the default.
 
 ## Resolved decisions (10 November 2026)
 
@@ -78,9 +92,18 @@ errors are recoverable; leaked keys are not.
 3. **Port parity:** the client's steps reproduce central's H1 and H2 numbers for the same model within run-to-run noise.
 4. **Never fails on cost or provider errors:** budget exhaustion, 401, 429, timeouts, Codex logged out or a model not
    on the plan each defer work with one line, never an error exit.
+5. **Session start is never blocked or broken:** the hook returns within 2 s with the catalog unreachable, the
+   provider down or the cache corrupt, exits 0, and prints at most one line.
 
 **Everything else is ship-and-observe.** Explicitly cut: the encoder; Cursor; open-ended rule tuning for no-key mode (WS9 has a stopping rule); OpenRouter parity (it follows the gateway
 row until a check runs); repeat runs of the evals.
+
+## Spend
+
+Model calls made by the sprint itself (port parity, fixtures, the matrix) are paid by the CEO. Before any run that
+calls a paid API, the agent estimates its cost from the token counts in the existing RESULTS files and writes the
+estimate in the tracker. Up to $10 for the whole sprint it proceeds; past that it stops and asks. Runs cache every
+call on disk, so a restart never pays twice. Tests use the mock server and cost nothing.
 
 ## Durability and pacing
 
