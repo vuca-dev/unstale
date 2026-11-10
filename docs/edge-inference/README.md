@@ -23,6 +23,7 @@ records for old clients), and it runs last, after the client that replaces them 
 | 6 | [Environment matrix and playback](workstream-06-environment-matrix.md) | harness: 3; full run: 4, 5 | impl, then runner |
 | 7 | [Release, grace period, cutover](workstream-07-cutover.md) | 1–6 | ops + small PRs |
 | 8 | [Docs and site](workstream-08-docs.md) | 5 | impl; **held for CEO review, never admin-merged** |
+| 9 | [No-key mode eval](workstream-09-no-key-eval.md) | 2 (events), 4 (report path) | one eval agent, bounded |
 
 Parallel lanes: WS1, WS2 and WS3 start together. WS5 and the WS6 harness start once WS3 merges. WS4 waits for 1, 2
 and 3.
@@ -44,18 +45,23 @@ and 3.
 | Budget | A monthly token budget that throttles and works in demand order; never fails | — |
 | Team setting | The repo config names the provider and the key's environment variable; the value stays in each person's env | — |
 | Grace period | 20 days, then `min_client` is raised | — |
-| No key and no Codex | Deterministic signals only (versions, advisories, deprecations) plus one line suggesting a key; no prompt in CI. Further local fallbacks (a chunk-level encoder) deferred: not needed for the first version | `eval/edge-encoder/RESULTS.md` |
+| No key and no Codex | Pass deterministic signals and the raw change events (unparsed, sometimes duplicated) to the agent, with one line stating the extra token spend. **Shipped only if WS9 shows the agent with this mode beats the agent alone**; otherwise the client says a key or Codex is needed. Encoder deferred | WS9; `eval/edge-encoder/RESULTS.md` |
+| Anthropic key only | Offered last, with its trade stated (extraction misses more changes in upgrade guides; matching off, so more duplicates) | `eval/provider-matrix/RESULTS.md` |
+| Picker order | Jev + OpenAI-compatible key; Jev + Codex; OpenAI-compatible key alone; Codex alone; Anthropic key alone. Options below Jev say so in one line | — |
+| Day 0 / day 20 | Day 0 is the day the release ships; day 20 follows automatically | — |
 
 ## Open decisions (CEO)
 
-1. **Anthropic key only.** No Anthropic model passes extraction (Haiku 5.5: H2 −9.0). Proposed: do not offer it alone;
-   suggest Codex or one other key.
-2. **Picker order.** Proposed, best first:
-   1. Jev key + an OpenAI-compatible key
-   2. Jev key + Codex
-   3. An OpenAI-compatible key alone (D and E below Jev)
-   4. Codex alone (D and E below Jev)
-3. **Day 0.** Release date, and the date central stops (day 20).
+None. Closed 10 November 2026.
+
+## Human-in-the-loop items
+
+- **Release authority:** cutting the release (version bump plus tag, which publishes to npm and Homebrew) and the
+  day-20 cutover are outward-facing; the CEO authorises each, or authorises them in advance.
+- **Telling current users on day 0:** the CEO, directly.
+- **Codex login:** if it lapses, the CEO runs `codex login`.
+- **Not needed:** an OpenAI key (the gateway runs the same OpenAI-compatible code path with the same model, and the
+  mock server covers the protocol), an OpenRouter key (same protocol; parity is a later check).
 
 ## Verification posture
 
@@ -71,7 +77,7 @@ errors are recoverable; leaked keys are not.
 4. **Never fails on cost or provider errors:** budget exhaustion, 401, 429, timeouts, Codex logged out or a model not
    on the plan each defer work with one line, never an error exit.
 
-**Everything else is ship-and-observe.** Explicitly cut: the encoder; Cursor; OpenRouter parity (it follows the gateway
+**Everything else is ship-and-observe.** Explicitly cut: the encoder; Cursor; open-ended rule tuning for no-key mode (WS9 has a stopping rule); OpenRouter parity (it follows the gateway
 row until a check runs); repeat runs of the evals.
 
 ## Durability and pacing

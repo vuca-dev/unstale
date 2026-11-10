@@ -17,6 +17,10 @@ WS1, WS2 and WS3 merged.
       (provider, model, model version, prompt version).
 - [ ] **User-level cache:** results keyed by chunk hash, step, model and prompt version, shared by every repo on the
       machine. A second repo with the same technologies makes about zero new calls (test).
+- [ ] **Bounded disk use:** the client cache today is never pruned (152 MB on a heavy development machine, mostly
+      registry metadata and superseded catalog shards). Evict shards no longer referenced by the current index and
+      results for chunks no longer in any synced technology, with a size cap; report the size in `unstale status`.
+      Test: a cache past the cap shrinks below it without losing anything the current index references.
 - [ ] **Order:** technologies processed in demand order under the WS3 budget; backfill window bounded.
 - [ ] **JSON subcommand** for evals (for example `unstale internal run-step --step d --in states.jsonl`) so
       `eval/select` harnesses can call the Rust implementation.
