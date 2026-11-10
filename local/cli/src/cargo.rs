@@ -613,16 +613,23 @@ pub fn detect(root: &Path, notes: &mut Vec<String>, unreadable: &mut usize) -> C
     inventory
 }
 
-/// The crate names a manifest or Cargo config overrides: the keys of every `[patch.<source>]` table and the package
-/// named by each `[replace]` spec (`foo:1.0`, `foo@1.0`, `<url>#foo@1.0`). Without a lockfile nothing records that
-/// such a crate is built from a path, git or private registry, while its declaration still reads as a plain crates.io
-/// requirement. Names are folded as crates.io folds them (case, `-` and `_`); patches on other sources count too, so
-/// none is missed.
+/// The crate names a manifest or Cargo config overrides: the keys of every `[patch.<source>]` table and the `package`
+/// each one renames, and the package named by each `[replace]` spec (`foo:1.0`, `foo@1.0`, `<url>#foo@1.0`). Without
+/// a lockfile nothing records that such a crate is built from a path, git or private registry, while its declaration
+/// still reads as a plain crates.io requirement. The names stay private with a lockfile too, so the rule does not
+/// depend on one. Names are folded as crates.io folds them (case, `-` and `_`); patches on other sources count too,
+/// so none is missed.
 pub(crate) fn overridden_names(doc: &Value) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
     let patches = doc.get("patch").and_then(Value::as_table).into_iter().flat_map(|t| t.values());
     for table in patches.filter_map(Value::as_table) {
-        out.extend(table.keys().map(|k| fold_name(k)));
+        // A renamed patch (`alias = { package = "real", ... }`) overrides the crate it names.
+        for (alias, spec) in table {
+            out.insert(fold_name(alias));
+            if let Some(name) = spec.get("package").and_then(Value::as_str) {
+                out.insert(fold_name(name));
+            }
+        }
     }
     for spec in doc.get("replace").and_then(Value::as_table).into_iter().flat_map(|t| t.keys()) {
         let tail = match spec.rsplit_once('#') {
