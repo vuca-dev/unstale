@@ -159,6 +159,7 @@ pub fn cargo_naming_lits(purl: &str, aliases: &[String]) -> Vec<String> {
         format!("use {name};"),
         format!("use {name} as "),
         format!("extern crate {name};"),
+        format!("extern crate {name} as "),
     ]).collect()
 }
 
@@ -194,7 +195,7 @@ pub fn module_naming(lit: &str) -> bool {
 /// x;`), not any literal that begins with `use `: a JavaScript directive such as `'use cache'` is not an import.
 fn rust_use_literal(lit: &str) -> bool {
     (lit.starts_with("use ") && (lit.ends_with("::") || lit.ends_with(';') || lit.ends_with(" as ")))
-        || (lit.starts_with("extern crate ") && lit.ends_with(';'))
+        || (lit.starts_with("extern crate ") && (lit.ends_with(';') || lit.ends_with(" as ")))
 }
 
 /// A literal that is a relative path (`./src/*`, `../`): in a dependency's record it is a subpath of the dependency's
@@ -3419,6 +3420,7 @@ mod tests {
             ("src/root.rs", "use serde_json;\nuse serde_json as json;\n"),
             ("src/alias.rs", "pub use local_json::Value;\n"),
             ("src/extern.rs", "extern crate serde_json;\n"),
+            ("src/extern_as.rs", "extern crate serde_json as json;\n"),
             ("src/path.rs", "let value = serde_json::from_str(input)?;\n"),
             ("src/comment.rs", "// use serde_json::Value;\n/* extern crate serde_json; */\n/* outer /* nested */\nuse serde_json::Value; */\n"),
             ("src/string.rs", r#"const MESSAGE: &str = "use serde_json::Value;";"#),
@@ -3433,6 +3435,8 @@ use serde_json::Value;
         let h = find(&r, &lits.into_iter().collect(), &set(&[]));
         assert_eq!(h.usage.get("use serde_json::").unwrap(), &["src/conventional.rs"]);
         assert_eq!(h.usage.get("extern crate serde_json;").unwrap(), &["src/extern.rs"]);
+        assert_eq!(h.usage.get("extern crate serde_json as ").unwrap(), &["src/extern_as.rs"]);
+        assert!(module_naming("extern crate serde_json as "));
         assert_eq!(h.usage.get("use serde_json;").unwrap(), &["src/root.rs"]);
         assert_eq!(h.usage.get("use serde_json as ").unwrap(), &["src/root.rs"]);
         assert_eq!(h.usage.get("use local_json::").unwrap(), &["src/alias.rs"]);
@@ -3715,7 +3719,7 @@ use serde_json::Value;
         for other in ["import requests_cache\n", "from requests_oauthlib import x", "\"requests-toolbelt>=1"] {
             assert!(!py.iter().any(|l| other.contains(l.as_str())), "{other}");
         }
-        assert_eq!(naming_lits("pkg:cargo/serde"), ["serde::", "use serde::", "use serde;", "use serde as ", "extern crate serde;"]);
+        assert_eq!(naming_lits("pkg:cargo/serde"), ["serde::", "use serde::", "use serde;", "use serde as ", "extern crate serde;", "extern crate serde as "]);
     }
 
     /// `find` over `files` with the literals and each package's naming literals, then a scope for those packages.
