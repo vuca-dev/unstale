@@ -873,6 +873,25 @@ fn parse_lock_reference(value: &Value) -> Option<CargoLockDependency> {
         source,
     })
 }
+/// Cargo writes a dependency as its bare name, or as `name version`, whenever that is enough to pick one package of
+/// the lockfile; the full `name version (source)` only when it is not. Each reference gets the version and source of
+/// the one package it names, as Cargo reads it; a reference that names no single package is left as written.
+fn complete_lock_references(packages: &mut [CargoLockPackage]) {
+    let ids: Vec<CargoPackageId> = packages.iter().map(|p| p.id.clone()).collect();
+    for package in packages.iter_mut() {
+        for dependency in &mut package.dependencies {
+            let mut candidates = ids.iter().filter(|id| {
+                id.name == dependency.name
+                    && dependency.version.as_ref().is_none_or(|v| &id.version == v)
+                    && dependency.source.as_ref().is_none_or(|s| id.source.as_ref() == Some(s))
+            });
+            if let (Some(id), None) = (candidates.next(), candidates.next()) {
+                dependency.version = Some(id.version.clone());
+                dependency.source = id.source.clone();
+            }
+        }
+    }
+}
 fn read_lock(
     path: &Path,
     file: &str,
@@ -950,6 +969,7 @@ fn read_lock(
             dependencies,
         });
     }
+    complete_lock_references(&mut packages);
     if bad {
         note(
             notes,

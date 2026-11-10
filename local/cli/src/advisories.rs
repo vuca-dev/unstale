@@ -2052,6 +2052,52 @@ mod tests {
 
     const CRATES_IO: &str = "registry+https://github.com/rust-lang/crates.io-index";
 
+    /// Cargo writes a dependency as its bare name whenever one package of the lockfile has that name, as most do.
+    #[test]
+    fn cargo_graph_reads_the_bare_references_cargo_writes_for_unambiguous_dependencies() {
+        let root = tempfile::tempdir().unwrap();
+        write(
+            root.path(),
+            "Cargo.toml",
+            "[workspace]\nmembers = [\"util\"]\n[package]\nname = \"app\"\nversion = \"1.0.0\"\n[dependencies]\nregex = \"1.5\"\nutil = { path = \"util\" }\n",
+        );
+        write(root.path(), "util/Cargo.toml", "[package]\nname = \"util\"\nversion = \"0.1.0\"\n[dependencies]\nleaf-crate = \"2\"\n");
+        write(
+            root.path(),
+            "Cargo.lock",
+            &format!(
+                "version = 3\n\n[[package]]\nname = \"app\"\nversion = \"1.0.0\"\ndependencies = [\n \"regex\",\n \"util\",\n]\n\n[[package]]\nname = \"regex\"\nversion = \"1.5.4\"\nsource = \"{CRATES_IO}\"\ndependencies = [\"memchr 2.4.1\"]\n\n[[package]]\nname = \"memchr\"\nversion = \"2.4.1\"\nsource = \"{CRATES_IO}\"\n\n[[package]]\nname = \"util\"\nversion = \"0.1.0\"\ndependencies = [\"leaf-crate\"]\n\n[[package]]\nname = \"leaf-crate\"\nversion = \"2.0.0\"\nsource = \"{CRATES_IO}\"\n"
+            ),
+        );
+        let st = cargo_stack(root.path());
+        let gs = graphs(root.path(), &st);
+        assert_eq!(gs.len(), 1);
+        let g = &gs[0];
+        assert_eq!(
+            g.direct(),
+            BTreeSet::from([("leaf-crate".into(), "2.0.0".into()), ("regex".into(), "1.5.4".into())]),
+            "bare references from both workspace members establish their declarations"
+        );
+        let regex = g.nodes.iter().position(|n| n.name == "regex").unwrap();
+        let memchr = g.nodes.iter().position(|n| n.name == "memchr").unwrap();
+        assert!(g.nodes[regex].edges.iter().any(|e| e.to == memchr), "a `name version` reference is a lock edge");
+
+        let matches = BTreeMap::from([
+            (("crates.io".into(), "regex".into(), "1.5.4".into()), vec!["GHSA-regex".into()]),
+            (("crates.io".into(), "memchr".into(), "2.4.1".into()), vec!["GHSA-memchr".into()]),
+        ]);
+        let docs = BTreeMap::from([
+            ("GHSA-regex".into(), doc(Some(Severity::High), "2025-01-01T00:00:00Z", &[("crates.io", "regex", &["1.5.5"])], &[])),
+            ("GHSA-memchr".into(), doc(Some(Severity::High), "2025-01-01T00:00:00Z", &[("crates.io", "memchr", &["2.4.2"])], &[])),
+        ]);
+        let (raw, items) = evaluate(&gs, &matches, &docs, |_, _, _| vec![], util::parse_date("2026-10-18").unwrap());
+        assert_eq!(raw, 2);
+        let regex_item = items.iter().find(|i| i.name == "regex").expect("a high advisory on a direct runtime crate calls for action");
+        assert_eq!(regex_item.why, vec!["high at runtime"]);
+        let memchr_item = items.iter().find(|i| i.name == "memchr").expect("a transitive crate is grouped under its direct dependency");
+        assert_eq!(memchr_item.via, vec!["regex 1.5.4"]);
+    }
+
     #[test]
     fn cargo_graph_uses_source_identity_aliases_and_unknown_transitive_evidence() {
         let root = tempfile::tempdir().unwrap();
