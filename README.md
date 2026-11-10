@@ -64,8 +64,8 @@ and can focus on a package, upgrade target, or capability you name.
 
 - **Upgrade reviews.** What your next major version requires, obligations first, located in your code.
 - **Bump digests.** What each available version bump fixes, security advisories included, with no model calls.
-- **Publisher deprecations.** Installed direct dependencies that their publisher deprecated (npm) or yanked (PyPI),
-with the registry's message. This works whether or not the catalog covers the package yet.
+- **Publisher deprecations.** Installed direct dependencies that their publisher deprecated (npm) or yanked (PyPI,
+crates.io), with the registry's message. This works whether or not the catalog covers the package yet.
 - **Lockfile advisories.** OSV advisories on every installed version, transitive ones included. Each one is grouped
 under the direct dependency that pulls it in. Only advisories that call for action are shown. `unstale advisories`
 lists the rest.
@@ -83,9 +83,10 @@ about changes it would not know to ask about.
 ## Works with
 
 - **Agents:** Claude Code, Codex, Cursor, opencode
-- **Ecosystems:** npm (TypeScript, JavaScript) and PyPI (Python). Versions come from your lockfile: npm, pnpm, Yarn,
-uv, Poetry, PDM and Pipenv. Any package in a supported ecosystem works with no per-package setup. If the catalog does
-not cover a package yet, unstale queues it for coverage. `unstale status` shows its progress.
+- **Ecosystems:** npm (TypeScript, JavaScript), PyPI (Python) and crates.io (Rust). Versions come from your
+lockfile: npm, pnpm, Yarn, uv, Poetry, PDM, Pipenv and Cargo. Any package in a supported ecosystem works with no
+per-package setup. If the catalog does not cover a package yet, unstale queues it for coverage. `unstale status` shows
+its progress.
 
 ## How it works
 
@@ -112,26 +113,29 @@ code, file paths or versions. No client telemetry. The service runs on Cloudflar
 service keeps the address in memory only, to apply rate limits and count each address once per package. It never
 writes the address to storage. There is no account or client ID. The service keeps daily aggregate counts of
 coverage-request outcomes for up to 90 UTC days. These counts hold no addresses, package lists or individual request
-histories. They measure service demand, not people or installs. The client also reads the public npm and PyPI
-registries for your direct packages at their installed versions, as a package manager does. It checks that each name
-is the public package, and whether its publisher deprecated (npm) or yanked (PyPI) that version. For advisories, the
-client sends the package names and versions that its lockfiles resolve to OSV (`api.osv.dev`), as `npm audit` would.
-- **Private packages stay private.** unstale never names a private package to npm, PyPI, OSV or the coverage service.
-A package is private if your lockfile installed it from anywhere but the public registry, or if your registry
+histories. They measure service demand, not people or installs. The client also reads the public npm, PyPI and
+crates.io registries for your direct packages at their installed versions, as a package manager does. It checks that
+each name is the public package, and whether its publisher deprecated (npm) or yanked (PyPI, crates.io) that version.
+For advisories, the client sends the package names and versions that its lockfiles resolve to OSV (`api.osv.dev`), as
+`npm audit` would.
+- **Private packages stay private.** unstale never names a private package to npm, PyPI, crates.io, OSV or the coverage
+service. A package is private if your lockfile installed it from anywhere but the public registry, or if your registry
 configuration points elsewhere. `UNSTALE_NO_REGISTRY=1` turns off every third-party lookup.
   <details><summary>Which configuration it reads, and edge cases</summary>
 
   The client reads `.npmrc` (the repository's, nested ones and `~/.npmrc`), `NPM_CONFIG_*` variables, `.yarnrc.yml`
   `npmScopes` and `npmRegistryServer`, `bunfig.toml`, `pip.conf`, `PIP_INDEX_URL` and `PIP_EXTRA_INDEX_URL`,
-  requirements index options, uv indexes and sources, and Poetry, PDM and Pipfile sources.
+  requirements index options, uv indexes and sources, Poetry, PDM and Pipfile sources, and Cargo's `.cargo/config.toml`
+  (the repository's and `$CARGO_HOME`'s) and `CARGO_*` registry variables.
 
   A scoped private registry keeps that scope's packages local. A registry that replaces the public one, such as an
-  Artifactory or Nexus proxy, keeps every package of that ecosystem local. Paid private npm packages are scoped and
-  served from `registry.npmjs.org`. So when you are logged in to npm, a scoped package reaches OSV only after an
-  anonymous read of npm confirms that it is public. Configuration in test, example and fixture directories applies only
-  to the packages that those directories alone declare. Public mirrors count as public: npmmirror, the Tsinghua and
-  Aliyun PyPI mirrors, and PyTorch's index. With `UNSTALE_NO_REGISTRY=1`, the client submits no new package for
-  coverage. It still reads the coverage status of packages already registered.
+  Artifactory or Nexus proxy, keeps every package of that ecosystem local, as does any Cargo source replacement (`cargo
+  vendor`'s included). Paid private npm packages are scoped and served from `registry.npmjs.org`. So when you are logged
+  in to npm, a scoped package reaches OSV only after an anonymous read of npm confirms that it is public. Configuration
+  in test, example and fixture directories applies only to the packages that those directories alone declare. Public
+  mirrors count as public: npmmirror, the Tsinghua and Aliyun PyPI mirrors, and PyTorch's index. With
+  `UNSTALE_NO_REGISTRY=1`, the client submits no new package for coverage. It still reads the coverage status of
+  packages already registered.
   </details>
 - **A signed catalog.** Catalog indexes carry an Ed25519 signature and name the sha256 of each shard. The client
 discards anything that does not verify.
