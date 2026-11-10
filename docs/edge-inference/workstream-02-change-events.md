@@ -16,6 +16,8 @@ which parts of that are deterministic, and how the client syncs shards (`local/c
       republish).
 - [ ] Published as signed, content-addressed shards in the same layout as records; older clients ignore them.
 - [ ] The client syncs and caches them (no consumer yet; WS4 reads them).
+- [ ] **Freshness timestamps:** each release's events carry the registry publish time (when known) and when central
+      first saw the release and first published its events, so the gap can be measured, not estimated.
 - [ ] Size measured on the live catalog: bytes per technology-year (expected about 32 KB) and total.
 - [ ] The coverage service's onboarding path publishes events for a new package without any model call.
 
