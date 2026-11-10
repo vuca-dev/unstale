@@ -75,3 +75,26 @@ Under $5 in all. Gateway ≤ $2.50 (balance $4.45 at the start; runners refuse b
 ≤ $0.60 for D (`run4.mts --decisions-cap`) and ≤ $0.40 for E (`judge2.mts` DECISIONS_CAP). OpenAI chat (G6d) ≤ $0.20.
 Jev ≤ $0.10 (the Q8 baselines). A provider whose calls fail repeatedly is stopped and reported. Every call is logged
 with tokens and dollars in the runner's usage log.
+
+## Addendum 1: gpt-6-luna chat on step D, read on its choices (confirmatory)
+
+Written 10 November 2026, after the run above and before any call for this addendum. **This tests a reading first seen
+descriptively in that run** (RESULTS.md: at its choices gpt-6-luna chat looked level with or above Jev on H1 and H2),
+so it needs a **fresh run**: rescoring the existing answers would reuse the draw that suggested the reading. The
+existing answers are rescored the same way and reported beside it, labelled descriptive.
+
+- **Arm (CH):** gateway `openai/gpt-6-luna`, `reasoning_effort: low`, asked through production's chat-fallback prompt
+  and parser (`adapter.ts` `ChatClassifier`: one option per question, no probabilities; the answer becomes probability
+  1 for the choice and 0 for the rest, `calibrated: false`). `run4.mts --cand choice:openai/gpt-6-luna`, empty caches.
+  Breaking and benefit are the chosen options; no threshold is fitted on stated probabilities (any threshold in (0, 1]
+  gives the choice).
+- **Sets:** slice 4 dev (run for completeness; nothing is fitted on it), H1 (233 records), H2 (347 records), each once.
+- **Baseline:** Jev on today's wording (v1 runs `jev-*-qv1`, J1's role on the questions `labelQuestions()` asks now).
+- **Rule (slice 4, unchanged), H1:** breaking, benefit-vs-none and actionable recall each ≤ 5 points below Jev at Jev's
+  dev-fitted thresholds and the paired CI not wholly below 0; guard: change_type accuracy and removal + deprecation
+  recall, paired CI not wholly below 0. **H2:** breaking recall and breaking precision against Jev at 0.5,
+  section-cluster CI not wholly below 0. CH passes if H1 and H2 both pass.
+- **Reported beside it, pre-registered as secondary:** the same H1 comparison against Jev at 0.5, production's live
+  thresholds. Known before this run, from the descriptive reading: CH-like breaking recall is about 7 points below
+  Jev's fitted 0.05 on H1, so the primary rule may fail on that margin alone.
+- **Budget:** ≤ $1 gateway (the runner's slice cap and the $2 balance stop still apply).
