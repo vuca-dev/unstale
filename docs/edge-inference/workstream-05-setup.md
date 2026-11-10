@@ -20,7 +20,7 @@ WS3 merged.
 - [ ] **Config:** `inference = { provider = "...", key_env = "..." }` in the repo config (shared by a team) or the user
       config. The key value is never written anywhere.
 - [ ] **No terminal:** `--inference <provider|env:NAME|codex|none>` for CI; with no terminal and no flag, no prompt
-      and the default from open decision 1.
+      and, with no provider configured, deterministic signals only.
 - [ ] **Agents:** the managed skill tells the agent to show the user the picker's options and ask, never to choose.
 - [ ] **Status:** `unstale status` shows the provider, this month's tokens and the budget.
 
