@@ -1,9 +1,13 @@
 # Scope: admitted population, changes per technology-quarter, admission thresholds (16 October 2026)
 
-Question (user): what does the **median** admitted technology cost per quarter, across the supported ecosystems (npm,
-which includes TypeScript packages, and PyPI; cargo has thresholds but no adapter), and are the admission thresholds in
-`central/src/pipeline/admission.ts` (fresh: a release or push within 365 days; used: ≥ 1,000 weekly downloads or ≥ 100
-stars; unreadable signals fail open) sound before organic demand data exists?
+Question (user): what does the **median** admitted technology cost per quarter in the studied population (npm, which
+includes TypeScript packages, and PyPI; this report does not evaluate Rust), and are the npm/PyPI admission thresholds
+(fresh: a release or push within 365 days; used: ≥ 1,000 weekly downloads or ≥ 100 stars; unreadable signals fail open)
+sound before organic demand data exists?
+
+Cargo's existing admission settings are separate and provisional: 10,000 crates.io downloads over the registry's 90-day
+window, or 100 stars, with 365-day freshness. This report contains no Rust-specific calibration, and its npm/PyPI sample
+is not evidence for changing the Cargo floor. The crates.io 90-day count must not be presented as weekly downloads.
 
 **The earlier cost projections were per technology-YEAR** ($0.040 per technology-year, i.e. $400 / $2,000 / $8,000 a
 year at 10k / 50k / 200k technologies), built on R = 114.6 records per technology-year, the MEAN over the catalog's
@@ -105,7 +109,7 @@ They are the per-technology tail, not a fleet cost.
 - **The 200k tier and the ceiling are dominated by a handful of verbose packages,** hence the wide CIs. The worst case
   per technology scales with its note volume, not its popularity.
 
-## Threshold findings and recommendations (ranked)
+## Threshold findings and recommendations for the studied npm/PyPI population (ranked)
 
 Each finding gives the share of admitted packages, technologies and model cost it touches (deep sample, registry-wide).
 **Model cost is already self-limiting:** a package with no release produces no extraction. Admission rules mostly
@@ -159,8 +163,8 @@ save crawling, docs snapshots and queue size. The cost lever is the technology u
 **Rejected:**
 - **Dependents count as a usage gate.** 44% of admitted packages show 0 dependents, including 9–17% of packages at
   100k–1M+ weekly downloads, because coverage is incomplete (PyPI especially). Usable only as a ranking signal.
-- **Raising the download floor.** The fleet is demand-driven. Below the floor the stars path, not downloads, is the
-  problem (rule 3).
+- **Raising the download floor (studied npm/PyPI population).** The fleet is demand-driven. Below the floor the stars
+  path, not downloads, is the problem (rule 3). This finding is not a recommendation for Cargo.
 - **Downloads alone as proof of use.** CI and bot installs pass 1k a week: a test-fixture package in the sample has 17k a
   month. Rejected as a reason to change anything before demand data, since demand (direct declaration) is the real gate.
 

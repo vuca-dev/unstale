@@ -49,7 +49,9 @@ export interface Thresholds {
   minStars: number;
 }
 
-/** Per-ecosystem floors. Starting values from the D1 sample (eval/docs-sources/admission.mts); revisit with demand data. */
+/** Per-ecosystem floors. The npm and PyPI settings are associated with the D1 sample (eval/docs-sources/admission.mts);
+ * that study contains no Rust-specific calibration. Cargo's settings are a separate provisional policy: 10,000 crates.io
+ * downloads over its 90-day count (not a weekly count), or 100 stars, with the same 365-day freshness window. */
 export const THRESHOLDS: Record<string, Thresholds> = {
   npm: { freshDays: 365, minDownloads: 1_000, minStars: 100 },
   pypi: { freshDays: 365, minDownloads: 1_000, minStars: 100 },
@@ -296,8 +298,10 @@ export function fromCargo(doc: any): Pick<Signals, "lastRelease" | "deprecated" 
   if (!doc) return {};
   const versions: any[] = doc.versions ?? [];
   const live = versions.filter((v) => !v.yanked);
+  const downloads = doc.crate?.recent_downloads;
+  const validDownloads = Number.isSafeInteger(downloads) && downloads >= 0 ? downloads : undefined;
   return {
-    downloads: doc.crate?.recent_downloads,
+    ...(validDownloads !== undefined ? { downloads: validDownloads } : {}),
     lastRelease: newest(live.map((v) => v.created_at)),
     ...(versions.length > 0 && live.length === 0 ? { deprecated: "every version is yanked" } : {}),
   };

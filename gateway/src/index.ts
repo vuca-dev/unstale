@@ -185,7 +185,11 @@ async function published(env: Env, url: URL, purl: string): Promise<Record<strin
  */
 async function registered(purl: string): Promise<boolean | undefined> {
   const name = packageIdentity(purl);
-  const url = purl.startsWith("pkg:pypi/") ? `https://pypi.org/pypi/${name}/json` : `https://registry.npmjs.org/${name.replace("/", "%2F")}/latest`;
+  const url = purl.startsWith("pkg:pypi/")
+    ? `https://pypi.org/pypi/${name}/json`
+    : purl.startsWith("pkg:cargo/")
+      ? `https://crates.io/api/v1/crates/${encodeURIComponent(name)}`
+      : `https://registry.npmjs.org/${name.replace("/", "%2F")}/latest`;
   try {
     const res = await fetch(url, { headers: { Accept: "application/json", "User-Agent": "unstale-gateway" } });
     await res.body?.cancel();

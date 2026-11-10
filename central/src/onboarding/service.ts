@@ -13,6 +13,7 @@ import {
   DISCOVERY_VERSION,
   releasePattern,
   packageIdentity,
+  cargoPurl,
   technologyId,
   pipelineTechnology,
   type PublicTechnology,
@@ -166,7 +167,11 @@ const advisoryRecords = (n: number) => `${n} security advisory record${n === 1 ?
 const day = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 /** The package URL of a package name in the same ecosystem as `purl` (PyPI names PEP 503-normalised). */
 export const typedPurl = (purl: string, name: string): string =>
-  purl.startsWith("pkg:pypi/") ? `pkg:pypi/${name.toLowerCase().replace(/[-_.]+/g, "-")}` : npmPurl(name);
+  purl.startsWith("pkg:cargo/")
+    ? cargoPurl(name)
+    : purl.startsWith("pkg:pypi/")
+      ? `pkg:pypi/${name.toLowerCase().replace(/[-_.]+/g, "-")}`
+      : npmPurl(name);
 const requestSchema = z.object({ purl: z.string().max(230) }).strict();
 const jobPath = (purl: string) =>
   join(centralDir(), "onboarding", "jobs", `${sha256(purl)}.json`);
