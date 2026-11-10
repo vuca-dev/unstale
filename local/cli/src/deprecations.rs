@@ -214,7 +214,8 @@ fn cargo_versions_latest(name: &str, doc: &serde_json::Value) -> Option<(String,
         Some((version, number.to_string(), yanked))
     }).collect();
     let choose = |items: Vec<(semver::Version, String, bool)>| items.into_iter().max_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
-    choose(parsed.iter().filter(|(_, _, yanked)| !*yanked).cloned().collect())
+    choose(parsed.iter().filter(|(version, _, yanked)| version.pre.is_empty() && !*yanked).cloned().collect())
+        .or_else(|| choose(parsed.iter().filter(|(_, _, yanked)| !*yanked).cloned().collect()))
         .or_else(|| choose(parsed))
         .map(|(_, version, yanked)| (version, yanked))
 }
@@ -298,12 +299,13 @@ pub fn refresh(cache: &Path, st: &Stack, stop: &(dyn Fn() -> bool + Sync)) -> us
         if stop() {
             return None;
         }
-        let request = agent.get(url);
-        let mut r = if url.starts_with("https://crates.io/") {
-            request.header("User-Agent", &format!("unstale/{} (https://unstale.dev)", env!("CARGO_PKG_VERSION"))).call().ok()
-        } else {
-            request.call().ok()
-        }.filter(|r| r.status().is_success())?;
+        let mut r = crate::onboarding::registry_call(url, || {
+            if url.starts_with("https://crates.io/") {
+                agent.get(url).header("User-Agent", &format!("unstale/{} (https://unstale.dev)", env!("CARGO_PKG_VERSION"))).call()
+            } else {
+                agent.get(url).call()
+            }
+        }).filter(|r| r.status().is_success())?;
         let bytes = r.body_mut().with_config().limit(4 * 1024 * 1024).read_to_vec().ok()?;
         serde_json::from_slice(&bytes).ok()
     };
@@ -549,6 +551,7 @@ mod tests {
             {"crate": "foo-bar", "num": "1.2.3", "yanked": true},
             {"crate": "foo-bar", "num": "1.5.0", "yanked": false},
             {"crate": "foo-bar", "num": "2.0.0", "yanked": true},
+            {"crate": "foo-bar", "num": "3.0.0-alpha.1", "yanked": false},
             {"crate": "foo-bar", "num": "2.bad", "yanked": false}
         ]});
         assert_eq!(refresh_with(cache.path(), &st, 1_000_000, |url| if url.ends_with("/versions") { Some(versions.clone()) } else { Some(version_doc.clone()) }), 2);

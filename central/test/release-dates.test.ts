@@ -190,7 +190,7 @@ describe("release dates", () => {
 });
 
 describe("a technology with no GitHub release notes", () => {
-  test("Cargo registry releases paginate serially, use created_at, and reuse the shared cache offline", async () => {
+  test("Cargo registry releases use created_at from the full version list and reuse the shared cache offline", async () => {
     const firstPage = Array.from({ length: 100 }, (_, i) => ({
       num: i === 0 ? "1.0.0" : `0.0.${i}`,
       created_at: i === 0 ? `${SINCE}T12:00:00Z` : "2020-01-01T00:00:00Z",
@@ -205,8 +205,7 @@ describe("a technology with no GitHub release notes", () => {
     ];
     vi.stubGlobal("fetch", async (url: string) => {
       calls.push(url);
-      if (url.endsWith("page=1&per_page=100")) return Response.json({ versions: firstPage });
-      if (url.endsWith("page=2&per_page=100")) return Response.json({ versions: secondPage });
+      if (url.endsWith("/versions")) return Response.json({ versions: [...firstPage, ...secondPage] });
       return new Response("unexpected URL", { status: 400 });
     });
     const { registryReleases } = await import("../src/pipeline/fetch.ts");
@@ -216,32 +215,25 @@ describe("a technology with no GitHub release notes", () => {
       { version: "1.1.0", date: "2025-10-16", url: "https://crates.io/crates/fixture-crate/1.1.0" },
       { version: "1.2.0", date: "2025-10-19", url: "https://crates.io/crates/fixture-crate/1.2.0" },
     ]);
-    expect(calls).toEqual([
-      "https://crates.io/api/v1/crates/fixture-crate/versions?page=1&per_page=100",
-      "https://crates.io/api/v1/crates/fixture-crate/versions?page=2&per_page=100",
-    ]);
+    expect(calls).toEqual(["https://crates.io/api/v1/crates/fixture-crate/versions"]);
     expect(calls.some((url) => url.includes("api.github.com"))).toBe(false);
     calls = [];
     expect(await registryReleases(CARGO, { offline: true })).toEqual(releases);
     expect(calls).toEqual([]);
   });
 
-  test("missing crates and later-page failures fail open without caching a partial Cargo index", async () => {
+  test("missing crates and failed version lists fail open without caching a Cargo index", async () => {
     const missing: Technology = { ...CARGO, id: "cargo-missing", components: ["pkg:cargo/missing-crate"] };
     const failed: Technology = { ...CARGO, id: "cargo-later-failure", components: ["pkg:cargo/retry-crate"] };
     const { registryReleases } = await import("../src/pipeline/fetch.ts");
     vi.stubGlobal("fetch", async (url: string) => {
       calls.push(url);
       if (url.includes("/missing-crate/versions")) return new Response("", { status: 404 });
-      if (url.endsWith("page=1&per_page=100")) return Response.json({ versions: Array.from({ length: 100 }, (_, i) => ({ num: `1.0.${i}`, created_at: "2025-10-16T00:00:00Z" })) });
       return new Response("unavailable", { status: 400 });
     });
     expect(await registryReleases(missing)).toEqual([]);
     expect(await registryReleases(failed)).toEqual([]);
-    expect(calls.filter((url) => url.includes("retry-crate"))).toEqual([
-      "https://crates.io/api/v1/crates/retry-crate/versions?page=1&per_page=100",
-      "https://crates.io/api/v1/crates/retry-crate/versions?page=2&per_page=100",
-    ]);
+    expect(calls.filter((url) => url.includes("retry-crate"))).toEqual(["https://crates.io/api/v1/crates/retry-crate/versions"]);
     expect(calls.some((url) => url.includes("api.github.com"))).toBe(false);
 
     calls = [];
@@ -250,7 +242,7 @@ describe("a technology with no GitHub release notes", () => {
       return Response.json({ versions: [{ num: "2.0.0", created_at: "2025-10-20T00:00:00Z" }] });
     });
     expect(await registryReleases(failed)).toEqual([{ version: "2.0.0", date: "2025-10-20", url: "https://crates.io/crates/retry-crate/2.0.0" }]);
-    expect(calls).toEqual(["https://crates.io/api/v1/crates/retry-crate/versions?page=1&per_page=100"]);
+    expect(calls).toEqual(["https://crates.io/api/v1/crates/retry-crate/versions"]);
     expect(calls.some((url) => url.includes("api.github.com"))).toBe(false);
   });
 

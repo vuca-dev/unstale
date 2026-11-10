@@ -6,7 +6,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
-import { attachAdvisories, basisOf, fixesInWindow, fromOsv, idsAtQuote, inRange, listedPackages, resolveRange, semverCmp, toRecordAdvisory, type Advisory, type AffectedRange } from "../src/pipeline/advisories.ts";
+import { attachAdvisories, basisOf, fetchAdvisories, fixesInWindow, fromOsv, idsAtQuote, inRange, listedPackages, resolveRange, semverCmp, toRecordAdvisory, type Advisory, type AffectedRange } from "../src/pipeline/advisories.ts";
 import { canonicalPurl, cargoName, cargoPurl, ecosystemOf, githubRepo, pep440Order, semverOrder } from "../src/pipeline/ecosystems.ts";
 import type { Classification } from "../src/pipeline/classify/adapter.ts";
 import type { StoredRecord, TechStore } from "../src/pipeline/store.ts";
@@ -294,6 +294,30 @@ describe("advisories", () => {
       refuse = "@acme%2fother/latest";
       await expect(siblings(tech(["pkg:npm/%40acme/core"], "acme/acme"))).rejects.toThrow(/403/);
     } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test("an OSV query whose connection drops is tried again; one that keeps failing names its cause", async () => {
+    const t = { ...TECHNOLOGIES.next!, id: "osv-retry", components: ["pkg:pypi/django"] };
+    const vuln = { id: "GHSA-aaaa-bbbb-cccc", affected: [{ package: { ecosystem: "PyPI", name: "django", purl: "pkg:pypi/django" }, ranges: [{ type: "ECOSYSTEM", events: [{ introduced: "4.2" }, { fixed: "4.2.2" }] }] }] };
+    const dropped = () => Promise.reject(new TypeError("fetch failed", { cause: Object.assign(new Error("other side closed"), { code: "UND_ERR_SOCKET" }) }));
+    let drops = 1;
+    let calls = 0;
+    vi.stubGlobal("fetch", async () => (++calls <= drops ? dropped() : Response.json({ vulns: [vuln] })));
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    try {
+      const first = fetchAdvisories(t, { refresh: true });
+      await vi.runAllTimersAsync();
+      expect((await first).map((a) => a.id)).toEqual(["GHSA-AAAA-BBBB-CCCC"]);
+      expect(calls).toBe(2);
+      [calls, drops] = [0, 3];
+      const failed = expect(fetchAdvisories(t, { refresh: true })).rejects.toThrow("OSV pkg:pypi/django: fetch failed (UND_ERR_SOCKET)");
+      await vi.runAllTimersAsync();
+      await failed;
+      expect(calls).toBe(3);
+    } finally {
+      vi.useRealTimers();
       vi.unstubAllGlobals();
     }
   });

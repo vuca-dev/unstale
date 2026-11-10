@@ -360,27 +360,20 @@ async function pypiDependencies(component: string, version: string): Promise<str
 async function cargoPublishTimes(component: string): Promise<Record<string, string> | undefined> {
   const name = cargoName(component);
   if (!name) throw new TypeError(`invalid Cargo component: ${component}`);
+  const doc = await getJson(`https://crates.io/api/v1/crates/${encodeURIComponent(name)}/versions`);
+  if (doc === undefined) return undefined;
+  if (!doc || typeof doc !== "object" || !Array.isArray((doc as { versions?: unknown }).versions))
+    throw new Error(`malformed crates.io versions response for ${name}`);
   const out: Record<string, string> = {};
-  for (let page = 1; page <= 1000; page++) {
-    const doc = await getJson(`https://crates.io/api/v1/crates/${encodeURIComponent(name)}/versions?page=${page}&per_page=100`);
-    if (doc === undefined) {
-      if (page === 1) return undefined;
-      throw new Error(`crates.io returned no response for ${name} page ${page}`);
-    }
-    if (!doc || typeof doc !== "object" || !Array.isArray((doc as { versions?: unknown }).versions))
-      throw new Error(`malformed crates.io versions response for ${name} page ${page}`);
-    const versions = (doc as { versions: unknown[] }).versions;
-    for (const row of versions) {
-      if (!row || typeof row !== "object" || Array.isArray(row)) throw new Error(`malformed crates.io version row for ${name} page ${page}`);
-      const item = row as { num?: unknown; created_at?: unknown };
-      if (typeof item.num !== "string" || semverOrder(item.num, item.num) === undefined || typeof item.created_at !== "string") continue;
-      const time = Date.parse(item.created_at);
-      if (Number.isNaN(time)) continue;
-      out[item.num] = new Date(time).toISOString();
-    }
-    if (versions.length < 100) return Object.keys(out).length ? out : undefined;
+  for (const row of (doc as { versions: unknown[] }).versions) {
+    if (!row || typeof row !== "object" || Array.isArray(row)) throw new Error(`malformed crates.io version row for ${name}`);
+    const item = row as { num?: unknown; created_at?: unknown };
+    if (typeof item.num !== "string" || semverOrder(item.num, item.num) === undefined || typeof item.created_at !== "string") continue;
+    const time = Date.parse(item.created_at);
+    if (Number.isNaN(time)) continue;
+    out[item.num] = new Date(time).toISOString();
   }
-  throw new Error(`crates.io versions page limit reached for ${name}`);
+  return Object.keys(out).length ? out : undefined;
 }
 
 function cargoVersionPage(component: string, version: string): string {

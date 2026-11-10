@@ -3,7 +3,7 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import { usageLog } from "../src/pipeline/paths.ts";
 import { TECHNOLOGIES } from "../src/pipeline/technologies.ts";
 import { jevAttribution, estimate, loadPrices, monitoredTechnologies, providerAttribution, usageByPhase } from "../src/pipeline/usage.ts";
@@ -19,7 +19,13 @@ afterAll(() => {
   if (prev === undefined) delete process.env.UNSTALE_CENTRAL_DIR;
   else process.env.UNSTALE_CENTRAL_DIR = prev;
 });
-beforeEach(() => rmSync(usageLog(), { force: true }));
+// Not the Actions run these tests execute in: a re-run sets GITHUB_RUN_ATTEMPT=2, which no fixture line carries.
+beforeEach(() => {
+  rmSync(usageLog(), { force: true });
+  vi.stubEnv("GITHUB_RUN_ID", undefined);
+  vi.stubEnv("GITHUB_RUN_ATTEMPT", undefined);
+});
+afterEach(() => void vi.unstubAllEnvs());
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const lines = () => readFileSync(usageLog(), "utf8").trim().split("\n").map((l) => JSON.parse(l) as Record<string, unknown>);
 

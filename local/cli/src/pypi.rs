@@ -327,9 +327,9 @@ fn pep508_list(v: Option<&Value>, out: &mut Vec<Req>) {
     }
 }
 
-/// Declared requirements of a `pyproject.toml`, whether it names a distribution (a library candidate), and its PEP 621
+/// Declared requirements of a `pyproject.toml`, the distribution it names (a library candidate), and its PEP 621
 /// optional extras' requirements, kept apart: an extra installs only when asked for (`pip install pkg[rl]`).
-fn pyproject(text: &str) -> Option<(Vec<Req>, bool, Vec<Req>)> {
+fn pyproject(text: &str) -> Option<(Vec<Req>, Option<String>, Vec<Req>)> {
     let doc: Value = toml::from_str(text).ok()?;
     let mut out = vec![];
     let mut extras = vec![];
@@ -347,8 +347,8 @@ fn pyproject(text: &str) -> Option<(Vec<Req>, bool, Vec<Req>)> {
     for g in poetry.and_then(|p| p.get("group")).and_then(Value::as_table).into_iter().flat_map(|t| t.values()) {
         table_deps(g.get("dependencies"), &mut out);
     }
-    let named = project.and_then(|p| p.get("name")).is_some() || poetry.and_then(|p| p.get("name")).is_some();
-    Some((out, named, extras))
+    let name = [project, poetry].into_iter().flatten().find_map(|p| p.get("name")?.as_str()).map(normalize);
+    Some((out, name, extras))
 }
 
 /// A lockfile's pinned versions by normalised name.
@@ -509,24 +509,39 @@ fn imported_modules(root: &Path, projects: &BTreeSet<PathBuf>) -> (BTreeMap<Path
     (out, own)
 }
 
-/// The top-level module of each absolute `import a.b, c as d` and `from a.b import x` statement at a line start.
-fn import_roots(text: &str) -> Vec<String> {
+/// The top-level module of each absolute `import a.b, c as d` and `from a.b import x` statement, at a line start or
+/// after `;` or a one-line block's `:` (`try: import x`). A relative import (`from .a import b`) is the repository's own.
+pub fn import_roots(text: &str) -> Vec<String> {
     let mut out = vec![];
     let ident = |s: &str| s.split('.').next().map(str::trim).filter(|m| !m.is_empty() && m.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') && !m.starts_with(|c: char| c.is_ascii_digit())).map(String::from);
     for line in text.lines() {
-        let t = line.trim_start();
-        if let Some(rest) = t.strip_prefix("from ") {
-            if let Some((m, _)) = rest.split_once(" import") {
-                out.extend(ident(m.trim()));
-            }
-        } else if let Some(rest) = t.strip_prefix("import ") {
-            let rest = rest.split('#').next().unwrap_or("");
-            for part in rest.split(',') {
-                out.extend(ident(part.split_whitespace().next().unwrap_or("")));
+        for t in line.split('#').next().unwrap_or("").split([';', ':']).map(str::trim_start) {
+            if let Some(rest) = t.strip_prefix("from ") {
+                if let Some((m, _)) = rest.split_once(" import") {
+                    out.extend(ident(m.trim()));
+                }
+            } else if let Some(rest) = t.strip_prefix("import ") {
+                for part in rest.split(',') {
+                    out.extend(ident(part.split_whitespace().next().unwrap_or("")));
+                }
             }
         }
     }
     out
+}
+
+/// The module a record's term writes: `PIL` in `PIL.ImageGrab` or `from PIL import ImageGrab`.
+pub fn term_module(term: &str) -> Option<&str> {
+    let t = term.strip_prefix("from ").or_else(|| term.strip_prefix("import ")).unwrap_or(term);
+    let head = t.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_')).next().unwrap_or("");
+    (!head.is_empty() && t[head.len()..].chars().next().is_none_or(|c| c == '.' || c == ' ')).then_some(head)
+}
+
+/// Whether module `m` abbreviates package `name`: its letters, in order, in the name (`PIL` of `pillow`, `sklearn` of
+/// `scikit-learn`). Three letters at least: `os` is in many names.
+pub fn abbreviates(m: &str, name: &str) -> bool {
+    let mut letters = name.chars().map(|c| c.to_ascii_lowercase());
+    m.len() >= 3 && m.chars().all(|c| letters.any(|l| l == c.to_ascii_lowercase()))
 }
 
 /// Whether `v` meets a requirement specifier: PEP 440 (`>=1.2,<2`, `~=1.4`, `==1.*`, `!=1.3`) or Poetry's npm-like
@@ -637,6 +652,8 @@ pub fn detect(root: &Path, packages: &mut Vec<Package>, deps: &mut BTreeMap<Stri
     let mut stale: BTreeMap<String, (usize, Vec<String>)> = BTreeMap::new();
     let mut projects: BTreeMap<PathBuf, Project> = BTreeMap::new();
     let (imported, own_modules) = imported_modules(root, &by_dir.keys().cloned().collect());
+    // The distributions this repository's own `pyproject.toml` files name (normalised).
+    let mut own: BTreeSet<String> = BTreeSet::new();
     for (dir, files) in by_dir {
         let mut reqs = vec![];
         let mut named = false;
@@ -648,7 +665,8 @@ pub fn detect(root: &Path, packages: &mut Vec<Package>, deps: &mut BTreeMap<Stri
                 marked.extend(pyproject_marked(text));
                 if let Some((r, n, x)) = pyproject(text) {
                     reqs.extend(r);
-                    named |= n;
+                    named |= n.is_some();
+                    own.extend(n);
                     extras.extend(x);
                 }
                 if let Some((key, floor)) = requires_python(text) {
@@ -827,6 +845,16 @@ pub fn detect(root: &Path, packages: &mut Vec<Package>, deps: &mut BTreeMap<Stri
                 continue;
             }
             attach(deps, p, &n, "installed through another dependency");
+        }
+    }
+    // A sibling or the project itself declared by name (`corp-common` installed with `pip install -e libs/common`, an
+    // extra `all = ["app[extra]"]`) is this repository's own: never named to a third party, unless a lockfile fetched
+    // it from PyPI (a published package of that name).
+    for n in &own {
+        if let Some(d) = deps.get_mut(&purl(n))
+            && d.seen != Seen::Public
+        {
+            d.public_candidate = false;
         }
     }
     for (file, (n, examples)) in stale {
@@ -1049,7 +1077,8 @@ const RELEASES_FRESH_SECS: u64 = 24 * 3600;
 pub fn registry_releases(purls: &[String]) -> BTreeMap<String, Vec<Version>> {
     cached_releases(purls, "pypi-releases", parse_version, |agent, purl| {
         let name = purl.trim_start_matches("pkg:pypi/");
-        let mut r = agent.get(format!("https://pypi.org/pypi/{name}/json")).call().ok().filter(|r| r.status().is_success())?;
+        let url = format!("https://pypi.org/pypi/{name}/json");
+        let mut r = crate::onboarding::registry_call(&url, || agent.get(&url).call()).filter(|r| r.status().is_success())?;
         let bytes = r.body_mut().with_config().limit(64 * 1024 * 1024).read_to_vec().ok()?;
         let doc: Json = serde_json::from_slice(&bytes).ok()?;
         let releases = doc.get("releases")?.as_object()?;
@@ -1071,7 +1100,8 @@ pub fn registry_requires(keys: &[String]) -> BTreeMap<String, Vec<String>> {
         let (name, version) = key.trim_start_matches("pkg:pypi/").rsplit_once('@')?;
         let short = version.strip_suffix(".0").filter(|s| s.contains('.'));
         let doc = [Some(version), short].into_iter().flatten().find_map(|v| {
-            let mut r = agent.get(format!("https://pypi.org/pypi/{name}/{v}/json")).call().ok().filter(|r| r.status().is_success())?;
+            let url = format!("https://pypi.org/pypi/{name}/{v}/json");
+            let mut r = crate::onboarding::registry_call(&url, || agent.get(&url).call()).filter(|r| r.status().is_success())?;
             let bytes = r.body_mut().with_config().limit(16 * 1024 * 1024).read_to_vec().ok()?;
             serde_json::from_slice::<Json>(&bytes).ok()
         })?;
@@ -1087,12 +1117,8 @@ pub fn npm_registry_releases(purls: &[String]) -> BTreeMap<String, Vec<Version>>
     cached_releases(purls, "npm-releases", crate::util::parse_version, |agent, purl| {
         let name = crate::util::npm_name(purl)?;
         let enc: String = name.bytes().map(|b| if b.is_ascii_alphanumeric() || b"-._~@".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") }).collect();
-        let mut r = agent
-            .get(format!("https://registry.npmjs.org/{enc}"))
-            .header("Accept", "application/vnd.npm.install-v1+json")
-            .call()
-            .ok()
-            .filter(|r| r.status().is_success())?;
+        let url = format!("https://registry.npmjs.org/{enc}");
+        let mut r = crate::onboarding::registry_call(&url, || agent.get(&url).header("Accept", "application/vnd.npm.install-v1+json").call()).filter(|r| r.status().is_success())?;
         let bytes = r.body_mut().with_config().limit(64 * 1024 * 1024).read_to_vec().ok()?;
         let doc: Json = serde_json::from_slice(&bytes).ok()?;
         Some(doc.get("versions")?.as_object()?.keys().cloned().collect())
@@ -1305,6 +1331,17 @@ mod tests {
     #[test]
     fn import_roots_are_top_level_absolute_modules() {
         assert_eq!(import_roots("import a.b, c as d\nfrom e.f import g\nfrom . import h\nfrom .i import j\n  import k  # x\nimportant = 1\n"), vec!["a", "c", "e", "k"]);
+        assert_eq!(import_roots("try: import a\nimport b; import c\n# import d\nf(x)  # note: import e\n"), vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn a_term_names_a_module_an_abbreviation_of_the_package() {
+        assert_eq!(term_module("PIL.ImageGrab"), Some("PIL"));
+        assert_eq!(term_module("from PIL import ImageGrab"), Some("PIL"));
+        assert_eq!(term_module("sklearn"), Some("sklearn"));
+        assert_eq!(term_module("foo()"), None);
+        assert!(abbreviates("PIL", "pillow") && abbreviates("sklearn", "scikit-learn") && abbreviates("yaml", "pyyaml"));
+        assert!(!abbreviates("os", "opensearch") && !abbreviates("cv2", "opencv-python") && !abbreviates("time", "pillow"));
     }
 
     #[test]
@@ -1626,6 +1663,26 @@ mod tests {
         write(d.path(), "requirements/base.txt", "--index-url https://pypi.corp.example/simple\ncorp-sdk==1.0.0\n");
         let st = crate::stack::detect_in(d.path(), &crate::privacy::Env::default()).unwrap();
         assert!(!st.deps["pkg:pypi/corp-sdk"].public_candidate);
+    }
+
+    #[test]
+    fn the_repositorys_own_distributions_are_not_public_names() {
+        let d = tempfile::tempdir().unwrap();
+        // A sibling declared by name (installed with `pip install -e libs/common`), the project's own extra, a Poetry
+        // sibling, and one a lockfile fetched from PyPI (a published package of the same name).
+        write(d.path(), "pyproject.toml", "[project]\nname = \"Corp_App\"\ndependencies = [\"corp-common>=1\", \"httpx\"]\n[project.optional-dependencies]\nall = [\"corp-app[extra]\"]\n");
+        write(d.path(), "libs/common/pyproject.toml", "[project]\nname = \"corp.common\"\ndependencies = [\"requests\"]\n");
+        write(d.path(), "libs/tools/pyproject.toml", "[tool.poetry]\nname = \"corp-tools\"\n[tool.poetry.dependencies]\ncorp-common = \"*\"\n");
+        write(d.path(), "services/api/requirements.txt", "corp-tools\ncorp-published==2.0\n");
+        write(d.path(), "libs/published/pyproject.toml", "[project]\nname = \"corp-published\"\n");
+        write(d.path(), "services/api/poetry.lock", "[[package]]\nname = \"corp-published\"\nversion = \"2.0\"\n");
+        let (mut pk, mut deps) = (vec![], BTreeMap::new());
+        detect(d.path(), &mut pk, &mut deps, &mut vec![]);
+        for own in ["corp-app", "corp-common", "corp-tools"] {
+            assert!(!deps[&format!("pkg:pypi/{own}")].public_candidate, "{own}");
+        }
+        assert!(deps["pkg:pypi/corp-published"].public_candidate, "a lockfile fetched it from PyPI");
+        assert!(deps["pkg:pypi/httpx"].public_candidate && deps["pkg:pypi/requests"].public_candidate);
     }
 }
 

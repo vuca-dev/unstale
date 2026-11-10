@@ -176,7 +176,7 @@ export class HttpClient {
           waitMs = retryAfter;
           attempt--; // a server-requested wait is not a failed attempt
         } else {
-          const body = status >= 300 && status < 400 ? (res.destroy(), new Uint8Array()) : await readCapped(res, responseHeaders, this.opts.maxBytes);
+          const body = status >= 300 && status < 400 ? await discard(res) : await readCapped(res, responseHeaders, this.opts.maxBytes);
           return { status, headers: responseHeaders, body };
         }
       } catch (e) {
@@ -243,6 +243,25 @@ function headersOf(res: IncomingMessage): Headers {
     for (const x of Array.isArray(v) ? v : [v]) h.append(k, x);
   }
   return h;
+}
+
+/**
+ * A 304's or a redirect's body, read to its end and dropped: the connection then goes back to the pool for the host's
+ * next request. Destroying the unread response closes its socket, so every 304 of a docs pass cost a new TCP and TLS
+ * handshake. A body over `max` (declared or read) is not worth the connection.
+ */
+async function discard(res: IncomingMessage, max = 64 * 1024): Promise<Uint8Array> {
+  if (Number(res.headers["content-length"] ?? "NaN") > max) {
+    res.destroy();
+    return new Uint8Array();
+  }
+  let total = 0;
+  try {
+    for await (const chunk of res as AsyncIterable<Buffer>) if ((total += chunk.byteLength) > max) break;
+  } catch {
+    res.destroy();
+  }
+  return new Uint8Array();
 }
 
 /** The body, decoded per Content-Encoding, capped at `max` bytes after decoding (a small gzip cannot fill memory). */
