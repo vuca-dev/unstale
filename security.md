@@ -13,7 +13,7 @@
 
 ### 2026-11-10 · Cargo [patch]/[replace] crates kept private
 - Tried: since cbc95b4, the main change is Cargo support (#203). Audited cargo.rs/privacy.rs: lock sources, manifest selectors, `.cargo/config` source replacement, CARGO_* env and the advisory graph are all fail-closed. Probed a workspace with no lockfile, where `[patch.crates-io]` (path, git) and `[replace]` override plain `"0.1"` declarations: on main all 3 overridden crates (one the workspace's own member) were public_candidate. With the fix only serde is. Test covers 6 forms incl. a config patch, the index-URL key and case/`_` folding; it fails with either collection disabled. Suite: 419 unit + 20 e2e + 12 passed. $0 eval spend.
-- Found: with a Cargo.lock, patched crates already read as private (no source or `git+`). The gap was lockless only. A patch can live in `.cargo/config.toml` too.
+- Found: with a Cargo.lock, patched crates already read as private (no source or `git+`). The gap was lockless only. A patch can live in `.cargo/config.toml` too. Review round 1: a renamed patch (`alias = { package = "real" }`) overrides `real`, so the `package` value is collected too. The gate stays on when a lockfile exists (by design, now pinned by a test).
 - Chosen: `cargo::overridden_names` → `CargoInventory.patched` + `Registries.cargo_patched`, refused in `may_name_cargo`, PR #215.
 - Outcome: crates overridden by [patch]/[replace] are never named off-machine. Next picks: review digest fencing (review.rs) or `-r` include index settings.
 
