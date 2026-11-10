@@ -27,6 +27,10 @@ WS1, WS2 and WS3 merged.
     or first when over the size cap.
   - Model results (records, labels, matches) are what the user paid for and are a few KB per technology-year: never
     evicted by the cap; only after a year unused, or by an explicit `unstale cache clean`.
+  - **Triggers.** Every sync records, per technology, when a repo on this machine last needed it. Deletion runs at
+    the end of a sync. Re-download needs no trigger of its own: a sync reads each needed technology's index and
+    fetches any named shard (by content hash) or event missing from the cache, so an evicted file costs one download
+    the next time a repo needs it. An evicted model result would cost tokens, which is why the cap never takes them.
   - `unstale status` shows the cache size. Test: a cache past the cap shrinks below it, keeps everything the current
     indexes name, and keeps every model result.
 - [ ] **Order:** technologies processed in demand order under the WS3 budget; backfill window bounded.
