@@ -9,7 +9,13 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const rows = readFileSync(join(import.meta.dirname, "calls.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
-const PRICE = { input: 0.1, cached: 0.01, output: 0.5 }; // $/M, gpt-6-luna list
+// $/M list price of the model each CLI ran: gpt-6-luna (Codex); spacexai/grok-4.5 on the gateway for Cursor's
+// cursor-grok-4.5-low-fast, the cheapest priced model its plan included (eval/select/prices.json, checked 2026-10-20).
+const PRICES: Record<string, { input: number; cached: number; output: number }> = {
+  codex: { input: 0.1, cached: 0.01, output: 0.5 },
+  cursor: { input: 2, cached: 0.3, output: 6 },
+};
+let PRICE = PRICES.codex!;
 const usd = (u: { input: number; cached: number; output: number }) => ((u.input - u.cached) * PRICE.input + u.cached * PRICE.cached + u.output * PRICE.output) / 1e6;
 
 // Per technology-year (vault "Inference Costs", 16 October 2026): 114.6 records; about 8k note tokens in 3,373 notes
@@ -27,6 +33,7 @@ const pct = (xs: number[], p: number) => { const s = [...xs].sort((a, b) => a - 
 const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
 
 for (const cli of [...new Set(rows.map((r) => r.cli))]) {
+  PRICE = PRICES[cli]!;
   for (const variant of [...new Set(rows.filter((r) => r.cli === cli).map((r) => r.variant))]) {
     const ok = rows.filter((r) => r.cli === cli && r.variant === variant && r.code === 0 && r.input && !r.tag);
     const triv = ok.filter((r) => r.task === "trivial");
@@ -37,7 +44,7 @@ for (const cli of [...new Set(rows.map((r) => r.cli))]) {
     console.log("| task | items/call | calls | input | cached | output | payload input/item | overhead/item | wall p50 / max s | parsed | files left |");
     console.log("|---|---|---|---|---|---|---|---|---|---|---|");
     const per: Record<string, { payload: number; output: number }> = {};
-    for (const task of ["trivial", "sandbox", "extract", "extract8", "labels", "labels8"]) {
+    for (const task of ["trivial", "sandbox", "sandbox-root", "extract", "extract8", "labels", "labels8"]) {
       const t = ok.filter((r) => r.task === task);
       if (!t.length) continue;
       const items = t[0].items || 1;
@@ -45,7 +52,7 @@ for (const cli of [...new Set(rows.map((r) => r.cli))]) {
       const payload = (inp - over.input) / items;
       per[task] = { payload, output: mean(t.map((r) => r.output)) / items };
       const ms = t.map((r) => r.ms / 1000);
-      console.log(`| ${task} | ${t[0].items} | ${t.length} | ${inp.toFixed(0)} | ${mean(t.map((r) => r.cached)).toFixed(0)} | ${mean(t.map((r) => r.output)).toFixed(0)} | ${task === "trivial" || task === "sandbox" ? "—" : payload.toFixed(0)} | ${(over.input / items).toFixed(0)} | ${pct(ms, 0.5).toFixed(1)} / ${Math.max(...ms).toFixed(1)} | ${t.filter((r) => r.parsed).length}/${t.length} | ${t.filter((r) => r.leftover.length).length} |`);
+      console.log(`| ${task} | ${t[0].items} | ${t.length} | ${inp.toFixed(0)} | ${mean(t.map((r) => r.cached)).toFixed(0)} | ${mean(t.map((r) => r.output)).toFixed(0)} | ${task === "trivial" || task.startsWith("sandbox") ? "—" : payload.toFixed(0)} | ${(over.input / items).toFixed(0)} | ${pct(ms, 0.5).toFixed(1)} / ${Math.max(...ms).toFixed(1)} | ${t.filter((r) => r.parsed).length}/${t.length} | ${t.filter((r) => r.leftover.length).length} |`);
     }
     // One technology-year through this CLI, API-equivalent.
     for (const batch of [1, 8]) {

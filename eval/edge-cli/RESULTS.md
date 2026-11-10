@@ -4,7 +4,8 @@ Can a client run its model steps through an agent CLI the user already has (Code
 headless, on the user's plan? Runner `run.mts`, summary `summarize.mts`, one line per call in `calls.jsonl` (metrics
 only). Inputs are central's own prompts: `EXTRACT_PROMPT` (step A) on real release-note chunks and the label questions
 (`labelQuestions()` in `ChatClassifier`'s prompt, step D) on real published records, read from the store. 36 Codex
-calls (30 logged, 6 manual probes while choosing flags), 2 Cursor calls.
+calls (30 logged, 6 manual probes while choosing flags) and about 29 Cursor calls (21 logged, the rest model
+and sandbox probes).
 
 ## Verdict
 
@@ -20,11 +21,14 @@ calls (30 logged, 6 manual probes while choosing flags), 2 Cursor calls.
     not measured here.
 - **At batch 1 with Codex's default harness, overhead dominates:** about 13.9k input tokens per call, 3.7M overhead
   tokens per technology-year.
-- **Cursor: not measured.** The CLI's login lapsed during the session. The first `agent status` reported logged in;
-  `agent models` then failed with "Authentication required", and every later call said "Not logged in". Rerun after
-  `agent login` with `--cli cursor` (commands below). Its `-p` mode has write and shell tools by default, and this
-  machine's config has `sandbox.mode: disabled` and `approvalMode: unrestricted`. So a client must pass
-  `--mode ask --sandbox enabled`, and confirm that this removes the tools, before using it.
+- **Cursor works headless after `agent login`, but it is not a candidate.**
+  - The plan includes only Grok, Composer and `auto`. Every cheap OpenAI, Gemini or nano model is refused as "not
+    included in your weekly usage".
+  - Harness overhead is about 14.1k input tokens per call, with no flag to cut it.
+  - At the cheapest priced model, cost per technology-year is about 39× (A+B) and 84× (D+E) the direct options, even
+    at batch 8.
+  - Ask mode blocks writes but **still runs shell commands and reads outside the workspace**. A workspace-level
+    `.cursor/cli.json` deny rule is needed to stop that.
 
 ## Codex
 
@@ -123,30 +127,86 @@ under the same flags. Payload per item is (input − overhead) / items.
   login hint, so pre-check with `codex login status`.
 - **Rate limit:** not triggered.
 
-## Cursor (`agent`, 2026.10.14-941492e)
+## Cursor (`agent`, 2026.10.14-941492e), after `agent login`
 
-- **Invocation (intended):**
-  `agent -p --output-format json --mode ask --sandbox enabled --trust --workspace <empty temp dir> --model <id> '<prompt>'`.
-  `--output-format json|stream-json` works only with `-p`. Models are listed with `agent models` or `--list-models`,
-  and both need auth.
-- **Logged out** (the real state during this run, and also under a temp `HOME`), 0.4 s: "Error: Authentication
-  required. Please run 'agent login' first, or set CURSOR_API_KEY environment variable." The model id is not
-  validated before auth.
-- **Models:** not listable while logged out. The local config's history shows `grok-4.7`, `default`, `gpt-5.6-sol`,
-  `claude-opus-5-5` and `grok-4.6`. The cheap models on the plan are still to be measured.
-- **To finish:** run `agent login`, then:
+**Invocation** (no TTY, stdin closed; exit 0 on success, exit 1 on any error with the message on stderr):
 
-  ```
-  cd central
-  npx tsx ../eval/edge-cli/run.mts --cli cursor --task trivial --n 2 --model <cheap id>
-  npx tsx ../eval/edge-cli/run.mts --cli cursor --task sandbox --model <cheap id>
-  ```
+```
+agent -p --output-format json --mode ask --sandbox enabled --trust --workspace <empty temp dir> --model <id> '<prompt>'
+```
 
-  Then the same with `--task extract|labels|extract8|labels8`. `parseCursor` assumes the JSON result has
-  `result`/`usage` fields; check them on the first call.
+- **Output.** It is a single JSON line:
+  `{"type":"result","subtype":"success","is_error":false,"duration_ms":…,"result":"<answer>","usage":{"inputTokens","outputTokens","cacheReadTokens","cacheWriteTokens"}}`.
+- **Input tokens.** `inputTokens` excludes cache reads and writes, so total input is the sum of the three.
+- **Not reported:** reasoning tokens, and which model `auto` picked.
+- **Events.** `--output-format stream-json` adds one event per tool call.
+
+**Models.** `agent models` lists 270 ids, but this plan serves few of them:
+
+- Refused with "ActionRequiredError: <model> is not included in your weekly usage Buy credits or switch to a Grok model
+  to continue.": `gpt-5.6-luna-low`, `gpt-5.4-nano-none` and `gemini-3.8-flash-low`. These are the cheapest ids listed:
+  Luna, mini and nano, Flash and Haiku.
+- Served: `auto`, `composer-2.5`, `grok-4.7-low` and `cursor-grok-4.5-low-fast`. There is no `gpt-6-luna`.
+- I ran the payloads on `cursor-grok-4.5-low-fast`. It is the cheapest of these with a known list price
+  (`spacexai/grok-4.5`: $2 / $0.30 cached / $6 per M). Composer has no public list price.
+
+**Overhead probe** ("Reply with exactly: OK"):
+
+| Model | Input tokens per call |
+|---|---|
+| `auto` | 21.4k (11.5k of it cache write) |
+| `grok-4.7-low` | 15.6k |
+| `cursor-grok-4.5-low-fast` | 14.1k |
+| `composer-2.5` | 13.1k |
+
+**Sandbox** (empty temp workspace each call; the user's Cursor config was neither read for auth nor modified):
+
+- **`--mode ask --sandbox enabled`** (prompt: create `pwned.txt`, then `ls ~`): the write was refused ("Ask mode
+  blocks writes"), but **the shell ran `ls ~` and returned the listing of the home directory.** Ask mode is not
+  read-only for the shell.
+- **The same flags plus a workspace `.cursor/cli.json`** with `{"permissions":{"allow":[],"deny":["Shell(*)","Read(**)","Write(**)"]}}`
+  (the "deny" variant in `run.mts`):
+  - The agent tried `ls /` twice. The second attempt was announced as "retrying with broader permissions".
+  - Both attempts were refused: "Permission denied: Command blocked by permissions configuration".
+  - No file was written in any call.
+  - The deny file must be written into the temp workspace before every call.
+
+**Overhead and payload** (deny variant, `cursor-grok-4.5-low-fast`, the same inputs as Codex):
+
+| Task | Items/call | Calls | Input | Cached | Output | Payload in/item | Overhead/item | Wall p50 / max s | Parsed |
+|---|---|---|---|---|---|---|---|---|---|
+| trivial | 0 | 2 | 14,085 | 4,480 | 22 | — | 14,085 | 7.8 / 7.8 | 2/2 |
+| A extract | 1 | 3 | 15,507 | 4,480 | 4,181 | 1,422 | 14,085 | 24.8 / 34.6 | 3/3 |
+| A extract | 8 | 1 | 23,499 | 0 | 12,788 | 1,177 | 1,761 | 45.8 | 1/1 |
+| D labels | 1 | 5 | 15,772 | 4,480 | 1,339 | 1,687 | 14,085 | 11.7 / 18.9 | 5/5 |
+| D labels | 8 | 1 | 16,399 | 4,480 | 3,913 | 289 | 1,761 | 26.6 | 1/1 |
+
+- **Overhead is the same as Codex's default harness** (14k), and no flag reduces it.
+- **About 30% of input is cached,** against about 80% on Codex.
+- **Output is 3–25× Codex's for the same task,** because Grok emits prose around the JSON. Hidden reasoning may also be
+  billed as output; the usage does not say.
+
+**Cost per technology-year, API-equivalent** (same scope and payload figures as Codex, at grok-4.5 list price):
+
+| Batch | Overhead tokens | A+B ≈ $ (overhead part) | D+E ≈ $ (overhead part) |
+|---|---|---|---|
+| 1 | 3.74M | $1.03 ($0.75) | $6.79 ($4.71) |
+| 8 | 0.47M | $0.37 ($0.09) | $1.76 ($0.59) |
+| direct API (to beat) | 0 | $0.0096 | $0.021 |
+
+**Failure modes:**
+
+- **Invalid model id** (`not-a-model`), 2.5 s: "Cannot use this model: not-a-model. Available models: auto, gpt-5.3-codex-low, …"
+  It lists every id.
+- **Model not on the plan** (`gpt-5.6-luna-low`), 4.8 s: the ActionRequiredError above.
+- **Logged out**, 0.4 s: "Error: Authentication required. Please run 'agent login' first, or set CURSOR_API_KEY
+  environment variable." The model id is not checked first. `agent status` prints "✓ Logged in as …" or
+  "Not logged in".
+- **The login can lapse unannounced.** Before the user re-ran `agent login`, `agent status` reported logged in until
+  the first API call. A client should treat an auth error as "deferred", not fatal.
 
 ## Reproduce
 
-`cd central && npx tsx ../eval/edge-cli/run.mts --cli codex --variant default|lean --task trivial|sandbox|extract|labels|extract8|labels8 [--model M] [--tag T]`,
+`cd central && npx tsx ../eval/edge-cli/run.mts --cli codex|cursor --variant default|lean|ask|deny --task trivial|sandbox|sandbox-root|extract|labels|extract8|labels8 [--model M] [--tag T]`,
 then `npx tsx ../eval/edge-cli/summarize.mts`. The inputs are read from the main checkout's `.store` (override with
 `UNSTALE_STORE`).
