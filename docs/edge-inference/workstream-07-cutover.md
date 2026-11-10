@@ -1,5 +1,8 @@
 # WS7: Release, grace period, cutover
 
+**Out of scope for the sprint run:** the CEO runs the release and the cutover. Agents may publish to npm and
+Homebrew only when a test needs a published build to validate work.
+
 ## Scope
 Ship the client, run the 20-day grace period, then stop central's model steps.
 

@@ -21,7 +21,7 @@ records for old clients), and it runs last, after the client that replaces them 
 | 4 | [Client pipeline steps and port parity](workstream-04-client-pipeline.md) | 1, 2, 3 | impl (largest) |
 | 5 | [Setup: detection, picker, config](workstream-05-setup.md) | 3 | impl |
 | 6 | [Environment matrix and playback](workstream-06-environment-matrix.md) | harness: 3; full run: 4, 5 | impl, then runner |
-| 7 | [Release, grace period, cutover](workstream-07-cutover.md) | 1–6 | ops + small PRs |
+| 7 | [Release, grace period, cutover](workstream-07-cutover.md) | 1–6 | **CEO-run; out of scope for the agents** |
 | 8 | [Docs and site](workstream-08-docs.md) | 5 | impl; **held for CEO review, never admin-merged** |
 | 9 | [No-key mode eval](workstream-09-no-key-eval.md) | 2 | one agent: builds the no-key path, then evals; bounded |
 
@@ -56,9 +56,10 @@ None. Closed 10 November 2026.
 
 ## Human-in-the-loop items
 
-- **Release authority:** cutting the release (version bump plus tag, which publishes to npm and Homebrew) and the
-  day-20 cutover are outward-facing; the CEO authorises each, or authorises them in advance.
-- **Telling current users on day 0:** the CEO, directly.
+- **Release and cutover (WS7): the CEO runs them.** Agents may publish to npm and Homebrew only when a test needs a
+  published build.
+- **Telling current users:** not now; part of WS7.
+- **Copy review:** the CEO reviews the picker and notice phrasing in the playback gallery (WS6) before WS8.
 - **Codex login:** if it lapses, the CEO runs `codex login`.
 - **Not needed:** an OpenAI key (the gateway runs the same OpenAI-compatible code path with the same model, and the
   mock server covers the protocol), an OpenRouter key (same protocol; parity is a later check).

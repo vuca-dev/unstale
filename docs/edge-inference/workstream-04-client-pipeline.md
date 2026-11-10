@@ -17,10 +17,18 @@ WS1, WS2 and WS3 merged.
       (provider, model, model version, prompt version).
 - [ ] **User-level cache:** results keyed by chunk hash, step, model and prompt version, shared by every repo on the
       machine. A second repo with the same technologies makes about zero new calls (test).
-- [ ] **Bounded disk use:** the client cache today is never pruned (152 MB on a heavy development machine, mostly
-      registry metadata and superseded catalog shards). Evict shards no longer referenced by the current index and
-      results for chunks no longer in any synced technology, with a size cap; report the size in `unstale status`.
-      Test: a cache past the cap shrinks below it without losing anything the current index references.
+- [ ] **Bounded disk use: delete what is free to re-fetch, keep what cost tokens.**
+  - The client cache is never pruned today (152 MB on a heavy development machine, mostly registry metadata and
+    superseded catalog shards).
+  - A shard is superseded when the technology's current index no longer names it. Each shard holds every record of
+    one release line, so a superseded shard is an older copy of what its replacement holds: delete it when the new
+    index is synced (no grace period on the client; central's 7 days only protect clients mid-sync).
+  - Registry metadata and change events for technologies no longer in any synced repo: evict after 30 days unused,
+    or first when over the size cap.
+  - Model results (records, labels, matches) are what the user paid for and are a few KB per technology-year: never
+    evicted by the cap; only after a year unused, or by an explicit `unstale cache clean`.
+  - `unstale status` shows the cache size. Test: a cache past the cap shrinks below it, keeps everything the current
+    indexes name, and keeps every model result.
 - [ ] **Order:** technologies processed in demand order under the WS3 budget; backfill window bounded.
 - [ ] **JSON subcommand** for evals (for example `unstale internal run-step --step d --in states.jsonl`) so
       `eval/select` harnesses can call the Rust implementation.
