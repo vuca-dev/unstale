@@ -46,7 +46,9 @@ export function rootText(opts: { manifest?: string; notice?: string } = {}): str
 function validNotice(n: Notice): Notice {
   const day = /^\d{4}-\d{2}-\d{2}$/.test(n.until) ? new Date(`${n.until}T00:00:00Z`) : undefined;
   if (!day || Number.isNaN(day.getTime()) || day.toISOString().slice(0, 10) !== n.until) throw new Error(`notice ${n.id}: until \`${n.until}\` is not a YYYY-MM-DD date`);
-  if (!n.id.trim() || !n.text.trim()) throw new Error("a notice needs an id and text");
+  // Visible text as the client prints it: control, zero-width and bidirectional characters are blanked there.
+  const visible = n.text.replace(/[\p{Cc}\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/gu, "").trim();
+  if (!n.id.trim() || !visible) throw new Error("a notice needs an id and visible text");
   return n;
 }
 

@@ -98,6 +98,8 @@ describe("publish", () => {
       writeFileSync(notice, JSON.stringify({ id: "x", until, text: "t" }));
       expect(() => rootText({ manifest, notice }), until).toThrow(/YYYY-MM-DD/);
     }
+    writeFileSync(notice, JSON.stringify({ id: "x", until: "2026-11-30", text: "\u200B\u202E " }));
+    expect(() => rootText({ manifest, notice })).toThrow(/visible text/);
     // A bad notice stops a technology's publish before any of its files are written.
     const pub = mkdtempSync(join(tmpdir(), "unstale-pub-"));
     vi.stubEnv("UNSTALE_NOTICE", notice);
