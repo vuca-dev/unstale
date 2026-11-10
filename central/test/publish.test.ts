@@ -104,7 +104,7 @@ describe("publish", () => {
     const pub = mkdtempSync(join(tmpdir(), "unstale-pub-"));
     vi.stubEnv("UNSTALE_NOTICE", notice);
     try {
-      expect(() => publishTechnology(fixture(), CHECKED, pub)).toThrow(/YYYY-MM-DD/);
+      expect(() => publishTechnology(fixture(), CHECKED, pub)).toThrow(/visible text/);
       expect(readdirSync(pub)).toEqual([]);
     } finally {
       vi.unstubAllEnvs();
