@@ -4,7 +4,7 @@
 Ship the client, run the 20-day grace period, then stop central's model steps.
 
 ## Pre-conditions
-WS1–WS6 merged and verified; open decisions 1–4 resolved.
+WS1–WS6 merged and verified; open decisions resolved.
 
 ## Steps
 1. **Release:** bump the client version and tag in the same change, so `latest_client` never announces an unpublished

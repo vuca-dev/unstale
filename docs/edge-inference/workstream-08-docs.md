@@ -9,3 +9,6 @@ README, the install guide and the landing page describe provider setup, what is 
 - [ ] Cost stated with units and scope, from WS4's measured numbers.
 - [ ] The landing page's terminal playback updated to the new first run (from WS6's recordings).
 - [ ] Copy stays short: impact first, no logs.
+
+## Merge
+Held for CEO review at the very end. Open it as a draft; never admin-merge it.

@@ -22,7 +22,7 @@ records for old clients), and it runs last, after the client that replaces them 
 | 5 | [Setup: detection, picker, config](workstream-05-setup.md) | 3 | impl |
 | 6 | [Environment matrix and playback](workstream-06-environment-matrix.md) | harness: 3; full run: 4, 5 | impl, then runner |
 | 7 | [Release, grace period, cutover](workstream-07-cutover.md) | 1–6 | ops + small PRs |
-| 8 | [Docs and site](workstream-08-docs.md) | 5 | impl |
+| 8 | [Docs and site](workstream-08-docs.md) | 5 | impl; **held for CEO review, never admin-merged** |
 
 Parallel lanes: WS1, WS2 and WS3 start together. WS5 and the WS6 harness start once WS3 merges. WS4 waits for 1, 2
 and 3.
@@ -44,19 +44,18 @@ and 3.
 | Budget | A monthly token budget that throttles and works in demand order; never fails | — |
 | Team setting | The repo config names the provider and the key's environment variable; the value stays in each person's env | — |
 | Grace period | 20 days, then `min_client` is raised | — |
+| No key and no Codex | Deterministic signals only (versions, advisories, deprecations) plus one line suggesting a key; no prompt in CI. Further local fallbacks (a chunk-level encoder) deferred: not needed for the first version | `eval/edge-encoder/RESULTS.md` |
 
 ## Open decisions (CEO)
 
-1. **No key and no Codex.** Proposed: deterministic signals only (versions, advisories, deprecations), plus one line
-   suggesting a key. No prompt in CI.
-2. **Anthropic key only.** No Anthropic model passes extraction (Haiku 5.5: H2 −9.0). Proposed: do not offer it alone;
+1. **Anthropic key only.** No Anthropic model passes extraction (Haiku 5.5: H2 −9.0). Proposed: do not offer it alone;
    suggest Codex or one other key.
-3. **Picker order.** Proposed, best first:
+2. **Picker order.** Proposed, best first:
    1. Jev key + an OpenAI-compatible key
    2. Jev key + Codex
    3. An OpenAI-compatible key alone (D and E below Jev)
    4. Codex alone (D and E below Jev)
-4. **Day 0.** Release date, and the date central stops (day 20).
+3. **Day 0.** Release date, and the date central stops (day 20).
 
 ## Verification posture
 
@@ -74,3 +73,16 @@ errors are recoverable; leaked keys are not.
 
 **Everything else is ship-and-observe.** Explicitly cut: the encoder; Cursor; OpenRouter parity (it follows the gateway
 row until a check runs); repeat runs of the evals.
+
+## Durability and pacing
+
+Work runs on a plan with 5-hour usage windows, and plan usage cannot be read from inside a session. A session may stop
+at a limit and resume when usage returns, so every piece of work must survive an interruption with minimal loss:
+
+- **The tracker is the state.** Each EM updates its row in `tracker.md` (status, branch, PR, next step) before and
+  after each unit of work, so a resumed session reads where things stand instead of reconstructing it.
+- **Small commits, pushed often.** Each acceptance criterion lands as its own commit on the workstream branch and is
+  pushed; nothing is held only in a working tree.
+- **Long runs are resumable.** Evals and matrix runs cache each call's result on disk and skip completed items on
+  restart (as `eval/select` already does).
+- **Pacing:** at most two EMs at once, with lean reports; the parallel lanes run in that limit.
