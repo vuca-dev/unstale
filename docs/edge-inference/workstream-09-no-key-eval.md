@@ -25,4 +25,4 @@ No API spend. Agent runs bill the CEO's Claude plan: roughly 100–400K tokens p
 window has room, not alongside other heavy work.
 
 ## Owner
-One eval agent, after WS2 (events) and the report path in WS4.
+One agent, after WS2 (events). It builds the no-key report path behind a flag (events and deterministic signals into the report), then runs the eval.

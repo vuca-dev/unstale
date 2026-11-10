@@ -23,7 +23,7 @@ records for old clients), and it runs last, after the client that replaces them 
 | 6 | [Environment matrix and playback](workstream-06-environment-matrix.md) | harness: 3; full run: 4, 5 | impl, then runner |
 | 7 | [Release, grace period, cutover](workstream-07-cutover.md) | 1–6 | ops + small PRs |
 | 8 | [Docs and site](workstream-08-docs.md) | 5 | impl; **held for CEO review, never admin-merged** |
-| 9 | [No-key mode eval](workstream-09-no-key-eval.md) | 2 (events), 4 (report path) | one eval agent, bounded |
+| 9 | [No-key mode eval](workstream-09-no-key-eval.md) | 2 | one agent: builds the no-key path, then evals; bounded |
 
 Parallel lanes: WS1, WS2 and WS3 start together. WS5 and the WS6 harness start once WS3 merges. WS4 waits for 1, 2
 and 3.
