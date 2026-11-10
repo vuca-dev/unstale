@@ -362,7 +362,7 @@ test("invalid Cargo identity is rejected before registry fetch or queue interact
   vi.stubGlobal("fetch", fetcher);
   const { env: e } = env();
   const queueAccess = vi.spyOn(e.COVERAGE, "get");
-  const res = await handle(post({ purl: "pkg:cargo/Foo_bar" }), e);
+  const res = await handle(post({ purl: "pkg:cargo/-foo_bar" }), e);
   expect(res.status).toBe(400);
   expect(fetcher).not.toHaveBeenCalled();
   expect(queueAccess).not.toHaveBeenCalled();

@@ -59,6 +59,8 @@ test("Cargo identities preserve exact canonical crates.io names", () => {
   expect(cargoIdentity("pkg:cargo/foo-bar")).toBe("foo-bar");
   expect(packageIdentity("pkg:cargo/foo_bar")).toBe("foo_bar");
   expect(packageIdentity("pkg:cargo/foo-bar")).toBe("foo-bar");
+  expect(cargoIdentity("pkg:cargo/Inflector")).toBe("Inflector");
+  expect(packageIdentity("pkg:cargo/Inflector")).not.toBe(packageIdentity("pkg:cargo/inflector"));
   const max = "a".repeat(64);
   expect(cargoIdentity(`pkg:cargo/${max}`)).toBe(max);
   expect(() => cargoIdentity(`pkg:cargo/${max}a`)).toThrow();
@@ -70,7 +72,8 @@ test("Cargo identities preserve exact canonical crates.io names", () => {
     "pkg:cargo/foo/bar",
     "https://crates.io/crates/foo",
     "pkg:rubygems/foo",
-    "pkg:cargo/Foo",
+    "pkg:cargo/-foo",
+    "pkg:cargo/_foo",
     "pkg:cargo/%66oo",
     "pkg:cargo/foo.bar",
     "pkg:cargo/foo+bar",
@@ -86,24 +89,32 @@ test("Cargo technology ids are deterministic and distinguish exact PURLs", () =>
   expect(technologyId("pkg:cargo/foo_bar")).toBe(technologyId("pkg:cargo/foo_bar"));
   expect(technologyId("pkg:cargo/foo_bar")).not.toBe(technologyId("pkg:cargo/foo-bar"));
   expect(technologyId("pkg:cargo/foo_bar")).not.toBe(technologyId("pkg:cargo/serde"));
+  expect(technologyId("pkg:cargo/Inflector")).toMatch(/^inflector-[0-9a-f]{8}$/);
 });
-test("Cargo release tags accept only optional-v canonical stable triplets", () => {
+test("Cargo release tags: optional-v stable triplets, bare or prefixed with the crate's name", () => {
   const tag = new RegExp(releasePattern("pkg:cargo/foo_bar"));
-  for (const [t, v] of [["1.2.3", "1.2.3"], ["v1.2.3", "1.2.3"], ["0.0.0", "0.0.0"]] as const)
-    expect(tag.exec(t)?.[1]).toBe(v);
-  for (const t of ["V1.2.3", "foo_bar-1.2.3", "foo_bar-v1.2.3", "1.2.3-alpha", "1.2.3+build", "01.2.3", "1.02.3", "1.2.03", "1.2", "release-1.2.3"])
+  for (const t of ["1.2.3", "v1.2.3", "foo_bar-1.2.3", "foo_bar-v1.2.3", "foo-bar-v1.2.3", "Foo_Bar-1.2.3"])
+    expect(tag.exec(t)?.[1]).toBe("1.2.3");
+  expect(tag.exec("0.0.0")?.[1]).toBe("0.0.0");
+  for (const t of ["V1.2.3", "foo_bar-util-1.2.3", "foo_bar_util-1.2.3", "foo-1.2.3", "foo_bar@1.2.3", "1.2.3-alpha", "1.2.3+build", "01.2.3", "1.02.3", "1.2.03", "1.2", "release-1.2.3"])
     expect(tag.test(t)).toBe(false);
-  expect(() => releasePattern("pkg:cargo/Foo")).toThrow();
+  const tokio = new RegExp(releasePattern("pkg:cargo/tokio"));
+  expect(tokio.exec("tokio-1.40.0")?.[1]).toBe("1.40.0");
+  expect(tokio.test("tokio-util-0.7.12"), "a sibling crate's tag").toBe(false);
+  expect(tokio.test("tokio-macros-v2.4.0")).toBe(false);
+  expect(new RegExp(releasePattern("pkg:cargo/Inflector")).exec("inflector-v0.11.4")?.[1]).toBe("0.11.4");
+  expect(() => releasePattern("pkg:cargo/-foo")).toThrow();
 });
 test("Cargo typed PURLs preserve and validate the registry spelling", () => {
   expect(cargoPurl("foo_bar")).toBe("pkg:cargo/foo_bar");
   expect(typedPurl("pkg:cargo/source", "foo-bar")).toBe("pkg:cargo/foo-bar");
-  expect(() => typedPurl("pkg:cargo/source", "Foo_bar")).toThrow();
+  expect(typedPurl("pkg:cargo/source", "Inflector")).toBe("pkg:cargo/Inflector");
   expect(() => typedPurl("pkg:cargo/source", "a/b")).toThrow();
   const service = new CoverageService(0);
   const job = service.submit("pkg:cargo/foo_bar");
   expect(job).toMatchObject({ purl: "pkg:cargo/foo_bar", name: "foo_bar", technology: technologyId("pkg:cargo/foo_bar") });
-  expect(() => service.submit("pkg:cargo/Foo_bar")).toThrow();
+  expect(service.submit("pkg:cargo/Inflector")).toMatchObject({ purl: "pkg:cargo/Inflector", name: "Inflector" });
+  expect(() => service.submit("pkg:cargo/-foo")).toThrow();
   service.stop();
 });
 test("PyPI release tags: v-prefixed, bare, name-prefixed; two- or three-part stable versions", () => {
@@ -170,7 +181,8 @@ test("crates.io discovery verifies exact identity and uses only the stable versi
     components: ["pkg:cargo/foo_bar"],
   });
   expect(new RegExp(t.tag).exec("v1.2.3")?.[1]).toBe("1.2.3");
-  expect(new RegExp(t.tag).test("foo_bar-1.2.3")).toBe(false);
+  expect(new RegExp(t.tag).exec("foo_bar-v1.2.3")?.[1]).toBe("1.2.3");
+  expect(new RegExp(t.tag).test("foo_bar-util-1.2.3")).toBe(false);
 });
 test("crates.io discovery rejects mismatches and malformed stable metadata", async () => {
   const result = (crate: unknown) => ({ status: 200, headers: new Headers(), body: Buffer.from(JSON.stringify({ crate })), finalUrl: "https://crates.io/" });

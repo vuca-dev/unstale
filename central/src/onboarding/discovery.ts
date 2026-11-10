@@ -25,9 +25,13 @@ export function releasePattern(
 ): string {
   const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   if (purl.startsWith("pkg:cargo/")) {
-    cargoIdentity(purl);
+    // Rust workspaces tag each crate `name-1.2.3` or `name-v1.2.3` (cargo-release, release-plz: tokio-1.40.0 beside
+    // tokio-util-0.7.12); single-crate repositories `v1.2.3` or `1.2.3`. The name's case and `-`/`_` may differ.
+    const name = [...cargoIdentity(purl)]
+      .map((c) => (c === "-" || c === "_" ? "[-_]" : /[a-z]/i.test(c) ? `[${c.toLowerCase()}${c.toUpperCase()}]` : c))
+      .join("");
     const numeric = "(?:0|[1-9]\\d*)";
-    return `^v?(${numeric}\\.${numeric}\\.${numeric})$`;
+    return `^(?:${name}-)?v?(${numeric}\\.${numeric}\\.${numeric})$`;
   }
   const known = Object.values(TECHNOLOGIES).find((t) =>
     t.components.includes(purl),
