@@ -20,12 +20,12 @@ export function pypiIdentity(purl: string): string {
     throw new Error("Expected a canonical public PyPI package URL (PEP 503 normalised), without version or qualifiers");
   return purl.slice(9);
 }
+export const CARGO_NAME = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
 /** A crates.io crate name, spelled as the registry and Cargo.lock record it: crates.io keeps a name's case
  * (`Inflector`), so the exact spelling is the identity (discovery checks it against the registry's `crate.id`). */
 export function cargoIdentity(purl: string): string {
-  const match = /^pkg:cargo\/([A-Za-z0-9][A-Za-z0-9_-]{0,63})$/.exec(purl);
-  const name = match?.[1];
-  if (!name)
+  const name = purl.startsWith("pkg:cargo/") ? purl.slice(10) : "";
+  if (!CARGO_NAME.test(name))
     throw new Error("Expected a canonical public Cargo package URL, without version or qualifiers");
   return name;
 }

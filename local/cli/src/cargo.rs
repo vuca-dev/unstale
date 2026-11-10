@@ -863,7 +863,11 @@ fn parse_lock_reference(value: &Value) -> Option<CargoLockDependency> {
     };
     let mut parts = base.split_whitespace();
     let name = parts.next()?.to_string();
-    let version = parts.next().and_then(|v| Version::parse(v).ok());
+    // A version that does not parse is not a bare name: the reference is unusable, not completed as one.
+    let version = match parts.next() {
+        Some(v) => Some(Version::parse(v).ok()?),
+        None => None,
+    };
     if parts.next().is_some() {
         return None;
     }
@@ -1075,6 +1079,25 @@ mod tests {
         (inv, notes, unreadable)
     }
     const CRATES: &str = "registry+https://github.com/rust-lang/crates.io-index";
+
+    #[test]
+    fn lock_references_take_the_one_package_they_name_and_a_garbled_version_is_unusable() {
+        let temp = tempfile::tempdir().unwrap();
+        write(
+            temp.path(),
+            "Cargo.lock",
+            &format!("version = 3\n[[package]]\nname = \"app\"\nversion = \"0.1.0\"\ndependencies = [\"regex\", \"memchr 2.4.1\", \"syn 1.0.0\", \"syn\", \"bad 1.x\"]\n[[package]]\nname = \"regex\"\nversion = \"1.5.4\"\nsource = \"{CRATES}\"\n[[package]]\nname = \"memchr\"\nversion = \"2.4.1\"\nsource = \"{CRATES}\"\n[[package]]\nname = \"syn\"\nversion = \"1.0.0\"\nsource = \"{CRATES}\"\n[[package]]\nname = \"syn\"\nversion = \"2.0.0\"\nsource = \"{CRATES}\"\n[[package]]\nname = \"bad\"\nversion = \"1.0.0\"\nsource = \"{CRATES}\"\n"),
+        );
+        let (mut notes, mut unreadable) = (vec![], 0);
+        let lock = read_lock(&temp.path().join("Cargo.lock"), "Cargo.lock", &mut notes, &mut unreadable).unwrap();
+        let deps = &lock.packages[0].dependencies;
+        let of = |name: &str| deps.iter().filter(|d| d.name == name).map(|d| (d.version.as_ref().map(Version::to_string), d.source.clone())).collect::<Vec<_>>();
+        assert_eq!(of("regex"), vec![(Some("1.5.4".into()), Some(CRATES.into()))], "a bare name takes its one package");
+        assert_eq!(of("memchr"), vec![(Some("2.4.1".into()), Some(CRATES.into()))], "`name version` takes the source");
+        assert_eq!(of("syn"), vec![(Some("1.0.0".into()), Some(CRATES.into())), (None, None)], "an ambiguous bare name stays as written");
+        assert!(of("bad").is_empty(), "a version that does not parse is not a bare name");
+        assert!(notes.iter().any(|n| n.contains("unusable")));
+    }
 
     #[test]
     fn virtual_workspace_globs_exclusions_and_workspace_lock_edges() {

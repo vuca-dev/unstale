@@ -207,6 +207,9 @@ fn listed_technologies(
         .ok()
         .and_then(|b| serde_json::from_slice::<Validators>(&b).ok())
         .filter(|v| cached.as_deref().is_some_and(|c| sha256_hex(c) == v.sha256) && (key_id.is_none() || v.key == key_id));
+    if stop() {
+        return None;
+    }
     let (bytes, fresh) = match src.get(TECHNOLOGIES, cond.as_ref()).ok()? {
         Got::Body(b, v) => {
             if stop() {
@@ -351,19 +354,31 @@ fn verify_signed(
         .map_err(|_| anyhow!("{}: the signature does not verify against the catalog key; nothing from it was used", src.describe(rel)))
 }
 
+/// A sync the bound cut short: every candidate failed as not checked, so the caller retries it (not an outage).
+fn not_checked<'c>(candidates: impl IntoIterator<Item = &'c String>, progress: &mut impl FnMut(&str)) -> Report {
+    let mut rep = Report::default();
+    for t in candidates {
+        rep.failed.push((t.clone(), "not checked".into()));
+        progress(t);
+    }
+    rep
+}
+
 fn sync_with(src: &Source, cache_dir: &Path, candidates: &BTreeSet<String>, withheld: &BTreeSet<String>, purls: &BTreeSet<String>, key: Option<&[u8; 32]>, stop: &(dyn Fn() -> bool + Sync), mut progress: impl FnMut(&str)) -> Result<Report> {
     if stop() {
-        bail!("catalog sync stopped at its time limit before fetching {}", src.describe("v1/root.json"));
+        return Ok(not_checked(candidates, &mut progress));
     }
     let root_bytes = match src.get("v1/root.json", None)? {
         Got::Body(b, _) => b,
         _ => bail!("no catalog at {} (v1/root.json not found)", src.describe("v1/root.json")),
     };
     if stop() {
-        bail!("catalog sync stopped at its time limit after fetching {}", src.describe("v1/root.json"));
+        return Ok(not_checked(candidates, &mut progress));
     }
-    if let Some(key) = key {
-        verify_signed(src, "v1/root.json", &root_bytes, key, stop)?;
+    if let Some(key) = key
+        && let Err(e) = verify_signed(src, "v1/root.json", &root_bytes, key, stop)
+    {
+        return if stop() { Ok(not_checked(candidates, &mut progress)) } else { Err(e) };
     }
     let root: Root = serde_json::from_slice(&root_bytes).context("root.json does not parse")?;
     check_root(&root)?;
@@ -379,6 +394,10 @@ fn sync_with(src: &Source, cache_dir: &Path, candidates: &BTreeSet<String>, with
         Source::Http { .. } => listed_technologies(src, cache_dir, key, stop),
         Source::Dir(_) => None,
     };
+    // A list the bound kept from being read is not an absent one: nothing is reported withheld.
+    if stop() {
+        return Ok(not_checked(techs, &mut progress));
+    }
     // No list over HTTP: a private dependency's name is not asked for (it would be named in the request).
     let mut rep = Report::default();
     if listed.is_none() && matches!(src, Source::Http { .. }) {
@@ -793,14 +812,16 @@ mod tests {
         let candidates = cands(&["next"]);
         let purls = purls(&[]);
 
-        let err = sync_with(&src, cache.path(), &candidates, &BTreeSet::new(), &purls, None, &|| true, |_| {}).unwrap_err();
-        assert!(format!("{err:#}").contains("time limit"), "{err:#}");
+        let not_checked = |rep: &Report| rep.synced.is_empty() && rep.failed == vec![("next".to_string(), "not checked".to_string())] && rep.withheld.is_empty();
+        let rep = sync_with(&src, cache.path(), &candidates, &BTreeSet::new(), &purls, None, &|| true, |_| {}).unwrap();
+        assert!(not_checked(&rep), "a bound is not an outage: the caller retries {rep:?}");
         assert!(srv.take_log().is_empty(), "an already expired bound starts no catalog request");
 
         let checks = std::sync::atomic::AtomicUsize::new(0);
         let stop_after_root = || checks.fetch_add(1, std::sync::atomic::Ordering::Relaxed) >= 1;
-        let err = sync_with(&src, cache.path(), &candidates, &BTreeSet::new(), &purls, None, &stop_after_root, |_| {}).unwrap_err();
-        assert!(format!("{err:#}").contains("time limit"), "{err:#}");
+        let withheld = cands(&["next"]);
+        let rep = sync_with(&src, cache.path(), &candidates, &withheld, &purls, None, &stop_after_root, |_| {}).unwrap();
+        assert!(not_checked(&rep), "an unread list does not report a private candidate withheld {rep:?}");
         assert_eq!(srv.take_log(), vec!["/v1/root.json 200"], "a bound reached during the root request prevents the list request");
     }
 

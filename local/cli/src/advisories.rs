@@ -2052,6 +2052,22 @@ mod tests {
 
     const CRATES_IO: &str = "registry+https://github.com/rust-lang/crates.io-index";
 
+    #[test]
+    fn a_cargo_fixture_project_is_never_queried_and_its_configuration_does_not_reach_the_application() {
+        let root = tempfile::tempdir().unwrap();
+        let lock = |name: &str, dep: &str| format!("version = 3\n\n[[package]]\nname = \"{name}\"\nversion = \"0.1.0\"\ndependencies = [\"{dep}\"]\n\n[[package]]\nname = \"{dep}\"\nversion = \"1.0.0\"\nsource = \"{CRATES_IO}\"\n");
+        write(root.path(), "Cargo.toml", "[package]\nname = \"app\"\nversion = \"0.1.0\"\n[dependencies]\nserde = \"1\"\n");
+        write(root.path(), "Cargo.lock", &lock("app", "serde"));
+        write(root.path(), "tests/fixtures/proj/Cargo.toml", "[package]\nname = \"proj\"\nversion = \"0.1.0\"\n[dependencies]\ninternal-only = \"1\"\n");
+        write(root.path(), "tests/fixtures/proj/Cargo.lock", &lock("proj", "internal-only"));
+        write(root.path(), "tests/fixtures/proj/.cargo/config.toml", "[source.crates-io]\nreplace-with = \"corp\"\n[source.corp]\nregistry = \"https://corp.invalid/index\"\n");
+        let st = cargo_stack(root.path());
+        let gs = graphs(root.path(), &st);
+        let node = |name: &str| gs.iter().flat_map(|g| &g.nodes).find(|n| n.name == name);
+        assert!(node("internal-only").is_none(), "Cargo discovery leaves test, example and fixture projects out: nothing of theirs reaches OSV");
+        assert!(!node("serde").unwrap().private, "the fixture's configuration does not reach the application");
+    }
+
     /// Cargo writes a dependency as its bare name whenever one package of the lockfile has that name, as most do.
     #[test]
     fn cargo_graph_reads_the_bare_references_cargo_writes_for_unambiguous_dependencies() {

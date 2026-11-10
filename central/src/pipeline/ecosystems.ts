@@ -24,6 +24,7 @@
 // No hand-written package lists, no per-technology tables (memory rule: ecosystem vocabularies, fail open).
 import type { Technology } from "./technologies.ts";
 import { pool } from "./util.ts";
+import { CARGO_NAME, cargoPurl } from "../onboarding/identity.ts";
 
 export interface Ecosystem {
   /** OSV's name for the ecosystem. */
@@ -148,8 +149,6 @@ export function pep440Order(a: string, b: string): number | undefined {
 export const npmName = (purl: string): string => decodeURIComponent(purl.replace(/^pkg:npm\//, ""));
 export const npmPurl = (name: string): string => `pkg:npm/${name.replace(/^@/, "%40")}`;
 
-const CARGO_NAME = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
-
 /** The exact crates.io registry name in a package-level or versioned Cargo PURL. */
 export function cargoName(component: string): string | undefined {
   const m = /^pkg:cargo\/(.*)$/i.exec(component);
@@ -170,10 +169,7 @@ export function cargoName(component: string): string | undefined {
 }
 
 /** Canonical Cargo package PURL; crate registry spelling is significant and is never separator-normalised. */
-export function cargoPurl(name: string): string {
-  if (!CARGO_NAME.test(name)) throw new TypeError(`invalid crates.io crate name: ${name}`);
-  return `pkg:cargo/${name}`;
-}
+export { cargoPurl };
 
 /** `owner/name` of a GitHub repository from a registry `repository` field, lower-cased; undefined otherwise. */
 export function githubRepo(field: unknown): string | undefined {

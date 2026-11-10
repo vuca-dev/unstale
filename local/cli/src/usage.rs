@@ -142,6 +142,9 @@ pub fn naming_lits(purl: &str) -> Vec<String> {
     quoted.iter().cloned().chain(module).collect()
 }
 
+/// A Cargo package's dependency-local aliases, each with the manifest directories that declare it.
+pub type CargoAliases = BTreeMap<String, BTreeSet<String>>;
+
 /// Rust path spellings for a Cargo package and any dependency-local aliases. This only changes Rust identifiers,
 /// never the Cargo PURL or package name.
 pub fn cargo_naming_lits(purl: &str, aliases: &[String]) -> Vec<String> {
@@ -184,7 +187,14 @@ const NPM_MODULE_AT: &[&str] = &[
 /// it. A quoted name alone does not: `type Falloff = 'linear' | 'sharp'` is a string, not an import of sharp. In data
 /// and config files (manifests, `tsconfig.json` types, CSS `@import`) any quoted form names it.
 pub fn module_naming(lit: &str) -> bool {
-    lit.starts_with("import ") || lit.starts_with("from ") || lit.starts_with("use ") || lit.starts_with("extern crate ") || NPM_MODULE_AT.iter().any(|at| lit.starts_with(at))
+    lit.starts_with("import ") || lit.starts_with("from ") || rust_use_literal(lit) || NPM_MODULE_AT.iter().any(|at| lit.starts_with(at))
+}
+
+/// A Rust `use`/`extern crate` form of `cargo_naming_lits` (`use serde_json::`, `use x;`, `use x as `, `extern crate
+/// x;`), not any literal that begins with `use `: a JavaScript directive such as `'use cache'` is not an import.
+fn rust_use_literal(lit: &str) -> bool {
+    (lit.starts_with("use ") && (lit.ends_with("::") || lit.ends_with(';') || lit.ends_with(" as ")))
+        || (lit.starts_with("extern crate ") && lit.ends_with(';'))
 }
 
 /// A literal that is a relative path (`./src/*`, `../`): in a dependency's record it is a subpath of the dependency's
@@ -348,14 +358,25 @@ impl<'a> Scope<'a> {
 
     /// Add package-specific Cargo aliases to module naming and import ownership. Aliases affect `.rs` source matching
     /// only; the component identities remain their original Cargo PURLs.
-    pub fn with_cargo_aliases<'b>(mut self, purls: impl IntoIterator<Item = &'b String>, aliases: &BTreeMap<String, BTreeSet<String>>) -> Self {
+    /// The crate's Rust path spellings name it in any file; an alias's only under the manifest directories declaring
+    /// it, as a Cargo alias is local to its package.
+    pub fn with_cargo_aliases<'b>(mut self, purls: impl IntoIterator<Item = &'b String>, aliases: &BTreeMap<String, CargoAliases>) -> Self {
+        let under = |path: &str, dirs: Option<&BTreeSet<String>>| {
+            dirs.is_none_or(|dirs| dirs.iter().any(|d| d == "." || path.strip_prefix(d.as_str()).is_some_and(|r| r.starts_with('/'))))
+        };
         for purl in purls.into_iter().filter(|p| normalize_purl(p).starts_with("pkg:cargo/")) {
-            let alias_list: Vec<String> = aliases.get(&normalize_purl(purl)).into_iter().flatten().cloned().collect();
-            for lit in cargo_naming_lits(purl, &alias_list) {
-                let files: Vec<&str> = self.hits.usage.get(&lit).into_iter().flatten().map(String::as_str).collect();
+            let own = cargo_naming_lits(purl, &[]);
+            let declared = aliases.get(&normalize_purl(purl));
+            let alias_lits = declared.into_iter().flatten().flat_map(|(alias, dirs)| {
+                cargo_naming_lits(purl, std::slice::from_ref(alias)).into_iter().filter(|l| !own.contains(l)).map(move |l| (l, Some(dirs)))
+            });
+            let lits: Vec<(String, Option<&BTreeSet<String>>)> = own.iter().cloned().map(|l| (l, None)).chain(alias_lits).collect();
+            for (lit, dirs) in lits {
+                let files: Vec<&str> = self.hits.usage.get(&lit).into_iter().flatten().map(String::as_str).filter(|p| under(p, dirs)).collect();
                 self.naming.extend(files.iter().copied());
                 self.importing.extend(files);
                 for x in self.hits.ix.get(&lit).into_iter().flatten() {
+                    if !self.paths.get(*x as usize).is_some_and(|p| under(p, dirs)) { continue; }
                     if let Some(n) = self.named_at.get_mut(*x as usize) { n.0 = true; n.1 = true; }
                 }
             }
@@ -2758,16 +2779,17 @@ pub struct Hits {
 }
 
 fn rust_naming_literal(lit: &str) -> bool {
-    lit.ends_with("::") || lit.starts_with("use ") || lit.starts_with("extern crate ")
+    lit.ends_with("::") || rust_use_literal(lit)
 }
 
 /// A Cargo naming hit must be Rust code, and an import spelling must begin a use item.
-fn rust_naming_hit(text: &str, at: usize, lit: &str) -> bool {
-    let (comments, strings) = lex_spans("source.rs", text);
+/// `spans`: the file's comment and string spans (`lex_spans`), read once per file.
+fn rust_naming_hit(text: &str, spans: &(Vec<(usize, usize)>, Vec<StringSpan>), at: usize, lit: &str) -> bool {
+    let (comments, strings) = spans;
     if comments.iter().any(|(s, e)| *s <= at && at < *e) || strings.iter().any(|(s, e, _)| *s <= at && at < *e) {
         return false;
     }
-    if !lit.starts_with("use ") && !lit.starts_with("extern crate ") {
+    if !rust_use_literal(lit) {
         return true;
     }
     let start = text[..at].rfind('\n').map_or(0, |i| i + 1);
@@ -2861,6 +2883,7 @@ pub fn find_with_commands(repo: &Repo, usage_lits: &BTreeSet<String>, whole_lits
         let mut bits: HashMap<usize, u8> = HashMap::new();
         let style = path.rsplit_once('.').is_some_and(|(_, x)| STYLE_EXT.contains(&x.to_ascii_lowercase().as_str()));
         let mut flags: Vec<(usize, BTreeSet<String>)> = vec![];
+        let rust_spans = std::cell::OnceCell::new();
         for m in ac.find_overlapping_iter(text) {
             let p = m.pattern().as_usize();
             // A flag is a whole word: `--run` is not in `--runner`, `--runInBand`, `var(--run-data--color)` or `--custom--run`.
@@ -2884,7 +2907,7 @@ pub fn find_with_commands(repo: &Repo, usage_lits: &BTreeSet<String>, whole_lits
             if js && module_pat[p] && quoted_or_commented(text, m.start()) {
                 continue;
             }
-            if path.ends_with(".rs") && rust_naming_literal(&patterns[p]) && !rust_naming_hit(text, m.start(), &patterns[p]) {
+            if path.ends_with(".rs") && rust_naming_literal(&patterns[p]) && !rust_naming_hit(text, rust_spans.get_or_init(|| lex_spans("source.rs", text)), m.start(), &patterns[p]) {
                 continue;
             }
             let before = if m.start() == 0 { None } else { Some(b[m.start() - 1]) };
@@ -3070,6 +3093,17 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn only_rust_use_forms_name_a_module_not_javascript_directives() {
+        for lit in cargo_naming_lits("pkg:cargo/serde-json", &[]).iter().filter(|l| !l.ends_with("::") || l.starts_with("use ")) {
+            assert!(module_naming(lit), "{lit}");
+        }
+        for directive in ["use cache", "use client", "use strict", "use server"] {
+            assert!(!module_naming(directive), "{directive} is a directive, not an import");
+            assert!(!rust_naming_literal(directive));
+        }
+    }
 
     #[test]
     fn a_keyword_record_needs_the_keyword_passed_to_a_call_of_its_subject() {
@@ -3334,6 +3368,24 @@ mod tests {
     }
     fn set(x: &[&str]) -> BTreeSet<String> {
         x.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn a_cargo_alias_names_the_crate_only_in_the_package_that_declares_it() {
+        let r = repo(&[
+            ("app/src/main.rs", "use json::Value;\n"),
+            ("other/src/lib.rs", "use json::Value;\n"),
+            ("other/src/direct.rs", "use serde_json::Value;\n"),
+        ]);
+        let purl = "pkg:cargo/serde-json".to_string();
+        let h = find(&r, &cargo_naming_lits(&purl, &["json".into()]).into_iter().collect(), &set(&[]));
+        let aliases = BTreeMap::from([(purl.clone(), CargoAliases::from([("json".to_string(), BTreeSet::from(["app".to_string()]))]))]);
+        let root = ["."];
+        let purls = vec![purl.clone()];
+        let s = Scope::new("cargo", &root, &purls, &[], &h, &r.paths).with_cargo_aliases(&purls, &aliases);
+        assert!(s.importing.contains("app/src/main.rs"), "the declaring package's alias import");
+        assert!(!s.importing.contains("other/src/lib.rs"), "another package's `json` is its own module");
+        assert!(s.importing.contains("other/src/direct.rs"), "the crate's own name counts everywhere");
     }
 
     #[test]

@@ -200,13 +200,17 @@ struct SideBySide<'p> {
     members: BTreeSet<String>,
 }
 
-fn cargo_aliases(stack: &Stack, comps: &BTreeSet<String>) -> BTreeMap<String, BTreeSet<String>> {
+/// Per Cargo package, its dependency-local aliases and the manifest directories declaring each: an alias names the
+/// crate only in the package that declares it (`usage::Scope::with_cargo_aliases`).
+fn cargo_aliases(stack: &Stack, comps: &BTreeSet<String>) -> BTreeMap<String, usage::CargoAliases> {
     let cargo: BTreeSet<String> = comps.iter().filter(|p| p.starts_with("pkg:cargo/")).map(|p| normalize_purl(p)).collect();
-    let mut out = BTreeMap::new();
+    let mut out: BTreeMap<String, usage::CargoAliases> = BTreeMap::new();
     for d in &stack.cargo.declarations {
         let Some(name) = d.package.as_deref() else { continue };
         let purl = crate::util::cargo_purl(name);
-        if cargo.contains(&purl) && d.alias != name { out.entry(purl).or_insert_with(BTreeSet::new).insert(d.alias.clone()); }
+        if cargo.contains(&purl) && d.alias != name {
+            out.entry(purl).or_default().entry(d.alias.clone()).or_default().insert(d.manifest_dir.clone());
+        }
     }
     out
 }
@@ -214,7 +218,7 @@ fn cargo_aliases(stack: &Stack, comps: &BTreeSet<String>) -> BTreeMap<String, BT
 fn naming_for(stack: &Stack, purl: &str) -> Vec<String> {
     if purl.starts_with("pkg:cargo/") {
         let aliases = cargo_aliases(stack, &BTreeSet::from([purl.to_string()]));
-        let names: Vec<String> = aliases.get(&normalize_purl(purl)).into_iter().flatten().cloned().collect();
+        let names: Vec<String> = aliases.get(&normalize_purl(purl)).into_iter().flat_map(|a| a.keys()).cloned().collect();
         usage::cargo_naming_lits(purl, &names)
     } else { usage::naming_lits(purl) }
 }
@@ -2977,7 +2981,7 @@ mod tests {
         let purl = "pkg:cargo/serde-json".to_string();
         let comps = BTreeSet::from([purl.clone()]);
         let aliases = cargo_aliases(&stack, &comps);
-        assert_eq!(aliases[&purl], BTreeSet::from(["json_alias".to_string()]));
+        assert_eq!(aliases[&purl], BTreeMap::from([("json_alias".to_string(), BTreeSet::from([".".to_string()]))]));
         let names = naming_for(&stack, &purl);
         assert!(names.contains(&"use serde_json::".to_string()));
         assert!(names.contains(&"use json_alias::".to_string()));
