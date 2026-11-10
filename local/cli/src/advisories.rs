@@ -1434,9 +1434,10 @@ fn evaluate_refs(
                     // requester into one entry and splits it again on an update, so one range refusing a fix blocks
                     // nothing while another admits it (`"ws@npm:^8.11.0, ~8.17.1"`: the direct range moves, a build
                     // tool's stays): the fix is blocked only when all of them refuse it.
+                    // Cargo.lock resolves every feature and target, so an optional or target-specific requirement
+                    // blocks a fix as any other does: conditionality bears on runtime certainty, not on blocking.
                     let holds = |edge: &Edge| {
                         edge.range.as_deref().is_some_and(|r| admits(g.eco, &installed, r) != Some(false))
-                            && (!cargo || (!edge.conditional && edge.target.is_none()))
                             && (!runtime[i] || if cargo { edge.kind == DependencyKind::Runtime } else { !edge.dev })
                     };
                     let mut requesters: Vec<(usize, &str)> = ps
@@ -2565,14 +2566,12 @@ mod tests {
         let build = items.iter().find(|i| i.name == "build-crate").unwrap();
         assert!(build.why.iter().any(|w| w.starts_with("fix blocked:")));
         assert!(!build.why.iter().any(|w| w.contains("at runtime")));
-        assert!(items.iter().any(|i| {
-            i.name == "optional-crate"
-                && i.why == ["high on a potentially active Cargo dependency"]
-        }));
-        assert!(items.iter().any(|i| {
-            i.name == "target-crate"
-                && i.why == ["high on a potentially active Cargo dependency"]
-        }));
+        let conditional = items.iter().find(|i| i.name == "optional-crate").unwrap();
+        assert_eq!(conditional.why[0], "high on a potentially active Cargo dependency");
+        assert!(conditional.why[1..].iter().any(|w| w.starts_with("fix blocked:")), "Cargo.lock resolves every feature and target, so its `=1.0.0` blocks the fix: {:?}", conditional.why);
+        let conditional = items.iter().find(|i| i.name == "target-crate").unwrap();
+        assert_eq!(conditional.why[0], "high on a potentially active Cargo dependency");
+        assert!(conditional.why[1..].iter().any(|w| w.starts_with("fix blocked:")), "Cargo.lock resolves every feature and target, so its `=1.0.0` blocks the fix: {:?}", conditional.why);
         assert!(!items.iter().any(|i| i.name == "dev-crate"));
 
         let version = Version::parse("1.2.3-alpha.1").unwrap();

@@ -361,8 +361,11 @@ impl<'a> Scope<'a> {
     /// The crate's Rust path spellings name it in any file; an alias's only under the manifest directories declaring
     /// it, as a Cargo alias is local to its package.
     pub fn with_cargo_aliases<'b>(mut self, purls: impl IntoIterator<Item = &'b String>, aliases: &BTreeMap<String, CargoAliases>) -> Self {
+        // An alias is a Rust identifier: it names the crate in that package's Rust source only.
         let under = |path: &str, dirs: Option<&BTreeSet<String>>| {
-            dirs.is_none_or(|dirs| dirs.iter().any(|d| d == "." || path.strip_prefix(d.as_str()).is_some_and(|r| r.starts_with('/'))))
+            dirs.is_none_or(|dirs| {
+                path.ends_with(".rs") && dirs.iter().any(|d| d == "." || path.strip_prefix(d.as_str()).is_some_and(|r| r.starts_with('/')))
+            })
         };
         for purl in purls.into_iter().filter(|p| normalize_purl(p).starts_with("pkg:cargo/")) {
             let own = cargo_naming_lits(purl, &[]);
@@ -840,6 +843,23 @@ fn lex_spans(path: &str, text: &str) -> (Vec<(usize, usize)>, Vec<StringSpan>) {
     while i < b.len() {
         let c = b[i];
         let next = b.get(i + 1).copied();
+        if path.ends_with(".rs") && c == b'\'' {
+            // A character literal (`'x'`, `'\n'`, `'\''`, `'\u{1F600}'`) is a string; a lifetime or label (`'a`,
+            // `'static`, `'outer:`) opens none, so `&'a serde_json::Value` stays code.
+            let close = if next == Some(b'\\') {
+                text.get(i + 3..line_end(i)).and_then(|rest| rest.find('\'')).map(|n| i + 3 + n)
+            } else {
+                text.get(i + 1..).and_then(|rest| rest.chars().next()).map(|ch| i + 1 + ch.len_utf8()).filter(|&at| b.get(at) == Some(&b'\''))
+            };
+            match close {
+                Some(end) => {
+                    strings.push((i + 1, end, false));
+                    i = end + 1;
+                }
+                None => i += 1,
+            }
+            continue;
+        }
         if path.ends_with(".rs") {
             let raw = if c == b'r' {
                 Some(i)
@@ -3376,6 +3396,8 @@ mod tests {
             ("app/src/main.rs", "use json::Value;\n"),
             ("other/src/lib.rs", "use json::Value;\n"),
             ("other/src/direct.rs", "use serde_json::Value;\n"),
+            ("app/README.md", "use json::Value;\n"),
+            ("app/src/lifetimes.rs", "fn f<'a>(v: &'a serde_json::Value, c: char) -> &'a str { let _ = 'x'; let _ = '\\''; v.as_str().unwrap() }\n"),
         ]);
         let purl = "pkg:cargo/serde-json".to_string();
         let h = find(&r, &cargo_naming_lits(&purl, &["json".into()]).into_iter().collect(), &set(&[]));
@@ -3386,6 +3408,8 @@ mod tests {
         assert!(s.importing.contains("app/src/main.rs"), "the declaring package's alias import");
         assert!(!s.importing.contains("other/src/lib.rs"), "another package's `json` is its own module");
         assert!(s.importing.contains("other/src/direct.rs"), "the crate's own name counts everywhere");
+        assert!(!s.importing.contains("app/README.md"), "an alias names the crate in Rust source only");
+        assert_eq!(h.usage.get("serde_json::").unwrap(), &["app/src/lifetimes.rs", "other/src/direct.rs"], "a lifetime opens no string");
     }
 
     #[test]
