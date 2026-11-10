@@ -142,6 +142,13 @@ export const IndexRelease = z.strictObject({
 });
 export type IndexRelease = z.infer<typeof IndexRelease>;
 
+export const Notice = z.strictObject({
+  "id": z.string(),
+  "text": z.string(),
+  "until": z.string(),
+});
+export type Notice = z.infer<typeof Notice>;
+
 export const SampleRepo = z.strictObject({
   "commit": z.string(),
   "repo": z.string(),
@@ -187,7 +194,9 @@ export const TechIndex = z.strictObject({
 export type TechIndex = z.infer<typeof TechIndex>;
 
 export const Root = z.strictObject({
+  "latest_client": z.string().nullable().optional(),
   "min_client": z.string(),
+  "notice": Notice.nullable().optional(),
   "schema": z.number().int().min(0).max(4294967295),
 });
 export type Root = z.infer<typeof Root>;

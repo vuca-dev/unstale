@@ -1,14 +1,14 @@
 // Publishing: deterministic shards per technology and release line, content-hash names, the index and root, stubs in
 // their own line's shard, and the generated Zod rejecting an invalid record before anything is written.
 import { createHash } from "node:crypto";
-import { existsSync, mkdtempSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gunzipSync } from "node:zlib";
-import { describe, expect, test } from "vitest";
-import { publishTechnology } from "../src/pipeline/publish.ts";
+import { describe, expect, onTestFinished, test, vi } from "vitest";
+import { CLIENT_MANIFEST, manifestVersion, publishTechnology, rootText, writeRoot } from "../src/pipeline/publish.ts";
 import { mergeInto, retract, type StoredRecord, type TechStore } from "../src/pipeline/store.ts";
-import { ShardLine, TechIndex } from "../src/schema/catalog.ts";
+import { Root, ShardLine, TechIndex } from "../src/schema/catalog.ts";
 
 function rec(id: string, lines: string[], over: Partial<StoredRecord> = {}): StoredRecord {
   return {
@@ -67,13 +67,42 @@ function files(dir: string): Record<string, Buffer> {
 describe("publish", () => {
   test("same store, byte-identical files", () => {
     const a = mkdtempSync(join(tmpdir(), "unstale-pub-"));
+    vi.stubEnv("UNSTALE_NOTICE", join(a, "no-notice.json"));
+    onTestFinished(() => void vi.unstubAllEnvs());
     const b = mkdtempSync(join(tmpdir(), "unstale-pub-"));
     publishTechnology(fixture(), CHECKED, a);
     publishTechnology(fixture(), CHECKED, b);
     publishTechnology(fixture(), CHECKED, b); // a rerun over existing output
     expect(files(b)).toEqual(files(a));
     expect(Object.keys(files(a)).sort()).toEqual(expect.arrayContaining(["v1/root.json", "v1/tech/next.json"]));
-    expect(JSON.parse(readFileSync(join(a, "v1", "root.json"), "utf8"))).toEqual({ schema: 1, min_client: "0.1.0" });
+    expect(JSON.parse(readFileSync(join(a, "v1", "root.json"), "utf8"))).toEqual({ schema: 1, min_client: "0.1.0", latest_client: manifestVersion(CLIENT_MANIFEST) });
+  });
+
+  test("the root names the client's released version and the notice file's announcement, when there is one", () => {
+    const dir = mkdtempSync(join(tmpdir(), "unstale-root-"));
+    const manifest = join(dir, "Cargo.toml");
+    writeFileSync(manifest, '[package]\nname = "unstale"\nversion = "0.3.2"\n\n[dependencies]\nclap = { version = "4" }\n');
+    const none = join(dir, "absent.json");
+    expect(JSON.parse(rootText({ manifest, notice: none }))).toEqual({ schema: 1, min_client: "0.1.0", latest_client: "0.3.2" });
+    // No manifest (a container holds only src/): no latest_client, the root still publishes.
+    expect(JSON.parse(rootText({ manifest: none, notice: none }))).toEqual({ schema: 1, min_client: "0.1.0" });
+    const notice = join(dir, "notice.json");
+    writeFileSync(notice, JSON.stringify({ id: "keys-2026-11", until: "2026-11-30", text: "Run `unstale setup`." }));
+    const text = rootText({ manifest, notice });
+    expect(Root.parse(JSON.parse(text)).notice).toEqual({ id: "keys-2026-11", until: "2026-11-30", text: "Run `unstale setup`." });
+    expect(text).toBe(rootText({ manifest, notice }));
+    // A malformed notice fails the publish instead of reaching clients.
+    writeFileSync(notice, JSON.stringify({ id: "x", text: "no until" }));
+    expect(() => rootText({ manifest, notice })).toThrow();
+    // UNSTALE_NOTICE names the file the writers use by default.
+    writeFileSync(notice, JSON.stringify({ id: "env", until: "2026-12-01", text: "t" }));
+    vi.stubEnv("UNSTALE_NOTICE", notice);
+    try {
+      writeRoot(dir, { manifest });
+      expect(JSON.parse(readFileSync(join(dir, "v1", "root.json"), "utf8")).notice.id).toBe("env");
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   test("the index lists each shard with a hash, size and count that verify; every line passes the Zod", () => {

@@ -360,11 +360,34 @@ pub struct SampleRepo {
     pub commit: String,
 }
 
-/// `v1/root.json`: rarely changes.
+/// `v1/root.json`: rarely changes. Clients ignore fields they do not know, so optional fields need no schema bump.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Root {
     pub schema: u32,
     pub min_client: String,
+    /// The newest released client version; a client older than it tells its user an update is available.
+    #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "lenient")]
+    pub latest_client: Option<String>,
+    /// A short announcement every client shows (at most once a day per id) until its `until` date.
+    #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "lenient")]
+    pub notice: Option<Notice>,
+}
+
+/// An optional root field a client reads as absent when it does not parse, so a later change of its shape never
+/// makes an older client refuse the root.
+fn lenient<'de, D: serde::Deserializer<'de>, T: serde::de::DeserializeOwned>(d: D) -> Result<Option<T>, D::Error> {
+    Ok(serde_json::from_value(<serde_json::Value as Deserialize>::deserialize(d)?).ok())
+}
+
+/// A catalog announcement, e.g. a change users must act on.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct Notice {
+    /// Stable id; a client shows each id at most once a day.
+    pub id: String,
+    /// ISO date, `YYYY-MM-DD`: the last day the notice is shown.
+    pub until: String,
+    /// One line for the user.
+    pub text: String,
 }
 
 /// `v1/technologies.json`: every technology the catalog has an index for (`v1/tech/<id>.json`), by id, with the first 16

@@ -1,9 +1,52 @@
 {
+  "$defs": {
+    "Notice": {
+      "description": "A catalog announcement, e.g. a change users must act on.",
+      "properties": {
+        "id": {
+          "description": "Stable id; a client shows each id at most once a day.",
+          "type": "string"
+        },
+        "text": {
+          "description": "One line for the user.",
+          "type": "string"
+        },
+        "until": {
+          "description": "ISO date, `YYYY-MM-DD`: the last day the notice is shown.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "until",
+        "text"
+      ],
+      "type": "object"
+    }
+  },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "`v1/root.json`: rarely changes.",
+  "description": "`v1/root.json`: rarely changes. Clients ignore fields they do not know, so optional fields need no schema bump.",
   "properties": {
+    "latest_client": {
+      "description": "The newest released client version; a client older than it tells its user an update is available.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "min_client": {
       "type": "string"
+    },
+    "notice": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Notice"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "A short announcement every client shows (at most once a day per id) until its `until` date."
     },
     "schema": {
       "format": "uint32",

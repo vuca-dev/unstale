@@ -1,16 +1,10 @@
 import { CoverageService, createCoverageServer } from "./service.ts";
-import { writeAtomic } from "../pipeline/util.ts";
+import { writeRoot } from "../pipeline/publish.ts";
 import { catalogDir } from "../pipeline/paths.ts";
-import { existsSync } from "node:fs";
-import { join } from "node:path";
 const port = Number(process.env.UNSTALE_PORT ?? "47831");
 // 0.0.0.0 in a container; the default keeps a developer's service off the network.
 const host = process.env.UNSTALE_HOST ?? "127.0.0.1";
-if (!existsSync(join(catalogDir(), "v1/root.json")))
-  writeAtomic(
-    join(catalogDir(), "v1/root.json"),
-    JSON.stringify({ schema: 1, min_client: "0.1.0" }),
-  );
+writeRoot(catalogDir());
 const service = new CoverageService(),
   server = createCoverageServer(service);
 server.on("error", (error) => {

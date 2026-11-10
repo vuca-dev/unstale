@@ -55,6 +55,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync 
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { catalogDir, centralDir } from "../pipeline/paths.ts";
+import { writeRoot } from "../pipeline/publish.ts";
 import { sha256, writeAtomic } from "../pipeline/util.ts";
 import { CoverageService } from "./service.ts";
 import { PROGRESS_EVERY_MS, PUBLISH_MS, earlyDue, progressKey, progressOf, progressTicker, type RunState } from "./progress.ts";
@@ -159,8 +160,9 @@ async function drain(args: string[]): Promise<void> {
       "early-grace-minutes": { type: "string" },
     },
   });
-  if (!existsSync(join(catalogDir(), "v1/root.json")))
-    writeAtomic(join(catalogDir(), "v1/root.json"), JSON.stringify({ schema: 1, min_client: "0.1.0" }));
+  // The root as publishing writes it, so a run that publishes no technology still carries the current
+  // latest_client and notice.
+  writeRoot(catalogDir());
   const t0 = Date.now();
   const pullMs = Math.max(0, Number(values["pull-minutes"] ?? 5) || 0) * 60_000;
   // Jobs at once: the work is mostly waiting on docs sites (scale probe), so more than the server's default of 2.
