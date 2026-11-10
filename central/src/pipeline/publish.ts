@@ -37,14 +37,22 @@ export function rootText(opts: { manifest?: string; notice?: string } = {}): str
     schema: 1,
     min_client: MIN_CLIENT,
     ...(latest ? { latest_client: latest } : {}),
-    ...(existsSync(notice) ? { notice: Notice.parse(JSON.parse(readFileSync(notice, "utf8"))) } : {}),
+    ...(existsSync(notice) ? { notice: validNotice(Notice.parse(JSON.parse(readFileSync(notice, "utf8")))) } : {}),
   });
   return JSON.stringify(JSON.parse(canonical(root)), null, 1) + "\n";
 }
 
+/** A notice a client will show: a real `YYYY-MM-DD` last day (clients skip any other) and some text. */
+function validNotice(n: Notice): Notice {
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(n.until) ? new Date(`${n.until}T00:00:00Z`) : undefined;
+  if (!day || Number.isNaN(day.getTime()) || day.toISOString().slice(0, 10) !== n.until) throw new Error(`notice ${n.id}: until \`${n.until}\` is not a YYYY-MM-DD date`);
+  if (!n.id.trim() || !n.text.trim()) throw new Error("a notice needs an id and text");
+  return n;
+}
+
 /** Write the root into a catalog directory, leaving the file alone when it is unchanged. */
-export function writeRoot(catalog: string, opts: Parameters<typeof rootText>[0] = {}): void {
-  writeIfChanged(join(catalog, "v1", "root.json"), rootText(opts));
+export function writeRoot(catalog: string, opts: Parameters<typeof rootText>[0] = {}, text = rootText(opts)): void {
+  writeIfChanged(join(catalog, "v1", "root.json"), text);
 }
 
 /** The published line for a record; validated by the generated Zod unless `validate` is false (the caller checks). */
@@ -102,6 +110,8 @@ export const activeTerms = (store: TechStore): string[] =>
   [...new Set(Object.values(store.records).filter((r) => r.status === "active").flatMap((r) => r.terms))].sort();
 
 export function publishTechnology(store: TechStore, checked: string, outDir: string, sample?: PublishedSample, now = new Date()): PublishResult {
+  // The root first: a notice that does not validate stops the publish before anything is written.
+  const root = rootText();
   const byLine = new Map<string, string[]>();
   for (const r of Object.values(store.records).sort((a, b) => a.id.localeCompare(b.id))) {
     const line = lineOf(r);
@@ -140,7 +150,7 @@ export function publishTechnology(store: TechStore, checked: string, outDir: str
   });
   recordReplacedIndex(outDir, store.technology, shards.map((s) => s.path), now);
   writeIfChanged(join(outDir, "v1", "tech", `${store.technology}.json`), JSON.stringify(JSON.parse(canonical(index)), null, 1) + "\n");
-  writeRoot(outDir);
+  writeRoot(outDir, {}, root);
   return { index, bytes, written };
 }
 

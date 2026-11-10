@@ -233,7 +233,8 @@ fn dispatch(cli: Cli) -> Result<u8> {
             ctx.config.service = Some(service);
             util::write_atomic(&ctx.tool.join("config.json"), &serde_json::to_vec_pretty(&ctx.config)?)?;
         }
-        return if ctx.config.service.is_some() { onboarding::run(&ctx, wait.unwrap_or(0), !no_animation, false).inspect(|_| notice::print(&ctx.cache, &ctx.tool)) } else { Ok(code) };
+        return if ctx.config.service.is_some() { onboarding::run(&ctx, wait.unwrap_or(0), !no_animation, false) } else { Ok(code) }
+            .inspect(|_| notice::print(&ctx.cache, &ctx.tool));
     }
     let ctx = context(&start)?;
     match cli.cmd {

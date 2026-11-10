@@ -21,15 +21,16 @@ pub struct Shown {
     pub update: Option<String>,
 }
 
-/// The command that upgrades this client: Homebrew's when the running binary is a Homebrew install, npm's otherwise.
+/// The command that upgrades this client: Homebrew's when the running binary (symlinks resolved) is in a keg, which
+/// is always under `Cellar`; npm's otherwise, including an npm install under a Homebrew Node (`/opt/homebrew/lib`).
 pub fn upgrade_command(exe: &Path) -> &'static str {
-    let homebrew = exe.components().any(|c| matches!(c.as_os_str().to_str(), Some("Cellar" | "homebrew" | "linuxbrew")));
+    let homebrew = exe.components().any(|c| c.as_os_str() == "Cellar");
     if homebrew { "brew upgrade unstale" } else { "npm install -g @unstale/cli@latest" }
 }
 
-/// One printable line: control characters (a newline, an escape sequence) removed.
+/// One printable line (`util::one_line`: control, separator and bidirectional characters blanked), bounded.
 fn one_line(s: &str) -> String {
-    s.chars().map(|c| if c.is_control() { ' ' } else { c }).collect::<String>().split_whitespace().collect::<Vec<_>>().join(" ")
+    util::one_line(s, 400)
 }
 
 /// The lines due today, recording each in `shown`. `ours` is this client's version.
@@ -147,6 +148,8 @@ mod tests {
     #[test]
     fn the_upgrade_command_follows_the_install() {
         assert_eq!(upgrade_command(Path::new("/opt/homebrew/Cellar/unstale/0.3.1/bin/unstale")), "brew upgrade unstale");
+        assert_eq!(upgrade_command(Path::new("/home/linuxbrew/.linuxbrew/Cellar/unstale/0.3.1/bin/unstale")), "brew upgrade unstale");
         assert_eq!(upgrade_command(Path::new("/usr/local/lib/node_modules/@unstale/cli-darwin-arm64/bin/unstale")), "npm install -g @unstale/cli@latest");
+        assert_eq!(upgrade_command(Path::new("/opt/homebrew/lib/node_modules/@unstale/cli-darwin-arm64/bin/unstale")), "npm install -g @unstale/cli@latest");
     }
 }

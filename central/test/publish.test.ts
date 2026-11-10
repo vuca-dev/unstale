@@ -94,6 +94,19 @@ describe("publish", () => {
     // A malformed notice fails the publish instead of reaching clients.
     writeFileSync(notice, JSON.stringify({ id: "x", text: "no until" }));
     expect(() => rootText({ manifest, notice })).toThrow();
+    for (const until of ["30 Nov", "2026-02-30", "2026-11-30T00:00:00Z"]) {
+      writeFileSync(notice, JSON.stringify({ id: "x", until, text: "t" }));
+      expect(() => rootText({ manifest, notice }), until).toThrow(/YYYY-MM-DD/);
+    }
+    // A bad notice stops a technology's publish before any of its files are written.
+    const pub = mkdtempSync(join(tmpdir(), "unstale-pub-"));
+    vi.stubEnv("UNSTALE_NOTICE", notice);
+    try {
+      expect(() => publishTechnology(fixture(), CHECKED, pub)).toThrow(/YYYY-MM-DD/);
+      expect(readdirSync(pub)).toEqual([]);
+    } finally {
+      vi.unstubAllEnvs();
+    }
     // UNSTALE_NOTICE names the file the writers use by default.
     writeFileSync(notice, JSON.stringify({ id: "env", until: "2026-12-01", text: "t" }));
     vi.stubEnv("UNSTALE_NOTICE", notice);
