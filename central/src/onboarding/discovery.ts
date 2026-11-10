@@ -17,7 +17,7 @@ export interface PublicTechnology {
 }
 export { npmIdentity, pypiIdentity, cargoIdentity, cargoPurl, packageIdentity, technologyId } from "./identity.ts";
 import { npmIdentity, pypiIdentity, cargoIdentity, packageIdentity, technologyId } from "./identity.ts";
-export const DISCOVERY_VERSION = 3;
+export const DISCOVERY_VERSION = 2;
 export function releasePattern(
   purl: string,
   repo?: string,

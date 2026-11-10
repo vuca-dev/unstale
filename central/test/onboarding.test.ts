@@ -160,7 +160,7 @@ test("crates.io discovery verifies exact identity and uses only the stable versi
     "user-agent": "unstale-central",
   });
   expect(t).toMatchObject({
-    discovery_version: 3,
+    discovery_version: 2,
     purl: "pkg:cargo/foo_bar",
     id: technologyId("pkg:cargo/foo_bar"),
     name: "foo_bar",
