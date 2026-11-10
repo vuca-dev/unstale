@@ -53,3 +53,29 @@ the training data). Decision rule as in the vault note.
 ## Stage 6: smaller encoders (only if stage 4 passes)
 
 A size-against-accuracy curve to bring the download under 150 MB.
+
+## Stage 5, fixed before any stage 5 label exists (10 November 2026)
+
+Stage 4 failed at the dev-fitted breaking threshold. Stage 5 tests the encoder as an **opt-in fallback** (used only
+when no decision-model key is available) at thresholds fixed now: **breaking 0.4, benefit 0.05**. 0.4 was chosen on
+H1 and H2 (`RESULTS.md`, diagnostic sweep), so H1 and H2 cannot confirm it; stage 5 is the confirmation. Model: the
+100% checkpoint (`f100`), unchanged.
+
+**Units** (sampled once by sha256 of `edge-s5:<record id>`, records from `data.jsonl`):
+- **A**, 250 records from the 235 validation technologies (never trained on), at most 5 per technology.
+- **B**, 150 records from validation-technology releases with a major version (`x.0.0`, x ≥ 1), at most 5 per
+  technology, disjoint from A. Enriches breaking changes without using any model's prediction.
+- **C** (descriptive), 100 records of training technologies that were not in the capped training sample, released in
+  October 2026 or later: technologies the encoder has seen, records it has not.
+
+**Reference labels:** two blind labelers on the held-out packet's questions (`../select/holdout/classify/PACKET.md`),
+J1 Codex gpt-5.6-luna and J2 gpt-6-luna (as slice 17), adjudication of their disagreements blind to Jev's and the
+encoder's answers.
+
+**Arms:** the encoder at 0.4 / 0.05; Jev's cached answers for the same states (no new Jev calls) at the pipeline's live
+thresholds (0.5 / 0.5) and at slice 4's fitted thresholds (0.05 / 0.10).
+
+**Pass** (on A ∪ B, encoder against Jev at 0.5 / 0.5, paired bootstrap 95% CI): breaking, benefit-vs-none and
+actionable recall, breaking precision and benefit-vs-none accuracy each not significantly below Jev (CI upper bound
+≥ 0). Report A, B and C separately as well. A pass makes the encoder admissible as the no-key fallback; it does not
+replace Jev where a key exists.
