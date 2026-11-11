@@ -524,3 +524,31 @@ fn ctrl_c_at_the_question_writes_nothing_anywhere() {
     assert!(!w.path("config/config.json").exists());
     assert!(!w.path("repo/.unstale/state/setup-dismissed").exists());
 }
+
+#[test]
+fn an_agent_in_a_pseudo_terminal_gets_the_listing_never_the_question() {
+    let w = World::new(Some(true));
+    std::fs::write(w.path("repo/.env"), "OPENAI_API_KEY=x\n").unwrap();
+    for agent in [
+        ("CLAUDECODE", "1"),
+        ("CODEX_SANDBOX", "seatbelt"),
+        ("UNSTALE_AGENT", "1"),
+    ] {
+        let init = w.at_terminal_with(&INIT_AT_TERMINAL, "\n", &[agent]);
+        assert!(!init.contains("Choose"), "{agent:?}: {init}");
+        assert!(
+            w.config().get("inference").is_none(),
+            "{agent:?}: a stray Enter chose nothing"
+        );
+        let setup = w.at_terminal_with(&["setup"], "\n", &[agent]);
+        assert!(
+            !setup.contains("Choose 1–") && !setup.contains("press Enter"),
+            "{agent:?}: {setup}"
+        );
+        assert!(
+            setup.contains("[--inference jev+env:OPENAI_API_KEY]"),
+            "{agent:?}: {setup}"
+        );
+        assert!(w.config().get("inference").is_none(), "{agent:?}");
+    }
+}

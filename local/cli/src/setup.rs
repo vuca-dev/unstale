@@ -1079,8 +1079,11 @@ pub fn run(
     let settled = current(ctx.config.inference.as_ref(), &user_config_path()).is_some()
         || dismissed_path(ctx).exists();
     // `init --yes` asks nothing; accepting the recommended option would spend on the user's key unasked, so nothing is
-    // chosen.
-    let terminal = !yes && std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
+    // chosen. An agent's pseudo-terminal is not a person: it gets the listing instead.
+    let terminal = !yes
+        && !agent_driving(&System)
+        && std::io::stdin().is_terminal()
+        && std::io::stdout().is_terminal();
     let (d, techs) = match plan(flag, settled, terminal, reopen) {
         Plan::Nothing => return Ok(()),
         Plan::Save(c) => {
