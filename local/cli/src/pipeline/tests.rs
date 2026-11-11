@@ -19,6 +19,7 @@ use unstale_schema::catalog::{EventChunk, EventLine, EvidenceKind, Freshness};
 pub struct Router {
     pub url: String,
     pub bodies: Arc<Mutex<Vec<String>>>,
+    pub heads: Arc<Mutex<Vec<String>>>,
 }
 
 pub type Answers = BTreeMap<String, (String, String)>;
@@ -30,6 +31,8 @@ impl Router {
         let url = format!("http://{}", listener.local_addr().unwrap());
         let bodies = Arc::new(Mutex::new(Vec::new()));
         let seen = bodies.clone();
+        let heads = Arc::new(Mutex::new(Vec::new()));
+        let seen_heads = heads.clone();
         std::thread::spawn(move || {
             for mut stream in listener.incoming().flatten() {
                 let (mut got, mut buf) = (Vec::new(), [0u8; 65536]);
@@ -51,6 +54,10 @@ impl Router {
                         })
                         .unwrap_or(0);
                     if k == 0 || got.len() >= end + 4 + length {
+                        seen_heads
+                            .lock()
+                            .unwrap()
+                            .push(String::from_utf8_lossy(&got[..end]).to_string());
                         break String::from_utf8_lossy(&got[end + 4..]).to_string();
                     }
                 };
@@ -76,7 +83,7 @@ impl Router {
                 );
             }
         });
-        Router { url, bodies }
+        Router { url, bodies, heads }
     }
 
     pub fn count(&self) -> usize {
@@ -433,13 +440,26 @@ fn through_codex_extract_calls_go_eight_chunks_at_a_time_answered_by_chunk_id() 
     assert!(args.contains(
         "Output only a JSON object mapping each chunk id to that chunk's JSON array of records"
     ));
-    // Each chunk's answer is cached under its own single-call key, so extraction asks no extract call again.
+    // Each chunk's answer is cached under its own key (a batch form of it), so extraction asks no extract call again.
     let ev = evs[0];
     let prompt = x.extract_prompt(ev, &ev.chunks[0].text, "");
-    let key = Results::key(
+    let v = crate::prompts::prompts().extract.version;
+    let single = Results::key(
         STEP_EXTRACT,
         "gpt-6-luna@low",
-        crate::prompts::prompts().extract.version,
+        v,
+        &ev.chunks[0].sha256,
+        &prompt,
+    );
+    assert!(
+        results.get(&single).is_none(),
+        "a batch answer never takes the key of one asked alone"
+    );
+    let key = Results::key_in(
+        "batch8",
+        STEP_EXTRACT,
+        "gpt-6-luna@low",
+        v,
         &ev.chunks[0].sha256,
         &prompt,
     );
@@ -454,20 +474,20 @@ fn through_codex_extract_calls_go_eight_chunks_at_a_time_answered_by_chunk_id() 
 
 #[test]
 fn a_key_named_by_the_choice_is_read_from_this_repos_env_file_and_nothing_else_is() {
-    // The variable is not in this process's environment, so only the file can have supplied it.
-    assert!(std::env::var_os("UNSTALE_TEST_WS4_KEY").is_none());
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(
         dir.path().join(".env"),
-        "UNSTALE_TEST_WS4_KEY=dotenv-secret-1\nUNSTALE_TEST_WS4_OTHER=canary-not-consented\n",
+        "OPENAI_API_KEY=dotenv-secret-1\nGITHUB_TOKEN=canary-not-consented\n",
     )
     .unwrap();
+    // The shell sets only an unrelated token: the key can come only from the file.
+    let shell = |k: &str| (k == "GITHUB_TOKEN").then(|| "canary-shell-token".to_string());
     let choice = crate::setup::Choice {
         provider: "openai".into(),
-        key_env: Some("UNSTALE_TEST_WS4_KEY".into()),
+        key_env: Some("OPENAI_API_KEY".into()),
         labels: None,
     };
-    let mut r = super::routes(&choice, Some(dir.path())).unwrap();
+    let mut r = super::routes_with(&choice, Some(dir.path()), shell).unwrap();
     assert!(r.labels.is_none(), "no labelling service in this choice");
     let m = Router::new(Default::default(), vec![]);
     r.main.provider.base_url = m.url.clone();
@@ -479,6 +499,50 @@ fn a_key_named_by_the_choice_is_read_from_this_repos_env_file_and_nothing_else_i
     };
     let _ = r.main.complete(&crate::inference::Prompt::new("hi"));
     assert_eq!(m.count(), 1, "the key was found, so the call was made");
+    assert!(
+        m.heads.lock().unwrap()[0].contains("Bearer dotenv-secret-1"),
+        "the key came from the repository's .env"
+    );
+    // A repository config naming another variable is no provider at all: that value is never sent.
+    for foreign in [
+        "GITHUB_TOKEN",
+        "SSL_CERT_FILE",
+        "HTTPS_PROXY",
+        "JEV_API_KEY",
+    ] {
+        let c = crate::setup::Choice {
+            provider: "openai".into(),
+            key_env: Some(foreign.into()),
+            labels: None,
+        };
+        assert!(
+            super::routes_with(&c, Some(dir.path()), shell).is_none(),
+            "{foreign}"
+        );
+        assert!(c.key_vars().is_empty() && c.foreign_key() == Some(foreign));
+        let j = crate::setup::Choice {
+            provider: "codex".into(),
+            key_env: None,
+            labels: Some(crate::setup::Labels {
+                provider: "jev".into(),
+                key_env: foreign.into(),
+            }),
+        };
+        assert_eq!(
+            super::routes_with(&j, Some(dir.path()), shell).is_none(),
+            foreign != "JEV_API_KEY",
+            "labels {foreign}"
+        );
+    }
+    let bad = crate::setup::Choice {
+        provider: "openai".into(),
+        key_env: Some("GITHUB_TOKEN".into()),
+        labels: None,
+    };
+    assert!(
+        crate::setup::provider_line(Some(&(bad, crate::setup::Origin::Repo)), &|_| true)
+            .contains("not used: GITHUB_TOKEN is not a key variable for this provider")
+    );
     // Neither value reached a request body, the ledger or any cache file.
     for p in walk(dir.path()) {
         if p.file_name().is_some_and(|n| n == ".env") {
@@ -486,7 +550,7 @@ fn a_key_named_by_the_choice_is_read_from_this_repos_env_file_and_nothing_else_i
         }
         let t = std::fs::read_to_string(&p).unwrap_or_default();
         assert!(
-            !t.contains("dotenv-secret-1") && !t.contains("canary-not-consented"),
+            !t.contains("dotenv-secret-1") && !t.contains("canary"),
             "{}",
             p.display()
         );
@@ -597,4 +661,92 @@ fn work_is_only_releases_the_catalog_has_no_records_for_in_demand_order_inside_t
             ("next".into(), vec!["16.0.3".into(), "16.0.2".into()])
         ]
     );
+}
+
+#[test]
+fn answers_are_read_as_central_reads_them() {
+    use super::extract::{Kind2, parse_json};
+    assert_eq!(
+        parse_json("```json\n[1]\n```", Kind2::Array),
+        Some(serde_json::json!([1]))
+    );
+    assert_eq!(
+        parse_json("{\"records\": [{\"a\": 1}]}", Kind2::Array),
+        Some(serde_json::json!([{"a": 1}]))
+    );
+    assert_eq!(
+        parse_json("Sure {note}: [2, 3] done", Kind2::Array),
+        Some(serde_json::json!([2, 3]))
+    );
+    assert_eq!(parse_json("no json", Kind2::Object), None);
+}
+
+/// A request the provider refuses (a 400) or answers unreadably fails that item only, and is asked again on a later
+/// pass after its wait, not on every sync; a refusal of the whole route still stops the queue.
+#[test]
+fn an_item_that_fails_fails_alone_and_is_retried_after_a_wait() {
+    let c = cases()
+        .into_iter()
+        .find(|c| c.name == "release-notes")
+        .unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let results = Results::at(dir.path());
+    let m = Router::new(
+        answers_of(&c),
+        vec![("You extract change records".into(), 400)],
+    );
+    let inf = inference(ProviderConfig::vercel(), &m.url, dir.path());
+    let out = Extractor::new(&inf, &results).event(&c.event).unwrap();
+    assert_eq!(
+        (out.incoming.len(), out.failed, m.count()),
+        (0, 1, 1),
+        "one refused call, the item failed, no stop"
+    );
+    // The same day: not asked again.
+    Extractor::new(&inf, &results).event(&c.event).unwrap();
+    assert_eq!(m.count(), 1);
+    // Unreadable answers: three attempts, then the item fails and waits.
+    let bad: Answers = c
+        .exchanges
+        .iter()
+        .map(|e| {
+            (
+                e.prompt_sha256.clone(),
+                ("not json".to_string(), "stop".to_string()),
+            )
+        })
+        .collect();
+    let dir2 = tempfile::tempdir().unwrap();
+    let r2 = Results::at(dir2.path());
+    let m2 = Router::new(bad, vec![]);
+    let inf2 = inference(ProviderConfig::vercel(), &m2.url, dir2.path());
+    let out = Extractor::new(&inf2, &r2).event(&c.event).unwrap();
+    assert_eq!((out.failed, m2.count()), (1, 3));
+    let prompt = Extractor::new(&inf2, &r2).extract_prompt(&c.event, &c.event.chunks[0].text, "");
+    let key = Results::key(
+        STEP_EXTRACT,
+        "gpt-6-luna@low",
+        crate::prompts::prompts().extract.version,
+        &c.event.chunks[0].sha256,
+        &prompt,
+    );
+    let e = r2.get(&key).unwrap();
+    let today = crate::util::today();
+    assert!(e.stands(&today), "waits today");
+    assert!(
+        !e.stands(&crate::util::add_days(&today, 1).unwrap()),
+        "asked again from tomorrow"
+    );
+    // An answer that cannot be written to the cache is still used in this pass.
+    let dir3 = tempfile::tempdir().unwrap();
+    std::fs::write(dir3.path().join("inference-results-blocker"), "").unwrap();
+    let r3 = Results::new(
+        dir3.path()
+            .join("inference-results-blocker")
+            .join("results"),
+    );
+    let m3 = Router::new(answers_of(&c), vec![]);
+    let inf3 = inference(ProviderConfig::vercel(), &m3.url, dir3.path());
+    let out = Extractor::new(&inf3, &r3).event(&c.event).unwrap();
+    assert_eq!(serde_json::to_value(&out.incoming).unwrap(), c.incoming);
 }

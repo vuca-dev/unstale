@@ -23,8 +23,38 @@ pub enum Outcome {
     Answer { answer: Value },
     /// The answer ran out of room (the step splits its input instead).
     Truncated,
-    /// No readable answer after the step's attempts.
-    Failed,
+    /// No readable answer after the step's attempts. Asked again on a pass on or after `retry_after` (the wait doubles
+    /// with each failure, a day at first, at most [`MAX_RETRY_DAYS`]), so a provider or prompt change gets its chance
+    /// without paying on every sync.
+    Failed { failures: u32, retry_after: String },
+}
+
+/// The longest wait before a failed request is asked again.
+pub const MAX_RETRY_DAYS: i64 = 30;
+
+impl Outcome {
+    /// The failure after `prior` (an entry that failed before, if any), dated from `today`.
+    pub fn failed_after(prior: Option<&Entry>, today: &str) -> Outcome {
+        let failures = match prior.map(|e| &e.outcome) {
+            Some(Outcome::Failed { failures, .. }) => failures + 1,
+            _ => 1,
+        };
+        let days = (1i64 << (failures - 1).min(5)).min(MAX_RETRY_DAYS);
+        Outcome::Failed {
+            failures,
+            retry_after: crate::util::add_days(today, days).unwrap_or_default(),
+        }
+    }
+}
+
+impl Entry {
+    /// Whether this entry answers a request on `today`: an answer or truncation always; a failure until its retry date.
+    pub fn stands(&self, today: &str) -> bool {
+        match &self.outcome {
+            Outcome::Failed { retry_after, .. } => today < retry_after.as_str(),
+            _ => true,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -65,6 +95,29 @@ impl Results {
     /// `{cache}/inference/results`.
     pub fn at(cache: &Path) -> Results {
         Results::new(cache.join("inference").join("results"))
+    }
+
+    /// The key of a step's answer. `form` is empty for one request per item, or names a batched form (`batch8`):
+    /// an answer given among other items is kept apart from one asked alone.
+    pub fn key_in(
+        form: &str,
+        step: &str,
+        model: &str,
+        prompt_version: u32,
+        chunk: &str,
+        prompt: &str,
+    ) -> String {
+        if form.is_empty() {
+            Self::key(step, model, prompt_version, chunk, prompt)
+        } else {
+            Self::key(
+                &format!("{step}@{form}"),
+                model,
+                prompt_version,
+                chunk,
+                prompt,
+            )
+        }
     }
 
     pub fn key(step: &str, model: &str, prompt_version: u32, chunk: &str, prompt: &str) -> String {

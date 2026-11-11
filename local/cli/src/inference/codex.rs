@@ -270,9 +270,13 @@ fn attempt(inf: &Inference, p: &Prompt) -> Result<Answer, Deferred> {
     }
     match text {
         Some(t) if ok => {
-            let value = parse_answer(&t, p.schema.as_ref())
-                .filter(|v| super::fits(v, p.schema.as_ref()))
-                .ok_or(Deferred::Malformed)?;
+            let value = if p.raw {
+                Some(Value::String(t))
+            } else {
+                parse_answer(&t, p.schema.as_ref())
+            }
+            .filter(|v| super::fits(v, p.schema.as_ref()))
+            .ok_or(Deferred::Malformed)?;
             Ok(Answer {
                 value,
                 model,

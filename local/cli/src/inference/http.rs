@@ -190,7 +190,13 @@ pub(super) fn openai(inf: &Inference, p: &Prompt) -> Result<Answer, Deferred> {
         return Err(Deferred::TooLong);
     }
     let value = text
-        .and_then(|t| parse_answer(t, p.schema.as_ref()))
+        .and_then(|t| {
+            if p.raw {
+                Some(Value::String(t.to_string()))
+            } else {
+                parse_answer(t, p.schema.as_ref())
+            }
+        })
         .ok_or(Deferred::Malformed)?;
     Ok(Answer {
         value,
@@ -267,7 +273,12 @@ pub(super) fn anthropic(inf: &Inference, p: &Prompt) -> Result<Answer, Deferred>
                 .collect()
         })
         .unwrap_or_default();
-    let value = parse_answer(&text, p.schema.as_ref()).ok_or(Deferred::Malformed)?;
+    let value = if p.raw {
+        Some(Value::String(text))
+    } else {
+        parse_answer(&text, p.schema.as_ref())
+    }
+    .ok_or(Deferred::Malformed)?;
     Ok(Answer {
         value,
         model,

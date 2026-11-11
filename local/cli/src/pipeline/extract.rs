@@ -430,15 +430,14 @@ impl<'a> Extractor<'a> {
         )
     }
 
-    fn store(
+    fn entry(
         &self,
-        key: &str,
         step: &str,
         notes: &str,
         model_version: Option<String>,
         outcome: Outcome,
-    ) {
-        let e = Entry {
+    ) -> Entry {
+        Entry {
             step: step.into(),
             model: self.model(),
             prompt_version: self.version(),
@@ -446,56 +445,73 @@ impl<'a> Extractor<'a> {
             provider: self.inf.provider.name.clone(),
             model_version,
             outcome,
-        };
-        self.results.put(key, &e);
+        }
+    }
+
+    fn batch_key(&self, step: &str, notes: &str, prompt: &str) -> String {
+        Results::key_in(
+            "batch8",
+            step,
+            &self.model(),
+            self.version(),
+            &sha256_hex(notes.as_bytes()),
+            prompt,
+        )
     }
 
     /// One call with central's attempts: an answer that `accept` takes, `Truncated`, `Failed` after the attempts, or a
     /// deferral that stops the step. The outcome is cached before it is returned.
-    fn ask(
-        &self,
-        step: &str,
-        notes: &str,
-        prompt: &str,
-        accept: fn(&Value) -> bool,
-    ) -> Result<Entry, Deferred> {
+    fn ask(&self, step: &str, notes: &str, prompt: &str, kind: Kind2) -> Result<Entry, Deferred> {
         let key = self.key(step, notes, prompt);
-        if let Some(e) = self.results.get(&key) {
+        let today = crate::util::today();
+        let prior = self.results.get(&key);
+        if let Some(e) = prior.as_ref().filter(|e| e.stands(&today)) {
+            return Ok(e.clone());
+        }
+        // Through Codex, an answer given in a batch ([`Extractor::prefetch`]) stands in for one asked alone.
+        if self.inf.provider.kind == Kind::Codex
+            && let Some(e) = self
+                .results
+                .get(&self.batch_key(step, notes, prompt))
+                .filter(|e| e.stands(&today))
+        {
             return Ok(e);
         }
+        let p = Prompt::new(prompt).raw();
         let p = Prompt {
-            text: prompt.to_string(),
-            schema: None,
             max_tokens: MAX_TOKENS,
+            ..p
         };
-        let mut outcome = Outcome::Failed;
+        let mut outcome = None;
         let mut model_version = None;
-        for _ in 0..ATTEMPTS {
+        for attempt in 0..ATTEMPTS {
+            if attempt > 0 {
+                std::thread::sleep(self.inf.limits.backoff * attempt as u32);
+            }
             self.calls.set(self.calls.get() + 1);
             match self.inf.complete(&p) {
-                Ok(a) if accept(&a.value) => {
-                    model_version = Some(a.model);
-                    outcome = Outcome::Answer { answer: a.value };
-                    break;
+                Ok(a) => {
+                    if let Some(v) = a.value.as_str().and_then(|t| parse_json(t, kind)) {
+                        model_version = Some(a.model);
+                        outcome = Some(Outcome::Answer { answer: v });
+                        break;
+                    }
                 }
-                Ok(_) | Err(Deferred::Malformed) => continue,
+                Err(Deferred::Malformed) => {}
                 Err(Deferred::TooLong) => {
-                    outcome = Outcome::Truncated;
+                    outcome = Some(Outcome::Truncated);
                     break;
                 }
+                // The provider refused this request (a 400): the item fails; the rest of the queue goes on.
+                Err(Deferred::Rejected) => break,
                 Err(d) => return Err(d),
             }
         }
-        self.store(&key, step, notes, model_version, outcome);
-        Ok(self.results.get(&key).unwrap_or_else(|| Entry {
-            step: step.into(),
-            model: self.model(),
-            prompt_version: self.version(),
-            chunk: String::new(),
-            provider: String::new(),
-            model_version: None,
-            outcome: Outcome::Failed,
-        }))
+        let outcome = outcome.unwrap_or_else(|| Outcome::failed_after(prior.as_ref(), &today));
+        let e = self.entry(step, notes, model_version, outcome);
+        // Kept for this pass even when it cannot be written: the answer was paid for.
+        self.results.put(&key, &e);
+        Ok(e)
     }
 
     fn first(
@@ -506,7 +522,7 @@ impl<'a> Extractor<'a> {
         prov: &mut Option<Provenance>,
     ) -> Result<First, Deferred> {
         let prompt = self.extract_prompt(ev, notes, part);
-        let e = self.ask(STEP_EXTRACT, notes, &prompt, Value::is_array)?;
+        let e = self.ask(STEP_EXTRACT, notes, &prompt, Kind2::Array)?;
         if prov.is_none() && matches!(e.outcome, Outcome::Answer { .. }) {
             *prov = Some(Provenance {
                 provider: e.provider.clone(),
@@ -523,7 +539,7 @@ impl<'a> Extractor<'a> {
                     .unwrap_or_default(),
             ),
             Outcome::Truncated => First::Truncated,
-            Outcome::Failed => First::Failed,
+            Outcome::Failed { .. } => First::Failed,
         })
     }
 
@@ -590,10 +606,7 @@ impl<'a> Extractor<'a> {
                 ("NOTES", notes),
             ],
         );
-        let labels = match self
-            .ask(STEP_LABEL, notes, &prompt, Value::is_object)?
-            .outcome
-        {
+        let labels = match self.ask(STEP_LABEL, notes, &prompt, Kind2::Object)?.outcome {
             Outcome::Answer { answer } => Some(answer),
             _ => None,
         };
@@ -651,10 +664,10 @@ impl<'a> Extractor<'a> {
                     continue;
                 }
                 let prompt = self.extract_prompt(ev, &c.text, &self.part_line(ci, n));
-                if self
-                    .results
-                    .get(&self.key(STEP_EXTRACT, &c.text, &prompt))
-                    .is_none()
+                let today = crate::util::today();
+                let answered = |k: String| self.results.get(&k).is_some_and(|e| e.stands(&today));
+                if !answered(self.key(STEP_EXTRACT, &c.text, &prompt))
+                    && !answered(self.batch_key(STEP_EXTRACT, &c.text, &prompt))
                 {
                     todo.push((ev, &c.text, prompt));
                 }
@@ -684,30 +697,59 @@ impl<'a> Extractor<'a> {
             let text = fill(&template, &[("CHUNKS", &body.join("\n"))]);
             self.calls.set(self.calls.get() + 1);
             let a = match self.inf.complete(&Prompt {
-                text,
-                schema: None,
                 max_tokens: MAX_TOKENS,
+                ..Prompt::new(text).raw()
             }) {
                 Ok(a) => a,
                 // A batch that cannot be read is asked chunk by chunk instead.
-                Err(Deferred::Malformed | Deferred::TooLong) => continue,
+                Err(Deferred::Malformed | Deferred::TooLong | Deferred::Rejected) => continue,
                 Err(d) => return Err(d),
             };
+            let Some(answers) = a.value.as_str().and_then(|t| parse_json(t, Kind2::Object)) else {
+                continue;
+            };
             for (i, (_, notes, prompt)) in group.iter().enumerate() {
-                if let Some(v) = a.value.get(format!("c{}", i + 1)).filter(|v| v.is_array()) {
-                    let key = self.key(STEP_EXTRACT, notes, prompt);
-                    self.store(
-                        &key,
+                if let Some(v) = answers.get(format!("c{}", i + 1)).filter(|v| v.is_array()) {
+                    // Kept apart from answers asked alone: the same model, another request.
+                    let e = self.entry(
                         STEP_EXTRACT,
                         notes,
                         Some(a.model.clone()),
                         Outcome::Answer { answer: v.clone() },
                     );
+                    self.results
+                        .put(&self.batch_key(STEP_EXTRACT, notes, prompt), &e);
                 }
             }
         }
         Ok(())
     }
+}
+
+/// The JSON kind a step's answer must be.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Kind2 {
+    Array,
+    Object,
+}
+
+/// Central's `parseJson`: one code fence around the whole text dropped, then from the first `[` (or `{`) to the last
+/// `]` (or `}`), parsed; nothing when that is not JSON. So `{"records": [...]}` and prose around an array read as the
+/// array, as central reads them.
+pub fn parse_json(text: &str, kind: Kind2) -> Option<Value> {
+    static FENCE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let fence = FENCE.get_or_init(|| regex::Regex::new(r"^```(?:json)?\s*|\s*```$").unwrap());
+    let t = fence.replace_all(text, "");
+    let (open, close) = match kind {
+        Kind2::Array => ('[', ']'),
+        Kind2::Object => ('{', '}'),
+    };
+    let start = t.find(open)?;
+    let end = t.rfind(close)?;
+    if end < start {
+        return None;
+    }
+    serde_json::from_str(&t[start..=end]).ok()
 }
 
 /// `localeCompare(…, { numeric: true })` on record keys: digit runs compare as numbers.

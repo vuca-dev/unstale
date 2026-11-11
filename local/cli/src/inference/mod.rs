@@ -261,6 +261,8 @@ pub struct Prompt {
     /// first JSON object or array in the answer is taken.
     pub schema: Option<Value>,
     pub max_tokens: u32,
+    /// Return the answer's text unread, as a JSON string, for a step that reads it with its own rule (central's).
+    pub raw: bool,
 }
 
 impl Prompt {
@@ -269,7 +271,13 @@ impl Prompt {
             text: text.into(),
             schema: None,
             max_tokens: 16_000,
+            raw: false,
         }
+    }
+    /// The answer's text unread ([`Prompt::raw`]).
+    pub fn raw(mut self) -> Prompt {
+        self.raw = true;
+        self
     }
     pub fn schema(mut self, schema: Value) -> Prompt {
         self.schema = Some(schema);
@@ -520,6 +528,7 @@ fn batch_prompt(b: &Batch) -> Prompt {
             "additionalProperties": false,
         })),
         max_tokens: b.max_tokens,
+        raw: false,
     }
 }
 
