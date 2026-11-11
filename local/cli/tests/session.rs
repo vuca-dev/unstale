@@ -530,3 +530,193 @@ fn one_config_line_turns_the_session_start_sync_off() {
     assert_eq!(srv.take_log(), Vec::<String>::new());
     assert_eq!(env.state(), serde_json::Value::Null);
 }
+
+/// Each agent's session start, as the agent runs the installed hook, syncs on a fresh install.
+#[test]
+fn each_agents_session_start_syncs_on_a_fresh_install() {
+    let cat = FixtureCatalog::new();
+    publish(&cat, 1);
+    let srv = Server::start(cat.dir.path().to_path_buf());
+    let env = Env::new();
+    env.init(&srv.base);
+    let repo = env.repo.path();
+    let exclude = std::fs::read_to_string(repo.join(".git/info/exclude")).unwrap();
+    for line in [
+        "/.claude/settings.local.json",
+        "/.codex/hooks.json",
+        "/.opencode/plugins/unstale-session.js",
+    ] {
+        assert!(
+            exclude.lines().any(|l| l == line),
+            "{line} is excluded from Git: {exclude}"
+        );
+    }
+    let fresh = |agent: &str| {
+        let _ = std::fs::remove_file(repo.join(".unstale/state/session-sync.json"));
+        let _ = std::fs::remove_dir_all(env.cache.path().join("v1"));
+        srv.take_log();
+        eprintln!("fresh install: {agent}");
+    };
+    let hook_command = |file: &str| -> String {
+        let v: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(repo.join(file)).unwrap()).unwrap();
+        let starts = v["hooks"]["SessionStart"].as_array().unwrap();
+        assert_eq!(starts.len(), 1, "{v}");
+        starts[0]["hooks"][0]["command"]
+            .as_str()
+            .unwrap()
+            .to_string()
+    };
+    let sub = repo.join("src");
+    std::fs::create_dir_all(&sub).unwrap();
+
+    // Claude Code runs the command with a shell, in the session's directory, with CLAUDE_PROJECT_DIR set.
+    fresh("Claude Code");
+    let out = env
+        .command("sh")
+        .args(["-c", &hook_command(".claude/settings.local.json")])
+        .current_dir(&sub)
+        .env("CLAUDE_PROJECT_DIR", repo)
+        .output()
+        .unwrap();
+    assert_eq!((out.status.code(), out.stderr.len()), (Some(0), 0));
+    wait_for(&env, synced);
+
+    // Codex runs it with a shell in the session's working directory; a project hook runs once the user trusts it.
+    fresh("Codex");
+    let command = hook_command(".codex/hooks.json");
+    assert!(command.ends_with(" notify"), "{command}");
+    let out = env
+        .command("sh")
+        .args(["-c", &command])
+        .current_dir(&sub)
+        .output()
+        .unwrap();
+    assert_eq!((out.status.code(), out.stderr.len()), (Some(0), 0));
+    wait_for(&env, synced);
+
+    // opencode loads the plugin and sends it `session.created`; its `$` is Bun's shell, played here by a stand-in
+    // that runs the command it is given the way Bun's does (each interpolated value one argument, arrays spread).
+    fresh("opencode");
+    let plugin =
+        std::fs::read_to_string(repo.join(".opencode/plugins/unstale-session.js")).unwrap();
+    assert!(plugin.contains("Managed by unstale"));
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("plugin.mjs"), &plugin).unwrap();
+    std::fs::write(dir.path().join("session.mjs"), OPENCODE_SESSION).unwrap();
+    let out = env
+        .command("node")
+        .arg(dir.path().join("session.mjs"))
+        .arg(repo)
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    wait_for(&env, synced);
+    // Any other event does nothing, and a failure never reaches opencode.
+    assert!(
+        String::from_utf8_lossy(&out.stdout).contains("other events: ignored; failure: contained"),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+
+    // Uninstall removes all three, and their Git exclusions.
+    env.ok(&["uninstall"]);
+    assert!(
+        !repo.join(".codex/hooks.json").exists()
+            && !repo.join(".opencode/plugins/unstale-session.js").exists()
+    );
+    let exclude = std::fs::read_to_string(repo.join(".git/info/exclude")).unwrap_or_default();
+    assert!(
+        !exclude.contains("hooks.json") && !exclude.contains("unstale-session.js"),
+        "{exclude}"
+    );
+}
+
+/// A stand-in for opencode: loads the plugin with a `$` like Bun's and sends events.
+const OPENCODE_SESSION: &str = r#"
+import { spawn } from "node:child_process";
+const repo = process.argv[2];
+const calls = [];
+const $ = (strings, ...values) => {
+  const argv = [];
+  strings.forEach((s, i) => {
+    argv.push(...s.split(/\s+/).filter(Boolean));
+    if (i < values.length) argv.push(...[values[i]].flat().map(String));
+  });
+  calls.push(argv);
+  const run = new Promise((resolve) => {
+    const p = spawn(argv[0], argv.slice(1), { stdio: "ignore" });
+    p.on("exit", resolve);
+    p.on("error", resolve);
+  });
+  const shell = { quiet: () => shell, nothrow: () => shell, catch: (f) => run.catch(f), then: (a, b) => run.then(a, b) };
+  return shell;
+};
+const { UnstaleSessionSync } = await import(new URL("./plugin.mjs", import.meta.url));
+const hooks = await UnstaleSessionSync({ $, directory: repo });
+await hooks.event({ event: { type: "message.updated" } });
+const ignored = calls.length === 0;
+await hooks.event({ event: { type: "session.created" } });
+if (calls.length !== 1) throw new Error("not started: " + JSON.stringify(calls));
+const broken = await UnstaleSessionSync({ $: () => { throw new Error("no shell"); }, directory: repo });
+await broken.event({ event: { type: "session.created" } });
+console.log(`other events: ${ignored ? "ignored" : "ran"}; failure: contained`);
+await new Promise((r) => setTimeout(r, 1500));
+"#;
+
+#[test]
+fn the_codex_hook_keeps_the_users_entries_and_never_writes_a_file_git_tracks() {
+    let env = Env::new();
+    let repo = env.repo.path();
+    let mine = r#"{"hooks":{"SessionStart":[{"matcher":"startup","hooks":[{"type":"command","command":"echo mine"}]}],"Stop":[{"hooks":[{"type":"command","command":"echo stop"}]}]}}"#;
+    std::fs::create_dir_all(repo.join(".codex")).unwrap();
+    std::fs::write(repo.join(".codex/hooks.json"), mine).unwrap();
+    env.init("http://127.0.0.1:9");
+    env.init("http://127.0.0.1:9");
+    let v: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(repo.join(".codex/hooks.json")).unwrap())
+            .unwrap();
+    let starts = v["hooks"]["SessionStart"].as_array().unwrap();
+    assert_eq!(
+        starts.len(),
+        2,
+        "the user's entry plus ours, not repeated: {v}"
+    );
+    assert_eq!(starts[0]["hooks"][0]["command"], "echo mine");
+    assert_eq!(v["hooks"]["Stop"][0]["hooks"][0]["command"], "echo stop");
+    env.ok(&["uninstall"]);
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(
+            &std::fs::read_to_string(repo.join(".codex/hooks.json")).unwrap()
+        )
+        .unwrap(),
+        serde_json::from_str::<serde_json::Value>(mine).unwrap()
+    );
+
+    // A hooks file the repository shares (tracked by Git) never gets this machine's executable.
+    let env = Env::new();
+    let repo = env.repo.path();
+    std::fs::create_dir_all(repo.join(".codex")).unwrap();
+    std::fs::write(repo.join(".codex/hooks.json"), mine).unwrap();
+    Command::new("git")
+        .args(["add", ".codex/hooks.json"])
+        .current_dir(repo)
+        .status()
+        .unwrap();
+    env.init("http://127.0.0.1:9");
+    assert_eq!(
+        std::fs::read_to_string(repo.join(".codex/hooks.json")).unwrap(),
+        mine
+    );
+    // The other agents' session starts are installed as usual.
+    assert!(repo.join(".opencode/plugins/unstale-session.js").is_file());
+    assert!(
+        std::fs::read_to_string(repo.join(".claude/settings.local.json"))
+            .unwrap()
+            .contains(" notify")
+    );
+}

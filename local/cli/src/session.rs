@@ -28,7 +28,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use crate::{Ctx, cache, inference, notice, onboarding, stack, sync, util};
+use crate::{Ctx, cache, git, inference, notice, onboarding, stack, sync, util};
 
 /// Everything the hook does, from the moment it starts: under the 2 s session start allows, with room for the
 /// process to start and exit.
@@ -389,4 +389,159 @@ fn status_line(ctx: &Ctx, state: &State) -> Option<String> {
     Some(format!(
         "Sync at agent session start: the last attempt{when} did not finish: {why}. The next session start tries again"
     ))
+}
+
+// ------------------------------------------------------------------------------------------------ installation
+
+/// Codex's project hooks file. It names this machine's executable, so it is excluded from Git, and a copy Git tracks
+/// is never written to (the skill still tells the agent to sync).
+pub const CODEX_HOOKS_PATH: &str = ".codex/hooks.json";
+pub const CODEX_HOOKS_EXCLUDE_LINE: &str = "/.codex/hooks.json";
+/// opencode's plugin, loaded from `.opencode/plugins/` at startup.
+pub const OPENCODE_PLUGIN_PATH: &str = ".opencode/plugins/unstale-session.js";
+pub const OPENCODE_PLUGIN_EXCLUDE_LINE: &str = "/.opencode/plugins/unstale-session.js";
+const MARKER: &str = "Managed by unstale; regenerated from .unstale.";
+
+fn through_symlink(root: &Path, p: &Path) -> bool {
+    p.ancestors()
+        .take_while(|a| *a != root)
+        .any(|a| std::fs::symlink_metadata(a).is_ok_and(|m| m.file_type().is_symlink()))
+}
+
+fn tracked(root: &Path, rel: &str) -> bool {
+    git(root, &["ls-files", "--error-unmatch", "--", rel]).is_some()
+}
+
+fn exclude(root: &Path, line: &str) -> Result<()> {
+    if let Some(p) = git(root, &["rev-parse", "--git-path", "info/exclude"]) {
+        let p = PathBuf::from(p.trim());
+        let path = if p.is_absolute() { p } else { root.join(p) };
+        let old = std::fs::read_to_string(&path).unwrap_or_default();
+        if !old.lines().any(|l| l == line) {
+            let sep = if old.is_empty() || old.ends_with('\n') {
+                ""
+            } else {
+                "\n"
+            };
+            util::write_atomic(&path, format!("{old}{sep}{line}\n").as_bytes())?;
+        }
+    }
+    Ok(())
+}
+
+/// Codex: a `SessionStart` command hook in `.codex/hooks.json`, beside the user's own entries (ours replaced, not
+/// repeated). Codex runs a project hook only once the user trusts it (`/hooks`; it says so at startup), and again after
+/// it changes. A file that does not parse, or one Git tracks, is left alone.
+pub fn install_codex_hook(ctx: &Ctx) -> Result<()> {
+    let path = ctx.root.join(CODEX_HOOKS_PATH);
+    if through_symlink(&ctx.root, &path) || tracked(&ctx.root, CODEX_HOOKS_PATH) {
+        return Ok(());
+    }
+    let mut hooks: serde_json::Value = match std::fs::read_to_string(&path) {
+        Ok(text) => match serde_json::from_str(&text) {
+            Ok(v @ serde_json::Value::Object(_)) => v,
+            _ => return Ok(()),
+        },
+        Err(_) => serde_json::json!({}),
+    };
+    onboarding::remove_own_hooks(&mut hooks);
+    let Some(events) = hooks
+        .as_object_mut()
+        .unwrap()
+        .entry("hooks")
+        .or_insert_with(|| serde_json::json!({}))
+        .as_object_mut()
+    else {
+        return Ok(());
+    };
+    let Some(starts) = events
+        .entry("SessionStart")
+        .or_insert_with(|| serde_json::json!([]))
+        .as_array_mut()
+    else {
+        return Ok(());
+    };
+    let command = format!("{} notify", onboarding::invocation());
+    starts.push(
+        serde_json::json!({"hooks": [{"type": "command", "command": command, "timeout": 5}]}),
+    );
+    let text = format!("{}\n", serde_json::to_string_pretty(&hooks)?);
+    if std::fs::read_to_string(&path).ok().as_deref() != Some(text.as_str()) {
+        util::write_atomic(&path, text.as_bytes())?;
+    }
+    exclude(&ctx.root, CODEX_HOOKS_EXCLUDE_LINE)
+}
+
+/// The opencode plugin's source: on `session.created` it starts `unstale notify` and does not wait for it; nothing it
+/// does can throw into opencode. opencode adds no hook output to the agent's context, so the line is not shown there;
+/// the sync still runs.
+pub fn opencode_plugin(argv: &[String]) -> String {
+    let argv = serde_json::to_string(argv).unwrap_or_else(|_| "[]".into());
+    format!(
+        "// {MARKER}\n\
+// At session start, runs the catalog sync in the background (`unstale notify`); never awaited, never throws.\n\
+const UNSTALE = {argv};\n\
+export const UnstaleSessionSync = async ({{ $, directory }}) => ({{\n\
+  event: async ({{ event }}) => {{\n\
+    if (event?.type !== \"session.created\") return;\n\
+    try {{\n\
+      $`${{UNSTALE}} -C ${{directory ?? \".\"}} notify`.quiet().nothrow().catch(() => {{}});\n\
+    }} catch {{}}\n\
+  }},\n\
+}});\n"
+    )
+}
+
+/// opencode: the plugin, written only where no file of the user's stands, and excluded from Git (it names this
+/// machine's executable).
+pub fn install_opencode_plugin(ctx: &Ctx) -> Result<()> {
+    let path = ctx.root.join(OPENCODE_PLUGIN_PATH);
+    if through_symlink(&ctx.root, &path) || tracked(&ctx.root, OPENCODE_PLUGIN_PATH) {
+        return Ok(());
+    }
+    let old = std::fs::read_to_string(&path).ok();
+    if old.as_deref().is_some_and(|t| !t.contains(MARKER)) {
+        return Ok(());
+    }
+    let text = opencode_plugin(&onboarding::invocation_argv());
+    if old.as_deref() != Some(text.as_str()) {
+        util::write_atomic(&path, text.as_bytes())?;
+    }
+    exclude(&ctx.root, OPENCODE_PLUGIN_EXCLUDE_LINE)
+}
+
+/// Uninstall: our Codex hook entry and opencode plugin, each backed up first; the user's entries and files stay.
+pub fn uninstall_hooks(root: &Path, backup: &Path) -> Result<()> {
+    let codex = root.join(CODEX_HOOKS_PATH);
+    if !through_symlink(root, &codex)
+        && let Ok(text) = std::fs::read_to_string(&codex)
+        && let Ok(mut hooks) = serde_json::from_str::<serde_json::Value>(&text)
+        && onboarding::remove_own_hooks(&mut hooks)
+    {
+        let dest = backup.join(CODEX_HOOKS_PATH);
+        std::fs::create_dir_all(dest.parent().unwrap())?;
+        std::fs::write(&dest, &text)?;
+        if hooks.as_object().is_some_and(|o| o.is_empty()) {
+            std::fs::remove_file(&codex)?;
+            let _ = std::fs::remove_dir(codex.parent().unwrap());
+        } else {
+            util::write_atomic(
+                &codex,
+                format!("{}\n", serde_json::to_string_pretty(&hooks)?).as_bytes(),
+            )?;
+        }
+    }
+    let plugin = root.join(OPENCODE_PLUGIN_PATH);
+    if !through_symlink(root, &plugin)
+        && let Ok(text) = std::fs::read_to_string(&plugin)
+        && text.contains(MARKER)
+    {
+        let dest = backup.join(OPENCODE_PLUGIN_PATH);
+        std::fs::create_dir_all(dest.parent().unwrap())?;
+        std::fs::write(&dest, &text)?;
+        std::fs::remove_file(&plugin)?;
+        let _ = std::fs::remove_dir(plugin.parent().unwrap());
+        let _ = std::fs::remove_dir(plugin.parent().unwrap().parent().unwrap());
+    }
+    Ok(())
 }

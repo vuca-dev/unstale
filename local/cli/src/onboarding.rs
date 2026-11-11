@@ -1209,6 +1209,13 @@ pub(crate) fn invocation() -> String {
     }
 }
 
+/// `invocation` as separate arguments, for a hook that runs it without a shell.
+pub(crate) fn invocation_argv() -> Vec<String> {
+    match invocation_path() {
+        Some(p) => vec![p.display().to_string()],
+        None => vec!["npx".into(), "--yes".into(), format!("@unstale/cli@{}", env!("CARGO_PKG_VERSION"))],
+    }
+}
 
 fn invocation_path() -> Option<PathBuf> {
     if let Ok(exe) = std::env::current_exe()
@@ -1410,10 +1417,15 @@ pub(crate) fn integrate(ctx: &Ctx) -> Result<Vec<String>> {
             if names.contains(&"Claude Code") {
                 install_session_hook(ctx)?;
             }
+            if names.contains(&"Codex") {
+                crate::session::install_codex_hook(ctx)?;
+            }
             installed.extend(names.iter().map(|n| n.to_string()));
         }
     }
     if !installed.is_empty() { retire_legacy_skills(ctx, ".cursor/skills")?; }
+    // opencode reads the skills from either directory; its session start runs through a plugin.
+    if !installed.is_empty() { crate::session::install_opencode_plugin(ctx)?; }
     util::write_atomic(
         &ctx.tool.join("state/integration-conflicts.json"),
         &serde_json::to_vec(&conflicts)?,
