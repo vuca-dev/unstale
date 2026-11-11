@@ -9,11 +9,11 @@
 
 - **Shape:** INDEPENDENT PRs to `main`. Every chunk is additive and behind one switch (README, "One switch").
 - **Ground truth:** GitHub PR state. Repo `vuca-dev/unstale`.
-- **Base:** `origin/main` @ `705ba46` (`ci` green)
+- **Base:** `origin/main` @ `efac640` (`ci` green)
 - **Base health:** PR checks are `rust`, `central`, `gateway`; re-query before every merge.
-- **Open PRs:** none merged-pending; WS4, WS5-FIX, WS6a, WS10 branches in progress
+- **Open PRs:** #226 (WS10), #228 (WS4 PR 1)
 - **Live worktrees (sprint):** `/Users/jason/unstale-edge-sprint` (tracker)
-- **Live subagents:** ws4-impl, ws10-impl, ws6-harness (Opus 5.5). Background watch for the first ingest created after 2026-11-11T00:48Z.
+- **Live subagents:** ws4-impl, ws10-impl (Opus 5.5); ws6-verifier (Fable 5.2). Background watch for the first ingest created after 2026-11-11T00:48Z (run 42940631609 on `725b8c1` in progress since 01:40Z).
 - **Merged + verified:** WS0 → #213 `673c191`
 - **Next:** WS9 once a live ingest has published events and a lane is free; WS4 parity and disk bounds after WS4 PR 2
 - **Sprint API spend so far:** $0 of $10
@@ -174,7 +174,17 @@ OpenRouter parity, repeat eval runs.
 - **HUMAN (playback):** every option line is 231–274 characters; the Anthropic line omits its label loss; the None
   line has no number; "deterministic signals" may read as internal; cheapest-route-only when several keys exist.
 
-### WS6a: Environment matrix harness: IN PROGRESS (Opus 5.5, `/Users/jason/unstale-ws6-matrix`)
+### WS6a: Environment matrix harness: MERGED, verifier running
+- PR #227 → `efac640`, 531 tests, `local/cli/tests/matrix/`: 77 scenarios, 5 ignored placeholders (upgrade during
+  grace, after `min_client`, budget in demand order, multi-repo cache reuse, session-start timing), about 8 s.
+  Gallery `local/cli/tests/matrix/gallery.html`. Goldens: `UPDATE_GOLDEN=1 cargo test --test matrix`. Real agent
+  trials are opt-in (`agent-trials.sh`), never run.
+- Until WS4 lands the model step is the internal `unstale infer`; WS4 replaces `Step::Model`.
+- Copy nits: "1 other candidate technologies"; a key only in `.env` can be chosen but defers until WS4 reads it.
+- Agent variables: CURSOR_AGENT and GEMINI_CLI likely; CODEX_SANDBOX_NETWORK_DISABLED doubtful (reported removed
+  in Codex 0.146); CODEX_SANDBOX and OPENCODE unconfirmed. WS10 should confirm Codex's and opencode's from the
+  hook environment.
+- The review bot is at about 98% of its monthly line limit and skipped later pushes.
 
 ### WS9: No-key mode eval: NOT STARTED (after WS2; one agent; Fable 5.2 judges, runs resumable)
 
