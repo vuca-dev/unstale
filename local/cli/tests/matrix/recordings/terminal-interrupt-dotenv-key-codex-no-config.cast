@@ -111,3 +111,4 @@
 [5.47,"o","unstale <newer version> available: npm install -g @unstale/cli@latest\r\n"]
 [5.53,"o","Model provider: not chosen; deterministic signals only · `unstale setup` shows the options\r\n"]
 [5.59,"o","Model tokens this month: 0 of 48M (monthly budget; past it, work waits for next month)\r\n"]
+[5.65,"o","Freshness on this machine: no new release of this repository's technologies reached it in the last 30 days\r\n"]

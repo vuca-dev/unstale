@@ -88,6 +88,7 @@ $ unstale status --wait 0 --no-animation
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Model provider: OpenRouter (OPENROUTER_API_KEY), from this repo's config · `unstale setup` changes it · OPENROUTER_API_KEY is not set in this shell or .env
 Model tokens this month: 0 of 48M (monthly budget; past it, work waits for next month)
+Freshness on this machine: no new release of this repository's technologies reached it in the last 30 days
 
 # contacted
 #   catalog host: GET /health, GET /v1/root.json, GET /v1/shards/next/16.6b4b93175dbd.jsonl.gz, GET /v1/shards/next/16.events.156a9b1d3a00.jsonl.gz, GET /v1/tech/next.json, GET /v1/tech/react.json, GET /v1/technologies.json

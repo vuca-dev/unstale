@@ -60,6 +60,7 @@ $ unstale status --wait 0 --no-animation
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Model provider: OpenAI (OPENAI_API_KEY), from this repo's config · `unstale setup` changes it
 Model tokens this month: 0 of 48M (monthly budget; past it, work waits for next month)
+Freshness on this machine: no new release of this repository's technologies reached it in the last 30 days
 
 $ unstale sync
 synced next: 2 records (sources checked 2026-10-15T00:00:00Z); unchanged; change events 0 downloaded, 1 reused

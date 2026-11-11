@@ -90,6 +90,7 @@ $ unstale status --wait 0 --no-animation  (no terminal)
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Model provider: not chosen; deterministic signals only · `unstale setup` shows the options
 Model tokens this month: 0 of 48M (monthly budget; past it, work waits for next month)
+Freshness on this machine: no new release of this repository's technologies reached it in the last 30 days
 
 $ unstale setup  (no terminal)
 Choose how unstale reads new release notes (costs are estimates; this repo has 2 technologies):

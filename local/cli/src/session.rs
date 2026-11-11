@@ -464,7 +464,8 @@ pub fn after_status(ctx: &Ctx) {
         println!("{line}");
     }
     if util::edge_inference() {
-        let techs: BTreeSet<String> = state.technologies.iter().cloned().collect();
+        // This repository's technologies, as the status run just synced them.
+        let techs = stack::detect(&ctx.root).map(|st| onboarding::candidates(ctx, &st)).unwrap_or_default();
         println!("{}", freshness_line(&ctx.cache, &techs, now_secs()));
     }
 }

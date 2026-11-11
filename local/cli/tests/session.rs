@@ -825,6 +825,8 @@ fn a_background_stage_running_at_uninstall_leaves_nothing_behind() {
     assert!(
         !env.repo.path().join(".unstale").exists(),
         "the background stage recreated .unstale"
+    );
+}
 
 /// `unstale status` with model steps on: how long this repository's releases took to reach this machine.
 #[test]
