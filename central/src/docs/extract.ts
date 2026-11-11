@@ -6,6 +6,7 @@ import { join } from "node:path";
 import type { DocsNote } from "../pipeline/extract.ts";
 import type { GuideNote } from "../pipeline/fetch.ts";
 import type { HttpClient } from "../collector/http.ts";
+import { recordNotesLocked } from "../pipeline/events.ts";
 import { withTechLock } from "../pipeline/lock.ts";
 import { readJson, writeAtomic } from "../pipeline/util.ts";
 import { TECHNOLOGIES, type Technology } from "../pipeline/technologies.ts";
@@ -240,6 +241,8 @@ export async function extract(
   if (!t) throw new Error(`extraction needs a catalog technology; ${String(tech)} is not one`);
   const { synthesize } = await import("../onboarding/synthesis.ts"); // loads the classifier only when extracting
   const p = await plan(t.id);
+  // Change events for every planned note, extracted in this batch or not (events.ts).
+  await recordNotesLocked(t, "docs", p.notes.map((n) => n.note));
   // `admit` sees each note's text before its model calls (the budget charges measured volume, not an estimate); a
   // refusal stops the batch there, and the notes not reached stay planned for the next run.
   let batch = p.notes.slice(0, limit);

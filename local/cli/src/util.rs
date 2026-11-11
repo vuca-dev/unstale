@@ -309,6 +309,12 @@ pub fn fenced(value: &str) -> String {
     format!("{fence}text\n{value}\n{fence}\n")
 }
 
+/// The edge-inference switch, off by default: `UNSTALE_EDGE_INFERENCE=1` (or `true`). Off, the client behaves as
+/// before it existed; on, a sync also fetches each synced technology's change events for the client's own model steps.
+pub fn edge_inference() -> bool {
+    std::env::var("UNSTALE_EDGE_INFERENCE").is_ok_and(|v| matches!(v.trim(), "1" | "true"))
+}
+
 pub fn sha256_hex(bytes: &[u8]) -> String {
     use sha2::{Digest, Sha256};
     let d = Sha256::digest(bytes);

@@ -1,14 +1,16 @@
 //! The per-user catalog cache, shared across repositories, and reading it.
 //!
 //! Layout under the cache directory, mirroring the published catalog:
-//! `v1/root.json`, `v1/tech/{technology}.json` (the index bytes as published), `v1/shards/{technology}/{file}`.
-//! An index is written only after every shard it names is present and verified, so the index rename is the swap.
+//! `v1/root.json`, `v1/tech/{technology}.json` (the index bytes as published), `v1/shards/{technology}/{file}`, and,
+//! with the edge-inference switch on, `v1/events/{technology}/{file}` (the change-event shards the index names in
+//! `events`). An index is written only after every shard it names is present and verified, so the index rename is the
+//! swap.
 
 use anyhow::{Context, Result, bail};
 use std::collections::BTreeMap;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use unstale_schema::catalog::{CATALOG_SCHEMA, CapabilityRecord, ShardLine, ShardRef, TechIndex};
+use unstale_schema::catalog::{CATALOG_SCHEMA, CapabilityRecord, EventLine, ShardLine, ShardRef, TechIndex};
 
 use crate::util::sha256_hex;
 
@@ -32,6 +34,74 @@ pub fn index_path(cache: &Path, tech: &str) -> PathBuf {
 
 pub fn shard_path(cache: &Path, tech: &str, r: &ShardRef) -> PathBuf {
     cache.join("v1/shards").join(tech).join(shard_file_name(&r.path))
+}
+
+/// Where a change-event shard is cached: beside the record shards' directory, so their clean-up never touches it.
+pub fn event_path(cache: &Path, tech: &str, r: &ShardRef) -> PathBuf {
+    cache.join("v1/events").join(tech).join(shard_file_name(&r.path))
+}
+
+/// Where a technology's last change-event failure is kept (a dot file, which shard pruning leaves alone).
+fn events_failed_path(cache: &Path, tech: &str) -> PathBuf {
+    cache.join("v1/events").join(tech).join(".failed")
+}
+
+/// Records why a technology's change events were refused, or clears it (`None`) once they verify.
+pub fn set_events_failed(cache: &Path, tech: &str, why: Option<&str>) {
+    let p = events_failed_path(cache, tech);
+    match why {
+        Some(w) => {
+            let _ = crate::util::write_atomic(&p, w.as_bytes());
+        }
+        None => {
+            let _ = std::fs::remove_file(&p);
+        }
+    }
+}
+
+/// Technologies whose change events the last sync refused, with the reason.
+pub fn events_failed(cache: &Path) -> Vec<(String, String)> {
+    let Ok(rd) = std::fs::read_dir(cache.join("v1/events")) else { return vec![] };
+    let mut out: Vec<(String, String)> = rd
+        .flatten()
+        .filter_map(|e| {
+            let tech = e.file_name().to_string_lossy().to_string();
+            std::fs::read_to_string(events_failed_path(cache, &tech)).ok().map(|w| (tech, w))
+        })
+        .collect();
+    out.sort();
+    out
+}
+
+/// When each change event first reached this machine (`.synced.json` in the technology's events directory, a dot file
+/// shard pruning leaves alone): event id to Unix seconds, 0 for an event that was already published when this machine
+/// first synced the technology (its gap is how long ago it was followed, not how fresh it is). Local only.
+fn synced_path(cache: &Path, tech: &str) -> PathBuf {
+    cache.join("v1/events").join(tech).join(".synced.json")
+}
+
+pub fn events_synced(cache: &Path, tech: &str) -> BTreeMap<String, u64> {
+    std::fs::read(synced_path(cache, tech)).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+}
+
+/// Whether this machine has noted any of the technology's events yet.
+pub fn events_known(cache: &Path, tech: &str) -> bool {
+    synced_path(cache, tech).exists()
+}
+
+/// Notes the events not yet known as synced, at `stamp` (0: already published when first synced here). Best effort: a
+/// stamp that cannot be written only leaves that event out of the freshness line.
+pub fn note_events_synced<'e>(cache: &Path, tech: &str, events: impl IntoIterator<Item = &'e EventLine>, stamp: u64) {
+    let mut known = events_synced(cache, tech);
+    let before = known.len();
+    for e in events {
+        known.entry(e.id.clone()).or_insert(stamp);
+    }
+    if (known.len() != before || !events_known(cache, tech))
+        && let Ok(b) = serde_json::to_vec(&known)
+    {
+        let _ = crate::util::write_atomic(&synced_path(cache, tech), &b);
+    }
 }
 
 pub fn shard_file_name(path: &str) -> String {
@@ -148,6 +218,51 @@ pub fn load_tech(cache: &Path, tech: &str) -> Result<Option<TechData>> {
     td.records.sort_by(|a, b| a.r.id.cmp(&b.r.id));
     td.records.dedup_by(|a, b| a.r.id == b.r.id);
     Ok(Some(td))
+}
+
+/// A technology's cached change events: every event its cached index names, each shard verified.
+#[derive(Debug, Clone, Default)]
+pub struct Events {
+    pub events: Vec<EventLine>,
+    /// Lines that do not parse (a field this client cannot read): skipped.
+    pub skipped: usize,
+}
+
+/// Parse a gzipped JSON-lines events shard.
+pub fn parse_events(gz: &[u8]) -> Result<Events> {
+    let mut text = String::new();
+    flate2::read::GzDecoder::new(gz).read_to_string(&mut text).context("events shard is not gzipped UTF-8 text")?;
+    let mut out = Events::default();
+    for line in text.lines().filter(|l| !l.trim().is_empty()) {
+        match serde_json::from_str::<EventLine>(line) {
+            Ok(e) => out.events.push(e),
+            Err(_) => out.skipped += 1,
+        }
+    }
+    Ok(out)
+}
+
+/// Load one technology's change events from the cache: what the client's own model steps read (none does yet). `Ok(None)` when the
+/// technology was never synced; empty when its index names none. An event shard missing or corrupted is an error, so a
+/// caller never works from part of a release.
+#[cfg_attr(not(test), allow(dead_code))]
+pub fn load_events(cache: &Path, tech: &str) -> Result<Option<Events>> {
+    let ip = index_path(cache, tech);
+    let Ok(bytes) = std::fs::read(&ip) else { return Ok(None) };
+    let index: TechIndex = serde_json::from_slice(&bytes).with_context(|| format!("cached index {}", ip.display()))?;
+    if index.schema > CATALOG_SCHEMA {
+        bail!("cached index for {tech} has schema {}; this unstale reads {CATALOG_SCHEMA}", index.schema);
+    }
+    let mut out = Events::default();
+    for s in &index.events {
+        let p = event_path(cache, tech, s);
+        let gz = std::fs::read(&p).with_context(|| format!("cached change events {} missing; run `unstale sync`", p.display()))?;
+        verify_shard(s, &gz).context("cached change events corrupted; run `unstale sync`")?;
+        let e = parse_events(&gz)?;
+        out.events.extend(e.events);
+        out.skipped += e.skipped;
+    }
+    Ok(Some(out))
 }
 
 /// The loaded catalog for a stack: technologies by id, and a lookup across all of them (a merge target may sit

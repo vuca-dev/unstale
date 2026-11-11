@@ -1,0 +1,8 @@
+# Build context is the repository root (`docker build -f central/Dockerfile .`). The image needs only central's
+# manifest, lockfile and src/, and the shared prompt data; everything else stays out of the context.
+*
+!central/package.json
+!central/package-lock.json
+!central/src/
+central/src/**/*.test.ts
+!schema/prompts/

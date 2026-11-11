@@ -1,0 +1,1139 @@
+//! Choosing where the model steps run: the user's own key or their Codex plan, with at most one question.
+//!
+//! Detection reads names only: the names of environment variables in the shell and in this repository's `.env`,
+//! whether `codex` is on PATH and what `codex login status` says, and this repository's config. It never reads a value
+//! before the user chooses, never another repository's `.env` and never another tool's files (Codex's auth file and
+//! the like). The choice stores the variable's name; the key itself stays in each person's environment.
+//!
+//! Everything here is inert with the edge-inference switch off ([`crate::inference::enabled`]).
+#![allow(dead_code)]
+
+use std::collections::BTreeMap;
+use std::path::Path;
+
+// ----------------------------------------------------------------------------------------------------- detection
+
+/// Which route a key variable opens.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Route {
+    /// Vercel AI Gateway, OpenAI-compatible, on its flex tier.
+    Vercel,
+    /// OpenAI's API.
+    OpenAi,
+    /// OpenRouter, OpenAI-compatible.
+    OpenRouter,
+    /// Anthropic's API.
+    Anthropic,
+    /// Jev, the labelling API; it labels and matches records but cannot write them, so it pairs with another route.
+    Jev,
+}
+
+/// The key variables looked for, by the route they open. OpenAI-compatible routes are listed cheapest first: when
+/// several are set, the picker offers the first.
+pub const KEY_VARS: &[(&str, Route)] = &[
+    ("AI_GATEWAY_API_KEY", Route::Vercel),
+    ("OPENAI_API_KEY", Route::OpenAi),
+    ("OPENROUTER_API_KEY", Route::OpenRouter),
+    ("ANTHROPIC_API_KEY", Route::Anthropic),
+    ("JEV_API_KEY", Route::Jev),
+];
+
+pub fn route_of(var: &str) -> Option<Route> {
+    KEY_VARS.iter().find(|(n, _)| *n == var).map(|(_, r)| *r)
+}
+
+/// Where a key variable's name was seen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Seen {
+    Shell,
+    /// Only in this repository's `.env`.
+    DotEnv,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CodexState {
+    /// No `codex` on PATH.
+    Absent,
+    /// Installed but not usable: the reason, as one line (logged out, too old).
+    NotReady(String),
+    Ready,
+}
+
+/// What this machine can use, by name only.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Detected {
+    /// Known key variables that are set, by name.
+    pub keys: BTreeMap<String, Seen>,
+    pub codex: CodexState,
+}
+
+impl Detected {
+    pub fn has(&self, r: Route) -> bool {
+        self.var(r).is_some()
+    }
+    /// The first variable of a route that is set.
+    pub fn var(&self, r: Route) -> Option<&'static str> {
+        KEY_VARS
+            .iter()
+            .find(|(n, rr)| *rr == r && self.keys.contains_key(*n))
+            .map(|(n, _)| *n)
+    }
+    /// The cheapest OpenAI-compatible route with a key.
+    pub fn compatible(&self) -> Option<Route> {
+        [Route::Vercel, Route::OpenAi, Route::OpenRouter]
+            .into_iter()
+            .find(|r| self.has(*r))
+    }
+}
+
+/// The variables that say an agent is running the command (Claude Code, Codex, Cursor's agent, opencode, Gemini CLI,
+/// and any harness that sets `AI_AGENT`); `UNSTALE_AGENT=1` says so explicitly. With one set, setup never asks: a
+/// pseudo-terminal an agent drives is not a person, and a stray Enter would accept a paid option.
+pub const AGENT_VARS: &[&str] = &[
+    "CLAUDECODE",
+    "AI_AGENT",
+    "CODEX_SANDBOX",
+    "CODEX_SANDBOX_NETWORK_DISABLED",
+    "CURSOR_AGENT",
+    "OPENCODE",
+    "GEMINI_CLI",
+    "UNSTALE_AGENT",
+];
+
+/// Everything detection may look at. The real one is [`System`]; tests record what is touched.
+pub trait Probe {
+    /// Whether a variable is set in this process's environment to something other than blanks. The value is looked at
+    /// for that and dropped.
+    fn set_in_shell(&self, name: &str) -> bool;
+    /// The known key variables this repository's `.env` (`<root>/.env`, not followed through a link) sets to a
+    /// non-blank value. The only file detection opens.
+    fn repo_dotenv(&self, root: &Path) -> Vec<String>;
+    /// Whether `codex` is on PATH, and if so whether it is usable (`codex --version`, `codex login status`).
+    fn codex(&self) -> CodexState;
+}
+
+pub struct System;
+
+impl Probe for System {
+    fn set_in_shell(&self, name: &str) -> bool {
+        std::env::var_os(name).is_some_and(|v| !v.to_string_lossy().trim().is_empty())
+    }
+    fn repo_dotenv(&self, root: &Path) -> Vec<String> {
+        let p = root.join(".env");
+        // A link could lead to another repository's file: only a regular file inside this one is read.
+        if !std::fs::symlink_metadata(&p).is_ok_and(|m| m.file_type().is_file()) {
+            return vec![];
+        }
+        std::fs::File::open(p).map(dotenv_names).unwrap_or_default()
+    }
+    fn codex(&self) -> CodexState {
+        let on_path = std::env::var_os("PATH")
+            .map(|p| {
+                std::env::split_paths(&p)
+                    .any(|d| d.join("codex").is_file() || d.join("codex.exe").is_file())
+            })
+            .unwrap_or(false);
+        if !on_path {
+            return CodexState::Absent;
+        }
+        let inf = crate::inference::Inference::new(crate::inference::ProviderConfig::codex());
+        match inf.codex_status() {
+            Ok(()) => CodexState::Ready,
+            Err(crate::inference::Deferred::CodexMissing) => CodexState::Absent,
+            Err(d) => CodexState::NotReady(d.line().trim_start_matches("deferred: ").to_string()),
+        }
+    }
+}
+
+/// Whether an agent is running this command ([`AGENT_VARS`]).
+pub fn agent_driving(probe: &dyn Probe) -> bool {
+    AGENT_VARS.iter().any(|v| probe.set_in_shell(v))
+}
+
+/// The known key variables a `.env` sets to a non-blank value (`NAME=…` or `export NAME=…`; the last assignment of a
+/// name wins). Read a byte at a time: a name is kept, and of its value only whether it has a character other than
+/// blanks and quotes before a comment. No value byte is stored.
+pub fn dotenv_names(r: impl std::io::Read) -> Vec<String> {
+    use std::io::Read as _;
+    #[derive(PartialEq)]
+    enum At {
+        Name,
+        AfterName,
+        Value,
+        Skip,
+    }
+    let mut set: Vec<(String, bool)> = vec![];
+    let mut note = |name: &str, filled: bool| {
+        if route_of(name).is_none() {
+            return;
+        }
+        match set.iter_mut().find(|(n, _)| n == name) {
+            Some(e) => e.1 = filled,
+            None => set.push((name.to_string(), filled)),
+        }
+    };
+    let (mut at, mut name, mut filled) = (At::Name, String::new(), false);
+    // The quote a value is inside, if any: a `#` there is part of the value, not a comment.
+    let mut quote: Option<u8> = None;
+    for b in std::io::BufReader::new(r).bytes() {
+        let Ok(b) = b else { break };
+        if b == b'\n' {
+            if at == At::Value {
+                note(&name, filled);
+            }
+            (at, filled, quote) = (At::Name, false, None);
+            name.clear();
+            continue;
+        }
+        match at {
+            At::Name if b.is_ascii_alphanumeric() || b == b'_' => {
+                if name.len() < 64 {
+                    name.push(b as char);
+                } else {
+                    at = At::Skip;
+                }
+            }
+            At::Name if b == b' ' || b == b'\t' => {
+                if name == "export" {
+                    name.clear();
+                } else if !name.is_empty() {
+                    at = At::AfterName;
+                }
+            }
+            At::Name | At::AfterName if b == b'=' && !name.is_empty() => at = At::Value,
+            At::AfterName if b == b' ' || b == b'\t' => {}
+            At::Name | At::AfterName => at = At::Skip,
+            // A comment where the value would start: a blank assignment, which still clears an earlier one.
+            At::Value if b == b'#' && !filled && quote.is_none() => {
+                note(&name, false);
+                at = At::Skip;
+            }
+            At::Value if b == b'"' || b == b'\'' => match quote {
+                Some(q) if q == b => quote = None,
+                None => quote = Some(b),
+                Some(_) => filled = true,
+            },
+            At::Value => filled |= !b.is_ascii_whitespace(),
+            At::Skip => {}
+        }
+    }
+    if at == At::Value {
+        note(&name, filled);
+    }
+    set.into_iter()
+        .filter(|(_, f)| *f)
+        .map(|(n, _)| n)
+        .collect()
+}
+
+/// What this machine can use: key variables set (to a non-blank value) in the shell and in this repository's `.env`,
+/// and Codex.
+pub fn detect(root: &Path, probe: &dyn Probe) -> Detected {
+    let mut keys = BTreeMap::new();
+    for (n, _) in KEY_VARS {
+        if probe.set_in_shell(n) {
+            keys.insert(n.to_string(), Seen::Shell);
+        }
+    }
+    for n in probe.repo_dotenv(root) {
+        keys.entry(n).or_insert(Seen::DotEnv);
+    }
+    Detected {
+        keys,
+        codex: probe.codex(),
+    }
+}
+
+// -------------------------------------------------------------------------------------------------------- picker
+
+/// Whether "no key" mode is offered: deterministic signals plus the raw change events for the user's agent to read.
+/// Off until its evaluation shows the agent does better with it than without; while off, the last line says a key or
+/// Codex is needed.
+pub const NO_KEY_MODE: bool = false;
+
+/// One option of the picker.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Pick {
+    /// Jev labels and matches; an OpenAI-compatible key writes the records.
+    JevKey(Route),
+    /// Jev labels and matches; Codex writes the records.
+    JevCodex,
+    /// One key does every step (an OpenAI-compatible route, or Anthropic).
+    Key(Route),
+    /// Codex does every step.
+    Codex,
+    /// No model provider: deterministic signals only, or no-key mode when [`NO_KEY_MODE`] is on.
+    None,
+}
+
+/// How an option's results compare with the best option's.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Quality {
+    Best,
+    /// The same model on every step that decides quality.
+    Same,
+    /// A share of the best option's results, in percent, and what is counted.
+    Share {
+        pct: u32,
+        of: &'static str,
+    },
+    /// Not measured yet.
+    Unmeasured,
+}
+
+/// What an option costs and gives, per mean technology-year (114.6 records from 18.1 release-note chunks). Estimates
+/// from the evaluations until the client's own first sync is measured; every figure the picker quotes is here.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Quote {
+    /// Dollars billed to the user's keys.
+    pub usd: f64,
+    /// Codex plan tokens, and what they would cost at API prices.
+    pub codex_tokens: u64,
+    pub codex_usd: f64,
+    /// Tokens more for the user's agent to read (no-key mode).
+    pub agent_tokens: u64,
+    pub quality: Quality,
+    /// More duplicate records than the best option's.
+    pub more_duplicates: u32,
+    /// Whether `quality` and `more_duplicates` were measured on this route. While false, the line says the results
+    /// through Codex are not measured yet, and the figures beside it are the API route's, kept for when they are.
+    pub quality_measured: bool,
+}
+
+/// The first sync, in technology-years per technology. Catalog records cover history, so the first sync reads only
+/// what they do not; one year each is the ceiling the monthly budget assumes (`inference::ledger`).
+pub const FIRST_SYNC_TECH_YEARS: f64 = 1.0;
+
+const NO_QUOTE: Quote = Quote {
+    usd: 0.0,
+    codex_tokens: 0,
+    codex_usd: 0.0,
+    agent_tokens: 0,
+    quality: Quality::Best,
+    more_duplicates: 0,
+    quality_measured: true,
+};
+
+/// Labels below the best option's: an OpenAI-compatible model (gpt-6-luna read on its choices) flags 86.2% of breaking
+/// changes against Jev's 93.1%, both on the same held-out set; Jev's figure is at its fitted threshold (breaking
+/// probability 0.05), not at 0.5. Check the ratio against the threshold the client's labelling step actually runs.
+const LABELS_BELOW: Quality = Quality::Share {
+    pct: 93,
+    of: "the best option's breaking-change flags",
+};
+/// Matching on the same model: 2.2 more duplicate records per technology-year.
+const MATCHING_BELOW: u32 = 2;
+
+/// The data table. Sources, all $ per mean technology-year:
+/// - extraction: gpt-6-luna `low`, $0.0096 on the gateway's flex tier, $0.0183 on OpenAI, $0.0192 at list price
+///   (OpenRouter, measured as the gateway row); Haiku 5.5 $0.0189;
+/// - labels: Jev $0.0100; gpt-6-luna read on its choices $0.0261 list, $0.0182 billed on the gateway; Haiku $0.0564;
+/// - matching: Jev $0.0081; gpt-6-luna $0.0455 list, $0.0269 flex; Anthropic does not match (never merge, $0);
+/// - Codex at 8 items per call with the lean flags: extraction ≈ 109k tokens ($0.0198 at API prices), every step
+///   ≈ 591k ($0.0754);
+/// - quality: Haiku finds 79.6% of required changes against 88.7% (upgrade guides 68.4% against 81.9%); never merge
+///   leaves 22.7 duplicates per 100 records against Jev's 2.54.
+pub fn quote(p: Pick, no_key: bool) -> Quote {
+    let jev = 0.0100 + 0.0081;
+    match p {
+        Pick::JevKey(r) => Quote {
+            usd: jev + extraction_usd(r),
+            ..NO_QUOTE
+        },
+        Pick::JevCodex => Quote {
+            usd: jev,
+            codex_tokens: 109_000,
+            codex_usd: 0.0198,
+            quality: Quality::Same,
+            // Measured over the API; batched `codex exec` extraction's recall was not checked.
+            quality_measured: false,
+            ..NO_QUOTE
+        },
+        Pick::Key(Route::Anthropic) => Quote {
+            usd: 0.0189 + 0.0564,
+            quality: Quality::Share {
+                pct: 90,
+                of: "the best option's changes (fewer from upgrade guides)",
+            },
+            more_duplicates: 23,
+            ..NO_QUOTE
+        },
+        Pick::Key(r) => Quote {
+            usd: extraction_usd(r)
+                + match r {
+                    Route::Vercel => 0.0182 + 0.0269,
+                    _ => 0.0261 + 0.0455,
+                },
+            quality: LABELS_BELOW,
+            more_duplicates: MATCHING_BELOW,
+            ..NO_QUOTE
+        },
+        Pick::Codex => Quote {
+            codex_tokens: 591_000,
+            codex_usd: 0.0754,
+            quality: LABELS_BELOW,
+            more_duplicates: MATCHING_BELOW,
+            // The API route's figures; through batched `codex exec` they are not measured yet.
+            quality_measured: false,
+            ..NO_QUOTE
+        },
+        // About 8k tokens of release notes per technology-year, read raw by the agent.
+        Pick::None if no_key => Quote {
+            agent_tokens: 8_000,
+            quality: Quality::Unmeasured,
+            ..NO_QUOTE
+        },
+        Pick::None => NO_QUOTE,
+    }
+}
+
+fn extraction_usd(r: Route) -> f64 {
+    match r {
+        Route::Vercel => 0.0096,
+        Route::OpenAi => 0.0183,
+        Route::OpenRouter => 0.0192,
+        Route::Anthropic => 0.0189,
+        Route::Jev => 0.0,
+    }
+}
+
+/// The options this machine can use, best first. Empty when there is nothing to choose between.
+pub fn options(d: &Detected, no_key: bool) -> Vec<Pick> {
+    let mut v = vec![];
+    let codex = d.codex == CodexState::Ready;
+    if d.has(Route::Jev) {
+        v.extend(d.compatible().map(Pick::JevKey));
+        if codex {
+            v.push(Pick::JevCodex);
+        }
+    }
+    v.extend(d.compatible().map(Pick::Key));
+    if codex {
+        v.push(Pick::Codex);
+    }
+    if d.has(Route::Anthropic) {
+        v.push(Pick::Key(Route::Anthropic));
+    }
+    if !v.is_empty() || no_key {
+        v.push(Pick::None);
+    }
+    v
+}
+
+fn route_name(r: Route) -> &'static str {
+    match r {
+        Route::Vercel => "Vercel AI Gateway",
+        Route::OpenAi => "OpenAI",
+        Route::OpenRouter => "OpenRouter",
+        Route::Anthropic => "Anthropic",
+        Route::Jev => "Jev labelling API",
+    }
+}
+
+/// `OpenAI (OPENAI_API_KEY)`, or `(OPENAI_API_KEY in .env)` when only this repository's `.env` names it.
+fn key_name(d: &Detected, r: Route) -> String {
+    let var = d.var(r).unwrap_or("");
+    let at = if d.keys.get(var) == Some(&Seen::DotEnv) {
+        " in .env"
+    } else {
+        ""
+    };
+    format!("{} ({var}{at})", route_name(r))
+}
+
+/// `$0.028`, `$1.05`, `$12`.
+fn usd(x: f64) -> String {
+    if x < 0.1 {
+        format!("${x:.3}")
+    } else if x < 10.0 {
+        format!("${x:.2}")
+    } else {
+        format!("${x:.0}")
+    }
+}
+
+/// Tokens to two significant figures: `110k`, `590k`, `4.2M`, `22M`.
+fn tokens(n: f64) -> String {
+    let n = n.max(0.0);
+    let mag = if n >= 1.0 {
+        10f64.powi(n.log10().floor() as i32 - 1)
+    } else {
+        1.0
+    };
+    let r = (n / mag).round() * mag;
+    if r >= 1e6 {
+        let m = r / 1e6;
+        if m >= 10.0 {
+            format!("{m:.0}M")
+        } else {
+            format!("{m:.1}M")
+        }
+    } else if r >= 1e3 {
+        format!("{:.0}k", r / 1e3)
+    } else {
+        format!("{r:.0}")
+    }
+}
+
+/// A cost: dollars, Codex tokens, agent tokens, or a sum of them.
+fn cost(q: &Quote, years: f64) -> String {
+    let mut parts = vec![];
+    if q.usd > 0.0 {
+        parts.push(usd(q.usd * years));
+    }
+    if q.codex_tokens > 0 {
+        parts.push(format!(
+            "{} Codex tokens",
+            tokens(q.codex_tokens as f64 * years)
+        ));
+    }
+    if q.agent_tokens > 0 {
+        parts.push(format!(
+            "{} more agent tokens",
+            tokens(q.agent_tokens as f64 * years)
+        ));
+    }
+    parts.join(" + ")
+}
+
+/// `slightly less complete: ≈ 93% of the best option's breaking-change flags`.
+fn quality(q: Quality) -> Option<String> {
+    match q {
+        Quality::Best => None,
+        Quality::Same => Some("about the same results (same model)".into()),
+        Quality::Unmeasured => Some("results not measured yet".into()),
+        Quality::Share { pct, of } => {
+            let band = match pct {
+                98.. => "about the same",
+                92.. => "slightly less complete",
+                80.. => "somewhat less complete",
+                _ => "much less complete",
+            };
+            Some(format!("{band}: ≈ {pct}% of {of}"))
+        }
+    }
+}
+
+fn option_name(d: &Detected, p: Pick, no_key: bool) -> String {
+    let jev = || key_name(d, Route::Jev);
+    match p {
+        Pick::JevKey(r) => format!("{} + {}", jev(), key_name(d, r)),
+        Pick::JevCodex => format!("{} + Codex plan", jev()),
+        Pick::Key(r) => key_name(d, r),
+        Pick::Codex => "Codex plan".into(),
+        Pick::None if no_key => {
+            "No key: your agent reads the raw change events (unparsed, sometimes repeated)".into()
+        }
+        Pick::None => {
+            "None: deterministic signals only; new change details need a key or Codex".into()
+        }
+    }
+}
+
+/// One option's line, without its number: what it uses, then what it costs and, below the first, what it trades.
+pub fn option_line(d: &Detected, p: Pick, techs: usize, no_key: bool) -> String {
+    let q = quote(p, no_key);
+    let mut s = option_name(d, p, no_key);
+    let per = cost(&q, 1.0);
+    if per.is_empty() {
+        return s;
+    }
+    s += ": ";
+    s += &per;
+    if q.codex_tokens > 0 {
+        s += &format!(" ({} at API prices)", usd(q.codex_usd));
+    }
+    s += " per technology-year";
+    if techs > 0 {
+        s += &format!(" · this repo ≈ {} a year", cost(&q, techs as f64));
+        s += &format!(
+            ", first sync ≈ {} once",
+            cost(&q, techs as f64 * FIRST_SYNC_TECH_YEARS)
+        );
+    }
+    if !q.quality_measured {
+        s += " · results through Codex not measured yet";
+        return s;
+    }
+    if let Some(t) = quality(q.quality) {
+        s += " · ";
+        s += &t;
+    }
+    if q.more_duplicates > 0 {
+        s += &format!(
+            "; ≈ {} more duplicate records per technology-year",
+            q.more_duplicates
+        );
+    }
+    s
+}
+
+/// The one line shown when there is nothing to choose: what to set.
+pub fn nothing_line(d: &Detected) -> String {
+    let codex = match &d.codex {
+        CodexState::NotReady(why) => format!("Codex ({why})"),
+        _ => "log in to Codex".into(),
+    };
+    let jev = if d.has(Route::Jev) {
+        " (JEV_API_KEY alone only labels)"
+    } else {
+        ""
+    };
+    format!(
+        "Reading new release notes needs a key or Codex: set AI_GATEWAY_API_KEY, OPENAI_API_KEY, OPENROUTER_API_KEY or ANTHROPIC_API_KEY{jev}, or {codex}, then run `unstale setup`. Until then: deterministic signals only."
+    )
+}
+
+/// The value of `--inference` that picks an option.
+pub fn flag_value(d: &Detected, p: Pick) -> String {
+    let env = |r: Route| format!("env:{}", d.var(r).unwrap_or(""));
+    match p {
+        Pick::JevKey(r) => format!("jev+{}", env(r)),
+        Pick::JevCodex => "jev+codex".into(),
+        Pick::Key(r) => env(r),
+        Pick::Codex => "codex".into(),
+        Pick::None => "none".into(),
+    }
+}
+
+/// Who reads the picker: a person at a terminal (asked once, Enter accepts the first), or an agent relaying it (each
+/// option with the flag that picks it).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Reader {
+    Person,
+    Agent,
+}
+
+/// The picker as printed: a header, one numbered line per option (the first is recommended), and for an agent the
+/// command that records a choice.
+/// Without options, the one line of what to set.
+pub fn picker_lines(d: &Detected, techs: usize, no_key: bool, reader: Reader) -> Vec<String> {
+    let opts = options(d, no_key);
+    if opts.is_empty() {
+        return vec![nothing_line(d)];
+    }
+    let scope = match techs {
+        0 => String::new(),
+        1 => "; this repo has 1 technology".into(),
+        n => format!("; this repo has {n} technologies"),
+    };
+    let mut out = vec![format!(
+        "Choose how unstale reads new release notes (costs are estimates{scope}):"
+    )];
+    for (i, p) in opts.iter().enumerate() {
+        let mut l = format!("  {}) {}", i + 1, option_line(d, *p, techs, no_key));
+        if reader == Reader::Agent {
+            l += &format!(" [--inference {}]", flag_value(d, *p));
+        }
+        out.push(l);
+    }
+    if reader == Reader::Agent {
+        out.push("Record the choice with `unstale setup --inference <value>`.".into());
+    }
+    out
+}
+
+/// The question under the picker.
+pub fn prompt(n: usize) -> String {
+    match n {
+        1 => "Press Enter to use it: ".into(),
+        n => format!("Choose 1–{n}, or press Enter for 1 (recommended): "),
+    }
+}
+
+/// Asks once: Enter accepts the first option, a number picks one. Input that is not a choice is asked for again, at
+/// most twice more; then, as at end of input, nothing is chosen (`None`).
+pub fn ask(
+    opts: &[Pick],
+    input: &mut dyn std::io::BufRead,
+    out: &mut dyn std::io::Write,
+) -> Option<Pick> {
+    for _ in 0..3 {
+        let _ = write!(out, "{}", prompt(opts.len()));
+        let _ = out.flush();
+        let mut line = String::new();
+        match input.read_line(&mut line) {
+            Ok(0) | Err(_) => break,
+            Ok(_) => {}
+        }
+        let t = line.trim();
+        if t.is_empty() {
+            return Some(opts[0]);
+        }
+        if let Some(p) = t
+            .parse::<usize>()
+            .ok()
+            .filter(|n| (1..=opts.len()).contains(n))
+        {
+            return Some(opts[p - 1]);
+        }
+    }
+    let _ = writeln!(out);
+    None
+}
+
+// -------------------------------------------------------------------------------------------------------- config
+
+/// The stored choice: `"inference": {"provider": "...", "key_env": "..."}` in the repository's `.unstale/config.json`
+/// (committed in shared mode, so a team shares it) or the user's config. It names the key's environment variable; the
+/// key itself is never written anywhere.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Choice {
+    /// `vercel`, `openai`, `openrouter`, `anthropic`, `codex`, or `none` (no model provider).
+    pub provider: String,
+    /// The variable the key is read from (key providers only).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key_env: Option<String>,
+    /// Labels and matching on Jev, beside the provider that writes the records.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub labels: Option<Labels>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Labels {
+    /// `jev`.
+    pub provider: String,
+    pub key_env: String,
+}
+
+fn provider_id(r: Route) -> &'static str {
+    match r {
+        Route::Vercel => "vercel",
+        Route::OpenAi => "openai",
+        Route::OpenRouter => "openrouter",
+        Route::Anthropic => "anthropic",
+        Route::Jev => "jev",
+    }
+}
+
+fn route_by_id(id: &str) -> Option<Route> {
+    [
+        Route::Vercel,
+        Route::OpenAi,
+        Route::OpenRouter,
+        Route::Anthropic,
+        Route::Jev,
+    ]
+    .into_iter()
+    .find(|r| provider_id(*r) == id)
+}
+
+/// The default key variable of a route.
+fn default_var(r: Route) -> &'static str {
+    KEY_VARS
+        .iter()
+        .find(|(_, rr)| *rr == r)
+        .map(|(n, _)| *n)
+        .unwrap_or("")
+}
+
+impl Choice {
+    pub fn none() -> Choice {
+        Choice {
+            provider: "none".into(),
+            key_env: None,
+            labels: None,
+        }
+    }
+
+    fn key(r: Route, var: &str) -> Choice {
+        Choice {
+            provider: provider_id(r).into(),
+            key_env: Some(var.into()),
+            labels: None,
+        }
+    }
+
+    fn codex() -> Choice {
+        Choice {
+            provider: "codex".into(),
+            key_env: None,
+            labels: None,
+        }
+    }
+
+    fn with_jev(mut self, var: &str) -> Choice {
+        self.labels = Some(Labels {
+            provider: "jev".into(),
+            key_env: var.into(),
+        });
+        self
+    }
+
+    /// The choice an option stands for, with the variable names this machine has.
+    pub fn of(d: &Detected, p: Pick) -> Choice {
+        let var = |r: Route| d.var(r).unwrap_or(default_var(r)).to_string();
+        match p {
+            Pick::JevKey(r) => Choice::key(r, &var(r)).with_jev(&var(Route::Jev)),
+            Pick::JevCodex => Choice::codex().with_jev(&var(Route::Jev)),
+            Pick::Key(r) => Choice::key(r, &var(r)),
+            Pick::Codex => Choice::codex(),
+            Pick::None => Choice::none(),
+        }
+    }
+
+    pub fn is_none(&self) -> bool {
+        self.provider == "none"
+    }
+
+    /// The provider configurations to call: the one that writes records, and Jev for labels when chosen. `None` for no
+    /// model provider.
+    pub fn providers(&self) -> Option<(ProviderConfig, Option<ProviderConfig>)> {
+        let mut main = match self.provider.as_str() {
+            "openai" => ProviderConfig::openai(),
+            "vercel" => ProviderConfig::vercel(),
+            "openrouter" => ProviderConfig::openrouter(),
+            "anthropic" => ProviderConfig::anthropic(),
+            "codex" => ProviderConfig::codex(),
+            _ => return None,
+        };
+        if main.key_env.is_some()
+            && let Some(k) = &self.key_env
+        {
+            main.key_env = Some(k.clone());
+        }
+        let labels = self
+            .labels
+            .as_ref()
+            .filter(|l| l.provider == "jev")
+            .map(|l| {
+                let mut j = ProviderConfig::jev();
+                j.key_env = Some(l.key_env.clone());
+                j
+            });
+        Some((main, labels))
+    }
+
+    /// The variables this choice reads keys from.
+    pub fn key_vars(&self) -> Vec<&str> {
+        self.labels
+            .iter()
+            .map(|l| l.key_env.as_str())
+            .chain(self.key_env.as_deref())
+            .collect()
+    }
+
+    /// What the choice uses, for status and confirmation lines: `Jev labelling API + OpenAI (JEV_API_KEY,
+    /// OPENAI_API_KEY)`.
+    pub fn describe(&self) -> String {
+        let main = match self.provider.as_str() {
+            "codex" => "Codex plan".to_string(),
+            "none" => return "none (deterministic signals only)".into(),
+            p => route_by_id(p).map(route_name).unwrap_or(p).to_string(),
+        };
+        let name = match &self.labels {
+            Some(_) => format!("{} + {main}", route_name(Route::Jev)),
+            None => main,
+        };
+        let vars = self.key_vars();
+        if vars.is_empty() {
+            name
+        } else {
+            format!("{name} ({})", vars.join(", "))
+        }
+    }
+}
+
+use crate::inference::ProviderConfig;
+
+/// Where a choice was read from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Origin {
+    Repo,
+    User,
+}
+
+/// The user's config: `$UNSTALE_CONFIG_DIR/config.json`, else `$XDG_CONFIG_HOME/unstale/config.json`, else
+/// `~/.config/unstale/config.json`.
+pub fn user_config_path() -> std::path::PathBuf {
+    let dir = std::env::var_os("UNSTALE_CONFIG_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            std::env::var_os("XDG_CONFIG_HOME")
+                .map(std::path::PathBuf::from)
+                .or_else(|| {
+                    std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".config"))
+                })
+                .unwrap_or_else(|| std::path::PathBuf::from("."))
+                .join("unstale")
+        });
+    dir.join("config.json")
+}
+
+fn user_doc(path: &Path) -> serde_json::Map<String, serde_json::Value> {
+    std::fs::read(path)
+        .ok()
+        .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
+        .and_then(|v| v.as_object().cloned())
+        .unwrap_or_default()
+}
+
+pub fn read_user(path: &Path) -> Option<Choice> {
+    user_doc(path)
+        .get("inference")
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
+}
+
+/// Writes the choice into the user's config, keeping anything else there.
+pub fn write_user(path: &Path, c: &Choice) -> anyhow::Result<()> {
+    // A file that is there but cannot be read as a JSON object is left alone rather than replaced.
+    if path.exists() {
+        let ok = std::fs::read(path)
+            .ok()
+            .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
+            .is_some_and(|v| v.is_object());
+        if !ok {
+            anyhow::bail!(
+                "{} is not a JSON object; fix or remove it, then run `unstale setup --user` again",
+                path.display()
+            );
+        }
+    }
+    let mut doc = user_doc(path);
+    doc.insert("inference".into(), serde_json::to_value(c)?);
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    crate::util::write_atomic(
+        path,
+        format!("{}\n", serde_json::to_string_pretty(&doc)?).as_bytes(),
+    )
+}
+
+/// The choice in effect: this repository's, else the user's.
+pub fn current(repo: Option<&Choice>, user_path: &Path) -> Option<(Choice, Origin)> {
+    match repo {
+        Some(c) => Some((c.clone(), Origin::Repo)),
+        None => read_user(user_path).map(|c| (c, Origin::User)),
+    }
+}
+
+// -------------------------------------------------------------------------------------------------------- status
+
+/// The provider line of `unstale status` (switch on): what is chosen and where. `set` says whether a key variable is
+/// set (by name) in the shell or this repository's `.env`. This month's tokens and the budget are their own line.
+pub fn provider_line(cur: Option<&(Choice, Origin)>, set: &dyn Fn(&str) -> bool) -> String {
+    match cur {
+        None => "Model provider: not chosen; deterministic signals only · `unstale setup` shows the options".to_string(),
+        Some((c, origin)) => {
+            let from = match origin {
+                Origin::Repo => "this repo's config",
+                Origin::User => "your user config",
+            };
+            let mut l = format!("Model provider: {}, from {from} · `unstale setup` changes it", c.describe());
+            for v in c.key_vars().into_iter().filter(|v| !set(v)) {
+                l += &format!(" · {v} is not set in this shell or .env");
+            }
+            l
+        }
+    }
+}
+
+/// [`provider_line`] for this repository.
+pub fn status_provider(ctx: &crate::Ctx) -> String {
+    let cur = current(ctx.config.inference.as_ref(), &user_config_path());
+    let dotenv = System.repo_dotenv(&ctx.root);
+    let set = |v: &str| System.set_in_shell(v) || dotenv.iter().any(|n| n == v);
+    provider_line(cur.as_ref(), &set)
+}
+
+// --------------------------------------------------------------------------------------------------------- agent
+
+/// Appended to the managed review skill with the switch on: the agent relays the picker and asks; it never chooses.
+pub const SKILL_SECTION: &str = "## Model provider\n\nIf `unstale status` says the model provider is not chosen, or the user asks to change it, run `unstale setup`. Show the user every option it prints, as printed, and ask which one they want. Never choose for them, not even the recommended option, and never record a choice they have not given. When they answer, run `unstale setup --inference <value>` with the value printed beside their choice.\n";
+
+// ---------------------------------------------------------------------------------------------------------- flow
+
+/// Reads `--inference`: a provider (`vercel`, `openai`, `openrouter`, `anthropic`), `env:NAME` for a key variable
+/// unstale knows, `codex`, or `none`; `jev+` before a key or `codex` adds Jev for labels.
+pub fn parse_flag(s: &str) -> Result<Choice, String> {
+    let bad = || {
+        format!(
+            "--inference {s}: expected a provider (vercel, openai, openrouter, anthropic), env:NAME ({}), codex or none, optionally after jev+ (for example jev+env:OPENAI_API_KEY)",
+            KEY_VARS
+                .iter()
+                .filter(|(_, r)| *r != Route::Jev)
+                .map(|(n, _)| *n)
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    };
+    let one = |t: &str| -> Option<Choice> {
+        match t {
+            "codex" => Some(Choice::codex()),
+            "none" => Some(Choice::none()),
+            _ => {
+                let (r, var) = match t.strip_prefix("env:") {
+                    Some(var) => (route_of(var)?, var),
+                    None => {
+                        let r = route_by_id(t)?;
+                        (r, default_var(r))
+                    }
+                };
+                Some(Choice::key(r, var))
+            }
+        }
+    };
+    let s = s.trim();
+    let (jev, rest) = match s.split_once('+') {
+        Some((j, rest)) => (Some(j), rest),
+        None => (None, s),
+    };
+    let main = one(rest).ok_or_else(bad)?;
+    let main_route = route_by_id(&main.provider);
+    let Some(j) = jev else {
+        // Jev labels but writes no records: it needs a partner.
+        return if main_route == Some(Route::Jev) {
+            Err(bad())
+        } else {
+            Ok(main)
+        };
+    };
+    let jev = one(j)
+        .filter(|c| route_by_id(&c.provider) == Some(Route::Jev))
+        .ok_or_else(bad)?;
+    let pairs = main.provider == "codex"
+        || matches!(
+            main_route,
+            Some(Route::Vercel | Route::OpenAi | Route::OpenRouter)
+        );
+    if !pairs {
+        return Err(bad());
+    }
+    Ok(main.with_jev(jev.key_env.as_deref().unwrap_or(default_var(Route::Jev))))
+}
+
+/// What setup does on a run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Plan {
+    /// Record this choice (`--inference`); no question.
+    Save(Choice),
+    /// Ask the one question at the terminal.
+    Ask,
+    /// Print the options for an agent to relay; no question (no terminal).
+    Print,
+    /// Nothing to do.
+    Nothing,
+}
+
+/// `reopen` is `unstale setup`; otherwise this is `init`, which asks only when nothing is chosen yet and the picker was
+/// not dismissed on this machine (`settled`), and only with a person at the terminal, so it is never asked again
+/// unprompted. Without a terminal, or with an agent driving, nothing waits for an answer.
+pub fn plan(flag: Option<Choice>, settled: bool, terminal: bool, reopen: bool) -> Plan {
+    match (flag, reopen, terminal) {
+        (Some(c), _, _) => Plan::Save(c),
+        (None, true, true) => Plan::Ask,
+        (None, true, false) => Plan::Print,
+        (None, false, true) if !settled => Plan::Ask,
+        (None, false, _) => Plan::Nothing,
+    }
+}
+
+/// The repository's technologies, for the cost quotes: the stack's candidate technologies.
+fn technologies(ctx: &crate::Ctx) -> usize {
+    crate::stack::detect(&ctx.root)
+        .map(|st| crate::onboarding::candidates(ctx, &st).len())
+        .unwrap_or(0)
+}
+
+fn save(ctx: &mut crate::Ctx, c: &Choice, user: bool) -> anyhow::Result<String> {
+    if user {
+        let path = user_config_path();
+        write_user(&path, c)?;
+        // The repository's own choice wins where it has one.
+        let here = match &ctx.config.inference {
+            Some(r) => format!(
+                "; this repo's own choice ({}) still applies here",
+                r.describe()
+            ),
+            None => String::new(),
+        };
+        return Ok(format!("your user config ({}){here}", path.display()));
+    }
+    ctx.config.inference = Some(c.clone());
+    let path = ctx.tool.join("config.json");
+    crate::util::write_atomic(
+        &path,
+        format!("{}\n", serde_json::to_string_pretty(&ctx.config)?).as_bytes(),
+    )?;
+    Ok(".unstale/config.json".into())
+}
+
+/// Where this machine remembers the picker was dismissed: under `.unstale/state/`, which is never committed.
+fn dismissed_path(ctx: &crate::Ctx) -> std::path::PathBuf {
+    ctx.tool.join("state/setup-dismissed")
+}
+
+/// The line after the picker is dismissed without a choice.
+pub fn dismissed_line() -> String {
+    "Model provider: not chosen; deterministic signals only · `unstale setup` asks again".into()
+}
+
+/// The line after a choice is recorded.
+pub fn saved_line(c: &Choice, place: &str) -> String {
+    format!(
+        "Model provider: {} · saved in {place}; `unstale setup` changes it",
+        c.describe()
+    )
+}
+
+/// Setup on `init` (`reopen` false) or `unstale setup` (`reopen` true), with the switch on. `user` saves to the user's
+/// config instead of the repository's; `yes` (`init --yes`) asks nothing, as without a terminal.
+pub fn run(
+    ctx: &mut crate::Ctx,
+    flag: Option<Choice>,
+    reopen: bool,
+    user: bool,
+    yes: bool,
+) -> anyhow::Result<()> {
+    use std::io::IsTerminal;
+    let settled = current(ctx.config.inference.as_ref(), &user_config_path()).is_some()
+        || dismissed_path(ctx).exists();
+    // `init --yes` asks nothing; accepting the recommended option would spend on the user's key unasked, so nothing is
+    // chosen. An agent's pseudo-terminal is not a person: it gets the listing instead.
+    let terminal = !yes
+        && !agent_driving(&System)
+        && std::io::stdin().is_terminal()
+        && std::io::stdout().is_terminal();
+    let (d, techs) = match plan(flag, settled, terminal, reopen) {
+        Plan::Nothing => return Ok(()),
+        Plan::Save(c) => {
+            let place = save(ctx, &c, user)?;
+            println!("{}", saved_line(&c, &place));
+            return Ok(());
+        }
+        Plan::Print => {
+            for l in picker_lines(
+                &detect(&ctx.root, &System),
+                technologies(ctx),
+                NO_KEY_MODE,
+                Reader::Agent,
+            ) {
+                println!("{l}");
+            }
+            return Ok(());
+        }
+        Plan::Ask => (detect(&ctx.root, &System), technologies(ctx)),
+    };
+    let opts = options(&d, NO_KEY_MODE);
+    for l in picker_lines(&d, techs, NO_KEY_MODE, Reader::Person) {
+        println!("{l}");
+    }
+    if opts.is_empty() {
+        return Ok(());
+    }
+    let Some(pick) = ask(&opts, &mut std::io::stdin().lock(), &mut std::io::stdout()) else {
+        // Dismissed: no config is written, so a team's shared choice is never set by a slip. This machine remembers
+        // it was asked, so `init` does not ask again; `unstale setup` does.
+        crate::util::write_atomic(&dismissed_path(ctx), b"asked, not chosen\n")?;
+        println!("{}", dismissed_line());
+        return Ok(());
+    };
+    let c = Choice::of(&d, pick);
+    let place = save(ctx, &c, user)?;
+    println!("{}", saved_line(&c, &place));
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests;

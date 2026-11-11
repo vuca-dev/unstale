@@ -22,7 +22,8 @@ let shards = 0;
 for (const f of techs) {
   signed(`v1/tech/${f}`);
   const index = JSON.parse(readFileSync(join(site, "v1", "tech", f), "utf8"));
-  for (const s of index.shards ?? []) {
+  // Record shards and change-event shards alike.
+  for (const s of [...(index.shards ?? []), ...(index.events ?? [])]) {
     // As the client resolves it (sync.rs): `v1/shards/…` as is, `shards/…` under `v1/`.
     const bytes = readFileSync(join(site, s.path.startsWith("v1/") ? s.path : join("v1", s.path)));
     if (bytes.length !== s.bytes) throw new Error(`${s.path}: ${bytes.length} bytes, index says ${s.bytes}`);
@@ -45,4 +46,8 @@ for (const id of indexed) {
   const sha = createHash("sha256").update(readFileSync(join(site, "v1", "tech", `${id}.json`))).digest("hex");
   if (listed[id] !== sha.slice(0, 16)) throw new Error(`v1/technologies.json: ${id} is listed as ${listed[id]}, its index hashes to ${sha.slice(0, 16)}`);
 }
-console.log(`${techs.length} technologies, ${shards} shards verified, root and indexes signed`);
+// The freshness summary (central/src/pipeline/freshness.ts): signed, schema 1.
+signed("v1/freshness.json");
+const freshness = JSON.parse(readFileSync(join(site, "v1", "freshness.json"), "utf8"));
+if (freshness?.schema !== 1 || typeof freshness.releases !== "number") throw new Error("v1/freshness.json is not schema 1 with a count of releases");
+console.log(`${techs.length} technologies, ${shards} shards verified, root and indexes signed; freshness over ${freshness.releases} releases`);

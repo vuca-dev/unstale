@@ -37,6 +37,54 @@ WS2 (timestamps) and WS3 (background work under the budget). Hook installation c
 - [ ] `unstale status` shows the gap breakdown for this machine; central publishes its gap summary.
 - [ ] Catalog requests per session start measured and within the allowance at the projected user count.
 
+## Built (session start)
+
+- **Hook:** `unstale notify` (`local/cli/src/session.rs`, `hook`). Everything runs under a 1.5 s deadline on a worker
+  thread; it always exits 0, prints at most one line on stdout and nothing on stderr. The only catalog request is the
+  conditional request for `v1/technologies.json` (0.8 s timeout); when the list and this repository's cached indexes
+  agree, nothing else is asked for. Otherwise `unstale session-sync` runs detached (no inherited stdio, its own process
+  group), one per repository, bounded at 120 s, then the model stage under the worker lock and the monthly budget.
+- **Per agent:** Claude Code `.claude/settings.local.json` (as before); Codex `.codex/hooks.json` (`SessionStart`,
+  timeout 5 s; Codex runs a project hook once the user trusts it in `/hooks`, which it points to at startup; a hooks
+  file Git tracks is left alone); opencode `.opencode/plugins/unstale-session.js` on `session.created` (opencode adds
+  no hook output to the agent's context, so only the sync runs there). Each names this machine's executable and is
+  excluded from Git.
+- **With the switch off** records still sync at session start: no model is called and the files are static. Change
+  events and the model stage follow the switch. `"session_sync": false` in `.unstale/config.json` turns it off.
+- **Output:** one line when records new to this repository arrived since the last report (or the shared-coverage line,
+  or a catalog notice), nothing otherwise. Failures show only in `unstale status`.
+
+## Request budget (measured)
+
+| Session start | Requests (signed catalog) | Worker requests |
+|---|---|---|
+| Catalog unchanged | 1 (`technologies.json`, 304) | 0 |
+| Catalog changed | 1 + 4 (root, list, signatures) + 2 per changed stack technology + new shards | 0 |
+| First on a machine | 0 at the hook; the background stage is a full first sync | 0 |
+
+Tests: `sync::tests::session_start_requests_on_a_signed_catalog`, `tests/session.rs`. The hosted catalog serves `/v1/*`
+as Workers static assets (`gateway/wrangler.jsonc`: not in `run_worker_first`), which are free and unlimited; root,
+list, indexes, their signatures and current shards rank first to stay unpacked (`gateway/scripts/pack.ts`). Only a
+packed file or a 404 runs the Worker (free plan: 100,000 requests a day).
+
+Projection, 10,000 users at 20 session starts a day: 200,000 static requests a day unchanged; the list changes at most
+8 times a day (ingest every 3 hours), so at most 8 changed starts per user a day, about 14 requests each with 3 changed
+technologies: at most 1.12M static requests a day. Worker requests: 0. **Default on**, for records. Watch: if current
+files are ever packed (past 20,000 deployed files), changed starts would spend Worker requests.
+
+## Built (freshness)
+
+- **Central:** `v1/freshness.json`, signed, written at export (`central/src/pipeline/freshness.ts`). Median and 90th
+  percentile, in minutes, of registry publish to first seen, first seen to events published, and end to end, over the
+  30 days up to the newest release published, plus one entry per day for the trend. Backfilled sources are left out.
+  It is computed from the change events the exported indexes name, so it is deterministic and the same catalog gives
+  the same bytes. The deploy check verifies it.
+- **Client:** `unstale status`, with model steps on, prints one line for this repository's technologies over the last
+  30 days. It gives registry to catalog and catalog to this machine, each as a median and a 90th percentile, then
+  "records made here: not yet" until the client pipeline exists. When each event first reached this machine is kept
+  in `.synced.json` beside the cached events. What a technology's first sync finds counts as already published. It is
+  local only: nothing is sent anywhere.
+
 ## Later levers (not in this sprint)
 Ingest more often once central has no model calls (hourly or better), then registry-event triggers (npm's change
 feed, PyPI's release feeds) to collect only technologies that changed.

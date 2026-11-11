@@ -8,14 +8,18 @@ mod deprecations;
 mod onboarding;
 mod onboarding_ui;
 mod privacy;
+mod prompts;
 mod pypi;
 mod uninstall;
 mod funnel;
+mod inference;
 mod lines;
 mod maintenance;
 mod notice;
 mod ledgerops;
 mod review;
+mod setup;
+mod session;
 mod stack;
 mod sync;
 #[cfg(test)]
@@ -80,6 +84,21 @@ enum Cmd {
         /// Print stable stage lines without decorative motion.
         #[arg(long)]
         no_animation: bool,
+        /// Where model steps run, without asking (CI): see `unstale setup --help`.
+        #[arg(long, value_name = "CHOICE", hide = true)]
+        inference: Option<String>,
+    },
+    /// Choose where model steps run: your own key or your Codex plan. Asks once at a terminal; without one, prints the
+    /// options and the flag for each.
+    #[command(hide = true)]
+    Setup {
+        /// Record a choice without asking: vercel, openai, openrouter, anthropic, env:NAME (a key variable), codex or
+        /// none; jev+ before a key or codex adds Jev for labels (for example jev+env:OPENAI_API_KEY).
+        #[arg(long, value_name = "CHOICE")]
+        inference: Option<String>,
+        /// Save the choice in your user config instead of this repository's.
+        #[arg(long)]
+        user: bool,
     },
     /// Refresh public coverage and print a compact setup summary; full evidence stays in the report.
     Status {
@@ -90,8 +109,12 @@ enum Cmd {
     },
     /// Remove this repository integration; keep a local backup of decisions and generated context.
     Uninstall,
-    /// One line when shared coverage published records since the last report; silent otherwise (agent session start).
+    /// Agent session start: at most one line when something new is ready, silent otherwise; never fails. Starts the
+    /// catalog sync in the background when the catalog may have changed.
     Notify,
+    /// Internal: the session-start background stage (`notify` starts it, detached).
+    #[command(hide = true)]
+    SessionSync,
     /// Show the saved detailed onboarding report without rerunning setup or coverage.
     Report,
     /// Fetch this stack's technology indexes and shards into the per-user cache (verified, swapped atomically).
@@ -141,6 +164,28 @@ enum Cmd {
         #[arg(long = "repo", required = true)]
         repos: Vec<PathBuf>,
     },
+    /// Internal: one model call on a provider (tests and evals). Prints the answer as JSON, or one `deferred: ...`
+    /// line; exits 0 either way, and quietly when another worker on this machine holds the lock.
+    #[command(hide = true)]
+    Infer {
+        /// openai, vercel, openrouter, anthropic, codex, or custom (with --base-url and --key-env).
+        #[arg(long)]
+        provider: String,
+        #[arg(long)]
+        model: Option<String>,
+        #[arg(long)]
+        base_url: Option<String>,
+        #[arg(long)]
+        key_env: Option<String>,
+        /// JSON Schema of the answer.
+        #[arg(long)]
+        schema: Option<String>,
+        #[arg(long)]
+        timeout_secs: Option<u64>,
+        #[arg(long)]
+        backoff_ms: Option<u64>,
+        prompt: String,
+    },
     /// sync, then digest, then review.
     Run {
         #[arg(long, value_name = "PKG@VERSION")]
@@ -179,6 +224,12 @@ struct Config {
     mode: Mode,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     service: Option<String>,
+    /// Where model steps run (`unstale setup`): the provider and the key's variable name, never its value.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    inference: Option<setup::Choice>,
+    /// `false` turns off the catalog sync at agent session start (`session.rs`); absent or `true` keeps it on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    session_sync: Option<bool>,
 }
 
 struct Ctx {
@@ -220,9 +271,21 @@ fn dispatch(cli: Cli) -> Result<u8> {
     if let Cmd::CountTerms { repos } = &cli.cmd {
         return count_terms(repos);
     }
+    if let Cmd::Infer { provider, model, base_url, key_env, schema, timeout_secs, backoff_ms, prompt } = cli.cmd {
+        return cmd_infer(&provider, model, base_url, key_env, schema, timeout_secs, backoff_ms, prompt);
+    }
+    // Session start is never blocked or broken: the hook guards everything itself, before any step that can fail.
+    if matches!(cli.cmd, Cmd::Notify) {
+        return Ok(session::hook(cli.dir.as_deref()));
+    }
     let start = start_dir(&cli.dir)?;
     if matches!(cli.cmd, Cmd::Uninstall) { return uninstall::run(&start); }
-    if let Cmd::Init { catalog, mode, yes, service, wait, no_animation } = cli.cmd {
+    if let Cmd::Init { catalog, mode, yes, service, wait, no_animation, inference } = cli.cmd {
+        // Read before anything is written, so a mistyped choice changes nothing. With the switch off it is ignored.
+        let choice = match inference.filter(|_| inference::enabled()) {
+            Some(s) => Some(setup::parse_flag(&s).map_err(|e| anyhow!(e))?),
+            None => None,
+        };
         let service = service.or_else(|| std::env::var("UNSTALE_SERVICE").ok())
             .or_else(|| DEFAULT_SERVICE.filter(|s| !s.is_empty()).map(String::from));
         let catalog = catalog.or_else(|| std::env::var("UNSTALE_CATALOG").ok()).or_else(|| service.clone());
@@ -233,19 +296,46 @@ fn dispatch(cli: Cli) -> Result<u8> {
             ctx.config.service = Some(service);
             util::write_atomic(&ctx.tool.join("config.json"), &serde_json::to_vec_pretty(&ctx.config)?)?;
         }
+        if inference::enabled() {
+            setup::run(&mut ctx, choice, false, false, yes)?;
+        }
         return if ctx.config.service.is_some() { onboarding::run(&ctx, wait.unwrap_or(0), !no_animation, false) } else { Ok(code) }
             .inspect(|_| notice::print(&ctx.cache, &ctx.tool));
     }
-    let ctx = context(&start)?;
+    let mut ctx = context(&start)?;
     match cli.cmd {
-        Cmd::Init { .. } | Cmd::CountTerms { .. } | Cmd::Uninstall => unreachable!(),
+        Cmd::Init { .. } | Cmd::CountTerms { .. } | Cmd::Uninstall | Cmd::Infer { .. } | Cmd::Notify => unreachable!(),
+        Cmd::Setup { inference, user } => {
+            if !inference::enabled() {
+                println!("Model steps are off in this version; there is nothing to set up.");
+                return Ok(0);
+            }
+            let choice = inference.map(|s| setup::parse_flag(&s).map_err(|e| anyhow!(e))).transpose()?;
+            setup::run(&mut ctx, choice, true, user, false)?;
+            Ok(0)
+        }
         Cmd::Report => {
             let text = std::fs::read_to_string(ctx.tool.join("onboarding-report.md")).context("No saved report yet; run unstale status")?;
             for line in text.lines() { println!("{}", line.chars().filter(|c| !c.is_control() || *c == '\t').collect::<String>()); }
             Ok(0)
         },
-        Cmd::Status { wait, no_animation } => onboarding::run(&ctx, wait, !no_animation, false).inspect(|_| notice::print(&ctx.cache, &ctx.tool)),
-        Cmd::Notify => onboarding::notify(&ctx).inspect(|_| notice::print(&ctx.cache, &ctx.tool)),
+        Cmd::Status { wait, no_animation } => onboarding::run(&ctx, wait, !no_animation, false).inspect(|_| {
+            notice::print(&ctx.cache, &ctx.tool);
+            if inference::enabled() {
+                println!("{}", setup::status_provider(&ctx));
+                match inference::Ledger::default_location().spent(&inference::ledger::this_month()) {
+                    Ok(used) => println!("{}", inference::ledger::budget_line(used, inference::ledger::DEFAULT_MONTHLY_TOKENS)),
+                    Err(_) => println!("Model tokens this month: unknown (the usage record cannot be read; model steps wait until it can)"),
+                }
+            }
+            // Shown with the switch on or off: a refusal stays until a sync verifies the events. Only this repository's
+            // technologies are named.
+            let ours = stack::detect(&ctx.root).map(|st| onboarding::candidates(&ctx, &st)).unwrap_or_default();
+            let failed: Vec<(String, String)> = cache::events_failed(&ctx.cache).into_iter().filter(|(t, _)| ours.contains(t)).collect();
+            if let Some(line) = events_failed_line(&failed) { println!("{line}"); }
+            session::after_status(&ctx);
+        }),
+        Cmd::SessionSync => session::background(&ctx),
         Cmd::Sync => cmd_sync(&ctx),
         Cmd::Digest => cmd_digest(&ctx),
         Cmd::Review { next, target, pass } => cmd_review(&ctx, next, &target, pass),
@@ -259,6 +349,52 @@ fn dispatch(cli: Cli) -> Result<u8> {
         Cmd::Ledger { cmd: LedgerCmd::Check } => cmd_ledger_check(&ctx),
         Cmd::Run { target } => cmd_run(&ctx, &target),
     }
+}
+
+/// One line naming the technologies whose change events the last sync refused; their records synced regardless.
+fn events_failed_line(failed: &[(String, String)]) -> Option<String> {
+    let names: Vec<&str> = failed.iter().map(|(t, _)| t.as_str()).collect();
+    (!names.is_empty()).then(|| format!("Change events could not be verified for {}; the next sync tries again (records are unaffected)", names.join(", ")))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn cmd_infer(provider: &str, model: Option<String>, base_url: Option<String>, key_env: Option<String>, schema: Option<String>,
+    timeout_secs: Option<u64>, backoff_ms: Option<u64>, prompt: String) -> Result<u8> {
+    use inference::{Inference, Prompt, ProviderConfig};
+    let mut cfg = match provider {
+        "openai" => ProviderConfig::openai(),
+        "vercel" => ProviderConfig::vercel(),
+        "openrouter" => ProviderConfig::openrouter(),
+        "anthropic" => ProviderConfig::anthropic(),
+        "codex" => ProviderConfig::codex(),
+        "custom" if base_url.is_none() || key_env.is_none() || model.is_none() => bail!("--provider custom needs --base-url, --key-env and --model"),
+        "custom" => ProviderConfig::custom("custom", "", "", ""),
+        other => bail!("unknown provider {other}"),
+    };
+    if let Some(m) = model { cfg.model = m; }
+    if let Some(b) = base_url { cfg.base_url = b; }
+    if key_env.is_some() { cfg.key_env = key_env; }
+    // With model steps off (the default), no call is made.
+    if !inference::enabled() {
+        println!("deferred: model steps on this machine are turned off");
+        return Ok(0);
+    }
+    let mut p = Prompt::new(prompt);
+    if let Some(s) = schema { p = p.schema(serde_json::from_str(&s).context("--schema: JSON")?); }
+    // Another worker on this machine is already running model work: leave it to that one.
+    let _lock = match inference::lock::try_acquire_default() {
+        Ok(Some(l)) => l,
+        Ok(None) => return Ok(0),
+        Err(d) => { println!("{}", d.line()); return Ok(0); }
+    };
+    let mut inf = Inference::new(cfg);
+    if let Some(t) = timeout_secs { inf.limits.timeout = std::time::Duration::from_secs(t); }
+    if let Some(b) = backoff_ms { inf.limits.backoff = std::time::Duration::from_millis(b); }
+    match inf.complete(&p) {
+        Ok(a) => println!("{}", a.value),
+        Err(d) => println!("{}", d.line()),
+    }
+    Ok(0)
 }
 
 fn count_terms(repos: &[PathBuf]) -> Result<u8> {
@@ -333,7 +469,14 @@ fn init(start: &Path, catalog: Option<String>, mode: Option<Mode>, _yes: bool, q
     let mode = mode.or_else(|| existing.as_ref().map(|e| e.mode)).unwrap_or(Mode::Local);
     if !quiet && existing.is_none() { println!("Mode: {} (the default; no setup questions).", mode_name(mode)); }
     std::fs::create_dir_all(&tool)?;
-    let config = Config { schema: 1, catalog, mode, service: existing.as_ref().and_then(|e| e.service.clone()) };
+    let config = Config {
+        schema: 1,
+        catalog,
+        mode,
+        service: existing.as_ref().and_then(|e| e.service.clone()),
+        inference: existing.as_ref().and_then(|e| e.inference.clone()),
+        session_sync: existing.as_ref().and_then(|e| e.session_sync),
+    };
     util::write_atomic(&tool.join("config.json"), format!("{}\n", serde_json::to_string_pretty(&config)?).as_bytes())?;
     // Local: the tool directory ignores itself, so nothing tracked changes. Collaborative: ledger and generated review context
     // are committed; review progress is personal.
@@ -502,8 +645,16 @@ fn cmd_sync(ctx: &Ctx) -> Result<u8> {
         Err(e) => return Err(e),
     };
     for t in &rep.synced {
+        // Change events are synced only with the edge-inference switch on; otherwise the line is as it was.
+        let events = if t.events_failed.is_some() {
+            "; change events could not be verified (records unaffected; the next sync tries again)".to_string()
+        } else if t.events_downloaded + t.events_reused > 0 {
+            format!("; change events {} downloaded, {} reused", t.events_downloaded, t.events_reused)
+        } else {
+            String::new()
+        };
         println!(
-            "synced {}: {} records (sources checked {}); {}",
+            "synced {}: {} records (sources checked {}); {}{events}",
             t.technology,
             t.records,
             t.checked,

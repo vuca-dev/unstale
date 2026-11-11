@@ -5,7 +5,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } fro
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gunzipSync } from "node:zlib";
-import { describe, expect, onTestFinished, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, onTestFinished, test, vi } from "vitest";
 import { CLIENT_MANIFEST, manifestVersion, publishTechnology, rootText, writeRoot } from "../src/pipeline/publish.ts";
 import { mergeInto, retract, type StoredRecord, type TechStore } from "../src/pipeline/store.ts";
 import { Root, ShardLine, TechIndex } from "../src/schema/catalog.ts";
@@ -63,6 +63,15 @@ function files(dir: string): Record<string, Buffer> {
   walk(dir, "");
   return out;
 }
+
+// A publish reads the technology's change events from the central directory: a fresh one per test, never the
+// operator's store.
+const centralBefore = process.env.UNSTALE_CENTRAL_DIR;
+beforeEach(() => void (process.env.UNSTALE_CENTRAL_DIR = mkdtempSync(join(tmpdir(), "unstale-central-"))));
+afterEach(() => {
+  if (centralBefore === undefined) delete process.env.UNSTALE_CENTRAL_DIR;
+  else process.env.UNSTALE_CENTRAL_DIR = centralBefore;
+});
 
 describe("publish", () => {
   test("same store, byte-identical files", () => {

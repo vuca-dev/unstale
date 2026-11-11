@@ -1,0 +1,153 @@
+{
+  "$defs": {
+    "EventChunk": {
+      "description": "One chunk of an event's text: at most 30,000 characters, cut at a heading, else at a line.",
+      "properties": {
+        "content_free": {
+          "description": "Nothing a change record could come from (structural headings, links, boilerplate): central makes no model call\nfor such a chunk.",
+          "type": "boolean"
+        },
+        "id": {
+          "description": "`{event id}#{index}`, index from 0: stable while the source is (central keys its records `{this}.{n}`).",
+          "type": "string"
+        },
+        "sha256": {
+          "description": "Hex sha256 of `text` (UTF-8): the cache key for anything derived from the chunk.",
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "sha256",
+        "text"
+      ],
+      "type": "object"
+    },
+    "EvidenceKind": {
+      "oneOf": [
+        {
+          "enum": [
+            "release_notes",
+            "docs",
+            "upgrade_guide",
+            "changelog",
+            "other"
+          ],
+          "type": "string"
+        },
+        {
+          "const": "advisory",
+          "description": "A security advisory (GitHub Advisory Database); the quote is its id and summary.",
+          "type": "string"
+        }
+      ]
+    },
+    "Freshness": {
+      "description": "When a release's event reached each stage, so the gap from release to catalog is measured (ISO timestamps).",
+      "properties": {
+        "backfilled": {
+          "description": "The source was already known when central began recording the technology's events (its history when it was\nadded, or a technology covered before events existed): `first_seen` is that start, not when the release appeared.",
+          "type": "boolean"
+        },
+        "first_published": {
+          "description": "When central first wrote this event into the technology's index.",
+          "type": "string"
+        },
+        "first_seen": {
+          "description": "When central first read this source.",
+          "type": "string"
+        },
+        "registry_published": {
+          "description": "When the registry says the version was published; absent when no registry gives a time for it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "first_seen",
+        "first_published"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "One line of an events shard (`TechIndex::events`): one source document of one release (its release notes, an upgrade\nguide, or a change to its documentation), normalised and split into chunks exactly as central's extraction reads\nit. Deterministic: no model has seen it.",
+  "properties": {
+    "chunks": {
+      "description": "The text in order, cut as central's extraction cuts it: extraction reads each chunk on its own and skips a\n`content_free` one.",
+      "items": {
+        "$ref": "#/$defs/EventChunk"
+      },
+      "type": "array"
+    },
+    "date": {
+      "description": "ISO date, `YYYY-MM-DD`: the release's day (the registry's where it has one), as records carry it.",
+      "type": "string"
+    },
+    "freshness": {
+      "$ref": "#/$defs/Freshness"
+    },
+    "id": {
+      "description": "`{technology}@{version}` plus the source's tag when it is not the release body alone (`+linked.<8 hex>`,\n`+guide.<8 hex>`, `+docs.<8 hex>`): the prefix of the keys central gives the records it extracts from it.",
+      "type": "string"
+    },
+    "kind": {
+      "$ref": "#/$defs/EvidenceKind"
+    },
+    "line": {
+      "description": "The release line, major (or 0.minor below 1.0): what the event's shard is named by.",
+      "type": "string"
+    },
+    "name": {
+      "description": "The technology's name as the extraction prompt states it (`Technology: …`).",
+      "type": "string"
+    },
+    "no_later_than": {
+      "description": "Set for a source read from a moving page: the change shipped in a release from `version` up to this one\n(`Release::no_later_than`).",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "prompt_date": {
+      "description": "ISO date the extraction prompt states (`Release: <version> (<date>)`) when it is not `date`: the GitHub release's\nday, kept so the prompt does not move when the registry's day arrives later.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "snapshot": {
+      "description": "`sha256:` plus the hex digest of the snapshot the text was taken from (`Evidence::snapshot`).",
+      "type": "string"
+    },
+    "technology": {
+      "type": "string"
+    },
+    "url": {
+      "type": "string"
+    },
+    "version": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "technology",
+    "name",
+    "kind",
+    "version",
+    "line",
+    "date",
+    "url",
+    "snapshot",
+    "chunks",
+    "freshness"
+  ],
+  "title": "EventLine",
+  "type": "object"
+}

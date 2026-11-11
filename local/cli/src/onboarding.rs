@@ -1157,16 +1157,17 @@ fn growing_jobs(pending: &Pending) -> Vec<&Job> {
 
 /// The agent's session-start notice: one line when shared coverage has published records since the last report, nothing
 /// otherwise. No network call when nothing is still gaining history; otherwise short status requests for the growing
-/// technologies (BATCH to a request). Never rewrites the report or the snapshot, so the line repeats until `unstale status` refreshes them.
-pub fn notify(ctx: &Ctx) -> Result<u8> {
+/// technologies (BATCH to a request), each bounded by `timeout`. Never rewrites the report or the snapshot, so the line
+/// repeats until `unstale status` refreshes them. The session-start hook (`session::hook`) prints it.
+pub fn session_coverage_line(ctx: &Ctx, timeout: Duration) -> Option<String> {
     let mut pending = read(ctx);
     // Without the stack walk (session start must be quick), the registry configuration still decides: a job of a
     // package it now keeps private is not asked about (`run` drops it at the next `unstale status`).
     let registries = crate::privacy::Registries::read(&ctx.root, &BTreeSet::new(), &[], &crate::privacy::Env::current());
     pending.jobs.retain(|purl, _| registries.may_name(purl, crate::privacy::Seen::Unknown));
     let growing = growing_jobs(&pending);
-    let Some(service) = ctx.config.service.as_deref().filter(|_| !growing.is_empty()) else { return Ok(0) };
-    let quick: ureq::Agent = ureq::Agent::config_builder().http_status_as_error(false).timeout_global(Some(Duration::from_secs(2))).build().into();
+    let service = ctx.config.service.as_deref().filter(|_| !growing.is_empty())?;
+    let quick: ureq::Agent = ureq::Agent::config_builder().http_status_as_error(false).timeout_global(Some(timeout)).build().into();
     let purls: Vec<String> = growing.iter().map(|j| j.purl.clone()).collect();
     let mut gains = vec![0; growing.len()];
     statuses(&quick, service, &purls, |i, got| {
@@ -1176,13 +1177,12 @@ pub fn notify(ctx: &Ctx) -> Result<u8> {
         true
     });
     let (records, techs) = (gains.iter().sum::<usize>(), gains.iter().filter(|g| **g > 0).count());
-    if records > 0 {
-        println!(
+    (records > 0).then(|| {
+        format!(
             "unstale: {records} new upstream records for {} since the last onboarding report. Run `unstale status --wait 0` to refresh .unstale/onboarding-report.md; review it only if the user asks.",
             technology_count(techs)
-        );
-    }
-    Ok(0)
+        )
+    })
 }
 
 pub(crate) const SESSION_HOOK_SETTINGS_PATH: &str = ".claude/settings.local.json";
@@ -1203,21 +1203,32 @@ fn transient(p: &Path) -> bool {
 /// there. npx, pnpm dlx and bunx caches are cleaned at will and never upgrade; a Homebrew Cellar directory is removed
 /// after an upgrade. Then the `unstale` on PATH, when it is not in such a place itself, else this version through npx.
 pub(crate) fn invocation() -> String {
-    if let Ok(exe) = std::env::current_exe()
-        && !transient(&exe)
-    {
-        return format!("\"{}\"", exe.display());
-    }
-    let names: &[&str] = if cfg!(windows) { &["unstale.exe", "unstale.cmd"] } else { &["unstale"] };
-    let on_path = std::env::var_os("PATH").and_then(|path| {
-        std::env::split_paths(&path)
-            .flat_map(|dir| names.iter().map(move |n| dir.join(n)))
-            .find(|p| p.is_file() && !transient(p))
-    });
-    match on_path {
+    match invocation_path() {
         Some(p) => format!("\"{}\"", p.display()),
         None => format!("npx --yes @unstale/cli@{}", env!("CARGO_PKG_VERSION")),
     }
+}
+
+/// `invocation` as separate arguments, for a hook that runs it without a shell.
+pub(crate) fn invocation_argv() -> Vec<String> {
+    match invocation_path() {
+        Some(p) => vec![p.display().to_string()],
+        None => vec!["npx".into(), "--yes".into(), format!("@unstale/cli@{}", env!("CARGO_PKG_VERSION"))],
+    }
+}
+
+fn invocation_path() -> Option<PathBuf> {
+    if let Ok(exe) = std::env::current_exe()
+        && !transient(&exe)
+    {
+        return Some(exe);
+    }
+    let names: &[&str] = if cfg!(windows) { &["unstale.exe", "unstale.cmd"] } else { &["unstale"] };
+    std::env::var_os("PATH").and_then(|path| {
+        std::env::split_paths(&path)
+            .flat_map(|dir| names.iter().map(move |n| dir.join(n)))
+            .find(|p| p.is_file() && !transient(p))
+    })
 }
 
 /// Claude Code's SessionStart hook runs `unstale notify` (per user: `.claude/settings.local.json`, Git-excluded,
@@ -1406,10 +1417,15 @@ pub(crate) fn integrate(ctx: &Ctx) -> Result<Vec<String>> {
             if names.contains(&"Claude Code") {
                 install_session_hook(ctx)?;
             }
+            if names.contains(&"Codex") {
+                crate::session::install_codex_hook(ctx)?;
+            }
             installed.extend(names.iter().map(|n| n.to_string()));
         }
     }
     if !installed.is_empty() { retire_legacy_skills(ctx, ".cursor/skills")?; }
+    // opencode reads the skills from either directory; its session start runs through a plugin.
+    if !installed.is_empty() { crate::session::install_opencode_plugin(ctx)?; }
     util::write_atomic(
         &ctx.tool.join("state/integration-conflicts.json"),
         &serde_json::to_vec(&conflicts)?,
@@ -5749,7 +5765,7 @@ mod tests {
         let ctx = crate::Ctx {
             root: repo.path().to_path_buf(),
             tool: repo.path().join(".unstale"),
-            config: crate::Config { schema: 1, catalog: base.clone(), mode: crate::Mode::Local, service: Some(base.clone()) },
+            config: crate::Config { schema: 1, catalog: base.clone(), mode: crate::Mode::Local, service: Some(base.clone()), inference: None, session_sync: None },
             cache: cache.path().to_path_buf(),
         };
         let mut pending = Pending::default();
@@ -5762,7 +5778,7 @@ mod tests {
         // The job's technology is not a candidate; the package's own names are, asked for only by the catalog's list.
         assert!(c.contains("react") && !c.contains("corp-auth-1a2b"), "{c:?}");
         assert!(st.withheld(cache.path()).contains("corp"));
-        notify(&ctx).unwrap();
+        session_coverage_line(&ctx, Duration::from_secs(2));
         let asked = seen.lock().unwrap().clone();
         assert!(asked.contains("react") && !asked.contains("corp"), "{asked}");
     }

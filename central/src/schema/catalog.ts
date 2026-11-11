@@ -134,6 +134,22 @@ export const CapabilityRecord = z.strictObject({
 });
 export type CapabilityRecord = z.infer<typeof CapabilityRecord>;
 
+export const EventChunk = z.strictObject({
+  "content_free": z.boolean().optional(),
+  "id": z.string(),
+  "sha256": z.string(),
+  "text": z.string(),
+});
+export type EventChunk = z.infer<typeof EventChunk>;
+
+export const Freshness = z.strictObject({
+  "backfilled": z.boolean().optional(),
+  "first_published": z.string(),
+  "first_seen": z.string(),
+  "registry_published": z.string().nullable().optional(),
+});
+export type Freshness = z.infer<typeof Freshness>;
+
 export const IndexRelease = z.strictObject({
   "date": z.string(),
   "line": z.string(),
@@ -180,10 +196,28 @@ z.strictObject({
 ]);
 export type ShardLine = z.infer<typeof ShardLine>;
 
+export const EventLine = z.strictObject({
+  "chunks": z.array(EventChunk),
+  "date": z.string(),
+  "freshness": Freshness,
+  "id": z.string(),
+  "kind": EvidenceKind,
+  "line": z.string(),
+  "name": z.string(),
+  "no_later_than": z.string().nullable().optional(),
+  "prompt_date": z.string().nullable().optional(),
+  "snapshot": z.string(),
+  "technology": z.string(),
+  "url": z.string(),
+  "version": z.string(),
+});
+export type EventLine = z.infer<typeof EventLine>;
+
 export const TechIndex = z.strictObject({
   "advisory_apis": z.array(AdvisoryApis).optional(),
   "checked": z.string(),
   "components": z.array(z.string()).optional(),
+  "events": z.array(ShardRef).optional(),
   "releases": z.array(IndexRelease).optional(),
   "sample": z.array(SampleRepo).optional(),
   "sample_n": z.number().int().min(0).max(4294967295),

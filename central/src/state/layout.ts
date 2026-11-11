@@ -4,8 +4,8 @@
 //            `docs:<tech>`, a technology's docs store (`central/docs/<tech>/store/**`, the page snapshots and their watch
 //            states), read only when that technology's docs are checked or extracted; and `tech:<tech>`, the rest of
 //            what is kept per technology (its records `central/records/<tech>.json`, its docs metadata
-//            `central/docs/<tech>/*`, and `central/{releases,advisories,guides,extractions}/<tech>/**`), read only when
-//            that technology is worked, published or shown.
+//            `central/docs/<tech>/*`, and `central/{releases,advisories,guides,extractions,events}/<tech>/**`), read
+//            only when that technology is worked, published or shown.
 //   archive  a month of an append-only log (`central/archive/<log>-<YYYY-MM>.jsonl`, rotated out by the save): kept,
 //            never restored unless asked for.
 //   eager    everything else, restored before the run: per area (the first two path segments: `central/cache`,
@@ -38,11 +38,12 @@ const EXCLUDED: readonly RegExp[] = [
 export const excluded = (rel: string): boolean => EXCLUDED.some((r) => r.test(rel));
 
 const DOCS_STORE = /^central\/docs\/([^/]+)\/store\//;
-/** A technology's files outside its docs store: records, docs metadata, release notes, advisories, guides, extractions. */
-const TECH = /^central\/(?:records\/([^/]+)\.json$|docs\/([^/]+)\/[^/]+$|(?:releases|advisories|guides|extractions)\/([^/]+)\/)/;
+/** A technology's files outside its docs store: records, docs metadata, release notes, advisories, guides, extractions,
+ * change events. */
+const TECH = /^central\/(?:records\/([^/]+)\.json$|docs\/([^/]+)\/[^/]+$|(?:releases|advisories|guides|extractions|events)\/([^/]+)\/)/;
 const ARCHIVE = /^central\/archive\/([^/]+)$/;
 /** Directories that hold a technology's files under its own name (`<area>/<tech>/**`). */
-export const TECH_DIRS = ["releases", "advisories", "guides", "extractions"] as const;
+export const TECH_DIRS = ["releases", "advisories", "guides", "extractions", "events"] as const;
 
 /** The technology a `tech:` or `docs:` key names. */
 export const techOf = (key: string): string => key.slice(key.indexOf(":") + 1);

@@ -1,0 +1,4 @@
+Choose how unstale reads new release notes (costs are estimates; this repo has 38 technologies):
+  1) Codex plan: 590k Codex tokens ($0.075 at API prices) per technology-year · this repo ≈ 22M Codex tokens a year, first sync ≈ 22M Codex tokens once · results through Codex not measured yet
+  2) None: deterministic signals only; new change details need a key or Codex
+Choose 1–2, or press Enter for 1 (recommended): 

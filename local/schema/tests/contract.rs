@@ -206,6 +206,43 @@ fn reads_index_and_root_with_unknown_fields() {
 }
 
 #[test]
+fn change_events_round_trip_and_an_index_names_their_shards() {
+    let line = r###"{"id":"next@16.1.0","technology":"next","name":"Next.js","kind":"release_notes","version":"16.1.0","line":"16",
+        "date":"2026-10-01","prompt_date":"2026-09-30","url":"https://github.com/vercel/next.js/releases/tag/v16.1.0",
+        "snapshot":"sha256:ab","chunks":[{"id":"next@16.1.0#0","sha256":"cd","text":"## Core\n- Adds x"},
+        {"id":"next@16.1.0#1","sha256":"ef","text":"Full Changelog","content_free":true}],
+        "freshness":{"registry_published":"2026-10-01T17:02:11.000Z","first_seen":"2026-10-01T18:00:00.000Z",
+        "first_published":"2026-10-01T18:00:05.000Z"},"later":"ignored"}"###;
+    let e: EventLine = serde_json::from_str(line).unwrap();
+    assert_eq!((e.kind, e.chunks.len(), e.chunks[1].content_free, e.freshness.backfilled), (EvidenceKind::ReleaseNotes, 2, true, false));
+    let again: EventLine = serde_json::from_str(&serde_json::to_string(&e).unwrap()).unwrap();
+    assert_eq!(e, again);
+    // An unknown kind reads as Other; the optional fields are left out when unset.
+    let mut other: serde_json::Value = serde_json::from_str(line).unwrap();
+    other["kind"] = "blog_post".into();
+    assert_eq!(serde_json::from_value::<EventLine>(other).unwrap().kind, EvidenceKind::Other);
+    let bare = EventLine { prompt_date: None, no_later_than: None, chunks: vec![], ..e.clone() };
+    let text = serde_json::to_string(&bare).unwrap();
+    assert!(!text.contains("prompt_date") && !text.contains("no_later_than") && !text.contains("backfilled"));
+    // Rust → TypeScript: events with every optional field set, for the Zod to accept.
+    let full = EventLine {
+        kind: EvidenceKind::UpgradeGuide,
+        no_later_than: Some("16.2.0".into()),
+        freshness: Freshness { backfilled: true, ..e.freshness.clone() },
+        ..e.clone()
+    };
+    let out = [&e, &bare, &full].iter().map(|l| serde_json::to_string(l).unwrap() + "\n").collect::<String>();
+    fs::write(fixtures().join("rust-events.v1.jsonl"), out).unwrap();
+    // An index without `events` (every catalog before them) reads as none.
+    let idx = r#"{"schema":1,"technology":"next","sample_n":0,"checked":"x","shards":[]}"#;
+    assert!(serde_json::from_str::<TechIndex>(idx).unwrap().events.is_empty());
+    let with = r#"{"schema":1,"technology":"next","sample_n":0,"checked":"x","shards":[],"events":[
+        {"line":"16","path":"v1/shards/next/16.events.0123456789abcdef.jsonl.gz","sha256":"ab","bytes":10,"records":2}]}"#;
+    let t: TechIndex = serde_json::from_str(with).unwrap();
+    assert_eq!((t.events.len(), t.events[0].records), (1, 2));
+}
+
+#[test]
 fn root_latest_client_and_notice_round_trip() {
     let text = r#"{"schema":1,"min_client":"0.3.0","latest_client":"0.3.2","notice":{"id":"keys-2026-11","until":"2026-11-30","text":"Run `unstale setup`."}}"#;
     let root: Root = serde_json::from_str(text).unwrap();

@@ -171,6 +171,22 @@ export async function publishDates(t: Technology, versions: readonly string[], o
   return out;
 }
 
+/** The registry's publish time (ISO) of each of `versions` that a component's cached publish times give (the cache
+ * `publishDates` keeps; the first component that lists the version): no request. */
+export function cachedPublishTimes(t: Pick<Technology, "components">, versions: readonly string[]): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const component of t.components) {
+    if (!ecosystemOf(component).publishTimes) continue;
+    const kept = registryCache().get(timesName(component));
+    const times = kept ? (JSON.parse(kept.toString("utf8")) as { times: Record<string, string> | null }).times : undefined;
+    for (const v of versions) {
+      const iso = times && Object.hasOwn(times, v) ? times[v] : undefined;
+      if (!out.has(v) && iso && !Number.isNaN(Date.parse(iso))) out.set(v, new Date(iso).toISOString());
+    }
+  }
+  return out;
+}
+
 /**
  * The versions the registry published in the window, for a technology with no GitHub release notes (a changelog file
  * only: markdown-it, mathjs): the release index the advisories stage resolves against, so its advisories are not lost
