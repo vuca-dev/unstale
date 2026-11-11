@@ -39,7 +39,7 @@ off, the client behaves exactly as it does today (catalog records, no model call
   and makes no model call. It runs its own steps only for releases that have change events and no catalog records.
   During the grace period that is nothing, or close to it; after day 20 it is every new release. History is never
   re-derived on the user's tokens.
-- The picker, the session-start sync and no-key mode are active.
+- The picker, the session-start hooks and sync, and no-key mode are active.
 
 Tests and the environment matrix turn the switch on. WS7 flips the default.
 
@@ -53,17 +53,20 @@ Tests and the environment matrix turn the switch on. WS7 flips the default.
 | Local encoder | **Experimental, not shipped**: fails stages 4 and 5 on precision; 299 MB lossless | `eval/edge-encoder/RESULTS.md` |
 | Extraction (A+B) model | `gpt-6-luna`, reasoning low, two calls, on any OpenAI-compatible route or Codex | `eval/provider-matrix/RESULTS.md` |
 | Labels (D) without Jev | `gpt-6-luna`, read on its choices; **allowed as a fallback, marked below Jev** on breaking recall | `eval/provider-matrix/RESULTS.md` addendum 1 |
-| Matching (E) without Jev | `gpt-6-luna` at its fitted constants; **allowed**: same false-merge rate, about 2 more duplicate records (about 420 tokens) per technology-year, which the reading agent absorbs | `eval/provider-matrix/RESULTS.md` addendum 2 |
+| Matching (E) without Jev | `gpt-6-luna` answering by choice, with central's production rule (an uncalibrated answer counts as 0 in the guards): **allowed**. No false merges measured; about 4 more duplicate records (about 800 tokens) per technology-year, which the reading agent absorbs. The fitted 0.82 / 0.97 / 1.01 bars need the stated-probability prompt, which the client does not send | `eval/provider-matrix/RESULTS.md` addendum 2; WS4 review, 11 November |
 | Key detection | Names only: environment variable names, CLIs on PATH, `codex login status`. Never values before consent; never other repos' `.env` files; never other tools' auth files | — |
 | Consent | One picker, recommended option preselected; Enter accepts. No "what was checked" line | — |
 | Cost quotes | Always with units and scope: per technology-year, this repo's total, first sync once. Plan-billed tools in tokens plus "≈ $X at API prices" | — |
-| Budget | A monthly token budget that throttles and works in demand order; never fails | — |
+| Budget | A monthly token limit that throttles and works in demand order; never fails. **A user setting** with a stated default; it can be changed or removed, and reaching it is a warning that says how | [Terminal principles](terminal-principles.md) 7 |
 | Team setting | The repo config names the provider and the key's environment variable; the value stays in each person's env | — |
 | Grace period | 20 days, then `min_client` is raised | — |
 | No key and no Codex | Pass deterministic signals and the raw change events (unparsed, sometimes duplicated) to the agent, with one line stating the extra token spend. **Shipped only if WS9 shows the agent with this mode beats the agent alone**; otherwise the client says a key or Codex is needed. Encoder deferred | WS9; `eval/edge-encoder/RESULTS.md` |
 | Anthropic key only | Offered last, with its trade stated (extraction misses more changes in upgrade guides; matching off, so more duplicates) | `eval/provider-matrix/RESULTS.md` |
 | Picker order | Jev + OpenAI-compatible key; Jev + Codex; OpenAI-compatible key alone; Codex alone; Anthropic key alone. Options below Jev say so in one line | — |
 | Day 0 / day 20 | Day 0 is the day the release ships; day 20 follows automatically | — |
+| Terminal output | Governed by [Terminal principles](terminal-principles.md) (CEO playback review, 11 November) | — |
+| Session-start hooks and sync | Behind the one switch until the release: no half release, no new files or requests before then | Terminal principles 8 |
+| `key_env` | Accepted only when it is the known key variable for that route; a repo's config cannot name an arbitrary variable | WS4 review, 11 November |
 
 ## Open decisions (CEO)
 

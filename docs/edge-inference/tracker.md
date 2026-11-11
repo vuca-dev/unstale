@@ -13,20 +13,10 @@
 - **Base health:** PR checks are `rust`, `central`, `gateway`; re-query before every merge.
 - **Open PRs:** #228 (WS4 PR 1, READY at `e4d4fd0`), #230 (WS4 PR 2, READY at `83321a3`, stacked); both awaiting independent review. WS9 draft pending
 - **Live worktrees (sprint):** `/Users/jason/unstale-edge-sprint` (tracker)
-- **Live subagents:** ws4-reviewer, ws9, ws6-verifier, ws10-verifier (all Fable 5.2); ws4-impl idle awaiting review (worktree kept). Background watch for the first ingest created after 2026-11-11T00:48Z.
+- **Live subagents:** ws4-impl (fixing review findings on #228/#230), ws9, ws6-verifier, ws10-verifier (resumed after the limit reset). Terminal rework EM next.
 - **Merged + verified:** WS0 → #213 `673c191`
 - **Next:** WS4 PR 2, then parity runs and cache disk bounds; WS6b full matrix; WS8 draft last
 - **Sprint API spend so far:** $0 of $10
-
-### PAUSED: plan usage limit hit, about 02:50Z 11 November (resets 22:00 America/Denver, 10 November)
-Resume by sending each stopped agent a message (it continues from its saved transcript; do not start new ones):
-- ws6-verifier (harness, PR #227 at `efac640`): stopped mid-verification; no verdict yet.
-- ws10-verifier/reviewer (PRs #226, #229 at `594b078`): state unknown; no verdict yet.
-- ws4-reviewer (PRs #228 `e4d4fd0`, #230 `83321a3`): state unknown; **nothing merges until it reports**.
-- ws9 (no-key eval, worktree `/Users/jason/unstale-ws9-no-key`): state unknown; check its branch `ws9/no-key-mode`.
-- ws4-impl: idle, worktree `/Users/jason/unstale-ws4-pipeline` kept for review fixes.
-Then: check the ingest run 42940631609 (first on the change-events code), disposable worktrees
-`/Users/jason/unstale-verify-ws6`, `-verify-ws10`, `-review-ws4` (remove if their agents are done).
 
 ## §2 CEO directives (durable; read every iteration)
 
@@ -40,6 +30,17 @@ Then: check the ingest run 42940631609 (first on the change-events code), dispos
 - Experiments have a pass rule and a stopping rule written before the run. One run, at most one revision, a final
   run. No open-ended tuning.
 - Solutions generalise: no per-technology hand work; fixtures are test cases only.
+
+### CEO decisions, 11 November (playback review)
+- Terminal output follows `docs/edge-inference/terminal-principles.md`. It supersedes earlier copy rules where
+  they differ.
+- Session-start hooks and sync go behind the switch until the release.
+- The monthly token limit is a user setting, not a fixed limit.
+- No provider usable: prompt, with the trade quantified; never a silent default.
+- Degraded states are warnings in plain words, not neutral "deferred" lines.
+- Review bot quota: not raised; fresh reviewers and verifiers do the review.
+- PR #219 was merged by the CEO. Central has no hosting decision pending (build from the repo root is fine).
+- First live ingest on the change-events code: run 42940631609 on `725b8c1`, success.
 
 ### Hard rules
 - Never add a `Co-Authored-By` trailer for any AI tool.
@@ -233,10 +234,19 @@ OpenRouter parity, repeat eval runs.
 
 ### WS8: Docs and site: NOT STARTED (after WS4, WS5, WS6b; draft, held)
 
+### WS4 review (11 November): APPROVE AFTER FIXES, sent to ws4-impl
+- Blocking: repo config could name any variable as `key_env` (reached the Codex child's environment); resume stops
+  mid-release with the switch on; chat judge merged across kinds on a bare "yes" (decision: central's production
+  rule). Fix now: permanent failures, lost paid answers on cache write failure, queue-stopping item failures,
+  loopback-only address overrides, foreground backlog in `unstale sync`, Codex batch cache key, answer parsing.
+  Measure: releases never counted as covered. Next PR: hidden records, provenance display, `mergeSplitRecords`.
+
+### Terminal rework: NOT STARTED
+- One EM applies `terminal-principles.md` across setup, status, session start, failures, notices; gates
+  session-start hooks behind the switch; makes the monthly limit a setting.
+
 ### Notes
-- PR #219 (docs page cache, branch `agent/performance/...`) was merged under the CEO's account at 00:52Z on
-  11 November, between sprint merges. No PM brief asked for it; origin unconfirmed. Briefs now say "do not merge any
-  PR other than your own".
+- Briefs say "do not merge any PR other than your own".
 
 ### Program close
 - `main` green on the final tip; tracker branch merged; morning report.
