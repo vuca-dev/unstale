@@ -422,6 +422,8 @@ fn cache_clean_says_what_it_removes_asks_and_keeps_model_results_unless_asked() 
     assert!(c.join("inference/ledger.jsonl").exists() && c.join("inference/worker.lock").exists());
 }
 
+/// Eight repositories recording at once: an entry, once written, is never lost to another writer (each read and write
+/// is under the lock), so all 80 are there at the end.
 #[test]
 fn repositories_recording_at_once_lose_no_entry() {
     let cache = tempfile::tempdir().unwrap();
@@ -431,7 +433,16 @@ fn repositories_recording_at_once_lose_no_entry() {
             let c = c.clone();
             std::thread::spawn(move || {
                 for k in 0..10 {
-                    record(&c, Path::new(&format!("/repo/{i}/{k}")), &set(&["t0"]), 1).unwrap();
+                    // A record that cannot take the lock within its wait is skipped by design (the next sync
+                    // records it): try again, as the next sync would, until this entry is in.
+                    let root = format!("/repo/{i}/{k}");
+                    for _ in 0..1000 {
+                        record(&c, Path::new(&root), &set(&["t0"]), 1).unwrap();
+                        let n = Needed::load(&c).unwrap_or_default();
+                        if n.repos.values().any(|r| r.root == root) {
+                            break;
+                        }
+                    }
                 }
             })
         })
