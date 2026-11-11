@@ -111,7 +111,7 @@ fn run(mut c: Command, timeout: Duration) -> std::io::Result<Ran> {
 }
 
 /// Installed, recent enough and logged in; checked once per [`Inference`].
-fn ready(inf: &Inference) -> Result<(), Deferred> {
+pub(super) fn ready(inf: &Inference) -> Result<(), Deferred> {
     inf.codex_ready
         .get_or_init(|| {
             let quick = Duration::from_secs(20);

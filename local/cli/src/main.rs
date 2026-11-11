@@ -17,6 +17,7 @@ mod maintenance;
 mod notice;
 mod ledgerops;
 mod review;
+mod setup;
 mod stack;
 mod sync;
 #[cfg(test)]

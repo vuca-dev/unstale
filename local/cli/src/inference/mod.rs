@@ -449,6 +449,12 @@ impl Inference {
         Ok(out)
     }
 
+    /// Whether Codex is installed, recent enough and logged in: `codex --version` and `codex login status`, run with
+    /// the same minimal environment as a call. Nothing of Codex's own (its config or auth files) is read here.
+    pub fn codex_status(&self) -> Result<(), Deferred> {
+        codex::ready(self)
+    }
+
     /// Defers when this month's tokens have reached the budget.
     fn admit(&self) -> Result<(), Deferred> {
         if self.ledger_failed.load(std::sync::atomic::Ordering::SeqCst) {
