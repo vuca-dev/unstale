@@ -552,3 +552,38 @@ fn an_agent_in_a_pseudo_terminal_gets_the_listing_never_the_question() {
         assert!(w.config().get("inference").is_none(), "{agent:?}");
     }
 }
+
+#[test]
+fn files_detection_must_never_open_stay_unopened() {
+    // Each is a FIFO: opening one for reading blocks until a writer comes, and none ever does.
+    let w = World::new(Some(true));
+    std::fs::write(w.path("repo/.env"), "OPENAI_API_KEY=x\n").unwrap();
+    std::fs::create_dir_all(w.path("home/.config/fish")).unwrap();
+    let never = [
+        ".env",
+        "home/.env",
+        "repo/.env.local",
+        "home/.bashrc",
+        "home/.bash_profile",
+        "home/.profile",
+        "home/.zshrc",
+        "home/.zprofile",
+        "home/.zshenv",
+        "home/.config/fish/config.fish",
+    ];
+    for f in never {
+        assert!(
+            Command::new("mkfifo")
+                .arg(w.path(f))
+                .status()
+                .unwrap()
+                .success(),
+            "{f}"
+        );
+    }
+    w.init(true, &[]);
+    let listed = w.ok(&["setup"], true);
+    assert!(listed.contains("OPENAI_API_KEY in .env"), "{listed}");
+    w.ok(&["setup", "--inference", "openai"], true);
+    w.ok(&["status", "--wait", "0", "--no-animation"], true);
+}
