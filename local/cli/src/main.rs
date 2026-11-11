@@ -142,6 +142,28 @@ enum Cmd {
         #[arg(long = "repo", required = true)]
         repos: Vec<PathBuf>,
     },
+    /// Internal: one model call on a provider (tests and evals). Prints the answer as JSON, or one `deferred: ...`
+    /// line; exits 0 either way, and quietly when another worker on this machine holds the lock.
+    #[command(hide = true)]
+    Infer {
+        /// openai, vercel, openrouter, anthropic, codex, or custom (with --base-url and --key-env).
+        #[arg(long)]
+        provider: String,
+        #[arg(long)]
+        model: Option<String>,
+        #[arg(long)]
+        base_url: Option<String>,
+        #[arg(long)]
+        key_env: Option<String>,
+        /// JSON Schema of the answer.
+        #[arg(long)]
+        schema: Option<String>,
+        #[arg(long)]
+        timeout_secs: Option<u64>,
+        #[arg(long)]
+        backoff_ms: Option<u64>,
+        prompt: String,
+    },
     /// sync, then digest, then review.
     Run {
         #[arg(long, value_name = "PKG@VERSION")]
@@ -221,6 +243,9 @@ fn dispatch(cli: Cli) -> Result<u8> {
     if let Cmd::CountTerms { repos } = &cli.cmd {
         return count_terms(repos);
     }
+    if let Cmd::Infer { provider, model, base_url, key_env, schema, timeout_secs, backoff_ms, prompt } = cli.cmd {
+        return cmd_infer(&provider, model, base_url, key_env, schema, timeout_secs, backoff_ms, prompt);
+    }
     let start = start_dir(&cli.dir)?;
     if matches!(cli.cmd, Cmd::Uninstall) { return uninstall::run(&start); }
     if let Cmd::Init { catalog, mode, yes, service, wait, no_animation } = cli.cmd {
@@ -239,7 +264,7 @@ fn dispatch(cli: Cli) -> Result<u8> {
     }
     let ctx = context(&start)?;
     match cli.cmd {
-        Cmd::Init { .. } | Cmd::CountTerms { .. } | Cmd::Uninstall => unreachable!(),
+        Cmd::Init { .. } | Cmd::CountTerms { .. } | Cmd::Uninstall | Cmd::Infer { .. } => unreachable!(),
         Cmd::Report => {
             let text = std::fs::read_to_string(ctx.tool.join("onboarding-report.md")).context("No saved report yet; run unstale status")?;
             for line in text.lines() { println!("{}", line.chars().filter(|c| !c.is_control() || *c == '\t').collect::<String>()); }
@@ -266,6 +291,36 @@ fn dispatch(cli: Cli) -> Result<u8> {
         Cmd::Ledger { cmd: LedgerCmd::Check } => cmd_ledger_check(&ctx),
         Cmd::Run { target } => cmd_run(&ctx, &target),
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn cmd_infer(provider: &str, model: Option<String>, base_url: Option<String>, key_env: Option<String>, schema: Option<String>,
+    timeout_secs: Option<u64>, backoff_ms: Option<u64>, prompt: String) -> Result<u8> {
+    use inference::{Inference, Prompt, ProviderConfig};
+    let mut cfg = match provider {
+        "openai" => ProviderConfig::openai(),
+        "vercel" => ProviderConfig::vercel(),
+        "openrouter" => ProviderConfig::openrouter(),
+        "anthropic" => ProviderConfig::anthropic(),
+        "codex" => ProviderConfig::codex(),
+        "custom" => ProviderConfig::custom("custom", "", "", ""),
+        other => bail!("unknown provider {other}"),
+    };
+    if let Some(m) = model { cfg.model = m; }
+    if let Some(b) = base_url { cfg.base_url = b; }
+    if key_env.is_some() { cfg.key_env = key_env; }
+    let mut p = Prompt::new(prompt);
+    if let Some(s) = schema { p = p.schema(serde_json::from_str(&s).context("--schema: JSON")?); }
+    // Another worker on this machine is already running model work: leave it to that one.
+    let Some(_lock) = inference::lock::try_acquire_default() else { return Ok(0) };
+    let mut inf = Inference::new(cfg);
+    if let Some(t) = timeout_secs { inf.limits.timeout = std::time::Duration::from_secs(t); }
+    if let Some(b) = backoff_ms { inf.limits.backoff = std::time::Duration::from_millis(b); }
+    match inf.complete(&p) {
+        Ok(a) => println!("{}", a.value),
+        Err(d) => println!("{}", d.line()),
+    }
+    Ok(0)
 }
 
 fn count_terms(repos: &[PathBuf]) -> Result<u8> {

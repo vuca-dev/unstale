@@ -512,3 +512,19 @@ fn past_the_monthly_budget_work_is_deferred_without_a_call() {
         "Model tokens this month: 1.2M of 48M (monthly budget; past it, work waits for next month)"
     );
 }
+
+#[test]
+fn one_worker_per_machine() {
+    let f = Fixture::new();
+    let dir = f.dir.path().join("inference");
+    let held = lock::try_acquire(&dir).expect("the first worker takes the lock");
+    assert!(
+        lock::try_acquire(&dir).is_none(),
+        "a second worker must not run"
+    );
+    drop(held);
+    assert!(
+        lock::try_acquire(&dir).is_some(),
+        "the lock is free once the first worker is done"
+    );
+}
