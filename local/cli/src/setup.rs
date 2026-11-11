@@ -802,5 +802,166 @@ pub fn current(repo: Option<&Choice>, user_path: &Path) -> Option<(Choice, Origi
     }
 }
 
+// ---------------------------------------------------------------------------------------------------------- flow
+
+/// Reads `--inference`: a provider (`vercel`, `openai`, `openrouter`, `anthropic`), `env:NAME` for a key variable
+/// unstale knows, `codex`, or `none`; `jev+` before a key or `codex` adds Jev for labels.
+pub fn parse_flag(s: &str) -> Result<Choice, String> {
+    let bad = || {
+        format!(
+            "--inference {s}: expected a provider (vercel, openai, openrouter, anthropic), env:NAME ({}), codex or none, optionally after jev+ (for example jev+env:OPENAI_API_KEY)",
+            KEY_VARS
+                .iter()
+                .filter(|(_, r)| *r != Route::Jev)
+                .map(|(n, _)| *n)
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    };
+    let one = |t: &str| -> Option<Choice> {
+        match t {
+            "codex" => Some(Choice::codex()),
+            "none" => Some(Choice::none()),
+            _ => {
+                let (r, var) = match t.strip_prefix("env:") {
+                    Some(var) => (route_of(var)?, var),
+                    None => {
+                        let r = route_by_id(t)?;
+                        (r, default_var(r))
+                    }
+                };
+                Some(Choice::key(r, var))
+            }
+        }
+    };
+    let s = s.trim();
+    let (jev, rest) = match s.split_once('+') {
+        Some((j, rest)) => (Some(j), rest),
+        None => (None, s),
+    };
+    let main = one(rest).ok_or_else(bad)?;
+    let main_route = route_by_id(&main.provider);
+    let Some(j) = jev else {
+        // Jev labels but writes no records: it needs a partner.
+        return if main_route == Some(Route::Jev) {
+            Err(bad())
+        } else {
+            Ok(main)
+        };
+    };
+    let jev = one(j)
+        .filter(|c| route_by_id(&c.provider) == Some(Route::Jev))
+        .ok_or_else(bad)?;
+    let pairs = main.provider == "codex"
+        || matches!(
+            main_route,
+            Some(Route::Vercel | Route::OpenAi | Route::OpenRouter)
+        );
+    if !pairs {
+        return Err(bad());
+    }
+    Ok(main.with_jev(jev.key_env.as_deref().unwrap_or(default_var(Route::Jev))))
+}
+
+/// What setup does on a run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Plan {
+    /// Record this choice (`--inference`); no question.
+    Save(Choice),
+    /// Ask the one question at the terminal.
+    Ask,
+    /// Print the options for an agent to relay; no question (no terminal).
+    Print,
+    /// Nothing to do.
+    Nothing,
+}
+
+/// `reopen` is `unstale setup`; otherwise this is `init`, which asks only when nothing is chosen yet and a person is at
+/// the terminal, so the choice is never asked again unprompted. Without a terminal nothing waits for an answer.
+pub fn plan(flag: Option<Choice>, configured: bool, terminal: bool, reopen: bool) -> Plan {
+    match (flag, reopen, terminal) {
+        (Some(c), _, _) => Plan::Save(c),
+        (None, true, true) => Plan::Ask,
+        (None, true, false) => Plan::Print,
+        (None, false, true) if !configured => Plan::Ask,
+        (None, false, _) => Plan::Nothing,
+    }
+}
+
+/// The repository's technologies, for the cost quotes: the stack's candidate technologies.
+fn technologies(ctx: &crate::Ctx) -> usize {
+    crate::stack::detect(&ctx.root)
+        .map(|st| crate::onboarding::candidates(ctx, &st).len())
+        .unwrap_or(0)
+}
+
+fn save(ctx: &mut crate::Ctx, c: &Choice, user: bool) -> anyhow::Result<String> {
+    if user {
+        let path = user_config_path();
+        write_user(&path, c)?;
+        return Ok(format!("your user config ({})", path.display()));
+    }
+    ctx.config.inference = Some(c.clone());
+    let path = ctx.tool.join("config.json");
+    crate::util::write_atomic(
+        &path,
+        format!("{}\n", serde_json::to_string_pretty(&ctx.config)?).as_bytes(),
+    )?;
+    Ok(".unstale/config.json".into())
+}
+
+/// The line after a choice is recorded.
+pub fn saved_line(c: &Choice, place: &str) -> String {
+    format!(
+        "Model provider: {} · saved in {place}; `unstale setup` changes it",
+        c.describe()
+    )
+}
+
+/// Setup on `init` (`reopen` false) or `unstale setup` (`reopen` true), with the switch on. `user` saves to the user's
+/// config instead of the repository's.
+pub fn run(
+    ctx: &mut crate::Ctx,
+    flag: Option<Choice>,
+    reopen: bool,
+    user: bool,
+) -> anyhow::Result<()> {
+    use std::io::IsTerminal;
+    let configured = current(ctx.config.inference.as_ref(), &user_config_path()).is_some();
+    let terminal = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
+    let (d, techs) = match plan(flag, configured, terminal, reopen) {
+        Plan::Nothing => return Ok(()),
+        Plan::Save(c) => {
+            let place = save(ctx, &c, user)?;
+            println!("{}", saved_line(&c, &place));
+            return Ok(());
+        }
+        Plan::Print => {
+            for l in picker_lines(
+                &detect(&ctx.root, &System),
+                technologies(ctx),
+                NO_KEY_MODE,
+                Reader::Agent,
+            ) {
+                println!("{l}");
+            }
+            return Ok(());
+        }
+        Plan::Ask => (detect(&ctx.root, &System), technologies(ctx)),
+    };
+    let opts = options(&d, NO_KEY_MODE);
+    for l in picker_lines(&d, techs, NO_KEY_MODE, Reader::Person) {
+        println!("{l}");
+    }
+    if opts.is_empty() {
+        return Ok(());
+    }
+    let pick = ask(&opts, &mut std::io::stdin().lock(), &mut std::io::stdout());
+    let c = Choice::of(&d, pick);
+    let place = save(ctx, &c, user)?;
+    println!("{}", saved_line(&c, &place));
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests;

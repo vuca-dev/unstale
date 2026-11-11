@@ -82,6 +82,21 @@ enum Cmd {
         /// Print stable stage lines without decorative motion.
         #[arg(long)]
         no_animation: bool,
+        /// Where model steps run, without asking (CI): see `unstale setup --help`.
+        #[arg(long, value_name = "CHOICE", hide = true)]
+        inference: Option<String>,
+    },
+    /// Choose where model steps run: your own key or your Codex plan. Asks once at a terminal; without one, prints the
+    /// options and the flag for each.
+    #[command(hide = true)]
+    Setup {
+        /// Record a choice without asking: vercel, openai, openrouter, anthropic, env:NAME (a key variable), codex or
+        /// none; jev+ before a key or codex adds Jev for labels (for example jev+env:OPENAI_API_KEY).
+        #[arg(long, value_name = "CHOICE")]
+        inference: Option<String>,
+        /// Save the choice in your user config instead of this repository's.
+        #[arg(long)]
+        user: bool,
     },
     /// Refresh public coverage and print a compact setup summary; full evidence stays in the report.
     Status {
@@ -252,7 +267,12 @@ fn dispatch(cli: Cli) -> Result<u8> {
     }
     let start = start_dir(&cli.dir)?;
     if matches!(cli.cmd, Cmd::Uninstall) { return uninstall::run(&start); }
-    if let Cmd::Init { catalog, mode, yes, service, wait, no_animation } = cli.cmd {
+    if let Cmd::Init { catalog, mode, yes, service, wait, no_animation, inference } = cli.cmd {
+        // Read before anything is written, so a mistyped choice changes nothing. With the switch off it is ignored.
+        let choice = match inference.filter(|_| inference::enabled()) {
+            Some(s) => Some(setup::parse_flag(&s).map_err(|e| anyhow!(e))?),
+            None => None,
+        };
         let service = service.or_else(|| std::env::var("UNSTALE_SERVICE").ok())
             .or_else(|| DEFAULT_SERVICE.filter(|s| !s.is_empty()).map(String::from));
         let catalog = catalog.or_else(|| std::env::var("UNSTALE_CATALOG").ok()).or_else(|| service.clone());
@@ -263,12 +283,24 @@ fn dispatch(cli: Cli) -> Result<u8> {
             ctx.config.service = Some(service);
             util::write_atomic(&ctx.tool.join("config.json"), &serde_json::to_vec_pretty(&ctx.config)?)?;
         }
+        if inference::enabled() {
+            setup::run(&mut ctx, choice, false, false)?;
+        }
         return if ctx.config.service.is_some() { onboarding::run(&ctx, wait.unwrap_or(0), !no_animation, false) } else { Ok(code) }
             .inspect(|_| notice::print(&ctx.cache, &ctx.tool));
     }
-    let ctx = context(&start)?;
+    let mut ctx = context(&start)?;
     match cli.cmd {
         Cmd::Init { .. } | Cmd::CountTerms { .. } | Cmd::Uninstall | Cmd::Infer { .. } => unreachable!(),
+        Cmd::Setup { inference, user } => {
+            if !inference::enabled() {
+                println!("Model steps are off in this version; there is nothing to set up.");
+                return Ok(0);
+            }
+            let choice = inference.map(|s| setup::parse_flag(&s).map_err(|e| anyhow!(e))).transpose()?;
+            setup::run(&mut ctx, choice, true, user)?;
+            Ok(0)
+        }
         Cmd::Report => {
             let text = std::fs::read_to_string(ctx.tool.join("onboarding-report.md")).context("No saved report yet; run unstale status")?;
             for line in text.lines() { println!("{}", line.chars().filter(|c| !c.is_control() || *c == '\t').collect::<String>()); }

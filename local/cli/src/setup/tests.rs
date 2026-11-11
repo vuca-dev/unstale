@@ -406,3 +406,87 @@ fn the_repo_choice_wins_over_the_users_and_the_user_config_keeps_its_other_keys(
     let team = Choice::key(Route::Vercel, "AI_GATEWAY_API_KEY");
     assert_eq!(current(Some(&team), &path), Some((team, Origin::Repo)));
 }
+
+// -------------------------------------------------------------------------------------------------------------- flow
+
+#[test]
+fn the_inference_flag_reads_a_provider_a_variable_codex_or_none() {
+    let ok = |s: &str| serde_json::to_string(&parse_flag(s).unwrap()).unwrap();
+    assert_eq!(
+        ok("openai"),
+        r#"{"provider":"openai","key_env":"OPENAI_API_KEY"}"#
+    );
+    assert_eq!(
+        ok("env:AI_GATEWAY_API_KEY"),
+        r#"{"provider":"vercel","key_env":"AI_GATEWAY_API_KEY"}"#
+    );
+    assert_eq!(
+        ok("anthropic"),
+        r#"{"provider":"anthropic","key_env":"ANTHROPIC_API_KEY"}"#
+    );
+    assert_eq!(ok("codex"), r#"{"provider":"codex"}"#);
+    assert_eq!(ok("none"), r#"{"provider":"none"}"#);
+    assert_eq!(
+        ok("jev+env:OPENAI_API_KEY"),
+        r#"{"provider":"openai","key_env":"OPENAI_API_KEY","labels":{"provider":"jev","key_env":"JEV_API_KEY"}}"#
+    );
+    assert_eq!(
+        ok("jev+codex"),
+        r#"{"provider":"codex","labels":{"provider":"jev","key_env":"JEV_API_KEY"}}"#
+    );
+    for bad in [
+        "jev",
+        "env:JEV_API_KEY",
+        "jev+anthropic",
+        "jev+none",
+        "openai+codex",
+        "env:MY_KEY",
+        "gpt",
+        "",
+        "jev+jev",
+    ] {
+        let e = parse_flag(bad).unwrap_err();
+        assert!(e.contains("expected a provider"), "{bad}: {e}");
+    }
+    // Every option's flag value reads back as the same choice.
+    let d = everything();
+    for p in options(&d, false) {
+        assert_eq!(
+            parse_flag(&flag_value(&d, p)).unwrap(),
+            Choice::of(&d, p),
+            "{p:?}"
+        );
+    }
+}
+
+#[test]
+fn a_question_is_asked_only_at_a_terminal_and_only_once_unprompted() {
+    let c = Choice::codex();
+    // A flag records without asking, anywhere.
+    for (configured, terminal, reopen) in [
+        (false, false, false),
+        (true, true, true),
+        (false, true, false),
+    ] {
+        assert_eq!(
+            plan(Some(c.clone()), configured, terminal, reopen),
+            Plan::Save(c.clone())
+        );
+    }
+    // init: asks once, at a terminal, only while nothing is chosen.
+    assert_eq!(plan(None, false, true, false), Plan::Ask);
+    assert_eq!(
+        plan(None, true, true, false),
+        Plan::Nothing,
+        "never asked again unprompted"
+    );
+    assert_eq!(
+        plan(None, false, false, false),
+        Plan::Nothing,
+        "no terminal: no prompt"
+    );
+    // `unstale setup` reopens the picker; without a terminal it prints the options instead of waiting.
+    assert_eq!(plan(None, true, true, true), Plan::Ask);
+    assert_eq!(plan(None, true, false, true), Plan::Print);
+    assert_eq!(plan(None, false, false, true), Plan::Print);
+}
