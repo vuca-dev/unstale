@@ -289,14 +289,16 @@ pub enum Quality {
         of: &'static str,
         detail: &'static str,
     },
-    /// About as many of the best option's finds (`found`), with more of its flags (`of`) wrong: one in `one_in`
-    /// against one in `best_one_in` for the best option; and a qualifier only the full figures carry.
+    /// About as many of the best option's finds (`found`), with more of its flags wrong: `wrong` in 100 against
+    /// `best_wrong` in 100 for the best option. The flags are named in full (`of`) and as the table's row has room
+    /// for (`of_short`); `detail` is what only the full figures carry, a line each.
     MoreWrong {
-        one_in: u32,
-        best_one_in: u32,
+        wrong: u32,
+        best_wrong: u32,
         found: &'static str,
         of: &'static str,
-        detail: &'static str,
+        of_short: &'static str,
+        detail: &'static [&'static str],
     },
     /// Not measured yet.
     Unmeasured,
@@ -311,14 +313,17 @@ pub struct Quote {
     /// Codex plan tokens, and what they would cost at API prices.
     pub codex_tokens: u64,
     pub codex_usd: f64,
+    /// The part of `codex_tokens` that is an estimate made before the client ran, not a measurement of it.
+    pub codex_tokens_estimated: u64,
     /// Tokens more for the user's agent to read (no-key mode).
     pub agent_tokens: u64,
     pub quality: Quality,
     /// More duplicate records than the best option's.
     pub more_duplicates: u32,
-    /// Whether `quality` and `more_duplicates` were measured on this route. While false, the line says the results
-    /// through Codex are not measured yet, and the figures beside it are the API route's, kept for when they are.
-    pub quality_measured: bool,
+    /// Whether labels and matching were measured on the route this option runs them on. `quality` always is. While
+    /// false (Codex alone), the line says the rest is not measured yet and no figure for it is shown;
+    /// `more_duplicates` is then the API route's, kept for when it is.
+    pub labels_and_matching_measured: bool,
 }
 
 /// The first sync, in technology-years per technology. Catalog records cover history, so the first sync reads only
@@ -329,27 +334,45 @@ const NO_QUOTE: Quote = Quote {
     usd: 0.0,
     codex_tokens: 0,
     codex_usd: 0.0,
+    codex_tokens_estimated: 0,
     agent_tokens: 0,
     quality: Quality::Best,
     more_duplicates: 0,
-    quality_measured: true,
+    labels_and_matching_measured: true,
 };
 
 /// Labels without Jev, at the threshold the client reads Jev at (breaking probability 0.5): an OpenAI-compatible model
 /// (gpt-6-luna read on its choices) finds 103% to 108% of the breaking changes Jev finds (both intervals include 0),
-/// with more of its flags wrong: on short release notes 62% to 68% of them right against Jev's 75% (1 in 3 wrong at
-/// the client's 61.9%, against 1 in 4), on upgrade guides 92% to 93% against 94.5%. Source:
-/// `eval/edge-port/RESULTS.md`, "The ≈ 93% line"; Jev's side is version 1.13.0.
+/// with more of its flags wrong. The two label sets disagree on how many, so the row gives both pooled, by count,
+/// from the client's run: 31 of 270 flags wrong (26 of 42 right on short release notes, 213 of 228 on upgrade
+/// guides) against Jev's 20 of 251 (24 of 32, 207 of 219); central's key-alone run pools to 30 of 268. The sets
+/// apart are in the details: 38 in 100 wrong against 25 on 42 flags, 7 in 100 against 5 (12 of 219) on 228. Source:
+/// `eval/edge-port/RESULTS.md`, "The ≈ 93% line" (the table at 0.5); Jev's side is version 1.13.0.
 const LABELS_BELOW: Quality = Quality::MoreWrong {
-    one_in: 3,
-    best_one_in: 4,
+    wrong: 11,
+    best_wrong: 8,
     found: "breaking changes",
     of: "breaking-change flags",
-    detail: "on upgrade guides ≈ 8 in 100 wrong, against 6",
+    of_short: "breaking flags",
+    detail: &[
+        "on short release notes ≈ 38 in 100 wrong, against 25 (42 flags)",
+        "on upgrade guides ≈ 7 in 100 wrong, against 5 (228 flags)",
+    ],
 };
-/// Matching on the same model: about 6 more duplicate records per technology-year than Jev's, measured with the
-/// request production sends (`eval/edge-port/RESULTS.md`, conclusion 3, before text answers were read as options).
-const MATCHING_BELOW: u32 = 6;
+/// Matching on the same model: about 4 more duplicate records per technology-year than Jev's (4.0 to 4.5), from the
+/// re-measurement with text answers read as options; no false merge in 141 merges (`eval/edge-port/RESULTS.md`,
+/// "After the fixes (addendum 1)"). It was about 6 before text answers were read.
+const MATCHING_BELOW: u32 = 4;
+
+/// Extraction through Codex, batched by length: 60.1% pooled recall on short release notes against 75.6% for the
+/// client's direct run, which is what the best option runs (79% of it; about 90% of central's direct runs), and
+/// precision level with it (77.3 against 78.8, the interval includes 0). Source: `eval/edge-port/RESULTS.md`, "After
+/// the fixes (addendum 1)", Codex extraction.
+const CODEX_EXTRACTION: Quality = Quality::Share {
+    pct: 80,
+    of: "changes",
+    detail: "its changes are right as often as the best option's",
+};
 
 /// The data table. Sources, all $ per mean technology-year at list price, the upper end of each measured range (the
 /// gateway's flex tier was requested on every call and billed list price):
@@ -359,9 +382,9 @@ const MATCHING_BELOW: u32 = 6;
 ///   $0.0564;
 /// - matching: Jev $0.0077; gpt-6-luna read on its choices $0.020 (`eval/edge-port/RESULTS.md`); Anthropic does not
 ///   match (never merge, $0);
-/// - Codex: extraction 152k plan tokens (≈ $0.013 at API prices), measured eight chunks to a call before long chunks
-///   went alone (`eval/edge-port/RESULTS.md`); every step ≈ 634k ($0.069), labels and matching still the estimate
-///   of 482k ($0.0556) from Codex at 8 items per call with the lean flags;
+/// - Codex: extraction 167k plan tokens (≈ $0.015 at API prices), measured with batching by length
+///   (`eval/edge-port/RESULTS.md`, addendum 1); every step ≈ 649k ($0.071), of which labels and matching are still
+///   the estimate of 482k ($0.0556) from Codex at 8 items per call with the lean flags, not a measurement;
 /// - quality: Haiku finds 79.6% of required changes against 88.7% (upgrade guides 68.4% against 81.9%); never merge
 ///   leaves 22.7 duplicates per 100 records against Jev's 2.54.
 pub fn quote(p: Pick, no_key: bool) -> Quote {
@@ -373,12 +396,10 @@ pub fn quote(p: Pick, no_key: bool) -> Quote {
         },
         Pick::JevCodex => Quote {
             usd: jev,
-            codex_tokens: 152_000,
-            codex_usd: 0.013,
-            quality: Quality::Same,
-            // Measured over the API; batched `codex exec` extraction lost recall on long chunks, which now go alone,
-            // and is not measured since.
-            quality_measured: false,
+            codex_tokens: 167_000,
+            codex_usd: 0.015,
+            // Extraction is the only step on Codex here; labels and matching are Jev's, as in the best option.
+            quality: CODEX_EXTRACTION,
             ..NO_QUOTE
         },
         Pick::Key(Route::Anthropic) => Quote {
@@ -398,12 +419,13 @@ pub fn quote(p: Pick, no_key: bool) -> Quote {
             ..NO_QUOTE
         },
         Pick::Codex => Quote {
-            codex_tokens: 634_000,
-            codex_usd: 0.069,
-            quality: LABELS_BELOW,
+            codex_tokens: 167_000 + 482_000,
+            codex_usd: 0.015 + 0.0556,
+            codex_tokens_estimated: 482_000,
+            quality: CODEX_EXTRACTION,
+            // The API route's figure; labels and matching through `codex exec` are not measured yet.
             more_duplicates: MATCHING_BELOW,
-            // The API route's figures; through batched `codex exec` they are not measured yet.
-            quality_measured: false,
+            labels_and_matching_measured: false,
             ..NO_QUOTE
         },
         // About 8k tokens of release notes per technology-year, read raw by the agent.

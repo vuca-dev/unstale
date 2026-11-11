@@ -736,15 +736,19 @@ impl<'a> Extractor<'a> {
 }
 
 /// Through Codex, a chunk longer than this many characters is extracted alone, never in a batch. In the parity run
-/// (`eval/edge-port/RESULTS.md`, short notes, eight chunks to a call) all of the lost recall was in the two batches
-/// holding the chunks of 8,258 to 29,820 characters (the longest gave 14 records against 37 to 75 alone); the
-/// technologies whose chunks were all at most 6,495 characters came out level. The bound sits below that.
+/// (`eval/edge-port/RESULTS.md`, short notes, eight chunks to a call) the lost recall was in the batches holding long
+/// chunks: the longest, 29,820 characters, gave 14 records in its batch against 37 to 75 alone, and the technology
+/// with the long notes gave 96 records against 188 while the three with short notes came out level. The bound sits
+/// between the short chunks that came out level and the long ones that lost records; with it, pooled recall went
+/// from 53.5% to 60.1% (the same file, addendum 1).
+///
+/// Both bounds were derived from JavaScript string lengths (UTF-16 units); the client counts code points, which
+/// differ only for astral characters.
 pub const ALONE_ABOVE_CHARS: usize = 6_000;
 
 /// Through Codex, the most characters of release notes one batched extract call carries. In the same run the batches
-/// that came out level held 2,782 to 17,232 characters of notes and the two that lost recall 47,612 and 64,846; the
-/// bound sits below every level batch but the largest, and below the one (12,680) whose technology lost 4 of 29
-/// records.
+/// that lost recall were the ones carrying the most text; the bound keeps a batch near the size of those that came
+/// out level. Measured together with [`ALONE_ABOVE_CHARS`] (`eval/edge-port/RESULTS.md`, addendum 1).
 pub const BATCH_CHARS: usize = 12_000;
 
 /// The cache form of an extract answer given in a batch, naming the bounds it was given under: an answer from a

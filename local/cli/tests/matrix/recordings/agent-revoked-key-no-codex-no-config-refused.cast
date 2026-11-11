@@ -159,7 +159,7 @@
 [9.08,"o","Never choose for them.\r\n"]
 [9.14,"o","\r\n"]
 [9.2,"o","     Read with   Key              Cost a year, this repo   Compared with the best option\r\n"]
-[9.26,"o","  1  OpenAI      OPENAI_API_KEY   ≈ $0.13                  ≈ 1 in 3 breaking-change flags wrong\r\n"]
+[9.26,"o","  1  OpenAI      OPENAI_API_KEY   ≈ $0.13                  ≈ 11 in 100 breaking flags wrong, not 8\r\n"]
 [9.32,"o","  2  Not now                      free                     ≈ 27%: advisories and deprecations only\r\n"]
 [9.38,"o","\r\n"]
 [9.44,"o","Record their answer with the matching command:\r\n"]
