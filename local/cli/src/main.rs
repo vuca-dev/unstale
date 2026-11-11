@@ -245,7 +245,13 @@ fn dispatch(cli: Cli) -> Result<u8> {
             for line in text.lines() { println!("{}", line.chars().filter(|c| !c.is_control() || *c == '\t').collect::<String>()); }
             Ok(0)
         },
-        Cmd::Status { wait, no_animation } => onboarding::run(&ctx, wait, !no_animation, false).inspect(|_| notice::print(&ctx.cache, &ctx.tool)),
+        Cmd::Status { wait, no_animation } => onboarding::run(&ctx, wait, !no_animation, false).inspect(|_| {
+            notice::print(&ctx.cache, &ctx.tool);
+            if inference::enabled() {
+                let used = inference::Ledger::default_location().month_tokens(&inference::ledger::this_month());
+                println!("{}", inference::ledger::budget_line(used, inference::ledger::DEFAULT_MONTHLY_TOKENS));
+            }
+        }),
         Cmd::Notify => onboarding::notify(&ctx).inspect(|_| notice::print(&ctx.cache, &ctx.tool)),
         Cmd::Sync => cmd_sync(&ctx),
         Cmd::Digest => cmd_digest(&ctx),

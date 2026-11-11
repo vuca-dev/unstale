@@ -487,3 +487,28 @@ fn the_ledger_keeps_every_call_per_provider_per_day() {
     );
     assert_eq!(inf.ledger.month_tokens(&month), 240 + 60 + 1010 + 150);
 }
+
+#[test]
+fn past_the_monthly_budget_work_is_deferred_without_a_call() {
+    let m = Mock::new(vec![(200, openai_ok(r#"{"ok": true}"#))]);
+    let f = Fixture::new();
+    let mut inf = f.inference(ProviderConfig::openai(), &m.url);
+    inf.monthly_budget = 200;
+    inf.complete(&Prompt::new("one")).unwrap();
+    // 150 tokens used: under the budget, so one more call runs and takes it past.
+    inf.complete(&Prompt::new("two")).unwrap();
+    assert_eq!(
+        inf.complete(&Prompt::new("three")).unwrap_err(),
+        Deferred::Budget
+    );
+    assert_eq!(m.count(), 2);
+    assert_eq!(
+        Deferred::Budget.line(),
+        "deferred: this month's token budget is used up; the rest runs next month"
+    );
+    assert_eq!(ledger::DEFAULT_MONTHLY_TOKENS, 48_000_000);
+    assert_eq!(
+        ledger::budget_line(1_234_567, ledger::DEFAULT_MONTHLY_TOKENS),
+        "Model tokens this month: 1.2M of 48M (monthly budget; past it, work waits for next month)"
+    );
+}
