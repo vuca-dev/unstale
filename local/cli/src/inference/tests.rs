@@ -960,3 +960,72 @@ fn the_ledger_records_a_billed_call_whose_answer_is_rejected() {
     );
     assert_eq!(inf.ledger.month_tokens(&month), 73 + 21);
 }
+
+#[test]
+fn an_absurd_token_count_reads_as_the_budget_used_up_never_a_panic_or_zero() {
+    let huge = json!({
+        "choices": [{"message": {"content": "{\"ok\": true}"}, "finish_reason": "stop"}],
+        "usage": {"prompt_tokens": u64::MAX, "completion_tokens": 30},
+    });
+    let m = Mock::new(vec![(200, huge.to_string())]);
+    let f = Fixture::new();
+    let inf = f.inference(ProviderConfig::openai(), &m.url);
+    // The call is billed and recorded; its count saturates rather than wrapping.
+    let a = inf.complete(&Prompt::new("one")).unwrap();
+    assert_eq!(a.usage.tokens(), u64::MAX);
+    // A second huge line in the same month: the sum saturates too.
+    inf.ledger.record("openai", "m", &a.usage).unwrap();
+    assert_eq!(inf.ledger.spent(&ledger::this_month()).unwrap(), u64::MAX);
+    assert_eq!(
+        inf.complete(&Prompt::new("two")).unwrap_err(),
+        Deferred::Budget
+    );
+    assert_eq!(m.count(), 1);
+    let mut total = Usage::default();
+    total.add(&Usage {
+        input: u64::MAX,
+        cached: u64::MAX,
+        output: 1,
+        reasoning: Some(u64::MAX),
+    });
+    total.add(&Usage {
+        input: 1,
+        cached: 1,
+        output: 1,
+        reasoning: Some(1),
+    });
+    assert_eq!(
+        total,
+        Usage {
+            input: u64::MAX,
+            cached: u64::MAX,
+            output: 2,
+            reasoning: Some(u64::MAX)
+        }
+    );
+    assert!(
+        ledger::budget_line(u64::MAX, ledger::DEFAULT_MONTHLY_TOKENS)
+            .starts_with("Model tokens this month: ")
+    );
+    // Anthropic counts cache reads and writes into input: that sum saturates as well.
+    let anthropic = json!({
+        "model": "claude-haiku-5-5", "stop_reason": "end_turn",
+        "content": [{"type": "text", "text": "{\"ok\": true}"}],
+        "usage": {"input_tokens": u64::MAX, "cache_read_input_tokens": 5, "cache_creation_input_tokens": 5, "output_tokens": 1},
+    });
+    let m = Mock::new(vec![(200, anthropic.to_string())]);
+    let f = Fixture::new();
+    let inf = f.inference(ProviderConfig::anthropic(), &m.url);
+    assert_eq!(
+        inf.complete(&Prompt::new("one").schema(schema()))
+            .unwrap()
+            .usage
+            .input,
+        u64::MAX
+    );
+    assert_eq!(
+        inf.complete(&Prompt::new("two").schema(schema()))
+            .unwrap_err(),
+        Deferred::Budget
+    );
+}

@@ -132,6 +132,8 @@ pub fn run(start: &Path) -> Result<u8> {
             util::write_atomic(&settings_path, format!("{}\n", serde_json::to_string_pretty(&settings)?).as_bytes())?;
         }
     }
+    // Codex's hook entry and opencode's plugin (session.rs).
+    session::uninstall_hooks(&root, &backup)?;
     let attrs = root.join(".gitattributes");
     remove_lines(&attrs, |line| line.trim() == GITATTR_LINE)?;
     if let Some(path) = git(&root, &["rev-parse", "--git-path", "info/exclude"]) {
@@ -142,14 +144,30 @@ pub fn run(start: &Path) -> Result<u8> {
             root.join(path)
         };
         remove_lines(&path, |line| {
-            line == onboarding::SESSION_HOOK_EXCLUDE_LINE || dirs.iter().any(|dir| {
+            line == onboarding::SESSION_HOOK_EXCLUDE_LINE
+                || line == session::CODEX_HOOKS_EXCLUDE_LINE
+                || line == session::OPENCODE_PLUGIN_EXCLUDE_LINE
+                || dirs.iter().any(|dir| {
                 ["review", "upgrade-review", "improvements-pass", "onboarding"]
                     .iter()
                     .any(|skill| line == format!("/{dir}/unstale-{skill}/"))
             })
         })?;
     }
-    std::fs::remove_dir_all(&tool)?;
+    // A session-start background stage may still be writing its state here. It never creates the directory again,
+    // so once a removal gets through it stays removed; a few short retries cover a write landing mid-removal.
+    let mut removed = std::fs::remove_dir_all(&tool);
+    for _ in 0..10 {
+        if removed.is_ok() || !tool.exists() {
+            removed = Ok(());
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        if std::fs::remove_dir_all(&tool).is_ok() {
+            removed = Ok(());
+        }
+    }
+    removed?;
     println!(
         "Removed unstale from this repository. The CLI and shared catalog cache remain.\nLocal backup: {}\nRun unstale init to start fresh.",
         backup.display()

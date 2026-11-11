@@ -28,9 +28,10 @@ pub struct Usage {
 }
 
 impl Usage {
-    /// Tokens counted against the budget: everything in and out.
+    /// Tokens counted against the budget: everything in and out. Saturates: an absurd count reads as the budget used
+    /// up, never as a panic or a wrap to zero.
     pub fn tokens(&self) -> u64 {
-        self.input + self.output
+        self.input.saturating_add(self.output)
     }
     /// When a provider reports no usage: about four bytes of JSON per token each way, so the budget still counts the
     /// call.
@@ -45,12 +46,12 @@ impl Usage {
     }
 
     pub fn add(&mut self, o: &Usage) {
-        self.input += o.input;
-        self.cached += o.cached;
-        self.output += o.output;
+        self.input = self.input.saturating_add(o.input);
+        self.cached = self.cached.saturating_add(o.cached);
+        self.output = self.output.saturating_add(o.output);
         self.reasoning = match (self.reasoning, o.reasoning) {
             (None, None) => None,
-            (a, b) => Some(a.unwrap_or(0) + b.unwrap_or(0)),
+            (a, b) => Some(a.unwrap_or(0).saturating_add(b.unwrap_or(0))),
         };
     }
 }
@@ -164,9 +165,13 @@ impl Ledger {
         self.spent(month).unwrap_or(0)
     }
 
-    /// Tokens counted against the budget in a month, or the error that kept the ledger from being read.
+    /// Tokens counted against the budget in a month, or the error that kept the ledger from being read. Saturates, so
+    /// a line with an absurd count reads as the budget used up.
     pub fn spent(&self, month: &str) -> std::io::Result<u64> {
-        Ok(self.lines(month)?.iter().map(|l| l.usage.tokens()).sum())
+        Ok(self
+            .lines(month)?
+            .iter()
+            .fold(0u64, |n, l| n.saturating_add(l.usage.tokens())))
     }
 }
 
