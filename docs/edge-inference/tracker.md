@@ -18,6 +18,16 @@
 - **Next:** WS4 PR 2, then parity runs and cache disk bounds; WS6b full matrix; WS8 draft last
 - **Sprint API spend so far:** $0 of $10
 
+### PAUSED: plan usage limit hit, about 02:50Z 11 November (resets 22:00 America/Denver, 10 November)
+Resume by sending each stopped agent a message (it continues from its saved transcript; do not start new ones):
+- ws6-verifier (harness, PR #227 at `efac640`): stopped mid-verification; no verdict yet.
+- ws10-verifier/reviewer (PRs #226, #229 at `594b078`): state unknown; no verdict yet.
+- ws4-reviewer (PRs #228 `e4d4fd0`, #230 `83321a3`): state unknown; **nothing merges until it reports**.
+- ws9 (no-key eval, worktree `/Users/jason/unstale-ws9-no-key`): state unknown; check its branch `ws9/no-key-mode`.
+- ws4-impl: idle, worktree `/Users/jason/unstale-ws4-pipeline` kept for review fixes.
+Then: check the ingest run 42940631609 (first on the change-events code), disposable worktrees
+`/Users/jason/unstale-verify-ws6`, `-verify-ws10`, `-review-ws4` (remove if their agents are done).
+
 ## §2 CEO directives (durable; read every iteration)
 
 ### Scope and authority
