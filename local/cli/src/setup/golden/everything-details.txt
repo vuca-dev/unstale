@@ -21,7 +21,7 @@ This repo has 38 packages unstale follows.
    results                about as many breaking changes as the best option, more flagged wrongly
                           ≈ 11 in 100 breaking-change flags wrong, against 8
                           on short release notes ≈ 38 in 100 wrong, against 25 (42 flags)
-                          on upgrade guides ≈ 7 in 100 wrong, against 6 (228 flags)
+                          on upgrade guides ≈ 7 in 100 wrong, against 5 (228 flags)
    repeats                ≈ 4 more changes listed twice per package, per year
 
 4  Codex plan

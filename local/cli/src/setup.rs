@@ -346,7 +346,7 @@ const NO_QUOTE: Quote = Quote {
 /// with more of its flags wrong. The two label sets disagree on how many, so the row gives both pooled, by count,
 /// from the client's run: 31 of 270 flags wrong (26 of 42 right on short release notes, 213 of 228 on upgrade
 /// guides) against Jev's 20 of 251 (24 of 32, 207 of 219); central's key-alone run pools to 30 of 268. The sets
-/// apart are in the details: 38 in 100 wrong against 25 on 42 flags, 7 in 100 against 6 on 228. Source:
+/// apart are in the details: 38 in 100 wrong against 25 on 42 flags, 7 in 100 against 5 (12 of 219) on 228. Source:
 /// `eval/edge-port/RESULTS.md`, "The ≈ 93% line" (the table at 0.5); Jev's side is version 1.13.0.
 const LABELS_BELOW: Quality = Quality::MoreWrong {
     wrong: 11,
@@ -356,7 +356,7 @@ const LABELS_BELOW: Quality = Quality::MoreWrong {
     of_short: "breaking flags",
     detail: &[
         "on short release notes ≈ 38 in 100 wrong, against 25 (42 flags)",
-        "on upgrade guides ≈ 7 in 100 wrong, against 6 (228 flags)",
+        "on upgrade guides ≈ 7 in 100 wrong, against 5 (228 flags)",
     ],
 };
 /// Matching on the same model: about 4 more duplicate records per technology-year than Jev's (4.0 to 4.5), from the
