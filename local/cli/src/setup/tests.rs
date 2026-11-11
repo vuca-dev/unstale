@@ -4,8 +4,8 @@ use std::path::PathBuf;
 
 const CANARY: &str = "canary-sk-5e2b8c71d9a4";
 
-/// A probe over a fixed environment and Codex state that reads `.env` through [`System`] and records every root it
-/// was asked about.
+/// A probe over a fixed environment (`NAME` set, `NAME=` blank) and Codex state that reads `.env` through
+/// [`System`] and records every root it was asked about.
 struct Recording {
     names: Vec<String>,
     codex: CodexState,
@@ -23,10 +23,10 @@ impl Recording {
 }
 
 impl Probe for Recording {
-    fn env_names(&self) -> Vec<String> {
-        self.names.clone()
+    fn set_in_shell(&self, name: &str) -> bool {
+        self.names.iter().any(|n| n == name)
     }
-    fn repo_dotenv(&self, root: &Path) -> Option<String> {
+    fn repo_dotenv(&self, root: &Path) -> Vec<String> {
         self.roots.borrow_mut().push(root.to_path_buf());
         System.repo_dotenv(root)
     }
@@ -40,11 +40,9 @@ fn dotenv_names_keeps_known_names_and_never_a_value() {
     let text = format!(
         "# OPENAI_API_KEY=commented\nexport OPENAI_API_KEY={CANARY}\nJEV_API_KEY = \"{CANARY}\"\nDATABASE_URL={CANARY}\nnot a line\nANTHROPIC_API_KEY=\nOPENAI_API_KEY=again\n"
     );
-    let names = dotenv_names(&text);
-    assert_eq!(
-        names,
-        ["OPENAI_API_KEY", "JEV_API_KEY", "ANTHROPIC_API_KEY"]
-    );
+    let names = dotenv_names(text.as_bytes());
+    // ANTHROPIC_API_KEY is blank, so it is absent; OPENAI_API_KEY's last assignment is not.
+    assert_eq!(names, ["OPENAI_API_KEY", "JEV_API_KEY"]);
     assert!(!format!("{names:?}").contains(CANARY));
 }
 
@@ -89,7 +87,7 @@ fn a_dotenv_that_links_elsewhere_is_not_followed() {
     )
     .unwrap();
     std::os::unix::fs::symlink(base.path().join("elsewhere.env"), repo.join(".env")).unwrap();
-    assert_eq!(System.repo_dotenv(&repo), None);
+    assert!(System.repo_dotenv(&repo).is_empty());
     let d = detect(&repo, &Recording::new(&[], CodexState::Absent));
     assert!(d.keys.is_empty(), "{d:?}");
 }
@@ -522,4 +520,53 @@ fn a_user_config_that_cannot_be_read_is_left_alone() {
     let e = write_user(&path, &Choice::codex()).unwrap_err().to_string();
     assert!(e.contains("is not a JSON object"), "{e}");
     assert_eq!(std::fs::read_to_string(&path).unwrap(), "{\"other\": 1,}");
+}
+
+#[test]
+fn a_blank_value_counts_as_unset_in_either_source() {
+    let blanks = "OPENAI_API_KEY=\nAI_GATEWAY_API_KEY=   \nexport OPENROUTER_API_KEY=\"\"\nANTHROPIC_API_KEY=' '\nJEV_API_KEY= # later\n";
+    assert!(
+        dotenv_names(blanks.as_bytes()).is_empty(),
+        "{:?}",
+        dotenv_names(blanks.as_bytes())
+    );
+    assert_eq!(
+        dotenv_names("OPENAI_API_KEY=x\nOPENAI_API_KEY=\n".as_bytes()),
+        Vec::<String>::new(),
+        "the last assignment wins"
+    );
+    assert_eq!(
+        dotenv_names("OPENAI_API_KEY=sk-1 # note".as_bytes()),
+        ["OPENAI_API_KEY"],
+        "no final newline"
+    );
+    // The shell: the real environment, read through System.
+    let base = tempfile::tempdir().unwrap();
+    // SAFETY: test-only variables no other test reads.
+    unsafe {
+        std::env::set_var("UNSTALE_TEST_BLANK_KEY", "  ");
+        std::env::set_var("UNSTALE_TEST_SET_KEY", "x");
+    }
+    assert!(!System.set_in_shell("UNSTALE_TEST_BLANK_KEY"));
+    assert!(System.set_in_shell("UNSTALE_TEST_SET_KEY"));
+    assert!(!System.set_in_shell("UNSTALE_TEST_UNSET_KEY"));
+    std::fs::write(base.path().join(".env"), "OPENAI_API_KEY=\n").unwrap();
+    let d = detect(base.path(), &Recording::new(&[], CodexState::Absent));
+    assert!(d.keys.is_empty() && options(&d, false).is_empty(), "{d:?}");
+}
+
+#[test]
+fn an_agent_variable_means_an_agent_is_driving() {
+    assert!(agent_driving(&Recording::new(
+        &["CLAUDECODE"],
+        CodexState::Absent
+    )));
+    assert!(agent_driving(&Recording::new(
+        &["UNSTALE_AGENT"],
+        CodexState::Absent
+    )));
+    assert!(!agent_driving(&Recording::new(
+        &["PATH", "HOME"],
+        CodexState::Absent
+    )));
 }

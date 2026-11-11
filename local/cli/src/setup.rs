@@ -86,12 +86,28 @@ impl Detected {
     }
 }
 
+/// The variables that say an agent is running the command (Claude Code, Codex, Cursor's agent, opencode, Gemini CLI,
+/// and any harness that sets `AI_AGENT`); `UNSTALE_AGENT=1` says so explicitly. With one set, setup never asks: a
+/// pseudo-terminal an agent drives is not a person, and a stray Enter would accept a paid option.
+pub const AGENT_VARS: &[&str] = &[
+    "CLAUDECODE",
+    "AI_AGENT",
+    "CODEX_SANDBOX",
+    "CODEX_SANDBOX_NETWORK_DISABLED",
+    "CURSOR_AGENT",
+    "OPENCODE",
+    "GEMINI_CLI",
+    "UNSTALE_AGENT",
+];
+
 /// Everything detection may look at. The real one is [`System`]; tests record what is touched.
 pub trait Probe {
-    /// The names of the variables in this process's environment.
-    fn env_names(&self) -> Vec<String>;
-    /// This repository's `.env` (`<root>/.env`, not followed through a link), or `None`. The only file detection opens.
-    fn repo_dotenv(&self, root: &Path) -> Option<String>;
+    /// Whether a variable is set in this process's environment to something other than blanks. The value is looked at
+    /// for that and dropped.
+    fn set_in_shell(&self, name: &str) -> bool;
+    /// The known key variables this repository's `.env` (`<root>/.env`, not followed through a link) sets to a
+    /// non-blank value. The only file detection opens.
+    fn repo_dotenv(&self, root: &Path) -> Vec<String>;
     /// Whether `codex` is on PATH, and if so whether it is usable (`codex --version`, `codex login status`).
     fn codex(&self) -> CodexState;
 }
@@ -99,19 +115,16 @@ pub trait Probe {
 pub struct System;
 
 impl Probe for System {
-    fn env_names(&self) -> Vec<String> {
-        // Names only: each value is dropped unread.
-        std::env::vars_os()
-            .filter_map(|(k, _)| k.into_string().ok())
-            .collect()
+    fn set_in_shell(&self, name: &str) -> bool {
+        std::env::var_os(name).is_some_and(|v| !v.to_string_lossy().trim().is_empty())
     }
-    fn repo_dotenv(&self, root: &Path) -> Option<String> {
+    fn repo_dotenv(&self, root: &Path) -> Vec<String> {
         let p = root.join(".env");
         // A link could lead to another repository's file: only a regular file inside this one is read.
         if !std::fs::symlink_metadata(&p).is_ok_and(|m| m.file_type().is_file()) {
-            return None;
+            return vec![];
         }
-        std::fs::read_to_string(p).ok()
+        std::fs::File::open(p).map(dotenv_names).unwrap_or_default()
     }
     fn codex(&self) -> CodexState {
         let on_path = std::env::var_os("PATH")
@@ -132,36 +145,87 @@ impl Probe for System {
     }
 }
 
-/// The variable names a `.env` text defines (`NAME=…` or `export NAME=…`), known key variables only. Everything after
-/// the `=` is skipped, never kept.
-pub fn dotenv_names(text: &str) -> Vec<String> {
-    let mut out = vec![];
-    for line in text.lines() {
-        let l = line.trim_start();
-        let l = l.strip_prefix("export ").map(str::trim_start).unwrap_or(l);
-        let Some((name, _)) = l.split_once('=') else {
-            continue;
-        };
-        let name = name.trim_end();
-        if route_of(name).is_some() && !out.iter().any(|n| n == name) {
-            out.push(name.to_string());
-        }
-    }
-    out
+/// Whether an agent is running this command ([`AGENT_VARS`]).
+pub fn agent_driving(probe: &dyn Probe) -> bool {
+    AGENT_VARS.iter().any(|v| probe.set_in_shell(v))
 }
 
-/// What this machine can use: key variable names in the shell and in this repository's `.env`, and Codex.
-pub fn detect(root: &Path, probe: &dyn Probe) -> Detected {
-    let mut keys = BTreeMap::new();
-    for n in probe.env_names() {
-        if route_of(&n).is_some() {
-            keys.insert(n, Seen::Shell);
+/// The known key variables a `.env` sets to a non-blank value (`NAME=…` or `export NAME=…`; the last assignment of a
+/// name wins). Read a byte at a time: a name is kept, and of its value only whether it has a character other than
+/// blanks and quotes before a comment. No value byte is stored.
+pub fn dotenv_names(r: impl std::io::Read) -> Vec<String> {
+    use std::io::Read as _;
+    #[derive(PartialEq)]
+    enum At {
+        Name,
+        AfterName,
+        Value,
+        Skip,
+    }
+    let mut set: Vec<(String, bool)> = vec![];
+    let mut note = |name: &str, filled: bool| {
+        if route_of(name).is_none() {
+            return;
+        }
+        match set.iter_mut().find(|(n, _)| n == name) {
+            Some(e) => e.1 = filled,
+            None => set.push((name.to_string(), filled)),
+        }
+    };
+    let (mut at, mut name, mut filled) = (At::Name, String::new(), false);
+    for b in std::io::BufReader::new(r).bytes() {
+        let Ok(b) = b else { break };
+        if b == b'\n' {
+            if at == At::Value {
+                note(&name, filled);
+            }
+            (at, filled) = (At::Name, false);
+            name.clear();
+            continue;
+        }
+        match at {
+            At::Name if b.is_ascii_alphanumeric() || b == b'_' => {
+                if name.len() < 64 {
+                    name.push(b as char);
+                } else {
+                    at = At::Skip;
+                }
+            }
+            At::Name if b == b' ' || b == b'\t' => {
+                if name == "export" {
+                    name.clear();
+                } else if !name.is_empty() {
+                    at = At::AfterName;
+                }
+            }
+            At::Name | At::AfterName if b == b'=' && !name.is_empty() => at = At::Value,
+            At::AfterName if b == b' ' || b == b'\t' => {}
+            At::Name | At::AfterName => at = At::Skip,
+            At::Value if b == b'#' && !filled => at = At::Skip,
+            At::Value => filled |= !(b.is_ascii_whitespace() || b == b'"' || b == b'\''),
+            At::Skip => {}
         }
     }
-    if let Some(text) = probe.repo_dotenv(root) {
-        for n in dotenv_names(&text) {
-            keys.entry(n).or_insert(Seen::DotEnv);
+    if at == At::Value {
+        note(&name, filled);
+    }
+    set.into_iter()
+        .filter(|(_, f)| *f)
+        .map(|(n, _)| n)
+        .collect()
+}
+
+/// What this machine can use: key variables set (to a non-blank value) in the shell and in this repository's `.env`,
+/// and Codex.
+pub fn detect(root: &Path, probe: &dyn Probe) -> Detected {
+    let mut keys = BTreeMap::new();
+    for (n, _) in KEY_VARS {
+        if probe.set_in_shell(n) {
+            keys.insert(n.to_string(), Seen::Shell);
         }
+    }
+    for n in probe.repo_dotenv(root) {
+        keys.entry(n).or_insert(Seen::DotEnv);
     }
     Detected {
         keys,
@@ -839,11 +903,8 @@ pub fn provider_line(cur: Option<&(Choice, Origin)>, set: &dyn Fn(&str) -> bool)
 /// [`provider_line`] for this repository.
 pub fn status_provider(ctx: &crate::Ctx) -> String {
     let cur = current(ctx.config.inference.as_ref(), &user_config_path());
-    let dotenv = System
-        .repo_dotenv(&ctx.root)
-        .map(|t| dotenv_names(&t))
-        .unwrap_or_default();
-    let set = |v: &str| std::env::var_os(v).is_some() || dotenv.iter().any(|n| n == v);
+    let dotenv = System.repo_dotenv(&ctx.root);
+    let set = |v: &str| System.set_in_shell(v) || dotenv.iter().any(|n| n == v);
     provider_line(cur.as_ref(), &set)
 }
 
