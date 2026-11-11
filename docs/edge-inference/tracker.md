@@ -225,8 +225,17 @@ OpenRouter parity, repeat eval runs.
   (`Step::Model`); orphan goldens deleted on update; the two placeholders that can already run.
 
 ### WS9: No-key mode eval: IN PROGRESS (Fable 5.2, one agent, `/Users/jason/unstale-ws9-no-key`)
-- Builds the no-key report path as a draft PR, pre-registers, 2-repo smoke, then the bounded runs. Stops and
-  reports if the harness or the October arm's model is not reusable, or if events are not yet live.
+- **STOPPED at the data gate (05:02Z 11 November):** events live for 315 of the pool's 846 technologies; ingest
+  covers about 95 an hour. Draft PR #231 (`9a93191`): `local/cli/src/nokey.rs`, `eval/no-key/PREREGISTRATION.md`,
+  `freeze_catalog.py`. No run made; about 9.5K plan tokens used.
+- Agent alone (reused, recomputed): 40 real finds, 18 act-now, 432K tokens per act-now find.
+- Measured for the setup screen: 27% of a full report's real finds need no model (28% of act-now).
+- PM rulings: strict pass rule (must beat, a tie within noise does not ship); run from a copy of the scout
+  database; the judge through Codex on the plan is accepted (no API spend). Harness is the private
+  `/Users/jason/unstale-scout`. Three work clones need re-fetching at pinned commits. Runner for the new arm not
+  yet written.
+- Early sign: one dry run gave about 10x the reading matter of a keyed report (241 KB events file).
+- **Resume** when the background watch reports two more ingest runs done: message the agent to recheck the gate.
 
 ### WS4: Client pipeline steps and port parity: IN PROGRESS (Opus 5.5, `/Users/jason/unstale-ws4-pipeline`)
 - **PR 1 #228 and PR 2 #230 READY, not merged** (bot skipped both heads). Local 495 unit + suites, central 608.
