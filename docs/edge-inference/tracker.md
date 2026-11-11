@@ -13,7 +13,7 @@
 - **Base health:** PR checks are `rust`, `central`, `gateway`; re-query before every merge.
 - **Open PRs:** #228 (WS4 PR 1, READY at `e4d4fd0`), #230 (WS4 PR 2, READY at `83321a3`, stacked); both awaiting independent review. WS9 draft pending
 - **Live worktrees (sprint):** `/Users/jason/unstale-edge-sprint` (tracker)
-- **Live subagents:** ws4-impl (fixing review findings on #228/#230), ws9, ws6-verifier, ws10-verifier (resumed after the limit reset). Terminal rework EM next.
+- **Live subagents:** ws4-impl (review fixes on #228/#230), ws10-fix (`/Users/jason/unstale-ws10-fix`), terminal-rework (Fable 5.2, `/Users/jason/unstale-terminal-rework`), ws9. All exit READY, none merges; PM dispatches a reviewer.
 - **Merged + verified:** WS0 → #213 `673c191`
 - **Next:** WS4 PR 2, then parity runs and cache disk bounds; WS6b full matrix; WS8 draft last
 - **Sprint API spend so far:** $0 of $10
@@ -161,7 +161,7 @@ OpenRouter parity, repeat eval runs.
   `central/Dockerfile`; working directory in the image moved from `/app` to `/app/central`.
 - EM: impl, Opus 5.5. Starts when the first lane frees.
 
-### WS10: Session-start sync and freshness tracking: MERGED, verifier (and reviewer) running
+### WS10: Session-start sync and freshness tracking: MERGED, VERIFIED WITH GAPS, fix in progress
 - PR #226 → `7c05080` (hooks, never blocks), PR #229 → `594b078` (freshness). #229 and #226's last push had no bot
   review (quota); the verifier reviews the diff too.
 - Claude Code `.claude/settings.local.json`; Codex `.codex/hooks.json` (user must trust it in `/hooks`); opencode
@@ -173,6 +173,11 @@ OpenRouter parity, repeat eval runs.
   the model stage follow the switch. Opt out: `"session_sync": false` in `.unstale/config.json`.
 - WS4 plugs in at `local/cli/src/session.rs` `model_stage` and `model_work_pending`.
 - Hardening A (saturating token counts) and B (event write failures never cost records) included.
+- **VERIFIER: PASS WITH GAPS, 9/12.** Never-blocks holds (max 1.44 s; about 1.6 s with a hung disk read; exit 0,
+  one line). Failed: installers rewrite the user's JSON, write a tracked Claude settings file, delete user hooks by
+  substring, and do not escape the executable path (a path with `$(…)` executed). Also: fingerprint too broad, the
+  deadline untested, a flaky test, "N new records" after a cache rebuild. 14 items sent to ws10-fix, with the
+  decision to gate everything behind the switch.
 
 ### WS5: Setup: MERGED, VERIFIED WITH GAPS, fix merged (covered by the WS6 matrix, no separate verifier)
 - PR #224 → `725b8c1`, 507 tests, `main` green. Code `local/cli/src/setup/`; figures in `setup::quote()`;
@@ -199,7 +204,7 @@ OpenRouter parity, repeat eval runs.
 - **HUMAN (playback):** every option line is 231–274 characters; the Anthropic line omits its label loss; the None
   line has no number; "deterministic signals" may read as internal; cheapest-route-only when several keys exist.
 
-### WS6a: Environment matrix harness: MERGED, verifier running
+### WS6a: Environment matrix harness: MERGED, VERIFIED WITH GAPS
 - PR #227 → `efac640`, 531 tests, `local/cli/tests/matrix/`: 77 scenarios, 5 ignored placeholders (upgrade during
   grace, after `min_client`, budget in demand order, multi-repo cache reuse, session-start timing), about 8 s.
   Gallery `local/cli/tests/matrix/gallery.html`. Goldens: `UPDATE_GOLDEN=1 cargo test --test matrix`. Real agent
@@ -210,6 +215,14 @@ OpenRouter parity, repeat eval runs.
   in Codex 0.146); CODEX_SANDBOX and OPENCODE unconfirmed. WS10 should confirm Codex's and opencode's from the
   hook environment.
 - The review bot is at about 98% of its monthly line limit and skipped later pushes.
+- **VERIFIER: PASS WITH GAPS.** 30 product-code mutations: 19 caught by the matrix, 1 by golden diff only, 5 by
+  unit tests only, 5 by nothing (HOME path, `package.json` contents or file names in a request body; reading an
+  unplanted secret file; an outbound call with the proxy disabled). The matrix sets `UNSTALE_NO_REGISTRY=1`, so
+  egress is asserted only without registry lookups. Anthropic and Jev are never chosen in a scenario; Codex runs in
+  2. Gallery renders in headless Chromium (77 scenarios, player works).
+- **WS6b must add:** body checks for any path under HOME and for repo file contents and names; rows that choose
+  Anthropic, Jev and Codex; registry hosts in the allowed set with the flag off; real pipeline traffic
+  (`Step::Model`); orphan goldens deleted on update; the two placeholders that can already run.
 
 ### WS9: No-key mode eval: IN PROGRESS (Fable 5.2, one agent, `/Users/jason/unstale-ws9-no-key`)
 - Builds the no-key report path as a draft PR, pre-registers, 2-repo smoke, then the bounded runs. Stops and
