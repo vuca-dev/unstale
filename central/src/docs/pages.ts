@@ -5,7 +5,7 @@
 // must see the page as it is now). Conditional requests are answered from the kept validators. Kept under the central
 // cache, outside the saved state (it only matters within a day, and a run's packages that release together share most
 // of it). A page is one pack record (pipeline/packs.ts): its metadata line, then its Brotli body.
-import { brotliCompressSync, brotliDecompressSync } from "node:zlib";
+import { brotliCompressSync, brotliDecompressSync, constants } from "node:zlib";
 import { existsSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { HttpClient, type FetchResult } from "../collector/http.ts";
@@ -22,6 +22,11 @@ interface Kept {
 }
 
 const KEPT_HEADERS = ["content-type", "etag", "last-modified"];
+/**
+ * Brotli's default (quality 11) took 0.2 to 1.1 s of the event loop per HTML docs page of 0.3 to 2 MiB and made a docs
+ * pass CPU-bound; quality 6 takes 3 to 15 ms for about 10 % more bytes, in a cache kept under a day.
+ */
+const PAGE_BROTLI = { params: { [constants.BROTLI_PARAM_MODE]: constants.BROTLI_MODE_TEXT, [constants.BROTLI_PARAM_QUALITY]: 6 } };
 const CONDITIONAL = new Set(["if-none-match", "if-modified-since"]);
 
 export class SharedPages extends HttpClient {
@@ -69,7 +74,7 @@ export class SharedPages extends HttpClient {
     if (res.status === 200) {
       const h = Object.fromEntries(KEPT_HEADERS.flatMap((k) => (res.headers.get(k) ? [[k, res.headers.get(k)!]] : [])));
       const meta = JSON.stringify({ at: new Date().toISOString(), by: this.technology, finalUrl: res.finalUrl, headers: h } satisfies Kept);
-      this.packs.put(key, Buffer.concat([Buffer.from(`${meta}\n`), brotliCompressSync(res.body)]));
+      this.packs.put(key, Buffer.concat([Buffer.from(`${meta}\n`), brotliCompressSync(res.body, PAGE_BROTLI)]));
     }
     return res;
   }
