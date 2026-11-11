@@ -1,0 +1,32 @@
+{
+ "extract-h1.jsonl": {
+  "items": 40,
+  "sha256": "696ade470d89ae1bb0dba976676b2f695df425d5688b0af8045274100b304d64",
+  "bytes": 173668,
+  "chunks": 43
+ },
+ "extract-h2.jsonl": {
+  "items": 7,
+  "sha256": "f68dd75563a689db3074edcae44b350b5befb840a6b7758d14ea57b004cb9fda",
+  "bytes": 138665,
+  "chunks": 7
+ },
+ "labels-h1.jsonl": {
+  "items": 233,
+  "sha256": "67ff725f26235ecab0805e7f7c50329938a35d20980de8dc188969e2fa3cddd0",
+  "bytes": 137663
+ },
+ "labels-h2.jsonl": {
+  "items": 347,
+  "sha256": "5f9711c46aaff17c1c11c1c9a02707bcb30b63e8aa35466296c94528d2ce7789",
+  "bytes": 294512
+ },
+ "match-heldout.jsonl": {
+  "items": 236,
+  "sha256": "63b8c6ad7018e329282c1e49838bffdb13d0447c8379d03bba01e86d91392854",
+  "bytes": 2465644,
+  "requests_with_questions": 235,
+  "in_central_q8_cache": 235,
+  "same_questions_as_central_q8_run": 236
+ }
+}
