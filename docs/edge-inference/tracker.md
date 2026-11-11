@@ -11,23 +11,12 @@
 - **Ground truth:** GitHub PR state. Repo `vuca-dev/unstale`.
 - **Base:** `origin/main` @ `72d0fc5` (`ci` green)
 - **Base health:** PR checks are `rust`, `central`, `gateway`; re-query before every merge.
-- **Open PRs:** #236 (parity results, `eval/edge-port/` only, READY at `3706655`; hold until re-measurement), #231 (WS9 draft); parity fixes and WS6b pending
+- **Open PRs:** #237 (parity fixes, APPROVED at `1494730`, EM merging), #236 (parity results; re-measurement in progress), #238 (WS6b full matrix, in progress), #231 (WS9 draft, blocked on the ingest decision)
 - **Live worktrees (sprint):** `/Users/jason/unstale-edge-sprint` (tracker)
-- **Live subagents:** parity-fixes (Opus 5.5, `/Users/jason/unstale-parity-fixes`), ws6b-matrix (Opus 5.5). Parity agent idle (worktree `/Users/jason/unstale-parity` kept for the re-measurement). ws9 stopped at the data gate.
+- **Live subagents:** parity-fixes EM (merging #237), parity agent (re-measuring two cells, `/Users/jason/unstale-parity-remeasure`), ws6b-matrix (Opus 5.5). All resumed after the third limit reset.
 - **Merged + verified:** WS0 → #213 `673c191`
 - **Next:** review parity and WS6b; CEO decision on the ingest starvation fix (unblocks WS9); WS8 draft last
 - **Sprint API spend so far:** $0 of $10
-
-### PAUSED at a plan usage limit (third time), 11 November
-Resume each by message; none starts fresh:
-- parity-fixes PR #237 READY at `1494730` (worktree `/Users/jason/unstale-parity-fixes`): fresh reviewer running
-  (worktree `/Users/jason/unstale-review-237`). Merge only on APPROVE; EM agent then merges.
-- parity agent: re-measuring two cells on `1494730` (matching by choice from cache; Codex extraction with new
-  batching), cap $0.50; then updates RESULTS on PR #236. Then set the setup figures (duplicates constant, Codex
-  tokens) and merge #236.
-- ws6b-matrix (`/Users/jason/unstale-ws6b`): building the full matrix; exits READY; needs a reviewer.
-- ws9: stopped at the data gate; blocked on the CEO's decision on the ingest starvation fix.
-- Then WS8 docs and site as a draft (held), and program close (merge this branch, morning report).
 
 ## §2 CEO directives (durable; read every iteration)
 
@@ -333,8 +322,11 @@ OpenRouter parity, repeat eval runs.
   as many breaking changes with more wrong flags. Duplicates without the labelling service: about 6, not 4.
 - The parity agent read the gateway and labelling-service keys from the per-user key directory central's code
   names (outside the repo), only those two variables. Reported to the CEO.
-- Next: parity-fixes PR (answer reading on both sides, length-aware Codex batching, exact probabilities, setup
-  figures), review, then the parity agent re-runs the two affected cells once and updates RESULTS.
+- **Parity-fixes PR #237: review APPROVE** (123-case answer table identical on both sides; no path to a wrong
+  "same"). Five wording notes to apply with the re-measured figures: the README row and `MATCHING_BELOW` were
+  measured before text answers were read; batching-threshold comment cites numbers not in the committed files;
+  the key-alone line "≈ 1 in 3 … wrong" has no comparison in the row and comes from 42 flags (larger set: 7–8 in
+  100); a loosened setup unit-test assertion; characters counted as code points versus UTF-16 units (comment).
 
 ### Notes
 - Briefs say "do not merge any PR other than your own".
