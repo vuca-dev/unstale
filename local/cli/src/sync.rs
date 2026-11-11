@@ -600,6 +600,7 @@ fn sync_tech(
     // A shard that is missing or fails verification is refused (never cached, so never read as a basis for work), and
     // the technology's records sync regardless: events never cost a user their records.
     let (mut events_downloaded, mut events_reused, mut events_failed) = (0, 0, None);
+    let mut fresh_events: Vec<(PathBuf, Vec<u8>)> = vec![];
     if events {
         for s in &index.events {
             let dest = event_path(cache_dir, tech, s);
@@ -621,19 +622,28 @@ fn sync_tech(
                 Ok(b)
             })();
             match fetched {
-                Ok(b) => {
-                    fresh.push((dest, b));
-                    events_downloaded += 1;
-                }
+                Ok(b) => fresh_events.push((dest, b)),
                 Err(e) => {
                     events_failed.get_or_insert_with(|| format!("{e:#}"));
                 }
             }
         }
-        cache::set_events_failed(cache_dir, tech, events_failed.as_deref());
     }
     for (dest, b) in &fresh {
         write_atomic(dest, b)?;
+    }
+    // Change events are written on their own: one that cannot be written (an unwritable `v1/events/<tech>/`) is
+    // refused like one that fails verification, and the records carry on.
+    for (dest, b) in &fresh_events {
+        match write_atomic(dest, b) {
+            Ok(()) => events_downloaded += 1,
+            Err(e) => {
+                events_failed.get_or_insert_with(|| format!("change events could not be cached at {}: {e:#}", dest.display()));
+            }
+        }
+    }
+    if events {
+        cache::set_events_failed(cache_dir, tech, events_failed.as_deref());
     }
     // The swap: the index is replaced only after every shard it names is in place.
     write_atomic(&index_path(cache_dir, tech), index_bytes)?;
@@ -653,7 +663,7 @@ fn sync_tech(
             }
         }
     }
-    let downloaded = fresh.len() - events_downloaded;
+    let downloaded = fresh.len();
     Ok(Some(TechSync { technology: tech.into(), records, checked: index.checked.clone(), downloaded, reused, unchanged, events_downloaded, events_reused, events_failed }))
 }
 
@@ -764,6 +774,22 @@ mod tests {
         assert_eq!((rep.synced[0].events_failed.as_deref(), rep.synced[0].events_downloaded), (None, 1));
         assert!(cache::events_failed(cache.path()).is_empty());
         assert_eq!(cache::load_events(cache.path(), "next").unwrap().unwrap().events.len(), 1);
+    }
+
+    #[test]
+    fn change_events_that_cannot_be_written_never_cost_the_records() {
+        let cat = FixtureCatalog::new();
+        cat.tech_events("next", 0, &[("16", vec![rec("next:a", "pkg:npm/next", "16.0.1")])], &[("16", vec![event("next", "16.0.1", "- x")])]);
+        let src = resolve_source(cat.loc()).unwrap();
+        let cache = tempfile::tempdir().unwrap();
+        // The technology's events directory cannot be created (a file stands in its place).
+        std::fs::create_dir_all(cache.path().join("v1/events")).unwrap();
+        std::fs::write(cache.path().join("v1/events/next"), b"in the way").unwrap();
+        let rep = sync_with_events(&src, cache.path(), &cands(&["next"]), &BTreeSet::new(), &purls(&["pkg:npm/next"]), None, true, &|| false, |_| {}).unwrap();
+        assert!(rep.failed.is_empty(), "{:?}", rep.failed);
+        assert_eq!((rep.synced.len(), rep.synced[0].records, rep.synced[0].downloaded, rep.synced[0].events_downloaded), (1, 1, 1, 0));
+        assert!(rep.synced[0].events_failed.as_deref().is_some_and(|w| w.contains("could not be cached")), "{:?}", rep.synced[0].events_failed);
+        assert_eq!(cache::load_tech(cache.path(), "next").unwrap().unwrap().records.len(), 1, "the records are in the cache");
     }
 
     #[test]
