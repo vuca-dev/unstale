@@ -47,12 +47,16 @@ fn run_all(list: &[Scenario]) -> Vec<Outcome> {
         .map(|n| n.get())
         .unwrap_or(4)
         .clamp(2, 8);
+    // The longest first (the registry slice waits on refused lookups), so they overlap with the rest.
+    let mut order: Vec<usize> = (0..list.len()).collect();
+    order.sort_by_key(|&i| !list[i].registry);
     std::thread::scope(|sc| {
         for _ in 0..width {
             sc.spawn(|| {
                 loop {
-                    let i = next.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                    let Some(s) = list.get(i) else { break };
+                    let n = next.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    let Some(&i) = order.get(n) else { break };
+                    let s = &list[i];
                     let se = run_session(s);
                     let v = check(s, &se);
                     results.lock().unwrap()[i] = Some((se, v));
@@ -70,7 +74,12 @@ fn run_all(list: &[Scenario]) -> Vec<Outcome> {
 
 #[test]
 fn every_scenario_holds_the_line_and_matches_its_golden_transcript() {
-    let list = scenarios();
+    // `MATRIX_ONLY=<part of a slug>` runs only the scenarios whose slug contains it (no gallery, no orphan check).
+    let only = std::env::var("MATRIX_ONLY").ok();
+    let list: Vec<Scenario> = scenarios()
+        .into_iter()
+        .filter(|s| only.as_ref().is_none_or(|o| s.slug.contains(o.as_str())))
+        .collect();
     let results = run_all(&list);
     let mut failures = vec![];
     let mut entries = vec![];
@@ -99,6 +108,18 @@ fn every_scenario_holds_the_line_and_matches_its_golden_transcript() {
                 "the known product bug {start:?} ({why}) no longer shows in any scenario: remove it from KNOWN_BUGS"
             ));
         }
+    }
+    if only.is_some() {
+        for (s, (se, _)) in list.iter().zip(&results) {
+            for r in &se.ran {
+                eprintln!("{}: {} took {:?}", s.slug, r.shown, r.took);
+            }
+            for r in se.world.trap.requests() {
+                eprintln!("{}: through the proxy: {} {}", s.slug, r.method, r.path);
+            }
+        }
+        assert!(failures.is_empty(), "{}", failures.join("\n\n"));
+        return;
     }
     failures.extend(golden("gallery.html", &gallery(&entries)));
     // A transcript left behind by a scenario that no longer exists: deleted on update, a failure otherwise.

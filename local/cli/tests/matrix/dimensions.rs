@@ -186,6 +186,21 @@ pub(crate) const CRITICAL: &[(&str, &str, &str, &str, &str, Answer)] = &[
     ("Anthropic refuses the key", "anthropic-key", "no-codex", "terminal", "config-anthropic", Answer::Refused),
 ];
 
+/// The sessions of the registry slice: setup and the model work, without the status runs (each registry lookup the
+/// proxy refuses is retried for about 25 s per command, and what the registries are asked cannot be read anyway).
+#[rustfmt::skip]
+pub(crate) const REGISTRY_INVOCATIONS: &[Invocation] = &[
+    Invocation { id: "terminal", group: "Installs it at a terminal", title: "first run in a terminal", terminal: true, person: true, answer: "\n", ci: false, env: &[], steps: &[Step::Init, Step::SessionSync] },
+    Invocation { id: "ci", group: "Runs it in CI", title: "in CI", terminal: false, person: false, answer: "", ci: true, env: &[], steps: &[Step::InitYes, Step::SessionSync] },
+];
+
+/// Critical paths run again with registry lookups on: (title, keys, Codex, invocation, repo config).
+#[rustfmt::skip]
+pub(crate) const REGISTRY_SLICE: &[(&str, &str, &str, &str, &str)] = &[
+    ("With registry lookups on, an OpenAI key in the shell, first run in a terminal", "shell-key", "no-codex", "terminal", "no-config"),
+    ("With registry lookups on, CI with the provider in the repo config", "shell-key", "no-codex", "ci", "config-set"),
+];
+
 /// One command of a session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Step {
@@ -222,6 +237,9 @@ pub(crate) struct Scenario {
     pub(crate) client: &'static Client,
     pub(crate) answer: Answer,
     pub(crate) critical: bool,
+    /// Registry lookups on (no `UNSTALE_NO_REGISTRY`): the public npm and PyPI registries and the advisory database
+    /// may be asked about public package names.
+    pub(crate) registry: bool,
     /// Test-only: a deliberate violation, to show the checks catch it.
     pub(crate) fault: Option<Fault>,
 }
@@ -269,6 +287,7 @@ impl Scenario {
             client,
             answer,
             critical: false,
+            registry: false,
             fault: None,
         }
     }
@@ -279,7 +298,7 @@ impl Scenario {
             Some(v) => format!("--inference {v}"),
         };
         format!(
-            "keys: {} · Codex: {} · run: {} · repo config: {c} · client: {} · provider: {}",
+            "keys: {} · Codex: {} · run: {} · repo config: {c} · client: {} · provider: {}{}",
             self.keys.id,
             self.codex.id,
             self.invocation.id,
@@ -288,6 +307,11 @@ impl Scenario {
                 Answer::Ok => "answers".to_string(),
                 Answer::BudgetSpent => "monthly token limit reached".to_string(),
                 a => a.id().replace('-', " "),
+            },
+            if self.registry {
+                " · registry lookups on"
+            } else {
+                ""
             }
         )
     }
@@ -386,6 +410,22 @@ pub(crate) fn scenarios() -> Vec<Scenario> {
         s.critical = true;
         out.push(s);
     }
+    // A slice with registry lookups on, as a user who has not turned them off runs it.
+    for &(title, k, c, i, r) in REGISTRY_SLICE {
+        let mut s = Scenario::new(
+            by_id(KEYS, k, |v| v.id),
+            by_id(CODEX, c, |v| v.id),
+            by_id(REGISTRY_INVOCATIONS, i, |v| v.id),
+            by_id(REPO_CONFIGS, r, |v| v.id),
+            &CLIENTS[0],
+            Answer::Ok,
+        );
+        s.title = title.to_string();
+        s.slug += "-registry";
+        s.critical = true;
+        s.registry = true;
+        out.push(s);
+    }
     let sizes = [
         KEYS.len(),
         CODEX.len(),
@@ -448,5 +488,8 @@ fn the_pairs_cover_every_two_dimension_values_and_the_critical_paths_are_all_pre
             }
         }
     }
-    assert_eq!(list.iter().filter(|s| s.critical).count(), CRITICAL.len());
+    assert_eq!(
+        list.iter().filter(|s| s.critical).count(),
+        CRITICAL.len() + REGISTRY_SLICE.len()
+    );
 }

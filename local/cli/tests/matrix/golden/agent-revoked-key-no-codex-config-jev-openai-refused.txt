@@ -127,4 +127,4 @@ Cache                 under 1 MB of 100 MB
 #   catalog host: GET /health, GET /v1/root.json, GET /v1/shards/next/16.7745374e4470.jsonl.gz, GET /v1/shards/next/16.events.74bcaa014f93.jsonl.gz, GET /v1/shards/react/19.b7c40e95232c.jsonl.gz, GET /v1/shards/react/19.events.04962169f41c.jsonl.gz, GET /v1/tech/next.json, GET /v1/tech/react-dom.json, GET /v1/tech/react.json, GET /v1/technologies.json
 #   model provider: POST /v1/chat/completions (2 requests)
 #   codex: not run
-#   anything else: nothing
+#   through the proxy: nothing

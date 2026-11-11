@@ -333,9 +333,20 @@ pub(crate) fn fake_codex(bin: &Path, dir: &Path, logged_in: bool, backend: &str,
     std::fs::set_permissions(bin.join("codex"), std::fs::Permissions::from_mode(0o755)).unwrap();
 }
 
+/// The public registries and the advisory database, asked through the proxy (`CONNECT host:443`) when registry lookups
+/// are on, about public package names only.
+pub(crate) const REGISTRY_HOSTS: &[&str] =
+    &["registry.npmjs.org:443", "pypi.org:443", "api.osv.dev:443"];
+
 /// Anything the client tries to reach that is not on this machine: every proxy variable points here.
 pub(crate) fn trap() -> Mock {
-    Mock::start(|_| Response::bytes(403, vec![]))
+    Mock::start(|r: &Request| {
+        // A tunnel is refused at once, as a proxy that forbids the host would.
+        if r.method == "CONNECT" {
+            return Response::bytes(502, vec![]);
+        }
+        Response::bytes(403, vec![])
+    })
 }
 
 // -------------------------------------------------------------------------------------------------------- session
@@ -499,7 +510,6 @@ impl World {
             ),
             ("UNSTALE_SERVICE".into(), self.catalog_host.url.clone()),
             ("UNSTALE_TODAY".into(), TODAY.into()),
-            ("UNSTALE_NO_REGISTRY".into(), "1".into()),
             ("UNSTALE_EDGE_INFERENCE".into(), "1".into()),
             ("LANG".into(), "C.UTF-8".into()),
             (
@@ -535,6 +545,9 @@ impl World {
         ));
         if s.invocation.ci {
             e.push(("CI".into(), "true".into()));
+        }
+        if !s.registry {
+            e.push(("UNSTALE_NO_REGISTRY".into(), "1".into()));
         }
         for k in s.keys.shell {
             e.push((k.to_string(), shell_value(k)));

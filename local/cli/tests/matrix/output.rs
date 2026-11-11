@@ -61,13 +61,18 @@ pub(crate) fn traffic(w: &World) -> Vec<String> {
             codex.join(", ")
         }
     ));
-    let t = w.trap.requests().len();
+    let through: BTreeSet<String> = w
+        .trap
+        .requests()
+        .iter()
+        .map(|r| format!("{} {}", r.method, r.path))
+        .collect();
     lines.push(format!(
-        "anything else: {}",
-        if t == 0 {
+        "through the proxy: {}",
+        if through.is_empty() {
             "nothing".into()
         } else {
-            format!("{t} requests through the proxy")
+            through.into_iter().collect::<Vec<_>>().join(", ")
         }
     ));
     lines

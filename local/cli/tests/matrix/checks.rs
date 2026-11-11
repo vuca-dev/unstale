@@ -44,6 +44,8 @@ pub(crate) enum Fault {
     YesIgnored,
     /// The model step exits non-zero with Codex logged out.
     CodexLoggedOutExits,
+    /// With registry lookups on, a host other than the registries is reached through the proxy.
+    ElsewhereThroughProxy,
 }
 
 /// Variables `codex exec` may be started with: the client's own list (`src/inference/codex.rs`, `PASSED_ENV`), and
@@ -365,6 +367,12 @@ pub(crate) fn check(s: &Scenario, se: &Session) -> Vec<String> {
 
     // Hold-the-line 2: only the catalog host and the chosen provider; bodies carry no repo paths or code.
     for r in &trapped {
+        // With registry lookups on, the public registries are reached through the proxy: a `CONNECT` to their host,
+        // nothing else. (What is asked inside the TLS tunnel cannot be read here: the client trusts only its own
+        // bundled roots.)
+        if s.registry && r.method == "CONNECT" && REGISTRY_HOSTS.contains(&r.path.as_str()) {
+            continue;
+        }
         v.push(format!(
             "hold-the-line 2: a request left this machine ({} {})",
             r.method, r.path
@@ -879,6 +887,30 @@ fn the_checks_catch_codex_logged_out_exiting_non_zero() {
             .any(|l| l.starts_with("hold-the-line 4: `unstale session-sync` exited 1")),
         "{v:?}"
     );
+}
+
+#[test]
+fn with_registry_lookups_on_the_checks_catch_another_host_through_the_proxy() {
+    let mut s = Scenario::new(
+        by_id(KEYS, "shell-key", |v| v.id),
+        by_id(CODEX, "no-codex", |v| v.id),
+        by_id(REGISTRY_INVOCATIONS, "ci", |v| v.id),
+        &REPO_CONFIGS[0],
+        &CLIENTS[0],
+        Answer::Ok,
+    );
+    s.registry = true;
+    s.fault = Some(Fault::ElsewhereThroughProxy);
+    let se = run_session(&s);
+    let v = check(&s, &se);
+    eprintln!("{v:?}");
+    assert!(
+        v.iter()
+            .any(|l| l
+                == "hold-the-line 2: a request left this machine (CONNECT telemetry.example:443)"),
+        "{v:?}"
+    );
+    assert!(!v.iter().any(|l| l.contains("registry.npmjs.org")), "{v:?}");
 }
 
 /// What in the client's source could open a connection that ignores the proxy variables: an HTTP agent configured with

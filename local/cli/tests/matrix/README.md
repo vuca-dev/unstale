@@ -26,6 +26,11 @@ configuration in HOME and above the repository (`MAY_OPEN` and `REGISTRY_CONFIG`
   runner).
 - **Hold-the-line 4:** every command exits 0 with no `error:` line; a provider failure or a reached token
   limit is one `warning:` line.
+- **Registry lookups:** the matrix sets `UNSTALE_NO_REGISTRY=1` except in a slice run with lookups on
+  (`REGISTRY_SLICE`), where the only hosts reached through the proxy are the public npm and PyPI registries and the
+  advisory database (`REGISTRY_HOSTS`), each a `CONNECT` and nothing else. What is asked inside the tunnel cannot be
+  read: the client trusts only its bundled roots, and it has no address override for the registries. The proxy
+  refuses the tunnels, so each command there waits about 25 s on the client's own retries.
 - At most one question per path, none with `--yes` (even at a terminal), none without a person at the terminal (an agent driving a pseudo-terminal gets the
   listing instead); a question dismissed with Ctrl-D records no provider and is not asked again; Ctrl-C records
   nothing. The catalog's notice (what to do, by a date) and update lines show at most once a day.

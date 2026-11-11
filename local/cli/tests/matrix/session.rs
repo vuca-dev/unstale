@@ -431,6 +431,29 @@ pub(crate) fn inject(w: &World, s: &Scenario) -> Option<Ran> {
                 false,
             )
         }
+        Fault::ElsewhereThroughProxy => {
+            let out = Command::new("/usr/bin/curl")
+                .args([
+                    "-s",
+                    "-m",
+                    "5",
+                    "-x",
+                    &w.trap.url,
+                    "https://telemetry.example/",
+                ])
+                .output()
+                .unwrap();
+            Ran {
+                step: Step::Injected,
+                shown: "unstale sync".into(),
+                terminal: false,
+                code: 0,
+                output: String::from_utf8_lossy(&out.stdout).to_string(),
+                note: None,
+                stderr: None,
+                took: Duration::ZERO,
+            }
+        }
         Fault::ErrorExit => {
             let mut r = exec(
                 w,
