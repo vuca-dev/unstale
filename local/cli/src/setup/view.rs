@@ -149,17 +149,27 @@ fn trade(p: Pick, q: &Quote, no_key: bool) -> String {
             None => WITHOUT.into(),
         };
     }
-    if !q.quality_measured {
-        return "not measured yet through Codex".into();
-    }
-    match q.quality {
+    let figure = match q.quality {
         Quality::Best => "the best option".into(),
         Quality::Same => "about the same".into(),
         Quality::Unmeasured => "not measured yet".into(),
         Quality::Share { pct, of, .. } => format!("≈ {pct}% of its {of}"),
-        Quality::MoreWrong { one_in, of, .. } => format!("≈ 1 in {one_in} {of} wrong"),
+        Quality::MoreWrong {
+            wrong,
+            best_wrong,
+            of_short,
+            ..
+        } => format!("≈ {wrong} in 100 {of_short} wrong, not {best_wrong}"),
+    };
+    if q.labels_and_matching_measured {
+        figure
+    } else {
+        format!("{figure}; {REST_UNMEASURED}")
     }
 }
+
+/// After the one measured figure of an option whose other steps are not measured on its route.
+const REST_UNMEASURED: &str = "rest not measured";
 
 fn len(s: &str) -> usize {
     s.chars().count()
@@ -626,6 +636,16 @@ pub fn details_lines(d: &Detected, techs: usize, no_key: bool) -> Vec<String> {
                 String::new()
             };
             row("per package, per year", format!("{per}{at_api}"));
+            if q.codex_tokens_estimated > 0 {
+                row(
+                    "",
+                    format!(
+                        "{} measured, for reading the notes; {} for the rest, an estimate",
+                        tokens((q.codex_tokens - q.codex_tokens_estimated) as f64),
+                        tokens(q.codex_tokens_estimated as f64)
+                    ),
+                );
+            }
             if techs > 0 {
                 row("this repo, a year", format!("≈ {}", cost(&q, techs as f64)));
                 row(
@@ -654,9 +674,6 @@ fn quality_detail(p: Pick, q: &Quote, no_key: bool) -> Vec<(&'static str, String
             },
         )];
     }
-    if !q.quality_measured {
-        return vec![("results", "not measured yet through Codex".into())];
-    }
     let mut out = vec![];
     match q.quality {
         Quality::Best => out.push(("results", "the best option: the most complete".to_string())),
@@ -681,11 +698,12 @@ fn quality_detail(p: Pick, q: &Quote, no_key: bool) -> Vec<(&'static str, String
             }
         }
         Quality::MoreWrong {
-            one_in,
-            best_one_in,
+            wrong,
+            best_wrong,
             found,
             of,
             detail,
+            ..
         } => {
             out.push((
                 "results",
@@ -693,12 +711,17 @@ fn quality_detail(p: Pick, q: &Quote, no_key: bool) -> Vec<(&'static str, String
             ));
             out.push((
                 "",
-                format!("≈ 1 in {one_in} {of} wrong, against 1 in {best_one_in}"),
+                format!("≈ {wrong} in 100 {of} wrong, against {best_wrong}"),
             ));
-            if !detail.is_empty() {
-                out.push(("", detail.to_string()));
-            }
+            out.extend(detail.iter().map(|l| ("", l.to_string())));
         }
+    }
+    if !q.labels_and_matching_measured {
+        out.push((
+            "",
+            "breaking-change flags and repeats through Codex: not measured yet".into(),
+        ));
+        return out;
     }
     if q.more_duplicates > 0 {
         out.push((

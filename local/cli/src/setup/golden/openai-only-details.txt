@@ -8,9 +8,10 @@ beside an OpenAI-compatible key.
    this repo, a year      ≈ $2.43
    first sync, once       ≈ $2.43
    results                about as many breaking changes as the best option, more flagged wrongly
-                          ≈ 1 in 3 breaking-change flags wrong, against 1 in 4
-                          on upgrade guides ≈ 8 in 100 wrong, against 6
-   repeats                ≈ 6 more changes listed twice per package, per year
+                          ≈ 11 in 100 breaking-change flags wrong, against 8
+                          on short release notes ≈ 38 in 100 wrong, against 25 (42 flags)
+                          on upgrade guides ≈ 7 in 100 wrong, against 6 (228 flags)
+   repeats                ≈ 4 more changes listed twice per package, per year
 
 2  Not now
    cost     free: no model is called

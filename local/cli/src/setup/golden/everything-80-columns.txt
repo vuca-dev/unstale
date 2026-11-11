@@ -3,11 +3,11 @@ How should unstale read new release notes?
   1  Jev + Vercel AI Gateway (JEV_API_KEY, AI_GATEWAY_API_KEY)
      ≈ $1.36 a year · the best option
   2  Jev + Codex plan (JEV_API_KEY)
-     ≈ $0.68 + 5.8M Codex tokens a year · not measured yet through Codex
+     ≈ $0.68 + 6.3M Codex tokens a year · ≈ 80% of its changes
   3  Vercel AI Gateway (AI_GATEWAY_API_KEY)
-     ≈ $2.43 a year · ≈ 1 in 3 breaking-change flags wrong
+     ≈ $2.43 a year · ≈ 11 in 100 breaking flags wrong, not 8
   4  Codex plan
-     ≈ 24M Codex tokens a year · not measured yet through Codex
+     ≈ 25M Codex tokens a year · ≈ 80% of its changes; rest not measured
   5  Anthropic (ANTHROPIC_API_KEY)
      ≈ $2.86 a year · ≈ 90% of its changes
   6  Not now

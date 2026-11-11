@@ -485,14 +485,16 @@ fn every_option_states_one_cost_and_its_trade_and_the_details_carry_units_and_sc
                 "{detail:?} belongs in --details: {row}"
             );
         }
-        if i > 0 {
-            assert!(
-                row.contains("% of its ")
-                    || row.contains(" wrong")
-                    || row.contains("not measured yet through Codex"),
-                "{row}"
-            );
-        }
+        // Below the best option, the row ends with exactly its one figure, the comparison in it.
+        let want = match p {
+            Pick::JevKey(_) => "the best option",
+            Pick::JevCodex => "≈ 80% of its changes",
+            Pick::Key(Route::Anthropic) => "≈ 90% of its changes",
+            Pick::Key(_) => "≈ 11 in 100 breaking flags wrong, not 8",
+            Pick::Codex => "≈ 80% of its changes; rest not measured",
+            Pick::None => unreachable!(),
+        };
+        assert_eq!(row.rsplit("   ").next(), Some(want), "{row}");
     }
     for want in [
         "per package, per year",
@@ -1040,20 +1042,20 @@ fn an_agent_variable_means_an_agent_is_driving() {
 }
 
 #[test]
-fn quality_through_codex_is_not_claimed_until_measured() {
+fn through_codex_only_what_was_measured_is_claimed() {
     let d = everything();
     let table = view::table(&d, 38, false, view::WIDTH);
     let details = view::details_lines(&d, 38, false);
     for (i, p) in options(&d, false).iter().enumerate() {
-        let through_codex = matches!(p, Pick::JevCodex | Pick::Codex);
-        assert_eq!(!quote(*p, false).quality_measured, through_codex, "{p:?}");
-        if !through_codex {
+        let q = quote(*p, false);
+        // Labels and matching are unmeasured only where Codex runs them; extraction through Codex is measured.
+        assert_eq!(!q.labels_and_matching_measured, *p == Pick::Codex, "{p:?}");
+        assert_eq!(q.codex_tokens_estimated > 0, *p == Pick::Codex, "{p:?}");
+        if !matches!(p, Pick::JevCodex | Pick::Codex) {
             continue;
         }
         let row = &table[i + 1];
-        assert!(row.ends_with("not measured yet through Codex"), "{row}");
-        assert!(!row.contains('%') && !row.contains("the same"), "{row}");
-        // In the details too: the option's block says so and claims no figure.
+        assert!(!row.contains("the same"), "{row}");
         let at = details
             .iter()
             .position(|l| l.starts_with(&format!("{}  ", i + 1)))
@@ -1065,10 +1067,27 @@ fn quality_through_codex_is_not_claimed_until_measured() {
         assert!(
             block
                 .iter()
-                .any(|l| l.ends_with("not measured yet through Codex"))
+                .any(|l| l.ends_with("≈ 80% of the best option's changes")),
+            "{block:?}"
+        );
+        let says = |text: &str| block.iter().any(|l| l.ends_with(text));
+        if *p == Pick::JevCodex {
+            assert!(row.ends_with("   ≈ 80% of its changes"), "{row}");
+            assert!(!block.iter().any(|l| l.contains("estimate")), "{block:?}");
+            continue;
+        }
+        // Codex alone: the row says the rest is not measured; the details claim no figure for it, and set the
+        // estimated tokens apart from the measured ones.
+        assert!(
+            row.ends_with("   ≈ 80% of its changes; rest not measured"),
+            "{row}"
+        );
+        assert!(
+            says("breaking-change flags and repeats through Codex: not measured yet")
+                && says("170k measured, for reading the notes; 480k for the rest, an estimate")
                 && !block
                     .iter()
-                    .any(|l| l.contains('%') || l.contains("listed twice")),
+                    .any(|l| l.contains("listed twice") || l.contains(" wrong")),
             "{block:?}"
         );
     }
