@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { ChatClassifier, ClassifierCache, FallbackClassifier, Jev } from "./classify/adapter.ts";
 import { extractModel } from "./llm.ts";
 import { interpret, labelQuestions, recordState, type Labels } from "./classify/labels.ts";
+import { recordNotes } from "./events.ts";
 import { type DocsNote, extractRelease, releaseCached, type Incoming } from "./extract.ts";
 import type { PipelineBudget } from "./budget.ts";
 import { advisoryStage, type AttachReport } from "./advisories.ts";
@@ -68,6 +69,8 @@ export async function runTechnology(
   const fetched = await fetchReleases(t, { refresh: !!opts.refresh, offline: !!opts.offline });
   const releases = opts.limit ? fetched.notes.slice(0, opts.limit) : fetched.notes;
   console.log(`${t.id}: ${releases.length} releases (${fetched.stats.requests} list requests)`);
+  // Change events (events.ts) for every note read, extracted here or not: a client's own steps read them.
+  recordNotes(t, "releases", fetched.notes);
 
   // The docs module's daily pass: when due, check the technology's docs pages and record change events. Off for a trial
   // (`limit`), offline, or opts.docs === false.
@@ -78,9 +81,11 @@ export async function runTechnology(
 
   // Upgrade guides go through the same extraction and labelling as release notes (opts.guides === false skips them).
   const guides = opts.guides === false ? [] : await fetchGuides(t, fetched.notes, { refresh: !!opts.refresh, offline: !!opts.offline, http, ...(pass ? { checked: true } : {}) });
+  if (opts.guides !== false) recordNotes(t, "guides", guides);
   if (guides.length) console.log(`${t.id}: ${guides.length} upgrade guide(s) (${guides.map((g) => `${g.url} @ ${g.snapshot.slice(7, 19)}`).join(", ")})`);
   // Versioned docs changes as section notes, guides first, at most DOCS_PASS.notes a run (the rest wait).
   const docsPlan = docsOn ? await plan(t.id) : undefined;
+  if (docsPlan) recordNotes(t, "docs", docsPlan.notes.map((n) => n.note));
   const docsPlanned = docsPlan?.notes.slice(0, DOCS_PASS.notes) ?? [];
   // The coverage budget (budget.ts): each note that will reach the extraction model is charged before any call; a
   // refused note is deferred to a later run. Notes are charged newest first, as fetched.
