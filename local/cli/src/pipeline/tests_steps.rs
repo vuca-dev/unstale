@@ -1097,3 +1097,46 @@ fn no_paid_change_leaves_the_report_without_cause() {
 fn js_line(v: &str) -> String {
     super::js::release_line(v)
 }
+
+/// `run-step --step match` with no candidate at the question floor prints each candidate as unasked, as central's
+/// `pick` does on no answers; an input line that does not parse is skipped, and the rest still run.
+#[test]
+fn run_step_match_lists_unasked_candidates_and_skips_a_line_that_does_not_parse() {
+    let dir = tempfile::tempdir().unwrap();
+    let p = crate::prompts::prompts();
+    let inc = incoming(json!({}));
+    let cand = stored(
+        json!({"key": "next@16.3.1#0.0", "version": "16.3.1", "snapshot": "sha256:b1",
+               "subject": "router.prefetch", "summary": "Prefetching now waits for the viewport.",
+               "terms": ["router", "images"],
+               "url": "https://github.com/vercel/next.js/releases/tag/v16.3.1"}),
+        None,
+    );
+    // Retrieved, but below the floor: nothing is asked.
+    let found = matching::retrieve(
+        &inc,
+        &[matching::Cand {
+            rec: &cand,
+            sources: None,
+        }],
+    );
+    assert_eq!(found.len(), 1);
+    assert!(found[0].1 < p.thresholds.question_floor, "{}", found[0].1);
+    let item = json!({"name": "Next.js", "incoming": inc, "candidates": [cand]});
+    let input = dir.path().join("in.jsonl");
+    std::fs::write(&input, format!("not json\n{item}\n")).unwrap();
+    // No call can be made: the route points nowhere.
+    let inf = super::tests::inference(ProviderConfig::openai(), "http://127.0.0.1:9", dir.path());
+    let mut out = vec![];
+    super::run_step("match", &input, inf, &mut out).unwrap();
+    let lines: Vec<Value> = String::from_utf8(out)
+        .unwrap()
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    assert_eq!(
+        lines,
+        [json!({"key": "next@16.3.2#0.0", "match": null,
+                "judged": [{"id": cand.id, "p": 0.0, "outcome": "unasked"}]})]
+    );
+}

@@ -246,6 +246,28 @@ fn question(options: &[&str]) -> ChoiceQuestion {
 }
 
 #[test]
+fn jev_probabilities_are_read_exactly_so_a_threshold_cannot_flip() {
+    // Text as the labelling service writes it; read correctly rounded, as central's `JSON.parse` reads it.
+    let body = r#"{"model": "jev-7", "answers": {"code_api": {"choice": "no", "confidence": 0.54, "probabilities": {"yes": 0.45999999999999996, "no": 0.54}}, "same_c1": {"choice": "yes", "confidence": 0.9099999999999999, "probabilities": {"yes": 0.9099999999999999, "no": 0.09000000000000008}}}}"#;
+    let m = Mock::new(vec![(200, body.to_string())]);
+    let f = Fixture::new();
+    let inf = f.inference(ProviderConfig::jev(), &m.url);
+    let qs = vec![
+        ("code_api".to_string(), question(&["yes", "no"])),
+        ("same_c1".to_string(), question(&["yes", "no"])),
+    ];
+    let c = inf.classify(&raw(r#"{"subject":"x"}"#), &qs).unwrap();
+    let yes = |id: &str| c.answers[id].probabilities["yes"];
+    assert_eq!(yes("code_api"), 0.45999999999999996);
+    assert_ne!(yes("code_api"), 0.46);
+    // One unit below a merge threshold stays below it.
+    let t = crate::prompts::prompts().thresholds.cross_same_p_short;
+    assert_eq!(t, 0.91);
+    assert!(yes("same_c1") < t, "{} against {t}", yes("same_c1"));
+    assert!(c.answers["same_c1"].confidence < t);
+}
+
+#[test]
 fn jev_sends_choice_questions_and_checks_each_answer() {
     let answer = |ids: &[&str]| {
         let answers: serde_json::Map<String, Value> = ids

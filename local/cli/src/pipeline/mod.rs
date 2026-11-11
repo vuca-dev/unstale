@@ -272,7 +272,8 @@ pub fn named_provider(
 }
 
 /// `unstale internal run-step`: one step over a JSON-lines input, one JSON line out per item. Never an error exit:
-/// a provider or budget problem prints one `{"deferred": …}` line and stops; what was answered stays cached.
+/// a provider or budget problem prints one `{"deferred": …}` line and stops; what was answered stays cached. An input
+/// line that does not parse is skipped with one note on stderr, so it has no output line.
 pub fn run_step(
     step: &str,
     input: &Path,
@@ -295,9 +296,10 @@ pub fn run_step(
                 .enumerate()
                 .filter(|(_, l)| !l.trim().is_empty())
             {
-                events.push(serde_json::from_str::<EventLine>(line).map_err(|e| {
-                    anyhow::anyhow!("--in line {}: not a change event: {e}", n + 1)
-                })?);
+                match serde_json::from_str::<EventLine>(line) {
+                    Ok(ev) => events.push(ev),
+                    Err(e) => eprintln!("--in line {}: skipped, not a change event: {e}", n + 1),
+                }
             }
             let x = extract::Extractor::new(&main, &results);
             let all: Vec<&EventLine> = events.iter().collect();
@@ -340,8 +342,13 @@ pub fn run_step(
                 .enumerate()
                 .filter(|(_, l)| !l.trim().is_empty())
             {
-                let it: Item = serde_json::from_str(line)
-                    .map_err(|e| anyhow::anyhow!("--in line {}: {e}", n + 1))?;
+                let it: Item = match serde_json::from_str(line) {
+                    Ok(it) => it,
+                    Err(e) => {
+                        eprintln!("--in line {}: skipped, not an item: {e}", n + 1);
+                        continue;
+                    }
+                };
                 let key = it.incoming.key.clone();
                 let out_line = if step == "labels" {
                     let state = labels::record_state(p, &it.name, &it.incoming);
@@ -368,7 +375,17 @@ pub fn run_step(
                         Some(&scores),
                     );
                     if qs.is_empty() {
-                        Ok(serde_json::json!({"key": key, "match": null, "judged": []}))
+                        // No candidate at the question floor: nothing is asked, and central's `pick` on no answers
+                        // lists each candidate as unasked.
+                        let none = labels::Answers {
+                            classifier: String::new(),
+                            model: String::new(),
+                            answers: Default::default(),
+                            calibrated: true,
+                        };
+                        let (_, judged) =
+                            matching::pick(p, &it.incoming, it.breaking, &recs, &none);
+                        Ok(serde_json::json!({"key": key, "match": null, "judged": judged}))
                     } else {
                         ch.ask(labels::STEP_JUDGE, &state, &qs).map(|a| match a {
                             Some(a) => {

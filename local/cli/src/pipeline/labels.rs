@@ -163,6 +163,29 @@ pub fn chat_batch_prompt(
     ))
 }
 
+/// The option an answer names: its key, or else the one option whose text it repeats (compared without surrounding
+/// whitespace, a trailing full stop or case). Central's `optionKey` reads answers the same way. `None` when the answer
+/// names no option, or repeats the text of more than one.
+fn option_key(q: &ChoiceQuestion, answer: &str) -> Option<String> {
+    if q.options.iter().any(|(k, _)| k == answer) {
+        return Some(answer.to_string());
+    }
+    fn norm(s: &str) -> String {
+        let ws = |c: char| matches!(c, ' ' | '\t' | '\n' | '\r' | '\x0b' | '\x0c');
+        let s = s.trim_matches(ws);
+        s.strip_suffix('.')
+            .unwrap_or(s)
+            .trim_matches(ws)
+            .to_lowercase()
+    }
+    let a = norm(answer);
+    let mut hits = q.options.iter().filter(|(_, text)| norm(text) == a);
+    match (hits.next(), hits.next()) {
+        (Some((k, _)), None) => Some(k.clone()),
+        _ => None,
+    }
+}
+
 /// A chat answer read on its choices: every question answered with one of its options, or nothing.
 fn read_choices(v: &Value, qs: &[(String, ChoiceQuestion)]) -> Option<BTreeMap<String, Choice>> {
     let o = v.as_object()?;
@@ -173,9 +196,7 @@ fn read_choices(v: &Value, qs: &[(String, ChoiceQuestion)]) -> Option<BTreeMap<S
             Value::Object(m) => m.get("choice")?.as_str()?.to_string(),
             _ => return None,
         };
-        if !q.options.iter().any(|(k, _)| *k == c) {
-            return None;
-        }
+        let c = option_key(q, &c)?;
         let probabilities = q
             .options
             .iter()
@@ -528,4 +549,84 @@ pub fn interpret(p: &Prompts, a: &Answers) -> Option<Labels> {
             borderline,
         },
     })
+}
+
+#[cfg(test)]
+mod choice_tests {
+    use super::*;
+
+    fn same(c: &str) -> (String, ChoiceQuestion) {
+        (
+            format!("same_{c}"),
+            ChoiceQuestion {
+                instructions: format!("Is the incoming change the same change as candidate {c}?"),
+                options: vec![
+                    ("yes".into(), format!("The same change as candidate {c}.")),
+                    (
+                        "no".into(),
+                        format!("A different change from candidate {c}, or unsure."),
+                    ),
+                ],
+            },
+        )
+    }
+
+    fn picked(a: &BTreeMap<String, Choice>) -> Vec<(&str, &str)> {
+        a.iter()
+            .map(|(k, v)| (k.as_str(), v.choice.as_str()))
+            .collect()
+    }
+
+    #[test]
+    fn an_answer_repeating_one_options_text_reads_as_its_key() {
+        let qs = [same("c1"), same("c2"), same("c3")];
+        // The parity run's matching item nuxt@4.3.0#0.3, answered with the options' text.
+        let v = serde_json::json!({
+            "same_c1": "The same change as candidate c1.",
+            "same_c2": "A different change from candidate c2, or unsure.",
+            "same_c3": "A different change from candidate c3, or unsure."
+        });
+        let a = read_choices(&v, &qs).expect("read");
+        assert_eq!(
+            picked(&a),
+            [("same_c1", "yes"), ("same_c2", "no"), ("same_c3", "no")]
+        );
+        assert_eq!(a["same_c1"].probabilities["yes"], 1.0);
+        // Whitespace, the trailing full stop and case do not matter; keys still read as before.
+        let v = serde_json::json!({
+            "same_c1": "  the same change as candidate C1 \n",
+            "same_c2": {"choice": "no"},
+            "same_c3": "yes"
+        });
+        let a = read_choices(&v, &qs).expect("read");
+        assert_eq!(
+            picked(&a),
+            [("same_c1", "yes"), ("same_c2", "no"), ("same_c3", "yes")]
+        );
+    }
+
+    #[test]
+    fn an_unknown_or_ambiguous_answer_stays_unreadable() {
+        let qs = [same("c1")];
+        for unknown in ["The same change", "maybe", "candidate c1", ""] {
+            let v = serde_json::json!({ "same_c1": unknown });
+            assert!(read_choices(&v, &qs).is_none(), "{unknown:?}");
+        }
+        let twice = (
+            "q".to_string(),
+            ChoiceQuestion {
+                instructions: String::new(),
+                options: vec![
+                    ("a".into(), "Unsure.".into()),
+                    ("b".into(), "unsure".into()),
+                ],
+            },
+        );
+        let v = serde_json::json!({ "q": "Unsure" });
+        let twice = std::slice::from_ref(&twice);
+        assert!(read_choices(&v, twice).is_none());
+        // A key wins over another option's text.
+        let v = serde_json::json!({ "q": "b" });
+        assert_eq!(picked(&read_choices(&v, twice).unwrap()), [("q", "b")]);
+    }
 }

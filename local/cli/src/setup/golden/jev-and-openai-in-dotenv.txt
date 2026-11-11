@@ -1,8 +1,8 @@
 How should unstale read new release notes?
 
      Read with      Cost a year, this repo   Compared with the best option
-  1  Jev + OpenAI   ≈ $0.44                  the best option
-  2  OpenAI         ≈ $1.08                  ≈ 93% of its breaking-change flags
+  1  Jev + OpenAI   ≈ $0.43                  the best option
+  2  OpenAI         ≈ $0.77                  ≈ 1 in 3 breaking-change flags wrong
   3  Not now        free                     ≈ 27%: advisories and deprecations only
      Jev: a labelling service, used beside the provider that reads the notes.
      Keys: JEV_API_KEY (.env), OPENAI_API_KEY (.env)

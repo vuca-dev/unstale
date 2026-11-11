@@ -53,7 +53,7 @@ Tests and the environment matrix turn the switch on. WS7 flips the default.
 | Local encoder | **Experimental, not shipped**: fails stages 4 and 5 on precision; 299 MB lossless | `eval/edge-encoder/RESULTS.md` |
 | Extraction (A+B) model | `gpt-6-luna`, reasoning low, two calls, on any OpenAI-compatible route or Codex | `eval/provider-matrix/RESULTS.md` |
 | Labels (D) without Jev | `gpt-6-luna`, read on its choices; **allowed as a fallback, marked below Jev** on breaking recall | `eval/provider-matrix/RESULTS.md` addendum 1 |
-| Matching (E) without Jev | `gpt-6-luna` at its fitted constants; **allowed**: same false-merge rate, about 2 more duplicate records (about 420 tokens) per technology-year, which the reading agent absorbs | `eval/provider-matrix/RESULTS.md` addendum 2 |
+| Matching (E) without Jev | `gpt-6-luna` answering by choice, with central's production rule (an uncalibrated answer counts as 0 in the guards): **allowed**. No false merges measured; about 6 more duplicate records (about 1,200 tokens) per technology-year, which the reading agent absorbs. The fitted 0.82 / 0.97 / 1.01 bars need the stated-probability prompt, which the client does not send | `eval/provider-matrix/RESULTS.md` addendum 2; duplicates: `eval/edge-port/RESULTS.md`; WS4 review, 11 November |
 | Key detection | Names only: environment variable names, CLIs on PATH, `codex login status`. Never values before consent; never other repos' `.env` files; never other tools' auth files | — |
 | Consent | One picker, recommended option preselected; Enter accepts. No "what was checked" line | — |
 | Cost quotes | Always with units and scope: per technology-year, this repo's total, first sync once. Plan-billed tools in tokens plus "≈ $X at API prices" | — |

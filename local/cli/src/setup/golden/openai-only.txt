@@ -1,7 +1,7 @@
 How should unstale read new release notes?
 
      Read with   Key              Cost a year, this repo   Compared with the best option
-  1  OpenAI      OPENAI_API_KEY   ≈ $3.42                  ≈ 93% of its breaking-change flags
+  1  OpenAI      OPENAI_API_KEY   ≈ $2.43                  ≈ 1 in 3 breaking-change flags wrong
   2  Not now                      free                     ≈ 27%: advisories and deprecations only
 
 Enter for 1, a number to choose, or d for details: 

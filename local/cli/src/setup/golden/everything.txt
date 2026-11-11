@@ -1,10 +1,10 @@
 How should unstale read new release notes?
 
      Read with                 Cost a year, this repo        Compared with the best option
-  1  Jev + Vercel AI Gateway   ≈ $1.05                       the best option
-  2  Jev + Codex plan          ≈ $0.69 + 4.1M Codex tokens   not measured yet through Codex
-  3  Vercel AI Gateway         ≈ $2.08                       ≈ 93% of its breaking-change flags
-  4  Codex plan                ≈ 22M Codex tokens            not measured yet through Codex
+  1  Jev + Vercel AI Gateway   ≈ $1.36                       the best option
+  2  Jev + Codex plan          ≈ $0.68 + 5.8M Codex tokens   not measured yet through Codex
+  3  Vercel AI Gateway         ≈ $2.43                       ≈ 1 in 3 breaking-change flags wrong
+  4  Codex plan                ≈ 24M Codex tokens            not measured yet through Codex
   5  Anthropic                 ≈ $2.86                       ≈ 90% of its changes
   6  Not now                   free                          ≈ 27%: advisories and deprecations only
      Jev: a labelling service, used beside the provider that reads the notes.
