@@ -209,7 +209,9 @@ fn no_canary_reaches_output_config_cache_or_any_written_file() {
     );
     out += &w.ok(&["setup", "--inference", "jev+env:OPENAI_API_KEY"], true);
     out += &w.ok(&["status", "--wait", "0", "--no-animation"], true);
-    out += &w.ok(&["setup", "--user", "--inference", "codex"], true);
+    let user = w.ok(&["setup", "--user", "--inference", "codex"], true);
+    assert!(user.contains("this repo's own choice (Jev labelling API + OpenAI (JEV_API_KEY, OPENAI_API_KEY)) still applies here"), "{user}");
+    out += &user;
     assert_eq!(
         w.config()["inference"]["key_env"],
         "OPENAI_API_KEY",

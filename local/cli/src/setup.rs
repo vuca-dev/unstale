@@ -936,7 +936,15 @@ fn save(ctx: &mut crate::Ctx, c: &Choice, user: bool) -> anyhow::Result<String> 
     if user {
         let path = user_config_path();
         write_user(&path, c)?;
-        return Ok(format!("your user config ({})", path.display()));
+        // The repository's own choice wins where it has one.
+        let here = match &ctx.config.inference {
+            Some(r) => format!(
+                "; this repo's own choice ({}) still applies here",
+                r.describe()
+            ),
+            None => String::new(),
+        };
+        return Ok(format!("your user config ({}){here}", path.display()));
     }
     ctx.config.inference = Some(c.clone());
     let path = ctx.tool.join("config.json");
