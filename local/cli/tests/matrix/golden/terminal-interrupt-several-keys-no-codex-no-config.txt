@@ -1,0 +1,54 @@
+# Several keys in the shell, interrupted with Ctrl-C at the question
+# keys: several-keys · Codex: no-codex · run: terminal-interrupt · repo config: none · client: fresh · provider: answers
+
+$ unstale init --wait 0 --no-animation
+How should unstale read new release notes?
+
+     Read with                 Cost a year, this repo   Compared with the best option
+  1  Jev + Vercel AI Gateway   ≈ $0.083                 the best option
+  2  Vercel AI Gateway         ≈ $0.16                  ≈ 93% of its breaking-change flags
+  3  Anthropic                 ≈ $0.23                  ≈ 90% of its changes
+  4  Not now                   free                     ≈ 27%: advisories and deprecations only
+     Jev: a labelling service, used beside the provider that reads the notes.
+     Keys: JEV_API_KEY, AI_GATEWAY_API_KEY, ANTHROPIC_API_KEY
+
+Enter for 1, a number to choose, or d for details:
+[interrupted]
+
+$ unstale status --wait 0 --no-animation
+  ✓ shop · Personal setup ready
+  Next: run unstale-review in your coding agent · copyable prompt below.
+  Mapped 3 direct dependencies from declared package ranges and checked local references.
+
+  Upgrades to review · 1 shortlisted
+  Upstream change counts, not confirmed issues in your code.
+  1. next 16.0.0 → 16.1.0 picks up 1 advisory (affected path not found)
+
+  Capabilities to explore · 1 shortlisted
+  1. react · upgrade 19.0.0 → 19.1.0 — Activity hides part of the tree and keeps its state.
+  Dependency match only · repository benefit has not been established.
+  These are review candidates, not confirmed benefits or safe-to-apply changes.
+  Coverage · no shared coverage acknowledged yet. unstale status later adds to this brief.
+
+
+  .unstale/ is Git-ignored. Share reviews and decisions: unstale init --mode shared --wait 0
+  Details: .unstale/onboarding-report.md
+
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  NEXT · Review with unstale-review · paste into your coding agent
+
+  Use .unstale/skills/review/SKILL.md to review this repository. Rank upgrades and capabilities by
+  likely impact. Recommend what to do first, with affected files and trade-offs. Return proposals
+  only; do not edit files.
+
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+unstale notice, act by 30 November: Upgrade unstale; this version stops receiving new changes then.
+unstale <newer version> available: npm install -g @unstale/cli@latest
+Release notes         not read: no provider chosen · `unstale setup` shows the options
+Cache                 under 1 MB of 100 MB
+
+# contacted
+#   catalog host: GET /health, GET /v1/root.json, GET /v1/shards/next/16.7745374e4470.jsonl.gz, GET /v1/shards/next/16.events.74bcaa014f93.jsonl.gz, GET /v1/shards/react/19.b7c40e95232c.jsonl.gz, GET /v1/shards/react/19.events.04962169f41c.jsonl.gz, GET /v1/tech/next.json, GET /v1/tech/react-dom.json, GET /v1/tech/react.json, GET /v1/technologies.json
+#   model provider: nothing
+#   codex: not run
+#   anything else: nothing

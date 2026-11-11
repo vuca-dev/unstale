@@ -9,7 +9,39 @@ use super::*;
 pub(crate) const NEVER_OPENED: &[&str] = &[
     ".env", "code/.env", "code/shop/.env.local",
     ".bashrc", ".bash_profile", ".profile", ".zshrc", ".zprofile", ".zshenv", ".config/fish/config.fish",
+    ".aws/credentials", ".ssh/id_ed25519", ".ssh/config", ".netrc", ".config/gh/hosts.yml",
+    "code/other/.env.local", "code/other/.env.production",
 ];
+
+/// Where the client may open files in HOME: this repository, its own cache and user config, and the package
+/// managers' registry configuration in HOME and in the directories above the repository (read to keep private
+/// packages' names from public services; `src/privacy.rs`). Anything else it tries to open, whether or not it
+/// exists, breaks hold-the-line 1.
+#[rustfmt::skip]
+pub(crate) const MAY_OPEN: &[&str] = &[
+    "code/shop/", ".cache/unstale/", ".config/unstale/",
+    ".config/pip/pip.conf", ".config/pnpm/rc", ".config/uv/uv.toml", ".config/.bunfig.toml", ".pip/pip.conf",
+    "pip/pip.ini", "Library/Application Support/pip/pip.conf", "Library/Preferences/pnpm/rc",
+];
+/// The registry configuration files the client may read in HOME and in each directory above the repository.
+#[rustfmt::skip]
+pub(crate) const REGISTRY_CONFIG: &[&str] = &[
+    ".npmrc", ".yarnrc", ".yarnrc.yml", "bunfig.toml", ".bunfig.toml", "pip.conf", "Pipfile", "pyproject.toml",
+    "uv.toml", ".cargo/config", ".cargo/config.toml",
+];
+
+/// Whether the client may open `rel` (relative to HOME). Never another `.env.*` of this repository.
+pub(crate) fn may_open(rel: &str) -> bool {
+    if let Some(inside) = rel.strip_prefix("code/shop/") {
+        let name = inside.trim_start_matches("./");
+        return !(name.starts_with(".env.") && !name.contains('/'));
+    }
+    MAY_OPEN.iter().any(|p| rel.starts_with(p))
+        || ["", "code/"].iter().any(|dir| {
+            rel.strip_prefix(dir)
+                .is_some_and(|f| REGISTRY_CONFIG.contains(&f))
+        })
+}
 
 pub(crate) const TODAY: &str = "2026-11-10";
 /// A line of the fixture repository's code: it must never reach a provider or the catalog.
@@ -21,6 +53,47 @@ pub(crate) const NOTICE_LINE: &str = "unstale notice, act by 30 November: Upgrad
 /// Public release-note text from the fixture catalog's change event: what a model step may send.
 pub(crate) const RELEASE_NOTE: &str =
     "The middleware file convention is renamed to proxy; middleware.ts keeps working until 17.";
+
+/// The variable that loads a library into a process at start.
+pub(crate) const PRELOAD_VAR: &str = if cfg!(target_os = "macos") {
+    "DYLD_INSERT_LIBRARIES"
+} else {
+    "LD_PRELOAD"
+};
+
+/// The open logger (`openlog.c`), built once per test run: loaded into the client, it records every path the client
+/// tries to open, whether or not the file exists.
+pub(crate) fn open_logger() -> &'static Path {
+    static BUILT: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+    BUILT.get_or_init(|| {
+        let src = golden_dir().join("openlog.c");
+        let out = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(if cfg!(target_os = "macos") {
+            "openlog.dylib"
+        } else {
+            "openlog.so"
+        });
+        let mut cc = Command::new("cc");
+        if cfg!(target_os = "macos") {
+            cc.args(["-dynamiclib", "-O1", "-o"]);
+        } else {
+            cc.args(["-shared", "-fPIC", "-O1", "-o"]);
+        }
+        cc.arg(&out).arg(&src);
+        if !cfg!(target_os = "macos") {
+            cc.arg("-ldl");
+        }
+        let st = cc
+            .status()
+            .expect("a C compiler (`cc`) builds the open logger");
+        assert!(st.success(), "building {} failed", src.display());
+        out
+    })
+}
+
+/// A shell line that loads the open logger again into what it runs: a system shell drops the variable on macOS.
+pub(crate) fn reload_logger() -> String {
+    format!("export {PRELOAD_VAR}=\"$UNSTALE_TEST_SHIM\"; ")
+}
 
 pub(crate) fn this_version() -> &'static str {
     env!("CARGO_PKG_VERSION")
@@ -164,7 +237,8 @@ pub(crate) const CODEX_NOT_ON_PLAN: &str = r#"{"type":"error","message":"The 'gp
 
 /// The model provider: OpenAI-compatible chat, Anthropic Messages and the labelling service on one host, each answered
 /// by the mock model ([`model::answer`]), or failing as `answer` says.
-pub(crate) fn provider_host(answer: Answer) -> Mock {
+pub(crate) fn provider_host(answer: Answer, elsewhere: &str) -> Mock {
+    let elsewhere = elsewhere.to_string();
     Mock::start(move |r: &Request| {
         let ok = if r.path.ends_with("/v1/systemone") {
             model::jev_answer(&r.body)
@@ -202,6 +276,12 @@ pub(crate) fn provider_host(answer: Answer) -> Mock {
                 Response::json(404, r#"{"error":{"message":"The model does not exist"}}"#)
             }
             Answer::Slow => Response::json(200, &ok).after(Duration::from_millis(2500)),
+            Answer::Redirect => {
+                let mut to = Response::json(307, "{}");
+                to.headers
+                    .push(("Location".into(), format!("{elsewhere}{}", r.path)));
+                to
+            }
         }
     })
 }
@@ -270,6 +350,8 @@ pub(crate) struct World {
     pub(crate) provider_host: Mock,
     /// Where the fake `codex` takes its prompts: the mock model, as Codex's own service would answer.
     pub(crate) codex_backend: Mock,
+    /// Where a redirecting provider points: a client that follows it sends the key here.
+    pub(crate) redirect_target: Mock,
     pub(crate) trap: Mock,
     pub(crate) _catalog: testcat::FixtureCatalog,
 }
@@ -287,14 +369,20 @@ impl World {
     pub(crate) fn cache(&self) -> PathBuf {
         self.home().join(".cache/unstale")
     }
+    /// Every path the client tried to open, one per line (the open logger's).
+    pub(crate) fn open_log(&self) -> PathBuf {
+        self.base.path().join("opened.log")
+    }
 
     pub(crate) fn new(s: &Scenario) -> World {
         let cat = catalog();
+        let redirect_target = Mock::start(|_| Response::json(200, "{}"));
         let w = World {
             base: tempfile::tempdir().unwrap(),
             catalog_host: catalog_host(cat.dir.path().to_path_buf()),
-            provider_host: provider_host(s.answer),
+            provider_host: provider_host(s.answer, &redirect_target.url),
             codex_backend: codex_backend(s.answer),
+            redirect_target,
             trap: trap(),
             sentinels: vec![],
             _catalog: cat,
@@ -373,6 +461,11 @@ impl World {
                 &format!("export OPENAI_API_KEY={}\n", support::OTHER_CANARY),
             ));
         }
+        // A registry token the client may read (its registry configuration) but must never repeat anywhere.
+        write(
+            &w.home().join(".npmrc"),
+            &format!("//npm.corp.example/:_authToken={}\n", support::OTHER_CANARY),
+        );
         w.sentinels.push(Sentinel::plant(
             &w.home().join(".codex/auth.json"),
             &format!(
@@ -409,6 +502,15 @@ impl World {
             ("UNSTALE_NO_REGISTRY".into(), "1".into()),
             ("UNSTALE_EDGE_INFERENCE".into(), "1".into()),
             ("LANG".into(), "C.UTF-8".into()),
+            (
+                "UNSTALE_TEST_SHIM".into(),
+                open_logger().display().to_string(),
+            ),
+            (PRELOAD_VAR.into(), open_logger().display().to_string()),
+            (
+                "UNSTALE_TEST_OPEN_LOG".into(),
+                self.open_log().display().to_string(),
+            ),
             ("NO_PROXY".into(), "127.0.0.1,localhost".into()),
             ("no_proxy".into(), "127.0.0.1,localhost".into()),
         ];
@@ -496,6 +598,7 @@ impl World {
             .replace(&self.catalog_host.url, "https://catalog.example")
             .replace(&self.provider_host.url, "https://provider.example")
             .replace(&self.codex_backend.url, "https://codex.example")
+            .replace(&self.redirect_target.url, "https://elsewhere.example")
             .replace(&self.trap.url, "http://proxy.example");
         t = t
             .replace(&newer_version(), "<newer version>")

@@ -3,20 +3,30 @@
 `cargo test --test matrix` (part of `cargo test` in `local/`, so CI runs it) runs the client end to end on simulated
 developer machines. Each scenario gets its own temporary HOME (with the repository at `~/code/shop` and a sibling
 repository at `~/code/other`), PATH, environment, a mock catalog host, a mock model provider, a proxy that catches any
-request leaving the machine, and a fake `codex` when Codex is installed. Canaries sit in every key value, in
-`~/.codex/auth.json` and in the sibling repository's `.env`; those, the `.env` files above the repository, this
-repository's `.env.local` and the shell startup files (`NEVER_OPENED` in `world.rs`) are FIFOs that record being
-opened.
+request leaving the machine, a redirect target, and a fake `codex` when Codex is installed. Canaries sit in every key
+value, in `~/.codex/auth.json`, in a registry token in `~/.npmrc` and in the sibling repository's `.env`.
+
+Every file the client tries to open is recorded, whether or not it exists: an open logger (`openlog.c`, built with
+`cc` at the start of the run) is loaded into the client (`DYLD_INSERT_LIBRARIES` on macOS, `LD_PRELOAD` on Linux).
+In HOME it may open only this repository, its own cache and user config, and the package managers' registry
+configuration in HOME and above the repository (`MAY_OPEN` and `REGISTRY_CONFIG` in `world.rs`). Secret files
+(`NEVER_OPENED`: `.env` files above the repository and in the sibling, shell startup files, `~/.aws/credentials`,
+`~/.ssh/*`, `~/.netrc`, `~/.config/gh/hosts.yml`) are also planted as FIFOs that record being opened.
 
 ## What each scenario must hold
 
 - **Hold-the-line 1:** no canary in any output, written file, or request, except the chosen key in the chosen
   provider's auth header; none of the never-opened files is opened.
-- **Hold-the-line 2:** nothing reaches the proxy; the provider is contacted only on the chosen provider's API;
-  `codex exec` runs only with Codex chosen; no request or `codex` argument carries a repository path or code.
+- **Hold-the-line 1, keys:** no canary, whole or any 12 characters of one, in any output, file or request; `codex
+  exec` starts with only the variables it needs.
+- **Hold-the-line 2:** nothing reaches the proxy; the provider is contacted only on the chosen routes' APIs; `codex
+  exec` runs only with Codex chosen; no request or `codex` argument carries a path under HOME, a repository file's
+  name or a line of its contents; a redirect is never followed. No HTTP agent in the client's source sets its own
+  proxy or none, and it opens no raw socket (a source check: no scenario can take the network away on every CI
+  runner).
 - **Hold-the-line 4:** every command exits 0 with no `error:` line; a provider failure or a reached token
   limit is one `warning:` line.
-- At most one question per path, none without a person at the terminal (an agent driving a pseudo-terminal gets the
+- At most one question per path, none with `--yes` (even at a terminal), none without a person at the terminal (an agent driving a pseudo-terminal gets the
   listing instead); a question dismissed with Ctrl-D records no provider and is not asked again; Ctrl-C records
   nothing. The catalog's notice (what to do, by a date) and update lines show at most once a day.
 

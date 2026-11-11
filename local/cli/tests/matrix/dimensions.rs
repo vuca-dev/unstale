@@ -65,6 +65,7 @@ pub(crate) struct Invocation {
 #[rustfmt::skip]
 pub(crate) const INVOCATIONS: &[Invocation] = &[
     Invocation { id: "terminal", group: "Installs it at a terminal", title: "first run in a terminal", terminal: true, person: true, answer: "\n", ci: false, env: &[], steps: &[Step::Init, Step::Sync, Step::SessionSync, Step::Status] },
+    Invocation { id: "terminal-yes", group: "Installs it at a terminal", title: "first run in a terminal with --yes", terminal: true, person: true, answer: "\n", ci: false, env: &[], steps: &[Step::InitYes, Step::Sync, Step::SessionSync, Step::Status] },
     Invocation { id: "terminal-dismiss", group: "Installs it at a terminal", title: "dismissed with Ctrl-D in a terminal", terminal: true, person: true, answer: "\u{4}", ci: false, env: &[], steps: &[Step::Init, Step::Init, Step::Status] },
     Invocation { id: "terminal-interrupt", group: "Installs it at a terminal", title: "interrupted with Ctrl-C at the question", terminal: true, person: true, answer: "\u{3}", ci: false, env: &[], steps: &[Step::Init, Step::Status] },
     Invocation { id: "terminal-details", group: "Installs it at a terminal", title: "asking for the details at the question", terminal: true, person: true, answer: "d\n", ci: false, env: &[], steps: &[Step::Init, Step::Status] },
@@ -121,6 +122,8 @@ pub(crate) enum Answer {
     NotOnPlan,
     /// This month's token limit is already reached.
     BudgetSpent,
+    /// A redirect to another address (307).
+    Redirect,
 }
 
 impl Answer {
@@ -133,6 +136,7 @@ impl Answer {
             Answer::Slow => "provider-slow",
             Answer::NotOnPlan => "model-not-on-plan",
             Answer::BudgetSpent => "budget-spent",
+            Answer::Redirect => "redirect",
         }
     }
     pub(crate) fn failing(self) -> bool {
@@ -177,6 +181,8 @@ pub(crate) const CRITICAL: &[(&str, &str, &str, &str, &str, Answer)] = &[
     ("The repo names Codex and Codex is logged out, first run in a terminal", "no-key", "codex-logged-out", "terminal", "config-codex", Answer::Ok),
     ("The repo names Codex and Codex is logged out, in CI", "no-key", "codex-logged-out", "ci", "config-codex", Answer::Ok),
     ("The labelling service and OpenAI, the provider down", "several-keys", "no-codex", "terminal", "config-jev-openai", Answer::Down),
+    ("The provider answers with a redirect", "shell-key", "no-codex", "terminal", "no-config", Answer::Redirect),
+    ("At a terminal, --yes asks nothing", "shell-key", "codex", "terminal-yes", "no-config", Answer::Ok),
     ("Anthropic refuses the key", "anthropic-key", "no-codex", "terminal", "config-anthropic", Answer::Refused),
 ];
 

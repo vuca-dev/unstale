@@ -271,7 +271,18 @@ pub fn at_terminal(cmd: &Command, answers: &[(&str, &str)], limit: Duration) -> 
         .map(shell_quote)
         .collect::<Vec<_>>()
         .join(" ");
-    let line = format!("stty cols {COLUMNS} rows {ROWS}; exec {line}");
+    // A library the caller loads into the program (`UNSTALE_TEST_SHIM`), loaded again past the system shell, which
+    // drops the loading variable on macOS.
+    let preload = match cmd
+        .get_envs()
+        .find(|(k, _)| *k == "UNSTALE_TEST_SHIM")
+        .and_then(|(_, v)| v)
+    {
+        Some(_) if cfg!(target_os = "macos") => "export DYLD_INSERT_LIBRARIES=\"$UNSTALE_TEST_SHIM\"; ",
+        Some(_) => "export LD_PRELOAD=\"$UNSTALE_TEST_SHIM\"; ",
+        None => "",
+    };
+    let line = format!("stty cols {COLUMNS} rows {ROWS}; {preload}exec {line}");
     let mut s = Command::new("script");
     if cfg!(target_os = "macos") {
         s.args(["-q", "/dev/null", "/bin/sh", "-c", &line]);

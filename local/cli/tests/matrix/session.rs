@@ -54,7 +54,13 @@ pub(crate) fn run_step(w: &World, s: &Scenario, step: Step, ran: &[Ran]) -> Opti
         Step::InitYes if s.fault == Some(Fault::QuestionWithoutTerminal) => {
             Some(exec(w, s, init(false), true))
         }
-        Step::InitYes => Some(exec(w, s, init(true), false)),
+        // `--yes` at a terminal too: it never asks.
+        Step::InitYes if s.fault == Some(Fault::YesIgnored) => {
+            let mut r = exec(w, s, init(false), terminal);
+            r.shown = format!("unstale {}", init(true).join(" "));
+            Some(r)
+        }
+        Step::InitYes => Some(exec(w, s, init(true), terminal)),
         Step::InitFlag(value) => {
             let mut a = init(true);
             a.extend(["--inference".to_string(), value.to_string()]);
@@ -135,7 +141,7 @@ pub(crate) fn exec(w: &World, s: &Scenario, args: Vec<String>, terminal: bool) -
         // stderr into stdout, so the output keeps the order it was written in.
         let mut sh = Command::new("/bin/sh");
         sh.arg("-c")
-            .arg("exec \"$0\" \"$@\" 2>&1")
+            .arg(format!("{}exec \"$0\" \"$@\" 2>&1", reload_logger()))
             .arg(cmd.get_program())
             .args(cmd.get_args());
         sh.current_dir(w.repo()).env_clear();
@@ -205,7 +211,10 @@ pub(crate) fn session_start(w: &World, s: &Scenario) -> Ran {
         };
     };
     let mut sh = Command::new("/bin/sh");
-    sh.arg("-c").arg(&command).current_dir(w.repo()).env_clear();
+    sh.arg("-c")
+        .arg(format!("{}{command}", reload_logger()))
+        .current_dir(w.repo())
+        .env_clear();
     for (k, v) in w.env(s) {
         sh.env(k, v);
     }
@@ -331,6 +340,97 @@ pub(crate) fn inject(w: &World, s: &Scenario) -> Option<Ran> {
                 "You extract change records from official release notes.\n\nTechnology: next\nRelease: 16.1.0 (2026-10-01)\n\n{note}"
             ),
         ),
+        Fault::HomePathInRequestBody => infer(
+            w,
+            s,
+            &w.provider_host.url,
+            &format!("{note}{}", w.home().join(".config/unstale").display()),
+        ),
+        Fault::RepoFileInRequestBody => infer(
+            w,
+            s,
+            &w.provider_host.url,
+            &format!(
+                "{note}package.json: {}",
+                std::fs::read_to_string(w.repo().join("package.json")).unwrap()
+            ),
+        ),
+        Fault::KeyPrefixPrinted => {
+            let key = shell_value("OPENAI_API_KEY");
+            Ran {
+                step: Step::Injected,
+                shown: "unstale status".into(),
+                terminal: false,
+                code: 0,
+                output: format!("Release notes   OpenAI (key {}…)\n", &key[..12]),
+                note: None,
+                stderr: None,
+                took: Duration::ZERO,
+            }
+        }
+        Fault::CodexEnvNotCleared => {
+            // `codex exec` started with the client's own environment, as a client that did not clear it would.
+            let mut c = Command::new(w.base.path().join("bin/codex"));
+            c.args(["exec", "--json", "--", "answer {}"])
+                .current_dir(w.base.path())
+                .env_clear();
+            for (k, v) in w.env(s) {
+                c.env(k, v);
+            }
+            let (code, out, err) = support::run_within(&mut c, Duration::from_secs(30));
+            Ran {
+                step: Step::Injected,
+                shown: "codex exec --json".into(),
+                terminal: false,
+                code,
+                output: out + &err,
+                note: None,
+                stderr: None,
+                took: Duration::ZERO,
+            }
+        }
+        Fault::RedirectFollowed => {
+            // The redirect followed with the key, as a client that follows redirects would.
+            let to = format!("{}/v1/chat/completions", w.redirect_target.url);
+            let out = Command::new("/usr/bin/curl")
+                .args(["-s", "--noproxy", "*", "-H"])
+                .arg(format!(
+                    "Authorization: Bearer {}",
+                    shell_value("OPENAI_API_KEY")
+                ))
+                .args(["-d", "{}", &to])
+                .output()
+                .unwrap();
+            Ran {
+                step: Step::Injected,
+                shown: "unstale session-sync".into(),
+                terminal: false,
+                code: 0,
+                output: String::from_utf8_lossy(&out.stdout).to_string(),
+                note: None,
+                stderr: None,
+                took: Duration::ZERO,
+            }
+        }
+        Fault::ReadsUnplantedSecret => {
+            // The real client, through the open logger, looking for files in a directory of secrets nobody planted
+            // (`-C` points it there): every path it tries is recorded, though none exists.
+            let dir = w.home().join(".config/gcloud");
+            std::fs::create_dir_all(&dir).unwrap();
+            exec(
+                w,
+                s,
+                vec![
+                    "-C".into(),
+                    dir.display().to_string(),
+                    "init".into(),
+                    "--yes".into(),
+                    "--wait".into(),
+                    "0".into(),
+                ],
+                false,
+            )
+        }
         Fault::ErrorExit => {
             let mut r = exec(
                 w,
@@ -362,6 +462,9 @@ pub(crate) fn run_session(s: &Scenario) -> Session {
             continue;
         };
         r.step = step;
+        if s.fault == Some(Fault::CodexLoggedOutExits) && step == Step::SessionSync {
+            r.code = 1;
+        }
         if s.fault == Some(Fault::NoisyHook) && step == Step::SessionStart {
             r.output += "unstale: one line\nand another\n";
             r.stderr = Some("a hook error\n".into());

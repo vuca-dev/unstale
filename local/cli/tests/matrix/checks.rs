@@ -28,6 +28,149 @@ pub(crate) enum Fault {
     ExtractsCoveredRelease,
     /// The session-start hook prints two lines and writes to stderr.
     NoisyHook,
+    /// A path under HOME is sent in a request body.
+    HomePathInRequestBody,
+    /// A repository file's name and contents are sent in a request body.
+    RepoFileInRequestBody,
+    /// The client opens files nobody planted, outside the places it may read.
+    ReadsUnplantedSecret,
+    /// The first 12 characters of a key are printed.
+    KeyPrefixPrinted,
+    /// `codex exec` is started with the client's whole environment.
+    CodexEnvNotCleared,
+    /// A provider's redirect is followed, with the key.
+    RedirectFollowed,
+    /// `init --yes` asks at a terminal.
+    YesIgnored,
+    /// The model step exits non-zero with Codex logged out.
+    CodexLoggedOutExits,
+}
+
+/// Variables `codex exec` may be started with: the client's own list (`src/inference/codex.rs`, `PASSED_ENV`), and
+/// what the shell running the fake `codex` sets itself.
+#[rustfmt::skip]
+pub(crate) const CODEX_ENV: &[&str] = &[
+    "PATH", "HOME", "CODEX_HOME", "TMPDIR", "LANG", "LC_ALL", "USER", "LOGNAME", "XDG_CONFIG_HOME", "SSL_CERT_FILE",
+    "SSL_CERT_DIR", "HTTPS_PROXY", "https_proxy", "NO_PROXY", "no_proxy", "SYSTEMROOT",
+    "PWD", "OLDPWD", "SHLVL", "_", "__CF_USER_TEXT_ENCODING",
+];
+
+/// The canaries `text` carries, whole or any 12 characters of one in a row (a key's prefix, a masked key).
+pub(crate) fn canary_parts_in(text: &str) -> Vec<&'static str> {
+    support::CANARIES
+        .into_iter()
+        .filter(|c| {
+            (0..=c.len().saturating_sub(12)).any(|i| text.contains(&c[i..(i + 12).min(c.len())]))
+        })
+        .collect()
+}
+
+/// A request body as text to search: a JSON body's strings decoded (so an escaped path or file content is found too),
+/// else the body as sent.
+pub(crate) fn readable(body: &str) -> String {
+    fn strings(v: &serde_json::Value, out: &mut String) {
+        match v {
+            serde_json::Value::String(s) => {
+                out.push_str(s);
+                out.push('\n');
+            }
+            serde_json::Value::Array(a) => a.iter().for_each(|x| strings(x, out)),
+            serde_json::Value::Object(o) => o.iter().for_each(|(k, x)| {
+                out.push_str(k);
+                out.push('\n');
+                strings(x, out)
+            }),
+            _ => {}
+        }
+    }
+    match serde_json::from_str::<serde_json::Value>(body) {
+        Ok(v) => {
+            let mut out = String::new();
+            strings(&v, &mut out);
+            out
+        }
+        Err(_) => body.to_string(),
+    }
+}
+
+/// Text every request may carry: the published prompt templates (`schema/prompts/`) and the fixture's public release
+/// notes. A repository file's bare name (`package.json`) found outside them is a leak.
+pub(crate) fn public_text() -> &'static [String] {
+    static LINES: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+    LINES.get_or_init(|| {
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../schema/prompts");
+        let mut lines: Vec<String> = RELEASES.iter().map(|r| r.notes.to_string()).collect();
+        fn walk(v: &serde_json::Value, out: &mut Vec<String>) {
+            match v {
+                serde_json::Value::String(s) => out.extend(s.lines().map(String::from)),
+                serde_json::Value::Array(a) => a.iter().for_each(|x| walk(x, out)),
+                serde_json::Value::Object(o) => o.values().for_each(|x| walk(x, out)),
+                _ => {}
+            }
+        }
+        for e in std::fs::read_dir(&dir).unwrap().flatten() {
+            let v: serde_json::Value =
+                serde_json::from_str(&std::fs::read_to_string(e.path()).unwrap()).unwrap();
+            walk(&v, &mut lines);
+        }
+        lines.retain(|l| l.trim().len() >= 8);
+        lines.sort_by_key(|l| std::cmp::Reverse(l.len()));
+        lines
+    })
+}
+
+/// What of this repository's files `body` carries: a path under HOME, a file's name, or a line of its contents.
+pub(crate) fn repo_leaks(w: &World, body: &str) -> Vec<String> {
+    let text = format!("{body}\n{}", readable(body));
+    let mut out = vec![];
+    let home = w.home();
+    for h in [home.clone(), home.canonicalize().unwrap_or(home.clone())] {
+        if text.contains(&h.display().to_string()) {
+            out.push("a path under HOME".to_string());
+        }
+    }
+    let mut stripped = readable(body);
+    for l in public_text() {
+        stripped = stripped.replace(l.as_str(), "");
+    }
+    let repo = w.repo();
+    for (p, content) in support::files_under(&repo) {
+        let rel = p.strip_prefix(&repo).unwrap().display().to_string();
+        // What the client itself writes in the repository is not the repository's own.
+        if [
+            ".git/",
+            ".unstale/",
+            ".claude/",
+            ".codex/",
+            ".agents/",
+            ".opencode/",
+            ".cursor/",
+        ]
+        .iter()
+        .any(|d| rel.starts_with(d))
+        {
+            continue;
+        }
+        let named = if rel.contains('/') {
+            text.contains(&rel)
+        } else {
+            stripped.contains(&rel)
+        };
+        if named {
+            out.push(format!("the file name {rel}"));
+        }
+        if content
+            .lines()
+            .map(str::trim)
+            .filter(|l| l.len() >= 16)
+            .any(|l| text.contains(l))
+        {
+            out.push(format!("the contents of {rel}"));
+        }
+    }
+    out.sort();
+    out.dedup();
+    out
 }
 
 /// Words of the implementation, never of the reader (docs/edge-inference/terminal-principles.md, "Plain words").
@@ -111,19 +254,19 @@ pub(crate) fn check(s: &Scenario, se: &Session) -> Vec<String> {
 
     // Hold-the-line 1: no key or canary anywhere but the chosen provider's auth header; forbidden files never opened.
     for r in &se.ran {
-        for c in support::canaries_in(&r.output) {
+        for c in canary_parts_in(&r.output) {
             v.push(format!(
                 "hold-the-line 1: canary {c} in the output of `{}`",
                 r.shown
             ));
         }
     }
-    let planted = w.repo().join(".env");
+    let planted = [w.repo().join(".env"), w.home().join(".npmrc")];
     for (p, text) in support::files_under(w.base.path()) {
-        if p == planted || p.starts_with(w.codex_dir()) {
+        if planted.contains(&p) || p.starts_with(w.codex_dir()) {
             continue;
         }
-        for c in support::canaries_in(&text) {
+        for c in canary_parts_in(&text) {
             v.push(format!(
                 "hold-the-line 1: canary {c} written to {}",
                 w.normalise(&p.display().to_string())
@@ -132,7 +275,7 @@ pub(crate) fn check(s: &Scenario, se: &Session) -> Vec<String> {
     }
     for (host, reqs) in [("the catalog host", &catalog), ("the proxy", &trapped)] {
         for r in reqs.iter() {
-            for c in support::canaries_in(&r.raw()) {
+            for c in canary_parts_in(&r.raw()) {
                 v.push(format!(
                     "hold-the-line 1: canary {c} sent to {host} ({} {})",
                     r.method,
@@ -159,7 +302,7 @@ pub(crate) fn check(s: &Scenario, se: &Session) -> Vec<String> {
             ("authorization", key_env)
         };
         let want = var.map(value_of);
-        for c in support::canaries_in(&r.body) {
+        for c in canary_parts_in(&r.body) {
             v.push(format!(
                 "hold-the-line 1: canary {c} in a request body to the provider ({})",
                 r.path
@@ -179,11 +322,37 @@ pub(crate) fn check(s: &Scenario, se: &Session) -> Vec<String> {
             }
         }
     }
-    for c in support::canaries_in(&exec_env)
+    for c in canary_parts_in(&exec_env)
         .into_iter()
-        .chain(support::canaries_in(&exec_args))
+        .chain(canary_parts_in(&exec_args))
+        .chain(
+            codex_calls
+                .iter()
+                .flat_map(|r| canary_parts_in(&r.body))
+                .collect::<Vec<_>>(),
+        )
     {
         v.push(format!("hold-the-line 1: canary {c} reached codex"));
+    }
+    // Codex is started with a cleared environment: only the variables it needs.
+    let mut extra: BTreeSet<String> = BTreeSet::new();
+    for line in exec_env.lines().filter(|l| *l != "---") {
+        if let Some((k, _)) = line.split_once('=')
+            && !k.is_empty()
+            && k.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+            && !CODEX_ENV.contains(&k)
+        {
+            extra.insert(k.to_string());
+        }
+    }
+    if !extra.is_empty() {
+        v.push(format!(
+            "hold-the-line 1: codex was started with {} in its environment",
+            extra.into_iter().collect::<Vec<_>>().join(", ")
+        ));
+    }
+    for p in opened_outside(w) {
+        v.push(format!("hold-the-line 1: the client opened {p}"));
     }
     for sentinel in &w.sentinels {
         if sentinel.opened() {
@@ -220,12 +389,6 @@ pub(crate) fn check(s: &Scenario, se: &Session) -> Vec<String> {
             "hold-the-line 2: codex exec ran with {provider_id} chosen"
         ));
     }
-    let repo = w.repo().display().to_string();
-    let repo_canon = w
-        .repo()
-        .canonicalize()
-        .map(|p| p.display().to_string())
-        .unwrap_or(repo.clone());
     let mut bodies: Vec<(String, String)> = provider
         .iter()
         .map(|r| (format!("the provider ({})", r.path), r.body.clone()))
@@ -240,26 +403,29 @@ pub(crate) fn check(s: &Scenario, se: &Session) -> Vec<String> {
             r.raw(),
         )
     }));
+    bodies.extend(
+        codex_calls
+            .iter()
+            .map(|r| ("codex exec".to_string(), r.body.clone())),
+    );
     bodies.push(("codex exec".into(), exec_args.clone()));
+    bodies.extend(trapped.iter().map(|r| ("the proxy".to_string(), r.raw())));
     for (what, body) in bodies {
-        for needle in [
-            repo.as_str(),
-            repo_canon.as_str(),
-            CODE_MARKER,
-            "middleware.ts\n",
-            "src/middleware.ts",
-        ] {
+        for needle in [CODE_MARKER, "middleware.ts\n", "src/middleware.ts"] {
             if body.contains(needle) {
-                v.push(format!(
-                    "hold-the-line 2: {what} received {}",
-                    if needle.starts_with('/') {
-                        "a repository path"
-                    } else {
-                        "repository code"
-                    }
-                ));
+                v.push(format!("hold-the-line 2: {what} received repository code"));
             }
         }
+        for leak in repo_leaks(w, &body) {
+            v.push(format!("hold-the-line 2: {what} received {leak}"));
+        }
+    }
+    // A redirect is never followed: the key would go wherever it points.
+    let followed = w.redirect_target.requests().len();
+    if followed > 0 {
+        v.push(format!(
+            "hold-the-line 2: a redirect was followed ({followed} requests to where the provider pointed)"
+        ));
     }
 
     // Hold-the-line 4: provider and budget failures defer with one line, exit 0. A command the person interrupted
@@ -369,6 +535,9 @@ pub(crate) fn check(s: &Scenario, se: &Session) -> Vec<String> {
         v.push(format!("questions: {asked} questions on one path"));
     }
     for r in &se.ran {
+        if r.shown.contains("--yes") && questions(&r.output) > 0 {
+            v.push(format!("questions: `{}` asked a question", r.shown));
+        }
         if !s.invocation.person && questions(&r.output) > 0 {
             v.push(format!(
                 "questions: `{}` asked a question without a person at a terminal",
@@ -427,13 +596,25 @@ pub(crate) fn check(s: &Scenario, se: &Session) -> Vec<String> {
 /// Runs a scenario with a deliberate violation and returns what the checks reported, printed so the failing output
 /// is visible with `--nocapture`.
 fn with_fault(keys: &str, codex: &str, inv: &str, fault: Fault) -> Vec<String> {
+    with_fault_in(keys, codex, inv, "no-config", Answer::Ok, fault)
+}
+
+/// [`with_fault`] with a repository config and a provider answer.
+fn with_fault_in(
+    keys: &str,
+    codex: &str,
+    inv: &str,
+    config: &str,
+    answer: Answer,
+    fault: Fault,
+) -> Vec<String> {
     let mut s = Scenario::new(
         by_id(KEYS, keys, |v| v.id),
         by_id(CODEX, codex, |v| v.id),
         by_id(INVOCATIONS, inv, |v| v.id),
-        &REPO_CONFIGS[0],
+        by_id(REPO_CONFIGS, config, |v| v.id),
         &CLIENTS[0],
-        Answer::Ok,
+        answer,
     );
     s.fault = Some(fault);
     let se = run_session(&s);
@@ -579,6 +760,176 @@ fn the_checks_catch_a_noisy_session_start() {
     );
 }
 
+#[test]
+fn the_checks_catch_a_home_path_or_a_repository_file_in_a_request_body() {
+    let v = with_fault(
+        "shell-key",
+        "no-codex",
+        "terminal",
+        Fault::HomePathInRequestBody,
+    );
+    assert!(
+        v.iter()
+            .any(|l| l.starts_with("hold-the-line 2") && l.ends_with("a path under HOME")),
+        "{v:?}"
+    );
+    let v = with_fault(
+        "shell-key",
+        "no-codex",
+        "terminal",
+        Fault::RepoFileInRequestBody,
+    );
+    for leak in ["the file name package.json", "the contents of package.json"] {
+        assert!(
+            v.iter()
+                .any(|l| l.starts_with("hold-the-line 2") && l.ends_with(leak)),
+            "{leak}: {v:?}"
+        );
+    }
+}
+
+#[test]
+fn the_checks_catch_a_file_opened_that_nobody_planted() {
+    let v = with_fault(
+        "shell-key",
+        "no-codex",
+        "terminal",
+        Fault::ReadsUnplantedSecret,
+    );
+    assert!(
+        v.iter()
+            .any(|l| l.starts_with("hold-the-line 1: the client opened ~/.config/gcloud/")),
+        "{v:?}"
+    );
+}
+
+#[test]
+fn the_checks_catch_a_key_prefix_printed_and_a_key_in_an_anthropic_request() {
+    let v = with_fault("shell-key", "no-codex", "terminal", Fault::KeyPrefixPrinted);
+    assert!(
+        v.iter()
+            .any(|l| l.starts_with("hold-the-line 1: canary canary-shell-key")),
+        "{v:?}"
+    );
+    let v = with_fault_in(
+        "anthropic-key",
+        "no-codex",
+        "terminal",
+        "config-anthropic",
+        Answer::Ok,
+        Fault::KeyInRequestBody,
+    );
+    assert!(
+        v.iter().any(|l| l.starts_with("hold-the-line 1: canary")
+            && l.ends_with("in a request body to the provider (/v1/messages)")),
+        "{v:?}"
+    );
+}
+
+#[test]
+fn the_checks_catch_codex_started_with_the_whole_environment() {
+    let v = with_fault("shell-key", "codex", "terminal", Fault::CodexEnvNotCleared);
+    assert!(
+        v.iter()
+            .any(|l| l.starts_with("hold-the-line 1: codex was started with")
+                && l.contains("OPENAI_API_KEY")),
+        "{v:?}"
+    );
+}
+
+#[test]
+fn the_checks_catch_a_redirect_followed() {
+    let v = with_fault_in(
+        "shell-key",
+        "no-codex",
+        "terminal",
+        "no-config",
+        Answer::Redirect,
+        Fault::RedirectFollowed,
+    );
+    assert!(
+        v.iter()
+            .any(|l| l.starts_with("hold-the-line 2: a redirect was followed")),
+        "{v:?}"
+    );
+}
+
+#[test]
+fn the_checks_catch_init_yes_asking_at_a_terminal() {
+    let v = with_fault("shell-key", "codex", "terminal-yes", Fault::YesIgnored);
+    assert!(
+        v.iter()
+            .any(|l| l.starts_with("questions: `unstale init --wait 0 --no-animation --yes` asked")),
+        "{v:?}"
+    );
+}
+
+#[test]
+fn the_checks_catch_codex_logged_out_exiting_non_zero() {
+    let v = with_fault_in(
+        "no-key",
+        "codex-logged-out",
+        "terminal",
+        "config-codex",
+        Answer::Ok,
+        Fault::CodexLoggedOutExits,
+    );
+    assert!(
+        v.iter()
+            .any(|l| l.starts_with("hold-the-line 4: `unstale session-sync` exited 1")),
+        "{v:?}"
+    );
+}
+
+/// What in the client's source could open a connection that ignores the proxy variables: an HTTP agent configured with
+/// no proxy or its own, or a raw socket. Every request the client makes goes through `ureq` agents that read the proxy
+/// variables, which every scenario points at the trap. (No scenario can take the network away: an unprivileged
+/// network namespace is not available on every CI runner, and macOS has no supported way to do it.)
+pub(crate) fn proxy_bypasses(file: &str, text: &str) -> Vec<String> {
+    let mut out = vec![];
+    for (n, line) in text.lines().enumerate() {
+        let code = line.split("//").next().unwrap_or("");
+        for pattern in [
+            ".proxy(",
+            "Proxy::new",
+            "no_proxy(",
+            "TcpStream::connect",
+            "UdpSocket::bind",
+            "TcpStream",
+        ] {
+            if code.contains(pattern) {
+                out.push(format!("{file}:{}: {pattern}", n + 1));
+                break;
+            }
+        }
+    }
+    out
+}
+
+#[test]
+fn no_client_connection_ignores_the_proxy_variables() {
+    let src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut found = vec![];
+    for (p, text) in support::files_under(&src) {
+        let rel = p.strip_prefix(&src).unwrap().display().to_string();
+        // Tests may start their own local servers.
+        if !rel.ends_with(".rs") || rel.contains("tests") || rel == "testcat.rs" {
+            continue;
+        }
+        // A file's own test module.
+        let text = text.split("\n#[cfg(test)]").next().unwrap_or(&text);
+        found.extend(proxy_bypasses(&rel, text));
+    }
+    assert!(found.is_empty(), "{found:#?}");
+    // The check fails when the property breaks.
+    let injected =
+        "let agent: ureq::Agent = ureq::Agent::config_builder().proxy(None).build().into();";
+    assert_eq!(
+        proxy_bypasses("injected.rs", injected),
+        ["injected.rs:1: .proxy("]
+    );
+}
+
 // ------------------------------------------------------------------------------------------- not runnable yet
 
 /// Hold-the-line 5 on a set-up repository: session start returns within 2 s, exits 0 and prints at most one line, in
@@ -654,6 +1005,23 @@ fn routes_usable(chosen: &serde_json::Value) -> bool {
         .ok()
         .and_then(|c| c["provider"].as_str().map(|p| p != "none"))
         .unwrap_or(false)
+}
+
+/// Every path the client tried to open in HOME (the sibling repository included) outside the places it may read: this
+/// repository, its own cache and its own user config. Normalised to `~/...`.
+pub(crate) fn opened_outside(w: &World) -> BTreeSet<String> {
+    let log = std::fs::read_to_string(w.open_log()).unwrap_or_default();
+    let mut out = BTreeSet::new();
+    for line in log.lines() {
+        let p = w.normalise(line);
+        let Some(rel) = p.strip_prefix("~/") else {
+            continue;
+        };
+        if !may_open(rel) {
+            out.insert(format!("~/{rel}"));
+        }
+    }
+    out
 }
 
 /// The provider the session ended with, if any (including `none`).
