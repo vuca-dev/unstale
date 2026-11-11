@@ -6,7 +6,7 @@ How should unstale read new release notes?
 
      Read with   Cost a year, this repo   Compared with the best option
   1  OpenAI      ≈ $0.19                  ≈ 11 in 100 breaking flags wrong, not 8
-  2  Not now     free                     for new releases: ≈ 27%, notes not read
+  2  Not now     free                     ≈ 27% of its changes in new releases
      Keys: OPENAI_API_KEY (.env)
 
 Enter for 1, a number to choose, or d for details:

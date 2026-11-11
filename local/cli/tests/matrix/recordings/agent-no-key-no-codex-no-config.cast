@@ -163,7 +163,7 @@
 [9.32,"o","None is set up here. Tell the user and ask which they want. Never ask them to paste a key.\r\n"]
 [9.38,"o","\r\n"]
 [9.44,"o","  1  Set one up   one line to add, listed below\r\n"]
-[9.5,"o","  2  Not now      free · advisories and deprecations only, ≈ 27% of what unstale finds with one\r\n"]
+[9.5,"o","  2  Not now      free · advisories and deprecations only, ≈ 27% of the changes in new releases\r\n"]
 [9.56,"o","\r\n"]
 [9.62,"o","For 1, they add one line to their shell profile or this repo's .env, then you run `unstale setup`:\r\n"]
 [9.68,"o","\r\n"]

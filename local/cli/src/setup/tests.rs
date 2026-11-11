@@ -471,7 +471,7 @@ fn every_option_states_one_cost_and_its_trade_and_the_details_carry_units_and_sc
         assert!(row.starts_with(&format!("  {}  ", i + 1)), "{row}");
         if *p == Pick::None {
             assert!(
-                row.contains("free") && row.contains("for new releases: ≈ 27%, notes not read"),
+                row.contains("free") && row.contains("≈ 27% of its changes in new releases"),
                 "{row}"
             );
             continue;
@@ -539,7 +539,7 @@ fn going_without_a_provider_states_what_is_left_with_the_measured_share() {
     for reader in [Reader::Person, Reader::Agent] {
         let text = view::nothing_lines(&nothing, reader, view::WIDTH).join("\n");
         assert!(
-            text.contains("advisories and deprecations only, ≈ 27% of what unstale finds with one"),
+            text.contains("advisories and deprecations only, ≈ 27% of the changes in new releases"),
             "{text}"
         );
     }
@@ -651,7 +651,7 @@ fn a_choice_stores_the_variable_name_and_maps_to_provider_configs() {
     assert!(Choice::none().providers().is_none());
     assert_eq!(
         view::saved_lines(&Choice::none(), Origin::Repo, None),
-        ["Saved for this repo: release notes not read, advisories and deprecations only."]
+        ["Saved for this repo: release notes not read, so new releases get advisories and deprecations only."]
     );
 }
 

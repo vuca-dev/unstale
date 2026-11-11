@@ -529,17 +529,23 @@ pub fn background(ctx: &Ctx) -> Result<u8> {
     };
     let started = Instant::now();
     let outcome = sync_now(ctx, &|| started.elapsed() > BACKGROUND_BOUND);
+    // A catalog that refuses this client (too old for it) is not a source to read from: nothing is read, nothing is
+    // spent, and the release notes wait for the upgrade (`unstale session-sync` says how many).
+    let refused = outcome
+        .as_ref()
+        .err()
+        .is_some_and(|e| e.downcast_ref::<crate::sync::Incompatible>().is_some());
     let techs: BTreeSet<String> = match &outcome {
         Ok(done) => done.technologies.clone(),
-        // The sync failed (the catalog refused this client, or did not answer): the model stage still reads what the
-        // cached catalog holds for this repository, as every other command keeps using it.
+        // The catalog did not answer, or not in time: the model stage still reads what the cached catalog holds for
+        // this repository, as every other command keeps using it.
         Err(_) => read_state(&ctx.tool)
             .technologies
             .into_iter()
             .chain(cached_technologies(ctx))
             .collect(),
     };
-    let deferred = model_stage(ctx, &techs).map(|d| d.line());
+    let deferred = (!refused).then(|| model_stage(ctx, &techs).map(|d| d.line()));
     update_state(&ctx.tool, true, |state| {
         state.last_attempt = Some(now_secs());
         match outcome {
@@ -557,7 +563,10 @@ pub fn background(ctx: &Ctx) -> Result<u8> {
             }
             Err(e) => state.failure = Some(failure_text(&e)),
         }
-        state.deferred = deferred;
+        // A refusal ran no model stage: why the last one stopped, if it did, still stands.
+        if let Some(d) = deferred {
+            state.deferred = d;
+        }
     })?;
     Ok(0)
 }
@@ -578,7 +587,7 @@ fn repo_lock(tool: &Path) -> Option<std::fs::File> {
 }
 
 /// This repository's technologies the cache already holds an index for.
-fn cached_technologies(ctx: &Ctx) -> BTreeSet<String> {
+pub fn cached_technologies(ctx: &Ctx) -> BTreeSet<String> {
     let Ok(st) = stack::detect(&ctx.root) else {
         return BTreeSet::new();
     };

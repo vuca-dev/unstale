@@ -36,8 +36,9 @@ configuration in HOME and above the repository (`MAY_OPEN` and `REGISTRY_CONFIG`
   (`the_budget_defers_work_in_demand_order`); a second repository with the same stack makes no model call
   (`a_second_repository_reuses_the_cached_results`). The client rows `upgraded` and `below-min` set the repository up
   first, then move the catalog: the previous release's binary is not built here, so the earlier setup is this build's,
-  and the `min_client` bump is the catalog naming a version above this one. Below it, the client must say so (`init` and
-  `status` each time, as they keep going on the cache) and keep its cached catalog, which session-sync still reads.
+  and the `min_client` bump is the catalog naming a version above this one. Below it, the client must say so (`init`,
+  `status` and `session-sync` each time, as they keep going on the cache), keep its cached catalog, and read nothing:
+  no provider request, no `codex exec`, and no "every release note here is read".
 - **Known product bugs** (`KNOWN_BUGS` in `checks.rs`): violations the harness may not fix are listed with where they
   come from; they show in the transcripts and do not fail the run, and one no scenario shows any more fails it.
 - At most one question per path, none with `--yes` (even at a terminal), none without a person at the terminal (an agent driving a pseudo-terminal gets the

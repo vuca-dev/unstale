@@ -75,7 +75,7 @@ Choice pending: how unstale reads new release notes. Run `unstale setup` and ask
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-warning: the catalog needs unstale <newer version> or newer and this is <this version>. Upgrade: `npm install -g @unstale/cli@latest`.
+warning: unstale <this version> is too old for the catalog; nothing new arrives. `npm install -g @unstale/cli@latest`
 
 $ unstale status --wait 0 --no-animation
   ✓ shop · Personal setup ready
@@ -105,7 +105,7 @@ $ unstale status --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-warning: the catalog needs unstale <newer version> or newer and this is <this version>. Upgrade: `npm install -g @unstale/cli@latest`.
+warning: unstale <this version> is too old for the catalog; nothing new arrives. `npm install -g @unstale/cli@latest`
 Release notes         not read: no provider chosen · `unstale setup` shows the options
 Cache                 under 1 MB of 100 MB
 
@@ -115,7 +115,7 @@ Never choose for them.
 
      Read with   Cost a year, this repo   Compared with the best option
   1  OpenAI      ≈ $0.19                  ≈ 11 in 100 breaking flags wrong, not 8
-  2  Not now     free                     for new releases: ≈ 27%, notes not read
+  2  Not now     free                     ≈ 27% of its changes in new releases
      Keys: OPENAI_API_KEY (.env)
 
 Record their answer with the matching command:
@@ -146,7 +146,7 @@ $ unstale status --wait 0 --no-animation
 
   Upgrades to review · 1 shortlisted
   Upstream change counts, not confirmed issues in your code.
-  1. next 16.0.0 → 16.3.0 picks up 1 advisory (affected path not found), 1 behaviour change
+  1. next 16.0.0 → 16.1.0 picks up 1 advisory (affected path not found)
 
   Capabilities to explore · 1 shortlisted
   1. react · upgrade 19.0.0 → 19.1.0 — Activity hides part of the tree and keeps its state.
@@ -166,13 +166,13 @@ $ unstale status --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-warning: the catalog needs unstale <newer version> or newer and this is <this version>. Upgrade: `npm install -g @unstale/cli@latest`.
+warning: unstale <this version> is too old for the catalog; nothing new arrives. `npm install -g @unstale/cli@latest`
 Release notes         OpenAI (OPENAI_API_KEY), this repo's config
-Tokens                84 of 48M this month (the default limit; `unstale setup --limit` changes it)
+Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)
 Cache                 under 1 MB of 100 MB
 
 # contacted
 #   catalog host: GET /health, GET /v1/root.json, GET /v1/shards/next/16.7745374e4470.jsonl.gz, GET /v1/shards/next/16.events.74bcaa014f93.jsonl.gz, GET /v1/shards/react/19.b7c40e95232c.jsonl.gz, GET /v1/shards/react/19.events.04962169f41c.jsonl.gz, GET /v1/tech/next.json, GET /v1/tech/react-dom.json, GET /v1/tech/react.json, GET /v1/technologies.json
-#   model provider: POST /v1/chat/completions (7 requests)
+#   model provider: nothing
 #   codex: --version, login status
 #   through the proxy: nothing

@@ -2,6 +2,6 @@ How should unstale read new release notes?
 
      Read with    Cost a year, this repo   Compared with the best option
   1  Codex plan   ≈ 25M Codex tokens       ≈ 80% of its changes; rest not measured
-  2  Not now      free                     for new releases: ≈ 27%, notes not read
+  2  Not now      free                     ≈ 27% of its changes in new releases
 
 Enter for 1, a number to choose, or d for details: 

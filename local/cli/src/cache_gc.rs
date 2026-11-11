@@ -720,7 +720,7 @@ pub fn clean_command(
             Some(answer) => answer,
             // No terminal to confirm at: refused, not failed. A script gets a non-zero exit and is told why.
             None => {
-                say("Nothing removed: there is no terminal to confirm it. Run it again with --yes to remove them.");
+                say("Nothing removed: there is no terminal to confirm in. Run it again with --yes.");
                 return 1;
             }
         }

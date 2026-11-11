@@ -35,13 +35,11 @@ use unstale_schema::catalog::{CATALOG_SCHEMA, EventLine, Root, TechIndex, Techno
 use crate::cache::{self, event_path, index_path, parse_shard, shard_path, verify_shard};
 use crate::util::{normalize_purl, parse_version, sha256_hex, write_atomic};
 
-/// The catalog refused as a whole: newer schema or a newer minimum client. The cache is left as it was. `why` is the
-/// reason alone, in the user's words (`the catalog needs unstale 0.4.0 or newer and this is 0.3.0`), for a command
-/// that reports rather than fails.
+/// The catalog refused as a whole: newer schema or a newer minimum client. The cache is left as it was.
 #[derive(Debug)]
 pub struct Incompatible {
     message: String,
-    pub why: String,
+    pub refusal: Refusal,
 }
 
 impl std::fmt::Display for Incompatible {
@@ -51,19 +49,44 @@ impl std::fmt::Display for Incompatible {
 }
 impl std::error::Error for Incompatible {}
 
-/// Why the last catalog sync in this process refused the catalog, if it did: `init` and `status` sync inside their
-/// report and keep going on the cached catalog, so they say it after it ([`refused`]).
-static REFUSED: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+/// Why the catalog refused this client, for the commands that report it as a warning and carry on with the cache.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Refusal {
+    /// The catalog needs a newer unstale (a newer schema or `min_client`): upgrading fixes it.
+    TooOld,
+    /// The catalog's `min_client` is not a version: upgrading does not fix it.
+    Unreadable,
+}
 
-/// The reason the last catalog sync in this process refused the catalog ([`Incompatible::why`]); `None` when it did
-/// not, or no sync reached the catalog.
-pub fn refused() -> Option<String> {
+impl Refusal {
+    /// The warning, the same wherever a refusal is one: what happened, what it costs, and the upgrade command
+    /// (`upgrade`) only where upgrading helps.
+    pub fn line(self, upgrade: &str) -> String {
+        let ours = env!("CARGO_PKG_VERSION");
+        match self {
+            Refusal::TooOld => {
+                format!("warning: unstale {ours} is too old for the catalog; nothing new arrives. `{upgrade}`")
+            }
+            Refusal::Unreadable => {
+                "warning: the catalog names no version of unstale it serves; nothing new arrives.".into()
+            }
+        }
+    }
+}
+
+/// The last catalog sync's refusal in this process, with its full message: `init`, `status` and `session-sync` sync
+/// and carry on with the cached catalog, so they say it after ([`refused`]).
+static REFUSED: std::sync::Mutex<Option<(Refusal, String)>> = std::sync::Mutex::new(None);
+
+/// The last catalog sync's refusal in this process and its full message (as `sync` prints it); `None` when it did not
+/// refuse, or no sync reached the catalog.
+pub fn refused() -> Option<(Refusal, String)> {
     REFUSED.lock().ok().and_then(|r| r.clone())
 }
 
-fn set_refused(why: Option<String>) {
-    if let Ok(mut r) = REFUSED.lock() {
-        *r = why;
+fn set_refused(r: Option<(Refusal, String)>) {
+    if let Ok(mut x) = REFUSED.lock() {
+        *x = r;
     }
 }
 
@@ -329,7 +352,7 @@ pub fn check_root(root: &Root) -> std::result::Result<(), Incompatible> {
                 "the catalog uses schema {} and this unstale ({ours}) reads schema {CATALOG_SCHEMA}: upgrade unstale (cargo install --path local/cli, or your package manager); the cached catalog is kept and still used",
                 root.schema
             ),
-            why: "the catalog needs a newer unstale".into(),
+            refusal: Refusal::TooOld,
         });
     }
     match (parse_version(&root.min_client), parse_version(ours)) {
@@ -338,11 +361,11 @@ pub fn check_root(root: &Root) -> std::result::Result<(), Incompatible> {
                 "the catalog needs unstale {} or newer and this is {ours}: upgrade unstale; the cached catalog is kept and still used",
                 root.min_client
             ),
-            why: format!("the catalog needs unstale {} or newer and this is {ours}", root.min_client),
+            refusal: Refusal::TooOld,
         }),
         (None, _) => Err(Incompatible {
             message: format!("the catalog's min_client `{}` is not a version; the cached catalog is kept", root.min_client),
-            why: "the catalog names no version of unstale it serves".into(),
+            refusal: Refusal::Unreadable,
         }),
         _ => Ok(()),
     }
@@ -486,7 +509,7 @@ fn sync_with_events(src: &Source, cache_dir: &Path, candidates: &BTreeSet<String
     }
     let root: Root = serde_json::from_slice(&root_bytes).context("root.json does not parse")?;
     if let Err(e) = check_root(&root) {
-        set_refused(Some(e.why.clone()));
+        set_refused(Some((e.refusal, e.message.clone())));
         return Err(e.into());
     }
     set_refused(None);
@@ -959,6 +982,15 @@ mod tests {
     }
 
     #[test]
+    fn an_unreadable_min_client_is_refused_without_upgrade_advice() {
+        let root: Root = serde_json::from_str(r#"{"schema":1,"min_client":"soon"}"#).unwrap();
+        let e = check_root(&root).unwrap_err();
+        assert_eq!(e.refusal, Refusal::Unreadable);
+        let line = e.refusal.line("npm install -g @unstale/cli@latest");
+        assert!(line.starts_with("warning: ") && !line.contains("npm") && !line.contains("upgrade"), "{line}");
+    }
+
+    #[test]
     fn incompatible_root_fails_safely() {
         let cat = FixtureCatalog::new();
         cat.tech("next", &[("16", vec![rec("next:a", "pkg:npm/next", "16.0.1")])]);
@@ -968,8 +1000,9 @@ mod tests {
         for root in [r#"{"schema":2,"min_client":"0.0.1"}"#, r#"{"schema":1,"min_client":"99.0.0"}"#] {
             cat.root(root);
             let err = sync(cat.loc(), cache.path(), &cands(&["next"]), &purls(&["pkg:npm/next"])).unwrap_err();
-            assert!(err.downcast_ref::<Incompatible>().is_some(), "{err:#}");
+            assert_eq!(err.downcast_ref::<Incompatible>().map(|e| e.refusal), Some(Refusal::TooOld), "{err:#}");
             assert!(format!("{err}").contains("upgrade unstale"));
+            assert!(Refusal::TooOld.line("brew upgrade unstale").ends_with("; nothing new arrives. `brew upgrade unstale`"));
             assert_eq!(std::fs::read(index_path(cache.path(), "next")).unwrap(), idx, "cache untouched");
             let cached_root = std::fs::read_to_string(cache.path().join("v1/root.json")).unwrap();
             assert!(cached_root.contains("\"schema\":1") && !cached_root.contains("99.0.0"));

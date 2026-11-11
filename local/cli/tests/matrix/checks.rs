@@ -503,19 +503,39 @@ pub(crate) fn check(s: &Scenario, se: &Session) -> Vec<String> {
     }
 
     // Below min_client the client says so: the catalog no longer serves it.
-    if s.client.id == "below-min" && !se.ran.iter().any(|r| r.output.contains("needs unstale")) {
+    // The refusal's warning, wherever a command carries on with the cache (`sync` refuses with an exit code instead).
+    let refusal = format!("warning: unstale {} is too old for the catalog; nothing new arrives.", this_version());
+    if s.client.id == "below-min"
+        && !se.ran.iter().any(|r| r.output.contains("needs unstale") || r.output.contains(&refusal))
+    {
         v.push("min_client: no command said the catalog no longer serves this client".into());
     }
-    // And `init` and `status`, which sync inside their report and carry on with the cached catalog, say it too.
+    // And `init`, `status` and `session-sync`, which sync and carry on with the cached catalog, each say it.
     if s.client.id == "below-min" {
         for r in se.ran.iter().filter(|r| {
-            matches!(r.step, Step::Init | Step::InitYes | Step::InitFlag(_) | Step::Status)
-                && !r.output.contains("needs unstale")
+            matches!(r.step, Step::Init | Step::InitYes | Step::InitFlag(_) | Step::Status | Step::SessionSync)
+                && !r.output.contains(&refusal)
+                && !r.output.contains("Session-start sync is off here")
         }) {
             v.push(format!(
                 "min_client: `{}` did not say the catalog no longer serves this client",
                 r.shown
             ));
+        }
+    }
+    // Below min_client nothing is read on a catalog that refuses this client: no provider request, no `codex exec`
+    // (setup may still ask Codex its version and login, to show the options), and no all-clear.
+    if s.client.id == "below-min" {
+        let execs = invocations.iter().filter(|a| a.starts_with("exec")).count();
+        if !provider.is_empty() || !codex_calls.is_empty() || execs > 0 {
+            v.push(format!(
+                "min_client: model work ran on a catalog that refuses this client ({} provider requests, {} codex runs)",
+                provider.len(),
+                codex_calls.len().max(execs)
+            ));
+        }
+        for r in se.ran.iter().filter(|r| r.output.contains("every release note here is read")) {
+            v.push(format!("min_client: `{}` said every release note is read", r.shown));
         }
     }
     // Below min_client the cached catalog is kept.

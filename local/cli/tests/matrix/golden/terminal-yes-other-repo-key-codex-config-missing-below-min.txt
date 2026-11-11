@@ -75,7 +75,7 @@ $ unstale init --wait 0 --no-animation --yes
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-warning: the catalog needs unstale <newer version> or newer and this is <this version>. Upgrade: `npm install -g @unstale/cli@latest`.
+warning: unstale <this version> is too old for the catalog; nothing new arrives. `npm install -g @unstale/cli@latest`
 
 $ unstale sync
 sync refused: the catalog needs unstale <newer version> or newer and this is <this version>: upgrade unstale; the cached catalog is kept and still used
@@ -83,9 +83,8 @@ sync refused: the catalog needs unstale <newer version> or newer and this is <th
 
 $ unstale session-sync
 Syncing the catalog, then reading new release notes with your provider. Ctrl-C stops it; the next run resumes.
-  Reading 1 release note of react
-warning: the catalog sync did not finish: the catalog needs unstale <newer version> or newer and this is <this version>: upgrade unstale; the cached catalog is kept and still used
-warning: OPENROUTER_API_KEY is not set here, so new release notes are not read. Set it.
+warning: unstale <this version> is too old for the catalog; nothing new arrives. `npm install -g @unstale/cli@latest`
+No release notes were read: 2 wait until the catalog serves this unstale.
 
 $ unstale status --wait 0 --no-animation
   ✓ shop · Shared setup ready
@@ -116,7 +115,7 @@ $ unstale status --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-warning: the catalog needs unstale <newer version> or newer and this is <this version>. Upgrade: `npm install -g @unstale/cli@latest`.
+warning: unstale <this version> is too old for the catalog; nothing new arrives. `npm install -g @unstale/cli@latest`
 warning: OPENROUTER_API_KEY is not set here, so new release notes are not read. Set it.
 Release notes         OpenRouter (OPENROUTER_API_KEY), this repo's config
 Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)
