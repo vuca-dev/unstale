@@ -978,6 +978,7 @@ fn no_paid_change_leaves_the_report_without_cause() {
         technology: "example".into(),
         ..Default::default()
     };
+    let first_id = first.id.clone();
     store.records.insert(
         first.id.clone(),
         Local {
@@ -1044,6 +1045,39 @@ fn no_paid_change_leaves_the_report_without_cause() {
             ("server.host".into(), vec!["2.2.0".into()]),
             ("server.port".into(), vec!["2.0.0".into()]),
         ]
+    );
+    // The records made on load have the same ids on every load, whatever else the catalog holds.
+    let ids = |td: &crate::cache::TechData| -> Vec<String> {
+        td.records
+            .iter()
+            .filter(|r| r.r.id.contains('~'))
+            .map(|r| r.r.id.clone())
+            .collect()
+    };
+    let first = ids(&td);
+    assert_eq!(first.len(), 2, "{first:?}");
+    let mut again = catalog();
+    again.retracted.push("example:gone".into());
+    again.retracted.push("example:server.host".into());
+    again
+        .merged
+        .insert("example:cache.mode".into(), "example:server.port".into());
+    let c2 = Cover::new(&again, ["example@2.1.0".to_string()].into());
+    overlay(&mut again, &store, &c2);
+    assert_eq!(ids(&again), first);
+    // A client record whose id the catalog has since given to another change, its own change not covered: kept.
+    let mut td = catalog();
+    td.retracted.push("example:gone".into());
+    td.retracted.push(first_id.clone());
+    let c = Cover::new(&td, Default::default());
+    overlay(&mut td, &store, &c);
+    assert!(
+        td.records
+            .iter()
+            .any(|r| r.r.subject == "cache.mode"
+                && r.r.releases.iter().any(|x| x.version == "2.1.0")),
+        "{:?}",
+        subjects(&td)
     );
     // And once it processed 2.2.0 as well, the catalog has it all: nothing of the client's is shown.
     let mut td = catalog();
