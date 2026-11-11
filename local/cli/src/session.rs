@@ -1,25 +1,27 @@
 //! Agent session start: the catalog sync moves to the agent's session-start hook, so changes reach the agent without
-//! it having to ask.
+//! it having to ask. All of it is behind the edge-inference switch (`util::edge_inference`) until the release.
 //!
-//! Two stages. The hook (`unstale notify`, [`hook`]) is the quick one and never slows or breaks a session: everything
-//! it does runs under one deadline ([`DEADLINE`]) on a worker thread, and whatever has not finished by then is dropped;
-//! it always exits 0, prints at most one line on stdout and nothing on stderr. Its only catalog request is the
-//! conditional request for the catalog's list of technologies ([`sync::quick_check`], [`CATALOG_TIMEOUT`]): when the
-//! list and this repository's cached indexes agree, nothing else is asked for. Otherwise it starts the background
-//! stage ([`background`], `unstale session-sync`) as a detached process with no inherited stdin, stdout or stderr, so
-//! the agent never waits on it, and the process outlives the hook.
+//! The hook (`unstale notify`, [`hook`]) never slows or breaks a session, switch on or off: everything it does runs on a
+//! worker thread under one deadline counted from the process's start ([`DEADLINE`]), and whatever has not finished by
+//! then is dropped; it always exits 0, prints at most one line on stdout and nothing on stderr. With the switch off it
+//! does what `notify` did before: the shared-coverage line or a catalog notice, no catalog request, no other process,
+//! no file of its own.
 //!
-//! The background stage runs the same verified sync as `unstale status` (one per repository at a time; a second one
-//! exits quietly), bounded by [`BACKGROUND_BOUND`], then the model stage ([`model_stage`]), which with the
-//! edge-inference switch on runs under the machine's worker lock and the monthly token budget.
+//! With the switch on, its only catalog request is the conditional request for the catalog's list of technologies
+//! ([`sync::quick_check`], [`CATALOG_TIMEOUT`]): when the list and this repository's cached indexes agree, nothing else
+//! is asked for. A changed list, or a changed manifest or lockfile ([`stack_print`]), starts the background stage
+//! ([`background`], `unstale session-sync`) as a detached process with no inherited stdin, stdout or stderr; the hook
+//! waits (within its deadline) only until that process holds the repository's lock, so one is never started twice.
 //!
-//! Records sync at session start with the switch off too: the catalog's files are static and no model is called. Change
-//! events and the model stage follow the switch (as in `sync`). `"session_sync": false` in `.unstale/config.json`
-//! turns the session-start sync off; the hook then says only what it said before (shared coverage, notices).
+//! The background stage runs the same verified sync as `unstale status`, which contacts the same hosts: the catalog,
+//! and, through the stack's detection, the public npm and PyPI registries for the newest release of a dependency
+//! nothing pins (cached a day, off with `UNSTALE_NO_REGISTRY=1`). One per repository at a time (a second exits
+//! quietly), bounded by [`BACKGROUND_BOUND`], then the model stage ([`model_stage`]) under the machine's worker lock and
+//! the monthly token budget. `"session_sync": false` in `.unstale/config.json` turns the sync off.
 //!
-//! What the agent sees: one line when records new to this repository arrived since the last report (or the shared
-//! coverage line, or a catalog notice), nothing otherwise. A failure is never shown at session start; `unstale status`
-//! shows the last one ([`after_status`]).
+//! What the agent sees: one line when records new since the last report arrived (or the shared-coverage line, or a
+//! catalog notice), nothing otherwise. A failure is never shown at session start; `unstale status` shows the last one
+//! once ([`after_status`]). The state (`.unstale/state/session-sync.json`) is changed only under its lock.
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -28,13 +30,15 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use crate::{Ctx, cache, git, inference, notice, onboarding, stack, sync, util};
+use crate::{Ctx, cache, inference, notice, onboarding, stack, sync, util};
 
-/// Everything the hook does, from the moment it starts: under the 2 s session start allows, with room for the
-/// process to start and exit.
-pub const DEADLINE: Duration = Duration::from_millis(1_500);
+/// Everything the hook does, counted from the start of the process: under the 2 s session start allows, with margin
+/// for the process to start and exit.
+pub const DEADLINE: Duration = Duration::from_millis(1_200);
 /// The one catalog request at session start.
-pub const CATALOG_TIMEOUT: Duration = Duration::from_millis(800);
+pub const CATALOG_TIMEOUT: Duration = Duration::from_millis(600);
+/// How long the hook waits for the background stage it started to hold the repository's lock.
+const SPAWN_WAIT: Duration = Duration::from_millis(300);
 /// The background sync stops starting requests after this long (each request has its own timeout as well).
 pub const BACKGROUND_BOUND: Duration = Duration::from_secs(120);
 
@@ -56,8 +60,8 @@ pub struct State {
     /// Why the last model stage waited (the switch on only).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub deferred: Option<String>,
-    /// The manifest directories the last sync read and a fingerprint of their files, so a changed dependency starts
-    /// a sync even while the catalog is unchanged.
+    /// The manifest and lock files the last sync's stack came from, fingerprinted, so a changed dependency starts a
+    /// sync even while the catalog is unchanged. `None` until a sync has run.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stack: Option<StackPrint>,
 }
@@ -68,9 +72,37 @@ pub struct StackPrint {
     pub print: String,
 }
 
-/// A fingerprint of the files directly in each manifest directory (name, size, modification time): cheap enough for
-/// session start, and it changes with any manifest or lockfile there. A new project directory elsewhere is seen at
-/// the next catalog change.
+/// A file the stack is read from: a manifest, a lockfile, a workspace or registry configuration, a runtime version.
+fn stack_file(name: &str) -> bool {
+    const NAMES: &[&str] = &[
+        "package.json",
+        "package-lock.json",
+        "npm-shrinkwrap.json",
+        "pnpm-lock.yaml",
+        "pnpm-workspace.yaml",
+        "yarn.lock",
+        "bun.lock",
+        "bun.lockb",
+        "Cargo.toml",
+        "Cargo.lock",
+        "pyproject.toml",
+        "poetry.lock",
+        "uv.lock",
+        "pdm.lock",
+        "Pipfile",
+        "Pipfile.lock",
+        "setup.cfg",
+        ".nvmrc",
+        ".node-version",
+    ];
+    NAMES.contains(&name)
+        || crate::privacy::is_config(name)
+        || (name.starts_with("requirements") && (name.ends_with(".txt") || name.ends_with(".in")))
+}
+
+/// A fingerprint of the stack files directly in each manifest directory (name, size, modification time): cheap
+/// enough for session start, and unchanged by any other file. A new project directory elsewhere is seen at the next
+/// catalog change.
 fn stack_print(root: &Path, dirs: &[String]) -> String {
     let mut lines = vec![];
     for d in dirs {
@@ -79,6 +111,10 @@ fn stack_print(root: &Path, dirs: &[String]) -> String {
             continue;
         };
         for e in rd.flatten() {
+            let name = e.file_name().to_string_lossy().to_string();
+            if !stack_file(&name) {
+                continue;
+            }
             let Ok(m) = e.metadata() else { continue };
             if !m.is_file() {
                 continue;
@@ -89,11 +125,7 @@ fn stack_print(root: &Path, dirs: &[String]) -> String {
                 .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
                 .map(|t| t.as_nanos())
                 .unwrap_or(0);
-            lines.push(format!(
-                "{d}/{} {} {modified}",
-                e.file_name().to_string_lossy(),
-                m.len()
-            ));
+            lines.push(format!("{d}/{name} {} {modified}", m.len()));
         }
     }
     lines.sort();
@@ -133,6 +165,39 @@ fn write_state(tool: &Path, s: &State) -> Result<()> {
     Ok(())
 }
 
+/// The state directory, made if `.unstale` is there but it is not (never `.unstale` itself: after an uninstall
+/// nothing is made again). False when it is not there afterwards.
+fn state_dir(tool: &Path) -> bool {
+    if !tool.join("config.json").is_file() {
+        return false;
+    }
+    let _ = std::fs::create_dir(tool.join("state"));
+    tool.join("state").is_dir()
+}
+
+/// Reads, changes and writes the state under its lock, so two writers never lose each other's result. `wait`: block
+/// for the lock (the background stage, `unstale status`); otherwise give up when another holds it (the hook). Nothing
+/// happens when the state directory is not there (never set up, or uninstalled).
+fn update_state(tool: &Path, wait: bool, change: impl FnOnce(&mut State)) -> Result<()> {
+    if !state_dir(tool) {
+        return Ok(());
+    }
+    let dir = tool.join("state");
+    let lock = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(dir.join("session-sync.state.lock"))?;
+    if wait {
+        lock.lock()?;
+    } else if lock.try_lock().is_err() {
+        return Ok(());
+    }
+    let mut s = read_state(tool);
+    change(&mut s);
+    write_state(tool, &s)
+}
+
 fn now_secs() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -140,24 +205,26 @@ fn now_secs() -> u64 {
         .unwrap_or(0)
 }
 
-/// Whether this repository's configuration leaves the session-start sync on (the default).
+/// Whether session start syncs here: the switch on, and the repository's configuration not turning it off.
 fn enabled(ctx: &Ctx) -> bool {
-    ctx.config.session_sync != Some(false)
+    util::edge_inference() && ctx.config.session_sync != Some(false)
 }
 
 // ------------------------------------------------------------------------------------------------------ the hook
 
-/// The session-start hook: always 0, at most one line on stdout, nothing on stderr, within [`DEADLINE`].
-pub fn hook(dir: Option<&Path>) -> u8 {
-    let started = Instant::now();
+/// The session-start hook: always 0, at most one line on stdout, nothing on stderr, within [`DEADLINE`] of `started`
+/// (the process's start).
+pub fn hook(dir: Option<&Path>, started: Instant) -> u8 {
     // A panic anywhere is silent: the worker's ends its thread (the line is dropped), and none reaches stderr.
     std::panic::set_hook(Box::new(|_| {}));
     let dir = dir.map(Path::to_path_buf);
     let (tx, rx) = std::sync::mpsc::channel();
+    // Every blocking step (reading the configuration, the state and the cache, the requests, the start of the
+    // background stage) runs on this thread; past the deadline it is abandoned: returning from main ends the process,
+    // and the thread with it.
     std::thread::spawn(move || {
         let _ = tx.send(foreground(dir, started).unwrap_or(None));
     });
-    // Past the deadline the worker is abandoned: returning from main ends the process, and the thread with it.
     let line = rx
         .recv_timeout(DEADLINE.saturating_sub(started.elapsed()))
         .ok()
@@ -171,6 +238,11 @@ pub fn hook(dir: Option<&Path>) -> u8 {
     0
 }
 
+/// The time left before the deadline.
+fn left(started: Instant) -> Duration {
+    DEADLINE.saturating_sub(started.elapsed())
+}
+
 /// The hook's work: the quick check (starting the background stage when it is due), then the one line to print. An
 /// error (no configuration, not a repository, a cache or state that cannot be read or written) prints nothing.
 fn foreground(dir: Option<PathBuf>, started: Instant) -> Result<Option<String>> {
@@ -179,46 +251,51 @@ fn foreground(dir: Option<PathBuf>, started: Instant) -> Result<Option<String>> 
         None => std::env::current_dir()?,
     };
     let ctx = crate::context(&start.canonicalize()?)?;
-    let mut state = read_state(&ctx.tool);
+    let state = if enabled(&ctx) {
+        read_state(&ctx.tool)
+    } else {
+        State::default()
+    };
     if enabled(&ctx) {
-        let techs: BTreeSet<String> = state.technologies.iter().cloned().collect();
-        // The repository's own manifests changed: a sync is due whatever the catalog says (no request needed).
-        let stack_changed = state
-            .stack
-            .as_ref()
-            .is_none_or(|p| stack_print(&ctx.root, &p.dirs) != p.print);
-        let due = if stack_changed {
-            Ok(true)
-        } else {
-            match sync::quick_check(
-                &ctx.config.catalog,
-                &ctx.cache,
-                &techs,
-                util::edge_inference(),
-                CATALOG_TIMEOUT,
-            ) {
-                Ok(sync::Quick::Changed) => Ok(true),
-                Ok(sync::Quick::Unchanged) => Ok(inference::enabled() && model_work_pending(&ctx)),
-                Err(e) => Err(e),
+        let due = match &state.stack {
+            // Never synced here, or the repository's own manifests changed: due whatever the catalog says.
+            None => Ok(true),
+            Some(p) if stack_print(&ctx.root, &p.dirs) != p.print => Ok(true),
+            Some(_) => {
+                let techs: BTreeSet<String> = state.technologies.iter().cloned().collect();
+                let timeout =
+                    CATALOG_TIMEOUT.min(left(started).saturating_sub(Duration::from_millis(100)));
+                match sync::quick_check(
+                    &ctx.config.catalog,
+                    &ctx.cache,
+                    &techs,
+                    util::edge_inference(),
+                    timeout,
+                ) {
+                    Ok(sync::Quick::Changed) => Ok(true),
+                    Ok(sync::Quick::Unchanged) => {
+                        Ok(inference::enabled() && model_work_pending(&ctx))
+                    }
+                    Err(e) => Err(e),
+                }
             }
         };
-        match due.and_then(|due| {
+        if let Err(e) = due.and_then(|due| {
             if due {
-                spawn_background(&ctx.root)
+                spawn_background(&ctx.tool, &ctx.root, started)
             } else {
                 Ok(())
             }
         }) {
-            Ok(()) => {}
-            Err(e) => {
-                // Silent here; `unstale status` shows it.
-                state.failure = Some(failure_text(&e));
-                state.last_attempt = Some(now_secs());
-                let _ = write_state(&ctx.tool, &state);
-            }
+            // Silent here; `unstale status` shows it.
+            let why = failure_text(&e);
+            let _ = update_state(&ctx.tool, false, |s| {
+                s.failure = Some(why);
+                s.last_attempt = Some(now_secs());
+            });
         }
     }
-    let left = DEADLINE.saturating_sub(started.elapsed());
+    let left = left(started);
     let coverage = if left > Duration::from_millis(200) {
         onboarding::session_coverage_line(&ctx, left - Duration::from_millis(100))
     } else {
@@ -267,10 +344,26 @@ fn failure_text(e: &anyhow::Error) -> String {
     }
 }
 
+fn lock_path(tool: &Path) -> PathBuf {
+    tool.join("state/session-sync.lock")
+}
+
+/// Whether a background stage holds this repository's lock now.
+fn running(tool: &Path) -> bool {
+    std::fs::OpenOptions::new()
+        .write(true)
+        .open(lock_path(tool))
+        .is_ok_and(|f| f.try_lock().is_err())
+}
+
 /// Starts `unstale session-sync` for this repository, detached: no stdin, stdout or stderr is inherited (an agent
 /// reading the hook's output would otherwise wait for it), and on Unix its own process group, so nothing sent to the
-/// hook's group reaches it.
-fn spawn_background(root: &Path) -> Result<()> {
+/// hook's group reaches it. Not when one is running already; and once started, waited for (within the deadline) until
+/// it holds the lock or exits, so no second one starts beside it.
+fn spawn_background(tool: &Path, root: &Path, started: Instant) -> Result<()> {
+    if running(tool) {
+        return Ok(());
+    }
     let exe = std::env::current_exe().context("finding this executable")?;
     let mut c = std::process::Command::new(exe);
     c.arg("-C")
@@ -290,56 +383,66 @@ fn spawn_background(root: &Path) -> Result<()> {
         // DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
         c.creation_flags(0x0000_0008 | 0x0000_0200);
     }
-    c.spawn().context("starting the background sync")?;
+    let mut child = c.spawn().context("starting the background sync")?;
+    let until =
+        Instant::now() + SPAWN_WAIT.min(left(started).saturating_sub(Duration::from_millis(150)));
+    while Instant::now() < until && !running(tool) && child.try_wait().ok().flatten().is_none() {
+        std::thread::sleep(Duration::from_millis(5));
+    }
     Ok(())
 }
 
 // ------------------------------------------------------------------------------------------- the background stage
 
 /// `unstale session-sync`: the verified sync, then the model stage. Always 0; what happened is kept in the state for
-/// the next session start and `unstale status`.
+/// the next session start and `unstale status`. Nothing with the switch off.
 pub fn background(ctx: &Ctx) -> Result<u8> {
+    if !enabled(ctx) {
+        return Ok(0);
+    }
     // One per repository at a time: a second exits quietly, the first is doing the work.
     let Some(_lock) = repo_lock(&ctx.tool) else {
         return Ok(0);
     };
     let started = Instant::now();
     let outcome = sync_now(ctx, &|| started.elapsed() > BACKGROUND_BOUND);
-    let mut state = read_state(&ctx.tool);
-    state.last_attempt = Some(now_secs());
-    match outcome {
-        Ok(done) => {
-            state.failure = done.failure;
-            // Technologies that failed stay in the set: their cached index differs from the list, so the next quick
-            // check retries them.
-            state.technologies = done.technologies.into_iter().collect();
-            state.stack = Some(done.stack);
-            if done.arrived.records > 0 {
-                let a = state.arrived.get_or_insert_with(Arrived::default);
-                a.records += done.arrived.records;
-                a.technologies.extend(done.arrived.technologies);
-            }
-        }
-        Err(e) => state.failure = Some(failure_text(&e)),
+    let mut techs: BTreeSet<String> = read_state(&ctx.tool).technologies.into_iter().collect();
+    if let Ok(done) = &outcome {
+        techs = done.technologies.clone();
     }
-    let techs: BTreeSet<String> = state.technologies.iter().cloned().collect();
-    state.deferred = model_stage(ctx, &techs).map(|d| d.line());
-    let _ = write_state(&ctx.tool, &state);
+    let deferred = model_stage(ctx, &techs).map(|d| d.line());
+    update_state(&ctx.tool, true, |state| {
+        state.last_attempt = Some(now_secs());
+        match outcome {
+            Ok(done) => {
+                state.failure = done.failure;
+                // Technologies that failed stay in the set: their cached index differs from the list, so the next
+                // quick check retries them.
+                state.technologies = done.technologies.into_iter().collect();
+                state.stack = Some(done.stack);
+                if done.arrived.records > 0 {
+                    let a = state.arrived.get_or_insert_with(Arrived::default);
+                    a.records += done.arrived.records;
+                    a.technologies.extend(done.arrived.technologies);
+                }
+            }
+            Err(e) => state.failure = Some(failure_text(&e)),
+        }
+        state.deferred = deferred;
+    })?;
     Ok(0)
 }
 
 /// The background stage's lock for this repository: `None` when another holds it (or it cannot be taken).
 fn repo_lock(tool: &Path) -> Option<std::fs::File> {
-    let p = tool.join("state/session-sync.lock");
-    if !tool.join("config.json").is_file() {
+    if !state_dir(tool) {
         return None;
     }
-    std::fs::create_dir_all(p.parent()?).ok()?;
     let f = std::fs::OpenOptions::new()
         .create(true)
         .truncate(false)
         .write(true)
-        .open(p)
+        .open(lock_path(tool))
         .ok()?;
     f.try_lock().ok()?;
     Some(f)
@@ -368,7 +471,8 @@ fn sync_now(ctx: &Ctx, stop: &(dyn Fn() -> bool + Sync)) -> Result<Synced> {
         dirs,
     };
     let cands = onboarding::candidates(ctx, &st);
-    // Records already here, so only what is new is counted (a technology never synced counts in full).
+    // Records already here. Only a technology this machine had before counts what it gained: one first synced here
+    // (a first sync after setup, a cache emptied or rebuilt) is not news since the last report, which read the same.
     let before: std::collections::BTreeMap<String, usize> = cands
         .iter()
         .filter_map(|t| {
@@ -389,9 +493,10 @@ fn sync_now(ctx: &Ctx, stop: &(dyn Fn() -> bool + Sync)) -> Result<Synced> {
     )?;
     let mut arrived = Arrived::default();
     for t in rep.synced.iter().filter(|t| !t.unchanged) {
-        let gained = t
-            .records
-            .saturating_sub(before.get(&t.technology).copied().unwrap_or(0));
+        let Some(had) = before.get(&t.technology) else {
+            continue;
+        };
+        let gained = t.records.saturating_sub(*had);
         if gained > 0 {
             arrived.records += gained;
             arrived.technologies.insert(t.technology.clone());
@@ -445,27 +550,62 @@ fn model_stage(ctx: &Ctx, techs: &BTreeSet<String>) -> Option<inference::Deferre
     }
     // The client pipeline (change events → records) for the synced technologies, holding the lock, in demand order;
     // every call checks the budget again. `None` when no provider is chosen.
-    let purls = stack::detect(&ctx.root).map(|st| st.purls()).unwrap_or_default();
+    let purls = stack::detect(&ctx.root)
+        .map(|st| st.purls())
+        .unwrap_or_default();
     crate::pipeline::run_locked(&ctx.cache, &ctx.root, techs, &purls)?.deferred
 }
 
 // --------------------------------------------------------------------------------------------------- unstale status
 
-/// After `unstale status`: the report is fresh, so records that arrived are no longer new; and the last session-start
-/// failure, which session start never shows, is shown here.
+/// After `unstale status` (switch on only): the report is fresh, so records that arrived are no longer new; the last
+/// session-start failure, which session start never shows, is shown here once; and why an agent's hook was not
+/// installed.
 pub fn after_status(ctx: &Ctx) {
-    let mut state = read_state(&ctx.tool);
-    if state.arrived.take().is_some() {
-        let _ = write_state(&ctx.tool, &state);
+    if !util::edge_inference() {
+        return;
     }
-    if let Some(line) = status_line(ctx, &state) {
+    let mut shown = None;
+    let _ = update_state(&ctx.tool, true, |s| {
+        s.arrived = None;
+        shown = status_line(ctx, s, now_secs());
+        s.failure = None;
+    });
+    if let Some(line) = shown {
         println!("{line}");
     }
-    if util::edge_inference() {
-        // This repository's technologies, as the status run just synced them.
-        let techs = stack::detect(&ctx.root).map(|st| onboarding::candidates(ctx, &st)).unwrap_or_default();
-        println!("{}", freshness_line(&ctx.cache, &techs, now_secs()));
+    if let Some(line) = codex_skipped_line(&ctx.root) {
+        println!("{line}");
     }
+    // This repository's technologies, as the status run just synced them.
+    let techs = stack::detect(&ctx.root)
+        .map(|st| onboarding::candidates(ctx, &st))
+        .unwrap_or_default();
+    println!("{}", freshness_line(&ctx.cache, &techs, now_secs()));
+}
+
+/// How long ago, roughly: `5 min ago`, `3 h ago`, `2 days ago`.
+fn ago(then: u64, now: u64) -> String {
+    let m = now.saturating_sub(then) / 60;
+    match m {
+        0..60 => format!("{m} min ago"),
+        60..2_880 => format!("{} h ago", m / 60),
+        _ => format!("{} days ago", m / 1_440),
+    }
+}
+
+fn status_line(ctx: &Ctx, state: &State, now: u64) -> Option<String> {
+    if !enabled(ctx) {
+        return None;
+    }
+    let why = state.failure.as_deref().or(state.deferred.as_deref())?;
+    let when = state
+        .last_attempt
+        .map(|s| format!(" ({})", ago(s, now)))
+        .unwrap_or_default();
+    Some(format!(
+        "Sync at agent session start: the last attempt{when} did not finish: {why}. The next session start tries again"
+    ))
 }
 
 /// Seconds since 1970 for an RFC 3339 UTC time (`2026-10-01T18:05:00.000Z`); fractions are dropped.
@@ -557,43 +697,21 @@ pub fn freshness_line(cache: &Path, techs: &BTreeSet<String>, now: u64) -> Strin
     )
 }
 
-fn status_line(ctx: &Ctx, state: &State) -> Option<String> {
-    if !enabled(ctx) {
-        return None;
-    }
-    let why = state.failure.as_deref().or(state.deferred.as_deref())?;
-    let when = state
-        .last_attempt
-        .map(|s| format!(" ({})", util::format_days((s / 86_400) as i64)))
-        .unwrap_or_default();
-    Some(format!(
-        "Sync at agent session start: the last attempt{when} did not finish: {why}. The next session start tries again"
-    ))
-}
-
 // ------------------------------------------------------------------------------------------------ installation
 
 /// Codex's project hooks file. It names this machine's executable, so it is excluded from Git, and a copy Git tracks
-/// is never written to (the skill still tells the agent to sync).
+/// is never written to.
 pub const CODEX_HOOKS_PATH: &str = ".codex/hooks.json";
 pub const CODEX_HOOKS_EXCLUDE_LINE: &str = "/.codex/hooks.json";
+/// The arguments of Codex's hook command, after the executable.
+pub const CODEX_HOOK_ARGS: &str = "notify";
 /// opencode's plugin, loaded from `.opencode/plugins/` at startup.
 pub const OPENCODE_PLUGIN_PATH: &str = ".opencode/plugins/unstale-session.js";
 pub const OPENCODE_PLUGIN_EXCLUDE_LINE: &str = "/.opencode/plugins/unstale-session.js";
 const MARKER: &str = "Managed by unstale; regenerated from .unstale.";
 
-fn through_symlink(root: &Path, p: &Path) -> bool {
-    p.ancestors()
-        .take_while(|a| *a != root)
-        .any(|a| std::fs::symlink_metadata(a).is_ok_and(|m| m.file_type().is_symlink()))
-}
-
-fn tracked(root: &Path, rel: &str) -> bool {
-    git(root, &["ls-files", "--error-unmatch", "--", rel]).is_some()
-}
-
 fn exclude(root: &Path, line: &str) -> Result<()> {
-    if let Some(p) = git(root, &["rev-parse", "--git-path", "info/exclude"]) {
+    if let Some(p) = crate::git(root, &["rev-parse", "--git-path", "info/exclude"]) {
         let p = PathBuf::from(p.trim());
         let path = if p.is_absolute() { p } else { root.join(p) };
         let old = std::fs::read_to_string(&path).unwrap_or_default();
@@ -609,54 +727,60 @@ fn exclude(root: &Path, line: &str) -> Result<()> {
     Ok(())
 }
 
-/// Codex: a `SessionStart` command hook in `.codex/hooks.json`, beside the user's own entries (ours replaced, not
-/// repeated). Codex runs a project hook only once the user trusts it (`/hooks`; it says so at startup), and again after
-/// it changes. A file that does not parse, or one Git tracks, is left alone.
+/// Whether the repository's `.codex/config.toml` defines hooks inline: Codex warns when a layer has both forms, so
+/// then no `hooks.json` is added.
+fn codex_inline_hooks(root: &Path) -> bool {
+    std::fs::read_to_string(root.join(".codex/config.toml"))
+        .ok()
+        .and_then(|t| t.parse::<toml::Table>().ok())
+        .is_some_and(|t| t.contains_key("hooks"))
+}
+
+/// Why Codex's hook is not installed here, or `None` when it is (or may be).
+fn codex_skipped(root: &Path) -> Option<&'static str> {
+    if codex_inline_hooks(root) {
+        return Some(".codex/config.toml defines hooks inline");
+    }
+    use crate::hooks::Skipped::*;
+    let installed = std::fs::read_to_string(root.join(CODEX_HOOKS_PATH))
+        .ok()
+        .is_some_and(|t| crate::hooks::remove(&t, CODEX_HOOK_ARGS).is_some());
+    if installed {
+        return None;
+    }
+    match crate::hooks::unwritable(root, CODEX_HOOKS_PATH)? {
+        Tracked => Some(".codex/hooks.json is tracked by Git"),
+        ReadOnly => Some(".codex/hooks.json is read-only"),
+        Symlink | Unreadable | NotAnObject => Some(".codex/hooks.json cannot be changed"),
+    }
+}
+
+/// The `unstale status` line when Codex's session start could not be installed.
+fn codex_skipped_line(root: &Path) -> Option<String> {
+    if !root.join(".agents/skills/unstale-review").is_dir() {
+        return None;
+    }
+    codex_skipped(root).map(|why| format!("Codex session start not installed: {why}"))
+}
+
+/// Codex: a `SessionStart` command hook in `.codex/hooks.json`, added to the user's file without changing its other
+/// bytes (`hooks`). Codex runs a project hook only once the user trusts it (`/hooks`; it says so at startup), and again
+/// after it changes. Not when the repository's `.codex/config.toml` defines hooks inline, nor in a file Git tracks, a
+/// read-only file, or one that does not parse.
 pub fn install_codex_hook(ctx: &Ctx) -> Result<()> {
-    let path = ctx.root.join(CODEX_HOOKS_PATH);
-    if through_symlink(&ctx.root, &path) || tracked(&ctx.root, CODEX_HOOKS_PATH) {
+    if codex_inline_hooks(&ctx.root) {
         return Ok(());
     }
-    let mut hooks: serde_json::Value = match std::fs::read_to_string(&path) {
-        Ok(text) => match serde_json::from_str(&text) {
-            Ok(v @ serde_json::Value::Object(_)) => v,
-            _ => return Ok(()),
-        },
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => serde_json::json!({}),
-        // Unreadable: the user's file, never replaced.
-        Err(_) => return Ok(()),
-    };
-    onboarding::remove_own_hooks(&mut hooks);
-    let Some(events) = hooks
-        .as_object_mut()
-        .unwrap()
-        .entry("hooks")
-        .or_insert_with(|| serde_json::json!({}))
-        .as_object_mut()
-    else {
-        return Ok(());
-    };
-    let Some(starts) = events
-        .entry("SessionStart")
-        .or_insert_with(|| serde_json::json!([]))
-        .as_array_mut()
-    else {
-        return Ok(());
-    };
-    let command = format!("{} notify", onboarding::invocation());
-    starts.push(
-        serde_json::json!({"hooks": [{"type": "command", "command": command, "timeout": 5}]}),
-    );
-    let text = format!("{}\n", serde_json::to_string_pretty(&hooks)?);
-    if std::fs::read_to_string(&path).ok().as_deref() != Some(text.as_str()) {
-        util::write_atomic(&path, text.as_bytes())?;
+    let command = format!("{} {CODEX_HOOK_ARGS}", crate::hooks::invocation_word());
+    if crate::hooks::install(&ctx.root, CODEX_HOOKS_PATH, &command, CODEX_HOOK_ARGS, 5)?.is_ok() {
+        exclude(&ctx.root, CODEX_HOOKS_EXCLUDE_LINE)?;
     }
-    exclude(&ctx.root, CODEX_HOOKS_EXCLUDE_LINE)
+    Ok(())
 }
 
 /// The opencode plugin's source: on `session.created` it starts `unstale notify` and does not wait for it; nothing it
 /// does can throw into opencode. opencode adds no hook output to the agent's context, so the line is not shown there;
-/// the sync still runs.
+/// the sync still runs. The executable is passed as separate arguments, never through a shell.
 pub fn opencode_plugin(argv: &[String]) -> String {
     let argv = serde_json::to_string(argv).unwrap_or_else(|_| "[]".into());
     format!(
@@ -674,14 +798,18 @@ export const UnstaleSessionSync = async ({{ $, directory }}) => ({{\n\
     )
 }
 
-/// opencode: the plugin, written only where no file of the user's stands, and excluded from Git (it names this
-/// machine's executable).
+/// opencode: the plugin, written only where no file of the user's stands (nor a tracked, read-only or linked one),
+/// and excluded from Git (it names this machine's executable).
 pub fn install_opencode_plugin(ctx: &Ctx) -> Result<()> {
-    let path = ctx.root.join(OPENCODE_PLUGIN_PATH);
-    if through_symlink(&ctx.root, &path) || tracked(&ctx.root, OPENCODE_PLUGIN_PATH) {
+    if crate::hooks::unwritable(&ctx.root, OPENCODE_PLUGIN_PATH).is_some() {
         return Ok(());
     }
-    let old = std::fs::read_to_string(&path).ok();
+    let path = ctx.root.join(OPENCODE_PLUGIN_PATH);
+    let old = match std::fs::read_to_string(&path) {
+        Ok(t) => Some(t),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(_) => return Ok(()),
+    };
     if old.as_deref().is_some_and(|t| !t.contains(MARKER)) {
         return Ok(());
     }
@@ -692,29 +820,11 @@ pub fn install_opencode_plugin(ctx: &Ctx) -> Result<()> {
     exclude(&ctx.root, OPENCODE_PLUGIN_EXCLUDE_LINE)
 }
 
-/// Uninstall: our Codex hook entry and opencode plugin, each backed up first; the user's entries and files stay.
+/// Uninstall: our Codex hook entry (the user's bytes kept) and opencode plugin, each backed up first.
 pub fn uninstall_hooks(root: &Path, backup: &Path) -> Result<()> {
-    let codex = root.join(CODEX_HOOKS_PATH);
-    if !through_symlink(root, &codex)
-        && let Ok(text) = std::fs::read_to_string(&codex)
-        && let Ok(mut hooks) = serde_json::from_str::<serde_json::Value>(&text)
-        && onboarding::remove_own_hooks(&mut hooks)
-    {
-        let dest = backup.join(CODEX_HOOKS_PATH);
-        std::fs::create_dir_all(dest.parent().unwrap())?;
-        std::fs::write(&dest, &text)?;
-        if hooks.as_object().is_some_and(|o| o.is_empty()) {
-            std::fs::remove_file(&codex)?;
-            let _ = std::fs::remove_dir(codex.parent().unwrap());
-        } else {
-            util::write_atomic(
-                &codex,
-                format!("{}\n", serde_json::to_string_pretty(&hooks)?).as_bytes(),
-            )?;
-        }
-    }
+    crate::hooks::uninstall(root, CODEX_HOOKS_PATH, CODEX_HOOK_ARGS, backup)?;
     let plugin = root.join(OPENCODE_PLUGIN_PATH);
-    if !through_symlink(root, &plugin)
+    if !std::fs::symlink_metadata(&plugin).is_ok_and(|m| m.file_type().is_symlink())
         && let Ok(text) = std::fs::read_to_string(&plugin)
         && text.contains(MARKER)
     {
@@ -744,5 +854,55 @@ mod tests {
         assert_eq!(span(-5), "0m");
         assert_eq!(median_p90(&mut [5, 1, 4, 2, 3, 6, 7, 8, 9, 10]), (5, 9));
         assert_eq!(median_p90(&mut [7]), (7, 7));
+        assert_eq!(
+            [ago(0, 30), ago(0, 7_200), ago(0, 3 * 86_400)],
+            ["0 min ago", "2 h ago", "3 days ago"]
+        );
+    }
+
+    #[test]
+    fn concurrent_state_changes_are_never_lost() {
+        let dir = tempfile::tempdir().unwrap();
+        let tool = dir.path().join(".unstale");
+        std::fs::create_dir_all(tool.join("state")).unwrap();
+        std::fs::write(tool.join("config.json"), "{}").unwrap();
+        let threads: Vec<_> = (0..8)
+            .map(|i| {
+                let tool = tool.clone();
+                std::thread::spawn(move || {
+                    for _ in 0..10 {
+                        update_state(&tool, true, |s| {
+                            let a = s.arrived.get_or_insert_with(Arrived::default);
+                            a.records += 1;
+                            a.technologies.insert(format!("t{i}"));
+                            std::thread::yield_now();
+                        })
+                        .unwrap();
+                    }
+                })
+            })
+            .collect();
+        for t in threads {
+            t.join().unwrap();
+        }
+        let a = read_state(&tool).arrived.unwrap();
+        assert_eq!((a.records, a.technologies.len()), (80, 8));
+    }
+
+    #[test]
+    fn only_manifests_and_lockfiles_count_for_the_stack() {
+        for f in [
+            "package.json",
+            "pnpm-lock.yaml",
+            "Cargo.lock",
+            "pyproject.toml",
+            "requirements-dev.txt",
+            ".npmrc",
+        ] {
+            assert!(stack_file(f), "{f}");
+        }
+        for f in ["README.md", "src.rs", "notes.txt", "tsconfig.json"] {
+            assert!(!stack_file(f), "{f}");
+        }
     }
 }

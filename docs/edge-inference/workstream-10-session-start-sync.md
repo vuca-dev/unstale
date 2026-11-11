@@ -49,8 +49,17 @@ WS2 (timestamps) and WS3 (background work under the budget). Hook installation c
   file Git tracks is left alone); opencode `.opencode/plugins/unstale-session.js` on `session.created` (opencode adds
   no hook output to the agent's context, so only the sync runs there). Each names this machine's executable and is
   excluded from Git.
-- **With the switch off** records still sync at session start: no model is called and the files are static. Change
-  events and the model stage follow the switch. `"session_sync": false` in `.unstale/config.json` turns it off.
+- **Behind the one switch until the release** (owner decision, 10 November). With it off the client behaves as before
+  session-start sync: the Claude Code hook does what `notify` did (its one fix: at most one line, exit 0, within the
+  deadline), no catalog request or other process at session start, no Codex or opencode file, no new state file,
+  exclude line or status line. With it on, records sync at session start, change events and the model stage as
+  before. `"session_sync": false` in `.unstale/config.json` turns it off.
+- **Installers** keep the user's bytes: our entry is inserted as text and removed exactly; it is recognised by its
+  exact command, never a substring; the executable is quoted so no shell expands it; a file Git tracks, a read-only
+  or linked file, and a Codex repository with hooks inline in `.codex/config.toml` are left alone (`unstale status`
+  says why for Codex).
+- **Deadline:** 1.2 s from the process's start, covering every blocking step (a read that never finishes included).
+  Worst measured: 1.23 s.
 - **Output:** one line when records new to this repository arrived since the last report (or the shared-coverage line,
   or a catalog notice), nothing otherwise. Failures show only in `unstale status`.
 
@@ -69,7 +78,7 @@ packed file or a 404 runs the Worker (free plan: 100,000 requests a day).
 
 Projection, 10,000 users at 20 session starts a day: 200,000 static requests a day unchanged; the list changes at most
 8 times a day (ingest every 3 hours), so at most 8 changed starts per user a day, about 14 requests each with 3 changed
-technologies: at most 1.12M static requests a day. Worker requests: 0. **Default on**, for records. Watch: if current
+technologies: at most 1.12M static requests a day. Worker requests: 0. Within the allowance; off until the release with the rest of the switch. Watch: if current
 files are ever packed (past 20,000 deployed files), changed starts would spend Worker requests.
 
 ## Built (freshness)
