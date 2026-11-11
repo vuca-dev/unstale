@@ -246,6 +246,24 @@ const extractionModel: ChatRunner = (prompt, parse, attribution) => extractLlm(p
  * parse, so llm.ts retries it; after its attempts the request is unanswerable: a `malformed` ClassifierError. A failed
  * call (network, auth) is a `network` ClassifierError. Replaces the Codex CLI fallback (user, 16 October 2026).
  */
+const answerSpace = /^[ \t\n\r\v\f]+|[ \t\n\r\v\f]+$/g;
+const answerText = (s: string): string => {
+  const t = s.replace(answerSpace, "");
+  return (t.endsWith(".") ? t.slice(0, -1) : t).replace(answerSpace, "").toLowerCase();
+};
+
+/**
+ * The option an answer names: its key, or else the one option whose text it repeats (compared without surrounding
+ * whitespace, a trailing full stop or case). The client's `option_key` reads answers the same way. `undefined` when
+ * the answer names no option, or repeats the text of more than one.
+ */
+export function optionKey(q: ChoiceQuestion, answer: string): string | undefined {
+  if (Object.hasOwn(q.options, answer)) return answer;
+  const a = answerText(answer);
+  const hits = Object.entries(q.options).filter(([, text]) => answerText(text) === a);
+  return hits.length === 1 ? hits[0]![0] : undefined;
+}
+
 export class ChatClassifier implements Classifier {
   readonly name = "chat" as const;
   readonly model: string;
@@ -273,8 +291,9 @@ export class ChatClassifier implements Classifier {
       for (const [id, q] of Object.entries(questions)) {
         const v = raw[id];
         const choice = typeof v === "string" ? v : typeof (v as { choice?: unknown } | undefined)?.choice === "string" ? (v as { choice: string }).choice : undefined;
-        if (choice === undefined || !Object.hasOwn(q.options, choice)) return undefined;
-        out[id] = choice;
+        const key = choice === undefined ? undefined : optionKey(q, choice);
+        if (key === undefined) return undefined;
+        out[id] = key;
       }
       return out;
     };
