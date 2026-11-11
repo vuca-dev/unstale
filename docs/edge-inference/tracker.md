@@ -13,7 +13,7 @@
 - **Base health:** PR checks are `rust`, `central`, `gateway`; re-query before every merge.
 - **Open PRs:** WS1 and WS5 pending
 - **Live worktrees (sprint):** `/Users/jason/unstale-edge-sprint` (tracker)
-- **Live subagents:** ws1-impl (Opus 5.5), ws5-impl (Opus 5.5), ws3-verifier and ws2-verifier (Fable 5.2)
+- **Live subagents:** ws1-impl, ws5-impl, ws3-fix (the WS3 EM revived; small) on Opus 5.5; ws2-verifier (Fable 5.2)
 - **Merged + verified:** WS0 → #213 `673c191`
 - **Next:** WS4 when WS1 merges (critical path); then WS9, WS10, WS6a as lanes free
 - **Sprint API spend so far:** $0 of $10
@@ -76,7 +76,7 @@ OpenRouter parity, repeat eval runs.
 
 ## §3 Per-chunk log (dispatch order)
 
-### WS3: Client inference core: MERGED, verifier running
+### WS3: Client inference core: MERGED, VERIFIED WITH GAPS, fix PR in progress
 - PR #220 → `7be1f24`. Tests 472/472 at merge; 13 review threads, 0 unresolved (1 dismissed with comment). `main` `ci` green.
 - Interface: `local/cli/src/inference/` (`Inference::new(ProviderConfig::…)`, `complete`, `complete_batch`, `classify`,
   `Deferred::line()`, `lock::try_acquire_default()`, `ledger`). The one switch is `UNSTALE_EDGE_INFERENCE=1`
@@ -86,6 +86,13 @@ OpenRouter parity, repeat eval runs.
   before the sprint; agents format only their own files. The eval RESULTS files are on draft PRs #212, #214, #217,
   not `main`; read them from those branches.
 - One real Codex smoke call (plan-billed, about 4K tokens). No paid API calls.
+- **VERIFIER: PASS WITH GAPS, 8/8 criteria.** Did not hold: (1) redirects are followed, so the key reached another
+  host after a 302 (hold-the-line 1 and 2); (2) the budget fails open on a corrupt or read-only ledger;
+  (3) `complete_batch` panics past 8 items; (4) hidden `unstale infer` ignores the switch; (5) ledger accounting for
+  rejected answers and Jev untested. HUMAN: is 48M the right budget default. UNVERIFIABLE: Codex flags against the
+  RESULTS file (not on `main`); real Codex error wording.
+- **WS3-FIX** dispatched for 1–5 (worktree `/Users/jason/unstale-ws3-fix`). WS3 is not VERIFIED until it merges and
+  the redirect and ledger fixes are re-checked.
 
 ### WS2: Change events in the catalog: MERGED, verifier running
 - PR #221 → `f37260a`. Central 571/571, local 460 passed, gateway 73/73; `main` `ci` green. 1 review finding dismissed
