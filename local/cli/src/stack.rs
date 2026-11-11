@@ -1007,7 +1007,8 @@ pub fn detect_in(root: &Path, env: &crate::privacy::Env) -> Result<Stack> {
     let (app_configs, other_configs): (Vec<PathBuf>, Vec<PathBuf>) = configs.into_iter().partition(|p| local(&p.parent().unwrap_or(root).join("x")));
     let (app_dirs, other_dirs): (BTreeSet<PathBuf>, BTreeSet<PathBuf>) = manifest_dirs.into_iter().partition(|d| local(&d.join("x")));
     let fixture_registries = Registries::read_local(&other_dirs, &other_configs);
-    let registries = Registries::read(root, &app_dirs, &app_configs, env).union(&fixture_registries.narrow());
+    let mut registries = Registries::read(root, &app_dirs, &app_configs, env).union(&fixture_registries.narrow());
+    registries.cargo_patch(&cargo.patched);
     for (purl, d) in deps.iter_mut() {
         if purl.starts_with("pkg:cargo/") {
             d.public_candidate &= registries.may_name_cargo(purl, d.seen);
@@ -3073,5 +3074,32 @@ mod tests {
         let s = detect(d.path()).unwrap();
         assert_eq!(s.packages.len(), 1);
         assert_eq!(s.deps["pkg:npm/next"].version, Some(Version::new(16, 0, 0)));
+    }
+
+    #[test]
+    fn cargo_patched_and_replaced_crates_stay_private_without_a_lockfile() {
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "Cargo.toml", "[workspace]\nmembers=[\"app\",\"corp-core\"]\n[patch.crates-io]\ncorp-core = { path = \"corp-core\" }\ncorp-fork = { git = \"https://git.corp.example/fork\" }\nrenamed-key = { package = \"corp-renamed\", path = \"../renamed\" }\n[patch.\"https://github.com/rust-lang/crates.io-index\"]\ncorp_index = { path = \"../index\" }\n[replace]\n\"corp-old:0.1.0\" = { path = \"../old\" }\n\"https://github.com/rust-lang/crates.io-index#corp-url@0.2.0\" = { path = \"../url\" }\n");
+        write(d.path(), "app/Cargo.toml", "[package]\nname=\"app\"\nversion=\"0.1.0\"\n[dependencies]\ncorp-core = \"0.1\"\ncorp-fork = \"1\"\ncorp-index = \"1\"\ncorp-old = \"0.1\"\ncorp-url = \"0.2\"\ncorp-config = \"1\"\ncorp-renamed = \"1\"\nserde = \"1\"\n");
+        write(d.path(), "corp-core/Cargo.toml", "[package]\nname=\"corp-core\"\nversion=\"0.1.0\"\n");
+        // Cargo reads `[patch]` from its configuration too.
+        write(d.path(), ".cargo/config.toml", "[patch.crates-io]\nCorp_Config = { path = \"../config\" }\n");
+        let stack = detect_in(d.path(), &crate::privacy::Env::default()).unwrap();
+        for name in ["corp-core", "corp-fork", "corp-index", "corp-old", "corp-url", "corp-config", "corp-renamed"] {
+            let dep = &stack.deps[&format!("pkg:cargo/{name}")];
+            assert!(!dep.public_candidate, "{name}");
+        }
+        assert!(stack.deps["pkg:cargo/serde"].public_candidate);
+    }
+
+    #[test]
+    fn cargo_patched_crate_stays_private_when_its_lock_entry_reads_crates_io() {
+        // An unused patch leaves the crates.io source in Cargo.lock; the override still keeps the name private.
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "Cargo.toml", "[package]\nname=\"app\"\nversion=\"1.0.0\"\n[dependencies]\ncorp-core = \"0.1\"\nserde = \"1\"\n[patch.crates-io]\ncorp-core = { path = \"../corp-core\" }\n");
+        write(d.path(), "Cargo.lock", "version = 3\n[[package]]\nname = \"app\"\nversion = \"1.0.0\"\ndependencies = [\"corp-core\", \"serde\"]\n[[package]]\nname = \"corp-core\"\nversion = \"0.1.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\n[[package]]\nname = \"serde\"\nversion = \"1.2.3\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\n");
+        let stack = detect_in(d.path(), &crate::privacy::Env::default()).unwrap();
+        assert!(!stack.deps["pkg:cargo/corp-core"].public_candidate);
+        assert!(stack.deps["pkg:cargo/serde"].public_candidate);
     }
 }
