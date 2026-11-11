@@ -227,9 +227,10 @@ pub(super) fn anthropic(inf: &Inference, p: &Prompt) -> Result<Answer, Deferred>
     } else {
         Usage {
             // `input_tokens` excludes cache reads and writes.
-            input: num(&u, &["input_tokens"]).unwrap_or(0)
-                + read
-                + num(&u, &["cache_creation_input_tokens"]).unwrap_or(0),
+            input: num(&u, &["input_tokens"])
+                .unwrap_or(0)
+                .saturating_add(read)
+                .saturating_add(num(&u, &["cache_creation_input_tokens"]).unwrap_or(0)),
             cached: read,
             output: num(&u, &["output_tokens"]).unwrap_or(0),
             reasoning: None,
