@@ -76,6 +76,12 @@ pub fn run(
         let Ok(Some(td)) = crate::cache::load_catalog_tech(cache, &t.technology) else {
             continue;
         };
+        let n = t.events.len();
+        super::progress(&format!(
+            "Reading {n} release note{} of {}",
+            if n == 1 { "" } else { "s" },
+            t.technology
+        ));
         let mut store = LocalStore::load(cache, &t.technology);
         let cover = super::store::Cover::new(&td, super::store::processed(cache, &t.technology));
         let name = t.events.first().map(|e| e.name.clone()).unwrap_or_default();

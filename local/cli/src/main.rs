@@ -444,7 +444,7 @@ fn dispatch(cli: Cli, started: std::time::Instant) -> Result<u8> {
             }
             for line in warnings.iter().chain(&state) { println!("{line}"); }
         }),
-        Cmd::SessionSync => session::background(&ctx),
+        Cmd::SessionSync => cmd_session_sync(&ctx),
         Cmd::Sync => cmd_sync(&ctx),
         Cmd::Digest => cmd_digest(&ctx),
         Cmd::Review { next, target, pass } => cmd_review(&ctx, next, &target, pass),
@@ -793,6 +793,33 @@ fn rel(ctx: &Ctx, p: &Path) -> String {
 }
 
 // ------------------------------------------------------------------------------------------------------- sync
+
+/// `unstale session-sync`: the session-start background stage. Started by the hook, detached, it prints nothing anyone
+/// sees; run by hand it shows its progress at a terminal and ends with one line. Every answer is kept as it arrives, so
+/// an interrupted run resumes where it stopped.
+fn cmd_session_sync(ctx: &Ctx) -> Result<u8> {
+    use std::io::IsTerminal;
+    if !inference::enabled() || ctx.config.session_sync == Some(false) {
+        println!("Session-start sync is off here, so nothing ran.");
+        return Ok(0);
+    }
+    if std::io::stdout().is_terminal() {
+        println!("Syncing the catalog, then reading new release notes with your provider. Ctrl-C stops it; the next run resumes.");
+        pipeline::watch(Box::new(|l| println!("  {l}")));
+    }
+    let code = session::background(ctx)?;
+    let state = session::read_state(&ctx.tool);
+    if let Some(f) = &state.failure {
+        println!("warning: the catalog sync did not finish: {f}");
+    }
+    println!("{}", match pipeline::last_pass() {
+        Some(s) => s.line().unwrap_or_else(|| "Nothing new to read: every release note here is read.".into()),
+        None if state.deferred.is_some() => state.deferred.clone().unwrap_or_default(),
+        None if pipeline::stored_choice(Some(&ctx.root)).is_none() => "No provider is chosen, so no release notes were read. Choose one: `unstale setup`.".into(),
+        None => "No release notes were read: another unstale is reading them on this machine; it finishes them.".into(),
+    });
+    Ok(code)
+}
 
 fn cmd_sync(ctx: &Ctx) -> Result<u8> {
     let st = stack::detect(&ctx.root)?;

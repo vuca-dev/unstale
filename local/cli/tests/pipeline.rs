@@ -447,3 +447,45 @@ fn work_nothing_will_run_is_said_once_with_the_command_that_runs_it() {
     assert_eq!(*main.lock().unwrap(), 2);
     assert!(!r.run(&["report"], true).contains("warning:"));
 }
+
+/// `unstale session-sync` by hand ends with one line saying what it read; stopped partway (Ctrl-C), the next run
+/// finishes without paying again for what was answered.
+#[test]
+fn session_sync_by_hand_says_what_it_read_and_resumes_after_an_interrupt() {
+    let (r, main, _) = repo(Arc::new(Mutex::new(usize::MAX)));
+    r.run(&["sync"], true);
+    // Interrupted as soon as the first answer has come back.
+    let mut c = Command::new(env!("CARGO_BIN_EXE_unstale"));
+    c.arg("session-sync")
+        .current_dir(r.repo.path())
+        .env("UNSTALE_CACHE_DIR", r.cache.path())
+        .env("UNSTALE_CONFIG_DIR", r.cache.path().join("user-config"))
+        .env("UNSTALE_TODAY", "2026-11-10")
+        .env("UNSTALE_NO_REGISTRY", "1")
+        .env("AI_GATEWAY_API_KEY", "k1")
+        .env("JEV_API_KEY", "k2")
+        .env("UNSTALE_INFERENCE_BASE_URL", &r.main)
+        .env("UNSTALE_LABELS_BASE_URL", &r.jev)
+        .env("UNSTALE_EDGE_INFERENCE", "1")
+        .env_remove("UNSTALE_CATALOG")
+        .stdout(std::process::Stdio::null());
+    let mut child = c.spawn().unwrap();
+    let t0 = std::time::Instant::now();
+    while *main.lock().unwrap() < 1 && t0.elapsed() < std::time::Duration::from_secs(20) {
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+    let _ = Command::new("kill").args(["-INT", &child.id().to_string()]).status();
+    let _ = child.wait();
+    let paid = *main.lock().unwrap();
+    let out = r.run(&["session-sync"], true);
+    assert_eq!(local_records(&r), 4, "{out}");
+    assert!(
+        *main.lock().unwrap() <= paid + 2,
+        "the second run pays at most for what the first did not keep"
+    );
+    let last = out.lines().last().unwrap_or_default();
+    assert!(last.starts_with("New release notes read: 4 new changes") || last.starts_with("Nothing new to read"), "{out}");
+    // Nothing left: said in one line.
+    let again = r.run(&["session-sync"], true);
+    assert_eq!(again.trim(), "Nothing new to read: every release note here is read.");
+}
