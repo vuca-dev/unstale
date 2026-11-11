@@ -66,7 +66,9 @@ pub fn plan(
     let floor = crate::util::add_days(today, -BACKFILL_DAYS).unwrap_or_default();
     let mut out: Vec<(usize, Pending)> = vec![];
     for t in techs {
-        let Ok(Some(td)) = crate::cache::load_tech(cache, t) else {
+        // The catalog's records only: a release counts as covered by what the catalog publishes, never by what this
+        // machine made, so a pass stopped mid-release finishes it next time.
+        let Ok(Some(td)) = crate::cache::load_catalog_tech(cache, t) else {
             continue;
         };
         let Ok(Some(ev)) = crate::cache::load_events(cache, t) else {
@@ -129,7 +131,11 @@ pub fn routes_with(
         {
             c.base_url = b.trim().to_string();
         }
-        Inference::new(c).with_env(keys::reader_with(root.map(Path::to_path_buf), consented.clone(), env.clone()))
+        Inference::new(c).with_env(keys::reader_with(
+            root.map(Path::to_path_buf),
+            consented.clone(),
+            env.clone(),
+        ))
     };
     Some(Routes {
         main: make(main, "UNSTALE_INFERENCE_BASE_URL"),
@@ -139,29 +145,30 @@ pub fn routes_with(
 
 /// The steps for this stack's technologies with the stored choice, the worker lock already held by the caller. `None`
 /// when no provider is chosen.
-pub fn run_locked(cache: &Path, root: &Path, techs: &BTreeSet<String>, purls: &BTreeSet<String>) -> Option<run::Summary> {
+pub fn run_locked(
+    cache: &Path,
+    root: &Path,
+    techs: &BTreeSet<String>,
+    purls: &BTreeSet<String>,
+) -> Option<run::Summary> {
     let routes = routes(&stored_choice(Some(root))?, Some(root))?;
-    Some(run::run(cache, &routes, techs, purls, &crate::util::today()))
-}
-
-/// After `unstale sync`, with the switch on and a provider chosen: the steps, holding the machine's worker lock
-/// (another worker already on it: nothing to do here). At most one line for the terminal; never an error.
-pub fn after_sync(cache: &Path, root: &Path, techs: &BTreeSet<String>, purls: &BTreeSet<String>) -> Option<String> {
-    if !crate::util::edge_inference() {
-        return None;
-    }
-    stored_choice(Some(root))?;
-    let _lock = match crate::inference::lock::try_acquire_default() {
-        Ok(Some(l)) => l,
-        Ok(None) => return None,
-        Err(d) => return Some(format!("Records from new releases: {}", d.line())),
-    };
-    run_locked(cache, root, techs, purls)?.line()
+    Some(run::run(
+        cache,
+        &routes,
+        techs,
+        purls,
+        &crate::util::today(),
+    ))
 }
 
 /// An http(s) address on this machine: `localhost` or a loopback IP, no userinfo.
 fn loopback(url: &str) -> bool {
-    let Some(rest) = url.strip_prefix("http://").or_else(|| url.strip_prefix("https://")) else { return false };
+    let Some(rest) = url
+        .strip_prefix("http://")
+        .or_else(|| url.strip_prefix("https://"))
+    else {
+        return false;
+    };
     let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
     if authority.contains('@') {
         return false;
@@ -170,7 +177,10 @@ fn loopback(url: &str) -> bool {
         Some(v6) => v6.split(']').next().unwrap_or(""),
         None => authority.split(':').next().unwrap_or(""),
     };
-    host.eq_ignore_ascii_case("localhost") || host.parse::<std::net::IpAddr>().is_ok_and(|ip| ip.is_loopback())
+    host.eq_ignore_ascii_case("localhost")
+        || host
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|ip| ip.is_loopback())
 }
 
 /// A provider named on the command line (evals): the same names `unstale infer` takes; keys from the environment only.
@@ -290,7 +300,7 @@ pub fn run_step(
                         .iter()
                         .map(|r| matching::Cand {
                             rec: r,
-                            sources: &[],
+                            sources: None,
                         })
                         .collect();
                     let found = matching::retrieve(&it.incoming, &cands);

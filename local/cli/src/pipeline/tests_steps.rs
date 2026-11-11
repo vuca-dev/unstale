@@ -237,6 +237,7 @@ fn chat_label_and_judge_requests_equal_centrals_bytes() {
                 text,
                 schema: None,
                 max_tokens: 16_000,
+                raw: true,
             },
         );
         assert_eq!(body.get(), snap[case][0], "{case}");
@@ -802,4 +803,118 @@ fn a_provider_problem_defers_with_one_line_and_keeps_completed_work() {
         "2026-11-10",
     );
     assert_eq!((s.created, m.count()), (4, before));
+}
+
+/// A text model's "yes" counts as 0 in every probability-gated guard (central's rule): it merges only on a
+/// near-identical quote of the same kind, never across kinds or by lineage.
+#[test]
+fn an_uncalibrated_yes_never_merges_across_kinds_or_by_lineage() {
+    let p = crate::prompts::prompts();
+    let yes = |calibrated: bool| super::labels::Answers {
+        classifier: "chat".into(),
+        model: "m".into(),
+        answers: [(
+            "same_c1".to_string(),
+            super::labels::Choice {
+                choice: "yes".into(),
+                confidence: 1.0,
+                probabilities: [("yes".to_string(), 1.0), ("no".to_string(), 0.0)].into(),
+            },
+        )]
+        .into(),
+        calibrated,
+    };
+    // An upgrade-guide item against a release-notes record: a cross-kind pair.
+    let inc = incoming(
+        json!({"key": "next@16.0.0+guide.0123abcd#0.0", "version": "16.0.0", "kind": "upgrade_guide", "quote": "worded differently in the guide"}),
+    );
+    let c = stored(
+        json!({"key": "next@16.0.0#0.0", "version": "16.0.0", "snapshot": "sha256:c1"}),
+        None,
+    );
+    assert_eq!(
+        matching::pick(p, &inc, false, &[&c], &yes(false)).1[0].outcome,
+        "guard:cross"
+    );
+    assert_eq!(
+        matching::pick(p, &inc, false, &[&c], &yes(true)).1[0].outcome,
+        "same",
+        "the labelling service's 1.0 clears the bar"
+    );
+    // A later version of the same guide: lineage.
+    let inc = incoming(
+        json!({"key": "next@16.0.0+guide.bbbbbbbb#0.0", "version": "16.0.0", "kind": "upgrade_guide", "snapshot": "sha256:d2", "quote": "another wording"}),
+    );
+    let c = stored(
+        json!({"key": "next@16.0.0+guide.aaaaaaaa#0.0", "version": "16.0.0", "snapshot": "sha256:d1", "kind": "upgrade_guide"}),
+        Some(EvidenceKind::UpgradeGuide),
+    );
+    assert_eq!(
+        matching::pick(p, &inc, false, &[&c], &yes(false)).1[0].outcome,
+        "guard:lineage"
+    );
+}
+
+#[test]
+fn a_route_can_be_moved_only_to_this_machine() {
+    let choice = crate::setup::Choice {
+        provider: "openai".into(),
+        key_env: Some("OPENAI_API_KEY".into()),
+        labels: None,
+    };
+    let base = |url: &str| {
+        // SAFETY of the test: the variable is this test's own and read by `routes` in this thread only.
+        unsafe { std::env::set_var("UNSTALE_INFERENCE_BASE_URL", url) };
+        let r = super::routes_with(&choice, None, |_| None)
+            .unwrap()
+            .main
+            .provider
+            .base_url;
+        unsafe { std::env::remove_var("UNSTALE_INFERENCE_BASE_URL") };
+        r
+    };
+    assert_eq!(base("http://127.0.0.1:9/v1"), "http://127.0.0.1:9/v1");
+    assert_eq!(base("http://localhost:9"), "http://localhost:9");
+    assert_eq!(base("https://evil.example/v1"), "https://api.openai.com/v1");
+    assert_eq!(
+        base("http://127.0.0.1@evil.example/"),
+        "https://api.openai.com/v1"
+    );
+}
+
+/// Labels the service refuses (a 400) fail those records for this pass only: nothing marks them done, the queue goes
+/// on, and the next pass after the retry date asks again.
+#[test]
+fn records_whose_labels_fail_are_not_marked_done() {
+    let f = fixture();
+    let m = Router::new(f.answers.clone(), vec![]);
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let jev = format!("http://{}", listener.local_addr().unwrap());
+    std::thread::spawn(move || {
+        for mut s in listener.incoming().flatten() {
+            let mut buf = [0u8; 65536];
+            let _ = s.read(&mut buf);
+            let _ = write!(
+                s,
+                "HTTP/1.1 400 X\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}"
+            );
+        }
+    });
+    let s = run(
+        f.cache.path(),
+        &routes(&f, &m.url, Some(&jev)),
+        &set(&["example"]),
+        &set(&["pkg:npm/example"]),
+        "2026-11-10",
+    );
+    assert_eq!(
+        (s.created, s.unlabelled, s.deferred.clone()),
+        (0, 4, None),
+        "{s:?}"
+    );
+    assert!(
+        LocalStore::load(f.cache.path(), "example")
+            .ingested
+            .is_empty()
+    );
 }

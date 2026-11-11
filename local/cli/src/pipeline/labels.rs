@@ -241,85 +241,126 @@ impl<'a> Chooser<'a> {
         )
     }
 
-    fn cached(&self, key: &str) -> Option<Option<Answers>> {
-        let e = self.results.get(key)?;
-        Some(match e.outcome {
-            Outcome::Answer { answer } => serde_json::from_value(answer).ok(),
-            _ => None,
+    fn batch_key(&self, step: &str, state: &RawValue, qs: &[(String, ChoiceQuestion)]) -> String {
+        Results::key_in(
+            "batch8",
+            step,
+            &model_key(&self.inf.provider),
+            self.version(step),
+            &sha256_hex(state.get().as_bytes()),
+            &self.request_text(state, qs),
+        )
+    }
+
+    /// A standing entry for this request (asked alone, or through Codex in a batch); a failure stands until its retry
+    /// date.
+    fn cached(
+        &self,
+        step: &str,
+        state: &RawValue,
+        qs: &[(String, ChoiceQuestion)],
+        today: &str,
+    ) -> Option<Entry> {
+        let alone = self
+            .results
+            .get(&self.key(step, state, qs))
+            .filter(|e| e.stands(today));
+        alone.or_else(|| {
+            (self.inf.provider.kind == Kind::Codex)
+                .then(|| {
+                    self.results
+                        .get(&self.batch_key(step, state, qs))
+                        .filter(|e| e.stands(today))
+                })
+                .flatten()
         })
     }
 
-    fn store(&self, key: &str, step: &str, state: &RawValue, a: Option<&Answers>) {
-        let e = Entry {
+    fn entry(
+        &self,
+        step: &str,
+        state: &RawValue,
+        model_version: Option<String>,
+        outcome: Outcome,
+    ) -> Entry {
+        Entry {
             step: step.into(),
             model: model_key(&self.inf.provider),
             prompt_version: self.version(step),
             chunk: sha256_hex(state.get().as_bytes()),
             provider: self.inf.provider.name.clone(),
-            model_version: a.map(|a| a.model.clone()),
-            outcome: match a {
-                Some(a) => Outcome::Answer {
-                    answer: serde_json::to_value(a).unwrap_or(Value::Null),
-                },
-                None => Outcome::Failed,
-            },
-        };
-        self.results.put(key, &e);
+            model_version,
+            outcome,
+        }
     }
 
-    /// The answers to `qs` about `state`; `Ok(None)` when no readable answer came after the attempts (cached, so it
-    /// is not paid for again); a deferral stops the step.
+    /// The answers to `qs` about `state`; `Ok(None)` when this request failed (unreadable after the attempts, refused,
+    /// or too large): that item waits for its retry date while the rest go on. A deferral of the route stops the step.
+    /// An answer is used even when it cannot be written to the cache.
     pub fn ask(
         &self,
         step: &str,
         state: &RawValue,
         qs: &[(String, ChoiceQuestion)],
     ) -> Result<Option<Answers>, Deferred> {
-        let key = self.key(step, state, qs);
-        if let Some(a) = self.cached(&key) {
-            return Ok(a);
+        let today = crate::util::today();
+        if let Some(e) = self.cached(step, state, qs, &today) {
+            return Ok(match e.outcome {
+                Outcome::Answer { answer } => serde_json::from_value(answer).ok(),
+                _ => None,
+            });
         }
+        let key = self.key(step, state, qs);
+        let prior = self.results.get(&key);
         let got = match self.inf.provider.kind {
             Kind::Jev => {
                 self.calls.set(self.calls.get() + 1);
-                let c = self.inf.classify(state, qs)?;
-                if let Some(d) = c.deferred {
+                match self.inf.classify(state, qs) {
                     // Part of the questions were answered: nothing is kept until all are.
-                    return Err(d);
+                    Ok(c) if c.deferred.is_some() => {
+                        return Err(c.deferred.unwrap_or(Deferred::Unavailable));
+                    }
+                    Ok(c) => Some(Answers {
+                        classifier: "jev".into(),
+                        model: c.model,
+                        answers: c
+                            .answers
+                            .into_iter()
+                            .map(|(k, v)| {
+                                (
+                                    k,
+                                    Choice {
+                                        choice: v.choice,
+                                        confidence: v.confidence,
+                                        probabilities: v.probabilities,
+                                    },
+                                )
+                            })
+                            .collect(),
+                        calibrated: true,
+                    }),
+                    // This request only: unreadable, over the size limit or refused.
+                    Err(Deferred::Malformed | Deferred::TooLong | Deferred::Rejected) => None,
+                    Err(d) => return Err(d),
                 }
-                let answers = c
-                    .answers
-                    .into_iter()
-                    .map(|(k, v)| {
-                        (
-                            k,
-                            Choice {
-                                choice: v.choice,
-                                confidence: v.confidence,
-                                probabilities: v.probabilities,
-                            },
-                        )
-                    })
-                    .collect();
-                Some(Answers {
-                    classifier: "jev".into(),
-                    model: c.model,
-                    answers,
-                    calibrated: true,
-                })
             }
             _ => {
                 let prompt = Prompt {
-                    text: chat_prompt(self.prompts, state, qs),
-                    schema: None,
                     max_tokens: 16_000,
+                    ..Prompt::new(chat_prompt(self.prompts, state, qs)).raw()
                 };
                 let mut got = None;
-                for _ in 0..ATTEMPTS {
+                for attempt in 0..ATTEMPTS {
+                    if attempt > 0 {
+                        std::thread::sleep(self.inf.limits.backoff * attempt as u32);
+                    }
                     self.calls.set(self.calls.get() + 1);
                     match self.inf.complete(&prompt) {
                         Ok(a) => {
-                            if let Some(answers) = read_choices(&a.value, qs) {
+                            let v = a.value.as_str().and_then(|t| {
+                                super::extract::parse_json(t, super::extract::Kind2::Object)
+                            });
+                            if let Some(answers) = v.as_ref().and_then(|v| read_choices(v, qs)) {
                                 got = Some(Answers {
                                     classifier: "chat".into(),
                                     model: a.model,
@@ -330,19 +371,28 @@ impl<'a> Chooser<'a> {
                             }
                         }
                         Err(Deferred::Malformed) => {}
-                        Err(Deferred::TooLong) => break,
+                        Err(Deferred::TooLong | Deferred::Rejected) => break,
                         Err(d) => return Err(d),
                     }
                 }
                 got
             }
         };
-        self.store(&key, step, state, got.as_ref());
+        let outcome = match &got {
+            Some(a) => Outcome::Answer {
+                answer: serde_json::to_value(a).unwrap_or(Value::Null),
+            },
+            None => Outcome::failed_after(prior.as_ref(), &today),
+        };
+        self.results.put(
+            &key,
+            &self.entry(step, state, got.as_ref().map(|a| a.model.clone()), outcome),
+        );
         Ok(got)
     }
 
     /// Through Codex: these records' label requests not yet answered, eight to a call, answered by record id and
-    /// cached under each request's own key. A record the batch leaves out is asked alone by [`Chooser::ask`].
+    /// cached apart from requests asked alone. A record the batch leaves out is asked alone by [`Chooser::ask`].
     pub fn prefetch(
         &self,
         step: &str,
@@ -352,9 +402,10 @@ impl<'a> Chooser<'a> {
         if self.inf.provider.kind != Kind::Codex {
             return Ok(());
         }
+        let today = crate::util::today();
         let todo: Vec<&Box<RawValue>> = states
             .iter()
-            .filter(|s| self.results.get(&self.key(step, s, qs)).is_none())
+            .filter(|s| self.cached(step, s, qs, &today).is_none())
             .collect();
         for group in todo.chunks(crate::inference::BATCH) {
             let ids: Vec<(String, &RawValue)> = group
@@ -365,23 +416,37 @@ impl<'a> Chooser<'a> {
             let text = chat_batch_prompt(self.prompts, &ids, qs)?;
             self.calls.set(self.calls.get() + 1);
             let a = match self.inf.complete(&Prompt {
-                text,
-                schema: None,
                 max_tokens: 16_000,
+                ..Prompt::new(text).raw()
             }) {
                 Ok(a) => a,
-                Err(Deferred::Malformed | Deferred::TooLong) => continue,
+                Err(Deferred::Malformed | Deferred::TooLong | Deferred::Rejected) => continue,
                 Err(d) => return Err(d),
             };
+            let Some(all) = a
+                .value
+                .as_str()
+                .and_then(|t| super::extract::parse_json(t, super::extract::Kind2::Object))
+            else {
+                continue;
+            };
             for (id, s) in &ids {
-                if let Some(answers) = a.value.get(id).and_then(|v| read_choices(v, qs)) {
+                if let Some(answers) = all.get(id).and_then(|v| read_choices(v, qs)) {
                     let got = Answers {
                         classifier: "chat".into(),
                         model: a.model.clone(),
                         answers,
                         calibrated: false,
                     };
-                    self.store(&self.key(step, s, qs), step, s, Some(&got));
+                    let e = self.entry(
+                        step,
+                        s,
+                        Some(a.model.clone()),
+                        Outcome::Answer {
+                            answer: serde_json::to_value(&got).unwrap_or(Value::Null),
+                        },
+                    );
+                    self.results.put(&self.batch_key(step, s, qs), &e);
                 }
             }
         }

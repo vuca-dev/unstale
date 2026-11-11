@@ -16,7 +16,7 @@ pub struct Summary {
     pub technologies: usize,
     pub created: usize,
     pub matched: usize,
-    /// Records whose labels could not be read (not asked again).
+    /// Records whose labels could not be read this pass (asked again after their retry date).
     pub unlabelled: usize,
     /// Provider calls made (cached answers are not calls).
     pub calls: usize,
@@ -71,28 +71,25 @@ pub fn run(
     let questions = p.labels.questions();
     let mut s = Summary::default();
     let todo = plan(cache, techs, purls, today);
-    let all: Vec<&unstale_schema::catalog::EventLine> =
-        todo.iter().flat_map(|t| t.events.iter()).collect();
     let calls = |s: &mut Summary| s.calls = x.calls.get() + ch.calls.get();
-    if let Err(d) = x.prefetch(&all) {
-        s.deferred = Some(d);
-        calls(&mut s);
-        return s;
-    }
     for t in &todo {
         let Ok(Some(td)) = crate::cache::load_catalog_tech(cache, &t.technology) else {
             continue;
         };
         let mut store = LocalStore::load(cache, &t.technology);
         let name = t.events.first().map(|e| e.name.clone()).unwrap_or_default();
+        // One technology at a time, most needed first: its records are written before the next one's extraction
+        // starts. When extraction stops early, what it extracted is still labelled and written.
+        let events: Vec<&unstale_schema::catalog::EventLine> = t.events.iter().collect();
+        let mut stopped = x.prefetch(&events).err();
         let mut incoming: Vec<(Incoming, Option<Provenance>)> = vec![];
         for ev in &t.events {
+            if stopped.is_some() {
+                break;
+            }
             match x.event(ev) {
                 Ok(r) => incoming.extend(r.incoming.into_iter().map(|i| (i, r.provenance.clone()))),
-                Err(d) => {
-                    s.deferred = Some(d);
-                    break;
-                }
+                Err(d) => stopped = Some(d),
             }
         }
         // Oldest first, as central ingests, so a later release's change finds the earlier record.
@@ -127,10 +124,9 @@ pub fn run(
                     break;
                 }
             };
+            // No labels this pass: the record waits (its request is asked again after its retry date).
             let Some(labels) = answers.as_ref().and_then(|a| interpret(p, a)) else {
-                store.ingested.insert(inc.key.clone(), String::new());
                 s.unlabelled += 1;
-                touched = true;
                 continue;
             };
             let extraction = xprov
@@ -152,11 +148,7 @@ pub fn run(
                     .iter()
                     .map(|r| matching::Cand {
                         rec: &r.r,
-                        sources: store
-                            .records
-                            .get(&r.r.id)
-                            .map(|l| l.sources.as_slice())
-                            .unwrap_or(&[]),
+                        sources: store.records.get(&r.r.id).map(|l| l.sources.as_slice()),
                     })
                     .collect();
                 let found = matching::retrieve(inc, &cands);
@@ -282,6 +274,9 @@ pub fn run(
         if touched {
             store.save(cache);
             s.technologies += 1;
+        }
+        if s.deferred.is_none() {
+            s.deferred = stopped.take();
         }
         if s.deferred.is_some() {
             break;
