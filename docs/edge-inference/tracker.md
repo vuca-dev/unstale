@@ -9,9 +9,9 @@
 
 - **Shape:** INDEPENDENT PRs to `main`. Every chunk is additive and behind one switch (README, "One switch").
 - **Ground truth:** GitHub PR state. Repo `vuca-dev/unstale`.
-- **Base:** `origin/main` @ `a33ec49` (#241 merge)
+- **Base:** `origin/main` @ `276a23d` (#243 merge)
 - **Base health:** PR checks are `rust`, `central`, `gateway`; re-query before every merge.
-- **Open PRs:** deploy-retry PR (in progress, worktree `/Users/jason/unstale-deploy-retry`), #231 (no-key eval draft, blocked on the ingest decision), #240 (docs and site, DRAFT at `48b9c6d`, CI green; HELD for the CEO, never merged by agents; conflicts expected with the CEO's `smooth-wordmark` branch in `README.md` and `gateway/site/build.ts`)
+- **Open PRs:** #231 (no-key eval draft, blocked on the ingest decision), #240 (docs and site, DRAFT at `48b9c6d`, CI green; HELD for the CEO, never merged by agents; conflicts expected with the CEO's `smooth-wordmark` branch in `README.md` and `gateway/site/build.ts`)
 - **Live worktrees (sprint):** `/Users/jason/unstale-edge-sprint` (tracker), `/Users/jason/unstale-ws6b` (#238), `/Users/jason/unstale-ws9-no-key` + `/Users/jason/unstale-ws9-scout` (#231), `/Users/jason/unstale-parity` (paid answer caches; keep)
 - **Live subagents:** #238 reviewer (Fable). Idle, resumable: matrix EM, no-key eval agent.
 - **Merged + verified:** WS0 → #213 `673c191`
@@ -359,3 +359,6 @@ OpenRouter parity, repeat eval runs.
 - CEO: "merge 241. deferr deploye retry to you - i have no uncomitted work i care about any longer". #241 merged at `a33ec49` by the PM; worktree removed. Deploy-retry PR dispatched (Opus). The CEO's uncommitted work in `/Users/jason/unstale` no longer constrains which files agents change in their own worktrees (still never edit that checkout).
 - Ingest restarted by schedule at 17:17 UTC on `0de79cb` (before the fix). Next: verify the first run on `a33ec49` (freshness falling, no token rise from check slices, no `ENAMETOOLONG`), then resume the no-key evaluation (#231).
 - Docs draft #240 updated to `cecce32` (matches `0de79cb`), still held.
+- #243 (deploy retry: 3 attempts, 300 s timeout each, stated wait floored at 5 s and capped at 120 s) merged at `276a23d` by the PM after APPROVE at `d5385f9` and at `cfe3115`. Left open, not blocking: test for "first match" wait and a time assertion on the hang case; exit 137 after the hard kill prints no "timed out" warning. Not established: that a retry clears Cloudflare's throttle in production.
+- Ingest run 43066638798 (schedule, 17:17 UTC) is on `8ab70ba`, before the starvation fix. Watch `bqxb7pi9r` waits for the first run started after 17:30 UTC; then dispatch a verifier for the fix in production, then resume the no-key evaluation (#231).
+- Open PRs now: #240 (docs and site, draft, held for the CEO), #231 (no-key evaluation draft).
