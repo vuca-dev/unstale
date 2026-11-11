@@ -13,6 +13,7 @@ mod prompts;
 mod pypi;
 mod uninstall;
 mod funnel;
+mod hooks;
 mod inference;
 mod lines;
 mod maintenance;
@@ -282,8 +283,10 @@ const GITATTR_LINE: &str = ".unstale/ledger.jsonl merge=union";
 static DEFAULT_SERVICE: Option<&str> = option_env!("UNSTALE_DEFAULT_SERVICE");
 
 fn main() -> ExitCode {
+    // The session-start hook's deadline counts from here.
+    let started = std::time::Instant::now();
     let cli = Cli::parse();
-    match dispatch(cli) {
+    match dispatch(cli, started) {
         Ok(code) => ExitCode::from(code),
         Err(e) => {
             eprintln!("error: {e:#}");
@@ -300,7 +303,7 @@ fn start_dir(dir: &Option<PathBuf>) -> Result<PathBuf> {
     d.canonicalize().with_context(|| format!("directory {}", d.display()))
 }
 
-fn dispatch(cli: Cli) -> Result<u8> {
+fn dispatch(cli: Cli, started: std::time::Instant) -> Result<u8> {
     if let Cmd::CountTerms { repos } = &cli.cmd {
         return count_terms(repos);
     }
@@ -309,7 +312,7 @@ fn dispatch(cli: Cli) -> Result<u8> {
     }
     // Session start is never blocked or broken: the hook guards everything itself, before any step that can fail.
     if matches!(cli.cmd, Cmd::Notify) {
-        return Ok(session::hook(cli.dir.as_deref()));
+        return Ok(session::hook(cli.dir.as_deref(), started));
     }
     let start = start_dir(&cli.dir)?;
     if matches!(cli.cmd, Cmd::Uninstall) { return uninstall::run(&start); }

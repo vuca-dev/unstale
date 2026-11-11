@@ -1187,10 +1187,6 @@ pub fn session_coverage_line(ctx: &Ctx, timeout: Duration) -> Option<String> {
 
 pub(crate) const SESSION_HOOK_SETTINGS_PATH: &str = ".claude/settings.local.json";
 pub(crate) const SESSION_HOOK_EXCLUDE_LINE: &str = "/.claude/settings.local.json";
-fn is_own_hook(h: &serde_json::Value) -> bool {
-    h.get("command").and_then(|c| c.as_str()).is_some_and(|c| c.ends_with(" notify") && c.contains("unstale"))
-}
-
 /// An executable a package manager deletes or replaces: a one-off runner's cache or a versioned Homebrew directory.
 fn transient(p: &Path) -> bool {
     p.components().any(|c| {
@@ -1231,34 +1227,17 @@ fn invocation_path() -> Option<PathBuf> {
     })
 }
 
+/// The arguments of Claude Code's hook command, after the executable.
+pub(crate) const SESSION_HOOK_ARGS: &str = "-C \"$CLAUDE_PROJECT_DIR\" notify";
+
 /// Claude Code's SessionStart hook runs `unstale notify` (per user: `.claude/settings.local.json`, Git-excluded,
-/// because it names this machine's executable). Other settings and hooks are kept; ours is replaced, not repeated.
+/// because it names this machine's executable). The user's settings keep their bytes; ours is replaced, not repeated
+/// (`hooks`). A file Git tracks, a link, a read-only or unreadable file is left alone.
 fn install_session_hook(ctx: &Ctx) -> Result<()> {
-    let path = ctx.root.join(SESSION_HOOK_SETTINGS_PATH);
-    if std::fs::symlink_metadata(&path).is_ok_and(|m| m.file_type().is_symlink()) {
+    let command = format!("{} {SESSION_HOOK_ARGS}", crate::hooks::invocation_word());
+    if crate::hooks::install(&ctx.root, SESSION_HOOK_SETTINGS_PATH, &command, SESSION_HOOK_ARGS, 10)?.is_err() {
         return Ok(());
     }
-    let mut settings: serde_json::Value = match std::fs::read_to_string(&path) {
-        Ok(text) => match serde_json::from_str(&text) {
-            Ok(v @ serde_json::Value::Object(_)) => v,
-            _ => return Ok(()), // unreadable settings are the user's; never overwrite them
-        },
-        Err(_) => serde_json::json!({}),
-    };
-    let command = format!("{} -C \"$CLAUDE_PROJECT_DIR\" notify", invocation());
-    remove_own_hooks(&mut settings);
-    let starts = settings
-        .as_object_mut()
-        .unwrap()
-        .entry("hooks")
-        .or_insert_with(|| serde_json::json!({}))
-        .as_object_mut()
-        .ok_or_else(|| anyhow!("{SESSION_HOOK_SETTINGS_PATH}: `hooks` is not an object"))?
-        .entry("SessionStart")
-        .or_insert_with(|| serde_json::json!([]));
-    let Some(starts) = starts.as_array_mut() else { bail!("{SESSION_HOOK_SETTINGS_PATH}: `hooks.SessionStart` is not a list") };
-    starts.push(serde_json::json!({"hooks": [{"type": "command", "command": command, "timeout": 10}]}));
-    util::write_atomic(&path, format!("{}\n", serde_json::to_string_pretty(&settings)?).as_bytes())?;
     if let Some(p) = git(&ctx.root, &["rev-parse", "--git-path", "info/exclude"]) {
         let p = PathBuf::from(p.trim());
         let exclude = if p.is_absolute() { p } else { ctx.root.join(p) };
@@ -1269,27 +1248,6 @@ fn install_session_hook(ctx: &Ctx) -> Result<()> {
         }
     }
     Ok(())
-}
-
-/// Removes our SessionStart entries, and the containers they leave empty. True when anything was removed.
-pub(crate) fn remove_own_hooks(settings: &mut serde_json::Value) -> bool {
-    let Some(starts) = settings.pointer_mut("/hooks/SessionStart").and_then(|s| s.as_array_mut()) else { return false };
-    let before = starts.len();
-    for group in starts.iter_mut() {
-        if let Some(hs) = group.get_mut("hooks").and_then(|h| h.as_array_mut()) {
-            hs.retain(|h| !is_own_hook(h));
-        }
-    }
-    starts.retain(|g| g.get("hooks").and_then(|h| h.as_array()).is_none_or(|h| !h.is_empty()));
-    let removed = starts.len() != before;
-    if starts.is_empty() {
-        let hooks = settings.get_mut("hooks").and_then(|h| h.as_object_mut()).unwrap();
-        hooks.remove("SessionStart");
-        if hooks.is_empty() {
-            settings.as_object_mut().unwrap().remove("hooks");
-        }
-    }
-    removed
 }
 
 /// Previous public skills, retained only to migrate managed installations.
@@ -1417,7 +1375,8 @@ pub(crate) fn integrate(ctx: &Ctx) -> Result<Vec<String>> {
             if names.contains(&"Claude Code") {
                 install_session_hook(ctx)?;
             }
-            if names.contains(&"Codex") {
+            // Codex's and opencode's session start: with the edge-inference switch on only, until the release.
+            if names.contains(&"Codex") && util::edge_inference() {
                 crate::session::install_codex_hook(ctx)?;
             }
             installed.extend(names.iter().map(|n| n.to_string()));
@@ -1425,7 +1384,7 @@ pub(crate) fn integrate(ctx: &Ctx) -> Result<Vec<String>> {
     }
     if !installed.is_empty() { retire_legacy_skills(ctx, ".cursor/skills")?; }
     // opencode reads the skills from either directory; its session start runs through a plugin.
-    if !installed.is_empty() { crate::session::install_opencode_plugin(ctx)?; }
+    if !installed.is_empty() && util::edge_inference() { crate::session::install_opencode_plugin(ctx)?; }
     util::write_atomic(
         &ctx.tool.join("state/integration-conflicts.json"),
         &serde_json::to_vec(&conflicts)?,

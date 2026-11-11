@@ -269,9 +269,6 @@ pub fn quick_check(loc: &str, cache_dir: &Path, techs: &BTreeSet<String>, events
 }
 
 fn quick_check_with(base: String, cache_dir: &Path, techs: &BTreeSet<String>, events: bool, timeout: Duration, key: Option<&[u8; 32]>) -> Result<Quick> {
-    if techs.is_empty() {
-        return Ok(Quick::Changed);
-    }
     let key_id = key.map(|k| sha256_hex(k));
     let cached = std::fs::read(cache_dir.join(TECHNOLOGIES)).ok();
     let Some(cond) = std::fs::read(technologies_validators_path(cache_dir))
