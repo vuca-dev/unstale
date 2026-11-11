@@ -11,9 +11,9 @@
 - **Ground truth:** GitHub PR state. Repo `vuca-dev/unstale`.
 - **Base:** `origin/main` @ `979e779` (`ci` green)
 - **Base health:** PR checks are `rust`, `central`, `gateway`; re-query before every merge.
-- **Open PRs:** #233 (terminal rework, READY at `04ae821`, in review; must rebase on `979e779`), #231 (WS9 draft); WS4b pending
+- **Open PRs:** #233 (terminal rework, READY at `6a4bf9b`, re-review), #234 (processed mark, READY at `df3ebdf`, review), #235 (disk bounds, READY at `ad35c1e`, review), #231 (WS9 draft). Merge order: #233, #234, then #235 rebases and regenerates goldens.
 - **Live worktrees (sprint):** `/Users/jason/unstale-edge-sprint` (tracker)
-- **Live subagents:** ws4b-impl (Opus 5.5), terminal-rework reviewer (Fable 5.2; the harness verifier, reused). terminal-rework EM idle awaiting review (worktree kept). ws9 paused at the data gate (background watch on ingest).
+- **Live subagents:** three reviewers (Fable 5.2): #233 re-review, #234, #235. EMs idle with worktrees kept: terminal-rework (`/Users/jason/unstale-terminal-rework`), ws4b (`/Users/jason/unstale-ws4b`). ws9 paused at the data gate.
 - **Merged + verified:** WS0 → #213 `673c191`
 - **Next:** review and merge WS10-FIX, terminal rework, WS4b A and B; then parity and cost runs; WS6b full matrix; WS9 run; WS8 draft last
 - **Sprint API spend so far:** $0 of $10
@@ -249,7 +249,10 @@ OpenRouter parity, repeat eval runs.
   an `extracted` mark on each change event. **Precondition for parity, cost measurement and WS7.**
 - Behaviour change: `key_env` must be the route's known key variable; a team's custom name is refused (CEO asked
   whether to allow custom names from the user config only).
-- WS4b (fresh EM): PR A the mark plus four review notes; PR B disk bounds. Then parity runs (about $1.65).
+- **WS4b READY:** #234 `EventLine.extracted`, set by central after records are saved, backfilled without model
+  calls on each job's next refresh (p50 4.7 h, p90 4 days, p99 23 days); share a client would still process on
+  three real repos: 48.8% → under 1%, 40.5% → 0.6%, 9.5% → about 5%. #235 disk bounds: 100 MB cap
+  (`UNSTALE_CACHE_MAX_MB`), behind the switch; real-cache copy 152 → 100 MB. Then parity runs (about $1.65).
 - **PR 1 #228 and PR 2 #230 READY, not merged** (bot skipped both heads). Local 495 unit + suites, central 608.
   Records land in `{cache}/inference/records/<tech>.json`, merged by `cache::load_tech`; result cache
   `{cache}/inference/results/`; `unstale internal run-step --step extract|labels|match --in FILE.jsonl`.
