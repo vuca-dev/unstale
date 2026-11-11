@@ -31,6 +31,15 @@ configuration in HOME and above the repository (`MAY_OPEN` and `REGISTRY_CONFIG`
   advisory database (`REGISTRY_HOSTS`), each a `CONNECT` and nothing else. What is asked inside the tunnel cannot be
   read: the client trusts only its bundled roots, and it has no address override for the registries. The proxy
   refuses the tunnels, so each command there waits about 25 s on the client's own retries.
+- **Monthly token limit, cache reuse, upgrades:** a limit of one token stops the work after the most needed
+  technology's first call (demand order, not name order), and a repository's limit only lowers the user's
+  (`the_budget_defers_work_in_demand_order`); a second repository with the same stack makes no model call
+  (`a_second_repository_reuses_the_cached_results`). The client rows `upgraded` and `below-min` set the repository up
+  first, then move the catalog: the previous release's binary is not built here, so the earlier setup is this build's,
+  and the `min_client` bump is the catalog naming a version above this one. Below it, the client must say so and keep
+  its cached catalog.
+- **Known product bugs** (`KNOWN_BUGS` in `checks.rs`): violations the harness may not fix are listed with where they
+  come from; they show in the transcripts and do not fail the run, and one no scenario shows any more fails it.
 - At most one question per path, none with `--yes` (even at a terminal), none without a person at the terminal (an agent driving a pseudo-terminal gets the
   listing instead); a question dismissed with Ctrl-D records no provider and is not asked again; Ctrl-C records
   nothing. The catalog's notice (what to do, by a date) and update lines show at most once a day.

@@ -260,7 +260,7 @@ pub(crate) fn provider_host(answer: Answer, elsewhere: &str) -> Mock {
             r
         };
         match answer {
-            Answer::Ok | Answer::BudgetSpent => Response::json(200, &ok),
+            Answer::Ok | Answer::BudgetSpent | Answer::LimitPartway => Response::json(200, &ok),
             Answer::Refused => {
                 Response::json(401, r#"{"error":{"message":"Incorrect API key provided"}}"#)
             }
@@ -433,13 +433,32 @@ impl World {
         write(&repo.join(".env"), &env);
         if let Some(choice) = s.config.choice {
             let parsed = choice_json(choice);
+            let mut config = json!({"schema": 1, "catalog": w.catalog_host.url, "mode": "collaborative",
+                "service": w.catalog_host.url, "inference": parsed});
+            if s.config.session_sync_off {
+                config["session_sync"] = json!(false);
+            }
             write(
                 &repo.join(".unstale/config.json"),
-                &serde_json::to_string_pretty(
-                    &json!({"schema": 1, "catalog": w.catalog_host.url, "mode": "collaborative",
-                    "service": w.catalog_host.url, "inference": parsed}),
-                )
-                .unwrap(),
+                &serde_json::to_string_pretty(&config).unwrap(),
+            );
+        }
+        if let Some((user, repo_limit)) = s.limits {
+            let v = |t: &str| t.parse::<u64>().map(|n| json!(n)).unwrap_or(json!(t));
+            write(
+                &w.home().join(".config/unstale/config.json"),
+                &json!({"monthly_token_limit": v(user)}).to_string(),
+            );
+            let p = repo.join(".unstale/config.json");
+            let mut c: serde_json::Value =
+                serde_json::from_str(&std::fs::read_to_string(&p).unwrap()).unwrap();
+            c["monthly_token_limit"] = v(repo_limit);
+            write(&p, &c.to_string());
+        }
+        if s.answer == Answer::LimitPartway {
+            write(
+                &w.home().join(".config/unstale/config.json"),
+                r#"{"monthly_token_limit": 1}"#,
             );
         }
         std::fs::create_dir_all(w.base.path().join("bin")).unwrap();

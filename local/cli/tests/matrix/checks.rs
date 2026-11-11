@@ -191,10 +191,20 @@ pub(crate) const INTERNAL_WORDS: [&str; 9] = [
 /// Product bugs the matrix found and the harness may not fix: each a violation's start and where it comes from. A
 /// scenario that shows one passes with it listed in its transcript; a listed bug no scenario shows any more fails the
 /// run, so the list is kept true.
-pub(crate) const KNOWN_BUGS: &[(&str, &str)] = &[(
-    "wording: `unstale status --wait 0 --no-animation` printed the same warning twice",
-    "a model stage stopped for a key not set here: setup's key warning (src/setup.rs, status warnings) and the session state's stored deferral (src/session.rs, status_lines) are the same line",
-)];
+pub(crate) const KNOWN_BUGS: &[(&str, &str)] = &[
+    (
+        "wording: `unstale status --wait 0 --no-animation` printed the same warning twice",
+        "a model stage stopped for a key not set here or the monthly token limit: setup's own warning for it (src/setup.rs, status warnings) and the session state's stored deferral (src/session.rs, status_lines) are the same line, printed twice",
+    ),
+    (
+        "min_client: no command said the catalog no longer serves this client",
+        "after the catalog raises min_client above this client, `unstale init` and `unstale status` sync silently and print no refusal; only `sync` and the session-start sync say it",
+    ),
+    (
+        "model steps: `unstale session-sync` said every release note is read",
+        "after a refused catalog sync (min_client), session-sync's model stage gets the technologies of the failed sync (none) instead of the cached ones, then ends with \"every release note here is read\" while releases wait (src/session.rs, background)",
+    ),
+];
 
 /// The known bug a violation is, if any.
 pub(crate) fn known_bug(violation: &str) -> Option<&'static str> {
@@ -440,7 +450,11 @@ pub(crate) fn check(s: &Scenario, se: &Session) -> Vec<String> {
     // with Ctrl-C may exit otherwise.
     for r in &se.ran {
         let pressed_ctrl_c = s.invocation.answer == "\u{3}" && questions(&r.output) > 0;
-        if r.code != 0 && !pressed_ctrl_c {
+        // Below the catalog's min_client, `sync` refuses with its message and its own exit code (4).
+        let refused = s.client.id == "below-min"
+            && r.code == 4
+            && r.output.contains("sync refused: the catalog needs unstale");
+        if r.code != 0 && !pressed_ctrl_c && !refused {
             v.push(format!("hold-the-line 4: `{}` exited {}", r.shown, r.code));
         }
         if r.output.lines().any(|l| l.starts_with("error:")) {
@@ -451,15 +465,21 @@ pub(crate) fn check(s: &Scenario, se: &Session) -> Vec<String> {
     for r in se.ran.iter().filter(|r| r.step == Step::SessionSync) {
         let lines: Vec<&str> = r.output.lines().collect();
         let last = lines.last().copied().unwrap_or("");
-        if !r.terminal && lines.len() != 1 {
+        let results = lines.iter().filter(|l| !l.starts_with("warning: ")).count();
+        if !r.terminal && (results > 1 || lines.is_empty()) {
             v.push(format!(
-                "hold-the-line 4: `{}` without a terminal printed {} lines, not one: {:?}",
+                "hold-the-line 4: `{}` without a terminal printed {} result lines, not at most one with its warnings: {:?}",
                 r.shown,
-                lines.len(),
+                results,
                 r.output
             ));
         }
-        if fails && routes_usable(&chosen) && !last.starts_with("warning: ") {
+        // Below min_client nothing new arrives, so a failing provider may never be asked.
+        if fails
+            && routes_usable(&chosen)
+            && s.client.id != "below-min"
+            && !last.starts_with("warning: ")
+        {
             v.push(format!(
                 "hold-the-line 4: a provider or budget failure did not end `{}` with one warning line: {last:?}",
                 r.shown
@@ -487,6 +507,15 @@ pub(crate) fn check(s: &Scenario, se: &Session) -> Vec<String> {
         if r.took >= Duration::from_secs(2) {
             v.push(format!("hold-the-line 5: session start took {:?}", r.took));
         }
+    }
+
+    // Below min_client the client says so: the catalog no longer serves it.
+    if s.client.id == "below-min" && !se.ran.iter().any(|r| r.output.contains("needs unstale")) {
+        v.push("min_client: no command said the catalog no longer serves this client".into());
+    }
+    // Below min_client the cached catalog is kept.
+    if s.client.id == "below-min" && !w.cache().join("v1/tech/next.json").exists() {
+        v.push("min_client: the cached catalog was not kept after the refusal".into());
     }
 
     // With the switch off, session start does only what it did before: no background stage, no state of its own, no
@@ -528,6 +557,25 @@ pub(crate) fn check(s: &Scenario, se: &Session) -> Vec<String> {
     for r in asked.difference(&due) {
         v.push(format!(
             "model steps: {r} was sent for extraction, though the catalog covers it or marks it processed"
+        ));
+    }
+    // "Every release note here is read" only when none waits.
+    for r in se.ran.iter().filter(|r| r.step == Step::SessionSync) {
+        if r.output
+            .contains("Nothing new to read: every release note here is read.")
+            && asked != due
+        {
+            v.push(format!(
+                "model steps: `{}` said every release note is read, with {:?} unread",
+                r.shown,
+                due.difference(&asked).collect::<Vec<_>>()
+            ));
+        }
+    }
+    // A limit of one token is spent by the first call: only the most needed technology's release is asked about.
+    if s.answer == Answer::LimitPartway && asked != BTreeSet::from(["react@19.2.0".to_string()]) {
+        v.push(format!(
+            "monthly token limit: the work did not stop after the most needed technology's first call: {asked:?}"
         ));
     }
     // A pass that stopped says why in the state (a key not set here, Codex logged out): then some may wait.
@@ -619,7 +667,7 @@ pub(crate) fn check(s: &Scenario, se: &Session) -> Vec<String> {
         .map(|r| {
             r.output
                 .lines()
-                .filter(|l| l.contains(&newer_version()))
+                .filter(|l| l.starts_with(&format!("unstale {} available", newer_version())))
                 .count()
         })
         .sum();
@@ -1175,21 +1223,114 @@ fn session_start_returns_within_two_seconds_and_prints_at_most_one_line() {
     drop(silent);
 }
 
-#[test]
-#[ignore = "needs the client's pipeline steps, the only spenders of the budget, which are not on main yet"]
-fn the_budget_defers_work_in_demand_order() {}
+/// The releases a session sent for extraction, and how many provider calls it made.
+fn extraction_calls(se: &Session) -> (BTreeSet<String>, usize) {
+    let reqs = se.world.provider_host.requests();
+    let asked = reqs
+        .iter()
+        .flat_map(|r| model::releases_asked(&model::prompt_of(&r.body)))
+        .collect();
+    (asked, reqs.len())
+}
 
+/// The monthly token limit stops the work in demand order (react's record names two of this stack's packages, next's
+/// one, so react's release is read first though `next` sorts first), and a repository's limit can only lower the
+/// user's: a repository saying `none` does not lift a user's limit of 1 token; a repository's 1 lowers the user's
+/// `none`. (The user's limit of 1 alone is the `limit-partway` scenario.)
 #[test]
-#[ignore = "needs the client's pipeline steps, whose results a second repository would reuse, which are not on main yet"]
-fn a_second_repository_reuses_the_cached_results() {}
+fn the_budget_defers_work_in_demand_order() {
+    for limits in [("1", "none"), ("none", "1")] {
+        let mut s = Scenario::new(
+            by_id(KEYS, "shell-key", |v| v.id),
+            by_id(CODEX, "no-codex", |v| v.id),
+            by_id(INVOCATIONS, "ci", |v| v.id),
+            by_id(REPO_CONFIGS, "config-set", |v| v.id),
+            &CLIENTS[0],
+            Answer::Ok,
+        );
+        s.limits = Some(limits);
+        let se = run_session(&s);
+        let (asked, calls) = extraction_calls(&se);
+        let sync = se.ran.iter().find(|r| r.step == Step::SessionSync).unwrap();
+        eprintln!(
+            "limits {limits:?}: {calls} calls, {asked:?}: {}",
+            sync.output
+        );
+        assert_eq!(calls, 1, "{limits:?}");
+        assert_eq!(
+            asked,
+            BTreeSet::from(["react@19.2.0".to_string()]),
+            "{limits:?}"
+        );
+        assert!(
+            sync.output.contains("warning: monthly token limit reached"),
+            "{limits:?}: {}",
+            sync.output
+        );
+        let broken: Vec<String> = check(&s, &se)
+            .into_iter()
+            .filter(|l| known_bug(l).is_none())
+            .collect();
+        assert!(broken.is_empty(), "{broken:?}");
+    }
+}
 
+/// A second repository with the same stack, on the same machine, makes no model call: what the first paid for is in
+/// the user-level caches. Its report reads the records all the same.
 #[test]
-#[ignore = "needs a published previous release that has the switch, to upgrade from"]
-fn upgrading_from_the_previous_release_during_grace() {}
-
-#[test]
-#[ignore = "needs the min_client value the catalog raises to at cutover"]
-fn running_after_the_min_client_bump() {}
+fn a_second_repository_reuses_the_cached_results() {
+    let s = Scenario::new(
+        by_id(KEYS, "shell-key", |v| v.id),
+        by_id(CODEX, "no-codex", |v| v.id),
+        by_id(INVOCATIONS, "ci", |v| v.id),
+        by_id(REPO_CONFIGS, "config-set", |v| v.id),
+        &CLIENTS[0],
+        Answer::Ok,
+    );
+    let se = run_session(&s);
+    let w = &se.world;
+    let (asked, first) = extraction_calls(&se);
+    assert_eq!(asked, releases_to_read());
+    let second = w.home().join("code/shop2");
+    for rel in [
+        "package.json",
+        "node_modules/next/package.json",
+        ".unstale/config.json",
+    ] {
+        write(
+            &second.join(rel),
+            &std::fs::read_to_string(w.repo().join(rel)).unwrap(),
+        );
+    }
+    Command::new("git")
+        .args(["init", "-q"])
+        .current_dir(&second)
+        .status()
+        .unwrap();
+    let mut outputs = vec![];
+    for args in [
+        vec!["init", "--yes", "--wait", "0", "--no-animation"],
+        vec!["session-sync"],
+        vec!["status", "--wait", "0", "--no-animation"],
+    ] {
+        let mut c = w.command(&s, &args.iter().map(|a| a.to_string()).collect::<Vec<_>>());
+        c.current_dir(&second);
+        let (code, out, err) = support::run_within(&mut c, Duration::from_secs(60));
+        assert_eq!(code, 0, "{args:?}: {out}{err}");
+        outputs.push(out);
+    }
+    eprintln!("{}", outputs.join("\n---\n"));
+    assert_eq!(
+        w.provider_host.requests().len(),
+        first,
+        "the second repository made model calls"
+    );
+    assert!(
+        outputs[2].contains("next 16.0.0 → 16.3.0"),
+        "the second repository's report reads the records: {}",
+        outputs[2]
+    );
+}
 
 /// Whether the chosen provider's routes are ones a pass can call: a provider is chosen and its key variables are its
 /// routes' own.

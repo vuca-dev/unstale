@@ -103,7 +103,7 @@ fn every_scenario_holds_the_line_and_matches_its_golden_transcript() {
         entries.push((s, text, cast));
     }
     for (start, why) in KNOWN_BUGS {
-        if !bugs_seen.contains(why) {
+        if only.is_none() && !bugs_seen.contains(why) {
             failures.push(format!(
                 "the known product bug {start:?} ({why}) no longer shows in any scenario: remove it from KNOWN_BUGS"
             ));

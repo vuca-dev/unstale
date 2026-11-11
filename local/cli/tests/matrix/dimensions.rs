@@ -66,6 +66,7 @@ pub(crate) struct Invocation {
 pub(crate) const INVOCATIONS: &[Invocation] = &[
     Invocation { id: "terminal", group: "Installs it at a terminal", title: "first run in a terminal", terminal: true, person: true, answer: "\n", ci: false, env: &[], steps: &[Step::Init, Step::Sync, Step::SessionSync, Step::Status] },
     Invocation { id: "terminal-yes", group: "Installs it at a terminal", title: "first run in a terminal with --yes", terminal: true, person: true, answer: "\n", ci: false, env: &[], steps: &[Step::InitYes, Step::Sync, Step::SessionSync, Step::Status] },
+    Invocation { id: "terminal-no-hook", group: "Installs it at a terminal", title: "first run in a terminal, with no agent session-start hook", terminal: true, person: true, answer: "\n", ci: false, env: &[], steps: &[Step::Init, Step::Sync, Step::RemoveHooks, Step::Status, Step::SessionSync, Step::Status] },
     Invocation { id: "terminal-dismiss", group: "Installs it at a terminal", title: "dismissed with Ctrl-D in a terminal", terminal: true, person: true, answer: "\u{4}", ci: false, env: &[], steps: &[Step::Init, Step::Init, Step::Status] },
     Invocation { id: "terminal-interrupt", group: "Installs it at a terminal", title: "interrupted with Ctrl-C at the question", terminal: true, person: true, answer: "\u{3}", ci: false, env: &[], steps: &[Step::Init, Step::Status] },
     Invocation { id: "terminal-details", group: "Installs it at a terminal", title: "asking for the details at the question", terminal: true, person: true, answer: "d\n", ci: false, env: &[], steps: &[Step::Init, Step::Status] },
@@ -83,17 +84,20 @@ pub(crate) struct RepoConfig {
     pub(crate) title: &'static str,
     /// The `--inference` value the config records.
     pub(crate) choice: Option<&'static str>,
+    /// `"session_sync": false`: the session-start sync turned off for this repository.
+    pub(crate) session_sync_off: bool,
 }
 
 #[rustfmt::skip]
 pub(crate) const REPO_CONFIGS: &[RepoConfig] = &[
-    RepoConfig { id: "no-config", title: "", choice: None },
-    RepoConfig { id: "config-set", title: "the repo config names OpenAI", choice: Some("env:OPENAI_API_KEY") },
-    RepoConfig { id: "config-missing", title: "the repo config names a key that is not here", choice: Some("env:OPENROUTER_API_KEY") },
-    RepoConfig { id: "config-jev-openai", title: "the repo config names the labelling service with OpenAI", choice: Some("jev+env:OPENAI_API_KEY") },
-    RepoConfig { id: "config-jev-codex", title: "the repo config names the labelling service with Codex", choice: Some("jev+codex") },
-    RepoConfig { id: "config-codex", title: "the repo config names Codex", choice: Some("codex") },
-    RepoConfig { id: "config-anthropic", title: "the repo config names Anthropic", choice: Some("env:ANTHROPIC_API_KEY") },
+    RepoConfig { id: "no-config", title: "", choice: None, session_sync_off: false },
+    RepoConfig { id: "config-set", title: "the repo config names OpenAI", choice: Some("env:OPENAI_API_KEY"), session_sync_off: false },
+    RepoConfig { id: "config-missing", title: "the repo config names a key that is not here", choice: Some("env:OPENROUTER_API_KEY"), session_sync_off: false },
+    RepoConfig { id: "config-jev-openai", title: "the repo config names the labelling service with OpenAI", choice: Some("jev+env:OPENAI_API_KEY"), session_sync_off: false },
+    RepoConfig { id: "config-jev-codex", title: "the repo config names the labelling service with Codex", choice: Some("jev+codex"), session_sync_off: false },
+    RepoConfig { id: "config-codex", title: "the repo config names Codex", choice: Some("codex"), session_sync_off: false },
+    RepoConfig { id: "config-session-sync-off", title: "the repo config names OpenAI and turns the session-start sync off", choice: Some("env:OPENAI_API_KEY"), session_sync_off: true },
+    RepoConfig { id: "config-anthropic", title: "the repo config names Anthropic", choice: Some("env:ANTHROPIC_API_KEY"), session_sync_off: false },
 ];
 
 pub(crate) struct Client {
@@ -101,10 +105,16 @@ pub(crate) struct Client {
     pub(crate) title: &'static str,
 }
 
-/// The upgrade rows (during grace, after the `min_client` bump) are placeholders below until they can run.
+/// Which client meets the repository. The previous release's binary is not built here: an earlier setup is made by
+/// this build, then the catalog moves as it does at a release. "upgraded": the catalog now names this version as both
+/// the newest and the oldest it serves (the grace period over, the user on the new client). "below-min": the catalog
+/// raises `min_client` above this version, as it does at cutover, and the client must refuse with its message and
+/// keep its cached catalog.
 #[rustfmt::skip]
 pub(crate) const CLIENTS: &[Client] = &[
     Client { id: "fresh", title: "" },
+    Client { id: "upgraded", title: "set up earlier, then the client upgraded" },
+    Client { id: "below-min", title: "set up earlier, then the catalog stopped serving this version" },
 ];
 
 /// How the mock provider (or the fake `codex`) answers a model call.
@@ -125,6 +135,8 @@ pub(crate) enum Answer {
     BudgetSpent,
     /// A redirect to another address (307).
     Redirect,
+    /// The user's monthly token limit is 1 token: the first call spends it.
+    LimitPartway,
 }
 
 impl Answer {
@@ -138,6 +150,7 @@ impl Answer {
             Answer::NotOnPlan => "model-not-on-plan",
             Answer::BudgetSpent => "budget-spent",
             Answer::Redirect => "redirect",
+            Answer::LimitPartway => "limit-partway",
         }
     }
     pub(crate) fn failing(self) -> bool {
@@ -186,6 +199,9 @@ pub(crate) const CRITICAL: &[(&str, &str, &str, &str, &str, Answer)] = &[
     ("An agent's sessions start with the provider rate limiting", "shell-key", "codex", "agent-pty-codex", "config-set", Answer::RateLimited),
     ("An agent's sessions start with the monthly token limit reached", "shell-key", "no-codex", "agent-pty-claude", "config-set", Answer::BudgetSpent),
     ("An agent installs it with the release-notes switch off", "shell-key", "codex", "agent-switch-off", "no-config", Answer::Ok),
+    ("The monthly token limit runs out partway: the most needed technology is read first", "shell-key", "no-codex", "terminal", "config-set", Answer::LimitPartway),
+    ("Releases wait and no agent session-start hook is installed", "shell-key", "no-codex", "terminal-no-hook", "config-set", Answer::Ok),
+    ("Releases wait and the repo turns the session-start sync off", "shell-key", "no-codex", "terminal", "config-session-sync-off", Answer::Ok),
     ("The provider answers with a redirect", "shell-key", "no-codex", "terminal", "no-config", Answer::Redirect),
     ("At a terminal, --yes asks nothing", "shell-key", "codex", "terminal-yes", "no-config", Answer::Ok),
     ("Anthropic refuses the key", "anthropic-key", "no-codex", "terminal", "config-anthropic", Answer::Refused),
@@ -226,6 +242,8 @@ pub(crate) enum Step {
     /// A session of the agent that installed unstale starts: its installed session-start hook runs as the agent runs
     /// it, and the background stage the hook starts (the same sync and model steps) runs to its end.
     SessionStart,
+    /// The agent session-start hooks removed, as a repository without an agent that has them is.
+    RemoveHooks,
     /// A command the harness adds to show a check fails when its property breaks (never part of a real session).
     Injected,
 }
@@ -245,6 +263,8 @@ pub(crate) struct Scenario {
     /// Registry lookups on (no `UNSTALE_NO_REGISTRY`): the public npm and PyPI registries and the advisory database
     /// may be asked about public package names.
     pub(crate) registry: bool,
+    /// Monthly token limits set before the session: (the user's, this repository's), as stored.
+    pub(crate) limits: Option<(&'static str, &'static str)>,
     /// Test-only: a deliberate violation, to show the checks catch it.
     pub(crate) fault: Option<Fault>,
 }
@@ -293,6 +313,7 @@ impl Scenario {
             answer,
             critical: false,
             registry: false,
+            limits: None,
             fault: None,
         }
     }
@@ -311,6 +332,7 @@ impl Scenario {
             match self.answer {
                 Answer::Ok => "answers".to_string(),
                 Answer::BudgetSpent => "monthly token limit reached".to_string(),
+                Answer::LimitPartway => "a monthly token limit of 1 token".to_string(),
                 a => a.id().replace('-', " "),
             },
             if self.registry {

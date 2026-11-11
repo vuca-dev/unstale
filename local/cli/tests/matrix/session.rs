@@ -92,6 +92,37 @@ pub(crate) fn run_step(w: &World, s: &Scenario, step: Step, ran: &[Ran]) -> Opti
             s.invocation.terminal,
         )),
         Step::SessionStart => Some(session_start(w, s)),
+        Step::RemoveHooks => {
+            // The repository commits its own agent settings without unstale's hook: an installer never writes a file
+            // Git tracks, so no session-start hook is installed here.
+            for (rel, text) in [
+                (
+                    ".claude/settings.local.json",
+                    r#"{"permissions":{"allow":[]}}"#,
+                ),
+                (".codex/hooks.json", r#"{"hooks":{}}"#),
+                (
+                    ".opencode/plugins/unstale-session.js",
+                    "export const Mine = async () => ({});\n",
+                ),
+            ] {
+                write(&w.repo().join(rel), text);
+                let _ = Command::new("git")
+                    .args(["add", "-f", rel])
+                    .current_dir(w.repo())
+                    .status();
+            }
+            Some(Ran {
+                step: Step::RemoveHooks,
+                shown: String::new(),
+                terminal: false,
+                code: 0,
+                output: String::new(),
+                note: Some("the repository commits its own agent settings, so no session-start hook of unstale's is installed".into()),
+                stderr: None,
+                took: Duration::ZERO,
+            })
+        }
         Step::Injected => None,
     }
 }
@@ -477,6 +508,44 @@ pub(crate) fn run_session(s: &Scenario) -> Session {
     let world = World::new(s);
     let mut ran: Vec<Ran> = vec![];
     let mut chosen_at_model = None;
+    // An earlier client set the repository up; then the catalog moves as it does at a release.
+    if s.client.id != "fresh" {
+        for args in [
+            vec!["init", "--yes", "--wait", "0", "--no-animation"],
+            vec!["sync"],
+        ] {
+            let mut r = exec(
+                &world,
+                s,
+                args.iter().map(|a| a.to_string()).collect(),
+                false,
+            );
+            r.step = Step::Injected;
+            r.note = Some("earlier: set up by the client then installed (this build; the previous release's binary is not built here)".into());
+            ran.push(r);
+        }
+        let root = if s.client.id == "upgraded" {
+            json!({"schema": 1, "min_client": this_version(), "latest_client": this_version()})
+        } else {
+            json!({"schema": 1, "min_client": newer_version(), "latest_client": newer_version(),
+                "notice": {"id": "matrix", "until": "2026-11-30", "text": NOTICE}})
+        };
+        world._catalog.root(&root.to_string());
+        ran.push(Ran {
+            step: Step::Injected,
+            shown: String::new(),
+            terminal: false,
+            code: 0,
+            output: String::new(),
+            note: Some(if s.client.id == "upgraded" {
+                "the user upgrades the client; the catalog now names this version the newest and the oldest it serves".into()
+            } else {
+                "the catalog raises its oldest served version (min_client) above this client's".into()
+            }),
+            stderr: None,
+            took: Duration::ZERO,
+        });
+    }
     for &step in s.invocation.steps {
         if matches!(step, Step::SessionSync | Step::SessionStart) && chosen_at_model.is_none() {
             chosen_at_model = chosen(&world);
