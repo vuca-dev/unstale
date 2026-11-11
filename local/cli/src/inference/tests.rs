@@ -402,3 +402,42 @@ fn codex_runs_the_lean_flag_set_in_an_empty_directory_and_reads_turn_usage() {
     );
     assert!(!std::path::Path::new(work).exists());
 }
+
+#[test]
+fn a_batch_asks_for_every_item_by_id_and_returns_the_answers_it_got() {
+    let m = Mock::new(vec![(
+        200,
+        openai_ok(r#"{"a": {"ok": true}, "c": {"ok": false}}"#),
+    )]);
+    let f = Fixture::new();
+    let inf = f.inference(ProviderConfig::openai(), &m.url);
+    let items: Vec<(String, Value)> = ["a", "b", "c"]
+        .iter()
+        .map(|id| (id.to_string(), json!({"text": format!("item {id}")})))
+        .collect();
+    let b = Batch {
+        instructions: "Is each one ok?".into(),
+        items,
+        answer_schema: schema(),
+        max_tokens: 4000,
+    };
+    let r = inf.complete_batch(&b).unwrap();
+    assert_eq!(r.answers.len(), 2);
+    assert_eq!(r.answers["a"], json!({"ok": true}));
+    assert!(!r.answers.contains_key("b"));
+    let body = m.body(0);
+    let prompt = body["messages"][0]["content"].as_str().unwrap();
+    assert!(
+        prompt.starts_with("Is each one ok?") && prompt.contains("\"item b\""),
+        "{prompt}"
+    );
+    let s = &body["response_format"]["json_schema"]["schema"];
+    assert_eq!(s["required"], json!(["a", "b", "c"]));
+    assert_eq!(s["properties"]["b"], schema());
+    assert_eq!(s["additionalProperties"], false);
+    // Splitting a step's items: eight to a call.
+    let n: Vec<usize> = batches(&(0..19).collect::<Vec<_>>())
+        .map(<[i32]>::len)
+        .collect();
+    assert_eq!(n, vec![8, 8, 3]);
+}
