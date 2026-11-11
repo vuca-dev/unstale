@@ -56,6 +56,48 @@ pub struct State {
     /// Why the last model stage waited (the switch on only).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub deferred: Option<String>,
+    /// The manifest directories the last sync read and a fingerprint of their files, so a changed dependency starts
+    /// a sync even while the catalog is unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stack: Option<StackPrint>,
+}
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
+pub struct StackPrint {
+    pub dirs: Vec<String>,
+    pub print: String,
+}
+
+/// A fingerprint of the files directly in each manifest directory (name, size, modification time): cheap enough for
+/// session start, and it changes with any manifest or lockfile there. A new project directory elsewhere is seen at
+/// the next catalog change.
+fn stack_print(root: &Path, dirs: &[String]) -> String {
+    let mut lines = vec![];
+    for d in dirs {
+        let Ok(rd) = std::fs::read_dir(root.join(d)) else {
+            lines.push(format!("{d} -"));
+            continue;
+        };
+        for e in rd.flatten() {
+            let Ok(m) = e.metadata() else { continue };
+            if !m.is_file() {
+                continue;
+            }
+            let modified = m
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|t| t.as_nanos())
+                .unwrap_or(0);
+            lines.push(format!(
+                "{d}/{} {} {modified}",
+                e.file_name().to_string_lossy(),
+                m.len()
+            ));
+        }
+    }
+    lines.sort();
+    util::sha256_hex(lines.join("\n").as_bytes())
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
@@ -129,16 +171,25 @@ fn foreground(dir: Option<PathBuf>, started: Instant) -> Result<Option<String>> 
     let mut state = read_state(&ctx.tool);
     if enabled(&ctx) {
         let techs: BTreeSet<String> = state.technologies.iter().cloned().collect();
-        let due = match sync::quick_check(
-            &ctx.config.catalog,
-            &ctx.cache,
-            &techs,
-            util::edge_inference(),
-            CATALOG_TIMEOUT,
-        ) {
-            Ok(sync::Quick::Changed) => Ok(true),
-            Ok(sync::Quick::Unchanged) => Ok(inference::enabled() && model_work_pending(&ctx)),
-            Err(e) => Err(e),
+        // The repository's own manifests changed: a sync is due whatever the catalog says (no request needed).
+        let stack_changed = state
+            .stack
+            .as_ref()
+            .is_none_or(|p| stack_print(&ctx.root, &p.dirs) != p.print);
+        let due = if stack_changed {
+            Ok(true)
+        } else {
+            match sync::quick_check(
+                &ctx.config.catalog,
+                &ctx.cache,
+                &techs,
+                util::edge_inference(),
+                CATALOG_TIMEOUT,
+            ) {
+                Ok(sync::Quick::Changed) => Ok(true),
+                Ok(sync::Quick::Unchanged) => Ok(inference::enabled() && model_work_pending(&ctx)),
+                Err(e) => Err(e),
+            }
         };
         match due.and_then(|due| {
             if due {
@@ -248,7 +299,10 @@ pub fn background(ctx: &Ctx) -> Result<u8> {
     match outcome {
         Ok(done) => {
             state.failure = done.failure;
+            // Technologies that failed stay in the set: their cached index differs from the list, so the next quick
+            // check retries them.
             state.technologies = done.technologies.into_iter().collect();
+            state.stack = Some(done.stack);
             if done.arrived.records > 0 {
                 let a = state.arrived.get_or_insert_with(Arrived::default);
                 a.records += done.arrived.records;
@@ -279,12 +333,26 @@ fn repo_lock(tool: &Path) -> Option<std::fs::File> {
 
 struct Synced {
     technologies: BTreeSet<String>,
+    stack: StackPrint,
     arrived: Arrived,
     failure: Option<String>,
 }
 
 fn sync_now(ctx: &Ctx, stop: &(dyn Fn() -> bool + Sync)) -> Result<Synced> {
     let st = stack::detect(&ctx.root)?;
+    let dirs: Vec<String> = st
+        .packages
+        .iter()
+        .map(|p| p.dir.clone())
+        .chain(std::iter::once(".".into()))
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    // Taken before the sync: a manifest changed while it runs starts another.
+    let stack = StackPrint {
+        print: stack_print(&ctx.root, &dirs),
+        dirs,
+    };
     let cands = onboarding::candidates(ctx, &st);
     // Records already here, so only what is new is counted (a technology never synced counts in full).
     let before: std::collections::BTreeMap<String, usize> = cands
@@ -325,7 +393,13 @@ fn sync_now(ctx: &Ctx, stop: &(dyn Fn() -> bool + Sync)) -> Result<Synced> {
         util::one_line(&format!("{t}{more} could not be synced: {why}"), 200)
     });
     Ok(Synced {
-        technologies: rep.synced.iter().map(|t| t.technology.clone()).collect(),
+        technologies: rep
+            .synced
+            .iter()
+            .map(|t| t.technology.clone())
+            .chain(rep.failed.iter().map(|(t, _)| t.clone()))
+            .collect(),
+        stack,
         arrived,
         failure,
     })
@@ -442,7 +516,9 @@ pub fn install_codex_hook(ctx: &Ctx) -> Result<()> {
             Ok(v @ serde_json::Value::Object(_)) => v,
             _ => return Ok(()),
         },
-        Err(_) => serde_json::json!({}),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => serde_json::json!({}),
+        // Unreadable: the user's file, never replaced.
+        Err(_) => return Ok(()),
     };
     onboarding::remove_own_hooks(&mut hooks);
     let Some(events) = hooks

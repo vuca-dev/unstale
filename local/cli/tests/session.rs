@@ -724,3 +724,87 @@ fn the_codex_hook_keeps_the_users_entries_and_never_writes_a_file_git_tracks() {
             .contains(" notify")
     );
 }
+
+#[test]
+fn a_changed_manifest_or_a_failed_technology_starts_a_sync_while_the_catalog_is_unchanged() {
+    let cat = FixtureCatalog::new();
+    publish(&cat, 1);
+    cat.tech(
+        "prisma",
+        &[("6", vec![rec("prisma:a", "pkg:npm/prisma", "6.19.0")])],
+    );
+    list(&cat, &["next", "prisma"]);
+    let srv = Server::start(cat.dir.path().to_path_buf());
+    let env = Env::new();
+    env.init(&srv.base);
+    env.ok(&["session-sync"]);
+    assert!(synced(&env.state()), "{}", env.state());
+    srv.take_log();
+    // A new dependency: the hook asks the catalog nothing and the background stage syncs it.
+    let repo = env.repo.path();
+    std::fs::write(
+        repo.join("package.json"),
+        r#"{"name":"app","private":true,"dependencies":{"next":"16.0.1","prisma":"6.19.0"}}"#,
+    )
+    .unwrap();
+    std::fs::create_dir_all(repo.join("node_modules/prisma")).unwrap();
+    std::fs::write(
+        repo.join("node_modules/prisma/package.json"),
+        r#"{"name":"prisma","version":"6.19.0"}"#,
+    )
+    .unwrap();
+    session_start(&env, repo, "manifest changed");
+    wait_for(&env, |s| s["technologies"] == json!(["next", "prisma"]));
+    let log = srv.take_log();
+    assert_eq!(
+        log.first().map(String::as_str),
+        Some("/v1/root.json 200"),
+        "no quick request first: {log:?}"
+    );
+    assert!(
+        log.contains(&"/v1/tech/prisma.json 200".to_string()),
+        "{log:?}"
+    );
+    // A technology that failed to sync stays in the set, so the next session start tries it again.
+    cat.tech(
+        "next",
+        &[(
+            "16",
+            vec![
+                rec("next:r0", "pkg:npm/next", "16.0.1"),
+                rec("next:r1", "pkg:npm/next", "16.0.1"),
+            ],
+        )],
+    );
+    list(&cat, &["next", "prisma"]);
+    let shard = cat.dir.path().join(shard_path(&cat));
+    let bytes = std::fs::read(&shard).unwrap();
+    std::fs::remove_file(&shard).unwrap();
+    env.ok(&["session-sync"]);
+    let s = env.state();
+    assert!(
+        s["failure"]
+            .as_str()
+            .is_some_and(|f| f.starts_with("next could not be synced")),
+        "{s}"
+    );
+    assert_eq!(s["technologies"], json!(["next", "prisma"]));
+    std::fs::write(&shard, bytes).unwrap();
+    srv.take_log();
+    session_start(&env, repo, "after a failed technology");
+    wait_for(&env, |s| s.get("failure").is_none());
+    assert_eq!(
+        srv.take_log()[0],
+        "/v1/technologies.json 304",
+        "the list was unchanged; the cached index was not"
+    );
+}
+
+#[test]
+fn a_codex_hooks_file_that_cannot_be_read_is_left_alone() {
+    let env = Env::new();
+    // Not a file at all: setup still succeeds and leaves it as it was.
+    std::fs::create_dir_all(env.repo.path().join(".codex/hooks.json")).unwrap();
+    env.init("http://127.0.0.1:9");
+    assert!(env.repo.path().join(".codex/hooks.json").is_dir());
+}
