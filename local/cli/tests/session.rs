@@ -43,7 +43,11 @@ impl Server {
         std::thread::spawn(move || {
             for stream in listener.incoming().flatten() {
                 let (dir, l, m) = (dir.clone(), l.clone(), m.clone());
-                std::thread::spawn(move || serve(stream, &dir, &l, *m.lock().unwrap()));
+                std::thread::spawn(move || {
+                    // Read before serving: a guard held through `serve` would block every other connection.
+                    let mode = *m.lock().unwrap();
+                    serve(stream, &dir, &l, mode)
+                });
             }
         });
         Server { base, log, mode }

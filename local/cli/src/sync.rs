@@ -265,10 +265,14 @@ pub fn quick_check(loc: &str, cache_dir: &Path, techs: &BTreeSet<String>, events
         Source::Dir(_) => return Ok(Quick::Changed),
         Source::Http { base, .. } => base,
     };
+    quick_check_with(base, cache_dir, techs, events, timeout, catalog_key()?.as_ref())
+}
+
+fn quick_check_with(base: String, cache_dir: &Path, techs: &BTreeSet<String>, events: bool, timeout: Duration, key: Option<&[u8; 32]>) -> Result<Quick> {
     if techs.is_empty() {
         return Ok(Quick::Changed);
     }
-    let key_id = catalog_key()?.map(|k| sha256_hex(&k));
+    let key_id = key.map(|k| sha256_hex(k));
     let cached = std::fs::read(cache_dir.join(TECHNOLOGIES)).ok();
     let Some(cond) = std::fs::read(technologies_validators_path(cache_dir))
         .ok()
@@ -1155,6 +1159,63 @@ mod tests {
         assert_eq!(rep.synced.iter().map(|t| t.technology.as_str()).collect::<Vec<_>>(), vec!["next"]);
         assert!(rep.failed.len() == 1 && rep.failed[0].1.contains("does not verify"), "{:?}", rep.failed);
         assert!(!index_path(cache.path(), "prisma").exists());
+    }
+
+    /// The requests a session start costs on a signed catalog: one when nothing changed, and when something did, the
+    /// check plus a sync of what changed.
+    #[test]
+    fn session_start_requests_on_a_signed_catalog() {
+        use ring::signature::{Ed25519KeyPair, KeyPair};
+        let pair = Ed25519KeyPair::from_seed_unchecked(&[7u8; 32]).unwrap();
+        let key: [u8; 32] = pair.public_key().as_ref().try_into().unwrap();
+        let hex = |b: &[u8]| b.iter().map(|x| format!("{x:02x}")).collect::<String>();
+        let cat = FixtureCatalog::new();
+        let publish = |n: usize| {
+            for t in ["next", "prisma"] {
+                let recs = (0..n).map(|i| rec(&format!("{t}:r{i}"), &format!("pkg:npm/{t}"), "7.0.0")).collect();
+                cat.tech(t, &[("7", recs)]);
+            }
+            let listed: serde_json::Map<String, serde_json::Value> = ["next", "prisma"]
+                .iter()
+                .map(|t| (t.to_string(), serde_json::json!(&sha256_hex(&std::fs::read(cat.dir.path().join(format!("v1/tech/{t}.json"))).unwrap())[..16])))
+                .collect();
+            std::fs::write(cat.dir.path().join("v1/technologies.json"), serde_json::json!({"schema": 1, "technologies": listed}).to_string()).unwrap();
+            for rel in ["v1/root.json", "v1/technologies.json", "v1/tech/next.json", "v1/tech/prisma.json"] {
+                let p = cat.dir.path().join(rel);
+                std::fs::write(p.with_extension("json.sig"), hex(pair.sign(&std::fs::read(&p).unwrap()).as_ref())).unwrap();
+            }
+        };
+        publish(1);
+        let srv = TestServer::start(cat.dir.path().to_path_buf(), false);
+        let src = resolve_source(&srv.base).unwrap();
+        let cache = tempfile::tempdir().unwrap();
+        let stack = purls(&["pkg:npm/next", "pkg:npm/prisma"]);
+        let both = cands(&["next", "prisma"]);
+        let quick = || quick_check_with(srv.base.clone(), cache.path(), &both, false, Duration::from_secs(1), Some(&key)).unwrap();
+        sync_with(&src, cache.path(), &both, &BTreeSet::new(), &stack, Some(&key), &|| false, |_| {}).unwrap();
+        srv.take_log();
+        // Unchanged: one request, a 304 (the cached list was verified when it arrived).
+        assert_eq!(quick(), Quick::Unchanged);
+        assert_eq!(srv.take_log(), vec!["/v1/technologies.json 304"]);
+        // One of the two technologies changed: the check, then root, list, the changed index, their signatures, and
+        // the new shard; nothing for the unchanged one.
+        cat.tech("next", &[("7", vec![rec("next:r0", "pkg:npm/next", "7.0.0"), rec("next:r1", "pkg:npm/next", "7.0.1")])]);
+        let listed = format!(
+            "{{\"schema\":1,\"technologies\":{{\"next\":\"{}\",\"prisma\":\"{}\"}}}}",
+            &sha256_hex(&std::fs::read(cat.dir.path().join("v1/tech/next.json")).unwrap())[..16],
+            &sha256_hex(&std::fs::read(cat.dir.path().join("v1/tech/prisma.json")).unwrap())[..16]
+        );
+        std::fs::write(cat.dir.path().join("v1/technologies.json"), listed).unwrap();
+        for rel in ["v1/technologies.json", "v1/tech/next.json"] {
+            let p = cat.dir.path().join(rel);
+            std::fs::write(p.with_extension("json.sig"), hex(pair.sign(&std::fs::read(&p).unwrap()).as_ref())).unwrap();
+        }
+        assert_eq!(quick(), Quick::Changed);
+        sync_with(&src, cache.path(), &both, &BTreeSet::new(), &stack, Some(&key), &|| false, |_| {}).unwrap();
+        let log = srv.take_log();
+        assert_eq!(log[..7], ["/v1/technologies.json 200", "/v1/root.json 200", "/v1/root.json.sig 200", "/v1/technologies.json 200", "/v1/technologies.json.sig 200", "/v1/tech/next.json 200", "/v1/tech/next.json.sig 200"]);
+        assert_eq!(log.len(), 8, "and the one new shard: {log:?}");
+        assert_eq!(quick(), Quick::Unchanged);
     }
 
     #[test]
