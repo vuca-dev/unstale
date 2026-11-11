@@ -783,6 +783,19 @@ pub fn read_user(path: &Path) -> Option<Choice> {
 
 /// Writes the choice into the user's config, keeping anything else there.
 pub fn write_user(path: &Path, c: &Choice) -> anyhow::Result<()> {
+    // A file that is there but cannot be read as a JSON object is left alone rather than replaced.
+    if path.exists() {
+        let ok = std::fs::read(path)
+            .ok()
+            .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
+            .is_some_and(|v| v.is_object());
+        if !ok {
+            anyhow::bail!(
+                "{} is not a JSON object; fix or remove it, then run `unstale setup --user` again",
+                path.display()
+            );
+        }
+    }
     let mut doc = user_doc(path);
     doc.insert("inference".into(), serde_json::to_value(c)?);
     if let Some(dir) = path.parent() {
@@ -964,16 +977,19 @@ pub fn saved_line(c: &Choice, place: &str) -> String {
 }
 
 /// Setup on `init` (`reopen` false) or `unstale setup` (`reopen` true), with the switch on. `user` saves to the user's
-/// config instead of the repository's.
+/// config instead of the repository's; `yes` (`init --yes`) asks nothing, as without a terminal.
 pub fn run(
     ctx: &mut crate::Ctx,
     flag: Option<Choice>,
     reopen: bool,
     user: bool,
+    yes: bool,
 ) -> anyhow::Result<()> {
     use std::io::IsTerminal;
     let configured = current(ctx.config.inference.as_ref(), &user_config_path()).is_some();
-    let terminal = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
+    // `init --yes` asks nothing; accepting the recommended option would spend on the user's key unasked, so nothing is
+    // chosen.
+    let terminal = !yes && std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
     let (d, techs) = match plan(flag, configured, terminal, reopen) {
         Plan::Nothing => return Ok(()),
         Plan::Save(c) => {

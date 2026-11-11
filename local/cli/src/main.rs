@@ -284,7 +284,7 @@ fn dispatch(cli: Cli) -> Result<u8> {
             util::write_atomic(&ctx.tool.join("config.json"), &serde_json::to_vec_pretty(&ctx.config)?)?;
         }
         if inference::enabled() {
-            setup::run(&mut ctx, choice, false, false)?;
+            setup::run(&mut ctx, choice, false, false, yes)?;
         }
         return if ctx.config.service.is_some() { onboarding::run(&ctx, wait.unwrap_or(0), !no_animation, false) } else { Ok(code) }
             .inspect(|_| notice::print(&ctx.cache, &ctx.tool));
@@ -298,7 +298,7 @@ fn dispatch(cli: Cli) -> Result<u8> {
                 return Ok(0);
             }
             let choice = inference.map(|s| setup::parse_flag(&s).map_err(|e| anyhow!(e))).transpose()?;
-            setup::run(&mut ctx, choice, true, user)?;
+            setup::run(&mut ctx, choice, true, user, false)?;
             Ok(0)
         }
         Cmd::Report => {

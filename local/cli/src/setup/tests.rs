@@ -513,3 +513,13 @@ fn status_names_the_provider_this_months_tokens_and_the_budget() {
         ),
     );
 }
+
+#[test]
+fn a_user_config_that_cannot_be_read_is_left_alone() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("config.json");
+    std::fs::write(&path, "{\"other\": 1,}").unwrap();
+    let e = write_user(&path, &Choice::codex()).unwrap_err().to_string();
+    assert!(e.contains("is not a JSON object"), "{e}");
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "{\"other\": 1,}");
+}

@@ -328,11 +328,16 @@ fn init_asks_once_at_a_terminal_and_setup_reopens_the_picker() {
         "http://127.0.0.1:9",
         "--mode",
         "local",
-        "--yes",
         "--wait",
         "0",
         "--no-animation",
     ];
+    // `--yes` asks nothing, even at a terminal, and chooses nothing.
+    let mut yes = init.to_vec();
+    yes.push("--yes");
+    let quiet = w.at_terminal(&yes, "\n");
+    assert!(!quiet.contains("Choose"), "{quiet}");
+    assert!(w.config().get("inference").is_none(), "{quiet}");
     let first = w.at_terminal(&init, "\n");
     assert_eq!(
         first.matches("Choose 1–").count(),
