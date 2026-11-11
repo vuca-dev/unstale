@@ -288,3 +288,21 @@ describe("state file names", () => {
     expect((await store.getState(middle))?.snapshot).toBe("sha256:new");
   });
 });
+
+test("a corrupt state file under a long old name is moved aside within the name limit", async () => {
+  const { FsStore } = await import("../src/collector/store.ts");
+  const { mkdtemp, mkdir, readdir: list, writeFile: write } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const root = await mkdtemp(join(tmpdir(), "unstale-state-"));
+  const id = `https://example.com/${"x".repeat(210)} html`;
+  const legacy = `${encodeURIComponent(id)}.json`;
+  expect(Buffer.byteLength(legacy)).toBeGreaterThan(233);
+  expect(Buffer.byteLength(legacy)).toBeLessThanOrEqual(255);
+  await mkdir(join(root, "state"), { recursive: true });
+  await write(join(root, "state", legacy), "{not json");
+  expect(await new FsStore(root).getState(id)).toBeUndefined();
+  const names = await list(join(root, "state"));
+  expect(names).toHaveLength(1);
+  expect(names[0]).toContain(".corrupt-");
+  expect(Buffer.byteLength(names[0]!)).toBeLessThanOrEqual(255);
+});

@@ -130,17 +130,17 @@ export interface Job {
   registry_version?: string;
   registry_checked?: string;
   change_detected?: string;
-  /** When a slice last read this technology's release list (fresh or from its cache): the refresh interval of an
-   * admitted technology that is not `monitoring` (a refresh that yielded, one past its quarterly cap) counts from here.
-   * Operator-only. */
+  /** When a slice last read this technology's release list, from upstream or from its 12-hour cache: the refresh
+   * interval of an admitted technology that is not `monitoring` (a refresh that yielded, one past its quarterly cap)
+   * counts from here. The order of due refreshes is by the upstream read (`release_checked`). Operator-only. */
   refresh_checked?: string;
 }
 
 /** How long a monitored technology waits between refreshes. */
 export const REFRESH_MS = 6 * 3600_000;
 
-/** Work time after which an interrupted slice is not resumed: two full cycles (20 minutes each), about 12 times the
- * longest slice measured (a 638-page docs pass, 199 s). Slices are meant to take about a minute. */
+/** Work time after which an interrupted slice is not resumed: two full cycles (20 minutes each), more than twice the
+ * longest slice in run 42991003162 (a docs pass, 1,011 s). Most slices take seconds; a docs pass, minutes. */
 export const SLICE_LIMIT_MS = 40 * 60_000;
 /** Cycles after which an interrupted slice is not resumed whatever its known work time: a run cancelled or crashed
  * mid-cycle records no time. */
@@ -416,15 +416,28 @@ export class CoverageService {
         (["failed", "monitoring", "blocked"].includes(job.state) && Date.parse(job.retry_at ?? "") <= Date.now()))
     );
   }
-  /** When an admitted technology's releases were last checked (0: never known). */
+  /** When an admitted technology's releases were last read from upstream (a read from the cache is not one; for one
+   * with no repository, its last finished refresh). 0: never known. Due refreshes go in this order. */
   private lastChecked(job: Job): number {
-    return Date.parse(job.refresh_checked ?? job.release_checked ?? job.refresh_completed ?? job.monitored ?? "") || 0;
+    return Date.parse(job.release_checked ?? job.refresh_completed ?? job.monitored ?? "") || 0;
   }
-  /** A monitored technology whose refresh is due: a `monitoring` one at its retry time, any other (a refresh that
-   * yielded, one past its quarterly cap waiting with history left) once REFRESH_MS has passed since its last check. */
+  /** Whether a job is in the line of new technologies (tier 1), quarterly cap aside. */
+  private newLine(job: Job): boolean {
+    if (job.advisories_first && !job.completed?.length && job.state !== "monitoring") return true;
+    return !(job.admitted || job.state === "monitoring" || job.completed?.length);
+  }
+  /** An admitted technology whose release check is due: a monitored one (`monitoring` at its retry time; any other
+   * state, a refresh that yielded, once REFRESH_MS has passed since a slice last read its releases), or one past its
+   * quarterly cap before its first coverage finished, on the same interval. Never a technology in the new line. */
   private refreshDue(job: Job, at = Date.now()): boolean {
-    if (!(job.monitored || job.state === "monitoring") || !this.due(job)) return false;
-    return job.state === "monitoring" || this.lastChecked(job) + REFRESH_MS <= at;
+    const overCap = job.overflow === quarterKey();
+    if (!(job.monitored || job.state === "monitoring" || overCap) || this.newLine(job) || !this.due(job)) return false;
+    if (job.state === "monitoring") return true;
+    return (Date.parse(job.refresh_checked ?? "") || this.lastChecked(job)) + REFRESH_MS <= at;
+  }
+  /** A due release check of a technology past its quarterly cap: that slice makes no model call (`work`). */
+  private checkOnly(job: Job): boolean {
+    return job.overflow === quarterKey() && this.refreshDue(job);
   }
   /** 0: refreshes, retries and continued history of admitted technologies; 1: new; 2: past their quarterly cap. A
    * monitored technology past its cap is in tier 0 while its refresh is due: the cap holds its release-note
@@ -432,8 +445,7 @@ export class CoverageService {
   private tier(job: Job): number {
     if (job.overflow === quarterKey()) return this.refreshDue(job) ? 0 : 2;
     // Admitted by the first pass only: still new, in the same line as before it.
-    if (job.advisories_first && !job.completed?.length && job.state !== "monitoring") return 1;
-    return job.admitted || job.state === "monitoring" || job.completed?.length ? 0 : 1;
+    return this.newLine(job) ? 1 : 0;
   }
   /** Whether a job is being worked now (its state alone does not say: `partial` continues through the docs pass). */
   working(purl: string): boolean {
@@ -827,9 +839,13 @@ export class CoverageService {
     // Keep one slot moving through due refreshes of monitored technologies, oldest checked first, whatever else runs:
     // a refreshed technology goes behind every other due one, so none waits for more than one turn of the due refreshes.
     // Other slots retain demand order and the new-package reservation, so historical backfill and onboarding progress.
+    // With the period's tokens spent nothing that may call a model starts; a release check past the cap calls none, so
+    // those go first and start (`launch`), and the first other job holds the rest.
+    if (this.budget.tokensLeft() <= 0) queue.sort((a, b) => Number(this.checkOnly(b)) - Number(this.checkOnly(a)));
     let oldest: Job | undefined;
     if (![...this.slices.values()].some((slice) => slice.oldest)) {
-      oldest = queue.filter((j) => this.refreshDue(j) && !this.running.has(j.purl) && !this.passing.has(j.purl))
+      const spent = this.budget.tokensLeft() <= 0;
+      oldest = queue.filter((j) => this.refreshDue(j) && (!spent || this.checkOnly(j)) && !this.running.has(j.purl) && !this.passing.has(j.purl))
         .sort((a, b) => this.lastChecked(a) - this.lastChecked(b))[0];
       if (oldest) {
         queue.splice(queue.indexOf(oldest), 1);
@@ -874,7 +890,10 @@ export class CoverageService {
   }
   /** Starts one job unless the budget refuses it ("held": nothing more may start). */
   private launch(job: Job, isNew: boolean, oldest = false): "started" | "held" {
-    if (this.budget.tokensLeft() <= 0) {
+    // Past its quarterly cap, a due refresh checks for new releases and makes no model call: the rest of its work still
+    // waits in tier 2, behind every other technology. It is the one start a spent token budget allows.
+    const check = this.checkOnly(job);
+    if (this.budget.tokensLeft() <= 0 && !check) {
       const stage = this.passed(job, `Coverage budget for this ${this.limits.period} spent; continues after ${day(nextPeriod(this.limits.period))}`);
       if (job.state === "queued" && job.stage !== stage) this.save(job, "queued", stage);
       this.heldBack("tokens");
@@ -896,9 +915,6 @@ export class CoverageService {
     this.lineStarts[isNew ? "new" : "admitted"]++;
     if (isNew) this.runningNew.add(job.purl);
     if (job.interrupted) this.runningCarried.add(job.purl);
-    // Past its quarterly cap, a due refresh checks for new releases and extracts no release note: the rest still waits
-    // in tier 2, behind every other technology.
-    const check = job.overflow === quarterKey() && this.refreshDue(job);
     this.slices.set(job.purl, { at: Date.now(), refresh, first: isNew, oldest, check });
     this.launched++;
     const kind = this.tally[isNew ? "new" : refresh ? "refresh" : "other"];
@@ -1224,7 +1240,11 @@ export class CoverageService {
     const quarter = quarterKey();
     if (job.quarter?.key !== quarter) job.quarter = { key: quarter, tokens: 0 };
     const cap = this.limits.techQuarterTokens;
-    if (!doDocs && !this.slices.get(job.purl)?.check)
+    // A release check past the cap (`checkOnly`) makes no model call: no note, docs page or guide is extracted and no
+    // advisory or duplicate is judged; it reads, records the change events and publishes, and what is left stays
+    // planned for the technology's tier 2 slices.
+    const check = !!this.slices.get(job.purl)?.check;
+    if (!doDocs && !check)
       for (const note of notes) {
         const key = `${note.tag}:${note.snapshot}:audience-v1`;
         if (job.completed.includes(key)) continue;
@@ -1284,7 +1304,7 @@ export class CoverageService {
       // Records cut from one release-note item (one per API it names, same quote, summary and labels) become one.
       const split = mergeSplitRecords(store);
       // The same change in two parts of one release body, ingested before retrieval compared them: judged once each.
-      const judged = await mergeChunkDuplicates(store, tech.name, (st, q) => advisoryClassifier().classify(st, q));
+      const judged = check ? [] : await mergeChunkDuplicates(store, tech.name, (st, q) => advisoryClassifier().classify(st, q));
       const chunks = judged.filter((j) => j.outcome === "same").length;
       if (split.length || chunks) console.error(`coverage: ${logName(job)}: ${split.length} records cut from the same release-note item and ${chunks} from another part of the same release notes merged`);
       if (split.length || judged.length) saveStore(store);
@@ -1297,7 +1317,7 @@ export class CoverageService {
         console.error(`coverage: ${logName(job)}: ${typed.length} deprecations from its type stubs' declarations`);
         saveStore(store);
       }
-      if (index.length) {
+      if (index.length && !check) {
         this.save(job, "partial", "Checking security advisories");
         const read = new Set(job.completed ?? []);
         const unread = new Set(releases.notes.filter((n) => !read.has(`${n.tag}:${n.snapshot}:audience-v1`)).map((n) => n.version));
@@ -1339,7 +1359,9 @@ export class CoverageService {
     // Not due: another worker (the pipeline, for a catalog technology) checked them less than a day ago.
     job.docs_checked = lastPass(tech.id) ?? now();
     let docsRefused: Refusal | undefined;
+    // A release check records the docs change events and extracts none (`admit` refuses the first note).
     const extracted = await extract(tech, DOCS_PASS.notes, undefined, (text) => {
+      if (check) return false;
       const cost = noteTokens(text);
       docsRefused = this.budget.spend(cost);
       if (docsRefused) return false;
@@ -1358,7 +1380,7 @@ export class CoverageService {
       } catch (e) {
         console.error(`coverage: ${logName(job)}: upgrade guides unreadable (${e instanceof Error ? e.message : e}); release notes and docs only`);
       }
-      for (const g of guides) {
+      for (const g of check ? [] : guides) {
         const key = `${g.keyTag}:audience-v1`;
         if (job.guides_done?.includes(key)) continue;
         const cost = noteTokens(g.notes);

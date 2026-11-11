@@ -82,7 +82,8 @@ export class FsStore implements Store {
     try {
       return WatchState.parse(JSON.parse(raw));
     } catch {
-      await rename(path, `${path}.corrupt-${Date.now()}`);
+      // Aside under the bounded name, also for a file read under its old name: the suffix must not pass the limit.
+      await rename(path, `${this.#statePath(id)}.corrupt-${Date.now()}`);
       return undefined;
     }
   }
