@@ -9,13 +9,13 @@
 
 - **Shape:** INDEPENDENT PRs to `main`. Every chunk is additive and behind one switch (README, "One switch").
 - **Ground truth:** GitHub PR state. Repo `vuca-dev/unstale`.
-- **Base:** `origin/main` @ `8835d5c` (`ci` green)
+- **Base:** `origin/main` @ `72d0fc5` (`ci` green)
 - **Base health:** PR checks are `rust`, `central`, `gateway`; re-query before every merge.
-- **Open PRs:** #235 (disk bounds; review found 2 blocking, EM fixing), #231 (WS9 draft, blocked on ingest coverage)
+- **Open PRs:** #231 (WS9 draft, blocked on ingest coverage); parity PR and WS6b pending
 - **Live worktrees (sprint):** `/Users/jason/unstale-edge-sprint` (tracker)
-- **Live subagents:** ws4b-impl (fixing #235), ingest diagnostic (Fable 5.2, read-only). ws9 stopped at the data gate.
+- **Live subagents:** parity (Fable 5.2, `/Users/jason/unstale-parity`, cap $3), ws6b-matrix (Opus 5.5, `/Users/jason/unstale-ws6b`). ws9 stopped at the data gate.
 - **Merged + verified:** WS0 → #213 `673c191`
-- **Next:** re-review and merge #235; parity and cost runs; WS6b full matrix; decide WS9 after the ingest diagnosis; WS8 draft last
+- **Next:** review parity and WS6b; CEO decision on the ingest starvation fix (unblocks WS9); WS8 draft last
 - **Sprint API spend so far:** $0 of $10
 
 ## §2 CEO directives (durable; read every iteration)
@@ -261,6 +261,11 @@ OpenRouter parity, repeat eval runs.
   record stores and `processed.json` must be backed up and restored together.
 - **#235 review: APPROVE AFTER FIXES.** Blocking: deletes outside the cache through a symlinked top-level folder;
   a missing or corrupt `needed.json` reads as "nothing is needed". Plus 13 should-fix items sent to the EM.
+- **#235 MERGED → `72d0fc5`** after three review rounds (upgrade case kept all 3,170 indexes on a real-cache copy;
+  bounded 300 ms lock; `cache clean` asks after describing, keeps model results unless `--results`). Residual:
+  a skipped record after 30+ days away can cost one re-download; `cache clean` plans before taking the lock.
+- Hand-off: `plan()` stays catalog-only; overlay ids `{id}~{8 hex}` must stay stable; measure real marks with
+  `central/scripts/extracted-share.ts https://api.unstale.sh/` after a few live cycles.
 - Three timing-sensitive tests failed once on a busy machine (matrix goldens, `the_hook_never_waits…`,
   `ctrl_c_at_the_question…`): look at in WS6b.
 - **PR 1 #228 and PR 2 #230 READY, not merged** (bot skipped both heads). Local 495 unit + suites, central 608.
@@ -276,7 +281,7 @@ OpenRouter parity, repeat eval runs.
   (also extraction through batched Codex, the Jev threshold behind the "93%" line, a real first sync), and cache
   disk bounds (must keep `{cache}/inference/`).
 
-### WS6b: Full matrix run and playback gallery: NOT STARTED (after WS4, WS5, WS10)
+### WS6b: Full matrix run and playback gallery: IN PROGRESS (Opus 5.5, `/Users/jason/unstale-ws6b`)
 - CEO copy review happens here, before WS8.
 
 ### WS8: Docs and site: NOT STARTED (after WS4, WS5, WS6b; draft, held)
@@ -296,6 +301,18 @@ OpenRouter parity, repeat eval runs.
   session-start hook (WS6b).
 - One EM applies `terminal-principles.md` across setup, status, session start, failures, notices; gates
   session-start hooks behind the switch; makes the monthly limit a setting.
+
+### Ingest starvation (found 11 November; predates the sprint; CEO decision pending)
+- About 1,450–1,650 refreshes always due, 700–950 started per run; demand order with no aging; any technology past
+  its 50,000-token quarterly cap is sorted last for the quarter (`central/src/onboarding/service.ts` `tier()` about
+  line 414, `queue()` 438, oldest-due slot 808–817, 6-hour interval 1368). Sample of 300 of 4,291: checked older
+  than 3 days 44%, 7 days 36%, 21 days 8%. workerd fails on a too-long state file name (`collector/store.ts:31`).
+- Proposed: drop the over-cap-last rule for monitoring jobs; order due refreshes oldest first (admission stays
+  demand order); fix the file name. The cutover alone does not fix it.
+
+### Parity: IN PROGRESS
+- Pre-registered, one run per cell, cap $3 (estimate about $0.60); also batched Codex extraction recall and the
+  threshold behind the "93%" line. PR with `eval/edge-port/` only; exits READY.
 
 ### Notes
 - Briefs say "do not merge any PR other than your own".
