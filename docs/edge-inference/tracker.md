@@ -9,9 +9,9 @@
 
 - **Shape:** INDEPENDENT PRs to `main`. Every chunk is additive and behind one switch (README, "One switch").
 - **Ground truth:** GitHub PR state. Repo `vuca-dev/unstale`.
-- **Base:** `origin/main` @ `8ab70ba` (#238 merge)
+- **Base:** `origin/main` @ `0de79cb` (#242 merge)
 - **Base health:** PR checks are `rust`, `central`, `gateway`; re-query before every merge.
-- **Open PRs:** #241 (ingest starvation fix, `efd7137`, fixes pushed, re-review running), product-fix PR (in progress, worktree `/Users/jason/unstale-product-fixes`), #231 (no-key eval draft, blocked on the ingest decision), #240 (docs and site, DRAFT at `48b9c6d`, CI green; HELD for the CEO, never merged by agents; conflicts expected with the CEO's `smooth-wordmark` branch in `README.md` and `gateway/site/build.ts`)
+- **Open PRs:** #241 (ingest starvation fix, `f0e57a1`, APPROVED, CI green; HELD for the CEO's decision on over-cap model work), #231 (no-key eval draft, blocked on the ingest decision), #240 (docs and site, DRAFT at `48b9c6d`, CI green; HELD for the CEO, never merged by agents; conflicts expected with the CEO's `smooth-wordmark` branch in `README.md` and `gateway/site/build.ts`)
 - **Live worktrees (sprint):** `/Users/jason/unstale-edge-sprint` (tracker), `/Users/jason/unstale-ws6b` (#238), `/Users/jason/unstale-ws9-no-key` + `/Users/jason/unstale-ws9-scout` (#231), `/Users/jason/unstale-parity` (paid answer caches; keep)
 - **Live subagents:** #238 reviewer (Fable). Idle, resumable: matrix EM, no-key eval agent.
 - **Merged + verified:** WS0 → #213 `673c191`
@@ -352,3 +352,7 @@ OpenRouter parity, repeat eval runs.
 - #241 at `efd7137`: check slices make no model call; ordered by real upstream read; over-cap-before-coverage included; only check slices start under a spent budget. Re-review running.
 - Ingest stalled since 11:18 UTC: Cloudflare rate limit (971) on one `wrangler deploy`, chain broken, production healthy. Restart (`gh workflow run ingest.yml --ref main -f reason=continue`) and a deploy retry await the CEO.
 - Product-fix PR dispatched (Opus): matrix bugs (a)–(e) and the docs work's six.
+- #241 re-review APPROVE at `efd7137`; test-only follow-up `f0e57a1`. Held for the CEO: over-cap technologies in `monitoring` with complete history get no model work (docs notes, guides, advisory judging) until the quarter ends or a new release requeues them; the count is not available from public data. PM recommends merging as is.
+- #242 (product fixes) merged at `0de79cb` by the PM after review (APPROVE AFTER FIXES at `1f7c5a0`, APPROVE at `9f36c69`). PM decision: a client refused as too old reads nothing. Matrix known-bugs list is empty. Not fixed: 26 s `init` with registries unreachable (retry pauses in `onboarding.rs`, the CEO's file); `setup`, `cache`, `init --inference` stay hidden until release (`hide = true` in `local/cli/src/main.rs`).
+- Copy for the CEO: "N wait until the catalog serves this unstale" (reviewer suggests "N wait for the upgrade" after a too-old refusal); the 27% scoped to new releases is an inference from the no-key measurement (42 of 154 finds with records removed), source still on #231.
+- Docs draft #240 being updated to the merged wording (stays draft).
