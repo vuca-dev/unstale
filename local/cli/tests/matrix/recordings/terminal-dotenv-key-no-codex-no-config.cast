@@ -40,7 +40,7 @@
 [1.36,"o","How should unstale read new release notes?\r\n"]
 [1.42,"o","\r\n"]
 [1.48,"o","     Read with   Cost a year, this repo   Compared with the best option\r\n"]
-[1.54,"o","  1  OpenAI      ≈ $0.19                  ≈ 1 in 3 breaking-change flags wrong\r\n"]
+[1.54,"o","  1  OpenAI      ≈ $0.19                  ≈ 11 in 100 breaking flags wrong, not 8\r\n"]
 [1.6,"o","  2  Not now     free                     ≈ 27%: advisories and deprecations only\r\n"]
 [1.66,"o","     Keys: OPENAI_API_KEY (.env)\r\n"]
 [1.72,"o","\r\n"]

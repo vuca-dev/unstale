@@ -5,8 +5,8 @@ $ unstale init --wait 0 --no-animation
 How should unstale read new release notes?
 
      Read with    Key              Cost a year, this repo   Compared with the best option
-  1  OpenAI       OPENAI_API_KEY   ≈ $0.19                  ≈ 1 in 3 breaking-change flags wrong
-  2  Codex plan                    ≈ 1.9M Codex tokens      not measured yet through Codex
+  1  OpenAI       OPENAI_API_KEY   ≈ $0.19                  ≈ 11 in 100 breaking flags wrong, not 8
+  2  Codex plan                    ≈ 1.9M Codex tokens      ≈ 80% of its changes; rest not measured
   3  Not now                       free                     ≈ 27%: advisories and deprecations only
 
 Enter for 1, a number to choose, or d for details: d
@@ -21,15 +21,19 @@ beside an OpenAI-compatible key.
    this repo, a year      ≈ $0.19
    first sync, once       ≈ $0.19
    results                about as many breaking changes as the best option, more flagged wrongly
-                          ≈ 1 in 3 breaking-change flags wrong, against 1 in 4
-                          on upgrade guides ≈ 8 in 100 wrong, against 6
-   repeats                ≈ 6 more changes listed twice per package, per year
+                          ≈ 11 in 100 breaking-change flags wrong, against 8
+                          on short release notes ≈ 38 in 100 wrong, against 25 (42 flags)
+                          on upgrade guides ≈ 7 in 100 wrong, against 5 (228 flags)
+   repeats                ≈ 4 more changes listed twice per package, per year
 
 2  Codex plan
-   per package, per year  630k Codex tokens ($0.069 at API prices)
+   per package, per year  650k Codex tokens ($0.071 at API prices)
+                          170k measured, for reading the notes; 480k for the rest, an estimate
    this repo, a year      ≈ 1.9M Codex tokens
    first sync, once       ≈ 1.9M Codex tokens
-   results                not measured yet through Codex
+   results                somewhat less complete: ≈ 80% of the best option's changes
+                          its changes are right as often as the best option's
+                          breaking-change flags and repeats through Codex: not measured yet
 
 3  Not now
    cost     free: no model is called
