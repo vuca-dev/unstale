@@ -59,3 +59,62 @@ dev-fitted `BREAKING_P` 0.10; E0 holds the false-merge floor but loses recall (5
   move 1.1. The levers left (longer rules, larger K) cost more than Jev Q8.
 
 This is the final run. If it fails, Jev stays for both steps.
+
+## Part 2: Snap 1.2 as the no-Jev fallback (written 11 November 2026, before any part 2 call or score)
+
+The user moved the bar. Snap is judged as a fallback against **gpt-6-luna chat**, the provider matrix's current no-Jev
+choice, and not against Jev. Jev is reported for reference only. Snap's part 1 numbers above were seen against Jev; part 2
+adds prompt arms that were never run on Snap, plus fresh sets.
+
+### Baselines (gpt-6-luna chat as production's fallback reads it)
+
+- **D:** `choice_openai_gpt-6-luna-{dev,heldout,heldout2}` (provider matrix addendum 1: choices only, v1 mapping,
+  $0.0261 per tech-year list).
+- **E:** `vercel_openai_gpt-6-luna-{dev,heldout}`: F8 at its dev fit 0.82 / 0.97 / 1.01, held-out 0.9 false merges per 100
+  and 80.2% recall, $0.0455 per tech-year list.
+
+### Arms (Snap 1.2; each held-out set once per arm)
+
+| Arm | Step | Request | Mapping / fit | New calls |
+|---|---|---|---|---|
+| D-X3 | D | v1 (part 1 answers) | X3, dev-fitted | none |
+| D-W | D | the better of `v3` and `h` (`slice4/questions.ts`) on dev: higher mean of dev F2 breaking and F2 benefit at the fitted thresholds | X3, dev-fitted | dev ×2, then H1 and H2 for the winner |
+| E-F8 | E | slice 5's pipeline questions at K = 8 (the full rules; J1) | slice 5 dev objective | dev, held-out |
+| E-F4 | E | the same at K = 4 | slice 5 dev objective | dev, held-out |
+
+### Pass rule (non-inferiority against gpt-6-luna)
+
+- **D, stage 1 (H1, H2):**
+  - H1 breaking, benefit-vs-none and actionable recall each ≤ 5 points below gpt-6-luna, with the paired CI not wholly
+    below 0, and change_type accuracy CI not wholly below 0.
+  - H2 breaking recall and precision CI not wholly below 0.
+  - gpt-6-luna is read at its choices with the v1 mapping, the way production reads it.
+- **D, stage 2 (fresh confirmation), for the best stage 1 passer only** (the one with the most H1 actionable recall):
+  - The set is the encoder's stage 5 labels (`eval/edge-encoder/s5-adjudicated.json`, PR #212) on the records still in
+    the production store: 219 of 500, across 69 technologies (33 breaking, 89 benefit, 104 actionable).
+  - Snap 1.2 and gpt-6-luna (`choice:openai/gpt-6-luna`) get fresh runs. Snap uses the stage 1 thresholds.
+  - Breaking recall and precision, benefit-vs-none recall and accuracy, and actionable recall: none may have a paired CI
+    wholly below 0 against gpt-6-luna.
+- **E:** held-out guarded false merges ≤ 1.0 per 100, and merge recall not significantly below gpt-6-luna F8 (exact
+  McNemar p < 0.05 with fewer recalled = fail).
+- **E, fresh confirmation, for the best passer only (highest held-out recall):**
+  - The set is slice 16's (nx, langchain-core, openvino, astro), rebuilt by replaying `slice16/build.mts` against its
+    recorded Jev answers in a copy of the side store. It reproduced 746/749, 246/246, 285/291 and 836/866 decisions,
+    with 110 live Jev calls.
+  - Short-rules requests are rewritten to the arm's form: `RULES_V3` questions for every candidate, K as the arm.
+  - Snap 1.2 and gpt-6-luna chat (F8) each run fresh, at their slice 5 dev fits.
+  - Reference: `slice16/verdicts.json`. Merges onto pairs it does not label are read by me, blind to the arm. If there are
+    more than 40, they count as DIFFERENT.
+  - Same rule as E on held-out.
+- **Snap enters the fallback chain** for a step only if it passes that step's stage 1 and its fresh confirmation. Its
+  place is decided by cost: it goes ahead of gpt-6-luna when it passes, since it is cheaper per tech-year in every arm
+  measured so far.
+
+### Stopping rule
+
+These four arms are the hill climb. No revision. If nothing passes on a step, gpt-6-luna stays that step's fallback,
+and Snap is recorded as not offered.
+
+### Budget
+
+SubQ ≤ $0.60, gateway or OpenAI ≤ $1.20 (gpt-6-luna fresh runs), Jev $0 (beyond the replay's $0.01).
