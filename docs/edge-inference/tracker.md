@@ -9,13 +9,13 @@
 
 - **Shape:** INDEPENDENT PRs to `main`. Every chunk is additive and behind one switch (README, "One switch").
 - **Ground truth:** GitHub PR state. Repo `vuca-dev/unstale`.
-- **Base:** `origin/main` @ `3a0a472` (10 November 2026)
+- **Base:** `origin/main` @ `df9ea49` (10 November 2026)
 - **Base health:** PR checks are `rust`, `central`, `gateway`; re-query before every merge.
-- **Open PRs:** #218 (design docs)
+- **Open PRs:** none yet (design docs #218 merged)
 - **Live worktrees (sprint):** `/Users/jason/unstale-edge-sprint` (tracker)
-- **Live subagents:** none
+- **Live subagents:** ws3-impl (Opus 5.5), ws2-impl (Opus 5.5), both dispatched 10 November
 - **Merged + verified:** WS0 → #213 `673c191`
-- **Next:** WS3 and WS2 (two lanes), then WS1
+- **Next:** WS1 when a lane frees; WS10a after it
 - **Sprint API spend so far:** $0 of $10
 
 ## §2 CEO directives (durable; read every iteration)
@@ -76,10 +76,10 @@ OpenRouter parity, repeat eval runs.
 
 ## §3 Per-chunk log (dispatch order)
 
-### WS3: Client inference core: NOT STARTED
+### WS3: Client inference core: IN PROGRESS
 - EM: impl, Opus 5.5. Worktree `/Users/jason/unstale-ws3-inference-core`.
 
-### WS2: Change events in the catalog: NOT STARTED
+### WS2: Change events in the catalog: IN PROGRESS
 - EM: investigation then impl in one agent, Opus 5.5. Worktree `/Users/jason/unstale-ws2-change-events`.
 
 ### WS1: Prompts as shared data: NOT STARTED
