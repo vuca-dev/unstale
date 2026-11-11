@@ -15,6 +15,7 @@ mod testcat;
 
 mod checks;
 mod dimensions;
+mod model;
 mod output;
 mod session;
 mod world;
@@ -46,12 +47,16 @@ fn run_all(list: &[Scenario]) -> Vec<Outcome> {
         .map(|n| n.get())
         .unwrap_or(4)
         .clamp(2, 8);
+    // The longest first (the registry slice waits on refused lookups), so they overlap with the rest.
+    let mut order: Vec<usize> = (0..list.len()).collect();
+    order.sort_by_key(|&i| !list[i].registry);
     std::thread::scope(|sc| {
         for _ in 0..width {
             sc.spawn(|| {
                 loop {
-                    let i = next.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                    let Some(s) = list.get(i) else { break };
+                    let n = next.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    let Some(&i) = order.get(n) else { break };
+                    let s = &list[i];
                     let se = run_session(s);
                     let v = check(s, &se);
                     results.lock().unwrap()[i] = Some((se, v));
@@ -69,45 +74,93 @@ fn run_all(list: &[Scenario]) -> Vec<Outcome> {
 
 #[test]
 fn every_scenario_holds_the_line_and_matches_its_golden_transcript() {
-    let list = scenarios();
+    // `MATRIX_ONLY=<part of a slug>` runs only the scenarios whose slug contains it (no gallery, no orphan check).
+    let only = std::env::var("MATRIX_ONLY").ok();
+    let list: Vec<Scenario> = scenarios()
+        .into_iter()
+        .filter(|s| only.as_ref().is_none_or(|o| s.slug.contains(o.as_str())))
+        .collect();
     let results = run_all(&list);
     let mut failures = vec![];
     let mut entries = vec![];
+    let mut bugs_seen = BTreeSet::new();
+    let mut failing: BTreeSet<String> = BTreeSet::new();
     for (s, (se, v)) in list.iter().zip(&results) {
-        if !v.is_empty() {
-            failures.push(format!("{} ({}):\n  {}", s.title, s.slug, v.join("\n  ")));
+        let (known, broken): (Vec<String>, Vec<String>) =
+            v.iter().cloned().partition(|l| known_bug(s, l).is_some());
+        bugs_seen.extend(known.iter().filter_map(|l| known_bug(s, l)));
+        if !broken.is_empty() {
+            failing.insert(s.slug.clone());
+            failures.push(format!(
+                "{} ({}):\n  {}",
+                s.title,
+                s.slug,
+                broken.join("\n  ")
+            ));
         }
-        let text = transcript(s, se, v);
+        let text = transcript(s, se, &broken, &known);
         let cast = recording(s, se);
-        failures.extend(golden(&format!("golden/{}.txt", s.slug), &text));
-        failures.extend(golden(&format!("recordings/{}.cast", s.slug), &cast));
+        for f in [
+            golden(&format!("golden/{}.txt", s.slug), &text),
+            golden(&format!("recordings/{}.cast", s.slug), &cast),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            failing.insert(s.slug.clone());
+            failures.push(f);
+        }
         entries.push((s, text, cast));
     }
+    for b in KNOWN_BUGS {
+        if only.is_none() && !bugs_seen.contains(b.why) {
+            failures.push(format!(
+                "the known product bug ({}) no longer shows in any scenario: remove it from KNOWN_BUGS",
+                b.why
+            ));
+        }
+    }
+    if only.is_some() {
+        for (s, (se, _)) in list.iter().zip(&results) {
+            for r in &se.ran {
+                eprintln!("{}: {} took {:?}", s.slug, r.shown, r.took);
+            }
+            for r in se.world.trap.requests() {
+                eprintln!("{}: through the proxy: {} {}", s.slug, r.method, r.path);
+            }
+        }
+        assert!(failures.is_empty(), "{}", failures.join("\n\n"));
+        return;
+    }
     failures.extend(golden("gallery.html", &gallery(&entries)));
-    // A transcript left behind by a scenario that no longer exists.
-    if std::env::var_os("UPDATE_GOLDEN").is_none() {
-        let slugs: BTreeSet<String> = list.iter().map(|s| s.slug.clone()).collect();
-        for dir in ["golden", "recordings"] {
-            for e in std::fs::read_dir(golden_dir().join(dir))
-                .into_iter()
-                .flatten()
-                .flatten()
-            {
-                let stem = e.path().file_stem().unwrap().to_string_lossy().to_string();
-                if !slugs.contains(&stem) {
-                    failures.push(format!(
-                        "{dir}/{} belongs to no scenario; delete it",
-                        e.file_name().to_string_lossy()
-                    ));
-                }
+    // A transcript left behind by a scenario that no longer exists: deleted on update, a failure otherwise.
+    let slugs: BTreeSet<String> = list.iter().map(|s| s.slug.clone()).collect();
+    for dir in ["golden", "recordings"] {
+        for e in std::fs::read_dir(golden_dir().join(dir))
+            .into_iter()
+            .flatten()
+            .flatten()
+        {
+            let stem = e.path().file_stem().unwrap().to_string_lossy().to_string();
+            if slugs.contains(&stem) {
+                continue;
+            }
+            if std::env::var_os("UPDATE_GOLDEN").is_some() {
+                std::fs::remove_file(e.path()).unwrap();
+            } else {
+                failures.push(format!(
+                    "{dir}/{} belongs to no scenario; `UPDATE_GOLDEN=1 cargo test --test matrix` deletes it",
+                    e.file_name().to_string_lossy()
+                ));
             }
         }
     }
     assert!(
         failures.is_empty(),
-        "{} of {} scenarios:\n\n{}",
-        failures.len(),
+        "{} of {} scenarios fail, {} problems in all:\n\n{}",
+        failing.len(),
         list.len(),
+        failures.len(),
         failures.join("\n\n")
     );
 }

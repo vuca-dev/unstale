@@ -624,10 +624,16 @@ fn the_hook_never_waits_for_the_background_stage() {
         session_start(&env, env.repo.path(), "background stage hanging"),
         ""
     );
-    std::thread::sleep(Duration::from_millis(300));
+    // The hook has returned; the stage it started reaches the hanging catalog whenever the machine gets to it.
+    let until = Instant::now() + Duration::from_secs(20);
+    let mut log = vec![];
+    while !log.contains(&"/v1/root.json hang".to_string()) && Instant::now() < until {
+        std::thread::sleep(Duration::from_millis(20));
+        log.extend(srv.take_log());
+    }
     assert!(
-        srv.take_log().contains(&"/v1/root.json hang".to_string()),
-        "the background stage is running"
+        log.contains(&"/v1/root.json hang".to_string()),
+        "the background stage is running: {log:?}"
     );
 }
 

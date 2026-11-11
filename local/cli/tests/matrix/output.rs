@@ -61,20 +61,30 @@ pub(crate) fn traffic(w: &World) -> Vec<String> {
             codex.join(", ")
         }
     ));
-    let t = w.trap.requests().len();
+    let through: BTreeSet<String> = w
+        .trap
+        .requests()
+        .iter()
+        .map(|r| format!("{} {}", r.method, r.path))
+        .collect();
     lines.push(format!(
-        "anything else: {}",
-        if t == 0 {
+        "through the proxy: {}",
+        if through.is_empty() {
             "nothing".into()
         } else {
-            format!("{t} requests through the proxy")
+            through.into_iter().collect::<Vec<_>>().join(", ")
         }
     ));
     lines
 }
 
 /// The golden transcript: what the person or agent saw, command by command, then what was contacted.
-pub(crate) fn transcript(s: &Scenario, se: &Session, violations: &[String]) -> String {
+pub(crate) fn transcript(
+    s: &Scenario,
+    se: &Session,
+    violations: &[String],
+    known: &[String],
+) -> String {
     let w = &se.world;
     let mut t = format!("# {}\n# {}\n", s.title, s.dims());
     for r in &se.ran {
@@ -109,6 +119,12 @@ pub(crate) fn transcript(s: &Scenario, se: &Session, violations: &[String]) -> S
     if !violations.is_empty() {
         t += "\n# violations\n";
         for l in violations {
+            t += &format!("#   {l}\n");
+        }
+    }
+    if !known.is_empty() {
+        t += "\n# known product bugs (expected to fail until fixed; see KNOWN_BUGS in checks.rs)\n";
+        for l in known {
             t += &format!("#   {l}\n");
         }
     }
@@ -201,25 +217,49 @@ pub(crate) fn html_escape(s: &str) -> String {
         .replace('>', "&gt;")
 }
 
+/// The gallery's groups, in order: what the user did.
+pub(crate) const GROUPS: &[&str] = &[
+    "Installs it at a terminal",
+    "Asks an agent to install it",
+    "Runs it in CI",
+    "Cannot read release notes right now (provider or limit)",
+    "Upgrades unstale",
+    "Lets unstale look up public packages",
+];
+
+/// What the user did in a scenario, for the gallery: a provider problem or an upgrade first, else how they ran it.
+pub(crate) fn group_of(s: &Scenario) -> &'static str {
+    if s.registry {
+        "Lets unstale look up public packages"
+    } else if s.client.id != "fresh" {
+        "Upgrades unstale"
+    } else if s.answer.failing() {
+        "Cannot read release notes right now (provider or limit)"
+    } else {
+        GROUPS
+            .iter()
+            .find(|g| **g == s.invocation.group)
+            .copied()
+            .unwrap_or("Installs it at a terminal")
+    }
+}
+
 /// The playback page: one static file, every scenario grouped by what the user did, no network.
 /// A scenario with its transcript and recording.
 pub(crate) type Entry<'a> = (&'a Scenario, String, String);
 
 pub(crate) fn gallery(entries: &[Entry]) -> String {
-    // Groups in the order the invocations are listed.
-    let mut groups: Vec<(&str, Vec<&Entry>)> = vec![];
-    for inv in INVOCATIONS {
-        if !groups.iter().any(|(g, _)| *g == inv.group) {
-            groups.push((inv.group, vec![]));
-        }
-    }
+    let mut groups: Vec<(&str, Vec<&Entry>)> = GROUPS.iter().map(|g| (*g, vec![])).collect();
     for e in entries {
-        let g = groups
+        let name = group_of(e.0);
+        groups
             .iter_mut()
-            .find(|(g, _)| *g == e.0.invocation.group)
-            .unwrap();
-        g.1.push(e);
+            .find(|(g, _)| *g == name)
+            .unwrap()
+            .1
+            .push(e);
     }
+    groups.retain(|(_, l)| !l.is_empty());
     let mut nav = String::new();
     let mut body = String::new();
     let mut data = serde_json::Map::new();

@@ -24,6 +24,7 @@ pub(crate) const KEYS: &[Keys] = &[
     Keys { id: "shell-key", title: "an OpenAI key in the shell", shell: &["OPENAI_API_KEY"], repo_env: &[], other_env: &[], blank: &[], answer: Answer::Ok },
     Keys { id: "dotenv-key", title: "an OpenAI key in this repo's .env", shell: &[], repo_env: &["OPENAI_API_KEY"], other_env: &[], blank: &[], answer: Answer::Ok },
     Keys { id: "other-repo-key", title: "a key only in another repo's .env", shell: &[], repo_env: &[], other_env: &["ANTHROPIC_API_KEY"], blank: &[], answer: Answer::Ok },
+    Keys { id: "anthropic-key", title: "an Anthropic key in the shell", shell: &["ANTHROPIC_API_KEY"], repo_env: &[], other_env: &[], blank: &[], answer: Answer::Ok },
     Keys { id: "several-keys", title: "several keys in the shell", shell: &["AI_GATEWAY_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "JEV_API_KEY"], repo_env: &[], other_env: &[], blank: &[], answer: Answer::Ok },
     Keys { id: "blank-key", title: "an OpenAI key name with a blank value", shell: &[], repo_env: &[], other_env: &[], blank: &["OPENAI_API_KEY"], answer: Answer::Ok },
     Keys { id: "revoked-key", title: "a revoked OpenAI key in the shell", shell: &["OPENAI_API_KEY"], repo_env: &[], other_env: &[], blank: &[], answer: Answer::Refused },
@@ -63,15 +64,18 @@ pub(crate) struct Invocation {
 
 #[rustfmt::skip]
 pub(crate) const INVOCATIONS: &[Invocation] = &[
-    Invocation { id: "terminal", group: "Installs it at a terminal", title: "first run in a terminal", terminal: true, person: true, answer: "\n", ci: false, env: &[], steps: &[Step::Init, Step::Sync, Step::Model, Step::Status] },
+    Invocation { id: "terminal", group: "Installs it at a terminal", title: "first run in a terminal", terminal: true, person: true, answer: "\n", ci: false, env: &[], steps: &[Step::Init, Step::Sync, Step::SessionSync, Step::Status] },
+    Invocation { id: "terminal-yes", group: "Installs it at a terminal", title: "first run in a terminal with --yes", terminal: true, person: true, answer: "\n", ci: false, env: &[], steps: &[Step::InitYes, Step::Sync, Step::SessionSync, Step::Status] },
+    Invocation { id: "terminal-no-hook", group: "Installs it at a terminal", title: "first run in a terminal, with no agent session-start hook", terminal: true, person: true, answer: "\n", ci: false, env: &[], steps: &[Step::Init, Step::Sync, Step::RemoveHooks, Step::Status, Step::SessionSync, Step::Status] },
     Invocation { id: "terminal-dismiss", group: "Installs it at a terminal", title: "dismissed with Ctrl-D in a terminal", terminal: true, person: true, answer: "\u{4}", ci: false, env: &[], steps: &[Step::Init, Step::Init, Step::Status] },
     Invocation { id: "terminal-interrupt", group: "Installs it at a terminal", title: "interrupted with Ctrl-C at the question", terminal: true, person: true, answer: "\u{3}", ci: false, env: &[], steps: &[Step::Init, Step::Status] },
     Invocation { id: "terminal-details", group: "Installs it at a terminal", title: "asking for the details at the question", terminal: true, person: true, answer: "d\n", ci: false, env: &[], steps: &[Step::Init, Step::Status] },
-    Invocation { id: "agent", group: "Asks an agent to install it", title: "an agent installs it", terminal: false, person: false, answer: "", ci: false, env: &[("CLAUDECODE", "1")], steps: &[Step::Init, Step::Status, Step::AgentSetup, Step::Sync, Step::Model] },
-    Invocation { id: "agent-pty-claude", group: "Asks an agent to install it", title: "Claude Code installs it through a terminal", terminal: true, person: false, answer: "\n", ci: false, env: &[("CLAUDECODE", "1")], steps: &[Step::Init, Step::Status, Step::AgentSetup, Step::Sync, Step::Model] },
-    Invocation { id: "agent-pty-codex", group: "Asks an agent to install it", title: "Codex installs it through a terminal", terminal: true, person: false, answer: "\n", ci: false, env: &[("CODEX_SANDBOX", "seatbelt")], steps: &[Step::Init, Step::Status, Step::AgentSetup, Step::Sync, Step::Model] },
-    Invocation { id: "ci", group: "Runs it in CI", title: "in CI", terminal: false, person: false, answer: "", ci: true, env: &[], steps: &[Step::InitYes, Step::Sync, Step::Model, Step::Status] },
-    Invocation { id: "ci-flag", group: "Runs it in CI", title: "in CI, choosing OpenAI with --inference", terminal: false, person: false, answer: "", ci: true, env: &[], steps: &[Step::InitFlag("env:OPENAI_API_KEY"), Step::Sync, Step::Model, Step::Status] },
+    Invocation { id: "agent", group: "Asks an agent to install it", title: "an agent installs it", terminal: false, person: false, answer: "", ci: false, env: &[("CLAUDECODE", "1")], steps: &[Step::Init, Step::Status, Step::AgentSetup, Step::Sync, Step::SessionStart, Step::SessionStart, Step::Status] },
+    Invocation { id: "agent-pty-claude", group: "Asks an agent to install it", title: "Claude Code installs it through a terminal", terminal: true, person: false, answer: "\n", ci: false, env: &[("CLAUDECODE", "1")], steps: &[Step::Init, Step::Status, Step::AgentSetup, Step::Sync, Step::SessionStart, Step::SessionStart, Step::Status] },
+    Invocation { id: "agent-pty-codex", group: "Asks an agent to install it", title: "Codex installs it through a terminal", terminal: true, person: false, answer: "\n", ci: false, env: &[("CODEX_SANDBOX", "seatbelt")], steps: &[Step::Init, Step::Status, Step::AgentSetup, Step::Sync, Step::SessionStart, Step::SessionStart, Step::Status] },
+    Invocation { id: "agent-switch-off", group: "Asks an agent to install it", title: "an agent installs it with the release-notes switch off", terminal: false, person: false, answer: "", ci: false, env: &[("CLAUDECODE", "1"), ("UNSTALE_EDGE_INFERENCE", "0")], steps: &[Step::Init, Step::Status, Step::Sync, Step::SessionStart, Step::SessionStart, Step::Status] },
+    Invocation { id: "ci", group: "Runs it in CI", title: "in CI", terminal: false, person: false, answer: "", ci: true, env: &[], steps: &[Step::InitYes, Step::Sync, Step::SessionSync, Step::Status] },
+    Invocation { id: "ci-flag", group: "Runs it in CI", title: "in CI, choosing OpenAI with --inference", terminal: false, person: false, answer: "", ci: true, env: &[], steps: &[Step::InitFlag("env:OPENAI_API_KEY"), Step::Sync, Step::SessionSync, Step::Status] },
 ];
 
 /// The repository's committed config (`.unstale/config.json`), as a teammate left it.
@@ -80,13 +84,20 @@ pub(crate) struct RepoConfig {
     pub(crate) title: &'static str,
     /// The `--inference` value the config records.
     pub(crate) choice: Option<&'static str>,
+    /// `"session_sync": false`: the session-start sync turned off for this repository.
+    pub(crate) session_sync_off: bool,
 }
 
 #[rustfmt::skip]
 pub(crate) const REPO_CONFIGS: &[RepoConfig] = &[
-    RepoConfig { id: "no-config", title: "", choice: None },
-    RepoConfig { id: "config-set", title: "the repo config names OpenAI", choice: Some("env:OPENAI_API_KEY") },
-    RepoConfig { id: "config-missing", title: "the repo config names a key that is not here", choice: Some("env:OPENROUTER_API_KEY") },
+    RepoConfig { id: "no-config", title: "", choice: None, session_sync_off: false },
+    RepoConfig { id: "config-set", title: "the repo config names OpenAI", choice: Some("env:OPENAI_API_KEY"), session_sync_off: false },
+    RepoConfig { id: "config-missing", title: "the repo config names a key that is not here", choice: Some("env:OPENROUTER_API_KEY"), session_sync_off: false },
+    RepoConfig { id: "config-jev-openai", title: "the repo config names the labelling service with OpenAI", choice: Some("jev+env:OPENAI_API_KEY"), session_sync_off: false },
+    RepoConfig { id: "config-jev-codex", title: "the repo config names the labelling service with Codex", choice: Some("jev+codex"), session_sync_off: false },
+    RepoConfig { id: "config-codex", title: "the repo config names Codex", choice: Some("codex"), session_sync_off: false },
+    RepoConfig { id: "config-session-sync-off", title: "the repo config names OpenAI and turns the session-start sync off", choice: Some("env:OPENAI_API_KEY"), session_sync_off: true },
+    RepoConfig { id: "config-anthropic", title: "the repo config names Anthropic", choice: Some("env:ANTHROPIC_API_KEY"), session_sync_off: false },
 ];
 
 pub(crate) struct Client {
@@ -94,10 +105,16 @@ pub(crate) struct Client {
     pub(crate) title: &'static str,
 }
 
-/// The upgrade rows (during grace, after the `min_client` bump) are placeholders below until they can run.
+/// Which client meets the repository. The previous release's binary is not built here: an earlier setup is made by
+/// this build, then the catalog moves as it does at a release. "upgraded": the catalog now names this version as both
+/// the newest and the oldest it serves (the grace period over, the user on the new client). "below-min": the catalog
+/// raises `min_client` above this version, as it does at cutover, and the client must refuse with its message and
+/// keep its cached catalog.
 #[rustfmt::skip]
 pub(crate) const CLIENTS: &[Client] = &[
     Client { id: "fresh", title: "" },
+    Client { id: "upgraded", title: "set up earlier, then the client upgraded" },
+    Client { id: "below-min", title: "set up earlier, then the catalog stopped serving this version" },
 ];
 
 /// How the mock provider (or the fake `codex`) answers a model call.
@@ -116,6 +133,12 @@ pub(crate) enum Answer {
     NotOnPlan,
     /// This month's token limit is already reached.
     BudgetSpent,
+    /// A redirect to another address (302: a client that follows it asks there).
+    Redirect,
+    /// A redirect that keeps the method and body (307).
+    Redirect307,
+    /// The user's monthly token limit is 1 token: the first call spends it.
+    LimitPartway,
 }
 
 impl Answer {
@@ -128,6 +151,9 @@ impl Answer {
             Answer::Slow => "provider-slow",
             Answer::NotOnPlan => "model-not-on-plan",
             Answer::BudgetSpent => "budget-spent",
+            Answer::Redirect => "redirect",
+            Answer::Redirect307 => "redirect-307",
+            Answer::LimitPartway => "limit-partway",
         }
     }
     pub(crate) fn failing(self) -> bool {
@@ -164,6 +190,42 @@ pub(crate) const CRITICAL: &[(&str, &str, &str, &str, &str, Answer)] = &[
     ("The provider is too slow to answer", "shell-key", "no-codex", "terminal", "no-config", Answer::Slow),
     ("The model is not on the Codex plan", "no-key", "codex", "terminal", "no-config", Answer::NotOnPlan),
     ("The monthly token limit is reached", "shell-key", "no-codex", "terminal", "no-config", Answer::BudgetSpent),
+    ("An Anthropic key in the shell, first run in a terminal", "anthropic-key", "no-codex", "terminal", "no-config", Answer::Ok),
+    ("The repo names Anthropic, with its key in the shell, in CI", "anthropic-key", "no-codex", "ci", "config-anthropic", Answer::Ok),
+    ("The repo names the labelling service with OpenAI, both keys here, first run in a terminal", "several-keys", "no-codex", "terminal", "config-jev-openai", Answer::Ok),
+    ("The repo names the labelling service with Codex, an agent installs it", "several-keys", "codex", "agent", "config-jev-codex", Answer::Ok),
+    ("The repo names Codex, first run in a terminal", "no-key", "codex", "terminal", "config-codex", Answer::Ok),
+    ("The repo names Codex and Codex is logged out, first run in a terminal", "no-key", "codex-logged-out", "terminal", "config-codex", Answer::Ok),
+    ("The repo names Codex and Codex is logged out, in CI", "no-key", "codex-logged-out", "ci", "config-codex", Answer::Ok),
+    ("The labelling service and OpenAI, the provider down", "several-keys", "no-codex", "terminal", "config-jev-openai", Answer::Down),
+    ("An agent's sessions start with the provider down", "shell-key", "no-codex", "agent", "config-set", Answer::Down),
+    ("An agent's sessions start with the provider rate limiting", "shell-key", "codex", "agent-pty-codex", "config-set", Answer::RateLimited),
+    ("An agent's sessions start with the monthly token limit reached", "shell-key", "no-codex", "agent-pty-claude", "config-set", Answer::BudgetSpent),
+    ("An agent installs it with the release-notes switch off", "shell-key", "codex", "agent-switch-off", "no-config", Answer::Ok),
+    ("The monthly token limit runs out partway: the most needed technology is read first", "shell-key", "no-codex", "terminal", "config-set", Answer::LimitPartway),
+    ("Releases wait and no agent session-start hook is installed", "shell-key", "no-codex", "terminal-no-hook", "config-set", Answer::Ok),
+    ("Releases wait and the repo turns the session-start sync off", "shell-key", "no-codex", "terminal", "config-session-sync-off", Answer::Ok),
+    ("The provider answers with a redirect", "shell-key", "no-codex", "terminal", "no-config", Answer::Redirect),
+    ("The provider answers with a redirect that keeps the request", "shell-key", "no-codex", "terminal", "no-config", Answer::Redirect307),
+    ("The repo names the labelling service with Codex, first run in a terminal", "several-keys", "codex", "terminal", "config-jev-codex", Answer::Ok),
+    ("The labelling service and Codex, the labelling service down", "several-keys", "codex", "terminal", "config-jev-codex", Answer::Down),
+    ("At a terminal, --yes asks nothing", "shell-key", "codex", "terminal-yes", "no-config", Answer::Ok),
+    ("Anthropic refuses the key", "anthropic-key", "no-codex", "terminal", "config-anthropic", Answer::Refused),
+];
+
+/// The sessions of the registry slice: setup and the model work, without the status runs (each registry lookup the
+/// proxy refuses is retried for about 25 s per command, and what the registries are asked cannot be read anyway).
+#[rustfmt::skip]
+pub(crate) const REGISTRY_INVOCATIONS: &[Invocation] = &[
+    Invocation { id: "terminal", group: "Installs it at a terminal", title: "first run in a terminal", terminal: true, person: true, answer: "\n", ci: false, env: &[], steps: &[Step::Init, Step::SessionSync] },
+    Invocation { id: "ci", group: "Runs it in CI", title: "in CI", terminal: false, person: false, answer: "", ci: true, env: &[], steps: &[Step::InitYes, Step::SessionSync] },
+];
+
+/// Critical paths run again with registry lookups on: (title, keys, Codex, invocation, repo config).
+#[rustfmt::skip]
+pub(crate) const REGISTRY_SLICE: &[(&str, &str, &str, &str, &str)] = &[
+    ("With registry lookups on, an OpenAI key in the shell, first run in a terminal", "shell-key", "no-codex", "terminal", "no-config"),
+    ("With registry lookups on, CI with the provider in the repo config", "shell-key", "no-codex", "ci", "config-set"),
 ];
 
 /// One command of a session.
@@ -180,9 +242,16 @@ pub(crate) enum Step {
     /// The agent runs `unstale setup`, relays the options, and records the user's answer (the first option) with
     /// `unstale setup --inference <value>`. Only when status says no provider is chosen.
     AgentSetup,
-    /// A model call on the chosen provider. Until the client's own pipeline steps call the provider, this is the
-    /// internal `unstale infer` with public release-note text, on the provider the session chose.
-    Model,
+    /// `unstale session-sync` by hand: the catalog sync, then the client's own model steps for the releases the
+    /// catalog leaves to this machine, on the provider the session chose.
+    SessionSync,
+    /// A session of the agent that installed unstale starts: its installed session-start hook runs as the agent runs
+    /// it, and the background stage the hook starts (the same sync and model steps) runs to its end.
+    SessionStart,
+    /// The agent session-start hooks removed, as a repository without an agent that has them is.
+    RemoveHooks,
+    /// A command the harness adds to show a check fails when its property breaks (never part of a real session).
+    Injected,
 }
 
 // ------------------------------------------------------------------------------------------------------ scenarios
@@ -197,6 +266,11 @@ pub(crate) struct Scenario {
     pub(crate) client: &'static Client,
     pub(crate) answer: Answer,
     pub(crate) critical: bool,
+    /// Registry lookups on (no `UNSTALE_NO_REGISTRY`): the public npm and PyPI registries and the advisory database
+    /// may be asked about public package names.
+    pub(crate) registry: bool,
+    /// Monthly token limits set before the session: (the user's, this repository's), as stored.
+    pub(crate) limits: Option<(&'static str, &'static str)>,
     /// Test-only: a deliberate violation, to show the checks catch it.
     pub(crate) fault: Option<Fault>,
 }
@@ -244,6 +318,8 @@ impl Scenario {
             client,
             answer,
             critical: false,
+            registry: false,
+            limits: None,
             fault: None,
         }
     }
@@ -254,7 +330,7 @@ impl Scenario {
             Some(v) => format!("--inference {v}"),
         };
         format!(
-            "keys: {} · Codex: {} · run: {} · repo config: {c} · client: {} · provider: {}",
+            "keys: {} · Codex: {} · run: {} · repo config: {c} · client: {} · provider: {}{}",
             self.keys.id,
             self.codex.id,
             self.invocation.id,
@@ -262,7 +338,13 @@ impl Scenario {
             match self.answer {
                 Answer::Ok => "answers".to_string(),
                 Answer::BudgetSpent => "monthly token limit reached".to_string(),
+                Answer::LimitPartway => "a monthly token limit of 1 token".to_string(),
                 a => a.id().replace('-', " "),
+            },
+            if self.registry {
+                " · registry lookups on"
+            } else {
+                ""
             }
         )
     }
@@ -361,6 +443,22 @@ pub(crate) fn scenarios() -> Vec<Scenario> {
         s.critical = true;
         out.push(s);
     }
+    // A slice with registry lookups on, as a user who has not turned them off runs it.
+    for &(title, k, c, i, r) in REGISTRY_SLICE {
+        let mut s = Scenario::new(
+            by_id(KEYS, k, |v| v.id),
+            by_id(CODEX, c, |v| v.id),
+            by_id(REGISTRY_INVOCATIONS, i, |v| v.id),
+            by_id(REPO_CONFIGS, r, |v| v.id),
+            &CLIENTS[0],
+            Answer::Ok,
+        );
+        s.title = title.to_string();
+        s.slug += "-registry";
+        s.critical = true;
+        s.registry = true;
+        out.push(s);
+    }
     let sizes = [
         KEYS.len(),
         CODEX.len(),
@@ -423,5 +521,8 @@ fn the_pairs_cover_every_two_dimension_values_and_the_critical_paths_are_all_pre
             }
         }
     }
-    assert_eq!(list.iter().filter(|s| s.critical).count(), CRITICAL.len());
+    assert_eq!(
+        list.iter().filter(|s| s.critical).count(),
+        CRITICAL.len() + REGISTRY_SLICE.len()
+    );
 }

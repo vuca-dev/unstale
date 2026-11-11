@@ -5,21 +5,21 @@ $ unstale init --wait 0 --no-animation
 How should unstale read new release notes?
 
      Read with    Key              Cost a year, this repo   Compared with the best option
-  1  OpenAI       OPENAI_API_KEY   ≈ $0.13                  ≈ 11 in 100 breaking flags wrong, not 8
-  2  Codex plan                    ≈ 1.3M Codex tokens      ≈ 80% of its changes; rest not measured
+  1  OpenAI       OPENAI_API_KEY   ≈ $0.19                  ≈ 11 in 100 breaking flags wrong, not 8
+  2  Codex plan                    ≈ 1.9M Codex tokens      ≈ 80% of its changes; rest not measured
   3  Not now                       free                     ≈ 27%: advisories and deprecations only
 
 Enter for 1, a number to choose, or d for details: d
 
 Costs are estimates from evaluation runs, billed by the provider to your key or plan.
-This repo has 2 packages unstale follows.
+This repo has 3 packages unstale follows.
 The best option, which the others are compared with: Jev, a labelling service (JEV_API_KEY),
 beside an OpenAI-compatible key.
 
 1  OpenAI (OPENAI_API_KEY)
    per package, per year  $0.064
-   this repo, a year      ≈ $0.13
-   first sync, once       ≈ $0.13
+   this repo, a year      ≈ $0.19
+   first sync, once       ≈ $0.19
    results                about as many breaking changes as the best option, more flagged wrongly
                           ≈ 11 in 100 breaking-change flags wrong, against 8
                           on short release notes ≈ 38 in 100 wrong, against 25 (42 flags)
@@ -29,8 +29,8 @@ beside an OpenAI-compatible key.
 2  Codex plan
    per package, per year  650k Codex tokens ($0.071 at API prices)
                           170k measured, for reading the notes; 480k for the rest, an estimate
-   this repo, a year      ≈ 1.3M Codex tokens
-   first sync, once       ≈ 1.3M Codex tokens
+   this repo, a year      ≈ 1.9M Codex tokens
+   first sync, once       ≈ 1.9M Codex tokens
    results                somewhat less complete: ≈ 80% of the best option's changes
                           its changes are right as often as the best option's
                           breaking-change flags and repeats through Codex: not measured yet
@@ -43,14 +43,15 @@ Your choice (Enter for 1):
 Saved for this repo: OpenAI (OPENAI_API_KEY) reads release notes.
   ✓ shop · Personal setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
-  Mapped 2 direct dependencies from declared package ranges and checked local references.
+  Mapped 3 direct dependencies from declared package ranges and checked local references.
 
   Upgrades to review · 1 shortlisted
   Upstream change counts, not confirmed issues in your code.
   1. next 16.0.0 → 16.1.0 picks up 1 advisory (affected path not found)
 
-  Capabilities to explore · 0 shortlisted
-  No strong capability candidates in the coverage checked so far.
+  Capabilities to explore · 1 shortlisted
+  1. react · upgrade 19.0.0 → 19.1.0 — Activity hides part of the tree and keeps its state.
+  Dependency match only · repository benefit has not been established.
   These are review candidates, not confirmed benefits or safe-to-apply changes.
   Coverage · no shared coverage acknowledged yet. unstale status later adds to this brief.
 
@@ -73,14 +74,15 @@ Codex: to let unstale sync at session start, trust its hook once: run /hooks in 
 $ unstale status --wait 0 --no-animation
   ✓ shop · Personal setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
-  Mapped 2 direct dependencies from declared package ranges and checked local references.
+  Mapped 3 direct dependencies from declared package ranges and checked local references.
 
   Upgrades to review · 1 shortlisted
   Upstream change counts, not confirmed issues in your code.
   1. next 16.0.0 → 16.1.0 picks up 1 advisory (affected path not found)
 
-  Capabilities to explore · 0 shortlisted
-  No strong capability candidates in the coverage checked so far.
+  Capabilities to explore · 1 shortlisted
+  1. react · upgrade 19.0.0 → 19.1.0 — Activity hides part of the tree and keeps its state.
+  Dependency match only · repository benefit has not been established.
   These are review candidates, not confirmed benefits or safe-to-apply changes.
   Coverage · no shared coverage acknowledged yet. unstale status later adds to this brief.
 
@@ -101,7 +103,7 @@ Tokens                0 of 48M this month (the default limit; `unstale setup --l
 Cache                 under 1 MB of 100 MB
 
 # contacted
-#   catalog host: GET /health, GET /v1/root.json, GET /v1/shards/next/16.6b4b93175dbd.jsonl.gz, GET /v1/shards/next/16.events.156a9b1d3a00.jsonl.gz, GET /v1/tech/next.json, GET /v1/tech/react.json, GET /v1/technologies.json
+#   catalog host: GET /health, GET /v1/root.json, GET /v1/shards/next/16.7745374e4470.jsonl.gz, GET /v1/shards/next/16.events.74bcaa014f93.jsonl.gz, GET /v1/shards/react/19.b7c40e95232c.jsonl.gz, GET /v1/shards/react/19.events.04962169f41c.jsonl.gz, GET /v1/tech/next.json, GET /v1/tech/react-dom.json, GET /v1/tech/react.json, GET /v1/technologies.json
 #   model provider: nothing
 #   codex: --version, login status
-#   anything else: nothing
+#   through the proxy: nothing
