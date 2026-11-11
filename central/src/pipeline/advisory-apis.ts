@@ -11,6 +11,7 @@
 // tokens and dollars.
 import type { Advisory } from "./advisories.ts";
 import { extractLlm, parseJson } from "./llm.ts";
+import { advisoryApisText } from "./prompts.ts";
 import type { StoredRecord, TechStore } from "./store.ts";
 import { applyChange, union } from "./store.ts";
 import { pool } from "./util.ts";
@@ -20,23 +21,8 @@ export const MAX_TEXT = 4_000;
 /** At most this many APIs per advisory: more is a description of the package, not an affected path. */
 export const MAX_APIS = 6;
 
-export const APIS_PROMPT = `You read a security advisory for the package %PACKAGE% and name the package's own APIs that code must use to be affected.
-Output only a JSON array of strings, no prose.
-
-Name each as code writes it and as the advisory writes it: a function or method (\`serveStatic\`, \`z.array\`), a class, an
-option or configuration key (\`followRedirects\`), a command-line flag (\`--inspect\`), an environment variable, or a file
-name the package reads. Copy each name exactly from the advisory text.
-
-Leave out:
-- the package's name itself, and anything that just imports or installs it;
-- APIs the advisory names as the fix, a workaround or a mitigation (an option that limits size, a patched function);
-- internal functions users never call, language or runtime built-ins (\`JSON.parse\`, \`require\`), and names that
-  appear only in proof-of-concept code;
-- general descriptions ("the parser", "user input").
-At most ${MAX_APIS}. If the advisory names no such API (any use of the package is affected, or it names none), output [].
-
-Advisory:
-%TEXT%`;
+/** The prompt (schema/prompts/advisory-apis.json); it states MAX_APIS. */
+export const APIS_PROMPT = advisoryApisText.prompt;
 
 /** The text an advisory is read from: its summary, its details, then the details other databases' entries of the same
  * advisory give (`others`, advisories.ts `osvTexts`), cut at MAX_TEXT. */

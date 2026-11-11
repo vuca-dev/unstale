@@ -6,6 +6,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { extractLlm, extractModel } from "../llm.ts";
 import { hashedPacks, type Packs } from "../packs.ts";
+import { choiceText } from "../prompts.ts";
 import { canonical, logUsage, sha256, sleep, oneLine } from "../util.ts";
 
 /** `openai-decisions` and `codex` stay known names: records labelled by them (before 16 October 2026) keep them. */
@@ -230,17 +231,7 @@ export class Jev implements Classifier {
 export type ChatRunner = (prompt: string, parse: (text: string) => Record<string, string> | undefined,
   attribution?: Record<string, unknown>) => Promise<Record<string, string> | undefined>;
 
-const CHOICE_PROMPT = `You answer closed-choice questions about a record. Read the state and answer every question by picking
-exactly one of its options.
-
-Output only a JSON object, no prose: {"<question id>": "<option>", ...}
-
-State:
-%STATE%
-
-Questions:
-%QUESTIONS%
-`;
+const CHOICE_PROMPT = choiceText.prompt;
 
 /** The extraction model's client (llm.ts: gateway, cache, retries, usage log). */
 const extractionModel: ChatRunner = (prompt, parse, attribution) => extractLlm(prompt, parse, attribution ? { attribution } : {});

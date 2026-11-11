@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import { renderChange } from "../src/docs/render.ts";
+import type { SectionChange } from "../src/collector/sections.ts";
 import { advisoryApis } from "../src/pipeline/advisory-apis.ts";
 import type { Advisory } from "../src/pipeline/advisories.ts";
 import { ChatClassifier, ClassifierCache, Jev, type Classifier, type Questions } from "../src/pipeline/classify/adapter.ts";
@@ -94,10 +95,10 @@ const rel = (version: string, notes: string, over: Record<string, unknown> = {})
 // A release body over MAX_CHUNK: extracted in parts, each prompt naming its part.
 const LONG = Array.from({ length: 470 }, (_, i) => `- Fix \`route${i}\` handling of trailing slashes in nested segments.`).join("\n");
 const DOCS = renderChange("https://nextjs.org/docs/app/api-reference/config/next-config-js/images", "docs", [
-  { path: ["Images", "minimumCacheTTL"], status: "changed", hunks: "@@ -1,2 +1,2 @@\n The minimum cache TTL.\n-Default: 60 seconds.\n+Default: 4 hours.", added: 1, removed: 1 },
+  { path: ["Images", "minimumCacheTTL"], status: "changed" as SectionChange["status"], hunks: "@@ -1,2 +1,2 @@\n The minimum cache TTL.\n-Default: 60 seconds.\n+Default: 4 hours.", added: 1, removed: 1 },
 ]);
 const DOCS_MARKED = renderChange("https://nextjs.org/docs/app/api-reference/config/next-config-js/images", "docs", [
-  { path: ["Images", "minimumCacheTTL"], status: "changed", hunks: "@@ -1,2 +1,2 @@\n The minimum cache TTL.\n-Default: 60 seconds.\n+Default: 4 hours.", added: 1, removed: 1 },
+  { path: ["Images", "minimumCacheTTL"], status: "changed" as SectionChange["status"], hunks: "@@ -1,2 +1,2 @@\n The minimum cache TTL.\n-Default: 60 seconds.\n+Default: 4 hours.", added: 1, removed: 1 },
 ], { words: true });
 
 const next = TECHNOLOGIES.next!;
