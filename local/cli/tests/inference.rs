@@ -35,11 +35,14 @@ fn infer(cache: &Path, bin: Option<&Path>, args: &[&str]) -> Run {
         .args(["--timeout-secs", "1", "--backoff-ms", "0"])
         .args(args)
         .env("UNSTALE_CACHE_DIR", cache)
+        // The user's config: none of the machine's own, and where a test puts the user's token limit.
+        .env("UNSTALE_CONFIG_DIR", cache.join("user-config"))
         .env("UNSTALE_EDGE_INFERENCE", "1")
         .env("CANARY_KEY", CANARY)
         .env("OPENAI_API_KEY", CANARY)
         .env("ANTHROPIC_API_KEY", CANARY)
         .env("PATH", path)
+        .current_dir(cache)
         .output()
         .unwrap();
     Run {
@@ -198,12 +201,12 @@ fn codex_on_path_answers_and_never_sees_a_key_from_the_shell() {
 #[test]
 fn every_provider_error_defers_with_one_line_and_exit_0() {
     let cases: Vec<(&str, u16, Duration)> = vec![
-        ("the provider did not accept the key", 401, Duration::ZERO),
+        ("the provider rejected the key", 401, Duration::ZERO),
         ("the provider is rate limiting", 429, Duration::ZERO),
         ("the provider is not answering", 500, Duration::ZERO),
         ("the provider is not answering", 503, Duration::ZERO),
         ("the provider took too long", 200, Duration::from_secs(3)),
-        ("is not available on this key or plan", 404, Duration::ZERO),
+        ("this key or plan lacks ", 404, Duration::ZERO),
     ];
     for (want, status, delay) in cases {
         let (url, _) = mock(status, OPENAI_OK, delay);
@@ -217,7 +220,7 @@ fn every_provider_error_defers_with_one_line_and_exit_0() {
         );
         assert_eq!(r.stdout.lines().count(), 1, "HTTP {status}: {}", r.stdout);
         assert!(
-            r.stdout.starts_with("deferred: ") && r.stdout.contains(want),
+            r.stdout.starts_with("warning: ") && r.stdout.contains(want),
             "HTTP {status}: {}",
             r.stdout
         );
@@ -233,7 +236,7 @@ fn every_provider_error_defers_with_one_line_and_exit_0() {
         (r.code, r.stdout.trim()),
         (
             0,
-            "deferred: the provider is not answering; it runs next time"
+            "warning: the provider is not answering, so new release notes wait. The next sync tries again."
         )
     );
     let r = infer(
@@ -253,7 +256,10 @@ fn every_provider_error_defers_with_one_line_and_exit_0() {
     );
     assert_eq!(
         (r.code, r.stdout.trim()),
-        (0, "deferred: UNSET_VAR is not set")
+        (
+            0,
+            "warning: UNSET_VAR is not set here, so new release notes are not read. Set it."
+        )
     );
     // Codex: logged out, and a model not on the plan.
     let not_supported = r#"{"type":"error","message":"The 'gpt-5.4-mini' model is not supported when using Codex with a ChatGPT account."}"#;
@@ -262,13 +268,13 @@ fn every_provider_error_defers_with_one_line_and_exit_0() {
             false,
             CODEX_OK,
             0,
-            "deferred: Codex is not logged in; run `codex login`",
+            "warning: Codex is not logged in, so new release notes are not read. Run `codex login`.",
         ),
         (
             true,
             not_supported,
             1,
-            "deferred: gpt-5.4-mini is not available on this key or plan",
+            "warning: this key or plan lacks gpt-5.4-mini, so new release notes are not read. Run `unstale setup`.",
         ),
     ] {
         let dir = tempfile::tempdir().unwrap();
@@ -331,7 +337,7 @@ fn a_redirect_to_another_host_receives_nothing_and_the_call_defers() {
             (r.code, r.stdout.trim()),
             (
                 0,
-                "deferred: the provider address redirects elsewhere; check it"
+                "warning: the provider address redirects, so new release notes are not read. Check the address."
             ),
             "{provider}: {}",
             r.stderr
@@ -389,11 +395,112 @@ fn a_corrupt_or_unwritable_ledger_defers_with_one_line() {
         (r.code, r.stdout.trim(), r.stderr.as_str()),
         (
             0,
-            "deferred: unstale's usage record cannot be read or written",
+            "warning: unstale's token count is corrupt, so new release notes are not read. See `unstale status`.",
             ""
         )
     );
     assert_eq!(seen.lock().unwrap().len(), 1, "no call on a corrupt ledger");
+}
+
+#[test]
+fn the_users_token_limit_holds_for_infer_and_a_repo_config_cannot_loosen_it() {
+    let reached = "warning: monthly token limit reached, so new release notes wait. Change it: `unstale setup --limit`.";
+    let (url, seen) = mock(200, OPENAI_OK, Duration::ZERO);
+    let cache = tempfile::tempdir().unwrap();
+    let spend = |tokens: u64| {
+        // This month's file, as the client names it: one call creates it, then it is replaced.
+        std::fs::create_dir_all(cache.path().join("inference")).unwrap();
+        let month = &chrono_month();
+        std::fs::write(
+            cache.path().join(format!("inference/usage-{month}.jsonl")),
+            format!("{{\"day\":\"{month}-01\",\"provider\":\"openai\",\"model\":\"m\",\"input\":{tokens},\"cached\":0,\"output\":0}}\n"),
+        )
+        .unwrap();
+    };
+    let user = |text: &str| {
+        std::fs::create_dir_all(cache.path().join("user-config")).unwrap();
+        std::fs::write(cache.path().join("user-config/config.json"), text).unwrap();
+    };
+    // 2M spent: under the default limit, a call is made.
+    spend(2_000_000);
+    assert_eq!(
+        infer(cache.path(), None, &strs(&custom(&url)))
+            .stdout
+            .trim(),
+        r#"{"ok":true}"#
+    );
+    assert_eq!(seen.lock().unwrap().len(), 1);
+    // The user's own limit of 1M is reached: no call.
+    user(r#"{"monthly_token_limit": 1000000}"#);
+    assert_eq!(
+        infer(cache.path(), None, &strs(&custom(&url)))
+            .stdout
+            .trim(),
+        reached
+    );
+    // A repository's config saying "none" (or a higher number) does not lift the user's limit.
+    for loosened in [r#""none""#, "900000000"] {
+        std::fs::create_dir_all(cache.path().join(".unstale")).unwrap();
+        std::fs::write(
+            cache.path().join(".unstale/config.json"),
+            format!(
+                r#"{{"schema":1,"catalog":"x","mode":"local","monthly_token_limit":{loosened}}}"#
+            ),
+        )
+        .unwrap();
+        assert_eq!(
+            infer(cache.path(), None, &strs(&custom(&url)))
+                .stdout
+                .trim(),
+            reached,
+            "{loosened}"
+        );
+    }
+    assert_eq!(
+        seen.lock().unwrap().len(),
+        1,
+        "no call past the user's limit"
+    );
+    // A repository may lower it: the user allows 900M, the repo 1M.
+    user(r#"{"monthly_token_limit": 900000000}"#);
+    std::fs::write(
+        cache.path().join(".unstale/config.json"),
+        r#"{"schema":1,"catalog":"x","mode":"local","monthly_token_limit":1000000}"#,
+    )
+    .unwrap();
+    assert_eq!(
+        infer(cache.path(), None, &strs(&custom(&url)))
+            .stdout
+            .trim(),
+        reached
+    );
+    std::fs::remove_file(cache.path().join(".unstale/config.json")).unwrap();
+    assert_eq!(
+        infer(cache.path(), None, &strs(&custom(&url)))
+            .stdout
+            .trim(),
+        r#"{"ok":true}"#
+    );
+    assert_eq!(seen.lock().unwrap().len(), 2);
+}
+
+/// This month as the client's ledger names it (UTC).
+fn chrono_month() -> String {
+    let days = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64
+        / 86_400;
+    // Civil date from days since 1970 (Howard Hinnant's algorithm).
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + i64::from(m <= 2);
+    format!("{y:04}-{m:02}")
 }
 
 #[test]

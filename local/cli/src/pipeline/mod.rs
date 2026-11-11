@@ -156,11 +156,14 @@ pub fn routes_with(
         {
             c.base_url = b.trim().to_string();
         }
-        Inference::new(c).with_env(keys::reader_with(
+        let mut inf = Inference::new(c).with_env(keys::reader_with(
             root.map(Path::to_path_buf),
             consented.clone(),
             env.clone(),
-        ))
+        ));
+        // The user's own monthly token limit (`unstale setup --limit`), the default when they set none.
+        inf.monthly_budget = crate::setup::monthly_tokens_at(root);
+        inf
     };
     Some(Routes {
         main: make(main, "UNSTALE_INFERENCE_BASE_URL"),
@@ -381,13 +384,13 @@ pub fn unrun_line(ctx: &crate::Ctx, techs: &BTreeSet<String>) -> Option<String> 
     // back on; without a hook, running the stage by hand.
     let (why, fix) = if ctx.config.session_sync == Some(false) {
         (
-            "session-start sync is off here",
-            "Remove `\"session_sync\": false` from .unstale/config.json to read them.",
+            "`session_sync` is off in .unstale/config.json",
+            "Remove it.",
         )
     } else if !session_hook_installed(&ctx.root) {
         (
-            "no agent session-start hook here",
-            "Run `unstale session-sync` to read them now.",
+            "no session-start hook here",
+            "Run `unstale session-sync`.",
         )
     } else {
         return None;

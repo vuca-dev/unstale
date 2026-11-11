@@ -337,7 +337,10 @@ pub struct TechSync {
     pub reused: usize,
     pub unchanged: bool,
     /// Change-event shards fetched and reused from the cache (both 0 with the edge-inference switch off).
+    // Counted for tests and for whoever reports on a sync; `unstale sync` itself says nothing of them.
+    #[allow(dead_code)]
     pub events_downloaded: usize,
+    #[allow(dead_code)]
     pub events_reused: usize,
     /// Why this technology's change events were refused (missing, failing verification, or not fetched in time). The
     /// records synced anyway; the failure is kept for `unstale status` until a later sync verifies the events.

@@ -1,0 +1,16 @@
+unstale reads new release notes with a model, on the user's own key or Codex plan.
+None is set up here. Tell the user and ask which they want. Never ask them to paste a key.
+
+  1  Set one up   one line to add, listed below
+  2  Not now      free · advisories and deprecations only, ≈ 27% of what unstale finds with one
+
+For 1, they add one line to their shell profile or this repo's .env, then you run `unstale setup`:
+
+  OPENAI_API_KEY=<key>      OpenAI
+  AI_GATEWAY_API_KEY=<key>  Vercel AI Gateway
+  OPENROUTER_API_KEY=<key>  OpenRouter
+  ANTHROPIC_API_KEY=<key>   Anthropic
+
+Or use their Codex plan: install Codex and run `codex login`.
+
+For 2: unstale setup --inference none

@@ -2,7 +2,23 @@
 # keys: no-key · Codex: codex-logged-out · run: terminal · repo config: none · client: fresh · provider: answers
 
 $ unstale init --wait 0 --no-animation
-Reading new release notes needs a key or Codex: set AI_GATEWAY_API_KEY, OPENAI_API_KEY, OPENROUTER_API_KEY or ANTHROPIC_API_KEY, or Codex (Codex is not logged in; run `codex login`), then run `unstale setup`. Until then: deterministic signals only.
+unstale reads new release notes with a model, on your own key or your Codex plan.
+None is set up here (Codex is not logged in).
+
+  1  Set one up   shows the one line to add
+  2  Not now      free · advisories and deprecations only, ≈ 27% of what unstale finds with one
+
+Enter for 1, or 2:
+
+Add one of these lines to your shell profile or this repo's .env, then run `unstale setup`:
+
+  OPENAI_API_KEY=<key>      OpenAI
+  AI_GATEWAY_API_KEY=<key>  Vercel AI Gateway
+  OPENROUTER_API_KEY=<key>  OpenRouter
+  ANTHROPIC_API_KEY=<key>   Anthropic
+
+Or use your Codex plan: Codex is not logged in. Run `codex login`.
+
   ✓ shop · Personal setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 2 direct dependencies from declared package ranges and checked local references.
@@ -28,12 +44,12 @@ Reading new release notes needs a key or Codex: set AI_GATEWAY_API_KEY, OPENAI_A
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-unstale notice: This is the catalog's notice for the matrix (shown once a day).
+unstale notice, act by 30 November: Upgrade unstale; this version stops receiving new changes then.
 unstale <newer version> available: npm install -g @unstale/cli@latest
+Codex: to let unstale sync at session start, trust its hook once: run /hooks in Codex.
 
 $ unstale sync
-synced next: 2 records (sources checked 2026-10-15T00:00:00Z); unchanged; change events 0 downloaded, 1 reused
-Not covered by the catalog: 1 other candidate technologies (no index for them, or no record names a package used here).
+next: 2 upstream changes on file, nothing new
 
 # no provider chosen, so no model step runs
 
@@ -63,9 +79,7 @@ $ unstale status --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Model provider: not chosen; deterministic signals only · `unstale setup` shows the options
-Model tokens this month: 0 of 48M (monthly budget; past it, work waits for next month)
-Freshness on this machine: no new release of this repository's technologies reached it in the last 30 days
+Release notes         not read: no provider chosen · `unstale setup` shows the options
 
 # contacted
 #   catalog host: GET /health, GET /v1/root.json, GET /v1/shards/next/16.6b4b93175dbd.jsonl.gz, GET /v1/shards/next/16.events.156a9b1d3a00.jsonl.gz, GET /v1/tech/next.json, GET /v1/tech/react.json, GET /v1/technologies.json

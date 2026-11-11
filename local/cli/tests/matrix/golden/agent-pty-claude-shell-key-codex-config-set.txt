@@ -1,0 +1,76 @@
+# An OpenAI key in the shell and Codex logged in, Claude Code installs it through a terminal; the repo config names OpenAI
+# keys: shell-key · Codex: codex · run: agent-pty-claude · repo config: --inference env:OPENAI_API_KEY · client: fresh · provider: answers
+
+$ unstale init --wait 0 --no-animation
+  ✓ shop · Shared setup ready
+  Next: run unstale-review in your coding agent · copyable prompt below.
+  Mapped 2 direct dependencies from declared package ranges and checked local references.
+
+  Upgrades to review · 1 shortlisted
+  Upstream change counts, not confirmed issues in your code.
+  1. next 16.0.0 → 16.1.0 picks up 1 advisory (affected path not found)
+
+  Capabilities to explore · 0 shortlisted
+  No strong capability candidates in the coverage checked so far.
+  These are review candidates, not confirmed benefits or safe-to-apply changes.
+  Coverage · no shared coverage acknowledged yet. unstale status later adds to this brief.
+
+
+  Reviews and decisions can be committed to Git. Keep personal: unstale init --mode personal
+  --wait 0
+  Details: .unstale/onboarding-report.md
+
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  NEXT · Review with unstale-review · paste into your coding agent
+
+  Use .unstale/skills/review/SKILL.md to review this repository. Rank upgrades and capabilities by
+  likely impact. Recommend what to do first, with affected files and trade-offs. Return proposals
+  only; do not edit files.
+
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+unstale notice, act by 30 November: Upgrade unstale; this version stops receiving new changes then.
+unstale <newer version> available: npm install -g @unstale/cli@latest
+Codex: to let unstale sync at session start, trust its hook once: run /hooks in Codex.
+
+$ unstale status --wait 0 --no-animation
+  ✓ shop · Shared setup ready
+  Next: run unstale-review in your coding agent · copyable prompt below.
+  Mapped 2 direct dependencies from declared package ranges and checked local references.
+
+  Upgrades to review · 1 shortlisted
+  Upstream change counts, not confirmed issues in your code.
+  1. next 16.0.0 → 16.1.0 picks up 1 advisory (affected path not found)
+
+  Capabilities to explore · 0 shortlisted
+  No strong capability candidates in the coverage checked so far.
+  These are review candidates, not confirmed benefits or safe-to-apply changes.
+  Coverage · no shared coverage acknowledged yet. unstale status later adds to this brief.
+
+
+  Reviews and decisions can be committed to Git. Keep personal: unstale init --mode personal
+  --wait 0
+  Details: .unstale/onboarding-report.md
+
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  NEXT · Review with unstale-review · paste into your coding agent
+
+  Use .unstale/skills/review/SKILL.md to review this repository. Rank upgrades and capabilities by
+  likely impact. Recommend what to do first, with affected files and trade-offs. Return proposals
+  only; do not edit files.
+
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Release notes         OpenAI (OPENAI_API_KEY), this repo's config
+Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)
+
+$ unstale sync
+next: 2 upstream changes on file, nothing new
+
+# model step: the internal `unstale infer` on the chosen provider, standing in for the client's own pipeline steps
+$ unstale infer --provider openai  (no terminal)
+{"ok":true}
+
+# contacted
+#   catalog host: GET /health, GET /v1/root.json, GET /v1/shards/next/16.6b4b93175dbd.jsonl.gz, GET /v1/shards/next/16.events.156a9b1d3a00.jsonl.gz, GET /v1/tech/next.json, GET /v1/tech/react.json, GET /v1/technologies.json
+#   model provider: POST /v1/chat/completions (1 request)
+#   codex: not run
+#   anything else: nothing

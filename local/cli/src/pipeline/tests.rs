@@ -540,9 +540,11 @@ fn a_key_named_by_the_choice_is_read_from_this_repos_env_file_and_nothing_else_i
         key_env: Some("GITHUB_TOKEN".into()),
         labels: None,
     };
-    assert!(
-        crate::setup::provider_line(Some(&(bad, crate::setup::Origin::Repo)), &|_| true)
-            .contains("not used: GITHUB_TOKEN is not a key variable for this provider")
+    assert_eq!(
+        crate::setup::view::missing_key_lines(Some(&(bad, crate::setup::Origin::Repo)), &|_| true),
+        [
+            "warning: GITHUB_TOKEN is not this provider's key, so new release notes are not read. Run `unstale setup`."
+        ]
     );
     // Neither value reached a request body, the ledger or any cache file.
     for p in walk(dir.path()) {

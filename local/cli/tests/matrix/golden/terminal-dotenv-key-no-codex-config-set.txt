@@ -28,16 +28,15 @@ $ unstale init --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-unstale notice: This is the catalog's notice for the matrix (shown once a day).
+unstale notice, act by 30 November: Upgrade unstale; this version stops receiving new changes then.
 unstale <newer version> available: npm install -g @unstale/cli@latest
 
 $ unstale sync
-synced next: 2 records (sources checked 2026-10-15T00:00:00Z); unchanged; change events 0 downloaded, 1 reused
-Not covered by the catalog: 1 other candidate technologies (no index for them, or no record names a package used here).
+next: 2 upstream changes on file, nothing new
 
 # model step: the internal `unstale infer` on the chosen provider, standing in for the client's own pipeline steps; OPENAI_API_KEY is only in this repo's .env, which `unstale infer` does not read (the pipeline steps read it once the user has chosen it)
 $ unstale infer --provider openai  (no terminal)
-deferred: OPENAI_API_KEY is not set
+warning: OPENAI_API_KEY is not set here, so new release notes are not read. Set it.
 
 $ unstale status --wait 0 --no-animation
   ✓ shop · Shared setup ready
@@ -66,9 +65,8 @@ $ unstale status --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Model provider: OpenAI (OPENAI_API_KEY), from this repo's config · `unstale setup` changes it
-Model tokens this month: 0 of 48M (monthly budget; past it, work waits for next month)
-Freshness on this machine: no new release of this repository's technologies reached it in the last 30 days
+Release notes         OpenAI (OPENAI_API_KEY), this repo's config
+Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)
 
 # contacted
 #   catalog host: GET /health, GET /v1/root.json, GET /v1/shards/next/16.6b4b93175dbd.jsonl.gz, GET /v1/shards/next/16.events.156a9b1d3a00.jsonl.gz, GET /v1/tech/next.json, GET /v1/tech/react.json, GET /v1/technologies.json

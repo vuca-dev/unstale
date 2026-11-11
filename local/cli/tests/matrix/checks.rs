@@ -26,6 +26,35 @@ pub(crate) enum Fault {
     NoticeTwice,
 }
 
+/// Words of the implementation, never of the reader (docs/edge-inference/terminal-principles.md, "Plain words").
+pub(crate) const INTERNAL_WORDS: [&str; 9] = [
+    "deferred",
+    "deterministic signals",
+    "technology-year",
+    "edge inference",
+    "change events",
+    "(shown once a day)",
+    "candidate technolog",
+    "no index for",
+    "shard(s)",
+];
+
+/// What a command's output breaks of the plain-words rule.
+pub(crate) fn wording(shown: &str, terminal: bool, output: &str) -> Vec<String> {
+    let mut v = vec![];
+    for word in INTERNAL_WORDS {
+        if output.contains(word) {
+            v.push(format!("wording: `{shown}` printed {word:?}"));
+        }
+    }
+    if !terminal && output.contains(" · step ") {
+        v.push(format!(
+            "wording: `{shown}` printed step-by-step progress without a terminal"
+        ));
+    }
+    v
+}
+
 /// What a scenario breaks, one line each, prefixed with the property.
 pub(crate) fn check(s: &Scenario, se: &Session) -> Vec<String> {
     let w = &se.world;
@@ -208,7 +237,7 @@ pub(crate) fn check(s: &Scenario, se: &Session) -> Vec<String> {
         .find(|r| r.step == Step::Model && !r.shown.is_empty())
     {
         let lines: Vec<&str> = m.output.lines().collect();
-        let deferred = lines.len() == 1 && lines[0].starts_with("deferred: ");
+        let deferred = lines.len() == 1 && lines[0].starts_with("warning: ");
         let answered = lines == [r#"{"ok":true}"#];
         if !(deferred || answered) {
             v.push(format!("hold-the-line 4: the model step printed neither an answer nor one deferral line: {:?}", m.output));
@@ -247,9 +276,18 @@ pub(crate) fn check(s: &Scenario, se: &Session) -> Vec<String> {
         v.push("questions: Ctrl-C at the question recorded a dismissal".into());
     }
 
+    // Plain words: nothing printed uses vocabulary the reader was never taught, and without a terminal there is no
+    // line per step of progress.
+    for r in &se.ran {
+        v.extend(wording(&r.shown, r.terminal, &r.output));
+    }
+
     // The catalog's notice and update lines: once a day.
-    let line = format!("unstale notice: {NOTICE}");
-    let n: usize = se.ran.iter().map(|r| r.output.matches(&line).count()).sum();
+    let n: usize = se
+        .ran
+        .iter()
+        .map(|r| r.output.matches(NOTICE_LINE).count())
+        .sum();
     if n > 1 {
         v.push(format!("notice: shown {n} times in one day"));
     }
@@ -382,6 +420,20 @@ fn the_checks_catch_a_notice_shown_twice_in_a_day() {
         &with_fault("shell-key", "no-codex", "terminal", Fault::NoticeTwice),
         "notice:"
     ));
+}
+
+#[test]
+fn the_checks_catch_internal_vocabulary_and_progress_lines_without_a_terminal() {
+    let old = "deferred: the provider is not answering; it runs next time\n";
+    assert!(caught(&wording("unstale infer", false, old), "wording:"));
+    let progress = "  Mapping your stack · step 1/5 · shop · 2 direct packages\n";
+    assert!(caught(
+        &wording("unstale init", false, progress),
+        "wording:"
+    ));
+    assert!(wording("unstale init", true, progress).is_empty());
+    let now = "warning: the provider is not answering, so some new release notes are not read yet. The next sync tries again.\n";
+    assert!(wording("unstale infer", false, now).is_empty());
 }
 
 // ------------------------------------------------------------------------------------------- not runnable yet

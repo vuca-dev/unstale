@@ -2,6 +2,7 @@
 # keys: blank-key · Codex: no-codex · run: agent-pty-claude · repo config: none · client: fresh · provider: answers
 
 $ unstale init --wait 0 --no-animation
+Choice pending: how unstale reads new release notes. Run `unstale setup` and ask the user.
   ✓ shop · Personal setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 2 direct dependencies from declared package ranges and checked local references.
@@ -27,7 +28,7 @@ $ unstale init --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-unstale notice: This is the catalog's notice for the matrix (shown once a day).
+unstale notice, act by 30 November: Upgrade unstale; this version stops receiving new changes then.
 unstale <newer version> available: npm install -g @unstale/cli@latest
 
 $ unstale status --wait 0 --no-animation
@@ -56,16 +57,28 @@ $ unstale status --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Model provider: not chosen; deterministic signals only · `unstale setup` shows the options
-Model tokens this month: 0 of 48M (monthly budget; past it, work waits for next month)
-Freshness on this machine: no new release of this repository's technologies reached it in the last 30 days
+Release notes         not read: no provider chosen · `unstale setup` shows the options
 
 $ unstale setup
-Reading new release notes needs a key or Codex: set AI_GATEWAY_API_KEY, OPENAI_API_KEY, OPENROUTER_API_KEY or ANTHROPIC_API_KEY, or log in to Codex, then run `unstale setup`. Until then: deterministic signals only.
+unstale reads new release notes with a model, on the user's own key or Codex plan.
+None is set up here. Tell the user and ask which they want. Never ask them to paste a key.
+
+  1  Set one up   one line to add, listed below
+  2  Not now      free · advisories and deprecations only, ≈ 27% of what unstale finds with one
+
+For 1, they add one line to their shell profile or this repo's .env, then you run `unstale setup`:
+
+  OPENAI_API_KEY=<key>      OpenAI
+  AI_GATEWAY_API_KEY=<key>  Vercel AI Gateway
+  OPENROUTER_API_KEY=<key>  OpenRouter
+  ANTHROPIC_API_KEY=<key>   Anthropic
+
+Or use their Codex plan: install Codex and run `codex login`.
+
+For 2: unstale setup --inference none
 
 $ unstale sync
-synced next: 2 records (sources checked 2026-10-15T00:00:00Z); unchanged; change events 0 downloaded, 1 reused
-Not covered by the catalog: 1 other candidate technologies (no index for them, or no record names a package used here).
+next: 2 upstream changes on file, nothing new
 
 # no provider chosen, so no model step runs
 

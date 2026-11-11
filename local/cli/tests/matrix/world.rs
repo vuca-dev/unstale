@@ -14,8 +14,10 @@ pub(crate) const NEVER_OPENED: &[&str] = &[
 pub(crate) const TODAY: &str = "2026-11-10";
 /// A line of the fixture repository's code: it must never reach a provider or the catalog.
 pub(crate) const CODE_MARKER: &str = "shopCheckoutMarker4e1d";
-/// The catalog's notice, shown once a day.
-pub(crate) const NOTICE: &str = "This is the catalog's notice for the matrix (shown once a day).";
+/// The catalog's notice: what every user must do by its date (30 November in the fixture catalog).
+pub(crate) const NOTICE: &str = "Upgrade unstale; this version stops receiving new changes then.";
+/// The notice as the client prints it.
+pub(crate) const NOTICE_LINE: &str = "unstale notice, act by 30 November: Upgrade unstale; this version stops receiving new changes then.";
 /// Public release-note text from the fixture catalog's change event: what a model step may send.
 pub(crate) const RELEASE_NOTE: &str =
     "The middleware file convention is renamed to proxy; middleware.ts keeps working until 17.";

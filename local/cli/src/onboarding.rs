@@ -1178,6 +1178,14 @@ pub fn session_coverage_line(ctx: &Ctx, timeout: Duration) -> Option<String> {
     });
     let (records, techs) = (gains.iter().sum::<usize>(), gains.iter().filter(|g| **g > 0).count());
     (records > 0).then(|| {
+        // With the edge-inference switch on, short: what is new and the command (the rest is in the managed skill).
+        if crate::util::edge_inference() {
+            return format!(
+                "unstale: {records} new upstream {} for {}. Run `unstale status --wait 0` to see them.",
+                if records == 1 { "change" } else { "changes" },
+                technology_count(techs)
+            );
+        }
         format!(
             "unstale: {records} new upstream records for {} since the last onboarding report. Run `unstale status --wait 0` to refresh .unstale/onboarding-report.md; review it only if the user asks.",
             technology_count(techs)
@@ -5724,7 +5732,7 @@ mod tests {
         let ctx = crate::Ctx {
             root: repo.path().to_path_buf(),
             tool: repo.path().join(".unstale"),
-            config: crate::Config { schema: 1, catalog: base.clone(), mode: crate::Mode::Local, service: Some(base.clone()), inference: None, session_sync: None },
+            config: crate::Config { schema: 1, catalog: base.clone(), mode: crate::Mode::Local, service: Some(base.clone()), inference: None, monthly_token_limit: None, session_sync: None },
             cache: cache.path().to_path_buf(),
         };
         let mut pending = Pending::default();

@@ -2,6 +2,7 @@
 # keys: revoked-key · Codex: no-codex · run: agent-pty-claude · repo config: none · client: fresh · provider: refused
 
 $ unstale init --wait 0 --no-animation
+Choice pending: how unstale reads new release notes. Run `unstale setup` and ask the user.
   ✓ shop · Personal setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 2 direct dependencies from declared package ranges and checked local references.
@@ -27,7 +28,7 @@ $ unstale init --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-unstale notice: This is the catalog's notice for the matrix (shown once a day).
+unstale notice, act by 30 November: Upgrade unstale; this version stops receiving new changes then.
 unstale <newer version> available: npm install -g @unstale/cli@latest
 
 $ unstale status --wait 0 --no-animation
@@ -56,27 +57,31 @@ $ unstale status --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Model provider: not chosen; deterministic signals only · `unstale setup` shows the options
-Model tokens this month: 0 of 48M (monthly budget; past it, work waits for next month)
-Freshness on this machine: no new release of this repository's technologies reached it in the last 30 days
+Release notes         not read: no provider chosen · `unstale setup` shows the options
 
 $ unstale setup
-Choose how unstale reads new release notes (costs are estimates; this repo has 2 technologies):
-  1) OpenAI (OPENAI_API_KEY): $0.090 per technology-year · this repo ≈ $0.18 a year, first sync ≈ $0.18 once · slightly less complete: ≈ 93% of the best option's breaking-change flags; ≈ 2 more duplicate records per technology-year [--inference env:OPENAI_API_KEY]
-  2) None: deterministic signals only; new change details need a key or Codex [--inference none]
-Record the choice with `unstale setup --inference <value>`.
+The user chooses how unstale reads new release notes. Show them these options as printed and ask.
+Never choose for them.
+
+     Read with   Key              Cost a year, this repo   Compared with the best option
+  1  OpenAI      OPENAI_API_KEY   ≈ $0.18                  ≈ 93% of its breaking-change flags
+  2  Not now                      free                     ≈ 27%: advisories and deprecations only
+
+Record their answer with the matching command:
+  1  unstale setup --inference env:OPENAI_API_KEY
+  2  unstale setup --inference none
+Full costs: unstale setup --details
 
 # the agent showed the options and asked; the user chose option 1
 $ unstale setup --inference env:OPENAI_API_KEY
-Model provider: OpenAI (OPENAI_API_KEY) · saved in .unstale/config.json; `unstale setup` changes it
+Saved for this repo: OpenAI (OPENAI_API_KEY) reads release notes.
 
 $ unstale sync
-synced next: 2 records (sources checked 2026-10-15T00:00:00Z); unchanged; change events 0 downloaded, 1 reused
-Not covered by the catalog: 1 other candidate technologies (no index for them, or no record names a package used here).
+next: 2 upstream changes on file, nothing new
 
 # model step: the internal `unstale infer` on the chosen provider, standing in for the client's own pipeline steps
 $ unstale infer --provider openai  (no terminal)
-deferred: the provider did not accept the key
+warning: the provider rejected the key, so new release notes are not read. Check the key.
 
 # contacted
 #   catalog host: GET /health, GET /v1/root.json, GET /v1/shards/next/16.6b4b93175dbd.jsonl.gz, GET /v1/shards/next/16.events.156a9b1d3a00.jsonl.gz, GET /v1/tech/next.json, GET /v1/tech/react.json, GET /v1/technologies.json

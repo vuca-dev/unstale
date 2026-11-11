@@ -2,18 +2,7 @@
 # keys: several-keys · Codex: no-codex · run: agent · repo config: none · client: fresh · provider: answers
 
 $ unstale init --wait 0 --no-animation  (no terminal)
-  Mapping your stack · step 1/5 · shop · 2 direct packages across 1 manifests
-  Matching published intelligence · step 2/5 · 2 direct packages · matching official changes to this stack
-  Connecting to the catalog · step 2/5 · Checking service availability
-  Matching published intelligence · step 2/5 · Checked 1/2 direct packages against the published catalog
-  Matching published intelligence · step 2/5 · Checked 2/2 direct packages against the published catalog
-  Connecting public coverage · step 3/5 · 2 direct packages · verifying public registry identities
-  Verifying public packages · step 3/5 · Checked 1/2 registry identities
-  Verifying public packages · step 3/5 · Checked 2/2 registry identities
-  Checking publisher deprecations · step 3/5 · Installed versions of direct packages on their public registry
-  Connecting public coverage · step 3/5 · No public packages to register
-  Refreshing shared results · step 4/5 · Fetching the latest results for your stack
-  Preparing your review · step 5/5 · Checking versions, local usage and prior decisions
+Choice pending: how unstale reads new release notes. Run `unstale setup` and ask the user.
   ✓ shop · Personal setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 2 direct dependencies from declared package ranges and checked local
@@ -43,22 +32,10 @@ $ unstale init --wait 0 --no-animation  (no terminal)
   files and trade-offs. Return proposals only; do not edit files.
   
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-unstale notice: This is the catalog's notice for the matrix (shown once a day).
+unstale notice, act by 30 November: Upgrade unstale; this version stops receiving new changes then.
 unstale <newer version> available: npm install -g @unstale/cli@latest
 
 $ unstale status --wait 0 --no-animation  (no terminal)
-  Mapping your stack · step 1/5 · shop · 2 direct packages across 1 manifests
-  Matching published intelligence · step 2/5 · 2 direct packages · matching official changes to this stack
-  Connecting to the catalog · step 2/5 · Checking service availability
-  Matching published intelligence · step 2/5 · Checked 1/2 direct packages against the published catalog
-  Matching published intelligence · step 2/5 · Checked 2/2 direct packages against the published catalog
-  Connecting public coverage · step 3/5 · 2 direct packages · verifying public registry identities
-  Verifying public packages · step 3/5 · Checked 1/2 registry identities
-  Verifying public packages · step 3/5 · Checked 2/2 registry identities
-  Checking publisher deprecations · step 3/5 · Installed versions of direct packages on their public registry
-  Connecting public coverage · step 3/5 · No public packages to register
-  Refreshing shared results · step 4/5 · Fetching the latest results for your stack
-  Preparing your review · step 5/5 · Checking versions, local usage and prior decisions
   ✓ shop · Personal setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 2 direct dependencies from declared package ranges and checked local
@@ -88,25 +65,33 @@ $ unstale status --wait 0 --no-animation  (no terminal)
   files and trade-offs. Return proposals only; do not edit files.
   
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Model provider: not chosen; deterministic signals only · `unstale setup` shows the options
-Model tokens this month: 0 of 48M (monthly budget; past it, work waits for next month)
-Freshness on this machine: no new release of this repository's technologies reached it in the last 30 days
+Release notes         not read: no provider chosen · `unstale setup` shows the options
 
 $ unstale setup  (no terminal)
-Choose how unstale reads new release notes (costs are estimates; this repo has 2 technologies):
-  1) Jev labelling API (JEV_API_KEY) + Vercel AI Gateway (AI_GATEWAY_API_KEY): $0.028 per technology-year · this repo ≈ $0.055 a year, first sync ≈ $0.055 once [--inference jev+env:AI_GATEWAY_API_KEY]
-  2) Vercel AI Gateway (AI_GATEWAY_API_KEY): $0.055 per technology-year · this repo ≈ $0.11 a year, first sync ≈ $0.11 once · slightly less complete: ≈ 93% of the best option's breaking-change flags; ≈ 2 more duplicate records per technology-year [--inference env:AI_GATEWAY_API_KEY]
-  3) Anthropic (ANTHROPIC_API_KEY): $0.075 per technology-year · this repo ≈ $0.15 a year, first sync ≈ $0.15 once · somewhat less complete: ≈ 90% of the best option's changes (fewer from upgrade guides); ≈ 23 more duplicate records per technology-year [--inference env:ANTHROPIC_API_KEY]
-  4) None: deterministic signals only; new change details need a key or Codex [--inference none]
-Record the choice with `unstale setup --inference <value>`.
+The user chooses how unstale reads new release notes. Show them these options as printed and ask.
+Never choose for them.
+
+     Read with                 Cost a year, this repo   Compared with the best option
+  1  Jev + Vercel AI Gateway   ≈ $0.055                 the best option
+  2  Vercel AI Gateway         ≈ $0.11                  ≈ 93% of its breaking-change flags
+  3  Anthropic                 ≈ $0.15                  ≈ 90% of its changes
+  4  Not now                   free                     ≈ 27%: advisories and deprecations only
+     Jev: a labelling service, used beside the provider that reads the notes.
+     Keys: JEV_API_KEY, AI_GATEWAY_API_KEY, ANTHROPIC_API_KEY
+
+Record their answer with the matching command:
+  1  unstale setup --inference jev+env:AI_GATEWAY_API_KEY
+  2  unstale setup --inference env:AI_GATEWAY_API_KEY
+  3  unstale setup --inference env:ANTHROPIC_API_KEY
+  4  unstale setup --inference none
+Full costs: unstale setup --details
 
 # the agent showed the options and asked; the user chose option 1
 $ unstale setup --inference jev+env:AI_GATEWAY_API_KEY  (no terminal)
-Model provider: Jev labelling API + Vercel AI Gateway (JEV_API_KEY, AI_GATEWAY_API_KEY) · saved in .unstale/config.json; `unstale setup` changes it
+Saved for this repo: Jev + Vercel AI Gateway (JEV_API_KEY, AI_GATEWAY_API_KEY) reads release notes.
 
 $ unstale sync  (no terminal)
-synced next: 2 records (sources checked 2026-10-15T00:00:00Z); unchanged; change events 0 downloaded, 1 reused
-Not covered by the catalog: 1 other candidate technologies (no index for them, or no record names a package used here).
+next: 2 upstream changes on file, nothing new
 
 # model step: the internal `unstale infer` on the chosen provider, standing in for the client's own pipeline steps
 $ unstale infer --provider vercel  (no terminal)

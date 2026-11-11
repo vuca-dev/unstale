@@ -54,7 +54,8 @@ pub enum Seen {
 pub enum CodexState {
     /// No `codex` on PATH.
     Absent,
-    /// Installed but not usable: the reason, as one line (logged out, too old).
+    /// Installed but not usable: what is wrong and what to do, as two sentences (`Codex is not logged in. Run `codex
+    /// login`.`).
     NotReady(String),
     Ready,
 }
@@ -127,22 +128,26 @@ impl Probe for System {
         std::fs::File::open(p).map(dotenv_names).unwrap_or_default()
     }
     fn codex(&self) -> CodexState {
-        let on_path = std::env::var_os("PATH")
-            .map(|p| {
-                std::env::split_paths(&p)
-                    .any(|d| d.join("codex").is_file() || d.join("codex.exe").is_file())
-            })
-            .unwrap_or(false);
-        if !on_path {
+        if !codex_on_path() {
             return CodexState::Absent;
         }
         let inf = crate::inference::Inference::new(crate::inference::ProviderConfig::codex());
         match inf.codex_status() {
             Ok(()) => CodexState::Ready,
             Err(crate::inference::Deferred::CodexMissing) => CodexState::Absent,
-            Err(d) => CodexState::NotReady(d.line().trim_start_matches("deferred: ").to_string()),
+            Err(d) => CodexState::NotReady(format!("{}. {}", d.what(), d.fix())),
         }
     }
+}
+
+/// Whether a `codex` executable is on PATH (nothing is run).
+pub fn codex_on_path() -> bool {
+    std::env::var_os("PATH")
+        .map(|p| {
+            std::env::split_paths(&p)
+                .any(|d| d.join("codex").is_file() || d.join("codex.exe").is_file())
+        })
+        .unwrap_or(false)
 }
 
 /// Whether an agent is running this command ([`AGENT_VARS`]).
@@ -246,10 +251,15 @@ pub fn detect(root: &Path, probe: &dyn Probe) -> Detected {
 
 // -------------------------------------------------------------------------------------------------------- picker
 
-/// Whether "no key" mode is offered: deterministic signals plus the raw change events for the user's agent to read.
-/// Off until its evaluation shows the agent does better with it than without; while off, the last line says a key or
-/// Codex is needed.
+/// Whether "no key" mode is offered: the raw release notes for the user's agent to read, beside what needs no model.
+/// Off until its evaluation shows the agent does better with it than without.
 pub const NO_KEY_MODE: bool = false;
+
+/// What a user still gets with no provider, as a share (percent) of a full report's real findings: the sections built
+/// with no model at all (publisher deprecations, unmaintained packages, lockfile advisories) hold 42 of 154 real
+/// findings on the evaluation pool, 27% (28% of the ones to act on now). Source: `eval/no-key/PREREGISTRATION.md` on
+/// branch `ws9/no-key-mode`. `None` prints the trade in words, with no figure.
+pub const NO_PROVIDER_SHARE: Option<u32> = Some(27);
 
 /// One option of the picker.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -272,10 +282,12 @@ pub enum Quality {
     Best,
     /// The same model on every step that decides quality.
     Same,
-    /// A share of the best option's results, in percent, and what is counted.
+    /// A share of the best option's results, in percent; what is counted (`its …`); and a qualifier only the full
+    /// figures carry.
     Share {
         pct: u32,
         of: &'static str,
+        detail: &'static str,
     },
     /// Not measured yet.
     Unmeasured,
@@ -319,7 +331,8 @@ const NO_QUOTE: Quote = Quote {
 /// probability 0.05), not at 0.5. Check the ratio against the threshold the client's labelling step actually runs.
 const LABELS_BELOW: Quality = Quality::Share {
     pct: 93,
-    of: "the best option's breaking-change flags",
+    of: "breaking-change flags",
+    detail: "",
 };
 /// Matching on the same model: 2.2 more duplicate records per technology-year.
 const MATCHING_BELOW: u32 = 2;
@@ -353,7 +366,8 @@ pub fn quote(p: Pick, no_key: bool) -> Quote {
             usd: 0.0189 + 0.0564,
             quality: Quality::Share {
                 pct: 90,
-                of: "the best option's changes (fewer from upgrade guides)",
+                of: "changes",
+                detail: " (fewer from upgrade guides)",
             },
             more_duplicates: 23,
             ..NO_QUOTE
@@ -430,160 +444,6 @@ fn route_name(r: Route) -> &'static str {
     }
 }
 
-/// `OpenAI (OPENAI_API_KEY)`, or `(OPENAI_API_KEY in .env)` when only this repository's `.env` names it.
-fn key_name(d: &Detected, r: Route) -> String {
-    let var = d.var(r).unwrap_or("");
-    let at = if d.keys.get(var) == Some(&Seen::DotEnv) {
-        " in .env"
-    } else {
-        ""
-    };
-    format!("{} ({var}{at})", route_name(r))
-}
-
-/// `$0.028`, `$1.05`, `$12`.
-fn usd(x: f64) -> String {
-    if x < 0.1 {
-        format!("${x:.3}")
-    } else if x < 10.0 {
-        format!("${x:.2}")
-    } else {
-        format!("${x:.0}")
-    }
-}
-
-/// Tokens to two significant figures: `110k`, `590k`, `4.2M`, `22M`.
-fn tokens(n: f64) -> String {
-    let n = n.max(0.0);
-    let mag = if n >= 1.0 {
-        10f64.powi(n.log10().floor() as i32 - 1)
-    } else {
-        1.0
-    };
-    let r = (n / mag).round() * mag;
-    if r >= 1e6 {
-        let m = r / 1e6;
-        if m >= 10.0 {
-            format!("{m:.0}M")
-        } else {
-            format!("{m:.1}M")
-        }
-    } else if r >= 1e3 {
-        format!("{:.0}k", r / 1e3)
-    } else {
-        format!("{r:.0}")
-    }
-}
-
-/// A cost: dollars, Codex tokens, agent tokens, or a sum of them.
-fn cost(q: &Quote, years: f64) -> String {
-    let mut parts = vec![];
-    if q.usd > 0.0 {
-        parts.push(usd(q.usd * years));
-    }
-    if q.codex_tokens > 0 {
-        parts.push(format!(
-            "{} Codex tokens",
-            tokens(q.codex_tokens as f64 * years)
-        ));
-    }
-    if q.agent_tokens > 0 {
-        parts.push(format!(
-            "{} more agent tokens",
-            tokens(q.agent_tokens as f64 * years)
-        ));
-    }
-    parts.join(" + ")
-}
-
-/// `slightly less complete: ≈ 93% of the best option's breaking-change flags`.
-fn quality(q: Quality) -> Option<String> {
-    match q {
-        Quality::Best => None,
-        Quality::Same => Some("about the same results (same model)".into()),
-        Quality::Unmeasured => Some("results not measured yet".into()),
-        Quality::Share { pct, of } => {
-            let band = match pct {
-                98.. => "about the same",
-                92.. => "slightly less complete",
-                80.. => "somewhat less complete",
-                _ => "much less complete",
-            };
-            Some(format!("{band}: ≈ {pct}% of {of}"))
-        }
-    }
-}
-
-fn option_name(d: &Detected, p: Pick, no_key: bool) -> String {
-    let jev = || key_name(d, Route::Jev);
-    match p {
-        Pick::JevKey(r) => format!("{} + {}", jev(), key_name(d, r)),
-        Pick::JevCodex => format!("{} + Codex plan", jev()),
-        Pick::Key(r) => key_name(d, r),
-        Pick::Codex => "Codex plan".into(),
-        Pick::None if no_key => {
-            "No key: your agent reads the raw change events (unparsed, sometimes repeated)".into()
-        }
-        Pick::None => {
-            "None: deterministic signals only; new change details need a key or Codex".into()
-        }
-    }
-}
-
-/// One option's line, without its number: what it uses, then what it costs and, below the first, what it trades.
-pub fn option_line(d: &Detected, p: Pick, techs: usize, no_key: bool) -> String {
-    let q = quote(p, no_key);
-    let mut s = option_name(d, p, no_key);
-    let per = cost(&q, 1.0);
-    if per.is_empty() {
-        return s;
-    }
-    s += ": ";
-    s += &per;
-    if q.codex_tokens > 0 {
-        s += &format!(" ({} at API prices)", usd(q.codex_usd));
-    }
-    s += " per technology-year";
-    if techs > 0 {
-        s += &format!(" · this repo ≈ {} a year", cost(&q, techs as f64));
-        s += &format!(
-            ", first sync ≈ {} once",
-            cost(&q, techs as f64 * FIRST_SYNC_TECH_YEARS)
-        );
-    }
-    if !q.quality_measured {
-        s += " · results through Codex not measured yet";
-        return s;
-    }
-    if let Some(t) = quality(q.quality) {
-        s += " · ";
-        s += &t;
-    }
-    if q.more_duplicates > 0 {
-        s += &format!(
-            "; ≈ {} more duplicate records per technology-year",
-            q.more_duplicates
-        );
-    }
-    s
-}
-
-/// The one line shown when there is nothing to choose: what to set.
-pub fn nothing_line(d: &Detected) -> String {
-    let codex = match &d.codex {
-        CodexState::NotReady(why) => format!("Codex ({why})"),
-        _ => "log in to Codex".into(),
-    };
-    let jev = if d.has(Route::Jev) {
-        " (JEV_API_KEY alone only labels)"
-    } else {
-        ""
-    };
-    format!(
-        "Reading new release notes needs a key or Codex: set AI_GATEWAY_API_KEY, OPENAI_API_KEY, OPENROUTER_API_KEY or ANTHROPIC_API_KEY{jev}, or {codex}, then run `unstale setup`. Until then: deterministic signals only."
-    )
-}
-
 /// The value of `--inference` that picks an option.
 pub fn flag_value(d: &Detected, p: Pick) -> String {
     let env = |r: Route| format!("env:{}", d.var(r).unwrap_or(""));
@@ -596,80 +456,12 @@ pub fn flag_value(d: &Detected, p: Pick) -> String {
     }
 }
 
-/// Who reads the picker: a person at a terminal (asked once, Enter accepts the first), or an agent relaying it (each
-/// option with the flag that picks it).
+/// Who reads the picker: a person at a terminal (asked once, Enter accepts the first), or an agent relaying it (the
+/// same options, with the command that records each).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Reader {
     Person,
     Agent,
-}
-
-/// The picker as printed: a header, one numbered line per option (the first is recommended), and for an agent the
-/// command that records a choice.
-/// Without options, the one line of what to set.
-pub fn picker_lines(d: &Detected, techs: usize, no_key: bool, reader: Reader) -> Vec<String> {
-    let opts = options(d, no_key);
-    if opts.is_empty() {
-        return vec![nothing_line(d)];
-    }
-    let scope = match techs {
-        0 => String::new(),
-        1 => "; this repo has 1 technology".into(),
-        n => format!("; this repo has {n} technologies"),
-    };
-    let mut out = vec![format!(
-        "Choose how unstale reads new release notes (costs are estimates{scope}):"
-    )];
-    for (i, p) in opts.iter().enumerate() {
-        let mut l = format!("  {}) {}", i + 1, option_line(d, *p, techs, no_key));
-        if reader == Reader::Agent {
-            l += &format!(" [--inference {}]", flag_value(d, *p));
-        }
-        out.push(l);
-    }
-    if reader == Reader::Agent {
-        out.push("Record the choice with `unstale setup --inference <value>`.".into());
-    }
-    out
-}
-
-/// The question under the picker.
-pub fn prompt(n: usize) -> String {
-    match n {
-        1 => "Press Enter to use it: ".into(),
-        n => format!("Choose 1–{n}, or press Enter for 1 (recommended): "),
-    }
-}
-
-/// Asks once: Enter accepts the first option, a number picks one. Input that is not a choice is asked for again, at
-/// most twice more; then, as at end of input, nothing is chosen (`None`).
-pub fn ask(
-    opts: &[Pick],
-    input: &mut dyn std::io::BufRead,
-    out: &mut dyn std::io::Write,
-) -> Option<Pick> {
-    for _ in 0..3 {
-        let _ = write!(out, "{}", prompt(opts.len()));
-        let _ = out.flush();
-        let mut line = String::new();
-        match input.read_line(&mut line) {
-            Ok(0) | Err(_) => break,
-            Ok(_) => {}
-        }
-        let t = line.trim();
-        if t.is_empty() {
-            return Some(opts[0]);
-        }
-        if let Some(p) = t
-            .parse::<usize>()
-            .ok()
-            .filter(|n| (1..=opts.len()).contains(n))
-        {
-            return Some(opts[p - 1]);
-        }
-    }
-    let _ = writeln!(out);
-    None
 }
 
 // -------------------------------------------------------------------------------------------------------- config
@@ -810,13 +602,18 @@ impl Choice {
 
     /// A key variable the choice names that is not the known key variable of its route (`KEY_VARS`), if any.
     pub fn foreign_key(&self) -> Option<&str> {
-        let own = |provider: &str, var: &str| route_by_id(provider).is_some_and(|r| route_of(var) == Some(r));
+        let own = |provider: &str, var: &str| {
+            route_by_id(provider).is_some_and(|r| route_of(var) == Some(r))
+        };
         if let Some(k) = &self.key_env
             && !own(&self.provider, k)
         {
             return Some(k);
         }
-        self.labels.as_ref().map(|l| l.key_env.as_str()).filter(|k| !own("jev", k))
+        self.labels
+            .as_ref()
+            .map(|l| l.key_env.as_str())
+            .filter(|k| !own("jev", k))
     }
 
     /// The variables this choice reads keys from: only its routes' own key variables.
@@ -836,7 +633,7 @@ impl Choice {
     pub fn describe(&self) -> String {
         let main = match self.provider.as_str() {
             "codex" => "Codex plan".to_string(),
-            "none" => return "none (deterministic signals only)".into(),
+            "none" => return "none".into(),
             p => route_by_id(p).map(route_name).unwrap_or(p).to_string(),
         };
         let name = match &self.labels {
@@ -894,6 +691,11 @@ pub fn read_user(path: &Path) -> Option<Choice> {
 
 /// Writes the choice into the user's config, keeping anything else there.
 pub fn write_user(path: &Path, c: &Choice) -> anyhow::Result<()> {
+    write_user_key(path, "inference", Some(serde_json::to_value(c)?))
+}
+
+/// Sets (or with `None` removes) one key of the user's config, keeping anything else there.
+fn write_user_key(path: &Path, key: &str, value: Option<serde_json::Value>) -> anyhow::Result<()> {
     // A file that is there but cannot be read as a JSON object is left alone rather than replaced.
     if path.exists() {
         let ok = std::fs::read(path)
@@ -908,7 +710,10 @@ pub fn write_user(path: &Path, c: &Choice) -> anyhow::Result<()> {
         }
     }
     let mut doc = user_doc(path);
-    doc.insert("inference".into(), serde_json::to_value(c)?);
+    match value {
+        Some(v) => doc.insert(key.into(), v),
+        None => doc.remove(key),
+    };
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
@@ -926,42 +731,167 @@ pub fn current(repo: Option<&Choice>, user_path: &Path) -> Option<(Choice, Origi
     }
 }
 
-// -------------------------------------------------------------------------------------------------------- status
+// --------------------------------------------------------------------------------------------------------- agent
 
-/// The provider line of `unstale status` (switch on): what is chosen and where. `set` says whether a key variable is
-/// set (by name) in the shell or this repository's `.env`. This month's tokens and the budget are their own line.
-pub fn provider_line(cur: Option<&(Choice, Origin)>, set: &dyn Fn(&str) -> bool) -> String {
-    match cur {
-        None => "Model provider: not chosen; deterministic signals only · `unstale setup` shows the options".to_string(),
-        Some((c, origin)) => {
-            let from = match origin {
-                Origin::Repo => "this repo's config",
-                Origin::User => "your user config",
-            };
-            let mut l = format!("Model provider: {}, from {from} · `unstale setup` changes it", c.describe());
-            if let Some(v) = c.foreign_key() {
-                l += &format!(" · not used: {v} is not a key variable for this provider");
-            }
-            for v in c.key_vars().into_iter().filter(|v| !set(v)) {
-                l += &format!(" · {v} is not set in this shell or .env");
-            }
-            l
+/// Appended to the managed review skill with the switch on: the agent relays the picker and asks, never chooses; and
+/// what to do with the one line unstale prints at session start (the line itself stays short).
+pub const SKILL_SECTION: &str = "## Reading release notes\n\nunstale reads new release notes with a model, on the user's own key or Codex plan, and the user chooses which. If `unstale init` or `unstale status` says that choice is pending or that no provider is chosen, or the user asks to change it, run `unstale setup`. Show the user the options it prints, as printed, and ask which one they want. Never choose for them, not even the first option; never record a choice they have not given; never ask them to paste a key. When they answer, run the command printed for their choice.\n\n## At session start\n\nA line from unstale at session start says new upstream changes arrived for this repository: run `unstale status --wait 0` to refresh `.unstale/onboarding-report.md`, and review it only if the user asks. A line that starts with `warning:` says something the user chose is not happening: tell them what it says and the fix it names.\n";
+
+// --------------------------------------------------------------------------------------------------- token limit
+
+/// The monthly token limit: the user's setting, not a fixed one. `"monthly_token_limit"` in the repository's
+/// `.unstale/config.json` or the user's config holds a number of tokens, or `"none"` for no limit; absent, the default
+/// applies ([`crate::inference::ledger::DEFAULT_MONTHLY_TOKENS`]). Past it, model work waits for next month.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Limit {
+    Tokens(u64),
+    None,
+}
+
+impl Limit {
+    /// The limit as a count; no limit is the largest count.
+    pub fn tokens(self) -> u64 {
+        match self {
+            Limit::Tokens(n) => n,
+            Limit::None => u64::MAX,
         }
     }
 }
 
-/// [`provider_line`] for this repository.
-pub fn status_provider(ctx: &crate::Ctx) -> String {
-    let cur = current(ctx.config.inference.as_ref(), &user_config_path());
-    let dotenv = System.repo_dotenv(&ctx.root);
-    let set = |v: &str| System.set_in_shell(v) || dotenv.iter().any(|n| n == v);
-    provider_line(cur.as_ref(), &set)
+impl serde::Serialize for Limit {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Limit::Tokens(n) => s.serialize_u64(*n),
+            Limit::None => s.serialize_str("none"),
+        }
+    }
 }
 
-// --------------------------------------------------------------------------------------------------------- agent
+impl<'de> serde::Deserialize<'de> for Limit {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Limit, D::Error> {
+        match serde_json::Value::deserialize(d)? {
+            serde_json::Value::Number(n) if n.as_u64().is_some() => {
+                Ok(Limit::Tokens(n.as_u64().unwrap_or(0)))
+            }
+            serde_json::Value::String(s) if s == "none" => Ok(Limit::None),
+            other => Err(serde::de::Error::custom(format!(
+                "monthly_token_limit: expected a number of tokens or \"none\", found {other}"
+            ))),
+        }
+    }
+}
 
-/// Appended to the managed review skill with the switch on: the agent relays the picker and asks; it never chooses.
-pub const SKILL_SECTION: &str = "## Model provider\n\nIf `unstale status` says the model provider is not chosen, or the user asks to change it, run `unstale setup`. Show the user every option it prints, as printed, and ask which one they want. Never choose for them, not even the recommended option, and never record a choice they have not given. When they answer, run `unstale setup --inference <value>` with the value printed beside their choice.\n";
+/// Whose limit is the one in effect.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LimitOrigin {
+    Default,
+    /// The user's own, from their config.
+    User,
+    /// This repository's config sets a lower one than the user's (or the default).
+    Repo,
+}
+
+/// More than this is not a limit anyone means (a million million tokens); `none` says no limit.
+pub const MAX_LIMIT: u64 = 1_000_000_000_000;
+
+/// Reads `--limit`: a number of tokens (`48000000`, `48M`, `500k`), `none` for no limit, or `default` to go back to
+/// the default (`Ok(None)`). Digits with at most one decimal point; nothing above [`MAX_LIMIT`].
+pub fn parse_limit(s: &str) -> Result<Option<Limit>, String> {
+    let t = s.trim().to_ascii_lowercase().replace(['_', ','], "");
+    let bad = || {
+        format!("--limit {s}: expected a number of tokens (48000000, 48M, 500k), none or default")
+    };
+    match t.as_str() {
+        "none" => return Ok(Some(Limit::None)),
+        "default" => return Ok(None),
+        _ => {}
+    }
+    let (digits, scale) = match t.strip_suffix('m') {
+        Some(d) => (d, 1_000_000.0),
+        None => match t.strip_suffix('k') {
+            Some(d) => (d, 1_000.0),
+            None => (t.as_str(), 1.0),
+        },
+    };
+    let plain = !digits.is_empty()
+        && digits.bytes().all(|b| b.is_ascii_digit() || b == b'.')
+        && digits.bytes().filter(|b| *b == b'.').count() <= 1
+        && digits.bytes().any(|b| b.is_ascii_digit());
+    if !plain {
+        return Err(bad());
+    }
+    let n: f64 = digits.parse().map_err(|_| bad())?;
+    let tokens = n * scale;
+    if !tokens.is_finite() || tokens > MAX_LIMIT as f64 {
+        return Err(format!(
+            "--limit {s}: more than {} tokens; use `none` for no limit",
+            crate::inference::ledger::short_tokens(MAX_LIMIT)
+        ));
+    }
+    Ok(Some(Limit::Tokens(tokens.round() as u64)))
+}
+
+fn read_user_limit(path: &Path) -> Option<Limit> {
+    user_doc(path)
+        .get("monthly_token_limit")
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
+}
+
+/// The limit in effect. The user's own (their config; the default when they set none) is the most this machine
+/// spends: a repository's config can only lower it, never raise or remove it, since that file may be committed and
+/// shared. So the lower of the two applies.
+pub fn limit(repo: Option<Limit>, user_path: &Path) -> (Limit, LimitOrigin) {
+    let own = match read_user_limit(user_path) {
+        Some(l) => (l, LimitOrigin::User),
+        None => (
+            Limit::Tokens(crate::inference::ledger::DEFAULT_MONTHLY_TOKENS),
+            LimitOrigin::Default,
+        ),
+    };
+    match repo {
+        Some(r) if r.tokens() < own.0.tokens() => (r, LimitOrigin::Repo),
+        _ => own,
+    }
+}
+
+/// A stored limit that cannot be read (`"lots"`, a negative number) counts as not set, so the default applies: a
+/// mistyped limit never makes a command fail, and never reads as no limit.
+pub fn lenient_limit<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<Limit>, D::Error> {
+    use serde::Deserialize;
+    Ok(serde_json::from_value(serde_json::Value::deserialize(d)?).ok())
+}
+
+/// The limit in effect for the repository at `root` ([`limit`]), as a count: for a caller that has only the
+/// directory, or none (then the user's own).
+pub fn monthly_tokens_at(root: Option<&Path>) -> u64 {
+    let repo = root.and_then(|r| {
+        let b = std::fs::read(r.join(".unstale/config.json")).ok()?;
+        let v: serde_json::Value = serde_json::from_slice(&b).ok()?;
+        serde_json::from_value::<Limit>(v.get("monthly_token_limit")?.clone()).ok()
+    });
+    limit(repo, &user_config_path()).0.tokens()
+}
+
+/// The monthly token limit in effect for this repository, as a count: what a model stage checks its spend against.
+pub fn monthly_tokens(ctx: &crate::Ctx) -> u64 {
+    limit(ctx.config.monthly_token_limit, &user_config_path())
+        .0
+        .tokens()
+}
+
+/// `unstale setup --limit`: records the user's own limit, always in their config (a repository's config can only
+/// lower it, by hand), and says what applies here now.
+pub fn set_limit(ctx: &crate::Ctx, new: Option<Limit>) -> anyhow::Result<()> {
+    let path = user_config_path();
+    write_user_key(
+        &path,
+        "monthly_token_limit",
+        new.map(serde_json::to_value).transpose()?,
+    )?;
+    let (applies, origin) = limit(ctx.config.monthly_token_limit, &path);
+    println!("{}", view::limit_saved_line(new, applies, origin));
+    Ok(())
+}
 
 // ---------------------------------------------------------------------------------------------------------- flow
 
@@ -1057,27 +987,27 @@ fn technologies(ctx: &crate::Ctx) -> usize {
         .unwrap_or(0)
 }
 
-fn save(ctx: &mut crate::Ctx, c: &Choice, user: bool) -> anyhow::Result<String> {
+fn save_repo(ctx: &crate::Ctx) -> anyhow::Result<()> {
+    crate::util::write_atomic(
+        &ctx.tool.join("config.json"),
+        format!("{}\n", serde_json::to_string_pretty(&ctx.config)?).as_bytes(),
+    )
+}
+
+/// Records the choice and returns the lines that confirm it.
+fn save(ctx: &mut crate::Ctx, c: &Choice, user: bool) -> anyhow::Result<Vec<String>> {
     if user {
-        let path = user_config_path();
-        write_user(&path, c)?;
+        write_user(&user_config_path(), c)?;
         // The repository's own choice wins where it has one.
-        let here = match &ctx.config.inference {
-            Some(r) => format!(
-                "; this repo's own choice ({}) still applies here",
-                r.describe()
-            ),
-            None => String::new(),
-        };
-        return Ok(format!("your user config ({}){here}", path.display()));
+        return Ok(view::saved_lines(
+            c,
+            Origin::User,
+            ctx.config.inference.as_ref(),
+        ));
     }
     ctx.config.inference = Some(c.clone());
-    let path = ctx.tool.join("config.json");
-    crate::util::write_atomic(
-        &path,
-        format!("{}\n", serde_json::to_string_pretty(&ctx.config)?).as_bytes(),
-    )?;
-    Ok(".unstale/config.json".into())
+    save_repo(ctx)?;
+    Ok(view::saved_lines(c, Origin::Repo, None))
 }
 
 /// Where this machine remembers the picker was dismissed: under `.unstale/state/`, which is never committed.
@@ -1085,17 +1015,61 @@ fn dismissed_path(ctx: &crate::Ctx) -> std::path::PathBuf {
     ctx.tool.join("state/setup-dismissed")
 }
 
-/// The line after the picker is dismissed without a choice.
-pub fn dismissed_line() -> String {
-    "Model provider: not chosen; deterministic signals only · `unstale setup` asks again".into()
+/// Whether a key variable is set (by name) in the shell or this repository's `.env`.
+fn key_set(ctx: &crate::Ctx) -> impl Fn(&str) -> bool {
+    let dotenv = System.repo_dotenv(&ctx.root);
+    move |v: &str| System.set_in_shell(v) || dotenv.iter().any(|n| n == v)
 }
 
-/// The line after a choice is recorded.
-pub fn saved_line(c: &Choice, place: &str) -> String {
-    format!(
-        "Model provider: {} · saved in {place}; `unstale setup` changes it",
-        c.describe()
-    )
+/// What `unstale status` shows of setup, with the switch on: warnings for a chosen key that is not set here, then the
+/// provider and this month's tokens against the limit.
+pub fn status_lines(ctx: &crate::Ctx) -> (Vec<String>, Vec<String>) {
+    let cur = current(ctx.config.inference.as_ref(), &user_config_path());
+    let mut warnings = view::missing_key_lines(cur.as_ref(), &key_set(ctx));
+    let (lim, origin) = limit(ctx.config.monthly_token_limit, &user_config_path());
+    let ledger = crate::inference::Ledger::default_location();
+    let month = crate::inference::ledger::this_month();
+    let used = ledger.spent(&month);
+    let mut state = vec![view::provider_line(cur.as_ref())];
+    // Only where a provider is chosen: with none, nothing spends tokens or waits on the limit.
+    if cur.as_ref().is_some_and(|(c, _)| !c.is_none()) {
+        match &used {
+            Ok(n) if *n >= lim.tokens() => warnings.push(view::limit_reached_line(origin)),
+            // Here, unlike in the one line elsewhere, there is room for which file and what to do with it.
+            Err(e) => warnings.push(view::token_count_line(&ledger.path(&month), e)),
+            Ok(_) => {}
+        }
+        state.push(view::tokens_line(used, lim, origin));
+    }
+    (warnings, state)
+}
+
+/// `unstale setup --details`: the full figures behind the picker. No question.
+pub fn details(ctx: &crate::Ctx) {
+    for l in view::details_lines(&detect(&ctx.root, &System), technologies(ctx), NO_KEY_MODE) {
+        println!("{l}");
+    }
+}
+
+/// When nothing is asked (no terminal, an agent, `--yes`, or already settled): what is pending or wrong, if anything.
+/// An agent is told the choice is the user's and how to put it; without one, a warning that no provider is
+/// configured; with a provider chosen whose key is not set here, a warning naming the variable. The warnings print
+/// when the state changes, not on every run ([`crate::warn`]); `unstale status` always shows the current state.
+fn unattended(ctx: &crate::Ctx, cur: Option<&(Choice, Origin)>, dismissed: bool, agent: bool) {
+    let warning = match cur {
+        None if dismissed => None,
+        None if agent => {
+            println!("{}", view::pending_line());
+            None
+        }
+        None => Some(view::unconfigured_line()),
+        Some(_) => view::missing_key_lines(cur, &key_set(ctx))
+            .into_iter()
+            .next(),
+    };
+    if let Some(l) = crate::warn::changed(&ctx.tool, "setup", warning.as_deref()) {
+        println!("{l}");
+    }
 }
 
 /// Setup on `init` (`reopen` false) or `unstale setup` (`reopen` true), with the switch on. `user` saves to the user's
@@ -1108,27 +1082,40 @@ pub fn run(
     yes: bool,
 ) -> anyhow::Result<()> {
     use std::io::IsTerminal;
-    let settled = current(ctx.config.inference.as_ref(), &user_config_path()).is_some()
-        || dismissed_path(ctx).exists();
+    let cur = current(ctx.config.inference.as_ref(), &user_config_path());
+    let dismissed = dismissed_path(ctx).exists();
+    let settled = cur.is_some() || dismissed;
     // `init --yes` asks nothing; accepting the recommended option would spend on the user's key unasked, so nothing is
     // chosen. An agent's pseudo-terminal is not a person: it gets the listing instead.
-    let terminal = !yes
-        && !agent_driving(&System)
-        && std::io::stdin().is_terminal()
-        && std::io::stdout().is_terminal();
+    let agent = agent_driving(&System);
+    let terminal =
+        !yes && !agent && std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
     let (d, techs) = match plan(flag, settled, terminal, reopen) {
-        Plan::Nothing => return Ok(()),
+        Plan::Nothing => {
+            unattended(ctx, cur.as_ref(), dismissed, agent);
+            return Ok(());
+        }
         Plan::Save(c) => {
-            let place = save(ctx, &c, user)?;
-            println!("{}", saved_line(&c, &place));
+            for l in save(ctx, &c, user)? {
+                println!("{l}");
+            }
+            // Recorded, but not usable here yet: said now rather than found out at the first sync.
+            let chosen = (c, Origin::Repo);
+            let missing = view::missing_key_lines(Some(&chosen), &key_set(ctx));
+            if let Some(l) =
+                crate::warn::changed(&ctx.tool, "setup", missing.first().map(String::as_str))
+            {
+                println!("{l}");
+            }
             return Ok(());
         }
         Plan::Print => {
-            for l in picker_lines(
+            for l in view::picker_lines(
                 &detect(&ctx.root, &System),
                 technologies(ctx),
                 NO_KEY_MODE,
                 Reader::Agent,
+                view::WIDTH,
             ) {
                 println!("{l}");
             }
@@ -1137,24 +1124,72 @@ pub fn run(
         Plan::Ask => (detect(&ctx.root, &System), technologies(ctx)),
     };
     let opts = options(&d, NO_KEY_MODE);
-    for l in picker_lines(&d, techs, NO_KEY_MODE, Reader::Person) {
+    let width = view::width();
+    for l in view::picker_lines(&d, techs, NO_KEY_MODE, Reader::Person, width) {
         println!("{l}");
     }
-    if opts.is_empty() {
-        return Ok(());
-    }
-    let Some(pick) = ask(&opts, &mut std::io::stdin().lock(), &mut std::io::stdout()) else {
-        // Dismissed: no config is written, so a team's shared choice is never set by a slip. This machine remembers
-        // it was asked, so `init` does not ask again; `unstale setup` does.
+    // Dismissed, or "not now" with nothing to use: no config is written, so a team's shared choice is never set by a
+    // slip or by one machine's lack of a key. With a choice already made (`unstale setup` reopened), it stays, and
+    // the line says so. Otherwise this machine remembers it was asked, so `init` does not ask again; `unstale setup`
+    // does.
+    let dismiss = |ctx: &crate::Ctx| -> anyhow::Result<()> {
+        if let Some((kept, _)) = &cur {
+            println!("{}", view::kept_line(kept));
+            return Ok(());
+        }
         crate::util::write_atomic(&dismissed_path(ctx), b"asked, not chosen\n")?;
-        println!("{}", dismissed_line());
-        return Ok(());
+        println!("{}", view::dismissed_line());
+        Ok(())
+    };
+    let (mut input, mut out) = (std::io::stdin().lock(), std::io::stdout());
+    if opts.is_empty() {
+        return match view::ask(2, &view::nothing_prompt(), &[], &mut input, &mut out) {
+            view::Answered::Option(0) => {
+                println!();
+                for l in view::set_up_lines(&d, Reader::Person, width) {
+                    println!("{l}");
+                }
+                println!();
+                if cur.is_none() {
+                    crate::util::write_atomic(&dismissed_path(ctx), b"asked, setting one up\n")?;
+                }
+                Ok(())
+            }
+            _ => dismiss(ctx),
+        };
+    }
+    let details = view::details_lines(&d, techs, NO_KEY_MODE);
+    let pick = match view::ask(
+        opts.len(),
+        &view::prompt(opts.len()),
+        &details,
+        &mut input,
+        &mut out,
+    ) {
+        view::Answered::Option(i) => opts[i],
+        view::Answered::Nothing => return dismiss(ctx),
     };
     let c = Choice::of(&d, pick);
-    let place = save(ctx, &c, user)?;
-    println!("{}", saved_line(&c, &place));
+    for l in save(ctx, &c, user)? {
+        println!("{l}");
+    }
+    let _ = crate::warn::changed(&ctx.tool, "setup", None);
+    if reopen && !c.is_none() {
+        let (lim, origin) = limit(ctx.config.monthly_token_limit, &user_config_path());
+        println!(
+            "{}",
+            view::tokens_line(
+                crate::inference::Ledger::default_location()
+                    .spent(&crate::inference::ledger::this_month()),
+                lim,
+                origin
+            )
+        );
+    }
     Ok(())
 }
+
+pub mod view;
 
 #[cfg(test)]
 mod tests;

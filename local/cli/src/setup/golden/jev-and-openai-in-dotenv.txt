@@ -1,5 +1,10 @@
-Choose how unstale reads new release notes (costs are estimates; this repo has 12 technologies):
-  1) Jev labelling API (JEV_API_KEY in .env) + OpenAI (OPENAI_API_KEY in .env): $0.036 per technology-year · this repo ≈ $0.44 a year, first sync ≈ $0.44 once
-  2) OpenAI (OPENAI_API_KEY in .env): $0.090 per technology-year · this repo ≈ $1.08 a year, first sync ≈ $1.08 once · slightly less complete: ≈ 93% of the best option's breaking-change flags; ≈ 2 more duplicate records per technology-year
-  3) None: deterministic signals only; new change details need a key or Codex
-Choose 1–3, or press Enter for 1 (recommended): 
+How should unstale read new release notes?
+
+     Read with      Cost a year, this repo   Compared with the best option
+  1  Jev + OpenAI   ≈ $0.44                  the best option
+  2  OpenAI         ≈ $1.08                  ≈ 93% of its breaking-change flags
+  3  Not now        free                     ≈ 27%: advisories and deprecations only
+     Jev: a labelling service, used beside the provider that reads the notes.
+     Keys: JEV_API_KEY (.env), OPENAI_API_KEY (.env)
+
+Enter for 1, a number to choose, or d for details: 

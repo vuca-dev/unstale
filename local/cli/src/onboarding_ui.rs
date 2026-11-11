@@ -154,6 +154,13 @@ fn plain_lines(last: &mut (String, String, String), title: &str, detail: &str) -
     out
 }
 
+/// Progress shows a waiting person that something is happening. Where nothing is drawn in place (no terminal: an
+/// agent, CI, a pipe), a line per step is noise the reader does nothing with, so with the edge-inference switch on the
+/// run is silent until its result. With the switch off the stage lines print as before.
+fn quiet_progress() -> bool {
+    std::env::var("UNSTALE_EDGE_INFERENCE").is_ok_and(|v| matches!(v.trim(), "1" | "true"))
+}
+
 pub struct Display {
     state: Arc<Mutex<Progress>>,
     stop: Arc<AtomicBool>,
@@ -323,7 +330,7 @@ impl Display {
             result: None,
             footer: None,
         };
-        if self.thread.is_none() {
+        if self.thread.is_none() && !quiet_progress() {
             let mut last = self.last_plain.lock().unwrap();
             for line in plain_lines(&mut last, title, detail) {
                 eprintln!("{line}");
@@ -332,7 +339,7 @@ impl Display {
     }
     /// Plain output: the current stage's last detail, when it moved on since it was printed.
     fn flush_plain(&self) {
-        if self.thread.is_none() {
+        if self.thread.is_none() && !quiet_progress() {
             let mut last = self.last_plain.lock().unwrap();
             if !last.0.is_empty() && last.2 != last.1 {
                 eprintln!("  {} · {}", last.0, last.2);

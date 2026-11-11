@@ -23,7 +23,10 @@ pub(crate) struct Session {
     pub(crate) chosen: Option<serde_json::Value>,
 }
 
-pub(crate) const PROMPTS: [&str; 2] = ["Choose 1–", "Press Enter to use it"];
+/// What every question opens with: the picker's prompt, its one-option form, and the prompt with nothing usable.
+/// After the details (`d`) the same question stays open at [`CONTINUE`], which is not another question.
+pub(crate) const PROMPTS: [&str; 2] = ["Enter for 1,", "Enter to use it"];
+pub(crate) const CONTINUE: &str = "Your choice (Enter for 1): ";
 
 pub(crate) fn questions(text: &str) -> usize {
     PROMPTS.iter().map(|p| text.matches(p).count()).sum()
@@ -65,7 +68,7 @@ pub(crate) fn run_step(w: &World, s: &Scenario, step: Step, ran: &[Ran]) -> Opti
         )),
         Step::AgentSetup => {
             let status = ran.iter().rev().find(|r| r.step == Step::Status)?;
-            if !status.output.contains("Model provider: not chosen") {
+            if !status.output.contains("not read: no provider chosen") {
                 return None;
             }
             let listed = exec(w, s, vec!["setup".into()], s.invocation.terminal);
@@ -77,9 +80,10 @@ pub(crate) fn run_step(w: &World, s: &Scenario, step: Step, ran: &[Ran]) -> Opti
 
 /// The agent's follow-up to `unstale setup`: the user's answer, recorded with the flag printed beside it.
 pub(crate) fn agent_answer(w: &World, s: &Scenario, listed: &Ran) -> Option<Ran> {
+    // The command printed for option 1.
     let value = listed.output.lines().find_map(|l| {
-        l.split_once("[--inference ")
-            .map(|(_, v)| v.trim_end_matches(']').to_string())
+        l.strip_prefix("  1  unstale setup --inference ")
+            .map(|v| v.trim().to_string())
     })?;
     let mut r = exec(
         w,
@@ -101,8 +105,12 @@ pub(crate) fn exec(w: &World, s: &Scenario, args: Vec<String>, terminal: bool) -
         } else {
             s.invocation.answer
         };
-        let (code, raw) =
-            support::at_terminal(&cmd, &[(prompt.as_str(), answer)], Duration::from_secs(60));
+        // Having asked for the details, the person accepts the first option where the question stays open.
+        let (code, raw) = support::at_terminal(
+            &cmd,
+            &[(prompt.as_str(), answer), (CONTINUE, "\n")],
+            Duration::from_secs(60),
+        );
         // A terminal's echo of Ctrl-D and Ctrl-C differs by system (macOS prints `^D` and backs over it, Linux
         // prints nothing): the screen shows neither.
         let raw = raw

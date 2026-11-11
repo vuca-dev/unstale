@@ -53,15 +53,23 @@ WS2 (timestamps) and WS3 (background work under the budget). Hook installation c
   session-start sync: the Claude Code hook does what `notify` did (its one fix: at most one line, exit 0, within the
   deadline), no catalog request or other process at session start, no Codex or opencode file, no new state file,
   exclude line or status line. With it on, records sync at session start, change events and the model stage as
-  before. `"session_sync": false` in `.unstale/config.json` turns it off.
+  before. `"session_sync": false` in `.unstale/config.json` turns it off. A repository set up while the switch was
+  on keeps its Codex and opencode hook files after the switch goes off; they are inert then (the hook does only what
+  `notify` did), and `unstale uninstall` removes them.
+- **Hosts contacted:** the hook asks the catalog only. The background stage's sync contacts what `unstale status`
+  contacts (the catalog, and the public registries for unpinned dependencies). Its model stage, with a provider
+  chosen, also contacts that provider (and only it), sending public release-note text; `unstale status` never does.
 - **Installers** keep the user's bytes: our entry is inserted as text and removed exactly; it is recognised by its
   exact command, never a substring; the executable is quoted so no shell expands it; a file Git tracks, a read-only
   or linked file, and a Codex repository with hooks inline in `.codex/config.toml` are left alone (`unstale status`
-  says why for Codex).
+  says why for Codex, including a `hooks.json` that is not plain JSON with a `hooks` object).
 - **Deadline:** 1.2 s from the process's start, covering every blocking step (a read that never finishes included).
   Worst measured: 1.23 s.
-- **Output:** one line when records new to this repository arrived since the last report (or the shared-coverage line,
-  or a catalog notice), nothing otherwise. Failures show only in `unstale status`.
+- **Output:** one line, the most important first. A warning when the sync failed or the model stage could not run,
+  said once when that begins (compared by kind of trouble, recorded only after it is printed), with no raw error or
+  path; otherwise records new to this repository since the last report (or the shared-coverage line, or a catalog
+  notice); nothing otherwise. `unstale status` shows the detail, and a later successful session start clears a
+  failure.
 
 ## Request budget (measured)
 
@@ -88,9 +96,9 @@ files are ever packed (past 20,000 deployed files), changed starts would spend W
   30 days up to the newest release published, plus one entry per day for the trend. Backfilled sources are left out.
   It is computed from the change events the exported indexes name, so it is deterministic and the same catalog gives
   the same bytes. The deploy check verifies it.
-- **Client:** `unstale status`, with model steps on, prints one line for this repository's technologies over the last
-  30 days. It gives registry to catalog and catalog to this machine, each as a median and a 90th percentile, then
-  "records made here: not yet" until the client pipeline exists. When each event first reached this machine is kept
+- **Client:** `unstale status`, with model steps on, prints two short lines for this repository's technologies over
+  the last 30 days: registry to catalog, and catalog to this machine, each as a median and the slowest tenth; none
+  when no release arrived. When each event first reached this machine is kept
   in `.synced.json` beside the cached events. What a technology's first sync finds counts as already published. It is
   local only: nothing is sent anywhere.
 

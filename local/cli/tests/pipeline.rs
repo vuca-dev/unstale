@@ -85,6 +85,8 @@ fn run_step(cache: &std::path::Path, events: &std::path::Path, url: &str, switch
             url,
         ]);
     c.env("UNSTALE_CACHE_DIR", cache)
+        // The user's own config: none of this machine's, and where the test sets the user's token limit.
+        .env("UNSTALE_CONFIG_DIR", cache.join("user-config"))
         .env("UNSTALE_TEST_STEP_KEY", "k")
         .env_remove("UNSTALE_EDGE_INFERENCE");
     if switch {
@@ -131,6 +133,14 @@ fn run_step_extract_prints_centrals_records_and_a_second_run_asks_nothing() {
     let off = run_step(&cache, &events, &url, false);
     assert!(off.contains("turned off"), "{off}");
     assert_eq!(*n.lock().unwrap(), 0);
+
+    // The user's monthly token limit holds for a named provider too: at the limit, one line and no call.
+    std::fs::create_dir_all(cache.join("user-config")).unwrap();
+    std::fs::write(cache.join("user-config/config.json"), r#"{"monthly_token_limit": 0}"#).unwrap();
+    let limited = run_step(&cache, &events, &url, true);
+    assert!(limited.contains("warning: monthly token limit reached, so new release notes wait."), "{limited}");
+    assert_eq!(*n.lock().unwrap(), 0);
+    std::fs::remove_file(cache.join("user-config/config.json")).unwrap();
 
     let out = run_step(&cache, &events, &url, true);
     let line: Value = serde_json::from_str(out.lines().next().unwrap()).unwrap();
@@ -373,7 +383,7 @@ fn a_pass_stopped_mid_release_finishes_it_on_the_next_one() {
     // What `unstale status` shows: the stage did not finish, and why.
     let state = std::fs::read_to_string(r.repo.path().join(".unstale/state/session-sync.json"))
         .unwrap_or_default();
-    assert!(state.contains("did not accept the key"), "{state}");
+    assert!(state.contains("warning: the provider rejected the key"), "{state}");
     *allow.lock().unwrap() = usize::MAX;
     let extracted = *main.lock().unwrap();
     r.run(&["session-sync"], true);
@@ -405,7 +415,7 @@ fn work_nothing_will_run_is_said_once_with_the_command_that_runs_it() {
         "# Report\n",
     )
     .unwrap();
-    let line = "warning: no agent session-start hook here, so 1 new release note is unread. Run `unstale session-sync` to read them now.";
+    let line = "warning: no session-start hook here, so 1 new release note is unread. Run `unstale session-sync`.";
     let report = r.run(&["report"], true);
     assert_eq!(report.lines().filter(|l| *l == line).count(), 1, "{report}");
     assert!(
@@ -426,7 +436,7 @@ fn work_nothing_will_run_is_said_once_with_the_command_that_runs_it() {
     v["session_sync"] = serde_json::json!(false);
     std::fs::write(&cfg, serde_json::to_string_pretty(&v).unwrap()).unwrap();
     assert!(r.run(&["report"], true).contains(
-        "warning: session-start sync is off here, so 1 new release note is unread. Remove `\"session_sync\": false` from .unstale/config.json to read them."
+        "warning: `session_sync` is off in .unstale/config.json, so 1 new release note is unread. Remove it."
     ));
     // Without a hook, the manual way: the stage runs, the release is read, the line goes.
     std::fs::remove_file(r.repo.path().join(".claude/settings.local.json")).unwrap();

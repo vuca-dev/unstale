@@ -194,6 +194,8 @@ pub enum Deferred {
     Malformed,
     /// The usage ledger or worker lock beside the cache cannot be read or written, so spend cannot be counted.
     Storage,
+    /// This month's usage ledger does not parse, so spend cannot be counted until the file is removed.
+    StorageCorrupt,
     /// The provider answered with a redirect, which is never followed (the key would go to another address).
     Redirected,
     /// The provider address is not https (plain http is allowed only on this machine).
@@ -209,35 +211,91 @@ pub enum Deferred {
 }
 
 impl Deferred {
-    /// One line for the terminal: what happened and, where the user can act, what to do.
-    pub fn line(&self) -> String {
-        let why = match self {
-            Deferred::Budget => {
-                "this month's token budget is used up; the rest runs next month".into()
-            }
-            Deferred::NoKey(var) => format!("{var} is not set"),
-            Deferred::Auth => "the provider did not accept the key".into(),
-            Deferred::Billing => "the provider account has no credit left".into(),
-            Deferred::RateLimited => "the provider is rate limiting; it runs next time".into(),
-            Deferred::Unavailable => "the provider is not answering; it runs next time".into(),
-            Deferred::Timeout => "the provider took too long; it runs next time".into(),
-            Deferred::ModelNotOnPlan(m) => format!("{m} is not available on this key or plan"),
-            Deferred::Rejected => "the provider refused the request".into(),
-            Deferred::TooLong => "the answer was too long; it runs in smaller pieces".into(),
-            Deferred::Malformed => {
-                "the provider's answer could not be read; it runs next time".into()
-            }
-            Deferred::Storage => "unstale's usage record cannot be read or written".into(),
-            Deferred::Redirected => "the provider address redirects elsewhere; check it".into(),
-            Deferred::InsecureUrl => "the provider address must start with https://".into(),
-            Deferred::BatchTooLarge => format!("more than {BATCH} items in one request"),
+    /// The storage problem an error reading or writing the token count stands for: a file that does not parse is
+    /// corrupt (the fix is to remove it), anything else is a folder that cannot be written.
+    pub fn storage(e: &std::io::Error) -> Deferred {
+        if e.kind() == std::io::ErrorKind::InvalidData {
+            Deferred::StorageCorrupt
+        } else {
+            Deferred::Storage
+        }
+    }
+
+    /// What happened, in the user's words, as a clause: `Codex is not logged in`.
+    pub fn what(&self) -> String {
+        match self {
+            Deferred::Budget => "monthly token limit reached".into(),
+            Deferred::NoKey(var) => format!("{var} is not set here"),
+            Deferred::Auth => "the provider rejected the key".into(),
+            Deferred::Billing => "the provider account is out of credit".into(),
+            Deferred::RateLimited => "the provider is rate limiting".into(),
+            Deferred::Unavailable => "the provider is not answering".into(),
+            Deferred::Timeout => "the provider took too long".into(),
+            Deferred::ModelNotOnPlan(m) => format!("this key or plan lacks {m}"),
+            Deferred::Rejected => "the provider refused a request".into(),
+            Deferred::TooLong => "an answer was too long".into(),
+            Deferred::Malformed => "the provider gave an unreadable answer".into(),
+            Deferred::Storage => "unstale cannot save its token count".into(),
+            Deferred::StorageCorrupt => "unstale's token count is corrupt".into(),
+            Deferred::Redirected => "the provider address redirects".into(),
+            Deferred::InsecureUrl => "the provider address is not https".into(),
+            Deferred::BatchTooLarge => format!("a request held more than {BATCH} release notes"),
             Deferred::CodexMissing => "Codex is not installed".into(),
-            Deferred::CodexTooOld => {
-                format!("Codex is older than {}; update it", codex::MIN_VERSION)
-            }
-            Deferred::CodexLoggedOut => "Codex is not logged in; run `codex login`".into(),
-        };
-        format!("deferred: {why}")
+            Deferred::CodexTooOld => format!("Codex is older than {}", codex::MIN_VERSION),
+            Deferred::CodexLoggedOut => "Codex is not logged in".into(),
+        }
+    }
+
+    /// What it costs the user: the work they chose that did not happen.
+    fn cost(&self) -> &'static str {
+        match self {
+            // Tried again by itself: late, not lost.
+            Deferred::Budget
+            | Deferred::RateLimited
+            | Deferred::Unavailable
+            | Deferred::Timeout
+            | Deferred::Malformed
+            | Deferred::Rejected => "new release notes wait",
+            Deferred::TooLong => "that release note is read again in smaller pieces",
+            Deferred::BatchTooLarge => "it was not sent",
+            _ => "new release notes are not read",
+        }
+    }
+
+    /// The one thing to do about it, as a sentence; empty when there is nothing to do.
+    pub fn fix(&self) -> String {
+        match self {
+            Deferred::Budget => "Change it: `unstale setup --limit`.".into(),
+            Deferred::NoKey(_) => "Set it.".into(),
+            Deferred::Auth => "Check the key.".into(),
+            Deferred::Billing => "Add credit.".into(),
+            Deferred::RateLimited
+            | Deferred::Unavailable
+            | Deferred::Timeout
+            | Deferred::Malformed
+            | Deferred::Rejected => "The next sync tries again.".into(),
+            Deferred::TooLong => String::new(),
+            Deferred::ModelNotOnPlan(_) | Deferred::CodexMissing => "Run `unstale setup`.".into(),
+            // Which file, and what to do with it, needs a path: `unstale status` has it.
+            Deferred::Storage | Deferred::StorageCorrupt => "See `unstale status`.".into(),
+            Deferred::Redirected | Deferred::InsecureUrl => "Check the address.".into(),
+            Deferred::BatchTooLarge => "Please report this.".into(),
+            Deferred::CodexTooOld => "Update Codex.".into(),
+            Deferred::CodexLoggedOut => "Run `codex login`.".into(),
+        }
+    }
+
+    /// One line for the terminal, a warning: what happened, what it costs, the one thing to do. Never an error: the
+    /// command that prints it still exits 0.
+    pub fn line(&self) -> String {
+        format!(
+            "warning: {}, so {}. {}",
+            self.what(),
+            self.cost(),
+            self.fix()
+        )
+        .trim_end()
+        .to_string()
     }
 
     /// Worth retrying within the same call (with backoff).
@@ -480,7 +538,7 @@ impl Inference {
             return Err(Deferred::Storage);
         }
         match self.ledger.spent(&month) {
-            Err(_) => Err(Deferred::Storage),
+            Err(e) => Err(Deferred::storage(&e)),
             Ok(n) if n >= self.monthly_budget => Err(Deferred::Budget),
             Ok(_) => Ok(()),
         }
