@@ -165,14 +165,15 @@ fn no_canary_reaches_output_config_cache_or_any_written_file() {
     w.plant();
     let mut out = w.init(true, &[]);
     // Without a terminal: no question, and nothing is chosen.
-    assert!(!out.contains("Choose"), "{out}");
+    assert!(!out.contains(QUESTION), "{out}");
     assert!(w.config().get("inference").is_none());
     let listed = w.ok(&["setup"], true);
     out += &listed;
     // Names from the shell (JEV_API_KEY) and from this repository's .env (OPENAI_API_KEY); nothing from the other
     // repository's .env (ANTHROPIC_API_KEY); Codex from PATH and its login status.
     assert!(
-        listed.contains("Jev labelling API (JEV_API_KEY) + OpenAI (OPENAI_API_KEY in .env)"),
+        listed.contains("  1  Jev + OpenAI ")
+            && listed.contains("     Keys: JEV_API_KEY, OPENAI_API_KEY (.env)"),
         "{listed}"
     );
     assert!(listed.contains("Codex plan"), "{listed}");
@@ -225,7 +226,7 @@ fn another_repos_env_and_codex_auth_file_are_never_opened() {
     w.init(true, &[]);
     let listed = w.ok(&["setup"], true);
     assert!(
-        listed.contains("Codex plan") && listed.contains("OPENAI_API_KEY in .env"),
+        listed.contains("Codex plan") && listed.contains("OPENAI_API_KEY (.env)"),
         "{listed}"
     );
     w.ok(&["setup", "--inference", "codex"], true);
@@ -241,19 +242,37 @@ fn with_the_switch_off_setup_is_inert() {
         w.config().get("inference").is_none(),
         "the flag is ignored with the switch off"
     );
-    assert!(!out.contains("Model provider"), "{out}");
+    for line in SWITCH_ON_LINES {
+        assert!(!out.contains(line), "{line:?} with the switch off:\n{out}");
+    }
     assert_eq!(
         w.ok(&["setup"], false).trim(),
         "Model steps are off in this version; there is nothing to set up."
     );
     let status = w.ok(&["status", "--wait", "0", "--no-animation"], false);
-    assert!(
-        !status.contains("Model provider") && !status.contains("Model tokens"),
-        "{status}"
-    );
+    for line in SWITCH_ON_LINES {
+        assert!(
+            !status.contains(line),
+            "{line:?} with the switch off:\n{status}"
+        );
+    }
     let skill = std::fs::read_to_string(w.path("repo/.unstale/skills/review/SKILL.md")).unwrap();
     assert!(!skill.contains("unstale setup"), "{skill}");
 }
+
+/// What setup and status print only with the switch on.
+const SWITCH_ON_LINES: [&str; 7] = [
+    "release notes",
+    "Release notes",
+    "Tokens",
+    "warning:",
+    "Choice pending",
+    "Registry to catalog",
+    "New releases",
+];
+
+/// The start of every question setup asks.
+const QUESTION: &str = "Enter for 1";
 
 impl World {
     /// Runs at a terminal (a pseudo-terminal from `script`), typing `input`.
@@ -267,7 +286,7 @@ impl World {
         for (k, v) in extra {
             c.env(k, v);
         }
-        let prompt = "Choose 1–|Press Enter to use it";
+        let prompt = "Enter for 1|Enter to use it";
         let (_, out) = support::at_terminal(&c, &[(prompt, input)], Duration::from_secs(60));
         out.replace('\r', "")
     }
@@ -291,19 +310,34 @@ fn init_asks_once_at_a_terminal_and_setup_reopens_the_picker() {
     let mut yes = init.to_vec();
     yes.push("--yes");
     let quiet = w.at_terminal(&yes, "\n");
-    assert!(!quiet.contains("Choose"), "{quiet}");
+    assert!(!quiet.contains(QUESTION), "{quiet}");
+    // Nothing configured and nobody asked: said once, as a warning, not passed over.
+    assert_eq!(
+        quiet
+            .matches("warning: no model provider is configured, so new release notes are not read.")
+            .count(),
+        1,
+        "{quiet}"
+    );
+    let quiet = w.at_terminal(&yes, "\n");
+    assert!(
+        !quiet.contains("warning:"),
+        "unchanged, so not said again:\n{quiet}"
+    );
     assert!(w.config().get("inference").is_none(), "{quiet}");
     let first = w.at_terminal(&init, "\n");
-    assert_eq!(
-        first.matches("Choose 1–").count(),
-        1,
-        "one question:\n{first}"
-    );
+    assert_eq!(first.matches(QUESTION).count(), 1, "one question:\n{first}");
+    // The question on its own line, a blank line, the table.
     assert!(
-        first.contains("  1) Jev labelling API (JEV_API_KEY) + OpenAI (OPENAI_API_KEY in .env)"),
+        first.contains("How should unstale read new release notes?\n\n     Read with"),
         "{first}"
     );
-    assert!(first.contains("Model provider: Jev labelling API + OpenAI (JEV_API_KEY, OPENAI_API_KEY) · saved in .unstale/config.json"), "{first}");
+    assert!(
+        first.contains("\n  1  Jev + OpenAI       ≈ $0.036 ")
+            && first.contains("\n     Keys: JEV_API_KEY, OPENAI_API_KEY (.env)\n"),
+        "{first}"
+    );
+    assert!(first.contains("Reading release notes with Jev + OpenAI (JEV_API_KEY, OPENAI_API_KEY). Saved in .unstale/config.json"), "{first}");
     assert_eq!(
         w.config()["inference"]["labels"]["key_env"],
         "JEV_API_KEY",
@@ -312,14 +346,20 @@ fn init_asks_once_at_a_terminal_and_setup_reopens_the_picker() {
 
     // Never asked again unprompted: a second init at a terminal keeps the choice and asks nothing.
     let again = w.at_terminal(&init, "4\n");
-    assert!(!again.contains("Choose"), "{again}");
+    assert!(!again.contains(QUESTION), "{again}");
     assert_eq!(w.config()["inference"]["provider"], "openai");
 
     // `unstale setup` reopens it.
     let changed = w.at_terminal(&["setup"], "4\n");
-    assert_eq!(changed.matches("Choose 1–").count(), 1, "{changed}");
+    assert_eq!(changed.matches(QUESTION).count(), 1, "{changed}");
     assert!(
-        changed.contains("Model provider: Codex plan · saved in .unstale/config.json"),
+        changed.contains("Reading release notes with Codex plan. Saved in .unstale/config.json"),
+        "{changed}"
+    );
+    // `unstale setup` also states the token limit, a setting of the user's, and how to change it.
+    assert!(
+        changed
+            .contains("of 48M this month (the default limit; `unstale setup --limit` changes it)"),
         "{changed}"
     );
     assert_eq!(
@@ -330,9 +370,18 @@ fn init_asks_once_at_a_terminal_and_setup_reopens_the_picker() {
     // Without a terminal it prints the options with their flags instead, and a flag changes the choice.
     let listed = w.ok(&["setup"], true);
     assert!(
-        listed.contains("[--inference jev+env:OPENAI_API_KEY]")
-            && listed.contains("`unstale setup --inference <value>`"),
+        listed.contains("Show them these options as printed and ask.")
+            && listed.contains("\n  1  unstale setup --inference jev+env:OPENAI_API_KEY\n"),
         "{listed}"
+    );
+    assert!(!listed.contains(QUESTION), "{listed}");
+    // The full figures on request, with no question.
+    let details = w.ok(&["setup", "--details"], true);
+    assert!(
+        details.contains("per package, per year")
+            && details.contains("first sync, once")
+            && !details.contains(QUESTION),
+        "{details}"
     );
     w.ok(&["setup", "--inference", "none"], true);
     assert_eq!(
@@ -351,13 +400,20 @@ fn the_managed_skill_tells_the_agent_to_show_the_options_and_ask_never_to_choose
         ".agents/skills/unstale-review/SKILL.md",
     ] {
         let skill = std::fs::read_to_string(w.path("repo").join(f)).unwrap();
-        assert!(skill.contains("## Model provider"), "{f}:\n{skill}");
+        assert!(skill.contains("## Reading release notes"), "{f}:\n{skill}");
         assert!(
-            skill.contains("run `unstale setup`. Show the user every option it prints"),
+            skill.contains("run `unstale setup`. Show the user the options it prints"),
             "{f}"
         );
         assert!(
             skill.contains("and ask which one they want. Never choose for them"),
+            "{f}"
+        );
+        assert!(skill.contains("never ask them to paste a key"), "{f}");
+        // What to do with the session-start line lives here, so the line itself stays short.
+        assert!(
+            skill.contains("## At session start")
+                && skill.contains("review it only if the user asks"),
             "{f}"
         );
         assert!(
@@ -368,29 +424,64 @@ fn the_managed_skill_tells_the_agent_to_show_the_options_and_ask_never_to_choose
 }
 
 #[test]
-fn status_shows_the_provider_this_months_tokens_and_the_budget() {
+fn status_shows_the_provider_this_months_tokens_and_the_users_limit() {
     let w = World::new(None);
     w.init(true, &[]);
     let status = |w: &World| w.ok(&["status", "--wait", "0", "--no-animation"], true);
     let before = status(&w);
     // The phrase the managed skill keys on.
-    assert!(before.contains("Model provider: not chosen; deterministic signals only · `unstale setup` shows the options"), "{before}");
     assert!(
-        before.contains("Model tokens this month: 0 of 48M"),
+        before.contains(
+            "Release notes         not read: no provider chosen · `unstale setup` shows the options"
+        ),
         "{before}"
+    );
+    assert!(
+        !before.contains("Tokens"),
+        "nothing spends tokens yet:\n{before}"
     );
     let ledger = w.path("cache/inference/usage-2026-11.jsonl");
     std::fs::create_dir_all(ledger.parent().unwrap()).unwrap();
     std::fs::write(&ledger, "{\"day\":\"2026-11-09\",\"provider\":\"vercel\",\"model\":\"m\",\"input\":1200000,\"cached\":0,\"output\":300000}\n").unwrap();
     w.ok(&["setup", "--inference", "env:AI_GATEWAY_API_KEY"], true);
     let after = status(&w);
+    // What is wrong comes first, as a warning; then the state.
+    let warning = "warning: AI_GATEWAY_API_KEY is not set here, so new release notes are not read. Set it, or run `unstale setup`.";
+    let provider =
+        "Release notes         Vercel AI Gateway (AI_GATEWAY_API_KEY), this repo's config";
     assert!(
-        after.contains("Model provider: Vercel AI Gateway (AI_GATEWAY_API_KEY), from this repo's config · `unstale setup` changes it · AI_GATEWAY_API_KEY is not set in this shell or .env"),
+        after
+            .find(warning)
+            .zip(after.find(provider))
+            .is_some_and(|(w, p)| w < p),
         "{after}"
     );
     assert!(
-        after.contains("Model tokens this month: 1.5M of 48M"),
+        after.contains("Tokens                1.5M of 48M this month (the default limit; `unstale setup --limit` changes it)"),
         "{after}"
+    );
+    // The limit is the user's: a number, or none, in this repo's config or theirs.
+    let set = w.ok(&["setup", "--limit", "1M"], true);
+    assert_eq!(
+        set.trim(),
+        "Monthly token limit: 1M. Saved in .unstale/config.json; past it, new release notes wait for next month."
+    );
+    assert_eq!(w.config()["monthly_token_limit"], 1_000_000);
+    let reached = status(&w);
+    assert!(
+        reached.contains("warning: monthly token limit reached, so new release notes wait for next month. Raise or remove it: `unstale setup --limit`.")
+            && reached.contains("Tokens                1.5M of 1M this month (this repo's limit, reached; `unstale setup --limit` changes it)"),
+        "{reached}"
+    );
+    w.ok(&["setup", "--limit", "none"], true);
+    assert_eq!(w.config()["monthly_token_limit"], "none");
+    assert!(status(&w).contains("Tokens                1.5M this month, no limit"));
+    w.ok(&["setup", "--limit", "default"], true);
+    assert!(w.config().get("monthly_token_limit").is_none());
+    assert_eq!(
+        w.config()["inference"]["provider"],
+        "vercel",
+        "the choice beside it is kept"
     );
 }
 
@@ -411,10 +502,10 @@ fn a_dismissed_picker_writes_no_config_and_is_not_asked_again_on_this_machine() 
     std::fs::write(w.path("repo/.env"), "OPENAI_API_KEY=x\n").unwrap();
     // End of input (Ctrl-D) at the question.
     let out = w.at_terminal(&INIT_AT_TERMINAL, "\u{4}");
-    assert_eq!(out.matches("Choose 1–").count(), 1, "{out}");
+    assert_eq!(out.matches(QUESTION).count(), 1, "{out}");
     assert!(
         out.contains(
-            "Model provider: not chosen; deterministic signals only · `unstale setup` asks again"
+            "Nothing chosen: unstale reads no release notes, advisories and deprecations only. `unstale setup` asks again."
         ),
         "{out}"
     );
@@ -436,15 +527,15 @@ fn a_dismissed_picker_writes_no_config_and_is_not_asked_again_on_this_machine() 
         "the state directory is never committed: {ignored}"
     );
     let status = w.ok(&["status", "--wait", "0", "--no-animation"], true);
-    assert!(status.contains("Model provider: not chosen"), "{status}");
+    assert!(status.contains("not read: no provider chosen"), "{status}");
     // init does not ask again here; `unstale setup` does, and typing None's number records "none".
     let again = w.at_terminal(&INIT_AT_TERMINAL, "\n");
-    assert!(!again.contains("Choose"), "{again}");
+    assert!(!again.contains(QUESTION), "{again}");
     assert!(w.config().get("inference").is_none());
     let chosen = w.at_terminal(&["setup"], "5\n");
     assert!(
         chosen.contains(
-            "Model provider: none (deterministic signals only) · saved in .unstale/config.json"
+            "Not reading release notes: advisories and deprecations only. Saved in .unstale/config.json"
         ),
         "{chosen}"
     );
@@ -461,8 +552,8 @@ fn ctrl_c_at_the_question_writes_nothing_anywhere() {
     w.init(true, &[]);
     let before = w.written_files();
     let out = w.at_terminal(&["setup"], "\u{3}");
-    assert!(out.contains("Choose 1–"), "{out}");
-    assert!(!out.contains("Model provider:"), "{out}");
+    assert!(out.contains(QUESTION), "{out}");
+    assert!(!out.contains("Saved in"), "{out}");
     assert_eq!(
         w.written_files(),
         before,
@@ -482,18 +573,23 @@ fn an_agent_in_a_pseudo_terminal_gets_the_listing_never_the_question() {
         ("UNSTALE_AGENT", "1"),
     ] {
         let init = w.at_terminal_with(&INIT_AT_TERMINAL, "\n", &[agent]);
-        assert!(!init.contains("Choose"), "{agent:?}: {init}");
+        assert!(!init.contains(QUESTION), "{agent:?}: {init}");
+        // The agent is told the choice is the user's, and how to put it to them.
+        assert!(
+            init.contains("Choice pending: how unstale reads new release notes. Run `unstale setup`, show the user its options and ask."),
+            "{agent:?}: {init}"
+        );
         assert!(
             w.config().get("inference").is_none(),
             "{agent:?}: a stray Enter chose nothing"
         );
         let setup = w.at_terminal_with(&["setup"], "\n", &[agent]);
         assert!(
-            !setup.contains("Choose 1–") && !setup.contains("press Enter"),
+            !setup.contains(QUESTION) && !setup.contains("Enter to use it"),
             "{agent:?}: {setup}"
         );
         assert!(
-            setup.contains("[--inference jev+env:OPENAI_API_KEY]"),
+            setup.contains("  1  unstale setup --inference jev+env:OPENAI_API_KEY"),
             "{agent:?}: {setup}"
         );
         assert!(w.config().get("inference").is_none(), "{agent:?}");
@@ -530,7 +626,7 @@ fn files_detection_must_never_open_stay_unopened() {
     }
     w.init(true, &[]);
     let listed = w.ok(&["setup"], true);
-    assert!(listed.contains("OPENAI_API_KEY in .env"), "{listed}");
+    assert!(listed.contains("OPENAI_API_KEY (.env)"), "{listed}");
     w.ok(&["setup", "--inference", "openai"], true);
     w.ok(&["status", "--wait", "0", "--no-animation"], true);
 }

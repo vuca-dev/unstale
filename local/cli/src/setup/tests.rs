@@ -138,7 +138,7 @@ fn everything() -> Detected {
 /// The scenarios a later harness replays: name → (machine, technologies, no-key mode, reader).
 pub(super) fn scenarios() -> Vec<(&'static str, Detected, usize, bool, Reader)> {
     use Seen::*;
-    let logged_out = CodexState::NotReady("Codex is not logged in; run `codex login`".into());
+    let logged_out = CodexState::NotReady("Codex is not logged in. Run `codex login`.".into());
     vec![
         ("everything", everything(), 38, false, Reader::Person),
         ("everything-agent", everything(), 38, false, Reader::Agent),
@@ -237,15 +237,96 @@ fn golden(name: &str, text: &str) {
     );
 }
 
+/// The picker as a person or an agent sees it, with the prompt a person is left at.
+fn rendered(d: &Detected, techs: usize, no_key: bool, reader: Reader, width: usize) -> String {
+    let mut text = view::picker_lines(d, techs, no_key, reader, width).join("\n");
+    if reader == Reader::Person {
+        text += "\n";
+        text += &match options(d, no_key).len() {
+            0 => view::nothing_prompt(),
+            n => view::prompt(n),
+        };
+    }
+    format!("{text}\n")
+}
+
 #[test]
 fn picker_renderings_match_their_goldens() {
     for (name, d, techs, no_key, reader) in scenarios() {
-        let mut text = picker_lines(&d, techs, no_key, reader).join("\n");
-        let n = options(&d, no_key).len();
-        if reader == Reader::Person && n > 0 {
-            text += &format!("\n{}", prompt(n));
+        golden(name, &rendered(&d, techs, no_key, reader, view::WIDTH));
+    }
+    // Narrower terminals: the key column goes first, then each option takes two lines.
+    golden(
+        "everything-80-columns",
+        &rendered(&everything(), 38, false, Reader::Person, 80),
+    );
+    golden(
+        "openai-only-60-columns",
+        &rendered(
+            &machine(&[("OPENAI_API_KEY", Seen::Shell)], CodexState::Absent),
+            38,
+            false,
+            Reader::Person,
+            60,
+        ),
+    );
+    // The full figures, and what "set one up" shows.
+    golden(
+        "everything-details",
+        &format!(
+            "{}\n",
+            view::details_lines(&everything(), 38, false).join("\n")
+        ),
+    );
+    golden(
+        "openai-only-details",
+        &format!(
+            "{}\n",
+            view::details_lines(
+                &machine(&[("OPENAI_API_KEY", Seen::Shell)], CodexState::Absent),
+                38,
+                false
+            )
+            .join("\n")
+        ),
+    );
+    let logged_out = machine(
+        &[("JEV_API_KEY", Seen::Shell)],
+        CodexState::NotReady("Codex is not logged in. Run `codex login`.".into()),
+    );
+    golden(
+        "set-one-up",
+        &format!(
+            "{}\n\n{}\n",
+            view::set_up_lines(&machine(&[], CodexState::Absent), Reader::Person).join("\n"),
+            view::set_up_lines(&logged_out, Reader::Person).join("\n")
+        ),
+    );
+    golden(
+        "nothing-agent",
+        &rendered(
+            &machine(&[], CodexState::Absent),
+            38,
+            false,
+            Reader::Agent,
+            view::WIDTH,
+        ),
+    );
+}
+
+#[test]
+fn every_listing_fits_the_width_it_was_laid_out_for() {
+    for (name, d, techs, no_key, reader) in scenarios() {
+        for width in [view::WIDTH, 80, 60] {
+            for l in view::table(&d, techs, no_key, width) {
+                assert!(l.chars().count() <= width, "{name} at {width}: {l}");
+                assert_eq!(l, l.trim_end(), "{name}: trailing blanks");
+            }
         }
-        golden(name, &format!("{text}\n"));
+        // What is around the table, at the default width.
+        for l in view::picker_lines(&d, techs, no_key, reader, view::WIDTH) {
+            assert!(l.chars().count() <= 110, "{name}: {l}");
+        }
     }
 }
 
@@ -284,44 +365,112 @@ fn options_follow_the_fixed_order_and_list_only_what_this_machine_can_use() {
 }
 
 #[test]
-fn every_option_below_the_first_states_its_trade_with_units_and_scope() {
+fn every_option_states_one_cost_and_its_trade_and_the_details_carry_units_and_scope() {
     let d = everything();
     let opts = options(&d, false);
+    let table = view::table(&d, 38, false, view::WIDTH);
+    assert_eq!(
+        table.len(),
+        opts.len() + 2,
+        "a header, a row an option, and the keys they read"
+    );
+    assert_eq!(
+        table[opts.len() + 1],
+        "     Keys: JEV_API_KEY, AI_GATEWAY_API_KEY, ANTHROPIC_API_KEY"
+    );
+    let details = view::details_lines(&d, 38, false).join("\n");
     for (i, p) in opts.iter().enumerate() {
-        let l = option_line(&d, *p, 38, false);
+        let row = &table[i + 1];
+        assert!(row.starts_with(&format!("  {}  ", i + 1)), "{row}");
         if *p == Pick::None {
-            assert!(l.contains("need a key or Codex"), "{l}");
+            assert!(
+                row.contains("free") && row.contains("≈ 27%: advisories and deprecations only"),
+                "{row}"
+            );
             continue;
         }
-        assert!(
-            l.contains(" per technology-year")
-                && l.contains("this repo ≈ ")
-                && l.contains("first sync ≈ "),
-            "{l}"
-        );
-        if l.contains("Codex tokens") {
-            assert!(l.contains("at API prices"), "{l}");
+        // One cost, and one quality figure at most: no unit rate, first sync or second figure in the row.
+        assert!(row.contains("≈ "), "{row}");
+        assert!(row.matches('%').count() <= 1, "{row}");
+        for detail in ["per package", "first sync", "duplicate", "at API prices"] {
+            assert!(
+                !row.contains(detail),
+                "{detail:?} belongs in --details: {row}"
+            );
         }
         if i > 0 {
             assert!(
-                l.contains("about the same")
-                    || l.contains("less complete: ≈ ")
-                    || l.contains("results through Codex not measured yet"),
-                "{l}"
+                row.contains("% of its ") || row.contains("not measured yet through Codex"),
+                "{row}"
             );
         }
-        for internal in ["A+B", "H1", "H2", "step ", "slice", "gpt-6", "flex"] {
-            assert!(!l.contains(internal), "internal name {internal:?} in {l}");
-        }
+    }
+    for want in [
+        "per package, per year",
+        "this repo, a year",
+        "first sync, once",
+        "at API prices",
+        "more duplicate records per package, per year",
+        "(fewer from upgrade guides)",
+    ] {
+        assert!(
+            details.contains(want),
+            "{want:?} missing from the details:\n{details}"
+        );
+    }
+    let everything_printed = format!("{}\n{details}", table.join("\n"));
+    for internal in [
+        "A+B",
+        "H1",
+        "H2",
+        "step ",
+        "slice",
+        "gpt-6",
+        "flex",
+        "technology-year",
+        "deterministic",
+        "deferred",
+        "edge",
+    ] {
+        assert!(
+            !everything_printed.contains(internal),
+            "internal name {internal:?}"
+        );
     }
 }
 
 #[test]
-fn enter_accepts_the_first_option_and_a_number_picks_one() {
+fn going_without_a_provider_states_what_is_left_with_the_measured_share() {
+    // The figure is one constant; every place that states the trade reads it.
+    assert_eq!(NO_PROVIDER_SHARE, Some(27));
+    let nothing = machine(&[], CodexState::Absent);
+    for reader in [Reader::Person, Reader::Agent] {
+        let text = view::nothing_lines(&nothing, reader).join("\n");
+        assert!(
+            text.contains("advisories and deprecations only, ≈ 27% of what unstale finds with one"),
+            "{text}"
+        );
+    }
+    assert!(view::dismissed_line().contains("advisories and deprecations only"));
+}
+
+#[test]
+fn enter_accepts_the_first_option_a_number_picks_one_and_d_shows_the_details() {
     let opts = options(&everything(), false);
+    let details = vec!["THE DETAILS".to_string()];
     let pick = |input: &str| {
         let mut out = vec![];
-        let p = ask(&opts, &mut input.as_bytes(), &mut out);
+        let p = view::ask(
+            opts.len(),
+            &view::prompt(opts.len()),
+            &details,
+            &mut input.as_bytes(),
+            &mut out,
+        );
+        let p = match p {
+            view::Answered::Option(i) => Some(opts[i]),
+            view::Answered::Nothing => None,
+        };
         (p, String::from_utf8(out).unwrap())
     };
     assert_eq!(pick("\n").0, Some(Pick::JevKey(Route::Vercel)));
@@ -334,10 +483,13 @@ fn enter_accepts_the_first_option_and_a_number_picks_one() {
     let (p, out) = pick("9\nx\n2\n");
     assert_eq!(p, Some(Pick::JevCodex));
     assert_eq!(
-        out.matches("Choose 1–6").count(),
+        out.matches("Enter for 1, a number to choose").count(),
         3,
         "the same question again, not a new one"
     );
+    let (p, out) = pick("d\n3\n");
+    assert_eq!(p, Some(Pick::Key(Route::Vercel)));
+    assert!(out.contains("THE DETAILS"), "{out}");
     assert_eq!(pick("").0, None, "end of input chooses nothing");
     assert_eq!(
         pick("x\nx\nx\n1\n").0,
@@ -392,8 +544,8 @@ fn a_choice_stores_the_variable_name_and_maps_to_provider_configs() {
     );
     assert!(Choice::none().providers().is_none());
     assert_eq!(
-        Choice::none().describe(),
-        "none (deterministic signals only)"
+        view::saved_line(&Choice::none(), ".unstale/config.json"),
+        "Not reading release notes: advisories and deprecations only. Saved in .unstale/config.json; `unstale setup` changes it."
     );
 }
 
@@ -500,24 +652,108 @@ fn a_question_is_asked_only_at_a_terminal_and_only_once_unprompted() {
 // ------------------------------------------------------------------------------------------------------------ status
 
 #[test]
-fn status_names_the_provider_this_months_tokens_and_the_budget() {
+fn status_names_the_provider_this_months_tokens_and_the_users_limit() {
     let set = |v: &str| v == "JEV_API_KEY";
-    let budget = crate::inference::ledger::budget_line(1_234_567, 48_000_000);
-    let lines =
-        |cur: Option<(Choice, Origin)>| format!("{}\n{budget}", provider_line(cur.as_ref(), &set));
+    let default = Limit::Tokens(crate::inference::ledger::DEFAULT_MONTHLY_TOKENS);
+    let block = |cur: Option<(Choice, Origin)>, used: u64, limit: Limit, origin: LimitOrigin| {
+        let mut lines = view::missing_key_lines(cur.as_ref(), &set);
+        lines.push(view::provider_line(cur.as_ref()));
+        if cur.as_ref().is_some_and(|(c, _)| !c.is_none()) {
+            lines.push(view::tokens_line(Ok(used), limit, origin));
+        }
+        lines.join("\n")
+    };
     golden(
         "status",
         &format!(
-            "{}\n{}\n{}\n{}\n",
-            lines(None),
-            lines(Some((
-                parse_flag("jev+env:OPENAI_API_KEY").unwrap(),
-                Origin::Repo
-            ))),
-            lines(Some((Choice::codex(), Origin::User))),
-            lines(Some((Choice::none(), Origin::Repo))),
+            "{}\n\n{}\n\n{}\n\n{}\n\n{}\n",
+            block(None, 0, default, LimitOrigin::Default),
+            block(
+                Some((parse_flag("jev+env:OPENAI_API_KEY").unwrap(), Origin::Repo)),
+                1_234_567,
+                default,
+                LimitOrigin::Default
+            ),
+            block(
+                Some((Choice::codex(), Origin::User)),
+                1_234_567,
+                Limit::None,
+                LimitOrigin::User
+            ),
+            block(
+                Some((Choice::none(), Origin::Repo)),
+                0,
+                Limit::Tokens(100_000_000),
+                LimitOrigin::Repo
+            ),
+            block(
+                Some((Choice::codex(), Origin::Repo)),
+                5_000_000,
+                Limit::Tokens(5_000_000),
+                LimitOrigin::User
+            ),
         ),
     );
+    assert!(
+        view::tokens_line(
+            Err(std::io::Error::other("x")),
+            default,
+            LimitOrigin::Default
+        )
+        .contains("unknown"),
+    );
+}
+
+#[test]
+fn the_monthly_token_limit_is_a_number_none_or_the_default() {
+    assert_eq!(parse_limit("48M"), Ok(Some(Limit::Tokens(48_000_000))));
+    assert_eq!(parse_limit("1.5m"), Ok(Some(Limit::Tokens(1_500_000))));
+    assert_eq!(parse_limit("500k"), Ok(Some(Limit::Tokens(500_000))));
+    assert_eq!(
+        parse_limit("12_000_000"),
+        Ok(Some(Limit::Tokens(12_000_000)))
+    );
+    assert_eq!(parse_limit("0"), Ok(Some(Limit::Tokens(0))));
+    assert_eq!(parse_limit("none"), Ok(Some(Limit::None)));
+    assert_eq!(parse_limit("default"), Ok(None));
+    for bad in ["", "lots", "-5", "5x", "nan"] {
+        assert!(parse_limit(bad).is_err(), "{bad:?}");
+    }
+    // Stored as a number, or "none"; anything else is refused rather than read as no limit.
+    assert_eq!(serde_json::to_string(&Limit::Tokens(5)).unwrap(), "5");
+    assert_eq!(serde_json::to_string(&Limit::None).unwrap(), "\"none\"");
+    assert_eq!(
+        serde_json::from_str::<Limit>("\"none\"").unwrap(),
+        Limit::None
+    );
+    assert!(serde_json::from_str::<Limit>("\"unlimited\"").is_err());
+    assert!(serde_json::from_str::<Limit>("-1").is_err());
+    assert_eq!(Limit::None.tokens(), u64::MAX);
+
+    // This repository's limit, else the user's, else the default.
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("unstale/config.json");
+    let default = Limit::Tokens(crate::inference::ledger::DEFAULT_MONTHLY_TOKENS);
+    assert_eq!(limit(None, &path), (default, LimitOrigin::Default));
+    write_user(&path, &Choice::codex()).unwrap();
+    write_user_key(
+        &path,
+        "monthly_token_limit",
+        Some(serde_json::json!("none")),
+    )
+    .unwrap();
+    assert_eq!(limit(None, &path), (Limit::None, LimitOrigin::User));
+    assert_eq!(
+        read_user(&path),
+        Some(Choice::codex()),
+        "the choice beside it is kept"
+    );
+    assert_eq!(
+        limit(Some(Limit::Tokens(7)), &path),
+        (Limit::Tokens(7), LimitOrigin::Repo)
+    );
+    write_user_key(&path, "monthly_token_limit", None).unwrap();
+    assert_eq!(limit(None, &path), (default, LimitOrigin::Default));
 }
 
 #[test]
@@ -594,23 +830,35 @@ fn an_agent_variable_means_an_agent_is_driving() {
 
 #[test]
 fn quality_through_codex_is_not_claimed_until_measured() {
-    for p in [Pick::JevCodex, Pick::Codex] {
-        assert!(!quote(p, false).quality_measured, "{p:?}");
-        let l = option_line(&everything(), p, 38, false);
+    let d = everything();
+    let table = view::table(&d, 38, false, view::WIDTH);
+    let details = view::details_lines(&d, 38, false);
+    for (i, p) in options(&d, false).iter().enumerate() {
+        let through_codex = matches!(p, Pick::JevCodex | Pick::Codex);
+        assert_eq!(!quote(*p, false).quality_measured, through_codex, "{p:?}");
+        if !through_codex {
+            continue;
+        }
+        let row = &table[i + 1];
+        assert!(row.ends_with("not measured yet through Codex"), "{row}");
+        assert!(!row.contains('%') && !row.contains("the same"), "{row}");
+        // In the details too: the option's block says so and claims no figure.
+        let at = details
+            .iter()
+            .position(|l| l.starts_with(&format!("{}  ", i + 1)))
+            .unwrap();
+        let block: Vec<&String> = details[at + 1..]
+            .iter()
+            .take_while(|l| !l.is_empty())
+            .collect();
         assert!(
-            l.ends_with(" · results through Codex not measured yet"),
-            "{l}"
+            block
+                .iter()
+                .any(|l| l.ends_with("not measured yet through Codex"))
+                && !block
+                    .iter()
+                    .any(|l| l.contains('%') || l.contains("duplicate")),
+            "{block:?}"
         );
-        assert!(
-            !l.contains("about the same") && !l.contains("93%") && !l.contains("duplicate"),
-            "{l}"
-        );
-    }
-    for p in [
-        Pick::JevKey(Route::Vercel),
-        Pick::Key(Route::Vercel),
-        Pick::Key(Route::Anthropic),
-    ] {
-        assert!(quote(p, false).quality_measured, "{p:?}");
     }
 }

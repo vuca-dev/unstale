@@ -1,1 +1,7 @@
-Reading new release notes needs a key or Codex: set AI_GATEWAY_API_KEY, OPENAI_API_KEY, OPENROUTER_API_KEY or ANTHROPIC_API_KEY, or log in to Codex, then run `unstale setup`. Until then: deterministic signals only.
+unstale reads new release notes with a model, on your own key or your Codex plan.
+None is set up here.
+
+  1  Set one up   shows the one line to add
+  2  Not now      free · advisories and deprecations only, ≈ 27% of what unstale finds with one
+
+Enter for 1, or 2: 

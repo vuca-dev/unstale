@@ -184,12 +184,3 @@ pub fn short_tokens(n: u64) -> String {
         _ => format!("{:.1}M", n as f64 / 1_000_000.0),
     }
 }
-
-/// The budget line for `unstale status` and the picker.
-pub fn budget_line(used: u64, budget: u64) -> String {
-    format!(
-        "Model tokens this month: {} of {} (monthly budget; past it, work waits for next month)",
-        short_tokens(used),
-        short_tokens(budget)
-    )
-}

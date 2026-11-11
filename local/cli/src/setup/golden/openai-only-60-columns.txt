@@ -1,0 +1,8 @@
+How should unstale read new release notes?
+
+  1  OpenAI (OPENAI_API_KEY)
+     ≈ $3.42 a year · ≈ 93% of its breaking-change flags
+  2  Not now
+     free · ≈ 27%: advisories and deprecations only
+
+Enter for 1, a number to choose, or d for details: 

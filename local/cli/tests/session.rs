@@ -883,7 +883,7 @@ fn status_shows_how_long_releases_took_to_reach_this_machine() {
     // The first sync here: what it finds was published before this machine followed the technology.
     env.ok(&["session-sync"]);
     let status = env.ok(&["status", "--wait", "0", "--no-animation"]);
-    assert!(status.contains("Freshness on this machine: no new release of this repository's technologies reached it in the last 30 days"), "{status}");
+    assert!(status.contains("New releases          none reached this machine in the last 30 days"), "{status}");
     // A release published 2 h ago, 5 h after the registry had it, synced now.
     publish(vec![
         event("16.0.1", 90 * 86_400, 89 * 86_400),
@@ -891,19 +891,18 @@ fn status_shows_how_long_releases_took_to_reach_this_machine() {
     ]);
     env.ok(&["session-sync"]);
     let status = env.ok(&["status", "--wait", "0", "--no-animation"]);
-    let line = status
-        .lines()
-        .find(|l| l.starts_with("Freshness on this machine"))
-        .unwrap();
-    assert_eq!(
-        line,
-        "Freshness on this machine, last 30 days (1 release): registry to catalog 5h median (5h at the 90th percentile) · catalog to here 2h median (2h at the 90th percentile) · records made here: not yet"
+    // Two short lines, aligned with the rest of the status block.
+    assert!(
+        status.contains(
+            "Registry to catalog   5h median, 5h for the slowest tenth (1 release, last 30 days)\nCatalog to here       2h median, 2h for the slowest tenth\n"
+        ),
+        "{status}"
     );
     // With model steps off, events are not synced and the line is not shown.
     env.extra = vec![("UNSTALE_EDGE_INFERENCE".into(), "0".into())];
     assert!(
         !env.ok(&["status", "--wait", "0", "--no-animation"])
-            .contains("Freshness on this machine")
+            .contains("Registry to catalog")
     );
 }
 

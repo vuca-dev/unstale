@@ -14,10 +14,11 @@ opened.
   provider's auth header; none of the never-opened files is opened.
 - **Hold-the-line 2:** nothing reaches the proxy; the provider is contacted only on the chosen provider's API;
   `codex exec` runs only with Codex chosen; no request or `codex` argument carries a repository path or code.
-- **Hold-the-line 4:** every command exits 0 with no `error:` line; a provider or budget failure defers with one line.
+- **Hold-the-line 4:** every command exits 0 with no `error:` line; a provider failure or a reached token
+  limit is one `warning:` line.
 - At most one question per path, none without a person at the terminal (an agent driving a pseudo-terminal gets the
   listing instead); a question dismissed with Ctrl-D records no provider and is not asked again; Ctrl-C records
-  nothing. The catalog's notice and update lines show at most once a day.
+  nothing. The catalog's notice (what to do, by a date) and update lines show at most once a day.
 
 Each check has a test that injects a violation (`the_checks_catch_*`) and fails without it; run them with
 `-- --nocapture` to see the failing output. Checks that cannot run yet are ignored tests with their reason.

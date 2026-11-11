@@ -29,6 +29,7 @@ mod testcat;
 mod usage;
 mod workarounds;
 mod util;
+mod warn;
 
 use anyhow::{Context, Result, anyhow, bail};
 use clap::{Parser, Subcommand, ValueEnum};
@@ -90,17 +91,24 @@ enum Cmd {
         #[arg(long, value_name = "CHOICE", hide = true)]
         inference: Option<String>,
     },
-    /// Choose where model steps run: your own key or your Codex plan. Asks once at a terminal; without one, prints the
-    /// options and the flag for each.
+    /// Choose how new release notes are read: your own key or your Codex plan. Asks once at a terminal; without one,
+    /// prints the options and the command that records each.
     #[command(hide = true)]
     Setup {
         /// Record a choice without asking: vercel, openai, openrouter, anthropic, env:NAME (a key variable), codex or
         /// none; jev+ before a key or codex adds Jev for labels (for example jev+env:OPENAI_API_KEY).
         #[arg(long, value_name = "CHOICE")]
         inference: Option<String>,
-        /// Save the choice in your user config instead of this repository's.
+        /// Save in your user config instead of this repository's.
         #[arg(long)]
         user: bool,
+        /// Print each option's full figures (unit cost, first sync, tokens, quality) and ask nothing.
+        #[arg(long)]
+        details: bool,
+        /// The monthly token limit: a number of tokens (48M, 500k), none, or default. Past it, new release notes wait
+        /// for next month.
+        #[arg(long, value_name = "TOKENS")]
+        limit: Option<String>,
     },
     /// Refresh public coverage and print a compact setup summary; full evidence stays in the report.
     Status {
@@ -166,7 +174,7 @@ enum Cmd {
         #[arg(long = "repo", required = true)]
         repos: Vec<PathBuf>,
     },
-    /// Internal: one model call on a provider (tests and evals). Prints the answer as JSON, or one `deferred: ...`
+    /// Internal: one model call on a provider (tests and evals). Prints the answer as JSON, or one `warning: ...`
     /// line; exits 0 either way, and quietly when another worker on this machine holds the lock.
     #[command(hide = true)]
     Infer {
@@ -261,6 +269,10 @@ struct Config {
     /// Where model steps run (`unstale setup`): the provider and the key's variable name, never its value.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     inference: Option<setup::Choice>,
+    /// The monthly token limit for model steps (`unstale setup --limit`): a number of tokens, or `"none"`. Absent, the
+    /// default applies.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    monthly_token_limit: Option<setup::Limit>,
     /// `false` turns off the catalog sync at agent session start (`session.rs`); absent or `true` keeps it on.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     session_sync: Option<bool>,
@@ -339,18 +351,30 @@ fn dispatch(cli: Cli, started: std::time::Instant) -> Result<u8> {
             setup::run(&mut ctx, choice, false, false, yes)?;
         }
         return if ctx.config.service.is_some() { onboarding::run(&ctx, wait.unwrap_or(0), !no_animation, false) } else { Ok(code) }
-            .inspect(|_| notice::print(&ctx.cache, &ctx.tool));
+            .inspect(|_| {
+                notice::print(&ctx.cache, &ctx.tool);
+                // The one step only the user can take, said once.
+                if inference::enabled() && let Some(line) = session::codex_trust_line(&ctx) { println!("{line}"); }
+            });
     }
     let mut ctx = context(&start)?;
     match cli.cmd {
         Cmd::Init { .. } | Cmd::CountTerms { .. } | Cmd::Uninstall | Cmd::Infer { .. } | Cmd::Notify | Cmd::Internal { .. } => unreachable!(),
-        Cmd::Setup { inference, user } => {
+        Cmd::Setup { inference, user, details, limit } => {
             if !inference::enabled() {
                 println!("Model steps are off in this version; there is nothing to set up.");
                 return Ok(0);
             }
+            // Read before anything is written, so a mistyped value changes nothing.
             let choice = inference.map(|s| setup::parse_flag(&s).map_err(|e| anyhow!(e))).transpose()?;
-            setup::run(&mut ctx, choice, true, user, false)?;
+            let limit = limit.map(|s| setup::parse_limit(&s).map_err(|e| anyhow!(e))).transpose()?;
+            if details {
+                setup::details(&ctx);
+                return Ok(0);
+            }
+            if let Some(l) = limit { setup::set_limit(&mut ctx, l, user)?; }
+            // `--limit` alone changes the limit and asks nothing.
+            if limit.is_none() || choice.is_some() { setup::run(&mut ctx, choice, true, user, false)?; }
             Ok(0)
         }
         Cmd::Report => {
@@ -362,19 +386,14 @@ fn dispatch(cli: Cli, started: std::time::Instant) -> Result<u8> {
         },
         Cmd::Status { wait, no_animation } => onboarding::run(&ctx, wait, !no_animation, false).inspect(|_| {
             notice::print(&ctx.cache, &ctx.tool);
-            if inference::enabled() {
-                println!("{}", setup::status_provider(&ctx));
-                match inference::Ledger::default_location().spent(&inference::ledger::this_month()) {
-                    Ok(used) => println!("{}", inference::ledger::budget_line(used, inference::ledger::DEFAULT_MONTHLY_TOKENS)),
-                    Err(_) => println!("Model tokens this month: unknown (the usage record cannot be read; model steps wait until it can)"),
-                }
-            }
-            // Shown with the switch on or off: a refusal stays until a sync verifies the events. Only this repository's
-            // technologies are named.
+            // What is wrong first, then the state: `status` always shows both, whatever was already said elsewhere.
+            let (mut warnings, state) = if inference::enabled() { setup::status_lines(&ctx) } else { (vec![], vec![]) };
+            // A refusal stays until a sync verifies the release notes. Only this repository's technologies are named.
             let ours = stack::detect(&ctx.root).map(|st| onboarding::candidates(&ctx, &st)).unwrap_or_default();
             let failed: Vec<(String, String)> = cache::events_failed(&ctx.cache).into_iter().filter(|(t, _)| ours.contains(t)).collect();
-            if let Some(line) = events_failed_line(&failed) { println!("{line}"); }
-            if let Some(line) = pipeline::unrun_line(&ctx, &ours) { println!("{line}"); }
+            warnings.extend(events_failed_line(&failed));
+            warnings.extend(pipeline::unrun_line(&ctx, &ours));
+            for line in warnings.iter().chain(&state) { println!("{line}"); }
             session::after_status(&ctx);
         }),
         Cmd::SessionSync => session::background(&ctx),
@@ -396,7 +415,7 @@ fn dispatch(cli: Cli, started: std::time::Instant) -> Result<u8> {
 /// One line naming the technologies whose change events the last sync refused; their records synced regardless.
 fn events_failed_line(failed: &[(String, String)]) -> Option<String> {
     let names: Vec<&str> = failed.iter().map(|(t, _)| t.as_str()).collect();
-    (!names.is_empty()).then(|| format!("Change events could not be verified for {}; the next sync tries again (records are unaffected)", names.join(", ")))
+    (!names.is_empty()).then(|| format!("warning: the release notes for {} could not be verified, so they are not read. The next sync tries again.", names.join(", ")))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -556,6 +575,7 @@ fn init(start: &Path, catalog: Option<String>, mode: Option<Mode>, _yes: bool, q
         mode,
         service: existing.as_ref().and_then(|e| e.service.clone()),
         inference: existing.as_ref().and_then(|e| e.inference.clone()),
+        monthly_token_limit: existing.as_ref().and_then(|e| e.monthly_token_limit),
         session_sync: existing.as_ref().and_then(|e| e.session_sync),
     };
     util::write_atomic(&tool.join("config.json"), format!("{}\n", serde_json::to_string_pretty(&config)?).as_bytes())?;
@@ -726,16 +746,10 @@ fn cmd_sync(ctx: &Ctx) -> Result<u8> {
         Err(e) => return Err(e),
     };
     for t in &rep.synced {
-        // Change events are synced only with the edge-inference switch on; otherwise the line is as it was.
-        let events = if t.events_failed.is_some() {
-            "; change events could not be verified (records unaffected; the next sync tries again)".to_string()
-        } else if t.events_downloaded + t.events_reused > 0 {
-            format!("; change events {} downloaded, {} reused", t.events_downloaded, t.events_reused)
-        } else {
-            String::new()
-        };
+        // Release notes are synced only with the edge-inference switch on. Nothing is said when they arrive (the reader
+        // does nothing with a count of them); one that could not be verified is a warning below.
         println!(
-            "synced {}: {} records (sources checked {}); {}{events}",
+            "synced {}: {} records (sources checked {}); {}",
             t.technology,
             t.records,
             t.checked,
@@ -754,14 +768,21 @@ fn cmd_sync(ctx: &Ctx) -> Result<u8> {
     }
     let uncovered = rep.not_covered.len() + rep.not_in_stack.len();
     if uncovered > 0 {
-        println!("Not covered by the catalog: {uncovered} other candidate technologies (no index for them, or no record names a package used here).");
+        println!(
+            "Not covered by the catalog: {uncovered} other candidate {} (no index for {}, or no record names a package used here).",
+            if uncovered == 1 { "technology" } else { "technologies" },
+            if uncovered == 1 { "it" } else { "them" }
+        );
     }
     if !rep.withheld.is_empty() {
         println!(
-            "Not asked for: {} candidate technologies only private packages name (the catalog published no list to check them against).",
-            rep.withheld.len()
+            "Not asked for: {} candidate {} only private packages name (the catalog published no list to check them against).",
+            rep.withheld.len(),
+            if rep.withheld.len() == 1 { "technology" } else { "technologies" }
         );
     }
+    let unverified: Vec<(String, String)> = rep.synced.iter().filter(|t| t.events_failed.is_some()).map(|t| (t.technology.clone(), String::new())).collect();
+    if let Some(line) = events_failed_line(&unverified) { println!("{line}"); }
     let mut code = 0;
     for (t, e) in &rep.failed {
         eprintln!("error: {t}: {e} (cached copy kept)");

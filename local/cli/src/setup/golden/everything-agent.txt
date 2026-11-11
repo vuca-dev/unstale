@@ -1,8 +1,20 @@
-Choose how unstale reads new release notes (costs are estimates; this repo has 38 technologies):
-  1) Jev labelling API (JEV_API_KEY) + Vercel AI Gateway (AI_GATEWAY_API_KEY): $0.028 per technology-year · this repo ≈ $1.05 a year, first sync ≈ $1.05 once [--inference jev+env:AI_GATEWAY_API_KEY]
-  2) Jev labelling API (JEV_API_KEY) + Codex plan: $0.018 + 110k Codex tokens ($0.020 at API prices) per technology-year · this repo ≈ $0.69 + 4.1M Codex tokens a year, first sync ≈ $0.69 + 4.1M Codex tokens once · results through Codex not measured yet [--inference jev+codex]
-  3) Vercel AI Gateway (AI_GATEWAY_API_KEY): $0.055 per technology-year · this repo ≈ $2.08 a year, first sync ≈ $2.08 once · slightly less complete: ≈ 93% of the best option's breaking-change flags; ≈ 2 more duplicate records per technology-year [--inference env:AI_GATEWAY_API_KEY]
-  4) Codex plan: 590k Codex tokens ($0.075 at API prices) per technology-year · this repo ≈ 22M Codex tokens a year, first sync ≈ 22M Codex tokens once · results through Codex not measured yet [--inference codex]
-  5) Anthropic (ANTHROPIC_API_KEY): $0.075 per technology-year · this repo ≈ $2.86 a year, first sync ≈ $2.86 once · somewhat less complete: ≈ 90% of the best option's changes (fewer from upgrade guides); ≈ 23 more duplicate records per technology-year [--inference env:ANTHROPIC_API_KEY]
-  6) None: deterministic signals only; new change details need a key or Codex [--inference none]
-Record the choice with `unstale setup --inference <value>`.
+The user chooses how unstale reads new release notes. Show them these options as printed and ask.
+Never choose for them.
+
+     Read with                 Cost a year, this repo        Compared with the best option
+  1  Jev + Vercel AI Gateway   ≈ $1.05                       the best option
+  2  Jev + Codex plan          ≈ $0.69 + 4.1M Codex tokens   not measured yet through Codex
+  3  Vercel AI Gateway         ≈ $2.08                       ≈ 93% of its breaking-change flags
+  4  Codex plan                ≈ 22M Codex tokens            not measured yet through Codex
+  5  Anthropic                 ≈ $2.86                       ≈ 90% of its changes
+  6  Not now                   free                          ≈ 27%: advisories and deprecations only
+     Keys: JEV_API_KEY, AI_GATEWAY_API_KEY, ANTHROPIC_API_KEY
+
+Record their answer with the matching command:
+  1  unstale setup --inference jev+env:AI_GATEWAY_API_KEY
+  2  unstale setup --inference jev+codex
+  3  unstale setup --inference env:AI_GATEWAY_API_KEY
+  4  unstale setup --inference codex
+  5  unstale setup --inference env:ANTHROPIC_API_KEY
+  6  unstale setup --inference none
+Full costs: unstale setup --details

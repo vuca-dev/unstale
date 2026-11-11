@@ -208,7 +208,7 @@ pub(crate) fn check(s: &Scenario, se: &Session) -> Vec<String> {
         .find(|r| r.step == Step::Model && !r.shown.is_empty())
     {
         let lines: Vec<&str> = m.output.lines().collect();
-        let deferred = lines.len() == 1 && lines[0].starts_with("deferred: ");
+        let deferred = lines.len() == 1 && lines[0].starts_with("warning: ");
         let answered = lines == [r#"{"ok":true}"#];
         if !(deferred || answered) {
             v.push(format!("hold-the-line 4: the model step printed neither an answer nor one deferral line: {:?}", m.output));
@@ -248,8 +248,11 @@ pub(crate) fn check(s: &Scenario, se: &Session) -> Vec<String> {
     }
 
     // The catalog's notice and update lines: once a day.
-    let line = format!("unstale notice: {NOTICE}");
-    let n: usize = se.ran.iter().map(|r| r.output.matches(&line).count()).sum();
+    let n: usize = se
+        .ran
+        .iter()
+        .map(|r| r.output.matches(NOTICE_LINE).count())
+        .sum();
     if n > 1 {
         v.push(format!("notice: shown {n} times in one day"));
     }

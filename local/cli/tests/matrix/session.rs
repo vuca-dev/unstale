@@ -23,7 +23,8 @@ pub(crate) struct Session {
     pub(crate) chosen: Option<serde_json::Value>,
 }
 
-pub(crate) const PROMPTS: [&str; 2] = ["Choose 1–", "Press Enter to use it"];
+/// What every question ends in: the picker's prompt, its one-option form, and the prompt with nothing usable.
+pub(crate) const PROMPTS: [&str; 2] = ["Enter for 1", "Enter to use it"];
 
 pub(crate) fn questions(text: &str) -> usize {
     PROMPTS.iter().map(|p| text.matches(p).count()).sum()
@@ -65,7 +66,7 @@ pub(crate) fn run_step(w: &World, s: &Scenario, step: Step, ran: &[Ran]) -> Opti
         )),
         Step::AgentSetup => {
             let status = ran.iter().rev().find(|r| r.step == Step::Status)?;
-            if !status.output.contains("Model provider: not chosen") {
+            if !status.output.contains("not read: no provider chosen") {
                 return None;
             }
             let listed = exec(w, s, vec!["setup".into()], s.invocation.terminal);
@@ -77,9 +78,10 @@ pub(crate) fn run_step(w: &World, s: &Scenario, step: Step, ran: &[Ran]) -> Opti
 
 /// The agent's follow-up to `unstale setup`: the user's answer, recorded with the flag printed beside it.
 pub(crate) fn agent_answer(w: &World, s: &Scenario, listed: &Ran) -> Option<Ran> {
+    // The command printed for option 1.
     let value = listed.output.lines().find_map(|l| {
-        l.split_once("[--inference ")
-            .map(|(_, v)| v.trim_end_matches(']').to_string())
+        l.strip_prefix("  1  unstale setup --inference ")
+            .map(|v| v.trim().to_string())
     })?;
     let mut r = exec(
         w,

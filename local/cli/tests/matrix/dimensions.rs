@@ -113,7 +113,7 @@ pub(crate) enum Answer {
     Slow,
     /// The model is not on this key or plan (404, or Codex's "not supported").
     NotOnPlan,
-    /// This month's token budget is already spent.
+    /// This month's token limit is already reached.
     BudgetSpent,
 }
 
@@ -161,7 +161,7 @@ pub(crate) const CRITICAL: &[(&str, &str, &str, &str, &str, Answer)] = &[
     ("The provider is down", "shell-key", "no-codex", "terminal", "no-config", Answer::Down),
     ("The provider is too slow to answer", "shell-key", "no-codex", "terminal", "no-config", Answer::Slow),
     ("The model is not on the Codex plan", "no-key", "codex", "terminal", "no-config", Answer::NotOnPlan),
-    ("This month's token budget is spent", "shell-key", "no-codex", "terminal", "no-config", Answer::BudgetSpent),
+    ("The monthly token limit is reached", "shell-key", "no-codex", "terminal", "no-config", Answer::BudgetSpent),
 ];
 
 /// One command of a session.
@@ -259,6 +259,7 @@ impl Scenario {
             self.client.id,
             match self.answer {
                 Answer::Ok => "answers".to_string(),
+                Answer::BudgetSpent => "monthly token limit reached".to_string(),
                 a => a.id().replace('-', " "),
             }
         )

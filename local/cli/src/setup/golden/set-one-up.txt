@@ -1,0 +1,18 @@
+Add one of these lines to your shell profile or this repo's .env, then run `unstale setup`:
+
+  OPENAI_API_KEY=<key>      OpenAI
+  AI_GATEWAY_API_KEY=<key>  Vercel AI Gateway
+  OPENROUTER_API_KEY=<key>  OpenRouter
+  ANTHROPIC_API_KEY=<key>   Anthropic
+
+Or use your Codex plan: install Codex and run `codex login`.
+
+Add one of these lines to your shell profile or this repo's .env, then run `unstale setup`:
+
+  OPENAI_API_KEY=<key>      OpenAI
+  AI_GATEWAY_API_KEY=<key>  Vercel AI Gateway
+  OPENROUTER_API_KEY=<key>  OpenRouter
+  ANTHROPIC_API_KEY=<key>   Anthropic
+
+Or use your Codex plan: Codex is not logged in. Run `codex login`.
+JEV_API_KEY is set, but it only labels changes: reading release notes needs one of the above as well.

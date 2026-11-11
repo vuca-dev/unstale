@@ -209,35 +209,77 @@ pub enum Deferred {
 }
 
 impl Deferred {
-    /// One line for the terminal: what happened and, where the user can act, what to do.
-    pub fn line(&self) -> String {
-        let why = match self {
-            Deferred::Budget => {
-                "this month's token budget is used up; the rest runs next month".into()
-            }
-            Deferred::NoKey(var) => format!("{var} is not set"),
-            Deferred::Auth => "the provider did not accept the key".into(),
-            Deferred::Billing => "the provider account has no credit left".into(),
-            Deferred::RateLimited => "the provider is rate limiting; it runs next time".into(),
-            Deferred::Unavailable => "the provider is not answering; it runs next time".into(),
-            Deferred::Timeout => "the provider took too long; it runs next time".into(),
+    /// What happened, in the user's words, as a clause: `Codex is not logged in`.
+    pub fn what(&self) -> String {
+        match self {
+            Deferred::Budget => "monthly token limit reached".into(),
+            Deferred::NoKey(var) => format!("{var} is not set here"),
+            Deferred::Auth => "the provider rejected the key".into(),
+            Deferred::Billing => "the provider account is out of credit".into(),
+            Deferred::RateLimited => "the provider is rate limiting".into(),
+            Deferred::Unavailable => "the provider is not answering".into(),
+            Deferred::Timeout => "the provider took too long".into(),
             Deferred::ModelNotOnPlan(m) => format!("{m} is not available on this key or plan"),
-            Deferred::Rejected => "the provider refused the request".into(),
-            Deferred::TooLong => "the answer was too long; it runs in smaller pieces".into(),
-            Deferred::Malformed => {
-                "the provider's answer could not be read; it runs next time".into()
-            }
-            Deferred::Storage => "unstale's usage record cannot be read or written".into(),
-            Deferred::Redirected => "the provider address redirects elsewhere; check it".into(),
-            Deferred::InsecureUrl => "the provider address must start with https://".into(),
-            Deferred::BatchTooLarge => format!("more than {BATCH} items in one request"),
+            Deferred::Rejected => "the provider refused a request".into(),
+            Deferred::TooLong => "an answer was too long".into(),
+            Deferred::Malformed => "the provider's answer could not be read".into(),
+            Deferred::Storage => "unstale cannot keep its token count in its cache folder".into(),
+            Deferred::Redirected => "the provider address redirects elsewhere".into(),
+            Deferred::InsecureUrl => "the provider address is not https".into(),
+            Deferred::BatchTooLarge => format!("a request held more than {BATCH} release notes"),
             Deferred::CodexMissing => "Codex is not installed".into(),
-            Deferred::CodexTooOld => {
-                format!("Codex is older than {}; update it", codex::MIN_VERSION)
-            }
-            Deferred::CodexLoggedOut => "Codex is not logged in; run `codex login`".into(),
-        };
-        format!("deferred: {why}")
+            Deferred::CodexTooOld => format!("Codex is older than {}", codex::MIN_VERSION),
+            Deferred::CodexLoggedOut => "Codex is not logged in".into(),
+        }
+    }
+
+    /// What it costs the user: the work they chose that did not happen.
+    fn cost(&self) -> &'static str {
+        match self {
+            Deferred::Budget => "new release notes wait for next month",
+            // Tried again by itself: late, not lost.
+            Deferred::RateLimited
+            | Deferred::Unavailable
+            | Deferred::Timeout
+            | Deferred::Malformed
+            | Deferred::Rejected => "some new release notes are not read yet",
+            Deferred::TooLong => "that release note is read again in smaller pieces",
+            _ => "new release notes are not read",
+        }
+    }
+
+    /// The one thing to do about it, as a sentence.
+    pub fn fix(&self) -> String {
+        match self {
+            Deferred::Budget => "Raise or remove it: `unstale setup --limit`.".into(),
+            Deferred::NoKey(_) => "Set it, or run `unstale setup`.".into(),
+            Deferred::Auth => "Check the key, or run `unstale setup`.".into(),
+            Deferred::Billing => "Add credit, or run `unstale setup`.".into(),
+            Deferred::RateLimited
+            | Deferred::Unavailable
+            | Deferred::Timeout
+            | Deferred::Malformed
+            | Deferred::Rejected => "The next sync tries again.".into(),
+            Deferred::TooLong => "Nothing to do.".into(),
+            Deferred::ModelNotOnPlan(_) => "Choose another: `unstale setup`.".into(),
+            Deferred::Storage => "Check its permissions.".into(),
+            Deferred::Redirected | Deferred::InsecureUrl => "Check the address.".into(),
+            Deferred::BatchTooLarge => "Please report this.".into(),
+            Deferred::CodexMissing => "Install Codex, or run `unstale setup`.".into(),
+            Deferred::CodexTooOld => "Update Codex.".into(),
+            Deferred::CodexLoggedOut => "Run `codex login`.".into(),
+        }
+    }
+
+    /// One line for the terminal, a warning: what happened, what it costs, the one thing to do. Never an error: the
+    /// command that prints it still exits 0.
+    pub fn line(&self) -> String {
+        format!(
+            "warning: {}, so {}. {}",
+            self.what(),
+            self.cost(),
+            self.fix()
+        )
     }
 
     /// Worth retrying within the same call (with backoff).

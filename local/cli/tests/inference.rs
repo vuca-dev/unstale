@@ -198,7 +198,7 @@ fn codex_on_path_answers_and_never_sees_a_key_from_the_shell() {
 #[test]
 fn every_provider_error_defers_with_one_line_and_exit_0() {
     let cases: Vec<(&str, u16, Duration)> = vec![
-        ("the provider did not accept the key", 401, Duration::ZERO),
+        ("the provider rejected the key", 401, Duration::ZERO),
         ("the provider is rate limiting", 429, Duration::ZERO),
         ("the provider is not answering", 500, Duration::ZERO),
         ("the provider is not answering", 503, Duration::ZERO),
@@ -217,7 +217,7 @@ fn every_provider_error_defers_with_one_line_and_exit_0() {
         );
         assert_eq!(r.stdout.lines().count(), 1, "HTTP {status}: {}", r.stdout);
         assert!(
-            r.stdout.starts_with("deferred: ") && r.stdout.contains(want),
+            r.stdout.starts_with("warning: ") && r.stdout.contains(want),
             "HTTP {status}: {}",
             r.stdout
         );
@@ -233,7 +233,7 @@ fn every_provider_error_defers_with_one_line_and_exit_0() {
         (r.code, r.stdout.trim()),
         (
             0,
-            "deferred: the provider is not answering; it runs next time"
+            "warning: the provider is not answering, so some new release notes are not read yet. The next sync tries again."
         )
     );
     let r = infer(
@@ -253,7 +253,10 @@ fn every_provider_error_defers_with_one_line_and_exit_0() {
     );
     assert_eq!(
         (r.code, r.stdout.trim()),
-        (0, "deferred: UNSET_VAR is not set")
+        (
+            0,
+            "warning: UNSET_VAR is not set here, so new release notes are not read. Set it, or run `unstale setup`."
+        )
     );
     // Codex: logged out, and a model not on the plan.
     let not_supported = r#"{"type":"error","message":"The 'gpt-5.4-mini' model is not supported when using Codex with a ChatGPT account."}"#;
@@ -262,13 +265,13 @@ fn every_provider_error_defers_with_one_line_and_exit_0() {
             false,
             CODEX_OK,
             0,
-            "deferred: Codex is not logged in; run `codex login`",
+            "warning: Codex is not logged in, so new release notes are not read. Run `codex login`.",
         ),
         (
             true,
             not_supported,
             1,
-            "deferred: gpt-5.4-mini is not available on this key or plan",
+            "warning: gpt-5.4-mini is not available on this key or plan, so new release notes are not read. Choose another: `unstale setup`.",
         ),
     ] {
         let dir = tempfile::tempdir().unwrap();
@@ -331,7 +334,7 @@ fn a_redirect_to_another_host_receives_nothing_and_the_call_defers() {
             (r.code, r.stdout.trim()),
             (
                 0,
-                "deferred: the provider address redirects elsewhere; check it"
+                "warning: the provider address redirects elsewhere, so new release notes are not read. Check the address."
             ),
             "{provider}: {}",
             r.stderr
@@ -389,7 +392,7 @@ fn a_corrupt_or_unwritable_ledger_defers_with_one_line() {
         (r.code, r.stdout.trim(), r.stderr.as_str()),
         (
             0,
-            "deferred: unstale's usage record cannot be read or written",
+            "warning: unstale cannot keep its token count in its cache folder, so new release notes are not read. Check its permissions.",
             ""
         )
     );

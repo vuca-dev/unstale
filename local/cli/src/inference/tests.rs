@@ -527,13 +527,12 @@ fn past_the_monthly_budget_work_is_deferred_without_a_call() {
     assert_eq!(m.count(), 2);
     assert_eq!(
         Deferred::Budget.line(),
-        "deferred: this month's token budget is used up; the rest runs next month"
+        "warning: monthly token limit reached, so new release notes wait for next month. Raise or remove it: `unstale setup --limit`."
     );
     assert_eq!(ledger::DEFAULT_MONTHLY_TOKENS, 48_000_000);
-    assert_eq!(
-        ledger::budget_line(1_234_567, ledger::DEFAULT_MONTHLY_TOKENS),
-        "Model tokens this month: 1.2M of 48M (monthly budget; past it, work waits for next month)"
-    );
+    // The limit is the caller's to set (`unstale setup --limit`); none is the largest count.
+    inf.monthly_budget = u64::MAX;
+    assert!(inf.complete(&Prompt::new("four")).is_ok());
 }
 
 #[test]
@@ -590,7 +589,7 @@ fn provider_errors_are_typed_deferrals_and_only_transient_ones_retry() {
         assert_eq!(m.count(), calls, "HTTP {status}");
         // The line is fixed text: nothing the provider sent back (which can echo the key) reaches the user.
         assert!(
-            got.line().starts_with("deferred: ") && !got.line().contains("test-key-value"),
+            got.line().starts_with("warning: ") && !got.line().contains("test-key-value"),
             "{}",
             got.line()
         );
@@ -700,7 +699,7 @@ fn codex_problems_are_typed_deferrals() {
 }
 
 #[test]
-fn every_deferral_is_one_plain_line() {
+fn every_deferral_is_one_warning_in_plain_words() {
     let all = [
         Deferred::Budget,
         Deferred::NoKey("OPENAI_API_KEY".into()),
@@ -716,13 +715,30 @@ fn every_deferral_is_one_plain_line() {
         Deferred::CodexMissing,
         Deferred::CodexTooOld,
         Deferred::CodexLoggedOut,
+        Deferred::Storage,
+        Deferred::Redirected,
+        Deferred::InsecureUrl,
+        Deferred::BatchTooLarge,
     ];
     for d in all {
         let l = d.line();
+        // What happened, what it costs, the one thing to do: one line, about a terminal's width.
         assert!(
-            l.starts_with("deferred: ") && !l.contains('\n') && l.chars().count() <= 80,
+            l.starts_with("warning: ") && !l.contains('\n') && l.chars().count() <= 125,
             "{l}"
         );
+        assert!(l.contains(", so ") && l.ends_with('.'), "{l}");
+        // Words the reader was never taught.
+        for internal in [
+            "deferred",
+            "deterministic",
+            "technology-year",
+            "edge",
+            "budget",
+            "ledger",
+        ] {
+            assert!(!l.contains(internal), "{internal:?} in {l}");
+        }
     }
 }
 
@@ -1003,10 +1019,7 @@ fn an_absurd_token_count_reads_as_the_budget_used_up_never_a_panic_or_zero() {
             reasoning: Some(u64::MAX)
         }
     );
-    assert!(
-        ledger::budget_line(u64::MAX, ledger::DEFAULT_MONTHLY_TOKENS)
-            .starts_with("Model tokens this month: ")
-    );
+    assert_eq!(ledger::short_tokens(u64::MAX), "18446744073709M");
     // Anthropic counts cache reads and writes into input: that sum saturates as well.
     let anthropic = json!({
         "model": "claude-haiku-5-5", "stop_reason": "end_turn",
