@@ -25,6 +25,7 @@ import { reconcileLinkedEvidence, reconcileSources } from "./source-quality.ts";
 import { synthesize } from "./synthesis.ts";
 import { mergeChunkDuplicates, mergeSplitRecords } from "../pipeline/match.ts";
 import { publishTechnology } from "../pipeline/publish.ts";
+import { recordNotes, unpublishedEvents } from "../pipeline/events.ts";
 import { typeStubDeprecations } from "../pipeline/type-stubs.ts";
 import { JOB_FILE, servedIndex } from "../pipeline/export.ts";
 import { loadStore, retractForeignGuideRecords, saveStore } from "../pipeline/store.ts";
@@ -1062,6 +1063,8 @@ export class CoverageService {
       }
     }
     const notes = releases?.notes ?? [];
+    // The release notes' change events (events.ts): recorded and published in this first pass, no model call.
+    if (releases) recordNotes(tech, "releases", releases.notes);
     const index = await advisoryReleases(tech, notes);
     let made = 0;
     let checked = false;
@@ -1078,6 +1081,8 @@ export class CoverageService {
         made = Object.values(store.records).filter((x) => x.status === "active").length;
         if (made) publishTechnology(store, releases?.checked ?? now(), catalogDir());
       });
+    if (unpublishedEvents(tech.id))
+      await withTechLock(tech.id, "onboarding", () => publishTechnology(loadStore(tech.id), releases?.checked ?? now(), catalogDir()));
     job.records = Math.max(job.records, made);
     // The admission decision leads the stage: a client reads a firm "will be covered" at the first publish after the
     // pull, as a refused package reads why it is not.
@@ -1168,9 +1173,11 @@ export class CoverageService {
         return;
       }
     }
+    // The release notes' change events (events.ts), published before any extraction: no model call is needed for them.
+    if (t.repo) recordNotes(tech, "releases", releases.notes);
     await withTechLock(tech.id, "onboarding", () => {
       const corrected = reconcileSources(tech) + reconcileLinkedEvidence(tech, releases.notes);
-      if (corrected)
+      if (corrected || unpublishedEvents(tech.id))
         publishTechnology(loadStore(tech.id), releases.checked, catalogDir());
     });
     const notes = [...releases.notes].reverse();
@@ -1319,6 +1326,7 @@ export class CoverageService {
       let guides: GuideNote[] = [];
       try {
         guides = await fetchGuides(tech, releases.notes, { http: docsHttp, checked: true });
+        recordNotes(tech, "guides", guides);
       } catch (e) {
         console.error(`coverage: ${logName(job)}: upgrade guides unreadable (${e instanceof Error ? e.message : e}); release notes and docs only`);
       }
