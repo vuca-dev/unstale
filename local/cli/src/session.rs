@@ -529,10 +529,16 @@ pub fn background(ctx: &Ctx) -> Result<u8> {
     };
     let started = Instant::now();
     let outcome = sync_now(ctx, &|| started.elapsed() > BACKGROUND_BOUND);
-    let mut techs: BTreeSet<String> = read_state(&ctx.tool).technologies.into_iter().collect();
-    if let Ok(done) = &outcome {
-        techs = done.technologies.clone();
-    }
+    let techs: BTreeSet<String> = match &outcome {
+        Ok(done) => done.technologies.clone(),
+        // The sync failed (the catalog refused this client, or did not answer): the model stage still reads what the
+        // cached catalog holds for this repository, as every other command keeps using it.
+        Err(_) => read_state(&ctx.tool)
+            .technologies
+            .into_iter()
+            .chain(cached_technologies(ctx))
+            .collect(),
+    };
     let deferred = model_stage(ctx, &techs).map(|d| d.line());
     update_state(&ctx.tool, true, |state| {
         state.last_attempt = Some(now_secs());
@@ -569,6 +575,17 @@ fn repo_lock(tool: &Path) -> Option<std::fs::File> {
         .ok()?;
     f.try_lock().ok()?;
     Some(f)
+}
+
+/// This repository's technologies the cache already holds an index for.
+fn cached_technologies(ctx: &Ctx) -> BTreeSet<String> {
+    let Ok(st) = stack::detect(&ctx.root) else {
+        return BTreeSet::new();
+    };
+    onboarding::candidates(ctx, &st)
+        .into_iter()
+        .filter(|t| cache::load_tech(&ctx.cache, t).ok().flatten().is_some())
+        .collect()
 }
 
 struct Synced {

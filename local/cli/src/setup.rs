@@ -1015,11 +1015,17 @@ pub fn plan(flag: Option<Choice>, settled: bool, terminal: bool, reopen: bool) -
     }
 }
 
-/// The repository's technologies, for the cost quotes: the stack's candidate technologies.
+/// The packages unstale follows here, for the cost quotes and `--details`: the public direct dependencies, as the user
+/// counts them. Not the names looked up in the catalog, which count a scoped package twice (`@scope/name` is looked up
+/// as `scope` and `name`) and a package with a coverage job twice (its name and its job's technology).
 fn technologies(ctx: &crate::Ctx) -> usize {
     crate::stack::detect(&ctx.root)
-        .map(|st| crate::onboarding::candidates(ctx, &st).len())
+        .map(|st| followed(&st))
         .unwrap_or(0)
+}
+
+fn followed(st: &crate::stack::Stack) -> usize {
+    st.deps.values().filter(|d| d.public_candidate).count()
 }
 
 fn save_repo(ctx: &crate::Ctx) -> anyhow::Result<()> {

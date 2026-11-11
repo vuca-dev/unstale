@@ -471,7 +471,7 @@ fn every_option_states_one_cost_and_its_trade_and_the_details_carry_units_and_sc
         assert!(row.starts_with(&format!("  {}  ", i + 1)), "{row}");
         if *p == Pick::None {
             assert!(
-                row.contains("free") && row.contains("≈ 27%: advisories and deprecations only"),
+                row.contains("free") && row.contains("for new releases: ≈ 27%, notes not read"),
                 "{row}"
             );
             continue;
@@ -1091,4 +1091,20 @@ fn through_codex_only_what_was_measured_is_claimed() {
             "{block:?}"
         );
     }
+}
+
+#[test]
+fn the_packages_unstale_follows_are_the_direct_dependencies_a_user_counts() {
+    // Two direct dependencies, one scoped: looked up in the catalog under three names, but two packages.
+    let repo = tempfile::tempdir().unwrap();
+    std::fs::write(
+        repo.path().join("package.json"),
+        r#"{"name":"app","private":true,"dependencies":{"@tanstack/react-query":"5.0.0","zod":"3.0.0"}}"#,
+    )
+    .unwrap();
+    let st = crate::stack::detect(repo.path()).unwrap();
+    assert_eq!(st.candidates().len(), 3);
+    assert_eq!(followed(&st), 2);
+    let lines = view::details_lines(&machine(&[], CodexState::Absent), followed(&st), false);
+    assert!(lines.contains(&"This repo has 2 packages unstale follows.".to_string()), "{lines:?}");
 }

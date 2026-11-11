@@ -197,66 +197,7 @@ pub(crate) struct KnownBug {
     pub(crate) why: &'static str,
 }
 
-/// The status warning printed twice for this bug: a chosen key variable this scenario's shell does not set, or the
-/// monthly token limit in a scenario that reaches it.
-fn doubled_status_warning(s: &Scenario, v: &str) -> bool {
-    let Some(line) = v
-        .strip_prefix(
-            "wording: `unstale status --wait 0 --no-animation` printed the same warning twice: \"",
-        )
-        .and_then(|l| l.strip_suffix('"'))
-    else {
-        return false;
-    };
-    if line
-        == "warning: monthly token limit reached, so new release notes wait. Change it: `unstale setup --limit`."
-    {
-        return matches!(s.answer, Answer::BudgetSpent | Answer::LimitPartway)
-            || s.limits.is_some();
-    }
-    line.strip_prefix("warning: ")
-        .and_then(|l| {
-            l.strip_suffix(" is not set here, so new release notes are not read. Set it.")
-        })
-        .is_some_and(|var| {
-            setup_key_vars().contains(&var)
-                && (!s.keys.shell.contains(&var) || s.keys.blank.contains(&var))
-        })
-}
-
-/// The key variables a stored choice may name.
-fn setup_key_vars() -> [&'static str; 5] {
-    [
-        "OPENAI_API_KEY",
-        "AI_GATEWAY_API_KEY",
-        "OPENROUTER_API_KEY",
-        "ANTHROPIC_API_KEY",
-        "JEV_API_KEY",
-    ]
-}
-
-pub(crate) const KNOWN_BUGS: &[KnownBug] = &[
-    KnownBug {
-        is: doubled_status_warning,
-        why: "a model stage stopped for a key not set here or the monthly token limit: setup's own warning for it (src/setup.rs, status warnings) and the session state's stored deferral (src/session.rs, status_lines) are the same line, printed twice",
-    },
-    KnownBug {
-        is: |s, v| {
-            s.client.id == "below-min"
-                && v == "min_client: no command said the catalog no longer serves this client"
-        },
-        why: "after the catalog raises min_client above this client, `unstale init` and `unstale status` sync silently and print no refusal; only `sync` and the session-start sync say it",
-    },
-    KnownBug {
-        is: |s, v| {
-            s.client.id == "below-min"
-                && v.starts_with(
-                    "model steps: `unstale session-sync` said every release note is read, with ",
-                )
-        },
-        why: "after a refused catalog sync (min_client), session-sync's model stage gets the technologies of the failed sync (none) instead of the cached ones, then ends with \"every release note here is read\" while releases wait (src/session.rs, background)",
-    },
-];
+pub(crate) const KNOWN_BUGS: &[KnownBug] = &[];
 
 /// The known bug a violation in this scenario is, if any.
 pub(crate) fn known_bug(s: &Scenario, violation: &str) -> Option<&'static str> {
@@ -264,43 +205,6 @@ pub(crate) fn known_bug(s: &Scenario, violation: &str) -> Option<&'static str> {
         .iter()
         .find(|b| (b.is)(s, violation))
         .map(|b| b.why)
-}
-
-#[test]
-fn a_known_bug_exempts_only_its_own_symptom_in_its_own_scenarios() {
-    let mk = |client: &str, answer: Answer| {
-        Scenario::new(
-            by_id(KEYS, "shell-key", |v| v.id),
-            by_id(CODEX, "no-codex", |v| v.id),
-            by_id(INVOCATIONS, "terminal", |v| v.id),
-            by_id(REPO_CONFIGS, "config-set", |v| v.id),
-            by_id(CLIENTS, client, |v| v.id),
-            answer,
-        )
-    };
-    let twice = |l: &str| {
-        format!(
-            "wording: `unstale status --wait 0 --no-animation` printed the same warning twice: {l:?}"
-        )
-    };
-    let fresh = mk("fresh", Answer::Ok);
-    // The key is set in this scenario's shell, so its doubled warning is not this bug; another warning never is.
-    assert!(known_bug(&fresh, &twice("warning: OPENAI_API_KEY is not set here, so new release notes are not read. Set it.")).is_none());
-    assert!(known_bug(&fresh, &twice("warning: the provider is not answering, so new release notes wait. The next sync tries again.")).is_none());
-    assert!(known_bug(&fresh, &twice("warning: ANTHROPIC_API_KEY is not set here, so new release notes are not read. Set it.")).is_some());
-    assert!(known_bug(&fresh, &twice("warning: monthly token limit reached, so new release notes wait. Change it: `unstale setup --limit`.")).is_none());
-    assert!(known_bug(&mk("fresh", Answer::BudgetSpent), &twice("warning: monthly token limit reached, so new release notes wait. Change it: `unstale setup --limit`.")).is_some());
-    // The min_client entries only below min_client.
-    let read = "model steps: `unstale session-sync` said every release note is read, with [\"next@16.3.0\"] unread";
-    assert!(known_bug(&fresh, read).is_none());
-    assert!(known_bug(&mk("below-min", Answer::Ok), read).is_some());
-    assert!(
-        known_bug(
-            &fresh,
-            "min_client: no command said the catalog no longer serves this client"
-        )
-        .is_none()
-    );
 }
 
 /// What a command's output breaks of the plain-words rule.
@@ -601,6 +505,18 @@ pub(crate) fn check(s: &Scenario, se: &Session) -> Vec<String> {
     // Below min_client the client says so: the catalog no longer serves it.
     if s.client.id == "below-min" && !se.ran.iter().any(|r| r.output.contains("needs unstale")) {
         v.push("min_client: no command said the catalog no longer serves this client".into());
+    }
+    // And `init` and `status`, which sync inside their report and carry on with the cached catalog, say it too.
+    if s.client.id == "below-min" {
+        for r in se.ran.iter().filter(|r| {
+            matches!(r.step, Step::Init | Step::InitYes | Step::InitFlag(_) | Step::Status)
+                && !r.output.contains("needs unstale")
+        }) {
+            v.push(format!(
+                "min_client: `{}` did not say the catalog no longer serves this client",
+                r.shown
+            ));
+        }
     }
     // Below min_client the cached catalog is kept.
     if s.client.id == "below-min" && !w.cache().join("v1/tech/next.json").exists() {

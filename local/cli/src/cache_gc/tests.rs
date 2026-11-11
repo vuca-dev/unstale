@@ -395,7 +395,9 @@ fn cache_clean_says_what_it_removes_asks_and_keeps_model_results_unless_asked() 
     let (code, lines) = run_clean(c, false, false, || None);
     assert_eq!(code, 1);
     assert!(
-        lines[0].starts_with("This removes ") && lines.last().unwrap().contains("--yes"),
+        lines[0].starts_with("This removes ")
+            && lines.last().unwrap().starts_with("Nothing removed: ")
+            && lines.last().unwrap().contains("--yes"),
         "{lines:?}"
     );
     assert!(kept(c, "t0"), "nothing removed without an answer");

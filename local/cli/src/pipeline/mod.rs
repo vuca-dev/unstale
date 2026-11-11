@@ -150,8 +150,10 @@ pub fn routes_with(
     let (main, labels) = choice.providers()?;
     let consented: Vec<String> = choice.key_vars().into_iter().map(String::from).collect();
     let make = |mut c: ProviderConfig, base: &str| {
-        // A route's address may be moved to this machine only (a local proxy, the test servers).
-        if let Ok(b) = std::env::var(base)
+        // A route's address may be moved to this machine only (a local proxy, the test servers). Codex's route has no
+        // address (its `base_url` is the program to run), so the variable never applies to it.
+        if c.kind != crate::inference::Kind::Codex
+            && let Ok(b) = std::env::var(base)
             && loopback(b.trim())
         {
             c.base_url = b.trim().to_string();

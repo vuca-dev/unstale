@@ -35,16 +35,37 @@ use unstale_schema::catalog::{CATALOG_SCHEMA, EventLine, Root, TechIndex, Techno
 use crate::cache::{self, event_path, index_path, parse_shard, shard_path, verify_shard};
 use crate::util::{normalize_purl, parse_version, sha256_hex, write_atomic};
 
-/// The catalog refused as a whole: newer schema or a newer minimum client. The cache is left as it was.
+/// The catalog refused as a whole: newer schema or a newer minimum client. The cache is left as it was. `why` is the
+/// reason alone, in the user's words (`the catalog needs unstale 0.4.0 or newer and this is 0.3.0`), for a command
+/// that reports rather than fails.
 #[derive(Debug)]
-pub struct Incompatible(pub String);
+pub struct Incompatible {
+    message: String,
+    pub why: String,
+}
 
 impl std::fmt::Display for Incompatible {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.0)
+        f.write_str(&self.message)
     }
 }
 impl std::error::Error for Incompatible {}
+
+/// Why the last catalog sync in this process refused the catalog, if it did: `init` and `status` sync inside their
+/// report and keep going on the cached catalog, so they say it after it ([`refused`]).
+static REFUSED: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+/// The reason the last catalog sync in this process refused the catalog ([`Incompatible::why`]); `None` when it did
+/// not, or no sync reached the catalog.
+pub fn refused() -> Option<String> {
+    REFUSED.lock().ok().and_then(|r| r.clone())
+}
+
+fn set_refused(why: Option<String>) {
+    if let Ok(mut r) = REFUSED.lock() {
+        *r = why;
+    }
+}
 
 /// Largest body read over HTTP (an index or a shard). Shards are at most a few hundred kilobytes; this only bounds a bad
 /// server, across all the requests a sync has in flight at once.
@@ -303,17 +324,26 @@ fn quick_check_with(base: String, cache_dir: &Path, techs: &BTreeSet<String>, ev
 pub fn check_root(root: &Root) -> std::result::Result<(), Incompatible> {
     let ours = env!("CARGO_PKG_VERSION");
     if root.schema > CATALOG_SCHEMA {
-        return Err(Incompatible(format!(
-            "the catalog uses schema {} and this unstale ({ours}) reads schema {CATALOG_SCHEMA}: upgrade unstale (cargo install --path local/cli, or your package manager); the cached catalog is kept and still used",
-            root.schema
-        )));
+        return Err(Incompatible {
+            message: format!(
+                "the catalog uses schema {} and this unstale ({ours}) reads schema {CATALOG_SCHEMA}: upgrade unstale (cargo install --path local/cli, or your package manager); the cached catalog is kept and still used",
+                root.schema
+            ),
+            why: "the catalog needs a newer unstale".into(),
+        });
     }
     match (parse_version(&root.min_client), parse_version(ours)) {
-        (Some(min), Some(me)) if min > me => Err(Incompatible(format!(
-            "the catalog needs unstale {} or newer and this is {ours}: upgrade unstale; the cached catalog is kept and still used",
-            root.min_client
-        ))),
-        (None, _) => Err(Incompatible(format!("the catalog's min_client `{}` is not a version; the cached catalog is kept", root.min_client))),
+        (Some(min), Some(me)) if min > me => Err(Incompatible {
+            message: format!(
+                "the catalog needs unstale {} or newer and this is {ours}: upgrade unstale; the cached catalog is kept and still used",
+                root.min_client
+            ),
+            why: format!("the catalog needs unstale {} or newer and this is {ours}", root.min_client),
+        }),
+        (None, _) => Err(Incompatible {
+            message: format!("the catalog's min_client `{}` is not a version; the cached catalog is kept", root.min_client),
+            why: "the catalog names no version of unstale it serves".into(),
+        }),
         _ => Ok(()),
     }
 }
@@ -455,7 +485,11 @@ fn sync_with_events(src: &Source, cache_dir: &Path, candidates: &BTreeSet<String
         return if stop() { Ok(not_checked(candidates, &mut progress)) } else { Err(e) };
     }
     let root: Root = serde_json::from_slice(&root_bytes).context("root.json does not parse")?;
-    check_root(&root)?;
+    if let Err(e) = check_root(&root) {
+        set_refused(Some(e.why.clone()));
+        return Err(e.into());
+    }
+    set_refused(None);
     write_atomic(&cache_dir.join("v1/root.json"), &root_bytes)?;
 
     let mut techs: Vec<&String> = candidates.iter().filter(|t| !t.is_empty() && !t.contains(['/', '\\', '?', '#', '%']) && !t.starts_with('.')).collect();

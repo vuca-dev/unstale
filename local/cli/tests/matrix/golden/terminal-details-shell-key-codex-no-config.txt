@@ -7,7 +7,7 @@ How should unstale read new release notes?
      Read with    Key              Cost a year, this repo   Compared with the best option
   1  OpenAI       OPENAI_API_KEY   ≈ $0.19                  ≈ 11 in 100 breaking flags wrong, not 8
   2  Codex plan                    ≈ 1.9M Codex tokens      ≈ 80% of its changes; rest not measured
-  3  Not now                       free                     ≈ 27%: advisories and deprecations only
+  3  Not now                       free                     for new releases: ≈ 27%, notes not read
 
 Enter for 1, a number to choose, or d for details: d
 

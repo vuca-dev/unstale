@@ -118,7 +118,6 @@ $ unstale status --wait 0 --no-animation  (no terminal)
   
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 warning: OPENROUTER_API_KEY is not set here, so new release notes are not read. Set it.
-warning: OPENROUTER_API_KEY is not set here, so new release notes are not read. Set it.
 Release notes         OpenRouter (OPENROUTER_API_KEY), this repo's config
 Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)
 Cache                 under 1 MB of 100 MB
@@ -128,6 +127,3 @@ Cache                 under 1 MB of 100 MB
 #   model provider: nothing
 #   codex: not run
 #   through the proxy: nothing
-
-# known product bugs (expected to fail until fixed; see KNOWN_BUGS in checks.rs)
-#   wording: `unstale status --wait 0 --no-animation` printed the same warning twice: "warning: OPENROUTER_API_KEY is not set here, so new release notes are not read. Set it."

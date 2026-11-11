@@ -100,6 +100,7 @@ $ unstale init --wait 0 --no-animation  (no terminal)
   files and trade-offs. Return proposals only; do not edit files.
   
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+warning: the catalog needs unstale <newer version> or newer and this is <this version>. Upgrade: `npm install -g @unstale/cli@latest`.
 
 $ unstale status --wait 0 --no-animation  (no terminal)
   Mapping your stack · step 1/5 · shop · 3 direct packages across 1 manifests
@@ -144,6 +145,7 @@ $ unstale status --wait 0 --no-animation  (no terminal)
   files and trade-offs. Return proposals only; do not edit files.
   
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+warning: the catalog needs unstale <newer version> or newer and this is <this version>. Upgrade: `npm install -g @unstale/cli@latest`.
 
 $ unstale sync  (no terminal)
 sync refused: the catalog needs unstale <newer version> or newer and this is <this version>: upgrade unstale; the cached catalog is kept and still used
@@ -198,6 +200,7 @@ $ unstale status --wait 0 --no-animation  (no terminal)
   files and trade-offs. Return proposals only; do not edit files.
   
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+warning: the catalog needs unstale <newer version> or newer and this is <this version>. Upgrade: `npm install -g @unstale/cli@latest`.
 
 # contacted
 #   catalog host: GET /health, GET /v1/root.json, GET /v1/shards/next/16.7745374e4470.jsonl.gz, GET /v1/shards/react/19.b7c40e95232c.jsonl.gz, GET /v1/tech/next.json, GET /v1/tech/react-dom.json, GET /v1/tech/react.json, GET /v1/technologies.json

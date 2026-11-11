@@ -865,10 +865,15 @@ fn a_route_can_be_moved_only_to_this_machine() {
         key_env: Some("OPENAI_API_KEY".into()),
         labels: None,
     };
-    let base = |url: &str| {
+    let codex = crate::setup::Choice {
+        provider: "codex".into(),
+        key_env: None,
+        labels: None,
+    };
+    let route = |choice: &crate::setup::Choice, url: &str| {
         // SAFETY of the test: the variable is this test's own and read by `routes` in this thread only.
         unsafe { std::env::set_var("UNSTALE_INFERENCE_BASE_URL", url) };
-        let r = super::routes_with(&choice, None, |_| None)
+        let r = super::routes_with(choice, None, |_| None)
             .unwrap()
             .main
             .provider
@@ -876,6 +881,7 @@ fn a_route_can_be_moved_only_to_this_machine() {
         unsafe { std::env::remove_var("UNSTALE_INFERENCE_BASE_URL") };
         r
     };
+    let base = |url: &str| route(&choice, url);
     assert_eq!(base("http://127.0.0.1:9/v1"), "http://127.0.0.1:9/v1");
     assert_eq!(base("http://localhost:9"), "http://localhost:9");
     assert_eq!(base("https://evil.example/v1"), "https://api.openai.com/v1");
@@ -883,6 +889,8 @@ fn a_route_can_be_moved_only_to_this_machine() {
         base("http://127.0.0.1@evil.example/"),
         "https://api.openai.com/v1"
     );
+    // Codex's route has no address: the variable, set for an HTTP route or a local proxy, leaves it running `codex`.
+    assert_eq!(route(&codex, "http://127.0.0.1:9/v1"), "codex");
 }
 
 /// Labels the service refuses (a 400) fail those records for this pass only: nothing marks them done, and the next pass

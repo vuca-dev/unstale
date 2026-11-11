@@ -718,8 +718,9 @@ pub fn clean_command(
     } else {
         match ask() {
             Some(answer) => answer,
+            // No terminal to confirm at: refused, not failed. A script gets a non-zero exit and is told why.
             None => {
-                say("Run it again with --yes to remove them.");
+                say("Nothing removed: there is no terminal to confirm it. Run it again with --yes to remove them.");
                 return 1;
             }
         }

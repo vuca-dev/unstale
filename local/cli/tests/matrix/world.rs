@@ -582,9 +582,8 @@ impl World {
         let route = chosen(self)
             .and_then(|c| c["provider"].as_str().map(String::from))
             .unwrap_or_default();
-        // Not for Codex: its route's address is the `codex` command, which the variable would replace.
+        // Set for Codex too, whose route has no address: the variable must leave it running the `codex` command.
         match route.as_str() {
-            "codex" => {}
             "anthropic" => e.push((
                 "UNSTALE_INFERENCE_BASE_URL".into(),
                 self.provider_host.url.clone(),

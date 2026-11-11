@@ -6,7 +6,7 @@ How should unstale read new release notes?
 
      Read with   Key              Cost a year, this repo   Compared with the best option
   1  OpenAI      OPENAI_API_KEY   ≈ $0.19                  ≈ 11 in 100 breaking flags wrong, not 8
-  2  Not now                      free                     ≈ 27%: advisories and deprecations only
+  2  Not now                      free                     for new releases: ≈ 27%, notes not read
 
 Enter for 1, a number to choose, or d for details:
 Saved for this repo: OpenAI (OPENAI_API_KEY) reads release notes.
@@ -75,7 +75,6 @@ $ unstale status --wait 0 --no-animation
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 warning: monthly token limit reached, so new release notes wait. Change it: `unstale setup --limit`.
-warning: monthly token limit reached, so new release notes wait. Change it: `unstale setup --limit`.
 Release notes         OpenAI (OPENAI_API_KEY), this repo's config
 Tokens                48M of 48M this month (the default limit, reached)
 Cache                 under 1 MB of 100 MB
@@ -85,6 +84,3 @@ Cache                 under 1 MB of 100 MB
 #   model provider: nothing
 #   codex: not run
 #   through the proxy: nothing
-
-# known product bugs (expected to fail until fixed; see KNOWN_BUGS in checks.rs)
-#   wording: `unstale status --wait 0 --no-animation` printed the same warning twice: "warning: monthly token limit reached, so new release notes wait. Change it: `unstale setup --limit`."

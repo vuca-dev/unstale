@@ -70,7 +70,6 @@ $ unstale status --wait 0 --no-animation
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 warning: monthly token limit reached, so new release notes wait. Change it: `unstale setup --limit`.
-warning: monthly token limit reached, so new release notes wait. Change it: `unstale setup --limit`.
 Release notes         OpenAI (OPENAI_API_KEY), this repo's config
 Tokens                12 of 1 this month (your limit, reached)
 Cache                 under 1 MB of 100 MB
@@ -80,6 +79,3 @@ Cache                 under 1 MB of 100 MB
 #   model provider: POST /v1/chat/completions (1 request)
 #   codex: not run
 #   through the proxy: nothing
-
-# known product bugs (expected to fail until fixed; see KNOWN_BUGS in checks.rs)
-#   wording: `unstale status --wait 0 --no-animation` printed the same warning twice: "warning: monthly token limit reached, so new release notes wait. Change it: `unstale setup --limit`."

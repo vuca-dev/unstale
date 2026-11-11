@@ -144,9 +144,10 @@ fn cost_cell(q: &Quote, techs: usize) -> String {
 /// The one quality figure, against the best option.
 fn trade(p: Pick, q: &Quote, no_key: bool) -> String {
     if p == Pick::None && !no_key {
+        // Only new releases go without: what the catalog already holds is reviewed in full either way.
         return match NO_PROVIDER_SHARE {
-            Some(n) => format!("≈ {n}%: {WITHOUT}"),
-            None => WITHOUT.into(),
+            Some(n) => format!("for new releases: ≈ {n}%, notes not read"),
+            None => "for new releases: notes not read".into(),
         };
     }
     let figure = match q.quality {

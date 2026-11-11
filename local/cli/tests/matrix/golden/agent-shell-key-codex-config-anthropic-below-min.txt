@@ -79,6 +79,7 @@ $ unstale init --wait 0 --no-animation  (no terminal)
   files and trade-offs. Return proposals only; do not edit files.
   
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+warning: the catalog needs unstale <newer version> or newer and this is <this version>. Upgrade: `npm install -g @unstale/cli@latest`.
 
 $ unstale status --wait 0 --no-animation  (no terminal)
   ✓ shop · Shared setup ready
@@ -113,6 +114,7 @@ $ unstale status --wait 0 --no-animation  (no terminal)
   files and trade-offs. Return proposals only; do not edit files.
   
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+warning: the catalog needs unstale <newer version> or newer and this is <this version>. Upgrade: `npm install -g @unstale/cli@latest`.
 warning: ANTHROPIC_API_KEY is not set here, so new release notes are not read. Set it.
 Release notes         Anthropic (ANTHROPIC_API_KEY), this repo's config
 Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)
@@ -162,8 +164,8 @@ $ unstale status --wait 0 --no-animation  (no terminal)
   files and trade-offs. Return proposals only; do not edit files.
   
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+warning: the catalog needs unstale <newer version> or newer and this is <this version>. Upgrade: `npm install -g @unstale/cli@latest`.
 warning: ANTHROPIC_API_KEY is not set here, so new release notes are not read. Set it.
-warning: the sync at session start failed 0 min ago: the catalog needs unstale <newer version> or newer and this is <this version>: upgrade unstale; the cached catalog is kept and still used. The next session start tries again.
 Release notes         Anthropic (ANTHROPIC_API_KEY), this repo's config
 Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)
 Cache                 under 1 MB of 100 MB

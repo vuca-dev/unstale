@@ -489,3 +489,21 @@ fn session_sync_by_hand_says_what_it_read_and_resumes_after_an_interrupt() {
     let again = r.run(&["session-sync"], true);
     assert_eq!(again.trim(), "Nothing new to read: every release note here is read.");
 }
+
+/// `unstale session-sync` with "Not now" recorded (a choice of none) says no provider is chosen, not that another
+/// unstale is reading: nothing else runs, and nothing is read.
+#[test]
+fn session_sync_with_not_now_recorded_says_no_provider_is_chosen() {
+    let (r, main, _) = repo(Arc::new(Mutex::new(usize::MAX)));
+    let cfg = r.repo.path().join(".unstale/config.json");
+    let mut v: Value = serde_json::from_str(&std::fs::read_to_string(&cfg).unwrap()).unwrap();
+    v["inference"] = serde_json::json!({"provider": "none"});
+    std::fs::write(&cfg, serde_json::to_string_pretty(&v).unwrap()).unwrap();
+    let out = r.run(&["session-sync"], true);
+    assert_eq!(
+        out.lines().last().unwrap_or_default(),
+        "No provider is chosen, so no release notes were read. Choose one: `unstale setup`.",
+        "{out}"
+    );
+    assert_eq!(*main.lock().unwrap(), 0, "no model call");
+}
