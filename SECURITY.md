@@ -12,9 +12,24 @@ gateway in `gateway/`. Only the latest release receives fixes.
 ## What the client does on your machine
 
 - **Writes.** `unstale init` writes `.unstale/` (configuration, the decision ledger and reports), agent skills in
-  `.claude/skills`, `.agents/skills` and `.cursor/skills`, and a Claude Code session-start hook in
-  `.claude/settings.local.json` that prints one line. Collaborative mode also adds one line to `.gitattributes`.
-  `unstale uninstall` removes all of it and backs up your decisions outside the repository.
+  `.claude/skills` and `.agents/skills`, and session-start hooks that Git ignores: `.claude/settings.local.json`
+  (Claude Code), `.codex/hooks.json` (Codex, which runs it only once you trust it in `/hooks`) and
+  `.opencode/plugins/unstale-session.js` (opencode). A hook is added to your file without changing the rest of it, and
+  is skipped where the file is tracked, read-only or a link. Collaborative mode also adds one line to `.gitattributes`.
+  `unstale uninstall` removes all of it and backs up your decisions outside the repository. `unstale setup --user`
+  writes your choice of provider and token limit to `~/.config/unstale/config.json`.
+- **Session start.** The hook checks whether the catalog changed and starts a background sync if it did. It gives up
+  after 1.2 seconds, always exits 0 and prints at most one line. `"session_sync": false` in `.unstale/config.json`
+  turns the sync off.
+- **Model provider.** New release notes are read by a model on your own API key or your Codex plan, only after you
+  choose one (`unstale setup`). Before that, unstale looks at names only: which known key variables are set in your
+  shell and in this repository's `.env`, and whether `codex` is installed and logged in. It never opens another
+  repository's `.env` or another tool's credential files. The choice stores the variable's name. The key is read when
+  a request is built, goes only into that request's authorization header, and is written nowhere. Requests go to the
+  chosen provider alone, over https, and a redirect is never followed. They carry public release-note text and the
+  changes read from it: no code and no file paths. The provider can tell which packages' notes it was sent. A
+  repository's config cannot name a key variable other than its provider's own, and can lower your monthly token
+  limit but not raise it. With no provider chosen, no model is called.
 - **Network.** The client fetches catalog files, named by public package identity such as `pkg:npm/next`, and asks
   for coverage of packages the catalog does not have yet. It sends no code, paths or versions, and no telemetry. It
   also reads the public npm, PyPI and crates.io registries for the direct packages it found, at their installed

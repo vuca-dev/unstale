@@ -22,10 +22,17 @@ Then, in your agent, inside that repository:
 Use the same skill for your first review and later check-ins. It recommends where to start, respects prior decisions,
 and can focus on a package, upgrade target, or capability you name.
 
+`init` asks once how new release notes should be read: on your own API key or your Codex plan, with this
+repository's yearly cost beside each option, or not at all. An OpenAI key costs about $0.064 per package, per year.
+With no provider, new releases bring security advisories and deprecations only, about 27% of what unstale finds with
+one. `unstale setup` changes the choice
+([details](https://github.com/vuca-dev/unstale#reading-new-release-notes)).
+
 `unstale uninstall` removes everything `init` wrote and backs up your decisions.
 
 Matching runs on your machine: only public package identities (for example `pkg:npm/next`) are sent, to fetch the
 signed catalog. Your code and paths never leave it; OSV receives package names and versions for advisory checks.
+A model provider you choose receives public release-note text.
 No client telemetry. The coverage service keeps daily aggregate request-outcome counts for up to 90 UTC days,
 without addresses, package lists, client IDs, or individual request histories.
 

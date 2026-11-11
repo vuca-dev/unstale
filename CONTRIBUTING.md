@@ -139,7 +139,9 @@ commits nothing; re-enable it with `gh workflow enable ingest.yml`.
 - **No per-technology code or tables.** Knowledge lives in one adapter per ecosystem (npm, PyPI, …); a new package in
   a supported ecosystem must work with no change.
 - **What cannot be checked automatically fails open.** It is shown as prose; it never hides a record.
-- **Model calls run centrally, once per record or source**, never per repository on a user's machine.
+- **A model call is never made twice.** Central's run once per record or source. The client's run on the provider the
+  user chose, only for releases the catalog has no records for, and every answer is cached. `unstale sync` never calls
+  a model.
 - **Ranking changes are pre-registered** and measured on the replay gate (`eval/gate/`), with a held-out split that is
   never used for tuning.
 
