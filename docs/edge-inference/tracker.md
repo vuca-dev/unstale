@@ -9,13 +9,13 @@
 
 - **Shape:** INDEPENDENT PRs to `main`. Every chunk is additive and behind one switch (README, "One switch").
 - **Ground truth:** GitHub PR state. Repo `vuca-dev/unstale`.
-- **Base:** `origin/main` @ `7be1f24` (`ci` green)
+- **Base:** `origin/main` @ `f37260a` (`ci` green)
 - **Base health:** PR checks are `rust`, `central`, `gateway`; re-query before every merge.
-- **Open PRs:** #221 (WS2)
+- **Open PRs:** WS1 and WS5 pending
 - **Live worktrees (sprint):** `/Users/jason/unstale-edge-sprint` (tracker)
-- **Live subagents:** ws2-impl (Opus 5.5), ws1-impl (Opus 5.5), ws3-verifier (Fable 5.2)
+- **Live subagents:** ws1-impl (Opus 5.5), ws5-impl (Opus 5.5), ws3-verifier and ws2-verifier (Fable 5.2)
 - **Merged + verified:** WS0 → #213 `673c191`
-- **Next:** WS5 or WS10a when a lane frees (WS3 is in); WS9 after WS2
+- **Next:** WS4 when WS1 merges (critical path); then WS9, WS10, WS6a as lanes free
 - **Sprint API spend so far:** $0 of $10
 
 ## §2 CEO directives (durable; read every iteration)
@@ -87,8 +87,20 @@ OpenRouter parity, repeat eval runs.
   not `main`; read them from those branches.
 - One real Codex smoke call (plan-billed, about 4K tokens). No paid API calls.
 
-### WS2: Change events in the catalog: IN PROGRESS
-- EM: investigation then impl in one agent, Opus 5.5. Worktree `/Users/jason/unstale-ws2-change-events`.
+### WS2: Change events in the catalog: MERGED, verifier running
+- PR #221 → `f37260a`. Central 571/571, local 460 passed, gateway 73/73; `main` `ci` green. 1 review finding dismissed
+  with comment.
+- Shape: `EventLine` (id `{tech}@{version}{keyTag}`, chunks, freshness) and `EventChunk` (id `{event}#{n}`, sha256,
+  text). Shards `v1/shards/<tech>/<line>.events.<hash>.jsonl.gz`, named in the signed index (`TechIndex.events`).
+  Client caches under `<cache>/v1/events/<tech>/` only with the switch on and only for the stack; read with
+  `cache::load_events(cache, tech)`.
+- Size: 7.9 KB per technology-year measured offline; about 37 MB projected live beside 28 MB of records. Live
+  measurement after the first ingest on this code.
+- Gotchas: truncation re-splits depend on the model's answer and are not published (the client re-splits with the
+  pure `splitChunk`; matters for WS4 parity). A zero onboarding budget stops a run before releases are fetched:
+  budget gating needs rework at cutover (WS7). The PR touched `fetch.ts` and `service.ts`, which the CEO's checkout
+  has uncommitted edits to.
+- Pending: first scheduled ingest on the new code not yet observed.
 
 ### WS1: Prompts as shared data: IN PROGRESS
 - EM: impl, Opus 5.5. Starts when the first lane frees.
@@ -96,7 +108,7 @@ OpenRouter parity, repeat eval runs.
 ### WS10a: Session-start hook install (Claude Code, Codex, opencode check): NOT STARTED
 - No dependency. Sync and freshness tracking (WS10b) wait for WS2 and WS3.
 
-### WS5: Setup: NOT STARTED (after WS3)
+### WS5: Setup: IN PROGRESS (Opus 5.5, `/Users/jason/unstale-ws5-setup`)
 
 ### WS6a: Environment matrix harness: NOT STARTED (after WS3)
 
