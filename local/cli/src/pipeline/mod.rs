@@ -384,13 +384,13 @@ pub fn unrun_line(ctx: &crate::Ctx, techs: &BTreeSet<String>) -> Option<String> 
     // back on; without a hook, running the stage by hand.
     let (why, fix) = if ctx.config.session_sync == Some(false) {
         (
-            "session-start sync is off here",
-            "Remove `\"session_sync\": false` from .unstale/config.json to read them.",
+            "`session_sync` is off in .unstale/config.json",
+            "Remove it.",
         )
     } else if !session_hook_installed(&ctx.root) {
         (
-            "no agent session-start hook here",
-            "Run `unstale session-sync` to read them now.",
+            "no session-start hook here",
+            "Run `unstale session-sync`.",
         )
     } else {
         return None;
