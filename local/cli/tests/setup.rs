@@ -245,6 +245,8 @@ fn with_the_switch_off_setup_is_inert() {
     for line in SWITCH_ON_LINES {
         assert!(!out.contains(line), "{line:?} with the switch off:\n{out}");
     }
+    // Without a terminal the stage lines print as they always did; only the switch quiets them.
+    assert!(out.contains(" · step 1/5 · "), "{out}");
     assert_eq!(
         w.ok(&["setup"], false).trim(),
         "Model steps are off in this version; there is nothing to set up."
