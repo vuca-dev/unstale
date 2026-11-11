@@ -590,7 +590,10 @@ test("a release check past the cap makes no model call and spends no token, and 
   vi.mocked(docs.extract).mockImplementation(async (_t, _l, _log, admit) => (admitted.push(admit!("z".repeat(400))), {} as never));
   const judge = vi.spyOn(match, "mergeChunkDuplicates");
   const read = vi.spyOn(fetching, "fetchReleases");
-  const service = new CoverageService(1, { advisories: false, limits: limits({ techQuarterTokens: 100, tokensPerPeriod: 0 }), admission: async () => ({ admit: true, why: "test" }) }).hold();
+  const advisories = await import("../src/pipeline/advisories.ts");
+  vi.spyOn(fetching, "advisoryReleases").mockResolvedValue([{}] as never);
+  const judgeAdvisories = vi.spyOn(advisories, "advisoryStage").mockResolvedValue(undefined as never);
+  const service = new CoverageService(1, { limits: limits({ techQuarterTokens: 100, tokensPerPeriod: 0 }), admission: async () => ({ admit: true, why: "test" }) }).hold();
   const day = new Date(Date.now() - 86_400_000).toISOString();
   const job = service.submit("pkg:npm/verbose");
   Object.assign(job, { state: "monitoring", admitted: "used", monitored: day, release_checked: day, retry_at: day, overflow: quarterKey(),
@@ -603,6 +606,7 @@ test("a release check past the cap makes no model call and spends no token, and 
   expect(job.quarter).toEqual({ key: quarterKey(), tokens: 200 });
   expect(synth).not.toHaveBeenCalled();
   expect(judge).not.toHaveBeenCalled();
+  expect(judgeAdvisories).not.toHaveBeenCalled();
   expect(admitted).toEqual([false]);
   // Work that may call a model still waits for the next period.
   expect(backlog.state).toBe("queued");
@@ -632,4 +636,49 @@ test("while a popular refresh runs, the oldest-checked due refresh (by its upstr
   });
   await service.drain(Date.now() + 1000, 0, 1);
   expect(started).toEqual(["oldest", "popular", "older", "recent"]);
+});
+
+test("a due refresh under its cap is no release check: it extracts, judges advisories and charges its tokens", async () => {
+  const tags = ["v1.0.2", "v1.0.1"];
+  const { synth } = await mockWork({ "pkg:npm/light": { repo: "ex/light", tags, size: 10 } });
+  const fetching = await import("../src/pipeline/fetch.ts");
+  const advisories = await import("../src/pipeline/advisories.ts");
+  vi.spyOn(fetching, "advisoryReleases").mockResolvedValue([{}] as never);
+  const judgeAdvisories = vi.spyOn(advisories, "advisoryStage").mockResolvedValue(undefined as never);
+  const service = new CoverageService(1, { limits: limits({ techQuarterTokens: 100 }), admission: async () => ({ admit: true, why: "test" }) }).hold();
+  const day = new Date(Date.now() - 86_400_000).toISOString();
+  const job = service.submit("pkg:npm/light");
+  // One release read before; the newer one is new. 20 of 100 tokens used this quarter.
+  Object.assign(job, { state: "monitoring", admitted: "used", monitored: day, release_checked: day, retry_at: day,
+    quarter: { key: quarterKey(), tokens: 20 }, completed: [`v1.0.1:sha256:${"1".padStart(64, "0")}:audience-v1`] });
+  await service.drain(Date.now() + 2000, 0, 1);
+  expect(synth).toHaveBeenCalledTimes(1);
+  expect(judgeAdvisories).toHaveBeenCalled();
+  expect(job.quarter).toEqual({ key: quarterKey(), tokens: 30 });
+  expect(job.state).toBe("monitoring");
+});
+
+test("under a spent budget every slot may take a release check past the cap, and nothing that can call a model starts", async () => {
+  const service = new CoverageService(3, { limits: limits({ tokensPerPeriod: 0 }) }).hold();
+  const day = new Date(Date.now() - 86_400_000).toISOString();
+  const old = new Date(Date.now() - 3 * 86_400_000).toISOString();
+  const job = (name: string, fields: Partial<Job>) => Object.assign(service.submit(`pkg:npm/${name}`), { admitted: "used", ...fields });
+  // Ahead of the checks by demand, and by the oldest read: neither may start.
+  job("backlog", { demand: 1000 });
+  job("refresh", { state: "monitoring", monitored: old, release_checked: old, retry_at: old, demand: 500 });
+  for (const name of ["check-a", "check-b"])
+    job(name, { state: "monitoring", monitored: day, release_checked: day, retry_at: day, overflow: quarterKey() });
+  const started: string[] = [];
+  let running = 0, most = 0;
+  vi.spyOn(service as unknown as { work(job: Job): Promise<void> }, "work").mockImplementation(async (j) => {
+    started.push(j.purl.slice(8));
+    most = Math.max(most, ++running);
+    await new Promise((r) => setTimeout(r, 50));
+    running--;
+    j.retry_at = new Date(Date.now() + 6 * 3600_000).toISOString();
+  });
+  await service.drain(Date.now() + 1000, 0, 1);
+  expect(started.sort()).toEqual(["check-a", "check-b"]);
+  // Both at once: the kept slot is not the only one a check may take.
+  expect(most).toBe(2);
 });
