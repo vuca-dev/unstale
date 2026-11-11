@@ -45,3 +45,17 @@ is promoted into the pipeline as a `Classifier`.
 ## Budget
 
 SubQ ≤ $0.50 in all (estimate $0.12). No Jev calls.
+
+## Revision (written 11 November 2026, after round 0's held-out look and before the revision is scored)
+
+Round 0: D0 fails (H1 actionable recall, H2 breaking precision); D-X3 fails only on H2 breaking precision at Snap's
+dev-fitted `BREAKING_P` 0.10; E0 holds the false-merge floor but loses recall (57.9% against 91.9%, p 2e-19).
+
+- **D-X3-D1 (no new calls, D0's answers):** D-X3's mapping with slice 14's D1 fit: `BREAKING_P` by dev F2 subject to
+  dev breaking precision ≥ Jev v1's dev precision at 0.5, and τ matched to Jev's dev actionable share
+  (`analyze_d.py --d1 --act x3`). It targets the one failing metric. For 1.1, D1 lost H1 breaking recall. Same floor
+  and merge rule. This is the second H1 and H2 look for 1.2 on step D.
+- **E: no revision.** The gap is about 34 recall points. The one lever slice 14 tried (no cross sentence) did not
+  move 1.1. The levers left (longer rules, larger K) cost more than Jev Q8.
+
+This is the final run. If it fails, Jev stays for both steps.
