@@ -441,3 +441,49 @@ fn a_batch_asks_for_every_item_by_id_and_returns_the_answers_it_got() {
         .collect();
     assert_eq!(n, vec![8, 8, 3]);
 }
+
+#[test]
+fn the_ledger_keeps_every_call_per_provider_per_day() {
+    let m = Mock::new(vec![(200, openai_ok(r#"{"ok": true}"#))]);
+    let f = Fixture::new();
+    let inf = f.inference(ProviderConfig::openai(), &m.url);
+    inf.complete(&Prompt::new("one")).unwrap();
+    inf.complete(&Prompt::new("two")).unwrap();
+    inf.ledger.record(
+        "codex",
+        "gpt-6-luna",
+        &Usage {
+            input: 1000,
+            cached: 900,
+            output: 10,
+            reasoning: None,
+        },
+    );
+    let month = ledger::this_month();
+    let by_day = inf.ledger.by_day(&month);
+    let today = crate::util::today();
+    assert_eq!(
+        by_day[&(today.clone(), "openai".to_string())],
+        Usage {
+            input: 240,
+            cached: 200,
+            output: 60,
+            reasoning: Some(24)
+        }
+    );
+    assert_eq!(by_day[&(today, "codex".to_string())].input, 1000);
+    assert_eq!(inf.ledger.month_tokens(&month), 240 + 60 + 1010);
+    // Counts only: no prompt or answer text in the ledger.
+    let text = std::fs::read_to_string(f.dir.path().join(format!("inference/usage-{month}.jsonl")))
+        .unwrap();
+    assert_eq!(text.lines().count(), 3);
+    assert!(!text.contains("one") && !text.contains("ok"), "{text}");
+    // Tokens a call spent count even when its answer is unusable.
+    let m = Mock::new(vec![(200, openai_ok("not json"))]);
+    let inf = f.inference(ProviderConfig::openai(), &m.url);
+    assert_eq!(
+        inf.complete(&Prompt::new("x")).unwrap_err(),
+        Deferred::Malformed
+    );
+    assert_eq!(inf.ledger.month_tokens(&month), 240 + 60 + 1010 + 150);
+}
