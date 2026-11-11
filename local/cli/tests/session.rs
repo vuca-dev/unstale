@@ -808,3 +808,22 @@ fn a_codex_hooks_file_that_cannot_be_read_is_left_alone() {
     env.init("http://127.0.0.1:9");
     assert!(env.repo.path().join(".codex/hooks.json").is_dir());
 }
+
+#[test]
+fn a_background_stage_running_at_uninstall_leaves_nothing_behind() {
+    let cat = FixtureCatalog::new();
+    publish(&cat, 1);
+    let srv = Server::start(cat.dir.path().to_path_buf());
+    let env = Env::new();
+    env.init(&srv.base);
+    // The background stage hangs on the catalog until its request times out (3 s), then writes its state.
+    srv.set(Mode::HangAfterList);
+    session_start(&env, env.repo.path(), "background stage hanging");
+    std::thread::sleep(Duration::from_millis(300));
+    env.ok(&["uninstall"]);
+    std::thread::sleep(Duration::from_secs(4));
+    assert!(
+        !env.repo.path().join(".unstale").exists(),
+        "the background stage recreated .unstale"
+    );
+}

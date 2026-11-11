@@ -118,13 +118,19 @@ pub fn read_state(tool: &Path) -> State {
         .unwrap_or_default()
 }
 
-/// Written only while unstale is set up here: a background stage still running when the repository is uninstalled
-/// leaves nothing behind.
+/// Written only into a state directory that already exists, never creating one: a background stage still running
+/// when the repository is uninstalled finds the directory gone and leaves nothing behind (the write fails instead).
 fn write_state(tool: &Path, s: &State) -> Result<()> {
-    if !tool.join("config.json").is_file() {
+    let dir = tool.join("state");
+    if !dir.is_dir() || !tool.join("config.json").is_file() {
         return Ok(());
     }
-    util::write_atomic(&state_path(tool), &serde_json::to_vec_pretty(s)?)
+    let tmp = dir.join(format!(".session-sync.json.{}", std::process::id()));
+    std::fs::write(&tmp, serde_json::to_vec_pretty(s)?)?;
+    std::fs::rename(&tmp, state_path(tool)).inspect_err(|_| {
+        let _ = std::fs::remove_file(&tmp);
+    })?;
+    Ok(())
 }
 
 fn now_secs() -> u64 {
@@ -325,6 +331,9 @@ pub fn background(ctx: &Ctx) -> Result<u8> {
 /// The background stage's lock for this repository: `None` when another holds it (or it cannot be taken).
 fn repo_lock(tool: &Path) -> Option<std::fs::File> {
     let p = tool.join("state/session-sync.lock");
+    if !tool.join("config.json").is_file() {
+        return None;
+    }
     std::fs::create_dir_all(p.parent()?).ok()?;
     let f = std::fs::OpenOptions::new()
         .create(true)
