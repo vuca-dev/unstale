@@ -2,6 +2,7 @@
 // in one place agrees with the sets and constants it names elsewhere (a closed set added in one file and not the
 // other would send the model a list that is not the one the answer is checked against).
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join, posix } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -24,6 +25,22 @@ describe("schema/prompts", () => {
     for (const f of PROMPT_FILES) {
       const v = JSON.parse(readFileSync(new URL(f, dir), "utf8")) as { version?: unknown };
       expect(Number.isInteger(v.version) && (v.version as number) > 0, f).toBe(true);
+    }
+  });
+
+  // schema/prompts-lock.json: each file's sha256 per version. Any change to a prompt, question or threshold must raise the
+  // file's version and add an entry, so it is deliberate and every cache keyed on the version is emptied.
+  test("every file's bytes are its latest locked version, and versions only rise", () => {
+    const dir = new URL("../../schema/prompts/", import.meta.url);
+    const lock = JSON.parse(readFileSync(new URL("../../schema/prompts-lock.json", import.meta.url), "utf8")) as { files: Record<string, Array<{ version: number; sha256: string }>> };
+    expect(Object.keys(lock.files).sort()).toEqual([...PROMPT_FILES].sort());
+    for (const f of PROMPT_FILES) {
+      const bytes = readFileSync(new URL(f, dir));
+      const entries = lock.files[f]!;
+      for (let i = 1; i < entries.length; i++) expect(entries[i]!.version, `${f}: versions rise`).toBeGreaterThan(entries[i - 1]!.version);
+      const last = entries.at(-1)!;
+      expect(createHash("sha256").update(bytes).digest("hex"), `${f}: content changed without a new version in schema/prompts-lock.json`).toBe(last.sha256);
+      expect((JSON.parse(bytes.toString("utf8")) as { version: number }).version, `${f}: version`).toBe(last.version);
     }
   });
 

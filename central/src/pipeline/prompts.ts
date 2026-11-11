@@ -34,7 +34,9 @@ const ExtractFile = z
     piece_line: Text,
     docs_preamble: Text,
     docs_preamble_marked: Text,
-    variants: z.object({ one_call: z.array(Edit), one_call_schema: z.array(Edit), evidence_ids: z.array(Edit), diet_full: z.array(Edit), diet_compact: z.array(Edit) }).strict(),
+    variants: z.object({ one_call: z.array(Edit), one_call_schema: z.array(Edit), evidence_ids: z.array(Edit), diet_full: z.array(Edit), diet_compact: z.array(Edit), batch: z.array(Edit) }).strict(),
+    /** One chunk of a batch (the client's Codex route): `%ID%`, `%TECH%`, `%VERSION%`, `%DATE%`, `%NOTES%`. */
+    batch_chunk: Text,
     one_call_schema_response_format: z
       .object({
         type: z.literal("json_schema"),
