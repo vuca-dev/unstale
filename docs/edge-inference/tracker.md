@@ -9,13 +9,13 @@
 
 - **Shape:** INDEPENDENT PRs to `main`. Every chunk is additive and behind one switch (README, "One switch").
 - **Ground truth:** GitHub PR state. Repo `vuca-dev/unstale`.
-- **Base:** `origin/main` @ `725b8c1` (`ci` green)
+- **Base:** `origin/main` @ `2cddd6e` (`ci` green)
 - **Base health:** PR checks are `rust`, `central`, `gateway`; re-query before every merge.
-- **Open PRs:** #222 (WS1, in review loop)
+- **Open PRs:** none merged-pending; WS4, WS5-FIX, WS6a, WS10 branches in progress
 - **Live worktrees (sprint):** `/Users/jason/unstale-edge-sprint` (tracker)
-- **Live subagents:** ws1-impl (review loop), ws10-impl, ws6-harness (Opus 5.5); ws5-verifier (Fable 5.2). Background watch for the first ingest created after 2026-11-11T00:48Z.
+- **Live subagents:** ws4-impl, ws10-impl, ws6-harness, ws5-fix (Opus 5.5); ws1-verifier (Fable 5.2). Over the two-EM limit on purpose: WS4 is the critical path. No further dispatch until two exit. Background watch for the first ingest created after 2026-11-11T00:48Z.
 - **Merged + verified:** WS0 → #213 `673c191`
-- **Next:** WS4 when WS1 merges (critical path); WS9 once a live ingest has published events; WS6a after WS5
+- **Next:** WS9 once a live ingest has published events and a lane is free; WS4 parity and disk bounds after WS4 PR 2
 - **Sprint API spend so far:** $0 of $10
 
 ## §2 CEO directives (durable; read every iteration)
@@ -126,13 +126,17 @@ OpenRouter parity, repeat eval runs.
   uncompressed in state, about 100 MB at full scale: follow-up. (5) A line's event shard is rewritten whole on each
   release: follow-up.
 
-### WS1: Prompts as shared data: IN PROGRESS (PR #222)
+### WS1: Prompts as shared data: MERGED, verifier running (PR #222 → `2cddd6e`)
 - First hand-back unmerged: 2 review findings. P0: `central/Dockerfile` copies only `src/`, so `schema/prompts/` would
   be missing from the image. P2: Rust sorted answer options; central sends file order. EM revived to fix both
   (`inference::ChoiceQuestion.options` becomes an ordered `Vec`).
 - Layout: `schema/prompts/{extract,labels,judge,choice,advisory-apis,thresholds}.json`, integer `version` each;
   `central/src/pipeline/prompts.ts`; `local/cli/src/prompts.rs`. Snapshot of 24 request bodies and cache keys
   committed first (`f96bb42`), unchanged after.
+- Merged: central 604/604, local 516; 2 threads, 0 unresolved. The central image now builds from the repo root
+  (`docker build -f central/Dockerfile .`); **the old build command no longer works: check the deploy setting**.
+  `Inference::classify` takes `(&RawValue, &[(String, ChoiceQuestion)])`; the Jev state is JSON text in central's
+  key order. Thresholds and the quote-guard constants are data.
 - EM: impl, Opus 5.5. Starts when the first lane frees.
 
 ### WS10: Session-start sync and freshness tracking: IN PROGRESS (Opus 5.5, `/Users/jason/unstale-ws10-session-sync`)
@@ -163,7 +167,10 @@ OpenRouter parity, repeat eval runs.
 
 ### WS9: No-key mode eval: NOT STARTED (after WS2; one agent; Fable 5.2 judges, runs resumable)
 
-### WS4: Client pipeline steps and port parity: NOT STARTED (after WS1, WS2, WS3; sub-PRs)
+### WS4: Client pipeline steps and port parity: IN PROGRESS (Opus 5.5, `/Users/jason/unstale-ws4-pipeline`)
+- PR 1 extraction, PR 2 labels and matching: no paid calls; EM returns a parity cost estimate. Then: parity runs
+  (also extraction through batched Codex, the Jev threshold behind the "93%" line, a real first sync), and cache
+  disk bounds (must keep `{cache}/inference/`).
 
 ### WS6b: Full matrix run and playback gallery: NOT STARTED (after WS4, WS5, WS10)
 - CEO copy review happens here, before WS8.
