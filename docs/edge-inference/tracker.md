@@ -342,3 +342,9 @@ OpenRouter parity, repeat eval runs.
 - Draft at `48b9c6d`, worktree `/Users/jason/unstale-ws8-docs`. Not verified: real Codex and opencode hooks; phone-width site.
 - Product issues it found, for the product-fix PR: (1) `session-sync` with "Not now" recorded prints "another unstale is reading them"; (2) `setup` and `cache` hidden from `--help` even with the switch on (unhide at release); (3) `sync` prints an internal id (`zod-6ac59393: …`); (4) "Not now" row overstates the loss while the catalog still has records; (5) `--details` package count off (3 for a repo with 2); (6) `cache clean` without a terminal exits 1 after "Run it again with --yes".
 - The ≈ 27% no-provider figure's source is on the unmerged no-key branch (#231).
+
+### 11 November, later
+
+- CEO: "go ahead with the ingest starvation fix". PR #241 open at `75989b8`, CI green, worktree `/Users/jason/unstale-ingest-fix`; fresh review running. Author's bound: about 26 hours for the whole catalog. Reaches production with the first ingest run after merge (no separate deploy). Overlaps the CEO's uncommitted `service.ts` region (oldest-slot block, `tier()`).
+- #238 review: APPROVE AFTER FIXES. Two blockers (known-bug exemption too broad; logged paths not resolved before the allowlist), plus should-fixes; sent to the matrix EM with the rebase onto `8b2fe69` and clearance to merge. Five product bugs confirmed real: (a) status warning twice; (b) `init`/`status` silent below `min_client` (predates sprint); (c) "every release note here is read" while 2 wait, below `min_client`; (d) `UNSTALE_INFERENCE_BASE_URL` breaks the Codex route; (e) `init --wait 0` takes 26 s with registries unreachable (predates sprint).
+- Next after #238 merges: one product-fix PR for (a)–(e) plus the six issues from #240's report; then update the matrix's known bugs.
