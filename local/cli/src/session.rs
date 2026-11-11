@@ -463,6 +463,99 @@ pub fn after_status(ctx: &Ctx) {
     if let Some(line) = status_line(ctx, &state) {
         println!("{line}");
     }
+    if util::edge_inference() {
+        let techs: BTreeSet<String> = state.technologies.iter().cloned().collect();
+        println!("{}", freshness_line(&ctx.cache, &techs, now_secs()));
+    }
+}
+
+/// Seconds since 1970 for an RFC 3339 UTC time (`2026-10-01T18:05:00.000Z`); fractions are dropped.
+fn iso_secs(s: &str) -> Option<i64> {
+    let days = util::parse_date(s.get(..10)?)?;
+    let t = s.get(11..19)?;
+    let mut parts = t.split(':').map(|p| p.parse::<i64>().ok());
+    let (h, m, sec) = (parts.next()??, parts.next()??, parts.next()??);
+    (s.as_bytes().get(10) == Some(&b'T')).then_some(days * 86_400 + h * 3_600 + m * 60 + sec)
+}
+
+/// `45m`, `3h 10m`, `2d 4h`.
+fn span(secs: i64) -> String {
+    let m = secs.max(0) / 60;
+    match m {
+        0..60 => format!("{m}m"),
+        60..1_440 if m % 60 == 0 => format!("{}h", m / 60),
+        60..1_440 => format!("{}h {}m", m / 60, m % 60),
+        _ if m % 1_440 < 60 => format!("{}d", m / 1_440),
+        _ => format!("{}d {}h", m / 1_440, m % 1_440 / 60),
+    }
+}
+
+/// The median and 90th percentile (nearest rank) of `v`, which is not empty.
+fn median_p90(v: &mut [i64]) -> (i64, i64) {
+    v.sort_unstable();
+    let at = |q: f64| v[((q * v.len() as f64).ceil() as usize).clamp(1, v.len()) - 1];
+    (at(0.5), at(0.9))
+}
+
+/// How long the last 30 days' releases of this repository's technologies took to reach this machine: from the registry
+/// to the catalog (central's timestamps on each change event), then from the catalog to this machine (when this
+/// machine first synced the event), then to records made here (not yet: the client's own model steps come later).
+/// Local only; nothing is sent. Releases already published when this machine began following a technology, and those
+/// central backfilled, are left out.
+pub fn freshness_line(cache: &Path, techs: &BTreeSet<String>, now: u64) -> String {
+    // Per release, its earliest event: (registry publish, catalog publish, synced here).
+    let mut releases: std::collections::BTreeMap<String, (Option<i64>, i64, i64)> =
+        Default::default();
+    for t in techs {
+        let synced = cache::events_synced(cache, t);
+        let Ok(Some(events)) = cache::load_events(cache, t) else {
+            continue;
+        };
+        for e in events.events.iter().filter(|e| !e.freshness.backfilled) {
+            let Some(&here) = synced
+                .get(&e.id)
+                .filter(|&&at| at > 0 && now.saturating_sub(at) <= 30 * 86_400)
+            else {
+                continue;
+            };
+            let Some(published) = iso_secs(&e.freshness.first_published) else {
+                continue;
+            };
+            let registry = e.freshness.registry_published.as_deref().and_then(iso_secs);
+            let r = releases
+                .entry(format!("{}@{}", e.technology, e.version))
+                .or_insert((registry, published, here as i64));
+            r.0 = r.0.or(registry);
+            r.1 = r.1.min(published);
+            r.2 = r.2.min(here as i64);
+        }
+    }
+    if releases.is_empty() {
+        return "Freshness on this machine: no new release of this repository's technologies reached it in the last 30 days".into();
+    }
+    let n = releases.len();
+    let mut central: Vec<i64> = releases
+        .values()
+        .filter_map(|(r, p, _)| r.map(|r| p - r))
+        .collect();
+    let mut local: Vec<i64> = releases.values().map(|(_, p, h)| h - p).collect();
+    let central = if central.is_empty() {
+        "registry to catalog unknown".to_string()
+    } else {
+        let (m, p) = median_p90(&mut central);
+        format!(
+            "registry to catalog {} median ({} at the 90th percentile)",
+            span(m),
+            span(p)
+        )
+    };
+    let (m, p) = median_p90(&mut local);
+    format!(
+        "Freshness on this machine, last 30 days ({n} {}): {central} · catalog to here {} median ({} at the 90th percentile) · records made here: not yet",
+        if n == 1 { "release" } else { "releases" },
+        span(m),
+        span(p)
+    )
 }
 
 fn status_line(ctx: &Ctx, state: &State) -> Option<String> {
@@ -634,4 +727,23 @@ pub fn uninstall_hooks(root: &Path, backup: &Path) -> Result<()> {
         let _ = std::fs::remove_dir(plugin.parent().unwrap().parent().unwrap());
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn times_and_spans_read_plainly() {
+        assert_eq!(iso_secs("1970-01-02T01:02:03.456Z"), Some(86_400 + 3_723));
+        assert_eq!(iso_secs("2026-10-01"), None);
+        assert_eq!(iso_secs("2026-10-01 18:05:00Z"), None);
+        assert_eq!(
+            [0, 59 * 60, 3_600, 3_660 + 59, 86_400, 86_400 + 4 * 3_600].map(span),
+            ["0m", "59m", "1h", "1h 1m", "1d", "1d 4h"]
+        );
+        assert_eq!(span(-5), "0m");
+        assert_eq!(median_p90(&mut [5, 1, 4, 2, 3, 6, 7, 8, 9, 10]), (5, 9));
+        assert_eq!(median_p90(&mut [7]), (7, 7));
+    }
 }
