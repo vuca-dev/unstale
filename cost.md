@@ -1,12 +1,19 @@
 # cost agent log
 
 ## Revisit
-- 2026-11-04: re-survey only if daily model spend returns above ~$2/day (it was $0.55/day on 2026-11-04) or onboarding volume jumps: then re-rank the label call as a cached second turn (terms input was 2.38M tokens in 3 days, 2,135 per call; the ceiling is about $4/month even if the whole terms input were cached) and labelling's question trim (below)
+- 2026-11-11: when the edge-inference switch turns on by default, measure the client's model spend per session (users' tokens, `inference/ledger.rs`) and session-start downloads: then the hosted catalog's spend is no longer the larger cost
+- 2026-11-11: re-survey only if daily model spend returns above ~$2/day (it was $0.34/day over 2026-11-01..11) or onboarding volume jumps: then re-rank the label call as a cached second turn (terms input was 2.38M tokens in 3 days, 2,135 per call; the ceiling is about $4/month even if the whole terms input were cached) and labelling's question trim (below)
 - 2026-11-04: the 332 gateway calls a week logged with stage `unknown` (12% of calls, ~4% of gateway dollars) are advisory-apis (`advisory-apis.ts` calls `extractLlm` without attribution); attribute them only alongside another change there
 - 2026-10-27: backported note items (Electron's "Also in N" lines) go through extract, label and match once per release line: Electron monitoring was 904 labelling + 866 matching Jev calls in 4 of 25 runs (6% of 29,299 Jev calls, about $0.15); Electron was not in any of 30 runs' top 10 rows on 2026-11-04
 - 2026-10-27: labelling's 8 questions are 6.4 KB of each Jev request (about 75% of its ~2,100 input tokens); trimming is a prompt change (eval + gate) for at most ~$5/month at $0.042/M (now ~$3/month: labelling input 13.3M tokens in 3 days)
 
 ## Entries
+
+### 2026-11-11 · Ten-day survey: spend fell again, no lever
+- Tried: read the Usage step of ingest run 42921527525 (`usage` by_phase over 10.0 days, 2026-11-01..11, plus the run's `jev-usage` / `provider-usage vercel`), gateway analytics for 7 days, the 21 failed `agents` runs, and the new session-start sync (#221, #226) in `local/cli/src/sync.rs` / `session.rs`.
+- Found: model spend $3.39 in 10 days ($0.34/day, ~$10/month): monitoring $1.78 (Jev $0.92, gateway $0.86; $0.021 per technology-year, 3,094 monitored), onboarding $1.62 (168 onboarded, $0.0096 each); Jev and gateway are about half each. One 2.5 h run: $0.051 (Jev 261 calls, gateway 92 calls, 10 of them stage `unknown` = advisory-apis); the largest row was myst-parser at $0.0028. Worker: 78,746 requests in 7 days (~11k/day of 100k), only success and 14 client disconnects, average CPU 2.7 ms; DO rows ~2.7k read / ~950 written a day (allowance 5M / 100k); DO storage no rows. The 21 failed `agents` runs (one PR's review events on 2026-11-10) had no jobs, so they used no minutes or tokens. Session start: any catalog change makes `quick_check` return Changed, so the background sync fetches the whole `v1/technologies.json` again (estimated 150-170 KB for ~3,200 entries). Deciding from the new list would save that download only when none of a repository's technologies changed, which is rare (indexes are refreshed about daily, so a 50-technology stack changes about twice an hour). Those are static assets (free), so the saving is only client bandwidth. Rejected.
+- Chosen: none: no lever is worth more than a few dollars a month, and every free tier has more than 10x headroom
+- Outcome: as of 2026-11-11 the hosted model spend is ~$0.34/day (~$10/month), split evenly between Jev and gateway. The next cost question is users' own model spend once client inference ships.
 
 ### 2026-11-04 · Per-stage split: spend is too small and too spread for any lever
 - Tried: aggregated the Usage step's `jev-usage` and `provider-usage vercel` output from the 30 successful ingest runs 41259866389..41742347892 (3.0 days, the same window as `usage` by_phase), plus gateway analytics (7 days) and the asset-file limit.
