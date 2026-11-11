@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { ChatClassifier, ClassifierCache, FallbackClassifier, Jev } from "./classify/adapter.ts";
 import { extractModel } from "./llm.ts";
 import { interpret, labelQuestions, recordState, type Labels } from "./classify/labels.ts";
-import { recordNotesLocked } from "./events.ts";
+import { markProcessed, recordNotesLocked } from "./events.ts";
 import { type DocsNote, extractRelease, releaseCached, type Incoming } from "./extract.ts";
 import type { PipelineBudget } from "./budget.ts";
 import { advisoryStage, type AttachReport } from "./advisories.ts";
@@ -22,7 +22,7 @@ import { typeStubDeprecations } from "./type-stubs.ts";
 import { TECHNOLOGIES, type Technology } from "./technologies.ts";
 import { compareVersions, pool, writeAtomic } from "./util.ts";
 import { DEFAULT_HTTP, HttpClient } from "../collector/http.ts";
-import { completeEvents, dailyPass, DOCS_PASS, markExtracted, plan } from "../docs/extract.ts";
+import { completeEvents, dailyPass, DOCS_PASS, markDocsProcessed, markExtracted, plan } from "../docs/extract.ts";
 import { techLocal } from "../state/client.ts";
 
 export function makeClassifier(): FallbackClassifier {
@@ -180,6 +180,12 @@ export async function runTechnology(
       if (foreign.length) console.log(`${t.id}: ${foreign.length} records read only from another technology's upgrade guide retracted`);
     }
     saveStore(store);
+    // Change events whose every call succeeded and whose records are saved: published as processed (events.ts), so a
+    // client never derives them again. Rerun from the cache, a note central extracted earlier is marked here too.
+    const run = [...notesToRun, ...docsNotes.map((n) => n.note)];
+    markProcessed(t, run.filter((_, i) => extracted[i]!.failed === 0));
+    // Docs events extracted in earlier runs are not planned again: their ledger marks them.
+    if (docsOn) markDocsProcessed(t.id);
     // Docs events whose notes all extracted are done; one with a failed call is planned again next run.
     if (docsPlan) {
       const base = notesToRun.length;

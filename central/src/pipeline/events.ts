@@ -10,6 +10,9 @@
 //                   docs changes accumulate (each read names only what it found then).
 //   published.json  when each event first went into a published index, and a digest of the events last published
 //                   (written by `publishEvents`, under the technology lock with the rest of a publish).
+//   processed.json  the events central ran its model steps on, each with a digest of the chunks it read
+//                   (`markProcessed`, written after the records it made are saved in the store): published as
+//                   `extracted` while the event's chunks are still those, so a client never re-derives them.
 // Both are written under the technology lock (`recordNotesLocked` for a read, a publish holds it already).
 // Published by `publishEvents` as one gzipped JSON-lines shard per release line, `v1/shards/<tech>/<line>.events.<16
 // hex>.jsonl.gz`, named by content hash like the record shards and listed in the index's `events`; the same store in
@@ -30,7 +33,7 @@ import { canonical, compareVersions, readJson, releaseLine, sha256, writeAtomic 
 export type EventSource = "releases" | "guides" | "docs";
 
 /** An event as recorded: the published line without `first_published`, and where it was read. */
-export interface StoredEvent extends Omit<EventLine, "freshness"> {
+export interface StoredEvent extends Omit<EventLine, "freshness" | "extracted"> {
   source: EventSource;
   freshness: Omit<EventLine["freshness"], "first_published">;
 }
@@ -51,12 +54,33 @@ interface PublishedFile {
   digest?: string;
 }
 
-/** A digest of the recorded events: changes with any event's text or metadata. */
-const eventsDigest = (events: Record<string, StoredEvent>): string => sha256(canonical(events));
+interface ProcessedFile {
+  schema: 1;
+  technology: string;
+  /** Event id → `chunksDigest` of the chunks central's model steps read. */
+  events: Record<string, string>;
+}
+
+/** A digest of an event's chunks: what its model steps read. */
+const chunksDigest = (chunks: readonly Pick<EventChunk, "sha256">[]): string => sha256(chunks.map((c) => c.sha256).join("\n"));
+
+/** The recorded events central has processed as they stand: their marks still name their current chunks. */
+function processedIds(tech: string, events: Record<string, StoredEvent>): string[] {
+  const done = readJson<ProcessedFile>(processedPath(tech))?.events ?? {};
+  return Object.keys(events)
+    .filter((id) => done[id] !== undefined && done[id] === chunksDigest(events[id]!.chunks))
+    .sort();
+}
+
+/** A digest of the recorded events and of which of them are processed: changes with any event's text or metadata,
+ * and with each new mark. Events no publish has marked keep the digest they had before marks existed. */
+const eventsDigest = (events: Record<string, StoredEvent>, processed: readonly string[]): string =>
+  sha256(canonical(processed.length ? { events, processed } : events));
 
 const dir = (tech: string): string => join(centralDir(), "events", techLocal(tech));
 const notesPath = (tech: string): string => join(dir(tech), "notes.json");
 const publishedPath = (tech: string): string => join(dir(tech), "published.json");
+const processedPath = (tech: string): string => join(dir(tech), "processed.json");
 
 /** The event file name part of a shard: `<line>.events.<16 hex>.jsonl.gz` (prune.ts `SHARD_FILE` matches it too). */
 export const EVENTS_FILE = /^[a-zA-Z0-9._-]+\.events\.[0-9a-f]{16}\.jsonl\.gz$/;
@@ -139,12 +163,51 @@ export function recordNotesLocked(t: Pick<Technology, "id" | "name" | "component
   return withTechLock(t.id, "events", async () => recordNotes(t, source, notes));
 }
 
-/** Whether the recorded events differ from what the last publish wrote (a new event, or one whose text or metadata
- * changed): a publish is due. */
+/**
+ * Marks the events of these notes as processed: central's model steps ran on each, on its text as it stands now, and
+ * the records they made are saved in the technology's store. Call it under the technology lock, after the store is
+ * saved and before the publish that carries those records, so an event is never published as processed ahead of its
+ * records. No model call; a mark already there is kept.
+ */
+export function markProcessed(t: Pick<Technology, "id">, notes: readonly Note[]): number {
+  const marks = new Map<string, string>();
+  for (const note of notes) {
+    const id = eventId(t.id, note);
+    marks.set(id, chunksDigest(eventChunks(id, note.notes)));
+  }
+  return writeMarks(t.id, marks);
+}
+
+/**
+ * Marks recorded events as processed by id, with the chunks each holds now: for work central did before marks existed
+ * (release notes a coverage job completed, docs events its ledger lists), told apart by `pick`. Same rules as
+ * `markProcessed`.
+ */
+export function markRecorded(tech: string, pick: (e: StoredEvent) => boolean): number {
+  const events = readJson<NotesFile>(notesPath(tech))?.events ?? {};
+  const marks = new Map<string, string>();
+  for (const e of Object.values(events)) if (pick(e)) marks.set(e.id, chunksDigest(e.chunks));
+  return writeMarks(tech, marks);
+}
+
+function writeMarks(tech: string, marks: ReadonlyMap<string, string>): number {
+  const file = readJson<ProcessedFile>(processedPath(tech)) ?? { schema: 1, technology: tech, events: {} };
+  let n = 0;
+  for (const [id, digest] of marks) {
+    if (file.events[id] === digest) continue;
+    file.events[id] = digest;
+    n++;
+  }
+  if (n) writeAtomic(processedPath(tech), JSON.stringify(JSON.parse(canonical(file)), null, 1) + "\n");
+  return n;
+}
+
+/** Whether the recorded events differ from what the last publish wrote (a new event, one whose text or metadata
+ * changed, or a new mark): a publish is due. */
 export function eventsChanged(tech: string): boolean {
   const events = readJson<NotesFile>(notesPath(tech))?.events ?? {};
   if (!Object.keys(events).length) return false;
-  return readJson<PublishedFile>(publishedPath(tech))?.digest !== eventsDigest(events);
+  return readJson<PublishedFile>(publishedPath(tech))?.digest !== eventsDigest(events, processedIds(tech, events));
 }
 
 export interface PublishedEvents {
@@ -167,7 +230,9 @@ export function publishEvents(tech: string, outDir: string, now = new Date()): P
   const pub: PublishedFile = readJson<PublishedFile>(publishedPath(tech)) ?? { schema: 1, technology: tech, first_published: {} };
   const at = now.toISOString();
   const byLine = new Map<string, string[]>();
-  const digest = eventsDigest(recorded);
+  const processed = processedIds(tech, recorded);
+  const marked = new Set(processed);
+  const digest = eventsDigest(recorded, processed);
   let stamped = pub.digest !== digest;
   pub.digest = digest;
   for (const e of events.sort((a, b) => a.id.localeCompare(b.id, "en"))) {
@@ -176,7 +241,9 @@ export function publishEvents(tech: string, outDir: string, now = new Date()): P
       stamped = true;
     }
     const { source: _source, ...rest } = e;
-    const line = canonical(EventLine.parse({ ...rest, freshness: { ...e.freshness, first_published: pub.first_published[e.id]! } }));
+    const line = canonical(
+      EventLine.parse({ ...rest, freshness: { ...e.freshness, first_published: pub.first_published[e.id]! }, ...(marked.has(e.id) ? { extracted: true } : {}) }),
+    );
     byLine.set(e.line, [...(byLine.get(e.line) ?? []), line]);
   }
   const shards: Array<{ file: string; gz: Buffer }> = [];

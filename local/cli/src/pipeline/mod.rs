@@ -26,23 +26,45 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use unstale_schema::catalog::EventLine;
 
+/// A route that refuses this many requests in a row (each a 400) is refusing every request: the pass stops there with
+/// one line, like any other provider problem, instead of one failed call per item.
+pub const REJECTED_IN_A_ROW: usize = 3;
+
+/// The requests a route refused in a row during one pass.
+#[derive(Debug, Default)]
+pub struct Streak(std::cell::Cell<usize>);
+
+impl Streak {
+    /// The provider's result for the caller to read, or the deferral that stops the pass when this refusal is the
+    /// [`REJECTED_IN_A_ROW`]th in a row. An answer starts the count again.
+    pub fn check<T>(
+        &self,
+        r: Result<T, crate::inference::Deferred>,
+    ) -> Result<Result<T, crate::inference::Deferred>, crate::inference::Deferred> {
+        match &r {
+            Err(crate::inference::Deferred::Rejected) => {
+                self.0.set(self.0.get() + 1);
+                if self.0.get() >= REJECTED_IN_A_ROW {
+                    return Err(crate::inference::Deferred::Rejected);
+                }
+            }
+            Ok(_) => self.0.set(0),
+            Err(_) => {}
+        }
+        Ok(r)
+    }
+}
+
 /// Events older than this many days before today are not extracted on the client: the first sync of a technology
 /// covers one year of its releases, as the setup quote states.
 pub const BACKFILL_DAYS: i64 = 365;
 
-/// One technology's events that need the client's own steps, newest first.
+/// One technology's events that need the client's own steps, oldest first (central's order, so a pass that stops
+/// partway leaves the same match targets central would have).
 #[derive(Debug, Clone)]
 pub struct Pending {
     pub technology: String,
     pub events: Vec<EventLine>,
-}
-
-/// The versions a technology's catalog records name: releases the catalog already covers.
-fn covered(td: &crate::cache::TechData) -> BTreeSet<String> {
-    td.records
-        .iter()
-        .flat_map(|r| r.r.releases.iter().map(|x| x.version.clone()))
-        .collect()
 }
 
 /// How much this repository needs a technology: the stack's packages its index or records name.
@@ -55,8 +77,9 @@ fn demand(td: &crate::cache::TechData, purls: &BTreeSet<String>) -> usize {
 }
 
 /// The work for these technologies, in demand order (most of this stack's packages first, then by id); within a
-/// technology, newest events first. An event is left out when the catalog has records for its version, or when it is
-/// older than the backfill window. A technology never synced, or whose events cannot be read, is skipped.
+/// technology, oldest events first, as central ingests. An event is left out when central processed it (`extracted`:
+/// its records, if any, are in the catalog), when the catalog has records for its version, or when it is older than
+/// the backfill window. A technology never synced, or whose events cannot be read, is skipped.
 pub fn plan(
     cache: &Path,
     techs: &BTreeSet<String>,
@@ -74,16 +97,18 @@ pub fn plan(
         let Ok(Some(ev)) = crate::cache::load_events(cache, t) else {
             continue;
         };
-        let done = covered(&td);
+        let done = store::covered(&td);
         let mut events: Vec<EventLine> = ev
             .events
             .into_iter()
-            .filter(|e| !done.contains(&e.version) && e.date.as_str() >= floor.as_str())
+            .filter(|e| {
+                !e.extracted && !done.contains(&e.version) && e.date.as_str() >= floor.as_str()
+            })
             .collect();
         events.sort_by(|a, b| {
-            b.date
-                .cmp(&a.date)
-                .then_with(|| extract::numeric_cmp(&b.version, &a.version))
+            a.date
+                .cmp(&b.date)
+                .then_with(|| extract::numeric_cmp(&a.version, &b.version))
                 .then_with(|| a.id.cmp(&b.id))
         });
         if !events.is_empty() {
@@ -343,6 +368,65 @@ pub fn run_step(
         }
         other => anyhow::bail!("unknown step {other}; known: extract, labels, match"),
     }
+}
+
+/// One warning when this repository has releases waiting for the model steps and nothing will run them: the steps run
+/// only in the session-start background stage, and this repository has no agent session-start hook, or turns the
+/// session-start sync off. `None` with the switch off, with no provider chosen, or with nothing waiting.
+pub fn unrun_line(ctx: &crate::Ctx, techs: &BTreeSet<String>) -> Option<String> {
+    if !crate::inference::enabled() {
+        return None;
+    }
+    // The one thing to do: with the sync turned off, the stage does not run at all (not even by hand), so turning it
+    // back on; without a hook, running the stage by hand.
+    let (why, fix) = if ctx.config.session_sync == Some(false) {
+        (
+            "session-start sync is off here",
+            "Remove `\"session_sync\": false` from .unstale/config.json to read them.",
+        )
+    } else if !session_hook_installed(&ctx.root) {
+        (
+            "no agent session-start hook here",
+            "Run `unstale session-sync` to read them now.",
+        )
+    } else {
+        return None;
+    };
+    stored_choice(Some(&ctx.root))?.providers()?;
+    let purls = crate::stack::detect(&ctx.root)
+        .map(|st| st.purls())
+        .unwrap_or_default();
+    // What the catalog leaves to this machine, less what a pass here has already taken in.
+    let releases: BTreeSet<(String, String)> = plan(&ctx.cache, techs, &purls, &crate::util::today())
+        .into_iter()
+        .flat_map(|p| {
+            let done = store::LocalStore::load(&ctx.cache, &p.technology).done;
+            p.events
+                .into_iter()
+                .filter(move |e| !done.contains(&e.id))
+                .map(move |e| (p.technology.clone(), e.version))
+        })
+        .collect();
+    let n = releases.len();
+    (n > 0).then(|| {
+        format!(
+            "warning: {why}, so {n} new release note{} {} unread. {fix}",
+            if n == 1 { "" } else { "s" },
+            if n == 1 { "is" } else { "are" }
+        )
+    })
+}
+
+/// Whether an agent's session-start hook for this repository is installed (Claude Code, Codex or opencode): each runs
+/// `unstale notify`, which starts the background stage.
+fn session_hook_installed(root: &Path) -> bool {
+    [
+        crate::onboarding::SESSION_HOOK_SETTINGS_PATH,
+        crate::session::CODEX_HOOKS_PATH,
+        crate::session::OPENCODE_PLUGIN_PATH,
+    ]
+    .iter()
+    .any(|rel| std::fs::read_to_string(root.join(rel)).is_ok_and(|t| t.contains("notify")))
 }
 
 /// The stored choice for a directory: its repository's config, else the user's.

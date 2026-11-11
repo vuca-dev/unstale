@@ -89,6 +89,10 @@
       "description": "ISO date, `YYYY-MM-DD`: the release's day (the registry's where it has one), as records carry it.",
       "type": "string"
     },
+    "extracted": {
+      "description": "Central ran its model steps on this event, on exactly these chunks: its records, if any, are in the record\nshards (a release whose changes all matched earlier records, or that holds none, adds no release to any record).\nA client runs its own steps only for an event without it. Absent before 11 November 2026, and on every event\ncentral has not processed (after the cutover central makes no records, so no new event carries it).",
+      "type": "boolean"
+    },
     "freshness": {
       "$ref": "#/$defs/Freshness"
     },

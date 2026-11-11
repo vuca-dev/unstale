@@ -4,7 +4,7 @@ use super::extract::{Extractor, Incoming, Provenance, numeric_cmp};
 use super::labels::{Chooser, STEP_JUDGE, STEP_LABELS, interpret, record_state};
 use super::matching;
 use super::results::{Results, model_key};
-use super::store::{Amendment, Local, LocalStore, RecordProvenance, components};
+use super::store::{Amendment, Folded, Local, LocalStore, RecordProvenance, components};
 use super::{Routes, plan};
 use crate::inference::{Deferred, Inference, Kind};
 use std::collections::BTreeSet;
@@ -77,18 +77,29 @@ pub fn run(
             continue;
         };
         let mut store = LocalStore::load(cache, &t.technology);
+        let cover = super::store::Cover::new(&td, super::store::processed(cache, &t.technology));
         let name = t.events.first().map(|e| e.name.clone()).unwrap_or_default();
         // One technology at a time, most needed first: its records are written before the next one's extraction
         // starts. When extraction stops early, what it extracted is still labelled and written.
         let events: Vec<&unstale_schema::catalog::EventLine> = t.events.iter().collect();
         let mut stopped = x.prefetch(&events).err();
         let mut incoming: Vec<(Incoming, Option<Provenance>)> = vec![];
+        // Events extracted whole, with the keys of their changes.
+        let mut whole: Vec<(String, Vec<String>)> = vec![];
         for ev in &t.events {
             if stopped.is_some() {
                 break;
             }
             match x.event(ev) {
-                Ok(r) => incoming.extend(r.incoming.into_iter().map(|i| (i, r.provenance.clone()))),
+                Ok(r) => {
+                    if r.failed == 0 {
+                        whole.push((
+                            ev.id.clone(),
+                            r.incoming.iter().map(|i| i.key.clone()).collect(),
+                        ));
+                    }
+                    incoming.extend(r.incoming.into_iter().map(|i| (i, r.provenance.clone())))
+                }
                 Err(d) => stopped = Some(d),
             }
         }
@@ -139,7 +150,7 @@ pub fn run(
             );
             // The catalog's records with what this machine added, as candidates.
             let mut view = td.clone();
-            super::store::overlay(&mut view, &store);
+            super::store::overlay(&mut view, &store, &cover);
             let mut chosen = None;
             let mut judge_prov = None;
             if matching_on {
@@ -214,6 +225,7 @@ pub fn run(
                             sources: vec![inc.key.clone()],
                             version: inc.version.clone(),
                             provenance,
+                            folded: vec![],
                         },
                     );
                     store.ingested.insert(inc.key.clone(), id);
@@ -233,6 +245,11 @@ pub fn run(
                     if let Some(l) = store.records.get_mut(&id) {
                         matching::combine(&mut l.record, inc, &labels, &comps, &line_of);
                         l.sources.push(inc.key.clone());
+                        l.folded.push(Folded {
+                            incoming: (*inc).clone(),
+                            labels: labels.clone(),
+                            provenance,
+                        });
                     } else {
                         store.amendments.push(Amendment {
                             into: id.clone(),
@@ -262,6 +279,7 @@ pub fn run(
                             sources: vec![inc.key.clone()],
                             version: inc.version.clone(),
                             provenance,
+                            folded: vec![],
                         },
                     );
                     store.ingested.insert(inc.key.clone(), id);
@@ -271,8 +289,16 @@ pub fn run(
             touched = true;
             store.save(cache);
         }
-        if touched {
+        let before = store.done.len();
+        for (id, keys) in whole {
+            if keys.iter().all(|k| store.ingested.contains_key(k)) {
+                store.done.insert(id);
+            }
+        }
+        if touched || store.done.len() != before {
             store.save(cache);
+        }
+        if touched {
             s.technologies += 1;
         }
         if s.deferred.is_none() {

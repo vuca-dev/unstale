@@ -7,7 +7,7 @@ import { ExtractFailure } from "../collector/extract.ts";
 import { ClassifierError } from "../pipeline/classify/adapter.ts";
 import { HttpError } from "../pipeline/llm.ts";
 import { latestVersion } from "../docs/monitor.ts";
-import { dailyPass, DOCS_PASS, extract, lastPass } from "../docs/extract.ts";
+import { dailyPass, DOCS_PASS, extract, lastPass, markDocsProcessed } from "../docs/extract.ts";
 import {
   discoverTechnology,
   DISCOVERY_VERSION,
@@ -19,13 +19,13 @@ import {
   type PublicTechnology,
 } from "./discovery.ts";
 import { catalogDir, centralDir } from "../pipeline/paths.ts";
-import { advisoryReleases, fetchGuides, fetchReleases, foreignGuides, type GuideNote } from "../pipeline/fetch.ts";
+import { advisoryReleases, fetchGuides, fetchReleases, foreignGuides, type GuideNote, type ReleaseNote } from "../pipeline/fetch.ts";
 import { logUsage, readJson, sha256, withUsagePhase, writeAtomic } from "../pipeline/util.ts";
 import { reconcileLinkedEvidence, reconcileSources } from "./source-quality.ts";
 import { synthesize } from "./synthesis.ts";
 import { mergeChunkDuplicates, mergeSplitRecords } from "../pipeline/match.ts";
 import { publishTechnology } from "../pipeline/publish.ts";
-import { eventsChanged, recordNotes } from "../pipeline/events.ts";
+import { eventsChanged, markProcessed, markRecorded, recordNotes } from "../pipeline/events.ts";
 import { typeStubDeprecations } from "../pipeline/type-stubs.ts";
 import { JOB_FILE, servedIndex } from "../pipeline/export.ts";
 import { loadStore, retractForeignGuideRecords, saveStore } from "../pipeline/store.ts";
@@ -45,7 +45,7 @@ const advisoryClassifier = () => (classifier ??= makeClassifier());
 const noModel = async (): Promise<never> => {
   throw new Error("the advisories first pass makes no model call");
 };
-import { TECHNOLOGIES } from "../pipeline/technologies.ts";
+import { TECHNOLOGIES, type Technology } from "../pipeline/technologies.ts";
 // Docs requests in flight across all jobs; at most two per host, so more jobs at once never press one site harder.
 const docsHttp = new HttpClient({ ...DEFAULT_HTTP, concurrency: Number(process.env.UNSTALE_DOCS_CONCURRENCY ?? 16) || 16, perHost: 2 });
 export interface Job {
@@ -1177,6 +1177,8 @@ export class CoverageService {
     // The release notes' change events (events.ts), published before any extraction: no model call is needed for them.
     await withTechLock(tech.id, "onboarding", () => {
       if (t.repo) recordNotes(tech, "releases", releases.notes);
+      // Work this job finished before change events were marked: published as processed now (no model call).
+      markFinished(tech, job, releases.notes);
       const corrected = reconcileSources(tech) + reconcileLinkedEvidence(tech, releases.notes);
       if (corrected || eventsChanged(tech.id))
         publishTechnology(loadStore(tech.id), releases.checked, catalogDir());
@@ -1373,6 +1375,23 @@ export class CoverageService {
     this.save(job, "monitoring", monitoringStage(job));
   }
 }
+/**
+ * Marks the change events of what this job finished as processed (events.ts): release notes in `completed` (by tag and
+ * snapshot, as the job keys them), upgrade guides in `guides_done` (by key tag) and docs events in the docs ledger. Each
+ * was marked complete only after its records were saved, so its records are in the store a publish writes. Under the
+ * technology lock.
+ */
+export function markFinished(tech: Pick<Technology, "id">, job: Pick<Job, "completed" | "guides_done">, notes: readonly ReleaseNote[]): number {
+  const done = new Set(job.completed ?? []);
+  const guides = new Set((job.guides_done ?? []).filter((k) => k.endsWith(AUDIENCE)).map((k) => k.slice(0, -AUDIENCE.length)));
+  return (
+    markProcessed(tech, notes.filter((n) => done.has(`${n.tag}:${n.snapshot}${AUDIENCE}`))) +
+    markRecorded(tech.id, (e) => e.source === "guides" && guides.has(e.id.slice(`${e.technology}@${e.version}`.length))) +
+    markDocsProcessed(tech.id)
+  );
+}
+const AUDIENCE = ":audience-v1";
+
 /** A monitored job's stage. One whose official sources yielded no release or no record says so first: it is a source
  * gap (the client reports it as one), not coverage that found nothing to report. */
 export function monitoringStage(j: Pick<Job, "records" | "releases_total" | "enumeration" | "docs_done" | "docs_total" | "docs_failed">): string {

@@ -10,6 +10,7 @@ import { makeClassifier } from "../pipeline/pipeline.ts";
 import { checkIncoming } from "../pipeline/prereqs.ts";
 import { loadStore, saveStore, applyChange } from "../pipeline/store.ts";
 import { publishTechnology } from "../pipeline/publish.ts";
+import { markProcessed } from "../pipeline/events.ts";
 import { catalogDir } from "../pipeline/paths.ts";
 import { withTechLock } from "../pipeline/lock.ts";
 import type { Technology } from "../pipeline/technologies.ts";
@@ -55,6 +56,9 @@ export async function synthesize(
       );
       saveStore(store);
     }
+    // Every call succeeded and the records are saved: the note's change event is processed (events.ts), published
+    // as such with them.
+    markProcessed(t, [note]);
     publishTechnology(store, new Date().toISOString(), catalogDir());
     return Object.values(store.records).filter((r) => r.status === "active")
       .length;

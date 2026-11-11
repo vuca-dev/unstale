@@ -546,7 +546,8 @@ fn a_pass_writes_records_the_report_reads_and_a_second_repo_makes_no_call() {
     let mut td = crate::cache::load_catalog_tech(f.cache.path(), "example")
         .unwrap()
         .unwrap();
-    overlay(&mut td, &LocalStore::load(f.cache.path(), "example"));
+    let c = super::store::Cover::new(&td, Default::default());
+    overlay(&mut td, &LocalStore::load(f.cache.path(), "example"), &c);
     assert_eq!(td.records.len(), 5);
     let made: Vec<&str> = td
         .records
@@ -628,7 +629,8 @@ fn a_change_judged_the_same_extends_the_catalog_record_and_catalog_records_win_l
             .iter()
             .any(|a| a.into == "example:server.port")
     );
-    overlay(&mut td, &store);
+    let c = super::store::Cover::new(&td, Default::default());
+    overlay(&mut td, &store, &c);
     let port = &td
         .records
         .iter()
@@ -666,7 +668,8 @@ fn a_change_judged_the_same_extends_the_catalog_record_and_catalog_records_win_l
             line: "2".into(),
             no_later_than: None,
         });
-    overlay(&mut td, &store);
+    let c = super::store::Cover::new(&td, Default::default());
+    overlay(&mut td, &store, &c);
     assert_eq!(td.records.len(), 1);
     assert!(td.provenance.is_empty());
 }
@@ -882,18 +885,23 @@ fn a_route_can_be_moved_only_to_this_machine() {
     );
 }
 
-/// Labels the service refuses (a 400) fail those records for this pass only: nothing marks them done, the queue goes
-/// on, and the next pass after the retry date asks again.
+/// Labels the service refuses (a 400) fail those records for this pass only: nothing marks them done, and the next pass
+/// after the retry date asks again. A route that refuses every request stops the pass after a few in a row, with one
+/// line, instead of failing each item alone and silently.
 #[test]
-fn records_whose_labels_fail_are_not_marked_done() {
+fn records_whose_labels_fail_are_not_marked_done_and_a_route_refusing_all_stops_the_pass() {
     let f = fixture();
     let m = Router::new(f.answers.clone(), vec![]);
+    // The labelling service answers 400 to every request; the fixture has four records to label.
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let jev = format!("http://{}", listener.local_addr().unwrap());
+    let asked = Arc::new(Mutex::new(0usize));
+    let n = asked.clone();
     std::thread::spawn(move || {
         for mut s in listener.incoming().flatten() {
             let mut buf = [0u8; 65536];
             let _ = s.read(&mut buf);
+            *n.lock().unwrap() += 1;
             let _ = write!(
                 s,
                 "HTTP/1.1 400 X\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}"
@@ -907,14 +915,151 @@ fn records_whose_labels_fail_are_not_marked_done() {
         &set(&["pkg:npm/example"]),
         "2026-11-10",
     );
+    let stop = super::REJECTED_IN_A_ROW;
     assert_eq!(
         (s.created, s.unlabelled, s.deferred.clone()),
-        (0, 4, None),
+        (0, stop - 1, Some(crate::inference::Deferred::Rejected)),
         "{s:?}"
     );
+    assert_eq!(
+        *asked.lock().unwrap(),
+        stop,
+        "one request per record until the pass stops"
+    );
+    assert!(s.line().is_some_and(|l| !l.contains('\n')));
     assert!(
         LocalStore::load(f.cache.path(), "example")
             .ingested
             .is_empty()
     );
+}
+
+#[test]
+fn no_paid_change_leaves_the_report_without_cause() {
+    use super::extract::Provenance;
+    use super::store::{Amendment, Cover, Folded, Local, RecordProvenance};
+    let f = fixture();
+    let catalog = || {
+        crate::cache::load_catalog_tech(f.cache.path(), "example")
+            .unwrap()
+            .unwrap()
+    };
+    let p = Provenance {
+        provider: "openai".into(),
+        model: "gpt-6-luna".into(),
+        model_version: None,
+        prompt_version: 1,
+    };
+    let prov = RecordProvenance {
+        extraction: p.clone(),
+        labels: p,
+        judge: None,
+    };
+    let comps = ["pkg:npm/example".to_string()];
+    let inc = |version: &str, subject: &str| {
+        incoming(json!({
+            "key": format!("example@{version}#0.0"), "technology": "example", "version": version, "line": "2",
+            "url": format!("https://example.org/{version}"), "subject": subject,
+            "quote": format!("{subject} in {version}")
+        }))
+    };
+    let mut first = matching::create(
+        &inc("2.1.0", "cache.mode"),
+        &labels_of(),
+        &comps,
+        &|v: &str| js_line(v),
+        &|_| false,
+    );
+    let later = inc("2.2.0", "cache.mode");
+    matching::combine(&mut first, &later, &labels_of(), &comps, &|v: &str| {
+        js_line(v)
+    });
+    let mut store = LocalStore {
+        technology: "example".into(),
+        ..Default::default()
+    };
+    store.records.insert(
+        first.id.clone(),
+        Local {
+            record: first.clone(),
+            sources: vec!["example@2.1.0#0.0".into(), "example@2.2.0#0.0".into()],
+            version: "2.1.0".into(),
+            provenance: prov.clone(),
+            folded: vec![Folded {
+                incoming: later.clone(),
+                labels: labels_of(),
+                provenance: prov.clone(),
+            }],
+        },
+    );
+    // Matched into a catalog record that central has since retracted.
+    store.amendments.push(Amendment {
+        into: "example:gone".into(),
+        incoming: inc("2.2.0", "server.host"),
+        labels: labels_of(),
+        p: 0.99,
+        provenance: prov.clone(),
+    });
+    let subjects = |td: &crate::cache::TechData| {
+        let mut v: Vec<(String, Vec<String>)> = td
+            .records
+            .iter()
+            .map(|r| {
+                (
+                    r.r.subject.clone(),
+                    r.r.releases.iter().map(|x| x.version.clone()).collect(),
+                )
+            })
+            .collect();
+        v.sort();
+        v
+    };
+    // Nothing covered: the client's record whole, and the retracted target's change as a record of its own.
+    let mut td = catalog();
+    td.retracted.push("example:gone".into());
+    let c = Cover::new(&td, Default::default());
+    overlay(&mut td, &store, &c);
+    assert_eq!(
+        subjects(&td),
+        [
+            ("cache.mode".to_string(), vec!["2.1.0".to_string()]),
+            ("server.host".into(), vec!["2.2.0".into()]),
+            ("server.port".into(), vec!["2.0.0".into()]),
+        ]
+    );
+    assert!(
+        td.provenance
+            .values()
+            .all(|p| p.extraction.provider == "openai")
+    );
+    // Central processed 2.1.0: the client's record is hidden, and its 2.2.0 change stays as a record of its own.
+    let mut td = catalog();
+    td.retracted.push("example:gone".into());
+    let c = Cover::new(&td, ["example@2.1.0".to_string()].into());
+    overlay(&mut td, &store, &c);
+    assert_eq!(
+        subjects(&td),
+        [
+            ("cache.mode".to_string(), vec!["2.2.0".to_string()]),
+            ("server.host".into(), vec!["2.2.0".into()]),
+            ("server.port".into(), vec!["2.0.0".into()]),
+        ]
+    );
+    // And once it processed 2.2.0 as well, the catalog has it all: nothing of the client's is shown.
+    let mut td = catalog();
+    td.retracted.push("example:gone".into());
+    let c = Cover::new(
+        &td,
+        ["example@2.1.0".to_string(), "example@2.2.0".to_string()].into(),
+    );
+    overlay(&mut td, &store, &c);
+    assert_eq!(
+        subjects(&td),
+        [("server.port".to_string(), vec!["2.0.0".to_string()])]
+    );
+    assert!(td.provenance.is_empty());
+}
+
+fn js_line(v: &str) -> String {
+    super::js::release_line(v)
 }
