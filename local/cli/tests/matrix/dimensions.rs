@@ -63,15 +63,15 @@ pub(crate) struct Invocation {
 
 #[rustfmt::skip]
 pub(crate) const INVOCATIONS: &[Invocation] = &[
-    Invocation { id: "terminal", group: "Installs it at a terminal", title: "first run in a terminal", terminal: true, person: true, answer: "\n", ci: false, env: &[], steps: &[Step::Init, Step::Sync, Step::Model, Step::Status] },
+    Invocation { id: "terminal", group: "Installs it at a terminal", title: "first run in a terminal", terminal: true, person: true, answer: "\n", ci: false, env: &[], steps: &[Step::Init, Step::Sync, Step::SessionSync, Step::Status] },
     Invocation { id: "terminal-dismiss", group: "Installs it at a terminal", title: "dismissed with Ctrl-D in a terminal", terminal: true, person: true, answer: "\u{4}", ci: false, env: &[], steps: &[Step::Init, Step::Init, Step::Status] },
     Invocation { id: "terminal-interrupt", group: "Installs it at a terminal", title: "interrupted with Ctrl-C at the question", terminal: true, person: true, answer: "\u{3}", ci: false, env: &[], steps: &[Step::Init, Step::Status] },
     Invocation { id: "terminal-details", group: "Installs it at a terminal", title: "asking for the details at the question", terminal: true, person: true, answer: "d\n", ci: false, env: &[], steps: &[Step::Init, Step::Status] },
-    Invocation { id: "agent", group: "Asks an agent to install it", title: "an agent installs it", terminal: false, person: false, answer: "", ci: false, env: &[("CLAUDECODE", "1")], steps: &[Step::Init, Step::Status, Step::AgentSetup, Step::Sync, Step::Model] },
-    Invocation { id: "agent-pty-claude", group: "Asks an agent to install it", title: "Claude Code installs it through a terminal", terminal: true, person: false, answer: "\n", ci: false, env: &[("CLAUDECODE", "1")], steps: &[Step::Init, Step::Status, Step::AgentSetup, Step::Sync, Step::Model] },
-    Invocation { id: "agent-pty-codex", group: "Asks an agent to install it", title: "Codex installs it through a terminal", terminal: true, person: false, answer: "\n", ci: false, env: &[("CODEX_SANDBOX", "seatbelt")], steps: &[Step::Init, Step::Status, Step::AgentSetup, Step::Sync, Step::Model] },
-    Invocation { id: "ci", group: "Runs it in CI", title: "in CI", terminal: false, person: false, answer: "", ci: true, env: &[], steps: &[Step::InitYes, Step::Sync, Step::Model, Step::Status] },
-    Invocation { id: "ci-flag", group: "Runs it in CI", title: "in CI, choosing OpenAI with --inference", terminal: false, person: false, answer: "", ci: true, env: &[], steps: &[Step::InitFlag("env:OPENAI_API_KEY"), Step::Sync, Step::Model, Step::Status] },
+    Invocation { id: "agent", group: "Asks an agent to install it", title: "an agent installs it", terminal: false, person: false, answer: "", ci: false, env: &[("CLAUDECODE", "1")], steps: &[Step::Init, Step::Status, Step::AgentSetup, Step::Sync, Step::SessionStart, Step::SessionStart, Step::Status] },
+    Invocation { id: "agent-pty-claude", group: "Asks an agent to install it", title: "Claude Code installs it through a terminal", terminal: true, person: false, answer: "\n", ci: false, env: &[("CLAUDECODE", "1")], steps: &[Step::Init, Step::Status, Step::AgentSetup, Step::Sync, Step::SessionStart, Step::SessionStart, Step::Status] },
+    Invocation { id: "agent-pty-codex", group: "Asks an agent to install it", title: "Codex installs it through a terminal", terminal: true, person: false, answer: "\n", ci: false, env: &[("CODEX_SANDBOX", "seatbelt")], steps: &[Step::Init, Step::Status, Step::AgentSetup, Step::Sync, Step::SessionStart, Step::SessionStart, Step::Status] },
+    Invocation { id: "ci", group: "Runs it in CI", title: "in CI", terminal: false, person: false, answer: "", ci: true, env: &[], steps: &[Step::InitYes, Step::Sync, Step::SessionSync, Step::Status] },
+    Invocation { id: "ci-flag", group: "Runs it in CI", title: "in CI, choosing OpenAI with --inference", terminal: false, person: false, answer: "", ci: true, env: &[], steps: &[Step::InitFlag("env:OPENAI_API_KEY"), Step::Sync, Step::SessionSync, Step::Status] },
 ];
 
 /// The repository's committed config (`.unstale/config.json`), as a teammate left it.
@@ -180,9 +180,14 @@ pub(crate) enum Step {
     /// The agent runs `unstale setup`, relays the options, and records the user's answer (the first option) with
     /// `unstale setup --inference <value>`. Only when status says no provider is chosen.
     AgentSetup,
-    /// A model call on the chosen provider. Until the client's own pipeline steps call the provider, this is the
-    /// internal `unstale infer` with public release-note text, on the provider the session chose.
-    Model,
+    /// `unstale session-sync` by hand: the catalog sync, then the client's own model steps for the releases the
+    /// catalog leaves to this machine, on the provider the session chose.
+    SessionSync,
+    /// A session of the agent that installed unstale starts: its installed session-start hook runs as the agent runs
+    /// it, and the background stage the hook starts (the same sync and model steps) runs to its end.
+    SessionStart,
+    /// A command the harness adds to show a check fails when its property breaks (never part of a real session).
+    Injected,
 }
 
 // ------------------------------------------------------------------------------------------------------ scenarios

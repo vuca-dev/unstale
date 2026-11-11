@@ -5,22 +5,23 @@ $ unstale init --wait 0 --no-animation
 How should unstale read new release notes?
 
      Read with    Key              Cost a year, this repo   Compared with the best option
-  1  OpenAI       OPENAI_API_KEY   ≈ $0.13                  ≈ 11 in 100 breaking flags wrong, not 8
-  2  Codex plan                    ≈ 1.3M Codex tokens      ≈ 80% of its changes; rest not measured
+  1  OpenAI       OPENAI_API_KEY   ≈ $0.27                  ≈ 93% of its breaking-change flags
+  2  Codex plan                    ≈ 1.8M Codex tokens      not measured yet through Codex
   3  Not now                       free                     ≈ 27%: advisories and deprecations only
 
 Enter for 1, a number to choose, or d for details:
 Nothing chosen: no release notes, advisories and deprecations only. `unstale setup` asks again.
   ✓ shop · Personal setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
-  Mapped 2 direct dependencies from declared package ranges and checked local references.
+  Mapped 3 direct dependencies from declared package ranges and checked local references.
 
   Upgrades to review · 1 shortlisted
   Upstream change counts, not confirmed issues in your code.
   1. next 16.0.0 → 16.1.0 picks up 1 advisory (affected path not found)
 
-  Capabilities to explore · 0 shortlisted
-  No strong capability candidates in the coverage checked so far.
+  Capabilities to explore · 1 shortlisted
+  1. react · upgrade 19.0.0 → 19.1.0 — Activity hides part of the tree and keeps its state.
+  Dependency match only · repository benefit has not been established.
   These are review candidates, not confirmed benefits or safe-to-apply changes.
   Coverage · no shared coverage acknowledged yet. unstale status later adds to this brief.
 
@@ -43,14 +44,15 @@ Codex: to let unstale sync at session start, trust its hook once: run /hooks in 
 $ unstale init --wait 0 --no-animation
   ✓ shop · Personal setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
-  Mapped 2 direct dependencies from declared package ranges and checked local references.
+  Mapped 3 direct dependencies from declared package ranges and checked local references.
 
   Upgrades to review · 1 shortlisted
   Upstream change counts, not confirmed issues in your code.
   1. next 16.0.0 → 16.1.0 picks up 1 advisory (affected path not found)
 
-  Capabilities to explore · 0 shortlisted
-  No strong capability candidates in the coverage checked so far.
+  Capabilities to explore · 1 shortlisted
+  1. react · upgrade 19.0.0 → 19.1.0 — Activity hides part of the tree and keeps its state.
+  Dependency match only · repository benefit has not been established.
   These are review candidates, not confirmed benefits or safe-to-apply changes.
   Coverage · no shared coverage acknowledged yet. unstale status later adds to this brief.
 
@@ -70,14 +72,15 @@ $ unstale init --wait 0 --no-animation
 $ unstale status --wait 0 --no-animation
   ✓ shop · Personal setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
-  Mapped 2 direct dependencies from declared package ranges and checked local references.
+  Mapped 3 direct dependencies from declared package ranges and checked local references.
 
   Upgrades to review · 1 shortlisted
   Upstream change counts, not confirmed issues in your code.
   1. next 16.0.0 → 16.1.0 picks up 1 advisory (affected path not found)
 
-  Capabilities to explore · 0 shortlisted
-  No strong capability candidates in the coverage checked so far.
+  Capabilities to explore · 1 shortlisted
+  1. react · upgrade 19.0.0 → 19.1.0 — Activity hides part of the tree and keeps its state.
+  Dependency match only · repository benefit has not been established.
   These are review candidates, not confirmed benefits or safe-to-apply changes.
   Coverage · no shared coverage acknowledged yet. unstale status later adds to this brief.
 
@@ -97,7 +100,7 @@ Release notes         not read: no provider chosen · `unstale setup` shows the 
 Cache                 under 1 MB of 100 MB
 
 # contacted
-#   catalog host: GET /health, GET /v1/root.json, GET /v1/shards/next/16.6b4b93175dbd.jsonl.gz, GET /v1/shards/next/16.events.156a9b1d3a00.jsonl.gz, GET /v1/tech/next.json, GET /v1/tech/react.json, GET /v1/technologies.json
+#   catalog host: GET /health, GET /v1/root.json, GET /v1/shards/next/16.7745374e4470.jsonl.gz, GET /v1/shards/next/16.events.74bcaa014f93.jsonl.gz, GET /v1/shards/react/19.b7c40e95232c.jsonl.gz, GET /v1/shards/react/19.events.04962169f41c.jsonl.gz, GET /v1/tech/next.json, GET /v1/tech/react-dom.json, GET /v1/tech/react.json, GET /v1/technologies.json
 #   model provider: nothing
 #   codex: --version, login status
 #   anything else: nothing

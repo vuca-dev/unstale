@@ -37,41 +37,89 @@ pub(crate) fn write(p: &Path, text: &str) {
     std::fs::write(p, text).unwrap();
 }
 
+/// One release of the fixture catalog's change events: whether the catalog has records for it, and whether central
+/// marked the event as processed (`extracted`). The client runs its own model steps only for an event with neither.
+pub(crate) struct Release {
+    pub(crate) technology: &'static str,
+    pub(crate) version: &'static str,
+    pub(crate) notes: &'static str,
+    pub(crate) records: bool,
+    pub(crate) extracted: bool,
+}
+
+#[rustfmt::skip]
+pub(crate) const RELEASES: &[Release] = &[
+    Release { technology: "next", version: "16.1.0", notes: RELEASE_NOTE, records: true, extracted: false },
+    Release { technology: "next", version: "16.2.0", notes: "after() runs once the response is sent; it is stable.", records: false, extracted: true },
+    Release { technology: "next", version: "16.3.0", notes: "middleware.ts no longer runs on the edge runtime; proxy.ts runs on Node.js.", records: false, extracted: false },
+    Release { technology: "react", version: "19.1.0", notes: "Activity hides part of the tree and keeps its state.", records: true, extracted: false },
+    Release { technology: "react", version: "19.2.0", notes: "forwardRef is no longer needed: ref is a prop.", records: false, extracted: false },
+];
+
+/// The releases the client must read itself (`technology@version`): change events with no catalog records and no
+/// `extracted` mark. Every other release costs no model call.
+pub(crate) fn releases_to_read() -> BTreeSet<String> {
+    RELEASES
+        .iter()
+        .filter(|r| !r.records && !r.extracted)
+        .map(|r| format!("{}@{}", r.technology, r.version))
+        .collect()
+}
+
 pub(crate) fn catalog() -> testcat::FixtureCatalog {
+    catalog_with(
+        &json!({"schema": 1, "min_client": "0.1.0", "latest_client": newer_version(),
+        "notice": {"id": "matrix", "until": "2026-11-30", "text": NOTICE}}),
+    )
+}
+
+pub(crate) fn catalog_with(root: &serde_json::Value) -> testcat::FixtureCatalog {
     use testcat::{event, rec, with};
     let cat = testcat::FixtureCatalog::new();
-    cat.root(
-        &json!({"schema": 1, "min_client": "0.1.0", "latest_client": newer_version(),
-            "notice": {"id": "matrix", "until": "2026-11-30", "text": NOTICE}})
-        .to_string(),
-    );
-    let records = vec![
+    cat.root(&root.to_string());
+    let next_records = vec![
         with(
             rec("next:middleware-to-proxy", "pkg:npm/next", "16.1.0"),
-            json!({"change_type": "deprecation", "summary": "The middleware file convention is renamed to proxy.",
-                "terms": [["middleware.ts", 0]], "replaces": ["middleware.ts"], "introduces": ["proxy.ts"]}),
+            json!({"change_type": "deprecation", "subject": "middleware.ts", "summary": "The middleware file convention is renamed to proxy.",
+                "terms": [["middleware.ts", 0]], "replaces": ["middleware.ts"], "introduces": ["proxy.ts"],
+                "evidence": [{"kind": "release_notes", "url": "https://example.org/next/16.1.0", "quote": "q", "snapshot": "sha256:11"}]}),
         ),
         with(
             rec("next:csrf", "pkg:npm/next", "16.0.3"),
             json!({"change_type": "security", "benefit": ["security"], "summary": "Server actions check the Origin header."}),
         ),
     ];
-    cat.tech_events(
-        "next",
-        0,
-        &[("16", records)],
-        &[("16", vec![event("next", "16.1.0", RELEASE_NOTE)])],
-    );
+    // React's record names both of its packages, so this stack needs it more than next: its releases are read first.
+    let react_records = vec![with(
+        rec("react:activity", "pkg:npm/react", "19.1.0"),
+        json!({"summary": "Activity hides part of the tree and keeps its state.",
+            "releases": [{"component": "pkg:npm/react", "version": "19.1.0", "date": "2026-01-01", "line": "19"},
+                {"component": "pkg:npm/react-dom", "version": "19.1.0", "date": "2026-01-01", "line": "19"}]}),
+    )];
+    for (tech, line, records) in [("next", "16", next_records), ("react", "19", react_records)] {
+        let events: Vec<serde_json::Value> = RELEASES
+            .iter()
+            .filter(|r| r.technology == tech)
+            .map(|r| {
+                let mut e = event(tech, r.version, r.notes);
+                if r.extracted {
+                    e["extracted"] = json!(true);
+                }
+                e
+            })
+            .collect();
+        cat.tech_events(tech, 0, &[(line, records)], &[(line, events)]);
+    }
     cat
 }
 
 /// The coverage service's answer for a package: public coverage, nothing in progress.
 pub(crate) fn coverage_job(purl: &str) -> String {
     let name = purl.rsplit('/').next().unwrap_or(purl);
-    let (state, records) = if name == "next" {
-        ("monitoring", 2)
-    } else {
-        ("unsupported", 0)
+    let (state, records) = match name {
+        "next" => ("monitoring", 2),
+        "react" => ("monitoring", 1),
+        _ => ("unsupported", 0),
     };
     json!({"purl": purl, "technology": name, "name": name, "state": state, "stage": "", "records": records, "updated": ""})
         .to_string()
@@ -112,33 +160,97 @@ pub(crate) fn catalog_host(dir: PathBuf) -> Mock {
     })
 }
 
-pub(crate) const OPENAI_OK: &str = r#"{"model":"m","choices":[{"message":{"content":"{\"ok\":true}"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":2}}"#;
-pub(crate) const ANTHROPIC_OK: &str = r#"{"model":"claude-haiku-5-5","stop_reason":"end_turn","content":[{"type":"text","text":"{\"ok\":true}"}],"usage":{"input_tokens":10,"output_tokens":2}}"#;
 pub(crate) const CODEX_NOT_ON_PLAN: &str = r#"{"type":"error","message":"The 'gpt-6-luna' model is not supported when using Codex with a ChatGPT account."}"#;
 
-/// The model provider: OpenAI-compatible chat and Anthropic Messages on one host, answering as `answer` says.
+/// The model provider: OpenAI-compatible chat, Anthropic Messages and the labelling service on one host, each answered
+/// by the mock model ([`model::answer`]), or failing as `answer` says.
 pub(crate) fn provider_host(answer: Answer) -> Mock {
     Mock::start(move |r: &Request| {
-        let ok = if r.path.ends_with("/v1/messages") {
-            ANTHROPIC_OK
+        let ok = if r.path.ends_with("/v1/systemone") {
+            model::jev_answer(&r.body)
         } else {
-            OPENAI_OK
+            let text = model::answer(&model::prompt_of(&r.body));
+            if r.path.ends_with("/v1/messages") {
+                json!({"model": "claude-haiku-5-5", "stop_reason": "end_turn", "content": [{"type": "text", "text": text}],
+                    "usage": {"input_tokens": 10, "output_tokens": 2}})
+                .to_string()
+            } else {
+                json!({"model": "m", "choices": [{"message": {"content": text}, "finish_reason": "stop"}],
+                    "usage": {"prompt_tokens": 10, "completion_tokens": 2}})
+                .to_string()
+            }
+        };
+        // Retries are asked for at once, so a failing provider costs the scenario no waiting.
+        let again = |mut r: Response| {
+            r.headers.push(("Retry-After".into(), "0".into()));
+            r
         };
         match answer {
-            Answer::Ok | Answer::BudgetSpent => Response::json(200, ok),
+            Answer::Ok | Answer::BudgetSpent => Response::json(200, &ok),
             Answer::Refused => {
                 Response::json(401, r#"{"error":{"message":"Incorrect API key provided"}}"#)
             }
-            Answer::RateLimited => {
-                Response::json(429, r#"{"error":{"message":"Rate limit reached"}}"#)
-            }
-            Answer::Down => Response::json(503, r#"{"error":{"message":"Service unavailable"}}"#),
-            Answer::Slow => Response::json(200, ok).after(Duration::from_millis(2500)),
+            Answer::RateLimited => again(Response::json(
+                429,
+                r#"{"error":{"message":"Rate limit reached"}}"#,
+            )),
+            Answer::Down => again(Response::json(
+                503,
+                r#"{"error":{"message":"Service unavailable"}}"#,
+            )),
             Answer::NotOnPlan => {
                 Response::json(404, r#"{"error":{"message":"The model does not exist"}}"#)
             }
+            Answer::Slow => Response::json(200, &ok).after(Duration::from_millis(2500)),
         }
     })
+}
+
+/// What the fake `codex` asks: its prompt in, `codex exec --json` lines out, answered by the mock model.
+pub(crate) fn codex_backend(answer: Answer) -> Mock {
+    Mock::start(move |r: &Request| {
+        if answer == Answer::NotOnPlan {
+            return Response::json(200, CODEX_NOT_ON_PLAN);
+        }
+        let text = model::answer(&r.body);
+        let lines = [
+            json!({"type": "item.completed", "item": {"type": "agent_message", "text": text}}),
+            json!({"type": "turn.completed", "usage": {"input_tokens": 10, "cached_input_tokens": 0, "output_tokens": 2, "reasoning_output_tokens": 0}}),
+        ];
+        Response::bytes(
+            200,
+            lines
+                .iter()
+                .map(|l| format!("{l}\n"))
+                .collect::<String>()
+                .into_bytes(),
+        )
+    })
+}
+
+/// A fake `codex` in `bin`: `--version` and `login status` as a real one answers them; `codex exec` appends its
+/// arguments to `<dir>/args` and its environment to `<dir>/env` (each call ending with a `---` line), and hands its
+/// prompt (the last argument) to the mock model at `backend`. Every invocation's first two arguments go to
+/// `<dir>/invocations`.
+pub(crate) fn fake_codex(bin: &Path, dir: &Path, logged_in: bool, backend: &str, code: i32) {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::create_dir_all(dir).unwrap();
+    let login = if logged_in {
+        "echo 'Logged in using ChatGPT'; exit 0"
+    } else {
+        "echo 'Not logged in'; exit 1"
+    };
+    let script = format!(
+        "#!/bin/sh\nprintf '%s %s\\n' \"$1\" \"$2\" >> \"{d}/invocations\"\n\
+         if [ \"$1\" = \"--version\" ]; then echo 'codex-cli 0.166.0'; exit 0; fi\n\
+         if [ \"$1\" = \"login\" ]; then {login}; fi\n\
+         printf '%s\\n' \"$@\" '---' >> \"{d}/args\"\nenv >> \"{d}/env\"\necho '---' >> \"{d}/env\"\n\
+         for a; do last=\"$a\"; done\n\
+         printf '%s' \"$last\" | /usr/bin/curl -s --noproxy '*' --data-binary @- \"{backend}/exec\"\nexit {code}\n",
+        d = dir.display(),
+    );
+    std::fs::write(bin.join("codex"), script).unwrap();
+    std::fs::set_permissions(bin.join("codex"), std::fs::Permissions::from_mode(0o755)).unwrap();
 }
 
 /// Anything the client tries to reach that is not on this machine: every proxy variable points here.
@@ -156,6 +268,8 @@ pub(crate) struct World {
     pub(crate) base: tempfile::TempDir,
     pub(crate) catalog_host: Mock,
     pub(crate) provider_host: Mock,
+    /// Where the fake `codex` takes its prompts: the mock model, as Codex's own service would answer.
+    pub(crate) codex_backend: Mock,
     pub(crate) trap: Mock,
     pub(crate) _catalog: testcat::FixtureCatalog,
 }
@@ -180,6 +294,7 @@ impl World {
             base: tempfile::tempdir().unwrap(),
             catalog_host: catalog_host(cat.dir.path().to_path_buf()),
             provider_host: provider_host(s.answer),
+            codex_backend: codex_backend(s.answer),
             trap: trap(),
             sentinels: vec![],
             _catalog: cat,
@@ -187,7 +302,7 @@ impl World {
         let repo = w.repo();
         write(
             &repo.join("package.json"),
-            r#"{"name":"shop","private":true,"dependencies":{"next":"^16.0.0","react":"^19.0.0"}}"#,
+            r#"{"name":"shop","private":true,"dependencies":{"next":"^16.0.0","react":"^19.0.0","react-dom":"^19.0.0"}}"#,
         );
         write(
             &repo.join("node_modules/next/package.json"),
@@ -230,18 +345,13 @@ impl World {
         }
         std::fs::create_dir_all(w.base.path().join("bin")).unwrap();
         if s.codex.installed {
-            let out = if s.answer == Answer::NotOnPlan {
-                CODEX_NOT_ON_PLAN
-            } else {
-                support::CODEX_OK
-            };
-            let bin = support::fake_codex(
+            fake_codex(
+                &w.base.path().join("bin"),
                 &w.codex_dir(),
                 s.codex.logged_in,
-                out,
+                &w.codex_backend.url,
                 if s.answer == Answer::NotOnPlan { 1 } else { 0 },
             );
-            std::fs::rename(bin.join("codex"), w.base.path().join("bin/codex")).unwrap();
         }
         if s.answer == Answer::BudgetSpent {
             write(
@@ -333,6 +443,26 @@ impl World {
         for (k, v) in s.invocation.env {
             e.push((k.to_string(), v.to_string()));
         }
+        // The chosen route's address moved to the mock provider (the client allows only this machine there).
+        let route = chosen(self)
+            .and_then(|c| c["provider"].as_str().map(String::from))
+            .unwrap_or_default();
+        // Not for Codex: its route's address is the `codex` command, which the variable would replace.
+        match route.as_str() {
+            "codex" => {}
+            "anthropic" => e.push((
+                "UNSTALE_INFERENCE_BASE_URL".into(),
+                self.provider_host.url.clone(),
+            )),
+            _ => e.push((
+                "UNSTALE_INFERENCE_BASE_URL".into(),
+                format!("{}/v1", self.provider_host.url),
+            )),
+        }
+        e.push((
+            "UNSTALE_LABELS_BASE_URL".into(),
+            self.provider_host.url.clone(),
+        ));
         e
     }
 
@@ -348,6 +478,11 @@ impl World {
     /// Replaces what differs from run to run (temporary paths, ports, the client's version) with stable names.
     pub(crate) fn normalise(&self, text: &str) -> String {
         let mut t = text.to_string();
+        // The client's own path, as an installed hook names it.
+        let exe = PathBuf::from(env!("CARGO_BIN_EXE_unstale"));
+        for e in [exe.canonicalize().unwrap_or(exe.clone()), exe] {
+            t = t.replace(&e.display().to_string(), "unstale");
+        }
         let base = self.base.path().to_path_buf();
         let canon = base.canonicalize().unwrap_or(base.clone());
         for b in [canon, base] {
@@ -360,6 +495,7 @@ impl World {
         t = t
             .replace(&self.catalog_host.url, "https://catalog.example")
             .replace(&self.provider_host.url, "https://provider.example")
+            .replace(&self.codex_backend.url, "https://codex.example")
             .replace(&self.trap.url, "http://proxy.example");
         t = t
             .replace(&newer_version(), "<newer version>")

@@ -5,9 +5,9 @@ $ unstale init --wait 0 --no-animation
 How should unstale read new release notes?
 
      Read with                 Cost a year, this repo   Compared with the best option
-  1  Jev + Vercel AI Gateway   ≈ $0.072                 the best option
-  2  Vercel AI Gateway         ≈ $0.13                  ≈ 11 in 100 breaking flags wrong, not 8
-  3  Anthropic                 ≈ $0.15                  ≈ 90% of its changes
+  1  Jev + Vercel AI Gateway   ≈ $0.083                 the best option
+  2  Vercel AI Gateway         ≈ $0.16                  ≈ 93% of its breaking-change flags
+  3  Anthropic                 ≈ $0.23                  ≈ 90% of its changes
   4  Not now                   free                     ≈ 27%: advisories and deprecations only
      Jev: a labelling service, used beside the provider that reads the notes.
      Keys: JEV_API_KEY, AI_GATEWAY_API_KEY, ANTHROPIC_API_KEY
@@ -15,28 +15,25 @@ How should unstale read new release notes?
 Enter for 1, a number to choose, or d for details: d
 
 Costs are estimates from evaluation runs, billed by the provider to your key or plan.
-This repo has 2 packages unstale follows.
+This repo has 3 packages unstale follows.
 
 1  Jev labelling API + Vercel AI Gateway (JEV_API_KEY, AI_GATEWAY_API_KEY)
-   per package, per year  $0.036
-   this repo, a year      ≈ $0.072
-   first sync, once       ≈ $0.072
+   per package, per year  $0.028
+   this repo, a year      ≈ $0.083
+   first sync, once       ≈ $0.083
    results                the best option: the most complete
 
 2  Vercel AI Gateway (AI_GATEWAY_API_KEY)
-   per package, per year  $0.064
-   this repo, a year      ≈ $0.13
-   first sync, once       ≈ $0.13
-   results                about as many breaking changes as the best option, more flagged wrongly
-                          ≈ 11 in 100 breaking-change flags wrong, against 8
-                          on short release notes ≈ 38 in 100 wrong, against 25 (42 flags)
-                          on upgrade guides ≈ 7 in 100 wrong, against 5 (228 flags)
-   repeats                ≈ 4 more changes listed twice per package, per year
+   per package, per year  $0.055
+   this repo, a year      ≈ $0.16
+   first sync, once       ≈ $0.16
+   results                slightly less complete: ≈ 93% of the best option's breaking-change flags
+   repeats                ≈ 2 more changes listed twice per package, per year
 
 3  Anthropic (ANTHROPIC_API_KEY)
    per package, per year  $0.075
-   this repo, a year      ≈ $0.15
-   first sync, once       ≈ $0.15
+   this repo, a year      ≈ $0.23
+   first sync, once       ≈ $0.23
    results                somewhat less complete: ≈ 90% of the best option's changes
                           fewer from upgrade guides
    repeats                ≈ 23 more changes listed twice per package, per year
@@ -49,14 +46,15 @@ Your choice (Enter for 1):
 Saved for this repo: Jev + Vercel AI Gateway (JEV_API_KEY, AI_GATEWAY_API_KEY) reads release notes.
   ✓ shop · Personal setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
-  Mapped 2 direct dependencies from declared package ranges and checked local references.
+  Mapped 3 direct dependencies from declared package ranges and checked local references.
 
   Upgrades to review · 1 shortlisted
   Upstream change counts, not confirmed issues in your code.
   1. next 16.0.0 → 16.1.0 picks up 1 advisory (affected path not found)
 
-  Capabilities to explore · 0 shortlisted
-  No strong capability candidates in the coverage checked so far.
+  Capabilities to explore · 1 shortlisted
+  1. react · upgrade 19.0.0 → 19.1.0 — Activity hides part of the tree and keeps its state.
+  Dependency match only · repository benefit has not been established.
   These are review candidates, not confirmed benefits or safe-to-apply changes.
   Coverage · no shared coverage acknowledged yet. unstale status later adds to this brief.
 
@@ -78,14 +76,15 @@ unstale <newer version> available: npm install -g @unstale/cli@latest
 $ unstale status --wait 0 --no-animation
   ✓ shop · Personal setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
-  Mapped 2 direct dependencies from declared package ranges and checked local references.
+  Mapped 3 direct dependencies from declared package ranges and checked local references.
 
   Upgrades to review · 1 shortlisted
   Upstream change counts, not confirmed issues in your code.
   1. next 16.0.0 → 16.1.0 picks up 1 advisory (affected path not found)
 
-  Capabilities to explore · 0 shortlisted
-  No strong capability candidates in the coverage checked so far.
+  Capabilities to explore · 1 shortlisted
+  1. react · upgrade 19.0.0 → 19.1.0 — Activity hides part of the tree and keeps its state.
+  Dependency match only · repository benefit has not been established.
   These are review candidates, not confirmed benefits or safe-to-apply changes.
   Coverage · no shared coverage acknowledged yet. unstale status later adds to this brief.
 
@@ -106,7 +105,7 @@ Tokens                0 of 48M this month (the default limit; `unstale setup --l
 Cache                 under 1 MB of 100 MB
 
 # contacted
-#   catalog host: GET /health, GET /v1/root.json, GET /v1/shards/next/16.6b4b93175dbd.jsonl.gz, GET /v1/shards/next/16.events.156a9b1d3a00.jsonl.gz, GET /v1/tech/next.json, GET /v1/tech/react.json, GET /v1/technologies.json
+#   catalog host: GET /health, GET /v1/root.json, GET /v1/shards/next/16.7745374e4470.jsonl.gz, GET /v1/shards/next/16.events.74bcaa014f93.jsonl.gz, GET /v1/shards/react/19.b7c40e95232c.jsonl.gz, GET /v1/shards/react/19.events.04962169f41c.jsonl.gz, GET /v1/tech/next.json, GET /v1/tech/react-dom.json, GET /v1/tech/react.json, GET /v1/technologies.json
 #   model provider: nothing
 #   codex: not run
 #   anything else: nothing

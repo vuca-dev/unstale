@@ -26,8 +26,15 @@ opened.
 Each check has a test that injects a violation (`the_checks_catch_*`) and fails without it; run them with
 `-- --nocapture` to see the failing output. Checks that cannot run yet are ignored tests with their reason.
 
-The model step is the internal `unstale infer` on the chosen provider until the client's own pipeline steps call the
-provider; then `Step::Model` runs them instead, and every scenario's checks apply to them unchanged.
+Model work runs the client's own pipeline, as a user's machine runs it: `unstale session-sync` by hand at a terminal
+and in CI, and in an agent's session the session-start hook that agent installed (run as the agent runs it) with the
+background stage it starts. The mock catalog carries change events for five releases: some with catalog records, one
+marked `extracted` by the catalog, and two with neither. The mock model (`model.rs`) answers extraction, its labels,
+the label questions and matching on every route (OpenAI-compatible, Anthropic, the labelling service, and Codex through
+a fake `codex`), and each scenario asserts that only the two releases with neither were sent, and that with a working
+provider both were read.
+
+- **Hold-the-line 5:** each session-start hook exits 0 within 2 s, prints at most one line and nothing on stderr.
 
 ## Adding a scenario
 

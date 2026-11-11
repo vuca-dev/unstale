@@ -15,6 +15,7 @@ mod testcat;
 
 mod checks;
 mod dimensions;
+mod model;
 mod output;
 mod session;
 mod world;

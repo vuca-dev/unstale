@@ -24,6 +24,10 @@ pub(crate) enum Fault {
     QuestionWithoutTerminal,
     /// The record of the notice shown today is lost, so it shows twice.
     NoticeTwice,
+    /// A release the catalog already covers is sent for extraction.
+    ExtractsCoveredRelease,
+    /// The session-start hook prints two lines and writes to stderr.
+    NoisyHook,
 }
 
 /// Words of the implementation, never of the reader (docs/edge-inference/terminal-principles.md, "Plain words").
@@ -68,10 +72,17 @@ pub(crate) fn check(s: &Scenario, se: &Session) -> Vec<String> {
     let chosen = se.chosen.clone().unwrap_or(serde_json::Value::Null);
     let provider_id = chosen["provider"].as_str().unwrap_or("none");
     let key_env = chosen["key_env"].as_str();
-    let http_provider = matches!(
-        provider_id,
-        "openai" | "vercel" | "openrouter" | "anthropic"
-    );
+    let labels_service = chosen["labels"]["provider"].as_str() == Some("jev");
+    // The paths of the chosen routes on the provider host.
+    let mut routes: Vec<&str> = match provider_id {
+        "anthropic" => vec!["/v1/messages"],
+        "openai" | "vercel" | "openrouter" => vec!["/v1/chat/completions"],
+        _ => vec![],
+    };
+    if labels_service {
+        routes.push("/v1/systemone");
+    }
+    let codex_calls = w.codex_backend.requests();
 
     // Hold-the-line 1: no key or canary anywhere but the chosen provider's auth header; forbidden files never opened.
     for r in &se.ran {
@@ -105,13 +116,24 @@ pub(crate) fn check(s: &Scenario, se: &Session) -> Vec<String> {
             }
         }
     }
-    for r in &provider {
-        let header = if r.path.ends_with("/v1/messages") {
-            "x-api-key"
+    // A key's value as the client reads it: the environment first, else this repository's `.env`.
+    let value_of = |var: &str| -> String {
+        if s.keys.shell.contains(&var) {
+            shell_value(var)
         } else {
-            "authorization"
+            repo_value(var)
+        }
+    };
+    for r in &provider {
+        // The route a request is on, and the key that route was chosen with.
+        let (header, var) = if r.path.ends_with("/v1/systemone") {
+            ("authorization", chosen["labels"]["key_env"].as_str())
+        } else if r.path.ends_with("/v1/messages") {
+            ("x-api-key", key_env)
+        } else {
+            ("authorization", key_env)
         };
-        let want = key_env.map(shell_value);
+        let want = var.map(value_of);
         for c in support::canaries_in(&r.body) {
             v.push(format!(
                 "hold-the-line 1: canary {c} in a request body to the provider ({})",
@@ -154,20 +176,15 @@ pub(crate) fn check(s: &Scenario, se: &Session) -> Vec<String> {
             r.method, r.path
         ));
     }
-    if !provider.is_empty() && !http_provider {
+    if !provider.is_empty() && routes.is_empty() {
         v.push(format!(
             "hold-the-line 2: the provider host was contacted with {provider_id} chosen"
         ));
     }
     for r in &provider {
-        let want = if provider_id == "anthropic" {
-            "/v1/messages"
-        } else {
-            "/v1/chat/completions"
-        };
-        if r.path != want {
+        if !routes.is_empty() && !routes.contains(&r.path.as_str()) {
             v.push(format!(
-                "hold-the-line 2: {} {} is not {provider_id}'s API",
+                "hold-the-line 2: {} {} is not the API of the chosen {provider_id}",
                 r.method, r.path
             ));
         }
@@ -231,23 +248,68 @@ pub(crate) fn check(s: &Scenario, se: &Session) -> Vec<String> {
             v.push(format!("hold-the-line 4: `{}` printed an error", r.shown));
         }
     }
-    if let Some(m) = se
+    let fails = s.answer.failing() || (provider_id == "codex" && !s.codex.logged_in);
+    for r in se.ran.iter().filter(|r| r.step == Step::SessionSync) {
+        let lines: Vec<&str> = r.output.lines().collect();
+        let last = lines.last().copied().unwrap_or("");
+        if !r.terminal && lines.len() != 1 {
+            v.push(format!(
+                "hold-the-line 4: `{}` without a terminal printed {} lines, not one: {:?}",
+                r.shown,
+                lines.len(),
+                r.output
+            ));
+        }
+        if fails && routes_usable(&chosen) && !last.starts_with("warning: ") {
+            v.push(format!(
+                "hold-the-line 4: a provider or budget failure did not end `{}` with one warning line: {last:?}",
+                r.shown
+            ));
+        }
+    }
+    // Hold-the-line 5: session start returns within 2 s, exits 0, prints at most one line and nothing on stderr.
+    for r in se
         .ran
         .iter()
-        .find(|r| r.step == Step::Model && !r.shown.is_empty())
+        .filter(|r| r.step == Step::SessionStart && !r.shown.is_empty())
     {
-        let lines: Vec<&str> = m.output.lines().collect();
-        let deferred = lines.len() == 1 && lines[0].starts_with("warning: ");
-        let answered = lines == [r#"{"ok":true}"#];
-        if !(deferred || answered) {
-            v.push(format!("hold-the-line 4: the model step printed neither an answer nor one deferral line: {:?}", m.output));
+        if r.output.lines().count() > 1 {
+            v.push(format!(
+                "hold-the-line 5: session start printed more than one line: {:?}",
+                r.output
+            ));
         }
-        let fails = s.answer.failing() || (provider_id == "codex" && !s.codex.logged_in);
-        if fails && !deferred {
-            v.push(
-                "hold-the-line 4: a provider or budget failure did not defer with one line".into(),
-            );
+        if r.stderr.as_deref().is_some_and(|e| !e.is_empty()) {
+            v.push(format!(
+                "hold-the-line 5: session start wrote to stderr: {:?}",
+                r.stderr
+            ));
         }
+        if r.took >= Duration::from_secs(2) {
+            v.push(format!("hold-the-line 5: session start took {:?}", r.took));
+        }
+    }
+
+    // The model steps run only for releases that have change events, no catalog records and no `extracted` mark;
+    // with a working provider, every such release is read.
+    let mut asked: BTreeSet<String> = BTreeSet::new();
+    for prompt in provider
+        .iter()
+        .map(|r| model::prompt_of(&r.body))
+        .chain(codex_calls.iter().map(|r| r.body.clone()))
+    {
+        asked.extend(model::releases_asked(&prompt));
+    }
+    let due = releases_to_read();
+    for r in asked.difference(&due) {
+        v.push(format!(
+            "model steps: {r} was sent for extraction, though the catalog covers it or marks it processed"
+        ));
+    }
+    if !asked.is_empty() && s.answer == Answer::Ok && s.fault.is_none() && asked != due {
+        v.push(format!(
+            "model steps: with the provider answering, only {asked:?} of {due:?} were read"
+        ));
     }
 
     // At most one question per path, none without a terminal.
@@ -436,6 +498,36 @@ fn the_checks_catch_internal_vocabulary_and_progress_lines_without_a_terminal() 
     assert!(wording("unstale infer", false, now).is_empty());
 }
 
+#[test]
+fn the_checks_catch_a_covered_release_sent_for_extraction() {
+    let v = with_fault(
+        "shell-key",
+        "no-codex",
+        "terminal",
+        Fault::ExtractsCoveredRelease,
+    );
+    assert!(
+        v.iter()
+            .any(|l| l.starts_with("model steps: next@16.1.0 was sent")),
+        "{v:?}"
+    );
+}
+
+#[test]
+fn the_checks_catch_a_noisy_session_start() {
+    let v = with_fault("shell-key", "no-codex", "agent", Fault::NoisyHook);
+    assert!(
+        v.iter()
+            .any(|l| l.starts_with("hold-the-line 5: session start printed more than one line")),
+        "{v:?}"
+    );
+    assert!(
+        v.iter()
+            .any(|l| l.starts_with("hold-the-line 5: session start wrote to stderr")),
+        "{v:?}"
+    );
+}
+
 // ------------------------------------------------------------------------------------------- not runnable yet
 
 /// Hold-the-line 5 on a set-up repository: session start returns within 2 s, exits 0 and prints at most one line, in
@@ -503,6 +595,15 @@ fn upgrading_from_the_previous_release_during_grace() {}
 #[test]
 #[ignore = "needs the min_client value the catalog raises to at cutover"]
 fn running_after_the_min_client_bump() {}
+
+/// Whether the chosen provider's routes are ones a pass can call: a provider is chosen and its key variables are its
+/// routes' own.
+fn routes_usable(chosen: &serde_json::Value) -> bool {
+    serde_json::from_value::<serde_json::Value>(chosen.clone())
+        .ok()
+        .and_then(|c| c["provider"].as_str().map(|p| p != "none"))
+        .unwrap_or(false)
+}
 
 /// The provider the session ended with, if any (including `none`).
 fn provider_id_after(w: &World) -> Option<String> {

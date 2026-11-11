@@ -5,21 +5,22 @@ $ unstale init --wait 0 --no-animation
 How should unstale read new release notes?
 
      Read with   Key              Cost a year, this repo   Compared with the best option
-  1  OpenAI      OPENAI_API_KEY   ≈ $0.13                  ≈ 11 in 100 breaking flags wrong, not 8
+  1  OpenAI      OPENAI_API_KEY   ≈ $0.27                  ≈ 93% of its breaking-change flags
   2  Not now                      free                     ≈ 27%: advisories and deprecations only
 
 Enter for 1, a number to choose, or d for details:
 Saved for this repo: OpenAI (OPENAI_API_KEY) reads release notes.
   ✓ shop · Personal setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
-  Mapped 2 direct dependencies from declared package ranges and checked local references.
+  Mapped 3 direct dependencies from declared package ranges and checked local references.
 
   Upgrades to review · 1 shortlisted
   Upstream change counts, not confirmed issues in your code.
   1. next 16.0.0 → 16.1.0 picks up 1 advisory (affected path not found)
 
-  Capabilities to explore · 0 shortlisted
-  No strong capability candidates in the coverage checked so far.
+  Capabilities to explore · 1 shortlisted
+  1. react · upgrade 19.0.0 → 19.1.0 — Activity hides part of the tree and keeps its state.
+  Dependency match only · repository benefit has not been established.
   These are review candidates, not confirmed benefits or safe-to-apply changes.
   Coverage · no shared coverage acknowledged yet. unstale status later adds to this brief.
 
@@ -40,22 +41,25 @@ unstale <newer version> available: npm install -g @unstale/cli@latest
 
 $ unstale sync
 next: 2 upstream changes on file, nothing new
+react: 1 upstream change on file, nothing new
 
-# model step: the internal `unstale infer` on the chosen provider, standing in for the client's own pipeline steps
-$ unstale infer --provider openai  (no terminal)
+$ unstale session-sync
+Syncing the catalog, then reading new release notes with your provider. Ctrl-C stops it; the next run resumes.
+  Reading 1 release note of react
 warning: the provider is rate limiting, so new release notes wait. The next sync tries again.
 
 $ unstale status --wait 0 --no-animation
   ✓ shop · Personal setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
-  Mapped 2 direct dependencies from declared package ranges and checked local references.
+  Mapped 3 direct dependencies from declared package ranges and checked local references.
 
   Upgrades to review · 1 shortlisted
   Upstream change counts, not confirmed issues in your code.
   1. next 16.0.0 → 16.1.0 picks up 1 advisory (affected path not found)
 
-  Capabilities to explore · 0 shortlisted
-  No strong capability candidates in the coverage checked so far.
+  Capabilities to explore · 1 shortlisted
+  1. react · upgrade 19.0.0 → 19.1.0 — Activity hides part of the tree and keeps its state.
+  Dependency match only · repository benefit has not been established.
   These are review candidates, not confirmed benefits or safe-to-apply changes.
   Coverage · no shared coverage acknowledged yet. unstale status later adds to this brief.
 
@@ -71,12 +75,13 @@ $ unstale status --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+warning: the provider is rate limiting, so new release notes wait. The next sync tries again.
 Release notes         OpenAI (OPENAI_API_KEY), this repo's config
 Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)
 Cache                 under 1 MB of 100 MB
 
 # contacted
-#   catalog host: GET /health, GET /v1/root.json, GET /v1/shards/next/16.6b4b93175dbd.jsonl.gz, GET /v1/shards/next/16.events.156a9b1d3a00.jsonl.gz, GET /v1/tech/next.json, GET /v1/tech/react.json, GET /v1/technologies.json
+#   catalog host: GET /health, GET /v1/root.json, GET /v1/shards/next/16.7745374e4470.jsonl.gz, GET /v1/shards/next/16.events.74bcaa014f93.jsonl.gz, GET /v1/shards/react/19.b7c40e95232c.jsonl.gz, GET /v1/shards/react/19.events.04962169f41c.jsonl.gz, GET /v1/tech/next.json, GET /v1/tech/react-dom.json, GET /v1/tech/react.json, GET /v1/technologies.json
 #   model provider: POST /v1/chat/completions (4 requests)
 #   codex: not run
 #   anything else: nothing
