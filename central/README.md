@@ -42,6 +42,7 @@ ingested extraction is recorded, so a rerun makes no uncached calls and writes b
 | `src/pipeline/classify/adapter.ts` | Classifier adapter: Jev first, the extraction model answering choices as the per-request fallback, cache, usage log |
 | `src/pipeline/packs.ts` | The content-hash caches (classifier, model, registry, the day's docs pages) as append-only pack files, a few thousand instead of one file per entry |
 | `src/pipeline/classify/labels.ts`, `vocab.ts`, `thresholds.ts` | change_type, surface, breaking and benefit questions; thresholds |
+| `src/pipeline/prompts.ts`, `../schema/prompts/*.json` | Every model-facing text (prompts, response schema, label questions, rubrics, judge rules) and the thresholds as versioned data, read by central and the client alike; `test/prompt-snapshot.test.ts` holds the request bytes and cache keys they produce |
 | `src/pipeline/type-stubs.ts` | Deprecations a technology's type stubs (`@types/<pkg>`) state as `@deprecated` in their published declarations, diffed per release line, as records released in the stub; registry and tarball reads, no model call |
 | `src/pipeline/advisory-apis.ts` | Each advisory's affected APIs from its text (one cached extraction-model call per advisory, about $0.0001), published in the tech index for advisories no record locates |
 | `src/pipeline/match.ts`, `store.ts` | Matching at ingest, id minting, revision and label counters, merge and retraction |

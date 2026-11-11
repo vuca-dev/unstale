@@ -5,7 +5,7 @@ import { attributeEvidence, type Classification, type Questions } from "./classi
 import type { Labels } from "./classify/labels.ts";
 import type { Incoming } from "./extract.ts";
 import { lineFn } from "./lines.ts";
-import { fill, judgeText } from "./prompts.ts";
+import { fill, judgeText, thresholdsData } from "./prompts.ts";
 import { applyChange, combineReleases, mergeInto, mintId, union, type Evidence, type Judged, type StoredRecord, type TechStore } from "./store.ts";
 import { CROSS_SAME_P, CROSS_SAME_P_SHORT, LINEAGE_SAME_P, QUESTION_FLOOR, QUOTE_GUARD_BELOW_SHORT, SAME_P, SAME_P_SHORT } from "./thresholds.ts";
 import { FLIPS, technical } from "../docs/materiality.ts";
@@ -158,10 +158,10 @@ export function matchRequest(techName: string, inc: Incoming, breaking: boolean,
 // Tuned on the 83 ingest matches of the first full run, so not an independent measurement.
 
 /** At or above this p the quote guard is skipped (the advisory and breaking guards still apply); requests under the
- * shorter rules use QUOTE_GUARD_BELOW_SHORT (thresholds.ts). */
-export const QUOTE_GUARD_BELOW = 0.95;
+ * shorter rules use QUOTE_GUARD_BELOW_SHORT (thresholds.ts). Both values are in schema/prompts/thresholds.json. */
+export const QUOTE_GUARD_BELOW = thresholdsData.quote_guard_below;
 /** Ratcliff/Obershelp similarity (as Python's difflib.SequenceMatcher.ratio, without its junk heuristic). */
-export const QUOTE_SIMILARITY = 0.9;
+export const QUOTE_SIMILARITY = thresholdsData.quote_similarity;
 
 const ADVISORY = /\bGHSA(?:-[a-z0-9]{4}){3}\b|\bCVE-\d{4}-\d{4,}\b/gi;
 
