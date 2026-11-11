@@ -1,0 +1,79 @@
+# An OpenAI key only in this repo's .env, first run in a terminal
+# keys: dotenv-key · Codex: no-codex · run: terminal · repo config: none · client: fresh · provider: answers
+
+$ unstale init --wait 0 --no-animation
+Choose how unstale reads new release notes (costs are estimates; this repo has 2 technologies):
+  1) OpenAI (OPENAI_API_KEY in .env): $0.090 per technology-year · this repo ≈ $0.18 a year, first sync ≈ $0.18 once · slightly less complete: ≈ 93% of the best option's breaking-change flags; ≈ 2 more duplicate records per technology-year
+  2) None: deterministic signals only; new change details need a key or Codex
+Choose 1–2, or press Enter for 1 (recommended):
+Model provider: OpenAI (OPENAI_API_KEY) · saved in .unstale/config.json; `unstale setup` changes it
+  ✓ shop · Personal setup ready
+  Next: run unstale-review in your coding agent · copyable prompt below.
+  Mapped 2 direct dependencies from declared package ranges and checked local references.
+
+  Upgrades to review · 1 shortlisted
+  Upstream change counts, not confirmed issues in your code.
+  1. next 16.0.0 → 16.1.0 picks up 1 advisory (affected path not found)
+
+  Capabilities to explore · 0 shortlisted
+  No strong capability candidates in the coverage checked so far.
+  These are review candidates, not confirmed benefits or safe-to-apply changes.
+  Coverage · no shared coverage acknowledged yet. unstale status later adds to this brief.
+
+
+  .unstale/ is Git-ignored. Share reviews and decisions: unstale init --mode shared --wait 0
+  Details: .unstale/onboarding-report.md
+
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  NEXT · Review with unstale-review · paste into your coding agent
+
+  Use .unstale/skills/review/SKILL.md to review this repository. Rank upgrades and capabilities by
+  likely impact. Recommend what to do first, with affected files and trade-offs. Return proposals
+  only; do not edit files.
+
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+unstale notice: This is the catalog's notice for the matrix (shown once a day).
+unstale <newer version> available: npm install -g @unstale/cli@latest
+
+$ unstale sync
+synced next: 2 records (sources checked 2026-10-15T00:00:00Z); unchanged; change events 0 downloaded, 1 reused
+Not covered by the catalog: 1 other candidate technologies (no index for them, or no record names a package used here).
+
+# model step: the internal `unstale infer` on the chosen provider, standing in for the client's own pipeline steps; OPENAI_API_KEY is only in this repo's .env, which `unstale infer` does not read (the pipeline steps read it once the user has chosen it)
+$ unstale infer --provider openai  (no terminal)
+deferred: OPENAI_API_KEY is not set
+
+$ unstale status --wait 0 --no-animation
+  ✓ shop · Personal setup ready
+  Next: run unstale-review in your coding agent · copyable prompt below.
+  Mapped 2 direct dependencies from declared package ranges and checked local references.
+
+  Upgrades to review · 1 shortlisted
+  Upstream change counts, not confirmed issues in your code.
+  1. next 16.0.0 → 16.1.0 picks up 1 advisory (affected path not found)
+
+  Capabilities to explore · 0 shortlisted
+  No strong capability candidates in the coverage checked so far.
+  These are review candidates, not confirmed benefits or safe-to-apply changes.
+  Coverage · no shared coverage acknowledged yet. unstale status later adds to this brief.
+
+
+  .unstale/ is Git-ignored. Share reviews and decisions: unstale init --mode shared --wait 0
+  Details: .unstale/onboarding-report.md
+
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  NEXT · Review with unstale-review · paste into your coding agent
+
+  Use .unstale/skills/review/SKILL.md to review this repository. Rank upgrades and capabilities by
+  likely impact. Recommend what to do first, with affected files and trade-offs. Return proposals
+  only; do not edit files.
+
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Model provider: OpenAI (OPENAI_API_KEY), from this repo's config · `unstale setup` changes it
+Model tokens this month: 0 of 48M (monthly budget; past it, work waits for next month)
+
+# contacted
+#   catalog host: GET /health, GET /v1/root.json, GET /v1/shards/next/16.6b4b93175dbd.jsonl.gz, GET /v1/shards/next/16.events.156a9b1d3a00.jsonl.gz, GET /v1/tech/next.json, GET /v1/tech/react.json, GET /v1/technologies.json
+#   model provider: nothing
+#   codex: not run
+#   anything else: nothing

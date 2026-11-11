@@ -2,14 +2,12 @@
 //! Provider setup through the binary: detection by name only, `--inference`, no question without a terminal, and
 //! canaries that must never leave the files they were planted in.
 
+mod support;
+
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
-use std::time::{Duration, Instant};
-
-const REPO_CANARY: &str = "canary-repo-env-3f9a1c";
-const OTHER_CANARY: &str = "canary-other-repo-8d2e7b";
-const AUTH_CANARY: &str = "canary-codex-auth-51c0aa";
-const SHELL_CANARY: &str = "canary-shell-key-77be42";
+use std::time::Duration;
+use support::{AUTH_CANARY, OTHER_CANARY, REPO_CANARY, SHELL_CANARY};
 
 /// A repository with a sibling repository, a home directory with a Codex auth file, a user config directory, a cache
 /// and a `bin` directory with a fake `codex`, all under one temporary directory.
@@ -37,18 +35,8 @@ impl World {
             .status()
             .unwrap();
         if let Some(logged_in) = codex_logged_in {
-            let login = if logged_in {
-                "echo 'Logged in using ChatGPT'; exit 0"
-            } else {
-                "echo 'Not logged in'; exit 1"
-            };
-            let script = format!(
-                "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'codex-cli 0.166.0'; exit 0; fi\nif [ \"$1\" = \"login\" ]; then {login}; fi\nexit 2\n"
-            );
-            let p = w.path("bin/codex");
-            std::fs::write(&p, script).unwrap();
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+            // `codex` in `codex/bin`, which is on PATH; `exec` is never expected here, so it fails.
+            support::fake_codex(&w.path("codex"), logged_in, "", 2);
         }
         w
     }
@@ -83,7 +71,11 @@ impl World {
             .env_clear()
             .env(
                 "PATH",
-                format!("{}:/usr/bin:/bin", self.path("bin").display()),
+                format!(
+                    "{}:{}:/usr/bin:/bin",
+                    self.path("codex/bin").display(),
+                    self.path("bin").display()
+                ),
             )
             .env("HOME", self.path("home"))
             .env("UNSTALE_CONFIG_DIR", self.path("config"))
@@ -102,28 +94,8 @@ impl World {
 
     /// Runs to completion, or fails the test after `limit` (a run blocked opening a file it must never open).
     fn run_within(&self, args: &[&str], switch: bool, limit: Duration) -> (i32, String) {
-        let mut child = self.command(args, switch).spawn().unwrap();
-        let start = Instant::now();
-        loop {
-            if child.try_wait().unwrap().is_some() {
-                break;
-            }
-            if start.elapsed() > limit {
-                let _ = child.kill();
-                panic!(
-                    "`unstale {}` did not finish in {limit:?}: it is blocked opening a file it must never open",
-                    args.join(" ")
-                );
-            }
-            std::thread::sleep(Duration::from_millis(20));
-        }
-        let out = child.wait_with_output().unwrap();
-        let text = format!(
-            "{}{}",
-            String::from_utf8_lossy(&out.stdout),
-            String::from_utf8_lossy(&out.stderr)
-        );
-        (out.status.code().unwrap_or(-1), text)
+        let (code, out, err) = support::run_within(&mut self.command(args, switch), limit);
+        (code, out + &err)
     }
 
     fn ok(&self, args: &[&str], switch: bool) -> String {
@@ -153,7 +125,7 @@ impl World {
             .unwrap()
     }
 
-    /// Every file under the temporary directory but the three planted ones, as text.
+    /// Every file under the temporary directory but the three planted ones and the fake `codex`'s records, as text.
     fn written_files(&self) -> Vec<(PathBuf, String)> {
         let planted = [
             self.path("repo/.env"),
@@ -168,7 +140,8 @@ impl World {
                 let t = e.file_type().unwrap();
                 if t.is_dir() {
                     stack.push(p);
-                } else if t.is_file() && !planted.contains(&p) {
+                } else if t.is_file() && !planted.contains(&p) && !p.starts_with(self.path("codex"))
+                {
                     out.push((
                         p.clone(),
                         String::from_utf8_lossy(&std::fs::read(&p).unwrap()).to_string(),
@@ -288,41 +261,15 @@ impl World {
         self.at_terminal_with(args, input, &[])
     }
 
-    /// [`World::at_terminal`] with extra environment variables.
+    /// [`World::at_terminal`] with extra environment variables. `input` is typed at the question, if one is asked.
     fn at_terminal_with(&self, args: &[&str], input: &str, extra: &[(&str, &str)]) -> String {
-        use std::io::Write;
-        let bin = env!("CARGO_BIN_EXE_unstale");
-        let c = self.command(args, true);
-        let mut s = if cfg!(target_os = "macos") {
-            let mut s = Command::new("script");
-            s.arg("-q").arg("/dev/null").arg(bin).args(args);
-            s
-        } else {
-            let mut s = Command::new("script");
-            s.args(["-qec", &format!("{bin} {}", args.join(" ")), "/dev/null"]);
-            s
-        };
-        s.current_dir(self.path("repo"))
-            .env_clear()
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        for (k, v) in c.get_envs() {
-            if let Some(v) = v {
-                s.env(k, v);
-            }
-        }
+        let mut c = self.command(args, true);
         for (k, v) in extra {
-            s.env(k, v);
+            c.env(k, v);
         }
-        let mut child = s.spawn().unwrap();
-        // Kept open until the run ends: closing it would reach the program as end of input.
-        let mut stdin = child.stdin.take().unwrap();
-        std::thread::sleep(Duration::from_millis(300));
-        let _ = stdin.write_all(input.as_bytes());
-        let out = child.wait_with_output().unwrap();
-        drop(stdin);
-        String::from_utf8_lossy(&out.stdout).replace('\r', "")
+        let prompt = "Choose 1–|Press Enter to use it";
+        let (_, out) = support::at_terminal(&c, &[(prompt, input)], Duration::from_secs(60));
+        out.replace('\r', "")
     }
 }
 
