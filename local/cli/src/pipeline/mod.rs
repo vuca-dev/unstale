@@ -150,8 +150,10 @@ pub fn routes_with(
     let (main, labels) = choice.providers()?;
     let consented: Vec<String> = choice.key_vars().into_iter().map(String::from).collect();
     let make = |mut c: ProviderConfig, base: &str| {
-        // A route's address may be moved to this machine only (a local proxy, the test servers).
-        if let Ok(b) = std::env::var(base)
+        // A route's address may be moved to this machine only (a local proxy, the test servers). Codex's route has no
+        // address (its `base_url` is the program to run), so the variable never applies to it.
+        if c.kind != crate::inference::Kind::Codex
+            && let Ok(b) = std::env::var(base)
             && loopback(b.trim())
         {
             c.base_url = b.trim().to_string();
@@ -414,6 +416,25 @@ pub fn run_step(
     }
 }
 
+/// How many new release notes of `techs` wait to be read here: what the catalog leaves to this machine, less what a
+/// pass here has already taken in.
+pub fn unread(ctx: &crate::Ctx, techs: &BTreeSet<String>) -> usize {
+    let purls = crate::stack::detect(&ctx.root)
+        .map(|st| st.purls())
+        .unwrap_or_default();
+    let releases: BTreeSet<(String, String)> = plan(&ctx.cache, techs, &purls, &crate::util::today())
+        .into_iter()
+        .flat_map(|p| {
+            let done = store::LocalStore::load(&ctx.cache, &p.technology).done;
+            p.events
+                .into_iter()
+                .filter(move |e| !done.contains(&e.id))
+                .map(move |e| (p.technology.clone(), e.version))
+        })
+        .collect();
+    releases.len()
+}
+
 /// One warning when this repository has releases waiting for the model steps and nothing will run them: the steps run
 /// only in the session-start background stage, and this repository has no agent session-start hook, or turns the
 /// session-start sync off. `None` with the switch off, with no provider chosen, or with nothing waiting.
@@ -437,21 +458,7 @@ pub fn unrun_line(ctx: &crate::Ctx, techs: &BTreeSet<String>) -> Option<String> 
         return None;
     };
     stored_choice(Some(&ctx.root))?.providers()?;
-    let purls = crate::stack::detect(&ctx.root)
-        .map(|st| st.purls())
-        .unwrap_or_default();
-    // What the catalog leaves to this machine, less what a pass here has already taken in.
-    let releases: BTreeSet<(String, String)> = plan(&ctx.cache, techs, &purls, &crate::util::today())
-        .into_iter()
-        .flat_map(|p| {
-            let done = store::LocalStore::load(&ctx.cache, &p.technology).done;
-            p.events
-                .into_iter()
-                .filter(move |e| !done.contains(&e.id))
-                .map(move |e| (p.technology.clone(), e.version))
-        })
-        .collect();
-    let n = releases.len();
+    let n = unread(ctx, techs);
     (n > 0).then(|| {
         format!(
             "warning: {why}, so {n} new release note{} {} unread. {fix}",

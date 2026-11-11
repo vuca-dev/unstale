@@ -1,7 +1,7 @@
 How should unstale read new release notes?
 
-     Read with  Key                Cost a year, this repo  Compared with the best option
-  1  Anthropic  ANTHROPIC_API_KEY  ≈ $2.86                 ≈ 90% of its changes
-  2  Not now                       free                    ≈ 27%: advisories and deprecations only
+     Read with   Key                 Cost a year, this repo   Compared with the best option
+  1  Anthropic   ANTHROPIC_API_KEY   ≈ $2.86                  ≈ 90% of its changes
+  2  Not now                         free                     ≈ 27% of its changes in new releases
 
 Enter for 1, a number to choose, or d for details: 

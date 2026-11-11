@@ -74,6 +74,7 @@ $ unstale init --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+warning: unstale <this version> is too old for the catalog; nothing new arrives. `npm install -g @unstale/cli@latest`
 
 $ unstale status --wait 0 --no-animation
   ✓ shop · Shared setup ready
@@ -104,6 +105,7 @@ $ unstale status --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+warning: unstale <this version> is too old for the catalog; nothing new arrives. `npm install -g @unstale/cli@latest`
 warning: OPENAI_API_KEY is not set here, so new release notes are not read. Set it.
 warning: `session_sync` is off in .unstale/config.json, so 2 new release notes are unread. Remove it.
 Release notes         OpenAI (OPENAI_API_KEY), this repo's config
@@ -115,6 +117,3 @@ Cache                 under 1 MB of 100 MB
 #   model provider: nothing
 #   codex: not run
 #   through the proxy: nothing
-
-# known product bugs (expected to fail until fixed; see KNOWN_BUGS in checks.rs)
-#   min_client: no command said the catalog no longer serves this client

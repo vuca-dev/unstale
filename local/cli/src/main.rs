@@ -390,6 +390,7 @@ fn dispatch(cli: Cli, started: std::time::Instant) -> Result<u8> {
         }
         return if ctx.config.service.is_some() { onboarding::run(&ctx, wait.unwrap_or(0), !no_animation, false) } else { Ok(code) }
             .inspect(|_| {
+                if let Some(line) = refused_line() { println!("{line}"); }
                 notice::print(&ctx.cache, &ctx.tool);
                 // The one step only the user can take, said once.
                 if inference::enabled() && let Some(line) = session::codex_trust_line(&ctx) { println!("{line}"); }
@@ -429,17 +430,23 @@ fn dispatch(cli: Cli, started: std::time::Instant) -> Result<u8> {
             let (mut warnings, mut state) = if inference::enabled() { setup::status_lines(&ctx) } else { (vec![], vec![]) };
             // A refusal stays until a sync verifies the release notes. Only this repository's technologies are named.
             let ours = stack::detect(&ctx.root).map(|st| onboarding::candidates(&ctx, &st)).unwrap_or_default();
-            let failed: Vec<(String, String)> = cache::events_failed(&ctx.cache).into_iter().filter(|(t, _)| ours.contains(t)).collect();
-            warnings.extend(events_failed_line(&failed));
+            warnings.extend(status_events_failed_line(&ctx, &ours));
             warnings.extend(pipeline::unrun_line(&ctx, &ours));
             // The session-start sync's last failure and how fresh this machine is (switch on only).
             let (wrong, fresh) = session::status_lines(&ctx);
-            warnings.extend(wrong);
+            // A catalog that no longer serves this client comes first, said once: not again as the session-start sync's
+            // failure, which is the same refusal.
+            let refused = sync::refused();
+            warnings.splice(0..0, refused_line());
+            warnings.extend(wrong.into_iter().filter(|w| !refused.as_ref().is_some_and(|(_, m)| w.contains(m.as_str()))));
             state.extend(fresh);
             // The cache's size (state); a warning and its detail line when it is over its limit or was not cleaned up.
             for line in cache_gc::status_lines(&ctx.cache) {
                 if line.starts_with("warning") || line.starts_with("  ") { warnings.push(line) } else { state.push(line) }
             }
+            // Each warning once: setup's and the session state's name the same stopped work in the same words.
+            let mut seen = std::collections::BTreeSet::new();
+            warnings.retain(|w| !w.starts_with("warning") || seen.insert(w.clone()));
             for line in warnings.iter().chain(&state) { println!("{line}"); }
         }),
         Cmd::SessionSync => cmd_session_sync(&ctx),
@@ -456,6 +463,41 @@ fn dispatch(cli: Cli, started: std::time::Instant) -> Result<u8> {
         Cmd::Ledger { cmd: LedgerCmd::Check } => cmd_ledger_check(&ctx),
         Cmd::Run { target } => cmd_run(&ctx, &target),
     }
+}
+
+/// How each of `techs` is named to the user: by the plain name its coverage job gives it (the catalog id
+/// `zod-6ac59393` is `zod`), else its id, which a technology with no job has from its package. A name two of `techs`
+/// share keeps the id beside it, `zod (zod-6ac59393)`, so the lines stay apart.
+fn tech_labels<'a>(pending: &onboarding::Pending, techs: impl IntoIterator<Item = &'a String>) -> BTreeMap<String, String> {
+    let mut plain: BTreeMap<String, String> = BTreeMap::new();
+    for t in techs {
+        let job = pending.jobs.values().find(|j| &j.technology == t).map(|j| util::one_line(&j.name, 100)).filter(|n| !n.is_empty());
+        plain.insert(t.clone(), job.unwrap_or_else(|| t.clone()));
+    }
+    let mut uses: BTreeMap<&str, usize> = BTreeMap::new();
+    for n in plain.values() {
+        *uses.entry(n.as_str()).or_default() += 1;
+    }
+    plain
+        .iter()
+        .map(|(t, n)| (t.clone(), if uses[n.as_str()] > 1 && n != t { format!("{n} ({t})") } else { n.clone() }))
+        .collect()
+}
+
+/// The warning `status` gives for this repository's technologies whose change events the last sync refused.
+fn status_events_failed_line(ctx: &Ctx, ours: &std::collections::BTreeSet<String>) -> Option<String> {
+    let failed: Vec<(String, String)> = cache::events_failed(&ctx.cache).into_iter().filter(|(t, _)| ours.contains(t)).collect();
+    let labels = tech_labels(&onboarding::read(ctx), failed.iter().map(|(t, _)| t));
+    events_failed_line(&failed.into_iter().map(|(t, why)| (labels[&t].clone(), why)).collect::<Vec<_>>())
+}
+
+/// When this run's catalog sync was refused (the catalog no longer serves this version): what happened and the one
+/// command that upgrades. `init` and `status` keep going on the cached catalog (their report says so), so it is a
+/// warning, not an exit code.
+fn refused_line() -> Option<String> {
+    let (refusal, _) = sync::refused()?;
+    let exe = std::env::current_exe().and_then(|e| e.canonicalize()).unwrap_or_default();
+    Some(refusal.line(notice::upgrade_command(&exe)))
 }
 
 /// One line naming the technologies whose change events the last sync refused; their records synced regardless.
@@ -810,13 +852,33 @@ fn cmd_session_sync(ctx: &Ctx) -> Result<u8> {
     }
     let code = session::background(ctx)?;
     let state = session::read_state(&ctx.tool);
+    let choice = pipeline::stored_choice(Some(&ctx.root));
+    // No choice, or "Not now" (a choice of none): nothing was set to read them.
+    let no_choice = match &choice {
+        None => Some("No provider is chosen, so no release notes were read. Choose one: `unstale setup`."),
+        Some(c) if c.is_none() => Some("No release notes were read: this repo is set to Not now. To change it: `unstale setup`."),
+        Some(_) => None,
+    };
+    // The catalog refused this client: nothing was read. Said once, with what waits for the upgrade.
+    if let Some(line) = refused_line() {
+        println!("{line}");
+        if let Some(l) = no_choice {
+            println!("{l}");
+        } else {
+            let n = pipeline::unread(ctx, &session::cached_technologies(ctx));
+            if n > 0 {
+                println!("No release notes were read: {n} wait until the catalog serves this unstale.");
+            }
+        }
+        return Ok(code);
+    }
     if let Some(f) = &state.failure {
         println!("warning: the catalog sync did not finish: {f}");
     }
     println!("{}", match pipeline::last_pass() {
         Some(s) => s.line().unwrap_or_else(|| "Nothing new to read: every release note here is read.".into()),
         None if state.deferred.is_some() => state.deferred.clone().unwrap_or_default(),
-        None if pipeline::stored_choice(Some(&ctx.root)).is_none() => "No provider is chosen, so no release notes were read. Choose one: `unstale setup`.".into(),
+        None if no_choice.is_some() => no_choice.unwrap_or_default().into(),
         None => "No release notes were read: another unstale is reading them on this machine; it finishes them.".into(),
     });
     Ok(code)
@@ -838,11 +900,14 @@ fn cmd_sync(ctx: &Ctx) -> Result<u8> {
     // nothing about what the catalog does not cover (nothing to do about it) or how the files arrived. Release notes
     // that could not be verified are a warning below. With the switch off the lines are as they were.
     let plain = util::edge_inference();
+    // Each technology by its plain name (`zod`), not the catalog's id (`zod-6ac59393`).
+    let labels = tech_labels(&onboarding::read(ctx), rep.synced.iter().map(|t| &t.technology).chain(rep.failed.iter().map(|(t, _)| t)));
+    let name = |t: &str| labels.get(t).cloned().unwrap_or_else(|| t.to_string());
     for t in &rep.synced {
         if plain {
             println!(
                 "{}: {} upstream change{} on file, {}",
-                t.technology,
+                name(&t.technology),
                 t.records,
                 if t.records == 1 { "" } else { "s" },
                 if t.unchanged { "nothing new" } else { "updated" }
@@ -851,7 +916,7 @@ fn cmd_sync(ctx: &Ctx) -> Result<u8> {
         }
         println!(
             "synced {}: {} records (sources checked {}); {}",
-            t.technology,
+            name(&t.technology),
             t.records,
             t.checked,
             if t.unchanged { "unchanged".to_string() } else { format!("{} shard(s) downloaded, {} reused", t.downloaded, t.reused) }
@@ -884,11 +949,11 @@ fn cmd_sync(ctx: &Ctx) -> Result<u8> {
             if rep.withheld.len() == 1 { "technology" } else { "technologies" }
         );
     }
-    let unverified: Vec<(String, String)> = rep.synced.iter().filter(|t| t.events_failed.is_some()).map(|t| (t.technology.clone(), String::new())).collect();
+    let unverified: Vec<(String, String)> = rep.synced.iter().filter(|t| t.events_failed.is_some()).map(|t| (name(&t.technology), String::new())).collect();
     if let Some(line) = events_failed_line(&unverified) { println!("{line}"); }
     let mut code = 0;
     for (t, e) in &rep.failed {
-        eprintln!("error: {t}: {e} (cached copy kept)");
+        eprintln!("error: {}: {e} (cached copy kept)", name(t));
         code = EXIT_ERROR;
     }
     // Registry deprecations of the installed versions (cached a day; outputs read the cache).
@@ -1220,4 +1285,54 @@ fn cmd_run(ctx: &Ctx, target: &[String]) -> Result<u8> {
     let targets = parse_targets(target)?;
     let r = if targets.is_empty() { review_with(ctx, &w, &out, false, None)? } else { review_with(ctx, &w, &outcome(ctx, &w, targets), false, None)? };
     Ok([s, r].into_iter().find(|c| *c != 0).unwrap_or(0))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn job(purl: &str, technology: &str, name: &str) -> onboarding::Job {
+        onboarding::Job { purl: purl.into(), technology: technology.into(), name: name.into(), ..Default::default() }
+    }
+
+    #[test]
+    fn a_technology_is_named_by_its_plain_name_and_a_shared_name_keeps_its_id() {
+        let mut p = onboarding::Pending::default();
+        p.jobs.insert("pkg:npm/zod".into(), job("pkg:npm/zod", "zod-6ac59393", "zod"));
+        p.jobs.insert("pkg:npm/odd".into(), job("pkg:npm/odd", "odd-00000000", "\u{1b}\t"));
+        let techs: Vec<String> = ["zod-6ac59393", "react", "odd-00000000"].map(String::from).into();
+        let l = tech_labels(&p, &techs);
+        assert_eq!(l["zod-6ac59393"], "zod");
+        // No job names it: its id is its package's name already.
+        assert_eq!(l["react"], "react");
+        // A name that is only control characters is no name.
+        assert_eq!(l["odd-00000000"], "odd-00000000");
+        // Two technologies named alike in one run: each keeps its id; one named by its own id stays as it is.
+        p.jobs.insert("pkg:npm/zod-mini".into(), job("pkg:npm/zod-mini", "zod-11111111", "zod"));
+        let techs: Vec<String> = ["zod-6ac59393", "zod-11111111", "zod"].map(String::from).into();
+        let l = tech_labels(&p, &techs);
+        assert_eq!((l["zod-6ac59393"].as_str(), l["zod-11111111"].as_str(), l["zod"].as_str()), ("zod (zod-6ac59393)", "zod (zod-11111111)", "zod"));
+    }
+
+    /// `status`'s warning for refused change events names the technologies as `sync` does.
+    #[test]
+    fn status_names_refused_release_notes_by_plain_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let (root, cache) = (dir.path().join("repo"), dir.path().join("cache"));
+        let config: Config = serde_json::from_value(serde_json::json!({"schema": 1, "catalog": "", "mode": "collaborative"})).unwrap();
+        let ctx = Ctx { tool: root.join(TOOL_DIR), root, config, cache };
+        let mut p = onboarding::Pending::default();
+        p.jobs.insert("pkg:npm/zod".into(), job("pkg:npm/zod", "zod-6ac59393", "zod"));
+        p.jobs.insert("pkg:npm/zod-mini".into(), job("pkg:npm/zod-mini", "zod-11111111", "zod"));
+        p.jobs.insert("pkg:npm/react".into(), job("pkg:npm/react", "react-0a0a0a0a", "react"));
+        util::write_atomic(&ctx.tool.join("state/coverage.json"), &serde_json::to_vec(&p).unwrap()).unwrap();
+        let ours: std::collections::BTreeSet<String> = ["zod-6ac59393", "zod-11111111", "react-0a0a0a0a"].map(String::from).into();
+        for t in &ours {
+            cache::set_events_failed(&ctx.cache, t, Some("signature"));
+        }
+        assert_eq!(
+            status_events_failed_line(&ctx, &ours).unwrap(),
+            "warning: release notes for react, zod (zod-11111111) and 1 more failed verification, so they are not read. The next sync retries."
+        );
+    }
 }

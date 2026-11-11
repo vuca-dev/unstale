@@ -91,12 +91,13 @@ fn cost(q: &Quote, years: f64) -> String {
     parts.join(" + ")
 }
 
-/// What is left without a provider, in the reader's words.
+/// What is left without a provider, in the reader's words. Only new releases go without: what the catalog already
+/// holds is reviewed in full either way, so every statement of the trade is scoped to new releases.
 pub const WITHOUT: &str = "advisories and deprecations only";
 
-/// `≈ 27% of what unstale finds with one`, when the share is measured.
+/// `≈ 27% of the changes in new releases`, when the share is measured.
 fn without_share() -> Option<String> {
-    NO_PROVIDER_SHARE.map(|n| format!("≈ {n}% of what unstale finds with one"))
+    NO_PROVIDER_SHARE.map(|n| format!("≈ {n}% of the changes in new releases"))
 }
 
 // ----------------------------------------------------------------------------------------------------------- cells
@@ -144,9 +145,10 @@ fn cost_cell(q: &Quote, techs: usize) -> String {
 /// The one quality figure, against the best option.
 fn trade(p: Pick, q: &Quote, no_key: bool) -> String {
     if p == Pick::None && !no_key {
+        // Against the best option, as the other rows are ("≈ 80% of its changes"), scoped to new releases.
         return match NO_PROVIDER_SHARE {
-            Some(n) => format!("≈ {n}%: {WITHOUT}"),
-            None => WITHOUT.into(),
+            Some(n) => format!("≈ {n}% of its changes in new releases"),
+            None => format!("in new releases, {WITHOUT}"),
         };
     }
     let figure = match q.quality {
@@ -750,7 +752,7 @@ pub fn saved_lines(c: &Choice, place: Origin, repo_choice: Option<&Choice>) -> V
         Origin::User => "Saved for you",
     };
     let mut out = vec![if c.is_none() {
-        format!("{whom}: release notes not read, {WITHOUT}.")
+        format!("{whom}: release notes not read, so new releases get {WITHOUT}.")
     } else {
         format!("{whom}: {} reads release notes.", short(c))
     }];
@@ -769,7 +771,7 @@ pub fn saved_lines(c: &Choice, place: Origin, repo_choice: Option<&Choice>) -> V
 
 /// The line after the picker is dismissed without a choice.
 pub fn dismissed_line() -> String {
-    format!("Nothing chosen: no release notes, {WITHOUT}. `unstale setup` asks again.")
+    format!("Nothing chosen: new releases get {WITHOUT}. `unstale setup` asks again.")
 }
 
 /// The line after a reopened picker is dismissed: the choice made before stays.

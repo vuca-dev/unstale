@@ -75,6 +75,7 @@ Choice pending: how unstale reads new release notes. Run `unstale setup` and ask
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+warning: unstale <this version> is too old for the catalog; nothing new arrives. `npm install -g @unstale/cli@latest`
 
 $ unstale status --wait 0 --no-animation
   ✓ shop · Personal setup ready
@@ -104,6 +105,7 @@ $ unstale status --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+warning: unstale <this version> is too old for the catalog; nothing new arrives. `npm install -g @unstale/cli@latest`
 Release notes         not read: no provider chosen · `unstale setup` shows the options
 Cache                 under 1 MB of 100 MB
 
@@ -113,7 +115,7 @@ Never choose for them.
 
      Read with   Cost a year, this repo   Compared with the best option
   1  OpenAI      ≈ $0.19                  ≈ 11 in 100 breaking flags wrong, not 8
-  2  Not now     free                     ≈ 27%: advisories and deprecations only
+  2  Not now     free                     ≈ 27% of its changes in new releases
      Keys: OPENAI_API_KEY (.env)
 
 Record their answer with the matching command:
@@ -164,7 +166,7 @@ $ unstale status --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-warning: the sync at session start failed 0 min ago: the catalog needs unstale <newer version> or newer and this is <this version>: upgrade unstale; the cached catalog is kept and still used. The next session start tries again.
+warning: unstale <this version> is too old for the catalog; nothing new arrives. `npm install -g @unstale/cli@latest`
 Release notes         OpenAI (OPENAI_API_KEY), this repo's config
 Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)
 Cache                 under 1 MB of 100 MB

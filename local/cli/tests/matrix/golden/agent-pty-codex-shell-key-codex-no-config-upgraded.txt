@@ -112,7 +112,7 @@ Never choose for them.
      Read with    Key              Cost a year, this repo   Compared with the best option
   1  OpenAI       OPENAI_API_KEY   ≈ $0.19                  ≈ 11 in 100 breaking flags wrong, not 8
   2  Codex plan                    ≈ 1.9M Codex tokens      ≈ 80% of its changes; rest not measured
-  3  Not now                       free                     ≈ 27%: advisories and deprecations only
+  3  Not now                       free                     ≈ 27% of its changes in new releases
 
 Record their answer with the matching command:
   1  unstale setup --inference env:OPENAI_API_KEY

@@ -611,7 +611,7 @@ fn a_dismissed_picker_writes_no_config_and_is_not_asked_again_on_this_machine() 
     assert_eq!(out.matches(QUESTION).count(), 1, "{out}");
     assert!(
         out.contains(
-            "Nothing chosen: no release notes, advisories and deprecations only. `unstale setup` asks again."
+            "Nothing chosen: new releases get advisories and deprecations only. `unstale setup` asks again."
         ),
         "{out}"
     );
@@ -641,7 +641,7 @@ fn a_dismissed_picker_writes_no_config_and_is_not_asked_again_on_this_machine() 
     let chosen = w.at_terminal(&["setup"], "5\n");
     assert!(
         chosen.contains(
-            "Saved for this repo: release notes not read, advisories and deprecations only."
+            "Saved for this repo: release notes not read, so new releases get advisories and deprecations only."
         ),
         "{chosen}"
     );

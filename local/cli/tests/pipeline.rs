@@ -489,3 +489,61 @@ fn session_sync_by_hand_says_what_it_read_and_resumes_after_an_interrupt() {
     let again = r.run(&["session-sync"], true);
     assert_eq!(again.trim(), "Nothing new to read: every release note here is read.");
 }
+
+/// `unstale session-sync` with "Not now" recorded (a choice of none) says so, not that another unstale is reading:
+/// nothing else runs, and nothing is read.
+#[test]
+fn session_sync_with_not_now_recorded_says_so() {
+    let (r, main, _) = repo(Arc::new(Mutex::new(usize::MAX)));
+    let cfg = r.repo.path().join(".unstale/config.json");
+    let mut v: Value = serde_json::from_str(&std::fs::read_to_string(&cfg).unwrap()).unwrap();
+    v["inference"] = serde_json::json!({"provider": "none"});
+    std::fs::write(&cfg, serde_json::to_string_pretty(&v).unwrap()).unwrap();
+    let out = r.run(&["session-sync"], true);
+    assert_eq!(
+        out.lines().last().unwrap_or_default(),
+        "No release notes were read: this repo is set to Not now. To change it: `unstale setup`.",
+        "{out}"
+    );
+    assert_eq!(*main.lock().unwrap(), 0, "no model call");
+}
+
+/// `unstale sync` names each technology as the user knows it, with the switch on and off: by its coverage job's name,
+/// not the catalog id, and with the id beside a name two technologies share. `unstale setup --details` counts the
+/// direct dependencies, not the names they are looked up under (a scoped package's scope, a job's technology).
+#[test]
+fn sync_names_technologies_plainly_and_setup_counts_the_packages_a_user_counts() {
+    use testcat::{FixtureCatalog, rec};
+    let cat = FixtureCatalog::new();
+    cat.tech("zod-6ac59393", &[("3", vec![rec("zod-6ac59393:a", "pkg:npm/zod", "3.0.0")])]);
+    cat.tech("zod-11111111", &[("1", vec![rec("zod-11111111:a", "pkg:npm/zod-mini", "1.0.0")])]);
+    cat.tech("react-0a0a0a0a", &[("19", vec![rec("react-0a0a0a0a:a", "pkg:npm/react", "19.0.0")])]);
+    let repo = tempfile::tempdir().unwrap();
+    std::fs::write(
+        repo.path().join("package.json"),
+        r#"{"name":"app","private":true,"dependencies":{"zod":"3.0.0","zod-mini":"1.0.0","react":"19.0.0","@scope/kit":"1.0.0"}}"#,
+    )
+    .unwrap();
+    std::fs::create_dir(repo.path().join(".git")).unwrap();
+    let r = Repo { repo, cache: tempfile::tempdir().unwrap(), _cat: cat, main: String::new(), jev: String::new() };
+    r.run(&["init", "--catalog", r._cat.loc()], false);
+    let job = |purl: &str, tech: &str, name: &str| serde_json::json!({"purl": purl, "technology": tech, "name": name, "state": "monitoring", "stage": ""});
+    let state = serde_json::json!({"jobs": {
+        "pkg:npm/zod": job("pkg:npm/zod", "zod-6ac59393", "zod"),
+        "pkg:npm/zod-mini": job("pkg:npm/zod-mini", "zod-11111111", "zod"),
+        "pkg:npm/react": job("pkg:npm/react", "react-0a0a0a0a", "react"),
+    }});
+    std::fs::create_dir_all(r.repo.path().join(".unstale/state")).unwrap();
+    std::fs::write(r.repo.path().join(".unstale/state/coverage.json"), state.to_string()).unwrap();
+    let off = r.run(&["sync"], false);
+    for want in ["synced react: 1 records", "synced zod (zod-6ac59393): 1 records", "synced zod (zod-11111111): 1 records"] {
+        assert!(off.contains(want), "{want:?} in {off}");
+    }
+    let on = r.run(&["sync"], true);
+    for want in ["react: 1 upstream change on file", "zod (zod-6ac59393): 1 upstream change on file", "zod (zod-11111111): 1 upstream change on file"] {
+        assert!(on.lines().any(|l| l.starts_with(want)), "{want:?} in {on}");
+    }
+    assert!(!on.contains("react-0a0a0a0a"), "{on}");
+    let details = r.run(&["setup", "--details"], true);
+    assert!(details.contains("This repo has 4 packages unstale follows."), "{details}");
+}

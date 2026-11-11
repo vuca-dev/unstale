@@ -75,6 +75,7 @@ $ unstale init --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+warning: unstale <this version> is too old for the catalog; nothing new arrives. `npm install -g @unstale/cli@latest`
 
 $ unstale sync
 sync refused: the catalog needs unstale <newer version> or newer and this is <this version>: upgrade unstale; the cached catalog is kept and still used
@@ -111,6 +112,7 @@ $ unstale status --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+warning: unstale <this version> is too old for the catalog; nothing new arrives. `npm install -g @unstale/cli@latest`
 warning: OPENROUTER_API_KEY is not set here, so new release notes are not read. Set it.
 warning: no session-start hook here, so 2 new release notes are unread. Run `unstale session-sync`.
 Codex session start not installed: .codex/hooks.json is tracked by Git
@@ -120,8 +122,8 @@ Cache                 under 1 MB of 100 MB
 
 $ unstale session-sync
 Syncing the catalog, then reading new release notes with your provider. Ctrl-C stops it; the next run resumes.
-warning: the catalog sync did not finish: the catalog needs unstale <newer version> or newer and this is <this version>: upgrade unstale; the cached catalog is kept and still used
-Nothing new to read: every release note here is read.
+warning: unstale <this version> is too old for the catalog; nothing new arrives. `npm install -g @unstale/cli@latest`
+No release notes were read: 2 wait until the catalog serves this unstale.
 
 $ unstale status --wait 0 --no-animation
   ✓ shop · Shared setup ready
@@ -152,9 +154,9 @@ $ unstale status --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+warning: unstale <this version> is too old for the catalog; nothing new arrives. `npm install -g @unstale/cli@latest`
 warning: OPENROUTER_API_KEY is not set here, so new release notes are not read. Set it.
 warning: no session-start hook here, so 2 new release notes are unread. Run `unstale session-sync`.
-warning: the sync at session start failed 0 min ago: the catalog needs unstale <newer version> or newer and this is <this version>: upgrade unstale; the cached catalog is kept and still used. The next session start tries again.
 Codex session start not installed: .codex/hooks.json is tracked by Git
 Release notes         OpenRouter (OPENROUTER_API_KEY), this repo's config
 Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)
@@ -165,6 +167,3 @@ Cache                 under 1 MB of 100 MB
 #   model provider: nothing
 #   codex: not run
 #   through the proxy: nothing
-
-# known product bugs (expected to fail until fixed; see KNOWN_BUGS in checks.rs)
-#   model steps: `unstale session-sync` said every release note is read, with ["next@16.3.0", "react@19.2.0"] unread

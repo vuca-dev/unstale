@@ -2,6 +2,6 @@ unstale reads new release notes with a model, on your own key or your Codex plan
 None is set up here (Codex is not logged in).
 
   1  Set one up   shows the one line to add
-  2  Not now      free · advisories and deprecations only, ≈ 27% of what unstale finds with one
+  2  Not now      free · advisories and deprecations only, ≈ 27% of the changes in new releases
 
 Enter for 1, or 2: 

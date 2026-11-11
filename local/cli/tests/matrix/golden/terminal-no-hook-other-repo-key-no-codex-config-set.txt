@@ -109,7 +109,6 @@ $ unstale status --wait 0 --no-animation
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 warning: OPENAI_API_KEY is not set here, so new release notes are not read. Set it.
 warning: no session-start hook here, so 2 new release notes are unread. Run `unstale session-sync`.
-warning: OPENAI_API_KEY is not set here, so new release notes are not read. Set it.
 Codex session start not installed: .codex/hooks.json is tracked by Git
 Release notes         OpenAI (OPENAI_API_KEY), this repo's config
 Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)
@@ -120,6 +119,3 @@ Cache                 under 1 MB of 100 MB
 #   model provider: nothing
 #   codex: not run
 #   through the proxy: nothing
-
-# known product bugs (expected to fail until fixed; see KNOWN_BUGS in checks.rs)
-#   wording: `unstale status --wait 0 --no-animation` printed the same warning twice: "warning: OPENAI_API_KEY is not set here, so new release notes are not read. Set it."
