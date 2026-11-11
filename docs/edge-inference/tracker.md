@@ -11,9 +11,9 @@
 - **Ground truth:** GitHub PR state. Repo `vuca-dev/unstale`.
 - **Base:** `origin/main` @ `594b078` (`ci` green)
 - **Base health:** PR checks are `rust`, `central`, `gateway`; re-query before every merge.
-- **Open PRs:** #228 (WS4 PR 1); WS9 draft pending
+- **Open PRs:** #228 (WS4 PR 1, READY at `e4d4fd0`), #230 (WS4 PR 2, READY at `83321a3`, stacked); both awaiting independent review. WS9 draft pending
 - **Live worktrees (sprint):** `/Users/jason/unstale-edge-sprint` (tracker)
-- **Live subagents:** ws4-impl (Opus 5.5); ws9 (Fable 5.2, one agent); ws6-verifier, ws10-verifier (Fable 5.2). Background watch for the first ingest created after 2026-11-11T00:48Z (run 42940631609 on `725b8c1` in progress since 01:40Z).
+- **Live subagents:** ws4-reviewer, ws9, ws6-verifier, ws10-verifier (all Fable 5.2); ws4-impl idle awaiting review (worktree kept). Background watch for the first ingest created after 2026-11-11T00:48Z.
 - **Merged + verified:** WS0 → #213 `673c191`
 - **Next:** WS4 PR 2, then parity runs and cache disk bounds; WS6b full matrix; WS8 draft last
 - **Sprint API spend so far:** $0 of $10
@@ -205,6 +205,15 @@ OpenRouter parity, repeat eval runs.
   reports if the harness or the October arm's model is not reusable, or if events are not yet live.
 
 ### WS4: Client pipeline steps and port parity: IN PROGRESS (Opus 5.5, `/Users/jason/unstale-ws4-pipeline`)
+- **PR 1 #228 and PR 2 #230 READY, not merged** (bot skipped both heads). Local 495 unit + suites, central 608.
+  Records land in `{cache}/inference/records/<tech>.json`, merged by `cache::load_tech`; result cache
+  `{cache}/inference/results/`; `unstale internal run-step --step extract|labels|match --in FILE.jsonl`.
+  `schema/prompts-lock.json` guards the data files.
+- **Parity cost estimate: about $1.65 at list prices** (extraction $0.11, labels $0.19, matching $0.31, one real
+  first sync about $1.05), under the $10 cap.
+- Flagged by the EM: matching without Jev uses bars fitted on stated probabilities but reads choices; not ported:
+  `mergeSplitRecords`, `mergeChunkDuplicates`, npm prerequisite check, `related` back-links. Reviewer asked to rule.
+- Left: disk bounds, parity runs, measured cost, matrix `Step::Model` swap, "records ready" timestamps.
 - PR 1 extraction, PR 2 labels and matching: no paid calls; EM returns a parity cost estimate. Then: parity runs
   (also extraction through batched Codex, the Jev threshold behind the "93%" line, a real first sync), and cache
   disk bounds (must keep `{cache}/inference/`).
