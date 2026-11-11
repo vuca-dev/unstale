@@ -1,5 +1,5 @@
-# An OpenAI key in the shell and Codex logged in, in CI; the repo config names the labelling service with OpenAI
-# keys: shell-key · Codex: codex · run: ci · repo config: --inference jev+env:OPENAI_API_KEY · client: fresh · provider: answers
+# A key only in another repo's .env, in CI; the repo config names the labelling service with OpenAI
+# keys: other-repo-key · Codex: no-codex · run: ci · repo config: --inference jev+env:OPENAI_API_KEY · client: fresh · provider: answers
 
 $ unstale init --wait 0 --no-animation --yes  (no terminal)
 warning: JEV_API_KEY is not set here, so new release notes are not read. Set it.
@@ -36,14 +36,13 @@ warning: JEV_API_KEY is not set here, so new release notes are not read. Set it.
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 unstale notice, act by 30 November: Upgrade unstale; this version stops receiving new changes then.
 unstale <newer version> available: npm install -g @unstale/cli@latest
-Codex: to let unstale sync at session start, trust its hook once: run /hooks in Codex.
 
 $ unstale sync  (no terminal)
 next: 2 upstream changes on file, nothing new
 react: 1 upstream change on file, nothing new
 
 $ unstale session-sync  (no terminal)
-warning: JEV_API_KEY is not set here, so new release notes are not read. Set it.
+warning: OPENAI_API_KEY is not set here, so new release notes are not read. Set it.
 
 $ unstale status --wait 0 --no-animation  (no terminal)
   ✓ shop · Shared setup ready
@@ -78,16 +77,17 @@ $ unstale status --wait 0 --no-animation  (no terminal)
   
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 warning: JEV_API_KEY is not set here, so new release notes are not read. Set it.
-warning: JEV_API_KEY is not set here, so new release notes are not read. Set it.
+warning: OPENAI_API_KEY is not set here, so new release notes are not read. Set it.
+warning: OPENAI_API_KEY is not set here, so new release notes are not read. Set it.
 Release notes         Jev + OpenAI (JEV_API_KEY, OPENAI_API_KEY), this repo's config
-Tokens                24 of 48M this month (the default limit; `unstale setup --limit` changes it)
+Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)
 Cache                 under 1 MB of 100 MB
 
 # contacted
 #   catalog host: GET /health, GET /v1/root.json, GET /v1/shards/next/16.7745374e4470.jsonl.gz, GET /v1/shards/next/16.events.74bcaa014f93.jsonl.gz, GET /v1/shards/react/19.b7c40e95232c.jsonl.gz, GET /v1/shards/react/19.events.04962169f41c.jsonl.gz, GET /v1/tech/next.json, GET /v1/tech/react-dom.json, GET /v1/tech/react.json, GET /v1/technologies.json
-#   model provider: POST /v1/chat/completions (2 requests)
+#   model provider: nothing
 #   codex: not run
 #   through the proxy: nothing
 
 # known product bugs (expected to fail until fixed; see KNOWN_BUGS in checks.rs)
-#   wording: `unstale status --wait 0 --no-animation` printed the same warning twice: "warning: JEV_API_KEY is not set here, so new release notes are not read. Set it."
+#   wording: `unstale status --wait 0 --no-animation` printed the same warning twice: "warning: OPENAI_API_KEY is not set here, so new release notes are not read. Set it."

@@ -489,6 +489,31 @@ pub(crate) fn check(s: &Scenario, se: &Session) -> Vec<String> {
         }
     }
 
+    // With the switch off, session start does only what it did before: no background stage, no state of its own, no
+    // other agent's hook installed, no model work.
+    let off = s
+        .invocation
+        .env
+        .iter()
+        .any(|(k, v)| *k == "UNSTALE_EDGE_INFERENCE" && *v != "1");
+    if off {
+        for rel in [
+            ".unstale/state/session-sync.json",
+            ".unstale/state/session-sync.lock",
+            ".codex/hooks.json",
+            ".opencode/plugins/unstale-session.js",
+        ] {
+            if w.repo().join(rel).exists() {
+                v.push(format!(
+                    "switch off: {rel} was written, which only the switch's features write"
+                ));
+            }
+        }
+        if w.cache().join("inference").exists() || !provider.is_empty() || !codex_calls.is_empty() {
+            v.push("switch off: model work ran".into());
+        }
+    }
+
     // The model steps run only for releases that have change events, no catalog records and no `extracted` mark;
     // with a working provider, every such release is read.
     let mut asked: BTreeSet<String> = BTreeSet::new();
@@ -568,7 +593,14 @@ pub(crate) fn check(s: &Scenario, se: &Session) -> Vec<String> {
 
     // Plain words: nothing printed uses vocabulary the reader was never taught, and without a terminal there is no
     // line per step of progress.
-    for r in &se.ran {
+    // With the switch off the output is the one from before the switch's features, by design (nothing of them shows
+    // until they ship whole), so the new wording rules do not apply there.
+    let switch_off = s
+        .invocation
+        .env
+        .iter()
+        .any(|(k, v)| *k == "UNSTALE_EDGE_INFERENCE" && *v != "1");
+    for r in se.ran.iter().filter(|_| !switch_off) {
         v.extend(wording(&r.shown, r.terminal, &r.output));
     }
 
@@ -964,53 +996,182 @@ fn no_client_connection_ignores_the_proxy_variables() {
 
 // ------------------------------------------------------------------------------------------- not runnable yet
 
-/// Hold-the-line 5 on a set-up repository: session start returns within 2 s, exits 0 and prints at most one line, in
-/// the worst cases (the catalog and the coverage service accepting connections and never answering, with coverage
-/// still growing so the hook asks it; a state file that never finishes reading).
+/// A stand-in for opencode: loads the installed plugin with a `$` like Bun's shell (each interpolated value one
+/// argument), sends it `session.created` and waits for the handler, as opencode does. Prints nothing itself.
+const OPENCODE_SESSION: &str = r#"
+import { spawn } from "node:child_process";
+const repo = process.argv[2];
+const $ = (strings, ...values) => {
+  const argv = [];
+  strings.forEach((s, i) => {
+    argv.push(...s.split(/\s+/).filter(Boolean));
+    if (i < values.length) argv.push(...[values[i]].flat().map(String));
+  });
+  const run = new Promise((resolve) => {
+    const p = spawn(argv[0], argv.slice(1), { stdio: ["ignore", "inherit", "inherit"] });
+    p.on("exit", resolve);
+    p.on("error", resolve);
+  });
+  const shell = { quiet: () => shell, nothrow: () => shell, catch: (f) => run.catch(f), then: (a, b) => run.then(a, b) };
+  return shell;
+};
+const { UnstaleSessionSync } = await import(new URL("./plugin.mjs", import.meta.url));
+const hooks = await UnstaleSessionSync({ $, directory: repo });
+await hooks.event({ event: { type: "session.created" } });
+"#;
+
+/// Each agent's installed session-start hook, run as that agent runs it: (agent, exit code, stdout, stderr, time).
+fn every_hook(
+    w: &World,
+    s: &Scenario,
+    extra: &[(String, String)],
+) -> Vec<(&'static str, i32, String, String, Duration)> {
+    let mut out = vec![];
+    for (agent, file) in [
+        ("Claude Code", ".claude/settings.local.json"),
+        ("Codex", ".codex/hooks.json"),
+    ] {
+        let command =
+            hook_command(&w.repo(), file).unwrap_or_else(|| panic!("{agent}'s hook is installed"));
+        let mut sh = Command::new("/bin/sh");
+        sh.arg("-c")
+            .arg(format!("{}{command}", reload_logger()))
+            .current_dir(w.repo())
+            .env_clear();
+        for (k, v) in w.env(s).into_iter().chain(extra.iter().cloned()) {
+            sh.env(k, v);
+        }
+        sh.env("CLAUDE_PROJECT_DIR", w.repo());
+        let t = std::time::Instant::now();
+        let (code, o, e) = support::run_within(&mut sh, Duration::from_secs(30));
+        out.push((agent, code, o, e, t.elapsed()));
+    }
+    let plugin = std::fs::read_to_string(w.repo().join(".opencode/plugins/unstale-session.js"))
+        .expect("opencode's plugin is installed");
+    let dir = w.base.path().join("opencode");
+    write(&dir.join("plugin.mjs"), &plugin);
+    write(&dir.join("session.mjs"), OPENCODE_SESSION);
+    let mut node = Command::new("node");
+    node.arg(dir.join("session.mjs"))
+        .arg(w.repo())
+        .current_dir(w.repo())
+        .env_clear();
+    for (k, v) in w.env(s).into_iter().chain(extra.iter().cloned()) {
+        node.env(k, v);
+    }
+    // node is found on the machine's own PATH.
+    node.env(
+        "PATH",
+        format!(
+            "{}:{}",
+            w.base.path().join("bin").display(),
+            std::env::var("PATH").unwrap_or_default()
+        ),
+    );
+    let t = std::time::Instant::now();
+    let (code, o, e) = support::run_within(&mut node, Duration::from_secs(30));
+    out.push(("opencode", code, o, e, t.elapsed()));
+    out
+}
+
+/// Ends the background stages this world's hooks started: what they do is not what this test is about, and one waiting
+/// on a hung host would run for minutes.
+fn stop_background(w: &World) {
+    let tag = w
+        .base
+        .path()
+        .file_name()
+        .unwrap()
+        .to_string_lossy()
+        .to_string();
+    let _ = Command::new("pkill")
+        .args(["-f", &format!("{tag}.*session-sync")])
+        .status();
+    wait_for_background(w);
+}
+
+/// Hold-the-line 5: every agent's installed session-start hook (Claude Code, Codex, opencode), run as that agent runs
+/// it, returns within 2 s, exits 0, prints at most one line and nothing on stderr, in the worst cases: the catalog and
+/// the coverage service accepting connections and never answering (with coverage still growing, so the hook asks it);
+/// a state file that never finishes reading; the provider hanging with model work pending; the cache corrupt.
 #[test]
 fn session_start_returns_within_two_seconds_and_prints_at_most_one_line() {
     let s = Scenario::new(
         by_id(KEYS, "shell-key", |v| v.id),
         by_id(CODEX, "no-codex", |v| v.id),
-        by_id(INVOCATIONS, "terminal", |v| v.id),
-        &REPO_CONFIGS[0],
+        by_id(INVOCATIONS, "agent", |v| v.id),
+        by_id(REPO_CONFIGS, "config-set", |v| v.id),
         &CLIENTS[0],
         Answer::Ok,
     );
     let se = run_session(&s);
     let w = &se.world;
     let repo = w.repo();
-    let config_path = repo.join(".unstale/config.json");
     let silent = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let hung = format!("http://{}", silent.local_addr().unwrap());
-    let mut config: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(&config_path).unwrap()).unwrap();
+    // The background stages these start give up on a hung request after 3 s, so the test does not wait on them.
+    let mut extra = vec![("UNSTALE_HTTP_TIMEOUT".to_string(), "3".to_string())];
+    let hold = |case: &str, extra: &[(String, String)]| {
+        for (agent, code, out, err, took) in every_hook(w, &s, extra) {
+            eprintln!("session start, {agent}, {case}: {} ms", took.as_millis());
+            assert_eq!(code, 0, "{agent}, {case}: {out}{err}");
+            assert!(out.lines().count() <= 1, "{agent}, {case}: {out}");
+            assert_eq!(err, "", "{agent}, {case}");
+            assert!(took < Duration::from_secs(2), "{agent}, {case}: {took:?}");
+        }
+    };
+    hold("set up, nothing wrong", &extra);
+
+    let config_path = repo.join(".unstale/config.json");
+    let original = std::fs::read_to_string(&config_path).unwrap();
+    let mut config: serde_json::Value = serde_json::from_str(&original).unwrap();
     config["catalog"] = json!(hung);
     config["service"] = json!(hung);
     write(&config_path, &config.to_string());
     let job = json!({"jobs": {"pkg:npm/next": {"purl": "pkg:npm/next", "technology": "next", "name": "next", "state": "queued", "stage": "", "records": 1, "updated": ""}}});
     write(&repo.join(".unstale/state/coverage.json"), &job.to_string());
-    let notify = |case: &str| {
-        let started = std::time::Instant::now();
-        let r = exec(w, &s, vec!["notify".into()], false);
-        let took = started.elapsed();
-        eprintln!("session start, {case}: {} ms", took.as_millis());
-        assert_eq!(r.code, 0, "{case}: {}", r.output);
-        assert!(r.output.lines().count() <= 1, "{case}: {}", r.output);
-        assert!(took < Duration::from_secs(2), "{case}: {took:?}");
-    };
-    notify("catalog and coverage service hanging");
+    hold("catalog and coverage service hanging", &extra);
     // A read that never finishes (a FIFO with no writer standing in for a hung disk): only the deadline bounds it.
     for (case, rel) in [
         ("session state read hanging", "session-sync.json"),
         ("coverage state read hanging", "coverage.json"),
     ] {
         let p = repo.join(".unstale/state").join(rel);
+        let saved = std::fs::read(&p).ok();
         let _ = std::fs::remove_file(&p);
         assert!(Command::new("mkfifo").arg(&p).status().unwrap().success());
-        notify(case);
+        hold(case, &extra);
         std::fs::remove_file(&p).unwrap();
+        if let Some(b) = saved {
+            std::fs::write(&p, b).unwrap();
+        }
     }
+    write(&config_path, &original);
+
+    // The cache corrupt: every file replaced with bytes that do not parse.
+    stop_background(w);
+    let state_saved = std::fs::read(repo.join(".unstale/state/session-sync.json")).unwrap();
+    for (p, _) in support::files_under(&w.cache()) {
+        std::fs::write(p, b"\x00not json").unwrap();
+    }
+    hold("cache corrupt", &extra);
+    std::fs::write(repo.join(".unstale/state/session-sync.json"), state_saved).unwrap();
+    stop_background(w);
+
+    // Model work pending (the last stage stopped) and the provider accepting connections and never answering: the
+    // hook starts the stage and does not wait for it.
+    let state_path = repo.join(".unstale/state/session-sync.json");
+    let mut state: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&state_path).unwrap()).unwrap();
+    state["deferred"] = json!(
+        "warning: the provider is not answering, so new release notes wait. The next sync tries again."
+    );
+    write(&state_path, &state.to_string());
+    let _ = std::fs::remove_dir_all(w.cache().join("inference"));
+    extra.push(("UNSTALE_INFERENCE_BASE_URL".into(), format!("{hung}/v1")));
+    hold("provider hanging, model work pending", &extra);
+
+    stop_background(w);
     drop(silent);
 }
 

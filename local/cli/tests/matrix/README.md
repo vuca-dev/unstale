@@ -49,7 +49,12 @@ the label questions and matching on every route (OpenAI-compatible, Anthropic, t
 a fake `codex`), and each scenario asserts that only the two releases with neither were sent, and that with a working
 provider both were read.
 
-- **Hold-the-line 5:** each session-start hook exits 0 within 2 s, prints at most one line and nothing on stderr.
+- **Hold-the-line 5:** each session-start hook exits 0 within 2 s, prints at most one line and nothing on stderr. In
+  agent sessions the hook runs twice, so its warnings show in the transcripts. A separate test runs all three agents'
+  hooks (Claude Code and Codex through a shell, opencode's plugin through a stand-in for its runtime) in the worst
+  cases: catalog and coverage service hanging, a state file that never finishes reading, the cache corrupt, the
+  provider hanging with model work pending. With the switch off, session start writes none of the switch's files and
+  runs no model work.
 
 ## Adding a scenario
 

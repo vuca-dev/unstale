@@ -1,4 +1,4 @@
-{"height":32,"title":"A key only in another repo's .env, in CI; the repo config names OpenAI","version":2,"width":120}
+{"height":32,"title":"A key only in another repo's .env, in CI; the repo config names the labelling service with OpenAI","version":2,"width":120}
 [0.0,"o","\u001b[1m$\u001b[0m "]
 [0.03,"o","u"]
 [0.05,"o","n"]
@@ -43,7 +43,7 @@
 [1.03,"o","e"]
 [1.05,"o","s"]
 [1.45,"o","\r\n"]
-[1.51,"o","warning: OPENAI_API_KEY is not set here, so new release notes are not read. Set it.\r\n"]
+[1.51,"o","warning: JEV_API_KEY is not set here, so new release notes are not read. Set it.\r\n"]
 [1.57,"o","  ✓ shop · Shared setup ready\r\n"]
 [1.63,"o","  Next: run unstale-review in your coding agent · copyable prompt below.\r\n"]
 [1.69,"o","  Mapped 3 direct dependencies from declared package ranges and checked local\r\n"]
@@ -187,8 +187,9 @@
 [11.06,"o","  files and trade-offs. Return proposals only; do not edit files.\r\n"]
 [11.12,"o","  \r\n"]
 [11.18,"o","  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\r\n"]
-[11.24,"o","warning: OPENAI_API_KEY is not set here, so new release notes are not read. Set it.\r\n"]
+[11.24,"o","warning: JEV_API_KEY is not set here, so new release notes are not read. Set it.\r\n"]
 [11.3,"o","warning: OPENAI_API_KEY is not set here, so new release notes are not read. Set it.\r\n"]
-[11.36,"o","Release notes         OpenAI (OPENAI_API_KEY), this repo's config\r\n"]
-[11.42,"o","Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)\r\n"]
-[11.48,"o","Cache                 under 1 MB of 100 MB\r\n"]
+[11.36,"o","warning: OPENAI_API_KEY is not set here, so new release notes are not read. Set it.\r\n"]
+[11.42,"o","Release notes         Jev + OpenAI (JEV_API_KEY, OPENAI_API_KEY), this repo's config\r\n"]
+[11.48,"o","Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)\r\n"]
+[11.54,"o","Cache                 under 1 MB of 100 MB\r\n"]

@@ -72,6 +72,7 @@ pub(crate) const INVOCATIONS: &[Invocation] = &[
     Invocation { id: "agent", group: "Asks an agent to install it", title: "an agent installs it", terminal: false, person: false, answer: "", ci: false, env: &[("CLAUDECODE", "1")], steps: &[Step::Init, Step::Status, Step::AgentSetup, Step::Sync, Step::SessionStart, Step::SessionStart, Step::Status] },
     Invocation { id: "agent-pty-claude", group: "Asks an agent to install it", title: "Claude Code installs it through a terminal", terminal: true, person: false, answer: "\n", ci: false, env: &[("CLAUDECODE", "1")], steps: &[Step::Init, Step::Status, Step::AgentSetup, Step::Sync, Step::SessionStart, Step::SessionStart, Step::Status] },
     Invocation { id: "agent-pty-codex", group: "Asks an agent to install it", title: "Codex installs it through a terminal", terminal: true, person: false, answer: "\n", ci: false, env: &[("CODEX_SANDBOX", "seatbelt")], steps: &[Step::Init, Step::Status, Step::AgentSetup, Step::Sync, Step::SessionStart, Step::SessionStart, Step::Status] },
+    Invocation { id: "agent-switch-off", group: "Asks an agent to install it", title: "an agent installs it with the release-notes switch off", terminal: false, person: false, answer: "", ci: false, env: &[("CLAUDECODE", "1"), ("UNSTALE_EDGE_INFERENCE", "0")], steps: &[Step::Init, Step::Status, Step::Sync, Step::SessionStart, Step::SessionStart, Step::Status] },
     Invocation { id: "ci", group: "Runs it in CI", title: "in CI", terminal: false, person: false, answer: "", ci: true, env: &[], steps: &[Step::InitYes, Step::Sync, Step::SessionSync, Step::Status] },
     Invocation { id: "ci-flag", group: "Runs it in CI", title: "in CI, choosing OpenAI with --inference", terminal: false, person: false, answer: "", ci: true, env: &[], steps: &[Step::InitFlag("env:OPENAI_API_KEY"), Step::Sync, Step::SessionSync, Step::Status] },
 ];
@@ -181,6 +182,10 @@ pub(crate) const CRITICAL: &[(&str, &str, &str, &str, &str, Answer)] = &[
     ("The repo names Codex and Codex is logged out, first run in a terminal", "no-key", "codex-logged-out", "terminal", "config-codex", Answer::Ok),
     ("The repo names Codex and Codex is logged out, in CI", "no-key", "codex-logged-out", "ci", "config-codex", Answer::Ok),
     ("The labelling service and OpenAI, the provider down", "several-keys", "no-codex", "terminal", "config-jev-openai", Answer::Down),
+    ("An agent's sessions start with the provider down", "shell-key", "no-codex", "agent", "config-set", Answer::Down),
+    ("An agent's sessions start with the provider rate limiting", "shell-key", "codex", "agent-pty-codex", "config-set", Answer::RateLimited),
+    ("An agent's sessions start with the monthly token limit reached", "shell-key", "no-codex", "agent-pty-claude", "config-set", Answer::BudgetSpent),
+    ("An agent installs it with the release-notes switch off", "shell-key", "codex", "agent-switch-off", "no-config", Answer::Ok),
     ("The provider answers with a redirect", "shell-key", "no-codex", "terminal", "no-config", Answer::Redirect),
     ("At a terminal, --yes asks nothing", "shell-key", "codex", "terminal-yes", "no-config", Answer::Ok),
     ("Anthropic refuses the key", "anthropic-key", "no-codex", "terminal", "config-anthropic", Answer::Refused),

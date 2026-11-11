@@ -1,9 +1,8 @@
-# An OpenAI key in this repo's .env and Codex logged out, in CI
-# keys: dotenv-key · Codex: codex-logged-out · run: ci · repo config: none · client: fresh · provider: answers
+# An OpenAI key in the shell and Codex logged in, in CI; the repo config names OpenAI
+# keys: shell-key · Codex: codex · run: ci · repo config: --inference env:OPENAI_API_KEY · client: fresh · provider: answers
 
 $ unstale init --wait 0 --no-animation --yes  (no terminal)
-warning: no provider chosen, so new release notes are not read. `unstale setup` lists the options.
-  ✓ shop · Personal setup ready
+  ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 3 direct dependencies from declared package ranges and checked local
   references.
@@ -22,8 +21,8 @@ warning: no provider chosen, so new release notes are not read. `unstale setup` 
   this brief.
   
   
-  .unstale/ is Git-ignored. Share reviews and decisions: unstale init --mode
-  shared --wait 0
+  Reviews and decisions can be committed to Git. Keep personal: unstale init
+  --mode personal --wait 0
   Details: .unstale/onboarding-report.md
   
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -43,17 +42,18 @@ next: 2 upstream changes on file, nothing new
 react: 1 upstream change on file, nothing new
 
 $ unstale session-sync  (no terminal)
-No provider is chosen, so no release notes were read. Choose one: `unstale setup`.
+New release notes read: 2 new changes, 0 added to known ones, for 2 technologies.
 
 $ unstale status --wait 0 --no-animation  (no terminal)
-  ✓ shop · Personal setup ready
+  ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 3 direct dependencies from declared package ranges and checked local
   references.
   
   Upgrades to review · 1 shortlisted
   Upstream change counts, not confirmed issues in your code.
-  1. next 16.0.0 → 16.1.0 picks up 1 advisory (affected path not found)
+  1. next 16.0.0 → 16.3.0 picks up 1 advisory (affected path not found), 1
+  behaviour change
   
   Capabilities to explore · 1 shortlisted
   1. react · upgrade 19.0.0 → 19.1.0 — Activity hides part of the tree and
@@ -65,8 +65,8 @@ $ unstale status --wait 0 --no-animation  (no terminal)
   this brief.
   
   
-  .unstale/ is Git-ignored. Share reviews and decisions: unstale init --mode
-  shared --wait 0
+  Reviews and decisions can be committed to Git. Keep personal: unstale init
+  --mode personal --wait 0
   Details: .unstale/onboarding-report.md
   
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -77,11 +77,12 @@ $ unstale status --wait 0 --no-animation  (no terminal)
   files and trade-offs. Return proposals only; do not edit files.
   
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Release notes         not read: no provider chosen · `unstale setup` shows the options
+Release notes         OpenAI (OPENAI_API_KEY), this repo's config
+Tokens                84 of 48M this month (the default limit; `unstale setup --limit` changes it)
 Cache                 under 1 MB of 100 MB
 
 # contacted
 #   catalog host: GET /health, GET /v1/root.json, GET /v1/shards/next/16.7745374e4470.jsonl.gz, GET /v1/shards/next/16.events.74bcaa014f93.jsonl.gz, GET /v1/shards/react/19.b7c40e95232c.jsonl.gz, GET /v1/shards/react/19.events.04962169f41c.jsonl.gz, GET /v1/tech/next.json, GET /v1/tech/react-dom.json, GET /v1/tech/react.json, GET /v1/technologies.json
-#   model provider: nothing
+#   model provider: POST /v1/chat/completions (7 requests)
 #   codex: not run
 #   through the proxy: nothing
