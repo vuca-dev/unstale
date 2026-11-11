@@ -304,9 +304,21 @@ export function packageMarkdown(p: Package): string {
   return out.join("\n") + "\n";
 }
 
-// Example `unstale init` output on a Next.js and Prisma app, trimmed, in the CLI's tones.
+// Example `unstale init` output on a Next.js and Prisma app, trimmed, in the CLI's tones. The question is the first
+// run's, as the client prints it at 80 columns with one OpenAI key set and 38 packages followed (the figures of
+// `local/cli/src/setup/golden/openai-only.txt`).
 const TERMINAL: [string, string][] = [
   ["cmd", "$ npx @unstale/cli init"],
+  ["accent", "How should unstale read new release notes?"],
+  ["", ""],
+  ["muted", "     Read with  Cost a year, this repo  Compared with the best option"],
+  ["body", "  1  OpenAI     ≈ $2.43                 ≈ 11 in 100 breaking flags wrong, not 8"],
+  ["body", "  2  Not now    free                    ≈ 27%: advisories and deprecations only"],
+  ["muted", "     Keys: OPENAI_API_KEY"],
+  ["", ""],
+  ["body", "Enter for 1, a number to choose, or d for details:"],
+  ["muted", "Saved for this repo: OpenAI (OPENAI_API_KEY) reads release notes."],
+  ["", ""],
   ["fresh", "✓ my-app · Personal setup ready"],
   ["accent", "Next: run unstale-review in your coding agent · copyable prompt below."],
   ["body", "Mapped 119 direct dependencies from pnpm-lock.yaml and checked local references."],
@@ -350,6 +362,11 @@ const SUMMARY =
   "unstale tells you and your coding agent what changed upstream for your package versions and your code. Cited, local, free and open source.";
 
 const EVAL = `${REPO}/blob/main/eval/gate/MISSES.md`;
+const READING = `${REPO}#reading-new-release-notes`;
+/** What reading new release notes costs and what going without gives up; the figures are the client's own
+ *  (`quote()` in `local/cli/src/setup.rs`). */
+const COST =
+  "Changes already in the catalog cost nothing. New release notes are read by a model on your own API key or your Codex plan: about $0.064 per package, per year on an OpenAI key. With no provider, new releases bring security advisories and deprecations only, about 27% of what unstale finds with one.";
 const BEAT_NAIVE = `${REPO}/blob/main/eval/beat-naive/RESULTS.md`;
 
 /** Distinct package identities, including related packages grouped on a single page. */
@@ -414,6 +431,8 @@ ${CONTRIBUTIONS.map((c) => `<li><a href="${esc(c.url)}">${esc(c.lead)}</a> ${esc
 <li><strong>Fixes worth upgrading for.</strong> Security, bug fixes and behaviour changes between versions.</li>
 <li><strong>New opportunities.</strong> Net new capabilities, performance improvements, and more.</li>
 </ul>
+<h2>What it costs</h2>
+<p>${COST} <code>unstale init</code> asks once and shows your repository's yearly cost before anything is spent. <a href="${READING}">Every option</a></p>
 <h2>How it works</h2>
 <ol>
 <li><strong>Read your lockfile.</strong> JavaScript, TypeScript and Python projects.</li>
@@ -421,12 +440,12 @@ ${CONTRIBUTIONS.map((c) => `<li><a href="${esc(c.url)}">${esc(c.lead)}</a> ${esc
 <li><strong>Review with your agent.</strong> Run the <code>unstale-review</code> skill to see what changed, where it matters, and what to do next.</li>
 </ol>
 <h2>Your code stays on your machine</h2>
-<p>unstale receives public package names; <a href="https://osv.dev">OSV</a> receives package names and versions for advisory checks. No client telemetry.</p>
+<p>unstale receives public package names; <a href="https://osv.dev">OSV</a> receives package names and versions for advisory checks. A model provider you choose receives public release-note text. No client telemetry.</p>
 <details class="privacy-details"><summary>Network details</summary>
 <p>Public package names (like <code>pkg:npm/next</code>) to fetch the changes that apply. Not your code, file paths,
 versions or any ID. The service, hosted on Cloudflare, sees your IP address. It keeps it in memory only, to apply rate
 limits and count each address once per package, and never writes it to storage. Daily aggregate coverage-request outcome counts are kept for up to 90 UTC days, without addresses, package lists or individual request histories. To check advisories, the CLI sends the package names and versions your lockfiles resolve to
-<a href="https://osv.dev">OSV</a>, as <code>npm audit</code> would, and it reads the public npm and PyPI registries.</p>
+<a href="https://osv.dev">OSV</a>, as <code>npm audit</code> would, and it reads the public npm and PyPI registries. If you choose a model provider, it receives public release-note text and the changes read from it, with your key in the request and nothing from your repository.</p>
 </details>
 
 <p class="license">AGPL-3.0 · <a href="${REPO}">GitHub</a></p>
@@ -472,6 +491,11 @@ ${CONTRIBUTIONS.map((c) => `- [${c.lead}](${c.url}) ${c.rest}`).join("\n")}
 - **Fixes worth upgrading for.** Security, bug fixes and behaviour changes between versions.
 - **New opportunities.** Net new capabilities, performance improvements, and more.
 
+## What it costs
+
+${COST} \`unstale init\` asks once and shows your repository's yearly cost before anything is spent.
+[Every option](${READING}).
+
 ## How it works
 
 1. **Read your lockfile.** JavaScript, TypeScript and Python projects.
@@ -484,7 +508,9 @@ Public package names (like \`pkg:npm/next\`) to fetch the changes that apply. No
 any ID. The service, hosted on Cloudflare, sees your IP address. It keeps it in memory only, to apply rate limits and count
 each address once per package, and never writes it to storage. Daily aggregate coverage-request outcome counts are kept for up to 90 UTC days, without addresses, package lists or individual request histories.
 No client telemetry. To check advisories, the CLI sends the package names and versions your lockfiles resolve to OSV
-(https://osv.dev), as \`npm audit\` would, and it reads the public npm and PyPI registries.
+(https://osv.dev), as \`npm audit\` would, and it reads the public npm and PyPI registries. If you choose a model
+provider, it receives public release-note text and the changes read from it, with your key in the request and nothing
+from your repository.
 
 
 
@@ -506,7 +532,7 @@ export function llmsTxt(pkgs: Package[], version?: string): string {
 
 unstale is a CLI (\`@unstale/cli\` on npm${version ? `, ${version}` : ""}) plus a public, signed catalog of upstream changes.
 \`${INSTALL_NPX}\` in a repository maps its dependencies, matches the catalog against the code locally, and installs the review
-skill (\`/unstale-review\`; \`$unstale-review\` in Codex).
+skill (\`/unstale-review\`; \`$unstale-review\` in Codex). ${COST}
 
 Notes for agents:
 
