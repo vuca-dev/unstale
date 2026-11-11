@@ -33,6 +33,18 @@ pub struct Local {
     /// The release its first source came from.
     pub version: String,
     pub provenance: RecordProvenance,
+    /// The changes matched into it after its first, kept whole: when the catalog comes to cover the first, they make a
+    /// record of their own instead of leaving with it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub folded: Vec<Folded>,
+}
+
+/// A change matched into a record this machine made.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Folded {
+    pub incoming: Incoming,
+    pub labels: Labels,
+    pub provenance: RecordProvenance,
 }
 
 /// A change of a new release matched into a catalog record.
@@ -103,6 +115,46 @@ pub fn covered(td: &TechData) -> BTreeSet<String> {
         .collect()
 }
 
+/// What the catalog covers: a release its records name, or a change event central processed (`extracted`).
+pub struct Cover {
+    versions: BTreeSet<String>,
+    events: BTreeSet<String>,
+}
+
+impl Cover {
+    pub fn new(td: &TechData, processed: BTreeSet<String>) -> Cover {
+        Cover {
+            versions: covered(td),
+            events: processed,
+        }
+    }
+
+    /// Whether the catalog covers this change: its release, or the event its key names (`{event id}#{chunk}.{n}`).
+    pub fn has(&self, inc: &Incoming) -> bool {
+        self.versions.contains(&inc.version) || self.events.contains(event_of(&inc.key))
+    }
+}
+
+/// The change event an extraction key came from.
+pub fn event_of(key: &str) -> &str {
+    key.split('#').next().unwrap_or(key)
+}
+
+/// The ids of a technology's change events central processed (none when its events cannot be read).
+pub fn processed(cache: &Path, tech: &str) -> BTreeSet<String> {
+    crate::cache::load_events(cache, tech)
+        .ok()
+        .flatten()
+        .map(|e| {
+            e.events
+                .into_iter()
+                .filter(|e| e.extracted)
+                .map(|e| e.id)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 fn borderline(r: &CapabilityRecord) -> Vec<String> {
     r.classifier
         .as_ref()
@@ -110,39 +162,107 @@ fn borderline(r: &CapabilityRecord) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// The catalog's records with the client's merged in: amendments applied to the catalog records they name, client
-/// records added, each marked with its provenance; nothing for a release the catalog covers.
-pub fn overlay(td: &mut TechData, local: &LocalStore) {
-    let done = covered(td);
+/// A change with nowhere to go: the rest of a record the catalog now covers, or a change matched into a catalog record
+/// that has since been retracted. It becomes a record of its own.
+struct Loose<'a> {
+    incoming: &'a Incoming,
+    labels: &'a Labels,
+    provenance: &'a RecordProvenance,
+}
+
+/// The catalog's records with the client's merged in: client records added, amendments applied to the catalog records
+/// they name, each marked with its provenance; nothing for a change the catalog covers (its release named by a catalog
+/// record, or its event processed by central). No paid change leaves without cause: when the catalog covers a client
+/// record's first change, the changes matched into it later make a record of their own, and so does a change matched
+/// into a catalog record that was since retracted.
+pub fn overlay(td: &mut TechData, local: &LocalStore, cover: &Cover) {
     let comps = components(td);
     let index = td.index.clone();
     let line_of = matching::line_fn(&index);
-    for a in &local.amendments {
-        if done.contains(&a.incoming.version) {
+    // Every id in use: a record made here never takes one of them.
+    let mut taken: BTreeSet<String> = td
+        .records
+        .iter()
+        .map(|r| r.r.id.clone())
+        .chain(td.merged.keys().cloned())
+        .chain(td.retracted.iter().cloned())
+        .collect();
+    let catalog = taken.clone();
+    taken.extend(local.records.keys().cloned());
+    let mut hidden: Vec<Vec<Loose>> = vec![];
+    for (id, l) in &local.records {
+        let first_covered = cover.versions.contains(&l.version)
+            || l.sources
+                .first()
+                .is_some_and(|k| cover.events.contains(event_of(k)));
+        if !catalog.contains(id) && !first_covered {
+            td.records.push(Rec {
+                r: l.record.clone(),
+                borderline: borderline(&l.record),
+            });
+            td.provenance.insert(id.clone(), l.provenance.clone());
             continue;
         }
-        let into = td
-            .merged
-            .get(&a.into)
-            .cloned()
-            .unwrap_or_else(|| a.into.clone());
+        // Hidden: what the catalog does not cover of it stays, as a record of its own.
+        let rest: Vec<Loose> = l
+            .folded
+            .iter()
+            .filter(|f| !cover.has(&f.incoming))
+            .map(|f| Loose {
+                incoming: &f.incoming,
+                labels: &f.labels,
+                provenance: &f.provenance,
+            })
+            .collect();
+        if !rest.is_empty() {
+            hidden.push(rest);
+        }
+    }
+    let mut make = |td: &mut TechData, group: Vec<Loose>| {
+        let first = &group[0];
+        let mut r = matching::create(first.incoming, first.labels, &comps, &line_of, &|id| {
+            taken.contains(id)
+        });
+        for more in &group[1..] {
+            matching::combine(&mut r, more.incoming, more.labels, &comps, &line_of);
+        }
+        taken.insert(r.id.clone());
+        td.provenance.insert(r.id.clone(), first.provenance.clone());
+        td.records.push(Rec {
+            borderline: borderline(&r),
+            r,
+        });
+    };
+    for group in hidden {
+        make(td, group);
+    }
+    // Amendments, onto the record their target now is (a merge followed to its end); a target that is gone takes them
+    // as a record of their own, one per target.
+    let mut orphans: BTreeMap<String, Vec<Loose>> = BTreeMap::new();
+    for a in &local.amendments {
+        if cover.has(&a.incoming) {
+            continue;
+        }
+        let mut into = a.into.clone();
+        for _ in 0..16 {
+            match td.merged.get(&into) {
+                Some(next) if *next != into => into = next.clone(),
+                _ => break,
+            }
+        }
         if let Some(rec) = td.records.iter_mut().find(|r| r.r.id == into) {
             matching::combine(&mut rec.r, &a.incoming, &a.labels, &comps, &line_of);
             td.provenance.insert(into, a.provenance.clone());
+        } else {
+            orphans.entry(a.into.clone()).or_default().push(Loose {
+                incoming: &a.incoming,
+                labels: &a.labels,
+                provenance: &a.provenance,
+            });
         }
     }
-    for (id, l) in &local.records {
-        let taken = td.records.iter().any(|r| r.r.id == *id)
-            || td.merged.contains_key(id)
-            || td.retracted.contains(id);
-        if taken || done.contains(&l.version) {
-            continue;
-        }
-        td.records.push(Rec {
-            r: l.record.clone(),
-            borderline: borderline(&l.record),
-        });
-        td.provenance.insert(id.clone(), l.provenance.clone());
+    for group in orphans.into_values() {
+        make(td, group);
     }
     td.records.sort_by(|a, b| a.r.id.cmp(&b.r.id));
 }

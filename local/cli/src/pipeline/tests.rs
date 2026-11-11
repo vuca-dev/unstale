@@ -601,11 +601,12 @@ fn cache_from(cat: &crate::testcat::FixtureCatalog) -> tempfile::TempDir {
 }
 
 #[test]
-fn work_is_only_releases_the_catalog_has_no_records_for_in_demand_order_inside_the_window() {
+fn work_is_only_releases_central_did_not_process_in_demand_order_inside_the_window() {
     use crate::testcat::{FixtureCatalog, event, rec, with};
     let cat = FixtureCatalog::new();
     let dated = |e: Value, d: &str| with(e, serde_json::json!({"date": d}));
-    // next: 16.0.1 has catalog records (no call), 16.0.2 and 16.0.3 do not; 15.0.0 is older than the window.
+    // next: 16.0.1 has catalog records (no call), 16.0.2 and 16.0.3 do not; central processed 16.0.4 though no record
+    // names it (its changes all matched earlier records); 15.0.0 is older than the window.
     cat.tech_events(
         "next",
         0,
@@ -616,6 +617,10 @@ fn work_is_only_releases_the_catalog_has_no_records_for_in_demand_order_inside_t
                 dated(event("next", "16.0.1", "- a"), "2026-10-01"),
                 dated(event("next", "16.0.2", "- b"), "2026-10-05"),
                 dated(event("next", "16.0.3", "- c"), "2026-10-09"),
+                with(
+                    dated(event("next", "16.0.4", "- f"), "2026-10-12"),
+                    serde_json::json!({"extracted": true}),
+                ),
                 dated(event("next", "15.0.0", "- d"), "2025-01-01"),
             ],
         )],

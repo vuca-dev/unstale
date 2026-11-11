@@ -199,7 +199,9 @@ pub fn load_tech(cache: &Path, tech: &str) -> Result<Option<TechData>> {
     if crate::util::edge_inference()
         && let Some(td) = td.as_mut()
     {
-        crate::pipeline::store::overlay(td, &crate::pipeline::store::LocalStore::load(cache, tech));
+        use crate::pipeline::store;
+        let cover = store::Cover::new(td, store::processed(cache, tech));
+        store::overlay(td, &store::LocalStore::load(cache, tech), &cover);
     }
     Ok(td)
 }

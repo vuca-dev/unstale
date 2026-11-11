@@ -30,19 +30,12 @@ use unstale_schema::catalog::EventLine;
 /// covers one year of its releases, as the setup quote states.
 pub const BACKFILL_DAYS: i64 = 365;
 
-/// One technology's events that need the client's own steps, newest first.
+/// One technology's events that need the client's own steps, oldest first (central's order, so a pass that stops
+/// partway leaves the same match targets central would have).
 #[derive(Debug, Clone)]
 pub struct Pending {
     pub technology: String,
     pub events: Vec<EventLine>,
-}
-
-/// The versions a technology's catalog records name: releases the catalog already covers.
-fn covered(td: &crate::cache::TechData) -> BTreeSet<String> {
-    td.records
-        .iter()
-        .flat_map(|r| r.r.releases.iter().map(|x| x.version.clone()))
-        .collect()
 }
 
 /// How much this repository needs a technology: the stack's packages its index or records name.
@@ -55,8 +48,9 @@ fn demand(td: &crate::cache::TechData, purls: &BTreeSet<String>) -> usize {
 }
 
 /// The work for these technologies, in demand order (most of this stack's packages first, then by id); within a
-/// technology, newest events first. An event is left out when the catalog has records for its version, or when it is
-/// older than the backfill window. A technology never synced, or whose events cannot be read, is skipped.
+/// technology, oldest events first, as central ingests. An event is left out when central processed it (`extracted`:
+/// its records, if any, are in the catalog), when the catalog has records for its version, or when it is older than
+/// the backfill window. A technology never synced, or whose events cannot be read, is skipped.
 pub fn plan(
     cache: &Path,
     techs: &BTreeSet<String>,
@@ -74,11 +68,13 @@ pub fn plan(
         let Ok(Some(ev)) = crate::cache::load_events(cache, t) else {
             continue;
         };
-        let done = covered(&td);
+        let done = store::covered(&td);
         let mut events: Vec<EventLine> = ev
             .events
             .into_iter()
-            .filter(|e| !done.contains(&e.version) && e.date.as_str() >= floor.as_str())
+            .filter(|e| {
+                !e.extracted && !done.contains(&e.version) && e.date.as_str() >= floor.as_str()
+            })
             .collect();
         events.sort_by(|a, b| {
             b.date

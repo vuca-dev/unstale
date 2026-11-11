@@ -4,7 +4,7 @@ use super::extract::{Extractor, Incoming, Provenance, numeric_cmp};
 use super::labels::{Chooser, STEP_JUDGE, STEP_LABELS, interpret, record_state};
 use super::matching;
 use super::results::{Results, model_key};
-use super::store::{Amendment, Local, LocalStore, RecordProvenance, components};
+use super::store::{Amendment, Folded, Local, LocalStore, RecordProvenance, components};
 use super::{Routes, plan};
 use crate::inference::{Deferred, Inference, Kind};
 use std::collections::BTreeSet;
@@ -77,6 +77,7 @@ pub fn run(
             continue;
         };
         let mut store = LocalStore::load(cache, &t.technology);
+        let cover = super::store::Cover::new(&td, super::store::processed(cache, &t.technology));
         let name = t.events.first().map(|e| e.name.clone()).unwrap_or_default();
         // One technology at a time, most needed first: its records are written before the next one's extraction
         // starts. When extraction stops early, what it extracted is still labelled and written.
@@ -139,7 +140,7 @@ pub fn run(
             );
             // The catalog's records with what this machine added, as candidates.
             let mut view = td.clone();
-            super::store::overlay(&mut view, &store);
+            super::store::overlay(&mut view, &store, &cover);
             let mut chosen = None;
             let mut judge_prov = None;
             if matching_on {
@@ -214,6 +215,7 @@ pub fn run(
                             sources: vec![inc.key.clone()],
                             version: inc.version.clone(),
                             provenance,
+                            folded: vec![],
                         },
                     );
                     store.ingested.insert(inc.key.clone(), id);
@@ -233,6 +235,11 @@ pub fn run(
                     if let Some(l) = store.records.get_mut(&id) {
                         matching::combine(&mut l.record, inc, &labels, &comps, &line_of);
                         l.sources.push(inc.key.clone());
+                        l.folded.push(Folded {
+                            incoming: (*inc).clone(),
+                            labels: labels.clone(),
+                            provenance,
+                        });
                     } else {
                         store.amendments.push(Amendment {
                             into: id.clone(),
@@ -262,6 +269,7 @@ pub fn run(
                             sources: vec![inc.key.clone()],
                             version: inc.version.clone(),
                             provenance,
+                            folded: vec![],
                         },
                     );
                     store.ingested.insert(inc.key.clone(), id);
