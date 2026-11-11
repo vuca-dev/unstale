@@ -457,7 +457,7 @@ fn through_codex_extract_calls_go_eight_chunks_at_a_time_answered_by_chunk_id() 
         "a batch answer never takes the key of one asked alone"
     );
     let key = Results::key_in(
-        "batch8",
+        super::extract::BATCH_FORM,
         STEP_EXTRACT,
         "gpt-6-luna@low",
         v,
@@ -471,6 +471,127 @@ fn through_codex_extract_calls_go_eight_chunks_at_a_time_answered_by_chunk_id() 
     let r = x.event(ev).unwrap();
     assert_eq!(r.incoming.len(), 1);
     assert_eq!(x.calls.get(), 2, "only the label call is made");
+}
+
+#[cfg(unix)]
+#[test]
+fn through_codex_a_long_chunk_is_extracted_alone_and_batches_are_bounded_in_length() {
+    use super::extract::{ALONE_ABOVE_CHARS, BATCH_CHARS};
+    let dir = tempfile::tempdir().unwrap();
+    let all = cases();
+    let base = &all
+        .iter()
+        .find(|c| c.name == "release-notes")
+        .unwrap()
+        .event;
+    // Distinct release notes of `n` characters each, as events of one chunk.
+    let event = |i: usize, n: usize| {
+        let mut text = format!("- Adds option{i} to defineConfig.\n");
+        while text.len() < n {
+            text.push_str(&format!("- Fixes case {i}-{} in the parser.\n", text.len()));
+        }
+        text.truncate(n);
+        let mut ev = base.clone();
+        ev.id = format!("{}-{i}", base.id);
+        ev.version = format!("1.{i}.0");
+        ev.chunks = vec![EventChunk {
+            id: format!("{}#0", ev.id),
+            sha256: sha256_hex(text.as_bytes()),
+            text,
+            content_free: false,
+        }];
+        ev
+    };
+    let short = 2_000;
+    let long = ALONE_ABOVE_CHARS + 1;
+    let mut evs: Vec<EventLine> = (0..4).map(|i| event(i, short)).collect();
+    evs.push(event(4, long));
+    evs.extend((5..11).map(|i| event(i, short)));
+    // Every call answers c1..c8 with a record naming its id.
+    let answer: serde_json::Map<String, Value> = (1..=8)
+        .map(|i| {
+            (
+                format!("c{i}"),
+                serde_json::json!([{"subject": format!("s{i}"), "summary": "Adds it.", "evidence": "Adds"}]),
+            )
+        })
+        .collect();
+    let msg = serde_json::json!({"type": "item.completed", "item": {"type": "agent_message", "text": Value::Object(answer).to_string()}});
+    let out = format!(
+        "{msg}\n{}\n",
+        r#"{"type":"turn.completed","usage":{"input_tokens":4299,"cached_input_tokens":2944,"output_tokens":50}}"#
+    );
+    let codex = fake_codex(dir.path(), &out);
+    let mut inf = inference(
+        ProviderConfig::codex(),
+        &codex.to_string_lossy(),
+        dir.path(),
+    );
+    inf.provider.key_env = None;
+    let results = Results::at(dir.path());
+    let x = Extractor::new(&inf, &results);
+    let refs: Vec<&EventLine> = evs.iter().collect();
+    x.prefetch(&refs).unwrap();
+    // Ten short chunks of 2,000 characters: six fill the bound, four follow; the long one is in neither.
+    assert_eq!(BATCH_CHARS / short, 6);
+    assert_eq!(x.calls.get(), 2);
+    let args: Vec<String> = (0..2)
+        .map(|n| std::fs::read_to_string(dir.path().join(format!("calls/{n}.args"))).unwrap())
+        .collect();
+    let in_call = |a: &str, ev: &EventLine| a.contains(&ev.chunks[0].text);
+    let short_evs: Vec<&EventLine> = evs
+        .iter()
+        .filter(|e| e.chunks[0].text.len() == short)
+        .collect();
+    for (n, group) in [&short_evs[..6], &short_evs[6..]].iter().enumerate() {
+        for (i, ev) in group.iter().enumerate() {
+            assert!(in_call(&args[n], ev), "call {n} carries {}", ev.id);
+            assert!(args[n].contains(&format!("<chunk id=\"c{}\"", i + 1)));
+        }
+        assert!(!args[n].contains(&format!("<chunk id=\"c{}\"", group.len() + 1)));
+        assert!(
+            !in_call(&args[n], &evs[4]),
+            "the long chunk is never batched"
+        );
+    }
+    let v = crate::prompts::prompts().extract.version;
+    let key = |form: &str, ev: &EventLine| {
+        let prompt = x.extract_prompt(ev, &ev.chunks[0].text, "");
+        Results::key_in(
+            form,
+            STEP_EXTRACT,
+            "gpt-6-luna@low",
+            v,
+            &ev.chunks[0].sha256,
+            &prompt,
+        )
+    };
+    // Answers map by id within each batch: the second batch's first chunk is its c1.
+    for (ev, subject) in [
+        (short_evs[0], "s1"),
+        (short_evs[5], "s6"),
+        (short_evs[6], "s1"),
+        (short_evs[9], "s4"),
+    ] {
+        match results
+            .get(&key(super::extract::BATCH_FORM, ev))
+            .unwrap()
+            .outcome
+        {
+            Outcome::Answer { answer } => assert_eq!(answer[0]["subject"], subject, "{}", ev.id),
+            o => panic!("{o:?}"),
+        }
+    }
+    // The long chunk is asked alone, with the single prompt, under the key of a call asked alone.
+    assert!(
+        results
+            .get(&key(super::extract::BATCH_FORM, &evs[4]))
+            .is_none()
+    );
+    let _ = x.event(&evs[4]);
+    let alone = std::fs::read_to_string(dir.path().join("calls/2.args")).unwrap();
+    assert!(in_call(&alone, &evs[4]) && !alone.contains("<chunk id="));
+    assert!(results.get(&key("", &evs[4])).is_some());
 }
 
 #[test]

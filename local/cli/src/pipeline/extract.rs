@@ -1,8 +1,8 @@
 //! Extraction on the client: a change event's chunks become raw records (central's `Incoming`) through the same two
 //! calls central makes (`central/src/pipeline/extract.ts`, two-call structure, quoted evidence): the extract call per
 //! chunk, then the label call for that chunk's records, answered by record id. A chunk whose extract answer runs out
-//! of room is split into pieces (`splitChunk`) and each piece extracted. Through Codex the extract calls go eight
-//! chunks at a time, answered by chunk id ([`Extractor::prefetch`]).
+//! of room is split into pieces (`splitChunk`) and each piece extracted. Through Codex the extract calls of short chunks
+//! go up to eight at a time, bounded in length, answered by chunk id ([`Extractor::prefetch`]); long ones go alone.
 //!
 //! Every answer goes to the user-level result cache ([`super::results`]) as soon as it returns. A provider or budget
 //! problem stops the step with a [`Deferred`]; what was answered stays cached for the next run.
@@ -453,7 +453,7 @@ impl<'a> Extractor<'a> {
 
     fn batch_key(&self, step: &str, notes: &str, prompt: &str) -> String {
         Results::key_in(
-            "batch8",
+            BATCH_FORM,
             step,
             &self.model(),
             self.version(),
@@ -653,8 +653,10 @@ impl<'a> Extractor<'a> {
         })
     }
 
-    /// Through Codex: the extract calls of these events' chunks not yet answered, eight to a call, answered by chunk id
-    /// and cached under each chunk's own key. A chunk the batch leaves out is asked alone by [`Extractor::event`].
+    /// Through Codex: the extract calls of these events' chunks not yet answered, up to eight to a call and at most
+    /// [`BATCH_CHARS`] of notes in all, answered by chunk id and cached under each chunk's own key (a batch form of
+    /// it). A chunk longer than [`ALONE_ABOVE_CHARS`], or one the batch leaves out, is asked alone by
+    /// [`Extractor::event`], under the key of a call asked alone.
     pub fn prefetch(&self, events: &[&EventLine]) -> Result<(), Deferred> {
         if self.inf.provider.kind != Kind::Codex {
             return Ok(());
@@ -663,7 +665,11 @@ impl<'a> Extractor<'a> {
         for ev in events {
             let n = ev.chunks.len();
             for (ci, c) in ev.chunks.iter().enumerate() {
-                if c.content_free || js::js_trim(&c.text).is_empty() || js::content_free(&c.text) {
+                if c.content_free
+                    || js::js_trim(&c.text).is_empty()
+                    || js::content_free(&c.text)
+                    || c.text.chars().count() > ALONE_ABOVE_CHARS
+                {
                     continue;
                 }
                 let prompt = self.extract_prompt(ev, &c.text, &self.part_line(ci, n));
@@ -679,7 +685,7 @@ impl<'a> Extractor<'a> {
         let e = &self.prompts.extract;
         let template =
             apply_edits(&e.extract, &e.variants.batch).map_err(|_| Deferred::Rejected)?;
-        for group in todo.chunks(crate::inference::BATCH) {
+        for group in batches(&todo, |(_, notes, _)| notes.chars().count()) {
             let body: Vec<String> = group
                 .iter()
                 .enumerate()
@@ -727,6 +733,41 @@ impl<'a> Extractor<'a> {
         }
         Ok(())
     }
+}
+
+/// Through Codex, a chunk longer than this many characters is extracted alone, never in a batch. In the parity run
+/// (`eval/edge-port/RESULTS.md`, short notes, eight chunks to a call) all of the lost recall was in the two batches
+/// holding the chunks of 8,258 to 29,820 characters (the longest gave 14 records against 37 to 75 alone); the
+/// technologies whose chunks were all at most 6,495 characters came out level. The bound sits below that.
+pub const ALONE_ABOVE_CHARS: usize = 6_000;
+
+/// Through Codex, the most characters of release notes one batched extract call carries. In the same run the batches
+/// that came out level held 2,782 to 17,232 characters of notes and the two that lost recall 47,612 and 64,846; the
+/// bound sits below every level batch but the largest, and below the one (12,680) whose technology lost 4 of 29
+/// records.
+pub const BATCH_CHARS: usize = 12_000;
+
+/// The cache form of an extract answer given in a batch, naming the bounds it was given under: an answer from a
+/// batch built with other bounds is not reused.
+pub(super) const BATCH_FORM: &str = "batch8-6000-12000";
+
+/// Items in order, cut into batches of at most [`crate::inference::BATCH`] items and [`BATCH_CHARS`] characters in
+/// all (`size` of each item). An item over the bound on its own still gets a batch of its own.
+fn batches<T>(items: &[T], size: impl Fn(&T) -> usize) -> Vec<&[T]> {
+    let mut out = vec![];
+    let (mut start, mut total) = (0, 0);
+    for (i, item) in items.iter().enumerate() {
+        let n = size(item);
+        if i > start && (i - start == crate::inference::BATCH || total + n > BATCH_CHARS) {
+            out.push(&items[start..i]);
+            (start, total) = (i, 0);
+        }
+        total += n;
+    }
+    if start < items.len() {
+        out.push(&items[start..]);
+    }
+    out
 }
 
 /// The JSON kind a step's answer must be.
