@@ -8,7 +8,8 @@
 //!   naming that version (catalog records win where they exist);
 //! - a chunk central marked as holding no change, and a chunk whose text an earlier chunk already gave (by its
 //!   sha256), are left out;
-//! - the whole file is at most [`CAP_BYTES`]. When the text is longer, every technology gets the same share and those
+//! - the release text in the file is at most [`CAP_BYTES`] (its headings add about a line per technology). When the
+//!   text is longer, every technology gets the same share and those
 //!   needing less pass the rest on; within a technology, upgrade guides and the first release of each later release
 //!   line come first, then the releases nearest the installed version. What is left out is named.
 //!
@@ -25,7 +26,7 @@ use unstale_schema::catalog::{EventLine, EvidenceKind};
 /// The file under `.unstale/` that holds the text.
 pub const FILE: &str = "change-events.md";
 
-/// The most the file holds: about 60k tokens, a fraction of what an agent spends searching for the same changes.
+/// The most release text the file holds: about 60k tokens.
 pub const CAP_BYTES: usize = 240_000;
 
 /// Whether the report carries raw change events: the switch is on and no model provider is chosen (none stored, or
