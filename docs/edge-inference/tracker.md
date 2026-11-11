@@ -11,7 +11,7 @@
 - **Ground truth:** GitHub PR state. Repo `vuca-dev/unstale`.
 - **Base:** `origin/main` @ `8b2fe69` (#239 merge; `ci` running at time of writing, previous tip `b778876` green)
 - **Base health:** PR checks are `rust`, `central`, `gateway`; re-query before every merge.
-- **Open PRs:** #238 (full scenario matrix, `806da1d`, in review; must rebase onto #239 and regenerate goldens), #231 (no-key eval draft, blocked on the ingest decision)
+- **Open PRs:** #238 (full scenario matrix, `806da1d`, in review; must rebase onto #239 and regenerate goldens), #231 (no-key eval draft, blocked on the ingest decision), #240 (docs and site, DRAFT at `48b9c6d`, CI green; HELD for the CEO, never merged by agents; conflicts expected with the CEO's `smooth-wordmark` branch in `README.md` and `gateway/site/build.ts`)
 - **Live worktrees (sprint):** `/Users/jason/unstale-edge-sprint` (tracker), `/Users/jason/unstale-ws6b` (#238), `/Users/jason/unstale-ws9-no-key` + `/Users/jason/unstale-ws9-scout` (#231), `/Users/jason/unstale-parity` (paid answer caches; keep)
 - **Live subagents:** #238 reviewer (Fable). Idle, resumable: matrix EM, no-key eval agent.
 - **Merged + verified:** WS0 → #213 `673c191`
@@ -336,3 +336,9 @@ OpenRouter parity, repeat eval runs.
 
 ### Program close
 - `main` green on the final tip; tracker branch merged; morning report.
+
+### Docs and site (#240) — draft open, held (11 November)
+
+- Draft at `48b9c6d`, worktree `/Users/jason/unstale-ws8-docs`. Not verified: real Codex and opencode hooks; phone-width site.
+- Product issues it found, for the product-fix PR: (1) `session-sync` with "Not now" recorded prints "another unstale is reading them"; (2) `setup` and `cache` hidden from `--help` even with the switch on (unhide at release); (3) `sync` prints an internal id (`zod-6ac59393: …`); (4) "Not now" row overstates the loss while the catalog still has records; (5) `--details` package count off (3 for a repo with 2); (6) `cache clean` without a terminal exits 1 after "Run it again with --yes".
+- The ≈ 27% no-provider figure's source is on the unmerged no-key branch (#231).
