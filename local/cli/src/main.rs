@@ -15,6 +15,7 @@ mod funnel;
 mod inference;
 mod lines;
 mod maintenance;
+mod nokey;
 mod notice;
 mod ledgerops;
 mod review;

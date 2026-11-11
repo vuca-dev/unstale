@@ -3962,6 +3962,11 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World, write: bool) -> Result<B
     if !cards.is_empty() {
         text += &evidence_block(cards.join("\n").trim_end());
     }
+    // No-key mode: with no model provider, the raw change events of newer releases go to the agent as they are.
+    let raw_events = crate::nokey::active(ctx.config.inference.as_ref())
+        .then(|| crate::nokey::render(crate::nokey::sources(&ctx.cache, &w.stack, &w.catalog, pending.jobs.values().map(|j| (j.purl.as_str(), j.technology.as_str()))), crate::nokey::CAP_BYTES))
+        .flatten();
+    if let Some(r) = &raw_events { text += &crate::nokey::section(r); }
     if !w.stack.notes.is_empty() || !w.stack.standalone.is_empty() || !out.version_notes.is_empty() {
         text += "\n## Version sources\n\nInstalled versions above come from these choices. Verify against the lockfile your package manager actually uses.\n\n";
         text += &evidence_block(&w.stack.notes.iter().chain(&w.stack.standalone).chain(&out.version_notes).cloned().collect::<Vec<_>>().join("\n"));
@@ -4001,6 +4006,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World, write: bool) -> Result<B
         let gap_path = ctx.tool.join("source-gaps.md");
         if let Some(draft) = source_gap_draft(pending) { util::write_atomic(&gap_path, draft.as_bytes())?; }
         else if gap_path.is_file() { std::fs::remove_file(&gap_path)?; }
+        crate::nokey::write(&ctx.tool, raw_events.as_ref())?;
         let brief = ctx.tool.join("onboarding-report.md");
         util::write_atomic(&brief, text.as_bytes())?;
         review::write_entrypoint(&ctx.tool)?;
