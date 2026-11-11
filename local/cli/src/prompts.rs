@@ -205,13 +205,34 @@ pub struct Judge {
     pub sources: JudgeSources,
 }
 
-/// `choice.json` and `advisory-apis.json`: one prompt each.
+/// `advisory-apis.json`: one prompt.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PromptFile {
     pub version: u32,
     #[serde(deserialize_with = "text")]
     pub prompt: String,
+}
+
+/// `choice.json`: the closed-choice prompt for a text model (`%STATE%`, `%QUESTIONS%`), and its batched form for
+/// several records answered by record id (`%RECORDS%`).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ChoiceFile {
+    pub version: u32,
+    #[serde(deserialize_with = "text")]
+    pub prompt: String,
+    pub batch: Vec<Edit>,
+}
+
+/// The judge's bars for a text model read on its choices (`eval/provider-matrix/RESULTS.md`, E, gpt-6-luna chat:
+/// fitted same / cross / quote 0.82 / 0.97 / 1.01). A quote bar above 1 means the quote guard always applies.
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ChatJudge {
+    pub same_p: f64,
+    pub cross_same_p: f64,
+    pub quote_guard_below: f64,
 }
 
 /// `thresholds.json`: the bars labels and merges are decided at.
@@ -233,6 +254,7 @@ pub struct Thresholds {
     pub quote_similarity: f64,
     pub question_floor: f64,
     pub lineage_same_p: f64,
+    pub chat_judge: ChatJudge,
 }
 
 #[derive(Debug, Clone)]
@@ -241,7 +263,7 @@ pub struct Prompts {
     pub labels: Labels,
     pub judge: Judge,
     /// The choice fallback: `%STATE%`, `%QUESTIONS%`.
-    pub choice: PromptFile,
+    pub choice: ChoiceFile,
     /// An advisory's affected APIs: `%PACKAGE%`, `%TEXT%`.
     pub advisory_apis: PromptFile,
     pub thresholds: Thresholds,

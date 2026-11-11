@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "breaking_p": 0.5,
   "benefit_p": 0.5,
   "borderline": [
@@ -15,5 +15,10 @@
   "quote_guard_below_short": 0.99,
   "quote_similarity": 0.9,
   "question_floor": 0.6,
-  "lineage_same_p": 0.8
+  "lineage_same_p": 0.8,
+  "chat_judge": {
+    "same_p": 0.82,
+    "cross_same_p": 0.97,
+    "quote_guard_below": 1.01
+  }
 }

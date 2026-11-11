@@ -76,6 +76,8 @@ const JudgeFile = z
   .strict();
 
 const PromptFile = z.object({ version: Version, prompt: Text }).strict();
+/** The choice prompt, and its batched form (the client's Codex route: several records, answered by record id). */
+const ChoiceFile = z.object({ version: Version, prompt: Text, batch: z.array(Edit) }).strict();
 
 const Probability = z.number().min(0).max(1);
 const ThresholdsFile = z
@@ -94,6 +96,8 @@ const ThresholdsFile = z
     quote_similarity: Probability,
     question_floor: z.number().nonnegative(),
     lineage_same_p: Probability,
+    /** The judge's bars for a text model read on its choices (the client's route without the labelling service). */
+    chat_judge: z.object({ same_p: Probability, cross_same_p: Probability, quote_guard_below: z.number().min(0).max(1.01) }).strict(),
   })
   .strict();
 
@@ -111,7 +115,7 @@ export const PROMPT_FILES = ["extract.json", "labels.json", "judge.json", "choic
 export const extractText = load("extract.json", ExtractFile);
 export const labelsText = load("labels.json", LabelsFile);
 export const judgeText = load("judge.json", JudgeFile);
-export const choiceText = load("choice.json", PromptFile);
+export const choiceText = load("choice.json", ChoiceFile);
 export const advisoryApisText = load("advisory-apis.json", PromptFile);
 export const thresholdsData = load("thresholds.json", ThresholdsFile);
 
