@@ -1177,15 +1177,17 @@ fn no_client_connection_ignores_the_proxy_variables() {
 const OPENCODE_SESSION: &str = r#"
 import { spawn } from "node:child_process";
 const repo = process.argv[2];
+let exited = null;
+let run = null;
 const $ = (strings, ...values) => {
   const argv = [];
   strings.forEach((s, i) => {
     argv.push(...s.split(/\s+/).filter(Boolean));
     if (i < values.length) argv.push(...[values[i]].flat().map(String));
   });
-  const run = new Promise((resolve) => {
+  run = new Promise((resolve) => {
     const p = spawn(argv[0], argv.slice(1), { stdio: ["ignore", "inherit", "inherit"] });
-    p.on("exit", resolve);
+    p.on("exit", (c) => { exited = performance.now(); resolve(c); });
     p.on("error", resolve);
   });
   const shell = { quiet: () => shell, nothrow: () => shell, catch: (f) => run.catch(f), then: (a, b) => run.then(a, b) };
@@ -1193,7 +1195,12 @@ const $ = (strings, ...values) => {
 };
 const { UnstaleSessionSync } = await import(new URL("./plugin.mjs", import.meta.url));
 const hooks = await UnstaleSessionSync({ $, directory: repo });
+const started = performance.now();
 await hooks.event({ event: { type: "session.created" } });
+// From the event to the end of the command the plugin ran: opencode is running already, so node's own start is not
+// counted.
+if (run) await run;
+(await import("node:fs")).writeFileSync(process.argv[3], String(Math.round((exited ?? performance.now()) - started)));
 "#;
 
 /// Each agent's installed session-start hook, run as that agent runs it: (agent, exit code, stdout, stderr, time).
@@ -1244,9 +1251,15 @@ fn every_hook(
             std::env::var("PATH").unwrap_or_default()
         ),
     );
-    let t = std::time::Instant::now();
+    let took_file = dir.join("took-ms");
+    let _ = std::fs::remove_file(&took_file);
+    node.arg(&took_file);
     let (code, o, e) = support::run_within(&mut node, Duration::from_secs(30));
-    out.push(("opencode", code, o, e, t.elapsed()));
+    let ms: u64 = std::fs::read_to_string(&took_file)
+        .ok()
+        .and_then(|t| t.trim().parse().ok())
+        .unwrap_or(u64::MAX / 2);
+    out.push(("opencode", code, o, e, Duration::from_millis(ms)));
     out
 }
 
