@@ -11,9 +11,9 @@
 - **Ground truth:** GitHub PR state. Repo `vuca-dev/unstale`.
 - **Base:** `origin/main` @ `72d0fc5` (`ci` green)
 - **Base health:** PR checks are `rust`, `central`, `gateway`; re-query before every merge.
-- **Open PRs:** #231 (WS9 draft, blocked on ingest coverage); parity PR and WS6b pending
+- **Open PRs:** #236 (parity results, `eval/edge-port/` only, READY at `3706655`; hold until re-measurement), #231 (WS9 draft); parity fixes and WS6b pending
 - **Live worktrees (sprint):** `/Users/jason/unstale-edge-sprint` (tracker)
-- **Live subagents:** parity (Fable 5.2, `/Users/jason/unstale-parity`, cap $3), ws6b-matrix (Opus 5.5, `/Users/jason/unstale-ws6b`). ws9 stopped at the data gate.
+- **Live subagents:** parity-fixes (Opus 5.5, `/Users/jason/unstale-parity-fixes`), ws6b-matrix (Opus 5.5). Parity agent idle (worktree `/Users/jason/unstale-parity` kept for the re-measurement). ws9 stopped at the data gate.
 - **Merged + verified:** WS0 → #213 `673c191`
 - **Next:** review parity and WS6b; CEO decision on the ingest starvation fix (unblocks WS9); WS8 draft last
 - **Sprint API spend so far:** $0 of $10
@@ -310,9 +310,20 @@ OpenRouter parity, repeat eval runs.
 - Proposed: drop the over-cap-last rule for monitoring jobs; order due refreshes oldest first (admission stays
   demand order); fix the file name. The cutover alone does not fix it.
 
-### Parity: IN PROGRESS
-- Pre-registered, one run per cell, cap $3 (estimate about $0.60); also batched Codex extraction recall and the
-  threshold behind the "93%" line. PR with `eval/edge-port/` only; exits READY.
+### Parity: RUN, 7 of 8 cells pass; fixes in progress (PR #236, spend $0.27 of the $10 sprint cap)
+- Pass: extraction (both sets), labels on the labelling service (233/233, 347/347 replayed), labels by choice
+  (both sets), matching on the labelling service (236/236 decisions equal). 815/815 labelling-service requests
+  byte-identical.
+- **Fail: matching on `gpt-6-luna` by choice**, recall 72.1% → 62.9%. Not a port difference: a choice answer
+  giving the option's text instead of its key is discarded on both sides (23 of 235 unreadable).
+- **Batched Codex extraction loses recall**: 53.5 against 75.6 direct; long chunks collapse in a batch.
+- Measured cost per technology-year: labelling service + key $0.032–0.036; key alone $0.059–0.064; service + Codex
+  $0.018 plus 152k plan tokens. The "93%" line is wrong: at the client's threshold (0.5) a key alone finds about
+  as many breaking changes with more wrong flags. Duplicates without the labelling service: about 6, not 4.
+- The parity agent read the gateway and labelling-service keys from the per-user key directory central's code
+  names (outside the repo), only those two variables. Reported to the CEO.
+- Next: parity-fixes PR (answer reading on both sides, length-aware Codex batching, exact probabilities, setup
+  figures), review, then the parity agent re-runs the two affected cells once and updates RESULTS.
 
 ### Notes
 - Briefs say "do not merge any PR other than your own".
