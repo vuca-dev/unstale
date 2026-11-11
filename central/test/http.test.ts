@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import { setTimeout as sleep } from "node:timers/promises";
 import { afterEach, describe, expect, test } from "vitest";
 import { isBlockedAddress } from "../src/collector/url-safety.ts";
-import { DEFAULT_HTTP, HttpClient, parseRetryAfter } from "../src/collector/http.ts";
+import { DEFAULT_HTTP, FetchFailure, HttpClient, parseRetryAfter } from "../src/collector/http.ts";
 import { env, versioned, type TestEnv } from "./helpers.ts";
 
 let e: TestEnv | undefined;
@@ -159,6 +159,15 @@ describe("limits and retries", () => {
     e.route("/rl", (_q, res) => (n++ === 0 ? void res.writeHead(429, { "retry-after": "0" }).end() : void res.writeHead(200, { "content-type": "text/markdown" }).end("ok")));
     expect((await e.collector.check(e.spec("/rl", { format: "markdown" }))).outcome.status).toBe("first_seen");
     expect(n).toBe(2);
+  });
+
+  test("a status failure names the host that answered (hostname only), for the rate-pause line", async () => {
+    e = await env();
+    e.route("/limited", (_q, res) => void res.writeHead(429, { "retry-after": "3600" }).end());
+    const client = new HttpClient({ ...DEFAULT_HTTP, allowHosts: ["127.0.0.1"] });
+    const failure = await client.get(`${e.base}/limited?token=abc`, {}).catch((x: unknown) => x);
+    expect(failure).toBeInstanceOf(FetchFailure);
+    expect(failure).toMatchObject({ httpStatus: 429, host: "127.0.0.1" });
   });
 
   test("429 with a long Retry-After fails without waiting", async () => {

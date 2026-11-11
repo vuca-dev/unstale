@@ -5,6 +5,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createHash } from "node:crypto";
 import { FetchFailure } from "../src/collector/http.ts";
 import { CoverageService, logName, sameStream, type Job } from "../src/onboarding/service.ts";
 import { DailyBudget, nextPeriod, periodKey, quarterKey, Voters, type Limits } from "../src/onboarding/limits.ts";
@@ -681,4 +682,140 @@ test("under a spent budget every slot may take a release check past the cap, and
   expect(started.sort()).toEqual(["check-a", "check-b"]);
   // Both at once: the kept slot is not the only one a check may take.
   expect(most).toBe(2);
+});
+
+const events = (log: { mock: { calls: unknown[][] } }, name: string) =>
+  log.mock.calls.map(([line]) => (typeof line === "string" && line.startsWith("{") ? JSON.parse(line) : undefined)).filter((e) => e?.event === name);
+
+test("freshness counts the old tail by day and three days, and what cannot get younger now, without changing earlier fields", () => {
+  const service = new CoverageService(0, { limits: limits() });
+  const at = Date.now();
+  const ago = (hours: number) => new Date(at - hours * 3600_000).toISOString();
+  const monitored = (name: string, hours: number | undefined, extra: Partial<Job> = {}) => {
+    const job = service.submit(`pkg:npm/${name}`);
+    Object.assign(job, { state: "monitoring", descriptor: { repo: `ex/${name}` }, ...extra });
+    if (hours !== undefined) job.release_checked = ago(hours);
+    return job;
+  };
+  monitored("fresh", 1);
+  monitored("day", 30);
+  monitored("week", 24 * 7);
+  // Failed since its last read, which a slice reaching the read would have renewed: it cannot improve now.
+  monitored("failing", 24 * 9, { failures: 3, updated: ago(1) });
+  // Failed after its read (the read is within the slice): it is checked, its failure is later.
+  monitored("late-failure", 2, { failures: 1, updated: ago(1.9) });
+  // Failed after its read, then saved again later (the estimate's false positive): its check is younger than the
+  // refresh interval, so it is never counted and stays in the checkable ages.
+  monitored("saved-later", 5, { failures: 1, updated: ago(0.5) });
+  // No repository: `release_checked` is never set.
+  monitored("homepage", undefined, { descriptor: { homepage: "https://example.org" } as never });
+  const f = service.freshness(at);
+  expect(f).toMatchObject({ monitored: 7, release_check_unknown: 1, release_checks_over_6h: 3,
+    release_check_age_s: { max: 24 * 9 * 3600 } });
+  expect(f).toMatchObject({ release_checks_over_24h: 3, release_checks_over_3d: 2,
+    unimprovable: { no_repository: 1, failing_before_read_estimate: 1 },
+    release_check_age_s_checkable: { p95: 24 * 7 * 3600, max: 24 * 7 * 3600 } });
+});
+
+test("a yielded check slice of the kept slot logs one line, is counted in kept_slot, and adds nothing to public status", async () => {
+  await mockWork({ "pkg:npm/verbose": { repo: "ex/verbose", tags: ["v1.0.3", "v1.0.2", "v1.0.1"], size: 60 } });
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
+  const service = new CoverageService(1, { advisories: false, limits: limits({ techQuarterTokens: 100 }), admission: async () => ({ admit: true, why: "test" }) }).hold();
+  const job = service.submit("pkg:npm/verbose");
+  const day = new Date(Date.now() - 86_400_000).toISOString();
+  Object.assign(job, { admitted: "used", monitored: day, refresh_checked: day, overflow: quarterKey(), quarter: { key: quarterKey(), tokens: 200 } });
+  await service.drain(Date.now() + 2000, 0, 1);
+  const yielded = events(log, "slice_yielded");
+  // The check (no model call) yields its history to tier 2; the history slices after it are no check and no kept slot.
+  expect(yielded[0]).toEqual({ event: "slice_yielded", job: "pkg:npm/verbose", kind: "other", check: true, kept_slot: true, ms: expect.any(Number) });
+  expect(yielded.slice(1).every((e) => !e.check && !e.kept_slot)).toBe(true);
+  expect(service.metrics()!.kept_slot).toMatchObject({ started: 1, yielded: 1, finished: 0, failed: 0, due_before: 1, overdue_before: 1,
+    oldest_overdue_age_s_before: expect.any(Number), due_after: 0, overdue_after: 0, oldest_overdue_age_s_after: null });
+  expect(service.metrics()!.kept_slot.oldest_overdue_age_s_before).toBeGreaterThanOrEqual(86_400);
+  // Logging only: public status carries none of it (and no operator-only field).
+  for (const s of [service.publicStatus(job), ...service.statuses()])
+    for (const k of ["kept_slot", "check", "oldest", "unimprovable", "release_checked", "refresh_checked", "monitored", "failures_before_read"]) expect(s).not.toHaveProperty(k);
+});
+
+test("the per-slice timing line marks a check slice and a kept-slot slice", async () => {
+  await mockWork({ "pkg:npm/capped": { repo: "ex/capped", tags: ["v1.0.0"] }, "pkg:npm/plain": { repo: "ex/plain", tags: ["v1.0.0"] } });
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
+  const service = new CoverageService(1, { advisories: false, limits: limits(), admission: async () => ({ admit: true, why: "test" }) }).hold();
+  const day = new Date(Date.now() - 86_400_000).toISOString();
+  const capped = service.submit("pkg:npm/capped");
+  Object.assign(capped, { state: "monitoring", admitted: "used", monitored: day, release_checked: day, retry_at: day, overflow: quarterKey(),
+    completed: ["v1.0.0:sha256:" + "0".repeat(64) + ":audience-v1"] });
+  const plain = service.submit("pkg:npm/plain");
+  Object.assign(plain, { admitted: "used", demand: 5 });
+  await service.drain(Date.now() + 2000, 0, 1);
+  const stages = Object.fromEntries(events(log, "coverage_stages").map((e) => [e.technology, e]));
+  expect(stages.capped).toMatchObject({ check: true, kept_slot: true });
+  expect(stages.plain).toMatchObject({ check: false, kept_slot: false });
+});
+
+test("the day and three-day counts are strictly older than their bound", () => {
+  const service = new CoverageService(0, { limits: limits() });
+  const at = Date.now();
+  for (const [name, s] of [["h12", 12 * 3600], ["h24", 24 * 3600], ["h24s", 24 * 3600 + 1], ["d2", 2 * 86_400], ["d3", 3 * 86_400], ["d3s", 3 * 86_400 + 1]] as const) {
+    const job = service.submit(`pkg:npm/${name}`);
+    Object.assign(job, { state: "monitoring", release_checked: new Date(at - s * 1000).toISOString() });
+  }
+  expect(service.freshness(at)).toMatchObject({ release_checks_over_24h: 4, release_checks_over_3d: 1 });
+});
+
+type Internals = { running: Set<string>; dueRefreshes(at?: number): { due: number; overdue: number; oldest_overdue_age_s: number | null } };
+
+test("the oldest overdue age is the oldest read past its interval, paused or backing off included, running excluded", () => {
+  const service = new CoverageService(0, { limits: limits() });
+  const at = Date.now();
+  const ago = (hours: number) => new Date(at - hours * 3600_000).toISOString();
+  const monitored = (name: string, hours: number, extra: Partial<Job> = {}) => {
+    const job = service.submit(`pkg:npm/${name}`);
+    Object.assign(job, { state: "monitoring", admitted: "used", release_checked: ago(hours), refresh_checked: ago(hours), retry_at: ago(0.1), ...extra });
+    return job;
+  };
+  monitored("day", 24);
+  // The oldest is rate-limited (its 429 paused it): not pickable now, still the age.
+  monitored("nine-days", 24 * 9, { paused_until: new Date(at + 60_000).toISOString() });
+  monitored("backing-off", 48, { failures: 2, retry_at: new Date(at + 3600_000).toISOString() });
+  // Running now: not a candidate, not in the age.
+  monitored("running", 24 * 30);
+  monitored("fresh", 1, { retry_at: new Date(at + 5 * 3600_000).toISOString() });
+  (service as unknown as Internals).running.add("pkg:npm/running");
+  expect((service as unknown as Internals).dueRefreshes(at)).toEqual({ due: 1, overdue: 3, oldest_overdue_age_s: 24 * 9 * 3600 });
+});
+
+test("kept_slot counts a rate-limited and a failed kept slice", async () => {
+  for (const [error, counter] of [[new FetchFailure("http_status", "HTTP 429", 429), "rate_limited"], [new FetchFailure("http_status", "HTTP 500", 500), "failed"]] as const) {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const service = new CoverageService(1, { limits: limits() }).hold();
+    const job = service.submit(`pkg:npm/${counter}`);
+    const day = new Date(Date.now() - 86_400_000).toISOString();
+    Object.assign(job, { state: "monitoring", admitted: "used", release_checked: day, retry_at: day });
+    vi.spyOn(service as unknown as { work(job: Job): Promise<void> }, "work").mockRejectedValue(error);
+    await service.drain(Date.now() + 200, 0, 1);
+    expect(service.metrics()!.kept_slot).toMatchObject({ started: 1, finished: 0, yielded: 0, [counter]: 1, [counter === "failed" ? "rate_limited" : "failed"]: 0 });
+    // A 429 leaves the 1-day job overdue (paused, not pickable): its age stays.
+    if (counter === "rate_limited") expect(service.metrics()!.kept_slot).toMatchObject({ due_after: 0, overdue_after: 1, oldest_overdue_age_s_after: expect.any(Number) });
+    vi.restoreAllMocks();
+  }
+});
+
+test("a drain adds no persisted job field: a saved job's keys are the Job interface's", async () => {
+  await mockWork({ "pkg:npm/verbose": { repo: "ex/verbose", tags: ["v1.0.3", "v1.0.2", "v1.0.1"], size: 60 } });
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  const service = new CoverageService(1, { advisories: false, limits: limits({ techQuarterTokens: 100 }), admission: async () => ({ admit: true, why: "test" }) }).hold();
+  const job = service.submit("pkg:npm/verbose");
+  const day = new Date(Date.now() - 86_400_000).toISOString();
+  Object.assign(job, { admitted: "used", monitored: day, refresh_checked: day, overflow: quarterKey(), quarter: { key: quarterKey(), tokens: 200 } });
+  await service.drain(Date.now() + 2000, 0, 1);
+  const saved = Object.keys(JSON.parse(readFileSync(join(dir, "central", "onboarding", "jobs", `${createHash("sha256").update(job.purl).digest("hex")}.json`), "utf8")));
+  // Every field of the Job interface (service.ts); a new one fails here until it is added on purpose.
+  const known = ["schema", "purl", "technology", "name", "state", "stage", "updated", "retry_at", "descriptor", "records", "releases_done", "releases_total",
+    "docs_done", "docs_total", "docs_failed", "enumeration", "failures", "completed", "guides_done", "docs_completed", "docs_checked", "next_task", "admitted",
+    "demand", "downloads", "quarter", "overflow", "stream", "merged_into", "siblings", "deprecation_notice", "archived", "lifecycle_checked", "lifecycle_rules",
+    "advisories_first", "interrupted", "paused_until", "monitored", "release_checked", "refresh_completed", "registry_polled", "registry_version",
+    "registry_checked", "change_detected", "refresh_checked"];
+  expect(saved.filter((k) => !known.includes(k))).toEqual([]);
+  expect(saved).toEqual(expect.arrayContaining(["release_checked", "refresh_checked"]));
 });

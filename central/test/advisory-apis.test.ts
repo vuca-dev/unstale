@@ -5,8 +5,9 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { advisoryApis, advisoryText, APIS_PROMPT, attachAdvisoryApis, groundedApis, MAX_APIS, MAX_TEXT, packageNamesOf } from "../src/pipeline/advisory-apis.ts";
+import { advisoryApis, advisoryText, APIS_PROMPT, ATTRIBUTION, attachAdvisoryApis, groundedApis, MAX_APIS, MAX_TEXT, packageNamesOf } from "../src/pipeline/advisory-apis.ts";
 import type { Advisory } from "../src/pipeline/advisories.ts";
+import { extractCacheKey } from "../src/pipeline/llm.ts";
 import { publishTechnology } from "../src/pipeline/publish.ts";
 import type { StoredRecord, TechStore } from "../src/pipeline/store.ts";
 
@@ -25,12 +26,14 @@ const ZOD: Advisory = {
 /** A model that answers from a table keyed by a substring of the prompt, and records the prompts. */
 function model(answers: Record<string, string>) {
   const prompts: string[] = [];
-  const ask = async <T,>(prompt: string, parse: (text: string) => T | undefined): Promise<T | undefined> => {
+  const options: unknown[] = [];
+  const ask = async <T,>(prompt: string, parse: (text: string) => T | undefined, o?: unknown): Promise<T | undefined> => {
     prompts.push(prompt);
+    options.push(o);
     const k = Object.keys(answers).find((x) => prompt.includes(x));
     return k === undefined ? undefined : parse(answers[k]!);
   };
-  return { ask: ask as never, prompts };
+  return { ask: ask as never, prompts, options };
 }
 
 // A publish reads the technology's change events from the central directory: a fresh one per test, never the
@@ -135,4 +138,11 @@ describe("advisory affected APIs", () => {
   test("package names from package URLs", () => {
     expect(packageNamesOf(["pkg:npm/%40hono/node-server", "pkg:npm/zod", "pkg:pypi/django"])).toEqual(["@hono/node-server", "zod", "django"]);
   });
+});
+
+test("the call's usage line names its stage (not \"unknown\"), and the attribution leaves the request and its cache key alone", async () => {
+  const m = model({ "z.array()": '["z.array"]' });
+  await advisoryApis(ZOD, ["zod"], m.ask);
+  expect(m.options).toEqual([{ attribution: { stage: "advisory_apis", source: "security advisory" } }]);
+  expect(extractCacheKey(m.prompts[0]!, { attribution: ATTRIBUTION })).toBe(extractCacheKey(m.prompts[0]!));
 });
