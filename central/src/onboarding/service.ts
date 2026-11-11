@@ -159,17 +159,19 @@ export function rateLimit(error: unknown): { retryAfterMs?: number } | undefined
     return error.httpStatus === 429 ? (error.retryAfterMs === undefined ? {} : { retryAfterMs: error.retryAfterMs }) : undefined;
   return RATE_LIMITED.test(String(error instanceof Error ? error.message : error)) ? {} : undefined;
 }
+/** A hostname as logged: letters, digits, dots and hyphens, at most 253 characters (a DNS name's limit). */
+const HOSTNAME = /^[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?$/;
 /** The host a rate limit came from, for the `rate_pause` line: the collector client's hostname, the hostname of a URL
- * in the message (never its credentials, port or path), or the service a reader names (`GitHub …: 429`); else
- * "unknown". */
+ * in the message (never its credentials, port or path), or the service a reader names (`GitHub …: 429`). Anything not
+ * shaped as a hostname is "unknown". */
 export function rateHost(error: unknown): string {
-  if (error instanceof FetchFailure && error.host) return error.host;
+  const shaped = (h: string | undefined) => (h && HOSTNAME.test(h.toLowerCase()) ? h.toLowerCase() : undefined);
+  if (error instanceof FetchFailure && error.host) return shaped(error.host) ?? "unknown";
   const message = String(error instanceof Error ? error.message : error);
   const url = /\bhttps?:\/\/[^\s"'<>]+/.exec(message);
   if (url)
     try {
-      const host = new URL(url[0]).hostname;
-      if (host) return host;
+      return shaped(new URL(url[0]).hostname) ?? "unknown";
     } catch {
       /* not a URL */
     }
@@ -266,7 +268,7 @@ export class CoverageService {
   /** This drain's slices of the kept slot (the due refresh with the oldest upstream read, `pumpJobs`), and the due
    * refreshes when it began. */
   private kept = blankSlice();
-  private keptBefore: { due: number; oldest_due_age_s: number | null } = { due: 0, oldest_due_age_s: null };
+  private keptBefore: Overdue = { due: 0, overdue: 0, oldest_overdue_age_s: null };
   private measuredDrain?: DrainMetrics;
   private graceMs = 0;
   readonly concurrency: number;
@@ -709,8 +711,8 @@ export class CoverageService {
     const after = this.dueRefreshes();
     this.measuredDrain = {
       slices: this.tally,
-      kept_slot: { ...this.kept, due_before: this.keptBefore.due, oldest_due_age_s_before: this.keptBefore.oldest_due_age_s,
-        due_after: after.due, oldest_due_age_s_after: after.oldest_due_age_s },
+      kept_slot: { ...this.kept, due_before: this.keptBefore.due, overdue_before: this.keptBefore.overdue, oldest_overdue_age_s_before: this.keptBefore.oldest_overdue_age_s,
+        due_after: after.due, overdue_after: after.overdue, oldest_overdue_age_s_after: after.oldest_overdue_age_s },
       pauses: this.pauses,
       tokens: Number.isFinite(tokensBefore) ? Math.max(0, tokensBefore - this.budget.tokensLeft()) : null,
       docs_pool: { waits: docsHttp.poolWaits().waits - pool.waits, waited_ms: docsHttp.poolWaits().waited_ms - pool.waited_ms },
@@ -735,17 +737,35 @@ export class CoverageService {
   metrics(): DrainMetrics | undefined {
     return this.measuredDrain;
   }
-  /** Due refreshes not running (the kept slot's candidates), and the age of the oldest one's last upstream read
-   * (`lastChecked`; one never read is left out of the age). */
-  private dueRefreshes(at = Date.now()): { due: number; oldest_due_age_s: number | null } {
-    const due = [...this.jobs.values()].filter((j) => !this.running.has(j.purl) && this.refreshDue(j, at));
-    const oldest = Math.min(...due.map((j) => this.lastChecked(j)).filter((t) => t > 0));
-    return { due: due.length, oldest_due_age_s: Number.isFinite(oldest) ? Math.round(Math.max(0, at - oldest) / 1000) : null };
+  /** The refreshes past their interval and not running, whether or not they may start now: `due`, those the kept slot
+   * may pick now (`refreshDue`: not paused by a rate limit, not backing off after a failure); `overdue`, all of them;
+   * and the age of the oldest one's last upstream read (`lastChecked`; one never read is left out of the age). A job
+   * paused or backing off stays in the age, so the age falls only when the oldest is read. */
+  private dueRefreshes(at = Date.now()): Overdue {
+    let due = 0;
+    let overdue = 0;
+    let oldest = Infinity;
+    for (const j of this.jobs.values()) {
+      if (this.running.has(j.purl) || !this.pastInterval(j, at)) continue;
+      overdue++;
+      if (this.refreshDue(j, at)) due++;
+      const t = this.lastChecked(j);
+      if (t > 0 && t < oldest) oldest = t;
+    }
+    return { due, overdue, oldest_overdue_age_s: Number.isFinite(oldest) ? Math.round(Math.max(0, at - oldest) / 1000) : null };
+  }
+  /** An admitted technology whose release check is past its interval (REFRESH_MS since a slice last read its releases),
+   * ignoring a rate-limit pause or a failure's backoff: `refreshDue`'s set without `due`'s timing. Logging only. */
+  private pastInterval(job: Job, at: number): boolean {
+    if (job.merged_into || !(job.monitored || job.state === "monitoring" || job.overflow === quarterKey()) || this.newLine(job)) return false;
+    return (Date.parse(job.refresh_checked ?? "") || this.lastChecked(job)) + REFRESH_MS <= at;
   }
   /** Unique monitored jobs, independent of slice counts. Unknown ages stay explicit during migration. `unimprovable`:
    * jobs whose release check cannot get younger now, by reason: no repository (`release_checked` is set only from
-   * one), or a refresh failing before its release read (a failure since the last read, which a slice reaching the read
-   * would have renewed within the slice's time). `release_check_age_s_checkable` leaves both out. */
+   * one), and `failing_before_read_estimate`, an estimate of refreshes failing before their release read: failures
+   * counted, a release check older than the refresh interval, and no read within a slice's time of the last save (a
+   * failure after the read renews it in the same slice; a later save can still make one count). A check younger than
+   * the interval is never counted there. `release_check_age_s_checkable` leaves both out. */
   freshness(at = Date.now()) {
     const jobs = [...this.jobs.values()].filter((j) => !j.merged_into && (j.monitored || j.state === "monitoring"));
     const age = (j: Job) => {
@@ -753,7 +773,11 @@ export class CoverageService {
       return Number.isFinite(checked) ? Math.max(0, at - checked) / 1000 : undefined;
     };
     const noRepository = (j: Job) => !!j.descriptor && !j.descriptor.repo;
-    const failing = (j: Job) => !noRepository(j) && !!j.failures && !(Date.parse(j.release_checked ?? "") >= Date.parse(j.updated) - SLICE_LIMIT_MS);
+    const failing = (j: Job) => {
+      if (noRepository(j) || !j.failures) return false;
+      const checked = Date.parse(j.release_checked ?? "");
+      return !(checked > at - REFRESH_MS) && !(checked >= Date.parse(j.updated) - SLICE_LIMIT_MS);
+    };
     const sorted = (list: Job[]) => list.flatMap((j) => age(j) ?? []).sort((a, b) => a - b);
     const ages = sorted(jobs);
     const checkable = sorted(jobs.filter((j) => !noRepository(j) && !failing(j)));
@@ -763,7 +787,7 @@ export class CoverageService {
       release_checks_over_6h: ages.filter((s) => s > 6 * 3600).length,
       release_checks_over_24h: ages.filter((s) => s > 24 * 3600).length,
       release_checks_over_3d: ages.filter((s) => s > 3 * 86_400).length,
-      unimprovable: { no_repository: jobs.filter(noRepository).length, failing_before_read: jobs.filter(failing).length },
+      unimprovable: { no_repository: jobs.filter(noRepository).length, failing_before_read_estimate: jobs.filter(failing).length },
       release_check_age_s_checkable: { p95: percentile(checkable, 0.95), max: checkable.length ? Math.round(checkable[checkable.length - 1]!) : null },
       registry_check_unknown: jobs.filter((j) => !j.registry_checked).length,
       registry_check_oldest: jobs.filter((j) => j.registry_checked).map((j) => j.registry_checked!).sort()[0] ?? null,
@@ -841,8 +865,9 @@ export class CoverageService {
     return false;
   }
   /** A rate limit: nothing starts for a pause (doubled while rate limits follow one another, at least the server's
-   * Retry-After); returns when the pause ends. `error` names the host and status on the pause's `rate_pause` line. */
-  private ratePause(retryAfterMs = 0, error?: unknown): number {
+   * Retry-After); returns when the pause ends. `error` names the status on the pause's `rate_pause` line and, unless
+   * `hidden` (a job `logName` does not name: its host would say what was requested), the host. */
+  private ratePause(retryAfterMs = 0, error?: unknown, hidden = false): number {
     const t = Date.now();
     const begins = t >= this.pausedUntil;
     if (begins) this.endPause();
@@ -851,7 +876,7 @@ export class CoverageService {
     this.pausedUntil = Math.max(this.pausedUntil, t + Math.max(this.pauseMs, retryAfterMs));
     if (begins) {
       const status = error instanceof FetchFailure && error.httpStatus !== undefined ? error.httpStatus : 429;
-      this.pause = { host: rateHost(error), status, retry_after_ms: retryAfterMs || null, pause_ms: this.pausedUntil - t, at: t, extended: 0 };
+      this.pause = { host: hidden ? "hidden" : rateHost(error), status, retry_after_ms: retryAfterMs || null, pause_ms: this.pausedUntil - t, at: t, extended: 0 };
     } else if (this.pause) this.pause.extended++;
     return this.pausedUntil;
   }
@@ -1016,7 +1041,7 @@ export class CoverageService {
         kind[limited ? "rate_limited" : "failed"]++;
         if (kept) kept[limited ? "rate_limited" : "failed"]++;
         if (limited) {
-          const until = this.ratePause(limited.retryAfterMs, error);
+          const until = this.ratePause(limited.retryAfterMs, error, !job.admitted);
           job.paused_until = new Date(until).toISOString();
           const retry = `retried after ${clock(until)} UTC`;
           if (refresh) this.save(job, "monitoring", `${job.records} verified records; refresh rate-limited (${why}), ${retry}`);
@@ -1230,7 +1255,7 @@ export class CoverageService {
           const limited = rateLimit(error);
           if (limited) {
             // The runner's request rate, not the package: tried again after the pause, as if never passed.
-            this.ratePause(limited.retryAfterMs, error);
+            this.ratePause(limited.retryAfterMs, error, !job.admitted);
             delete job.advisories_first;
             delete job.admitted;
             return;
@@ -1684,13 +1709,15 @@ export function createCoverageServer(service = new CoverageService()) {
   });
 }
 
+type Overdue = { due: number; overdue: number; oldest_overdue_age_s: number | null };
 type SliceTally = { started: number; finished: number; yielded: number; failed: number; rate_limited: number };
 /** A drain's own measurements, on its final line: what parallelism buys (ingest.yml's CONCURRENCY) and costs. */
 export interface DrainMetrics {
   slices: Record<"new" | "refresh" | "other", SliceTally>;
-  /** The kept slot's slices, and the due refreshes (not running) with the age of the oldest one's last upstream read
-   * when the drain began and when it ended: the old tail clears when the age falls cycle over cycle. */
-  kept_slot: SliceTally & { due_before: number; oldest_due_age_s_before: number | null; due_after: number; oldest_due_age_s_after: number | null };
+  /** The kept slot's slices, and the refreshes past their interval (not running) when the drain began and when it
+   * ended (`dueRefreshes`): how many the slot may pick now, how many there are, and the age of the oldest one's last
+   * upstream read. The old tail clears when that age falls cycle over cycle. */
+  kept_slot: SliceTally & { due_before: number; overdue_before: number; oldest_overdue_age_s_before: number | null; due_after: number; overdue_after: number; oldest_overdue_age_s_after: number | null };
   pauses: number;
   /** Coverage-budget tokens this drain spent; null without a cap. */
   tokens: number | null;

@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { FetchFailure } from "../src/collector/http.ts";
 import * as discovery from "../src/onboarding/discovery.ts";
-import { CoverageService, failureClass, SLICE_LIMIT_CYCLES, SLICE_LIMIT_MS } from "../src/onboarding/service.ts";
+import { CoverageService, failureClass, rateHost, SLICE_LIMIT_CYCLES, SLICE_LIMIT_MS, type Job } from "../src/onboarding/service.ts";
 import { Taken } from "../src/onboarding/taken.ts";
 import type { Limits } from "../src/onboarding/limits.ts";
 import { exportCatalog } from "../src/pipeline/export.ts";
@@ -691,6 +691,8 @@ test("each pause of every start logs its host, status, the Retry-After applied a
   const log = vi.spyOn(console, "error").mockImplementation(() => {});
   const service = new CoverageService(1, { limits: limits() }).hold();
   service.enqueue([{ purl: "pkg:npm/a", demand: 2 }, { purl: "pkg:npm/b", demand: 1 }]);
+  // Admitted (named in the log): their hosts are logged.
+  for (const j of service.jobs.values()) j.admitted = "used";
   const done = service.drain(Date.now() + 10 * 60_000, 0, 500);
   await vi.advanceTimersByTimeAsync(100_000);
   const pauses = () => log.mock.calls.map(([l]) => (typeof l === "string" && l.startsWith("{") ? JSON.parse(l) : undefined)).filter((e) => e?.event === "rate_pause");
@@ -701,14 +703,101 @@ test("each pause of every start logs its host, status, the Retry-After applied a
   expect(pauses()).toEqual([{ event: "rate_pause", host: "registry.npmjs.org", status: 429, retry_after_ms: 120_000, pause_ms: 120_000, lasted_ms: 120_000, extended: 0 }]);
 });
 
-test("a pause the drain ends inside is logged as ongoing; a host comes from a reader's URL without its credentials or path", async () => {
+const ratePauses = (log: { mock: { calls: unknown[][] } }) =>
+  log.mock.calls.map(([l]) => (typeof l === "string" && l.startsWith("{") ? JSON.parse(l) : undefined)).filter((e) => e?.event === "rate_pause");
+type PauseState = { pausedUntil: number; pauseMs: number; pump(): number; ratePause(ms?: number, error?: unknown, hidden?: boolean): number };
+const monitoredJob = (service: CoverageService, name: string) => {
+  const job = service.submit(`pkg:npm/${name}`);
+  Object.assign(job, { state: "monitoring", admitted: "used", retry_at: "2000-01-01T00:00:00.000Z", records: 1 });
+  return job;
+};
+
+test("a pause the drain ends inside is logged as ongoing, its pause state kept; a host comes from a reader's URL without its credentials or path", async () => {
   vi.spyOn(discovery, "discoverTechnology").mockRejectedValue(new Error("https://user:secret@registry.example/pkg/x?token=abc: 429"));
   const log = vi.spyOn(console, "error").mockImplementation(() => {});
   const service = new CoverageService(1, { limits: limits() }).hold();
-  service.enqueue([{ purl: "pkg:npm/a", demand: 1 }]);
+  const job = monitoredJob(service, "a");
   await service.drain(Date.now() + 300, 0, 10);
   const lines = log.mock.calls.map(([l]) => String(l)).filter((l) => l.includes("rate_pause"));
   expect(lines).toHaveLength(1);
   expect(JSON.parse(lines[0]!)).toMatchObject({ event: "rate_pause", host: "registry.example", status: 429, retry_after_ms: null, pause_ms: 60_000, ongoing: true });
   expect(lines[0]).not.toMatch(/user|secret|token|\/pkg/);
+  // Logging the pause leaves it holding: the same end, the same length, nothing starts.
+  const state = service as unknown as PauseState;
+  expect(state.pausedUntil).toBe(Date.parse(job.paused_until!));
+  expect(state.pausedUntil).toBeGreaterThan(Date.now());
+  expect(state.pauseMs).toBe(60_000);
+});
+
+test("the host of a requested package not yet admitted is hidden, as its name is", async () => {
+  vi.spyOn(discovery, "discoverTechnology").mockRejectedValue(new FetchFailure("http_status", "HTTP 429", 429, undefined, "docs.private-thing.example"));
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
+  const service = new CoverageService(1, { limits: limits() }).hold();
+  service.enqueue([{ purl: "pkg:npm/a", demand: 1 }]);
+  await service.drain(Date.now() + 300, 0, 10);
+  expect(ratePauses(log)).toMatchObject([{ host: "hidden", status: 429 }]);
+  expect(JSON.stringify(log.mock.calls)).not.toContain("private-thing");
+});
+
+test("only hostname-shaped hosts are logged, at most 253 characters", () => {
+  expect(rateHost(new FetchFailure("http_status", "HTTP 429", 429, undefined, "Registry.NPMjs.org"))).toBe("registry.npmjs.org");
+  expect(rateHost(new FetchFailure("http_status", "HTTP 429", 429, undefined, "a".repeat(254)))).toBe("unknown");
+  expect(rateHost(new FetchFailure("http_status", "HTTP 429", 429, undefined, "ghp_token=abc"))).toBe("unknown");
+  expect(rateHost(new Error("https://api.example.org,: 429"))).toBe("unknown");
+  expect(rateHost(new Error("https://api.example.org/x: 429"))).toBe("api.example.org");
+  expect(rateHost(new Error("GitHub ex/repo page 1: 429"))).toBe("github");
+  expect(rateHost(new Error("registry stub: 429"))).toBe("unknown");
+});
+
+test("a later 429 during a pause extends it and is counted; the line says how long every start was held", async () => {
+  vi.useFakeTimers();
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
+  const service = new CoverageService(2, { limits: limits() }).hold();
+  monitoredJob(service, "a");
+  monitoredJob(service, "b");
+  const calls = new Map<string, number>();
+  vi.spyOn(service as unknown as { work(job: Job): Promise<void> }, "work").mockImplementation(async (job) => {
+    const n = (calls.get(job.purl) ?? 0) + 1;
+    calls.set(job.purl, n);
+    if (n === 1) throw new FetchFailure("http_status", "HTTP 429", 429, job.purl.endsWith("b") ? 300_000 : undefined, "api.github.com");
+    job.retry_at = new Date(Date.now() + 6 * 3600_000).toISOString();
+  });
+  const t0 = Date.now();
+  const done = service.drain(t0 + 10 * 60_000, 0, 500);
+  await vi.advanceTimersByTimeAsync(200_000);
+  // The first 429's minute is over, but the second's Retry-After holds: nothing logged, nothing restarted.
+  expect(ratePauses(log)).toEqual([]);
+  await vi.advanceTimersByTimeAsync(110_000);
+  await done;
+  expect(ratePauses(log)).toEqual([{ event: "rate_pause", host: "api.github.com", status: 429, retry_after_ms: null, pause_ms: 60_000, lasted_ms: 300_000, extended: 1 }]);
+  expect(service.metrics()!.pauses).toBe(1);
+});
+
+test("the pause doubles as before after a logged pause when rate limits follow one another", async () => {
+  vi.useFakeTimers();
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
+  const service = new CoverageService(1, { limits: limits() }).hold();
+  monitoredJob(service, "a");
+  let n = 0;
+  vi.spyOn(service as unknown as { work(job: Job): Promise<void> }, "work").mockImplementation(async (job) => {
+    if (++n <= 2) throw new FetchFailure("http_status", "HTTP 429", 429, undefined, "api.github.com");
+    job.retry_at = new Date(Date.now() + 6 * 3600_000).toISOString();
+  });
+  const done = service.drain(Date.now() + 10 * 60_000, 0, 500);
+  await vi.advanceTimersByTimeAsync(200_000);
+  await done;
+  expect(n).toBe(3);
+  expect(ratePauses(log).map((e) => [e.pause_ms, e.lasted_ms])).toEqual([[60_000, 60_000], [120_000, 120_000]]);
+});
+
+test("pump logs a pause that has ended", () => {
+  vi.useFakeTimers();
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
+  const state = new CoverageService(1, { limits: limits() }).hold() as unknown as PauseState;
+  state.ratePause(5_000, new FetchFailure("http_status", "HTTP 429", 429, 5_000, "osv.dev"));
+  state.pump();
+  expect(ratePauses(log)).toEqual([]);
+  vi.advanceTimersByTime(60_000);
+  state.pump();
+  expect(ratePauses(log)).toEqual([{ event: "rate_pause", host: "osv.dev", status: 429, retry_after_ms: 5_000, pause_ms: 60_000, lasted_ms: 60_000, extended: 0 }]);
 });
