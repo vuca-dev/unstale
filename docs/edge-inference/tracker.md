@@ -9,13 +9,13 @@
 
 - **Shape:** INDEPENDENT PRs to `main`. Every chunk is additive and behind one switch (README, "One switch").
 - **Ground truth:** GitHub PR state. Repo `vuca-dev/unstale`.
-- **Base:** `origin/main` @ `efac640` (`ci` green)
+- **Base:** `origin/main` @ `594b078` (`ci` green)
 - **Base health:** PR checks are `rust`, `central`, `gateway`; re-query before every merge.
-- **Open PRs:** #226 (WS10), #228 (WS4 PR 1)
+- **Open PRs:** #228 (WS4 PR 1); WS9 draft pending
 - **Live worktrees (sprint):** `/Users/jason/unstale-edge-sprint` (tracker)
-- **Live subagents:** ws4-impl, ws10-impl (Opus 5.5); ws6-verifier (Fable 5.2). Background watch for the first ingest created after 2026-11-11T00:48Z (run 42940631609 on `725b8c1` in progress since 01:40Z).
+- **Live subagents:** ws4-impl (Opus 5.5); ws9 (Fable 5.2, one agent); ws6-verifier, ws10-verifier (Fable 5.2). Background watch for the first ingest created after 2026-11-11T00:48Z (run 42940631609 on `725b8c1` in progress since 01:40Z).
 - **Merged + verified:** WS0 → #213 `673c191`
-- **Next:** WS9 once a live ingest has published events and a lane is free; WS4 parity and disk bounds after WS4 PR 2
+- **Next:** WS4 PR 2, then parity runs and cache disk bounds; WS6b full matrix; WS8 draft last
 - **Sprint API spend so far:** $0 of $10
 
 ## §2 CEO directives (durable; read every iteration)
@@ -43,6 +43,10 @@
   $10; past that, stop and ask. Cache every call on disk.
 - Terminal copy states only what the user trades: cost with units and scope, quality as a word band plus a number.
   No internal names (step letters, eval set names) in anything a user sees.
+
+### Review bot out of quota (from 11 November)
+- cubic hit its monthly line limit and skips pushes. Rule from now on: an EM does not merge a head the bot has not
+  reviewed; it exits READY and the PM dispatches a fresh reviewer first.
 
 ### Pre-merge gates
 - CI green on the PR head (`rust`, `central`, `gateway`), re-queried at the moment of merge.
@@ -146,8 +150,18 @@ OpenRouter parity, repeat eval runs.
   `central/Dockerfile`; working directory in the image moved from `/app` to `/app/central`.
 - EM: impl, Opus 5.5. Starts when the first lane frees.
 
-### WS10: Session-start sync and freshness tracking: IN PROGRESS (Opus 5.5, `/Users/jason/unstale-ws10-session-sync`)
-- Dispatched whole (WS2 and WS3 are in). May split into two PRs. Leaves one marked place for WS4's pipeline.
+### WS10: Session-start sync and freshness tracking: MERGED, verifier (and reviewer) running
+- PR #226 → `7c05080` (hooks, never blocks), PR #229 → `594b078` (freshness). #229 and #226's last push had no bot
+  review (quota); the verifier reviews the diff too.
+- Claude Code `.claude/settings.local.json`; Codex `.codex/hooks.json` (user must trust it in `/hooks`); opencode
+  `.opencode/plugins/unstale-session.js` (`session.created`; opencode adds no hook output to context). Real Codex and
+  opencode never run.
+- Timing: 1.42 s worst case (catalog and coverage service both hanging; deadline 1.5 s; limit 2 s).
+- Requests: 1 conditional request when unchanged; `/v1/*` is static assets (no Worker); on by default.
+- **Decision to confirm with the CEO:** record sync at session start runs with the switch on or off; events and
+  the model stage follow the switch. Opt out: `"session_sync": false` in `.unstale/config.json`.
+- WS4 plugs in at `local/cli/src/session.rs` `model_stage` and `model_work_pending`.
+- Hardening A (saturating token counts) and B (event write failures never cost records) included.
 
 ### WS5: Setup: MERGED, VERIFIED WITH GAPS, fix merged (covered by the WS6 matrix, no separate verifier)
 - PR #224 → `725b8c1`, 507 tests, `main` green. Code `local/cli/src/setup/`; figures in `setup::quote()`;
@@ -186,7 +200,9 @@ OpenRouter parity, repeat eval runs.
   hook environment.
 - The review bot is at about 98% of its monthly line limit and skipped later pushes.
 
-### WS9: No-key mode eval: NOT STARTED (after WS2; one agent; Fable 5.2 judges, runs resumable)
+### WS9: No-key mode eval: IN PROGRESS (Fable 5.2, one agent, `/Users/jason/unstale-ws9-no-key`)
+- Builds the no-key report path as a draft PR, pre-registers, 2-repo smoke, then the bounded runs. Stops and
+  reports if the harness or the October arm's model is not reusable, or if events are not yet live.
 
 ### WS4: Client pipeline steps and port parity: IN PROGRESS (Opus 5.5, `/Users/jason/unstale-ws4-pipeline`)
 - PR 1 extraction, PR 2 labels and matching: no paid calls; EM returns a parity cost estimate. Then: parity runs
