@@ -112,7 +112,7 @@ The user chooses how unstale reads new release notes. Show them these options as
 Never choose for them.
 
      Read with   Cost a year, this repo   Compared with the best option
-  1  OpenAI      ≈ $0.27                  ≈ 93% of its breaking-change flags
+  1  OpenAI      ≈ $0.19                  ≈ 1 in 3 breaking-change flags wrong
   2  Not now     free                     ≈ 27%: advisories and deprecations only
      Keys: OPENAI_API_KEY (.env)
 

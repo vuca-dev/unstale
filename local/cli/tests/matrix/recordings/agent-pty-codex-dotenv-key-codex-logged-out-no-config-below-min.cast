@@ -251,7 +251,7 @@
 [16.69,"o","Never choose for them.\r\n"]
 [16.75,"o","\r\n"]
 [16.81,"o","     Read with   Cost a year, this repo   Compared with the best option\r\n"]
-[16.87,"o","  1  OpenAI      ≈ $0.27                  ≈ 93% of its breaking-change flags\r\n"]
+[16.87,"o","  1  OpenAI      ≈ $0.19                  ≈ 1 in 3 breaking-change flags wrong\r\n"]
 [16.93,"o","  2  Not now     free                     ≈ 27%: advisories and deprecations only\r\n"]
 [16.99,"o","     Keys: OPENAI_API_KEY (.env)\r\n"]
 [17.05,"o","\r\n"]

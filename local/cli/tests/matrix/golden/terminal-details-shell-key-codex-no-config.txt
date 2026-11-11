@@ -5,8 +5,8 @@ $ unstale init --wait 0 --no-animation
 How should unstale read new release notes?
 
      Read with    Key              Cost a year, this repo   Compared with the best option
-  1  OpenAI       OPENAI_API_KEY   ≈ $0.27                  ≈ 93% of its breaking-change flags
-  2  Codex plan                    ≈ 1.8M Codex tokens      not measured yet through Codex
+  1  OpenAI       OPENAI_API_KEY   ≈ $0.19                  ≈ 1 in 3 breaking-change flags wrong
+  2  Codex plan                    ≈ 1.9M Codex tokens      not measured yet through Codex
   3  Not now                       free                     ≈ 27%: advisories and deprecations only
 
 Enter for 1, a number to choose, or d for details: d
@@ -17,16 +17,18 @@ The best option, which the others are compared with: Jev, a labelling service (J
 beside an OpenAI-compatible key.
 
 1  OpenAI (OPENAI_API_KEY)
-   per package, per year  $0.090
-   this repo, a year      ≈ $0.27
-   first sync, once       ≈ $0.27
-   results                slightly less complete: ≈ 93% of the best option's breaking-change flags
-   repeats                ≈ 2 more changes listed twice per package, per year
+   per package, per year  $0.064
+   this repo, a year      ≈ $0.19
+   first sync, once       ≈ $0.19
+   results                about as many breaking changes as the best option, more flagged wrongly
+                          ≈ 1 in 3 breaking-change flags wrong, against 1 in 4
+                          on upgrade guides ≈ 8 in 100 wrong, against 6
+   repeats                ≈ 6 more changes listed twice per package, per year
 
 2  Codex plan
-   per package, per year  590k Codex tokens ($0.075 at API prices)
-   this repo, a year      ≈ 1.8M Codex tokens
-   first sync, once       ≈ 1.8M Codex tokens
+   per package, per year  630k Codex tokens ($0.069 at API prices)
+   this repo, a year      ≈ 1.9M Codex tokens
+   first sync, once       ≈ 1.9M Codex tokens
    results                not measured yet through Codex
 
 3  Not now
