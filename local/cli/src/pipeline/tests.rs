@@ -601,7 +601,7 @@ fn cache_from(cat: &crate::testcat::FixtureCatalog) -> tempfile::TempDir {
 }
 
 #[test]
-fn work_is_only_releases_central_did_not_process_in_demand_order_inside_the_window() {
+fn work_is_only_releases_central_did_not_process_in_demand_order_oldest_first_inside_the_window() {
     use crate::testcat::{FixtureCatalog, event, rec, with};
     let cat = FixtureCatalog::new();
     let dated = |e: Value, d: &str| with(e, serde_json::json!({"date": d}));
@@ -664,7 +664,7 @@ fn work_is_only_releases_central_did_not_process_in_demand_order_inside_the_wind
         got,
         vec![
             ("react".into(), vec!["19.1.0".into()]),
-            ("next".into(), vec!["16.0.3".into(), "16.0.2".into()])
+            ("next".into(), vec!["16.0.2".into(), "16.0.3".into()])
         ]
     );
 }

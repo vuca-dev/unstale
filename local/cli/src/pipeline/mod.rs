@@ -77,9 +77,9 @@ pub fn plan(
             })
             .collect();
         events.sort_by(|a, b| {
-            b.date
-                .cmp(&a.date)
-                .then_with(|| extract::numeric_cmp(&b.version, &a.version))
+            a.date
+                .cmp(&b.date)
+                .then_with(|| extract::numeric_cmp(&a.version, &b.version))
                 .then_with(|| a.id.cmp(&b.id))
         });
         if !events.is_empty() {
