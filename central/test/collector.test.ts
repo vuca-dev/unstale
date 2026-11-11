@@ -257,3 +257,34 @@ describe("encoding and transport", () => {
     expect(e.requests.at(-1)?.headers["user-agent"]).toMatch(/^unstale-collector/);
   });
 });
+
+describe("state file names", () => {
+  test("a long watch id is stored under a bounded name, without collisions, and state saved under its old name is still read", async () => {
+    const { FsStore, stateName } = await import("../src/collector/store.ts");
+    const { mkdtemp, mkdir, readdir: list, writeFile: write } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const root = await mkdtemp(join(tmpdir(), "unstale-state-"));
+    const store = new FsStore(root);
+    const state = (snapshot: string) => ({ configHash: "c", snapshot, consecutiveFailures: 0, history: [] });
+    const long = (tail: string) => `https://developers.example.com/${"section/".repeat(40)}${tail} html`;
+    await store.putState(long("a"), state("sha256:a"));
+    await store.putState(long("b"), state("sha256:b"));
+    expect((await store.getState(long("a")))?.snapshot).toBe("sha256:a");
+    expect((await store.getState(long("b")))?.snapshot).toBe("sha256:b");
+    for (const name of await list(join(root, "state"))) expect(Buffer.byteLength(name)).toBeLessThanOrEqual(200);
+    // A short id keeps the name it always had.
+    expect(stateName("https://example.com/p html")).toBe(`${encodeURIComponent("https://example.com/p html")}.json`);
+    // An id between the bound and the file system's limit was saved under its encoded name before: read from there,
+    // and moved by the next write.
+    const middle = `https://example.com/${"x".repeat(190)} html`;
+    const legacy = `${encodeURIComponent(middle)}.json`;
+    expect(Buffer.byteLength(legacy)).toBeGreaterThan(200);
+    expect(Buffer.byteLength(legacy)).toBeLessThanOrEqual(255);
+    await mkdir(join(root, "state"), { recursive: true });
+    await write(join(root, "state", legacy), JSON.stringify(state("sha256:old")));
+    expect((await store.getState(middle))?.snapshot).toBe("sha256:old");
+    await store.putState(middle, state("sha256:new"));
+    expect(await list(join(root, "state"))).not.toContain(legacy);
+    expect((await store.getState(middle))?.snapshot).toBe("sha256:new");
+  });
+});
