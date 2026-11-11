@@ -4774,7 +4774,7 @@ mod tests {
         let index: unstale_schema::catalog::TechIndex = serde_json::from_value(serde_json::json!({"schema":1,"technology":"zod","components":["pkg:npm/zod"],"sample_n":0,"checked":"2026-10-26T00:00:00Z","shards":[],
             "advisory_apis":[{"ids":["GHSA-xxxx-yyyy-zzzz","CVE-2023-54404"],"apis":["z.array","z.set","z.map"]}]})).unwrap();
         let mut c = crate::cache::Catalog::default();
-        c.techs.insert("zod".into(), crate::cache::TechData { index, index_sha: "00".into(), records: vec![], merged: Default::default(), retracted: vec![], skipped: 0 });
+        c.techs.insert("zod".into(), crate::cache::TechData { index, index_sha: "00".into(), records: vec![], merged: Default::default(), retracted: vec![], skipped: 0, provenance: Default::default() });
         let mut other = c.techs["zod"].clone();
         other.index.technology = "aaa-other".into(); other.index.components = vec!["pkg:npm/other".into()];
         other.index.advisory_apis[0].apis = vec!["unrelatedAPI".into()]; c.techs.insert("aaa-other".into(), other);

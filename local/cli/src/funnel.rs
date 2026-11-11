@@ -2889,7 +2889,7 @@ pub(crate) mod fixtures {
         let mut c = Catalog::default();
         c.techs.insert(
             tech.into(),
-            TechData { index, index_sha: "00".into(), records, merged: Default::default(), retracted: vec![], skipped: 0 },
+            TechData { index, index_sha: "00".into(), records, merged: Default::default(), retracted: vec![], skipped: 0, provenance: Default::default() },
         );
         c
     }

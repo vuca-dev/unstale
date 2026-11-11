@@ -151,6 +151,9 @@ pub struct TechData {
     pub retracted: Vec<String>,
     /// Lines skipped: unknown status or a record that does not parse.
     pub skipped: usize,
+    /// Who made or extended a record on this machine, by record id (edge-inference switch on); a record absent here
+    /// is the catalog's as published.
+    pub provenance: BTreeMap<String, crate::pipeline::store::RecordProvenance>,
 }
 
 /// A parsed shard: active records, merged ids (id to target), retracted ids, and lines skipped.
@@ -189,8 +192,20 @@ pub fn parse_shard(gz: &[u8]) -> Result<Shard> {
     Ok((recs, merged, retracted, skipped))
 }
 
-/// Load one technology from the cache, verifying every shard. `Ok(None)` when it was never synced.
+/// Load one technology from the cache, verifying every shard. `Ok(None)` when it was never synced. With the
+/// edge-inference switch on, the records the client made itself are merged in (`pipeline::store::overlay`).
 pub fn load_tech(cache: &Path, tech: &str) -> Result<Option<TechData>> {
+    let mut td = load_catalog_tech(cache, tech)?;
+    if crate::util::edge_inference()
+        && let Some(td) = td.as_mut()
+    {
+        crate::pipeline::store::overlay(td, &crate::pipeline::store::LocalStore::load(cache, tech));
+    }
+    Ok(td)
+}
+
+/// [`load_tech`] without the client's own records: the catalog as published.
+pub fn load_catalog_tech(cache: &Path, tech: &str) -> Result<Option<TechData>> {
     let ip = index_path(cache, tech);
     let Ok(bytes) = std::fs::read(&ip) else { return Ok(None) };
     let index: TechIndex = serde_json::from_slice(&bytes).with_context(|| format!("cached index {}", ip.display()))?;
@@ -204,6 +219,7 @@ pub fn load_tech(cache: &Path, tech: &str) -> Result<Option<TechData>> {
         merged: BTreeMap::new(),
         retracted: vec![],
         skipped: 0,
+        provenance: BTreeMap::new(),
     };
     for s in td.index.shards.clone() {
         let p = shard_path(cache, tech, &s);
