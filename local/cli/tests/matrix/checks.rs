@@ -43,9 +43,34 @@ pub(crate) const INTERNAL_WORDS: [&str; 9] = [
     "shard(s)",
 ];
 
+/// Product bugs the matrix found and the harness may not fix: each a violation's start and where it comes from. A
+/// scenario that shows one passes with it listed in its transcript; a listed bug no scenario shows any more fails the
+/// run, so the list is kept true.
+pub(crate) const KNOWN_BUGS: &[(&str, &str)] = &[(
+    "wording: `unstale status --wait 0 --no-animation` printed the same warning twice",
+    "a model stage stopped for a key not set here: setup's key warning (src/setup.rs, status warnings) and the session state's stored deferral (src/session.rs, status_lines) are the same line",
+)];
+
+/// The known bug a violation is, if any.
+pub(crate) fn known_bug(violation: &str) -> Option<&'static str> {
+    KNOWN_BUGS
+        .iter()
+        .find(|(start, _)| violation.starts_with(start))
+        .map(|(_, why)| *why)
+}
+
 /// What a command's output breaks of the plain-words rule.
 pub(crate) fn wording(shown: &str, terminal: bool, output: &str) -> Vec<String> {
     let mut v = vec![];
+    // A warning is said once.
+    let mut seen = BTreeSet::new();
+    for l in output.lines().filter(|l| l.starts_with("warning: ")) {
+        if !seen.insert(l) {
+            v.push(format!(
+                "wording: `{shown}` printed the same warning twice: {l:?}"
+            ));
+        }
+    }
     for word in INTERNAL_WORDS {
         if output.contains(word) {
             v.push(format!("wording: `{shown}` printed {word:?}"));
@@ -306,10 +331,36 @@ pub(crate) fn check(s: &Scenario, se: &Session) -> Vec<String> {
             "model steps: {r} was sent for extraction, though the catalog covers it or marks it processed"
         ));
     }
-    if !asked.is_empty() && s.answer == Answer::Ok && s.fault.is_none() && asked != due {
+    // A pass that stopped says why in the state (a key not set here, Codex logged out): then some may wait.
+    let stopped = std::fs::read_to_string(w.repo().join(".unstale/state/session-sync.json"))
+        .ok()
+        .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+        .is_some_and(|st| st.get("deferred").is_some());
+    if !asked.is_empty() && s.answer == Answer::Ok && s.fault.is_none() && !stopped && asked != due
+    {
         v.push(format!(
             "model steps: with the provider answering, only {asked:?} of {due:?} were read"
         ));
+    }
+    // Matching asks whether a new change is one the catalog knows: never with an Anthropic key alone (matching is off
+    // there), and on every other route once the releases were read (one of them repeats a catalog record's subject).
+    let judged = provider
+        .iter()
+        .map(|r| r.body.clone())
+        .chain(codex_calls.iter().map(|r| r.body.clone()))
+        .filter(|b| b.contains("same change as candidate"))
+        .count();
+    if provider_id == "anthropic" && !labels_service && judged > 0 {
+        v.push(format!(
+            "model steps: matching asked {judged} questions with an Anthropic key alone"
+        ));
+    }
+    if (provider_id != "anthropic" || labels_service)
+        && asked == due
+        && s.answer == Answer::Ok
+        && judged == 0
+    {
+        v.push("model steps: the releases were read but matching never asked".into());
     }
 
     // At most one question per path, none without a terminal.

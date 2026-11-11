@@ -74,7 +74,12 @@ pub(crate) fn traffic(w: &World) -> Vec<String> {
 }
 
 /// The golden transcript: what the person or agent saw, command by command, then what was contacted.
-pub(crate) fn transcript(s: &Scenario, se: &Session, violations: &[String]) -> String {
+pub(crate) fn transcript(
+    s: &Scenario,
+    se: &Session,
+    violations: &[String],
+    known: &[String],
+) -> String {
     let w = &se.world;
     let mut t = format!("# {}\n# {}\n", s.title, s.dims());
     for r in &se.ran {
@@ -109,6 +114,12 @@ pub(crate) fn transcript(s: &Scenario, se: &Session, violations: &[String]) -> S
     if !violations.is_empty() {
         t += "\n# violations\n";
         for l in violations {
+            t += &format!("#   {l}\n");
+        }
+    }
+    if !known.is_empty() {
+        t += "\n# known product bugs (expected to fail until fixed; see KNOWN_BUGS in checks.rs)\n";
+        for l in known {
             t += &format!("#   {l}\n");
         }
     }

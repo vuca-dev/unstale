@@ -24,6 +24,7 @@ pub(crate) const KEYS: &[Keys] = &[
     Keys { id: "shell-key", title: "an OpenAI key in the shell", shell: &["OPENAI_API_KEY"], repo_env: &[], other_env: &[], blank: &[], answer: Answer::Ok },
     Keys { id: "dotenv-key", title: "an OpenAI key in this repo's .env", shell: &[], repo_env: &["OPENAI_API_KEY"], other_env: &[], blank: &[], answer: Answer::Ok },
     Keys { id: "other-repo-key", title: "a key only in another repo's .env", shell: &[], repo_env: &[], other_env: &["ANTHROPIC_API_KEY"], blank: &[], answer: Answer::Ok },
+    Keys { id: "anthropic-key", title: "an Anthropic key in the shell", shell: &["ANTHROPIC_API_KEY"], repo_env: &[], other_env: &[], blank: &[], answer: Answer::Ok },
     Keys { id: "several-keys", title: "several keys in the shell", shell: &["AI_GATEWAY_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "JEV_API_KEY"], repo_env: &[], other_env: &[], blank: &[], answer: Answer::Ok },
     Keys { id: "blank-key", title: "an OpenAI key name with a blank value", shell: &[], repo_env: &[], other_env: &[], blank: &["OPENAI_API_KEY"], answer: Answer::Ok },
     Keys { id: "revoked-key", title: "a revoked OpenAI key in the shell", shell: &["OPENAI_API_KEY"], repo_env: &[], other_env: &[], blank: &[], answer: Answer::Refused },
@@ -87,6 +88,10 @@ pub(crate) const REPO_CONFIGS: &[RepoConfig] = &[
     RepoConfig { id: "no-config", title: "", choice: None },
     RepoConfig { id: "config-set", title: "the repo config names OpenAI", choice: Some("env:OPENAI_API_KEY") },
     RepoConfig { id: "config-missing", title: "the repo config names a key that is not here", choice: Some("env:OPENROUTER_API_KEY") },
+    RepoConfig { id: "config-jev-openai", title: "the repo config names the labelling service with OpenAI", choice: Some("jev+env:OPENAI_API_KEY") },
+    RepoConfig { id: "config-jev-codex", title: "the repo config names the labelling service with Codex", choice: Some("jev+codex") },
+    RepoConfig { id: "config-codex", title: "the repo config names Codex", choice: Some("codex") },
+    RepoConfig { id: "config-anthropic", title: "the repo config names Anthropic", choice: Some("env:ANTHROPIC_API_KEY") },
 ];
 
 pub(crate) struct Client {
@@ -164,6 +169,15 @@ pub(crate) const CRITICAL: &[(&str, &str, &str, &str, &str, Answer)] = &[
     ("The provider is too slow to answer", "shell-key", "no-codex", "terminal", "no-config", Answer::Slow),
     ("The model is not on the Codex plan", "no-key", "codex", "terminal", "no-config", Answer::NotOnPlan),
     ("The monthly token limit is reached", "shell-key", "no-codex", "terminal", "no-config", Answer::BudgetSpent),
+    ("An Anthropic key in the shell, first run in a terminal", "anthropic-key", "no-codex", "terminal", "no-config", Answer::Ok),
+    ("The repo names Anthropic, with its key in the shell, in CI", "anthropic-key", "no-codex", "ci", "config-anthropic", Answer::Ok),
+    ("The repo names the labelling service with OpenAI, both keys here, first run in a terminal", "several-keys", "no-codex", "terminal", "config-jev-openai", Answer::Ok),
+    ("The repo names the labelling service with Codex, an agent installs it", "several-keys", "codex", "agent", "config-jev-codex", Answer::Ok),
+    ("The repo names Codex, first run in a terminal", "no-key", "codex", "terminal", "config-codex", Answer::Ok),
+    ("The repo names Codex and Codex is logged out, first run in a terminal", "no-key", "codex-logged-out", "terminal", "config-codex", Answer::Ok),
+    ("The repo names Codex and Codex is logged out, in CI", "no-key", "codex-logged-out", "ci", "config-codex", Answer::Ok),
+    ("The labelling service and OpenAI, the provider down", "several-keys", "no-codex", "terminal", "config-jev-openai", Answer::Down),
+    ("Anthropic refuses the key", "anthropic-key", "no-codex", "terminal", "config-anthropic", Answer::Refused),
 ];
 
 /// One command of a session.

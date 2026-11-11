@@ -82,3 +82,6 @@ Cache                 under 1 MB of 100 MB
 #   model provider: nothing
 #   codex: not run
 #   anything else: nothing
+
+# known product bugs (expected to fail until fixed; see KNOWN_BUGS in checks.rs)
+#   wording: `unstale status --wait 0 --no-animation` printed the same warning twice: "warning: OPENROUTER_API_KEY is not set here, so new release notes are not read. Set it."

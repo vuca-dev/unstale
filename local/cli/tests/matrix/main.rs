@@ -74,33 +74,52 @@ fn every_scenario_holds_the_line_and_matches_its_golden_transcript() {
     let results = run_all(&list);
     let mut failures = vec![];
     let mut entries = vec![];
+    let mut bugs_seen = BTreeSet::new();
     for (s, (se, v)) in list.iter().zip(&results) {
-        if !v.is_empty() {
-            failures.push(format!("{} ({}):\n  {}", s.title, s.slug, v.join("\n  ")));
+        let (known, broken): (Vec<String>, Vec<String>) =
+            v.iter().cloned().partition(|l| known_bug(l).is_some());
+        bugs_seen.extend(known.iter().filter_map(|l| known_bug(l)));
+        if !broken.is_empty() {
+            failures.push(format!(
+                "{} ({}):\n  {}",
+                s.title,
+                s.slug,
+                broken.join("\n  ")
+            ));
         }
-        let text = transcript(s, se, v);
+        let text = transcript(s, se, &broken, &known);
         let cast = recording(s, se);
         failures.extend(golden(&format!("golden/{}.txt", s.slug), &text));
         failures.extend(golden(&format!("recordings/{}.cast", s.slug), &cast));
         entries.push((s, text, cast));
     }
+    for (start, why) in KNOWN_BUGS {
+        if !bugs_seen.contains(why) {
+            failures.push(format!(
+                "the known product bug {start:?} ({why}) no longer shows in any scenario: remove it from KNOWN_BUGS"
+            ));
+        }
+    }
     failures.extend(golden("gallery.html", &gallery(&entries)));
-    // A transcript left behind by a scenario that no longer exists.
-    if std::env::var_os("UPDATE_GOLDEN").is_none() {
-        let slugs: BTreeSet<String> = list.iter().map(|s| s.slug.clone()).collect();
-        for dir in ["golden", "recordings"] {
-            for e in std::fs::read_dir(golden_dir().join(dir))
-                .into_iter()
-                .flatten()
-                .flatten()
-            {
-                let stem = e.path().file_stem().unwrap().to_string_lossy().to_string();
-                if !slugs.contains(&stem) {
-                    failures.push(format!(
-                        "{dir}/{} belongs to no scenario; delete it",
-                        e.file_name().to_string_lossy()
-                    ));
-                }
+    // A transcript left behind by a scenario that no longer exists: deleted on update, a failure otherwise.
+    let slugs: BTreeSet<String> = list.iter().map(|s| s.slug.clone()).collect();
+    for dir in ["golden", "recordings"] {
+        for e in std::fs::read_dir(golden_dir().join(dir))
+            .into_iter()
+            .flatten()
+            .flatten()
+        {
+            let stem = e.path().file_stem().unwrap().to_string_lossy().to_string();
+            if slugs.contains(&stem) {
+                continue;
+            }
+            if std::env::var_os("UPDATE_GOLDEN").is_some() {
+                std::fs::remove_file(e.path()).unwrap();
+            } else {
+                failures.push(format!(
+                    "{dir}/{} belongs to no scenario; `UPDATE_GOLDEN=1 cargo test --test matrix` deletes it",
+                    e.file_name().to_string_lossy()
+                ));
             }
         }
     }

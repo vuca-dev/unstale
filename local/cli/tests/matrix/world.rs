@@ -526,8 +526,14 @@ pub(crate) fn repo_value(name: &str) -> String {
     format!("{}-{}", support::REPO_CANARY, name.to_ascii_lowercase())
 }
 
-/// What `--inference <value>` records, as the repository config stores it.
+/// What `--inference <value>` records, as the repository config stores it (`jev+` before a choice adds the labelling
+/// service for labels and matching).
 pub(crate) fn choice_json(value: &str) -> serde_json::Value {
+    if let Some(rest) = value.strip_prefix("jev+") {
+        let mut v = choice_json(rest);
+        v["labels"] = json!({"provider": "jev", "key_env": "JEV_API_KEY"});
+        return v;
+    }
     let (provider, key_env) = match value.strip_prefix("env:") {
         Some(var) => (
             match var {
