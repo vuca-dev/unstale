@@ -95,7 +95,10 @@ pub(crate) fn transcript(s: &Scenario, se: &Session, violations: &[String]) -> S
         if !out.is_empty() && !out.ends_with('\n') {
             t.push('\n');
         }
-        if r.code != 0 {
+        // Interrupted by Ctrl-C: the exit status the shell reports differs by system.
+        if r.code != 0 && s.invocation.answer == "\u{3}" && questions(&r.output) > 0 {
+            t += "[interrupted]\n";
+        } else if r.code != 0 {
             t += &format!("[exit {}]\n", r.code);
         }
     }

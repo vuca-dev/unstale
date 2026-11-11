@@ -41,7 +41,7 @@
 [1.42,"o","  1) OpenAI (OPENAI_API_KEY): $0.090 per technology-year · this repo ≈ $0.18 a year, first sync ≈ $0.18 once · slightly less complete: ≈ 93% of the best option's breaking-change flags; ≈ 2 more duplicate records per technology-year\r\n"]
 [1.48,"o","  2) Codex plan: 590k Codex tokens ($0.075 at API prices) per technology-year · this repo ≈ 1.2M Codex tokens a year, first sync ≈ 1.2M Codex tokens once · results through Codex not measured yet\r\n"]
 [1.54,"o","  3) None: deterministic signals only; new change details need a key or Codex\r\n"]
-[1.6,"o","Choose 1–3, or press Enter for 1 (recommended): ^C\r\n"]
+[1.6,"o","Choose 1–3, or press Enter for 1 (recommended):\r\n"]
 [2.5,"o","\u001b[1m$\u001b[0m "]
 [2.53,"o","u"]
 [2.55,"o","n"]

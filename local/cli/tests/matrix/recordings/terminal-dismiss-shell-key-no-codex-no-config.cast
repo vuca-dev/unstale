@@ -40,7 +40,7 @@
 [1.36,"o","Choose how unstale reads new release notes (costs are estimates; this repo has 2 technologies):\r\n"]
 [1.42,"o","  1) OpenAI (OPENAI_API_KEY): $0.090 per technology-year · this repo ≈ $0.18 a year, first sync ≈ $0.18 once · slightly less complete: ≈ 93% of the best option's breaking-change flags; ≈ 2 more duplicate records per technology-year\r\n"]
 [1.48,"o","  2) None: deterministic signals only; new change details need a key or Codex\r\n"]
-[1.54,"o","Choose 1–2, or press Enter for 1 (recommended): ^D\b\b\r\n"]
+[1.54,"o","Choose 1–2, or press Enter for 1 (recommended):\r\n"]
 [1.6,"o","Model provider: not chosen; deterministic signals only · `unstale setup` asks again\r\n"]
 [1.66,"o","  ✓ shop · Personal setup ready\r\n"]
 [1.72,"o","  Next: run unstale-review in your coding agent · copyable prompt below.\r\n"]

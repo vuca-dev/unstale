@@ -103,6 +103,12 @@ pub(crate) fn exec(w: &World, s: &Scenario, args: Vec<String>, terminal: bool) -
         };
         let (code, raw) =
             support::at_terminal(&cmd, &[(prompt.as_str(), answer)], Duration::from_secs(60));
+        // A terminal's echo of Ctrl-D and Ctrl-C differs by system (macOS prints `^D` and backs over it, Linux
+        // prints nothing): the screen shows neither.
+        let raw = raw
+            .replace("^D\u{8}\u{8}", "")
+            .replace("^D", "")
+            .replace("^C", "");
         (code, support::screen(&raw))
     } else {
         // stderr into stdout, so the output keeps the order it was written in.
