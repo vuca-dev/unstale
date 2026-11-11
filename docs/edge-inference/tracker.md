@@ -9,16 +9,19 @@
 
 - **Shape:** INDEPENDENT PRs to `main`. Every chunk is additive and behind one switch (README, "One switch").
 - **Ground truth:** GitHub PR state. Repo `vuca-dev/unstale`.
-- **Base:** `origin/main` @ `72d0fc5` (`ci` green)
+- **Base:** `origin/main` @ `8b2fe69` (#239 merge; `ci` running at time of writing, previous tip `b778876` green)
 - **Base health:** PR checks are `rust`, `central`, `gateway`; re-query before every merge.
-- **Open PRs:** #237 (parity fixes, APPROVED at `1494730`, EM merging), #236 (parity results; re-measurement in progress), #238 (WS6b full matrix, in progress), #231 (WS9 draft, blocked on the ingest decision)
-- **Live worktrees (sprint):** `/Users/jason/unstale-edge-sprint` (tracker)
-- **Live subagents:** parity-fixes EM (merging #237), parity agent (re-measuring two cells, `/Users/jason/unstale-parity-remeasure`), ws6b-matrix (Opus 5.5). All resumed after the third limit reset.
+- **Open PRs:** #238 (full scenario matrix, `806da1d`, in review; must rebase onto #239 and regenerate goldens), #231 (no-key eval draft, blocked on the ingest decision)
+- **Live worktrees (sprint):** `/Users/jason/unstale-edge-sprint` (tracker), `/Users/jason/unstale-ws6b` (#238), `/Users/jason/unstale-ws9-no-key` + `/Users/jason/unstale-ws9-scout` (#231), `/Users/jason/unstale-parity` (paid answer caches; keep)
+- **Live subagents:** #238 reviewer (Fable). Idle, resumable: matrix EM, no-key eval agent.
 - **Merged + verified:** WS0 → #213 `673c191`
-- **Next:** review parity and WS6b; CEO decision on the ingest starvation fix (unblocks WS9); WS8 draft last
-- **Sprint API spend so far:** $0 of $10
+- **Merged since last update:** #237 parity fixes `7bb7e6d`; #236 parity results `b778876`; #239 measured figures `8b2fe69`
+- **Next:** #238 review → fixes, rebase, merge; small product-fix PR for bugs the matrix confirmed; CEO go-ahead on the ingest starvation fix (unblocks the no-key eval); docs-and-site PR last, as a held draft
+- **Sprint API spend so far:** ≈ $0.28 of $10
 
 ## §2 CEO directives (durable; read every iteration)
+
+- **11 November, merges:** "allow agent merges, but remember to hold the README/site copy one for my review". Reviewed sprint PRs with green CI and zero unresolved threads may be admin-merged by agents or the PM. The docs-and-site PR stays a draft and is merged only by the CEO. (The permission system refused a subagent's merge of #239 twice; the PM merged it under this directive.)
 
 ### Scope and authority
 - Central keeps deterministic work only. Model steps run on the client, on the user's key or Codex plan.
