@@ -77,7 +77,10 @@ asciicast v2) and the gallery. Review the diff before committing; a changed tran
 ## Playback
 
 Open `local/cli/tests/matrix/gallery.html` in a browser (from the file; it needs no network). Scenarios are grouped
-by what the user did; each plays back or shows its whole session, with its transcript and the hosts it contacted.
+by what the user did (installs at a terminal, through an agent, in CI; meets a provider problem or the monthly
+limit; upgrades; turns registry lookups on); each plays back or shows its whole session, with its transcript, the
+hosts it contacted and any known product bug it shows. Agent sessions include their session-start hook runs, and
+every session with a provider includes the model work.
 
 ## Real agent runs (opt-in, billed)
 

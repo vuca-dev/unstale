@@ -217,25 +217,49 @@ pub(crate) fn html_escape(s: &str) -> String {
         .replace('>', "&gt;")
 }
 
+/// The gallery's groups, in order: what the user did.
+pub(crate) const GROUPS: &[&str] = &[
+    "Installs it at a terminal",
+    "Asks an agent to install it",
+    "Runs it in CI",
+    "Cannot read release notes right now (provider or limit)",
+    "Upgrades unstale",
+    "Lets unstale look up public packages",
+];
+
+/// What the user did in a scenario, for the gallery: a provider problem or an upgrade first, else how they ran it.
+pub(crate) fn group_of(s: &Scenario) -> &'static str {
+    if s.registry {
+        "Lets unstale look up public packages"
+    } else if s.client.id != "fresh" {
+        "Upgrades unstale"
+    } else if s.answer.failing() {
+        "Cannot read release notes right now (provider or limit)"
+    } else {
+        GROUPS
+            .iter()
+            .find(|g| **g == s.invocation.group)
+            .copied()
+            .unwrap_or("Installs it at a terminal")
+    }
+}
+
 /// The playback page: one static file, every scenario grouped by what the user did, no network.
 /// A scenario with its transcript and recording.
 pub(crate) type Entry<'a> = (&'a Scenario, String, String);
 
 pub(crate) fn gallery(entries: &[Entry]) -> String {
-    // Groups in the order the invocations are listed.
-    let mut groups: Vec<(&str, Vec<&Entry>)> = vec![];
-    for inv in INVOCATIONS {
-        if !groups.iter().any(|(g, _)| *g == inv.group) {
-            groups.push((inv.group, vec![]));
-        }
-    }
+    let mut groups: Vec<(&str, Vec<&Entry>)> = GROUPS.iter().map(|g| (*g, vec![])).collect();
     for e in entries {
-        let g = groups
+        let name = group_of(e.0);
+        groups
             .iter_mut()
-            .find(|(g, _)| *g == e.0.invocation.group)
-            .unwrap();
-        g.1.push(e);
+            .find(|(g, _)| *g == name)
+            .unwrap()
+            .1
+            .push(e);
     }
+    groups.retain(|(_, l)| !l.is_empty());
     let mut nav = String::new();
     let mut body = String::new();
     let mut data = serde_json::Map::new();
