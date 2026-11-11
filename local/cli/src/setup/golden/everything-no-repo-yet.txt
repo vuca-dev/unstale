@@ -1,8 +1,8 @@
 Choose how unstale reads new release notes (costs are estimates):
   1) Jev labelling API (JEV_API_KEY) + Vercel AI Gateway (AI_GATEWAY_API_KEY): $0.028 per technology-year
-  2) Jev labelling API (JEV_API_KEY) + Codex plan: $0.018 + 110k Codex tokens ($0.020 at API prices) per technology-year · about the same results (same model)
+  2) Jev labelling API (JEV_API_KEY) + Codex plan: $0.018 + 110k Codex tokens ($0.020 at API prices) per technology-year · results through Codex not measured yet
   3) Vercel AI Gateway (AI_GATEWAY_API_KEY): $0.055 per technology-year · slightly less complete: ≈ 93% of the best option's breaking-change flags; ≈ 2 more duplicate records per technology-year
-  4) Codex plan: 590k Codex tokens ($0.075 at API prices) per technology-year · slightly less complete: ≈ 93% of the best option's breaking-change flags; ≈ 2 more duplicate records per technology-year
+  4) Codex plan: 590k Codex tokens ($0.075 at API prices) per technology-year · results through Codex not measured yet
   5) Anthropic (ANTHROPIC_API_KEY): $0.075 per technology-year · somewhat less complete: ≈ 90% of the best option's changes (fewer from upgrade guides); ≈ 23 more duplicate records per technology-year
   6) None: deterministic signals only; new change details need a key or Codex
 Choose 1–6, or press Enter for 1 (recommended): 

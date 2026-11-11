@@ -86,12 +86,28 @@ impl Detected {
     }
 }
 
+/// The variables that say an agent is running the command (Claude Code, Codex, Cursor's agent, opencode, Gemini CLI,
+/// and any harness that sets `AI_AGENT`); `UNSTALE_AGENT=1` says so explicitly. With one set, setup never asks: a
+/// pseudo-terminal an agent drives is not a person, and a stray Enter would accept a paid option.
+pub const AGENT_VARS: &[&str] = &[
+    "CLAUDECODE",
+    "AI_AGENT",
+    "CODEX_SANDBOX",
+    "CODEX_SANDBOX_NETWORK_DISABLED",
+    "CURSOR_AGENT",
+    "OPENCODE",
+    "GEMINI_CLI",
+    "UNSTALE_AGENT",
+];
+
 /// Everything detection may look at. The real one is [`System`]; tests record what is touched.
 pub trait Probe {
-    /// The names of the variables in this process's environment.
-    fn env_names(&self) -> Vec<String>;
-    /// This repository's `.env` (`<root>/.env`, not followed through a link), or `None`. The only file detection opens.
-    fn repo_dotenv(&self, root: &Path) -> Option<String>;
+    /// Whether a variable is set in this process's environment to something other than blanks. The value is looked at
+    /// for that and dropped.
+    fn set_in_shell(&self, name: &str) -> bool;
+    /// The known key variables this repository's `.env` (`<root>/.env`, not followed through a link) sets to a
+    /// non-blank value. The only file detection opens.
+    fn repo_dotenv(&self, root: &Path) -> Vec<String>;
     /// Whether `codex` is on PATH, and if so whether it is usable (`codex --version`, `codex login status`).
     fn codex(&self) -> CodexState;
 }
@@ -99,19 +115,16 @@ pub trait Probe {
 pub struct System;
 
 impl Probe for System {
-    fn env_names(&self) -> Vec<String> {
-        // Names only: each value is dropped unread.
-        std::env::vars_os()
-            .filter_map(|(k, _)| k.into_string().ok())
-            .collect()
+    fn set_in_shell(&self, name: &str) -> bool {
+        std::env::var_os(name).is_some_and(|v| !v.to_string_lossy().trim().is_empty())
     }
-    fn repo_dotenv(&self, root: &Path) -> Option<String> {
+    fn repo_dotenv(&self, root: &Path) -> Vec<String> {
         let p = root.join(".env");
         // A link could lead to another repository's file: only a regular file inside this one is read.
         if !std::fs::symlink_metadata(&p).is_ok_and(|m| m.file_type().is_file()) {
-            return None;
+            return vec![];
         }
-        std::fs::read_to_string(p).ok()
+        std::fs::File::open(p).map(dotenv_names).unwrap_or_default()
     }
     fn codex(&self) -> CodexState {
         let on_path = std::env::var_os("PATH")
@@ -132,36 +145,98 @@ impl Probe for System {
     }
 }
 
-/// The variable names a `.env` text defines (`NAME=…` or `export NAME=…`), known key variables only. Everything after
-/// the `=` is skipped, never kept.
-pub fn dotenv_names(text: &str) -> Vec<String> {
-    let mut out = vec![];
-    for line in text.lines() {
-        let l = line.trim_start();
-        let l = l.strip_prefix("export ").map(str::trim_start).unwrap_or(l);
-        let Some((name, _)) = l.split_once('=') else {
-            continue;
-        };
-        let name = name.trim_end();
-        if route_of(name).is_some() && !out.iter().any(|n| n == name) {
-            out.push(name.to_string());
-        }
-    }
-    out
+/// Whether an agent is running this command ([`AGENT_VARS`]).
+pub fn agent_driving(probe: &dyn Probe) -> bool {
+    AGENT_VARS.iter().any(|v| probe.set_in_shell(v))
 }
 
-/// What this machine can use: key variable names in the shell and in this repository's `.env`, and Codex.
-pub fn detect(root: &Path, probe: &dyn Probe) -> Detected {
-    let mut keys = BTreeMap::new();
-    for n in probe.env_names() {
-        if route_of(&n).is_some() {
-            keys.insert(n, Seen::Shell);
+/// The known key variables a `.env` sets to a non-blank value (`NAME=…` or `export NAME=…`; the last assignment of a
+/// name wins). Read a byte at a time: a name is kept, and of its value only whether it has a character other than
+/// blanks and quotes before a comment. No value byte is stored.
+pub fn dotenv_names(r: impl std::io::Read) -> Vec<String> {
+    use std::io::Read as _;
+    #[derive(PartialEq)]
+    enum At {
+        Name,
+        AfterName,
+        Value,
+        Skip,
+    }
+    let mut set: Vec<(String, bool)> = vec![];
+    let mut note = |name: &str, filled: bool| {
+        if route_of(name).is_none() {
+            return;
+        }
+        match set.iter_mut().find(|(n, _)| n == name) {
+            Some(e) => e.1 = filled,
+            None => set.push((name.to_string(), filled)),
+        }
+    };
+    let (mut at, mut name, mut filled) = (At::Name, String::new(), false);
+    // The quote a value is inside, if any: a `#` there is part of the value, not a comment.
+    let mut quote: Option<u8> = None;
+    for b in std::io::BufReader::new(r).bytes() {
+        let Ok(b) = b else { break };
+        if b == b'\n' {
+            if at == At::Value {
+                note(&name, filled);
+            }
+            (at, filled, quote) = (At::Name, false, None);
+            name.clear();
+            continue;
+        }
+        match at {
+            At::Name if b.is_ascii_alphanumeric() || b == b'_' => {
+                if name.len() < 64 {
+                    name.push(b as char);
+                } else {
+                    at = At::Skip;
+                }
+            }
+            At::Name if b == b' ' || b == b'\t' => {
+                if name == "export" {
+                    name.clear();
+                } else if !name.is_empty() {
+                    at = At::AfterName;
+                }
+            }
+            At::Name | At::AfterName if b == b'=' && !name.is_empty() => at = At::Value,
+            At::AfterName if b == b' ' || b == b'\t' => {}
+            At::Name | At::AfterName => at = At::Skip,
+            // A comment where the value would start: a blank assignment, which still clears an earlier one.
+            At::Value if b == b'#' && !filled && quote.is_none() => {
+                note(&name, false);
+                at = At::Skip;
+            }
+            At::Value if b == b'"' || b == b'\'' => match quote {
+                Some(q) if q == b => quote = None,
+                None => quote = Some(b),
+                Some(_) => filled = true,
+            },
+            At::Value => filled |= !b.is_ascii_whitespace(),
+            At::Skip => {}
         }
     }
-    if let Some(text) = probe.repo_dotenv(root) {
-        for n in dotenv_names(&text) {
-            keys.entry(n).or_insert(Seen::DotEnv);
+    if at == At::Value {
+        note(&name, filled);
+    }
+    set.into_iter()
+        .filter(|(_, f)| *f)
+        .map(|(n, _)| n)
+        .collect()
+}
+
+/// What this machine can use: key variables set (to a non-blank value) in the shell and in this repository's `.env`,
+/// and Codex.
+pub fn detect(root: &Path, probe: &dyn Probe) -> Detected {
+    let mut keys = BTreeMap::new();
+    for (n, _) in KEY_VARS {
+        if probe.set_in_shell(n) {
+            keys.insert(n.to_string(), Seen::Shell);
         }
+    }
+    for n in probe.repo_dotenv(root) {
+        keys.entry(n).or_insert(Seen::DotEnv);
     }
     Detected {
         keys,
@@ -220,6 +295,9 @@ pub struct Quote {
     pub quality: Quality,
     /// More duplicate records than the best option's.
     pub more_duplicates: u32,
+    /// Whether `quality` and `more_duplicates` were measured on this route. While false, the line says the results
+    /// through Codex are not measured yet, and the figures beside it are the API route's, kept for when they are.
+    pub quality_measured: bool,
 }
 
 /// The first sync, in technology-years per technology. Catalog records cover history, so the first sync reads only
@@ -233,9 +311,12 @@ const NO_QUOTE: Quote = Quote {
     agent_tokens: 0,
     quality: Quality::Best,
     more_duplicates: 0,
+    quality_measured: true,
 };
 
-/// Labels below the best option's: an OpenAI-compatible model flags 86.2% of breaking changes against Jev's 93.1%.
+/// Labels below the best option's: an OpenAI-compatible model (gpt-6-luna read on its choices) flags 86.2% of breaking
+/// changes against Jev's 93.1%, both on the same held-out set; Jev's figure is at its fitted threshold (breaking
+/// probability 0.05), not at 0.5. Check the ratio against the threshold the client's labelling step actually runs.
 const LABELS_BELOW: Quality = Quality::Share {
     pct: 93,
     of: "the best option's breaking-change flags",
@@ -264,6 +345,8 @@ pub fn quote(p: Pick, no_key: bool) -> Quote {
             codex_tokens: 109_000,
             codex_usd: 0.0198,
             quality: Quality::Same,
+            // Measured over the API; batched `codex exec` extraction's recall was not checked.
+            quality_measured: false,
             ..NO_QUOTE
         },
         Pick::Key(Route::Anthropic) => Quote {
@@ -290,6 +373,8 @@ pub fn quote(p: Pick, no_key: bool) -> Quote {
             codex_usd: 0.0754,
             quality: LABELS_BELOW,
             more_duplicates: MATCHING_BELOW,
+            // The API route's figures; through batched `codex exec` they are not measured yet.
+            quality_measured: false,
             ..NO_QUOTE
         },
         // About 8k tokens of release notes per technology-year, read raw by the agent.
@@ -466,6 +551,10 @@ pub fn option_line(d: &Detected, p: Pick, techs: usize, no_key: bool) -> String 
             cost(&q, techs as f64 * FIRST_SYNC_TECH_YEARS)
         );
     }
+    if !q.quality_measured {
+        s += " · results through Codex not measured yet";
+        return s;
+    }
     if let Some(t) = quality(q.quality) {
         s += " · ";
         s += &t;
@@ -553,8 +642,12 @@ pub fn prompt(n: usize) -> String {
 }
 
 /// Asks once: Enter accepts the first option, a number picks one. Input that is not a choice is asked for again, at
-/// most twice more; then, as at end of input, nothing is used ([`Pick::None`]).
-pub fn ask(opts: &[Pick], input: &mut dyn std::io::BufRead, out: &mut dyn std::io::Write) -> Pick {
+/// most twice more; then, as at end of input, nothing is chosen (`None`).
+pub fn ask(
+    opts: &[Pick],
+    input: &mut dyn std::io::BufRead,
+    out: &mut dyn std::io::Write,
+) -> Option<Pick> {
     for _ in 0..3 {
         let _ = write!(out, "{}", prompt(opts.len()));
         let _ = out.flush();
@@ -565,18 +658,18 @@ pub fn ask(opts: &[Pick], input: &mut dyn std::io::BufRead, out: &mut dyn std::i
         }
         let t = line.trim();
         if t.is_empty() {
-            return opts[0];
+            return Some(opts[0]);
         }
         if let Some(p) = t
             .parse::<usize>()
             .ok()
             .filter(|n| (1..=opts.len()).contains(n))
         {
-            return opts[p - 1];
+            return Some(opts[p - 1]);
         }
     }
     let _ = writeln!(out);
-    Pick::None
+    None
 }
 
 // -------------------------------------------------------------------------------------------------------- config
@@ -839,11 +932,8 @@ pub fn provider_line(cur: Option<&(Choice, Origin)>, set: &dyn Fn(&str) -> bool)
 /// [`provider_line`] for this repository.
 pub fn status_provider(ctx: &crate::Ctx) -> String {
     let cur = current(ctx.config.inference.as_ref(), &user_config_path());
-    let dotenv = System
-        .repo_dotenv(&ctx.root)
-        .map(|t| dotenv_names(&t))
-        .unwrap_or_default();
-    let set = |v: &str| std::env::var_os(v).is_some() || dotenv.iter().any(|n| n == v);
+    let dotenv = System.repo_dotenv(&ctx.root);
+    let set = |v: &str| System.set_in_shell(v) || dotenv.iter().any(|n| n == v);
     provider_line(cur.as_ref(), &set)
 }
 
@@ -926,14 +1016,15 @@ pub enum Plan {
     Nothing,
 }
 
-/// `reopen` is `unstale setup`; otherwise this is `init`, which asks only when nothing is chosen yet and a person is at
-/// the terminal, so the choice is never asked again unprompted. Without a terminal nothing waits for an answer.
-pub fn plan(flag: Option<Choice>, configured: bool, terminal: bool, reopen: bool) -> Plan {
+/// `reopen` is `unstale setup`; otherwise this is `init`, which asks only when nothing is chosen yet and the picker was
+/// not dismissed on this machine (`settled`), and only with a person at the terminal, so it is never asked again
+/// unprompted. Without a terminal, or with an agent driving, nothing waits for an answer.
+pub fn plan(flag: Option<Choice>, settled: bool, terminal: bool, reopen: bool) -> Plan {
     match (flag, reopen, terminal) {
         (Some(c), _, _) => Plan::Save(c),
         (None, true, true) => Plan::Ask,
         (None, true, false) => Plan::Print,
-        (None, false, true) if !configured => Plan::Ask,
+        (None, false, true) if !settled => Plan::Ask,
         (None, false, _) => Plan::Nothing,
     }
 }
@@ -968,6 +1059,16 @@ fn save(ctx: &mut crate::Ctx, c: &Choice, user: bool) -> anyhow::Result<String> 
     Ok(".unstale/config.json".into())
 }
 
+/// Where this machine remembers the picker was dismissed: under `.unstale/state/`, which is never committed.
+fn dismissed_path(ctx: &crate::Ctx) -> std::path::PathBuf {
+    ctx.tool.join("state/setup-dismissed")
+}
+
+/// The line after the picker is dismissed without a choice.
+pub fn dismissed_line() -> String {
+    "Model provider: not chosen; deterministic signals only · `unstale setup` asks again".into()
+}
+
 /// The line after a choice is recorded.
 pub fn saved_line(c: &Choice, place: &str) -> String {
     format!(
@@ -986,11 +1087,15 @@ pub fn run(
     yes: bool,
 ) -> anyhow::Result<()> {
     use std::io::IsTerminal;
-    let configured = current(ctx.config.inference.as_ref(), &user_config_path()).is_some();
+    let settled = current(ctx.config.inference.as_ref(), &user_config_path()).is_some()
+        || dismissed_path(ctx).exists();
     // `init --yes` asks nothing; accepting the recommended option would spend on the user's key unasked, so nothing is
-    // chosen.
-    let terminal = !yes && std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
-    let (d, techs) = match plan(flag, configured, terminal, reopen) {
+    // chosen. An agent's pseudo-terminal is not a person: it gets the listing instead.
+    let terminal = !yes
+        && !agent_driving(&System)
+        && std::io::stdin().is_terminal()
+        && std::io::stdout().is_terminal();
+    let (d, techs) = match plan(flag, settled, terminal, reopen) {
         Plan::Nothing => return Ok(()),
         Plan::Save(c) => {
             let place = save(ctx, &c, user)?;
@@ -1017,7 +1122,13 @@ pub fn run(
     if opts.is_empty() {
         return Ok(());
     }
-    let pick = ask(&opts, &mut std::io::stdin().lock(), &mut std::io::stdout());
+    let Some(pick) = ask(&opts, &mut std::io::stdin().lock(), &mut std::io::stdout()) else {
+        // Dismissed: no config is written, so a team's shared choice is never set by a slip. This machine remembers
+        // it was asked, so `init` does not ask again; `unstale setup` does.
+        crate::util::write_atomic(&dismissed_path(ctx), b"asked, not chosen\n")?;
+        println!("{}", dismissed_line());
+        return Ok(());
+    };
     let c = Choice::of(&d, pick);
     let place = save(ctx, &c, user)?;
     println!("{}", saved_line(&c, &place));

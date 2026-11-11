@@ -285,6 +285,11 @@ fn with_the_switch_off_setup_is_inert() {
 impl World {
     /// Runs at a terminal (a pseudo-terminal from `script`), typing `input`.
     fn at_terminal(&self, args: &[&str], input: &str) -> String {
+        self.at_terminal_with(args, input, &[])
+    }
+
+    /// [`World::at_terminal`] with extra environment variables.
+    fn at_terminal_with(&self, args: &[&str], input: &str, extra: &[(&str, &str)]) -> String {
         use std::io::Write;
         let bin = env!("CARGO_BIN_EXE_unstale");
         let c = self.command(args, true);
@@ -306,6 +311,9 @@ impl World {
             if let Some(v) = v {
                 s.env(k, v);
             }
+        }
+        for (k, v) in extra {
+            s.env(k, v);
         }
         let mut child = s.spawn().unwrap();
         // Kept open until the run ends: closing it would reach the program as end of input.
@@ -437,4 +445,145 @@ fn status_shows_the_provider_this_months_tokens_and_the_budget() {
         after.contains("Model tokens this month: 1.5M of 48M"),
         "{after}"
     );
+}
+
+const INIT_AT_TERMINAL: [&str; 8] = [
+    "init",
+    "--service",
+    "http://127.0.0.1:9",
+    "--mode",
+    "shared",
+    "--wait",
+    "0",
+    "--no-animation",
+];
+
+#[test]
+fn a_dismissed_picker_writes_no_config_and_is_not_asked_again_on_this_machine() {
+    let w = World::new(Some(true));
+    std::fs::write(w.path("repo/.env"), "OPENAI_API_KEY=x\n").unwrap();
+    // End of input (Ctrl-D) at the question.
+    let out = w.at_terminal(&INIT_AT_TERMINAL, "\u{4}");
+    assert_eq!(out.matches("Choose 1–").count(), 1, "{out}");
+    assert!(
+        out.contains(
+            "Model provider: not chosen; deterministic signals only · `unstale setup` asks again"
+        ),
+        "{out}"
+    );
+    assert!(
+        w.config().get("inference").is_none(),
+        "a dismissal writes nothing to the shared config"
+    );
+    assert!(
+        !w.path("config/config.json").exists(),
+        "nor to the user config"
+    );
+    assert!(
+        w.path("repo/.unstale/state/setup-dismissed").exists(),
+        "this machine remembers it was asked"
+    );
+    let ignored = std::fs::read_to_string(w.path("repo/.unstale/.gitignore")).unwrap();
+    assert!(
+        ignored.lines().any(|l| l == "state/"),
+        "the state directory is never committed: {ignored}"
+    );
+    let status = w.ok(&["status", "--wait", "0", "--no-animation"], true);
+    assert!(status.contains("Model provider: not chosen"), "{status}");
+    // init does not ask again here; `unstale setup` does, and typing None's number records "none".
+    let again = w.at_terminal(&INIT_AT_TERMINAL, "\n");
+    assert!(!again.contains("Choose"), "{again}");
+    assert!(w.config().get("inference").is_none());
+    let chosen = w.at_terminal(&["setup"], "5\n");
+    assert!(
+        chosen.contains(
+            "Model provider: none (deterministic signals only) · saved in .unstale/config.json"
+        ),
+        "{chosen}"
+    );
+    assert_eq!(
+        w.config()["inference"],
+        serde_json::json!({"provider": "none"})
+    );
+}
+
+#[test]
+fn ctrl_c_at_the_question_writes_nothing_anywhere() {
+    let w = World::new(Some(true));
+    std::fs::write(w.path("repo/.env"), "OPENAI_API_KEY=x\n").unwrap();
+    w.init(true, &[]);
+    let before = w.written_files();
+    let out = w.at_terminal(&["setup"], "\u{3}");
+    assert!(out.contains("Choose 1–"), "{out}");
+    assert!(!out.contains("Model provider:"), "{out}");
+    assert_eq!(
+        w.written_files(),
+        before,
+        "Ctrl-C leaves every file as it was"
+    );
+    assert!(!w.path("config/config.json").exists());
+    assert!(!w.path("repo/.unstale/state/setup-dismissed").exists());
+}
+
+#[test]
+fn an_agent_in_a_pseudo_terminal_gets_the_listing_never_the_question() {
+    let w = World::new(Some(true));
+    std::fs::write(w.path("repo/.env"), "OPENAI_API_KEY=x\n").unwrap();
+    for agent in [
+        ("CLAUDECODE", "1"),
+        ("CODEX_SANDBOX", "seatbelt"),
+        ("UNSTALE_AGENT", "1"),
+    ] {
+        let init = w.at_terminal_with(&INIT_AT_TERMINAL, "\n", &[agent]);
+        assert!(!init.contains("Choose"), "{agent:?}: {init}");
+        assert!(
+            w.config().get("inference").is_none(),
+            "{agent:?}: a stray Enter chose nothing"
+        );
+        let setup = w.at_terminal_with(&["setup"], "\n", &[agent]);
+        assert!(
+            !setup.contains("Choose 1–") && !setup.contains("press Enter"),
+            "{agent:?}: {setup}"
+        );
+        assert!(
+            setup.contains("[--inference jev+env:OPENAI_API_KEY]"),
+            "{agent:?}: {setup}"
+        );
+        assert!(w.config().get("inference").is_none(), "{agent:?}");
+    }
+}
+
+#[test]
+fn files_detection_must_never_open_stay_unopened() {
+    // Each is a FIFO: opening one for reading blocks until a writer comes, and none ever does.
+    let w = World::new(Some(true));
+    std::fs::write(w.path("repo/.env"), "OPENAI_API_KEY=x\n").unwrap();
+    std::fs::create_dir_all(w.path("home/.config/fish")).unwrap();
+    let never = [
+        ".env",
+        "home/.env",
+        "repo/.env.local",
+        "home/.bashrc",
+        "home/.bash_profile",
+        "home/.profile",
+        "home/.zshrc",
+        "home/.zprofile",
+        "home/.zshenv",
+        "home/.config/fish/config.fish",
+    ];
+    for f in never {
+        assert!(
+            Command::new("mkfifo")
+                .arg(w.path(f))
+                .status()
+                .unwrap()
+                .success(),
+            "{f}"
+        );
+    }
+    w.init(true, &[]);
+    let listed = w.ok(&["setup"], true);
+    assert!(listed.contains("OPENAI_API_KEY in .env"), "{listed}");
+    w.ok(&["setup", "--inference", "openai"], true);
+    w.ok(&["status", "--wait", "0", "--no-animation"], true);
 }
