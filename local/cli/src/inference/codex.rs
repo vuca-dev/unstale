@@ -287,6 +287,10 @@ pub(super) fn exec(inf: &Inference, p: &Prompt) -> Result<Answer, Deferred> {
     ready(inf)?;
     let mut n = 0;
     loop {
+        // A call whose usage could not be recorded stops every later one, retries included.
+        if inf.ledger_failed.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err(Deferred::Storage);
+        }
         match attempt(inf, p) {
             Err(d) if d.transient() && n < inf.limits.retries => {
                 std::thread::sleep(inf.limits.backoff * 2u32.pow(n));

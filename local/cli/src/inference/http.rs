@@ -96,11 +96,19 @@ pub(super) fn allowed_url(url: &str) -> bool {
         return false;
     };
     let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
+    // Userinfo (`user@`) is not the host: `http://127.0.0.1@elsewhere/` goes to `elsewhere`.
+    if authority.contains('@') {
+        return false;
+    }
     let host = match authority.strip_prefix('[') {
         Some(v6) => v6.split(']').next().unwrap_or(""),
         None => authority.split(':').next().unwrap_or(""),
     };
-    host == "localhost" || host == "::1" || host.starts_with("127.")
+    // A loopback IP address, or `localhost`; never a name that merely looks like one (`127.example.com`).
+    host.eq_ignore_ascii_case("localhost")
+        || host
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|ip| ip.is_loopback())
 }
 
 fn unix_now() -> u64 {

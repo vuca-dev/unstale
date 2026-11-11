@@ -273,10 +273,16 @@ fn dispatch(cli: Cli) -> Result<u8> {
         Cmd::Status { wait, no_animation } => onboarding::run(&ctx, wait, !no_animation, false).inspect(|_| {
             notice::print(&ctx.cache, &ctx.tool);
             if inference::enabled() {
-                let used = inference::Ledger::default_location().month_tokens(&inference::ledger::this_month());
-                println!("{}", inference::ledger::budget_line(used, inference::ledger::DEFAULT_MONTHLY_TOKENS));
-                if let Some(line) = events_failed_line(&cache::events_failed(&ctx.cache)) { println!("{line}"); }
+                match inference::Ledger::default_location().spent(&inference::ledger::this_month()) {
+                    Ok(used) => println!("{}", inference::ledger::budget_line(used, inference::ledger::DEFAULT_MONTHLY_TOKENS)),
+                    Err(_) => println!("Model tokens this month: unknown (the usage record cannot be read; model steps wait until it can)"),
+                }
             }
+            // Shown with the switch on or off: a refusal stays until a sync verifies the events. Only this repository's
+            // technologies are named.
+            let ours = stack::detect(&ctx.root).map(|st| onboarding::candidates(&ctx, &st)).unwrap_or_default();
+            let failed: Vec<(String, String)> = cache::events_failed(&ctx.cache).into_iter().filter(|(t, _)| ours.contains(t)).collect();
+            if let Some(line) = events_failed_line(&failed) { println!("{line}"); }
         }),
         Cmd::Notify => onboarding::notify(&ctx).inspect(|_| notice::print(&ctx.cache, &ctx.tool)),
         Cmd::Sync => cmd_sync(&ctx),
