@@ -4092,7 +4092,7 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
             ui.update(title, &format!("Checked {done}/{total} direct packages against the published catalog"), hint)
         })
         .map(|rep| {
-            crate::cache_gc::after_sync(&ctx.cache, &ctx.root, &crate::cache_gc::needs(&rep));
+            crate::cache_gc::after_sync(&ctx.cache, &ctx.root, &crate::cache_gc::needs(&rep), &|| bound.passed());
             rep.failed.is_empty().then_some(cands)
         })
     };

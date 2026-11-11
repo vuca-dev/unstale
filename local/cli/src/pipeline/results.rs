@@ -130,13 +130,17 @@ impl Results {
         )
     }
 
-    fn path(&self, key: &str) -> PathBuf {
+    pub fn path(&self, key: &str) -> PathBuf {
         self.dir.join(&key[..2]).join(format!("{key}.json"))
     }
 
     /// A stored entry; an unreadable file reads as absent (the call is made again).
     pub fn get(&self, key: &str) -> Option<Entry> {
-        serde_json::from_slice(&std::fs::read(self.path(key)).ok()?).ok()
+        let p = self.path(key);
+        let e = serde_json::from_slice(&std::fs::read(&p).ok()?).ok()?;
+        // Read: marked as used, so the cache's clean-up keeps a result read within the year (cache_gc.rs).
+        crate::cache_gc::used(&p);
+        Some(e)
     }
 
     /// Stores an entry at once. A write that fails is not an error for the step: the answer is still used, and a later

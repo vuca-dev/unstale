@@ -218,9 +218,16 @@ enum Cmd {
 
 #[derive(Subcommand)]
 enum CacheCmd {
-    /// Delete everything the cache can fetch again and every model result (they are paid for again when read); the
-    /// usage record and uninstall backups stay.
-    Clean,
+    /// Delete everything the cache can fetch again; the usage record, uninstall backups and (unless `--results`) the
+    /// model results stay. Says what it removes and asks first.
+    Clean {
+        /// Also delete the stored model results: reading those release notes again is paid for again.
+        #[arg(long)]
+        results: bool,
+        /// Do not ask (needed without a terminal).
+        #[arg(long)]
+        yes: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -340,9 +347,24 @@ fn dispatch(cli: Cli, started: std::time::Instant) -> Result<u8> {
     if matches!(cli.cmd, Cmd::Notify) {
         return Ok(session::hook(cli.dir.as_deref(), started));
     }
-    if let Cmd::Cache { cmd: CacheCmd::Clean } = cli.cmd {
-        println!("{}", cache_gc::clean_all(&cache::cache_dir()));
-        return Ok(0);
+    if let Cmd::Cache { cmd: CacheCmd::Clean { results, yes } } = cli.cmd {
+        if !inference::enabled() {
+            bail!("`unstale cache clean` is not available yet");
+        }
+        let mut ask = || {
+            use std::io::IsTerminal;
+            if !std::io::stdin().is_terminal() {
+                return None;
+            }
+            print!("Remove them? [y/N] ");
+            let _ = std::io::Write::flush(&mut std::io::stdout());
+            let mut a = String::new();
+            std::io::stdin().read_line(&mut a).ok()?;
+            Some(matches!(a.trim(), "y" | "Y" | "yes"))
+        };
+        let (code, lines) = cache_gc::clean_command(&cache::cache_dir(), results, yes, &mut ask);
+        for l in lines { println!("{l}"); }
+        return Ok(code);
     }
     let start = start_dir(&cli.dir)?;
     if matches!(cli.cmd, Cmd::Uninstall) { return uninstall::run(&start); }
@@ -416,8 +438,9 @@ fn dispatch(cli: Cli, started: std::time::Instant) -> Result<u8> {
             let (wrong, fresh) = session::status_lines(&ctx);
             warnings.extend(wrong);
             state.extend(fresh);
-            if let Some(line) = cache_gc::status_line(&ctx.cache) {
-                if line.starts_with("warning") { warnings.push(line) } else { state.push(line) }
+            // The cache's size (state); a warning and its detail line when it is over its limit or was not cleaned up.
+            for line in cache_gc::status_lines(&ctx.cache) {
+                if line.starts_with("warning") || line.starts_with("  ") { warnings.push(line) } else { state.push(line) }
             }
             for line in warnings.iter().chain(&state) { println!("{line}"); }
         }),
@@ -782,7 +805,7 @@ fn cmd_sync(ctx: &Ctx) -> Result<u8> {
         }
         Err(e) => return Err(e),
     };
-    cache_gc::after_sync(&ctx.cache, &ctx.root, &cache_gc::needs(&rep));
+    cache_gc::after_sync(&ctx.cache, &ctx.root, &cache_gc::needs(&rep), &|| false);
     // With the edge-inference switch on, `sync` says what the reader can use, in their words: a line a technology, and
     // nothing about what the catalog does not cover (nothing to do about it) or how the files arrived. Release notes
     // that could not be verified are a warning below. With the switch off the lines are as they were.

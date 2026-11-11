@@ -609,7 +609,7 @@ fn sync_now(ctx: &Ctx, stop: &(dyn Fn() -> bool + Sync)) -> Result<Synced> {
         stop,
         |_| {},
     )?;
-    crate::cache_gc::after_sync(&ctx.cache, &ctx.root, &crate::cache_gc::needs(&rep));
+    crate::cache_gc::after_sync(&ctx.cache, &ctx.root, &crate::cache_gc::needs(&rep), stop);
     let mut arrived = Arrived::default();
     for t in rep.synced.iter().filter(|t| !t.unchanged) {
         let Some(had) = before.get(&t.technology) else {
