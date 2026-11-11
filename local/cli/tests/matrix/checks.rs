@@ -386,9 +386,55 @@ fn the_checks_catch_a_notice_shown_twice_in_a_day() {
 
 // ------------------------------------------------------------------------------------------- not runnable yet
 
+/// Hold-the-line 5 on a set-up repository: session start returns within 2 s, exits 0 and prints at most one line, in
+/// the worst cases (the catalog and the coverage service accepting connections and never answering, with coverage
+/// still growing so the hook asks it; a state file that never finishes reading).
 #[test]
-#[ignore = "needs the session-start hook, which is not on main yet"]
-fn session_start_returns_within_two_seconds_and_prints_at_most_one_line() {}
+fn session_start_returns_within_two_seconds_and_prints_at_most_one_line() {
+    let s = Scenario::new(
+        by_id(KEYS, "shell-key", |v| v.id),
+        by_id(CODEX, "no-codex", |v| v.id),
+        by_id(INVOCATIONS, "terminal", |v| v.id),
+        &REPO_CONFIGS[0],
+        &CLIENTS[0],
+        Answer::Ok,
+    );
+    let se = run_session(&s);
+    let w = &se.world;
+    let repo = w.repo();
+    let config_path = repo.join(".unstale/config.json");
+    let silent = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let hung = format!("http://{}", silent.local_addr().unwrap());
+    let mut config: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&config_path).unwrap()).unwrap();
+    config["catalog"] = json!(hung);
+    config["service"] = json!(hung);
+    write(&config_path, &config.to_string());
+    let job = json!({"jobs": {"pkg:npm/next": {"purl": "pkg:npm/next", "technology": "next", "name": "next", "state": "queued", "stage": "", "records": 1, "updated": ""}}});
+    write(&repo.join(".unstale/state/coverage.json"), &job.to_string());
+    let notify = |case: &str| {
+        let started = std::time::Instant::now();
+        let r = exec(w, &s, vec!["notify".into()], false);
+        let took = started.elapsed();
+        eprintln!("session start, {case}: {} ms", took.as_millis());
+        assert_eq!(r.code, 0, "{case}: {}", r.output);
+        assert!(r.output.lines().count() <= 1, "{case}: {}", r.output);
+        assert!(took < Duration::from_secs(2), "{case}: {took:?}");
+    };
+    notify("catalog and coverage service hanging");
+    // A read that never finishes (a FIFO with no writer standing in for a hung disk): only the deadline bounds it.
+    for (case, rel) in [
+        ("session state read hanging", "session-sync.json"),
+        ("coverage state read hanging", "coverage.json"),
+    ] {
+        let p = repo.join(".unstale/state").join(rel);
+        let _ = std::fs::remove_file(&p);
+        assert!(Command::new("mkfifo").arg(&p).status().unwrap().success());
+        notify(case);
+        std::fs::remove_file(&p).unwrap();
+    }
+    drop(silent);
+}
 
 #[test]
 #[ignore = "needs the client's pipeline steps, the only spenders of the budget, which are not on main yet"]
