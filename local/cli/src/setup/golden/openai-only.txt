@@ -1,0 +1,4 @@
+Choose how unstale reads new release notes (costs are estimates; this repo has 38 technologies):
+  1) OpenAI (OPENAI_API_KEY): $0.090 per technology-year · this repo ≈ $3.42 a year, first sync ≈ $3.42 once · slightly less complete: ≈ 93% of the best option's breaking-change flags; ≈ 2 more duplicate records per technology-year
+  2) None: deterministic signals only; new change details need a key or Codex
+Choose 1–2, or press Enter for 1 (recommended): 

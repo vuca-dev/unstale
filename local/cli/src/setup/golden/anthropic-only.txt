@@ -1,0 +1,4 @@
+Choose how unstale reads new release notes (costs are estimates; this repo has 38 technologies):
+  1) Anthropic (ANTHROPIC_API_KEY): $0.075 per technology-year · this repo ≈ $2.86 a year, first sync ≈ $2.86 once · somewhat less complete: ≈ 90% of the best option's changes (fewer from upgrade guides); ≈ 23 more duplicate records per technology-year
+  2) None: deterministic signals only; new change details need a key or Codex
+Choose 1–2, or press Enter for 1 (recommended): 
