@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# ingest-cycles.sh's deploy retry, run end to end with fake npm, node, npx and sleep on PATH: one cycle drains, publishes
-# and deploys. Run: bash .github/scripts/ingest-cycles.test.sh (needs bash and jq; nothing leaves the machine).
+# ingest-cycles.sh's deploy retry, run end to end with fake npm, node, npx and sleep on PATH (the real timeout, at 1 s):
+# one cycle drains, publishes and deploys. Run: bash .github/scripts/ingest-cycles.test.sh (needs bash, jq and timeout;
+# nothing leaves the machine).
 # The checks are conditions evaluated after each run, so they are single-quoted on purpose.
 # shellcheck disable=SC2016,SC2034,SC2329
 set -euo pipefail
@@ -10,7 +11,7 @@ trap 'rm -rf "$root"' EXIT
 script="$(cd "$(dirname "$0")" && pwd)/ingest-cycles.sh"
 failed=0
 
-# $1: how many deploys fail before one succeeds; $2: what a failed deploy prints. Leaves the exit status in $status and
+# $1: how many deploys fail before one succeeds; $2: what a failed deploy prints (HANG: it hangs instead). Leaves the exit status in $status and
 # the log in $work/out.
 run() {
   work="$(mktemp -d "$root/run.XXXXXX")"
@@ -36,9 +37,18 @@ EOF
   cat > "$work/bin/npx" << 'EOF'
 #!/usr/bin/env bash
 echo "npx $*" >> "$CALLS"
+# Called as the script means to, with the Cloudflare variables and none of the secrets' own names.
+if [ "$*" != "wrangler deploy --assets $SITE_DIR" ] || [ "${CLOUDFLARE_API_TOKEN:-}" != t ] \
+  || [ "${CLOUDFLARE_ACCOUNT_ID:-}" != a ] || [ "${WRANGLER_SEND_METRICS:-}" != false ] \
+  || [ -n "${SECRET_CLOUDFLARE_API_TOKEN:-}${SECRET_CLOUDFLARE_ACCOUNT_ID:-}${SECRET_SIGNING_KEY:-}" ] \
+  || [ "$(basename "$PWD")" != gateway ]; then
+  echo "badcall $*" >> "$CALLS"
+  exit 3
+fi
 left="$(cat "$FAKE/fails")"
 if [ "$left" -gt 0 ]; then
   echo $((left - 1)) > "$FAKE/fails"
+  [ "$(cat "$FAKE/failure")" != HANG ] || { command -p sleep 30; exit 0; }
   cat "$FAKE/failure" >&2
   exit 1
 fi
@@ -53,7 +63,7 @@ EOF
   set +e
   (cd "$work/repo" && PATH="$work/bin:$PATH" CALLS="$work/calls" FAKE="$work" RUNNER_TEMP="$work/tmp" \
     SITE_DIR="$work/site" UNSTALE_STORE="$work/store" TAKEN="$work/taken" GITHUB_OUTPUT="$work/github_output" \
-    GITHUB_RUN_ID=1 GITHUB_RUN_ATTEMPT=1 SECRET_SIGNING_KEY=k SECRET_CLOUDFLARE_API_TOKEN=t SECRET_CLOUDFLARE_ACCOUNT_ID=a \
+    GITHUB_RUN_ID=1 GITHUB_RUN_ATTEMPT=1 DEPLOY_TIMEOUT_SECONDS=1 SECRET_SIGNING_KEY=k SECRET_CLOUDFLARE_API_TOKEN=t SECRET_CLOUDFLARE_ACCOUNT_ID=a \
     bash "$script") > "$work/out" 2>&1
   status=$?
   set -e
@@ -61,8 +71,10 @@ EOF
 
 count() { grep -c "^$1" "$work/calls" || true; }
 
+# Every run also: the fake npx was called as expected, the deploy output is gone, the wait parse wrote no shell error.
 check() {
-  if eval "$2"; then
+  if eval "$2" && ! grep -q "^badcall" "$work/calls" && [ ! -e "$work/tmp/deploy.log" ] \
+    && ! grep -q "expression expected" "$work/out"; then
     echo "ok: $1"
   else
     echo "FAIL: $1"; sed 's/^/  | /' "$work/out" "$work/calls"; failed=1
@@ -86,6 +98,22 @@ check "a stated wait is capped at 120 s" '[ "$status" -eq 0 ] && grep -qx "sleep
 
 run 1 'POST /accounts/x/workers/scripts/unstale/versions -> 504 Gateway Timeout'
 check "a failure without a stated wait pauses 30 s" '[ "$status" -eq 0 ] && grep -qx "sleep 30" "$work/calls"'
+
+run 1 'indicating you should wait 40 second(s) before retrying.
+indicating you should wait 10 second(s) before retrying.'
+check "of two stated waits the longer is taken" '[ "$status" -eq 0 ] && grep -qx "sleep 40" "$work/calls"'
+
+run 1 'indicating you should wait 99999999999999999999999 second(s) before retrying.'
+check "a stated wait too long for shell arithmetic is capped at 120 s, without a shell error" \
+  '[ "$status" -eq 0 ] && grep -qx "sleep 120" "$work/calls"'
+
+run 1 'indicating you should wait 0 second(s) before retrying.'
+check "a stated wait of 0 s waits 5 s" '[ "$status" -eq 0 ] && grep -qx "sleep 5" "$work/calls"'
+
+run 1 HANG
+check "a hung attempt is stopped at the timeout, counted as failed, and retried after 30 s" \
+  '[ "$status" -eq 0 ] && [ "$(count npx)" -eq 2 ] && grep -qx "sleep 30" "$work/calls" && grep -q "Deploy timed out" "$work/out" \
+   && [ "$(count "npm.* ack ")" -eq 1 ]'
 
 run 9 "$throttled"
 check "a deploy failing every attempt fails the cycle: 3 attempts, state saved, nothing acknowledged, no continue" \
