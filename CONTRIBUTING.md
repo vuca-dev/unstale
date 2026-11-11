@@ -20,6 +20,7 @@ npm --prefix central run typecheck
 npm --prefix central test
 npm --prefix central run check:schema             # generated schema and Zod match the Rust types
 npm --prefix gateway run typecheck && npm --prefix gateway test
+bash .github/scripts/ingest-cycles.test.sh       # the ingest cycles' deploy retry, against fake commands
 ```
 
 A client following a fast-track run can be previewed locally: `node gateway/scripts/preview.ts --new pkg:npm/picocolors`

@@ -81,9 +81,27 @@ publish_tree() {
   [ "$big" -eq 0 ] || { echo "::error::$big files over the 25 MiB static asset limit"; return 1; }
 }
 
+# A deploy is idempotent (unchanged assets are not uploaded again), so a failed one is tried again, DEPLOY_ATTEMPTS
+# in all: after the wait the API asked for ("wait N second(s)", a throttled call), at most DEPLOY_MAX_WAIT_SECONDS,
+# else after DEPLOY_PAUSE_SECONDS. In run 43010822551 the custom domains call was throttled after the Worker was
+# uploaded (code 971); in run 42641451160 the version upload timed out (504). One that still fails fails the cycle.
+# Worst case added to a cycle: two waits and two more deploys, about 6 minutes.
+DEPLOY_ATTEMPTS=3 DEPLOY_PAUSE_SECONDS=30 DEPLOY_MAX_WAIT_SECONDS=120
 deploy() {
-  (cd gateway && "${publish_env[@]}" CLOUDFLARE_API_TOKEN="$SECRET_CLOUDFLARE_API_TOKEN" CLOUDFLARE_ACCOUNT_ID="$SECRET_CLOUDFLARE_ACCOUNT_ID" \
-    WRANGLER_SEND_METRICS=false npx wrangler deploy --assets "$SITE_DIR")
+  local attempt=1 out="$RUNNER_TEMP/deploy.log" pause
+  while :; do
+    if (cd gateway && "${publish_env[@]}" CLOUDFLARE_API_TOKEN="$SECRET_CLOUDFLARE_API_TOKEN" CLOUDFLARE_ACCOUNT_ID="$SECRET_CLOUDFLARE_ACCOUNT_ID" \
+      WRANGLER_SEND_METRICS=false npx wrangler deploy --assets "$SITE_DIR") 2>&1 | tee "$out"; then
+      return 0
+    fi
+    [ "$attempt" -lt "$DEPLOY_ATTEMPTS" ] || { echo "::error title=Deploy failed::$attempt attempts"; return 1; }
+    pause="$(grep -oE 'wait [0-9]+ second' "$out" | grep -oE '[0-9]+' | tail -n 1 || true)"
+    [ -n "$pause" ] || pause=$DEPLOY_PAUSE_SECONDS
+    [ "$pause" -le "$DEPLOY_MAX_WAIT_SECONDS" ] || pause=$DEPLOY_MAX_WAIT_SECONDS
+    attempt=$((attempt + 1))
+    echo "::warning title=Deploy retried::attempt $((attempt - 1)) failed; attempt $attempt of $DEPLOY_ATTEMPTS in ${pause}s"
+    sleep "$pause"
+  done
 }
 
 # One generation a save (central/src/state/snapshot.ts): the members this cycle changed, in one new segment, then the
