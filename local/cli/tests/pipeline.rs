@@ -146,3 +146,241 @@ fn run_step_extract_prints_centrals_records_and_a_second_run_asks_nothing() {
         "every answer came from the user-level cache"
     );
 }
+
+#[path = "../src/testcat.rs"]
+mod testcat;
+
+/// A labelling-service mock: `no` wherever it is an option, else the first option; counts requests.
+fn jev(allow: Arc<Mutex<usize>>) -> (String, Arc<Mutex<usize>>) {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let n = Arc::new(Mutex::new(0));
+    let count = n.clone();
+    std::thread::spawn(move || {
+        for mut s in listener.incoming().flatten() {
+            let (mut got, mut buf) = (Vec::new(), [0u8; 65536]);
+            let body = loop {
+                let k = s.read(&mut buf).unwrap_or(0);
+                got.extend_from_slice(&buf[..k]);
+                let Some(end) = got.windows(4).position(|w| w == b"\r\n\r\n") else {
+                    if k == 0 {
+                        break String::new();
+                    }
+                    continue;
+                };
+                let head = String::from_utf8_lossy(&got[..end]).to_ascii_lowercase();
+                let len = head
+                    .lines()
+                    .find_map(|l| {
+                        l.strip_prefix("content-length:")
+                            .map(|v| v.trim().parse::<usize>().unwrap_or(0))
+                    })
+                    .unwrap_or(0);
+                if k == 0 || got.len() >= end + 4 + len {
+                    break String::from_utf8_lossy(&got[end + 4..]).to_string();
+                }
+            };
+            *count.lock().unwrap() += 1;
+            // Past the allowance the key is refused: the pass stops there.
+            if *count.lock().unwrap() > *allow.lock().unwrap() {
+                let _ = write!(
+                    s,
+                    "HTTP/1.1 401 X\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}"
+                );
+                continue;
+            }
+            let v: Value = serde_json::from_str(&body).unwrap_or(Value::Null);
+            let mut answers = serde_json::Map::new();
+            for (id, q) in v["questions"].as_object().into_iter().flatten() {
+                let opts: Vec<String> =
+                    q["criteria"].as_object().unwrap().keys().cloned().collect();
+                let choice = if opts.iter().any(|o| o == "no") {
+                    "no".to_string()
+                } else {
+                    opts[0].clone()
+                };
+                let probs: serde_json::Map<String, Value> = opts
+                    .iter()
+                    .map(|o| {
+                        (
+                            o.clone(),
+                            serde_json::json!(if *o == choice { 0.9 } else { 0.1 }),
+                        )
+                    })
+                    .collect();
+                answers.insert(id.clone(), serde_json::json!({"choice": choice, "confidence": 0.9, "probabilities": probs}));
+            }
+            let reply = serde_json::json!({"model": "jev-1.14.0", "answers": answers, "usage": {"input_tokens": 10, "output_tokens": 1}}).to_string();
+            let _ = write!(
+                s,
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{reply}",
+                reply.len()
+            );
+        }
+    });
+    (url, n)
+}
+
+struct Repo {
+    repo: tempfile::TempDir,
+    cache: tempfile::TempDir,
+    _cat: testcat::FixtureCatalog,
+    main: String,
+    jev: String,
+}
+
+impl Repo {
+    fn run(&self, args: &[&str], switch: bool) -> String {
+        let mut c = Command::new(env!("CARGO_BIN_EXE_unstale"));
+        c.args(args)
+            .current_dir(self.repo.path())
+            .env("UNSTALE_CACHE_DIR", self.cache.path())
+            .env("UNSTALE_CONFIG_DIR", self.cache.path().join("user-config"))
+            .env("UNSTALE_TODAY", "2026-11-10")
+            .env("UNSTALE_NO_REGISTRY", "1")
+            .env("AI_GATEWAY_API_KEY", "k1")
+            .env("JEV_API_KEY", "k2")
+            .env("UNSTALE_INFERENCE_BASE_URL", &self.main)
+            .env("UNSTALE_LABELS_BASE_URL", &self.jev)
+            .env_remove("UNSTALE_CATALOG")
+            .env_remove("UNSTALE_EDGE_INFERENCE")
+            .stdin(std::process::Stdio::null());
+        if switch {
+            c.env("UNSTALE_EDGE_INFERENCE", "1");
+        }
+        let out = c.output().unwrap();
+        assert!(
+            out.status.success(),
+            "{args:?}: {}\n{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8(out.stdout).unwrap()
+    }
+}
+
+/// A repository using `example` 2.0.0, a catalog whose records cover 2.0.0 and whose change events reach 2.1.0, and a
+/// stored choice (gateway route for extraction, the labelling service for labels and matching).
+fn repo(allow: Arc<Mutex<usize>>) -> (Repo, Arc<Mutex<usize>>, Arc<Mutex<usize>>) {
+    use testcat::{FixtureCatalog, rec, with};
+    let f = fixture();
+    let case = f["extractions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["name"] == "release-notes")
+        .unwrap()
+        .clone();
+    let mut ev = case["event"].clone();
+    ev["date"] = serde_json::json!("2026-10-01");
+    // An exact release (the fixture's is bounded, as a moving page's), so the report can place it.
+    ev.as_object_mut().unwrap().remove("no_later_than");
+    let cat = FixtureCatalog::new();
+    let old = with(
+        rec("example:server.port", "pkg:npm/example", "2.0.0"),
+        serde_json::json!({"subject": "server.port", "summary": "The default port is now 4000."}),
+    );
+    cat.tech_events("example", 0, &[("2", vec![old])], &[("2", vec![ev])]);
+    let answers = case["exchanges"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| {
+            (
+                e["prompt_sha256"].as_str().unwrap().to_string(),
+                e["content"].as_str().unwrap().to_string(),
+                e["finish"].as_str().unwrap().to_string(),
+            )
+        })
+        .collect();
+    let (main, mn) = router(answers);
+    let (jev, jn) = jev(allow);
+    let repo = tempfile::tempdir().unwrap();
+    std::fs::write(
+        repo.path().join("package.json"),
+        r#"{"name":"app","private":true,"dependencies":{"example":"2.0.0"}}"#,
+    )
+    .unwrap();
+    std::fs::create_dir(repo.path().join(".git")).unwrap();
+    let r = Repo {
+        repo,
+        cache: tempfile::tempdir().unwrap(),
+        _cat: cat,
+        main,
+        jev,
+    };
+    r.run(&["init", "--catalog", r._cat.loc()], false);
+    let cfg = r.repo.path().join(".unstale/config.json");
+    let mut v: Value = serde_json::from_str(&std::fs::read_to_string(&cfg).unwrap()).unwrap();
+    v["inference"] = serde_json::json!({"provider": "vercel", "key_env": "AI_GATEWAY_API_KEY", "labels": {"provider": "jev", "key_env": "JEV_API_KEY"}});
+    std::fs::write(&cfg, serde_json::to_string_pretty(&v).unwrap()).unwrap();
+    (r, mn, jn)
+}
+
+/// The client's records for `example` on disk.
+fn local_records(r: &Repo) -> usize {
+    std::fs::read(r.cache.path().join("inference/records/example.json"))
+        .ok()
+        .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
+        .and_then(|v| v["records"].as_object().map(|o| o.len()))
+        .unwrap_or(0)
+}
+
+#[test]
+fn with_the_switch_on_the_report_reads_records_the_client_made_and_off_nothing_changes() {
+    let (r, main, jev) = repo(Arc::new(Mutex::new(usize::MAX)));
+    r.run(&["sync"], false);
+    // A second sync: the cache settled (the first one downloads).
+    let off_sync = r.run(&["sync"], false);
+    let off_bump = r.run(&["bump", "example"], false);
+    assert_eq!(
+        (*main.lock().unwrap(), *jev.lock().unwrap()),
+        (0, 0),
+        "off: no model call"
+    );
+    assert!(!off_bump.contains("defineConfig"));
+
+    // `unstale sync` itself makes no model call even with the switch on: the backlog is the background stage's.
+    r.run(&["sync"], true);
+    assert_eq!(*main.lock().unwrap(), 0);
+    // The session-start stage (`unstale session-sync`) runs the steps.
+    r.run(&["session-sync"], true);
+    assert_eq!(*main.lock().unwrap(), 2);
+    assert_eq!(local_records(&r), 4);
+    let on_bump = r.run(&["bump", "example"], true);
+    assert!(on_bump.contains("defineConfig"), "{on_bump}");
+
+    // Off again, with the client's records on disk: the same output as before they existed, and no call.
+    let calls = (*main.lock().unwrap(), *jev.lock().unwrap());
+    assert_eq!(r.run(&["sync"], false), off_sync);
+    assert_eq!(r.run(&["bump", "example"], false), off_bump);
+    assert_eq!((*main.lock().unwrap(), *jev.lock().unwrap()), calls);
+    // On again: nothing new to ask.
+    r.run(&["session-sync"], true);
+    assert_eq!((*main.lock().unwrap(), *jev.lock().unwrap()), calls);
+}
+
+/// A pass the labelling service stops partway (its key refused after three requests) resumes on the next session
+/// start with the switch on and finishes the release: a release is never counted done by the client's own records.
+#[test]
+fn a_pass_stopped_mid_release_finishes_it_on_the_next_one() {
+    let allow = Arc::new(Mutex::new(3));
+    let (r, main, jev) = repo(allow.clone());
+    r.run(&["sync"], false);
+    r.run(&["session-sync"], true);
+    let first = local_records(&r);
+    assert!(first > 0 && first < 4, "stopped partway: {first} of 4");
+    // What `unstale status` shows: the stage did not finish, and why.
+    let state = std::fs::read_to_string(r.repo.path().join(".unstale/state/session-sync.json")).unwrap_or_default();
+    assert!(state.contains("did not accept the key"), "{state}");
+    *allow.lock().unwrap() = usize::MAX;
+    let extracted = *main.lock().unwrap();
+    r.run(&["session-sync"], true);
+    assert_eq!(local_records(&r), 4, "the rest of the release");
+    assert_eq!(
+        *main.lock().unwrap(),
+        extracted,
+        "extraction answers came from the cache"
+    );
+    assert!(*jev.lock().unwrap() > 3);
+}

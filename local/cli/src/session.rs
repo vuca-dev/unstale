@@ -419,15 +419,15 @@ fn sync_now(ctx: &Ctx, stop: &(dyn Fn() -> bool + Sync)) -> Result<Synced> {
     })
 }
 
-/// Whether model work is waiting without a catalog change (a budget that has room again, work a run left). Always
-/// false until the client pipeline exists: WS4 answers it from its own state.
-fn model_work_pending(_ctx: &Ctx) -> bool {
-    false
+/// Whether model work is waiting without a catalog change: the last model stage stopped early (a budget that has room
+/// again, a provider that answers again); its answers are cached, so the next stage resumes where it stopped.
+fn model_work_pending(ctx: &Ctx) -> bool {
+    read_state(&ctx.tool).deferred.is_some()
 }
 
 /// The model stage: nothing with the edge-inference switch off. With it on, only under the machine's worker lock
 /// (another worker on this machine: quietly nothing) and only with budget left this month; `Some` says why it waited.
-fn model_stage(_ctx: &Ctx, _techs: &BTreeSet<String>) -> Option<inference::Deferred> {
+fn model_stage(ctx: &Ctx, techs: &BTreeSet<String>) -> Option<inference::Deferred> {
     if !inference::enabled() {
         return None;
     }
@@ -443,12 +443,10 @@ fn model_stage(_ctx: &Ctx, _techs: &BTreeSet<String>) -> Option<inference::Defer
     if used >= inference::ledger::DEFAULT_MONTHLY_TOKENS {
         return Some(inference::Deferred::Budget);
     }
-    // ─── WS4 PLUGS IN HERE ───────────────────────────────────────────────────────────────────────────────────────
-    // The client pipeline (change events → records) runs here, for `_techs` (`cache::load_events`), holding `_lock`,
-    // with `DEFAULT_MONTHLY_TOKENS - used` tokens left, in demand order, returning its `Deferred` when it stops early.
-    // It also records when each release's records became ready, for `unstale status`'s freshness line.
-    // ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
-    None
+    // The client pipeline (change events → records) for the synced technologies, holding the lock, in demand order;
+    // every call checks the budget again. `None` when no provider is chosen.
+    let purls = stack::detect(&ctx.root).map(|st| st.purls()).unwrap_or_default();
+    crate::pipeline::run_locked(&ctx.cache, &ctx.root, techs, &purls)?.deferred
 }
 
 // --------------------------------------------------------------------------------------------------- unstale status

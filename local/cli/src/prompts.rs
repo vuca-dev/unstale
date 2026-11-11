@@ -205,13 +205,24 @@ pub struct Judge {
     pub sources: JudgeSources,
 }
 
-/// `choice.json` and `advisory-apis.json`: one prompt each.
+/// `advisory-apis.json`: one prompt.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PromptFile {
     pub version: u32,
     #[serde(deserialize_with = "text")]
     pub prompt: String,
+}
+
+/// `choice.json`: the closed-choice prompt for a text model (`%STATE%`, `%QUESTIONS%`), and its batched form for
+/// several records answered by record id (`%RECORDS%`).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ChoiceFile {
+    pub version: u32,
+    #[serde(deserialize_with = "text")]
+    pub prompt: String,
+    pub batch: Vec<Edit>,
 }
 
 /// `thresholds.json`: the bars labels and merges are decided at.
@@ -241,7 +252,7 @@ pub struct Prompts {
     pub labels: Labels,
     pub judge: Judge,
     /// The choice fallback: `%STATE%`, `%QUESTIONS%`.
-    pub choice: PromptFile,
+    pub choice: ChoiceFile,
     /// An advisory's affected APIs: `%PACKAGE%`, `%TEXT%`.
     pub advisory_apis: PromptFile,
     pub thresholds: Thresholds,

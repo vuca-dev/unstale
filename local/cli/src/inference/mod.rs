@@ -15,9 +15,11 @@
 
 mod codex;
 mod http;
-/// The bytes of one Jev request (tests compare them with central's).
-#[cfg(test)]
+/// The bytes of one Jev request (the result cache keys on them; tests compare them with central's).
 pub(crate) use http::jev_request_body;
+/// The bytes of one OpenAI-compatible request (tests compare them with central's).
+#[cfg(test)]
+pub(crate) use http::openai_request_body;
 pub mod ledger;
 pub mod lock;
 #[cfg(test)]

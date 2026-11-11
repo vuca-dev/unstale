@@ -31,6 +31,10 @@
       {
         "version": 1,
         "sha256": "1010c8c7512894577f01be6922a725725a7d28df0a6fa0d3e1904cff049a3202"
+      },
+      {
+        "version": 2,
+        "sha256": "3bc356f1bb5bdc5c024aa13a23f0ab4c5a200389c27442e0d566d2ddcbe8062c"
       }
     ],
     "advisory-apis.json": [
