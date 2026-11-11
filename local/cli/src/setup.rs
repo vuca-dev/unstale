@@ -631,8 +631,12 @@ pub fn prompt(n: usize) -> String {
 }
 
 /// Asks once: Enter accepts the first option, a number picks one. Input that is not a choice is asked for again, at
-/// most twice more; then, as at end of input, nothing is used ([`Pick::None`]).
-pub fn ask(opts: &[Pick], input: &mut dyn std::io::BufRead, out: &mut dyn std::io::Write) -> Pick {
+/// most twice more; then, as at end of input, nothing is chosen (`None`).
+pub fn ask(
+    opts: &[Pick],
+    input: &mut dyn std::io::BufRead,
+    out: &mut dyn std::io::Write,
+) -> Option<Pick> {
     for _ in 0..3 {
         let _ = write!(out, "{}", prompt(opts.len()));
         let _ = out.flush();
@@ -643,18 +647,18 @@ pub fn ask(opts: &[Pick], input: &mut dyn std::io::BufRead, out: &mut dyn std::i
         }
         let t = line.trim();
         if t.is_empty() {
-            return opts[0];
+            return Some(opts[0]);
         }
         if let Some(p) = t
             .parse::<usize>()
             .ok()
             .filter(|n| (1..=opts.len()).contains(n))
         {
-            return opts[p - 1];
+            return Some(opts[p - 1]);
         }
     }
     let _ = writeln!(out);
-    Pick::None
+    None
 }
 
 // -------------------------------------------------------------------------------------------------------- config
@@ -1001,14 +1005,15 @@ pub enum Plan {
     Nothing,
 }
 
-/// `reopen` is `unstale setup`; otherwise this is `init`, which asks only when nothing is chosen yet and a person is at
-/// the terminal, so the choice is never asked again unprompted. Without a terminal nothing waits for an answer.
-pub fn plan(flag: Option<Choice>, configured: bool, terminal: bool, reopen: bool) -> Plan {
+/// `reopen` is `unstale setup`; otherwise this is `init`, which asks only when nothing is chosen yet and the picker was
+/// not dismissed on this machine (`settled`), and only with a person at the terminal, so it is never asked again
+/// unprompted. Without a terminal, or with an agent driving, nothing waits for an answer.
+pub fn plan(flag: Option<Choice>, settled: bool, terminal: bool, reopen: bool) -> Plan {
     match (flag, reopen, terminal) {
         (Some(c), _, _) => Plan::Save(c),
         (None, true, true) => Plan::Ask,
         (None, true, false) => Plan::Print,
-        (None, false, true) if !configured => Plan::Ask,
+        (None, false, true) if !settled => Plan::Ask,
         (None, false, _) => Plan::Nothing,
     }
 }
@@ -1043,6 +1048,16 @@ fn save(ctx: &mut crate::Ctx, c: &Choice, user: bool) -> anyhow::Result<String> 
     Ok(".unstale/config.json".into())
 }
 
+/// Where this machine remembers the picker was dismissed: under `.unstale/state/`, which is never committed.
+fn dismissed_path(ctx: &crate::Ctx) -> std::path::PathBuf {
+    ctx.tool.join("state/setup-dismissed")
+}
+
+/// The line after the picker is dismissed without a choice.
+pub fn dismissed_line() -> String {
+    "Model provider: not chosen; deterministic signals only · `unstale setup` asks again".into()
+}
+
 /// The line after a choice is recorded.
 pub fn saved_line(c: &Choice, place: &str) -> String {
     format!(
@@ -1061,11 +1076,12 @@ pub fn run(
     yes: bool,
 ) -> anyhow::Result<()> {
     use std::io::IsTerminal;
-    let configured = current(ctx.config.inference.as_ref(), &user_config_path()).is_some();
+    let settled = current(ctx.config.inference.as_ref(), &user_config_path()).is_some()
+        || dismissed_path(ctx).exists();
     // `init --yes` asks nothing; accepting the recommended option would spend on the user's key unasked, so nothing is
     // chosen.
     let terminal = !yes && std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
-    let (d, techs) = match plan(flag, configured, terminal, reopen) {
+    let (d, techs) = match plan(flag, settled, terminal, reopen) {
         Plan::Nothing => return Ok(()),
         Plan::Save(c) => {
             let place = save(ctx, &c, user)?;
@@ -1092,7 +1108,13 @@ pub fn run(
     if opts.is_empty() {
         return Ok(());
     }
-    let pick = ask(&opts, &mut std::io::stdin().lock(), &mut std::io::stdout());
+    let Some(pick) = ask(&opts, &mut std::io::stdin().lock(), &mut std::io::stdout()) else {
+        // Dismissed: no config is written, so a team's shared choice is never set by a slip. This machine remembers
+        // it was asked, so `init` does not ask again; `unstale setup` does.
+        crate::util::write_atomic(&dismissed_path(ctx), b"asked, not chosen\n")?;
+        println!("{}", dismissed_line());
+        return Ok(());
+    };
     let c = Choice::of(&d, pick);
     let place = save(ctx, &c, user)?;
     println!("{}", saved_line(&c, &place));

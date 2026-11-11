@@ -324,20 +324,25 @@ fn enter_accepts_the_first_option_and_a_number_picks_one() {
         let p = ask(&opts, &mut input.as_bytes(), &mut out);
         (p, String::from_utf8(out).unwrap())
     };
-    assert_eq!(pick("\n").0, Pick::JevKey(Route::Vercel));
-    assert_eq!(pick("4\n").0, Pick::Codex);
+    assert_eq!(pick("\n").0, Some(Pick::JevKey(Route::Vercel)));
+    assert_eq!(pick("4\n").0, Some(Pick::Codex));
+    assert_eq!(
+        pick("6\n").0,
+        Some(Pick::None),
+        "typing None's number chooses it"
+    );
     let (p, out) = pick("9\nx\n2\n");
-    assert_eq!(p, Pick::JevCodex);
+    assert_eq!(p, Some(Pick::JevCodex));
     assert_eq!(
         out.matches("Choose 1–6").count(),
         3,
         "the same question again, not a new one"
     );
-    assert_eq!(pick("").0, Pick::None, "end of input uses nothing");
+    assert_eq!(pick("").0, None, "end of input chooses nothing");
     assert_eq!(
         pick("x\nx\nx\n1\n").0,
-        Pick::None,
-        "three answers that are not choices use nothing"
+        None,
+        "three answers that are not choices choose nothing"
     );
 }
 
