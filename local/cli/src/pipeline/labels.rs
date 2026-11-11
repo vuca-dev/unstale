@@ -623,9 +623,10 @@ mod choice_tests {
             },
         );
         let v = serde_json::json!({ "q": "Unsure" });
-        assert!(read_choices(&v, &[twice.clone()]).is_none());
+        let twice = std::slice::from_ref(&twice);
+        assert!(read_choices(&v, twice).is_none());
         // A key wins over another option's text.
         let v = serde_json::json!({ "q": "b" });
-        assert_eq!(picked(&read_choices(&v, &[twice]).unwrap()), [("q", "b")]);
+        assert_eq!(picked(&read_choices(&v, twice).unwrap()), [("q", "b")]);
     }
 }
