@@ -380,11 +380,12 @@ fn a_choice_stores_the_variable_name_and_maps_to_provider_configs() {
         key_env: Some("TEAM_GATEWAY_KEY".into()),
         labels: None,
     };
-    assert_eq!(
-        team.providers().unwrap().0.key_env.as_deref(),
-        Some("TEAM_GATEWAY_KEY"),
-        "a team's own variable name"
+    // Only the route's own key variable is used: a repository's config cannot have another variable sent.
+    assert!(
+        team.providers().is_none(),
+        "a variable that is not the route's key"
     );
+    assert_eq!(team.foreign_key(), Some("TEAM_GATEWAY_KEY"));
     assert_eq!(
         serde_json::to_string(&Choice::of(&d, Pick::Codex)).unwrap(),
         r#"{"provider":"codex"}"#
