@@ -82,6 +82,9 @@ jobs:
         run: npm --prefix gateway run typecheck
       - name: test
         run: npm --prefix gateway test
+      # The ingest workflow's cycles script: lint, and its deploy retry against fake commands (nothing is deployed).
+      - name: ingest-cycles
+        run: shellcheck .github/scripts/ingest-cycles.sh .github/scripts/ingest-cycles.test.sh && bash .github/scripts/ingest-cycles.test.sh
       # The Worker bundles (with the central modules it shares) and its bindings resolve; nothing is deployed.
       - name: bundle
         run: mkdir -p "$RUNNER_TEMP/assets" && cd gateway && npx wrangler deploy --dry-run --outdir "$RUNNER_TEMP/bundle" --assets "$RUNNER_TEMP/assets"
