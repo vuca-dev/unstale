@@ -165,14 +165,24 @@ fn write_state(tool: &Path, s: &State) -> Result<()> {
     Ok(())
 }
 
+/// The state directory, made if `.unstale` is there but it is not (never `.unstale` itself: after an uninstall
+/// nothing is made again). False when it is not there afterwards.
+fn state_dir(tool: &Path) -> bool {
+    if !tool.join("config.json").is_file() {
+        return false;
+    }
+    let _ = std::fs::create_dir(tool.join("state"));
+    tool.join("state").is_dir()
+}
+
 /// Reads, changes and writes the state under its lock, so two writers never lose each other's result. `wait`: block
 /// for the lock (the background stage, `unstale status`); otherwise give up when another holds it (the hook). Nothing
 /// happens when the state directory is not there (never set up, or uninstalled).
 fn update_state(tool: &Path, wait: bool, change: impl FnOnce(&mut State)) -> Result<()> {
-    let dir = tool.join("state");
-    if !dir.is_dir() || !tool.join("config.json").is_file() {
+    if !state_dir(tool) {
         return Ok(());
     }
+    let dir = tool.join("state");
     let lock = std::fs::OpenOptions::new()
         .create(true)
         .truncate(false)
@@ -425,7 +435,7 @@ pub fn background(ctx: &Ctx) -> Result<u8> {
 
 /// The background stage's lock for this repository: `None` when another holds it (or it cannot be taken).
 fn repo_lock(tool: &Path) -> Option<std::fs::File> {
-    if !tool.join("config.json").is_file() || !tool.join("state").is_dir() {
+    if !state_dir(tool) {
         return None;
     }
     let f = std::fs::OpenOptions::new()
@@ -540,7 +550,9 @@ fn model_stage(ctx: &Ctx, techs: &BTreeSet<String>) -> Option<inference::Deferre
     }
     // The client pipeline (change events → records) for the synced technologies, holding the lock, in demand order;
     // every call checks the budget again. `None` when no provider is chosen.
-    let purls = stack::detect(&ctx.root).map(|st| st.purls()).unwrap_or_default();
+    let purls = stack::detect(&ctx.root)
+        .map(|st| st.purls())
+        .unwrap_or_default();
     crate::pipeline::run_locked(&ctx.cache, &ctx.root, techs, &purls)?.deferred
 }
 
