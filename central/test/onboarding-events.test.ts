@@ -61,7 +61,7 @@ test("a new package's change events are published by its first run, with no mode
   // Every model path: extraction and labelling (llm.ts), and the record pipeline behind them (synthesis.ts), which
   // here only takes note of what the catalog held when extraction was first reached.
   const model = vi.spyOn(llm, "extractLlm");
-  let atFirstExtraction: { index?: string; modelCalls: number; asked: string[] } | undefined;
+  let atFirstExtraction: { index: string | undefined; modelCalls: number; asked: string[] } | undefined;
   const synth = vi.spyOn(synthesis, "synthesize").mockImplementation(async () => {
     const file = join(catalogDir(), "v1", "tech", "example.json");
     atFirstExtraction ??= { index: existsSync(file) ? readFileSync(file, "utf8") : undefined, modelCalls: model.mock.calls.length, asked: [...asked] };
