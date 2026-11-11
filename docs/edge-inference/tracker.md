@@ -18,6 +18,17 @@
 - **Next:** review parity and WS6b; CEO decision on the ingest starvation fix (unblocks WS9); WS8 draft last
 - **Sprint API spend so far:** $0 of $10
 
+### PAUSED at a plan usage limit (third time), 11 November
+Resume each by message; none starts fresh:
+- parity-fixes PR #237 READY at `1494730` (worktree `/Users/jason/unstale-parity-fixes`): fresh reviewer running
+  (worktree `/Users/jason/unstale-review-237`). Merge only on APPROVE; EM agent then merges.
+- parity agent: re-measuring two cells on `1494730` (matching by choice from cache; Codex extraction with new
+  batching), cap $0.50; then updates RESULTS on PR #236. Then set the setup figures (duplicates constant, Codex
+  tokens) and merge #236.
+- ws6b-matrix (`/Users/jason/unstale-ws6b`): building the full matrix; exits READY; needs a reviewer.
+- ws9: stopped at the data gate; blocked on the CEO's decision on the ingest starvation fix.
+- Then WS8 docs and site as a draft (held), and program close (merge this branch, morning report).
+
 ## §2 CEO directives (durable; read every iteration)
 
 ### Scope and authority
