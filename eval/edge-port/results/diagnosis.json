@@ -1,0 +1,33 @@
+{
+ "cell_8_matching_by_choice": {
+  "unreadable_after_three_attempts": 23,
+  "requests_sent": 235,
+  "unreadable_with_a_true_match": 21,
+  "unreadable_that_central_reference_run_merged": 17,
+  "answered_items": 213,
+  "answered_items_with_a_true_match": 176,
+  "client_recalled_on_answered_items": 124,
+  "central_reference_recalled_on_the_same_items": 125,
+  "cause": "the model answered with an option's text where the parser accepts only the option's key; central's parser (classify/adapter.ts, ChatClassifier) and the client's (pipeline/labels.rs, read_choices) both discard such an answer",
+  "resent_once_each_to_see_the_raw_answer": [
+   {"uid": "guides|next@16.0.0+guide.604704de#0.3", "asked": 7, "answer": "{\"same_c1\":\"The same change as candidate c1.\",\"same_c2\":\"A different change from candidate c2, or unsure.\",\"same_c3\":\"A different change from candidate c3, or unsure.\",\"same_c4\":\"A different change from candidate c4, or unsure.\",\"same_c5\":\"A different change from candidate c5, or unsure.\",\"same_c6\":\"A different change from candidate c6, or unsure.\",\"same_c7\":\"A different change from candidate c7, or unsure.\"}", "readable": false, "billed": 0.00003592},
+   {"uid": "nuxt|nuxt@4.3.0#0.3", "asked": 3, "answer": "{\"same_c1\":\"The same change as candidate c1.\",\"same_c2\":\"A different change from candidate c2, or unsure.\",\"same_c3\":\"A different change from candidate c3, or unsure.\"}", "readable": false, "billed": 0.0000689},
+   {"uid": "nuxt|nuxt@4.5.1#0.3", "asked": 8, "answer": "{\"same_c1\":\"yes\",\"same_c2\":\"no\",\"same_c3\":\"no\",\"same_c4\":\"no\",\"same_c5\":\"no\",\"same_c6\":\"no\",\"same_c7\":\"no\",\"same_c8\":\"no\"}", "readable": true, "billed": 0.0002577}
+  ]
+ },
+ "cell_9_codex_batched_extraction": {
+  "records": {"codex_batched": 162, "client_direct": 259, "central_direct_runs": [222, 228, 214]},
+  "records_by_technology": {"codex_batched": {"zod": 96, "posthog-js": 25, "uvicorn": 25, "typer": 16}, "client_direct": {"zod": 188, "posthog-js": 29, "uvicorn": 26, "typer": 16}},
+  "longest_chunk": {"chunk": "zod@4.5.0#1", "characters": 29820, "records_codex_batched": 14, "records_client_direct": 75, "records_central_direct_runs": [46, 37]}
+ },
+ "label_call_prompts": {"short_notes": "40 of 40 label calls made with the prompt central's code builds from the same first answer", "guides": "7 of 7"},
+ "labelling_service_live_samples": {
+  "labels_set_1": {"served_by": "jev-1.14.0", "central_baseline": "jev-1.13.0", "records_with_a_label_changed": 5, "of": 25},
+  "labels_set_2": {"served_by": "jev-1.14.0", "central_baseline": "jev-1.13.0", "records_with_a_label_changed": 3, "of": 25},
+  "matching": {"served_by": "jev-1.14.0", "central_baseline": "jev-1.14.0", "items_with_a_different_decision": 0, "of": 25}
+ },
+ "breaking_flags_key_alone_against_the_labelling_service_at_0.5": {
+  "label_set_1": {"breaking_records": 29, "service_found": 24, "service_flags": 32, "central_choice_run_found": 25, "central_choice_run_flags": 37, "client_choice_run_found": 26, "client_choice_run_flags": 42, "client_minus_service_recall_ci95": [-6.9, 20.7], "service_at_0.05_found": 27, "service_at_0.05_flags": 70},
+  "label_set_2": {"breaking_records": 230, "service_found": 207, "service_flags": 219, "central_choice_run_found": 213, "central_choice_run_flags": 231, "client_choice_run_found": 213, "client_choice_run_flags": 228, "client_minus_service_recall_ci95": [-1.0, 5.1], "client_minus_service_precision_ci95": [-4.2, 1.8]}
+ }
+}

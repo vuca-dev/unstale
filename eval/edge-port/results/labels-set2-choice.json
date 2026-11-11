@@ -1,0 +1,104 @@
+{
+ "client_answered": 347,
+ "n": 347,
+ "client_models": [
+  "openai/gpt-6-luna"
+ ],
+ "central_models": [
+  "openai/gpt-6-luna"
+ ],
+ "central": {
+  "breaking_recall": 0.9260869565217391,
+  "breaking_precision": 0.922077922077922,
+  "obligation_recall": 0.9171270718232044
+ },
+ "client": {
+  "breaking_recall": 0.9260869565217391,
+  "breaking_precision": 0.9342105263157895,
+  "obligation_recall": 0.8784530386740331
+ },
+ "client_minus_central": {
+  "breaking recall": {
+   "diff": 0.0,
+   "ci": [
+    -0.039408866995073843,
+    0.029850746268656803
+   ],
+   "p": 1.0,
+   "b": 5,
+   "c": 5
+  },
+  "breaking precision": {
+   "diff": 0.01213260423786744,
+   "ci": [
+    -0.00571466542627419,
+    0.0369243254209779
+   ],
+   "p": 0.60723876953125,
+   "b": 6,
+   "c": 9
+  }
+ },
+ "records_with_a_different_label": [
+  "h2:msw@3.0.0.guide.md:12",
+  "h2:msw@3.0.0.major_notes.md:10",
+  "h2:msw@3.0.0.major_notes.md:13",
+  "h2:msw@3.0.0.major_notes.md:22",
+  "h2:msw@3.0.0.major_notes.md:23",
+  "h2:mypy@2.0.0.major_notes.md:0",
+  "h2:mypy@2.0.0.major_notes.md:12",
+  "h2:sveltejs-kit@3.0.0.guide.md:103",
+  "h2:sveltejs-kit@3.0.0.guide.md:106",
+  "h2:sveltejs-kit@3.0.0.guide.md:19",
+  "h2:sveltejs-kit@3.0.0.guide.md:2",
+  "h2:sveltejs-kit@3.0.0.guide.md:37",
+  "h2:sveltejs-kit@3.0.0.guide.md:4",
+  "h2:sveltejs-kit@3.0.0.guide.md:50",
+  "h2:sveltejs-kit@3.0.0.guide.md:54",
+  "h2:sveltejs-kit@3.0.0.guide.md:58",
+  "h2:sveltejs-kit@3.0.0.guide.md:59",
+  "h2:sveltejs-kit@3.0.0.guide.md:60",
+  "h2:sveltejs-kit@3.0.0.guide.md:71",
+  "h2:sveltejs-kit@3.0.0.guide.md:77",
+  "h2:sveltejs-kit@3.0.0.guide.md:78",
+  "h2:sveltejs-kit@3.0.0.guide.md:83",
+  "h2:sveltejs-kit@3.0.0.guide.md:86",
+  "h2:sveltejs-kit@3.0.0.guide.md:87",
+  "h2:sveltejs-kit@3.0.0.guide.md:92",
+  "h2:sveltejs-kit@3.0.0.major_notes.md:101",
+  "h2:sveltejs-kit@3.0.0.major_notes.md:18",
+  "h2:sveltejs-kit@3.0.0.major_notes.md:26",
+  "h2:sveltejs-kit@3.0.0.major_notes.md:49",
+  "h2:sveltejs-kit@3.0.0.major_notes.md:64",
+  "h2:sveltejs-kit@3.0.0.major_notes.md:65",
+  "h2:sveltejs-kit@3.0.0.major_notes.md:68",
+  "h2:sveltejs-kit@3.0.0.major_notes.md:76",
+  "h2:sveltejs-kit@3.0.0.major_notes.md:8",
+  "h2:sveltejs-kit@3.0.0.major_notes.md:81",
+  "h2:sveltejs-kit@3.0.0.major_notes.md:86",
+  "h2:sveltejs-kit@3.0.0.major_notes.md:91",
+  "h2:transformers@5.0.0.guide.md:15",
+  "h2:transformers@5.0.0.guide.md:53",
+  "h2:transformers@5.0.0.guide.md:56",
+  "h2:transformers@5.0.0.major_notes.md:42",
+  "h2:transformers@5.0.0.major_notes.md:44",
+  "h2:transformers@5.0.0.major_notes.md:84"
+ ],
+ "usage": {
+  "cell": "labels-set2-choice",
+  "items_in": 347,
+  "lines_out": 347,
+  "complete": true,
+  "deferred": [],
+  "calls": 347,
+  "input": 567274,
+  "cached": 0,
+  "output": 44841,
+  "reasoning": 25387,
+  "wall_s": 451,
+  "gateway_balance_before": 2.750603232,
+  "gateway_balance_after": 2.508223747,
+  "dollars_list": 0.0791479,
+  "gateway_balance_change": 0.242379
+ }
+}
