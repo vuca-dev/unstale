@@ -362,3 +362,11 @@ OpenRouter parity, repeat eval runs.
 - #243 (deploy retry: 3 attempts, 300 s timeout each, stated wait floored at 5 s and capped at 120 s) merged at `276a23d` by the PM after APPROVE at `d5385f9` and at `cfe3115`. Left open, not blocking: test for "first match" wait and a time assertion on the hang case; exit 137 after the hard kill prints no "timed out" warning. Not established: that a retry clears Cloudflare's throttle in production.
 - Ingest run 43066638798 (schedule, 17:17 UTC) is on `8ab70ba`, before the starvation fix. Watch `bqxb7pi9r` waits for the first run started after 17:30 UTC; then dispatch a verifier for the fix in production, then resume the no-key evaluation (#231).
 - Open PRs now: #240 (docs and site, draft, held for the CEO), #231 (no-key evaluation draft).
+
+### Ingest starvation fix in production (11 November, late)
+
+- Verifier on run 43089905914 (first with `276a23d`): PASS WITH GAPS, 8 of 10. Healthy, spend flat ($0.12), deploys first time; but max release-check age only 17.48 → 16.84 days, p95 about 11.3 days, and much of the gain is the five-hour outage. File-name and spent-budget criteria unverifiable.
+- Investigator: the kept slot does take the oldest, but finishes about 35 a run (a pass in four to five days). Causes: the 6-hour interval needs about 7,600 starts a day for the most-requested 1,900 against 6,000–7,000 delivered, and 48% of those refreshes read only the 12-hour cache; one npm 429 pauses all six slots about ten minutes (slices settled in 59 of 127 drain minutes); the kept slot runs full slices one at a time. Tail over 3 days: 950 healthy monitoring technologies, all due. About 800 queued admitted history jobs also untouched over 11 days, outside the statistic.
+- Options for the CEO (admission order untouched by all): (1) `REFRESH_MS` 6 h → 24 h; (2) oldest-first holds several slots; (3) cache npm organisation and maintainer listings so one 429 does not pause everything; (4) set the `INGEST_GITHUB_TOKEN` repository secret (1,000 → 5,000 requests an hour; CEO only) and treat a GitHub 403 rate limit as one.
+- Dispatched without waiting: logging-only PR (counts over 24 h and 3 days, kept-slot summary, yield lines, `rate_pause` event, attribution for the "unknown" advisory call). Watch `bnvs4es32` on run 43108470126.
+- No-key evaluation (#231) stays blocked until the tail clears.
