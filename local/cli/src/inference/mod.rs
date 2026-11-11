@@ -32,7 +32,8 @@ pub const BATCH: usize = 8;
 
 /// Whether the client runs model steps itself. Off by default: with it off the client makes no model calls.
 pub fn enabled() -> bool {
-    std::env::var("UNSTALE_EDGE_INFERENCE").as_deref() == Ok("1")
+    // The one reader of the switch, shared with sync's change events.
+    crate::util::edge_inference()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -187,6 +188,12 @@ pub enum Deferred {
     Malformed,
     /// The usage ledger or worker lock beside the cache cannot be read or written, so spend cannot be counted.
     Storage,
+    /// The provider answered with a redirect, which is never followed (the key would go to another address).
+    Redirected,
+    /// The provider address is not https (plain http is allowed only on this machine).
+    InsecureUrl,
+    /// More items than [`BATCH`] in one batch.
+    BatchTooLarge,
     /// Codex is not on PATH.
     CodexMissing,
     /// Codex is older than [`codex::MIN_VERSION`].
@@ -214,7 +221,10 @@ impl Deferred {
             Deferred::Malformed => {
                 "the provider's answer could not be read; it runs next time".into()
             }
-            Deferred::Storage => "unstale's cache directory cannot be written".into(),
+            Deferred::Storage => "unstale's usage record cannot be read or written".into(),
+            Deferred::Redirected => "the provider address redirects elsewhere; check it".into(),
+            Deferred::InsecureUrl => "the provider address must start with https://".into(),
+            Deferred::BatchTooLarge => format!("more than {BATCH} items in one request"),
             Deferred::CodexMissing => "Codex is not installed".into(),
             Deferred::CodexTooOld => {
                 format!("Codex is older than {}; update it", codex::MIN_VERSION)
@@ -346,6 +356,8 @@ pub struct Inference {
     pub limits: Limits,
     env: Box<EnvFn>,
     codex_ready: std::sync::OnceLock<Result<(), Deferred>>,
+    /// Set when a call's usage could not be recorded: no further call runs in this process.
+    pub(crate) ledger_failed: std::sync::atomic::AtomicBool,
 }
 
 impl Inference {
@@ -357,6 +369,7 @@ impl Inference {
             limits: Limits::default(),
             env: Box::new(|k| std::env::var(k).ok()),
             codex_ready: std::sync::OnceLock::new(),
+            ledger_failed: std::sync::atomic::AtomicBool::new(false),
         }
     }
 
@@ -384,10 +397,9 @@ impl Inference {
 
     /// Several items in one call ([`BATCH`] at most), answered by id.
     pub fn complete_batch(&self, b: &Batch) -> Result<BatchAnswer, Deferred> {
-        assert!(
-            b.items.len() <= BATCH,
-            "a batch holds at most {BATCH} items"
-        );
+        if b.items.len() > BATCH {
+            return Err(Deferred::BatchTooLarge);
+        }
         let a = self.complete(&batch_prompt(b))?;
         let mut answers = BTreeMap::new();
         if let Value::Object(m) = a.value {
@@ -439,10 +451,29 @@ impl Inference {
 
     /// Defers when this month's tokens have reached the budget.
     fn admit(&self) -> Result<(), Deferred> {
-        match self.ledger.spent(&ledger::this_month()) {
+        if self.ledger_failed.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err(Deferred::Storage);
+        }
+        let month = ledger::this_month();
+        if self.ledger.writable(&month).is_err() {
+            return Err(Deferred::Storage);
+        }
+        match self.ledger.spent(&month) {
             Err(_) => Err(Deferred::Storage),
             Ok(n) if n >= self.monthly_budget => Err(Deferred::Budget),
             Ok(_) => Ok(()),
+        }
+    }
+
+    /// Records a call's usage; when it cannot be written, every later call in this process defers.
+    fn record(&self, model: &str, usage: &Usage) {
+        if self
+            .ledger
+            .record(&self.provider.name, model, usage)
+            .is_err()
+        {
+            self.ledger_failed
+                .store(true, std::sync::atomic::Ordering::SeqCst);
         }
     }
 

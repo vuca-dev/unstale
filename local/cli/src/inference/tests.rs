@@ -58,7 +58,13 @@ impl Mock {
                     std::thread::sleep(delay);
                     let _ = write!(
                         stream,
-                        "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        "HTTP/1.1 {status} X\r\n{}Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        // A 3xx script entry's body is the Location it points to.
+                        if (300..400).contains(&status) {
+                            format!("Location: {body}\r\n")
+                        } else {
+                            String::new()
+                        },
                         body.len()
                     );
                 });
@@ -449,16 +455,18 @@ fn the_ledger_keeps_every_call_per_provider_per_day() {
     let inf = f.inference(ProviderConfig::openai(), &m.url);
     inf.complete(&Prompt::new("one")).unwrap();
     inf.complete(&Prompt::new("two")).unwrap();
-    inf.ledger.record(
-        "codex",
-        "gpt-6-luna",
-        &Usage {
-            input: 1000,
-            cached: 900,
-            output: 10,
-            reasoning: None,
-        },
-    );
+    inf.ledger
+        .record(
+            "codex",
+            "gpt-6-luna",
+            &Usage {
+                input: 1000,
+                cached: 900,
+                output: 10,
+                reasoning: None,
+            },
+        )
+        .unwrap();
     let month = ledger::this_month();
     let by_day = inf.ledger.by_day(&month);
     let today = crate::util::today();
@@ -784,4 +792,153 @@ fn codex_gets_the_schema_in_its_prompt_and_an_answer_of_the_wrong_shape_is_not_t
     );
     // Usage that was not reported is estimated, so the call still counts.
     assert!(inf.ledger.month_tokens(&ledger::this_month()) > 0);
+}
+
+#[test]
+fn a_redirect_is_never_followed_so_the_key_stays_with_the_configured_host() {
+    let f = Fixture::new();
+    let anthropic_ok = json!({"model": "m", "stop_reason": "end_turn", "content": [{"type": "text", "text": "{\"ok\": true}"}], "usage": {"input_tokens": 1, "output_tokens": 1}});
+    for (provider, ok) in [
+        (ProviderConfig::openai(), openai_ok(r#"{"ok": true}"#)),
+        (ProviderConfig::anthropic(), anthropic_ok.to_string()),
+        (ProviderConfig::jev(), "{}".to_string()),
+    ] {
+        let elsewhere = Mock::new(vec![(200, ok)]);
+        for status in [301, 302, 307, 308] {
+            let first = Mock::new(vec![(status, format!("{}/v1/messages", elsewhere.url))]);
+            let inf = f.inference(provider.clone(), &first.url);
+            let got = match provider.kind {
+                Kind::Jev => inf
+                    .classify(
+                        &json!({}),
+                        &BTreeMap::from([("a".to_string(), question(&["yes", "no"]))]),
+                    )
+                    .map(|_| ()),
+                _ => inf.complete(&Prompt::new("x")).map(|_| ()),
+            };
+            assert_eq!(got, Err(Deferred::Redirected), "{} {status}", provider.name);
+            assert_eq!(first.count(), 1, "not retried");
+        }
+        assert_eq!(
+            elsewhere.count(),
+            0,
+            "{}: the redirect target received a request",
+            provider.name
+        );
+    }
+}
+
+#[test]
+fn a_provider_address_must_be_https_except_on_this_machine() {
+    let f = Fixture::new();
+    for url in [
+        "http://example.com/v1",
+        "ftp://example.com",
+        "example.com/v1",
+        "http://localhost.example.com",
+    ] {
+        let inf = f.inference(ProviderConfig::custom("c", "", "m", "TEST_KEY"), url);
+        assert_eq!(
+            inf.complete(&Prompt::new("x")).unwrap_err(),
+            Deferred::InsecureUrl,
+            "{url}"
+        );
+    }
+    assert!(http::allowed_url("https://api.example.com/v1"));
+    for url in [
+        "http://127.0.0.1:8080/v1",
+        "http://localhost:9/v1",
+        "http://[::1]:9",
+    ] {
+        assert!(http::allowed_url(url), "{url}");
+    }
+}
+
+#[test]
+fn the_budget_fails_closed_on_a_ledger_it_cannot_trust() {
+    let f = Fixture::new();
+    let m = Mock::new(vec![(200, openai_ok(r#"{"ok": true}"#))]);
+    let month = ledger::this_month();
+    // A line that does not parse, beside one that records 48M tokens.
+    let dir = f.dir.path().join("inference");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join(format!("usage-{month}.jsonl"));
+    std::fs::write(&path, format!("{{\"day\":\"{month}-01\",\"provider\":\"openai\",\"model\":\"m\",\"input\":4800000x,\"cached\":0,\"output\":0}}\n")).unwrap();
+    let inf = f.inference(ProviderConfig::openai(), &m.url);
+    assert_eq!(
+        inf.complete(&Prompt::new("x")).unwrap_err(),
+        Deferred::Storage
+    );
+    assert_eq!(m.count(), 0, "no call on a corrupt ledger");
+    std::fs::remove_file(&path).unwrap();
+    // A ledger that cannot be written: no call is made.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o555)).unwrap();
+        let inf = f.inference(ProviderConfig::openai(), &m.url);
+        let got = inf.complete(&Prompt::new("x"));
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert_eq!(got.unwrap_err(), Deferred::Storage);
+        assert_eq!(m.count(), 0, "no call on an unwritable ledger");
+    }
+}
+
+#[test]
+fn a_record_that_cannot_be_written_stops_further_calls() {
+    let f = Fixture::new();
+    let m = Mock::new(vec![(200, openai_ok(r#"{"ok": true}"#))]);
+    let mut inf = f.inference(ProviderConfig::openai(), &m.url);
+    // Writable when checked, unwritable when the answer is recorded.
+    inf.ledger.fail_writes = true;
+    assert!(
+        inf.complete(&Prompt::new("x")).is_ok(),
+        "the answer of a call already made is returned"
+    );
+    assert_eq!(
+        inf.complete(&Prompt::new("x")).unwrap_err(),
+        Deferred::Storage
+    );
+    assert_eq!(m.count(), 1);
+}
+
+#[test]
+fn more_than_eight_items_is_a_typed_deferral_not_a_panic() {
+    let f = Fixture::new();
+    let m = Mock::new(vec![(200, openai_ok("{}"))]);
+    let inf = f.inference(ProviderConfig::openai(), &m.url);
+    let items = (0..9).map(|i| (format!("i{i}"), json!(i))).collect();
+    let b = Batch {
+        instructions: "x".into(),
+        items,
+        answer_schema: schema(),
+        max_tokens: 100,
+    };
+    assert_eq!(inf.complete_batch(&b).unwrap_err(), Deferred::BatchTooLarge);
+    assert_eq!(m.count(), 0);
+}
+
+#[test]
+fn the_ledger_records_a_billed_call_whose_answer_is_rejected() {
+    let f = Fixture::new();
+    let month = ledger::this_month();
+    // Jev: a choice outside the options.
+    let bad = json!({"answers": {"a": {"choice": "maybe", "confidence": 1.0, "probabilities": {"yes": 0.5, "no": 0.5}}}, "usage": {"input_tokens": 70, "output_tokens": 3}});
+    let m = Mock::new(vec![(200, bad.to_string())]);
+    let inf = f.inference(ProviderConfig::jev(), &m.url);
+    let qs = BTreeMap::from([("a".to_string(), question(&["yes", "no"]))]);
+    assert_eq!(
+        inf.classify(&json!({}), &qs).unwrap_err(),
+        Deferred::Malformed
+    );
+    assert_eq!(inf.ledger.month_tokens(&month), 73);
+    // Anthropic: a refusal.
+    let refused = json!({"model": "m", "stop_reason": "refusal", "content": [], "usage": {"input_tokens": 20, "output_tokens": 1}});
+    let m = Mock::new(vec![(200, refused.to_string())]);
+    let inf = f.inference(ProviderConfig::anthropic(), &m.url);
+    assert_eq!(
+        inf.complete(&Prompt::new("x")).unwrap_err(),
+        Deferred::Malformed
+    );
+    assert_eq!(inf.ledger.month_tokens(&month), 73 + 21);
 }

@@ -67,6 +67,9 @@ struct Line {
 #[derive(Debug, Clone)]
 pub struct Ledger {
     dir: PathBuf,
+    /// Every write fails (tests: a ledger that turns unwritable after the budget check).
+    #[cfg(test)]
+    pub fail_writes: bool,
 }
 
 /// This month as `YYYY-MM` (UTC; `UNSTALE_TODAY` overrides the date).
@@ -76,7 +79,11 @@ pub fn this_month() -> String {
 
 impl Ledger {
     pub fn new(dir: PathBuf) -> Ledger {
-        Ledger { dir }
+        Ledger {
+            dir,
+            #[cfg(test)]
+            fail_writes: false,
+        }
     }
 
     /// `{cache}/inference/`, beside the catalog cache.
@@ -88,8 +95,8 @@ impl Ledger {
         self.dir.join(format!("usage-{month}.jsonl"))
     }
 
-    /// Appends one call. A ledger that cannot be written never stops the call it records.
-    pub fn record(&self, provider: &str, model: &str, usage: &Usage) {
+    /// Appends one call. An error means the spend went unrecorded; the caller stops making calls.
+    pub fn record(&self, provider: &str, model: &str, usage: &Usage) -> std::io::Result<()> {
         let day = crate::util::today();
         let line = Line {
             day: day.clone(),
@@ -97,32 +104,49 @@ impl Ledger {
             model: model.into(),
             usage: *usage,
         };
-        let Ok(mut text) = serde_json::to_string(&line) else {
-            return;
-        };
+        let mut text = serde_json::to_string(&line)?;
         text.push('\n');
-        let _ = std::fs::create_dir_all(&self.dir);
-        if let Ok(mut f) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(self.file(&day[..7]))
-        {
-            let _ = f.write_all(text.as_bytes());
-        }
+        self.open_for_append(&day[..7])?.write_all(text.as_bytes())
     }
 
-    /// A month's lines; a month with no file is empty. Any other read error is returned, so the budget check fails
-    /// closed rather than seeing zero spend.
+    fn open_for_append(&self, month: &str) -> std::io::Result<std::fs::File> {
+        #[cfg(test)]
+        if self.fail_writes {
+            return Err(std::io::Error::other("writes fail (test)"));
+        }
+        std::fs::create_dir_all(&self.dir)?;
+        std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(self.file(month))
+    }
+
+    /// Whether this month's file can be appended to, checked before a call so spend is never left unrecorded.
+    pub fn writable(&self, month: &str) -> std::io::Result<()> {
+        // Opening for append writes nothing; the check itself cannot fail on a test hook.
+        std::fs::create_dir_all(&self.dir)?;
+        std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(self.file(month))
+            .map(|_| ())
+    }
+
+    /// A month's lines; a month with no file is empty. Any other read error, or a line that does not parse, is an
+    /// error, so the budget check fails closed rather than seeing less spend than there was.
     fn lines(&self, month: &str) -> std::io::Result<Vec<Line>> {
         let text = match std::fs::read_to_string(self.file(month)) {
             Ok(t) => t,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
             Err(e) => return Err(e),
         };
-        Ok(text
-            .lines()
-            .filter_map(|l| serde_json::from_str(l).ok())
-            .collect())
+        text.lines()
+            .filter(|l| !l.trim().is_empty())
+            .map(|l| {
+                serde_json::from_str(l)
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+            })
+            .collect()
     }
 
     /// Usage per (day, provider) in a month (`YYYY-MM`).
