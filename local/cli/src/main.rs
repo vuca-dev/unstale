@@ -362,9 +362,7 @@ fn dispatch(cli: Cli, started: std::time::Instant) -> Result<u8> {
             std::io::stdin().read_line(&mut a).ok()?;
             Some(matches!(a.trim(), "y" | "Y" | "yes"))
         };
-        let (code, lines) = cache_gc::clean_command(&cache::cache_dir(), results, yes, &mut ask);
-        for l in lines { println!("{l}"); }
-        return Ok(code);
+        return Ok(cache_gc::clean_command(&cache::cache_dir(), results, yes, &mut ask, &mut |l| println!("{l}")));
     }
     let start = start_dir(&cli.dir)?;
     if matches!(cli.cmd, Cmd::Uninstall) { return uninstall::run(&start); }

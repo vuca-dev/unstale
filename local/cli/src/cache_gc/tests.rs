@@ -150,6 +150,15 @@ fn two_repositories_never_evict_each_others_files_even_when_both_do_not_fit_the_
     let (a, b) = (repo(), repo());
     record(c, a.path(), &set(&["t0"]), *NOW).unwrap();
     record(c, b.path(), &set(&["t1"]), *NOW - 3 * DAY).unwrap();
+    // t2 was needed by a repository since removed from disk.
+    let gone = tempfile::tempdir().unwrap();
+    record(
+        c,
+        &gone.path().join("removed"),
+        &set(&["t2"]),
+        *NOW - 3 * DAY,
+    )
+    .unwrap();
     // A real limit far below what the two need: what is not needed goes (t2, registry), theirs stays, status says so.
     let out = clean(c, &plan(&["t0"], Some(1_000)), &|| false);
     assert_eq!(out.error, None);
@@ -383,16 +392,16 @@ fn a_read_keeps_model_results_and_advisory_documents_past_their_age() {
 fn cache_clean_says_what_it_removes_asks_and_keeps_model_results_unless_asked() {
     let (cache, _cat) = cache_with(1);
     let c = cache.path();
-    let (code, lines) = clean_command(c, false, false, &mut || None);
+    let (code, lines) = run_clean(c, false, false, || None);
     assert_eq!(code, 1);
     assert!(
         lines[0].starts_with("This removes ") && lines.last().unwrap().contains("--yes"),
         "{lines:?}"
     );
     assert!(kept(c, "t0"), "nothing removed without an answer");
-    let (_, lines) = clean_command(c, false, false, &mut || Some(false));
+    let (_, lines) = run_clean(c, false, false, || Some(false));
     assert_eq!(lines.last().unwrap(), "Nothing removed.");
-    let (code, lines) = clean_command(c, false, true, &mut || None);
+    let (code, lines) = run_clean(c, false, true, || None);
     assert_eq!(code, 0, "{lines:?}");
     assert!(!crate::cache::index_path(c, "t0").exists());
     assert_eq!(
@@ -402,7 +411,7 @@ fn cache_clean_says_what_it_removes_asks_and_keeps_model_results_unless_asked() 
             .count(),
         5
     );
-    let (_, lines) = clean_command(c, true, true, &mut || None);
+    let (_, lines) = run_clean(c, true, true, || None);
     assert!(
         lines
             .iter()
@@ -477,4 +486,133 @@ fn a_clean_stops_at_the_syncs_time_bound() {
     age(&c.join("registry"), 40);
     let out = clean(c, &plan(&["t0"], None), &|| true);
     assert_eq!(out.removed, 0);
+}
+
+/// `clean_command` with its lines collected.
+fn run_clean(
+    c: &Path,
+    results: bool,
+    yes: bool,
+    mut ask: impl FnMut() -> Option<bool>,
+) -> (u8, Vec<String>) {
+    let mut lines = vec![];
+    let code = clean_command(c, results, yes, &mut ask, &mut |l| {
+        lines.push(l.to_string())
+    });
+    (code, lines)
+}
+
+#[test]
+fn an_upgrade_with_no_record_keeps_every_index_and_shard_and_trims_registry_metadata() {
+    let (cache, _cat) = cache_with(6);
+    let c = cache.path();
+    // A cache from before records: no needed.json, every file weeks old, over the limit.
+    age(c, 20);
+    assert!(!needed_path(c).exists());
+    let before: Vec<PathBuf> = (0..6).flat_map(|i| named(c, &format!("t{i}"))).collect();
+    let registry = measure(&c.join("registry")).0;
+    let limit = measure(c).0 - registry / 2;
+    let out = clean(c, &plan(&["t0"], Some(limit)), &|| false);
+    assert_eq!(out.error, None);
+    assert!(
+        before.iter().all(|p| p.is_file()),
+        "every index and shard kept"
+    );
+    assert!(
+        measure(&c.join("registry")).0 < registry,
+        "registry metadata trimmed"
+    );
+    assert!(out.bytes <= limit);
+    // The same after an unreadable record, once the next sync has started it again.
+    std::fs::write(needed_path(c), "{not json").unwrap();
+    record(c, Path::new("/elsewhere"), &set(&["t0"]), *NOW).unwrap();
+    clean(c, &plan(&["t0"], Some(0)), &|| false);
+    assert!(before.iter().all(|p| p.is_file()));
+}
+
+#[test]
+fn a_held_lock_never_holds_up_a_sync() {
+    let (cache, _cat) = cache_with(1);
+    let c = cache.path();
+    let _held = lock(c, LOCK_WAIT).unwrap();
+    let t = std::time::Instant::now();
+    record(c, Path::new("/r"), &set(&["t0"]), *NOW).unwrap();
+    // As after_sync does: the clean is skipped too.
+    assert!(lock(c, LOCK_WAIT).is_none());
+    assert!(t.elapsed() < LOCK_WAIT * 3, "{:?}", t.elapsed());
+    // `cache clean` at its question holds no lock: a sync records meanwhile.
+    let (cache2, _cat2) = cache_with(1);
+    let c2 = cache2.path().to_path_buf();
+    let mut asked = false;
+    let mut lines = vec![];
+    clean_command(
+        &c2,
+        false,
+        false,
+        &mut || {
+            asked = true;
+            let t = std::time::Instant::now();
+            record(&c2, Path::new("/other"), &set(&["t0"]), *NOW).unwrap();
+            assert!(t.elapsed() < LOCK_WAIT);
+            assert!(Needed::load(&c2).unwrap().repos.len() == 1);
+            Some(false)
+        },
+        &mut |l| lines.push(l.to_string()),
+    );
+    assert!(asked);
+    assert!(
+        lines[0].starts_with("This removes "),
+        "said before it asks: {lines:?}"
+    );
+}
+
+#[test]
+fn operating_system_litter_does_not_strand_a_cache_and_a_foreign_file_is_named() {
+    let (cache, _cat) = cache_with(1);
+    let c = cache.path();
+    std::fs::remove_file(c.join(MARKER)).ok();
+    std::fs::write(c.join(".DS_Store"), "x").unwrap();
+    assert!(owned(c).is_ok());
+    std::fs::remove_file(c.join(MARKER)).unwrap();
+    std::fs::write(c.join("notes.txt"), "x").unwrap();
+    let out = clean(c, &plan(&[], None), &|| false);
+    assert!(
+        out.error
+            .as_deref()
+            .is_some_and(|e| e.contains("notes.txt")),
+        "{out:?}"
+    );
+}
+
+#[test]
+fn a_large_first_download_is_not_called_over_the_limit_and_a_linked_root_is_measured() {
+    let (cache, _cat) = cache_with(3);
+    let c = cache.path();
+    let gone = tempfile::tempdir().unwrap();
+    record(
+        c,
+        &gone.path().join("x"),
+        &set(&["t1", "t2"]),
+        *NOW - 3 * DAY,
+    )
+    .unwrap();
+    // Just downloaded: protected for being recent only.
+    let now = std::time::SystemTime::now();
+    let mut v = vec![];
+    files(c, &mut v);
+    for (f, _, _) in v {
+        std::fs::File::options()
+            .write(true)
+            .open(&f)
+            .unwrap()
+            .set_modified(now)
+            .unwrap();
+    }
+    let out = clean(c, &plan(&["t0"], Some(1_000)), &|| false);
+    assert_eq!(out.over, None);
+    // A cache folder reached through a link is measured where it is.
+    let links = tempfile::tempdir().unwrap();
+    let linked = links.path().join("cache");
+    std::os::unix::fs::symlink(c, &linked).unwrap();
+    assert!(clean(&linked, &plan(&["t0"], None), &|| false).bytes > 0);
 }

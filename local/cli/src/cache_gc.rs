@@ -108,6 +108,10 @@ pub struct Needed {
     /// record (Unix seconds).
     #[serde(default)]
     pub technologies: BTreeMap<String, u64>,
+    /// Technology → when the clean-up first saw it with no record of a repository needing it (synced before records
+    /// were kept, or after an unreadable record): treated as just needed for 30 days from then, the limit included.
+    #[serde(default)]
+    pub seen: BTreeMap<String, u64>,
 }
 
 #[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
@@ -173,8 +177,13 @@ pub fn needs(rep: &crate::sync::Report) -> BTreeSet<String> {
         .collect()
 }
 
-/// The cache's lock, for recording and cleaning: `None` when another process holds it (or it cannot be taken).
-fn lock(cache: &Path, wait: bool) -> Option<std::fs::File> {
+/// How long recording or cleaning waits for the cache's lock before skipping (a skipped record or clean is harmless; a
+/// sync waiting on another process is not).
+pub const LOCK_WAIT: std::time::Duration = std::time::Duration::from_millis(300);
+
+/// The cache's lock, for recording and cleaning, tried for at most `wait`: `None` when another process holds it (or it
+/// cannot be taken).
+fn lock(cache: &Path, wait: std::time::Duration) -> Option<std::fs::File> {
     std::fs::create_dir_all(cache).ok()?;
     let f = std::fs::OpenOptions::new()
         .create(true)
@@ -182,12 +191,16 @@ fn lock(cache: &Path, wait: bool) -> Option<std::fs::File> {
         .write(true)
         .open(cache.join(LOCK))
         .ok()?;
-    if wait {
-        f.lock().ok()?
-    } else {
-        f.try_lock().ok()?
+    let until = std::time::Instant::now() + wait;
+    loop {
+        if f.try_lock().is_ok() {
+            return Some(f);
+        }
+        if std::time::Instant::now() >= until {
+            return None;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
     }
-    Some(f)
 }
 
 /// After a sync for the repository at `root`: records what it needed, then cleans up when a day has passed since the
@@ -202,7 +215,9 @@ pub fn after_sync(cache: &Path, root: &Path, techs: &BTreeSet<String>, stop: &dy
     if last(cache).is_some_and(|c| at.saturating_sub(c.at) < EVERY && c.error.is_none()) || stop() {
         return;
     }
-    let Some(_l) = lock(cache, false) else { return };
+    let Some(_l) = lock(cache, LOCK_WAIT) else {
+        return;
+    };
     let plan = Plan {
         current: techs.clone(),
         at,
@@ -221,7 +236,10 @@ fn write_state(cache: &Path, c: &Cleaned) -> anyhow::Result<()> {
 /// Notes that the repository at `root` needed `techs` at `at`, under the cache's lock; marks a new cache folder as
 /// unstale's. A record that cannot be read is started again: every technology's 30 days then run from now.
 pub fn record(cache: &Path, root: &Path, techs: &BTreeSet<String>, at: u64) -> anyhow::Result<()> {
-    let _l = lock(cache, true);
+    // Skipped when another process holds the lock: this sync's needs are recorded by the next one.
+    let Some(_l) = lock(cache, LOCK_WAIT) else {
+        return Ok(());
+    };
     let _ = owned(cache);
     let mut n = Needed::load(cache).unwrap_or_default();
     let key = crate::util::sha256_hex(root.to_string_lossy().as_bytes())[..16].to_string();
@@ -239,22 +257,35 @@ pub fn record(cache: &Path, root: &Path, techs: &BTreeSet<String>, at: u64) -> a
     crate::util::write_atomic(&needed_path(cache), &serde_json::to_vec(&n)?)
 }
 
-/// Whether `cache` is unstale's: its marker, else only entries unstale writes (then the marker is written).
-fn owned(cache: &Path) -> bool {
+/// Files an operating system leaves in any folder: not a sign that the folder is someone else's.
+fn litter(name: &str) -> bool {
+    matches!(
+        name,
+        ".DS_Store" | "Thumbs.db" | "desktop.ini" | ".localized"
+    ) || name.starts_with("._")
+}
+
+/// Whether `cache` is unstale's: its marker, else only entries unstale writes (then the marker is written). `Err` names
+/// the first entry that is not.
+fn owned(cache: &Path) -> Result<(), String> {
     if cache.join(MARKER).is_file() {
-        return true;
+        return Ok(());
     }
-    let Ok(rd) = std::fs::read_dir(cache) else {
-        return false;
-    };
-    let ours = rd
+    let rd = std::fs::read_dir(cache).map_err(|e| format!("{e}"))?;
+    let mut foreign: Vec<String> = rd
         .flatten()
-        .all(|e| KNOWN.contains(&e.file_name().to_string_lossy().as_ref()));
-    ours && std::fs::write(
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .filter(|n| !KNOWN.contains(&n.as_str()) && !litter(n))
+        .collect();
+    foreign.sort();
+    if let Some(f) = foreign.first() {
+        return Err(f.clone());
+    }
+    std::fs::write(
         cache.join(MARKER),
         "unstale's cache: its clean-up deletes only files unstale wrote here\n",
     )
-    .is_ok()
+    .map_err(|e| format!("{e}"))
 }
 
 /// Size on disk: allocated blocks where the platform says, else the length.
@@ -390,9 +421,9 @@ pub fn victims(
     plan: &Plan,
     stop: &dyn Fn() -> bool,
 ) -> anyhow::Result<(Vec<Victim>, Option<u64>)> {
-    if !owned(cache) {
+    if let Err(f) = owned(cache) {
         anyhow::bail!(
-            "{} holds files unstale did not write, so nothing in it is deleted",
+            "{} holds {f}, which unstale did not write, so nothing in it is deleted",
             cache.display()
         );
     }
@@ -400,10 +431,14 @@ pub fn victims(
     let mut needed = Needed::load(&root)?;
     let at = plan.at;
     let old = |last: u64, days: u64| at.saturating_sub(last) > days * DAY;
+    // Whether a candidate was kept only for being written in the last minutes.
+    let recent = std::cell::Cell::new(false);
     let push = |out: &mut Vec<Victim>, p: PathBuf, paid: bool| {
         let (bytes, written) = measure(&p);
         let present = std::fs::symlink_metadata(&p).is_ok();
-        if present && at.saturating_sub(written) >= FRESH && inside(&root, &p) {
+        if present && at.saturating_sub(written) < FRESH {
+            recent.set(true);
+        } else if present && inside(&root, &p) {
             out.push(Victim {
                 path: p,
                 bytes,
@@ -448,22 +483,37 @@ pub fn victims(
     }
     let unseen: Vec<String> = techs
         .iter()
-        .filter(|t| !needed.technologies.contains_key(*t))
+        .filter(|t| !needed.technologies.contains_key(*t) && !needed.seen.contains_key(*t))
         .cloned()
         .collect();
     if !unseen.is_empty() {
         for t in unseen {
-            needed.technologies.insert(t, at);
+            needed.seen.insert(t, at);
         }
         crate::util::write_atomic(&needed_path(&root), &serde_json::to_vec(&needed)?)?;
     }
-    let keep = needed.needed_within(at, UNUSED_DAYS);
+    // Needed: by a repository on disk within 30 days, or seen with no record within 30 days (taken as just needed).
+    let mut keep = needed.needed_within(at, UNUSED_DAYS);
+    keep.extend(
+        needed
+            .seen
+            .iter()
+            .filter(|(t, first)| {
+                !needed.technologies.contains_key(*t) && !old(**first, UNUSED_DAYS)
+            })
+            .map(|(t, _)| t.clone()),
+    );
     let mut later: Vec<(u8, u64, Vec<PathBuf>)> = vec![];
     for t in &techs {
         if plan.current.contains(t) || (!plan.all && keep.contains(t)) {
             continue;
         }
-        let last = needed.technologies.get(t).copied().unwrap_or(at);
+        let last = needed
+            .technologies
+            .get(t)
+            .or(needed.seen.get(t))
+            .copied()
+            .unwrap_or(at);
         if plan.all || old(last, UNUSED_DAYS) {
             for p in tech_paths(&root, t) {
                 push(&mut out, p, false);
@@ -490,6 +540,7 @@ pub fn victims(
         return Ok((out, None));
     }
     // Over the limit: technologies no repository here needs first, then registry metadata, oldest first.
+    recent.set(false);
     let mut total = measure(&root)
         .0
         .saturating_sub(out.iter().map(|v| v.bytes).sum());
@@ -506,7 +557,8 @@ pub fn victims(
             }
         }
     }
-    Ok((out, (total > limit).then_some(limit)))
+    // Over only when what is kept is needed, not merely written in the last minutes (a large first download).
+    Ok((out, (total > limit && !recent.get()).then_some(limit)))
 }
 
 /// Deletes the victims in order, going on past one it cannot delete; the bytes removed and the first error.
@@ -556,7 +608,7 @@ pub fn clean(cache: &Path, plan: &Plan, stop: &dyn Fn() -> bool) -> Cleaned {
         }
         Err(e) => out.error = Some(crate::util::one_line(&format!("{e:#}"), 200)),
     }
-    out.bytes = measure(cache).0;
+    out.bytes = measure(&cache.canonicalize().unwrap_or_else(|_| cache.to_path_buf())).0;
     out
 }
 
@@ -610,14 +662,17 @@ fn lines(cache: &Path, (l, bad): (Option<u64>, Option<String>)) -> Vec<String> {
     out
 }
 
-/// `unstale cache clean`: says what it will delete (and that model results are paid for again), asks (`ask`: `None`
-/// without a terminal) unless `yes`, then deletes. Model results only with `results`. The exit code and the lines.
+/// `unstale cache clean`: says what it will delete (and that model results are paid for again), then asks (`ask`:
+/// `None` without a terminal) unless `yes`, then deletes; each line goes to `say` as it is known, so the question comes
+/// after what it is about. Model results only with `results`. The cache's lock is taken only after the answer, and
+/// only briefly: an open question never holds up a sync. Returns the exit code.
 pub fn clean_command(
     cache: &Path,
     results: bool,
     yes: bool,
     ask: &mut dyn FnMut() -> Option<bool>,
-) -> (u8, Vec<String>) {
+    say: &mut dyn FnMut(&str),
+) -> u8 {
     let plan = Plan {
         current: BTreeSet::new(),
         at: now(),
@@ -625,15 +680,12 @@ pub fn clean_command(
         results,
         all: true,
     };
-    let Some(_l) = lock(cache, true) else {
-        return (
-            1,
-            vec!["Nothing removed: the cache's lock cannot be taken.".into()],
-        );
-    };
     let (v, _) = match victims(cache, &plan, &|| false) {
         Ok(v) => v,
-        Err(e) => return (1, vec![format!("Nothing removed: {e:#}")]),
+        Err(e) => {
+            say(&format!("Nothing removed: {e:#}"));
+            return 1;
+        }
     };
     let free: u64 = v.iter().filter(|x| !x.paid).map(|x| x.bytes).sum();
     let paid: Vec<&Victim> = v.iter().filter(|x| x.paid).collect();
@@ -643,18 +695,20 @@ pub fn clean_command(
         .join("inference/results");
     let mut stored = vec![];
     files(&results_dir, &mut stored);
-    let mut lines = vec![format!(
+    say(&format!(
         "This removes {} the cache can fetch again.",
         mb(free)
-    )];
+    ));
     if results {
-        lines.push(format!(
+        say(&format!(
             "It also removes {} stored model results ({}): reading those release notes again is paid for again.",
-            paid.iter().filter(|x| x.path.starts_with(&results_dir)).count(),
+            paid.iter()
+                .filter(|x| x.path.starts_with(&results_dir))
+                .count(),
             mb(paid.iter().map(|x| x.bytes).sum())
         ));
     } else if !stored.is_empty() {
-        lines.push(format!(
+        say(&format!(
             "The {} stored model results stay (`--results` removes them too).",
             stored.len()
         ));
@@ -665,32 +719,40 @@ pub fn clean_command(
         match ask() {
             Some(answer) => answer,
             None => {
-                lines.push("Run it again with --yes to remove them.".into());
-                return (1, lines);
+                say("Run it again with --yes to remove them.");
+                return 1;
             }
         }
     };
     if !go {
-        lines.push("Nothing removed.".into());
-        return (0, lines);
+        say("Nothing removed.");
+        return 0;
     }
+    let Some(_l) = lock(cache, LOCK_WAIT) else {
+        say("Nothing removed: another unstale is using the cache. Try again in a moment.");
+        return 1;
+    };
+    // Planned again under the lock: what another process wrote meanwhile is judged as it is now.
+    let v = victims(cache, &plan, &|| false)
+        .map(|x| x.0)
+        .unwrap_or_default();
     let (removed, error) = delete(cache, &v, &|| false);
     let c = Cleaned {
         at: plan.at,
-        bytes: measure(cache).0,
+        bytes: measure(&cache.canonicalize().unwrap_or_else(|_| cache.to_path_buf())).0,
         removed,
         error: error.clone(),
         over: None,
     };
     let _ = write_state(cache, &c);
-    lines.push(match error {
+    say(&match error {
         Some(e) => format!(
             "Removed {}; some files could not be removed: {e}",
             mb(removed)
         ),
         None => format!("Removed {}.", mb(removed)),
     });
-    (0, lines)
+    0
 }
 
 #[cfg(test)]
