@@ -133,8 +133,10 @@ pub(crate) enum Answer {
     NotOnPlan,
     /// This month's token limit is already reached.
     BudgetSpent,
-    /// A redirect to another address (307).
+    /// A redirect to another address (302: a client that follows it asks there).
     Redirect,
+    /// A redirect that keeps the method and body (307).
+    Redirect307,
     /// The user's monthly token limit is 1 token: the first call spends it.
     LimitPartway,
 }
@@ -150,6 +152,7 @@ impl Answer {
             Answer::NotOnPlan => "model-not-on-plan",
             Answer::BudgetSpent => "budget-spent",
             Answer::Redirect => "redirect",
+            Answer::Redirect307 => "redirect-307",
             Answer::LimitPartway => "limit-partway",
         }
     }
@@ -203,6 +206,9 @@ pub(crate) const CRITICAL: &[(&str, &str, &str, &str, &str, Answer)] = &[
     ("Releases wait and no agent session-start hook is installed", "shell-key", "no-codex", "terminal-no-hook", "config-set", Answer::Ok),
     ("Releases wait and the repo turns the session-start sync off", "shell-key", "no-codex", "terminal", "config-session-sync-off", Answer::Ok),
     ("The provider answers with a redirect", "shell-key", "no-codex", "terminal", "no-config", Answer::Redirect),
+    ("The provider answers with a redirect that keeps the request", "shell-key", "no-codex", "terminal", "no-config", Answer::Redirect307),
+    ("The repo names the labelling service with Codex, first run in a terminal", "several-keys", "codex", "terminal", "config-jev-codex", Answer::Ok),
+    ("The labelling service and Codex, the labelling service down", "several-keys", "codex", "terminal", "config-jev-codex", Answer::Down),
     ("At a terminal, --yes asks nothing", "shell-key", "codex", "terminal-yes", "no-config", Answer::Ok),
     ("Anthropic refuses the key", "anthropic-key", "no-codex", "terminal", "config-anthropic", Answer::Refused),
 ];

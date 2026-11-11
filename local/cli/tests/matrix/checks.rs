@@ -191,27 +191,116 @@ pub(crate) const INTERNAL_WORDS: [&str; 9] = [
 /// Product bugs the matrix found and the harness may not fix: each a violation's start and where it comes from. A
 /// scenario that shows one passes with it listed in its transcript; a listed bug no scenario shows any more fails the
 /// run, so the list is kept true.
-pub(crate) const KNOWN_BUGS: &[(&str, &str)] = &[
-    (
-        "wording: `unstale status --wait 0 --no-animation` printed the same warning twice",
-        "a model stage stopped for a key not set here or the monthly token limit: setup's own warning for it (src/setup.rs, status warnings) and the session state's stored deferral (src/session.rs, status_lines) are the same line, printed twice",
-    ),
-    (
-        "min_client: no command said the catalog no longer serves this client",
-        "after the catalog raises min_client above this client, `unstale init` and `unstale status` sync silently and print no refusal; only `sync` and the session-start sync say it",
-    ),
-    (
-        "model steps: `unstale session-sync` said every release note is read",
-        "after a refused catalog sync (min_client), session-sync's model stage gets the technologies of the failed sync (none) instead of the cached ones, then ends with \"every release note here is read\" while releases wait (src/session.rs, background)",
-    ),
+pub(crate) struct KnownBug {
+    /// Whether a violation, in a scenario, is this bug: its exact symptom, in the scenarios where it shows.
+    pub(crate) is: fn(&Scenario, &str) -> bool,
+    pub(crate) why: &'static str,
+}
+
+/// The status warning printed twice for this bug: a chosen key variable this scenario's shell does not set, or the
+/// monthly token limit in a scenario that reaches it.
+fn doubled_status_warning(s: &Scenario, v: &str) -> bool {
+    let Some(line) = v
+        .strip_prefix(
+            "wording: `unstale status --wait 0 --no-animation` printed the same warning twice: \"",
+        )
+        .and_then(|l| l.strip_suffix('"'))
+    else {
+        return false;
+    };
+    if line
+        == "warning: monthly token limit reached, so new release notes wait. Change it: `unstale setup --limit`."
+    {
+        return matches!(s.answer, Answer::BudgetSpent | Answer::LimitPartway)
+            || s.limits.is_some();
+    }
+    line.strip_prefix("warning: ")
+        .and_then(|l| {
+            l.strip_suffix(" is not set here, so new release notes are not read. Set it.")
+        })
+        .is_some_and(|var| {
+            setup_key_vars().contains(&var)
+                && (!s.keys.shell.contains(&var) || s.keys.blank.contains(&var))
+        })
+}
+
+/// The key variables a stored choice may name.
+fn setup_key_vars() -> [&'static str; 5] {
+    [
+        "OPENAI_API_KEY",
+        "AI_GATEWAY_API_KEY",
+        "OPENROUTER_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "JEV_API_KEY",
+    ]
+}
+
+pub(crate) const KNOWN_BUGS: &[KnownBug] = &[
+    KnownBug {
+        is: doubled_status_warning,
+        why: "a model stage stopped for a key not set here or the monthly token limit: setup's own warning for it (src/setup.rs, status warnings) and the session state's stored deferral (src/session.rs, status_lines) are the same line, printed twice",
+    },
+    KnownBug {
+        is: |s, v| {
+            s.client.id == "below-min"
+                && v == "min_client: no command said the catalog no longer serves this client"
+        },
+        why: "after the catalog raises min_client above this client, `unstale init` and `unstale status` sync silently and print no refusal; only `sync` and the session-start sync say it",
+    },
+    KnownBug {
+        is: |s, v| {
+            s.client.id == "below-min"
+                && v.starts_with(
+                    "model steps: `unstale session-sync` said every release note is read, with ",
+                )
+        },
+        why: "after a refused catalog sync (min_client), session-sync's model stage gets the technologies of the failed sync (none) instead of the cached ones, then ends with \"every release note here is read\" while releases wait (src/session.rs, background)",
+    },
 ];
 
-/// The known bug a violation is, if any.
-pub(crate) fn known_bug(violation: &str) -> Option<&'static str> {
+/// The known bug a violation in this scenario is, if any.
+pub(crate) fn known_bug(s: &Scenario, violation: &str) -> Option<&'static str> {
     KNOWN_BUGS
         .iter()
-        .find(|(start, _)| violation.starts_with(start))
-        .map(|(_, why)| *why)
+        .find(|b| (b.is)(s, violation))
+        .map(|b| b.why)
+}
+
+#[test]
+fn a_known_bug_exempts_only_its_own_symptom_in_its_own_scenarios() {
+    let mk = |client: &str, answer: Answer| {
+        Scenario::new(
+            by_id(KEYS, "shell-key", |v| v.id),
+            by_id(CODEX, "no-codex", |v| v.id),
+            by_id(INVOCATIONS, "terminal", |v| v.id),
+            by_id(REPO_CONFIGS, "config-set", |v| v.id),
+            by_id(CLIENTS, client, |v| v.id),
+            answer,
+        )
+    };
+    let twice = |l: &str| {
+        format!(
+            "wording: `unstale status --wait 0 --no-animation` printed the same warning twice: {l:?}"
+        )
+    };
+    let fresh = mk("fresh", Answer::Ok);
+    // The key is set in this scenario's shell, so its doubled warning is not this bug; another warning never is.
+    assert!(known_bug(&fresh, &twice("warning: OPENAI_API_KEY is not set here, so new release notes are not read. Set it.")).is_none());
+    assert!(known_bug(&fresh, &twice("warning: the provider is not answering, so new release notes wait. The next sync tries again.")).is_none());
+    assert!(known_bug(&fresh, &twice("warning: ANTHROPIC_API_KEY is not set here, so new release notes are not read. Set it.")).is_some());
+    assert!(known_bug(&fresh, &twice("warning: monthly token limit reached, so new release notes wait. Change it: `unstale setup --limit`.")).is_none());
+    assert!(known_bug(&mk("fresh", Answer::BudgetSpent), &twice("warning: monthly token limit reached, so new release notes wait. Change it: `unstale setup --limit`.")).is_some());
+    // The min_client entries only below min_client.
+    let read = "model steps: `unstale session-sync` said every release note is read, with [\"next@16.3.0\"] unread";
+    assert!(known_bug(&fresh, read).is_none());
+    assert!(known_bug(&mk("below-min", Answer::Ok), read).is_some());
+    assert!(
+        known_bug(
+            &fresh,
+            "min_client: no command said the catalog no longer serves this client"
+        )
+        .is_none()
+    );
 }
 
 /// What a command's output breaks of the plain-words rule.
@@ -667,7 +756,8 @@ pub(crate) fn check(s: &Scenario, se: &Session) -> Vec<String> {
         .map(|r| {
             r.output
                 .lines()
-                .filter(|l| l.starts_with(&format!("unstale {} available", newer_version())))
+                // Every line naming the newer version, except a refusal below min_client, which names it too.
+                .filter(|l| l.contains(&newer_version()) && !l.contains(" or newer and this is "))
                 .count()
         })
         .sum();
@@ -1012,10 +1102,26 @@ fn with_registry_lookups_on_the_checks_catch_another_host_through_the_proxy() {
 /// no proxy or its own, or a raw socket. Every request the client makes goes through `ureq` agents that read the proxy
 /// variables, which every scenario points at the trap. (No scenario can take the network away: an unprivileged
 /// network namespace is not available on every CI runner, and macOS has no supported way to do it.)
+/// A line without its `//` comment: a `//` inside a string literal (`"http://..."`) is code.
+pub(crate) fn code_of(line: &str) -> &str {
+    let b = line.as_bytes();
+    let (mut in_str, mut i) = (false, 0);
+    while i < b.len() {
+        match b[i] {
+            b'\\' if in_str => i += 1,
+            b'"' => in_str = !in_str,
+            b'/' if !in_str && b.get(i + 1) == Some(&b'/') => return &line[..i],
+            _ => {}
+        }
+        i += 1;
+    }
+    line
+}
+
 pub(crate) fn proxy_bypasses(file: &str, text: &str) -> Vec<String> {
     let mut out = vec![];
     for (n, line) in text.lines().enumerate() {
-        let code = line.split("//").next().unwrap_or("");
+        let code = code_of(line);
         for pattern in [
             ".proxy(",
             "Proxy::new",
@@ -1055,6 +1161,13 @@ fn no_client_connection_ignores_the_proxy_variables() {
         proxy_bypasses("injected.rs", injected),
         ["injected.rs:1: .proxy("]
     );
+    // A `//` in a string before it does not hide it; a real comment does.
+    let behind_url = r#"let a = agent("http://x").proxy(None);"#;
+    assert_eq!(
+        proxy_bypasses("injected.rs", behind_url),
+        ["injected.rs:1: .proxy("]
+    );
+    assert!(proxy_bypasses("ok.rs", "let a = 1; // .proxy(None) is never used").is_empty());
 }
 
 // ------------------------------------------------------------------------------------------- not runnable yet
@@ -1284,7 +1397,7 @@ fn the_budget_defers_work_in_demand_order() {
         );
         let broken: Vec<String> = check(&s, &se)
             .into_iter()
-            .filter(|l| known_bug(l).is_none())
+            .filter(|l| known_bug(&s, l).is_none())
             .collect();
         assert!(broken.is_empty(), "{broken:?}");
     }
@@ -1362,7 +1475,7 @@ pub(crate) fn opened_outside(w: &World) -> BTreeSet<String> {
     let log = std::fs::read_to_string(w.open_log()).unwrap_or_default();
     let mut out = BTreeSet::new();
     for line in log.lines() {
-        let p = w.normalise(line);
+        let p = w.normalise(&lexical(line));
         let Some(rel) = p.strip_prefix("~/") else {
             continue;
         };
@@ -1371,6 +1484,63 @@ pub(crate) fn opened_outside(w: &World) -> BTreeSet<String> {
         }
     }
     out
+}
+
+/// `path` with `.` and `..` resolved lexically, so `~/code/shop/../other/.env` is checked as `~/code/other/.env`.
+pub(crate) fn lexical(path: &str) -> String {
+    let mut parts: Vec<&str> = vec![];
+    for c in path.split('/') {
+        match c {
+            "." => {}
+            ".." => {
+                if parts.last().is_some_and(|p| !p.is_empty()) {
+                    parts.pop();
+                }
+            }
+            "" if !parts.is_empty() => {}
+            c => parts.push(c),
+        }
+    }
+    let out = parts.join("/");
+    if path.starts_with('/') && !out.starts_with('/') {
+        format!("/{out}")
+    } else {
+        out
+    }
+}
+
+/// An open the logger records as `~/code/shop/../other/config/master.key` is reported where it lands (the sibling),
+/// not passed as a file of this repository. Fails without [`lexical`].
+#[test]
+fn the_checks_catch_a_read_that_climbs_out_of_the_repository() {
+    let s = Scenario::new(
+        by_id(KEYS, "no-key", |v| v.id),
+        by_id(CODEX, "no-codex", |v| v.id),
+        by_id(INVOCATIONS, "ci", |v| v.id),
+        &REPO_CONFIGS[0],
+        &CLIENTS[0],
+        Answer::Ok,
+    );
+    let w = World::new(&s);
+    write(
+        &w.open_log(),
+        &format!("{}/../other/config/master.key\n", w.repo().display()),
+    );
+    assert_eq!(
+        opened_outside(&w),
+        BTreeSet::from(["~/code/other/config/master.key".to_string()])
+    );
+}
+
+#[test]
+fn a_path_that_climbs_out_of_the_repository_is_checked_where_it_lands() {
+    let climb = "/tmp/x/home/code/shop/../other/config/master.key";
+    // Unresolved, it reads as a file of this repository.
+    assert!(may_open("code/shop/../other/config/master.key"));
+    assert_eq!(lexical(climb), "/tmp/x/home/code/other/config/master.key");
+    assert!(!may_open("code/other/config/master.key"));
+    assert_eq!(lexical("/a/./b//c/../d"), "/a/b/d");
+    assert_eq!(lexical("~/code/shop/./.env"), "~/code/shop/.env");
 }
 
 /// The provider the session ended with, if any (including `none`).

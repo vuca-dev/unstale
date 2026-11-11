@@ -87,8 +87,8 @@ fn every_scenario_holds_the_line_and_matches_its_golden_transcript() {
     let mut failing: BTreeSet<String> = BTreeSet::new();
     for (s, (se, v)) in list.iter().zip(&results) {
         let (known, broken): (Vec<String>, Vec<String>) =
-            v.iter().cloned().partition(|l| known_bug(l).is_some());
-        bugs_seen.extend(known.iter().filter_map(|l| known_bug(l)));
+            v.iter().cloned().partition(|l| known_bug(s, l).is_some());
+        bugs_seen.extend(known.iter().filter_map(|l| known_bug(s, l)));
         if !broken.is_empty() {
             failing.insert(s.slug.clone());
             failures.push(format!(
@@ -112,10 +112,11 @@ fn every_scenario_holds_the_line_and_matches_its_golden_transcript() {
         }
         entries.push((s, text, cast));
     }
-    for (start, why) in KNOWN_BUGS {
-        if only.is_none() && !bugs_seen.contains(why) {
+    for b in KNOWN_BUGS {
+        if only.is_none() && !bugs_seen.contains(b.why) {
             failures.push(format!(
-                "the known product bug {start:?} ({why}) no longer shows in any scenario: remove it from KNOWN_BUGS"
+                "the known product bug ({}) no longer shows in any scenario: remove it from KNOWN_BUGS",
+                b.why
             ));
         }
     }

@@ -65,6 +65,20 @@ provider both were read.
   provider hanging with model work pending. With the switch off, session start writes none of the switch's files and
   runs no model work.
 
+## What the harness cannot see
+
+- Opens: only `open` and `openat` by the `unstale` process itself, and only under HOME. Not `read_dir` or `stat`, not
+  the processes it starts (`git`, a shell, `codex`), not files outside HOME (`/etc`). A statically linked (musl) build
+  loads no library, so the logger records nothing there; nothing at all on Windows.
+- The output of a background stage the hook starts: it is detached with no stdout or stderr. Its effects (requests,
+  files, the state the next session start reads) are checked; anything it would print is not.
+- A connection that skips the proxy variables: every scenario points them at the trap, so a client that ignores them
+  (a raw socket, `Command::new("curl")`, an HTTP agent with its own proxy setting) would reach the network unseen. The
+  source check catches the HTTP agent setting and raw sockets in the client's own code, not a subprocess.
+- What the registries are asked inside their TLS tunnels (see the registry slice above).
+- Timing: hold-the-line 5's 2 s limit is wall-clock time; the worst case measured is about 1.3 s (the hook's own
+  1.2 s deadline), so a heavily loaded machine could fail it without a product change.
+
 ## Adding a scenario
 
 - A dimension value: one line in its table in `dimensions.rs` (`KEYS`, `CODEX`, `INVOCATIONS`, `REPO_CONFIGS`,

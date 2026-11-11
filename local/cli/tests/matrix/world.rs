@@ -276,8 +276,9 @@ pub(crate) fn provider_host(answer: Answer, elsewhere: &str) -> Mock {
                 Response::json(404, r#"{"error":{"message":"The model does not exist"}}"#)
             }
             Answer::Slow => Response::json(200, &ok).after(Duration::from_millis(2500)),
-            Answer::Redirect => {
-                let mut to = Response::json(307, "{}");
+            Answer::Redirect | Answer::Redirect307 => {
+                let code = if answer == Answer::Redirect { 302 } else { 307 };
+                let mut to = Response::json(code, "{}");
                 to.headers
                     .push(("Location".into(), format!("{elsewhere}{}", r.path)));
                 to
