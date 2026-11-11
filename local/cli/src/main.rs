@@ -114,8 +114,8 @@ enum Cmd {
     /// Agent session start: at most one line when something new is ready, silent otherwise; never fails. Starts the
     /// catalog sync in the background when the catalog may have changed.
     Notify,
-    /// Internal: the session-start background stage (`notify` starts it, detached).
-    #[command(hide = true)]
+    /// The session-start background stage, run now: the catalog sync, then reading new release notes with your
+    /// provider (what an agent's session-start hook starts; for a repository without one).
     SessionSync,
     /// Show the saved detailed onboarding report without rerunning setup or coverage.
     Report,
@@ -356,6 +356,8 @@ fn dispatch(cli: Cli, started: std::time::Instant) -> Result<u8> {
         Cmd::Report => {
             let text = std::fs::read_to_string(ctx.tool.join("onboarding-report.md")).context("No saved report yet; run unstale status")?;
             for line in text.lines() { println!("{}", line.chars().filter(|c| !c.is_control() || *c == '\t').collect::<String>()); }
+            let ours = stack::detect(&ctx.root).map(|st| onboarding::candidates(&ctx, &st)).unwrap_or_default();
+            if let Some(line) = pipeline::unrun_line(&ctx, &ours) { println!("{line}"); }
             Ok(0)
         },
         Cmd::Status { wait, no_animation } => onboarding::run(&ctx, wait, !no_animation, false).inspect(|_| {
@@ -372,6 +374,7 @@ fn dispatch(cli: Cli, started: std::time::Instant) -> Result<u8> {
             let ours = stack::detect(&ctx.root).map(|st| onboarding::candidates(&ctx, &st)).unwrap_or_default();
             let failed: Vec<(String, String)> = cache::events_failed(&ctx.cache).into_iter().filter(|(t, _)| ours.contains(t)).collect();
             if let Some(line) = events_failed_line(&failed) { println!("{line}"); }
+            if let Some(line) = pipeline::unrun_line(&ctx, &ours) { println!("{line}"); }
             session::after_status(&ctx);
         }),
         Cmd::SessionSync => session::background(&ctx),

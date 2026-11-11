@@ -64,6 +64,10 @@ pub struct LocalStore {
     /// Extraction key → the record it went into (`""`: no labels could be read; not asked again).
     pub ingested: BTreeMap<String, String>,
     pub amendments: Vec<Amendment>,
+    /// Change events whose every change this machine has taken in (extracted, labelled, matched): nothing left to pay
+    /// for them here. Each pass still reads them from the result cache, as the catalog decides what is covered.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub done: BTreeSet<String>,
 }
 
 pub fn path(cache: &Path, tech: &str) -> PathBuf {

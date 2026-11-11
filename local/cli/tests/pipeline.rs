@@ -371,7 +371,8 @@ fn a_pass_stopped_mid_release_finishes_it_on_the_next_one() {
     let first = local_records(&r);
     assert!(first > 0 && first < 4, "stopped partway: {first} of 4");
     // What `unstale status` shows: the stage did not finish, and why.
-    let state = std::fs::read_to_string(r.repo.path().join(".unstale/state/session-sync.json")).unwrap_or_default();
+    let state = std::fs::read_to_string(r.repo.path().join(".unstale/state/session-sync.json"))
+        .unwrap_or_default();
     assert!(state.contains("did not accept the key"), "{state}");
     *allow.lock().unwrap() = usize::MAX;
     let extracted = *main.lock().unwrap();
@@ -383,4 +384,52 @@ fn a_pass_stopped_mid_release_finishes_it_on_the_next_one() {
         "extraction answers came from the cache"
     );
     assert!(*jev.lock().unwrap() > 3);
+}
+
+/// The model steps run only in the session-start background stage. A repository whose agent has no session-start hook,
+/// or that turns the session-start sync off, is told so by `status` and `report` while releases wait, with the command
+/// that runs the stage; once it has run, the line is gone.
+#[test]
+fn work_nothing_will_run_is_said_once_with_the_command_that_runs_it() {
+    let (r, main, _) = repo(Arc::new(Mutex::new(usize::MAX)));
+    for hook in [
+        ".claude/settings.local.json",
+        ".codex/hooks.json",
+        ".opencode/plugins/unstale-session.js",
+    ] {
+        let _ = std::fs::remove_file(r.repo.path().join(hook));
+    }
+    r.run(&["sync"], true);
+    std::fs::write(
+        r.repo.path().join(".unstale/onboarding-report.md"),
+        "# Report\n",
+    )
+    .unwrap();
+    let line = "warning: no agent session-start hook here, so 1 new release note is unread. Run `unstale session-sync` to read them now.";
+    let report = r.run(&["report"], true);
+    assert_eq!(report.lines().filter(|l| *l == line).count(), 1, "{report}");
+    assert!(
+        !r.run(&["report"], false).contains("warning:"),
+        "switch off: nothing"
+    );
+    // A hook is installed: it runs the stage, nothing to say.
+    std::fs::create_dir_all(r.repo.path().join(".claude")).unwrap();
+    std::fs::write(
+        r.repo.path().join(".claude/settings.local.json"),
+        r#"{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"unstale notify"}]}]}}"#,
+    )
+    .unwrap();
+    assert!(!r.run(&["report"], true).contains("warning:"));
+    // The session-start sync turned off: said too.
+    let cfg = r.repo.path().join(".unstale/config.json");
+    let mut v: Value = serde_json::from_str(&std::fs::read_to_string(&cfg).unwrap()).unwrap();
+    v["session_sync"] = serde_json::json!(false);
+    std::fs::write(&cfg, serde_json::to_string_pretty(&v).unwrap()).unwrap();
+    assert!(r.run(&["report"], true).contains(
+        "warning: session-start sync is off here, so 1 new release note is unread. Run `unstale session-sync`"
+    ));
+    // The manual way: the stage runs, the release is read, the line goes.
+    r.run(&["session-sync"], true);
+    assert_eq!(*main.lock().unwrap(), 2);
+    assert!(!r.run(&["report"], true).contains("warning:"));
 }

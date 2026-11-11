@@ -84,12 +84,22 @@ pub fn run(
         let events: Vec<&unstale_schema::catalog::EventLine> = t.events.iter().collect();
         let mut stopped = x.prefetch(&events).err();
         let mut incoming: Vec<(Incoming, Option<Provenance>)> = vec![];
+        // Events extracted whole, with the keys of their changes.
+        let mut whole: Vec<(String, Vec<String>)> = vec![];
         for ev in &t.events {
             if stopped.is_some() {
                 break;
             }
             match x.event(ev) {
-                Ok(r) => incoming.extend(r.incoming.into_iter().map(|i| (i, r.provenance.clone()))),
+                Ok(r) => {
+                    if r.failed == 0 {
+                        whole.push((
+                            ev.id.clone(),
+                            r.incoming.iter().map(|i| i.key.clone()).collect(),
+                        ));
+                    }
+                    incoming.extend(r.incoming.into_iter().map(|i| (i, r.provenance.clone())))
+                }
                 Err(d) => stopped = Some(d),
             }
         }
@@ -279,8 +289,16 @@ pub fn run(
             touched = true;
             store.save(cache);
         }
-        if touched {
+        let before = store.done.len();
+        for (id, keys) in whole {
+            if keys.iter().all(|k| store.ingested.contains_key(k)) {
+                store.done.insert(id);
+            }
+        }
+        if touched || store.done.len() != before {
             store.save(cache);
+        }
+        if touched {
             s.technologies += 1;
         }
         if s.deferred.is_none() {

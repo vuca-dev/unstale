@@ -370,6 +370,57 @@ pub fn run_step(
     }
 }
 
+/// One warning when this repository has releases waiting for the model steps and nothing will run them: the steps run
+/// only in the session-start background stage, and this repository has no agent session-start hook, or turns the
+/// session-start sync off. `None` with the switch off, with no provider chosen, or with nothing waiting.
+pub fn unrun_line(ctx: &crate::Ctx, techs: &BTreeSet<String>) -> Option<String> {
+    if !crate::inference::enabled() {
+        return None;
+    }
+    let why = if ctx.config.session_sync == Some(false) {
+        "session-start sync is off here"
+    } else if !session_hook_installed(&ctx.root) {
+        "no agent session-start hook here"
+    } else {
+        return None;
+    };
+    stored_choice(Some(&ctx.root))?.providers()?;
+    let purls = crate::stack::detect(&ctx.root)
+        .map(|st| st.purls())
+        .unwrap_or_default();
+    // What the catalog leaves to this machine, less what a pass here has already taken in.
+    let releases: BTreeSet<(String, String)> = plan(&ctx.cache, techs, &purls, &crate::util::today())
+        .into_iter()
+        .flat_map(|p| {
+            let done = store::LocalStore::load(&ctx.cache, &p.technology).done;
+            p.events
+                .into_iter()
+                .filter(move |e| !done.contains(&e.id))
+                .map(move |e| (p.technology.clone(), e.version))
+        })
+        .collect();
+    let n = releases.len();
+    (n > 0).then(|| {
+        format!(
+            "warning: {why}, so {n} new release note{} {} unread. Run `unstale session-sync` to read them now.",
+            if n == 1 { "" } else { "s" },
+            if n == 1 { "is" } else { "are" }
+        )
+    })
+}
+
+/// Whether an agent's session-start hook for this repository is installed (Claude Code, Codex or opencode): each runs
+/// `unstale notify`, which starts the background stage.
+fn session_hook_installed(root: &Path) -> bool {
+    [
+        crate::onboarding::SESSION_HOOK_SETTINGS_PATH,
+        crate::session::CODEX_HOOKS_PATH,
+        crate::session::OPENCODE_PLUGIN_PATH,
+    ]
+    .iter()
+    .any(|rel| std::fs::read_to_string(root.join(rel)).is_ok_and(|t| t.contains("notify")))
+}
+
 /// The stored choice for a directory: its repository's config, else the user's.
 pub fn stored_choice(root: Option<&Path>) -> Option<crate::setup::Choice> {
     let repo = root.and_then(|r| {
