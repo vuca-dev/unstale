@@ -204,7 +204,7 @@ fn over_the_limit_is_said_in_status_with_how_to_raise_or_remove_it() {
         lines(dir.path(), limit_from(Some("abc".into()))),
         [
             "warning: UNSTALE_CACHE_MAX_MB is not a whole number of MB, so the 100 MB default applies.",
-            "Cache: 84 MB of 100 MB",
+            "Cache                 84 MB of 100 MB",
             "warning: the cache could not be fully cleaned up, so it may grow past its limit.",
             "  x: denied",
         ]

@@ -592,10 +592,13 @@ fn lines(cache: &Path, (l, bad): (Option<u64>, Option<String>)) -> Vec<String> {
             mb(over)
         ));
     } else {
-        out.push(match l {
-            Some(l) => format!("Cache: {} of {}", mb(c.bytes), mb(l)),
-            None => format!("Cache: {}", mb(c.bytes)),
-        });
+        out.push(crate::setup::view::labelled(
+            "Cache",
+            &match l {
+                Some(l) => format!("{} of {}", mb(c.bytes), mb(l)),
+                None => mb(c.bytes),
+            },
+        ));
     }
     if let Some(e) = &c.error {
         out.push(
