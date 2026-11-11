@@ -9,9 +9,9 @@
 
 - **Shape:** INDEPENDENT PRs to `main`. Every chunk is additive and behind one switch (README, "One switch").
 - **Ground truth:** GitHub PR state. Repo `vuca-dev/unstale`.
-- **Base:** `origin/main` @ `8b2fe69` (#239 merge; `ci` running at time of writing, previous tip `b778876` green)
+- **Base:** `origin/main` @ `8ab70ba` (#238 merge)
 - **Base health:** PR checks are `rust`, `central`, `gateway`; re-query before every merge.
-- **Open PRs:** #238 (full scenario matrix, `806da1d`, in review; must rebase onto #239 and regenerate goldens), #231 (no-key eval draft, blocked on the ingest decision), #240 (docs and site, DRAFT at `48b9c6d`, CI green; HELD for the CEO, never merged by agents; conflicts expected with the CEO's `smooth-wordmark` branch in `README.md` and `gateway/site/build.ts`)
+- **Open PRs:** #241 (ingest starvation fix, `efd7137`, fixes pushed, re-review running), product-fix PR (in progress, worktree `/Users/jason/unstale-product-fixes`), #231 (no-key eval draft, blocked on the ingest decision), #240 (docs and site, DRAFT at `48b9c6d`, CI green; HELD for the CEO, never merged by agents; conflicts expected with the CEO's `smooth-wordmark` branch in `README.md` and `gateway/site/build.ts`)
 - **Live worktrees (sprint):** `/Users/jason/unstale-edge-sprint` (tracker), `/Users/jason/unstale-ws6b` (#238), `/Users/jason/unstale-ws9-no-key` + `/Users/jason/unstale-ws9-scout` (#231), `/Users/jason/unstale-parity` (paid answer caches; keep)
 - **Live subagents:** #238 reviewer (Fable). Idle, resumable: matrix EM, no-key eval agent.
 - **Merged + verified:** WS0 → #213 `673c191`
@@ -348,3 +348,7 @@ OpenRouter parity, repeat eval runs.
 - CEO: "go ahead with the ingest starvation fix". PR #241 open at `75989b8`, CI green, worktree `/Users/jason/unstale-ingest-fix`; fresh review running. Author's bound: about 26 hours for the whole catalog. Reaches production with the first ingest run after merge (no separate deploy). Overlaps the CEO's uncommitted `service.ts` region (oldest-slot block, `tier()`).
 - #238 review: APPROVE AFTER FIXES. Two blockers (known-bug exemption too broad; logged paths not resolved before the allowlist), plus should-fixes; sent to the matrix EM with the rebase onto `8b2fe69` and clearance to merge. Five product bugs confirmed real: (a) status warning twice; (b) `init`/`status` silent below `min_client` (predates sprint); (c) "every release note here is read" while 2 wait, below `min_client`; (d) `UNSTALE_INFERENCE_BASE_URL` breaks the Codex route; (e) `init --wait 0` takes 26 s with registries unreachable (predates sprint).
 - Next after #238 merges: one product-fix PR for (a)–(e) plus the six issues from #240's report; then update the matrix's known bugs.
+- #238 merged at `8ab70ba` by the PM after re-review APPROVE at `fe437bb` (all four re-run mutations caught by their named checks; 149 scenarios). Worktree removed.
+- #241 at `efd7137`: check slices make no model call; ordered by real upstream read; over-cap-before-coverage included; only check slices start under a spent budget. Re-review running.
+- Ingest stalled since 11:18 UTC: Cloudflare rate limit (971) on one `wrangler deploy`, chain broken, production healthy. Restart (`gh workflow run ingest.yml --ref main -f reason=continue`) and a deploy retry await the CEO.
+- Product-fix PR dispatched (Opus): matrix bugs (a)–(e) and the docs work's six.
