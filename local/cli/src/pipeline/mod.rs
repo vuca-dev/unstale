@@ -137,25 +137,26 @@ pub fn routes_with(
     })
 }
 
-/// After a sync, with the switch on and a provider chosen: the steps for this stack's technologies, holding the
-/// machine's worker lock (another worker already on it: nothing to do here). At most one line for the terminal; never
-/// an error.
-pub fn after_sync(
-    cache: &Path,
-    root: &Path,
-    techs: &BTreeSet<String>,
-    purls: &BTreeSet<String>,
-) -> Option<String> {
+/// The steps for this stack's technologies with the stored choice, the worker lock already held by the caller. `None`
+/// when no provider is chosen.
+pub fn run_locked(cache: &Path, root: &Path, techs: &BTreeSet<String>, purls: &BTreeSet<String>) -> Option<run::Summary> {
+    let routes = routes(&stored_choice(Some(root))?, Some(root))?;
+    Some(run::run(cache, &routes, techs, purls, &crate::util::today()))
+}
+
+/// After `unstale sync`, with the switch on and a provider chosen: the steps, holding the machine's worker lock
+/// (another worker already on it: nothing to do here). At most one line for the terminal; never an error.
+pub fn after_sync(cache: &Path, root: &Path, techs: &BTreeSet<String>, purls: &BTreeSet<String>) -> Option<String> {
     if !crate::util::edge_inference() {
         return None;
     }
-    let routes = routes(&stored_choice(Some(root))?, Some(root))?;
+    stored_choice(Some(root))?;
     let _lock = match crate::inference::lock::try_acquire_default() {
         Ok(Some(l)) => l,
         Ok(None) => return None,
         Err(d) => return Some(format!("Records from new releases: {}", d.line())),
     };
-    run::run(cache, &routes, techs, purls, &crate::util::today()).line()
+    run_locked(cache, root, techs, purls)?.line()
 }
 
 /// An http(s) address on this machine: `localhost` or a loopback IP, no userinfo.
