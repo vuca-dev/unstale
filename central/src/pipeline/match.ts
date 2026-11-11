@@ -5,6 +5,7 @@ import { attributeEvidence, type Classification, type Questions } from "./classi
 import type { Labels } from "./classify/labels.ts";
 import type { Incoming } from "./extract.ts";
 import { lineFn } from "./lines.ts";
+import { fill, judgeText, thresholdsData } from "./prompts.ts";
 import { applyChange, combineReleases, mergeInto, mintId, union, type Evidence, type Judged, type StoredRecord, type TechStore } from "./store.ts";
 import { CROSS_SAME_P, CROSS_SAME_P_SHORT, LINEAGE_SAME_P, QUESTION_FLOOR, QUOTE_GUARD_BELOW_SHORT, SAME_P, SAME_P_SHORT } from "./thresholds.ts";
 import { FLIPS, technical } from "../docs/materiality.ts";
@@ -72,28 +73,13 @@ export function retrieve(inc: Incoming, records: StoredRecord[], k = K): Candida
   return out.sort((a, b) => b.score - a.score || a.id.localeCompare(b.id)).slice(0, k);
 }
 
-export const RULES_V3 = `Identity rules:
-- Same change: the same thing changed in the same way. The change_type label does NOT matter: extractors label the
-  same change as a fix in one run and a behaviour change in another. The same change shipped in different releases
-  (a backport to an older release line) is the same change.
-- Not the same, even if related: a record about one specific function, option, flag or channel and a broader record
-  about the feature it belongs to; the deprecation or removal of an old API and the addition of its replacement; a
-  rename and the addition of the new name; two different options of one API; two separate fixes to one API; a change
-  that breaks existing code and one that does not.
-If you are unsure, answer no: a duplicate costs little, a wrong match hides a change.`;
+// The judge's text is data (schema/prompts/judge.json, read by prompts.ts).
+export const RULES_V3 = judgeText.rules;
 
 /** Said only in requests where a source other than release notes takes part (release-notes requests are unchanged). */
-export const CROSS_SOURCE_RULE =
-  "The same change described in release notes and in an upgrade guide is the same change; the wording and the level of detail differ between the two kinds of source.";
+export const CROSS_SOURCE_RULE = judgeText.cross_source_rule;
 
-const SOURCE_NAME: Record<Evidence["kind"], string> = {
-  release_notes: "release notes",
-  upgrade_guide: "upgrade guide",
-  docs: "documentation",
-  changelog: "changelog",
-  advisory: "security advisory",
-  other: "other",
-};
+const SOURCE_NAME: Record<Evidence["kind"], string> = judgeText.sources;
 
 /**
  * The shorter rule text ("M8", eval/select/slice5/RESULTS-judge2.md): the same rules, reworded, inside every question.
@@ -102,11 +88,8 @@ const SOURCE_NAME: Record<Evidence["kind"], string> = {
  * measured: release notes and upgrade guides, never advisories, docs or a guide against an earlier version of a guide
  * (lineage), which keep RULES_V3 and their calibrated thresholds.
  */
-export const shortRules = (c: string): string => `Is the incoming record the same change as candidate ${c}?
-Same: the same thing changed in the same way. Ignore change_type labels and release lines (a backport is the same change).
-Not the same, even if related: a specific function, option, flag or channel vs the broader feature; deprecating or removing an API vs adding its replacement; a rename vs adding the new name; two different options, or two separate fixes, of one API; a breaking vs a non-breaking change.
-Unsure: answer no (a wrong match hides a change).`;
-export const SHORT_CROSS_RULE = "Release notes and an upgrade guide describe the same change in different words and detail.";
+export const shortRules = (c: string): string => fill(judgeText.short_question, { CANDIDATE: c });
+export const SHORT_CROSS_RULE = judgeText.short_cross_rule;
 
 /** Whether a request uses the shorter rules: release notes and guides only, and no guide against a guide (lineage). */
 export function shortRulesApply(inc: { kind?: Evidence["kind"] }, cands: Pick<StoredRecord, "evidence">[]): boolean {
@@ -116,8 +99,7 @@ export function shortRulesApply(inc: { kind?: Evidence["kind"] }, cands: Pick<St
 }
 
 /** Said only in requests where a security advisory takes part. */
-export const ADVISORY_RULE =
-  "A security advisory and a release-notes or guide item that describes the fix for that vulnerability are the same change; a fix for a different vulnerability, or a general hardening change, is not.";
+export const ADVISORY_RULE = judgeText.advisory_rule;
 
 const brief = (r: { subject: string; facet?: string | undefined; summary: string; breaking: boolean }, release: string, sources?: string) => ({
   subject: r.subject,
@@ -163,8 +145,8 @@ export function matchRequest(techName: string, inc: Incoming, breaking: boolean,
         {
           instructions: short
             ? `${shortRules(`c${i + 1}`)}${mixed ? `\n${SHORT_CROSS_RULE}` : ""}`
-            : `Does the incoming record describe the same change as candidate c${i + 1}?\n${rules}`,
-          options: { yes: `The same change as candidate c${i + 1}.`, no: `A different change from candidate c${i + 1}, or unsure.` },
+            : fill(judgeText.question, { CANDIDATE: `c${i + 1}`, RULES: rules }),
+          options: Object.fromEntries(judgeText.options.map((o) => [o.id, fill(o.text, { CANDIDATE: `c${i + 1}` })])),
         },
       ]),
   );
@@ -176,10 +158,10 @@ export function matchRequest(techName: string, inc: Incoming, breaking: boolean,
 // Tuned on the 83 ingest matches of the first full run, so not an independent measurement.
 
 /** At or above this p the quote guard is skipped (the advisory and breaking guards still apply); requests under the
- * shorter rules use QUOTE_GUARD_BELOW_SHORT (thresholds.ts). */
-export const QUOTE_GUARD_BELOW = 0.95;
+ * shorter rules use QUOTE_GUARD_BELOW_SHORT (thresholds.ts). Both values are in schema/prompts/thresholds.json. */
+export const QUOTE_GUARD_BELOW = thresholdsData.quote_guard_below;
 /** Ratcliff/Obershelp similarity (as Python's difflib.SequenceMatcher.ratio, without its junk heuristic). */
-export const QUOTE_SIMILARITY = 0.9;
+export const QUOTE_SIMILARITY = thresholdsData.quote_similarity;
 
 const ADVISORY = /\bGHSA(?:-[a-z0-9]{4}){3}\b|\bCVE-\d{4}-\d{4,}\b/gi;
 

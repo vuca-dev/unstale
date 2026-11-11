@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "breaking_p": 0.5,
+  "benefit_p": 0.5,
+  "borderline": [
+    0.35,
+    0.65
+  ],
+  "choice_confidence": 0.6,
+  "same_p": 0.7,
+  "cross_same_p": 0.85,
+  "same_p_short": 0.82,
+  "cross_same_p_short": 0.91,
+  "quote_guard_below": 0.95,
+  "quote_guard_below_short": 0.99,
+  "quote_similarity": 0.9,
+  "question_floor": 0.6,
+  "lineage_same_p": 0.8
+}

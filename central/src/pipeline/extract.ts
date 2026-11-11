@@ -6,197 +6,33 @@ import { z } from "zod";
 import { extractCached, extractLlm, extractTruncated, parseJson } from "./llm.ts";
 import type { GuideNote, ReleaseNote } from "./fetch.ts";
 import type { Technology } from "./technologies.ts";
-import { CHANGE_TYPES, SURFACES } from "./vocab.ts";
+import { applyEdits, extractText, fill } from "./prompts.ts";
 import { oneLine, releaseLine } from "./util.ts";
 import { markViews, PREAMBLE, PREAMBLE_MARKED, unmarkQuote } from "../docs/render.ts";
 
 export const MAX_CHUNK = 30_000;
 
-export const EXTRACT_PROMPT = `You extract change records from official release notes. Output only a JSON array, no prose.
-
-Technology: %TECH%
-Release: %VERSION% (%DATE%)%PART%
-
-Emit one record for each distinct change in these notes that could alter what a developer using this technology
-writes, configures, runs or decides. Skip internal refactors, documentation, examples, tests, build chores, dependency
-bumps of the project's own repository and contributor news. If nothing qualifies, output [].
-
-Each record:
-{
- "subject": the one thing that changed, exactly as a developer writes it in code, configuration or a terminal:
-            an API (\`after\`, \`PrismaClient\`), a configuration key as a full dotted path (\`images.remotePatterns\`),
-            a command with its subcommands (\`prisma migrate diff\`), a file name (\`proxy.ts\`), an environment variable,
-            a package name, a decorator or directive. No backticks, no call parentheses, no version numbers.
-            If the change has no such name (a general behaviour, a runtime requirement), a short lowercase phrase
-            naming the feature as the documentation names it.
- "subject_kind": "literal" if subject is a name a developer writes, "concept" if it is a phrase,
- "facet": when the change is to one option, flag, parameter or field OF the subject, that name exactly as written
-          (\`--turbopack\`, \`cache\`, \`env\`); otherwise null,
- "change_type": one of ${Object.keys(CHANGE_TYPES).join(" | ")},
- "surface": where a project meets this change, one of ${Object.keys(SURFACES).join(" | ")},
- "summary": at most 40 words, what changed and why a developer would care, using only what the notes say,
- "audience": "application" for ordinary users of the framework/API, "extension_author" when authoring custom
-             providers, plugins, adapters or integrations, "maintainer" for technology-internal work,
-             or "general" when the source does not establish a narrower audience,
- "introduces": [literal identifiers, options, file names or flags that exist only from this release; [] if none],
- "evidence": a sentence or phrase copied verbatim from the notes that supports the record
-}
-
-Release notes:
-<notes>
-%NOTES%
-</notes>
-`;
+// The prompts and their variants are data (schema/prompts/extract.json, read by prompts.ts).
+export const EXTRACT_PROMPT = extractText.extract;
 
 // The meaning of `requires`: applies only to projects that already use X. At the edge a record whose `requires` matches
 // nothing in the repository goes to the end of the review, so a value the change has the project add (the opposite of a
-// precondition) demotes a required migration (eval/rank/RESULTS.md).
-export const REQUIRES_RULE = `"requires" (usually []): literals a project must ALREADY use for this change to apply to it at all: a database driver
-or adapter package, a dialect, a platform (for example \`oracledb\`, \`@prisma/adapter-d1\`, \`fastify\`). [] unless
-the notes limit the change to such projects. Never list what the change asks the project to add, install, load or
-switch to (a package it must now install, a loader it must now call, the replacement for a removed package): those go
-in "introduces" or "terms", and the old name in "replaces". Write each value as a project's code or package.json
-contains it (\`pg\`, \`postgresql\` as in \`provider = "postgresql"\`, \`sqlite\`, \`better-sqlite3\`), never as a product
-name (PostgreSQL, SQLite, SQL Server).`;
+// precondition) demotes a required migration (eval/rank/RESULTS.md). Its rule is the label prompt's paragraph on it.
+export const LABEL_PROMPT = extractText.label;
+const requiresAt = LABEL_PROMPT.indexOf('"requires" (usually [])');
+export const REQUIRES_RULE = LABEL_PROMPT.slice(requiresAt, LABEL_PROMPT.indexOf("\n\n", requiresAt));
 
-export const LABEL_PROMPT = `You write search terms and applicability labels for change records. A local tool will search a project's
-source files and file paths for the terms as exact text. Each match is weighted by how rare the term is across projects
-that use the technology, so broad terms cost little and specific terms count most. Output only a JSON object that maps
-each record id to {"terms": [...], "replaces": [...], "requires": [...], "prerequisites": [...], "conditions": [...]}, no prose.
-
-Technology: %TECH%
-Release: %VERSION%
-
-Rules for "terms" (up to 12 per record, most specific first):
-- Each term is text that literally occurs in a project's own code, configuration or file tree, written the way
-  projects write it: a call as code makes it, an import specifier, a configuration key, a file name, a command as
-  typed in a script, a directive string. Never a product or feature name, and never a documentation reference name
-  that does not appear in project code.
-- Cover the different ways projects write the same thing: qualified and unqualified names, the import specifier
-  and the imported name, a configuration key as a nested key and as a dotted path, alternative file extensions.
-- Choose text present in projects this change concerns today: the API it alters; for a new option, the function,
-  hook, class or configuration object that receives it and its sibling options; for a new API, the existing APIs it
-  is used with or would replace.
-- After the specific terms you may add broader ones for the same feature area; they are down-weighted, not ignored.
-- Never use names listed in "introduces": projects cannot contain them yet.
-- Give [] only if the change concerns no project-visible text at all.
-
-"replaces" (0 to 4 terms): upstream literals that existing code contains and that this change makes obsolete, such as
-an older API, option, file name or a package used for the same job. Same literal rules. [] when there is no old literal
-(most behaviour changes, new requirements, constructor arguments).
-
-${REQUIRES_RULE}
-
-"prerequisites" (usually []): version requirements the notes state, written as a project's manifest declares them:
-{"ecosystem": "npm", "name": "<name as written in package.json dependencies or engines>", "min": "<version>", "max": "<version>"}.
-Examples: {"ecosystem": "npm", "name": "node", "min": "20.9.0"} for engines.node; {"ecosystem": "npm", "name": "typescript",
-"min": "5.1.0"}; {"ecosystem": "npm", "name": "react", "min": "19.0.0"}. Omit "min" or "max" when the notes do not state
-it. Only requirements the notes state.
-
-"conditions" (usually []): requirements that cannot be checked from a manifest (a database server version, an
-operating system, a hosting platform), as short phrases from the notes.
-
-Records:
-%RECORDS%
-
-Release notes:
-<notes>
-%NOTES%
-</notes>
-`;
-
-// One call per chunk: EXTRACT_PROMPT with LABEL_PROMPT's five fields and their rules folded into each record, so the
-// notes are read once. Assembled from the two prompts at load time, so a change to either flows into it; a marker that
-// is no longer found throws. Selected by UNSTALE_EXTRACT_STRUCTURE=one-call (default: two calls).
-function between(s: string, from: string, to: string): string {
-  const a = s.indexOf(from);
-  const b = s.indexOf(to, a + from.length);
-  if (a < 0 || b < 0) throw new Error(`extract.ts: marker not found in a prompt (${JSON.stringify(from)} … ${JSON.stringify(to)})`);
-  return s.slice(a, b);
-}
-const RECORD_END = '\n "evidence": a sentence or phrase copied verbatim from the notes that supports the record\n}\n';
-if (!EXTRACT_PROMPT.includes(RECORD_END)) throw new Error("extract.ts: EXTRACT_PROMPT's record schema changed");
-export const ONE_CALL_PROMPT = EXTRACT_PROMPT.replace(
-  RECORD_END,
-  RECORD_END.replace(/\n\}\n$/, ",\n") +
-    ` "terms": [search terms, rules below],
- "replaces": [0 to 4 literals, rules below],
- "requires": [rules below],
- "prerequisites": [rules below],
- "conditions": [rules below]
-}
-
-The last five fields are search terms and applicability labels. ${between(LABEL_PROMPT, "A local tool will search", " Output only a JSON object").trim()}
-
-${between(LABEL_PROMPT, 'Rules for "terms"', "\n\nRecords:").trim()}
-`,
-);
+// One call per chunk (UNSTALE_EXTRACT_STRUCTURE=one-call; default: two calls): EXTRACT_PROMPT with LABEL_PROMPT's five
+// fields and their rules folded into each record, so the notes are read once.
+export const ONE_CALL_PROMPT = applyEdits(EXTRACT_PROMPT, extractText.variants.one_call, "variants.one_call");
 
 // One call, records first (UNSTALE_EXTRACT_STRUCTURE=one-call-schema): one JSON object {records, labels} under a strict
 // response schema; every record is listed before any label is written, and labels name their record by id, so the
-// labels restate nothing. Assembled from EXTRACT_PROMPT and LABEL_PROMPT like ONE_CALL_PROMPT.
-const EXTRACT_HEAD = "You extract change records from official release notes. Output only a JSON array, no prose.";
-if (!EXTRACT_PROMPT.startsWith(EXTRACT_HEAD)) throw new Error("extract.ts: EXTRACT_PROMPT's first line changed");
-export const SCHEMA_PROMPT = EXTRACT_PROMPT.replace(
-  EXTRACT_HEAD,
-  `You extract change records from official release notes, then label them. Output only a JSON object, no prose:
-{"records": [...], "labels": [...]}. First list EVERY record in "records"; only then write "labels".`,
-)
-  .replace("If nothing qualifies, output [].", 'If nothing qualifies, output {"records": [], "labels": []}.')
-  .replace("Each record:\n{\n", 'Each record:\n{\n "id": "r1", "r2", … in order,\n')
-  .replace(
-    RECORD_END,
-    RECORD_END +
-      `
-Then "labels": one entry per record, in the same order: {"id": the record's id, "terms": [...], "replaces": [...],
-"requires": [...], "prerequisites": [...], "conditions": [...]}. These are search terms and applicability labels.
-${between(LABEL_PROMPT, "A local tool will search", " Output only a JSON object").trim()}
+// labels restate nothing.
+export const SCHEMA_PROMPT = applyEdits(EXTRACT_PROMPT, extractText.variants.one_call_schema, "variants.one_call_schema");
 
-${between(LABEL_PROMPT, 'Rules for "terms"', "\n\nRecords:").trim().replace('Omit "min" or "max" when the notes do not state\nit.', 'Use null for "min" or "max" when the notes do not state it.')}
-`,
-  );
-if (!SCHEMA_PROMPT.includes('"id": "r1"') || !SCHEMA_PROMPT.includes('Then "labels"') || !SCHEMA_PROMPT.includes("Use null for")) throw new Error("extract.ts: SCHEMA_PROMPT assembly failed");
-
-const str = { type: "string" };
-const strs = { type: "array", items: str };
-const nullable = { type: ["string", "null"] };
-const obj = (props: Record<string, unknown>) => ({ type: "object", properties: props, required: Object.keys(props), additionalProperties: false });
 /** The strict response schema (OpenAI `response_format: json_schema`) for SCHEMA_PROMPT. */
-export const SCHEMA_RESPONSE_FORMAT = {
-  type: "json_schema",
-  json_schema: {
-    name: "change_records",
-    strict: true,
-    schema: obj({
-      records: {
-        type: "array",
-        items: obj({
-          id: str,
-          subject: str,
-          subject_kind: { type: "string", enum: ["literal", "concept"] },
-          facet: nullable,
-          change_type: { type: "string", enum: Object.keys(CHANGE_TYPES) },
-          surface: { type: "string", enum: Object.keys(SURFACES) },
-          summary: str,
-          audience: { type: "string", enum: ["application", "extension_author", "maintainer", "general"] },
-          introduces: strs,
-          evidence: str,
-        }),
-      },
-      labels: {
-        type: "array",
-        items: obj({
-          id: str,
-          terms: strs,
-          replaces: strs,
-          requires: strs,
-          prerequisites: { type: "array", items: obj({ ecosystem: str, name: str, min: nullable, max: nullable }) },
-          conditions: strs,
-        }),
-      },
-    }),
-  },
-} as const;
+export const SCHEMA_RESPONSE_FORMAT = extractText.one_call_schema_response_format;
 
 /** A records-first answer: each record with the labels that name its id (or none). */
 export function parseSchemaAnswer(text: string): Array<{ record: Extracted; labels: Record<string, unknown> | undefined }> | undefined {
@@ -221,22 +57,12 @@ export const extractStructure = (): ExtractStructure => {
 // it is grounded by construction. Selected by UNSTALE_EXTRACT_EVIDENCE=ids (default: a verbatim quote).
 export const UNIT_MAX = 240;
 export const MAX_UNITS_PER_QUOTE = 3;
-const EVIDENCE_QUOTE = '"evidence": a sentence or phrase copied verbatim from the notes that supports the record';
-export const EXTRACT_PROMPT_IDS = EXTRACT_PROMPT.replace(
-  EVIDENCE_QUOTE,
-  `"evidence": the numbers of the 1 to ${MAX_UNITS_PER_QUOTE} numbered lines that best support the record, the most telling first,
-             as [12] or [12, 15]; usually one line. Never a range`,
-).replace("Release notes:\n<notes>", "Release notes (each line starts with its number and \"|\"):\n<notes>");
-if (EXTRACT_PROMPT_IDS === EXTRACT_PROMPT) throw new Error("extract.ts: EXTRACT_PROMPT's evidence field changed");
+export const EXTRACT_PROMPT_IDS = applyEdits(EXTRACT_PROMPT, extractText.variants.evidence_ids, "variants.evidence_ids");
 
 // Output diet (UNSTALE_EXTRACT_DIET=1): the extract call no longer writes change_type and surface, which only became
 // unread hints (the classifier labels both), and writes compact JSON (one line, no indentation).
-const HINT_LINES = `\n "change_type": one of ${Object.keys(CHANGE_TYPES).join(" | ")},\n "surface": where a project meets this change, one of ${Object.keys(SURFACES).join(" | ")},`;
-export const dietPrompt = (p: string, mode: "full" | "compact" = "full"): string => {
-  const out = (mode === "full" ? p.replace(HINT_LINES, "") : p).replace(EXTRACT_HEAD, "You extract change records from official release notes. Output only a JSON array on one line, with no indentation\nor line breaks, no prose.");
-  if ((mode === "full" && out.includes('"change_type": one of')) || !out.includes("JSON array on one line")) throw new Error("extract.ts: diet markers not found");
-  return out;
-};
+export const dietPrompt = (p: string, mode: "full" | "compact" = "full"): string =>
+  mode === "full" ? applyEdits(p, extractText.variants.diet_full, "variants.diet_full") : applyEdits(p, extractText.variants.diet_compact, "variants.diet_compact");
 /** UNSTALE_EXTRACT_DIET: "1" drops the hint fields and asks for compact JSON; "compact" only asks for compact JSON. */
 export const extractDiet = (): "full" | "compact" | undefined => (process.env.UNSTALE_EXTRACT_DIET === "1" ? "full" : process.env.UNSTALE_EXTRACT_DIET === "compact" ? "compact" : undefined);
 
@@ -296,7 +122,7 @@ export function parseOneCall(text: string): Array<{ record: Extracted; labels: R
   });
 }
 
-export const fill = (tpl: string, v: Record<string, string>): string => tpl.replace(/%([A-Z]+)%/g, (_, k: string) => v[k] ?? "");
+export { fill };
 
 export const Extracted = z.object({
   subject: z.string().min(1),
@@ -616,7 +442,7 @@ function firstCall(t: Technology, rel: ReleaseNote | GuideNote | DocsNote, notes
   return { prompt: fill(d ? dietPrompt(template, d) : template, { ...base, NOTES: numbered ? numbered.text : notes }), opts: a, numbered };
 }
 
-const partLine = (parts: string[], ci: number) => (parts.length > 1 ? `\nPart ${ci + 1} of ${parts.length} of these release notes.` : "");
+const partLine = (parts: string[], ci: number) => (parts.length > 1 ? fill(extractText.part_line, { N: String(ci + 1), OF: String(parts.length) }) : "");
 
 /** Whether every chunk's first call is answered from the cache, so extracting the note again costs no model tokens
  * (budget.ts). A cached first call implies its label call was made with it. */
@@ -636,7 +462,7 @@ function chunkCached(t: Technology, rel: ReleaseNote | GuideNote | DocsNote, not
   return pieces.every((p, j) => chunkCached(t, rel, p, piecePart(part, j, pieces.length)));
 }
 
-const piecePart = (part: string, j: number, n: number): string => `${part}\nPiece ${j + 1} of ${n} of this text.`;
+const piecePart = (part: string, j: number, n: number): string => part + fill(extractText.piece_line, { N: String(j + 1), OF: String(n) });
 
 export async function extractRelease(t: Technology, rel: ReleaseNote | GuideNote | DocsNote): Promise<{ incoming: Incoming[]; failed: number }> {
   const parts = chunk(rel.notes);

@@ -1,6 +1,10 @@
 # unstale central: the coverage service and catalog host (`npm run serve`, src/onboarding/cli.ts).
 #
-#   docker build -t unstale-central central
+#   docker build -f central/Dockerfile -t unstale-central .
+#
+# The build context is the repository root: the image needs central's manifest, lockfile and src/, and the shared
+# prompt data in schema/prompts/ (central/Dockerfile.dockerignore keeps everything else out). The repository layout
+# is kept (/app/central beside /app/schema/prompts), so central finds the prompts where it does in a checkout.
 #   docker run -d --name unstale-central -p 47831:47831 -v unstale-store:/data unstale-central
 #
 # Node 24 runs the TypeScript sources directly (type stripping; the code is erasable-syntax only), so there is
@@ -31,12 +35,15 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production
-WORKDIR /app
+WORKDIR /app/central
 
-COPY package.json package-lock.json ./
+COPY central/package.json central/package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts && rm -rf /root/.npm
 
-COPY src ./src
+COPY schema/prompts /app/schema/prompts
+COPY central/src ./src
+# The build fails here, not at the first request, if the prompts are not where central looks for them.
+RUN node -e 'import("./src/pipeline/prompts.ts").then((p) => console.log("prompts:", p.promptsDir()))'
 
 RUN mkdir -p /data && chown node:node /data
 ENV UNSTALE_STORE=/data \

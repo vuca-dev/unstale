@@ -15,11 +15,15 @@
 
 mod codex;
 mod http;
+/// The bytes of one Jev request (tests compare them with central's).
+#[cfg(test)]
+pub(crate) use http::jev_request_body;
 pub mod ledger;
 pub mod lock;
 #[cfg(test)]
 mod tests;
 
+use serde_json::value::RawValue;
 use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -301,11 +305,11 @@ pub struct BatchAnswer {
     pub usage: Usage,
 }
 
-/// A closed-choice question: option → description.
+/// A closed-choice question: option → description, sent in the order given (the order can move an answer).
 #[derive(Debug, Clone)]
 pub struct ChoiceQuestion {
     pub instructions: String,
-    pub options: BTreeMap<String, String>,
+    pub options: Vec<(String, String)>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -416,11 +420,12 @@ impl Inference {
         })
     }
 
-    /// Closed-choice questions about a state, [`BATCH`] questions per request (Jev only).
+    /// Closed-choice questions about a state, [`BATCH`] questions per request (Jev only). The state is JSON text
+    /// and the questions a list, both sent in the order given: a [`Value`] would sort the state's keys.
     pub fn classify(
         &self,
-        state: &Value,
-        questions: &BTreeMap<String, ChoiceQuestion>,
+        state: &RawValue,
+        questions: &[(String, ChoiceQuestion)],
     ) -> Result<Classification, Deferred> {
         if self.provider.kind != Kind::Jev {
             return Err(Deferred::Rejected);

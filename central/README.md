@@ -42,6 +42,7 @@ ingested extraction is recorded, so a rerun makes no uncached calls and writes b
 | `src/pipeline/classify/adapter.ts` | Classifier adapter: Jev first, the extraction model answering choices as the per-request fallback, cache, usage log |
 | `src/pipeline/packs.ts` | The content-hash caches (classifier, model, registry, the day's docs pages) as append-only pack files, a few thousand instead of one file per entry |
 | `src/pipeline/classify/labels.ts`, `vocab.ts`, `thresholds.ts` | change_type, surface, breaking and benefit questions; thresholds |
+| `src/pipeline/prompts.ts`, `../schema/prompts/*.json` | Every model-facing text (prompts, response schema, label questions, rubrics, judge rules) and the thresholds as versioned data, read by central and the client alike; `test/prompt-snapshot.test.ts` holds the request bytes and cache keys they produce |
 | `src/pipeline/type-stubs.ts` | Deprecations a technology's type stubs (`@types/<pkg>`) state as `@deprecated` in their published declarations, diffed per release line, as records released in the stub; registry and tarball reads, no model call |
 | `src/pipeline/advisory-apis.ts` | Each advisory's affected APIs from its text (one cached extraction-model call per advisory, about $0.0001), published in the tech index for advisories no record locates |
 | `src/pipeline/match.ts`, `store.ts` | Matching at ingest, id minting, revision and label counters, merge and retraction |
@@ -77,6 +78,7 @@ Every variable is optional; the defaults suit a developer machine.
 | `UNSTALE_NO_ADVISORIES` | unset | `1` skips the advisories stage after a technology's history is published, and the first pass below |
 | `UNSTALE_ADVISORIES_FIRST` | `2` | `drain`: token-free first passes at once, beside the job slots: a waiting new technology's advisories (OSV, resolved against its release list) are published before its release-note history, with no model call, and it keeps its place in the queue; `0` turns them off |
 | `UNSTALE_LOCK_TIMEOUT_MS` | `1200000` (20 minutes) | How long a writer waits for a technology's lock before failing |
+| `UNSTALE_PROMPTS_DIR` | `<repo>/schema/prompts` | The shared prompt data (`src/pipeline/prompts.ts`); the image keeps it at the default place |
 | `UNSTALE_BIN` | `<repo>/local/target/release/unstale` | Client binary used for `count-terms` by the rarity sample |
 | `UNSTALE_GATEWAY_URL`, `UNSTALE_GATEWAY_TOKEN` | unset | `drain`: the gateway whose held registrations are pulled and acknowledged; unset, only the saved queue is worked |
 | `UNSTALE_STATE_REMOTE` | unset | `state`: where snapshots live, `github:<owner>/<repo>#<release id>` (with `GH_TOKEN`) or `dir:<path>` |
@@ -85,7 +87,7 @@ Every variable is optional; the defaults suit a developer machine.
 ## Deploy
 
 ```sh
-docker build -t unstale-central central
+docker build -f central/Dockerfile -t unstale-central .
 docker run -d -p 47831:47831 -v unstale-store:/data -e GITHUB_TOKEN -e JEV_API_KEY -e AI_GATEWAY_API_KEY unstale-central
 ```
 

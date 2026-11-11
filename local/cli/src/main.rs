@@ -8,6 +8,7 @@ mod deprecations;
 mod onboarding;
 mod onboarding_ui;
 mod privacy;
+mod prompts;
 mod pypi;
 mod uninstall;
 mod funnel;

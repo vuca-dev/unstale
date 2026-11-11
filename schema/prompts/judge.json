@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "rules": [
+    "Identity rules:",
+    "- Same change: the same thing changed in the same way. The change_type label does NOT matter: extractors label the",
+    "  same change as a fix in one run and a behaviour change in another. The same change shipped in different releases",
+    "  (a backport to an older release line) is the same change.",
+    "- Not the same, even if related: a record about one specific function, option, flag or channel and a broader record",
+    "  about the feature it belongs to; the deprecation or removal of an old API and the addition of its replacement; a",
+    "  rename and the addition of the new name; two different options of one API; two separate fixes to one API; a change",
+    "  that breaks existing code and one that does not.",
+    "If you are unsure, answer no: a duplicate costs little, a wrong match hides a change."
+  ],
+  "cross_source_rule": "The same change described in release notes and in an upgrade guide is the same change; the wording and the level of detail differ between the two kinds of source.",
+  "advisory_rule": "A security advisory and a release-notes or guide item that describes the fix for that vulnerability are the same change; a fix for a different vulnerability, or a general hardening change, is not.",
+  "question": [
+    "Does the incoming record describe the same change as candidate %CANDIDATE%?",
+    "%RULES%"
+  ],
+  "short_question": [
+    "Is the incoming record the same change as candidate %CANDIDATE%?",
+    "Same: the same thing changed in the same way. Ignore change_type labels and release lines (a backport is the same change).",
+    "Not the same, even if related: a specific function, option, flag or channel vs the broader feature; deprecating or removing an API vs adding its replacement; a rename vs adding the new name; two different options, or two separate fixes, of one API; a breaking vs a non-breaking change.",
+    "Unsure: answer no (a wrong match hides a change)."
+  ],
+  "short_cross_rule": "Release notes and an upgrade guide describe the same change in different words and detail.",
+  "options": [
+    {
+      "id": "yes",
+      "text": "The same change as candidate %CANDIDATE%."
+    },
+    {
+      "id": "no",
+      "text": "A different change from candidate %CANDIDATE%, or unsure."
+    }
+  ],
+  "sources": {
+    "release_notes": "release notes",
+    "upgrade_guide": "upgrade guide",
+    "docs": "documentation",
+    "changelog": "changelog",
+    "advisory": "security advisory",
+    "other": "other"
+  }
+}
