@@ -19,6 +19,9 @@
 // key. Indexes name their shards' sha256 (records' and change events', `events`), so signing the indexes covers every
 // shard.
 //
+// `v1/freshness.json` (signed too) summarises how long releases take to reach the catalog, from the change events the
+// exported indexes name (freshness.ts).
+//
 // `v1/technologies.json` (signed too) names every exported index with a hash of its served bytes, so a client asks only
 // for the indexes of the candidates it names, and only those its cache does not hold: a candidate the catalog does not
 // cover costs no request (a 404 for a missing static file would run the Worker, gateway/, whose daily allowance is the
@@ -30,6 +33,7 @@ import { gunzipSync } from "node:zlib";
 import { DISCOVERY_VERSION } from "../onboarding/discovery.ts";
 import { EventLine, Root, ShardLine, TechIndex, Technologies } from "../schema/catalog.ts";
 import { centralDir } from "./paths.ts";
+import { freshnessSummary } from "./freshness.ts";
 import { pruneCatalog, SHARD_FILE, type PruneOptions, type PruneResult } from "./prune.ts";
 import { readJson, sha256 } from "./util.ts";
 
@@ -168,6 +172,7 @@ export function exportCatalog(
   };
   try {
     const shards = new Set<string>();
+    const events: EventLine[] = [];
     // No prototype: an index named `__proto__` is a key like any other, not lost to the inherited setter.
     const technologies: Record<string, string> = Object.create(null);
     let bytes = 0;
@@ -189,7 +194,10 @@ export function exportCatalog(
         if (!shards.has(path)) {
           const lines = gunzipSync(gz).toString("utf8").trimEnd().split("\n");
           if (lines.length !== s.records) throw new Error(`${path}: ${lines.length} lines, index says ${s.records}`);
-          for (const l of lines) line.parse(JSON.parse(l));
+          for (const l of lines) {
+            const parsed = line.parse(JSON.parse(l));
+            if (line === EventLine) events.push(parsed as EventLine);
+          }
           putShard(path, read);
           shards.add(path);
           bytes += gz.length;
@@ -226,6 +234,7 @@ export function exportCatalog(
     put(".nojekyll", "");
     // Checked against the schema, but the map itself is written: a parsed copy is an ordinary object again.
     Technologies.parse({ schema: 1, technologies });
+    putSigned("v1/freshness.json", Buffer.from(JSON.stringify(freshnessSummary(events))));
     putSigned("v1/technologies.json", Buffer.from(JSON.stringify({ schema: 1, technologies })));
     putSigned("v1/root.json", root);
     // The swap: a previous export moves aside, the new tree takes its name, the old one is removed.
