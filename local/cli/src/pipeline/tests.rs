@@ -248,6 +248,7 @@ pub fn event(
             first_published: "x".into(),
             backfilled: false,
         },
+        extracted: false,
     }
 }
 

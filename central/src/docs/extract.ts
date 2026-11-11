@@ -6,7 +6,7 @@ import { join } from "node:path";
 import type { DocsNote } from "../pipeline/extract.ts";
 import type { GuideNote } from "../pipeline/fetch.ts";
 import type { HttpClient } from "../collector/http.ts";
-import { recordNotesLocked } from "../pipeline/events.ts";
+import { markRecorded, recordNotesLocked } from "../pipeline/events.ts";
 import { withTechLock } from "../pipeline/lock.ts";
 import { readJson, writeAtomic } from "../pipeline/util.ts";
 import { TECHNOLOGIES, type Technology } from "../pipeline/technologies.ts";
@@ -162,6 +162,18 @@ export function markExtracted(tech: string, events: Iterable<string>): void {
   let n = 0;
   for (const e of events) if (!done[e]) (done[e] = at), n++;
   if (n) writeAtomic(ledgerPath(tech), JSON.stringify(done, null, 1) + "\n");
+}
+
+/**
+ * Marks the change events of docs events this ledger lists as extracted (events.ts `markProcessed`), for work done before
+ * marks existed: a docs event's notes carry `+docs.<8 hex>` or `+guide.sec.<8 hex>` of its key. Call it under the
+ * technology lock. No model call.
+ */
+export function markDocsProcessed(tech: string): number {
+  const done = Object.keys(readJson<Record<string, string>>(ledgerPath(tech)) ?? {});
+  if (!done.length) return 0;
+  const tags = new Set(done.flatMap((k) => [`+docs.${k.slice(0, 8)}`, `+guide.sec.${k.slice(0, 8)}`]));
+  return markRecorded(tech, (e) => e.source === "docs" && tags.has(e.id.slice(`${e.technology}@${e.version}`.length)));
 }
 
 /** Events whose every planned note succeeded, from the planned notes and the events that had a failed note. */
