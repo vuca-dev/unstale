@@ -58,6 +58,7 @@ $ unstale status --wait 0 --no-animation
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Release notes         not read: no provider chosen · `unstale setup` shows the options
+Cache                 under 1 MB of 100 MB
 
 $ unstale setup
 The user chooses how unstale reads new release notes. Show them these options as printed and ask.

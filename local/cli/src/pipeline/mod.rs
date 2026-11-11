@@ -180,13 +180,37 @@ pub fn run_locked(
     purls: &BTreeSet<String>,
 ) -> Option<run::Summary> {
     let routes = routes(&stored_choice(Some(root))?, Some(root))?;
-    Some(run::run(
-        cache,
-        &routes,
-        techs,
-        purls,
-        &crate::util::today(),
-    ))
+    let s = run::run(cache, &routes, techs, purls, &crate::util::today());
+    if let Ok(mut last) = LAST.lock() {
+        *last = Some(s.clone());
+    }
+    Some(s)
+}
+
+type Watch = Box<dyn Fn(&str) + Send>;
+/// Progress for a person waiting on a run by hand (`unstale session-sync` at a terminal); nobody watches otherwise.
+static WATCH: std::sync::Mutex<Option<Watch>> = std::sync::Mutex::new(None);
+/// The last pass's summary in this process, for the line a run by hand ends with.
+static LAST: std::sync::Mutex<Option<run::Summary>> = std::sync::Mutex::new(None);
+
+/// Shows each step of a pass to `f`.
+pub fn watch(f: Watch) {
+    if let Ok(mut w) = WATCH.lock() {
+        *w = Some(f);
+    }
+}
+
+fn progress(line: &str) {
+    if let Ok(w) = WATCH.lock()
+        && let Some(f) = w.as_ref()
+    {
+        f(line);
+    }
+}
+
+/// The last pass's summary in this process, if one ran.
+pub fn last_pass() -> Option<run::Summary> {
+    LAST.lock().ok()?.clone()
 }
 
 /// An http(s) address on this machine: `localhost` or a loopback IP, no userinfo.

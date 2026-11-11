@@ -196,3 +196,4 @@
 [11.97,"o","  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\r\n"]
 [12.03,"o","Release notes         Jev + Vercel AI Gateway (JEV_API_KEY, AI_GATEWAY_API_KEY), this repo's config\r\n"]
 [12.09,"o","Tokens                12 of 48M this month (the default limit; `unstale setup --limit` changes it)\r\n"]
+[12.15,"o","Cache                 under 1 MB of 100 MB\r\n"]

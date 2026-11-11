@@ -114,3 +114,4 @@
 [5.65,"o","unstale notice, act by 30 November: Upgrade unstale; this version stops receiving new changes then.\r\n"]
 [5.71,"o","unstale <newer version> available: npm install -g @unstale/cli@latest\r\n"]
 [5.77,"o","Release notes         not read: no provider chosen · `unstale setup` shows the options\r\n"]
+[5.83,"o","Cache                 under 1 MB of 100 MB\r\n"]

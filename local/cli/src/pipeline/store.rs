@@ -199,12 +199,18 @@ pub fn overlay(td: &mut TechData, local: &LocalStore, cover: &Cover) {
             || l.sources
                 .first()
                 .is_some_and(|k| cover.events.contains(event_of(k)));
-        if !catalog.contains(id) && !first_covered {
+        if !first_covered {
+            // Its id since taken by a catalog record (a different change, the catalog not covering this one): kept
+            // under an id of its own, the same on every load.
+            let mut r = l.record.clone();
+            if catalog.contains(id) {
+                r.id = stable_id(id, l.sources.first().map_or(id.as_str(), String::as_str));
+            }
+            td.provenance.insert(r.id.clone(), l.provenance.clone());
             td.records.push(Rec {
-                r: l.record.clone(),
-                borderline: borderline(&l.record),
+                borderline: borderline(&r),
+                r,
             });
-            td.provenance.insert(id.clone(), l.provenance.clone());
             continue;
         }
         // Hidden: what the catalog does not cover of it stays, as a record of its own.
@@ -224,9 +230,9 @@ pub fn overlay(td: &mut TechData, local: &LocalStore, cover: &Cover) {
     }
     let mut make = |td: &mut TechData, group: Vec<Loose>| {
         let first = &group[0];
-        let mut r = matching::create(first.incoming, first.labels, &comps, &line_of, &|id| {
-            taken.contains(id)
-        });
+        // Made on each load: an id from its first change's key, so it is the same every time, whatever else is taken.
+        let mut r = matching::create(first.incoming, first.labels, &comps, &line_of, &|_| false);
+        r.id = stable_id(&r.id, &first.incoming.key);
         for more in &group[1..] {
             matching::combine(&mut r, more.incoming, more.labels, &comps, &line_of);
         }
@@ -269,4 +275,9 @@ pub fn overlay(td: &mut TechData, local: &LocalStore, cover: &Cover) {
         make(td, group);
     }
     td.records.sort_by(|a, b| a.r.id.cmp(&b.r.id));
+}
+
+/// `{id}~{8 hex of the key}`: an id for a record the overlay makes, stable across loads.
+fn stable_id(id: &str, key: &str) -> String {
+    format!("{id}~{}", &crate::util::sha256_hex(key.as_bytes())[..8])
 }

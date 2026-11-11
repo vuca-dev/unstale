@@ -487,6 +487,8 @@ fn spawn_background(tool: &Path, root: &Path, started: Instant) -> Result<()> {
     c.arg("-C")
         .arg(root)
         .arg("session-sync")
+        // Started by the hook: silent, as the stage always is (`unstale session-sync` by hand says what it did).
+        .env(HOOK_STAGE, "1")
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
@@ -511,6 +513,9 @@ fn spawn_background(tool: &Path, root: &Path, started: Instant) -> Result<()> {
 }
 
 // ------------------------------------------------------------------------------------------- the background stage
+
+/// Set in the environment of the background stage the hook starts.
+pub const HOOK_STAGE: &str = "UNSTALE_HOOK_STAGE";
 
 /// `unstale session-sync`: the verified sync, then the model stage. Always 0; what happened is kept in the state for
 /// the next session start and `unstale status`. Nothing with the switch off.
@@ -609,6 +614,7 @@ fn sync_now(ctx: &Ctx, stop: &(dyn Fn() -> bool + Sync)) -> Result<Synced> {
         stop,
         |_| {},
     )?;
+    crate::cache_gc::after_sync(&ctx.cache, &ctx.root, &crate::cache_gc::needs(&rep), stop);
     let mut arrived = Arrived::default();
     for t in rep.synced.iter().filter(|t| !t.unchanged) {
         let Some(had) = before.get(&t.technology) else {

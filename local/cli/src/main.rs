@@ -3,6 +3,7 @@
 
 mod advisories;
 mod cache;
+mod cache_gc;
 mod cargo;
 mod deprecations;
 mod onboarding;
@@ -196,6 +197,12 @@ enum Cmd {
         backoff_ms: Option<u64>,
         prompt: String,
     },
+    /// The per-user cache (hidden until the edge-inference release).
+    #[command(hide = true)]
+    Cache {
+        #[command(subcommand)]
+        cmd: CacheCmd,
+    },
     /// Internal: the client's model steps, for evals and tests.
     #[command(hide = true)]
     Internal {
@@ -206,6 +213,20 @@ enum Cmd {
     Run {
         #[arg(long, value_name = "PKG@VERSION")]
         target: Vec<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum CacheCmd {
+    /// Delete everything the cache can fetch again; the usage record, uninstall backups and (unless `--results`) the
+    /// model results stay. Says what it removes and asks first.
+    Clean {
+        /// Also delete the stored model results: reading those release notes again is paid for again.
+        #[arg(long)]
+        results: bool,
+        /// Do not ask (needed without a terminal).
+        #[arg(long)]
+        yes: bool,
     },
 }
 
@@ -326,6 +347,23 @@ fn dispatch(cli: Cli, started: std::time::Instant) -> Result<u8> {
     if matches!(cli.cmd, Cmd::Notify) {
         return Ok(session::hook(cli.dir.as_deref(), started));
     }
+    if let Cmd::Cache { cmd: CacheCmd::Clean { results, yes } } = cli.cmd {
+        if !inference::enabled() {
+            bail!("`unstale cache clean` is not available yet");
+        }
+        let mut ask = || {
+            use std::io::IsTerminal;
+            if !std::io::stdin().is_terminal() {
+                return None;
+            }
+            print!("Remove them? [y/N] ");
+            let _ = std::io::Write::flush(&mut std::io::stdout());
+            let mut a = String::new();
+            std::io::stdin().read_line(&mut a).ok()?;
+            Some(matches!(a.trim(), "y" | "Y" | "yes"))
+        };
+        return Ok(cache_gc::clean_command(&cache::cache_dir(), results, yes, &mut ask, &mut |l| println!("{l}")));
+    }
     let start = start_dir(&cli.dir)?;
     if matches!(cli.cmd, Cmd::Uninstall) { return uninstall::run(&start); }
     if let Cmd::Internal { cmd } = cli.cmd {
@@ -359,7 +397,7 @@ fn dispatch(cli: Cli, started: std::time::Instant) -> Result<u8> {
     }
     let mut ctx = context(&start)?;
     match cli.cmd {
-        Cmd::Init { .. } | Cmd::CountTerms { .. } | Cmd::Uninstall | Cmd::Infer { .. } | Cmd::Notify | Cmd::Internal { .. } => unreachable!(),
+        Cmd::Init { .. } | Cmd::CountTerms { .. } | Cmd::Uninstall | Cmd::Infer { .. } | Cmd::Notify | Cmd::Internal { .. } | Cmd::Cache { .. } => unreachable!(),
         Cmd::Setup { inference, user, details, limit } => {
             if !inference::enabled() {
                 println!("Model steps are off in this version; there is nothing to set up.");
@@ -398,9 +436,13 @@ fn dispatch(cli: Cli, started: std::time::Instant) -> Result<u8> {
             let (wrong, fresh) = session::status_lines(&ctx);
             warnings.extend(wrong);
             state.extend(fresh);
+            // The cache's size (state); a warning and its detail line when it is over its limit or was not cleaned up.
+            for line in cache_gc::status_lines(&ctx.cache) {
+                if line.starts_with("warning") || line.starts_with("  ") { warnings.push(line) } else { state.push(line) }
+            }
             for line in warnings.iter().chain(&state) { println!("{line}"); }
         }),
-        Cmd::SessionSync => session::background(&ctx),
+        Cmd::SessionSync => cmd_session_sync(&ctx),
         Cmd::Sync => cmd_sync(&ctx),
         Cmd::Digest => cmd_digest(&ctx),
         Cmd::Review { next, target, pass } => cmd_review(&ctx, next, &target, pass),
@@ -750,6 +792,36 @@ fn rel(ctx: &Ctx, p: &Path) -> String {
 
 // ------------------------------------------------------------------------------------------------------- sync
 
+/// `unstale session-sync`: the session-start background stage. Started by the hook, detached, it prints nothing anyone
+/// sees; run by hand it shows its progress at a terminal and ends with one line. Every answer is kept as it arrives, so
+/// an interrupted run resumes where it stopped.
+fn cmd_session_sync(ctx: &Ctx) -> Result<u8> {
+    use std::io::IsTerminal;
+    if std::env::var_os(session::HOOK_STAGE).is_some() {
+        return session::background(ctx);
+    }
+    if !inference::enabled() || ctx.config.session_sync == Some(false) {
+        println!("Session-start sync is off here, so nothing ran.");
+        return Ok(0);
+    }
+    if std::io::stdout().is_terminal() {
+        println!("Syncing the catalog, then reading new release notes with your provider. Ctrl-C stops it; the next run resumes.");
+        pipeline::watch(Box::new(|l| println!("  {l}")));
+    }
+    let code = session::background(ctx)?;
+    let state = session::read_state(&ctx.tool);
+    if let Some(f) = &state.failure {
+        println!("warning: the catalog sync did not finish: {f}");
+    }
+    println!("{}", match pipeline::last_pass() {
+        Some(s) => s.line().unwrap_or_else(|| "Nothing new to read: every release note here is read.".into()),
+        None if state.deferred.is_some() => state.deferred.clone().unwrap_or_default(),
+        None if pipeline::stored_choice(Some(&ctx.root)).is_none() => "No provider is chosen, so no release notes were read. Choose one: `unstale setup`.".into(),
+        None => "No release notes were read: another unstale is reading them on this machine; it finishes them.".into(),
+    });
+    Ok(code)
+}
+
 fn cmd_sync(ctx: &Ctx) -> Result<u8> {
     let st = stack::detect(&ctx.root)?;
     let cands = onboarding::candidates(ctx, &st);
@@ -761,6 +833,7 @@ fn cmd_sync(ctx: &Ctx) -> Result<u8> {
         }
         Err(e) => return Err(e),
     };
+    cache_gc::after_sync(&ctx.cache, &ctx.root, &cache_gc::needs(&rep), &|| false);
     // With the edge-inference switch on, `sync` says what the reader can use, in their words: a line a technology, and
     // nothing about what the catalog does not cover (nothing to do about it) or how the files arrived. Release notes
     // that could not be verified are a warning below. With the switch off the lines are as they were.

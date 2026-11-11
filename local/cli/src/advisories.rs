@@ -1798,6 +1798,8 @@ pub fn refresh_with(
         match read_json::<Doc>(&doc_path(cache, id)) {
             // The batch states `modified` to the microsecond, the record to the nanosecond.
             Some(d) if d.schema == DOC_SCHEMA && d.modified.trim_end_matches('Z').starts_with(m.trim_end_matches('Z')) => {
+                // Read, not rewritten: marked as used so the cache's clean-up keeps it (cache_gc.rs).
+                crate::cache_gc::used(&doc_path(cache, id));
                 docs.insert(id.clone(), d);
             }
             _ => fetch.push(id.clone()),

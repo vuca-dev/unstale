@@ -63,6 +63,7 @@ $ unstale status --wait 0 --no-animation
 warning: OPENROUTER_API_KEY is not set here, so new release notes are not read. Set it.
 Release notes         OpenRouter (OPENROUTER_API_KEY), this repo's config
 Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)
+Cache                 under 1 MB of 100 MB
 
 $ unstale sync
 next: 2 upstream changes on file, nothing new

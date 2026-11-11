@@ -366,7 +366,8 @@ pub struct EventLine {
     /// Central ran its model steps on this event, on exactly these chunks: its records, if any, are in the record
     /// shards (a release whose changes all matched earlier records, or that holds none, adds no release to any record).
     /// A client runs its own steps only for an event without it. Absent before 11 November 2026, and on every event
-    /// central has not processed (after the cutover central makes no records, so no new event carries it).
+    /// central has not processed (after the cutover central makes no records, so no new event carries it). Central may
+    /// later retract or drop records it made from a marked event; a client still skips the event.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub extracted: bool,
 }
