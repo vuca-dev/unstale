@@ -9,11 +9,11 @@
 
 - **Shape:** INDEPENDENT PRs to `main`. Every chunk is additive and behind one switch (README, "One switch").
 - **Ground truth:** GitHub PR state. Repo `vuca-dev/unstale`.
-- **Base:** `origin/main` @ `2cddd6e` (`ci` green)
+- **Base:** `origin/main` @ `705ba46` (`ci` green)
 - **Base health:** PR checks are `rust`, `central`, `gateway`; re-query before every merge.
 - **Open PRs:** none merged-pending; WS4, WS5-FIX, WS6a, WS10 branches in progress
 - **Live worktrees (sprint):** `/Users/jason/unstale-edge-sprint` (tracker)
-- **Live subagents:** ws4-impl, ws10-impl, ws6-harness, ws5-fix (Opus 5.5). Over the two-EM limit on purpose: WS4 is the critical path. No further dispatch until two exit. Background watch for the first ingest created after 2026-11-11T00:48Z.
+- **Live subagents:** ws4-impl, ws10-impl, ws6-harness (Opus 5.5). Background watch for the first ingest created after 2026-11-11T00:48Z.
 - **Merged + verified:** WS0 → #213 `673c191`
 - **Next:** WS9 once a live ingest has published events and a lane is free; WS4 parity and disk bounds after WS4 PR 2
 - **Sprint API spend so far:** $0 of $10
@@ -149,7 +149,7 @@ OpenRouter parity, repeat eval runs.
 ### WS10: Session-start sync and freshness tracking: IN PROGRESS (Opus 5.5, `/Users/jason/unstale-ws10-session-sync`)
 - Dispatched whole (WS2 and WS3 are in). May split into two PRs. Leaves one marked place for WS4's pipeline.
 
-### WS5: Setup: MERGED, VERIFIED WITH GAPS, fix PR in progress
+### WS5: Setup: MERGED, VERIFIED WITH GAPS, fix merged (covered by the WS6 matrix, no separate verifier)
 - PR #224 → `725b8c1`, 507 tests, `main` green. Code `local/cli/src/setup/`; figures in `setup::quote()`;
   `NO_KEY_MODE=false`; goldens in `src/setup/golden/`.
 - Decisions for CEO review in the playback: first sync quoted as equal to one year per technology (a ceiling, not
@@ -164,6 +164,10 @@ OpenRouter parity, repeat eval runs.
   prompt saves "none" to the shared repo config; an agent's pseudo-terminal gets the interactive prompt; no
   regression test for parent or home `.env`; whole `.env` read into memory; Codex quality claims not measured
   through Codex. All sent to WS5-FIX (`/Users/jason/unstale-ws5-fix`).
+- **WS5-FIX: MERGED** PR #225 → `705ba46`, 523 tests. Blank values unset; a dismissal writes only
+  `.unstale/state/setup-dismissed`; agents never get the question (`setup::AGENT_VARS`; only CLAUDECODE and AI_AGENT
+  confirmed against a real tool); never-opened files tested as FIFOs; `.env` read without holding values; Codex
+  quality "not measured yet" (`Quote::quality_measured`).
 - **For WS4:** measure extraction quality through batched Codex (edge-cli never checked its recall); the "≈ 93% of
   breaking-change flags" figure is relative to Jev at threshold 0.05, so check which threshold the client runs;
   measure a real first sync (the quote is a placeholder equal to one year).
