@@ -159,6 +159,22 @@ export function rateLimit(error: unknown): { retryAfterMs?: number } | undefined
     return error.httpStatus === 429 ? (error.retryAfterMs === undefined ? {} : { retryAfterMs: error.retryAfterMs }) : undefined;
   return RATE_LIMITED.test(String(error instanceof Error ? error.message : error)) ? {} : undefined;
 }
+/** The host a rate limit came from, for the `rate_pause` line: the collector client's hostname, the hostname of a URL
+ * in the message (never its credentials, port or path), or the service a reader names (`GitHub …: 429`); else
+ * "unknown". */
+export function rateHost(error: unknown): string {
+  if (error instanceof FetchFailure && error.host) return error.host;
+  const message = String(error instanceof Error ? error.message : error);
+  const url = /\bhttps?:\/\/[^\s"'<>]+/.exec(message);
+  if (url)
+    try {
+      const host = new URL(url[0]).hostname;
+      if (host) return host;
+    } catch {
+      /* not a URL */
+    }
+  return /^(GitHub|OSV)\b/.exec(message)?.[1]!.toLowerCase() ?? "unknown";
+}
 const clock = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T", " ");
 
 /** Tags compared per package, and the share two packages must have in common to be one release stream. */
@@ -245,6 +261,12 @@ export class CoverageService {
   private tally = blankTally();
   /** Rate-limit pauses begun this drain (a 429 while one holds extends it, and is not counted again). */
   private pauses = 0;
+  /** The pause holding every start now, logged as one `rate_pause` line when it ends (or when the drain does). */
+  private pause?: { host: string; status: number; retry_after_ms: number | null; pause_ms: number; at: number; extended: number };
+  /** This drain's slices of the kept slot (the due refresh with the oldest upstream read, `pumpJobs`), and the due
+   * refreshes when it began. */
+  private kept = blankSlice();
+  private keptBefore: { due: number; oldest_due_age_s: number | null } = { due: 0, oldest_due_age_s: null };
   private measuredDrain?: DrainMetrics;
   private graceMs = 0;
   readonly concurrency: number;
@@ -644,6 +666,8 @@ export class CoverageService {
     this.draining = deadline;
     this.tally = blankTally();
     this.pauses = 0;
+    this.kept = blankSlice();
+    this.keptBefore = this.dueRefreshes();
     const tokensBefore = this.budget.tokensLeft();
     const pool = docsHttp.poolWaits();
     const cpu = process.cpuUsage();
@@ -681,8 +705,12 @@ export class CoverageService {
       this.persist(job);
     }
     this.keepRates();
+    this.endPause(true);
+    const after = this.dueRefreshes();
     this.measuredDrain = {
       slices: this.tally,
+      kept_slot: { ...this.kept, due_before: this.keptBefore.due, oldest_due_age_s_before: this.keptBefore.oldest_due_age_s,
+        due_after: after.due, oldest_due_age_s_after: after.oldest_due_age_s },
       pauses: this.pauses,
       tokens: Number.isFinite(tokensBefore) ? Math.max(0, tokensBefore - this.budget.tokensLeft()) : null,
       docs_pool: { waits: docsHttp.poolWaits().waits - pool.waits, waited_ms: docsHttp.poolWaits().waited_ms - pool.waited_ms },
@@ -707,17 +735,36 @@ export class CoverageService {
   metrics(): DrainMetrics | undefined {
     return this.measuredDrain;
   }
-  /** Unique monitored jobs, independent of slice counts. Unknown ages stay explicit during migration. */
+  /** Due refreshes not running (the kept slot's candidates), and the age of the oldest one's last upstream read
+   * (`lastChecked`; one never read is left out of the age). */
+  private dueRefreshes(at = Date.now()): { due: number; oldest_due_age_s: number | null } {
+    const due = [...this.jobs.values()].filter((j) => !this.running.has(j.purl) && this.refreshDue(j, at));
+    const oldest = Math.min(...due.map((j) => this.lastChecked(j)).filter((t) => t > 0));
+    return { due: due.length, oldest_due_age_s: Number.isFinite(oldest) ? Math.round(Math.max(0, at - oldest) / 1000) : null };
+  }
+  /** Unique monitored jobs, independent of slice counts. Unknown ages stay explicit during migration. `unimprovable`:
+   * jobs whose release check cannot get younger now, by reason: no repository (`release_checked` is set only from
+   * one), or a refresh failing before its release read (a failure since the last read, which a slice reaching the read
+   * would have renewed within the slice's time). `release_check_age_s_checkable` leaves both out. */
   freshness(at = Date.now()) {
     const jobs = [...this.jobs.values()].filter((j) => !j.merged_into && (j.monitored || j.state === "monitoring"));
-    const ages = jobs.flatMap((j) => {
+    const age = (j: Job) => {
       const checked = Date.parse(j.release_checked ?? "");
-      return Number.isFinite(checked) ? [Math.max(0, at - checked) / 1000] : [];
-    }).sort((a, b) => a - b);
-    const percentile = (p: number) => ages.length ? Math.round(ages[Math.ceil(ages.length * p) - 1]!) : null;
+      return Number.isFinite(checked) ? Math.max(0, at - checked) / 1000 : undefined;
+    };
+    const noRepository = (j: Job) => !!j.descriptor && !j.descriptor.repo;
+    const failing = (j: Job) => !noRepository(j) && !!j.failures && !(Date.parse(j.release_checked ?? "") >= Date.parse(j.updated) - SLICE_LIMIT_MS);
+    const sorted = (list: Job[]) => list.flatMap((j) => age(j) ?? []).sort((a, b) => a - b);
+    const ages = sorted(jobs);
+    const checkable = sorted(jobs.filter((j) => !noRepository(j) && !failing(j)));
+    const percentile = (list: number[], p: number) => list.length ? Math.round(list[Math.ceil(list.length * p) - 1]!) : null;
     return { monitored: jobs.length, release_check_unknown: jobs.length - ages.length,
-      release_check_age_s: { p50: percentile(0.5), p95: percentile(0.95), max: ages.length ? Math.round(ages[ages.length - 1]!) : null },
+      release_check_age_s: { p50: percentile(ages, 0.5), p95: percentile(ages, 0.95), max: ages.length ? Math.round(ages[ages.length - 1]!) : null },
       release_checks_over_6h: ages.filter((s) => s > 6 * 3600).length,
+      release_checks_over_24h: ages.filter((s) => s > 24 * 3600).length,
+      release_checks_over_3d: ages.filter((s) => s > 3 * 86_400).length,
+      unimprovable: { no_repository: jobs.filter(noRepository).length, failing_before_read: jobs.filter(failing).length },
+      release_check_age_s_checkable: { p95: percentile(checkable, 0.95), max: checkable.length ? Math.round(checkable[checkable.length - 1]!) : null },
       registry_check_unknown: jobs.filter((j) => !j.registry_checked).length,
       registry_check_oldest: jobs.filter((j) => j.registry_checked).map((j) => j.registry_checked!).sort()[0] ?? null,
       detected_waiting: jobs.filter((j) => j.change_detected).length,
@@ -794,13 +841,31 @@ export class CoverageService {
     return false;
   }
   /** A rate limit: nothing starts for a pause (doubled while rate limits follow one another, at least the server's
-   * Retry-After); returns when the pause ends. */
-  private ratePause(retryAfterMs = 0): number {
+   * Retry-After); returns when the pause ends. `error` names the host and status on the pause's `rate_pause` line. */
+  private ratePause(retryAfterMs = 0, error?: unknown): number {
     const t = Date.now();
+    const begins = t >= this.pausedUntil;
+    if (begins) this.endPause();
     if (t >= this.pausedUntil) this.pauses++;
     if (t >= this.pausedUntil) this.pauseMs = this.pauseMs ? Math.min(RATE_PAUSE_MS[1], this.pauseMs * 2) : RATE_PAUSE_MS[0];
     this.pausedUntil = Math.max(this.pausedUntil, t + Math.max(this.pauseMs, retryAfterMs));
+    if (begins) {
+      const status = error instanceof FetchFailure && error.httpStatus !== undefined ? error.httpStatus : 429;
+      this.pause = { host: rateHost(error), status, retry_after_ms: retryAfterMs || null, pause_ms: this.pausedUntil - t, at: t, extended: 0 };
+    } else if (this.pause) this.pause.extended++;
     return this.pausedUntil;
+  }
+  /** The `rate_pause` line of a pause that has ended: host, status, the server's Retry-After, the pause applied, how
+   * long every start was held (`lasted_ms`, extensions by later 429s included) and how many 429s extended it. `drainEnd`:
+   * the drain ended while it still held (`ongoing`; it lasted at least `lasted_ms`). */
+  private endPause(drainEnd = false) {
+    const p = this.pause;
+    const t = Date.now();
+    if (!p || (t < this.pausedUntil && !drainEnd)) return;
+    const ongoing = t < this.pausedUntil;
+    delete this.pause;
+    const { at, ...fields } = p;
+    console.error(JSON.stringify({ event: "rate_pause", ...fields, lasted_ms: (ongoing ? t : this.pausedUntil) - at, ...(ongoing ? { ongoing: true } : {}) }));
   }
   /** The budget limits at their cap now (see DailyBudget.spent). */
   spent(): Hold[] {
@@ -829,6 +894,7 @@ export class CoverageService {
    * waiting new technology (a second pass fills what no new technology took); returns how many jobs it started. A
    * drain past its deadline starts nothing. */
   private pump(): number {
+    this.endPause();
     const started = this.pumpJobs();
     this.pumpAdvisories();
     return started;
@@ -917,8 +983,12 @@ export class CoverageService {
     if (job.interrupted) this.runningCarried.add(job.purl);
     this.slices.set(job.purl, { at: Date.now(), refresh, first: isNew, oldest, check });
     this.launched++;
-    const kind = this.tally[isNew ? "new" : refresh ? "refresh" : "other"];
+    const kindName = isNew ? "new" : refresh ? "refresh" : "other";
+    const kind = this.tally[kindName];
     kind.started++;
+    const kept = oldest ? this.kept : undefined;
+    if (kept) kept.started++;
+    const startedAt = Date.now();
     delete job.paused_until;
     // Every model call of the slice is the technology's first coverage or its monitoring (util.ts, usage phases); the
     // context goes with the slice's own call chain, so slices running at once never take each other's calls.
@@ -929,7 +999,11 @@ export class CoverageService {
     const monitored = refresh || !!job.monitored;
     void withUsagePhase(monitored ? "monitoring" : "onboarding", job.technology, () => this.work(job))
       .then(() => {
-        kind[job.state === "queued" ? "yielded" : job.state === "failed" ? "failed" : "finished"]++;
+        const outcome = job.state === "queued" ? "yielded" : job.state === "failed" ? "failed" : "finished";
+        kind[outcome]++;
+        if (kept) kept[outcome]++;
+        if (outcome === "yielded")
+          console.error(JSON.stringify({ event: "slice_yielded", job: logName(job), kind: kindName, check, kept_slot: oldest, ms: Date.now() - startedAt }));
         // First coverage done: counted, so onboarding's cost divides by the technologies it covered.
         if (!monitored && job.state === "monitoring" && !job.merged_into) logUsage({ phase: "onboarding", tech: job.technology, milestone: "onboarded" });
         if (Date.now() >= this.pausedUntil) this.pauseMs = 0;
@@ -940,8 +1014,9 @@ export class CoverageService {
         // the pause that holds every start ends (in this cycle, or the next).
         const limited = rateLimit(error);
         kind[limited ? "rate_limited" : "failed"]++;
+        if (kept) kept[limited ? "rate_limited" : "failed"]++;
         if (limited) {
-          const until = this.ratePause(limited.retryAfterMs);
+          const until = this.ratePause(limited.retryAfterMs, error);
           job.paused_until = new Date(until).toISOString();
           const retry = `retried after ${clock(until)} UTC`;
           if (refresh) this.save(job, "monitoring", `${job.records} verified records; refresh rate-limited (${why}), ${retry}`);
@@ -1155,7 +1230,7 @@ export class CoverageService {
           const limited = rateLimit(error);
           if (limited) {
             // The runner's request rate, not the package: tried again after the pause, as if never passed.
-            this.ratePause(limited.retryAfterMs);
+            this.ratePause(limited.retryAfterMs, error);
             delete job.advisories_first;
             delete job.admitted;
             return;
@@ -1408,8 +1483,9 @@ export class CoverageService {
       return;
     }
     stage("guides_ms");
+    const slice = this.slices.get(job.purl);
     console.error(JSON.stringify({ event: "coverage_stages", technology: tech.id, refresh: refresh || !!job.monitored,
-      ...timings, release_requests: releases.stats.requests, new_releases: releases.stats.newReleases,
+      check, kept_slot: !!slice?.oldest, ...timings, release_requests: releases.stats.requests, new_releases: releases.stats.newReleases,
       detection_to_refresh_s: job.change_detected ? Math.round((Date.now() - Date.parse(job.change_detected)) / 1000) : null }));
     job.next_task = "history";
     job.retry_at = new Date(Date.now() + REFRESH_MS).toISOString();
@@ -1612,6 +1688,9 @@ type SliceTally = { started: number; finished: number; yielded: number; failed: 
 /** A drain's own measurements, on its final line: what parallelism buys (ingest.yml's CONCURRENCY) and costs. */
 export interface DrainMetrics {
   slices: Record<"new" | "refresh" | "other", SliceTally>;
+  /** The kept slot's slices, and the due refreshes (not running) with the age of the oldest one's last upstream read
+   * when the drain began and when it ended: the old tail clears when the age falls cycle over cycle. */
+  kept_slot: SliceTally & { due_before: number; oldest_due_age_s_before: number | null; due_after: number; oldest_due_age_s_after: number | null };
   pauses: number;
   /** Coverage-budget tokens this drain spent; null without a cap. */
   tokens: number | null;
@@ -1620,9 +1699,9 @@ export interface DrainMetrics {
   cpu_s: number;
   max_rss_mb: number;
 }
+const blankSlice = (): SliceTally => ({ started: 0, finished: 0, yielded: 0, failed: 0, rate_limited: 0 });
 function blankTally(): DrainMetrics["slices"] {
-  const t = (): SliceTally => ({ started: 0, finished: 0, yielded: 0, failed: 0, rate_limited: 0 });
-  return { new: t(), refresh: t(), other: t() };
+  return { new: blankSlice(), refresh: blankSlice(), other: blankSlice() };
 }
 /** A failed or stopped slice on the drain's log, beside its count in `slices`, so the run's log says what failed
  * without the saved state (run 40562343126 counted 46 failed new slices, none explained). The log is public: the job

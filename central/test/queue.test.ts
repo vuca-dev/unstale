@@ -682,3 +682,68 @@ test("under a spent budget every slot may take a release check past the cap, and
   // Both at once: the kept slot is not the only one a check may take.
   expect(most).toBe(2);
 });
+
+const events = (log: { mock: { calls: unknown[][] } }, name: string) =>
+  log.mock.calls.map(([line]) => (typeof line === "string" && line.startsWith("{") ? JSON.parse(line) : undefined)).filter((e) => e?.event === name);
+
+test("freshness counts the old tail by day and three days, and what cannot get younger now, without changing earlier fields", () => {
+  const service = new CoverageService(0, { limits: limits() });
+  const at = Date.now();
+  const ago = (hours: number) => new Date(at - hours * 3600_000).toISOString();
+  const monitored = (name: string, hours: number | undefined, extra: Partial<Job> = {}) => {
+    const job = service.submit(`pkg:npm/${name}`);
+    Object.assign(job, { state: "monitoring", descriptor: { repo: `ex/${name}` }, ...extra });
+    if (hours !== undefined) job.release_checked = ago(hours);
+    return job;
+  };
+  monitored("fresh", 1);
+  monitored("day", 30);
+  monitored("week", 24 * 7);
+  // Failed since its last read, which a slice reaching the read would have renewed: it cannot improve now.
+  monitored("failing", 24 * 9, { failures: 3, updated: ago(1) });
+  // Failed after its read (the read is within the slice): it is checked, its failure is later.
+  monitored("late-failure", 2, { failures: 1, updated: ago(1.9) });
+  // No repository: `release_checked` is never set.
+  monitored("homepage", undefined, { descriptor: { homepage: "https://example.org" } as never });
+  const f = service.freshness(at);
+  expect(f).toMatchObject({ monitored: 6, release_check_unknown: 1, release_checks_over_6h: 3,
+    release_check_age_s: { max: 24 * 9 * 3600 } });
+  expect(f).toMatchObject({ release_checks_over_24h: 3, release_checks_over_3d: 2,
+    unimprovable: { no_repository: 1, failing_before_read: 1 },
+    release_check_age_s_checkable: { p95: 24 * 7 * 3600, max: 24 * 7 * 3600 } });
+});
+
+test("a yielded check slice of the kept slot logs one line, is counted in kept_slot, and adds nothing to public status", async () => {
+  await mockWork({ "pkg:npm/verbose": { repo: "ex/verbose", tags: ["v1.0.3", "v1.0.2", "v1.0.1"], size: 60 } });
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
+  const service = new CoverageService(1, { advisories: false, limits: limits({ techQuarterTokens: 100 }), admission: async () => ({ admit: true, why: "test" }) }).hold();
+  const job = service.submit("pkg:npm/verbose");
+  const day = new Date(Date.now() - 86_400_000).toISOString();
+  Object.assign(job, { admitted: "used", monitored: day, refresh_checked: day, overflow: quarterKey(), quarter: { key: quarterKey(), tokens: 200 } });
+  await service.drain(Date.now() + 2000, 0, 1);
+  const yielded = events(log, "slice_yielded");
+  // The check (no model call) yields its history to tier 2; the history slices after it are no check and no kept slot.
+  expect(yielded[0]).toEqual({ event: "slice_yielded", job: "pkg:npm/verbose", kind: "other", check: true, kept_slot: true, ms: expect.any(Number) });
+  expect(yielded.slice(1).every((e) => !e.check && !e.kept_slot)).toBe(true);
+  expect(service.metrics()!.kept_slot).toMatchObject({ started: 1, yielded: 1, finished: 0, failed: 0, due_before: 1, oldest_due_age_s_before: expect.any(Number), due_after: 0, oldest_due_age_s_after: null });
+  expect(service.metrics()!.kept_slot.oldest_due_age_s_before).toBeGreaterThanOrEqual(86_400);
+  // Logging only: public status carries none of it (and no operator-only field).
+  for (const s of [service.publicStatus(job), ...service.statuses()])
+    for (const k of ["kept_slot", "check", "oldest", "unimprovable", "release_checked", "refresh_checked", "monitored", "failures_before_read"]) expect(s).not.toHaveProperty(k);
+});
+
+test("the per-slice timing line marks a check slice and a kept-slot slice", async () => {
+  await mockWork({ "pkg:npm/capped": { repo: "ex/capped", tags: ["v1.0.0"] }, "pkg:npm/plain": { repo: "ex/plain", tags: ["v1.0.0"] } });
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
+  const service = new CoverageService(1, { advisories: false, limits: limits(), admission: async () => ({ admit: true, why: "test" }) }).hold();
+  const day = new Date(Date.now() - 86_400_000).toISOString();
+  const capped = service.submit("pkg:npm/capped");
+  Object.assign(capped, { state: "monitoring", admitted: "used", monitored: day, release_checked: day, retry_at: day, overflow: quarterKey(),
+    completed: ["v1.0.0:sha256:" + "0".repeat(64) + ":audience-v1"] });
+  const plain = service.submit("pkg:npm/plain");
+  Object.assign(plain, { admitted: "used", demand: 5 });
+  await service.drain(Date.now() + 2000, 0, 1);
+  const stages = Object.fromEntries(events(log, "coverage_stages").map((e) => [e.technology, e]));
+  expect(stages.capped).toMatchObject({ check: true, kept_slot: true });
+  expect(stages.plain).toMatchObject({ check: false, kept_slot: false });
+});

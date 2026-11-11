@@ -679,3 +679,36 @@ test("token-free first pass: a waiting new technology's advisories are published
   expect(Date.now() - t).toBeLessThan(10_000);
   expect(service.jobs.get("pkg:npm/gamma")!.stage).toMatch(/^Admitted for coverage \(test\); 1 security advisory record published/);
 });
+
+test("each pause of every start logs its host, status, the Retry-After applied and how long it held, once it ends", async () => {
+  vi.useFakeTimers();
+  const answer = noSources().getMockImplementation()!;
+  let calls = 0;
+  vi.spyOn(discovery, "discoverTechnology").mockImplementation(async (purl) => {
+    if (++calls === 1) throw new FetchFailure("http_status", "HTTP 429", 429, 120_000, "registry.npmjs.org");
+    return answer(purl);
+  });
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
+  const service = new CoverageService(1, { limits: limits() }).hold();
+  service.enqueue([{ purl: "pkg:npm/a", demand: 2 }, { purl: "pkg:npm/b", demand: 1 }]);
+  const done = service.drain(Date.now() + 10 * 60_000, 0, 500);
+  await vi.advanceTimersByTimeAsync(100_000);
+  const pauses = () => log.mock.calls.map(([l]) => (typeof l === "string" && l.startsWith("{") ? JSON.parse(l) : undefined)).filter((e) => e?.event === "rate_pause");
+  // Still holding: nothing logged yet.
+  expect(pauses()).toEqual([]);
+  await vi.advanceTimersByTimeAsync(30_000);
+  await done;
+  expect(pauses()).toEqual([{ event: "rate_pause", host: "registry.npmjs.org", status: 429, retry_after_ms: 120_000, pause_ms: 120_000, lasted_ms: 120_000, extended: 0 }]);
+});
+
+test("a pause the drain ends inside is logged as ongoing; a host comes from a reader's URL without its credentials or path", async () => {
+  vi.spyOn(discovery, "discoverTechnology").mockRejectedValue(new Error("https://user:secret@registry.example/pkg/x?token=abc: 429"));
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
+  const service = new CoverageService(1, { limits: limits() }).hold();
+  service.enqueue([{ purl: "pkg:npm/a", demand: 1 }]);
+  await service.drain(Date.now() + 300, 0, 10);
+  const lines = log.mock.calls.map(([l]) => String(l)).filter((l) => l.includes("rate_pause"));
+  expect(lines).toHaveLength(1);
+  expect(JSON.parse(lines[0]!)).toMatchObject({ event: "rate_pause", host: "registry.example", status: 429, retry_after_ms: null, pause_ms: 60_000, ongoing: true });
+  expect(lines[0]).not.toMatch(/user|secret|token|\/pkg/);
+});

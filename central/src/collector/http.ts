@@ -23,11 +23,14 @@ export class FetchFailure extends Error {
   readonly httpStatus: number | undefined;
   /** The server's Retry-After on a 429 or 503 it answered (longer than this client waits itself), in milliseconds. */
   readonly retryAfterMs: number | undefined;
-  constructor(kind: FailureKind, message: string, httpStatus?: number, retryAfterMs?: number) {
+  /** The host that answered with `httpStatus` (a hostname only: no scheme, credentials, port or path), for logs. */
+  readonly host: string | undefined;
+  constructor(kind: FailureKind, message: string, httpStatus?: number, retryAfterMs?: number, host?: string) {
     super(message);
     this.kind = kind;
     this.httpStatus = httpStatus;
     this.retryAfterMs = retryAfterMs;
+    this.host = host;
   }
 }
 
@@ -137,7 +140,7 @@ export class HttpClient {
         return { status: res.status, finalUrl: current.toString(), headers: res.headers, body: res.body };
       }
       const retryAfter = res.status === 429 || res.status === 503 ? parseRetryAfter(res.headers.get("retry-after")) : undefined;
-      throw new FetchFailure("http_status", `HTTP ${res.status}`, res.status, retryAfter);
+      throw new FetchFailure("http_status", `HTTP ${res.status}`, res.status, retryAfter, current.hostname);
     }
     throw new FetchFailure("too_many_redirects", `more than ${this.opts.maxRedirects} redirects`);
   }
