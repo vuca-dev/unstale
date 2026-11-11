@@ -9,13 +9,13 @@
 
 - **Shape:** INDEPENDENT PRs to `main`. Every chunk is additive and behind one switch (README, "One switch").
 - **Ground truth:** GitHub PR state. Repo `vuca-dev/unstale`.
-- **Base:** `origin/main` @ `594b078` (`ci` green)
+- **Base:** `origin/main` @ `fab73ab` (`ci` green)
 - **Base health:** PR checks are `rust`, `central`, `gateway`; re-query before every merge.
-- **Open PRs:** #228 (WS4 PR 1, READY at `e4d4fd0`), #230 (WS4 PR 2, READY at `83321a3`, stacked); both awaiting independent review. WS9 draft pending
+- **Open PRs:** #231 (WS9 draft, waiting on events); WS10-FIX, terminal rework, WS4b pending
 - **Live worktrees (sprint):** `/Users/jason/unstale-edge-sprint` (tracker)
-- **Live subagents:** ws4-impl (review fixes on #228/#230), ws10-fix (`/Users/jason/unstale-ws10-fix`), terminal-rework (Fable 5.2, `/Users/jason/unstale-terminal-rework`), ws9. All exit READY, none merges; PM dispatches a reviewer.
+- **Live subagents:** ws4b-impl (Opus 5.5, `/Users/jason/unstale-ws4b`), ws10-fix (Opus 5.5), terminal-rework (Fable 5.2). ws9 paused at the data gate (background watch on ingest). All exit READY; PM dispatches a reviewer.
 - **Merged + verified:** WS0 → #213 `673c191`
-- **Next:** WS4 PR 2, then parity runs and cache disk bounds; WS6b full matrix; WS8 draft last
+- **Next:** review and merge WS10-FIX, terminal rework, WS4b A and B; then parity and cost runs; WS6b full matrix; WS9 run; WS8 draft last
 - **Sprint API spend so far:** $0 of $10
 
 ## §2 CEO directives (durable; read every iteration)
@@ -237,7 +237,14 @@ OpenRouter parity, repeat eval runs.
 - Early sign: one dry run gave about 10x the reading matter of a keyed report (241 KB events file).
 - **Resume** when the background watch reports two more ingest runs done: message the agent to recheck the gate.
 
-### WS4: Client pipeline steps and port parity: IN PROGRESS (Opus 5.5, `/Users/jason/unstale-ws4-pipeline`)
+### WS4: Client pipeline steps and port parity: PR 1 and PR 2 MERGED after review; WS4b in progress
+- **#228 → `5c8695f`, #230 → `fab73ab`**, re-review APPROVE (11 findings fixed and reproduced by the reviewer).
+  `unstale sync` makes no model call; model work runs only in the session-start background stage.
+- **Measured: 58% of index releases are named by no record**, so clients would re-derive them. Fix in WS4b PR A:
+  an `extracted` mark on each change event. **Precondition for parity, cost measurement and WS7.**
+- Behaviour change: `key_env` must be the route's known key variable; a team's custom name is refused (CEO asked
+  whether to allow custom names from the user config only).
+- WS4b (fresh EM): PR A the mark plus four review notes; PR B disk bounds. Then parity runs (about $1.65).
 - **PR 1 #228 and PR 2 #230 READY, not merged** (bot skipped both heads). Local 495 unit + suites, central 608.
   Records land in `{cache}/inference/records/<tech>.json`, merged by `cache::load_tech`; result cache
   `{cache}/inference/results/`; `unstale internal run-step --step extract|labels|match --in FILE.jsonl`.
