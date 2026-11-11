@@ -275,6 +275,7 @@ fn dispatch(cli: Cli) -> Result<u8> {
             if inference::enabled() {
                 let used = inference::Ledger::default_location().month_tokens(&inference::ledger::this_month());
                 println!("{}", inference::ledger::budget_line(used, inference::ledger::DEFAULT_MONTHLY_TOKENS));
+                if let Some(line) = events_failed_line(&cache::events_failed(&ctx.cache)) { println!("{line}"); }
             }
         }),
         Cmd::Notify => onboarding::notify(&ctx).inspect(|_| notice::print(&ctx.cache, &ctx.tool)),
@@ -291,6 +292,12 @@ fn dispatch(cli: Cli) -> Result<u8> {
         Cmd::Ledger { cmd: LedgerCmd::Check } => cmd_ledger_check(&ctx),
         Cmd::Run { target } => cmd_run(&ctx, &target),
     }
+}
+
+/// One line naming the technologies whose change events the last sync refused; their records synced regardless.
+fn events_failed_line(failed: &[(String, String)]) -> Option<String> {
+    let names: Vec<&str> = failed.iter().map(|(t, _)| t.as_str()).collect();
+    (!names.is_empty()).then(|| format!("Change events could not be verified for {}; the next sync tries again (records are unaffected)", names.join(", ")))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -310,6 +317,11 @@ fn cmd_infer(provider: &str, model: Option<String>, base_url: Option<String>, ke
     if let Some(m) = model { cfg.model = m; }
     if let Some(b) = base_url { cfg.base_url = b; }
     if key_env.is_some() { cfg.key_env = key_env; }
+    // With model steps off (the default), no call is made.
+    if !inference::enabled() {
+        println!("deferred: model steps on this machine are turned off");
+        return Ok(0);
+    }
     let mut p = Prompt::new(prompt);
     if let Some(s) = schema { p = p.schema(serde_json::from_str(&s).context("--schema: JSON")?); }
     // Another worker on this machine is already running model work: leave it to that one.
@@ -570,7 +582,9 @@ fn cmd_sync(ctx: &Ctx) -> Result<u8> {
     };
     for t in &rep.synced {
         // Change events are synced only with the edge-inference switch on; otherwise the line is as it was.
-        let events = if t.events_downloaded + t.events_reused > 0 {
+        let events = if t.events_failed.is_some() {
+            "; change events could not be verified (records unaffected; the next sync tries again)".to_string()
+        } else if t.events_downloaded + t.events_reused > 0 {
             format!("; change events {} downloaded, {} reused", t.events_downloaded, t.events_reused)
         } else {
             String::new()

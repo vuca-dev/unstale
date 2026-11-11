@@ -41,6 +41,38 @@ pub fn event_path(cache: &Path, tech: &str, r: &ShardRef) -> PathBuf {
     cache.join("v1/events").join(tech).join(shard_file_name(&r.path))
 }
 
+/// Where a technology's last change-event failure is kept (a dot file, which shard pruning leaves alone).
+fn events_failed_path(cache: &Path, tech: &str) -> PathBuf {
+    cache.join("v1/events").join(tech).join(".failed")
+}
+
+/// Records why a technology's change events were refused, or clears it (`None`) once they verify.
+pub fn set_events_failed(cache: &Path, tech: &str, why: Option<&str>) {
+    let p = events_failed_path(cache, tech);
+    match why {
+        Some(w) => {
+            let _ = crate::util::write_atomic(&p, w.as_bytes());
+        }
+        None => {
+            let _ = std::fs::remove_file(&p);
+        }
+    }
+}
+
+/// Technologies whose change events the last sync refused, with the reason.
+pub fn events_failed(cache: &Path) -> Vec<(String, String)> {
+    let Ok(rd) = std::fs::read_dir(cache.join("v1/events")) else { return vec![] };
+    let mut out: Vec<(String, String)> = rd
+        .flatten()
+        .filter_map(|e| {
+            let tech = e.file_name().to_string_lossy().to_string();
+            std::fs::read_to_string(events_failed_path(cache, &tech)).ok().map(|w| (tech, w))
+        })
+        .collect();
+    out.sort();
+    out
+}
+
 pub fn shard_file_name(path: &str) -> String {
     path.rsplit('/').next().unwrap_or(path).to_string()
 }
