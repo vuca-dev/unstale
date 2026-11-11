@@ -185,6 +185,8 @@ pub enum Deferred {
     TooLong,
     /// The answer could not be read as the expected JSON, or the provider declined to answer.
     Malformed,
+    /// The usage ledger or worker lock beside the cache cannot be read or written, so spend cannot be counted.
+    Storage,
     /// Codex is not on PATH.
     CodexMissing,
     /// Codex is older than [`codex::MIN_VERSION`].
@@ -212,6 +214,7 @@ impl Deferred {
             Deferred::Malformed => {
                 "the provider's answer could not be read; it runs next time".into()
             }
+            Deferred::Storage => "unstale's cache directory cannot be written".into(),
             Deferred::CodexMissing => "Codex is not installed".into(),
             Deferred::CodexTooOld => {
                 format!("Codex is older than {}; update it", codex::MIN_VERSION)
@@ -305,8 +308,11 @@ pub struct Choice {
 #[derive(Debug, Clone)]
 pub struct Classification {
     pub model: String,
+    /// Answers by question id. When a later request was deferred, the questions it carried are absent and
+    /// `deferred` says why; the answers already paid for are kept.
     pub answers: BTreeMap<String, Choice>,
     pub usage: Usage,
+    pub deferred: Option<Deferred>,
 }
 
 /// Timeouts and retries for one provider call. Only transient failures (429, 5xx, timeouts, no connection) retry.
@@ -411,10 +417,19 @@ impl Inference {
             model: self.provider.model.clone(),
             answers: BTreeMap::new(),
             usage: Usage::default(),
+            deferred: None,
         };
         for qs in http::jev_batches(&self.provider.model, state, questions) {
-            self.admit()?;
-            let (model, answers, usage) = http::jev(self, state, &qs)?;
+            let (model, answers, usage) =
+                match self.admit().and_then(|_| http::jev(self, state, &qs)) {
+                    Ok(r) => r,
+                    // Nothing answered yet: the whole request is deferred.
+                    Err(d) if out.answers.is_empty() => return Err(d),
+                    Err(d) => {
+                        out.deferred = Some(d);
+                        return Ok(out);
+                    }
+                };
             out.usage.add(&usage);
             out.answers.extend(answers);
             out.model = model;
@@ -424,10 +439,11 @@ impl Inference {
 
     /// Defers when this month's tokens have reached the budget.
     fn admit(&self) -> Result<(), Deferred> {
-        if self.ledger.month_tokens(&ledger::this_month()) >= self.monthly_budget {
-            return Err(Deferred::Budget);
+        match self.ledger.spent(&ledger::this_month()) {
+            Err(_) => Err(Deferred::Storage),
+            Ok(n) if n >= self.monthly_budget => Err(Deferred::Budget),
+            Ok(_) => Ok(()),
         }
-        Ok(())
     }
 
     fn key(&self) -> Result<String, Deferred> {
@@ -476,13 +492,34 @@ fn parse_answer(text: &str, schema: Option<&Value>) -> Option<Value> {
     if let Ok(v) = serde_json::from_str::<Value>(t) {
         return Some(v);
     }
-    let want_array = schema.and_then(|s| s.get("type")).and_then(Value::as_str) == Some("array");
+    let want_array = match schema.and_then(|s| s.get("type")).and_then(Value::as_str) {
+        Some(kind) => kind == "array",
+        // No schema: whichever kind of JSON value starts first.
+        None => matches!((t.find('['), t.find('{')), (Some(a), o) if o.is_none_or(|o| a < o)),
+    };
     let (open, close) = if want_array { ('[', ']') } else { ('{', '}') };
     let start = t.find(open)?;
     let end = t.rfind(close)?;
     (end > start)
         .then(|| serde_json::from_str(&t[start..=end]).ok())
         .flatten()
+}
+
+/// Whether a value has the schema's top-level shape: its type and, for an object, every required property. Full
+/// validation is the step's own; this catches an answer of the wrong kind from a route that does not enforce schemas.
+fn fits(v: &Value, schema: Option<&Value>) -> bool {
+    let Some(s) = schema else { return true };
+    match s.get("type").and_then(Value::as_str) {
+        Some("object") => v.as_object().is_some_and(|o| {
+            s.get("required").and_then(Value::as_array).is_none_or(|r| {
+                r.iter()
+                    .filter_map(Value::as_str)
+                    .all(|k| o.contains_key(k))
+            })
+        }),
+        Some("array") => v.is_array(),
+        _ => true,
+    }
 }
 
 /// A cache-and-ledger-safe temporary directory under the system temp dir, removed on drop.

@@ -303,6 +303,7 @@ fn cmd_infer(provider: &str, model: Option<String>, base_url: Option<String>, ke
         "openrouter" => ProviderConfig::openrouter(),
         "anthropic" => ProviderConfig::anthropic(),
         "codex" => ProviderConfig::codex(),
+        "custom" if base_url.is_none() || key_env.is_none() || model.is_none() => bail!("--provider custom needs --base-url, --key-env and --model"),
         "custom" => ProviderConfig::custom("custom", "", "", ""),
         other => bail!("unknown provider {other}"),
     };
@@ -312,7 +313,11 @@ fn cmd_infer(provider: &str, model: Option<String>, base_url: Option<String>, ke
     let mut p = Prompt::new(prompt);
     if let Some(s) = schema { p = p.schema(serde_json::from_str(&s).context("--schema: JSON")?); }
     // Another worker on this machine is already running model work: leave it to that one.
-    let Some(_lock) = inference::lock::try_acquire_default() else { return Ok(0) };
+    let _lock = match inference::lock::try_acquire_default() {
+        Ok(Some(l)) => l,
+        Ok(None) => return Ok(0),
+        Err(d) => { println!("{}", d.line()); return Ok(0); }
+    };
     let mut inf = Inference::new(cfg);
     if let Some(t) = timeout_secs { inf.limits.timeout = std::time::Duration::from_secs(t); }
     if let Some(b) = backoff_ms { inf.limits.backoff = std::time::Duration::from_millis(b); }

@@ -32,6 +32,18 @@ impl Usage {
     pub fn tokens(&self) -> u64 {
         self.input + self.output
     }
+    /// When a provider reports no usage: about four bytes of JSON per token each way, so the budget still counts the
+    /// call.
+    pub fn estimate(request: &impl Serialize, response: &impl Serialize) -> Usage {
+        let tokens = |v: Vec<u8>| (v.len() as u64).div_ceil(4);
+        Usage {
+            input: tokens(serde_json::to_vec(request).unwrap_or_default()),
+            cached: 0,
+            output: tokens(serde_json::to_vec(response).unwrap_or_default()),
+            reasoning: None,
+        }
+    }
+
     pub fn add(&mut self, o: &Usage) {
         self.input += o.input;
         self.cached += o.cached;
@@ -99,26 +111,38 @@ impl Ledger {
         }
     }
 
-    fn lines(&self, month: &str) -> Vec<Line> {
-        std::fs::read_to_string(self.file(month))
-            .unwrap_or_default()
+    /// A month's lines; a month with no file is empty. Any other read error is returned, so the budget check fails
+    /// closed rather than seeing zero spend.
+    fn lines(&self, month: &str) -> std::io::Result<Vec<Line>> {
+        let text = match std::fs::read_to_string(self.file(month)) {
+            Ok(t) => t,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+            Err(e) => return Err(e),
+        };
+        Ok(text
             .lines()
             .filter_map(|l| serde_json::from_str(l).ok())
-            .collect()
+            .collect())
     }
 
     /// Usage per (day, provider) in a month (`YYYY-MM`).
     pub fn by_day(&self, month: &str) -> BTreeMap<(String, String), Usage> {
         let mut out: BTreeMap<(String, String), Usage> = BTreeMap::new();
-        for l in self.lines(month) {
+        for l in self.lines(month).unwrap_or_default() {
             out.entry((l.day, l.provider)).or_default().add(&l.usage);
         }
         out
     }
 
     /// Tokens counted against the budget in a month.
+    /// (0 when the ledger cannot be read; [`Ledger::spent`] reports that.)
     pub fn month_tokens(&self, month: &str) -> u64 {
-        self.lines(month).iter().map(|l| l.usage.tokens()).sum()
+        self.spent(month).unwrap_or(0)
+    }
+
+    /// Tokens counted against the budget in a month, or the error that kept the ledger from being read.
+    pub fn spent(&self, month: &str) -> std::io::Result<u64> {
+        Ok(self.lines(month)?.iter().map(|l| l.usage.tokens()).sum())
     }
 }
 

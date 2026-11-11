@@ -48,7 +48,7 @@ fn post(
                     .headers()
                     .get("retry-after")
                     .and_then(|v| v.to_str().ok())
-                    .and_then(|v| v.trim().parse::<u64>().ok())
+                    .and_then(|v| crate::onboarding::retry_after_secs(v, unix_now()))
                     .map(|s| Duration::from_secs(s).min(RETRY_AFTER_MAX));
                 let outcome = match status {
                     200..=299 => r
@@ -56,7 +56,8 @@ fn post(
                         .with_config()
                         .limit(16 * 1024 * 1024)
                         .read_to_vec()
-                        .map_err(|_| Deferred::Unavailable)
+                        // The request was answered (and may have been billed): not sent again.
+                        .map_err(|_| Deferred::Malformed)
                         .and_then(|b| serde_json::from_slice(&b).map_err(|_| Deferred::Malformed)),
                     401 | 403 => Err(Deferred::Auth),
                     402 => Err(Deferred::Billing),
@@ -77,6 +78,12 @@ fn post(
             other => return other,
         }
     }
+}
+
+fn unix_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs())
 }
 
 fn base(inf: &Inference) -> &str {
@@ -117,11 +124,15 @@ pub(super) fn openai(inf: &Inference, p: &Prompt) -> Result<Answer, Deferred> {
         &body,
     )?;
     let u = r.get("usage").cloned().unwrap_or(Value::Null);
-    let usage = Usage {
-        input: num(&u, &["prompt_tokens"]).unwrap_or(0),
-        cached: num(&u, &["prompt_tokens_details", "cached_tokens"]).unwrap_or(0),
-        output: num(&u, &["completion_tokens"]).unwrap_or(0),
-        reasoning: num(&u, &["completion_tokens_details", "reasoning_tokens"]),
+    let usage = if u.get("prompt_tokens").is_none() {
+        Usage::estimate(&body, &r)
+    } else {
+        Usage {
+            input: num(&u, &["prompt_tokens"]).unwrap_or(0),
+            cached: num(&u, &["prompt_tokens_details", "cached_tokens"]).unwrap_or(0),
+            output: num(&u, &["completion_tokens"]).unwrap_or(0),
+            reasoning: num(&u, &["completion_tokens_details", "reasoning_tokens"]),
+        }
     };
     let model = r
         .get("model")
@@ -178,14 +189,18 @@ pub(super) fn anthropic(inf: &Inference, p: &Prompt) -> Result<Answer, Deferred>
     )?;
     let u = r.get("usage").cloned().unwrap_or(Value::Null);
     let read = num(&u, &["cache_read_input_tokens"]).unwrap_or(0);
-    let usage = Usage {
-        // `input_tokens` excludes cache reads and writes.
-        input: num(&u, &["input_tokens"]).unwrap_or(0)
-            + read
-            + num(&u, &["cache_creation_input_tokens"]).unwrap_or(0),
-        cached: read,
-        output: num(&u, &["output_tokens"]).unwrap_or(0),
-        reasoning: None,
+    let usage = if u.get("input_tokens").is_none() {
+        Usage::estimate(&body, &r)
+    } else {
+        Usage {
+            // `input_tokens` excludes cache reads and writes.
+            input: num(&u, &["input_tokens"]).unwrap_or(0)
+                + read
+                + num(&u, &["cache_creation_input_tokens"]).unwrap_or(0),
+            cached: read,
+            output: num(&u, &["output_tokens"]).unwrap_or(0),
+            reasoning: None,
+        }
     };
     let model = r
         .get("model")
@@ -264,18 +279,27 @@ pub(super) fn jev(
     qs: &BTreeMap<String, ChoiceQuestion>,
 ) -> Result<(String, BTreeMap<String, Choice>, Usage), Deferred> {
     let c = &inf.provider;
+    let body = jev_body(&c.model, state, qs);
+    if serde_json::to_vec(&body).map_or(0, |b| b.len()) > JEV_MAX_BYTES {
+        // One question alone is over the request limit: never sent.
+        return Err(Deferred::TooLong);
+    }
     let r = post(
         inf,
         &format!("{}/v1/systemone", base(inf)),
         ("Authorization", "Bearer "),
         &[],
-        &jev_body(&c.model, state, qs),
+        &body,
     )?;
-    let usage = Usage {
-        input: num(&r, &["usage", "input_tokens"]).unwrap_or(0),
-        cached: 0,
-        output: num(&r, &["usage", "output_tokens"]).unwrap_or(0),
-        reasoning: None,
+    let usage = if r.pointer("/usage/input_tokens").is_none() {
+        Usage::estimate(&body, &r)
+    } else {
+        Usage {
+            input: num(&r, &["usage", "input_tokens"]).unwrap_or(0),
+            cached: 0,
+            output: num(&r, &["usage", "output_tokens"]).unwrap_or(0),
+            reasoning: None,
+        }
     };
     let model = r
         .get("model")

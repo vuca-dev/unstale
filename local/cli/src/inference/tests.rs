@@ -388,7 +388,7 @@ fn codex_runs_the_lean_flag_set_in_an_empty_directory_and_reads_turn_usage() {
     for d in codex::tests_disabled() {
         assert!(has(&["--disable", d]), "{d}");
     }
-    assert_eq!(args.last().unwrap(), "Reply.");
+    assert_eq!(args[args.len() - 2..], ["--", "Reply."]);
     // The working directory is the empty temporary one named by -C, and it is gone afterwards.
     let work = &args[args.iter().position(|a| a == "-C").unwrap() + 1];
     let pwd = std::fs::read_to_string(log.join("0.pwd")).unwrap();
@@ -517,16 +517,22 @@ fn past_the_monthly_budget_work_is_deferred_without_a_call() {
 fn one_worker_per_machine() {
     let f = Fixture::new();
     let dir = f.dir.path().join("inference");
-    let held = lock::try_acquire(&dir).expect("the first worker takes the lock");
+    let held = lock::try_acquire(&dir)
+        .unwrap()
+        .expect("the first worker takes the lock");
     assert!(
-        lock::try_acquire(&dir).is_none(),
+        lock::try_acquire(&dir).unwrap().is_none(),
         "a second worker must not run"
     );
     drop(held);
     assert!(
-        lock::try_acquire(&dir).is_some(),
+        lock::try_acquire(&dir).unwrap().is_some(),
         "the lock is free once the first worker is done"
     );
+    // A lock that cannot be taken at all is not contention: it is reported.
+    let file = f.dir.path().join("a-file");
+    std::fs::write(&file, "").unwrap();
+    assert_eq!(lock::try_acquire(&file).unwrap_err(), Deferred::Storage);
 }
 
 #[test]
@@ -689,4 +695,93 @@ fn every_deferral_is_one_plain_line() {
             "{l}"
         );
     }
+}
+
+#[test]
+fn review_follow_ups() {
+    let f = Fixture::new();
+    // A response without usage is still counted, by estimate.
+    let m = Mock::new(vec![(
+        200,
+        json!({"choices": [{"message": {"content": "{\"ok\": true}"}, "finish_reason": "stop"}]})
+            .to_string(),
+    )]);
+    let inf = f.inference(ProviderConfig::openai(), &m.url);
+    let a = inf.complete(&Prompt::new("x")).unwrap();
+    assert!(a.usage.input > 0 && a.usage.output > 0, "{:?}", a.usage);
+    assert_eq!(
+        inf.ledger.month_tokens(&ledger::this_month()),
+        a.usage.tokens()
+    );
+    // A ledger that cannot be read fails closed.
+    let mut inf = f.inference(ProviderConfig::openai(), &m.url);
+    let blocked = f.dir.path().join("blocked");
+    std::fs::create_dir_all(blocked.join(format!("usage-{}.jsonl", ledger::this_month()))).unwrap();
+    inf.ledger = Ledger::new(blocked);
+    assert_eq!(
+        inf.complete(&Prompt::new("x")).unwrap_err(),
+        Deferred::Storage
+    );
+    // Without a schema, an array answer is read as one.
+    assert_eq!(
+        parse_answer("Here:\n```json\n[1, {\"a\": 2}]\n```", None),
+        Some(json!([1, {"a": 2}]))
+    );
+    // Jev: answers from earlier requests are kept when a later one is deferred.
+    let ok8: serde_json::Map<String, Value> = (0..8)
+        .map(|i| {
+            (
+                format!("q{i:02}"),
+                json!({"choice": "yes", "confidence": 0.9, "probabilities": {"yes": 0.9, "no": 0.1}}),
+            )
+        })
+        .collect();
+    let m = Mock::new(vec![
+        (
+            200,
+            json!({"answers": ok8, "usage": {"input_tokens": 1, "output_tokens": 1}}).to_string(),
+        ),
+        (401, "{}".into()),
+    ]);
+    let inf = f.inference(ProviderConfig::jev(), &m.url);
+    let qs: BTreeMap<String, ChoiceQuestion> = (0..10)
+        .map(|i| (format!("q{i:02}"), question(&["yes", "no"])))
+        .collect();
+    let c = inf.classify(&json!({}), &qs).unwrap();
+    assert_eq!((c.answers.len(), c.deferred), (8, Some(Deferred::Auth)));
+    // A single question over the request limit is never sent.
+    let m = Mock::new(vec![(200, "{}".into())]);
+    let inf = f.inference(ProviderConfig::jev(), &m.url);
+    let big = BTreeMap::from([("a".to_string(), question(&["yes", "no"]))]);
+    let state = json!({"text": "x".repeat(40 * 1024)});
+    assert_eq!(inf.classify(&state, &big).unwrap_err(), Deferred::TooLong);
+    assert_eq!(m.count(), 0);
+}
+
+#[cfg(unix)]
+#[test]
+fn codex_gets_the_schema_in_its_prompt_and_an_answer_of_the_wrong_shape_is_not_taken() {
+    let f = Fixture::new();
+    let wrong =
+        r#"{"type":"item.completed","item":{"type":"agent_message","text":"{\"other\": 1}"}}"#;
+    let bin = fake_codex(f.dir.path(), "0.166.0", true, wrong, 0);
+    let inf = f.inference(ProviderConfig::codex(), &bin.to_string_lossy());
+    assert_eq!(
+        inf.complete(&Prompt::new("-x").schema(schema()))
+            .unwrap_err(),
+        Deferred::Malformed
+    );
+    let args = std::fs::read_to_string(f.dir.path().join("codex-calls/0.args")).unwrap();
+    let lines: Vec<&str> = args.lines().collect();
+    let dash = lines
+        .iter()
+        .position(|l| *l == "--")
+        .expect("-- before the prompt");
+    let prompt = lines[dash + 1..].join("\n");
+    assert!(
+        prompt.starts_with("-x") && prompt.contains(r#""required":["ok"]"#),
+        "{prompt}"
+    );
+    // Usage that was not reported is estimated, so the call still counts.
+    assert!(inf.ledger.month_tokens(&ledger::this_month()) > 0);
 }

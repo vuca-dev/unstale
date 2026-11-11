@@ -116,7 +116,10 @@ fn ready(inf: &Inference) -> Result<(), Deferred> {
         .get_or_init(|| {
             let quick = Duration::from_secs(20);
             let version = match run(command(inf, &["--version"]), quick) {
-                Err(_) => return Err(Deferred::CodexMissing),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    return Err(Deferred::CodexMissing);
+                }
+                Err(_) => return Err(Deferred::Unavailable),
                 Ok(None) => return Err(Deferred::Timeout),
                 Ok(Some((_, out, _))) => out,
             };
@@ -170,7 +173,8 @@ fn args(inf: &Inference, work: &str, instructions: &str, prompt: &str) -> Vec<St
     for f in DISABLED {
         a.extend(["--disable".into(), f.to_string()]);
     }
-    a.extend(["-C".into(), work.into(), prompt.into()]);
+    // `--` so a prompt that starts with `-` is never read as a flag.
+    a.extend(["-C".into(), work.into(), "--".into(), prompt.into()]);
     a
 }
 
@@ -194,19 +198,31 @@ fn attempt(inf: &Inference, p: &Prompt) -> Result<Answer, Deferred> {
     let side = TempDir::new("codex-instructions").map_err(|_| Deferred::Unavailable)?;
     let instructions = side.0.join("instructions.md");
     std::fs::write(&instructions, INSTRUCTIONS).map_err(|_| Deferred::Unavailable)?;
+    // The measured flag set has no response-format option, so the schema goes in the prompt and the answer's
+    // top-level shape is checked.
+    let text = match &p.schema {
+        Some(s) => format!(
+            "{}\n\nAnswer with JSON only, following this JSON Schema:\n{s}\n",
+            p.text.trim_end()
+        ),
+        None => p.text.clone(),
+    };
     let mut c = command(inf, &[]);
     c.args(args(
         inf,
         &work.0.to_string_lossy(),
         &instructions.to_string_lossy(),
-        &p.text,
+        &text,
     ))
     .current_dir(&work.0);
     let (ok, stdout, stderr) = match run(c, inf.limits.timeout) {
-        Err(_) => return Err(Deferred::CodexMissing),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Err(Deferred::CodexMissing),
+        // Installed but would not start with this request (an oversized prompt, for one): not retried.
+        Err(_) => return Err(Deferred::Rejected),
         Ok(None) => return Err(Deferred::Timeout),
         Ok(Some(r)) => r,
     };
+    let prompt_text = text;
     let mut text = None;
     let mut usage: Option<Usage> = None;
     let mut errors = String::new();
@@ -239,12 +255,16 @@ fn attempt(inf: &Inference, p: &Prompt) -> Result<Answer, Deferred> {
         }
     }
     let model = inf.provider.model.clone();
+    // An answer that came without usage is still counted, from the bytes each way.
+    let usage = usage.or_else(|| text.as_ref().map(|t| Usage::estimate(&prompt_text, t)));
     if let Some(u) = &usage {
         inf.ledger.record(&inf.provider.name, &model, u);
     }
     match text {
         Some(t) if ok => {
-            let value = parse_answer(&t, p.schema.as_ref()).ok_or(Deferred::Malformed)?;
+            let value = parse_answer(&t, p.schema.as_ref())
+                .filter(|v| super::fits(v, p.schema.as_ref()))
+                .ok_or(Deferred::Malformed)?;
             Ok(Answer {
                 value,
                 model,
