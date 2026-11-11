@@ -58,9 +58,10 @@ test("a package page lists majors newest first, breaking changes before fixes, w
   // The first run's question, and the trade stated on the page and in its Markdown twin.
   expect(home).toContain("How should unstale read new release notes?");
   expect(home).toContain("  1  OpenAI     ≈ $2.43                 ≈ 11 in 100 breaking flags wrong, not 8");
+  expect(home).toContain("  2  Not now    free                    ≈ 27% of its changes in new releases");
   for (const page of [home, readFileSync(join(site, "index.md"), "utf8"), readFileSync(join(site, "llms.txt"), "utf8")]) {
     expect(page).toContain("about $0.064 per package, per year on an OpenAI key");
-    expect(page).toContain("about 27% of what unstale finds with one");
+    expect(page).toContain("about 27% of the changes in new releases");
   }
   for (const page of [home, readFileSync(join(site, "index.md"), "utf8")]) {
     expect(page).toContain("No client telemetry.");

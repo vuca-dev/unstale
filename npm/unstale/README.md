@@ -24,8 +24,7 @@ and can focus on a package, upgrade target, or capability you name.
 
 `init` asks once how new release notes should be read: on your own API key or your Codex plan, with this
 repository's yearly cost beside each option, or not at all. An OpenAI key costs about $0.064 per package, per year.
-With no provider, new releases bring security advisories and deprecations only, about 27% of what unstale finds with
-one. `unstale setup` changes the choice
+With no provider, new releases get advisories and deprecations only, about 27% of the changes in new releases. `unstale setup` changes the choice
 ([details](https://github.com/vuca-dev/unstale#reading-new-release-notes)).
 
 `unstale uninstall` removes everything `init` wrote and backs up your decisions.

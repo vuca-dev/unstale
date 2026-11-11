@@ -313,7 +313,7 @@ const TERMINAL: [string, string][] = [
   ["", ""],
   ["muted", "     Read with  Cost a year, this repo  Compared with the best option"],
   ["body", "  1  OpenAI     ≈ $2.43                 ≈ 11 in 100 breaking flags wrong, not 8"],
-  ["body", "  2  Not now    free                    ≈ 27%: advisories and deprecations only"],
+  ["body", "  2  Not now    free                    ≈ 27% of its changes in new releases"],
   ["muted", "     Keys: OPENAI_API_KEY"],
   ["", ""],
   ["body", "Enter for 1, a number to choose, or d for details:"],
@@ -366,7 +366,7 @@ const READING = `${REPO}#reading-new-release-notes`;
 /** What reading new release notes costs and what going without gives up; the figures are the client's own
  *  (`quote()` in `local/cli/src/setup.rs`). */
 const COST =
-  "Changes already in the catalog cost nothing. New release notes are read by a model on your own API key or your Codex plan: about $0.064 per package, per year on an OpenAI key. With no provider, new releases bring security advisories and deprecations only, about 27% of what unstale finds with one.";
+  "Changes already in the catalog cost nothing. New release notes are read by a model on your own API key or your Codex plan: about $0.064 per package, per year on an OpenAI key. With no provider, new releases get advisories and deprecations only, about 27% of the changes in new releases.";
 const BEAT_NAIVE = `${REPO}/blob/main/eval/beat-naive/RESULTS.md`;
 
 /** Distinct package identities, including related packages grouped on a single page. */

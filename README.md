@@ -117,7 +117,7 @@ repository's yearly cost beside each option. `unstale setup` asks again.
 | OpenAI, Vercel AI Gateway or OpenRouter key | `OPENAI_API_KEY`, `AI_GATEWAY_API_KEY` or `OPENROUTER_API_KEY` | $0.064 | About as many breaking changes. ≈ 11 in 100 breaking-change flags wrong, against 8. ≈ 4 more changes listed twice |
 | Codex plan | `codex login` | 650k Codex tokens (170k measured, the rest an estimate) | ≈ 80% of its changes. Wrong flags and repeats not measured yet |
 | Anthropic key | `ANTHROPIC_API_KEY` | $0.075 | ≈ 90% of its changes, fewer from upgrade guides. ≈ 23 more changes listed twice |
-| Not now | | Free | For new releases, security advisories and deprecations only: ≈ 27% of what unstale finds with a provider |
+| Not now | | Free | New releases get advisories and deprecations only: ≈ 27% of the changes in new releases |
 
 Jev is a labelling service, used beside the provider that reads the notes. Costs are estimates from
 [evaluation runs](eval/edge-port/RESULTS.md), billed by the provider to your key or plan. An OpenAI key on a repository
@@ -134,7 +134,8 @@ alone.
 `--limit none` removes it. The cache holds up to 100 MB (`UNSTALE_CACHE_MAX_MB` changes that). Answers you paid for
 are never deleted to make room.
 - **When something is wrong.** A rejected key, a provider that does not answer or a reached limit never fails a
-command. unstale prints one `warning:` line with the fix, and `unstale status` shows the current state.
+command. unstale prints one `warning:` line with the fix, and `unstale status` shows the current state. A client too
+old for the catalog reads no release notes and prints the upgrade command.
 - **Team default.** In shared mode `.unstale/config.json` is committed. It names the provider and the key's variable,
 so the team shares the choice and each person keeps their own key. `unstale setup --user` saves a choice for all your
 repositories. A repository's own choice comes first.
