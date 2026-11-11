@@ -9,13 +9,13 @@
 
 - **Shape:** INDEPENDENT PRs to `main`. Every chunk is additive and behind one switch (README, "One switch").
 - **Ground truth:** GitHub PR state. Repo `vuca-dev/unstale`.
-- **Base:** `origin/main` @ `df9ea49` (10 November 2026)
+- **Base:** `origin/main` @ `7be1f24` (`ci` green)
 - **Base health:** PR checks are `rust`, `central`, `gateway`; re-query before every merge.
-- **Open PRs:** none yet (design docs #218 merged)
+- **Open PRs:** #221 (WS2)
 - **Live worktrees (sprint):** `/Users/jason/unstale-edge-sprint` (tracker)
-- **Live subagents:** ws3-impl (Opus 5.5), ws2-impl (Opus 5.5), both dispatched 10 November
+- **Live subagents:** ws2-impl (Opus 5.5), ws1-impl (Opus 5.5), ws3-verifier (Fable 5.2)
 - **Merged + verified:** WS0 → #213 `673c191`
-- **Next:** WS1 when a lane frees; WS10a after it
+- **Next:** WS5 or WS10a when a lane frees (WS3 is in); WS9 after WS2
 - **Sprint API spend so far:** $0 of $10
 
 ## §2 CEO directives (durable; read every iteration)
@@ -76,13 +76,21 @@ OpenRouter parity, repeat eval runs.
 
 ## §3 Per-chunk log (dispatch order)
 
-### WS3: Client inference core: IN PROGRESS
-- EM: impl, Opus 5.5. Worktree `/Users/jason/unstale-ws3-inference-core`.
+### WS3: Client inference core: MERGED, verifier running
+- PR #220 → `7be1f24`. Tests 472/472 at merge; 13 review threads, 0 unresolved (1 dismissed with comment). `main` `ci` green.
+- Interface: `local/cli/src/inference/` (`Inference::new(ProviderConfig::…)`, `complete`, `complete_batch`, `classify`,
+  `Deferred::line()`, `lock::try_acquire_default()`, `ledger`). The one switch is `UNSTALE_EDGE_INFERENCE=1`
+  (`inference::enabled()`); WS4, WS5 and WS10 reuse it.
+- Budget default 48M tokens a month, an estimate; WS4's measured first sync replaces it.
+- Gotchas: cache pruning (WS4) must keep `{cache}/inference/` (ledger and lock). `cargo fmt --check` fails on `main`
+  before the sprint; agents format only their own files. The eval RESULTS files are on draft PRs #212, #214, #217,
+  not `main`; read them from those branches.
+- One real Codex smoke call (plan-billed, about 4K tokens). No paid API calls.
 
 ### WS2: Change events in the catalog: IN PROGRESS
 - EM: investigation then impl in one agent, Opus 5.5. Worktree `/Users/jason/unstale-ws2-change-events`.
 
-### WS1: Prompts as shared data: NOT STARTED
+### WS1: Prompts as shared data: IN PROGRESS
 - EM: impl, Opus 5.5. Starts when the first lane frees.
 
 ### WS10a: Session-start hook install (Claude Code, Codex, opencode check): NOT STARTED
