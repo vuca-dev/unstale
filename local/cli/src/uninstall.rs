@@ -154,7 +154,11 @@ pub fn run(start: &Path) -> Result<u8> {
             })
         })?;
     }
-    std::fs::remove_dir_all(&tool)?;
+    // A session-start background stage may still be writing its state here; it stops once the configuration is
+    // gone, so a second attempt finds nothing new.
+    if std::fs::remove_dir_all(&tool).is_err() {
+        std::fs::remove_dir_all(&tool)?;
+    }
     println!(
         "Removed unstale from this repository. The CLI and shared catalog cache remain.\nLocal backup: {}\nRun unstale init to start fresh.",
         backup.display()

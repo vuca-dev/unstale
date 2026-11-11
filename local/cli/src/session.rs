@@ -118,7 +118,12 @@ pub fn read_state(tool: &Path) -> State {
         .unwrap_or_default()
 }
 
+/// Written only while unstale is set up here: a background stage still running when the repository is uninstalled
+/// leaves nothing behind.
 fn write_state(tool: &Path, s: &State) -> Result<()> {
+    if !tool.join("config.json").is_file() {
+        return Ok(());
+    }
     util::write_atomic(&state_path(tool), &serde_json::to_vec_pretty(s)?)
 }
 
