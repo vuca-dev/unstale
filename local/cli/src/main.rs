@@ -569,8 +569,14 @@ fn cmd_sync(ctx: &Ctx) -> Result<u8> {
         Err(e) => return Err(e),
     };
     for t in &rep.synced {
+        // Change events are synced only with the edge-inference switch on; otherwise the line is as it was.
+        let events = if t.events_downloaded + t.events_reused > 0 {
+            format!("; change events {} downloaded, {} reused", t.events_downloaded, t.events_reused)
+        } else {
+            String::new()
+        };
         println!(
-            "synced {}: {} records (sources checked {}); {}",
+            "synced {}: {} records (sources checked {}); {}{events}",
             t.technology,
             t.records,
             t.checked,

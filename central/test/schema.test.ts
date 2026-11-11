@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
 import { generate } from "../scripts/gen-zod.ts";
-import { ShardLine, TechIndex } from "../src/schema/catalog.ts";
+import { EventLine, ShardLine, TechIndex } from "../src/schema/catalog.ts";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const lines = (file: string) =>
@@ -78,6 +78,20 @@ describe("schema seam", () => {
     expect(TechIndex.safeParse(idx).success).toBe(true);
     expect(TechIndex.safeParse({ ...idx, sample_n: -1 }).success).toBe(false);
     expect(TechIndex.safeParse({ ...idx, sample_n: 1.5 }).success).toBe(false);
+  });
+
+  test("change events: every line Rust wrote is accepted; a chunk without its hash or an unknown field is not", () => {
+    const rust = lines("rust-events.v1.jsonl");
+    expect(rust).toHaveLength(3);
+    for (const l of rust) expect(EventLine.safeParse(l).error).toBeUndefined();
+    expect(rust.at(-1)).toMatchObject({ kind: "upgrade_guide", no_later_than: "16.2.0", freshness: { backfilled: true } });
+    const e = rust[0]!;
+    const chunks = e.chunks as Array<Record<string, unknown>>;
+    expect(EventLine.safeParse({ ...e, chunks: [{ id: chunks[0]!.id, text: "x" }] }).success).toBe(false);
+    expect(EventLine.safeParse({ ...e, extra: 1 }).success).toBe(false);
+    expect(EventLine.safeParse({ ...e, freshness: { first_seen: "x" } }).success).toBe(false);
+    const idx = { schema: 1, technology: "next", sample_n: 0, checked: "x", shards: [] };
+    expect(TechIndex.safeParse({ ...idx, events: [{ line: "16", path: "p", sha256: "s", bytes: 1, records: 1 }] }).success).toBe(true);
   });
 
   test("tech index: the sample list Rust wrote is accepted; a malformed sample entry is not", () => {

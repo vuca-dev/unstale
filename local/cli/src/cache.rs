@@ -1,14 +1,16 @@
 //! The per-user catalog cache, shared across repositories, and reading it.
 //!
 //! Layout under the cache directory, mirroring the published catalog:
-//! `v1/root.json`, `v1/tech/{technology}.json` (the index bytes as published), `v1/shards/{technology}/{file}`.
-//! An index is written only after every shard it names is present and verified, so the index rename is the swap.
+//! `v1/root.json`, `v1/tech/{technology}.json` (the index bytes as published), `v1/shards/{technology}/{file}`, and,
+//! with the edge-inference switch on, `v1/events/{technology}/{file}` (the change-event shards the index names in
+//! `events`). An index is written only after every shard it names is present and verified, so the index rename is the
+//! swap.
 
 use anyhow::{Context, Result, bail};
 use std::collections::BTreeMap;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use unstale_schema::catalog::{CATALOG_SCHEMA, CapabilityRecord, ShardLine, ShardRef, TechIndex};
+use unstale_schema::catalog::{CATALOG_SCHEMA, CapabilityRecord, EventLine, ShardLine, ShardRef, TechIndex};
 
 use crate::util::sha256_hex;
 
@@ -32,6 +34,11 @@ pub fn index_path(cache: &Path, tech: &str) -> PathBuf {
 
 pub fn shard_path(cache: &Path, tech: &str, r: &ShardRef) -> PathBuf {
     cache.join("v1/shards").join(tech).join(shard_file_name(&r.path))
+}
+
+/// Where a change-event shard is cached: beside the record shards' directory, so their clean-up never touches it.
+pub fn event_path(cache: &Path, tech: &str, r: &ShardRef) -> PathBuf {
+    cache.join("v1/events").join(tech).join(shard_file_name(&r.path))
 }
 
 pub fn shard_file_name(path: &str) -> String {
@@ -148,6 +155,51 @@ pub fn load_tech(cache: &Path, tech: &str) -> Result<Option<TechData>> {
     td.records.sort_by(|a, b| a.r.id.cmp(&b.r.id));
     td.records.dedup_by(|a, b| a.r.id == b.r.id);
     Ok(Some(td))
+}
+
+/// A technology's cached change events: every event its cached index names, each shard verified.
+#[derive(Debug, Clone, Default)]
+pub struct Events {
+    pub events: Vec<EventLine>,
+    /// Lines that do not parse (a field this client cannot read): skipped.
+    pub skipped: usize,
+}
+
+/// Parse a gzipped JSON-lines events shard.
+pub fn parse_events(gz: &[u8]) -> Result<Events> {
+    let mut text = String::new();
+    flate2::read::GzDecoder::new(gz).read_to_string(&mut text).context("events shard is not gzipped UTF-8 text")?;
+    let mut out = Events::default();
+    for line in text.lines().filter(|l| !l.trim().is_empty()) {
+        match serde_json::from_str::<EventLine>(line) {
+            Ok(e) => out.events.push(e),
+            Err(_) => out.skipped += 1,
+        }
+    }
+    Ok(out)
+}
+
+/// Load one technology's change events from the cache: what the client's own model steps read (none does yet). `Ok(None)` when the
+/// technology was never synced; empty when its index names none. An event shard missing or corrupted is an error, so a
+/// caller never works from part of a release.
+#[cfg_attr(not(test), allow(dead_code))]
+pub fn load_events(cache: &Path, tech: &str) -> Result<Option<Events>> {
+    let ip = index_path(cache, tech);
+    let Ok(bytes) = std::fs::read(&ip) else { return Ok(None) };
+    let index: TechIndex = serde_json::from_slice(&bytes).with_context(|| format!("cached index {}", ip.display()))?;
+    if index.schema > CATALOG_SCHEMA {
+        bail!("cached index for {tech} has schema {}; this unstale reads {CATALOG_SCHEMA}", index.schema);
+    }
+    let mut out = Events::default();
+    for s in &index.events {
+        let p = event_path(cache, tech, s);
+        let gz = std::fs::read(&p).with_context(|| format!("cached change events {} missing; run `unstale sync`", p.display()))?;
+        verify_shard(s, &gz).context("cached change events corrupted; run `unstale sync`")?;
+        let e = parse_events(&gz)?;
+        out.events.extend(e.events);
+        out.skipped += e.skipped;
+    }
+    Ok(Some(out))
 }
 
 /// The loaded catalog for a stack: technologies by id, and a lookup across all of them (a merge target may sit

@@ -16,6 +16,7 @@ const ROOT = process.env.UNSTALE_SEAM_ROOT ?? join(dirname(fileURLToPath(import.
 const OUT = join(ROOT, "central", "src", "schema", "catalog.ts");
 const DOCS: Array<[file: string, name: string]> = [
   ["catalog-shard-line.v1.json", "ShardLine"],
+  ["catalog-event-line.v1.json", "EventLine"],
   ["catalog-tech-index.v1.json", "TechIndex"],
   ["catalog-root.v1.json", "Root"],
   ["catalog-technologies.v1.json", "Technologies"],

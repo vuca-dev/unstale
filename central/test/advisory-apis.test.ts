@@ -4,7 +4,7 @@
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { advisoryApis, advisoryText, APIS_PROMPT, attachAdvisoryApis, groundedApis, MAX_APIS, MAX_TEXT, packageNamesOf } from "../src/pipeline/advisory-apis.ts";
 import type { Advisory } from "../src/pipeline/advisories.ts";
 import { publishTechnology } from "../src/pipeline/publish.ts";
@@ -32,6 +32,15 @@ function model(answers: Record<string, string>) {
   };
   return { ask: ask as never, prompts };
 }
+
+// A publish reads the technology's change events from the central directory: a fresh one per test, never the
+// operator's store.
+const centralBefore = process.env.UNSTALE_CENTRAL_DIR;
+beforeEach(() => void (process.env.UNSTALE_CENTRAL_DIR = mkdtempSync(join(tmpdir(), "unstale-central-"))));
+afterEach(() => {
+  if (centralBefore === undefined) delete process.env.UNSTALE_CENTRAL_DIR;
+  else process.env.UNSTALE_CENTRAL_DIR = centralBefore;
+});
 
 describe("advisory affected APIs", () => {
   test("names are kept only as the advisory writes them: not invented, not the package, not prose, at most MAX_APIS", () => {

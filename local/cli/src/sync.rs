@@ -19,6 +19,11 @@
 //! package's name must not reach the catalog host, its logs or anyone on the path. Those are reported as `withheld`
 //! and settled without a request; they are not in a public catalog anyway, and the next sync with the list reads any
 //! that is. A local directory is read whole, as nothing leaves the machine.
+//!
+//! With the edge-inference switch on (`util::edge_inference`), a synced technology's change events (the shards its
+//! index names in `events`) are fetched and verified the same way and cached under `v1/events/<tech>/`, before the
+//! index swap; only for technologies the repository uses (a technology not in the stack gets none), and an event shard
+//! already cached costs no request. With it off, events are never fetched.
 
 use anyhow::{Context, Result, anyhow, bail};
 use serde::{Deserialize, Serialize};
@@ -27,7 +32,7 @@ use std::path::{Component, Path, PathBuf};
 use std::time::Duration;
 use unstale_schema::catalog::{CATALOG_SCHEMA, Root, TechIndex, Technologies};
 
-use crate::cache::{self, index_path, parse_shard, shard_path, verify_shard};
+use crate::cache::{self, event_path, index_path, parse_shard, shard_path, verify_shard};
 use crate::util::{normalize_purl, parse_version, sha256_hex, write_atomic};
 
 /// The catalog refused as a whole: newer schema or a newer minimum client. The cache is left as it was.
@@ -277,6 +282,9 @@ pub struct TechSync {
     pub downloaded: usize,
     pub reused: usize,
     pub unchanged: bool,
+    /// Change-event shards fetched and reused from the cache (both 0 with the edge-inference switch off).
+    pub events_downloaded: usize,
+    pub events_reused: usize,
 }
 
 #[derive(Debug, Default)]
@@ -364,7 +372,13 @@ fn not_checked<'c>(candidates: impl IntoIterator<Item = &'c String>, progress: &
     rep
 }
 
-fn sync_with(src: &Source, cache_dir: &Path, candidates: &BTreeSet<String>, withheld: &BTreeSet<String>, purls: &BTreeSet<String>, key: Option<&[u8; 32]>, stop: &(dyn Fn() -> bool + Sync), mut progress: impl FnMut(&str)) -> Result<Report> {
+fn sync_with(src: &Source, cache_dir: &Path, candidates: &BTreeSet<String>, withheld: &BTreeSet<String>, purls: &BTreeSet<String>, key: Option<&[u8; 32]>, stop: &(dyn Fn() -> bool + Sync), progress: impl FnMut(&str)) -> Result<Report> {
+    sync_with_events(src, cache_dir, candidates, withheld, purls, key, crate::util::edge_inference(), stop, progress)
+}
+
+/// `sync_with`, fetching change events when `events` (the edge-inference switch, passed in so tests set it).
+#[allow(clippy::too_many_arguments)]
+fn sync_with_events(src: &Source, cache_dir: &Path, candidates: &BTreeSet<String>, withheld: &BTreeSet<String>, purls: &BTreeSet<String>, key: Option<&[u8; 32]>, events: bool, stop: &(dyn Fn() -> bool + Sync), mut progress: impl FnMut(&str)) -> Result<Report> {
     if stop() {
         return Ok(not_checked(candidates, &mut progress));
     }
@@ -424,7 +438,7 @@ fn sync_with(src: &Source, cache_dir: &Path, candidates: &BTreeSet<String>, with
             },
             None => None,
         };
-        sync_one(src, cache_dir, tech, purls, key, hash, stop)
+        sync_one(src, cache_dir, tech, purls, key, hash, events, stop)
     }, |i, outcome| {
         outcomes[i] = Some(outcome);
         progress(techs[i]);
@@ -451,6 +465,7 @@ enum Outcome {
 
 /// One technology: its index (conditionally; not at all when `listed`, the hash the catalog's list gives it, is the
 /// cached index's), then its shards, swapped into the cache.
+#[allow(clippy::too_many_arguments)]
 fn sync_one(
     src: &Source,
     cache_dir: &Path,
@@ -458,6 +473,7 @@ fn sync_one(
     purls: &BTreeSet<String>,
     key: Option<&[u8; 32]>,
     listed: Option<&str>,
+    events: bool,
     stop: &(dyn Fn() -> bool + Sync),
 ) -> Outcome {
     let rel = format!("v1/tech/{tech}.json");
@@ -468,7 +484,7 @@ fn sync_one(
         && h.len() == 16
         && sha256_hex(c).starts_with(h)
     {
-        return match sync_tech(src, cache_dir, tech, c, purls, stop) {
+        return match sync_tech(src, cache_dir, tech, c, purls, events, stop) {
             Ok(Some(t)) => Outcome::Synced(t),
             Ok(None) => Outcome::NotInStack,
             Err(e) => Outcome::Failed(format!("{e:#}")),
@@ -498,7 +514,7 @@ fn sync_one(
         Ok(Got::NotFound) => return Outcome::NotCovered,
         Err(e) => return Outcome::Failed(format!("{e:#}")),
     };
-    match sync_tech(src, cache_dir, tech, &bytes, purls, stop) {
+    match sync_tech(src, cache_dir, tech, &bytes, purls, events, stop) {
         Ok(Some(t)) => {
             // Validators are stored after the swap, describing the index now in the cache.
             if let Some(mut v) = fresh_validators {
@@ -526,6 +542,7 @@ fn sync_tech(
     tech: &str,
     index_bytes: &[u8],
     purls: &BTreeSet<String>,
+    events: bool,
     stop: &(dyn Fn() -> bool + Sync),
 ) -> Result<Option<TechSync>> {
     let index: TechIndex = serde_json::from_slice(index_bytes).context("index does not parse")?;
@@ -576,28 +593,58 @@ fn sync_tech(
     if !components.iter().any(|c| purls.contains(c)) {
         return Ok(None);
     }
+    // Change events, only for a technology in the stack, each verified against the index like a record shard.
+    let (mut events_downloaded, mut events_reused) = (0, 0);
+    if events {
+        for s in &index.events {
+            let dest = event_path(cache_dir, tech, s);
+            if std::fs::read(&dest).is_ok_and(|b| verify_shard(s, &b).is_ok()) {
+                events_reused += 1;
+                continue;
+            }
+            let rel = published(&s.path)?;
+            if stop() {
+                bail!("catalog sync stopped at its time limit before fetching change events {}", s.path);
+            }
+            let b = match src.get(&rel, None).with_context(|| format!("change events {}", s.path))? {
+                Got::Body(b, _) => b,
+                _ => bail!("change events {} missing ({} not found)", s.path, src.describe(&rel)),
+            };
+            verify_shard(s, &b)?;
+            cache::parse_events(&b).with_context(|| format!("change events {}", s.path))?;
+            fresh.push((dest, b));
+            events_downloaded += 1;
+        }
+    }
     for (dest, b) in &fresh {
         write_atomic(dest, b)?;
     }
     // The swap: the index is replaced only after every shard it names is in place.
     write_atomic(&index_path(cache_dir, tech), index_bytes)?;
-    // Shards no longer named by the index are removed (they are immutable and content-named).
-    let keep: BTreeSet<String> = index.shards.iter().map(|s| cache::shard_file_name(&s.path)).collect();
-    if let Ok(rd) = std::fs::read_dir(cache_dir.join("v1/shards").join(tech)) {
-        for e in rd.flatten() {
-            let name = e.file_name().to_string_lossy().to_string();
-            if !keep.contains(&name) && !name.starts_with('.') {
-                let _ = std::fs::remove_file(e.path());
+    // Shards no longer named by the index are removed (they are immutable and content-named); change events only when
+    // they were synced, so turning the switch off leaves them as they were.
+    let mut dirs = vec![("v1/shards", index.shards.iter().map(|s| cache::shard_file_name(&s.path)).collect::<BTreeSet<String>>())];
+    if events {
+        dirs.push(("v1/events", index.events.iter().map(|s| cache::shard_file_name(&s.path)).collect()));
+    }
+    for (dir, keep) in dirs {
+        if let Ok(rd) = std::fs::read_dir(cache_dir.join(dir).join(tech)) {
+            for e in rd.flatten() {
+                let name = e.file_name().to_string_lossy().to_string();
+                if !keep.contains(&name) && !name.starts_with('.') {
+                    let _ = std::fs::remove_file(e.path());
+                }
             }
         }
     }
-    Ok(Some(TechSync { technology: tech.into(), records, checked: index.checked.clone(), downloaded: fresh.len(), reused, unchanged }))
+    let downloaded = fresh.len() - events_downloaded;
+    Ok(Some(TechSync { technology: tech.into(), records, checked: index.checked.clone(), downloaded, reused, unchanged, events_downloaded, events_reused }))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testcat::{FixtureCatalog, rec};
+    use crate::testcat::{FixtureCatalog, event, rec};
 
     fn purls(p: &[&str]) -> BTreeSet<String> {
         p.iter().map(|s| s.to_string()).collect()
@@ -642,6 +689,67 @@ mod tests {
         // file:// URLs work too, and a second sync reuses the shard.
         let rep = sync(&format!("file://{}", cat.loc()), cache.path(), &cands(&["next"]), &purls(&["pkg:npm/next"])).unwrap();
         assert_eq!((rep.synced[0].downloaded, rep.synced[0].reused, rep.synced[0].unchanged), (0, 1, true));
+    }
+
+    #[test]
+    fn change_events_are_synced_and_cached_only_with_the_switch_on_and_only_for_the_stack() {
+        let cat = FixtureCatalog::new();
+        let next = |events: Vec<serde_json::Value>| {
+            cat.tech_events("next", 0, &[("16", vec![rec("next:a", "pkg:npm/next", "16.0.1")])], &[("16", events)]);
+        };
+        next(vec![event("next", "16.0.1", "## Fixes\n- Fixes `next build`")]);
+        cat.tech_events("prisma", 0, &[("7", vec![rec("prisma:a", "pkg:npm/prisma", "7.0.0")])], &[("7", vec![event("prisma", "7.0.0", "- x")])]);
+        let src = resolve_source(cat.loc()).unwrap();
+        let both = cands(&["next", "prisma"]);
+        let stack = purls(&["pkg:npm/next"]);
+        let cache = tempfile::tempdir().unwrap();
+        // Off (the default): the records as before, no event fetched or cached.
+        let rep = sync_with_events(&src, cache.path(), &both, &BTreeSet::new(), &stack, None, false, &|| false, |_| {}).unwrap();
+        assert_eq!((rep.synced.len(), rep.synced[0].downloaded, rep.synced[0].events_downloaded), (1, 1, 0));
+        assert!(!cache.path().join("v1/events").exists());
+        assert!(cache::load_events(cache.path(), "next").is_err(), "an index naming events not synced is no basis for work");
+        // On: the stack's technology gets its events, the other technology none.
+        let rep = sync_with_events(&src, cache.path(), &both, &BTreeSet::new(), &stack, None, true, &|| false, |_| {}).unwrap();
+        assert_eq!((rep.synced[0].downloaded, rep.synced[0].reused, rep.synced[0].events_downloaded), (0, 1, 1));
+        assert_eq!(rep.not_in_stack, vec!["prisma".to_string()]);
+        assert!(!cache.path().join("v1/events/prisma").exists());
+        let ev = cache::load_events(cache.path(), "next").unwrap().unwrap();
+        assert_eq!((ev.events.len(), ev.events[0].chunks[0].id.as_str(), ev.skipped), (1, "next@16.0.1#0", 0));
+        // Unchanged: reused, nothing fetched. A new release on the line replaces the shard and the old one leaves.
+        let rep = sync_with_events(&src, cache.path(), &both, &BTreeSet::new(), &stack, None, true, &|| false, |_| {}).unwrap();
+        assert_eq!((rep.synced[0].events_downloaded, rep.synced[0].events_reused), (0, 1));
+        next(vec![event("next", "16.0.1", "## Fixes\n- Fixes `next build`"), event("next", "16.0.2", "- Adds `after`")]);
+        let rep = sync_with_events(&src, cache.path(), &both, &BTreeSet::new(), &stack, None, true, &|| false, |_| {}).unwrap();
+        assert_eq!((rep.synced[0].events_downloaded, rep.synced[0].events_reused), (1, 0));
+        assert_eq!(cache::load_events(cache.path(), "next").unwrap().unwrap().events.len(), 2);
+        assert_eq!(std::fs::read_dir(cache.path().join("v1/events/next")).unwrap().count(), 1);
+        // A corrupted event shard fails the technology and keeps the cached index and events.
+        let before = std::fs::read(index_path(cache.path(), "next")).unwrap();
+        let paths = cat.tech_events("next", 0, &[("16", vec![rec("next:a", "pkg:npm/next", "16.0.1")])], &[("16", vec![event("next", "16.0.3", "- y")])]);
+        let mut bytes = std::fs::read(&paths[1]).unwrap();
+        bytes[10] ^= 0xff;
+        std::fs::write(&paths[1], bytes).unwrap();
+        let rep = sync_with_events(&src, cache.path(), &both, &BTreeSet::new(), &stack, None, true, &|| false, |_| {}).unwrap();
+        assert!(rep.failed[0].1.contains("sha256"), "{:?}", rep.failed);
+        assert_eq!(std::fs::read(index_path(cache.path(), "next")).unwrap(), before);
+        assert_eq!(cache::load_events(cache.path(), "next").unwrap().unwrap().events.len(), 2);
+    }
+
+    #[test]
+    fn an_unchanged_technology_costs_no_request_for_its_change_events() {
+        let cat = FixtureCatalog::new();
+        cat.tech_events("next", 0, &[("16", vec![rec("next:a", "pkg:npm/next", "16.0.1")])], &[("16", vec![event("next", "16.0.1", "- x")])]);
+        let sha = &sha256_hex(&std::fs::read(cat.dir.path().join("v1/tech/next.json")).unwrap())[..16];
+        std::fs::write(cat.dir.path().join("v1/technologies.json"), format!("{{\"schema\":1,\"technologies\":{{\"next\":\"{sha}\"}}}}")).unwrap();
+        let srv = TestServer::start(cat.dir.path().to_path_buf(), false);
+        let cache = tempfile::tempdir().unwrap();
+        let sync_on = || sync_with_events(&resolve_source(&srv.base).unwrap(), cache.path(), &cands(&["next"]), &BTreeSet::new(), &purls(&["pkg:npm/next"]), None, true, &|| false, |_| {}).unwrap();
+        let rep = sync_on();
+        assert_eq!(rep.synced[0].events_downloaded, 1);
+        assert!(srv.take_log().iter().any(|l| l.contains(".events.") && l.ends_with(" 200")));
+        let rep = sync_on();
+        assert_eq!((rep.synced[0].events_downloaded, rep.synced[0].events_reused, rep.synced[0].unchanged), (0, 1, true));
+        assert_eq!(srv.take_log(), vec!["/v1/root.json 200", "/v1/technologies.json 304"]);
     }
 
     #[test]

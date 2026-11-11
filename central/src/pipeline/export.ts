@@ -16,7 +16,8 @@
 //
 // With a signing key (UNSTALE_SIGNING_KEY, an Ed25519 private key as PKCS#8 PEM), the root and every index get a
 // detached signature beside them (`<file>.sig`, hex), which a release client checks against its compiled-in public
-// key. Indexes name their shards' sha256, so signing the indexes covers every shard.
+// key. Indexes name their shards' sha256 (records' and change events', `events`), so signing the indexes covers every
+// shard.
 //
 // `v1/technologies.json` (signed too) names every exported index with a hash of its served bytes, so a client asks only
 // for the indexes of the candidates it names, and only those its cache does not hold: a candidate the catalog does not
@@ -27,7 +28,7 @@ import { closeSync, existsSync, fstatSync, linkSync, lstatSync, mkdirSync, openS
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { gunzipSync } from "node:zlib";
 import { DISCOVERY_VERSION } from "../onboarding/discovery.ts";
-import { Root, ShardLine, TechIndex, Technologies } from "../schema/catalog.ts";
+import { EventLine, Root, ShardLine, TechIndex, Technologies } from "../schema/catalog.ts";
 import { centralDir } from "./paths.ts";
 import { pruneCatalog, SHARD_FILE, type PruneOptions, type PruneResult } from "./prune.ts";
 import { readJson, sha256 } from "./util.ts";
@@ -175,8 +176,9 @@ export function exportCatalog(
       const body = readFileSync(join(techDir, f));
       const parsed = TechIndex.safeParse(JSON.parse(body.toString()));
       if (!parsed.success) throw new Error(`v1/tech/${f}: ${parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`);
-      // Shards before the index that references them, each checked against the index.
-      for (const s of parsed.data.shards) {
+      // Shards before the index that references them, each checked against the index: records', then change events'.
+      const refs = [...parsed.data.shards.map((s) => ({ s, line: ShardLine })), ...(parsed.data.events ?? []).map((s) => ({ s, line: EventLine }))];
+      for (const { s, line } of refs) {
         const path = s.path.startsWith("v1/") ? s.path : `v1/${s.path}`;
         if (!SHARD_PATH.test(path)) throw new Error(`v1/tech/${f}: shard path ${s.path} is not servable`);
         const file = join(src, path);
@@ -187,7 +189,7 @@ export function exportCatalog(
         if (!shards.has(path)) {
           const lines = gunzipSync(gz).toString("utf8").trimEnd().split("\n");
           if (lines.length !== s.records) throw new Error(`${path}: ${lines.length} lines, index says ${s.records}`);
-          for (const l of lines) ShardLine.parse(JSON.parse(l));
+          for (const l of lines) line.parse(JSON.parse(l));
           putShard(path, read);
           shards.add(path);
           bytes += gz.length;
