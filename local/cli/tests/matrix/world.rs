@@ -632,17 +632,21 @@ impl World {
             .replace(&self.codex_backend.url, "https://codex.example")
             .replace(&self.redirect_target.url, "https://elsewhere.example")
             .replace(&self.trap.url, "http://proxy.example");
+        // How long ago something failed depends on how long the scenario took.
+        t = regex_lite_minutes(&t);
         t = t
             .replace(&newer_version(), "<newer version>")
             .replace(this_version(), "<this version>");
         // A progress line's elapsed time depends on the machine.
         t.lines()
             .map(|l| match l.rsplit_once(" · ") {
+                // The spinner's frame depends on the moment too.
                 Some((head, secs))
-                    if l.trim_start().starts_with('◐')
+                    if l.trim_start().starts_with(['◐', '◓', '◑', '◒'])
                         && secs.ends_with('s')
                         && secs[..secs.len() - 1].bytes().all(|b| b.is_ascii_digit()) =>
                 {
+                    let head = head.replacen(['◓', '◑', '◒'], "◐", 1);
                     format!("{head} · 0s")
                 }
                 _ => l.to_string(),
@@ -686,4 +690,19 @@ pub(crate) fn choice_json(value: &str) -> serde_json::Value {
         Some(k) => json!({"provider": provider, "key_env": k}),
         None => json!({"provider": provider}),
     }
+}
+
+/// `3 min ago` → `0 min ago`: a scenario's own age, not its content.
+pub(crate) fn regex_lite_minutes(t: &str) -> String {
+    let mut out = String::new();
+    let mut rest = t;
+    while let Some(i) = rest.find(" min ago") {
+        let head = &rest[..i];
+        let digits = head.len() - head.trim_end_matches(|c: char| c.is_ascii_digit()).len();
+        out.push_str(&head[..head.len() - digits]);
+        out.push_str(if digits > 0 { "0" } else { "" });
+        out.push_str(" min ago");
+        rest = &rest[i + " min ago".len()..];
+    }
+    out + rest
 }

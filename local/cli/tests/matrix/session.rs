@@ -144,23 +144,31 @@ pub(crate) fn agent_answer(w: &World, s: &Scenario, listed: &Ran) -> Option<Ran>
     Some(r)
 }
 
+/// What the person types at a terminal: `answer` at the question; after the details (`d`), Enter where the question
+/// stays open; and at any further question, Ctrl-D, so a second question ends the run and is counted rather than
+/// waiting for an answer that never comes.
+pub(crate) fn terminal_answers(answer: &str) -> Vec<(&'static str, &str)> {
+    const PROMPT: &str = "Enter for 1,|Enter to use it";
+    let mut a = vec![(PROMPT, answer)];
+    if answer.starts_with('d') {
+        a.push((CONTINUE, "\n"));
+    }
+    a.push((PROMPT, "\u{4}"));
+    a
+}
+
 pub(crate) fn exec(w: &World, s: &Scenario, args: Vec<String>, terminal: bool) -> Ran {
     let started = std::time::Instant::now();
     let cmd = w.command(s, &args);
     let (code, output) = if terminal {
-        // Only the first question is answered; a second would wait, and its prompt is counted.
-        let prompt = PROMPTS.join("|");
         let answer = if s.invocation.answer.is_empty() {
             "\n"
         } else {
             s.invocation.answer
         };
         // Having asked for the details, the person accepts the first option where the question stays open.
-        let (code, raw) = support::at_terminal(
-            &cmd,
-            &[(prompt.as_str(), answer), (CONTINUE, "\n")],
-            Duration::from_secs(60),
-        );
+        let (code, raw) =
+            support::at_terminal(&cmd, &terminal_answers(answer), Duration::from_secs(60));
         // A terminal's echo of Ctrl-D and Ctrl-C differs by system (macOS prints `^D` and backs over it, Linux
         // prints nothing): the screen shows neither.
         let raw = raw

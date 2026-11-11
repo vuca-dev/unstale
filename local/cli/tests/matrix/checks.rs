@@ -796,6 +796,21 @@ fn the_checks_catch_a_second_question_and_a_question_without_a_terminal() {
     ));
 }
 
+/// A command that asks twice ends (the second question dismissed) and both are counted: reported as two questions,
+/// never as a run that waited a minute for an answer.
+#[test]
+fn a_second_question_is_counted_not_waited_on() {
+    let mut c = Command::new("/bin/sh");
+    c.args([
+        "-c",
+        "printf 'Enter for 1, a number: '; read a; printf 'Enter for 1, again: '; read b; echo done",
+    ]);
+    let started = std::time::Instant::now();
+    let (code, out) = support::at_terminal(&c, &terminal_answers("\n"), Duration::from_secs(60));
+    assert!(started.elapsed() < Duration::from_secs(10), "{out}");
+    assert_eq!((code, questions(&out)), (0, 2), "{out}");
+}
+
 #[test]
 fn the_checks_catch_a_notice_shown_twice_in_a_day() {
     assert!(caught(

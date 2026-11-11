@@ -84,11 +84,13 @@ fn every_scenario_holds_the_line_and_matches_its_golden_transcript() {
     let mut failures = vec![];
     let mut entries = vec![];
     let mut bugs_seen = BTreeSet::new();
+    let mut failing: BTreeSet<String> = BTreeSet::new();
     for (s, (se, v)) in list.iter().zip(&results) {
         let (known, broken): (Vec<String>, Vec<String>) =
             v.iter().cloned().partition(|l| known_bug(l).is_some());
         bugs_seen.extend(known.iter().filter_map(|l| known_bug(l)));
         if !broken.is_empty() {
+            failing.insert(s.slug.clone());
             failures.push(format!(
                 "{} ({}):\n  {}",
                 s.title,
@@ -98,8 +100,16 @@ fn every_scenario_holds_the_line_and_matches_its_golden_transcript() {
         }
         let text = transcript(s, se, &broken, &known);
         let cast = recording(s, se);
-        failures.extend(golden(&format!("golden/{}.txt", s.slug), &text));
-        failures.extend(golden(&format!("recordings/{}.cast", s.slug), &cast));
+        for f in [
+            golden(&format!("golden/{}.txt", s.slug), &text),
+            golden(&format!("recordings/{}.cast", s.slug), &cast),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            failing.insert(s.slug.clone());
+            failures.push(f);
+        }
         entries.push((s, text, cast));
     }
     for (start, why) in KNOWN_BUGS {
@@ -146,9 +156,10 @@ fn every_scenario_holds_the_line_and_matches_its_golden_transcript() {
     }
     assert!(
         failures.is_empty(),
-        "{} of {} scenarios:\n\n{}",
-        failures.len(),
+        "{} of {} scenarios fail, {} problems in all:\n\n{}",
+        failing.len(),
         list.len(),
+        failures.len(),
         failures.join("\n\n")
     );
 }

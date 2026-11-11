@@ -298,6 +298,27 @@ const QUESTION: &str = "Enter for 1,";
 
 impl World {
     /// Runs at a terminal (a pseudo-terminal from `script`), typing `input`.
+    /// Waits until no process started from this world (its directory in the command line) is running: a detached
+    /// background stage, however long the machine's load makes it.
+    fn wait_idle(&self) {
+        let tag = self.base.path().file_name().unwrap().to_string_lossy().to_string();
+        let until = std::time::Instant::now() + Duration::from_secs(60);
+        loop {
+            let ps = std::process::Command::new("ps")
+                .args(["-A", "-ww", "-o", "command="])
+                .output()
+                .unwrap();
+            if !String::from_utf8_lossy(&ps.stdout)
+                .lines()
+                .any(|l| l.contains(&tag) && l.contains("unstale"))
+            {
+                return;
+            }
+            assert!(std::time::Instant::now() < until, "a background stage is still running");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+
     fn at_terminal(&self, args: &[&str], input: &str) -> String {
         self.at_terminal_with(args, input, &[])
     }
@@ -635,6 +656,8 @@ fn ctrl_c_at_the_question_writes_nothing_anywhere() {
     let w = World::new(Some(true));
     std::fs::write(w.path("repo/.env"), "OPENAI_API_KEY=x\n").unwrap();
     w.init(true, &[]);
+    // What init started in the background (it is detached) finishes first: its writes are not the question's.
+    w.wait_idle();
     let before = w.written_files();
     let out = w.at_terminal(&["setup"], "\u{3}");
     assert!(out.contains(QUESTION), "{out}");
