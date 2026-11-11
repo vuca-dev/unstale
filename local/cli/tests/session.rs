@@ -586,6 +586,8 @@ fn session_start_is_quick_at_most_one_line_and_exits_0_whatever_fails() {
         ""
     );
     std::thread::sleep(Duration::from_millis(300));
+    // As the hook starts it.
+    env.extra.push(("UNSTALE_HOOK_STAGE".into(), "1".into()));
     let (code, out, err, took) = env.run_in(env.repo.path(), &["session-sync"]);
     eprintln!("background stage, lock held: {} ms", took.as_millis());
     assert_eq!((code, out.as_str(), err.as_str()), (0, "", ""));

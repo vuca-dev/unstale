@@ -799,6 +799,9 @@ fn rel(ctx: &Ctx, p: &Path) -> String {
 /// an interrupted run resumes where it stopped.
 fn cmd_session_sync(ctx: &Ctx) -> Result<u8> {
     use std::io::IsTerminal;
+    if std::env::var_os(session::HOOK_STAGE).is_some() {
+        return session::background(ctx);
+    }
     if !inference::enabled() || ctx.config.session_sync == Some(false) {
         println!("Session-start sync is off here, so nothing ran.");
         return Ok(0);
