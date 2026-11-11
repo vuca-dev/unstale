@@ -8,8 +8,9 @@
 //   notes.json      every event as it will be published, with when central first read it. Release notes are replaced
 //                   by each read of the release list (it is always the whole list in the window); upgrade guides and
 //                   docs changes accumulate (each read names only what it found then).
-//   published.json  when each event first went into a published index (written by `publishEvents`, under the
-//                   technology lock with the rest of a publish).
+//   published.json  when each event first went into a published index, and a digest of the events last published
+//                   (written by `publishEvents`, under the technology lock with the rest of a publish).
+// Both are written under the technology lock (`recordNotesLocked` for a read, a publish holds it already).
 // Published by `publishEvents` as one gzipped JSON-lines shard per release line, `v1/shards/<tech>/<line>.events.<16
 // hex>.jsonl.gz`, named by content hash like the record shards and listed in the index's `events`; the same store in
 // gives the same bytes out, so a rerun or a no-op republish writes nothing.
@@ -20,6 +21,7 @@ import { EventLine, type EventChunk, type ShardRef } from "../schema/catalog.ts"
 import { techLocal } from "../state/client.ts";
 import { chunk, contentFree, type DocsNote } from "./extract.ts";
 import { cachedPublishTimes, type GuideNote, type ReleaseNote } from "./fetch.ts";
+import { withTechLock } from "./lock.ts";
 import { centralDir } from "./paths.ts";
 import type { Technology } from "./technologies.ts";
 import { canonical, compareVersions, readJson, releaseLine, sha256, writeAtomic } from "./util.ts";
@@ -45,7 +47,12 @@ interface PublishedFile {
   schema: 1;
   technology: string;
   first_published: Record<string, string>;
+  /** sha256 of the recorded events the last publish wrote (`eventsDigest`). */
+  digest?: string;
 }
+
+/** A digest of the recorded events: changes with any event's text or metadata. */
+const eventsDigest = (events: Record<string, StoredEvent>): string => sha256(canonical(events));
 
 const dir = (tech: string): string => join(centralDir(), "events", techLocal(tech));
 const notesPath = (tech: string): string => join(dir(tech), "notes.json");
@@ -126,11 +133,18 @@ export function recordNotes(t: Pick<Technology, "id" | "name" | "components">, s
   return seen.size;
 }
 
-/** Recorded events no published index has carried yet (a publish is due for them). */
-export function unpublishedEvents(tech: string): number {
+/** `recordNotes` under the technology lock, so no other process's publish or read of the technology comes between
+ * its read and its write (re-entrant: a caller holding the lock keeps it). */
+export function recordNotesLocked(t: Pick<Technology, "id" | "name" | "components">, source: EventSource, notes: readonly Note[]): Promise<number> {
+  return withTechLock(t.id, "events", async () => recordNotes(t, source, notes));
+}
+
+/** Whether the recorded events differ from what the last publish wrote (a new event, or one whose text or metadata
+ * changed): a publish is due. */
+export function eventsChanged(tech: string): boolean {
   const events = readJson<NotesFile>(notesPath(tech))?.events ?? {};
-  const published = readJson<PublishedFile>(publishedPath(tech))?.first_published ?? {};
-  return Object.keys(events).filter((id) => !published[id]).length;
+  if (!Object.keys(events).length) return false;
+  return readJson<PublishedFile>(publishedPath(tech))?.digest !== eventsDigest(events);
 }
 
 export interface PublishedEvents {
@@ -146,13 +160,16 @@ export interface PublishedEvents {
  * technology lock, with the publish (publish.ts).
  */
 export function publishEvents(tech: string, outDir: string, now = new Date()): PublishedEvents {
-  const events = Object.values(readJson<NotesFile>(notesPath(tech))?.events ?? {});
+  const recorded = readJson<NotesFile>(notesPath(tech))?.events ?? {};
+  const events = Object.values(recorded);
   const out: PublishedEvents = { refs: [], bytes: 0, written: 0 };
   if (!events.length) return out;
   const pub: PublishedFile = readJson<PublishedFile>(publishedPath(tech)) ?? { schema: 1, technology: tech, first_published: {} };
   const at = now.toISOString();
   const byLine = new Map<string, string[]>();
-  let stamped = false;
+  const digest = eventsDigest(recorded);
+  let stamped = pub.digest !== digest;
+  pub.digest = digest;
   for (const e of events.sort((a, b) => a.id.localeCompare(b.id, "en"))) {
     if (!pub.first_published[e.id]) {
       pub.first_published[e.id] = at;

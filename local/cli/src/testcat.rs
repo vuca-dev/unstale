@@ -90,7 +90,10 @@ impl FixtureCatalog {
 
 /// A minimal change event: release notes of `version`, one chunk of `text`.
 pub fn event(tech: &str, version: &str, text: &str) -> Value {
-    let line = version.split('.').next().unwrap();
+    // The release line: the major, or 0.minor below 1.0.
+    let mut parts = version.split('.');
+    let major = parts.next().unwrap();
+    let line = if major == "0" { format!("0.{}", parts.next().unwrap_or("0")) } else { major.to_string() };
     let id = format!("{tech}@{version}");
     let sha = {
         use sha2::{Digest, Sha256};

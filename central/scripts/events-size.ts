@@ -3,13 +3,12 @@
 // model call: release lists and guides are read offline. It records and publishes events into the store it is given,
 // so run it on a copy:
 //
-//   UNSTALE_STORE=<copy of a store> npx tsx scripts/events-size.ts [--since 2025-10-15] [--until 2026-10-16]
+//   UNSTALE_STORE=<copy of a store> npx tsx scripts/events-size.ts
 //
-// Docs changes are not read (their notes need each technology's docs store); prints one JSON line.
+// The window is the catalog's (`SINCE`) up to the newest release-list check in the store. Docs changes are not read (their notes need each technology's docs store); prints one JSON line.
 import { existsSync, mkdtempSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { parseArgs } from "node:util";
 import { pipelineTechnology } from "../src/onboarding/discovery.ts";
 import { savedJobs } from "../src/pipeline/export.ts";
 import { publishEvents, recordNotes } from "../src/pipeline/events.ts";
@@ -18,7 +17,6 @@ import { centralDir } from "../src/pipeline/paths.ts";
 import { SINCE, TECHNOLOGIES, type Technology } from "../src/pipeline/technologies.ts";
 import { readJson } from "../src/pipeline/util.ts";
 
-const { values } = parseArgs({ options: { since: { type: "string", default: SINCE }, until: { type: "string" } } });
 const releasesDir = join(centralDir(), "releases");
 const out = mkdtempSync(join(tmpdir(), "unstale-events-size-"));
 const descriptors = new Map(
@@ -30,7 +28,7 @@ const techOf = (id: string): Technology | undefined => TECHNOLOGIES[id] ?? (desc
 
 const rows: Array<{ tech: string; events: number; chunks: number; text: number; bytes: number; shards: number; largest: number }> = [];
 let skipped = 0;
-let until = values.until ?? "";
+let until = "";
 for (const id of existsSync(releasesDir) ? readdirSync(releasesDir).sort() : []) {
   const t = techOf(id);
   if (!t || !existsSync(join(releasesDir, id, "index.json"))) {
@@ -38,7 +36,7 @@ for (const id of existsSync(releasesDir) ? readdirSync(releasesDir).sort() : [])
     continue;
   }
   const checked = readJson<{ checked: string }>(join(releasesDir, id, "index.json"))?.checked ?? "";
-  if (!values.until && checked > until) until = checked.slice(0, 10);
+  if (checked.slice(0, 10) > until) until = checked.slice(0, 10);
   const { notes } = await fetchReleases(t, { offline: true });
   recordNotes(t, "releases", notes);
   try {
@@ -59,14 +57,14 @@ for (const id of existsSync(releasesDir) ? readdirSync(releasesDir).sort() : [])
     largest: Math.max(0, ...p.refs.map((r) => r.bytes)),
   });
 }
-const years = (Date.parse(until) - Date.parse(values.since!)) / (365.25 * 86_400_000);
+const years = (Date.parse(until) - Date.parse(SINCE)) / (365.25 * 86_400_000);
 const sum = (k: keyof (typeof rows)[number]) => rows.reduce((n, r) => n + (r[k] as number), 0);
 const withEvents = rows.filter((r) => r.events);
 const sorted = withEvents.map((r) => r.bytes).sort((a, b) => a - b);
 const q = (p: number) => sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))] ?? 0;
 console.log(
   JSON.stringify({
-    window: { since: values.since, until, years: Number(years.toFixed(2)) },
+    window: { since: SINCE, until, years: Number(years.toFixed(2)) },
     technologies: rows.length,
     with_events: withEvents.length,
     skipped,

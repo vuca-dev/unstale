@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gunzipSync } from "node:zlib";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { publishEvents, recordNotes, unpublishedEvents } from "../src/pipeline/events.ts";
+import { eventsChanged, publishEvents, recordNotes } from "../src/pipeline/events.ts";
 import { catalogDir } from "../src/pipeline/paths.ts";
 import { registryCache } from "../src/pipeline/registry.ts";
 import { sha256 } from "../src/pipeline/util.ts";
@@ -55,9 +55,16 @@ describe("change event freshness", () => {
     registryTimes({ "16.0.0": "2026-09-30T21:14:05.123Z" });
     // The first read: history, so backfilled. 16.0.0 has a registry time; 15.5.0 (GitHub only) has none.
     recordNotes(T, "releases", [note("15.5.0"), note("16.0.0")], at("2026-10-01T06:00:00Z"));
-    expect(unpublishedEvents("next")).toBe(2);
+    expect(eventsChanged("next")).toBe(true);
     let e = published(at("2026-10-01T06:10:00Z"));
-    expect(unpublishedEvents("next")).toBe(0);
+    expect(eventsChanged("next")).toBe(false);
+    // The same read again changes nothing; an event whose text changed is due for a publish.
+    recordNotes(T, "releases", [note("15.5.0"), note("16.0.0")], at("2026-10-01T07:00:00Z"));
+    expect(eventsChanged("next")).toBe(false);
+    recordNotes(T, "releases", [note("15.5.0", { notes: "- Fixed again" }), note("16.0.0")], at("2026-10-01T08:00:00Z"));
+    expect(eventsChanged("next")).toBe(true);
+    published(at("2026-10-01T08:10:00Z"));
+    expect(eventsChanged("next")).toBe(false);
     expect(e.get("next@16.0.0")!.freshness).toEqual({ registry_published: "2026-09-30T21:14:05.123Z", first_seen: "2026-10-01T06:00:00.000Z", first_published: "2026-10-01T06:10:00.000Z", backfilled: true });
     expect(e.get("next@15.5.0")!.freshness).toEqual({ first_seen: "2026-10-01T06:00:00.000Z", first_published: "2026-10-01T06:10:00.000Z", backfilled: true });
 

@@ -187,6 +187,9 @@ pub fn load_events(cache: &Path, tech: &str) -> Result<Option<Events>> {
     let ip = index_path(cache, tech);
     let Ok(bytes) = std::fs::read(&ip) else { return Ok(None) };
     let index: TechIndex = serde_json::from_slice(&bytes).with_context(|| format!("cached index {}", ip.display()))?;
+    if index.schema > CATALOG_SCHEMA {
+        bail!("cached index for {tech} has schema {}; this unstale reads {CATALOG_SCHEMA}", index.schema);
+    }
     let mut out = Events::default();
     for s in &index.events {
         let p = event_path(cache, tech, s);
