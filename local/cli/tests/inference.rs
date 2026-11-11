@@ -2,68 +2,14 @@
 //! The provider layer end to end through the binary (`unstale infer`, internal): a local mock server stands in for
 //! OpenAI-compatible and Anthropic endpoints and a fake `codex` sits on PATH. No request leaves the machine.
 
-use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
+mod support;
+
+use std::path::Path;
 use std::process::Command;
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use support::{CODEX_OK, fake_codex, mock};
 
-const CANARY: &str = "canary-sk-7f3a9e1d2c4b";
-
-/// Answers each request with `(status, body)` after `delay`, recording every raw request.
-fn mock(status: u16, body: &str, delay: Duration) -> (String, Arc<Mutex<Vec<String>>>) {
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-    let url = format!("http://{}", listener.local_addr().unwrap());
-    let seen = Arc::new(Mutex::new(Vec::new()));
-    let log = seen.clone();
-    let body = body.to_string();
-    std::thread::spawn(move || {
-        for mut stream in listener.incoming().flatten() {
-            let (mut got, mut buf) = (Vec::new(), [0u8; 16384]);
-            loop {
-                let n = stream.read(&mut buf).unwrap_or(0);
-                got.extend_from_slice(&buf[..n]);
-                let text = String::from_utf8_lossy(&got).to_string();
-                let Some(end) = text.find("\r\n\r\n") else {
-                    if n == 0 {
-                        break;
-                    }
-                    continue;
-                };
-                let length = text[..end]
-                    .lines()
-                    .find_map(|l| {
-                        l.to_ascii_lowercase()
-                            .strip_prefix("content-length:")
-                            .map(|v| v.trim().parse::<usize>().unwrap_or(0))
-                    })
-                    .unwrap_or(0);
-                if n == 0 || got.len() >= end + 4 + length {
-                    break;
-                }
-            }
-            log.lock()
-                .unwrap()
-                .push(String::from_utf8_lossy(&got).to_string());
-            let body = body.clone();
-            std::thread::spawn(move || {
-                std::thread::sleep(delay);
-                let _ = write!(
-                    stream,
-                    "HTTP/1.1 {status} X\r\n{}Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-                    // A 3xx mock's body is the Location it points to.
-                    if (300..400).contains(&status) {
-                        format!("Location: {body}\r\n")
-                    } else {
-                        String::new()
-                    },
-                    body.len()
-                );
-            });
-        }
-    });
-    (url, seen)
-}
+const CANARY: &str = support::SHELL_CANARY;
 
 const OPENAI_OK: &str = r#"{"model":"m","choices":[{"message":{"content":"{\"ok\":true}"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":2}}"#;
 const ANTHROPIC_OK: &str = r#"{"model":"claude-haiku-5-5","stop_reason":"end_turn","content":[{"type":"text","text":"{\"ok\":true}"}],"usage":{"input_tokens":10,"output_tokens":2}}"#;
@@ -214,34 +160,6 @@ fn the_key_appears_only_in_the_auth_header() {
         r.stderr
     );
 }
-
-/// A fake `codex` on PATH: `--version` and `login status` answer as given; `exec` records its arguments and
-/// environment, prints `exec_out` and exits with `exec_code`.
-fn fake_codex(dir: &Path, logged_in: bool, exec_out: &str, exec_code: i32) -> PathBuf {
-    use std::os::unix::fs::PermissionsExt;
-    let bin = dir.join("bin");
-    std::fs::create_dir_all(&bin).unwrap();
-    std::fs::write(dir.join("exec-out.jsonl"), exec_out).unwrap();
-    let script = format!(
-        "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'codex-cli 0.166.0'; exit 0; fi\nif [ \"$1\" = \"login\" ]; then {}; fi\nprintf '%s\\n' \"$@\" > \"{d}/args\"\nenv > \"{d}/env\"\ncat \"{d}/exec-out.jsonl\"\nexit {exec_code}\n",
-        if logged_in {
-            "exit 0"
-        } else {
-            "echo 'Not logged in'; exit 1"
-        },
-        d = dir.display(),
-    );
-    std::fs::write(bin.join("codex"), script).unwrap();
-    std::fs::set_permissions(bin.join("codex"), std::fs::Permissions::from_mode(0o755)).unwrap();
-    bin
-}
-
-const CODEX_OK: &str = concat!(
-    r#"{"type":"item.completed","item":{"type":"agent_message","text":"{\"ok\":true}"}}"#,
-    "\n",
-    r#"{"type":"turn.completed","usage":{"input_tokens":4299,"cached_input_tokens":2944,"output_tokens":5,"reasoning_output_tokens":0}}"#,
-    "\n",
-);
 
 #[test]
 fn codex_on_path_answers_and_never_sees_a_key_from_the_shell() {
