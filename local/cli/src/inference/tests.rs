@@ -533,10 +533,16 @@ fn one_worker_per_machine() {
         "a second worker must not run"
     );
     drop(held);
-    assert!(
-        lock::try_acquire(&dir).unwrap().is_some(),
-        "the lock is free once the first worker is done"
-    );
+    // A process another test forks at that moment shares the lock until it execs (close-on-exec), so allow it a
+    // moment to let go.
+    let free = (0..50).any(|_| {
+        let got = lock::try_acquire(&dir).unwrap().is_some();
+        if !got {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        got
+    });
+    assert!(free, "the lock is free once the first worker is done");
     // A lock that cannot be taken at all is not contention: it is reported.
     let file = f.dir.path().join("a-file");
     std::fs::write(&file, "").unwrap();
