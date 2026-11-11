@@ -1,5 +1,5 @@
-// Publishing: one gzipped JSON-lines shard per technology and release line, named by content hash; then the
-// technology's index; the root. Every line is validated by the generated Zod before it is written. Same store in,
+// Publishing: one gzipped JSON-lines shard per technology and release line, named by content hash, and the
+// technology's change events the same way (events.ts); then the technology's index; the root. Every line is validated by the generated Zod before it is written. Same store in,
 // byte-identical files out. Shards the new index no longer names are recorded in the technology's history (prune.ts) so
 // a prune can delete them after the grace period.
 import { existsSync, readFileSync } from "node:fs";
@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 import { Notice, Root, ShardLine, TechIndex } from "../schema/catalog.ts";
+import { publishEvents } from "./events.ts";
 import { recordReplacedIndex } from "./prune.ts";
 import { highestLine, type StoredRecord, type TechStore } from "./store.ts";
 import { canonical, compareVersions, sha256, writeAtomic } from "./util.ts";
@@ -137,6 +138,10 @@ export function publishTechnology(store: TechStore, checked: string, outDir: str
     shards.push({ line, path, sha256: digest, bytes: gz.length, records: lines.length });
     bytes += gz.length;
   }
+  // The change events: their shards beside the records', named in the index's `events`.
+  const events = publishEvents(store.technology, outDir, now);
+  bytes += events.bytes;
+  written += events.written;
   // Shards first, then the index that references them.
   const index = TechIndex.parse({
     schema: 1,
@@ -149,8 +154,9 @@ export function publishTechnology(store: TechStore, checked: string, outDir: str
     ...(store.releaseIndex?.releases.length ? { releases: store.releaseIndex.releases } : {}),
     // The affected APIs of the technology's advisories (advisory-apis.ts), for advisories no record locates.
     ...(store.advisoryApis?.length ? { advisory_apis: store.advisoryApis } : {}),
+    ...(events.refs.length ? { events: events.refs } : {}),
   });
-  recordReplacedIndex(outDir, store.technology, shards.map((s) => s.path), now);
+  recordReplacedIndex(outDir, store.technology, [...shards, ...events.refs].map((s) => s.path), now);
   writeIfChanged(join(outDir, "v1", "tech", `${store.technology}.json`), JSON.stringify(JSON.parse(canonical(index)), null, 1) + "\n");
   writeRoot(outDir, {}, root);
   return { index, bytes, written };

@@ -22,8 +22,9 @@ const History = z.strictObject({
 });
 type History = z.infer<typeof History>;
 
-/** The shard paths an index names; a path without `v1/` is relative to `v1/` (as the client reads it). */
-const IndexRefs = z.object({ shards: z.array(z.object({ path: z.string() })) });
+/** The shard paths an index names, records' and change events'; a path without `v1/` is relative to `v1/` (as the
+ * client reads it). */
+const IndexRefs = z.object({ shards: z.array(z.object({ path: z.string() })), events: z.array(z.object({ path: z.string() })).optional() });
 const normalize = (p: string): string => (p.startsWith("v1/") ? p : `v1/${p}`);
 
 const historyPath = (dir: string, tech: string): string => join(dir, "history", `${tech}.json`);
@@ -49,7 +50,7 @@ function writeHistory(dir: string, h: History): void {
 export function indexRefs(dir: string, tech: string): string[] | undefined {
   try {
     const parsed = IndexRefs.safeParse(JSON.parse(readFileSync(join(dir, "v1", "tech", `${tech}.json`), "utf8")));
-    return parsed.success ? parsed.data.shards.map((s) => normalize(s.path)) : undefined;
+    return parsed.success ? [...parsed.data.shards, ...(parsed.data.events ?? [])].map((s) => normalize(s.path)) : undefined;
   } catch {
     return undefined;
   }
