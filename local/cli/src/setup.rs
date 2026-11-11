@@ -173,13 +173,15 @@ pub fn dotenv_names(r: impl std::io::Read) -> Vec<String> {
         }
     };
     let (mut at, mut name, mut filled) = (At::Name, String::new(), false);
+    // The quote a value is inside, if any: a `#` there is part of the value, not a comment.
+    let mut quote: Option<u8> = None;
     for b in std::io::BufReader::new(r).bytes() {
         let Ok(b) = b else { break };
         if b == b'\n' {
             if at == At::Value {
                 note(&name, filled);
             }
-            (at, filled) = (At::Name, false);
+            (at, filled, quote) = (At::Name, false, None);
             name.clear();
             continue;
         }
@@ -202,11 +204,16 @@ pub fn dotenv_names(r: impl std::io::Read) -> Vec<String> {
             At::AfterName if b == b' ' || b == b'\t' => {}
             At::Name | At::AfterName => at = At::Skip,
             // A comment where the value would start: a blank assignment, which still clears an earlier one.
-            At::Value if b == b'#' && !filled => {
+            At::Value if b == b'#' && !filled && quote.is_none() => {
                 note(&name, false);
                 at = At::Skip;
             }
-            At::Value => filled |= !(b.is_ascii_whitespace() || b == b'"' || b == b'\''),
+            At::Value if b == b'"' || b == b'\'' => match quote {
+                Some(q) if q == b => quote = None,
+                None => quote = Some(b),
+                Some(_) => filled = true,
+            },
+            At::Value => filled |= !b.is_ascii_whitespace(),
             At::Skip => {}
         }
     }

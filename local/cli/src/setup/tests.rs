@@ -548,6 +548,14 @@ fn a_blank_value_counts_as_unset_in_either_source() {
         "a blank assignment with a comment clears an earlier value"
     );
     assert_eq!(
+        dotenv_names(
+            "OPENAI_API_KEY=\"#new\"\nJEV_API_KEY='#x' # note\nANTHROPIC_API_KEY=\"'\"\n"
+                .as_bytes()
+        ),
+        ["OPENAI_API_KEY", "JEV_API_KEY", "ANTHROPIC_API_KEY"],
+        "a # inside quotes, or the other quote, is part of the value"
+    );
+    assert_eq!(
         dotenv_names("OPENAI_API_KEY=sk-1 # note".as_bytes()),
         ["OPENAI_API_KEY"],
         "no final newline"
