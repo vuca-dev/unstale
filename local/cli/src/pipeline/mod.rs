@@ -377,10 +377,18 @@ pub fn unrun_line(ctx: &crate::Ctx, techs: &BTreeSet<String>) -> Option<String> 
     if !crate::inference::enabled() {
         return None;
     }
-    let why = if ctx.config.session_sync == Some(false) {
-        "session-start sync is off here"
+    // The one thing to do: with the sync turned off, the stage does not run at all (not even by hand), so turning it
+    // back on; without a hook, running the stage by hand.
+    let (why, fix) = if ctx.config.session_sync == Some(false) {
+        (
+            "session-start sync is off here",
+            "Remove `\"session_sync\": false` from .unstale/config.json to read them.",
+        )
     } else if !session_hook_installed(&ctx.root) {
-        "no agent session-start hook here"
+        (
+            "no agent session-start hook here",
+            "Run `unstale session-sync` to read them now.",
+        )
     } else {
         return None;
     };
@@ -402,7 +410,7 @@ pub fn unrun_line(ctx: &crate::Ctx, techs: &BTreeSet<String>) -> Option<String> 
     let n = releases.len();
     (n > 0).then(|| {
         format!(
-            "warning: {why}, so {n} new release note{} {} unread. Run `unstale session-sync` to read them now.",
+            "warning: {why}, so {n} new release note{} {} unread. {fix}",
             if n == 1 { "" } else { "s" },
             if n == 1 { "is" } else { "are" }
         )

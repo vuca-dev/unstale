@@ -426,9 +426,13 @@ fn work_nothing_will_run_is_said_once_with_the_command_that_runs_it() {
     v["session_sync"] = serde_json::json!(false);
     std::fs::write(&cfg, serde_json::to_string_pretty(&v).unwrap()).unwrap();
     assert!(r.run(&["report"], true).contains(
-        "warning: session-start sync is off here, so 1 new release note is unread. Run `unstale session-sync`"
+        "warning: session-start sync is off here, so 1 new release note is unread. Remove `\"session_sync\": false` from .unstale/config.json to read them."
     ));
-    // The manual way: the stage runs, the release is read, the line goes.
+    // Without a hook, the manual way: the stage runs, the release is read, the line goes.
+    std::fs::remove_file(r.repo.path().join(".claude/settings.local.json")).unwrap();
+    v["session_sync"] = serde_json::Value::Null;
+    std::fs::write(&cfg, serde_json::to_string_pretty(&v).unwrap()).unwrap();
+    assert!(r.run(&["report"], true).contains(line));
     r.run(&["session-sync"], true);
     assert_eq!(*main.lock().unwrap(), 2);
     assert!(!r.run(&["report"], true).contains("warning:"));
