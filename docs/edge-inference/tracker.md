@@ -9,11 +9,11 @@
 
 - **Shape:** INDEPENDENT PRs to `main`. Every chunk is additive and behind one switch (README, "One switch").
 - **Ground truth:** GitHub PR state. Repo `vuca-dev/unstale`.
-- **Base:** `origin/main` @ `072a57a` (`ci` green)
+- **Base:** `origin/main` @ `725b8c1` (`ci` green)
 - **Base health:** PR checks are `rust`, `central`, `gateway`; re-query before every merge.
-- **Open PRs:** #222 (WS1, fixing 2 review findings), #224 (WS5, in review)
+- **Open PRs:** #222 (WS1, in review loop)
 - **Live worktrees (sprint):** `/Users/jason/unstale-edge-sprint` (tracker)
-- **Live subagents:** ws1-impl, ws5-impl, ws10-impl (Opus 5.5). Background watch for the first ingest created after 2026-11-11T00:48Z.
+- **Live subagents:** ws1-impl (review loop), ws10-impl, ws6-harness (Opus 5.5); ws5-verifier (Fable 5.2). Background watch for the first ingest created after 2026-11-11T00:48Z.
 - **Merged + verified:** WS0 → #213 `673c191`
 - **Next:** WS4 when WS1 merges (critical path); WS9 once a live ingest has published events; WS6a after WS5
 - **Sprint API spend so far:** $0 of $10
@@ -138,9 +138,18 @@ OpenRouter parity, repeat eval runs.
 ### WS10: Session-start sync and freshness tracking: IN PROGRESS (Opus 5.5, `/Users/jason/unstale-ws10-session-sync`)
 - Dispatched whole (WS2 and WS3 are in). May split into two PRs. Leaves one marked place for WS4's pipeline.
 
-### WS5: Setup: IN PROGRESS (PR #224, Opus 5.5, `/Users/jason/unstale-ws5-setup`)
+### WS5: Setup: MERGED, verifier running
+- PR #224 → `725b8c1`, 507 tests, `main` green. Code `local/cli/src/setup/`; figures in `setup::quote()`;
+  `NO_KEY_MODE=false`; goldens in `src/setup/golden/`.
+- Decisions for CEO review in the playback: first sync quoted as equal to one year per technology (a ceiling, not
+  measured); Ctrl-D or three invalid answers records "none"; with several OpenAI-compatible keys only the cheapest
+  route is offered; user config added at `~/.config/unstale/config.json`; repo config is `.unstale/config.json`.
+- Gotchas: a key found only in this repo's `.env` is not in the process environment, so WS4 must read that one
+  value after consent. `unstale status` needs a coverage service. Jev alone is not an option (it labels, it cannot
+  extract).
+- The WS5 EM did not merge PR #219.
 
-### WS6a: Environment matrix harness: NOT STARTED (after WS3)
+### WS6a: Environment matrix harness: IN PROGRESS (Opus 5.5, `/Users/jason/unstale-ws6-matrix`)
 
 ### WS9: No-key mode eval: NOT STARTED (after WS2; one agent; Fable 5.2 judges, runs resumable)
 
