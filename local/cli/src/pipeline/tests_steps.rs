@@ -885,18 +885,23 @@ fn a_route_can_be_moved_only_to_this_machine() {
     );
 }
 
-/// Labels the service refuses (a 400) fail those records for this pass only: nothing marks them done, the queue goes
-/// on, and the next pass after the retry date asks again.
+/// Labels the service refuses (a 400) fail those records for this pass only: nothing marks them done, and the next pass
+/// after the retry date asks again. A route that refuses every request stops the pass after a few in a row, with one
+/// line, instead of failing each item alone and silently.
 #[test]
-fn records_whose_labels_fail_are_not_marked_done() {
+fn records_whose_labels_fail_are_not_marked_done_and_a_route_refusing_all_stops_the_pass() {
     let f = fixture();
     let m = Router::new(f.answers.clone(), vec![]);
+    // The labelling service answers 400 to every request; the fixture has four records to label.
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let jev = format!("http://{}", listener.local_addr().unwrap());
+    let asked = Arc::new(Mutex::new(0usize));
+    let n = asked.clone();
     std::thread::spawn(move || {
         for mut s in listener.incoming().flatten() {
             let mut buf = [0u8; 65536];
             let _ = s.read(&mut buf);
+            *n.lock().unwrap() += 1;
             let _ = write!(
                 s,
                 "HTTP/1.1 400 X\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}"
@@ -910,11 +915,18 @@ fn records_whose_labels_fail_are_not_marked_done() {
         &set(&["pkg:npm/example"]),
         "2026-11-10",
     );
+    let stop = super::REJECTED_IN_A_ROW;
     assert_eq!(
         (s.created, s.unlabelled, s.deferred.clone()),
-        (0, 4, None),
+        (0, stop - 1, Some(crate::inference::Deferred::Rejected)),
         "{s:?}"
     );
+    assert_eq!(
+        *asked.lock().unwrap(),
+        stop,
+        "one request per record until the pass stops"
+    );
+    assert!(s.line().is_some_and(|l| !l.contains('\n')));
     assert!(
         LocalStore::load(f.cache.path(), "example")
             .ingested

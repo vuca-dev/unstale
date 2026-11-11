@@ -199,6 +199,8 @@ pub struct Chooser<'a> {
     pub results: &'a Results,
     pub prompts: &'static Prompts,
     pub calls: std::cell::Cell<usize>,
+    /// Requests this route refused in a row: past a few, the pass stops ([`super::Streak`]).
+    pub rejected: super::Streak,
 }
 
 impl<'a> Chooser<'a> {
@@ -208,6 +210,7 @@ impl<'a> Chooser<'a> {
             results,
             prompts: crate::prompts::prompts(),
             calls: Default::default(),
+            rejected: Default::default(),
         }
     }
 
@@ -315,7 +318,7 @@ impl<'a> Chooser<'a> {
         let got = match self.inf.provider.kind {
             Kind::Jev => {
                 self.calls.set(self.calls.get() + 1);
-                match self.inf.classify(state, qs) {
+                match self.rejected.check(self.inf.classify(state, qs))? {
                     // Part of the questions were answered: nothing is kept until all are.
                     Ok(c) if c.deferred.is_some() => {
                         return Err(c.deferred.unwrap_or(Deferred::Unavailable));
@@ -355,7 +358,7 @@ impl<'a> Chooser<'a> {
                         std::thread::sleep(self.inf.limits.backoff * attempt as u32);
                     }
                     self.calls.set(self.calls.get() + 1);
-                    match self.inf.complete(&prompt) {
+                    match self.rejected.check(self.inf.complete(&prompt))? {
                         Ok(a) => {
                             let v = a.value.as_str().and_then(|t| {
                                 super::extract::parse_json(t, super::extract::Kind2::Object)
@@ -415,10 +418,10 @@ impl<'a> Chooser<'a> {
                 .collect();
             let text = chat_batch_prompt(self.prompts, &ids, qs)?;
             self.calls.set(self.calls.get() + 1);
-            let a = match self.inf.complete(&Prompt {
+            let a = match self.rejected.check(self.inf.complete(&Prompt {
                 max_tokens: 16_000,
                 ..Prompt::new(text).raw()
-            }) {
+            }))? {
                 Ok(a) => a,
                 Err(Deferred::Malformed | Deferred::TooLong | Deferred::Rejected) => continue,
                 Err(d) => return Err(d),

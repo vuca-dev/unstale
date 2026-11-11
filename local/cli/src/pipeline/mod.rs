@@ -26,6 +26,35 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use unstale_schema::catalog::EventLine;
 
+/// A route that refuses this many requests in a row (each a 400) is refusing every request: the pass stops there with
+/// one line, like any other provider problem, instead of one failed call per item.
+pub const REJECTED_IN_A_ROW: usize = 3;
+
+/// The requests a route refused in a row during one pass.
+#[derive(Debug, Default)]
+pub struct Streak(std::cell::Cell<usize>);
+
+impl Streak {
+    /// The provider's result for the caller to read, or the deferral that stops the pass when this refusal is the
+    /// [`REJECTED_IN_A_ROW`]th in a row. An answer starts the count again.
+    pub fn check<T>(
+        &self,
+        r: Result<T, crate::inference::Deferred>,
+    ) -> Result<Result<T, crate::inference::Deferred>, crate::inference::Deferred> {
+        match &r {
+            Err(crate::inference::Deferred::Rejected) => {
+                self.0.set(self.0.get() + 1);
+                if self.0.get() >= REJECTED_IN_A_ROW {
+                    return Err(crate::inference::Deferred::Rejected);
+                }
+            }
+            Ok(_) => self.0.set(0),
+            Err(_) => {}
+        }
+        Ok(r)
+    }
+}
+
 /// Events older than this many days before today are not extracted on the client: the first sync of a technology
 /// covers one year of its releases, as the setup quote states.
 pub const BACKFILL_DAYS: i64 = 365;

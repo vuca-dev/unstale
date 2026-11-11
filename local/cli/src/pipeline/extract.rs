@@ -373,6 +373,8 @@ pub struct Extractor<'a> {
     pub prompts: &'static Prompts,
     /// Provider calls made (cache hits are not calls).
     pub calls: std::cell::Cell<usize>,
+    /// Requests this route refused in a row: past a few, the pass stops ([`super::Streak`]).
+    pub rejected: super::Streak,
 }
 
 impl<'a> Extractor<'a> {
@@ -382,6 +384,7 @@ impl<'a> Extractor<'a> {
             results,
             prompts: crate::prompts::prompts(),
             calls: Default::default(),
+            rejected: Default::default(),
         }
     }
 
@@ -489,7 +492,7 @@ impl<'a> Extractor<'a> {
                 std::thread::sleep(self.inf.limits.backoff * attempt as u32);
             }
             self.calls.set(self.calls.get() + 1);
-            match self.inf.complete(&p) {
+            match self.rejected.check(self.inf.complete(&p))? {
                 Ok(a) => {
                     if let Some(v) = a.value.as_str().and_then(|t| parse_json(t, kind)) {
                         model_version = Some(a.model);
@@ -696,10 +699,10 @@ impl<'a> Extractor<'a> {
                 .collect();
             let text = fill(&template, &[("CHUNKS", &body.join("\n"))]);
             self.calls.set(self.calls.get() + 1);
-            let a = match self.inf.complete(&Prompt {
+            let a = match self.rejected.check(self.inf.complete(&Prompt {
                 max_tokens: MAX_TOKENS,
                 ..Prompt::new(text).raw()
-            }) {
+            }))? {
                 Ok(a) => a,
                 // A batch that cannot be read is asked chunk by chunk instead.
                 Err(Deferred::Malformed | Deferred::TooLong | Deferred::Rejected) => continue,
