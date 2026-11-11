@@ -76,6 +76,24 @@ fn take(cache: &Path, tool: &Path, ours: &str, today: &str, upgrade: &str) -> Ve
     lines
 }
 
+/// The first line due today (the notice before the update line), recorded as printed; the other stays due. The
+/// session-start hook prints at most one line.
+pub fn take_one(cache: &Path, tool: &Path) -> Option<String> {
+    let root = std::fs::read(cache.join("v1/root.json")).ok().and_then(|b| serde_json::from_slice::<Root>(&b).ok())?;
+    let exe = std::env::current_exe().and_then(|e| e.canonicalize()).unwrap_or_default();
+    let path = shown_path(tool);
+    let mut shown: Shown = std::fs::read(&path).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+    let before = shown.update.clone();
+    let lines = due(&root, env!("CARGO_PKG_VERSION"), &util::today(), upgrade_command(&exe), &mut shown);
+    if lines.len() > 1 {
+        // Only the notice is printed: the update line is still due.
+        shown.update = before;
+    }
+    let first = lines.into_iter().next()?;
+    serde_json::to_vec_pretty(&shown).ok().and_then(|b| util::write_atomic(&path, &b).ok())?;
+    Some(first)
+}
+
 /// Print the lines due today from the cached root.
 pub fn print(cache: &Path, tool: &Path) {
     let exe = std::env::current_exe().and_then(|e| e.canonicalize()).unwrap_or_default();

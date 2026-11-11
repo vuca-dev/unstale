@@ -245,6 +245,59 @@ fn listed_technologies(
     Some(list.technologies)
 }
 
+/// What the session-start check found (`quick_check`).
+#[derive(Debug, PartialEq, Eq)]
+pub enum Quick {
+    /// The catalog's list is the cached one and names every technology given at the hash of its cached index: a sync
+    /// would fetch nothing.
+    Unchanged,
+    /// Something may have changed (or the cache cannot tell): a full sync is worth running.
+    Changed,
+}
+
+/// The session-start check: at most one request, the conditional request for the catalog's list of technologies,
+/// bounded by `timeout`. `techs` are the technologies the last sync kept for this repository; `events` asks that each
+/// one's change events be cached as well (the edge-inference switch). Nothing is written. A local directory, no
+/// validators or no list cached, or a list that changed, is `Changed` without further checks: the sync that follows
+/// verifies everything. An error is the request failing (unreachable, a timeout, a server error).
+pub fn quick_check(loc: &str, cache_dir: &Path, techs: &BTreeSet<String>, events: bool, timeout: Duration) -> Result<Quick> {
+    let base = match resolve_source(loc)? {
+        Source::Dir(_) => return Ok(Quick::Changed),
+        Source::Http { base, .. } => base,
+    };
+    if techs.is_empty() {
+        return Ok(Quick::Changed);
+    }
+    let key_id = catalog_key()?.map(|k| sha256_hex(&k));
+    let cached = std::fs::read(cache_dir.join(TECHNOLOGIES)).ok();
+    let Some(cond) = std::fs::read(technologies_validators_path(cache_dir))
+        .ok()
+        .and_then(|b| serde_json::from_slice::<Validators>(&b).ok())
+        .filter(|v| cached.as_deref().is_some_and(|c| sha256_hex(c) == v.sha256) && (key_id.is_none() || v.key == key_id))
+    else {
+        return Ok(Quick::Changed);
+    };
+    let Some(list) = cached.as_deref().and_then(|c| serde_json::from_slice::<Technologies>(c).ok()) else { return Ok(Quick::Changed) };
+    let src = http_source(base, timeout);
+    if !matches!(src.get(TECHNOLOGIES, Some(&cond))?, Got::NotModified) {
+        return Ok(Quick::Changed);
+    }
+    for t in techs {
+        let Some(listed) = list.technologies.get(t) else { return Ok(Quick::Changed) };
+        let Ok(index) = std::fs::read(index_path(cache_dir, t)) else { return Ok(Quick::Changed) };
+        if listed.len() != 16 || !sha256_hex(&index).starts_with(listed.as_str()) {
+            return Ok(Quick::Changed);
+        }
+        if events {
+            let Ok(idx) = serde_json::from_slice::<TechIndex>(&index) else { return Ok(Quick::Changed) };
+            if idx.events.iter().any(|s| !event_path(cache_dir, t, s).is_file()) {
+                return Ok(Quick::Changed);
+            }
+        }
+    }
+    Ok(Quick::Unchanged)
+}
+
 /// Check a root against this client. The message names what to do.
 pub fn check_root(root: &Root) -> std::result::Result<(), Incompatible> {
     let ours = env!("CARGO_PKG_VERSION");

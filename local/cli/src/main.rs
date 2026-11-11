@@ -19,6 +19,7 @@ mod notice;
 mod ledgerops;
 mod review;
 mod setup;
+mod session;
 mod stack;
 mod sync;
 #[cfg(test)]
@@ -108,8 +109,12 @@ enum Cmd {
     },
     /// Remove this repository integration; keep a local backup of decisions and generated context.
     Uninstall,
-    /// One line when shared coverage published records since the last report; silent otherwise (agent session start).
+    /// Agent session start: at most one line when something new is ready, silent otherwise; never fails. Starts the
+    /// catalog sync in the background when the catalog may have changed.
     Notify,
+    /// Internal: the session-start background stage (`notify` starts it, detached).
+    #[command(hide = true)]
+    SessionSync,
     /// Show the saved detailed onboarding report without rerunning setup or coverage.
     Report,
     /// Fetch this stack's technology indexes and shards into the per-user cache (verified, swapped atomically).
@@ -222,6 +227,9 @@ struct Config {
     /// Where model steps run (`unstale setup`): the provider and the key's variable name, never its value.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     inference: Option<setup::Choice>,
+    /// `false` turns off the catalog sync at agent session start (`session.rs`); absent or `true` keeps it on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    session_sync: Option<bool>,
 }
 
 struct Ctx {
@@ -266,6 +274,10 @@ fn dispatch(cli: Cli) -> Result<u8> {
     if let Cmd::Infer { provider, model, base_url, key_env, schema, timeout_secs, backoff_ms, prompt } = cli.cmd {
         return cmd_infer(&provider, model, base_url, key_env, schema, timeout_secs, backoff_ms, prompt);
     }
+    // Session start is never blocked or broken: the hook guards everything itself, before any step that can fail.
+    if matches!(cli.cmd, Cmd::Notify) {
+        return Ok(session::hook(cli.dir.as_deref()));
+    }
     let start = start_dir(&cli.dir)?;
     if matches!(cli.cmd, Cmd::Uninstall) { return uninstall::run(&start); }
     if let Cmd::Init { catalog, mode, yes, service, wait, no_animation, inference } = cli.cmd {
@@ -292,7 +304,7 @@ fn dispatch(cli: Cli) -> Result<u8> {
     }
     let mut ctx = context(&start)?;
     match cli.cmd {
-        Cmd::Init { .. } | Cmd::CountTerms { .. } | Cmd::Uninstall | Cmd::Infer { .. } => unreachable!(),
+        Cmd::Init { .. } | Cmd::CountTerms { .. } | Cmd::Uninstall | Cmd::Infer { .. } | Cmd::Notify => unreachable!(),
         Cmd::Setup { inference, user } => {
             if !inference::enabled() {
                 println!("Model steps are off in this version; there is nothing to set up.");
@@ -321,8 +333,9 @@ fn dispatch(cli: Cli) -> Result<u8> {
             let ours = stack::detect(&ctx.root).map(|st| onboarding::candidates(&ctx, &st)).unwrap_or_default();
             let failed: Vec<(String, String)> = cache::events_failed(&ctx.cache).into_iter().filter(|(t, _)| ours.contains(t)).collect();
             if let Some(line) = events_failed_line(&failed) { println!("{line}"); }
+            session::after_status(&ctx);
         }),
-        Cmd::Notify => onboarding::notify(&ctx).inspect(|_| notice::print(&ctx.cache, &ctx.tool)),
+        Cmd::SessionSync => session::background(&ctx),
         Cmd::Sync => cmd_sync(&ctx),
         Cmd::Digest => cmd_digest(&ctx),
         Cmd::Review { next, target, pass } => cmd_review(&ctx, next, &target, pass),
@@ -462,6 +475,7 @@ fn init(start: &Path, catalog: Option<String>, mode: Option<Mode>, _yes: bool, q
         mode,
         service: existing.as_ref().and_then(|e| e.service.clone()),
         inference: existing.as_ref().and_then(|e| e.inference.clone()),
+        session_sync: existing.as_ref().and_then(|e| e.session_sync),
     };
     util::write_atomic(&tool.join("config.json"), format!("{}\n", serde_json::to_string_pretty(&config)?).as_bytes())?;
     // Local: the tool directory ignores itself, so nothing tracked changes. Collaborative: ledger and generated review context
