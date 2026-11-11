@@ -9,7 +9,67 @@ is the same change as one already stored, so duplicates merge). "Central" is the
 until now; "the client" is the Rust port. "The labelling service" is Jev; "by choice" means a text model
 (`gpt-6-luna`) asked the same closed questions and read on the option it picks.
 
-## Conclusions
+## Verdicts
+
+- **Under the pre-registered rule (client at `8835d5c`): fail**, 7 of 8 parity cells pass. The failing cell is
+  matching on `gpt-6-luna` by choice; its cause is a reading rule central shares, not the port.
+- **Under addendum 1 (client at `1494730`, PR #237's two fixes; one run each, no further revision): pass**, 8 of 8.
+  Matching by choice is now 141/197 = 71.6% against central's 72.1%, with no unreadable answer and no false merge.
+- **Codex extraction with length-based batching is better and still below the direct route** (60.1% pooled recall
+  against 53.5% before, 75.6% for the client's direct run and 66.3 to 67.4% for central's). It can be called measured,
+  not equal.
+
+## After the fixes (addendum 1, 11 November 2026)
+
+Pre-registered in `PREREGISTRATION.md`, "Addendum 1" (commit `1d3c5c5`, pushed before any call for it).
+
+| Cell | Metric | Reference | Before the fix | After the fix | Band (after minus reference) | Verdict |
+|---|---|---|---|---|---|---|
+| 8b Matching, `gpt-6-luna` by choice | Merge recall | central 142/197 = 72.1% | 124/197 = 62.9% | **141/197 = 71.6%** | −0.5 [−3.6, +2.5], McNemar p 1 | pass |
+| 8b | False merges per 100 merges | central 0.0 | 0.0 | 0.0 (0 of 141) | McNemar p 1 | pass |
+| 8b | Requests unreadable after three attempts | | 23 of 235 | **0 of 235** | | |
+
+- **How it ran.** The 212 answers cell 8 had cached were read again at no cost; the 23 requests stored as unreadable
+  were asked again, once each (23 calls, 35,667 input and 2,169 output tokens, $0.0044 billed). All 23 were read on
+  the first attempt.
+- **Duplicates.** A key alone now misses 56 true merges against the labelling service's 26 (production wording) or 22
+  (slice 5's run): 30 to 34 more over 867 records, **4.0 to 4.5 more duplicate records per technology-year**. "About
+  4" holds with the fix; it was about 6 without it.
+- **Labels by choice re-read with the new answer reading:** 0 calls, 0 of 233 and 0 of 347 records change a label.
+
+Codex extraction, short notes (9b; plan-billed, empty cache, 51 calls):
+
+| Run | Recall, pooled | Mean per technology | Breaking | Precision | Records |
+|---|---|---|---|---|---|
+| Codex, batching by length (after) | **60.1** | 85.6 | 71.4 | 77.3 | 207 |
+| Codex, any 8 chunks to a call (before) | 53.5 | 82.7 | 68.6 | 88.3 | 162 |
+| Client, direct (cell 1) | 75.6 | 90.4 | 74.3 | 78.8 | 259 |
+| Central's three direct runs | 66.3 to 67.4 | 91.7 to 92.5 | 74.3 to 85.7 | 81.1 to 83.2 | 214 to 228 |
+
+| New batching minus | Recall, pooled | Mean per technology | Breaking | Precision |
+|---|---|---|---|---|
+| Client, direct | −15.5 [−25.5, +1.1] | −4.8 [−13.5, +3.5] | −2.9 [−19.4, +10.5] | −1.5 [−5.8, +3.5] |
+| Central, gateway | −6.2 [−11.5, +1.2] | **−6.4 [−13.7, −0.2]** | **−11.4 [−35.0, −2.4]** | −4.7 [−12.1, +5.4] |
+| Central, replicate | −7.4 [−13.9, +0.5] | **−6.1 [−12.2, −0.3]** | **−14.3 [−26.7, −5.0]** | −3.8 [−13.3, +5.7] |
+| Central, direct | **−6.2 [−13.9, −1.6]** | **−6.9 [−14.4, −0.6]** | −2.9 [−31.2, +9.2] | −5.9 [−14.0, +4.2] |
+| Old batching | +6.6 [−0.9, +10.6] | +2.9 [−4.9, +10.6] | +2.9 [0.0, +6.5] | −11.0 [−19.2, +5.1] |
+
+- **Verdict by the rule ("no measurable loss" = every interval includes 0): not met.** Against the client's own
+  direct run every interval includes 0, the pooled one barely; against central's direct runs six of twelve exclude 0.
+- **Where the rest of the gap is.** The longest chunk now goes alone and gives 30 records, against 14 in a batch and
+  37 to 75 on the direct route. So part of the loss is not batching: the same model writes less through Codex.
+- **Relative to direct:** pooled recall is 79% of the client's direct run and about 90% of central's direct runs.
+- **Plan tokens:** 400,046 for the set (372,162 input, 165,632 of it cached; 27,884 output). Per technology-year,
+  scaled by chunks as before: **167k plan tokens** (69k cached input, 11.6k output; ≈ $0.015 at API prices). The old
+  batching's figure was 152k.
+
+Spend for the addendum: $0.0044 on the gateway (cap $0.50), 400k Codex plan tokens. Keys: the gateway key was read
+from the one variable `AI_GATEWAY_API_KEY` in the gateway key file that `central/src/pipeline/llm.ts` names; the
+labelling-service key was not needed. Nothing was printed.
+
+Everything below is the first run, on `8835d5c`, as recorded before the fixes.
+
+## Conclusions (first run)
 
 1. **The port is faithful.** Given the same answers, the client reproduces central exactly: 815 of 815 requests to the
    labelling service are byte-identical to central's, and with central's stored answers replayed every one of 580
