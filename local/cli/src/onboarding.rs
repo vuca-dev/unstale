@@ -4091,7 +4091,10 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
             let (done, total) = counter.settle(settled);
             ui.update(title, &format!("Checked {done}/{total} direct packages against the published catalog"), hint)
         })
-        .map(|rep| rep.failed.is_empty().then_some(cands))
+        .map(|rep| {
+            crate::cache_gc::after_sync(&ctx.cache, &ctx.root, &crate::cache_gc::needs(&rep));
+            rep.failed.is_empty().then_some(cands)
+        })
     };
     // The registry's deprecation of each installed version of a direct dependency (deprecations.rs): public
     // registries only, cached a day; the identity check below already read most of them.

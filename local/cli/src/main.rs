@@ -3,6 +3,7 @@
 
 mod advisories;
 mod cache;
+mod cache_gc;
 mod cargo;
 mod deprecations;
 mod onboarding;
@@ -196,6 +197,12 @@ enum Cmd {
         backoff_ms: Option<u64>,
         prompt: String,
     },
+    /// The per-user cache (hidden until the edge-inference release).
+    #[command(hide = true)]
+    Cache {
+        #[command(subcommand)]
+        cmd: CacheCmd,
+    },
     /// Internal: the client's model steps, for evals and tests.
     #[command(hide = true)]
     Internal {
@@ -207,6 +214,13 @@ enum Cmd {
         #[arg(long, value_name = "PKG@VERSION")]
         target: Vec<String>,
     },
+}
+
+#[derive(Subcommand)]
+enum CacheCmd {
+    /// Delete everything the cache can fetch again and every model result (they are paid for again when read); the
+    /// usage record and uninstall backups stay.
+    Clean,
 }
 
 #[derive(Subcommand)]
@@ -326,6 +340,10 @@ fn dispatch(cli: Cli, started: std::time::Instant) -> Result<u8> {
     if matches!(cli.cmd, Cmd::Notify) {
         return Ok(session::hook(cli.dir.as_deref(), started));
     }
+    if let Cmd::Cache { cmd: CacheCmd::Clean } = cli.cmd {
+        println!("{}", cache_gc::clean_all(&cache::cache_dir()));
+        return Ok(0);
+    }
     let start = start_dir(&cli.dir)?;
     if matches!(cli.cmd, Cmd::Uninstall) { return uninstall::run(&start); }
     if let Cmd::Internal { cmd } = cli.cmd {
@@ -359,7 +377,7 @@ fn dispatch(cli: Cli, started: std::time::Instant) -> Result<u8> {
     }
     let mut ctx = context(&start)?;
     match cli.cmd {
-        Cmd::Init { .. } | Cmd::CountTerms { .. } | Cmd::Uninstall | Cmd::Infer { .. } | Cmd::Notify | Cmd::Internal { .. } => unreachable!(),
+        Cmd::Init { .. } | Cmd::CountTerms { .. } | Cmd::Uninstall | Cmd::Infer { .. } | Cmd::Notify | Cmd::Internal { .. } | Cmd::Cache { .. } => unreachable!(),
         Cmd::Setup { inference, user, details, limit } => {
             if !inference::enabled() {
                 println!("Model steps are off in this version; there is nothing to set up.");
@@ -398,6 +416,9 @@ fn dispatch(cli: Cli, started: std::time::Instant) -> Result<u8> {
             let (wrong, fresh) = session::status_lines(&ctx);
             warnings.extend(wrong);
             state.extend(fresh);
+            if let Some(line) = cache_gc::status_line(&ctx.cache) {
+                if line.starts_with("warning") { warnings.push(line) } else { state.push(line) }
+            }
             for line in warnings.iter().chain(&state) { println!("{line}"); }
         }),
         Cmd::SessionSync => session::background(&ctx),
@@ -761,6 +782,7 @@ fn cmd_sync(ctx: &Ctx) -> Result<u8> {
         }
         Err(e) => return Err(e),
     };
+    cache_gc::after_sync(&ctx.cache, &ctx.root, &cache_gc::needs(&rep));
     // With the edge-inference switch on, `sync` says what the reader can use, in their words: a line a technology, and
     // nothing about what the catalog does not cover (nothing to do about it) or how the files arrived. Release notes
     // that could not be verified are a warning below. With the switch off the lines are as they were.
