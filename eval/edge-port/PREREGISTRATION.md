@@ -148,3 +148,32 @@ Keys: the gateway key and the labelling-service key are read from the key files 
 runs with a temporary home, config directory and cache directory; the monthly token limit is set high in that
 temporary config so no cell stops midway; caches are kept until the end so an interruption resumes without paying
 twice.
+
+## Addendum 1: re-measurement after two fixes (written 11 November 2026, before any call for it)
+
+PR #237 (head `1494730`) changes two things this run found: a choice answer that gives an option's text is read as
+that option (central and client), and Codex extraction batches by length (a chunk above 6,000 characters goes alone; a
+batch holds at most 12,000 characters and 8 chunks). The client is rebuilt at `1494730` in its own worktree. Two cells
+are run again, with the same inputs, scorers, metrics and bands as above.
+
+| Cell | What runs | Metrics and band | Reference |
+|---|---|---|---|
+| 8b | Matching on `gpt-6-luna` by choice, production rule, matching set | Merge recall (95% interval of the paired difference includes 0); false merges per 100 merges (McNemar p ≥ 0.05) | Central: 142/197 = 72.1%, 0.0 |
+| 9b | Extraction through Codex with the new batching, short notes | Recall pooled, mean per technology, breaking; precision; paired interval as before | The client's direct run (cell 1: 75.6 / 90.4 / 74.3 / 78.8), central's three direct runs, and the old batching (cell 9: 53.5) |
+
+- **Cell 8b reuses cell 8's answer cache.** The prompt data is unchanged between the two builds, so request bytes and
+  cache keys are the same. The 213 requests answered in cell 8 are read from a copy of its cache and cost nothing.
+  The 23 requests stored as unreadable hold no answer text (the cache keeps only the failure), so their entries are
+  removed from the copy and they are asked again, up to three attempts each as before. Known limit: the 213 cached
+  answers are ones the old reading accepted, some on a second or third attempt; the new reading would have accepted
+  an option-text answer on the first.
+- **Labels by choice (cells 5 and 6) are re-read from their caches** with the new build; expected calls: none.
+  Reported: whether any record's label changes.
+- **Cell 9b runs on an empty cache** (the batch form changed), on the Codex plan, after `codex login status`. Also
+  reported: plan tokens per technology-year under the new batching (the 152k figure was the old batching's).
+- **Rule: one run each, no further revision whatever the outcome.** A cell that fails stays failed in the results.
+- **Verdict.** The pre-registered verdict above stands as it was recorded. The addendum adds a second verdict: parity
+  under the fixed build = cells 1 to 7 as run, with 8b in place of 8.
+- **Spend.** Estimate: at most 69 gateway calls of about 1,700 input tokens, under $0.02; Codex about 350k plan
+  tokens. Cap for this step: $0.50 of API spend. Keys as before: only the two named variables, read from the key
+  files central's code names, passed to the client process, never printed.
