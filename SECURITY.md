@@ -23,7 +23,7 @@ gateway in `gateway/`. Only the latest release receives fixes.
   OSV (`api.osv.dev`) for advisories, as `npm audit` or `pip-audit` would; no source. A package installed from, or
   configured for, any registry but the public one (lockfile URLs; `.npmrc` including `~/.npmrc` and nested ones,
   `NPM_CONFIG_*`, `.yarnrc.yml`, `bunfig.toml`, pip, uv, Poetry, PDM and Pipfile indexes; Cargo `.cargo/config.toml`,
-  `$CARGO_HOME` and `CARGO_*` sources and source replacements) is never named to npm, PyPI, OSV, the coverage service
+  `$CARGO_HOME` and `CARGO_*` sources and source replacements, and Cargo `[patch]` and `[replace]` entries) is never named to npm, PyPI, OSV, the coverage service
   or, when the catalog publishes no list of its technologies, the catalog host (`local/cli/src/privacy.rs`); a coverage
   job registered before a registry was configured for its package is dropped, not polled. With credentials for
   `registry.npmjs.org` configured, a scoped package is sent to OSV or the catalog host only once an anonymous read of

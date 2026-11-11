@@ -166,6 +166,8 @@ pub struct CargoInventory {
     pub workspaces: Vec<CargoWorkspace>,
     pub lockfiles: BTreeMap<String, CargoLock>,
     pub declarations: Vec<CargoDependency>,
+    /// Crate names a manifest's `[patch]` or `[replace]` builds from another source (`overridden_names`).
+    pub patched: BTreeSet<String>,
 }
 
 #[derive(Clone)]
@@ -258,6 +260,7 @@ pub fn detect(root: &Path, notes: &mut Vec<String>, unreadable: &mut usize) -> C
         .collect();
     paths.sort();
     let mut parsed: BTreeMap<String, Parsed> = BTreeMap::new();
+    let mut patched = BTreeSet::new();
     for path in paths {
         let dir = rel(root, path.parent().unwrap_or(root));
         let file = rel(root, &path);
@@ -277,6 +280,7 @@ pub fn detect(root: &Path, notes: &mut Vec<String>, unreadable: &mut usize) -> C
                 continue;
             }
         };
+        patched.extend(overridden_names(&doc));
         let package = doc.get("package");
         let package_name = str_value(package.and_then(|p| p.get("name")))
             .filter(|s| !s.is_empty())
@@ -475,6 +479,7 @@ pub fn detect(root: &Path, notes: &mut Vec<String>, unreadable: &mut usize) -> C
 
     let mut inventory = CargoInventory {
         workspaces,
+        patched,
         ..Default::default()
     };
     let ws_roots: BTreeMap<String, usize> = inventory
@@ -606,6 +611,43 @@ pub fn detect(root: &Path, notes: &mut Vec<String>, unreadable: &mut usize) -> C
     }
     resolve_declarations(&mut inventory);
     inventory
+}
+
+/// The crate names a manifest or Cargo config overrides: the keys of every `[patch.<source>]` table and the `package`
+/// each one renames, and the package named by each `[replace]` spec (`foo:1.0`, `foo@1.0`, `<url>#foo@1.0`). Without
+/// a lockfile nothing records that such a crate is built from a path, git or private registry, while its declaration
+/// still reads as a plain crates.io requirement. The names stay private with a lockfile too, so the rule does not
+/// depend on one. Names are folded as crates.io folds them (case, `-` and `_`); patches on other sources count too,
+/// so none is missed.
+pub(crate) fn overridden_names(doc: &Value) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    let patches = doc.get("patch").and_then(Value::as_table).into_iter().flat_map(|t| t.values());
+    for table in patches.filter_map(Value::as_table) {
+        // A renamed patch (`alias = { package = "real", ... }`) overrides the crate it names.
+        for (alias, spec) in table {
+            out.insert(fold_name(alias));
+            if let Some(name) = spec.get("package").and_then(Value::as_str) {
+                out.insert(fold_name(name));
+            }
+        }
+    }
+    for spec in doc.get("replace").and_then(Value::as_table).into_iter().flat_map(|t| t.keys()) {
+        let tail = match spec.rsplit_once('#') {
+            Some((_, tail)) => tail,
+            None if spec.contains("://") => spec.trim_end_matches('/').rsplit('/').next().unwrap_or(spec),
+            None => spec,
+        };
+        let name = tail.split([':', '@']).next().unwrap_or(tail);
+        if !name.is_empty() {
+            out.insert(fold_name(name));
+        }
+    }
+    out
+}
+
+/// A crate name as crates.io compares names: case-insensitive, `-` and `_` alike.
+pub(crate) fn fold_name(name: &str) -> String {
+    name.to_ascii_lowercase().replace('_', "-")
 }
 
 fn note(notes: &mut Vec<String>, text: String) {

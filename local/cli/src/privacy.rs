@@ -395,6 +395,8 @@ pub struct Registries {
     npm_token: bool,
     /// Cargo: a crates.io source or index override is present or could not be safely interpreted.
     cargo_private: bool,
+    /// Cargo: crate names (folded) a `[patch]` or `[replace]` builds from another source.
+    cargo_patched: BTreeSet<String>,
 }
 
 impl Registries {
@@ -430,7 +432,7 @@ impl Registries {
     /// Credentials for the public npm registry are kept: they only make a scoped package wait for npm to confirm it
     /// (`needs_identity`), which fails closed.
     pub fn narrow(&self) -> Registries {
-        Registries { npm_scopes: self.npm_scopes.clone(), pypi_pinned: self.pypi_pinned.clone(), npm_token: self.npm_token, ..Registries::default() }
+        Registries { npm_scopes: self.npm_scopes.clone(), pypi_pinned: self.pypi_pinned.clone(), npm_token: self.npm_token, cargo_patched: self.cargo_patched.clone(), ..Registries::default() }
     }
 
     /// Both configurations: a package either keeps private is private.
@@ -441,6 +443,7 @@ impl Registries {
         self.npm_scopes.extend(other.npm_scopes.iter().cloned());
         self.pypi_pinned.extend(other.pypi_pinned.iter().cloned());
         self.cargo_private |= other.cargo_private;
+        self.cargo_patched.extend(other.cargo_patched.iter().cloned());
         self
     }
 
@@ -781,6 +784,7 @@ impl Registries {
             self.cargo_private = true;
             return;
         };
+        self.cargo_patched.extend(crate::cargo::overridden_names(&doc));
         if let Some(source) = doc.get("source") {
             let Some(source) = source.as_table() else {
                 self.cargo_private = true;
@@ -911,7 +915,13 @@ impl Registries {
         if name.is_empty() || !name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_') {
             return false;
         }
-        seen == Seen::Public && !self.cargo_private
+        seen == Seen::Public && !self.cargo_private && !self.cargo_patched.contains(&crate::cargo::fold_name(name))
+    }
+
+    /// Crate names the repository's manifests patch or replace (`cargo::overridden_names`), kept private like a
+    /// config's.
+    pub fn cargo_patch(&mut self, names: &BTreeSet<String>) {
+        self.cargo_patched.extend(names.iter().cloned());
     }
 
     /// Whether this package, though `may_name` allows it, needs the public registry to confirm it first: a scoped npm
