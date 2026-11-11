@@ -9,7 +9,7 @@
 
 - **Shape:** INDEPENDENT PRs to `main`. Every chunk is additive and behind one switch (README, "One switch").
 - **Ground truth:** GitHub PR state. Repo `vuca-dev/unstale`.
-- **Base:** `origin/main` @ `276a23d` (#243 merge)
+- **Base:** `origin/main` @ `3642f49` (#244 merge)
 - **Base health:** PR checks are `rust`, `central`, `gateway`; re-query before every merge.
 - **Open PRs:** #231 (no-key eval draft, blocked on the ingest decision), #240 (docs and site, DRAFT at `48b9c6d`, CI green; HELD for the CEO, never merged by agents; conflicts expected with the CEO's `smooth-wordmark` branch in `README.md` and `gateway/site/build.ts`)
 - **Live worktrees (sprint):** `/Users/jason/unstale-edge-sprint` (tracker), `/Users/jason/unstale-ws6b` (#238), `/Users/jason/unstale-ws9-no-key` + `/Users/jason/unstale-ws9-scout` (#231), `/Users/jason/unstale-parity` (paid answer caches; keep)
@@ -370,3 +370,5 @@ OpenRouter parity, repeat eval runs.
 - Options for the CEO (admission order untouched by all): (1) `REFRESH_MS` 6 h → 24 h; (2) oldest-first holds several slots; (3) cache npm organisation and maintainer listings so one 429 does not pause everything; (4) set the `INGEST_GITHUB_TOKEN` repository secret (1,000 → 5,000 requests an hour; CEO only) and treat a GitHub 403 rate limit as one.
 - Dispatched without waiting: logging-only PR (counts over 24 h and 3 days, kept-slot summary, yield lines, `rate_pause` event, attribution for the "unknown" advisory call). Watch `bnvs4es32` on run 43108470126.
 - No-key evaluation (#231) stays blocked until the tail clears.
+- #244 (ingest freshness logging; no scheduling change) merged at `3642f49` by the PM after APPROVE AFTER FIXES at `03b22c9` and APPROVE at `62c480f`. New fields: `release_checks_over_24h`, `release_checks_over_3d`, `unimprovable`, `release_check_age_s_checkable`, `metrics.kept_slot` (`due_*`, `overdue_*`, `oldest_overdue_age_s_*`), events `slice_yielded` and `rate_pause`, stage `advisory_apis`. First ingest run on `3642f49` or later will carry them.
+- Waiting on the CEO: remedy for the slow tail (PM recommends `REFRESH_MS` 24 h plus caching npm listings) and the `INGEST_GITHUB_TOKEN` secret.
