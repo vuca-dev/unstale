@@ -201,7 +201,11 @@ pub fn dotenv_names(r: impl std::io::Read) -> Vec<String> {
             At::Name | At::AfterName if b == b'=' && !name.is_empty() => at = At::Value,
             At::AfterName if b == b' ' || b == b'\t' => {}
             At::Name | At::AfterName => at = At::Skip,
-            At::Value if b == b'#' && !filled => at = At::Skip,
+            // A comment where the value would start: a blank assignment, which still clears an earlier one.
+            At::Value if b == b'#' && !filled => {
+                note(&name, false);
+                at = At::Skip;
+            }
             At::Value => filled |= !(b.is_ascii_whitespace() || b == b'"' || b == b'\''),
             At::Skip => {}
         }
