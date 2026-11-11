@@ -72,6 +72,19 @@ Projection, 10,000 users at 20 session starts a day: 200,000 static requests a d
 technologies: at most 1.12M static requests a day. Worker requests: 0. **Default on**, for records. Watch: if current
 files are ever packed (past 20,000 deployed files), changed starts would spend Worker requests.
 
+## Built (freshness)
+
+- **Central:** `v1/freshness.json`, signed, written at export (`central/src/pipeline/freshness.ts`). Median and 90th
+  percentile, in minutes, of registry publish to first seen, first seen to events published, and end to end, over the
+  30 days up to the newest release published, plus one entry per day for the trend. Backfilled sources are left out.
+  It is computed from the change events the exported indexes name, so it is deterministic and the same catalog gives
+  the same bytes. The deploy check verifies it.
+- **Client:** `unstale status`, with model steps on, prints one line for this repository's technologies over the last
+  30 days. It gives registry to catalog and catalog to this machine, each as a median and a 90th percentile, then
+  "records made here: not yet" until the client pipeline exists. When each event first reached this machine is kept
+  in `.synced.json` beside the cached events. What a technology's first sync finds counts as already published. It is
+  local only: nothing is sent anywhere.
+
 ## Later levers (not in this sprint)
 Ingest more often once central has no model calls (hourly or better), then registry-event triggers (npm's change
 feed, PyPI's release feeds) to collect only technologies that changed.
