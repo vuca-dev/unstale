@@ -96,8 +96,6 @@ const ThresholdsFile = z
     quote_similarity: Probability,
     question_floor: z.number().nonnegative(),
     lineage_same_p: Probability,
-    /** The judge's bars for a text model read on its choices (the client's route without the labelling service). */
-    chat_judge: z.object({ same_p: Probability, cross_same_p: Probability, quote_guard_below: z.number().min(0).max(1.01) }).strict(),
   })
   .strict();
 

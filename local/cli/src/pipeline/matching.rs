@@ -22,7 +22,8 @@ pub const K: usize = 8;
 #[derive(Debug, Clone)]
 pub struct Cand<'a> {
     pub rec: &'a CapabilityRecord,
-    pub sources: &'a [String],
+    /// `None` for a catalog record: the catalog does not publish them.
+    pub sources: Option<&'a [String]>,
 }
 
 const STOP: &str = "the a an and or of to in for on with by from is are be as at this that it its when now can new no not use uses used using support supports supported adds added add";
@@ -79,10 +80,13 @@ fn other_chunk_same_subject(inc: &Incoming, c: &Cand) -> bool {
     let Some(ch) = chunk_of(&inc.key) else {
         return false;
     };
-    if c.sources
-        .iter()
-        .any(|k| chunk_of(k).is_none_or(|x| x == ch))
-    {
+    // A catalog record's extraction keys are not published, so whether the extractor saw it beside the incoming item
+    // is unknown: it is treated as seen (excluded, the conservative side; central would exclude it when one of its
+    // keys is from the same chunk).
+    let Some(sources) = c.sources else {
+        return false;
+    };
+    if sources.iter().any(|k| chunk_of(k).is_none_or(|x| x == ch)) {
         return false;
     }
     c.rec.subject.to_lowercase() == inc.subject.to_lowercase()
@@ -473,19 +477,9 @@ pub struct Bars {
     pub lineage: f64,
 }
 
-/// The bars for a request: the labelling service's (short or long rules, `thresholds.json`), or a text model's on its
-/// choices (`thresholds.json` `chat_judge`).
-pub fn bars(p: &Prompts, short: bool, calibrated: bool) -> Bars {
+/// The bars for a request (`thresholds.json`): the shorter rules' or the longer rules'.
+pub fn bars(p: &Prompts, short: bool) -> Bars {
     let t = &p.thresholds;
-    if !calibrated {
-        let c = t.chat_judge;
-        return Bars {
-            same: c.same_p,
-            cross: c.cross_same_p,
-            quote_below: c.quote_guard_below,
-            lineage: t.lineage_same_p,
-        };
-    }
     if short {
         Bars {
             same: t.same_p_short,
@@ -562,7 +556,7 @@ pub fn pick(
     cands: &[&CapabilityRecord],
     a: &Answers,
 ) -> (Option<(String, f64)>, Vec<Judged>) {
-    let b = bars(p, short_rules(inc, cands), a.calibrated);
+    let b = bars(p, short_rules(inc, cands));
     let mut judged: Vec<Judged> = cands
         .iter()
         .enumerate()
@@ -585,7 +579,12 @@ pub fn pick(
             Judged {
                 id: c.id.clone(),
                 p: pr,
-                outcome: guard(p, inc, breaking, c, pr, b).unwrap_or("same").into(),
+                // An uncalibrated "yes" (a text model's choice) says nothing of how sure the judge is: every
+                // probability-gated guard reads it as 0, so it merges only on a near-identical quote of the same
+                // kind, never across kinds or by lineage (central's `pick`).
+                outcome: guard(p, inc, breaking, c, if a.calibrated { pr } else { 0.0 }, b)
+                    .unwrap_or("same")
+                    .into(),
             }
         })
         .collect();

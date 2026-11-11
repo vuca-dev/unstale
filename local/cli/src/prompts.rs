@@ -225,16 +225,6 @@ pub struct ChoiceFile {
     pub batch: Vec<Edit>,
 }
 
-/// The judge's bars for a text model read on its choices (`eval/provider-matrix/RESULTS.md`, E, gpt-6-luna chat:
-/// fitted same / cross / quote 0.82 / 0.97 / 1.01). A quote bar above 1 means the quote guard always applies.
-#[derive(Debug, Clone, Copy, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ChatJudge {
-    pub same_p: f64,
-    pub cross_same_p: f64,
-    pub quote_guard_below: f64,
-}
-
 /// `thresholds.json`: the bars labels and merges are decided at.
 #[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -254,7 +244,6 @@ pub struct Thresholds {
     pub quote_similarity: f64,
     pub question_floor: f64,
     pub lineage_same_p: f64,
-    pub chat_judge: ChatJudge,
 }
 
 #[derive(Debug, Clone)]
