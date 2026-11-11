@@ -9,13 +9,13 @@
 
 - **Shape:** INDEPENDENT PRs to `main`. Every chunk is additive and behind one switch (README, "One switch").
 - **Ground truth:** GitHub PR state. Repo `vuca-dev/unstale`.
-- **Base:** `origin/main` @ `f37260a` (`ci` green)
+- **Base:** `origin/main` @ `072a57a` (`ci` green)
 - **Base health:** PR checks are `rust`, `central`, `gateway`; re-query before every merge.
-- **Open PRs:** WS1 and WS5 pending
+- **Open PRs:** #222 (WS1, fixing 2 review findings), #224 (WS5, in review)
 - **Live worktrees (sprint):** `/Users/jason/unstale-edge-sprint` (tracker)
-- **Live subagents:** ws1-impl, ws5-impl, ws3-fix (the WS3 EM revived; small) on Opus 5.5; ws2-verifier (Fable 5.2)
+- **Live subagents:** ws1-impl, ws5-impl, ws10-impl (Opus 5.5); ws3-fix-verifier (Fable 5.2). Background watch for the first ingest created after 2026-11-11T00:48Z.
 - **Merged + verified:** WS0 → #213 `673c191`
-- **Next:** WS4 when WS1 merges (critical path); then WS9, WS10, WS6a as lanes free
+- **Next:** WS4 when WS1 merges (critical path); WS9 once a live ingest has published events; WS6a after WS5
 - **Sprint API spend so far:** $0 of $10
 
 ## §2 CEO directives (durable; read every iteration)
@@ -91,8 +91,11 @@ OpenRouter parity, repeat eval runs.
   (3) `complete_batch` panics past 8 items; (4) hidden `unstale infer` ignores the switch; (5) ledger accounting for
   rejected answers and Jev untested. HUMAN: is 48M the right budget default. UNVERIFIABLE: Codex flags against the
   RESULTS file (not on `main`); real Codex error wording.
-- **WS3-FIX** dispatched for 1–5 (worktree `/Users/jason/unstale-ws3-fix`). WS3 is not VERIFIED until it merges and
-  the redirect and ledger fixes are re-checked.
+- **WS3-FIX: MERGED** PR #223 → `072a57a`, 487/487, 7 threads 0 unresolved (1 dismissed with comment), `main` green.
+  No redirects on any adapter; https only except loopback; budget fails closed; batch over 8 defers; `infer`
+  respects the switch; one switch reader `util::edge_inference()` (`1` or `true`); a bad event shard is refused but
+  records still sync (`TechSync.events_failed`). Signature changes: `Deferred` +3 variants, `Ledger::record` returns
+  `io::Result`. Verifier dispatched.
 
 ### WS2: Change events in the catalog: MERGED, VERIFIED WITH GAPS (live run unobserved)
 - PR #221 → `f37260a`. Central 571/571, local 460 passed, gateway 73/73; `main` `ci` green. 1 review finding dismissed
@@ -118,13 +121,19 @@ OpenRouter parity, repeat eval runs.
   uncompressed in state, about 100 MB at full scale: follow-up. (5) A line's event shard is rewritten whole on each
   release: follow-up.
 
-### WS1: Prompts as shared data: IN PROGRESS
+### WS1: Prompts as shared data: IN PROGRESS (PR #222)
+- First hand-back unmerged: 2 review findings. P0: `central/Dockerfile` copies only `src/`, so `schema/prompts/` would
+  be missing from the image. P2: Rust sorted answer options; central sends file order. EM revived to fix both
+  (`inference::ChoiceQuestion.options` becomes an ordered `Vec`).
+- Layout: `schema/prompts/{extract,labels,judge,choice,advisory-apis,thresholds}.json`, integer `version` each;
+  `central/src/pipeline/prompts.ts`; `local/cli/src/prompts.rs`. Snapshot of 24 request bodies and cache keys
+  committed first (`f96bb42`), unchanged after.
 - EM: impl, Opus 5.5. Starts when the first lane frees.
 
-### WS10a: Session-start hook install (Claude Code, Codex, opencode check): NOT STARTED
-- No dependency. Sync and freshness tracking (WS10b) wait for WS2 and WS3.
+### WS10: Session-start sync and freshness tracking: IN PROGRESS (Opus 5.5, `/Users/jason/unstale-ws10-session-sync`)
+- Dispatched whole (WS2 and WS3 are in). May split into two PRs. Leaves one marked place for WS4's pipeline.
 
-### WS5: Setup: IN PROGRESS (Opus 5.5, `/Users/jason/unstale-ws5-setup`)
+### WS5: Setup: IN PROGRESS (PR #224, Opus 5.5, `/Users/jason/unstale-ws5-setup`)
 
 ### WS6a: Environment matrix harness: NOT STARTED (after WS3)
 
@@ -132,12 +141,15 @@ OpenRouter parity, repeat eval runs.
 
 ### WS4: Client pipeline steps and port parity: NOT STARTED (after WS1, WS2, WS3; sub-PRs)
 
-### WS10b: Session-start sync and freshness tracking: NOT STARTED (after WS2, WS3)
-
 ### WS6b: Full matrix run and playback gallery: NOT STARTED (after WS4, WS5, WS10)
 - CEO copy review happens here, before WS8.
 
 ### WS8: Docs and site: NOT STARTED (after WS4, WS5, WS6b; draft, held)
+
+### Notes
+- PR #219 (docs page cache, branch `agent/performance/...`) was merged under the CEO's account at 00:52Z on
+  11 November, between sprint merges. No PM brief asked for it; origin unconfirmed. Briefs now say "do not merge any
+  PR other than your own".
 
 ### Program close
 - `main` green on the final tip; tracker branch merged; morning report.
