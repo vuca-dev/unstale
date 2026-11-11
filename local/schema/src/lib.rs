@@ -8,6 +8,7 @@ pub mod ledger;
 pub fn schemas() -> Vec<(&'static str, serde_json::Value)> {
     vec![
         ("catalog-shard-line.v1.json", serde_json::to_value(schemars::schema_for!(catalog::ShardLine)).unwrap()),
+        ("catalog-event-line.v1.json", serde_json::to_value(schemars::schema_for!(catalog::EventLine)).unwrap()),
         ("catalog-tech-index.v1.json", serde_json::to_value(schemars::schema_for!(catalog::TechIndex)).unwrap()),
         ("catalog-root.v1.json", serde_json::to_value(schemars::schema_for!(catalog::Root)).unwrap()),
         ("catalog-technologies.v1.json", serde_json::to_value(schemars::schema_for!(catalog::Technologies)).unwrap()),

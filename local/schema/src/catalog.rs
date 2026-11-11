@@ -324,6 +324,74 @@ pub struct TechIndex {
     /// reads identifiers from the advisory's one-line summary only.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub advisory_apis: Vec<AdvisoryApis>,
+    /// The technology's change events (`EventLine`): one gzipped JSON-lines shard per release line, content-addressed
+    /// like `shards` and covered by this index's signature the same way; `records` counts the shard's lines (events).
+    /// Absent in catalogs before 10 November 2026, and for a technology with no source text in the window.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub events: Vec<ShardRef>,
+}
+
+/// One line of an events shard (`TechIndex::events`): one source document of one release (its release notes, an upgrade
+/// guide, or a change to its documentation), normalised and split into chunks exactly as central's extraction reads
+/// it. Deterministic: no model has seen it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct EventLine {
+    /// `{technology}@{version}` plus the source's tag when it is not the release body alone (`+linked.<8 hex>`,
+    /// `+guide.<8 hex>`, `+docs.<8 hex>`): the prefix of the keys central gives the records it extracts from it.
+    pub id: String,
+    pub technology: String,
+    /// The technology's name as the extraction prompt states it (`Technology: …`).
+    pub name: String,
+    pub kind: EvidenceKind,
+    pub version: String,
+    /// The release line, major (or 0.minor below 1.0): what the event's shard is named by.
+    pub line: String,
+    /// ISO date, `YYYY-MM-DD`: the release's day (the registry's where it has one), as records carry it.
+    pub date: String,
+    /// ISO date the extraction prompt states (`Release: <version> (<date>)`) when it is not `date`: the GitHub release's
+    /// day, kept so the prompt does not move when the registry's day arrives later.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt_date: Option<String>,
+    /// Set for a source read from a moving page: the change shipped in a release from `version` up to this one
+    /// (`Release::no_later_than`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub no_later_than: Option<String>,
+    pub url: String,
+    /// `sha256:` plus the hex digest of the snapshot the text was taken from (`Evidence::snapshot`).
+    pub snapshot: String,
+    /// The text in order; joined with `\n` they are the whole text central extracts from.
+    pub chunks: Vec<EventChunk>,
+    pub freshness: Freshness,
+}
+
+/// One chunk of an event's text: at most 30,000 characters, cut at a heading, else at a line.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct EventChunk {
+    /// `{event id}#{index}`, index from 0: stable while the source is (central keys its records `{this}.{n}`).
+    pub id: String,
+    /// Hex sha256 of `text` (UTF-8): the cache key for anything derived from the chunk.
+    pub sha256: String,
+    pub text: String,
+    /// Nothing a change record could come from (structural headings, links, boilerplate): central makes no model call
+    /// for such a chunk.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub content_free: bool,
+}
+
+/// When a release's event reached each stage, so the gap from release to catalog is measured (ISO timestamps).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct Freshness {
+    /// When the registry says the version was published; absent when no registry gives a time for it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub registry_published: Option<String>,
+    /// When central first read this source.
+    pub first_seen: String,
+    /// When central first wrote this event into the technology's index.
+    pub first_published: String,
+    /// The source was already known when central began recording the technology's events (its history when it was
+    /// added, or a technology covered before events existed): `first_seen` is that start, not when the release appeared.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub backfilled: bool,
 }
 
 /// One advisory's affected APIs (`TechIndex::advisory_apis`).
