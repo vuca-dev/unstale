@@ -528,3 +528,165 @@ fn one_worker_per_machine() {
         "the lock is free once the first worker is done"
     );
 }
+
+#[test]
+fn provider_errors_are_typed_deferrals_and_only_transient_ones_retry() {
+    let f = Fixture::new();
+    let p = Prompt::new("x");
+    // (status, deferral, requests made with 2 retries)
+    for (status, want, calls) in [
+        (401, Deferred::Auth, 1),
+        (403, Deferred::Auth, 1),
+        (402, Deferred::Billing, 1),
+        (404, Deferred::ModelNotOnPlan("gpt-6-luna".into()), 1),
+        (400, Deferred::Rejected, 1),
+        (429, Deferred::RateLimited, 3),
+        (500, Deferred::Unavailable, 3),
+        (503, Deferred::Unavailable, 3),
+        (529, Deferred::Unavailable, 3),
+    ] {
+        let m = Mock::new(vec![(
+            status,
+            r#"{"error":{"message":"Incorrect API key provided: test-key-value"}}"#.into(),
+        )]);
+        let inf = f.inference(ProviderConfig::openai(), &m.url);
+        let got = inf.complete(&p).unwrap_err();
+        assert_eq!(got, want, "HTTP {status}");
+        assert_eq!(m.count(), calls, "HTTP {status}");
+        // The line is fixed text: nothing the provider sent back (which can echo the key) reaches the user.
+        assert!(
+            got.line().starts_with("deferred: ") && !got.line().contains("test-key-value"),
+            "{}",
+            got.line()
+        );
+    }
+    // A transient failure that clears is retried to an answer.
+    let m = Mock::new(vec![
+        (429, "{}".into()),
+        (502, "{}".into()),
+        (200, openai_ok(r#"{"ok": true}"#)),
+    ]);
+    let inf = f.inference(ProviderConfig::openai(), &m.url);
+    assert_eq!(inf.complete(&p).unwrap().value, json!({"ok": true}));
+    assert_eq!(m.count(), 3);
+    // No answer in time.
+    let m = Mock::with_delay(vec![(200, openai_ok("{}"))], Duration::from_millis(800));
+    let mut inf = f.inference(ProviderConfig::openai(), &m.url);
+    inf.limits.timeout = Duration::from_millis(200);
+    inf.limits.retries = 1;
+    assert_eq!(inf.complete(&p).unwrap_err(), Deferred::Timeout);
+    assert_eq!(m.count(), 2);
+    // Nothing listening.
+    let closed = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", closed.local_addr().unwrap());
+    drop(closed);
+    assert_eq!(
+        f.inference(ProviderConfig::openai(), &url)
+            .complete(&p)
+            .unwrap_err(),
+        Deferred::Unavailable
+    );
+    // A truncated answer, and an unset key (no request sent).
+    let long = json!({"choices": [{"message": {"content": "{\"ok\""}, "finish_reason": "length"}], "usage": {"prompt_tokens": 1, "completion_tokens": 1}});
+    let m = Mock::new(vec![(200, long.to_string())]);
+    assert_eq!(
+        f.inference(ProviderConfig::openai(), &m.url)
+            .complete(&p)
+            .unwrap_err(),
+        Deferred::TooLong
+    );
+    let m = Mock::new(vec![(200, openai_ok("{}"))]);
+    let mut inf = f.inference(ProviderConfig::openai(), &m.url);
+    inf.provider.key_env = Some("UNSET_KEY".into());
+    assert_eq!(
+        inf.complete(&p).unwrap_err(),
+        Deferred::NoKey("UNSET_KEY".into())
+    );
+    assert_eq!(m.count(), 0);
+}
+
+#[cfg(unix)]
+#[test]
+fn codex_problems_are_typed_deferrals() {
+    let p = Prompt::new("x");
+    let not_supported = concat!(
+        r#"{"type":"error","message":"The 'gpt-5.4-mini' model is not supported when using Codex with a ChatGPT account."}"#,
+        "\n",
+        r#"{"type":"turn.failed","error":{"message":"The 'gpt-5.4-mini' model is not supported when using Codex with a ChatGPT account."}}"#,
+        "\n",
+    );
+    let lapsed = r#"{"type":"error","message":"Reconnecting... 5/5 (unexpected status 401 Unauthorized: Missing bearer or basic authentication in header)"}"#;
+    let limited = r#"{"type":"turn.failed","error":{"message":"You've hit your usage limit."}}"#;
+    for (version, logged_in, out, code, want, calls) in [
+        ("0.166.0", false, CODEX_OK, 0, Deferred::CodexLoggedOut, 0),
+        ("0.120.3", true, CODEX_OK, 0, Deferred::CodexTooOld, 0),
+        (
+            "0.166.0",
+            true,
+            not_supported,
+            1,
+            Deferred::ModelNotOnPlan("gpt-6-luna".into()),
+            1,
+        ),
+        ("0.166.0", true, lapsed, 1, Deferred::CodexLoggedOut, 1),
+        ("0.166.0", true, limited, 1, Deferred::RateLimited, 3),
+        ("0.166.0", true, "", 1, Deferred::Unavailable, 3),
+        (
+            "0.166.0",
+            true,
+            r#"{"type":"item.completed","item":{"type":"agent_message","text":"no json here"}}"#,
+            0,
+            Deferred::Malformed,
+            1,
+        ),
+    ] {
+        let f = Fixture::new();
+        let bin = fake_codex(f.dir.path(), version, logged_in, out, code);
+        let inf = f.inference(ProviderConfig::codex(), &bin.to_string_lossy());
+        assert_eq!(inf.complete(&p).unwrap_err(), want, "{out}");
+        let n = std::fs::read_dir(f.dir.path().join("codex-calls"))
+            .unwrap()
+            .filter(|e| {
+                e.as_ref()
+                    .unwrap()
+                    .path()
+                    .extension()
+                    .is_some_and(|x| x == "args")
+            })
+            .count();
+        assert_eq!(n, calls, "exec calls for {want:?}");
+    }
+    let f = Fixture::new();
+    let inf = f.inference(
+        ProviderConfig::codex(),
+        &f.dir.path().join("no-codex-here").to_string_lossy(),
+    );
+    assert_eq!(inf.complete(&p).unwrap_err(), Deferred::CodexMissing);
+}
+
+#[test]
+fn every_deferral_is_one_plain_line() {
+    let all = [
+        Deferred::Budget,
+        Deferred::NoKey("OPENAI_API_KEY".into()),
+        Deferred::Auth,
+        Deferred::Billing,
+        Deferred::RateLimited,
+        Deferred::Unavailable,
+        Deferred::Timeout,
+        Deferred::ModelNotOnPlan("gpt-6-luna".into()),
+        Deferred::Rejected,
+        Deferred::TooLong,
+        Deferred::Malformed,
+        Deferred::CodexMissing,
+        Deferred::CodexTooOld,
+        Deferred::CodexLoggedOut,
+    ];
+    for d in all {
+        let l = d.line();
+        assert!(
+            l.starts_with("deferred: ") && !l.contains('\n') && l.chars().count() <= 80,
+            "{l}"
+        );
+    }
+}
