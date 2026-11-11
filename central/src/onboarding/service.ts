@@ -130,7 +130,14 @@ export interface Job {
   registry_version?: string;
   registry_checked?: string;
   change_detected?: string;
+  /** When a slice last read this technology's release list (fresh or from its cache): the refresh interval of an
+   * admitted technology that is not `monitoring` (a refresh that yielded, one past its quarterly cap) counts from here.
+   * Operator-only. */
+  refresh_checked?: string;
 }
+
+/** How long a monitored technology waits between refreshes. */
+export const REFRESH_MS = 6 * 3600_000;
 
 /** Work time after which an interrupted slice is not resumed: two full cycles (20 minutes each), about 12 times the
  * longest slice measured (a 638-page docs pass, 199 s). Slices are meant to take about a minute. */
@@ -222,7 +229,7 @@ export class CoverageService {
   private runningNew = new Set<string>();
   /** Running slices: when each started, whether it is a refresh, and whether it started as a new technology's (for the
    * jobs a drain's end interrupts). */
-  private slices = new Map<string, { at: number; refresh: boolean; first: boolean }>();
+  private slices = new Map<string, { at: number; refresh: boolean; first: boolean; oldest?: boolean; check?: boolean }>();
   /** Running slices resumed after an interruption: they never hold the slots kept for new technologies. */
   private runningCarried = new Set<string>();
   /** Interrupted slices stopped when this process loaded the jobs (stopSlice). */
@@ -409,9 +416,21 @@ export class CoverageService {
         (["failed", "monitoring", "blocked"].includes(job.state) && Date.parse(job.retry_at ?? "") <= Date.now()))
     );
   }
-  /** 0: refreshes, retries and continued history of admitted technologies; 1: new; 2: past their quarterly cap. */
+  /** When an admitted technology's releases were last checked (0: never known). */
+  private lastChecked(job: Job): number {
+    return Date.parse(job.refresh_checked ?? job.release_checked ?? job.refresh_completed ?? job.monitored ?? "") || 0;
+  }
+  /** A monitored technology whose refresh is due: a `monitoring` one at its retry time, any other (a refresh that
+   * yielded, one past its quarterly cap waiting with history left) once REFRESH_MS has passed since its last check. */
+  private refreshDue(job: Job, at = Date.now()): boolean {
+    if (!(job.monitored || job.state === "monitoring") || !this.due(job)) return false;
+    return job.state === "monitoring" || this.lastChecked(job) + REFRESH_MS <= at;
+  }
+  /** 0: refreshes, retries and continued history of admitted technologies; 1: new; 2: past their quarterly cap. A
+   * monitored technology past its cap is in tier 0 while its refresh is due: the cap holds its release-note
+   * extraction back (that refresh extracts none, `launch`), never the check for new releases. */
   private tier(job: Job): number {
-    if (job.overflow === quarterKey()) return 2;
+    if (job.overflow === quarterKey()) return this.refreshDue(job) ? 0 : 2;
     // Admitted by the first pass only: still new, in the same line as before it.
     if (job.advisories_first && !job.completed?.length && job.state !== "monitoring") return 1;
     return job.admitted || job.state === "monitoring" || job.completed?.length ? 0 : 1;
@@ -805,11 +824,13 @@ export class CoverageService {
   private pumpJobs(): number {
     if (this.held || (this.draining && (this.endedEarly || Date.now() >= this.draining)) || Date.now() < this.pausedUntil) return 0;
     const queue = this.queue();
-    // Keep one slot moving through overdue monitored jobs, oldest due first. Other slots retain demand order
-    // and the existing new-package reservation, so historical backfill and onboarding continue to progress.
-    if (![...this.slices.values()].some((slice) => slice.refresh)) {
-      const oldest = queue.filter((j) => j.state === "monitoring" && this.tier(j) === 0 && !this.running.has(j.purl))
-        .sort((a, b) => Date.parse(a.retry_at!) - Date.parse(b.retry_at!))[0];
+    // Keep one slot moving through due refreshes of monitored technologies, oldest checked first, whatever else runs:
+    // a refreshed technology goes behind every other due one, so none waits for more than one turn of the due refreshes.
+    // Other slots retain demand order and the new-package reservation, so historical backfill and onboarding progress.
+    let oldest: Job | undefined;
+    if (![...this.slices.values()].some((slice) => slice.oldest)) {
+      oldest = queue.filter((j) => this.refreshDue(j) && !this.running.has(j.purl) && !this.passing.has(j.purl))
+        .sort((a, b) => this.lastChecked(a) - this.lastChecked(b))[0];
       if (oldest) {
         queue.splice(queue.indexOf(oldest), 1);
         queue.unshift(oldest);
@@ -826,7 +847,7 @@ export class CoverageService {
         if (job.interrupted && this.runningCarried.size >= this.concurrency - this.newSlots) continue;
         const isNew = this.tier(job) === 1;
         if (capped && !isNew && waitingNew > 0 && this.running.size - this.runningNew.size >= this.concurrency - this.newSlots) continue;
-        const outcome = this.launch(job, isNew);
+        const outcome = this.launch(job, isNew, job === oldest);
         if (outcome === "held") return started;
         started++;
         if (isNew) waitingNew--;
@@ -852,7 +873,7 @@ export class CoverageService {
     return job.state !== "discovering";
   }
   /** Starts one job unless the budget refuses it ("held": nothing more may start). */
-  private launch(job: Job, isNew: boolean): "started" | "held" {
+  private launch(job: Job, isNew: boolean, oldest = false): "started" | "held" {
     if (this.budget.tokensLeft() <= 0) {
       const stage = this.passed(job, `Coverage budget for this ${this.limits.period} spent; continues after ${day(nextPeriod(this.limits.period))}`);
       if (job.state === "queued" && job.stage !== stage) this.save(job, "queued", stage);
@@ -875,7 +896,10 @@ export class CoverageService {
     this.lineStarts[isNew ? "new" : "admitted"]++;
     if (isNew) this.runningNew.add(job.purl);
     if (job.interrupted) this.runningCarried.add(job.purl);
-    this.slices.set(job.purl, { at: Date.now(), refresh, first: isNew });
+    // Past its quarterly cap, a due refresh checks for new releases and extracts no release note: the rest still waits
+    // in tier 2, behind every other technology.
+    const check = job.overflow === quarterKey() && this.refreshDue(job);
+    this.slices.set(job.purl, { at: Date.now(), refresh, first: isNew, oldest, check });
     this.launched++;
     const kind = this.tally[isNew ? "new" : refresh ? "refresh" : "other"];
     kind.started++;
@@ -1163,6 +1187,7 @@ export class CoverageService {
       : { notes: [], checked: now(), stats: { requests: 0, newReleases: 0 } };
     stage("releases_ms");
     if (t.repo) job.release_checked = releases.checked;
+    job.refresh_checked = now();
     this.persist(job);
     // The technology unit: before any extraction, a package whose recent release tags are another admitted package's
     // (same repository) joins that technology instead of extracting the same notes again.
@@ -1199,7 +1224,7 @@ export class CoverageService {
     const quarter = quarterKey();
     if (job.quarter?.key !== quarter) job.quarter = { key: quarter, tokens: 0 };
     const cap = this.limits.techQuarterTokens;
-    if (!doDocs)
+    if (!doDocs && !this.slices.get(job.purl)?.check)
       for (const note of notes) {
         const key = `${note.tag}:${note.snapshot}:audience-v1`;
         if (job.completed.includes(key)) continue;
@@ -1365,7 +1390,7 @@ export class CoverageService {
       ...timings, release_requests: releases.stats.requests, new_releases: releases.stats.newReleases,
       detection_to_refresh_s: job.change_detected ? Math.round((Date.now() - Date.parse(job.change_detected)) / 1000) : null }));
     job.next_task = "history";
-    job.retry_at = new Date(Date.now() + 6 * 3600000).toISOString();
+    job.retry_at = new Date(Date.now() + REFRESH_MS).toISOString();
     job.failures = 0;
     await withTechLock(tech.id, "onboarding", () =>
       publishTechnology(loadStore(tech.id), now(), catalogDir()),
@@ -1451,6 +1476,7 @@ function publicJob(j: Job) {
     registry_version: _registry_version,
     registry_checked: _registry_checked,
     change_detected: _change_detected,
+    refresh_checked: _refresh_checked,
     demand: _demand,
     ...fields
   } = j;

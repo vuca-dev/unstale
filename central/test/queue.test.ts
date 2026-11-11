@@ -515,3 +515,73 @@ test("a registry rate limit stops polling across cycles without pausing the inde
   expect(Date.parse(paused.paused_until!)).toBeGreaterThan(Date.now() + 3500_000);
   expect(read.mock.calls.length).toBeLessThanOrEqual(2);
 });
+
+test("a monitored technology past its quarterly cap is still checked for new releases on time, and that check extracts no note", async () => {
+  const service = new CoverageService(1, { limits: limits() }).hold();
+  const ago = (hours: number) => new Date(Date.now() - hours * 3600_000).toISOString();
+  const admitted = (name: string) => {
+    const job = service.submit(`pkg:npm/${name}`);
+    job.admitted = "used";
+    return job;
+  };
+  const backlog = admitted("backlog");
+  backlog.demand = 1000;
+  // Past its cap with history left (requeued by its last slice), last checked a day ago: its refresh is due.
+  const capped = admitted("capped");
+  Object.assign(capped, { monitored: ago(48), overflow: quarterKey(), refresh_checked: ago(24), completed: ["v1:x:audience-v1"] });
+  // Past its cap and checked an hour ago: only its remaining history waits, behind every other technology.
+  const checked = admitted("checked");
+  Object.assign(checked, { monitored: ago(48), overflow: quarterKey(), refresh_checked: ago(1), completed: ["v1:x:audience-v1"] });
+  const fresh = service.submit("pkg:npm/new");
+  fresh.demand = 50;
+  expect(service.queue().map((j) => j.purl.slice(8))).toEqual(["backlog", "capped", "new", "checked"]);
+  const started: string[] = [];
+  vi.spyOn(service as unknown as { work(job: Job): Promise<void> }, "work").mockImplementation(async (job) => {
+    started.push(job.purl.slice(8));
+    job.state = "monitoring";
+    job.retry_at = new Date(Date.now() + 6 * 3600_000).toISOString();
+  });
+  await service.drain(Date.now() + 1000, 0, 1);
+  expect(started).toEqual(["capped", "backlog", "new", "checked"]);
+});
+
+test("the release check of a technology past its cap reads its releases without extracting; its history then drains behind", async () => {
+  const { synth } = await mockWork({ "pkg:npm/verbose": { repo: "ex/verbose", tags: ["v1.0.3", "v1.0.2", "v1.0.1"], size: 60 } });
+  const fetching = await import("../src/pipeline/fetch.ts");
+  const events: string[] = [];
+  const read = vi.mocked(fetching.fetchReleases).getMockImplementation()!;
+  vi.mocked(fetching.fetchReleases).mockImplementation(async (...a) => (events.push("releases"), read(...a)));
+  synth.mockImplementation(async () => (events.push("synthesize"), 1));
+  const service = new CoverageService(1, { advisories: false, limits: limits({ techQuarterTokens: 100 }), admission: async () => ({ admit: true, why: "test" }) }).hold();
+  const job = service.submit("pkg:npm/verbose");
+  const day = new Date(Date.now() - 86_400_000).toISOString();
+  Object.assign(job, { admitted: "used", monitored: day, refresh_checked: day, overflow: quarterKey(), quarter: { key: quarterKey(), tokens: 200 } });
+  await service.drain(Date.now() + 2000, 0, 1);
+  // First the due check (releases read, no note extracted), then the history, as tier 2 work from the period's budget.
+  expect(events.slice(0, 2)).toEqual(["releases", "releases"]);
+  expect(events).toContain("synthesize");
+  expect(Date.parse(job.refresh_checked!)).toBeGreaterThan(Date.parse(day));
+});
+
+test("while a popular refresh runs, the oldest-checked due refresh still takes the next slot", async () => {
+  const service = new CoverageService(2, { limits: limits() }).hold();
+  const ago = (hours: number) => new Date(Date.now() - hours * 3600_000).toISOString();
+  const monitored = (name: string, demand: number, hours: number) => {
+    const job = service.submit(`pkg:npm/${name}`);
+    Object.assign(job, { state: "monitoring", admitted: "used", demand, refresh_checked: ago(hours), retry_at: ago(hours - 6) });
+    return job;
+  };
+  monitored("popular", 100, 7);
+  monitored("oldest", 0, 72);
+  monitored("recent", 5, 24);
+  monitored("older", 0, 48);
+  const started: string[] = [];
+  vi.spyOn(service as unknown as { work(job: Job): Promise<void> }, "work").mockImplementation(async (job) => {
+    started.push(job.purl.slice(8));
+    if (job.purl.endsWith("popular")) await new Promise((r) => setTimeout(r, 100));
+    job.state = "monitoring";
+    job.retry_at = new Date(Date.now() + 6 * 3600_000).toISOString();
+  });
+  await service.drain(Date.now() + 1000, 0, 1);
+  expect(started).toEqual(["oldest", "popular", "older", "recent"]);
+});
