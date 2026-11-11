@@ -44,10 +44,15 @@ pub fn reader(
             return env;
         }
         let root = root.as_ref()?;
+        let file = root.join(".env");
+        // A symlinked `.env` could point anywhere on the machine: only a regular file in the repository is read.
+        if !std::fs::symlink_metadata(&file).is_ok_and(|m| m.file_type().is_file()) {
+            return None;
+        }
         consented
             .iter()
             .any(|c| c == k)
-            .then(|| dotenv_value(&root.join(".env"), k))
+            .then(|| dotenv_value(&file, k))
             .flatten()
     }
 }
@@ -87,6 +92,27 @@ mod tests {
             None,
             "a variable the choice does not name is never read from the file"
         );
+        #[cfg(unix)]
+        {
+            let elsewhere = tempfile::tempdir().unwrap();
+            std::fs::write(
+                elsewhere.path().join("other"),
+                "UNSTALE_TEST_CONSENTED_KEY=from-elsewhere\n",
+            )
+            .unwrap();
+            let linked = tempfile::tempdir().unwrap();
+            std::os::unix::fs::symlink(elsewhere.path().join("other"), linked.path().join(".env"))
+                .unwrap();
+            let r = reader(
+                Some(linked.path().to_path_buf()),
+                vec!["UNSTALE_TEST_CONSENTED_KEY".into()],
+            );
+            assert_eq!(
+                r("UNSTALE_TEST_CONSENTED_KEY"),
+                None,
+                "a symlinked .env is never followed"
+            );
+        }
         assert_eq!(
             reader(None, vec!["UNSTALE_TEST_CONSENTED_KEY".into()])("UNSTALE_TEST_CONSENTED_KEY"),
             None

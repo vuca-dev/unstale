@@ -38,15 +38,20 @@ pub fn len16(s: &str) -> usize {
     s.chars().map(char::len_utf16).sum()
 }
 
-/// The byte index of UTF-16 offset `n` (clamped to the end). An offset inside a surrogate pair moves past the pair:
-/// JavaScript would cut the pair in half, which no valid text can hold.
+/// The byte index of UTF-16 offset `n` (clamped to the end). An offset inside a surrogate pair moves before the pair
+/// (JavaScript would cut the pair in half, which no valid text can hold), so a cut never exceeds `n` units; a cut that
+/// would then be empty keeps the pair, so cutting always advances.
 fn byte_at16(s: &str, n: usize) -> usize {
     let mut units = 0;
     for (i, c) in s.char_indices() {
+        let next = units + c.len_utf16();
         if units >= n {
             return i;
         }
-        units += c.len_utf16();
+        if next > n {
+            return if i == 0 { c.len_utf8() } else { i };
+        }
+        units = next;
     }
     s.len()
 }
@@ -659,9 +664,11 @@ mod tests {
         assert_eq!(len16("a🎉é"), 4);
         assert_eq!(
             head16("a🎉b", 2),
-            "a🎉",
-            "a cut inside a pair keeps the pair"
+            "a",
+            "a cut inside a pair stops before it"
         );
+        assert_eq!(head16("🎉b", 1), "🎉", "unless that would cut nothing");
+        assert!(chunk(&"🎉".repeat(10), 5).iter().all(|c| len16(c) <= 5));
         assert_eq!(one_line("  a\u{200B}\n b  ", 10), "a b");
         assert_eq!(one_line("abcdef", 4), "abc…");
         assert_eq!(words("a b c,", 2), "a b…");

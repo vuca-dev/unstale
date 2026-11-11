@@ -166,6 +166,11 @@ pub fn run_step(
     let text = std::fs::read_to_string(input)
         .map_err(|e| anyhow::anyhow!("--in {}: {e}", input.display()))?;
     match step {
+        "extract" if main.provider.kind == crate::inference::Kind::Jev => {
+            anyhow::bail!(
+                "the labelling service labels and matches records but cannot extract them; pick a route that writes text"
+            )
+        }
         "extract" => {
             let mut events = vec![];
             for (n, line) in text

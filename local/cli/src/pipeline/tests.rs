@@ -454,6 +454,8 @@ fn through_codex_extract_calls_go_eight_chunks_at_a_time_answered_by_chunk_id() 
 
 #[test]
 fn a_key_named_by_the_choice_is_read_from_this_repos_env_file_and_nothing_else_is() {
+    // The variable is not in this process's environment, so only the file can have supplied it.
+    assert!(std::env::var_os("UNSTALE_TEST_WS4_KEY").is_none());
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(
         dir.path().join(".env"),

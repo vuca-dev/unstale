@@ -466,6 +466,8 @@ fn cmd_internal(dir: Option<&Path>, cmd: InternalCmd) -> Result<u8> {
             return Ok(0);
         }
     };
+    // Like every path, `--in` is read relative to `--dir` when one is given.
+    let input = if input.is_absolute() { input } else { start.join(input) };
     pipeline::run_step(&step, &input, main, &mut std::io::stdout().lock())?;
     Ok(0)
 }
