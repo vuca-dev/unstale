@@ -78,6 +78,7 @@ Every variable is optional; the defaults suit a developer machine.
 | `UNSTALE_NO_ADVISORIES` | unset | `1` skips the advisories stage after a technology's history is published, and the first pass below |
 | `UNSTALE_ADVISORIES_FIRST` | `2` | `drain`: token-free first passes at once, beside the job slots: a waiting new technology's advisories (OSV, resolved against its release list) are published before its release-note history, with no model call, and it keeps its place in the queue; `0` turns them off |
 | `UNSTALE_LOCK_TIMEOUT_MS` | `1200000` (20 minutes) | How long a writer waits for a technology's lock before failing |
+| `UNSTALE_PROMPTS_DIR` | `<repo>/schema/prompts` | The shared prompt data (`src/pipeline/prompts.ts`); the image keeps it at the default place |
 | `UNSTALE_BIN` | `<repo>/local/target/release/unstale` | Client binary used for `count-terms` by the rarity sample |
 | `UNSTALE_GATEWAY_URL`, `UNSTALE_GATEWAY_TOKEN` | unset | `drain`: the gateway whose held registrations are pulled and acknowledged; unset, only the saved queue is worked |
 | `UNSTALE_STATE_REMOTE` | unset | `state`: where snapshots live, `github:<owner>/<repo>#<release id>` (with `GH_TOKEN`) or `dir:<path>` |
@@ -86,7 +87,7 @@ Every variable is optional; the defaults suit a developer machine.
 ## Deploy
 
 ```sh
-docker build -t unstale-central central
+docker build -f central/Dockerfile -t unstale-central .
 docker run -d -p 47831:47831 -v unstale-store:/data -e GITHUB_TOKEN -e JEV_API_KEY -e AI_GATEWAY_API_KEY unstale-central
 ```
 

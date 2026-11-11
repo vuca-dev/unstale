@@ -1,12 +1,15 @@
 // The shared prompt data (schema/prompts/*.json): every file parses and carries a version, and the text written out
 // in one place agrees with the sets and constants it names elsewhere (a closed set added in one file and not the
 // other would send the model a list that is not the one the answer is checked against).
-import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
+import { join, posix } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
 import { Benefit, ChangeType, Surface } from "../src/schema/catalog.ts";
 import { APIS_PROMPT, MAX_APIS } from "../src/pipeline/advisory-apis.ts";
 import { EXTRACT_PROMPT, EXTRACT_PROMPT_IDS, LABEL_PROMPT, MAX_UNITS_PER_QUOTE, ONE_CALL_PROMPT, SCHEMA_PROMPT, SCHEMA_RESPONSE_FORMAT } from "../src/pipeline/extract.ts";
-import { applyEdits, extractText, fill, labelsText, PROMPT_FILES } from "../src/pipeline/prompts.ts";
+import { applyEdits, extractText, fill, labelsText, PROMPT_FILES, promptsDir } from "../src/pipeline/prompts.ts";
 import { BENEFITS, CHANGE_TYPES, SURFACES } from "../src/pipeline/vocab.ts";
 
 const enumOf = (u: unknown): string[] => {
@@ -62,4 +65,27 @@ describe("schema/prompts", () => {
   test("fill leaves inserted text alone", () => {
     expect(fill("%A% %B%", { A: "%B%", B: "x" })).toBe("%B% x");
   });
+
+  test("central finds the files in a checkout, and says where it looked when they are missing", () => {
+    const dir = promptsDir({});
+    expect(dir).toBe(fileURLToPath(new URL("../../schema/prompts/", import.meta.url)));
+    for (const f of PROMPT_FILES) expect(existsSync(join(dir, f)), f).toBe(true);
+    const missing = join(fileURLToPath(new URL(".", import.meta.url)), "no-such-prompts-dir");
+    const r = spawnSync(process.execPath, ["-e", 'import("./src/pipeline/prompts.ts")'], { cwd: fileURLToPath(new URL("..", import.meta.url)), env: { ...process.env, UNSTALE_PROMPTS_DIR: missing }, encoding: "utf8" });
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toContain(`not found at ${join(missing, "extract.json")}`);
+  });
+
+  test("the central image ships the files where the default looks for them", () => {
+    const docker = readFileSync(new URL("../Dockerfile", import.meta.url), "utf8");
+    const ignore = readFileSync(new URL("../Dockerfile.dockerignore", import.meta.url), "utf8").split("\n");
+    const workdir = /^WORKDIR (\S+)$/m.exec(docker)?.[1];
+    const copied = /^COPY schema\/prompts (\S+)$/m.exec(docker)?.[1];
+    expect(workdir && copied).toBeTruthy();
+    // src/pipeline/prompts.ts sits at <workdir>/src/pipeline; the default is three levels up, then schema/prompts.
+    expect(posix.join(workdir!, "src/pipeline", "../../../schema/prompts")).toBe(posix.normalize(copied!));
+    expect(ignore).toContain("!schema/prompts/");
+    expect(docker).toContain('import("./src/pipeline/prompts.ts")');
+  });
 });
+

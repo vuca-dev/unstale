@@ -8,10 +8,16 @@
 // array of lines joined with "\n". `%NAME%` marks a value filled at the call site. A variant is a list of edits
 // applied in order to a base template: each replaces the first occurrence of `find` with `replace`, and an edit
 // whose `find` is not found is an error.
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { z } from "zod";
 
-const DIR = new URL("../../../schema/prompts/", import.meta.url);
+/** Where the files are read from: UNSTALE_PROMPTS_DIR, else the repository's schema/prompts. The central image keeps
+ * the repository layout (/app/central beside /app/schema/prompts), so the default holds there too. */
+export const promptsDir = (env: NodeJS.ProcessEnv = process.env): string =>
+  env.UNSTALE_PROMPTS_DIR ? resolve(env.UNSTALE_PROMPTS_DIR) : fileURLToPath(new URL("../../../schema/prompts/", import.meta.url));
+const DIR = promptsDir();
 
 const Text = z.union([z.string(), z.array(z.string())]).transform((v) => (Array.isArray(v) ? v.join("\n") : v));
 const Version = z.number().int().positive();
@@ -90,7 +96,9 @@ const ThresholdsFile = z
   .strict();
 
 function load<T extends z.ZodType>(file: string, schema: T): z.output<T> {
-  const raw: unknown = JSON.parse(readFileSync(new URL(file, DIR), "utf8"));
+  const path = join(DIR, file);
+  if (!existsSync(path)) throw new Error(`schema/prompts/${file} not found at ${path}: central needs the repository's schema/prompts (set UNSTALE_PROMPTS_DIR to its location)`);
+  const raw: unknown = JSON.parse(readFileSync(path, "utf8"));
   const r = schema.safeParse(raw);
   if (!r.success) throw new Error(`schema/prompts/${file}: ${r.error.message}`);
   return r.data;
