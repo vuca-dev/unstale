@@ -5,8 +5,8 @@ $ unstale init --wait 0 --no-animation
 How should unstale read new release notes?
 
      Read with    Cost a year, this repo   Compared with the best option
-  1  OpenAI       ≈ $0.18                  ≈ 93% of its breaking-change flags
-  2  Codex plan   ≈ 1.2M Codex tokens      not measured yet through Codex
+  1  OpenAI       ≈ $0.13                  ≈ 1 in 3 breaking-change flags wrong
+  2  Codex plan   ≈ 1.3M Codex tokens      not measured yet through Codex
   3  Not now      free                     ≈ 27%: advisories and deprecations only
      Keys: OPENAI_API_KEY (.env)
 

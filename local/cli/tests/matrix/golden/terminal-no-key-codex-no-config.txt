@@ -5,7 +5,7 @@ $ unstale init --wait 0 --no-animation
 How should unstale read new release notes?
 
      Read with    Cost a year, this repo   Compared with the best option
-  1  Codex plan   ≈ 1.2M Codex tokens      not measured yet through Codex
+  1  Codex plan   ≈ 1.3M Codex tokens      not measured yet through Codex
   2  Not now      free                     ≈ 27%: advisories and deprecations only
 
 Enter for 1, a number to choose, or d for details:

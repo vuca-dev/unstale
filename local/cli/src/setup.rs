@@ -289,11 +289,20 @@ pub enum Quality {
         of: &'static str,
         detail: &'static str,
     },
+    /// About as many of the best option's finds (`found`), with more of its flags (`of`) wrong: one in `one_in`
+    /// against one in `best_one_in` for the best option; and a qualifier only the full figures carry.
+    MoreWrong {
+        one_in: u32,
+        best_one_in: u32,
+        found: &'static str,
+        of: &'static str,
+        detail: &'static str,
+    },
     /// Not measured yet.
     Unmeasured,
 }
 
-/// What an option costs and gives, per mean technology-year (114.6 records from 18.1 release-note chunks). Estimates
+/// What an option costs and gives, per mean technology-year (114.6 records from 17.5 release-note chunks). Estimates
 /// from the evaluations until the client's own first sync is measured; every figure the picker quotes is here.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Quote {
@@ -326,28 +335,37 @@ const NO_QUOTE: Quote = Quote {
     quality_measured: true,
 };
 
-/// Labels below the best option's: an OpenAI-compatible model (gpt-6-luna read on its choices) flags 86.2% of breaking
-/// changes against Jev's 93.1%, both on the same held-out set; Jev's figure is at its fitted threshold (breaking
-/// probability 0.05), not at 0.5. Check the ratio against the threshold the client's labelling step actually runs.
-const LABELS_BELOW: Quality = Quality::Share {
-    pct: 93,
+/// Labels without Jev, at the threshold the client reads Jev at (breaking probability 0.5): an OpenAI-compatible model
+/// (gpt-6-luna read on its choices) finds 103% to 108% of the breaking changes Jev finds (both intervals include 0),
+/// with more of its flags wrong: on short release notes 62% to 68% of them right against Jev's 75% (1 in 3 wrong at
+/// the client's 61.9%, against 1 in 4), on upgrade guides 92% to 93% against 94.5%. Source:
+/// `eval/edge-port/RESULTS.md`, "The ≈ 93% line"; Jev's side is version 1.13.0.
+const LABELS_BELOW: Quality = Quality::MoreWrong {
+    one_in: 3,
+    best_one_in: 4,
+    found: "breaking changes",
     of: "breaking-change flags",
-    detail: "",
+    detail: "on upgrade guides ≈ 8 in 100 wrong, against 6",
 };
-/// Matching on the same model: 2.2 more duplicate records per technology-year.
-const MATCHING_BELOW: u32 = 2;
+/// Matching on the same model: about 6 more duplicate records per technology-year than Jev's, measured with the
+/// request production sends (`eval/edge-port/RESULTS.md`, conclusion 3, before text answers were read as options).
+const MATCHING_BELOW: u32 = 6;
 
-/// The data table. Sources, all $ per mean technology-year:
-/// - extraction: gpt-6-luna `low`, $0.0096 on the gateway's flex tier, $0.0183 on OpenAI, $0.0192 at list price
-///   (OpenRouter, measured as the gateway row); Haiku 5.5 $0.0189;
-/// - labels: Jev $0.0100; gpt-6-luna read on its choices $0.0261 list, $0.0182 billed on the gateway; Haiku $0.0564;
-/// - matching: Jev $0.0081; gpt-6-luna $0.0455 list, $0.0269 flex; Anthropic does not match (never merge, $0);
-/// - Codex at 8 items per call with the lean flags: extraction ≈ 109k tokens ($0.0198 at API prices), every step
-///   ≈ 591k ($0.0754);
+/// The data table. Sources, all $ per mean technology-year at list price, the upper end of each measured range (the
+/// gateway's flex tier was requested on every call and billed list price):
+/// - extraction: gpt-6-luna `low` $0.014 to $0.018 on every OpenAI-compatible route (`eval/edge-port/RESULTS.md`);
+///   Haiku 5.5 $0.0189;
+/// - labels: Jev $0.0101; gpt-6-luna read on its choices $0.025 to $0.026 (`eval/edge-port/RESULTS.md`); Haiku
+///   $0.0564;
+/// - matching: Jev $0.0077; gpt-6-luna read on its choices $0.020 (`eval/edge-port/RESULTS.md`); Anthropic does not
+///   match (never merge, $0);
+/// - Codex: extraction 152k plan tokens (≈ $0.013 at API prices), measured eight chunks to a call before long chunks
+///   went alone (`eval/edge-port/RESULTS.md`); every step ≈ 634k ($0.069), labels and matching still the estimate
+///   of 482k ($0.0556) from Codex at 8 items per call with the lean flags;
 /// - quality: Haiku finds 79.6% of required changes against 88.7% (upgrade guides 68.4% against 81.9%); never merge
 ///   leaves 22.7 duplicates per 100 records against Jev's 2.54.
 pub fn quote(p: Pick, no_key: bool) -> Quote {
-    let jev = 0.0100 + 0.0081;
+    let jev = 0.0101 + 0.0077;
     match p {
         Pick::JevKey(r) => Quote {
             usd: jev + extraction_usd(r),
@@ -355,10 +373,11 @@ pub fn quote(p: Pick, no_key: bool) -> Quote {
         },
         Pick::JevCodex => Quote {
             usd: jev,
-            codex_tokens: 109_000,
-            codex_usd: 0.0198,
+            codex_tokens: 152_000,
+            codex_usd: 0.013,
             quality: Quality::Same,
-            // Measured over the API; batched `codex exec` extraction's recall was not checked.
+            // Measured over the API; batched `codex exec` extraction lost recall on long chunks, which now go alone,
+            // and is not measured since.
             quality_measured: false,
             ..NO_QUOTE
         },
@@ -373,18 +392,14 @@ pub fn quote(p: Pick, no_key: bool) -> Quote {
             ..NO_QUOTE
         },
         Pick::Key(r) => Quote {
-            usd: extraction_usd(r)
-                + match r {
-                    Route::Vercel => 0.0182 + 0.0269,
-                    _ => 0.0261 + 0.0455,
-                },
+            usd: extraction_usd(r) + 0.026 + 0.020,
             quality: LABELS_BELOW,
             more_duplicates: MATCHING_BELOW,
             ..NO_QUOTE
         },
         Pick::Codex => Quote {
-            codex_tokens: 591_000,
-            codex_usd: 0.0754,
+            codex_tokens: 634_000,
+            codex_usd: 0.069,
             quality: LABELS_BELOW,
             more_duplicates: MATCHING_BELOW,
             // The API route's figures; through batched `codex exec` they are not measured yet.
@@ -403,9 +418,7 @@ pub fn quote(p: Pick, no_key: bool) -> Quote {
 
 fn extraction_usd(r: Route) -> f64 {
     match r {
-        Route::Vercel => 0.0096,
-        Route::OpenAi => 0.0183,
-        Route::OpenRouter => 0.0192,
+        Route::Vercel | Route::OpenAi | Route::OpenRouter => 0.018,
         Route::Anthropic => 0.0189,
         Route::Jev => 0.0,
     }

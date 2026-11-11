@@ -157,6 +157,7 @@ fn trade(p: Pick, q: &Quote, no_key: bool) -> String {
         Quality::Same => "about the same".into(),
         Quality::Unmeasured => "not measured yet".into(),
         Quality::Share { pct, of, .. } => format!("≈ {pct}% of its {of}"),
+        Quality::MoreWrong { one_in, of, .. } => format!("≈ 1 in {one_in} {of} wrong"),
     }
 }
 
@@ -677,6 +678,25 @@ fn quality_detail(p: Pick, q: &Quote, no_key: bool) -> Vec<(&'static str, String
             ));
             if !detail.is_empty() {
                 out.push(("", detail.trim().trim_matches(['(', ')']).to_string()));
+            }
+        }
+        Quality::MoreWrong {
+            one_in,
+            best_one_in,
+            found,
+            of,
+            detail,
+        } => {
+            out.push((
+                "results",
+                format!("about as many {found} as the best option, more flagged wrongly"),
+            ));
+            out.push((
+                "",
+                format!("≈ 1 in {one_in} {of} wrong, against 1 in {best_one_in}"),
+            ));
+            if !detail.is_empty() {
+                out.push(("", detail.to_string()));
             }
         }
     }

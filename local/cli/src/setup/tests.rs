@@ -487,7 +487,9 @@ fn every_option_states_one_cost_and_its_trade_and_the_details_carry_units_and_sc
         }
         if i > 0 {
             assert!(
-                row.contains("% of its ") || row.contains("not measured yet through Codex"),
+                row.contains("% of its ")
+                    || row.contains(" wrong")
+                    || row.contains("not measured yet through Codex"),
                 "{row}"
             );
         }
