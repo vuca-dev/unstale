@@ -11,6 +11,7 @@ mod privacy;
 mod pypi;
 mod uninstall;
 mod funnel;
+mod inference;
 mod lines;
 mod maintenance;
 mod notice;
