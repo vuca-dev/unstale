@@ -66,6 +66,7 @@ $ unstale status --wait 0 --no-animation  (no terminal)
   
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Release notes         not read: no provider chosen · `unstale setup` shows the options
+Cache                 under 1 MB of 100 MB
 
 $ unstale setup  (no terminal)
 unstale reads new release notes with a model, on the user's own key or Codex plan.
