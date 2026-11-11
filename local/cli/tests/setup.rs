@@ -378,3 +378,29 @@ fn init_asks_once_at_a_terminal_and_setup_reopens_the_picker() {
         serde_json::json!({"provider": "none"})
     );
 }
+
+#[test]
+fn the_managed_skill_tells_the_agent_to_show_the_options_and_ask_never_to_choose() {
+    let w = World::new(Some(true));
+    w.init(true, &[]);
+    for f in [
+        ".unstale/skills/review/SKILL.md",
+        ".claude/skills/unstale-review/SKILL.md",
+        ".agents/skills/unstale-review/SKILL.md",
+    ] {
+        let skill = std::fs::read_to_string(w.path("repo").join(f)).unwrap();
+        assert!(skill.contains("## Model provider"), "{f}:\n{skill}");
+        assert!(
+            skill.contains("run `unstale setup`. Show the user every option it prints"),
+            "{f}"
+        );
+        assert!(
+            skill.contains("and ask which one they want. Never choose for them"),
+            "{f}"
+        );
+        assert!(
+            skill.starts_with("---\nname: "),
+            "the frontmatter stays first: {f}"
+        );
+    }
+}

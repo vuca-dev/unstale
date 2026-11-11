@@ -1148,7 +1148,13 @@ pub fn render(view: &View, out: &Outcome, catalog: &Catalog, deprecated: &[crate
 
 /// The only agent-discoverable skill. Queue names stay internal for saved batch compatibility.
 pub fn write_entrypoint(tool_dir: &Path) -> Result<bool> {
-    write_context(&tool_dir.join("skills/review/SKILL.md"), include_str!("../assets/review/SKILL.md"))
+    let skill = include_str!("../assets/review/SKILL.md");
+    let path = tool_dir.join("skills/review/SKILL.md");
+    // With the edge-inference switch on, the agent also relays the provider choice to the user.
+    if crate::inference::enabled() {
+        return write_context(&path, &format!("{skill}\n{}", crate::setup::SKILL_SECTION));
+    }
+    write_context(&path, skill)
 }
 
 /// Write generated context if its bytes changed. Returns whether it was written.

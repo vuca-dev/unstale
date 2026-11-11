@@ -802,6 +802,11 @@ pub fn current(repo: Option<&Choice>, user_path: &Path) -> Option<(Choice, Origi
     }
 }
 
+// --------------------------------------------------------------------------------------------------------- agent
+
+/// Appended to the managed review skill with the switch on: the agent relays the picker and asks; it never chooses.
+pub const SKILL_SECTION: &str = "## Model provider\n\nIf `unstale status` says no model provider is chosen, or the user asks to change it, run `unstale setup`. Show the user every option it prints, as printed, and ask which one they want. Never choose for them, not even the recommended option, and never record a choice they have not given. When they answer, run `unstale setup --inference <value>` with the value printed beside their choice.\n";
+
 // ---------------------------------------------------------------------------------------------------------- flow
 
 /// Reads `--inference`: a provider (`vercel`, `openai`, `openrouter`, `anthropic`), `env:NAME` for a key variable
