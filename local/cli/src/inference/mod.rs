@@ -377,8 +377,8 @@ impl Inference {
         }
     }
 
-    /// Where keys and Codex's environment are read from (tests).
-    #[cfg(test)]
+    /// Where keys and Codex's environment are read from: the pipeline adds this repository's `.env` for the one
+    /// variable the stored choice names (`pipeline::keys`); tests use a fixed map.
     pub fn with_env(
         mut self,
         env: impl Fn(&str) -> Option<String> + Send + Sync + 'static,
