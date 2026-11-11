@@ -827,3 +827,77 @@ fn a_background_stage_running_at_uninstall_leaves_nothing_behind() {
         "the background stage recreated .unstale"
     );
 }
+
+/// `unstale status` with model steps on: how long this repository's releases took to reach this machine.
+#[test]
+fn status_shows_how_long_releases_took_to_reach_this_machine() {
+    let cat = FixtureCatalog::new();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+    let at = |secs_ago: i64| {
+        let t = now - secs_ago;
+        let (days, rest) = (t.div_euclid(86_400), t.rem_euclid(86_400));
+        // Civil date from days (Howard Hinnant), enough for a test.
+        let z = days + 719_468;
+        let era = z.div_euclid(146_097);
+        let doe = z - era * 146_097;
+        let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+        let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+        let mp = (5 * doy + 2) / 153;
+        let d = doy - (153 * mp + 2) / 5 + 1;
+        let m = if mp < 10 { mp + 3 } else { mp - 9 };
+        let y = yoe + era * 400 + i64::from(m <= 2);
+        format!(
+            "{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}.000Z",
+            rest / 3600,
+            rest % 3600 / 60,
+            rest % 60
+        )
+    };
+    let event = |version: &str, registry_ago: i64, published_ago: i64| {
+        let mut e = testcat::event("next", version, &format!("- Changes in {version}"));
+        e["freshness"] = json!({"registry_published": at(registry_ago), "first_seen": at(published_ago + 600), "first_published": at(published_ago)});
+        e
+    };
+    let publish = |events: Vec<serde_json::Value>| {
+        cat.tech_events(
+            "next",
+            0,
+            &[("16", vec![rec("next:a", "pkg:npm/next", "16.0.1")])],
+            &[("16", events)],
+        );
+        list(&cat, &["next"]);
+    };
+    publish(vec![event("16.0.1", 90 * 86_400, 89 * 86_400)]);
+    let srv = Server::start(cat.dir.path().to_path_buf());
+    let mut env = Env::new();
+    env.extra = vec![("UNSTALE_EDGE_INFERENCE".into(), "1".into())];
+    env.init(&srv.base);
+    // The first sync here: what it finds was published before this machine followed the technology.
+    env.ok(&["session-sync"]);
+    let status = env.ok(&["status", "--wait", "0", "--no-animation"]);
+    assert!(status.contains("Freshness on this machine: no new release of this repository's technologies reached it in the last 30 days"), "{status}");
+    // A release published 2 h ago, 5 h after the registry had it, synced now.
+    publish(vec![
+        event("16.0.1", 90 * 86_400, 89 * 86_400),
+        event("16.0.2", 7 * 3600, 2 * 3600),
+    ]);
+    env.ok(&["session-sync"]);
+    let status = env.ok(&["status", "--wait", "0", "--no-animation"]);
+    let line = status
+        .lines()
+        .find(|l| l.starts_with("Freshness on this machine"))
+        .unwrap();
+    assert_eq!(
+        line,
+        "Freshness on this machine, last 30 days (1 release): registry to catalog 5h median (5h at the 90th percentile) · catalog to here 2h median (2h at the 90th percentile) · records made here: not yet"
+    );
+    // With model steps off, events are not synced and the line is not shown.
+    env.extra.clear();
+    assert!(
+        !env.ok(&["status", "--wait", "0", "--no-animation"])
+            .contains("Freshness on this machine")
+    );
+}

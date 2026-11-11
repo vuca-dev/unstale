@@ -30,7 +30,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Component, Path, PathBuf};
 use std::time::Duration;
-use unstale_schema::catalog::{CATALOG_SCHEMA, Root, TechIndex, Technologies};
+use unstale_schema::catalog::{CATALOG_SCHEMA, EventLine, Root, TechIndex, Technologies};
 
 use crate::cache::{self, event_path, index_path, parse_shard, shard_path, verify_shard};
 use crate::util::{normalize_purl, parse_version, sha256_hex, write_atomic};
@@ -657,7 +657,7 @@ fn sync_tech(
     // A shard that is missing or fails verification is refused (never cached, so never read as a basis for work), and
     // the technology's records sync regardless: events never cost a user their records.
     let (mut events_downloaded, mut events_reused, mut events_failed) = (0, 0, None);
-    let mut fresh_events: Vec<(PathBuf, Vec<u8>)> = vec![];
+    let mut fresh_events: Vec<(PathBuf, Vec<u8>, cache::Events)> = vec![];
     if events {
         for s in &index.events {
             let dest = event_path(cache_dir, tech, s);
@@ -665,7 +665,7 @@ fn sync_tech(
                 events_reused += 1;
                 continue;
             }
-            let fetched = (|| -> Result<Vec<u8>> {
+            let fetched = (|| -> Result<(Vec<u8>, cache::Events)> {
                 let rel = published(&s.path)?;
                 if stop() {
                     bail!("change events {} not fetched before the time limit", s.path);
@@ -675,11 +675,11 @@ fn sync_tech(
                     _ => bail!("change events {} missing ({} not found)", s.path, src.describe(&rel)),
                 };
                 verify_shard(s, &b).with_context(|| format!("change events {}", s.path))?;
-                cache::parse_events(&b).with_context(|| format!("change events {}", s.path))?;
-                Ok(b)
+                let parsed = cache::parse_events(&b).with_context(|| format!("change events {}", s.path))?;
+                Ok((b, parsed))
             })();
             match fetched {
-                Ok(b) => fresh_events.push((dest, b)),
+                Ok((b, parsed)) => fresh_events.push((dest, b, parsed)),
                 Err(e) => {
                     events_failed.get_or_insert_with(|| format!("{e:#}"));
                 }
@@ -691,9 +691,18 @@ fn sync_tech(
     }
     // Change events are written on their own: one that cannot be written (an unwritable `v1/events/<tech>/`) is
     // refused like one that fails verification, and the records carry on.
-    for (dest, b) in &fresh_events {
+    // When each event reached this machine, for `unstale status`'s freshness line; a technology's first sync here
+    // notes what it finds as already published.
+    let known = events && cache::events_known(cache_dir, tech);
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    for (dest, b, parsed) in &fresh_events {
         match write_atomic(dest, b) {
-            Ok(()) => events_downloaded += 1,
+            Ok(()) => {
+                events_downloaded += 1;
+                if known {
+                    cache::note_events_synced(cache_dir, tech, &parsed.events, now);
+                }
+            }
             Err(e) => {
                 events_failed.get_or_insert_with(|| format!("change events could not be cached at {}: {e:#}", dest.display()));
             }
@@ -701,6 +710,16 @@ fn sync_tech(
     }
     if events {
         cache::set_events_failed(cache_dir, tech, events_failed.as_deref());
+        if !known {
+            let cached: Vec<EventLine> = index
+                .events
+                .iter()
+                .filter_map(|s| std::fs::read(event_path(cache_dir, tech, s)).ok())
+                .filter_map(|b| cache::parse_events(&b).ok())
+                .flat_map(|e| e.events)
+                .collect();
+            cache::note_events_synced(cache_dir, tech, &cached, 0);
+        }
     }
     // The swap: the index is replaced only after every shard it names is in place.
     write_atomic(&index_path(cache_dir, tech), index_bytes)?;
@@ -805,7 +824,11 @@ mod tests {
         let rep = sync_with_events(&src, cache.path(), &both, &BTreeSet::new(), &stack, None, true, &|| false, |_| {}).unwrap();
         assert_eq!((rep.synced[0].events_downloaded, rep.synced[0].events_reused), (1, 0));
         assert_eq!(cache::load_events(cache.path(), "next").unwrap().unwrap().events.len(), 2);
-        assert_eq!(std::fs::read_dir(cache.path().join("v1/events/next")).unwrap().count(), 1);
+        assert_eq!(std::fs::read_dir(cache.path().join("v1/events/next")).unwrap().flatten().filter(|e| !e.file_name().to_string_lossy().starts_with('.')).count(), 1);
+        // When each event reached this machine: the first sync's as already published, a later one's with its time.
+        let synced = cache::events_synced(cache.path(), "next");
+        assert_eq!(synced.get("next@16.0.1"), Some(&0));
+        assert!(synced.get("next@16.0.2").is_some_and(|&t| t > 0), "{synced:?}");
         // A tampered event shard is refused (never cached or trusted), and the technology's records sync anyway.
         let paths = cat.tech_events("next", 0, &[("16", vec![rec("next:a", "pkg:npm/next", "16.0.1"), rec("next:b", "pkg:npm/next", "16.0.3")])], &[("16", vec![event("next", "16.0.3", "- y")])]);
         let mut bytes = std::fs::read(&paths[1]).unwrap();

@@ -73,6 +73,37 @@ pub fn events_failed(cache: &Path) -> Vec<(String, String)> {
     out
 }
 
+/// When each change event first reached this machine (`.synced.json` in the technology's events directory, a dot file
+/// shard pruning leaves alone): event id to Unix seconds, 0 for an event that was already published when this machine
+/// first synced the technology (its gap is how long ago it was followed, not how fresh it is). Local only.
+fn synced_path(cache: &Path, tech: &str) -> PathBuf {
+    cache.join("v1/events").join(tech).join(".synced.json")
+}
+
+pub fn events_synced(cache: &Path, tech: &str) -> BTreeMap<String, u64> {
+    std::fs::read(synced_path(cache, tech)).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+}
+
+/// Whether this machine has noted any of the technology's events yet.
+pub fn events_known(cache: &Path, tech: &str) -> bool {
+    synced_path(cache, tech).exists()
+}
+
+/// Notes the events not yet known as synced, at `stamp` (0: already published when first synced here). Best effort: a
+/// stamp that cannot be written only leaves that event out of the freshness line.
+pub fn note_events_synced<'e>(cache: &Path, tech: &str, events: impl IntoIterator<Item = &'e EventLine>, stamp: u64) {
+    let mut known = events_synced(cache, tech);
+    let before = known.len();
+    for e in events {
+        known.entry(e.id.clone()).or_insert(stamp);
+    }
+    if (known.len() != before || !events_known(cache, tech))
+        && let Ok(b) = serde_json::to_vec(&known)
+    {
+        let _ = crate::util::write_atomic(&synced_path(cache, tech), &b);
+    }
+}
+
 pub fn shard_file_name(path: &str) -> String {
     path.rsplit('/').next().unwrap_or(path).to_string()
 }

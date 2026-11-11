@@ -133,3 +133,4 @@
 [6.79,"o","  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\r\n"]
 [6.85,"o","Model provider: OpenAI (OPENAI_API_KEY), from this repo's config · `unstale setup` changes it\r\n"]
 [6.91,"o","Model tokens this month: 0 of 48M (monthly budget; past it, work waits for next month)\r\n"]
+[6.97,"o","Freshness on this machine: no new release of this repository's technologies reached it in the last 30 days\r\n"]
