@@ -404,3 +404,30 @@ fn the_managed_skill_tells_the_agent_to_show_the_options_and_ask_never_to_choose
         );
     }
 }
+
+#[test]
+fn status_shows_the_provider_this_months_tokens_and_the_budget() {
+    let w = World::new(None);
+    w.init(true, &[]);
+    let status = |w: &World| w.ok(&["status", "--wait", "0", "--no-animation"], true);
+    let before = status(&w);
+    // The phrase the managed skill keys on.
+    assert!(before.contains("Model provider: not chosen; deterministic signals only · `unstale setup` shows the options"), "{before}");
+    assert!(
+        before.contains("Model tokens this month: 0 of 48M"),
+        "{before}"
+    );
+    let ledger = w.path("cache/inference/usage-2026-11.jsonl");
+    std::fs::create_dir_all(ledger.parent().unwrap()).unwrap();
+    std::fs::write(&ledger, "{\"day\":\"2026-11-09\",\"provider\":\"vercel\",\"model\":\"m\",\"input\":1200000,\"cached\":0,\"output\":300000}\n").unwrap();
+    w.ok(&["setup", "--inference", "env:AI_GATEWAY_API_KEY"], true);
+    let after = status(&w);
+    assert!(
+        after.contains("Model provider: Vercel AI Gateway (AI_GATEWAY_API_KEY), from this repo's config · `unstale setup` changes it · AI_GATEWAY_API_KEY is not set in this shell or .env"),
+        "{after}"
+    );
+    assert!(
+        after.contains("Model tokens this month: 1.5M of 48M"),
+        "{after}"
+    );
+}

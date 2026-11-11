@@ -490,3 +490,26 @@ fn a_question_is_asked_only_at_a_terminal_and_only_once_unprompted() {
     assert_eq!(plan(None, true, false, true), Plan::Print);
     assert_eq!(plan(None, false, false, true), Plan::Print);
 }
+
+// ------------------------------------------------------------------------------------------------------------ status
+
+#[test]
+fn status_names_the_provider_this_months_tokens_and_the_budget() {
+    let set = |v: &str| v == "JEV_API_KEY";
+    let budget = crate::inference::ledger::budget_line(1_234_567, 48_000_000);
+    let lines =
+        |cur: Option<(Choice, Origin)>| format!("{}\n{budget}", provider_line(cur.as_ref(), &set));
+    golden(
+        "status",
+        &format!(
+            "{}\n{}\n{}\n{}\n",
+            lines(None),
+            lines(Some((
+                parse_flag("jev+env:OPENAI_API_KEY").unwrap(),
+                Origin::Repo
+            ))),
+            lines(Some((Choice::codex(), Origin::User))),
+            lines(Some((Choice::none(), Origin::Repo))),
+        ),
+    );
+}

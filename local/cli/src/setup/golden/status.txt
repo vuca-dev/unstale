@@ -1,0 +1,8 @@
+Model provider: not chosen; deterministic signals only · `unstale setup` shows the options
+Model tokens this month: 1.2M of 48M (monthly budget; past it, work waits for next month)
+Model provider: Jev labelling API + OpenAI (JEV_API_KEY, OPENAI_API_KEY), from this repo's config · `unstale setup` changes it · OPENAI_API_KEY is not set in this shell or .env
+Model tokens this month: 1.2M of 48M (monthly budget; past it, work waits for next month)
+Model provider: Codex plan, from your user config · `unstale setup` changes it
+Model tokens this month: 1.2M of 48M (monthly budget; past it, work waits for next month)
+Model provider: none (deterministic signals only), from this repo's config · `unstale setup` changes it
+Model tokens this month: 1.2M of 48M (monthly budget; past it, work waits for next month)

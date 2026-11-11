@@ -309,6 +309,7 @@ fn dispatch(cli: Cli) -> Result<u8> {
         Cmd::Status { wait, no_animation } => onboarding::run(&ctx, wait, !no_animation, false).inspect(|_| {
             notice::print(&ctx.cache, &ctx.tool);
             if inference::enabled() {
+                println!("{}", setup::status_provider(&ctx));
                 match inference::Ledger::default_location().spent(&inference::ledger::this_month()) {
                     Ok(used) => println!("{}", inference::ledger::budget_line(used, inference::ledger::DEFAULT_MONTHLY_TOKENS)),
                     Err(_) => println!("Model tokens this month: unknown (the usage record cannot be read; model steps wait until it can)"),

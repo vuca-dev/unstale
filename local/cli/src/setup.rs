@@ -802,10 +802,42 @@ pub fn current(repo: Option<&Choice>, user_path: &Path) -> Option<(Choice, Origi
     }
 }
 
+// -------------------------------------------------------------------------------------------------------- status
+
+/// The provider line of `unstale status` (switch on): what is chosen and where. `set` says whether a key variable is
+/// set (by name) in the shell or this repository's `.env`. This month's tokens and the budget are their own line.
+pub fn provider_line(cur: Option<&(Choice, Origin)>, set: &dyn Fn(&str) -> bool) -> String {
+    match cur {
+        None => "Model provider: not chosen; deterministic signals only · `unstale setup` shows the options".to_string(),
+        Some((c, origin)) => {
+            let from = match origin {
+                Origin::Repo => "this repo's config",
+                Origin::User => "your user config",
+            };
+            let mut l = format!("Model provider: {}, from {from} · `unstale setup` changes it", c.describe());
+            for v in c.key_vars().into_iter().filter(|v| !set(v)) {
+                l += &format!(" · {v} is not set in this shell or .env");
+            }
+            l
+        }
+    }
+}
+
+/// [`provider_line`] for this repository.
+pub fn status_provider(ctx: &crate::Ctx) -> String {
+    let cur = current(ctx.config.inference.as_ref(), &user_config_path());
+    let dotenv = System
+        .repo_dotenv(&ctx.root)
+        .map(|t| dotenv_names(&t))
+        .unwrap_or_default();
+    let set = |v: &str| std::env::var_os(v).is_some() || dotenv.iter().any(|n| n == v);
+    provider_line(cur.as_ref(), &set)
+}
+
 // --------------------------------------------------------------------------------------------------------- agent
 
 /// Appended to the managed review skill with the switch on: the agent relays the picker and asks; it never chooses.
-pub const SKILL_SECTION: &str = "## Model provider\n\nIf `unstale status` says no model provider is chosen, or the user asks to change it, run `unstale setup`. Show the user every option it prints, as printed, and ask which one they want. Never choose for them, not even the recommended option, and never record a choice they have not given. When they answer, run `unstale setup --inference <value>` with the value printed beside their choice.\n";
+pub const SKILL_SECTION: &str = "## Model provider\n\nIf `unstale status` says the model provider is not chosen, or the user asks to change it, run `unstale setup`. Show the user every option it prints, as printed, and ask which one they want. Never choose for them, not even the recommended option, and never record a choice they have not given. When they answer, run `unstale setup --inference <value>` with the value printed beside their choice.\n";
 
 // ---------------------------------------------------------------------------------------------------------- flow
 
