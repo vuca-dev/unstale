@@ -359,7 +359,8 @@ pub struct EventLine {
     pub url: String,
     /// `sha256:` plus the hex digest of the snapshot the text was taken from (`Evidence::snapshot`).
     pub snapshot: String,
-    /// The text in order; joined with `\n` they are the whole text central extracts from.
+    /// The text in order, cut as central's extraction cuts it: extraction reads each chunk on its own and skips a
+    /// `content_free` one.
     pub chunks: Vec<EventChunk>,
     pub freshness: Freshness,
 }

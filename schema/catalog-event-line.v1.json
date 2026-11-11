@@ -79,7 +79,7 @@
   "description": "One line of an events shard (`TechIndex::events`): one source document of one release (its release notes, an upgrade\nguide, or a change to its documentation), normalised and split into chunks exactly as central's extraction reads\nit. Deterministic: no model has seen it.",
   "properties": {
     "chunks": {
-      "description": "The text in order; joined with `\\n` they are the whole text central extracts from.",
+      "description": "The text in order, cut as central's extraction cuts it: extraction reads each chunk on its own and skips a\n`content_free` one.",
       "items": {
         "$ref": "#/$defs/EventChunk"
       },
