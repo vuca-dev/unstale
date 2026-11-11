@@ -50,7 +50,8 @@ The agent alone ran on 22 or 23 October. The new arm must not be handed anything
 
 **Data gate.** The run starts only when every technology of the 19 repos that has catalog records was last checked
 by an ingest on the change-events code (index `checked` after 2026-11-11T00:48Z). On 11 November 05:02Z that held
-for 315 of 846, so no run was started.
+for 315 of 846, so no run was started. At 10:24Z, after four runs, it held for 783 of 846; the other 63 were last
+checked between 18 October and 10 November and none moved in those runs, so still no run was started.
 
 ## Scoring
 
