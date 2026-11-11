@@ -61,7 +61,6 @@ $ unstale status --wait 0 --no-animation
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Release notes         OpenAI (OPENAI_API_KEY), this repo's config
 Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)
-New releases          none reached this machine in the last 30 days
 
 $ unstale sync
 synced next: 2 records (sources checked 2026-10-15T00:00:00Z); unchanged

@@ -268,7 +268,7 @@ const SWITCH_ON_LINES: [&str; 7] = [
     "warning:",
     "Choice pending",
     "Registry to catalog",
-    "New releases",
+    "Catalog to here",
 ];
 
 /// The start of every question setup asks.

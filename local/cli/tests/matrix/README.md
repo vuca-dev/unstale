@@ -20,6 +20,9 @@ opened.
   listing instead); a question dismissed with Ctrl-D records no provider and is not asked again; Ctrl-C records
   nothing. The catalog's notice (what to do, by a date) and update lines show at most once a day.
 
+- Plain words: no output uses the implementation's vocabulary (`INTERNAL_WORDS` in `checks.rs`), and without a
+  terminal no step-by-step progress is printed.
+
 Each check has a test that injects a violation (`the_checks_catch_*`) and fails without it; run them with
 `-- --nocapture` to see the failing output. Checks that cannot run yet are ignored tests with their reason.
 

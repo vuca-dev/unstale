@@ -91,7 +91,6 @@ $ unstale status --wait 0 --no-animation
 warning: OPENROUTER_API_KEY is not set here, so new release notes are not read. Set it, or run `unstale setup`.
 Release notes         OpenRouter (OPENROUTER_API_KEY), this repo's config
 Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)
-New releases          none reached this machine in the last 30 days
 
 # contacted
 #   catalog host: GET /health, GET /v1/root.json, GET /v1/shards/next/16.6b4b93175dbd.jsonl.gz, GET /v1/shards/next/16.events.156a9b1d3a00.jsonl.gz, GET /v1/tech/next.json, GET /v1/tech/react.json, GET /v1/technologies.json

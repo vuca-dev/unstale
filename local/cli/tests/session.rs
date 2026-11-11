@@ -342,6 +342,42 @@ fn shard_path(cat: &FixtureCatalog) -> String {
 }
 
 #[test]
+fn with_the_switch_on_a_failed_sync_is_one_warning_when_it_starts_failing_and_status_keeps_showing_it()
+ {
+    let cat = FixtureCatalog::new();
+    publish(&cat, 2);
+    let srv = Server::start(cat.dir.path().to_path_buf());
+    let mut env = Env::new();
+    env.extra = vec![("UNSTALE_EDGE_INFERENCE".into(), "1".into())];
+    env.init(&srv.base);
+    env.ok(&["session-sync"]);
+    env.ok(&["status", "--wait", "0", "--no-animation"]);
+    assert_eq!(session_start(&env, env.repo.path(), "all well"), "");
+
+    // The catalog stops answering: said once, in the user's words, with what it costs and what happens next.
+    srv.set(Mode::Hang);
+    let line = session_start(&env, env.repo.path(), "catalog hanging");
+    assert!(
+        line.starts_with("warning: the sync at session start on ")
+            && line.trim_end().ends_with(
+                " failed (the catalog did not answer in time), so newer changes are not here yet. The next session start tries again."
+            ),
+        "{line}"
+    );
+    assert_eq!(line.trim_end().lines().count(), 1, "{line}");
+    // Still failing: the state has not changed, so nothing is said again.
+    assert_eq!(session_start(&env, env.repo.path(), "still hanging"), "");
+    // `unstale status` always shows the current state.
+    srv.set(Mode::Serve);
+    let status = env.ok(&["status", "--wait", "0", "--no-animation"]);
+    assert!(
+        status.contains("warning: the sync at session start on ")
+            && !status.contains("Sync at agent session start"),
+        "{status}"
+    );
+}
+
+#[test]
 fn session_start_is_quick_silent_and_exits_0_whatever_fails() {
     let cat = FixtureCatalog::new();
     publish(&cat, 2);
@@ -883,7 +919,10 @@ fn status_shows_how_long_releases_took_to_reach_this_machine() {
     // The first sync here: what it finds was published before this machine followed the technology.
     env.ok(&["session-sync"]);
     let status = env.ok(&["status", "--wait", "0", "--no-animation"]);
-    assert!(status.contains("New releases          none reached this machine in the last 30 days"), "{status}");
+    assert!(
+        !status.contains("Registry to catalog"),
+        "nothing to report, so no line: {status}"
+    );
     // A release published 2 h ago, 5 h after the registry had it, synced now.
     publish(vec![
         event("16.0.1", 90 * 86_400, 89 * 86_400),

@@ -191,4 +191,3 @@
 [11.67,"o","warning: monthly token limit reached, so new release notes wait for next month. Raise or remove it: `unstale setup --limit`.\r\n"]
 [11.73,"o","Release notes         OpenAI (OPENAI_API_KEY), this repo's config\r\n"]
 [11.79,"o","Tokens                48M of 48M this month (the default limit, reached; `unstale setup --limit` changes it)\r\n"]
-[11.85,"o","New releases          none reached this machine in the last 30 days\r\n"]

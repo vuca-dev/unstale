@@ -112,4 +112,3 @@
 [5.53,"o","By 30 November: upgrade unstale; this version stops receiving new changes after that day.\r\n"]
 [5.59,"o","unstale <newer version> available: npm install -g @unstale/cli@latest\r\n"]
 [5.65,"o","Release notes         not read: no provider chosen · `unstale setup` shows the options\r\n"]
-[5.71,"o","New releases          none reached this machine in the last 30 days\r\n"]

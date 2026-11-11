@@ -66,7 +66,6 @@ $ unstale status --wait 0 --no-animation  (no terminal)
   
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Release notes         not read: no provider chosen · `unstale setup` shows the options
-New releases          none reached this machine in the last 30 days
 
 $ unstale setup  (no terminal)
 The user chooses how unstale reads new release notes. Show them these options as printed and ask.

@@ -190,4 +190,3 @@
 [11.47,"o","warning: OPENROUTER_API_KEY is not set here, so new release notes are not read. Set it, or run `unstale setup`.\r\n"]
 [11.53,"o","Release notes         OpenRouter (OPENROUTER_API_KEY), this repo's config\r\n"]
 [11.59,"o","Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)\r\n"]
-[11.65,"o","New releases          none reached this machine in the last 30 days\r\n"]
