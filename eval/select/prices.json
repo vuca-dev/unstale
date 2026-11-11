@@ -31,6 +31,15 @@
   },
   {
    "provider": "subq",
+   "model": "subq-snap-1.2",
+   "input": 0.04,
+   "cached_input": null,
+   "output": 0,
+   "source": "subq.ai/pricing (11 November 2026): SubQ Snap 1.2, $0.04 per 1M input, output free, 384k context; id from GET https://api.subq.ai/v1/models",
+   "checked": "2026-11-11"
+  },
+  {
+   "provider": "subq",
    "model": "subq-snap-1.1",
    "input": 0.04,
    "cached_input": null,

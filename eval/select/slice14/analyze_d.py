@@ -14,7 +14,7 @@ import analyze as A  # noqa: E402  (slice 4)
 import analyze_h2 as H  # noqa: E402
 
 OUT = os.path.join(HERE, "..", "out", "slice14")
-PRICE = {"jev": 0.042, "subq-1.1": 0.04}
+PRICE = {"jev": 0.042, "subq-1.1": 0.04, "subq-1.2": 0.04}
 JEV = {"dev": "jev-dev-qv1", "h1": "jev-heldout-qv1", "h1r2": "jev-heldout-qv1-r2", "h2": "jev-heldout2-qv1"}
 
 
