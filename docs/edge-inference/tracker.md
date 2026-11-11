@@ -9,11 +9,11 @@
 
 - **Shape:** INDEPENDENT PRs to `main`. Every chunk is additive and behind one switch (README, "One switch").
 - **Ground truth:** GitHub PR state. Repo `vuca-dev/unstale`.
-- **Base:** `origin/main` @ `fab73ab` (`ci` green)
+- **Base:** `origin/main` @ `979e779` (`ci` green)
 - **Base health:** PR checks are `rust`, `central`, `gateway`; re-query before every merge.
-- **Open PRs:** #231 (WS9 draft, waiting on events); WS10-FIX, terminal rework, WS4b pending
+- **Open PRs:** #233 (terminal rework, READY at `04ae821`, in review; must rebase on `979e779`), #231 (WS9 draft); WS4b pending
 - **Live worktrees (sprint):** `/Users/jason/unstale-edge-sprint` (tracker)
-- **Live subagents:** ws4b-impl (Opus 5.5, `/Users/jason/unstale-ws4b`), ws10-fix (Opus 5.5), terminal-rework (Fable 5.2). ws9 paused at the data gate (background watch on ingest). All exit READY; PM dispatches a reviewer.
+- **Live subagents:** ws4b-impl (Opus 5.5), terminal-rework reviewer (Fable 5.2; the harness verifier, reused). terminal-rework EM idle awaiting review (worktree kept). ws9 paused at the data gate (background watch on ingest).
 - **Merged + verified:** WS0 → #213 `673c191`
 - **Next:** review and merge WS10-FIX, terminal rework, WS4b A and B; then parity and cost runs; WS6b full matrix; WS9 run; WS8 draft last
 - **Sprint API spend so far:** $0 of $10
@@ -161,7 +161,7 @@ OpenRouter parity, repeat eval runs.
   `central/Dockerfile`; working directory in the image moved from `/app` to `/app/central`.
 - EM: impl, Opus 5.5. Starts when the first lane frees.
 
-### WS10: Session-start sync and freshness tracking: MERGED, VERIFIED WITH GAPS, fix in progress
+### WS10: Session-start sync and freshness tracking: MERGED, fix MERGED and re-reviewed (APPROVE)
 - PR #226 → `7c05080` (hooks, never blocks), PR #229 → `594b078` (freshness). #229 and #226's last push had no bot
   review (quota); the verifier reviews the diff too.
 - Claude Code `.claude/settings.local.json`; Codex `.codex/hooks.json` (user must trust it in `/hooks`); opencode
@@ -178,6 +178,11 @@ OpenRouter parity, repeat eval runs.
   substring, and do not escape the executable path (a path with `$(…)` executed). Also: fingerprint too broad, the
   deadline untested, a flaky test, "N new records" after a cache rebuild. 14 items sent to ws10-fix, with the
   decision to gate everything behind the switch.
+- **WS10-FIX: #232 → `979e779`**, re-review APPROVE: switch-off identical to `705ba46`; installers safe; worst
+  case 1.27 s under load. Leftovers for the terminal rework's rebase: upgrade leaves inert Codex/opencode hook
+  files (state it); failure line not cleared by a later successful session start; stale comment on hosts (the
+  stage contacts the provider when the switch is on); no status reason for an invalid hooks file. Real Codex and
+  opencode still never run.
 
 ### WS5: Setup: MERGED, VERIFIED WITH GAPS, fix merged (covered by the WS6 matrix, no separate verifier)
 - PR #224 → `725b8c1`, 507 tests, `main` green. Code `local/cli/src/setup/`; figures in `setup::quote()`;
@@ -270,7 +275,7 @@ OpenRouter parity, repeat eval runs.
   loopback-only address overrides, foreground backlog in `unstale sync`, Codex batch cache key, answer parsing.
   Measure: releases never counted as covered. Next PR: hidden records, provenance display, `mergeSplitRecords`.
 
-### Terminal rework: NOT STARTED
+### Terminal rework: READY, in review (PR #233 at `04ae821`)
 - One EM applies `terminal-principles.md` across setup, status, session start, failures, notices; gates
   session-start hooks behind the switch; makes the monthly limit a setting.
 
