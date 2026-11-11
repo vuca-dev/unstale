@@ -7,6 +7,7 @@ mod cargo;
 mod deprecations;
 mod onboarding;
 mod onboarding_ui;
+mod pipeline;
 mod privacy;
 mod prompts;
 mod pypi;
@@ -186,10 +187,42 @@ enum Cmd {
         backoff_ms: Option<u64>,
         prompt: String,
     },
+    /// Internal: the client's model steps, for evals and tests.
+    #[command(hide = true)]
+    Internal {
+        #[command(subcommand)]
+        cmd: InternalCmd,
+    },
     /// sync, then digest, then review.
     Run {
         #[arg(long, value_name = "PKG@VERSION")]
         target: Vec<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum InternalCmd {
+    /// One model step over a JSON-lines file (`extract`: change events), one JSON line out per item; a provider or
+    /// budget problem prints one `{"deferred": ...}` line. Exits 0 either way, and quietly when another worker on this
+    /// machine holds the lock. The provider is the stored choice unless `--provider` names one.
+    RunStep {
+        #[arg(long)]
+        step: String,
+        #[arg(long = "in")]
+        input: PathBuf,
+        /// openai, vercel, openrouter, anthropic, codex, jev, or custom (with --base-url, --key-env and --model).
+        #[arg(long)]
+        provider: Option<String>,
+        #[arg(long)]
+        model: Option<String>,
+        #[arg(long)]
+        base_url: Option<String>,
+        #[arg(long)]
+        key_env: Option<String>,
+        #[arg(long)]
+        timeout_secs: Option<u64>,
+        #[arg(long)]
+        backoff_ms: Option<u64>,
     },
 }
 
@@ -280,6 +313,9 @@ fn dispatch(cli: Cli) -> Result<u8> {
     }
     let start = start_dir(&cli.dir)?;
     if matches!(cli.cmd, Cmd::Uninstall) { return uninstall::run(&start); }
+    if let Cmd::Internal { cmd } = cli.cmd {
+        return cmd_internal(cli.dir.as_deref(), cmd);
+    }
     if let Cmd::Init { catalog, mode, yes, service, wait, no_animation, inference } = cli.cmd {
         // Read before anything is written, so a mistyped choice changes nothing. With the switch off it is ignored.
         let choice = match inference.filter(|_| inference::enabled()) {
@@ -304,7 +340,7 @@ fn dispatch(cli: Cli) -> Result<u8> {
     }
     let mut ctx = context(&start)?;
     match cli.cmd {
-        Cmd::Init { .. } | Cmd::CountTerms { .. } | Cmd::Uninstall | Cmd::Infer { .. } | Cmd::Notify => unreachable!(),
+        Cmd::Init { .. } | Cmd::CountTerms { .. } | Cmd::Uninstall | Cmd::Infer { .. } | Cmd::Notify | Cmd::Internal { .. } => unreachable!(),
         Cmd::Setup { inference, user } => {
             if !inference::enabled() {
                 println!("Model steps are off in this version; there is nothing to set up.");
@@ -394,6 +430,43 @@ fn cmd_infer(provider: &str, model: Option<String>, base_url: Option<String>, ke
         Ok(a) => println!("{}", a.value),
         Err(d) => println!("{}", d.line()),
     }
+    Ok(0)
+}
+
+fn cmd_internal(dir: Option<&Path>, cmd: InternalCmd) -> Result<u8> {
+    let InternalCmd::RunStep { step, input, provider, model, base_url, key_env, timeout_secs, backoff_ms } = cmd;
+    // With model steps off (the default), no call is made.
+    if !inference::enabled() {
+        println!("{}", serde_json::json!({"deferred": "deferred: model steps on this machine are turned off"}));
+        return Ok(0);
+    }
+    let start = match dir {
+        Some(d) => d.to_path_buf(),
+        None => std::env::current_dir()?,
+    };
+    let root = pipeline::repo_root(&start);
+    let mut main = match provider {
+        Some(p) => inference::Inference::new(pipeline::named_provider(&p, model, base_url, key_env).map_err(|e| anyhow!(e))?),
+        None => match pipeline::stored_choice(root.as_deref()).and_then(|c| pipeline::routes(&c, root.as_deref())) {
+            Some(r) => r.main,
+            None => {
+                println!("{}", serde_json::json!({"deferred": "deferred: no model provider is chosen; run `unstale setup`"}));
+                return Ok(0);
+            }
+        },
+    };
+    if let Some(t) = timeout_secs { main.limits.timeout = std::time::Duration::from_secs(t); }
+    if let Some(b) = backoff_ms { main.limits.backoff = std::time::Duration::from_millis(b); }
+    // Another worker on this machine is already running model work: leave it to that one.
+    let _lock = match inference::lock::try_acquire_default() {
+        Ok(Some(l)) => l,
+        Ok(None) => return Ok(0),
+        Err(d) => {
+            println!("{}", serde_json::json!({"deferred": d.line()}));
+            return Ok(0);
+        }
+    };
+    pipeline::run_step(&step, &input, main, &mut std::io::stdout().lock())?;
     Ok(0)
 }
 
