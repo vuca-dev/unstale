@@ -15,7 +15,11 @@
 pub mod extract;
 pub mod js;
 pub mod keys;
+pub mod labels;
+pub mod matching;
 pub mod results;
+pub mod run;
+pub mod store;
 
 use crate::inference::{Inference, ProviderConfig};
 use std::collections::BTreeSet;
@@ -118,17 +122,54 @@ pub fn routes_with(
 ) -> Option<Routes> {
     let (main, labels) = choice.providers()?;
     let consented: Vec<String> = choice.key_vars().into_iter().map(String::from).collect();
-    let make = |c: ProviderConfig| {
-        Inference::new(c).with_env(keys::reader_with(
-            root.map(Path::to_path_buf),
-            consented.clone(),
-            env.clone(),
-        ))
+    let make = |mut c: ProviderConfig, base: &str| {
+        // A route's address may be moved to this machine only (a local proxy, the test servers).
+        if let Ok(b) = std::env::var(base)
+            && loopback(b.trim())
+        {
+            c.base_url = b.trim().to_string();
+        }
+        Inference::new(c).with_env(keys::reader_with(root.map(Path::to_path_buf), consented.clone(), env.clone()))
     };
     Some(Routes {
-        main: make(main),
-        labels: labels.map(make),
+        main: make(main, "UNSTALE_INFERENCE_BASE_URL"),
+        labels: labels.map(|l| make(l, "UNSTALE_LABELS_BASE_URL")),
     })
+}
+
+/// After a sync, with the switch on and a provider chosen: the steps for this stack's technologies, holding the
+/// machine's worker lock (another worker already on it: nothing to do here). At most one line for the terminal; never
+/// an error.
+pub fn after_sync(
+    cache: &Path,
+    root: &Path,
+    techs: &BTreeSet<String>,
+    purls: &BTreeSet<String>,
+) -> Option<String> {
+    if !crate::util::edge_inference() {
+        return None;
+    }
+    let routes = routes(&stored_choice(Some(root))?, Some(root))?;
+    let _lock = match crate::inference::lock::try_acquire_default() {
+        Ok(Some(l)) => l,
+        Ok(None) => return None,
+        Err(d) => return Some(format!("Records from new releases: {}", d.line())),
+    };
+    run::run(cache, &routes, techs, purls, &crate::util::today()).line()
+}
+
+/// An http(s) address on this machine: `localhost` or a loopback IP, no userinfo.
+fn loopback(url: &str) -> bool {
+    let Some(rest) = url.strip_prefix("http://").or_else(|| url.strip_prefix("https://")) else { return false };
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
+    if authority.contains('@') {
+        return false;
+    }
+    let host = match authority.strip_prefix('[') {
+        Some(v6) => v6.split(']').next().unwrap_or(""),
+        None => authority.split(':').next().unwrap_or(""),
+    };
+    host.eq_ignore_ascii_case("localhost") || host.parse::<std::net::IpAddr>().is_ok_and(|ip| ip.is_loopback())
 }
 
 /// A provider named on the command line (evals): the same names `unstale infer` takes; keys from the environment only.
@@ -216,7 +257,80 @@ pub fn run_step(
             }
             Ok(())
         }
-        other => anyhow::bail!("unknown step {other}; known: extract"),
+        "labels" | "match" => {
+            #[derive(serde::Deserialize)]
+            struct Item {
+                /// The technology's name as prompts state it.
+                name: String,
+                incoming: extract::Incoming,
+                /// `match`: whether the incoming record is labelled breaking.
+                #[serde(default)]
+                breaking: bool,
+                /// `match`: the records it may be the same change as (retrieval picks up to eight).
+                #[serde(default)]
+                candidates: Vec<unstale_schema::catalog::CapabilityRecord>,
+            }
+            let p = crate::prompts::prompts();
+            let ch = labels::Chooser::new(&main, &results);
+            for (n, line) in text
+                .lines()
+                .enumerate()
+                .filter(|(_, l)| !l.trim().is_empty())
+            {
+                let it: Item = serde_json::from_str(line)
+                    .map_err(|e| anyhow::anyhow!("--in line {}: {e}", n + 1))?;
+                let key = it.incoming.key.clone();
+                let out_line = if step == "labels" {
+                    let state = labels::record_state(p, &it.name, &it.incoming);
+                    ch.ask(labels::STEP_LABELS, &state, &p.labels.questions()).map(|a| serde_json::json!({"key": key, "labels": a.as_ref().and_then(|a| labels::interpret(p, a)), "answers": a}))
+                } else {
+                    let cands: Vec<matching::Cand> = it
+                        .candidates
+                        .iter()
+                        .map(|r| matching::Cand {
+                            rec: r,
+                            sources: &[],
+                        })
+                        .collect();
+                    let found = matching::retrieve(&it.incoming, &cands);
+                    let recs: Vec<&unstale_schema::catalog::CapabilityRecord> =
+                        found.iter().map(|(c, _)| c.rec).collect();
+                    let scores: Vec<f64> = found.iter().map(|(_, s)| *s).collect();
+                    let (state, qs) = matching::match_request(
+                        p,
+                        &it.name,
+                        &it.incoming,
+                        it.breaking,
+                        &recs,
+                        Some(&scores),
+                    );
+                    if qs.is_empty() {
+                        Ok(serde_json::json!({"key": key, "match": null, "judged": []}))
+                    } else {
+                        ch.ask(labels::STEP_JUDGE, &state, &qs).map(|a| match a {
+                            Some(a) => {
+                                let (m, judged) = matching::pick(p, &it.incoming, it.breaking, &recs, &a);
+                                serde_json::json!({"key": key, "match": m.map(|x| x.0), "judged": judged})
+                            }
+                            None => serde_json::json!({"key": key, "match": null, "judged": [], "failed": true}),
+                        })
+                    }
+                };
+                match out_line {
+                    Ok(v) => writeln!(out, "{v}")?,
+                    Err(d) => {
+                        writeln!(
+                            out,
+                            "{}",
+                            serde_json::json!({"key": key, "deferred": d.line()})
+                        )?;
+                        return Ok(());
+                    }
+                }
+            }
+            Ok(())
+        }
+        other => anyhow::bail!("unknown step {other}; known: extract, labels, match"),
     }
 }
 
@@ -240,3 +354,5 @@ pub fn repo_root(start: &Path) -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_steps;

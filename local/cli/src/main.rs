@@ -736,6 +736,12 @@ fn cmd_sync(ctx: &Ctx) -> Result<u8> {
             if t.unchanged { "unchanged".to_string() } else { format!("{} shard(s) downloaded, {} reused", t.downloaded, t.reused) }
         );
     }
+    // With the edge-inference switch on and a provider chosen: the client's own records for releases with change events
+    // and no catalog records. At most one line; never an error.
+    let synced: std::collections::BTreeSet<String> = rep.synced.iter().map(|t| t.technology.clone()).collect();
+    if let Some(line) = pipeline::after_sync(&ctx.cache, &ctx.root, &synced, &st.purls()) {
+        println!("{line}");
+    }
     if rep.synced.is_empty() {
         println!(
             "No technology in this repository's stack is covered by the catalog ({} candidates from {} packages checked).",

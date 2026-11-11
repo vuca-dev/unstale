@@ -564,7 +564,7 @@ fn a_key_named_by_the_choice_is_read_from_this_repos_env_file_and_nothing_else_i
     );
 }
 
-fn walk(d: &std::path::Path) -> Vec<std::path::PathBuf> {
+pub fn walk(d: &std::path::Path) -> Vec<std::path::PathBuf> {
     let mut out = vec![];
     for e in std::fs::read_dir(d).into_iter().flatten().flatten() {
         let p = e.path();
