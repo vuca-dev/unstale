@@ -9,13 +9,13 @@
 
 - **Shape:** INDEPENDENT PRs to `main`. Every chunk is additive and behind one switch (README, "One switch").
 - **Ground truth:** GitHub PR state. Repo `vuca-dev/unstale`.
-- **Base:** `origin/main` @ `979e779` (`ci` green)
+- **Base:** `origin/main` @ `8835d5c` (`ci` green)
 - **Base health:** PR checks are `rust`, `central`, `gateway`; re-query before every merge.
-- **Open PRs:** #233 (terminal rework, READY at `6a4bf9b`, re-review), #234 (processed mark, READY at `df3ebdf`, review), #235 (disk bounds, READY at `ad35c1e`, review), #231 (WS9 draft). Merge order: #233, #234, then #235 rebases and regenerates goldens.
+- **Open PRs:** #235 (disk bounds; review found 2 blocking, EM fixing), #231 (WS9 draft, blocked on ingest coverage)
 - **Live worktrees (sprint):** `/Users/jason/unstale-edge-sprint` (tracker)
-- **Live subagents:** three reviewers (Fable 5.2): #233 re-review, #234, #235. EMs idle with worktrees kept: terminal-rework (`/Users/jason/unstale-terminal-rework`), ws4b (`/Users/jason/unstale-ws4b`). ws9 paused at the data gate.
+- **Live subagents:** ws4b-impl (fixing #235), ingest diagnostic (Fable 5.2, read-only). ws9 stopped at the data gate.
 - **Merged + verified:** WS0 → #213 `673c191`
-- **Next:** review and merge WS10-FIX, terminal rework, WS4b A and B; then parity and cost runs; WS6b full matrix; WS9 run; WS8 draft last
+- **Next:** re-review and merge #235; parity and cost runs; WS6b full matrix; decide WS9 after the ingest diagnosis; WS8 draft last
 - **Sprint API spend so far:** $0 of $10
 
 ## §2 CEO directives (durable; read every iteration)
@@ -240,7 +240,10 @@ OpenRouter parity, repeat eval runs.
   `/Users/jason/unstale-scout`. Three work clones need re-fetching at pinned commits. Runner for the new arm not
   yet written.
 - Early sign: one dry run gave about 10x the reading matter of a keyed report (241 KB events file).
-- **Resume** when the background watch reports two more ingest runs done: message the agent to recheck the gate.
+- **Second stop (10:24Z 11 November):** 783 of 846 on the events code; **63 are not being rechecked by ingest at
+  all** (stamps 18 October to 10 November; 26% of the pool's records; electron, pandas, astro, stripe, workerd…).
+  Read-only diagnostic dispatched. Harness copy at `/Users/jason/unstale-ws9-scout`; arm build fixed at `9a93191`;
+  runner `eval/no-key/arm.py` written, never executed; prepared outputs to be redone. PR #231 head `8c551cc`.
 
 ### WS4: Client pipeline steps and port parity: PR 1 and PR 2 MERGED after review; WS4b in progress
 - **#228 → `5c8695f`, #230 → `fab73ab`**, re-review APPROVE (11 findings fixed and reproduced by the reviewer).
@@ -253,6 +256,13 @@ OpenRouter parity, repeat eval runs.
   calls on each job's next refresh (p50 4.7 h, p90 4 days, p99 23 days); share a client would still process on
   three real repos: 48.8% → under 1%, 40.5% → 0.6%, 9.5% → about 5%. #235 disk bounds: 100 MB cap
   (`UNSTALE_CACHE_MAX_MB`), behind the switch; real-cache copy 152 → 100 MB. Then parity runs (about $1.65).
+- **#234 MERGED → `a7a5ce9`** (review APPROVE: no path marks an event ahead of or without its records). Watch the
+  catalog file count after the first live cycles; count real marks before quoting the "under 1%" figure; central's
+  record stores and `processed.json` must be backed up and restored together.
+- **#235 review: APPROVE AFTER FIXES.** Blocking: deletes outside the cache through a symlinked top-level folder;
+  a missing or corrupt `needed.json` reads as "nothing is needed". Plus 13 should-fix items sent to the EM.
+- Three timing-sensitive tests failed once on a busy machine (matrix goldens, `the_hook_never_waits…`,
+  `ctrl_c_at_the_question…`): look at in WS6b.
 - **PR 1 #228 and PR 2 #230 READY, not merged** (bot skipped both heads). Local 495 unit + suites, central 608.
   Records land in `{cache}/inference/records/<tech>.json`, merged by `cache::load_tech`; result cache
   `{cache}/inference/results/`; `unstale internal run-step --step extract|labels|match --in FILE.jsonl`.
@@ -278,7 +288,12 @@ OpenRouter parity, repeat eval runs.
   loopback-only address overrides, foreground backlog in `unstale sync`, Codex batch cache key, answer parsing.
   Measure: releases never counted as covered. Next PR: hidden records, provenance display, `mergeSplitRecords`.
 
-### Terminal rework: READY, in review (PR #233 at `04ae821`)
+### Terminal rework: MERGED after two review rounds (PR #233 → `8835d5c`)
+- Picker as a table, prompt when nothing usable, agent and CI forms, warnings in place of "deferred", monthly
+  token limit a user setting (a repo can only tighten it), notices and session-start lines shortened; 0 lines over
+  100 characters in 86 transcripts. Session start prints one warning per new kind of failure (CEO asked to confirm).
+- Not done: internal `run-step` JSON still says "deferred"; no colour on `warning:`; the matrix never runs the
+  session-start hook (WS6b).
 - One EM applies `terminal-principles.md` across setup, status, session start, failures, notices; gates
   session-start hooks behind the switch; makes the monthly limit a setting.
 
