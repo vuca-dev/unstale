@@ -13,7 +13,6 @@
 use crate::inference::ChoiceQuestion;
 use serde::{Deserialize, Deserializer};
 use serde_json::Value;
-use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
 /// The embedded files, by name, as `schema/prompts/` holds them.
@@ -312,53 +311,49 @@ pub fn apply_edits(template: &str, edits: &[Edit]) -> Result<String, String> {
     Ok(out)
 }
 
-fn options(opts: &[Opt]) -> BTreeMap<String, String> {
+fn options(opts: &[Opt]) -> Vec<(String, String)> {
     opts.iter()
         .map(|o| (o.id.clone(), o.text.clone()))
         .collect()
 }
 
 impl Labels {
-    /// The eight label questions asked of the classifier for one record, by question id.
-    pub fn questions(&self) -> BTreeMap<String, ChoiceQuestion> {
+    /// The eight label questions asked of the classifier for one record, in central's order.
+    pub fn questions(&self) -> Vec<(String, ChoiceQuestion)> {
         let q = &self.questions;
-        let mut out = BTreeMap::new();
-        out.insert(
-            "change_type".to_string(),
-            ChoiceQuestion {
-                instructions: q.change_type.clone(),
-                options: options(&self.change_types),
-            },
-        );
-        out.insert(
-            "surface".to_string(),
-            ChoiceQuestion {
-                instructions: q.surface.clone(),
-                options: options(&self.surfaces),
-            },
-        );
-        out.insert(
-            "breaking".to_string(),
-            ChoiceQuestion {
-                instructions: fill(&q.breaking, &[("RUBRIC", &self.breaking_rubric)]),
-                options: options(&q.breaking_options),
-            },
-        );
-        for b in &self.benefits {
-            out.insert(
-                format!("benefit_{}", b.id),
+        let ask = |id: String, instructions: String, opts: &[Opt]| {
+            (
+                id,
                 ChoiceQuestion {
-                    instructions: fill(
-                        &q.benefit,
-                        &[
-                            ("BENEFIT", &b.id),
-                            ("DEFINITION", &b.text),
-                            ("RULE", &self.benefit_rule),
-                        ],
-                    ),
-                    options: options(&q.benefit_options),
+                    instructions,
+                    options: options(opts),
                 },
-            );
+            )
+        };
+        let mut out = vec![
+            ask(
+                "change_type".into(),
+                q.change_type.clone(),
+                &self.change_types,
+            ),
+            ask("surface".into(), q.surface.clone(), &self.surfaces),
+            ask(
+                "breaking".into(),
+                fill(&q.breaking, &[("RUBRIC", &self.breaking_rubric)]),
+                &q.breaking_options,
+            ),
+        ];
+        for b in &self.benefits {
+            let vars = [
+                ("BENEFIT", b.id.as_str()),
+                ("DEFINITION", &b.text),
+                ("RULE", &self.benefit_rule),
+            ];
+            out.push(ask(
+                format!("benefit_{}", b.id),
+                fill(&q.benefit, &vars),
+                &q.benefit_options,
+            ));
         }
         out
     }
@@ -414,7 +409,10 @@ impl Judge {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::inference::jev_request_body;
     use serde_json::Value;
+    use serde_json::value::RawValue;
+    use std::collections::BTreeMap;
 
     #[test]
     fn every_file_parses_and_has_a_version() {
@@ -487,69 +485,100 @@ mod tests {
         serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
     }
 
-    fn jev_questions(snap: &Value, case: &str) -> BTreeMap<String, ChoiceQuestion> {
-        let qs = snap[case][0]["body"]["questions"].as_object().unwrap();
-        qs.iter()
-            .map(|(id, q)| {
-                let options = q["criteria"]
-                    .as_object()
-                    .unwrap()
-                    .iter()
-                    .map(|(k, v)| (k.clone(), v.as_str().unwrap().to_string()))
-                    .collect();
-                (
-                    id.clone(),
-                    ChoiceQuestion {
-                        instructions: q["instructions"].as_str().unwrap().into(),
-                        options,
-                    },
-                )
-            })
-            .collect()
-    }
-
-    fn same(a: &BTreeMap<String, ChoiceQuestion>, b: &BTreeMap<String, ChoiceQuestion>) {
-        assert_eq!(a.keys().collect::<Vec<_>>(), b.keys().collect::<Vec<_>>());
-        for (id, q) in a {
-            assert_eq!(q.instructions, b[id].instructions, "{id}");
-            assert_eq!(q.options, b[id].options, "{id}");
+    /// The bytes central sent for a case's first request: the fixture keeps each body as `JSON.stringify(body, null,
+    /// 1)` did, so dropping the whitespace outside strings gives the compact bytes on the wire.
+    fn compact(pretty: &str) -> String {
+        let (mut out, mut in_str, mut esc) = (String::with_capacity(pretty.len()), false, false);
+        for ch in pretty.chars() {
+            if in_str {
+                out.push(ch);
+                match (esc, ch) {
+                    (true, _) => esc = false,
+                    (false, '\\') => esc = true,
+                    (false, '"') => in_str = false,
+                    _ => {}
+                }
+            } else if ch == '"' {
+                in_str = true;
+                out.push(ch);
+            } else if !ch.is_whitespace() {
+                out.push(ch);
+            }
         }
+        out
+    }
+
+    /// A case's first Jev request as central sent it, and its state as central wrote it.
+    fn sent(case: &str) -> (String, Box<RawValue>) {
+        #[derive(Deserialize)]
+        struct Captured<'a> {
+            #[serde(borrow)]
+            body: &'a RawValue,
+        }
+        #[derive(Deserialize)]
+        struct Body<'a> {
+            #[serde(borrow)]
+            state: &'a RawValue,
+        }
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../central/test/fixtures/prompt-requests.json");
+        let text = std::fs::read_to_string(path).unwrap();
+        let all: BTreeMap<String, Vec<Captured>> = serde_json::from_str(&text).unwrap();
+        let body = compact(all[case][0].body.get());
+        let state: Body = serde_json::from_str(&body).unwrap();
+        let state = RawValue::from_string(state.state.get().to_string()).unwrap();
+        (body, state)
+    }
+
+    /// The client's Jev request for `questions` about central's state, byte for byte against central's.
+    fn same_bytes(case: &str, questions: &[(String, ChoiceQuestion)]) {
+        let (want, state) = sent(case);
+        let got = jev_request_body("jev-latest", &state, questions);
+        assert_eq!(String::from_utf8(got).unwrap(), want, "{case}");
     }
 
     #[test]
-    fn label_questions_match_centrals_requests() {
-        same(
-            &prompts().labels.questions(),
-            &jev_questions(&snapshot(), "labels.release-notes"),
-        );
+    fn label_requests_match_centrals_bytes() {
+        same_bytes("labels.release-notes", &prompts().labels.questions());
     }
 
     #[test]
-    fn judge_questions_match_centrals_requests() {
-        let snap = snapshot();
+    fn judge_requests_match_centrals_bytes() {
         let j = &prompts().judge;
-        let one = |rules| BTreeMap::from([("same_c1".to_string(), j.question("c1", rules))]);
-        same(
+        let one = |rules| vec![("same_c1".to_string(), j.question("c1", rules))];
+        same_bytes(
+            "judge.release-notes.short-rules-all",
             &one(JudgeRules::Short { mixed: false }),
-            &jev_questions(&snap, "judge.release-notes.short-rules-all"),
         );
-        same(
+        same_bytes(
+            "judge.guide-vs-release-notes",
             &one(JudgeRules::Short { mixed: true }),
-            &jev_questions(&snap, "judge.guide-vs-release-notes"),
         );
-        same(
+        same_bytes(
+            "judge.docs",
             &one(JudgeRules::Long {
                 advisory: false,
                 mixed: true,
             }),
-            &jev_questions(&snap, "judge.docs"),
         );
-        same(
+        same_bytes(
+            "judge.advisory",
             &one(JudgeRules::Long {
                 advisory: true,
                 mixed: false,
             }),
-            &jev_questions(&snap, "judge.advisory"),
+        );
+    }
+
+    #[test]
+    fn option_order_is_kept() {
+        let qs = prompts().labels.questions();
+        let ids: Vec<&str> = qs.iter().map(|(id, _)| id.as_str()).collect();
+        assert_eq!(ids[..3], ["change_type", "surface", "breaking"]);
+        let benefit = &qs[3].1.options;
+        assert_eq!(
+            (benefit[0].0.as_str(), benefit[1].0.as_str()),
+            ("yes", "no")
         );
     }
 

@@ -21,7 +21,8 @@ ignore = "0.4"
 globset = "0.4"
 semver = "1"
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+# raw_value: a Jev state is sent as the caller wrote it (key order included).
+serde_json = { version = "1", features = ["raw_value"] }
 sha2 = "0.10"
 # Ed25519 verification of the signed catalog; already in the build through rustls.
 ring = "0.17"

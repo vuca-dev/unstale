@@ -83,6 +83,12 @@ impl Mock {
         serde_json::from_str(&r[r.find("\r\n\r\n").unwrap() + 4..]).unwrap()
     }
 
+    /// Request `i`'s body as sent.
+    pub fn raw_body(&self, i: usize) -> String {
+        let r = self.requests.lock().unwrap()[i].clone();
+        r[r.find("\r\n\r\n").unwrap() + 4..].to_string()
+    }
+
     pub fn head(&self, i: usize) -> String {
         let r = self.requests.lock().unwrap()[i].clone();
         r[..r.find("\r\n\r\n").unwrap()].to_string()
@@ -225,6 +231,10 @@ fn anthropic_messages_uses_output_config_format_and_counts_cache_reads_as_input(
     );
 }
 
+fn raw(json: &str) -> Box<serde_json::value::RawValue> {
+    serde_json::value::RawValue::from_string(json.to_string()).unwrap()
+}
+
 fn question(options: &[&str]) -> ChoiceQuestion {
     ChoiceQuestion {
         instructions: "Pick one.".into(),
@@ -250,11 +260,13 @@ fn jev_sends_choice_questions_and_checks_each_answer() {
     let m = Mock::new(vec![(200, answer(&first)), (200, answer(&rest))]);
     let f = Fixture::new();
     let inf = f.inference(ProviderConfig::jev(), &m.url);
-    let qs: BTreeMap<String, ChoiceQuestion> = ids
+    let qs: Vec<(String, ChoiceQuestion)> = ids
         .iter()
         .map(|id| (id.clone(), question(&["yes", "no"])))
         .collect();
-    let c = inf.classify(&json!({"subject": "x"}), &qs).unwrap();
+    let c = inf
+        .classify(&raw(r#"{"subject":"x","release":"1.0"}"#), &qs)
+        .unwrap();
     assert_eq!(c.answers.len(), 10);
     assert_eq!(c.model, "jev-7");
     assert_eq!(c.answers["q00"].choice, "yes");
@@ -272,20 +284,23 @@ fn jev_sends_choice_questions_and_checks_each_answer() {
     assert!(m.head(0).starts_with("POST /v1/systemone "));
     let b = m.body(0);
     assert_eq!(b["model"], "jev-latest");
-    assert_eq!(b["state"], json!({"subject": "x"}));
+    assert_eq!(b["state"], json!({"subject": "x", "release": "1.0"}));
+    // The state, questions and options go out in the order given.
+    let raw_body = m.raw_body(0);
+    assert!(raw_body.starts_with(r#"{"model":"jev-latest","state":{"subject":"x","release":"1.0"},"questions":{"q00":{"type":"choice","instructions":"Pick one.","criteria":{"yes":"means yes","no":"means no"}}"#), "{raw_body}");
     assert_eq!(b["questions"].as_object().unwrap().len(), 8);
     assert_eq!(
         b["questions"]["q00"],
-        json!({"type": "choice", "instructions": "Pick one.", "criteria": {"no": "means no", "yes": "means yes"}})
+        json!({"type": "choice", "instructions": "Pick one.", "criteria": {"yes": "means yes", "no": "means no"}})
     );
 
     // A choice outside the options is not an answer.
     let bad = json!({"answers": {"a": {"choice": "maybe", "confidence": 1.0, "probabilities": {"yes": 0.5, "no": 0.5}}}}).to_string();
     let m = Mock::new(vec![(200, bad)]);
     let inf = f.inference(ProviderConfig::jev(), &m.url);
-    let qs = BTreeMap::from([("a".to_string(), question(&["yes", "no"]))]);
+    let qs = vec![("a".to_string(), question(&["yes", "no"]))];
     assert_eq!(
-        inf.classify(&json!({}), &qs).unwrap_err(),
+        inf.classify(&raw("{}"), &qs).unwrap_err(),
         Deferred::Malformed
     );
 }
@@ -758,16 +773,16 @@ fn review_follow_ups() {
         (401, "{}".into()),
     ]);
     let inf = f.inference(ProviderConfig::jev(), &m.url);
-    let qs: BTreeMap<String, ChoiceQuestion> = (0..10)
+    let qs: Vec<(String, ChoiceQuestion)> = (0..10)
         .map(|i| (format!("q{i:02}"), question(&["yes", "no"])))
         .collect();
-    let c = inf.classify(&json!({}), &qs).unwrap();
+    let c = inf.classify(&raw("{}"), &qs).unwrap();
     assert_eq!((c.answers.len(), c.deferred), (8, Some(Deferred::Auth)));
     // A single question over the request limit is never sent.
     let m = Mock::new(vec![(200, "{}".into())]);
     let inf = f.inference(ProviderConfig::jev(), &m.url);
-    let big = BTreeMap::from([("a".to_string(), question(&["yes", "no"]))]);
-    let state = json!({"text": "x".repeat(40 * 1024)});
+    let big = vec![("a".to_string(), question(&["yes", "no"]))];
+    let state = raw(&json!({"text": "x".repeat(40 * 1024)}).to_string());
     assert_eq!(inf.classify(&state, &big).unwrap_err(), Deferred::TooLong);
     assert_eq!(m.count(), 0);
 }

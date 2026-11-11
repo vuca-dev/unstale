@@ -2,6 +2,8 @@
 //! timeouts and retries for transient failures only.
 
 use super::{Answer, Choice, ChoiceQuestion, Deferred, Inference, Prompt, Usage, parse_answer};
+use serde::{Serialize, Serializer, ser::SerializeMap};
+use serde_json::value::RawValue;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::time::Duration;
@@ -21,7 +23,7 @@ fn post(
     url: &str,
     auth: (&str, &str),
     headers: &[(&str, &str)],
-    body: &Value,
+    body: &impl Serialize,
 ) -> Result<Value, Deferred> {
     if !allowed_url(url) {
         return Err(Deferred::InsecureUrl);
@@ -263,36 +265,85 @@ pub(super) fn anthropic(inf: &Inference, p: &Prompt) -> Result<Answer, Deferred>
     })
 }
 
-fn jev_body(model: &str, state: &Value, qs: &BTreeMap<String, ChoiceQuestion>) -> Value {
-    let questions: serde_json::Map<String, Value> = qs
-        .iter()
-        .map(|(id, q)| {
-            (
-                id.clone(),
-                json!({"type": "choice", "instructions": q.instructions, "criteria": q.options}),
-            )
-        })
-        .collect();
-    json!({"model": model, "state": state, "questions": questions})
+/// A Jev request body, serialized in central's order: `model`, `state` as given, then each question as
+/// `type`, `instructions`, `criteria`, questions and options in the order given.
+struct JevBody<'a> {
+    model: &'a str,
+    state: &'a RawValue,
+    questions: &'a [(String, ChoiceQuestion)],
+}
+
+struct Ordered<'a, T>(&'a [(String, T)]);
+
+impl Serialize for Ordered<'_, String> {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        let mut m = s.serialize_map(Some(self.0.len()))?;
+        for (k, v) in self.0 {
+            m.serialize_entry(k, v)?;
+        }
+        m.end()
+    }
+}
+
+impl Serialize for Ordered<'_, ChoiceQuestion> {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        struct Q<'a>(&'a ChoiceQuestion);
+        impl Serialize for Q<'_> {
+            fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+                let mut m = s.serialize_map(Some(3))?;
+                m.serialize_entry("type", "choice")?;
+                m.serialize_entry("instructions", &self.0.instructions)?;
+                m.serialize_entry("criteria", &Ordered(&self.0.options))?;
+                m.end()
+            }
+        }
+        let mut m = s.serialize_map(Some(self.0.len()))?;
+        for (id, q) in self.0 {
+            m.serialize_entry(id, &Q(q))?;
+        }
+        m.end()
+    }
+}
+
+impl Serialize for JevBody<'_> {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        let mut m = s.serialize_map(Some(3))?;
+        m.serialize_entry("model", self.model)?;
+        m.serialize_entry("state", self.state)?;
+        m.serialize_entry("questions", &Ordered(self.questions))?;
+        m.end()
+    }
+}
+
+/// The bytes of one Jev request.
+pub(crate) fn jev_request_body(
+    model: &str,
+    state: &RawValue,
+    qs: &[(String, ChoiceQuestion)],
+) -> Vec<u8> {
+    serde_json::to_vec(&JevBody {
+        model,
+        state,
+        questions: qs,
+    })
+    .unwrap_or_default()
 }
 
 /// Splits questions into requests of at most [`JEV_MAX_QUESTIONS`] questions and [`JEV_MAX_BYTES`] of JSON.
 pub(super) fn jev_batches(
     model: &str,
-    state: &Value,
-    questions: &BTreeMap<String, ChoiceQuestion>,
-) -> Vec<BTreeMap<String, ChoiceQuestion>> {
+    state: &RawValue,
+    questions: &[(String, ChoiceQuestion)],
+) -> Vec<Vec<(String, ChoiceQuestion)>> {
     let mut out = Vec::new();
-    let mut cur: BTreeMap<String, ChoiceQuestion> = BTreeMap::new();
+    let mut cur: Vec<(String, ChoiceQuestion)> = Vec::new();
     for (id, q) in questions {
         let mut next = cur.clone();
-        next.insert(id.clone(), q.clone());
-        let size = serde_json::to_vec(&jev_body(model, state, &next))
-            .map(|b| b.len())
-            .unwrap_or(0);
+        next.push((id.clone(), q.clone()));
+        let size = jev_request_body(model, state, &next).len();
         if !cur.is_empty() && (next.len() > JEV_MAX_QUESTIONS || size > JEV_MAX_BYTES) {
             out.push(std::mem::take(&mut cur));
-            cur.insert(id.clone(), q.clone());
+            cur.push((id.clone(), q.clone()));
         } else {
             cur = next;
         }
@@ -306,12 +357,16 @@ pub(super) fn jev_batches(
 /// One Jev request: every answer checked against its question's options.
 pub(super) fn jev(
     inf: &Inference,
-    state: &Value,
-    qs: &BTreeMap<String, ChoiceQuestion>,
+    state: &RawValue,
+    qs: &[(String, ChoiceQuestion)],
 ) -> Result<(String, BTreeMap<String, Choice>, Usage), Deferred> {
     let c = &inf.provider;
-    let body = jev_body(&c.model, state, qs);
-    if serde_json::to_vec(&body).map_or(0, |b| b.len()) > JEV_MAX_BYTES {
+    let body = JevBody {
+        model: &c.model,
+        state,
+        questions: qs,
+    };
+    if jev_request_body(&c.model, state, qs).len() > JEV_MAX_BYTES {
         // One question alone is over the request limit: never sent.
         return Err(Deferred::TooLong);
     }
@@ -348,8 +403,8 @@ pub(super) fn jev(
         };
         let probabilities: Option<BTreeMap<String, f64>> = q
             .options
-            .keys()
-            .map(|o| {
+            .iter()
+            .map(|(o, _)| {
                 a.and_then(|a| a.get("probabilities"))
                     .and_then(|p| p.get(o))
                     .and_then(Value::as_f64)
@@ -357,7 +412,7 @@ pub(super) fn jev(
             })
             .collect();
         match probabilities {
-            Some(probabilities) if q.options.contains_key(choice) => {
+            Some(probabilities) if q.options.iter().any(|(o, _)| o == choice) => {
                 answers.insert(
                     id.clone(),
                     Choice {
