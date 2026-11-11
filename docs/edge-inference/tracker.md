@@ -94,7 +94,7 @@ OpenRouter parity, repeat eval runs.
 - **WS3-FIX** dispatched for 1–5 (worktree `/Users/jason/unstale-ws3-fix`). WS3 is not VERIFIED until it merges and
   the redirect and ledger fixes are re-checked.
 
-### WS2: Change events in the catalog: MERGED, verifier running
+### WS2: Change events in the catalog: MERGED, VERIFIED WITH GAPS (live run unobserved)
 - PR #221 → `f37260a`. Central 571/571, local 460 passed, gateway 73/73; `main` `ci` green. 1 review finding dismissed
   with comment.
 - Shape: `EventLine` (id `{tech}@{version}{keyTag}`, chunks, freshness) and `EventChunk` (id `{event}#{n}`, sha256,
@@ -107,7 +107,16 @@ OpenRouter parity, repeat eval runs.
   pure `splitChunk`; matters for WS4 parity). A zero onboarding budget stops a run before releases are fetched:
   budget gating needs rework at cutover (WS7). The PR touched `fetch.ts` and `service.ts`, which the CEO's checkout
   has uncommitted edits to.
-- Pending: first scheduled ingest on the new code not yet observed.
+- **VERIFIER: PASS WITH GAPS, 6/7** (size is offline-only). UNVERIFIABLE until an ingest runs on `f37260a`: live
+  publishing and live size. HUMAN: is a 37 MB projection acceptable before a live number.
+- Parity consequence for WS4: client record keys never equal central's (`#chunk.i`, `i` is the model's answer
+  order), so parity is judged on metrics, and on prompts for unsplit chunks. A Rust port of `chunk(max)` and
+  `splitChunk` must count UTF-16 code units, as JS does, and needs its own fixtures.
+- Risks: (1) two readers of the switch disagree on `=true`; (2) with the switch on a bad event shard fails the
+  technology's record sync. Both sent to WS3-FIX. (3) First live run rewrites every index and adds thousands of
+  files: **PM watches the first ingest on `f37260a`.** (4) `central/events/<tech>/notes.json` keeps full text
+  uncompressed in state, about 100 MB at full scale: follow-up. (5) A line's event shard is rewritten whole on each
+  release: follow-up.
 
 ### WS1: Prompts as shared data: IN PROGRESS
 - EM: impl, Opus 5.5. Starts when the first lane frees.
