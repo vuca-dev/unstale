@@ -304,7 +304,9 @@ fn every_option_below_the_first_states_its_trade_with_units_and_scope() {
         }
         if i > 0 {
             assert!(
-                l.contains("about the same") || l.contains("less complete: ≈ "),
+                l.contains("about the same")
+                    || l.contains("less complete: ≈ ")
+                    || l.contains("results through Codex not measured yet"),
                 "{l}"
             );
         }
@@ -569,4 +571,27 @@ fn an_agent_variable_means_an_agent_is_driving() {
         &["PATH", "HOME"],
         CodexState::Absent
     )));
+}
+
+#[test]
+fn quality_through_codex_is_not_claimed_until_measured() {
+    for p in [Pick::JevCodex, Pick::Codex] {
+        assert!(!quote(p, false).quality_measured, "{p:?}");
+        let l = option_line(&everything(), p, 38, false);
+        assert!(
+            l.ends_with(" · results through Codex not measured yet"),
+            "{l}"
+        );
+        assert!(
+            !l.contains("about the same") && !l.contains("93%") && !l.contains("duplicate"),
+            "{l}"
+        );
+    }
+    for p in [
+        Pick::JevKey(Route::Vercel),
+        Pick::Key(Route::Vercel),
+        Pick::Key(Route::Anthropic),
+    ] {
+        assert!(quote(p, false).quality_measured, "{p:?}");
+    }
 }

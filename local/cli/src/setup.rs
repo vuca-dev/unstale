@@ -284,6 +284,9 @@ pub struct Quote {
     pub quality: Quality,
     /// More duplicate records than the best option's.
     pub more_duplicates: u32,
+    /// Whether `quality` and `more_duplicates` were measured on this route. While false, the line says the results
+    /// through Codex are not measured yet, and the figures beside it are the API route's, kept for when they are.
+    pub quality_measured: bool,
 }
 
 /// The first sync, in technology-years per technology. Catalog records cover history, so the first sync reads only
@@ -297,9 +300,12 @@ const NO_QUOTE: Quote = Quote {
     agent_tokens: 0,
     quality: Quality::Best,
     more_duplicates: 0,
+    quality_measured: true,
 };
 
-/// Labels below the best option's: an OpenAI-compatible model flags 86.2% of breaking changes against Jev's 93.1%.
+/// Labels below the best option's: an OpenAI-compatible model (gpt-6-luna read on its choices) flags 86.2% of breaking
+/// changes against Jev's 93.1%, both on the same held-out set; Jev's figure is at its fitted threshold (breaking
+/// probability 0.05), not at 0.5. Check the ratio against the threshold the client's labelling step actually runs.
 const LABELS_BELOW: Quality = Quality::Share {
     pct: 93,
     of: "the best option's breaking-change flags",
@@ -328,6 +334,8 @@ pub fn quote(p: Pick, no_key: bool) -> Quote {
             codex_tokens: 109_000,
             codex_usd: 0.0198,
             quality: Quality::Same,
+            // Measured over the API; batched `codex exec` extraction's recall was not checked.
+            quality_measured: false,
             ..NO_QUOTE
         },
         Pick::Key(Route::Anthropic) => Quote {
@@ -354,6 +362,8 @@ pub fn quote(p: Pick, no_key: bool) -> Quote {
             codex_usd: 0.0754,
             quality: LABELS_BELOW,
             more_duplicates: MATCHING_BELOW,
+            // The API route's figures; through batched `codex exec` they are not measured yet.
+            quality_measured: false,
             ..NO_QUOTE
         },
         // About 8k tokens of release notes per technology-year, read raw by the agent.
@@ -529,6 +539,10 @@ pub fn option_line(d: &Detected, p: Pick, techs: usize, no_key: bool) -> String 
             ", first sync ≈ {} once",
             cost(&q, techs as f64 * FIRST_SYNC_TECH_YEARS)
         );
+    }
+    if !q.quality_measured {
+        s += " · results through Codex not measured yet";
+        return s;
     }
     if let Some(t) = quality(q.quality) {
         s += " · ";
