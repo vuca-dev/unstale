@@ -12,18 +12,21 @@ pub(crate) struct Keys {
     pub(crate) repo_env: &'static [&'static str],
     /// Only in another repository's `.env`, which the client must never open.
     pub(crate) other_env: &'static [&'static str],
+    /// Set to a blank value in the shell and in this repository's `.env`: counts as unset.
+    pub(crate) blank: &'static [&'static str],
     /// How the provider answers this key.
     pub(crate) answer: Answer,
 }
 
 #[rustfmt::skip]
 pub(crate) const KEYS: &[Keys] = &[
-    Keys { id: "no-key", title: "no key", shell: &[], repo_env: &[], other_env: &[], answer: Answer::Ok },
-    Keys { id: "shell-key", title: "an OpenAI key in the shell", shell: &["OPENAI_API_KEY"], repo_env: &[], other_env: &[], answer: Answer::Ok },
-    Keys { id: "dotenv-key", title: "an OpenAI key in this repo's .env", shell: &[], repo_env: &["OPENAI_API_KEY"], other_env: &[], answer: Answer::Ok },
-    Keys { id: "other-repo-key", title: "a key only in another repo's .env", shell: &[], repo_env: &[], other_env: &["ANTHROPIC_API_KEY"], answer: Answer::Ok },
-    Keys { id: "several-keys", title: "several keys in the shell", shell: &["AI_GATEWAY_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "JEV_API_KEY"], repo_env: &[], other_env: &[], answer: Answer::Ok },
-    Keys { id: "revoked-key", title: "a revoked OpenAI key in the shell", shell: &["OPENAI_API_KEY"], repo_env: &[], other_env: &[], answer: Answer::Refused },
+    Keys { id: "no-key", title: "no key", shell: &[], repo_env: &[], other_env: &[], blank: &[], answer: Answer::Ok },
+    Keys { id: "shell-key", title: "an OpenAI key in the shell", shell: &["OPENAI_API_KEY"], repo_env: &[], other_env: &[], blank: &[], answer: Answer::Ok },
+    Keys { id: "dotenv-key", title: "an OpenAI key in this repo's .env", shell: &[], repo_env: &["OPENAI_API_KEY"], other_env: &[], blank: &[], answer: Answer::Ok },
+    Keys { id: "other-repo-key", title: "a key only in another repo's .env", shell: &[], repo_env: &[], other_env: &["ANTHROPIC_API_KEY"], blank: &[], answer: Answer::Ok },
+    Keys { id: "several-keys", title: "several keys in the shell", shell: &["AI_GATEWAY_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "JEV_API_KEY"], repo_env: &[], other_env: &[], blank: &[], answer: Answer::Ok },
+    Keys { id: "blank-key", title: "an OpenAI key name with a blank value", shell: &[], repo_env: &[], other_env: &[], blank: &["OPENAI_API_KEY"], answer: Answer::Ok },
+    Keys { id: "revoked-key", title: "a revoked OpenAI key in the shell", shell: &["OPENAI_API_KEY"], repo_env: &[], other_env: &[], blank: &[], answer: Answer::Refused },
 ];
 
 pub(crate) struct Codex {
@@ -46,17 +49,28 @@ pub(crate) struct Invocation {
     /// The gallery's group: what the user did.
     pub(crate) group: &'static str,
     pub(crate) title: &'static str,
+    /// Runs at a (pseudo-)terminal.
     pub(crate) terminal: bool,
+    /// A person is there to answer a question. An agent at a terminal is not.
+    pub(crate) person: bool,
+    /// What the person types at the question: Enter, Ctrl-D (dismiss) or Ctrl-C.
+    pub(crate) answer: &'static str,
     pub(crate) ci: bool,
+    /// Extra environment, such as the variable an agent sets.
+    pub(crate) env: &'static [(&'static str, &'static str)],
     pub(crate) steps: &'static [Step],
 }
 
 #[rustfmt::skip]
 pub(crate) const INVOCATIONS: &[Invocation] = &[
-    Invocation { id: "terminal", group: "Installs it at a terminal", title: "first run in a terminal", terminal: true, ci: false, steps: &[Step::Init, Step::Sync, Step::Model, Step::Status] },
-    Invocation { id: "agent", group: "Asks an agent to install it", title: "an agent installs it", terminal: false, ci: false, steps: &[Step::Init, Step::Status, Step::AgentSetup, Step::Sync, Step::Model] },
-    Invocation { id: "ci", group: "Runs it in CI", title: "in CI", terminal: false, ci: true, steps: &[Step::InitYes, Step::Sync, Step::Model, Step::Status] },
-    Invocation { id: "ci-flag", group: "Runs it in CI", title: "in CI, choosing OpenAI with --inference", terminal: false, ci: true, steps: &[Step::InitFlag("env:OPENAI_API_KEY"), Step::Sync, Step::Model, Step::Status] },
+    Invocation { id: "terminal", group: "Installs it at a terminal", title: "first run in a terminal", terminal: true, person: true, answer: "\n", ci: false, env: &[], steps: &[Step::Init, Step::Sync, Step::Model, Step::Status] },
+    Invocation { id: "terminal-dismiss", group: "Installs it at a terminal", title: "dismissed with Ctrl-D in a terminal", terminal: true, person: true, answer: "\u{4}", ci: false, env: &[], steps: &[Step::Init, Step::Init, Step::Status] },
+    Invocation { id: "terminal-interrupt", group: "Installs it at a terminal", title: "interrupted with Ctrl-C at the question", terminal: true, person: true, answer: "\u{3}", ci: false, env: &[], steps: &[Step::Init, Step::Status] },
+    Invocation { id: "agent", group: "Asks an agent to install it", title: "an agent installs it", terminal: false, person: false, answer: "", ci: false, env: &[("CLAUDECODE", "1")], steps: &[Step::Init, Step::Status, Step::AgentSetup, Step::Sync, Step::Model] },
+    Invocation { id: "agent-pty-claude", group: "Asks an agent to install it", title: "Claude Code installs it through a terminal", terminal: true, person: false, answer: "\n", ci: false, env: &[("CLAUDECODE", "1")], steps: &[Step::Init, Step::Status, Step::AgentSetup, Step::Sync, Step::Model] },
+    Invocation { id: "agent-pty-codex", group: "Asks an agent to install it", title: "Codex installs it through a terminal", terminal: true, person: false, answer: "\n", ci: false, env: &[("CODEX_SANDBOX", "seatbelt")], steps: &[Step::Init, Step::Status, Step::AgentSetup, Step::Sync, Step::Model] },
+    Invocation { id: "ci", group: "Runs it in CI", title: "in CI", terminal: false, person: false, answer: "", ci: true, env: &[], steps: &[Step::InitYes, Step::Sync, Step::Model, Step::Status] },
+    Invocation { id: "ci-flag", group: "Runs it in CI", title: "in CI, choosing OpenAI with --inference", terminal: false, person: false, answer: "", ci: true, env: &[], steps: &[Step::InitFlag("env:OPENAI_API_KEY"), Step::Sync, Step::Model, Step::Status] },
 ];
 
 /// The repository's committed config (`.unstale/config.json`), as a teammate left it.
@@ -137,6 +151,11 @@ pub(crate) const CRITICAL: &[(&str, &str, &str, &str, &str, Answer)] = &[
     ("An agent installs it with nothing to use", "no-key", "no-codex", "agent", "no-config", Answer::Ok),
     ("CI with the provider in the repo config", "shell-key", "no-codex", "ci", "config-set", Answer::Ok),
     ("CI with no provider chosen", "shell-key", "no-codex", "ci", "no-config", Answer::Ok),
+    ("A key name with a blank value, first run in a terminal", "blank-key", "no-codex", "terminal", "no-config", Answer::Ok),
+    ("The question dismissed with Ctrl-D is not asked again", "shell-key", "codex", "terminal-dismiss", "no-config", Answer::Ok),
+    ("Ctrl-C at the question writes nothing", "shell-key", "codex", "terminal-interrupt", "no-config", Answer::Ok),
+    ("Claude Code installs it through a terminal, with a key and Codex", "shell-key", "codex", "agent-pty-claude", "no-config", Answer::Ok),
+    ("Codex installs it through a terminal, with a key and Codex", "shell-key", "codex", "agent-pty-codex", "no-config", Answer::Ok),
     ("CI chooses the provider with a flag", "shell-key", "no-codex", "ci-flag", "no-config", Answer::Ok),
     ("The provider rate limits every call", "shell-key", "no-codex", "terminal", "no-config", Answer::RateLimited),
     ("The provider is down", "shell-key", "no-codex", "terminal", "no-config", Answer::Down),

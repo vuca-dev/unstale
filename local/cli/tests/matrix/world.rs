@@ -3,6 +3,14 @@
 
 use super::*;
 
+/// Files the client must never open besides the sibling repository's `.env` and Codex's auth file, relative to
+/// HOME: `.env` files above the repository, this repository's `.env.local`, and shell startup files.
+#[rustfmt::skip]
+pub(crate) const NEVER_OPENED: &[&str] = &[
+    ".env", "code/.env", "code/shop/.env.local",
+    ".bashrc", ".bash_profile", ".profile", ".zshrc", ".zprofile", ".zshenv", ".config/fish/config.fish",
+];
+
 pub(crate) const TODAY: &str = "2026-11-10";
 /// A line of the fixture repository's code: it must never reach a provider or the catalog.
 pub(crate) const CODE_MARKER: &str = "shopCheckoutMarker4e1d";
@@ -198,6 +206,9 @@ impl World {
         for k in s.keys.repo_env {
             env += &format!("{k}={}\n", repo_value(k));
         }
+        for k in s.keys.blank {
+            env += &format!("{k}=\n");
+        }
         // A secret that is not a key: never read as one, never copied anywhere.
         env += &format!(
             "DATABASE_URL=postgres://shop:{}@localhost/shop\n",
@@ -244,6 +255,12 @@ impl World {
         other += &format!("SESSION_SECRET={}\n", support::OTHER_CANARY);
         w.sentinels
             .push(Sentinel::plant(&w.home().join("code/other/.env"), &other));
+        for rel in NEVER_OPENED {
+            w.sentinels.push(Sentinel::plant(
+                &w.home().join(rel),
+                &format!("export OPENAI_API_KEY={}\n", support::OTHER_CANARY),
+            ));
+        }
         w.sentinels.push(Sentinel::plant(
             &w.home().join(".codex/auth.json"),
             &format!(
@@ -307,6 +324,12 @@ impl World {
         }
         for k in s.keys.shell {
             e.push((k.to_string(), shell_value(k)));
+        }
+        for k in s.keys.blank {
+            e.push((k.to_string(), "  ".into()));
+        }
+        for (k, v) in s.invocation.env {
+            e.push((k.to_string(), v.to_string()));
         }
         e
     }

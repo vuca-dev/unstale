@@ -68,7 +68,7 @@ pub(crate) fn run_step(w: &World, s: &Scenario, step: Step, ran: &[Ran]) -> Opti
             if !status.output.contains("Model provider: not chosen") {
                 return None;
             }
-            let listed = exec(w, s, vec!["setup".into()], false);
+            let listed = exec(w, s, vec!["setup".into()], s.invocation.terminal);
             Some(listed)
         }
         Step::Model => model_step(w, s),
@@ -85,7 +85,7 @@ pub(crate) fn agent_answer(w: &World, s: &Scenario, listed: &Ran) -> Option<Ran>
         w,
         s,
         vec!["setup".into(), "--inference".into(), value],
-        false,
+        s.invocation.terminal,
     );
     r.note = Some("the agent showed the options and asked; the user chose option 1".into());
     Some(r)
@@ -94,13 +94,15 @@ pub(crate) fn agent_answer(w: &World, s: &Scenario, listed: &Ran) -> Option<Ran>
 pub(crate) fn exec(w: &World, s: &Scenario, args: Vec<String>, terminal: bool) -> Ran {
     let cmd = w.command(s, &args);
     let (code, output) = if terminal {
-        let answers: &[(&str, &str)] = &[(PROMPTS[0], "\n"), (PROMPTS[1], "\n")];
         // Only the first question is answered; a second would wait, and its prompt is counted.
-        let (code, raw) = support::at_terminal(
-            &cmd,
-            &answers[..1.min(answers.len())],
-            Duration::from_secs(60),
-        );
+        let prompt = PROMPTS.join("|");
+        let answer = if s.invocation.answer.is_empty() {
+            "\n"
+        } else {
+            s.invocation.answer
+        };
+        let (code, raw) =
+            support::at_terminal(&cmd, &[(prompt.as_str(), answer)], Duration::from_secs(60));
         (code, support::screen(&raw))
     } else {
         // stderr into stdout, so the output keeps the order it was written in.

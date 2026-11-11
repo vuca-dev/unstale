@@ -191,9 +191,11 @@ pub(crate) fn check(s: &Scenario, se: &Session) -> Vec<String> {
         }
     }
 
-    // Hold-the-line 4: provider and budget failures defer with one line, exit 0.
+    // Hold-the-line 4: provider and budget failures defer with one line, exit 0. A command the person interrupted
+    // with Ctrl-C may exit otherwise.
     for r in &se.ran {
-        if r.code != 0 {
+        let pressed_ctrl_c = s.invocation.answer == "\u{3}" && questions(&r.output) > 0;
+        if r.code != 0 && !pressed_ctrl_c {
             v.push(format!("hold-the-line 4: `{}` exited {}", r.shown, r.code));
         }
         if r.output.lines().any(|l| l.starts_with("error:")) {
@@ -225,12 +227,24 @@ pub(crate) fn check(s: &Scenario, se: &Session) -> Vec<String> {
         v.push(format!("questions: {asked} questions on one path"));
     }
     for r in &se.ran {
-        if !s.invocation.terminal && questions(&r.output) > 0 {
+        if !s.invocation.person && questions(&r.output) > 0 {
             v.push(format!(
                 "questions: `{}` asked a question without a person at a terminal",
                 r.shown
             ));
         }
+    }
+    // A dismissed question records only that it was dismissed; Ctrl-C records nothing.
+    let dismissed = w.repo().join(".unstale/state/setup-dismissed").exists();
+    let interrupted = s.invocation.answer == "\u{3}";
+    if (s.invocation.answer == "\u{4}" || interrupted)
+        && s.config.choice.is_none()
+        && provider_id_after(w).is_some()
+    {
+        v.push("questions: a dismissed or interrupted question recorded a provider".into());
+    }
+    if interrupted && dismissed {
+        v.push("questions: Ctrl-C at the question recorded a dismissal".into());
     }
 
     // The catalog's notice and update lines: once a day.
@@ -391,3 +405,8 @@ fn upgrading_from_the_previous_release_during_grace() {}
 #[test]
 #[ignore = "needs the min_client value the catalog raises to at cutover"]
 fn running_after_the_min_client_bump() {}
+
+/// The provider the session ended with, if any (including `none`).
+fn provider_id_after(w: &World) -> Option<String> {
+    chosen(w).and_then(|c| c["provider"].as_str().map(String::from))
+}

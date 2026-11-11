@@ -4,16 +4,20 @@
 developer machines. Each scenario gets its own temporary HOME (with the repository at `~/code/shop` and a sibling
 repository at `~/code/other`), PATH, environment, a mock catalog host, a mock model provider, a proxy that catches any
 request leaving the machine, and a fake `codex` when Codex is installed. Canaries sit in every key value, in
-`~/.codex/auth.json` and in the sibling repository's `.env`; those two files are FIFOs that record being opened.
+`~/.codex/auth.json` and in the sibling repository's `.env`; those, the `.env` files above the repository, this
+repository's `.env.local` and the shell startup files (`NEVER_OPENED` in `world.rs`) are FIFOs that record being
+opened.
 
 ## What each scenario must hold
 
 - **Hold-the-line 1:** no canary in any output, written file, or request, except the chosen key in the chosen
-  provider's auth header; the sibling `.env` and Codex's auth file are never opened.
+  provider's auth header; none of the never-opened files is opened.
 - **Hold-the-line 2:** nothing reaches the proxy; the provider is contacted only on the chosen provider's API;
   `codex exec` runs only with Codex chosen; no request or `codex` argument carries a repository path or code.
 - **Hold-the-line 4:** every command exits 0 with no `error:` line; a provider or budget failure defers with one line.
-- At most one question per path, none without a terminal; the catalog's notice and update lines at most once a day.
+- At most one question per path, none without a person at the terminal (an agent driving a pseudo-terminal gets the
+  listing instead); a question dismissed with Ctrl-D records no provider and is not asked again; Ctrl-C records
+  nothing. The catalog's notice and update lines show at most once a day.
 
 Each check has a test that injects a violation (`the_checks_catch_*`) and fails without it; run them with
 `-- --nocapture` to see the failing output. Checks that cannot run yet are ignored tests with their reason.
