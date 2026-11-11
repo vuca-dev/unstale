@@ -777,8 +777,12 @@ impl Choice {
     }
 
     /// The provider configurations to call: the one that writes records, and Jev for labels when chosen. `None` for no
-    /// model provider.
+    /// model provider, and for a choice naming a key variable that is not its route's own ([`Choice::foreign_key`]):
+    /// a repository's config must not be able to send another variable (a token, a proxy setting) anywhere.
     pub fn providers(&self) -> Option<(ProviderConfig, Option<ProviderConfig>)> {
+        if self.foreign_key().is_some() {
+            return None;
+        }
         let mut main = match self.provider.as_str() {
             "openai" => ProviderConfig::openai(),
             "vercel" => ProviderConfig::vercel(),
@@ -804,8 +808,22 @@ impl Choice {
         Some((main, labels))
     }
 
-    /// The variables this choice reads keys from.
+    /// A key variable the choice names that is not the known key variable of its route (`KEY_VARS`), if any.
+    pub fn foreign_key(&self) -> Option<&str> {
+        let own = |provider: &str, var: &str| route_by_id(provider).is_some_and(|r| route_of(var) == Some(r));
+        if let Some(k) = &self.key_env
+            && !own(&self.provider, k)
+        {
+            return Some(k);
+        }
+        self.labels.as_ref().map(|l| l.key_env.as_str()).filter(|k| !own("jev", k))
+    }
+
+    /// The variables this choice reads keys from: only its routes' own key variables.
     pub fn key_vars(&self) -> Vec<&str> {
+        if self.foreign_key().is_some() {
+            return vec![];
+        }
         self.labels
             .iter()
             .map(|l| l.key_env.as_str())
@@ -921,6 +939,9 @@ pub fn provider_line(cur: Option<&(Choice, Origin)>, set: &dyn Fn(&str) -> bool)
                 Origin::User => "your user config",
             };
             let mut l = format!("Model provider: {}, from {from} · `unstale setup` changes it", c.describe());
+            if let Some(v) = c.foreign_key() {
+                l += &format!(" · not used: {v} is not a key variable for this provider");
+            }
             for v in c.key_vars().into_iter().filter(|v| !set(v)) {
                 l += &format!(" · {v} is not set in this shell or .env");
             }

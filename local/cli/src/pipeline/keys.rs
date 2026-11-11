@@ -32,17 +32,20 @@ pub fn dotenv_value(path: &Path, name: &str) -> Option<String> {
     found
 }
 
-/// A key reader for [`crate::inference::Inference::with_env`]: the process environment first; for a name in
-/// `consented` that the environment leaves unset or empty, `{root}/.env`.
-pub fn reader(
+/// A key reader for [`crate::inference::Inference::with_env`] over `env` (the process environment, or a test's):
+/// `env` first; for a name in `consented` that `env` leaves unset or empty, `{root}/.env`.
+pub fn reader_with(
     root: Option<PathBuf>,
     consented: Vec<String>,
+    env: impl Fn(&str) -> Option<String> + Send + Sync + 'static,
 ) -> impl Fn(&str) -> Option<String> + Send + Sync + 'static {
     move |k: &str| {
-        let env = std::env::var(k).ok().filter(|v| !v.trim().is_empty());
+        let env = env(k).filter(|v| !v.trim().is_empty());
         if env.is_some() {
             return env;
         }
+        // Only a known key variable is ever read from a repository's `.env`, never a proxy or certificate setting.
+        crate::setup::route_of(k)?;
         let root = root.as_ref()?;
         let file = root.join(".env");
         // A symlinked `.env` could point anywhere on the machine: only a regular file in the repository is read.
@@ -62,7 +65,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn reads_one_named_variable_and_nothing_else() {
+    fn reads_one_named_key_variable_and_nothing_else() {
         let d = tempfile::tempdir().unwrap();
         std::fs::write(
             d.path().join(".env"),
@@ -77,45 +80,54 @@ mod tests {
         assert_eq!(dotenv_value(&p, "JEV_API_KEY").as_deref(), Some("jv"));
         assert_eq!(dotenv_value(&p, "EMPTY"), None);
         assert_eq!(dotenv_value(&p, "MISSING"), None);
-        let r = reader(
+        let none = |_: &str| None::<String>;
+        std::fs::write(&p, "OPENAI_API_KEY=v1\nJEV_API_KEY=v2\nSSL_CERT_FILE=/tmp/evil.pem\nHTTPS_PROXY=http://evil\n").unwrap();
+        let r = reader_with(
             Some(d.path().to_path_buf()),
-            vec!["UNSTALE_TEST_CONSENTED_KEY".into()],
+            vec![
+                "OPENAI_API_KEY".into(),
+                "SSL_CERT_FILE".into(),
+                "HTTPS_PROXY".into(),
+            ],
+            none,
         );
-        std::fs::write(
-            d.path().join(".env"),
-            "UNSTALE_TEST_CONSENTED_KEY=v1\nUNSTALE_TEST_OTHER_KEY=v2\n",
-        )
-        .unwrap();
-        assert_eq!(r("UNSTALE_TEST_CONSENTED_KEY").as_deref(), Some("v1"));
+        assert_eq!(r("OPENAI_API_KEY").as_deref(), Some("v1"));
         assert_eq!(
-            r("UNSTALE_TEST_OTHER_KEY"),
+            r("JEV_API_KEY"),
             None,
-            "a variable the choice does not name is never read from the file"
+            "a key variable the choice does not name is never read from the file"
+        );
+        assert_eq!(
+            r("SSL_CERT_FILE"),
+            None,
+            "only key variables are read from a repository's .env, even when named"
+        );
+        assert_eq!(r("HTTPS_PROXY"), None);
+        assert_eq!(
+            reader_with(None, vec!["OPENAI_API_KEY".into()], none)("OPENAI_API_KEY"),
+            None
         );
         #[cfg(unix)]
         {
             let elsewhere = tempfile::tempdir().unwrap();
             std::fs::write(
                 elsewhere.path().join("other"),
-                "UNSTALE_TEST_CONSENTED_KEY=from-elsewhere\n",
+                "OPENAI_API_KEY=from-elsewhere\n",
             )
             .unwrap();
             let linked = tempfile::tempdir().unwrap();
             std::os::unix::fs::symlink(elsewhere.path().join("other"), linked.path().join(".env"))
                 .unwrap();
-            let r = reader(
+            let r = reader_with(
                 Some(linked.path().to_path_buf()),
-                vec!["UNSTALE_TEST_CONSENTED_KEY".into()],
+                vec!["OPENAI_API_KEY".into()],
+                none,
             );
             assert_eq!(
-                r("UNSTALE_TEST_CONSENTED_KEY"),
+                r("OPENAI_API_KEY"),
                 None,
                 "a symlinked .env is never followed"
             );
         }
-        assert_eq!(
-            reader(None, vec!["UNSTALE_TEST_CONSENTED_KEY".into()])("UNSTALE_TEST_CONSENTED_KEY"),
-            None
-        );
     }
 }

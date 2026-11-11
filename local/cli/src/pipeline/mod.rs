@@ -107,10 +107,23 @@ pub struct Routes {
 }
 
 pub fn routes(choice: &crate::setup::Choice, root: Option<&Path>) -> Option<Routes> {
+    routes_with(choice, root, |k| std::env::var(k).ok())
+}
+
+/// [`routes`] over another environment (tests).
+pub fn routes_with(
+    choice: &crate::setup::Choice,
+    root: Option<&Path>,
+    env: impl Fn(&str) -> Option<String> + Send + Sync + Clone + 'static,
+) -> Option<Routes> {
     let (main, labels) = choice.providers()?;
     let consented: Vec<String> = choice.key_vars().into_iter().map(String::from).collect();
     let make = |c: ProviderConfig| {
-        Inference::new(c).with_env(keys::reader(root.map(Path::to_path_buf), consented.clone()))
+        Inference::new(c).with_env(keys::reader_with(
+            root.map(Path::to_path_buf),
+            consented.clone(),
+            env.clone(),
+        ))
     };
     Some(Routes {
         main: make(main),
