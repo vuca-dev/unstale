@@ -18,7 +18,7 @@ This repo has 38 packages unstale follows.
    this repo, a year      ≈ $2.08
    first sync, once       ≈ $2.08
    results                slightly less complete: ≈ 93% of the best option's breaking-change flags
-   duplicates             ≈ 2 more duplicate records per package, per year
+   repeats                ≈ 2 more changes listed twice per package, per year
 
 4  Codex plan
    per package, per year  590k Codex tokens ($0.075 at API prices)
@@ -30,8 +30,9 @@ This repo has 38 packages unstale follows.
    per package, per year  $0.075
    this repo, a year      ≈ $2.86
    first sync, once       ≈ $2.86
-   results                somewhat less complete: ≈ 90% of the best option's changes (fewer from upgrade guides)
-   duplicates             ≈ 23 more duplicate records per package, per year
+   results                somewhat less complete: ≈ 90% of the best option's changes
+                          fewer from upgrade guides
+   repeats                ≈ 23 more changes listed twice per package, per year
 
 6  Not now
    cost     free: no model is called

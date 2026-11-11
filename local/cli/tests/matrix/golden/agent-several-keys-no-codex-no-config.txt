@@ -2,7 +2,7 @@
 # keys: several-keys · Codex: no-codex · run: agent · repo config: none · client: fresh · provider: answers
 
 $ unstale init --wait 0 --no-animation  (no terminal)
-Choice pending: how unstale reads new release notes. Run `unstale setup`, show the user its options and ask.
+Choice pending: how unstale reads new release notes. Run `unstale setup` and ask the user.
   ✓ shop · Personal setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 2 direct dependencies from declared package ranges and checked local
@@ -32,7 +32,7 @@ Choice pending: how unstale reads new release notes. Run `unstale setup`, show t
   files and trade-offs. Return proposals only; do not edit files.
   
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-By 30 November: upgrade unstale; this version stops receiving new changes after that day.
+unstale notice, act by 30 November: Upgrade unstale; this version stops receiving new changes then.
 unstale <newer version> available: npm install -g @unstale/cli@latest
 
 $ unstale status --wait 0 --no-animation  (no terminal)
@@ -76,6 +76,7 @@ Never choose for them.
   2  Vercel AI Gateway         ≈ $0.11                  ≈ 93% of its breaking-change flags
   3  Anthropic                 ≈ $0.15                  ≈ 90% of its changes
   4  Not now                   free                     ≈ 27%: advisories and deprecations only
+     Jev: a labelling service, used beside the provider that reads the notes.
      Keys: JEV_API_KEY, AI_GATEWAY_API_KEY, ANTHROPIC_API_KEY
 
 Record their answer with the matching command:
@@ -87,11 +88,10 @@ Full costs: unstale setup --details
 
 # the agent showed the options and asked; the user chose option 1
 $ unstale setup --inference jev+env:AI_GATEWAY_API_KEY  (no terminal)
-Reading release notes with Jev + Vercel AI Gateway (JEV_API_KEY, AI_GATEWAY_API_KEY). Saved in .unstale/config.json; `unstale setup` changes it.
+Saved for this repo: Jev + Vercel AI Gateway (JEV_API_KEY, AI_GATEWAY_API_KEY) reads release notes.
 
 $ unstale sync  (no terminal)
-synced next: 2 records (sources checked 2026-10-15T00:00:00Z); unchanged
-Not covered by the catalog: 1 other candidate technology (no index for it, or no record names a package used here).
+next: 2 upstream changes on file, nothing new
 
 # model step: the internal `unstale infer` on the chosen provider, standing in for the client's own pipeline steps
 $ unstale infer --provider vercel  (no terminal)

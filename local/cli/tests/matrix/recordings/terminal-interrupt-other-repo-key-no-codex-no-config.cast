@@ -109,6 +109,6 @@
 [5.35,"o","  only; do not edit files.\r\n"]
 [5.41,"o","\r\n"]
 [5.47,"o","  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\r\n"]
-[5.53,"o","By 30 November: upgrade unstale; this version stops receiving new changes after that day.\r\n"]
+[5.53,"o","unstale notice, act by 30 November: Upgrade unstale; this version stops receiving new changes then.\r\n"]
 [5.59,"o","unstale <newer version> available: npm install -g @unstale/cli@latest\r\n"]
 [5.65,"o","Release notes         not read: no provider chosen · `unstale setup` shows the options\r\n"]

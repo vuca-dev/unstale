@@ -23,8 +23,10 @@ pub(crate) struct Session {
     pub(crate) chosen: Option<serde_json::Value>,
 }
 
-/// What every question ends in: the picker's prompt, its one-option form, and the prompt with nothing usable.
-pub(crate) const PROMPTS: [&str; 2] = ["Enter for 1", "Enter to use it"];
+/// What every question opens with: the picker's prompt, its one-option form, and the prompt with nothing usable.
+/// After the details (`d`) the same question stays open at [`CONTINUE`], which is not another question.
+pub(crate) const PROMPTS: [&str; 2] = ["Enter for 1,", "Enter to use it"];
+pub(crate) const CONTINUE: &str = "Your choice (Enter for 1): ";
 
 pub(crate) fn questions(text: &str) -> usize {
     PROMPTS.iter().map(|p| text.matches(p).count()).sum()
@@ -103,8 +105,12 @@ pub(crate) fn exec(w: &World, s: &Scenario, args: Vec<String>, terminal: bool) -
         } else {
             s.invocation.answer
         };
-        let (code, raw) =
-            support::at_terminal(&cmd, &[(prompt.as_str(), answer)], Duration::from_secs(60));
+        // Having asked for the details, the person accepts the first option where the question stays open.
+        let (code, raw) = support::at_terminal(
+            &cmd,
+            &[(prompt.as_str(), answer), (CONTINUE, "\n")],
+            Duration::from_secs(60),
+        );
         // A terminal's echo of Ctrl-D and Ctrl-C differs by system (macOS prints `^D` and backs over it, Linux
         // prints nothing): the screen shows neither.
         let raw = raw

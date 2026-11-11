@@ -28,7 +28,7 @@ $ unstale init --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-By 30 November: upgrade unstale; this version stops receiving new changes after that day.
+unstale notice, act by 30 November: Upgrade unstale; this version stops receiving new changes then.
 unstale <newer version> available: npm install -g @unstale/cli@latest
 Codex: to let unstale sync at session start, trust its hook once: run /hooks in Codex.
 
@@ -63,8 +63,7 @@ Release notes         OpenAI (OPENAI_API_KEY), this repo's config
 Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)
 
 $ unstale sync
-synced next: 2 records (sources checked 2026-10-15T00:00:00Z); unchanged
-Not covered by the catalog: 1 other candidate technology (no index for it, or no record names a package used here).
+next: 2 upstream changes on file, nothing new
 
 # model step: the internal `unstale infer` on the chosen provider, standing in for the client's own pipeline steps
 $ unstale infer --provider openai  (no terminal)

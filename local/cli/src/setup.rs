@@ -781,16 +781,21 @@ impl<'de> serde::Deserialize<'de> for Limit {
     }
 }
 
-/// Where the limit in effect comes from.
+/// Whose limit is the one in effect.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LimitOrigin {
     Default,
-    Repo,
+    /// The user's own, from their config.
     User,
+    /// This repository's config sets a lower one than the user's (or the default).
+    Repo,
 }
 
+/// More than this is not a limit anyone means (a million million tokens); `none` says no limit.
+pub const MAX_LIMIT: u64 = 1_000_000_000_000;
+
 /// Reads `--limit`: a number of tokens (`48000000`, `48M`, `500k`), `none` for no limit, or `default` to go back to
-/// the default (`Ok(None)`).
+/// the default (`Ok(None)`). Digits with at most one decimal point; nothing above [`MAX_LIMIT`].
 pub fn parse_limit(s: &str) -> Result<Option<Limit>, String> {
     let t = s.trim().to_ascii_lowercase().replace(['_', ','], "");
     let bad = || {
@@ -808,11 +813,22 @@ pub fn parse_limit(s: &str) -> Result<Option<Limit>, String> {
             None => (t.as_str(), 1.0),
         },
     };
-    let n: f64 = digits.parse().map_err(|_| bad())?;
-    if !n.is_finite() || n < 0.0 {
+    let plain = !digits.is_empty()
+        && digits.bytes().all(|b| b.is_ascii_digit() || b == b'.')
+        && digits.bytes().filter(|b| *b == b'.').count() <= 1
+        && digits.bytes().any(|b| b.is_ascii_digit());
+    if !plain {
         return Err(bad());
     }
-    Ok(Some(Limit::Tokens((n * scale).round() as u64)))
+    let n: f64 = digits.parse().map_err(|_| bad())?;
+    let tokens = n * scale;
+    if !tokens.is_finite() || tokens > MAX_LIMIT as f64 {
+        return Err(format!(
+            "--limit {s}: more than {} tokens; use `none` for no limit",
+            crate::inference::ledger::short_tokens(MAX_LIMIT)
+        ));
+    }
+    Ok(Some(Limit::Tokens(tokens.round() as u64)))
 }
 
 fn read_user_limit(path: &Path) -> Option<Limit> {
@@ -821,17 +837,20 @@ fn read_user_limit(path: &Path) -> Option<Limit> {
         .and_then(|v| serde_json::from_value(v.clone()).ok())
 }
 
-/// The limit in effect: this repository's, else the user's, else the default.
+/// The limit in effect. The user's own (their config; the default when they set none) is the most this machine
+/// spends: a repository's config can only lower it, never raise or remove it, since that file may be committed and
+/// shared. So the lower of the two applies.
 pub fn limit(repo: Option<Limit>, user_path: &Path) -> (Limit, LimitOrigin) {
-    if let Some(l) = repo {
-        return (l, LimitOrigin::Repo);
-    }
-    match read_user_limit(user_path) {
+    let own = match read_user_limit(user_path) {
         Some(l) => (l, LimitOrigin::User),
         None => (
             Limit::Tokens(crate::inference::ledger::DEFAULT_MONTHLY_TOKENS),
             LimitOrigin::Default,
         ),
+    };
+    match repo {
+        Some(r) if r.tokens() < own.0.tokens() => (r, LimitOrigin::Repo),
+        _ => own,
     }
 }
 
@@ -842,8 +861,8 @@ pub fn lenient_limit<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<Li
     Ok(serde_json::from_value(serde_json::Value::deserialize(d)?).ok())
 }
 
-/// The limit in effect for the repository at `root` (its `.unstale/config.json`, else the user's config, else the
-/// default), as a count: for a caller that has only the directory.
+/// The limit in effect for the repository at `root` ([`limit`]), as a count: for a caller that has only the
+/// directory, or none (then the user's own).
 pub fn monthly_tokens_at(root: Option<&Path>) -> u64 {
     let repo = root.and_then(|r| {
         let b = std::fs::read(r.join(".unstale/config.json")).ok()?;
@@ -860,22 +879,17 @@ pub fn monthly_tokens(ctx: &crate::Ctx) -> u64 {
         .tokens()
 }
 
-/// `unstale setup --limit`: records the limit in this repository's config, or with `user` in the user's.
-pub fn set_limit(ctx: &mut crate::Ctx, new: Option<Limit>, user: bool) -> anyhow::Result<()> {
-    let place = if user {
-        let path = user_config_path();
-        write_user_key(
-            &path,
-            "monthly_token_limit",
-            new.map(serde_json::to_value).transpose()?,
-        )?;
-        format!("your user config ({})", path.display())
-    } else {
-        ctx.config.monthly_token_limit = new;
-        save_repo(ctx)?;
-        ".unstale/config.json".to_string()
-    };
-    println!("{}", view::limit_saved_line(new, &place));
+/// `unstale setup --limit`: records the user's own limit, always in their config (a repository's config can only
+/// lower it, by hand), and says what applies here now.
+pub fn set_limit(ctx: &crate::Ctx, new: Option<Limit>) -> anyhow::Result<()> {
+    let path = user_config_path();
+    write_user_key(
+        &path,
+        "monthly_token_limit",
+        new.map(serde_json::to_value).transpose()?,
+    )?;
+    let (applies, origin) = limit(ctx.config.monthly_token_limit, &path);
+    println!("{}", view::limit_saved_line(new, applies, origin));
     Ok(())
 }
 
@@ -980,23 +994,20 @@ fn save_repo(ctx: &crate::Ctx) -> anyhow::Result<()> {
     )
 }
 
-fn save(ctx: &mut crate::Ctx, c: &Choice, user: bool) -> anyhow::Result<String> {
+/// Records the choice and returns the lines that confirm it.
+fn save(ctx: &mut crate::Ctx, c: &Choice, user: bool) -> anyhow::Result<Vec<String>> {
     if user {
-        let path = user_config_path();
-        write_user(&path, c)?;
+        write_user(&user_config_path(), c)?;
         // The repository's own choice wins where it has one.
-        let here = match &ctx.config.inference {
-            Some(r) => format!(
-                "; this repo's own choice ({}) still applies here",
-                r.describe()
-            ),
-            None => String::new(),
-        };
-        return Ok(format!("your user config ({}){here}", path.display()));
+        return Ok(view::saved_lines(
+            c,
+            Origin::User,
+            ctx.config.inference.as_ref(),
+        ));
     }
     ctx.config.inference = Some(c.clone());
     save_repo(ctx)?;
-    Ok(".unstale/config.json".into())
+    Ok(view::saved_lines(c, Origin::Repo, None))
 }
 
 /// Where this machine remembers the picker was dismissed: under `.unstale/state/`, which is never committed.
@@ -1016,14 +1027,16 @@ pub fn status_lines(ctx: &crate::Ctx) -> (Vec<String>, Vec<String>) {
     let cur = current(ctx.config.inference.as_ref(), &user_config_path());
     let mut warnings = view::missing_key_lines(cur.as_ref(), &key_set(ctx));
     let (lim, origin) = limit(ctx.config.monthly_token_limit, &user_config_path());
-    let used =
-        crate::inference::Ledger::default_location().spent(&crate::inference::ledger::this_month());
+    let ledger = crate::inference::Ledger::default_location();
+    let month = crate::inference::ledger::this_month();
+    let used = ledger.spent(&month);
     let mut state = vec![view::provider_line(cur.as_ref())];
     // Only where a provider is chosen: with none, nothing spends tokens or waits on the limit.
     if cur.as_ref().is_some_and(|(c, _)| !c.is_none()) {
         match &used {
-            Ok(n) if *n >= lim.tokens() => warnings.push(crate::inference::Deferred::Budget.line()),
-            Err(_) => warnings.push(crate::inference::Deferred::Storage.line()),
+            Ok(n) if *n >= lim.tokens() => warnings.push(view::limit_reached_line(origin)),
+            // Here, unlike in the one line elsewhere, there is room for which file and what to do with it.
+            Err(e) => warnings.push(view::token_count_line(&ledger.path(&month), e)),
             Ok(_) => {}
         }
         state.push(view::tokens_line(used, lim, origin));
@@ -1083,8 +1096,9 @@ pub fn run(
             return Ok(());
         }
         Plan::Save(c) => {
-            let place = save(ctx, &c, user)?;
-            println!("{}", view::saved_line(&c, &place));
+            for l in save(ctx, &c, user)? {
+                println!("{l}");
+            }
             // Recorded, but not usable here yet: said now rather than found out at the first sync.
             let chosen = (c, Origin::Repo);
             let missing = view::missing_key_lines(Some(&chosen), &key_set(ctx));
@@ -1110,13 +1124,19 @@ pub fn run(
         Plan::Ask => (detect(&ctx.root, &System), technologies(ctx)),
     };
     let opts = options(&d, NO_KEY_MODE);
-    for l in view::picker_lines(&d, techs, NO_KEY_MODE, Reader::Person, view::width()) {
+    let width = view::width();
+    for l in view::picker_lines(&d, techs, NO_KEY_MODE, Reader::Person, width) {
         println!("{l}");
     }
     // Dismissed, or "not now" with nothing to use: no config is written, so a team's shared choice is never set by a
-    // slip or by one machine's lack of a key. This machine remembers it was asked, so `init` does not ask again;
-    // `unstale setup` does.
+    // slip or by one machine's lack of a key. With a choice already made (`unstale setup` reopened), it stays, and
+    // the line says so. Otherwise this machine remembers it was asked, so `init` does not ask again; `unstale setup`
+    // does.
     let dismiss = |ctx: &crate::Ctx| -> anyhow::Result<()> {
+        if let Some((kept, _)) = &cur {
+            println!("{}", view::kept_line(kept));
+            return Ok(());
+        }
         crate::util::write_atomic(&dismissed_path(ctx), b"asked, not chosen\n")?;
         println!("{}", view::dismissed_line());
         Ok(())
@@ -1126,14 +1146,14 @@ pub fn run(
         return match view::ask(2, &view::nothing_prompt(), &[], &mut input, &mut out) {
             view::Answered::Option(0) => {
                 println!();
-                for l in view::set_up_lines(&d, Reader::Person) {
+                for l in view::set_up_lines(&d, Reader::Person, width) {
                     println!("{l}");
                 }
                 println!();
-                Ok(crate::util::write_atomic(
-                    &dismissed_path(ctx),
-                    b"asked, setting one up\n",
-                )?)
+                if cur.is_none() {
+                    crate::util::write_atomic(&dismissed_path(ctx), b"asked, setting one up\n")?;
+                }
+                Ok(())
             }
             _ => dismiss(ctx),
         };
@@ -1150,10 +1170,11 @@ pub fn run(
         view::Answered::Nothing => return dismiss(ctx),
     };
     let c = Choice::of(&d, pick);
-    let place = save(ctx, &c, user)?;
-    println!("{}", view::saved_line(&c, &place));
+    for l in save(ctx, &c, user)? {
+        println!("{l}");
+    }
     let _ = crate::warn::changed(&ctx.tool, "setup", None);
-    if reopen {
+    if reopen && !c.is_none() {
         let (lim, origin) = limit(ctx.config.monthly_token_limit, &user_config_path());
         println!(
             "{}",

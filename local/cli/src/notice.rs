@@ -1,9 +1,11 @@
 //! Catalog notices and the update line: what the last synced root (`v1/root.json` in the cache, signed with the rest of
 //! the catalog) says to every client, printed on the lines agents already read (`unstale status`, the session-start
-//! hook). A notice is there only when every user must do something by a date: its text says what to do, its `until`
-//! is the date, and it prints as one line, `By 30 November: <what to do>`. Once shown and unchanged it does not print
-//! again that day, and never after `until`. The update line prints at most once a day while the root's
-//! `latest_client` is newer than this client. No network: only the cached root.
+//! hook). A notice is there only when every user must do something by a date: its text says what, its `until` is the
+//! date. It prints at most once a day per id, while today is on or before `until`. With the edge-inference switch on
+//! the line leads with the date, however the text is phrased (`unstale notice, act by 30 November: <text>`), and a
+//! notice whose text or date changed prints again the same day; with the switch off it reads as it always did
+//! (`unstale notice: <text>`). The update line prints at most once a day while the root's `latest_client` is newer
+//! than this client. No network: only the cached root.
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -15,10 +17,13 @@ use crate::util;
 /// The day each line was last printed, in `.unstale/state/notices.json`.
 #[derive(Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct Shown {
-    /// Notice id to the day it was last printed and a fingerprint of what was printed (`2026-11-10 1f3a9c2e`), so a
-    /// notice whose text or date changed prints again.
+    /// Notice id to the day it was last printed.
     #[serde(default)]
     pub notices: BTreeMap<String, String>,
+    /// Notice id to a fingerprint of the line last printed, so one whose text or date changed prints again. Absent in
+    /// a state written before fingerprints: then the day alone decides, so nothing repeats after an upgrade.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub printed: BTreeMap<String, String>,
     /// The day the update line was last printed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub update: Option<String>,
@@ -45,13 +50,17 @@ pub fn due(root: &Root, ours: &str, today: &str, upgrade: &str, shown: &mut Show
         && d <= until
         && !one_line(&n.text).is_empty()
     {
-        let line = format!("By {}: {}", day_month(&n.until), one_line(&n.text));
-        let mark = format!("{today} {}", &util::sha256_hex(line.as_bytes())[..8]);
-        if shown.notices.get(&n.id) != Some(&mark) {
+        let line = notice_line(&n.until, &n.text, util::edge_inference());
+        let mark = util::sha256_hex(line.as_bytes())[..8].to_string();
+        let today_already = shown.notices.get(&n.id).map(String::as_str) == Some(today);
+        let changed = shown.printed.get(&n.id).is_some_and(|m| *m != mark);
+        if !today_already || changed {
             out.push(line);
-            shown.notices.insert(n.id.clone(), mark);
+            shown.notices.insert(n.id.clone(), today.to_string());
+            shown.printed.insert(n.id.clone(), mark);
         }
     }
+    shown.printed.retain(|id, _| root.notice.as_ref().is_some_and(|n| &n.id == id));
     // Ids whose last day is behind today will not print again unless the root names them; keep only the current one.
     shown.notices.retain(|id, _| root.notice.as_ref().is_some_and(|n| &n.id == id));
     if let Some(latest) = root.latest_client.as_deref()
@@ -63,6 +72,16 @@ pub fn due(root: &Root, ours: &str, today: &str, upgrade: &str, shown: &mut Show
         shown.update = Some(today.to_string());
     }
     out
+}
+
+/// The notice as printed. `dated` (the edge-inference switch on) leads with the day to act by, in a form that reads
+/// right whether the text is an instruction or a statement; otherwise the line is as it was before the switch.
+pub fn notice_line(until: &str, text: &str, dated: bool) -> String {
+    if dated {
+        format!("unstale notice, act by {}: {}", day_month(until), one_line(text))
+    } else {
+        format!("unstale notice: {}", one_line(text))
+    }
 }
 
 /// `2026-11-30` as `30 November`.
@@ -129,7 +148,7 @@ mod tests {
             schema: 1,
             min_client: "0.1.0".into(),
             latest_client: latest.map(String::from),
-            notice: notice.map(|(id, until)| Notice { id: id.into(), until: until.into(), text: "run `unstale setup`\nto keep new release notes read.".into() }),
+            notice: notice.map(|(id, until)| Notice { id: id.into(), until: until.into(), text: "Hosted labelling ends 30 Nov.\nRun `unstale setup`.".into() }),
         }
     }
 
@@ -137,22 +156,31 @@ mod tests {
     fn a_notice_prints_once_a_day_until_its_last_day() {
         let r = root(None, Some(("keys", "2026-11-30")));
         let mut shown = Shown::default();
-        assert_eq!(due(&r, "0.3.0", "2026-11-10", "x", &mut shown), vec!["By 30 November: run `unstale setup` to keep new release notes read."]);
+        assert_eq!(due(&r, "0.3.0", "2026-11-10", "x", &mut shown), vec!["unstale notice: Hosted labelling ends 30 Nov. Run `unstale setup`."]);
         assert!(due(&r, "0.3.0", "2026-11-10", "x", &mut shown).is_empty(), "once a day");
         assert_eq!(due(&r, "0.3.0", "2026-11-30", "x", &mut shown).len(), 1, "the until day itself still prints");
         assert!(due(&r, "0.3.0", "2026-12-01", "x", &mut shown).is_empty(), "past until");
         // A new id prints the same day another one did; the old id is forgotten.
-        let mut shown = Shown { notices: BTreeMap::from([("old".into(), "2026-11-10".into())]), update: None };
+        let mut shown = Shown { notices: BTreeMap::from([("old".into(), "2026-11-10".into())]), ..Default::default() };
         assert_eq!(due(&r, "0.3.0", "2026-11-10", "x", &mut shown).len(), 1);
         assert_eq!(shown.notices.keys().collect::<Vec<_>>(), vec!["keys"]);
-        // The same id with another text or date prints again the same day.
+        // The same id with another text prints again the same day; unchanged, it does not.
         let mut shown = Shown::default();
         assert_eq!(due(&r, "0.3.0", "2026-11-10", "x", &mut shown).len(), 1);
-        let mut later = root(None, Some(("keys", "2026-12-15")));
-        assert_eq!(due(&later, "0.3.0", "2026-11-10", "x", &mut shown), vec!["By 15 December: run `unstale setup` to keep new release notes read."]);
-        later.notice.as_mut().unwrap().text = "upgrade unstale.".into();
-        assert_eq!(due(&later, "0.3.0", "2026-11-10", "x", &mut shown), vec!["By 15 December: upgrade unstale."]);
+        let mut later = root(None, Some(("keys", "2026-11-30")));
+        later.notice.as_mut().unwrap().text = "Upgrade unstale.".into();
+        assert_eq!(due(&later, "0.3.0", "2026-11-10", "x", &mut shown), vec!["unstale notice: Upgrade unstale."]);
         assert!(due(&later, "0.3.0", "2026-11-10", "x", &mut shown).is_empty());
+        // A state written before fingerprints (the day alone): nothing repeats on the day of an upgrade.
+        let mut old: Shown = serde_json::from_str(r#"{"notices":{"keys":"2026-11-10"}}"#).unwrap();
+        assert!(due(&r, "0.3.0", "2026-11-10", "x", &mut old).is_empty());
+        assert_eq!(due(&r, "0.3.0", "2026-11-11", "x", &mut old).len(), 1);
+        // With the switch on the line leads with the date, whether the text instructs or states.
+        assert_eq!(
+            notice_line("2026-11-30", "Upgrade unstale; this version stops receiving new changes then.", true),
+            "unstale notice, act by 30 November: Upgrade unstale; this version stops receiving new changes then."
+        );
+        assert_eq!(notice_line("2026-11-30", "Hosted labelling ends.", true), "unstale notice, act by 30 November: Hosted labelling ends.");
         // An unreadable until prints nothing.
         assert!(due(&root(None, Some(("bad", "soon"))), "0.3.0", "2026-11-10", "x", &mut Shown::default()).is_empty());
     }
@@ -178,9 +206,9 @@ mod tests {
         let (cache, tool) = (dir.path().join("cache"), dir.path().join("tool"));
         assert!(take(&cache, &tool, "0.3.0", "2026-11-10", "x").is_empty(), "no cached root");
         assert!(!shown_path(&tool).exists());
-        let text = r#"{"schema":1,"min_client":"0.1.0","latest_client":"0.3.2","notice":{"id":"keys","until":"2026-11-30","text":"run `unstale setup`."}}"#;
+        let text = r#"{"schema":1,"min_client":"0.1.0","latest_client":"0.3.2","notice":{"id":"keys","until":"2026-11-30","text":"Run `unstale setup`."}}"#;
         util::write_atomic(&cache.join("v1/root.json"), text.as_bytes()).unwrap();
-        assert_eq!(take(&cache, &tool, "0.3.0", "2026-11-10", "x"), vec!["By 30 November: run `unstale setup`.", "unstale 0.3.2 available: x"]);
+        assert_eq!(take(&cache, &tool, "0.3.0", "2026-11-10", "x"), vec!["unstale notice: Run `unstale setup`.", "unstale 0.3.2 available: x"]);
         assert!(take(&cache, &tool, "0.3.0", "2026-11-10", "x").is_empty(), "the saved state holds both for the day");
         assert_eq!(take(&cache, &tool, "0.3.0", "2026-11-11", "x").len(), 2);
         // A root without the fields (an older catalog) prints nothing.

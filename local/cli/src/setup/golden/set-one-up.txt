@@ -15,4 +15,4 @@ Add one of these lines to your shell profile or this repo's .env, then run `unst
   ANTHROPIC_API_KEY=<key>   Anthropic
 
 Or use your Codex plan: Codex is not logged in. Run `codex login`.
-JEV_API_KEY is set, but it only labels changes: reading release notes needs one of the above as well.
+JEV_API_KEY is set, but Jev only labels changes: reading them needs one of the above too.

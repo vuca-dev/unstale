@@ -241,6 +241,7 @@ pub fn table(d: &Detected, techs: usize, no_key: bool, width: usize) -> Vec<Stri
             continue;
         }
         let mut t = build(with_keys, gutter);
+        t.extend(jev_note(&opts));
         // Without the column, the keys the options read are named once, under the table.
         if !with_keys && let Some(k) = keys_line(d, &opts).filter(|k| len(k) <= width) {
             t.push(k);
@@ -275,7 +276,19 @@ pub fn table(d: &Detected, techs: usize, no_key: bool, width: usize) -> Vec<Stri
             out.push(format!("     {}", c[3]));
         }
     }
+    if let Some(n) = jev_note(&opts) {
+        out.extend(wrap(n.trim_start(), width, 5));
+    }
     out
+}
+
+/// What Jev is, said once under a table that offers it: the name alone tells the reader nothing.
+fn jev_note(opts: &[Pick]) -> Option<String> {
+    opts.iter()
+        .any(|p| matches!(p, Pick::JevKey(_) | Pick::JevCodex))
+        .then(|| {
+            "     Jev: a labelling service, used beside the provider that reads the notes.".into()
+        })
 }
 
 /// The key variables the options read, as one line under a table too narrow for a key column.
@@ -306,7 +319,7 @@ pub fn picker_lines(
 ) -> Vec<String> {
     let opts = options(d, no_key);
     if opts.is_empty() {
-        return nothing_lines(d, reader);
+        return nothing_lines(d, reader, width);
     }
     let mut out = match reader {
         Reader::Person => vec![QUESTION.to_string()],
@@ -349,8 +362,13 @@ pub enum Answered {
     Nothing,
 }
 
-/// Asks once: Enter accepts the first option, a number picks one, `d` prints `details` and asks again. Input that is
-/// not a choice is asked for again, at most twice more; then, as at end of input, nothing is chosen.
+/// Where an answer is awaited again after one that was not a choice (`d` for the details included): the same
+/// question, still open, not asked a second time.
+pub const CONTINUE: &str = "Your choice (Enter for 1): ";
+
+/// Asks once: Enter accepts the first option, a number picks one, and `d` prints `details` (once). Any other answer,
+/// like `d`, is a try: the question stays open at [`CONTINUE`], and after three tries, as at end of input, nothing is
+/// chosen.
 pub fn ask(
     n: usize,
     prompt: &str,
@@ -358,9 +376,10 @@ pub fn ask(
     input: &mut dyn std::io::BufRead,
     out: &mut dyn std::io::Write,
 ) -> Answered {
-    let mut tries = 0;
-    while tries < 3 {
-        let _ = write!(out, "{prompt}");
+    let mut shown = false;
+    let mut next = prompt;
+    for _ in 0..3 {
+        let _ = write!(out, "{next}");
         let _ = out.flush();
         let mut line = String::new();
         match input.read_line(&mut line) {
@@ -371,21 +390,44 @@ pub fn ask(
         if t.is_empty() {
             return Answered::Option(0);
         }
-        if !details.is_empty() && matches!(t, "d" | "D") {
+        if let Some(p) = t.parse::<usize>().ok().filter(|p| (1..=n).contains(p)) {
+            return Answered::Option(p - 1);
+        }
+        if !details.is_empty() && !shown && matches!(t, "d" | "D") {
+            shown = true;
             let _ = writeln!(out);
             for l in details {
                 let _ = writeln!(out, "{l}");
             }
             let _ = writeln!(out);
-            continue;
         }
-        if let Some(p) = t.parse::<usize>().ok().filter(|p| (1..=n).contains(p)) {
-            return Answered::Option(p - 1);
-        }
-        tries += 1;
+        next = CONTINUE;
     }
     let _ = writeln!(out);
     Answered::Nothing
+}
+
+/// `text` in lines of at most `width`, each after `indent` blanks; a word longer than a line stays whole.
+pub fn wrap(text: &str, width: usize, indent: usize) -> Vec<String> {
+    let room = width.saturating_sub(indent).max(1);
+    let mut lines: Vec<String> = vec![];
+    let mut line = String::new();
+    for word in text.split_whitespace() {
+        if !line.is_empty() && len(&line) + 1 + len(word) > room {
+            lines.push(std::mem::take(&mut line));
+        }
+        if !line.is_empty() {
+            line.push(' ');
+        }
+        line += word;
+    }
+    if !line.is_empty() {
+        lines.push(line);
+    }
+    lines
+        .into_iter()
+        .map(|l| format!("{}{l}", " ".repeat(indent)))
+        .collect()
 }
 
 // --------------------------------------------------------------------------------------------------- nothing usable
@@ -405,19 +447,41 @@ fn codex_aside(d: &Detected) -> String {
     }
 }
 
+/// Numbered rows of a name and what it means, as two columns when every row fits `width`, else the meaning under
+/// the name, wrapped.
+fn choices(rows: &[(&str, String)], width: usize) -> Vec<String> {
+    let table: Vec<(String, Vec<String>)> = rows
+        .iter()
+        .enumerate()
+        .map(|(i, (name, what))| (format!("  {}", i + 1), vec![name.to_string(), what.clone()]))
+        .collect();
+    let side = columns(&table, 3);
+    if side.iter().all(|l| len(l) <= width) {
+        return side;
+    }
+    let mut out = vec![];
+    for (i, (name, what)) in rows.iter().enumerate() {
+        out.push(format!("  {}  {name}", i + 1));
+        out.extend(wrap(what, width, 5));
+    }
+    out
+}
+
 /// With no key and no Codex: a choice between setting one up and going without, with what going without leaves.
-pub fn nothing_lines(d: &Detected, reader: Reader) -> Vec<String> {
+pub fn nothing_lines(d: &Detected, reader: Reader, width: usize) -> Vec<String> {
     let left = match without_share() {
         Some(share) => format!("free · {WITHOUT}, {share}"),
         None => format!("free · {WITHOUT}"),
     };
     let aside = codex_aside(d);
     let mut out = match reader {
-        Reader::Person => vec![
-            "unstale reads new release notes with a model, on your own key or your Codex plan."
-                .to_string(),
-            format!("None is set up here{aside}."),
-        ],
+        Reader::Person => wrap(
+            &format!(
+                "unstale reads new release notes with a model, on your own key or your Codex plan. None is set up here{aside}."
+            ),
+            width.min(82),
+            0,
+        ),
         Reader::Agent => vec![
             "unstale reads new release notes with a model, on the user's own key or Codex plan."
                 .to_string(),
@@ -427,46 +491,42 @@ pub fn nothing_lines(d: &Detected, reader: Reader) -> Vec<String> {
         ],
     };
     out.push(String::new());
-    out.extend(columns(
+    out.extend(choices(
         &[
             (
-                "  1".into(),
-                vec![
-                    "Set one up".into(),
-                    match reader {
-                        Reader::Person => "shows the one line to add".into(),
-                        Reader::Agent => "one line to add, listed below".into(),
-                    },
-                ],
+                "Set one up",
+                match reader {
+                    Reader::Person => "shows the one line to add".into(),
+                    Reader::Agent => "one line to add, listed below".into(),
+                },
             ),
-            ("  2".into(), vec!["Not now".into(), left]),
+            ("Not now", left),
         ],
-        3,
+        width,
     ));
     out.push(String::new());
     if reader == Reader::Agent {
-        out.extend(set_up_lines(d, reader));
+        out.extend(set_up_lines(d, reader, width));
         out.push(String::new());
-        out.push("If they choose 2: unstale setup --inference none".into());
+        out.push("For 2: unstale setup --inference none".into());
     }
     out
 }
 
 /// How to set a provider up: the one line to add for each, and the command to run after.
-pub fn set_up_lines(d: &Detected, reader: Reader) -> Vec<String> {
-    let whose = match reader {
-        Reader::Person => {
-            "Add one of these lines to your shell profile or this repo's .env, then run `unstale setup`:"
-        }
-        Reader::Agent => {
-            "If they choose 1, they add one of these lines to their shell profile or this repo's .env; then run `unstale setup`:"
-        }
+pub fn set_up_lines(d: &Detected, reader: Reader, width: usize) -> Vec<String> {
+    let (lead, whose_plan) = match reader {
+        Reader::Person => (
+            "Add one of these lines to your shell profile or this repo's .env, then run `unstale setup`:",
+            "your",
+        ),
+        Reader::Agent => (
+            "For 1, they add one line to their shell profile or this repo's .env, then you run `unstale setup`:",
+            "their",
+        ),
     };
-    let whose_plan = match reader {
-        Reader::Person => "your",
-        Reader::Agent => "their",
-    };
-    let mut out = vec![whose.to_string(), String::new()];
+    let mut out = wrap(lead, width, 0);
+    out.push(String::new());
     let rows: Vec<(String, Vec<String>)> = [
         Route::OpenAi,
         Route::Vercel,
@@ -481,19 +541,33 @@ pub fn set_up_lines(d: &Detected, reader: Reader) -> Vec<String> {
         )
     })
     .collect();
-    out.extend(columns(&rows, 3));
+    let named = columns(&rows, 3);
+    if named.iter().all(|l| len(l) <= width) {
+        out.extend(named);
+    } else {
+        // Too narrow for the provider's name beside it: the variable says which.
+        out.extend(rows.into_iter().map(|(line, _)| line));
+    }
     out.push(String::new());
-    out.push(match &d.codex {
-        CodexState::Ready => format!("Or use {whose_plan} Codex plan: run `unstale setup`."),
-        CodexState::NotReady(why) => format!("Or use {whose_plan} Codex plan: {why}"),
-        CodexState::Absent => {
-            format!("Or use {whose_plan} Codex plan: install Codex and run `codex login`.")
-        }
-    });
+    out.extend(wrap(
+        &match &d.codex {
+            CodexState::Ready => format!("Or use {whose_plan} Codex plan: run `unstale setup`."),
+            CodexState::NotReady(why) => format!("Or use {whose_plan} Codex plan: {why}"),
+            CodexState::Absent => {
+                format!("Or use {whose_plan} Codex plan: install Codex and run `codex login`.")
+            }
+        },
+        width,
+        0,
+    ));
     if d.has(Route::Jev) {
-        out.push(format!(
-            "{} is set, but it only labels changes: reading release notes needs one of the above as well.",
-            d.var(Route::Jev).unwrap_or("JEV_API_KEY")
+        out.extend(wrap(
+            &format!(
+                "{} is set, but Jev only labels changes: reading them needs one of the above too.",
+                d.var(Route::Jev).unwrap_or("JEV_API_KEY")
+            ),
+            width,
+            0,
         ));
     }
     out
@@ -515,16 +589,15 @@ pub fn details_lines(d: &Detected, techs: usize, no_key: bool) -> Vec<String> {
     }
     if opts.is_empty() {
         out.push(String::new());
-        out.extend(nothing_lines(d, Reader::Person));
-        out.extend(set_up_lines(d, Reader::Person));
+        out.extend(nothing_lines(d, Reader::Person, WIDTH));
+        out.extend(set_up_lines(d, Reader::Person, WIDTH));
         return out;
     }
     if !opts.iter().any(|p| matches!(p, Pick::JevKey(_))) {
         out.push(
-            "The best option, which the others are compared with: the Jev labelling API (JEV_API_KEY) beside an"
-                .into(),
+            "The best option, which the others are compared with: Jev, a labelling service (JEV_API_KEY),".into(),
         );
-        out.push("OpenAI-compatible key.".into());
+        out.push("beside an OpenAI-compatible key.".into());
     }
     for (i, p) in opts.iter().enumerate() {
         let q = quote(*p, no_key);
@@ -560,29 +633,37 @@ pub fn details_lines(d: &Detected, techs: usize, no_key: bool) -> Vec<String> {
                 );
             }
         }
-        for (j, part) in quality_detail(*p, &q, no_key).into_iter().enumerate() {
-            row(if j == 0 { "results" } else { "duplicates" }, part);
+        for part in quality_detail(*p, &q, no_key) {
+            row(part.0, part.1);
         }
         out.extend(columns(&rows, 3));
     }
     out
 }
 
-/// Both quality figures of an option, in full: how complete its results are, then how many more duplicates.
-fn quality_detail(p: Pick, q: &Quote, no_key: bool) -> Vec<String> {
+/// Both quality figures of an option, in full, each under its label: how complete its results are, a qualifier, and
+/// how many more changes it lists twice.
+fn quality_detail(p: Pick, q: &Quote, no_key: bool) -> Vec<(&'static str, String)> {
     if p == Pick::None && !no_key {
-        return vec![match without_share() {
-            Some(share) => format!("{WITHOUT}: {share}"),
-            None => WITHOUT.into(),
-        }];
+        return vec![(
+            "results",
+            match without_share() {
+                Some(share) => format!("{WITHOUT}: {share}"),
+                None => WITHOUT.into(),
+            },
+        )];
     }
     if !q.quality_measured {
-        return vec!["not measured yet through Codex".into()];
+        return vec![("results", "not measured yet through Codex".into())];
     }
-    let mut out = vec![match q.quality {
-        Quality::Best => "the best option: the most complete".to_string(),
-        Quality::Same => "about the same as the best option (same model)".into(),
-        Quality::Unmeasured => "not measured yet".into(),
+    let mut out = vec![];
+    match q.quality {
+        Quality::Best => out.push(("results", "the best option: the most complete".to_string())),
+        Quality::Same => out.push((
+            "results",
+            "about the same as the best option (same model)".into(),
+        )),
+        Quality::Unmeasured => out.push(("results", "not measured yet".into())),
         Quality::Share { pct, of, detail } => {
             let band = match pct {
                 98.. => "about the same",
@@ -590,13 +671,22 @@ fn quality_detail(p: Pick, q: &Quote, no_key: bool) -> Vec<String> {
                 80.. => "somewhat less complete",
                 _ => "much less complete",
             };
-            format!("{band}: ≈ {pct}% of the best option's {of}{detail}")
+            out.push((
+                "results",
+                format!("{band}: ≈ {pct}% of the best option's {of}"),
+            ));
+            if !detail.is_empty() {
+                out.push(("", detail.trim().trim_matches(['(', ')']).to_string()));
+            }
         }
-    }];
+    }
     if q.more_duplicates > 0 {
-        out.push(format!(
-            "≈ {} more duplicate records per package, per year",
-            q.more_duplicates
+        out.push((
+            "repeats",
+            format!(
+                "≈ {} more changes listed twice per package, per year",
+                q.more_duplicates
+            ),
         ));
     }
     out
@@ -609,34 +699,54 @@ fn short(c: &Choice) -> String {
     c.describe().replace(route_name(Route::Jev), "Jev")
 }
 
-/// The line after a choice is recorded.
-pub fn saved_line(c: &Choice, place: &str) -> String {
-    if c.is_none() {
-        return format!(
-            "Not reading release notes: {WITHOUT}. Saved in {place}; `unstale setup` changes it."
-        );
+/// The lines after a choice is recorded: what reads release notes now and whose config holds it; and, for a choice
+/// saved for the user where this repository has its own, that the repository's still applies here.
+pub fn saved_lines(c: &Choice, place: Origin, repo_choice: Option<&Choice>) -> Vec<String> {
+    let whom = match place {
+        Origin::Repo => "Saved for this repo",
+        Origin::User => "Saved for you",
+    };
+    let mut out = vec![if c.is_none() {
+        format!("{whom}: release notes not read, {WITHOUT}.")
+    } else {
+        format!("{whom}: {} reads release notes.", short(c))
+    }];
+    if let Some(r) = repo_choice {
+        out.push(format!(
+            "This repo's own choice still applies: {}.",
+            if r.is_none() {
+                "none".to_string()
+            } else {
+                short(r)
+            }
+        ));
     }
-    format!(
-        "Reading release notes with {}. Saved in {place}; `unstale setup` changes it.",
-        short(c)
-    )
+    out
 }
 
 /// The line after the picker is dismissed without a choice.
 pub fn dismissed_line() -> String {
-    format!(
-        "Nothing chosen: unstale reads no release notes, {WITHOUT}. `unstale setup` asks again."
-    )
+    format!("Nothing chosen: no release notes, {WITHOUT}. `unstale setup` asks again.")
+}
+
+/// The line after a reopened picker is dismissed: the choice made before stays.
+pub fn kept_line(c: &Choice) -> String {
+    if c.is_none() {
+        "Nothing changed: release notes are still not read.".into()
+    } else {
+        format!("Nothing changed: still reading with {}.", short(c))
+    }
 }
 
 /// For an agent running `init` with nothing chosen yet: the choice is the user's, and this is how to put it to them.
 pub fn pending_line() -> String {
-    "Choice pending: how unstale reads new release notes. Run `unstale setup`, show the user its options and ask.".into()
+    "Choice pending: how unstale reads new release notes. Run `unstale setup` and ask the user."
+        .into()
 }
 
 /// Without a person or an agent (CI, a pipe, `--yes`) and with nothing chosen: the one line.
 pub fn unconfigured_line() -> String {
-    "warning: no model provider is configured, so new release notes are not read. Choose one: `unstale setup --inference <choice>`.".into()
+    "warning: no provider chosen, so new release notes are not read. `unstale setup` lists the options.".into()
 }
 
 // ---------------------------------------------------------------------------------------------------------- status
@@ -656,7 +766,7 @@ pub fn provider_line(cur: Option<&(Choice, Origin)>) -> String {
                 Origin::User => "your user config",
             };
             if c.is_none() {
-                format!("not read ({from}): {WITHOUT} · `unstale setup` changes it")
+                format!("not read, by {from} · `unstale setup` changes it")
             } else {
                 format!("{}, {from}", short(c))
             }
@@ -674,7 +784,7 @@ pub fn missing_key_lines(
     let Some((c, _)) = cur else { return vec![] };
     if let Some(v) = c.foreign_key() {
         return vec![format!(
-            "warning: {v} is not a key variable for the chosen provider, so new release notes are not read. Run `unstale setup`."
+            "warning: {v} is not this provider's key, so new release notes are not read. Run `unstale setup`."
         )];
     }
     c.key_vars()
@@ -684,24 +794,31 @@ pub fn missing_key_lines(
         .collect()
 }
 
-/// The token line of `unstale status`: this month's use against the user's limit, and how to change it.
+/// The token line of `unstale status`: this month's use against the limit in effect, whose it is, and how to change
+/// it.
 pub fn tokens_line(used: std::io::Result<u64>, limit: Limit, origin: LimitOrigin) -> String {
     use crate::inference::ledger::short_tokens;
     let how = "`unstale setup --limit`";
     let text = match (used, limit) {
-        (Err(_), _) => "unknown: unstale cannot read its token count".to_string(),
+        (Err(_), _) => "unknown: the count cannot be read".to_string(),
         (Ok(n), Limit::None) => {
             format!("{} this month, no limit ({how} sets one)", short_tokens(n))
         }
         (Ok(n), Limit::Tokens(max)) => {
-            let whose = match origin {
-                LimitOrigin::Default => "the default limit",
-                LimitOrigin::Repo => "this repo's limit",
-                LimitOrigin::User => "your limit",
-            };
             let reached = if n >= max { ", reached" } else { "" };
+            let whose = match origin {
+                // Reached: the warning above the block carries the fix.
+                LimitOrigin::Default if n >= max => "the default limit, reached".to_string(),
+                LimitOrigin::User if n >= max => "your limit, reached".to_string(),
+                LimitOrigin::Default => format!("the default limit; {how} changes it"),
+                LimitOrigin::User => format!("your limit; {how} changes it"),
+                // Lower than the user's own, so only the repository's config can change it.
+                LimitOrigin::Repo => {
+                    format!("this repo's limit{reached}, set in .unstale/config.json")
+                }
+            };
             format!(
-                "{} of {} this month ({whose}{reached}; {how} changes it)",
+                "{} of {} this month ({whose})",
                 short_tokens(n),
                 short_tokens(max)
             )
@@ -710,18 +827,43 @@ pub fn tokens_line(used: std::io::Result<u64>, limit: Limit, origin: LimitOrigin
     labelled("Tokens", &text)
 }
 
-/// The line after `unstale setup --limit`.
-pub fn limit_saved_line(limit: Option<Limit>, place: &str) -> String {
-    use crate::inference::ledger::short_tokens;
-    match limit {
-        Some(Limit::Tokens(n)) => format!(
-            "Monthly token limit: {}. Saved in {place}; past it, new release notes wait for next month.",
-            short_tokens(n)
+/// The warning in `unstale status` when the limit in effect is reached, with the fix that works for whose it is.
+pub fn limit_reached_line(origin: LimitOrigin) -> String {
+    match origin {
+        LimitOrigin::Repo => "warning: this repo's token limit is reached, so new release notes wait. See .unstale/config.json.".into(),
+        _ => crate::inference::Deferred::Budget.line(),
+    }
+}
+
+/// The warning in `unstale status` when the token count cannot be used, with the file and the fix for the cause.
+pub fn token_count_line(file: &Path, e: &std::io::Error) -> String {
+    let file = file.display();
+    match crate::inference::Deferred::storage(e) {
+        crate::inference::Deferred::StorageCorrupt => format!(
+            "warning: unstale's token count is corrupt, so new release notes are not read. Delete {file} (the count restarts)."
         ),
-        Some(Limit::None) => format!("Monthly token limit: none. Saved in {place}."),
+        _ => format!(
+            "warning: unstale cannot write its token count, so new release notes are not read. Make {file} writable."
+        ),
+    }
+}
+
+/// The line after `unstale setup --limit`: what was saved for the user, and what applies here now when that differs.
+pub fn limit_saved_line(saved: Option<Limit>, applies: Limit, origin: LimitOrigin) -> String {
+    use crate::inference::ledger::short_tokens;
+    let own = match saved {
+        Some(Limit::Tokens(n)) => format!("Your monthly token limit: {}.", short_tokens(n)),
+        Some(Limit::None) => "Your monthly token limit: none.".to_string(),
         None => format!(
-            "Monthly token limit: back to the default, {}. Saved in {place}.",
+            "Your monthly token limit: the default, {}.",
             short_tokens(crate::inference::ledger::DEFAULT_MONTHLY_TOKENS)
         ),
+    };
+    match (origin, applies) {
+        (LimitOrigin::Repo, Limit::Tokens(n)) => format!(
+            "{own} Here this repo's lower limit applies: {} (.unstale/config.json).",
+            short_tokens(n)
+        ),
+        _ => own,
     }
 }

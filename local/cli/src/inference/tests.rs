@@ -527,7 +527,7 @@ fn past_the_monthly_budget_work_is_deferred_without_a_call() {
     assert_eq!(m.count(), 2);
     assert_eq!(
         Deferred::Budget.line(),
-        "warning: monthly token limit reached, so new release notes wait for next month. Raise or remove it: `unstale setup --limit`."
+        "warning: monthly token limit reached, so new release notes wait. Change it: `unstale setup --limit`."
     );
     assert_eq!(ledger::DEFAULT_MONTHLY_TOKENS, 48_000_000);
     // The limit is the caller's to set (`unstale setup --limit`); none is the largest count.
@@ -716,6 +716,7 @@ fn every_deferral_is_one_warning_in_plain_words() {
         Deferred::CodexTooOld,
         Deferred::CodexLoggedOut,
         Deferred::Storage,
+        Deferred::StorageCorrupt,
         Deferred::Redirected,
         Deferred::InsecureUrl,
         Deferred::BatchTooLarge,
@@ -724,10 +725,12 @@ fn every_deferral_is_one_warning_in_plain_words() {
         let l = d.line();
         // What happened, what it costs, the one thing to do: one line, about a terminal's width.
         assert!(
-            l.starts_with("warning: ") && !l.contains('\n') && l.chars().count() <= 125,
+            l.starts_with("warning: ") && !l.contains('\n') && l.chars().count() <= 102,
             "{l}"
         );
         assert!(l.contains(", so ") && l.ends_with('.'), "{l}");
+        // Nothing of the machine: no path, no raw error.
+        assert!(!l.contains('/') || l.contains("https://"), "{l}");
         // Words the reader was never taught.
         for internal in [
             "deferred",
@@ -899,10 +902,12 @@ fn the_budget_fails_closed_on_a_ledger_it_cannot_trust() {
     let path = dir.join(format!("usage-{month}.jsonl"));
     std::fs::write(&path, format!("{{\"day\":\"{month}-01\",\"provider\":\"openai\",\"model\":\"m\",\"input\":4800000x,\"cached\":0,\"output\":0}}\n")).unwrap();
     let inf = f.inference(ProviderConfig::openai(), &m.url);
+    // Corrupt and unwritable are told apart: each warning gives the fix for its cause.
     assert_eq!(
         inf.complete(&Prompt::new("x")).unwrap_err(),
-        Deferred::Storage
+        Deferred::StorageCorrupt
     );
+    assert_ne!(Deferred::StorageCorrupt.what(), Deferred::Storage.what());
     assert_eq!(m.count(), 0, "no call on a corrupt ledger");
     std::fs::remove_file(&path).unwrap();
     // A ledger that cannot be written: no call is made.

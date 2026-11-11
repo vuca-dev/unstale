@@ -27,13 +27,16 @@ pub(crate) enum Fault {
 }
 
 /// Words of the implementation, never of the reader (docs/edge-inference/terminal-principles.md, "Plain words").
-pub(crate) const INTERNAL_WORDS: [&str; 6] = [
+pub(crate) const INTERNAL_WORDS: [&str; 9] = [
     "deferred",
     "deterministic signals",
     "technology-year",
     "edge inference",
     "change events",
     "(shown once a day)",
+    "candidate technolog",
+    "no index for",
+    "shard(s)",
 ];
 
 /// What a command's output breaks of the plain-words rule.

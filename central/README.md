@@ -60,7 +60,7 @@ Every variable is optional; the defaults suit a developer machine.
 | `UNSTALE_STORE` | `<repo>/.store` | Root of the central state (`central/`) and the published catalog (`catalog/`) |
 | `UNSTALE_CENTRAL_DIR` | `$UNSTALE_STORE/central` | Central state and caches alone (a rebuild into a side store) |
 | `UNSTALE_CATALOG_DIR` | `$UNSTALE_STORE/catalog` | The published catalog alone |
-| `UNSTALE_NOTICE` | `central/notice.json` | Optional notice for when every user must do something by a date: `{"id", "until": "YYYY-MM-DD", "text"}`, where `text` says what to do and `until` is the date. Clients print it as one line (`By 30 November: <text>`), at most once a day while unchanged, until that day; anything a user would not act on does not belong here. Publishing and `drain` copy it into `v1/root.json` (signed), beside `latest_client` (from `local/cli/Cargo.toml`); absent, the root carries no notice |
+| `UNSTALE_NOTICE` | `central/notice.json` | Optional notice for when every user must do something by a date: `{"id", "until": "YYYY-MM-DD", "text"}`, where `text` says what and `until` is the date. Clients print it at most once a day until that day; anything a user would not act on does not belong here. Publishing and `drain` copy it into `v1/root.json` (signed), beside `latest_client` (from `local/cli/Cargo.toml`); absent, the root carries no notice |
 | `UNSTALE_HOST` | `127.0.0.1` | `serve`: listen address (`0.0.0.0` in a container) |
 | `UNSTALE_PORT` | `47831` | `serve`: listen port |
 | `GITHUB_TOKEN` | output of `gh auth token` | GitHub API token for release lists, docs resolution, admission signals and the sample |

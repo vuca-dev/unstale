@@ -2,7 +2,7 @@
 # keys: revoked-key · Codex: no-codex · run: ci · repo config: none · client: fresh · provider: refused
 
 $ unstale init --wait 0 --no-animation --yes  (no terminal)
-warning: no model provider is configured, so new release notes are not read. Choose one: `unstale setup --inference <choice>`.
+warning: no provider chosen, so new release notes are not read. `unstale setup` lists the options.
   ✓ shop · Personal setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 2 direct dependencies from declared package ranges and checked local
@@ -32,12 +32,11 @@ warning: no model provider is configured, so new release notes are not read. Cho
   files and trade-offs. Return proposals only; do not edit files.
   
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-By 30 November: upgrade unstale; this version stops receiving new changes after that day.
+unstale notice, act by 30 November: Upgrade unstale; this version stops receiving new changes then.
 unstale <newer version> available: npm install -g @unstale/cli@latest
 
 $ unstale sync  (no terminal)
-synced next: 2 records (sources checked 2026-10-15T00:00:00Z); unchanged
-Not covered by the catalog: 1 other candidate technology (no index for it, or no record names a package used here).
+next: 2 upstream changes on file, nothing new
 
 # no provider chosen, so no model step runs
 

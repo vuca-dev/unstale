@@ -10,7 +10,7 @@ How should unstale read new release notes?
   3  Not now                       free                     ≈ 27%: advisories and deprecations only
 
 Enter for 1, a number to choose, or d for details:
-Nothing chosen: unstale reads no release notes, advisories and deprecations only. `unstale setup` asks again.
+Nothing chosen: no release notes, advisories and deprecations only. `unstale setup` asks again.
   ✓ shop · Personal setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 2 direct dependencies from declared package ranges and checked local references.
@@ -36,7 +36,7 @@ Nothing chosen: unstale reads no release notes, advisories and deprecations only
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-By 30 November: upgrade unstale; this version stops receiving new changes after that day.
+unstale notice, act by 30 November: Upgrade unstale; this version stops receiving new changes then.
 unstale <newer version> available: npm install -g @unstale/cli@latest
 Codex: to let unstale sync at session start, trust its hook once: run /hooks in Codex.
 

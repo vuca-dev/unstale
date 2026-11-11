@@ -1,13 +1,13 @@
 Release notes         not read: no provider chosen · `unstale setup` shows the options
 
-warning: OPENAI_API_KEY is not set here, so new release notes are not read. Set it, or run `unstale setup`.
+warning: OPENAI_API_KEY is not set here, so new release notes are not read. Set it.
 Release notes         Jev + OpenAI (JEV_API_KEY, OPENAI_API_KEY), this repo's config
 Tokens                1.2M of 48M this month (the default limit; `unstale setup --limit` changes it)
 
 Release notes         Codex plan, your user config
 Tokens                1.2M this month, no limit (`unstale setup --limit` sets one)
 
-Release notes         not read (this repo's config): advisories and deprecations only · `unstale setup` changes it
+Release notes         not read, by this repo's config · `unstale setup` changes it
 
 Release notes         Codex plan, this repo's config
-Tokens                5M of 5M this month (your limit, reached; `unstale setup --limit` changes it)
+Tokens                5M of 5M this month (your limit, reached)

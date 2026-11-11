@@ -12,5 +12,6 @@ How should unstale read new release notes?
      ≈ $2.86 a year · ≈ 90% of its changes
   6  Not now
      free · ≈ 27%: advisories and deprecations only
+     Jev: a labelling service, used beside the provider that reads the notes.
 
 Enter for 1, a number to choose, or d for details: 

@@ -543,7 +543,7 @@ fn a_key_named_by_the_choice_is_read_from_this_repos_env_file_and_nothing_else_i
     assert_eq!(
         crate::setup::view::missing_key_lines(Some(&(bad, crate::setup::Origin::Repo)), &|_| true),
         [
-            "warning: GITHUB_TOKEN is not a key variable for the chosen provider, so new release notes are not read. Run `unstale setup`."
+            "warning: GITHUB_TOKEN is not this provider's key, so new release notes are not read. Run `unstale setup`."
         ]
     );
     // Neither value reached a request body, the ledger or any cache file.

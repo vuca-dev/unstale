@@ -85,6 +85,8 @@ fn run_step(cache: &std::path::Path, events: &std::path::Path, url: &str, switch
             url,
         ]);
     c.env("UNSTALE_CACHE_DIR", cache)
+        // The user's own config: none of this machine's, and where the test sets the user's token limit.
+        .env("UNSTALE_CONFIG_DIR", cache.join("user-config"))
         .env("UNSTALE_TEST_STEP_KEY", "k")
         .env_remove("UNSTALE_EDGE_INFERENCE");
     if switch {
@@ -131,6 +133,14 @@ fn run_step_extract_prints_centrals_records_and_a_second_run_asks_nothing() {
     let off = run_step(&cache, &events, &url, false);
     assert!(off.contains("turned off"), "{off}");
     assert_eq!(*n.lock().unwrap(), 0);
+
+    // The user's monthly token limit holds for a named provider too: at the limit, one line and no call.
+    std::fs::create_dir_all(cache.join("user-config")).unwrap();
+    std::fs::write(cache.join("user-config/config.json"), r#"{"monthly_token_limit": 0}"#).unwrap();
+    let limited = run_step(&cache, &events, &url, true);
+    assert!(limited.contains("warning: monthly token limit reached, so new release notes wait."), "{limited}");
+    assert_eq!(*n.lock().unwrap(), 0);
+    std::fs::remove_file(cache.join("user-config/config.json")).unwrap();
 
     let out = run_step(&cache, &events, &url, true);
     let line: Value = serde_json::from_str(out.lines().next().unwrap()).unwrap();

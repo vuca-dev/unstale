@@ -16,12 +16,16 @@
 //! The background stage runs the same verified sync as `unstale status`, which contacts the same hosts: the catalog,
 //! and, through the stack's detection, the public npm and PyPI registries for the newest release of a dependency
 //! nothing pins (cached a day, off with `UNSTALE_NO_REGISTRY=1`). One per repository at a time (a second exits
-//! quietly), bounded by [`BACKGROUND_BOUND`], then the model stage ([`model_stage`]) under the machine's worker lock and
-//! the monthly token budget. `"session_sync": false` in `.unstale/config.json` turns the sync off.
+//! quietly), bounded by [`BACKGROUND_BOUND`]. Then the model stage ([`model_stage`]), under the machine's worker lock
+//! and the user's monthly token limit: with a provider chosen it contacts that provider (and only it), sending public
+//! release-note text; `unstale status` does not. `"session_sync": false` in `.unstale/config.json` turns the sync off.
 //!
-//! What the agent sees: one line when records new since the last report arrived (or the shared-coverage line, or a
-//! catalog notice), nothing otherwise. A failure is never shown at session start; `unstale status` shows the last one
-//! once ([`after_status`]). The state (`.unstale/state/session-sync.json`) is changed only under its lock.
+//! What the agent sees: one line, the most important first. A warning when something the user chose stopped
+//! happening (the sync failed, the provider cannot be used, the token limit is reached), said once when that state
+//! begins ([`Warning`]); otherwise records new since the last report (or the shared-coverage line), or a catalog
+//! notice; nothing otherwise. The line never carries a raw error or a path: `unstale status` shows the detail
+//! ([`status_lines`]). What the agent does with the line is in the managed skill. The state
+//! (`.unstale/state/session-sync.json`) is changed only under its lock.
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -60,6 +64,10 @@ pub struct State {
     /// Why the last model stage waited (the switch on only).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub deferred: Option<String>,
+    /// Which warning session start last printed (its kind, never its text, so one that persists is said once however
+    /// its wording or its age reads). `None` when nothing is wrong or nothing was said yet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub warned: Option<String>,
     /// The manifest and lock files the last sync's stack came from, fingerprinted, so a changed dependency starts a
     /// sync even while the catalog is unchanged. `None` until a sync has run.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -223,19 +231,85 @@ pub fn hook(dir: Option<&Path>, started: Instant) -> u8 {
     // background stage) runs on this thread; past the deadline it is abandoned: returning from main ends the process,
     // and the thread with it.
     std::thread::spawn(move || {
-        let _ = tx.send(foreground(dir, started).unwrap_or(None));
+        let _ = tx.send(foreground(dir, started).unwrap_or_default());
     });
-    let line = rx
+    let said = rx
         .recv_timeout(DEADLINE.saturating_sub(started.elapsed()))
-        .ok()
-        .flatten();
-    if let Some(line) = line
+        .unwrap_or_default();
+    if let Some(line) = said
+        .line
         .map(|l| util::one_line(&l, 600))
         .filter(|l| !l.is_empty())
     {
-        let _ = writeln!(std::io::stdout(), "{line}");
+        let printed = writeln!(std::io::stdout(), "{line}").is_ok();
+        // Recorded as said only once it is on the screen: a warning the deadline cut is still due next time.
+        if printed && let Some((tool, kind)) = said.warned {
+            let _ = update_state(&tool, false, |s| s.warned = Some(kind));
+        }
     }
     0
+}
+
+/// What the hook prints, and, when that is a warning, where to record that it was said.
+#[derive(Default)]
+struct Said {
+    line: Option<String>,
+    warned: Option<(PathBuf, String)>,
+}
+
+/// What is wrong after the last attempt, for session start (once, when it begins) and `unstale status` (always).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Warning {
+    /// What kind of trouble, stable while it lasts: `catalog-slow`, `catalog-unreachable`, `sync`, or the model
+    /// stage's own warning.
+    kind: String,
+    /// One line for session start: no raw error, no path.
+    short: String,
+    /// The line `unstale status` shows, with the detail.
+    full: String,
+}
+
+const SLOW: &str = "the catalog did not answer in time";
+const UNREACHABLE: &str = "the catalog could not be reached";
+
+impl Warning {
+    /// From the state: a failed sync first, else why the model stage stopped. `now` gives the failure its age.
+    fn of(state: &State, now: u64) -> Option<Warning> {
+        let Some(why) = state.failure.as_deref() else {
+            // The model stage's warning is already one plain line (`inference::Deferred::line`).
+            let line = state.deferred.clone()?;
+            return Some(Warning {
+                kind: format!("model: {line}"),
+                short: line.clone(),
+                full: line,
+            });
+        };
+        let (kind, short) = match why {
+            SLOW => (
+                "catalog-slow",
+                "warning: catalog too slow at session start, so newer changes are missing. The next session retries.",
+            ),
+            UNREACHABLE => (
+                "catalog-unreachable",
+                "warning: catalog not reached at session start, so newer changes are missing. The next session retries.",
+            ),
+            _ => (
+                "sync",
+                "warning: the sync at session start failed, so newer changes are missing. `unstale status` says why.",
+            ),
+        };
+        let when = state
+            .last_attempt
+            .map(|s| format!(" {}", ago(s, now)))
+            .unwrap_or_default();
+        Some(Warning {
+            kind: kind.into(),
+            short: short.into(),
+            full: format!(
+                "warning: the sync at session start failed{when}: {why}. The next session start tries again."
+            ),
+        })
+    }
 }
 
 /// The time left before the deadline.
@@ -245,13 +319,13 @@ fn left(started: Instant) -> Duration {
 
 /// The hook's work: the quick check (starting the background stage when it is due), then the one line to print. An
 /// error (no configuration, not a repository, a cache or state that cannot be read or written) prints nothing.
-fn foreground(dir: Option<PathBuf>, started: Instant) -> Result<Option<String>> {
+fn foreground(dir: Option<PathBuf>, started: Instant) -> Result<Said> {
     let start = match dir {
         Some(d) => d,
         None => std::env::current_dir()?,
     };
     let ctx = crate::context(&start.canonicalize()?)?;
-    let state = if enabled(&ctx) {
+    let mut state = if enabled(&ctx) {
         read_state(&ctx.tool)
     } else {
         State::default()
@@ -280,20 +354,47 @@ fn foreground(dir: Option<PathBuf>, started: Instant) -> Result<Option<String>> 
                 }
             }
         };
-        if let Err(e) = due.and_then(|due| {
+        match due.and_then(|due| {
             if due {
-                spawn_background(&ctx.tool, &ctx.root, started)
+                spawn_background(&ctx.tool, &ctx.root, started).map(|()| true)
             } else {
-                Ok(())
+                Ok(false)
             }
         }) {
-            // Silent here; `unstale status` shows it.
-            let why = failure_text(&e);
-            let _ = update_state(&ctx.tool, false, |s| {
-                s.failure = Some(why);
-                s.last_attempt = Some(now_secs());
+            // The background stage is running: it records how it went.
+            Ok(true) => {}
+            // The catalog answered and nothing is due: whatever failed before has passed.
+            Ok(false) => {
+                if state.failure.is_some() {
+                    state.failure = None;
+                    let _ = update_state(&ctx.tool, false, |s| s.failure = None);
+                }
+            }
+            Err(e) => {
+                let why = failure_text(&e);
+                state.failure = Some(why.clone());
+                state.last_attempt = Some(now_secs());
+                let _ = update_state(&ctx.tool, false, |s| {
+                    s.failure = Some(why);
+                    s.last_attempt = Some(now_secs());
+                });
+            }
+        }
+    }
+    // What is wrong comes first, said once when it begins; while it lasts, the other lines take their turn again.
+    let warning = Warning::of(&state, now_secs()).filter(|_| enabled(&ctx));
+    match &warning {
+        Some(w) if state.warned.as_deref() != Some(w.kind.as_str()) => {
+            return Ok(Said {
+                line: Some(w.short.clone()),
+                warned: Some((ctx.tool.clone(), w.kind.clone())),
             });
         }
+        // All well again: the next trouble of the same kind is new.
+        None if state.warned.is_some() => {
+            let _ = update_state(&ctx.tool, false, |s| s.warned = None);
+        }
+        _ => {}
     }
     let left = left(started);
     let coverage = if left > Duration::from_millis(200) {
@@ -306,18 +407,35 @@ fn foreground(dir: Option<PathBuf>, started: Instant) -> Result<Option<String>> 
         .as_ref()
         .filter(|a| a.records > 0)
         .map(arrived_line);
-    Ok(coverage
-        .or(arrived)
-        .or_else(|| notice::take_one(&ctx.cache, &ctx.tool)))
+    Ok(Said {
+        line: coverage
+            .or(arrived)
+            .or_else(|| notice::take_one(&ctx.cache, &ctx.tool)),
+        warned: None,
+    })
 }
 
-/// The line for records that arrived since the last report.
+/// The line for records that arrived since the last report: what is new and the command. What the agent does with
+/// it is in the managed skill.
 pub fn arrived_line(a: &Arrived) -> String {
-    let n = a.technologies.len();
-    format!(
-        "unstale: {} new upstream records for {n} {} this repository uses since the last onboarding report. Run `unstale status --wait 0` to refresh .unstale/onboarding-report.md; review it only if the user asks.",
+    new_changes_line(
         a.records,
-        if n == 1 { "technology" } else { "technologies" }
+        &a.technologies.iter().cloned().collect::<Vec<_>>(),
+    )
+}
+
+/// `unstale: 3 new upstream changes for next and react. Run `unstale status --wait 0` to see them.` Past two
+/// technologies the first is named and the rest counted, so the line stays short.
+pub fn new_changes_line(records: usize, technologies: &[String]) -> String {
+    let names = match technologies {
+        [] => "this repository".to_string(),
+        [a] => a.clone(),
+        [a, b] => format!("{a} and {b}"),
+        [a, rest @ ..] => format!("{a} and {} more", rest.len()),
+    };
+    format!(
+        "unstale: {records} new upstream {} for {names}. Run `unstale status --wait 0` to see them.",
+        if records == 1 { "change" } else { "changes" }
     )
 }
 
@@ -327,7 +445,7 @@ fn failure_text(e: &anyhow::Error) -> String {
     let text = format!("{e:#}");
     let lower = text.to_lowercase();
     if lower.contains("timeout") || lower.contains("timed out") {
-        "the catalog did not answer in time".into()
+        SLOW.into()
     } else if [
         "connection refused",
         "connect",
@@ -338,7 +456,7 @@ fn failure_text(e: &anyhow::Error) -> String {
     .iter()
     .any(|w| lower.contains(w))
     {
-        "the catalog could not be reached".into()
+        UNREACHABLE.into()
     } else {
         util::one_line(&text, 200)
     }
@@ -543,9 +661,10 @@ fn model_stage(ctx: &Ctx, techs: &BTreeSet<String>) -> Option<inference::Deferre
     };
     let used = match inference::Ledger::default_location().spent(&inference::ledger::this_month()) {
         Ok(n) => n,
-        Err(_) => return Some(inference::Deferred::Storage),
+        Err(e) => return Some(inference::Deferred::storage(&e)),
     };
-    if used >= inference::ledger::DEFAULT_MONTHLY_TOKENS {
+    // The limit in effect: the user's own (`unstale setup --limit`), or a lower one this repository sets.
+    if used >= crate::setup::monthly_tokens(ctx) {
         return Some(inference::Deferred::Budget);
     }
     // The client pipeline (change events → records) for the synced technologies, holding the lock, in demand order;
@@ -558,30 +677,27 @@ fn model_stage(ctx: &Ctx, techs: &BTreeSet<String>) -> Option<inference::Deferre
 
 // --------------------------------------------------------------------------------------------------- unstale status
 
-/// After `unstale status` (switch on only): the report is fresh, so records that arrived are no longer new; the last
-/// session-start failure, which session start never shows, is shown here once; and why an agent's hook was not
-/// installed.
-pub fn after_status(ctx: &Ctx) {
+/// For `unstale status` (switch on only): what is wrong, then how fresh this machine is. The report is fresh, so
+/// records that arrived are no longer new, and status has just synced, so a failed session-start sync is shown this
+/// once and cleared; why the model stage stopped stays until it runs again; and why Codex's hook was not installed.
+pub fn status_lines(ctx: &Ctx) -> (Vec<String>, Vec<String>) {
     if !util::edge_inference() {
-        return;
+        return (vec![], vec![]);
     }
-    let mut shown = None;
+    let mut warnings = vec![];
     let _ = update_state(&ctx.tool, true, |s| {
         s.arrived = None;
-        shown = status_line(ctx, s, now_secs());
+        if enabled(ctx) {
+            warnings.extend(Warning::of(s, now_secs()).map(|w| w.full));
+        }
         s.failure = None;
     });
-    if let Some(line) = shown {
-        println!("{line}");
-    }
-    if let Some(line) = codex_skipped_line(&ctx.root) {
-        println!("{line}");
-    }
+    warnings.extend(codex_skipped_line(&ctx.root));
     // This repository's technologies, as the status run just synced them.
     let techs = stack::detect(&ctx.root)
         .map(|st| onboarding::candidates(ctx, &st))
         .unwrap_or_default();
-    println!("{}", freshness_line(&ctx.cache, &techs, now_secs()));
+    (warnings, freshness_lines(&ctx.cache, &techs, now_secs()))
 }
 
 /// How long ago, roughly: `5 min ago`, `3 h ago`, `2 days ago`.
@@ -592,20 +708,6 @@ fn ago(then: u64, now: u64) -> String {
         60..2_880 => format!("{} h ago", m / 60),
         _ => format!("{} days ago", m / 1_440),
     }
-}
-
-fn status_line(ctx: &Ctx, state: &State, now: u64) -> Option<String> {
-    if !enabled(ctx) {
-        return None;
-    }
-    let why = state.failure.as_deref().or(state.deferred.as_deref())?;
-    let when = state
-        .last_attempt
-        .map(|s| format!(" ({})", ago(s, now)))
-        .unwrap_or_default();
-    Some(format!(
-        "Sync at agent session start: the last attempt{when} did not finish: {why}. The next session start tries again"
-    ))
 }
 
 /// Seconds since 1970 for an RFC 3339 UTC time (`2026-10-01T18:05:00.000Z`); fractions are dropped.
@@ -638,10 +740,11 @@ fn median_p90(v: &mut [i64]) -> (i64, i64) {
 
 /// How long the last 30 days' releases of this repository's technologies took to reach this machine: from the registry
 /// to the catalog (central's timestamps on each change event), then from the catalog to this machine (when this
-/// machine first synced the event), then to records made here (not yet: the client's own model steps come later).
-/// Local only; nothing is sent. Releases already published when this machine began following a technology, and those
-/// central backfilled, are left out.
-pub fn freshness_line(cache: &Path, techs: &BTreeSet<String>, now: u64) -> String {
+/// machine first synced the event). Two short lines, aligned with the rest of status's block; none when no release
+/// arrived (nothing the reader would do with it). Local only; nothing is sent. Releases already published when this
+/// machine began following a technology, and those central backfilled, are left out.
+pub fn freshness_lines(cache: &Path, techs: &BTreeSet<String>, now: u64) -> Vec<String> {
+    use crate::setup::view::labelled;
     // Per release, its earliest event: (registry publish, catalog publish, synced here).
     let mut releases: std::collections::BTreeMap<String, (Option<i64>, i64, i64)> =
         Default::default();
@@ -670,7 +773,7 @@ pub fn freshness_line(cache: &Path, techs: &BTreeSet<String>, now: u64) -> Strin
         }
     }
     if releases.is_empty() {
-        return "Freshness on this machine: no new release of this repository's technologies reached it in the last 30 days".into();
+        return vec![];
     }
     let n = releases.len();
     let mut central: Vec<i64> = releases
@@ -678,23 +781,23 @@ pub fn freshness_line(cache: &Path, techs: &BTreeSet<String>, now: u64) -> Strin
         .filter_map(|(r, p, _)| r.map(|r| p - r))
         .collect();
     let mut local: Vec<i64> = releases.values().map(|(_, p, h)| h - p).collect();
-    let central = if central.is_empty() {
-        "registry to catalog unknown".to_string()
-    } else {
-        let (m, p) = median_p90(&mut central);
-        format!(
-            "registry to catalog {} median ({} at the 90th percentile)",
-            span(m),
-            span(p)
-        )
+    let scope = format!(
+        " ({n} {}, last 30 days)",
+        if n == 1 { "release" } else { "releases" }
+    );
+    let typical = |v: &mut [i64]| {
+        let (m, p) = median_p90(v);
+        format!("{} median, {} for the slowest tenth", span(m), span(p))
     };
-    let (m, p) = median_p90(&mut local);
-    format!(
-        "Freshness on this machine, last 30 days ({n} {}): {central} · catalog to here {} median ({} at the 90th percentile) · records made here: not yet",
-        if n == 1 { "release" } else { "releases" },
-        span(m),
-        span(p)
-    )
+    let central = if central.is_empty() {
+        "unknown".to_string()
+    } else {
+        typical(&mut central)
+    };
+    vec![
+        labelled("Registry to catalog", &format!("{central}{scope}")),
+        labelled("Catalog to here", &typical(&mut local)),
+    ]
 }
 
 // ------------------------------------------------------------------------------------------------ installation
@@ -748,12 +851,22 @@ fn codex_skipped(root: &Path) -> Option<&'static str> {
     if installed {
         return None;
     }
-    match crate::hooks::unwritable(root, CODEX_HOOKS_PATH)? {
-        Tracked => Some(".codex/hooks.json is tracked by Git"),
-        ReadOnly => Some(".codex/hooks.json is read-only"),
-        Symlink | Unreadable | NotAnObject => Some(".codex/hooks.json cannot be changed"),
+    match crate::hooks::unwritable(root, CODEX_HOOKS_PATH) {
+        Some(Tracked) => Some(".codex/hooks.json is tracked by Git"),
+        Some(ReadOnly) => Some(".codex/hooks.json is read-only"),
+        Some(Symlink) => Some(".codex/hooks.json is a link to another file"),
+        Some(Unreadable) => Some(".codex/hooks.json cannot be read"),
+        Some(NotAnObject) => Some(CODEX_NOT_JSON),
+        // Writable, and still without our hook: the installer could not read it as the JSON object Codex expects
+        // (comments, a syntax error, another shape), so it left the user's bytes alone.
+        None => root
+            .join(CODEX_HOOKS_PATH)
+            .is_file()
+            .then_some(CODEX_NOT_JSON),
     }
 }
+
+const CODEX_NOT_JSON: &str = ".codex/hooks.json is not plain JSON with a \"hooks\" object (comments, a syntax error or another shape)";
 
 /// The `unstale status` line when Codex's session start could not be installed.
 fn codex_skipped_line(root: &Path) -> Option<String> {
@@ -820,6 +933,23 @@ pub fn install_opencode_plugin(ctx: &Ctx) -> Result<()> {
     exclude(&ctx.root, OPENCODE_PLUGIN_EXCLUDE_LINE)
 }
 
+/// Codex runs a project hook only once the user trusts it, which only they can do: the one line that names the step,
+/// said once per repository, after the hook is installed. `None` when there is no hook of ours, it was said, or Codex
+/// is not on this machine.
+pub fn codex_trust_line(ctx: &Ctx) -> Option<String> {
+    let said = ctx.tool.join("state/codex-hook-trust-said");
+    let ours = std::fs::read_to_string(ctx.root.join(CODEX_HOOKS_PATH))
+        .is_ok_and(|t| crate::hooks::remove(&t, CODEX_HOOK_ARGS).is_some());
+    if !ours || said.exists() || !crate::setup::codex_on_path() {
+        return None;
+    }
+    util::write_atomic(&said, b"said\n").ok()?;
+    Some(
+        "Codex: to let unstale sync at session start, trust its hook once: run /hooks in Codex."
+            .into(),
+    )
+}
+
 /// Uninstall: our Codex hook entry (the user's bytes kept) and opencode plugin, each backed up first.
 pub fn uninstall_hooks(root: &Path, backup: &Path) -> Result<()> {
     crate::hooks::uninstall(root, CODEX_HOOKS_PATH, CODEX_HOOK_ARGS, backup)?;
@@ -841,6 +971,78 @@ pub fn uninstall_hooks(root: &Path, backup: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_session_start_line_says_what_is_new_and_the_command() {
+        let names = |n: usize| -> Vec<String> {
+            ["next", "react", "vite", "zod"][..n]
+                .iter()
+                .map(|s| s.to_string())
+                .collect()
+        };
+        assert_eq!(
+            new_changes_line(1, &names(1)),
+            "unstale: 1 new upstream change for next. Run `unstale status --wait 0` to see them."
+        );
+        assert_eq!(
+            new_changes_line(3, &names(2)),
+            "unstale: 3 new upstream changes for next and react. Run `unstale status --wait 0` to see them."
+        );
+        let most = new_changes_line(120, &names(4));
+        assert_eq!(
+            most,
+            "unstale: 120 new upstream changes for next and 3 more. Run `unstale status --wait 0` to see them."
+        );
+        // Short: what the agent does with it is in the managed skill.
+        assert!(most.chars().count() <= 100, "{most}");
+    }
+
+    #[test]
+    fn a_warning_is_compared_by_kind_and_its_session_start_line_carries_no_raw_error_or_path() {
+        let failed = |why: &str, at: u64| State {
+            failure: Some(why.into()),
+            last_attempt: Some(at),
+            ..State::default()
+        };
+        // An unusual failure: the detail (a raw error, a path) is for `unstale status` only.
+        let raw = "next could not be synced: reading /Users/someone/.cache/unstale/v1/tech/next.json: Permission denied (os error 13)";
+        let w = Warning::of(&failed(raw, 1_000), 1_000 + 7_200).unwrap();
+        assert_eq!(
+            w.short,
+            "warning: the sync at session start failed, so newer changes are missing. `unstale status` says why."
+        );
+        assert_eq!(
+            w.full,
+            format!(
+                "warning: the sync at session start failed 2 h ago: {raw}. The next session start tries again."
+            )
+        );
+        // The same trouble a day later, with another wording of the error, is the same kind: not said again.
+        let later = Warning::of(
+            &failed("react could not be synced: timeout x", 90_000),
+            200_000,
+        )
+        .unwrap();
+        assert_eq!((w.kind.as_str(), later.kind.as_str()), ("sync", "sync"));
+        assert_ne!(w.full, later.full);
+        for why in [SLOW, UNREACHABLE] {
+            let w = Warning::of(&failed(why, 5), 10).unwrap();
+            assert!(
+                w.short.chars().count() <= 102 && !w.short.contains('/'),
+                "{}",
+                w.short
+            );
+            assert_ne!(w.kind, "sync");
+        }
+        // Why the model stage stopped is already one plain line; a failed sync comes first.
+        let line = crate::inference::Deferred::CodexLoggedOut.line();
+        let stopped = State {
+            deferred: Some(line.clone()),
+            ..State::default()
+        };
+        assert_eq!(Warning::of(&stopped, 0).unwrap().short, line);
+        assert_eq!(Warning::of(&State::default(), 0), None);
+    }
 
     #[test]
     fn times_and_spans_read_plainly() {

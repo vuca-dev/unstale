@@ -96,6 +96,11 @@ impl Ledger {
         self.dir.join(format!("usage-{month}.jsonl"))
     }
 
+    /// Where a month's usage is kept, to name in a message.
+    pub fn path(&self, month: &str) -> PathBuf {
+        self.file(month)
+    }
+
     /// Appends one call. An error means the spend went unrecorded; the caller stops making calls.
     pub fn record(&self, provider: &str, model: &str, usage: &Usage) -> std::io::Result<()> {
         let day = crate::util::today();
@@ -175,12 +180,20 @@ impl Ledger {
     }
 }
 
-/// Tokens as a short figure: `850`, `12k`, `1.2M`, `48M`.
+/// Tokens as a short figure: `850`, `1.5k`, `12k`, `1.2M`, `48M`. Rounded down to one decimal, never up past a
+/// limit.
 pub fn short_tokens(n: u64) -> String {
+    let scaled = |unit: u64, letter: char| {
+        let tenths = n / (unit / 10);
+        if tenths.is_multiple_of(10) || tenths >= 1_000 {
+            format!("{}{letter}", tenths / 10)
+        } else {
+            format!("{}.{}{letter}", tenths / 10, tenths % 10)
+        }
+    };
     match n {
         0..=999 => n.to_string(),
-        1_000..=999_999 => format!("{}k", n / 1_000),
-        _ if n.is_multiple_of(1_000_000) || n >= 100_000_000 => format!("{}M", n / 1_000_000),
-        _ => format!("{:.1}M", n as f64 / 1_000_000.0),
+        1_000..=999_999 => scaled(1_000, 'k'),
+        _ => scaled(1_000_000, 'M'),
     }
 }

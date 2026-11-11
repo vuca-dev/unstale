@@ -1,14 +1,14 @@
 Costs are estimates from evaluation runs, billed by the provider to your key or plan.
 This repo has 38 packages unstale follows.
-The best option, which the others are compared with: the Jev labelling API (JEV_API_KEY) beside an
-OpenAI-compatible key.
+The best option, which the others are compared with: Jev, a labelling service (JEV_API_KEY),
+beside an OpenAI-compatible key.
 
 1  OpenAI (OPENAI_API_KEY)
    per package, per year  $0.090
    this repo, a year      ≈ $3.42
    first sync, once       ≈ $3.42
    results                slightly less complete: ≈ 93% of the best option's breaking-change flags
-   duplicates             ≈ 2 more duplicate records per package, per year
+   repeats                ≈ 2 more changes listed twice per package, per year
 
 2  Not now
    cost     free: no model is called

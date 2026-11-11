@@ -2,7 +2,7 @@
 # keys: revoked-key · Codex: codex-logged-out · run: terminal-interrupt · repo config: --inference env:OPENROUTER_API_KEY · client: fresh · provider: refused
 
 $ unstale init --wait 0 --no-animation
-warning: OPENROUTER_API_KEY is not set here, so new release notes are not read. Set it, or run `unstale setup`.
+warning: OPENROUTER_API_KEY is not set here, so new release notes are not read. Set it.
   ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 2 direct dependencies from declared package ranges and checked local references.
@@ -29,7 +29,7 @@ warning: OPENROUTER_API_KEY is not set here, so new release notes are not read. 
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-By 30 November: upgrade unstale; this version stops receiving new changes after that day.
+unstale notice, act by 30 November: Upgrade unstale; this version stops receiving new changes then.
 unstale <newer version> available: npm install -g @unstale/cli@latest
 Codex: to let unstale sync at session start, trust its hook once: run /hooks in Codex.
 
@@ -60,7 +60,7 @@ $ unstale status --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-warning: OPENROUTER_API_KEY is not set here, so new release notes are not read. Set it, or run `unstale setup`.
+warning: OPENROUTER_API_KEY is not set here, so new release notes are not read. Set it.
 Release notes         OpenRouter (OPENROUTER_API_KEY), this repo's config
 Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)
 

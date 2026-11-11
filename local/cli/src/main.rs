@@ -372,7 +372,8 @@ fn dispatch(cli: Cli, started: std::time::Instant) -> Result<u8> {
                 setup::details(&ctx);
                 return Ok(0);
             }
-            if let Some(l) = limit { setup::set_limit(&mut ctx, l, user)?; }
+            // The limit is the user's own: always saved in their config.
+            if let Some(l) = limit { setup::set_limit(&ctx, l)?; }
             // `--limit` alone changes the limit and asks nothing.
             if limit.is_none() || choice.is_some() { setup::run(&mut ctx, choice, true, user, false)?; }
             Ok(0)
@@ -387,14 +388,17 @@ fn dispatch(cli: Cli, started: std::time::Instant) -> Result<u8> {
         Cmd::Status { wait, no_animation } => onboarding::run(&ctx, wait, !no_animation, false).inspect(|_| {
             notice::print(&ctx.cache, &ctx.tool);
             // What is wrong first, then the state: `status` always shows both, whatever was already said elsewhere.
-            let (mut warnings, state) = if inference::enabled() { setup::status_lines(&ctx) } else { (vec![], vec![]) };
+            let (mut warnings, mut state) = if inference::enabled() { setup::status_lines(&ctx) } else { (vec![], vec![]) };
             // A refusal stays until a sync verifies the release notes. Only this repository's technologies are named.
             let ours = stack::detect(&ctx.root).map(|st| onboarding::candidates(&ctx, &st)).unwrap_or_default();
             let failed: Vec<(String, String)> = cache::events_failed(&ctx.cache).into_iter().filter(|(t, _)| ours.contains(t)).collect();
             warnings.extend(events_failed_line(&failed));
             warnings.extend(pipeline::unrun_line(&ctx, &ours));
+            // The session-start sync's last failure and how fresh this machine is (switch on only).
+            let (wrong, fresh) = session::status_lines(&ctx);
+            warnings.extend(wrong);
+            state.extend(fresh);
             for line in warnings.iter().chain(&state) { println!("{line}"); }
-            session::after_status(&ctx);
         }),
         Cmd::SessionSync => session::background(&ctx),
         Cmd::Sync => cmd_sync(&ctx),
@@ -415,7 +419,13 @@ fn dispatch(cli: Cli, started: std::time::Instant) -> Result<u8> {
 /// One line naming the technologies whose change events the last sync refused; their records synced regardless.
 fn events_failed_line(failed: &[(String, String)]) -> Option<String> {
     let names: Vec<&str> = failed.iter().map(|(t, _)| t.as_str()).collect();
-    (!names.is_empty()).then(|| format!("warning: the release notes for {} could not be verified, so they are not read. The next sync tries again.", names.join(", ")))
+    let names = match names.as_slice() {
+        [] => return None,
+        [a] => a.to_string(),
+        [a, b] => format!("{a} and {b}"),
+        [a, b, rest @ ..] => format!("{a}, {b} and {} more", rest.len()),
+    };
+    Some(format!("warning: release notes for {names} failed verification, so they are not read. The next sync retries."))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -449,6 +459,8 @@ fn cmd_infer(provider: &str, model: Option<String>, base_url: Option<String>, ke
         Err(d) => { println!("{}", d.line()); return Ok(0); }
     };
     let mut inf = Inference::new(cfg);
+    // The limit in effect where this runs: the user's own, or a lower one the repository here sets.
+    inf.monthly_budget = setup::monthly_tokens_at(std::env::current_dir().ok().and_then(|d| pipeline::repo_root(&d)).as_deref());
     if let Some(t) = timeout_secs { inf.limits.timeout = std::time::Duration::from_secs(t); }
     if let Some(b) = backoff_ms { inf.limits.backoff = std::time::Duration::from_millis(b); }
     match inf.complete(&p) {
@@ -471,7 +483,11 @@ fn cmd_internal(dir: Option<&Path>, cmd: InternalCmd) -> Result<u8> {
     };
     let root = pipeline::repo_root(&start);
     let mut main = match provider {
-        Some(p) => inference::Inference::new(pipeline::named_provider(&p, model, base_url, key_env).map_err(|e| anyhow!(e))?),
+        Some(p) => {
+            let mut named = inference::Inference::new(pipeline::named_provider(&p, model, base_url, key_env).map_err(|e| anyhow!(e))?);
+            named.monthly_budget = setup::monthly_tokens_at(root.as_deref());
+            named
+        }
         None => match pipeline::stored_choice(root.as_deref()).and_then(|c| pipeline::routes(&c, root.as_deref())) {
             Some(r) => r.main,
             None => {
@@ -745,9 +761,21 @@ fn cmd_sync(ctx: &Ctx) -> Result<u8> {
         }
         Err(e) => return Err(e),
     };
+    // With the edge-inference switch on, `sync` says what the reader can use, in their words: a line a technology, and
+    // nothing about what the catalog does not cover (nothing to do about it) or how the files arrived. Release notes
+    // that could not be verified are a warning below. With the switch off the lines are as they were.
+    let plain = util::edge_inference();
     for t in &rep.synced {
-        // Release notes are synced only with the edge-inference switch on. Nothing is said when they arrive (the reader
-        // does nothing with a count of them); one that could not be verified is a warning below.
+        if plain {
+            println!(
+                "{}: {} upstream change{} on file, {}",
+                t.technology,
+                t.records,
+                if t.records == 1 { "" } else { "s" },
+                if t.unchanged { "nothing new" } else { "updated" }
+            );
+            continue;
+        }
         println!(
             "synced {}: {} records (sources checked {}); {}",
             t.technology,
@@ -756,7 +784,9 @@ fn cmd_sync(ctx: &Ctx) -> Result<u8> {
             if t.unchanged { "unchanged".to_string() } else { format!("{} shard(s) downloaded, {} reused", t.downloaded, t.reused) }
         );
     }
-    if rep.synced.is_empty() {
+    if rep.synced.is_empty() && plain {
+        println!("The catalog has nothing yet for the {} packages this repository uses.", st.deps.len());
+    } else if rep.synced.is_empty() {
         println!(
             "No technology in this repository's stack is covered by the catalog ({} candidates from {} packages checked).",
             cands.len(),
@@ -767,14 +797,14 @@ fn cmd_sync(ctx: &Ctx) -> Result<u8> {
         }
     }
     let uncovered = rep.not_covered.len() + rep.not_in_stack.len();
-    if uncovered > 0 {
+    if uncovered > 0 && !plain {
         println!(
             "Not covered by the catalog: {uncovered} other candidate {} (no index for {}, or no record names a package used here).",
             if uncovered == 1 { "technology" } else { "technologies" },
             if uncovered == 1 { "it" } else { "them" }
         );
     }
-    if !rep.withheld.is_empty() {
+    if !rep.withheld.is_empty() && !plain {
         println!(
             "Not asked for: {} candidate {} only private packages name (the catalog published no list to check them against).",
             rep.withheld.len(),

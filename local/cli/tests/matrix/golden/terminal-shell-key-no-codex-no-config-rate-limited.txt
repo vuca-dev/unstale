@@ -9,7 +9,7 @@ How should unstale read new release notes?
   2  Not now                      free                     ≈ 27%: advisories and deprecations only
 
 Enter for 1, a number to choose, or d for details:
-Reading release notes with OpenAI (OPENAI_API_KEY). Saved in .unstale/config.json; `unstale setup` changes it.
+Saved for this repo: OpenAI (OPENAI_API_KEY) reads release notes.
   ✓ shop · Personal setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 2 direct dependencies from declared package ranges and checked local references.
@@ -35,16 +35,15 @@ Reading release notes with OpenAI (OPENAI_API_KEY). Saved in .unstale/config.jso
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-By 30 November: upgrade unstale; this version stops receiving new changes after that day.
+unstale notice, act by 30 November: Upgrade unstale; this version stops receiving new changes then.
 unstale <newer version> available: npm install -g @unstale/cli@latest
 
 $ unstale sync
-synced next: 2 records (sources checked 2026-10-15T00:00:00Z); unchanged
-Not covered by the catalog: 1 other candidate technology (no index for it, or no record names a package used here).
+next: 2 upstream changes on file, nothing new
 
 # model step: the internal `unstale infer` on the chosen provider, standing in for the client's own pipeline steps
 $ unstale infer --provider openai  (no terminal)
-warning: the provider is rate limiting, so some new release notes are not read yet. The next sync tries again.
+warning: the provider is rate limiting, so new release notes wait. The next sync tries again.
 
 $ unstale status --wait 0 --no-animation
   ✓ shop · Personal setup ready

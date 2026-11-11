@@ -125,6 +125,21 @@ impl World {
             .unwrap()
     }
 
+    /// The user's own config, or an empty object before anything was saved there.
+    fn user_config(&self) -> serde_json::Value {
+        std::fs::read(self.path("config/config.json"))
+            .ok()
+            .and_then(|b| serde_json::from_slice(&b).ok())
+            .unwrap_or_else(|| serde_json::json!({}))
+    }
+
+    /// Sets one key of this repository's config, as a teammate's commit would.
+    fn set_config(&self, key: &str, value: serde_json::Value) {
+        let mut c = self.config();
+        c[key] = value;
+        std::fs::write(self.path("repo/.unstale/config.json"), c.to_string()).unwrap();
+    }
+
     /// Every file under the temporary directory but the three planted ones and the fake `codex`'s records, as text.
     fn written_files(&self) -> Vec<(PathBuf, String)> {
         let planted = [
@@ -184,7 +199,12 @@ fn no_canary_reaches_output_config_cache_or_any_written_file() {
     out += &w.ok(&["setup", "--inference", "jev+env:OPENAI_API_KEY"], true);
     out += &w.ok(&["status", "--wait", "0", "--no-animation"], true);
     let user = w.ok(&["setup", "--user", "--inference", "codex"], true);
-    assert!(user.contains("this repo's own choice (Jev labelling API + OpenAI (JEV_API_KEY, OPENAI_API_KEY)) still applies here"), "{user}");
+    assert!(
+        user.contains(
+            "This repo's own choice still applies: Jev + OpenAI (JEV_API_KEY, OPENAI_API_KEY)."
+        ),
+        "{user}"
+    );
     out += &user;
     assert_eq!(
         w.config()["inference"]["key_env"],
@@ -274,7 +294,7 @@ const SWITCH_ON_LINES: [&str; 7] = [
 ];
 
 /// The start of every question setup asks.
-const QUESTION: &str = "Enter for 1";
+const QUESTION: &str = "Enter for 1,";
 
 impl World {
     /// Runs at a terminal (a pseudo-terminal from `script`), typing `input`.
@@ -316,7 +336,7 @@ fn init_asks_once_at_a_terminal_and_setup_reopens_the_picker() {
     // Nothing configured and nobody asked: said once, as a warning, not passed over.
     assert_eq!(
         quiet
-            .matches("warning: no model provider is configured, so new release notes are not read.")
+            .matches("warning: no provider chosen, so new release notes are not read. `unstale setup` lists the options.")
             .count(),
         1,
         "{quiet}"
@@ -339,7 +359,12 @@ fn init_asks_once_at_a_terminal_and_setup_reopens_the_picker() {
             && first.contains("\n     Keys: JEV_API_KEY, OPENAI_API_KEY (.env)\n"),
         "{first}"
     );
-    assert!(first.contains("Reading release notes with Jev + OpenAI (JEV_API_KEY, OPENAI_API_KEY). Saved in .unstale/config.json"), "{first}");
+    assert!(
+        first.contains(
+            "Saved for this repo: Jev + OpenAI (JEV_API_KEY, OPENAI_API_KEY) reads release notes."
+        ),
+        "{first}"
+    );
     assert_eq!(
         w.config()["inference"]["labels"]["key_env"],
         "JEV_API_KEY",
@@ -355,7 +380,7 @@ fn init_asks_once_at_a_terminal_and_setup_reopens_the_picker() {
     let changed = w.at_terminal(&["setup"], "4\n");
     assert_eq!(changed.matches(QUESTION).count(), 1, "{changed}");
     assert!(
-        changed.contains("Reading release notes with Codex plan. Saved in .unstale/config.json"),
+        changed.contains("Saved for this repo: Codex plan reads release notes."),
         "{changed}"
     );
     // `unstale setup` also states the token limit, a setting of the user's, and how to change it.
@@ -364,6 +389,21 @@ fn init_asks_once_at_a_terminal_and_setup_reopens_the_picker() {
             .contains("of 48M this month (the default limit; `unstale setup --limit` changes it)"),
         "{changed}"
     );
+    // Reopened and dismissed (Ctrl-D, or three answers that are not choices): the choice stays, and the line says so.
+    for typed in ["\u{4}", "x\nx\nx\n"] {
+        let kept = w.at_terminal(&["setup"], typed);
+        assert!(
+            kept.contains("Nothing changed: still reading with Codex plan."),
+            "{typed:?}: {kept}"
+        );
+        assert!(!kept.contains("Nothing chosen"), "{typed:?}: {kept}");
+        assert_eq!(
+            w.config()["inference"],
+            serde_json::json!({"provider": "codex"})
+        );
+        assert!(!w.path("repo/.unstale/state/setup-dismissed").exists());
+    }
+
     assert_eq!(
         w.config()["inference"],
         serde_json::json!({"provider": "codex"})
@@ -448,7 +488,8 @@ fn status_shows_the_provider_this_months_tokens_and_the_users_limit() {
     w.ok(&["setup", "--inference", "env:AI_GATEWAY_API_KEY"], true);
     let after = status(&w);
     // What is wrong comes first, as a warning; then the state.
-    let warning = "warning: AI_GATEWAY_API_KEY is not set here, so new release notes are not read. Set it, or run `unstale setup`.";
+    let warning =
+        "warning: AI_GATEWAY_API_KEY is not set here, so new release notes are not read. Set it.";
     let provider =
         "Release notes         Vercel AI Gateway (AI_GATEWAY_API_KEY), this repo's config";
     assert!(
@@ -462,28 +503,70 @@ fn status_shows_the_provider_this_months_tokens_and_the_users_limit() {
         after.contains("Tokens                1.5M of 48M this month (the default limit; `unstale setup --limit` changes it)"),
         "{after}"
     );
-    // The limit is the user's: a number, or none, in this repo's config or theirs.
+    // The limit is the user's own: `--limit` saves it in their config, never in the repo's.
     let set = w.ok(&["setup", "--limit", "1M"], true);
-    assert_eq!(
-        set.trim(),
-        "Monthly token limit: 1M. Saved in .unstale/config.json; past it, new release notes wait for next month."
-    );
-    assert_eq!(w.config()["monthly_token_limit"], 1_000_000);
+    assert_eq!(set.trim(), "Your monthly token limit: 1M.");
+    assert!(w.config().get("monthly_token_limit").is_none());
+    assert_eq!(w.user_config()["monthly_token_limit"], 1_000_000);
     let reached = status(&w);
     assert!(
-        reached.contains("warning: monthly token limit reached, so new release notes wait for next month. Raise or remove it: `unstale setup --limit`.")
-            && reached.contains("Tokens                1.5M of 1M this month (this repo's limit, reached; `unstale setup --limit` changes it)"),
+        reached.contains("warning: monthly token limit reached, so new release notes wait. Change it: `unstale setup --limit`.")
+            && reached.contains("Tokens                1.5M of 1M this month (your limit, reached)"),
         "{reached}"
     );
-    w.ok(&["setup", "--limit", "none"], true);
-    assert_eq!(w.config()["monthly_token_limit"], "none");
-    assert!(status(&w).contains("Tokens                1.5M this month, no limit"));
-    w.ok(&["setup", "--limit", "default"], true);
-    assert!(w.config().get("monthly_token_limit").is_none());
+    // A repo's config cannot raise or remove it ...
+    for loosened in [serde_json::json!("none"), serde_json::json!(900_000_000u64)] {
+        w.set_config("monthly_token_limit", loosened.clone());
+        let still = status(&w);
+        assert!(
+            still.contains("1.5M of 1M this month (your limit, reached)"),
+            "{loosened}: {still}"
+        );
+    }
+    // ... only lower it, and status says whose limit applies and where it is set.
+    w.set_config("monthly_token_limit", serde_json::json!(500_000));
+    let lowered = status(&w);
+    assert!(
+        lowered.contains("warning: this repo's token limit is reached, so new release notes wait. See .unstale/config.json.")
+            && lowered.contains("Tokens                1.5M of 500k this month (this repo's limit, reached, set in .unstale/config.json)"),
+        "{lowered}"
+    );
+    // What `--limit` prints is what applies here, not only what was saved.
+    assert_eq!(
+        w.ok(&["setup", "--limit", "none"], true).trim(),
+        "Your monthly token limit: none. Here this repo's lower limit applies: 500k (.unstale/config.json)."
+    );
+    assert_eq!(w.user_config()["monthly_token_limit"], "none");
+    assert_eq!(
+        w.ok(&["setup", "--limit", "default"], true).trim(),
+        "Your monthly token limit: the default, 48M. Here this repo's lower limit applies: 500k (.unstale/config.json)."
+    );
+    assert!(w.user_config().get("monthly_token_limit").is_none());
+    // An absurd or malformed value is refused in one line and changes nothing.
+    for bad in ["1e30", "99999999999999999999", "lots"] {
+        let (_, out) = w.run_within(&["setup", "--limit", bad], true, Duration::from_secs(60));
+        assert!(
+            out.contains(&format!("--limit {bad}: ")) && out.trim().lines().count() == 1,
+            "{bad}: {out}"
+        );
+        assert!(
+            w.user_config().get("monthly_token_limit").is_none(),
+            "{bad}"
+        );
+    }
     assert_eq!(
         w.config()["inference"]["provider"],
         "vercel",
         "the choice beside it is kept"
+    );
+    // A corrupt token count: the fix names the file, and matches the cause.
+    std::fs::write(&ledger, "{not json\n").unwrap();
+    let corrupt = status(&w);
+    assert!(
+        corrupt.contains(
+            "warning: unstale's token count is corrupt, so new release notes are not read. Delete "
+        ) && corrupt.contains("usage-2026-11.jsonl (the count restarts)."),
+        "{corrupt}"
     );
 }
 
@@ -507,7 +590,7 @@ fn a_dismissed_picker_writes_no_config_and_is_not_asked_again_on_this_machine() 
     assert_eq!(out.matches(QUESTION).count(), 1, "{out}");
     assert!(
         out.contains(
-            "Nothing chosen: unstale reads no release notes, advisories and deprecations only. `unstale setup` asks again."
+            "Nothing chosen: no release notes, advisories and deprecations only. `unstale setup` asks again."
         ),
         "{out}"
     );
@@ -537,7 +620,7 @@ fn a_dismissed_picker_writes_no_config_and_is_not_asked_again_on_this_machine() 
     let chosen = w.at_terminal(&["setup"], "5\n");
     assert!(
         chosen.contains(
-            "Not reading release notes: advisories and deprecations only. Saved in .unstale/config.json"
+            "Saved for this repo: release notes not read, advisories and deprecations only."
         ),
         "{chosen}"
     );
@@ -555,7 +638,7 @@ fn ctrl_c_at_the_question_writes_nothing_anywhere() {
     let before = w.written_files();
     let out = w.at_terminal(&["setup"], "\u{3}");
     assert!(out.contains(QUESTION), "{out}");
-    assert!(!out.contains("Saved in"), "{out}");
+    assert!(!out.contains("Saved for"), "{out}");
     assert_eq!(
         w.written_files(),
         before,
@@ -578,7 +661,7 @@ fn an_agent_in_a_pseudo_terminal_gets_the_listing_never_the_question() {
         assert!(!init.contains(QUESTION), "{agent:?}: {init}");
         // The agent is told the choice is the user's, and how to put it to them.
         assert!(
-            init.contains("Choice pending: how unstale reads new release notes. Run `unstale setup`, show the user its options and ask."),
+            init.contains("Choice pending: how unstale reads new release notes. Run `unstale setup` and ask the user."),
             "{agent:?}: {init}"
         );
         assert!(

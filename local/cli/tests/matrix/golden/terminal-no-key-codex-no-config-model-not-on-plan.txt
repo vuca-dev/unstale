@@ -9,7 +9,7 @@ How should unstale read new release notes?
   2  Not now      free                     ≈ 27%: advisories and deprecations only
 
 Enter for 1, a number to choose, or d for details:
-Reading release notes with Codex plan. Saved in .unstale/config.json; `unstale setup` changes it.
+Saved for this repo: Codex plan reads release notes.
   ✓ shop · Personal setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 2 direct dependencies from declared package ranges and checked local references.
@@ -35,17 +35,16 @@ Reading release notes with Codex plan. Saved in .unstale/config.json; `unstale s
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-By 30 November: upgrade unstale; this version stops receiving new changes after that day.
+unstale notice, act by 30 November: Upgrade unstale; this version stops receiving new changes then.
 unstale <newer version> available: npm install -g @unstale/cli@latest
 Codex: to let unstale sync at session start, trust its hook once: run /hooks in Codex.
 
 $ unstale sync
-synced next: 2 records (sources checked 2026-10-15T00:00:00Z); unchanged
-Not covered by the catalog: 1 other candidate technology (no index for it, or no record names a package used here).
+next: 2 upstream changes on file, nothing new
 
 # model step: the internal `unstale infer` on the chosen provider, standing in for the client's own pipeline steps
 $ unstale infer --provider codex  (no terminal)
-warning: gpt-6-luna is not available on this key or plan, so new release notes are not read. Choose another: `unstale setup`.
+warning: this key or plan lacks gpt-6-luna, so new release notes are not read. Run `unstale setup`.
 
 $ unstale status --wait 0 --no-animation
   ✓ shop · Personal setup ready

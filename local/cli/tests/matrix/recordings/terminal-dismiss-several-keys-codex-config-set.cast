@@ -63,7 +63,7 @@
 [2.74,"o","  only; do not edit files.\r\n"]
 [2.8,"o","\r\n"]
 [2.86,"o","  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\r\n"]
-[2.92,"o","By 30 November: upgrade unstale; this version stops receiving new changes after that day.\r\n"]
+[2.92,"o","unstale notice, act by 30 November: Upgrade unstale; this version stops receiving new changes then.\r\n"]
 [2.98,"o","unstale <newer version> available: npm install -g @unstale/cli@latest\r\n"]
 [3.04,"o","Codex: to let unstale sync at session start, trust its hook once: run /hooks in Codex.\r\n"]
 [3.94,"o","\u001b[1m$\u001b[0m "]

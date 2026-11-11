@@ -2,8 +2,8 @@
 # keys: other-repo-key · Codex: no-codex · run: ci-flag · repo config: none · client: fresh · provider: answers
 
 $ unstale init --wait 0 --no-animation --yes --inference env:OPENAI_API_KEY  (no terminal)
-Reading release notes with OpenAI (OPENAI_API_KEY). Saved in .unstale/config.json; `unstale setup` changes it.
-warning: OPENAI_API_KEY is not set here, so new release notes are not read. Set it, or run `unstale setup`.
+Saved for this repo: OpenAI (OPENAI_API_KEY) reads release notes.
+warning: OPENAI_API_KEY is not set here, so new release notes are not read. Set it.
   ✓ shop · Personal setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 2 direct dependencies from declared package ranges and checked local
@@ -33,16 +33,15 @@ warning: OPENAI_API_KEY is not set here, so new release notes are not read. Set 
   files and trade-offs. Return proposals only; do not edit files.
   
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-By 30 November: upgrade unstale; this version stops receiving new changes after that day.
+unstale notice, act by 30 November: Upgrade unstale; this version stops receiving new changes then.
 unstale <newer version> available: npm install -g @unstale/cli@latest
 
 $ unstale sync  (no terminal)
-synced next: 2 records (sources checked 2026-10-15T00:00:00Z); unchanged
-Not covered by the catalog: 1 other candidate technology (no index for it, or no record names a package used here).
+next: 2 upstream changes on file, nothing new
 
 # model step: the internal `unstale infer` on the chosen provider, standing in for the client's own pipeline steps
 $ unstale infer --provider openai  (no terminal)
-warning: OPENAI_API_KEY is not set here, so new release notes are not read. Set it, or run `unstale setup`.
+warning: OPENAI_API_KEY is not set here, so new release notes are not read. Set it.
 
 $ unstale status --wait 0 --no-animation  (no terminal)
   ✓ shop · Personal setup ready
@@ -74,7 +73,7 @@ $ unstale status --wait 0 --no-animation  (no terminal)
   files and trade-offs. Return proposals only; do not edit files.
   
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-warning: OPENAI_API_KEY is not set here, so new release notes are not read. Set it, or run `unstale setup`.
+warning: OPENAI_API_KEY is not set here, so new release notes are not read. Set it.
 Release notes         OpenAI (OPENAI_API_KEY), this repo's config
 Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)
 

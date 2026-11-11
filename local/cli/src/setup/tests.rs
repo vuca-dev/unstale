@@ -298,8 +298,13 @@ fn picker_renderings_match_their_goldens() {
         "set-one-up",
         &format!(
             "{}\n\n{}\n",
-            view::set_up_lines(&machine(&[], CodexState::Absent), Reader::Person).join("\n"),
-            view::set_up_lines(&logged_out, Reader::Person).join("\n")
+            view::set_up_lines(
+                &machine(&[], CodexState::Absent),
+                Reader::Person,
+                view::WIDTH
+            )
+            .join("\n"),
+            view::set_up_lines(&logged_out, Reader::Person, view::WIDTH).join("\n")
         ),
     );
     golden(
@@ -315,6 +320,76 @@ fn picker_renderings_match_their_goldens() {
 }
 
 #[test]
+fn the_prompt_with_nothing_usable_narrows_with_the_terminal() {
+    let nothing = machine(
+        &[],
+        CodexState::NotReady("Codex is not logged in. Run `codex login`.".into()),
+    );
+    for width in [view::WIDTH, 60, 40] {
+        let mut lines = view::nothing_lines(&nothing, Reader::Person, width);
+        lines.extend(view::set_up_lines(&nothing, Reader::Person, width));
+        for l in &lines {
+            assert!(l.chars().count() <= width, "at {width}: {l}");
+        }
+    }
+    golden(
+        "nothing-40-columns",
+        &format!(
+            "{}\n",
+            view::nothing_lines(&machine(&[], CodexState::Absent), Reader::Person, 40).join("\n")
+        ),
+    );
+}
+
+#[test]
+fn nothing_setup_prints_is_much_wider_than_a_hundred_columns() {
+    // Principle 12: a line that needs more than about 100 characters carries detail that belongs elsewhere.
+    let mut lines = vec![
+        view::pending_line(),
+        view::unconfigured_line(),
+        view::dismissed_line(),
+        view::limit_reached_line(LimitOrigin::Repo),
+        view::limit_reached_line(LimitOrigin::User),
+    ];
+    let pair = parse_flag("jev+env:AI_GATEWAY_API_KEY").unwrap();
+    lines.extend(view::saved_lines(&pair, Origin::Repo, None));
+    lines.extend(view::saved_lines(
+        &Choice::codex(),
+        Origin::User,
+        Some(&pair),
+    ));
+    lines.push(view::kept_line(&pair));
+    for origin in [Origin::Repo, Origin::User] {
+        lines.push(view::provider_line(Some(&(pair.clone(), origin))));
+        lines.push(view::provider_line(Some(&(Choice::none(), origin))));
+    }
+    lines.push(view::provider_line(None));
+    lines.extend(view::missing_key_lines(
+        Some(&(pair.clone(), Origin::Repo)),
+        &|_| false,
+    ));
+    for (limit, origin) in [
+        (Limit::Tokens(48_000_000), LimitOrigin::Default),
+        (Limit::Tokens(1_000_000), LimitOrigin::Repo),
+        (Limit::None, LimitOrigin::User),
+    ] {
+        lines.push(view::tokens_line(Ok(48_000_000), limit, origin));
+    }
+    for (name, d, techs, no_key, reader) in scenarios() {
+        let _ = name;
+        lines.extend(view::picker_lines(&d, techs, no_key, reader, view::WIDTH));
+        lines.extend(view::details_lines(&d, techs, no_key));
+    }
+    for l in lines {
+        assert!(
+            l.chars().count() <= 100,
+            "{} characters: {l}",
+            l.chars().count()
+        );
+    }
+}
+
+#[test]
 fn every_listing_fits_the_width_it_was_laid_out_for() {
     for (name, d, techs, no_key, reader) in scenarios() {
         for width in [view::WIDTH, 80, 60] {
@@ -325,7 +400,7 @@ fn every_listing_fits_the_width_it_was_laid_out_for() {
         }
         // What is around the table, at the default width.
         for l in view::picker_lines(&d, techs, no_key, reader, view::WIDTH) {
-            assert!(l.chars().count() <= 110, "{name}: {l}");
+            assert!(l.chars().count() <= 100, "{name}: {l}");
         }
     }
 }
@@ -371,13 +446,25 @@ fn every_option_states_one_cost_and_its_trade_and_the_details_carry_units_and_sc
     let table = view::table(&d, 38, false, view::WIDTH);
     assert_eq!(
         table.len(),
-        opts.len() + 2,
-        "a header, a row an option, and the keys they read"
+        opts.len() + 3,
+        "a header, a row an option, what Jev is, and the keys they read"
     );
+    // Jev is said once, in a few words, where it is offered; and not where it is not.
     assert_eq!(
         table[opts.len() + 1],
+        "     Jev: a labelling service, used beside the provider that reads the notes."
+    );
+    assert_eq!(
+        table[opts.len() + 2],
         "     Keys: JEV_API_KEY, AI_GATEWAY_API_KEY, ANTHROPIC_API_KEY"
     );
+    let no_jev = view::table(
+        &machine(&[("OPENAI_API_KEY", Seen::Shell)], CodexState::Absent),
+        38,
+        false,
+        view::WIDTH,
+    );
+    assert!(!no_jev.join("\n").contains("Jev"), "{no_jev:?}");
     let details = view::details_lines(&d, 38, false).join("\n");
     for (i, p) in opts.iter().enumerate() {
         let row = &table[i + 1];
@@ -392,7 +479,7 @@ fn every_option_states_one_cost_and_its_trade_and_the_details_carry_units_and_sc
         // One cost, and one quality figure at most: no unit rate, first sync or second figure in the row.
         assert!(row.contains("≈ "), "{row}");
         assert!(row.matches('%').count() <= 1, "{row}");
-        for detail in ["per package", "first sync", "duplicate", "at API prices"] {
+        for detail in ["per package", "first sync", "listed twice", "at API prices"] {
             assert!(
                 !row.contains(detail),
                 "{detail:?} belongs in --details: {row}"
@@ -410,8 +497,8 @@ fn every_option_states_one_cost_and_its_trade_and_the_details_carry_units_and_sc
         "this repo, a year",
         "first sync, once",
         "at API prices",
-        "more duplicate records per package, per year",
-        "(fewer from upgrade guides)",
+        "more changes listed twice per package, per year",
+        "fewer from upgrade guides",
     ] {
         assert!(
             details.contains(want),
@@ -425,6 +512,7 @@ fn every_option_states_one_cost_and_its_trade_and_the_details_carry_units_and_sc
         "H2",
         "step ",
         "slice",
+        "duplicate records",
         "gpt-6",
         "flex",
         "technology-year",
@@ -445,7 +533,7 @@ fn going_without_a_provider_states_what_is_left_with_the_measured_share() {
     assert_eq!(NO_PROVIDER_SHARE, Some(27));
     let nothing = machine(&[], CodexState::Absent);
     for reader in [Reader::Person, Reader::Agent] {
-        let text = view::nothing_lines(&nothing, reader).join("\n");
+        let text = view::nothing_lines(&nothing, reader, view::WIDTH).join("\n");
         assert!(
             text.contains("advisories and deprecations only, ≈ 27% of what unstale finds with one"),
             "{text}"
@@ -483,13 +571,27 @@ fn enter_accepts_the_first_option_a_number_picks_one_and_d_shows_the_details() {
     let (p, out) = pick("9\nx\n2\n");
     assert_eq!(p, Some(Pick::JevCodex));
     assert_eq!(
-        out.matches("Enter for 1, a number to choose").count(),
-        3,
-        "the same question again, not a new one"
+        (
+            out.matches("Enter for 1, a number to choose").count(),
+            out.matches(view::CONTINUE).count()
+        ),
+        (1, 2),
+        "the question is asked once and stays open, not asked again"
     );
+    // `d` shows the details once and leaves the same question open, without printing it again.
     let (p, out) = pick("d\n3\n");
     assert_eq!(p, Some(Pick::Key(Route::Vercel)));
-    assert!(out.contains("THE DETAILS"), "{out}");
+    assert_eq!(out.matches("THE DETAILS").count(), 1, "{out}");
+    assert_eq!(
+        out.matches("Enter for 1, a number to choose").count(),
+        1,
+        "{out}"
+    );
+    assert!(out.ends_with(view::CONTINUE), "{out}");
+    // A second `d` is not a choice, and `d` counts as a try: the question never stays open without end.
+    let (p, out) = pick("d\nd\nd\nd\n1\n");
+    assert_eq!(p, None, "{out}");
+    assert_eq!(out.matches("THE DETAILS").count(), 1, "{out}");
     assert_eq!(pick("").0, None, "end of input chooses nothing");
     assert_eq!(
         pick("x\nx\nx\n1\n").0,
@@ -544,8 +646,8 @@ fn a_choice_stores_the_variable_name_and_maps_to_provider_configs() {
     );
     assert!(Choice::none().providers().is_none());
     assert_eq!(
-        view::saved_line(&Choice::none(), ".unstale/config.json"),
-        "Not reading release notes: advisories and deprecations only. Saved in .unstale/config.json; `unstale setup` changes it."
+        view::saved_lines(&Choice::none(), Origin::Repo, None),
+        ["Saved for this repo: release notes not read, advisories and deprecations only."]
     );
 }
 
@@ -684,7 +786,7 @@ fn status_names_the_provider_this_months_tokens_and_the_users_limit() {
                 Some((Choice::none(), Origin::Repo)),
                 0,
                 Limit::Tokens(100_000_000),
-                LimitOrigin::Repo
+                LimitOrigin::User
             ),
             block(
                 Some((Choice::codex(), Origin::Repo)),
@@ -693,6 +795,27 @@ fn status_names_the_provider_this_months_tokens_and_the_users_limit() {
                 LimitOrigin::User
             ),
         ),
+    );
+    // A lower limit in this repo's config is said to be the repo's, with where to change it.
+    assert_eq!(
+        view::tokens_line(Ok(1_500), Limit::Tokens(1_000_000), LimitOrigin::Repo),
+        "Tokens                1.5k of 1M this month (this repo's limit, set in .unstale/config.json)"
+    );
+    assert!(
+        view::limit_reached_line(LimitOrigin::Repo).ends_with("See .unstale/config.json.")
+            && view::limit_reached_line(LimitOrigin::User).ends_with("`unstale setup --limit`.")
+    );
+    // The token count unusable: the fix matches the cause.
+    let file = Path::new("/c/inference/usage-2026-11.jsonl");
+    let corrupt = std::io::Error::new(std::io::ErrorKind::InvalidData, "x");
+    assert!(
+        view::token_count_line(file, &corrupt)
+            .ends_with("Delete /c/inference/usage-2026-11.jsonl (the count restarts)."),
+    );
+    let denied = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "x");
+    assert!(
+        view::token_count_line(file, &denied)
+            .ends_with("Make /c/inference/usage-2026-11.jsonl writable."),
     );
     assert!(
         view::tokens_line(
@@ -716,9 +839,27 @@ fn the_monthly_token_limit_is_a_number_none_or_the_default() {
     assert_eq!(parse_limit("0"), Ok(Some(Limit::Tokens(0))));
     assert_eq!(parse_limit("none"), Ok(Some(Limit::None)));
     assert_eq!(parse_limit("default"), Ok(None));
-    for bad in ["", "lots", "-5", "5x", "nan"] {
+    for bad in [
+        "", "lots", "-5", "5x", "nan", "inf", "1e30", "1e3", ".", "1.2.3", "k",
+    ] {
         assert!(parse_limit(bad).is_err(), "{bad:?}");
     }
+    // An absurd count is refused in one plain line, never stored as the largest number.
+    assert_eq!(
+        parse_limit("99999999999999999999"),
+        Err(
+            "--limit 99999999999999999999: more than 1000000M tokens; use `none` for no limit"
+                .into()
+        )
+    );
+    assert_eq!(parse_limit("1000000M"), Ok(Some(Limit::Tokens(MAX_LIMIT))));
+    // What is printed is what was typed: 1.5k is not shown as 1k.
+    assert_eq!(parse_limit("1.5k"), Ok(Some(Limit::Tokens(1_500))));
+    use crate::inference::ledger::short_tokens;
+    assert_eq!(
+        [850, 1_500, 12_000, 12_345, 999_999, 1_234_567, 48_000_000].map(short_tokens),
+        ["850", "1.5k", "12k", "12.3k", "999k", "1.2M", "48M"]
+    );
     // Stored as a number, or "none"; anything else is refused rather than read as no limit.
     assert_eq!(serde_json::to_string(&Limit::Tokens(5)).unwrap(), "5");
     assert_eq!(serde_json::to_string(&Limit::None).unwrap(), "\"none\"");
@@ -730,12 +871,53 @@ fn the_monthly_token_limit_is_a_number_none_or_the_default() {
     assert!(serde_json::from_str::<Limit>("-1").is_err());
     assert_eq!(Limit::None.tokens(), u64::MAX);
 
-    // This repository's limit, else the user's, else the default.
+    // The user's own limit (the default when they set none) is the most this machine spends: a repository's config
+    // can lower it, never raise or remove it.
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("unstale/config.json");
     let default = Limit::Tokens(crate::inference::ledger::DEFAULT_MONTHLY_TOKENS);
     assert_eq!(limit(None, &path), (default, LimitOrigin::Default));
+    assert_eq!(
+        limit(Some(Limit::None), &path),
+        (default, LimitOrigin::Default),
+        "a repo cannot remove the default"
+    );
+    assert_eq!(
+        limit(Some(Limit::Tokens(u64::MAX - 1)), &path),
+        (default, LimitOrigin::Default)
+    );
+    assert_eq!(
+        limit(Some(Limit::Tokens(7)), &path),
+        (Limit::Tokens(7), LimitOrigin::Repo)
+    );
     write_user(&path, &Choice::codex()).unwrap();
+    write_user_key(
+        &path,
+        "monthly_token_limit",
+        Some(serde_json::json!(1_000_000)),
+    )
+    .unwrap();
+    let own = (Limit::Tokens(1_000_000), LimitOrigin::User);
+    assert_eq!(limit(None, &path), own);
+    assert_eq!(
+        limit(Some(Limit::None), &path),
+        own,
+        "a repo cannot remove the user's limit"
+    );
+    assert_eq!(
+        limit(Some(Limit::Tokens(2_000_000)), &path),
+        own,
+        "nor raise it"
+    );
+    assert_eq!(
+        limit(Some(Limit::Tokens(500_000)), &path),
+        (Limit::Tokens(500_000), LimitOrigin::Repo)
+    );
+    assert_eq!(
+        read_user(&path),
+        Some(Choice::codex()),
+        "the choice beside it is kept"
+    );
     write_user_key(
         &path,
         "monthly_token_limit",
@@ -744,16 +926,20 @@ fn the_monthly_token_limit_is_a_number_none_or_the_default() {
     .unwrap();
     assert_eq!(limit(None, &path), (Limit::None, LimitOrigin::User));
     assert_eq!(
-        read_user(&path),
-        Some(Choice::codex()),
-        "the choice beside it is kept"
-    );
-    assert_eq!(
         limit(Some(Limit::Tokens(7)), &path),
         (Limit::Tokens(7), LimitOrigin::Repo)
     );
     write_user_key(&path, "monthly_token_limit", None).unwrap();
     assert_eq!(limit(None, &path), (default, LimitOrigin::Default));
+    // The line after `--limit` says what applies here, not only what was saved.
+    assert_eq!(
+        view::limit_saved_line(None, Limit::Tokens(1_000_000), LimitOrigin::Repo),
+        "Your monthly token limit: the default, 48M. Here this repo's lower limit applies: 1M (.unstale/config.json)."
+    );
+    assert_eq!(
+        view::limit_saved_line(Some(Limit::None), Limit::None, LimitOrigin::User),
+        "Your monthly token limit: none."
+    );
 
     // A limit that cannot be read counts as not set (the default applies); it is never an error, and never no limit.
     #[derive(serde::Deserialize)]
@@ -880,7 +1066,7 @@ fn quality_through_codex_is_not_claimed_until_measured() {
                 .any(|l| l.ends_with("not measured yet through Codex"))
                 && !block
                     .iter()
-                    .any(|l| l.contains('%') || l.contains("duplicate")),
+                    .any(|l| l.contains('%') || l.contains("listed twice")),
             "{block:?}"
         );
     }

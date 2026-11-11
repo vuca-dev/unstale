@@ -4,7 +4,7 @@ None is set up here. Tell the user and ask which they want. Never ask them to pa
   1  Set one up   one line to add, listed below
   2  Not now      free · advisories and deprecations only, ≈ 27% of what unstale finds with one
 
-If they choose 1, they add one of these lines to their shell profile or this repo's .env; then run `unstale setup`:
+For 1, they add one line to their shell profile or this repo's .env, then you run `unstale setup`:
 
   OPENAI_API_KEY=<key>      OpenAI
   AI_GATEWAY_API_KEY=<key>  Vercel AI Gateway
@@ -13,4 +13,4 @@ If they choose 1, they add one of these lines to their shell profile or this rep
 
 Or use their Codex plan: install Codex and run `codex login`.
 
-If they choose 2: unstale setup --inference none
+For 2: unstale setup --inference none

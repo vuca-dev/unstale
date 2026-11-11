@@ -329,7 +329,9 @@ fn an_unchanged_catalog_costs_one_request_and_a_changed_one_syncs_in_the_backgro
     );
     let line = session_start(&env, env.repo.path(), "new record");
     assert!(
-        line.starts_with("unstale: 1 new upstream records for 1 technology"),
+        line.starts_with(
+            "unstale: 1 new upstream change for next. Run `unstale status --wait 0` to see them."
+        ),
         "{line}"
     );
 }
@@ -341,44 +343,104 @@ fn shard_path(cat: &FixtureCatalog) -> String {
     idx["shards"][0]["path"].as_str().unwrap().to_string()
 }
 
+const SLOW_LINE: &str = "warning: catalog too slow at session start, so newer changes are missing. The next session retries.\n";
+
 #[test]
-fn with_the_switch_on_a_failed_sync_is_one_warning_when_it_starts_failing_and_status_keeps_showing_it()
- {
+fn a_failed_sync_is_one_warning_when_it_starts_failing_not_again_while_it_lasts() {
     let cat = FixtureCatalog::new();
     publish(&cat, 2);
     let srv = Server::start(cat.dir.path().to_path_buf());
-    let mut env = Env::new();
-    env.extra = vec![("UNSTALE_EDGE_INFERENCE".into(), "1".into())];
+    let env = Env::new();
     env.init(&srv.base);
     env.ok(&["session-sync"]);
     env.ok(&["status", "--wait", "0", "--no-animation"]);
     assert_eq!(session_start(&env, env.repo.path(), "all well"), "");
 
-    // The catalog stops answering: said once, in the user's words, with what it costs and what happens next.
+    // The catalog stops answering: said once, in the user's words, with what it costs and what happens next. No
+    // raw error, no path.
     srv.set(Mode::Hang);
-    let line = session_start(&env, env.repo.path(), "catalog hanging");
-    assert!(
-        line.starts_with("warning: the sync at session start on ")
-            && line.trim_end().ends_with(
-                " failed (the catalog did not answer in time), so newer changes are not here yet. The next session start tries again."
-            ),
-        "{line}"
+    assert_eq!(
+        session_start(&env, env.repo.path(), "catalog hanging"),
+        SLOW_LINE
     );
-    assert_eq!(line.trim_end().lines().count(), 1, "{line}");
-    // Still failing: the state has not changed, so nothing is said again.
+    assert_eq!(env.state()["warned"], json!("catalog-slow"));
+    // Still failing: nothing is said again.
     assert_eq!(session_start(&env, env.repo.path(), "still hanging"), "");
-    // `unstale status` always shows the current state.
+    // Nor days later: what is compared is the kind of trouble, not the wording or the age of the last attempt.
+    let mut state = env.state();
+    state["last_attempt"] = json!(state["last_attempt"].as_u64().unwrap() - 3 * 86_400);
+    std::fs::write(
+        env.repo.path().join(".unstale/state/session-sync.json"),
+        state.to_string(),
+    )
+    .unwrap();
+    assert_eq!(
+        session_start(&env, env.repo.path(), "hanging, days later"),
+        ""
+    );
+
+    // The catalog answers again and nothing changed there: the failure is over, and `unstale status` shows none.
     srv.set(Mode::Serve);
-    let status = env.ok(&["status", "--wait", "0", "--no-animation"]);
+    assert_eq!(session_start(&env, env.repo.path(), "answering again"), "");
+    let s = env.state();
     assert!(
-        status.contains("warning: the sync at session start on ")
-            && !status.contains("Sync at agent session start"),
-        "{status}"
+        s.get("failure").is_none() && s.get("warned").is_none(),
+        "{s}"
+    );
+    let status = env.ok(&["status", "--wait", "0", "--no-animation"]);
+    assert!(!status.contains("the sync at session start"), "{status}");
+    // Failing again later is new, so it is said again.
+    srv.set(Mode::Hang);
+    assert_eq!(
+        session_start(&env, env.repo.path(), "hanging again"),
+        SLOW_LINE
     );
 }
 
 #[test]
-fn session_start_is_quick_silent_and_exits_0_whatever_fails() {
+fn a_warning_the_hook_did_not_print_is_still_due() {
+    let cat = FixtureCatalog::new();
+    publish(&cat, 2);
+    let srv = Server::start(cat.dir.path().to_path_buf());
+    let env = Env::new();
+    env.init(&srv.base);
+    env.ok(&["session-sync"]);
+    env.ok(&["status", "--wait", "0", "--no-animation"]);
+    // A failure already on record that session start has not said yet (as when its deadline cut the line): the
+    // record of what was said is written only after printing, so the next session start says it.
+    let mut state = env.state();
+    state["failure"] =
+        json!("next could not be synced: reading /Users/someone/.cache/unstale/v1/x: denied");
+    state["last_attempt"] = json!(1);
+    std::fs::write(
+        env.repo.path().join(".unstale/state/session-sync.json"),
+        state.to_string(),
+    )
+    .unwrap();
+    assert!(env.state().get("warned").is_none());
+    srv.set(Mode::Hang);
+    // The line cannot be delivered (nobody reads the hook's output any more): it is not recorded as said.
+    let mut child = env
+        .command(env!("CARGO_BIN_EXE_unstale"))
+        .arg("notify")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    drop(child.stdout.take());
+    assert_eq!(child.wait().unwrap().code(), Some(0));
+    assert!(env.state().get("warned").is_none(), "{}", env.state());
+    // An unusual failure: summarised, with no raw error and no path; `unstale status` has the detail.
+    let line = session_start(&env, env.repo.path(), "a failure not yet said");
+    assert!(line.starts_with("warning: "), "{line}");
+    assert!(
+        !line.contains('/') && !line.contains("denied") && line.trim_end().chars().count() <= 100,
+        "{line}"
+    );
+}
+
+#[test]
+fn session_start_is_quick_at_most_one_line_and_exits_0_whatever_fails() {
     let cat = FixtureCatalog::new();
     publish(&cat, 2);
     let srv = Server::start(cat.dir.path().to_path_buf());
@@ -414,7 +476,10 @@ fn session_start_is_quick_silent_and_exits_0_whatever_fails() {
 
     // The catalog hanging: the request is bounded and nothing is waited for.
     srv.set(Mode::Hang);
-    assert_eq!(session_start(&env, env.repo.path(), "catalog hanging"), "");
+    assert_eq!(
+        session_start(&env, env.repo.path(), "catalog hanging"),
+        SLOW_LINE
+    );
     let s = env.state();
     assert_eq!(
         s["failure"],
@@ -426,9 +491,14 @@ fn session_start_is_quick_silent_and_exits_0_whatever_fails() {
     let status = env.ok(&["status", "--wait", "0", "--no-animation"]);
     let line = status
         .lines()
-        .find(|l| l.starts_with("Sync at agent session start: "))
+        .find(|l| l.starts_with("warning: the sync at session start failed "))
         .unwrap_or_else(|| panic!("{status}"));
-    assert!(line.ends_with(" did not finish: the catalog did not answer in time. The next session start tries again"), "{line}");
+    assert!(
+        line.ends_with(
+            " ago: the catalog did not answer in time. The next session start tries again."
+        ),
+        "{line}"
+    );
 
     // The catalog and the coverage service both hanging, with shared coverage still growing (so the hook asks it):
     // the worst case, bounded by the hook's deadline. The service accepts connections and never answers.
@@ -460,8 +530,13 @@ fn session_start_is_quick_silent_and_exits_0_whatever_fails() {
 
     // The catalog unreachable.
     env.config(|c| c["catalog"] = json!("http://127.0.0.1:9"));
+    // Said once, as its own kind of trouble; still one line, still exit 0.
     assert_eq!(
         session_start(&env, env.repo.path(), "catalog unreachable"),
+        "warning: catalog not reached at session start, so newer changes are missing. The next session retries.\n"
+    );
+    assert_eq!(
+        session_start(&env, env.repo.path(), "catalog still unreachable"),
         ""
     );
     env.config(|c| c["catalog"] = json!(srv.base));
@@ -1116,6 +1191,30 @@ fn installers_never_write_a_tracked_read_only_or_inline_configured_file() {
             .contains("Codex session start not installed: .codex/config.toml defines hooks inline"),
         "{status}"
     );
+
+    // A hooks.json the installer cannot read as the JSON object Codex expects (comments, a syntax error, another
+    // shape): left as it is, and status gives the reason.
+    for mine in [
+        "{\n  // my hooks\n  \"hooks\": {}\n}\n",
+        "{ \"hooks\": ",
+        "[]\n",
+        "{\"hooks\": []}\n",
+    ] {
+        let env = Env::new();
+        let repo = env.repo.path();
+        std::fs::create_dir_all(repo.join(".codex")).unwrap();
+        std::fs::write(repo.join(".codex/hooks.json"), mine).unwrap();
+        env.init("http://127.0.0.1:9");
+        assert_eq!(
+            std::fs::read_to_string(repo.join(".codex/hooks.json")).unwrap(),
+            mine
+        );
+        let status = env.ok(&["status", "--wait", "0", "--no-animation"]);
+        assert!(
+            status.contains("Codex session start not installed: .codex/hooks.json is not plain JSON with a \"hooks\" object (comments, a syntax error or another shape)"),
+            "{mine:?}:\n{status}"
+        );
+    }
 }
 
 #[test]
@@ -1248,7 +1347,7 @@ fn the_last_failure_shows_once_in_status_with_its_age() {
     session_start(&env, env.repo.path(), "catalog hanging");
     srv.set(Mode::Serve);
     let status = env.ok(&["status", "--wait", "0", "--no-animation"]);
-    assert!(status.contains("Sync at agent session start: the last attempt (0 min ago) did not finish: the catalog did not answer in time."), "{status}");
+    assert!(status.contains("warning: the sync at session start failed 0 min ago: the catalog did not answer in time. The next session start tries again."), "{status}");
     let again = env.ok(&["status", "--wait", "0", "--no-animation"]);
-    assert!(!again.contains("Sync at agent session start"), "{again}");
+    assert!(!again.contains("the sync at session start"), "{again}");
 }
