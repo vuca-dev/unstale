@@ -279,3 +279,102 @@ fn with_the_switch_off_setup_is_inert() {
     let skill = std::fs::read_to_string(w.path("repo/.unstale/skills/review/SKILL.md")).unwrap();
     assert!(!skill.contains("unstale setup"), "{skill}");
 }
+
+impl World {
+    /// Runs at a terminal (a pseudo-terminal from `script`), typing `input`.
+    fn at_terminal(&self, args: &[&str], input: &str) -> String {
+        use std::io::Write;
+        let bin = env!("CARGO_BIN_EXE_unstale");
+        let c = self.command(args, true);
+        let mut s = if cfg!(target_os = "macos") {
+            let mut s = Command::new("script");
+            s.arg("-q").arg("/dev/null").arg(bin).args(args);
+            s
+        } else {
+            let mut s = Command::new("script");
+            s.args(["-qec", &format!("{bin} {}", args.join(" ")), "/dev/null"]);
+            s
+        };
+        s.current_dir(self.path("repo"))
+            .env_clear()
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        for (k, v) in c.get_envs() {
+            if let Some(v) = v {
+                s.env(k, v);
+            }
+        }
+        let mut child = s.spawn().unwrap();
+        // Kept open until the run ends: closing it would reach the program as end of input.
+        let mut stdin = child.stdin.take().unwrap();
+        std::thread::sleep(Duration::from_millis(300));
+        let _ = stdin.write_all(input.as_bytes());
+        let out = child.wait_with_output().unwrap();
+        drop(stdin);
+        String::from_utf8_lossy(&out.stdout).replace('\r', "")
+    }
+}
+
+#[test]
+fn init_asks_once_at_a_terminal_and_setup_reopens_the_picker() {
+    let w = World::new(Some(true));
+    std::fs::write(w.path("repo/.env"), "OPENAI_API_KEY=x\n").unwrap();
+    let init = [
+        "init",
+        "--service",
+        "http://127.0.0.1:9",
+        "--mode",
+        "local",
+        "--yes",
+        "--wait",
+        "0",
+        "--no-animation",
+    ];
+    let first = w.at_terminal(&init, "\n");
+    assert_eq!(
+        first.matches("Choose 1–").count(),
+        1,
+        "one question:\n{first}"
+    );
+    assert!(
+        first.contains("  1) Jev labelling API (JEV_API_KEY) + OpenAI (OPENAI_API_KEY in .env)"),
+        "{first}"
+    );
+    assert!(first.contains("Model provider: Jev labelling API + OpenAI (JEV_API_KEY, OPENAI_API_KEY) · saved in .unstale/config.json"), "{first}");
+    assert_eq!(
+        w.config()["inference"]["labels"]["key_env"],
+        "JEV_API_KEY",
+        "Enter accepted the first option"
+    );
+
+    // Never asked again unprompted: a second init at a terminal keeps the choice and asks nothing.
+    let again = w.at_terminal(&init, "4\n");
+    assert!(!again.contains("Choose"), "{again}");
+    assert_eq!(w.config()["inference"]["provider"], "openai");
+
+    // `unstale setup` reopens it.
+    let changed = w.at_terminal(&["setup"], "4\n");
+    assert_eq!(changed.matches("Choose 1–").count(), 1, "{changed}");
+    assert!(
+        changed.contains("Model provider: Codex plan · saved in .unstale/config.json"),
+        "{changed}"
+    );
+    assert_eq!(
+        w.config()["inference"],
+        serde_json::json!({"provider": "codex"})
+    );
+
+    // Without a terminal it prints the options with their flags instead, and a flag changes the choice.
+    let listed = w.ok(&["setup"], true);
+    assert!(
+        listed.contains("[--inference jev+env:OPENAI_API_KEY]")
+            && listed.contains("`unstale setup --inference <value>`"),
+        "{listed}"
+    );
+    w.ok(&["setup", "--inference", "none"], true);
+    assert_eq!(
+        w.config()["inference"],
+        serde_json::json!({"provider": "none"})
+    );
+}
