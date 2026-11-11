@@ -183,9 +183,17 @@ fn failure(model: &str, text: &str) -> Deferred {
     let t = text.to_ascii_lowercase();
     if t.contains("model") && t.contains("not supported") {
         Deferred::ModelNotOnPlan(model.into())
-    } else if t.contains("401") || t.contains("unauthorized") || t.contains("not logged in") {
+    } else if t.contains("status 401")
+        || t.contains("401 unauthorized")
+        || t.contains("not logged in")
+    {
+        // "Reconnecting… n/5 (unexpected status 401 Unauthorized: …)" (eval/edge-cli).
         Deferred::CodexLoggedOut
-    } else if t.contains("429") || t.contains("rate limit") || t.contains("usage limit") {
+    } else if t.contains("status 429")
+        || t.contains("429 too many requests")
+        || t.contains("rate limit")
+        || t.contains("usage limit")
+    {
         Deferred::RateLimited
     } else {
         Deferred::Unavailable
@@ -258,7 +266,7 @@ fn attempt(inf: &Inference, p: &Prompt) -> Result<Answer, Deferred> {
     // An answer that came without usage is still counted, from the bytes each way.
     let usage = usage.or_else(|| text.as_ref().map(|t| Usage::estimate(&prompt_text, t)));
     if let Some(u) = &usage {
-        inf.ledger.record(&inf.provider.name, &model, u);
+        inf.record(&model, u);
     }
     match text {
         Some(t) if ok => {
@@ -279,6 +287,10 @@ pub(super) fn exec(inf: &Inference, p: &Prompt) -> Result<Answer, Deferred> {
     ready(inf)?;
     let mut n = 0;
     loop {
+        // A call whose usage could not be recorded stops every later one, retries included.
+        if inf.ledger_failed.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err(Deferred::Storage);
+        }
         match attempt(inf, p) {
             Err(d) if d.transient() && n < inf.limits.retries => {
                 std::thread::sleep(inf.limits.backoff * 2u32.pow(n));

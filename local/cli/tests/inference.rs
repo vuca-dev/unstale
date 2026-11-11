@@ -50,7 +50,13 @@ fn mock(status: u16, body: &str, delay: Duration) -> (String, Arc<Mutex<Vec<Stri
                 std::thread::sleep(delay);
                 let _ = write!(
                     stream,
-                    "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    "HTTP/1.1 {status} X\r\n{}Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    // A 3xx mock's body is the Location it points to.
+                    if (300..400).contains(&status) {
+                        format!("Location: {body}\r\n")
+                    } else {
+                        String::new()
+                    },
                     body.len()
                 );
             });
@@ -83,6 +89,7 @@ fn infer(cache: &Path, bin: Option<&Path>, args: &[&str]) -> Run {
         .args(["--timeout-secs", "1", "--backoff-ms", "0"])
         .args(args)
         .env("UNSTALE_CACHE_DIR", cache)
+        .env("UNSTALE_EDGE_INFERENCE", "1")
         .env("CANARY_KEY", CANARY)
         .env("OPENAI_API_KEY", CANARY)
         .env("ANTHROPIC_API_KEY", CANARY)
@@ -376,4 +383,119 @@ fn a_second_worker_exits_quietly_without_calling_the_provider() {
     drop(held);
     let r = infer(cache.path(), None, &strs(&custom(&url)));
     assert_eq!((r.code, r.stdout.trim()), (0, r#"{"ok":true}"#));
+}
+
+#[test]
+fn a_redirect_to_another_host_receives_nothing_and_the_call_defers() {
+    for provider in ["custom", "anthropic"] {
+        let (elsewhere, reached) = mock(
+            200,
+            if provider == "custom" {
+                OPENAI_OK
+            } else {
+                ANTHROPIC_OK
+            },
+            Duration::ZERO,
+        );
+        let target = elsewhere.replace("127.0.0.1", "localhost");
+        let (url, first) = mock(302, &format!("{target}/v1/messages"), Duration::ZERO);
+        let cache = tempfile::tempdir().unwrap();
+        let args: Vec<String> = if provider == "custom" {
+            custom(&url)
+        } else {
+            ["--provider", "anthropic", "--base-url", &url, "Say ok."]
+                .iter()
+                .map(|s| s.to_string())
+                .collect()
+        };
+        let r = infer(cache.path(), None, &strs(&args));
+        assert_eq!(
+            (r.code, r.stdout.trim()),
+            (
+                0,
+                "deferred: the provider address redirects elsewhere; check it"
+            ),
+            "{provider}: {}",
+            r.stderr
+        );
+        assert_eq!(first.lock().unwrap().len(), 1);
+        assert_eq!(
+            reached.lock().unwrap().len(),
+            0,
+            "{provider}: the redirect target received a request (and the key)"
+        );
+    }
+}
+
+#[test]
+fn with_model_steps_off_infer_makes_no_call() {
+    let (url, seen) = mock(200, OPENAI_OK, Duration::ZERO);
+    let cache = tempfile::tempdir().unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_unstale"))
+        .arg("infer")
+        .args(strs(&custom(&url)))
+        .env("UNSTALE_CACHE_DIR", cache.path())
+        .env("CANARY_KEY", CANARY)
+        .env_remove("UNSTALE_EDGE_INFERENCE")
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&out.stdout).trim(),
+        "deferred: model steps on this machine are turned off"
+    );
+    assert_eq!(seen.lock().unwrap().len(), 0);
+}
+
+#[test]
+fn a_corrupt_or_unwritable_ledger_defers_with_one_line() {
+    let (url, seen) = mock(200, OPENAI_OK, Duration::ZERO);
+    let cache = tempfile::tempdir().unwrap();
+    let dir = cache.path().join("inference");
+    std::fs::create_dir_all(&dir).unwrap();
+    let month = {
+        // The client's month: run once to create this month's file, then corrupt it.
+        let r = infer(cache.path(), None, &strs(&custom(&url)));
+        assert_eq!(r.code, 0);
+        std::fs::read_dir(&dir)
+            .unwrap()
+            .flatten()
+            .map(|e| e.path())
+            .find(|p| p.to_string_lossy().contains("usage-"))
+            .unwrap()
+    };
+    let text = std::fs::read_to_string(&month).unwrap();
+    std::fs::write(&month, text.replace("\"input\":10", "\"input\":1O")).unwrap();
+    let r = infer(cache.path(), None, &strs(&custom(&url)));
+    assert_eq!(
+        (r.code, r.stdout.trim(), r.stderr.as_str()),
+        (
+            0,
+            "deferred: unstale's usage record cannot be read or written",
+            ""
+        )
+    );
+    assert_eq!(seen.lock().unwrap().len(), 1, "no call on a corrupt ledger");
+}
+
+#[test]
+fn both_spellings_of_the_switch_turn_model_steps_on() {
+    for (value, calls) in [("1", 1), ("true", 1), ("0", 0), ("yes", 0)] {
+        let (url, seen) = mock(200, OPENAI_OK, Duration::ZERO);
+        let cache = tempfile::tempdir().unwrap();
+        let out = Command::new(env!("CARGO_BIN_EXE_unstale"))
+            .arg("infer")
+            .args(strs(&custom(&url)))
+            .env("UNSTALE_CACHE_DIR", cache.path())
+            .env("CANARY_KEY", CANARY)
+            .env("UNSTALE_EDGE_INFERENCE", value)
+            .output()
+            .unwrap();
+        assert_eq!(out.status.code(), Some(0));
+        assert_eq!(
+            seen.lock().unwrap().len(),
+            calls,
+            "UNSTALE_EDGE_INFERENCE={value}"
+        );
+    }
 }

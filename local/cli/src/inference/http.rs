@@ -23,10 +23,16 @@ fn post(
     headers: &[(&str, &str)],
     body: &Value,
 ) -> Result<Value, Deferred> {
+    if !allowed_url(url) {
+        return Err(Deferred::InsecureUrl);
+    }
     let key = inf.key()?;
     let bytes = serde_json::to_vec(body).map_err(|_| Deferred::Rejected)?;
     let agent: ureq::Agent = ureq::Agent::config_builder()
         .http_status_as_error(false)
+        // Never follow a redirect: the key would go to whatever address it names.
+        .max_redirects(0)
+        .max_redirects_will_error(false)
         .timeout_global(Some(inf.limits.timeout))
         .build()
         .into();
@@ -59,6 +65,7 @@ fn post(
                         // The request was answered (and may have been billed): not sent again.
                         .map_err(|_| Deferred::Malformed)
                         .and_then(|b| serde_json::from_slice(&b).map_err(|_| Deferred::Malformed)),
+                    300..=399 => Err(Deferred::Redirected),
                     401 | 403 => Err(Deferred::Auth),
                     402 => Err(Deferred::Billing),
                     404 => Err(Deferred::ModelNotOnPlan(inf.provider.model.clone())),
@@ -78,6 +85,30 @@ fn post(
             other => return other,
         }
     }
+}
+
+/// https, or plain http to this machine (a local proxy or a test server).
+pub(super) fn allowed_url(url: &str) -> bool {
+    if url.starts_with("https://") {
+        return true;
+    }
+    let Some(rest) = url.strip_prefix("http://") else {
+        return false;
+    };
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
+    // Userinfo (`user@`) is not the host: `http://127.0.0.1@elsewhere/` goes to `elsewhere`.
+    if authority.contains('@') {
+        return false;
+    }
+    let host = match authority.strip_prefix('[') {
+        Some(v6) => v6.split(']').next().unwrap_or(""),
+        None => authority.split(':').next().unwrap_or(""),
+    };
+    // A loopback IP address, or `localhost`; never a name that merely looks like one (`127.example.com`).
+    host.eq_ignore_ascii_case("localhost")
+        || host
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|ip| ip.is_loopback())
 }
 
 fn unix_now() -> u64 {
@@ -143,7 +174,7 @@ pub(super) fn openai(inf: &Inference, p: &Prompt) -> Result<Answer, Deferred> {
     let finish = choice.get("finish_reason").and_then(Value::as_str);
     let text = choice.pointer("/message/content").and_then(Value::as_str);
     // The tokens were spent whether or not the answer is usable.
-    inf.ledger.record(&c.name, &model, &usage);
+    inf.record(&model, &usage);
     if finish == Some("length") {
         return Err(Deferred::TooLong);
     }
@@ -207,7 +238,7 @@ pub(super) fn anthropic(inf: &Inference, p: &Prompt) -> Result<Answer, Deferred>
         .and_then(Value::as_str)
         .unwrap_or(&c.model)
         .to_string();
-    inf.ledger.record(&c.name, &model, &usage);
+    inf.record(&model, &usage);
     match r.get("stop_reason").and_then(Value::as_str) {
         Some("max_tokens") => return Err(Deferred::TooLong),
         Some("refusal") => return Err(Deferred::Malformed),
@@ -306,7 +337,7 @@ pub(super) fn jev(
         .and_then(Value::as_str)
         .unwrap_or(&c.model)
         .to_string();
-    inf.ledger.record(&c.name, &model, &usage);
+    inf.record(&model, &usage);
     let mut answers = BTreeMap::new();
     for (id, q) in qs {
         let a = r.get("answers").and_then(|a| a.get(id));

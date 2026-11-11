@@ -285,6 +285,9 @@ pub struct TechSync {
     /// Change-event shards fetched and reused from the cache (both 0 with the edge-inference switch off).
     pub events_downloaded: usize,
     pub events_reused: usize,
+    /// Why this technology's change events were refused (missing, failing verification, or not fetched in time). The
+    /// records synced anyway; the failure is kept for `unstale status` until a later sync verifies the events.
+    pub events_failed: Option<String>,
 }
 
 #[derive(Debug, Default)]
@@ -594,7 +597,9 @@ fn sync_tech(
         return Ok(None);
     }
     // Change events, only for a technology in the stack, each verified against the index like a record shard.
-    let (mut events_downloaded, mut events_reused) = (0, 0);
+    // A shard that is missing or fails verification is refused (never cached, so never read as a basis for work), and
+    // the technology's records sync regardless: events never cost a user their records.
+    let (mut events_downloaded, mut events_reused, mut events_failed) = (0, 0, None);
     if events {
         for s in &index.events {
             let dest = event_path(cache_dir, tech, s);
@@ -602,19 +607,30 @@ fn sync_tech(
                 events_reused += 1;
                 continue;
             }
-            let rel = published(&s.path)?;
-            if stop() {
-                bail!("catalog sync stopped at its time limit before fetching change events {}", s.path);
+            let fetched = (|| -> Result<Vec<u8>> {
+                let rel = published(&s.path)?;
+                if stop() {
+                    bail!("change events {} not fetched before the time limit", s.path);
+                }
+                let b = match src.get(&rel, None).with_context(|| format!("change events {}", s.path))? {
+                    Got::Body(b, _) => b,
+                    _ => bail!("change events {} missing ({} not found)", s.path, src.describe(&rel)),
+                };
+                verify_shard(s, &b).with_context(|| format!("change events {}", s.path))?;
+                cache::parse_events(&b).with_context(|| format!("change events {}", s.path))?;
+                Ok(b)
+            })();
+            match fetched {
+                Ok(b) => {
+                    fresh.push((dest, b));
+                    events_downloaded += 1;
+                }
+                Err(e) => {
+                    events_failed.get_or_insert_with(|| format!("{e:#}"));
+                }
             }
-            let b = match src.get(&rel, None).with_context(|| format!("change events {}", s.path))? {
-                Got::Body(b, _) => b,
-                _ => bail!("change events {} missing ({} not found)", s.path, src.describe(&rel)),
-            };
-            verify_shard(s, &b)?;
-            cache::parse_events(&b).with_context(|| format!("change events {}", s.path))?;
-            fresh.push((dest, b));
-            events_downloaded += 1;
         }
+        cache::set_events_failed(cache_dir, tech, events_failed.as_deref());
     }
     for (dest, b) in &fresh {
         write_atomic(dest, b)?;
@@ -638,7 +654,7 @@ fn sync_tech(
         }
     }
     let downloaded = fresh.len() - events_downloaded;
-    Ok(Some(TechSync { technology: tech.into(), records, checked: index.checked.clone(), downloaded, reused, unchanged, events_downloaded, events_reused }))
+    Ok(Some(TechSync { technology: tech.into(), records, checked: index.checked.clone(), downloaded, reused, unchanged, events_downloaded, events_reused, events_failed }))
 }
 
 #[cfg(test)]
@@ -723,16 +739,31 @@ mod tests {
         assert_eq!((rep.synced[0].events_downloaded, rep.synced[0].events_reused), (1, 0));
         assert_eq!(cache::load_events(cache.path(), "next").unwrap().unwrap().events.len(), 2);
         assert_eq!(std::fs::read_dir(cache.path().join("v1/events/next")).unwrap().count(), 1);
-        // A corrupted event shard fails the technology and keeps the cached index and events.
-        let before = std::fs::read(index_path(cache.path(), "next")).unwrap();
-        let paths = cat.tech_events("next", 0, &[("16", vec![rec("next:a", "pkg:npm/next", "16.0.1")])], &[("16", vec![event("next", "16.0.3", "- y")])]);
+        // A tampered event shard is refused (never cached or trusted), and the technology's records sync anyway.
+        let paths = cat.tech_events("next", 0, &[("16", vec![rec("next:a", "pkg:npm/next", "16.0.1"), rec("next:b", "pkg:npm/next", "16.0.3")])], &[("16", vec![event("next", "16.0.3", "- y")])]);
         let mut bytes = std::fs::read(&paths[1]).unwrap();
         bytes[10] ^= 0xff;
-        std::fs::write(&paths[1], bytes).unwrap();
+        std::fs::write(&paths[1], &bytes).unwrap();
         let rep = sync_with_events(&src, cache.path(), &both, &BTreeSet::new(), &stack, None, true, &|| false, |_| {}).unwrap();
-        assert!(rep.failed[0].1.contains("sha256"), "{:?}", rep.failed);
-        assert_eq!(std::fs::read(index_path(cache.path(), "next")).unwrap(), before);
-        assert_eq!(cache::load_events(cache.path(), "next").unwrap().unwrap().events.len(), 2);
+        assert!(rep.failed.is_empty(), "{:?}", rep.failed);
+        assert_eq!(rep.synced[0].records, 2, "the records synced");
+        assert!(rep.synced[0].events_failed.as_deref().is_some_and(|w| w.contains("sha256")), "{:?}", rep.synced[0].events_failed);
+        let ev_dir = cache.path().join("v1/events/next");
+        let cached: Vec<Vec<u8>> = std::fs::read_dir(&ev_dir).unwrap().flatten().filter(|e| !e.file_name().to_string_lossy().starts_with('.')).map(|e| std::fs::read(e.path()).unwrap()).collect();
+        assert!(cached.iter().all(|c| *c != bytes), "the tampered shard was cached");
+        assert!(cache::load_events(cache.path(), "next").is_err(), "events that did not verify are no basis for work");
+        assert_eq!(cache::events_failed(cache.path()).len(), 1, "remembered for unstale status");
+        // Missing: the same.
+        std::fs::remove_file(&paths[1]).unwrap();
+        let rep = sync_with_events(&src, cache.path(), &both, &BTreeSet::new(), &stack, None, true, &|| false, |_| {}).unwrap();
+        assert!(rep.failed.is_empty() && rep.synced[0].records == 2, "{:?}", rep.failed);
+        assert!(rep.synced[0].events_failed.as_deref().is_some_and(|w| w.contains("missing")));
+        // Once the events verify, the failure is cleared.
+        cat.tech_events("next", 0, &[("16", vec![rec("next:a", "pkg:npm/next", "16.0.1"), rec("next:b", "pkg:npm/next", "16.0.3")])], &[("16", vec![event("next", "16.0.3", "- y")])]);
+        let rep = sync_with_events(&src, cache.path(), &both, &BTreeSet::new(), &stack, None, true, &|| false, |_| {}).unwrap();
+        assert_eq!((rep.synced[0].events_failed.as_deref(), rep.synced[0].events_downloaded), (None, 1));
+        assert!(cache::events_failed(cache.path()).is_empty());
+        assert_eq!(cache::load_events(cache.path(), "next").unwrap().unwrap().events.len(), 1);
     }
 
     #[test]
