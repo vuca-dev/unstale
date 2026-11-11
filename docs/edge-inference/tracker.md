@@ -13,7 +13,7 @@
 - **Base health:** PR checks are `rust`, `central`, `gateway`; re-query before every merge.
 - **Open PRs:** #222 (WS1, fixing 2 review findings), #224 (WS5, in review)
 - **Live worktrees (sprint):** `/Users/jason/unstale-edge-sprint` (tracker)
-- **Live subagents:** ws1-impl, ws5-impl, ws10-impl (Opus 5.5); ws3-fix-verifier (Fable 5.2). Background watch for the first ingest created after 2026-11-11T00:48Z.
+- **Live subagents:** ws1-impl, ws5-impl, ws10-impl (Opus 5.5). Background watch for the first ingest created after 2026-11-11T00:48Z.
 - **Merged + verified:** WS0 → #213 `673c191`
 - **Next:** WS4 when WS1 merges (critical path); WS9 once a live ingest has published events; WS6a after WS5
 - **Sprint API spend so far:** $0 of $10
@@ -76,7 +76,7 @@ OpenRouter parity, repeat eval runs.
 
 ## §3 Per-chunk log (dispatch order)
 
-### WS3: Client inference core: MERGED, VERIFIED WITH GAPS, fix PR in progress
+### WS3: Client inference core: MERGED, VERIFIED (two residual items sent to WS10)
 - PR #220 → `7be1f24`. Tests 472/472 at merge; 13 review threads, 0 unresolved (1 dismissed with comment). `main` `ci` green.
 - Interface: `local/cli/src/inference/` (`Inference::new(ProviderConfig::…)`, `complete`, `complete_batch`, `classify`,
   `Deferred::line()`, `lock::try_acquire_default()`, `ledger`). The one switch is `UNSTALE_EDGE_INFERENCE=1`
@@ -95,7 +95,12 @@ OpenRouter parity, repeat eval runs.
   No redirects on any adapter; https only except loopback; budget fails closed; batch over 8 defers; `infer`
   respects the switch; one switch reader `util::edge_inference()` (`1` or `true`); a bad event shard is refused but
   records still sync (`TechSync.events_failed`). Signature changes: `Deferred` +3 variants, `Ledger::record` returns
-  `io::Result`. Verifier dispatched.
+  `io::Result`.
+- **WS3-FIX VERIFIER: PASS WITH GAPS**, all 8 claims held (redirects and https bypass attempts reproduced through
+  the binary). Residual: (1) unchecked token addition: a provider reporting u64::MAX tokens panics a debug build
+  and wraps the budget to 0 in release; (2) an unwritable events directory still fails a technology's record sync.
+  Both sent to ws10-impl as separate commits. Noted, no action: any https base URL is accepted, fine while the user
+  chooses it.
 
 ### WS2: Change events in the catalog: MERGED, VERIFIED WITH GAPS (live run unobserved)
 - PR #221 → `f37260a`. Central 571/571, local 460 passed, gateway 73/73; `main` `ci` green. 1 review finding dismissed
