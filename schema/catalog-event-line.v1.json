@@ -90,7 +90,7 @@
       "type": "string"
     },
     "extracted": {
-      "description": "Central ran its model steps on this event, on exactly these chunks: its records, if any, are in the record\nshards (a release whose changes all matched earlier records, or that holds none, adds no release to any record).\nA client runs its own steps only for an event without it. Absent before 11 November 2026, and on every event\ncentral has not processed (after the cutover central makes no records, so no new event carries it).",
+      "description": "Central ran its model steps on this event, on exactly these chunks: its records, if any, are in the record\nshards (a release whose changes all matched earlier records, or that holds none, adds no release to any record).\nA client runs its own steps only for an event without it. Absent before 11 November 2026, and on every event\ncentral has not processed (after the cutover central makes no records, so no new event carries it). Central may\nlater retract or drop records it made from a marked event; a client still skips the event.",
       "type": "boolean"
     },
     "freshness": {
