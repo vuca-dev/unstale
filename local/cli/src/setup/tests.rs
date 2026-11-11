@@ -114,3 +114,229 @@ fn several_compatible_keys_offer_the_cheapest_route() {
     );
     assert_eq!(d.compatible(), Some(Route::OpenAi));
 }
+
+// ---------------------------------------------------------------------------------------------------- picker goldens
+
+fn machine(keys: &[(&str, Seen)], codex: CodexState) -> Detected {
+    Detected {
+        keys: keys.iter().map(|(k, s)| (k.to_string(), *s)).collect(),
+        codex,
+    }
+}
+
+fn everything() -> Detected {
+    machine(
+        &[
+            ("AI_GATEWAY_API_KEY", Seen::Shell),
+            ("OPENAI_API_KEY", Seen::Shell),
+            ("OPENROUTER_API_KEY", Seen::Shell),
+            ("ANTHROPIC_API_KEY", Seen::Shell),
+            ("JEV_API_KEY", Seen::Shell),
+        ],
+        CodexState::Ready,
+    )
+}
+
+/// The scenarios a later harness replays: name → (machine, technologies, no-key mode, reader).
+pub(super) fn scenarios() -> Vec<(&'static str, Detected, usize, bool, Reader)> {
+    use Seen::*;
+    let logged_out = CodexState::NotReady("Codex is not logged in; run `codex login`".into());
+    vec![
+        ("everything", everything(), 38, false, Reader::Person),
+        ("everything-agent", everything(), 38, false, Reader::Agent),
+        (
+            "codex-only",
+            machine(&[], CodexState::Ready),
+            38,
+            false,
+            Reader::Person,
+        ),
+        (
+            "anthropic-only",
+            machine(&[("ANTHROPIC_API_KEY", Shell)], CodexState::Absent),
+            38,
+            false,
+            Reader::Person,
+        ),
+        (
+            "nothing",
+            machine(&[], CodexState::Absent),
+            38,
+            false,
+            Reader::Person,
+        ),
+        (
+            "nothing-codex-logged-out",
+            machine(&[], logged_out),
+            38,
+            false,
+            Reader::Person,
+        ),
+        (
+            "jev-only",
+            machine(&[("JEV_API_KEY", Shell)], CodexState::Absent),
+            38,
+            false,
+            Reader::Person,
+        ),
+        (
+            "openai-only",
+            machine(&[("OPENAI_API_KEY", Shell)], CodexState::Absent),
+            38,
+            false,
+            Reader::Person,
+        ),
+        (
+            "jev-and-openai-in-dotenv",
+            machine(
+                &[("JEV_API_KEY", DotEnv), ("OPENAI_API_KEY", DotEnv)],
+                CodexState::Absent,
+            ),
+            12,
+            false,
+            Reader::Person,
+        ),
+        (
+            "openrouter-and-codex",
+            machine(&[("OPENROUTER_API_KEY", Shell)], CodexState::Ready),
+            1,
+            false,
+            Reader::Person,
+        ),
+        (
+            "everything-no-repo-yet",
+            everything(),
+            0,
+            false,
+            Reader::Person,
+        ),
+        (
+            "nothing-no-key-mode",
+            machine(&[], CodexState::Absent),
+            38,
+            true,
+            Reader::Person,
+        ),
+    ]
+}
+
+fn golden(name: &str, text: &str) {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("src/setup/golden")
+        .join(format!("{name}.txt"));
+    if std::env::var_os("UPDATE_GOLDEN").is_some() {
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, text).unwrap();
+        return;
+    }
+    let want = std::fs::read_to_string(&path)
+        .unwrap_or_else(|_| panic!("{} is missing; UPDATE_GOLDEN=1 writes it", path.display()));
+    assert_eq!(
+        text,
+        want,
+        "{name}: the rendering changed; review it, then UPDATE_GOLDEN=1 rewrites {}",
+        path.display()
+    );
+}
+
+#[test]
+fn picker_renderings_match_their_goldens() {
+    for (name, d, techs, no_key, reader) in scenarios() {
+        let mut text = picker_lines(&d, techs, no_key, reader).join("\n");
+        let n = options(&d, no_key).len();
+        if reader == Reader::Person && n > 0 {
+            text += &format!("\n{}", prompt(n));
+        }
+        golden(name, &format!("{text}\n"));
+    }
+}
+
+#[test]
+fn options_follow_the_fixed_order_and_list_only_what_this_machine_can_use() {
+    let all = options(&everything(), false);
+    assert_eq!(
+        all,
+        [
+            Pick::JevKey(Route::Vercel),
+            Pick::JevCodex,
+            Pick::Key(Route::Vercel),
+            Pick::Codex,
+            Pick::Key(Route::Anthropic),
+            Pick::None
+        ]
+    );
+    assert_eq!(
+        options(&machine(&[], CodexState::Ready), false),
+        [Pick::Codex, Pick::None]
+    );
+    assert!(
+        options(
+            &machine(&[("JEV_API_KEY", Seen::Shell)], CodexState::Absent),
+            false
+        )
+        .is_empty(),
+        "Jev alone writes no records"
+    );
+    assert!(options(&machine(&[], CodexState::NotReady("x".into())), false).is_empty());
+    assert_eq!(
+        options(&machine(&[], CodexState::Absent), true),
+        [Pick::None],
+        "no-key mode is the one option"
+    );
+}
+
+#[test]
+fn every_option_below_the_first_states_its_trade_with_units_and_scope() {
+    let d = everything();
+    let opts = options(&d, false);
+    for (i, p) in opts.iter().enumerate() {
+        let l = option_line(&d, *p, 38, false);
+        if *p == Pick::None {
+            assert!(l.contains("need a key or Codex"), "{l}");
+            continue;
+        }
+        assert!(
+            l.contains(" per technology-year")
+                && l.contains("this repo ≈ ")
+                && l.contains("first sync ≈ "),
+            "{l}"
+        );
+        if l.contains("Codex tokens") {
+            assert!(l.contains("at API prices"), "{l}");
+        }
+        if i > 0 {
+            assert!(
+                l.contains("about the same") || l.contains("less complete: ≈ "),
+                "{l}"
+            );
+        }
+        for internal in ["A+B", "H1", "H2", "step ", "slice", "gpt-6", "flex"] {
+            assert!(!l.contains(internal), "internal name {internal:?} in {l}");
+        }
+    }
+}
+
+#[test]
+fn enter_accepts_the_first_option_and_a_number_picks_one() {
+    let opts = options(&everything(), false);
+    let pick = |input: &str| {
+        let mut out = vec![];
+        let p = ask(&opts, &mut input.as_bytes(), &mut out);
+        (p, String::from_utf8(out).unwrap())
+    };
+    assert_eq!(pick("\n").0, Pick::JevKey(Route::Vercel));
+    assert_eq!(pick("4\n").0, Pick::Codex);
+    let (p, out) = pick("9\nx\n2\n");
+    assert_eq!(p, Pick::JevCodex);
+    assert_eq!(
+        out.matches("Choose 1–6").count(),
+        3,
+        "the same question again, not a new one"
+    );
+    assert_eq!(pick("").0, Pick::None, "end of input uses nothing");
+    assert_eq!(
+        pick("x\nx\nx\n1\n").0,
+        Pick::None,
+        "three answers that are not choices use nothing"
+    );
+}

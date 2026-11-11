@@ -169,5 +169,415 @@ pub fn detect(root: &Path, probe: &dyn Probe) -> Detected {
     }
 }
 
+// -------------------------------------------------------------------------------------------------------- picker
+
+/// Whether "no key" mode is offered: deterministic signals plus the raw change events for the user's agent to read.
+/// Off until its evaluation shows the agent does better with it than without; while off, the last line says a key or
+/// Codex is needed.
+pub const NO_KEY_MODE: bool = false;
+
+/// One option of the picker.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Pick {
+    /// Jev labels and matches; an OpenAI-compatible key writes the records.
+    JevKey(Route),
+    /// Jev labels and matches; Codex writes the records.
+    JevCodex,
+    /// One key does every step (an OpenAI-compatible route, or Anthropic).
+    Key(Route),
+    /// Codex does every step.
+    Codex,
+    /// No model provider: deterministic signals only, or no-key mode when [`NO_KEY_MODE`] is on.
+    None,
+}
+
+/// How an option's results compare with the best option's.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Quality {
+    Best,
+    /// The same model on every step that decides quality.
+    Same,
+    /// A share of the best option's results, in percent, and what is counted.
+    Share {
+        pct: u32,
+        of: &'static str,
+    },
+    /// Not measured yet.
+    Unmeasured,
+}
+
+/// What an option costs and gives, per mean technology-year (114.6 records from 18.1 release-note chunks). Estimates
+/// from the evaluations until the client's own first sync is measured; every figure the picker quotes is here.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Quote {
+    /// Dollars billed to the user's keys.
+    pub usd: f64,
+    /// Codex plan tokens, and what they would cost at API prices.
+    pub codex_tokens: u64,
+    pub codex_usd: f64,
+    /// Tokens more for the user's agent to read (no-key mode).
+    pub agent_tokens: u64,
+    pub quality: Quality,
+    /// More duplicate records than the best option's.
+    pub more_duplicates: u32,
+}
+
+/// The first sync, in technology-years per technology. Catalog records cover history, so the first sync reads only
+/// what they do not; one year each is the ceiling the monthly budget assumes (`inference::ledger`).
+pub const FIRST_SYNC_TECH_YEARS: f64 = 1.0;
+
+const NO_QUOTE: Quote = Quote {
+    usd: 0.0,
+    codex_tokens: 0,
+    codex_usd: 0.0,
+    agent_tokens: 0,
+    quality: Quality::Best,
+    more_duplicates: 0,
+};
+
+/// Labels below the best option's: an OpenAI-compatible model flags 86.2% of breaking changes against Jev's 93.1%.
+const LABELS_BELOW: Quality = Quality::Share {
+    pct: 93,
+    of: "the best option's breaking-change flags",
+};
+/// Matching on the same model: 2.2 more duplicate records per technology-year.
+const MATCHING_BELOW: u32 = 2;
+
+/// The data table. Sources, all $ per mean technology-year:
+/// - extraction: gpt-6-luna `low`, $0.0096 on the gateway's flex tier, $0.0183 on OpenAI, $0.0192 at list price
+///   (OpenRouter, measured as the gateway row); Haiku 5.5 $0.0189;
+/// - labels: Jev $0.0100; gpt-6-luna read on its choices $0.0261 list, $0.0182 billed on the gateway; Haiku $0.0564;
+/// - matching: Jev $0.0081; gpt-6-luna $0.0455 list, $0.0269 flex; Anthropic does not match (never merge, $0);
+/// - Codex at 8 items per call with the lean flags: extraction ≈ 109k tokens ($0.0198 at API prices), every step
+///   ≈ 591k ($0.0754);
+/// - quality: Haiku finds 79.6% of required changes against 88.7% (upgrade guides 68.4% against 81.9%); never merge
+///   leaves 22.7 duplicates per 100 records against Jev's 2.54.
+pub fn quote(p: Pick, no_key: bool) -> Quote {
+    let jev = 0.0100 + 0.0081;
+    match p {
+        Pick::JevKey(r) => Quote {
+            usd: jev + extraction_usd(r),
+            ..NO_QUOTE
+        },
+        Pick::JevCodex => Quote {
+            usd: jev,
+            codex_tokens: 109_000,
+            codex_usd: 0.0198,
+            quality: Quality::Same,
+            ..NO_QUOTE
+        },
+        Pick::Key(Route::Anthropic) => Quote {
+            usd: 0.0189 + 0.0564,
+            quality: Quality::Share {
+                pct: 90,
+                of: "the best option's changes (fewer from upgrade guides)",
+            },
+            more_duplicates: 23,
+            ..NO_QUOTE
+        },
+        Pick::Key(r) => Quote {
+            usd: extraction_usd(r)
+                + match r {
+                    Route::Vercel => 0.0182 + 0.0269,
+                    _ => 0.0261 + 0.0455,
+                },
+            quality: LABELS_BELOW,
+            more_duplicates: MATCHING_BELOW,
+            ..NO_QUOTE
+        },
+        Pick::Codex => Quote {
+            codex_tokens: 591_000,
+            codex_usd: 0.0754,
+            quality: LABELS_BELOW,
+            more_duplicates: MATCHING_BELOW,
+            ..NO_QUOTE
+        },
+        // About 8k tokens of release notes per technology-year, read raw by the agent.
+        Pick::None if no_key => Quote {
+            agent_tokens: 8_000,
+            quality: Quality::Unmeasured,
+            ..NO_QUOTE
+        },
+        Pick::None => NO_QUOTE,
+    }
+}
+
+fn extraction_usd(r: Route) -> f64 {
+    match r {
+        Route::Vercel => 0.0096,
+        Route::OpenAi => 0.0183,
+        Route::OpenRouter => 0.0192,
+        Route::Anthropic => 0.0189,
+        Route::Jev => 0.0,
+    }
+}
+
+/// The options this machine can use, best first. Empty when there is nothing to choose between.
+pub fn options(d: &Detected, no_key: bool) -> Vec<Pick> {
+    let mut v = vec![];
+    let codex = d.codex == CodexState::Ready;
+    if d.has(Route::Jev) {
+        v.extend(d.compatible().map(Pick::JevKey));
+        if codex {
+            v.push(Pick::JevCodex);
+        }
+    }
+    v.extend(d.compatible().map(Pick::Key));
+    if codex {
+        v.push(Pick::Codex);
+    }
+    if d.has(Route::Anthropic) {
+        v.push(Pick::Key(Route::Anthropic));
+    }
+    if !v.is_empty() || no_key {
+        v.push(Pick::None);
+    }
+    v
+}
+
+fn route_name(r: Route) -> &'static str {
+    match r {
+        Route::Vercel => "Vercel AI Gateway",
+        Route::OpenAi => "OpenAI",
+        Route::OpenRouter => "OpenRouter",
+        Route::Anthropic => "Anthropic",
+        Route::Jev => "Jev labelling API",
+    }
+}
+
+/// `OpenAI (OPENAI_API_KEY)`, or `(OPENAI_API_KEY in .env)` when only this repository's `.env` names it.
+fn key_name(d: &Detected, r: Route) -> String {
+    let var = d.var(r).unwrap_or("");
+    let at = if d.keys.get(var) == Some(&Seen::DotEnv) {
+        " in .env"
+    } else {
+        ""
+    };
+    format!("{} ({var}{at})", route_name(r))
+}
+
+/// `$0.028`, `$1.05`, `$12`.
+fn usd(x: f64) -> String {
+    if x < 0.1 {
+        format!("${x:.3}")
+    } else if x < 10.0 {
+        format!("${x:.2}")
+    } else {
+        format!("${x:.0}")
+    }
+}
+
+/// Tokens to two significant figures: `110k`, `590k`, `4.2M`, `22M`.
+fn tokens(n: f64) -> String {
+    let n = n.max(0.0);
+    let mag = if n >= 1.0 {
+        10f64.powi(n.log10().floor() as i32 - 1)
+    } else {
+        1.0
+    };
+    let r = (n / mag).round() * mag;
+    if r >= 1e6 {
+        let m = r / 1e6;
+        if m >= 10.0 {
+            format!("{m:.0}M")
+        } else {
+            format!("{m:.1}M")
+        }
+    } else if r >= 1e3 {
+        format!("{:.0}k", r / 1e3)
+    } else {
+        format!("{r:.0}")
+    }
+}
+
+/// A cost: dollars, Codex tokens, agent tokens, or a sum of them.
+fn cost(q: &Quote, years: f64) -> String {
+    let mut parts = vec![];
+    if q.usd > 0.0 {
+        parts.push(usd(q.usd * years));
+    }
+    if q.codex_tokens > 0 {
+        parts.push(format!(
+            "{} Codex tokens",
+            tokens(q.codex_tokens as f64 * years)
+        ));
+    }
+    if q.agent_tokens > 0 {
+        parts.push(format!(
+            "{} more agent tokens",
+            tokens(q.agent_tokens as f64 * years)
+        ));
+    }
+    parts.join(" + ")
+}
+
+/// `slightly less complete: ≈ 93% of the best option's breaking-change flags`.
+fn quality(q: Quality) -> Option<String> {
+    match q {
+        Quality::Best => None,
+        Quality::Same => Some("about the same results (same model)".into()),
+        Quality::Unmeasured => Some("results not measured yet".into()),
+        Quality::Share { pct, of } => {
+            let band = match pct {
+                98.. => "about the same",
+                92.. => "slightly less complete",
+                80.. => "somewhat less complete",
+                _ => "much less complete",
+            };
+            Some(format!("{band}: ≈ {pct}% of {of}"))
+        }
+    }
+}
+
+fn option_name(d: &Detected, p: Pick, no_key: bool) -> String {
+    let jev = || key_name(d, Route::Jev);
+    match p {
+        Pick::JevKey(r) => format!("{} + {}", jev(), key_name(d, r)),
+        Pick::JevCodex => format!("{} + Codex plan", jev()),
+        Pick::Key(r) => key_name(d, r),
+        Pick::Codex => "Codex plan".into(),
+        Pick::None if no_key => {
+            "No key: your agent reads the raw change events (unparsed, sometimes repeated)".into()
+        }
+        Pick::None => {
+            "None: deterministic signals only; new change details need a key or Codex".into()
+        }
+    }
+}
+
+/// One option's line, without its number: what it uses, then what it costs and, below the first, what it trades.
+pub fn option_line(d: &Detected, p: Pick, techs: usize, no_key: bool) -> String {
+    let q = quote(p, no_key);
+    let mut s = option_name(d, p, no_key);
+    let per = cost(&q, 1.0);
+    if per.is_empty() {
+        return s;
+    }
+    s += ": ";
+    s += &per;
+    if q.codex_tokens > 0 {
+        s += &format!(" ({} at API prices)", usd(q.codex_usd));
+    }
+    s += " per technology-year";
+    if techs > 0 {
+        s += &format!(" · this repo ≈ {} a year", cost(&q, techs as f64));
+        s += &format!(
+            ", first sync ≈ {} once",
+            cost(&q, techs as f64 * FIRST_SYNC_TECH_YEARS)
+        );
+    }
+    if let Some(t) = quality(q.quality) {
+        s += " · ";
+        s += &t;
+    }
+    if q.more_duplicates > 0 {
+        s += &format!(
+            "; ≈ {} more duplicate records per technology-year",
+            q.more_duplicates
+        );
+    }
+    s
+}
+
+/// The one line shown when there is nothing to choose: what to set.
+pub fn nothing_line(d: &Detected) -> String {
+    let codex = match &d.codex {
+        CodexState::NotReady(why) => format!("Codex ({why})"),
+        _ => "log in to Codex".into(),
+    };
+    let jev = if d.has(Route::Jev) {
+        " (JEV_API_KEY alone only labels)"
+    } else {
+        ""
+    };
+    format!(
+        "Reading new release notes needs a key or Codex: set AI_GATEWAY_API_KEY, OPENAI_API_KEY, OPENROUTER_API_KEY or ANTHROPIC_API_KEY{jev}, or {codex}, then run `unstale setup`. Until then: deterministic signals only."
+    )
+}
+
+/// The value of `--inference` that picks an option.
+pub fn flag_value(d: &Detected, p: Pick) -> String {
+    let env = |r: Route| format!("env:{}", d.var(r).unwrap_or(""));
+    match p {
+        Pick::JevKey(r) => format!("jev+{}", env(r)),
+        Pick::JevCodex => "jev+codex".into(),
+        Pick::Key(r) => env(r),
+        Pick::Codex => "codex".into(),
+        Pick::None => "none".into(),
+    }
+}
+
+/// Who reads the picker: a person at a terminal (asked once, Enter accepts the first), or an agent relaying it (each
+/// option with the flag that picks it).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Reader {
+    Person,
+    Agent,
+}
+
+/// The picker as printed: a header, one numbered line per option (the first is recommended), and for an agent the
+/// command that records a choice.
+/// Without options, the one line of what to set.
+pub fn picker_lines(d: &Detected, techs: usize, no_key: bool, reader: Reader) -> Vec<String> {
+    let opts = options(d, no_key);
+    if opts.is_empty() {
+        return vec![nothing_line(d)];
+    }
+    let scope = match techs {
+        0 => String::new(),
+        1 => "; this repo has 1 technology".into(),
+        n => format!("; this repo has {n} technologies"),
+    };
+    let mut out = vec![format!(
+        "Choose how unstale reads new release notes (costs are estimates{scope}):"
+    )];
+    for (i, p) in opts.iter().enumerate() {
+        let mut l = format!("  {}) {}", i + 1, option_line(d, *p, techs, no_key));
+        if reader == Reader::Agent {
+            l += &format!(" [--inference {}]", flag_value(d, *p));
+        }
+        out.push(l);
+    }
+    if reader == Reader::Agent {
+        out.push("Record the choice with `unstale setup --inference <value>`.".into());
+    }
+    out
+}
+
+/// The question under the picker.
+pub fn prompt(n: usize) -> String {
+    match n {
+        1 => "Press Enter to use it: ".into(),
+        n => format!("Choose 1–{n}, or press Enter for 1 (recommended): "),
+    }
+}
+
+/// Asks once: Enter accepts the first option, a number picks one. Input that is not a choice is asked for again, at
+/// most twice more; then, as at end of input, nothing is used ([`Pick::None`]).
+pub fn ask(opts: &[Pick], input: &mut dyn std::io::BufRead, out: &mut dyn std::io::Write) -> Pick {
+    for _ in 0..3 {
+        let _ = write!(out, "{}", prompt(opts.len()));
+        let _ = out.flush();
+        let mut line = String::new();
+        match input.read_line(&mut line) {
+            Ok(0) | Err(_) => break,
+            Ok(_) => {}
+        }
+        let t = line.trim();
+        if t.is_empty() {
+            return opts[0];
+        }
+        if let Some(p) = t
+            .parse::<usize>()
+            .ok()
+            .filter(|n| (1..=opts.len()).contains(n))
+        {
+            return opts[p - 1];
+        }
+    }
+    let _ = writeln!(out);
+    Pick::None
+}
+
 #[cfg(test)]
 mod tests;
