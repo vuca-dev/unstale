@@ -203,6 +203,9 @@ struct Config {
     mode: Mode,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     service: Option<String>,
+    /// Where model steps run (`unstale setup`): the provider and the key's variable name, never its value.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    inference: Option<setup::Choice>,
 }
 
 struct Ctx {
@@ -419,7 +422,13 @@ fn init(start: &Path, catalog: Option<String>, mode: Option<Mode>, _yes: bool, q
     let mode = mode.or_else(|| existing.as_ref().map(|e| e.mode)).unwrap_or(Mode::Local);
     if !quiet && existing.is_none() { println!("Mode: {} (the default; no setup questions).", mode_name(mode)); }
     std::fs::create_dir_all(&tool)?;
-    let config = Config { schema: 1, catalog, mode, service: existing.as_ref().and_then(|e| e.service.clone()) };
+    let config = Config {
+        schema: 1,
+        catalog,
+        mode,
+        service: existing.as_ref().and_then(|e| e.service.clone()),
+        inference: existing.as_ref().and_then(|e| e.inference.clone()),
+    };
     util::write_atomic(&tool.join("config.json"), format!("{}\n", serde_json::to_string_pretty(&config)?).as_bytes())?;
     // Local: the tool directory ignores itself, so nothing tracked changes. Collaborative: ledger and generated review context
     // are committed; review progress is personal.

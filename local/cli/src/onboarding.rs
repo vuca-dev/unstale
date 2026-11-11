@@ -5749,7 +5749,7 @@ mod tests {
         let ctx = crate::Ctx {
             root: repo.path().to_path_buf(),
             tool: repo.path().join(".unstale"),
-            config: crate::Config { schema: 1, catalog: base.clone(), mode: crate::Mode::Local, service: Some(base.clone()) },
+            config: crate::Config { schema: 1, catalog: base.clone(), mode: crate::Mode::Local, service: Some(base.clone()), inference: None },
             cache: cache.path().to_path_buf(),
         };
         let mut pending = Pending::default();

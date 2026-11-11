@@ -579,5 +579,228 @@ pub fn ask(opts: &[Pick], input: &mut dyn std::io::BufRead, out: &mut dyn std::i
     Pick::None
 }
 
+// -------------------------------------------------------------------------------------------------------- config
+
+/// The stored choice: `"inference": {"provider": "...", "key_env": "..."}` in the repository's `.unstale/config.json`
+/// (committed in shared mode, so a team shares it) or the user's config. It names the key's environment variable; the
+/// key itself is never written anywhere.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Choice {
+    /// `vercel`, `openai`, `openrouter`, `anthropic`, `codex`, or `none` (no model provider).
+    pub provider: String,
+    /// The variable the key is read from (key providers only).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key_env: Option<String>,
+    /// Labels and matching on Jev, beside the provider that writes the records.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub labels: Option<Labels>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Labels {
+    /// `jev`.
+    pub provider: String,
+    pub key_env: String,
+}
+
+fn provider_id(r: Route) -> &'static str {
+    match r {
+        Route::Vercel => "vercel",
+        Route::OpenAi => "openai",
+        Route::OpenRouter => "openrouter",
+        Route::Anthropic => "anthropic",
+        Route::Jev => "jev",
+    }
+}
+
+fn route_by_id(id: &str) -> Option<Route> {
+    [
+        Route::Vercel,
+        Route::OpenAi,
+        Route::OpenRouter,
+        Route::Anthropic,
+        Route::Jev,
+    ]
+    .into_iter()
+    .find(|r| provider_id(*r) == id)
+}
+
+/// The default key variable of a route.
+fn default_var(r: Route) -> &'static str {
+    KEY_VARS
+        .iter()
+        .find(|(_, rr)| *rr == r)
+        .map(|(n, _)| *n)
+        .unwrap_or("")
+}
+
+impl Choice {
+    pub fn none() -> Choice {
+        Choice {
+            provider: "none".into(),
+            key_env: None,
+            labels: None,
+        }
+    }
+
+    fn key(r: Route, var: &str) -> Choice {
+        Choice {
+            provider: provider_id(r).into(),
+            key_env: Some(var.into()),
+            labels: None,
+        }
+    }
+
+    fn codex() -> Choice {
+        Choice {
+            provider: "codex".into(),
+            key_env: None,
+            labels: None,
+        }
+    }
+
+    fn with_jev(mut self, var: &str) -> Choice {
+        self.labels = Some(Labels {
+            provider: "jev".into(),
+            key_env: var.into(),
+        });
+        self
+    }
+
+    /// The choice an option stands for, with the variable names this machine has.
+    pub fn of(d: &Detected, p: Pick) -> Choice {
+        let var = |r: Route| d.var(r).unwrap_or(default_var(r)).to_string();
+        match p {
+            Pick::JevKey(r) => Choice::key(r, &var(r)).with_jev(&var(Route::Jev)),
+            Pick::JevCodex => Choice::codex().with_jev(&var(Route::Jev)),
+            Pick::Key(r) => Choice::key(r, &var(r)),
+            Pick::Codex => Choice::codex(),
+            Pick::None => Choice::none(),
+        }
+    }
+
+    pub fn is_none(&self) -> bool {
+        self.provider == "none"
+    }
+
+    /// The provider configurations to call: the one that writes records, and Jev for labels when chosen. `None` for no
+    /// model provider.
+    pub fn providers(&self) -> Option<(ProviderConfig, Option<ProviderConfig>)> {
+        let mut main = match self.provider.as_str() {
+            "openai" => ProviderConfig::openai(),
+            "vercel" => ProviderConfig::vercel(),
+            "openrouter" => ProviderConfig::openrouter(),
+            "anthropic" => ProviderConfig::anthropic(),
+            "codex" => ProviderConfig::codex(),
+            _ => return None,
+        };
+        if main.key_env.is_some()
+            && let Some(k) = &self.key_env
+        {
+            main.key_env = Some(k.clone());
+        }
+        let labels = self
+            .labels
+            .as_ref()
+            .filter(|l| l.provider == "jev")
+            .map(|l| {
+                let mut j = ProviderConfig::jev();
+                j.key_env = Some(l.key_env.clone());
+                j
+            });
+        Some((main, labels))
+    }
+
+    /// The variables this choice reads keys from.
+    pub fn key_vars(&self) -> Vec<&str> {
+        self.labels
+            .iter()
+            .map(|l| l.key_env.as_str())
+            .chain(self.key_env.as_deref())
+            .collect()
+    }
+
+    /// What the choice uses, for status and confirmation lines: `Jev labelling API + OpenAI (JEV_API_KEY,
+    /// OPENAI_API_KEY)`.
+    pub fn describe(&self) -> String {
+        let main = match self.provider.as_str() {
+            "codex" => "Codex plan".to_string(),
+            "none" => return "none (deterministic signals only)".into(),
+            p => route_by_id(p).map(route_name).unwrap_or(p).to_string(),
+        };
+        let name = match &self.labels {
+            Some(_) => format!("{} + {main}", route_name(Route::Jev)),
+            None => main,
+        };
+        let vars = self.key_vars();
+        if vars.is_empty() {
+            name
+        } else {
+            format!("{name} ({})", vars.join(", "))
+        }
+    }
+}
+
+use crate::inference::ProviderConfig;
+
+/// Where a choice was read from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Origin {
+    Repo,
+    User,
+}
+
+/// The user's config: `$UNSTALE_CONFIG_DIR/config.json`, else `$XDG_CONFIG_HOME/unstale/config.json`, else
+/// `~/.config/unstale/config.json`.
+pub fn user_config_path() -> std::path::PathBuf {
+    let dir = std::env::var_os("UNSTALE_CONFIG_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            std::env::var_os("XDG_CONFIG_HOME")
+                .map(std::path::PathBuf::from)
+                .or_else(|| {
+                    std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".config"))
+                })
+                .unwrap_or_else(|| std::path::PathBuf::from("."))
+                .join("unstale")
+        });
+    dir.join("config.json")
+}
+
+fn user_doc(path: &Path) -> serde_json::Map<String, serde_json::Value> {
+    std::fs::read(path)
+        .ok()
+        .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
+        .and_then(|v| v.as_object().cloned())
+        .unwrap_or_default()
+}
+
+pub fn read_user(path: &Path) -> Option<Choice> {
+    user_doc(path)
+        .get("inference")
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
+}
+
+/// Writes the choice into the user's config, keeping anything else there.
+pub fn write_user(path: &Path, c: &Choice) -> anyhow::Result<()> {
+    let mut doc = user_doc(path);
+    doc.insert("inference".into(), serde_json::to_value(c)?);
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    crate::util::write_atomic(
+        path,
+        format!("{}\n", serde_json::to_string_pretty(&doc)?).as_bytes(),
+    )
+}
+
+/// The choice in effect: this repository's, else the user's.
+pub fn current(repo: Option<&Choice>, user_path: &Path) -> Option<(Choice, Origin)> {
+    match repo {
+        Some(c) => Some((c.clone(), Origin::Repo)),
+        None => read_user(user_path).map(|c| (c, Origin::User)),
+    }
+}
+
 #[cfg(test)]
 mod tests;

@@ -340,3 +340,69 @@ fn enter_accepts_the_first_option_and_a_number_picks_one() {
         "three answers that are not choices use nothing"
     );
 }
+
+// ------------------------------------------------------------------------------------------------------------ config
+
+#[test]
+fn a_choice_stores_the_variable_name_and_maps_to_provider_configs() {
+    let d = machine(
+        &[
+            ("JEV_API_KEY", Seen::Shell),
+            ("OPENAI_API_KEY", Seen::DotEnv),
+        ],
+        CodexState::Absent,
+    );
+    let c = Choice::of(&d, Pick::JevKey(Route::OpenAi));
+    let json = serde_json::to_string(&c).unwrap();
+    assert_eq!(
+        json,
+        r#"{"provider":"openai","key_env":"OPENAI_API_KEY","labels":{"provider":"jev","key_env":"JEV_API_KEY"}}"#
+    );
+    assert_eq!(serde_json::from_str::<Choice>(&json).unwrap(), c);
+    let (main, labels) = c.providers().unwrap();
+    assert_eq!(
+        (main.name.as_str(), main.key_env.as_deref()),
+        ("openai", Some("OPENAI_API_KEY"))
+    );
+    assert_eq!(labels.map(|j| j.name), Some("jev".into()));
+    assert_eq!(
+        c.describe(),
+        "Jev labelling API + OpenAI (JEV_API_KEY, OPENAI_API_KEY)"
+    );
+
+    let team = Choice {
+        provider: "vercel".into(),
+        key_env: Some("TEAM_GATEWAY_KEY".into()),
+        labels: None,
+    };
+    assert_eq!(
+        team.providers().unwrap().0.key_env.as_deref(),
+        Some("TEAM_GATEWAY_KEY"),
+        "a team's own variable name"
+    );
+    assert_eq!(
+        serde_json::to_string(&Choice::of(&d, Pick::Codex)).unwrap(),
+        r#"{"provider":"codex"}"#
+    );
+    assert!(Choice::none().providers().is_none());
+    assert_eq!(
+        Choice::none().describe(),
+        "none (deterministic signals only)"
+    );
+}
+
+#[test]
+fn the_repo_choice_wins_over_the_users_and_the_user_config_keeps_its_other_keys() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("unstale/config.json");
+    assert_eq!(current(None, &path), None);
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(&path, r#"{"other": 1}"#).unwrap();
+    let mine = Choice::codex();
+    write_user(&path, &mine).unwrap();
+    let doc: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    assert_eq!(doc["other"], 1);
+    assert_eq!(current(None, &path), Some((mine, Origin::User)));
+    let team = Choice::key(Route::Vercel, "AI_GATEWAY_API_KEY");
+    assert_eq!(current(Some(&team), &path), Some((team, Origin::Repo)));
+}
