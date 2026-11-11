@@ -830,10 +830,7 @@ fn a_redirect_is_never_followed_so_the_key_stays_with_the_configured_host() {
             let inf = f.inference(provider.clone(), &first.url);
             let got = match provider.kind {
                 Kind::Jev => inf
-                    .classify(
-                        &json!({}),
-                        &BTreeMap::from([("a".to_string(), question(&["yes", "no"]))]),
-                    )
+                    .classify(&raw("{}"), &[("a".to_string(), question(&["yes", "no"]))])
                     .map(|_| ()),
                 _ => inf.complete(&Prompt::new("x")).map(|_| ()),
             };
@@ -947,9 +944,9 @@ fn the_ledger_records_a_billed_call_whose_answer_is_rejected() {
     let bad = json!({"answers": {"a": {"choice": "maybe", "confidence": 1.0, "probabilities": {"yes": 0.5, "no": 0.5}}}, "usage": {"input_tokens": 70, "output_tokens": 3}});
     let m = Mock::new(vec![(200, bad.to_string())]);
     let inf = f.inference(ProviderConfig::jev(), &m.url);
-    let qs = BTreeMap::from([("a".to_string(), question(&["yes", "no"]))]);
+    let qs = vec![("a".to_string(), question(&["yes", "no"]))];
     assert_eq!(
-        inf.classify(&json!({}), &qs).unwrap_err(),
+        inf.classify(&raw("{}"), &qs).unwrap_err(),
         Deferred::Malformed
     );
     assert_eq!(inf.ledger.month_tokens(&month), 73);
