@@ -156,11 +156,14 @@ pub fn routes_with(
         {
             c.base_url = b.trim().to_string();
         }
-        Inference::new(c).with_env(keys::reader_with(
+        let mut inf = Inference::new(c).with_env(keys::reader_with(
             root.map(Path::to_path_buf),
             consented.clone(),
             env.clone(),
-        ))
+        ));
+        // The user's own monthly token limit (`unstale setup --limit`), the default when they set none.
+        inf.monthly_budget = crate::setup::monthly_tokens_at(root);
+        inf
     };
     Some(Routes {
         main: make(main, "UNSTALE_INFERENCE_BASE_URL"),

@@ -271,7 +271,7 @@ struct Config {
     inference: Option<setup::Choice>,
     /// The monthly token limit for model steps (`unstale setup --limit`): a number of tokens, or `"none"`. Absent, the
     /// default applies.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "setup::lenient_limit")]
     monthly_token_limit: Option<setup::Limit>,
     /// `false` turns off the catalog sync at agent session start (`session.rs`); absent or `true` keeps it on.
     #[serde(default, skip_serializing_if = "Option::is_none")]

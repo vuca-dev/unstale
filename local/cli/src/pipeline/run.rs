@@ -24,20 +24,20 @@ pub struct Summary {
 }
 
 impl Summary {
-    /// At most one line for the terminal; none when there was nothing to do.
+    /// At most one line for the terminal; none when there was nothing to do. A pass that stopped early is the
+    /// warning that says why ([`Deferred::line`]); otherwise the result, in the reader's words.
     pub fn line(&self) -> Option<String> {
         if let Some(d) = &self.deferred {
-            return Some(format!("Records from new releases: {}", d.line()));
+            return Some(d.line());
         }
         (self.created + self.matched > 0).then(|| {
             format!(
-                "Records from new releases: {} new, {} added to existing records, for {} technolog{} ({} model call{})",
+                "New release notes read: {} new change{}, {} added to known ones, for {} technolog{}.",
                 self.created,
+                if self.created == 1 { "" } else { "s" },
                 self.matched,
                 self.technologies,
                 if self.technologies == 1 { "y" } else { "ies" },
-                self.calls,
-                if self.calls == 1 { "" } else { "s" }
             )
         })
     }

@@ -792,7 +792,7 @@ fn a_provider_problem_defers_with_one_line_and_keeps_completed_work() {
     assert_eq!(s.deferred, Some(crate::inference::Deferred::Auth));
     assert_eq!(
         s.line().unwrap(),
-        "Records from new releases: deferred: the provider did not accept the key"
+        "warning: the provider rejected the key, so new release notes are not read. Check the key, or run `unstale setup`."
     );
     assert_eq!(s.created, 0);
     // The next pass with the service back pays only for labels.

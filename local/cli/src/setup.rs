@@ -602,13 +602,18 @@ impl Choice {
 
     /// A key variable the choice names that is not the known key variable of its route (`KEY_VARS`), if any.
     pub fn foreign_key(&self) -> Option<&str> {
-        let own = |provider: &str, var: &str| route_by_id(provider).is_some_and(|r| route_of(var) == Some(r));
+        let own = |provider: &str, var: &str| {
+            route_by_id(provider).is_some_and(|r| route_of(var) == Some(r))
+        };
         if let Some(k) = &self.key_env
             && !own(&self.provider, k)
         {
             return Some(k);
         }
-        self.labels.as_ref().map(|l| l.key_env.as_str()).filter(|k| !own("jev", k))
+        self.labels
+            .as_ref()
+            .map(|l| l.key_env.as_str())
+            .filter(|k| !own("jev", k))
     }
 
     /// The variables this choice reads keys from: only its routes' own key variables.
@@ -828,6 +833,24 @@ pub fn limit(repo: Option<Limit>, user_path: &Path) -> (Limit, LimitOrigin) {
             LimitOrigin::Default,
         ),
     }
+}
+
+/// A stored limit that cannot be read (`"lots"`, a negative number) counts as not set, so the default applies: a
+/// mistyped limit never makes a command fail, and never reads as no limit.
+pub fn lenient_limit<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<Limit>, D::Error> {
+    use serde::Deserialize;
+    Ok(serde_json::from_value(serde_json::Value::deserialize(d)?).ok())
+}
+
+/// The limit in effect for the repository at `root` (its `.unstale/config.json`, else the user's config, else the
+/// default), as a count: for a caller that has only the directory.
+pub fn monthly_tokens_at(root: Option<&Path>) -> u64 {
+    let repo = root.and_then(|r| {
+        let b = std::fs::read(r.join(".unstale/config.json")).ok()?;
+        let v: serde_json::Value = serde_json::from_slice(&b).ok()?;
+        serde_json::from_value::<Limit>(v.get("monthly_token_limit")?.clone()).ok()
+    });
+    limit(repo, &user_config_path()).0.tokens()
 }
 
 /// The monthly token limit in effect for this repository, as a count: what a model stage checks its spend against.

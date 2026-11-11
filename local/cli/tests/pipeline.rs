@@ -373,7 +373,7 @@ fn a_pass_stopped_mid_release_finishes_it_on_the_next_one() {
     // What `unstale status` shows: the stage did not finish, and why.
     let state = std::fs::read_to_string(r.repo.path().join(".unstale/state/session-sync.json"))
         .unwrap_or_default();
-    assert!(state.contains("did not accept the key"), "{state}");
+    assert!(state.contains("warning: the provider rejected the key"), "{state}");
     *allow.lock().unwrap() = usize::MAX;
     let extracted = *main.lock().unwrap();
     r.run(&["session-sync"], true);

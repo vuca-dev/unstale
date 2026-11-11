@@ -754,6 +754,29 @@ fn the_monthly_token_limit_is_a_number_none_or_the_default() {
     );
     write_user_key(&path, "monthly_token_limit", None).unwrap();
     assert_eq!(limit(None, &path), (default, LimitOrigin::Default));
+
+    // A limit that cannot be read counts as not set (the default applies); it is never an error, and never no limit.
+    #[derive(serde::Deserialize)]
+    struct Doc {
+        #[serde(default, deserialize_with = "lenient_limit")]
+        monthly_token_limit: Option<Limit>,
+    }
+    let read = |text: &str| {
+        serde_json::from_str::<Doc>(text)
+            .unwrap()
+            .monthly_token_limit
+    };
+    assert_eq!(read(r#"{"monthly_token_limit": "lots"}"#), None);
+    assert_eq!(read(r#"{"monthly_token_limit": -3}"#), None);
+    assert_eq!(
+        read(r#"{"monthly_token_limit": "none"}"#),
+        Some(Limit::None)
+    );
+    assert_eq!(
+        read(r#"{"monthly_token_limit": 9}"#),
+        Some(Limit::Tokens(9))
+    );
+    assert_eq!(read("{}"), None);
 }
 
 #[test]
