@@ -30,6 +30,12 @@ function v6Blocked(ip: string): boolean {
   if (a === "::" || a === "::1") return true;
   const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(a);
   if (mapped?.[1]) return v4Blocked(mapped[1]);
+  // The same IPv4-mapped address as URL parsing writes it (`[::ffff:127.0.0.1]` becomes `[::ffff:7f00:1]`).
+  const hex = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(a);
+  if (hex?.[1] && hex[2]) {
+    const n = (Number.parseInt(hex[1], 16) << 16) | Number.parseInt(hex[2], 16);
+    return v4Blocked([n >>> 24, (n >>> 16) & 255, (n >>> 8) & 255, n & 255].join("."));
+  }
   const first = Number.parseInt(a.split(":")[0] || "0", 16);
   return (
     (first & 0xfe00) === 0xfc00 || // fc00::/7 unique local

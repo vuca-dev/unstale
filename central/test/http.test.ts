@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import { setTimeout as sleep } from "node:timers/promises";
 import { afterEach, describe, expect, test } from "vitest";
-import { isBlockedAddress } from "../src/collector/url-safety.ts";
+import { assertFetchable, isBlockedAddress } from "../src/collector/url-safety.ts";
 import { DEFAULT_HTTP, FetchFailure, HttpClient, parseRetryAfter } from "../src/collector/http.ts";
 import { env, versioned, type TestEnv } from "./helpers.ts";
 
@@ -16,8 +16,25 @@ describe("URL safety", () => {
     ["127.0.0.1", true], ["10.1.2.3", true], ["172.20.0.1", true], ["192.168.1.1", true], ["169.254.169.254", true],
     ["100.64.0.1", true], ["0.0.0.0", true], ["224.0.0.1", true], ["::1", true], ["fe80::1", true], ["fd00::1", true],
     ["::ffff:10.0.0.1", true], ["64:ff9b::a00:1", true], ["8.8.8.8", false], ["172.32.0.1", false], ["2606:4700::1111", false],
+    // IPv4-mapped addresses in the hex form URL parsing gives them.
+    ["::ffff:7f00:1", true], ["::ffff:a9fe:a9fe", true], ["::ffff:a00:1", true], ["::ffff:c0a8:101", true], ["::ffff:808:808", false],
   ])("%s blocked=%s", (ip, blocked) => {
     expect(isBlockedAddress(ip)).toBe(blocked);
+  });
+
+  test.each(["http://[::ffff:127.0.0.1]/", "http://[::ffff:169.254.169.254]/latest/meta-data/", "http://[::FFFF:7F00:1]/"])(
+    "%s is refused as written and as a redirect target",
+    async (url) => {
+      await expect(assertFetchable(new URL(url), false)).rejects.toThrow(/blocked address/);
+      e = await env();
+      e.route("/r", (_q, res) => void res.writeHead(302, { location: url }).end());
+      expect((await e.collector.check(e.spec("/r", { format: "markdown" }))).outcome).toMatchObject({ failure: "blocked_url" });
+    },
+  );
+
+  // Other spellings of a private IPv4 address: URL parsing writes them as dotted decimals, which were blocked already.
+  test.each(["http://2130706433/", "http://0x7f.0.0.1/", "http://0177.0.0.1/", "http://127.1/"])("%s is refused", async (url) => {
+    await expect(assertFetchable(new URL(url), false)).rejects.toThrow(/blocked address/);
   });
 
   test("private target is blocked unless allow-listed", async () => {
