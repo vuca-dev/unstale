@@ -371,6 +371,30 @@ pub fn prompt(n: usize) -> String {
     }
 }
 
+/// [`prompt`] where Enter accepts another option than the first (the team's suggestion).
+pub fn prompt_default(n: usize, default: usize) -> String {
+    match (n, default) {
+        (_, 0) | (1, _) => prompt(n),
+        _ => format!(
+            "Enter for {}, a number to choose, or d for details: ",
+            default + 1
+        ),
+    }
+}
+
+/// Under the options, when this repository's committed config names a choice and the user has made none: which
+/// option that is (`at`, where this machine can use it), and that it is theirs to make.
+pub fn suggested_line(team: &Choice, at: Option<usize>) -> String {
+    let what = suggestion(team);
+    match at {
+        Some(i) => format!(
+            "This repo's config suggests option {}. Nothing is spent until you choose.\n",
+            i + 1
+        ),
+        None => format!("This repo's config suggests {what}, which is not one of the options here.\n"),
+    }
+}
+
 /// What the person answered.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Answered {
@@ -394,6 +418,19 @@ pub fn ask(
     input: &mut dyn std::io::BufRead,
     out: &mut dyn std::io::Write,
 ) -> Answered {
+    ask_default(n, 0, prompt, details, input, out)
+}
+
+/// [`ask`] where Enter accepts the option at `default`.
+pub fn ask_default(
+    n: usize,
+    default: usize,
+    prompt: &str,
+    details: &[String],
+    input: &mut dyn std::io::BufRead,
+    out: &mut dyn std::io::Write,
+) -> Answered {
+    let again = format!("Your choice (Enter for {}): ", default + 1);
     let mut shown = false;
     let mut next = prompt;
     for _ in 0..3 {
@@ -406,7 +443,7 @@ pub fn ask(
         }
         let t = line.trim();
         if t.is_empty() {
-            return Answered::Option(0);
+            return Answered::Option(default);
         }
         if let Some(p) = t.parse::<usize>().ok().filter(|p| (1..=n).contains(p)) {
             return Answered::Option(p - 1);
@@ -419,7 +456,7 @@ pub fn ask(
             }
             let _ = writeln!(out);
         }
-        next = CONTINUE;
+        next = if default == 0 { CONTINUE } else { &again };
     }
     let _ = writeln!(out);
     Answered::Nothing
@@ -806,6 +843,20 @@ pub fn unconfigured_line() -> String {
     "warning: no provider chosen, so new release notes are not read. `unstale setup` lists the options.".into()
 }
 
+/// [`unconfigured_line`] where this repository's committed config names a choice: it is not the user's until they
+/// make it, and saying only "no provider chosen" would contradict the file they can see.
+pub fn suggested_unchosen_line() -> String {
+    "warning: you have not chosen a provider, so new release notes are not read. Run `unstale setup`.".into()
+}
+
+fn suggestion(team: &Choice) -> String {
+    if team.is_none() {
+        "not reading release notes".to_string()
+    } else {
+        short(team)
+    }
+}
+
 // ---------------------------------------------------------------------------------------------------------- status
 
 /// A line of `unstale status`'s short block: a label, then what it is, aligned with the others.
@@ -814,9 +865,12 @@ pub fn labelled(label: &str, text: &str) -> String {
 }
 
 /// The provider line of `unstale status`: what reads release notes, and where that was chosen.
-pub fn provider_line(cur: Option<&(Choice, Origin)>) -> String {
+pub fn provider_line(cur: Option<&(Choice, Origin)>, suggested: Option<&Choice>) -> String {
     let text = match cur {
-        None => "not read: no provider chosen · `unstale setup` shows the options".to_string(),
+        None => match suggested {
+            Some(_) => "not read: you have not chosen · `unstale setup` shows this repo's suggestion".to_string(),
+            None => "not read: no provider chosen · `unstale setup` shows the options".to_string(),
+        },
         Some((c, origin)) => {
             let from = match origin {
                 Origin::Repo => "this repo's config",

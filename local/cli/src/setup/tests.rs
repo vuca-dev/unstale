@@ -370,10 +370,13 @@ fn nothing_setup_prints_is_much_wider_than_a_hundred_columns() {
     ));
     lines.push(view::kept_line(&pair));
     for origin in [Origin::Repo, Origin::User] {
-        lines.push(view::provider_line(Some(&(pair.clone(), origin))));
-        lines.push(view::provider_line(Some(&(Choice::none(), origin))));
+        lines.push(view::provider_line(Some(&(pair.clone(), origin)), None));
+        lines.push(view::provider_line(Some(&(Choice::none(), origin)), None));
     }
-    lines.push(view::provider_line(None));
+    lines.push(view::provider_line(None, None));
+    // A committed choice the user has not made their own.
+    lines.push(view::provider_line(None, Some(&pair)));
+    lines.push(view::suggested_unchosen_line());
     lines.extend(view::missing_key_lines(
         Some(&(pair.clone(), Origin::Repo)),
         &|_| false,
@@ -693,19 +696,75 @@ fn a_choice_stores_the_variable_name_and_maps_to_provider_configs() {
 }
 
 #[test]
-fn the_repo_choice_wins_over_the_users_and_the_user_config_keeps_its_other_keys() {
+fn a_choice_is_the_users_own_and_a_committed_one_is_only_a_suggestion() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("unstale/config.json");
-    assert_eq!(current(None, &path), None);
+    let root = dir.path().join("repo");
+    let team = Choice::key(Route::Vercel, "AI_GATEWAY_API_KEY");
+    assert_eq!(stored_with(None, false, &root, &path), Stored::default());
+    // Not tracked by Git: the user's own config for this repository, as before.
+    assert_eq!(
+        stored_with(Some(&team), false, &root, &path).choice,
+        Some((team.clone(), Origin::Repo))
+    );
+    // Committed, and the user has chosen nothing: a suggestion, never in effect.
+    assert_eq!(
+        stored_with(Some(&team), true, &root, &path),
+        Stored {
+            choice: None,
+            suggested: Some(team.clone())
+        }
+    );
+    // The user's own choice wins over a committed one, "none" included; the user config keeps its other keys.
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(&path, r#"{"other": 1}"#).unwrap();
-    let mine = Choice::codex();
-    write_user(&path, &mine).unwrap();
+    for mine in [Choice::none(), Choice::codex()] {
+        write_user(&path, &mine).unwrap();
+        assert_eq!(
+            stored_with(Some(&team), true, &root, &path),
+            Stored {
+                choice: Some((mine.clone(), Origin::User)),
+                suggested: None
+            }
+        );
+        assert_eq!(stored_with(None, false, &root, &path).choice, Some((mine, Origin::User)));
+    }
+    // Their answer for this repository wins over their choice for every repository, here only.
+    write_user_repo(&path, &root, Some(&team)).unwrap();
+    assert_eq!(
+        stored_with(Some(&Choice::none()), true, &root, &path).choice,
+        Some((team.clone(), Origin::User))
+    );
+    assert_eq!(
+        stored_with(None, true, &dir.path().join("other"), &path).choice,
+        Some((Choice::codex(), Origin::User))
+    );
     let doc: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
     assert_eq!(doc["other"], 1);
-    assert_eq!(current(None, &path), Some((mine, Origin::User)));
-    let team = Choice::key(Route::Vercel, "AI_GATEWAY_API_KEY");
-    assert_eq!(current(Some(&team), &path), Some((team, Origin::Repo)));
+    write_user_repo(&path, &root, None).unwrap();
+    let doc: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    assert!(doc.get("repositories").is_none(), "{doc}");
+}
+
+#[test]
+fn a_suggestion_is_the_option_enter_accepts_and_is_named_under_the_options() {
+    let team = Choice::key(Route::OpenAi, "OPENAI_API_KEY");
+    assert_eq!(
+        view::suggested_line(&team, Some(2)),
+        "This repo's config suggests option 3. Nothing is spent until you choose.\n"
+    );
+    assert_eq!(
+        view::suggested_line(&team, None),
+        "This repo's config suggests OpenAI (OPENAI_API_KEY), which is not one of the options here.\n"
+    );
+    assert_eq!(view::prompt_default(4, 2), "Enter for 3, a number to choose, or d for details: ");
+    assert_eq!(view::prompt_default(4, 0), view::prompt(4));
+    let mut out = Vec::new();
+    let mut enter = std::io::Cursor::new(b"\n".to_vec());
+    assert_eq!(view::ask_default(4, 2, "? ", &[], &mut enter, &mut out), view::Answered::Option(2));
+    let mut other = std::io::Cursor::new(b"x\n1\n".to_vec());
+    assert_eq!(view::ask_default(4, 2, "? ", &[], &mut other, &mut out), view::Answered::Option(0));
+    assert!(String::from_utf8(out).unwrap().contains("Your choice (Enter for 3): "));
 }
 
 // -------------------------------------------------------------------------------------------------------------- flow
@@ -808,7 +867,7 @@ fn status_names_the_provider_this_months_tokens_and_the_users_limit() {
     let default = Limit::Tokens(crate::inference::ledger::DEFAULT_MONTHLY_TOKENS);
     let block = |cur: Option<(Choice, Origin)>, used: u64, limit: Limit, origin: LimitOrigin| {
         let mut lines = view::missing_key_lines(cur.as_ref(), &set);
-        lines.push(view::provider_line(cur.as_ref()));
+        lines.push(view::provider_line(cur.as_ref(), None));
         if cur.as_ref().is_some_and(|(c, _)| !c.is_none()) {
             lines.push(view::tokens_line(Ok(used), limit, origin));
         }

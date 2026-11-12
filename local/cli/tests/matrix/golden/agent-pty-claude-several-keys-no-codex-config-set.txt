@@ -2,6 +2,7 @@
 # keys: several-keys · Codex: no-codex · run: agent-pty-claude · repo config: --inference env:OPENAI_API_KEY · client: fresh · provider: answers
 
 $ unstale init --wait 0 --no-animation
+Choice pending: how unstale reads new release notes. Run `unstale setup` and ask the user.
   ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 3 direct dependencies from declared package ranges and checked local references.
@@ -60,9 +61,32 @@ $ unstale status --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Release notes         OpenAI (OPENAI_API_KEY), this repo's config
-Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)
+Release notes         not read: you have not chosen · `unstale setup` shows this repo's suggestion
 Cache                 under 1 MB of 100 MB
+
+$ unstale setup
+The user chooses how unstale reads new release notes. Show them these options as printed and ask.
+Never choose for them.
+
+     Read with                 Cost a year, this repo   Compared with the best option
+  1  Jev + Vercel AI Gateway   ≈ $0.11                  the best option
+  2  Vercel AI Gateway         ≈ $0.19                  ≈ 3% less precise labels
+  3  Anthropic                 ≈ $0.23                  ≈ 90% of its changes
+  4  Not now                   free                     ≈ 27% of its changes in new releases
+     Jev: a labelling service, used beside the provider that reads the notes.
+     Keys: JEV_API_KEY, AI_GATEWAY_API_KEY, ANTHROPIC_API_KEY
+
+Record their answer with the matching command:
+  1  unstale setup --inference jev+env:AI_GATEWAY_API_KEY
+  2  unstale setup --inference env:AI_GATEWAY_API_KEY
+  3  unstale setup --inference env:ANTHROPIC_API_KEY
+  4  unstale setup --inference none
+Full costs: unstale setup --details
+This repo's config suggests OpenAI (OPENAI_API_KEY), which is not one of the options here.
+
+# the agent showed the options and asked; the user chose option 1
+$ unstale setup --inference jev+env:AI_GATEWAY_API_KEY
+Saved for you: Jev + Vercel AI Gateway (JEV_API_KEY, AI_GATEWAY_API_KEY) reads release notes.
 
 $ unstale sync
 next: 2 upstream changes on file, nothing new
@@ -102,12 +126,12 @@ $ unstale status --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Release notes         OpenAI (OPENAI_API_KEY), this repo's config
-Tokens                84 of 48M this month (the default limit; `unstale setup --limit` changes it)
+Release notes         Jev + Vercel AI Gateway (JEV_API_KEY, AI_GATEWAY_API_KEY), your user config
+Tokens                81 of 48M this month (the default limit; `unstale setup --limit` changes it)
 Cache                 under 1 MB of 100 MB
 
 # contacted
 #   catalog host: GET /health, GET /v1/root.json, GET /v1/shards/next/16.7745374e4470.jsonl.gz, GET /v1/shards/next/16.events.74bcaa014f93.jsonl.gz, GET /v1/shards/react/19.b7c40e95232c.jsonl.gz, GET /v1/shards/react/19.events.04962169f41c.jsonl.gz, GET /v1/tech/next.json, GET /v1/tech/react-dom.json, GET /v1/tech/react.json, GET /v1/technologies.json
-#   model provider: POST /v1/chat/completions (7 requests)
+#   model provider: POST /v1/chat/completions, POST /v1/systemone (7 requests)
 #   codex: not run
 #   through the proxy: nothing

@@ -2,7 +2,7 @@
 # keys: revoked-key · Codex: no-codex · run: ci · repo config: --inference env:ANTHROPIC_API_KEY · client: fresh · provider: refused
 
 $ unstale init --wait 0 --no-animation --yes  (no terminal)
-warning: ANTHROPIC_API_KEY is not set here, so new release notes are not read. Set it.
+warning: you have not chosen a provider, so new release notes are not read. Run `unstale setup`.
   ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 3 direct dependencies from declared package ranges and checked local
@@ -42,7 +42,7 @@ next: 2 upstream changes on file, nothing new
 react: 1 upstream change on file, nothing new
 
 $ unstale session-sync  (no terminal)
-warning: ANTHROPIC_API_KEY is not set here, so new release notes are not read. Set it.
+No provider is chosen, so no release notes were read. Choose one: `unstale setup`.
 
 $ unstale status --wait 0 --no-animation  (no terminal)
   ✓ shop · Shared setup ready
@@ -76,9 +76,7 @@ $ unstale status --wait 0 --no-animation  (no terminal)
   files and trade-offs. Return proposals only; do not edit files.
   
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-warning: ANTHROPIC_API_KEY is not set here, so new release notes are not read. Set it.
-Release notes         Anthropic (ANTHROPIC_API_KEY), this repo's config
-Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)
+Release notes         not read: you have not chosen · `unstale setup` shows this repo's suggestion
 Cache                 under 1 MB of 100 MB
 
 # contacted

@@ -443,6 +443,12 @@ impl World {
                 &repo.join(".unstale/config.json"),
                 &serde_json::to_string_pretty(&config).unwrap(),
             );
+            // Committed, as a teammate left it: Git tracks it.
+            Command::new("git")
+                .args(["add", "-f", ".unstale/config.json"])
+                .current_dir(&repo)
+                .status()
+                .unwrap();
         }
         if let Some((user, repo_limit)) = s.limits {
             let v = |t: &str| t.parse::<u64>().map(|n| json!(n)).unwrap_or(json!(t));
@@ -455,6 +461,12 @@ impl World {
                 serde_json::from_str(&std::fs::read_to_string(&p).unwrap()).unwrap();
             c["monthly_token_limit"] = v(repo_limit);
             write(&p, &c.to_string());
+        }
+        if s.user_none {
+            write(
+                &w.home().join(".config/unstale/config.json"),
+                r#"{"inference": {"provider": "none"}}"#,
+            );
         }
         if s.answer == Answer::LimitPartway {
             write(

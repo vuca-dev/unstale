@@ -843,12 +843,73 @@ pub fn approve_catalog_dir(path: &Path, dir: &str) -> anyhow::Result<()> {
     write_user_key(path, "catalog_directories", Some(serde_json::json!(dirs)))
 }
 
-/// The choice in effect: this repository's, else the user's.
-pub fn current(repo: Option<&Choice>, user_path: &Path) -> Option<(Choice, Origin)> {
-    match repo {
-        Some(c) => Some((c.clone(), Origin::Repo)),
-        None => read_user(user_path).map(|c| (c, Origin::User)),
+/// What is chosen for a repository, and by whom.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Stored {
+    /// The choice in effect: one this machine's user made.
+    pub choice: Option<(Choice, Origin)>,
+    /// A choice in a config Git tracks, where the user has made none: the team's suggestion. It is offered first when
+    /// the user is asked, and never used before they answer (it would spend on their key or plan unasked).
+    pub suggested: Option<Choice>,
+}
+
+/// The user's answer for one repository: `"repositories": {"<root>": {"inference": …}}` in the user's config.
+fn read_user_repo(path: &Path, root: &Path) -> Option<Choice> {
+    let v = user_doc(path)
+        .get("repositories")?
+        .get(&*root.to_string_lossy())?
+        .get("inference")?
+        .clone();
+    serde_json::from_value(v).ok()
+}
+
+/// Records (or with `None` forgets) the user's answer for one repository, keeping anything else in their config.
+pub fn write_user_repo(path: &Path, root: &Path, c: Option<&Choice>) -> anyhow::Result<()> {
+    let mut repos = user_doc(path)
+        .get("repositories")
+        .and_then(|v| v.as_object().cloned())
+        .unwrap_or_default();
+    let key = root.to_string_lossy().to_string();
+    match c {
+        Some(c) => {
+            repos.insert(key, serde_json::json!({"inference": c}));
+        }
+        None if repos.remove(&key).is_none() => return Ok(()),
+        None => {}
     }
+    let value = (!repos.is_empty()).then_some(serde_json::Value::Object(repos));
+    write_user_key(path, "repositories", value)
+}
+
+/// [`stored`] with whether Git tracks the repository's config given.
+pub fn stored_with(repo: Option<&Choice>, tracked: bool, root: &Path, user_path: &Path) -> Stored {
+    // A config Git does not track is this user's own (personal mode, or a choice not committed yet): as before.
+    if let Some(c) = repo.filter(|_| !tracked) {
+        return Stored {
+            choice: Some((c.clone(), Origin::Repo)),
+            suggested: None,
+        };
+    }
+    // The user's own word: for this repository, else for every repository. It wins over a committed choice, "none"
+    // included.
+    let own = read_user_repo(user_path, root).or_else(|| read_user(user_path));
+    match own {
+        Some(c) => Stored {
+            choice: Some((c, Origin::User)),
+            suggested: None,
+        },
+        None => Stored {
+            choice: None,
+            suggested: repo.cloned(),
+        },
+    }
+}
+
+/// The choice for the repository at `root`, whose config holds `repo`. A choice in a config Git tracks came with the
+/// repository: it is a suggestion until this machine's user makes a choice of their own.
+pub fn stored(repo: Option<&Choice>, root: &Path, user_path: &Path) -> Stored {
+    let tracked = repo.is_some() && crate::hooks::tracked(root, ".unstale/config.json");
+    stored_with(repo, tracked, root, user_path)
 }
 
 // --------------------------------------------------------------------------------------------------------- agent
@@ -1133,15 +1194,25 @@ fn save_repo(ctx: &crate::Ctx) -> anyhow::Result<()> {
 }
 
 /// Records the choice and returns the lines that confirm it.
-fn save(ctx: &mut crate::Ctx, c: &Choice, user: bool) -> anyhow::Result<Vec<String>> {
+/// `own_only` answers a committed suggestion: the answer is the user's, and the team's config is left as it is.
+fn save(
+    ctx: &mut crate::Ctx,
+    c: &Choice,
+    user: bool,
+    own_only: bool,
+) -> anyhow::Result<Vec<String>> {
     if user {
         write_user(&user_config_path(), c)?;
-        // The repository's own choice wins where it has one.
-        return Ok(view::saved_lines(
-            c,
-            Origin::User,
-            ctx.config.inference.as_ref(),
-        ));
+        // A choice the user made for this repository still applies here.
+        let here = stored(ctx.config.inference.as_ref(), &ctx.root, &user_config_path());
+        let kept = here.choice.filter(|(k, _)| k != c).map(|(k, _)| k);
+        return Ok(view::saved_lines(c, Origin::User, kept.as_ref()));
+    }
+    // The user's own answer for this repository, kept where no repository can write: the repository's config may be
+    // committed, and a committed choice alone is never consent.
+    write_user_repo(&user_config_path(), &ctx.root, Some(c))?;
+    if own_only {
+        return Ok(view::saved_lines(c, Origin::User, None));
     }
     ctx.config.inference = Some(c.clone());
     save_repo(ctx)?;
@@ -1162,13 +1233,16 @@ fn key_set(ctx: &crate::Ctx) -> impl Fn(&str) -> bool {
 /// What `unstale status` shows of setup, with the switch on: warnings for a chosen key that is not set here, then the
 /// provider and this month's tokens against the limit.
 pub fn status_lines(ctx: &crate::Ctx) -> (Vec<String>, Vec<String>) {
-    let cur = current(ctx.config.inference.as_ref(), &user_config_path());
+    let Stored {
+        choice: cur,
+        suggested,
+    } = stored(ctx.config.inference.as_ref(), &ctx.root, &user_config_path());
     let mut warnings = view::missing_key_lines(cur.as_ref(), &key_set(ctx));
     let (lim, origin) = limit(ctx.config.monthly_token_limit, &user_config_path());
     let ledger = crate::inference::Ledger::default_location();
     let month = crate::inference::ledger::this_month();
     let used = ledger.spent(&month);
-    let mut state = vec![view::provider_line(cur.as_ref())];
+    let mut state = vec![view::provider_line(cur.as_ref(), suggested.as_ref())];
     // Only where a provider is chosen: with none, nothing spends tokens or waits on the limit.
     if cur.as_ref().is_some_and(|(c, _)| !c.is_none()) {
         match &used {
@@ -1193,13 +1267,20 @@ pub fn details(ctx: &crate::Ctx) {
 /// An agent is told the choice is the user's and how to put it; without one, a warning that no provider is
 /// configured; with a provider chosen whose key is not set here, a warning naming the variable. The warnings print
 /// when the state changes, not on every run ([`crate::warn`]); `unstale status` always shows the current state.
-fn unattended(ctx: &crate::Ctx, cur: Option<&(Choice, Origin)>, dismissed: bool, agent: bool) {
+fn unattended(
+    ctx: &crate::Ctx,
+    cur: Option<&(Choice, Origin)>,
+    suggested: Option<&Choice>,
+    dismissed: bool,
+    agent: bool,
+) {
     let warning = match cur {
         None if dismissed => None,
         None if agent => {
             println!("{}", view::pending_line());
             None
         }
+        None if suggested.is_some() => Some(view::suggested_unchosen_line()),
         None => Some(view::unconfigured_line()),
         Some(_) => view::missing_key_lines(cur, &key_set(ctx))
             .into_iter()
@@ -1220,7 +1301,13 @@ pub fn run(
     yes: bool,
 ) -> anyhow::Result<()> {
     use std::io::IsTerminal;
-    let cur = current(ctx.config.inference.as_ref(), &user_config_path());
+    let Stored {
+        choice: cur,
+        suggested,
+    } = stored(ctx.config.inference.as_ref(), &ctx.root, &user_config_path());
+    // Answering a committed suggestion records the user's answer and leaves the team's config as it was committed.
+    // With a choice of their own already made, `unstale setup` sets this repository's choice, as before.
+    let own_only = suggested.is_some();
     let dismissed = dismissed_path(ctx).exists();
     let settled = cur.is_some() || dismissed;
     // `init --yes` asks nothing; accepting the recommended option would spend on the user's key unasked, so nothing is
@@ -1230,11 +1317,11 @@ pub fn run(
         !yes && !agent && std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
     let (d, techs) = match plan(flag, settled, terminal, reopen) {
         Plan::Nothing => {
-            unattended(ctx, cur.as_ref(), dismissed, agent);
+            unattended(ctx, cur.as_ref(), suggested.as_ref(), dismissed, agent);
             return Ok(());
         }
         Plan::Save(c) => {
-            for l in save(ctx, &c, user)? {
+            for l in save(ctx, &c, user, own_only)? {
                 println!("{l}");
             }
             // Recorded, but not usable here yet: said now rather than found out at the first sync.
@@ -1248,14 +1335,20 @@ pub fn run(
             return Ok(());
         }
         Plan::Print => {
+            let d = detect(&ctx.root, &System);
             for l in view::picker_lines(
-                &detect(&ctx.root, &System),
+                &d,
                 technologies(ctx),
                 NO_KEY_MODE,
                 Reader::Agent,
                 view::WIDTH,
             ) {
                 println!("{l}");
+            }
+            let opts = options(&d, NO_KEY_MODE);
+            if let Some(t) = suggested.as_ref().filter(|_| !opts.is_empty()) {
+                let at = opts.iter().position(|p| Choice::of(&d, *p) == *t);
+                println!("{}", view::suggested_line(t, at).trim_end());
             }
             return Ok(());
         }
@@ -1265,6 +1358,15 @@ pub fn run(
     let width = view::width();
     for l in view::picker_lines(&d, techs, NO_KEY_MODE, Reader::Person, width) {
         println!("{l}");
+    }
+    // The team's suggestion, where this machine can use it: the option Enter accepts.
+    let default = suggested
+        .as_ref()
+        .and_then(|t| opts.iter().position(|p| Choice::of(&d, *p) == *t))
+        .unwrap_or(0);
+    if let Some(t) = suggested.as_ref().filter(|_| !opts.is_empty()) {
+        let at = opts.iter().position(|p| Choice::of(&d, *p) == *t);
+        println!("{}", view::suggested_line(t, at));
     }
     // Dismissed, or "not now" with nothing to use: no config is written, so a team's shared choice is never set by a
     // slip or by one machine's lack of a key. With a choice already made (`unstale setup` reopened), it stays, and
@@ -1297,9 +1399,10 @@ pub fn run(
         };
     }
     let details = view::details_lines(&d, techs, NO_KEY_MODE);
-    let pick = match view::ask(
+    let pick = match view::ask_default(
         opts.len(),
-        &view::prompt(opts.len()),
+        default,
+        &view::prompt_default(opts.len(), default),
         &details,
         &mut input,
         &mut out,
@@ -1308,7 +1411,7 @@ pub fn run(
         view::Answered::Nothing => return dismiss(ctx),
     };
     let c = Choice::of(&d, pick);
-    for l in save(ctx, &c, user)? {
+    for l in save(ctx, &c, user, own_only)? {
         println!("{l}");
     }
     let _ = crate::warn::changed(&ctx.tool, "setup", None);

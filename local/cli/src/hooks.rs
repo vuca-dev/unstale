@@ -330,7 +330,7 @@ pub fn remove(text: &str, args: &str) -> Option<String> {
 
 // ------------------------------------------------------------------------------------------------ the files
 
-fn tracked(root: &Path, rel: &str) -> bool {
+pub(crate) fn tracked(root: &Path, rel: &str) -> bool {
     crate::git(root, &["ls-files", "--error-unmatch", "--", rel]).is_some()
 }
 

@@ -2,36 +2,17 @@
 # keys: shell-key · Codex: codex · run: terminal-interrupt · repo config: --inference codex · client: fresh · provider: answers
 
 $ unstale init --wait 0 --no-animation
-  ✓ shop · Shared setup ready
-  Next: run unstale-review in your coding agent · copyable prompt below.
-  Mapped 3 direct dependencies from declared package ranges and checked local references.
+How should unstale read new release notes?
 
-  Upgrades to review · 1 shortlisted
-  Upstream change counts, not confirmed issues in your code.
-  1. next 16.0.0 → 16.1.0 picks up 1 advisory (affected path not found)
+     Read with    Key              Cost a year, this repo   Compared with the best option
+  1  OpenAI       OPENAI_API_KEY   ≈ $0.19                  ≈ 3% less precise labels
+  2  Codex plan                    ≈ 1.9M Codex tokens      ≈ 80% of its changes; rest not measured
+  3  Not now                       free                     ≈ 27% of its changes in new releases
 
-  Capabilities to explore · 1 shortlisted
-  1. react · upgrade 19.0.0 → 19.1.0 — Activity hides part of the tree and keeps its state.
-  Dependency match only · repository benefit has not been established.
-  These are review candidates, not confirmed benefits or safe-to-apply changes.
-  Coverage · no shared coverage acknowledged yet. unstale status later adds to this brief.
+This repo's config suggests option 2. Nothing is spent until you choose.
 
-
-  Reviews and decisions can be committed to Git. Keep personal: unstale init --mode personal
-  --wait 0
-  Details: .unstale/onboarding-report.md
-
-  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  NEXT · Review with unstale-review · paste into your coding agent
-
-  Use .unstale/skills/review/SKILL.md to review this repository. Rank upgrades and capabilities by
-  likely impact. Recommend what to do first, with affected files and trade-offs. Return proposals
-  only; do not edit files.
-
-  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-unstale notice, act by 30 November: Upgrade unstale; this version stops receiving new changes then.
-unstale <newer version> available: npm install -g @unstale/cli@latest
-Codex: to let unstale sync at session start, trust its hook once: run /hooks in Codex.
+Enter for 2, a number to choose, or d for details:
+[interrupted]
 
 $ unstale status --wait 0 --no-animation
   ✓ shop · Shared setup ready
@@ -61,12 +42,13 @@ $ unstale status --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Release notes         Codex plan, this repo's config
-Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)
+unstale notice, act by 30 November: Upgrade unstale; this version stops receiving new changes then.
+unstale <newer version> available: npm install -g @unstale/cli@latest
+Release notes         not read: you have not chosen · `unstale setup` shows this repo's suggestion
 Cache                 under 1 MB of 100 MB
 
 # contacted
 #   catalog host: GET /health, GET /v1/root.json, GET /v1/shards/next/16.7745374e4470.jsonl.gz, GET /v1/shards/next/16.events.74bcaa014f93.jsonl.gz, GET /v1/shards/react/19.b7c40e95232c.jsonl.gz, GET /v1/shards/react/19.events.04962169f41c.jsonl.gz, GET /v1/tech/next.json, GET /v1/tech/react-dom.json, GET /v1/tech/react.json, GET /v1/technologies.json
 #   model provider: nothing
-#   codex: not run
+#   codex: --version, login status
 #   through the proxy: nothing

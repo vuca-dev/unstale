@@ -3,6 +3,7 @@
 
 # earlier: set up by the client then installed (this build; the previous release's binary is not built here)
 $ unstale init --yes --wait 0 --no-animation  (no terminal)
+Choice pending: how unstale reads new release notes. Run `unstale setup` and ask the user.
   ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 3 direct dependencies from declared package ranges and checked local
@@ -45,6 +46,7 @@ react: 1 upstream change on file, nothing new
 # the user upgrades the client; the catalog now names this version the newest and the oldest it serves
 
 $ unstale init --wait 0 --no-animation  (no terminal)
+Choice pending: how unstale reads new release notes. Run `unstale setup` and ask the user.
   ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 3 direct dependencies from declared package ranges and checked local
@@ -109,9 +111,26 @@ $ unstale status --wait 0 --no-animation  (no terminal)
   files and trade-offs. Return proposals only; do not edit files.
   
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Release notes         Codex plan, this repo's config
-Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)
+Release notes         not read: you have not chosen · `unstale setup` shows this repo's suggestion
 Cache                 under 1 MB of 100 MB
+
+$ unstale setup  (no terminal)
+unstale reads new release notes with a model, on the user's own key or Codex plan.
+None is set up here. Tell the user and ask which they want. Never ask them to paste a key.
+
+  1  Set one up   one line to add, listed below
+  2  Not now      free · advisories and deprecations only, ≈ 27% of the changes in new releases
+
+For 1, they add one line to their shell profile or this repo's .env, then you run `unstale setup`:
+
+  OPENAI_API_KEY=<key>      OpenAI
+  AI_GATEWAY_API_KEY=<key>  Vercel AI Gateway
+  OPENROUTER_API_KEY=<key>  OpenRouter
+  ANTHROPIC_API_KEY=<key>   Anthropic
+
+Or use their Codex plan: install Codex and run `codex login`.
+
+For 2: unstale setup --inference none
 
 $ unstale sync  (no terminal)
 next: 2 upstream changes on file, nothing new
@@ -122,7 +141,6 @@ $ "unstale" -C "$CLAUDE_PROJECT_DIR" notify  (no terminal)
 
 # Claude Code starts a session and runs its session-start hook; the background stage it starts runs to its end
 $ "unstale" -C "$CLAUDE_PROJECT_DIR" notify  (no terminal)
-warning: Codex is not installed, so new release notes are not read. Run `unstale setup`.
 
 $ unstale status --wait 0 --no-animation  (no terminal)
   ✓ shop · Shared setup ready
@@ -156,9 +174,7 @@ $ unstale status --wait 0 --no-animation  (no terminal)
   files and trade-offs. Return proposals only; do not edit files.
   
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-warning: Codex is not installed, so new release notes are not read. Run `unstale setup`.
-Release notes         Codex plan, this repo's config
-Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)
+Release notes         not read: you have not chosen · `unstale setup` shows this repo's suggestion
 Cache                 under 1 MB of 100 MB
 
 # contacted

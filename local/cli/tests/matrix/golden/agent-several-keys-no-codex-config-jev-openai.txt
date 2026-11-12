@@ -2,6 +2,7 @@
 # keys: several-keys · Codex: no-codex · run: agent · repo config: --inference jev+env:OPENAI_API_KEY · client: fresh · provider: answers
 
 $ unstale init --wait 0 --no-animation  (no terminal)
+Choice pending: how unstale reads new release notes. Run `unstale setup` and ask the user.
   ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 3 direct dependencies from declared package ranges and checked local
@@ -68,9 +69,32 @@ $ unstale status --wait 0 --no-animation  (no terminal)
   files and trade-offs. Return proposals only; do not edit files.
   
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Release notes         Jev + OpenAI (JEV_API_KEY, OPENAI_API_KEY), this repo's config
-Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)
+Release notes         not read: you have not chosen · `unstale setup` shows this repo's suggestion
 Cache                 under 1 MB of 100 MB
+
+$ unstale setup  (no terminal)
+The user chooses how unstale reads new release notes. Show them these options as printed and ask.
+Never choose for them.
+
+     Read with                 Cost a year, this repo   Compared with the best option
+  1  Jev + Vercel AI Gateway   ≈ $0.11                  the best option
+  2  Vercel AI Gateway         ≈ $0.19                  ≈ 3% less precise labels
+  3  Anthropic                 ≈ $0.23                  ≈ 90% of its changes
+  4  Not now                   free                     ≈ 27% of its changes in new releases
+     Jev: a labelling service, used beside the provider that reads the notes.
+     Keys: JEV_API_KEY, AI_GATEWAY_API_KEY, ANTHROPIC_API_KEY
+
+Record their answer with the matching command:
+  1  unstale setup --inference jev+env:AI_GATEWAY_API_KEY
+  2  unstale setup --inference env:AI_GATEWAY_API_KEY
+  3  unstale setup --inference env:ANTHROPIC_API_KEY
+  4  unstale setup --inference none
+Full costs: unstale setup --details
+This repo's config suggests Jev + OpenAI (JEV_API_KEY, OPENAI_API_KEY), which is not one of the options here.
+
+# the agent showed the options and asked; the user chose option 1
+$ unstale setup --inference jev+env:AI_GATEWAY_API_KEY  (no terminal)
+Saved for you: Jev + Vercel AI Gateway (JEV_API_KEY, AI_GATEWAY_API_KEY) reads release notes.
 
 $ unstale sync  (no terminal)
 next: 2 upstream changes on file, nothing new
@@ -115,7 +139,7 @@ $ unstale status --wait 0 --no-animation  (no terminal)
   files and trade-offs. Return proposals only; do not edit files.
   
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Release notes         Jev + OpenAI (JEV_API_KEY, OPENAI_API_KEY), this repo's config
+Release notes         Jev + Vercel AI Gateway (JEV_API_KEY, AI_GATEWAY_API_KEY), your user config
 Tokens                81 of 48M this month (the default limit; `unstale setup --limit` changes it)
 Cache                 under 1 MB of 100 MB
 

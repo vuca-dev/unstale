@@ -485,12 +485,19 @@ fn session_hook_installed(root: &Path) -> bool {
 
 /// The stored choice for a directory: its repository's config, else the user's.
 pub fn stored_choice(root: Option<&Path>) -> Option<crate::setup::Choice> {
-    let repo = root.and_then(|r| {
-        let b = std::fs::read(r.join(".unstale/config.json")).ok()?;
+    let user = crate::setup::user_config_path();
+    let Some(root) = root else {
+        return crate::setup::read_user(&user);
+    };
+    let repo: Option<crate::setup::Choice> = (|| {
+        let b = std::fs::read(root.join(".unstale/config.json")).ok()?;
         let v: serde_json::Value = serde_json::from_slice(&b).ok()?;
         serde_json::from_value(v.get("inference")?.clone()).ok()
-    });
-    crate::setup::current(repo.as_ref(), &crate::setup::user_config_path()).map(|(c, _)| c)
+    })();
+    // Only a choice this machine's user made: one that came with the repository is a suggestion (`setup::stored`).
+    crate::setup::stored(repo.as_ref(), root, &user)
+        .choice
+        .map(|(c, _)| c)
 }
 
 /// The repository root above `start` (the directory holding `.unstale/config.json`), if any.

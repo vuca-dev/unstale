@@ -155,6 +155,8 @@ pub fn run(start: &Path) -> Result<u8> {
         }
     }
     removed?;
+    // The user's answer for this repository goes with it (nothing is written where there is none).
+    let _ = setup::write_user_repo(&setup::user_config_path(), &root, None);
     println!(
         "Removed unstale from this repository. The CLI and shared catalog cache remain.\nLocal backup: {}\nRun unstale init to start fresh.",
         backup.display()

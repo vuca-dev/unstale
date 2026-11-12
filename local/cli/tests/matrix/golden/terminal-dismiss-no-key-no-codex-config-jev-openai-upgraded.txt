@@ -3,7 +3,7 @@
 
 # earlier: set up by the client then installed (this build; the previous release's binary is not built here)
 $ unstale init --yes --wait 0 --no-animation  (no terminal)
-warning: JEV_API_KEY is not set here, so new release notes are not read. Set it.
+warning: you have not chosen a provider, so new release notes are not read. Run `unstale setup`.
   ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 3 direct dependencies from declared package ranges and checked local
@@ -46,6 +46,14 @@ react: 1 upstream change on file, nothing new
 # the user upgrades the client; the catalog now names this version the newest and the oldest it serves
 
 $ unstale init --wait 0 --no-animation
+unstale reads new release notes with a model, on your own key or your Codex plan.
+None is set up here.
+
+  1  Set one up   shows the one line to add
+  2  Not now      free · advisories and deprecations only, ≈ 27% of the changes in new releases
+
+Enter for 1, or 2:
+Nothing chosen: new releases get advisories and deprecations only. `unstale setup` asks again.
   ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 3 direct dependencies from declared package ranges and checked local references.
@@ -131,10 +139,7 @@ $ unstale status --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-warning: JEV_API_KEY is not set here, so new release notes are not read. Set it.
-warning: OPENAI_API_KEY is not set here, so new release notes are not read. Set it.
-Release notes         Jev + OpenAI (JEV_API_KEY, OPENAI_API_KEY), this repo's config
-Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)
+Release notes         not read: you have not chosen · `unstale setup` shows this repo's suggestion
 Cache                 under 1 MB of 100 MB
 
 # contacted
