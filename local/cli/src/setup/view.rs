@@ -1193,18 +1193,22 @@ pub fn unseen_line(u: &Unseen, techs: usize, today: &str) -> String {
     } else {
         "through a script"
     };
-    let undo = match (u.chosen, u.every_repo) {
-        (false, _) => "unstale setup --limit default",
-        (true, true) => "unstale setup --user --inference none",
-        (true, false) => "unstale setup --inference none",
+    // Undo names what restores both: no provider, and the limit before an agent or a script changed it.
+    let mut undo = match (u.chosen, u.every_repo) {
+        (false, _) => "unstale setup".to_string(),
+        (true, true) => "unstale setup --user --inference none".to_string(),
+        (true, false) => "unstale setup --inference none".to_string(),
     };
+    if let Some((_, previous)) = &u.limit {
+        undo.push_str(&format!(" --limit {previous}"));
+    }
     // A limit raised or removed with it, named with what it was set to.
-    let limit = match u.limit {
-        Some(Limit::Tokens(n)) => format!(
+    let limit = match &u.limit {
+        Some((Limit::Tokens(n), _)) => format!(
             " with a token limit of {}",
-            crate::inference::ledger::short_tokens(n)
+            crate::inference::ledger::short_tokens(*n)
         ),
-        Some(Limit::None) => " with no token limit".to_string(),
+        Some((Limit::None, _)) => " with no token limit".to_string(),
         None => String::new(),
     };
     let verb = if u.chosen { "chosen" } else { "set" };

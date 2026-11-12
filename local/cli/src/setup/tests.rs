@@ -1574,10 +1574,10 @@ fn view_pick(c: &Choice) -> Pick {
 }
 
 #[test]
-fn a_limit_an_agent_or_a_script_raises_beside_a_choice_that_spends_is_unseen_too() {
+fn a_limit_an_agent_or_a_script_raised_is_marked_once_for_every_repository() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("unstale/config.json");
-    let root = dir.path().join("shop");
+    let (a, b) = (dir.path().join("a"), dir.path().join("b"));
     let key = Choice::key(Route::OpenAi, "OPENAI_API_KEY");
     let default = crate::inference::ledger::DEFAULT_MONTHLY_TOKENS;
     // Raising and removing count; lowering, and going back to a default above a lower limit, are told apart.
@@ -1585,36 +1585,42 @@ fn a_limit_an_agent_or_a_script_raises_beside_a_choice_that_spends_is_unseen_too
     assert!(!raises(&path, Some(Limit::Tokens(1_000))) && !raises(&path, None));
     write_user_key(&path, "monthly_token_limit", Some(serde_json::json!(1_000))).unwrap();
     assert!(raises(&path, None));
-    // A choice a person made, then a limit an agent raised: unseen, so a tenth of the default applies.
-    write_user_repo(&path, &root, Some(&key)).unwrap();
-    write_user_key(&path, "monthly_token_limit", Some(serde_json::json!(480_000_000u64))).unwrap();
-    for who in [Chooser::Person, Chooser::Ci] {
-        mark_limit(&path, &root, who).unwrap();
-        assert_eq!(unseen(&path, Some(&root)), None, "{who:?}");
-    }
-    mark_limit(&path, &root, Chooser::Agent).unwrap();
-    let u = unseen(&path, Some(&root)).unwrap();
-    assert_eq!((u.chosen, u.limit, u.mark.by.as_str()), (false, Some(Limit::Tokens(480_000_000)), "agent"));
-    assert_eq!(limit_here(None, &path, Some(&root)).0, Limit::Tokens(default / 10));
-    let mut line_of = u.clone();
-    line_of.mark.on = "2026-11-12".into();
+    // The `--limit` value that restores a limit reads back exactly.
     assert_eq!(
-        view::unseen_line(&line_of, 38, "2026-11-12"),
+        [None, Some(Limit::None), Some(Limit::Tokens(10_000_000)), Some(Limit::Tokens(12_345_678))].map(limit_arg),
+        ["default", "none", "10M", "12345678"]
+    );
+    // A choice a person made in a, none in b; then the limit marked at the top, beside the limit.
+    write_user_repo(&path, &a, Some(&key)).unwrap();
+    write_user_keys(
+        &path,
+        vec![
+            ("monthly_token_limit", Some(serde_json::json!(480_000_000u64))),
+            (LIMIT_MARK, Some(serde_json::json!({"by": "agent", "on": "2026-11-12", "previous": "10M"}))),
+        ],
+    )
+    .unwrap();
+    assert_eq!(unseen(&path, Some(&b)), None, "no choice that spends in b");
+    let u = unseen(&path, Some(&a)).unwrap();
+    assert_eq!((u.chosen, u.limit.clone(), u.mark.by.as_str()), (false, Some((Limit::Tokens(480_000_000), "10M".into())), "agent"));
+    assert_eq!(limit_here(None, &path, Some(&a)).0, Limit::Tokens(default / 10));
+    assert_eq!(
+        view::unseen_line(&u, 38, "2026-11-12"),
         format!(
-            "unstale reads release notes on your OpenAI key (≈ ${:.2} a year) with a token limit of 480M, set through your agent on 12 November. Undo: `unstale setup --limit default`",
+            "unstale reads release notes on your OpenAI key (≈ ${:.2} a year) with a token limit of 480M, set through your agent on 12 November. Undo: `unstale setup --limit 10M`",
             quote(Pick::Key(Route::OpenAi), false).usd * 38.0
         )
     );
-    // With the choice unseen too, the line says it was chosen, and names the limit.
-    line_of.chosen = true;
-    line_of.limit = Some(Limit::None);
-    assert!(view::unseen_line(&line_of, 38, "2026-11-12").contains(") with no token limit, chosen through your agent on 12 November. Undo: `unstale setup --inference none`"));
-    // Seen at a terminal: both marks go.
-    mark_seen(&path, Some(&root)).unwrap();
-    assert_eq!(unseen(&path, Some(&root)), None);
-    assert_eq!(limit_here(None, &path, Some(&root)).0, Limit::Tokens(480_000_000));
-    // With no choice that spends, nothing is marked.
-    write_user_repo(&path, &root, Some(&Choice::none())).unwrap();
-    mark_limit(&path, &root, Chooser::Script).unwrap();
-    assert!(!std::fs::read_to_string(&path).unwrap().contains("limit_set_by"));
+    // Re-recording a choice, marked or not, keeps it.
+    write_user_repo_marked(&path, &a, Some(&key), Some(&Mark { by: "agent".into(), on: "2026-11-12".into() })).unwrap();
+    let u = unseen(&path, Some(&a)).unwrap();
+    assert!(u.chosen && u.limit.is_some());
+    assert!(view::unseen_line(&u, 38, "2026-11-12").ends_with(
+        ") with a token limit of 480M, chosen through your agent on 12 November. Undo: `unstale setup --inference none --limit 10M`"
+    ));
+    // Seen at a terminal: both marks go, and the limit set applies.
+    mark_seen(&path, Some(&a)).unwrap();
+    assert_eq!(unseen(&path, Some(&a)), None);
+    assert!(!std::fs::read_to_string(&path).unwrap().contains(LIMIT_MARK));
+    assert_eq!(limit_here(None, &path, Some(&a)).0, Limit::Tokens(480_000_000));
 }

@@ -918,21 +918,52 @@ fn a_choice_from_ci_or_of_none_is_not_marked_and_hooks_cannot_record_one_that_sp
 fn raising_the_limit_does_not_lift_the_tenth_and_is_refused_from_hooks() {
     let w = World::new(None);
     w.init(true, &[]);
-    let status = |w: &World| w.run_with(&["status", "--wait", "0", "--no-animation"], &[("CLAUDECODE", "1")]).1;
+    let agent = [("CLAUDECODE", "1")];
+    let status = |w: &World| w.run_with(&["status", "--wait", "0", "--no-animation"], &agent).1;
+    let run = |w: &World, args: &[&str]| {
+        let (code, out) = w.run_with(args, &agent);
+        assert_eq!(code, 0, "{args:?}: {out}");
+    };
+    let person_sees = |w: &World| w.at_terminal(&["report"], "");
     // An agent chooses a provider and raises the limit in one command: a tenth of the default, not of the limit.
-    let (code, out) = w.run_with(&["setup", "--inference", "openai", "--limit", "480M"], &[("CLAUDECODE", "1")]);
-    assert_eq!(code, 0, "{out}");
+    run(&w, &["setup", "--inference", "openai", "--limit", "480M"]);
     let s = status(&w);
     assert!(s.contains("0 of 4.8M this month (a tenth of the limit"), "{s}");
-    assert!(s.contains("on your OpenAI key (≈ $0.052 a year) with a token limit of 480M, chosen through your agent on 10 November."), "{s}");
-    // A person sees it; then an agent removes the limit on its own: the tenth again, and the line says what it did.
-    w.at_terminal(&["report"], "");
+    // Recording the choice again keeps the limit's mark; the line names the limit and how to restore it.
+    run(&w, &["setup", "--inference", "openai"]);
+    let line = "on your OpenAI key (≈ $0.052 a year) with a token limit of 480M, chosen through your agent on 10 November. Undo: `unstale setup --inference none --limit default`";
+    assert!(status(&w).contains(line), "{}", status(&w));
+    assert!(person_sees(&w).contains(line));
     assert!(status(&w).contains("0 of 480M this month"));
-    let (code, _) = w.run_with(&["setup", "--limit", "none"], &[("CLAUDECODE", "1")]);
-    assert_eq!(code, 0);
+
+    // A limit raised first, a choice recorded after: the line still names the limit, until a person sees it.
+    run(&w, &["setup", "--limit", "10M"]);
+    run(&w, &["setup", "--inference", "none"]);
+    run(&w, &["setup", "--limit", "480M"]);
+    run(&w, &["setup", "--inference", "openai"]);
     let s = status(&w);
-    assert!(s.contains("with no token limit, set through your agent on 10 November. Undo: `unstale setup --limit default`") && s.contains("of 4.8M this month"), "{s}");
-    w.at_terminal(&["report"], "");
+    assert!(s.contains("with a token limit of 480M, chosen through your agent") && s.contains("`unstale setup --inference none --limit 10M`") && s.contains("of 4.8M"), "{s}");
+    person_sees(&w);
+    assert!(status(&w).contains("0 of 480M this month"));
+
+    // Raised from another repository with no choice of its own: the mark is the user's, so this one gets the tenth.
+    let other = w.path("other");
+    std::fs::write(other.join("package.json"), r#"{"name":"other","dependencies":{"zod":"^4.0.0"}}"#).unwrap();
+    std::process::Command::new("git").args(["init", "-q"]).current_dir(&other).status().unwrap();
+    for raise in ["none", "960M"] {
+        let mut c = w.command(&["init", "--service", "http://127.0.0.1:9", "--mode", "local", "--yes", "--wait", "0", "--no-animation"], true);
+        c.current_dir(&other);
+        assert!(c.status().unwrap().success());
+        let mut c = w.command(&["setup", "--limit", raise], true);
+        c.current_dir(&other).env("CLAUDECODE", "1");
+        assert!(c.status().unwrap().success());
+        let s = status(&w);
+        assert!(s.contains("set through your agent on 10 November. Undo: `unstale setup --limit 480M`") && s.contains("of 4.8M this month"), "{raise}: {s}");
+        person_sees(&w);
+        run(&w, &["setup", "--limit", "480M"]);
+        person_sees(&w);
+    }
+
     // An install script or a Git hook cannot raise or remove it; lowering is taken.
     for (hook, why) in [
         (&[("npm_lifecycle_event", "postinstall")][..], "a package install script"),

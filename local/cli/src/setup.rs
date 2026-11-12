@@ -1084,9 +1084,35 @@ impl Mark {
     }
 }
 
-/// The keys of a limit raised or removed by an agent or a script while a choice that spends is in effect, beside the
-/// choice's own mark: the same tenth applies, and the line said at a terminal names the new limit.
-const LIMIT_MARK: (&str, &str) = ("limit_set_by", "limit_set_on");
+/// A limit an agent or a script raised or removed: `"monthly_token_limit_set": {"by": "agent", "on": "2026-11-12",
+/// "previous": "10M"}` at the top of the user's config, beside the `"monthly_token_limit"` it describes (the limit is
+/// the user's, for every repository). `previous` is the `--limit` value that restores what the user last saw
+/// (`default` when they had set none). While it is there, every repository with a choice that spends is unseen.
+const LIMIT_MARK: &str = "monthly_token_limit_set";
+
+/// The limit mark ([`LIMIT_MARK`]): who, when, and the `--limit` value that restores the limit before it.
+fn read_limit_mark(doc: &serde_json::Map<String, serde_json::Value>) -> Option<(Mark, String)> {
+    let o = doc.get(LIMIT_MARK)?.as_object()?;
+    let m = Mark::read_as(o, "by", "on")?;
+    let previous = o.get("previous").and_then(|v| v.as_str()).unwrap_or("default");
+    Some((m, previous.to_string()))
+}
+
+/// The `--limit` value that sets `l` again (`None`: the default), as short as reads back exactly.
+fn limit_arg(l: Option<Limit>) -> String {
+    match l {
+        None => "default".into(),
+        Some(Limit::None) => "none".into(),
+        Some(Limit::Tokens(n)) => {
+            let short = crate::inference::ledger::short_tokens(n);
+            if parse_limit(&short) == Ok(Some(Limit::Tokens(n))) {
+                short
+            } else {
+                n.to_string()
+            }
+        }
+    }
+}
 
 /// A choice in effect that no person has seen yet: the choice, its mark, and whether it is the one for every
 /// repository (else this repository's).
@@ -1097,8 +1123,9 @@ pub struct Unseen {
     pub mark: Mark,
     /// Whether the choice itself is unseen (else only a limit raised or removed beside it).
     pub chosen: bool,
-    /// The user's own limit, when an agent or a script raised or removed it.
-    pub limit: Option<Limit>,
+    /// When an agent or a script raised or removed the user's limit: the limit now, and the `--limit` value that
+    /// restores the one before.
+    pub limit: Option<(Limit, String)>,
     pub every_repo: bool,
 }
 
@@ -1119,12 +1146,13 @@ pub fn unseen(user_path: &Path, root: Option<&Path>) -> Option<Unseen> {
     };
     let choice: Choice = serde_json::from_value(o.get("inference")?.clone()).ok()?;
     let chosen = Mark::read(o);
-    let limit_mark = Mark::read_as(o, LIMIT_MARK.0, LIMIT_MARK.1);
-    let limit = limit_mark.as_ref().map(|_| {
-        read_user_limit(user_path)
-            .unwrap_or(Limit::Tokens(crate::inference::ledger::DEFAULT_MONTHLY_TOKENS))
+    let limit_mark = read_limit_mark(&doc);
+    let limit = limit_mark.as_ref().map(|(_, previous)| {
+        let now = read_user_limit(user_path)
+            .unwrap_or(Limit::Tokens(crate::inference::ledger::DEFAULT_MONTHLY_TOKENS));
+        (now, previous.clone())
     });
-    let mark = chosen.clone().or(limit_mark)?;
+    let mark = chosen.clone().or(limit_mark.map(|(m, _)| m))?;
     (!choice.is_none()).then_some(Unseen {
         choice,
         mark,
@@ -1139,63 +1167,17 @@ pub fn mark_seen(user_path: &Path, root: Option<&Path>) -> anyhow::Result<()> {
     let Some(u) = unseen(user_path, root) else {
         return Ok(());
     };
+    if u.limit.is_some() {
+        write_user_key(user_path, LIMIT_MARK, None)?;
+    }
+    if !u.chosen {
+        return Ok(());
+    }
     if u.every_repo {
-        return write_user_keys(
-            user_path,
-            vec![
-                ("chosen_by", None),
-                ("chosen_on", None),
-                (LIMIT_MARK.0, None),
-                (LIMIT_MARK.1, None),
-            ],
-        );
+        return write_user_keys(user_path, vec![("chosen_by", None), ("chosen_on", None)]);
     }
     let root = root.unwrap_or(Path::new(""));
     write_user_repo_marked(user_path, root, Some(&u.choice), None)
-}
-
-/// Marks a limit raised or removed by `who` beside the choice in effect at `root`, when that choice spends: an agent
-/// or a script must not lift the tenth by raising the limit. Nothing for a person, CI, or with no choice that spends.
-pub fn mark_limit(user_path: &Path, root: &Path, who: Chooser) -> anyhow::Result<()> {
-    let by = match who {
-        Chooser::Agent => "agent",
-        Chooser::Script => "script",
-        Chooser::Person | Chooser::Ci => return Ok(()),
-    };
-    let stamp = |o: &mut serde_json::Map<String, serde_json::Value>| {
-        o.insert(LIMIT_MARK.0.into(), by.into());
-        o.insert(LIMIT_MARK.1.into(), crate::util::today().into());
-    };
-    let mut doc = user_doc(user_path);
-    let key = root.to_string_lossy().to_string();
-    let spends = |o: &serde_json::Map<String, serde_json::Value>| {
-        o.get("inference")
-            .and_then(|v| serde_json::from_value::<Choice>(v.clone()).ok())
-            .is_some_and(|c| !c.is_none())
-    };
-    if let Some(repos) = doc.get("repositories").and_then(|v| v.as_object())
-        && let Some(entry) = repos.get(&key).and_then(|v| v.as_object()).filter(|o| o.contains_key("inference"))
-    {
-        if !spends(entry) {
-            return Ok(());
-        }
-        let mut repos = repos.clone();
-        let mut entry = entry.clone();
-        stamp(&mut entry);
-        repos.insert(key, entry.into());
-        return write_user_key(user_path, "repositories", Some(repos.into()));
-    }
-    if !spends(&doc) {
-        return Ok(());
-    }
-    stamp(&mut doc);
-    write_user_keys(
-        user_path,
-        vec![
-            (LIMIT_MARK.0, doc.remove(LIMIT_MARK.0)),
-            (LIMIT_MARK.1, doc.remove(LIMIT_MARK.1)),
-        ],
-    )
 }
 
 /// At the top of any command a person runs at a terminal (switch on): an unseen choice in effect here is said once,
@@ -1408,10 +1390,29 @@ pub fn set_limit(ctx: &crate::Ctx, new: Option<Limit>) -> anyhow::Result<()> {
             "not saved: a higher token limit is not taken from {what}. Run `unstale setup --limit` yourself."
         );
     }
-    write_user_key(
+    // Raised or removed by an agent or a script: marked for every repository until a person sees it. A mark already
+    // there keeps the limit before it, the one the person last saw.
+    let by = match chooser(&process_env, at_terminal()) {
+        Chooser::Agent => Some("agent"),
+        Chooser::Script => Some("script"),
+        Chooser::Person | Chooser::Ci => None,
+    };
+    let doc = user_doc(&path);
+    let mark = match (raised, by) {
+        (true, Some(by)) => {
+            let previous = read_limit_mark(&doc)
+                .map(|(_, p)| p)
+                .unwrap_or_else(|| limit_arg(read_user_limit(&path)));
+            Some(serde_json::json!({"by": by, "on": crate::util::today(), "previous": previous}))
+        }
+        _ => doc.get(LIMIT_MARK).cloned(),
+    };
+    write_user_keys(
         &path,
-        "monthly_token_limit",
-        new.map(serde_json::to_value).transpose()?,
+        vec![
+            ("monthly_token_limit", new.map(serde_json::to_value).transpose()?),
+            (LIMIT_MARK, mark),
+        ],
     )?;
     let (applies, origin) = limit(ctx.config.monthly_token_limit, &path);
     println!("{}", view::limit_saved_line(new, applies, origin));
