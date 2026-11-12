@@ -434,3 +434,11 @@ OpenRouter parity, repeat eval runs.
 - Release steps on the code side: set `EDGE_INFERENCE_DEFAULT = true`; make `setup` visible in `--help`; merge draft #258. `UNSTALE_EDGE_INFERENCE=0` turns the feature off afterwards.
 - A future central table name containing a space (e.g. "React Native") would show as its id in the client; widen the client's name rule first if one is added.
 - Open: CEO review of #258; CEO to claim `unstale` on npm; label quality through Codex against a reference set; #231 no-key evaluation; ingest checks on 13 November; merge this branch and final report.
+
+## Update, 12 November 2026 (21:30 UTC)
+
+- The CEO merged #258 (`b643364`, agent-facing copy). Merged with his approval after a fresh review: #266 `360fd40`, the release switch-on — `EDGE_INFERENCE_DEFAULT = true`; `setup`, `init --inference`, `cache` visible in help; `UNSTALE_EDGE_INFERENCE=0` turns it off.
+- PM decision in #266: only `init` adds new agent integration files. On upgrade, other commands print once per repository "New in this version: session-start updates for Codex and opencode. Run `unstale init` to add them." (review reproduced `status` writing them silently from a v0.2.12 install).
+- Fixed in #266: a lock race that made one background sync in about 45 do nothing.
+- Verified on upgrade: session start sends technology ids only; no model call or key read before a choice; CI warning leaves exit codes at 0; switch-off `status` output byte-identical to v0.2.12.
+- Left: CEO's release (version bump and tag, day-0 notice, day-20 cutover); CEO's npm publish of `unstale` (stopped at the one-time code; package ready in the scratchpad `npm-unstale`); #231 evaluation running; ingest re-check after 15:00 UTC 13 November; merge this branch and final report.
