@@ -304,9 +304,21 @@ export function packageMarkdown(p: Package): string {
   return out.join("\n") + "\n";
 }
 
-// Example `unstale init` output on a Next.js and Prisma app, trimmed, in the CLI's tones.
+// Example `unstale init` output on a Next.js and Prisma app, trimmed, in the CLI's tones. The question is the first
+// run's, as the client prints it at 80 columns with one OpenAI key set and 38 packages followed (the figures of
+// `local/cli/src/setup/golden/openai-only.txt`).
 const TERMINAL: [string, string][] = [
   ["cmd", "$ npx @unstale/cli init"],
+  ["accent", "How should unstale read new release notes?"],
+  ["", ""],
+  ["muted", "     Read with   Cost a year, this repo   Compared with the best option"],
+  ["body", "  1  OpenAI      ≈ $2.43                  ≈ 3% less precise labels"],
+  ["body", "  2  Not now     free                     ≈ 27% of its changes in new releases"],
+  ["muted", "     Keys: OPENAI_API_KEY"],
+  ["", ""],
+  ["body", "Enter for 1, a number to choose, or d for details:"],
+  ["muted", "Saved for this repo: OpenAI (OPENAI_API_KEY) reads release notes."],
+  ["", ""],
   ["fresh", "✓ my-app · Personal setup ready"],
   ["accent", "Next: run unstale-review in your coding agent · copyable prompt below."],
   ["body", "Mapped 119 direct dependencies from pnpm-lock.yaml and checked local references."],
@@ -350,6 +362,13 @@ const SUMMARY =
   "unstale tells you and your coding agent what changed upstream for your package versions and your code. Cited, local, free and open source.";
 
 const EVAL = `${REPO}/blob/main/eval/gate/MISSES.md`;
+const READING = `${REPO}/blob/main/docs/reading-release-notes.md`;
+const PRIVACY = `${REPO}/blob/main/docs/privacy.md`;
+/** What reading new release notes costs in tokens, why it is small, and what going without gives up. Sources:
+ *  `eval/edge-port/RESULTS.md` (about 425k input and 40k to 50k output tokens per package, per year, on a key alone),
+ *  `eval/beat-naive/RESULTS.md` (409K tokens, Claude Code's plain ask), `NO_PROVIDER_SHARE` in the client's setup. */
+const COST =
+  "unstale reads new release notes with a small model, on your own API key or your Codex plan. A package takes about 470,000 small-model tokens a year, about 1,300 a day, because each release note is read once, only for the packages you use, and every answer is kept. For scale, Claude Code alone spent 409,000 tokens on one review of one repository. Or pay nothing: new releases then get advisories and deprecations only, about 27% of the changes in new releases.";
 const BEAT_NAIVE = `${REPO}/blob/main/eval/beat-naive/RESULTS.md`;
 
 /** Distinct package identities, including related packages grouped on a single page. */
@@ -382,7 +401,7 @@ export function homePage(pkgs: Package[], version?: string): string {
 <p class="lede">unstale finds what changed in your dependencies and where your code needs it. It reads the release
 notes, migration guides and advisories for your installed versions, and hands Claude Code, Codex or Cursor a cited
 list.</p>
-<p class="lede">It finds 4x as many upstream changes that apply to your code as Claude Code alone, using 1/16 of the tokens. <a href="${BEAT_NAIVE}">How we measured</a></p>
+<p class="lede">It finds 4x as many upstream changes that apply to your code as Claude Code alone, and your agent uses 1/16 of the tokens. <a href="${BEAT_NAIVE}">How we measured</a></p>
 </section>
 <section class="catalog-proof" aria-label="Current catalog coverage">
 <dl class="catalog-stats">
@@ -414,6 +433,8 @@ ${CONTRIBUTIONS.map((c) => `<li><a href="${esc(c.url)}">${esc(c.lead)}</a> ${esc
 <li><strong>Fixes worth upgrading for.</strong> Security, bug fixes and behaviour changes between versions.</li>
 <li><strong>New opportunities.</strong> Net new capabilities, performance improvements, and more.</li>
 </ul>
+<h2>What it costs</h2>
+<p>${COST} <code>unstale init</code> asks once and shows your repository's yearly cost before anything is spent. <a href="${READING}">Every option</a></p>
 <h2>How it works</h2>
 <ol>
 <li><strong>Read your lockfile.</strong> JavaScript, TypeScript and Python projects.</li>
@@ -421,12 +442,12 @@ ${CONTRIBUTIONS.map((c) => `<li><a href="${esc(c.url)}">${esc(c.lead)}</a> ${esc
 <li><strong>Review with your agent.</strong> Run the <code>unstale-review</code> skill to see what changed, where it matters, and what to do next.</li>
 </ol>
 <h2>Your code stays on your machine</h2>
-<p>unstale receives public package names; <a href="https://osv.dev">OSV</a> receives package names and versions for advisory checks. No client telemetry.</p>
+<p>unstale receives public package names; <a href="https://osv.dev">OSV</a> receives package names and versions for advisory checks. A model provider you choose receives public release-note text, never your code. No client telemetry.</p>
 <details class="privacy-details"><summary>Network details</summary>
 <p>Public package names (like <code>pkg:npm/next</code>) to fetch the changes that apply. Not your code, file paths,
 versions or any ID. The service, hosted on Cloudflare, sees your IP address. It keeps it in memory only, to apply rate
 limits and count each address once per package, and never writes it to storage. Daily aggregate coverage-request outcome counts are kept for up to 90 UTC days, without addresses, package lists or individual request histories. To check advisories, the CLI sends the package names and versions your lockfiles resolve to
-<a href="https://osv.dev">OSV</a>, as <code>npm audit</code> would, and it reads the public npm and PyPI registries.</p>
+<a href="https://osv.dev">OSV</a>, as <code>npm audit</code> would, and it reads the public npm and PyPI registries. If you choose a model provider, it receives public release-note text and the changes read from it, and nothing from your repository. <a href="${PRIVACY}">More</a></p>
 </details>
 
 <p class="license">AGPL-3.0 · <a href="${REPO}">GitHub</a></p>
@@ -459,7 +480,7 @@ unstale finds what changed in your dependencies and where your code needs it. It
 guides and advisories for your installed versions, and hands Claude Code, Codex or Cursor a cited list. Runs locally,
 free and open source.
 
-It finds 4x as many upstream changes that apply to your code as Claude Code alone, using 1/16 of the tokens
+It finds 4x as many upstream changes that apply to your code as Claude Code alone, and your agent uses 1/16 of the tokens
 ([how we measured](${BEAT_NAIVE})).
 
 ## Found with unstale
@@ -471,6 +492,11 @@ ${CONTRIBUTIONS.map((c) => `- [${c.lead}](${c.url}) ${c.rest}`).join("\n")}
 - **Upgrade plans.** Breaking changes, deprecations and affected files.
 - **Fixes worth upgrading for.** Security, bug fixes and behaviour changes between versions.
 - **New opportunities.** Net new capabilities, performance improvements, and more.
+
+## What it costs
+
+${COST} \`unstale init\` asks once and shows your repository's yearly cost before anything is spent.
+[Every option](${READING}).
 
 ## How it works
 
@@ -484,7 +510,9 @@ Public package names (like \`pkg:npm/next\`) to fetch the changes that apply. No
 any ID. The service, hosted on Cloudflare, sees your IP address. It keeps it in memory only, to apply rate limits and count
 each address once per package, and never writes it to storage. Daily aggregate coverage-request outcome counts are kept for up to 90 UTC days, without addresses, package lists or individual request histories.
 No client telemetry. To check advisories, the CLI sends the package names and versions your lockfiles resolve to OSV
-(https://osv.dev), as \`npm audit\` would, and it reads the public npm and PyPI registries.
+(https://osv.dev), as \`npm audit\` would, and it reads the public npm and PyPI registries. If you choose a model
+provider, it receives public release-note text and the changes read from it, and nothing from your repository
+([more](${PRIVACY})).
 
 
 
@@ -506,7 +534,7 @@ export function llmsTxt(pkgs: Package[], version?: string): string {
 
 unstale is a CLI (\`@unstale/cli\` on npm${version ? `, ${version}` : ""}) plus a public, signed catalog of upstream changes.
 \`${INSTALL_NPX}\` in a repository maps its dependencies, matches the catalog against the code locally, and installs the review
-skill (\`/unstale-review\`; \`$unstale-review\` in Codex).
+skill (\`/unstale-review\`; \`$unstale-review\` in Codex). ${COST}
 
 Notes for agents:
 
@@ -520,7 +548,9 @@ Notes for agents:
 ## Docs
 
 - [README](${REPO}/blob/main/README.md): what it does, install, commands, how it works
-- [Full text for agents](${ORIGIN}/llms-full.txt): README and security model in one file
+- [Full text for agents](${ORIGIN}/llms-full.txt): README, docs and security model in one file
+- [Reading new release notes](${READING}): every option, what it costs and what it gives up
+- [Privacy](${PRIVACY}): what init writes and what leaves the machine
 - [Security and data handling](${REPO}/blob/main/SECURITY.md)
 - [Against an unaided agent](${BEAT_NAIVE}): unstale vs Claude Code on 19 repos
 - [Evaluation on real upgrades](${REPO}/blob/main/eval/gate/MISSES.md)
@@ -535,7 +565,7 @@ ${pkgs.map((p) => `- [${p.name}](${ORIGIN}${p.path}index.md): ${p.count} ${p.cou
 `;
 }
 
-/** llms-full.txt: the README and the security model, read from the repository at build time. */
+/** llms-full.txt: the README, its two docs pages and the security model, read from the repository at build time. */
 export function llmsFull(): string {
   const read = (rel: string) => {
     try {
@@ -544,7 +574,7 @@ export function llmsFull(): string {
       return "";
     }
   };
-  return [read("../../README.md"), read("../../SECURITY.md")].filter(Boolean).join("\n\n---\n\n");
+  return ["../../README.md", "../../docs/reading-release-notes.md", "../../docs/privacy.md", "../../SECURITY.md"].map(read).filter(Boolean).join("\n\n---\n\n");
 }
 
 export function sitemap(pkgs: Package[], now: string): string {
