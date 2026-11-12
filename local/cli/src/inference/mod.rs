@@ -454,7 +454,7 @@ pub struct Inference {
     pub budget_unseen: Option<bool>,
     pub limits: Limits,
     env: Box<EnvFn>,
-    codex_ready: std::sync::OnceLock<Result<(), Deferred>>,
+    codex: codex::State,
     /// Set when a call's usage could not be recorded: no further call runs in this process.
     pub(crate) ledger_failed: std::sync::atomic::AtomicBool,
 }
@@ -468,7 +468,7 @@ impl Inference {
             budget_unseen: None,
             limits: Limits::default(),
             env: Box::new(|k| std::env::var(k).ok()),
-            codex_ready: std::sync::OnceLock::new(),
+            codex: codex::State::default(),
             ledger_failed: std::sync::atomic::AtomicBool::new(false),
         }
     }

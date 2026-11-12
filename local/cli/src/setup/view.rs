@@ -951,16 +951,6 @@ pub fn details_lines(d: &Detected, techs: usize, no_key: bool) -> Vec<String> {
                 String::new()
             };
             row("per package, per year", format!("{per}{at_api}"));
-            if q.codex_tokens_estimated > 0 {
-                row(
-                    "",
-                    format!(
-                        "{} measured, for reading the notes; {} for the rest, an estimate",
-                        tokens((q.codex_tokens - q.codex_tokens_estimated) as f64),
-                        tokens(q.codex_tokens_estimated as f64)
-                    ),
-                );
-            }
             if techs > 0 {
                 row("this repo, a year", format!("≈ {}", cost(&q, techs as f64)));
                 row(

@@ -2,15 +2,38 @@
 //! `eval/edge-cli/RESULTS.md`. The sandbox is read-only, the session ephemeral, the working directory an empty
 //! temporary one, and no tool beyond answering is enabled. The child gets a minimal environment, so no key variable
 //! of the user's shell reaches it. Usage comes from `turn.completed.usage`.
+//!
+//! Codex adds its own fixed input to every call; [`HINTS`] turns off its multi-agent tools and hint texts, 4,299 to
+//! 2,735 input tokens on a trivial call on Codex 0.166.0 (`eval/edge-port/RESULTS.md`, addendum 4). A Codex that
+//! refuses one of them at start-up gets the calls without them for the rest of the run, so it never fails a sync.
 
 use super::{Answer, Deferred, Inference, Prompt, TempDir, Usage, parse_answer};
 use serde_json::Value;
 use std::io::Read;
 use std::process::{Command, Stdio};
+use std::sync::OnceLock;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 /// The oldest Codex the flag set was measured on.
 pub const MIN_VERSION: &str = "0.166.0";
+
+/// Codex's multi-agent tools off and its three hint texts empty.
+const HINTS: &[&str] = &[
+    "features.multi_agent_v2.disable_native_tools=true",
+    "features.multi_agent_v2.usage_hint_enabled=false",
+    "features.multi_agent_v2.root_agent_usage_hint_text=\"\"",
+    "features.multi_agent_v2.usage_hint_text=\"\"",
+    "features.multi_agent_v2.multi_agent_mode_hint_text=\"\"",
+];
+
+/// Codex's state for one [`super::Inference`].
+#[derive(Default)]
+pub(crate) struct State {
+    ready: OnceLock<Result<(), Deferred>>,
+    /// Set once Codex refused to start with [`HINTS`]: later calls leave them out.
+    no_hints: AtomicBool,
+}
 
 /// The instructions that replace Codex's own (`model_instructions_file`).
 const INSTRUCTIONS: &str =
@@ -112,7 +135,8 @@ fn run(mut c: Command, timeout: Duration) -> std::io::Result<Ran> {
 
 /// Installed, recent enough and logged in; checked once per [`Inference`].
 pub(super) fn ready(inf: &Inference) -> Result<(), Deferred> {
-    inf.codex_ready
+    inf.codex
+        .ready
         .get_or_init(|| {
             let quick = Duration::from_secs(20);
             let version = match run(command(inf, &["--version"]), quick) {
@@ -141,7 +165,7 @@ pub(super) fn ready(inf: &Inference) -> Result<(), Deferred> {
 }
 
 /// The arguments for one call.
-fn args(inf: &Inference, work: &str, instructions: &str, prompt: &str) -> Vec<String> {
+fn args(inf: &Inference, hints: bool, work: &str, instructions: &str, prompt: &str) -> Vec<String> {
     let c = &inf.provider;
     let mut a: Vec<String> = [
         "exec",
@@ -173,6 +197,11 @@ fn args(inf: &Inference, work: &str, instructions: &str, prompt: &str) -> Vec<St
     for f in DISABLED {
         a.extend(["--disable".into(), f.to_string()]);
     }
+    if hints {
+        for kv in HINTS {
+            a.extend(["-c".into(), kv.to_string()]);
+        }
+    }
     // `--` so a prompt that starts with `-` is never read as a flag.
     a.extend(["-C".into(), work.into(), "--".into(), prompt.into()]);
     a
@@ -200,8 +229,35 @@ fn failure(model: &str, text: &str) -> Deferred {
     }
 }
 
-/// One `codex exec` attempt.
-fn attempt(inf: &Inference, p: &Prompt) -> Result<Answer, Deferred> {
+/// One `codex exec` attempt. `Err(None)` when Codex stopped before starting a thread with [`HINTS`]: they are left
+/// out from then on and the caller asks again.
+fn attempt(inf: &Inference, p: &Prompt) -> Result<Answer, Option<Deferred>> {
+    let hints = !inf.codex.no_hints.load(Ordering::SeqCst);
+    match attempt_with(inf, p, hints) {
+        Err(Refused::Options) if hints => {
+            inf.codex.no_hints.store(true, Ordering::SeqCst);
+            Err(None)
+        }
+        Err(Refused::Options) => Err(Some(Deferred::Unavailable)),
+        Err(Refused::Deferred(d)) => Err(Some(d)),
+        Ok(a) => Ok(a),
+    }
+}
+
+/// Why an attempt gave no answer.
+enum Refused {
+    /// Codex exited with an error before it started a thread: at start-up, most likely an option it does not take.
+    Options,
+    Deferred(Deferred),
+}
+
+impl From<Deferred> for Refused {
+    fn from(d: Deferred) -> Refused {
+        Refused::Deferred(d)
+    }
+}
+
+fn attempt_with(inf: &Inference, p: &Prompt, hints: bool) -> Result<Answer, Refused> {
     let work = TempDir::new("codex-work").map_err(|_| Deferred::Unavailable)?;
     let side = TempDir::new("codex-instructions").map_err(|_| Deferred::Unavailable)?;
     let instructions = side.0.join("instructions.md");
@@ -218,26 +274,31 @@ fn attempt(inf: &Inference, p: &Prompt) -> Result<Answer, Deferred> {
     let mut c = command(inf, &[]);
     c.args(args(
         inf,
+        hints,
         &work.0.to_string_lossy(),
         &instructions.to_string_lossy(),
         &text,
     ))
     .current_dir(&work.0);
     let (ok, stdout, stderr) = match run(c, inf.limits.timeout) {
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Err(Deferred::CodexMissing),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Err(Deferred::CodexMissing.into());
+        }
         // Installed but would not start with this request (an oversized prompt, for one): not retried.
-        Err(_) => return Err(Deferred::Rejected),
-        Ok(None) => return Err(Deferred::Timeout),
+        Err(_) => return Err(Deferred::Rejected.into()),
+        Ok(None) => return Err(Deferred::Timeout.into()),
         Ok(Some(r)) => r,
     };
     let prompt_text = text;
     let mut text = None;
     let mut usage: Option<Usage> = None;
     let mut errors = String::new();
+    let mut started = false;
     for line in stdout.lines() {
         let Ok(e) = serde_json::from_str::<Value>(line) else {
             continue;
         };
+        started = true;
         match e.get("type").and_then(Value::as_str) {
             Some("turn.completed") => {
                 let u = e.get("usage").cloned().unwrap_or(Value::Null);
@@ -283,7 +344,9 @@ fn attempt(inf: &Inference, p: &Prompt) -> Result<Answer, Deferred> {
                 usage: usage.unwrap_or_default(),
             })
         }
-        _ => Err(failure(&model, &format!("{errors}\n{stderr}"))),
+        // No event at all: Codex stopped at start-up ("Error loading config.toml: …" for an option it rejects).
+        None if !ok && !started && hints => Err(Refused::Options),
+        _ => Err(failure(&model, &format!("{errors}\n{stderr}")).into()),
     }
 }
 
@@ -296,11 +359,14 @@ pub(super) fn exec(inf: &Inference, p: &Prompt) -> Result<Answer, Deferred> {
             return Err(Deferred::Storage);
         }
         match attempt(inf, p) {
-            Err(d) if d.transient() && n < inf.limits.retries => {
+            // Asked again at once without the hint options; this happens at most once per run.
+            Err(None) => {}
+            Err(Some(d)) if d.transient() && n < inf.limits.retries => {
                 std::thread::sleep(inf.limits.backoff * 2u32.pow(n));
                 n += 1;
             }
-            other => return other,
+            Err(Some(d)) => return Err(d),
+            Ok(a) => return Ok(a),
         }
     }
 }
@@ -308,4 +374,9 @@ pub(super) fn exec(inf: &Inference, p: &Prompt) -> Result<Answer, Deferred> {
 #[cfg(test)]
 pub(super) fn tests_disabled() -> &'static [&'static str] {
     DISABLED
+}
+
+#[cfg(test)]
+pub(super) fn tests_hints() -> &'static [&'static str] {
+    HINTS
 }

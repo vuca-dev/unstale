@@ -25,10 +25,9 @@ This repo has 38 packages unstale follows.
    repeats                ≈ 4 more changes listed twice per package, per year
 
 4  Codex plan
-   per package, per year  650k Codex tokens ($0.071 at API prices)
-                          170k measured, for reading the notes; 480k for the rest, an estimate
-   this repo, a year      ≈ 25M Codex tokens
-   first sync, once       ≈ 25M Codex tokens
+   per package, per year  750k Codex tokens ($0.057 at API prices)
+   this repo, a year      ≈ 29M Codex tokens
+   first sync, once       ≈ 29M Codex tokens
    results                somewhat less complete: ≈ 80% of the best option's changes
                           its changes are right as often as the best option's
                           breaking-change flags and repeats through Codex: not measured yet
