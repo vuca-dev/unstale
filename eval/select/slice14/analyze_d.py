@@ -102,15 +102,19 @@ def main():
     ap.add_argument("--act", choices=("x2", "x3"), help="round 2 actionable mapping, for both candidates")
     ap.add_argument("--jev-suffix", default=None, help="round 2: Jev runs under the same request (default: --suffix if given)")
     ap.add_argument("--json")
+    ap.add_argument("--base", help="slice 19 part 2: baseline run prefix read at its choices with the v1 mapping (e.g. choice_openai_gpt-6-luna) instead of Jev")
     o = ap.parse_args()
     S = runs(o.arm, o.suffix)
     JR = jev_runs(o.suffix if o.jev_suffix is None else o.jev_suffix)
+    if o.base:
+        JR = {"dev": o.base + "-dev", "h1": o.base + "-heldout", "h1r2": o.base + "-heldout-r2", "h2": o.base + "-heldout2"}
     act = o.act
-    round2 = bool(act) or o.suffix.startswith("-qx")
+    round2 = bool(act) or o.suffix.startswith("-qx") or bool(o.base)
+    act_b = None if o.base else act
     labels_path = os.path.join(A.OUT, "adjudicated-records.json")
     labels = A.rj(labels_path)
     rep = {"arm": o.arm}
-    fj, fs = A.fit(JR["dev"]), A.fit(S["dev"])
+    fj, fs = (dict(BREAKING_P=0.5, BENEFIT_P=0.5) if o.base else A.fit(JR["dev"])), A.fit(S["dev"])
     if o.d1:
         fs = fit_d1(ans(JR["dev"]), ans(S["dev"]), fs)
         print("D1 fit", json.dumps(fs))
@@ -121,8 +125,9 @@ def main():
     # H1: Jev at its fitted thresholds (slice 4 rule) and at 0.5 (production); Snap at its fitted thresholds.
     jh, sh = ans(JR["h1"]), ans(S["h1"])
     tg = o.suffix + ("-" + act if act else "")
-    pj = save(to_pred(jh, fj["BREAKING_P"], fj["BENEFIT_P"], act=act), "h1-jev%s-fit" % tg)
-    pj5 = save(to_pred(jh, 0.5, 0.5, act=act), "h1-jev%s-05" % tg)
+    bn = o.base or "jev"
+    pj = save(to_pred(jh, fj["BREAKING_P"], fj["BENEFIT_P"], act=act_b), "h1-%s%s-fit" % (bn, tg))
+    pj5 = save(to_pred(jh, 0.5, 0.5, act=act_b), "h1-%s%s-05" % (bn, tg))
     ps = save(to_pred(sh, fs["BREAKING_P"], fs["BENEFIT_P"], tau, act), "h1-%s%s%s-fit" % (o.arm, tg, "-d1" if o.d1 else ""))
     ps5 = save(to_pred(sh, 0.5, 0.5, act=act), "h1-%s%s-05" % (o.arm, tg))
     rep["h1"] = {k: A.metrics(A.rj(p), labels) for k, p in (("jev_fit", pj), ("jev_05", pj5), ("snap_fit", ps), ("snap_05", ps5))}
@@ -142,7 +147,7 @@ def main():
         why.append("H1 change_type_acc > 5 pts below")
     if round2 and res["change_type accuracy"]["ci"][1] < 0:
         why.append("H1 change_type_acc significantly worse")
-    if round2 and rep["h1"]["snap_fit"]["actionable_precision"] < rep["h1"]["jev_fit"]["actionable_precision"] - 0.05:
+    if round2 and not o.base and rep["h1"]["snap_fit"]["actionable_precision"] < rep["h1"]["jev_fit"]["actionable_precision"] - 0.05:
         why.append("H1 actionable_precision > 5 pts below")
 
     # H2: breaking at Snap's fitted threshold against Jev at 0.5 (H2's rule), section-cluster bootstrap.

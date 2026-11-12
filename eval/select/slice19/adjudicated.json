@@ -1,0 +1,29 @@
+{
+ "comment": "Slice 19 part 2: merges onto pairs slice16/verdicts.json does not label, read by Claude blind to the arm (incoming and candidate text only), 11 November 2026. #5: the incoming record covers the package and the property, the candidate the package only.",
+ "verdicts": {
+  "astro-71c9db18|astro-71c9db18@7.0.0+guide.f8fb9f33#0.2|astro-71c9db18:experimental.queuedrendering~2": "SAME",
+  "langchain-core-a4216c71|langchain-core-a4216c71@1.4.0#0.23|langchain-core-a4216c71:count-tokens-approximately~2": "SAME",
+  "langchain-core-a4216c71|langchain-core-a4216c71@1.4.0#0.25|langchain-core-a4216c71:get-buffer-string-format": "SAME",
+  "langchain-core-a4216c71|langchain-core-a4216c71@1.4.0#0.27|langchain-core-a4216c71:on-tool-error-tool-call-id": "SAME",
+  "langchain-core-a4216c71|langchain-core-a4216c71@1.4.0#0.39|langchain-core-a4216c71:basechatmodel-profile": "SAME",
+  "langchain-core-a4216c71|langchain-core-a4216c71@1.4.0#0.39|langchain-core-a4216c71:langchain-model-profiles": "UNSURE",
+  "langchain-core-a4216c71|langchain-core-a4216c71@1.4.0#0.5|langchain-core-a4216c71:stream-v2": "SAME",
+  "nx-808e5281|nx-808e5281@22.3.0#0.16|nx-808e5281:package.json-overrides": "SAME",
+  "nx-808e5281|nx-808e5281@22.7.7#0.0|nx-808e5281:self-hosted-remote-cache": "SAME",
+  "nx-808e5281|nx-808e5281@23.0.0#1.12|nx-808e5281:dependson": "SAME",
+  "nx-808e5281|nx-808e5281@23.0.0#1.13|nx-808e5281:svgr-option": "SAME",
+  "nx-808e5281|nx-808e5281@23.0.0#1.15|nx-808e5281:vitest-support-in-nx-vite": "SAME",
+  "nx-808e5281|nx-808e5281@23.0.0#1.16|nx-808e5281:legacy-typescript-plugin": "SAME",
+  "nx-808e5281|nx-808e5281@23.0.0#1.18|nx-808e5281:nx-cypress-cypress": "SAME",
+  "nx-808e5281|nx-808e5281@23.0.0#1.1|nx-808e5281:addprojectconfiguration-standalone": "SAME",
+  "nx-808e5281|nx-808e5281@23.0.0#1.22|nx-808e5281:nx-angular-module-federation": "SAME",
+  "nx-808e5281|nx-808e5281@23.0.0#1.24|nx-808e5281:cypress-screenshotsfolder-and-videosfolder": "SAME",
+  "nx-808e5281|nx-808e5281@23.0.0#1.25|nx-808e5281:cypress-screenshotsfolder-and-videosfolder": "SAME",
+  "nx-808e5281|nx-808e5281@23.0.0#1.2|nx-808e5281:webpack-rspack-config-compose-helpers": "SAME",
+  "nx-808e5281|nx-808e5281@23.0.0#1.4|nx-808e5281:withnx~3": "SAME",
+  "nx-808e5281|nx-808e5281@23.0.0#1.5|nx-808e5281:nxvitetspaths~2": "SAME",
+  "nx-808e5281|nx-808e5281@23.0.0#1.6|nx-808e5281:nxcopyassetsplugin": "SAME",
+  "nx-808e5281|nx-808e5281@23.0.0#1.9|nx-808e5281:inittasksrunner": "SAME",
+  "nx-808e5281|nx-808e5281@23.1.0#0.21|nx-808e5281:mode": "SAME"
+ }
+}
