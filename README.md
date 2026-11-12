@@ -42,8 +42,8 @@ To keep `unstale` on your PATH for the commands below:
 npm install -g @unstale/cli      # or: brew install vuca-dev/tap/unstale
 ```
 
-`init` asks once how to read new release notes and shows the cost first: about 1,300 small-model tokens a day per
-package on your own key, or free with less ([Reading new release notes](#reading-new-release-notes)).
+`init` asks once how to read new release notes and shows the cost first: about $0.05 a year per package on your own
+key, nothing extra on a Codex plan, or free with less ([Reading new release notes](#reading-new-release-notes)).
 
 Building from source: [CONTRIBUTING.md](CONTRIBUTING.md).
 
@@ -106,15 +106,15 @@ its progress.
 
 ## Reading new release notes
 
-unstale reads new release notes with a small model, on your own API key or your Codex plan. A package takes about
-470,000 small-model tokens a year, about 1,300 a day. For scale, Claude Code alone spent 409,000 tokens on one review
-of one repository ([how we measured](eval/beat-naive/RESULTS.md)). It stays that small because unstale reads each
-release note once, only for the packages you use, and keeps every answer.
+unstale reads new release notes with a small model, on the provider you choose. On your own API key that costs
+about $0.05 a year per package (measured November 2026). On your Codex plan there is nothing extra to pay: it draws on
+your plan, `unstale status` shows the usage, and it stops at the limit you set. The cost stays small because unstale
+reads each release note once, only for the packages you use, and keeps every answer.
 
 Or pay nothing: with no provider, new releases get advisories and deprecations only, ≈ 27% of the changes in new
 releases.
 
-- The provider receives public release-note text, never your code or file paths.
+- The release-note text goes to that provider. Your code and file paths never do.
 - Nothing is spent before you choose. `unstale init` asks once and shows this repository's yearly cost first.
 - A monthly token limit stops the spending. You set it or remove it.
 
@@ -123,12 +123,13 @@ Every option, what it costs and what it gives up: [docs/reading-release-notes.md
 ## Trust and privacy
 
 - The unstale service receives public package names only (`pkg:npm/next`). Never your code, file paths or versions.
-- No account, no client ID, no client telemetry.
+No account, no client ID, no client telemetry.
 - OSV receives the package names and versions in your lockfiles for advisory checks, as `npm audit` would.
 - Private packages are never named to anyone. `UNSTALE_NO_REGISTRY=1` turns off every third-party lookup.
-- A model provider you choose receives public release-note text, never your code or file paths.
-- The catalog is signed, and the client discards anything that does not verify. Upstream text reaches your agent as
-quoted data, never as instructions, and nothing in your code changes without your go-ahead.
+- Release-note text goes to the model provider you chose. Your code and file paths never do.
+- The catalog is signed, and the client discards anything that does not verify. A catalog directory is the exception,
+read only after your own `unstale init --catalog <dir>`.
+- Upstream text reaches your agent as quoted data, and nothing in your code changes without your go-ahead.
 
 `unstale uninstall` removes everything `init` wrote and backs up your decisions. What `init` writes, what leaves your
 machine and how private registries are recognised: [docs/privacy.md](docs/privacy.md).

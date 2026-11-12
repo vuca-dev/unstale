@@ -22,10 +22,10 @@ Then, in your agent, inside that repository:
 Use the same skill for your first review and later check-ins. It recommends where to start, respects prior decisions,
 and can focus on a package, upgrade target, or capability you name.
 
-unstale reads new release notes with a small model, on your own API key or your Codex plan: about 470,000 small-model
-tokens per package a year, about 1,300 a day, because each release note is read once, only for the packages you use.
-Claude Code alone spent 409,000 tokens on one review of one repository. `init` asks once and shows your repository's
-cost first. Or pay nothing: new releases then get advisories and
+unstale reads new release notes with a small model, on the provider you choose: about $0.05 a year per package on
+your own API key (measured November 2026), nothing extra on your Codex plan, which stops at the limit you set. The
+cost stays small because each release note is read once, only for the packages you use, and every answer is kept.
+`init` asks once and shows your repository's cost first. Or pay nothing: new releases then get advisories and
 deprecations only, about 27% of the changes in new releases
 ([every option](https://github.com/vuca-dev/unstale/blob/main/docs/reading-release-notes.md)).
 
@@ -33,7 +33,7 @@ deprecations only, about 27% of the changes in new releases
 
 Matching runs on your machine: only public package identities (for example `pkg:npm/next`) are sent, to fetch the
 signed catalog. Your code and paths never leave it; OSV receives package names and versions for advisory checks.
-A model provider you choose receives public release-note text, never your code.
+Release-note text goes to the model provider you chose, never your code.
 No client telemetry. The coverage service keeps daily aggregate request-outcome counts for up to 90 UTC days,
 without addresses, package lists, client IDs, or individual request histories.
 

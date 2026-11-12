@@ -364,11 +364,11 @@ const SUMMARY =
 const EVAL = `${REPO}/blob/main/eval/gate/MISSES.md`;
 const READING = `${REPO}/blob/main/docs/reading-release-notes.md`;
 const PRIVACY = `${REPO}/blob/main/docs/privacy.md`;
-/** What reading new release notes costs in tokens, why it is small, and what going without gives up. Sources:
- *  `eval/edge-port/RESULTS.md` (about 425k input and 40k to 50k output tokens per package, per year, on a key alone),
- *  `eval/beat-naive/RESULTS.md` (409K tokens, Claude Code's plain ask), `NO_PROVIDER_SHARE` in the client's setup. */
+/** What reading new release notes costs, why it is small, and what going without gives up. The key figure is the
+ *  sum of the three steps in `eval/edge-port/RESULTS.md` with labels four records to a call; the share with no
+ *  provider is `NO_PROVIDER_SHARE` in the client's setup. */
 const COST =
-  "unstale reads new release notes with a small model, on your own API key or your Codex plan. A package takes about 470,000 small-model tokens a year, about 1,300 a day, because each release note is read once, only for the packages you use, and every answer is kept. For scale, Claude Code alone spent 409,000 tokens on one review of one repository. Or pay nothing: new releases then get advisories and deprecations only, about 27% of the changes in new releases.";
+  "unstale reads new release notes with a small model, on the provider you choose. On your own API key that costs about $0.05 a year per package (measured November 2026). On your Codex plan there is nothing extra to pay: it draws on your plan and stops at the limit you set. The cost stays small because each release note is read once, only for the packages you use, and every answer is kept. Or pay nothing: new releases then get advisories and deprecations only, about 27% of the changes in new releases.";
 const BEAT_NAIVE = `${REPO}/blob/main/eval/beat-naive/RESULTS.md`;
 
 /** Distinct package identities, including related packages grouped on a single page. */
@@ -442,7 +442,7 @@ ${CONTRIBUTIONS.map((c) => `<li><a href="${esc(c.url)}">${esc(c.lead)}</a> ${esc
 <li><strong>Review with your agent.</strong> Run the <code>unstale-review</code> skill to see what changed, where it matters, and what to do next.</li>
 </ol>
 <h2>Your code stays on your machine</h2>
-<p>unstale receives public package names; <a href="https://osv.dev">OSV</a> receives package names and versions for advisory checks. A model provider you choose receives public release-note text, never your code. No client telemetry.</p>
+<p>unstale receives public package names; <a href="https://osv.dev">OSV</a> receives package names and versions for advisory checks. Release-note text goes to the model provider you chose, never your code. No client telemetry.</p>
 <details class="privacy-details"><summary>Network details</summary>
 <p>Public package names (like <code>pkg:npm/next</code>) to fetch the changes that apply. Not your code, file paths,
 versions or any ID. The service, hosted on Cloudflare, sees your IP address. It keeps it in memory only, to apply rate

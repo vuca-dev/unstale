@@ -60,14 +60,12 @@ test("a package page lists majors newest first, breaking changes before fixes, w
   expect(home).toContain("  1  OpenAI      ≈ $2.43                  ≈ 3% less precise labels");
   expect(home).toContain("  2  Not now     free                     ≈ 27% of its changes in new releases");
   for (const page of [home, readFileSync(join(site, "index.md"), "utf8"), readFileSync(join(site, "llms.txt"), "utf8")]) {
-    expect(page).toContain("about 470,000 small-model tokens a year, about 1,300 a day");
-    expect(page).toContain("Claude Code alone spent 409,000 tokens on one review of one repository");
+    expect(page).toContain("about $0.05 a year per package (measured November 2026)");
+    expect(page).toContain("On your Codex plan there is nothing extra to pay");
+    expect(page).not.toMatch(/470,000|409,000|1,300 a day/);
     expect(page).toContain("because each release note is read once, only for the packages you use");
     expect(page).toContain("about 27% of the changes in new releases");
   }
-  // Cost is stated in tokens: no dollar figure outside the terminal example, which is the client's own output.
-  expect(home.replace(/<pre class="term-result">[\s\S]*?<\/pre>/, "")).not.toMatch(/\$\d/);
-  for (const name of ["index.md", "llms.txt"]) expect(readFileSync(join(site, name), "utf8")).not.toMatch(/\$\d/);
   for (const page of [home, readFileSync(join(site, "index.md"), "utf8")]) {
     expect(page).toContain("No client telemetry.");
     expect(page).toContain("Daily aggregate coverage-request outcome counts");
