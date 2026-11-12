@@ -15,8 +15,8 @@ In plainer words, with the registry edge cases: [docs/privacy.md](docs/privacy.m
 notes and their costs: [docs/reading-release-notes.md](docs/reading-release-notes.md).
 
 - **Writes.** `unstale init` writes `.unstale/` (configuration, the decision ledger and reports), agent skills in
-  `.claude/skills` and `.agents/skills`, and session-start hooks that Git ignores: `.claude/settings.local.json`
-  (Claude Code), `.codex/hooks.json` (Codex, which runs it only once you trust it in `/hooks`) and
+  `.claude/skills` and `.agents/skills` (with opencode's `.opencode/commands/unstale-review.md`), and session-start
+  hooks that Git ignores: `.claude/settings.local.json` (Claude Code), `.codex/hooks.json` (Codex, which runs it only once you trust it in `/hooks`) and
   `.opencode/plugins/unstale-session.js` (opencode). A hook is added to your file without changing the rest of it, and
   is skipped where the file is tracked, read-only or a link. Collaborative mode also adds one line to `.gitattributes`.
   `unstale uninstall` removes all of it and backs up your decisions outside the repository. `unstale setup`

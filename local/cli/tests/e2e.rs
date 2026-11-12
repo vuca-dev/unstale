@@ -327,7 +327,7 @@ fn onboarding_status_reports_features_without_running_an_agent_and_resumes_jobs(
     let skill = env.read(".agents/skills/unstale-review/SKILL.md");
     assert!(skill.starts_with("---\nname: unstale-review"));
     assert!(skill.contains("Review without changing application code"));
-    // opencode ignores `disable-model-invocation` and lists every skill to its model by description.
+    // opencode 1.x ignores `disable-model-invocation` and lists every skill to its model by description.
     for dir in [".agents/skills", ".claude/skills"] {
         for skill in ["review"] {
             let text = env.read(&format!("{dir}/unstale-{skill}/SKILL.md"));
@@ -424,6 +424,41 @@ fn uninstall_backs_up_decisions_and_keeps_unmanaged_agent_files() {
     assert!(env.ok(&["uninstall"]).contains("No unstale repository installation"));
     env.ok(&["init", "--catalog", cat.loc(), "--mode", "local", "--yes"]);
     assert!(env.repo.path().join(".unstale/config.json").exists());
+}
+
+/// opencode 2.x offers command files, not skills, as slash commands: `/unstale-review` is a command file that points
+/// at the review skill, kept out of Git in personal mode like the skills, committed in shared mode, gone on uninstall.
+#[test]
+fn opencode_gets_its_review_command() {
+    let cat = FixtureCatalog::new(); publish(&cat);
+    let env = Env { repo: fixture_repo(), cache: tempfile::tempdir().unwrap() };
+    let path = ".opencode/commands/unstale-review.md";
+    let line = "/.opencode/commands/unstale-review.md";
+    Command::new("git").args(["init", "-q"]).current_dir(env.repo.path()).status().unwrap();
+    let exclude = || std::fs::read_to_string(env.repo.path().join(".git/info/exclude")).unwrap_or_default();
+    env.ok(&["init", "--catalog", cat.loc(), "--mode", "local", "--yes"]);
+    env.ok(&["review"]);
+    let command = env.read(path);
+    assert!(command.starts_with("---\ndescription: ") && command.contains("Read `.unstale/skills/review/SKILL.md` and follow it. $ARGUMENTS"), "{command}");
+    assert!(env.repo.path().join(".unstale/skills/review/SKILL.md").is_file());
+    assert!(exclude().lines().any(|l| l == line), "{}", exclude());
+    env.ok(&["init", "--catalog", cat.loc(), "--mode", "collaborative", "--yes"]);
+    env.ok(&["review"]);
+    assert_eq!(env.read(path), command);
+    assert!(!exclude().lines().any(|l| l == line), "{}", exclude());
+    env.ok(&["init", "--catalog", cat.loc(), "--mode", "local", "--yes"]);
+    env.ok(&["review"]);
+    env.ok(&["uninstall"]);
+    assert!(!env.repo.path().join(path).exists() && !env.repo.path().join(".opencode").exists());
+    assert!(!exclude().contains("unstale-review.md"), "{}", exclude());
+    // A command of the user's by that name is theirs: kept, and named as a conflict.
+    write(env.repo.path(), path, "my own review");
+    env.ok(&["init", "--catalog", cat.loc(), "--mode", "local", "--yes"]);
+    env.ok(&["review"]);
+    assert_eq!(env.read(path), "my own review");
+    assert!(env.read(".unstale/state/integration-conflicts.json").contains(path));
+    env.ok(&["uninstall"]);
+    assert_eq!(env.read(path), "my own review");
 }
 
 #[cfg(unix)]
