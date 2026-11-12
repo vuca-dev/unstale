@@ -1,6 +1,5 @@
 How should unstale read new release notes?
 
-     Read with   Cost a year, this repo     Compared with the best option
-  1  No key      ≈ 300k more agent tokens   not measured yet
+  ● No key   ≈ 300k more agent tokens a year   not measured yet
 
-Enter to use it, or d for details: 
+Enter to choose · d for details

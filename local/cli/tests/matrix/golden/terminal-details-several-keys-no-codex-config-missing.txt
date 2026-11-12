@@ -2,20 +2,6 @@
 # keys: several-keys · Codex: no-codex · run: terminal-details · repo config: --inference env:OPENROUTER_API_KEY · client: fresh · provider: answers
 
 $ unstale init --wait 0 --no-animation
-How should unstale read new release notes?
-
-     Read with                 Cost a year, this repo   Compared with the best option
-  1  Jev + Vercel AI Gateway   ≈ $0.11                  the best option
-  2  Vercel AI Gateway         ≈ $0.16                  ≈ 3% less precise labels
-  3  Anthropic                 ≈ $0.23                  ≈ 90% of its changes
-  4  Not now                   free                     ≈ 27% of its changes in new releases
-     Jev: a labelling service, used beside the provider that reads the notes.
-     Keys: JEV_API_KEY, AI_GATEWAY_API_KEY, ANTHROPIC_API_KEY
-
-This repo's config suggests OpenRouter (OPENROUTER_API_KEY), which is not one of the options here.
-
-Enter for 1, a number to choose, or d for details: d
-
 Costs are estimates from evaluation runs, billed by the provider to your key or plan.
 This repo has 3 packages unstale follows.
 
@@ -47,7 +33,17 @@ This repo has 3 packages unstale follows.
    cost     free: no model is called
    results  advisories and deprecations only: ≈ 27% of the changes in new releases
 
-Your choice (Enter for 1):
+How should unstale read new release notes?
+
+  ● Jev + Vercel AI Gateway key   ≈ $0.11 a year   the best option
+  ○ Vercel AI Gateway key         ≈ $0.16 a year   ≈ 3% less precise labels
+  ○ Anthropic key                 ≈ $0.23 a year   ≈ 90% of the best option's changes
+  ○ Not now                       free             ≈ 27% of changes in new releases
+    Jev: a labelling service, used beside the provider that reads the notes.
+
+This repo's config suggests OpenRouter (OPENROUTER_API_KEY), which is not one of the options here.
+
+↑↓ to move · Enter to choose · d for details
 Saved for you: Jev + Vercel AI Gateway (JEV_API_KEY, AI_GATEWAY_API_KEY) reads release notes.
   ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.

@@ -49,13 +49,12 @@ react: 1 upstream change on file, nothing new
 $ unstale init --wait 0 --no-animation
 How should unstale read new release notes?
 
-     Read with   Key                 Cost a year, this repo   Compared with the best option
-  1  Anthropic   ANTHROPIC_API_KEY   ≈ $0.23                  ≈ 90% of its changes
-  2  Not now                         free                     ≈ 27% of its changes in new releases
+  ● Anthropic key   ≈ $0.23 a year   ≈ 90% of the best option's changes
+  ○ Not now         free             ≈ 27% of changes in new releases
 
 This repo's config suggests OpenAI (OPENAI_API_KEY), which is not one of the options here.
 
-Enter for 1, a number to choose, or d for details:
+↑↓ to move · Enter to choose · d for details
 Saved for you: Anthropic (ANTHROPIC_API_KEY) reads release notes.
   ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.

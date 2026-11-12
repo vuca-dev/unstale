@@ -252,10 +252,7 @@ fn rendered(d: &Detected, techs: usize, no_key: bool, reader: Reader, width: usi
     let mut text = view::picker_lines(d, techs, no_key, reader, width).join("\n");
     if reader == Reader::Person {
         text += "\n";
-        text += &match options(d, no_key).len() {
-            0 => view::nothing_prompt(),
-            n => view::prompt(n),
-        };
+        text += view::menu(d, techs, no_key, width, None).hint();
     }
     format!("{text}\n")
 }
@@ -1267,4 +1264,83 @@ fn the_packages_unstale_follows_are_the_direct_dependencies_a_user_counts() {
     assert_eq!(followed(&st), 2);
     let lines = view::details_lines(&machine(&[], CodexState::Absent), followed(&st), false);
     assert!(lines.contains(&"This repo has 2 packages unstale follows.".to_string()), "{lines:?}");
+}
+
+#[test]
+fn menu_keys_move_the_mark_choose_and_stop() {
+    use super::select::{Key, Step, read_key, step};
+    let keys = |b: &[u8]| {
+        let mut r = b;
+        let mut out = vec![];
+        while !r.is_empty() {
+            out.push(read_key(&mut r));
+        }
+        out
+    };
+    assert_eq!(
+        keys(b"\x1b[A\x1b[B\x1bOB\r\n3dqkjx\x03\x04"),
+        [
+            Key::Up,
+            Key::Down,
+            Key::Down,
+            Key::Enter,
+            Key::Enter,
+            Key::Digit(3),
+            Key::Details,
+            Key::End,
+            Key::Up,
+            Key::Down,
+            Key::Other,
+            Key::Interrupt,
+            Key::End
+        ]
+    );
+    assert_eq!(read_key(&mut &b""[..]), Key::End);
+    // The mark wraps; a number past the options and `d` with no details do nothing.
+    assert_eq!(step(Key::Up, 0, 3, true), Step::Mark(2));
+    assert_eq!(step(Key::Down, 2, 3, true), Step::Mark(0));
+    assert_eq!(step(Key::Digit(2), 0, 3, true), Step::Mark(1));
+    assert_eq!(step(Key::Digit(4), 0, 3, true), Step::Ignore);
+    assert_eq!(step(Key::Details, 0, 3, false), Step::Ignore);
+    assert_eq!(step(Key::Enter, 1, 3, true), Step::Choose(1));
+    assert_eq!(
+        step(Key::End, 1, 3, true),
+        Step::Stop(view::Answered::Nothing)
+    );
+}
+
+#[test]
+fn the_menu_marks_one_row_tags_the_suggestion_and_fits_the_width() {
+    let d = machine(&[("OPENAI_API_KEY", Seen::Shell)], CodexState::Ready);
+    let m = view::menu(&d, 38, false, view::WIDTH, Some(1));
+    assert_eq!(m.default, 1);
+    let lines = m.lines(m.default);
+    assert_eq!(lines.iter().filter(|l| l.starts_with("  ● ")).count(), 1);
+    let marked = lines.iter().find(|l| l.starts_with("  ● ")).unwrap();
+    assert!(marked.starts_with("  ● Codex plan") && marked.ends_with("suggested by this repo"), "{marked}");
+    // Codex use is the plan's: no token count in the menu.
+    assert!(marked.contains("no extra cost") && !marked.contains("tokens"), "{marked}");
+    // Each trade stands on its own: no "its" pointing at a column heading.
+    assert!(lines.iter().all(|l| !l.contains(" its ")), "{lines:#?}");
+    for (name, d, techs, no_key, _) in scenarios() {
+        for width in [view::WIDTH, 80, 60] {
+            for l in view::menu(&d, techs, no_key, width, None).lines(0) {
+                assert!(l.chars().count() <= width, "{name} at {width}: {l}");
+                assert_eq!(l, l.trim_end(), "{name}: trailing blanks");
+            }
+        }
+    }
+}
+
+#[test]
+fn a_menu_too_big_for_the_terminal_is_asked_by_typing_instead() {
+    use super::select::fits;
+    let m = view::menu(&everything(), 38, false, view::WIDTH, None);
+    assert!(fits(&m, 40, 100));
+    // The question is wider than 40 columns: redrawn there, each move would leave a copy behind.
+    assert!(!fits(&view::menu(&everything(), 38, false, 40, None), 40, 40));
+    // As many lines as the terminal has rows: the top could not be reached to redraw.
+    let n = m.lines(0).len() + 1;
+    assert!(fits(&m, n + 1, 100));
+    assert!(!fits(&m, n, 100));
 }

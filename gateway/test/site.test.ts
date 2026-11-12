@@ -57,8 +57,8 @@ test("a package page lists majors newest first, breaking changes before fixes, w
   expect(home).toContain("npx @unstale/cli init");
   // The first run's question, and the trade stated on the page and in its Markdown twin.
   expect(home).toContain("How should unstale read new release notes?");
-  expect(home).toContain("  1  OpenAI      ≈ $2.43                  ≈ 3% less precise labels");
-  expect(home).toContain("  2  Not now     free                     ≈ 27% of its changes in new releases");
+  expect(home).toContain("  ● OpenAI key   ≈ $1.98 a year   ≈ 3% less precise labels");
+  expect(home).toContain("  ○ Not now      free             ≈ 27% of changes in new releases");
   for (const page of [home, readFileSync(join(site, "index.md"), "utf8"), readFileSync(join(site, "llms.txt"), "utf8")]) {
     expect(page).toContain("about 470,000 small-model tokens a year, about 1,300 a day");
     expect(page).toContain("Claude Code alone spent 409,000 tokens on one review of one repository");
