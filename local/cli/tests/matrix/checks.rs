@@ -1137,7 +1137,7 @@ const { default: plugin } = await import(new URL("./plugin.mjs", import.meta.url
 let started = null;
 const event = { subscribe: async function* () {
   started = performance.now();
-  yield { type: "session.created", data: { sessionID: "ses_1" } };
+  yield { type: "session.created", location: { directory: repo }, data: { sessionID: "ses_1", location: { directory: repo } } };
 } };
 await plugin.setup({ location: { directory: repo }, event });
 // From the event to the end of the command the plugin ran: opencode is running already, so node's own start is not

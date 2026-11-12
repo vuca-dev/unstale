@@ -16,8 +16,12 @@ struct Env {
 
 impl Env {
     fn run(&self, args: &[&str]) -> (i32, String, String) {
+        self.run_with(args, &[])
+    }
+    fn run_with(&self, args: &[&str], vars: &[(&str, &std::ffi::OsStr)]) -> (i32, String, String) {
         let out = Command::new(env!("CARGO_BIN_EXE_unstale"))
             .args(args)
+            .envs(vars.iter().copied())
             .current_dir(self.repo.path())
             .env("UNSTALE_CACHE_DIR", self.cache.path())
             .env("UNSTALE_TODAY", "2026-10-15")
@@ -426,31 +430,49 @@ fn uninstall_backs_up_decisions_and_keeps_unmanaged_agent_files() {
     assert!(env.repo.path().join(".unstale/config.json").exists());
 }
 
-/// Where opencode's command cannot be written (`.opencode` a file, or a directory that cannot be written), `init`
-/// and `review` carry on: the skills are installed and the command is named as a conflict.
+/// Where opencode's command or plugin cannot be written (`.opencode` a file, or a directory that cannot be written),
+/// `init` and `review` carry on, with the edge-inference switch off and on: the skills are installed, and the report
+/// and the terminal say what was not written, not that a file of the user's was kept.
 #[cfg(unix)]
 #[test]
 fn an_unwritable_opencode_directory_is_a_conflict_not_a_failure() {
     use std::os::unix::fs::PermissionsExt;
     let cat = FixtureCatalog::new(); publish(&cat);
-    for case in ["file", "read-only"] {
-        let env = Env { repo: fixture_repo(), cache: tempfile::tempdir().unwrap() };
-        let dir = env.repo.path().join(".opencode");
-        if case == "file" {
-            write(env.repo.path(), ".opencode", "not a directory");
-        } else {
-            std::fs::create_dir_all(&dir).unwrap();
-            std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o555)).unwrap();
-        }
-        env.ok(&["init", "--catalog", cat.loc(), "--mode", "local", "--yes"]);
-        env.ok(&["review"]);
-        assert!(env.repo.path().join(".agents/skills/unstale-review/SKILL.md").is_file(), "{case}");
-        assert!(env.read(".unstale/state/integration-conflicts.json").contains(".opencode/commands/unstale-review.md"), "{case}");
-        env.ok(&["uninstall"]);
-        if case == "read-only" {
-            std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
-        } else {
-            assert_eq!(env.read(".opencode"), "not a directory");
+    let config = tempfile::tempdir().unwrap();
+    for switch in ["", "1"] {
+        for case in ["file", "read-only"] {
+            let env = Env { repo: fixture_repo(), cache: tempfile::tempdir().unwrap() };
+            let vars: [(&str, &std::ffi::OsStr); 2] = [("UNSTALE_EDGE_INFERENCE", switch.as_ref()), ("UNSTALE_CONFIG_DIR", config.path().as_os_str())];
+            let ok = |args: &[&str]| {
+                let (code, out, err) = env.run_with(args, &vars);
+                assert_eq!(code, 0, "switch {switch:?}, {case}, {args:?}\nstdout:\n{out}\nstderr:\n{err}");
+                out
+            };
+            let dir = env.repo.path().join(".opencode");
+            if case == "file" {
+                write(env.repo.path(), ".opencode", "not a directory");
+            } else {
+                std::fs::create_dir_all(&dir).unwrap();
+                std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o555)).unwrap();
+            }
+            let out = ok(&["init", "--service", cat.loc(), "--mode", "local", "--yes", "--wait", "0", "--no-animation"]);
+            ok(&["review"]);
+            let what = format!("switch {switch:?}, {case}");
+            assert!(env.repo.path().join(".agents/skills/unstale-review/SKILL.md").is_file(), "{what}");
+            let conflicts = env.read(".unstale/state/integration-conflicts.json");
+            assert!(conflicts.contains(".opencode/commands/unstale-review.md — not written: "), "{what}: {conflicts}");
+            if switch == "1" && case == "read-only" {
+                assert!(conflicts.contains(".opencode/plugins/unstale-session.js — not written: "), "{what}: {conflicts}");
+            }
+            let report = env.read(".unstale/onboarding-report.md");
+            assert!(report.contains("## Integrations not written") && !report.contains("## Existing integrations preserved"), "{what}: {report}");
+            assert!(out.contains("Some agent integrations could not be written") && !out.contains("integrations preserved"), "{what}: {out}");
+            ok(&["uninstall"]);
+            if case == "read-only" {
+                std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+            } else {
+                assert_eq!(env.read(".opencode"), "not a directory");
+            }
         }
     }
 }

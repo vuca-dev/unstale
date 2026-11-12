@@ -937,6 +937,12 @@ pub fn install_codex_hook(ctx: &Ctx) -> Result<()> {
 /// definition"), and opencode 1.x from 1.18.29 runs its `server`. 2.x does not send `session.created` to a plugin
 /// when `opencode run` creates the session in the request that starts the server, so a session's first
 /// `session.execution.started` counts as its start too, once per session.
+///
+/// 2.x's event stream is the whole server's, across repositories. It runs one plugin instance per session
+/// directory, and that instance's `ctx.location.directory` is the session's own, a subdirectory or a Git worktree's
+/// too. A session's `location.directory` (on `session.created`, or from `ctx.session.get` where the event has none)
+/// equals it exactly (checked on 2.2.7). So the plugin syncs only for sessions of its own location, and not for child
+/// sessions (`parentID`).
 pub fn opencode_plugin(argv: &[String]) -> String {
     let argv = serde_json::to_string(argv).unwrap_or_else(|_| "[]".into());
     const SOURCE: &str = r#"// MARKER
@@ -955,16 +961,25 @@ export default {
   id: "unstale-session",
   async setup(ctx) {
     const directory = ctx?.location?.directory;
-    const started = new Set();
+    const trim = (d) => (typeof d === "string" ? d.replace(/\/+$/, "") : undefined);
+    const own = trim(directory);
+    // The event stream is the whole server's: only this location's top-level sessions, each once.
+    const decided = new Set();
     const controller = new AbortController();
     (async () => {
       try {
         for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
           if (event?.type !== "session.created" && event?.type !== "session.execution.started") continue;
           const id = event.data?.sessionID ?? event.data?.info?.id ?? event.data?.id;
-          if (started.has(id)) continue;
-          started.add(id);
-          sync(directory);
+          if (id === undefined || decided.has(id)) continue;
+          decided.add(id);
+          let info = event.data;
+          let location = event.location?.directory ?? info?.location?.directory;
+          if (location === undefined) {
+            try { info = await ctx.session.get({ sessionID: id }); } catch { info = undefined; }
+            location = info?.location?.directory;
+          }
+          if (own !== undefined && trim(location) === own && !info?.parentID) sync(directory);
         }
       } catch {}
     })();
@@ -982,26 +997,38 @@ export default {
     SOURCE.replacen("MARKER", MARKER, 1).replacen("ARGV", &argv, 1)
 }
 
+/// What separates an integration's path from why it could not be written, in `state/integration-conflicts.json`;
+/// an entry without it is a file of the user's that was kept.
+pub const NOT_WRITTEN: &str = " — not written: ";
+
+fn not_written(rel: &str, e: &anyhow::Error) -> String {
+    format!("{rel}{NOT_WRITTEN}{}", e.root_cause())
+}
+
 /// opencode: the plugin, written only where no file of the user's stands (nor a tracked, read-only or linked one),
-/// and excluded from Git (it names this machine's executable).
-pub fn install_opencode_plugin(ctx: &Ctx) -> Result<()> {
+/// and excluded from Git (it names this machine's executable). A write that fails (`.opencode` a directory that
+/// cannot be written) is returned as the entry that says so, and the rest of the integration goes on.
+pub fn install_opencode_plugin(ctx: &Ctx) -> Result<Option<String>> {
     if crate::hooks::unwritable(&ctx.root, OPENCODE_PLUGIN_PATH).is_some() {
-        return Ok(());
+        return Ok(None);
     }
     let path = ctx.root.join(OPENCODE_PLUGIN_PATH);
     let old = match std::fs::read_to_string(&path) {
         Ok(t) => Some(t),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
-        Err(_) => return Ok(()),
+        Err(_) => return Ok(None),
     };
     if old.as_deref().is_some_and(|t| !t.contains(MARKER)) {
-        return Ok(());
+        return Ok(None);
     }
     let text = opencode_plugin(&onboarding::invocation_argv());
-    if old.as_deref() != Some(text.as_str()) {
-        util::write_atomic(&path, text.as_bytes())?;
+    if old.as_deref() != Some(text.as_str())
+        && let Err(e) = util::write_atomic(&path, text.as_bytes())
+    {
+        return Ok(Some(not_written(OPENCODE_PLUGIN_PATH, &e)));
     }
-    exclude(&ctx.root, OPENCODE_PLUGIN_EXCLUDE_LINE)
+    exclude(&ctx.root, OPENCODE_PLUGIN_EXCLUDE_LINE)?;
+    Ok(None)
 }
 
 /// opencode's `/unstale-review`. opencode 2.x offers only command files as slash commands, not skills, and hides a
@@ -1020,8 +1047,9 @@ Read `.unstale/skills/review/SKILL.md` and follow it. $ARGUMENTS\n\n<!-- {MARKER
     )
 }
 
-/// Writes the command unless a file of the user's stands there, or the path runs through a link: `false` then.
-pub fn install_opencode_command(ctx: &Ctx) -> Result<bool> {
+/// Writes the command unless a file of the user's stands there, or the path runs through a link (its path is returned
+/// then), or the write fails (`.opencode` a file, or a directory that cannot be written: the entry that says so).
+pub fn install_opencode_command(ctx: &Ctx) -> Result<Option<String>> {
     let path = ctx.root.join(OPENCODE_COMMAND_PATH);
     let linked = path
         .ancestors()
@@ -1029,13 +1057,13 @@ pub fn install_opencode_command(ctx: &Ctx) -> Result<bool> {
         .any(|p| std::fs::symlink_metadata(p).is_ok_and(|m| m.file_type().is_symlink()));
     let old = std::fs::read_to_string(&path).ok();
     if linked || (path.exists() && !old.as_deref().is_some_and(|t| t.contains(MARKER))) {
-        return Ok(false);
+        return Ok(Some(OPENCODE_COMMAND_PATH.to_string()));
     }
     let text = opencode_command();
-    // Where it cannot be written (`.opencode` a file, a directory that cannot be written): a conflict, as for a file
-    // of the user's, and the rest of the integration goes on.
-    if old.as_deref() != Some(text.as_str()) && util::write_atomic(&path, text.as_bytes()).is_err() {
-        return Ok(false);
+    if old.as_deref() != Some(text.as_str())
+        && let Err(e) = util::write_atomic(&path, text.as_bytes())
+    {
+        return Ok(Some(not_written(OPENCODE_COMMAND_PATH, &e)));
     }
     if ctx.config.mode == crate::Mode::Local {
         exclude(&ctx.root, OPENCODE_COMMAND_EXCLUDE_LINE)?;
@@ -1052,7 +1080,7 @@ pub fn install_opencode_command(ctx: &Ctx) -> Result<bool> {
             util::write_atomic(&p, text.as_bytes())?;
         }
     }
-    Ok(true)
+    Ok(None)
 }
 
 /// Codex runs a project hook only once the user trusts it, which only they can do: the one line that names the step,

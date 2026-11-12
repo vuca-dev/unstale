@@ -782,21 +782,48 @@ const expect = (n, what) => {
   const last = calls[n - 1];
   if (n && last.slice(-3).join(" ") !== `-C ${repo} notify`) throw new Error(`${what}: ${JSON.stringify(last)}`);
 };
+// The server's sessions, as `ctx.session.get` returns them: this repository's, another's, a child of ours.
+const other = repo + "-elsewhere";
+const sessions = {
+  ses_1: { id: "ses_1", location: { directory: repo } },
+  ses_2: { id: "ses_2", location: { directory: repo } },
+  ses_b: { id: "ses_b", location: { directory: other } },
+  ses_c: { id: "ses_c", parentID: "ses_1", location: { directory: repo } },
+};
+const ctx = (events) => ({
+  location: { directory: repo },
+  event: stream(events),
+  session: { get: async ({ sessionID }) => sessions[sessionID] },
+});
 // opencode 2.x, a session started in the interface: created, then its executions; one sync.
-await plugin.setup({ location: { directory: repo }, event: stream([
+await plugin.setup(ctx([
   { type: "message.updated", data: {} },
-  { type: "session.created", data: { sessionID: "ses_1" } },
+  { type: "session.created", location: { directory: repo }, data: { sessionID: "ses_1", location: { directory: repo } } },
   { type: "session.execution.started", data: { sessionID: "ses_1" } },
   { type: "session.execution.started", data: { sessionID: "ses_1" } },
-]) });
+]));
 await settle();
 const ignored = calls.length === 1;
 expect(1, "2.x session.created");
-// opencode 2.x, `opencode run`: the session is not announced as created; its first execution counts, once.
-await plugin.setup({ location: { directory: repo }, event: stream([
+// The stream is the whole server's: another repository's session, created or only executing, and a child session of
+// ours start nothing.
+await plugin.setup(ctx([
+  { type: "session.created", location: { directory: other }, data: { sessionID: "ses_b", location: { directory: other } } },
+  { type: "session.execution.started", data: { sessionID: "ses_b" } },
+  { type: "session.created", location: { directory: repo }, data: { sessionID: "ses_c", parentID: "ses_1", location: { directory: repo } } },
+  { type: "session.execution.started", data: { sessionID: "ses_c" } },
+]));
+await settle();
+expect(1, "2.x another location, a child session");
+await plugin.setup(ctx([{ type: "session.execution.started", data: { sessionID: "ses_b" } }]));
+await settle();
+expect(1, "2.x another location's run");
+// opencode 2.x, `opencode run`: the session is not announced as created; its first execution counts, once, its
+// location read from the server.
+await plugin.setup(ctx([
   { type: "session.execution.started", data: { sessionID: "ses_2" } },
   { type: "session.execution.started", data: { sessionID: "ses_2" } },
-]) });
+]));
 await settle();
 expect(2, "2.x opencode run");
 // opencode 1.x: the `server` hooks get `session.created`.
@@ -808,7 +835,8 @@ expect(3, "1.x session.created");
 await plugin.setup({ location: { directory: repo } });
 await plugin.setup({ location: { directory: repo }, event: { subscribe: () => { throw new Error("no stream"); } } });
 patch(() => { throw new Error("no spawn"); });
-await plugin.setup({ location: { directory: repo }, event: stream([{ type: "session.created", data: { sessionID: "ses_3" } }]) });
+sessions.ses_3 = { id: "ses_3", location: { directory: repo } };
+await plugin.setup(ctx([{ type: "session.execution.started", data: { sessionID: "ses_3" } }]));
 await (await plugin.server({ directory: repo })).event({ event: { type: "session.created" } });
 await settle();
 console.log(`other events: ${ignored ? "ignored" : "ran"}; failure: contained`);
